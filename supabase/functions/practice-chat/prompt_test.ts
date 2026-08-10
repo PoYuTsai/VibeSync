@@ -24,6 +24,7 @@ import type { PracticeTurn } from "./validate.ts";
 import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
 import { initialPersistedGameState } from "./game_state.ts";
+import { gameTacticDirectiveFor } from "./game_fsm.ts";
 
 // 預設 profile（slow_worker + normal），供既有不指定角色難度的測試沿用。
 const defaultProfile = resolvePracticeProfile({});
@@ -872,7 +873,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 2026-08-06 W1「無可貼句」：hint prompt 每場多一段例外教學（她已封鎖／
   // 明確要求停止聯絡時改輸出 noPasteableReason，不硬湊話術），固定 +103 bytes，
   // 上限 5550→5660。換掉的是「她封鎖後必然 503」這個整類失敗。
-  if (maxHint > 5660) {
+  // 2026-08-11 WP2-WP4：加入當輪戰術、五階段短句 few-shot 與字數／coaching
+  // 壓縮契約；這些是 Game-only 固定 prompt，實測最長 5847，上限 5660→5900。
+  if (maxHint > 5900) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
   if (maxDebrief > 4570) {
@@ -989,6 +992,18 @@ Deno.test("game debrief guidance asks Game to fill gameBreakdown fields", () => 
   assertEquals(user.includes("phase: P4_TENSION"), true);
   assertEquals(user.includes("targetVariable: Emotion + heat"), true);
   assertEquals(user.includes("speedInviteDirection: soft_invite_probe"), true);
+  const tactic = gameTacticDirectiveFor({
+    phase: "P4_TENSION",
+    failures: [],
+    partnerMood: null,
+  });
+  assertEquals(user.includes(`本輪指定戰術：${tactic.line}`), true);
+  assertEquals(
+    user.includes(
+      "gameBreakdown.nextFirstLine 必須執行這個戰術方向，並沿用教學卡白話，不得改成相反路線。",
+    ),
+    true,
+  );
 });
 
 Deno.test("game debrief follows seven-step variable and speed-invite breakdown", () => {
@@ -1097,6 +1112,16 @@ Deno.test("debrief prompt separates copied Hint execution from Hint quality", ()
   assertEquals(user.includes("turnIndex: 2"), true);
   assertEquals(user.includes("exact: true"), true);
   assertEquals(user.includes("不要把照貼 Hint 的句子當成使用者自己亂打"), true);
+  assertEquals(
+    user.includes("各筆 decision.move 串起本場已落帳的戰術軌跡"),
+    true,
+  );
+  assertEquals(user.includes("使用者照 Hint 做的部分不得寫成他的缺口"), true);
+  assertEquals(
+    user.includes("教練這輪保守了，下次可以更早進測試"),
+    true,
+  );
+  assertEquals(user.includes("責任放在教練路線，不得怪使用者"), true);
   assertEquals(user.includes("拆成：使用者執行 / Hint 品質 / 對方反應"), true);
   assertEquals(user.includes('decision.phase: "P3_TEST"'), true);
   assertEquals(user.includes('decision.targetVariable: "Investment"'), true);

@@ -289,3 +289,30 @@ Deno.test("L4 gate：健身豁免已撤除，一律 fail-closed（round15 Codex 
     assertEquals(hasL4UnsafeVisibleText(knownFp), true, knownFp);
   }
 });
+
+// 2026-08-11 WP2：server 每輪注入 decision.move 戰術碼與中文標籤
+// 「本輪指定戰術」。鐵則＝注入內部詞必同步守門，否則模型原樣抄進可見欄沒人攔。
+Deno.test("WP2 戰術碼與中文標籤都被可見輸出守門攔下", () => {
+  for (
+    const code of [
+      "build_connection",
+      "open_self_state",
+      "value_life_sample",
+      "playful_fit_test",
+      "tension_shared_scene",
+      "safe_close_window",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(`這輪走 ${code} 就對了`),
+      true,
+      `move code 沒被攔到：${code}`,
+    );
+  }
+  assertEquals(
+    hasVisibleInternalLabelLeak("本輪指定戰術：先給生活樣本"),
+    true,
+  );
+  // 自然中文不得誤殺。
+  assertEquals(hasVisibleInternalLabelLeak("這輪的方向是先給生活樣本"), false);
+});

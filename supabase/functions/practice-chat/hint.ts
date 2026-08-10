@@ -34,6 +34,8 @@ import {
   compactGameFsmEvidencePrompt,
   compactGameStrategyPrompt,
   evaluateGameFsm,
+  type GameFsmPhase,
+  gameTacticDirectiveFor,
 } from "./game_fsm.ts";
 import {
   GAME_JARGON_TRANSLATIONS,
@@ -280,7 +282,20 @@ function repairGameVisibleLabels(value: string): string {
     [/\bno_invite_build_investment\b/gi, "先累積投入感"],
     [/\bno_private_scene_soften\b/gi, "不推私密場景，先放鬆"],
     [/\brepair_before_invite\b/gi, "先修安全感再邀約"],
-    [/\bInvestment\s*\+\s*invite\b/g, `${GAME_VARIABLE_LABELS.Investment} + 邀約`],
+    // WP2 戰術碼與注入標籤：guard 對這些是硬拒絕，但 prompt 自己每輪都會
+    // 注入，模型抄一次就整發作廢。repair 跑在 rejectInternalLabelLeak 之前，
+    // 先在這裡換成白話，才不會為了守門新開一條 503 路徑。
+    [/\bopen_self_state\b/gi, "自狀態開球"],
+    [/\bvalue_life_sample\b/gi, "生活樣本展示"],
+    [/\bplayful_fit_test\b/gi, "玩笑式小測試"],
+    [/\btension_shared_scene\b/gi, "共同畫面升溫"],
+    [/\bsafe_close_window\b/gi, "安全感鋪墊後收尾"],
+    [/\bbuild_connection\b/gi, "先累積連結"],
+    [/本輪指定戰術[：:]?/g, "這輪的方向是"],
+    [
+      /\bInvestment\s*\+\s*invite\b/g,
+      `${GAME_VARIABLE_LABELS.Investment} + 邀約`,
+    ],
     [/\bEmotion\s*\+\s*heat\b/g, `${GAME_VARIABLE_LABELS.Emotion} + 熱度`],
     [
       /\bValue\s*\+\s*Emotion\b/g,
@@ -872,6 +887,11 @@ export function buildHintDecision(
       })?.stage ?? null,
     });
     const snapshot = effectiveGameFsmSnapshot(freshSnapshot, opts.gameState);
+    const tacticDirective = gameTacticDirectiveFor({
+      phase: snapshot.phase,
+      failures: snapshot.failureStates,
+      partnerMood: opts.partnerMood ?? null,
+    });
     const baseRoute = gameInviteRouteFor(snapshot.speedInviteDirection);
     // steady 槽預設比 base 降一階；唯一例外＝P5 收尾局 base=direct 時
     // steady 允許 direct（Eric 裁決 b）：收尾局模型自然把明確邀約放
@@ -904,7 +924,7 @@ export function buildHintDecision(
       ? "soft_invite"
       : inviteRoute === "direct"
       ? "direct_invite"
-      : opts.tacticalMove;
+      : opts.tacticalMove ?? tacticDirective.moveId;
     if (
       inviteRoute === "build" &&
       (tacticalMove === "soft_invite" || tacticalMove === "direct_invite")
@@ -1205,34 +1225,59 @@ export function hintTrustedFactualEvidence(opts: {
  * 含 1.2 節原詞（DHV/篩選/框架/推拉/可得性）或內部技術標籤。
  */
 export const GAME_HINT_MOVE_EXAMPLES: ReadonlyArray<{
+  phase: GameFsmPhase | "REPAIR";
   move: string;
   example: string;
 }> = [
   {
-    move: "補狀態給球",
-    example:
-      "我今天也差不多，開完會腦袋只剩一成電。妳的放空儀式是什麼？我先猜追劇。",
+    phase: "P1_OPEN",
+    move: "自狀態＋感受",
+    example: "妳站一整天，我這邊剛收工，腦子只剩一格電了。",
   },
   {
-    move: "把她的素材變成合作畫面",
-    example: "酒吧這塊妳比較熟，那可以組隊了。妳酒量如何？",
+    phase: "P1_OPEN",
+    move: "自狀態＋留點懸念",
+    example: "泡腳算保守了，我的放鬆方式更怪，講出來怕妳笑。",
   },
   {
-    move: "用前文做輕鬆回呼",
-    example: "我大概懂了，妳的導航只對酒吧有效😂",
+    phase: "P2_VALUE",
+    move: "男女交流＋生活樣本",
+    example: "妳這串追劇清單有點危險，我本來只想回一句的。",
   },
   {
-    move: "接住測試",
-    example:
-      "有點突然我認，但不是亂槍打鳥。只是妳這個反應蠻有趣，我想多聽一分鐘。",
+    phase: "P2_VALUE",
+    move: "生活樣本＋態度",
+    example: "妳靠追劇放鬆，我是週末去市場亂買菜，回家再假裝很會生活。",
   },
   {
-    move: "收成邀約",
-    example: "這個我有興趣。這週找 30 分鐘短咖啡交換片單，合拍再聊深一點。",
+    phase: "P3_TEST",
+    move: "玩笑式小測試",
+    example: "會邊泡腳邊追劇的女生，基本上已經過我第一關了。",
   },
   {
+    phase: "P3_TEST",
+    move: "接住玩笑測試",
+    example: "突然是有點，但妳這個反應很有趣，我先多留一分鐘。",
+  },
+  {
+    phase: "P4_TENSION",
+    move: "輕鬆張力",
+    example: "妳品味不錯嘛——雖然選劇眼光還有待觀察。",
+  },
+  {
+    phase: "P4_TENSION",
+    move: "共同小劇場",
+    example: "照妳這個追劇速度，我們一起看片大概會搶遙控器。",
+  },
+  {
+    phase: "P5_CLOSE",
+    move: "低壓收成邀約",
+    example: "這週找三十分鐘喝杯咖啡，合拍再決定要不要續攤。",
+  },
+  {
+    phase: "REPAIR",
     move: "降壓修復",
-    example: "我剛剛有點衝，先收回來。妳說的這點，我先聽妳怎麼看。",
+    example: "我剛剛衝太快，先退半步，妳照自己的節奏就好。",
   },
 ];
 
@@ -1240,7 +1285,7 @@ function gameHintFewShotExamples(): string {
   const lines = GAME_HINT_MOVE_EXAMPLES.map(
     ({ move, example }) => `- ${move}：「${example}」`,
   ).join("\n");
-  return `示範句（模仿語氣與結構，素材必須換成她最新一句的內容，不要照抄）：\n${lines}`;
+  return `示範句（模仿語氣與結構，素材換成她最新一句的內容、不要照抄；每句都留了她原話的一個字眼，你也要留，只模仿句形不留字眼＝沒接住她）：\n${lines}`;
 }
 
 function visibleGameHintContract(): string {
@@ -1249,7 +1294,9 @@ function visibleGameHintContract(): string {
 - warmUp/steady 是可貼回覆本身：callback＋一招，不能只把速約方向放在 coaching；可接測試、給品味、造小場景或開邀約窗口，純追問失敗。
 - callback＝詞面扣回：warmUp 和 steady 各自至少複用對話裡的一個具體字眼（她說「還停在第三章」就帶「第三章」）；整句全是逐字稿沒出現的詞＝沒接住她，會被打回。
 - 先讀淺溝通：累→降成本；微測試→先過關；好奇→留懸念；推開→修安全；時間窗→收成。
-- warmUp/steady≤${HINT_REPLY_SOFT_CHAR_LIMIT}字；coaching 以「Game 心法：」開頭，含「她這句可能是在...」、階段白話、具體任務與理由、「速約任務：」，全文≤${HINT_COACHING_SOFT_CHAR_LIMIT}字。
+- warmUp/steady 兩句中，至多一句以問號收尾；至少一句以陳述、態度或畫面收尾。連續兩輪都用問句收尾＝查戶口，會被打回。
+- 高手句短：warmUp/steady 目標 20-40 字，${HINT_REPLY_SOFT_CHAR_LIMIT} 字是硬頂不是目標；一句只做一件事；不用「～」與過度熱情語助詞堆疊。
+- coaching 以「Game 心法：」開頭：先用一句話講這輪戰術，再用「她這句可能是在...」講原因，不重複 warmUp/steady 逐字稿內容；保留階段白話、具體任務與「速約任務：」，全文≤${HINT_COACHING_SOFT_CHAR_LIMIT}字。
 - 依本輪速約階梯最多推一階；公開、低壓、可拒絕。L4 禁止；hidden labels、代碼與 snake_case 不輸出。
 
 `;
@@ -1324,9 +1371,16 @@ function gameHintEvidence(opts: {
   const inviteRoute = gameInviteRouteFor(
     effectiveSnapshot.speedInviteDirection,
   );
+  const tacticDirective = gameTacticDirectiveFor({
+    phase: effectiveSnapshot.phase,
+    failures: effectiveSnapshot.failureStates,
+    partnerMood: opts.partnerMood ?? null,
+  });
   return `gameHint(hidden guidance)\n內部用 Value / Frame / Emotion / Investment（收尾加 Safety）讀盤；coaching 要白話說清階段、該推的要素與這輪任務。L4 forbidden。\n可見文字一律轉白話：價值感、節奏與主見、情緒推進、投入感、曖昧張力；絕不用 DHV、篩選、框架、推拉、可得性這些原詞，也不輸出英文內部標籤。\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${sevenStepBalanceContract()}${
     speedInviteLadderPrompt(inviteRoute)
-  }${compactGameFsmEvidencePrompt(effectiveSnapshot)}\n${strategy}\n`;
+  }${
+    compactGameFsmEvidencePrompt(effectiveSnapshot)
+  }本輪指定戰術：${tacticDirective.line} warmUp/steady 兩句都要執行這個戰術，不能只寫在 coaching。\n\n${strategy}\n`;
 }
 
 export function buildHintMessages(opts: {
@@ -1345,7 +1399,7 @@ export function buildHintMessages(opts: {
 }): ChatMessage[] {
   const score = clampTemperature(opts.temperatureScore);
   const stage = relationshipStageFor(opts.familiarityScore ?? 0, score);
-  const stageGuidance = hintStageGuidance(stage.stage);
+  const stageGuidance = hintStageGuidance(stage.stage, opts.practiceMode);
   const inviteMaturity = inviteMaturityFromLearningScores({
     temperatureScore: score,
     familiarityScore: opts.familiarityScore ?? 0,
@@ -1436,8 +1490,10 @@ export function buildHintMessages(opts: {
 
 function hintStageGuidance(
   stage: ReturnType<typeof relationshipStageFor>["stage"],
+  practiceMode?: PracticeLearningMode,
 ): string {
   if (stage === "building_familiarity") {
+    if (practiceMode === "game") return "照本輪指定戰術執行。";
     return "先接住她的狀態、情緒或具體情境；不要直接曖昧。";
   }
   if (stage === "personal_allowed") {

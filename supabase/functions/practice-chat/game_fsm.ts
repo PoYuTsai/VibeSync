@@ -1,6 +1,10 @@
 import type { InviteStage } from "./invite_maturity.ts";
 import { looksLikeGameSoftInvite } from "./game_invite_classifier.ts";
-import { SELF_DISCLOSURE_TERMS } from "./game_vocab.ts";
+import {
+  GAME_CONCEPT_LABELS,
+  GAME_VARIABLE_LABELS,
+  SELF_DISCLOSURE_TERMS,
+} from "./game_vocab.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import {
   clampTemperature,
@@ -47,12 +51,125 @@ export interface GameHiddenVariables {
 
 export interface GameFsmSnapshot {
   phase: GameFsmPhase;
+  /**
+   * 本輪回合壓力下限（WP1）。ledger 覆蓋時只准用這個值抬 phase，不准直接抬到
+   * fresh.phase——fresh 的 P5_CLOSE 來自軟邀約訊號，硬抬會讓 phase 說「去約」
+   * 而 speedInviteDirection 還停在 ledger 的「先別約」，兩句話互打。
+   */
+  turnFloorPhase: GameFsmPhase | null;
+  /**
+   * 本輪是否修復優先（mood guarded/annoyed 或 GREASY 等 failure）。
+   * `hasRepairPriority` 只吃得到 failureStates，快照本身不帶 mood，
+   * ledger 覆蓋端因此判不出「她已經 guarded」；在這裡定案一次給下游用。
+   */
+  repairPriority: boolean;
   targetVariable: string;
   speedInviteDirection: string;
   hidden: GameHiddenVariables;
   failureStates: GameFailureState[];
   realityFlags: GameRealityFlag[];
   spicyLevel: GameSpicyLevel;
+}
+
+const GAME_PHASE_ORDER: readonly GameFsmPhase[] = [
+  "P1_OPEN",
+  "P2_VALUE",
+  "P3_TEST",
+  "P4_TENSION",
+  "P5_CLOSE",
+];
+
+const REPAIR_PRIORITY_FAILURES: readonly GameFailureState[] = [
+  "GREASY",
+  "FRAME_COLLAPSE",
+  "FRAME_OVERREACH",
+  "GHOST_RISK",
+];
+
+export function turnPressurePhaseFloor(
+  userTurnCount: number,
+): GameFsmPhase | null {
+  if (userTurnCount >= 8) return "P4_TENSION";
+  if (userTurnCount >= 5) return "P3_TEST";
+  if (userTurnCount >= 2) return "P2_VALUE";
+  return null;
+}
+
+export function maxGameFsmPhase(
+  basePhase: GameFsmPhase,
+  floor?: GameFsmPhase | null,
+): GameFsmPhase {
+  if (!floor) return basePhase;
+  const baseRank = GAME_PHASE_ORDER.indexOf(basePhase);
+  const floorRank = GAME_PHASE_ORDER.indexOf(floor);
+  return baseRank >= floorRank ? basePhase : floor;
+}
+
+export function hasRepairPriority(opts: {
+  failureStates: readonly GameFailureState[];
+  partnerMood?: PartnerMood | null;
+}): boolean {
+  return opts.partnerMood === "guarded" ||
+    opts.partnerMood === "annoyed" ||
+    opts.failureStates.some((state) =>
+      REPAIR_PRIORITY_FAILURES.includes(state)
+    );
+}
+
+export function gameTacticDirectiveFor(opts: {
+  phase: GameFsmPhase;
+  failures: readonly GameFailureState[];
+  partnerMood?: PartnerMood | null;
+}): { moveId: string; line: string } {
+  const lifeSample = GAME_CONCEPT_LABELS.DHV;
+  const fitSignal = GAME_CONCEPT_LABELS.篩選;
+  const lightTension = GAME_CONCEPT_LABELS.推拉;
+  const paceAndPoint = GAME_VARIABLE_LABELS.Frame;
+  if (
+    hasRepairPriority({
+      failureStates: opts.failures,
+      partnerMood: opts.partnerMood ?? null,
+    })
+  ) {
+    return {
+      moveId: "repair",
+      line:
+        "先修安全感：降壓、接住她保留的點，不邊修邊約；等她重新放鬆、願意接話再往前。",
+    };
+  }
+  if (opts.phase === "P1_OPEN") {
+    return {
+      moveId: "open_self_state",
+      line:
+        `用自己的狀態加感受開球，接她一句後帶出一小段${lifeSample}；只說一半、留點懸念，別聊成瑣事問答。`,
+    };
+  }
+  if (opts.phase === "P2_VALUE") {
+    return {
+      moveId: "value_life_sample",
+      line:
+        `把互動帶成有來有往的男女交流，不當客服；給一小段${lifeSample}和有態度的觀點，讓她看見你的${paceAndPoint}，也拉出${fitSignal}。`,
+    };
+  }
+  if (opts.phase === "P3_TEST") {
+    return {
+      moveId: "playful_fit_test",
+      line:
+        `用玩笑式小測試看${fitSignal}，輕輕放出你的標準讓她接；保留${lightTension}，別命令她證明自己。`,
+    };
+  }
+  if (opts.phase === "P4_TENSION") {
+    return {
+      moveId: "tension_shared_scene",
+      line:
+        `把她最新狀態帶成你們的共同小劇場，用${lightTension}和畫面收尾；曖昧升溫，也守住安全感。`,
+    };
+  }
+  return {
+    moveId: "safe_close_window",
+    line:
+      "先鋪安全感，再用模糊邀約探窗口、順勢速約；保持公開、低壓、可拒絕，這輪最多往前推一階。",
+  };
 }
 
 export interface GameStrategy {
@@ -683,7 +800,7 @@ function basePhaseFor(opts: {
   return "P1_OPEN";
 }
 
-function targetVariableFor(
+export function targetVariableFor(
   phase: GameFsmPhase,
   failures: readonly GameFailureState[],
 ): string {
@@ -864,13 +981,21 @@ export function evaluateGameFsm(opts: {
       (opts.partnerMood === "guarded" ? 16 : 0) -
       (opts.partnerMood === "annoyed" ? 28 : 0),
   );
-  const phase = basePhaseFor({
+  const basePhase = basePhaseFor({
     relationshipStage,
     inviteStage: opts.inviteStage ?? null,
     partnerMood: opts.partnerMood ?? null,
     softInvite,
   });
   const failureStates = [...failures];
+  const repairPriority = hasRepairPriority({
+    failureStates,
+    partnerMood: opts.partnerMood ?? null,
+  });
+  const turnFloorPhase = repairPriority
+    ? null
+    : turnPressurePhaseFloor(texts.length);
+  const phase = maxGameFsmPhase(basePhase, turnFloorPhase);
   const targetVariable = targetVariableFor(phase, failureStates);
   const speedInviteDirection = speedInviteDirectionFor({
     phase,
@@ -889,6 +1014,8 @@ export function evaluateGameFsm(opts: {
 
   return {
     phase,
+    turnFloorPhase,
+    repairPriority,
     targetVariable,
     speedInviteDirection,
     hidden: {

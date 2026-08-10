@@ -14,6 +14,8 @@ import {
 
 const baseSnapshot: GameFsmSnapshot = {
   phase: "P2_VALUE",
+  turnFloorPhase: null,
+  repairPriority: false,
   targetVariable: "Value + Emotion",
   speedInviteDirection: "no_invite_build_investment",
   hidden: { pv: 46, fp: 62, inv: 35, safety: 80, heatBias: 4 },
@@ -124,6 +126,78 @@ Deno.test("effectiveGameFsmSnapshot makes persisted judgement authoritative with
   });
   assertEquals(effective.spicyLevel, "L2");
   assertEquals(effective.failureStates, ["BORING"]);
+});
+
+Deno.test("effectiveGameFsmSnapshot keeps fresh turn-pressure phase from being washed back to persisted P1", () => {
+  const effective = effectiveGameFsmSnapshot(
+    {
+      ...baseSnapshot,
+      phase: "P3_TEST",
+      turnFloorPhase: "P3_TEST",
+      targetVariable: "Frame + safety",
+      failureStates: [],
+    },
+    {
+      ...initialPersistedGameState(),
+      phase: "P1_OPEN",
+      lastTargetVariable: "familiarity",
+    },
+  );
+
+  assertEquals(effective.phase, "P3_TEST");
+  // 抬 phase 就必須連 targetVariable 一起重算，不能留 ledger 的 P1 目標——
+  // 那會做出「階段說去測試、目標卻說先熟悉」的矛盾快照。
+  assertEquals(effective.targetVariable, "Frame + safety");
+});
+
+Deno.test("effectiveGameFsmSnapshot never lets a fresh soft-invite P5 outrun the ledger invite ladder", () => {
+  const effective = effectiveGameFsmSnapshot(
+    {
+      ...baseSnapshot,
+      // 使用者本輪自己丟軟邀約：fresh 會判 P5_CLOSE，但那不是回合下限。
+      phase: "P5_CLOSE",
+      turnFloorPhase: "P2_VALUE",
+      targetVariable: "Investment + invite",
+      speedInviteDirection: "direct_invite_low_pressure",
+      failureStates: [],
+    },
+    {
+      ...initialPersistedGameState(),
+      phase: "P1_OPEN",
+      lastTargetVariable: "familiarity",
+      lastSpeedInviteDirection: "no_invite_build_investment",
+    },
+  );
+
+  assertEquals(effective.phase, "P2_VALUE");
+  assertEquals(effective.targetVariable, "Value + Emotion");
+  assertEquals(effective.speedInviteDirection, "no_invite_build_investment");
+});
+
+Deno.test("effectiveGameFsmSnapshot lets a repair turn override a stale invite-ready ledger", () => {
+  const effective = effectiveGameFsmSnapshot(
+    {
+      ...baseSnapshot,
+      phase: "P1_OPEN",
+      turnFloorPhase: null,
+      targetVariable: "safety + Frame",
+      repairPriority: true,
+      speedInviteDirection: "repair_before_invite",
+      failureStates: ["GREASY"],
+    },
+    {
+      ...initialPersistedGameState(),
+      // 舊帳停在收尾／明確邀約：不讓位的話，本輪修復戰術會和
+      // 「本輪階梯位置：明確邀約」同時出現在同一份 prompt。
+      phase: "P5_CLOSE",
+      lastTargetVariable: "Investment + invite",
+      lastSpeedInviteDirection: "direct_invite_low_pressure",
+    },
+  );
+
+  assertEquals(effective.phase, "P5_CLOSE");
+  assertEquals(effective.targetVariable, "safety + Frame");
+  assertEquals(effective.speedInviteDirection, "repair_before_invite");
 });
 
 Deno.test("gameStateEvidencePrompt exposes persisted evidence only as hidden prompt context", () => {

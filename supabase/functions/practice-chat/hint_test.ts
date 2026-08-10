@@ -25,6 +25,7 @@ import {
 import { resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
 import { initialPersistedGameState } from "./game_state.ts";
+import { type GameFsmPhase, gameTacticDirectiveFor } from "./game_fsm.ts";
 
 const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
 
@@ -151,6 +152,238 @@ Deno.test("Game Hint prompt and returned decision share persisted Game context",
   assertEquals(decision.inviteRoute, "soft");
 });
 
+Deno.test("buildHintMessages lets Game turn pressure raise persisted P1 prompt to P3 and injects a tactic", () => {
+  const prompt = buildHintMessages({
+    turns: [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "嗨，剛下班還在回魂" },
+      { role: "user", text: "我今天腳好痠，想直接放空" },
+      { role: "ai", text: "站一整天那種痠真的會累" },
+      { role: "user", text: "我在泡腳，整個人慢慢活過來" },
+      { role: "ai", text: "泡腳聽起來很會照顧自己" },
+      { role: "user", text: "最近都在追劇，節奏很慢那種" },
+      { role: "ai", text: "慢節奏有時候反而比較耐看" },
+      { role: "user", text: "第三章還沒看完，晚點繼續" },
+      { role: "ai", text: "還停在第三章，妳很能忍欸" },
+      { role: "user", text: "我可能等等就睡，今天電量很低" },
+      { role: "ai", text: "低電量還能聊天，算有誠意了" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 18,
+    familiarityScore: 8,
+    partnerMood: "neutral",
+    gameState: {
+      ...initialPersistedGameState(),
+      phase: "P1_OPEN",
+    },
+  }).map((message) => message.content).join("\n");
+
+  assert(prompt.includes("phase: P3_TEST"));
+  assert(prompt.includes("本輪指定戰術："));
+  assert(prompt.includes("warmUp/steady 兩句都要執行這個戰術"));
+  assert(prompt.includes("目前最容易加分：照本輪指定戰術執行。"));
+  assertEquals(
+    prompt.includes(
+      "目前最容易加分：先接住她的狀態、情緒或具體情境；不要直接曖昧。",
+    ),
+    false,
+  );
+});
+
+Deno.test("game tactic directive lines avoid raw 1.2 jargon and internal labels", () => {
+  const phases: GameFsmPhase[] = [
+    "P1_OPEN",
+    "P2_VALUE",
+    "P3_TEST",
+    "P4_TENSION",
+    "P5_CLOSE",
+  ];
+  const directives = phases.map((phase) =>
+    gameTacticDirectiveFor({
+      phase,
+      failures: [],
+      partnerMood: "neutral",
+    })
+  ).concat(
+    gameTacticDirectiveFor({
+      phase: "P2_VALUE",
+      failures: ["GREASY"],
+      partnerMood: "neutral",
+    }),
+  );
+  const banned = [
+    "篩選",
+    "推拉",
+    "框架",
+    "可得性",
+    "DHV",
+    "賦格",
+    "資格篩選",
+    "品味門檻",
+  ];
+
+  for (const directive of directives) {
+    for (const term of banned) {
+      assertEquals(
+        directive.line.includes(term),
+        false,
+        `${directive.line} should not include ${term}`,
+      );
+    }
+    assertEquals(/[A-Za-z_]/u.test(directive.line), false, directive.line);
+  }
+});
+
+Deno.test("GAME_HINT_MOVE_EXAMPLES stay short, visible-safe, parser-safe, and mostly declarative", () => {
+  const banned = [
+    "篩選",
+    "推拉",
+    "框架",
+    "可得性",
+    "DHV",
+    "賦格",
+    "資格篩選",
+    "品味門檻",
+  ];
+  const directiveIdForPhase: Record<string, string> = {
+    P1_OPEN: "open_self_state",
+    P2_VALUE: "value_life_sample",
+    P3_TEST: "playful_fit_test",
+    P4_TENSION: "tension_shared_scene",
+    P5_CLOSE: "safe_close_window",
+    REPAIR: "repair",
+  };
+  const visibleMovesForDirective: Record<string, string[]> = {
+    open_self_state: ["自狀態＋感受", "自狀態＋留點懸念"],
+    value_life_sample: ["男女交流＋生活樣本", "生活樣本＋態度"],
+    playful_fit_test: ["玩笑式小測試", "接住玩笑測試"],
+    tension_shared_scene: ["輕鬆張力", "共同小劇場"],
+    safe_close_window: ["低壓收成邀約"],
+    repair: ["降壓修復"],
+  };
+  const coaching =
+    "Game 心法：這輪先用生活樣本帶出價值。她這句可能是在分享近況，所以先給自己的畫面，避免連續追問。速約任務：這輪先不約，等她接球再找窗口。";
+  const phases = new Set<string>();
+  let questionEndings = 0;
+
+  GAME_HINT_MOVE_EXAMPLES.forEach((entry, index) => {
+    phases.add(entry.phase);
+    const length = Array.from(entry.example).length;
+    assert(length <= 40, `${entry.example} length=${length}`);
+    assert(length >= 15 && length <= 35, `${entry.example} length=${length}`);
+    for (const term of banned) {
+      assertEquals(
+        entry.example.includes(term),
+        false,
+        `${entry.example} should not include ${term}`,
+      );
+    }
+    assertEquals(
+      /[A-Za-z_]/u.test(entry.example),
+      false,
+      `${entry.example} should not include internal labels`,
+    );
+    const directiveId = directiveIdForPhase[entry.phase];
+    assert(
+      visibleMovesForDirective[directiveId].includes(entry.move),
+      `${entry.move} should describe ${directiveId}`,
+    );
+
+    const partner = GAME_HINT_MOVE_EXAMPLES[
+      (index + 1) % GAME_HINT_MOVE_EXAMPLES.length
+    ].example;
+    const parsePair = (warmUp: string, steady: string) =>
+      parseHintResult(JSON.stringify({ warmUp, steady, coaching }), {
+        mode: "game",
+        enforceGeneratedQuality: true,
+        turns: [{ role: "ai", text: `${warmUp}${steady}` }],
+      });
+    assertEquals(parsePair(entry.example, partner).replies.length, 2);
+    assertEquals(parsePair(partner, entry.example).replies.length, 2);
+
+    if (/[？?]\s*$/u.test(entry.example)) questionEndings += 1;
+  });
+
+  for (
+    const phase of [
+      "P1_OPEN",
+      "P2_VALUE",
+      "P3_TEST",
+      "P4_TENSION",
+      "P5_CLOSE",
+    ]
+  ) {
+    assert(phases.has(phase), `missing ${phase} example`);
+  }
+  assert(
+    questionEndings / GAME_HINT_MOVE_EXAMPLES.length <= 1 / 3,
+    `${questionEndings}/${GAME_HINT_MOVE_EXAMPLES.length} end in questions`,
+  );
+});
+
+Deno.test("Game Hint prompt treats 60 chars as a hard cap and compresses coaching", () => {
+  const prompt = buildHintMessages({
+    turns: [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "剛下班，正在泡腳追劇" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 18,
+    familiarityScore: 8,
+  }).map((message) => message.content).join("\n");
+
+  assert(prompt.includes("warmUp/steady 目標 20-40 字"));
+  assert(prompt.includes("60 字是硬頂不是目標"));
+  assert(prompt.includes("一句只做一件事"));
+  assert(prompt.includes("不用「～」與過度熱情語助詞堆疊"));
+  assert(prompt.includes("先用一句話講這輪戰術"));
+  assert(prompt.includes("不重複 warmUp/steady 逐字稿內容"));
+  for (
+    const internalMoveId of [
+      "open_self_state",
+      "value_life_sample",
+      "playful_fit_test",
+      "tension_shared_scene",
+      "safe_close_window",
+    ]
+  ) {
+    assertEquals(prompt.includes(internalMoveId), false, internalMoveId);
+  }
+  assertEquals(HINT_REPLY_SOFT_CHAR_LIMIT, 60);
+});
+
+Deno.test("buildHintMessages keeps the three non-game stage guidance strings unchanged", () => {
+  const promptFor = (temperatureScore: number, familiarityScore: number) =>
+    buildHintMessages({
+      turns: [
+        { role: "user", text: "嗨" },
+        { role: "ai", text: "剛下班，腦袋快空了" },
+      ],
+      profile,
+      practiceMode: "beginner",
+      temperatureScore,
+      familiarityScore,
+    }).map((message) => message.content).join("\n");
+
+  assert(
+    promptFor(30, 20).includes(
+      "目前最容易加分：先接住她的狀態、情緒或具體情境；不要直接曖昧。",
+    ),
+  );
+  assert(
+    promptFor(40, 55).includes(
+      "目前最容易加分：多一點個人感，從她剛說的事自然延伸到感受、偏好或小故事。",
+    ),
+  );
+  assert(
+    promptFor(60, 55).includes(
+      "目前最容易加分：低壓曖昧，可以輕推但不能油、不能逼近。",
+    ),
+  );
+});
+
 Deno.test("Hint decision rationale stays within the replay lineage contract", () => {
   const decision = buildHintDecision({
     turns: [
@@ -237,6 +470,12 @@ Deno.test("P5 收尾局 steady 槽放寬允許 direct，其他階仍降一階", 
     () =>
       buildHintDecision({
         ...closeOptions,
+        turns: [
+          { role: "user" as const, text: "最近那間咖啡店好像很紅" },
+          { role: "ai" as const, text: "聽起來你很懂咖啡欸" },
+        ],
+        temperatureScore: 50,
+        familiarityScore: 40,
         gameState: {
           ...initialPersistedGameState(),
           phase: "P4_TENSION" as const,
@@ -1110,7 +1349,7 @@ Deno.test("prompt coaching soft limit keeps headroom under the hard cap", () => 
   assert(gameText.includes(`全文≤${HINT_COACHING_SOFT_CHAR_LIMIT}字`));
   assert(
     gameText.includes(
-      `warmUp/steady≤${HINT_REPLY_SOFT_CHAR_LIMIT}字；coaching`,
+      `${HINT_REPLY_SOFT_CHAR_LIMIT} 字是硬頂不是目標`,
     ),
   );
 });
@@ -1363,6 +1602,7 @@ Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable 
     partnerMood: "neutral",
   }).map((m) => m.content).join("\n");
 
+  // WP2-WP4 新增的 phase 戰術行與白話 few-shot 仍須守住原有預算。
   assert(
     gameText.length <= 4800,
     `Game Hint prompt is too long: ${gameText.length}`,

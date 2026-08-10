@@ -39,6 +39,7 @@ import {
   gameFsmEvidencePrompt,
   type GameFsmSnapshot,
   gameStrategyPrompt,
+  gameTacticDirectiveFor,
   spicyLevelFor,
 } from "./game_fsm.ts";
 import {
@@ -667,9 +668,16 @@ function gameDebriefPrompt(opts: {
     compactGameStrategyPrompt(opts.profile),
     snapshot.phase,
   );
+  const tacticDirective = gameTacticDirectiveFor({
+    phase: snapshot.phase,
+    failures: snapshot.failureStates,
+    partnerMood: opts.partnerState?.mood ?? null,
+  });
   return `gameDebrief(hidden guidance)\n${gameDebriefSkillContract()}\ngameBreakdown 五欄非空且各帶原話：gameBreakdown.phaseReached=階段、missedVariable=缺口、failureState=卡點、nextFirstLine=下次第一句、inviteDirection=方向；不輸出 P1-P5/targetVariable/failureStates。\n${
     compactGameFsmEvidencePrompt(snapshot)
-  }${compactGameLedgerPrompt(opts.gameState)}\n${strategy}`;
+  }本輪指定戰術：${tacticDirective.line}\ngameBreakdown.nextFirstLine 必須執行這個戰術方向，並沿用教學卡白話，不得改成相反路線。\n${
+    compactGameLedgerPrompt(opts.gameState)
+  }\n${strategy}`;
 }
 
 function compactDebriefInvitePrompt(value: string): string {
@@ -799,7 +807,7 @@ function debriefHintAccountabilityPrompt(
         : []),
     ].join("\n");
   }).join("\n");
-  return `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打；exact: true 時 summary/strengths 必含「你有照提示做」。拆成：使用者執行 / Hint 品質 / 對方反應。讀完整末筆她回覆；有新素材／反問就不是禮貌收尾。只有 Hint 送出後「她」的新回覆出現明確反證時才可批評 Hint，否則不評 Hint；watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。`;
+  return `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；各筆 decision.move 串起本場已落帳的戰術軌跡；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打；使用者照 Hint 做的部分不得寫成他的缺口。只有 Hint 送出後「她」的新回覆出現明確反證時才可批評 Hint；符合這個前提且教練路線本身太保守時，要明說「教練這輪保守了，下次可以更早進測試」，責任放在教練路線，不得怪使用者；否則不評 Hint。exact: true 時 summary/strengths 必含「你有照提示做」。拆成：使用者執行 / Hint 品質 / 對方反應。讀完整末筆她回覆；有新素材／反問就不是禮貌收尾。watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。`;
 }
 
 /** debrief 模式：system + 一則含 profile/訊號脈絡與逐字稿的 user 指令。 */

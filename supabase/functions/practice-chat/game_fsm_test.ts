@@ -11,6 +11,7 @@ import {
   containsCrudeSexualOffense,
   evaluateGameFsm,
   hasExplicitSrGameStrategy,
+  turnPressurePhaseFloor,
 } from "./game_fsm.ts";
 import { applyLearningClassification } from "./temperature.ts";
 import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
@@ -101,6 +102,23 @@ const SR_STRATEGY_SEMANTIC_EXPECTATIONS: Record<
   },
 };
 
+function mundaneUserTurns(count: number, lastText?: string) {
+  const texts = [
+    "今天腦袋很滿，想慢慢放空",
+    "剛買飲料回來，整個人有回魂一點",
+    "最近在看老劇，節奏剛好不用用腦",
+    "我也喜歡那種慢慢走路的感覺",
+    "晚點想泡腳，把整天的疲勞退掉",
+    "這種天氣很適合找個舒服角落待著",
+    "剛剛整理完桌面，心情有輕一點",
+    "現在只想聽點安靜的歌",
+  ];
+  return texts.slice(0, count).map((text, index) => ({
+    role: "user" as const,
+    text: index === count - 1 && lastText ? lastText : text,
+  }));
+}
+
 Deno.test("evaluateGameFsm accumulates BORING when user interrogates instead of sharing", () => {
   const snapshot = evaluateGameFsm({
     turns: [
@@ -116,6 +134,54 @@ Deno.test("evaluateGameFsm accumulates BORING when user interrogates instead of 
   assert(snapshot.failureStates.includes("BORING"));
   assert(snapshot.hidden.inv <= 10);
   assertEquals(snapshot.targetVariable, "Value + Emotion");
+});
+
+Deno.test("turnPressurePhaseFloor never pushes directly into close", () => {
+  assertEquals(turnPressurePhaseFloor(1), null);
+  assertEquals(turnPressurePhaseFloor(2), "P2_VALUE");
+  assertEquals(turnPressurePhaseFloor(5), "P3_TEST");
+  assertEquals(turnPressurePhaseFloor(8), "P4_TENSION");
+  assertEquals(turnPressurePhaseFloor(20), "P4_TENSION");
+});
+
+Deno.test("evaluateGameFsm floors six low-score user turns to at least P3_TEST without failures", () => {
+  const snapshot = evaluateGameFsm({
+    turns: mundaneUserTurns(6),
+    temperatureScore: 18,
+    familiarityScore: 8,
+    partnerMood: "neutral",
+  });
+
+  assertEquals(snapshot.failureStates, []);
+  assertEquals(snapshot.phase, "P3_TEST");
+  assertEquals(snapshot.targetVariable, "Frame + safety");
+});
+
+Deno.test("evaluateGameFsm skips the turn floor when repair has priority", () => {
+  const guarded = evaluateGameFsm({
+    turns: mundaneUserTurns(6),
+    temperatureScore: 18,
+    familiarityScore: 8,
+    partnerMood: "guarded",
+  });
+  assertEquals(guarded.phase, "P3_TEST");
+
+  const guardedAfterEightTurns = evaluateGameFsm({
+    turns: mundaneUserTurns(8),
+    temperatureScore: 18,
+    familiarityScore: 8,
+    partnerMood: "guarded",
+  });
+  assertEquals(guardedAfterEightTurns.phase, "P3_TEST");
+
+  const greasy = evaluateGameFsm({
+    turns: mundaneUserTurns(6, "想幹妳屁眼"),
+    temperatureScore: 18,
+    familiarityScore: 8,
+    partnerMood: "neutral",
+  });
+  assert(greasy.failureStates.includes("GREASY"));
+  assertEquals(greasy.phase, "P1_OPEN");
 });
 
 // 2026-08-08 詞表單源化的刻意行為變化（Codex 首審要求鎖定、二審要求鎖強度）：

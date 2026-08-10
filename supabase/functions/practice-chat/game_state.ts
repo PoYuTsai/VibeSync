@@ -5,6 +5,7 @@ import type {
   GameRealityFlag,
   GameSpicyLevel,
 } from "./game_fsm.ts";
+import { maxGameFsmPhase, targetVariableFor } from "./game_fsm.ts";
 
 const GAME_PHASES: readonly GameFsmPhase[] = [
   "P1_OPEN",
@@ -196,12 +197,33 @@ export function effectiveGameFsmSnapshot(
   persisted?: PersistedGameState | null,
 ): GameFsmSnapshot {
   if (!persisted) return fresh;
+  // WP1 回合下限只准抬 phase，不准整包用 fresh.phase：fresh 的 P5_CLOSE 來自
+  // 軟邀約訊號，直接 max 會做出 `P5_CLOSE + no_invite_build_investment` 這種
+  // 不可能快照——prompt 一邊叫模型開邀約窗口、一邊說這輪先別約，模型照 P5
+  // 戰術出手就被 hint_quality_invalid_invite_route 打回重試。
+  // 下限最高只到 P4_TENSION，而 speedInviteDirectionFor 只在 P5_CLOSE 才改
+  // 判定，所以抬 phase 不會讓 ledger 的速約階梯失準；targetVariable 則跟著
+  // 新 phase 重算，保持三者同源。
+  // 修復優先時 ledger 的目標與速約階梯一律讓位給 fresh：舊帳可能停在
+  // P5_CLOSE/明確邀約，配上本輪的修復戰術就變成「先修安全感、不邊修邊約」
+  // 和「本輪階梯位置：明確邀約」同時出現。階段進度（phase）保留，
+  // 免得一句越界就把整場打回開場。
+  const repairPriority = fresh.repairPriority;
+  const phase = repairPriority
+    ? persisted.phase
+    : maxGameFsmPhase(persisted.phase, fresh.turnFloorPhase);
+  const targetVariable = repairPriority
+    ? fresh.targetVariable
+    : phase === persisted.phase
+    ? persisted.lastTargetVariable ?? fresh.targetVariable
+    : targetVariableFor(phase, fresh.failureStates);
   return {
     ...fresh,
-    phase: persisted.phase,
-    targetVariable: persisted.lastTargetVariable ?? fresh.targetVariable,
-    speedInviteDirection: persisted.lastSpeedInviteDirection ??
-      fresh.speedInviteDirection,
+    phase,
+    targetVariable,
+    speedInviteDirection: repairPriority
+      ? fresh.speedInviteDirection
+      : persisted.lastSpeedInviteDirection ?? fresh.speedInviteDirection,
     hidden: {
       ...fresh.hidden,
       pv: persisted.pv,

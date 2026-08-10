@@ -62,6 +62,15 @@ const INTERNAL_VISIBLE_LABELS = [
   "l2",
   "l3",
   "l4",
+  // hint decision.move 的內部戰術碼（server 權威，注入 debrief evidence）：
+  // build_connection 是舊值、其餘是 2026-08-11 WP2 新增。鐵則＝注入內部詞
+  // 必同步擴可見輸出守門，否則模型原樣抄進拆解卡沒人攔。
+  "buildconnection",
+  "openselfstate",
+  "valuelifesample",
+  "playfulfittest",
+  "tensionsharedscene",
+  "safeclosewindow",
   "boring",
   "toolguy",
   "greasy",
@@ -359,7 +368,14 @@ function clauseHasUnsafeAdvice(clause: string): boolean {
 // 不整包借用 INTERNAL_MECHANISM_PHRASES——那份清單的「框架/推拉」等詞在
 // chat/hint 側有既定白話 sentinel 與 1.2 jargon 翻譯白名單，整包借用會
 // 誤殺既有放行案例。
-const ACQUAINTANCE_ORIGIN_CHINESE_LABELS = ["認識管道", "认识管道"];
+// 2026-08-11 WP2：server 每輪注入的「本輪指定戰術」同樣是中文標籤，
+// 英文複合詞表攔不到，比照認識管道收在這裡。
+const INTERNAL_CHINESE_LABELS = [
+  "認識管道",
+  "认识管道",
+  "本輪指定戰術",
+  "本轮指定战术",
+];
 
 export function hasVisibleInternalLabelLeak(value: string): boolean {
   // 分數形檢查掛這裡讓 chat（handler）/hint 兩側可見輸出同步蓋到；
@@ -370,7 +386,7 @@ export function hasVisibleInternalLabelLeak(value: string): boolean {
     return true;
   }
   const unsafeNormalized = normalizeUnsafeText(value);
-  return ACQUAINTANCE_ORIGIN_CHINESE_LABELS.some((label) =>
+  return INTERNAL_CHINESE_LABELS.some((label) =>
     unsafeNormalized.includes(normalizeUnsafeText(label))
   );
 }
