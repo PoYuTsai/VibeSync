@@ -305,8 +305,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 24),
-                _buildQuotaSummaryCard(subscription),
+                const SizedBox(height: 32),
+                _buildQuotaSummarySection(subscription),
                 if (hasPendingDowngrade) ...[
                   const SizedBox(height: 16),
                   _buildPendingDowngradeCard(subscription),
@@ -338,8 +338,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   ),
                 ],
                 const SizedBox(height: 24),
-                _buildFeatureComparisonTable(),
+                _buildSectionDivider(),
                 const SizedBox(height: 24),
+                _buildFeatureComparisonTable(),
+                const SizedBox(height: 32),
                 ...options.map(
                   (option) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -351,16 +353,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     ),
                   ),
                 ),
-                if (selected != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: _buildSelectedBillingCard(
-                      option: selected,
-                      isDowngrade: isDowngrade,
-                      isCurrentPlan: isCurrentPlan,
-                    ),
+                if (selected != null) ...[
+                  const SizedBox(height: 4),
+                  _buildSectionDivider(),
+                  const SizedBox(height: 16),
+                  _buildSelectedBillingSection(
+                    option: selected,
+                    isDowngrade: isDowngrade,
+                    isCurrentPlan: isCurrentPlan,
                   ),
-                const SizedBox(height: 8),
+                ],
+                const SizedBox(height: 16),
                 BrandPrimaryButton(
                   label: _primaryButtonText(
                     subscription,
@@ -518,7 +521,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     return '升級會立即生效並立刻刷新額度，Apple 也會自動按比例調整本期費用。';
   }
 
-  Widget _buildSelectedBillingCard({
+  /// S9/B9：頁面區塊分隔線——卡片堆疊改分層後，區塊邊界用 hairline 表達。
+  Widget _buildSectionDivider() {
+    return Container(
+      height: 1,
+      color: Colors.white.withValues(alpha: 0.08),
+    );
+  }
+
+  Widget _buildSelectedBillingSection({
     required _PaywallOption option,
     required bool isDowngrade,
     required bool isCurrentPlan,
@@ -530,8 +541,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         ? '降級會在下次續訂時生效；今天不會再次扣款。'
         : '付款會由 Apple ID 扣款，除非在到期前取消，否則會自動續訂。';
 
-    return BrandSurfaceCard(
-      padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -712,15 +723,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     );
   }
 
-  Widget _buildQuotaSummaryCard(SubscriptionState subscription) {
-    return BrandSurfaceCard(
-      padding: const EdgeInsets.all(16),
+  /// S9/B9：原本是 BrandSurfaceCard，卡片堆疊改分層——區塊靠字級與
+  /// 分隔線分層，額度數字保留 pill 容器（資訊元件，非頁面結構卡）。
+  Widget _buildQuotaSummarySection(SubscriptionState subscription) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             '目前方案與額度',
-            style: AppTypography.titleMedium.copyWith(
+            style: AppTypography.titleLarge.copyWith(
               color: AppColors.onBackgroundPrimary,
             ),
           ),
