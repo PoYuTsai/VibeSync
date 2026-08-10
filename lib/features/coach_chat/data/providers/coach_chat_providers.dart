@@ -132,7 +132,11 @@ class CoachChatController
   }
 
   @override
-  Future<UnifiedCoachResult?> build(CoachScope scope) async {
+  UnifiedCoachResult? build(CoachScope scope) {
+    // 同步回傳，不留 AsyncLoading 首幀：Hive 讀本來就是 sync，掛 async 會讓
+    // autoDispose provider 每次熱切換 scope 都閃一幀 loading，UI 把它當
+    // 「正在送出問題」誤播（2026-08-11 Eric 真機回報）。isLoading 從此只在
+    // ask() 明確設 loading 時為真＝真的有問題在送。
     final repo = ref.read(coachChatRepositoryProvider);
     return repo.latestForScope(scope.type, scope.id);
   }

@@ -278,4 +278,39 @@ void main() {
     }
     await tester.pump(const Duration(milliseconds: 100));
   });
+
+  testWidgets('快速切 scope 不得閃「正在送出問題」（controller build 必須同步）',
+      (tester) async {
+    // 2026-08-11 Eric 真機回報：快速連點問誰 chips，下方閃出「正在送出
+    // 問題」。真因＝autoDispose controller 的 async build 每次熱切換都留
+    // 一幀 AsyncLoading，UI 誤當成問題送出中。此測試逐幀斷言堵回歸。
+    await _pump(
+      tester,
+      partners: [_partner('p1', 'Alice'), _partner('p2', 'Bella')],
+    );
+
+    const chipKeys = [
+      Key('coach_scope_partner_p1'),
+      Key('coach_scope_general'),
+      Key('coach_scope_partner_p2'),
+      Key('coach_scope_partner_p1'),
+    ];
+    for (final key in chipKeys) {
+      await tester.tap(find.byKey(key));
+      // 只 pump 單幀：假 loading 就是只活一兩幀，settle 後看不到。
+      await tester.pump();
+      expect(find.text('正在送出問題'), findsNothing,
+          reason: '沒有問題在送，切 scope 不得出現送出中通知');
+      expect(
+        find.descendant(
+          of: find.byType(CoachSurface),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsNothing,
+        reason: '送出鈕不得因 scope 初始化閃成轉圈',
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('正在送出問題'), findsNothing);
+    }
+  });
 }
