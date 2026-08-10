@@ -6,11 +6,9 @@
 // 吃同一套質感、不再混雜舊 glass 風。數值刻意與 about_me_screen /
 // profile_chip_section 的已上線版本逐一對齊，確保視覺 byte 級一致。
 //
-// 預設 warm tone 的設計憲法（改任何頁面都必須遵守）：
-//   背景：brandInk → brandSurface → brandSurface2 垂直漸層（stops 0 / .58 / 1）。
-//   卡片：brandSurface 系漸層 @ ~.9，圓角 22–24，white@.10 邊框，黑色柔陰影。
-//   重點色：ctaStart → ctaEnd 橘色（CTA / 焦點 / icon badge）。
-//   文字：卡上白字 + onBackgroundSecondary 次要；hint 一律低對比白。
+// 設計憲法的單一事實來源在 repo 根目錄 `DESIGN.md`（含色票/字級/圓角/
+// 間距/動效尺度與「刻意保留」登記表）——改任何頁面前先讀它，本註解不再
+// 重複內容以免漂移。
 //
 // coach tone 是 Analyze Chat / Opener 專用的洞察層級；紫色只負責選取與資訊，
 // 主要動作仍是橘色。本檔不全域改 GlassmorphicContainer。
