@@ -14,6 +14,7 @@ import '../../domain/entities/user_profile.dart';
 import '../../domain/services/growth_preview_builder.dart';
 import '../style_pair_draft.dart';
 import '../widgets/growth_preview_sheet.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../widgets/profile_chip_section.dart';
 
 class AboutMeScreen extends ConsumerStatefulWidget {
@@ -268,26 +269,20 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
     final state = ref.watch(userProfileControllerProvider);
 
     return state.when(
-      loading: () => const _AboutMeBackground(
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Center(
-            child: CircularProgressIndicator(color: AppColors.ctaStart),
-          ),
+      loading: () => const BrandScaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.ctaStart),
         ),
       ),
-      error: (e, _) => _AboutMeBackground(
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          appBar: _buildAppBar(),
-          body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                '無法載入設定，請稍後再試',
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.onBackgroundSecondary,
-                ),
+      error: (e, _) => BrandScaffold(
+        title: '關於我',
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              '無法載入設定，請稍後再試',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.onBackgroundSecondary,
               ),
             ),
           ),
@@ -304,12 +299,9 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
     return PopScope(
       canPop: !_isDirty,
       onPopInvokedWithResult: _handlePopAttempt,
-      child: _AboutMeBackground(
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          appBar: _buildAppBar(),
-          body: SafeArea(
-            child: SingleChildScrollView(
+      child: BrandScaffold(
+        title: '關於我',
+        body: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -424,30 +416,12 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                 ],
               ),
             ),
-          ),
-        ),
       ),
     );
   }
 
   String _formatUpdatedAt(DateTime dt) =>
       DateFormat('yyyy/M/d HH:mm').format(dt.toLocal());
-
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      centerTitle: true,
-      iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
-      title: Text(
-        '關於我',
-        style: AppTypography.titleLarge.copyWith(
-          color: AppColors.onBackgroundPrimary,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
 
   InputDecoration _fieldDecoration(String hintText) {
     OutlineInputBorder border(Color color, [double width = 1]) {
@@ -472,31 +446,6 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       focusedBorder: border(AppColors.ctaStart.withValues(alpha: 0.74), 1.3),
       errorBorder: border(AppColors.error.withValues(alpha: 0.80)),
       focusedErrorBorder: border(AppColors.error),
-    );
-  }
-}
-
-class _AboutMeBackground extends StatelessWidget {
-  const _AboutMeBackground({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.brandInk,
-            AppColors.brandSurface,
-            AppColors.brandSurface2,
-          ],
-          stops: [0.0, 0.58, 1.0],
-        ),
-      ),
-      child: child,
     );
   }
 }
