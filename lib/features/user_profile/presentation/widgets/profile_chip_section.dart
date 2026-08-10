@@ -62,7 +62,7 @@ class ProfileChipSection<T> extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 4,
+                width: 2,
                 height: 18,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(

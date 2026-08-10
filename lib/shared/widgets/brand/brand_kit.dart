@@ -294,8 +294,8 @@ class BrandIconBadge extends StatelessWidget {
   }
 }
 
-/// 區塊標題。預設用 4px 橘漸層豎條（對齊 profile_chip_section）；
-/// 傳 [icon] 改用 [BrandIconBadge]（對齊 about_me 介紹卡）。
+/// 區塊標題。預設用 2px 橘漸層豎條（>2px 彩色側邊條是 DESIGN.md 認定的
+/// slop 標記）；傳 [icon] 改用 [BrandIconBadge]（對齊 about_me 介紹卡）。
 class BrandSectionHeader extends StatelessWidget {
   const BrandSectionHeader({
     super.key,
@@ -322,7 +322,7 @@ class BrandSectionHeader extends StatelessWidget {
               const SizedBox(width: 10),
             ] else ...[
               Container(
-                width: 4,
+                width: 2,
                 height: 18,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(

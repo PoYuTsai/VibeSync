@@ -57,7 +57,7 @@ void main() {
                   children: [
                     const BrandSectionHeader(
                       title: '互動風格',
-                      subtitle: '4px 豎條標題 + 次層級卡（elevated:false）+ chips。',
+                      subtitle: '2px 豎條標題 + 次層級卡（elevated:false）+ chips。',
                     ),
                     const SizedBox(height: 12),
                     Wrap(
