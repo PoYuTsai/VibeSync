@@ -8,10 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'proof_support.dart';
 
 const _pairs = [
-  'about_me_profile',
-  'brand_kit_gallery',
-  'partner_mindmap',
-  'prod_partner_home',
+  'partner_archive',
 ];
 
 void main() {

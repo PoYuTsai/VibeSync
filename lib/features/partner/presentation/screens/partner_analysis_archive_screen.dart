@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../analysis/data/providers/analysis_record_providers.dart';
 import '../../../analysis/data/services/analysis_archive_lifecycle.dart';
 import '../../../analysis/domain/entities/analysis_record.dart';
@@ -57,32 +58,9 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
         .toList(growable: false);
     final grouped = _groupByMonth(legacyArchived);
 
-    return Scaffold(
-      backgroundColor: AppColors.backgroundGradientStart,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
-        title: Text(
-          partner == null ? '已收起的對話' : '${partner.name}・已收起的對話',
-          style: const TextStyle(color: AppColors.onBackgroundPrimary),
-        ),
-      ),
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.backgroundGradientStart,
-              AppColors.backgroundGradientMid,
-              AppColors.backgroundGradientEnd,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          top: false,
-          child: grouped.isEmpty
+    return BrandScaffold(
+      title: partner == null ? '已收起的對話' : '${partner.name}・已收起的對話',
+      body: grouped.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
@@ -140,8 +118,6 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
                     ],
                   ],
                 ),
-        ),
-      ),
       floatingActionButton: FloatingActionButton.extended(
         key: const ValueKey('archive-new-conversation'),
         onPressed: partner == null
