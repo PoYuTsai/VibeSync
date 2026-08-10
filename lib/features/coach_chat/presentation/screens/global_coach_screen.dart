@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../domain/entities/coach_scope.dart';
@@ -107,10 +108,9 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
   @override
   Widget build(BuildContext context) {
     final partners = ref.watch(partnerListProvider);
-    return Scaffold(
-      appBar: AppBar(title: const Text('問教練')),
-      body: SafeArea(
-        child: SingleChildScrollView(
+    return BrandScaffold(
+      title: '問教練',
+      body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,7 +161,6 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
             ],
           ),
         ),
-      ),
     );
   }
 }
