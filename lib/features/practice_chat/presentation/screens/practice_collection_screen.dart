@@ -17,6 +17,7 @@ import '../../data/providers/practice_chat_providers.dart';
 import '../../domain/entities/practice_girl_catalog.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 import '../../domain/entities/practice_girl_rarity.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../widgets/practice_draw_ceremony.dart';
 import '../widgets/practice_rarity_style.dart';
 
@@ -578,7 +579,7 @@ class _PracticeCollectionScreenState
         ),
         title: Text(
           '角色圖鑑',
-          style: AppTypography.titleMedium.copyWith(
+          style: AppTypography.titleLarge.copyWith(
             color: AppColors.onBackgroundPrimary,
             fontWeight: FontWeight.w800,
           ),
@@ -587,18 +588,7 @@ class _PracticeCollectionScreenState
       ),
       body: Stack(
         children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  AppColors.backgroundGradientStart,
-                  AppColors.backgroundGradientMid,
-                  AppColors.backgroundGradientEnd,
-                ],
-              ),
-            ),
+          BrandPageBackground(
             child: SafeArea(
               child: CustomScrollView(
                 controller: _scrollController,
