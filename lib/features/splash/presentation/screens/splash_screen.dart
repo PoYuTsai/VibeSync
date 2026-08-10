@@ -1,5 +1,6 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
+
+import '../../../../core/theme/app_colors.dart';
 
 class SplashScreen extends StatefulWidget {
   final VoidCallback onComplete;
@@ -12,11 +13,6 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-  // 光球動畫
-  late final AnimationController _orb1Controller;
-  late final AnimationController _orb2Controller;
-  late final AnimationController _orb3Controller;
-
   // 主標題入場
   late final AnimationController _titleController;
   late final Animation<double> _titleOpacity;
@@ -39,22 +35,6 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
-
-    // ── 光球（持續動畫）──
-    _orb1Controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 9),
-    )..repeat(reverse: true);
-
-    _orb2Controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 8),
-    )..repeat(reverse: true);
-
-    _orb3Controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 10),
-    )..repeat(reverse: true);
 
     // ── 主標題入場（0.9 秒）──
     _titleController = AnimationController(
@@ -162,9 +142,6 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _orb1Controller.dispose();
-    _orb2Controller.dispose();
-    _orb3Controller.dispose();
     _titleController.dispose();
     _shimmerController.dispose();
     _subtitleController.dispose();
@@ -180,7 +157,7 @@ class _SplashScreenState extends State<SplashScreen>
         width: double.infinity,
         height: double.infinity,
         decoration: const BoxDecoration(
-          color: Color(0xFF0A0A0F),
+          color: AppColors.brandInk,
         ),
         child: Stack(
           children: [
@@ -198,38 +175,6 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ),
               ),
-            ),
-
-            // 浮動光球
-            _buildOrb(
-              controller: _orb1Controller,
-              color: const Color(0xFF8A3CDC).withValues(alpha: 0.35),
-              size: 280,
-              top: 0.2,
-              left: 0.15,
-              floatX: 30,
-              floatY: -40,
-              breatheDuration: 6,
-            ),
-            _buildOrb(
-              controller: _orb2Controller,
-              color: const Color(0xFFB450FF).withValues(alpha: 0.3),
-              size: 200,
-              top: 0.55,
-              right: 0.1,
-              floatX: -35,
-              floatY: 25,
-              breatheDuration: 5,
-            ),
-            _buildOrb(
-              controller: _orb3Controller,
-              color: const Color(0xFF6428B4).withValues(alpha: 0.25),
-              size: 340,
-              bottom: 0.1,
-              left: 0.35,
-              floatX: 25,
-              floatY: 35,
-              breatheDuration: 7,
             ),
 
             // 暗角 Vignette
@@ -391,73 +336,10 @@ class _SplashScreenState extends State<SplashScreen>
               color: Color(0x998C3CF0),
               blurRadius: 30,
             ),
-            Shadow(
-              color: Color(0x667828DC),
-              blurRadius: 60,
-            ),
-            Shadow(
-              color: Color(0x40641EC8),
-              blurRadius: 100,
-            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildOrb({
-    required AnimationController controller,
-    required Color color,
-    required double size,
-    double? top,
-    double? bottom,
-    double? left,
-    double? right,
-    required double floatX,
-    required double floatY,
-    required double breatheDuration,
-  }) {
-    final screen = MediaQuery.of(context).size;
-
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        final progress = math.sin(controller.value * math.pi * 2);
-        final breathe = 0.6 +
-            0.4 *
-                math.sin(
-                    controller.value * math.pi * 2 * (9 / breatheDuration));
-        final dx = floatX * progress;
-        final dy = floatY * progress;
-        final scale = 1.0 + 0.08 * progress;
-
-        return Positioned(
-          top: top != null ? screen.height * top + dy : null,
-          bottom: bottom != null ? screen.height * bottom + dy : null,
-          left: left != null ? screen.width * left + dx : null,
-          right: right != null ? screen.width * right + dx : null,
-          child: Transform.scale(
-            scale: scale,
-            child: Opacity(
-              opacity: breathe,
-              child: Container(
-                width: size,
-                height: size,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: color,
-                      blurRadius: 80,
-                      spreadRadius: 40,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
 }
