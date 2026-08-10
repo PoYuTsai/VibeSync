@@ -14,6 +14,7 @@ import '../../domain/entities/analysis_record.dart';
 import '../../domain/entities/enthusiasm_level.dart';
 import '../widgets/analysis_platform_picker.dart';
 import '../widgets/reply_style_card.dart';
+import '../widgets/swipe_hint_nudge.dart';
 
 enum _RecordDetailAction { delete }
 
@@ -906,11 +907,13 @@ class _SavedAnalysisCard extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(
-                '← 左右滑動',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.onBackgroundSecondary.withValues(
-                    alpha: 0.66,
+              SwipeHintNudge(
+                child: Text(
+                  '← 左右滑動',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary.withValues(
+                      alpha: 0.66,
+                    ),
                   ),
                 ),
               ),

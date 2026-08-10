@@ -78,6 +78,7 @@ import '../widgets/reply_refine_sheet.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_added_feedback_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
+import '../widgets/swipe_hint_nudge.dart';
 import '../widgets/analysis_usage_summary_line.dart';
 import '../helpers/analysis_usage_copy.dart';
 import '../widgets/analysis_action_widgets.dart';
@@ -7553,11 +7554,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               AppColors.onBackgroundPrimary)),
                                   const Spacer(),
                                   if (_replyZoneCardCount > 1)
-                                    Text('← 左右滑動',
-                                        style: AppTypography.caption.copyWith(
-                                            color: AppColors
-                                                .onBackgroundSecondary
-                                                .withValues(alpha: 0.6))),
+                                    SwipeHintNudge(
+                                      child: Text('← 左右滑動',
+                                          style: AppTypography.caption.copyWith(
+                                              color: AppColors
+                                                  .onBackgroundSecondary
+                                                  .withValues(alpha: 0.6))),
+                                    ),
                                 ],
                               ),
                             ),
