@@ -130,25 +130,29 @@ class _PracticeGameIntroSheet extends StatelessWidget {
                       icon: Icons.route_outlined,
                       title: '七步節奏（遊戲內五階段）',
                       children: [
-                        _IntroBody('開場 → 展示 → 測試 → 張力 → 收尾'),
+                        _IntroBody(
+                          '七步：破冰 → 資訊交換 → 側面價值 → 篩選 → '
+                          '推拉 → 可得性 → 邀約。'
+                          '遊戲內合併成五階段——開場吃前兩步、收尾吃後兩步：',
+                        ),
                         _IntroBullet(
-                          lead: '1. 開場',
+                          lead: '1. 開場（破冰＋資訊交換）',
                           text: '讓她願意回。狀態＋感受，留一半。',
                         ),
                         _IntroBullet(
-                          lead: '2. 展示',
+                          lead: '2. 展示（側面價值）',
                           text: '讓價值以背景資訊自然洩漏，等她來挖。',
                         ),
                         _IntroBullet(
-                          lead: '3. 測試',
+                          lead: '3. 測試（篩選）',
                           text: '互相篩選。丟出你的標準，也穩穩接住她的小測試。',
                         ),
                         _IntroBullet(
-                          lead: '4. 張力',
+                          lead: '4. 張力（推拉）',
                           text: '推拉、反差、角色感，拉出情緒波動。',
                         ),
                         _IntroBullet(
-                          lead: '5. 收尾',
+                          lead: '5. 收尾（可得性＋邀約）',
                           text: '釋放可得性——「我標準很多，但你剛好符合」，'
                               '再低壓邀約。',
                         ),
