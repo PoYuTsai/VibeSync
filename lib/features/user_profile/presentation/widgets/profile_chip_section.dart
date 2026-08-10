@@ -175,7 +175,7 @@ class StyleRoleBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         boxShadow: [
           BoxShadow(
-            color: AppColors.ctaStart.withValues(alpha: 0.24),
+            color: Colors.black.withValues(alpha: 0.32),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),

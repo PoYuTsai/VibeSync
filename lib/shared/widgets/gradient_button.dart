@@ -51,17 +51,10 @@ class _GradientButtonState extends State<GradientButton> {
             boxShadow: isDisabled
                 ? null
                 : [
-                    // 主要陰影 (立體感)
                     BoxShadow(
-                      color: AppColors.ctaEnd.withValues(alpha: 0.5),
+                      color: Colors.black.withValues(alpha: 0.40),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
-                    ),
-                    // 外發光 (夢幻感)
-                    BoxShadow(
-                      color: AppColors.ctaStart.withValues(alpha: 0.4),
-                      blurRadius: 30,
-                      spreadRadius: 2,
                     ),
                   ],
           ),

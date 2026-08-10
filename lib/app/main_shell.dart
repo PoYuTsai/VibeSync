@@ -191,7 +191,7 @@ class _MainShellState extends State<MainShell> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.ctaStart.withValues(alpha: 0.28),
+                        color: Colors.black.withValues(alpha: 0.36),
                         blurRadius: 18,
                         offset: const Offset(0, 8),
                       ),
@@ -263,7 +263,7 @@ class HomeFab extends ConsumerWidget {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: AppColors.ctaStart.withValues(alpha: 0.32),
+            color: Colors.black.withValues(alpha: 0.40),
             blurRadius: 22,
             offset: const Offset(0, 10),
           ),

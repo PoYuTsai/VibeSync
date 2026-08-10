@@ -1502,7 +1502,7 @@ class _PartnerEmptyStateCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.ctaStart.withValues(alpha: 0.2),
+                  color: Colors.black.withValues(alpha: 0.30),
                   blurRadius: 24,
                   spreadRadius: 2,
                 ),

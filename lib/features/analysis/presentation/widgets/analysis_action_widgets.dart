@@ -201,8 +201,8 @@ class _FloatingAnalysisActionButtonState
                               boxShadow: enabled
                                   ? [
                                       BoxShadow(
-                                        color: AppColors.ctaStart
-                                            .withValues(alpha: 0.24),
+                                        color: Colors.black
+                                            .withValues(alpha: 0.32),
                                         blurRadius: 16,
                                         spreadRadius: 1,
                                       ),

@@ -1153,7 +1153,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryDark.withValues(alpha: 0.32),
+            color: Colors.black.withValues(alpha: 0.40),
             blurRadius: 28,
             offset: const Offset(0, 14),
           ),
@@ -8933,8 +8933,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.ctaStart.withValues(
-                              alpha: canAddManualMessage ? 0.3 : 0.12),
+                          color: Colors.black.withValues(
+                              alpha: canAddManualMessage ? 0.38 : 0.16),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),

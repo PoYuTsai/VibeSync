@@ -258,7 +258,7 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryDark.withValues(alpha: 0.28),
+            color: Colors.black.withValues(alpha: 0.36),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),
@@ -366,7 +366,7 @@ class FullAnalysisRetryCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryDark.withValues(alpha: 0.28),
+            color: Colors.black.withValues(alpha: 0.36),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),

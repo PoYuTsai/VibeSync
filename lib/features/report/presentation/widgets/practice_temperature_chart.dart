@@ -164,7 +164,7 @@ class PracticeTemperatureChart extends StatelessWidget {
                 border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primaryLight.withValues(alpha: 0.18),
+                    color: Colors.black.withValues(alpha: 0.26),
                     blurRadius: 8,
                   ),
                 ],

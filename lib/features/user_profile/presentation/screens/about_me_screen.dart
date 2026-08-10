@@ -397,7 +397,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                       borderRadius: BorderRadius.circular(999),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.ctaStart.withValues(alpha: 0.30),
+                          color: Colors.black.withValues(alpha: 0.38),
                           blurRadius: 18,
                           offset: const Offset(0, 9),
                         ),

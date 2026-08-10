@@ -322,7 +322,7 @@ class _MindMapNodeChip extends StatelessWidget {
       textColor = Colors.white;
       shadows = [
         BoxShadow(
-          color: AppColors.ctaStart.withValues(alpha: 0.20),
+          color: Colors.black.withValues(alpha: 0.30),
           blurRadius: 18,
           offset: const Offset(0, 8),
         ),
@@ -338,7 +338,7 @@ class _MindMapNodeChip extends StatelessWidget {
       textColor = Colors.white;
       shadows = [
         BoxShadow(
-          color: AppColors.ctaStart.withValues(alpha: 0.30),
+          color: Colors.black.withValues(alpha: 0.38),
           blurRadius: 18,
           offset: const Offset(0, 9),
         ),
@@ -350,7 +350,7 @@ class _MindMapNodeChip extends StatelessWidget {
       textColor = Colors.white.withValues(alpha: 0.94);
       shadows = [
         BoxShadow(
-          color: AppColors.ctaStart.withValues(alpha: 0.12),
+          color: Colors.black.withValues(alpha: 0.20),
           blurRadius: 14,
           offset: const Offset(0, 7),
         ),

@@ -61,7 +61,7 @@ class PartnerHeatHeroCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.18),
+            color: Colors.black.withValues(alpha: 0.28),
             blurRadius: 32,
             spreadRadius: 1,
           ),
