@@ -8748,14 +8748,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 ),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              '每次只放這次想讓 AI 看的內容；舊片段不會接進來。',
-              textAlign: TextAlign.center,
-              style: AppTypography.caption.copyWith(
-                color: AppColors.unselectedText,
-              ),
-            ),
           ],
         ),
       ),

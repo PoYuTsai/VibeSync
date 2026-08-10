@@ -581,7 +581,8 @@ void main() {
       expect(find.byType(ImagePickerWidget), findsNothing);
       final newFragmentButton = find.text('分析新片段');
       expect(newFragmentButton, findsOneWidget);
-      expect(find.textContaining('舊片段不會接進來'), findsOneWidget);
+      // 底部灰字說明已刪（2026-08-10 Eric 拍板：資訊過剩），按鈕本身即入口。
+      expect(find.textContaining('舊片段不會接進來'), findsNothing);
 
       await tester.tap(newFragmentButton);
       await tester.pumpAndSettle();
