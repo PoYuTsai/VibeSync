@@ -11,6 +11,10 @@ enum PracticeGameIntroResult { start, viewPlans, goDraw }
 /// 對照接回 App 內提示的白話用語；server 端可見詞轉譯規則不變）。
 /// 樣式沿用 showPracticeProfileSheet：深色底、圓角、isScrollControlled。
 ///
+/// 2026-08-10 拍板改兩頁：第一頁觀念（這是什麼／四變數／工具與卡點）、
+/// 第二頁機制（七步併五階段圖＋計分規則）。CTA 第一頁固定「下一頁」，
+/// 收合分流（開始攻略／知道了／去圖鑑翻牌）只在第二頁。
+///
 /// [locked]＝當前角色非 SR、還進不了 Game（2026-08-08 拍板：點鎖定分頁也開
 /// 教學卡，不分 N/R/SR 都要認識玩法）。鎖定時底部 CTA 分流：Free「知道了」
 /// （升級導流交給鈎子卡）、已訂閱「去圖鑑翻牌」。
@@ -31,7 +35,7 @@ Future<PracticeGameIntroResult?> showPracticeGameIntroSheet(
   );
 }
 
-class _PracticeGameIntroSheet extends StatelessWidget {
+class _PracticeGameIntroSheet extends StatefulWidget {
   const _PracticeGameIntroSheet({
     required this.showUpgradeHook,
     required this.locked,
@@ -39,6 +43,21 @@ class _PracticeGameIntroSheet extends StatelessWidget {
 
   final bool showUpgradeHook;
   final bool locked;
+
+  @override
+  State<_PracticeGameIntroSheet> createState() =>
+      _PracticeGameIntroSheetState();
+}
+
+class _PracticeGameIntroSheetState extends State<_PracticeGameIntroSheet> {
+  final _pageController = PageController();
+  int _page = 0;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,166 +87,449 @@ class _PracticeGameIntroSheet extends StatelessWidget {
                 ),
               ],
             ),
-            Flexible(
-              child: SingleChildScrollView(
+            Expanded(
+              child: PageView(
                 key: const ValueKey('practice-game-intro-sheet'),
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const _IntroSectionCard(
-                      icon: Icons.flag_outlined,
-                      title: '這是什麼',
-                      children: [
-                        _IntroBody(
-                          'Game 是 SR 限定的攻略型練習。目標只有一個：'
-                          '照七步節奏，把關係推進到可約的窗口。',
-                        ),
-                        _IntroBody(
-                          '她的反應比其他模式更真實直接——你做對，她更快投入；'
-                          '太急、太油、框架崩，她冷得也更快。',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const _IntroSectionCard(
-                      icon: Icons.tune,
-                      title: '四個核心變數',
-                      children: [
-                        _IntroBody(
-                          '所有技巧都在調節四個變數。複盤時別背話術，問自己：'
-                          '這句話在動哪個變數？',
-                        ),
-                        _IntroBullet(
-                          lead: '價值（Value）',
-                          text: '她覺得你值不值得聊。用生活片段側面展示（DHV），'
-                              '不要自誇——被問出來的價值才可信。',
-                        ),
-                        _IntroBullet(
-                          lead: '框架（Frame）',
-                          text: '你穩不穩、有沒有主見。被測試時不自證、不慌、'
-                              '不過度道歉。',
-                        ),
-                        _IntroBullet(
-                          lead: '情緒（Emotion）',
-                          text: '沒波動就沒心跳。用「狀態＋感受」和推拉製造起伏，'
-                              '別查戶口。',
-                        ),
-                        _IntroBullet(
-                          lead: '投資（Investment）',
-                          text: '讓她主動問、主動延伸。說話留一半，讓她追問——'
-                              '她投入越多，越會說服自己「我是真的想聊」。',
-                        ),
-                        _IntroFootnote(
-                          '＊App 內提示會用白話版：框架→「節奏與主見」、'
-                          '推拉→「輕鬆張力」、DHV→「生活樣本」、'
-                          '篩選→「互相合適度」。',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const _IntroSectionCard(
-                      icon: Icons.route_outlined,
-                      title: '七步節奏（遊戲內五階段）',
-                      children: [
-                        _IntroBody(
-                          '七步：破冰 → 資訊交換 → 側面價值 → 篩選 → '
-                          '推拉 → 可得性 → 邀約。'
-                          '遊戲內合併成五階段——開場吃前兩步、收尾吃後兩步：',
-                        ),
-                        _IntroBullet(
-                          lead: '1. 開場（破冰＋資訊交換）',
-                          text: '讓她願意回。狀態＋感受，留一半。',
-                        ),
-                        _IntroBullet(
-                          lead: '2. 展示（側面價值）',
-                          text: '讓價值以背景資訊自然洩漏，等她來挖。',
-                        ),
-                        _IntroBullet(
-                          lead: '3. 測試（篩選）',
-                          text: '互相篩選。丟出你的標準，也穩穩接住她的小測試。',
-                        ),
-                        _IntroBullet(
-                          lead: '4. 張力（推拉）',
-                          text: '推拉、反差、角色感，拉出情緒波動。',
-                        ),
-                        _IntroBullet(
-                          lead: '5. 收尾（可得性＋邀約）',
-                          text: '釋放可得性——「我標準很多，但你剛好符合」，'
-                              '再低壓邀約。',
-                        ),
-                        _IntroFootnote(
-                          '心法：先練兩端。開不了場一切歸零，收不了尾一切白費；'
-                          '中間再逐步加厚。',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const _IntroSectionCard(
-                      icon: Icons.handyman_outlined,
-                      title: '工具與常見卡點',
-                      children: [
-                        _IntroBullet(
-                          lead: '溫度計＋熟悉度',
-                          text: '即時看每句話的效果。',
-                        ),
-                        _IntroBullet(
-                          lead: '提示（每局 5 次）',
-                          text: '告訴你現在第幾步、該動哪個變數、下一句怎麼說。',
-                        ),
-                        _IntroBullet(
-                          lead: '結束拆盤',
-                          text: '指出關鍵轉折、沒動到的變數、下次第一句怎麼改。',
-                        ),
-                        _IntroBody(
-                          '常見卡點：查戶口冷場、工具人感、太油（越級升溫）、'
-                          '框架掉了（被測試時自證）、節奏熄火（好感給太滿）。',
-                        ),
-                        _IntroFootnote(
-                          '邊界：所有推進都要低壓、可退。她說不，就是不。',
-                        ),
-                      ],
-                    ),
-                    if (showUpgradeHook) ...[
-                      const SizedBox(height: 12),
-                      const _IntroUpgradeHook(),
-                    ],
-                    const SizedBox(height: 4),
-                  ],
-                ),
+                controller: _pageController,
+                onPageChanged: (page) => setState(() => _page = page),
+                children: [
+                  const _IntroConceptPage(),
+                  _IntroMechanicsPage(showUpgradeHook: widget.showUpgradeHook),
+                ],
               ),
             ),
+            const SizedBox(height: 6),
+            _PageDots(page: _page),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
               child: SizedBox(
                 width: double.infinity,
-                child: FilledButton(
-                  key: const ValueKey('practice-game-intro-cta'),
-                  onPressed: () => Navigator.of(context).pop(
-                    !locked
-                        ? PracticeGameIntroResult.start
-                        : showUpgradeHook
-                            ? null
-                            : PracticeGameIntroResult.goDraw,
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.ctaStart,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: Text(
-                    !locked
-                        ? '開始攻略'
-                        : showUpgradeHook
-                            ? '知道了'
-                            : '去圖鑑翻牌',
-                  ),
-                ),
+                child: _page == 0
+                    ? FilledButton(
+                        key: const ValueKey('practice-game-intro-next'),
+                        onPressed: () => _pageController.animateToPage(
+                          1,
+                          duration: const Duration(milliseconds: 260),
+                          curve: Curves.easeOutCubic,
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.ctaStart,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text('下一頁：節奏與計分'),
+                      )
+                    : FilledButton(
+                        key: const ValueKey('practice-game-intro-cta'),
+                        onPressed: () => Navigator.of(context).pop(
+                          !widget.locked
+                              ? PracticeGameIntroResult.start
+                              : widget.showUpgradeHook
+                                  ? null
+                                  : PracticeGameIntroResult.goDraw,
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.ctaStart,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: Text(
+                          !widget.locked
+                              ? '開始攻略'
+                              : widget.showUpgradeHook
+                                  ? '知道了'
+                                  : '去圖鑑翻牌',
+                        ),
+                      ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 第一頁：觀念——這遊戲在練什麼。
+class _IntroConceptPage extends StatelessWidget {
+  const _IntroConceptPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: const [
+          _IntroSectionCard(
+            icon: Icons.flag_outlined,
+            title: '這是什麼',
+            children: [
+              _IntroBody(
+                'Game 是 SR 限定的攻略型練習。目標只有一個：'
+                '照七步節奏，把關係推進到可約的窗口。',
+              ),
+              _IntroBody(
+                '她的反應比其他模式更真實直接——你做對，她更快投入；'
+                '太急、太油、框架崩，她冷得也更快。',
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          _IntroSectionCard(
+            icon: Icons.tune,
+            title: '四個核心變數',
+            children: [
+              _IntroBody(
+                '所有技巧都在調節四個變數。複盤時別背話術，問自己：'
+                '這句話在動哪個變數？',
+              ),
+              _IntroBullet(
+                lead: '價值（Value）',
+                text: '她覺得你值不值得聊。用生活片段側面展示（DHV），'
+                    '不要自誇——被問出來的價值才可信。',
+              ),
+              _IntroBullet(
+                lead: '框架（Frame）',
+                text: '你穩不穩、有沒有主見。被測試時不自證、不慌、'
+                    '不過度道歉。',
+              ),
+              _IntroBullet(
+                lead: '情緒（Emotion）',
+                text: '沒波動就沒心跳。用「狀態＋感受」和推拉製造起伏，'
+                    '別查戶口。',
+              ),
+              _IntroBullet(
+                lead: '投資（Investment）',
+                text: '讓她主動問、主動延伸。說話留一半，讓她追問——'
+                    '她投入越多，越會說服自己「我是真的想聊」。',
+              ),
+              _IntroFootnote(
+                '＊App 內提示會用白話版：框架→「節奏與主見」、'
+                '推拉→「輕鬆張力」、DHV→「生活樣本」、'
+                '篩選→「互相合適度」。',
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          _IntroSectionCard(
+            icon: Icons.handyman_outlined,
+            title: '工具與常見卡點',
+            children: [
+              _IntroBullet(
+                lead: '溫度計＋熟悉度',
+                text: '即時看每句話的效果。',
+              ),
+              _IntroBullet(
+                lead: '提示（每局 5 次）',
+                text: '告訴你現在第幾步、該動哪個變數、下一句怎麼說。',
+              ),
+              _IntroBullet(
+                lead: '結束拆盤',
+                text: '指出關鍵轉折、沒動到的變數、下次第一句怎麼改。',
+              ),
+              _IntroBody(
+                '常見卡點：查戶口冷場、工具人感、太油（越級升溫）、'
+                '框架掉了（被測試時自證）、節奏熄火（好感給太滿）。',
+              ),
+              _IntroFootnote(
+                '邊界：所有推進都要低壓、可退。她說不，就是不。',
+              ),
+            ],
+          ),
+          SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+}
+
+/// 第二頁：機制——遊戲怎麼推進、怎麼判分。
+/// 階段圖對齊 server 實作（game_fsm basePhaseFor）：正常節奏 P1→P2→P4→P5
+/// 由熟悉度/升溫門檻推進，P3 測試是她起防備時的條件插入，不排隊。
+/// 圖上刻意不標門檻數字——client 靜態文案不寫死 server 可調參數。
+class _IntroMechanicsPage extends StatelessWidget {
+  const _IntroMechanicsPage({required this.showUpgradeHook});
+
+  final bool showUpgradeHook;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _IntroSectionCard(
+            icon: Icons.route_outlined,
+            title: '七步節奏（遊戲內五階段）',
+            children: [
+              _IntroBody(
+                '七步合併成五階段。正常節奏走四階，'
+                '熟悉度與升溫夠了才進下一階；每句話重算，掉分會退回去。',
+              ),
+              _PhaseDiagram(),
+              _IntroFootnote(
+                '＊P3 不排隊：她起防備的當下就是測試——'
+                '接住了才回到原節奏。',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const _IntroSectionCard(
+            icon: Icons.swap_vert,
+            title: '分數怎麼算',
+            children: [
+              _ScoreRow(text: '接住她的情緒或前文', chip: _ScoreChip.plus),
+              _ScoreRow(text: '接住她的小測試', chip: _ScoreChip.plus),
+              _ScoreRow(text: '沒接住、答非所問', chip: _ScoreChip.minorMinus),
+              _ScoreRow(text: '防禦、自證、查戶口', chip: _ScoreChip.midMinus),
+              _ScoreRow(text: '太急太油、越級升溫', chip: _ScoreChip.majorMinus),
+              _IntroFootnote(
+                'Game 的加減分幅度接近其他模式的兩倍——進步和翻車都更快；'
+                '框架崩或讓她不舒服時，扣分放大得最兇。',
+              ),
+            ],
+          ),
+          if (showUpgradeHook) ...[
+            const SizedBox(height: 12),
+            const _IntroUpgradeHook(),
+          ],
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+}
+
+/// 七步併五階段圖：正常節奏四列（進度條漸長），虛線下方是條件插入的 P3。
+class _PhaseDiagram extends StatelessWidget {
+  const _PhaseDiagram();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: const [
+        _PhaseRow(
+          code: 'P1',
+          name: '開場',
+          steps: '破冰＋資訊交換',
+          barFraction: 0.24,
+        ),
+        SizedBox(height: 10),
+        _PhaseRow(
+          code: 'P2',
+          name: '展示',
+          steps: '側面價值',
+          barFraction: 0.44,
+        ),
+        SizedBox(height: 10),
+        _PhaseRow(
+          code: 'P4',
+          name: '張力',
+          steps: '推拉／角色感',
+          barFraction: 0.66,
+        ),
+        SizedBox(height: 10),
+        _PhaseRow(
+          code: 'P5',
+          name: '收尾',
+          steps: '可得性＋邀約',
+          barFraction: 0.88,
+        ),
+        SizedBox(height: 12),
+        _DashedDivider(),
+        SizedBox(height: 10),
+        _PhaseRow(
+          code: 'P3',
+          name: '測試',
+          steps: '篩選／小測試·她起防備時',
+          barFraction: null,
+          emphasized: true,
+        ),
+      ],
+    );
+  }
+}
+
+class _PhaseRow extends StatelessWidget {
+  const _PhaseRow({
+    required this.code,
+    required this.name,
+    required this.steps,
+    required this.barFraction,
+    this.emphasized = false,
+  });
+
+  final String code;
+  final String name;
+  final String steps;
+
+  /// 進度條相對長度；null＝不畫（條件插入的 P3）。
+  final double? barFraction;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = barFraction;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 28,
+              child: Text(
+                code,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              name,
+              style: AppTypography.bodySmall.copyWith(
+                color: emphasized ? AppColors.ctaStart : Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                steps,
+                textAlign: TextAlign.end,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (fraction != null) ...[
+          const SizedBox(height: 5),
+          Padding(
+            padding: const EdgeInsets.only(left: 28),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: fraction,
+                child: Container(
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: AppColors.ctaStart,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _DashedDivider extends StatelessWidget {
+  const _DashedDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const dashWidth = 5.0;
+        const gap = 4.0;
+        final count =
+            (constraints.maxWidth / (dashWidth + gap)).floor().clamp(1, 200);
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            for (var i = 0; i < count; i++)
+              Container(
+                width: dashWidth,
+                height: 1,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.35),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+enum _ScoreChip { plus, minorMinus, midMinus, majorMinus }
+
+class _ScoreRow extends StatelessWidget {
+  const _ScoreRow({required this.text, required this.chip});
+
+  final String text;
+  final _ScoreChip chip;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (chip) {
+      _ScoreChip.plus => ('加分', AppColors.success),
+      _ScoreChip.minorMinus => ('小扣', AppColors.warning),
+      _ScoreChip.midMinus => ('中扣', AppColors.error),
+      _ScoreChip.majorMinus => ('重扣', AppColors.error),
+    };
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            text,
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              height: 1.55,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            label,
+            style: AppTypography.caption.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PageDots extends StatelessWidget {
+  const _PageDots({required this.page});
+
+  final int page;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < 2; i++) ...[
+          if (i > 0) const SizedBox(width: 6),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: i == page ? 16 : 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: i == page
+                  ? AppColors.ctaStart
+                  : AppColors.onBackgroundSecondary.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

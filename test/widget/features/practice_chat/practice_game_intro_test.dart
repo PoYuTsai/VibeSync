@@ -197,6 +197,15 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 兩頁教學卡：收合 CTA（開始攻略／知道了／去圖鑑翻牌）與訂閱鈎子都在
+  /// 第二頁（節奏與計分），要先按「下一頁」翻過去。
+  Future<void> goToMechanicsPage(WidgetTester tester) async {
+    await tester.tap(
+      find.byKey(const ValueKey('practice-game-intro-next')),
+    );
+    await tester.pumpAndSettle();
+  }
+
   group('教學卡觸發', () {
     testWidgets('SR 卡首次選 Game → 彈教學卡；關閉即 markSeen', (tester) async {
       final controller = _SeededPracticeChatController(
@@ -217,6 +226,7 @@ void main() {
       );
       expect(find.text('Game 攻略指南'), findsOneWidget);
 
+      await goToMechanicsPage(tester);
       await tester.tap(
         find.byKey(const ValueKey('practice-game-intro-cta')),
       );
@@ -260,14 +270,21 @@ void main() {
       );
     });
 
-    testWidgets('SR 局教學卡底部 CTA 是「開始攻略」', (tester) async {
+    testWidgets('SR 局教學卡第一頁 CTA 是「下一頁」，第二頁是「開始攻略」',
+        (tester) async {
       final controller = _SeededPracticeChatController(
         seed: seedState(sr: true, learningMode: PracticeLearningMode.game),
         repository: repo,
       );
       await pumpScreen(tester, controller);
 
+      expect(find.text('下一頁：節奏與計分'), findsOneWidget);
+      expect(find.text('開始攻略'), findsNothing);
+
+      await goToMechanicsPage(tester);
+
       expect(find.text('開始攻略'), findsOneWidget);
+      expect(find.text('分數怎麼算'), findsOneWidget);
     });
   });
 
@@ -290,6 +307,9 @@ void main() {
         find.byKey(const ValueKey('practice-game-intro-sheet')),
         findsOneWidget,
       );
+
+      await goToMechanicsPage(tester);
+
       expect(
         find.byKey(const ValueKey('practice-game-intro-upsell')),
         findsOneWidget,
@@ -306,6 +326,7 @@ void main() {
       await pumpScreen(tester, controller);
 
       await tapGameSegment(tester);
+      await goToMechanicsPage(tester);
       await tester.tap(
         find.byKey(const ValueKey('practice-game-intro-cta')),
       );
@@ -340,6 +361,9 @@ void main() {
         find.byKey(const ValueKey('practice-game-intro-sheet')),
         findsOneWidget,
       );
+
+      await goToMechanicsPage(tester);
+
       expect(
         find.byKey(const ValueKey('practice-game-intro-upsell')),
         findsNothing,
@@ -360,6 +384,7 @@ void main() {
       );
 
       await tapGameSegment(tester);
+      await goToMechanicsPage(tester);
       await tester.tap(
         find.byKey(const ValueKey('practice-game-intro-cta')),
       );
@@ -414,6 +439,7 @@ void main() {
         repository: repo,
       );
       await pumpScreen(tester, controller);
+      await goToMechanicsPage(tester);
 
       expect(
         find.byKey(const ValueKey('practice-game-intro-upsell')),
