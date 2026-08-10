@@ -15,6 +15,17 @@ void main() {
   setUpAll(loadProofFonts);
 
   testWidgets('compose full-page before/after side by side', (tester) async {
+    // 本機對照工具：before/after PNG 是先前 SLOP_STAGE 跑出的機器本地產物，
+    // CI 全新 runner 上不存在——缺圖就 skip，不能讓 distribution gate 紅。
+    final missing = _pairs
+        .where((name) =>
+            !File(outPath('before/$name.png')).existsSync() ||
+            !File(outPath('after/$name.png')).existsSync())
+        .toList();
+    if (missing.isNotEmpty) {
+      markTestSkipped('缺 before/after 產物（$missing），本機工具跳過');
+      return;
+    }
     for (final name in _pairs) {
       final beforeBytes =
           File(outPath('before/$name.png')).readAsBytesSync();
