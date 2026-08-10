@@ -7554,12 +7554,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               AppColors.onBackgroundPrimary)),
                                   const Spacer(),
                                   if (_replyZoneCardCount > 1)
-                                    SwipeHintNudge(
-                                      child: Text('← 左右滑動',
-                                          style: AppTypography.caption.copyWith(
-                                              color: AppColors
-                                                  .onBackgroundSecondary
-                                                  .withValues(alpha: 0.6))),
+                                    const SwipeHintNudge(
+                                      child: SwipeHintChip(),
                                     ),
                                 ],
                               ),

@@ -907,15 +907,8 @@ class _SavedAnalysisCard extends StatelessWidget {
                   ),
                 ),
               ),
-              SwipeHintNudge(
-                child: Text(
-                  '← 左右滑動',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.onBackgroundSecondary.withValues(
-                      alpha: 0.66,
-                    ),
-                  ),
-                ),
+              const SwipeHintNudge(
+                child: SwipeHintChip(),
               ),
             ],
           ),
