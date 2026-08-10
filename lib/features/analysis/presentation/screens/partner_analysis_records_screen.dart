@@ -306,7 +306,7 @@ class _PartnerAnalysisRecordsScreenState
           ),
           boxShadow: [
             BoxShadow(
-              color: _archivePink.withValues(alpha: 0.16),
+              color: Colors.black.withValues(alpha: 0.30),
               blurRadius: 34,
               spreadRadius: 2,
               offset: const Offset(0, -8),

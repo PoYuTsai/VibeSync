@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'proof_support.dart';
 
 const _pairs = [
-  'partner_archive',
+  'analysis_records_sheet',
 ];
 
 void main() {
