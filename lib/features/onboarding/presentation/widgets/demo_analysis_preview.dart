@@ -43,7 +43,7 @@ class DemoSignalPreview extends StatelessWidget {
                   color: msg.isFromMe
                       ? AppColors.ctaStart.withValues(alpha: 0.28)
                       : Colors.white.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Text(
                   msg.content,
@@ -65,7 +65,7 @@ class DemoSignalPreview extends StatelessWidget {
                       .withValues(alpha: 0.85),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(4),
@@ -84,7 +84,7 @@ class DemoSignalPreview extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Text(
                 '${result.enthusiasmScore}',
                 style: AppTypography.titleMedium.copyWith(
@@ -154,12 +154,12 @@ class _StyleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: recommended
             ? AppColors.ctaStart.withValues(alpha: 0.14)
             : Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: recommended
             ? Border.all(color: AppColors.ctaStart.withValues(alpha: 0.60))
             : null,
@@ -171,7 +171,7 @@ class _StyleRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(18),
             ),
             child: Text(
               label,
@@ -180,7 +180,7 @@ class _StyleRow extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               reply,
@@ -218,7 +218,7 @@ class _DemoCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Column(
@@ -227,7 +227,7 @@ class _DemoCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: AppColors.ctaStart.withValues(alpha: 0.60),
               ),

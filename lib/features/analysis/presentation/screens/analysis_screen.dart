@@ -7120,7 +7120,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                 color: Colors.orange
                                                     .withValues(alpha: 0.8),
                                                 fontFamily: 'monospace',
-                                                fontSize: 10,
+                                                fontSize: 12,
                                               ),
                                             ),
                                             if (_lastRecognizeTelemetry != null)
@@ -7133,7 +7133,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                     .copyWith(
                                                   color: Colors.orange
                                                       .withValues(alpha: 0.8),
-                                                  fontSize: 10,
+                                                  fontSize: 12,
                                                 ),
                                               ),
                                             if (_lastRecognizeTelemetry != null)
@@ -7146,7 +7146,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                     .copyWith(
                                                   color: Colors.orange
                                                       .withValues(alpha: 0.8),
-                                                  fontSize: 10,
+                                                  fontSize: 12,
                                                 ),
                                               ),
                                             if (_lastRecognizeTelemetry !=
@@ -7161,7 +7161,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                     .copyWith(
                                                   color: Colors.orange
                                                       .withValues(alpha: 0.8),
-                                                  fontSize: 10,
+                                                  fontSize: 12,
                                                 ),
                                               ),
                                             if (_lastRecognizeTelemetry !=
@@ -7176,7 +7176,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                     .copyWith(
                                                   color: Colors.orange
                                                       .withValues(alpha: 0.8),
-                                                  fontSize: 10,
+                                                  fontSize: 12,
                                                 ),
                                               ),
                                             Text(
@@ -7185,7 +7185,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                   .copyWith(
                                                 color: Colors.orange
                                                     .withValues(alpha: 0.8),
-                                                fontSize: 10,
+                                                fontSize: 12,
                                               ),
                                             ),
                                             /*
@@ -7205,7 +7205,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                 color: Colors.orange
                                                     .withValues(alpha: 0.8),
                                                 fontFamily: 'monospace',
-                                                fontSize: 10,
+                                                fontSize: 12,
                                               ),
                                             ),
                                             Text(
@@ -7214,7 +7214,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                   .copyWith(
                                                 color: Colors.orange
                                                     .withValues(alpha: 0.8),
-                                                fontSize: 10,
+                                                fontSize: 12,
                                               ),
                                             ),
                                             const SizedBox(height: 8),

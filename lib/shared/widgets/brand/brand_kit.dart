@@ -631,7 +631,7 @@ class BrandSegmentedButton<T> extends StatelessWidget {
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: tone.track.withValues(alpha: 0.58),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Row(
@@ -652,7 +652,7 @@ class BrandSegmentedButton<T> extends StatelessWidget {
                           ],
                         )
                       : null,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: isSelected
                       ? [
                           BoxShadow(

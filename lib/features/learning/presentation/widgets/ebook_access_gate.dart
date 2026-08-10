@@ -418,7 +418,7 @@ class _EbookGateMessage extends StatelessWidget {
               const SizedBox(height: 24),
               BrandPrimaryButton(label: primaryLabel, onPressed: onPrimary),
               if (secondaryLabel != null && onSecondary != null) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 BrandSecondaryButton(
                   label: secondaryLabel!,
                   onPressed: onSecondary,

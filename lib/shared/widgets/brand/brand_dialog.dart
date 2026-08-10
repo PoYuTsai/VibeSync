@@ -52,13 +52,13 @@ class BrandAlertDialog extends StatelessWidget {
             color: AppColors.glassTextHint.withValues(alpha: 0.72),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(18),
             borderSide: BorderSide(
               color: AppColors.glassBorder.withValues(alpha: 0.92),
             ),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(18),
             borderSide: const BorderSide(color: AppColors.ctaStart, width: 1.4),
           ),
           counterStyle: AppTypography.caption.copyWith(

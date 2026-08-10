@@ -118,7 +118,7 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
               Row(
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
+                    borderRadius: BorderRadius.circular(24),
                     child: Image.asset(
                       'assets/images/coach/sydney_greeting.png',
                       width: 56,

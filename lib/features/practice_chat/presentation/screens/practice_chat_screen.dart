@@ -297,7 +297,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                           controller: _scrollController,
                           keyboardDismissBehavior:
                               ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
                           children: [
                             // Game 局固定頂部教練泡泡：UI-only，不進
                             // state.messages／API payload／Hive。
@@ -423,7 +423,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
     return Center(
       child: SingleChildScrollView(
         key: const ValueKey('practice-locked-entry'),
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -432,7 +432,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
               size: 52,
               color: AppColors.ctaStart,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             Text(
               isPremium ? '每日登入解鎖新女孩' : '翻牌解鎖新女孩',
               textAlign: TextAlign.center,
@@ -441,7 +441,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               '到角色圖鑑翻開今日對象，開始練習。',
               textAlign: TextAlign.center,
@@ -450,7 +450,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
                 height: 1.5,
               ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 32),
             if (upgradeLocked || quotaLocked)
               SizedBox(
                 width: double.infinity,
@@ -460,7 +460,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
                     foregroundColor: AppColors.onCta,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                   child: Text(upgradeLocked ? '升級解鎖更多女孩' : '查看方案'),
                 ),
@@ -475,7 +475,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
                     foregroundColor: AppColors.onCta,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                   child: const Text('去圖鑑翻牌'),
                 ),
@@ -489,7 +489,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
                   color: AppColors.onBackgroundSecondary,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               OutlinedButton(
                 key: const ValueKey('practice-draw-upgrade'),
                 onPressed: () => context.push('/paywall'),
@@ -543,7 +543,7 @@ class _PracticeOpeningControls extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _DifficultyChips(state: state),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           _LearningModeToggle(
             state: state,
             onChanged: (mode) => ref
@@ -569,7 +569,7 @@ class _PracticeProfileBar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         onTap: () => showPracticeProfileSheet(
           context,
           girl,
@@ -589,7 +589,7 @@ class _PracticeProfileBar extends StatelessWidget {
                 height: 40,
                 circle: true,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -694,12 +694,12 @@ class _DifficultyChip extends StatelessWidget {
       child: AnimatedContainer(
         duration: AppMotion.state,
         curve: AppMotion.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: selected
               ? AppColors.ctaStart.withValues(alpha: 0.18)
               : AppColors.brandSurface2.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: selected
                 ? AppColors.ctaStart.withValues(alpha: 0.7)
@@ -773,7 +773,7 @@ class _LearningModeToggle extends StatelessWidget {
         DecoratedBox(
           decoration: BoxDecoration(
             color: AppColors.brandSurface2.withValues(alpha: 0.42),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.18),
             ),
@@ -815,7 +815,7 @@ class _LearningModeToggle extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: selectedDescriptor.accent.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: selectedDescriptor.accent.withValues(alpha: 0.35),
             ),
@@ -827,7 +827,7 @@ class _LearningModeToggle extends StatelessWidget {
                 size: 15,
                 color: selectedDescriptor.accent,
               ),
-              const SizedBox(width: 7),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   '${selectedDescriptor.title}｜${selectedDescriptor.summary}',
@@ -917,22 +917,22 @@ class _LearningModeSegment extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Material(
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(18),
           child: InkWell(
-            borderRadius: BorderRadius.circular(11),
+            borderRadius: BorderRadius.circular(18),
             onTap: enabled ? onTap : onDisabledTap,
             child: AnimatedContainer(
               duration: AppMotion.state,
               curve: AppMotion.easeOut,
               height: 58,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
               decoration: BoxDecoration(
                 color: selected
                     ? accent.withValues(alpha: 0.92)
                     : enabled
                         ? accent.withValues(alpha: 0.08)
                         : AppColors.brandSurface.withValues(alpha: 0.28),
-                borderRadius: BorderRadius.circular(11),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: selected
                       ? Colors.white.withValues(alpha: 0.20)
@@ -982,7 +982,7 @@ class _LearningModeSegment extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: AppTypography.caption.copyWith(
                       color: badgeColor,
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: FontWeight.w800,
                       height: 1,
                     ),
@@ -1101,7 +1101,7 @@ class _PracticeProfileHero extends StatelessWidget {
       child: SingleChildScrollView(
         key: const ValueKey('practice-profile-hero'),
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
         child: Column(
           children: [
             GestureDetector(
@@ -1145,7 +1145,7 @@ class _PracticeProfileHero extends StatelessWidget {
               runSpacing: 8,
               children: [for (final t in tags) _HeroTag(label: t)],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1166,7 +1166,7 @@ class _PracticeProfileHero extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Text(
               girl.selfIntro,
               textAlign: TextAlign.center,
@@ -1189,7 +1189,7 @@ class _PracticeProfileHero extends StatelessWidget {
                 height: 1.5,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               '首次 AI 回覆成功才扣 1 則；進來或送出失敗不扣。\n扣完這 1 則，本場最多可聊 20 則 AI 回覆，教練拆解不另扣。',
               textAlign: TextAlign.center,
@@ -1216,7 +1216,7 @@ class _HeroTag extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: AppColors.ctaStart.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.ctaStart.withValues(alpha: 0.5)),
       ),
       child: Text(
@@ -1250,14 +1250,14 @@ class _Bubble extends StatelessWidget {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
         decoration: BoxDecoration(
           color: fillColor,
-          borderRadius: BorderRadius.circular(14).copyWith(
+          borderRadius: BorderRadius.circular(18).copyWith(
             bottomRight: isMe ? const Radius.circular(5) : null,
             bottomLeft: !isMe ? const Radius.circular(5) : null,
           ),
@@ -1298,11 +1298,11 @@ class _ThinkingBubble extends StatelessWidget {
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
           color: AppColors.primaryLight.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(14).copyWith(
+          borderRadius: BorderRadius.circular(18).copyWith(
             bottomLeft: const Radius.circular(5),
           ),
           border: Border.all(
@@ -1344,7 +1344,7 @@ class _ErrorBanner extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.error.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
       ),
       child: Row(
@@ -1696,10 +1696,10 @@ class _TemperatureMeter extends StatelessWidget {
 
     return Container(
       key: const ValueKey('practice-temperature-meter'),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.brandSurface2.withValues(alpha: 0.44),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: color.withValues(alpha: 0.34)),
       ),
       child: Column(
@@ -1756,7 +1756,7 @@ class _TemperatureMeter extends StatelessWidget {
             Row(
               children: [
                 Icon(Icons.insights, size: 14, color: color),
-                const SizedBox(width: 5),
+                const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     signalText,
@@ -1924,10 +1924,10 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
     final hintMoreLabel = isGameMode ? '看完整攻略' : '看完整心法';
     return Container(
       key: const ValueKey('practice-hint-panel'),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: AppColors.brandSurface2.withValues(alpha: 0.38),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: AppColors.primaryLight.withValues(alpha: 0.24),
         ),
@@ -2129,7 +2129,7 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
                   child: Text(
                     noPasteableReason,
                     style: AppTypography.caption.copyWith(
-                      fontSize: 11,
+                      fontSize: 12,
                       color: AppColors.onBackgroundSecondary
                           .withValues(alpha: 0.85),
                       height: 1.35,
@@ -2224,7 +2224,7 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
       builder: (context) => SafeArea(
         child: Padding(
           key: const ValueKey('practice-hint-coaching-sheet'),
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2272,12 +2272,12 @@ class _HintReplyButton extends StatelessWidget {
         : AppColors.info;
     return Material(
       color: accent.withValues(alpha: 0.10),
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -2285,7 +2285,7 @@ class _HintReplyButton extends StatelessWidget {
               Row(
                 children: [
                   Icon(Icons.auto_fix_high, size: 14, color: accent),
-                  const SizedBox(width: 5),
+                  const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       reply.label,
@@ -2372,7 +2372,7 @@ class _DebriefFailedActionsBar extends StatelessWidget {
                     onPressed: onRetry,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: BrandSecondaryButton(
                     label: '完成',
@@ -2438,7 +2438,7 @@ class _DebriefActionsBar extends StatelessWidget {
                   onPressed: onNewPartner,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: BrandSecondaryButton(
                   label: '完成',
@@ -2664,10 +2664,10 @@ class _SessionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 8),
       child: BrandSurfaceCard(
         elevated: false,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         onTap: () {
           Navigator.of(context).pop();
           if (_canResume) {
@@ -2749,7 +2749,7 @@ class _SessionReviewScreen extends StatelessWidget {
       title: '練習回顧',
       body: _PracticeChatWorkspaceFrame(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
           children: [
             for (final m in session.messages) _Bubble(message: m),
             if (session.hasRestorableDebrief) ...[
@@ -2789,10 +2789,10 @@ class _RetiredDebriefNotice extends StatelessWidget {
     return Container(
       key: const ValueKey('practice-retired-debrief-notice'),
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.brandSurface2.withValues(alpha: 0.58),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
       ),
       child: Row(
@@ -2803,7 +2803,7 @@ class _RetiredDebriefNotice extends StatelessWidget {
             size: 19,
             color: AppColors.warning,
           ),
-          const SizedBox(width: 9),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               '舊版拆解已停用，請開始新一場取得新版。',

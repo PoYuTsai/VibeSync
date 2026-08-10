@@ -20,10 +20,10 @@ class AiPrivacyScreen extends StatelessWidget {
     return BrandScaffold(
       title: AiPrivacyDisclosure.title,
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         children: [
           BrandSurfaceCard(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

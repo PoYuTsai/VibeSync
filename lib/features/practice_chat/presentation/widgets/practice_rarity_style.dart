@@ -36,7 +36,7 @@ class PracticeRarityBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: practiceRarityColor(rarity),
         borderRadius: BorderRadius.circular(7),

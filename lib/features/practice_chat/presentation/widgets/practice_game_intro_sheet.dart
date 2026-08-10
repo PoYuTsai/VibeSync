@@ -101,7 +101,7 @@ class _PracticeGameIntroSheetState extends State<_PracticeGameIntroSheet> {
             const SizedBox(height: 6),
             _PageDots(page: _page),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child: SizedBox(
                 width: double.infinity,
                 child: _page == 0
@@ -115,7 +115,7 @@ class _PracticeGameIntroSheetState extends State<_PracticeGameIntroSheet> {
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.ctaStart,
                           foregroundColor: AppColors.onCta,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
                         child: const Text('下一頁：節奏與計分'),
                       )
@@ -131,7 +131,7 @@ class _PracticeGameIntroSheetState extends State<_PracticeGameIntroSheet> {
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.ctaStart,
                           foregroundColor: AppColors.onCta,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
                         child: Text(
                           !widget.locked
@@ -157,7 +157,7 @@ class _IntroConceptPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: const [
@@ -256,7 +256,7 @@ class _IntroMechanicsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -317,21 +317,21 @@ class _PhaseDiagram extends StatelessWidget {
           steps: '破冰＋資訊交換',
           barFraction: 0.24,
         ),
-        SizedBox(height: 10),
+        SizedBox(height: 8),
         _PhaseRow(
           code: 'P2',
           name: '展示',
           steps: '側面價值',
           barFraction: 0.44,
         ),
-        SizedBox(height: 10),
+        SizedBox(height: 8),
         _PhaseRow(
           code: 'P4',
           name: '張力',
           steps: '推拉／角色感',
           barFraction: 0.66,
         ),
-        SizedBox(height: 10),
+        SizedBox(height: 8),
         _PhaseRow(
           code: 'P5',
           name: '收尾',
@@ -340,7 +340,7 @@ class _PhaseDiagram extends StatelessWidget {
         ),
         SizedBox(height: 12),
         _DashedDivider(),
-        SizedBox(height: 10),
+        SizedBox(height: 8),
         _PhaseRow(
           code: 'P3',
           name: '測試',
@@ -408,9 +408,9 @@ class _PhaseRow extends StatelessWidget {
           ],
         ),
         if (fraction != null) ...[
-          const SizedBox(height: 5),
+          const SizedBox(height: 4),
           Padding(
-            padding: const EdgeInsets.only(left: 28),
+            padding: const EdgeInsets.only(left: 32),
             child: Align(
               alignment: Alignment.centerLeft,
               child: FractionallySizedBox(
@@ -544,10 +544,10 @@ class _IntroUpgradeHook extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: const ValueKey('practice-game-intro-upsell'),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.ctaStart.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.ctaStart.withValues(alpha: 0.45)),
       ),
       child: Column(
@@ -612,10 +612,10 @@ class _IntroSectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.brandSurface2.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: AppColors.onBackgroundSecondary.withValues(alpha: 0.2),
         ),

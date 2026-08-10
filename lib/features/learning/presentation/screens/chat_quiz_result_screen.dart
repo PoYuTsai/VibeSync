@@ -119,10 +119,10 @@ class _ChatQuizResultScreenState extends State<ChatQuizResultScreen>
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             for (final question in _missed)
               Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.only(bottom: 8),
                 child: _MissedQuestionCard(
                   question: question,
                   pickedChoiceId: widget.picks[question.id],
@@ -139,7 +139,7 @@ class _ChatQuizResultScreenState extends State<ChatQuizResultScreen>
             icon: Icons.replay,
             onPressed: widget.onRetry,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           BrandSecondaryButton(
             label: '回關卡地圖',
             onPressed: widget.onBackToMap,
@@ -257,7 +257,7 @@ class _MissedQuestionCard extends StatelessWidget {
               height: 1.4,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           if (picked != null)
             _Line(
               label: '你選了',
@@ -316,7 +316,7 @@ class _Line extends StatelessWidget {
       children: [
         Container(
           margin: const EdgeInsets.only(top: 2, right: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.16),
             borderRadius: BorderRadius.circular(999),

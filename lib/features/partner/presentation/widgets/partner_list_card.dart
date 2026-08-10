@@ -130,7 +130,7 @@ class PartnerListCard extends StatelessWidget {
     final text = heat == null ? '待分析' : '本次投入 $heat';
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: tone.withValues(alpha: heat == null ? 0.08 : 0.14),
         borderRadius: BorderRadius.circular(999),
@@ -142,7 +142,7 @@ class PartnerListCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(_statusIcon(level), size: 13, color: tone),
-          const SizedBox(width: 5),
+          const SizedBox(width: 4),
           Text(
             text,
             style: AppTypography.caption.copyWith(
@@ -172,7 +172,7 @@ class PartnerListCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           if (onDelete != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             SizedBox(
               width: 36,
               height: 36,
@@ -230,11 +230,11 @@ class PartnerListCard extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 102),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+              padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
               child: Row(
                 children: [
                   _buildAvatar(),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -252,7 +252,7 @@ class PartnerListCard extends StatelessWidget {
                         const SizedBox(height: 6),
                         _buildStatusPill(level, heat),
                         if (tags.isNotEmpty) ...[
-                          const SizedBox(height: 5),
+                          const SizedBox(height: 4),
                           Text(
                             tags.join(' · '),
                             style: AppTypography.bodySmall.copyWith(
@@ -266,7 +266,7 @@ class PartnerListCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   _buildTrailing(date),
                 ],
               ),

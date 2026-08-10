@@ -37,7 +37,7 @@ class GlassmorphicContainer extends StatelessWidget {
       width: width,
       height: height,
       padding:
-          padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
         color: isSelected
             ? selectedColor ?? AppColors.selectedStart.withValues(alpha: 0.3)

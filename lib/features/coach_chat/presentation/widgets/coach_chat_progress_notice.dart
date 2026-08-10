@@ -19,10 +19,10 @@ class CoachChatProgressNotice extends StatelessWidget {
     final trimmedQuestion = question?.trim();
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(13),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: AppColors.primary.withValues(alpha: 0.2),
         ),

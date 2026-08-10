@@ -126,10 +126,10 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                 children: [
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: AppColors.ctaStart.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(18),
                     ),
                     child: Text(
                       article.category,
@@ -153,7 +153,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
               const SizedBox(height: 16),
               // Article content in brand surface card
               BrandSurfaceCard(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: _parseContent(article.content),
@@ -198,13 +198,13 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
         // H2 heading
         final text = trimmed.substring(3);
         widgets.add(Padding(
-          padding: const EdgeInsets.only(top: 20, bottom: 8),
+          padding: const EdgeInsets.only(top: 16, bottom: 8),
           child: Text(
             text,
             style: AppTypography.titleMedium.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.bold,
-              fontSize: 18,
+              fontSize: 19,
             ),
           ),
         ));
@@ -217,7 +217,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.only(top: 7),
+                padding: const EdgeInsets.only(top: 8),
                 child: Container(
                   width: 5,
                   height: 5,
@@ -380,7 +380,7 @@ class _PracticeActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BrandSurfaceCard(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -407,7 +407,7 @@ class _PracticeActionCard extends StatelessWidget {
             text: guide.mistakeExample,
             color: AppColors.error,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           _ExampleBox(
             title: '好的示範',
             text: guide.goodExample,
@@ -444,7 +444,7 @@ class _PracticeActionCard extends StatelessWidget {
             onPressed: () => _openPrimaryAction(context),
           ),
           if (_isOpeningPractice) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             BrandSecondaryButton(
               label: '回首頁找一段真實對話',
               icon: Icons.forum_outlined,
@@ -491,7 +491,7 @@ class _PracticeInfoRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icon, size: 18, color: AppColors.ctaStart),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -537,7 +537,7 @@ class _ExampleBox extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: color.withValues(alpha: 0.42)),
       ),
       child: Column(

@@ -85,7 +85,7 @@ class HeatTrendChart extends StatelessWidget {
               Container(
                 constraints: const BoxConstraints(maxWidth: 150),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.ctaStart.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
@@ -98,7 +98,7 @@ class HeatTrendChart extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: AppColors.ctaStart,
                   ),
@@ -111,7 +111,7 @@ class HeatTrendChart extends StatelessWidget {
           const Text(
             '等待趨勢資料',
             style: TextStyle(
-              fontSize: 22,
+              fontSize: 24,
               fontWeight: FontWeight.w800,
               color: Colors.white,
             ),
@@ -138,7 +138,7 @@ class HeatTrendChart extends StatelessWidget {
           Text(
             count >= 7 ? '顯示最近 7 次分析' : '已累積 $count 次分析',
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 12,
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.62),
             ),
           ),
@@ -152,7 +152,7 @@ class HeatTrendChart extends StatelessWidget {
       return Text(
         '前後 0',
         style: TextStyle(
-          fontSize: 14,
+          fontSize: 15,
           fontWeight: FontWeight.w600,
           color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
         ),
@@ -166,7 +166,7 @@ class HeatTrendChart extends StatelessWidget {
     return Text(
       '前後 $sign${scoreDelta.round()}',
       style: TextStyle(
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: FontWeight.w600,
         color: color,
       ),
@@ -189,7 +189,7 @@ class HeatTrendChart extends StatelessWidget {
               height: 42,
               decoration: BoxDecoration(
                 color: AppColors.ctaStart.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Icon(
                 Icons.show_chart_rounded,
@@ -201,7 +201,7 @@ class HeatTrendChart extends StatelessWidget {
               emptyMessage,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 15,
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               ),
             ),
@@ -237,20 +237,20 @@ class HeatTrendChart extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Text(
               '起點 ${point.score} · $date',
               style: const TextStyle(
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 4),
             Text(
               '再分析 1 次就能形成趨勢',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 12,
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               ),
             ),
@@ -294,7 +294,7 @@ class HeatTrendChart extends StatelessWidget {
       height: 180,
       child: TrendFlowOverlay(
         points: normalizedPoints,
-        padding: const EdgeInsets.fromLTRB(32, 5, 4, 31),
+        padding: const EdgeInsets.fromLTRB(32, 4, 4, 31),
         color: const Color(0xFFFFD2B8),
         glowColor: AppColors.ctaStart,
         flowDuration: const Duration(milliseconds: 900),
@@ -331,7 +331,7 @@ class HeatTrendChart extends StatelessWidget {
                     style: TextStyle(
                       color: AppColors.onBackgroundSecondary
                           .withValues(alpha: 0.58),
-                      fontSize: 9,
+                      fontSize: 12,
                     ),
                     labelResolver: (_) => '平均',
                   ),
@@ -408,7 +408,7 @@ class HeatTrendChart extends StatelessWidget {
             return Text(
               value.toInt().toString(),
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 12,
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               ),
             );
@@ -429,7 +429,7 @@ class HeatTrendChart extends StatelessWidget {
               child: Text(
                 dateFormat.format(date),
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 12,
                   color:
                       AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
                 ),

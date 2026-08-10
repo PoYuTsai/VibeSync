@@ -122,7 +122,7 @@ class _PartnerMindMapViewState extends State<PartnerMindMapView>
         minScale: 0.4,
         maxScale: 2.0,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 20, 72, 88),
+          padding: const EdgeInsets.fromLTRB(18, 16, 72, 88),
           child: GraphView(
             graph: graph,
             algorithm:

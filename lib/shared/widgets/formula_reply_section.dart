@@ -91,12 +91,12 @@ class FormulaReplySection extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Container(
                 key: const ValueKey('formula-reply-method-badge'),
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 9,
-                  vertical: 5,
+                  horizontal: 8,
+                  vertical: 4,
                 ),
                 decoration: BoxDecoration(
                   color: AppColors.coachAccent.withValues(alpha: 0.16),
@@ -126,9 +126,9 @@ class FormulaReplySection extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           for (var i = 0; i < entries.length; i++) ...[
-            if (i > 0) const SizedBox(height: 10),
+            if (i > 0) const SizedBox(height: 8),
             _FormulaReplyCard(
               index: i,
               entry: entries[i],
@@ -156,10 +156,10 @@ class _FormulaReplyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: ValueKey('formula-reply-card-$index'),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.coachBackgroundMid.withValues(alpha: 0.84),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.08),
         ),
@@ -218,7 +218,7 @@ class _FormulaReplyCard extends StatelessWidget {
             height: 1,
             color: AppColors.coachAccent.withValues(alpha: 0.18),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             '為什麼好接',
             style: AppTypography.bodySmall.copyWith(

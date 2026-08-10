@@ -263,7 +263,7 @@ class _FloatingAnalysisActionButtonState
                       color: enabled
                           ? Colors.white
                           : Colors.white.withValues(alpha: 0.50),
-                      fontSize: 10,
+                      fontSize: 12,
                       height: 1.05,
                       letterSpacing: -0.5,
                       fontWeight: FontWeight.w800,
@@ -396,7 +396,7 @@ class _AnalysisScrollHintState extends State<AnalysisScrollHint>
           ),
           style: FilledButton.styleFrom(
             minimumSize: const Size(124, 50),
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             backgroundColor: AppColors.brandInk.withValues(alpha: 0.96),
             foregroundColor: Colors.white,
             disabledBackgroundColor: AppColors.brandInk.withValues(alpha: 0.82),

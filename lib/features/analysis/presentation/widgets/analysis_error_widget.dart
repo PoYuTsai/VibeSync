@@ -76,7 +76,7 @@ class AnalysisErrorWidget extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: AppColors.error.withAlpha(25), // ~0.1 opacity
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.error.withAlpha(77)), // ~0.3 opacity
       ),
       child: Column(

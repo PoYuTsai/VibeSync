@@ -373,7 +373,7 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                         : Icons.photo_library_outlined,
                     color: enabled ? Colors.greenAccent : AppColors.brandFlame,
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       enabled ? '「最近截圖」輔助已啟用' : '選用：啟用「最近截圖」AI 輔助',
@@ -382,7 +382,7 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
                 // 真實行為（2026-08-09 對過 iOS 端）：鍵盤開著時「新拍」的
                 // 截圖才會自動分析（一次一張）；開鍵盤前 3 分鐘內的舊截圖
@@ -494,9 +494,9 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                             onPressed: _openSettings,
                             icon: Icons.open_in_new,
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           const _FullAccessPathGuide(),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           // 實測 iOS 狀態列的「◀ 返回 App」提示會消失，
                           // 不可靠——明講用 App 切換器回來。另外切「允許完整
                           // 取用」時 iOS 必定強制重啟 App（權限開關的系統行為，
@@ -527,7 +527,7 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                         children: [
                           _buildLatestScreenshotDetectionSetup(),
                           _buildScreenshotConsentRevocation(),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 24),
                           // 三步示範講的是「貼文字」備援路徑，不是截圖流程；
                           // 標明白，避免又跟上面的截圖說明打架。
                           Text(
@@ -551,7 +551,7 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                             scale: _pulse,
                             child: const _GlobeDemo(),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 24),
                           // 剛切完「允許完整取用」後 iOS 會重新註冊 extension，
                           // 這段空窗清單裡沒有 VibeSync——系統行為，不是我們能救的。
                           Text(
@@ -580,13 +580,13 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                       color: index == _page
                           ? AppColors.brandFlame
                           : Colors.white.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(18),
                     ),
                   ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
                 child: BrandPrimaryButton(
                   label: _page == 3
                       ? '完成'
@@ -646,14 +646,14 @@ class _SetupPage extends StatelessWidget {
           const SizedBox(height: 16),
           Text(title,
               style: AppTypography.headlineMedium, textAlign: TextAlign.center),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             description,
             style: AppTypography.bodyLarge
                 .copyWith(color: AppColors.onBackgroundSecondary),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           child,
         ],
       ),
@@ -724,7 +724,7 @@ class _FullAccessPathGuide extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.brandSurface2,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Column(
@@ -772,10 +772,10 @@ class _PathChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 3),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -797,15 +797,15 @@ class _FullAccessTogglePreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         children: [
           const Icon(Icons.keyboard_alt_outlined, color: Colors.black87),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           const Expanded(
             child: Text(
               '允許完整取用',
@@ -821,7 +821,7 @@ class _FullAccessTogglePreview extends StatelessWidget {
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
               color: Colors.greenAccent.shade400,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
             ),
             child: const Align(
               alignment: Alignment.centerRight,
@@ -858,17 +858,17 @@ class _GlobeDemo extends StatelessWidget {
   const _GlobeDemo();
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         decoration: BoxDecoration(
             color: AppColors.brandSurface2,
-            borderRadius: BorderRadius.circular(20)),
+            borderRadius: BorderRadius.circular(22)),
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text('🌐', style: TextStyle(fontSize: 36)),
             SizedBox(width: 16),
             Icon(Icons.touch_app, color: AppColors.brandFlame, size: 34),
-            SizedBox(width: 10),
+            SizedBox(width: 8),
             Text('長按並選 VibeSync'),
           ],
         ),
@@ -893,12 +893,12 @@ class _StepRow extends StatelessWidget {
   final String text;
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
             CircleAvatar(
                 backgroundColor: AppColors.brandFlame, child: Text(number)),
-            const SizedBox(width: 14),
+            const SizedBox(width: 16),
             Text(text, style: AppTypography.bodyLarge),
           ],
         ),

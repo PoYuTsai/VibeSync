@@ -193,10 +193,10 @@ class _SkeletonBlock extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Text(
         label,
@@ -275,7 +275,7 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
                 height: 34,
                 decoration: BoxDecoration(
                   color: AppColors.ctaStart.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: AppColors.ctaStart.withValues(alpha: 0.34),
                   ),
@@ -299,13 +299,13 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           FilledButton(
             onPressed: onViewPlans,
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.ctaStart,
               foregroundColor: AppColors.onCta,
-              padding: const EdgeInsets.symmetric(vertical: 13),
+              padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(999),
               ),
@@ -383,7 +383,7 @@ class FullAnalysisRetryCard extends StatelessWidget {
                 height: 34,
                 decoration: BoxDecoration(
                   color: AppColors.bokehCoral.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: AppColors.bokehCoral.withValues(alpha: 0.34),
                   ),
@@ -407,7 +407,7 @@ class FullAnalysisRetryCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           FilledButton(
             onPressed: _canRetry ? onRetry : null,
             style: FilledButton.styleFrom(
@@ -415,7 +415,7 @@ class FullAnalysisRetryCard extends StatelessWidget {
               disabledBackgroundColor: Colors.white.withValues(alpha: 0.16),
               disabledForegroundColor: Colors.white.withValues(alpha: 0.46),
               foregroundColor: AppColors.onCta,
-              padding: const EdgeInsets.symmetric(vertical: 13),
+              padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(999),
               ),

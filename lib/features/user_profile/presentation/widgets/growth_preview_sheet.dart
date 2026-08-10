@@ -15,7 +15,7 @@ Future<void> showGrowthPreviewSheet(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (sheetContext) => Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -27,7 +27,7 @@ Future<void> showGrowthPreviewSheet(
               height: 1.5,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -35,7 +35,7 @@ Future<void> showGrowthPreviewSheet(
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.ctaStart,
                 foregroundColor: AppColors.onCta,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(999),
                 ),

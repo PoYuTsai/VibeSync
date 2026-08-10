@@ -162,7 +162,7 @@ class EbookDialogueBlockView extends StatelessWidget {
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
         ],
         for (final line in block.lines)
           Padding(
@@ -257,10 +257,10 @@ class _DialogueLineView extends StatelessWidget {
                   const SizedBox(height: 4),
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
                       color: bubbleColor,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: borderColor),
                     ),
                     child: Text(

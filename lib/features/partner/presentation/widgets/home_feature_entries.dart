@@ -86,13 +86,13 @@ class _EntryCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           onTap: onTap,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
             ),
             child: Column(

@@ -68,18 +68,18 @@ class _CoachingOutcomeFollowUpBarState
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(18),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
                 children: [
                   const Icon(

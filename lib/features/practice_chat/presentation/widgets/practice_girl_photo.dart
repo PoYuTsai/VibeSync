@@ -54,7 +54,7 @@ class PracticeGirlPhoto extends StatelessWidget {
       );
     }
     return ClipRRect(
-      borderRadius: borderRadius ?? BorderRadius.circular(16),
+      borderRadius: borderRadius ?? BorderRadius.circular(18),
       child: SizedBox(width: width, height: height, child: image),
     );
   }
@@ -72,12 +72,12 @@ class PracticeGirlPhotoExpandHint extends StatelessWidget {
         border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.open_in_full, size: 14, color: Colors.white),
-            const SizedBox(width: 5),
+            const SizedBox(width: 4),
             Text(
               '點照片看全圖',
               style: AppTypography.caption.copyWith(
@@ -151,7 +151,7 @@ class _PracticeGirlFullPhotoViewer extends StatelessWidget {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
+                        horizontal: 16,
                         vertical: 8,
                       ),
                       child: Text(

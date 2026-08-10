@@ -98,10 +98,10 @@ class PartnerMindMapEntryCard extends StatelessWidget {
               if (stage != null)
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(18),
                   ),
                   child: Text(
                     stage,

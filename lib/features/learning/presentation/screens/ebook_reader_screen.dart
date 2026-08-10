@@ -410,7 +410,7 @@ class _ReaderHeaderState extends State<_ReaderHeader> {
               completedFlags: widget.completedFlags,
               onJumpToChapter: widget.onJumpToChapter,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
           ],
           // Wrap 而非 Row：大字級時兩個標籤放不進一行，換行比裁字好。
           Wrap(
@@ -581,10 +581,10 @@ class _ChapterChip extends StatelessWidget {
 
     final chip = Container(
       constraints: const BoxConstraints(minWidth: 34),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: border),
       ),
       child: Text(
@@ -605,9 +605,9 @@ class _ChapterChip extends StatelessWidget {
       child: isReachable && !isCurrent
           ? Material(
               color: Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(18),
               child: InkWell(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(18),
                 onTap: onTap,
                 child: chip,
               ),
@@ -696,7 +696,7 @@ class _ChapterPage extends ConsumerWidget {
             height: 1.25,
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         for (final block in chapter.blocks)
           Padding(
             padding: const EdgeInsets.only(bottom: 18),
@@ -745,7 +745,7 @@ class _ChapterPage extends ConsumerWidget {
         const SizedBox(height: 4),
         if (isCompleted)
           Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: 8),
             child: Row(
               children: [
                 const Icon(Icons.check_circle_outline,

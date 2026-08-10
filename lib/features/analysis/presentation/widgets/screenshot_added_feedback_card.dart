@@ -63,7 +63,7 @@ class ScreenshotAddedFeedbackCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(18),
@@ -102,17 +102,17 @@ class ScreenshotAddedFeedbackCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Align(
             alignment: lastMessageIsFromMe
                 ? Alignment.centerRight
                 : Alignment.centerLeft,
             child: Container(
               constraints: const BoxConstraints(maxWidth: 280),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: _bubbleFill,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: _bubbleBorder),
               ),
               child: Column(

@@ -50,14 +50,14 @@ class MessageBubble extends StatelessWidget {
       child: Align(
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 5),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.75,
           ),
           decoration: BoxDecoration(
             color: fillColor,
-            borderRadius: BorderRadius.circular(14).copyWith(
+            borderRadius: BorderRadius.circular(18).copyWith(
               bottomRight: isMe ? const Radius.circular(5) : null,
               bottomLeft: !isMe ? const Radius.circular(5) : null,
             ),
@@ -84,7 +84,7 @@ class MessageBubble extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.58),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(18),
                     border: Border.all(
                       color: AppColors.glassBorder.withValues(alpha: 0.90),
                     ),
@@ -135,7 +135,7 @@ class MessageBubble extends StatelessWidget {
       builder: (ctx) => Container(
         decoration: BoxDecoration(
           color: AppColors.glassWhite,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
         child: Material(
@@ -158,7 +158,7 @@ class MessageBubble extends StatelessWidget {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Text(
                   message.content,

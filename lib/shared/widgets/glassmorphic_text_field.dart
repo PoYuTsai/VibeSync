@@ -32,7 +32,7 @@ class GlassmorphicTextField extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
-        borderRadius: BorderRadius.circular(16), // 更圓潤
+        borderRadius: BorderRadius.circular(18), // 更圓潤
         border: Border.all(color: AppColors.glassBorder, width: 1.5), // 更粗的白色邊框
       ),
       child: TextField(
@@ -51,7 +51,7 @@ class GlassmorphicTextField extends StatelessWidget {
           isDense: isDense,
           contentPadding: EdgeInsets.symmetric(
             horizontal: 16,
-            vertical: isDense ? 12 : 14,
+            vertical: isDense ? 12 : 16,
           ),
           // 覆蓋 theme 的深灰色 fillColor，讓 Container 背景色顯示
           filled: true,

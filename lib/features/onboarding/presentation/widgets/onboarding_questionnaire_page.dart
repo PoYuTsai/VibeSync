@@ -62,7 +62,7 @@ class OnboardingQuestionnairePage extends StatelessWidget {
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: constraints.maxHeight),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
+            padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -81,7 +81,7 @@ class OnboardingQuestionnairePage extends StatelessWidget {
                     color: AppColors.onBackgroundSecondary,
                   ),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 32),
                 _sectionTitle('你最想練的是？（最多 2 個）'),
                 const SizedBox(height: 12),
                 Wrap(
@@ -135,14 +135,14 @@ class OnboardingQuestionnairePage extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final (i, goal) in selectedGoals.indexed) ...[
-            if (i > 0) const SizedBox(height: 14),
+            if (i > 0) const SizedBox(height: 16),
             Text(
               goalLabel(goal),
               style: AppTypography.bodyMedium.copyWith(
@@ -186,7 +186,7 @@ class OnboardingQuestionnairePage extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             gradient: selected
                 ? const LinearGradient(

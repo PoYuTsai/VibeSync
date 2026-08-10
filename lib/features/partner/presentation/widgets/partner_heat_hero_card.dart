@@ -55,7 +55,7 @@ class PartnerHeatHeroCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.14),
         ),
@@ -67,7 +67,7 @@ class PartnerHeatHeroCard extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [

@@ -93,7 +93,7 @@ class _AnalysisPlatformPickerSheetState
     return FractionallySizedBox(
       heightFactor: 0.72,
       child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BrandPageBackground(
           child: SafeArea(
             top: false,
@@ -127,7 +127,7 @@ class _AnalysisPlatformPickerSheetState
                       color: AppColors.onBackgroundSecondary,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   Expanded(
                     child: ListView(
                       key: const ValueKey('analysis-platform-options'),
@@ -275,12 +275,12 @@ class _PlatformOptionTile extends StatelessWidget {
         color: selected
             ? AppColors.ctaStart.withValues(alpha: 0.18)
             : Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
                 Icon(

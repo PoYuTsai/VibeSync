@@ -125,7 +125,7 @@ class AnalysisRecordsEntryButton extends StatelessWidget {
                     badgeText,
                     style: AppTypography.labelMedium.copyWith(
                       color: Colors.white,
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: FontWeight.w800,
                       height: 1,
                     ),
@@ -299,7 +299,7 @@ class _PartnerAnalysisRecordsScreenState
             stops: [0, 0.46, 1],
           ),
           borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(30),
+            top: Radius.circular(24),
           ),
           border: Border.all(
             color: _archivePink.withValues(alpha: 0.58),
@@ -327,7 +327,7 @@ class _PartnerAnalysisRecordsScreenState
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
                 child: Column(
                   children: [
                     Text(
@@ -338,7 +338,7 @@ class _PartnerAnalysisRecordsScreenState
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     if (_metVia != null || widget.onSetMetVia != null)
                       _MetViaPill(
                         value: _metVia,
@@ -347,7 +347,7 @@ class _PartnerAnalysisRecordsScreenState
                         isSaving: _isSettingMetVia,
                         onTap: _chooseMetVia,
                       ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     Text(
                       '每次分析獨立保存，不會串成逐字稿',
                       textAlign: TextAlign.center,
@@ -399,7 +399,7 @@ class _PartnerAnalysisRecordsScreenState
                           },
                         ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 16),
                     ],
                     if (_visibleRecords.isEmpty)
                       const _EmptyRecordsCard()
@@ -411,7 +411,7 @@ class _PartnerAnalysisRecordsScreenState
                           platform: _platformFor(record),
                           onTap: () => _openRecord(record),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                       ],
                     if (widget.archivedConversationCount > 0 &&
                         widget.onOpenArchivedConversations != null) ...[
@@ -421,7 +421,7 @@ class _PartnerAnalysisRecordsScreenState
                         onTap: widget.onOpenArchivedConversations!,
                       ),
                     ],
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -430,7 +430,7 @@ class _PartnerAnalysisRecordsScreenState
                           size: 17,
                           color: _archiveAccent.withValues(alpha: 0.72),
                         ),
-                        const SizedBox(width: 7),
+                        const SizedBox(width: 8),
                         Flexible(
                           child: Text(
                             '每筆都是獨立分析，可自行管理',
@@ -478,7 +478,7 @@ class _MetViaPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         onTap: enabled ? onTap : null,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color: _archivePink.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(999),
@@ -556,7 +556,7 @@ class _PlatformFilterChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
           onTap: onSelected,
           child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: selected
                   ? accent.withValues(alpha: 0.18)
@@ -606,9 +606,9 @@ class _AnalysisRecordTile extends StatelessWidget {
 
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(22),
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         onTap: onTap,
         child: Ink(
           decoration: BoxDecoration(
@@ -620,13 +620,13 @@ class _AnalysisRecordTile extends StatelessWidget {
                 _archivePanel.withValues(alpha: 0.96),
               ],
             ),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: accent.withValues(alpha: platform == null ? 0.30 : 0.50),
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 13, 10, 13),
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
             child: Row(
               children: [
                 Container(
@@ -634,7 +634,7 @@ class _AnalysisRecordTile extends StatelessWidget {
                   height: 42,
                   decoration: BoxDecoration(
                     color: accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(18),
                     border: Border.all(
                       color: accent.withValues(alpha: 0.34),
                     ),
@@ -768,7 +768,7 @@ class _ArchivedConversationsEntry extends StatelessWidget {
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             child: Row(
               children: [
                 const Icon(
@@ -776,7 +776,7 @@ class _ArchivedConversationsEntry extends StatelessWidget {
                   color: _archiveAccent,
                   size: 21,
                 ),
-                const SizedBox(width: 11),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     '已收起的對話 $count',
@@ -831,7 +831,7 @@ class _EmptyRecordsCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 4),
                 Text(
                   '每次完成的分析片段都會獨立收進這裡，可依平台篩選或單獨刪除。',
                   style: AppTypography.bodySmall.copyWith(

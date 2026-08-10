@@ -75,10 +75,10 @@ class _EbookStageFunnelViewState extends State<EbookStageFunnelView> {
             height: 1.55,
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         for (var index = 0; index < stages.length; index++)
           Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: 8),
             child: Align(
               alignment: Alignment.center,
               child: FractionallySizedBox(
@@ -134,18 +134,18 @@ class _StageRow extends StatelessWidget {
       label: '${stage.stageName}：${stage.symptom}',
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           onTap: onTap,
           child: Container(
             constraints: const BoxConstraints(minHeight: 56),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: isSelected
                   ? AppColors.ctaStart.withValues(alpha: 0.14)
                   : Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: isSelected
                     ? AppColors.ctaStart.withValues(alpha: 0.85)
@@ -191,7 +191,7 @@ class _StageRow extends StatelessWidget {
                 ),
                 if (isSelected)
                   Padding(
-                    padding: const EdgeInsets.only(left: 10),
+                    padding: const EdgeInsets.only(left: 8),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -199,7 +199,7 @@ class _StageRow extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: AppColors.ctaStart.withValues(alpha: 0.92),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(18),
                       ),
                       child: Text(
                         EbookStageFunnelView.youAreHereLabel,
@@ -272,15 +272,15 @@ class _VerdictCard extends StatelessWidget {
               height: 1.55,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Semantics(
             button: true,
             label: stage.targetLabel,
             child: Material(
               color: AppColors.ctaStart.withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
               child: InkWell(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(18),
                 onTap: onOpenTarget,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(

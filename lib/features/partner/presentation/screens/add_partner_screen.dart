@@ -175,7 +175,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                             duration: LiquidBeamEntryPreset.duration,
                             child: BrandSurfaceCard(
                               padding:
-                                  const EdgeInsets.fromLTRB(30, 30, 30, 34),
+                                  const EdgeInsets.fromLTRB(32, 32, 32, 34),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -193,7 +193,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                                           style: TextStyle(
                                             color:
                                                 AppColors.onBackgroundPrimary,
-                                            fontSize: 20,
+                                            fontSize: 19,
                                             fontWeight: FontWeight.w800,
                                             height: 1.15,
                                           ),
@@ -201,7 +201,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 20),
+                                  const SizedBox(height: 24),
                                   Text(
                                     '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡',
                                     style: AppTypography.bodyLarge.copyWith(
@@ -225,7 +225,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                               hintText: '例：Alice / Tinder 上的空姐',
                             ).copyWith(
                               contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 20,
+                                horizontal: 16,
                                 vertical: 18,
                               ),
                               hintStyle: AppTypography.bodyLarge.copyWith(

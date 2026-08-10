@@ -27,7 +27,7 @@ class ReportOverviewCard extends StatelessWidget {
       container: true,
       label: '整體摘要，${_headline()}，共 $totalConversations 個已分析對話',
       child: BrandSurfaceCard(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -38,7 +38,7 @@ class ReportOverviewCard extends StatelessWidget {
                   size: 36,
                   iconSize: 19,
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,9 +82,9 @@ class ReportOverviewCard extends StatelessWidget {
                 height: 1.45,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 14),
+              padding: const EdgeInsets.symmetric(vertical: 16),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.055),
                 borderRadius: BorderRadius.circular(18),
@@ -122,7 +122,7 @@ class ReportOverviewCard extends StatelessWidget {
                   color:
                       AppColors.onBackgroundSecondary.withValues(alpha: 0.60),
                 ),
-                const SizedBox(width: 7),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     '投入度只整理文字訊號，不等於關係進度或對方心意。',
@@ -193,7 +193,7 @@ class _DirectionBadge extends StatelessWidget {
             ? Icons.trending_down_rounded
             : Icons.trending_flat_rounded;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
@@ -247,7 +247,7 @@ class _Metric extends StatelessWidget {
             label,
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.68),
-              fontSize: 11,
+              fontSize: 12,
             ),
           ),
         ],

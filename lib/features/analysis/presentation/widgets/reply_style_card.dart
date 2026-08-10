@@ -96,7 +96,7 @@ class ReplyStyleCard extends StatelessWidget {
       width: 312,
       margin: const EdgeInsets.only(right: 12),
       child: BrandSurfaceCard(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         borderRadius: 18,
         // 卡高照內容自然長（回覆區已無固定高、頂端對齊）：不再用
         // Expanded＋內捲吃高度差——那需要外部給定高度，也是風格卡被拉伸
@@ -117,7 +117,7 @@ class ReplyStyleCard extends StatelessWidget {
                 if (isRecommended) _RecommendedBadge(),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             if (approach.isNotEmpty) ...[
               Text(
                 '接法',
@@ -143,7 +143,7 @@ class ReplyStyleCard extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 4),
             for (var i = 0; i < visibleMessages.length; i++) ...[
               _ReplyOptionMessageRow(
                 segment: visibleMessages[i],
@@ -155,7 +155,7 @@ class ReplyStyleCard extends StatelessWidget {
               if (i != visibleMessages.length - 1) const SizedBox(height: 6),
             ],
             if (messages.length > visibleMessages.length) ...[
-              const SizedBox(height: 5),
+              const SizedBox(height: 4),
               // server 段數上限也是 5，正常到不了這裡；防禦分支。
               // 舊文案「可在推薦卡查看」對非選中風格不成立，改中性說法。
               Text(
@@ -229,7 +229,7 @@ class _RecommendedBadge extends StatelessWidget {
         gradient: const LinearGradient(
           colors: [AppColors.ctaStart, AppColors.ctaEnd],
         ),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Text(
         'AI 推薦',
@@ -266,17 +266,17 @@ class _ReplyOptionMessageRow extends StatelessWidget {
         : (total == 1 ? segment.displayLabel : '訊息 ${index + 1}');
 
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(18),
       onTap: () {
         Clipboard.setData(ClipboardData(text: reply));
         onCopy(reply, total == 1 ? '已複製這句' : '已複製第 ${index + 1} 句');
       },
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
           color: AppColors.brandInk.withValues(alpha: 0.40),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: Colors.white.withValues(alpha: 0.12),
           ),

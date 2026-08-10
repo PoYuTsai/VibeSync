@@ -50,7 +50,7 @@ class _PracticeProfileSheet extends StatelessWidget {
         ),
         child: SingleChildScrollView(
           key: const ValueKey('practice-profile-sheet'),
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           child: Column(
             children: [
               GestureDetector(
@@ -63,7 +63,7 @@ class _PracticeProfileSheet extends StatelessWidget {
                       profile: girl,
                       width: 248,
                       height: 310,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(22),
                     ),
                     const Positioned(
                       bottom: 10,
@@ -104,7 +104,7 @@ class _PracticeProfileSheet extends StatelessWidget {
                 runSpacing: 8,
                 children: [for (final t in tags) _SheetTag(label: t)],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -130,10 +130,10 @@ class _PracticeProfileSheet extends StatelessWidget {
               const SizedBox(height: 18),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: AppColors.brandSurface2.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Text(
                   girl.selfIntro,
@@ -162,7 +162,7 @@ class _SheetTag extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: AppColors.ctaStart.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.ctaStart.withValues(alpha: 0.45)),
       ),
       child: Text(

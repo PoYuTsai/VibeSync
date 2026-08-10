@@ -32,7 +32,7 @@ class EbookChecklistBlockView extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.brandSurface.withValues(alpha: 0.90),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
       child: Column(
@@ -72,7 +72,7 @@ class EbookChecklistBlockView extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           for (final item in block.items)
             _ChecklistRow(
               item: item,
@@ -104,17 +104,17 @@ class _ChecklistRow extends StatelessWidget {
       excludeSemantics: true,
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           onTap: () => onChanged(!checked),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.only(top: 1, right: 10),
+                  padding: const EdgeInsets.only(top: 1, right: 8),
                   child: Icon(
                     checked
                         ? Icons.check_box_outlined

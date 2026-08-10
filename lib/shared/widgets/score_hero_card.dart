@@ -26,7 +26,7 @@ class ScoreHeroCard extends StatelessWidget {
     return OneShotGlassWipe(
       borderRadius: 12,
       child: GlassmorphicContainer(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
             // Circular score ring
@@ -54,7 +54,7 @@ class ScoreHeroCard extends StatelessWidget {
                         '$score',
                         style: AppTypography.headlineLarge.copyWith(
                           color: AppColors.glassTextPrimary,
-                          fontSize: 26,
+                          fontSize: 24,
                           fontWeight: FontWeight.bold,
                           height: 1.1,
                         ),
@@ -64,7 +64,7 @@ class ScoreHeroCard extends StatelessWidget {
                         style: AppTypography.caption.copyWith(
                           color: level.color,
                           fontWeight: FontWeight.w600,
-                          fontSize: 11,
+                          fontSize: 12,
                         ),
                       ),
                     ],
@@ -72,7 +72,7 @@ class ScoreHeroCard extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 20),
+            const SizedBox(width: 24),
             // Right side: description
             Expanded(
               child: Column(

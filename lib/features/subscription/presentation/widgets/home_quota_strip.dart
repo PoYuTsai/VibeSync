@@ -44,7 +44,7 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
       context: context,
       backgroundColor: AppColors.brandSurface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetContext) => SafeArea(
         child: Padding(
@@ -57,7 +57,7 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
                 '免費額度怎麼算？',
                 style: TextStyle(
                   color: AppColors.onBackgroundPrimary,
-                  fontSize: 18,
+                  fontSize: 19,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -67,11 +67,11 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
                 '教練與練習共用，每月自動重置。升級後額度大幅提升。',
                 style: const TextStyle(
                   color: AppColors.onBackgroundSecondary,
-                  fontSize: 14,
+                  fontSize: 15,
                   height: 1.6,
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
               BrandPrimaryButton(
                 label: '看訂閱方案',
                 onPressed: () {
@@ -102,18 +102,18 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
         color: Colors.transparent,
         child: InkWell(
           key: urgent ? HomeQuotaStrip.urgentKey : HomeQuotaStrip.normalKey,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(18),
           onTap: () {
             unawaited(ref.read(funnelTrackerProvider).track('quota_strip_tap'));
             _openExplainSheet(context, subscription.effectiveMonthlyLimit);
           },
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: urgent
                   ? AppColors.ctaStart.withValues(alpha: 0.12)
                   : Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: urgent
                     ? AppColors.ctaStart.withValues(alpha: 0.55)
@@ -134,7 +134,7 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
                           color: urgent
                               ? AppColors.ctaStart
                               : AppColors.onBackgroundPrimary,
-                          fontSize: 13,
+                          fontSize: 15,
                           fontWeight:
                               urgent ? FontWeight.w700 : FontWeight.w500,
                         ),
@@ -147,7 +147,7 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
                         style: TextStyle(
                           color: AppColors.onBackgroundSecondary
                               .withValues(alpha: 0.9),
-                          fontSize: 11.5,
+                          fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
                       ),

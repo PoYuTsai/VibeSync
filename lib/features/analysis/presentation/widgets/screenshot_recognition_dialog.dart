@@ -442,7 +442,7 @@ class _ScreenshotRecognitionDialogState
       isScrollControlled: true,
       backgroundColor: AppColors.brandSurface2,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetContext) {
         return Padding(
@@ -490,7 +490,7 @@ class _ScreenshotRecognitionDialogState
                   filled: true,
                   fillColor: AppColors.brandInk.withValues(alpha: 0.4),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(18),
                     borderSide: BorderSide.none,
                   ),
                 ),
@@ -686,7 +686,7 @@ class _ScreenshotRecognitionDialogState
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -743,12 +743,12 @@ class _ScreenshotRecognitionDialogState
         : AppColors.primaryLight.withValues(alpha: 0.52);
     final labelColor = isMe ? AppColors.ctaEnd : AppColors.primaryDark;
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       constraints: const BoxConstraints(maxWidth: 280),
       decoration: BoxDecoration(
         color: fillColor,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: borderColor),
       ),
       child: Column(
@@ -768,7 +768,7 @@ class _ScreenshotRecognitionDialogState
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.58),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: AppColors.glassBorder.withValues(alpha: 0.90),
                 ),
@@ -804,7 +804,7 @@ class _ScreenshotRecognitionDialogState
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -827,7 +827,7 @@ class _ScreenshotRecognitionDialogState
     return Container(
       key: const ValueKey('ocr-message-edit-workspace'),
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(18),
@@ -890,7 +890,7 @@ class _ScreenshotRecognitionDialogState
               ),
             ),
             if (_showStaticSwipeTutorialLegend) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               _buildStaticSwipeTutorialLegend(),
             ],
             const SizedBox(height: 12),
@@ -963,7 +963,7 @@ class _ScreenshotRecognitionDialogState
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: AppColors.error.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(18),
                     border: Border.all(
                       color: AppColors.error.withValues(alpha: 0.25),
                     ),
@@ -997,10 +997,10 @@ class _ScreenshotRecognitionDialogState
               const SizedBox(height: 16),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppColors.ctaStart.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: AppColors.ctaStart.withValues(alpha: 0.24),
                   ),
@@ -1017,10 +1017,10 @@ class _ScreenshotRecognitionDialogState
               const SizedBox(height: 16),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppColors.ctaStart.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: AppColors.ctaStart.withValues(alpha: 0.24),
                   ),
@@ -1048,12 +1048,12 @@ class _ScreenshotRecognitionDialogState
                       confirmed ? AppColors.success : AppColors.ctaStart;
                   return Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: accent.withValues(
                         alpha: confirmed ? 0.10 : 0.14 + 0.10 * flash,
                       ),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(18),
                       border: Border.all(
                         color: accent.withValues(
                           alpha: confirmed ? 0.45 : 0.85,
@@ -1127,7 +1127,7 @@ class _ScreenshotRecognitionDialogState
                   filled: true,
                   fillColor: AppColors.brandInk.withValues(alpha: 0.4),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(18),
                     borderSide: BorderSide.none,
                   ),
                 ),
@@ -1274,7 +1274,7 @@ class _ScreenshotRecognitionDialogState
                   filled: true,
                   fillColor: AppColors.brandInk.withValues(alpha: 0.4),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(18),
                     borderSide: BorderSide.none,
                   ),
                 ),

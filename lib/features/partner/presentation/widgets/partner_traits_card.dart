@@ -61,7 +61,7 @@ class PartnerTraitsCard extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           if (hasCustomNote) ...[
             Text(
               '你的設定',
@@ -77,7 +77,7 @@ class PartnerTraitsCard extends StatelessWidget {
                 height: 1.5,
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
           ],
           if (view.unionInterests.isEmpty && view.unionTraits.isEmpty)
             Text(
@@ -89,13 +89,13 @@ class PartnerTraitsCard extends StatelessWidget {
           else ...[
             if (view.unionInterests.isNotEmpty) ...[
               _Section(label: '興趣', tags: view.unionInterests),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
             ],
             if (view.unionTraits.isNotEmpty)
               _Section(label: '個性', tags: view.unionTraits),
           ],
           if (view.unionNotes != null && view.unionNotes!.isNotEmpty) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Text(
               '備註',
               style: AppTypography.titleSmall.copyWith(
@@ -111,7 +111,7 @@ class PartnerTraitsCard extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 14,
             runSpacing: 4,

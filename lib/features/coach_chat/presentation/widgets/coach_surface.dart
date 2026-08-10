@@ -256,7 +256,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                 height: 34,
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: const Icon(
                   Icons.forum_outlined,
@@ -264,7 +264,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                   size: 19,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -307,12 +307,12 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                 ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           _CoachMemorySourceStrip(sources: memorySources),
           // 五個灰色快捷問句 chip 已整組移除（2026-08-09 拍板）：使用者
           // 直接打自己的問題；知識庫入口改由對象頁三情境 chip
           // （CoachFollowUpSection）負責。
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           TextField(
             key: _inputFieldKey,
             controller: _controller,
@@ -336,15 +336,15 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
               filled: true,
               fillColor: Colors.white.withValues(alpha: 0.62),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide(color: AppColors.glassBorder),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide(color: AppColors.glassBorder),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(18),
                 borderSide: const BorderSide(
                   color: AppColors.primary,
                   width: 1.4,
@@ -367,13 +367,13 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
             ),
           ),
           if (isLoading) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             CoachChatProgressNotice(
               update: progress,
               question: _lastAskedQuestion,
             ),
           ] else if (activeError) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             _CoachFailureNotice(
               title: CoachSurface.failureTitleFor(activeErrorObject!),
               subtitle: CoachSurface.failureSubtitleFor(activeErrorObject),
@@ -395,7 +395,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
               ),
             ],
           ] else if (timeline.isNotEmpty) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             _CoachChatThreadView(
               results: timeline,
               dailyRemaining: subscription.dailyRemaining,
@@ -580,11 +580,11 @@ class _CoachChatThreadView extends StatelessWidget {
           onForceAnswer: onForceAnswer,
         ),
         if (latest.earlierSummary?.trim().isNotEmpty == true) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           _EarlierCoachSummaryCard(result: latest),
         ],
         if (previous.isNotEmpty) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Theme(
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
@@ -633,7 +633,7 @@ class _EarlierCoachSummaryCard extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         color: AppColors.primary.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: AppColors.primary.withValues(alpha: 0.14),
         ),
@@ -685,7 +685,7 @@ class _CoachChatHistoryTile extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.46),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: AppColors.glassBorder.withValues(alpha: 0.7),
         ),
@@ -733,10 +733,10 @@ class _CoachChatHistoryTile extends StatelessWidget {
               const SizedBox(height: 8),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.56),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Text(
                   result.suggestedLine!,
@@ -823,10 +823,10 @@ class CoachChatResultView extends ConsumerWidget {
             ),
           );
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.primary.withValues(alpha: 0.16)),
       ),
       child: Column(
@@ -875,14 +875,14 @@ class CoachChatResultView extends ConsumerWidget {
             dailyRemaining: dailyRemaining,
             isClarifying: isClarifying,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           if (isClarifying) ...[
             _CoachNotice(
               icon: Icons.psychology_alt_outlined,
               title: '教練想先問清楚（免費釐清）',
               body: result.reflectionQuestion ?? result.answer,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               result.answer,
               style: AppTypography.bodyMedium.copyWith(
@@ -890,7 +890,7 @@ class CoachChatResultView extends ConsumerWidget {
                 height: 1.45,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             if (result.userTruth != null)
               _InfoLine(label: '我理解你的真實想法', value: result.userTruth!),
             _InfoLine(
@@ -902,13 +902,13 @@ class CoachChatResultView extends ConsumerWidget {
           ] else
             _InfoLine(label: '這次先做', value: result.nextStep),
           if (result.suggestedLine != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.56),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Text(
                 result.suggestedLine!,
@@ -930,7 +930,7 @@ class CoachChatResultView extends ConsumerWidget {
               ),
             ),
           ],
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
           if (!isClarifying)
             Theme(
@@ -966,7 +966,7 @@ class CoachChatResultView extends ConsumerWidget {
                               height: 1.45,
                             ),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 8),
                           if (result.userTruth != null)
                             _InfoLine(
                               label: '我理解你的真實想法',
@@ -1175,7 +1175,7 @@ class _CoachMemorySourceStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.46),
         borderRadius: BorderRadius.circular(999),
@@ -1196,7 +1196,7 @@ class _CoachMemorySourceStrip extends StatelessWidget {
                 size: 15,
                 color: AppColors.primary,
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 4),
               Text(
                 '教練參考',
                 style: AppTypography.caption.copyWith(
@@ -1252,10 +1252,10 @@ class _CoachFailureNotice extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(13),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.warning.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: AppColors.warning.withValues(alpha: 0.24),
         ),
@@ -1271,7 +1271,7 @@ class _CoachFailureNotice extends StatelessWidget {
                 color: AppColors.warning,
                 size: 20,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1356,7 +1356,7 @@ class _CostStatusChip extends StatelessWidget {
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(999),
@@ -1421,7 +1421,7 @@ class _CoachNotice extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.56),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: AppColors.primary.withValues(alpha: 0.14),
         ),

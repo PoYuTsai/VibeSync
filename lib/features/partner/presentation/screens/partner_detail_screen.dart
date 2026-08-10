@@ -279,7 +279,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   aggregate: aggregate,
                   conversations: conversations,
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 PartnerHeatHeroCard(heat: aggregate.latestHeat),
                 const SizedBox(height: 12),
                 PartnerMindMapEntryCard(
@@ -613,7 +613,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                     builder: (_) => NewConversationSheet(partnerId: partnerId),
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 _PartnerDetailSection(
                   child: KeyedSubtree(
                     key: _coachSectionKey,
@@ -626,7 +626,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 const _LockedFeatureCard(
                   icon: Icons.explore_outlined,
                   title: '對象作戰板',
@@ -638,7 +638,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   title: '關係下一步',
                   subtitle: '完成第一次分析後解鎖',
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
                 Text(
                   '我的風格・對 ${partner.name}　沿用全域預設 →',
                   textAlign: TextAlign.center,
@@ -716,7 +716,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
 
     return [
       Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -740,7 +740,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
       ),
       if (sections.active.isEmpty)
         Padding(
-          padding: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.only(bottom: 8),
           child: Text(
             '目前沒有待整理的對話',
             style: AppTypography.bodySmall.copyWith(
@@ -1214,7 +1214,7 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
                       partner.name,
                       style: const TextStyle(
                         color: AppColors.onBackgroundPrimary,
-                        fontSize: 28,
+                        fontSize: 30,
                         fontWeight: FontWeight.w800,
                         height: 1.05,
                         letterSpacing: -0.5,
@@ -1234,7 +1234,7 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
               _StateBadge(label: state),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           _SummaryLine(
             icon: Icons.schedule_outlined,
             label: '最近互動',
@@ -1247,7 +1247,7 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
             value: hook,
           ),
           if (tags.isNotEmpty) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -1314,7 +1314,7 @@ class _PartnerNextStepCard extends StatelessWidget {
             height: 42,
             decoration: BoxDecoration(
               color: AppColors.ctaStart.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
             ),
             child: const Icon(
               Icons.assistant_direction_outlined,
@@ -1350,7 +1350,7 @@ class _PartnerNextStepCard extends StatelessWidget {
                       height: 1.35,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                 ],
                 Text(
                   actionLabel,
@@ -1423,7 +1423,7 @@ class _StateBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.ctaStart.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
@@ -1450,7 +1450,7 @@ class _PartnerTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(999),
@@ -1485,7 +1485,7 @@ class _PartnerEmptyStateCard extends StatelessWidget {
             Colors.white.withValues(alpha: 0.025),
           ],
         ),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Column(
@@ -1523,7 +1523,7 @@ class _PartnerEmptyStateCard extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             '截圖、貼上文字，或手動輸入\n開始你們的第一次分析',
             textAlign: TextAlign.center,
@@ -1532,7 +1532,7 @@ class _PartnerEmptyStateCard extends StatelessWidget {
               height: 1.55,
             ),
           ),
-          const SizedBox(height: 26),
+          const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             height: 56,
@@ -1591,11 +1591,11 @@ class _LockedFeatureCard extends StatelessWidget {
                 height: 48,
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(icon, color: AppColors.onBackgroundSecondary),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1661,7 +1661,7 @@ class _PartnerExpandableDetailSection extends StatelessWidget {
                     height: 38,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(18),
                     ),
                     child: Icon(
                       expanded ? Icons.insights : Icons.insights_outlined,
@@ -1712,7 +1712,7 @@ class _PartnerExpandableDetailSection extends StatelessWidget {
             ),
           ),
           if (expanded) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             child,
           ],
         ],

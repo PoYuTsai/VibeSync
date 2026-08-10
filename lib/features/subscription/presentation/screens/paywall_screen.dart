@@ -305,7 +305,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
                 _buildQuotaSummaryCard(subscription),
                 if (hasPendingDowngrade) ...[
                   const SizedBox(height: 16),
@@ -337,9 +337,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     iconColor: AppColors.error,
                   ),
                 ],
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
                 _buildFeatureComparisonTable(),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
                 ...options.map(
                   (option) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -770,7 +770,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.brandInk.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
       child: Column(

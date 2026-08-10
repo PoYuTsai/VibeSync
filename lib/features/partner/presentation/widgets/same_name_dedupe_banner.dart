@@ -32,10 +32,10 @@ class SameNameDedupeBanner extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: AppColors.brandSurface2,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
         ),
-        padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

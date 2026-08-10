@@ -690,9 +690,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppColors.brandSurface2,
           elevation: 8,
-          margin: const EdgeInsets.fromLTRB(20, 0, 20, 72),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 72),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             side: BorderSide(
               color: Colors.white.withValues(alpha: 0.12),
             ),
@@ -728,7 +728,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: BrandSegmentedButton<OpeningRescueMode>(
                 tone: BrandVisualTone.coach,
                 segments: const [
@@ -777,7 +777,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }) {
     return SingleChildScrollView(
       controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -798,7 +798,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               color: Colors.white,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
           // Tab switcher
           BrandSegmentedButton<int>(
@@ -815,7 +815,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               _currentDraftId = null;
             }),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
           // Tab content
           if (_selectedTab == 0) _buildScreenshotTab(),
@@ -947,7 +947,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
     return BrandSurfaceCard(
       tone: BrandVisualTone.coach,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -976,7 +976,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           ...drafts.map(_buildDraftRow),
         ],
       ),
@@ -989,10 +989,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: AppColors.brandInk.withValues(alpha: 0.38),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
         ),
         child: Row(
@@ -1047,7 +1047,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               onPressed: () => _openDraft(draft),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.ctaStart,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
               ),
               child: const Text('回看'),
             ),
@@ -1188,7 +1188,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
         ],
 
         // Opener cards header
@@ -1281,7 +1281,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         // 之後、pioneerPlan 之前；全 tier 可見、不算進「N 種風格」、
         // 空清單整區不渲染。
         if (result.formulaOpeners.isNotEmpty) ...[
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           FormulaReplySection(
             title: '公式開場',
             entries: [
@@ -1391,19 +1391,19 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             title: '1. 複製開場，去交友軟體送出',
             description: '你可以直接用，也可以照自己的語氣微調。',
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           _buildNextStepRow(
             icon: Icons.chat_bubble_outline,
             title: '2. 她回覆後，回來開新對話',
             description: '把你送出的那句，加上她的回覆一起貼上。',
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           _buildNextStepRow(
             icon: Icons.psychology_alt_outlined,
             title: '3. 分析後再問教練怎麼接',
             description: '只有真實互動進入分析後，才會接上對象記憶。',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           BrandPrimaryButton(
             label: '她回覆了，開始分析對話',
             icon: Icons.add_comment_outlined,
@@ -1443,7 +1443,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           size: 18,
           color: AppColors.coachAccentBright.withValues(alpha: 0.90),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1485,7 +1485,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
     return BrandSurfaceCard(
       tone: BrandVisualTone.coach,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1518,7 +1518,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ...entries.map((entry) {
             final label = labelMap[entry.key] ?? entry.key;
             return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1760,7 +1760,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                       color: AppColors.coachRecommendation.withValues(
                         alpha: 0.16,
                       ),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(18),
                       border: Border.all(
                         color: AppColors.coachRecommendation.withValues(
                           alpha: 0.64,
@@ -1772,7 +1772,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                       style: AppTypography.caption.copyWith(
                         color: AppColors.coachRecommendation,
                         fontWeight: FontWeight.w600,
-                        fontSize: 10,
+                        fontSize: 12,
                       ),
                     ),
                   ),

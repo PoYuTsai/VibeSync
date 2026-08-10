@@ -109,7 +109,7 @@ class _EbookEntryListViewState extends State<EbookEntryListView> {
               height: 1.45,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
         ],
         Text(
           '共 ${widget.block.entries.length} 條，點開你需要的那一條',
@@ -157,7 +157,7 @@ class _EntryTile extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: isExpanded ? 0.06 : 0.03),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: isExpanded
               ? AppColors.ctaStart.withValues(alpha: 0.55)
@@ -173,12 +173,12 @@ class _EntryTile extends StatelessWidget {
             label: isExpanded ? '${entry.title}。點兩下收合。' : '${entry.title}。點兩下展開。',
             child: Material(
               color: Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
               child: InkWell(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(18),
                 onTap: onToggle,
                 child: Padding(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(16),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -208,7 +208,7 @@ class _EntryTile extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Icon(
                         isExpanded
                             ? Icons.keyboard_arrow_up_rounded
@@ -236,18 +236,18 @@ class _EntryTile extends StatelessWidget {
             child: !isExpanded
                 ? const SizedBox(width: double.infinity)
                 : Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
                           height: 1,
                           color: Colors.white.withValues(alpha: 0.10),
-                          margin: const EdgeInsets.only(bottom: 14),
+                          margin: const EdgeInsets.only(bottom: 16),
                         ),
                         for (final block in entry.blocks)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 14),
+                            padding: const EdgeInsets.only(bottom: 16),
                             child: entryBlockBuilder(block),
                           ),
                       ],

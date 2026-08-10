@@ -29,7 +29,7 @@ class DimensionRadarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassmorphicContainer(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

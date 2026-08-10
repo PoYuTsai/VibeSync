@@ -165,7 +165,7 @@ class _AnalysisRecordDetailScreenState
                 child: Row(
                   children: [
                     Icon(Icons.delete_outline_rounded, color: AppColors.error),
-                    SizedBox(width: 10),
+                    SizedBox(width: 8),
                     Text('刪除這筆分析'),
                   ],
                 ),
@@ -178,7 +178,7 @@ class _AnalysisRecordDetailScreenState
           constraints: const BoxConstraints(maxWidth: 600),
           child: ListView(
             key: const ValueKey('analysis-record-detail'),
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
             children: [
               _RecordContextHeader(
                 subjectName: record.subjectName,
@@ -191,13 +191,13 @@ class _AnalysisRecordDetailScreenState
                 score: record.enthusiasmScore,
                 stage: record.gameStageLabel,
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 24),
               const _DetailSectionTitle(title: '保存的對話片段'),
-              const SizedBox(height: 9),
+              const SizedBox(height: 8),
               _ConversationSnapshotCard(record: record),
-              const SizedBox(height: 22),
+              const SizedBox(height: 24),
               const _DetailSectionTitle(title: '當次分析'),
-              const SizedBox(height: 9),
+              const SizedBox(height: 8),
               if (_result == null)
                 const _UnavailableAnalysisCard()
               else
@@ -241,7 +241,7 @@ class _RecordContextHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final displayName = subjectName.trim().isEmpty ? '對方' : subjectName.trim();
     return _ArchivePanel(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       child: Row(
         children: [
           Container(
@@ -249,7 +249,7 @@ class _RecordContextHeader extends StatelessWidget {
             height: 42,
             decoration: BoxDecoration(
               color: _detailPink.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: _detailPink.withValues(alpha: 0.34),
               ),
@@ -363,7 +363,7 @@ class _ScoreSnapshotCard extends StatelessWidget {
             '$score',
             style: AppTypography.headlineLarge.copyWith(
               color: AppColors.onBackgroundPrimary,
-              fontSize: 58,
+              fontSize: 56,
               fontWeight: FontWeight.w800,
               height: 1,
             ),
@@ -380,14 +380,14 @@ class _ScoreSnapshotCard extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 4),
                 Text(
                   _descriptionFor(level),
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.onBackgroundSecondary,
                   ),
                 ),
-                const SizedBox(height: 7),
+                const SizedBox(height: 8),
                 Text(
                   '只反映這次互動中的文字訊號',
                   style: AppTypography.bodySmall.copyWith(
@@ -397,7 +397,7 @@ class _ScoreSnapshotCard extends StatelessWidget {
                   ),
                 ),
                 if (normalizedStage.isNotEmpty) ...[
-                  const SizedBox(height: 9),
+                  const SizedBox(height: 8),
                   _DetailBadge(
                     label: normalizedStage,
                     accent: _detailAccentBright,
@@ -420,7 +420,7 @@ class _ConversationSnapshotCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _ArchivePanel(
-      padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -481,10 +481,10 @@ class _ArchivedMessageBubble extends StatelessWidget {
           maxWidth: MediaQuery.sizeOf(context).width * 0.74,
         ),
         margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: accent.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(14).copyWith(
+          borderRadius: BorderRadius.circular(18).copyWith(
             bottomRight: isMe ? const Radius.circular(5) : null,
             bottomLeft: isMe ? null : const Radius.circular(5),
           ),
@@ -506,10 +506,10 @@ class _ArchivedMessageBubble extends StatelessWidget {
               Container(
                 width: double.infinity,
                 margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(9),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border(
                     left: BorderSide(
                       color: accent.withValues(alpha: 0.72),
@@ -628,10 +628,10 @@ class _SavedAnalysisCard extends StatelessWidget {
         if (result.shouldGiveUp) ...[
           Container(
             key: const ValueKey('analysis-record-give-up-warning'),
-            padding: const EdgeInsets.all(13),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppColors.error.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: AppColors.error.withValues(alpha: 0.34),
               ),
@@ -640,7 +640,7 @@ class _SavedAnalysisCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('⚠️', style: TextStyle(fontSize: 20)),
-                const SizedBox(width: 9),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     '這段互動目前不建議再投入，先保護自己的時間與情緒成本。',
@@ -680,7 +680,7 @@ class _SavedAnalysisCard extends StatelessWidget {
           const SizedBox(height: 12),
         if (hasPsychology)
           _ArchivePanel(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -698,7 +698,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                   ],
                 ),
                 if (psychology.isNotEmpty) ...[
-                  const SizedBox(height: 9),
+                  const SizedBox(height: 8),
                   Text(
                     psychology,
                     style: AppTypography.bodyMedium.copyWith(
@@ -711,10 +711,10 @@ class _SavedAnalysisCard extends StatelessWidget {
                   const SizedBox(height: 12),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(11),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: AppColors.warning.withValues(alpha: 0.09),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(18),
                       border: Border.all(
                         color: AppColors.warning.withValues(alpha: 0.34),
                       ),
@@ -742,7 +742,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                   ),
                 ],
                 if (result.psychology.qualificationSignal) ...[
-                  const SizedBox(height: 11),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       const Icon(
@@ -750,7 +750,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                         size: 17,
                         color: AppColors.success,
                       ),
-                      const SizedBox(width: 7),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           '她有主動投入訊號',
@@ -771,7 +771,7 @@ class _SavedAnalysisCard extends StatelessWidget {
           const SizedBox(height: 12),
         if (hasStrategy)
           _ArchivePanel(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             child: _AnalysisTextBlock(
               icon: Icons.route_outlined,
               title: '互動策略',
@@ -786,7 +786,7 @@ class _SavedAnalysisCard extends StatelessWidget {
           const SizedBox(height: 12),
         if (hasTopicDepth)
           _ArchivePanel(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             child: _AnalysisTextBlock(
               icon: Icons.layers_outlined,
               title: '話題深度・${result.topicDepth.current.label}',
@@ -804,7 +804,7 @@ class _SavedAnalysisCard extends StatelessWidget {
           const SizedBox(height: 12),
         if (hasHealthCheck)
           _ArchivePanel(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -822,7 +822,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                   ],
                 ),
                 if (healthCheck.issues.isNotEmpty) ...[
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   for (final issue in healthCheck.issues)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
@@ -834,7 +834,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                             size: 17,
                             color: AppColors.warning,
                           ),
-                          const SizedBox(width: 7),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               issue,
@@ -849,7 +849,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                     ),
                 ],
                 if (healthCheck.suggestions.isNotEmpty) ...[
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 4),
                   Text(
                     '改善建議',
                     style: AppTypography.labelLarge.copyWith(
@@ -869,7 +869,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                             size: 17,
                             color: AppColors.success,
                           ),
-                          const SizedBox(width: 7),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               suggestion,
@@ -893,7 +893,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                 hasTopicDepth ||
                 hasHealthCheck) &&
             hasReplies)
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
         if (hasReplies) ...[
           Row(
             children: [
@@ -916,7 +916,7 @@ class _SavedAnalysisCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           SizedBox(
             key: const ValueKey('analysis-record-reply-styles'),
             height: 360,
@@ -940,7 +940,7 @@ class _SavedAnalysisCard extends StatelessWidget {
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(15),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -950,7 +950,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                   _detailAccent.withValues(alpha: 0.09),
                 ],
               ),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(22),
               border: Border.all(
                 color: _detailPink.withValues(alpha: 0.62),
               ),
@@ -965,7 +965,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 if (recommendation.isNotEmpty)
                   Text(
                     recommendation,
@@ -976,7 +976,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                     ),
                   ),
                 if (reason.isNotEmpty) ...[
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Text(
                     '為什麼這樣回',
                     style: AppTypography.labelLarge.copyWith(
@@ -1006,7 +1006,7 @@ class _SavedAnalysisCard extends StatelessWidget {
                   ),
                 ],
                 if (recommendation.isNotEmpty) ...[
-                  const SizedBox(height: 13),
+                  const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
@@ -1043,12 +1043,12 @@ class _SavedAnalysisCard extends StatelessWidget {
           const SizedBox(height: 12),
         if (hasReminder)
           _ArchivePanel(
-            padding: const EdgeInsets.all(13),
+            padding: const EdgeInsets.all(12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('💬', style: TextStyle(fontSize: 18)),
-                const SizedBox(width: 9),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     reminder,
@@ -1065,7 +1065,7 @@ class _SavedAnalysisCard extends StatelessWidget {
           ),
         if (!hasAnyContent)
           _ArchivePanel(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             child: Text(
               '這筆紀錄沒有可顯示的文字建議。',
               style: AppTypography.bodyMedium.copyWith(
@@ -1099,14 +1099,14 @@ class _AnalysisTextBlock extends StatelessWidget {
           height: 34,
           decoration: BoxDecoration(
             color: _detailAccent.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(11),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: _detailAccent.withValues(alpha: 0.28),
             ),
           ),
           child: Icon(icon, size: 18, color: _detailAccentBright),
         ),
-        const SizedBox(width: 11),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1163,7 +1163,7 @@ class _DetailBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.09),
         borderRadius: BorderRadius.circular(999),
@@ -1203,7 +1203,7 @@ class _ArchivePanel extends StatelessWidget {
             _detailPanel.withValues(alpha: 0.96),
           ],
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
       child: child,
@@ -1224,7 +1224,7 @@ class _UnavailableAnalysisCard extends StatelessWidget {
             Icons.info_outline_rounded,
             color: AppColors.onBackgroundSecondary,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               '這筆分析內容暫時無法顯示，但上方聊天片段仍完整保留。',

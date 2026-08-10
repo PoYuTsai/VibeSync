@@ -513,7 +513,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _buildStage(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                   _buildCaption(),
                 ],
               ),
@@ -1394,14 +1394,14 @@ class _GrandInfoBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       key: const ValueKey('practice-draw-ceremony-grand-info'),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(18),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: _kGrandGlass,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: _kTeal.withValues(alpha: 0.42),
               width: 1,

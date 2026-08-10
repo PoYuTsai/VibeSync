@@ -48,7 +48,7 @@ class PracticeRoomEntryCard extends StatelessWidget {
                     const _HeroBackground(),
                     const _WarmReadabilityScrim(),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 22),
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
@@ -156,7 +156,7 @@ class _PracticeRoomGlassPanel extends StatelessWidget {
           child: Container(
             key: const ValueKey('practice-room-entry-glass-panel'),
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(28, 26, 28, 30),
+            padding: const EdgeInsets.fromLTRB(32, 24, 32, 32),
             decoration: BoxDecoration(
               color: const Color(0xFF17112F).withValues(alpha: 0.78),
               borderRadius: _panelRadius,
@@ -176,7 +176,7 @@ class _PracticeRoomGlassPanel extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const _PracticeRoomMark(),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Row(
@@ -186,7 +186,7 @@ class _PracticeRoomGlassPanel extends StatelessWidget {
                         'AI 實戰練習室',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 36,
+                          fontSize: 38,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0,
                           height: 1.08,
@@ -199,12 +199,12 @@ class _PracticeRoomGlassPanel extends StatelessWidget {
                           ],
                         ),
                       ),
-                      SizedBox(width: 10),
+                      SizedBox(width: 8),
                       _NewBadge(),
                     ],
                   ),
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
                 Text(
                   '跟陪練女孩直接聊天，\n練你的真實反應。',
                   textAlign: TextAlign.center,
@@ -267,7 +267,7 @@ class _NewBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.ctaStart,
         borderRadius: BorderRadius.circular(7),
@@ -284,7 +284,7 @@ class _NewBadge extends StatelessWidget {
         style: TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w900,
-          fontSize: 20,
+          fontSize: 19,
           letterSpacing: 0,
           height: 1,
         ),
@@ -315,13 +315,13 @@ class _DailyRewardEyebrow extends ConsumerWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.card_giftcard_rounded,
                 size: 15, color: Colors.white),
-            const SizedBox(width: 7),
+            const SizedBox(width: 8),
             Text(
               isPremium ? '每日登入解鎖新女孩' : '翻牌解鎖新女孩',
               style: AppTypography.bodySmall.copyWith(

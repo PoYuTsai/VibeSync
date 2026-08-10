@@ -56,7 +56,7 @@ class _QuizEntryCard extends StatelessWidget {
           Row(
             children: [
               const BrandIconBadge(icon: Icons.traffic_outlined),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -85,7 +85,7 @@ class _QuizEntryCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             '一次一題：先讀懂她現在是哪一種，再決定怎麼回。答錯不扣任何東西。',
             style: AppTypography.bodySmall.copyWith(

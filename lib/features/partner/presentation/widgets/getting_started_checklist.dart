@@ -114,10 +114,10 @@ class GettingStartedChecklist extends ConsumerWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: Container(
         key: GettingStartedChecklist.cardKey,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
         ),
         child: Column(
@@ -208,10 +208,10 @@ class OnboardingDrawRewardCard extends ConsumerWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: Container(
         key: OnboardingDrawRewardCard.cardKey,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         decoration: BoxDecoration(
           color: AppColors.brandFlame.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppColors.brandFlame.withValues(alpha: 0.45)),
         ),
         child: Column(
@@ -283,10 +283,10 @@ class _ChecklistRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(18),
       onTap: item.done ? null : item.onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
             Icon(
@@ -299,7 +299,7 @@ class _ChecklistRow extends StatelessWidget {
                   ? AppColors.success
                   : Colors.white.withValues(alpha: 0.35),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 item.label,

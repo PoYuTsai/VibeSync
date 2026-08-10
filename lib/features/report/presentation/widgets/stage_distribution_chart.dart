@@ -32,12 +32,12 @@ class StageDistributionChart extends StatelessWidget {
   Widget build(BuildContext context) {
     if (distributions.isEmpty) {
       return BrandSurfaceCard(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Center(
           child: Text(
             '尚無數據',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 15,
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
             ),
           ),
@@ -46,7 +46,7 @@ class StageDistributionChart extends StatelessWidget {
     }
 
     return BrandSurfaceCard(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Row(
         children: [
           // Left side: Donut chart with center text
@@ -76,7 +76,7 @@ class StageDistributionChart extends StatelessWidget {
                     Text(
                       '$totalConversations',
                       style: const TextStyle(
-                        fontSize: 22,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
@@ -104,7 +104,7 @@ class StageDistributionChart extends StatelessWidget {
                 const Text(
                   '階段分佈',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
@@ -153,7 +153,7 @@ class StageDistributionChart extends StatelessWidget {
           Text(
             stageName,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 15,
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
             ),
           ),
@@ -161,7 +161,7 @@ class StageDistributionChart extends StatelessWidget {
           Text(
             '$count',
             style: const TextStyle(
-              fontSize: 13,
+              fontSize: 15,
               fontWeight: FontWeight.w600,
               color: Colors.white,
             ),

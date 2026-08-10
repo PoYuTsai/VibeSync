@@ -69,7 +69,7 @@ class CoachActionCard extends StatelessWidget {
             textColor: AppColors.glassTextSecondary,
           ),
           if (data.suggestedLine != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: 12,
@@ -77,7 +77,7 @@ class CoachActionCard extends StatelessWidget {
               ),
               decoration: BoxDecoration(
                 color: AppColors.ctaStart.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,7 +101,7 @@ class CoachActionCard extends StatelessWidget {
             ),
           ],
           if (data.learningLink != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             KnowledgeLibraryLinkRow(
               key: const Key('coach_action_learning_cta'),
               label: '看 3 分鐘教學',

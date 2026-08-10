@@ -122,7 +122,7 @@ class _EbookQuizCardState extends State<EbookQuizCard> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.brandSurface.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
       child: Column(
@@ -165,13 +165,13 @@ class _EbookQuizCardState extends State<EbookQuizCard> {
             ],
           ),
           if (quiz.scenario != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppColors.brandInk.withValues(alpha: 0.42),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Text(
                 quiz.scenario!,
@@ -216,7 +216,7 @@ class _EbookQuizCardState extends State<EbookQuizCard> {
                   foregroundColor: AppColors.onCta,
                   disabledForegroundColor:
                       Colors.white.withValues(alpha: 0.45),
-                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(999),
                   ),
@@ -303,18 +303,18 @@ class _ChoiceRow extends StatelessWidget {
       excludeSemantics: true,
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           onTap: revealed ? null : onTap,
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: isSelected
                   ? AppColors.ctaStart.withValues(alpha: 0.10)
                   : Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: borderColor),
             ),
             child: Column(
@@ -324,7 +324,7 @@ class _ChoiceRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.only(top: 2, right: 10),
+                      padding: const EdgeInsets.only(top: 2, right: 8),
                       child: Icon(leadingIcon, size: 18, color: iconColor),
                     ),
                     Expanded(
@@ -407,10 +407,10 @@ class _ResultPanel extends StatelessWidget {
       children: [
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(color: accent.withValues(alpha: 0.45)),
           ),
           child: Column(
@@ -447,7 +447,7 @@ class _ResultPanel extends StatelessWidget {
           ),
         ),
         if (canRetry) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(

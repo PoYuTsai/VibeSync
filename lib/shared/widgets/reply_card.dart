@@ -56,13 +56,13 @@ class ReplyCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.glassBorder),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(18),
           onTap: isLocked ? onTap : () => _copyToClipboard(context),
           child: Padding(
             padding: const EdgeInsets.all(16),

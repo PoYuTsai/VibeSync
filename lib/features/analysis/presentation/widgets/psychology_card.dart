@@ -70,7 +70,7 @@ class _ShitTestAlert extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.warning.withAlpha(25), // ~0.1 opacity
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(18),
         border:
             Border.all(color: AppColors.warning.withAlpha(77)), // ~0.3 opacity
       ),
@@ -119,7 +119,7 @@ class _QualificationSignal extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.success.withAlpha(25), // ~0.1 opacity
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(18),
         border:
             Border.all(color: AppColors.success.withAlpha(77)), // ~0.3 opacity
       ),

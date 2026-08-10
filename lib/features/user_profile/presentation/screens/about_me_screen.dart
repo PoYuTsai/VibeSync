@@ -317,7 +317,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   ProfileChipSection<StuckPoint>(
                     title: '我現在卡在哪',
                     subtitle: '最多 2 個，教練會盯著這裡幫你推一把。',
@@ -326,7 +326,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                     isSelected: _draftStuckPoints.contains,
                     onTap: _toggleStuckPoint,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   ProfileChipSection<PracticeGoal>(
                     title: '我想達成什麼',
                     subtitle: '最多 3 個，這是教練幫你的主要方向。',
@@ -335,7 +335,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                     isSelected: _draftGoals.contains,
                     onTap: _toggleGoal,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   ProfileChipSection<TopicSeed>(
                     title: '常聊話題',
                     subtitle: '最多 5 個，幫 AI 發想話題。',
@@ -344,7 +344,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                     isSelected: _draftSeeds.contains,
                     onTap: _toggleSeed,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   _ProfileInputSection(
                     title: '想聊但沒在上面的話題',
                     child: TextField(
@@ -359,7 +359,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                       decoration: _fieldDecoration('例如：日劇、週末探店'),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   _ProfileInputSection(
                     title: '想讓 AI 知道的事',
                     subtitle: '有什麼是你不想做的？例如「不要太快邀約」「不要開黃腔」。',
@@ -377,9 +377,9 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                       decoration: _fieldDecoration('寫一句你希望 AI 記住的事'),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   const _PrivacyNote(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                   Container(
                     width: double.infinity,
                     decoration: BoxDecoration(
@@ -401,7 +401,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
                         foregroundColor: AppColors.onCta,
-                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(999),
                         ),
@@ -441,7 +441,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       counterStyle: AppTypography.caption.copyWith(
         color: AppColors.onBackgroundSecondary.withValues(alpha: 0.62),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       enabledBorder: border(Colors.white.withValues(alpha: 0.12)),
       focusedBorder: border(AppColors.ctaStart.withValues(alpha: 0.74), 1.3),
       errorBorder: border(AppColors.error.withValues(alpha: 0.80)),
@@ -491,7 +491,7 @@ class _AboutMeIntroCard extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: const Icon(
                   Icons.tune_rounded,
@@ -499,7 +499,7 @@ class _AboutMeIntroCard extends StatelessWidget {
                   size: 18,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Text(
                 '讓教練真的懂你',
                 style: AppTypography.titleMedium.copyWith(
@@ -578,7 +578,7 @@ class _PrivacyNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.055),
         borderRadius: BorderRadius.circular(18),
@@ -592,7 +592,7 @@ class _PrivacyNote extends StatelessWidget {
             size: 18,
             color: AppColors.ctaStart.withValues(alpha: 0.86),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               '這些設定只用來讓建議更貼近你的語氣，不會顯示給任何對象，你可以隨時修改或清除。',

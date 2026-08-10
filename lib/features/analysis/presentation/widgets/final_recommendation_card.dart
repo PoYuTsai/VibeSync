@@ -29,10 +29,10 @@ class FinalRecommendationCard extends StatelessWidget {
               const Spacer(),
               Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.ctaStart,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Text(
                   recommendation.pick,
@@ -52,7 +52,7 @@ class FinalRecommendationCard extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppColors.brandInk.withValues(alpha: 0.40),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(18),
             ),
             child: Text(
               recommendation.content,
@@ -69,7 +69,7 @@ class FinalRecommendationCard extends StatelessWidget {
             title: '為什麼推薦',
             content: recommendation.reason,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
 
           // Interaction basis
           _InfoRow(

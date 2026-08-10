@@ -19,7 +19,7 @@ SnackBar buildBrandFeedbackSnackBar({
     backgroundColor: Colors.white.withValues(alpha: 0.96),
     elevation: 0,
     margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     duration: duration,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(18),

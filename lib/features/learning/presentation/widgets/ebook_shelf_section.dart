@@ -135,7 +135,7 @@ class _EbookShelfSectionState extends ConsumerState<EbookShelfSection> {
             book: resumeBook,
             progress: progressByBook[resumeBook.id]!,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
         ],
         for (final section in sections) ...[
           _UnitGroupHeader(
@@ -147,13 +147,13 @@ class _EbookShelfSectionState extends ConsumerState<EbookShelfSection> {
             expanded: expandedUnits.contains(section.unit),
             onTap: () => _toggleUnit(section.unit),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           // 展開／收合走結構性條件渲染，不做淡入淡出：App 已因真機文字殘影
           // 全面拆除入場動畫，這裡不重新引入。
           if (expandedUnits.contains(section.unit))
             for (final book in section.books)
               Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.only(bottom: 8),
                 child: EbookShelfCard(
                   book: book,
                   decision: ebookAccessFor(book, access),
@@ -179,7 +179,7 @@ class _ResumeCard extends StatelessWidget {
         lastChapterId == null ? null : book.findChapter(lastChapterId);
     return BrandSurfaceCard(
       key: ebookResumeCardKey,
-      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
       borderRadius: 20,
       // 與書卡相同的入口：目錄頁自己處理權限閘門與試讀。
       onTap: () => context.push(ebookDetailRoute(book.id)),
@@ -258,7 +258,7 @@ class _UnitGroupHeader extends StatelessWidget {
         MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.4);
     return BrandSurfaceCard(
       key: ebookUnitGroupKey(unit),
-      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
       borderRadius: 20,
       onTap: onTap,
       child: Row(
@@ -339,7 +339,7 @@ class _ShelfHero extends StatelessWidget {
             children: [
               const BrandIconBadge(
                   icon: Icons.menu_book_outlined, size: 26, iconSize: 14),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -368,7 +368,7 @@ class _ShelfHero extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             '從配對到把她約出來。先診斷你卡在哪一階，只練那一階'
             '——這是報酬率最高的事。',
@@ -499,7 +499,7 @@ class _ShelfPlaceholder extends StatelessWidget {
   Widget build(BuildContext context) {
     return BrandSurfaceCard(
       elevated: false,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: Row(
         children: [
           const SizedBox(
@@ -535,7 +535,7 @@ class _ShelfError extends StatelessWidget {
         children: [
           Icon(Icons.error_outline,
               size: 18, color: AppColors.error.withValues(alpha: 0.9)),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               '電子書內容暫時無法載入。下面的短篇文章仍然可以閱讀。',

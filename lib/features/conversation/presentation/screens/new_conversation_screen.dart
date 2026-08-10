@@ -319,7 +319,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   /// BrandKit fields/segments sit on the same surface system as 關於我.
   Widget _frostTray(List<Widget> children) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.brandSurface.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(18),
@@ -566,12 +566,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     // of the 間距不一致 problem.
     return [
       _settingLabel('對話內容'),
-      const SizedBox(height: 10),
+      const SizedBox(height: 8),
       if (_messages.isNotEmpty) ...[
         Container(
           decoration: BoxDecoration(
             color: AppColors.brandInk.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
           ),
           clipBehavior: Clip.antiAlias,
@@ -613,7 +613,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
       ],
       Row(
         children: [
@@ -633,7 +633,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           _buildAddButton(_addHerMessage),
         ],
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 8),
       Row(
         children: [
           const BubbleAvatar(
@@ -652,7 +652,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           _buildAddButton(_addMyMessage),
         ],
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 8),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Row(
@@ -694,7 +694,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 size: 30,
                 iconSize: 16,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -721,7 +721,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             ],
           ),
           if (reason != null && reason.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               'AI 選擇：${_openerSeedLabel ?? '推薦'}，$reason',
               style: AppTypography.caption.copyWith(
@@ -730,7 +730,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
@@ -814,7 +814,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                     _frostTray(_buildAnalysisSettingsSection()),
                   ],
                   if (_hasIncomingMessage) ...[
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                     BrandPrimaryButton(
                       label: '建立對話',
                       onPressed: _isLoading ? null : _createConversation,

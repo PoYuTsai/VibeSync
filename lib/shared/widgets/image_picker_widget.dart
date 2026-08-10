@@ -285,7 +285,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                       Text(
                         '壓縮中',
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 12,
                           color: helperTextColor,
                         ),
                       ),
@@ -313,7 +313,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
             color: widget.surfaceColor,
             borderColor: widget.surfaceBorderColor,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(18),
               child: Image.memory(
                 imageBytes,
                 fit: BoxFit.cover,
@@ -349,13 +349,13 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: Colors.black54,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Text(
                 '${index + 1}',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 10,
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -389,7 +389,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
             Text(
               widget.allowMultiSelect ? '多選' : '選圖',
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 12,
                 color: widget.accentColor ?? AppColors.unselectedText,
               ),
             ),

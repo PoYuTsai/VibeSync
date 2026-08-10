@@ -95,7 +95,7 @@ class _ChatQuizMapBody extends ConsumerWidget {
           const SizedBox(height: 16),
           for (final group in catalog.groups) ...[
             _GroupHeader(group: group),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             for (final level in _visibleLevels(group, subscription)) ...[
               Builder(
                 builder: (context) {
@@ -104,7 +104,7 @@ class _ChatQuizMapBody extends ConsumerWidget {
                       status == ChatQuizLevelStatus.locked && !upsellShown;
                   if (showUpsell) upsellShown = true;
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.only(bottom: 8),
                     child: _LevelRow(
                       level: level,
                       status: status,
@@ -279,7 +279,7 @@ class _LevelRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _StatusBadge(status: status, passed: result?.passed ?? false),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -304,7 +304,7 @@ class _LevelRow extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 10,
             runSpacing: 4,

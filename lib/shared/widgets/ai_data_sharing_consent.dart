@@ -446,7 +446,7 @@ class _AiDataSharingConsentDialogState
             },
             title: Text(
               '我已閱讀並同意服務條款與隱私權政策，並同意 VibeSync 將上述資料傳送至 Supabase Edge Functions 與 ${widget.destinationLabel} 以產生本次 AI 結果。',
-              style: const TextStyle(fontSize: 12.5, height: 1.35),
+              style: const TextStyle(fontSize: 12, height: 1.35),
             ),
           ),
           const Text(
@@ -483,11 +483,11 @@ class _ConsentBlock extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       decoration: BoxDecoration(
         color: colorScheme.onSurface.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -501,7 +501,7 @@ class _ConsentBlock extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(body, style: const TextStyle(fontSize: 13.5, height: 1.4)),
+          Text(body, style: const TextStyle(fontSize: 15, height: 1.4)),
         ],
       ),
     );

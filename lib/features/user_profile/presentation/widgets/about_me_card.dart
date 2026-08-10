@@ -86,7 +86,7 @@ class _EmptyState extends StatelessWidget {
           Row(
             children: [
               _ProfileIcon(icon: Icons.tune_rounded),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Text(
                 '關於我',
                 style: AppTypography.titleMedium.copyWith(
@@ -98,7 +98,7 @@ class _EmptyState extends StatelessWidget {
               const _ProfilePill(label: '影響 AI 建議'),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Text(
             '讓教練真的懂你',
             style: AppTypography.titleLarge.copyWith(
@@ -136,10 +136,10 @@ class _EmptyState extends StatelessWidget {
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 18,
-                    vertical: 10,
+                    vertical: 8,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(22),
                   ),
                 ),
                 child: const Text('開始設定'),
@@ -195,7 +195,7 @@ class _FilledState extends StatelessWidget {
           Row(
             children: [
               _ProfileIcon(icon: Icons.person_outline_rounded),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Text(
                 '關於我',
                 style: AppTypography.titleMedium.copyWith(
@@ -226,10 +226,10 @@ class _FilledState extends StatelessWidget {
           const SizedBox(height: 6),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: AppColors.ctaStart.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: AppColors.ctaStart.withValues(alpha: 0.16),
               ),
@@ -300,7 +300,7 @@ class _ProfileIcon extends StatelessWidget {
       height: 34,
       decoration: BoxDecoration(
         color: AppColors.ctaStart.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(18),
       ),
       alignment: Alignment.center,
       child: Icon(icon, size: 18, color: AppColors.ctaStart),
@@ -316,7 +316,7 @@ class _ProfilePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.glassBorder.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(999),
@@ -326,7 +326,7 @@ class _ProfilePill extends StatelessWidget {
         style: AppTypography.bodySmall.copyWith(
           color: AppColors.glassTextSecondary,
           fontWeight: FontWeight.w600,
-          fontSize: 11,
+          fontSize: 12,
         ),
       ),
     );

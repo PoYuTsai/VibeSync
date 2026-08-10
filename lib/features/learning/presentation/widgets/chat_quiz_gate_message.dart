@@ -74,7 +74,7 @@ class ChatQuizGateLoading extends StatelessWidget {
             height: 26,
             child: CircularProgressIndicator(strokeWidth: 2.4),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Text(
             label,
             textAlign: TextAlign.center,
@@ -140,7 +140,7 @@ class ChatQuizGateMessage extends StatelessWidget {
               const SizedBox(height: 16),
               BrandPrimaryButton(label: primaryLabel, onPressed: onPrimary),
               if (secondaryLabel != null && onSecondary != null) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 BrandSecondaryButton(
                   label: secondaryLabel!,
                   onPressed: onSecondary!,

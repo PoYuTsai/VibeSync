@@ -77,7 +77,7 @@ class PracticeTemperatureChart extends StatelessWidget {
                     ? '最近 7 場'
                     : '${summary.sampleCount} 場練習',
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 12,
                   color: AppColors.primaryLight.withValues(alpha: 0.88),
                   fontWeight: FontWeight.w700,
                 ),
@@ -123,7 +123,7 @@ class PracticeTemperatureChart extends StatelessWidget {
                 key: const ValueKey('practice-growth-empty-state'),
                 decoration: BoxDecoration(
                   color: AppColors.primaryLight.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(
                   Icons.fitness_center_rounded,
@@ -137,7 +137,7 @@ class PracticeTemperatureChart extends StatelessWidget {
               '多完成幾場新手模式練習，這裡會畫出你的升溫能力成長曲線',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 15,
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               ),
             ),
@@ -170,21 +170,21 @@ class PracticeTemperatureChart extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 13),
+            const SizedBox(height: 12),
             Text(
               '起點 ${point.score} · ${DateFormat('M/dd').format(point.date)}',
               style: const TextStyle(
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 4),
             Text(
               '再完成 1 場新手模式練習，就能形成成長曲線',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 12,
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               ),
             ),
@@ -221,7 +221,7 @@ class PracticeTemperatureChart extends StatelessWidget {
       height: 160,
       child: TrendFlowOverlay(
         points: normalizedPoints,
-        padding: const EdgeInsets.fromLTRB(34, 5, 8, 33),
+        padding: const EdgeInsets.fromLTRB(34, 4, 8, 33),
         color: const Color(0xFFD7CEFF),
         glowColor: AppColors.primaryLight,
         flowDuration: const Duration(milliseconds: 1150),
@@ -263,7 +263,7 @@ class PracticeTemperatureChart extends StatelessWidget {
                     return Text(
                       value.toInt().toString(),
                       style: TextStyle(
-                        fontSize: 10,
+                        fontSize: 12,
                         color: AppColors.onBackgroundSecondary
                             .withValues(alpha: 0.70),
                       ),
@@ -287,7 +287,7 @@ class PracticeTemperatureChart extends StatelessWidget {
                       child: Text(
                         dateFormat.format(date),
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 12,
                           color: AppColors.onBackgroundSecondary
                               .withValues(alpha: 0.70),
                         ),
@@ -380,7 +380,7 @@ class _PracticeDelta extends StatelessWidget {
     return Text(
       '較上次 $sign$rounded',
       style: TextStyle(
-        fontSize: 13,
+        fontSize: 12,
         fontWeight: FontWeight.w700,
         color: color,
       ),

@@ -615,7 +615,7 @@ class _PracticeCollectionScreenState
                   ),
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
                       child: Row(
                         children: [
                           _RarityFilterChip(
@@ -733,7 +733,7 @@ class _OnboardingGuideOverlay extends StatelessWidget {
               ),
             ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 16, 20),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -749,7 +749,7 @@ class _OnboardingGuideOverlay extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(18),
                       ),
                       child: Text(
                         guideMessage,
@@ -761,7 +761,7 @@ class _OnboardingGuideOverlay extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Semantics(
                     image: true,
                     label: 'VibeSync Coach Sydney，欣欣',
@@ -859,7 +859,7 @@ class _CollectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final progress = total == 0 ? 0.0 : (unlockedCount / total).clamp(0.0, 1.0);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -888,7 +888,7 @@ class _CollectionHeader extends StatelessWidget {
                     'Collection',
                     style: AppTypography.headlineLarge.copyWith(
                       color: Colors.white, // ShaderMask srcIn 取代此色
-                      fontSize: 40,
+                      fontSize: 38,
                       fontWeight: FontWeight.w900,
                       height: 1.05,
                     ),
@@ -913,7 +913,7 @@ class _CollectionHeader extends StatelessWidget {
               letterSpacing: 6,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
@@ -923,7 +923,7 @@ class _CollectionHeader extends StatelessWidget {
                 key: const ValueKey('collection-completion-count'),
                 style: AppTypography.headlineLarge.copyWith(
                   color: AppColors.brandFlame,
-                  fontSize: 40,
+                  fontSize: 38,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -944,7 +944,7 @@ class _CollectionHeader extends StatelessWidget {
               letterSpacing: 2,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: Container(
@@ -966,7 +966,7 @@ class _CollectionHeader extends StatelessWidget {
             ),
           ),
           if (freeQuota != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Row(
               children: [
                 const Icon(
@@ -1018,7 +1018,7 @@ class _CollectionDrawButton extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: enabled ? onPressed : null,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xFFFFC24D), AppColors.brandFlame],
@@ -1087,7 +1087,7 @@ class _RarityFilterChip extends StatelessWidget {
       key: chipKey,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: selected
               ? AppColors.brandFlame.withValues(alpha: 0.18)
@@ -1140,7 +1140,7 @@ class _CollectionCard extends ConsumerWidget {
       children: [
         Expanded(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(18),
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -1158,7 +1158,7 @@ class _CollectionCard extends ConsumerWidget {
                       key: ValueKey('collection-mystery-${profile.profileId}'),
                       style: AppTypography.headlineLarge.copyWith(
                         color: Colors.white.withValues(alpha: 0.55),
-                        fontSize: 44,
+                        fontSize: 38,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -1190,7 +1190,7 @@ class _CollectionCard extends ConsumerWidget {
         if (unlocked)
           PracticeRarityStars(rarity: rarity)
         else
-          const SizedBox(height: 14), // 鎖卡無星等：佔位維持排版高度
+          const SizedBox(height: 16), // 鎖卡無星等：佔位維持排版高度
       ],
     );
 
@@ -1216,7 +1216,7 @@ class _CollectionCard extends ConsumerWidget {
           return Stack(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: _decoration(color, 0),
                 child: child,
               ),
@@ -1245,14 +1245,14 @@ class _CollectionCard extends ConsumerWidget {
         animation: pulse,
         child: content,
         builder: (context, child) => Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(8),
           decoration: _decoration(color, pulse.value),
           child: child,
         ),
       );
     } else {
       body = Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(8),
         decoration: _decoration(color, 0),
         child: content,
       );
@@ -1384,7 +1384,7 @@ class _CollectionCardPhoto extends StatelessWidget {
         style: AppTypography.bodyMedium.copyWith(
           color: Colors.white,
           fontWeight: FontWeight.w700,
-          fontSize: 32,
+          fontSize: 30,
         ),
       ),
     );
@@ -1441,16 +1441,16 @@ class _SrTicketCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = locked ? AppColors.onBackgroundSecondary : _gold;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: GestureDetector(
         key: cardKey,
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: accent.withValues(alpha: locked ? 0.06 : 0.10),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(color: accent.withValues(alpha: 0.55)),
             boxShadow: locked
                 ? const []
@@ -1468,7 +1468,7 @@ class _SrTicketCard extends StatelessWidget {
                 size: 20,
                 color: accent,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1493,7 +1493,7 @@ class _SrTicketCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

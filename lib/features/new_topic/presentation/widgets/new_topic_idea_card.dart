@@ -78,7 +78,7 @@ class NewTopicIdeaCard extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppColors.coachBackgroundMid.withValues(alpha: 0.72),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: AppColors.coachAccent.withValues(alpha: 0.18),
               ),
@@ -117,7 +117,7 @@ class NewTopicIdeaCard extends StatelessWidget {
           const SizedBox(height: 12),
 
           _section('為什麼現在有效', idea.whyItWorks),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           _section('接下來怎麼延續', idea.nextMove),
         ],
       ),

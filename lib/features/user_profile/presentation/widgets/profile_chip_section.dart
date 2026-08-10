@@ -73,7 +73,7 @@ class ProfileChipSection<T> extends StatelessWidget {
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Text(
                 title,
                 style: AppTypography.titleSmall.copyWith(
@@ -148,7 +148,7 @@ class ProfileChipSection<T> extends StatelessWidget {
               : Colors.white.withValues(alpha: 0.16),
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         visualDensity: VisualDensity.compact,
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       );
@@ -167,7 +167,7 @@ class StyleRoleBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [AppColors.ctaStart, AppColors.ctaEnd],
@@ -185,7 +185,7 @@ class StyleRoleBadge extends StatelessWidget {
         text,
         style: AppTypography.bodySmall.copyWith(
           color: Colors.white,
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.w700,
           height: 1.2,
         ),

@@ -70,9 +70,9 @@ class _EbookFlipCardState extends State<EbookFlipCard>
       label: semanticsLabel,
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         child: InkWell(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
           onTap: _toggle,
           child: AnimatedBuilder(
             animation: _controller,
@@ -117,7 +117,7 @@ class _EbookFlipCardState extends State<EbookFlipCard>
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: accent.withValues(alpha: 0.45)),
       ),
       child: Column(
@@ -156,7 +156,7 @@ class _EbookFlipCardState extends State<EbookFlipCard>
             ),
           ),
           if (points.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             for (final point in points)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),

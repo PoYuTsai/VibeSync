@@ -230,7 +230,7 @@ class _SplashScreenState extends State<SplashScreen>
                         child: Text(
                           '你專屬的 AI 約會教練',
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: 15,
                             fontWeight: FontWeight.w500,
                             color: Colors.white.withValues(alpha: 0.35),
                             letterSpacing: _subtitleLetterSpacing.value,

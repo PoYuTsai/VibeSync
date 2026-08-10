@@ -19,7 +19,7 @@ class PracticeGameCoachIntro extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.brandSurface2.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: AppColors.primaryLight.withValues(alpha: 0.28),
         ),

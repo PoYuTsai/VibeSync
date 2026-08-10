@@ -288,7 +288,7 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
     return FractionallySizedBox(
       heightFactor: 0.86,
       child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BrandPageBackground(
           child: SafeArea(
             top: false,
@@ -323,7 +323,7 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
                       color: AppColors.onBackgroundSecondary,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   Expanded(
                     child: ListView(
                       key: const ValueKey('reply-refine-body'),
@@ -334,7 +334,7 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
                           text: _selected.text,
                         ),
                         if (_versions.length > 1) ...[
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           Text(
                             '版本',
                             style: AppTypography.bodySmall.copyWith(
@@ -367,7 +367,7 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
                               ),
                           ],
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 16),
                         TextField(
                           key: const ValueKey('reply-refine-instruction'),
                           controller: _instructionController,
@@ -388,13 +388,13 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
                             fillColor:
                                 AppColors.brandInk.withValues(alpha: 0.4),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(18),
                               borderSide: BorderSide(
                                 color: Colors.white.withValues(alpha: 0.12),
                               ),
                             ),
                             enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(18),
                               borderSide: BorderSide(
                                 color: Colors.white.withValues(alpha: 0.12),
                               ),
@@ -466,10 +466,10 @@ class _CurrentVersionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.brandInk.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Column(
@@ -514,14 +514,14 @@ class _VersionTile extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 6),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: selected
                 ? AppColors.ctaStart.withValues(alpha: 0.12)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: selected
                   ? AppColors.ctaStart.withValues(alpha: 0.5)
@@ -538,7 +538,7 @@ class _VersionTile extends StatelessWidget {
                       : AppColors.onBackgroundSecondary,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   version.text,

@@ -182,7 +182,7 @@ class PartnerListScreen extends ConsumerWidget {
                   .watch(conversationsByPartnerProvider(p.id))
                   .length;
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
+                padding: const EdgeInsets.symmetric(vertical: 4),
                 child: PartnerListCard(
                   partner: p,
                   aggregate: agg,

@@ -477,7 +477,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.brandInk.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
       child: Column(
@@ -960,7 +960,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   filled: true,
                   fillColor: AppColors.brandInk.withValues(alpha: 0.38),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(18),
                     borderSide: BorderSide.none,
                   ),
                 ),

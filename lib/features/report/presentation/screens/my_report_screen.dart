@@ -107,7 +107,7 @@ class MyReportScreen extends ConsumerWidget {
             ),
           ),
           if (hasConversationReport) ...[
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             ReportOverviewCard(
               averageScore: report.averageScore,
               scoreDelta: report.scoreDelta,
@@ -116,7 +116,7 @@ class MyReportScreen extends ConsumerWidget {
             ),
           ],
           if (hasConversationReport || hasInteractionHistory) ...[
-            const SizedBox(height: 28),
+            const SizedBox(height: 32),
             const _ReportStoryHeader(
               number: '01',
               title: '看一位對象的變化',
@@ -141,7 +141,7 @@ class MyReportScreen extends ConsumerWidget {
               emptyMessage: '再多分析幾次，就能比較對方每次互動的投入度',
             ),
           ],
-          const SizedBox(height: 28),
+          const SizedBox(height: 32),
           _ReportStoryHeader(
             number:
                 hasConversationReport || hasInteractionHistory ? '02' : '01',
@@ -151,7 +151,7 @@ class MyReportScreen extends ConsumerWidget {
           const SizedBox(height: 12),
           PracticeTemperatureChart(points: practicePoints),
           if (hasConversationReport) ...[
-            const SizedBox(height: 28),
+            const SizedBox(height: 32),
             const _ReportStoryHeader(
               number: '03',
               title: '回到整體版圖',
@@ -201,7 +201,7 @@ class MyReportScreen extends ConsumerWidget {
       duration: const Duration(milliseconds: 8400),
       child: BrandSurfaceCard(
         borderColor: Colors.transparent,
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -294,7 +294,7 @@ class _ReportStoryHeader extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: AppColors.ctaStart.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(11),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: AppColors.ctaStart.withValues(alpha: 0.24),
             ),
@@ -307,7 +307,7 @@ class _ReportStoryHeader extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 11),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

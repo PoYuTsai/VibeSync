@@ -169,7 +169,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.warning.withAlpha(25),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.warning.withAlpha(77)),
       ),
       child: Row(

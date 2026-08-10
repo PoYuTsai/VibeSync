@@ -196,7 +196,7 @@ class _ChatQuizPlayerBodyState extends ConsumerState<ChatQuizPlayerBody> {
             current: _index + 1,
             total: level.questionCount,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Expanded(
             child: SingleChildScrollView(
               child: ChatQuizQuestionCard(

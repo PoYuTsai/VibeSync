@@ -90,7 +90,7 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
         // 電子書之前的理由是：電子書是讀的，測驗是練的，練的東西放前面。
         const SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(16, 28, 16, 0),
+            padding: EdgeInsets.fromLTRB(16, 32, 16, 0),
             child: ChatQuizSection(),
           ),
         ),
@@ -98,7 +98,7 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
         // 互動電子書書架。
         const SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(16, 26, 16, 0),
+            padding: EdgeInsets.fromLTRB(16, 24, 16, 0),
             child: EbookShelfSection(),
           ),
         ),
@@ -107,7 +107,7 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
         // 額度提示只放在這裡：電子書不消耗文章額度，放在書架上方會誤導。
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 26, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -163,7 +163,7 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
         SliverToBoxAdapter(
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Row(
               children: [
                 _CategoryFilterChip(
@@ -210,7 +210,7 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
                   context.push('/article/${article.id}');
                 },
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(18),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -262,14 +262,14 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
                               horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(18),
                           ),
                           child: Text(
                             article.category,
                             style: AppTypography.caption.copyWith(
                               color: Colors.white,
                               fontWeight: FontWeight.w600,
-                              fontSize: 10,
+                              fontSize: 12,
                             ),
                           ),
                         ),
@@ -281,12 +281,12 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
                         right: 0,
                         bottom: 0,
                         child: Container(
-                          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.5),
                             borderRadius: const BorderRadius.only(
-                              bottomLeft: Radius.circular(12),
-                              bottomRight: Radius.circular(12),
+                              bottomLeft: Radius.circular(18),
+                              bottomRight: Radius.circular(18),
                             ),
                           ),
                           child: Column(
@@ -352,7 +352,7 @@ class _CategoryFilterChip extends StatelessWidget {
       key: chipKey,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: selected
               ? AppColors.ctaStart.withValues(alpha: 0.18)

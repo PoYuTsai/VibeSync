@@ -67,20 +67,20 @@ class ReportSubjectSelector extends StatelessWidget {
             label: '查看 $label 的投入趨勢',
             child: Material(
               color: Colors.transparent,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(22),
               child: InkWell(
                 onTap: () => onSelected(subject.subjectId),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(22),
                 child: AnimatedContainer(
                   duration: animationDuration,
                   curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: selected
                         ? AppColors.ctaStart.withValues(alpha: 0.16)
                         : Colors.white.withValues(alpha: 0.055),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(22),
                     border: Border.all(
                       color: selected
                           ? AppColors.ctaStart.withValues(alpha: 0.62)
@@ -102,11 +102,11 @@ class ReportSubjectSelector extends StatelessWidget {
                           shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 7),
+                      const SizedBox(width: 8),
                       Text(
                         label,
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 15,
                           fontWeight:
                               selected ? FontWeight.w700 : FontWeight.w600,
                           color: selected

@@ -52,7 +52,7 @@ class PracticeDebriefCard extends StatelessWidget {
                 size: 34,
                 iconSize: 18,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Text(
                 '教練拆解',
                 style: AppTypography.titleMedium.copyWith(
@@ -64,7 +64,7 @@ class PracticeDebriefCard extends StatelessWidget {
               _VibePill(vibe: vibe),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Text(
             summary,
             style: AppTypography.bodyMedium.copyWith(
@@ -82,7 +82,7 @@ class PracticeDebriefCard extends StatelessWidget {
             ),
           ],
           if (watchouts.isNotEmpty) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             _Section(
               icon: Icons.adjust,
               color: AppColors.warning,
@@ -91,7 +91,7 @@ class PracticeDebriefCard extends StatelessWidget {
             ),
           ],
           if (_hasInviteInsight) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             _InviteInsight(
               dateChance: dateChance,
               dateChanceReason: dateChanceReason,
@@ -99,7 +99,7 @@ class PracticeDebriefCard extends StatelessWidget {
             ),
           ],
           if (_hasGameBreakdown) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             _GameBreakdownInsight(
               phaseReached: gameBreakdownPhaseReached,
               missedVariable: gameBreakdownMissedVariable,
@@ -111,10 +111,10 @@ class PracticeDebriefCard extends StatelessWidget {
           const SizedBox(height: 16),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppColors.ctaStart.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: AppColors.ctaStart.withValues(alpha: 0.30),
               ),
@@ -189,10 +189,10 @@ class _GameBreakdownInsight extends StatelessWidget {
     ];
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.ctaEnd.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: AppColors.ctaEnd.withValues(alpha: 0.25),
         ),
@@ -266,10 +266,10 @@ class _InviteInsight extends StatelessWidget {
     final nextMove = nextInviteMove?.trim() ?? '';
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.brandSurface2.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: AppColors.primaryLight.withValues(alpha: 0.28),
         ),
@@ -336,10 +336,10 @@ class _VibePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.brandSurface2.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: AppColors.onBackgroundSecondary.withValues(alpha: 0.25),
         ),
@@ -389,7 +389,7 @@ class _Section extends StatelessWidget {
         const SizedBox(height: 6),
         ...items.map(
           (it) => Padding(
-            padding: const EdgeInsets.only(bottom: 4, left: 22),
+            padding: const EdgeInsets.only(bottom: 4, left: 24),
             child: Text(
               '· $it',
               style: AppTypography.bodySmall.copyWith(

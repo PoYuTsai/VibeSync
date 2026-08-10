@@ -190,7 +190,7 @@ class _EbookDetailBody extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     EbookCoverBadge(book: book),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,7 +217,7 @@ class _EbookDetailBody extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 Text(
                   book.goal,
                   style: AppTypography.bodyMedium.copyWith(
@@ -225,7 +225,7 @@ class _EbookDetailBody extends ConsumerWidget {
                     height: 1.55,
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -249,7 +249,7 @@ class _EbookDetailBody extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           if (isPreview)
             _PreviewNoticeCard(
               lockedChapterCount:
@@ -262,7 +262,7 @@ class _EbookDetailBody extends ConsumerWidget {
               completed: completed,
               total: book.chapterCount,
             ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           if (isLocked)
             BrandPrimaryButton(
               label: '訂閱後解鎖',
@@ -280,7 +280,7 @@ class _EbookDetailBody extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             BrandSecondaryButton(
               label: '看訂閱方案',
               onPressed: () => context.push('/paywall'),
@@ -301,7 +301,7 @@ class _EbookDetailBody extends ConsumerWidget {
           const SizedBox(height: 12),
           for (var index = 0; index < book.chapters.length; index++)
             Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.only(bottom: 8),
               child: _ChapterRow(
                 book: book,
                 chapter: book.chapters[index],
@@ -329,7 +329,7 @@ class _MetaPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(999),
@@ -341,7 +341,7 @@ class _MetaPill extends StatelessWidget {
           Icon(icon,
               size: 13,
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.85)),
-          const SizedBox(width: 5),
+          const SizedBox(width: 4),
           Text(
             label,
             style: AppTypography.caption.copyWith(
@@ -393,7 +393,7 @@ class _CompletionCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
@@ -533,7 +533,7 @@ class _ChapterRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return BrandSurfaceCard(
       elevated: false,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       borderRadius: 18,
       borderColor: isResumeTarget
           ? AppColors.ctaStart.withValues(alpha: 0.45)

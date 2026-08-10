@@ -37,7 +37,7 @@ class GameStageIndicator extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.glassBorder),
       ),
       child: Column(
@@ -55,10 +55,10 @@ class GameStageIndicator extends StatelessWidget {
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.ctaStart.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Text(
                   '目前・${_shortLabel(currentStage)}',
@@ -70,7 +70,7 @@ class GameStageIndicator extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           // Progress circles with connecting lines
           _buildStageProgress(),
           const SizedBox(height: 8),
@@ -82,7 +82,7 @@ class GameStageIndicator extends StatelessWidget {
                   _shortLabel(stage),
                   textAlign: TextAlign.center,
                   style: AppTypography.caption.copyWith(
-                    fontSize: 10,
+                    fontSize: 12,
                     color: stage.index <= currentStage.index
                         ? AppColors.glassTextPrimary
                         : AppColors.glassTextHint.withValues(alpha: 0.5),
@@ -102,7 +102,7 @@ class GameStageIndicator extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppColors.ctaStart.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,

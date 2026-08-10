@@ -131,7 +131,7 @@ class CoachingOutcomeCaptureCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.50),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: AppColors.primary.withValues(alpha: 0.14),
         ),
@@ -172,7 +172,7 @@ class CoachingOutcomeCaptureCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -205,7 +205,7 @@ class CoachingOutcomeCaptureCard extends StatelessWidget {
             }).toList(),
           ),
           if (_showStage2) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               '她的反應？',
               style: AppTypography.bodyMedium.copyWith(

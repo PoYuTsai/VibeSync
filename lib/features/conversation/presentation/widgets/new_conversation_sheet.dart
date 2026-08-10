@@ -43,7 +43,7 @@ class NewConversationSheet extends ConsumerWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       child: Material(
@@ -64,13 +64,13 @@ class NewConversationSheet extends ConsumerWidget {
                 color: AppColors.unselectedText,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             ListTile(
               leading: Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(Icons.edit_note, color: AppColors.primary),
               ),
@@ -91,10 +91,10 @@ class NewConversationSheet extends ConsumerWidget {
             const SizedBox(height: 8),
             ListTile(
               leading: Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppColors.ctaStart.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(Icons.photo_camera, color: AppColors.ctaStart),
               ),
@@ -133,10 +133,10 @@ class NewConversationSheet extends ConsumerWidget {
             const SizedBox(height: 8),
             ListTile(
               leading: Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppColors.bokehYellow.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(Icons.auto_awesome, color: AppColors.bokehYellow),
               ),

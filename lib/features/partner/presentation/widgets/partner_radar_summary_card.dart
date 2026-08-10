@@ -90,7 +90,7 @@ class PartnerRadarSummaryCard extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.08),
                 ),
                 ticksTextStyle: AppTypography.bodySmall.copyWith(
-                  fontSize: 8,
+                  fontSize: 12,
                   color: AppColors.onBackgroundSecondary,
                 ),
               ),
@@ -128,12 +128,12 @@ class _GlassShell extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.10),
         ),
       ),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       child: child,
     );
   }

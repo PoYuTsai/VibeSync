@@ -17,7 +17,7 @@ class EnthusiasmGauge extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.glassBorder),
       ),
       child: Column(

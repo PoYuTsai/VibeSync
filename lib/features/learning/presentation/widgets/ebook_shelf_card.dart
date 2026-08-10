@@ -47,7 +47,7 @@ class EbookShelfCard extends ConsumerWidget {
     final ratio = book.chapterCount <= 0 ? 0.0 : completed / book.chapterCount;
 
     return BrandSurfaceCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       borderRadius: 20,
       onTap: () {
         // 鎖著的書也進目錄頁（2026-07-26 Eric 拍板開放第一章試讀）：目錄頁
@@ -207,7 +207,7 @@ class _AccessPill extends StatelessWidget {
     required TextScaler scaler,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),

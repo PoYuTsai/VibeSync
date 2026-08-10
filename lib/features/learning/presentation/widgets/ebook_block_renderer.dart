@@ -168,22 +168,22 @@ class _CrossRefButton extends StatelessWidget {
       excludeSemantics: true,
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           onTap: onTap,
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: AppColors.info.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: AppColors.info.withValues(alpha: 0.42)),
             ),
             child: Row(
               children: [
                 Icon(Icons.menu_book_outlined, size: 18, color: AppColors.info),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,7 +249,7 @@ class _BulletList extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.only(right: 10, top: 2),
+                  padding: const EdgeInsets.only(right: 8, top: 2),
                   child: block.ordered
                       ? Text(
                           '${index + 1}.',
@@ -259,7 +259,7 @@ class _BulletList extends StatelessWidget {
                           ),
                         )
                       : Padding(
-                          padding: const EdgeInsets.only(top: 7),
+                          padding: const EdgeInsets.only(top: 8),
                           child: Container(
                             width: 6,
                             height: 6,
@@ -414,7 +414,7 @@ class _Callout extends StatelessWidget {
       return Container(
         width: double.infinity,
         // 只有左邊有線。上下留白比整框版小：沒有外框要撐開，靠留白分段就夠。
-        padding: const EdgeInsets.fromLTRB(14, 2, 0, 2),
+        padding: const EdgeInsets.fromLTRB(16, 2, 0, 2),
         decoration: BoxDecoration(
           border: Border(
             left: BorderSide(color: accent.withValues(alpha: 0.85), width: 3),
@@ -483,13 +483,13 @@ class _Comparison extends StatelessWidget {
         for (final item in block.items)
           Padding(
             padding: EdgeInsets.only(
-              bottom: layout == EbookReadingLayout.spine ? 14 : 10,
+              bottom: layout == EbookReadingLayout.spine ? 16 : 8,
             ),
             child: Container(
               width: double.infinity,
               padding: layout == EbookReadingLayout.spine
-                  ? const EdgeInsets.fromLTRB(14, 0, 0, 0)
-                  : const EdgeInsets.all(14),
+                  ? const EdgeInsets.fromLTRB(16, 0, 0, 0)
+                  : const EdgeInsets.all(16),
               decoration: layout == EbookReadingLayout.spine
                   ? BoxDecoration(
                       border: Border(
@@ -502,7 +502,7 @@ class _Comparison extends StatelessWidget {
                     )
                   : BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.04),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(18),
                       border: Border.all(
                         color: _accentFor(item.stance).withValues(alpha: 0.40),
                       ),

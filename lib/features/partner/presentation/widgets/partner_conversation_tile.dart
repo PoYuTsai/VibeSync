@@ -70,7 +70,7 @@ class PartnerConversationTile extends StatelessWidget {
           child: Stack(
             children: [
               ListTile(
-                contentPadding: const EdgeInsets.fromLTRB(20, 0, 8, 0),
+                contentPadding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
                 onTap: onTap,
                 title: Text(
                   '$dateLabel 互動紀錄',

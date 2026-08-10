@@ -138,7 +138,7 @@ class _MainShellState extends State<MainShell> {
           ),
         ],
       ),
-      padding: const EdgeInsets.only(top: 10, bottom: 8),
+      padding: const EdgeInsets.only(top: 8, bottom: 8),
       child: SafeArea(
         top: false,
         child: Row(
@@ -171,14 +171,14 @@ class _MainShellState extends State<MainShell> {
         behavior: HitTestBehavior.opaque,
         onTap: () => _selectTab(index),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
             constraints: const BoxConstraints(minWidth: 54, minHeight: 44),
             padding: EdgeInsets.symmetric(
-              horizontal: isSelected ? 20 : 14,
-              vertical: 11,
+              horizontal: isSelected ? 16 : 16,
+              vertical: 12,
             ),
             decoration: isSelected
                 ? BoxDecoration(

@@ -135,17 +135,17 @@ class _MindMapDetailPanel extends StatelessWidget {
             _DetailRow(label: '關係信號', value: map.relationshipSignal!),
           ],
           if (topicsLine != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             _DetailRow(label: '可接話題', value: topicsLine),
           ],
           if (map.fullNextStep != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             _DetailRow(
               label: '下一步行動',
               value: map.fullNextStep!,
               emphasize: true,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
@@ -153,12 +153,12 @@ class _MindMapDetailPanel extends StatelessWidget {
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.ctaStart,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
+                    horizontal: 16,
                     vertical: 8,
                   ),
                   backgroundColor: AppColors.ctaStart.withValues(alpha: 0.12),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(18),
                   ),
                 ),
                 icon: const Icon(Icons.forum_outlined, size: 16),
@@ -243,7 +243,7 @@ class _EmptyState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: BrandSurfaceCard(
-          padding: const EdgeInsets.all(22),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -252,7 +252,7 @@ class _EmptyState extends StatelessWidget {
                 size: 48,
                 iconSize: 24,
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               Text(
                 '完成一次對話分析，解鎖她的作戰板',
                 textAlign: TextAlign.center,

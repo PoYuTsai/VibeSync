@@ -20,7 +20,7 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.glassBorder, width: 1.5),
       ),
       child: Row(
@@ -41,7 +41,7 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
                           ],
                         )
                       : null,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: isSelected
                       ? [
                           BoxShadow(

@@ -100,7 +100,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       context: context,
       backgroundColor: AppColors.coachSurfaceRaised,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetContext) => PartnerPickerSheet(
         selectedId: _selectedPartnerId,
@@ -367,7 +367,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
 
     return SingleChildScrollView(
       controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -383,7 +383,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             partner != null ? '為 ${partner.name} 想新話題' : '聊天卡住？AI 幫你想新台階',
             style: AppTypography.headlineLarge.copyWith(color: Colors.white),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           _buildPartnerCard(partner, hadInvalidInitialPartner),
           const SizedBox(height: 16),
           Text(
@@ -502,7 +502,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     return BrandSurfaceCard(
       tone: BrandVisualTone.coach,
       elevated: false,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
