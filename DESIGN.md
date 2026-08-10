@@ -45,7 +45,11 @@
 | LiquidBeam 入口光暈 | `practice_room_entry_card.dart`（練習室入口＋建立對象卡，`LiquidBeamEntryPreset`） | Eric 2026-08-09 逐格拍板的品牌記憶點 |
 | 首頁頭像 flow | 首頁對象卡頭像流光 | 同上，角速度已對齊 beam |
 | 抽卡儀式 glow | `practice_collection_screen.dart` 抽卡/翻牌 `brandFlame` 呼吸光暈 | 儀式性場景，慶祝時刻 |
-| shimmer 掃光 | `splash_screen.dart`、`ebook_shelf_section.dart`（白色掃光，非漸層文字） | 品牌 wordmark 儀式；splash 整頁另案（階段 C 最後） |
+| shimmer 掃光 | `splash_screen.dart`、`ebook_shelf_section.dart`（白色掃光，非漸層文字） | 品牌 wordmark 儀式 |
+| 動畫 bokeh 背景 | `gradient_background.dart`——只掛首頁（MainShell）與登入頁 | 品牌記憶點＋入場儀式（S12 拍板）；其他頁一律靜態 `BrandPageBackground` |
+| splash 開屏儀式 | wordmark 紫暈（2 層）＋環境光＋暗角＋載入圓點脈光 | 開屏儀式時刻；浮動光球已拆（S12） |
+| 作戰板背景 | `partner_mind_map_screen.dart`（brandInk→partnerDetailBgTop 延續漸層） | 與對象詳情頁的視覺連續性 |
+| 分析紀錄 sheet | `partner_analysis_records_screen.dart` 手刻 coach tone | 值已逐項對齊憲法，不強制遷移共用元件 |
 | 邊緣淡出遮罩 | `home_coach_presence.dart` ShaderMask（dstIn） | 功能性遮罩，稽核誤報 |
 | OCR 確認格單發閃光 | `screenshot_recognition_dialog.dart`（ctaStart 脈衝） | 2026-08-09 拍板的注意力提示，功能性 |
 | 練習室輸入框聚焦光 | `practice_chat_screen.dart`（聚焦時 ctaStart@.22，失焦即收） | 瞬態 focus 回饋，功能性非裝飾 |
@@ -69,9 +73,9 @@
 | B4 | Collection 漸層文字改實色（S3） | Eric 翻案：保留漸層（見 §7） |
 | B5–B8 | 字級/小字/圓角/間距尺度重整（S4–S8） | 待排，必須綁一批 |
 | B9 | paywall 等卡片堆疊改分層（S9） | 最後 |
-| C | 7 個未遷移 screen 上 Brand Kit | 一次一 screen |
+| C | 7 個未遷移 screen 上 Brand Kit | ✅ 2026-08-10 全數處理（C-1~C-7；records/mindmap 判定部分保留見 §7） |
 | — | S11 自訂繁中字體 | 拍板暫緩（App 體積），上架穩定後再議 |
-| — | S12 放射光暈減密度 | 待排；§7 保留項除外 |
+| — | S12 放射光暈減密度 | ✅ 2026-08-10：splash 拆光球、三工作頁改靜態背景；保留清單見 §7 |
 
 ## 10. 驗證
 
