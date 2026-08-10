@@ -48,6 +48,7 @@
 | shimmer 掃光 | `splash_screen.dart`、`ebook_shelf_section.dart`（白色掃光，非漸層文字） | 品牌 wordmark 儀式；splash 整頁另案（階段 C 最後） |
 | 邊緣淡出遮罩 | `home_coach_presence.dart` ShaderMask（dstIn） | 功能性遮罩，稽核誤報 |
 | OCR 確認格單發閃光 | `screenshot_recognition_dialog.dart`（ctaStart 脈衝） | 2026-08-09 拍板的注意力提示，功能性 |
+| Collection 漸層大標 | `practice_collection_screen.dart` hero「Collection」金→橘→粉 ShaderMask | Eric 2026-08-10 翻案保留：抽卡儀式頁的華麗感 |
 
 規則：想把新的彩色光暈/漸層加進產品＝先加進這張表並說明理由，否則視為 slop。
 
@@ -64,7 +65,7 @@
 | B1 | CTA 字色對比（S10） | 等決策 1 |
 | B2 | 4px 橘豎條收窄（S2） | 本批 |
 | B3 | 彩色陰影改中性（S1，排除 §7） | 本批 |
-| B4 | Collection 漸層文字改實色（S3） | 本批 |
+| B4 | Collection 漸層文字改實色（S3） | Eric 翻案：保留漸層（見 §7） |
 | B5–B8 | 字級/小字/圓角/間距尺度重整（S4–S8） | 待排，必須綁一批 |
 | B9 | paywall 等卡片堆疊改分層（S9） | 最後 |
 | C | 7 個未遷移 screen 上 Brand Kit | 一次一 screen |
