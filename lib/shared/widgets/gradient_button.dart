@@ -71,7 +71,7 @@ class _GradientButtonState extends State<GradientButton> {
                 : Text(
                     widget.text,
                     style: AppTypography.titleMedium.copyWith(
-                      color: Colors.white,
+                      color: AppColors.onCta,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

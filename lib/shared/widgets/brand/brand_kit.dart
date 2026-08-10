@@ -453,9 +453,11 @@ class BrandPrimaryButton extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
-          foregroundColor: Colors.white,
+          // 橘底字色走 AppColors.onCta 單一開關；disabled 底是灰，前景維持白系
+          // 但改實色（半透明白 on 灰 3.98:1 不及格）。
+          foregroundColor: AppColors.onCta,
           disabledBackgroundColor: Colors.transparent,
-          disabledForegroundColor: Colors.white.withValues(alpha: 0.70),
+          disabledForegroundColor: Colors.white,
           padding: EdgeInsets.symmetric(vertical: verticalPadding),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(999),
@@ -467,7 +469,7 @@ class BrandPrimaryButton extends StatelessWidget {
                 height: 20,
                 child: CircularProgressIndicator(
                   strokeWidth: 2.4,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.onCta),
                 ),
               )
             : Row(

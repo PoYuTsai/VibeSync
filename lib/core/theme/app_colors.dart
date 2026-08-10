@@ -32,6 +32,10 @@ class AppColors {
 
   // Warm theme backgrounds
   static const brandInk = Color(0xFF150C24);
+
+  /// 橘色主 CTA 上的字色單一開關（2026-08-10 Eric 拍板試行深墨字：
+  /// 白字對比 2.86:1 戶外弱，深墨 6.62:1）。想改回白字只動這一行。
+  static const onCta = brandInk;
   static const brandSurface = Color(0xFF1F1330);
   static const brandSurface2 = Color(0xFF2A1840);
   static const brandFlame = Color(0xFFFF6A2B);

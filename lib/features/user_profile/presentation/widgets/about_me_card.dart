@@ -132,7 +132,7 @@ class _EmptyState extends StatelessWidget {
                 onPressed: onTap,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.ctaStart,
-                  foregroundColor: Colors.white,
+                  foregroundColor: AppColors.onCta,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 18,

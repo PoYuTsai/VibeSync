@@ -152,7 +152,7 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
                   builder: (_) => NewConversationSheet(partnerId: partnerId),
                 ),
         backgroundColor: AppColors.ctaStart,
-        foregroundColor: Colors.white,
+        foregroundColor: AppColors.onCta,
         label: const Text('+ 分析新片段'),
       ),
     );

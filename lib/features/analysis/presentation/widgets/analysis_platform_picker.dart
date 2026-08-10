@@ -243,7 +243,7 @@ class _CustomPlatformDialogState extends State<_CustomPlatformDialog> {
           key: const ValueKey('analysis-platform-custom-confirm'),
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.ctaStart,
-            foregroundColor: Colors.white,
+            foregroundColor: AppColors.onCta,
           ),
           onPressed: _submit,
           child: const Text('套用'),

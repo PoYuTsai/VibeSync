@@ -56,13 +56,13 @@
 
 內文 ≥4.5:1、大字（≥18.66px bold 或 24px）≥3:1。
 已驗合格：`textSecondary` on bg 8.93、`brandFlame` on `brandInk` 6.62、`glassTextSecondary` 5.65、`coachAccent` on `coachSurface` 5.49。
-**待拍板（決策 1）**：主 CTA 白字 on 橘漸層 2.86/3.55——等 Eric 看過深墨字對照 PNG 再定；若拍板保留白字，移入 §7 登記。
+主 CTA 字色（決策 1，2026-08-10 Eric 拍板試行）：橘底深墨字 `AppColors.onCta`（=brandInk，6.62:1）。單一開關在 `app_colors.dart` 的 `onCta`——真機看了想回白字只改那一行。
 
 ## 9. 已知債清單（去 slop 批次進度）
 
 | 批 | 項目 | 狀態 |
 |---|---|---|
-| B1 | CTA 字色對比（S10） | 等決策 1 |
+| B1 | CTA 字色對比（S10） | 試行深墨字（`onCta` 單一開關），等真機定案 |
 | B2 | 4px 橘豎條收窄（S2） | 本批 |
 | B3 | 彩色陰影改中性（S1，排除 §7） | 本批 |
 | B4 | Collection 漸層文字改實色（S3） | Eric 翻案：保留漸層（見 §7） |

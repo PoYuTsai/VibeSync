@@ -459,7 +459,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
                   onPressed: () => context.push('/paywall'),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
-                    foregroundColor: Colors.white,
+                    foregroundColor: AppColors.onCta,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   child: Text(upgradeLocked ? '升級解鎖更多女孩' : '查看方案'),
@@ -474,7 +474,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
                   onPressed: () => context.push('/practice-collection'),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
-                    foregroundColor: Colors.white,
+                    foregroundColor: AppColors.onCta,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   child: const Text('去圖鑑翻牌'),

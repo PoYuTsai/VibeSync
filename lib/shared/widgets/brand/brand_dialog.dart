@@ -39,7 +39,7 @@ class BrandAlertDialog extends StatelessWidget {
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.ctaStart,
-            foregroundColor: Colors.white,
+            foregroundColor: AppColors.onCta,
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(

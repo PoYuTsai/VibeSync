@@ -114,7 +114,7 @@ class _PracticeGameIntroSheetState extends State<_PracticeGameIntroSheet> {
                         ),
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.ctaStart,
-                          foregroundColor: Colors.white,
+                          foregroundColor: AppColors.onCta,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                         child: const Text('下一頁：節奏與計分'),
@@ -130,7 +130,7 @@ class _PracticeGameIntroSheetState extends State<_PracticeGameIntroSheet> {
                         ),
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.ctaStart,
-                          foregroundColor: Colors.white,
+                          foregroundColor: AppColors.onCta,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                         child: Text(

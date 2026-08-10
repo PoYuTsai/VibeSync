@@ -450,7 +450,7 @@ class _PracticeCollectionScreenState
             onPressed: () => Navigator.of(dialogContext).pop(true),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.ctaStart,
-              foregroundColor: Colors.white,
+              foregroundColor: AppColors.onCta,
             ),
             child: Text(collectionComplete ? '仍要翻牌' : '確認翻牌'),
           ),

@@ -540,7 +540,7 @@ class _ScreenshotRecognitionDialogState
                     onPressed: () => Navigator.of(sheetContext).pop(),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.ctaStart,
-                      foregroundColor: Colors.white,
+                      foregroundColor: AppColors.onCta,
                     ),
                     child: const Text('完成'),
                   ),
@@ -1306,7 +1306,7 @@ class _ScreenshotRecognitionDialogState
           onPressed: _submit,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.ctaStart,
-            foregroundColor: Colors.white,
+            foregroundColor: AppColors.onCta,
           ),
           child: const Text('確認本次內容'),
         ),

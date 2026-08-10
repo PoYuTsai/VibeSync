@@ -3075,7 +3075,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   label: Text(_recognizeButtonLabel),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
-                    foregroundColor: Colors.white,
+                    foregroundColor: AppColors.onCta,
                     disabledBackgroundColor:
                         AppColors.ctaStart.withValues(alpha: 0.7),
                     disabledForegroundColor:
@@ -7078,7 +7078,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           padding: const EdgeInsets.symmetric(
                                               vertical: 14),
                                           backgroundColor: AppColors.ctaStart,
-                                          foregroundColor: Colors.white,
+                                          foregroundColor: AppColors.onCta,
                                           disabledBackgroundColor: AppColors
                                               .primary
                                               .withValues(alpha: 0.7),
@@ -8726,7 +8726,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   backgroundColor: AppColors.ctaStart,
-                  foregroundColor: Colors.white,
+                  foregroundColor: AppColors.onCta,
                 ),
               ),
             ),
@@ -9123,7 +9123,7 @@ class _EditMessageCoachMark extends StatelessWidget {
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             backgroundColor: AppColors.ctaStart,
-                            foregroundColor: Colors.white,
+                            foregroundColor: AppColors.onCta,
                           ),
                           child: const Text('知道了'),
                         ),

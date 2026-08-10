@@ -403,7 +403,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                 builder: (_) => NewConversationSheet(partnerId: partnerId),
               ),
               backgroundColor: AppColors.ctaStart,
-              foregroundColor: Colors.white,
+              foregroundColor: AppColors.onCta,
               elevation: 8,
               shape: const StadiumBorder(),
               label: const Text(
@@ -1541,7 +1541,7 @@ class _PartnerEmptyStateCard extends StatelessWidget {
               onPressed: onAddConversation,
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.ctaStart,
-                foregroundColor: Colors.white,
+                foregroundColor: AppColors.onCta,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),

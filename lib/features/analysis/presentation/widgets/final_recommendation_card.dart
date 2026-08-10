@@ -88,7 +88,7 @@ class FinalRecommendationCard extends StatelessWidget {
               label: const Text('複製推薦回覆'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.ctaStart,
-                foregroundColor: Colors.white,
+                foregroundColor: AppColors.onCta,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),

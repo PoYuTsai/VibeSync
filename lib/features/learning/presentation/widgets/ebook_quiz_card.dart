@@ -213,7 +213,7 @@ class _EbookQuizCardState extends State<EbookQuizCard> {
                   backgroundColor: AppColors.ctaStart,
                   disabledBackgroundColor:
                       Colors.white.withValues(alpha: 0.10),
-                  foregroundColor: Colors.white,
+                  foregroundColor: AppColors.onCta,
                   disabledForegroundColor:
                       Colors.white.withValues(alpha: 0.45),
                   padding: const EdgeInsets.symmetric(vertical: 13),

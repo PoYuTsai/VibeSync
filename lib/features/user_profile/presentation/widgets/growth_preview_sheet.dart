@@ -34,7 +34,7 @@ Future<void> showGrowthPreviewSheet(
               onPressed: () => Navigator.of(sheetContext).pop(),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.ctaStart,
-                foregroundColor: Colors.white,
+                foregroundColor: AppColors.onCta,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(999),
