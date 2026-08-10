@@ -34,7 +34,7 @@ class ProfileCardScreen extends ConsumerWidget {
     final conversation = ref.watch(conversationProvider(conversationId));
 
     if (conversation == null) {
-      return GradientBackground(
+      return BrandPageBackground(
         child: Scaffold(
           backgroundColor: Colors.transparent,
           appBar: brandAppBar(title: '對方檔案'),
@@ -48,7 +48,7 @@ class ProfileCardScreen extends ConsumerWidget {
       );
     }
 
-    return GradientBackground(
+    return BrandPageBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: brandAppBar(title: '對方檔案'),

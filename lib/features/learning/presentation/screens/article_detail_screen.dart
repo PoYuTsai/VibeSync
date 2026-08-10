@@ -15,7 +15,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
-import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/articles_data.dart';
 import '../../data/providers/learning_providers.dart';
@@ -87,7 +86,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
 
     if (subscription.isLoading ||
         (subscription.isFreeUser && !_readGateChecked)) {
-      return const GradientBackground(
+      return const BrandPageBackground(
         child: Scaffold(
           backgroundColor: Colors.transparent,
           body: Center(child: CircularProgressIndicator()),
@@ -95,7 +94,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
       );
     }
 
-    return GradientBackground(
+    return BrandPageBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(

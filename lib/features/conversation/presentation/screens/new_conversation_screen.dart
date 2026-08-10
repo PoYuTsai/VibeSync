@@ -750,7 +750,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GradientBackground(
+    return BrandPageBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
