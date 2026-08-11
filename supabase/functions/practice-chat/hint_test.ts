@@ -1609,8 +1609,11 @@ Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable 
   // 同日回修：coaching 漏「速約任務：」會被 hint_quality_invalid_game_contract
   // 硬拒絕重生成，實測正是它殺掉了品質最好的候選（男女前提那句）。
   // 契約補一條把這五個字寫成不可漏，實測 5005，上限 4950→5050。
+  // 同日回修：速約階梯補「這週找N分鐘／要不要去／一起去也算約（沒主詞一樣算）」
+  // 一行——分類器抓不到這些句形，改在 prompt 端不產出，避免為此提高守門召回
+  // （提高召回＝首發更常被擋，Eric 明確否決）。實測 5055，上限 5050→5120。
   assert(
-    gameText.length <= 5050,
+    gameText.length <= 5120,
     `Game Hint prompt is too long: ${gameText.length}`,
   );
   assert(gameText.length <= beginnerText.length + 3000);

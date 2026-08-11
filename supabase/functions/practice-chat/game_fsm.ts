@@ -155,7 +155,7 @@ export function gameTacticDirectiveFor(opts: {
     return {
       moveId: "value_gender_frame",
       line:
-        `這輪唯一動作＝男女前提：用一句話讓她感覺你是把她當一個女生在聊，不是同事或客服（例「跟妳講話有點危險，我本來只想回一句」）。可以帶你的${paceAndPoint}和態度，但不要只丟${lifeSample}交換資訊，也不要邀約。`,
+        `這輪唯一動作＝男女前提（示範句見上面契約）：讓她感覺你是把她當一個女生在聊，不是同事或客服。只用講話的態度定調，不碰觸／按摩／抱／靠近身體這類暗示——那是越界。可以帶你的${paceAndPoint}，但不要只丟${lifeSample}交換資訊，也不要邀約。`,
     };
   }
   if (opts.phase === "P3_TEST") {

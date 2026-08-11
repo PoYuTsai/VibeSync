@@ -3396,3 +3396,32 @@ Deno.test("「跟我一樣」是比較句不是邀約，「跟我一起」才算
     assertEquals(looksLikeGameSoftInvite(text), true, text);
   }
 });
+
+// 2026-08-11：Game hint 張力階戰術＝「把她最新狀態帶成你們的共同小劇場」，
+// 模型因此大量產出「我們一起…大概會…」的腦補畫面。那是想像不是提議；
+// 判成邀約會讓 FSM 跳收尾階、下一發 hint 開始催約（離線重放兩次踩到）。
+Deno.test("腦補的共同畫面不是邀約，但帶時間或提議語氣的就是", () => {
+  const imagined = [
+    "我們一起看片大概會搶遙控器",
+    "躺著追劇配做菜，這反差有點可愛，我們一起看片大概會搶遙控器。",
+    "照妳這個追劇速度，我們一起看片應該會搶遙控器",
+    "我們一起煮飯搞不好會把廚房燒了",
+  ];
+  for (const text of imagined) {
+    assertEquals(looksLikeGameSoftInvite(text), false, text);
+  }
+
+  // 有具體時間、提議語氣或邀約動詞的，仍然是邀約。
+  const stillInvites = [
+    "這週末我們一起看電影，大概會很好玩",
+    "要不要一起看電影，大概會很好笑",
+    "我們一起看電影吧，大概會很好玩",
+    "不然我們一起去看電影，大概會很紓壓",
+    // 「看片」不在既有 outing 動詞表（「看電影」才在）——本輪不擴召回
+    // （Eric 拍板：不能讓 hint 更常被擋），案例改用表內動詞。
+    "改天一起看電影，大概會很好玩",
+  ];
+  for (const text of stillInvites) {
+    assertEquals(looksLikeGameSoftInvite(text), true, text);
+  }
+});

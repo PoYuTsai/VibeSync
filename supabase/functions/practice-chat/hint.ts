@@ -1341,6 +1341,7 @@ function speedInviteLadderPrompt(route: GameInviteRoute): string {
     GAME_INVITE_ROUTE_ADVICE[route]
   }。
 - 「速約任務：」講明這輪在哪一階、下一階怎麼推；最多推一階。
+- 還在鋪墊階時，「這週找N分鐘」「要不要去」「一起去」也算約——沒有主詞一樣算，全部留到下一階。
 
 `;
 }

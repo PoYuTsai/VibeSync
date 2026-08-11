@@ -844,6 +844,21 @@ export function looksLikeGameSoftInvite(raw: string): boolean {
   ) {
     return false;
   }
+  // 假想畫面不是邀約：「我們一起看片大概會搶遙控器」是在腦補兩人畫面，
+  // 不是在提議。Game hint 的張力階戰術（把她的狀態帶成共同小劇場）天生會
+  // 產出這種句子，判成邀約會讓 FSM 直接跳收尾階、下一發 hint 開始催約
+  // （2026-08-11 離線重放兩次踩到）。
+  // 只在「沒有具體時間」且「沒有提議語氣」時才當假想——
+  //「這週末我們一起看片，大概會很好玩」「要不要一起看片」都不受影響。
+  if (
+    /(?:大概|應該|搞不好|八成|多半|說不定)(?:會|就|要)/u.test(whole) &&
+    !CONCRETE_FUTURE_TIME_PATTERN.test(whole) &&
+    !FUTURE_PATTERN.test(whole) &&
+    // 提議語氣一律讓路（保守方向：寧可不套這條假想豁免，也不要漏判真邀約）。
+    !/(?:要不要|想不想|不然|乾脆|不如|約|邀|[吧嗎])/u.test(whole)
+  ) {
+    return false;
+  }
   if (isLiveTopicCarryInvite(raw)) return true;
   if (isExtendedScheduleShorthand(raw)) return true;
   if (
