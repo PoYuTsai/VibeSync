@@ -3425,3 +3425,28 @@ Deno.test("腦補的共同畫面不是邀約，但帶時間或提議語氣的就
     assertEquals(looksLikeGameSoftInvite(text), true, text);
   }
 });
+
+// GLM 反證回合（2026-08-11）：假想語氣豁免原本把「應該」的三種後綴都算推測，
+// 但「應該要」是勸告——「妳應該要來我家坐坐」是明確邀約，被豁免吃掉。
+// 實測比對加規則前後，確認是迴歸不是既有行為，故只認「應該會」。
+Deno.test("「應該要」是勸告不是推測，不得被假想豁免吃掉", () => {
+  const invites = [
+    "應該要一起去",
+    "我們應該要一起吃個飯",
+    "我們應該要一起去看電影",
+    "妳應該要來我家坐坐",
+    "我們應該要找時間見面",
+  ];
+  for (const text of invites) {
+    assertEquals(looksLikeGameSoftInvite(text), true, text);
+  }
+
+  // 「應該會」仍屬推測，假想畫面照樣豁免。
+  const imagined = [
+    "我們一起看電影應該會搶遙控器",
+    "我們一起煮飯應該會把廚房燒了",
+  ];
+  for (const text of imagined) {
+    assertEquals(looksLikeGameSoftInvite(text), false, text);
+  }
+});
