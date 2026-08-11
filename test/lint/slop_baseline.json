@@ -28,7 +28,7 @@
     "lib/features/conversation/presentation/widgets/message_bubble.dart": 3,
     "lib/features/onboarding/presentation/screens/onboarding_screen.dart": 1,
     "lib/features/onboarding/presentation/widgets/demo_analysis_preview.dart": 1,
-    "lib/features/practice_chat/presentation/screens/practice_chat_screen.dart": 4,
+    "lib/features/practice_chat/presentation/screens/practice_chat_screen.dart": 2,
     "lib/features/practice_chat/presentation/widgets/practice_game_intro_sheet.dart": 3,
     "lib/features/practice_chat/presentation/widgets/practice_rarity_style.dart": 1,
     "lib/features/practice_chat/presentation/widgets/practice_room_entry_card.dart": 1,

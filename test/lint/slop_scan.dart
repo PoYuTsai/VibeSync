@@ -9,6 +9,16 @@ import 'dart:io';
 /// 憲法圓角尺度（DESIGN.md §4）＋pill 慣用值。
 const kAllowedRadii = {18, 22, 23, 24, 99, 999};
 
+/// 逐檔加開的圓角白名單：DESIGN.md §4「圓角登記例外」裡**已經拍板保留**的
+/// 功能性微圓角。憲法尺度最小是 18，表達不出「這顆泡泡黏在上一顆」的尾巴，
+/// 所以只在登記過的檔案、登記過的值上開洞，不放寬全域尺度。
+/// 新增條目＝先進 DESIGN.md 登記表，不得用重產基準放行（§11）。
+const kAllowedRadiiByFile = <String, Set<int>>{
+  // 聊天泡泡「尾巴」5（DESIGN.md §4）：分則氣泡群組最後一顆的貼合角。
+  'lib/features/practice_chat/presentation/screens/practice_chat_screen.dart':
+      {5},
+};
+
 /// 彩色陰影白名單：DESIGN.md §7 刻意保留登記表的檔案。
 const kColoredShadowAllowedFiles = {
   'lib/features/practice_chat/presentation/widgets/practice_room_entry_card.dart',
@@ -49,13 +59,17 @@ Map<String, int> scanSource(String path, String source) {
 
   final allowRaw =
       kRawColorAllowedPrefixes.any((prefix) => path.startsWith(prefix));
+  final allowedByFile = kAllowedRadiiByFile[path] ?? const <int>{};
   for (final line in lines) {
     if (_isComment(line)) continue;
     for (final m in _fontSize.allMatches(line)) {
       if (double.parse(m.group(1)!) < 12) tinyFont++;
     }
     for (final m in _radius.allMatches(line)) {
-      if (!kAllowedRadii.contains(int.parse(m.group(1)!))) offScaleRadius++;
+      final radius = int.parse(m.group(1)!);
+      if (kAllowedRadii.contains(radius)) continue;
+      if (allowedByFile.contains(radius)) continue;
+      offScaleRadius++;
     }
     if (!allowRaw) rawColor += _rawColor.allMatches(line).length;
   }

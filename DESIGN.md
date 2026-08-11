@@ -72,6 +72,7 @@ EdgeInsets 20→16、childless SizedBox 20→24、22/26→24、28/30→32）。
 | OCR 確認格單發閃光 | `screenshot_recognition_dialog.dart`（ctaStart 脈衝） | 2026-08-09 拍板的注意力提示，功能性 |
 | 練習室輸入框聚焦光 | `practice_chat_screen.dart`（聚焦時 ctaStart@.22，失焦即收） | 瞬態 focus 回饋，功能性非裝飾 |
 | Collection 漸層大標 | `practice_collection_screen.dart` hero「Collection」金→橘→粉 ShaderMask | Eric 2026-08-10 翻案保留：抽卡儀式頁的華麗感 |
+| 聊天泡泡尾巴圓角 5 | `practice_chat_screen.dart`（分則氣泡群組最後一顆的貼合角，見 §4 圓角登記例外） | 憲法尺度最小 18，表達不出「這顆黏在上一顆」；白名單＝`kAllowedRadiiByFile`，只開這一檔這一個值 |
 
 規則：想把新的彩色光暈/漸層加進產品＝先加進這張表並說明理由，否則視為 slop。
 
@@ -105,7 +106,9 @@ EdgeInsets 20→16、childless SizedBox 20→24、22/26→24、28/30→32）。
 `test/lint/slop_ratchet_test.dart` 隨測試套件跑，對 `lib/` 掃四種機械可判定
 slop（<12px 字、出格圓角、白名單外彩色陰影、theme 外硬寫 Color(0x)），與
 `slop_baseline.json` 逐檔比對：**超過基準＝紅（新 slop 進場）**；低於基準＝
-綠＋提示重產基準鎖緊。既存 399 筆債（B5–B8 標的）已入基準。
+綠＋提示重產基準鎖緊。既存 399 筆債（B5–B8 標的）已入基準；還債後現為 143 筆
+（2026-08-11：分則氣泡的尾巴圓角 5 依 §4／§7 登記走 `kAllowedRadiiByFile` 白名單，
+不是重產基準放行）。
 
 - 還債後鎖緊：`dart test/lint/slop_baseline_generator.dart`
 - 新的刻意保留：登記 §7 ＋ `slop_scan.dart` 白名單——**不得**用重產基準放行新 slop。
