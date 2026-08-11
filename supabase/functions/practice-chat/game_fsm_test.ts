@@ -137,14 +137,15 @@ Deno.test("evaluateGameFsm accumulates BORING when user interrogates instead of 
 });
 
 Deno.test("turnPressurePhaseFloor never pushes directly into close", () => {
+  // 5 顆 hint 每顆推進一階（Eric 2026-08-11 拍板）：開場→展示→測試→張力→張力。
   assertEquals(turnPressurePhaseFloor(1), null);
   assertEquals(turnPressurePhaseFloor(2), "P2_VALUE");
-  assertEquals(turnPressurePhaseFloor(5), "P3_TEST");
-  assertEquals(turnPressurePhaseFloor(8), "P4_TENSION");
+  assertEquals(turnPressurePhaseFloor(3), "P3_TEST");
+  assertEquals(turnPressurePhaseFloor(4), "P4_TENSION");
   assertEquals(turnPressurePhaseFloor(20), "P4_TENSION");
 });
 
-Deno.test("evaluateGameFsm floors six low-score user turns to at least P3_TEST without failures", () => {
+Deno.test("evaluateGameFsm floors six low-score user turns to at least P4_TENSION without failures", () => {
   const snapshot = evaluateGameFsm({
     turns: mundaneUserTurns(6),
     temperatureScore: 18,
@@ -153,8 +154,8 @@ Deno.test("evaluateGameFsm floors six low-score user turns to at least P3_TEST w
   });
 
   assertEquals(snapshot.failureStates, []);
-  assertEquals(snapshot.phase, "P3_TEST");
-  assertEquals(snapshot.targetVariable, "Frame + safety");
+  assertEquals(snapshot.phase, "P4_TENSION");
+  assertEquals(snapshot.targetVariable, "Emotion + heat");
 });
 
 Deno.test("evaluateGameFsm skips the turn floor when repair has priority", () => {

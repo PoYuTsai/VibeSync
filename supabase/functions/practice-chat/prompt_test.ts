@@ -879,7 +879,10 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // assertGameCoachingNamesVariable（hint_quality_missing_variable_callout）。
   // coaching 契約補「原詞點名一個要素（五變數白話）」一句，Game-only 固定
   // bytes，實測最長 5931，上限 5900→5960。
-  if (maxHint > 5960) {
+  // 2026-08-11「大膽版」：game 模式改寫「低溫只輕推情緒」與「不是永遠更曖昧」
+  // 兩句、並把男女前提／說話留一半升格成獨立硬規則，Game-only 固定 bytes，
+  // 實測最長 6091，上限 5960→6120。
+  if (maxHint > 6120) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
   if (maxDebrief > 4570) {

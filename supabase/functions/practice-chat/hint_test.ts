@@ -152,7 +152,7 @@ Deno.test("Game Hint prompt and returned decision share persisted Game context",
   assertEquals(decision.inviteRoute, "soft");
 });
 
-Deno.test("buildHintMessages lets Game turn pressure raise persisted P1 prompt to P3 and injects a tactic", () => {
+Deno.test("buildHintMessages lets Game turn pressure raise persisted P1 prompt past P3 and injects a tactic", () => {
   const prompt = buildHintMessages({
     turns: [
       { role: "user", text: "嗨" },
@@ -179,7 +179,7 @@ Deno.test("buildHintMessages lets Game turn pressure raise persisted P1 prompt t
     },
   }).map((message) => message.content).join("\n");
 
-  assert(prompt.includes("phase: P3_TEST"));
+  assert(prompt.includes("phase: P4_TENSION"));
   assert(prompt.includes("本輪指定戰術："));
   assert(prompt.includes("warmUp/steady 兩句都要執行這個戰術"));
   assert(prompt.includes("目前最容易加分：照本輪指定戰術執行。"));
@@ -1603,8 +1603,11 @@ Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable 
   }).map((m) => m.content).join("\n");
 
   // WP2-WP4 新增的 phase 戰術行與白話 few-shot 仍須守住原有預算。
+  // 2026-08-11「大膽版」：男女前提／說話留一半升格成獨立硬規則一行
+  //（原本只是戰術行裡的子句，實測整場都被生活樣本蓋過），Game-only 固定
+  // bytes，實測 4909，上限 4800→4950。
   assert(
-    gameText.length <= 4800,
+    gameText.length <= 4950,
     `Game Hint prompt is too long: ${gameText.length}`,
   );
   assert(gameText.length <= beginnerText.length + 3000);

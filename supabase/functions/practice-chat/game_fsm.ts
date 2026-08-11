@@ -89,8 +89,12 @@ const REPAIR_PRIORITY_FAILURES: readonly GameFailureState[] = [
 export function turnPressurePhaseFloor(
   userTurnCount: number,
 ): GameFsmPhase | null {
-  if (userTurnCount >= 8) return "P4_TENSION";
-  if (userTurnCount >= 5) return "P3_TEST";
+  // Eric 2026-08-11 拍板「大膽一點」：門檻原本照 20 則長聊設（2/5/8），但玩家
+  // 只有 5 次 hint，實測 5 顆球有 3 顆卡在同一階、張力階永遠到不了。
+  // 改成每顆球推進一階：開場→展示→測試→張力→張力。
+  // 安全網不動：repair priority 整個不套下限、P5 只靠邀約訊號、L 級照分數鎖。
+  if (userTurnCount >= 4) return "P4_TENSION";
+  if (userTurnCount >= 3) return "P3_TEST";
   if (userTurnCount >= 2) return "P2_VALUE";
   return null;
 }
