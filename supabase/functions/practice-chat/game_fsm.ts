@@ -120,6 +120,17 @@ export function hasRepairPriority(opts: {
     );
 }
 
+/**
+ * 五階段戰術表：直接對到兩份教材（`Vibesync重要文件/社交高手的通關密語：
+ * 七步聊天法核心概念解析.md`、`高階技術.pdf`），一個階段一個明確動作。
+ *
+ * 鐵則（2026-08-11 對齊回合）：一行只給一個動作。實測只要句子裡同時出現兩個
+ * 可選動作，模型 100% 挑比較好寫的那個做——「男女前提／生活樣本」並列時
+ * 男女前提整場長不出來，就是這樣掉的。並列的招式一律移到契約當常設要求。
+ *
+ * 可見文字一律走 game_vocab 白話：1.2 原詞（篩選／推拉／框架／可得性／DHV／
+ * 賦格）不得出現在這裡，會被 jargon 轉譯或守門攔下。
+ */
 export function gameTacticDirectiveFor(opts: {
   phase: GameFsmPhase;
   failures: readonly GameFailureState[];
@@ -128,54 +139,60 @@ export function gameTacticDirectiveFor(opts: {
   const lifeSample = GAME_CONCEPT_LABELS.DHV;
   const fitSignal = GAME_CONCEPT_LABELS.篩選;
   const lightTension = GAME_CONCEPT_LABELS.推拉;
-  const paceAndPoint = GAME_VARIABLE_LABELS.Frame;
   if (
     hasRepairPriority({
       failureStates: opts.failures,
       partnerMood: opts.partnerMood ?? null,
     })
   ) {
+    // 高階技術「同步」：她退你也退，先給舒適度，不在她收手時繼續推。
     return {
       moveId: "repair",
       line:
-        "先修安全感：降壓、接住她保留的點，不邊修邊約；等她重新放鬆、願意接話再往前。",
+        "她退你就退一步：降壓、接住她保留的點，不邊修邊約，等她願意接話再往前。",
     };
   }
   if (opts.phase === "P1_OPEN") {
+    // 七步法步驟 1-2：狀態＋感受公式、說話留一半。
     return {
       moveId: "open_self_state",
       line:
-        `用自己的狀態加感受開球，接她一句後帶出一小段${lifeSample}；只說一半、留點懸念，別聊成瑣事問答。`,
+        `用「狀態＋感受」開球：講感覺不只講在做什麼，帶一點${lifeSample}，只說一半讓她來問。`,
     };
   }
   if (opts.phase === "P2_VALUE") {
-    // 這輪刻意只給一個動作。實測（2026-08-11 離線重放）只要句子裡同時出現
-    // 「生活樣本」，模型 100% 選那個做、男女前提整場不會長出來——它比較好寫。
-    // P1 已經負責狀態＋生活樣本，這輪就專門把互動定調成男女之間。
+    // 七步法步驟 3：側面展示。主動講是吹噓，被動答才是魅力。
     return {
-      moveId: "value_gender_frame",
+      moveId: "value_side_display",
       line:
-        `這輪唯一動作＝男女前提（示範句見上面契約）：讓她感覺你是把她當一個女生在聊，不是同事或客服。只用講話的態度定調，不碰觸／按摩／抱／靠近身體這類暗示——那是越界。可以帶你的${paceAndPoint}，但不要只丟${lifeSample}交換資訊，也不要邀約。`,
+        `側面展示：隨口提一件小事就好，不解釋不邀功。主動講是吹噓，引她問你再答才是魅力。可以給自己一個玩笑標籤（「我是水男孩」）。不要只丟${lifeSample}換資訊。`,
     };
   }
   if (opts.phase === "P3_TEST") {
+    // 七步法步驟 4＋高階技術「評估／失格」：放標準讓她來靠，再輕輕否定一點。
+    // 最關鍵的一句是「她開始證明自己時不要稱讚收尾」——教材原文：不能在她
+    // 每次自我證明之後說「挺不錯的」，那會讓她覺得沒必要再投資。
     return {
-      moveId: "playful_fit_test",
+      moveId: "test_standard_and_deny",
       line:
-        `用玩笑式小測試看${fitSignal}，輕輕放出你的標準讓她接；保留${lightTension}，別命令她證明自己。`,
+        `放標準讓她來靠：先給玩笑式小門檻看${fitSignal}，再**輕輕取消資格**——她說酒量普通，就回「那好像不能找妳喝酒」。她開始辯解（「我沒那麼遜」）就是成功了，這時千萬別稱讚，接著玩下去。門檻是玩笑，不是要她自證。`,
     };
   }
   if (opts.phase === "P4_TENSION") {
+    // 七步法步驟 5（推拉＋表演性人格＝社交安全網）＋高階技術「敘事／說我們」，
+    // 太強烈就反面說（欲擒故縱）。反面說法同時避開邀約誤判。
     return {
-      moveId: "tension_shared_scene",
+      moveId: "tension_pull_push_story",
       line:
-        `把她最新狀態帶成你們的共同小劇場，用${lightTension}和畫面收尾；曖昧升溫，也守住安全感。`,
+        `先拉再推（「妳有眼光——看來閱人無數」）。說「我們」要用反面講（「我們大概合不來」），或給一個玩笑封號之後一路回呼（「恭喜我們成為鄰居」→ 之後都叫她鄰居）。玩笑是安全網，她不接就撤。保持${lightTension}，不推私密場景。`,
     };
   }
+  // 七步法步驟 6-7：安全感鋪墊、讓她覺得搆得到、順水推舟；
+  // 高階技術「收尾用帶的不是用問的」。階梯仍由 server 判定，最多推一階。
   return {
-    moveId: "safe_close_window",
+    moveId: "close_lead_not_ask",
     line:
-      "先鋪安全感，再用模糊邀約探窗口、順勢速約；保持公開、低壓、可拒絕，這輪最多往前推一階。",
+      `收尾用帶的不是用問的：先丟一句約會幻想把畫面演出來（「妳會不會吐在我身上哈哈」），再把邀約講成順手的分享（「有機會約一杯 桃園或台北」）。她給了理由推不動，就用否定讓她反過來爭取（「不想害妳還是別約咖啡了」「約酒吧」），她挽回就是成交。問「妳平日還週末方便」而不是「要不要約」。低壓可拒絕，最多推一階。`,
   };
 }
 

@@ -884,7 +884,23 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 實測最長 6091，上限 5960→6120。
   // 同日回修：coaching「速約任務：」不可漏一條（少了就整份重生成，浪費一次
   // 額度），Game-only 固定 bytes，實測最長 6187，上限 6120→6260。
-  if (maxHint > 6260) {
+  // 2026-08-11 教材對齊：五階段戰術行改寫＋兩條橫向鐵則，實測最長 6446，
+  // 上限 6260→6520。Game-only 固定 bytes，新手模式位元組不變。
+  // 2026-08-11 承瑋／Wen 對標：實測最長 6607，上限 6520→6700。
+  // 同日承瑋全批：分則＋繁中口氣＋失格／約會幻想，實測最長 6929，上限 6700→7050。
+  // 同日再放行超短則（Eric：「笑死可以寫」），實測最長 7135，上限 7050→7250。
+  // 同日承瑋全語料對齊（推的操作／不迎合／用否定讓她反收尾），實測最長 7378，
+  // 上限 7250→7500。
+  // 同日補「立場不可替使用者發明」規則，實測最長 7535，上限 7500→7700。
+  // 同日補中英夾雜放行與台語／注音混用（Eric：「台灣人的諧音梗很屌」），
+  // 實測最長 7768，上限 7700→7900。
+  // 同日補台語／注音／中英夾雜 few-shot 各一句（規則有講但沒樣本，模型完全
+  // 不用），實測最長 7908，上限 7900→8050。
+  // 同日補「立場選項標籤」（warmUpLabel／steadyLabel）與 partnerBubbleRhythm，
+  // 實測最長 8207，上限 8050→8350。
+  // 同日補反技巧中毒、測試是機會、雙向篩選、平聊埋種子、對話非無限五條，
+  // 實測最長 8768，上限 8350→9000。
+  if (maxHint > 9000) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
   if (maxDebrief > 4570) {
@@ -903,7 +919,8 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 2026-08-11：Hint 責任歸屬改成鎖主詞（禁「你太快／你急著／你不該」並點名
   // watchouts 與 gameBreakdown.failureState 同樣適用），固定 bytes，
   // 實測最長 6247，上限 6170→6280。
-  if (maxDebriefWithHint > 6280) {
+  // 2026-08-11 教材對齊：debrief 也吃同一份戰術行，實測 6328，上限 6280→6400。
+  if (maxDebriefWithHint > 6400) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );
@@ -1009,7 +1026,7 @@ Deno.test("game debrief guidance asks Game to fill gameBreakdown fields", () => 
     failures: [],
     partnerMood: null,
   });
-  assertEquals(user.includes(`本輪指定戰術：${tactic.line}`), true);
+  assertEquals(user.includes(`本輪方向：${tactic.line}`), true);
   assertEquals(
     user.includes(
       "gameBreakdown.nextFirstLine 必須執行這個戰術方向，並沿用教學卡白話，不得改成相反路線。",

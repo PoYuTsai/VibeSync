@@ -120,6 +120,7 @@ import {
   withMaxNegativeLearningDeltas,
 } from "./temperature.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
+import { normalizeLiteralNewlines } from "./prompt_sanitizer.ts";
 import { toTraditionalChinese } from "./traditional_chinese.ts";
 import {
   buildPracticeAiLogRow,
@@ -2743,6 +2744,12 @@ export function createPracticeChatHandler(
       try {
         const baseHintMessages = buildHintMessages({
           allowNoPasteableReply: request.acceptsNoPasteableHint === true,
+          // 最後一顆球要順手鋪場景（Eric 2026-08-11）：回合下限最高只到 P4，
+          // 第 5 發常常停在純升溫，但這場之後就沒有提示了。
+          hintsRemaining: Math.max(
+            0,
+            MAX_HINTS_PER_ROUND - (ledger.hintCount ?? 0),
+          ),
           turns: request.turns,
           profile: request.profile,
           practiceMode: request.practiceMode,
@@ -3990,7 +3997,7 @@ export function createPracticeChatHandler(
           });
           // DeepSeek 偶爾在短/冒犯輸入下退回訓練分佈的簡體字，繁體鐵則守不住；
           // 其他 AI 輸出欄位（hint/debrief/temperature）都已過這道轉換，這裡補齊。
-          reply = toTraditionalChinese(reply);
+          reply = toTraditionalChinese(normalizeLiteralNewlines(reply));
           rejectVisibleInternalLabelLeak(reply, "chat_internal_label_leak");
           rejectL4UnsafeVisibleText(reply, "chat_l4_unsafe");
           break;

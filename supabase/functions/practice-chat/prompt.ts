@@ -23,6 +23,7 @@ import {
 } from "./invite_maturity.ts";
 import {
   clipUtf16Safe,
+  flattenMultiBubbleText,
   IMAGE_CONCEPT_PLACEHOLDER,
   scrubRawImageFilenames,
 } from "./prompt_sanitizer.ts";
@@ -234,7 +235,10 @@ export const CHAT_SYSTEM_PROMPT =
   `你正在用手機跟對方傳訊息。你是一個有自己生活和情緒的台灣女生，不是助理、不是教練、不是 AI。
 
 鐵則：
-- 全程用繁體中文，像真人手機聊天：短句、口語，一次只回 1～2 句。
+- 全程用繁體中文，像真人手機傳訊：短句、口語。
+- 一次可以連發 1～3 則訊息，用換行分開（不要用標點串成一長句）。每則 4～15 字，一則講一件事。
+- 偶爾打字太快會有小錯字、漏字或注音沒選到（「不見ㄌ」「我覺得不錯內」），不用每句都完美；但不要多到看不懂。
+- 幾則由你的心情決定，不要每次都一樣：冷淡、敷衍、在忙 → 只回 1 則，甚至只回兩三個字或一個表情；被逗到、有興趣、想多說、想解釋 → 才連發 2～3 則。連發＝你很投入，別亂發。
 - 有真實個性與情緒：可以冷淡、敷衍、忙、試探、吐槽、好奇、也可以被逗笑。依對方說的話自然反應，不要一味熱情配合或有問必答。
 - 絕不承認自己是 AI 或機器人；絕不教學、不分析對話、不給戀愛建議、不評論對方「做得好不好」。你就是在聊天。
 - 不要長篇大論、不要條列、不要用引號把整段話包起來、不要旁白動作描述。
@@ -305,7 +309,8 @@ const DEBRIEF_PROMPT_HINT_REACTION_CHAR_LIMIT = 32;
 const DEBRIEF_PROMPT_LATEST_PARTNER_TURN_CHAR_LIMIT = 96;
 
 function clippedDebriefTurn(text: string, limit: number): string {
-  const scrubbed = scrubRawImageFilenames(text).replace(/\s+/gu, " ").trim();
+  const scrubbed = scrubRawImageFilenames(flattenMultiBubbleText(text))
+    .replace(/\s+/gu, " ").trim();
   if (scrubbed.length <= limit) return scrubbed;
   const cut = Math.max(1, limit - 1);
   const placeholderStart = scrubbed.indexOf(IMAGE_CONCEPT_PLACEHOLDER);
@@ -673,9 +678,9 @@ function gameDebriefPrompt(opts: {
     failures: snapshot.failureStates,
     partnerMood: opts.partnerState?.mood ?? null,
   });
-  return `gameDebrief(hidden guidance)\n${gameDebriefSkillContract()}\ngameBreakdown 五欄非空且各帶原話：gameBreakdown.phaseReached=階段、missedVariable=缺口、failureState=卡點、nextFirstLine=下次第一句、inviteDirection=方向；不輸出 P1-P5/targetVariable/failureStates。\n${
+  return `gameDebrief(hidden guidance)\n${gameDebriefSkillContract()}\n她丟測試而使用者接住了（沒認真解釋、順著演或曲解回打），要當成明確加分寫進 strengths，不要只寫成「沒有出錯」——那一輪是她在升溫、他的價值在上升。\ngameBreakdown 五欄非空且各帶原話：gameBreakdown.phaseReached=階段、missedVariable=缺口、failureState=卡點、nextFirstLine=下次第一句、inviteDirection=方向；不輸出 P1-P5/targetVariable/failureStates。\n${
     compactGameFsmEvidencePrompt(snapshot)
-  }本輪指定戰術：${tacticDirective.line}\ngameBreakdown.nextFirstLine 必須執行這個戰術方向，並沿用教學卡白話，不得改成相反路線。\n${
+  }本輪方向：${tacticDirective.line}\ngameBreakdown.nextFirstLine 必須執行這個戰術方向，並沿用教學卡白話，不得改成相反路線。\n${
     compactGameLedgerPrompt(opts.gameState)
   }\n${strategy}`;
 }

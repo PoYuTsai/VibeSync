@@ -297,10 +297,10 @@ Deno.test("WP2 戰術碼與中文標籤都被可見輸出守門攔下", () => {
     const code of [
       "build_connection",
       "open_self_state",
-      "value_life_sample",
-      "playful_fit_test",
-      "tension_shared_scene",
-      "safe_close_window",
+      "value_side_display",
+      "test_standard_and_deny",
+      "tension_pull_push_story",
+      "close_lead_not_ask",
     ]
   ) {
     assertEquals(

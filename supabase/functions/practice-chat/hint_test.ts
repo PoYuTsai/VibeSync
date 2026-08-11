@@ -180,9 +180,12 @@ Deno.test("buildHintMessages lets Game turn pressure raise persisted P1 prompt p
   }).map((message) => message.content).join("\n");
 
   assert(prompt.includes("phase: P4_TENSION"));
-  assert(prompt.includes("本輪指定戰術："));
-  assert(prompt.includes("warmUp/steady 兩句都要執行這個戰術"));
-  assert(prompt.includes("目前最容易加分：照本輪指定戰術執行。"));
+  // 2026-08-11 Eric：「太套路／技巧中毒不好，平聊通常占大多數」。戰術從
+  // 「兩句都要執行」的規定動作改成方向，明講平聊也是正解。
+  assert(prompt.includes("本輪方向："));
+  assert(prompt.includes("這是方向不是規定動作"));
+  assert(prompt.includes("平聊也是正解"));
+  assert(prompt.includes("目前最容易加分：照本輪方向走，沒鉤子就好好接話。"));
   assertEquals(
     prompt.includes(
       "目前最容易加分：先接住她的狀態、情緒或具體情境；不要直接曖昧。",
@@ -246,21 +249,34 @@ Deno.test("GAME_HINT_MOVE_EXAMPLES stay short, visible-safe, parser-safe, and mo
     "資格篩選",
     "品味門檻",
   ];
+  // 2026-08-11 教材對齊：戰術 id 與示範句招式名同步改成七步法／高階技術的用語。
   const directiveIdForPhase: Record<string, string> = {
     P1_OPEN: "open_self_state",
-    P2_VALUE: "value_life_sample",
-    P3_TEST: "playful_fit_test",
-    P4_TENSION: "tension_shared_scene",
-    P5_CLOSE: "safe_close_window",
+    P2_VALUE: "value_side_display",
+    P3_TEST: "test_standard_and_deny",
+    P4_TENSION: "tension_pull_push_story",
+    P5_CLOSE: "close_lead_not_ask",
     REPAIR: "repair",
   };
   const visibleMovesForDirective: Record<string, string[]> = {
-    open_self_state: ["自狀態＋感受", "自狀態＋留點懸念"],
-    value_life_sample: ["男女交流＋生活樣本", "生活樣本＋態度"],
-    playful_fit_test: ["玩笑式小測試", "接住玩笑測試"],
-    tension_shared_scene: ["輕鬆張力", "共同小劇場"],
-    safe_close_window: ["低壓收成邀約"],
-    repair: ["降壓修復"],
+    open_self_state: ["曲解式開場", "說話留一半", "台語語氣"],
+    value_side_display: [
+      "側面展示（隨口提，不邀功）",
+      "有態度的觀點",
+      "中英夾雜的生活樣本",
+    ],
+    test_standard_and_deny: [
+      "玩笑式小門檻",
+      "輕輕取消資格",
+      "注音語氣的小門檻",
+    ],
+    tension_pull_push_story: [
+      "先拉再推",
+      "反面說「我們」",
+      "玩笑封號（之後回呼）",
+    ],
+    close_lead_not_ask: ["帶領式收尾（不是請求）"],
+    repair: ["同步（她退你也退）"],
   };
   const coaching =
     "Game 心法：這輪先用生活樣本帶出價值。她這句可能是在分享近況，所以先給自己的畫面，避免連續追問。速約任務：這輪先不約，等她接球再找窗口。";
@@ -270,8 +286,9 @@ Deno.test("GAME_HINT_MOVE_EXAMPLES stay short, visible-safe, parser-safe, and mo
   GAME_HINT_MOVE_EXAMPLES.forEach((entry, index) => {
     phases.add(entry.phase);
     const length = Array.from(entry.example).length;
-    assert(length <= 40, `${entry.example} length=${length}`);
-    assert(length >= 15 && length <= 35, `${entry.example} length=${length}`);
+    // Eric 2026-08-11「字回太多、贅字真多」：示範句本身要短到能當範本。
+    // 對標承瑋／Wen 真實高手局：他們的句子多半 4-11 字，示範句不得超過 20。
+    assert(length >= 6 && length <= 20, `${entry.example} length=${length}`);
     for (const term of banned) {
       assertEquals(
         entry.example.includes(term),
@@ -279,8 +296,10 @@ Deno.test("GAME_HINT_MOVE_EXAMPLES stay short, visible-safe, parser-safe, and mo
         `${entry.example} should not include ${term}`,
       );
     }
+    // 中英夾雜是台灣人傳訊常態（Eric 2026-08-11 拍板），示範句可以有英文；
+    // 這裡只擋內部標籤形狀：底線命名與 server 的戰術碼。
     assertEquals(
-      /[A-Za-z_]/u.test(entry.example),
+      /_/u.test(entry.example),
       false,
       `${entry.example} should not include internal labels`,
     );
@@ -334,19 +353,29 @@ Deno.test("Game Hint prompt treats 60 chars as a hard cap and compresses coachin
     familiarityScore: 8,
   }).map((message) => message.content).join("\n");
 
-  assert(prompt.includes("warmUp/steady 目標 20-40 字"));
-  assert(prompt.includes("60 字是硬頂不是目標"));
-  assert(prompt.includes("一句只做一件事"));
-  assert(prompt.includes("不用「～」與過度熱情語助詞堆疊"));
+  // 2026-08-11 Eric 真機回饋「字回太多、贅字真多」＋承瑋真實局對標：
+  // 改成可分則（每則 4-15 字）、單則目標 8-20 字，並補繁中口氣規則。
+  assert(prompt.includes("可以分則"));
+  assert(prompt.includes("2-15 字、多數 4-10 字"));
+  assert(prompt.includes("分則時至少一則壓在 6 字以內"));
+  assert(prompt.includes("純情緒短則就是一則，不要怕短"));
+  assert(prompt.includes("單則不分行時 8-20 字"));
+  assert(prompt.includes("繁中口氣照台灣人傳 LINE"));
+  assert(prompt.includes("不要書面語"));
+  assert(prompt.includes("一句只做一件事，做完就收"));
+  assert(
+    prompt.includes("開頭不要「哈哈／對啊／真的／我覺得」這種緩衝"),
+  );
+  assert(prompt.includes("callback 只帶她的一個關鍵詞，不要整句複述"));
   assert(prompt.includes("先用一句話講這輪戰術"));
   assert(prompt.includes("不重複 warmUp/steady 逐字稿內容"));
   for (
     const internalMoveId of [
       "open_self_state",
-      "value_life_sample",
-      "playful_fit_test",
-      "tension_shared_scene",
-      "safe_close_window",
+      "value_side_display",
+      "test_standard_and_deny",
+      "tension_pull_push_story",
+      "close_lead_not_ask",
     ]
   ) {
     assertEquals(prompt.includes(internalMoveId), false, internalMoveId);
@@ -1022,19 +1051,30 @@ Deno.test("buildHintMessages teaches Game hints safe advanced qualification narr
     partnerMood: "comfortable",
   }).map((m) => m.content).join("\n");
 
+  // 2026-08-11 瘦身（Eric：「必須要瘦身」）：prompt 從 5055 長到 7514 字，
+  // 同一條規則散在契約／戰術行／few-shot 三處。整併重複，規則一條沒少：
+  //  ・「資格篩選是玩笑式小測試／不是命令她證明自己」→ 併進 P3 戰術行
+  //  ・（「骨架 P1→P5」原本也想併掉，但那是 hint／NPC／debrief 三個介面的
+  //     對齊不變量，有測試釘死，還原保留）
+  //  ・「被她質問嗆聲＝她在測你」整段 → 併進橫向鐵則「她丟測試是機會不是危機」
+  //  ・「Give-first」→ 併進「平聊不是原地踏步」
   assert(gameText.includes("safeAdvancedGameHintContract"));
-  assert(gameText.includes("資格篩選"));
-  assert(gameText.includes("共同敘事"));
   assert(gameText.includes("順勢收尾"));
   assert(gameText.includes("10-15 句內"));
-  assert(gameText.includes("不是命令她證明自己"));
   assert(gameText.includes("可貼回覆必須先接住她最新狀態"));
   assert(gameText.includes("短咖啡、順路散步、小展、宵夜"));
-  assert(gameText.includes("不要說「妳先給我一個標準答案」"));
-  assert(gameText.includes("萬用解法"));
-  assert(gameText.includes("訊號判讀 → 單一招式 → 可貼收口"));
-  assert(gameText.includes("先給一點自己的品味"));
-  assert(gameText.includes("讓她低壓接球"));
+  assert(gameText.includes("訊號判讀 → 出手 → 收口"));
+  // 併進去的規則本體必須還在（換了位置但沒消失）。
+  // 「門檻是玩笑，不是要她自證」在 P3 戰術行，只有走到測試階才注入，
+  // 所以在這裡驗函式本身而不是這份 P1 的 prompt。
+  assert(
+    gameTacticDirectiveFor({ phase: "P3_TEST", failures: [] }).line.includes(
+      "門檻是玩笑，不是要她自證",
+    ),
+  );
+  assert(gameText.includes("她丟測試是機會不是危機"));
+  assert(gameText.includes("開場→展示→測試→張力→收尾"));
+  assert(gameText.includes("平聊不是原地踏步"));
 
   const beginnerText = buildHintMessages({
     turns: [
@@ -1349,7 +1389,7 @@ Deno.test("prompt coaching soft limit keeps headroom under the hard cap", () => 
   assert(gameText.includes(`全文≤${HINT_COACHING_SOFT_CHAR_LIMIT}字`));
   assert(
     gameText.includes(
-      `${HINT_REPLY_SOFT_CHAR_LIMIT} 字是硬頂不是目標`,
+      `整串（含分則）≤${HINT_REPLY_SOFT_CHAR_LIMIT} 字`,
     ),
   );
 });
@@ -1612,11 +1652,48 @@ Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable 
   // 同日回修：速約階梯補「這週找N分鐘／要不要去／一起去也算約（沒主詞一樣算）」
   // 一行——分類器抓不到這些句形，改在 prompt 端不產出，避免為此提高守門召回
   // （提高召回＝首發更常被擋，Eric 明確否決）。實測 5055，上限 5050→5120。
+  // 2026-08-11 教材對齊（Eric 選項 2）：五階段戰術行改寫成七步法／高階技術的
+  // 單一動作，並補「不在她證明自己後稱讚」「先處理阻礙」兩條橫向鐵則。
+  // Game-only 固定 bytes，實測 5201，上限 5120→5260。
+  // 2026-08-11 承瑋／Wen 真實高手局對標（Eric 指定參考 OCR 測試截圖）：字數目標
+  // 再壓到 8-20 字、補「她誇你就曲解不道謝」與「玩笑封號回呼」兩招，few-shot
+  // 換成真實局的短句。實測 5353，上限 5260→5420。
+  // 2026-08-11 承瑋全批案例（他自標「失格／價值展示／約會幻想＋模糊邀約／
+  // 合作框架／建立關係」）：補分則規則、繁中口氣規則、失格與約會幻想戰術。
+  // 實測 5675，上限 5420→5760。
+  // 2026-08-11 Eric 拍板「笑死可以寫，不用怕」：放行 2-5 字的純情緒短則、
+  // 要求至少一則 ≤6 字、分則數放寬到 2-4 則。實測 5881，上限 5760→5960。
+  // 2026-08-11 承瑋全語料對齊（Eric：「盡量對齊」）：補三個他自標的招式——
+  // 「反應好→冷淡回應」（她越熱你越短）、「不迎合」（沒／沒啥興趣）、
+  // 「用否定讓她反收尾」（不想害妳還是別約咖啡了→約酒吧），以及自我封號、
+  // emoji 單則、禁中英夾雜。實測 6124，上限 5960→6220。
+  // 同日 Eric 提問「每個人喜好不一樣，這邊怎麼設計」：承瑋能說「沒啥興趣」
+  // 是因為他真的沒興趣。加一條——立場只能用逐字稿裡使用者已表態過的；
+  // 沒表態過就讓兩顆球各走一個立場，coaching 請他挑真的那個，絕不替他發明
+  // 喜好（「關於我」依 2026-08-04 拍板不進 practice，不能拿來補）。
+  // 實測 6281，上限 6220→6400。
+  // 同日 Eric 指正「中英混雜比較接近真實情況」：查回語料，承瑋自己就寫
+  // 「交換一下line或ig」，但他沒有用英文形容詞。禁英文改成分辨真人／文案
+  // （平台名與口語短詞可用，禁用英文包裝概念）。實測 6404，上限 6400→6520。
+  // 同日再補：台語／注音混用、打字錯字、以及「分則要用真換行不要用符號」
+  // （離線重放抓到模型把逐字稿分隔符「｜」抄進單則）。實測 6577，上限 6520→6700。
+  // 2026-08-11 Eric：「則數不要寫死，觀察對方再決定」。server 直接算出她這則
+  // 發了幾顆球並給節奏建議（她少你多帶節奏、她爆量你收回來，對齊承瑋語料）。
+  // 實測 6701，上限 6700→6800。
+  // 同日補「不要技巧中毒（平聊占大多數）」與「她丟測試是機會不是危機」兩條
+  // 橫向鐵則，並把戰術從規定動作改成方向。實測 7059，上限 6800→7150。
+  // 同日再補「雙向篩選：立場不同也是價值，但要用敘事不是說教」（Eric）。
+  // 實測 7310，上限 7150→7450。
+  // 同日補「平聊也要埋種子（小周末去逛西門）」與「這場不是永無止盡的閒聊」
+  // 兩條（Eric），並把重複的「聊她／聊我／聊我們」併進去。實測 7514，
+  // 上限 7450→7650。
   assert(
-    gameText.length <= 5120,
+    gameText.length <= 7650,
     `Game Hint prompt is too long: ${gameText.length}`,
   );
-  assert(gameText.length <= beginnerText.length + 3000);
+  // Game 比新手多帶整套五階段戰術＋教材契約，差距本來就大；這條只防「無限膨脹」。
+  // 2026-08-11 承瑋／Wen 對標後 game 5353 / beginner 2088，差 3265。
+  assert(gameText.length <= beginnerText.length + 5600);
   assert(gameText.includes("safeAdvancedGameHintContract"));
   assert(gameText.includes("visibleGameHintContract"));
   assert(gameText.includes("禁編店/路名/地址/地標/共同經歷"));
@@ -5932,9 +6009,19 @@ Deno.test("HINT_TOOL_SCHEMA matches the parser contract (schema wide, parser str
   };
   assertEquals(schema.type, "object");
   assertEquals([...schema.required].sort(), ["coaching"]);
+  // 2026-08-11：兩顆球有時代表立場（我也喜歡／我沒興趣）而不是升溫vs穩住，
+  // 標籤要跟著換，否則卡片標題會說謊。兩個標籤欄都是可選、且 parser 對它們
+  // 只做軟性清洗（壞掉退回預設，絕不 throw）。
   assertEquals(
     Object.keys(schema.properties).sort(),
-    ["coaching", "noPasteableReason", "steady", "warmUp"],
+    [
+      "coaching",
+      "noPasteableReason",
+      "steady",
+      "steadyLabel",
+      "warmUp",
+      "warmUpLabel",
+    ],
   );
   assertEquals(schema.additionalProperties, false);
   for (const key of ["warmUp", "steady", "coaching"]) {
@@ -6733,4 +6820,217 @@ Deno.test("邀約階梯：最後手段不得自己造出 503，且不得謊報�
   // 最後手段放行，但 inviteRoute 要照這句話**實際的**強度標，不能謊報成安全的
   const degraded = buildHintDecision({ ...base, finalDegradePass: true });
   assertEquals(degraded.inviteRoute, "direct");
+});
+
+Deno.test("立場選項標籤：模型可命名兩顆球，壞標籤軟性退回預設不 throw", () => {
+  const base = {
+    warmUp: "露營我沒試過 但聽起來不錯",
+    steady: "露營我真的沒興趣 妳自己去玩",
+    coaching:
+      "Game 心法：左邊是「我也想試」右邊是「我沒興趣」，挑你真的是哪個。她這句可能是在找同好。速約任務：這輪不約，先把立場講清楚。",
+  };
+  const turns = [{ role: "ai" as const, text: "你也喜歡露營嗎" }];
+
+  const named = parseHintResult(
+    JSON.stringify({
+      ...base,
+      warmUpLabel: "我也想試",
+      steadyLabel: "我沒興趣",
+    }),
+    { mode: "game", turns } as Parameters<typeof parseHintResult>[1],
+  );
+  assertEquals(named.replies[0].label, "我也想試");
+  assertEquals(named.replies[1].label, "我沒興趣");
+
+  // 沒給就用預設。
+  const plain = parseHintResult(
+    JSON.stringify(base),
+    {
+      mode: "game",
+      turns,
+    } as Parameters<typeof parseHintResult>[1],
+  );
+  assertEquals(plain.replies[0].label, "升溫回覆");
+  assertEquals(plain.replies[1].label, "穩住回覆");
+
+  // 壞標籤（太長／英文／內部標籤／1.2 原詞）一律退回預設，不得 throw。
+  for (
+    const bad of [
+      "這個標籤實在有夠長超過六個字",
+      "warm_up",
+      "推拉",
+      "targetVariable",
+    ]
+  ) {
+    const guarded = parseHintResult(
+      JSON.stringify({ ...base, warmUpLabel: bad, steadyLabel: bad }),
+      { mode: "game", turns } as Parameters<typeof parseHintResult>[1],
+    );
+    assertEquals(guarded.replies[0].label, "升溫回覆", bad);
+    assertEquals(guarded.replies[1].label, "穩住回覆", bad);
+  }
+});
+
+// 2026-08-11：立場選擇題原本只是 visibleGameHintContract 裡的一行，被前面十幾條
+// 規則稀釋，離線重放三個情境全部沒觸發，而且模型自己編了「我會潛水」「我會喝
+// 一點」這種使用者從沒說過的事。改成 server 偵測「她在問你」→ 注入硬指令。
+Deno.test("她問到你的喜好時才注入立場選項指令", () => {
+  const promptFor = (partnerLine: string) =>
+    buildHintMessages({
+      turns: [
+        { role: "user", text: "嗨" },
+        { role: "ai", text: partnerLine },
+      ],
+      profile,
+      practiceMode: "game",
+      temperatureScore: 35,
+      familiarityScore: 15,
+    }).map((message) => message.content).join("\n");
+
+  for (
+    const asksHim of [
+      "那你衝浪嗎",
+      "你會喝嗎",
+      "你也喜歡露營嗎",
+      "你試過大麻嗎",
+      "你平常都怎麼放鬆呢",
+      "你呢",
+    ]
+  ) {
+    assert(promptFor(asksHim).includes("stanceOptions"), asksHim);
+  }
+
+  // 不是在問喜好的句子不得硬逼出兩個立場。
+  // 廢測／質問尤其危險（Eric 2026-08-11 提醒）：她在測你穩不穩時，正解是曲解
+  // 反打或順著演，硬給兩個認真的立場等於教使用者認真解釋自己，比不給還糟。
+  for (
+    const notPreference of [
+      "你追到第幾集了",
+      "站一整天真的很累",
+      "要不要一起去看電影",
+      "我最近在追一部劇",
+      "你怎麼知道我追劇",
+      "你今天還好嗎",
+      "你是不是對每個女生都這樣講",
+      "你真的蠻會編故事的欸 是不是",
+      "你這樣很油欸 是不是套路",
+      "你想幹嘛哈哈",
+      "你是認真的嗎",
+      "你在說什麼哈哈",
+    ]
+  ) {
+    assertEquals(
+      promptFor(notPreference).includes("stanceOptions"),
+      false,
+      notPreference,
+    );
+  }
+
+  // 非 game 模式完全不注入（新手模式不得被外溢）。
+  const beginner = buildHintMessages({
+    turns: [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "那你衝浪嗎" },
+    ],
+    profile,
+    practiceMode: "beginner",
+    temperatureScore: 35,
+    familiarityScore: 15,
+  }).map((message) => message.content).join("\n");
+  assertEquals(beginner.includes("stanceOptions"), false);
+});
+
+// 2026-08-11 Eric：「第 5 個 hint 會跟 P4 鎖在升溫，最後一 hint 可以強調升溫後
+// 鋪墊模糊邀約」。回合下限最高只推到 P4（P5 只靠邀約訊號），所以最後一發常常
+// 停在純升溫；這場之後就沒有提示了，要順手把場景留下來。
+// 只能鋪墊不能真的出邀約句——階梯還在 build 時出邀約會被
+// hint_quality_invalid_invite_route 打回，那等於浪費使用者最後一次額度。
+Deno.test("最後一顆 hint 才注入收尾鋪墊指令", () => {
+  const promptFor = (hintsRemaining?: number) =>
+    buildHintMessages({
+      turns: [
+        { role: "user", text: "嗨" },
+        { role: "ai", text: "剛下班" },
+      ],
+      profile,
+      practiceMode: "game",
+      temperatureScore: 45,
+      familiarityScore: 25,
+      hintsRemaining,
+    }).map((message) => message.content).join("\n");
+
+  for (const remaining of [5, 4, 3, 2]) {
+    assertEquals(
+      promptFor(remaining).includes("lastHint:"),
+      false,
+      `剩 ${remaining} 顆不該注入`,
+    );
+  }
+  for (const remaining of [1, 0]) {
+    assert(promptFor(remaining).includes("lastHint:"), `剩 ${remaining} 顆`);
+  }
+  // 舊 client／未帶欄位時完全不注入。
+  assertEquals(promptFor(undefined).includes("lastHint:"), false);
+  // 不寫死成「一律只鋪墊」（Eric 2026-08-11）：聊到最後階梯可能已經到邀約，
+  // 硬壓成鋪墊等於浪費最後一次額度。最後一發跟著 server 算好的階梯走。
+  const lastHintFor = (direction: string) =>
+    buildHintMessages({
+      turns: [
+        { role: "user", text: "嗨" },
+        { role: "ai", text: "剛下班" },
+      ],
+      profile,
+      practiceMode: "game",
+      temperatureScore: 70,
+      familiarityScore: 60,
+      hintsRemaining: 1,
+      gameState: {
+        ...initialPersistedGameState(),
+        phase: "P4_TENSION" as const,
+        lastSpeedInviteDirection: direction,
+      },
+    }).map((message) => message.content).join("\n");
+
+  assert(
+    lastHintFor("no_invite_build_investment").includes("不要真的出邀約句"),
+  );
+  assert(lastHintFor("soft_invite_probe").includes("把低壓窗口丟出來"));
+  assert(
+    lastHintFor("direct_invite_low_pressure").includes("別再只鋪墊"),
+  );
+  assert(
+    lastHintFor("repair_before_invite").includes("別因為是最後一發就硬約"),
+  );
+
+  // 非 game 模式不得被外溢。
+  const beginner = buildHintMessages({
+    turns: [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "剛下班" },
+    ],
+    profile,
+    practiceMode: "beginner",
+    temperatureScore: 45,
+    familiarityScore: 25,
+    hintsRemaining: 1,
+  }).map((message) => message.content).join("\n");
+  assertEquals(beginner.includes("lastHint:"), false);
+});
+
+// 2026-08-11 離線重放：壓短之後首發被擋，三則全是「還好啊／普普通通／沒什麼
+// 特別的」——短但零資訊，被 substantive_move 與 not_grounded 擋下（守門擋對了）。
+// 契約補一條平衡：短是為了有力，不是為了少講。
+Deno.test("契約明講短不等於空", () => {
+  const prompt = buildHintMessages({
+    turns: [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "剛下班" },
+    ],
+    profile,
+    practiceMode: "game",
+    temperatureScore: 35,
+    familiarityScore: 15,
+  }).map((message) => message.content).join("\n");
+  assert(prompt.includes("短不等於空"));
+  assert(prompt.includes("那是敷衍不是高手"));
 });

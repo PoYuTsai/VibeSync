@@ -1,6 +1,9 @@
 import type { ChatMessage } from "./prompt.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
-import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
+import {
+  flattenMultiBubbleText,
+  scrubRawImageFilenames,
+} from "./prompt_sanitizer.ts";
 import { toTraditionalChinese } from "./traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
 
@@ -380,7 +383,7 @@ function turnsToTranscript(turns: PracticeTurn[]): string {
   return turns
     .map((turn) =>
       `${turn.role === "user" ? "user" : "assistant"}: ${
-        scrubRawImageFilenames(turn.text)
+        scrubRawImageFilenames(flattenMultiBubbleText(turn.text))
       }`
     )
     .join("\n");

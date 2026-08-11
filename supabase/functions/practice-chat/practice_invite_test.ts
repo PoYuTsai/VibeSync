@@ -333,7 +333,9 @@ Deno.test("practice invite classifier ignores perception 看到 complements", ()
   // 真機 gh1 FP 樣句（2026-07-23）：「妳看到那邊的節奏還順嗎」＝問她讀到
   // 哪裡的感受，「看到」是感知補語不是提案動詞。
   assertEquals(
-    practiceInviteLevelFor("哈哈第三章也是蠻關鍵的轉折，不急，妳看到那邊的節奏還順嗎？"),
+    practiceInviteLevelFor(
+      "哈哈第三章也是蠻關鍵的轉折，不急，妳看到那邊的節奏還順嗎？",
+    ),
     "none",
   );
   // 真提案不得鬆：約看電影照算。
@@ -489,4 +491,50 @@ Deno.test("問過去經驗剝除不得吃掉同句的真邀約", () => {
       line,
     );
   }
+});
+
+// 2026-08-11 離線重放實錄：「看來我這關反而過了」被判成 direct 邀約 →
+// build 階段的 buildHintDecision 直接 throw hint_quality_invalid_invite_route
+// → 首發被拒。根因是中文沒有詞邊界，「看【來我這】關」命中了
+// 「來我這（家）」這個到我家的邀請樣式。看來／原來／後來／本來／從來／向來／
+// 近來 這些副詞不是「來我這裡」。
+Deno.test("副詞的「來」不得被讀成邀她來我這裡", () => {
+  const notInvites = [
+    "看來我這關反而過了，妳標準比想像中鬆。",
+    "看來我這關過了",
+    "原來我這邊也有同款",
+    "後來我這邊就沒再下雨了",
+    "本來我這週都排滿了",
+    "從來我這種人就不擅長排行程",
+  ];
+  for (const text of notInvites) {
+    assertEquals(practiceInviteLevelFor(text), "none", text);
+  }
+
+  // 真的邀她來我家，仍然要判得出來（負向後顧不得誤殺）。
+  assertEquals(practiceInviteLevelFor("有空來我家坐坐"), "soft");
+
+  // 已知既有缺口，本輪刻意不補：「要不要過來我這邊」「晚點來我這邊喝一杯」
+  // 「想來我家看看嗎」在這個分類器本來就判 none（與本次修正無關，改動前後
+  // 逐句對拍過）。補召回會讓 build 階段更常擋下 Hint、首發被拒，Eric 明確否決。
+});
+
+// 2026-08-11 離線重放：「先跟妳打個招呼」被判成 direct 邀約 → build 階段首發被拒。
+// 同檔 line 57 早就有「打(?!算|工|字|掃|卡|招呼…)」這份構詞排除表，只是
+// ADDRESSEE_PLAN_CUE 這條漏套。裸「打」不等於打球。
+Deno.test("「跟妳打個招呼」不是邀約，「跟妳打球」才是", () => {
+  for (
+    const text of [
+      "嗨～剛下班，腦子還沒完全上線，先跟妳打個招呼。",
+      "先跟妳打個招呼",
+      "跟妳打字聊比較快",
+      "跟妳打個卡",
+      // 「跟妳打個卡就走」不放進來：它是被「跟妳…走」打到（走＝離開被讀成一起走），
+      // 屬另一個既有誤判家族，本輪不動。
+    ]
+  ) {
+    assertEquals(practiceInviteLevelFor(text), "none", text);
+  }
+  // 真的約打球仍要判得出來。
+  assertEquals(practiceInviteLevelFor("跟妳打球") === "none", false);
 });

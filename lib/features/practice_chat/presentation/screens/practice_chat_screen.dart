@@ -142,6 +142,11 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   }
 
   Future<void> _send() async {
+    // 分則鐵律（2026-08-11）：輸入框裡的換行代表「連發 2-3 則短訊」，畫面上會
+    // 拆成多顆泡（見 _Bubble），但送出去**永遠是一則訊息、一個 turn、一次請求、
+    // 扣一次額度**。絕不可以改成迴圈送 N 次——那會扣 N 次額度、讓她回 N 次，
+    // 而且本地索引會和 request.turns 索引錯開，appliedHintTurns[].turnIndex
+    // 一錯，debrief 的「你有照提示做」就會歸錯人。
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     // 練習對話會送到 DeepSeek 生成模擬對象回覆，首次須取得第三方 AI 資料使用同意
@@ -303,7 +308,15 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                             // state.messages／API payload／Hive。
                             if (state.learningMode == PracticeLearningMode.game)
                               const PracticeGameCoachIntro(),
-                            for (final m in state.messages) _Bubble(message: m),
+                            for (
+                              var i = 0;
+                              i < state.messages.length;
+                              i++
+                            )
+                              _Bubble(
+                                message: state.messages[i],
+                                stagger: i == state.messages.length - 1,
+                              ),
                             if (state.isSending) const _ThinkingBubble(),
                             if (state.debrief != null) ...[
                               const SizedBox(height: 8),
@@ -1232,12 +1245,86 @@ class _HeroTag extends StatelessWidget {
 
 // ── 訊息泡泡 ──────────────────────────────────────────────────────────
 // 沿用對話窗（analyze chat）的泡泡樣式：我說＝橘色系右對齊、她說＝紫色系左對齊。
-class _Bubble extends StatelessWidget {
-  const _Bubble({required this.message});
+//
+// 分則顯示（2026-08-11）：真人傳 LINE 是一次連發 2-3 則短訊，不是一段長句。
+// server 端的 NPC 回覆與 Hint 可貼句都改成用換行分則，這裡照換行拆成多顆泡。
+//
+// 鐵律：**多顆泡仍然是一則訊息、一個 turn、一次請求、扣一次額度**。
+// 本地不會存成多筆 PracticeMessage——那會讓本地索引和 request.turns 索引錯開，
+// 而 appliedHintTurns[].turnIndex 正是 debrief「你有照提示做」責任歸屬的鍵。
+const int _kMaxBubbleSplit = 4;
+
+/// 心法的第一句＝這輪戰術（prompt 契約保證）。開頭的「Game 心法：」是固定標籤，
+/// 畫面上已有燈泡圖示，重複顯示只是佔一行，這裡剝掉。
+String _coachingHeadline(String coaching) {
+  final stripped = coaching.trim().replaceFirst(
+    RegExp(r'^(Game\s*)?心法[:：]\s*'),
+    '',
+  );
+  final end = stripped.indexOf('。');
+  if (end > 0) return stripped.substring(0, end + 1);
+  return stripped;
+}
+
+/// 依換行把一則訊息拆成多顆泡。超過上限就不拆（使用者可能貼了一段長文，
+/// 拆成十幾顆泡會洗版），維持原本的單泡行為。
+List<String> _splitBubbles(String text) {
+  final parts = text
+      .split('\n')
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty)
+      .toList();
+  if (parts.length <= 1 || parts.length > _kMaxBubbleSplit) {
+    return <String>[text.trim()];
+  }
+  return parts;
+}
+
+class _Bubble extends StatefulWidget {
+  const _Bubble({required this.message, this.stagger = false});
   final PracticeMessage message;
+
+  /// 只有畫面上最新的一則會逐則跳出（間隔 1 秒），歷史訊息直接全顯示。
+  final bool stagger;
+
+  @override
+  State<_Bubble> createState() => _BubbleState();
+}
+
+class _BubbleState extends State<_Bubble> {
+  late List<String> _parts;
+  late int _visible;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _parts = _splitBubbles(widget.message.text);
+    // stagger 只在 widget 首次建立時決定，之後不重播：捲動或其他訊息進來
+    // 造成的 rebuild 不該讓舊訊息再演一次。
+    final shouldStagger = widget.stagger && _parts.length > 1;
+    _visible = shouldStagger ? 1 : _parts.length;
+    if (shouldStagger) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setState(() => _visible++);
+        if (_visible >= _parts.length) timer.cancel();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final message = widget.message;
     final isMe = message.isFromMe;
     final fillColor = isMe
         ? AppColors.ctaStart.withValues(alpha: 0.14)
@@ -1247,45 +1334,70 @@ class _Bubble extends StatelessWidget {
         : AppColors.primaryLight.withValues(alpha: 0.52);
     final speakerColor = isMe ? AppColors.ctaEnd : AppColors.primaryDark;
 
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        decoration: BoxDecoration(
-          color: fillColor,
-          borderRadius: BorderRadius.circular(18).copyWith(
-            bottomRight: isMe ? const Radius.circular(5) : null,
-            bottomLeft: !isMe ? const Radius.circular(5) : null,
+    final shown = _parts.take(_visible).toList();
+    return Column(
+      crossAxisAlignment:
+          isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var index = 0; index < shown.length; index++)
+          Align(
+            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(
+              margin: EdgeInsets.only(
+                top: index == 0 ? 4 : 2,
+                bottom: index == shown.length - 1 ? 4 : 0,
+              ),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.75,
+              ),
+              decoration: BoxDecoration(
+                color: fillColor,
+                borderRadius: BorderRadius.circular(18).copyWith(
+                  bottomRight:
+                      isMe && index == shown.length - 1
+                          ? const Radius.circular(5)
+                          : null,
+                  bottomLeft:
+                      !isMe && index == shown.length - 1
+                          ? const Radius.circular(5)
+                          : null,
+                ),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                crossAxisAlignment: isMe
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 說話者只標在第一顆泡，連發時不重複三次。
+                  if (index == 0) ...[
+                    Text(
+                      isMe ? '我說' : '她說',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: speakerColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                  Text(
+                    shown[index],
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.glassTextPrimary,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-          border: Border.all(color: borderColor),
-        ),
-        child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              isMe ? '我說' : '她說',
-              style: AppTypography.bodySmall.copyWith(
-                color: speakerColor,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              message.text,
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextPrimary,
-                height: 1.4,
-              ),
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }
@@ -2175,8 +2287,11 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // 心法只留第一句（2026-08-11 Eric 拍板）：prompt 契約已
+                      // 要求 coaching 第一句就是「這輪戰術」，所以取到第一個
+                      // 句號即可，比硬截兩行更完整可讀；其餘進「看完整心法」。
                       Text(
-                        state.hintCoaching!,
+                        _coachingHeadline(state.hintCoaching!),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.caption.copyWith(
@@ -2319,15 +2434,29 @@ class _HintReplyButton extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              Text(
-                reply.text,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.onBackgroundPrimary,
-                  height: 1.3,
+              // 分則預覽：Hint 可貼句可能是 2-4 則短訊（換行分則）。原本
+              // maxLines: 2 + ellipsis 會把第三則吃掉，使用者看不到全文就
+              // 不敢按套用，等於廢掉分則功能。改成一則一小格全部顯示——
+              // 每則只有 4-15 字，三則加起來比舊版單則還短，卡片不會變高。
+              for (final part in _splitBubbles(reply.text))
+                Container(
+                  margin: const EdgeInsets.only(bottom: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    part,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                      height: 1.3,
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
