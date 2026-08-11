@@ -3366,3 +3366,33 @@ Deno.test("R15 fresh audit preserves completed and topic-carried live invitation
     assertEquals(looksLikeGameSoftInvite(text), true, text);
   }
 });
+
+// 2026-08-11 離線黑箱重放實錄：Game hint 的 P4 戰術是「把她最新狀態帶成你們的
+// 共同小劇場」，模型因此大量產出「跟我一樣…」。DYAD_PATTERN 的「跟我／跟妳」
+// 沒排除比較句用法，於是「跟我一樣爛劇看到一半直接關掉」被判成使用者主動軟邀約，
+// FSM 直接跳 P5_CLOSE、階梯跳明確邀約，下一發 hint 就開始催約把局聊冷。
+// 「一樣」＝比較，不是邀約；「一起」才是。
+Deno.test("「跟我一樣」是比較句不是邀約，「跟我一起」才算", () => {
+  const comparisons = [
+    "跟我一樣爛劇看到一半直接關掉",
+    "跟我一樣看劇",
+    "跟我一樣去吃飯",
+    "跟妳一樣看電影看到睡著",
+    "和我一樣喝咖啡續命",
+    "「看那天的耐心」這句我要記下來，感覺妳耐心用完那刻超戲劇化，跟我一樣爛劇看到一半直接關掉。",
+  ];
+  for (const text of comparisons) {
+    assertEquals(looksLikeGameSoftInvite(text), false, text);
+  }
+
+  // 真邀約不得被這條修正誤殺。
+  const stillInvites = [
+    "跟我一起看劇",
+    "改天跟我一起去吃飯",
+    "跟我去看展吧",
+    "這週末跟妳一起去逛市集",
+  ];
+  for (const text of stillInvites) {
+    assertEquals(looksLikeGameSoftInvite(text), true, text);
+  }
+});
