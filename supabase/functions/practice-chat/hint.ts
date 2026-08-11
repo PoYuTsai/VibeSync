@@ -1288,6 +1288,16 @@ function gameHintFewShotExamples(): string {
   return `示範句（模仿語氣與結構，素材換成她最新一句的內容、不要照抄；每句都留了她原話的一個字眼，你也要留，只模仿句形不留字眼＝沒接住她）：\n${lines}`;
 }
 
+/**
+ * coaching 的變數點名門（assertGameCoachingNamesVariable）只認 GAME_VARIABLE_LABELS
+ * 原詞。WP2 的戰術行用的是 GAME_CONCEPT_LABELS（生活樣本／互相合適度／輕鬆張力），
+ * 模型照抄戰術用語就漏掉變數詞——離線重放 5 輪中 4 輪踩到。詞表直接從真相源展開，
+ * 避免又養出第二份清單。
+ */
+function gameVariableCalloutOptions(): string {
+  return [...new Set(Object.values(GAME_VARIABLE_LABELS))].join("／");
+}
+
 function visibleGameHintContract(): string {
   return `visibleGameHintContract:
 - 只輸出 JSON：warmUp、steady、coaching。
@@ -1296,7 +1306,7 @@ function visibleGameHintContract(): string {
 - 先讀淺溝通：累→降成本；微測試→先過關；好奇→留懸念；推開→修安全；時間窗→收成。
 - warmUp/steady 兩句中，至多一句以問號收尾；至少一句以陳述、態度或畫面收尾。連續兩輪都用問句收尾＝查戶口，會被打回。
 - 高手句短：warmUp/steady 目標 20-40 字，${HINT_REPLY_SOFT_CHAR_LIMIT} 字是硬頂不是目標；一句只做一件事；不用「～」與過度熱情語助詞堆疊。
-- coaching 以「Game 心法：」開頭：先用一句話講這輪戰術，再用「她這句可能是在...」講原因，不重複 warmUp/steady 逐字稿內容；保留階段白話、具體任務與「速約任務：」，全文≤${HINT_COACHING_SOFT_CHAR_LIMIT}字。
+- coaching 以「Game 心法：」開頭：先用一句話講這輪戰術，再用「她這句可能是在...」講原因，不重複 warmUp/steady 逐字稿內容；保留階段白話、具體任務與「速約任務：」；並原詞點名一個要素（${gameVariableCalloutOptions()}），戰術用語不算，全文≤${HINT_COACHING_SOFT_CHAR_LIMIT}字。
 - 依本輪速約階梯最多推一階；公開、低壓、可拒絕。L4 禁止；hidden labels、代碼與 snake_case 不輸出。
 
 `;

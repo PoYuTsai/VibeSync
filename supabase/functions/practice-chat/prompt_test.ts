@@ -875,7 +875,11 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 上限 5550→5660。換掉的是「她封鎖後必然 503」這個整類失敗。
   // 2026-08-11 WP2-WP4：加入當輪戰術、五階段短句 few-shot 與字數／coaching
   // 壓縮契約；這些是 Game-only 固定 prompt，實測最長 5847，上限 5660→5900。
-  if (maxHint > 5900) {
+  // 2026-08-11 離線重放回修：戰術行把 coaching 用詞帶去概念白話，五輪中四輪踩到
+  // assertGameCoachingNamesVariable（hint_quality_missing_variable_callout）。
+  // coaching 契約補「原詞點名一個要素（五變數白話）」一句，Game-only 固定
+  // bytes，實測最長 5931，上限 5900→5960。
+  if (maxHint > 5960) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
   if (maxDebrief > 4570) {
