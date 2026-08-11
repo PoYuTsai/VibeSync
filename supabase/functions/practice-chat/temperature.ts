@@ -266,10 +266,18 @@ function combinedOutcomeDelta(
   const connection = CONNECTION_DELTAS[classification.connection];
   const test = TEST_HANDLING_DELTAS[classification.testHandling];
   const boundary = BOUNDARY_DELTAS[classification.boundary];
+  const heat = connection.heat + test.heat + boundary.heat;
+  const familiarity = connection.familiarity + test.familiarity +
+    boundary.familiarity;
+  if (classification.boundary === "safe") return { heat, familiarity };
+  // 有壓迫感的一句一律扣分，不准被 connection 的加分蓋過去
+  // （Eric 2026-08-11 拍板：「就算是鋪模糊邀約也不是亂用，這要修」）。
+  // 實例：溫度 0、她已經 guarded 時丟「這禮拜六有空嗎 我請妳吃飯」，被打槍
+  // 「也太快了吧」，分類器判 caught(+4)/pushy(-3) 淨 +1 → 放大後 +8，
+  // 玩家做錯事系統反而獎勵他。夾到 boundary 自己的罰則，保證是負的。
   return {
-    heat: connection.heat + test.heat + boundary.heat,
-    familiarity: connection.familiarity + test.familiarity +
-      boundary.familiarity,
+    heat: Math.min(heat, boundary.heat),
+    familiarity: Math.min(familiarity, boundary.familiarity),
   };
 }
 

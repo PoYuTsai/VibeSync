@@ -37,7 +37,14 @@ export async function callDeepSeek(args: DeepSeekArgs): Promise<string> {
     if (args.jsonMode) {
       body.response_format = { type: "json_object" };
     }
-    if (args.thinking) body.thinking = args.thinking;
+    // 呼叫端沒明講就一律關 thinking（2026-08-11，用真 DeepSeek 跑離線黑箱抓到）。
+    // V4 預設開 thinking，而 reasoning tokens 是算在 completion 裡的；本專案每個
+    // 呼叫端的 max_tokens 都是照「只輸出可見文字」估的（分類器 450／聊天 200）。
+    // 實測 reasoning 就吃掉 380-415：分類器 6/6 輪 finish_reason=length →
+    // 丟 deepseek_max_tokens → 溫度／熟悉度整場不動；聊天 1/3 回空字串燒掉重試。
+    // 關掉之後分類器 completion 62 tokens、finish_reason=stop，又快又便宜。
+    // 真的需要 thinking 的呼叫端自己傳 { type: "enabled" }。
+    body.thinking = args.thinking ?? { type: "disabled" };
 
     const res = await fetch(args.endpoint ?? DEEPSEEK_ENDPOINT, {
       method: "POST",

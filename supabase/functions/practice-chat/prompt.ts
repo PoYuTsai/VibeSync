@@ -677,10 +677,11 @@ function gameDebriefPrompt(opts: {
     phase: snapshot.phase,
     failures: snapshot.failureStates,
     partnerMood: opts.partnerState?.mood ?? null,
+    userTurnCount: opts.turns.filter((turn) => turn.role === "user").length,
   });
   return `gameDebrief(hidden guidance)\n${gameDebriefSkillContract()}\n她丟測試而使用者接住了（沒認真解釋、順著演或曲解回打），要當成明確加分寫進 strengths，不要只寫成「沒有出錯」——那一輪是她在升溫、他的價值在上升。\ngameBreakdown 五欄非空且各帶原話：gameBreakdown.phaseReached=階段、missedVariable=缺口、failureState=卡點、nextFirstLine=下次第一句、inviteDirection=方向；不輸出 P1-P5/targetVariable/failureStates。\n${
     compactGameFsmEvidencePrompt(snapshot)
-  }本輪方向：${tacticDirective.line}\ngameBreakdown.nextFirstLine 必須執行這個戰術方向，並沿用教學卡白話，不得改成相反路線。\n${
+  }本輪方向：${tacticDirective.line}\ngameBreakdown.nextFirstLine 必須執行這個戰術方向，並沿用教學卡白話，不得改成相反路線。**本輪方向括號裡的是示範不是台詞**——「妳有眼光」「閱人無數」「恭喜我們成為鄰居」照抄就是罐頭，用她逐字稿講過的東西重寫。\n${
     compactGameLedgerPrompt(opts.gameState)
   }\n${strategy}`;
 }

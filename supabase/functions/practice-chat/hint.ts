@@ -199,6 +199,11 @@ export const HINT_COACHING_SOFT_CHAR_LIMIT = 140;
  * parseHintResult 仍是硬 gate 權威——schema 寬、parser 嚴，衝突以 parser 為準。
  * Game 與新手共用同一 schema（parser 恰三鍵，Game 差異全在 prompt 與守門）。
  */
+/** P4 三招輪替要知道這是第幾顆球；user turn 數就是球數。 */
+function userTurnCountOf(turns: readonly PracticeTurn[]): number {
+  return turns.filter((turn) => turn.role === "user").length;
+}
+
 export const HINT_TOOL_SCHEMA: Readonly<Record<string, unknown>> = {
   type: "object",
   properties: {
@@ -911,6 +916,7 @@ export function buildHintDecision(
       phase: snapshot.phase,
       failures: snapshot.failureStates,
       partnerMood: opts.partnerMood ?? null,
+      userTurnCount: userTurnCountOf(opts.turns),
     });
     const baseRoute = gameInviteRouteFor(snapshot.speedInviteDirection);
     // steady 槽預設比 base 降一階；唯一例外＝P5 收尾局 base=direct 時
@@ -1530,6 +1536,7 @@ function gameHintEvidence(opts: {
     phase: effectiveSnapshot.phase,
     failures: effectiveSnapshot.failureStates,
     partnerMood: opts.partnerMood ?? null,
+    userTurnCount: userTurnCountOf(opts.turns),
   });
   return `gameHint(hidden guidance)\n內部用 Value / Frame / Emotion / Investment（收尾加 Safety）讀盤；coaching 要白話說清階段、該推的要素與這輪任務。L4 forbidden。\n可見文字一律轉白話：價值感、節奏與主見、情緒推進、投入感、曖昧張力；絕不用 DHV、篩選、框架、推拉、可得性這些原詞，也不輸出英文內部標籤。\n\n${visibleGameHintContract()}${safeAdvancedGameHintContract()}${sevenStepBalanceContract()}${
     speedInviteLadderPrompt(inviteRoute)

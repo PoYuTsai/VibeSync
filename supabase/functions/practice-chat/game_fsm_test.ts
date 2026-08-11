@@ -10,9 +10,11 @@ import {
   buildGameStrategy,
   containsCrudeSexualOffense,
   evaluateGameFsm,
+  gameTacticDirectiveFor,
   hasExplicitSrGameStrategy,
   turnPressurePhaseFloor,
 } from "./game_fsm.ts";
+import type { PracticeTurn } from "./validate.ts";
 import { applyLearningClassification } from "./temperature.ts";
 import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
 
@@ -1015,5 +1017,86 @@ Deno.test("every explicit SR Game strategy stays semantically aligned with its c
         `${girl.profileId} strategy still contains legacy mismatched concept: ${mismatch}`,
       );
     }
+  }
+});
+
+Deno.test("張力階段就開放模糊邀約——5 顆球的局不再永遠停在『這輪不約』", () => {
+  // Eric 2026-08-11 拍板：模糊邀約是中段試水溫工具（承瑋對 Wen 在第 5 步／10 步）。
+  // 只靠成熟度 50 的分數門檻，一般難度 5 球全對也只有 32-36，整條線走不到。
+  const turns: PracticeTurn[] = [];
+  for (let i = 0; i < 4; i++) {
+    turns.push(
+      { role: "user", text: "剛下班 累到腦袋當機" },
+      { role: "ai", text: "我也才剛到家 站一整天腳有點酸" },
+    );
+  }
+  const p4 = evaluateGameFsm({
+    turns,
+    temperatureScore: 42,
+    familiarityScore: 17,
+    partnerMood: "amused",
+  });
+  assertEquals(p4.phase, "P4_TENSION");
+  assertEquals(p4.speedInviteDirection, "soft_invite_probe");
+
+  // 她在退的時候仍然先擋下來，不會因為到了 P4 就催約。
+  const guarded = evaluateGameFsm({
+    turns,
+    temperatureScore: 42,
+    familiarityScore: 17,
+    partnerMood: "guarded",
+  });
+  assertEquals(guarded.speedInviteDirection, "no_private_scene_soften");
+});
+
+Deno.test("修復戰術分兩種：她只是退＝幽默接＋輕排除，你越線＝收手", () => {
+  // Eric 2026-08-11 拍板「要學承瑋，不要太亂道歉」；但越線和她只是退不能混為一談。
+  const stepBack = gameTacticDirectiveFor({
+    phase: "P3_TEST",
+    failures: [],
+    partnerMood: "guarded",
+  });
+  assertEquals(stepBack.moveId, "repair_tease_and_deny");
+  assert(stepBack.line.includes("別跟著道歉"));
+  assert(stepBack.line.includes("那好像不能找妳喝酒"));
+
+  for (
+    const crossed of [
+      { failures: ["GREASY" as const], partnerMood: null },
+      { failures: ["FRAME_OVERREACH" as const], partnerMood: null },
+      { failures: [], partnerMood: "annoyed" as const },
+    ]
+  ) {
+    const directive = gameTacticDirectiveFor({
+      phase: "P3_TEST",
+      failures: crossed.failures,
+      partnerMood: crossed.partnerMood,
+    });
+    assertEquals(directive.moveId, "repair_pull_back");
+    assert(directive.line.includes("收手"));
+  }
+});
+
+Deno.test("P4 之後三招輪替，不再每球一字不差", () => {
+  // 回合下限讓第 4 球就進 P4，8 球局實測連 5 輪同一句（Eric：「到後面都一樣沒意思」）。
+  const moves = [4, 5, 6, 7, 8, 9].map((userTurnCount) =>
+    gameTacticDirectiveFor({
+      phase: "P4_TENSION",
+      failures: [],
+      partnerMood: "amused",
+      userTurnCount,
+    }).moveId
+  );
+  assertEquals(moves, [
+    "tension_nickname_frame",
+    "tension_pull_push",
+    "tension_team_frame",
+    "tension_nickname_frame",
+    "tension_pull_push",
+    "tension_team_frame",
+  ]);
+  // 連續兩球不得相同——這條才是 Eric 要的鑑別度。
+  for (let i = 1; i < moves.length; i++) {
+    assert(moves[i] !== moves[i - 1], `第 ${i + 4} 球跟前一球撞招`);
   }
 });

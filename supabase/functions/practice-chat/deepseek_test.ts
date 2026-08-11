@@ -70,7 +70,7 @@ Deno.test("finish_reason=length → 拒絕 token 截斷的半成品", async () =
   }
 });
 
-Deno.test("only an explicit caller opt-out disables DeepSeek V4 thinking", async () => {
+Deno.test("DeepSeek V4 thinking 預設關閉，只有呼叫端明講才打開", async () => {
   const original = globalThis.fetch;
   const bodies: Array<Record<string, unknown>> = [];
   globalThis.fetch = (_input, init) => {
@@ -103,7 +103,13 @@ Deno.test("only an explicit caller opt-out disables DeepSeek V4 thinking", async
     await callDeepSeek(baseArgs);
 
     assertEquals(bodies[0].thinking, { type: "disabled" });
-    assertEquals(Object.hasOwn(bodies[1], "thinking"), false);
+    // 2026-08-11：預設從「開」翻成「關」。V4 的 reasoning tokens 算在 completion
+    // 裡，本專案三個呼叫端的 max_tokens 都是照「只輸出可見文字」估的，開著就會
+    // finish_reason=length——分類器 6/6 輪掛掉（溫度整場不動）、聊天 1/3 回空字串。
+    assertEquals(bodies[1].thinking, { type: "disabled" });
+
+    await callDeepSeek({ ...baseArgs, thinking: { type: "enabled" } });
+    assertEquals(bodies[2].thinking, { type: "enabled" });
   } finally {
     globalThis.fetch = original;
   }

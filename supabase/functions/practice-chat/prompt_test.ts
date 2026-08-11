@@ -920,7 +920,10 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // watchouts 與 gameBreakdown.failureState 同樣適用），固定 bytes，
   // 實測最長 6247，上限 6170→6280。
   // 2026-08-11 教材對齊：debrief 也吃同一份戰術行，實測 6328，上限 6280→6400。
-  if (maxDebriefWithHint > 6400) {
+  // 2026-08-11 反罐頭：離線黑箱兩場的 gameBreakdown.nextFirstLine 直接照抄戰術行
+  // 的教材例句（「妳看起來很有眼光」），加一行「括號裡的是示範不是台詞」，
+  // Game-only 固定 bytes，實測 6420，上限 6400→6450。
+  if (maxDebriefWithHint > 6450) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );

@@ -230,3 +230,72 @@ user turn、扣一次額度**。不可以改成迴圈送 N 次——本地索引
 - **NPC 把旁白 OS 寫進可見泡泡** 2 次（`*（短回，有點敷衍…）*`）。prompt.ts:244
   有禁令但 server 端無守門。⚠️ 代打模型是 Haiku、production 是 DeepSeek，
   這個離線環境證明不了 production 會重現。
+
+---
+
+## 七、Eric 三題拍板的實作 ＋ 真 DeepSeek 揪出的 production bug
+
+### 先講最嚴重的：DeepSeek V4 thinking 吃光 max_tokens（`deepseek.ts`）
+
+Eric 給了 DeepSeek key 讓離線黑箱用**真的 NPC 模型**跑（原本用 Haiku 代打），
+第一場就炸出來：`deepseek-v4-flash` **預設開 thinking**，而 reasoning tokens
+算在 completion 裡；本專案三個呼叫端的 `max_tokens` 全是照「只輸出可見文字」估的。
+
+直接打 API 實測（同 prompt 同參數）：
+
+| | finish_reason | completion | 結果 |
+|---|---|---|---|
+| 現況（分類器 450） | `length` | 450（reasoning 380） | JSON 砍半 → `deepseek_max_tokens` |
+| 關 thinking | `stop` | **62** | 完整 JSON |
+| 放大到 1200 | `stop` | 501（reasoning 415） | 會過但貴 8 倍 |
+
+後果：**溫度分類器每一輪都失敗，溫度／熟悉度整場不動**（實測 6 顆球打完停在 28／0、
+成熟度 17）。聊天路徑同病：`max_tokens=200`，3 次有 1 次 `finish=length` 且回空字串，
+被 `CHAT_GENERATION_ATTEMPTS` 重試吸收，所以線上只會表現成「偶爾慢、偶爾怪」。
+
+修法：`callDeepSeek` 呼叫端沒明講就一律關 thinking。三個呼叫端全部只要短輸出，
+其中 `semantic_quality` 本來就自己關了——**預設值從一開始就跟這個 codebase 的
+實際用法相反**（2026-07-19 那個 commit 只是替單一呼叫端加 opt-out，不是深思過的預設）。
+`deepseek_test.ts` 原本把「預設開」釘死，改成釘新的不變量（呼叫端仍可明講 enabled）。
+
+⚠️ 想用 Management API 撈 production log 佐證發生頻率，但該查詢連「三天內任何
+practice-chat 事件」都回 0 筆＝查錯 log 來源，**沒能證實線上頻率**。機制本身是
+直接打 API 打出來的，這點確定。
+
+### Eric 三題拍板
+
+1. **模糊邀約改成中段工具**（拍板：「可以吧 鋪墊模糊邀約」）
+   不動 `stageForScore` 的分數門檻——那是 assistedMode 共用的，會波及新手模式
+   （而新手是下一輪的題目）。改成 `speedInviteDirectionFor` **在 P4_TENSION 就開放
+   `soft_invite_probe`**。回合下限讓第 4 顆球進 P4，5 球的局因此有兩顆球的鋪墊空間，
+   對得上承瑋（Wen 局第 5 步／10 步）。guarded／annoyed／GREASY 的早退分支排在前面，
+   她在退的時候不會變成催約。
+
+2. **修復戰術學承瑋**（拍板：「不要太亂道歉，就幽默接＋輕排除」）
+   拆成兩條，因為混一起會教出「她生氣時還在調侃」：
+   - `repair_tease_and_deny`（她只是退，含 guarded）：幽默接住＋輕輕排除，
+     明寫「連續道歉和『辛苦了／先休息』會把局聊冷」，引承瑋原句。
+   - `repair_pull_back`（GREASY／FRAME_OVERREACH／annoyed＝你真的越線）：收手，
+     **道歉一次就好**，不解釋自己。
+
+3. **(a) P4 三招輪替**（拍板：「到後面都一樣沒意思」）
+   拆成承瑋自己標了名字的三招：建立關係（玩笑封號→一路回呼）／調侃＋展示價值
+   （先拉再推）／合作框架＋約會幻想，用 `userTurnCount` 決定。測試釘死「連續兩球不撞招」。
+   順手堵掉拆解卡照抄戰術行例句的問題（「妳看起來很有眼光」），
+   debrief prompt 明寫「括號裡的是示範不是台詞」。
+
+   **(b) 有壓迫感一律扣分**（拍板：「就算是鋪模糊邀約也不是亂用，這要修」）
+   根因：`combinedOutcomeDelta` 三個維度相加，`connection: caught` 的 +4 蓋過
+   `boundary: pushy` 的 -3。改成 boundary 非 safe 時淨值夾到該罰則以下，保證是負的。
+   不只修邀約，同型全部一起修。
+
+   **(c)** 換真 DeepSeek 測——見上面那個 bug。
+
+### 修完的數字（真 DeepSeek，6 顆球一場）
+
+- 分類器失敗 **6/6 → 0/6**，分數會動了：成熟度 19→21→25→30→34→38
+- 階梯第 4 球起 `soft_invite_probe`，最後一顆球用軟邀約版講法
+- 戰術軌跡零重複：open → value → test → nickname_frame → pull_push → team_frame
+- **每則中位 7 字、平均 6.7、≤6 字 34%**（承瑋 7／7.9／45%）——句長首次真的對上
+  ⚠️ 之前量到的偏長有一部分是 Haiku 代打的 NPC 造成的，不是 hint 端的問題
+- 心法中位 102、最長 112、超過 140 軟上限 0

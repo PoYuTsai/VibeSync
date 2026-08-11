@@ -4,6 +4,7 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  applyLearningClassification,
   applyTemperatureDelta,
   buildTemperatureJudgeMessages,
   clampTemperature,
@@ -236,4 +237,43 @@ Deno.test("parseTemperatureJudgement trims reason to a short string", () => {
   assert(judgement.reason.length <= 36);
   assertEquals(judgement.reason.startsWith(" "), false);
   assertEquals(judgement.reason.endsWith(" "), false);
+});
+
+Deno.test("有壓迫感的一句一律扣分，不准被 connection 的加分蓋過去", () => {
+  // Eric 2026-08-11 拍板：離線黑箱裡溫度 0、她已 guarded 時丟「這禮拜六有空嗎
+  // 我請妳吃飯」被打槍，分類器判 caught/pushy 卻淨 +8——玩家做錯事系統獎勵他。
+  const prematureInvite = applyLearningClassification(
+    { heatScore: 40, familiarityScore: 30 },
+    {
+      connection: "caught",
+      impact: "medium",
+      testHandling: "none",
+      boundary: "pushy",
+      hintAlignment: "none",
+      partnerMood: "guarded",
+      moodConfidence: 0.8,
+      innerThought: "太快了。",
+    },
+  );
+  assert(
+    prematureInvite.delta < 0,
+    `pushy 仍然加分：${prematureInvite.delta}`,
+  );
+  assert((prematureInvite.familiarityDelta ?? 0) < 0);
+
+  // safe 的路徑不受影響——接住她就是要加分。
+  const caughtSafe = applyLearningClassification(
+    { heatScore: 40, familiarityScore: 30 },
+    {
+      connection: "caught",
+      impact: "medium",
+      testHandling: "none",
+      boundary: "safe",
+      hintAlignment: "none",
+      partnerMood: "comfortable",
+      moodConfidence: 0.8,
+      innerThought: "他接住了。",
+    },
+  );
+  assert(caughtSafe.delta > 0);
 });

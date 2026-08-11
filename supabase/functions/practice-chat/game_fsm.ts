@@ -138,6 +138,8 @@ export function gameTacticDirectiveFor(opts: {
   phase: GameFsmPhase;
   failures: readonly GameFailureState[];
   partnerMood?: PartnerMood | null;
+  /** 使用者已經打過幾則。P4 三招輪替用，省略時退回第一招。 */
+  userTurnCount?: number;
 }): { moveId: string; line: string } {
   const lifeSample = GAME_CONCEPT_LABELS.DHV;
   const fitSignal = GAME_CONCEPT_LABELS.篩選;
@@ -148,11 +150,23 @@ export function gameTacticDirectiveFor(opts: {
       partnerMood: opts.partnerMood ?? null,
     })
   ) {
-    // 高階技術「同步」：她退你也退，先給舒適度，不在她收手時繼續推。
+    // Eric 2026-08-11 拍板「要學承瑋，不要太亂道歉」：語料 88 則裡一句安撫語都沒有。
+    // 但「她只是退」和「你真的越線」是兩件事，混成一條會教出在她生氣時還在調侃。
+    // 越線＝收手（GREASY／FRAME_OVERREACH／annoyed）；只是退＝幽默接住＋輕輕排除。
+    const crossedTheLine = opts.failures.includes("GREASY") ||
+      opts.failures.includes("FRAME_OVERREACH") ||
+      opts.partnerMood === "annoyed";
+    if (crossedTheLine) {
+      return {
+        moveId: "repair_pull_back",
+        line:
+          "你剛剛越線了，這輪只做一件事：收手。道歉一次就好，不要連續道歉也不要解釋自己，那會把場子聊得更死。換一個她安全的話題，用一句自己的生活把溫度接回來，這輪絕對不約。",
+      };
+    }
     return {
-      moveId: "repair",
+      moveId: "repair_tease_and_deny",
       line:
-        "她退你就退一步：降壓、接住她保留的點，不邊修邊約，等她願意接話再往前。",
+        "她退了，別跟著道歉——連續道歉和「辛苦了／先休息」會把局聊冷。幽默接住她的退（她問「你怎麼認識我的」→「好像我是詐騙集團」），再輕輕把她排除掉（她說酒量普通→「那好像不能找妳喝酒」）。她開始辯解就是她回來了，這時不要稱讚，接著玩下去。",
     };
   }
   if (opts.phase === "P1_OPEN") {
@@ -182,13 +196,35 @@ export function gameTacticDirectiveFor(opts: {
     };
   }
   if (opts.phase === "P4_TENSION") {
-    // 七步法步驟 5（推拉＋表演性人格＝社交安全網）＋高階技術「敘事／說我們」，
-    // 太強烈就反面說（欲擒故縱）。反面說法同時避開邀約誤判。
-    return {
-      moveId: "tension_pull_push_story",
-      line:
-        `先拉再推（「妳有眼光——看來閱人無數」）。說「我們」要用反面講（「我們大概合不來」），或給一個玩笑封號之後一路回呼（「恭喜我們成為鄰居」→ 之後都叫她鄰居）。玩笑是安全網，她不接就撤。保持${lightTension}，不推私密場景。`,
-    };
+    // 七步法步驟 5（推拉＋表演性人格＝社交安全網）＋高階技術「敘事／說我們」。
+    // 回合下限讓第 4 顆球就進 P4，之後每一球都停在這裡——原本一句寫死，
+    // 8 球局實測連 5 輪一字不差（Eric 2026-08-11：「到後面都一樣沒意思」）。
+    // 拆成語料裡承瑋自己標了名字的三招輪替，用 userTurnCount 決定，同一局不重複。
+    const p4Moves = [
+      {
+        // 承瑋標「建立關係」：恭喜我們成為鄰居🤜 → 之後整局都叫她鄰居。
+        moveId: "tension_nickname_frame",
+        line:
+          `給一個玩笑封號把兩個人綁在一起，之後一路回呼（「恭喜我們成為鄰居🤜」→ 後面都叫她鄰居）。封號要從她剛講的東西長出來，不要憑空取。保持${lightTension}，不推私密場景。`,
+      },
+      {
+        // 承瑋標「調侃＋展示價值」：她說你感覺很厲害 → 可能比你好一點點。
+        moveId: "tension_pull_push",
+        line:
+          `先拉再推：接住她的話再輕輕壓一下（她說「你感覺很厲害」→「可能比妳好一點點」）。說「我們」要用反面講（「我們大概合不來」）。玩笑是安全網，她不接就撤，保持${lightTension}。`,
+      },
+      {
+        // 承瑋標「合作框架」＋「約會幻想」：那可以組隊了／妳會不會吐在我身上哈哈。
+        moveId: "tension_team_frame",
+        line:
+          `把兩個人放進同一個畫面：先用合作框架綁起來（「那可以組隊了」「妳酒量如何」），再丟一句約會幻想把畫面演出來（「妳會不會吐在我身上哈哈」）。是想像不是邀約，別給時間地點。保持${lightTension}。`,
+      },
+    ];
+    // userTurnCount 從 4 開始才會進 P4；沒帶時退回第一招（純函式呼叫端如測試）。
+    const index = opts.userTurnCount === undefined
+      ? 0
+      : Math.max(0, opts.userTurnCount - 4) % p4Moves.length;
+    return p4Moves[index];
   }
   // 七步法步驟 6-7：安全感鋪墊、讓她覺得搆得到、順水推舟；
   // 高階技術「收尾用帶的不是用問的」。階梯仍由 server 判定，最多推一階。
@@ -866,7 +902,16 @@ function speedInviteDirectionFor(opts: {
   ) {
     return "direct_invite_low_pressure";
   }
-  if (opts.inviteStage === "soft_invite_ready" || opts.phase === "P5_CLOSE") {
+  // 模糊邀約是**中段試水溫工具**，不是收尾動作（Eric 2026-08-11 拍板，語料反證：
+  // 承瑋對 Wen 的模糊邀約在第 5 步／共 10 步，對 raina 在第 3 天，沒反應就轉話題）。
+  // 只靠分數門檻（成熟度 50）在 5 顆球的局永遠到不了——一般難度全對也只有 32-36。
+  // 所以張力階段就開放：回合下限讓第 4 顆球進 P4，模糊邀約有兩顆球的鋪墊空間。
+  // 上面的 guarded／annoyed／GREASY 早退分支仍然先擋，她在退就不會走到這裡。
+  if (
+    opts.inviteStage === "soft_invite_ready" ||
+    opts.phase === "P4_TENSION" ||
+    opts.phase === "P5_CLOSE"
+  ) {
     return "soft_invite_probe";
   }
   return "no_invite_build_investment";
