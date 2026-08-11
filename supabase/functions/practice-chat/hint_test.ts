@@ -367,7 +367,9 @@ Deno.test("Game Hint prompt treats 60 chars as a hard cap and compresses coachin
     prompt.includes("開頭不要「哈哈／對啊／真的／我覺得」這種緩衝"),
   );
   assert(prompt.includes("callback 只帶她的一個關鍵詞，不要整句複述"));
-  assert(prompt.includes("先用一句話講這輪戰術"));
+  // 心法瘦身（2026-08-11 離線黑箱：8/19 超過軟上限、最長 257 字）：
+  // 契約從「六個要素」改成「三句」，字數上限提到句首。
+  assert(prompt.includes("就寫三句"));
   assert(prompt.includes("不重複 warmUp/steady 逐字稿內容"));
   for (
     const internalMoveId of [
@@ -1386,7 +1388,9 @@ Deno.test("prompt coaching soft limit keeps headroom under the hard cap", () => 
       partnerMood: "comfortable",
     } as Parameters<typeof buildHintMessages>[0],
   ).map((m) => m.content).join("\n");
-  assert(gameText.includes(`全文≤${HINT_COACHING_SOFT_CHAR_LIMIT}字`));
+  assert(
+    gameText.includes(`全文 ${HINT_COACHING_SOFT_CHAR_LIMIT} 字以內，就寫三句`),
+  );
   assert(
     gameText.includes(
       `整串（含分則）≤${HINT_REPLY_SOFT_CHAR_LIMIT} 字`,
@@ -7032,5 +7036,13 @@ Deno.test("契約明講短不等於空", () => {
     familiarityScore: 15,
   }).map((message) => message.content).join("\n");
   assert(prompt.includes("短不等於空"));
-  assert(prompt.includes("那是敷衍不是高手"));
+  // 2026-08-11 離線黑箱 vs 承瑋 88 則語料：我們 ≤6 字的短則 62% 是空的、
+  // 他只有 12%。空句的實際型態不是原本釘的「還好啊／普普通通」，而是
+  // 回聲／安撫／空泛問候三種，契約改成點名這三種。
+  for (const shape of ["回聲", "安撫", "空泛問候"]) {
+    assert(prompt.includes(shape), `短不等於空契約缺「${shape}」`);
+  }
+  assert(prompt.includes("自己的事實"));
+  assert(prompt.includes("推進的短問"));
+  assert(prompt.includes("壓短是為了有力"));
 });

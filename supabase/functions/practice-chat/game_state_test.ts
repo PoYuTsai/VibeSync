@@ -2,7 +2,13 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import type { GameFsmSnapshot } from "./game_fsm.ts";
+import {
+  evaluateGameFsm,
+  evaluateGameFsmForLedger,
+  type GameFsmSnapshot,
+} from "./game_fsm.ts";
+import { inviteMaturityFromLearningScores } from "./invite_maturity.ts";
+import type { PracticeTurn } from "./validate.ts";
 import {
   buildNextGameState,
   compactGameLedgerPrompt,
@@ -243,4 +249,39 @@ Deno.test("compactGameLedgerPrompt 給整場 failureCounts 與契約名的最弱
 Deno.test("compactGameLedgerPrompt 無整場帳（新局）時整塊不注入", () => {
   assertEquals(compactGameLedgerPrompt(null), "");
   assertEquals(compactGameLedgerPrompt(undefined), "");
+});
+
+Deno.test("落帳走 evaluateGameFsmForLedger 後，ledger 不會把速約階梯蓋回『這輪不約』", () => {
+  // 2026-08-11 離線黑箱迴歸：落帳漏帶 inviteStage → ledger 記下
+  // no_invite_build_investment → effectiveGameFsmSnapshot 拿它蓋掉 hint 端
+  // 算對的 direct_invite_low_pressure，邀約三條路線在順風局全走不到。
+  const turns: PracticeTurn[] = [];
+  for (let i = 0; i < 5; i++) {
+    turns.push(
+      { role: "user", text: "剛下班 累到腦袋當機" },
+      { role: "ai", text: "我也才剛到家 站一整天腳有點酸" },
+    );
+  }
+  const scores = {
+    turns,
+    temperatureScore: 70,
+    familiarityScore: 60,
+    partnerMood: "comfortable" as const,
+  };
+
+  const ledger = buildNextGameState({
+    previous: initialPersistedGameState(),
+    snapshot: evaluateGameFsmForLedger(scores),
+    now: new Date(0),
+  });
+  const fresh = evaluateGameFsm({
+    ...scores,
+    inviteStage: inviteMaturityFromLearningScores(scores)?.stage ?? null,
+  });
+
+  assertEquals(fresh.speedInviteDirection, "direct_invite_low_pressure");
+  assertEquals(
+    effectiveGameFsmSnapshot(fresh, ledger).speedInviteDirection,
+    fresh.speedInviteDirection,
+  );
 });

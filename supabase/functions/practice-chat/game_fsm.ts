@@ -1,4 +1,7 @@
-import type { InviteStage } from "./invite_maturity.ts";
+import {
+  type InviteStage,
+  inviteMaturityFromLearningScores,
+} from "./invite_maturity.ts";
 import { looksLikeGameSoftInvite } from "./game_invite_classifier.ts";
 import {
   GAME_CONCEPT_LABELS,
@@ -1055,6 +1058,34 @@ export function evaluateGameFsm(opts: {
     realityFlags,
     spicyLevel,
   };
+}
+
+/**
+ * 落帳專用：`inviteStage` 從當下分數推導，呼叫端不必自己算。
+ *
+ * 2026-08-11 離線黑箱抓到的迴歸：handler 落帳時漏傳 `inviteStage`，落下去的
+ * `lastSpeedInviteDirection` 永遠是 `no_invite_build_investment`；而
+ * `effectiveGameFsmSnapshot` 在非修復優先時一律拿 ledger 的值蓋掉 fresh，
+ * 於是 `soft_invite_probe`／`direct_invite_low_pressure`／`partner_window_close`
+ * 三條路線在順風局 100% 走不到——實測溫度 70／熟悉 60（成熟度 66＝可直接邀約）
+ * 進 prompt 的仍是「這輪不約」。速約階梯是**當下狀態**不是進度棘輪，
+ * 落帳與 hint 兩端必須同源，所以收斂成這一個入口。
+ */
+export function evaluateGameFsmForLedger(opts: {
+  turns: PracticeTurn[];
+  temperatureScore: number;
+  familiarityScore: number;
+  partnerMood?: PartnerMood | null;
+  classification?: TurnClassification;
+}): GameFsmSnapshot {
+  return evaluateGameFsm({
+    ...opts,
+    inviteStage: inviteMaturityFromLearningScores({
+      temperatureScore: opts.temperatureScore,
+      familiarityScore: opts.familiarityScore,
+      partnerMood: opts.partnerMood ?? null,
+    })?.stage ?? null,
+  });
 }
 
 export function applyGameLearningDelta(opts: {

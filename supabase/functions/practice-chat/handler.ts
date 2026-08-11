@@ -92,6 +92,7 @@ import {
   applyGameLearningDelta,
   containsCrudeSexualOffense,
   evaluateGameFsm,
+  evaluateGameFsmForLedger,
 } from "./game_fsm.ts";
 import {
   buildNextGameState,
@@ -4082,7 +4083,9 @@ export function createPracticeChatHandler(
     }
 
     if (request.practiceMode === "game" && temperature) {
-      const snapshot = evaluateGameFsm({
+      // 必須走 ForLedger 版：漏帶 inviteStage 會讓 ledger 記下錯的速約階梯，
+      // 而 effectiveGameFsmSnapshot 會拿它蓋掉 hint 端算對的那個。
+      const snapshot = evaluateGameFsmForLedger({
         turns: request.turns,
         temperatureScore: temperature.score,
         familiarityScore: temperature.familiarityScore,

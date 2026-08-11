@@ -201,9 +201,12 @@ export function effectiveGameFsmSnapshot(
   // 軟邀約訊號，直接 max 會做出 `P5_CLOSE + no_invite_build_investment` 這種
   // 不可能快照——prompt 一邊叫模型開邀約窗口、一邊說這輪先別約，模型照 P5
   // 戰術出手就被 hint_quality_invalid_invite_route 打回重試。
-  // 下限最高只到 P4_TENSION，而 speedInviteDirectionFor 只在 P5_CLOSE 才改
-  // 判定，所以抬 phase 不會讓 ledger 的速約階梯失準；targetVariable 則跟著
-  // 新 phase 重算，保持三者同源。
+  // 下限最高只到 P4_TENSION，抬 phase 不會反過來改速約階梯；targetVariable
+  // 則跟著新 phase 重算，保持三者同源。
+  // ⚠️ 這裡沿用 ledger 的 speedInviteDirection，**前提是落帳端有帶
+  // inviteStage**（`evaluateGameFsmForLedger`）。2026-08-11 之前落帳漏帶，
+  // 這一行就把 hint 端算對的階梯蓋成「這輪不約」，邀約路線整條走不到。
+  // 改落帳端的人請一起看 handler 的 persistGameStateFailOpen。
   // 修復優先時 ledger 的目標與速約階梯一律讓位給 fresh：舊帳可能停在
   // P5_CLOSE/明確邀約，配上本輪的修復戰術就變成「先修安全感、不邊修邊約」
   // 和「本輪階梯位置：明確邀約」同時出現。階段進度（phase）保留，
