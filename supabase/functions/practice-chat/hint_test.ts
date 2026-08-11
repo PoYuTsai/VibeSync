@@ -1606,8 +1606,11 @@ Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable 
   // 2026-08-11「大膽版」：男女前提／說話留一半升格成獨立硬規則一行
   //（原本只是戰術行裡的子句，實測整場都被生活樣本蓋過），Game-only 固定
   // bytes，實測 4909，上限 4800→4950。
+  // 同日回修：coaching 漏「速約任務：」會被 hint_quality_invalid_game_contract
+  // 硬拒絕重生成，實測正是它殺掉了品質最好的候選（男女前提那句）。
+  // 契約補一條把這五個字寫成不可漏，實測 5005，上限 4950→5050。
   assert(
-    gameText.length <= 4950,
+    gameText.length <= 5050,
     `Game Hint prompt is too long: ${gameText.length}`,
   );
   assert(gameText.length <= beginnerText.length + 3000);

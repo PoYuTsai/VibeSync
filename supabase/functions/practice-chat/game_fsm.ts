@@ -149,10 +149,13 @@ export function gameTacticDirectiveFor(opts: {
     };
   }
   if (opts.phase === "P2_VALUE") {
+    // 這輪刻意只給一個動作。實測（2026-08-11 離線重放）只要句子裡同時出現
+    // 「生活樣本」，模型 100% 選那個做、男女前提整場不會長出來——它比較好寫。
+    // P1 已經負責狀態＋生活樣本，這輪就專門把互動定調成男女之間。
     return {
-      moveId: "value_life_sample",
+      moveId: "value_gender_frame",
       line:
-        `把互動帶成有來有往的男女交流，不當客服；給一小段${lifeSample}和有態度的觀點，讓她看見你的${paceAndPoint}，也拉出${fitSignal}。`,
+        `這輪唯一動作＝男女前提：用一句話讓她感覺你是把她當一個女生在聊，不是同事或客服（例「跟妳講話有點危險，我本來只想回一句」）。可以帶你的${paceAndPoint}和態度，但不要只丟${lifeSample}交換資訊，也不要邀約。`,
     };
   }
   if (opts.phase === "P3_TEST") {

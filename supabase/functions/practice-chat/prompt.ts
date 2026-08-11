@@ -807,7 +807,7 @@ function debriefHintAccountabilityPrompt(
         : []),
     ].join("\n");
   }).join("\n");
-  return `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；各筆 decision.move 串起本場已落帳的戰術軌跡；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打；使用者照 Hint 做的部分不得寫成他的缺口。只有 Hint 送出後「她」的新回覆出現明確反證時才可批評 Hint；符合這個前提且教練路線本身太保守時，要明說「教練這輪保守了，下次可以更早進測試」，責任放在教練路線，不得怪使用者；否則不評 Hint。exact: true 時 summary/strengths 必含「你有照提示做」。拆成：使用者執行 / Hint 品質 / 對方反應。讀完整末筆她回覆；有新素材／反問就不是禮貌收尾。watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。`;
+  return `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；各筆 decision.move 串起本場已落帳的戰術軌跡；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打；使用者照 Hint 做的部分不得寫成他的缺口。只有 Hint 送出後「她」的新回覆出現明確反證時才可批評 Hint；符合這個前提時，批評的主詞一律是「這輪教練路線」，不是「你」——寫「教練這輪保守了／推太快了，下次…」，禁止寫成「你太快」「你急著」「你不該」這種把 Hint 的決定算到使用者頭上的句子（watchouts 與 gameBreakdown.failureState 同樣適用）；否則不評 Hint。exact: true 時 summary/strengths 必含「你有照提示做」。拆成：使用者執行 / Hint 品質 / 對方反應。讀完整末筆她回覆；有新素材／反問就不是禮貌收尾。watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。`;
 }
 
 /** debrief 模式：system + 一則含 profile/訊號脈絡與逐字稿的 user 指令。 */

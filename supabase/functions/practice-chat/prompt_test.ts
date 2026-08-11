@@ -882,7 +882,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 2026-08-11「大膽版」：game 模式改寫「低溫只輕推情緒」與「不是永遠更曖昧」
   // 兩句、並把男女前提／說話留一半升格成獨立硬規則，Game-only 固定 bytes，
   // 實測最長 6091，上限 5960→6120。
-  if (maxHint > 6120) {
+  // 同日回修：coaching「速約任務：」不可漏一條（少了就整份重生成，浪費一次
+  // 額度），Game-only 固定 bytes，實測最長 6187，上限 6120→6260。
+  if (maxHint > 6260) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
   if (maxDebrief > 4570) {
@@ -898,7 +900,10 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 2026-07-23 round8：建議句「扣回原話字眼」教學一行（對齊詞面 grounding
   // gate——回應句家族 debrief 版收斂），固定 bytes，上限 6000→6100。
   // 2026-08-04 認識管道：同上一行評分尺度（≤70 bytes），上限 6100→6170。
-  if (maxDebriefWithHint > 6170) {
+  // 2026-08-11：Hint 責任歸屬改成鎖主詞（禁「你太快／你急著／你不該」並點名
+  // watchouts 與 gameBreakdown.failureState 同樣適用），固定 bytes，
+  // 實測最長 6247，上限 6170→6280。
+  if (maxDebriefWithHint > 6280) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );
@@ -1124,11 +1129,20 @@ Deno.test("debrief prompt separates copied Hint execution from Hint quality", ()
     true,
   );
   assertEquals(user.includes("使用者照 Hint 做的部分不得寫成他的缺口"), true);
+  // 2026-08-11：責任歸屬從「放在教練路線」升級成鎖主詞——離線重放時拆解卡
+  // 仍寫出「你提『同步進度』太快」，把 Hint 的決定算到使用者頭上。
   assertEquals(
-    user.includes("教練這輪保守了，下次可以更早進測試"),
+    user.includes("批評的主詞一律是「這輪教練路線」，不是「你」"),
     true,
   );
-  assertEquals(user.includes("責任放在教練路線，不得怪使用者"), true);
+  assertEquals(
+    user.includes("教練這輪保守了／推太快了"),
+    true,
+  );
+  assertEquals(
+    user.includes("禁止寫成「你太快」「你急著」「你不該」"),
+    true,
+  );
   assertEquals(user.includes("拆成：使用者執行 / Hint 品質 / 對方反應"), true);
   assertEquals(user.includes('decision.phase: "P3_TEST"'), true);
   assertEquals(user.includes('decision.targetVariable: "Investment"'), true);
