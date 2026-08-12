@@ -147,7 +147,11 @@ import {
 import { hashConversation } from "./conversation_hash.ts";
 import { QUICK_SYSTEM_PROMPT } from "./quick_prompt.ts";
 import { isStreamingAllowed } from "./stream_gate.ts";
-import { handleStreamAnalysisRequest } from "./stream_handler.ts";
+import {
+  handleStreamAnalysisRequest,
+  handleStreamAnalysisResume,
+  type StreamAnalysisResumeSnapshot,
+} from "./stream_handler.ts";
 import { buildStreamSystemPrompt } from "./stream_prompt.ts";
 import { streamAnalyzeMaxTokensForStyleCount } from "./stream_budget.ts";
 import {
@@ -808,6 +812,18 @@ function streamRecommendationFromRun(
     quotedContext,
     warnings,
     raw,
+  };
+}
+
+function streamResumeSnapshotFromRun(
+  run: AnalysisStreamRun,
+): StreamAnalysisResumeSnapshot {
+  return {
+    status: run.status,
+    finalResult: run.final_result_json,
+    lastErrorCode: run.last_error_code,
+    retriesRemaining: Math.max(0, MAX_STREAM_RETRIES - run.retry_count),
+    wasCharged: run.charged_at !== null,
   };
 }
 
@@ -8427,6 +8443,43 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       let prechargedRecommendation: StreamRecommendationForCharge | undefined;
       try {
         if (analysisRunId) {
+          streamRun = await streamStore.getRun({
+            runId: analysisRunId,
+            userId: user.id,
+            conversationHash: conversationHashValue,
+          });
+          if (Date.parse(streamRun.expires_at) <= Date.now()) {
+            throw new Error("STREAM_RUN_EXPIRED");
+          }
+          if (streamRun.status === "done" && !streamRun.final_result_json) {
+            throw new Error("STREAM_DONE_RESULT_MISSING");
+          }
+          if (
+            streamRun.status === "done" ||
+            streamRun.status === "pending" ||
+            streamRun.status === "charged"
+          ) {
+            logInfo("stream_run_resume_attached", {
+              user: summarizeUser(user.id),
+              analysisRunId: streamRun.id,
+              status: streamRun.status,
+              retryCount: streamRun.retry_count,
+            });
+            return handleStreamAnalysisResume({
+              runId: streamRun.id,
+              conversationHash: conversationHashValue,
+              headers: corsHeaders,
+              initialRun: streamResumeSnapshotFromRun(streamRun),
+              loadRun: async () => {
+                const currentRun = await streamStore.getRun({
+                  runId: analysisRunId,
+                  userId: user.id,
+                  conversationHash: conversationHashValue,
+                });
+                return streamResumeSnapshotFromRun(currentRun);
+              },
+            });
+          }
           streamRun = await streamStore.reserveRetry({
             runId: analysisRunId,
             userId: user.id,

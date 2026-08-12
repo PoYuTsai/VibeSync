@@ -77,6 +77,7 @@ class _FakeAnalysisService extends AnalysisService {
   AnalysisResult? fullResult;
   Exception? fullError;
   Exception? streamError;
+  List<Exception?> streamCallErrors = <Exception?>[];
   Completer<void>? streamStartGate;
   Completer<void>? fullGate;
   List<AnalysisStreamContent> streamContents = const [];
@@ -140,7 +141,7 @@ class _FakeAnalysisService extends AnalysisService {
     int? previousAnalyzedCharCount,
     OverchargeConfirmationPayload? confirmedOvercharge,
   }) async* {
-    streamCallCount++;
+    final callIndex = streamCallCount++;
     lastStreamRunId = analysisRunId;
     capturedStreamMessages = List<Message>.from(messages);
     if (streamStartGate != null) await streamStartGate!.future;
@@ -164,7 +165,10 @@ class _FakeAnalysisService extends AnalysisService {
       );
     }
     if (fullGate != null) await fullGate!.future;
-    if (streamError != null) throw streamError!;
+    final callError = callIndex < streamCallErrors.length
+        ? streamCallErrors[callIndex]
+        : streamError;
+    if (callError != null) throw callError;
     if (fullError != null) throw fullError!;
     if (fullResult != null) {
       yield AnalysisStreamUpdate.done(
@@ -1056,6 +1060,68 @@ void main() {
 
       fake.fullGate!.complete();
       await startFuture;
+    });
+  });
+
+  group('StreamingAnalyzeNotifier stream recovery', () {
+    test('automatically resumes the same run after a recoverable disconnect',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..recommendationPreviewResult = _preview(runId: 'stream-run')
+        ..fullResult = _full()
+        ..streamCallErrors = <Exception?>[
+          AnalysisException(
+            '網路連線中斷。',
+            code: 'NETWORK_ERROR',
+            suggestedAction: AnalysisErrorAction.retry,
+          ),
+          null,
+        ];
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      await container.read(streamingAnalyzeProvider('conv-1').notifier).start(
+        messages: [_msg('hi')],
+      );
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.done);
+      expect(state.full, same(fake.fullResult));
+      expect(fake.streamCallCount, 2);
+      expect(fake.lastStreamRunId, 'stream-run');
+    });
+
+    test('uses the same run when recovery reports that a retry is ready',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..recommendationPreviewResult = _preview(runId: 'stream-run')
+        ..fullResult = _full()
+        ..streamCallErrors = <Exception?>[
+          AnalysisException(
+            '網路連線中斷。',
+            code: 'NETWORK_ERROR',
+            suggestedAction: AnalysisErrorAction.retry,
+          ),
+          StreamModeException(
+            '可以安全接續。',
+            code: 'STREAM_RUN_RECOVERY_RETRY_READY',
+            recoverable: true,
+            retriesRemaining: 2,
+            suggestedAction: AnalysisErrorAction.retry,
+          ),
+          null,
+        ];
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      await container.read(streamingAnalyzeProvider('conv-1').notifier).start(
+        messages: [_msg('hi')],
+      );
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.done);
+      expect(fake.streamCallCount, 3);
+      expect(fake.lastStreamRunId, 'stream-run');
     });
   });
 }

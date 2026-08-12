@@ -53,6 +53,167 @@ const DEFAULT_PROGRESS_EVENTS: StreamOutputEvent[] = [
 ];
 
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
+const DEFAULT_RESUME_POLL_INTERVAL_MS = 2000;
+const DEFAULT_RESUME_MAX_WAIT_MS = 125000;
+
+export type StreamAnalysisResumeStatus =
+  | "pending"
+  | "charged"
+  | "done"
+  | "failed";
+
+export interface StreamAnalysisResumeSnapshot {
+  status: StreamAnalysisResumeStatus;
+  finalResult: Record<string, unknown> | null;
+  lastErrorCode: string | null;
+  retriesRemaining: number;
+  wasCharged: boolean;
+}
+
+export interface StreamAnalysisResumeOptions {
+  runId: string;
+  conversationHash: string;
+  headers?: HeadersInit;
+  initialRun: StreamAnalysisResumeSnapshot;
+  loadRun: () =>
+    | Promise<StreamAnalysisResumeSnapshot>
+    | StreamAnalysisResumeSnapshot;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+  heartbeatIntervalMs?: number;
+}
+
+/**
+ * Reattaches a client to a run that is still owned by the original Edge
+ * request. The original request remains the only writer/model caller; this
+ * response only observes the ledger and replays the durable final payload.
+ */
+export function handleStreamAnalysisResume(
+  options: StreamAnalysisResumeOptions,
+): Response {
+  return ndjsonStreamResponse(async (emit, close) => {
+    const pollIntervalMs = Math.max(
+      0,
+      options.pollIntervalMs ?? DEFAULT_RESUME_POLL_INTERVAL_MS,
+    );
+    const maxWaitMs = Math.max(
+      pollIntervalMs,
+      options.maxWaitMs ?? DEFAULT_RESUME_MAX_WAIT_MS,
+    );
+    const heartbeatIntervalMs = Math.max(
+      0,
+      options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
+    );
+    const startedAt = Date.now();
+    let lastProgressAt = startedAt;
+    let run = options.initialRun;
+
+    emit({
+      type: "analysis.started",
+      runId: options.runId,
+      conversationHash: options.conversationHash,
+      resumed: true,
+      label: "正在取回分析結果",
+    });
+    emit({
+      type: "analysis.progress",
+      phase: "recovery",
+      runId: options.runId,
+      conversationHash: options.conversationHash,
+      label: "連線已恢復",
+      detail: "正在取回原本的分析，不會重新扣除額度。",
+    });
+
+    while (true) {
+      if (run.status === "done") {
+        if (!run.finalResult) {
+          emit({
+            type: "analysis.error",
+            code: "STREAM_DONE_RESULT_MISSING",
+            message: "已完成的分析結果暫時無法讀取，請重新分析。",
+            recoverable: false,
+            retriesRemaining: 0,
+          });
+          close();
+          return;
+        }
+
+        emit({
+          type: "analysis.done",
+          runId: options.runId,
+          finalResult: run.finalResult,
+          result: run.finalResult,
+          recovered: true,
+        });
+        close();
+        return;
+      }
+
+      if (run.status === "failed") {
+        const canRetry = run.wasCharged && run.retriesRemaining > 0;
+        emit({
+          type: "analysis.error",
+          code: canRetry
+            ? "STREAM_RUN_RECOVERY_RETRY_READY"
+            : "STREAM_RUN_RETRY_UNAVAILABLE",
+          message: canRetry
+            ? "連線已恢復，正在重新接續完整分析。"
+            : "原本的分析沒有完成，請重新分析一次。",
+          recoverable: canRetry,
+          retriesRemaining: canRetry ? run.retriesRemaining : 0,
+          upstreamCode: run.lastErrorCode,
+        });
+        close();
+        return;
+      }
+
+      if (Date.now() - startedAt >= maxWaitMs) {
+        emit({
+          type: "analysis.error",
+          code: "STREAM_RUN_STILL_PROCESSING",
+          message: "原本的分析仍在整理中，請稍後再試。",
+          recoverable: true,
+          retriesRemaining: Math.max(1, run.retriesRemaining),
+        });
+        close();
+        return;
+      }
+
+      if (pollIntervalMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+
+      try {
+        run = await options.loadRun();
+      } catch (_error) {
+        emit({
+          type: "analysis.error",
+          code: "STREAM_RECOVERY_LOOKUP_FAILED",
+          message: "暫時無法取回原本的分析，請稍後再試。",
+          recoverable: true,
+          retriesRemaining: Math.max(1, run.retriesRemaining),
+        });
+        close();
+        return;
+      }
+
+      if (
+        heartbeatIntervalMs > 0 &&
+        Date.now() - lastProgressAt >= heartbeatIntervalMs
+      ) {
+        emit({
+          type: "analysis.progress",
+          phase: "recovery",
+          runId: options.runId,
+          conversationHash: options.conversationHash,
+          label: "正在取回分析結果",
+          detail: "原本的分析仍在整理中，不會重新扣除額度。",
+        });
+        lastProgressAt = Date.now();
+      }
+    }
+  }, options.headers);
+}
 
 export function handleStreamAnalysisRequest(
   options: StreamAnalysisHandlerOptions,

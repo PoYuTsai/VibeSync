@@ -401,6 +401,7 @@ class StreamingAnalyzeNotifier
     int? conversationMessageCount,
     int? analyzedMessageCount,
     String? conversationContentRevision,
+    int automaticRecoveryAttempt = 0,
   }) async {
     final stopLocalProgress = _startLocalStreamPreludeProgress(
       generation: generation,
@@ -510,6 +511,47 @@ class StreamingAnalyzeNotifier
       );
     } on Exception catch (e) {
       if (generation != _generation) return;
+      final resumeRunId = state.analysisRunId;
+      if (resumeRunId != null &&
+          automaticRecoveryAttempt < 2 &&
+          _shouldAutomaticallyRecoverStream(e)) {
+        stopLocalProgress();
+        final hasPartialResult = state.recommendationPreview != null ||
+            state.streamContents.isNotEmpty;
+        state = state.copyWith(
+          phase: hasPartialResult
+              ? StreamingAnalyzePhase.streamingReport
+              : StreamingAnalyzePhase.connecting,
+          analysisRunId: resumeRunId,
+          fullErrorMessage: null,
+          fullErrorCode: null,
+          streamProgressLabel: '連線中斷，正在取回分析結果',
+          streamProgressDetail: '會接續原本的分析，不會重新扣除額度。',
+          streamContents: const <AnalysisStreamContent>[],
+          retriesRemaining: 0,
+          conversationMessageCount: conversationMessageCount,
+          analyzedMessageCount: analyzedMessageCount,
+          quotaExceeded: null,
+        );
+        await _runStreamingFull(
+          generation: generation,
+          analysisRunId: resumeRunId,
+          messages: messages,
+          sessionContext: sessionContext,
+          conversationSummary: conversationSummary,
+          partnerSummary: partnerSummary,
+          effectiveStyleContext: effectiveStyleContext,
+          knownContactName: knownContactName,
+          previousAnalyzedCount: previousAnalyzedCount,
+          previousAnalyzedCharCount: previousAnalyzedCharCount,
+          confirmedOvercharge: confirmedOvercharge,
+          conversationMessageCount: conversationMessageCount,
+          analyzedMessageCount: analyzedMessageCount,
+          conversationContentRevision: conversationContentRevision,
+          automaticRecoveryAttempt: automaticRecoveryAttempt + 1,
+        );
+        return;
+      }
       final message = e is AnalysisException ? e.message : '完整分析暫時失敗，請重新分析。';
       final code = e is AnalysisException ? e.code : null;
       // Quota 429 走升級卡分流：retriesRemaining 強制 0（重試只會再撞 429），
@@ -610,6 +652,17 @@ class StreamingAnalyzeNotifier
       }
     }
     return 0;
+  }
+
+  bool _shouldAutomaticallyRecoverStream(Exception error) {
+    if (error is! AnalysisException) return false;
+    if (error is StreamModeException && !error.recoverable) return false;
+    return const <String>{
+      'NETWORK_ERROR',
+      'TIMEOUT',
+      'STREAM_INCOMPLETE',
+      'STREAM_RUN_RECOVERY_RETRY_READY',
+    }.contains(error.code);
   }
 
   /// Retry the full call with the cached [StreamingAnalysisState.analysisRunId]

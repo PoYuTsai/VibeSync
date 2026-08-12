@@ -897,6 +897,55 @@ void main() {
       expect(body['billingProtocolVersion'], 3);
     });
 
+    test('maps a transport reset after partial stream content to NETWORK_ERROR',
+        () async {
+      final mockClient = MockClient.streaming((request, bodyStream) async {
+        await bodyStream.drain<void>();
+        final responseStream = Stream<List<int>>.multi((controller) {
+          controller.add(
+            utf8.encode(
+              '${jsonEncode({
+                    'type': 'analysis.started',
+                    'runId': 'stream-recoverable',
+                  })}\n'
+              '${jsonEncode({
+                    'type': 'analysis.recommendation',
+                    'selectedStyle': 'resonate',
+                    'message': '先接住她的情緒。',
+                    'reason': '維持對話連續性。',
+                  })}\n',
+            ),
+          );
+          controller.addError(
+            http.ClientException('Connection reset while receiving data'),
+          );
+          controller.close();
+        });
+        return http.StreamedResponse(
+          responseStream,
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      expect(
+        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        throwsA(
+          isA<AnalysisException>()
+              .having((error) => error.code, 'code', 'NETWORK_ERROR')
+              .having(
+                (error) => error.suggestedAction,
+                'suggestedAction',
+                AnalysisErrorAction.retry,
+              ),
+        ),
+      );
+    });
+
     test(
         'ADR #19 雙 limit 429：monthlyRemaining < quotaNeeded → Monthly'
         '（regression：buildQuotaExceededPayload 同時帶兩 limit，舊判別誤報 daily）',

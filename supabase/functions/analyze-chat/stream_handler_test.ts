@@ -2,7 +2,10 @@ import {
   assertEquals,
   assertRejects,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { handleStreamAnalysisRequest } from "./stream_handler.ts";
+import {
+  handleStreamAnalysisRequest,
+  handleStreamAnalysisResume,
+} from "./stream_handler.ts";
 import type {
   StreamChargeResult,
   StreamRecommendationForCharge,
@@ -117,6 +120,108 @@ Deno.test("stream handler emits default Traditional Chinese progress before Clau
     events[2].detail,
     "正在選擇最適合的回覆策略，完整分析會在下方繼續整理。",
   );
+});
+
+Deno.test("stream resume waits for the original run and replays its stored result", async () => {
+  let loadCalls = 0;
+  const response = handleStreamAnalysisResume({
+    runId: "run-recover",
+    conversationHash: "hash-recover",
+    initialRun: {
+      status: "charged",
+      finalResult: null,
+      lastErrorCode: null,
+      retriesRemaining: 2,
+      wasCharged: true,
+    },
+    loadRun: () => {
+      loadCalls += 1;
+      return Promise.resolve({
+        status: "done",
+        finalResult: {
+          strategy: "stored-result",
+          finalRecommendation: {
+            pick: "resonate",
+            content: "stored reply",
+          },
+        },
+        lastErrorCode: null,
+        retriesRemaining: 2,
+        wasCharged: true,
+      });
+    },
+    pollIntervalMs: 0,
+    maxWaitMs: 100,
+  });
+
+  const events = await collectEvents(response);
+
+  assertEquals(loadCalls, 1);
+  assertEquals(events.map((event) => event.type), [
+    "analysis.started",
+    "analysis.progress",
+    "analysis.done",
+  ]);
+  assertEquals(
+    (events.at(-1)?.finalResult as Record<string, unknown>).strategy,
+    "stored-result",
+  );
+  assertEquals(events.at(-1)?.recovered, true);
+});
+
+Deno.test("stream resume tells the client when a failed run is safe to retry", async () => {
+  let loadCalls = 0;
+  const response = handleStreamAnalysisResume({
+    runId: "run-failed",
+    conversationHash: "hash-failed",
+    initialRun: {
+      status: "failed",
+      finalResult: null,
+      lastErrorCode: "UPSTREAM_RESET",
+      retriesRemaining: 2,
+      wasCharged: true,
+    },
+    loadRun: () => {
+      loadCalls += 1;
+      throw new Error("should not poll a terminal run");
+    },
+    pollIntervalMs: 0,
+    maxWaitMs: 100,
+  });
+
+  const events = await collectEvents(response);
+
+  assertEquals(loadCalls, 0);
+  assertEquals(events.at(-1)?.type, "analysis.error");
+  assertEquals(events.at(-1)?.code, "STREAM_RUN_RECOVERY_RETRY_READY");
+  assertEquals(events.at(-1)?.recoverable, true);
+  assertEquals(events.at(-1)?.retriesRemaining, 2);
+});
+
+Deno.test("stream resume never retries a run that failed before charging", async () => {
+  const response = handleStreamAnalysisResume({
+    runId: "run-uncharged",
+    conversationHash: "hash-uncharged",
+    initialRun: {
+      status: "failed",
+      finalResult: null,
+      lastErrorCode: "UPSTREAM_UNAVAILABLE",
+      retriesRemaining: 2,
+      wasCharged: false,
+    },
+    loadRun: () => {
+      throw new Error("should not poll a terminal run");
+    },
+    pollIntervalMs: 0,
+    maxWaitMs: 100,
+  });
+
+  const events = await collectEvents(response);
+
+  assertEquals(events.at(-1)?.type, "analysis.error");
+  assertEquals(events.at(-1)?.code, "STREAM_RUN_RETRY_UNAVAILABLE");
+  assertEquals(events.at(-1)?.recoverable, false);
+  assertEquals(events.at(-1)?.retriesRemaining, 0);
 });
 
 Deno.test("stream handler emits heartbeat progress while waiting for Claude", async () => {

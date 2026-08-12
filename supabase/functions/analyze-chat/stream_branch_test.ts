@@ -91,6 +91,22 @@ Deno.test("stream retry reuses the stream ledger without charging again", async 
   assert(source.includes("prechargedRecommendation,"));
 });
 
+Deno.test("stream reconnect replays done runs before reserving a retry", async () => {
+  const source = await readIndexSource();
+  const branch = streamBranch(source);
+  const loadRun = branch.indexOf("streamStore.getRun({");
+  const resume = branch.indexOf("handleStreamAnalysisResume({");
+  const reserveRetry = branch.indexOf("streamStore.reserveRetry({");
+
+  assert(loadRun >= 0);
+  assert(resume > loadRun);
+  assert(reserveRetry > resume);
+  assert(branch.includes('streamRun.status === "done"'));
+  assert(branch.includes('streamRun.status === "pending"'));
+  assert(branch.includes('streamRun.status === "charged"'));
+  assert(source.includes("finalResult: run.final_result_json"));
+});
+
 Deno.test("stream retry accepts thin precharged recommendation (Codex r1 P2)", async () => {
   const source = await readIndexSource();
 

@@ -1252,7 +1252,8 @@ AnalysisException _mapUnexpectedAnalysisError(
     );
   }
 
-  if (errorMessage.contains('SocketException') ||
+  if (error is http.ClientException ||
+      errorMessage.contains('SocketException') ||
       errorMessage.contains('Connection refused')) {
     return AnalysisException(
       '網路連線不穩，請確認網路後再試。',
@@ -2193,6 +2194,15 @@ class AnalysisService {
         '這次分析等待過久，請稍後重新分析。',
         code: 'TIMEOUT',
         suggestedAction: AnalysisErrorAction.wait,
+      );
+    } catch (error) {
+      if (error is AnalysisException) rethrow;
+      throw _mapUnexpectedAnalysisError(
+        error,
+        hasImages: false,
+        recognizeOnly: false,
+        hasUserDraft: false,
+        hasRefineInstruction: false,
       );
     } finally {
       client.close();
