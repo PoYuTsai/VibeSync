@@ -1478,14 +1478,34 @@ const NON_PREFERENCE_QUESTION =
 const PARTNER_SHIT_TEST_QUESTION =
   /(?:每個(?:女生|人)|對誰都|是不是都|都這樣(?:講|說|撩)|很會(?:講|說|撩|編)|蠻會(?:講|說|撩|編)|好會(?:講|說|撩|編)|編(?:故事|的吧)|套路|油|想幹嘛|想怎樣|在說什麼|騙(?:我|人)|認真的嗎|你敢不敢|你行嗎)/u;
 
-function looksLikePreferenceQuestionToUser(text: string): boolean {
-  const compact = text.replace(/\s+/gu, "");
+/**
+ * 口語省問號（2026-08-12）：她的 prompt 自己就寫「斷句可以用空格不一定要標點」，
+ * 所以「你喜歡衝浪」這種沒有問號也沒有「嗎」的偏好問一律漏判。短則＋明確指向他
+ * 的偏好動詞也算問喜好。動詞收窄成不會誤讀成陳述的那幾個（「你會…」「你吃…」
+ * 太容易打到平述句，維持只走問號路徑），並排除「你喜歡就好」這種語尾。
+ */
+const PREFERENCE_VERB_TO_USER =
+  /[你妳](?:喜歡|愛|敢|習慣|接受|去過|吃過|喝過|玩過|試過|看過|聽過)/u;
+const PREFERENCE_STATEMENT_TAIL = /(?:就好|就行|的話|再說|才怪|沒差)/u;
+const BARE_PREFERENCE_MAX_CHARS = 14;
+
+function looksLikePreferenceQuestionLine(line: string): boolean {
+  const compact = line.replace(/\s+/gu, "");
   if (!/[你妳]/u.test(compact)) return false;
   if (PARTNER_SHIT_TEST_QUESTION.test(compact)) return false;
-  if (!/[嗎呢][？?]?$|[？?]$|[嗎呢]/u.test(compact)) return false;
+  if (!/[嗎呢][？?]?$|[？?]$|[嗎呢]/u.test(compact)) {
+    if (compact.length > BARE_PREFERENCE_MAX_CHARS) return false;
+    if (PREFERENCE_STATEMENT_TAIL.test(compact)) return false;
+    if (!PREFERENCE_VERB_TO_USER.test(compact)) return false;
+  }
   // 「要不要一起…」是邀約不是問喜好，交給速約階梯處理。
   if (/要不要[^。！？!?]{0,6}(?:一起|去|來|約)/u.test(compact)) return false;
   return !NON_PREFERENCE_QUESTION.test(compact);
+}
+
+// 她會分則：整包壓成一行的話，長度門檻與句尾錨點都會被其他則洗掉。逐則判。
+function looksLikePreferenceQuestionToUser(text: string): boolean {
+  return text.split("\n").some(looksLikePreferenceQuestionLine);
 }
 
 /**
@@ -1694,9 +1714,12 @@ export function buildHintMessages(opts: {
         inviteEvidence +
         gameEvidence +
         // 分則要跟著她的球數走，不然新手會固定回 2-3 則、她爆量時跟著熱。
+        // 立場不猜也一樣給新手（Eric 2026-08-12）：hint 是可直接送出的代打，
+        // 猜錯喜好不是「這輪沒加分」，是他下一句就露餡。
         (opts.practiceMode === "game"
           ? ""
-          : partnerBubbleRhythmPrompt(opts.turns)) +
+          : partnerBubbleRhythmPrompt(opts.turns) +
+            stanceOptionPrompt(opts.turns)) +
         `profile evidence:\n${
           profileToEvidence(opts.profile, opts.practiceMode === "game")
         }\n\n` +

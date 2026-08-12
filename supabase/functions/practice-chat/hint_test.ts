@@ -6930,7 +6930,9 @@ Deno.test("她問到你的喜好時才注入立場選項指令", () => {
     );
   }
 
-  // 非 game 模式完全不注入（新手模式不得被外溢）。
+  // 新手也要注入（Eric 2026-08-12 反轉 08-11 的 game-only）：hint 的兩顆球是可
+  // 直接送出的代打，猜錯他的立場不是「這輪沒加分」，是他下一句就露餡；不知道
+  // 怎麼回的人正是新手模式在服務的對象。
   const beginner = buildHintMessages({
     turns: [
       { role: "user", text: "嗨" },
@@ -6941,7 +6943,43 @@ Deno.test("她問到你的喜好時才注入立場選項指令", () => {
     temperatureScore: 35,
     familiarityScore: 15,
   }).map((message) => message.content).join("\n");
-  assertEquals(beginner.includes("stanceOptions"), false);
+  assert(beginner.includes("stanceOptions"));
+});
+
+// 2026-08-12：她的 prompt 自己就寫「斷句可以用空格不一定要標點」，所以省問號的
+// 偏好問（「你喜歡衝浪」）原本整批漏判；分則之後問句也可能不在最後一則。
+Deno.test("省問號與分則的偏好問也認得，陳述句不誤判", () => {
+  const promptFor = (partnerLine: string, mode: "game" | "beginner") =>
+    buildHintMessages({
+      turns: [
+        { role: "user", text: "嗨" },
+        { role: "ai", text: partnerLine },
+      ],
+      profile,
+      practiceMode: mode,
+      temperatureScore: 35,
+      familiarityScore: 15,
+    }).map((message) => message.content).join("\n");
+
+  for (const mode of ["game", "beginner"] as const) {
+    for (const asksHim of ["你喜歡衝浪", "你敢吃臭豆腐", "笑死\n你喜歡衝浪"]) {
+      assert(promptFor(asksHim, mode).includes("stanceOptions"), asksHim);
+    }
+    // 省問號路徑只認短則＋明確偏好動詞，陳述語尾與長句一律退場。
+    for (
+      const notPreference of [
+        "你喜歡就好",
+        "你喜歡的話我再約",
+        "你喜歡那種一整天都在忙又不說累的人吧我猜",
+      ]
+    ) {
+      assertEquals(
+        promptFor(notPreference, mode).includes("stanceOptions"),
+        false,
+        notPreference,
+      );
+    }
+  }
 });
 
 // 2026-08-11 Eric：「第 5 個 hint 會跟 P4 鎖在升溫，最後一 hint 可以強調升溫後
