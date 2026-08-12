@@ -559,15 +559,19 @@ class StreamingAnalyzeNotifier
       final quotaExceeded = QuotaExceededInfo.fromException(e);
       final recommendationPreview = state.recommendationPreview;
       final hasStreamContent = state.streamContents.isNotEmpty;
+      final hasRecoverableRun = state.analysisRunId != null;
       final retriesRemaining = quotaExceeded != null
           ? 0
           : _streamRetriesRemaining(
               e,
-              hasRecommendation:
-                  recommendationPreview != null || hasStreamContent,
+              hasRecommendation: recommendationPreview != null ||
+                  hasStreamContent ||
+                  hasRecoverableRun,
             );
 
-      if (recommendationPreview != null || hasStreamContent) {
+      if (recommendationPreview != null ||
+          hasStreamContent ||
+          hasRecoverableRun) {
         state = state.copyWith(
           phase: StreamingAnalyzePhase.failedAfterRecommendation,
           fullErrorMessage: message,

@@ -36,6 +36,11 @@
 //   (Spacer 3:4); field + CTA stay directly on the gradient under the card,
 //   with a larger 24px rhythm so the form reads as a deliberate creation
 //   panel rather than a small floating prompt.
+// 一頁裝完（Eric 2026-08-12）：加了情境三選＋補充背景後整張表要捲到底才按得到
+// 「建立」。純密度收斂——沒有拿掉任何欄位，改的是 AppBar 48、卡內距 16、區塊
+// 間距 10/4、標籤降到 label 檔 12、chips 降到 12、說明文案縮短、選填備註的
+// 0/300 常駐計數器拆掉。守門＝add_partner_screen_test 的「whole form fits one
+// screen」（393×852 扣掉 safe area，CTA 底必須 ≤759）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -50,6 +55,10 @@ import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
+
+// 標準 56 縮成 48：整張表單要一頁裝完（proof: add_partner_screen_test 的
+// 「whole form fits one screen」），而這頁的 AppBar 只有標題＋返回。
+const double _kToolbarHeight = 48;
 
 class AddPartnerScreen extends ConsumerStatefulWidget {
   const AddPartnerScreen({super.key});
@@ -144,6 +153,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        toolbarHeight: _kToolbarHeight,
         title: const Text(
           '新增對象',
           style: TextStyle(color: AppColors.onBackgroundPrimary),
@@ -160,12 +170,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               // `extendBodyBehindAppBar` lets the gradient sit under the
               // transparent AppBar; content still needs to clear the toolbar.
-              padding: const EdgeInsets.fromLTRB(
-                16,
-                kToolbarHeight + 8,
-                16,
-                24,
-              ),
+              padding: const EdgeInsets.fromLTRB(16, _kToolbarHeight, 16, 8),
               children: [
                 Center(
                   child: ConstrainedBox(
@@ -174,7 +179,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _buildIdentityCard(),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 8),
                         _buildContextCard(
                           canSubmit: canSubmit,
                           ownerId: ownerId,
@@ -201,7 +206,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
       strength: LiquidBeamEntryPreset.strength,
       duration: LiquidBeamEntryPreset.duration,
       child: BrandSurfaceCard(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -209,10 +214,10 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
               children: [
                 BrandIconBadge(
                   icon: Icons.person_add_alt_1_rounded,
-                  size: 48,
-                  iconSize: 24,
+                  size: 44,
+                  iconSize: 22,
                 ),
-                SizedBox(width: 16),
+                SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     '先建立一張對象卡',
@@ -226,15 +231,15 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
-              '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡。',
+              '同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這張卡裡。',
               style: AppTypography.bodyLarge.copyWith(
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.84),
-                height: 1.55,
+                height: 1.4,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             TextField(
               key: const ValueKey('add-partner-name-field'),
               controller: _name,
@@ -246,7 +251,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
               ).copyWith(
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 18,
+                  vertical: 12,
                 ),
                 hintStyle: AppTypography.bodyLarge.copyWith(
                   color: Colors.white.withValues(alpha: 0.40),
@@ -265,7 +270,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
     required bool authReady,
   }) {
     return BrandSurfaceCard(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       elevated: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,10 +279,10 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
             children: [
               const Icon(
                 Icons.auto_awesome_rounded,
-                size: 24,
+                size: 22,
                 color: AppColors.ctaStart,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   '幫教練進一步認識她',
@@ -291,15 +296,15 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            '先選最接近的情況；不確定可以保留預設，之後每次分析仍能調整。',
+            '不確定就保留預設，之後每次分析都能改。',
             style: AppTypography.bodyLarge.copyWith(
               color: AppColors.onBackgroundSecondary,
-              height: 1.5,
+              height: 1.4,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _sectionLabel('認識情境'),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           BrandSegmentedButton<MeetingContext>(
             segments: MeetingContext.visibleAnalysisOptions
                 .map(
@@ -312,9 +317,9 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
             selected: _meetingContext,
             onChanged: (value) => setState(() => _meetingContext = value),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           _sectionLabel('認識多久'),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           BrandSegmentedButton<AcquaintanceDuration>(
             segments: AcquaintanceDuration.values
                 .map(
@@ -327,9 +332,9 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
             selected: _duration,
             onChanged: (value) => setState(() => _duration = value),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           _sectionLabel('目前目標'),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           BrandSegmentedButton<UserGoal>(
             segments: UserGoal.values
                 .map(
@@ -342,9 +347,9 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
             selected: _goal,
             onChanged: (value) => setState(() => _goal = value),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           _sectionLabel('補充背景（選填）'),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           TextField(
             key: const ValueKey('add-partner-background-field'),
             controller: _backgroundNote,
@@ -356,14 +361,16 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
             onTapOutside: (_) => _dismissKeyboard(),
             cursorColor: AppColors.ctaStart,
             style: AppTypography.bodyLarge.copyWith(color: Colors.white),
-            decoration: brandInputDecoration(hintText: '沒有可以留空'),
+            // counterText 清掉：0/300 自己吃掉一列高，maxLength 仍然擋得住，
+            // 300 字的上限對「選填備註」不需要常駐計數器。
+            decoration: brandInputDecoration(hintText: '沒有可以留空')
+                .copyWith(counterText: ''),
           ),
-          const SizedBox(height: 4),
           Text(
-            '補上聊天裡看不到的關係或背景，之後分析這位對象時會先帶入。',
+            '補上聊天看不到的關係或背景，分析時會先帶入。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary,
-              height: 1.45,
+              height: 1.35,
             ),
           ),
           const SizedBox(height: 12),
@@ -372,7 +379,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
             icon: Icons.auto_awesome_rounded,
             onPressed: canSubmit ? () => _submit(ownerId!) : null,
             isLoading: _busy,
-            verticalPadding: 18,
+            verticalPadding: 16,
           ),
           if (!authReady)
             Padding(
@@ -390,9 +397,11 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
     );
   }
 
+  // label 檔 12（DESIGN.md §3）：chips 已降到 12，標籤靠 w700 ＋ 主色拉層級，
+  // 不靠字級——三段全用 15 會把整卡撐超過一頁。
   Widget _sectionLabel(String text) => Text(
         text,
-        style: AppTypography.bodyLarge.copyWith(
+        style: AppTypography.labelMedium.copyWith(
           color: AppColors.onBackgroundPrimary,
           fontWeight: FontWeight.w700,
         ),

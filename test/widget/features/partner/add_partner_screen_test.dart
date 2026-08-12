@@ -135,6 +135,25 @@ void main() {
     expect(controls.elementAt(2).selected, UserGoal.dateInvite);
   });
 
+  // Eric 2026-08-12：整頁要一頁看完，不能為了按「建立」再往下滑。
+  // 量法：surface 393×852（iPhone 15 Pro pt），test MediaQuery 沒有 safe-area
+  // inset，所以真機還要扣掉 top 59（含瀏海）＋ bottom 34 home indicator。
+  testWidgets('whole form fits one screen on iPhone 15 Pro (no scroll to CTA)',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(393, 852));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+    await t.pumpWidget(harness());
+    await t.pumpAndSettle();
+
+    const usableHeight = 852.0 - 59 - 34;
+    final ctaBottom = t.getBottomLeft(find.byType(BrandPrimaryButton)).dy;
+    expect(
+      ctaBottom,
+      lessThanOrEqualTo(usableHeight),
+      reason: 'CTA 落在 $ctaBottom，超過可視高度 $usableHeight 就得捲動才按得到',
+    );
+  });
+
   testWidgets('input clears transparent AppBar toolbar', (t) async {
     await t.pumpWidget(harness());
     await t.pumpAndSettle();

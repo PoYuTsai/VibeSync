@@ -50,10 +50,6 @@ extension _BrandVisualToneColors on BrandVisualTone {
       ? AppColors.coachAccent
       : AppColors.ctaStart;
 
-  Color get selectionEnd => this == BrandVisualTone.coach
-      ? AppColors.coachAccentBright
-      : AppColors.ctaEnd;
-
   Color get track => this == BrandVisualTone.coach
       ? AppColors.coachBackgroundInk
       : AppColors.brandInk;
@@ -628,7 +624,7 @@ class BrandSegmentedButton<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: tone.track.withValues(alpha: 0.58),
         borderRadius: BorderRadius.circular(18),
@@ -642,33 +638,20 @@ class BrandSegmentedButton<T> extends StatelessWidget {
               onTap: () => onChanged(segment.value),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(vertical: 11),
+                padding: const EdgeInsets.symmetric(vertical: 9),
                 decoration: BoxDecoration(
-                  gradient: isSelected
-                      ? LinearGradient(
-                          colors: [
-                            tone.selectionStart,
-                            tone.selectionEnd,
-                          ],
-                        )
-                      : null,
+                  // 實色而非漸層：pill 只有 ~80pt 寬，漸層看不出來，只讓右半的
+                  // ctaEnd(#E85A1E) 顯得髒；漸層留給整寬主 CTA 維持層級。
+                  // 彩色發光陰影已拆（DESIGN.md §2，B3 批漏網）。
+                  color: isSelected ? tone.selectionStart : null,
                   borderRadius: BorderRadius.circular(18),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: tone.selectionStart.withValues(alpha: 0.30),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : null,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (isSelected) ...[
-                      const Icon(Icons.check, size: 15, color: Colors.white),
-                      const SizedBox(width: 4),
+                      const Icon(Icons.check, size: 13, color: Colors.white),
+                      const SizedBox(width: 3),
                     ],
                     Flexible(
                       child: FittedBox(
@@ -677,7 +660,9 @@ class BrandSegmentedButton<T> extends StatelessWidget {
                           segment.label,
                           maxLines: 1,
                           textAlign: TextAlign.center,
-                          style: AppTypography.bodyMedium.copyWith(
+                          // label 檔 12（DESIGN.md §3）：15 在四格列會被 check
+                          // icon 擠到滿版，pill 沒有呼吸空間。
+                          style: AppTypography.labelMedium.copyWith(
                             color: isSelected
                                 ? Colors.white
                                 : AppColors.onBackgroundSecondary

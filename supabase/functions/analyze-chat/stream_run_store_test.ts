@@ -107,6 +107,7 @@ function makeDriver(): FakeHarness {
       const expired = Date.parse(row.expires_at) <= Date.parse(CHARGED_AT);
       if (
         row.status !== "failed" ||
+        row.final_result_json !== null ||
         !row.charged_at ||
         !row.recommendation_json ||
         !row.selected_style ||
@@ -116,6 +117,7 @@ function makeDriver(): FakeHarness {
         throw new Error("STREAM_RETRY_NOT_AVAILABLE");
       }
       row.retry_count += 1;
+      row.status = "charged";
       row.last_error_code = null;
       return { ...row };
     },
@@ -252,7 +254,7 @@ Deno.test("getRun returns only the matching owner and conversation hash", async 
   );
 });
 
-Deno.test("reserveRetry increments retry_count for a failed charged run", async () => {
+Deno.test("reserveRetry atomically leases a failed charged run", async () => {
   const h = makeDriver();
   const store = new AnalysisStreamRunStore(h.driver);
   const pending = await store.createPendingRun({
@@ -281,7 +283,7 @@ Deno.test("reserveRetry increments retry_count for a failed charged run", async 
     maxRetries: 2,
   });
 
-  assertEquals(retry.status, "failed");
+  assertEquals(retry.status, "charged");
   assertEquals(retry.retry_count, 1);
   assertEquals(retry.last_error_code, null);
   assertEquals(

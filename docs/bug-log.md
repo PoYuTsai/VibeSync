@@ -8,6 +8,24 @@
 
 ---
 
+## 2026-08
+
+### [2026-08-13] 完整分析後端已完成，App 卻顯示無法再重試
+
+**Symptom**: 真機已顯示部分串流分析，稍後卻出現「無法再重試，請重新分析」；同一筆 production run 實際已是 `done`、`final_result_json` 已儲存、Claude 成功且額度已扣。
+
+**Root Cause**: Flutter 的 NDJSON 接收途中若拋出 `http.ClientException`，錯誤沒有轉成可恢復的 `NETWORK_ERROR`，notifier 因而把未知例外視為 terminal。Server 雖先持久化 final result 再送 `analysis.done`，舊 retry 入口只接受 `failed`，無法回放已完成結果；retry reservation 又維持 `status='failed'`，行動網路再次斷線時可能並行啟動另一個 Claude generation。
+
+**Fix**: Client 捕捉 transport reset，最多兩次以同一個 `analysisRunId` 自動續接；Server 先讀 stream ledger，`final_result_json` 不論 status 都優先回放，pending／charged 只輪詢並送 heartbeat，只有已扣額且明確 failed 才能免扣額重跑。Retry RPC 在 reservation 時原子轉回 `charged` 作為 in-flight lease，並拒絕已有 final result 的 row；resume 尚未拿到推薦卡就逾時時仍保留 runId，手動重試不建立新 run。
+
+**Prevention**: 串流付費流程必須把「model 完成」「結果持久化」「client 收到 done」視為三個獨立狀態；任何 response-lost recovery 都以 durable run id 與 DB ledger 為準。Retry claim 必須同時取得 in-flight lease，且 durable final result 永遠優先於可被較晚請求覆寫的 status。
+
+**Validation**: 新增 transport reset、same-run reconnect、failed-status-with-result、retry-ready chain、pre-preview recovery timeout 與 DB retry lease 回歸測試；Flutter analyzer／全套測試、Analyze Edge contracts、Deno type-check 皆通過後才部署。獨立 Claude 主審與 GLM 反證專查 no-double-charge、競態與 retry bound。
+
+**相關檔案**: `lib/features/analysis/data/services/analysis_service.dart`、`streaming_analyze_notifier.dart`、`supabase/functions/analyze-chat/index.ts`、`stream_handler.ts`、`stream_run_store.ts`、`supabase/migrations/20260813003000_stream_analysis_retry_lease.sql`。
+
+---
+
 ## 2026-07
 
 ### [2026-07-22] 詳細特質與趨勢展開後捲動反覆橫跳、收不起來

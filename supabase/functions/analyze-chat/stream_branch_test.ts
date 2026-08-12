@@ -8,6 +8,15 @@ async function readIndexSource(): Promise<string> {
   return await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 }
 
+async function readRetryLeaseMigration(): Promise<string> {
+  return await Deno.readTextFile(
+    new URL(
+      "../../migrations/20260813003000_stream_analysis_retry_lease.sql",
+      import.meta.url,
+    ),
+  );
+}
+
 function streamBranch(source: string): string {
   const branchStart = source.indexOf(
     'if (responseMode === "stream" && streamSupported && streamAllowed)',
@@ -106,6 +115,16 @@ Deno.test("stream reconnect replays done runs before reserving a retry", async (
   assert(branch.includes('streamRun.status === "charged"'));
   assert(branch.includes("streamRun.final_result_json ||"));
   assert(source.includes("finalResult: run.final_result_json"));
+});
+
+Deno.test("stream retry reservation becomes an in-flight lease", async () => {
+  const source = await readRetryLeaseMigration();
+
+  assert(source.includes("status = 'charged'"));
+  assert(source.includes("AND status = 'failed'"));
+  assert(source.includes("AND final_result_json IS NULL"));
+  assert(source.includes("AND charged_at IS NOT NULL"));
+  assert(source.includes("AND retry_count < p_max_retries"));
 });
 
 Deno.test("stream retry accepts thin precharged recommendation (Codex r1 P2)", async () => {

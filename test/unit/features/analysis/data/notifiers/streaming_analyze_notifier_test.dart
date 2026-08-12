@@ -1123,5 +1123,40 @@ void main() {
       expect(fake.streamCallCount, 3);
       expect(fake.lastStreamRunId, 'stream-run');
     });
+
+    test('keeps the run retryable when recovery times out before a preview',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..streamError = StreamModeException(
+          '原本的分析仍在整理中。',
+          code: 'STREAM_RUN_STILL_PROCESSING',
+          recoverable: true,
+          retriesRemaining: 1,
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      final container = _container(fake);
+      addTearDown(container.dispose);
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('hi')]);
+
+      final failed = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(failed.phase, StreamingAnalyzePhase.failedAfterRecommendation);
+      expect(failed.recommendationPreview, isNull);
+      expect(failed.analysisRunId, 'stream-run');
+      expect(failed.retriesRemaining, 1);
+
+      fake
+        ..streamError = null
+        ..fullResult = _full();
+      await notifier.retryFull();
+
+      expect(
+        container.read(streamingAnalyzeProvider('conv-1')).phase,
+        StreamingAnalyzePhase.done,
+      );
+      expect(fake.lastStreamRunId, 'stream-run');
+    });
   });
 }
