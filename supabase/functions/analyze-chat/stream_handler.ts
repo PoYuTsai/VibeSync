@@ -125,25 +125,27 @@ export function handleStreamAnalysisResume(
     });
 
     while (true) {
-      if (run.status === "done") {
-        if (!run.finalResult) {
-          emit({
-            type: "analysis.error",
-            code: "STREAM_DONE_RESULT_MISSING",
-            message: "已完成的分析結果暫時無法讀取，請重新分析。",
-            recoverable: false,
-            retriesRemaining: 0,
-          });
-          close();
-          return;
-        }
-
+      // The durable result wins over status. A slower retry may mark the row
+      // failed after another attempt has already persisted the paid result.
+      if (run.finalResult) {
         emit({
           type: "analysis.done",
           runId: options.runId,
           finalResult: run.finalResult,
           result: run.finalResult,
           recovered: true,
+        });
+        close();
+        return;
+      }
+
+      if (run.status === "done") {
+        emit({
+          type: "analysis.error",
+          code: "STREAM_DONE_RESULT_MISSING",
+          message: "已完成的分析結果暫時無法讀取，請重新分析。",
+          recoverable: false,
+          retriesRemaining: 0,
         });
         close();
         return;

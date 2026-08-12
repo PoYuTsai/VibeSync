@@ -8451,10 +8451,14 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           if (Date.parse(streamRun.expires_at) <= Date.now()) {
             throw new Error("STREAM_RUN_EXPIRED");
           }
-          if (streamRun.status === "done" && !streamRun.final_result_json) {
+          if (
+            streamRun.status === "done" &&
+            !streamRun.final_result_json
+          ) {
             throw new Error("STREAM_DONE_RESULT_MISSING");
           }
           if (
+            streamRun.final_result_json ||
             streamRun.status === "done" ||
             streamRun.status === "pending" ||
             streamRun.status === "charged"

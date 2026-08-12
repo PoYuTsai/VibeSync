@@ -224,6 +224,34 @@ Deno.test("stream resume never retries a run that failed before charging", async
   assertEquals(events.at(-1)?.retriesRemaining, 0);
 });
 
+Deno.test("stream resume replays a stored result even when a late failure overwrote status", async () => {
+  const response = handleStreamAnalysisResume({
+    runId: "run-raced",
+    conversationHash: "hash-raced",
+    initialRun: {
+      status: "failed",
+      finalResult: { strategy: "persisted-winner" },
+      lastErrorCode: "UPSTREAM_RESET",
+      retriesRemaining: 0,
+      wasCharged: true,
+    },
+    loadRun: () => {
+      throw new Error("stored results must replay without polling");
+    },
+    pollIntervalMs: 0,
+    maxWaitMs: 100,
+  });
+
+  const events = await collectEvents(response);
+
+  assertEquals(events.at(-1)?.type, "analysis.done");
+  assertEquals(
+    (events.at(-1)?.finalResult as Record<string, unknown>).strategy,
+    "persisted-winner",
+  );
+  assertEquals(events.at(-1)?.recovered, true);
+});
+
 Deno.test("stream handler emits heartbeat progress while waiting for Claude", async () => {
   const response = handleStreamAnalysisRequest(createOptions({
     heartbeatIntervalMs: 1,

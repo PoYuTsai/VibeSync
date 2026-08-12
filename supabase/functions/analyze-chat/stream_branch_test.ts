@@ -104,6 +104,7 @@ Deno.test("stream reconnect replays done runs before reserving a retry", async (
   assert(branch.includes('streamRun.status === "done"'));
   assert(branch.includes('streamRun.status === "pending"'));
   assert(branch.includes('streamRun.status === "charged"'));
+  assert(branch.includes("streamRun.final_result_json ||"));
   assert(source.includes("finalResult: run.final_result_json"));
 });
 
