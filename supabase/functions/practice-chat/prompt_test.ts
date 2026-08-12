@@ -2132,3 +2132,20 @@ Deno.test("張力階梯：標準模式沒有分數，不得出現數字階數", 
   assertEquals(/allowSpicyLevel: L[0-3]/.test(sys), false);
   assertEquals(sys.includes("no numeric"), true);
 });
+
+Deno.test("NPC 看到台語諧音字要先唸出來，不准當成打錯字", () => {
+  // 2026-08-12 Eric 真機：他打「跨哩緣投啦」她接到了，但「妳今天足水欸」
+  // 回「你是不是打錯字了」——把稱讚當亂碼打回去，聊天直接斷掉。
+  // 根因是模型在「看」字不是在「唸」，台語諧音寫出來很怪、唸出來才懂。
+  assertEquals(CHAT_SYSTEM_PROMPT.includes("先用台語唸出來再判斷"), true);
+  // 禁令本身要在，否則這條只是建議
+  assertEquals(CHAT_SYSTEM_PROMPT.includes("你是不是打錯字"), true);
+  // 對照表至少要蓋到實測會漏的那幾個
+  for (const word of ["足水", "走鐘", "攏系", "甘安捏", "凍未條"]) {
+    assertEquals(
+      CHAT_SYSTEM_PROMPT.includes(word),
+      true,
+      `台語對照表缺「${word}」`,
+    );
+  }
+});
