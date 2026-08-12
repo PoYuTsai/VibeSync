@@ -1720,8 +1720,10 @@ class _BottomBar extends StatelessWidget {
                     minLines: 1,
                     maxLines: 4,
                     maxLength: 240,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => canSend ? onSend() : null,
+                    // Return 鍵＝換行，不是送出（Eric 2026-08-12）：自己打字時也要能
+                    // 連發短訊，換行在畫面上就拆成多顆泡、一秒一顆（見 _Bubble）。
+                    // 送出一律走右邊的 _SendButton，跟 LINE／WhatsApp 的手感一致。
+                    textInputAction: TextInputAction.newline,
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.onBackgroundPrimary,
                     ),

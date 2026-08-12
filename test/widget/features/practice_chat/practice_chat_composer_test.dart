@@ -227,6 +227,24 @@ void main() {
     );
   });
 
+  testWidgets('Return 鍵是換行不是送出——自己打字也能連發短訊（Eric 2026-08-12）',
+      (tester) async {
+    await pumpScreen(tester, inChatSeed());
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    // 綁成 send 的話 return 鍵會直接送出，使用者永遠打不出換行，
+    // 而 _send 的分則鐵律預期輸入框裡就是可以有換行的。
+    expect(field.textInputAction, TextInputAction.newline);
+    expect(field.onSubmitted, isNull);
+    // 換行要留得住才拆得出多顆泡：maxLines 必須 > 1。
+    expect(field.maxLines, greaterThan(1));
+
+    // 打得進多行，而且不會在輸入階段就被吃掉。
+    await tester.enterText(find.byType(TextField), '剛下班\n腦袋還沒關機');
+    await tester.pump();
+    expect(find.text('剛下班\n腦袋還沒關機'), findsOneWidget);
+  });
+
   testWidgets('聚焦態輸入框描邊上品牌橘', (tester) async {
     await pumpScreen(tester, preChatSeed());
 
