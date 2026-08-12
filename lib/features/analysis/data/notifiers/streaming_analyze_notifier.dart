@@ -559,7 +559,9 @@ class StreamingAnalyzeNotifier
       final quotaExceeded = QuotaExceededInfo.fromException(e);
       final recommendationPreview = state.recommendationPreview;
       final hasStreamContent = state.streamContents.isNotEmpty;
-      final hasRecoverableRun = state.analysisRunId != null;
+      final hasRecoverableRun = state.analysisRunId != null &&
+          quotaExceeded == null &&
+          _shouldKeepRunRetryable(e);
       final retriesRemaining = quotaExceeded != null
           ? 0
           : _streamRetriesRemaining(
@@ -666,6 +668,16 @@ class StreamingAnalyzeNotifier
       'TIMEOUT',
       'STREAM_INCOMPLETE',
       'STREAM_RUN_RECOVERY_RETRY_READY',
+    }.contains(error.code);
+  }
+
+  bool _shouldKeepRunRetryable(Exception error) {
+    if (error is StreamModeException) return error.recoverable;
+    if (error is! AnalysisException) return false;
+    return const <String>{
+      'NETWORK_ERROR',
+      'TIMEOUT',
+      'STREAM_INCOMPLETE',
     }.contains(error.code);
   }
 

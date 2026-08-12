@@ -1,11 +1,13 @@
 export type NdjsonEmit = (event: unknown) => void;
 export type NdjsonClose = () => void;
 export type NdjsonFail = (error: unknown) => void;
+export type NdjsonIsClosed = () => boolean;
 
 export type NdjsonStart = (
   emit: NdjsonEmit,
   close: NdjsonClose,
   fail: NdjsonFail,
+  isClosed: NdjsonIsClosed,
 ) => void | Promise<void>;
 
 export function ndjsonStreamResponse(
@@ -34,8 +36,10 @@ export function ndjsonStreamResponse(
         controller.error(error);
       };
 
+      const isClosed: NdjsonIsClosed = () => closed;
+
       try {
-        Promise.resolve(start(emit, close, fail)).catch(fail);
+        Promise.resolve(start(emit, close, fail, isClosed)).catch(fail);
       } catch (error) {
         fail(error);
       }

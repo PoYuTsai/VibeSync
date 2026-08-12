@@ -81,7 +81,20 @@ export interface StreamAnalysisResumeOptions {
   pollIntervalMs?: number;
   maxWaitMs?: number;
   heartbeatIntervalMs?: number;
+  onOutcome?: (
+    outcome: StreamAnalysisResumeOutcome,
+    details: Record<string, unknown>,
+  ) => void;
 }
+
+export type StreamAnalysisResumeOutcome =
+  | "result_replayed"
+  | "done_result_missing"
+  | "retry_ready"
+  | "retry_unavailable"
+  | "still_processing"
+  | "lookup_failed"
+  | "client_disconnected";
 
 /**
  * Reattaches a client to a run that is still owned by the original Edge
@@ -91,7 +104,7 @@ export interface StreamAnalysisResumeOptions {
 export function handleStreamAnalysisResume(
   options: StreamAnalysisResumeOptions,
 ): Response {
-  return ndjsonStreamResponse(async (emit, close) => {
+  return ndjsonStreamResponse(async (emit, close, _fail, isClosed) => {
     const pollIntervalMs = Math.max(
       0,
       options.pollIntervalMs ?? DEFAULT_RESUME_POLL_INTERVAL_MS,
@@ -107,6 +120,25 @@ export function handleStreamAnalysisResume(
     const startedAt = Date.now();
     let lastProgressAt = startedAt;
     let run = options.initialRun;
+    let outcomeReported = false;
+
+    const reportOutcome = (
+      outcome: StreamAnalysisResumeOutcome,
+      details: Record<string, unknown> = {},
+    ) => {
+      if (outcomeReported) return;
+      outcomeReported = true;
+      try {
+        options.onOutcome?.(outcome, {
+          status: run.status,
+          retriesRemaining: run.retriesRemaining,
+          elapsedMs: Date.now() - startedAt,
+          ...details,
+        });
+      } catch (_error) {
+        // Observability must never change the recovery result.
+      }
+    };
 
     emit({
       type: "analysis.started",
@@ -128,6 +160,7 @@ export function handleStreamAnalysisResume(
       // The durable result wins over status. A slower retry may mark the row
       // failed after another attempt has already persisted the paid result.
       if (run.finalResult) {
+        reportOutcome("result_replayed");
         emit({
           type: "analysis.done",
           runId: options.runId,
@@ -140,6 +173,7 @@ export function handleStreamAnalysisResume(
       }
 
       if (run.status === "done") {
+        reportOutcome("done_result_missing");
         emit({
           type: "analysis.error",
           code: "STREAM_DONE_RESULT_MISSING",
@@ -153,6 +187,9 @@ export function handleStreamAnalysisResume(
 
       if (run.status === "failed") {
         const canRetry = run.wasCharged && run.retriesRemaining > 0;
+        reportOutcome(canRetry ? "retry_ready" : "retry_unavailable", {
+          lastErrorCode: run.lastErrorCode,
+        });
         emit({
           type: "analysis.error",
           code: canRetry
@@ -170,6 +207,7 @@ export function handleStreamAnalysisResume(
       }
 
       if (Date.now() - startedAt >= maxWaitMs) {
+        reportOutcome("still_processing");
         emit({
           type: "analysis.error",
           code: "STREAM_RUN_STILL_PROCESSING",
@@ -185,9 +223,15 @@ export function handleStreamAnalysisResume(
         await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
       }
 
+      if (isClosed()) {
+        reportOutcome("client_disconnected");
+        return;
+      }
+
       try {
         run = await options.loadRun();
       } catch (_error) {
+        reportOutcome("lookup_failed");
         emit({
           type: "analysis.error",
           code: "STREAM_RECOVERY_LOOKUP_FAILED",
@@ -196,6 +240,11 @@ export function handleStreamAnalysisResume(
           retriesRemaining: Math.max(1, run.retriesRemaining),
         });
         close();
+        return;
+      }
+
+      if (isClosed()) {
+        reportOutcome("client_disconnected");
         return;
       }
 

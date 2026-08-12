@@ -80,3 +80,32 @@ Deno.test("ndjsonStreamResponse propagates async start errors to the response bo
 
   await assertRejects(() => text(response), Error, "async boom");
 });
+
+Deno.test("ndjsonStreamResponse exposes client cancellation to async producers", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let finish!: () => void;
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let observedClosed = false;
+
+  const response = ndjsonStreamResponse(
+    async (emit, _close, _fail, isClosed) => {
+      emit({ type: "ready" });
+      await gate;
+      observedClosed = isClosed();
+      finish();
+    },
+  );
+
+  const reader = response.body!.getReader();
+  await reader.read();
+  await reader.cancel();
+  release();
+  await finished;
+
+  assertEquals(observedClosed, true);
+});

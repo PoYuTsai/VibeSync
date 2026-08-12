@@ -124,6 +124,7 @@ Deno.test("stream handler emits default Traditional Chinese progress before Clau
 
 Deno.test("stream resume waits for the original run and replays its stored result", async () => {
   let loadCalls = 0;
+  let outcome = "";
   const response = handleStreamAnalysisResume({
     runId: "run-recover",
     conversationHash: "hash-recover",
@@ -152,6 +153,9 @@ Deno.test("stream resume waits for the original run and replays its stored resul
     },
     pollIntervalMs: 0,
     maxWaitMs: 100,
+    onOutcome: (value) => {
+      outcome = value;
+    },
   });
 
   const events = await collectEvents(response);
@@ -167,6 +171,41 @@ Deno.test("stream resume waits for the original run and replays its stored resul
     "stored-result",
   );
   assertEquals(events.at(-1)?.recovered, true);
+  assertEquals(outcome, "result_replayed");
+});
+
+Deno.test("stream resume stops polling when the client disconnects", async () => {
+  let loadCalls = 0;
+  let outcome = "";
+  const response = handleStreamAnalysisResume({
+    runId: "run-cancelled",
+    conversationHash: "hash-cancelled",
+    initialRun: {
+      status: "charged",
+      finalResult: null,
+      lastErrorCode: null,
+      retriesRemaining: 2,
+      wasCharged: true,
+    },
+    loadRun: () => {
+      loadCalls += 1;
+      throw new Error("cancelled recovery must not poll again");
+    },
+    pollIntervalMs: 25,
+    maxWaitMs: 1000,
+    onOutcome: (value) => {
+      outcome = value;
+    },
+  });
+
+  const reader = response.body!.getReader();
+  await reader.read();
+  await reader.read();
+  await reader.cancel();
+  await new Promise((resolve) => setTimeout(resolve, 35));
+
+  assertEquals(loadCalls, 0);
+  assertEquals(outcome, "client_disconnected");
 });
 
 Deno.test("stream resume tells the client when a failed run is safe to retry", async () => {

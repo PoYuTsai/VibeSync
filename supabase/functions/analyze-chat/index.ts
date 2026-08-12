@@ -8482,6 +8482,14 @@ Return \`optimizedMessage\` in the structured JSON response.`,
                 });
                 return streamResumeSnapshotFromRun(currentRun);
               },
+              onOutcome: (outcome, details) => {
+                logInfo("stream_run_resume_outcome", {
+                  user: summarizeUser(user.id),
+                  analysisRunId: streamRun.id,
+                  outcome,
+                  ...details,
+                });
+              },
             });
           }
           streamRun = await streamStore.reserveRetry({

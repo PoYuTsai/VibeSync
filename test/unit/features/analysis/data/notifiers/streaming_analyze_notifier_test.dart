@@ -283,13 +283,13 @@ void main() {
   });
 
   group('StreamingAnalyzeNotifier — failure paths', () {
-    test(
-        'pre-recommendation failure: connecting → failedBeforeRecommendation, no full call',
+    test('pre-recommendation transport failure keeps the server run retryable',
         () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewError = AnalysisException(
           '網路忙線',
           code: 'NETWORK_ERROR',
+          suggestedAction: AnalysisErrorAction.retry,
         );
 
       final container = _container(fake);
@@ -305,10 +305,13 @@ void main() {
       );
 
       final state = container.read(streamingAnalyzeProvider('conv-1'));
-      expect(state.phase, StreamingAnalyzePhase.failedBeforeRecommendation);
+      expect(state.phase, StreamingAnalyzePhase.failedAfterRecommendation);
       expect(state.recommendationPreview, isNull);
-      expect(state.recommendationPreviewErrorMessage, '網路忙線');
-      expect(state.recommendationPreviewErrorCode, 'NETWORK_ERROR');
+      expect(state.analysisRunId, 'stream-run');
+      expect(state.fullErrorMessage, '網路忙線');
+      expect(state.fullErrorCode, 'NETWORK_ERROR');
+      expect(state.retriesRemaining, 1);
+      expect(fake.streamCallCount, 3);
       expect(state.previousAnalyzedCount, 2);
       expect(state.conversationContentRevision, 'revision-failure');
       expect(fake.fullCallCount, 0);
@@ -1157,6 +1160,28 @@ void main() {
         StreamingAnalyzePhase.done,
       );
       expect(fake.lastStreamRunId, 'stream-run');
+    });
+
+    test('does not attempt same-run recovery before receiving a run id',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..emitRunIdOnlyOnDone = true
+        ..streamError = AnalysisException(
+          '連線中斷。',
+          code: 'NETWORK_ERROR',
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      await container.read(streamingAnalyzeProvider('conv-1').notifier).start(
+        messages: [_msg('hi')],
+      );
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.failedBeforeRecommendation);
+      expect(state.analysisRunId, isNull);
+      expect(fake.streamCallCount, 1);
     });
   });
 }
