@@ -72,6 +72,7 @@ import '../../domain/entities/analysis_record.dart';
 import '../../domain/entities/game_stage.dart';
 import '../../domain/services/analysis_fragment_policy.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
+import '../../domain/services/screenshot_session_context_defaults.dart';
 import '../screens/partner_analysis_records_screen.dart';
 import '../widgets/analysis_platform_picker.dart';
 import '../widgets/reply_refine_sheet.dart';
@@ -853,6 +854,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _messageFocusNode.addListener(_handleMessageInputFocus);
+    _hydrateScreenshotAnalysisSettings();
     _screenshotAnalysisContextNoteController
         .addListener(_refreshScreenshotAnalysisSettingsSummary);
     final initialState =
@@ -891,6 +893,36 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       });
     }
     // 不再自動分析，讓用戶手動點擊
+  }
+
+  void _hydrateScreenshotAnalysisSettings() {
+    final conversation = ref
+        .read(conversationRepositoryProvider)
+        .getConversation(widget.conversationId);
+    final partnerId = conversation?.partnerId?.trim();
+    final partner = (() {
+      if (partnerId == null || partnerId.isEmpty) return null;
+      try {
+        return ref.read(partnerRepositoryProvider).getById(partnerId);
+      } catch (error) {
+        // Context defaults are a convenience, not a screen-startup gate. If
+        // local partner storage is temporarily unavailable, keep the product
+        // defaults and let the normal repository path surface its own issue.
+        debugPrint(
+            'Partner defaults unavailable for screenshot analysis: $error');
+        return null;
+      }
+    })();
+    final defaults = ScreenshotSessionContextDefaults.resolve(
+      conversation: conversation,
+      partner: partner,
+    );
+
+    _screenshotMeetingContext = defaults.meetingContext;
+    _screenshotDuration = defaults.duration;
+    _screenshotGoal = defaults.goal;
+    _screenshotAnalysisContextNoteController.text =
+        defaults.analysisContextNote ?? '';
   }
 
   bool _isStreamingAnalyzePartialPhase(StreamingAnalyzePhase p) {
@@ -2786,22 +2818,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   SessionContext _screenshotSessionContextFor(Conversation conversation) {
     final existing = conversation.sessionContext;
     final note = _screenshotAnalysisContextNoteFor(conversation);
-    if (existing != null) {
-      return SessionContext(
-        meetingContext: existing.meetingContext,
-        duration: existing.duration,
-        goal: existing.goal,
-        userStyle: existing.userStyle,
-        userInterests: existing.userInterests,
-        targetDescription: existing.targetDescription,
-        analysisContextNote: note,
-      );
-    }
-
     return SessionContext(
       meetingContext: _screenshotMeetingContext,
       duration: _screenshotDuration,
       goal: _screenshotGoal,
+      userStyle: existing?.userStyle,
+      userInterests: existing?.userInterests,
+      targetDescription: existing?.targetDescription,
       analysisContextNote: note,
     );
   }
@@ -2928,7 +2951,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         ),
         const SizedBox(height: 6),
         Text(
-          '不確定可以先跳過；AI 會用預設情境分析。',
+          '不確定可以先跳過；會先沿用對象卡的設定。',
           style: AppTypography.bodySmall.copyWith(
             color: AppColors.onBackgroundSecondary,
             height: 1.35,
@@ -2937,7 +2960,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         if (_showScreenshotAnalysisSettings) ...[
           const SizedBox(height: 14),
           Text(
-            '截圖只看得到對話，看不到你們的關係。這只影響本次片段的分析，不會改對象資料。',
+            '截圖看不到你們的關係；這些設定只影響本次分析，不會改動對象資料。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary,
               height: 1.35,
@@ -3022,7 +3045,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響本次片段的分析，不會改對象資料。',
+            '補上截圖裡看不到的關係、背景或你的真實狀態；只影響本次分析。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary,
               height: 1.35,
@@ -4261,6 +4284,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _recognitionExpectedPartnerName(currentConversation);
     final partnerId = currentConversation.partnerId?.trim();
     final isPartnerBound = partnerId != null && partnerId.isNotEmpty;
+    final initialContext = _screenshotSessionContextFor(currentConversation);
     return showDialog<ScreenshotRecognitionDialogResult>(
       context: context,
       barrierDismissible: false,
@@ -4270,15 +4294,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         initialName: isPartnerBound
             ? expectedPartnerName ?? currentConversation.name
             : recognized.contactName?.trim() ?? '',
-        initialMeetingContext:
-            _screenshotSessionContextFor(currentConversation).meetingContext,
-        initialDuration:
-            _screenshotSessionContextFor(currentConversation).duration,
-        initialGoal: _screenshotSessionContextFor(currentConversation).goal,
+        initialMeetingContext: initialContext.meetingContext,
+        initialDuration: initialContext.duration,
+        initialGoal: initialContext.goal,
         initialAnalysisContextNote:
             _screenshotAnalysisContextNoteFor(currentConversation) ?? '',
-        forceShowSessionContextFields:
-            currentConversation.sessionContext == null,
+        forceShowSessionContextFields: false,
         currentConversation: currentConversation,
         expectedPartnerName: expectedPartnerName,
       ),

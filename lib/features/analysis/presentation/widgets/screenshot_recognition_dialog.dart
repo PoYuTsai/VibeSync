@@ -36,6 +36,10 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
   final AcquaintanceDuration? initialDuration;
   final UserGoal? initialGoal;
   final String initialAnalysisContextNote;
+
+  /// Kept temporarily for source compatibility. Context is now configured on
+  /// the analysis screen before OCR confirmation, so this dialog never renders
+  /// the duplicate fields.
   final bool forceShowSessionContextFields;
   final Conversation currentConversation;
   final String? expectedPartnerName;
@@ -63,12 +67,9 @@ class _ScreenshotRecognitionDialogState
     extends State<ScreenshotRecognitionDialog>
     with SingleTickerProviderStateMixin {
   late final TextEditingController _nameController;
-  late final TextEditingController _analysisContextNoteController;
-  late MeetingContext? _selectedMeeting;
-  late AcquaintanceDuration? _selectedDuration;
-  late UserGoal? _selectedGoal;
   late final List<_EditableRecognizedMessage> _editableMessages;
   String? _editValidationMessage;
+  bool _warningExpanded = false;
 
   /// 同對象確認格的定位錨與一次性閃光 token（沒勾就按「確認本次內容」時
   /// 自動捲到格子並閃一下——按鈕不再 disabled 裝死，2026-08-09 Eric 真機回報
@@ -95,11 +96,6 @@ class _ScreenshotRecognitionDialogState
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialName);
-    _analysisContextNoteController =
-        TextEditingController(text: widget.initialAnalysisContextNote);
-    _selectedMeeting = widget.initialMeetingContext;
-    _selectedDuration = widget.initialDuration;
-    _selectedGoal = widget.initialGoal;
     _editableMessages =
         (widget.recognized.messages ?? const <RecognizedMessage>[])
             .map(_EditableRecognizedMessage.fromRecognizedMessage)
@@ -205,7 +201,6 @@ class _ScreenshotRecognitionDialogState
     _swipeTutorialAutoPlayTimer?.cancel();
     _swipeTutorialController.dispose();
     _nameController.dispose();
-    _analysisContextNoteController.dispose();
     for (final message in _editableMessages) {
       message.dispose();
     }
@@ -298,10 +293,6 @@ class _ScreenshotRecognitionDialogState
     }
   }
 
-  void _dismissKeyboard() {
-    FocusManager.instance.primaryFocus?.unfocus();
-  }
-
   List<RecognizedMessage> _sanitizedMessages() {
     return _editableMessages
         .map(
@@ -385,12 +376,12 @@ class _ScreenshotRecognitionDialogState
     Navigator.of(context).pop(
       ScreenshotRecognitionDialogResult(
         name: _nameController.text.trim(),
-        meetingContext: _selectedMeeting,
-        duration: _selectedDuration,
-        goal: _selectedGoal,
-        analysisContextNote: _analysisContextNoteController.text.trim().isEmpty
+        meetingContext: widget.initialMeetingContext,
+        duration: widget.initialDuration,
+        goal: widget.initialGoal,
+        analysisContextNote: widget.initialAnalysisContextNote.trim().isEmpty
             ? null
-            : _analysisContextNoteController.text.trim(),
+            : widget.initialAnalysisContextNote.trim(),
         messages: sanitizedMessages,
       ),
     );
@@ -907,7 +898,7 @@ class _ScreenshotRecognitionDialogState
               ),
               const SizedBox(height: 6),
               Text(
-                '單側截圖常常整段都是對方連發。如果 AI 把某幾則誤判成你說的，'
+                '單側截圖常常整段都是對方連發。如果有幾則被誤判成你說的，'
                 '點這裡一次全部改回對方。',
                 style: AppTypography.bodySmall.copyWith(
                   color: AppColors.glassTextSecondary,
@@ -931,10 +922,101 @@ class _ScreenshotRecognitionDialogState
     );
   }
 
+  String _warningSummary(String warning) {
+    final normalized = warning.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.contains('目前對象') && normalized.contains('不同')) {
+      return '辨識到的名字和目前對象不同，請先確認是不是同一人。';
+    }
+    if (normalized.contains('引用')) {
+      return '這批訊息含引用內容，請確認對象與「我說／她說」。';
+    }
+    if (normalized.contains('信心')) {
+      return '這次辨識信心較低，請先快速確認內容。';
+    }
+    return '辨識內容有需要留意的地方，請先確認再繼續。';
+  }
+
+  Widget _buildRecognitionWarning(String warning) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        decoration: BoxDecoration(
+          color: AppColors.error.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: AppColors.error.withValues(alpha: 0.25),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  size: 18,
+                  color: AppColors.error,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _warningSummary(warning),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                      height: 1.4,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('recognition-warning-info-button'),
+                  tooltip: _warningExpanded ? '收起辨識提醒詳情' : '查看辨識提醒詳情',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints.tightFor(width: 36, height: 36),
+                  onPressed: () => setState(
+                    () => _warningExpanded = !_warningExpanded,
+                  ),
+                  icon: Icon(
+                    _warningExpanded
+                        ? Icons.info_rounded
+                        : Icons.info_outline_rounded,
+                    color: AppColors.error,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+            if (_warningExpanded) ...[
+              const SizedBox(height: 8),
+              Divider(
+                height: 1,
+                color: AppColors.error.withValues(alpha: 0.18),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                warning,
+                key: const ValueKey('recognition-warning-details'),
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final shouldShowSessionContextFields =
-        widget.forceShowSessionContextFields || !_canReplaceCurrentDraft;
     final willReplaceCurrentBatch = _canReplaceCurrentDraft &&
         widget.currentConversation.messages.isNotEmpty;
 
@@ -956,40 +1038,7 @@ class _ScreenshotRecognitionDialogState
             ),
             if (widget.warningMessage != null &&
                 widget.warningMessage!.trim().isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.error.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: AppColors.error.withValues(alpha: 0.25),
-                    ),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.warning_amber_rounded,
-                        size: 18,
-                        color: AppColors.error,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          widget.warningMessage!,
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.onBackgroundPrimary,
-                            height: 1.45,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              _buildRecognitionWarning(widget.warningMessage!.trim()),
             const SizedBox(height: 12),
             // 滑動校正器：只留一句能幫使用者完成動作的提示，不放系統狀態說明。
             _buildMessageEditWorkspace(),
@@ -1132,166 +1181,6 @@ class _ScreenshotRecognitionDialogState
                   ),
                 ),
                 style: const TextStyle(color: AppColors.onBackgroundPrimary),
-              ),
-            ],
-            if (shouldShowSessionContextFields) ...[
-              const SizedBox(height: 16),
-              const Text(
-                '認識場景（選填）',
-                style: TextStyle(
-                  color: AppColors.onBackgroundPrimary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children:
-                    MeetingContext.visibleAnalysisOptions.map((meetingContext) {
-                  final isSelected = _selectedMeeting == meetingContext;
-                  return ChoiceChip(
-                    label: Text(meetingContext.label),
-                    selected: isSelected,
-                    // 勾勾淡入淡出在快速切換時會留殘影＋寬度跳動，
-                    // 全 App chips 一律不顯示（本檔三排同規則）。
-                    showCheckmark: false,
-                    onSelected: (selected) {
-                      setState(() {
-                        _selectedMeeting = selected ? meetingContext : null;
-                      });
-                    },
-                    selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
-                    backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
-                    side: BorderSide(
-                      color: isSelected
-                          ? AppColors.ctaStart.withValues(alpha: 0.4)
-                          : AppColors.onBackgroundPrimary
-                              .withValues(alpha: 0.2),
-                    ),
-                    labelStyle: TextStyle(
-                      color: isSelected
-                          ? AppColors.ctaStart
-                          : AppColors.onBackgroundPrimary,
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                '認識多久（選填）',
-                style: TextStyle(
-                  color: AppColors.onBackgroundPrimary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: AcquaintanceDuration.values.map((duration) {
-                  final isSelected = _selectedDuration == duration;
-                  return ChoiceChip(
-                    label: Text(duration.label),
-                    selected: isSelected,
-                    showCheckmark: false,
-                    onSelected: (selected) {
-                      setState(() {
-                        _selectedDuration = selected ? duration : null;
-                      });
-                    },
-                    selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
-                    backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
-                    side: BorderSide(
-                      color: isSelected
-                          ? AppColors.ctaStart.withValues(alpha: 0.4)
-                          : AppColors.onBackgroundPrimary
-                              .withValues(alpha: 0.2),
-                    ),
-                    labelStyle: TextStyle(
-                      color: isSelected
-                          ? AppColors.ctaStart
-                          : AppColors.onBackgroundPrimary,
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                '目前目標',
-                style: TextStyle(
-                  color: AppColors.onBackgroundPrimary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: UserGoal.values.map((goal) {
-                  final isSelected = _selectedGoal == goal;
-                  return ChoiceChip(
-                    label: Text(goal.label),
-                    selected: isSelected,
-                    showCheckmark: false,
-                    onSelected: (selected) {
-                      setState(() {
-                        _selectedGoal = selected ? goal : null;
-                      });
-                    },
-                    selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
-                    backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
-                    side: BorderSide(
-                      color: isSelected
-                          ? AppColors.ctaStart.withValues(alpha: 0.4)
-                          : AppColors.onBackgroundPrimary
-                              .withValues(alpha: 0.2),
-                    ),
-                    labelStyle: TextStyle(
-                      color: isSelected
-                          ? AppColors.ctaStart
-                          : AppColors.onBackgroundPrimary,
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                '補充背景（選填）',
-                style: TextStyle(
-                  color: AppColors.onBackgroundPrimary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _analysisContextNoteController,
-                maxLength: 300,
-                minLines: 1,
-                maxLines: 3,
-                textInputAction: TextInputAction.done,
-                onEditingComplete: _dismissKeyboard,
-                onTapOutside: (_) => _dismissKeyboard(),
-                decoration: InputDecoration(
-                  hintText: '沒有可以留空',
-                  hintStyle:
-                      const TextStyle(color: AppColors.onBackgroundSecondary),
-                  filled: true,
-                  fillColor: AppColors.brandInk.withValues(alpha: 0.4),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-                style: const TextStyle(color: AppColors.onBackgroundPrimary),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響這個片段的分析，不會改對象資料。',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.onBackgroundSecondary,
-                  height: 1.35,
-                ),
               ),
             ],
           ],

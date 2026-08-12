@@ -24,6 +24,7 @@ import 'package:vibesync/features/conversation/data/providers/conversation_write
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/message_bubble.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
@@ -222,8 +223,7 @@ void main() {
       await _pumpAnalysisScreen(tester);
 
       expect(find.byType(ImagePickerWidget), findsOneWidget);
-      expect(find.textContaining('重新選擇 1–3 張截圖會整批取代'),
-          findsOneWidget);
+      expect(find.textContaining('重新選擇 1–3 張截圖會整批取代'), findsOneWidget);
       expect(find.textContaining('不會往下追加'), findsOneWidget);
     });
 
@@ -500,8 +500,7 @@ void main() {
       expect(find.text('重新分析'), findsWidgets);
     });
 
-    testWidgets(
-        'first analysis is not mislabeled as pending appended content',
+    testWidgets('first analysis is not mislabeled as pending appended content',
         (tester) async {
       await _pumpAnalysisScreen(tester);
 
@@ -532,7 +531,7 @@ void main() {
       );
       expect(find.text('這次分析設定（可不改）'), findsOneWidget);
       expect(find.text('交友軟體・剛認識・邀約見面'), findsOneWidget);
-      expect(find.text('不確定可以先跳過；AI 會用預設情境分析。'), findsOneWidget);
+      expect(find.text('不確定可以先跳過；會先沿用對象卡的設定。'), findsOneWidget);
       expect(find.text('認識情境'), findsNothing);
       expect(find.text('補充背景（選填）'), findsNothing);
 
@@ -544,7 +543,7 @@ void main() {
       expect(find.text('補充背景（選填）'), findsOneWidget);
       expect(find.text('沒有可以留空'), findsOneWidget);
       expect(find.text('其他'), findsNothing);
-      expect(find.textContaining('只影響本次片段的分析'), findsAtLeastNWidgets(1));
+      expect(find.textContaining('只影響本次分析'), findsAtLeastNWidgets(1));
       final noteField = tester.widget<TextField>(
         find.byWidgetPredicate(
           (widget) =>
@@ -553,6 +552,51 @@ void main() {
       );
       expect(noteField.maxLength, 300);
       expect(noteField.textInputAction, TextInputAction.done);
+    });
+
+    testWidgets('new screenshot analysis starts from partner-card defaults',
+        (tester) async {
+      final conversation = Conversation(
+        id: 'continue-input-test',
+        name: 'Alice',
+        partnerId: 'partner-alice',
+        messages: const [],
+        createdAt: DateTime(2026, 8, 12),
+        updatedAt: DateTime(2026, 8, 12),
+      );
+      final partnerRepository = _StubPartnerRepository(
+        Partner(
+          id: 'partner-alice',
+          name: 'Alice',
+          createdAt: DateTime(2026, 8, 12),
+          updatedAt: DateTime(2026, 8, 12),
+          customNote: '她不喜歡臨時約',
+          defaultMeetingContext: MeetingContext.friendIntro,
+          defaultAcquaintanceDuration: AcquaintanceDuration.fewWeeks,
+          defaultGoal: UserGoal.maintainHeat,
+        ),
+      );
+
+      await _pumpAnalysisScreen(
+        tester,
+        conversation: conversation,
+        partnerRepository: partnerRepository,
+      );
+
+      expect(
+        find.text('已補充背景・朋友介紹・幾週・維持熱度'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('這次分析設定（可不改）'));
+      await tester.pump();
+
+      final noteField = tester.widget<TextField>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField && widget.decoration?.hintText == '沒有可以留空',
+        ),
+      );
+      expect(noteField.controller?.text, '她不喜歡臨時約');
     });
 
     testWidgets(

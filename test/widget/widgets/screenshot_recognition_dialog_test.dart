@@ -234,6 +234,8 @@ void main() {
     testWidgets('辨識名稱不同時，必須明確確認同一對象才能加入', (tester) async {
       await _useTallSurface(tester);
       ScreenshotRecognitionDialogResult? result;
+      const mismatchWarning =
+          '這張截圖辨識到「Amber」，和目前對象「小美」不同。若是另一人，請取消並回到正確對象；只有確認是目前這位對象時才能繼續。';
       const mismatchedConversation = RecognizedConversation(
         contactName: 'Amber',
         messageCount: 2,
@@ -258,6 +260,7 @@ void main() {
         buildDialogHost(
           recognized: mismatchedConversation,
           forceShowSessionContextFields: false,
+          warningMessage: mismatchWarning,
           onResult: (value) => result = value,
         ),
       );
@@ -269,6 +272,11 @@ void main() {
         find.text('我確認這些截圖都是目前這位對象'),
         findsOneWidget,
       );
+      expect(
+        find.text('辨識到的名字和目前對象不同，請先確認是不是同一人。'),
+        findsOneWidget,
+      );
+      expect(find.text(mismatchWarning), findsNothing);
       expect(
         find.textContaining('如果是另一人，請取消並回到正確對象'),
         findsOneWidget,
@@ -386,10 +394,11 @@ void main() {
 
     testWidgets('顯示滑動提示與警示，但不再顯示加入方式', (tester) async {
       await _useTallSurface(tester);
+      const warning = '這張截圖辨識信心較低，加入前請先確認預覽內容是否正確。';
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          warningMessage: '這張截圖辨識信心較低，加入前請先確認預覽內容是否正確。',
+          warningMessage: warning,
           forceShowSessionContextFields: true,
         ),
       );
@@ -405,7 +414,17 @@ void main() {
       );
       expect(find.text('加入方式'), findsNothing);
       expect(find.text('另開分析片段'), findsNothing);
-      expect(find.textContaining('辨識信心較低'), findsWidgets);
+      expect(find.text('這次辨識信心較低，請先快速確認內容。'), findsOneWidget);
+      expect(find.text(warning), findsNothing);
+      expect(find.byTooltip('查看辨識提醒詳情'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('recognition-warning-info-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(warning), findsOneWidget);
+      expect(find.byTooltip('收起辨識提醒詳情'), findsOneWidget);
 
       // 砍掉：狀態徽章、安撫框、舊編輯器入口。
       expect(find.text('需要確認'), findsNothing);
@@ -903,7 +922,8 @@ void main() {
       expect(dialogResult!.name, 'Amber');
     });
 
-    testWidgets('shows session context fields when requested', (tester) async {
+    testWidgets('keeps session context fields out of OCR confirmation',
+        (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
@@ -915,8 +935,11 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('認識場景（選填）'), findsOneWidget);
-      expect(find.text('認識多久（選填）'), findsOneWidget);
+      expect(find.text('認識場景（選填）'), findsNothing);
+      expect(find.text('認識多久（選填）'), findsNothing);
+      expect(find.text('目前目標'), findsNothing);
+      expect(find.text('補充背景（選填）'), findsNothing);
+      expect(find.text('沒有可以留空'), findsNothing);
     });
 
     testWidgets('returns null when cancelled', (tester) async {
@@ -946,7 +969,8 @@ void main() {
       expect(dialogResult, isNull);
     });
 
-    testWidgets('returns selected goal with session context', (tester) async {
+    testWidgets('returns inherited goal without showing duplicate controls',
+        (tester) async {
       await _useTallSurface(tester);
 
       ScreenshotRecognitionDialogResult? dialogResult;
@@ -965,7 +989,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('目前目標'), findsOneWidget);
+      expect(find.text('目前目標'), findsNothing);
       await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
@@ -984,6 +1008,7 @@ void main() {
           initialMeetingContext: MeetingContext.committedPartner,
           initialDuration: AcquaintanceDuration.monthPlus,
           initialGoal: UserGoal.justChat,
+          initialAnalysisContextNote: '她是我女友',
           onResult: (result) => dialogResult = result,
         ),
       );
@@ -991,15 +1016,8 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      final noteField = tester.widget<TextField>(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is TextField && widget.decoration?.hintText == '沒有可以留空',
-        ),
-      );
-      expect(noteField.maxLength, 300);
-      expect(noteField.textInputAction, TextInputAction.done);
-      await tester.enterText(find.byType(TextField).last, '她是我女友');
+      expect(find.text('補充背景（選填）'), findsNothing);
+      expect(find.text('沒有可以留空'), findsNothing);
       await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
