@@ -703,6 +703,30 @@ void main() {
       expect(container.read(partnerByIdProvider('A'))?.name, 'Alicia');
     });
 
+    test('updateName preserves partner analysis defaults', () async {
+      final partner = _partner('A', name: 'Alice')
+        ..customNote = '朋友的同事'
+        ..defaultMeetingContext = MeetingContext.friendIntro
+        ..defaultAcquaintanceDuration = AcquaintanceDuration.fewWeeks
+        ..defaultGoal = UserGoal.maintainHeat;
+      await _partnerBox.put('A', partner);
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+
+      await container
+          .read(partnerWriteControllerProvider.notifier)
+          .updateName(partner, 'Alicia');
+
+      final updated = container.read(partnerByIdProvider('A'))!;
+      expect(updated.customNote, '朋友的同事');
+      expect(updated.defaultMeetingContext, MeetingContext.friendIntro);
+      expect(
+        updated.defaultAcquaintanceDuration,
+        AcquaintanceDuration.fewWeeks,
+      );
+      expect(updated.defaultGoal, UserGoal.maintainHeat);
+    });
+
     test('updateName throws ArgumentError on empty input', () async {
       await _partnerBox.put('A', _partner('A', name: 'Alice'));
       final container = await _makeContainer();

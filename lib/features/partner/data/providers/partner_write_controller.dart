@@ -138,6 +138,9 @@ class PartnerWriteController extends Notifier<void> {
       updatedAt: partner.updatedAt,
       ownerUserId: partner.ownerUserId,
       customNote: partner.customNote,
+      defaultMeetingContext: partner.defaultMeetingContext,
+      defaultAcquaintanceDuration: partner.defaultAcquaintanceDuration,
+      defaultGoal: partner.defaultGoal,
     );
     try {
       await repo.update(renamed);
@@ -160,6 +163,9 @@ class PartnerWriteController extends Notifier<void> {
       updatedAt: partner.updatedAt,
       ownerUserId: partner.ownerUserId,
       customNote: trimmed.isEmpty ? null : trimmed,
+      defaultMeetingContext: partner.defaultMeetingContext,
+      defaultAcquaintanceDuration: partner.defaultAcquaintanceDuration,
+      defaultGoal: partner.defaultGoal,
     );
     try {
       await repo.update(updated);

@@ -24,13 +24,16 @@ class PartnerAdapter extends TypeAdapter<Partner> {
       updatedAt: fields[4] as DateTime,
       ownerUserId: fields[5] as String?,
       customNote: fields[6] as String?,
+      defaultMeetingContext: fields[7] as MeetingContext?,
+      defaultAcquaintanceDuration: fields[8] as AcquaintanceDuration?,
+      defaultGoal: fields[9] as UserGoal?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Partner obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -44,7 +47,13 @@ class PartnerAdapter extends TypeAdapter<Partner> {
       ..writeByte(5)
       ..write(obj.ownerUserId)
       ..writeByte(6)
-      ..write(obj.customNote);
+      ..write(obj.customNote)
+      ..writeByte(7)
+      ..write(obj.defaultMeetingContext)
+      ..writeByte(8)
+      ..write(obj.defaultAcquaintanceDuration)
+      ..writeByte(9)
+      ..write(obj.defaultGoal);
   }
 
   @override

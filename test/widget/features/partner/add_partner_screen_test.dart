@@ -29,6 +29,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart';
 
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
+import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
@@ -87,6 +88,8 @@ void main() {
     );
   }
 
+  Finder nameField() => find.byKey(const ValueKey('add-partner-name-field'));
+
   // Order matters: the auth-blocked tests run BEFORE the successful submit
   // test. The successful submit triggers `pushReplacement` which appears to
   // disrupt the test framework's between-test cleanup in our setup; running
@@ -103,12 +106,41 @@ void main() {
     );
   });
 
+  testWidgets('collects partner defaults in one scrollable creation flow',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+    await t.pumpWidget(harness());
+    await t.pumpAndSettle();
+
+    expect(find.text('幫教練進一步認識她'), findsOneWidget);
+    expect(find.text('認識情境'), findsOneWidget);
+    expect(find.text('認識多久'), findsOneWidget);
+    expect(find.text('目前目標'), findsOneWidget);
+    expect(find.text('補充背景（選填）'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('add-partner-background-field')),
+      findsOneWidget,
+    );
+
+    final controls = t.widgetList<BrandSegmentedButton>(
+      find.byWidgetPredicate((widget) => widget is BrandSegmentedButton),
+    );
+    expect(controls, hasLength(3));
+    expect(controls.elementAt(0).selected, MeetingContext.datingApp);
+    expect(
+      controls.elementAt(1).selected,
+      AcquaintanceDuration.justMet,
+    );
+    expect(controls.elementAt(2).selected, UserGoal.dateInvite);
+  });
+
   testWidgets('input clears transparent AppBar toolbar', (t) async {
     await t.pumpWidget(harness());
     await t.pumpAndSettle();
 
     final appBarBottom = t.getBottomLeft(find.byType(AppBar)).dy;
-    final inputTop = t.getTopLeft(find.byType(TextField)).dy;
+    final inputTop = t.getTopLeft(nameField()).dy;
 
     expect(
       inputTop,
@@ -128,7 +160,7 @@ void main() {
   testWidgets('submit enabled once name has non-whitespace', (t) async {
     await t.pumpWidget(harness());
     await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField), 'Alice');
+    await t.enterText(nameField(), 'Alice');
     await t.pump();
     final btn = t.widget<BrandPrimaryButton>(find.byType(BrandPrimaryButton));
     expect(btn.onPressed, isNotNull);
@@ -138,7 +170,7 @@ void main() {
       (t) async {
     await t.pumpWidget(harness(authStream: Stream.value(null)));
     await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField), 'Alice');
+    await t.enterText(nameField(), 'Alice');
     await t.pump();
     final btn = t.widget<BrandPrimaryButton>(find.byType(BrandPrimaryButton));
     expect(btn.onPressed, isNull,
@@ -152,7 +184,7 @@ void main() {
     addTearDown(controller.close);
     await t.pumpWidget(harness(authStream: controller.stream));
     await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField), 'Alice');
+    await t.enterText(nameField(), 'Alice');
     await t.pump();
     final btn = t.widget<BrandPrimaryButton>(find.byType(BrandPrimaryButton));
     expect(btn.onPressed, isNull, reason: 'must wait for auth resolution');
@@ -163,7 +195,7 @@ void main() {
     (t) async {
       await t.pumpWidget(harness());
       await t.pumpAndSettle();
-      await t.enterText(find.byType(TextField), 'Alice');
+      await t.enterText(nameField(), 'Alice');
       await t.pump();
       await t.tap(find.byType(BrandPrimaryButton));
       await t.pump(const Duration(seconds: 1));
@@ -171,6 +203,12 @@ void main() {
       final p = partnerBox.values.single;
       expect(p.name, 'Alice');
       expect(p.ownerUserId, 'u-test');
+      expect(p.defaultMeetingContext, MeetingContext.datingApp);
+      expect(
+        p.defaultAcquaintanceDuration,
+        AcquaintanceDuration.justMet,
+      );
+      expect(p.defaultGoal, UserGoal.dateInvite);
     },
     // SKIPPED: hangs to flutter_test's 10-min pumpAndSettle timeout in this
     // Windows flutter_test environment — pushReplacement's route animation +

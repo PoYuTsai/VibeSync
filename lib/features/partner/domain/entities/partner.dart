@@ -1,6 +1,8 @@
 // lib/features/partner/domain/entities/partner.dart
 import 'package:hive_ce/hive_ce.dart';
 
+import '../../../conversation/domain/entities/session_context.dart';
+
 part 'partner.g.dart';
 
 /// typeId=8 — verified free at 2026-04-25.
@@ -8,7 +10,7 @@ part 'partner.g.dart';
 ///   0 Conversation, 1 Message, 2 ConversationSummary,
 ///   3 MeetingContext, 4 AcquaintanceDuration, 5 UserGoal,
 ///   6 SessionContext, 7 UserStyle.
-// Next free HiveField index: 7. Never reuse retired indices (additive-only schema).
+// Next free HiveField index: 10. Never reuse retired indices (additive-only schema).
 @HiveType(typeId: 8)
 class Partner extends HiveObject {
   @HiveField(0)
@@ -36,6 +38,17 @@ class Partner extends HiveObject {
   @HiveField(6)
   String? customNote;
 
+  /// Defaults for a new analysis involving this partner. Conversation-level
+  /// [SessionContext] still wins once a specific conversation has one.
+  @HiveField(7)
+  MeetingContext? defaultMeetingContext;
+
+  @HiveField(8)
+  AcquaintanceDuration? defaultAcquaintanceDuration;
+
+  @HiveField(9)
+  UserGoal? defaultGoal;
+
   Partner({
     required this.id,
     required this.name,
@@ -44,5 +57,8 @@ class Partner extends HiveObject {
     required this.updatedAt,
     this.ownerUserId,
     this.customNote,
+    this.defaultMeetingContext,
+    this.defaultAcquaintanceDuration,
+    this.defaultGoal,
   });
 }

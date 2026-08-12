@@ -1,10 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
+import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 
 void main() {
   setUpAll(() {
     Hive.init('./.dart_tool/test_hive_partner_entity');
+    Hive.registerAdapter(MeetingContextAdapter());
+    Hive.registerAdapter(AcquaintanceDurationAdapter());
+    Hive.registerAdapter(UserGoalAdapter());
     Hive.registerAdapter(PartnerAdapter());
   });
 
@@ -26,6 +30,9 @@ void main() {
         updatedAt: now,
         ownerUserId: 'user-1',
         customNote: '永春附近',
+        defaultMeetingContext: MeetingContext.friendIntro,
+        defaultAcquaintanceDuration: AcquaintanceDuration.fewWeeks,
+        defaultGoal: UserGoal.maintainHeat,
       );
       await box.put(p.id, p);
 
@@ -37,6 +44,12 @@ void main() {
       expect(read.updatedAt, now);
       expect(read.ownerUserId, 'user-1');
       expect(read.customNote, '永春附近');
+      expect(read.defaultMeetingContext, MeetingContext.friendIntro);
+      expect(
+        read.defaultAcquaintanceDuration,
+        AcquaintanceDuration.fewWeeks,
+      );
+      expect(read.defaultGoal, UserGoal.maintainHeat);
     });
   });
 }

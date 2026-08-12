@@ -19,17 +19,13 @@
 //   Task 8 flagged it optional).
 //
 // Post-A2 visual redesign (Bruce 2026-04-27 Discord, Eric Q1b/Q2b/Q3a):
-// - VibeSync purple gradient bg + 3 static brand-colored bubbles
-//   (purple/orange/pink — purple = mood, orange = action, per token system).
+// - VibeSync purple gradient background.
 // - Single free-text hint signals "name OR description" intent.
 //
 // 2026-06-17 暗紫橘統一 (BrandKit migration): the explanatory card / input /
 // CTA now use the shared BrandKit primitives (BrandSurfaceCard +
 // brandInputDecoration + BrandPrimaryButton) instead of the light warm-glass
-// widgets, matching the shipped 關於我/作戰板 dark surface system. Background
-// bubbles + layout density are unchanged.
-// - Bubbles are intentionally STATIC (no AnimationController) so this
-//   screen's widget tests don't hit GradientBackground's pumpAndSettle hang.
+// widgets, matching the shipped 關於我/作戰板 dark surface system.
 //
 // Layout-density fold (Bruce/Eric 2026-06-10, proof:
 // test/visual_proof/density_proof_test.dart):
@@ -53,6 +49,7 @@ import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/partner.dart';
 import '../providers/partner_providers.dart';
 
@@ -65,6 +62,10 @@ class AddPartnerScreen extends ConsumerStatefulWidget {
 
 class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
   final _name = TextEditingController();
+  final _backgroundNote = TextEditingController();
+  MeetingContext _meetingContext = MeetingContext.datingApp;
+  AcquaintanceDuration _duration = AcquaintanceDuration.justMet;
+  UserGoal _goal = UserGoal.dateInvite;
   bool _busy = false;
 
   @override
@@ -83,6 +84,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
   void dispose() {
     _name.removeListener(_onNameChanged);
     _name.dispose();
+    _backgroundNote.dispose();
     super.dispose();
   }
 
@@ -97,6 +99,10 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
       createdAt: now,
       updatedAt: now,
       ownerUserId: ownerId,
+      customNote: _normalizedBackgroundNote,
+      defaultMeetingContext: _meetingContext,
+      defaultAcquaintanceDuration: _duration,
+      defaultGoal: _goal,
     );
     try {
       await ref.read(partnerRepositoryProvider).upsertIfAbsent(partner);
@@ -121,6 +127,52 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
     }
   }
 
+  String? get _normalizedBackgroundNote {
+    final note = _backgroundNote.text.trim();
+    return note.isEmpty ? null : note;
+  }
+
+  void _dismissKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
+
+  String _meetingContextLabel(MeetingContext context) {
+    switch (context) {
+      case MeetingContext.datingApp:
+        return '交友軟體';
+      case MeetingContext.inPerson:
+        return '現實認識';
+      case MeetingContext.friendIntro:
+        return '朋友介紹';
+      case MeetingContext.committedPartner:
+        return '已是伴侶';
+      case MeetingContext.other:
+        return '其他';
+    }
+  }
+
+  String _durationLabel(AcquaintanceDuration duration) {
+    switch (duration) {
+      case AcquaintanceDuration.justMet:
+        return '剛認識';
+      case AcquaintanceDuration.fewDays:
+        return '幾天';
+      case AcquaintanceDuration.fewWeeks:
+        return '幾週';
+      case AcquaintanceDuration.monthPlus:
+        return '一個月以上';
+    }
+  }
+
+  String _goalLabel(UserGoal goal) {
+    switch (goal) {
+      case UserGoal.dateInvite:
+        return '邀約見面';
+      case UserGoal.maintainHeat:
+        return '維持熱度';
+      case UserGoal.justChat:
+        return '自然聊天';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authAsync = ref.watch(authConversationScopeProvider);
@@ -142,186 +194,105 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
       ),
       body: Stack(
         children: [
-          const Positioned.fill(child: _AddPartnerBackground()),
+          const Positioned.fill(
+            child: BrandPageBackground(child: SizedBox.expand()),
+          ),
           SafeArea(
-            child: Padding(
+            child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               // `extendBodyBehindAppBar` lets the gradient sit under the
               // transparent AppBar; content still needs to clear the toolbar.
               padding: const EdgeInsets.fromLTRB(
                 16,
-                kToolbarHeight + 16,
+                kToolbarHeight + 8,
                 16,
                 24,
               ),
-              child: Column(
-                children: [
-                  const Spacer(flex: 3),
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 372),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // beam 光束提亮空狀態說明卡；參數與練習室入口完全
-                          // 一致（LiquidBeamEntryPreset，2026-08-09 Eric 拍板，
-                          // 推翻先前「弱一檔」的設定），只有圓角跟卡片走。
-                          LiquidMotionFrame(
-                            style: LiquidMotionStyle.beam,
-                            borderRadius: 24,
-                            borderWidth: LiquidBeamEntryPreset.borderWidth,
-                            glowRadius: LiquidBeamEntryPreset.glowRadius,
-                            strength: LiquidBeamEntryPreset.strength,
-                            duration: LiquidBeamEntryPreset.duration,
-                            child: BrandSurfaceCard(
-                              padding:
-                                  const EdgeInsets.fromLTRB(32, 32, 32, 34),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Row(
-                                    children: [
-                                      BrandIconBadge(
-                                        icon: Icons.person_add_alt_1_rounded,
-                                        size: 48,
-                                        iconSize: 24,
-                                      ),
-                                      SizedBox(width: 18),
-                                      Expanded(
-                                        child: Text(
-                                          '先建立一張對象卡',
-                                          style: TextStyle(
-                                            color:
-                                                AppColors.onBackgroundPrimary,
-                                            fontSize: 19,
-                                            fontWeight: FontWeight.w800,
-                                            height: 1.15,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 24),
-                                  Text(
-                                    '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡',
-                                    style: AppTypography.bodyLarge.copyWith(
-                                      color: AppColors.onBackgroundSecondary
-                                          .withValues(alpha: 0.84),
-                                      height: 1.55,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          TextField(
-                            controller: _name,
-                            cursorColor: AppColors.ctaStart,
-                            style: AppTypography.bodyLarge.copyWith(
-                              color: Colors.white,
-                            ),
-                            decoration: brandInputDecoration(
-                              hintText: '例：Alice / Tinder 上的空姐',
-                            ).copyWith(
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 18,
-                              ),
-                              hintStyle: AppTypography.bodyLarge.copyWith(
-                                color: Colors.white.withValues(alpha: 0.40),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          BrandPrimaryButton(
-                            label: '建立',
-                            onPressed:
-                                canSubmit ? () => _submit(ownerId) : null,
-                            isLoading: _busy,
-                            verticalPadding: 22,
-                          ),
-                          if (!authReady)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 12),
-                              child: Text(
-                                '請先登入再建立對象',
-                                textAlign: TextAlign.center,
-                                style: AppTypography.caption.copyWith(
-                                  color: AppColors.onBackgroundSecondary,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
+              children: [
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 372),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildIdentityCard(),
+                        const SizedBox(height: 16),
+                        _buildContextCard(
+                          canSubmit: canSubmit,
+                          ownerId: ownerId,
+                          authReady: authReady,
+                        ),
+                      ],
                     ),
                   ),
-                  const Spacer(flex: 4),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
-}
 
-/// Static gradient + brand-colored bubbles for AddPartnerScreen.
-///
-/// Uses the same `backgroundGradient*` tokens as `GradientBackground`, but
-/// the bubbles here are STATIC (no AnimationController). This is deliberate:
-/// `GradientBackground`'s 3 infinite controllers cause `pumpAndSettle` to
-/// hang in widget tests, and AddPartner's tests rely on it. Brand-color
-/// pick: purple (primaryLight) + orange (ctaStart) + pink (bokehPink) so
-/// the screen reads as "VibeSync 紫橘", not the rainbow palette of the
-/// reference screenshot.
-class _AddPartnerBackground extends StatelessWidget {
-  const _AddPartnerBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.backgroundGradientStart,
-            AppColors.backgroundGradientMid,
-            AppColors.backgroundGradientEnd,
-          ],
-          stops: [0.0, 0.5, 1.0],
-        ),
-      ),
-      child: IgnorePointer(
-        child: Stack(
+  Widget _buildIdentityCard() {
+    return LiquidMotionFrame(
+      style: LiquidMotionStyle.beam,
+      borderRadius: 24,
+      borderWidth: LiquidBeamEntryPreset.borderWidth,
+      glowRadius: LiquidBeamEntryPreset.glowRadius,
+      strength: LiquidBeamEntryPreset.strength,
+      duration: LiquidBeamEntryPreset.duration,
+      child: BrandSurfaceCard(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Positioned(
-              top: -40,
-              left: -30,
-              child: _StaticBubble(
-                color: AppColors.primaryLight,
-                size: 170,
-                opacity: 0.55,
+            const Row(
+              children: [
+                BrandIconBadge(
+                  icon: Icons.person_add_alt_1_rounded,
+                  size: 48,
+                  iconSize: 24,
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    '先建立一張對象卡',
+                    style: TextStyle(
+                      color: AppColors.onBackgroundPrimary,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      height: 1.15,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡。',
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.84),
+                height: 1.55,
               ),
             ),
-            Positioned(
-              top: 60,
-              right: -50,
-              child: _StaticBubble(
-                color: AppColors.ctaStart,
-                size: 150,
-                opacity: 0.5,
-              ),
-            ),
-            Positioned(
-              bottom: 120,
-              left: 40,
-              child: _StaticBubble(
-                color: AppColors.bokehPink,
-                size: 130,
-                opacity: 0.4,
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('add-partner-name-field'),
+              controller: _name,
+              cursorColor: AppColors.ctaStart,
+              textInputAction: TextInputAction.next,
+              style: AppTypography.bodyLarge.copyWith(color: Colors.white),
+              decoration: brandInputDecoration(
+                hintText: '例：Alice / Tinder 上的空姐',
+              ).copyWith(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 18,
+                ),
+                hintStyle: AppTypography.bodyLarge.copyWith(
+                  color: Colors.white.withValues(alpha: 0.40),
+                ),
               ),
             ),
           ],
@@ -329,34 +300,143 @@ class _AddPartnerBackground extends StatelessWidget {
       ),
     );
   }
-}
 
-class _StaticBubble extends StatelessWidget {
-  final Color color;
-  final double size;
-  final double opacity;
-
-  const _StaticBubble({
-    required this.color,
-    required this.size,
-    required this.opacity,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: opacity),
-            blurRadius: 60,
-            spreadRadius: 25,
+  Widget _buildContextCard({
+    required bool canSubmit,
+    required String? ownerId,
+    required bool authReady,
+  }) {
+    return BrandSurfaceCard(
+      padding: const EdgeInsets.all(20),
+      elevated: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.auto_awesome_rounded,
+                size: 24,
+                color: AppColors.ctaStart,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '幫教練進一步認識她',
+                  style: AppTypography.titleLarge.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 4),
+          Text(
+            '先選最接近的情況；不確定可以保留預設，之後每次分析仍能調整。',
+            style: AppTypography.bodyLarge.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _sectionLabel('認識情境'),
+          const SizedBox(height: 6),
+          BrandSegmentedButton<MeetingContext>(
+            segments: MeetingContext.visibleAnalysisOptions
+                .map(
+                  (value) => BrandSegment(
+                    value: value,
+                    label: _meetingContextLabel(value),
+                  ),
+                )
+                .toList(),
+            selected: _meetingContext,
+            onChanged: (value) => setState(() => _meetingContext = value),
+          ),
+          const SizedBox(height: 12),
+          _sectionLabel('認識多久'),
+          const SizedBox(height: 6),
+          BrandSegmentedButton<AcquaintanceDuration>(
+            segments: AcquaintanceDuration.values
+                .map(
+                  (value) => BrandSegment(
+                    value: value,
+                    label: _durationLabel(value),
+                  ),
+                )
+                .toList(),
+            selected: _duration,
+            onChanged: (value) => setState(() => _duration = value),
+          ),
+          const SizedBox(height: 12),
+          _sectionLabel('目前目標'),
+          const SizedBox(height: 6),
+          BrandSegmentedButton<UserGoal>(
+            segments: UserGoal.values
+                .map(
+                  (value) => BrandSegment(
+                    value: value,
+                    label: _goalLabel(value),
+                  ),
+                )
+                .toList(),
+            selected: _goal,
+            onChanged: (value) => setState(() => _goal = value),
+          ),
+          const SizedBox(height: 12),
+          _sectionLabel('補充背景（選填）'),
+          const SizedBox(height: 6),
+          TextField(
+            key: const ValueKey('add-partner-background-field'),
+            controller: _backgroundNote,
+            maxLength: 300,
+            minLines: 1,
+            maxLines: 3,
+            textInputAction: TextInputAction.done,
+            onEditingComplete: _dismissKeyboard,
+            onTapOutside: (_) => _dismissKeyboard(),
+            cursorColor: AppColors.ctaStart,
+            style: AppTypography.bodyLarge.copyWith(color: Colors.white),
+            decoration: brandInputDecoration(hintText: '沒有可以留空'),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '補上聊天裡看不到的關係或背景，之後分析這位對象時會先帶入。',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 12),
+          BrandPrimaryButton(
+            label: '建立',
+            icon: Icons.auto_awesome_rounded,
+            onPressed: canSubmit ? () => _submit(ownerId!) : null,
+            isLoading: _busy,
+            verticalPadding: 18,
+          ),
+          if (!authReady)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                '請先登入再建立對象',
+                textAlign: TextAlign.center,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
+
+  Widget _sectionLabel(String text) => Text(
+        text,
+        style: AppTypography.bodyLarge.copyWith(
+          color: AppColors.onBackgroundPrimary,
+          fontWeight: FontWeight.w700,
+        ),
+      );
 }
