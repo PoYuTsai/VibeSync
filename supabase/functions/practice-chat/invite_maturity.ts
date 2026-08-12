@@ -98,10 +98,20 @@ function maturityForStage(stage: InviteStage): Omit<InviteMaturity, "score"> {
 
 export function inviteMaturityForScore(
   rawScore: number,
-  opts: { partnerMood?: PartnerMoodLike | null } = {},
+  opts: {
+    partnerMood?: PartnerMoodLike | null;
+    /**
+     * 回合下限（practice_pacing）：分數在一場練習裡到不了門檻，但局已經走很久時
+     * 至少開放到這一階。mood 的降階仍在下面照舊套用，順序不可對調。
+     */
+    stageFloor?: InviteStage | null;
+  } = {},
 ): InviteMaturity {
   const score = clampScore(rawScore);
   let stage = stageForScore(score);
+  if (opts.stageFloor && stageRank(opts.stageFloor) > stageRank(stage)) {
+    stage = opts.stageFloor;
+  }
   const mood = opts.partnerMood;
   if (mood === "guarded") {
     stage = capStage(stage, "direct_invite_ready");
@@ -123,6 +133,7 @@ export function inviteMaturityFromLearningScores(opts: {
   temperatureScore?: number | null;
   familiarityScore?: number | null;
   partnerMood?: PartnerMoodLike | null;
+  stageFloor?: InviteStage | null;
 }): InviteMaturity | null {
   if (opts.temperatureScore === undefined || opts.temperatureScore === null) {
     return null;
@@ -130,7 +141,10 @@ export function inviteMaturityFromLearningScores(opts: {
   const heat = clampScore(opts.temperatureScore);
   const familiarity = clampScore(opts.familiarityScore ?? 0);
   const score = Math.round(heat * 0.6 + familiarity * 0.4);
-  return inviteMaturityForScore(score, { partnerMood: opts.partnerMood });
+  return inviteMaturityForScore(score, {
+    partnerMood: opts.partnerMood,
+    stageFloor: opts.stageFloor,
+  });
 }
 
 export function inviteMaturityPrompt(

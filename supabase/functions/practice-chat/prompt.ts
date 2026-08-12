@@ -28,7 +28,15 @@ import {
   scrubRawImageFilenames,
 } from "./prompt_sanitizer.ts";
 import {
+  applyStageFloor,
+  practiceInviteFloorFor,
+  practiceStageFloorFor,
+  practiceUserTurnCount,
+  standardPacingLine,
+} from "./practice_pacing.ts";
+import {
   type PartnerState,
+  type RelationshipStage,
   relationshipStageFor,
   temperatureBandDebriefInstruction,
   temperatureBandInstruction,
@@ -113,12 +121,15 @@ function debriefMemorySummaryPrompt(memorySummary?: string | null): string {
 function standardInviteMaturityPrompt(opts: {
   partnerState?: PartnerState | null;
   memorySummary?: string | null;
+  userTurnCount?: number;
 }): string {
   const mood = opts.partnerState?.mood ?? "unknown";
   const moodGuard = mood === "guarded" || mood === "annoyed"
     ? "partnerMood is guarded/annoyed: cap escalation to no-invite or a very soft, optional invite."
     : "partnerMood is not guarded: still require current-turn receptiveness before direct invites.";
-  return `\n\ninviteMaturity(hidden guidance; standard mode)\nrelationshipScore: unavailable\ninviteStage: infer only from the current transcript, profile, partnerState, and scene context; memorySummary alone never upgrades the invite stage\ndateChance: do not guarantee; explain uncertainty in debrief if needed\nguidance: Standard mode has no numeric heat/familiarity score. Use older memory only as background continuity. A fuzzy invite is appropriate only when the current transcript shows comfort or curiosity; a direct invite needs clear current interest. ${moodGuard} Acquaintance origin only sets her opening guard, not invite readiness — a low-guard origin like friend_intro never upgrades inviteStage by itself.`;
+  return `\n\ninviteMaturity(hidden guidance; standard mode)\nrelationshipScore: unavailable\ninviteStage: infer only from the current transcript, profile, partnerState, and scene context; memorySummary alone never upgrades the invite stage\ndateChance: do not guarantee; explain uncertainty in debrief if needed\nguidance: Standard mode has no numeric heat/familiarity score. Use older memory only as background continuity. A fuzzy invite is appropriate only when the current transcript shows comfort or curiosity; a direct invite needs clear current interest. ${moodGuard} Acquaintance origin only sets her opening guard, not invite readiness — a low-guard origin like friend_intro never upgrades inviteStage by itself.${
+    standardPacingLine(opts.userTurnCount ?? 0, opts.partnerState?.mood ?? null)
+  }`;
 }
 
 function socialGameNpcResponseContract(): string {
@@ -542,6 +553,13 @@ export function buildChatMessages(
   );
   const effectiveTemperature = options.temperatureScore ?? fallbackTemperature;
   const effectiveFamiliarity = options.familiarityScore ?? 0;
+  // 回合下限只給新手：game 有自己的 FSM 下限（更快），標準沒有分數走白話版。
+  const userTurnCount = practiceUserTurnCount(turns);
+  const beginnerMode = options.practiceMode === "beginner";
+  const partnerMood = options.partnerState?.mood ?? null;
+  const stageFloor = beginnerMode
+    ? practiceStageFloorFor(userTurnCount, partnerMood)
+    : null;
   const temperaturePrompt = assistedMode
     ? `\n\n${
       temperatureBandInstruction(
@@ -551,6 +569,7 @@ export function buildChatMessages(
       relationshipStageInstruction(
         effectiveTemperature,
         effectiveFamiliarity,
+        stageFloor,
       )
     }`
     : "";
@@ -559,12 +578,16 @@ export function buildChatMessages(
       inviteMaturityFromLearningScores({
         temperatureScore: effectiveTemperature,
         familiarityScore: effectiveFamiliarity,
-        partnerMood: options.partnerState?.mood ?? null,
+        partnerMood,
+        stageFloor: beginnerMode
+          ? practiceInviteFloorFor(userTurnCount, partnerMood)
+          : null,
       }),
     )
     : standardInviteMaturityPrompt({
       partnerState: options.partnerState,
       memorySummary: options.memorySummary,
+      userTurnCount,
     });
   // Game 的 FSM 判定整包只算一次，gameMode 與 tensionLadder 共用同一份
   // snapshot——兩處各算會在越界輪端出兩個矛盾的 allowSpicyLevel。
@@ -611,8 +634,12 @@ export function buildChatMessages(
 function relationshipStageInstruction(
   temperatureScore: number,
   familiarityScore: number,
+  stageFloor: RelationshipStage | null = null,
 ): string {
-  const stage = relationshipStageFor(familiarityScore, temperatureScore);
+  const stage = applyStageFloor(
+    relationshipStageFor(familiarityScore, temperatureScore),
+    stageFloor,
+  );
   const guidance = {
     building_familiarity:
       "目前先對事件、生活狀態、具體情境有反應；不要突然變很親密或曖昧。",
