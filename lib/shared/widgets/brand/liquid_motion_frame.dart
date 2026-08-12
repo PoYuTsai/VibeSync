@@ -14,11 +14,10 @@ enum LiquidMotionStyle {
   beam,
 }
 
-/// 入口卡 beam 光暈的統一參數。
+/// 高辨識度入口卡 beam 光暈的預設參數。
 ///
-/// 2026-08-09 Eric 拍板：練習室入口與「先建立一張對象卡」兩個入口區塊的
-/// 光暈必須完全一致（原本對象卡刻意弱一檔，已推翻）。兩個呼叫端都吃這份
-/// preset，只有 borderRadius 跟各自卡片圓角走。新入口卡要掛 beam 也用這份。
+/// 「先建立一張對象卡」維持這組高辨識度 preset。練習室 Hero 依 2026-08-12
+/// 實機 review 改用較安靜的局部參數，不再與此 preset 綁定。
 abstract final class LiquidBeamEntryPreset {
   static const double borderWidth = 2.4;
   static const double glowRadius = 18;

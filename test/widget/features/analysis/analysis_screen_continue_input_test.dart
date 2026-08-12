@@ -590,13 +590,21 @@ void main() {
       await tester.tap(find.text('這次分析設定（可不改）'));
       await tester.pump();
 
-      final noteField = tester.widget<TextField>(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is TextField && widget.decoration?.hintText == '沒有可以留空',
-        ),
+      final noteFieldFinder = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.hintText == '沒有可以留空',
       );
+      final noteField = tester.widget<TextField>(noteFieldFinder);
       expect(noteField.controller?.text, '她不喜歡臨時約');
+
+      await tester.enterText(noteFieldFinder, '');
+      await tester.pump();
+
+      expect(find.text('朋友介紹・幾週・維持熱度'), findsOneWidget);
+      expect(
+        find.text('已補充背景・朋友介紹・幾週・維持熱度'),
+        findsNothing,
+      );
     });
 
     testWidgets(

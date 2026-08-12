@@ -9,7 +9,6 @@ import 'package:vibesync/features/conversation/domain/entities/session_context.d
 void main() {
   Widget buildDialogHost({
     required RecognizedConversation recognized,
-    required bool forceShowSessionContextFields,
     bool reduceMotion = false,
     String? warningMessage,
     String initialName = '',
@@ -43,7 +42,6 @@ void main() {
                   initialDuration: initialDuration,
                   initialGoal: initialGoal,
                   initialAnalysisContextNote: initialAnalysisContextNote,
-                  forceShowSessionContextFields: forceShowSessionContextFields,
                   currentConversation: currentConversation ??
                       Conversation(
                         id: 'conversation-1',
@@ -148,7 +146,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          forceShowSessionContextFields: false,
         ),
       );
 
@@ -168,7 +165,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          forceShowSessionContextFields: false,
           currentConversation: Conversation(
             id: 'empty-conversation',
             name: '小美',
@@ -194,7 +190,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          forceShowSessionContextFields: false,
           onResult: (value) => result = value,
           currentConversation: Conversation(
             id: 'completed-fragment',
@@ -259,7 +254,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mismatchedConversation,
-          forceShowSessionContextFields: false,
           warningMessage: mismatchWarning,
           onResult: (value) => result = value,
         ),
@@ -304,7 +298,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          forceShowSessionContextFields: false,
           expectedPartnerName: '小美',
           initialName: '小美',
           currentConversation: Conversation(
@@ -356,7 +349,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mismatchedConversation,
-          forceShowSessionContextFields: false,
           expectedPartnerName: 'Bruce',
           initialName: 'Bruce',
           onResult: (value) => result = value,
@@ -399,7 +391,6 @@ void main() {
         buildDialogHost(
           recognized: recognizedConversation,
           warningMessage: warning,
-          forceShowSessionContextFields: true,
         ),
       );
 
@@ -417,6 +408,11 @@ void main() {
       expect(find.text('這次辨識信心較低，請先快速確認內容。'), findsOneWidget);
       expect(find.text(warning), findsNothing);
       expect(find.byTooltip('查看辨識提醒詳情'), findsOneWidget);
+      final infoButton = tester.widget<IconButton>(
+        find.byKey(const ValueKey('recognition-warning-info-button')),
+      );
+      expect(infoButton.constraints?.minWidth, 48);
+      expect(infoButton.constraints?.minHeight, 48);
 
       await tester.tap(
         find.byKey(const ValueKey('recognition-warning-info-button')),
@@ -434,6 +430,69 @@ void main() {
       expect(find.text('依左／右重新套用'), findsNothing);
     });
 
+    testWidgets('rejected non-chat screenshot keeps an actionable summary',
+        (tester) async {
+      await _useTallSurface(tester);
+      const warning = '這張圖看起來像相簿或選圖畫面，不是聊天視窗。';
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: const RecognizedConversation(
+            contactName: '小美',
+            messageCount: 1,
+            summary: '不是聊天畫面',
+            classification: 'gallery_album',
+            importPolicy: 'reject',
+            messages: [
+              RecognizedMessage(
+                side: 'left',
+                isFromMe: false,
+                content: '預覽內容',
+              ),
+            ],
+          ),
+          warningMessage: warning,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('這張是相簿或選圖畫面，請改傳聊天視窗。'), findsOneWidget);
+      expect(find.text(warning), findsNothing);
+    });
+
+    testWidgets('uncertain speaker sides keep the required correction visible',
+        (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: const RecognizedConversation(
+            contactName: '小美',
+            messageCount: 1,
+            summary: '方向待確認',
+            sideConfidence: 'low',
+            uncertainSideCount: 2,
+            messages: [
+              RecognizedMessage(
+                side: 'left',
+                isFromMe: false,
+                content: '在嗎',
+              ),
+            ],
+          ),
+          warningMessage: '有 2 則訊息的左右還不夠清楚，請再看一下我說或她說有沒有判對。',
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('有 2 則說話者方向不確定，請確認「我說／她說」。'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('右滑超過門檻 → 該則改成我說 (isFromMe=true)', (tester) async {
       await _useTallSurface(tester);
       ScreenshotRecognitionDialogResult? dialogResult;
@@ -441,7 +500,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
       );
@@ -476,7 +534,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
       );
@@ -501,7 +558,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
       );
@@ -537,7 +593,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
       );
@@ -569,7 +624,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
       );
@@ -607,7 +661,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
       );
@@ -635,7 +688,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: quotedConversation,
-          forceShowSessionContextFields: false,
         ),
       );
 
@@ -654,7 +706,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
       );
@@ -678,7 +729,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
         ),
       );
 
@@ -729,7 +779,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
         ),
       );
 
@@ -771,7 +820,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
         ),
       );
 
@@ -794,7 +842,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
         ),
       );
 
@@ -816,7 +863,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
           reduceMotion: true,
         ),
       );
@@ -838,7 +884,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: mixedConversation,
-          forceShowSessionContextFields: false,
         ),
       );
 
@@ -866,7 +911,6 @@ void main() {
             confidence: 'low',
             messages: [],
           ),
-          forceShowSessionContextFields: false,
         ),
       );
 
@@ -885,7 +929,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: singleSpeakerConversation,
-          forceShowSessionContextFields: false,
         ),
       );
 
@@ -905,7 +948,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
       );
@@ -928,7 +970,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          forceShowSessionContextFields: true,
         ),
       );
 
@@ -956,7 +997,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          forceShowSessionContextFields: false,
           onResult: (result) => dialogResult = result,
         ),
       );
@@ -978,7 +1018,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          forceShowSessionContextFields: true,
           initialMeetingContext: MeetingContext.datingApp,
           initialDuration: AcquaintanceDuration.justMet,
           initialGoal: UserGoal.maintainHeat,
@@ -1004,7 +1043,6 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          forceShowSessionContextFields: true,
           initialMeetingContext: MeetingContext.committedPartner,
           initialDuration: AcquaintanceDuration.monthPlus,
           initialGoal: UserGoal.justChat,

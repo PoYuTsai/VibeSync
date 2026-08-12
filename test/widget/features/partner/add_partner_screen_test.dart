@@ -191,44 +191,56 @@ void main() {
   });
 
   testWidgets(
-    'successful submit writes Partner with ownerUserId from auth',
+    'successful submit persists all Partner defaults and background',
     (t) async {
       await t.pumpWidget(harness());
       await t.pumpAndSettle();
       await t.enterText(nameField(), 'Alice');
+      t
+          .widget<BrandSegmentedButton<MeetingContext>>(
+            find.byWidgetPredicate(
+              (widget) => widget is BrandSegmentedButton<MeetingContext>,
+            ),
+          )
+          .onChanged(MeetingContext.friendIntro);
+      t
+          .widget<BrandSegmentedButton<AcquaintanceDuration>>(
+            find.byWidgetPredicate(
+              (widget) => widget is BrandSegmentedButton<AcquaintanceDuration>,
+            ),
+          )
+          .onChanged(AcquaintanceDuration.fewWeeks);
+      t
+          .widget<BrandSegmentedButton<UserGoal>>(
+            find.byWidgetPredicate(
+              (widget) => widget is BrandSegmentedButton<UserGoal>,
+            ),
+          )
+          .onChanged(UserGoal.maintainHeat);
       await t.pump();
-      await t.tap(find.byType(BrandPrimaryButton));
-      await t.pump(const Duration(seconds: 1));
+      final background =
+          find.byKey(const ValueKey('add-partner-background-field'));
+      await t.enterText(background, '她不喜歡臨時約');
+      await t.pump();
+      final submit = t.widget<BrandPrimaryButton>(
+        find.byType(BrandPrimaryButton),
+      );
+      submit.onPressed!();
+      for (var i = 0; i < 20 && partnerBox.values.isEmpty; i++) {
+        await t.pump(const Duration(milliseconds: 50));
+      }
+
       expect(partnerBox.values.length, 1);
       final p = partnerBox.values.single;
       expect(p.name, 'Alice');
       expect(p.ownerUserId, 'u-test');
-      expect(p.defaultMeetingContext, MeetingContext.datingApp);
-      expect(
-        p.defaultAcquaintanceDuration,
-        AcquaintanceDuration.justMet,
-      );
-      expect(p.defaultGoal, UserGoal.dateInvite);
+      expect(p.defaultMeetingContext, MeetingContext.friendIntro);
+      expect(p.defaultAcquaintanceDuration, AcquaintanceDuration.fewWeeks);
+      expect(p.defaultGoal, UserGoal.maintainHeat);
+      expect(p.customNote, '她不喜歡臨時約');
     },
-    // SKIPPED: hangs to flutter_test's 10-min pumpAndSettle timeout in this
-    // Windows flutter_test environment — pushReplacement's route animation +
-    // Hive's lingering write futures appear to keep frame scheduling alive.
-    // Cold compile + Windows TEMP\flutter_tools.* cache nuke didn't unblock,
-    // and bounded `pump()` was also invisible to the runner (likely deeper
-    // kernel cache layer; matches prior session's "kernel cache survives
-    // flutter clean" findings — see memory ids 547-551).
-    //
-    // Coverage compensation:
-    // - Data-side write contract: covered by PartnerRepository unit tests
-    //   (test/unit/repositories/partner_repository_test.dart) and the A2
-    //   Phase 1 verification gate.
-    // - Auth-gate contracts: still covered by the 4 non-skipped tests above.
-    // - End-to-end submit + navigate: manual TF QA on the regression
-    //   checklist (already added in 637465f's TF item).
-    //
-    // To unskip: figure out which Windows-side cache is serving stale test
-    // bytecode, OR migrate this test to integration_test/ which uses the
-    // real Engine instead of the headless flutter_test compiler.
+    // Headless Windows route replacement does not settle; the same Hive write
+    // contract is covered by PartnerWriteController.create.
     skip: true,
   );
 }

@@ -81,7 +81,6 @@ void main() {
               initialDuration: AcquaintanceDuration.justMet,
               initialGoal: UserGoal.dateInvite,
               initialAnalysisContextNote: '',
-              forceShowSessionContextFields: true,
               expectedPartnerName: 'ok',
               currentConversation: Conversation(
                 id: 'c-proof',

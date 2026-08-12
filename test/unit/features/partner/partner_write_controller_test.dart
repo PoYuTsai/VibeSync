@@ -269,6 +269,40 @@ void main() {
     await _convoBox.deleteFromDisk();
   });
 
+  group('PartnerWriteController.create', () {
+    test('persists every default collected by the add-partner form', () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+      final now = DateTime(2026, 8, 12);
+
+      await container.read(partnerWriteControllerProvider.notifier).create(
+            Partner(
+              id: 'new-partner',
+              name: 'Alice',
+              ownerUserId: 'u-1',
+              createdAt: now,
+              updatedAt: now,
+              customNote: '她不喜歡臨時約',
+              defaultMeetingContext: MeetingContext.friendIntro,
+              defaultAcquaintanceDuration: AcquaintanceDuration.fewWeeks,
+              defaultGoal: UserGoal.maintainHeat,
+            ),
+          );
+
+      final stored = _partnerBox.get('new-partner');
+      expect(stored, isNotNull);
+      expect(stored!.name, 'Alice');
+      expect(stored.ownerUserId, 'u-1');
+      expect(stored.customNote, '她不喜歡臨時約');
+      expect(stored.defaultMeetingContext, MeetingContext.friendIntro);
+      expect(
+        stored.defaultAcquaintanceDuration,
+        AcquaintanceDuration.fewWeeks,
+      );
+      expect(stored.defaultGoal, UserGoal.maintainHeat);
+    });
+  });
+
   group('PartnerWriteController.merge invalidations', () {
     test(
         'merge invalidates both partner sides + their conversation scopes + '

@@ -68,6 +68,22 @@ enum MeetingContext {
         return '已是伴侶';
     }
   }
+
+  /// Human-facing copy. [label] remains the stable value sent to analysis.
+  String get displayLabel {
+    switch (this) {
+      case datingApp:
+        return '交友軟體';
+      case inPerson:
+        return '現實認識';
+      case friendIntro:
+        return '朋友介紹';
+      case other:
+        return '其他';
+      case committedPartner:
+        return '已是伴侶';
+    }
+  }
 }
 
 /// 認識時長
@@ -94,6 +110,20 @@ enum AcquaintanceDuration {
         return '一個月+';
     }
   }
+
+  /// Human-facing copy. [label] remains the stable value sent to analysis.
+  String get displayLabel {
+    switch (this) {
+      case justMet:
+        return '剛認識';
+      case fewDays:
+        return '幾天';
+      case fewWeeks:
+        return '幾週';
+      case monthPlus:
+        return '一個月以上';
+    }
+  }
 }
 
 /// 用戶目標
@@ -114,6 +144,18 @@ enum UserGoal {
         return '維持熱度';
       case justChat:
         return '純聊天';
+    }
+  }
+
+  /// Human-facing copy. [label] remains the stable value sent to analysis.
+  String get displayLabel {
+    switch (this) {
+      case dateInvite:
+        return '邀約見面';
+      case maintainHeat:
+        return '維持熱度';
+      case justChat:
+        return '自然聊天';
     }
   }
 }

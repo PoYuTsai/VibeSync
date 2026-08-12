@@ -4,17 +4,15 @@
 // from any future Partner-creation entry point.
 //
 // Design contract:
-// - Uses PartnerRepository.upsertIfAbsent (the only A2 public write).
+// - Uses PartnerWriteController.create, which owns persistence + invalidation.
 // - Mints a fresh UUID for partner.id.
 // - ownerUserId is sourced from authConversationScopeProvider; submit is
 //   DISABLED while auth is loading or null. Creating an ownerless Partner
 //   would silently fail to appear in partnerListProvider (auth-gated +
 //   ownerUserId-filtered) — guard up-front instead of accepting silent
 //   data loss. (Codex r1 P2/P1.4)
-// - On success: invalidate partnerListProvider so the home reflects the
-//   new row immediately, then `context.replace` to /partner/:id (NOT
-//   `context.go`). `replace` swaps the top stack entry so Home stays
-//   underneath; back from detail returns to the Partner list. (Codex r1 P1.2)
+// - On success: the controller refreshes the partner list, then this screen
+//   replaces /partner/new with /partner/:id so Home stays underneath.
 // - Avatar picker is intentionally deferred to Phase 3/4 (parent A2 plan
 //   Task 8 flagged it optional).
 //
@@ -50,8 +48,8 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/session_context.dart';
+import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
-import '../providers/partner_providers.dart';
 
 class AddPartnerScreen extends ConsumerStatefulWidget {
   const AddPartnerScreen({super.key});
@@ -105,9 +103,8 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
       defaultGoal: _goal,
     );
     try {
-      await ref.read(partnerRepositoryProvider).upsertIfAbsent(partner);
+      await ref.read(partnerWriteControllerProvider.notifier).create(partner);
       if (!mounted) return;
-      ref.invalidate(partnerListProvider);
       // pushReplacement (NOT go): swaps /partner/new with /partner/:id so
       // back from detail returns to Home (Partner list) underneath, not to
       // the add form. (Codex r1 P1.2)
@@ -133,45 +130,6 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
   }
 
   void _dismissKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
-
-  String _meetingContextLabel(MeetingContext context) {
-    switch (context) {
-      case MeetingContext.datingApp:
-        return '交友軟體';
-      case MeetingContext.inPerson:
-        return '現實認識';
-      case MeetingContext.friendIntro:
-        return '朋友介紹';
-      case MeetingContext.committedPartner:
-        return '已是伴侶';
-      case MeetingContext.other:
-        return '其他';
-    }
-  }
-
-  String _durationLabel(AcquaintanceDuration duration) {
-    switch (duration) {
-      case AcquaintanceDuration.justMet:
-        return '剛認識';
-      case AcquaintanceDuration.fewDays:
-        return '幾天';
-      case AcquaintanceDuration.fewWeeks:
-        return '幾週';
-      case AcquaintanceDuration.monthPlus:
-        return '一個月以上';
-    }
-  }
-
-  String _goalLabel(UserGoal goal) {
-    switch (goal) {
-      case UserGoal.dateInvite:
-        return '邀約見面';
-      case UserGoal.maintainHeat:
-        return '維持熱度';
-      case UserGoal.justChat:
-        return '自然聊天';
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -347,7 +305,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                 .map(
                   (value) => BrandSegment(
                     value: value,
-                    label: _meetingContextLabel(value),
+                    label: value.displayLabel,
                   ),
                 )
                 .toList(),
@@ -362,7 +320,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                 .map(
                   (value) => BrandSegment(
                     value: value,
-                    label: _durationLabel(value),
+                    label: value.displayLabel,
                   ),
                 )
                 .toList(),
@@ -377,7 +335,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                 .map(
                   (value) => BrandSegment(
                     value: value,
-                    label: _goalLabel(value),
+                    label: value.displayLabel,
                   ),
                 )
                 .toList(),

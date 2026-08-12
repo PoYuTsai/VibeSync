@@ -36,11 +36,6 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
   final AcquaintanceDuration? initialDuration;
   final UserGoal? initialGoal;
   final String initialAnalysisContextNote;
-
-  /// Kept temporarily for source compatibility. Context is now configured on
-  /// the analysis screen before OCR confirmation, so this dialog never renders
-  /// the duplicate fields.
-  final bool forceShowSessionContextFields;
   final Conversation currentConversation;
   final String? expectedPartnerName;
 
@@ -53,7 +48,6 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
     required this.initialDuration,
     required this.initialGoal,
     required this.initialAnalysisContextNote,
-    required this.forceShowSessionContextFields,
     required this.currentConversation,
     this.expectedPartnerName,
   });
@@ -927,10 +921,46 @@ class _ScreenshotRecognitionDialogState
     if (normalized.contains('目前對象') && normalized.contains('不同')) {
       return '辨識到的名字和目前對象不同，請先確認是不是同一人。';
     }
+    if (normalized.contains('同一位對象') ||
+        normalized.contains('混到另一人') ||
+        normalized.contains('歸在目前對象')) {
+      return '這批截圖可能混到不同對象，請先確認都是同一人。';
+    }
+    if (widget.recognized.importPolicy == 'reject') {
+      switch (widget.recognized.classification) {
+        case 'group_chat':
+          return '這張是群組聊天，目前只支援一對一聊天截圖。';
+        case 'gallery_album':
+          return '這張是相簿或選圖畫面，請改傳聊天視窗。';
+        case 'call_log_screen':
+          return '這張是通話紀錄，請改傳聊天視窗。';
+        case 'system_ui':
+          return '這張是系統或通知畫面，請改傳聊天視窗。';
+        case 'sensitive_content':
+          return '這張含不適合辨識的內容，請改傳聊天截圖。';
+        case 'social_feed':
+          return '這張是社群貼文或留言，請改傳一對一聊天截圖。';
+        case 'unsupported':
+        default:
+          return '這張不是可分析的聊天截圖，請改傳完整聊天視窗。';
+      }
+    }
     if (normalized.contains('引用')) {
       return '這批訊息含引用內容，請確認對象與「我說／她說」。';
     }
-    if (normalized.contains('信心')) {
+    if (widget.recognized.uncertainSideCount > 0) {
+      return '有 ${widget.recognized.uncertainSideCount} 則說話者方向不確定，請確認「我說／她說」。';
+    }
+    if (widget.recognized.sideConfidence == 'low' ||
+        widget.recognized.sideConfidence == 'medium' ||
+        normalized.contains('左右') ||
+        normalized.contains('補判')) {
+      return '說話者方向可能有誤，請確認「我說／她說」。';
+    }
+    if (widget.recognized.confidence == 'low' ||
+        widget.recognized.importPolicy == 'confirm' ||
+        normalized.contains('信心') ||
+        normalized.contains('不太確定')) {
       return '這次辨識信心較低，請先快速確認內容。';
     }
     return '辨識內容有需要留意的地方，請先確認再繼續。';
@@ -979,7 +1009,7 @@ class _ScreenshotRecognitionDialogState
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
                   constraints:
-                      const BoxConstraints.tightFor(width: 36, height: 36),
+                      const BoxConstraints.tightFor(width: 48, height: 48),
                   onPressed: () => setState(
                     () => _warningExpanded = !_warningExpanded,
                   ),

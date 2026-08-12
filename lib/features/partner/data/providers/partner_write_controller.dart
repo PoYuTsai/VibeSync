@@ -24,6 +24,19 @@ class PartnerWriteController extends Notifier<void> {
     // Stateless write coordinator.
   }
 
+  /// Persists a newly created partner and refreshes the narrow partner
+  /// provider surface. Keeping creation here makes every partner write share
+  /// the same invalidation owner.
+  Future<void> create(Partner partner) async {
+    final repo = ref.read(partnerRepositoryProvider);
+    try {
+      await repo.upsertIfAbsent(partner);
+    } finally {
+      _invalidatePartner(partner.id);
+      ref.invalidate(partnerListProvider);
+    }
+  }
+
   Future<void> merge({
     required String fromId,
     required String toId,

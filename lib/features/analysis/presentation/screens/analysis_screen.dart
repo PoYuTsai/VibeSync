@@ -2817,7 +2817,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   SessionContext _screenshotSessionContextFor(Conversation conversation) {
     final existing = conversation.sessionContext;
-    final note = _screenshotAnalysisContextNoteFor(conversation);
+    final note = _screenshotAnalysisContextNoteFor();
     return SessionContext(
       meetingContext: _screenshotMeetingContext,
       duration: _screenshotDuration,
@@ -2829,13 +2829,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  String? _screenshotAnalysisContextNoteFor(Conversation conversation) {
+  String? _screenshotAnalysisContextNoteFor() {
     final typed = _screenshotAnalysisContextNoteController.text.trim();
-    if (typed.isNotEmpty) {
-      return typed;
-    }
-    final existing = conversation.sessionContext?.analysisContextNote?.trim();
-    return existing == null || existing.isEmpty ? null : existing;
+    return typed.isEmpty ? null : typed;
   }
 
   void _refreshScreenshotAnalysisSettingsSummary() {
@@ -2844,50 +2840,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
-  String _screenshotMeetingContextLabel(MeetingContext context) {
-    switch (context) {
-      case MeetingContext.datingApp:
-        return '交友軟體';
-      case MeetingContext.inPerson:
-        return '現實認識';
-      case MeetingContext.friendIntro:
-        return '朋友介紹';
-      case MeetingContext.other:
-        return '其他';
-      case MeetingContext.committedPartner:
-        return '已是伴侶';
-    }
-  }
-
-  String _screenshotDurationLabel(AcquaintanceDuration duration) {
-    switch (duration) {
-      case AcquaintanceDuration.justMet:
-        return '剛認識';
-      case AcquaintanceDuration.fewDays:
-        return '幾天';
-      case AcquaintanceDuration.fewWeeks:
-        return '幾週';
-      case AcquaintanceDuration.monthPlus:
-        return '一個月以上';
-    }
-  }
-
-  String _screenshotGoalLabel(UserGoal goal) {
-    switch (goal) {
-      case UserGoal.dateInvite:
-        return '邀約見面';
-      case UserGoal.maintainHeat:
-        return '維持熱度';
-      case UserGoal.justChat:
-        return '自然聊天';
-    }
-  }
-
   String _screenshotAnalysisSettingsSummary() {
     final parts = [
-      _screenshotMeetingContextLabel(_screenshotMeetingContext),
-      _screenshotDurationLabel(_screenshotDuration),
-      _screenshotGoalLabel(_screenshotGoal),
+      _screenshotMeetingContext.displayLabel,
+      _screenshotDuration.displayLabel,
+      _screenshotGoal.displayLabel,
     ];
     if (_screenshotAnalysisContextNoteController.text.trim().isNotEmpty) {
       parts.insert(0, '已補充背景');
@@ -2974,7 +2931,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 .map(
                   (value) => BrandSegment(
                     value: value,
-                    label: _screenshotMeetingContextLabel(value),
+                    label: value.displayLabel,
                   ),
                 )
                 .toList(),
@@ -2990,7 +2947,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 .map(
                   (value) => BrandSegment(
                     value: value,
-                    label: _screenshotDurationLabel(value),
+                    label: value.displayLabel,
                   ),
                 )
                 .toList(),
@@ -3005,7 +2962,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 .map(
                   (value) => BrandSegment(
                     value: value,
-                    label: _screenshotGoalLabel(value),
+                    label: value.displayLabel,
                   ),
                 )
                 .toList(),
@@ -4297,9 +4254,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         initialMeetingContext: initialContext.meetingContext,
         initialDuration: initialContext.duration,
         initialGoal: initialContext.goal,
-        initialAnalysisContextNote:
-            _screenshotAnalysisContextNoteFor(currentConversation) ?? '',
-        forceShowSessionContextFields: false,
+        initialAnalysisContextNote: _screenshotAnalysisContextNoteFor() ?? '',
         currentConversation: currentConversation,
         expectedPartnerName: expectedPartnerName,
       ),
