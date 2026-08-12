@@ -37,6 +37,11 @@ void main() {
       find.byType(LiquidMotionFrame),
     );
     expect(frame.style, LiquidMotionStyle.beam);
+    expect(frame.borderRadius, 24);
+    expect(frame.borderWidth, 1.6);
+    expect(frame.glowRadius, 10);
+    expect(frame.strength, 0.5);
+    expect(frame.duration, const Duration(milliseconds: 6800));
     expect(find.text('翻牌解鎖新女孩'), findsOneWidget);
     expect(find.text('AI 實戰練習室'), findsOneWidget);
     expect(find.text('NEW'), findsOneWidget);

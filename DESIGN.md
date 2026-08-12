@@ -60,7 +60,7 @@ EdgeInsets 20→16、childless SizedBox 20→24、22/26→24、28/30→32）。
 | 項目 | 位置 | 理由 |
 |---|---|---|
 | 紫色系主色盤 | `primary #6B4EE6`、coach 系 | 已上線色彩身分（Tier 3） |
-| LiquidBeam 入口光暈 | `practice_room_entry_card.dart`（練習室入口＋建立對象卡，`LiquidBeamEntryPreset`） | Eric 2026-08-09 逐格拍板的品牌記憶點 |
+| LiquidBeam 入口光暈 | `practice_room_entry_card.dart`（練習室入口用 1.6 / 10 / .5 微光）＋建立對象卡（維持 `LiquidBeamEntryPreset` 2.4 / 18 / 1） | Eric 2026-08-12 拍板：Hero 退成貼邊微光，建立對象卡不跟著弱化；兩者速度維持 6800ms |
 | 首頁頭像 flow | 首頁對象卡頭像流光 | 同上，角速度已對齊 beam |
 | 抽卡儀式 glow | `practice_collection_screen.dart` 抽卡/翻牌 `brandFlame` 呼吸光暈 | 儀式性場景，慶祝時刻 |
 | shimmer 掃光 | `splash_screen.dart`、`ebook_shelf_section.dart`（白色掃光，非漸層文字） | 品牌 wordmark 儀式 |

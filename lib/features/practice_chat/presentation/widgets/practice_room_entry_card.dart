@@ -12,6 +12,9 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 const String kPracticeRoomEntryHeroAsset =
     'assets/images/practice_girls/practice_girl_038.jpg';
 const double kPracticeRoomEntryHeroBlurSigma = 4.2;
+const double kPracticeRoomEntryBeamBorderWidth = 1.6;
+const double kPracticeRoomEntryBeamGlowRadius = 10;
+const double kPracticeRoomEntryBeamStrength = 0.5;
 
 /// 學習 tab 第一屏主視覺：AI 實戰練習室 Hero。
 ///
@@ -54,15 +57,15 @@ class PracticeRoomEntryCard extends StatelessWidget {
                         children: const [
                           _DailyRewardEyebrow(),
                           SizedBox(height: 18),
-                          // beam 光束沿玻璃面板邊框追跑，把視線導向 NEW 入口。
-                          // 參數＝LiquidBeamEntryPreset（與建立對象卡完全一致）。
+                          // 入口只留貼邊微光。建立對象卡仍使用較強的共用 preset，
+                          // 不跟著這張 Hero 弱化。
                           LiquidMotionFrame(
                             style: LiquidMotionStyle.beam,
                             borderRadius:
                                 _PracticeRoomGlassPanel.panelCornerRadius,
-                            borderWidth: LiquidBeamEntryPreset.borderWidth,
-                            glowRadius: LiquidBeamEntryPreset.glowRadius,
-                            strength: LiquidBeamEntryPreset.strength,
+                            borderWidth: kPracticeRoomEntryBeamBorderWidth,
+                            glowRadius: kPracticeRoomEntryBeamGlowRadius,
+                            strength: kPracticeRoomEntryBeamStrength,
                             duration: LiquidBeamEntryPreset.duration,
                             child: _PracticeRoomGlassPanel(),
                           ),
@@ -141,7 +144,7 @@ class _WarmReadabilityScrim extends StatelessWidget {
 class _PracticeRoomGlassPanel extends StatelessWidget {
   const _PracticeRoomGlassPanel();
 
-  static const double panelCornerRadius = 78;
+  static const double panelCornerRadius = 24;
   static const _panelRadius =
       BorderRadius.all(Radius.circular(panelCornerRadius));
 
