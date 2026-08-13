@@ -23,6 +23,12 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # 2026-08-13 鎖版：stable 換到 Flutter 3.47.0 / Dart 3.13 後，新的
+          # dot shorthand 語法會讓 repo 鎖住的 analyzer(3.9 世代) 在
+          # riverpod_generator 內丟 visitDotShorthandPropertyAccess，build_runner
+          # 吐完例外不退出 → Generate code 卡到 job timeout。先鎖回最後一次綠的
+          # 版本，升 analyzer/build_runner 另案處理。
+          flutter-version: 3.44.9
           channel: stable
           cache: true
 
@@ -68,6 +74,12 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # 2026-08-13 鎖版：stable 換到 Flutter 3.47.0 / Dart 3.13 後，新的
+          # dot shorthand 語法會讓 repo 鎖住的 analyzer(3.9 世代) 在
+          # riverpod_generator 內丟 visitDotShorthandPropertyAccess，build_runner
+          # 吐完例外不退出 → Generate code 卡到 job timeout。先鎖回最後一次綠的
+          # 版本，升 analyzer/build_runner 另案處理。
+          flutter-version: 3.44.9
           channel: stable
           cache: true
 
@@ -151,6 +163,12 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # 2026-08-13 鎖版：stable 換到 Flutter 3.47.0 / Dart 3.13 後，新的
+          # dot shorthand 語法會讓 repo 鎖住的 analyzer(3.9 世代) 在
+          # riverpod_generator 內丟 visitDotShorthandPropertyAccess，build_runner
+          # 吐完例外不退出 → Generate code 卡到 job timeout。先鎖回最後一次綠的
+          # 版本，升 analyzer/build_runner 另案處理。
+          flutter-version: 3.44.9
           channel: stable
           cache: true
 
