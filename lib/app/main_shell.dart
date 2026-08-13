@@ -7,7 +7,8 @@ import 'package:go_router/go_router.dart';
 
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_typography.dart';
-import '../shared/widgets/warm_theme_widgets.dart';
+import '../shared/widgets/brand/brand_kit.dart';
+import '../features/partner/presentation/providers/partner_providers.dart';
 import '../features/partner/presentation/screens/partner_list_screen.dart';
 import '../features/partner/presentation/widgets/home_coach_presence.dart';
 import '../features/report/presentation/screens/my_report_screen.dart';
@@ -75,16 +76,23 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    return GradientBackground(
+    return BrandPageBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
+          centerTitle: false,
+          titleSpacing: 16,
           title: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Text('VibeSync', style: AppTypography.headlineMedium),
+              Text(
+                'VibeSync',
+                style: AppTypography.headlineMedium.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
               const SizedBox(width: 6),
               Container(
                 width: 7,
@@ -98,9 +106,20 @@ class _MainShellState extends State<MainShell> {
             ],
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.settings),
-              onPressed: () => context.push('/settings'),
+            // 夥伴稿：齒輪帶一圈深灰底，跟 wordmark 分層、也把點擊區畫出來。
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: IconButton(
+                icon: const Icon(Icons.settings_rounded, size: 20),
+                tooltip: '設定',
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.08),
+                  foregroundColor: AppColors.onBackgroundPrimary,
+                  shape: const CircleBorder(),
+                ),
+                onPressed: () => context.push('/settings'),
+              ),
             ),
           ],
         ),
@@ -160,8 +179,8 @@ class _MainShellState extends State<MainShell> {
     String label,
   ) {
     final isSelected = _currentIndex == index;
-    final iconColor =
-        isSelected ? Colors.white : Colors.white.withValues(alpha: 0.66);
+    final color =
+        isSelected ? AppColors.ctaStart : Colors.white.withValues(alpha: 0.62);
 
     return Semantics(
       selected: isSelected,
@@ -170,52 +189,26 @@ class _MainShellState extends State<MainShell> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => _selectTab(index),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            constraints: const BoxConstraints(minWidth: 54, minHeight: 44),
-            padding: EdgeInsets.symmetric(
-              horizontal: isSelected ? 16 : 16,
-              vertical: 12,
-            ),
-            decoration: isSelected
-                ? BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.ctaStart, AppColors.ctaEnd],
-                    ),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.12),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.36),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  )
-                : null,
-            child: Row(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 72, minHeight: 44),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   isSelected ? activeIcon : icon,
-                  color: iconColor,
+                  color: color,
                   size: 22,
                 ),
-                if (isSelected) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: AppTypography.bodySmall.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  style: AppTypography.labelMedium.copyWith(
+                    color: color,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                   ),
-                ],
+                ),
               ],
             ),
           ),
@@ -255,27 +248,16 @@ class HomeFab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.ctaStart, AppColors.ctaEnd],
-        ),
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.40),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: FloatingActionButton(
-        onPressed: () => context.push('/partner/new'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        tooltip: '新增對象',
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+    // 空態不浮這顆：那一頁已經有整寬「建立對象卡，開始分析」CTA，再疊一顆 +
+    // 只會蓋住文案（夥伴稿 2／3 也都沒有 FAB）。有對象後才需要這個捷徑。
+    if (ref.watch(partnerListProvider).isEmpty) return const SizedBox.shrink();
+    return FloatingActionButton(
+      onPressed: () => context.push('/partner/new'),
+      backgroundColor: AppColors.ctaStart,
+      foregroundColor: AppColors.onCta,
+      elevation: 0,
+      tooltip: '新增對象',
+      child: const Icon(Icons.add),
     );
   }
 }

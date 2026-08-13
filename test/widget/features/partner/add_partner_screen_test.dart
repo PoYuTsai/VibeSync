@@ -78,7 +78,7 @@ void main() {
       ],
       child: MaterialApp.router(
         routerConfig: router,
-        // 說明卡包了 LiquidMotionFrame（無限 ticker）；關動畫讓
+        // 建立頁已無 LiquidMotionFrame；關動畫讓
         // pumpAndSettle 可收斂。
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(disableAnimations: true),
@@ -100,14 +100,16 @@ void main() {
     await t.pumpWidget(harness());
     await t.pumpAndSettle();
     expect(
-      find.text('例：Alice / Tinder 上的空姐'),
+      find.text('輸入她的名字或暱稱'),
       findsOneWidget,
       reason: 'hint must signal free-text intent (name OR description)',
     );
   });
 
-  testWidgets('collects partner defaults in one scrollable creation flow',
-      (t) async {
+  // 2026-08-13 夥伴稿：三段情境改走原生 grouped 下鑽列（值顯示在列右側，
+  // 點開 bottom sheet 選），不再是三排 segmented chips。預設值照舊，
+  // 列上要直接看得到——不能顯示成「尚未設定」而實際帶著預設值送分析。
+  testWidgets('三段情境走下鑽列，預設值顯示在列上；選完落回列上', (t) async {
     await t.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => t.binding.setSurfaceSize(null));
     await t.pumpWidget(harness());
@@ -117,27 +119,53 @@ void main() {
     expect(find.text('認識情境'), findsOneWidget);
     expect(find.text('認識多久'), findsOneWidget);
     expect(find.text('目前目標'), findsOneWidget);
-    expect(find.text('補充背景（選填）'), findsOneWidget);
+    expect(find.text('補充背景'), findsOneWidget);
+
+    expect(find.text(MeetingContext.datingApp.displayLabel), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('add-partner-background-field')),
+      find.text(AcquaintanceDuration.justMet.displayLabel),
       findsOneWidget,
     );
+    expect(find.text(UserGoal.dateInvite.displayLabel), findsOneWidget);
+    expect(find.text('選填'), findsOneWidget);
 
-    final controls = t.widgetList<BrandSegmentedButton>(
-      find.byWidgetPredicate((widget) => widget is BrandSegmentedButton),
+    await t.tap(find.byKey(const ValueKey('add-partner-goal-row')));
+    await t.pumpAndSettle();
+    await t.tap(
+      find.byKey(
+        ValueKey('add-partner-option-${UserGoal.maintainHeat.displayLabel}'),
+      ),
     );
-    expect(controls, hasLength(3));
-    expect(controls.elementAt(0).selected, MeetingContext.datingApp);
-    expect(
-      controls.elementAt(1).selected,
-      AcquaintanceDuration.justMet,
+    await t.pumpAndSettle();
+
+    expect(find.text(UserGoal.maintainHeat.displayLabel), findsOneWidget);
+    expect(find.text(UserGoal.dateInvite.displayLabel), findsNothing);
+  });
+
+  testWidgets('補充背景下鑽 sheet 存回列上', (t) async {
+    await t.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+    await t.pumpWidget(harness());
+    await t.pumpAndSettle();
+
+    await t.tap(find.byKey(const ValueKey('add-partner-background-row')));
+    await t.pumpAndSettle();
+    await t.enterText(
+      find.byKey(const ValueKey('add-partner-background-field')),
+      '她不喜歡臨時約',
     );
-    expect(controls.elementAt(2).selected, UserGoal.dateInvite);
+    await t.tap(find.byKey(const ValueKey('add-partner-background-save')));
+    await t.pumpAndSettle();
+
+    expect(find.text('她不喜歡臨時約'), findsOneWidget);
+    expect(find.text('選填'), findsNothing);
   });
 
   // Eric 2026-08-12：整頁要一頁看完，不能為了按「建立」再往下滑。
-  // 量法：surface 393×852（iPhone 15 Pro pt），test MediaQuery 沒有 safe-area
-  // inset，所以真機還要扣掉 top 59（含瀏海）＋ bottom 34 home indicator。
+  // 2026-08-13 改下鑽列後「建立」改成貼底固定（不在捲動區內），量法跟著改：
+  // 不再比絕對 y（貼底本來就會落在 safe-area 那條線上，真機由 SafeArea 讓開），
+  // 改鎖兩件事——CTA 不在 Scrollable 裡（永遠不用捲就按得到），且表單最後一列
+  // 在 CTA 之上（整張表確實一頁看完）。
   testWidgets('whole form fits one screen on iPhone 15 Pro (no scroll to CTA)',
       (t) async {
     await t.binding.setSurfaceSize(const Size(393, 852));
@@ -145,12 +173,23 @@ void main() {
     await t.pumpWidget(harness());
     await t.pumpAndSettle();
 
-    const usableHeight = 852.0 - 59 - 34;
-    final ctaBottom = t.getBottomLeft(find.byType(BrandPrimaryButton)).dy;
     expect(
-      ctaBottom,
-      lessThanOrEqualTo(usableHeight),
-      reason: 'CTA 落在 $ctaBottom，超過可視高度 $usableHeight 就得捲動才按得到',
+      find.descendant(
+        of: find.byType(Scrollable),
+        matching: find.byType(BrandPrimaryButton),
+      ),
+      findsNothing,
+      reason: '「建立」必須貼底固定，不能落在捲動區裡',
+    );
+
+    final lastRowBottom = t
+        .getBottomLeft(find.byKey(const ValueKey('add-partner-background-row')))
+        .dy;
+    final ctaTop = t.getTopLeft(find.byType(BrandPrimaryButton)).dy;
+    expect(
+      lastRowBottom,
+      lessThanOrEqualTo(ctaTop),
+      reason: '表單最後一列落在 $lastRowBottom，撞到 CTA（$ctaTop）就是一頁裝不完',
     );
   });
 
@@ -215,32 +254,33 @@ void main() {
       await t.pumpWidget(harness());
       await t.pumpAndSettle();
       await t.enterText(nameField(), 'Alice');
-      t
-          .widget<BrandSegmentedButton<MeetingContext>>(
-            find.byWidgetPredicate(
-              (widget) => widget is BrandSegmentedButton<MeetingContext>,
-            ),
-          )
-          .onChanged(MeetingContext.friendIntro);
-      t
-          .widget<BrandSegmentedButton<AcquaintanceDuration>>(
-            find.byWidgetPredicate(
-              (widget) => widget is BrandSegmentedButton<AcquaintanceDuration>,
-            ),
-          )
-          .onChanged(AcquaintanceDuration.fewWeeks);
-      t
-          .widget<BrandSegmentedButton<UserGoal>>(
-            find.byWidgetPredicate(
-              (widget) => widget is BrandSegmentedButton<UserGoal>,
-            ),
-          )
-          .onChanged(UserGoal.maintainHeat);
-      await t.pump();
-      final background =
-          find.byKey(const ValueKey('add-partner-background-field'));
-      await t.enterText(background, '她不喜歡臨時約');
-      await t.pump();
+      Future<void> pickRow(String rowKey, String optionLabel) async {
+        await t.tap(find.byKey(ValueKey(rowKey)));
+        await t.pumpAndSettle();
+        await t.tap(find.byKey(ValueKey('add-partner-option-$optionLabel')));
+        await t.pumpAndSettle();
+      }
+
+      await pickRow(
+        'add-partner-meeting-context-row',
+        MeetingContext.friendIntro.displayLabel,
+      );
+      await pickRow(
+        'add-partner-duration-row',
+        AcquaintanceDuration.fewWeeks.displayLabel,
+      );
+      await pickRow(
+        'add-partner-goal-row',
+        UserGoal.maintainHeat.displayLabel,
+      );
+      await t.tap(find.byKey(const ValueKey('add-partner-background-row')));
+      await t.pumpAndSettle();
+      await t.enterText(
+        find.byKey(const ValueKey('add-partner-background-field')),
+        '她不喜歡臨時約',
+      );
+      await t.tap(find.byKey(const ValueKey('add-partner-background-save')));
+      await t.pumpAndSettle();
       final submit = t.widget<BrandPrimaryButton>(
         find.byType(BrandPrimaryButton),
       );

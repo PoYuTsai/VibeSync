@@ -103,7 +103,7 @@ Future<void> pumpLearningScreen(
           EbookProgressRepository(box: progressBox ?? InMemoryHiveBox()),
         ),
       ],
-      // 練習室入口卡包了 LiquidMotionFrame（無限 ticker）；關動畫讓
+      // 練習室入口卡已無 LiquidMotionFrame；關動畫讓
       // pumpAndSettle 可收斂。copyWith 保留視窗尺寸給入口卡的
       // MediaQuery.sizeOf fallback。
       child: MaterialApp(

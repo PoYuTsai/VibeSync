@@ -56,6 +56,32 @@ class GettingStartedChecklist extends ConsumerWidget {
     );
   }
 
+  /// 起步清單（或全完成後的贈抽領獎卡）此刻是否真的佔版面。
+  ///
+  /// 首頁空態靠它決定要走「兩頁」還是「一頁」：清單還在＝空態獨占第二頁
+  ///（夥伴稿 2／3），清單收乾＝整頁只剩空態，回到原本的單頁排版。
+  /// 判斷條件必須跟 [build] 與 [OnboardingDrawRewardCard.build] 的收卡條件
+  /// 同源，改任一邊都要同步這裡。
+  ///
+  /// 鍵盤完成態是同步讀 listenable（本 widget 靠 ValueListenableBuilder 重繪，
+  /// 呼叫端不是）：設定完鍵盤回首頁那一幀可能還停在兩頁，下次重繪即修正。
+  static bool blockVisible(WidgetRef ref) {
+    final profile = ref.watch(userProfileControllerProvider).valueOrNull;
+    final profileDone = profile != null && !profile.isEmpty;
+    final firstActionDone =
+        ref.watch(analysisHistoryEventsProvider).isNotEmpty ||
+            ref.watch(practiceTemperatureTrendProvider).isNotEmpty;
+    final keyboardPending = defaultTargetPlatform == TargetPlatform.iOS &&
+        !OnboardingService.keyboardCompletedListenable.value;
+    if (!profileDone || !firstActionDone || keyboardPending) return true;
+
+    final dismissed =
+        ref.watch(onboardingDrawRewardDismissedProvider).valueOrNull ?? false;
+    if (dismissed) return false;
+    final consumed = ref.watch(onboardingDrawBonusConsumedProvider);
+    return !(consumed.valueOrNull == true || consumed.isLoading);
+  }
+
   Widget _buildCard(
     BuildContext context,
     WidgetRef ref, {
@@ -110,42 +136,71 @@ class GettingStartedChecklist extends ConsumerWidget {
 
     final doneCount = items.where((i) => i.done).length;
 
+    // 夥伴稿：標題與進度條在卡片外，卡片裡只留三列 hairline 清單。
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
+      child: Column(
         key: GettingStartedChecklist.cardKey,
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '起步清單',
+                  style: AppTypography.titleLarge.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                '$doneCount/${items.length}',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              height: 4,
+              color: Colors.white.withValues(alpha: 0.08),
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                // 0/3 也留一顆橘點，讓「還沒開始」看得出來是進度條。
+                widthFactor: (doneCount / items.length).clamp(0.02, 1.0),
+                heightFactor: 1,
+                child: const ColoredBox(color: AppColors.ctaStart),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    '起步清單',
-                    style: AppTypography.titleSmall.copyWith(
-                      color: AppColors.onBackgroundPrimary,
-                      fontWeight: FontWeight.w700,
+                for (var i = 0; i < items.length; i++) ...[
+                  if (i > 0)
+                    Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: Colors.white.withValues(alpha: 0.08),
                     ),
-                  ),
-                ),
-                Text(
-                  '$doneCount/${items.length}',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                  ),
-                ),
+                  _ChecklistRow(item: items[i]),
+                ],
               ],
             ),
-            const SizedBox(height: 4),
-            for (final item in items) _ChecklistRow(item: item),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -212,7 +267,8 @@ class OnboardingDrawRewardCard extends ConsumerWidget {
         decoration: BoxDecoration(
           color: AppColors.brandFlame.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.brandFlame.withValues(alpha: 0.45)),
+          border:
+              Border.all(color: AppColors.brandFlame.withValues(alpha: 0.45)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -285,40 +341,47 @@ class _ChecklistRow extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: item.done ? null : item.onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Icon(
-              item.done
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_unchecked_rounded,
-              key: item.done ? Key('checklist_done_${item.id}') : null,
-              size: 18,
-              color: item.done
-                  ? AppColors.success
-                  : Colors.white.withValues(alpha: 0.35),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                item.label,
-                style: AppTypography.bodyMedium.copyWith(
-                  color: item.done
-                      ? AppColors.onBackgroundSecondary
-                      : AppColors.onBackgroundPrimary,
-                  decoration: item.done ? TextDecoration.lineThrough : null,
-                  decorationColor: AppColors.onBackgroundSecondary,
+      // 夥伴稿：清單列比原本鬆，整張卡才「飽滿」不像被壓扁的設定頁。
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Row(
+            children: [
+              Icon(
+                item.done
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                key: item.done ? Key('checklist_done_${item.id}') : null,
+                size: 21,
+                color: item.done
+                    ? AppColors.success
+                    : Colors.white.withValues(alpha: 0.35),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  item.label,
+                  // 夥伴稿量到 ~17pt：內建級距只有 15／19，兩端都不對，
+                  // 這裡只在首頁清單列破例指定 17。
+                  style: AppTypography.bodyLarge.copyWith(
+                    fontSize: 17,
+                    color: item.done
+                        ? AppColors.onBackgroundSecondary
+                        : AppColors.onBackgroundPrimary,
+                    decoration: item.done ? TextDecoration.lineThrough : null,
+                    decorationColor: AppColors.onBackgroundSecondary,
+                  ),
                 ),
               ),
-            ),
-            if (!item.done)
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 18,
-                color: Colors.white.withValues(alpha: 0.4),
-              ),
-          ],
+              if (!item.done)
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: Colors.white.withValues(alpha: 0.4),
+                ),
+            ],
+          ),
         ),
       ),
     );

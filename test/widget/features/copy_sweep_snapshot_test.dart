@@ -66,7 +66,22 @@ void main() {
         ],
       );
 
+      // 空態會把 FAB 收起來（夥伴稿 2／3 沒有 FAB），這支只驗詞彙 → 給一張
+      // 對象卡讓 FAB 出得來。
       await t.pumpWidget(ProviderScope(
+        overrides: [
+          partnerListProvider.overrideWith(
+            (_) => [
+              Partner(
+                id: 'p1',
+                name: 'Amy',
+                createdAt: DateTime(2026, 4, 20),
+                updatedAt: DateTime(2026, 4, 20),
+                ownerUserId: 'u-test',
+              ),
+            ],
+          ),
+        ],
         child: MaterialApp.router(routerConfig: router),
       ));
       await t.pumpAndSettle();
@@ -99,13 +114,13 @@ void main() {
       // "memory coach" positioning while preserving Partner-level vocabulary.
       expect(find.text('先建立第一張對象卡'), findsOneWidget);
       expect(
-        find.text('VibeSync 會記得你和每個對象，幫你看懂互動，陪你練下一步'),
+        find.text('VibeSync 會記得你和每個對象，幫你看懂互動，陪你練下一步。'),
         findsOneWidget,
         reason:
             'Partner list empty state must explain the memory-coach positioning.',
       );
       expect(
-        find.text('一個人一張卡，不同日期、IG、LINE 或交友軟體的聊天，都整理在同一張卡裡'),
+        find.text('一個人一張卡。不同日期、IG、LINE 或交友軟體的聊天，都整理在同一張卡裡。'),
         findsOneWidget,
         reason: 'Partner list empty state must use 「對象」 vocabulary (ADR-15).',
       );

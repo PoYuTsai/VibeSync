@@ -112,7 +112,7 @@ PreferredSizeWidget _warmAppBar(String title) => AppBar(
 const _kAddTitle = '先建立一張對象卡';
 const _kAddSubtitle =
     '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡';
-const _kAddHint = '例：Alice / Tinder 上的空姐';
+const _kAddHint = '輸入她的名字或暱稱';
 
 // ===========================================================================
 // PAGE 1 — Add Partner   (problem: 太空 / 沒重心)

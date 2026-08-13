@@ -4,7 +4,6 @@
 // N 60%），本頁只負責呈現（邊框／badge／星等），不影響扣費。解鎖集合來自
 // practiceCollectionProvider（settings box 持久化），翻牌成功／還原舊場即時 +1。
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,62 +41,6 @@ double collectionHighlightIntensityAt(double t) {
   if (g < 0.18) return g / 0.18;
   if (g < 0.62) return 1;
   return (1 - (g - 0.62) / 0.38).clamp(0.0, 1.0);
-}
-
-/// SR 卡稀有度光段 painter：金色光段沿卡框圓角矩形繞圈（確定性、零 Random）。
-/// 對稱亮心（中央最亮最粗、往兩端平滑淡出）——這是常駐身分光的克制版，
-/// 刻意不做彗星頭尾式（那是一次性時刻光的語彙，見 OneShotCometBorder）。
-@visibleForTesting
-class SrRarityLightBandPainter extends CustomPainter {
-  SrRarityLightBandPainter({
-    required this.progress,
-    required this.color,
-    required this.borderRadius,
-  });
-
-  /// 0..1＝光段中心沿卡框繞一整圈。
-  final double progress;
-  final Color color;
-  final double borderRadius;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (size.isEmpty) return;
-    // 對齊 1.5px 邊框的中心線（半寬 0.75）。
-    final rect = (Offset.zero & size).deflate(0.75);
-    final path = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-        rect,
-        Radius.circular(math.max(0, borderRadius - 0.75)),
-      ));
-    final paint = Paint()
-      ..style = PaintingStyle.fill
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-    for (final metric in path.computeMetrics()) {
-      final len = metric.length;
-      final center = progress * len;
-      final bandLen = len * 0.30; // 光段約占周長 30%
-      const steps = 24;
-      for (var s = 0; s < steps; s++) {
-        final frac = s / (steps - 1); // 0..1 橫跨整段光
-        final offset = (center + bandLen * (frac - 0.5)) % len;
-        final tan =
-            metric.getTangentForOffset(offset < 0 ? offset + len : offset);
-        if (tan == null) continue;
-        final w = math.sin(frac * math.pi); // 0→1→0 對稱亮心
-        paint.color = color.withValues(
-          alpha: (0.10 + 0.42 * w * w).clamp(0.0, 1.0),
-        );
-        canvas.drawCircle(tan.position, 1.2 + 1.8 * w, paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(SrRarityLightBandPainter old) =>
-      old.progress != progress ||
-      old.color != color ||
-      old.borderRadius != borderRadius;
 }
 
 /// 鎖卡剪影：灰階×0.07 近全黑，只留人形輪廓隱約可辨。
@@ -616,26 +559,39 @@ class _PracticeCollectionScreenState
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-                      child: Row(
-                        children: [
-                          _RarityFilterChip(
-                            chipKey: const ValueKey('collection-filter-all'),
-                            label: '全部',
-                            selected: _filter == null,
-                            onTap: () => setState(() => _filter = null),
+                      // 夥伴稿：稀有度 filter 是一條連體 segmented bar。
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: AppColors.brandInk.withValues(alpha: 0.58),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.10),
                           ),
-                          const SizedBox(width: 8),
-                          for (final rarity in PracticeGirlRarity.values) ...[
-                            _RarityFilterChip(
-                              chipKey: ValueKey(
-                                  'collection-filter-${rarity.label.toLowerCase()}'),
-                              label: rarity.label,
-                              selected: _filter == rarity,
-                              onTap: () => setState(() => _filter = rarity),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _RarityFilterChip(
+                                chipKey:
+                                    const ValueKey('collection-filter-all'),
+                                label: '全部',
+                                selected: _filter == null,
+                                onTap: () => setState(() => _filter = null),
+                              ),
                             ),
-                            const SizedBox(width: 8),
+                            for (final rarity in PracticeGirlRarity.values)
+                              Expanded(
+                                child: _RarityFilterChip(
+                                  chipKey: ValueKey(
+                                      'collection-filter-${rarity.label.toLowerCase()}'),
+                                  label: rarity.label,
+                                  selected: _filter == rarity,
+                                  onTap: () => setState(() => _filter = rarity),
+                                ),
+                              ),
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -660,7 +616,6 @@ class _PracticeCollectionScreenState
                         final card = _CollectionCard(
                           profile: profile,
                           unlocked: unlocked.contains(profile.profileId),
-                          pulse: _drawPulse,
                         );
                         if (profile.profileId != _highlightProfileId) {
                           return card;
@@ -864,135 +819,123 @@ class _CollectionHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'VIBESYNC · GACHA',
+            'VIBESYNC COLLECTION',
             style: AppTypography.caption.copyWith(
-              color: AppColors.brandFlame,
+              color: AppColors.onBackgroundSecondary,
               fontWeight: FontWeight.w700,
-              letterSpacing: 3,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: ShaderMask(
-                  blendMode: BlendMode.srcIn,
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: [
-                      Color(0xFFFFC24D),
-                      AppColors.brandFlame,
-                      AppColors.brandBlush,
-                    ],
-                  ).createShader(bounds),
-                  child: Text(
-                    'Collection',
-                    style: AppTypography.headlineLarge.copyWith(
-                      color: Colors.white, // ShaderMask srcIn 取代此色
-                      fontSize: 38,
-                      fontWeight: FontWeight.w900,
-                      height: 1.05,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              _CollectionDrawButton(
-                pulse: drawPulse,
-                isDrawing: drawIsDrawing,
-                enabled: drawEnabled,
-                onPressed: onDrawPressed,
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '角 色 圖 鑑',
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.onBackgroundSecondary,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 6,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                '$unlockedCount',
-                key: const ValueKey('collection-completion-count'),
-                style: AppTypography.headlineLarge.copyWith(
-                  color: AppColors.brandFlame,
-                  fontSize: 38,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              Text(
-                ' / $total',
-                style: AppTypography.titleLarge.copyWith(
-                  color: AppColors.onBackgroundSecondary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '收藏完成度',
-            style: AppTypography.caption.copyWith(
-              color: AppColors.onBackgroundSecondary,
               letterSpacing: 2,
             ),
           ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: Container(
-              height: 8,
-              color: Colors.white.withValues(alpha: 0.08),
-              alignment: Alignment.centerLeft,
-              child: FractionallySizedBox(
-                widthFactor: progress,
-                heightFactor: 1,
-                child: Container(
-                  key: const ValueKey('collection-progress-fill'),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [AppColors.brandBlush, AppColors.brandFlame],
+          const SizedBox(height: 12),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.brandSurface.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Text(
+                              '已收集 ',
+                              style: AppTypography.titleLarge.copyWith(
+                                color: AppColors.onBackgroundPrimary,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              '$unlockedCount',
+                              key:
+                                  const ValueKey('collection-completion-count'),
+                              style: AppTypography.titleLarge.copyWith(
+                                color: AppColors.ctaStart,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              ' / $total',
+                              style: AppTypography.titleLarge.copyWith(
+                                color: AppColors.onBackgroundSecondary,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      _CollectionDrawButton(
+                        pulse: drawPulse,
+                        isDrawing: drawIsDrawing,
+                        enabled: drawEnabled,
+                        onPressed: onDrawPressed,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '收藏完成度',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
                     ),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: Container(
+                      height: 8,
+                      color: Colors.white.withValues(alpha: 0.08),
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: progress,
+                        heightFactor: 1,
+                        child: Container(
+                          key: const ValueKey('collection-progress-fill'),
+                          decoration: const BoxDecoration(
+                            color: AppColors.ctaStart,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (freeQuota != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.style_outlined,
+                          size: 14,
+                          color: AppColors.onBackgroundSecondary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '今日免費翻牌 剩 ${freeQuota!.remaining} / ${freeQuota!.allowance}',
+                          key: const ValueKey('collection-free-quota-line'),
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.onBackgroundSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
-          if (freeQuota != null) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(
-                  Icons.style_outlined,
-                  size: 14,
-                  color: AppColors.onBackgroundSecondary,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '今日免費翻牌 剩 ${freeQuota!.remaining} / ${freeQuota!.allowance}',
-                  key: const ValueKey('collection-free-quota-line'),
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );
   }
 }
 
-/// 標題右側的翻牌鈕：金橘漸層膠囊（配頁面大標視覺）＋微光。今日未翻時由
+/// 標題右側的翻牌鈕：實色橘 CTA。今日未翻時仍可保留極淡 pulse，但不常駐彩色 glow。
 /// [pulse]（repeat 呼吸）驅動 boxShadow alpha；revealed 時 pulse 停在 0＝定光。
 class _CollectionDrawButton extends StatelessWidget {
   const _CollectionDrawButton({
@@ -1012,27 +955,20 @@ class _CollectionDrawButton extends StatelessWidget {
     return AnimatedBuilder(
       animation: pulse,
       builder: (context, child) {
-        final glow = 0.28 + 0.34 * pulse.value;
         return GestureDetector(
           key: const ValueKey('collection-draw-button'),
           behavior: HitTestBehavior.opaque,
           onTap: enabled ? onPressed : null,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFFC24D), AppColors.brandFlame],
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.ctaStart,
+                borderRadius: BorderRadius.circular(18),
               ),
-              borderRadius: BorderRadius.circular(999),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.brandFlame.withValues(alpha: glow),
-                  blurRadius: 16,
-                  spreadRadius: 1,
-                ),
-              ],
+              child: child,
             ),
-            child: child,
           ),
         );
       },
@@ -1062,6 +998,12 @@ class _CollectionDrawButton extends StatelessWidget {
               fontWeight: FontWeight.w900,
             ),
           ),
+          const SizedBox(width: 2),
+          const Icon(
+            Icons.chevron_right_rounded,
+            size: 18,
+            color: AppColors.brandInk,
+          ),
         ],
       ),
     );
@@ -1086,21 +1028,23 @@ class _RarityFilterChip extends StatelessWidget {
     return GestureDetector(
       key: chipKey,
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
         decoration: BoxDecoration(
           color: selected
-              ? AppColors.brandFlame.withValues(alpha: 0.18)
-              : Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(999),
+              ? AppColors.ctaStart.withValues(alpha: 0.14)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: selected
-                ? AppColors.brandFlame
-                : Colors.white.withValues(alpha: 0.14),
+                ? AppColors.ctaStart.withValues(alpha: 0.45)
+                : Colors.transparent,
           ),
         ),
         child: Text(
           label,
+          textAlign: TextAlign.center,
           style: AppTypography.caption.copyWith(
             color: selected
                 ? AppColors.brandFlame
@@ -1117,21 +1061,14 @@ class _CollectionCard extends ConsumerWidget {
   const _CollectionCard({
     required this.profile,
     required this.unlocked,
-    required this.pulse,
   });
 
   final PracticeGirlProfile profile;
   final bool unlocked;
 
-  /// 稀有度常駐光共用 [_drawPulse]（零新增 ticker：pulse 停止＝SR 光段整層
-  /// 不畫、R 呼吸停在 0＝靜光，既有 pumpAndSettle 測試收斂語意不變）。
-  /// SR 金色光段繞框、R 紫色弱檔呼吸、N／鎖卡不動。
-  final Animation<double> pulse;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rarity = profile.rarity;
-    final color = practiceRarityColor(rarity);
     // 批 3：free 每日免費抽已移除，「每日」字樣只對付費 tier 為真。
     final isPremium = ref.watch(subscriptionProvider).isPremium;
 
@@ -1152,14 +1089,19 @@ class _CollectionCard extends ConsumerWidget {
                     child: PracticeRarityBadge(rarity: rarity),
                   )
                 else
+                  // 夥伴稿：鎖卡是剪影＋圓形鎖頭，不再用問號。
                   Center(
-                    child: Text(
-                      '？',
+                    child: Container(
                       key: ValueKey('collection-mystery-${profile.profileId}'),
-                      style: AppTypography.headlineLarge.copyWith(
-                        color: Colors.white.withValues(alpha: 0.55),
-                        fontSize: 38,
-                        fontWeight: FontWeight.w900,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
+                      child: Icon(
+                        Icons.lock_rounded,
+                        size: 22,
+                        color: Colors.white.withValues(alpha: 0.62),
                       ),
                     ),
                   ),
@@ -1168,95 +1110,52 @@ class _CollectionCard extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          unlocked ? profile.displayName : '？？？',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.titleSmall.copyWith(
-            color: unlocked ? Colors.white : Colors.white70,
-            fontWeight: FontWeight.w800,
+        if (unlocked) ...[
+          Text(
+            profile.displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.titleSmall.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          unlocked ? profile.professionLabel : (isPremium ? '每日翻牌解鎖' : '翻牌解鎖'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.caption.copyWith(
-            color: unlocked ? AppColors.onBackgroundSecondary : Colors.white38,
+          const SizedBox(height: 2),
+          Text(
+            profile.professionLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.onBackgroundSecondary,
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
-        if (unlocked)
-          PracticeRarityStars(rarity: rarity)
-        else
-          const SizedBox(height: 16), // 鎖卡無星等：佔位維持排版高度
+          const SizedBox(height: 6),
+          PracticeRarityStars(rarity: rarity),
+        ] else
+          SizedBox(
+            width: double.infinity,
+            child: Text(
+              // 「每日」字樣只對付費 tier 為真（批 3）。
+              isPremium ? '尚未解鎖 · 每日翻牌' : '尚未解鎖',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: AppTypography.caption.copyWith(color: Colors.white54),
+            ),
+          ),
       ],
     );
 
-    // 解鎖 SR 卡＝金色光段沿框繞圈（2026-08-09 取代呼吸光）；R 保留紫色弱檔
-    // 呼吸；N 與鎖卡走靜態 decoration，不掛 pulse 重繪。
-    final srBand = unlocked && rarity == PracticeGirlRarity.sr;
-    final breathing = unlocked && rarity == PracticeGirlRarity.r;
-
-    final Widget body;
-    if (srBand) {
-      body = AnimatedBuilder(
-        animation: pulse,
-        child: content,
-        builder: (context, child) {
-          // reverse-repeat 相位攤平成連續繞圈：去程走上半圈、回程走下半圈，
-          // 方向永不回頭（直接用 value 會變成來回擺，不是「繞」）。
-          final status = pulse.status;
-          final sweeping = status == AnimationStatus.forward ||
-              status == AnimationStatus.reverse;
-          final progress = status == AnimationStatus.reverse
-              ? (2 - pulse.value) / 2
-              : pulse.value / 2;
-          return Stack(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: _decoration(color, 0),
-                child: child,
-              ),
-              // pulse 停止（revealed／reduce-motion）＝整層拿掉：零殘光、
-              // 零繪製成本，回到基線靜光。
-              if (sweeping)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: RepaintBoundary(
-                      child: CustomPaint(
-                        painter: SrRarityLightBandPainter(
-                          progress: progress,
-                          color: color,
-                          borderRadius: 18,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          );
-        },
-      );
-    } else if (breathing) {
-      body = AnimatedBuilder(
-        animation: pulse,
-        child: content,
-        builder: (context, child) => Container(
-          padding: const EdgeInsets.all(8),
-          decoration: _decoration(color, pulse.value),
-          child: child,
-        ),
-      );
-    } else {
-      body = Container(
-        padding: const EdgeInsets.all(8),
-        decoration: _decoration(color, 0),
-        child: content,
-      );
-    }
+    // 夥伴稿：卡片本身不帶稀有度彩邊，稀有度只由左上角 badge 與星等表示。
+    final body = Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.brandSurface.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: content,
+    );
 
     return GestureDetector(
       key: ValueKey('collection-card-${profile.profileId}'),
@@ -1276,58 +1175,6 @@ class _CollectionCard extends ConsumerWidget {
           ));
       },
       child: body,
-    );
-  }
-
-  /// t＝R 卡呼吸相位 0..1（pulse 停止時恆 0＝基線靜光）；SR 恆傳 0
-  /// （底光固定基線，動態交給繞框光段）。
-  BoxDecoration _decoration(Color color, double t) {
-    final rarity = profile.rarity;
-    final sr = rarity == PracticeGirlRarity.sr;
-    final double borderAlpha;
-    final List<BoxShadow>? shadows;
-    if (!unlocked) {
-      borderAlpha = 0;
-      shadows = null;
-    } else if (sr) {
-      // SR 底光固定在基線（動的部分交給繞框光段，不再呼吸）。
-      borderAlpha = 0.80;
-      shadows = [
-        BoxShadow(
-          color: color.withValues(alpha: 0.26),
-          blurRadius: 15,
-          spreadRadius: 1,
-        ),
-      ];
-    } else if (rarity == PracticeGirlRarity.r) {
-      borderAlpha = 0.85;
-      shadows = [
-        BoxShadow(
-          color: color.withValues(alpha: 0.22 + 0.10 * t),
-          blurRadius: 14 + 2 * t,
-          spreadRadius: 1,
-        ),
-      ];
-    } else {
-      borderAlpha = 0.85;
-      shadows = [
-        BoxShadow(
-          color: color.withValues(alpha: 0.24),
-          blurRadius: 14,
-          spreadRadius: 1,
-        ),
-      ];
-    }
-    return BoxDecoration(
-      color: AppColors.brandSurface.withValues(alpha: 0.6),
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(
-        width: 1.5,
-        color: unlocked
-            ? color.withValues(alpha: borderAlpha)
-            : Colors.white.withValues(alpha: 0.10),
-      ),
-      boxShadow: shadows,
     );
   }
 }

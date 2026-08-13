@@ -107,55 +107,45 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
             unawaited(ref.read(funnelTrackerProvider).track('quota_strip_tap'));
             _openExplainSheet(context, subscription.effectiveMonthlyLimit);
           },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: urgent
-                  ? AppColors.ctaStart.withValues(alpha: 0.12)
-                  : Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: urgent
-                    ? AppColors.ctaStart.withValues(alpha: 0.55)
-                    : Colors.white.withValues(alpha: 0.10),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.bolt_rounded, size: 16, color: accent),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '本月免費額度還剩 $remaining 則',
-                        style: TextStyle(
-                          color: urgent
-                              ? AppColors.ctaStart
-                              : AppColors.onBackgroundPrimary,
-                          fontSize: 15,
-                          fontWeight:
-                              urgent ? FontWeight.w700 : FontWeight.w500,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.bolt_rounded, size: 16, color: accent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '本月免費額度還剩 $remaining 則',
+                          style: TextStyle(
+                            color: urgent
+                                ? AppColors.ctaStart
+                                : AppColors.onBackgroundSecondary,
+                            fontSize: 12,
+                            fontWeight:
+                                urgent ? FontWeight.w700 : FontWeight.w500,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      // 本日上限與月額度並行存在（free 另有每日 cap），只補顯示
-                      // 一行；醒目色仍只跟月額度走，不另加 urgent 條件。
-                      Text(
-                        '本日免費額度剩 ${subscription.dailyRemaining} 則',
-                        style: TextStyle(
-                          color: AppColors.onBackgroundSecondary
-                              .withValues(alpha: 0.9),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
+                        const SizedBox(height: 2),
+                        Text(
+                          '本日免費額度剩 ${subscription.dailyRemaining} 則',
+                          style: TextStyle(
+                            color: AppColors.onBackgroundSecondary
+                                .withValues(alpha: 0.9),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Icon(Icons.info_outline_rounded, size: 15, color: accent),
-              ],
+                  Icon(Icons.info_outline_rounded, size: 16, color: accent),
+                ],
+              ),
             ),
           ),
         ),

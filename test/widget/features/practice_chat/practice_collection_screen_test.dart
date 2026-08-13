@@ -240,8 +240,7 @@ void main() {
       );
 
       expect(find.text('角色圖鑑'), findsOneWidget); // AppBar 標題
-      expect(find.text('VIBESYNC · GACHA'), findsOneWidget);
-      expect(find.text('Collection'), findsOneWidget);
+      expect(find.text('VIBESYNC COLLECTION'), findsOneWidget);
       expect(find.text('收藏完成度'), findsOneWidget);
 
       final count = tester.widget<Text>(
@@ -264,7 +263,7 @@ void main() {
       expect(count.data, '1');
     });
 
-    testWidgets('鎖卡顯「？？？」＋大問號（無鎖頭）；解鎖卡顯名字＋職業＋星等', (tester) async {
+    testWidgets('鎖卡顯剪影＋鎖頭＋「尚未解鎖」；解鎖卡顯名字＋職業＋星等', (tester) async {
       await pumpCollection(tester, unlocked: {'practice_girl_004'});
 
       // 鎖卡：practice_girl_001（Alice）未解鎖
@@ -272,19 +271,25 @@ void main() {
           find.byKey(const ValueKey('collection-card-practice_girl_001'));
       expect(lockedCard, findsOneWidget);
       expect(
-        find.descendant(of: lockedCard, matching: find.text('？？？')),
+        find.descendant(of: lockedCard, matching: find.text('尚未解鎖')),
         findsOneWidget,
       );
       expect(
         find.descendant(of: lockedCard, matching: find.text('Alice')),
         findsNothing,
       );
-      // 鎖頭圓徽已退役 → 換中央大「？」神秘標記
-      expect(find.byIcon(Icons.lock_rounded), findsNothing);
-      final mystery = tester.widget<Text>(
-        find.byKey(const ValueKey('collection-mystery-practice_girl_001')),
+      // 2026-08-13 夥伴稿：中央神秘標記改回鎖頭圓徽（問號退役）。
+      expect(
+        find.descendant(
+          of: lockedCard,
+          matching: find.byIcon(Icons.lock_rounded),
+        ),
+        findsOneWidget,
       );
-      expect(mystery.data, '？');
+      expect(
+        find.byKey(const ValueKey('collection-mystery-practice_girl_001')),
+        findsOneWidget,
+      );
       // 鎖卡無星等
       expect(
         find.descendant(
@@ -592,7 +597,7 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('翻牌鈕在 Collection 標題右側顯示', (tester) async {
+    testWidgets('翻牌鈕在圖鑑摘要右側顯示', (tester) async {
       await pumpApp(tester, collectionApp());
 
       expect(find.byKey(drawButton), findsOneWidget);
@@ -926,57 +931,8 @@ void main() {
       expect(find.byKey(lineKey), findsNothing);
     });
 
-    testWidgets('SR 繞框光段跟 pulse 啟停：locked 畫、revealed settle 後整層收乾',
-        (tester) async {
-      Finder band() => find.byWidgetPredicate(
-            (w) => w is CustomPaint && w.painter is SrRarityLightBandPainter,
-          );
-
-      final controller = _DrawSpyController(_lockedSeed());
-      await pumpApp(
-        tester,
-        collectionApp(controller: controller, unlocked: {'practice_girl_004'}),
-      );
-
-      // locked：pulse repeat 中 → 解鎖 SR 卡有繞框光段（逐幀推進，不 settle）。
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(band(), findsOneWidget);
-
-      // revealed：pulse 停 → 光段整層拿掉、settle 收斂（會 hang 即 fail）。
-      controller.debugSetState(_revealedSeed());
-      await tester.pump();
-      await tester.pumpAndSettle();
-      expect(band(), findsNothing);
-    });
-
-    testWidgets('reduce-motion：SR 光段整段不出現，維持基線靜光', (tester) async {
-      final controller = _DrawSpyController(_lockedSeed());
-      await tester.binding.setSurfaceSize(const Size(500, 1600));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: _collectionOverrides(
-            unlocked: {'practice_girl_004'},
-            controller: controller,
-          ),
-          child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(disableAnimations: true),
-              child: child!,
-            ),
-            home: const PracticeCollectionScreen(),
-          ),
-        ),
-      );
-      // reduce-motion 下 locked 也不 repeat：settle 必收斂、光段不出現。
-      await tester.pumpAndSettle();
-      expect(
-        find.byWidgetPredicate(
-          (w) => w is CustomPaint && w.painter is SrRarityLightBandPainter,
-        ),
-        findsNothing,
-      );
-    });
+    // 2026-08-13 夥伴稿：卡片不再有稀有度常駐光（SR 繞框光段整組拆除），
+    // 稀有度只由左上角 badge 與星等表示，對應測試一併退役。
 
     testWidgets('draw 事後 402 → 直接導 paywall＋觸發訂閱重同步（不出升級 snackbar）',
         (tester) async {

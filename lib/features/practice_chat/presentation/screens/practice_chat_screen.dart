@@ -296,6 +296,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                 _PracticeProfileBar(state: state),
               Expanded(
                 child: _PracticeChatWorkspaceFrame(
+                  opening: state.messages.isEmpty,
                   child: state.messages.isEmpty
                       ? _PracticeProfileHero(state: state)
                       : ListView(
@@ -308,11 +309,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                             // state.messages／API payload／Hive。
                             if (state.learningMode == PracticeLearningMode.game)
                               const PracticeGameCoachIntro(),
-                            for (
-                              var i = 0;
-                              i < state.messages.length;
-                              i++
-                            )
+                            for (var i = 0; i < state.messages.length; i++)
                               _Bubble(
                                 message: state.messages[i],
                                 stagger: i == state.messages.length - 1,
@@ -457,7 +454,6 @@ class _PracticeLockedEntry extends ConsumerWidget {
             const SizedBox(height: 8),
             Text(
               '到角色圖鑑翻開今日對象，開始練習。',
-              textAlign: TextAlign.center,
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.onBackgroundSecondary,
                 height: 1.5,
@@ -661,19 +657,28 @@ class _DifficultyChips extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          children: [
-            for (final (pref, label, _) in _options)
-              _DifficultyChip(
-                label: label,
-                selected: state.difficultyPreference == pref,
-                onTap: () => ref
-                    .read(practiceChatControllerProvider.notifier)
-                    .setDifficultyPreference(pref),
-              ),
-          ],
+        // 夥伴稿：四檔難度是一條連體 segmented bar，不是四顆各自帶框的 pill。
+        Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: AppColors.brandInk.withValues(alpha: 0.58),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+          ),
+          child: Row(
+            children: [
+              for (final (pref, label, _) in _options)
+                Expanded(
+                  child: _DifficultyChip(
+                    label: label,
+                    selected: state.difficultyPreference == pref,
+                    onTap: () => ref
+                        .read(practiceChatControllerProvider.notifier)
+                        .setDifficultyPreference(pref),
+                  ),
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: 6),
         Text(
@@ -707,20 +712,21 @@ class _DifficultyChip extends StatelessWidget {
       child: AnimatedContainer(
         duration: AppMotion.state,
         curve: AppMotion.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
         decoration: BoxDecoration(
           color: selected
-              ? AppColors.ctaStart.withValues(alpha: 0.18)
-              : AppColors.brandSurface2.withValues(alpha: 0.5),
+              ? AppColors.ctaStart.withValues(alpha: 0.16)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: selected
-                ? AppColors.ctaStart.withValues(alpha: 0.7)
-                : AppColors.onBackgroundSecondary.withValues(alpha: 0.25),
+                ? AppColors.ctaStart.withValues(alpha: 0.45)
+                : Colors.transparent,
           ),
         ),
         child: Text(
           label,
+          textAlign: TextAlign.center,
           style: AppTypography.caption.copyWith(
             color:
                 selected ? AppColors.ctaStart : AppColors.onBackgroundSecondary,
@@ -821,24 +827,17 @@ class _LearningModeToggle extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Container(
+        Padding(
           key: ValueKey(
             'practice-learning-mode-subtitle-${selectedDescriptor.mode.name}',
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: selectedDescriptor.accent.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: selectedDescriptor.accent.withValues(alpha: 0.35),
-            ),
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Row(
             children: [
               Icon(
                 selectedDescriptor.icon,
                 size: 15,
-                color: selectedDescriptor.accent,
+                color: AppColors.onBackgroundSecondary,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -847,10 +846,8 @@ class _LearningModeToggle extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.caption.copyWith(
-                    color: AppColors.onBackgroundPrimary.withValues(
-                      alpha: 0.92,
-                    ),
-                    fontWeight: FontWeight.w800,
+                    color: AppColors.onBackgroundSecondary,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -916,12 +913,12 @@ class _LearningModeSegment extends StatelessWidget {
     final accent = descriptor.accent;
     final foreground = enabled
         ? selected
-            ? Colors.white
+            ? AppColors.ctaStart
             : AppColors.onBackgroundSecondary.withValues(alpha: 0.88)
         : AppColors.onBackgroundSecondary.withValues(alpha: 0.42);
     final badgeColor = enabled
         ? selected
-            ? Colors.white.withValues(alpha: 0.88)
+            ? AppColors.onBackgroundSecondary
             : accent
         : AppColors.onBackgroundSecondary.withValues(alpha: 0.45);
     return Tooltip(
@@ -941,29 +938,9 @@ class _LearningModeSegment extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
               decoration: BoxDecoration(
                 color: selected
-                    ? accent.withValues(alpha: 0.92)
-                    : enabled
-                        ? accent.withValues(alpha: 0.08)
-                        : AppColors.brandSurface.withValues(alpha: 0.28),
+                    ? AppColors.brandSurface2.withValues(alpha: 0.92)
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: selected
-                      ? Colors.white.withValues(alpha: 0.20)
-                      : enabled
-                          ? accent.withValues(alpha: 0.38)
-                          : AppColors.onBackgroundSecondary.withValues(
-                              alpha: 0.14,
-                            ),
-                ),
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                          color: accent.withValues(alpha: 0.24),
-                          blurRadius: 12,
-                          offset: const Offset(0, 5),
-                        ),
-                      ]
-                    : null,
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1011,9 +988,13 @@ class _LearningModeSegment extends StatelessWidget {
 }
 
 class _PracticeChatWorkspaceFrame extends StatelessWidget {
-  const _PracticeChatWorkspaceFrame({required this.child});
+  const _PracticeChatWorkspaceFrame({
+    required this.child,
+    this.opening = false,
+  });
 
   final Widget child;
+  final bool opening;
 
   @override
   Widget build(BuildContext context) {
@@ -1021,8 +1002,10 @@ class _PracticeChatWorkspaceFrame extends StatelessWidget {
       builder: (context, constraints) {
         final width = constraints.maxWidth > 600 ? 600.0 : constraints.maxWidth;
         final frame = Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: _PracticeChatWorkspace(child: child),
+          padding: opening
+              ? const EdgeInsets.fromLTRB(16, 8, 16, 8)
+              : const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: _PracticeChatWorkspace(opening: opening, child: child),
         );
 
         return Center(
@@ -1040,11 +1023,15 @@ class _PracticeChatWorkspaceFrame extends StatelessWidget {
 }
 
 class _PracticeChatWorkspace extends StatelessWidget {
-  const _PracticeChatWorkspace({required this.child});
+  const _PracticeChatWorkspace({
+    required this.child,
+    this.opening = false,
+  });
 
   static const _radius = BorderRadius.all(Radius.circular(18));
 
   final Widget child;
+  final bool opening;
 
   @override
   Widget build(BuildContext context) {
@@ -1053,21 +1040,30 @@ class _PracticeChatWorkspace extends StatelessWidget {
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.96),
-        borderRadius: _radius,
-        border: Border.all(
-          color: AppColors.ctaStart.withValues(alpha: 0.24),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        color:
+            opening ? Colors.transparent : Colors.white.withValues(alpha: 0.96),
+        borderRadius: opening ? BorderRadius.zero : _radius,
+        border: opening
+            ? null
+            : Border.all(
+                color: AppColors.ctaStart.withValues(alpha: 0.24),
+              ),
+        boxShadow: opening
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 18,
+                  offset: const Offset(0, 10),
+                ),
+              ],
       ),
       child: DefaultTextStyle.merge(
-        style: const TextStyle(color: AppColors.glassTextPrimary),
+        style: TextStyle(
+          color: opening
+              ? AppColors.onBackgroundPrimary
+              : AppColors.glassTextPrimary,
+        ),
         child: child,
       ),
     );
@@ -1116,20 +1112,21 @@ class _PracticeProfileHero extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             GestureDetector(
               key: const ValueKey('practice-profile-hero-photo'),
               onTap: () => showPracticeGirlFullPhoto(context, girl),
               child: Stack(
-                alignment: Alignment.bottomCenter,
                 children: [
                   PracticeGirlPhoto(
                     profile: girl,
-                    width: 232,
-                    height: 290,
+                    width: double.infinity,
+                    height: 320,
                     borderRadius: BorderRadius.circular(22),
                   ),
                   const Positioned(
+                    right: 10,
                     bottom: 10,
                     child: PracticeGirlPhotoExpandHint(),
                   ),
@@ -1140,7 +1137,7 @@ class _PracticeProfileHero extends StatelessWidget {
             Text(
               '${girl.displayName}，${girl.age}',
               style: AppTypography.titleLarge.copyWith(
-                color: AppColors.glassTextPrimary,
+                color: AppColors.onBackgroundPrimary,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -1148,15 +1145,37 @@ class _PracticeProfileHero extends StatelessWidget {
             Text(
               '${girl.professionLabel} · ${girl.city}',
               style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary,
               ),
             ),
-            const SizedBox(height: 12),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
-              children: [for (final t in tags) _HeroTag(label: t)],
+            const SizedBox(height: 8),
+            // 夥伴稿：人格／興趣是一行點分隔文字，只有人格標籤用橘色，
+            // 不再是四顆橘框 chip 跟照片搶視覺。
+            Text.rich(
+              TextSpan(
+                children: [
+                  for (var i = 0; i < tags.length; i++) ...[
+                    if (i > 0)
+                      TextSpan(
+                        text: '  ·  ',
+                        style: TextStyle(
+                          color: AppColors.onBackgroundSecondary.withValues(
+                            alpha: 0.5,
+                          ),
+                        ),
+                      ),
+                    TextSpan(
+                      text: tags[i],
+                      style: TextStyle(
+                        color: i == 0
+                            ? AppColors.ctaStart
+                            : AppColors.onBackgroundSecondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              style: AppTypography.bodyMedium.copyWith(height: 1.5),
             ),
             const SizedBox(height: 16),
             Row(
@@ -1165,14 +1184,15 @@ class _PracticeProfileHero extends StatelessWidget {
                 Icon(
                   Icons.route_outlined,
                   size: 16,
-                  color: AppColors.glassTextSecondary.withValues(alpha: 0.75),
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
                 ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     origin.sharedFact,
                     style: AppTypography.caption.copyWith(
-                      color: AppColors.glassTextSecondary,
+                      color: AppColors.onBackgroundSecondary,
                       height: 1.4,
                     ),
                   ),
@@ -1182,9 +1202,8 @@ class _PracticeProfileHero extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               girl.selfIntro,
-              textAlign: TextAlign.center,
               style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary,
                 height: 1.5,
               ),
             ),
@@ -1196,47 +1215,20 @@ class _PracticeProfileHero extends StatelessWidget {
                       '留一半讓她想追問。別用「在幹嘛」查戶口開局。'
                   : '對方是個有自己個性的陪練女孩，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
               key: const ValueKey('practice-hero-guidance'),
-              textAlign: TextAlign.center,
               style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary,
                 height: 1.5,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               '首次 AI 回覆成功才扣 1 則；進來或送出失敗不扣。\n扣完這 1 則，本場最多可聊 20 則 AI 回覆，教練拆解不另扣。',
-              textAlign: TextAlign.center,
               style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextHint,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.72),
                 height: 1.45,
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HeroTag extends StatelessWidget {
-  const _HeroTag({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.ctaStart.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.ctaStart.withValues(alpha: 0.5)),
-      ),
-      child: Text(
-        label,
-        style: AppTypography.caption.copyWith(
-          color: AppColors.ctaStart,
-          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -1258,9 +1250,9 @@ const int _kMaxBubbleSplit = 4;
 /// 畫面上已有燈泡圖示，重複顯示只是佔一行，這裡剝掉。
 String _coachingHeadline(String coaching) {
   final stripped = coaching.trim().replaceFirst(
-    RegExp(r'^(Game\s*)?心法[:：]\s*'),
-    '',
-  );
+        RegExp(r'^(Game\s*)?心法[:：]\s*'),
+        '',
+      );
   final end = stripped.indexOf('。');
   if (end > 0) return stripped.substring(0, end + 1);
   return stripped;
@@ -1358,21 +1350,18 @@ class _BubbleState extends State<_Bubble> {
               decoration: BoxDecoration(
                 color: fillColor,
                 borderRadius: BorderRadius.circular(18).copyWith(
-                  bottomRight:
-                      isMe && index == shown.length - 1
-                          ? const Radius.circular(5)
-                          : null,
-                  bottomLeft:
-                      !isMe && index == shown.length - 1
-                          ? const Radius.circular(5)
-                          : null,
+                  bottomRight: isMe && index == shown.length - 1
+                      ? const Radius.circular(5)
+                      : null,
+                  bottomLeft: !isMe && index == shown.length - 1
+                      ? const Radius.circular(5)
+                      : null,
                 ),
                 border: Border.all(color: borderColor),
               ),
               child: Column(
-                crossAxisAlignment: isMe
-                    ? CrossAxisAlignment.end
-                    : CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // 說話者只標在第一顆泡，連發時不重複三次。
@@ -2764,14 +2753,14 @@ class _SessionRow extends StatelessWidget {
         title: Text(
           '刪除這場練習？',
           style: AppTypography.titleMedium.copyWith(
-            color: AppColors.glassTextPrimary,
+            color: AppColors.onBackgroundPrimary,
             fontWeight: FontWeight.w800,
           ),
         ),
         content: Text(
           '只會刪除這支手機上的練習紀錄，不會退回已扣額度。',
           style: AppTypography.bodyMedium.copyWith(
-            color: AppColors.glassTextSecondary,
+            color: AppColors.onBackgroundSecondary,
             height: 1.45,
           ),
         ),

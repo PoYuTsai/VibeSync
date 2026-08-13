@@ -50,7 +50,6 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
-import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../data/providers/partner_write_controller.dart';
@@ -138,8 +137,6 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
     return note.isEmpty ? null : note;
   }
 
-  void _dismissKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
-
   @override
   Widget build(BuildContext context) {
     final authAsync = ref.watch(authConversationScopeProvider);
@@ -154,6 +151,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         toolbarHeight: _kToolbarHeight,
+        centerTitle: true,
         title: const Text(
           '新增對象',
           style: TextStyle(color: AppColors.onBackgroundPrimary),
@@ -166,30 +164,63 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
             child: BrandPageBackground(child: SizedBox.expand()),
           ),
           SafeArea(
-            child: ListView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              // `extendBodyBehindAppBar` lets the gradient sit under the
-              // transparent AppBar; content still needs to clear the toolbar.
-              padding: const EdgeInsets.fromLTRB(16, _kToolbarHeight, 16, 8),
-              children: [
-                Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 372),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildIdentityCard(),
-                        const SizedBox(height: 8),
-                        _buildContextCard(
-                          canSubmit: canSubmit,
-                          ownerId: ownerId,
-                          authReady: authReady,
+            // 夥伴稿：表單在上、「建立」貼底。表單本身可捲（小螢幕／鍵盤彈出
+            // 時），CTA 固定在底部不隨內容漂走。
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 372),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: ListView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        // `extendBodyBehindAppBar` lets the gradient sit under
+                        // the transparent AppBar; content still needs to clear
+                        // the toolbar.
+                        padding: const EdgeInsets.fromLTRB(
+                          16,
+                          _kToolbarHeight,
+                          16,
+                          8,
                         ),
-                      ],
+                        children: [
+                          _buildIdentityCard(),
+                          const SizedBox(height: 20),
+                          _buildContextCard(),
+                        ],
+                      ),
                     ),
-                  ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          BrandPrimaryButton(
+                            label: '建立',
+                            onPressed:
+                                canSubmit ? () => _submit(ownerId) : null,
+                            isLoading: _busy,
+                            verticalPadding: 16,
+                          ),
+                          if (!authReady)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Text(
+                                '請先登入再建立對象',
+                                textAlign: TextAlign.center,
+                                style: AppTypography.caption.copyWith(
+                                  color: AppColors.onBackgroundSecondary,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -198,212 +229,367 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
   }
 
   Widget _buildIdentityCard() {
-    return LiquidMotionFrame(
-      style: LiquidMotionStyle.beam,
-      borderRadius: 24,
-      borderWidth: LiquidBeamEntryPreset.borderWidth,
-      glowRadius: LiquidBeamEntryPreset.glowRadius,
-      strength: LiquidBeamEntryPreset.strength,
-      duration: LiquidBeamEntryPreset.duration,
-      child: BrandSurfaceCard(
-        padding: const EdgeInsets.all(16),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '對象名稱',
+                style: AppTypography.labelMedium.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              '必填',
+              style: AppTypography.labelMedium.copyWith(
+                color: AppColors.ctaStart,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const ValueKey('add-partner-name-field'),
+          controller: _name,
+          cursorColor: AppColors.ctaStart,
+          textInputAction: TextInputAction.next,
+          style: AppTypography.bodyLarge.copyWith(color: Colors.white),
+          decoration: brandInputDecoration(
+            hintText: '輸入她的名字或暱稱',
+          ).copyWith(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
+            hintStyle: AppTypography.bodyLarge.copyWith(
+              color: Colors.white.withValues(alpha: 0.40),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContextCard() {
+    final note = _backgroundNote.text.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '幫教練進一步認識她',
+          style: AppTypography.labelMedium.copyWith(
+            color: AppColors.onBackgroundSecondary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _GroupedRows(
+          rows: [
+            _FormRowData(
+              key: const ValueKey('add-partner-meeting-context-row'),
+              label: '認識情境',
+              value: _meetingContext.displayLabel,
+              onTap: () => _pickMeetingContext(),
+            ),
+            _FormRowData(
+              key: const ValueKey('add-partner-duration-row'),
+              label: '認識多久',
+              value: _duration.displayLabel,
+              onTap: () => _pickDuration(),
+            ),
+            _FormRowData(
+              key: const ValueKey('add-partner-goal-row'),
+              label: '目前目標',
+              value: _goal.displayLabel,
+              onTap: () => _pickGoal(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _GroupedRows(
+          rows: [
+            _FormRowData(
+              key: const ValueKey('add-partner-background-row'),
+              label: '補充背景',
+              value: note.isEmpty ? '選填' : note,
+              muted: note.isEmpty,
+              onTap: _editBackgroundNote,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickMeetingContext() async {
+    final picked = await _pickOption<MeetingContext>(
+      title: '認識情境',
+      options: MeetingContext.visibleAnalysisOptions,
+      labelOf: (value) => value.displayLabel,
+      selected: _meetingContext,
+    );
+    if (picked != null && mounted) setState(() => _meetingContext = picked);
+  }
+
+  Future<void> _pickDuration() async {
+    final picked = await _pickOption<AcquaintanceDuration>(
+      title: '認識多久',
+      options: AcquaintanceDuration.values,
+      labelOf: (value) => value.displayLabel,
+      selected: _duration,
+    );
+    if (picked != null && mounted) setState(() => _duration = picked);
+  }
+
+  Future<void> _pickGoal() async {
+    final picked = await _pickOption<UserGoal>(
+      title: '目前目標',
+      options: UserGoal.values,
+      labelOf: (value) => value.displayLabel,
+      selected: _goal,
+    );
+    if (picked != null && mounted) setState(() => _goal = picked);
+  }
+
+  /// 下鑽選項：走 bottom sheet 而非 push 新頁——回來不用重建整張表單，
+  /// 也不會多一層 route 讓返回鍵語意變兩段。
+  Future<T?> _pickOption<T>({
+    required String title,
+    required Iterable<T> options,
+    required String Function(T) labelOf,
+    required T selected,
+  }) {
+    return showModalBottomSheet<T>(
+      context: context,
+      backgroundColor: AppColors.brandSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (sheetContext) => SafeArea(
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
-              children: [
-                BrandIconBadge(
-                  icon: Icons.person_add_alt_1_rounded,
-                  size: 44,
-                  iconSize: 22,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Text(
+                title,
+                style: AppTypography.titleMedium.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w800,
                 ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '先建立一張對象卡',
-                    style: TextStyle(
-                      color: AppColors.onBackgroundPrimary,
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      height: 1.15,
+              ),
+            ),
+            for (final option in options)
+              InkWell(
+                key: ValueKey('add-partner-option-${labelOf(option)}'),
+                onTap: () => Navigator.of(sheetContext).pop(option),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 52),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            labelOf(option),
+                            style: AppTypography.bodyLarge.copyWith(
+                              color: AppColors.onBackgroundPrimary,
+                            ),
+                          ),
+                        ),
+                        if (option == selected)
+                          const Icon(
+                            Icons.check_rounded,
+                            size: 20,
+                            color: AppColors.ctaStart,
+                          ),
+                      ],
                     ),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這張卡裡。',
-              style: AppTypography.bodyLarge.copyWith(
-                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.84),
-                height: 1.4,
               ),
-            ),
             const SizedBox(height: 8),
-            TextField(
-              key: const ValueKey('add-partner-name-field'),
-              controller: _name,
-              cursorColor: AppColors.ctaStart,
-              textInputAction: TextInputAction.next,
-              style: AppTypography.bodyLarge.copyWith(color: Colors.white),
-              decoration: brandInputDecoration(
-                hintText: '例：Alice / Tinder 上的空姐',
-              ).copyWith(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                hintStyle: AppTypography.bodyLarge.copyWith(
-                  color: Colors.white.withValues(alpha: 0.40),
-                ),
-              ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildContextCard({
-    required bool canSubmit,
-    required String? ownerId,
-    required bool authReady,
-  }) {
-    return BrandSurfaceCard(
-      padding: const EdgeInsets.all(16),
-      elevated: false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.auto_awesome_rounded,
-                size: 22,
-                color: AppColors.ctaStart,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '幫教練進一步認識她',
-                  style: AppTypography.titleLarge.copyWith(
+  /// 補充背景直接綁 [_backgroundNote]：sheet 用臨時 controller 會在收合動畫
+  /// 還在跑時就被 dispose（TextField 仍在重建）→ 「used after disposed」。
+  Future<void> _editBackgroundNote() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.brandSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '補充背景（選填）',
+                  style: AppTypography.titleMedium.copyWith(
                     color: AppColors.onBackgroundPrimary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '不確定就保留預設，之後每次分析都能改。',
-            style: AppTypography.bodyLarge.copyWith(
-              color: AppColors.onBackgroundSecondary,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _sectionLabel('認識情境'),
-          const SizedBox(height: 4),
-          BrandSegmentedButton<MeetingContext>(
-            segments: MeetingContext.visibleAnalysisOptions
-                .map(
-                  (value) => BrandSegment(
-                    value: value,
-                    label: value.displayLabel,
+                const SizedBox(height: 6),
+                Text(
+                  '補上聊天看不到的關係或背景，分析時會先帶入。',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    height: 1.35,
                   ),
-                )
-                .toList(),
-            selected: _meetingContext,
-            onChanged: (value) => setState(() => _meetingContext = value),
-          ),
-          const SizedBox(height: 10),
-          _sectionLabel('認識多久'),
-          const SizedBox(height: 4),
-          BrandSegmentedButton<AcquaintanceDuration>(
-            segments: AcquaintanceDuration.values
-                .map(
-                  (value) => BrandSegment(
-                    value: value,
-                    label: value.displayLabel,
-                  ),
-                )
-                .toList(),
-            selected: _duration,
-            onChanged: (value) => setState(() => _duration = value),
-          ),
-          const SizedBox(height: 10),
-          _sectionLabel('目前目標'),
-          const SizedBox(height: 4),
-          BrandSegmentedButton<UserGoal>(
-            segments: UserGoal.values
-                .map(
-                  (value) => BrandSegment(
-                    value: value,
-                    label: value.displayLabel,
-                  ),
-                )
-                .toList(),
-            selected: _goal,
-            onChanged: (value) => setState(() => _goal = value),
-          ),
-          const SizedBox(height: 10),
-          _sectionLabel('補充背景（選填）'),
-          const SizedBox(height: 4),
-          TextField(
-            key: const ValueKey('add-partner-background-field'),
-            controller: _backgroundNote,
-            maxLength: 300,
-            minLines: 1,
-            maxLines: 3,
-            textInputAction: TextInputAction.done,
-            onEditingComplete: _dismissKeyboard,
-            onTapOutside: (_) => _dismissKeyboard(),
-            cursorColor: AppColors.ctaStart,
-            style: AppTypography.bodyLarge.copyWith(color: Colors.white),
-            // counterText 清掉：0/300 自己吃掉一列高，maxLength 仍然擋得住，
-            // 300 字的上限對「選填備註」不需要常駐計數器。
-            decoration: brandInputDecoration(hintText: '沒有可以留空')
-                .copyWith(counterText: ''),
-          ),
-          Text(
-            '補上聊天看不到的關係或背景，分析時會先帶入。',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.onBackgroundSecondary,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 12),
-          BrandPrimaryButton(
-            label: '建立',
-            icon: Icons.auto_awesome_rounded,
-            onPressed: canSubmit ? () => _submit(ownerId!) : null,
-            isLoading: _busy,
-            verticalPadding: 16,
-          ),
-          if (!authReady)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(
-                '請先登入再建立對象',
-                textAlign: TextAlign.center,
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.onBackgroundSecondary,
                 ),
-              ),
+                const SizedBox(height: 12),
+                TextField(
+                  key: const ValueKey('add-partner-background-field'),
+                  controller: _backgroundNote,
+                  autofocus: true,
+                  maxLength: 300,
+                  minLines: 3,
+                  maxLines: 5,
+                  textInputAction: TextInputAction.newline,
+                  cursorColor: AppColors.ctaStart,
+                  style: AppTypography.bodyLarge.copyWith(color: Colors.white),
+                  // counterText 清掉：0/300 自己吃掉一列高，maxLength 仍然擋得住。
+                  decoration: brandInputDecoration(hintText: '沒有可以留空')
+                      .copyWith(counterText: ''),
+                ),
+                const SizedBox(height: 12),
+                BrandPrimaryButton(
+                  key: const ValueKey('add-partner-background-save'),
+                  label: '完成',
+                  onPressed: () => Navigator.of(sheetContext).pop(),
+                ),
+              ],
             ),
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+}
+
+class _FormRowData {
+  const _FormRowData({
+    required this.key,
+    required this.label,
+    required this.value,
+    required this.onTap,
+    this.muted = false,
+  });
+
+  final Key key;
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  /// true＝值是「選填」這類 placeholder，用弱色。
+  final bool muted;
+}
+
+/// 原生 grouped form 語法：一張低對比 surface，列與列之間只有 hairline。
+class _GroupedRows extends StatelessWidget {
+  const _GroupedRows({required this.rows});
+
+  final List<_FormRowData> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.brandSurface.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0)
+              Divider(
+                height: 1,
+                thickness: 1,
+                indent: 16,
+                endIndent: 16,
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            _FormRow(data: rows[i]),
+          ],
         ],
       ),
     );
   }
+}
 
-  // label 檔 12（DESIGN.md §3）：chips 已降到 12，標籤靠 w700 ＋ 主色拉層級，
-  // 不靠字級——三段全用 15 會把整卡撐超過一頁。
-  Widget _sectionLabel(String text) => Text(
-        text,
-        style: AppTypography.labelMedium.copyWith(
-          color: AppColors.onBackgroundPrimary,
-          fontWeight: FontWeight.w700,
+class _FormRow extends StatelessWidget {
+  const _FormRow({required this.data});
+
+  final _FormRowData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: data.key,
+        borderRadius: BorderRadius.circular(18),
+        onTap: data.onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 52),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Text(
+                  data.label,
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    data.value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: data.muted
+                          ? AppColors.onBackgroundSecondary
+                              .withValues(alpha: 0.7)
+                          : AppColors.onBackgroundSecondary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: AppColors.ctaStart,
+                ),
+              ],
+            ),
+          ),
         ),
-      );
+      ),
+    );
+  }
 }

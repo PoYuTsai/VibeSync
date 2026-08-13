@@ -48,60 +48,12 @@ class PartnerListScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final partners = ref.watch(partnerListProvider);
     if (partners.isEmpty) {
-      return ListView(
-        padding: EdgeInsets.fromLTRB(24, 24, 24, bottomPadding),
-        children: [
-          // Tier 2 批 1：額度小條＋功能入口列，空／非空兩態都掛。
-          // 批 2：起步清單卡插在 QuotaStrip 之下、入口列之上。
-          const HomeQuotaStrip(),
-          const GettingStartedChecklist(),
-          const HomeFeatureEntries(),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '先建立第一張對象卡',
-                  style: AppTypography.titleMedium.copyWith(
-                    color: AppColors.textPrimary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'VibeSync 會記得你和每個對象，幫你看懂互動，陪你練下一步',
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '一個人一張卡，不同日期、IG、LINE 或交友軟體的聊天，都整理在同一張卡裡',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                // 案 3 冷啟動分流：空狀態直接給兩條路——建卡分析（與
-                // shell FAB 同路）或先去練習室熱身。有 partner 後不再顯示。
-                const SizedBox(height: 24),
-                BrandPrimaryButton(
-                  label: '建立對象卡，開始分析',
-                  onPressed: () => context.push('/partner/new'),
-                ),
-                const SizedBox(height: 12),
-                BrandSecondaryButton(
-                  label: '先去練習室熱身',
-                  onPressed: () => context.push('/practice-collection'),
-                ),
-              ],
-            ),
-          ),
-          HomeCoachPresence(pose: coachPose, height: 340),
-        ],
+      return _EmptyHome(
+        bottomPadding: bottomPadding,
+        coachPose: coachPose,
+        // 起步清單還在＝空態獨占「第二頁」（Sydney 偏右、頂端給往上提示）；
+        // 清單收乾＝退回原本單頁排版與置中的 Sydney。
+        paged: GettingStartedChecklist.blockVisible(ref),
       );
     }
 
@@ -178,9 +130,8 @@ class PartnerListScreen extends ConsumerWidget {
               // Codex P1.2 — count real conversation rows, not aggregate.totalRounds
               // (zero-round conversations would otherwise be invisible to the
               // delete dialog and let the user fall straight into the repo throw).
-              final convCount = ref
-                  .watch(conversationsByPartnerProvider(p.id))
-                  .length;
+              final convCount =
+                  ref.watch(conversationsByPartnerProvider(p.id)).length;
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: PartnerListCard(
@@ -372,5 +323,393 @@ class PartnerListScreen extends ConsumerWidget {
         ),
       );
     }
+  }
+}
+
+/// 首頁空態。夥伴稿 2／3 讀起來是兩頁，但兩頁之間靠「下一頁的標題露一截」
+/// 當捲動提示（稿 2 底部就是「先建立第一張對象卡」被折線切），不是硬分頁：
+/// 硬分頁會在第一頁底部留一塊死白，也沒東西告訴使用者下面還有內容。
+///
+/// 「往上查看起步清單與快捷入口」不排進捲動內容，而是捲下去之後才淡入的
+/// 頂部提示——這樣稿 2（沒有提示）與稿 3（有提示）才會同時成立。
+class _EmptyHome extends StatefulWidget {
+  const _EmptyHome({
+    required this.bottomPadding,
+    required this.coachPose,
+    required this.paged,
+  });
+
+  final double bottomPadding;
+  final HomeCoachPose coachPose;
+
+  /// 起步清單還在＝兩頁語意（有往上提示、Sydney 偏右）。
+  final bool paged;
+
+  @override
+  State<_EmptyHome> createState() => _EmptyHomeState();
+}
+
+class _EmptyHomeState extends State<_EmptyHome> {
+  final _controller = ScrollController();
+  bool _scrolled = false;
+
+  /// 捲過這個距離就當使用者已經進到第二頁。
+  static const _hintThreshold = 120.0;
+
+  /// 第二頁「往回看」的距離：捲到底時視窗上緣會落在第一頁底部往上這麼多的
+  /// 位置。取 248＝標題段（[_EmptyHead] 約 132）再往上留 116，讓標題落在頂部
+  /// 提示之下、不被蓋住；那 116 在第一頁是 Spacer 的空白，所以第一頁不受影響。
+  static const _peekHeight = 236.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    final scrolled = _controller.offset > _hintThreshold;
+    if (scrolled != _scrolled) setState(() => _scrolled = scrolled);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onScroll);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// 兩頁版面。夥伴稿 2 的第一屏底部剛好是「標題＋兩行說明」被折線切住，
+  /// 稿 3 則是同一段落到了第二屏頂端——這不是兩份內容，是同一段在兩個捲動
+  /// 位置。所以第一頁把標題段釘在底部，第二頁的高度再扣掉那段
+  /// （[_peekHeight]），捲到底時視窗上緣就正好落在標題上。
+  ///
+  /// 不用魔術數字硬湊間距：換螢幕高度也不會切到字。
+  Widget _pagedBody(double pageHeight) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: pageHeight - 24,
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Tier 2 批 1：額度小條＋功能入口列，空／非空兩態都掛。
+              // 批 2：起步清單卡插在 QuotaStrip 之下、入口列之上。
+              HomeQuotaStrip(),
+              GettingStartedChecklist(),
+              HomeFeatureEntries(),
+              Spacer(),
+              _EmptyHead(),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: pageHeight - _peekHeight,
+          child: _EmptyTail(coachPose: widget.coachPose),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 空態底部不留保留區：這一頁沒有 FAB（空態把它收起來了），Sydney
+        // 要像夥伴稿一樣被導覽列切齊，留 padding 會在她腳下開一條死白。
+        final pageHeight = constraints.maxHeight;
+        return Stack(
+          children: [
+            // SingleChildScrollView 而非 ListView：空態整塊會落在 lazy sliver
+            // 的 cache extent 之外，惰性建構會讓它根本不 build。
+            SingleChildScrollView(
+              controller: _controller,
+              padding: EdgeInsets.fromLTRB(
+                24,
+                24,
+                24,
+                // 兩頁模式讓 Sydney 貼齊導覽列；單頁模式維持原本的底部留白。
+                widget.paged ? 0 : widget.bottomPadding,
+              ),
+              child: widget.paged && pageHeight > 620
+                  ? _pagedBody(pageHeight)
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const HomeQuotaStrip(),
+                        const GettingStartedChecklist(),
+                        const HomeFeatureEntries(),
+                        const SizedBox(height: 20),
+                        _EmptyBlock(
+                          coachPose: widget.coachPose,
+                          // 清單還在＝使用者還沒起步，冷啟動分流要留著；
+                          // 這裡也涵蓋「矮視窗退回單頁」的情況。
+                          showWarmUpLink: widget.paged,
+                        ),
+                      ],
+                    ),
+            ),
+            if (widget.paged)
+              Positioned(
+                top: 8,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity: _scrolled ? 1 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    // 內容是從提示底下捲過去的，補一層由上而下淡出的遮罩，
+                    // 不然標題會跟提示字疊在一起。
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            AppColors.brandInk,
+                            AppColors.brandInk.withValues(alpha: 0.92),
+                            AppColors.brandInk.withValues(alpha: 0),
+                          ],
+                          stops: const [0, 0.55, 1],
+                        ),
+                      ),
+                      child: Padding(
+                        // 夥伴稿 3：提示置頂靠左，跟頁面左邊界對齊，不是置中。
+                        padding: const EdgeInsets.fromLTRB(24, 6, 24, 18),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.arrow_upward_rounded,
+                              size: 15,
+                              color: AppColors.onBackgroundSecondary
+                                  .withValues(alpha: 0.7),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '往上查看起步清單與快捷入口',
+                              style: AppTypography.bodySmall.copyWith(
+                                fontSize: 13,
+                                color: AppColors.onBackgroundSecondary
+                                    .withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// 空態主圖示：對象「卡」＋人＋橘色加號（夥伴稿 3）。Material 沒有單一字形
+/// 同時有卡框、人像與加號，用 account_box_outlined 疊一顆橘 + 合成。
+class _AddPartnerCardIcon extends StatelessWidget {
+  const _AddPartnerCardIcon({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Icon(
+            Icons.account_box_outlined,
+            size: size,
+            color: Colors.white.withValues(alpha: 0.32),
+          ),
+          Positioned(
+            right: -2,
+            bottom: size * 0.12,
+            child: Icon(
+              Icons.add_rounded,
+              size: size * 0.42,
+              color: AppColors.ctaStart,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 第一頁底部釘住的標題段（夥伴稿 2 的折線就切在這段之後）。
+/// 高度＝標題 + 14 + 兩行說明 + 24 下緣，對應 [_EmptyHomeState._peekHeight]。
+class _EmptyHead extends StatelessWidget {
+  const _EmptyHead();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 圖示填掉第一頁卡片區與標題之間那塊空白（Eric 2026-08-13 回報太空）。
+        const Center(child: _AddPartnerCardIcon(size: 62)),
+        const SizedBox(height: 24),
+        Text(
+          '先建立第一張對象卡',
+          textAlign: TextAlign.center,
+          style: AppTypography.headlineMedium.copyWith(
+            color: AppColors.onBackgroundPrimary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'VibeSync 會記得你和每個對象，幫你看懂互動，陪你練下一步。',
+          textAlign: TextAlign.center,
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.onBackgroundSecondary,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+}
+
+/// 第二頁：接在標題段之後的說明、主 CTA，以及「先去練習室熱身」在左、
+/// Sydney 在右的底部帶狀區（夥伴稿 3 量測值換算到 393×852pt）。
+class _EmptyTail extends StatelessWidget {
+  const _EmptyTail({required this.coachPose});
+
+  final HomeCoachPose coachPose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          '一個人一張卡。不同日期、IG、LINE 或交友軟體的聊天，都整理在同一張卡裡。',
+          textAlign: TextAlign.center,
+          style: AppTypography.bodySmall.copyWith(
+            fontSize: 13,
+            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 32),
+        BrandPrimaryButton(
+          label: '建立對象卡，開始分析',
+          icon: Icons.person_add_alt_1_rounded,
+          onPressed: () => context.push('/partner/new'),
+        ),
+        const SizedBox(height: 16),
+        // Sydney 吃掉 CTA 以下的全部剩餘高度（上限 340），避免中間開洞；
+        // 只平移不變形，「先去練習室熱身」疊在她左邊（夥伴稿 3）。
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final figureHeight = constraints.maxHeight.clamp(200.0, 340.0);
+              return Stack(
+                children: [
+                  Positioned.fill(
+                    child: FractionalTranslation(
+                      translation: const Offset(0.19, 0),
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: HomeCoachPresence(
+                          pose: coachPose,
+                          height: figureHeight,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    bottom: figureHeight * 0.42,
+                    child: _warmUpLink(context),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Widget _warmUpLink(BuildContext context) => TextButton(
+      onPressed: () => context.push('/practice-collection'),
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.ctaStart,
+        minimumSize: const Size(44, 44),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '先去練習室熱身',
+            style: AppTypography.titleSmall.copyWith(
+              fontSize: 17,
+              color: AppColors.ctaStart,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const Icon(
+            Icons.chevron_right_rounded,
+            size: 20,
+            color: AppColors.ctaStart,
+          ),
+        ],
+      ),
+    );
+
+/// 單頁模式（起步清單完成後）：維持原本的排版與置中的 Sydney h340。
+class _EmptyBlock extends StatelessWidget {
+  const _EmptyBlock({required this.coachPose, required this.showWarmUpLink});
+
+  final HomeCoachPose coachPose;
+
+  /// 起步清單完成後就不再顯示「先去練習室熱身」（Eric 2026-08-13 拍板）；
+  /// 練習室入口仍在學習分頁。
+  final bool showWarmUpLink;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _EmptyHead(),
+        Text(
+          '一個人一張卡。不同日期、IG、LINE 或交友軟體的聊天，都整理在同一張卡裡。',
+          textAlign: TextAlign.center,
+          style: AppTypography.bodySmall.copyWith(
+            fontSize: 13,
+            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 32),
+        BrandPrimaryButton(
+          label: '建立對象卡，開始分析',
+          icon: Icons.person_add_alt_1_rounded,
+          onPressed: () => context.push('/partner/new'),
+        ),
+        if (showWarmUpLink) ...[
+          const SizedBox(height: 12),
+          Align(alignment: Alignment.centerLeft, child: _warmUpLink(context)),
+        ],
+        // Sydney 維持原本的置中 h340。
+        HomeCoachPresence(pose: coachPose, height: 340),
+      ],
+    );
   }
 }

@@ -23,12 +23,12 @@ import 'package:vibesync/features/user_profile/data/providers/user_profile_provi
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 Partner _p(String id, String name) => Partner(
-  id: id,
-  name: name,
-  createdAt: DateTime(2026, 4, 20),
-  updatedAt: DateTime(2026, 4, 20),
-  ownerUserId: 'u1',
-);
+      id: id,
+      name: name,
+      createdAt: DateTime(2026, 4, 20),
+      updatedAt: DateTime(2026, 4, 20),
+      ownerUserId: 'u1',
+    );
 
 PartnerAggregateView _agg({
   int rounds = 0,
@@ -36,25 +36,26 @@ PartnerAggregateView _agg({
   List<String> interests = const [],
   List<String> traits = const [],
   DateTime? lastInteraction,
-}) => PartnerAggregateView(
-  unionInterests: interests,
-  unionTraits: traits,
-  unionNotes: null,
-  latestHeat: heat,
-  totalRounds: rounds,
-  totalMessages: 0,
-  lastInteraction: lastInteraction,
-);
+}) =>
+    PartnerAggregateView(
+      unionInterests: interests,
+      unionTraits: traits,
+      unionNotes: null,
+      latestHeat: heat,
+      totalRounds: rounds,
+      totalMessages: 0,
+      lastInteraction: lastInteraction,
+    );
 
 Conversation _conv(String id, String partnerId) => Conversation(
-  id: id,
-  name: 'c-$id',
-  ownerUserId: 'u1',
-  createdAt: DateTime(2026, 4, 20),
-  updatedAt: DateTime(2026, 4, 20),
-  messages: const [],
-  partnerId: partnerId,
-);
+      id: id,
+      name: 'c-$id',
+      ownerUserId: 'u1',
+      createdAt: DateTime(2026, 4, 20),
+      updatedAt: DateTime(2026, 4, 20),
+      messages: const [],
+      partnerId: partnerId,
+    );
 
 /// Seeded subscription notifier（my_report_screen_test idiom）：首頁掛了
 /// HomeQuotaStrip 後，測試一律用 seeded 訂閱態＋no-op 刷新保持封閉。
@@ -81,15 +82,18 @@ class _FakeOptInStore extends FollowUpOptInStore {
 /// 保持封閉（不碰 Supabase／Hive）。
 List<Override> _subscriptionOverrides({
   SubscriptionState seed = const SubscriptionState(),
-}) => [
-  subscriptionProvider.overrideWith((_) => _SeededSubscriptionNotifier(seed)),
-  subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
-  userProfileControllerProvider.overrideWith(_NullUserProfileController.new),
-  analysisHistoryEventsProvider.overrideWithValue(
-    const <AnalysisHistoryEvent>[],
-  ),
-  followUpOptInStoreProvider.overrideWithValue(_FakeOptInStore()),
-];
+}) =>
+    [
+      subscriptionProvider
+          .overrideWith((_) => _SeededSubscriptionNotifier(seed)),
+      subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+      userProfileControllerProvider
+          .overrideWith(_NullUserProfileController.new),
+      analysisHistoryEventsProvider.overrideWithValue(
+        const <AnalysisHistoryEvent>[],
+      ),
+      followUpOptInStoreProvider.overrideWithValue(_FakeOptInStore()),
+    ];
 
 List<Override> _partnerOverrides(int count) {
   final partners = [
@@ -108,43 +112,44 @@ List<Override> _partnerOverrides(int count) {
 }
 
 Widget _screen({required List<Override> overrides}) => ProviderScope(
-  overrides: [..._subscriptionOverrides(), ...overrides],
-  child: const MaterialApp(
-    home: MediaQuery(
-      data: MediaQueryData(disableAnimations: true),
-      child: Scaffold(body: PartnerListScreen()),
-    ),
-  ),
-);
+      overrides: [..._subscriptionOverrides(), ...overrides],
+      child: const MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(disableAnimations: true),
+          child: Scaffold(body: PartnerListScreen()),
+        ),
+      ),
+    );
 
 /// GoRouter harness for the empty-state CTAs (案 3) — the buttons call
 /// context.push, so navigation assertions need real routes to land on.
 Widget _routedScreen({required List<Override> overrides}) => ProviderScope(
-  overrides: [..._subscriptionOverrides(), ...overrides],
-  child: MaterialApp.router(
-    routerConfig: GoRouter(
-      initialLocation: '/',
-      routes: [
-        GoRoute(
-          path: '/',
-          builder: (_, __) => const MediaQuery(
-            data: MediaQueryData(disableAnimations: true),
-            child: Scaffold(body: PartnerListScreen()),
-          ),
+      overrides: [..._subscriptionOverrides(), ...overrides],
+      child: MaterialApp.router(
+        routerConfig: GoRouter(
+          initialLocation: '/',
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, __) => const MediaQuery(
+                data: MediaQueryData(disableAnimations: true),
+                child: Scaffold(body: PartnerListScreen()),
+              ),
+            ),
+            GoRoute(
+              path: '/partner/new',
+              builder: (_, __) =>
+                  const Scaffold(body: Text('partner-new-screen')),
+            ),
+            GoRoute(
+              path: '/practice-collection',
+              builder: (_, __) =>
+                  const Scaffold(body: Text('practice-collection-screen')),
+            ),
+          ],
         ),
-        GoRoute(
-          path: '/partner/new',
-          builder: (_, __) => const Scaffold(body: Text('partner-new-screen')),
-        ),
-        GoRoute(
-          path: '/practice-collection',
-          builder: (_, __) =>
-              const Scaffold(body: Text('practice-collection-screen')),
-        ),
-      ],
-    ),
-  ),
-);
+      ),
+    );
 
 void main() {
   testWidgets('empty state renders without partner cards', (t) async {
@@ -343,6 +348,9 @@ void main() {
       );
       await t.pumpAndSettle();
 
+      // 空態加了向上提示與插圖後 CTA 會落在首屏之下：先捲進視野再點。
+      await t.ensureVisible(find.text('建立對象卡，開始分析'));
+      await t.pumpAndSettle();
       await t.tap(find.text('建立對象卡，開始分析'));
       await t.pumpAndSettle();
 
@@ -359,6 +367,8 @@ void main() {
       );
       await t.pumpAndSettle();
 
+      await t.ensureVisible(find.text('先去練習室熱身'));
+      await t.pumpAndSettle();
       await t.tap(find.text('先去練習室熱身'));
       await t.pumpAndSettle();
 

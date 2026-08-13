@@ -109,6 +109,9 @@ Future<void> pumpAndCapture(
   Size size = kPhone,
   Duration settle = const Duration(milliseconds: 1500),
   Duration rasterDecodeWait = Duration.zero,
+
+  /// 拍照前的最後一手（例如把畫面捲到第二頁）。回傳後才截圖。
+  Future<void> Function(WidgetTester tester)? beforeCapture,
 }) async {
   await tester.binding.setSurfaceSize(size);
   final rootKey = GlobalKey();
@@ -125,6 +128,10 @@ Future<void> pumpAndCapture(
   await tester.pump(settle); // advance any repeating animation to a still frame
   if (rasterDecodeWait > Duration.zero) {
     await tester.runAsync(() => Future<void>.delayed(rasterDecodeWait));
+    await tester.pump();
+  }
+  if (beforeCapture != null) {
+    await beforeCapture(tester);
     await tester.pump();
   }
   final boundary = tester.renderObject<RenderRepaintBoundary>(

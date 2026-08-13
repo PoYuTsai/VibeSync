@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_room_entry_card.dart';
-import 'package:vibesync/shared/widgets/brand/liquid_motion_frame.dart';
 
 void main() {
   testWidgets(
@@ -31,17 +30,8 @@ void main() {
         'assets/images/practice_girls/practice_girl_038.jpg');
     expect(find.byKey(const ValueKey('practice-room-entry-bg-blur')),
         findsOneWidget);
-    expect(find.byKey(const ValueKey('practice-room-entry-glass-panel')),
+    expect(find.byKey(const ValueKey('practice-room-entry-title')),
         findsOneWidget);
-    final frame = tester.widget<LiquidMotionFrame>(
-      find.byType(LiquidMotionFrame),
-    );
-    expect(frame.style, LiquidMotionStyle.beam);
-    expect(frame.borderRadius, 24);
-    expect(frame.borderWidth, 1.6);
-    expect(frame.glowRadius, 10);
-    expect(frame.strength, 0.5);
-    expect(frame.duration, const Duration(milliseconds: 6800));
     expect(find.text('翻牌解鎖新女孩'), findsOneWidget);
     expect(find.text('AI 實戰練習室'), findsOneWidget);
     expect(find.text('NEW'), findsOneWidget);
@@ -76,7 +66,7 @@ void main() {
       ProviderScope(
         child: MaterialApp.router(
           routerConfig: router,
-          // 入口卡包了 LiquidMotionFrame（無限 ticker）；關動畫讓
+          // 入口卡已無 LiquidMotionFrame；關動畫讓
           // pumpAndSettle 可收斂。
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(context).copyWith(disableAnimations: true),
@@ -88,7 +78,7 @@ void main() {
     await tester.pump();
 
     await tester.tap(find.byKey(
-      const ValueKey('practice-room-entry-glass-panel'),
+      const ValueKey('practice-room-entry-title'),
     ));
     await tester.pumpAndSettle();
 
