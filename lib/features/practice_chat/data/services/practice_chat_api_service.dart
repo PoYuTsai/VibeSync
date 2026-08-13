@@ -375,9 +375,9 @@ class PracticeModeLockedException implements Exception {
   String toString() => 'PracticeModeLockedException';
 }
 
-/// 這位對象在 server 端沒有翻牌紀錄，Game 不解鎖（伺服器回 403
-/// `practice_game_sr_only`）。client 只看 rarity＝SR 判定，跨帳號／刪帳號重建後
-/// 本機圖鑑會比 server 新，唯一真相在 server：收到就把這位標回未解鎖。
+/// server 否決本場對象的 Game（403 `practice_game_sr_only`，2026-08-13 起唯一
+/// 成因＝這位不是 SR）。client 用內建 catalog 的 rarity 判定，舊版 App 的
+/// catalog 落後時兩邊會不一致，唯一真相在 server：收到就把這位標回未解鎖。
 class PracticeGameNotUnlockedException implements Exception {
   PracticeGameNotUnlockedException();
   @override
@@ -1238,8 +1238,8 @@ class PracticeChatApiService {
 
   /// 把 HTTP 狀態映射成例外；200 回傳 data map。
   Map<String, dynamic> _guardStatus(PracticeInvokeResponse response) {
-    // Game 未解鎖＝「這位還沒抽到」，不是生成失敗：落 generic 403 會顯示
-    // 「生成失敗了」，使用者無從得知要先去圖鑑抽到她。
+    // Game 被 server 否決不是生成失敗：落 generic 403 會顯示「生成失敗了」，
+    // 使用者只會一直重試同一個必敗請求。
     if (response.status == 403 &&
         response.data is Map &&
         (response.data as Map)['error'] == 'practice_game_sr_only') {

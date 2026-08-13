@@ -1216,7 +1216,7 @@ void main() {
       expect(s.canSend, true); // 不鎖輸入
     });
 
-    test('Game 未解鎖（403 practice_game_sr_only）：標回未解鎖、退回標準模式、不說生成失敗',
+    test('server 否決 Game（403 practice_game_sr_only）：標回未解鎖、退回標準模式、不說生成失敗',
         () async {
       api.drawHandler = ({currentProfileId}) async =>
           drawResult(profileId: 'practice_girl_004');
@@ -1232,10 +1232,7 @@ void main() {
 
       expect(s.canUseGameMode, false); // 分頁翻回「SR解鎖」，不再送必敗的請求
       expect(s.learningMode, PracticeLearningMode.standard);
-      expect(
-        s.errorMessage,
-        '這位還沒抽到，Game 只能跟抽到的 SR 角色玩。已切回標準模式。',
-      );
+      expect(s.errorMessage, 'Game 只能跟 SR 角色玩，已切回標準模式。');
       expect(s.messages, isEmpty);
       expect(s.restoreText, '嗨');
       expect(s.sessionComplete, false);

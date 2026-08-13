@@ -814,32 +814,15 @@ function explicitPracticeModeFromLedger(
     : null;
 }
 
+/// Game 只看角色稀有度＝SR（2026-08-13 拍板）。原本還要求 server 端有該位的
+/// 翻牌紀錄，但圖鑑解鎖是裝置本機記錄、翻牌事件跟著帳號走，換帳號／刪帳號重建
+/// 後兩邊必然對不上，使用者會看到一個點得下去卻永遠 403 的 Game。
+/// 「要抽到才遇得到 SR」本來就由翻牌鏈路把關，這裡不再重複檢查。
 function gameModeAllowedForProfile(
   request: ReturnType<typeof validateRequest>,
 ): boolean {
   return request.practiceMode !== "game" ||
     request.profile.girl.rarity === "sr";
-}
-
-async function gameModeUnlockedForUser(opts: {
-  supabase: PracticeSupabaseClient;
-  userId: string;
-  profileId: string;
-}): Promise<boolean> {
-  const { data, error } = await opts.supabase
-    .from("practice_profile_draw_events")
-    .select("profile_id")
-    .eq("user_id", opts.userId)
-    .eq("profile_id", opts.profileId);
-  if (error) {
-    logWarn("practice_chat_game_unlock_check_failed", {
-      user: summarizeUser(opts.userId),
-      profileId: opts.profileId,
-      error: error.message,
-    });
-    return false;
-  }
-  return Array.isArray(data) && data.length > 0;
 }
 
 function temperatureFromLedger(value: unknown): number | null {
@@ -2061,22 +2044,6 @@ export function createPracticeChatHandler(
         return jsonResponse({ error: "practice_mode_locked" }, 409);
       }
 
-      if (
-        request.practiceMode === "game" &&
-        !(await gameModeUnlockedForUser({
-          supabase,
-          userId: user.id,
-          profileId: request.profile.girl.profileId,
-        }))
-      ) {
-        logWarn("practice_chat_game_rejected_not_unlocked", {
-          user: summarizeUser(user.id),
-          profileId: request.profile.girl.profileId,
-          mode: "hint",
-        });
-        return jsonResponse({ error: "practice_game_sr_only" }, 403);
-      }
-
       const requestIsPrefetch = request.prefetch === true;
       const prefetchEnabled = isHintPrefetchEnabled(
         deps.getEnv("PRACTICE_HINT_PREFETCH_ENABLED"),
@@ -3270,23 +3237,6 @@ export function createPracticeChatHandler(
         source: "global_preflight",
       });
       return jsonResponse({ error: "practice_debrief_in_flight" }, 425);
-    }
-
-    if (
-      request.practiceMode === "game" &&
-      !retryingClaimedDebrief &&
-      !(await gameModeUnlockedForUser({
-        supabase,
-        userId: user.id,
-        profileId: request.profile.girl.profileId,
-      }))
-    ) {
-      logWarn("practice_chat_game_rejected_not_unlocked", {
-        user: summarizeUser(user.id),
-        profileId: request.profile.girl.profileId,
-        mode: request.mode,
-      });
-      return jsonResponse({ error: "practice_game_sr_only" }, 403);
     }
 
     if (request.mode === "debrief") {

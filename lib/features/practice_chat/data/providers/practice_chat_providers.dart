@@ -1953,8 +1953,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         restoreText: trimmed,
       );
     } on PracticeGameNotUnlockedException {
-      // server 說這位沒有翻牌紀錄：把 Game 標回未解鎖（分頁會變「SR解鎖」、
-      // 點了走教學卡去抽卡）並退回標準模式，讓這則訊息可以直接重送。
+      // server 否決本場對象的 Game：把 Game 標回未解鎖（分頁變「SR解鎖」）
+      // 並退回標準模式，讓這則訊息可以直接重送。舊版 App 的 catalog 落後於
+      // server（rarity 判定不同）時唯一的落地點，不得混進 generic 生成失敗。
       if (!ownsPriorSendState()) return;
       restoreAppliedHintTurns();
       await restoreDurableAppliedHintsAfterFailedSend();
@@ -1962,7 +1963,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         isSending: false,
         gameServerLocked: true,
         learningMode: PracticeLearningMode.standard,
-        errorMessage: '這位還沒抽到，Game 只能跟抽到的 SR 角色玩。已切回標準模式。',
+        errorMessage: 'Game 只能跟 SR 角色玩，已切回標準模式。',
         restoreText: trimmed,
       );
     } on PracticeApiException catch (e) {

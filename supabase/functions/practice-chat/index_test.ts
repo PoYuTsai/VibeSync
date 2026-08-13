@@ -1067,11 +1067,18 @@ Deno.test("game chat rejects non-SR profile before provider and RPC", async () =
   );
 });
 
-Deno.test("game chat rejects forged SR profile that was never drawn by the user", async () => {
+// 2026-08-13 拍板：Game 只看 rarity=SR，不再要求 server 端有翻牌紀錄。
+// 圖鑑解鎖是裝置本機記錄、翻牌事件綁帳號，換帳號後必然對不上，會開出一個
+// 點得下去卻永遠 403 的 Game。
+Deno.test("game chat allows SR profile with no draw event and never queries them", async () => {
   const { response, json, state } = await run(
     {
       ledger: null,
       drawEvents: [],
+      deepSeekReplies: [
+        "AI reply",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
     },
     chatBody({
       practiceMode: "game",
@@ -1079,20 +1086,13 @@ Deno.test("game chat rejects forged SR profile that was never drawn by the user"
     }),
   );
 
-  assertEquals(response.status, 403);
-  assertEquals(json, { error: "practice_game_sr_only" });
+  assertEquals(response.status, 200);
+  assertEquals(json.reply, "AI reply");
   assertEquals(
     state.selects.some((select) =>
       select.table === "practice_profile_draw_events"
     ),
-    true,
-  );
-  assertEquals(state.deepSeekCalls.length, 0);
-  assertEquals(
-    state.rpcCalls.filter((call) =>
-      call.fn !== "prepare_practice_subscription_usage"
-    ).length,
-    0,
+    false,
   );
 });
 

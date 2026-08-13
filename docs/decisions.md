@@ -969,3 +969,19 @@
 3. 文案仍禁用 1.3 明確剔除清單語言（物化、面試/職缺比喻、收割/攻克、壓迫語言），並保留低壓邊界句（「她說不，就是不」）。
 4. 對話內教練泡泡為 **UI-only**：不進 `state.messages`、不進 API payload、不入庫，避免污染 AI context 與 session 還原。
 5. 教學卡對 Free 帳號附一則訂閱鈎子（每日翻牌／續同一位為真實付費差異），不寫死各檔翻牌數字、不承諾 SR 機率，避免額度調整後文案漂移。
+
+---
+
+## ADR #40 — [2026-08-13] Game 解鎖條件放寬成「任何 SR 角色」（移除 server 端翻牌紀錄檢查）
+
+**狀態**: 🟢 Active
+
+**背景**: 原本 Game 要過兩道 server gate：`gameModeAllowedForProfile`（rarity=SR）＋ `gameModeUnlockedForUser`（`practice_profile_draw_events` 有該 user × profile 的翻牌紀錄）。Client 端 `canUseGameMode` 只看 rarity=SR，不問 server。兩邊不同源：圖鑑解鎖是**裝置本機** Hive 記錄、翻牌事件**綁帳號**，換帳號／刪帳號重建後本機必然比 server 新，UI 會開出一個點得下去卻永遠 403 的 Game，且該 403 沒對映、顯示「生成失敗了，再試一次」。2026-08-13 Eric 真機實證（Edge log `practice_chat_game_rejected_not_unlocked` × 4，`ai_logs` 無對應紀錄）。
+
+**決定**（Eric 拍板）:
+
+1. Game 解鎖條件＝**角色 rarity 是 SR**，就這樣。移除 `gameModeUnlockedForUser` 與 chat／hint／debrief 三處呼叫。
+2. 「要抽到才遇得到 SR」由翻牌鏈路（`practice_profile_draw_events` 去重＋SR 翻牌券）本來就把關，server 不再重複檢查一次。SR 翻牌券的價值不變。
+3. 保留 client 端對 403 `practice_game_sr_only` 的落地：標回未解鎖＋退回標準模式＋明確文案。放寬後唯一成因是舊版 App 的內建 catalog rarity 落後於 server，不得再混進 generic「生成失敗」。
+
+**已知未解**: 圖鑑解鎖記錄仍是裝置本機且 `practiceCollectionProvider` 是 process 存活期常駐快取——刪帳號的 `StorageService.clearAll()` 清得掉磁碟、清不掉這份 RAM 快取，所以刪帳號後同一次啟動內圖鑑仍看得到舊卡。此 ADR 之後 Game 不再因此壞掉，但「圖鑑顯示不準」未修。
