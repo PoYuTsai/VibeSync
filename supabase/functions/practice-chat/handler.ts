@@ -34,6 +34,7 @@ import {
   type DrawSupabaseClient,
   handleDrawProfile,
   handleDrawStatus,
+  handlePracticeCollection,
 } from "./draw_handler.ts";
 import {
   buildChatMessages,
@@ -1818,6 +1819,15 @@ export function createPracticeChatHandler(
         now: deps.now?.() ?? new Date(),
       });
       return jsonResponse(statusResult.body, statusResult.status);
+    }
+
+    if (isPlainObject(rawBody) && rawBody.mode === "practice_collection") {
+      // 角色圖鑑唯讀清單：server 是「翻到過誰」的唯一真相源。
+      const collectionResult = await handlePracticeCollection({
+        supabase: supabase as unknown as DrawSupabaseClient,
+        userId: user.id,
+      });
+      return jsonResponse(collectionResult.body, collectionResult.status);
     }
 
     if (isPlainObject(rawBody) && rawBody.mode === "draw_profile") {

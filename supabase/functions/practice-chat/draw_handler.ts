@@ -390,6 +390,36 @@ export async function handleDrawStatus(args: {
   };
 }
 
+/** 唯讀角色圖鑑：這個帳號翻到過誰。`practice_profile_draw_events` 是抽卡鏈路
+ * 的權威紀錄，圖鑑直接讀它——client 不再自己存一份（裝置本機那份跨帳號、
+ * 刪帳號清不掉 RAM 快取，必然跟 server 對不上）。無訂閱列不擋：圖鑑是唯讀
+ * 收藏頁，沒有計費語意，空清單就是空圖鑑。失敗回 500 讓 client 顯示重試。 */
+export async function handlePracticeCollection(args: {
+  supabase: DrawSupabaseClient;
+  userId: string;
+}): Promise<DrawHandlerResult> {
+  const { supabase, userId } = args;
+  const { data, error } = await supabase
+    .from("practice_profile_draw_events")
+    .select("profile_id")
+    .eq("user_id", userId);
+  if (error) {
+    logWarn("practice_collection_fetch_error", {
+      user: summarizeUser(userId),
+      error: error.message,
+    });
+    return { body: { error: "practice_collection_failed" }, status: 500 };
+  }
+  const profileIds = [
+    ...new Set(
+      (data ?? [])
+        .map((row) => row.profile_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ].sort();
+  return { status: 200, body: { profileIds } };
+}
+
 /** SR 限定翻牌券抽（訂閱一次性權益）。與每日額度完全隔離：不佔免費額度、
  * 不扣一般 quota；券的存在與消耗由 claim_practice_sr_ticket_draw 交易內原子
  * 判定（無券/已用 → 409）。選牌鎖 SR 層；SR 全收藏 → 降級回當日視窗排除

@@ -139,7 +139,7 @@ class _FloatingAnalysisActionButtonState
       child: ExcludeSemantics(
         child: SizedBox.square(
           key: FloatingAnalysisActionButton.orbKey,
-          dimension: 72,
+          dimension: 86,
           child: AnimatedBuilder(
             animation: _controller,
             builder: (context, child) {
@@ -168,8 +168,8 @@ class _FloatingAnalysisActionButtonState
                         child: Opacity(
                           opacity: (1 - scan) * (enabled ? 0.48 : 0.18),
                           child: Container(
-                            width: 68,
-                            height: 68,
+                            width: 80,
+                            height: 80,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
@@ -185,8 +185,8 @@ class _FloatingAnalysisActionButtonState
                         child: Transform.rotate(
                           angle: -0.52 * (1 - entrance),
                           child: Container(
-                            width: 60,
-                            height: 60,
+                            width: 72,
+                            height: 72,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               gradient: SweepGradient(
@@ -222,9 +222,9 @@ class _FloatingAnalysisActionButtonState
               key: FloatingAnalysisActionButton.buttonKey,
               onPressed: widget.onPressed,
               style: FilledButton.styleFrom(
-                fixedSize: const Size.square(52),
-                minimumSize: const Size.square(52),
-                maximumSize: const Size.square(52),
+                fixedSize: const Size.square(62),
+                minimumSize: const Size.square(62),
+                maximumSize: const Size.square(62),
                 padding: EdgeInsets.zero,
                 backgroundColor: AppColors.brandInk,
                 foregroundColor: Colors.white,
@@ -250,22 +250,25 @@ class _FloatingAnalysisActionButtonState
                 children: [
                   Icon(
                     Icons.auto_awesome_rounded,
-                    size: 18,
+                    size: 21,
                     color: enabled
                         ? AppColors.bokehYellow
                         : Colors.white.withValues(alpha: 0.42),
                   ),
-                  const SizedBox(height: 1),
+                  const SizedBox(height: 2),
+                  // 兩個字：圓形按鈕在文字那一行的可用寬度只有直徑的七成多，
+                  // 「開始分析」四字要不被切得把按鈕做到 ~76pt，會壓掉聊天內容。
+                  // 完整語意由 Semantics label「使用目前對話開始分析」承擔。
                   Text(
-                    '開始分析',
+                    '分析',
                     maxLines: 1,
                     style: AppTypography.caption.copyWith(
                       color: enabled
                           ? Colors.white
                           : Colors.white.withValues(alpha: 0.50),
-                      fontSize: 12,
+                      fontSize: 13,
                       height: 1.05,
-                      letterSpacing: -0.5,
+                      letterSpacing: -0.2,
                       fontWeight: FontWeight.w800,
                     ),
                   ),

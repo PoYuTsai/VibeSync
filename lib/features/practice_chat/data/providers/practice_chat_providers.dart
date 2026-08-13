@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/supabase_service.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
 import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../analysis_history/domain/repositories/analysis_history_repository.dart';
@@ -18,7 +19,6 @@ import '../../domain/entities/practice_learning_mode.dart';
 import '../../domain/entities/practice_message.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
-import '../repositories/practice_collection_store.dart';
 import '../repositories/practice_draw_draft_store.dart';
 import '../repositories/practice_pending_draw_store.dart';
 import '../repositories/practice_pending_debrief_store.dart';
@@ -550,8 +550,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           sessionId: sessionId,
           createdAt: createdAt ?? now,
         )) {
-    // 圖鑑種子：進場還原到的當前對象（session 或 draft）視同已解鎖。
-    _notifyProfileUnlocked(state.girl?.profileId);
     _restoreAppliedHintTurnsForCurrentSession();
   }
 
@@ -741,9 +739,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     }
   }
 
-  /// 圖鑑解鎖記錄：純附加 side-channel。用 microtask 延後（provider 建構期
-  /// 不得同步改其他 provider 的 state），callback 例外一律吞掉——圖鑑記錄
-  /// 失敗絕不影響練習主流程。
+  /// 圖鑑樂觀 +1：**只有真的翻到牌才呼叫**。還原舊場／從圖鑑點進來都不算
+  /// 解鎖——那正是本機圖鑑會混進沒抽過的人的來源，真相在 server 的翻牌事件。
+  /// 用 microtask 延後（provider 建構期不得同步改其他 provider 的 state），
+  /// callback 例外一律吞掉——圖鑑記錄失敗絕不影響練習主流程。
   void _notifyProfileUnlocked(String? profileId) {
     final callback = _onProfileUnlocked;
     if (callback == null || profileId == null || profileId.isEmpty) return;
@@ -1333,7 +1332,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _clearPendingHintRequestId(); // 換場只清 RAM；舊場 durable id 留供 replay
     state = _stateFromSession(session);
     _restoreAppliedHintTurnsForCurrentSession();
-    _notifyProfileUnlocked(state.girl?.profileId); // 圖鑑種子：還原場的對象
   }
 
   /// 圖鑑點已抽卡進對話：有未完成場次續玩、沒有就以該角色免費開新局。
@@ -1392,7 +1390,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       drawExtraCost: prior.drawExtraCost,
       drawNextResetAt: prior.drawNextResetAt,
     );
-    _notifyProfileUnlocked(girl.profileId); // 圖鑑：冪等，無害
   }
 
   /// 每日翻牌：呼叫 server 抽一位新對象並原子扣費。換一位（已 revealed 再抽）會帶上
@@ -2791,34 +2788,58 @@ final practicePendingDrawStoreProvider =
   return HivePracticePendingDrawStore(() => StorageService.settingsBox);
 });
 
-/// 角色圖鑑解鎖記錄本地存取（JSON list 存進加密 settings box）。
-final practiceCollectionStoreProvider =
-    Provider<PracticeCollectionStore>((ref) {
-  return HivePracticeCollectionStore(StorageService.settingsBox);
+/// 圖鑑歸屬帳號：登入者換人／登出時整份重抓（比照 conversation／chat_quiz）。
+final practiceCollectionOwnerProvider = StreamProvider<String?>((ref) async* {
+  yield SupabaseService.currentUser?.id;
+  yield* SupabaseService.authStateChanges
+      .map((authState) => authState.session?.user.id);
 });
 
-/// 已解鎖 profileId 集合（角色圖鑑）。app 存活期間常駐；翻牌成功／還原
-/// 舊場即時 +1，收藏頁與 learning 入口 chip 都 watch 它。
-class PracticeCollectionNotifier extends StateNotifier<Set<String>> {
-  PracticeCollectionNotifier(this._store) : super(_store.load());
+/// 已解鎖 profileId 集合（角色圖鑑）。**唯一真相源是 server 的翻牌事件**：
+/// client 不留任何本機副本。原本存在裝置本機（append-only、跨帳號、還被
+/// 「還原舊場」偷偷 seed），刪帳號清得掉磁碟卻清不掉這份常駐快取，帳號與
+/// 圖鑑必然對不上（2026-08-13 ADR #40 的已知未解，本次收掉）。
+class PracticeCollectionNotifier extends AsyncNotifier<Set<String>> {
+  @override
+  Future<Set<String>> build() async {
+    final owner = await ref.watch(practiceCollectionOwnerProvider.future);
+    // 未登入不抓、也不沿用上一個帳號的集合。
+    if (owner == null || owner.trim().isEmpty) return const <String>{};
+    return ref.read(practiceChatApiServiceProvider).fetchPracticeCollection();
+  }
 
-  final PracticeCollectionStore _store;
+  /// 翻牌成功即時 +1（樂觀）。尚未載到集合時不硬造一份只有一張卡的圖鑑，
+  /// 交給下次 [refresh]／重建向 server 對帳。
+  void add(String profileId) {
+    if (profileId.isEmpty) return;
+    final current = state.valueOrNull;
+    if (current == null || current.contains(profileId)) return;
+    state = AsyncData({...current, profileId});
+  }
 
-  Future<void> add(String profileId) async {
-    if (profileId.isEmpty || state.contains(profileId)) return;
-    state = {...state, profileId};
-    await _store.add(profileId);
+  Future<void> refresh() async {
+    state = await AsyncValue.guard(() async {
+      final owner = await ref.read(practiceCollectionOwnerProvider.future);
+      if (owner == null || owner.trim().isEmpty) return const <String>{};
+      return ref.read(practiceChatApiServiceProvider).fetchPracticeCollection();
+    });
   }
 }
 
 final practiceCollectionProvider =
-    StateNotifierProvider<PracticeCollectionNotifier, Set<String>>((ref) {
-  return PracticeCollectionNotifier(ref.read(practiceCollectionStoreProvider));
+    AsyncNotifierProvider<PracticeCollectionNotifier, Set<String>>(
+  PracticeCollectionNotifier.new,
+);
+
+/// 目前已知的解鎖集合；載入中／失敗時是空集合。畫格子用它，
+/// 「載入中還是連不上」由畫面直接看 [practiceCollectionProvider] 的 AsyncValue。
+final practiceUnlockedProfileIdsProvider = Provider<Set<String>>((ref) {
+  return ref.watch(practiceCollectionProvider).valueOrNull ?? const <String>{};
 });
 
 /// 已解鎖數（只數 catalog 內成員，避免髒資料把 N 撐超過 catalog 長度）。
 final unlockedPracticeGirlCountProvider = Provider<int>((ref) {
-  final unlocked = ref.watch(practiceCollectionProvider);
+  final unlocked = ref.watch(practiceUnlockedProfileIdsProvider);
   return practiceGirlProfiles
       .where((p) => unlocked.contains(p.profileId))
       .length;

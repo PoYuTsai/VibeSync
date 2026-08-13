@@ -13,6 +13,7 @@ import {
   type DrawSupabaseClient,
   handleDrawProfile,
   handleDrawStatus,
+  handlePracticeCollection,
 } from "./draw_handler.ts";
 import type { PracticeDrawRequest } from "./validate.ts";
 
@@ -783,4 +784,58 @@ Deno.test("draw_status：RPC 失敗或回形狀不對 → 一律 500", async () 
   });
   assertEquals(malformed.result.status, 500);
   assertEquals(malformed.body.error, "draw_status_failed");
+});
+
+// ── practice_collection（角色圖鑑唯讀清單：server 是「翻到過誰」唯一真相源）──
+
+async function runCollection(opts: MockOpts) {
+  const { client, rpcCalls, prepareCalls } = mockClient(opts);
+  const result = await handlePracticeCollection({
+    supabase: client,
+    userId: "u-1",
+  });
+  // deno-lint-ignore no-explicit-any
+  return { result, body: result.body as any, rpcCalls, prepareCalls };
+}
+
+Deno.test("practice_collection：回本帳號翻到過的 profileId（去重＋排序），唯讀不碰 RPC", async () => {
+  const { result, body, rpcCalls, prepareCalls } = await runCollection({
+    sub: sub("free"),
+    drawn: ["practice_girl_009", "practice_girl_004", "practice_girl_009"],
+    rpc: [],
+  });
+  assertEquals(result.status, 200);
+  assertEquals(body.profileIds, ["practice_girl_004", "practice_girl_009"]);
+  assertEquals(rpcCalls.length, 0);
+  assertEquals(prepareCalls.length, 0);
+});
+
+Deno.test("practice_collection：沒抽過 → 空清單 200（不是錯誤）", async () => {
+  const { result, body } = await runCollection({
+    sub: sub("free"),
+    drawn: [],
+    rpc: [],
+  });
+  assertEquals(result.status, 200);
+  assertEquals(body.profileIds, []);
+});
+
+Deno.test("practice_collection：無訂閱列不擋（唯讀收藏頁，無計費語意）", async () => {
+  const { result, body } = await runCollection({
+    sub: null,
+    drawn: ["practice_girl_004"],
+    rpc: [],
+  });
+  assertEquals(result.status, 200);
+  assertEquals(body.profileIds, ["practice_girl_004"]);
+});
+
+Deno.test("practice_collection：讀取失敗 → 500，絕不回空清單假裝圖鑑是空的", async () => {
+  const { result, body } = await runCollection({
+    sub: sub("free"),
+    drawnError: "boom",
+    rpc: [],
+  });
+  assertEquals(result.status, 500);
+  assertEquals(body.error, "practice_collection_failed");
 });

@@ -2,7 +2,7 @@
 //
 // 稀有度每卡獨立（鏡像 server 真相源）；抽中機率由 server 加權（SR 10%／R 30%／
 // N 60%），本頁只負責呈現（邊框／badge／星等），不影響扣費。解鎖集合來自
-// practiceCollectionProvider（settings box 持久化），翻牌成功／還原舊場即時 +1。
+// practiceCollectionProvider（server 的翻牌事件為唯一真相源），翻牌成功即時 +1。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -147,7 +147,7 @@ class _PracticeCollectionScreenState
   /// 目前 filter 下 grid 實際顯示的清單（build 與捲動估算共用）。
   /// 已解鎖置頂、鎖卡沉底，兩組內都維持 catalog 原序。
   List<PracticeGirlProfile> _visibleProfiles() {
-    final unlocked = ref.read(practiceCollectionProvider);
+    final unlocked = ref.read(practiceUnlockedProfileIdsProvider);
     final filtered = _filter == null
         ? practiceGirlProfiles
         : practiceGirlProfiles.where((p) => p.rarity == _filter);
@@ -455,7 +455,7 @@ class _PracticeCollectionScreenState
 
   @override
   Widget build(BuildContext context) {
-    final unlocked = ref.watch(practiceCollectionProvider);
+    final unlocked = ref.watch(practiceUnlockedProfileIdsProvider);
     final unlockedCount = ref.watch(unlockedPracticeGirlCountProvider);
     // 翻牌鈕兩態顯示必須 watch：同時讓 autoDispose controller 在本頁存活。
     final chatState = ref.watch(practiceChatControllerProvider);
@@ -484,7 +484,7 @@ class _PracticeCollectionScreenState
     });
 
     // 揭曉後新卡高亮定位：集合新增（翻牌解鎖）時取新 id 捲動＋微光。
-    ref.listen<Set<String>>(practiceCollectionProvider, (prev, next) {
+    ref.listen<Set<String>>(practiceUnlockedProfileIdsProvider, (prev, next) {
       if (prev == null || next.length <= prev.length) return;
       final added = next.difference(prev);
       for (final profile in practiceGirlProfiles) {
@@ -593,6 +593,16 @@ class _PracticeCollectionScreenState
                           ],
                         ),
                       ),
+                    ),
+                  ),
+                  // 圖鑑清單來自 server：載入中／連不上時格子會全是鎖卡，
+                  // 不說一聲就像收藏被清空了。這條狀態列負責講實話。
+                  SliverToBoxAdapter(
+                    child: _CollectionLoadState(
+                      collection: ref.watch(practiceCollectionProvider),
+                      onRetry: () => ref
+                          .read(practiceCollectionProvider.notifier)
+                          .refresh(),
                     ),
                   ),
                   SliverPadding(
@@ -1359,6 +1369,51 @@ class _SrTicketCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 圖鑑載入狀態列。已有集合（含樂觀 +1 後的重抓）時完全不出現——只在
+/// 「還沒拿到清單」時講話，避免把整片鎖卡誤讀成收藏被清空。
+class _CollectionLoadState extends StatelessWidget {
+  const _CollectionLoadState({required this.collection, required this.onRetry});
+
+  static const loadingKey = ValueKey('collection-load-state-loading');
+  static const errorKey = ValueKey('collection-load-state-error');
+
+  final AsyncValue<Set<String>> collection;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (collection.hasValue) return const SizedBox.shrink();
+    final failed = collection.hasError;
+    return Padding(
+      key: failed ? errorKey : loadingKey,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              failed ? '連不上，圖鑑先顯示不出來。' : '正在讀取你的收藏…',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary,
+              ),
+            ),
+          ),
+          if (failed)
+            TextButton(
+              onPressed: onRetry,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.ctaStart,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('重試'),
+            ),
+        ],
       ),
     );
   }

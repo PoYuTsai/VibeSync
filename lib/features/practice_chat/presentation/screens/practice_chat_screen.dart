@@ -936,11 +936,18 @@ class _LearningModeSegment extends StatelessWidget {
               curve: AppMotion.easeOut,
               height: 58,
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+              // 選中態沿用正上方難度 chip 的同一套處方（橘底＋橘框）。原本靠
+              // 同一個紫色的不透明度差（0.92 vs 軌道 0.42）表達，深色底上看不出來。
               decoration: BoxDecoration(
                 color: selected
-                    ? AppColors.brandSurface2.withValues(alpha: 0.92)
+                    ? AppColors.ctaStart.withValues(alpha: 0.16)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: selected
+                      ? AppColors.ctaStart.withValues(alpha: 0.45)
+                      : Colors.transparent,
+                ),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,

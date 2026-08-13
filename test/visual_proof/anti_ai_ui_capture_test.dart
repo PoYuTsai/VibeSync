@@ -31,7 +31,6 @@ import 'package:vibesync/features/partner/presentation/screens/add_partner_scree
 import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
 import 'package:vibesync/features/partner/presentation/widgets/getting_started_checklist.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
-import 'package:vibesync/features/practice_chat/data/repositories/practice_collection_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
@@ -390,12 +389,13 @@ PracticeChatState _openingSeed() {
   );
 }
 
-PracticeCollectionNotifier _seededCollection(Set<String> unlocked) {
-  final store = InMemoryPracticeCollectionStore();
-  for (final id in unlocked) {
-    store.add(id);
-  }
-  return PracticeCollectionNotifier(store);
+class _SeededCollection extends PracticeCollectionNotifier {
+  _SeededCollection(this._ids);
+
+  final Set<String> _ids;
+
+  @override
+  Future<Set<String>> build() async => _ids;
 }
 
 void main() {
@@ -630,7 +630,7 @@ void main() {
       child: ProviderScope(
         overrides: [
           practiceCollectionProvider.overrideWith(
-            (ref) => _seededCollection({
+            () => _SeededCollection(const {
               'practice_girl_030',
               'practice_girl_067',
             }),

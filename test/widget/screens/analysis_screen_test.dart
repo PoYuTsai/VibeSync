@@ -41,7 +41,7 @@ void main() {
       );
 
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.text('開始分析'), findsOneWidget);
+      expect(find.text('分析'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('analysis-records-entry')),
         findsOneWidget,
@@ -161,7 +161,7 @@ void main() {
       );
 
       expect(find.text('週末我去爬抹茶山'), findsOneWidget);
-      expect(find.text('開始分析'), findsOneWidget);
+      expect(find.text('分析'), findsOneWidget);
       expect(find.text('建立本次片段'), findsNothing);
       expect(find.text('貼上或輸入新的一則訊息…'), findsNothing);
       expect(find.text('分析新增內容'), findsNothing);

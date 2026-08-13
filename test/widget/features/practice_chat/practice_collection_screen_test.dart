@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
-import 'package:vibesync/features/practice_chat/data/repositories/practice_collection_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
@@ -136,12 +135,13 @@ const _paidSubscription = SubscriptionState(
   dailyLimit: 30,
 );
 
-PracticeCollectionNotifier _seededCollection(Set<String> unlocked) {
-  final store = InMemoryPracticeCollectionStore();
-  for (final id in unlocked) {
-    store.add(id);
-  }
-  return PracticeCollectionNotifier(store);
+class _SeededCollection extends PracticeCollectionNotifier {
+  _SeededCollection(this._ids);
+
+  final Set<String> _ids;
+
+  @override
+  Future<Set<String>> build() async => _ids;
 }
 
 List<Override> _collectionOverrides({
@@ -152,8 +152,8 @@ List<Override> _collectionOverrides({
   VoidCallback? onSubscriptionRefresh,
 }) {
   return [
-    practiceCollectionProvider.overrideWith(
-        (ref) => collectionNotifier ?? _seededCollection(unlocked)),
+    practiceCollectionProvider
+        .overrideWith(() => collectionNotifier ?? _SeededCollection(unlocked)),
     practiceChatControllerProvider.overrideWith(
       (ref) => controller ?? _SeededPracticeChatController(_revealedSeed()),
     ),
@@ -1018,10 +1018,10 @@ void main() {
     });
 
     testWidgets('主路徑時序：儀式 scrim 蓋著期間微光強度 0，過整條 reveal 時間軸後才亮起', (tester) async {
-      final notifier = _seededCollection(const {});
+      final notifier = _SeededCollection(const {});
       await pumpApp(tester, collectionApp(collectionNotifier: notifier));
 
-      await notifier.add('practice_girl_004');
+      notifier.add('practice_girl_004');
       await tester.pump(); // 掛上高亮（等待段）、post-frame 捲動起跑
       await tester.pump(const Duration(milliseconds: 100)); // 捲動 ticker 定基準
       await tester
@@ -1048,7 +1048,7 @@ void main() {
     });
 
     testWidgets('reduce-motion：無儀式時間軸，微光直接進微光段即時亮起', (tester) async {
-      final notifier = _seededCollection(const {});
+      final notifier = _SeededCollection(const {});
       await tester.binding.setSurfaceSize(const Size(500, 1600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
@@ -1065,7 +1065,7 @@ void main() {
       );
       await tester.pump();
 
-      await notifier.add('practice_girl_004');
+      notifier.add('practice_girl_004');
       await tester.pump(); // 掛上高亮、post-frame 捲動起跑
       await tester.pump(const Duration(milliseconds: 100)); // 捲動 ticker 定基準
       await tester
@@ -1111,10 +1111,10 @@ void main() {
     });
 
     testWidgets('翻牌解鎖 → 新卡微光高亮，單次 forward 走完自動移除（settle 收斂）', (tester) async {
-      final notifier = _seededCollection({'practice_girl_001'});
+      final notifier = _SeededCollection({'practice_girl_001'});
       await pumpApp(tester, collectionApp(collectionNotifier: notifier));
 
-      await notifier.add('practice_girl_004');
+      notifier.add('practice_girl_004');
       await tester.pump(); // 集合新增 → listener 掛上高亮
 
       const highlightKey = ValueKey('collection-highlight-practice_girl_004');
@@ -1133,7 +1133,7 @@ void main() {
     });
 
     testWidgets('filter 開著時解鎖遠端新卡 → 收 filter、捲動到新卡進視野', (tester) async {
-      final notifier = _seededCollection(const {});
+      final notifier = _SeededCollection(const {});
       await pumpApp(tester, collectionApp(collectionNotifier: notifier));
 
       // 開一個會把新卡濾掉的稀有度 filter。
@@ -1148,7 +1148,7 @@ void main() {
           find.byKey(ValueKey('collection-card-${last.profileId}'));
       expect(cardFinder, findsNothing);
 
-      await notifier.add(last.profileId);
+      notifier.add(last.profileId);
       await tester.pump();
       await tester.pumpAndSettle(); // 收 filter＋捲動＋微光全走完
 

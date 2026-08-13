@@ -53,7 +53,7 @@ void main() {
   });
 
   group('FloatingAnalysisActionButton', () {
-    testWidgets('uses a labelled 52px extended action', (tester) async {
+    testWidgets('uses a labelled 62px circular action', (tester) async {
       await tester.pumpWidget(
         _wrap(FloatingAnalysisActionButton(onPressed: () {})),
       );
@@ -63,7 +63,9 @@ void main() {
         find.byKey(FloatingAnalysisActionButton.buttonKey),
         findsOneWidget,
       );
-      expect(find.text('開始分析'), findsOneWidget);
+      // 圓形按鈕塞不下四個中文字（會被切成「開始分」）：標籤只留兩字，
+      // 完整語意由 Semantics label 承擔。
+      expect(find.text('分析'), findsOneWidget);
       expect(find.byIcon(Icons.auto_awesome_rounded), findsOneWidget);
       expect(
         find.bySemanticsLabel('使用目前對話開始分析'),
@@ -73,7 +75,7 @@ void main() {
         tester
             .getSize(find.byKey(FloatingAnalysisActionButton.buttonKey))
             .height,
-        52,
+        62,
       );
     });
 

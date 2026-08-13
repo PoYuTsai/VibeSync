@@ -211,7 +211,7 @@ void main() {
         (tester) async {
       await _pumpAnalysisScreen(tester);
 
-      expect(find.text('開始分析'), findsOneWidget);
+      expect(find.text('分析'), findsOneWidget);
       expect(find.text('貼上或輸入新的一則訊息…'), findsNothing);
       expect(find.text('建立本次片段'), findsNothing);
       expect(find.text('這句是她說'), findsNothing);
@@ -526,7 +526,7 @@ void main() {
       expect(find.text('這句是她說'), findsNothing);
       expect(find.text('這句是我說'), findsNothing);
       expect(
-        find.text('開始分析'),
+        find.text('分析'),
         findsNothing,
       );
       expect(find.text('這次分析設定（可不改）'), findsOneWidget);

@@ -953,6 +953,25 @@ class PracticeChatApiService {
     );
   }
 
+  /// 角色圖鑑唯讀清單：這個帳號翻到過誰。server 的 `practice_profile_draw_events`
+  /// 是唯一真相源——client 不再自己存一份，換帳號／刪帳號自然跟著對。
+  /// 失敗丟例外，由呼叫端顯示重試（絕不退回空集合假裝圖鑑是空的）。
+  Future<Set<String>> fetchPracticeCollection() async {
+    final response = await _invoke(
+      _functionName,
+      body: const {'mode': 'practice_collection'},
+    );
+    final data = response.data;
+    if (response.status != 200 || data is! Map) {
+      throw PracticeGenerationFailedException('practice_collection_failed');
+    }
+    final ids = data['profileIds'];
+    if (ids is! List) {
+      throw PracticeGenerationFailedException('practice_collection_failed');
+    }
+    return ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
+  }
+
   /// 每日翻牌：server 選一位新對象並原子扣費（免費額度／付費額外）。
   /// [requestId] 是 client 產的冪等 key；[currentProfileId] 帶上目前這位以便排除
   /// （換一位不換回自己）。402 → upgrade required；429 → quota exceeded。

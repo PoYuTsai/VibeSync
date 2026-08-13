@@ -984,4 +984,22 @@
 2. 「要抽到才遇得到 SR」由翻牌鏈路（`practice_profile_draw_events` 去重＋SR 翻牌券）本來就把關，server 不再重複檢查一次。SR 翻牌券的價值不變。
 3. 保留 client 端對 403 `practice_game_sr_only` 的落地：標回未解鎖＋退回標準模式＋明確文案。放寬後唯一成因是舊版 App 的內建 catalog rarity 落後於 server，不得再混進 generic「生成失敗」。
 
-**已知未解**: 圖鑑解鎖記錄仍是裝置本機且 `practiceCollectionProvider` 是 process 存活期常駐快取——刪帳號的 `StorageService.clearAll()` 清得掉磁碟、清不掉這份 RAM 快取，所以刪帳號後同一次啟動內圖鑑仍看得到舊卡。此 ADR 之後 Game 不再因此壞掉，但「圖鑑顯示不準」未修。
+**已知未解**: ~~圖鑑解鎖記錄仍是裝置本機且 `practiceCollectionProvider` 是 process 存活期常駐快取~~ → 同日由 ADR #41 收掉。
+
+---
+
+## ADR #41 — [2026-08-13] 角色圖鑑的真相源改成 server 的翻牌事件，砍掉裝置本機那份
+
+**狀態**: 🟢 Active
+
+**背景**: 圖鑑解鎖集合原本存在裝置本機（加密 settings box 的 `practice_collection_unlocked`，append-only），而且不只由翻牌寫入——「還原舊場／草稿」與「從圖鑑點進來」也會 seed。三個後果同時成立：(1) 集合跨帳號，登出換帳號後前一個人的收藏還在；(2) `practiceCollectionProvider` 是 process 存活期常駐快取，刪帳號的 `StorageService.clearAll()` 清得掉磁碟、清不掉 RAM，Eric 2026-08-13 實測刪完帳號「對話清掉但抽過的卡都還在」；(3) 集合裡會有從來沒抽過的人，正是 ADR #40 那個永遠 403 的 Game 的來源。
+
+**決定**（Eric 拍板）:
+
+1. **server 的 `practice_profile_draw_events` 是「翻到過誰」的唯一真相源**。新增唯讀 `mode: 'practice_collection'`（零 migration、不碰計費、無訂閱列不擋），client 直接讀它。
+2. 刪掉 `PracticeCollectionStore` 整層與 `practice_collection_unlocked` key，client 不留任何本機副本。
+3. `practiceCollectionProvider` 改成綁登入者的 `AsyncNotifier`：換帳號／登出即整份重建，未登入回空集合且不打 server。**登出／刪帳號後圖鑑自然是乾淨的，不需要任何 clearAll／invalidate 護欄。**
+4. 只有**真的翻到牌**才樂觀 +1。還原舊場、草稿還原、從圖鑑點進來都不算解鎖。
+5. 讀取失敗是 error 狀態、**不得謊報空圖鑑**：畫面顯示「連不上」＋重試，避免整片鎖卡被誤讀成收藏被清空。
+
+**取捨**: 圖鑑頁多一個網路依賴。離線／失敗時不顯示舊快取（本機快取正是本案要移除的東西），改為明示狀態＋重試。

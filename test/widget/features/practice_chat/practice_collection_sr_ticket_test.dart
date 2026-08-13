@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
-import 'package:vibesync/features/practice_chat/data/repositories/practice_collection_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
@@ -117,9 +116,7 @@ void main() {
     return ProviderScope(
       overrides: [
         practiceCollectionProvider.overrideWith(
-          (ref) => PracticeCollectionNotifier(
-            InMemoryPracticeCollectionStore(),
-          ),
+          () => _SeededCollection(const <String>{}),
         ),
         practiceChatControllerProvider.overrideWith(
           (ref) => controller ?? _DrawSpyController(_revealedSeed()),
@@ -201,4 +198,13 @@ void main() {
     expect(goldTicket, findsNothing);
     expect(lockedTicket, findsNothing);
   });
+}
+
+class _SeededCollection extends PracticeCollectionNotifier {
+  _SeededCollection(this._ids);
+
+  final Set<String> _ids;
+
+  @override
+  Future<Set<String>> build() async => _ids;
 }

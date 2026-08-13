@@ -5254,22 +5254,24 @@ void main() {
       expect(unlocked, isEmpty);
     });
 
-    test('initialSession 還原 → 種子記錄該場 profileId', () async {
+    // 只有真的翻到牌才算解鎖。還原本機舊場／草稿都不是——那正是本機圖鑑
+    // 混進沒抽過的人的來源（server 的翻牌事件才是真相源）。
+    test('initialSession 還原 → 不記錄（還原舊場不是翻牌）', () async {
       final unlocked = <String>[];
       makeCollector(unlocked, initialSession: openSession('practice_girl_009'));
       await pumpEventQueue();
-      expect(unlocked, ['practice_girl_009']);
+      expect(unlocked, isEmpty);
     });
 
-    test('有效 draft 還原 → 種子記錄 draft 的 profileId', () async {
+    test('有效 draft 還原 → 不記錄', () async {
       await draftStore.save(draftFor('practice_girl_005'));
       final unlocked = <String>[];
       makeCollector(unlocked);
       await pumpEventQueue();
-      expect(unlocked, ['practice_girl_005']);
+      expect(unlocked, isEmpty);
     });
 
-    test('resumeSession → 記錄該場 profileId', () async {
+    test('resumeSession → 不記錄', () async {
       final unlocked = <String>[];
       final c = makeCollector(unlocked);
       await pumpEventQueue();
@@ -5277,7 +5279,17 @@ void main() {
 
       c.resumeSession(openSession('practice_girl_009'));
       await pumpEventQueue();
-      expect(unlocked, ['practice_girl_009']);
+      expect(unlocked, isEmpty);
+    });
+
+    test('startSessionWithProfile（圖鑑點進來）→ 不記錄', () async {
+      final unlocked = <String>[];
+      final c = makeCollector(unlocked);
+      await pumpEventQueue();
+
+      c.startSessionWithProfile('practice_girl_005');
+      await pumpEventQueue();
+      expect(unlocked, isEmpty);
     });
 
     test('callback 丟例外 → 翻牌主流程不受影響', () async {
