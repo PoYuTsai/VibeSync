@@ -28,7 +28,7 @@ jobs:
           # riverpod_generator 內丟 visitDotShorthandPropertyAccess，build_runner
           # 吐完例外不退出 → Generate code 卡到 job timeout。先鎖回最後一次綠的
           # 版本，升 analyzer/build_runner 另案處理。
-          flutter-version: 3.44.9
+          flutter-version: 3.47.0
           channel: stable
           cache: true
 
@@ -79,7 +79,7 @@ jobs:
           # riverpod_generator 內丟 visitDotShorthandPropertyAccess，build_runner
           # 吐完例外不退出 → Generate code 卡到 job timeout。先鎖回最後一次綠的
           # 版本，升 analyzer/build_runner 另案處理。
-          flutter-version: 3.44.9
+          flutter-version: 3.47.0
           channel: stable
           cache: true
 
@@ -168,7 +168,7 @@ jobs:
           # riverpod_generator 內丟 visitDotShorthandPropertyAccess，build_runner
           # 吐完例外不退出 → Generate code 卡到 job timeout。先鎖回最後一次綠的
           # 版本，升 analyzer/build_runner 另案處理。
-          flutter-version: 3.44.9
+          flutter-version: 3.47.0
           channel: stable
           cache: true
 

@@ -74,7 +74,7 @@ void main() {
 }
 
 class _FakeState extends GoRouterState {
-  _FakeState({Map<String, String> pathParameters = const {}})
+  _FakeState({super.pathParameters = const {}})
       : super(
           RouteConfiguration(
             ValueNotifier<RoutingConfig>(
@@ -84,7 +84,6 @@ class _FakeState extends GoRouterState {
           ),
           uri: Uri.parse('/'),
           matchedLocation: '/',
-          pathParameters: pathParameters,
           fullPath: '/',
           pageKey: const ValueKey('test'),
         );

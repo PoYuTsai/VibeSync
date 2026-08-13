@@ -116,7 +116,7 @@ class RevenueCatService {
     if (!_isInitialized) return const [];
 
     try {
-      return Purchases.getProducts(
+      return await Purchases.getProducts(
         productIds,
         productCategory: ProductCategory.subscription,
       );
@@ -198,7 +198,7 @@ class RevenueCatService {
     if (!_isInitialized) return null;
 
     try {
-      return Purchases.appUserID;
+      return await Purchases.appUserID;
     } catch (e) {
       debugPrint('RevenueCat getAppUserID error: $e');
       return null;
@@ -238,7 +238,7 @@ class RevenueCatService {
     if (!_isInitialized) return null;
 
     try {
-      return Purchases.isAnonymous;
+      return await Purchases.isAnonymous;
     } catch (e) {
       debugPrint('RevenueCat isAnonymous error: $e');
       return null;

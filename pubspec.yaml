@@ -22,7 +22,6 @@ dependencies:
 
   # State Management
   flutter_riverpod: ^2.6.1
-  riverpod_annotation: ^2.6.1
 
   # Local Storage (Hive CE - Dart 3.x compatible)
   hive_ce: ^2.16.0
@@ -55,8 +54,6 @@ dependencies:
   image: ^4.1.7
 
   # Data Classes
-  json_annotation: ^4.9.0
-  freezed_annotation: ^2.4.4
   equatable: ^2.0.7
   sign_in_with_apple: ^7.0.1
   crypto: ^3.0.7
@@ -82,12 +79,9 @@ dev_dependencies:
   # Linting
   flutter_lints: ^5.0.0
 
-  # Code Generation
-  build_runner: ^2.4.13
-  freezed: ^2.5.7
-  json_serializable: ^6.9.0
-  hive_ce_generator: ^1.6.0
-  riverpod_generator: ^2.6.2
+  # Code Generation（只剩 Hive adapter；analyzer 14 世代，支援 Dart 3.13）
+  build_runner: ^2.16.0
+  hive_ce_generator: ^1.11.3
 
   # Testing
   mocktail: ^1.0.4
