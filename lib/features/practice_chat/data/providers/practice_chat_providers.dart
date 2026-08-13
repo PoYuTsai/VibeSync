@@ -223,6 +223,11 @@ class PracticeChatState {
   final int roundIndex;
   final String? visiblePracticeThreadId;
 
+  /// server 已明說本場對象沒有翻牌紀錄（403 `practice_game_sr_only`）。
+  /// 本機圖鑑是 device-scoped，跨帳號／刪帳號重建後會比 server 新，rarity 判定
+  /// 會誤開 Game；收到 server 的否決就把這位標回未解鎖，換人時隨新 state 歸零。
+  final bool gameServerLocked;
+
   const PracticeChatState({
     required this.sessionId,
     required this.createdAt,
@@ -272,6 +277,7 @@ class PracticeChatState {
     this.hintLimitReached = false,
     this.roundIndex = 1,
     this.visiblePracticeThreadId,
+    this.gameServerLocked = false,
   });
 
   bool get isRevealed => drawStatus == PracticeDrawStatus.revealed;
@@ -294,7 +300,8 @@ class PracticeChatState {
 
   bool get isBeginnerMode => learningMode == PracticeLearningMode.beginner;
   bool get isAssistedLearningMode => learningMode.usesAssistedLearning;
-  bool get canUseGameMode => girl?.rarity == PracticeGirlRarity.sr;
+  bool get canUseGameMode =>
+      girl?.rarity == PracticeGirlRarity.sr && !gameServerLocked;
 
   bool get canChangeLearningMode =>
       isRevealed &&
@@ -358,6 +365,7 @@ class PracticeChatState {
     String? difficultyLabel,
     int? roundIndex,
     String? visiblePracticeThreadId,
+    bool? gameServerLocked,
     PracticeLearningMode? learningMode,
     bool? isHintLoading,
     bool? hintFailed,
@@ -409,6 +417,7 @@ class PracticeChatState {
       roundIndex: roundIndex ?? this.roundIndex,
       visiblePracticeThreadId:
           visiblePracticeThreadId ?? this.visiblePracticeThreadId,
+      gameServerLocked: gameServerLocked ?? this.gameServerLocked,
       learningMode: learningMode ?? this.learningMode,
       temperatureScore: identical(temperatureScore, _sentinel)
           ? this.temperatureScore
@@ -1941,6 +1950,19 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         isSending: false,
         upgradeRequired: true,
         errorMessage: '想和同一位繼續練習，升級後就能解鎖。',
+        restoreText: trimmed,
+      );
+    } on PracticeGameNotUnlockedException {
+      // server 說這位沒有翻牌紀錄：把 Game 標回未解鎖（分頁會變「SR解鎖」、
+      // 點了走教學卡去抽卡）並退回標準模式，讓這則訊息可以直接重送。
+      if (!ownsPriorSendState()) return;
+      restoreAppliedHintTurns();
+      await restoreDurableAppliedHintsAfterFailedSend();
+      state = priorState.copyWith(
+        isSending: false,
+        gameServerLocked: true,
+        learningMode: PracticeLearningMode.standard,
+        errorMessage: '這位還沒抽到，Game 只能跟抽到的 SR 角色玩。已切回標準模式。',
         restoreText: trimmed,
       );
     } on PracticeApiException catch (e) {

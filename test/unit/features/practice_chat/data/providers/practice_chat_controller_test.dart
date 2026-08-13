@@ -1216,6 +1216,32 @@ void main() {
       expect(s.canSend, true); // 不鎖輸入
     });
 
+    test('Game 未解鎖（403 practice_game_sr_only）：標回未解鎖、退回標準模式、不說生成失敗',
+        () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_004');
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.game);
+      expect(c.currentState.canUseGameMode, true);
+
+      api.sendHandler =
+          (_, {profile}) async => throw PracticeGameNotUnlockedException();
+
+      await c.sendMessage('嗨');
+      final s = c.currentState;
+
+      expect(s.canUseGameMode, false); // 分頁翻回「SR解鎖」，不再送必敗的請求
+      expect(s.learningMode, PracticeLearningMode.standard);
+      expect(
+        s.errorMessage,
+        '這位還沒抽到，Game 只能跟抽到的 SR 角色玩。已切回標準模式。',
+      );
+      expect(s.messages, isEmpty);
+      expect(s.restoreText, '嗨');
+      expect(s.sessionComplete, false);
+      expect(s.quotaExceeded, false);
+    });
+
     test('clearError 會一併清掉 upgradeRequired / draw 旗標', () async {
       final c = await makeRevealed();
       api.sendHandler =
