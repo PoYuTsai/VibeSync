@@ -95,9 +95,11 @@ class _ScreenshotRecognitionDialogState
             .map(_EditableRecognizedMessage.fromRecognizedMessage)
             .toList();
 
+    // 節奏對標分析頁 SwipeHintNudge：一輪 2.6 秒、循環提示（2026-08-14
+    // Eric 拍板：播一次就停太不明顯，改成每 2.6 秒滑一次直到使用者動手）。
     _swipeTutorialController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3600),
+      duration: const Duration(milliseconds: 2600),
     );
     // 右去右回、短暫停頓、左去左回各一趟，首尾都是 0。兩側各留一小段
     // 定點時間，讓方向文案與位移可以被看清楚。
@@ -248,7 +250,11 @@ class _ScreenshotRecognitionDialogState
         _showStaticSwipeTutorialLegend = false;
       });
     }
-    _swipeTutorialController.forward(from: 0);
+    // 有界 repeat（34 輪 ≈ 88 秒，體感即長駐）：同 SwipeHintNudge，無限
+    // repeat 會讓 pumpAndSettle 到本 dialog 的測試 timeout。
+    _swipeTutorialController
+      ..value = 0
+      ..repeat(count: 34);
   }
 
   void _cancelSwipeTutorialForInteraction() {
@@ -1050,21 +1056,53 @@ class _ScreenshotRecognitionDialogState
     final willReplaceCurrentBatch = _canReplaceCurrentDraft &&
         widget.currentConversation.messages.isNotEmpty;
 
-    return AlertDialog(
-      backgroundColor: AppColors.brandSurface2,
-      title: const Text(
-        '先確認內容',
-        style: TextStyle(color: AppColors.onBackgroundPrimary),
-      ),
-      content: SingleChildScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+    // 滿版底部 sheet 呈現（2026-08-14 對標夥伴示意稿）：拖把手＋大標＋
+    // 底部固定動作列。仍走 showDialog 管線，僅換內部版型。
+    return Dialog(
+      insetPadding: EdgeInsets.zero,
+      alignment: Alignment.bottomCenter,
+      backgroundColor: Colors.transparent,
+      child: Container(
+        height: MediaQuery.sizeOf(context).height * 0.94,
+        width: double.infinity,
+        clipBehavior: Clip.antiAlias,
+        decoration: const BoxDecoration(
+          color: AppColors.brandSurface2,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
         child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 44,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
+              '先確認內容',
+              style: AppTypography.headlineMedium.copyWith(
+                color: AppColors.onBackgroundPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
               '共抓到 ${widget.recognized.messageCount} 則訊息，確認後會作為這次完整片段。',
-              style: const TextStyle(color: AppColors.onBackgroundPrimary),
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                height: 1.4,
+              ),
             ),
             if (widget.warningMessage != null &&
                 widget.warningMessage!.trim().isNotEmpty)
@@ -1123,63 +1161,101 @@ class _ScreenshotRecognitionDialogState
                 flashRequest: _samePartnerFlashRequest,
                 builder: (context, flash) {
                   final confirmed = _confirmedSamePartner;
-                  final accent =
-                      confirmed ? AppColors.success : AppColors.ctaStart;
-                  return Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(
-                        alpha: confirmed ? 0.10 : 0.14 + 0.10 * flash,
-                      ),
+                  // 對標示意稿：平時是乾淨列（綠圈勾＋單行說明），只有被
+                  // 擋下的送出瞬間閃橘框光暈提示「卡在這格」。
+                  final flashAccent = AppColors.ctaStart;
+                  return Material(
+                    type: MaterialType.transparency,
+                    child: InkWell(
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: accent.withValues(
-                          alpha: confirmed ? 0.45 : 0.85,
+                      onTap: () {
+                        setState(() {
+                          _confirmedSamePartner = !_confirmedSamePartner;
+                          _editValidationMessage = null;
+                        });
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 10,
                         ),
-                        width: confirmed ? 1 : 1.6,
-                      ),
-                      boxShadow: confirmed
-                          ? null
-                          : [
-                              BoxShadow(
-                                color: AppColors.ctaStart.withValues(
-                                  alpha: 0.30 + 0.35 * flash,
-                                ),
-                                blurRadius: 16 + 8 * flash,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: flashAccent.withValues(alpha: 0.85 * flash),
+                            width: 1.4,
+                          ),
+                          boxShadow: flash == 0
+                              ? null
+                              : [
+                                  BoxShadow(
+                                    color: flashAccent.withValues(
+                                      alpha: 0.45 * flash,
+                                    ),
+                                    blurRadius: 18 * flash,
+                                  ),
+                                ],
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 26,
+                              height: 26,
+                              margin: const EdgeInsets.only(top: 2),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: confirmed
+                                    ? AppColors.success
+                                    : Colors.transparent,
+                                border: confirmed
+                                    ? null
+                                    : Border.all(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.45),
+                                        width: 2,
+                                      ),
                               ),
-                            ],
-                    ),
-                    child: Material(
-                      type: MaterialType.transparency,
-                      child: CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        controlAffinity: ListTileControlAffinity.leading,
-                        value: _confirmedSamePartner,
-                        activeColor: AppColors.success,
-                        onChanged: (value) {
-                          setState(() {
-                            _confirmedSamePartner = value ?? false;
-                            _editValidationMessage = null;
-                          });
-                        },
-                        title: Text(
-                          widget.expectedPartnerName?.trim().isNotEmpty == true
-                              ? '我確認這些是「${widget.expectedPartnerName!.trim()}」的聊天'
-                              : '我確認這些截圖都是目前這位對象',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.onBackgroundPrimary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        subtitle: Text(
-                          confirmed
-                              ? '已確認。如果是另一人，請取消並回到正確對象再匯入。'
-                              : '要先勾這格才能開始分析；如果是另一人，請取消並回到正確對象再匯入。',
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.onBackgroundSecondary,
-                            height: 1.35,
-                          ),
+                              child: confirmed
+                                  ? const Icon(
+                                      Icons.check_rounded,
+                                      size: 18,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.expectedPartnerName
+                                                ?.trim()
+                                                .isNotEmpty ==
+                                            true
+                                        ? '我確認這些是「${widget.expectedPartnerName!.trim()}」的聊天'
+                                        : '我確認這些截圖都是目前這位對象',
+                                    style: AppTypography.bodyMedium.copyWith(
+                                      color: AppColors.onBackgroundPrimary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    confirmed
+                                        ? '如果是另一人，請取消並回到正確對象再匯入。'
+                                        : '要先勾這格才能開始分析；如果是另一人，請取消並回到正確對象再匯入。',
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.onBackgroundSecondary,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -1214,27 +1290,55 @@ class _ScreenshotRecognitionDialogState
               ),
             ],
           ],
+                ),
+              ),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+                child: Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(88, 52),
+                      ),
+                      child: const Text(
+                        '取消',
+                        style: TextStyle(color: AppColors.onBackgroundSecondary),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        // 沒勾同對象確認不再 disabled 裝死：一律可按，_submit
+                        // 內擋下並捲到確認格＋閃光＋紅字說明。
+                        onPressed: _submit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.ctaStart,
+                          foregroundColor: AppColors.onCta,
+                          minimumSize: const Size.fromHeight(52),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                        child: Text(
+                          '確認本次內容',
+                          style: AppTypography.titleSmall.copyWith(
+                            color: AppColors.onCta,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text(
-            '取消',
-            style: TextStyle(color: AppColors.onBackgroundSecondary),
-          ),
-        ),
-        ElevatedButton(
-          // 沒勾同對象確認不再 disabled 裝死：一律可按，_submit 內擋下並
-          // 捲到確認格＋閃光＋紅字說明（使用者才知道卡在哪）。
-          onPressed: _submit,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.ctaStart,
-            foregroundColor: AppColors.onCta,
-          ),
-          child: const Text('確認本次內容'),
-        ),
-      ],
     );
   }
 }

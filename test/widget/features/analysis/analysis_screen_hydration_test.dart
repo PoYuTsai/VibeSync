@@ -1382,13 +1382,10 @@ void main() {
         // ignore: avoid_dynamic_calls
         tester.takeException();
 
+        // 2026-08-14 對標批：emoji 前綴改為說明卡純文字。
         expect(
-          find.text('📝 順著她主動分享的內容延伸，回覆壓力比較低。'),
+          find.text('順著她主動分享的內容延伸，回覆壓力比較低。'),
           findsOneWidget,
-        );
-        expect(
-          find.text('🧠 順著她主動分享的內容延伸，回覆壓力比較低。'),
-          findsNothing,
         );
       },
     );
@@ -1426,11 +1423,11 @@ void main() {
         tester.takeException();
 
         expect(
-          find.text('📝 順著她主動分享的內容延伸，回覆壓力比較低。'),
+          find.text('順著她主動分享的內容延伸，回覆壓力比較低。'),
           findsOneWidget,
         );
         expect(
-          find.text('🧠 讓她感覺你真的有在聽，而不是急著換話題。'),
+          find.text('讓她感覺你真的有在聽，而不是急著換話題。'),
           findsOneWidget,
         );
       },

@@ -301,9 +301,6 @@ class _PartnerAnalysisRecordsScreenState
           borderRadius: const BorderRadius.vertical(
             top: Radius.circular(24),
           ),
-          border: Border.all(
-            color: _archivePink.withValues(alpha: 0.58),
-          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.30),
@@ -326,35 +323,36 @@ class _PartnerAnalysisRecordsScreenState
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
+              // 對標示意稿（2026-08-14）：標題與副標靠左，認識平台改整寬列卡。
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       '$subjectName 的分析紀錄',
-                      textAlign: TextAlign.center,
                       style: AppTypography.headlineMedium.copyWith(
                         color: AppColors.onBackgroundPrimary,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    if (_metVia != null || widget.onSetMetVia != null)
-                      _MetViaPill(
+                    const SizedBox(height: 6),
+                    Text(
+                      '每次分析獨立保存，不會串成逐字稿',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: _archiveAccentBright.withValues(alpha: 0.90),
+                      ),
+                    ),
+                    if (_metVia != null || widget.onSetMetVia != null) ...[
+                      const SizedBox(height: 14),
+                      _MetViaRow(
                         value: _metVia,
                         enabled:
                             widget.onSetMetVia != null && !_isSettingMetVia,
                         isSaving: _isSettingMetVia,
                         onTap: _chooseMetVia,
                       ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '每次分析獨立保存，不會串成逐字稿',
-                      textAlign: TextAlign.center,
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: _archiveAccentBright.withValues(alpha: 0.90),
-                      ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -362,8 +360,18 @@ class _PartnerAnalysisRecordsScreenState
                 child: ListView(
                   key: const ValueKey('partner-analysis-records-list'),
                   controller: widget.scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(20, 2, 20, 24),
                   children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10, top: 4),
+                      child: Text(
+                        '分析紀錄',
+                        style: AppTypography.titleSmall.copyWith(
+                          color: AppColors.onBackgroundPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                     if (_showPlatformFilters) ...[
                       SizedBox(
                         height: 40,
@@ -421,28 +429,30 @@ class _PartnerAnalysisRecordsScreenState
                         onTap: widget.onOpenArchivedConversations!,
                       ),
                     ],
-                    const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.verified_user_outlined,
-                          size: 17,
-                          color: _archiveAccent.withValues(alpha: 0.72),
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            '每筆都是獨立分析，可自行管理',
-                            textAlign: TextAlign.center,
-                            style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.onBackgroundSecondary
-                                  .withValues(alpha: 0.72),
+                    if (_visibleRecords.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.verified_user_outlined,
+                            size: 17,
+                            color: _archiveAccent.withValues(alpha: 0.72),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              '每筆都是獨立分析，可自行管理',
+                              textAlign: TextAlign.center,
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.onBackgroundSecondary
+                                    .withValues(alpha: 0.72),
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -454,8 +464,9 @@ class _PartnerAnalysisRecordsScreenState
   }
 }
 
-class _MetViaPill extends StatelessWidget {
-  const _MetViaPill({
+/// 認識平台整寬列卡（對標示意稿）：粉紅愛心＋標籤＋鉛筆圓座＋chevron。
+class _MetViaRow extends StatelessWidget {
+  const _MetViaRow({
     required this.value,
     required this.enabled,
     required this.isSaving,
@@ -472,27 +483,25 @@ class _MetViaPill extends StatelessWidget {
     final label = value == null ? '設定認識平台' : '認識於 $value';
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
         key: const ValueKey('analysis-record-met-via'),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(18),
         onTap: enabled ? onTap : null,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: _archivePink.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: _archivePink.withValues(alpha: 0.72),
-            ),
+            color: Colors.white.withValues(alpha: 0.045),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
               if (isSaving)
                 const SizedBox(
-                  width: 15,
-                  height: 15,
+                  width: 18,
+                  height: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     color: _archivePink,
@@ -500,24 +509,39 @@ class _MetViaPill extends StatelessWidget {
                 )
               else
                 const Icon(
-                  Icons.favorite_outline_rounded,
-                  size: 16,
+                  Icons.favorite_rounded,
+                  size: 20,
                   color: _archivePink,
                 ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: AppTypography.labelLarge.copyWith(
-                  color: const Color(0xFFFFAA8C),
-                  fontWeight: FontWeight.w700,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               if (enabled && !isSaving) ...[
-                const SizedBox(width: 4),
-                const Icon(
-                  Icons.edit_outlined,
-                  size: 14,
-                  color: Color(0xFFFFAA8C),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                  child: const Icon(
+                    Icons.edit_outlined,
+                    size: 16,
+                    color: AppColors.warning,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 22,
+                  color: Colors.white.withValues(alpha: 0.45),
                 ),
               ],
             ],
@@ -811,36 +835,63 @@ class _EmptyRecordsCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.inventory_2_outlined,
-            size: 24,
-            color: _archiveAccent,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.inventory_2_outlined,
+                size: 24,
+                color: _archiveAccent,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '還沒有舊的分析紀錄',
+                      style: AppTypography.titleSmall.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '每次完成的分析片段都會獨立收進這裡，可依平台篩選或單獨刪除。',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '還沒有舊的分析紀錄',
-                  style: AppTypography.titleSmall.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '每次完成的分析片段都會獨立收進這裡，可依平台篩選或單獨刪除。',
+          const SizedBox(height: 14),
+          Divider(height: 1, color: Colors.white.withValues(alpha: 0.10)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(
+                Icons.verified_user_outlined,
+                size: 17,
+                color: _archiveAccent.withValues(alpha: 0.72),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  '每筆都是獨立分析，可自行管理',
                   style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                    height: 1.45,
+                    color: AppColors.onBackgroundSecondary
+                        .withValues(alpha: 0.72),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),

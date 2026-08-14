@@ -724,7 +724,8 @@ void main() {
       );
     });
 
-    testWidgets('每次開啟進場 650ms 後播放 3.6 秒雙向示範，播完留下靜態圖例', (tester) async {
+    testWidgets('每次開啟進場 650ms 後以 2.6 秒節奏循環雙向示範，動手後停下留靜態圖例',
+        (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
@@ -740,9 +741,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 649));
       expect(_tutorialShiftX(tester), 0);
 
-      // Timer 到點後先走右滑 phase。
+      // Timer 到點後先走右滑 phase（2.6 秒一輪的前半）。
       await tester.pump(const Duration(milliseconds: 1));
-      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(milliseconds: 700));
       expect(_tutorialShiftX(tester), greaterThan(0));
       expect(
         _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-right-hint'),
@@ -753,8 +754,8 @@ void main() {
         0,
       );
 
-      // 1.8 秒時仍看得到完整示範；後半段才切到左滑 phase。
-      await tester.pump(const Duration(milliseconds: 1800));
+      // 同一輪後半（~1.95 秒處）切到左滑 phase。
+      await tester.pump(const Duration(milliseconds: 1250));
       expect(_tutorialShiftX(tester), lessThan(0));
       expect(
         _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-right-hint'),
@@ -765,13 +766,23 @@ void main() {
         greaterThan(0),
       );
 
-      // 一次性：pumpAndSettle 必收斂（零無限 repeat），播完位移歸零。
-      await tester.pumpAndSettle();
+      // 循環：整整一輪（2.6 秒）之後回到同 phase，仍在動——不是播一次就停。
+      await tester.pump(const Duration(milliseconds: 2600));
+      expect(_tutorialShiftX(tester), lessThan(0));
+      expect(
+        _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-left-hint'),
+        greaterThan(0),
+      );
+
+      // 使用者動手（一鍵改對方）即停，位移歸零並留下靜態圖例。
+      await tester.tap(find.text('全部都是對方說的'));
+      await tester.pump();
       expect(_tutorialShiftX(tester), 0);
       expect(
         find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
         findsOneWidget,
       );
+      await tester.pumpAndSettle();
     });
 
     testWidgets('關閉再開仍會自動播，問號也可手動重播', (tester) async {

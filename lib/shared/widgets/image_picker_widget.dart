@@ -13,6 +13,37 @@ typedef ImagePickerFileSelector = Future<List<XFile>> Function({
   required int limit,
 });
 
+/// 選圖磚上的品牌漸層弧環（約 300°，缺口朝下）。
+class _GradientArcRingPainter extends CustomPainter {
+  const _GradientArcRingPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    const startAngle = 2.0; // 缺口朝左下，視覺重心在右上
+    const sweepAngle = 5.4; // ~309°
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..shader = const SweepGradient(
+        startAngle: startAngle,
+        endAngle: startAngle + sweepAngle,
+        colors: [AppColors.ctaStart, AppColors.primary],
+      ).createShader(rect);
+    canvas.drawArc(
+      rect.deflate(1.5),
+      startAngle,
+      sweepAngle,
+      false,
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _GradientArcRingPainter oldDelegate) => false;
+}
+
 class SelectedImageMetrics {
   final int originalBytes;
   final int compressedBytes;
@@ -35,6 +66,12 @@ class ImagePickerWidget extends StatefulWidget {
   final Color? surfaceBorderColor;
   final Color? accentColor;
 
+  /// 關掉內建說明文字（外層版型自帶「截圖小提醒」時用）。
+  final bool showHelperText;
+
+  /// 選圖磚與縮圖的邊長。
+  final double tileSize;
+
   const ImagePickerWidget({
     super.key,
     this.maxImages = 3,
@@ -47,6 +84,8 @@ class ImagePickerWidget extends StatefulWidget {
     this.surfaceColor,
     this.surfaceBorderColor,
     this.accentColor,
+    this.showHelperText = true,
+    this.tileSize = 70,
   });
 
   @override
@@ -224,7 +263,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_images.isNotEmpty)
+        if (widget.showHelperText && _images.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Column(
@@ -248,7 +287,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
               ],
             ),
           ),
-        if (_images.isEmpty)
+        if (widget.showHelperText && _images.isEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
@@ -260,7 +299,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
             ),
           ),
         SizedBox(
-          height: 80,
+          height: widget.tileSize + 10,
           child: Row(
             children: [
               ..._images.asMap().entries.map(
@@ -306,8 +345,8 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
         clipBehavior: Clip.none,
         children: [
           GlassmorphicContainer(
-            width: 70,
-            height: 70,
+            width: widget.tileSize,
+            height: widget.tileSize,
             borderRadius: 12,
             padding: EdgeInsets.zero,
             color: widget.surfaceColor,
@@ -317,8 +356,8 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
               child: Image.memory(
                 imageBytes,
                 fit: BoxFit.cover,
-                width: 70,
-                height: 70,
+                width: widget.tileSize,
+                height: widget.tileSize,
               ),
             ),
           ),
@@ -367,30 +406,47 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
   }
 
   Widget _buildAddButton() {
+    // 對標示意稿（2026-08-14）：深色磚＋品牌漸層弧環繞著加圖 icon。
+    final iconColor = widget.accentColor ?? Colors.white.withValues(alpha: 0.9);
+    final ringDiameter = widget.tileSize * 0.52;
     return GestureDetector(
       onTap: _pickImage,
       onLongPress: kIsWeb ? _pasteFromClipboard : null,
-      child: GlassmorphicContainer(
-        width: 70,
-        height: 70,
-        borderRadius: 12,
-        padding: EdgeInsets.zero,
-        color: widget.surfaceColor,
-        borderColor: widget.surfaceBorderColor,
+      child: Container(
+        width: widget.tileSize,
+        height: widget.tileSize,
+        decoration: BoxDecoration(
+          color: widget.surfaceColor ?? Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: widget.surfaceBorderColor ??
+                Colors.white.withValues(alpha: 0.12),
+          ),
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.add_photo_alternate_outlined,
-              color: widget.accentColor ?? AppColors.unselectedText,
-              size: 28,
+            SizedBox(
+              width: ringDiameter,
+              height: ringDiameter,
+              child: CustomPaint(
+                painter: const _GradientArcRingPainter(),
+                child: Center(
+                  child: Icon(
+                    Icons.add_photo_alternate_outlined,
+                    color: iconColor,
+                    size: ringDiameter * 0.52,
+                  ),
+                ),
+              ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 6),
             Text(
               widget.allowMultiSelect ? '多選' : '選圖',
               style: TextStyle(
                 fontSize: 12,
-                color: widget.accentColor ?? AppColors.unselectedText,
+                fontWeight: FontWeight.w600,
+                color: iconColor,
               ),
             ),
           ],

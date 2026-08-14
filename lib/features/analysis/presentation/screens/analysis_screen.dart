@@ -2852,6 +2852,37 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return parts.join('・');
   }
 
+  /// 空白新片段的「截圖小提醒」列（對標示意稿）：橘 icon＋深色卡。
+  Widget _buildScreenshotTipRow({
+    required IconData icon,
+    required String text,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: AppColors.ctaStart),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.onBackgroundPrimary.withValues(alpha: 0.92),
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildScreenshotSettingSection() {
     Text settingLabel(String text) {
       return Text(
@@ -6000,21 +6031,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         width: double.infinity,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.ctaStart.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.ctaStart.withValues(alpha: 0.16)),
+          color: Colors.white.withValues(alpha: 0.045),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
         ),
         child: Text(
           segments.length == 1
               ? '這是推薦訊息素材；下方保留引用，方便你確認 AI 接的是哪顆球。'
               : '建議拆成 ${segments.length} 則短訊息。每段都引用她的原句，也能單獨複製。',
-          style: AppTypography.caption.copyWith(
-            color: AppColors.textSecondary,
-            height: 1.4,
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.onBackgroundPrimary.withValues(alpha: 0.88),
+            height: 1.45,
           ),
         ),
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 12),
     ];
 
     for (var i = 0; i < segments.length; i++) {
@@ -6024,12 +6055,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       final reason = segment.reason.trim();
       widgets.add(
         Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(12),
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: AppColors.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.divider.withValues(alpha: 0.5)),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -6093,18 +6124,35 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   ),
                 ),
               ],
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
-                height: 38,
-                child: OutlinedButton.icon(
+                height: 46,
+                child: TextButton.icon(
                   onPressed: () {
                     _copyRecommendationText(reply, '已複製第 ${i + 1} 句');
                   },
-                  icon: const Icon(Icons.copy, size: 16),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.05),
+                    foregroundColor: AppColors.onBackgroundPrimary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      side: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.14),
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.copy_rounded,
+                    size: 17,
+                    color: AppColors.coachAccent,
+                  ),
                   label: Text(
                     segments.length == 1 ? '複製這句' : '複製第 ${i + 1} 句',
-                    style: AppTypography.labelMedium,
+                    style: AppTypography.labelLarge.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -6120,12 +6168,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       widgets.add(
         SizedBox(
           width: double.infinity,
+          height: 52,
           child: ElevatedButton.icon(
             onPressed: () {
               _copyRecommendationText(allContent, '已複製整組訊息');
             },
-            icon: const Icon(Icons.copy),
-            label: const Text('複製整組訊息'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+            ),
+            icon: const Icon(Icons.copy_rounded, size: 18),
+            label: Text(
+              '複製整組訊息',
+              style: AppTypography.titleSmall.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ),
       );
@@ -6603,6 +6665,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final showFloatingAnalysisAction = showInitialScreenshotSetup &&
         analysisFragmentMessages.isNotEmpty &&
         _selectedImages.isEmpty;
+    // 空白新片段（對標示意稿 2026-08-14）：整頁走深色平鋪，不再用白卡框住。
+    final isEmptyFragmentSetup =
+        isScreenshotOnlyEmptyState && analysisFragmentMessages.isEmpty;
     final showStreamInterruptedAction =
         !_isAnalyzing && _enthusiasmScore == null && _fullErrorMessage != null;
 
@@ -6710,25 +6775,30 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Messages preview
+                          // Messages preview（空白新片段時平鋪深色、不上白卡）
                           Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.96),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color:
-                                    AppColors.ctaStart.withValues(alpha: 0.24),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.12),
-                                  blurRadius: 18,
-                                  offset: const Offset(0, 10),
-                                ),
-                              ],
-                            ),
+                            padding: isEmptyFragmentSetup
+                                ? EdgeInsets.zero
+                                : const EdgeInsets.all(14),
+                            decoration: isEmptyFragmentSetup
+                                ? null
+                                : BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.96),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: AppColors.ctaStart
+                                          .withValues(alpha: 0.24),
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.12),
+                                        blurRadius: 18,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                    ],
+                                  ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
@@ -6743,7 +6813,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                 : '新的分析片段',
                                         style:
                                             AppTypography.titleMedium.copyWith(
-                                          color: AppColors.glassTextPrimary,
+                                          color: isEmptyFragmentSetup
+                                              ? AppColors.onBackgroundPrimary
+                                              : AppColors.glassTextPrimary,
                                           fontWeight: FontWeight.w800,
                                         ),
                                       ),
@@ -6760,7 +6832,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           ? '這次分析已獨立封存，內容唯讀；新內容請另開分析片段。'
                                           : '先加入這次想給 AI 解析的聊天；不會接回舊紀錄。',
                                   style: AppTypography.bodySmall.copyWith(
-                                    color: AppColors.glassTextSecondary,
+                                    color: isEmptyFragmentSetup
+                                        ? AppColors.onBackgroundSecondary
+                                        : AppColors.glassTextSecondary,
                                     height: 1.35,
                                   ),
                                 ),
@@ -6780,24 +6854,53 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 const SizedBox(height: 10),
                                 if (analysisFragmentMessages.isEmpty)
                                   Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 20,
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: isEmptyFragmentSetup ? 28 : 20,
                                       horizontal: 8,
                                     ),
                                     child: Column(
                                       children: [
-                                        Icon(
-                                          Icons.chat_bubble_outline,
-                                          color: AppColors.ctaStart,
-                                          size: 34,
+                                        if (isEmptyFragmentSetup)
+                                          // 對標示意稿：大圓框聊天泡泡主圖示
+                                          Container(
+                                            width: 96,
+                                            height: 96,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.05),
+                                              border: Border.all(
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.14),
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                            child: const Icon(
+                                              Icons.sms_outlined,
+                                              color: AppColors.coachAccentBright,
+                                              size: 40,
+                                            ),
+                                          )
+                                        else
+                                          Icon(
+                                            Icons.chat_bubble_outline,
+                                            color: AppColors.ctaStart,
+                                            size: 34,
+                                          ),
+                                        SizedBox(
+                                          height:
+                                              isEmptyFragmentSetup ? 18 : 10,
                                         ),
-                                        const SizedBox(height: 10),
                                         Text(
                                           '還沒有訊息',
-                                          style: AppTypography.titleMedium
+                                          style: (isEmptyFragmentSetup
+                                                  ? AppTypography.titleLarge
+                                                  : AppTypography.titleMedium)
                                               .copyWith(
-                                            color: AppColors.glassTextPrimary,
-                                            fontWeight: FontWeight.w700,
+                                            color: isEmptyFragmentSetup
+                                                ? AppColors.onBackgroundPrimary
+                                                : AppColors.glassTextPrimary,
+                                            fontWeight: FontWeight.w800,
                                           ),
                                         ),
                                         const SizedBox(height: 6),
@@ -6808,7 +6911,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           textAlign: TextAlign.center,
                                           style:
                                               AppTypography.bodySmall.copyWith(
-                                            color: AppColors.glassTextSecondary,
+                                            color: isEmptyFragmentSetup
+                                                ? AppColors
+                                                    .onBackgroundSecondary
+                                                : AppColors.glassTextSecondary,
                                             height: 1.35,
                                           ),
                                         ),
@@ -6969,17 +7075,55 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // 手動分析按鈕 (尚未分析時顯示)
                           if (showInitialScreenshotSetup) ...[
                             Container(
-                              padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(
-                                color:
-                                    AppColors.ctaStart.withValues(alpha: 0.05),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                    color: AppColors.ctaStart
-                                        .withValues(alpha: 0.2)),
-                              ),
+                              padding: isEmptyFragmentSetup
+                                  ? EdgeInsets.zero
+                                  : const EdgeInsets.all(24),
+                              decoration: isEmptyFragmentSetup
+                                  ? null
+                                  : BoxDecoration(
+                                      color: AppColors.ctaStart
+                                          .withValues(alpha: 0.05),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                          color: AppColors.ctaStart
+                                              .withValues(alpha: 0.2)),
+                                    ),
                               child: Column(
+                                crossAxisAlignment: isEmptyFragmentSetup
+                                    ? CrossAxisAlignment.stretch
+                                    : CrossAxisAlignment.center,
                                 children: [
+                                  if (isEmptyFragmentSetup) ...[
+                                    Divider(
+                                      height: 1,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.10),
+                                    ),
+                                    const SizedBox(height: 18),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          '聊天截圖',
+                                          style: AppTypography.titleSmall
+                                              .copyWith(
+                                            color:
+                                                AppColors.onBackgroundPrimary,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        Text(
+                                          '${_selectedImages.length}/3',
+                                          style:
+                                              AppTypography.bodyMedium.copyWith(
+                                            color: AppColors
+                                                .onBackgroundSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
                                   if (conversation.messages.isNotEmpty) ...[
                                     Container(
                                       width: double.infinity,
@@ -7010,23 +7154,48 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     externalImages: _selectedImages, // 同步外部狀態
                                     helperTextColor:
                                         AppColors.onBackgroundSecondary,
+                                    // 空片段版型的提示改由下方「截圖小提醒」承擔
+                                    showHelperText: !isEmptyFragmentSetup,
+                                    tileSize: isEmptyFragmentSetup ? 104 : 70,
                                     onImagesChanged:
                                         _handleSelectedImagesChanged,
                                     onMetricsChanged:
                                         _handleSelectedImageMetricsChanged,
                                   ),
+                                  if (isEmptyFragmentSetup) ...[
+                                    const SizedBox(height: 22),
+                                    Text(
+                                      '截圖小提醒',
+                                      style: AppTypography.titleSmall.copyWith(
+                                        color: AppColors.onBackgroundPrimary,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    _buildScreenshotTipRow(
+                                      icon: Icons.crop_free_rounded,
+                                      text: '請保留標題列、訊息泡泡與前後文',
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _buildScreenshotTipRow(
+                                      icon: Icons.text_fields_rounded,
+                                      text: '每張建議 15 則內；過長可拆成 2-3 張',
+                                    ),
+                                  ],
                                   _buildScreenshotSettingSection(),
                                   const SizedBox(height: 8),
 
-                                  // 對話長度提示
-                                  Text(
-                                    '建議每張截圖保留 15 則內完整對話；過長請拆成 2-3 張，辨識會更穩。',
-                                    style: AppTypography.bodySmall.copyWith(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.55),
+                                  // 對話長度提示（空片段版型已由截圖小提醒承擔）
+                                  if (!isEmptyFragmentSetup) ...[
+                                    Text(
+                                      '建議每張截圖保留 15 則內完整對話；過長請拆成 2-3 張，辨識會更穩。',
+                                      style: AppTypography.bodySmall.copyWith(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.55),
+                                      ),
+                                      textAlign: TextAlign.center,
                                     ),
-                                    textAlign: TextAlign.center,
-                                  ),
+                                  ],
                                   const SizedBox(height: 12),
 
                                   // 如果有截圖，先顯示「辨識截圖文字」按鈕
@@ -8490,53 +8659,110 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// 卡內不再需要縱向捲動吃高度差）。
   Widget _buildRecommendedReplyCard() {
     final recommendation = _finalRecommendation!;
+    // 對標示意稿（2026-08-14）：拆掉外層漸層框卡，內容平鋪在頁面底上；
+    // 標題換圓形靶心徽章＋白字，理由收進帶 icon 座的說明卡。
     return Container(
       key: const ValueKey('analysis-recommended-reply-card'),
       width: 340,
       margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.ctaStart.withValues(alpha: 0.1),
-            AppColors.ctaStart.withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.ctaStart.withValues(alpha: 0.3)),
-      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Text('🎯', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 6),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.ctaStart.withValues(alpha: 0.16),
+                  border: Border.all(
+                    color: AppColors.ctaStart.withValues(alpha: 0.55),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.track_changes_rounded,
+                  size: 19,
+                  color: AppColors.ctaStart,
+                ),
+              ),
+              const SizedBox(width: 10),
               Text(
                 'AI 推薦回覆',
                 style: AppTypography.titleMedium.copyWith(
-                  color: AppColors.ctaStart,
-                  fontWeight: FontWeight.w700,
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           ..._buildRecommendationContent(recommendation),
           const SizedBox(height: 12),
-          Text(
-            '📝 ${recommendation.reason}',
-            style: AppTypography.bodyMedium,
-          ),
-          if (recommendation.psychology.isNotEmpty &&
-              recommendation.psychology != recommendation.reason) ...[
-            const SizedBox(height: 4),
-            Text(
-              '🧠 ${recommendation.psychology}',
-              style: AppTypography.caption,
+          _buildRecommendationNote(recommendation),
+        ],
+      ),
+    );
+  }
+
+  /// 推薦理由說明卡：icon 座＋灰字，取代舊 📝/🧠 emoji 前綴行。
+  Widget _buildRecommendationNote(FinalRecommendation recommendation) {
+    final reason = recommendation.reason.trim();
+    final psychology = recommendation.psychology.trim();
+    if (reason.isEmpty && psychology.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.primary.withValues(alpha: 0.22),
             ),
-          ],
+            child: Icon(
+              Icons.description_outlined,
+              size: 16,
+              color: AppColors.coachAccent,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (reason.isNotEmpty)
+                  Text(
+                    reason,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.45,
+                    ),
+                  ),
+                if (psychology.isNotEmpty && psychology != reason) ...[
+                  if (reason.isNotEmpty) const SizedBox(height: 4),
+                  Text(
+                    psychology,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
