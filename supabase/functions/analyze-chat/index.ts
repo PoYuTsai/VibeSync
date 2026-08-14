@@ -1,6 +1,7 @@
 // supabase/functions/analyze-chat/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { withOperationalErrorMonitoring } from "../_shared/operational_error_monitor.ts";
 import {
   type AnalysisResult as GuardrailAnalysisResult,
   checkAiOutput,
@@ -4657,7 +4658,7 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-serve(async (req) => {
+serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
   // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -9730,7 +9731,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     logError("unhandled_error", { error: getErrorMessage(error) });
     return jsonResponse({ error: "Internal server error" }, 500);
   }
-});
+}));
 
 // Prompt Caching enabled
 // Last deployed: 2026-03-06

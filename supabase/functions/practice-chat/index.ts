@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { withOperationalErrorMonitoring } from "../_shared/operational_error_monitor.ts";
 import { callDeepSeek } from "./deepseek.ts";
 import { callClaude } from "./claude.ts";
 import {
@@ -19,4 +20,4 @@ export const handleRequest = createPracticeChatHandler({
   getEnv: (name) => Deno.env.get(name),
 });
 
-serve(handleRequest);
+serve(withOperationalErrorMonitoring("practice-chat", handleRequest));

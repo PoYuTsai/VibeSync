@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { withOperationalErrorMonitoring } from "../_shared/operational_error_monitor.ts";
 
 import { buildRevenueCatUserIdCandidates } from "./revenuecat_identity.ts";
 import {
@@ -146,7 +147,7 @@ function inferBillingPeriod(
   return "unknown";
 }
 
-serve(async (req) => {
+serve(withOperationalErrorMonitoring("sync-subscription", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -442,4 +443,4 @@ serve(async (req) => {
     console.error("sync-subscription error", error);
     return jsonResponse({ error: "Internal server error" }, 500);
   }
-});
+}));

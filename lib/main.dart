@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app/app.dart';
 import 'app/routes.dart';
 import 'core/config/environment.dart';
+import 'core/observability/crash_reporting.dart';
 import 'core/services/account_deletion_cleanup.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/revenuecat_service.dart';
@@ -14,7 +15,9 @@ import 'features/follow_up_notification/data/local_notification_gateway.dart';
 import 'features/follow_up_notification/data/providers/follow_up_notification_service.dart';
 import 'features/onboarding/data/onboarding_service.dart';
 
-void main() async {
+Future<void> main() => CrashReporting.run(_bootstrapApp);
+
+Future<void> _bootstrapApp() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Log environment info

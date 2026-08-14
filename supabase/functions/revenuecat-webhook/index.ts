@@ -2,6 +2,7 @@ import {
   createClient,
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2";
+import { withOperationalErrorMonitoring } from "../_shared/operational_error_monitor.ts";
 import { getTierFromProductId } from "./tiers.ts";
 import {
   buildSubscriptionProductMetadata,
@@ -212,7 +213,7 @@ async function sha256Prefix(input: string): Promise<string> {
     .slice(0, 12);
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withOperationalErrorMonitoring("revenuecat-webhook", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -755,4 +756,4 @@ Deno.serve(async (req) => {
     console.error("Webhook error:", error);
     return jsonResponse({ error: (error as Error).message }, 500);
   }
-});
+}));

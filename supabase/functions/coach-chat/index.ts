@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { withOperationalErrorMonitoring } from "../_shared/operational_error_monitor.ts";
 import {
   callClaudeAPI,
   type CoachChatProgressUpdate,
@@ -927,5 +928,5 @@ export async function handleRequest(
 }
 
 if (import.meta.main) {
-  serve((req) => handleRequest(req));
+  serve(withOperationalErrorMonitoring("coach-chat", handleRequest));
 }

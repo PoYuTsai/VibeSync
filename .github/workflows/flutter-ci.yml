@@ -43,6 +43,7 @@ jobs:
           deno test --allow-env --allow-read
           supabase/functions/keyboard-reply
           supabase/functions/_shared/model_rate_limit_test.ts
+          supabase/functions/_shared/operational_error_monitor_test.ts
           supabase/functions/_shared/quota_test.ts
           supabase/functions/analyze-chat/logger_test.ts
           supabase/functions/analyze-chat/index_test.ts

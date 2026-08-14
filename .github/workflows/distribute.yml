@@ -100,13 +100,15 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
           REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           flutter build apk --release \
             --dart-define=GIT_SHA=$GIT_SHA \
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
-            --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY"
+            --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN"
 
       - name: Prepare release notes
         run: |
@@ -204,6 +206,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
           REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           rm -rf build/ios/ipa build/ios/archive
           flutter build ipa --release \
@@ -212,6 +215,7 @@ jobs:
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
             --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN" \
             --export-options-plist=ios/ExportOptions.plist
 
       - name: Verify iOS app version
