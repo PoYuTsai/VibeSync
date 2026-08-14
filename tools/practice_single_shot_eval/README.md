@@ -8,6 +8,7 @@ buildMessages＋`runSingleShot`＋parser 守門），量化驗收四條路：
 ## 跑法
 
 ```powershell
+Remove-Item Env:CLAUDE_API_KEY -ErrorAction SilentlyContinue
 deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" `
   --allow-env --allow-net --allow-read --allow-write run_eval.ts
 ```

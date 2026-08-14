@@ -20,6 +20,7 @@ Run these commands from the repository root:
 ```powershell
 deno run --allow-read --allow-net tools/practice-chat/practice_generated_only_production_smoke.ts
 deno run --allow-read --allow-net tools/practice-chat/practice_generated_only_production_smoke.ts --standard-debrief
+Remove-Item Env:CLAUDE_API_KEY -ErrorAction SilentlyContinue
 deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" --allow-env --allow-net tools/practice-chat/practice_hint_provider_probe.ts
 deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" --allow-env --allow-net tools/practice-chat/practice_hint_acceptance_probe.ts
 deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" --allow-env --allow-net tools/practice-chat/practice_debrief_provider_probe.ts

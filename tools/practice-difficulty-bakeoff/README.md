@@ -52,6 +52,7 @@ DEEPSEEK_API_KEY=... deno run \
 Claude 參考路徑（非 gate；2026-07-06 已用此路徑 smoke 過端到端）：
 
 ```powershell
+Remove-Item Env:CLAUDE_API_KEY -ErrorAction SilentlyContinue
 deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" `
   --allow-net --allow-env --allow-read --allow-write `
   tools/practice-difficulty-bakeoff/bakeoff.ts `

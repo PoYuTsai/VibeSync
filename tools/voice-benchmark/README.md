@@ -69,6 +69,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 直接走工作樹內的 `runCoachChat`、Sonnet 5、schema／安全驗證與 retry，不連 DB；固定使用 test-account 模式，若程式嘗試扣額度會立即失敗。案例與輸出皆為合成文字，但會產生 Claude API 成本。
 
 ```powershell
+Remove-Item Env:CLAUDE_API_KEY -ErrorAction SilentlyContinue
 deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" `
   --allow-env --allow-net `
   tools/voice-benchmark/run_local_coach_1_8x_smoke.ts --runs=2
