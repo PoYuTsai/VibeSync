@@ -89,6 +89,17 @@ class AppColors {
   static const ctaStart = brandFlame;
   static const ctaEnd = brandFlameDark;
 
+  // 對象作戰板身份色（2026-08-15 對標夥伴示意稿）：低飽和霧感四色，
+  // 刻意不用品牌螢光色票——螢光色在深玻璃卡上會太跳。
+  static const partnerRoseStart = Color(0xFFE99AA6);
+  static const partnerRoseEnd = Color(0xFFD97F92);
+  static const partnerGoldStart = Color(0xFFC9A75F);
+  static const partnerGoldEnd = Color(0xFFB08F4C);
+  static const partnerOrangeStart = Color(0xFFF4913F);
+  static const partnerOrangeEnd = Color(0xFFE4611C);
+  static const partnerOrchidStart = Color(0xFFE98BBB);
+  static const partnerOrchidEnd = Color(0xFFDB6FA6);
+
   // Avatar gradients
   static const avatarHerStart = Color(0xFFFFD54F);
   static const avatarHerEnd = Color(0xFFFFC107);

@@ -45,14 +45,12 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
   static const _influence = 120.0;
 
   // 圖示磚漸層＝對象識別色（下方色點同色），依對象 id 定色。
-  // 色值直接取自夥伴示意稿（2026-08-15 Eric 拍板）：四色全是低飽和
-  // 霧感色（霧玫瑰、古銅金、鮮橘、蘭花粉），刻意不用品牌螢光色票，
-  // 螢光色在深玻璃卡上會太跳。
+  // 色值取自夥伴示意稿（2026-08-15 Eric 拍板），色票本體在 AppColors。
   static const _tileGradients = [
-    [Color(0xFFE99AA6), Color(0xFFD97F92)], // 霧玫瑰
-    [Color(0xFFC9A75F), Color(0xFFB08F4C)], // 古銅金
-    [Color(0xFFF4913F), Color(0xFFE4611C)], // 鮮橘
-    [Color(0xFFE98BBB), Color(0xFFDB6FA6)], // 蘭花粉
+    [AppColors.partnerRoseStart, AppColors.partnerRoseEnd], // 霧玫瑰
+    [AppColors.partnerGoldStart, AppColors.partnerGoldEnd], // 古銅金
+    [AppColors.partnerOrangeStart, AppColors.partnerOrangeEnd], // 鮮橘
+    [AppColors.partnerOrchidStart, AppColors.partnerOrchidEnd], // 蘭花粉
   ];
 
   final _scrollController = ScrollController();
