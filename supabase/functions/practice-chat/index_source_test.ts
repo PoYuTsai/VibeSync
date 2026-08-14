@@ -15,7 +15,9 @@ Deno.test("index.ts keeps Edge serve entrypoint wired to injectable handler", ()
   const createClientIndex = indexOfRequired("createClient(");
   const callDeepSeekIndex = indexOfRequired("callDeepSeek");
   const callClaudeIndex = indexOfRequired("callClaude");
-  const serveIndex = indexOfRequired("serve(handleRequest)");
+  const serveIndex = indexOfRequired(
+    'serve(withOperationalErrorMonitoring("practice-chat", handleRequest))',
+  );
 
   assert(
     createHandlerIndex < serveIndex,
