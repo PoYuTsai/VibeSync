@@ -51,12 +51,14 @@ DEEPSEEK_API_KEY=... deno run \
 
 Claude 參考路徑（非 gate；2026-07-06 已用此路徑 smoke 過端到端）：
 
-```bash
-CLAUDE_API_KEY=sk-ant-... deno run \
-  --allow-net --allow-env --allow-read --allow-write \
-  tools/practice-difficulty-bakeoff/bakeoff.ts \
+```powershell
+deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" `
+  --allow-net --allow-env --allow-read --allow-write `
+  tools/practice-difficulty-bakeoff/bakeoff.ts `
   --provider=claude --runs=1 --scripts=bad_interrogator --difficulties=challenge
 ```
+
+不要把 Claude key 直接貼進命令列或 repo 內的 env 檔。
 
 ## 過關判準（gate 門檻）
 

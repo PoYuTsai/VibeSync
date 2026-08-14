@@ -2,8 +2,8 @@
 // 直接 import practice-chat 的生成組件、用 CLAUDE_API_KEY 打真 Anthropic API；
 // 絕不打 prod Edge Function、絕不碰 DB／扣費／ledger。
 //
-// 跑法（全 80 發）：
-//   CLAUDE_API_KEY=... deno run --allow-env --allow-net --allow-read --allow-write run_eval.ts
+// 跑法（全 80 發；先用 --env-file 載入 OneDrive 外的 local-evals.env）：
+//   deno run --env-file=<local-evals.env> --allow-env --allow-net --allow-read --allow-write run_eval.ts
 // 開發省錢：
 //   deno run ... run_eval.ts --route=game_hint --repeat=1
 // 不花錢驗流程（fake callClaude，全 80 發過 buildMessages＋parser）：

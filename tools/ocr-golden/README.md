@@ -28,10 +28,12 @@ curl -s "https://fcmwrmwdoqiqdnbisdpg.supabase.co/auth/v1/token?grant_type=passw
 ## 跑 local（OCR 改動 land 前回歸）
 
 ```bash
-supabase functions serve analyze-chat --no-verify-jwt --env-file <含 CLAUDE_API_KEY 的 env>
+supabase functions serve analyze-chat --no-verify-jwt --env-file "$VIBESYNC_LOCAL_EVALS_ENV"
 deno run --allow-net --allow-read --allow-write --allow-env run_benchmark.ts \
   --endpoint http://localhost:54321/functions/v1/analyze-chat
 ```
+
+`VIBESYNC_LOCAL_EVALS_ENV` 必須指向 repo／OneDrive 外的受限環境檔；不要把 `CLAUDE_API_KEY` 放回 `.env.golden`、`supabase/.env` 或命令列。
 
 ### 無 Docker 機器（2026-06-13 消融跑分實證路徑）
 
@@ -42,7 +44,10 @@ deno run --allow-net --allow-read --allow-write --allow-env run_benchmark.ts \
 # 2. proxy：/rest/v1/* 的 Authorization 改寫成 user JWT（RLS 走 authenticated 自讀）
 SUPABASE_URL=<prod url> deno run --allow-net --allow-read --allow-env bench_auth_proxy.ts &
 # 3. function 指向 proxy；service key 缺席用 anon key 頂（只夠 auth.getUser，DB 寫入靠 RLS 自讀）
-CLAUDE_API_KEY=<key> SUPABASE_URL=http://localhost:9999 SUPABASE_SERVICE_ROLE_KEY=<anon key> \
+set -a
+. "${VIBESYNC_LOCAL_EVALS_ENV:-/mnt/c/Users/eric1/.vibesync-secrets/local-evals.env}"
+set +a
+SUPABASE_URL=http://localhost:9999 SUPABASE_SERVICE_ROLE_KEY=<anon key> \
   deno run --allow-net --allow-env --allow-read supabase/functions/analyze-chat/index.ts &
 # 4. 跑分（OneDrive 圖檔若被整理進子目錄，先攤平到 /tmp 再用 OCR_GOLDEN_IMAGES_DIR 指過去）
 deno run --allow-net --allow-read --allow-write --allow-env run_benchmark.ts \

@@ -613,10 +613,10 @@ async function main(): Promise<void> {
   if (!apiKey || apiKey.trim().length === 0) {
     throw new Error(
       `bakeoff_missing_env: 未設定 ${envKeyName}（provider=${opts.provider}）。跑法：` +
-        `${envKeyName}=... deno run --allow-net --allow-env --allow-read --allow-write ` +
+        "deno run --env-file=<受限的本機 env> --allow-net --allow-env --allow-read --allow-write " +
         "tools/practice-difficulty-bakeoff/bakeoff.ts" +
         (opts.provider === "deepseek"
-          ? "。預設 provider=deepseek（prod 同款、正式 gate）；本地若尚未有 DEEPSEEK_API_KEY，請先向 Eric 取得（Eric 會放進 supabase/.env）"
+          ? "。預設 provider=deepseek（prod 同款、正式 gate）；請從 repo 外的受限本機 env 載入 DEEPSEEK_API_KEY"
           : ""),
     );
   }

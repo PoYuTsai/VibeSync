@@ -7,9 +7,12 @@ buildMessages＋`runSingleShot`＋parser 守門），量化驗收四條路：
 
 ## 跑法
 
+```powershell
+deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" `
+  --allow-env --allow-net --allow-read --allow-write run_eval.ts
 ```
-CLAUDE_API_KEY=... deno run --allow-env --allow-net --allow-read --allow-write run_eval.ts
-```
+
+不要把 key 直接貼進終端或 repo 內的 `.env`；Claude key 統一由上述 OneDrive 外的受限環境檔載入。
 
 （`--allow-write` 供結果 JSON 落檔 `results/<timestamp>.json`；不給也能跑，只印 console。）
 

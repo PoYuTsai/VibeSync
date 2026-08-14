@@ -40,7 +40,7 @@ deno run --allow-net --allow-read live_contract_smoke.ts cases/case3_ashley_prob
 ./gen_blind_sheet.sh                                # 產 blind/blind_sheet.md＋answer_key.md
 ```
 
-憑證：測試帳號在 `tools/ocr-golden/.env.golden`、anon key 在 repo root `.env.local`。直打 prod `analyze-chat` stream 收 ndjson（同 Phase 1 黑箱手法）。
+憑證：測試帳號在 `tools/ocr-golden/.env.golden`、anon key 在 repo root `.env.local`。這兩個 repo 內檔案不得再放 `CLAUDE_API_KEY`。直打 prod `analyze-chat` stream 收 ndjson（同 Phase 1 黑箱手法）。
 
 ### Windows 無 Docker：本機 prompt quality smoke
 
@@ -60,6 +60,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
   -RuntimeDir $runtime.runtimeDir
 ```
 
+啟動器只會從 `$env:USERPROFILE\.vibesync-secrets\local-evals.env` 讀取 `CLAUDE_API_KEY`；不會從 repo 內的 `.env` 或 `.env.golden` 取 Claude key。可用 `-LocalEvalEnvPath` 指定另一個 OneDrive 外的受限檔案。
+
 三組案例分別鎖：末句「哈哈」不得蓋掉整輪、多句同事件不得逐句拆段、真低投入不得追問施壓。quality runner 另檢查五風格/done contract、測試帳號零扣款，並掃 selected 與所有備選的時間漂移、未提供背景、低投入壓力、規則洩漏、常見簡體與壞字 `�`。
 
 ### Coach 1:1 本機 1.8x quality smoke
@@ -67,7 +69,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 直接走工作樹內的 `runCoachChat`、Sonnet 5、schema／安全驗證與 retry，不連 DB；固定使用 test-account 模式，若程式嘗試扣額度會立即失敗。案例與輸出皆為合成文字，但會產生 Claude API 成本。
 
 ```powershell
-deno run --env-file=supabase/.env --allow-env --allow-net `
+deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" `
+  --allow-env --allow-net `
   tools/voice-benchmark/run_local_coach_1_8x_smoke.ts --runs=2
 ```
 

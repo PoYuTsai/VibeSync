@@ -1,12 +1,18 @@
 param(
   [int]$ProxyPort = 9999,
-  [int]$FunctionPort = 8000
+  [int]$FunctionPort = 8000,
+  [string]$LocalEvalEnvPath = (
+    Join-Path $env:USERPROFILE ".vibesync-secrets/local-evals.env"
+  )
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 
-function Import-DotEnv([string]$Path) {
+function Import-DotEnv(
+  [string]$Path,
+  [string[]]$ExcludedNames = @()
+) {
   foreach ($raw in Get-Content -LiteralPath $Path -Encoding utf8) {
     $line = $raw.Trim()
     if (-not $line -or $line.StartsWith("#")) { continue }
@@ -14,6 +20,7 @@ function Import-DotEnv([string]$Path) {
     $separator = $line.IndexOf("=")
     if ($separator -le 0) { continue }
     $key = $line.Substring(0, $separator).Trim()
+    if ($ExcludedNames -contains $key) { continue }
     $value = $line.Substring($separator + 1).Trim()
     if (
       ($value.StartsWith('"') -and $value.EndsWith('"')) -or
@@ -25,17 +32,56 @@ function Import-DotEnv([string]$Path) {
   }
 }
 
+function Import-RequiredDotEnvValue(
+  [string]$Path,
+  [string]$Name
+) {
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    throw "Required local eval environment file not found: $Path"
+  }
+
+  $foundValues = @()
+  foreach ($raw in Get-Content -LiteralPath $Path -Encoding utf8) {
+    $line = $raw.Trim()
+    if (-not $line -or $line.StartsWith("#")) { continue }
+    if ($line.StartsWith("export ")) { $line = $line.Substring(7).Trim() }
+    $separator = $line.IndexOf("=")
+    if ($separator -le 0) { continue }
+    $key = $line.Substring(0, $separator).Trim()
+    if ($key -ne $Name) { continue }
+    $value = $line.Substring($separator + 1).Trim()
+    if (
+      ($value.StartsWith('"') -and $value.EndsWith('"')) -or
+      ($value.StartsWith("'") -and $value.EndsWith("'"))
+    ) {
+      $value = $value.Substring(1, $value.Length - 2)
+    }
+    $foundValues += $value
+  }
+
+  if ($foundValues.Count -ne 1 -or -not $foundValues[0]) {
+    throw "Required $Name must appear exactly once in: $Path"
+  }
+  if ($Name -eq "CLAUDE_API_KEY" -and $foundValues[0] -notmatch "^sk-ant-") {
+    throw "Required $Name has an unexpected format in: $Path"
+  }
+  Set-Item -Path "Env:$Name" -Value $foundValues[0]
+}
+
 $busyPorts = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
   Where-Object { $_.LocalPort -in @($ProxyPort, $FunctionPort) }
 if ($busyPorts) {
   throw "Local smoke port already in use: $($busyPorts.LocalPort -join ', ')"
 }
 
-Import-DotEnv (Join-Path $repoRoot ".env.local")
+Import-DotEnv (Join-Path $repoRoot ".env.local") @("CLAUDE_API_KEY")
 $productionUrl = $env:SUPABASE_URL
 $anonKey = $env:SUPABASE_ANON_KEY
-Import-DotEnv (Join-Path $repoRoot "supabase/.env")
-Import-DotEnv (Join-Path $repoRoot "tools/ocr-golden/.env.golden")
+Import-DotEnv (Join-Path $repoRoot "supabase/.env") @("CLAUDE_API_KEY")
+Import-DotEnv `
+  (Join-Path $repoRoot "tools/ocr-golden/.env.golden") `
+  @("CLAUDE_API_KEY")
+Import-RequiredDotEnvValue $LocalEvalEnvPath "CLAUDE_API_KEY"
 
 $authBody = @{
   email = $env:TEST_EMAIL
