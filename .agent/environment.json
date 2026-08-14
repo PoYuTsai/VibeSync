@@ -16,6 +16,18 @@
           "path": ".github/workflows/flutter-ci.yml",
           "key": "flutter-version",
           "constraint": "exact"
+        },
+        {
+          "type": "yaml-scalar",
+          "path": ".github/workflows/release.yml",
+          "key": "flutter-version",
+          "constraint": "exact"
+        },
+        {
+          "type": "yaml-scalar",
+          "path": ".github/workflows/distribute.yml",
+          "key": "flutter-version",
+          "constraint": "exact"
         }
       ]
     }
