@@ -19,6 +19,12 @@
         },
         {
           "type": "yaml-scalar",
+          "path": ".github/workflows/deploy-web.yml",
+          "key": "flutter-version",
+          "constraint": "exact"
+        },
+        {
+          "type": "yaml-scalar",
           "path": ".github/workflows/release.yml",
           "key": "flutter-version",
           "constraint": "exact"
