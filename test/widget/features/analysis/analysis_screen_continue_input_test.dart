@@ -529,29 +529,14 @@ void main() {
         find.text('分析'),
         findsNothing,
       );
-      expect(find.text('這次分析設定（可不改）'), findsOneWidget);
-      expect(find.text('交友軟體・剛認識・邀約見面'), findsOneWidget);
-      expect(find.text('不確定可以先跳過；會先沿用對象卡的設定。'), findsOneWidget);
+      // 2026-08-14 Eric 拍板：「這次分析設定」在這頁拆除（對象卡建立時已
+      // 引導填過，預設值仍由 ScreenshotSessionContextDefaults 靜默沿用，
+      // 見 screenshot_session_context_defaults_test.dart）。
+      expect(find.text('這次分析設定（可不改）'), findsNothing);
       expect(find.text('認識情境'), findsNothing);
       expect(find.text('補充背景（選填）'), findsNothing);
-
-      await tester.tap(find.text('這次分析設定（可不改）'));
-      await tester.pump();
-
-      expect(find.text('已是伴侶'), findsOneWidget);
-      expect(find.text('目前目標'), findsOneWidget);
-      expect(find.text('補充背景（選填）'), findsOneWidget);
-      expect(find.text('沒有可以留空'), findsOneWidget);
-      expect(find.text('其他'), findsNothing);
-      expect(find.textContaining('只影響本次分析'), findsAtLeastNWidgets(1));
-      final noteField = tester.widget<TextField>(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is TextField && widget.decoration?.hintText == '沒有可以留空',
-        ),
-      );
-      expect(noteField.maxLength, 300);
-      expect(noteField.textInputAction, TextInputAction.done);
+      // 空片段版型：截圖小提醒取代舊的內建說明文字。
+      expect(find.text('截圖小提醒'), findsOneWidget);
     });
 
     testWidgets('new screenshot analysis starts from partner-card defaults',
@@ -583,28 +568,12 @@ void main() {
         partnerRepository: partnerRepository,
       );
 
-      expect(
-        find.text('已補充背景・朋友介紹・幾週・維持熱度'),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('這次分析設定（可不改）'));
-      await tester.pump();
-
-      final noteFieldFinder = find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField && widget.decoration?.hintText == '沒有可以留空',
-      );
-      final noteField = tester.widget<TextField>(noteFieldFinder);
-      expect(noteField.controller?.text, '她不喜歡臨時約');
-
-      await tester.enterText(noteFieldFinder, '');
-      await tester.pump();
-
-      expect(find.text('朋友介紹・幾週・維持熱度'), findsOneWidget);
-      expect(
-        find.text('已補充背景・朋友介紹・幾週・維持熱度'),
-        findsNothing,
-      );
+      // 設定 UI 已拆；對象卡預設仍在 state 靜默沿用（初始化路徑不因
+      // 對象卡存在而炸），數值正確性由
+      // screenshot_session_context_defaults_test.dart 把關。
+      expect(find.text('還沒有訊息'), findsOneWidget);
+      expect(find.text('這次分析設定（可不改）'), findsNothing);
+      expect(find.text('已補充背景・朋友介紹・幾週・維持熱度'), findsNothing);
     });
 
     testWidgets(

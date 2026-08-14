@@ -74,8 +74,8 @@ class _ScreenshotRecognitionDialogState
 
   static const _swipeTutorialEntryDelay = Duration(milliseconds: 650);
 
-  // 滑動教學：每次 dialog 進場後延遲播放一次（零 repeat），
-  // 播完停在原位。問號按鈕可手動重播。
+  // 滑動教學：每次 dialog 進場後延遲播放 2 輪（2.6 秒/輪），
+  // 播完停在原位留靜態圖例。問號按鈕可手動重播。
   late final AnimationController _swipeTutorialController;
   late final Animation<double> _swipeTutorialShift;
   late final Animation<double> _swipeTutorialRightHintOpacity;
@@ -95,8 +95,9 @@ class _ScreenshotRecognitionDialogState
             .map(_EditableRecognizedMessage.fromRecognizedMessage)
             .toList();
 
-    // 節奏對標分析頁 SwipeHintNudge：一輪 2.6 秒、循環提示（2026-08-14
-    // Eric 拍板：播一次就停太不明顯，改成每 2.6 秒滑一次直到使用者動手）。
+    // 節奏對標分析頁 SwipeHintNudge：一輪 2.6 秒、播 2 輪就停（2026-08-14
+    // Eric 真機回報：常駐循環的方向徽章會擋住第一則訊息內容，跟「讀訊息核對
+    // 左右」的主任務打架；2 輪夠搶注意力，播完收靜態圖例，問號可重播）。
     _swipeTutorialController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2600),
@@ -250,11 +251,9 @@ class _ScreenshotRecognitionDialogState
         _showStaticSwipeTutorialLegend = false;
       });
     }
-    // 有界 repeat（34 輪 ≈ 88 秒，體感即長駐）：同 SwipeHintNudge，無限
-    // repeat 會讓 pumpAndSettle 到本 dialog 的測試 timeout。
     _swipeTutorialController
       ..value = 0
-      ..repeat(count: 34);
+      ..repeat(count: 2);
   }
 
   void _cancelSwipeTutorialForInteraction() {

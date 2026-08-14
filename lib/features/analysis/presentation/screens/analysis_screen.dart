@@ -6852,10 +6852,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   ),
                                 ],
                                 const SizedBox(height: 10),
-                                if (analysisFragmentMessages.isEmpty)
+                                // 已選圖時空態主視覺讓位給選圖列＋辨識 CTA，
+                                // 整頁不用捲就看得到下一步。
+                                if (analysisFragmentMessages.isEmpty &&
+                                    !(isEmptyFragmentSetup &&
+                                        _selectedImages.isNotEmpty))
                                   Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      vertical: isEmptyFragmentSetup ? 28 : 20,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 20,
                                       horizontal: 8,
                                     ),
                                     child: Column(
@@ -6863,8 +6867,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         if (isEmptyFragmentSetup)
                                           // 對標示意稿：大圓框聊天泡泡主圖示
                                           Container(
-                                            width: 96,
-                                            height: 96,
+                                            width: 80,
+                                            height: 80,
                                             decoration: BoxDecoration(
                                               shape: BoxShape.circle,
                                               color: Colors.white
@@ -6878,7 +6882,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                             child: const Icon(
                                               Icons.sms_outlined,
                                               color: AppColors.coachAccentBright,
-                                              size: 40,
+                                              size: 34,
                                             ),
                                           )
                                         else
@@ -6889,7 +6893,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           ),
                                         SizedBox(
                                           height:
-                                              isEmptyFragmentSetup ? 18 : 10,
+                                              isEmptyFragmentSetup ? 14 : 10,
                                         ),
                                         Text(
                                           '還沒有訊息',
@@ -7162,7 +7166,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     onMetricsChanged:
                                         _handleSelectedImageMetricsChanged,
                                   ),
-                                  if (isEmptyFragmentSetup) ...[
+                                  // 選圖後小提醒功成身退，讓「辨識截圖文字」
+                                  // 直接頂上來，一頁內看得到 CTA（2026-08-14
+                                  // Eric 真機回報要往下滑才找得到按鈕）。
+                                  if (isEmptyFragmentSetup &&
+                                      _selectedImages.isEmpty) ...[
                                     const SizedBox(height: 22),
                                     Text(
                                       '截圖小提醒',
@@ -7182,7 +7190,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       text: '每張建議 15 則內；過長可拆成 2-3 張',
                                     ),
                                   ],
-                                  _buildScreenshotSettingSection(),
+                                  // 「這次分析設定」已拆（2026-08-14 Eric 拍板：
+                                  // 對象卡建立時已引導填過，這裡重複）。
                                   const SizedBox(height: 8),
 
                                   // 對話長度提示（空片段版型已由截圖小提醒承擔）
