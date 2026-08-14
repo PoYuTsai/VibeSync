@@ -27,6 +27,7 @@ import 'package:vibesync/features/conversation/data/repositories/conversation_ar
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/conversation/presentation/screens/new_conversation_screen.dart';
 
 import '../helpers/memory_coaching_outcome_repository.dart';
 import 'proof_support.dart';
@@ -430,6 +431,16 @@ void main() {
         child: const AnalysisScreen(conversationId: 'proof-c1'),
       ),
       outPath: _stagePath('new_segment_empty.png'),
+    );
+  });
+
+  testWidgets('anti-ai-ui2 manual input (partner-bound)', (tester) async {
+    await pumpAndCapture(
+      tester,
+      child: const ProviderScope(
+        child: NewConversationScreen(partnerId: 'p-proof'),
+      ),
+      outPath: _stagePath('manual_input.png'),
     );
   });
 

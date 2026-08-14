@@ -8,7 +8,10 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../analysis/domain/services/screenshot_session_context_defaults.dart';
 import '../../../opener/data/services/opener_result_cache_service.dart';
+import '../../../partner/domain/entities/partner.dart';
+import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/conversation_providers.dart';
 import '../../data/providers/conversation_write_controller.dart';
@@ -222,6 +225,17 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     FocusManager.instance.primaryFocus?.unfocus();
   }
 
+  /// 對象卡查詢失敗不擋建立流程——退回產品預設即可。
+  Partner? _partnerForDefaults() {
+    final partnerId = widget.partnerId;
+    if (partnerId == null) return null;
+    try {
+      return ref.read(partnerRepositoryProvider).getById(partnerId);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _createConversation() async {
     // When entered from PartnerDetail (partnerId != null), the Partner
     // already owns the relationship identity — the「對話對象」name field
@@ -277,17 +291,32 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       // Spec 1: userStyle / userInterests removed from manual input UI.
       // Schema fields kept for backward compatibility with existing Hive
       // records (design §13 forbids silent migration). New rows write null.
-      conversation.sessionContext = SessionContext(
-        meetingContext: _meetingContext,
-        duration: _duration,
-        goal: _goal,
-        userStyle: null,
-        userInterests: null,
-        targetDescription: null,
-        analysisContextNote: _analysisContextNoteController.text.trim().isEmpty
-            ? null
-            : _analysisContextNoteController.text.trim(),
-      );
+      //
+      // 2026-08-14 Eric 拍板：對象卡建立的片段，設定 UI 拆除、蓋章改用
+      // 對象卡預設（原本蓋 UI 出廠預設，會把卡上填好的設定擋在外面）。
+      // 文字分析 payload 直接讀 conversation.sessionContext，所以這裡仍要
+      // 蓋章、不能留 null。孤兒對話（無對象卡）保留 UI、照舊蓋 UI 值。
+      if (widget.partnerId != null) {
+        final partner = _partnerForDefaults();
+        final defaults = ScreenshotSessionContextDefaults.resolve(
+          conversation: null,
+          partner: partner,
+        );
+        conversation.sessionContext = defaults;
+      } else {
+        conversation.sessionContext = SessionContext(
+          meetingContext: _meetingContext,
+          duration: _duration,
+          goal: _goal,
+          userStyle: null,
+          userInterests: null,
+          targetDescription: null,
+          analysisContextNote:
+              _analysisContextNoteController.text.trim().isEmpty
+                  ? null
+                  : _analysisContextNoteController.text.trim(),
+        );
+      }
       await controller.save(conversation);
 
       if (!mounted) return;
@@ -804,15 +833,14 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                     ),
                     const SizedBox(height: 16),
                   ],
+                  // 對象卡進來的片段不再放「這次分析設定」（2026-08-14
+                  // Eric 拍板：卡建立時已填，這裡重複）；孤兒對話沒有卡
+                  // 可繼承，保留設定入口。
                   if (widget.partnerId == null) ...[
                     _frostTray(_buildAnalysisSettingsSection()),
                     const SizedBox(height: 16),
-                    _frostTray(_buildConversationContentInput()),
-                  ] else ...[
-                    _frostTray(_buildConversationContentInput()),
-                    const SizedBox(height: 16),
-                    _frostTray(_buildAnalysisSettingsSection()),
                   ],
+                  _frostTray(_buildConversationContentInput()),
                   if (_hasIncomingMessage) ...[
                     const SizedBox(height: 24),
                     BrandPrimaryButton(

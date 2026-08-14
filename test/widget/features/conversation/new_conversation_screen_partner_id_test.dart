@@ -191,7 +191,7 @@ void main() {
   });
 
   testWidgets(
-      'partnerId set shows conversation input first and collapses analysis settings',
+      'partnerId set hides analysis settings entirely (card defaults inherit)',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 1200));
     addTearDown(() => t.binding.setSurfaceSize(null));
@@ -201,25 +201,11 @@ void main() {
     ));
     await _settle(t);
 
+    // 2026-08-14 Eric 拍板：對象卡進來的手動輸入不再放「這次分析設定」，
+    // 建立時直接蓋對象卡預設（ScreenshotSessionContextDefaults）。
     expect(find.text('對話內容'), findsOneWidget);
-    expect(find.text('這次分析設定（可不改）'), findsOneWidget);
-    expect(find.text('不確定可以先跳過；AI 會用預設情境分析。'), findsOneWidget);
-    expect(find.text('認識情境'), findsNothing,
-        reason: 'Partner-scoped manual input should not lead with settings; '
-            'the optional per-analysis controls stay collapsed by default.');
-    expect(
-      t.getTopLeft(find.text('對話內容')).dy,
-      lessThan(t.getTopLeft(find.text('這次分析設定（可不改）')).dy),
-      reason: 'The first thing users should see is where to type the chat.',
-    );
-
-    await t.tap(find.text('這次分析設定（可不改）'));
-    await _settle(t);
-
-    expect(find.text('認識情境'), findsOneWidget);
-    expect(find.text('認識多久'), findsOneWidget);
-    expect(find.text('目前目標'), findsOneWidget);
-    expect(find.text('補充背景（選填）'), findsOneWidget);
+    expect(find.text('這次分析設定（可不改）'), findsNothing);
+    expect(find.text('認識情境'), findsNothing);
   });
 
   testWidgets('partnerId null still shows 對話對象 input (legacy entry)',
