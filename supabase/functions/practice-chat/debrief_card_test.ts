@@ -1411,7 +1411,6 @@ Deno.test("parseDebriefCard 每個可見欄位拒絕溫度內部詞與 1.2 原�
     "先賦格再收",
     "資格篩選要早做",
     "記得做 DHV 展示",
-    "你的框架很穩",
   ];
   for (const field of DEBRIEF_VISIBLE_FIELDS) {
     for (const banned of bannedSamples) {
@@ -1466,31 +1465,24 @@ Deno.test("parseDebriefCard 溫度詞用 Latin word-boundary，不誤傷組合�
   }
 });
 
-Deno.test("parseDebriefCard 放行既定白話 sentinel「框架掉了」，其他框架語境仍拒", () => {
-  const okCard = parseDebriefCard(
-    debriefJsonWithVisibleField("gameBreakdown.failureState", "框架掉了"),
-    { allowGameBreakdown: true },
-  );
-  assertEquals(okCard.gameBreakdown?.failureState, "框架掉了");
-
-  const okSummary = parseDebriefCard(
-    debriefJsonWithVisibleField("summary", "這句讓框架掉了，下次先穩住"),
-    { allowGameBreakdown: true },
-  );
-  assertEquals(okSummary.summary, "這句讓框架掉了，下次先穩住");
-
-  assertThrows(() =>
-    parseDebriefCard(
-      debriefJsonWithVisibleField("summary", "框架掉了之後你的框架要重建"),
+Deno.test("parseDebriefCard 放行裸詞「框架」全語境（2026-08-15 Eric 拍板摘除）", () => {
+  const okSamples: Array<[string, string]> = [
+    ["gameBreakdown.failureState", "框架掉了"],
+    ["summary", "這句讓框架掉了，下次先穩住"],
+    ["summary", "框架掉了之後你的框架要重建"],
+    ["gameBreakdown.failureState", "框架不穩"],
+    ["summary", "你用暱稱框架把氣氛帶起來"],
+  ];
+  for (const [field, text] of okSamples) {
+    const card = parseDebriefCard(
+      debriefJsonWithVisibleField(field, text),
       { allowGameBreakdown: true },
-    )
-  );
-  assertThrows(() =>
-    parseDebriefCard(
-      debriefJsonWithVisibleField("gameBreakdown.failureState", "框架不穩"),
-      { allowGameBreakdown: true },
-    )
-  );
+    );
+    assertEquals(
+      field === "summary" ? card.summary : card.gameBreakdown?.failureState,
+      text,
+    );
+  }
 });
 
 Deno.test("DEBRIEF_TOOL_SCHEMA matches the parser contract (schema wide, parser strict)", () => {

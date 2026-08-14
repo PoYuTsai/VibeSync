@@ -163,6 +163,9 @@ const LATIN_OBFUSCATION_SEPARATOR =
 // 篩選法」）；hint 路另有 repairChineseJargon 轉譯，不經此表。複合內部詞
 // 「資格篩選」是 1.2 原詞、無自然語用法，保留。若日後任何 debrief 注入
 // 重新引入「篩選」原詞，必須同步回列（鐵則：注入內部詞必同步守門）。
+// 裸詞「框架」已摘除（2026-08-15 Eric 拍板）：注入源 7/23 已清乾淨，殘餘
+// 全是模型自然語（「暱稱框架/遊戲框架」）被整張作廢；且「框架掉了」本就是
+// 給用戶看的既定說法，此詞對用戶不算隱藏。連帶刪掉 sentinel 特例。
 const INTERNAL_MECHANISM_PHRASES = [
   "升溫指數",
   "升温指数",
@@ -172,7 +175,6 @@ const INTERNAL_MECHANISM_PHRASES = [
   "可得性",
   "賦格",
   "赋格",
-  "框架",
   // 2026-08-04 Codex Q5：認識管道是純中文隱藏標籤，debrief 生成文字若照抄
   // 這個詞，此表要攔到（鐵則：注入內部詞必同步擴可見輸出守門）。
   "認識管道",
@@ -182,12 +184,6 @@ const INTERNAL_MECHANISM_PHRASES = [
   "品味門檻",
   "品味门槛",
 ];
-
-/**
- * 批2 拍板的唯一白話 sentinel：「框架掉了」是 debrief 既定失敗狀態說法，
- * 檢查前先剝除＝維持放行；其他「框架」語境仍拒。
- */
-const DEBRIEF_ALLOWED_SENTINELS = ["框架掉了"];
 
 // 9fd3b8a5 去列字後，temperature.ts 隱藏層標頭改為「投入度 X/100」——全中文、
 // 無英文 band 字，上面兩張表都攔不到；模型照抄注入行等於直送內部溫度分數
@@ -228,10 +224,7 @@ export function hasVisibleTemperatureMechanismLeak(value: string): boolean {
     );
     if (pattern.test(nfkc)) return true;
   }
-  let normalized = normalizeUnsafeText(nfkc);
-  for (const sentinel of DEBRIEF_ALLOWED_SENTINELS) {
-    normalized = normalized.replaceAll(normalizeUnsafeText(sentinel), "");
-  }
+  const normalized = normalizeUnsafeText(nfkc);
   return INTERNAL_MECHANISM_PHRASES.some((phrase) =>
     normalized.includes(normalizeUnsafeText(phrase))
   );
@@ -365,7 +358,7 @@ function clauseHasUnsafeAdvice(clause: string): boolean {
 // 2026-08-04 Codex Q5：INTERNAL_VISIBLE_LABELS 只認英文複合詞
 // （hasVisibleInternalLabelLeak 剝掉中文後比對），若模型在 chat/hint 原樣
 // 講出中文標籤「認識管道」，該表攔不到。這裡只放認識管道專屬的中文標籤，
-// 不整包借用 INTERNAL_MECHANISM_PHRASES——那份清單的「框架/推拉」等詞在
+// 不整包借用 INTERNAL_MECHANISM_PHRASES——那份清單的「推拉」等詞在
 // chat/hint 側有既定白話 sentinel 與 1.2 jargon 翻譯白名單，整包借用會
 // 誤殺既有放行案例。
 // 2026-08-11 WP2：server 每輪注入的「本輪指定戰術」同樣是中文標籤，
