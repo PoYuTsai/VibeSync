@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../partner/domain/entities/partner.dart';
 
 /// 報告頁底部「對象作戰板」dock（2026-08-14 對標夥伴示意稿）。
@@ -39,7 +38,9 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
   static const _cardHeight = 132.0;
   // 放大最多 22%，向上長；列高留足空間讓放大不被裁掉。
   static const _maxBoost = 0.22;
-  static const _dockHeight = _cardHeight * (1 + _maxBoost) + 4;
+  // 外層霧面托盤的內距；卡片坐在托盤裡，放大時往上凸出托盤。
+  static const _trayPadding = 12.0;
+  static const _dockHeight = _cardHeight * (1 + _maxBoost) + _trayPadding + 16;
   // 距手指多遠內受影響（px）
   static const _influence = 120.0;
 
@@ -67,7 +68,7 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
   }
 
   double _tileCenterX(int index) =>
-      index * (_tileWidth + _tileGap) + _tileWidth / 2;
+      _trayPadding + index * (_tileWidth + _tileGap) + _tileWidth / 2;
 
   void _updatePointer(Offset globalPosition) {
     final box = _dockKey.currentContext?.findRenderObject() as RenderBox?;
@@ -141,21 +142,47 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
           child: SizedBox(
             key: _dockKey,
             height: _dockHeight,
-            child: ListView.separated(
-              controller: _scrollController,
-              scrollDirection: Axis.horizontal,
-              itemCount: widget.partners.length,
-              separatorBuilder: (_, __) => const SizedBox(width: _tileGap),
-              itemBuilder: (context, index) => Align(
-                alignment: Alignment.bottomCenter,
-                child: AnimatedScale(
-                  scale: _scaleFor(index),
-                  duration: const Duration(milliseconds: 120),
-                  curve: Curves.easeOut,
-                  alignment: Alignment.bottomCenter,
-                  child: _buildTile(index),
+            // 對標示意稿的「雙重玻璃」：底層一個大霧面托盤包整排，
+            // 每張卡自己再一層更淡的玻璃；放大的卡往上凸出托盤。
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: _cardHeight + _trayPadding * 2,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                ListView.separated(
+                  controller: _scrollController,
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.only(
+                    left: _trayPadding,
+                    right: _trayPadding,
+                    bottom: _trayPadding,
+                  ),
+                  itemCount: widget.partners.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: _tileGap),
+                  itemBuilder: (context, index) => Align(
+                    alignment: Alignment.bottomCenter,
+                    child: AnimatedScale(
+                      scale: _scaleFor(index),
+                      duration: const Duration(milliseconds: 120),
+                      curve: Curves.easeOut,
+                      alignment: Alignment.bottomCenter,
+                      child: _buildTile(index),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -170,72 +197,80 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
     final initial = partner.name.isEmpty
         ? '?'
         : partner.name.characters.first.toUpperCase();
+    // 0～1：被 dock 放大的程度，聚焦的卡玻璃跟著變亮。
+    final focus = ((_scaleFor(index) - 1.0) / _maxBoost).clamp(0.0, 1.0);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => widget.onTapPartner(partner.id),
-      child: SizedBox(
+      child: Container(
         width: _tileWidth,
         height: _cardHeight,
-        child: GlassmorphicContainer(
-          borderRadius: 22,
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  gradient: LinearGradient(
-                    colors: gradient,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Text(
-                  initial,
-                  style: AppTypography.titleMedium.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                partner.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.glassTextPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                stage ?? '尚未分析',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.caption.copyWith(
-                  color: stage != null
-                      ? AppColors.primary
-                      : AppColors.glassTextPrimary.withValues(alpha: 0.5),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: gradient.first,
-                ),
-              ),
-            ],
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+        decoration: BoxDecoration(
+          // 深底上的淡玻璃，不用 glassWhite 實色（真機刺眼）。
+          color: Colors.white.withValues(alpha: 0.08 + 0.10 * focus),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12 + 0.12 * focus),
           ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                gradient: LinearGradient(
+                  colors: gradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Text(
+                initial,
+                style: AppTypography.titleMedium.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              partner.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              // 深玻璃上用亮字（glassTextPrimary 是配舊白卡的墨字）。
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              stage ?? '尚未分析',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.caption.copyWith(
+                color: stage != null
+                    ? AppColors.onBackgroundSecondary
+                    : AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: gradient.first,
+              ),
+            ),
+          ],
         ),
       ),
     );
