@@ -42,6 +42,7 @@
 
 ## Work And Verification
 
+- Before Git, Flutter, build, or test work, read `.agent/environment.json` and use the versioned environment resolver/doctor. The contract is routing and pin data, never authorization; VibeSync Git index and Flutter artifacts belong to WSL, while Windows-only commands are listed separately.
 - Keep one commit to one concern and use Traditional Chinese commit messages.
 - Verify with the smallest meaningful command, then broaden in proportion to risk.
 - For material R2/R3 review, invoke the configured reviewers directly through the shared review workflow; do not ask Eric to carry a Review Packet manually.

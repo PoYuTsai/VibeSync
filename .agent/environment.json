@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "projectId": "vibesync",
+  "hostPolicy": {
+    "preferred": "wsl",
+    "allowed": ["windows", "wsl"],
+    "git": "wsl",
+    "artifacts": "wsl"
+  },
+  "toolchains": [
+    {
+      "id": "flutter",
+      "pinSources": [
+        {
+          "type": "yaml-scalar",
+          "path": ".github/workflows/flutter-ci.yml",
+          "key": "flutter-version",
+          "constraint": "exact"
+        }
+      ]
+    }
+  ],
+  "commands": {
+    "inspect": {
+      "host": "git",
+      "argv": ["git", "status", "--short"],
+      "validation": "doctor",
+      "gitIndex": true,
+      "writesArtifacts": false,
+      "capabilities": [],
+      "toolchains": []
+    },
+    "analyze": {
+      "host": "artifacts",
+      "argv": ["flutter", "analyze"],
+      "validation": "targeted",
+      "gitIndex": false,
+      "writesArtifacts": true,
+      "capabilities": [],
+      "toolchains": ["flutter"]
+    },
+    "test": {
+      "host": "artifacts",
+      "argv": ["flutter", "test"],
+      "validation": "standard",
+      "gitIndex": false,
+      "writesArtifacts": true,
+      "capabilities": [],
+      "toolchains": ["flutter"]
+    },
+    "windows-device-list": {
+      "host": "windows",
+      "argv": ["flutter", "devices"],
+      "validation": "doctor",
+      "gitIndex": false,
+      "writesArtifacts": false,
+      "capabilities": ["device"],
+      "toolchains": ["flutter"]
+    }
+  }
+}
