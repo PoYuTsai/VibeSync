@@ -193,7 +193,11 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
   Widget _buildTile(int index) {
     final partner = widget.partners[index];
     final stage = widget.stageLabelOf(partner.id);
-    final gradient = _tileGradients[index % _tileGradients.length];
+    // 身份色跟 id 走（同一人永遠同色，不受列表增刪影響）；
+    // 不用 String.hashCode（跨 Dart 版本不保證穩定）。
+    final colorKey =
+        partner.id.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
+    final gradient = _tileGradients[colorKey % _tileGradients.length];
     final initial = partner.name.isEmpty
         ? '?'
         : partner.name.characters.first.toUpperCase();
