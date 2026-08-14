@@ -46,22 +46,30 @@ const dsn = Deno.env.get("SENTRY_DSN")?.trim() ?? "";
 const isConfigured = dsn.length > 0;
 const deploymentId = sanitizeRelease(Deno.env.get("DENO_DEPLOYMENT_ID"));
 const edgeEnvironment = deploymentId ? "Production" : "Development";
+let monitoringReady = false;
 
 if (isConfigured) {
-  Sentry.init({
-    dsn,
-    defaultIntegrations: false,
-    sendDefaultPii: false,
-    maxBreadcrumbs: 0,
-    tracesSampleRate: 0,
-    environment: edgeEnvironment,
-    ...(deploymentId ? { release: deploymentId } : {}),
-    beforeSend(event) {
-      return sanitizeOperationalEvent(
-        event as unknown as MutableSentryEvent,
-      ) as unknown as typeof event;
-    },
-  });
+  try {
+    Sentry.init({
+      dsn,
+      defaultIntegrations: false,
+      sendDefaultPii: false,
+      maxBreadcrumbs: 0,
+      tracesSampleRate: 0,
+      environment: edgeEnvironment,
+      ...(deploymentId ? { release: deploymentId } : {}),
+      beforeSend(event) {
+        return sanitizeOperationalEvent(
+          event as unknown as MutableSentryEvent,
+        ) as unknown as typeof event;
+      },
+    });
+    monitoringReady = true;
+  } catch {
+    // A missing or malformed monitoring configuration must not stop the
+    // function module from loading and serving its real endpoint.
+    console.error("[operational-monitor] telemetry_initialization_failed");
+  }
 }
 
 /// Wraps an Edge handler without reading or copying its request.
@@ -288,7 +296,7 @@ async function reportSafely(
 }
 
 async function reportToSentry(failure: SafeEdgeFailure): Promise<void> {
-  if (!isConfigured) return;
+  if (!monitoringReady) return;
 
   const error = new Error(failure.errorType);
   error.name = failure.errorType;

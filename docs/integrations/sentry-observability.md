@@ -18,8 +18,11 @@ Status: code-ready, disabled until a DSN is configured.
 - Do not add `Sentry.setUser`, request capture, screenshots, breadcrumbs,
   replay, tracing, or log forwarding without a new privacy review.
 
-The Flutter and Edge implementations both rebuild outgoing events from a
-small allowlist. Their privacy contracts are covered by automated tests.
+Dart/Flutter and Edge events are rebuilt from small allowlists covered by
+automated tests. Native iOS hard crashes are sent later by Sentry Cocoa and do
+not pass through the Dart allowlist. They may retain non-content device, OS,
+and app diagnostics, so activation also requires inspecting a real native
+test-crash payload before accepting the privacy boundary.
 
 ## One-time activation checklist
 
@@ -44,8 +47,10 @@ Do these in order. Do not put the DSN in a committed file.
    Apple considers the data linked depends on the final Sentry account and IP
    scrubbing settings, so verify the live configuration rather than guessing.
 8. Dart crashes are readable without Flutter obfuscation. Native iOS frames
-   may still need dSYM upload; verify symbolication with the synthetic
-   TestFlight event before calling native crash diagnosis complete.
+   may still need dSYM upload. In a test-only TestFlight/internal build,
+   trigger one deliberate native crash, relaunch so it is uploaded, inspect
+   the raw event for unexpected identifiers or content, and verify
+   symbolication before calling native crash diagnosis or privacy complete.
 
 If either secret is absent, that side remains a safe no-op and the product
 continues to start and serve requests normally.
@@ -73,12 +78,16 @@ uses them operationally.
 ## Smoke check before 1.0.1 review
 
 1. Build with a real DSN and confirm the app opens with no new consent or UI.
-2. Send one synthetic exception containing a unique fake marker, never real
-   user data.
-3. Confirm the issue arrives and the marker does **not** appear anywhere in
+2. Send one synthetic Dart exception containing a unique fake marker, never
+   real user data.
+3. Confirm the Dart issue arrives and the marker does **not** appear anywhere in
    the event JSON, attachments, breadcrumbs, request, or user fields.
-4. Confirm release and stack locations remain useful.
-5. Delete/discard the synthetic issue, then enable the two alert rules.
+4. From a test-only build, trigger one deliberate native iOS crash and relaunch
+   the app. Inspect its raw event JSON separately because it bypasses the Dart
+   allowlist. Confirm there is no user/chat/request content or unexpected
+   identifier, and confirm native frames are symbolicated.
+5. Confirm both events have the correct release and useful stack locations.
+6. Delete/discard the synthetic issues, then enable the two alert rules.
 
 Do not intentionally crash the App Store production build for this check; use
 a TestFlight/internal build or a test-only Edge invocation.
