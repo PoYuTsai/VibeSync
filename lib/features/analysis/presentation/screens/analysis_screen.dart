@@ -2852,19 +2852,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return parts.join('・');
   }
 
-  /// 空白新片段的「截圖小提醒」列（對標示意稿）：橘 icon＋深色卡。
+  /// 空白新片段的「截圖小提醒」列（對標示意稿）：橘 icon＋純文字，
+  /// 不加卡片框（2026-08-14 Eric 拍板拆淺色框）。
   Widget _buildScreenshotTipRow({
     required IconData icon,
     required String text,
   }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.045),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
       child: Row(
         children: [
           Icon(icon, size: 20, color: AppColors.ctaStart),
@@ -6824,20 +6819,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     _buildConversationSourcePill(conversation),
                                   ],
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  isPendingAnalysisFragment
-                                      ? '這批新聊天會獨立分析，不會接回上一筆紀錄。'
-                                      : isCompletedAnalysisFragment
-                                          ? '這次分析已獨立封存，內容唯讀；新內容請另開分析片段。'
-                                          : '先加入這次想給 AI 解析的聊天；不會接回舊紀錄。',
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: isEmptyFragmentSetup
-                                        ? AppColors.onBackgroundSecondary
-                                        : AppColors.glassTextSecondary,
-                                    height: 1.35,
+                                // 空片段不放副標（2026-08-14 Eric 對標示意稿：
+                                // 「先加入…」整句拆掉，說明由「還沒有訊息」區承擔）。
+                                if (isPendingAnalysisFragment ||
+                                    isCompletedAnalysisFragment) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    isPendingAnalysisFragment
+                                        ? '這批新聊天會獨立分析，不會接回上一筆紀錄。'
+                                        : '這次分析已獨立封存，內容唯讀；新內容請另開分析片段。',
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: isEmptyFragmentSetup
+                                          ? AppColors.onBackgroundSecondary
+                                          : AppColors.glassTextSecondary,
+                                      height: 1.35,
+                                    ),
                                   ),
-                                ),
+                                ],
                                 if (_analysisRecordNeedsRepair) ...[
                                   const SizedBox(height: 7),
                                   Text(
@@ -6865,25 +6863,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     child: Column(
                                       children: [
                                         if (isEmptyFragmentSetup)
-                                          // 對標示意稿：大圓框聊天泡泡主圖示
-                                          Container(
-                                            width: 80,
-                                            height: 80,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: Colors.white
-                                                  .withValues(alpha: 0.05),
-                                              border: Border.all(
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.14),
-                                                width: 1.5,
-                                              ),
-                                            ),
-                                            child: const Icon(
-                                              Icons.sms_outlined,
-                                              color: AppColors.coachAccentBright,
-                                              size: 34,
-                                            ),
+                                          // 對標示意稿：紫色聊天泡泡直接放大，
+                                          // 不加圓框（2026-08-14 Eric 拍板拆框）
+                                          const Icon(
+                                            Icons.sms_outlined,
+                                            color: AppColors.coachAccentBright,
+                                            size: 72,
                                           )
                                         else
                                           Icon(
@@ -7418,7 +7403,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   ],
                                   const SizedBox(height: 16),
                                   Text(
-                                    'AI 會分析對方這次的投入度、讀懂語意，教你最適合的回覆方式',
+                                    // 縮短到一行放得下（2026-08-14 Eric 真機回報換行）
+                                    'AI 會分析對方投入度、讀懂語意，教你最適合的回覆方式',
                                     style: AppTypography.bodySmall.copyWith(
                                       color: AppColors.textSecondary,
                                     ),

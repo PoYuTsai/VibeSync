@@ -514,9 +514,10 @@ void main() {
 
       expect(find.text('還沒有訊息'), findsOneWidget);
       expect(find.text('新的分析片段'), findsOneWidget);
+      // 2026-08-14 Eric 對標示意稿：空片段副標整句拆除。
       expect(
         find.text('先加入這次想給 AI 解析的聊天；不會接回舊紀錄。'),
-        findsOneWidget,
+        findsNothing,
       );
       expect(find.textContaining('內容唯讀'), findsNothing);
       expect(find.text('先上傳 1–3 張聊天截圖，確認文字後作為本次片段。'), findsOneWidget);

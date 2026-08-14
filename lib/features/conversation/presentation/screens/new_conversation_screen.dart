@@ -841,6 +841,14 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                     const SizedBox(height: 16),
                   ],
                   _frostTray(_buildConversationContentInput()),
+                  // 夥伴示意稿（2026-08-14）：頁面下方放 Sydney 陪伴視覺，
+                  // 樣本圖去背後直接沿用。
+                  const SizedBox(height: 24),
+                  Image.asset(
+                    'assets/images/coach/sydney_manual_input.png',
+                    height: 300,
+                    fit: BoxFit.contain,
+                  ),
                   if (_hasIncomingMessage) ...[
                     const SizedBox(height: 24),
                     BrandPrimaryButton(

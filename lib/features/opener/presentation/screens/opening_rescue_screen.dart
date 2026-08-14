@@ -927,6 +927,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         ImagePickerWidget(
           maxImages: 3,
           allowMultiSelect: true,
+          // 對齊分析頁空片段的選圖磚大小（2026-08-14 Eric：原 70 太小）
+          tileSize: 104,
           surfaceColor: AppColors.coachSurface,
           surfaceBorderColor: AppColors.coachAccent.withValues(alpha: 0.28),
           accentColor: AppColors.coachAccentBright,

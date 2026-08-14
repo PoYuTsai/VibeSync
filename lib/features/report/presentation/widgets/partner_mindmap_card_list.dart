@@ -1,17 +1,23 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../partner/domain/entities/partner.dart';
 
-/// 報告頁底部「對象作戰板」橫向卡片列（入口 2，救回報告頁初衷）。
-/// dogfood 期全 tier 可見（決策 A），不動既有三張圖與 Free gating。
+/// 報告頁底部「對象作戰板」dock（2026-08-14 對標夥伴示意稿）。
+///
+/// 每個對象一張玻璃卡：方形漸層圖示（名字首字）＋名字＋階段＋色點。
+/// 手指按住在列上左右滑，靠近手指的卡會像 macOS Dock 一樣放大，
+/// 焦點換到另一張卡時給一下 selection 震動；放開全部回彈。
+/// 系統關閉動畫（disableAnimations）時不放大，只保留點擊。
 ///
 /// 純資料 widget（partners + stageLabelOf + onTapPartner），不碰 provider，
-/// 測試零 stub。section header 對齊本頁「我的報告」idiom
-/// （bodySmall ctaStart 眉標 + 主標），卡片用 GlassmorphicContainer。
-class PartnerMindMapCardList extends StatelessWidget {
+/// 測試零 stub。
+class PartnerMindMapCardList extends StatefulWidget {
   final List<Partner> partners;
   final String? Function(String partnerId) stageLabelOf;
   final ValueChanged<String> onTapPartner;
@@ -24,8 +30,89 @@ class PartnerMindMapCardList extends StatelessWidget {
   });
 
   @override
+  State<PartnerMindMapCardList> createState() => _PartnerMindMapCardListState();
+}
+
+class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
+  static const _tileWidth = 88.0;
+  static const _tileGap = 12.0;
+  static const _cardHeight = 132.0;
+  // 放大最多 22%，向上長；列高留足空間讓放大不被裁掉。
+  static const _maxBoost = 0.22;
+  static const _dockHeight = _cardHeight * (1 + _maxBoost) + 4;
+  // 距手指多遠內受影響（px）
+  static const _influence = 120.0;
+
+  // 圖示磚漸層，依 index 循環指派為對象識別色（下方色點同色）。
+  // 對標示意稿的四色系：玫瑰粉、金黃、橘、桃紅；全部沿用品牌現有
+  // 色票，不引入新色。
+  static const _tileGradients = [
+    [AppColors.selectedStart, AppColors.selectedEnd],
+    [AppColors.avatarHerStart, AppColors.avatarHerEnd],
+    [AppColors.ctaStart, AppColors.ctaEnd],
+    [AppColors.coachRecommendation, AppColors.brandBlush],
+  ];
+
+  final _scrollController = ScrollController();
+  final _dockKey = GlobalKey();
+
+  /// 手指目前在 dock 內容座標系的 x；null = 沒按著。
+  double? _pointerContentX;
+  int? _focusedIndex;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  double _tileCenterX(int index) =>
+      index * (_tileWidth + _tileGap) + _tileWidth / 2;
+
+  void _updatePointer(Offset globalPosition) {
+    final box = _dockKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final local = box.globalToLocal(globalPosition);
+    final contentX = local.dx + _scrollController.offset;
+
+    int? nearest;
+    double nearestDistance = _influence;
+    for (var i = 0; i < widget.partners.length; i++) {
+      final d = (contentX - _tileCenterX(i)).abs();
+      if (d < nearestDistance) {
+        nearestDistance = d;
+        nearest = i;
+      }
+    }
+    if (nearest != null && nearest != _focusedIndex) {
+      HapticFeedback.selectionClick();
+    }
+    setState(() {
+      _pointerContentX = contentX;
+      _focusedIndex = nearest;
+    });
+  }
+
+  void _clearPointer() {
+    setState(() {
+      _pointerContentX = null;
+      _focusedIndex = null;
+    });
+  }
+
+  double _scaleFor(int index) {
+    final x = _pointerContentX;
+    if (x == null) return 1.0;
+    final d = (x - _tileCenterX(index)).abs();
+    if (d >= _influence) return 1.0;
+    // 餘弦衰減：手指正下方最大，邊緣平滑歸零
+    return 1.0 + _maxBoost * (0.5 + 0.5 * math.cos(math.pi * d / _influence));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (partners.isEmpty) return const SizedBox.shrink();
+    if (widget.partners.isEmpty) return const SizedBox.shrink();
+    final magnifyEnabled = !MediaQuery.of(context).disableAnimations;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -44,69 +131,113 @@ class PartnerMindMapCardList extends StatelessWidget {
               .copyWith(color: AppColors.onBackgroundPrimary),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 96,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: partners.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              final partner = partners[index];
-              final stage = stageLabelOf(partner.id);
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onTapPartner(partner.id),
-                child: GlassmorphicContainer(
-                  borderRadius: 14,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 140),
-                            child: Text(
-                              partner.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.bodyMedium.copyWith(
-                                color: AppColors.glassTextPrimary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Icon(
-                            Icons.chevron_right,
-                            size: 16,
-                            color: AppColors.glassTextPrimary
-                                .withValues(alpha: 0.5),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        stage ?? '尚未分析',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: stage != null
-                              ? AppColors.primary
-                              : AppColors.glassTextPrimary
-                                  .withValues(alpha: 0.5),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+        Listener(
+          onPointerDown:
+              magnifyEnabled ? (e) => _updatePointer(e.position) : null,
+          onPointerMove:
+              magnifyEnabled ? (e) => _updatePointer(e.position) : null,
+          onPointerUp: magnifyEnabled ? (_) => _clearPointer() : null,
+          onPointerCancel: magnifyEnabled ? (_) => _clearPointer() : null,
+          child: SizedBox(
+            key: _dockKey,
+            height: _dockHeight,
+            child: ListView.separated(
+              controller: _scrollController,
+              scrollDirection: Axis.horizontal,
+              itemCount: widget.partners.length,
+              separatorBuilder: (_, __) => const SizedBox(width: _tileGap),
+              itemBuilder: (context, index) => Align(
+                alignment: Alignment.bottomCenter,
+                child: AnimatedScale(
+                  scale: _scaleFor(index),
+                  duration: const Duration(milliseconds: 120),
+                  curve: Curves.easeOut,
+                  alignment: Alignment.bottomCenter,
+                  child: _buildTile(index),
                 ),
-              );
-            },
+              ),
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTile(int index) {
+    final partner = widget.partners[index];
+    final stage = widget.stageLabelOf(partner.id);
+    final gradient = _tileGradients[index % _tileGradients.length];
+    final initial = partner.name.isEmpty
+        ? '?'
+        : partner.name.characters.first.toUpperCase();
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => widget.onTapPartner(partner.id),
+      child: SizedBox(
+        width: _tileWidth,
+        height: _cardHeight,
+        child: GlassmorphicContainer(
+          borderRadius: 22,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: LinearGradient(
+                    colors: gradient,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Text(
+                  initial,
+                  style: AppTypography.titleMedium.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                partner.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                stage ?? '尚未分析',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.caption.copyWith(
+                  color: stage != null
+                      ? AppColors.primary
+                      : AppColors.glassTextPrimary.withValues(alpha: 0.5),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: gradient.first,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
