@@ -1,6 +1,6 @@
 # Launch Readiness Checklist
 
-最後更新：2026-07-17
+最後更新：2026-08-15
 目前目標：iOS / TestFlight / App Review 上線前最後收尾
 
 送審主控台、App Review Notes 草稿、Privacy Label 對照見：
@@ -11,9 +11,13 @@
 
 目前判定：`Repo GO / Submit HOLD`。
 
-可繼續進入最後人工 gate；不要直接送出，直到最新 TestFlight 真機 smoke、RevenueCat / App Store sandbox、App Store Connect privacy/IAP/reviewer 資訊、Supabase secrets/logs dashboard 都完成。
+2026-08-15 更新（目標版本 1.0.1）：
 
-2026-07-17 新增 AI 鍵盤發布硬閘：production migration、HMAC secret、matching JWT-verified Edge v5 與 live contract 已完成；下一個 build 仍須通過 signed keyboard extension、非測試 quota／HTTP 並行與 lost-response、真機矩陣與新隱私揭露。
+- 這兩週 dogfood 已實測覆蓋核心功能：分析（含作戰板，常態跑）、練習室 3 難度＋3 模式（該批 bug 已全數修復）、問教練 Sydney 三入口重構（2026-08-15 真機專測）、開場救星、新話題。過程中發現的 bug 均已修復並隨 build 驗證。
+- 去 AI 味三批＋色彩紀律（AppColors 收斂、raw_color 棘輪）已出貨，UI 收斂由 Eric 真機認可。
+- 刪帳號高風險路徑 2026-08-14 真機實測：發現殘餘本機快取導致 SR 卡無法進聊天，已修（角色圖鑑改讀 server 砍本機快取 `6c66a3e8`＋SR 解鎖判定 `b87816e0`＋403 錯誤顯示 `bd58a2b1`）。
+- AI 鍵盤 2026-08-15 拍板：無完整取用的 qwerty 合規地板整組拆除（`d6736c0`），鍵盤只剩截圖／文字兩個 surface；4.4.1 送審風險 Eric 拍板承擔，真的被擋再處理。7/17 硬閘中 production 側（migration、HMAC、JWT-verified Edge、live contract）已完成；裝置側項目照第 1 節逐項驗。
+- Submit 前剩下的人工 gate：訂閱 sandbox 購買／Restore／升降級邊界、App Store Connect privacy／IAP／reviewer 資訊核對、送審候選 build 照 `testflight-regression-checklist.md` §0.1 跑最後一輪正式 smoke。
 
 ## 1. 核心功能
 
@@ -34,14 +38,16 @@
 
 ### OCR / Analysis
 
-- [ ] 單張截圖識別正常
-- [ ] 截圖匯入後分析正常
+- [x] 單張截圖識別正常（2026-08-15 前持續 dogfood 覆蓋）
+- [x] 截圖匯入後分析正常（2026-08-15 前持續 dogfood 覆蓋）
 - [ ] iOS 首次選取聊天截圖時，Photo Library 權限彈窗文案正常
 - [ ] LINE 引用回覆、長圖、多圖 overlap 已驗證
 - [ ] media bubble / sticker / video bubble 不會破壞 speaker 判斷
 - [ ] 同一批真實截圖抽測仍維持穩定
 
 ### AI 鍵盤
+
+2026-08-15 拍板：qwerty 合規地板已拆，surface 只剩截圖／文字；4.4.1 風險承擔，送審照現狀出。
 
 - [x] Live contract 回 `keyboard-reply-exactly-once-v1`
 - [x] Production 測試帳號 fresh／replay／mismatch、DB pending／settlement／rollback、RLS／grant／cron 通過且 smoke rows 清為 0
@@ -61,7 +67,7 @@
 
 ## 3. 後端與部署
 
-- [ ] 最新 Edge Function deploy 綠燈
+- [x] 最新 Edge Function deploy 綠燈（2026-08-15 `dd0825d8` Deploy Edge Function success）
 - [ ] 最新 iOS release workflow 綠燈
 - [x] 精準套用 `20260717120000_keyboard_reply_exactly_once.sql` 並核對 migration history
 - [x] 依 DB → `KEYBOARD_REPLAY_HMAC_KEY` → JWT-verified `keyboard-reply` v5 順序部署
