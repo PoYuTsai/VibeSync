@@ -87,6 +87,19 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
           ? CoachScope.partner(widget.lockedPartnerId!)
           : const CoachScope.global();
 
+  @override
+  void initState() {
+    super.initState();
+    // 鎖定的對象進場前就被合併/刪除 → 退回一般模式（deep link 防呆）。
+    // 開著視窗期間被刪的情況由 build 裡的 ref.listen 接手。
+    final partnerId = widget.lockedPartnerId;
+    if (widget.lockedConversationId == null &&
+        partnerId != null &&
+        ref.read(partnerByIdProvider(partnerId)) == null) {
+      _scope = const CoachScope.global();
+    }
+  }
+
   void _onGuideTap(String question, {String? phase}) {
     setState(() {
       _prefill = question;
@@ -355,11 +368,14 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
       contextPartner =
           partnerId == null ? null : ref.watch(partnerByIdProvider(partnerId));
     } else if (widget.lockedPartnerId != null) {
+      // 開著視窗期間對象被合併/刪除 → 退回一般模式。listener 在 build 外
+      // 觸發，setState 安全（進場前已刪的情況由 initState 處理）。
+      ref.listen(partnerByIdProvider(widget.lockedPartnerId!), (_, next) {
+        if (next == null && !_scope.isGlobal) {
+          setState(() => _scope = const CoachScope.global());
+        }
+      });
       contextPartner = ref.watch(partnerByIdProvider(widget.lockedPartnerId!));
-      // 鎖定的對象已被合併/刪除 → 安靜退回一般模式（deep link 防呆）。
-      if (contextPartner == null && !_scope.isGlobal) {
-        _scope = const CoachScope.global();
-      }
     } else if (!_scope.isGlobal) {
       contextPartner = partners
           .where((partner) => _scope == CoachScope.partner(partner.id))

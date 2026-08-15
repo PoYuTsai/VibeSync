@@ -290,6 +290,52 @@ void main() {
     expect(find.text('隨時問我，聊天卡住我來接。'), findsOneWidget);
   });
 
+  testWidgets('鎖定的對象開著視窗時被刪 → 退回一般模式（ref.listen 路徑）',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(430, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final alice = _partner('p1', 'Alice');
+    // 可翻轉的刪除開關：不能用 overrideWithValue，值要能中途變 null。
+    final deleted = StateProvider((_) => false);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          coachChatRepositoryProvider
+              .overrideWithValue(MemoryCoachChatRepository()),
+          coachChatApiServiceProvider.overrideWithValue(
+            CoachChatApiService(invoker: _recordingInvoker([])),
+          ),
+          coachingOutcomeRepositoryProvider
+              .overrideWithValue(MemoryCoachingOutcomeRepository()),
+          partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+          partnerListProvider.overrideWithValue(const []),
+          partnerByIdProvider('p1')
+              .overrideWith((ref) => ref.watch(deleted) ? null : alice),
+          dataQualityFlagProvider('p1')
+              .overrideWith((_) => const DataQualityFlag.unflagged()),
+          partnerAggregateProvider('p1')
+              .overrideWithValue(PartnerAggregateView.empty()),
+          conversationsByPartnerProvider('p1').overrideWithValue(const []),
+        ],
+        child: const MaterialApp(
+          home: GlobalCoachScreen(lockedPartnerId: 'p1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(_surface(tester).scope, const CoachScope.partner('p1'));
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(GlobalCoachScreen)),
+    );
+    container.read(deleted.notifier).state = true;
+    await tester.pumpAndSettle();
+
+    expect(_surface(tester).scope, const CoachScope.global());
+    expect(find.text('隨時問我，聊天卡住我來接。'), findsOneWidget);
+  });
+
   testWidgets('切換對象不清輸入框草稿（CoachSurface State 不重建）', (tester) async {
     await _pump(tester, partners: [_partner('p1', 'Alice')]);
 
