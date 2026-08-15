@@ -146,8 +146,8 @@ void main() {
       findsOneWidget,
     );
     expect(_surface(tester).scope, const CoachScope.global());
-    expect(_surface(tester).showHeader, isFalse,
-        reason: '視窗開場泡泡已含標題與額度說明，CoachSurface 不再重複 header');
+    // 視窗開場泡泡已含標題與額度說明，CoachSurface 的舊 header 整段退場。
+    expect(find.text('問教練一句'), findsNothing);
   });
 
   testWidgets('一般 scope：開場泡泡固定句＋三句引導問句', (tester) async {

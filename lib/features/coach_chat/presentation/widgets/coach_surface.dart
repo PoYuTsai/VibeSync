@@ -22,48 +22,32 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import 'coach_chat_progress_notice.dart';
 
-/// Phase E 教練統一的 scope 參數化教練介面：conversation（分析頁 1:1）與
-/// partner（對象頁跟進）雙 scope 共用同一張卡，行為差異只由 [scope] 與
-/// 選填參數 gate，渲染輸出（文案/版面）對 conversation scope 零變。
+/// scope 參數化的統一教練介面。唯一宿主是問教練 Sydney 視窗
+/// （GlobalCoachScreen）：標題／額度說明由視窗的開場泡泡負責，本卡只剩
+/// 教練參考 strip＋輸入框＋回覆串；收鍵盤靠視窗捲動（onDrag）。
 class CoachSurface extends ConsumerStatefulWidget {
   final CoachScope scope;
 
-  /// conversation scope 由分析頁照舊傳入；partner scope 不傳（不注入分析快照）。
+  /// conversation scope 由分析頁 CTA 隨行傳入；partner/global scope 不傳。
   final CoachChatAnalysisSnapshot? analysisSnapshot;
   final VoidCallback? onQuotaExceeded;
-
-  /// 不傳＝不渲染「回分析」返回鈕（partner scope 沒有分析頁可回）。
-  final VoidCallback? onReturnToAnalysis;
   final int focusRequestToken;
 
-  /// focusRequestToken 變化時一併預填進輸入框的問題（作戰板 nextStep 入口）。
+  /// focusRequestToken 變化時一併預填進輸入框的問題（引導問句／情境 chip）。
   /// 只進 controller、絕不觸發送出——送出永遠是用戶按鈕行為（quota 安全）。
   final String? prefillText;
 
-  /// 下一次 ask/forceAnswer 隨送 controller；partner scope 由階段 chip
-  /// 種入（Task 6）。
+  /// 下一次 ask/forceAnswer 隨送 controller；由視窗的情境 chip 種入。
   final String? lifecyclePhase;
-
-  /// 輸入框焦點變化通知（true＝取得焦點）。對象頁用來在鍵盤展開時暫時
-  /// 收掉 FAB——鍵盤打開後 Scaffold 會把 FAB 停在鍵盤上緣右下角，
-  /// 正好壓住輸入框 suffix 的送出鈕。
-  final ValueChanged<bool>? onInputFocusChanged;
-
-  /// 問教練 Sydney 視窗宿主傳 false：視窗自己的開場泡泡已含標題與額度
-  /// 說明，不重複渲染「問教練一句」header（收鍵盤改由視窗滑動處理）。
-  final bool showHeader;
 
   const CoachSurface({
     super.key,
     required this.scope,
     this.analysisSnapshot,
     this.onQuotaExceeded,
-    this.onReturnToAnalysis,
     this.focusRequestToken = 0,
     this.prefillText,
     this.lifecyclePhase,
-    this.onInputFocusChanged,
-    this.showHeader = true,
   });
 
   static bool isQuotaError(Object? error) =>
@@ -174,7 +158,6 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
 
   void _handleFocusChange() {
     if (!mounted) return;
-    widget.onInputFocusChanged?.call(_focusNode.hasFocus);
     if (_focusNode.hasFocus) {
       _scheduleEnsureInputVisible();
     } else {
@@ -254,66 +237,6 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (widget.showHeader)
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: const Icon(
-                  Icons.forum_outlined,
-                  color: AppColors.primary,
-                  size: 19,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '問教練一句',
-                      style: AppTypography.titleMedium.copyWith(
-                        color: AppColors.glassTextPrimary,
-                      ),
-                    ),
-                    Text(
-                      '免費釐清最多 3 次；正式建議扣 1 則，額度用完會提醒升級。',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.glassTextSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (_focusNode.hasFocus && widget.onReturnToAnalysis != null)
-                TextButton.icon(
-                  onPressed: _returnToAnalysis,
-                  icon: const Icon(Icons.keyboard_hide_outlined, size: 17),
-                  label: const Text('回分析'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.glassTextSecondary,
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                ),
-              // 收起鍵盤從輸入框 suffix 移到 header：suffix 只留送出鈕，
-              // 避免鍵盤上緣的 FAB／手指擋到兩顆擠在一起的小圖示。
-              if (_focusNode.hasFocus)
-                IconButton(
-                  tooltip: '收起鍵盤',
-                  icon: const Icon(Icons.keyboard_hide_outlined, size: 20),
-                  onPressed: _unfocusInput,
-                  color: AppColors.glassTextSecondary,
-                  visualDensity: VisualDensity.compact,
-                ),
-            ],
-          ),
-          if (widget.showHeader) const SizedBox(height: 16),
           _CoachMemorySourceStrip(sources: memorySources),
           // 五個灰色快捷問句 chip 已整組移除（2026-08-09 拍板）：使用者
           // 直接打自己的問題；知識庫入口改由對象頁三情境 chip
@@ -542,16 +465,6 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   void _focusInputForFollowUp() {
     _controller.clear();
     _focusNode.requestFocus();
-  }
-
-  void _unfocusInput() {
-    _focusNode.unfocus();
-    FocusScope.of(context).unfocus();
-  }
-
-  void _returnToAnalysis() {
-    _unfocusInput();
-    widget.onReturnToAnalysis?.call();
   }
 }
 

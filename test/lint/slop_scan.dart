@@ -17,6 +17,8 @@ const kAllowedRadiiByFile = <String, Set<int>>{
   // 聊天泡泡「尾巴」5（DESIGN.md §4）：分則氣泡群組最後一顆的貼合角。
   'lib/features/practice_chat/presentation/screens/practice_chat_screen.dart':
       {5},
+  // Sydney 視窗開場泡泡的尾巴 5（DESIGN.md §7）：同一套泡泡尾巴語彙。
+  'lib/features/coach_chat/presentation/screens/global_coach_screen.dart': {5},
 };
 
 /// 彩色陰影白名單：DESIGN.md §7 刻意保留登記表的檔案。

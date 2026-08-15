@@ -31,8 +31,7 @@ import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/coach_action_card.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../coach_chat/data/services/coach_chat_api_service.dart';
-import '../../../coach_chat/domain/entities/coach_scope.dart';
-import '../../../coach_chat/presentation/widgets/coach_surface.dart';
+import '../../../coach_chat/presentation/widgets/coach_cta_card.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
@@ -122,21 +121,11 @@ class _AnalysisScrollView extends SingleChildScrollView {
 }
 
 class AnalysisScreen extends ConsumerStatefulWidget {
-  /// `/conversation/:id?coachPrefill=` 的 query param 名。路由（routes.dart）
-  /// 與入口（作戰板 nextStep 節點）共用此常數，避免兩端字串走鐘。
-  static const coachPrefillQueryParam = 'coachPrefill';
-
   final String conversationId;
-
-  /// 進頁後捲到 Coach 1:1 並把這句預填進輸入框（作戰板 nextStep 節點入口，
-  /// `/conversation/:id?coachPrefill=`）。只預填、絕不 auto-send（quota 安全
-  /// 硬規則）；卡片渲染條件不滿足（無已還原分析）時安靜 no-op。
-  final String? coachPrefillQuestion;
 
   const AnalysisScreen({
     super.key,
     required this.conversationId,
-    this.coachPrefillQuestion,
   });
 
   @override
@@ -264,7 +253,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   final _analysisProgressEndKey = GlobalKey();
   final _messageFocusNode = FocusNode();
   final _messageInputKey = GlobalKey();
-  final _coachSurfaceKey = GlobalKey();
   final _replyZoneSectionKey = GlobalKey();
   // 使用者手指是否正在拖動主捲軸。分析完成的一次性自動捲動只在使用者沒在
   // 拖動時執行，避免把他手上的捲動搶走。不進 setState：純行為旗標，不影響
@@ -277,11 +265,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String? _lastScreenshotAddedPreview;
   bool? _lastScreenshotAddedIsFromMe;
   int? _lastScreenshotAddedCount;
-  int _coachChatFocusRequest = 0;
-  // 隨下一次 focus request 一併預填進 Coach 輸入框的問題。每次
-  // _openCoachQuestion 都整個覆寫（含 null），避免舊預填黏到後續
-  // 純 focus 的請求上。
-  String? _coachChatPrefill;
   bool _followLiveAnalysis = false;
   bool _analysisFollowScrollScheduled = false;
 
@@ -374,12 +357,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   String _monthlyQuotaExceededMessage(MonthlyLimitExceededException e) {
     return '目前方案 ${_currentPlanLabel()}：本月額度已用完 (${e.used}/${e.monthlyLimit})，升級方案可取得更多分析額度。';
-  }
-
-  Future<void> _handleCoachChatQuotaExceeded() async {
-    if (!mounted) return;
-    _showFloatingSnackBar('教練額度已用完，帶你去升級方案。');
-    await _showPaywall(context);
   }
 
   CoachChatAnalysisSnapshot _buildCoachChatAnalysisSnapshot() {
@@ -700,51 +677,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  Future<void> _openCoachQuestion({String? prefill}) async {
-    if (!mounted) {
-      return;
-    }
+  /// 問教練＝直達 Sydney 視窗（conversation scope），分析快照 extra 隨行。
+  /// 額度與 consent gate 全在視窗內。
+  void _openCoachQuestion() {
+    if (!mounted) return;
     _dismissKeyboard();
-    if (_showContinueConversation) {
-      setState(() {
-        _showContinueConversation = false;
-      });
-      await Future.delayed(const Duration(milliseconds: 80));
-    }
-    final coachContext = _coachSurfaceKey.currentContext;
-    if (!mounted || coachContext == null || !coachContext.mounted) {
-      return;
-    }
-    await Scrollable.ensureVisible(
-      coachContext,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOut,
-      alignment: 0.08,
-    );
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _coachChatPrefill = prefill;
-      _coachChatFocusRequest++;
-    });
-  }
-
-  Future<void> _returnToAnalysisOverview() async {
-    _dismissKeyboard();
-    if (_showContinueConversation) {
-      setState(() {
-        _showContinueConversation = false;
-      });
-      await Future.delayed(const Duration(milliseconds: 80));
-    }
-    if (!mounted || !_scrollController.hasClients) {
-      return;
-    }
-    await _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOut,
+    context.push(
+      '/coach?conversationId=${widget.conversationId}',
+      extra: _buildCoachChatAnalysisSnapshot(),
     );
   }
 
@@ -883,15 +823,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _hydrateStreamingAnalyzeState(current);
       }
     });
-    // 作戰板 nextStep 入口：首幀後捲到 Coach 1:1 並預填問題。
-    // _restorePersistedAnalysis() 是同步的，首幀即含 CoachSurface；
-    // 渲染條件不滿足時 _openCoachQuestion 內部安靜 no-op。
-    final prefill = widget.coachPrefillQuestion?.trim();
-    if (prefill != null && prefill.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(_openCoachQuestion(prefill: prefill));
-      });
-    }
     // 不再自動分析，讓用戶手動點擊
   }
 
@@ -7754,26 +7685,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
 
                           // 問教練上移到詳細分析之前（2026-08-09 回覆區滿版批）：
-                          // 完成後首屏留給「下一步＋回覆建議」，往下滑先遇到可以
-                          // 行動的問教練，詳細分析（參考資料）沉到更下面。
+                          // 完成後首屏留給「下一步＋回覆建議」。2026-08-15 拍板：
+                          // 內嵌 CoachSurface 退場，改 CTA 卡直達 Sydney 視窗
+                          // （conversation scope＋分析快照隨行）。
                           if (_enthusiasmScore != null &&
                               _gameStage != null &&
                               _finalRecommendation != null) ...[
-                            KeyedSubtree(
-                              key: _coachSurfaceKey,
-                              child: CoachSurface(
-                                scope: CoachScope.conversation(
-                                  widget.conversationId,
-                                ),
-                                analysisSnapshot:
-                                    _buildCoachChatAnalysisSnapshot(),
-                                focusRequestToken: _coachChatFocusRequest,
-                                prefillText: _coachChatPrefill,
-                                onReturnToAnalysis: _returnToAnalysisOverview,
-                                onQuotaExceeded: () {
-                                  unawaited(_handleCoachChatQuotaExceeded());
-                                },
-                              ),
+                            CoachCtaCard(
+                              buttonKey: const Key('analysis_coach_cta'),
+                              onTap: _openCoachQuestion,
                             ),
                             const SizedBox(height: 16),
                           ],

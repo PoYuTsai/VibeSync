@@ -17,6 +17,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/coach/coach_action_type.dart';
+import 'package:vibesync/features/coach_chat/presentation/screens/global_coach_screen.dart';
 import 'package:vibesync/features/analysis/domain/coach/learning_link_resolver.dart';
 import 'package:vibesync/features/learning/domain/dating_knowledge_links.dart';
 import 'package:vibesync/features/learning/domain/models/learning_link_target.dart';
@@ -103,18 +104,13 @@ void main() {
   });
 
   group('widget chip 清單與對照表沒有漂移', () {
-    // 兩份 chip 清單是 widget 內的 private const，測試讀原始碼比對。
-    // 這比「兩邊各自維護」多一道保險：改了文案忘了改表，這裡就會紅。
+    // 情境 chips 已收斂為 GlobalCoachScreen.scenarioChips 公開常數
+    // （2026-08-15 Sydney 視窗拍板），直接引用比對——改了 chip 忘了改表，
+    // 這裡就會紅。
 
-    test('教練跟進的每個 phase 都在對照表裡', () {
-      final source = File(
-        'lib/features/coach_follow_up/presentation/widgets/'
-        'coach_follow_up_section.dart',
-      ).readAsStringSync();
-      final phases = RegExp(r"\(phase: '([^']+)'")
-          .allMatches(source)
-          .map((m) => m.group(1)!)
-          .toSet();
+    test('情境 chips 的每個 phase 都在對照表裡', () {
+      final phases =
+          GlobalCoachScreen.scenarioChips.map((chip) => chip.phase).toSet();
 
       expect(phases, isNotEmpty, reason: 'chip 清單解析失敗，守門會變成空跑');
       for (final phase in phases) {
@@ -128,13 +124,11 @@ void main() {
     });
 
     test('對照表沒有多出 widget 已經不存在的 phase', () {
-      final source = File(
-        'lib/features/coach_follow_up/presentation/widgets/'
-        'coach_follow_up_section.dart',
-      ).readAsStringSync();
+      final phases =
+          GlobalCoachScreen.scenarioChips.map((chip) => chip.phase).toSet();
       for (final phase in DatingKnowledgeLinks.followUpPhaseTable.keys) {
         expect(
-          source.contains("(phase: '$phase'"),
+          phases.contains(phase),
           isTrue,
           reason: '對照表有 "$phase" 但 widget 已經沒有這個 chip 了',
         );

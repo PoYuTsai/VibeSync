@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../core/services/supabase_service.dart';
 import '../features/analysis/presentation/screens/analysis_screen.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
+import '../features/coach_chat/data/services/coach_chat_api_service.dart'
+    show CoachChatAnalysisSnapshot;
 import '../features/coach_chat/presentation/screens/global_coach_screen.dart';
 import '../features/conversation/presentation/screens/new_conversation_screen.dart';
 import 'main_shell.dart';
@@ -118,9 +120,6 @@ final router = GoRouter(
       path: '/conversation/:id',
       builder: (context, state) => AnalysisScreen(
         conversationId: state.pathParameters['id']!,
-        // 作戰板 nextStep 節點入口：捲到 Coach 1:1 並預填（絕不 auto-send）。
-        coachPrefillQuestion:
-            state.uri.queryParameters[AnalysisScreen.coachPrefillQueryParam],
       ),
     ),
     // literal '/partner/new' MUST come before '/partner/:partnerId' so
@@ -181,11 +180,16 @@ final router = GoRouter(
       builder: (context, state) => const PaywallScreen(),
     ),
     // 問教練 Sydney 聊天視窗：首頁直達（不帶參數，可選「問誰」）；
-    // 對象頁／作戰板 CTA 帶 ?partnerId= 鎖定對象（不渲染「問誰」）。
+    // 對象頁／作戰板 CTA 帶 ?partnerId= 鎖定對象；分析頁 CTA 帶
+    // ?conversationId=（extra 為分析快照，冷啟 deep-link 拿不到時為 null）。
     GoRoute(
       path: '/coach',
       builder: (context, state) => GlobalCoachScreen(
         lockedPartnerId: state.uri.queryParameters['partnerId'],
+        lockedConversationId: state.uri.queryParameters['conversationId'],
+        analysisSnapshot: state.extra is CoachChatAnalysisSnapshot
+            ? state.extra as CoachChatAnalysisSnapshot
+            : null,
       ),
     ),
     GoRoute(

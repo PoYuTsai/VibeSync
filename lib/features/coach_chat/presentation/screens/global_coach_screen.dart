@@ -6,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/coach_head_avatar.dart';
+import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../learning/domain/dating_knowledge_links.dart';
 import '../../../learning/presentation/screens/ebook_detail_screen.dart'
     show ebookChapterRoute;
@@ -14,16 +15,21 @@ import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/domain/mindmap/mind_map_builder.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../data/providers/coach_chat_providers.dart';
+import '../../data/services/coach_chat_api_service.dart'
+    show CoachChatAnalysisSnapshot;
 import '../../domain/entities/coach_scope.dart';
 import '../widgets/coach_surface.dart';
 
 /// 問教練 Sydney 獨立聊天視窗（2026-08-15 拍板：三入口共用同一個視窗）。
 ///
-/// 兩種進場：
+/// 三種進場：
 /// - 首頁「問教練 Sydney」→ `/coach`：頂部「問誰」chips（有對象卡才渲染），
 ///   預設「一般」；切到對象＝整個畫面換成該對象版（開場泡泡＋情境問句）。
 /// - 對象頁／作戰板 CTA → `/coach?partnerId=X`：鎖定該對象，不渲染 chips，
 ///   標題帶對象名。對象已刪除時退回一般模式。
+/// - 分析頁 CTA → `/coach?conversationId=Y`（extra 帶分析快照）：鎖定該段
+///   對話的 conversation scope（沿用分析頁 1:1 的同一條串），快照隨 ask
+///   附送。標題帶該段對話的對象名（查無對象時只顯示 Sydney）。
 ///
 /// 引導問句跟著 scope 走，不是跟著入口走：一般＝三句「怎麼做」問句；
 /// 對象＝三句「情境」chips（種入 lifecyclePhase＋prefill）。點擊只「預填」
@@ -33,10 +39,24 @@ import '../widgets/coach_surface.dart';
 /// 開場泡泡吃記憶素材（優先序，只引用已存在的資料、絕不腦補）：
 /// 上次教練串問句 → 最近分析的下一步 → 關係階段 → 通用 fallback。
 class GlobalCoachScreen extends ConsumerStatefulWidget {
-  const GlobalCoachScreen({super.key, this.lockedPartnerId});
+  const GlobalCoachScreen({
+    super.key,
+    this.lockedPartnerId,
+    this.lockedConversationId,
+    this.analysisSnapshot,
+  });
 
   /// 非 null＝對象頁／作戰板 CTA 進場：鎖定該對象 scope、不渲染「問誰」。
   final String? lockedPartnerId;
+
+  /// 非 null＝分析頁 CTA 進場：鎖定 conversation scope（優先於
+  /// [lockedPartnerId]）、不渲染「問誰」。
+  final String? lockedConversationId;
+
+  /// 分析頁 CTA 隨行的分析快照（僅 conversation 模式）：CoachSurface 隨
+  /// ask 附送，開場泡泡也拿它的 nextStep 當記憶素材。push extra 傳遞，
+  /// 冷啟 deep-link 拿不到時為 null——教練照常運作，只少快照脈絡。
+  final CoachChatAnalysisSnapshot? analysisSnapshot;
 
   /// 一般 scope 引導問句（計畫拍板三句；widget 測試字面對齊）。
   static const guideQuestions = <String>[
@@ -61,9 +81,11 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
   String? _prefill;
   int _focusToken = 0;
   String? _pendingPhase;
-  late CoachScope _scope = widget.lockedPartnerId == null
-      ? const CoachScope.global()
-      : CoachScope.partner(widget.lockedPartnerId!);
+  late CoachScope _scope = widget.lockedConversationId != null
+      ? CoachScope.conversation(widget.lockedConversationId!)
+      : widget.lockedPartnerId != null
+          ? CoachScope.partner(widget.lockedPartnerId!)
+          : const CoachScope.global();
 
   void _onGuideTap(String question, {String? phase}) {
     setState(() {
@@ -145,13 +167,12 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
     return '${trimmed.substring(0, max)}…';
   }
 
-  /// 開場泡泡文案。對象 scope 按優先序取材；素材只引用已存在的資料，
+  /// 開場泡泡文案。非一般 scope 按優先序取材；素材只引用已存在的資料，
   /// 一句話＋一個問句收尾，絕不腦補沒發生的事。
-  String _openingLine(Partner? partner) {
-    if (partner == null) return '隨時問我，聊天卡住我來接。';
+  String _openingLine(Partner? contextPartner) {
+    if (_scope.isGlobal) return '隨時問我，聊天卡住我來接。';
 
-    final history =
-        ref.watch(coachChatHistoryProvider(CoachScope.partner(partner.id)));
+    final history = ref.watch(coachChatHistoryProvider(_scope));
     if (history.isNotEmpty) {
       final latest = history
           .reduce((a, b) => a.generatedAt.isAfter(b.generatedAt) ? a : b);
@@ -161,22 +182,33 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
       }
     }
 
-    // 作戰板同一套快照衍生（零 AI 邊際成本）：下一步 → 關係信號。
-    final map = buildPartnerMindMap(
-      partnerName: partner.name,
-      aggregate: ref.watch(partnerAggregateProvider(partner.id)),
-      conversations: ref.watch(conversationsByPartnerProvider(partner.id)),
-    );
-    final nextStep = map.fullNextStep?.trim();
-    if (nextStep != null && nextStep.isNotEmpty) {
-      return '上次分析完的下一步是「${_clip(nextStep)}」，試了嗎？';
-    }
-    final signal = map.relationshipSignal?.trim();
-    if (signal != null && signal.isNotEmpty) {
-      return '你們目前的狀態：${_clip(signal)}。想從哪裡推進？';
+    if (_scope.isConversation) {
+      // 分析頁 CTA 隨行快照：本段分析的下一步。
+      final nextStep = widget.analysisSnapshot?.nextStep?.trim();
+      if (nextStep != null && nextStep.isNotEmpty) {
+        return '上次分析完的下一步是「${_clip(nextStep)}」，試了嗎？';
+      }
+    } else if (contextPartner != null) {
+      // 作戰板同一套快照衍生（零 AI 邊際成本）：下一步 → 關係信號。
+      final map = buildPartnerMindMap(
+        partnerName: contextPartner.name,
+        aggregate: ref.watch(partnerAggregateProvider(contextPartner.id)),
+        conversations:
+            ref.watch(conversationsByPartnerProvider(contextPartner.id)),
+      );
+      final nextStep = map.fullNextStep?.trim();
+      if (nextStep != null && nextStep.isNotEmpty) {
+        return '上次分析完的下一步是「${_clip(nextStep)}」，試了嗎？';
+      }
+      final signal = map.relationshipSignal?.trim();
+      if (signal != null && signal.isNotEmpty) {
+        return '你們目前的狀態：${_clip(signal)}。想從哪裡推進？';
+      }
     }
 
-    return '想聊${partner.name}的什麼？卡住的地方直接丟給我。';
+    final name = contextPartner?.name;
+    if (name == null) return '想聊哪一段？卡住的地方直接丟給我。';
+    return '想聊$name的什麼？卡住的地方直接丟給我。';
   }
 
   Widget _buildOpeningBubble(Partner? scopePartner) {
@@ -191,7 +223,8 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
             decoration: const BoxDecoration(
               color: AppColors.glassWhite,
               borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(4),
+                // 尾巴圓角 5：同 practice_chat 分則氣泡的登記值（DESIGN.md §7）。
+                topLeft: Radius.circular(5),
                 topRight: Radius.circular(18),
                 bottomLeft: Radius.circular(18),
                 bottomRight: Radius.circular(18),
@@ -224,10 +257,10 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
     );
   }
 
-  /// 引導問句泡泡：跟著 scope 走——一般＝「怎麼做」問句；對象＝情境
-  /// chips（種入 lifecyclePhase）。點擊只預填，可改再送。
-  Widget _buildGuideBubbles(Partner? scopePartner) {
-    final bubbles = scopePartner == null
+  /// 引導問句泡泡：跟著 scope 走——一般＝「怎麼做」問句；對象／分析段＝
+  /// 情境 chips（種入 lifecyclePhase）。點擊只預填，可改再送。
+  Widget _buildGuideBubbles() {
+    final bubbles = _scope.isGlobal
         ? [
             for (final question in GlobalCoachScreen.guideQuestions)
               _guideBubble(label: question, onTap: () => _onGuideTap(question)),
@@ -311,24 +344,36 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
   @override
   Widget build(BuildContext context) {
     final partners = ref.watch(partnerListProvider);
-    // 鎖定的對象已被合併/刪除 → 安靜退回一般模式（deep link 防呆）。
-    final lockedPartner = widget.lockedPartnerId == null
-        ? null
-        : ref.watch(partnerByIdProvider(widget.lockedPartnerId!));
-    final locked = lockedPartner != null;
-    if (widget.lockedPartnerId != null && !locked && !_scope.isGlobal) {
-      _scope = const CoachScope.global();
+    final conversationMode = widget.lockedConversationId != null;
+
+    // 鎖定對象／該段對話的對象；對象已被合併/刪除時為 null。
+    Partner? contextPartner;
+    if (conversationMode) {
+      final conversation =
+          ref.watch(conversationProvider(widget.lockedConversationId!));
+      final partnerId = conversation?.partnerId;
+      contextPartner =
+          partnerId == null ? null : ref.watch(partnerByIdProvider(partnerId));
+    } else if (widget.lockedPartnerId != null) {
+      contextPartner = ref.watch(partnerByIdProvider(widget.lockedPartnerId!));
+      // 鎖定的對象已被合併/刪除 → 安靜退回一般模式（deep link 防呆）。
+      if (contextPartner == null && !_scope.isGlobal) {
+        _scope = const CoachScope.global();
+      }
+    } else if (!_scope.isGlobal) {
+      contextPartner = partners
+          .where((partner) => _scope == CoachScope.partner(partner.id))
+          .firstOrNull;
     }
-    final scopePartner = locked
-        ? lockedPartner
-        : (_scope.isGlobal
-            ? null
-            : partners
-                .where((partner) => _scope == CoachScope.partner(partner.id))
-                .firstOrNull);
+
+    // 鎖定與否只看進場參數（含防呆後仍有效），不看 free 模式下的 chip 選擇。
+    final locked = conversationMode ||
+        (widget.lockedPartnerId != null && contextPartner != null);
 
     return BrandScaffold(
-      title: locked ? '問教練 Sydney・${lockedPartner.name}' : '問教練 Sydney',
+      title: locked && contextPartner != null
+          ? '問教練 Sydney・${contextPartner.name}'
+          : '問教練 Sydney',
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -344,17 +389,18 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildOpeningBubble(scopePartner),
+                  _buildOpeningBubble(contextPartner),
                   const SizedBox(height: 16),
-                  _buildGuideBubbles(scopePartner),
-                  if (scopePartner != null) _buildKnowledgeLink(),
+                  _buildGuideBubbles(),
+                  if (!_scope.isGlobal) _buildKnowledgeLink(),
                   const SizedBox(height: 8),
                   CoachSurface(
                     scope: _scope,
+                    analysisSnapshot:
+                        conversationMode ? widget.analysisSnapshot : null,
                     focusRequestToken: _focusToken,
                     prefillText: _prefill,
                     lifecyclePhase: _pendingPhase,
-                    showHeader: false,
                     onQuotaExceeded: () => context.push('/paywall'),
                   ),
                 ],
