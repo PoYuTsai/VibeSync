@@ -22,11 +22,17 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import 'coach_chat_progress_notice.dart';
 
-/// scope 參數化的統一教練介面。唯一宿主是問教練 Sydney 視窗
-/// （GlobalCoachScreen）：標題／額度說明由視窗的開場泡泡負責，本卡只剩
-/// 教練參考 strip＋輸入框＋回覆串；收鍵盤靠視窗捲動（onDrag）。
+/// scope 參數化的統一教練介面，同時是問教練 Sydney 視窗的內容主體
+/// （唯一宿主 GlobalCoachScreen）：上方捲動區＝視窗遞入的 [header]
+/// （開場泡泡＋引導問句）＋教練參考 strip＋回覆串，下方＝釘在底部的
+/// 聊天式輸入列（2026-08-15 Eric 真機回饋：要像聊天頁，輸入框在底部）。
+/// 收鍵盤靠捲動（onDrag）。
 class CoachSurface extends ConsumerStatefulWidget {
   final CoachScope scope;
+
+  /// 視窗遞入的捲動區頂部內容（開場泡泡＋引導問句＋知識庫入口）。
+  /// 放進本 widget 的捲動區而不是視窗自己捲，輸入列才能釘在畫面底部。
+  final Widget? header;
 
   /// conversation scope 由分析頁 CTA 隨行傳入；partner/global scope 不傳。
   final CoachChatAnalysisSnapshot? analysisSnapshot;
@@ -43,6 +49,7 @@ class CoachSurface extends ConsumerStatefulWidget {
   const CoachSurface({
     super.key,
     required this.scope,
+    this.header,
     this.analysisSnapshot,
     this.onQuotaExceeded,
     this.focusRequestToken = 0,
@@ -111,19 +118,7 @@ class CoachSurface extends ConsumerStatefulWidget {
 class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
-
-  /// 掛在輸入框上：聚焦後鍵盤展開，要靠這個 context 做 ensureVisible。
-  final _inputFieldKey = GlobalKey();
-
-  /// 等鍵盤 inset 到位再捲動的排程；失焦／卸載時取消。
-  Timer? _ensureInputVisibleTimer;
   String? _lastAskedQuestion;
-
-  @override
-  void initState() {
-    super.initState();
-    _focusNode.addListener(_handleFocusChange);
-  }
 
   @override
   void didUpdateWidget(covariant CoachSurface oldWidget) {
@@ -149,44 +144,9 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
 
   @override
   void dispose() {
-    _ensureInputVisibleTimer?.cancel();
-    _focusNode.removeListener(_handleFocusChange);
     _focusNode.dispose();
     _controller.dispose();
     super.dispose();
-  }
-
-  void _handleFocusChange() {
-    if (!mounted) return;
-    if (_focusNode.hasFocus) {
-      _scheduleEnsureInputVisible();
-    } else {
-      _ensureInputVisibleTimer?.cancel();
-    }
-    setState(() {});
-  }
-
-  /// 聚焦後把輸入框帶回鍵盤上方。post-frame 先讓聚焦那一輪 rebuild 完成，
-  /// 再等鍵盤 inset 大致到位（iOS 展開動畫約 250ms）才捲動；期間失焦或
-  /// 卸載就整段放棄。CoachSurface 也會掛在非 Scrollable 宿主，
-  /// maybeOf 查無 Scrollable 時直接不捲。
-  void _scheduleEnsureInputVisible() {
-    _ensureInputVisibleTimer?.cancel();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_focusNode.hasFocus) return;
-      _ensureInputVisibleTimer = Timer(const Duration(milliseconds: 280), () {
-        if (!mounted || !_focusNode.hasFocus) return;
-        final fieldContext = _inputFieldKey.currentContext;
-        if (fieldContext == null) return;
-        if (Scrollable.maybeOf(fieldContext) == null) return;
-        Scrollable.ensureVisible(
-          fieldContext,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-        );
-      });
-    });
   }
 
   @override
@@ -233,106 +193,155 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
       );
     });
 
-    return GlassmorphicContainer(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _CoachMemorySourceStrip(sources: memorySources),
-          // 五個灰色快捷問句 chip 已整組移除（2026-08-09 拍板）：使用者
-          // 直接打自己的問題；知識庫入口改由對象頁三情境 chip
-          // （CoachFollowUpSection）負責。
-          const SizedBox(height: 16),
-          TextField(
-            key: _inputFieldKey,
-            controller: _controller,
-            focusNode: _focusNode,
-            maxLength: 240,
-            minLines: 1,
-            maxLines: 3,
-            textInputAction: TextInputAction.done,
-            onSubmitted: canSubmit ? (_) => _ask() : null,
-            inputFormatters: [LengthLimitingTextInputFormatter(240)],
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextPrimary,
-            ),
-            decoration: InputDecoration(
-              counterText: '',
-              hintText:
-                  isClarifying ? '補充：你聽到後的感受，或你原本想怎麼回' : '例如：她這句話是真的有興趣嗎？',
-              hintStyle: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextHint,
-              ),
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.62),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: BorderSide(color: AppColors.glassBorder),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: BorderSide(color: AppColors.glassBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: const BorderSide(
-                  color: AppColors.primary,
-                  width: 1.4,
-                ),
-              ),
-              suffixIconConstraints: const BoxConstraints(minWidth: 48),
-              // suffix 只留送出鈕；收起鍵盤在卡片 header（見上）。
-              suffixIcon: IconButton(
-                tooltip: isLoading ? '教練思考中' : '送出問題',
-                icon: isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.arrow_upward_rounded),
-                onPressed: canSubmit ? _ask : null,
-                color: AppColors.primary,
-              ),
+    // 回覆串／progress／error 的配色是為淺色玻璃卡設計的，仍包在
+    // GlassmorphicContainer 裡；空狀態時整張卡不渲染，畫面乾淨如聊天頁。
+    final hasGlassContent = isLoading || activeError || timeline.isNotEmpty;
+
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            // 沒有常駐「收起鍵盤」鈕：往下滑就收（聊天視窗慣例）。
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.header != null) widget.header!,
+                _CoachMemorySourceStrip(sources: memorySources),
+                if (hasGlassContent) ...[
+                  const SizedBox(height: 12),
+                  GlassmorphicContainer(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isLoading)
+                          CoachChatProgressNotice(
+                            update: progress,
+                            question: _lastAskedQuestion,
+                          )
+                        else if (activeError) ...[
+                          _CoachFailureNotice(
+                            title:
+                                CoachSurface.failureTitleFor(activeErrorObject!),
+                            subtitle:
+                                CoachSurface.failureSubtitleFor(activeErrorObject),
+                            question: _lastAskedQuestion!,
+                            message:
+                                CoachSurface.failureMessageFor(activeErrorObject),
+                            actionLabel: CoachSurface.failureActionLabelFor(
+                                activeErrorObject),
+                            onRetry: CoachSurface.isQuotaError(activeErrorObject)
+                                ? (widget.onQuotaExceeded ?? _retryLastQuestion)
+                                : _retryLastQuestion,
+                          ),
+                          if (timeline.isNotEmpty) const SizedBox(height: 12),
+                        ],
+                        if (!isLoading && timeline.isNotEmpty)
+                          _CoachChatThreadView(
+                            results: timeline,
+                            dailyRemaining: subscription.dailyRemaining,
+                            onFollowUp: _focusInputForFollowUp,
+                            onForceAnswer: _forceAnswer,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-          if (isLoading) ...[
-            const SizedBox(height: 16),
-            CoachChatProgressNotice(
-              update: progress,
-              question: _lastAskedQuestion,
-            ),
-          ] else if (activeError) ...[
-            const SizedBox(height: 16),
-            _CoachFailureNotice(
-              title: CoachSurface.failureTitleFor(activeErrorObject!),
-              subtitle: CoachSurface.failureSubtitleFor(activeErrorObject),
-              question: _lastAskedQuestion!,
-              message: CoachSurface.failureMessageFor(activeErrorObject),
-              actionLabel:
-                  CoachSurface.failureActionLabelFor(activeErrorObject),
-              onRetry: CoachSurface.isQuotaError(activeErrorObject)
-                  ? (widget.onQuotaExceeded ?? _retryLastQuestion)
-                  : _retryLastQuestion,
-            ),
-            if (timeline.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _CoachChatThreadView(
-                results: timeline,
-                dailyRemaining: subscription.dailyRemaining,
-                onFollowUp: _focusInputForFollowUp,
-                onForceAnswer: _forceAnswer,
+        ),
+        _buildInputBar(canSubmit: canSubmit, isClarifying: isClarifying),
+      ],
+    );
+  }
+
+  /// 釘在畫面底部的聊天式輸入列：深色圓角輸入框＋圓形送出鈕
+  /// （2026-08-15 Eric 真機回饋對齊夥伴示意稿）。
+  Widget _buildInputBar({required bool canSubmit, required bool isClarifying}) {
+    final isLoading = !canSubmit;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                maxLength: 240,
+                minLines: 1,
+                maxLines: 3,
+                textInputAction: TextInputAction.done,
+                onSubmitted: canSubmit ? (_) => _ask() : null,
+                inputFormatters: [LengthLimitingTextInputFormatter(240)],
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                ),
+                decoration: InputDecoration(
+                  counterText: '',
+                  hintText: isClarifying
+                      ? '補充：你聽到後的感受，或你原本想怎麼回'
+                      : '例如：她這句話是真的有興趣嗎？',
+                  hintStyle: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.onBackgroundSecondary
+                        .withValues(alpha: 0.65),
+                  ),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.08),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.14),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.14),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: const BorderSide(
+                      color: AppColors.coachAccent,
+                      width: 1.4,
+                    ),
+                  ),
+                ),
               ),
-            ],
-          ] else if (timeline.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _CoachChatThreadView(
-              results: timeline,
-              dailyRemaining: subscription.dailyRemaining,
-              onFollowUp: _focusInputForFollowUp,
-              onForceAnswer: _forceAnswer,
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: Material(
+                color: Colors.white.withValues(alpha: 0.10),
+                shape: const CircleBorder(),
+                child: IconButton(
+                  tooltip: isLoading ? '教練思考中' : '送出問題',
+                  icon: isLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.arrow_upward_rounded),
+                  onPressed: canSubmit ? _ask : null,
+                  color: AppColors.coachAccentBright,
+                ),
+              ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1092,60 +1101,51 @@ class _CoachMemorySourceStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.46),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: AppColors.glassBorder.withValues(alpha: 0.75),
+    // 深色視窗版配色（2026-08-15）：strip 直接躺在視窗深底上，不再在
+    // 淺色玻璃卡內。
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.auto_awesome_outlined,
+              size: 15,
+              color: AppColors.coachAccentBright,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '教練參考',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
-      ),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.auto_awesome_outlined,
-                size: 15,
-                color: AppColors.primary,
+        ...sources.map(
+          (source) => Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.14),
               ),
-              const SizedBox(width: 4),
-              Text(
-                '教練參考',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.glassTextSecondary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          ...sources.map(
-            (source) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.14),
-                ),
-              ),
-              child: Text(
-                source,
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.glassTextPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
+            ),
+            child: Text(
+              source,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundPrimary,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

@@ -381,12 +381,12 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
             const SizedBox(height: 12),
             _buildScopeChips(partners),
           ],
+          // 捲動與底部釘住的輸入列都由 CoachSurface 負責（聊天頁版式）；
+          // 視窗只遞入開場泡泡＋引導問句當捲動區頂部內容。
           Expanded(
-            child: SingleChildScrollView(
-              // 視窗沒有常駐「收起鍵盤」鈕：往下滑就收（聊天視窗慣例）。
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.all(16),
-              child: Column(
+            child: CoachSurface(
+              scope: _scope,
+              header: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildOpeningBubble(contextPartner),
@@ -394,17 +394,14 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
                   _buildGuideBubbles(),
                   if (!_scope.isGlobal) _buildKnowledgeLink(),
                   const SizedBox(height: 8),
-                  CoachSurface(
-                    scope: _scope,
-                    analysisSnapshot:
-                        conversationMode ? widget.analysisSnapshot : null,
-                    focusRequestToken: _focusToken,
-                    prefillText: _prefill,
-                    lifecyclePhase: _pendingPhase,
-                    onQuotaExceeded: () => context.push('/paywall'),
-                  ),
                 ],
               ),
+              analysisSnapshot:
+                  conversationMode ? widget.analysisSnapshot : null,
+              focusRequestToken: _focusToken,
+              prefillText: _prefill,
+              lifecyclePhase: _pendingPhase,
+              onQuotaExceeded: () => context.push('/paywall'),
             ),
           ),
         ],
