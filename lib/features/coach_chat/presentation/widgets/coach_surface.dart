@@ -257,8 +257,9 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     );
   }
 
-  /// 釘在畫面底部的聊天式輸入列：深色圓角輸入框＋圓形送出鈕
-  /// （2026-08-15 Eric 真機回饋對齊夥伴示意稿）。
+  /// 釘在畫面底部的聊天式輸入列。配方整組沿用練習室（2026-08-15 Eric
+  /// 拍板一致）：白 12% 框底＋白 18% 框線＋聚焦橘框與橘色瞬態光暈
+  /// （DESIGN.md §7 登記）、失焦中性黑陰影分層、送出鈕「有字才亮」漸層圓鈕。
   Widget _buildInputBar({required bool canSubmit, required bool isClarifying}) {
     final isLoading = !canSubmit;
     return Padding(
@@ -269,76 +270,121 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
-              child: TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                maxLength: 240,
-                minLines: 1,
-                maxLines: 3,
-                textInputAction: TextInputAction.done,
-                onSubmitted: canSubmit ? (_) => _ask() : null,
-                inputFormatters: [LengthLimitingTextInputFormatter(240)],
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.onBackgroundPrimary,
+              child: ListenableBuilder(
+                listenable: _focusNode,
+                builder: (context, child) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: _focusNode.hasFocus
+                        ? [
+                            BoxShadow(
+                              color:
+                                  AppColors.ctaStart.withValues(alpha: 0.22),
+                              blurRadius: 14,
+                              offset: const Offset(0, 3),
+                            ),
+                          ]
+                        : [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.18),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                  ),
+                  child: child,
                 ),
-                decoration: InputDecoration(
-                  counterText: '',
-                  hintText: isClarifying
-                      ? '補充：你聽到後的感受，或你原本想怎麼回'
-                      : '例如：她這句話是真的有興趣嗎？',
-                  hintStyle: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.onBackgroundSecondary
-                        .withValues(alpha: 0.65),
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  maxLength: 240,
+                  minLines: 1,
+                  maxLines: 3,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: canSubmit ? (_) => _ask() : null,
+                  inputFormatters: [LengthLimitingTextInputFormatter(240)],
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.onBackgroundPrimary,
                   ),
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.08),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.14),
+                  decoration: InputDecoration(
+                    counterText: '',
+                    hintText: isClarifying
+                        ? '補充：你聽到後的感受，或你原本想怎麼回'
+                        : '例如：她這句話是真的有興趣嗎？',
+                    hintStyle: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.85),
                     ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.14),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
                     ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(
-                      color: AppColors.coachAccent,
-                      width: 1.4,
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    focusedBorder: const OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(24)),
+                      borderSide: BorderSide(
+                        color: AppColors.ctaStart,
+                        width: 1.4,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
             const SizedBox(width: 8),
-            SizedBox(
-              width: 44,
-              height: 44,
-              child: Material(
-                color: Colors.white.withValues(alpha: 0.10),
-                shape: const CircleBorder(),
-                child: IconButton(
-                  tooltip: isLoading ? '教練思考中' : '送出問題',
-                  icon: isLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.arrow_upward_rounded),
-                  onPressed: canSubmit ? _ask : null,
-                  color: AppColors.coachAccentBright,
-                ),
-              ),
+            // 空字串灰階、有字才亮橘（同練習室 _SendButton）；loading 轉圈。
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _controller,
+              builder: (context, value, _) {
+                final enabled = canSubmit && value.text.trim().isNotEmpty;
+                return Semantics(
+                  button: true,
+                  label: isLoading ? '教練思考中' : '送出問題',
+                  child: GestureDetector(
+                    onTap: enabled ? _ask : null,
+                    child: Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        gradient: enabled
+                            ? const LinearGradient(
+                                colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                              )
+                            : null,
+                        color: enabled ? null : AppColors.brandSurface2,
+                        shape: BoxShape.circle,
+                      ),
+                      child: isLoading
+                          ? const Padding(
+                              padding: EdgeInsets.all(13),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(
+                              Icons.arrow_upward,
+                              color: enabled
+                                  ? AppColors.onBackgroundPrimary
+                                  : AppColors.onBackgroundSecondary
+                                      .withValues(alpha: 0.5),
+                              size: 22,
+                            ),
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ),

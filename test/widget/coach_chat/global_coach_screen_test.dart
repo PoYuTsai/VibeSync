@@ -350,7 +350,7 @@ void main() {
 
     // A（general）送出，卡在 loading。
     await tester.enterText(field, questionA);
-    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.tap(find.byIcon(Icons.arrow_upward));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.textContaining(questionA), findsOneWidget,
@@ -360,7 +360,7 @@ void main() {
     await tester.tap(find.byKey(const Key('coach_scope_partner_p1')));
     await tester.pump(const Duration(milliseconds: 100));
     await tester.enterText(field, questionB);
-    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.tap(find.byIcon(Icons.arrow_upward));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.textContaining(questionB), findsOneWidget);

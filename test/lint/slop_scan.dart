@@ -29,6 +29,8 @@ const kColoredShadowAllowedFiles = {
   'lib/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart',
   // 輸入框聚焦瞬態光（DESIGN.md §7）
   'lib/features/practice_chat/presentation/screens/practice_chat_screen.dart',
+  // 同一顆聚焦光沿用到 Sydney 視窗輸入列（DESIGN.md §7，2026-08-15 一致化）
+  'lib/features/coach_chat/presentation/widgets/coach_surface.dart',
 };
 
 /// 硬寫 Color(0x…) 的豁免目錄／檔案：色票本體與正在服役的主題檔。

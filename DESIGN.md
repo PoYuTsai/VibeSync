@@ -71,6 +71,7 @@ EdgeInsets 20→16、childless SizedBox 20→24、22/26→24、28/30→32）。
 | 邊緣淡出遮罩 | `home_coach_presence.dart` ShaderMask（dstIn） | 功能性遮罩，稽核誤報 |
 | OCR 確認格單發閃光 | `screenshot_recognition_dialog.dart`（ctaStart 脈衝） | 2026-08-09 拍板的注意力提示，功能性 |
 | 練習室輸入框聚焦光 | `practice_chat_screen.dart`（聚焦時 ctaStart@.22，失焦即收） | 瞬態 focus 回饋，功能性非裝飾 |
+| Sydney 視窗輸入列聚焦光 | `coach_surface.dart`（同練習室配方：聚焦 ctaStart@.22，失焦中性黑陰影） | 2026-08-15 Eric 拍板兩個聊天介面輸入列一致；同上瞬態 focus 回饋 |
 | Collection 漸層大標 | `practice_collection_screen.dart` hero「Collection」金→橘→粉 ShaderMask | Eric 2026-08-10 翻案保留：抽卡儀式頁的華麗感 |
 | 聊天泡泡尾巴圓角 5 | `practice_chat_screen.dart`（分則氣泡群組最後一顆的貼合角，見 §4 圓角登記例外） | 憲法尺度最小 18，表達不出「這顆黏在上一顆」；白名單＝`kAllowedRadiiByFile`，只開這一檔這一個值 |
 | Sydney 視窗開場泡泡尾巴圓角 5 | `global_coach_screen.dart`（開場泡泡朝頭像的貼合角） | 同上：沿用分則氣泡的尾巴語彙；白名單＝`kAllowedRadiiByFile`，只開這一檔這一個值 |
