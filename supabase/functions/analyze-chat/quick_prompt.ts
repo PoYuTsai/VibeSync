@@ -122,7 +122,7 @@ pick 必須是 extend / resonate / tease / humor / coldRead 之一。
 
 \`\`\`json
 {
-  "nextStep": "本回合怎麼接：一句話說明策略，例如『先接住她覺得太快的壓力，退一步讓她有安全感』",
+  "nextStep": "本回合怎麼接：18 字內一句白話策略，例如『先接住壓力，退一步給她安全感』",
   "pick": "extend|resonate|tease|humor|coldRead",
   "recommendedReply": "可以直接複製傳給對方的訊息原文",
   "shortReason": "35 字以內，說明為什麼這樣回有效",
@@ -133,7 +133,7 @@ pick 必須是 extend / resonate / tease / humor / coldRead 之一。
 
 注意：
 - recommendedReply 是給對方看的訊息本身，不是給用戶的指示
-- nextStep 是給用戶看的白話策略，不要用內部術語
+- nextStep 是給用戶看的白話策略，18 字內，不要用內部術語或「尚未到◯◯階段」報告句
 - pick 是內部與 dogfood 對照用的風格，不要寫成中文說明
 - shortReason 要點出機制，不要寫「這樣比較好」這種空話
 - recommendedReply 不要超過必要長度；如果對方很短，寧可一句乾淨有溫度

@@ -1963,6 +1963,7 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
 - finalRecommendation.reason：一句教練式判斷，說明這句接了哪個球、避開哪個雷、為什麼此刻適合。
 - finalRecommendation.psychology：雖然欄位名叫 psychology，但內容要寫成「互動判斷」，不要使用學術名詞；說明對方為什麼比較容易接、不會有壓力或會感覺被看見。
 - strategy：只寫這回合的工作判斷，例如「先接生活分享，不急著邀約」；不要複述完整分析。
+- gameStage.nextStep（streaming 的 analysis.decision.nextStepBody 是同一句）：使用者會在作戰板與教練開場整句看到。寫一句 18 字內的白話行動，例如「維持生活分享與互動，先不邀約」；不要寫「持續建立◯◯的自然互動」「尚未到◯◯階段」這類報告句。
 - reminder：只提醒一個最容易踩的點，例如「別連問三題」或「先別急著升溫」；不要寫成標語。
 - healthCheck：只有當目前對話真的有明顯雷點才輸出。最多 1 個 issue + 1 個 suggestion；不要每次都像老師批改作業。
 
