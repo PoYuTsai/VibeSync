@@ -149,7 +149,7 @@ function formatGlobalFraming(
   if (scope?.type !== "global") return null;
   return "本次是全域教練對話：使用者沒有綁定特定對象，問題偏通用（開場、判讀、推進、心態）。" +
     "直接給可執行的建議。若使用者明確在問某個特定對象的具體對話，" +
-    "提醒他到該對象頁的「跟進」區問，那裡你能看到完整上下文。";
+    "提醒他切換視窗上方「問誰」的對象選項，那樣你能帶入該對象的完整上下文。";
 }
 
 function formatLifecycleFraming(

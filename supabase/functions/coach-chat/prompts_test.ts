@@ -372,7 +372,7 @@ Deno.test("buildCoachChatPrompt injects global framing and keeps style context",
   });
 
   assertStringIncludes(prompt, "本次是全域教練對話");
-  assertStringIncludes(prompt, "提醒他到該對象頁的「跟進」區問");
+  assertStringIncludes(prompt, "提醒他切換視窗上方「問誰」的對象選項");
   // 「使用者風格設定」管線 scope 無關，global 照舊注入。
   assertStringIncludes(prompt, "使用者風格設定");
   assertStringIncludes(prompt, "- Preferred voice: 幽默");
