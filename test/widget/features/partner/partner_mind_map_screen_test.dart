@@ -14,7 +14,6 @@ import 'package:vibesync/features/conversation/domain/entities/conversation.dart
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
-import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_mind_map_screen.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_mind_map_view.dart';
 
@@ -135,7 +134,7 @@ void main() {
     expect(find.widgetWithText(TextButton, '問教練'), findsOneWidget);
   });
 
-  testWidgets('單擊 nextStep 葉節點 → 導航到對象頁教練跟進區（目的地改自 Coach 1:1）', (t) async {
+  testWidgets('單擊 nextStep 葉節點 → 直達問教練 Sydney 視窗（鎖定本對象）', (t) async {
     final captured = <Uri>[];
     final router = GoRouter(
       initialLocation: '/partner/p1/mindmap',
@@ -147,11 +146,13 @@ void main() {
           ),
         ),
         GoRoute(
-          path: '/partner/:partnerId',
+          path: '/coach',
           builder: (_, state) {
             captured.add(state.uri);
             return Scaffold(
-              body: Text('對象頁 ${state.pathParameters['partnerId']}'),
+              body: Text(
+                '教練視窗 ${state.uri.queryParameters['partnerId']}',
+              ),
             );
           },
         ),
@@ -180,15 +181,7 @@ void main() {
     await t.pumpAndSettle();
 
     expect(captured, hasLength(1));
-    expect(captured.single.path, '/partner/p1');
-    expect(
-      captured.single.queryParameters['focus'],
-      'coachFollowUp',
-    );
-    expect(
-      captured
-          .single.queryParameters[PartnerDetailScreen.focusActionQueryParam],
-      PartnerDetailScreen.openCoachInputFocusActionValue,
-    );
+    expect(captured.single.path, '/coach');
+    expect(captured.single.queryParameters['partnerId'], 'p1');
   });
 }

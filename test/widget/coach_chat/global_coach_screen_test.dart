@@ -21,6 +21,7 @@ import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
 import 'package:vibesync/features/coach_chat/presentation/screens/global_coach_screen.dart';
 import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
+import 'package:vibesync/features/learning/domain/dating_knowledge_links.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
@@ -255,6 +256,26 @@ void main() {
     expect(_surface(tester).scope, const CoachScope.partner('p1'));
     for (final chip in _scenarioChips) {
       expect(find.text(chip.label), findsOneWidget);
+    }
+  });
+
+  testWidgets('情境選中才出現知識庫入口，且每個情境都有對應章節', (tester) async {
+    await _pump(
+      tester,
+      partners: [_partner('p1', 'Alice')],
+      lockedPartnerId: 'p1',
+    );
+    const linkKey = Key('coach_window_knowledge_link');
+    expect(find.byKey(linkKey), findsNothing,
+        reason: '沒選情境就無從得知該連哪一章，寧可不給入口');
+
+    for (final chip in _scenarioChips) {
+      await tester.tap(find.text(chip.label));
+      await tester.pumpAndSettle();
+      expect(find.byKey(linkKey), findsOneWidget,
+          reason: '點了「${chip.label}」之後應該出現知識庫入口');
+      expect(DatingKnowledgeLinks.forFollowUpPhase(chip.phase), isNotNull,
+          reason: 'phase ${chip.phase} 沒有對應章節，入口會連不到東西');
     }
   });
 

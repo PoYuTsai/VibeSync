@@ -1,264 +1,75 @@
-// Phase E Task 6 — CoachFollowUpSection：對象頁教練區薄 wrapper。
+// 對象頁「問教練」CTA（2026-08-15 拍板：三入口共用獨立聊天視窗）。
 //
-// Spec 5 的罐頭卡 engine（chip → input sheet 表單 → controller.generate →
-// result card）整段退場，改掛統一教練介面 CoachSurface（partner scope，
-// 串流/多輪/釐清/forceAnswer/outcome 全能力）。本 widget 只剩：
-//   標題＋三情境 chip＋caption＋openCoach entry＋CoachSurface。
+// 內嵌 CoachSurface 時代（Phase E Task 6 薄 wrapper）整段退場：三情境
+// chip、知識庫連結與 lifecyclePhase 種入都搬進問教練 Sydney 視窗
+// （GlobalCoachScreen 鎖定模式）。本 widget 只剩一張 CTA 卡，點了導
+// `/coach?partnerId=`——對象已知，視窗不渲染「問誰」。
 //
-// chip 點擊「只種入」CoachSurface 的 lifecyclePhase＋prefill＋focus token
-// （focusRequestToken 遞增觸發 didUpdateWidget 的 prefill/focus 機制）——
-// 送出永遠是用戶按鈕行為，絕無 auto-send（quota 安全硬規則）。consent
-// gate 也隨之收斂進 CoachSurface 的 _ask/_forceAnswer，本層不再自彈。
-//
-// Phase F 已刪除舊 engine 死叢集（providers/api/hint builder/resolver/
-// input sheet/chip row/result card）。保留的只有：result entity（Hive 模型）、
-// repository read-bridge（Phase D）、phase enum（wire format）與本薄 wrapper；
-// telemetry 契約由檔尾 sealed 家族的 deep-link 意圖事件沿用。
+// 額度與 consent gate 全在視窗內的 CoachSurface；這裡純導航，零 AI 成本。
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../coach_chat/domain/entities/coach_scope.dart';
-import '../../../coach_chat/presentation/widgets/coach_surface.dart';
-import '../../../learning/domain/dating_knowledge_links.dart';
-import '../../../learning/domain/models/learning_link_target.dart';
-import '../../../learning/presentation/screens/ebook_detail_screen.dart'
-    show ebookChapterRoute;
-import '../../../learning/presentation/widgets/knowledge_library_link_row.dart';
+import '../../../../shared/widgets/coach_head_avatar.dart';
+import '../../../../shared/widgets/pressable_scale.dart';
 
-// ── 三情境 chip（Task 6 拍板；phase 字串隨 wire lifecyclePhase 原樣送）──
-
-typedef _CoachEntryChip = ({String phase, String label, String prefill});
-
-const _chips = <_CoachEntryChip>[
-  (phase: 'chatStalled', label: '聊天卡住了', prefill: '我們聊天卡住了，接下來該怎麼辦？'),
-  (phase: 'prepareInvite', label: '想約她出來', prefill: '我想約她出來，該怎麼開口比較自然？'),
-  (phase: 'postDate', label: '約完會之後', prefill: '剛約完會，接下來要怎麼經營比較好？'),
-];
-
-// ── Section widget ────────────────────────────────────────────────────────
-
-class CoachFollowUpSection extends StatefulWidget {
+class CoachFollowUpSection extends StatelessWidget {
   final String partnerId;
 
-  /// 凍結參數：薄 wrapper 不再產生舊 telemetry 事件（chip 不再觸發生成）。
-  /// 保留只為掛載介面相容；deep-link 意圖事件由 orchestrator 直接走 stub
-  /// sink，不經此參數（Phase F 退場）。
-  final ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry;
-  final Future<void> Function()? onQuotaExceeded;
-  final bool openCoachInputRequested;
-  final bool compactPracticePresentation;
-
-  /// CoachSurface 輸入框焦點變化的上拋通知（對象頁鍵盤展開時收 FAB 用）；
-  /// 本層純轉接，不持有狀態。
-  final ValueChanged<bool>? onCoachInputFocusChanged;
-
-  const CoachFollowUpSection({
-    super.key,
-    required this.partnerId,
-    this.onTelemetry,
-    this.onQuotaExceeded,
-    this.openCoachInputRequested = false,
-    this.compactPracticePresentation = false,
-    this.onCoachInputFocusChanged,
-  });
-
-  @override
-  State<CoachFollowUpSection> createState() => _CoachFollowUpSectionState();
-}
-
-// KeepAlive：section 掛在 partner 詳情頁的 lazy ListView 深處，滑出
-// viewport + cacheExtent 會被回收。使用者可見狀態（CoachSurface 輸入
-// 草稿與 controller、chip 選中高亮、_lastAskedQuestion）都活在這棵子樹
-// 的本地 State，回收即丟失；initState 的 auto-focus 排程也會在重新
-// mount 時重跑。保活整個 section 一併保住 CoachSurface。
-class _CoachFollowUpSectionState extends State<CoachFollowUpSection>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  String? _pendingPhase;
-  String? _prefill;
-  int _focusToken = 0;
-  bool _openingQuotaPaywall = false;
-  bool _didAutoFocusCoachInput = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _scheduleAutoFocusIfNeeded();
-  }
-
-  @override
-  void didUpdateWidget(covariant CoachFollowUpSection oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.partnerId != oldWidget.partnerId) {
-      // 原地切換對象 → auto-focus 閂鎖歸零，讓新對象的請求能再發一次
-      // （第三層防禦；parent/orchestrator 已各自守衛，此處保持一致性）。
-      // 注意：flag 未收回的 carry-over（true→true）不重發——parent/
-      // orchestrator 負責逐對象收回 flag。
-      _didAutoFocusCoachInput = false;
-    }
-    if (widget.openCoachInputRequested && !oldWidget.openCoachInputRequested) {
-      _scheduleAutoFocusIfNeeded();
-    }
-  }
-
-  /// 舊行為＝自動開 input sheet；新行為＝收到 openCoachInputRequested
-  /// （首幀即帶入、或中途 false→true transition）後 bump focus token，
-  /// 讓 CoachSurface 輸入框取得焦點（無 phase、無 prefill）。
-  void _scheduleAutoFocusIfNeeded() {
-    if (!widget.openCoachInputRequested || _didAutoFocusCoachInput) return;
-    _didAutoFocusCoachInput = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _onOpenCoachTap();
-    });
-  }
-
-  void _onChipTap(_CoachEntryChip chip) {
-    setState(() {
-      _pendingPhase = chip.phase;
-      _prefill = chip.prefill;
-      _focusToken += 1;
-    });
-  }
-
-  void _onOpenCoachTap() {
-    setState(() {
-      _pendingPhase = null;
-      _prefill = null;
-      _focusToken += 1;
-    });
-  }
-
-  /// 目前選中情境對應的 Dating Knowledge Library 章節；沒選或查無對應時為 null。
-  LearningLinkTarget? get _knowledgeLink =>
-      DatingKnowledgeLinks.forFollowUpPhase(_pendingPhase);
-
-  void _onKnowledgeLinkTap() {
-    final target = _knowledgeLink;
-    if (target == null) return;
-    context.push(
-      ebookChapterRoute(
-        target.bookId,
-        target.chapterId,
-        entryId: target.entryId,
-      ),
-    );
-  }
-
-  /// paywall 只開一次的防抖（沿用舊 section 行為）；CoachSurface 的
-  /// ref.listen 在 quota 錯誤時同步呼叫，這裡排到 post-frame 再 push。
-  void _handleQuotaExceeded() {
-    if (_openingQuotaPaywall) return;
-    _openingQuotaPaywall = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
-        _openingQuotaPaywall = false;
-        return;
-      }
-      try {
-        await widget.onQuotaExceeded?.call();
-      } finally {
-        if (mounted) {
-          _openingQuotaPaywall = false;
-        }
-      }
-    });
-  }
+  const CoachFollowUpSection({super.key, required this.partnerId});
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // AutomaticKeepAliveClientMixin 契約要求。
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (widget.compactPracticePresentation)
-          Row(
-            children: [
-              const Icon(
-                Icons.auto_awesome_outlined,
-                size: 18,
-                color: AppColors.ctaStart,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '還沒有素材？先練習一下',
-                style: AppTypography.titleSmall.copyWith(
-                  color: AppColors.onBackgroundPrimary,
-                  fontWeight: FontWeight.w700,
+    return PressableScale(
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          key: const Key('coach_follow_up_cta'),
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => context.push('/coach?partnerId=$partnerId'),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            ),
+            child: Row(
+              children: [
+                const CoachHeadAvatar(size: 44),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '問教練 Sydney',
+                        style: AppTypography.titleSmall.copyWith(
+                          color: AppColors.onBackgroundPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '釐清免費，正式建議才扣 1 則',
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.onBackgroundSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          )
-        else
-          Text(
-            '教練跟進',
-            style: AppTypography.titleSmall.copyWith(
-              color: AppColors.onBackgroundPrimary,
-              fontWeight: FontWeight.w700,
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.onBackgroundSecondary,
+                ),
+              ],
             ),
           ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _chips.map((chip) {
-            return ChoiceChip(
-              label: Text(chip.label),
-              selected: _pendingPhase == chip.phase,
-              // showCheckmark: false avoids the dark-bg ghost-checkmark
-              // artifact that bit ProfileChipSection (memory ref).
-              showCheckmark: false,
-              onSelected: (_) => _onChipTap(chip),
-            );
-          }).toList(growable: false),
         ),
-        const SizedBox(height: 6),
-        Text(
-          '釐清免費，正式建議才扣 1 則',
-          style: AppTypography.caption.copyWith(
-            color: AppColors.glassTextSecondary,
-          ),
-        ),
-        // Dating Knowledge Library：選了情境才出現，因為沒有情境就無從得知
-        // 該連哪一章——寧可不給入口，也不連一章不相干的內容。
-        if (_knowledgeLink != null) ...[
-          const SizedBox(height: 8),
-          KnowledgeLibraryLinkRow(
-            key: const Key('coach_follow_up_knowledge_link'),
-            label: '看這一段的完整原理',
-            onTap: _onKnowledgeLinkTap,
-          ),
-        ],
-        const SizedBox(height: 12),
-        CoachSurface(
-          scope: CoachScope.partner(widget.partnerId),
-          onQuotaExceeded:
-              widget.onQuotaExceeded == null ? null : _handleQuotaExceeded,
-          focusRequestToken: _focusToken,
-          prefillText: _prefill,
-          lifecyclePhase: _pendingPhase,
-          onInputFocusChanged: widget.onCoachInputFocusChanged,
-        ),
-      ],
+      ),
     );
   }
-}
-
-// ── Telemetry 契約（sealed 家族，deep-link 意圖事件在用）─────────────────
-
-sealed class CoachFollowUpTelemetryEvent {
-  const CoachFollowUpTelemetryEvent();
-}
-
-/// deep-link focusAction=openCoachInput 意圖時點記錄（orchestrator 定位完成
-/// 後、翻 parent flag 前發出）。無欄位：phase 恆為 openCoach；用戶自由文字
-/// 只存在於 CoachSurface 輸入框內、絕不隨 telemetry 外流。
-class CoachOpenCoachIntentEvent extends CoachFollowUpTelemetryEvent {
-  const CoachOpenCoachIntentEvent();
 }

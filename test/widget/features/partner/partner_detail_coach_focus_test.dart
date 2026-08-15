@@ -1,23 +1,11 @@
-// Regression: the mind-map「下一步」node must land the partner-detail
-// background ON the coach follow-up section (not the top hero/heat cards)
-// before the coach input takes focus.
+// 跟進提醒／作戰板的問教練導向 spec（2026-08-15 拍板：獨立聊天視窗）。
 //
-// These tests encode the real device condition the previous tests missed:
-//   • a tall surface (the old focus tests used 520px, which kept the section
-//     inside the lazy ListView's viewport+cacheExtent so it "worked"); and
-//   • a dogfood partner WITH several conversation records, pushing the coach
-//     section far below the built range — exactly when ensureVisible-on-an-
-//     unbuilt-GlobalKey silently no-ops.
-//
-// Phase E Task 7: the orchestrator no longer opens the legacy input sheet
-// (which charged via the legacy controller while the new UI renders no legacy
-// result card — the user paid and saw nothing). deep-link focusAction=
-// openCoachInput now focuses the CoachSurface input instead, and consent is
-// NOT pre-prompted by the orchestrator (CoachSurface gates it at ask time).
-//
-// The router test drives the REAL router (mind map → tap → detail) instead of
-// building PartnerDetailScreen directly, so the route/scroll/focus timing is
-// faithful rather than short-circuited.
+// 兩條路徑：
+// • 跟進提醒通知 deep-link（focus=coachFollowUp）→ 對象詳情頁背景捲到
+//   問教練 CTA 區（lazy ListView 深處，靠 _CoachFocusOrchestrator 收斂）。
+//   focusAction=openCoachInput 已退場：對象頁不再內嵌輸入框。
+// • 作戰板「下一步」節點 → 直達問教練 Sydney 視窗（鎖定本對象），開場
+//   泡泡吃最近分析的下一步（記憶素材優先序 P2）。
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -26,7 +14,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
-import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
+import 'package:vibesync/features/coach_chat/presentation/screens/global_coach_screen.dart';
+import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
@@ -41,6 +30,7 @@ import 'package:vibesync/features/user_profile/data/repositories/partner_style_r
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 
 import '../../../helpers/memory_coach_chat_repository.dart';
+import '../../../helpers/memory_coaching_outcome_repository.dart';
 
 class _FakeStyleRepo implements PartnerStyleRepository {
   final Map<String, PartnerStyleOverride> byPartner = {};
@@ -97,9 +87,10 @@ Conversation _conv(int i, {String? snapshot}) => Conversation(
 
 List<Override> _overrides(List<Conversation> conversations) => [
       partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-      // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
       coachChatRepositoryProvider
           .overrideWithValue(MemoryCoachChatRepository()),
+      coachingOutcomeRepositoryProvider
+          .overrideWithValue(MemoryCoachingOutcomeRepository()),
       partnerByIdProvider('p1').overrideWith((_) => _p()),
       partnerAggregateProvider('p1')
           .overrideWith((_) => PartnerAggregateView.empty()),
@@ -114,31 +105,10 @@ ScrollableState _listScrollable(WidgetTester t) {
   return t.state<ScrollableState>(find.byType(Scrollable).first);
 }
 
-CoachSurface _surface(WidgetTester t) =>
-    t.widget<CoachSurface>(find.byType(CoachSurface));
-
-TextField _surfaceInput(WidgetTester t) => t.widget<TextField>(
-      find.descendant(
-        of: find.byType(CoachSurface),
-        matching: find.byType(TextField),
-      ),
-    );
-
-/// Task 7 sealed contract: the legacy input sheet must NOT open, and the
-/// orchestrator must NOT pre-prompt the AI data-sharing consent dialog
-/// (consent is gated inside CoachSurface at ask time only).
-void _expectNoLegacySheetNoConsent(WidgetTester t) {
-  expect(find.text('讓教練看一下'), findsNothing,
-      reason: 'legacy input sheet must not open (charged w/o visible result)');
-  expect(find.text('第三方 AI 資料使用同意'), findsNothing,
-      reason: 'orchestrator must not pre-prompt consent');
-}
-
 void main() {
   testWidgets(
-      'tall device + many records: background scrolls to coach section, then '
-      'CoachSurface input takes focus (no legacy sheet, no consent)',
-      (t) async {
+      'focus=coachFollowUp（跟進提醒通知）：tall device + many records 背景捲到 '
+      '問教練 CTA 區', (t) async {
     await t.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
@@ -148,7 +118,6 @@ void main() {
         home: PartnerDetailScreen(
           partnerId: 'p1',
           focusCoachFollowUp: true,
-          openCoachInputOnFocus: true,
         ),
       ),
     ));
@@ -159,62 +128,21 @@ void main() {
     expect(offset, greaterThan(100),
         reason: 'background must leave the top hero/heat cards');
 
-    // The coach section is laid out and visible inside the viewport.
-    final anchor = find.byType(CoachSurface);
+    // CTA 卡已被 lazy ListView 建出、落在視窗內。
+    final anchor = find.byKey(const Key('coach_follow_up_cta'));
     expect(anchor, findsOneWidget);
     final anchorDy = t.getTopLeft(anchor).dy;
     expect(anchorDy, greaterThan(0));
     expect(anchorDy, lessThan(844),
-        reason: 'coach section must be on-screen, not below the fold');
-
-    // Phase E Task 7: the open-input intent flows through the section's
-    // focus-token mechanism into CoachSurface (invariant: AFTER positioning).
-    expect(_surface(t).focusRequestToken, greaterThan(0),
-        reason: 'openCoachInput intent must bump the section focus token');
-    expect(_surfaceInput(t).focusNode?.hasFocus, isTrue,
-        reason: 'CoachSurface input must hold focus after the deep-link');
-    _expectNoLegacySheetNoConsent(t);
+        reason: 'coach CTA must be on-screen, not below the fold');
   });
 
   testWidgets(
-      'focus=coachFollowUp WITHOUT focusAction: positions on coach section '
-      'but does not focus the input', (t) async {
+      'via real router: mind-map 下一步 → 問教練 Sydney 視窗（鎖定對象）＋'
+      '分析下一步當開場素材', (t) async {
     await t.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
-    await t.pumpWidget(ProviderScope(
-      overrides: _overrides(List.generate(8, (i) => _conv(i))),
-      child: const MaterialApp(
-        home: PartnerDetailScreen(
-          partnerId: 'p1',
-          focusCoachFollowUp: true,
-          // openCoachInputOnFocus defaults to false — scroll-only semantics.
-        ),
-      ),
-    ));
-    await t.pumpAndSettle();
-
-    final offset = _listScrollable(t).position.pixels;
-    expect(offset, greaterThan(100),
-        reason: 'background must still land on the coach section');
-    expect(find.byType(CoachSurface), findsOneWidget);
-
-    // Scroll-only deep-link keeps the existing semantics: no focus request.
-    expect(_surface(t).focusRequestToken, 0,
-        reason: 'no focusAction → focus token must stay untouched');
-    expect(_surfaceInput(t).focusNode?.hasFocus, isNot(isTrue),
-        reason: 'no focusAction → the input must not steal focus');
-    _expectNoLegacySheetNoConsent(t);
-  });
-
-  testWidgets(
-      'via real router: mind-map 下一步 lands on coach section + focuses '
-      'CoachSurface input', (t) async {
-    await t.binding.setSurfaceSize(const Size(390, 844));
-    addTearDown(() => t.binding.setSurfaceSize(null));
-
-    // First record carries the analysis snapshot so the mind map renders the
-    // nextStep node; the rest pad the detail page so the coach section is deep.
     final conversations = [
       _conv(0, snapshot: _snapshot()),
       ...List.generate(7, (i) => _conv(i + 1)),
@@ -229,15 +157,9 @@ void main() {
               PartnerMindMapScreen(partnerId: s.pathParameters['partnerId']!),
         ),
         GoRoute(
-          path: '/partner/:partnerId',
-          builder: (_, s) => PartnerDetailScreen(
-            partnerId: s.pathParameters['partnerId']!,
-            focusCoachFollowUp: s.uri.queryParameters[
-                    PartnerDetailScreen.focusQueryParam] ==
-                PartnerDetailScreen.coachFollowUpFocusValue,
-            openCoachInputOnFocus: s.uri.queryParameters[
-                    PartnerDetailScreen.focusActionQueryParam] ==
-                PartnerDetailScreen.openCoachInputFocusActionValue,
+          path: '/coach',
+          builder: (_, s) => GlobalCoachScreen(
+            lockedPartnerId: s.uri.queryParameters['partnerId'],
           ),
         ),
       ],
@@ -250,8 +172,6 @@ void main() {
     await t.pumpAndSettle();
 
     // Tap the nextStep leaf node (single tap settles via the gesture arena).
-    // 圖節點短標籤現在是「下一步行動」，全文「約她週末喝咖啡」改在底部 panel，
-    // 所以 tap 要鎖定圖內節點。
     await t.tap(find.descendant(
       of: find.byType(PartnerMindMapView),
       matching: find.text('下一步行動'),
@@ -259,20 +179,10 @@ void main() {
     await t.pump(const Duration(milliseconds: 400));
     await t.pumpAndSettle();
 
-    // Landed on the detail screen, positioned on the coach section.
-    final offset = _listScrollable(t).position.pixels;
-    expect(offset, greaterThan(100),
-        reason: 'detail must land on the coach section, not the hero cards');
-
-    final anchor = find.byType(CoachSurface);
-    expect(anchor, findsOneWidget);
-    expect(t.getTopLeft(anchor).dy, lessThan(844));
-
-    // Phase E Task 7：deep-link 改 focus CoachSurface 輸入框，絕不開舊 sheet。
-    expect(_surface(t).focusRequestToken, greaterThan(0),
-        reason: 'mind-map deep-link must bump the section focus token');
-    expect(_surfaceInput(t).focusNode?.hasFocus, isTrue,
-        reason: 'CoachSurface input must hold focus after positioning');
-    _expectNoLegacySheetNoConsent(t);
+    // 落在鎖定模式的聊天視窗：標題帶對象名、不渲染「問誰」。
+    expect(find.text('問教練 Sydney・Alice'), findsOneWidget);
+    expect(find.text('問誰'), findsNothing);
+    // 開場泡泡吃最近分析的下一步（記憶素材 P2；教練串為空所以輪到它）。
+    expect(find.textContaining('約她週末喝咖啡'), findsOneWidget);
   });
 }

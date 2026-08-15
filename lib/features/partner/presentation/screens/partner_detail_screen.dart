@@ -64,18 +64,14 @@ import '../widgets/partner_traits_card.dart';
 class PartnerDetailScreen extends ConsumerStatefulWidget {
   static const focusQueryParam = 'focus';
   static const coachFollowUpFocusValue = 'coachFollowUp';
-  static const focusActionQueryParam = 'focusAction';
-  static const openCoachInputFocusActionValue = 'openCoachInput';
 
   final String partnerId;
   final bool focusCoachFollowUp;
-  final bool openCoachInputOnFocus;
 
   const PartnerDetailScreen({
     super.key,
     required this.partnerId,
     this.focusCoachFollowUp = false,
-    this.openCoachInputOnFocus = false,
   });
 
   @override
@@ -85,28 +81,13 @@ class PartnerDetailScreen extends ConsumerStatefulWidget {
 
 class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   // Owned here (NOT created in build) so the controller + anchor handles
-  // survive rebuilds. The mind-map「下一步」node routes in with
-  // focusCoachFollowUp (and optionally openCoachInputOnFocus). Because the
-  // body is a LAZY ListView, the coach section is not laid out while it sits
-  // below the viewport + cacheExtent — so the scroll MUST be driven from
+  // survive rebuilds. 跟進提醒通知 routes in with focusCoachFollowUp. Because
+  // the body is a LAZY ListView, the coach section is not laid out while it
+  // sits below the viewport + cacheExtent — so the scroll MUST be driven from
   // outside the list by a ScrollController that converges on the anchor even
-  // before it is built. That orchestration, plus the "position before open"
-  // invariant, lives in [_CoachFocusOrchestrator].
+  // before it is built. That orchestration lives in [_CoachFocusOrchestrator].
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _coachSectionKey = GlobalKey();
-
-  // Phase E Task 7: deep-link focusAction=openCoachInput no longer opens the
-  // legacy input sheet (it charged via the legacy controller while the new UI
-  // renders no legacy result card). The orchestrator instead reports the
-  // intent here after positioning; flipping this flag re-renders the section
-  // with openCoachInputRequested=true, whose false→true transition bumps
-  // the CoachSurface focus token (section's existing focus mechanism).
-  bool _openCoachInputRequested = false;
-
-  // 教練輸入框聚焦（＝鍵盤展開）時暫時收掉 FAB：鍵盤打開後 Scaffold 會把
-  // FAB 停在鍵盤上緣右下角，正好壓住輸入框 suffix 的送出鈕。純條件渲染、
-  // 無動畫（本 app 已因殘影拆除文字 widget 的進場動畫，不再新增 fade）。
-  bool _coachInputFocused = false;
 
   // 「詳細特質與趨勢」的展開狀態必須放在這裡而不是 section 自己的 State：
   // body 是 lazy ListView，section 在清單底部，展開後往上捲會滑出
@@ -114,27 +95,6 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   // → 高度暴縮觸發捲動 offset 反覆修正（畫面橫跳），修正期間 tap 都被
   // 當成停捲動作吃掉，面板收不起來。
   bool _detailTraitsExpanded = false;
-
-  @override
-  void didUpdateWidget(covariant PartnerDetailScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.partnerId != oldWidget.partnerId) {
-      // New partner → the orchestrator restarts; don't leak a stale intent.
-      _openCoachInputRequested = false;
-      // 原地切換對象後輸入框必然重掛，別讓舊焦點狀態把 FAB 卡在隱藏。
-      _coachInputFocused = false;
-    }
-  }
-
-  void _handleCoachInputFocusChanged(bool focused) {
-    if (!mounted || _coachInputFocused == focused) return;
-    setState(() => _coachInputFocused = focused);
-  }
-
-  void _handleOpenCoachInputRequested() {
-    if (!mounted || _openCoachInputRequested) return;
-    setState(() => _openCoachInputRequested = true);
-  }
 
   @override
   void dispose() {
@@ -307,13 +267,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                 _PartnerDetailSection(
                   child: KeyedSubtree(
                     key: _coachSectionKey,
-                    child: CoachFollowUpSection(
-                      partnerId: partnerId,
-                      onTelemetry: _logCoachFollowUpTelemetry,
-                      onQuotaExceeded: () async => context.push('/paywall'),
-                      openCoachInputRequested: _openCoachInputRequested,
-                      onCoachInputFocusChanged: _handleCoachInputFocusChanged,
-                    ),
+                    child: CoachFollowUpSection(partnerId: partnerId),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -385,32 +339,27 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             _CoachFocusOrchestrator(
               scrollController: _scrollController,
               sectionKey: _coachSectionKey,
-              openInputAfterFocus: widget.openCoachInputOnFocus,
               partnerId: partnerId,
-              onOpenCoachInput: _handleOpenCoachInputRequested,
             ),
         ],
       ),
-      // 教練輸入框聚焦時整顆收掉（見 _coachInputFocused 註解）。
-      floatingActionButton: _coachInputFocused
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () => showModalBottomSheet(
-                context: context,
-                backgroundColor: Colors.transparent,
-                // Keep conversations created from this screen attached to the
-                // current Partner, including the manual-entry route.
-                builder: (_) => NewConversationSheet(partnerId: partnerId),
-              ),
-              backgroundColor: AppColors.ctaStart,
-              foregroundColor: AppColors.onCta,
-              elevation: 8,
-              shape: const StadiumBorder(),
-              label: const Text(
-                '+ 分析新片段',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.transparent,
+          // Keep conversations created from this screen attached to the
+          // current Partner, including the manual-entry route.
+          builder: (_) => NewConversationSheet(partnerId: partnerId),
+        ),
+        backgroundColor: AppColors.ctaStart,
+        foregroundColor: AppColors.onCta,
+        elevation: 8,
+        shape: const StadiumBorder(),
+        label: const Text(
+          '+ 分析新片段',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+      ),
     );
   }
 
@@ -617,13 +566,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                 _PartnerDetailSection(
                   child: KeyedSubtree(
                     key: _coachSectionKey,
-                    child: CoachFollowUpSection(
-                      partnerId: partnerId,
-                      onTelemetry: _logCoachFollowUpTelemetry,
-                      onQuotaExceeded: () async => context.push('/paywall'),
-                      openCoachInputRequested: _openCoachInputRequested,
-                      compactPracticePresentation: !widget.focusCoachFollowUp,
-                    ),
+                    child: CoachFollowUpSection(partnerId: partnerId),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -685,9 +628,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             _CoachFocusOrchestrator(
               scrollController: _scrollController,
               sectionKey: _coachSectionKey,
-              openInputAfterFocus: widget.openCoachInputOnFocus,
               partnerId: partnerId,
-              onOpenCoachInput: _handleOpenCoachInputRequested,
             ),
         ],
       ),
@@ -934,40 +875,26 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   }
 }
 
-/// Drives the mind-map「下一步」landing on partner detail. Lives OUTSIDE the
+/// Drives the 跟進提醒通知 landing on partner detail. Lives OUTSIDE the
 /// lazy body ListView (so it always mounts and runs, unlike a widget pinned at
-/// the off-screen coach section) and owns the only invariant that matters:
-///
-///   position the coach section into view, THEN focus the coach input.
+/// the off-screen coach section) and owns one job: position the coach CTA
+/// section into view.
 ///
 /// Because the body is a lazy `ListView`, the coach anchor is not laid out
 /// while it sits below the viewport + cacheExtent, so `Scrollable.ensureVisible`
 /// alone cannot reach it (its `currentContext` is null). We converge instead:
-/// step the [scrollController] down by ~viewport chunks until the anchor (or,
-/// for the with-result layout that has no anchor, the section) is built, then
-/// `ensureVisible` aligns it near the top — no animation, per the spec. Only
-/// after positioning settles do we hand the open-input intent to the section
-/// (Phase E Task 7 — no legacy sheet, no pre-prompted consent).
+/// step the [scrollController] down by ~viewport chunks until the anchor is
+/// built, then `ensureVisible` aligns it near the top — no animation, per the
+/// spec.（開輸入框的 focusAction 已退場：問教練改導獨立聊天視窗。）
 class _CoachFocusOrchestrator extends StatefulWidget {
   final ScrollController scrollController;
   final GlobalKey sectionKey;
-  final bool openInputAfterFocus;
   final String partnerId;
-
-  /// Phase E Task 7: called (once) after positioning when the deep-link
-  /// carries focusAction=openCoachInput. The parent flips the section's
-  /// openCoachInputRequested flag, which bumps the CoachSurface focus
-  /// token. The legacy sheet → consent → generate chain is gone: it charged
-  /// through the legacy controller while the new UI renders no legacy result
-  /// card, and consent is gated inside CoachSurface at ask time.
-  final VoidCallback onOpenCoachInput;
 
   const _CoachFocusOrchestrator({
     required this.scrollController,
     required this.sectionKey,
-    required this.openInputAfterFocus,
     required this.partnerId,
-    required this.onOpenCoachInput,
   });
 
   @override
@@ -978,11 +905,10 @@ class _CoachFocusOrchestrator extends StatefulWidget {
 class _CoachFocusOrchestratorState extends State<_CoachFocusOrchestrator> {
   // Upper bound on convergence frames. Generous: even a long page is a handful
   // of viewport hops. Guards against an unterminated loop if the target never
-  // builds (degrades to "open without positioning", never to a hang).
+  // builds (degrades to "stay where we are", never to a hang).
   static const _maxSteps = 16;
 
   bool _started = false;
-  bool _opened = false;
 
   @override
   void initState() {
@@ -995,7 +921,6 @@ class _CoachFocusOrchestratorState extends State<_CoachFocusOrchestrator> {
     super.didUpdateWidget(oldWidget);
     if (widget.partnerId != oldWidget.partnerId) {
       _started = false;
-      _opened = false;
       _scheduleStart();
     }
   }
@@ -1019,11 +944,6 @@ class _CoachFocusOrchestratorState extends State<_CoachFocusOrchestrator> {
         duration: Duration.zero,
         alignment: 0.08,
       );
-      // Let the aligned offset paint before the input grabs focus (keyboard).
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _openIfRequested();
-      });
       return;
     }
 
@@ -1036,9 +956,7 @@ class _CoachFocusOrchestratorState extends State<_CoachFocusOrchestrator> {
     }
     final position = controller.position;
     if (step >= _maxSteps || position.pixels >= position.maxScrollExtent) {
-      // Could not locate the section (e.g. it never built). Honor the open
-      // request anyway rather than leaving the user with nothing.
-      _openIfRequested();
+      // Could not locate the section (e.g. it never built) — stay put.
       return;
     }
     final next = (position.pixels + position.viewportDimension * 0.9)
@@ -1048,24 +966,11 @@ class _CoachFocusOrchestratorState extends State<_CoachFocusOrchestrator> {
   }
 
   void _retryOrGiveUp(int step) {
-    if (step >= _maxSteps) {
-      _openIfRequested();
-      return;
-    }
+    if (step >= _maxSteps) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _step(step + 1);
     });
-  }
-
-  void _openIfRequested() {
-    if (!widget.openInputAfterFocus || _opened) return;
-    _opened = true;
-    // 「開啟教練輸入」意圖事件：沿用既有 stub telemetry 通道（不新增
-    // schema）。意圖時點即記錄——不再有 sheet 送出可等；自由文字只存在
-    // 於 CoachSurface 輸入框內，絕不外流。
-    _logCoachFollowUpTelemetry(const CoachOpenCoachIntentEvent());
-    widget.onOpenCoachInput();
   }
 
   @override
@@ -1851,16 +1756,6 @@ class _GlowBubble extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-/// Stub telemetry sink for Spec 5 coach-follow-up events. Phase X25 will
-/// swap this for a real analytics SDK call; until then we log in debug so
-/// the contract is exercised end-to-end without leaking free-text answers.
-void _logCoachFollowUpTelemetry(CoachFollowUpTelemetryEvent event) {
-  switch (event) {
-    case CoachOpenCoachIntentEvent():
-      debugPrint('coach_open_coach_intent');
   }
 }
 

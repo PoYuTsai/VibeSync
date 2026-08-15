@@ -226,47 +226,6 @@ void main() {
         reason: '詳情頁主卡應改用互動摘錄；作戰板 nextStep 留在作戰板內頁');
   });
 
-  // 鍵盤展開後 Scaffold 會把 FAB 停在鍵盤上緣右下角，正好壓住教練輸入框
-  // suffix 的送出鈕——聚焦時整顆收掉，失焦即歸位（無動畫、純條件渲染）。
-  testWidgets('教練輸入框聚焦時收起 FAB，失焦後 FAB 回來', (t) async {
-    await t.binding.setSurfaceSize(const Size(400, 2400));
-    addTearDown(() => t.binding.setSurfaceSize(null));
-
-    await t.pumpWidget(ProviderScope(
-      overrides: [
-        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachChatRepositoryProvider
-            .overrideWithValue(MemoryCoachChatRepository()),
-        partnerByIdProvider('p1').overrideWith((_) => _p()),
-        partnerAggregateProvider('p1')
-            .overrideWith((_) => _aggregateWithTags()),
-        dataQualityFlagProvider('p1')
-            .overrideWith((_) => const DataQualityFlag.unflagged()),
-        conversationsByPartnerProvider('p1')
-            .overrideWith((_) => [_analyzedConv(nextStep: '先穩住節奏')]),
-        partnerListProvider.overrideWith((_) => [_p()]),
-      ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
-    ));
-    await t.pumpAndSettle();
-
-    expect(find.byType(FloatingActionButton), findsOneWidget);
-
-    // 教練輸入框在 lazy ListView 深處，先捲到讓它掛載。
-    await _scrollUntilVisible(t, find.text('問教練一句'));
-    await t.showKeyboard(find.byType(TextField));
-    await t.pumpAndSettle();
-
-    expect(find.byType(FloatingActionButton), findsNothing,
-        reason: '輸入框聚焦（鍵盤展開）時 FAB 必須收掉，不能壓住送出鈕');
-
-    t.widget<TextField>(find.byType(TextField)).focusNode?.unfocus();
-    await t.pumpAndSettle();
-
-    expect(find.byType(FloatingActionButton), findsOneWidget,
-        reason: '失焦（鍵盤收合）後 FAB 要回來');
-  });
-
   testWidgets('tile delete confirm calls ConversationWriteController.delete',
       (t) async {
     // Give the surface enough height so ListView's cache extent reaches the
@@ -709,11 +668,9 @@ void main() {
     expect(find.byType(FloatingActionButton), findsNothing);
     expect(find.byType(PartnerHeatHeroCard), findsNothing);
     expect(find.byType(PartnerTraitsCard), findsNothing);
-    expect(find.text('還沒有素材？先練習一下'), findsOneWidget);
-    // Phase E Task 6：三情境 chip 改為 chatStalled/prepareInvite/postDate。
-    expect(find.text('聊天卡住了'), findsOneWidget);
-    expect(find.text('想約她出來'), findsOneWidget);
-    expect(find.text('約完會之後'), findsOneWidget);
+    // 問教練改為 CTA 卡（三情境 chip 搬進 Sydney 視窗）。
+    expect(find.text('問教練 Sydney'), findsOneWidget);
+    expect(find.text('釐清免費，正式建議才扣 1 則'), findsOneWidget);
 
     await _scrollUntilVisible(t, find.text('關係下一步'));
     expect(find.text('對象作戰板'), findsOneWidget);
@@ -790,62 +747,6 @@ void main() {
       lessThan(140),
       reason: 'Mind map focus should land on the coach section, not leave '
           'it scrolled out of view.',
-    );
-  });
-
-  testWidgets(
-      'openCoachInputOnFocus focuses the CoachSurface input (no legacy sheet)',
-      (t) async {
-    await t.binding.setSurfaceSize(const Size(400, 520));
-    addTearDown(() => t.binding.setSurfaceSize(null));
-
-    await t.pumpWidget(ProviderScope(
-      overrides: [
-        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        // Phase E Task 6：section 掛 CoachSurface 後會經 coach chat repo。
-        coachChatRepositoryProvider
-            .overrideWithValue(MemoryCoachChatRepository()),
-        partnerByIdProvider('p1').overrideWith((_) => _p()),
-        partnerAggregateProvider('p1')
-            .overrideWith((_) => PartnerAggregateView.empty()),
-        dataQualityFlagProvider('p1')
-            .overrideWith((_) => const DataQualityFlag.unflagged()),
-        conversationsByPartnerProvider('p1')
-            .overrideWith((_) => const <Conversation>[]),
-      ],
-      child: const MaterialApp(
-        home: PartnerDetailScreen(
-          partnerId: 'p1',
-          focusCoachFollowUp: true,
-          openCoachInputOnFocus: true,
-        ),
-      ),
-    ));
-    await t.pumpAndSettle();
-
-    // Phase E Task 7：orchestrator 不再開舊 input sheet（sheet 專屬欄位
-    // maxLength 120 / maxLines 4 必須缺席），改為 CoachSurface 輸入框取得
-    // focus。
-    final sheetFields = t
-        .widgetList<TextField>(find.byType(TextField))
-        .where((f) => f.maxLength == 120 && f.maxLines == 4);
-    expect(sheetFields, isEmpty,
-        reason: 'legacy input sheet must not open on deep-link');
-    final focusedField = find.byWidgetPredicate(
-      (w) => w is TextField && (w.focusNode?.hasFocus ?? false),
-    );
-    expect(focusedField, findsOneWidget,
-        reason: 'the CoachSurface input must take focus instead');
-    // CoachSurface renders its own content (history/knowledge entry) above
-    // the input, so the focused field sits lower than the removed compact
-    // entry button did — the meaningful check is that it's still on-screen
-    // (not scrolled past the 520px surface) rather than a specific offset.
-    expect(
-      t.getTopLeft(focusedField).dy,
-      lessThan(520),
-      reason: 'Mind map open action should leave the underlying page at the '
-          'coach input area, not scrolled off-screen or stuck at the top '
-          'hero cards.',
     );
   });
 

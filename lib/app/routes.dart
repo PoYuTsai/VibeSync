@@ -136,9 +136,6 @@ final router = GoRouter(
         focusCoachFollowUp:
             state.uri.queryParameters[PartnerDetailScreen.focusQueryParam] ==
                 PartnerDetailScreen.coachFollowUpFocusValue,
-        openCoachInputOnFocus: state.uri
-                .queryParameters[PartnerDetailScreen.focusActionQueryParam] ==
-            PartnerDetailScreen.openCoachInputFocusActionValue,
       ),
     ),
     GoRoute(

@@ -9,7 +9,6 @@ import '../../domain/mindmap/mind_map_builder.dart';
 import '../../domain/mindmap/mind_map_models.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_mind_map_view.dart';
-import 'partner_detail_screen.dart';
 
 /// 對象作戰板全螢幕頁。dogfood 期全 tier 免費（決策 A），
 /// 送審前 gating 另案（動訂閱區 → Codex 雙審）。
@@ -76,20 +75,10 @@ class PartnerMindMapScreen extends ConsumerWidget {
   }
 }
 
-/// 作戰板「問教練」統一導向：回對象頁的教練跟進區並直接開輸入。
-/// 圖節點單擊與詳情 panel 的「問教練」按鈕共用同一目的地。
+/// 作戰板「問教練」統一導向：直達問教練 Sydney 聊天視窗（鎖定本對象，
+/// 視窗不渲染「問誰」）。圖節點單擊與詳情 panel 的按鈕共用同一目的地。
 void _pushCoachFollowUp(BuildContext context, String partnerId) {
-  context.push(
-    Uri(
-      path: '/partner/$partnerId',
-      queryParameters: {
-        PartnerDetailScreen.focusQueryParam:
-            PartnerDetailScreen.coachFollowUpFocusValue,
-        PartnerDetailScreen.focusActionQueryParam:
-            PartnerDetailScreen.openCoachInputFocusActionValue,
-      },
-    ).toString(),
-  );
+  context.push('/coach?partnerId=$partnerId');
 }
 
 /// 作戰板內頁底部的拆解面板。把「下一步行動全文」與關係信號、可接話題拆開
