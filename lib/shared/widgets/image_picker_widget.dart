@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../services/image_compress_service.dart';
 import '../services/screenshot_preflight_service.dart';
 import 'glassmorphic_container.dart';
+import 'pressable_scale.dart';
 
 typedef ImagePickerFileSelector = Future<List<XFile>> Function({
   required bool allowMultiple,
@@ -409,9 +410,9 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     // 對標示意稿（2026-08-14）：深色磚＋品牌漸層弧環繞著加圖 icon。
     final iconColor = widget.accentColor ?? Colors.white.withValues(alpha: 0.9);
     final ringDiameter = widget.tileSize * 0.52;
-    return GestureDetector(
-      onTap: _pickImage,
-      onLongPress: kIsWeb ? _pasteFromClipboard : null,
+    // 點擊感對齊首頁功能入口（home_feature_entries）：PressableScale 縮放
+    // ＋透明 Material 上的 InkWell 白色 highlight。
+    return PressableScale(
       child: Container(
         width: widget.tileSize,
         height: widget.tileSize,
@@ -423,33 +424,41 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                 Colors.white.withValues(alpha: 0.12),
           ),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: ringDiameter,
-              height: ringDiameter,
-              child: CustomPaint(
-                painter: const _GradientArcRingPainter(),
-                child: Center(
-                  child: Icon(
-                    Icons.add_photo_alternate_outlined,
-                    color: iconColor,
-                    size: ringDiameter * 0.52,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: _pickImage,
+            onLongPress: kIsWeb ? _pasteFromClipboard : null,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: ringDiameter,
+                  height: ringDiameter,
+                  child: CustomPaint(
+                    painter: const _GradientArcRingPainter(),
+                    child: Center(
+                      child: Icon(
+                        Icons.add_photo_alternate_outlined,
+                        color: iconColor,
+                        size: ringDiameter * 0.52,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 6),
+                Text(
+                  widget.allowMultiSelect ? '多選' : '選圖',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: iconColor,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              widget.allowMultiSelect ? '多選' : '選圖',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: iconColor,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
