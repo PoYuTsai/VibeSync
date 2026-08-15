@@ -183,10 +183,13 @@ final router = GoRouter(
       path: '/paywall',
       builder: (context, state) => const PaywallScreen(),
     ),
-    // 批 A：首頁「問教練」卡直達的全域教練頁（不綁對象）。
+    // 問教練 Sydney 聊天視窗：首頁直達（不帶參數，可選「問誰」）；
+    // 對象頁／作戰板 CTA 帶 ?partnerId= 鎖定對象（不渲染「問誰」）。
     GoRoute(
       path: '/coach',
-      builder: (context, state) => const GlobalCoachScreen(),
+      builder: (context, state) => GlobalCoachScreen(
+        lockedPartnerId: state.uri.queryParameters['partnerId'],
+      ),
     ),
     GoRoute(
       path: '/opener',

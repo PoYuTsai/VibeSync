@@ -100,7 +100,7 @@ void main() {
       partners: [_partner('p-recent', '最近的'), _partner('p-old', '老的')],
     );
 
-    await tester.tap(find.text('問教練'));
+    await tester.tap(find.text('問教練 Sydney'));
     await tester.pumpAndSettle();
 
     expect(find.text('global-coach-screen'), findsOneWidget);
@@ -109,7 +109,7 @@ void main() {
   testWidgets('問教練＋沒對象 → 一樣導 /coach（不再先建卡）', (tester) async {
     await _pumpEntries(tester, partners: []);
 
-    await tester.tap(find.text('問教練'));
+    await tester.tap(find.text('問教練 Sydney'));
     await tester.pumpAndSettle();
 
     expect(find.text('global-coach-screen'), findsOneWidget);
@@ -134,7 +134,7 @@ void main() {
     final tracker = _SpyFunnelTracker();
     await _pumpEntries(tester, partners: [], tracker: tracker);
 
-    await tester.tap(find.text('問教練'));
+    await tester.tap(find.text('問教練 Sydney'));
     await tester.pumpAndSettle();
 
     expect(tracker.events.map((e) => e.$1).toList(), ['coach_entry_tap']);

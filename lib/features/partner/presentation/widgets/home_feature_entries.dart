@@ -7,8 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/coach_head_avatar.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
-import 'home_coach_presence.dart';
 import '../providers/partner_providers.dart';
 
 /// 首頁功能入口列（onboarding 轉化 Tier 2 批 1；批 A 改導全域教練）：
@@ -66,8 +66,8 @@ class HomeFeatureEntries extends ConsumerWidget {
                 child: _EntryCard(
                   key: HomeFeatureEntries.coachKey,
                   // 夥伴稿：問教練用教練本人的圓形頭像，不是抽象 icon。
-                  leading: const _CoachAvatar(size: 42),
-                  title: '問教練',
+                  leading: const CoachHeadAvatar(size: 42),
+                  title: '問教練 Sydney',
                   subtitle: '聊到一半卡住了',
                   onTap: () {
                     final partners = ref.read(partnerListProvider);
@@ -82,57 +82,6 @@ class HomeFeatureEntries extends ConsumerWidget {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 教練圓形頭像：從 greeting 立繪裁出頭部方框（canvas 1023×1537、人物中心
-/// x≈0.503、頭頂約 y=154），再縮到指定直徑。量測值變動時只要改這裡的裁切框。
-class _CoachAvatar extends StatelessWidget {
-  const _CoachAvatar({required this.size});
-
-  final double size;
-
-  static const _canvasWidth = 1023.0;
-  static const _canvasHeight = 1537.0;
-  static const _cropLeft = 269.0;
-  static const _cropTop = 154.0;
-  static const _cropSide = 492.0;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipOval(
-      child: Container(
-        width: size,
-        height: size,
-        color: Colors.white.withValues(alpha: 0.10),
-        child: FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox.square(
-            dimension: _cropSide,
-            // OverflowBox 給原圖無界約束：直接塞進 492 方框會被壓成 492×492
-            // （比例全歪），位移後裁到的是手不是臉。
-            child: OverflowBox(
-              minWidth: 0,
-              maxWidth: double.infinity,
-              minHeight: 0,
-              maxHeight: double.infinity,
-              alignment: Alignment.topLeft,
-              child: Transform.translate(
-                offset: const Offset(-_cropLeft, -_cropTop),
-                child: Image.asset(
-                  HomeCoachPose.greeting.assetPath,
-                  width: _canvasWidth,
-                  height: _canvasHeight,
-                  fit: BoxFit.fill,
-                  filterQuality: FilterQuality.medium,
-                  excludeFromSemantics: true,
-                ),
-              ),
-            ),
           ),
         ),
       ),

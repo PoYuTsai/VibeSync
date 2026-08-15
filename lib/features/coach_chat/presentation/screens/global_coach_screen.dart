@@ -5,29 +5,52 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/coach_head_avatar.dart';
+import '../../../learning/domain/dating_knowledge_links.dart';
+import '../../../learning/presentation/screens/ebook_detail_screen.dart'
+    show ebookChapterRoute;
+import '../../../learning/presentation/widgets/knowledge_library_link_row.dart';
 import '../../../partner/domain/entities/partner.dart';
+import '../../../partner/domain/mindmap/mind_map_builder.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
+import '../../data/providers/coach_chat_providers.dart';
 import '../../domain/entities/coach_scope.dart';
 import '../widgets/coach_surface.dart';
 
-/// 批 A：全域教練頁（首頁「問教練」卡直達），掛統一教練介面 CoachSurface。
+/// 問教練 Sydney 獨立聊天視窗（2026-08-15 拍板：三入口共用同一個視窗）。
 ///
-/// 2026-08-07 Bruce feedback：預設 general 串教練不知道你在問誰。頂部加
-/// 「問誰」chips（有對象卡才渲染）：選對象＝切到該對象的 partner scope，
-/// 跟對象頁「跟進」共用同一條聊天串（同一份脈絡與歷史）；選「一般」＝
-/// 原本的 global 串。切換只換 scope（CoachSurface 不加 key、State 不重建），
-/// 輸入框草稿跨切換保留。
+/// 兩種進場：
+/// - 首頁「問教練 Sydney」→ `/coach`：頂部「問誰」chips（有對象卡才渲染），
+///   預設「一般」；切到對象＝整個畫面換成該對象版（開場泡泡＋情境問句）。
+/// - 對象頁／作戰板 CTA → `/coach?partnerId=X`：鎖定該對象，不渲染 chips，
+///   標題帶對象名。對象已刪除時退回一般模式。
 ///
-/// 引導問句 chips 點擊只「預填」進輸入框（prefill＋focus token 遞增），
-/// 絕不自動送出——送出永遠是用戶按鈕行為（quota 安全）。
+/// 引導問句跟著 scope 走，不是跟著入口走：一般＝三句「怎麼做」問句；
+/// 對象＝三句「情境」chips（種入 lifecyclePhase＋prefill）。點擊只「預填」
+/// 進輸入框（prefill＋focus token 遞增），絕不自動送出——送出永遠是用戶
+/// 按鈕行為（quota 安全）。
+///
+/// 開場泡泡吃記憶素材（優先序，只引用已存在的資料、絕不腦補）：
+/// 上次教練串問句 → 最近分析的下一步 → 關係階段 → 通用 fallback。
 class GlobalCoachScreen extends ConsumerStatefulWidget {
-  const GlobalCoachScreen({super.key});
+  const GlobalCoachScreen({super.key, this.lockedPartnerId});
 
-  /// 引導問句（計畫拍板三句；widget 測試字面對齊）。
+  /// 非 null＝對象頁／作戰板 CTA 進場：鎖定該對象 scope、不渲染「問誰」。
+  final String? lockedPartnerId;
+
+  /// 一般 scope 引導問句（計畫拍板三句；widget 測試字面對齊）。
   static const guideQuestions = <String>[
     '不知道怎麼開啟話題，給我一點方向？',
     '對方回得很短，我該怎麼判斷？',
     '怎麼把聊天推進到約出來？',
+  ];
+
+  /// 對象 scope 情境問句（沿用對象頁「教練跟進」三情境；phase 字串隨
+  /// wire lifecyclePhase 原樣送）。
+  static const scenarioChips = <({String phase, String label, String prefill})>[
+    (phase: 'chatStalled', label: '聊天卡住了', prefill: '我們聊天卡住了，接下來該怎麼辦？'),
+    (phase: 'prepareInvite', label: '想約她出來', prefill: '我想約她出來，該怎麼開口比較自然？'),
+    (phase: 'postDate', label: '約完會之後', prefill: '剛約完會，接下來要怎麼經營比較好？'),
   ];
 
   @override
@@ -37,53 +60,60 @@ class GlobalCoachScreen extends ConsumerStatefulWidget {
 class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
   String? _prefill;
   int _focusToken = 0;
-  CoachScope _scope = const CoachScope.global();
+  String? _pendingPhase;
+  late CoachScope _scope = widget.lockedPartnerId == null
+      ? const CoachScope.global()
+      : CoachScope.partner(widget.lockedPartnerId!);
 
-  void _onGuideTap(String question) {
+  void _onGuideTap(String question, {String? phase}) {
     setState(() {
       _prefill = question;
+      _pendingPhase = phase;
       _focusToken += 1;
     });
   }
 
   void _onScopeTap(CoachScope scope) {
     if (scope == _scope) return;
-    setState(() => _scope = scope);
+    setState(() {
+      _scope = scope;
+      // 情境是跟著對象串的：換人（或回一般）就歸零，避免 A 的 phase
+      // 黏到 B 的下一次 ask。輸入框草稿刻意不清（設計拍板：切換保留）。
+      _pendingPhase = null;
+    });
   }
 
   /// 「問誰」chips：沒有任何對象卡就整排不渲染（新用戶畫面同現狀，
   /// 不出現只有「一般」的孤兒選項）。
   Widget _buildScopeChips(List<Partner> partners) {
     if (partners.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Text(
-                '問誰',
-                style: AppTypography.labelMedium
-                    .copyWith(color: AppColors.onBackgroundSecondary),
-              ),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(
+              '問誰',
+              style: AppTypography.labelMedium
+                  .copyWith(color: AppColors.onBackgroundSecondary),
             ),
+          ),
+          _scopeChip(
+            key: const Key('coach_scope_general'),
+            label: '一般',
+            selected: _scope.isGlobal,
+            onTap: () => _onScopeTap(const CoachScope.global()),
+          ),
+          for (final partner in partners)
             _scopeChip(
-              key: const Key('coach_scope_general'),
-              label: '一般',
-              selected: _scope.isGlobal,
-              onTap: () => _onScopeTap(const CoachScope.global()),
+              key: Key('coach_scope_partner_${partner.id}'),
+              label: partner.name,
+              selected: _scope == CoachScope.partner(partner.id),
+              onTap: () => _onScopeTap(CoachScope.partner(partner.id)),
             ),
-            for (final partner in partners)
-              _scopeChip(
-                key: Key('coach_scope_partner_${partner.id}'),
-                label: partner.name,
-                selected: _scope == CoachScope.partner(partner.id),
-                onTap: () => _onScopeTap(CoachScope.partner(partner.id)),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -108,62 +138,231 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
     );
   }
 
+  /// 引用素材超過這個長度就截斷加省略號——開場泡泡是一句話，不是轉貼全文。
+  static String _clip(String value, [int max = 20]) {
+    final trimmed = value.trim();
+    if (trimmed.length <= max) return trimmed;
+    return '${trimmed.substring(0, max)}…';
+  }
+
+  /// 開場泡泡文案。對象 scope 按優先序取材；素材只引用已存在的資料，
+  /// 一句話＋一個問句收尾，絕不腦補沒發生的事。
+  String _openingLine(Partner? partner) {
+    if (partner == null) return '隨時問我，聊天卡住我來接。';
+
+    final history =
+        ref.watch(coachChatHistoryProvider(CoachScope.partner(partner.id)));
+    if (history.isNotEmpty) {
+      final latest = history
+          .reduce((a, b) => a.generatedAt.isAfter(b.generatedAt) ? a : b);
+      final question = latest.question.trim();
+      if (question.isNotEmpty) {
+        return '上次你問我「${_clip(question)}」，後來有下文嗎？';
+      }
+    }
+
+    // 作戰板同一套快照衍生（零 AI 邊際成本）：下一步 → 關係信號。
+    final map = buildPartnerMindMap(
+      partnerName: partner.name,
+      aggregate: ref.watch(partnerAggregateProvider(partner.id)),
+      conversations: ref.watch(conversationsByPartnerProvider(partner.id)),
+    );
+    final nextStep = map.fullNextStep?.trim();
+    if (nextStep != null && nextStep.isNotEmpty) {
+      return '上次分析完的下一步是「${_clip(nextStep)}」，試了嗎？';
+    }
+    final signal = map.relationshipSignal?.trim();
+    if (signal != null && signal.isNotEmpty) {
+      return '你們目前的狀態：${_clip(signal)}。想從哪裡推進？';
+    }
+
+    return '想聊${partner.name}的什麼？卡住的地方直接丟給我。';
+  }
+
+  Widget _buildOpeningBubble(Partner? scopePartner) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const CoachHeadAvatar(size: 44),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            decoration: const BoxDecoration(
+              color: AppColors.glassWhite,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(4),
+                topRight: Radius.circular(18),
+                bottomLeft: Radius.circular(18),
+                bottomRight: Radius.circular(18),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _openingLine(scopePartner),
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w700,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '免費釐清最多 3 次；正式建議扣 1 則，額度用完會提醒升級。',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.glassTextSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 引導問句泡泡：跟著 scope 走——一般＝「怎麼做」問句；對象＝情境
+  /// chips（種入 lifecyclePhase）。點擊只預填，可改再送。
+  Widget _buildGuideBubbles(Partner? scopePartner) {
+    final bubbles = scopePartner == null
+        ? [
+            for (final question in GlobalCoachScreen.guideQuestions)
+              _guideBubble(label: question, onTap: () => _onGuideTap(question)),
+          ]
+        : [
+            for (final chip in GlobalCoachScreen.scenarioChips)
+              _guideBubble(
+                label: chip.label,
+                selected: _pendingPhase == chip.phase,
+                onTap: () => _onGuideTap(chip.prefill, phase: chip.phase),
+              ),
+          ];
+    return Padding(
+      // 對齊開場泡泡左緣（頭像 44 + 間距 10）。
+      padding: const EdgeInsets.only(left: 54),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final bubble in bubbles)
+            Padding(padding: const EdgeInsets.only(bottom: 10), child: bubble),
+        ],
+      ),
+    );
+  }
+
+  Widget _guideBubble({
+    required String label,
+    required VoidCallback onTap,
+    bool selected = false,
+  }) {
+    return Material(
+      color: Colors.white.withValues(alpha: selected ? 0.12 : 0.05),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected
+                  ? AppColors.ctaStart.withValues(alpha: 0.7)
+                  : Colors.white.withValues(alpha: 0.16),
+            ),
+          ),
+          child: Text(
+            label,
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 目前選中情境對應的 Dating Knowledge Library 章節；沒選或查無對應
+  /// 時不渲染（沿用對象頁「教練跟進」的既有決策：寧可不給入口，也不連
+  /// 一章不相干的內容）。
+  Widget _buildKnowledgeLink() {
+    final target = DatingKnowledgeLinks.forFollowUpPhase(_pendingPhase);
+    if (target == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(left: 54, bottom: 6),
+      child: KnowledgeLibraryLinkRow(
+        key: const Key('coach_window_knowledge_link'),
+        label: '看這一段的完整原理',
+        onTap: () => context.push(
+          ebookChapterRoute(
+            target.bookId,
+            target.chapterId,
+            entryId: target.entryId,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final partners = ref.watch(partnerListProvider);
+    // 鎖定的對象已被合併/刪除 → 安靜退回一般模式（deep link 防呆）。
+    final lockedPartner = widget.lockedPartnerId == null
+        ? null
+        : ref.watch(partnerByIdProvider(widget.lockedPartnerId!));
+    final locked = lockedPartner != null;
+    if (widget.lockedPartnerId != null && !locked && !_scope.isGlobal) {
+      _scope = const CoachScope.global();
+    }
+    final scopePartner = locked
+        ? lockedPartner
+        : (_scope.isGlobal
+            ? null
+            : partners
+                .where((partner) => _scope == CoachScope.partner(partner.id))
+                .firstOrNull);
+
     return BrandScaffold(
-      title: '問教練',
-      body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      title: locked ? '問教練 Sydney・${lockedPartner.name}' : '問教練 Sydney',
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!locked) ...[
+            const SizedBox(height: 12),
+            _buildScopeChips(partners),
+          ],
+          Expanded(
+            child: SingleChildScrollView(
+              // 視窗沒有常駐「收起鍵盤」鈕：往下滑就收（聊天視窗慣例）。
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
-                    child: Image.asset(
-                      'assets/images/coach/sydney_greeting.png',
-                      width: 56,
-                      height: 56,
-                      fit: BoxFit.cover,
-                      excludeFromSemantics: true,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '隨時問我，聊天卡住我來接',
-                      style: AppTypography.titleSmall.copyWith(
-                        color: AppColors.onBackgroundPrimary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                  _buildOpeningBubble(scopePartner),
+                  const SizedBox(height: 16),
+                  _buildGuideBubbles(scopePartner),
+                  if (scopePartner != null) _buildKnowledgeLink(),
+                  const SizedBox(height: 8),
+                  CoachSurface(
+                    scope: _scope,
+                    focusRequestToken: _focusToken,
+                    prefillText: _prefill,
+                    lifecyclePhase: _pendingPhase,
+                    showHeader: false,
+                    onQuotaExceeded: () => context.push('/paywall'),
                   ),
                 ],
               ),
-              _buildScopeChips(partners),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: GlobalCoachScreen.guideQuestions.map((question) {
-                  return ActionChip(
-                    label: Text(question),
-                    onPressed: () => _onGuideTap(question),
-                  );
-                }).toList(growable: false),
-              ),
-              const SizedBox(height: 16),
-              CoachSurface(
-                scope: _scope,
-                focusRequestToken: _focusToken,
-                prefillText: _prefill,
-                onQuotaExceeded: () => context.push('/paywall'),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
+      ),
     );
   }
 }

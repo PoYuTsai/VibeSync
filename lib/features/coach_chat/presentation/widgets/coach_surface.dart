@@ -49,6 +49,10 @@ class CoachSurface extends ConsumerStatefulWidget {
   /// 正好壓住輸入框 suffix 的送出鈕。
   final ValueChanged<bool>? onInputFocusChanged;
 
+  /// 問教練 Sydney 視窗宿主傳 false：視窗自己的開場泡泡已含標題與額度
+  /// 說明，不重複渲染「問教練一句」header（收鍵盤改由視窗滑動處理）。
+  final bool showHeader;
+
   const CoachSurface({
     super.key,
     required this.scope,
@@ -59,6 +63,7 @@ class CoachSurface extends ConsumerStatefulWidget {
     this.prefillText,
     this.lifecyclePhase,
     this.onInputFocusChanged,
+    this.showHeader = true,
   });
 
   static bool isQuotaError(Object? error) =>
@@ -249,6 +254,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (widget.showHeader)
           Row(
             children: [
               Container(
@@ -307,7 +313,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                 ),
             ],
           ),
-          const SizedBox(height: 16),
+          if (widget.showHeader) const SizedBox(height: 16),
           _CoachMemorySourceStrip(sources: memorySources),
           // 五個灰色快捷問句 chip 已整組移除（2026-08-09 拍板）：使用者
           // 直接打自己的問題；知識庫入口改由對象頁三情境 chip

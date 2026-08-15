@@ -1,12 +1,14 @@
-// 批 A Task 4 — 全域教練頁 TDD spec。
+// 問教練 Sydney 聊天視窗 spec（2026-08-15 拍板：三入口共用同一視窗）。
 //
-// GlobalCoachScreen＝AppBar「問教練」＋引導問句 chips＋CoachSurface。
-// chip 點擊只「預填」進輸入框（prefill＋focus token），絕不自動送出
-// （quota 安全）。
+// GlobalCoachScreen＝AppBar「問教練 Sydney」＋開場泡泡＋引導問句＋CoachSurface。
+// 引導問句跟著 scope 走：一般＝三句「怎麼做」問句；對象＝三句情境 chips
+// （種入 lifecyclePhase＋prefill）。點擊只「預填」進輸入框（prefill＋focus
+// token），絕不自動送出（quota 安全）。
 //
-// 2026-08-07 Bruce feedback：頂部加「問誰」chips——選對象＝CoachSurface
-// 切到該對象的 partner scope（跟對象頁跟進共用同一條串）；「一般」＝
-// global 串；無對象卡整排不渲染；切換保留輸入框草稿。
+// 「問誰」chips（首頁進場）：選對象＝CoachSurface 切到該對象的 partner
+// scope（跟對象頁跟進共用同一條串）；「一般」＝global 串；無對象卡整排
+// 不渲染；切換保留輸入框草稿。`?partnerId=` 進場＝鎖定模式：不渲染 chips、
+// 標題帶對象名。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -20,6 +22,7 @@ import 'package:vibesync/features/coach_chat/presentation/screens/global_coach_s
 import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
@@ -33,6 +36,7 @@ import '../../helpers/memory_coaching_outcome_repository.dart';
 
 /// 引導問句直接引實作常數（review Grok Minor-3：防測試與文案漂移）。
 const _guideQuestions = GlobalCoachScreen.guideQuestions;
+const _scenarioChips = GlobalCoachScreen.scenarioChips;
 
 class _FakeStyleRepo implements PartnerStyleRepository {
   @override
@@ -66,9 +70,24 @@ CoachChatInvoker _recordingInvoker(
   };
 }
 
+/// 對象相關 provider 全 override 成記憶體空資料：視窗在 partner scope 會
+/// 讀 aggregate／conversations（開場泡泡素材），測試不落 Hive。
+List<Override> _partnerOverrides(List<Partner> partners) => [
+      partnerListProvider.overrideWithValue(partners),
+      for (final partner in partners) ...[
+        dataQualityFlagProvider(partner.id)
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
+        partnerByIdProvider(partner.id).overrideWithValue(partner),
+        partnerAggregateProvider(partner.id)
+            .overrideWithValue(PartnerAggregateView.empty()),
+        conversationsByPartnerProvider(partner.id).overrideWithValue(const []),
+      ],
+    ];
+
 Future<List<Map<String, dynamic>>> _pump(
   WidgetTester tester, {
   List<Partner> partners = const [],
+  String? lockedPartnerId,
   int invokerStatus = 429,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1600));
@@ -87,13 +106,16 @@ Future<List<Map<String, dynamic>>> _pump(
         ),
         coachingOutcomeRepositoryProvider
             .overrideWithValue(MemoryCoachingOutcomeRepository()),
-        partnerListProvider.overrideWithValue(partners),
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        for (final partner in partners)
-          dataQualityFlagProvider(partner.id)
-              .overrideWith((_) => const DataQualityFlag.unflagged()),
+        ..._partnerOverrides(partners),
+        // 鎖定的 id 不在對象清單（已刪除）→ 顯式回 null，不落 Hive。
+        if (lockedPartnerId != null &&
+            partners.every((partner) => partner.id != lockedPartnerId))
+          partnerByIdProvider(lockedPartnerId).overrideWithValue(null),
       ],
-      child: const MaterialApp(home: GlobalCoachScreen()),
+      child: MaterialApp(
+        home: GlobalCoachScreen(lockedPartnerId: lockedPartnerId),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -103,41 +125,46 @@ Future<List<Map<String, dynamic>>> _pump(
 CoachSurface _surface(WidgetTester tester) =>
     tester.widget<CoachSurface>(find.byType(CoachSurface));
 
-void main() {
-  testWidgets('AppBar 標題「問教練」＋CoachSurface 掛 global scope', (tester) async {
-    await _pump(tester);
-
-    expect(
-      find.descendant(
-        of: find.byType(AppBar),
-        matching: find.text('問教練'),
-      ),
-      findsOneWidget,
-    );
-    expect(_surface(tester).scope, const CoachScope.global());
-  });
-
-  testWidgets('空狀態顯示三句引導問句 chips', (tester) async {
-    await _pump(tester);
-
-    for (final question in _guideQuestions) {
-      expect(find.text(question), findsOneWidget);
-    }
-  });
-
-  testWidgets('點引導 chip 只預填輸入框，絕不自動送出', (tester) async {
-    final apiCalls = await _pump(tester);
-
-    await tester.tap(find.text(_guideQuestions[0]));
-    await tester.pumpAndSettle();
-
-    final field = tester.widget<TextField>(
+TextField _inputField(WidgetTester tester) => tester.widget<TextField>(
       find.descendant(
         of: find.byType(CoachSurface),
         matching: find.byType(TextField),
       ),
     );
-    expect(field.controller?.text, _guideQuestions[0]);
+
+void main() {
+  testWidgets('AppBar 標題「問教練 Sydney」＋CoachSurface 掛 global scope',
+      (tester) async {
+    await _pump(tester);
+
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.text('問教練 Sydney'),
+      ),
+      findsOneWidget,
+    );
+    expect(_surface(tester).scope, const CoachScope.global());
+    expect(_surface(tester).showHeader, isFalse,
+        reason: '視窗開場泡泡已含標題與額度說明，CoachSurface 不再重複 header');
+  });
+
+  testWidgets('一般 scope：開場泡泡固定句＋三句引導問句', (tester) async {
+    await _pump(tester);
+
+    expect(find.text('隨時問我，聊天卡住我來接。'), findsOneWidget);
+    for (final question in _guideQuestions) {
+      expect(find.text(question), findsOneWidget);
+    }
+  });
+
+  testWidgets('點引導問句只預填輸入框，絕不自動送出', (tester) async {
+    final apiCalls = await _pump(tester);
+
+    await tester.tap(find.text(_guideQuestions[0]));
+    await tester.pumpAndSettle();
+
+    expect(_inputField(tester).controller?.text, _guideQuestions[0]);
     expect(apiCalls, isEmpty);
   });
 
@@ -159,7 +186,7 @@ void main() {
     expect(_surface(tester).scope, const CoachScope.global());
   });
 
-  testWidgets('點對象 chip → CoachSurface 切到 partner scope（共用對象串）',
+  testWidgets('點對象 chip → partner scope＋情境問句＋開場泡泡換對象版',
       (tester) async {
     await _pump(tester, partners: [_partner('p1', 'Alice')]);
 
@@ -167,21 +194,79 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_surface(tester).scope, const CoachScope.partner('p1'));
-    final partnerChip = tester.widget<ChoiceChip>(
-      find.byKey(const Key('coach_scope_partner_p1')),
-    );
-    expect(partnerChip.selected, isTrue);
+    // 引導問句跟著 scope 走：一般三句退場、情境三句上場。
+    for (final question in _guideQuestions) {
+      expect(find.text(question), findsNothing);
+    }
+    for (final chip in _scenarioChips) {
+      expect(find.text(chip.label), findsOneWidget);
+    }
+    // 無任何記憶素材 → 開場 fallback 帶對象名。
+    expect(find.text('想聊Alice的什麼？卡住的地方直接丟給我。'), findsOneWidget);
   });
 
-  testWidgets('切回「一般」→ 回到 global scope', (tester) async {
+  testWidgets('點情境 chip → 預填情境問句＋種入 lifecyclePhase，不自動送出',
+      (tester) async {
+    final apiCalls = await _pump(tester, partners: [_partner('p1', 'Alice')]);
+
+    await tester.tap(find.byKey(const Key('coach_scope_partner_p1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(_scenarioChips[1].label));
+    await tester.pumpAndSettle();
+
+    expect(_inputField(tester).controller?.text, _scenarioChips[1].prefill);
+    expect(_surface(tester).lifecyclePhase, _scenarioChips[1].phase);
+    expect(apiCalls, isEmpty);
+  });
+
+  testWidgets('切回「一般」→ 回到 global scope 且清掉 lifecyclePhase',
+      (tester) async {
     await _pump(tester, partners: [_partner('p1', 'Alice')]);
 
     await tester.tap(find.byKey(const Key('coach_scope_partner_p1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(_scenarioChips[0].label));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('coach_scope_general')));
     await tester.pumpAndSettle();
 
     expect(_surface(tester).scope, const CoachScope.global());
+    expect(_surface(tester).lifecyclePhase, isNull,
+        reason: '情境是跟著對象串的，回一般不得殘留 phase');
+  });
+
+  testWidgets('鎖定模式（?partnerId=）：不渲染問誰、標題帶對象名、直接情境問句',
+      (tester) async {
+    await _pump(
+      tester,
+      partners: [_partner('p1', 'Alice')],
+      lockedPartnerId: 'p1',
+    );
+
+    expect(find.text('問誰'), findsNothing);
+    expect(find.byKey(const Key('coach_scope_general')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.text('問教練 Sydney・Alice'),
+      ),
+      findsOneWidget,
+    );
+    expect(_surface(tester).scope, const CoachScope.partner('p1'));
+    for (final chip in _scenarioChips) {
+      expect(find.text(chip.label), findsOneWidget);
+    }
+  });
+
+  testWidgets('鎖定的對象已刪除 → 安靜退回一般模式', (tester) async {
+    await _pump(
+      tester,
+      partners: const [],
+      lockedPartnerId: 'ghost',
+    );
+
+    expect(_surface(tester).scope, const CoachScope.global());
+    expect(find.text('隨時問我，聊天卡住我來接。'), findsOneWidget);
   });
 
   testWidgets('切換對象不清輸入框草稿（CoachSurface State 不重建）', (tester) async {
@@ -227,10 +312,8 @@ void main() {
           ),
           coachingOutcomeRepositoryProvider
               .overrideWithValue(MemoryCoachingOutcomeRepository()),
-          partnerListProvider.overrideWithValue([_partner('p1', 'Alice')]),
           partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-          dataQualityFlagProvider('p1')
-              .overrideWith((_) => const DataQualityFlag.unflagged()),
+          ..._partnerOverrides([_partner('p1', 'Alice')]),
         ],
         child: const MaterialApp(home: GlobalCoachScreen()),
       ),
