@@ -21,6 +21,10 @@ import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../../../shared/services/image_compress_service.dart';
+import '../../../../shared/services/screenshot_preflight_service.dart';
 import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
@@ -2741,6 +2745,62 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       forceRefresh: true,
       overrideImages: _lastRecognitionImages,
       overrideMetrics: _lastRecognitionImageMetrics,
+    );
+  }
+
+  /// 「重新選圖」（2026-08-16 Bruce 回饋，取代「重新讀圖」）：直接開相簿
+  /// 重選 1–3 張，跑同一條辨識→確認流程，確認後整批取代本次內容。
+  ///
+  /// 檢查鏈與 ImagePickerWidget._processImage 同一套（格式→preflight→壓縮
+  /// →大小）；那邊改規則這裡要同步。差異：這裡任一張不合格就整批中止、
+  /// 保留原批不動，使用者重選即可。
+  Future<void> _repickScreenshots() async {
+    if (_isRecognizing) return;
+
+    final List<XFile> files;
+    try {
+      files = await ImagePicker().pickMultiImage(limit: 3);
+    } catch (_) {
+      _showFloatingSnackBar('選取圖片失敗，請稍後再試。');
+      return;
+    }
+    if (files.isEmpty) return;
+
+    final images = <Uint8List>[];
+    final metrics = <SelectedImageMetrics>[];
+    for (final file in files.take(3)) {
+      if (!ImageCompressService.isSupportedFormat(file.mimeType)) {
+        _showFloatingSnackBar('目前只支援 JPEG、PNG、WebP、HEIC 截圖。');
+        return;
+      }
+      final bytes = await file.readAsBytes();
+      final preflight = ScreenshotPreflightService.inspect(bytes);
+      if (preflight.isRejected) {
+        _showFloatingSnackBar(preflight.message ?? '這張圖片暫時不適合做聊天截圖辨識。');
+        return;
+      }
+      if (preflight.isWarning && mounted) {
+        _showFloatingSnackBar(preflight.message ?? '這張截圖可能辨識較不穩，請先確認內容。');
+      }
+      final compressed = await ImageCompressService.compressImage(bytes);
+      if (compressed == null ||
+          compressed.length > ImageCompressService.maxSizeBytes) {
+        _showFloatingSnackBar('截圖處理失敗，請換一張再試。');
+        return;
+      }
+      images.add(compressed);
+      metrics.add(
+        SelectedImageMetrics(
+          originalBytes: bytes.length,
+          compressedBytes: compressed.length,
+        ),
+      );
+    }
+    if (!mounted) return;
+
+    await _recognizeAndAddToConversation(
+      overrideImages: images,
+      overrideMetrics: metrics,
     );
   }
 
@@ -6263,95 +6323,73 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 ),
               ),
             ),
-          if (recognized.messages != null &&
-              recognized.messages!.isNotEmpty) ...[
+          // 「查看辨識內容」摺疊清單已拆（2026-08-16 Bruce 回饋：內容與上方
+          // 主卡的訊息泡泡重複）。
+          if (_recognitionFromCache && _canForceReRecognize) ...[
             const SizedBox(height: 12),
-            ExpansionTile(
-              title: Text(
-                '查看辨識內容',
-                style:
-                    AppTypography.bodySmall.copyWith(color: AppColors.ctaStart),
-              ),
-              iconColor: AppColors.onBackgroundPrimary,
-              collapsedIconColor: AppColors.onBackgroundPrimary,
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: const EdgeInsets.only(top: 8),
-              children: recognized.messages!
-                  .map((m) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              m.isFromMe ? Icons.person : Icons.person_outline,
-                              size: 16,
-                              color: m.isFromMe
-                                  ? AppColors.avatarMeStart
-                                  : AppColors.avatarHerStart,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                m.content,
-                                style: AppTypography.bodySmall.copyWith(
-                                  color: AppColors.onBackgroundPrimary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ))
-                  .toList(),
-            ),
-          ],
-          if (_canForceReRecognize) ...[
-            const SizedBox(height: 12),
-            if (_recognitionFromCache) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.info.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: AppColors.info.withValues(alpha: 0.25),
-                  ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.info.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppColors.info.withValues(alpha: 0.25),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.cached_rounded,
-                      size: 18,
-                      color: AppColors.info,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '這是上次相同截圖的快取結果',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.onBackgroundPrimary,
-                          fontWeight: FontWeight.w600,
-                        ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.cached_rounded,
+                    size: 18,
+                    color: AppColors.info,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '這是上次相同截圖的快取結果',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 10),
-            ],
+            ),
+            const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
                 onPressed: _forceReRecognizeLastBatch,
                 icon: const Icon(Icons.refresh_rounded),
-                label: Text(_recognitionFromCache ? '強制重新辨識' : '重新讀圖'),
+                label: const Text('強制重新辨識'),
               ),
             ),
             const SizedBox(height: 6),
             Text(
-              _recognitionFromCache
-                  ? '如果結果有誤，點「強制重新辨識」會忽略快取，重新辨識。'
-                  : '如果剛剛的我說 / 她說不太對，可以直接重讀同一批截圖，不會沿用上次的快取結果。',
+              '如果結果有誤，點「強制重新辨識」會忽略快取，重新辨識。',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.unselectedText,
+                height: 1.4,
+              ),
+            ),
+          ] else ...[
+            // 「重新讀圖」改「重新選圖」（2026-08-16 Bruce 回饋）：重讀同一批
+            // 錯照舊，直接開相簿換截圖才解得了「選錯圖」；確認後整批取代。
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const ValueKey('recognized-repick'),
+                onPressed: _isRecognizing ? null : _repickScreenshots,
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+                label: const Text('重新選圖'),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '選錯截圖或漏拉訊息？重新選 1–3 張，確認後會整批取代這次內容。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.unselectedText,
                 height: 1.4,
