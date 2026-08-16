@@ -529,6 +529,7 @@ class _VersionTile extends StatelessWidget {
             ),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 version.label,
@@ -542,8 +543,10 @@ class _VersionTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   version.text,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  // 選中的版本展開全文（2026-08-16 Eric：橘色那列字被切掉），
+                  // 未選中維持單行省略，清單才不會爆長。
+                  maxLines: selected ? null : 1,
+                  overflow: selected ? null : TextOverflow.ellipsis,
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.onBackgroundPrimary,
                   ),
