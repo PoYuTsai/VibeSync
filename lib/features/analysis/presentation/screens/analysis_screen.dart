@@ -3182,7 +3182,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       await controller.save(createdConversation);
       ref.invalidate(conversationProvider(widget.conversationId));
 
-      final messageCount = importedMessages.length;
       if (!mounted || _recognizeCancelled) {
         _debugLog(
             '[Recognize] Ignore post-save UI update after cancel/dispose');
@@ -3198,12 +3197,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _clearScreenshotAddedFeedback();
       });
 
-      _showOcrImportSuccessSnackBar(
-        title: '已建立新分析片段並加入 $messageCount 則訊息',
-        detail: '這次內容已獨立保存，不會接到舊訊息下面。',
-        actionLabel: '前往新片段',
-        onAction: () => context.push('/conversation/${createdConversation.id}'),
-      );
+      // OCR 匯入浮動提示全拆（2026-08-16 Eric：沒什麼用）。來源已完成分析
+      // 而另開新片段時，直接帶使用者過去，不留在舊片段乾等。
+      context.push('/conversation/${createdConversation.id}');
       return;
     }
 
@@ -3266,7 +3262,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     await ref.read(conversationWriteControllerProvider.notifier).save(conv);
     ref.invalidate(conversationProvider(widget.conversationId));
 
-    final messageCount = importedMessages.length;
     if (!mounted || _recognizeCancelled) {
       _debugLog('[Recognize] Ignore post-save UI update after cancel/dispose');
       return;
@@ -3283,20 +3278,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _clearScreenshotAddedFeedback();
     });
 
-    // detail 說明句已拆（2026-08-16 Bruce 回饋）；取代規則由確認對話框揭露。
-    _showOcrImportSuccessSnackBar(
-      title: '已確認本次片段，共 $messageCount 則訊息',
-      actionLabel: '查看本次內容',
-      onAction: () {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            0,
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
-          );
-        }
-      },
-    );
+    // 「已確認本次片段／查看本次內容」浮動提示已拆（2026-08-16 Eric：
+    // 沒什麼用——內容就在眼前，確認框也已揭露取代規則）。另開新片段的
+    // 「前往新片段」提示保留，那個有導航作用。
   }
 
   Future<void> _resumeRecognitionImport() async {
@@ -3606,76 +3590,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       context,
       title: message,
       icon: Icons.info_outline_rounded,
-    );
-  }
-
-  void _showOcrImportSuccessSnackBar({
-    required String title,
-    String? detail,
-    required String actionLabel,
-    required VoidCallback onAction,
-  }) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-        backgroundColor: AppColors.glassWhite,
-        elevation: 12,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(
-            color: AppColors.ctaStart.withValues(alpha: 0.24),
-          ),
-        ),
-        content: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(
-              Icons.check_circle_rounded,
-              color: AppColors.ctaStart,
-              size: 22,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.glassTextPrimary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (detail != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      detail,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.glassTextSecondary,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-        duration: const Duration(seconds: 7),
-        action: SnackBarAction(
-          label: actionLabel,
-          textColor: AppColors.ctaEnd,
-          onPressed: () {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            onAction();
-          },
-        ),
-      ),
     );
   }
 
