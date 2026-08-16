@@ -23,6 +23,14 @@ class ScreenshotRecognitionGuidance {
 class ScreenshotRecognitionHelper {
   static const String untitledConversationName = '新對話';
 
+  /// 英文字母明顯多於中文字＝模型吐了英文診斷。不能只看「有沒有中文」：
+  /// 英文診斷裡常夾對象名（例如「the Candy 糖糖 blocks」）。
+  static bool _looksMostlyNonChinese(String value) {
+    final cjk = RegExp(r'[一-鿿]').allMatches(value).length;
+    final latin = RegExp(r'[A-Za-z]').allMatches(value).length;
+    return latin > cjk * 2;
+  }
+
   static bool _looksLikeMixedThreadWarning(String value) {
     final normalized = value.trim().toLowerCase();
     if (normalized.isEmpty) {
@@ -141,7 +149,13 @@ class ScreenshotRecognitionHelper {
     final warnings = <String>[];
     final serverWarning = recognized.warning?.trim();
     if (serverWarning != null && serverWarning.isNotEmpty) {
-      warnings.add(serverWarning);
+      // 模型偶發吐英文診斷（2026-08-16 Eric 真機回饋：整段英文上畫面）。
+      // 非中文為主的警告換成通用白話提醒；原文仍供 mixed-thread 判斷。
+      warnings.add(
+        _looksMostlyNonChinese(serverWarning)
+            ? '這批截圖辨識時有不太確定的地方，請逐則確認內容和「我說／她說」。'
+            : serverWarning,
+      );
     }
 
     final recognizedName = recognized.contactName?.trim();

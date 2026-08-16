@@ -82,6 +82,51 @@ void main() {
   });
 
   group('ScreenshotRecognitionHelper.buildWarning', () {
+    test('英文為主的模型診斷換成通用中文提醒；夾雜對象中文名也要攔得住', () {
+      const recognized = RecognizedConversation(
+        contactName: '糖糖',
+        messageCount: 4,
+        summary: '識別到 4 則訊息',
+        warning:
+            'Left avatar appears next to both left and right-leaning message '
+            'groups, making side attribution partially ambiguous for the '
+            'Candy 糖糖 blocks.',
+      );
+      final conversation = buildConversation(
+        name: '糖糖',
+        messages: [buildMessage(isFromMe: false, content: '晚安')],
+      );
+
+      final result = ScreenshotRecognitionHelper.buildWarning(
+        recognized: recognized,
+        currentConversation: conversation,
+      );
+
+      expect(result, isNotNull);
+      expect(result, isNot(contains('Left avatar')));
+      expect(result, contains('請逐則確認'));
+    });
+
+    test('中文警告（可夾英文名）原樣顯示', () {
+      const recognized = RecognizedConversation(
+        contactName: '糖糖',
+        messageCount: 4,
+        summary: '識別到 4 則訊息',
+        warning: '「Candy 糖糖」的訊息左右歸屬不太確定，請逐則確認。',
+      );
+      final conversation = buildConversation(
+        name: '糖糖',
+        messages: [buildMessage(isFromMe: false, content: '晚安')],
+      );
+
+      final result = ScreenshotRecognitionHelper.buildWarning(
+        recognized: recognized,
+        currentConversation: conversation,
+      );
+
+      expect(result, contains('「Candy 糖糖」的訊息左右歸屬不太確定'));
+    });
+
     test('includes mismatch warning when recognized name differs', () {
       final recognized = const RecognizedConversation(
         contactName: 'Amber',

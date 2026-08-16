@@ -972,6 +972,7 @@ function buildVisionContent(
 const OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT =
   `You are an OCR + chat-structure extraction assistant.
 Return valid JSON only.
+The "warning" and "summary" fields are shown directly to a Traditional Chinese end user: write them in 繁體中文 as one short plain sentence; never output English diagnostics there.
 Only extract what is visible in the screenshots.
 Do not invent missing text, names, or message order.
 If the screenshots are not a normal one-to-one chat UI, classify them conservatively using one of: social_feed, group_chat, gallery_album, call_log_screen, system_ui, sensitive_content, unsupported.`;
@@ -1104,12 +1105,20 @@ const OCR_RECOGNITION_OUTPUT_SCHEMA: Record<string, unknown> = {
           type: "integer",
           description: "Zero or a positive count.",
         },
-        warning: { type: ["string", "null"] },
+        warning: {
+          type: ["string", "null"],
+          description:
+            "Shown directly to the end user: one short plain sentence in 繁體中文 (never English); null when nothing needs attention.",
+        },
         messageCount: {
           type: "integer",
           description: "Zero or a positive count.",
         },
-        summary: { type: "string" },
+        summary: {
+          type: "string",
+          description:
+            "May be shown directly to the end user: one short plain sentence in 繁體中文 (never English).",
+        },
         messages: {
           type: "array",
           items: {
