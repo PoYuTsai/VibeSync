@@ -155,6 +155,9 @@ class _StubCoachChatRepository implements CoachChatRepository {
 
   @override
   Future<void> deleteScope(String scopeType, String scopeId) async {}
+
+  @override
+  Future<bool> deleteUnified(String id) async => false;
 }
 
 Map<String, dynamic> _analysisSnapshotJson({int score = 65}) {
@@ -218,14 +221,14 @@ void main() {
       expect(find.text('這句是我說'), findsNothing);
     });
 
-    testWidgets('pending fragment keeps the picker but drops the replace copy',
+    testWidgets('pending fragment hides the whole picker block',
         (tester) async {
       await _pumpAnalysisScreen(tester);
 
-      // 換截圖的唯一入口仍在（辨識預覽卡的「重新讀圖」只能重讀同一批）。
-      expect(find.byType(ImagePickerWidget), findsOneWidget);
-      // 「整批取代」教學文案已拆（2026-08-16 Bruce 回饋）；取代規則改由
-      // 辨識確認對話框揭露（screenshot_recognition_dialog_test 鎖住）。
+      // 片段確認後選圖區整塊收掉（2026-08-16 Bruce 回饋二輪）；要換截圖
+      // 只能另開新片段。取代規則仍由辨識確認對話框揭露
+      // （screenshot_recognition_dialog_test 鎖住）。
+      expect(find.byType(ImagePickerWidget), findsNothing);
       expect(find.textContaining('重新選擇 1–3 張截圖會整批取代'), findsNothing);
       expect(find.textContaining('本次片段已有'), findsNothing);
     });
@@ -280,18 +283,14 @@ void main() {
         'analysis_ocr_swipe_tutorial_seen_v1_global': true,
       });
 
+      // 2026-08-16 起片段確認後選圖區整塊收掉，「重選截圖蓋掉舊批」的入口
+      // 已不存在；stale 保護改由空片段選圖路徑驗證（同一條 confirm-apply
+      // 分支：apply 時來源已完成分析 → 另開新片段、不動已完成紀錄）。
       final draft = Conversation(
         id: 'continue-input-test',
         name: '春季活動那次',
         partnerId: 'partner-bruce',
-        messages: [
-          Message(
-            id: 'old',
-            content: '完成前的舊內容',
-            isFromMe: false,
-            timestamp: DateTime(2026, 7, 16),
-          ),
-        ],
+        messages: [],
         createdAt: DateTime(2026, 7, 16),
         updatedAt: DateTime(2026, 7, 16),
       );
@@ -319,7 +318,7 @@ void main() {
       );
       picker.onImagesChanged([imageBytes]);
       await tester.pump();
-      final recognizeButton = find.text('辨識並取代本次內容（1 張）');
+      final recognizeButton = find.text('辨識截圖文字（1 張）');
       await tester.ensureVisible(recognizeButton);
       await tester.tap(recognizeButton);
       await tester.pumpAndSettle();

@@ -7001,8 +7001,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             const SizedBox(height: 24),
                           ],
 
-                          // 手動分析按鈕 (尚未分析時顯示)
-                          if (showInitialScreenshotSetup) ...[
+                          // 選圖／辨識區只在空片段出現；片段確認後整塊收掉
+                          // （2026-08-16 Bruce 回饋二輪：連選圖格也拆——要換
+                          // 截圖請另開新片段，「重新讀圖」只能重讀同一批）。
+                          if (isEmptyFragmentSetup) ...[
                             Container(
                               padding: isEmptyFragmentSetup
                                   ? EdgeInsets.zero
