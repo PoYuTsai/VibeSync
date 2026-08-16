@@ -78,14 +78,29 @@ export function normalizeAiText(value: unknown): string {
 /// 使用者對話的欄位不得套用——對方真的用外文聊天是合法資料。
 /// 只掃已知洩漏面（希臘、西里爾、希伯來、阿拉伯、天城文、泰文、諺文）；
 /// CJK、假名（台灣常見「の」）、拉丁、數字、標點與 emoji 全保留。
+/// 清法是「丟整個子句」而不是只摳外語詞：外語詞常是句子的謂語，摳掉會
+/// 留殘句（「應該比妳自己糾結怎麼約[простее]」缺謂語，2026-08-17 Eric
+/// 回饋）。整段只剩外語子句時才退回摳字，寧可短也不要空。
+const FOREIGN_SCRIPT_CHAR =
+  /[\u0370-\u03FF\u0400-\u052F\u0590-\u05FF\u0600-\u06FF\u0900-\u097F\u0E00-\u0E7F\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]/;
+
 export function stripForeignScriptChars(value: string): string {
-  return value
-    .replace(
-      /[\u0370-\u03FF\u0400-\u052F\u0590-\u05FF\u0600-\u06FF\u0900-\u097F\u0E00-\u0E7F\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]+/g,
+  if (!FOREIGN_SCRIPT_CHAR.test(value)) {
+    return value;
+  }
+  const clauses = value.split(/(?<=[，。！？；、!?…\n])/);
+  let result = clauses
+    .filter((clause) => !FOREIGN_SCRIPT_CHAR.test(clause))
+    .join("")
+    // 丟尾子句後殘留的逗頓號收掉；句號驚嘆號是完整句尾，保留。
+    .replace(/[，、；,;]\s*$/, "");
+  if (result.trim().length === 0) {
+    result = value.replace(
+      new RegExp(FOREIGN_SCRIPT_CHAR.source + "+", "g"),
       "",
-    )
-    .replace(/[^\S\n]{2,}/g, " ")
-    .trim();
+    );
+  }
+  return result.replace(/[^\S\n]{2,}/g, " ").trim();
 }
 
 function normalizeReplyTextValue(value: unknown): string {

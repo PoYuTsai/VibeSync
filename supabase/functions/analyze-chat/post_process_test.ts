@@ -806,7 +806,13 @@ Deno.test("r1-P2b guard: fragment sourceMessage matching its own ball passes unc
 });
 
 Deno.test("stripForeignScriptChars 清外語洩漏、保中英 emoji 與の", () => {
-  // 2026-08-17 Eric 實測：冷讀卡混出俄文「простее」。
+  // 2026-08-17 Eric 實測：冷讀卡混出俄文「простее」。含外語的整個子句
+  // 要丟掉，不是只摳詞——摳詞會留缺謂語的殘句。
+  assertEquals(
+    stripForeignScriptChars("妳下課後直接來找我，應該比妳自己糾結怎麼約простее"),
+    "妳下課後直接來找我",
+  );
+  // 整段只剩外語子句時退回摳字，寧可短也不要空。
   assertEquals(
     stripForeignScriptChars("應該比妳自己糾結怎麼約простее"),
     "應該比妳自己糾結怎麼約",
