@@ -9375,6 +9375,17 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           ? refineMaxOutputChars(userDraft ?? "")
           : null,
       });
+      // 安全守門攔下要有專屬文案（2026-08-16 Eric 拍板）：通用的「請稍後
+      // 再試」會誤導使用者原句重送——這不是暫時性失敗，是內容問題。
+      if (hasOutboundSafetyWarning(result)) {
+        return jsonResponse({
+          error: "OPTIMIZE_MESSAGE_SAFETY_BLOCKED",
+          code: "OPTIMIZE_MESSAGE_SAFETY_BLOCKED",
+          message:
+            "這段內容帶有施壓或威脅的說法，安全守門已攔下，不提供結果。請改成尊重對方意願的說法。本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 502);
+      }
       return jsonResponse({
         error: "OPTIMIZE_MESSAGE_RESULT_INVALID",
         code: "OPTIMIZE_MESSAGE_RESULT_INVALID",

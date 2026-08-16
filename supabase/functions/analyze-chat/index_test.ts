@@ -780,6 +780,28 @@ Deno.test({
     assert(unreadableBlock.includes("OPTIMIZE_MESSAGE_DRAFT_UNREADABLE"));
     assert(unreadableBlock.includes("shouldChargeQuota: false"));
     assert(unreadableBlock.includes("看不懂這段草稿"));
+
+    // 安全守門攔下要有專屬碼與文案（不能只回通用「請稍後再試」），
+    // 且必須在通用 RESULT_INVALID 之前、同樣不扣費。
+    const safetyIdx = source.indexOf(
+      "OPTIMIZE_MESSAGE_SAFETY_BLOCKED",
+      invalidIdx,
+    );
+    const genericInvalidIdx = source.indexOf(
+      '"OPTIMIZE_MESSAGE_RESULT_INVALID"',
+      invalidIdx,
+    );
+    assert(safetyIdx !== -1 && genericInvalidIdx !== -1);
+    assert(safetyIdx < genericInvalidIdx);
+    const safetyBlock = source.slice(safetyIdx, genericInvalidIdx);
+    assert(safetyBlock.includes("shouldChargeQuota: false"));
+    assert(safetyBlock.includes("施壓或威脅"));
+    // 專屬碼由 outbound 守門訊號驅動。
+    const guardIdx = source.lastIndexOf(
+      "hasOutboundSafetyWarning(result)",
+      safetyIdx,
+    );
+    assert(guardIdx !== -1 && safetyIdx - guardIdx < 600);
   },
 });
 

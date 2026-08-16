@@ -5084,6 +5084,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // 被擋下（亂碼防呆／安全守門與格式無效，皆不扣費）：說明改留在面板
       // 上，snackbar 一閃就過看不懂為什麼沒結果（2026-08-16 Eric 真機回饋）。
       if (e.code == 'OPTIMIZE_MESSAGE_DRAFT_UNREADABLE' ||
+          e.code == 'OPTIMIZE_MESSAGE_SAFETY_BLOCKED' ||
           e.code == 'OPTIMIZE_MESSAGE_RESULT_INVALID') {
         return DraftPolishOutcome.blocked(e.message);
       }

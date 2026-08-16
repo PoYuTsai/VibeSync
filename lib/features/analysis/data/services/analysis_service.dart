@@ -1208,6 +1208,17 @@ AnalysisException _mapAnalysisHttpError({
           suggestedAction: AnalysisErrorAction.retry,
         );
       }
+      // 安全守門攔下：內容問題不是暫時性失敗，文案要引導改寫、不能說
+      // 「請稍後再試」。
+      if (errorCode == 'OPTIMIZE_MESSAGE_SAFETY_BLOCKED') {
+        return AnalysisException(
+          hasRefineInstruction
+              ? '這次調出來的內容帶有施壓或威脅的說法，已被安全守門攔下。請改成尊重對方意願的方向再調。本次不會扣額度。'
+              : '這段內容帶有施壓或威脅的說法，不提供潤飾。請改成尊重對方意願的說法再試一次。本次不會扣額度。',
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      }
       if (errorCode == 'OVERCHARGE_CLAIM_UNAVAILABLE') {
         // ADR #19：idempotency claim 不可用時 server fail closed 不扣費。
         return AnalysisException(

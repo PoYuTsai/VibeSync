@@ -676,6 +676,51 @@ void main() {
       );
     });
 
+    test('安全攔下：專屬文案引導改寫、依入口切換、保住不扣費，不得說「請稍後再試」', () async {
+      AnalysisService service() => AnalysisService(
+            clientFactory: () => MockClient((request) async {
+              return http.Response(
+                jsonEncode({
+                  'error': 'OPTIMIZE_MESSAGE_SAFETY_BLOCKED',
+                  'code': 'OPTIMIZE_MESSAGE_SAFETY_BLOCKED',
+                  'message': '這段內容帶有施壓或威脅的說法，安全守門已攔下。本次不會扣額度。',
+                  'shouldChargeQuota': false,
+                }),
+                502,
+                headers: {'content-type': 'application/json'},
+              );
+            }),
+            accessTokenProvider: () => 'fake-token',
+            expectedTierProvider: () => 'essential',
+            revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:optimize',
+          );
+
+      Future<String> messageFor({String? refineInstruction}) async {
+        try {
+          await service().analyzeConversation(
+            [_msg('最近有空嗎？')],
+            userDraft: '你不答應我就不走',
+            refineInstruction: refineInstruction,
+            requestId: requestId,
+          );
+        } on AnalysisException catch (error) {
+          expect(error.code, 'OPTIMIZE_MESSAGE_SAFETY_BLOCKED');
+          return error.message;
+        }
+        fail('expected OPTIMIZE_MESSAGE_SAFETY_BLOCKED to throw');
+      }
+
+      final polished = await messageFor();
+      expect(polished, contains('施壓或威脅'));
+      expect(polished, contains('本次不會扣額度'));
+      expect(polished, isNot(contains('請稍後再試')));
+
+      final refined = await messageFor(refineInstruction: '短一點');
+      expect(refined, contains('施壓或威脅'));
+      expect(refined, contains('本次不會扣額度'));
+      expect(refined, isNot(contains('潤飾')));
+    });
+
     test('亂碼草稿：專屬文案引導換草稿、保住不扣費，不得說「請稍後再試」', () async {
       final service = AnalysisService(
         clientFactory: () => MockClient((request) async {
