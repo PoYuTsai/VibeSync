@@ -65,6 +65,13 @@ class DraftPolishSheet extends StatefulWidget {
 class _DraftPolishSheetState extends State<DraftPolishSheet> {
   bool _isPolishing = false;
   OptimizedMessage? _result;
+  final FocusNode _draftFocusNode = FocusNode();
+
+  @override
+  void dispose() {
+    _draftFocusNode.dispose();
+    super.dispose();
+  }
 
   Future<void> _polish() async {
     final draft = widget.draftController.text.trim();
@@ -106,13 +113,28 @@ class _DraftPolishSheetState extends State<DraftPolishSheet> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  Text(
-                    '我已有草稿，幫我修自然',
-                    style: AppTypography.titleLarge.copyWith(
-                      color: AppColors.onBackgroundPrimary,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  const SizedBox(height: 8),
+                  // 面板高度接近整頁，補明確的關閉鍵（2026-08-16 Bruce 回饋：
+                  // 「沒有上一頁」）；下滑手勢仍可關。
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '我已有草稿，幫我修自然',
+                          style: AppTypography.titleLarge.copyWith(
+                            color: AppColors.onBackgroundPrimary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        key: const ValueKey('draft-polish-close'),
+                        icon: const Icon(Icons.close_rounded),
+                        color: AppColors.onBackgroundSecondary,
+                        tooltip: '關閉',
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -126,39 +148,81 @@ class _DraftPolishSheetState extends State<DraftPolishSheet> {
                     child: ListView(
                       key: const ValueKey('draft-polish-body'),
                       padding: EdgeInsets.zero,
+                      // 打完往下滑就收鍵盤（聊天視窗慣例，同練習室）。
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
                       children: [
-                        TextField(
-                          key: const ValueKey('draft-polish-input'),
-                          controller: widget.draftController,
-                          enabled: !_isPolishing,
-                          minLines: 3,
-                          maxLines: 6,
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.onBackgroundPrimary,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: '貼上你原本想傳的訊息…',
-                            hintStyle: AppTypography.bodyMedium.copyWith(
-                              color: AppColors.onBackgroundSecondary
-                                  .withValues(alpha: 0.6),
-                            ),
-                            filled: true,
-                            fillColor:
-                                AppColors.brandInk.withValues(alpha: 0.4),
-                            border: OutlineInputBorder(
+                        // 輸入列配方對齊練習室（2026-08-16 Bruce 回饋）：
+                        // 白 12% 框底＋白 18% 框線＋聚焦橘框與橘色瞬態光暈、
+                        // 失焦中性黑陰影分層。
+                        ListenableBuilder(
+                          listenable: _draftFocusNode,
+                          builder: (context, child) => AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(18),
-                              borderSide: BorderSide(
-                                color: Colors.white.withValues(alpha: 0.12),
+                              boxShadow: _draftFocusNode.hasFocus
+                                  ? [
+                                      BoxShadow(
+                                        color: AppColors.ctaStart
+                                            .withValues(alpha: 0.22),
+                                        blurRadius: 14,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ]
+                                  : [
+                                      BoxShadow(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.18),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                            ),
+                            child: child,
+                          ),
+                          child: TextField(
+                            key: const ValueKey('draft-polish-input'),
+                            controller: widget.draftController,
+                            focusNode: _draftFocusNode,
+                            enabled: !_isPolishing,
+                            minLines: 3,
+                            maxLines: 6,
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: AppColors.onBackgroundPrimary,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: '貼上你原本想傳的訊息…',
+                              hintStyle: AppTypography.bodyMedium.copyWith(
+                                color: AppColors.onBackgroundSecondary
+                                    .withValues(alpha: 0.85),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white.withValues(alpha: 0.12),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(18),
+                                borderSide: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.18),
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(18),
+                                borderSide: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.18),
+                                ),
+                              ),
+                              focusedBorder: const OutlineInputBorder(
+                                borderRadius:
+                                    BorderRadius.all(Radius.circular(18)),
+                                borderSide: BorderSide(
+                                  color: AppColors.ctaStart,
+                                  width: 1.4,
+                                ),
                               ),
                             ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(18),
-                              borderSide: BorderSide(
-                                color: Colors.white.withValues(alpha: 0.12),
-                              ),
-                            ),
+                            onTapOutside: (_) => _draftFocusNode.unfocus(),
+                            onChanged: (_) => setState(() {}),
                           ),
-                          onChanged: (_) => setState(() {}),
                         ),
                         const SizedBox(height: 12),
                         SizedBox(

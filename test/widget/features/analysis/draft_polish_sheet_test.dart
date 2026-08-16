@@ -47,6 +47,8 @@ void main() {
     final submit = find.byKey(const ValueKey('draft-polish-submit'));
     expect(tester.widget<ElevatedButton>(submit).enabled, isFalse);
     expect(find.byKey(const ValueKey('draft-polish-copy')), findsNothing);
+    // 面板要有明確關閉鍵（2026-08-16 Bruce 回饋：沒有上一頁）。
+    expect(find.byKey(const ValueKey('draft-polish-close')), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const ValueKey('draft-polish-input')),
