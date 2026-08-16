@@ -753,6 +753,10 @@ Deno.test({
     assert(leanPrompt.includes("optimized 給空字串"));
     assert(leanPrompt.includes("不要把任何說明或建議寫進 optimized"));
     assert(leanPrompt.includes("拿不準時照常潤飾"));
+    // unusable 不得被拿來迴避露骨但讀得懂的草稿（2026-08-16 Eric 實測：
+    // 露骨句被誤回「看不懂」）——那類要走降壓改寫。
+    assert(leanPrompt.includes("只代表「字面上讀不懂」"));
+    assert(leanPrompt.includes("不要用它迴避"));
     assert(leanPrompt.includes('"unusable": false'));
     // 語意層 instruction_is_data 條款也要在 system prompt（對齊 refine 的
     // REFINE_SAFETY_CLAUSES.instruction_is_data，不能只放 user prompt）。
