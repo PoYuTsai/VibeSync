@@ -44,6 +44,7 @@ Widget _wrap(MemoryCoachingOutcomeRepository repo) {
             result: UnifiedCoachResult.fromCoachChatResult(_result()),
             dailyRemaining: 3,
             onFollowUp: () {},
+            onAskDifferent: () {},
             onForceAnswer: () {},
           ),
         ),

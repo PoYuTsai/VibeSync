@@ -73,6 +73,7 @@ Widget _wrap(CoachChatResult result) {
             result: UnifiedCoachResult.fromCoachChatResult(result),
             dailyRemaining: 3,
             onFollowUp: () {},
+            onAskDifferent: () {},
             onForceAnswer: () {},
           ),
         ),
@@ -136,7 +137,10 @@ void main() {
     expect(_richText('你現在卡在：還沒確定自己想往哪裡走'), findsOneWidget);
     expect(_richText('先補充這一點：告訴我你比較想要哪一種結果'), findsOneWidget);
     expect(_richText('邊界提醒：先不急著替對方下結論'), findsOneWidget);
-    expect(find.text('補充我的想法'), findsOneWidget);
+    // 「補充」由輸入列 hint 承擔；這顆改為跳出釐清循環的「想問別的」
+    // （2026-08-16 Bruce 回饋）。
+    expect(find.text('想問別的'), findsOneWidget);
+    expect(find.text('補充我的想法'), findsNothing);
     expect(find.text('直接看建議（扣 1 則）'), findsOneWidget);
     expect(find.text('看完整教練分析'), findsNothing);
     expect(find.text('照著發了'), findsNothing);

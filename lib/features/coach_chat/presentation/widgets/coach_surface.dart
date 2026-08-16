@@ -120,6 +120,9 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   final _focusNode = FocusNode();
   String? _lastAskedQuestion;
 
+  /// 使用者按了「想問別的」：這輪輸入列不用釐清 hint。送出或切 scope 歸零。
+  bool _composeNewQuestion = false;
+
   @override
   void didUpdateWidget(covariant CoachSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -128,6 +131,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     // 輸入框草稿刻意不清（設計拍板：切換保留草稿）。
     if (widget.scope != oldWidget.scope) {
       _lastAskedQuestion = null;
+      _composeNewQuestion = false;
     }
     if (widget.focusRequestToken != oldWidget.focusRequestToken) {
       final prefill = widget.prefillText?.trim();
@@ -242,6 +246,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                             results: timeline,
                             dailyRemaining: subscription.dailyRemaining,
                             onFollowUp: _focusInputForFollowUp,
+                            onAskDifferent: _focusInputForNewQuestion,
                             onForceAnswer: _forceAnswer,
                           ),
                       ],
@@ -252,7 +257,11 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
             ),
           ),
         ),
-        _buildInputBar(canSubmit: canSubmit, isClarifying: isClarifying),
+        // 按過「想問別的」就先不用釐清 hint，換回一般問句引導。
+        _buildInputBar(
+          canSubmit: canSubmit,
+          isClarifying: isClarifying && !_composeNewQuestion,
+        ),
       ],
     );
   }
@@ -481,6 +490,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     FocusScope.of(context).unfocus();
     setState(() {
       _lastAskedQuestion = question;
+      _composeNewQuestion = false;
       _controller.clear();
     });
     ref.read(coachChatControllerProvider(widget.scope).notifier).ask(
@@ -521,18 +531,28 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     _controller.clear();
     _focusNode.requestFocus();
   }
+
+  /// 「想問別的」：跳出釐清循環——輸入列 hint 換回一般問句引導，
+  /// 下一則送出仍走同一條 ask 路徑（教練自己會接住換題）。
+  void _focusInputForNewQuestion() {
+    setState(() => _composeNewQuestion = true);
+    _controller.clear();
+    _focusNode.requestFocus();
+  }
 }
 
 class _CoachChatThreadView extends StatelessWidget {
   final List<UnifiedCoachResult> results;
   final int dailyRemaining;
   final VoidCallback onFollowUp;
+  final VoidCallback onAskDifferent;
   final VoidCallback onForceAnswer;
 
   const _CoachChatThreadView({
     required this.results,
     required this.dailyRemaining,
     required this.onFollowUp,
+    required this.onAskDifferent,
     required this.onForceAnswer,
   });
 
@@ -551,6 +571,7 @@ class _CoachChatThreadView extends StatelessWidget {
           question: latest.question,
           dailyRemaining: dailyRemaining,
           onFollowUp: onFollowUp,
+          onAskDifferent: onAskDifferent,
           onForceAnswer: onForceAnswer,
         ),
         if (latest.earlierSummary?.trim().isNotEmpty == true) ...[
@@ -774,6 +795,9 @@ class CoachChatResultView extends ConsumerWidget {
   final String? question;
   final int dailyRemaining;
   final VoidCallback onFollowUp;
+
+  /// 釐清輪的「想問別的」：跳出補充循環、改問新問題。
+  final VoidCallback onAskDifferent;
   final VoidCallback onForceAnswer;
 
   const CoachChatResultView({
@@ -781,6 +805,7 @@ class CoachChatResultView extends ConsumerWidget {
     required this.result,
     required this.dailyRemaining,
     required this.onFollowUp,
+    required this.onAskDifferent,
     required this.onForceAnswer,
     this.question,
   });
@@ -978,29 +1003,37 @@ class CoachChatResultView extends ConsumerWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              OutlinedButton.icon(
-                onPressed: onFollowUp,
-                icon: Icon(
-                  isClarifying
-                      ? Icons.edit_note_outlined
-                      : Icons.add_comment_outlined,
-                  size: 18,
-                ),
-                label: Text(isClarifying ? '補充我的想法' : '繼續深挖'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  side: BorderSide(
-                    color: AppColors.primary.withValues(alpha: 0.38),
+              if (isClarifying)
+                // 「補充」由下方輸入列承擔（hint 已引導），這顆改為跳出
+                // 釐清循環的紅字出口（2026-08-16 Bruce 回饋拍板）。
+                TextButton(
+                  onPressed: onAskDifferent,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    visualDensity: VisualDensity.compact,
                   ),
-                  visualDensity: VisualDensity.compact,
+                  child: const Text('想問別的'),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: onFollowUp,
+                  icon: const Icon(Icons.add_comment_outlined, size: 18),
+                  label: const Text('繼續深挖'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: BorderSide(
+                      color: AppColors.primary.withValues(alpha: 0.38),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
-              ),
               if (isClarifying)
                 TextButton.icon(
                   onPressed: () => _confirmForceAnswer(context),
                   icon: const Icon(Icons.bolt_outlined, size: 18),
+                  // 橘色主 CTA 色，和灰字補述區分（2026-08-16 Bruce 回饋）。
                   style: TextButton.styleFrom(
-                    foregroundColor: AppColors.glassTextSecondary,
+                    foregroundColor: AppColors.ctaStart,
                     visualDensity: VisualDensity.compact,
                   ),
                   label: const Text('直接看建議（扣 1 則）'),
