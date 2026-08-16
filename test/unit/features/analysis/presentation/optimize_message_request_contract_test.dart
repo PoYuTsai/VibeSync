@@ -40,9 +40,10 @@ void main() {
   test('草稿潤飾跨手動重試沿用 requestId，成功後才結束請求', () {
     final source = File(_screenPath).readAsStringSync();
     // 2026-08-16 面板化：_optimizeMessage 改名 _polishDraft，改回傳結果
-    // 給 DraftPolishSheet 顯示；計費順序契約不變。
+    // 給 DraftPolishSheet 顯示；同日改回傳 DraftPolishOutcome（擋下說明
+    // 留在面板上）。計費順序契約不變。
     final methodStart =
-        source.indexOf('Future<OptimizedMessage?> _polishDraft(');
+        source.indexOf('Future<DraftPolishOutcome?> _polishDraft(');
     final methodEnd = source.indexOf('// ===== 分析輔助方法', methodStart);
     expect(methodStart, greaterThanOrEqualTo(0));
     expect(methodEnd, greaterThan(methodStart));

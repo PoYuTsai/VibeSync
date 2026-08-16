@@ -36,10 +36,12 @@ void main() {
       tester,
       onPolish: (draft) async {
         polished.add(draft);
-        return const OptimizedMessage(
-          original: '原稿',
-          optimized: '修好的版本',
-          reason: '去掉壓迫感',
+        return const DraftPolishOutcome.success(
+          OptimizedMessage(
+            original: '原稿',
+            optimized: '修好的版本',
+            reason: '去掉壓迫感',
+          ),
         );
       },
     );
@@ -87,15 +89,45 @@ void main() {
     expect(controller.text, '第一版草稿');
   });
 
+  testWidgets('被擋下（亂碼／安全）：說明留在面板上，不畫結果；改草稿即收掉', (tester) async {
+    await pumpSheet(
+      tester,
+      initialDraft: 'ejennfivjjg',
+      onPolish: (_) async => const DraftPolishOutcome.blocked(
+        '看不懂這段草稿，請換成想傳的訊息再試一次。本次不會扣額度。',
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('draft-polish-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('draft-polish-notice')), findsOneWidget);
+    expect(find.textContaining('看不懂這段草稿'), findsOneWidget);
+    // 擋下不是結果：不得出現結果卡／複製／再調一下。
+    expect(find.byKey(const ValueKey('draft-polish-result')), findsNothing);
+    expect(find.byKey(const ValueKey('draft-polish-copy')), findsNothing);
+    expect(find.byKey(const ValueKey('draft-polish-refine')), findsNothing);
+
+    // 使用者開始改草稿，說明就收掉。
+    await tester.enterText(
+      find.byKey(const ValueKey('draft-polish-input')),
+      '今天要不要出來？',
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('draft-polish-notice')), findsNothing);
+  });
+
   testWidgets('複製鈕把目前結果交給呼叫端', (tester) async {
     final copied = <String>[];
     await pumpSheet(
       tester,
       initialDraft: '草稿',
-      onPolish: (_) async => const OptimizedMessage(
-        original: '草稿',
-        optimized: '潤飾結果',
-        reason: '',
+      onPolish: (_) async => const DraftPolishOutcome.success(
+        OptimizedMessage(
+          original: '草稿',
+          optimized: '潤飾結果',
+          reason: '',
+        ),
       ),
       onCopy: copied.add,
     );

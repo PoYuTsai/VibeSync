@@ -4960,8 +4960,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   /// 優化用戶訊息
   /// 草稿潤飾的唯一計費路徑；DraftPolishSheet 只透過這裡送出。
-  /// 成功回傳結果；失敗或取消回 null（提示已在這裡顯示）。
-  Future<OptimizedMessage?> _polishDraft(String draftInput) async {
+  /// 成功回 success；被擋下（亂碼／安全／格式無效，皆不扣費）回 blocked
+  /// 讓面板把說明留在畫面上；其他失敗或取消回 null（提示已在這裡顯示）。
+  Future<DraftPolishOutcome?> _polishDraft(String draftInput) async {
     final draft = draftInput.trim();
     if (draft.isEmpty) return null;
 
@@ -5066,7 +5067,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // isCurrent 檢查會讓清理等到面板關閉後由 build/lifecycle 補做；期間
       // requestId 保留，同一份輸入 replay 拿回同一結果，不重複扣費。
       await _clearOptimizePendingAfterVisibleFrame(pending);
-      return result.optimizedMessage;
+      return DraftPolishOutcome.success(result.optimizedMessage!);
     } on DailyLimitExceededException catch (e) {
       if (!mounted) return null;
       _showFloatingSnackBar(_dailyQuotaExceededMessage(e));
@@ -5080,6 +5081,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     } on AnalysisException catch (e) {
       // 身分被伺服器否認時的 reset 由 OptimizeRequestRunner 負責，這裡只顯示文案。
       if (!mounted) return null;
+      // 被擋下（亂碼防呆／安全守門與格式無效，皆不扣費）：說明改留在面板
+      // 上，snackbar 一閃就過看不懂為什麼沒結果（2026-08-16 Eric 真機回饋）。
+      if (e.code == 'OPTIMIZE_MESSAGE_DRAFT_UNREADABLE' ||
+          e.code == 'OPTIMIZE_MESSAGE_RESULT_INVALID') {
+        return DraftPolishOutcome.blocked(e.message);
+      }
       _showFloatingSnackBar(e.message);
       if (e.suggestedAction == AnalysisErrorAction.upgrade) {
         await _showPaywall(context);

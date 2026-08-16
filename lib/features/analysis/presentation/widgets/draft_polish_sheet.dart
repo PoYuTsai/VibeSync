@@ -15,9 +15,25 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/analysis_models.dart';
 
-/// 一次成功潤飾的結果；呼叫端已處理提示的失敗或使用者取消時回 null，
-/// 面板只需要停止 loading。
-typedef DraftPolishRequest = Future<OptimizedMessage?> Function(String draft);
+/// 一次潤飾請求的面板層結果。
+///
+/// - [result]：成功的潤飾結果。
+/// - [notice]：被擋下時要**留在面板上**給使用者看的說明（亂碼防呆、
+///   安全守門、格式無效都不扣費）——snackbar 一閃就過，使用者看不懂
+///   為什麼沒結果（2026-08-16 Eric 真機回饋）。
+///
+/// 呼叫端已自行提示的情況（額度／登入／泛用失敗／取消）仍回 null，
+/// 面板只停止 loading。
+class DraftPolishOutcome {
+  final OptimizedMessage? result;
+  final String? notice;
+
+  const DraftPolishOutcome.success(OptimizedMessage this.result)
+      : notice = null;
+  const DraftPolishOutcome.blocked(String this.notice) : result = null;
+}
+
+typedef DraftPolishRequest = Future<DraftPolishOutcome?> Function(String draft);
 
 Future<void> showDraftPolishSheet(
   BuildContext context, {
@@ -65,6 +81,7 @@ class DraftPolishSheet extends StatefulWidget {
 class _DraftPolishSheetState extends State<DraftPolishSheet> {
   bool _isPolishing = false;
   OptimizedMessage? _result;
+  String? _notice;
   final FocusNode _draftFocusNode = FocusNode();
 
   @override
@@ -77,13 +94,22 @@ class _DraftPolishSheetState extends State<DraftPolishSheet> {
     final draft = widget.draftController.text.trim();
     if (draft.isEmpty || _isPolishing) return;
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => _isPolishing = true);
-    final result = await widget.onPolish(draft);
+    setState(() {
+      _isPolishing = true;
+      _notice = null;
+    });
+    final outcome = await widget.onPolish(draft);
     if (!mounted) return;
     setState(() {
       _isPolishing = false;
-      // 失敗保留上一輪結果，提示已由呼叫端顯示。
-      if (result != null) _result = result;
+      // null＝呼叫端已提示（額度／登入／泛用失敗），保留上一輪結果。
+      if (outcome == null) return;
+      if (outcome.result != null) {
+        _result = outcome.result;
+      } else {
+        // 被擋下（亂碼／安全／格式無效、皆不扣費）：說明留在面板上。
+        _notice = outcome.notice;
+      }
     });
   }
 
@@ -221,7 +247,8 @@ class _DraftPolishSheetState extends State<DraftPolishSheet> {
                               ),
                             ),
                             onTapOutside: (_) => _draftFocusNode.unfocus(),
-                            onChanged: (_) => setState(() {}),
+                            // 改了草稿就收掉上一輪的擋下說明。
+                            onChanged: (_) => setState(() => _notice = null),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -245,6 +272,42 @@ class _DraftPolishSheetState extends State<DraftPolishSheet> {
                             label: Text(_isPolishing ? '優化中…' : '優化這段草稿'),
                           ),
                         ),
+                        if (_notice != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            key: const ValueKey('draft-polish-notice'),
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color:
+                                    AppColors.warning.withValues(alpha: 0.30),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.info_outline_rounded,
+                                  size: 18,
+                                  color: AppColors.warning,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _notice!,
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.onBackgroundPrimary,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         if (result != null &&
                             result.optimized.trim().isNotEmpty) ...[
                           const SizedBox(height: 20),
