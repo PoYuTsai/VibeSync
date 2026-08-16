@@ -120,9 +120,6 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   final _focusNode = FocusNode();
   String? _lastAskedQuestion;
 
-  /// 使用者按了「想問別的」：這輪輸入列不用釐清 hint。送出或切 scope 歸零。
-  bool _composeNewQuestion = false;
-
   @override
   void didUpdateWidget(covariant CoachSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -131,7 +128,6 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     // 輸入框草稿刻意不清（設計拍板：切換保留草稿）。
     if (widget.scope != oldWidget.scope) {
       _lastAskedQuestion = null;
-      _composeNewQuestion = false;
     }
     if (widget.focusRequestToken != oldWidget.focusRequestToken) {
       final prefill = widget.prefillText?.trim();
@@ -246,7 +242,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                             results: timeline,
                             dailyRemaining: subscription.dailyRemaining,
                             onFollowUp: _focusInputForFollowUp,
-                            onAskDifferent: _focusInputForNewQuestion,
+                            onAskDifferent: _startNewQuestion,
                             onForceAnswer: _forceAnswer,
                           ),
                       ],
@@ -257,11 +253,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
             ),
           ),
         ),
-        // 按過「想問別的」就先不用釐清 hint，換回一般問句引導。
-        _buildInputBar(
-          canSubmit: canSubmit,
-          isClarifying: isClarifying && !_composeNewQuestion,
-        ),
+        _buildInputBar(canSubmit: canSubmit, isClarifying: isClarifying),
       ],
     );
   }
@@ -490,7 +482,6 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     FocusScope.of(context).unfocus();
     setState(() {
       _lastAskedQuestion = question;
-      _composeNewQuestion = false;
       _controller.clear();
     });
     ref.read(coachChatControllerProvider(widget.scope).notifier).ask(
@@ -532,10 +523,14 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     _focusNode.requestFocus();
   }
 
-  /// 「想問別的」：跳出釐清循環——輸入列 hint 換回一般問句引導，
-  /// 下一則送出仍走同一條 ask 路徑（教練自己會接住換題）。
-  void _focusInputForNewQuestion() {
-    setState(() => _composeNewQuestion = true);
+  /// 「想問別的」：把目前這串釐清直接關掉重開（2026-08-16 Bruce 回饋
+  /// 二輪）——免費釐清列整串刪除、session 歸零，輸入列自然回到一般問句
+  /// 引導，下一題從乾淨狀態開始。
+  Future<void> _startNewQuestion() async {
+    await ref
+        .read(coachChatControllerProvider(widget.scope).notifier)
+        .discardClarifyingThread();
+    if (!mounted) return;
     _controller.clear();
     _focusNode.requestFocus();
   }

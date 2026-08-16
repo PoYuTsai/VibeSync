@@ -81,6 +81,13 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
   }
 
   @override
+  Future<bool> deleteUnified(String id) async {
+    if (!_unifiedBox.containsKey(id)) return false;
+    await _unifiedBox.delete(id);
+    return true;
+  }
+
+  @override
   Future<void> deleteScope(String scopeType, String scopeId) async {
     assert(
       _isKnownScopeType(scopeType),

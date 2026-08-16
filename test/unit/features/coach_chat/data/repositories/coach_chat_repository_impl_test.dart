@@ -305,6 +305,21 @@ void main() {
       expect(latest.earlierSummary, contains('舊摘要'));
     });
 
+    test('deleteUnified 只刪該筆；unified box 沒有的 id 回 false', () async {
+      await repo.putUnified(_unified('u-keep'));
+      await repo.putUnified(
+        _unified('u-drop', generatedAt: DateTime(2026, 5, 7, 13)),
+      );
+
+      expect(await repo.deleteUnified('u-drop'), isTrue);
+      expect(
+        repo.listByScope('conversation', 'c-1').map((r) => r.id),
+        ['u-keep'],
+      );
+      // read-bridge legacy 列（或不存在的 id）刪不到，回 false 讓呼叫端停手。
+      expect(await repo.deleteUnified('not-there'), isFalse);
+    });
+
     test('deleteScope removes only that scope from the unified box', () async {
       await legacyChatBox.put('legacy-1', _result('legacy-1'));
       await repo.putUnified(_unified('u-a', scopeId: 'c-1'));

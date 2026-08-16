@@ -43,6 +43,9 @@ class MemoryCoachChatRepository implements CoachChatRepository {
     );
   }
 
+  @override
+  Future<bool> deleteUnified(String id) async => _store.remove(id) != null;
+
   // Phase E 之後 UI 一律走 unified scope 路徑；legacy facade 被呼叫代表
   // 走錯路，直接炸出來當回歸守門。
   @override

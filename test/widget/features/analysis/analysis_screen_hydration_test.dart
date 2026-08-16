@@ -215,6 +215,9 @@ class _EmptyCoachChatRepository extends CoachChatRepository {
 
   @override
   Future<void> deleteScope(String scopeType, String scopeId) async {}
+
+  @override
+  Future<bool> deleteUnified(String id) async => false;
 }
 
 class _NoPartnerRepo implements PartnerRepoView {

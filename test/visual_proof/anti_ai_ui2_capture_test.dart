@@ -191,6 +191,9 @@ class _StubCoachChatRepository implements CoachChatRepository {
 
   @override
   Future<void> deleteScope(String scopeType, String scopeId) async {}
+
+  @override
+  Future<bool> deleteUnified(String id) async => false;
 }
 
 Conversation _seededConversation({required bool withResult}) {

@@ -23,4 +23,8 @@ abstract class CoachChatRepository {
   Future<void> putUnified(UnifiedCoachResult result);
 
   Future<void> deleteScope(String scopeType, String scopeId);
+
+  /// 刪除單筆 unified 列（「想問別的」關掉釐清串用）。只砍 unified box；
+  /// read-bridge 的 legacy 列刪不到，回傳 false 讓呼叫端停手。
+  Future<bool> deleteUnified(String id);
 }

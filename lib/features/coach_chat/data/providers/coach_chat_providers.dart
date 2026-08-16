@@ -316,6 +316,29 @@ class CoachChatController
     );
   }
 
+  /// 「想問別的」：關掉目前這串釐清並重開（2026-08-16 Bruce 回饋二輪）。
+  ///
+  /// 釐清輪免費、不含正式建議，整串連續的釐清列直接刪掉，露出上一個正式
+  /// 回答（或空狀態）；session 歸零，下一個問題不再續接這條釐清脈絡。
+  /// read-bridge 的 legacy 列刪不動時就地停下（遠古資料，不硬拗）。
+  Future<void> discardClarifyingThread() async {
+    if (_inFlight) return;
+    final scope = arg;
+    final repo = ref.read(coachChatRepositoryProvider);
+    var latest = state.valueOrNull ?? repo.latestForScope(scope.type, scope.id);
+    var removedAny = false;
+    while (latest != null && latest.isClarifyingQuestion) {
+      if (!await repo.deleteUnified(latest.id)) break;
+      removedAny = true;
+      latest = repo.latestForScope(scope.type, scope.id);
+    }
+    _activeSessionId = null;
+    _activeTurns = const [];
+    if (!removedAny) return;
+    ref.invalidate(coachChatHistoryProvider(scope));
+    state = AsyncValue.data(latest);
+  }
+
   /// 新合成 session id：conversation scope 保留既有 `coach-<id>-<ts>` 形狀
   /// （語意零變）；partner scope 用 scope.key 避免與同 id 的 conversation
   /// session 撞名。

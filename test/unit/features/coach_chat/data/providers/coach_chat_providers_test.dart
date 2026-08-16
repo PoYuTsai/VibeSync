@@ -164,6 +164,9 @@ class _FakeRepo implements CoachChatRepository {
   }
 
   @override
+  Future<bool> deleteUnified(String id) async => _store.remove(id) != null;
+
+  @override
   List<CoachChatResult> listByConversation(String conversationId) =>
       throw UnimplementedError('Phase E controller must use listByScope');
 
@@ -1195,6 +1198,61 @@ void main() {
         isNot(calls[0].body['requestId']),
         reason: '釐清回應成功也 retire，下一輪追問是新 intent',
       );
+    });
+
+    test('discardClarifyingThread 刪整串釐清列並重開 session（想問別的）',
+        () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: (fn, {required body}) async {
+          calls.add(_RecordedCall(fn, Map<String, dynamic>.from(body)));
+          return CoachChatInvokeResponse(
+            status: 200,
+            data: calls.length == 1
+                ? _edgeClarification(sessionId: 's-clarify')
+                : _edgeSuccess(sessionId: 's-after'),
+          );
+        },
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
+      await notifier.ask(question: '第一題', analysisSnapshot: _snapshot());
+      expect(
+        c
+            .read(coachChatControllerProvider(_conversationScope))
+            .valueOrNull
+            ?.isClarifyingQuestion,
+        isTrue,
+      );
+
+      await notifier.discardClarifyingThread();
+
+      // 釐清列整串刪掉：狀態與歷史都不再是釐清。
+      expect(
+        c
+            .read(coachChatControllerProvider(_conversationScope))
+            .valueOrNull
+            ?.isClarifyingQuestion,
+        isNot(isTrue),
+      );
+      expect(
+        repo
+            .listByScope('conversation', 'c-1')
+            .any((r) => r.isClarifyingQuestion),
+        isFalse,
+      );
+
+      // 重開：下一題不得續接釐清 session。
+      await notifier.ask(question: '換一題', analysisSnapshot: _snapshot());
+      expect(calls, hasLength(2));
+      expect(calls[1].body['sessionId'], isNot('s-clarify'));
     });
 
     test('fresh-session wire sessionId is stable across transient retries',
