@@ -72,9 +72,25 @@ export function normalizeAiText(value: unknown): string {
   return looksLikeRawModelPayload(normalized) ? "" : normalized;
 }
 
+/// 生成文字的文字系統白名單清洗（2026-08-17 Eric 實測：冷讀卡混出俄文
+/// 「простее」——Sonnet 偶發外語 token 洩漏，prompt 條款擋不乾淨）。
+/// 只套「模型生成」的欄位；sourceMessage、OCR content、球清單等引用
+/// 使用者對話的欄位不得套用——對方真的用外文聊天是合法資料。
+/// 只掃已知洩漏面（希臘、西里爾、希伯來、阿拉伯、天城文、泰文、諺文）；
+/// CJK、假名（台灣常見「の」）、拉丁、數字、標點與 emoji 全保留。
+export function stripForeignScriptChars(value: string): string {
+  return value
+    .replace(
+      /[\u0370-\u03FF\u0400-\u052F\u0590-\u05FF\u0600-\u06FF\u0900-\u097F\u0E00-\u0E7F\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]+/g,
+      "",
+    )
+    .replace(/[^\S\n]{2,}/g, " ")
+    .trim();
+}
+
 function normalizeReplyTextValue(value: unknown): string {
   if (typeof value === "string") {
-    return normalizeAiText(value);
+    return stripForeignScriptChars(normalizeAiText(value));
   }
 
   if (!value || typeof value !== "object") {
@@ -82,9 +98,9 @@ function normalizeReplyTextValue(value: unknown): string {
   }
 
   const record = value as Record<string, unknown>;
-  const direct = normalizeAiText(
+  const direct = stripForeignScriptChars(normalizeAiText(
     record.reply ?? record.content ?? record.text ?? record.suggestion,
-  );
+  ));
   if (direct.length > 0) {
     return direct;
   }
@@ -99,7 +115,9 @@ function normalizeReplyTextValue(value: unknown): string {
 }
 
 function clampNormalizedText(value: unknown, maxLength: number): string {
-  const normalized = normalizeAiText(value).replace(/\s+/g, " ");
+  // 呼叫端全是生成欄位（approach／coachActionHint），一律清外語洩漏。
+  const normalized = stripForeignScriptChars(normalizeAiText(value))
+    .replace(/\s+/g, " ");
   return normalized.length > maxLength
     ? normalized.slice(0, maxLength).trim()
     : normalized;
@@ -143,7 +161,8 @@ export function sanitizeReplySegments(value: unknown) {
     }
 
     const record = item as Record<string, unknown>;
-    const reply = normalizeAiText(record.reply);
+    // reply／label／reason 是生成欄位要清外語；sourceMessage 引用原文不清。
+    const reply = stripForeignScriptChars(normalizeAiText(record.reply));
     if (reply.length === 0) {
       continue;
     }
@@ -155,10 +174,12 @@ export function sanitizeReplySegments(value: unknown) {
 
     segments.push({
       ...(sourceIndex != null ? { sourceIndex } : {}),
-      label: normalizeAiText(record.label).slice(0, 24),
+      label: stripForeignScriptChars(normalizeAiText(record.label))
+        .slice(0, 24),
       sourceMessage: normalizeAiText(record.sourceMessage).slice(0, 120),
       reply,
-      reason: normalizeAiText(record.reason).slice(0, 120),
+      reason: stripForeignScriptChars(normalizeAiText(record.reason))
+        .slice(0, 120),
     });
   }
 
@@ -606,17 +627,17 @@ export function ensureNonEmptyAnalysisOutput({
   const preferredPick = normalizeAiText(
     (result.finalRecommendation as Record<string, unknown> | undefined)?.pick,
   );
-  const preferredContent = normalizeAiText(
+  const preferredContent = stripForeignScriptChars(normalizeAiText(
     (result.finalRecommendation as Record<string, unknown> | undefined)
       ?.content,
-  );
-  const preferredReason = normalizeAiText(
+  ));
+  const preferredReason = stripForeignScriptChars(normalizeAiText(
     (result.finalRecommendation as Record<string, unknown> | undefined)?.reason,
-  );
-  const preferredPsychology = normalizeAiText(
+  ));
+  const preferredPsychology = stripForeignScriptChars(normalizeAiText(
     (result.finalRecommendation as Record<string, unknown> | undefined)
       ?.psychology,
-  );
+  ));
   const preferredSegments = sanitizeReplySegments(
     (result.finalRecommendation as Record<string, unknown> | undefined)
       ?.replySegments,

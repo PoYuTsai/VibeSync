@@ -22,6 +22,9 @@ import {
   enforceReplySegmentSourceContract,
   extractPartnerBallList,
   postProcessAnalysisResult,
+  sanitizeReplies,
+  sanitizeReplySegments,
+  stripForeignScriptChars,
 } from "./post_process.ts";
 
 Deno.test("calibrateEnthusiasmScore applies 0.9 and rounds fractions up", () => {
@@ -800,4 +803,41 @@ Deno.test("r1-P2b guard: fragment sourceMessage matching its own ball passes unc
   assertEquals(repaired.length, 1);
   assertEquals(repaired[0].sourceIndex, 1);
   assertEquals(repaired[0].sourceMessage, "紅牛跟賓士");
+});
+
+Deno.test("stripForeignScriptChars 清外語洩漏、保中英 emoji 與の", () => {
+  // 2026-08-17 Eric 實測：冷讀卡混出俄文「простее」。
+  assertEquals(
+    stripForeignScriptChars("應該比妳自己糾結怎麼約простее"),
+    "應該比妳自己糾結怎麼約",
+  );
+  assertEquals(stripForeignScriptChars("안녕 妳好 สวัสดี"), "妳好");
+  // 白名單全保留：中文、英文、數字、emoji、假名（台灣常見の）、換行。
+  assertEquals(
+    stripForeignScriptChars("週五 7 點的 F1 派對🔥 妳の行程\nOK?"),
+    "週五 7 點的 F1 派對🔥 妳の行程\nOK?",
+  );
+});
+
+Deno.test("外語清洗只套生成欄位：reply 清、sourceMessage 引用原文不清", () => {
+  const segments = sanitizeReplySegments([
+    {
+      sourceIndex: 1,
+      label: "接她的行程простое",
+      sourceMessage: "오늘 뭐해?（她原文就是韓文）",
+      reply: "妳下課後直接來找我простее",
+      reason: "降低她的糾結",
+    },
+  ]);
+  assertEquals(segments.length, 1);
+  assertEquals(segments[0].reply, "妳下課後直接來找我");
+  assertEquals(segments[0].label, "接她的行程");
+  // 引用對方原文的欄位原樣保留。
+  assert(segments[0].sourceMessage.includes("오늘 뭐해?"));
+
+  const replies = sanitizeReplies(
+    { extend: "我們要怎麼約～妳來找我простее" },
+    ["extend"],
+  );
+  assertEquals(replies.extend, "我們要怎麼約～妳來找我");
 });
