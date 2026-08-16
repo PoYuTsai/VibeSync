@@ -341,6 +341,79 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     );
   }
 
+  /// 點縮圖看全圖（2026-08-16 Eric 回饋）：配方同練習室對象照片
+  /// （practice_girl_photo.dart 的全螢幕 viewer）——黑底、可捏合縮放、
+  /// 點任一處或右上關閉。
+  Future<void> _showFullImage(Uint8List imageBytes) {
+    return showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      builder: (dialogContext) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(dialogContext).pop(),
+        child: Dialog.fullscreen(
+          backgroundColor: Colors.black,
+          child: SafeArea(
+            child: Stack(
+              children: [
+                Center(
+                  child: InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 3,
+                    child: Image.memory(
+                      imageBytes,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.medium,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: 18,
+                  child: Center(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.brandInk.withValues(alpha: 0.62),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          '點一下關閉',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    tooltip: '關閉',
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildImageThumbnail(Uint8List imageBytes, int index) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -354,13 +427,16 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
             padding: EdgeInsets.zero,
             color: widget.surfaceColor,
             borderColor: widget.surfaceBorderColor,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Image.memory(
-                imageBytes,
-                fit: BoxFit.cover,
-                width: widget.tileSize,
-                height: widget.tileSize,
+            child: GestureDetector(
+              onTap: () => _showFullImage(imageBytes),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Image.memory(
+                  imageBytes,
+                  fit: BoxFit.cover,
+                  width: widget.tileSize,
+                  height: widget.tileSize,
+                ),
               ),
             ),
           ),
