@@ -100,7 +100,10 @@ void main() {
     expect(_richText('邊界提醒：發出後先不要連續追問'), findsOneWidget);
     expect(find.text('看完整教練分析'), findsOneWidget);
     expect(find.text('繼續深挖'), findsOneWidget);
-    expect(find.text('照著發了'), findsOneWidget);
+    // 兩段式成效卡已退場（2026-08-16 Bruce 回饋三輪），換輕量拇指回饋。
+    expect(find.text('這個建議有幫助嗎？'), findsOneWidget);
+    expect(find.text('照著發了'), findsNothing);
+    expect(find.text('這則建議你怎麼處理？'), findsNothing);
 
     expect(find.text('完整分析正文'), findsNothing);
     expect(_richText('我理解你的真實想法：想靠近，但不想給對方壓力'), findsNothing);

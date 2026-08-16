@@ -4,15 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
-import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
-import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
-import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../data/providers/coach_chat_providers.dart';
 import '../../data/services/coach_chat_api_service.dart';
 import '../../domain/entities/coach_chat_mode.dart';
@@ -120,6 +119,10 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   final _focusNode = FocusNode();
   String? _lastAskedQuestion;
 
+  /// 乾淨版（2026-08-16 Bruce 回饋三輪）：畫面只顯示本次進來後真的問出去
+  /// 的結果；歷史只進教練記憶（repo／摘要／session 續接），不再上畫面。
+  final Set<String> _sessionResultIds = <String>{};
+
   @override
   void didUpdateWidget(covariant CoachSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -160,10 +163,12 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     final conversation = widget.scope.isConversation
         ? ref.watch(conversationProvider(widget.scope.id))
         : null;
+    // 乾淨版：進場自動載入的舊結果與「想問別的」還原的舊答案都不顯示，
+    // 只留這次 session 產生的問答（loading→data 才進白名單）。
     final timeline = _mergeCoachHistory(
       history: history,
       current: state.valueOrNull,
-    );
+    ).where((result) => _sessionResultIds.contains(result.id)).toList();
     final memorySources = _coachMemorySources(
       ref: ref,
       conversation: conversation,
@@ -178,6 +183,12 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
         !activeError && (latest?.isClarifyingQuestion ?? false);
 
     ref.listen<AsyncValue<UnifiedCoachResult?>>(provider, (previous, next) {
+      // 只有這次進來後問出去的結果（loading→data）進顯示白名單；
+      // 「想問別的」還原舊答案是 data→data，不會誤入。
+      final freshId = next.valueOrNull?.id;
+      if (previous?.isLoading == true && freshId != null) {
+        setState(() => _sessionResultIds.add(freshId));
+      }
       final error = next.error;
       if (error == null) return;
       if (!context.mounted) return;
@@ -809,13 +820,6 @@ class CoachChatResultView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = CoachChatModeX.fromWire(result.mode);
     final isClarifying = result.isClarifyingQuestion;
-    final outcomeEvent = isClarifying
-        ? null
-        : ref.watch(
-            coachingOutcomeEventProvider(
-              coachingOutcomeIdForCoachResult(result.id),
-            ),
-          );
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1037,75 +1041,16 @@ class CoachChatResultView extends ConsumerWidget {
           ),
           if (!isClarifying) ...[
             const SizedBox(height: 12),
-            CoachingOutcomeCaptureCard(
-              event: outcomeEvent,
-              onUserActionSelected: (action) =>
-                  _recordUserAction(context, ref, action),
-              onOutcomeSelected: (signal) =>
-                  _recordReaction(context, ref, signal),
+            // 兩段式成效回報卡退場（2026-08-16 Bruce 回饋三輪：資訊太多），
+            // 換成與分析頁一致的輕量拇指回饋，走同一條 submit-feedback 管線。
+            _CoachAdviceFeedbackRow(
+              key: ValueKey('coach-feedback-${result.id}'),
+              result: result,
             ),
           ],
         ],
       ),
     );
-  }
-
-  Future<void> _recordUserAction(
-    BuildContext context,
-    WidgetRef ref,
-    CoachingUserAction action,
-  ) async {
-    final outcome = coachingOutcomeForUserAction(action);
-    try {
-      await ref.read(coachingOutcomeRecorderProvider).recordCoachResultOutcome(
-            result: result,
-            userAction: action,
-            outcome: outcome,
-          );
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已記下「${coachingUserActionLabel(action)}」，不扣額度。'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('暫時記不起來，晚點再試一次。'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
-
-  Future<void> _recordReaction(
-    BuildContext context,
-    WidgetRef ref,
-    CoachingOutcomeSignal signal,
-  ) async {
-    try {
-      final updated = await ref
-          .read(coachingOutcomeRecorderProvider)
-          .recordCoachResultReaction(result: result, outcome: signal);
-      if (updated == null) return;
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已記下「${coachingOutcomeSignalLabel(signal)}」，不扣額度。'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('暫時記不起來，晚點再試一次。'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
   }
 
   String _rewriteDecisionLabel(String decision) {
@@ -1448,6 +1393,119 @@ class _CoachNotice extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 「這個建議有幫助嗎？」拇指列——與分析頁走同一條 submit-feedback 管線
+/// （Supabase `feedback` 表＋Discord 通知），不是裝飾用。
+///
+/// 隱私：只送評分、方案、模型與 AI 生成的建議句（`finalRecommendation.pick`
+/// 固定 'coach_chat' 供後台辨識來源）；使用者的問題與對話原文不上傳。
+class _CoachAdviceFeedbackRow extends ConsumerStatefulWidget {
+  final UnifiedCoachResult result;
+
+  const _CoachAdviceFeedbackRow({super.key, required this.result});
+
+  @override
+  ConsumerState<_CoachAdviceFeedbackRow> createState() =>
+      _CoachAdviceFeedbackRowState();
+}
+
+class _CoachAdviceFeedbackRowState
+    extends ConsumerState<_CoachAdviceFeedbackRow> {
+  bool _submitting = false;
+  bool _submitted = false;
+
+  Future<void> _submit(String rating) async {
+    if (_submitting || _submitted) return;
+    setState(() => _submitting = true);
+    final tier = ref.read(subscriptionProvider).tier;
+    final suggested = widget.result.suggestedLine?.trim();
+    final advice = suggested != null && suggested.isNotEmpty
+        ? suggested
+        : widget.result.headline;
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'submit-feedback',
+        body: {
+          'rating': rating,
+          'userTier': tier,
+          'modelUsed': widget.result.modelUsed,
+          'aiResponse': {
+            'finalRecommendation': {'pick': 'coach_chat', 'content': advice},
+          },
+        },
+      ).timeout(const Duration(seconds: 20));
+      if (!mounted) return;
+      if (response.status >= 200 && response.status < 300) {
+        setState(() {
+          _submitted = true;
+          _submitting = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(rating == 'positive' ? '謝謝回饋！' : '感謝你的回饋，我們會持續改進！'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        setState(() => _submitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('回饋暫時沒有送出，稍後可以再試一次。'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('回饋暫時沒有送出，稍後可以再試一次。'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_submitted) {
+      return Text(
+        '已收到回饋，謝謝！',
+        style: AppTypography.caption.copyWith(
+          color: AppColors.glassTextSecondary,
+        ),
+      );
+    }
+    return Row(
+      children: [
+        Text(
+          '這個建議有幫助嗎？',
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.glassTextPrimary,
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          key: const ValueKey('coach-feedback-up'),
+          icon: const Icon(Icons.thumb_up_outlined),
+          color: AppColors.success,
+          tooltip: '有幫助',
+          visualDensity: VisualDensity.compact,
+          onPressed: _submitting ? null : () => _submit('positive'),
+        ),
+        IconButton(
+          key: const ValueKey('coach-feedback-down'),
+          icon: const Icon(Icons.thumb_down_outlined),
+          color: AppColors.error,
+          tooltip: '沒幫助',
+          visualDensity: VisualDensity.compact,
+          onPressed: _submitting ? null : () => _submit('negative'),
+        ),
+      ],
     );
   }
 }
