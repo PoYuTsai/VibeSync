@@ -104,14 +104,16 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
   void didUpdateWidget(ImagePickerWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (widget.externalImages != null &&
-        widget.externalImages!.isEmpty &&
-        _images.isNotEmpty) {
+    // 外部狀態變了就採納（清空或整批換圖，如分析頁「重新選圖」），但
+    // 一律**不回發**：didUpdateWidget 跑在父層 build 期間，回發等於
+    // setState-during-build；而且變更本來就是父層發起的，它狀態已一致，
+    // 非空批的 metrics 也由父層持有，回發只會用空 metrics 蓋掉它。
+    final external = widget.externalImages;
+    if (external != null && !listEquals(external, _images)) {
       setState(() {
-        _images = [];
+        _images = List<Uint8List>.from(external);
         _imageMetrics = [];
       });
-      _emitChanges();
     }
   }
 

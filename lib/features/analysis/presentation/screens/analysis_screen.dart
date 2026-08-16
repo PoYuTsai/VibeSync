@@ -2749,7 +2749,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   /// 「重新選圖」（2026-08-16 Bruce 回饋，取代「重新讀圖」）：直接開相簿
-  /// 重選 1–3 張，跑同一條辨識→確認流程，確認後整批取代本次內容。
+  /// 重選 1–3 張，選完**回到選圖確認區**（縮圖可增刪、由使用者自己按
+  /// 「辨識並取代本次內容」）。不自動辨識——已匯入片段的畫面上沒有辨識
+  /// 進度 UI，自動辨識會讓畫面停在舊結果毫無反應（2026-08-16 Eric 實測）。
   ///
   /// 檢查鏈與 ImagePickerWidget._processImage 同一套（格式→preflight→壓縮
   /// →大小）；那邊改規則這裡要同步。差異：這裡任一張不合格就整批中止、
@@ -2798,10 +2800,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
     if (!mounted) return;
 
-    await _recognizeAndAddToConversation(
-      overrideImages: images,
-      overrideMetrics: metrics,
-    );
+    // 走既有選圖狀態：清掉舊辨識預覽、顯示選圖確認區（含辨識 CTA 與進度）。
+    _handleSelectedImagesChanged(images);
+    _handleSelectedImageMetricsChanged(metrics);
+    unawaited(_scrollToBottom(delay: const Duration(milliseconds: 250)));
   }
 
   SessionContext _screenshotSessionContextFor(Conversation conversation) {
@@ -7039,10 +7041,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             const SizedBox(height: 24),
                           ],
 
-                          // 選圖／辨識區只在空片段出現；片段確認後整塊收掉
-                          // （2026-08-16 Bruce 回饋二輪：連選圖格也拆——要換
-                          // 截圖請另開新片段，「重新讀圖」只能重讀同一批）。
-                          if (isEmptyFragmentSetup) ...[
+                          // 選圖／辨識區在空片段出現；片段確認後收掉，但
+                          // 「重新選圖」把新批塞進 _selectedImages 時要重新
+                          // 展開，讓使用者增刪縮圖後自己按「辨識並取代」。
+                          if (isEmptyFragmentSetup ||
+                              _selectedImages.isNotEmpty) ...[
                             Container(
                               padding: isEmptyFragmentSetup
                                   ? EdgeInsets.zero

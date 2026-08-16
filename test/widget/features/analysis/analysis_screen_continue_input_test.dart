@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -236,7 +235,11 @@ void main() {
     testWidgets(
         'stale OCR confirmation creates a new Partner fragment and preserves completed source',
         (tester) async {
-      final imageBytes = Uint8List.fromList([1, 2, 3, 4]);
+      // 縮圖會真的渲染（ImagePickerWidget 採納 externalImages＋點圖放大），
+      // bytes 必須是合法圖檔：1x1 透明 PNG。
+      final imageBytes = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      );
       final tempDir = (await tester.runAsync(() async {
         final directory = await Directory.systemTemp.createTemp(
           'vibesync_ocr_stale_confirm_',
