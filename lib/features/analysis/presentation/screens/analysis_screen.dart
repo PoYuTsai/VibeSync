@@ -74,6 +74,7 @@ import '../../domain/services/screenshot_recognition_helper.dart';
 import '../../domain/services/screenshot_session_context_defaults.dart';
 import '../screens/partner_analysis_records_screen.dart';
 import '../widgets/analysis_platform_picker.dart';
+import '../widgets/draft_polish_sheet.dart';
 import '../widgets/reply_refine_sheet.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_added_feedback_card.dart';
@@ -190,10 +191,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   bool _isSubmittingFeedback = false;
   bool _includeFeedbackContext = false;
 
-  // 訊息優化功能
-  bool _showOptimizeInput = false;
+  // 訊息優化功能（顯示狀態在 DraftPolishSheet；這裡只留草稿與計費路徑）
   bool _showDetailedAnalysis = false;
-  bool _isOptimizing = false;
   final _optimizeController = TextEditingController();
   final _optimizeRequestSession = OptimizeMessageRequestIdSession(
     store: HiveOptimizeMessagePendingRequestStore(
@@ -208,7 +207,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   final _refineDraftStore = HiveReplyRefineDraftStore(
     () => StorageService.settingsBox,
   );
-  OptimizedMessage? _optimizedMessage;
   OptimizeMessagePendingRequest? _optimizePendingAwaitingPresentation;
 
   String? _feedbackCategory;
@@ -240,7 +238,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// pending，為已拍板接受的邊際成本。
   String? _analysisRunKey;
 
-  /// 潤飾稿獨立 runKey（_optimizeMessage 不走 _applyAnalysisResult 漏斗）。
+  /// 潤飾稿獨立 runKey（_polishDraft 不走 _applyAnalysisResult 漏斗）。
   String? _polishRunKey;
 
   /// 今日剩餘免費微調次數。真相源在 server，這裡只記住最近一次回應帶回來的
@@ -3223,9 +3221,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _clearScreenshotAddedFeedback();
     });
 
+    // detail 說明句已拆（2026-08-16 Bruce 回饋）；取代規則由確認對話框揭露。
     _showOcrImportSuccessSnackBar(
       title: '已確認本次片段，共 $messageCount 則訊息',
-      detail: '這批內容已固定；重新選擇截圖會整批取代，不會往下追加。',
       actionLabel: '查看本次內容',
       onAction: () {
         if (_scrollController.hasClients) {
@@ -3551,7 +3549,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   void _showOcrImportSuccessSnackBar({
     required String title,
-    required String detail,
+    String? detail,
     required String actionLabel,
     required VoidCallback onAction,
   }) {
@@ -3591,14 +3589,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    detail,
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.glassTextSecondary,
-                      height: 1.35,
+                  if (detail != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      detail,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.glassTextSecondary,
+                        height: 1.35,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -4897,16 +4897,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   /// 優化用戶訊息
-  Future<void> _optimizeMessage() async {
-    final draft = _optimizeController.text.trim();
-    if (draft.isEmpty) return;
+  /// 草稿潤飾的唯一計費路徑；DraftPolishSheet 只透過這裡送出。
+  /// 成功回傳結果；失敗或取消回 null（提示已在這裡顯示）。
+  Future<OptimizedMessage?> _polishDraft(String draftInput) async {
+    final draft = draftInput.trim();
+    if (draft.isEmpty) return null;
 
     final conversation = ref.read(conversationProvider(widget.conversationId));
-    if (conversation == null) return;
+    if (conversation == null) return null;
     final ownerUserId = SupabaseService.currentUser?.id;
     if (ownerUserId == null || ownerUserId.isEmpty) {
       _showFloatingSnackBar('登入狀態已失效，請重新登入後再試。本次不會扣額度。');
-      return;
+      return null;
     }
 
     try {
@@ -4948,10 +4950,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           );
           if (!consented || !mounted) return false;
 
-          _dismissKeyboard();
           setState(() {
-            _isOptimizing = true;
-            _optimizedMessage = null;
             _polishRunKey = null;
             _lastAnalysisTelemetry = null;
           });
@@ -4983,14 +4982,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       );
 
       // cancelled：使用者拒絕同意或畫面已離開，什麼都沒送出也沒鑄身分。
-      if (!outcome.isSuccess) return;
-      if (!mounted) return;
+      if (!outcome.isSuccess) return null;
+      if (!mounted) return null;
 
       final pending = outcome.pending!;
       final result = outcome.result!;
       setState(() {
-        _isOptimizing = false;
-        _optimizedMessage = result.optimizedMessage;
         _polishRunKey = const Uuid().v4();
         _optimizePendingAwaitingPresentation = pending;
       });
@@ -5003,38 +5000,53 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // Only clear the durable replay identity after Flutter has rendered the
       // paid result. If the user leaves before this frame, returning with the
       // same payload replays the server result instead of minting a new charge.
+      // 結果現在畫在 DraftPolishSheet（蓋在本頁上的 route）：這裡的
+      // isCurrent 檢查會讓清理等到面板關閉後由 build/lifecycle 補做；期間
+      // requestId 保留，同一份輸入 replay 拿回同一結果，不重複扣費。
       await _clearOptimizePendingAfterVisibleFrame(pending);
+      return result.optimizedMessage;
     } on DailyLimitExceededException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isOptimizing = false;
-      });
+      if (!mounted) return null;
       _showFloatingSnackBar(_dailyQuotaExceededMessage(e));
       await _showPaywall(context);
+      return null;
     } on MonthlyLimitExceededException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isOptimizing = false;
-      });
+      if (!mounted) return null;
       _showFloatingSnackBar(_monthlyQuotaExceededMessage(e));
       await _showPaywall(context);
+      return null;
     } on AnalysisException catch (e) {
       // 身分被伺服器否認時的 reset 由 OptimizeRequestRunner 負責，這裡只顯示文案。
-      if (!mounted) return;
-      setState(() {
-        _isOptimizing = false;
-      });
+      if (!mounted) return null;
       _showFloatingSnackBar(e.message);
       if (e.suggestedAction == AnalysisErrorAction.upgrade) {
         await _showPaywall(context);
       }
+      return null;
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isOptimizing = false;
-      });
+      if (!mounted) return null;
       _showFloatingSnackBar('訊息優化暫時失敗，請稍後再試。');
+      return null;
     }
+  }
+
+  Future<void> _openDraftPolishSheet() async {
+    await showDraftPolishSheet(
+      context,
+      draftController: _optimizeController,
+      onPolish: _polishDraft,
+      onCopy: _copyPolishedDraft,
+      onRefine: (text) =>
+          _refineReply(originText: text, originCardKey: 'polish'),
+    );
+  }
+
+  void _copyPolishedDraft(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    unawaited(_recordAnalysisCopy(cardKey: 'polish', copiedText: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已複製草稿，發出後記得回來回報結果')),
+    );
   }
 
   Future<void> _clearOptimizePendingAfterVisibleFrame(
@@ -6750,19 +6762,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     _buildConversationSourcePill(conversation),
                                   ],
                                 ),
-                                // 空片段不放副標（2026-08-14 Eric 對標示意稿：
-                                // 「先加入…」整句拆掉，說明由「還沒有訊息」區承擔）。
-                                if (isPendingAnalysisFragment ||
-                                    isCompletedAnalysisFragment) ...[
+                                // 空片段與待分析片段都不放副標（2026-08-14 對標
+                                // 示意稿拆「先加入…」；2026-08-16 Bruce 回饋再拆
+                                // 「這批新聊天會獨立分析…」）。只有封存片段需要
+                                // 唯讀說明。
+                                if (isCompletedAnalysisFragment) ...[
                                   const SizedBox(height: 4),
                                   Text(
-                                    isPendingAnalysisFragment
-                                        ? '這批新聊天會獨立分析，不會接回上一筆紀錄。'
-                                        : '這次分析已獨立封存，內容唯讀；新內容請另開分析片段。',
+                                    '這次分析已獨立封存，內容唯讀；新內容請另開分析片段。',
                                     style: AppTypography.bodySmall.copyWith(
-                                      color: isEmptyFragmentSetup
-                                          ? AppColors.onBackgroundSecondary
-                                          : AppColors.glassTextSecondary,
+                                      color: AppColors.glassTextSecondary,
                                       height: 1.35,
                                     ),
                                   ),
@@ -7044,38 +7053,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     ),
                                     const SizedBox(height: 12),
                                   ],
-                                  if (conversation.messages.isNotEmpty) ...[
-                                    Container(
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.ctaStart
-                                            .withValues(alpha: 0.08),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: AppColors.ctaStart
-                                              .withValues(alpha: 0.22),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        '本次片段已有 ${conversation.messages.length} 則訊息。重新選擇 1–3 張截圖會整批取代目前內容，不會往下追加。',
-                                        style: AppTypography.bodySmall.copyWith(
-                                          color: AppColors.onBackgroundPrimary,
-                                          height: 1.4,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                  ],
-                                  // 動作優先：選圖按鈕置頂，介紹文字降到 caption。
+                                  // 「本次片段已有 N 則…整批取代」提示已拆
+                                  // （2026-08-16 Bruce 回饋）；取代規則由辨識
+                                  // 確認對話框揭露，這裡只留選圖入口——下方
+                                  // 辨識預覽卡的「重新讀圖」只能重讀同一批，
+                                  // 換截圖仍必須走這裡。
                                   ImagePickerWidget(
                                     maxImages: 3,
                                     externalImages: _selectedImages, // 同步外部狀態
                                     helperTextColor:
                                         AppColors.onBackgroundSecondary,
-                                    // 空片段版型的提示改由下方「截圖小提醒」承擔
-                                    showHelperText: !isEmptyFragmentSetup,
+                                    // 教學文字全拆：空片段由「截圖小提醒」承擔，
+                                    // 已有片段不再重複教學（2026-08-16 Bruce 回饋）
+                                    showHelperText: false,
                                     tileSize: isEmptyFragmentSetup ? 104 : 70,
                                     onImagesChanged:
                                         _handleSelectedImagesChanged,
@@ -7108,20 +7098,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   ],
                                   // 「這次分析設定」已拆（2026-08-14 Eric 拍板：
                                   // 對象卡建立時已引導填過，這裡重複）。
+                                  // 「建議每張截圖保留 15 則內…」也拆
+                                  // （2026-08-16 Bruce 回饋：與截圖小提醒重複）。
                                   const SizedBox(height: 8),
-
-                                  // 對話長度提示（空片段版型已由截圖小提醒承擔）
-                                  if (!isEmptyFragmentSetup) ...[
-                                    Text(
-                                      '建議每張截圖保留 15 則內完整對話；過長請拆成 2-3 張，辨識會更穩。',
-                                      style: AppTypography.bodySmall.copyWith(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.55),
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                  const SizedBox(height: 12),
 
                                   // 如果有截圖，先顯示「辨識截圖文字」按鈕
                                   if (_selectedImages.isNotEmpty) ...[
@@ -7332,15 +7311,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     */
                                     const SizedBox(height: 12),
                                   ],
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    // 縮短到一行放得下（2026-08-14 Eric 真機回報換行）
-                                    'AI 會分析對方投入度、讀懂語意，教你最適合的回覆方式',
-                                    style: AppTypography.bodySmall.copyWith(
-                                      color: AppColors.textSecondary,
+                                  // 價值主張只留首次上傳的空片段；已有片段時
+                                  // 不再重複（2026-08-16 Bruce 回饋）。
+                                  if (isEmptyFragmentSetup) ...[
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      // 縮短到一行放得下（2026-08-14 Eric 真機回報換行）
+                                      'AI 會分析對方投入度、讀懂語意，教你最適合的回覆方式',
+                                      style: AppTypography.bodySmall.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                      textAlign: TextAlign.center,
                                     ),
-                                    textAlign: TextAlign.center,
-                                  ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -8022,7 +8005,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               height: 1,
                             ),
 
-                          // 草稿潤飾功能：使用者已有方向時才用；判斷/策略交給 Coach 1:1。
+                          // 草稿潤飾：獨立面板入口（2026-08-16 Bruce 回饋，
+                          // 從收合卡升級成整頁式）。判斷/策略仍交給 Coach 1:1。
                           if (_enthusiasmScore != null) ...[
                             const SizedBox(height: 24),
                             BrandSurfaceCard(
@@ -8030,226 +8014,54 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   GestureDetector(
-                                    onTap: () => setState(() =>
-                                        _showOptimizeInput =
-                                            !_showOptimizeInput),
-                                    child: Row(
+                                    key: const ValueKey('draft-polish-entry'),
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: _openDraftPolishSheet,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        const Text('✏️',
-                                            style: TextStyle(fontSize: 20)),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            '我已有草稿，幫我修自然',
-                                            style: AppTypography.titleMedium
-                                                .copyWith(
-                                                    color: AppColors
-                                                        .onBackgroundPrimary),
-                                          ),
-                                        ),
-                                        Icon(
-                                          _showOptimizeInput
-                                              ? Icons.expand_less
-                                              : Icons.expand_more,
-                                          color: AppColors.onBackgroundSecondary
-                                              .withValues(alpha: 0.6),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    '適合你已經知道想回什麼，只想調整語氣、長度和壓迫感。還不確定該不該回，就用「問教練」。',
-                                    style: AppTypography.bodySmall.copyWith(
-                                      color: AppColors.onBackgroundSecondary,
-                                      height: 1.35,
-                                    ),
-                                  ),
-                                  if (_showOptimizeInput) ...[
-                                    const SizedBox(height: 12),
-                                    TextField(
-                                      controller: _optimizeController,
-                                      style: AppTypography.bodyMedium.copyWith(
-                                          color: AppColors.onBackgroundPrimary),
-                                      decoration: InputDecoration(
-                                        hintText: '貼上你原本想傳的訊息…',
-                                        helperText:
-                                            '這裡只修草稿；成功完成使用 1 則。想討論下一步，請用「問教練」。',
-                                        hintStyle:
-                                            AppTypography.bodyMedium.copyWith(
-                                          color: AppColors.onBackgroundSecondary
-                                              .withValues(alpha: 0.6),
-                                        ),
-                                        helperStyle:
-                                            AppTypography.caption.copyWith(
-                                          color: AppColors.onBackgroundSecondary
-                                              .withValues(alpha: 0.6),
-                                        ),
-                                        filled: true,
-                                        fillColor: AppColors.brandInk
-                                            .withValues(alpha: 0.4),
-                                        border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          borderSide: BorderSide(
-                                              color: Colors.white
-                                                  .withValues(alpha: 0.12)),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          borderSide: BorderSide(
-                                              color: Colors.white
-                                                  .withValues(alpha: 0.12)),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          borderSide: const BorderSide(
-                                              color: AppColors.ctaStart,
-                                              width: 1.5),
-                                        ),
-                                        suffixIcon: IconButton(
-                                          icon: Icon(Icons.keyboard_hide,
+                                        Row(
+                                          children: [
+                                            const Text('✏️',
+                                                style: TextStyle(fontSize: 20)),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                '我已有草稿，幫我修自然',
+                                                style: AppTypography.titleMedium
+                                                    .copyWith(
+                                                        color: AppColors
+                                                            .onBackgroundPrimary),
+                                              ),
+                                            ),
+                                            Icon(
+                                              Icons.chevron_right,
                                               color: AppColors
                                                   .onBackgroundSecondary
-                                                  .withValues(alpha: 0.6)),
-                                          onPressed: _dismissKeyboard,
-                                          tooltip: '收起鍵盤',
+                                                  .withValues(alpha: 0.6),
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                      maxLines: 3,
-                                      textInputAction: TextInputAction.done,
-                                      onEditingComplete: _dismissKeyboard,
-                                      onTapOutside: (_) => _dismissKeyboard(),
-                                      enabled: !_isOptimizing,
-                                      onChanged: (_) => setState(() {}),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton.icon(
-                                        onPressed: _isOptimizing ||
-                                                _optimizeController.text
-                                                    .trim()
-                                                    .isEmpty
-                                            ? null
-                                            : _optimizeMessage,
-                                        icon: _isOptimizing
-                                            ? const SizedBox(
-                                                width: 16,
-                                                height: 16,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                        strokeWidth: 2),
-                                              )
-                                            : const Icon(Icons.auto_fix_high),
-                                        label: Text(
-                                          _isOptimizing ? '優化中…' : '優化這段草稿',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                  // 顯示優化結果
-                                  if (_optimizedMessage != null &&
-                                      _optimizedMessage!
-                                          .optimized.isNotEmpty) ...[
-                                    const SizedBox(height: 16),
-                                    const Divider(),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
-                                        const Text('✨',
-                                            style: TextStyle(fontSize: 18)),
-                                        const SizedBox(width: 8),
+                                        const SizedBox(height: 8),
                                         Text(
-                                          '優化後草稿',
-                                          style: AppTypography.titleMedium
-                                              .copyWith(
+                                          '適合你已經知道想回什麼，只想調整語氣、長度和壓迫感。還不確定該不該回，就用「問教練」。',
+                                          style:
+                                              AppTypography.bodySmall.copyWith(
                                             color:
-                                                AppColors.onBackgroundPrimary,
+                                                AppColors.onBackgroundSecondary,
+                                            height: 1.35,
                                           ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 8),
-                                    Container(
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            AppColors.brandSurface2
-                                                .withValues(alpha: 0.94),
-                                            AppColors.brandSurface
-                                                .withValues(alpha: 0.88),
-                                          ],
-                                        ),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: AppColors.ctaStart
-                                              .withValues(alpha: 0.55),
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black
-                                                .withValues(alpha: 0.22),
-                                            blurRadius: 12,
-                                            offset: const Offset(0, 4),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Text(
-                                        _optimizedMessage!.optimized,
-                                        style: AppTypography.bodyLarge.copyWith(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    if (_optimizedMessage!
-                                        .reason.isNotEmpty) ...[
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        '💡 ${_optimizedMessage!.reason}',
-                                        style: AppTypography.caption.copyWith(
-                                          color: AppColors.onBackgroundPrimary,
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 12),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: OutlinedButton.icon(
-                                        onPressed: () {
-                                          Clipboard.setData(ClipboardData(
-                                              text: _optimizedMessage!
-                                                  .optimized));
-                                          unawaited(_recordAnalysisCopy(
-                                            cardKey: 'polish',
-                                            copiedText:
-                                                _optimizedMessage!.optimized,
-                                          ));
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                                content:
-                                                    Text('已複製草稿，發出後記得回來回報結果')),
-                                          );
-                                        },
-                                        icon: const Icon(Icons.copy),
-                                        label: const Text('複製草稿'),
-                                      ),
-                                    ),
-                                    _buildRefineButton(
-                                      _optimizedMessage!.optimized,
-                                      originCardKey: 'polish',
-                                    ),
-                                    _buildAnalysisOutcomeBar(
-                                      cardKey: 'polish',
-                                      label: '潤飾草稿',
-                                    ),
-                                  ],
+                                  ),
+                                  // 複製過潤飾稿才浮出的成效回報列，留在本頁：
+                                  // 使用者發完訊息回來時，面板通常已經關了。
+                                  _buildAnalysisOutcomeBar(
+                                    cardKey: 'polish',
+                                    label: '潤飾草稿',
+                                  ),
                                 ],
                               ),
                             ),

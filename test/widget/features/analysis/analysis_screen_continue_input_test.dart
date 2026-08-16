@@ -218,13 +218,16 @@ void main() {
       expect(find.text('這句是我說'), findsNothing);
     });
 
-    testWidgets('pending fragment explains that a new OCR batch replaces it',
+    testWidgets('pending fragment keeps the picker but drops the replace copy',
         (tester) async {
       await _pumpAnalysisScreen(tester);
 
+      // 換截圖的唯一入口仍在（辨識預覽卡的「重新讀圖」只能重讀同一批）。
       expect(find.byType(ImagePickerWidget), findsOneWidget);
-      expect(find.textContaining('重新選擇 1–3 張截圖會整批取代'), findsOneWidget);
-      expect(find.textContaining('不會往下追加'), findsOneWidget);
+      // 「整批取代」教學文案已拆（2026-08-16 Bruce 回饋）；取代規則改由
+      // 辨識確認對話框揭露（screenshot_recognition_dialog_test 鎖住）。
+      expect(find.textContaining('重新選擇 1–3 張截圖會整批取代'), findsNothing);
+      expect(find.textContaining('本次片段已有'), findsNothing);
     });
 
     testWidgets(

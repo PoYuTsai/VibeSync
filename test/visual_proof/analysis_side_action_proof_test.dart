@@ -83,14 +83,6 @@ class _AnalysisActionProof extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    '這批新聊天會獨立分析，不會接回上一筆紀錄。',
-                    style: TextStyle(
-                      color: AppColors.glassTextSecondary,
-                      height: 1.35,
-                    ),
-                  ),
                   const SizedBox(height: 10),
                   ...messages.map((message) => MessageBubble(message: message)),
                 ],

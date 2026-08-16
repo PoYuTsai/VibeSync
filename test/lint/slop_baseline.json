@@ -23,7 +23,7 @@
   },
   "off_scale_radius": {
     "lib/features/analysis/presentation/screens/analysis_record_detail_screen.dart": 2,
-    "lib/features/analysis/presentation/screens/analysis_screen.dart": 45,
+    "lib/features/analysis/presentation/screens/analysis_screen.dart": 40,
     "lib/features/conversation/presentation/widgets/message_bubble.dart": 3,
     "lib/features/onboarding/presentation/screens/onboarding_screen.dart": 1,
     "lib/features/onboarding/presentation/widgets/demo_analysis_preview.dart": 1,

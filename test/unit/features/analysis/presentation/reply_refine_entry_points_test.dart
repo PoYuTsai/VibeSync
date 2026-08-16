@@ -23,14 +23,20 @@ void main() {
       source,
       contains('_refineReply(originText: text, originCardKey: type)'),
     );
-    // 草稿潤飾結果可以續調：複製草稿與 polish 追蹤列之間要有微調按鈕。
-    final copyDraftAt = source.indexOf("label: const Text('複製草稿')");
-    final polishOutcomeBarAt = source.indexOf("cardKey: 'polish',", copyDraftAt);
-    expect(copyDraftAt, greaterThanOrEqualTo(0));
-    expect(polishOutcomeBarAt, greaterThan(copyDraftAt));
+    // 草稿潤飾結果可以續調：2026-08-16 面板化後，「再調一下」按鈕
+    // 畫在 DraftPolishSheet，onRefine 接回本畫面的 _refineReply。
     expect(
-      source.substring(copyDraftAt, polishOutcomeBarAt),
-      contains('_buildRefineButton('),
+      source,
+      contains("_refineReply(originText: text, originCardKey: 'polish')"),
+    );
+    final sheetSource = File(
+      'lib/features/analysis/presentation/widgets/draft_polish_sheet.dart',
+    ).readAsStringSync();
+    final refineButtonAt = sheetSource.indexOf("Text('再調一下'");
+    expect(refineButtonAt, greaterThanOrEqualTo(0));
+    expect(
+      sheetSource.substring(0, refineButtonAt),
+      contains('widget.onRefine(result.optimized)'),
     );
   });
 

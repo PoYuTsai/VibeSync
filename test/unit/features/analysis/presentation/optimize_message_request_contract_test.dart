@@ -39,7 +39,10 @@ void main() {
 
   test('草稿潤飾跨手動重試沿用 requestId，成功後才結束請求', () {
     final source = File(_screenPath).readAsStringSync();
-    final methodStart = source.indexOf('Future<void> _optimizeMessage()');
+    // 2026-08-16 面板化：_optimizeMessage 改名 _polishDraft，改回傳結果
+    // 給 DraftPolishSheet 顯示；計費順序契約不變。
+    final methodStart =
+        source.indexOf('Future<OptimizedMessage?> _polishDraft(');
     final methodEnd = source.indexOf('// ===== 分析輔助方法', methodStart);
     expect(methodStart, greaterThanOrEqualTo(0));
     expect(methodEnd, greaterThan(methodStart));
@@ -79,7 +82,10 @@ void main() {
   });
 
   test('草稿潤飾在操作前明示成功固定使用一則', () {
-    final source = File(_screenPath).readAsStringSync();
-    expect(source, contains('成功完成使用 1 則'));
+    // 2026-08-16 面板化：揭露文案跟著輸入框搬進 DraftPolishSheet。
+    final sheetSource = File(
+      'lib/features/analysis/presentation/widgets/draft_polish_sheet.dart',
+    ).readAsStringSync();
+    expect(sheetSource, contains('成功完成使用 1 則'));
   });
 }
