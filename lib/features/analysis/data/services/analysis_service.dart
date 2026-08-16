@@ -1410,6 +1410,7 @@ class AnalysisService {
     String? knownContactName,
     String? userDraft,
     String? refineInstruction,
+    String? refineAnchorText,
     String? requestId,
     String? analyzeMode,
     bool recognizeOnly = false,
@@ -1466,6 +1467,7 @@ class AnalysisService {
           knownContactName: knownContactName,
           userDraft: userDraft,
           refineInstruction: refineInstruction,
+          refineAnchorText: refineAnchorText,
           requestId: logicalRequestId,
           analyzeMode: analyzeMode,
           recognizeOnly: recognizeOnly,
@@ -1556,6 +1558,7 @@ class AnalysisService {
     String? knownContactName,
     String? userDraft,
     String? refineInstruction,
+    String? refineAnchorText,
     String? requestId,
     String? analyzeMode,
     required bool recognizeOnly,
@@ -1571,6 +1574,14 @@ class AnalysisService {
     final trimmedRefineInstruction = refineInstruction?.trim();
     final hasRefineInstruction = trimmedRefineInstruction != null &&
         trimmedRefineInstruction.isNotEmpty;
+    // 多輪漂移錨：只在微調時有意義；與 anchor==draft 時一樣省略（server
+    // 端也會忽略）。刻意不進 fingerprint／input hash——同 draft＋指令＋脈絡
+    // 幾乎必同 anchor，不值得為它毀掉 7 天窗內的 replay。
+    final trimmedRefineAnchor = refineAnchorText?.trim();
+    final hasRefineAnchor = hasRefineInstruction &&
+        trimmedRefineAnchor != null &&
+        trimmedRefineAnchor.isNotEmpty &&
+        trimmedRefineAnchor != userDraft?.trim();
     final hasImages = images != null && images.isNotEmpty;
 
     try {
@@ -1651,6 +1662,7 @@ class AnalysisService {
           'knownContactName': knownContactName.trim(),
         if (hasUserDraft) 'userDraft': userDraft.trim(),
         if (hasRefineInstruction) 'refineInstruction': trimmedRefineInstruction,
+        if (hasRefineAnchor) 'refineAnchorText': trimmedRefineAnchor,
         if (requestId != null) 'requestId': requestId,
         if (analyzeMode != null) 'analyzeMode': analyzeMode,
         if (recognizeOnly) 'recognizeOnly': true,

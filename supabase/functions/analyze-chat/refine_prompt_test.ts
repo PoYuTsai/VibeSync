@@ -167,6 +167,54 @@ Deno.test("refine prompt：草稿本身也是 JSON 編碼，假分隔線一樣�
   assertStringIncludes(section, "optimizedMessage");
 });
 
+Deno.test("refine prompt：anchor 提供且異於草稿時以 JSON 注入，否則省略", () => {
+  // 多輪：anchor（最初原句）異於本輪草稿 → 第三條 JSON 行。
+  const withAnchor = buildRefineUserSection({
+    draft: "哈哈猜猜看我都吃什麼～話說你會想約出來吃飯嗎？",
+    instruction: "短一點",
+    anchorText: "哈哈那你猜我是吃什麼的？\n先不聊檳榔",
+  });
+  const jsonLines = withAnchor.split("\n").filter((l) => l.startsWith("{"));
+  assertEquals(jsonLines.length, 3);
+  const parsedAnchor = JSON.parse(jsonLines[1]) as { originalReply: string };
+  assertEquals(
+    parsedAnchor.originalReply,
+    sanitizeRefineInstructionForPrompt("哈哈那你猜我是吃什麼的？\n先不聊檳榔"),
+  );
+  assertStringIncludes(withAnchor, "動作與意圖判定以它為錨");
+
+  // 第一輪：anchor 與草稿相同 → 省略，不浪費 token。
+  const sameAnchor = buildRefineUserSection({
+    draft: "我先不去了",
+    instruction: "短一點",
+    anchorText: " 我先不去了 ",
+  });
+  assertEquals(
+    sameAnchor.split("\n").filter((l) => l.startsWith("{")).length,
+    2,
+  );
+
+  // 未提供（舊 client）→ 行為與從前完全一致。
+  const noAnchor = buildRefineUserSection({
+    draft: "我先不去了",
+    instruction: "短一點",
+  });
+  assert(!noAnchor.includes("Original Reply Anchor"));
+});
+
+Deno.test("refine prompt：品質規則禁純同義改寫、語助詞不得堆疊，且有快捷指令示範", () => {
+  assertStringIncludes(REFINE_REPLY_SYSTEM_PROMPT, "至少一個可感的改變");
+  assertStringIncludes(REFINE_REPLY_SYSTEM_PROMPT, "不要只換同義詞");
+  assertStringIncludes(REFINE_REPLY_SYSTEM_PROMPT, "不得超過 userDraft 原有的量");
+  assertStringIncludes(REFINE_REPLY_SYSTEM_PROMPT, "快捷指令示範");
+  assertStringIncludes(REFINE_REPLY_SYSTEM_PROMPT, "學改法，不要抄台詞");
+  // 四顆現役快捷指令都要有對應示範（「換個說法」已拆，不得再教它）。
+  for (const chip of ["太油了，自然一點", "短一點", "白話一點", "語氣溫和一點"]) {
+    assertStringIncludes(REFINE_REPLY_SYSTEM_PROMPT, chip);
+  }
+  assert(!REFINE_REPLY_SYSTEM_PROMPT.includes("換個說法"));
+});
+
 Deno.test("refine prompt：使用者區塊不得夾帶安全條款", () => {
   const section = buildRefineUserSection({
     draft: "我先不去了",

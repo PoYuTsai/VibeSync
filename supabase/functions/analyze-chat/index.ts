@@ -4755,6 +4755,7 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       knownContactName: rawKnownContactName,
       userDraft: rawUserDraft,
       refineInstruction: rawRefineInstruction,
+      refineAnchorText: rawRefineAnchorText,
       forceModel: rawForceModel,
       analyzeMode: rawAnalyzeMode,
       recognizeOnly: rawRecognizeOnly,
@@ -6702,6 +6703,16 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       ? refineValidation.instruction
       : undefined;
 
+    // 微調多輪漂移錨（anchor_action 條款）：可選、只在微調時有意義。
+    // 刻意不進 input hash——比照 refineInstruction 的「非空才 append」教訓，
+    // 且同 draft＋指令＋脈絡幾乎必同 anchor，不值得為它毀掉 7 天窗 pending。
+    if (rawRefineAnchorText != null && typeof rawRefineAnchorText !== "string") {
+      return jsonResponse({ error: "Invalid refineAnchorText" }, 400);
+    }
+    const refineAnchorText = typeof rawRefineAnchorText === "string"
+      ? rawRefineAnchorText.trim().slice(0, MAX_USER_DRAFT_LENGTH)
+      : undefined;
+
     const sessionContextValidation = sanitizeSessionContext(rawSessionContext);
     if (sessionContextValidation.error) {
       return jsonResponse({ error: sessionContextValidation.error }, 400);
@@ -7580,6 +7591,7 @@ ${recentText}`;
           buildRefineUserSection({
             draft: userDraft.trim(),
             instruction: refineInstruction!,
+            anchorText: refineAnchorText,
           }),
         )
         : joinPromptSections(

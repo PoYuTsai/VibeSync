@@ -32,7 +32,8 @@ const kRefineQuickInstructions = <String>[
   '短一點',
   '白話一點',
   '語氣溫和一點',
-  '換個說法',
+  // 「換個說法」已拆（2026-08-16 Eric 拍板）：本質是同義改寫指令，與
+  // prompt「禁止純同義改寫」的品質規則自相矛盾，產出也最弱。
 ];
 
 /// 一次成功微調的結果。`freeRemaining` / `chargedQuota` 由 server 回應決定，

@@ -87,7 +87,7 @@ void main() {
     await tester.tap(_quick('短一點'));
     await tester.pump();
     await tester.tap(_quick('短一點'), warnIfMissed: false);
-    await tester.tap(_quick('換個說法'), warnIfMissed: false);
+    await tester.tap(_quick('白話一點'), warnIfMissed: false);
     await tester.pump();
 
     expect(calls, 1);

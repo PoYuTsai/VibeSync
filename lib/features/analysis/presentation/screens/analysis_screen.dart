@@ -5141,6 +5141,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               knownContactName: knownContactName,
               userDraft: currentText,
               refineInstruction: instruction,
+              // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的
+              // anchor_action 條款有錨可判——第 N 版不得長出原句沒有的邀約。
+              refineAnchorText: origin,
               requestId: pending.requestId,
               onTelemetry: _handleAnalysisTelemetry,
             );
