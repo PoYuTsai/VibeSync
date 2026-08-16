@@ -1199,6 +1199,15 @@ AnalysisException _mapAnalysisHttpError({
           suggestedAction: AnalysisErrorAction.wait,
         );
       }
+      // 亂碼防呆：模型宣告草稿無法理解，server 不扣費。文案要引導換草稿，
+      // 不能是「請稍後再試」——同一段亂碼再送幾次結果都一樣。
+      if (errorCode == 'OPTIMIZE_MESSAGE_DRAFT_UNREADABLE') {
+        return AnalysisException(
+          '看不懂這段草稿，請換成想傳的訊息再試一次。本次不會扣額度。',
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      }
       if (errorCode == 'OVERCHARGE_CLAIM_UNAVAILABLE') {
         // ADR #19：idempotency claim 不可用時 server fail closed 不扣費。
         return AnalysisException(

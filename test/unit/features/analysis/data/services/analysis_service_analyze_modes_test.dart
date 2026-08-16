@@ -676,6 +676,51 @@ void main() {
       );
     });
 
+    test('亂碼草稿：專屬文案引導換草稿、保住不扣費，不得說「請稍後再試」', () async {
+      final service = AnalysisService(
+        clientFactory: () => MockClient((request) async {
+          return http.Response(
+            jsonEncode({
+              'error': 'OPTIMIZE_MESSAGE_DRAFT_UNREADABLE',
+              'code': 'OPTIMIZE_MESSAGE_DRAFT_UNREADABLE',
+              'message': '看不懂這段草稿，請換成想傳的訊息再試一次。本次不會扣額度。',
+              'shouldChargeQuota': false,
+            }),
+            502,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'essential',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:optimize',
+      );
+
+      await expectLater(
+        () => service.analyzeConversation(
+          [_msg('最近有空嗎？')],
+          userDraft: '烏龜殼獸',
+          requestId: requestId,
+        ),
+        throwsA(
+          isA<AnalysisException>()
+              .having(
+                (error) => error.code,
+                'code',
+                'OPTIMIZE_MESSAGE_DRAFT_UNREADABLE',
+              )
+              .having(
+                (error) => error.message,
+                'message',
+                allOf(
+                  contains('看不懂這段草稿'),
+                  contains('本次不會扣額度'),
+                  isNot(contains('請稍後再試')),
+                ),
+              ),
+        ),
+      );
+    });
+
     test('maps fixed-cost monthly 429 with quotaNeeded one', () async {
       final service = AnalysisService(
         clientFactory: () => MockClient((request) async {

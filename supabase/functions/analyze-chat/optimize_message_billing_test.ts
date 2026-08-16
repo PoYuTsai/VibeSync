@@ -9,6 +9,7 @@ import {
   computeOptimizeMessageInputHash,
   hasUsableOptimizedMessage,
   hydrateOptimizeMessageReplayResult,
+  isOptimizeDraftUnreadable,
   isValidOptimizeMessageRequestId,
   OPTIMIZE_MESSAGE_COST,
   optimizeMessageReplayCutoffIso,
@@ -171,6 +172,27 @@ Deno.test("optimize-message replay preflight returns cached result or mismatch",
     }, "a".repeat(64)),
     { kind: "replay", result },
   );
+});
+
+Deno.test("optimize-message unreadable draft is flagged only by unusable: true", () => {
+  assert(isOptimizeDraftUnreadable({
+    optimizedMessage: { optimized: "", reason: "", unusable: true },
+  }));
+  // 模型違規把說明塞進 optimized 也要攔得住——旗標優先於內容。
+  assert(isOptimizeDraftUnreadable({
+    optimizedMessage: { optimized: "看不懂這段草稿", unusable: true },
+  }));
+  assertFalse(isOptimizeDraftUnreadable({
+    optimizedMessage: { optimized: "自然一點的句子", unusable: false },
+  }));
+  assertFalse(isOptimizeDraftUnreadable({
+    optimizedMessage: { optimized: "自然一點的句子" },
+  }));
+  // 非布林 true 一律不算（"true"／1 都不觸發不扣費路徑）。
+  assertFalse(isOptimizeDraftUnreadable({
+    optimizedMessage: { optimized: "", unusable: "true" },
+  }));
+  assertFalse(isOptimizeDraftUnreadable({}));
 });
 
 Deno.test("optimize-message success requires a non-empty optimized sentence", () => {

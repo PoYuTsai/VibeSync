@@ -97,6 +97,27 @@ export function hasUsableOptimizedMessage(
 }
 
 /**
+ * 模型明確宣告 userDraft 無法理解（亂碼防呆條款設 unusable: true）。
+ *
+ * 呼叫端據此走與安全守門同一條「不寫 ledger、不扣費」路徑，但回專屬
+ * 錯誤碼讓 client 顯示「看不懂這段草稿」而不是通用的「結果無效請稍後再試」。
+ * 必須在 hasUsableOptimizedMessage 之前判斷：模型可能違規把說明文字塞進
+ * optimized（2026-08-16 Eric 實測），那會讓結果看起來「可用」。
+ */
+export function isOptimizeDraftUnreadable(
+  result: Record<string, unknown>,
+): boolean {
+  const optimizedMessage = result.optimizedMessage;
+  if (
+    !optimizedMessage || typeof optimizedMessage !== "object" ||
+    Array.isArray(optimizedMessage)
+  ) {
+    return false;
+  }
+  return (optimizedMessage as Record<string, unknown>).unusable === true;
+}
+
+/**
  * Persist only the generated fields needed for a lost-response replay. The
  * raw original-draft, conversation, context, usage, and telemetry fields never
  * enter this record. The generated text may still reflect those inputs.
