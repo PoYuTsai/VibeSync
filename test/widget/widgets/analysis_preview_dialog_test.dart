@@ -98,9 +98,10 @@ void main() {
         find.textContaining('分析完成後會顯示實際使用的則數'),
         findsOneWidget,
       );
+      // 「重新分析會用目前整段對話…」說明已拆（2026-08-16 Bruce 回饋）。
       expect(
-        find.text('重新分析會用目前整段對話重新判斷；舊訊息只作為背景，不重複扣額度，這次只計算新增內容。'),
-        findsOneWidget,
+        find.textContaining('重新分析會用目前整段對話重新判斷'),
+        findsNothing,
       );
     });
 

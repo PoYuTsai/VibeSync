@@ -104,7 +104,8 @@ class AnalysisPreviewDialog extends StatelessWidget {
                 height: 1.45,
               ),
             )
-          else ...[
+          else
+            // 「重新分析會用目前整段對話…」說明已拆（2026-08-16 Bruce 回饋）。
             Text(
               '只有送出完整分析才會扣次數。先讀截圖、不做完整分析，不會扣次數。'
               '分析完成後會顯示實際使用的則數。',
@@ -113,15 +114,6 @@ class AnalysisPreviewDialog extends StatelessWidget {
                 height: 1.45,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              '重新分析會用目前整段對話重新判斷；舊訊息只作為背景，不重複扣額度，這次只計算新增內容。',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.textSecondary,
-                height: 1.45,
-              ),
-            ),
-          ],
         ],
       ),
       actions: [
