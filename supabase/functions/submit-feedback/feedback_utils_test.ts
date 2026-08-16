@@ -154,7 +154,7 @@ Deno.test("buildDiscordNotificationContent formats Discord webhook text", () => 
       },
     ),
     [
-      "Negative feedback received",
+      "👎 沒幫助回饋 — 分析頁",
       "",
       "User: vi***@gmail.com (starter)",
       "Category: Wrong style",
@@ -169,6 +169,40 @@ Deno.test("buildDiscordNotificationContent formats Discord webhook text", () => 
       "",
       "Model: claude-sonnet-4-6",
       "Time: 2026-04-24T12:00:00.000Z",
+    ].join("\n"),
+  );
+});
+
+Deno.test("buildDiscordNotificationContent formats positive coach feedback", () => {
+  // 正評（2026-08-16 起也通知）：不放 Category，開頭標來源「問教練」。
+  assertEquals(
+    buildDiscordNotificationContent(
+      {
+        userEmail: "vibesync.test@gmail.com",
+        userTier: "essential",
+        rating: "positive",
+        aiResponse: {
+          finalRecommendation: {
+            pick: "coach_chat",
+            content: "先接住她的話，再丟一個輕鬆的開放題。",
+          },
+        },
+        modelUsed: "claude-sonnet-5",
+      },
+      {
+        timestamp: "2026-08-16T08:00:00.000Z",
+      },
+    ),
+    [
+      "👍 有幫助回饋 — 問教練",
+      "",
+      "User: vi***@gmail.com (essential)",
+      "",
+      "AI recommendation:",
+      'coach_chat: "先接住她的話，再丟一個輕鬆的開放題。"',
+      "",
+      "Model: claude-sonnet-5",
+      "Time: 2026-08-16T08:00:00.000Z",
     ].join("\n"),
   );
 });

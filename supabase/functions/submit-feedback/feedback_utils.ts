@@ -145,13 +145,25 @@ export function buildDiscordNotificationContent(
   const timestamp = options?.timestamp ?? new Date().toISOString();
   const maskedEmail = maskEmailForNotification(feedback.userEmail);
 
+  // 2026-08-16 改版：正評也通知，開頭一眼看出 評分＋來源
+  // （finalRecommendation.pick === 'coach_chat' 是教練卡拇指的來源標記）。
+  const isPositive = feedback.rating === "positive";
+  const header = isPositive ? "👍 有幫助回饋" : "👎 沒幫助回饋";
+  const source = resolveFeedbackSourceLabel(feedback.aiResponse);
+
   const messageParts: string[] = [
-    "Negative feedback received\n\n",
+    `${header} — ${source}\n\n`,
     `User: ${maskedEmail} (${feedback.userTier})\n`,
-    `Category: ${
-      categoryLabels[feedback.category || "other"] || feedback.category
-    }\n`,
   ];
+
+  // 分類是負評表單才有的概念；正評不放，避免每則都是無資訊的 Other。
+  if (!isPositive) {
+    messageParts.push(
+      `Category: ${
+        categoryLabels[feedback.category || "other"] || feedback.category
+      }\n`,
+    );
+  }
 
   if (feedback.comment) {
     messageParts.push(
@@ -189,6 +201,23 @@ function clampOptionalString(
   maxLength: number,
 ): string | undefined {
   return truncateOptionalStringToMax(value, maxLength);
+}
+
+// 通知開頭的來源標籤。教練卡拇指固定送 pick='coach_chat'；分析頁送真實
+// pick（extend/resonate…）；沒帶 aiResponse 的老 client 就標 App。
+export function resolveFeedbackSourceLabel(
+  aiResponse: Record<string, unknown> | undefined,
+): string {
+  if (!isPlainObject(aiResponse)) {
+    return "App";
+  }
+  const recommendation = isPlainObject(aiResponse.finalRecommendation)
+    ? aiResponse.finalRecommendation
+    : null;
+  if (recommendation?.pick === "coach_chat") {
+    return "問教練";
+  }
+  return "分析頁";
 }
 
 export function sanitizeFeedbackAiResponse(

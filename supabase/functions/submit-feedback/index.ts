@@ -66,10 +66,8 @@ async function sendDiscordNotification(feedback: {
   aiResponse?: Record<string, unknown>;
   modelUsed?: string;
 }) {
-  if (feedback.rating !== "negative") {
-    return;
-  }
-
+  // 正評也通知（2026-08-16 Eric 拍板）；正/負評都走同一條通知路徑，
+  // 內容差異（分類、留言、片段）由 buildDiscordNotificationContent 決定。
   const notificationTarget = resolveDiscordNotificationTarget({
     webhookUrl: DISCORD_FEEDBACK_WEBHOOK_URL,
     botToken: DISCORD_BOT_TOKEN,
