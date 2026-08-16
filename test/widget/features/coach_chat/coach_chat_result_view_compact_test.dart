@@ -124,12 +124,13 @@ void main() {
     expect(_richText('教練追問：你真正想確認的是什麼？'), findsOneWidget);
   });
 
-  testWidgets('免費釐清回答維持直接展開，不顯示完整分析收合入口', (tester) async {
+  testWidgets('幫教練釐清回答維持直接展開，不顯示完整分析收合入口', (tester) async {
     await tester.pumpWidget(_wrap(_clarifyingResult()));
 
     expect(find.text('先確認你的目標'), findsOneWidget);
-    expect(find.text('免費釐清（最多 3 次）'), findsOneWidget);
-    expect(find.text('教練想先問清楚（免費釐清）'), findsOneWidget);
+    // 「免費釐清」改名「幫教練釐清」（2026-08-16 Eric 拍板，扣費行為不變）。
+    expect(find.text('幫教練釐清（最多 3 次）'), findsOneWidget);
+    expect(find.text('教練想先問清楚（幫教練釐清）'), findsOneWidget);
     expect(find.text('你此刻比較想靠近，還是先觀察？'), findsOneWidget);
     expect(
       find.text('我需要先知道你想推進，還是只想維持舒服互動。'),

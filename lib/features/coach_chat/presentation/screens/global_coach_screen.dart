@@ -256,7 +256,7 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '免費釐清最多 3 次；正式建議扣 1 則，額度用完會提醒升級。',
+                  '幫教練釐清最多 3 次；正式建議扣 1 則，額度用完會提醒升級。',
                   style: AppTypography.caption.copyWith(
                     color: AppColors.glassTextSecondary,
                     height: 1.35,

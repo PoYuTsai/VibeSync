@@ -45,7 +45,7 @@ void main() {
     await _pump(tester);
 
     expect(find.text('問教練 Sydney'), findsOneWidget);
-    expect(find.text('釐清免費，正式建議才扣 1 則'), findsOneWidget);
+    expect(find.text('幫教練釐清不扣額度，正式建議才扣 1 則'), findsOneWidget);
   });
 
   testWidgets('點 CTA → /coach?partnerId= 鎖定本對象的聊天視窗', (tester) async {

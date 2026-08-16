@@ -877,7 +877,7 @@ class CoachChatResultView extends ConsumerWidget {
           if (isClarifying) ...[
             _CoachNotice(
               icon: Icons.psychology_alt_outlined,
-              title: '教練想先問清楚（免費釐清）',
+              title: '教練想先問清楚（幫教練釐清）',
               body: result.reflectionQuestion ?? result.answer,
             ),
             const SizedBox(height: 8),
@@ -1082,7 +1082,7 @@ class CoachChatResultView extends ConsumerWidget {
       builder: (dialogContext) => AlertDialog(
         title: const Text('直接看正式建議？'),
         content: const Text(
-          '教練會跳過免費釐清，直接給完整建議；成功後會扣 1 則額度。',
+          '教練會跳過釐清，直接給完整建議；成功後會扣 1 則額度。',
         ),
         actions: [
           TextButton(
@@ -1287,7 +1287,7 @@ class _CostStatusChip extends StatelessWidget {
         ? AppColors.success
         : AppColors.warning;
     final label = isClarifying || costDeducted == 0
-        ? '免費釐清（最多 3 次）'
+        ? '幫教練釐清（最多 3 次）'
         : dailyRemaining >= 0
             ? '已扣 $costDeducted 則 · 今日剩 $dailyRemaining 則'
             : '已扣 $costDeducted 則';

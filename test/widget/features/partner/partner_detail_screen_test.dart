@@ -670,7 +670,7 @@ void main() {
     expect(find.byType(PartnerTraitsCard), findsNothing);
     // 問教練改為 CTA 卡（三情境 chip 搬進 Sydney 視窗）。
     expect(find.text('問教練 Sydney'), findsOneWidget);
-    expect(find.text('釐清免費，正式建議才扣 1 則'), findsOneWidget);
+    expect(find.text('幫教練釐清不扣額度，正式建議才扣 1 則'), findsOneWidget);
 
     await _scrollUntilVisible(t, find.text('關係下一步'));
     expect(find.text('對象作戰板'), findsOneWidget);

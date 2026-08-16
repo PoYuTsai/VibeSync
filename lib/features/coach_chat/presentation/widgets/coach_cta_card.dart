@@ -48,7 +48,7 @@ class CoachCtaCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '釐清免費，正式建議才扣 1 則',
+                        '幫教練釐清不扣額度，正式建議才扣 1 則',
                         style: AppTypography.caption.copyWith(
                           color: AppColors.onBackgroundSecondary,
                         ),
