@@ -27,6 +27,10 @@ abstract final class AppMotion {
   /// container transform（卡片原地長成整頁，animations 套件 OpenContainer）。
   static const Duration containerTransform = Duration(milliseconds: 380);
 
+  /// modal surface 上浮進場／下沉退場（paywall 等）；退場比進場快。
+  static const Duration modalIn = Duration(milliseconds: 320);
+  static const Duration modalOut = Duration(milliseconds: 240);
+
   /// 強力 ease-out：前段比 easeOutCubic 快、尾段收更長，
   /// 同樣時長下動作更「有感」。
   static const Curve easeOut = Cubic(0.23, 1, 0.32, 1);

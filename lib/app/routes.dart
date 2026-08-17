@@ -1,9 +1,10 @@
 // lib/app/routes.dart
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../core/services/supabase_service.dart';
+import '../core/theme/app_motion.dart';
 import '../features/analysis/presentation/screens/analysis_screen.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
 import '../features/coach_chat/data/services/coach_chat_api_service.dart'
@@ -175,9 +176,31 @@ final router = GoRouter(
       path: '/settings/ai-privacy',
       builder: (context, state) => const AiPrivacyScreen(),
     ),
+    // 報價是「一個 surface 浮上來」不是「導航去別處」：小幅上滑＋淡入的
+    // modal 語意，退場比進場快。
     GoRoute(
       path: '/paywall',
-      builder: (context, state) => const PaywallScreen(),
+      pageBuilder: (context, state) => CustomTransitionPage<void>(
+        key: state.pageKey,
+        fullscreenDialog: true,
+        transitionDuration: AppMotion.modalIn,
+        reverseTransitionDuration: AppMotion.modalOut,
+        child: const PaywallScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: AppMotion.easeOut,
+            reverseCurve: Curves.easeIn.flipped, // 退場等效 easeOut
+          );
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.08),
+              end: Offset.zero,
+            ).animate(curved),
+            child: FadeTransition(opacity: curved, child: child),
+          );
+        },
+      ),
     ),
     // 問教練 Sydney 聊天視窗：首頁直達（不帶參數，可選「問誰」）；
     // 對象頁／作戰板 CTA 帶 ?partnerId= 鎖定對象；分析頁 CTA 帶
