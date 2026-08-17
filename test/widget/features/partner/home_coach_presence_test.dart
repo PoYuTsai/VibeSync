@@ -31,7 +31,8 @@ void main() {
   testWidgets('renders the requested Sydney pose asset', (tester) async {
     for (final pose in HomeCoachPose.values) {
       await tester.pumpWidget(_subject(pose));
-      await tester.pump();
+      // 換姿勢 crossfade 期間新舊圖並存，先讓轉場走完再斷言。
+      await tester.pumpAndSettle();
 
       final image = tester.widget<Image>(find.byType(Image));
       final provider = image.image as AssetImage;
@@ -105,12 +106,29 @@ void main() {
     }
   });
 
-  testWidgets('switches pose immediately without an animation widget', (
+  // 2026-08-17 動效計畫 004：換姿勢改 200ms crossfade（AnimatedSwitcher），
+  // 推翻舊的「瞬切、無動畫元件」拍板。
+  testWidgets('crossfades between poses and settles on the new one', (
     tester,
   ) async {
     await tester.pumpWidget(_subject(HomeCoachPose.greeting));
+    await tester.pumpAndSettle();
     await tester.pumpWidget(_subject(HomeCoachPose.tip));
+    await tester.pump(const Duration(milliseconds: 100));
 
+    // 轉場中：新舊姿勢並存（crossfade 的證據）。
+    expect(
+      find.byKey(const ValueKey('home-coach-pose-greeting')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('home-coach-pose-tip')),
+      findsOneWidget,
+    );
+
+    await tester.pumpAndSettle();
+
+    // 轉場結束：只剩新姿勢。
     expect(
       find.byKey(const ValueKey('home-coach-pose-greeting')),
       findsNothing,
@@ -119,8 +137,6 @@ void main() {
       find.byKey(const ValueKey('home-coach-pose-tip')),
       findsOneWidget,
     );
-    expect(find.byType(AnimatedSwitcher), findsNothing);
-    expect(find.byType(AnimatedOpacity), findsNothing);
   });
 
   testWidgets('exposes Sydney as an accessible image', (tester) async {

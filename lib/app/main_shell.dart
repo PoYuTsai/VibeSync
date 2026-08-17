@@ -333,6 +333,9 @@ class _MainShellState extends State<MainShell>
   }
 
   void _changeCoachPose() {
+    // 稀有彩蛋降頻：冷啟動隨機一次後，回首頁只有 20% 機率換姿勢，
+    // 免得 100+ 次/天的切 tab 把新鮮感磨光。
+    if (_coachRandom.nextDouble() >= 0.2) return;
     _coachPose = _coachPose.differentPose(_coachRandom);
   }
 }

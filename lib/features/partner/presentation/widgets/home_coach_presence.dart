@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_motion.dart';
+
 /// 每個姿勢圖的畫布與「人物邊界框」量測值（alpha>8 的不透明像素範圍，
 /// 2026-08-09 以 sydney_bbox_probe 實測）。四張圖人物都貼齊畫布底邊，但
 /// 畫布規格與人物佔比、水平中心都不一致——不帶量測值直接同高渲染，換姿勢
@@ -109,36 +111,51 @@ class HomeCoachPresence extends StatelessWidget {
       height: resolvedHeight,
       child: Align(
         alignment: Alignment.bottomCenter,
-        child: Transform.translate(
-          offset: Offset(dx, 0),
-          child: SizedBox(
-            width: renderWidth,
-            height: renderHeight,
-            child: Semantics(
-              image: true,
-              label: 'VibeSync Coach Sydney，欣欣',
-              child: ShaderMask(
-                blendMode: BlendMode.dstIn,
-                shaderCallback: (bounds) => const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.white,
-                    Colors.white,
-                    Colors.transparent,
-                  ],
-                  stops: [0, 0.1, 0.92, 1],
-                ).createShader(bounds),
-                child: Image.asset(
-                  pose.assetPath,
-                  key: ValueKey('home-coach-pose-${pose.name}'),
-                  width: renderWidth,
-                  height: renderHeight,
-                  fit: BoxFit.fitHeight,
-                  alignment: Alignment.bottomCenter,
-                  filterQuality: FilterQuality.medium,
-                  excludeFromSemantics: true,
+        // 換姿勢用 crossfade 不瞬跳。包整個含幾何的子樹（各姿勢寬高/位移不同，
+        // 只包 Image 會讓舊圖在淡出時被新幾何拉伸），底邊錨定對齊。
+        child: AnimatedSwitcher(
+          duration: AppMotion.enter,
+          switchInCurve: AppMotion.easeOut,
+          switchOutCurve: AppMotion.easeOut,
+          layoutBuilder: (currentChild, previousChildren) => Stack(
+            alignment: Alignment.bottomCenter,
+            children: [
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          ),
+          child: Transform.translate(
+            key: ValueKey(pose),
+            offset: Offset(dx, 0),
+            child: SizedBox(
+              width: renderWidth,
+              height: renderHeight,
+              child: Semantics(
+                image: true,
+                label: 'VibeSync Coach Sydney，欣欣',
+                child: ShaderMask(
+                  blendMode: BlendMode.dstIn,
+                  shaderCallback: (bounds) => const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.white,
+                      Colors.white,
+                      Colors.transparent,
+                    ],
+                    stops: [0, 0.1, 0.92, 1],
+                  ).createShader(bounds),
+                  child: Image.asset(
+                    pose.assetPath,
+                    key: ValueKey('home-coach-pose-${pose.name}'),
+                    width: renderWidth,
+                    height: renderHeight,
+                    fit: BoxFit.fitHeight,
+                    alignment: Alignment.bottomCenter,
+                    filterQuality: FilterQuality.medium,
+                    excludeFromSemantics: true,
+                  ),
                 ),
               ),
             ),
