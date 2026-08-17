@@ -57,11 +57,16 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
   final _dockKey = GlobalKey();
 
   /// 手指目前在 dock 內容座標系的 x；null = 沒按著。
-  double? _pointerContentX;
+  /// ValueNotifier 而非 setState：指針最高 120 次/秒，只有受影響 tile 的
+  /// 縮放/亮度該重繪，整個 dock（含 ListView）不該每次重建。
+  final _pointerContentX = ValueNotifier<double?>(null);
+
+  /// 只做 haptic edge-detect，不影響 UI，不進 setState。
   int? _focusedIndex;
 
   @override
   void dispose() {
+    _pointerContentX.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -87,23 +92,18 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
     if (nearest != null && nearest != _focusedIndex) {
       HapticFeedback.selectionClick();
     }
-    setState(() {
-      _pointerContentX = contentX;
-      _focusedIndex = nearest;
-    });
+    _focusedIndex = nearest;
+    _pointerContentX.value = contentX;
   }
 
   void _clearPointer() {
-    setState(() {
-      _pointerContentX = null;
-      _focusedIndex = null;
-    });
+    _focusedIndex = null;
+    _pointerContentX.value = null;
   }
 
-  double _scaleFor(int index) {
-    final x = _pointerContentX;
-    if (x == null) return 1.0;
-    final d = (x - _tileCenterX(index)).abs();
+  double _scaleFor(double? pointerX, int index) {
+    if (pointerX == null) return 1.0;
+    final d = (pointerX - _tileCenterX(index)).abs();
     if (d >= _influence) return 1.0;
     // 餘弦衰減：手指正下方最大，邊緣平滑歸零
     return 1.0 + _maxBoost * (0.5 + 0.5 * math.cos(math.pi * d / _influence));
@@ -170,15 +170,26 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
                   ),
                   itemCount: widget.partners.length,
                   separatorBuilder: (_, __) => const SizedBox(width: _tileGap),
-                  itemBuilder: (context, index) => Align(
-                    alignment: Alignment.bottomCenter,
-                    child: AnimatedScale(
-                      scale: _scaleFor(index),
-                      duration: const Duration(milliseconds: 120),
-                      curve: Curves.easeOut,
-                      alignment: Alignment.bottomCenter,
-                      child: _buildTile(index),
-                    ),
+                  // 指針動時只有這層 builder 重跑；tile 內容（圖示/文字）走
+                  // child passthrough，不隨指針重建。
+                  itemBuilder: (context, index) =>
+                      ValueListenableBuilder<double?>(
+                    valueListenable: _pointerContentX,
+                    child: _buildTileContent(index),
+                    builder: (context, pointerX, tileContent) {
+                      final scale = _scaleFor(pointerX, index);
+                      final focus = ((scale - 1.0) / _maxBoost).clamp(0.0, 1.0);
+                      return Align(
+                        alignment: Alignment.bottomCenter,
+                        child: AnimatedScale(
+                          scale: scale,
+                          duration: const Duration(milliseconds: 120),
+                          curve: Curves.easeOut,
+                          alignment: Alignment.bottomCenter,
+                          child: _buildTileShell(index, focus, tileContent!),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -189,20 +200,9 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
     );
   }
 
-  Widget _buildTile(int index) {
+  /// 隨指針變的外殼：玻璃亮度吃 focus（0～1，被 dock 放大的程度）。
+  Widget _buildTileShell(int index, double focus, Widget content) {
     final partner = widget.partners[index];
-    final stage = widget.stageLabelOf(partner.id);
-    // 身份色跟 id 走（同一人永遠同色，不受列表增刪影響）；
-    // 不用 String.hashCode（跨 Dart 版本不保證穩定）。
-    final colorKey =
-        partner.id.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
-    final gradient = _tileGradients[colorKey % _tileGradients.length];
-    final initial = partner.name.isEmpty
-        ? '?'
-        : partner.name.characters.first.toUpperCase();
-    // 0～1：被 dock 放大的程度，聚焦的卡玻璃跟著變亮。
-    final focus = ((_scaleFor(index) - 1.0) / _maxBoost).clamp(0.0, 1.0);
-
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => widget.onTapPartner(partner.id),
@@ -218,64 +218,80 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
             color: Colors.white.withValues(alpha: 0.12 + 0.12 * focus),
           ),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                gradient: LinearGradient(
-                  colors: gradient,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Text(
-                initial,
-                style: AppTypography.titleMedium.copyWith(
-                  color: AppColors.onBackgroundPrimary,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              partner.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              // 深玻璃上用亮字（glassTextPrimary 是配舊白卡的墨字）。
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              stage ?? '尚未分析',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.caption.copyWith(
-                color: stage != null
-                    ? AppColors.onBackgroundSecondary
-                    : AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: gradient.first,
-              ),
-            ),
-          ],
-        ),
+        child: content,
       ),
+    );
+  }
+
+  /// 不隨指針變的內容（圖示磚＋名字＋階段＋色點）。
+  Widget _buildTileContent(int index) {
+    final partner = widget.partners[index];
+    final stage = widget.stageLabelOf(partner.id);
+    // 身份色跟 id 走（同一人永遠同色，不受列表增刪影響）；
+    // 不用 String.hashCode（跨 Dart 版本不保證穩定）。
+    final colorKey =
+        partner.id.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
+    final gradient = _tileGradients[colorKey % _tileGradients.length];
+    final initial = partner.name.isEmpty
+        ? '?'
+        : partner.name.characters.first.toUpperCase();
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: LinearGradient(
+              colors: gradient,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Text(
+            initial,
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          partner.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          // 深玻璃上用亮字（glassTextPrimary 是配舊白卡的墨字）。
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.onBackgroundPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          stage ?? '尚未分析',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.caption.copyWith(
+            color: stage != null
+                ? AppColors.onBackgroundSecondary
+                : AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: gradient.first,
+          ),
+        ),
+      ],
     );
   }
 }

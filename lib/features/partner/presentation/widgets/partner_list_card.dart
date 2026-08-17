@@ -35,9 +35,8 @@ class PartnerListCard extends StatelessWidget {
 
   List<String> _previewTags(List<String> interests, List<String> traits) {
     final out = <String>[];
-    final maxLen = interests.length > traits.length
-        ? interests.length
-        : traits.length;
+    final maxLen =
+        interests.length > traits.length ? interests.length : traits.length;
     for (var i = 0; i < maxLen && out.length < 3; i++) {
       if (i < interests.length) {
         out.add(interests[i]);
@@ -98,9 +97,12 @@ class PartnerListCard extends StatelessWidget {
         shape: BoxShape.circle,
         borderWidth: 2.8,
         glowRadius: 10,
-        strength: 0.92,
+        // 效能降負（015-C）：0.92 是全 codebase 最強（report 卡僅 0.065–0.12），
+        // N 張可見卡×每幀 blur 太重；降到 0.4／放慢到 9s，視覺仍有生命感。
+        // Eric 真機驗收若覺得太淡，就地回調這兩個參數。
+        strength: 0.4,
         phaseOffset: _avatarPhase(partner.id),
-        duration: const Duration(milliseconds: 6800),
+        duration: const Duration(milliseconds: 9000),
         child: Center(
           child: Container(
             width: 47,

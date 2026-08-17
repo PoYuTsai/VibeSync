@@ -133,28 +133,32 @@ class HomeCoachPresence extends StatelessWidget {
               child: Semantics(
                 image: true,
                 label: 'VibeSync Coach Sydney，欣欣',
-                child: ShaderMask(
-                  blendMode: BlendMode.dstIn,
-                  shaderCallback: (bounds) => const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.white,
-                      Colors.white,
-                      Colors.transparent,
-                    ],
-                    stops: [0, 0.1, 0.92, 1],
-                  ).createShader(bounds),
-                  child: Image.asset(
-                    pose.assetPath,
-                    key: ValueKey('home-coach-pose-${pose.name}'),
-                    width: renderWidth,
-                    height: renderHeight,
-                    fit: BoxFit.fitHeight,
-                    alignment: Alignment.bottomCenter,
-                    filterQuality: FilterQuality.medium,
-                    excludeFromSemantics: true,
+                // 靜態漸層遮罩的 saveLayer 用 RepaintBoundary 隔離，
+                // 首頁捲動幀不再重付這層 offscreen 合成。
+                child: RepaintBoundary(
+                  child: ShaderMask(
+                    blendMode: BlendMode.dstIn,
+                    shaderCallback: (bounds) => const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.white,
+                        Colors.white,
+                        Colors.transparent,
+                      ],
+                      stops: [0, 0.1, 0.92, 1],
+                    ).createShader(bounds),
+                    child: Image.asset(
+                      pose.assetPath,
+                      key: ValueKey('home-coach-pose-${pose.name}'),
+                      width: renderWidth,
+                      height: renderHeight,
+                      fit: BoxFit.fitHeight,
+                      alignment: Alignment.bottomCenter,
+                      filterQuality: FilterQuality.medium,
+                      excludeFromSemantics: true,
+                    ),
                   ),
                 ),
               ),
