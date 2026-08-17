@@ -21,6 +21,9 @@ abstract final class AppMotion {
   static const Duration state = Duration(milliseconds: 240);
   static const Duration celebrate = Duration(milliseconds: 320);
 
+  /// tab fade-through 總長（90ms 出＋210ms 進，Material fade-through 規格）。
+  static const Duration tabTransition = Duration(milliseconds: 300);
+
   /// 強力 ease-out：前段比 easeOutCubic 快、尾段收更長，
   /// 同樣時長下動作更「有感」。
   static const Curve easeOut = Cubic(0.23, 1, 0.32, 1);

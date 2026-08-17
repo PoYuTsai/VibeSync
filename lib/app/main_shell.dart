@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/app_motion.dart';
 import '../core/theme/app_typography.dart';
 import '../shared/widgets/brand/brand_kit.dart';
 import '../shared/widgets/pressable_scale.dart';
@@ -57,19 +58,74 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell>
+    with SingleTickerProviderStateMixin {
   final Random _coachRandom = Random();
   late int _currentIndex = _normalizeTabIndex(widget.initialTabIndex);
   late HomeCoachPose _coachPose =
       HomeCoachPose.values[_coachRandom.nextInt(HomeCoachPose.values.length)];
+
+  /// fade-through：Phase A（0→0.3＝90ms）舊頁淡出、換 index，
+  /// Phase B（0.3→1＝210ms）新頁淡入＋scale 0.92→1。value 1＝靜止完整顯示。
+  late final AnimationController _tabTransition = AnimationController(
+    vsync: this,
+    duration: AppMotion.tabTransition,
+    value: 1,
+  )..addListener(_onTabTransitionTick);
+  int? _pendingIndex;
+
+  /// 動畫中再切時 Phase A 從當下 opacity 出發，不閃白。
+  double _fadeFrom = 1.0;
+
+  static const double _swapPoint = 0.3;
+
+  void _onTabTransitionTick() {
+    final pending = _pendingIndex;
+    if (pending == null || _tabTransition.value < _swapPoint) return;
+    setState(() {
+      _updateCurrentTab(pending);
+      _pendingIndex = null;
+    });
+  }
+
+  double get _tabOpacity {
+    final t = _tabTransition.value;
+    if (_pendingIndex != null) {
+      final out = (t / _swapPoint).clamp(0.0, 1.0);
+      return _fadeFrom * (1 - Curves.easeOut.transform(out));
+    }
+    final inn = ((t - _swapPoint) / (1 - _swapPoint)).clamp(0.0, 1.0);
+    return AppMotion.easeOut.transform(inn);
+  }
+
+  double get _tabScale {
+    if (_pendingIndex != null) return 1.0;
+    final inn = ((_tabTransition.value - _swapPoint) / (1 - _swapPoint))
+        .clamp(0.0, 1.0);
+    return 0.92 + 0.08 * AppMotion.easeOut.transform(inn);
+  }
+
+  @override
+  void dispose() {
+    _tabTransition.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant MainShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     final nextIndex = _normalizeTabIndex(widget.initialTabIndex);
     final routeTabChanged = oldWidget.routeTab != widget.routeTab;
-    if (routeTabChanged && _currentIndex != nextIndex) {
-      setState(() => _updateCurrentTab(nextIndex));
+    // fade-through 進行中且目標一致時交給動畫換 index，避免 context.go 觸發的
+    // rebuild 把轉場打斷成硬切。
+    if (routeTabChanged &&
+        _currentIndex != nextIndex &&
+        _pendingIndex != nextIndex) {
+      setState(() {
+        _pendingIndex = null;
+        _tabTransition.value = 1;
+        _updateCurrentTab(nextIndex);
+      });
     }
   }
 
@@ -124,16 +180,41 @@ class _MainShellState extends State<MainShell> {
             ),
           ],
         ),
-        body: IndexedStack(
-          index: _currentIndex,
-          children: [
-            PartnerListScreen(
-              bottomPadding: 32,
-              coachPose: _coachPose,
-            ),
-            const MyReportScreen(),
-            const LearningScreen(),
-          ],
+        body: AnimatedBuilder(
+          animation: _tabTransition,
+          builder: (context, child) {
+            final animating =
+                _tabTransition.isAnimating || _pendingIndex != null;
+            return Opacity(
+              opacity: animating ? _tabOpacity : 1.0,
+              child: Transform.scale(
+                scale: animating ? _tabScale : 1.0,
+                child: child,
+              ),
+            );
+          },
+          // IndexedStack 不會替隱藏 child 關 ticker，各 child 包 TickerMode
+          // 讓背景 tab 的環境動畫真正停下（品牌元件內已有對應閘門）。
+          child: IndexedStack(
+            index: _currentIndex,
+            children: [
+              TickerMode(
+                enabled: _currentIndex == 0,
+                child: PartnerListScreen(
+                  bottomPadding: 32,
+                  coachPose: _coachPose,
+                ),
+              ),
+              TickerMode(
+                enabled: _currentIndex == 1,
+                child: const MyReportScreen(),
+              ),
+              TickerMode(
+                enabled: _currentIndex == 2,
+                child: const LearningScreen(),
+              ),
+            ],
+          ),
         ),
         floatingActionButton: _currentIndex == 0 ? const HomeFab() : null,
         bottomNavigationBar: _buildBottomNav(),
@@ -223,8 +304,23 @@ class _MainShellState extends State<MainShell> {
 
   void _selectTab(int index) {
     final nextIndex = _normalizeTabIndex(index);
-    if (_currentIndex != nextIndex) {
-      setState(() => _updateCurrentTab(nextIndex));
+    if (_currentIndex != nextIndex || _pendingIndex != null) {
+      final reduceMotion =
+          MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+      if (reduceMotion) {
+        setState(() {
+          _pendingIndex = null;
+          _tabTransition.value = 1;
+          _updateCurrentTab(nextIndex);
+        });
+      } else if (_pendingIndex != null) {
+        // Phase A 進行中再點：換目標即可，淡出照走、換到最新 index。
+        _pendingIndex = nextIndex;
+      } else {
+        _fadeFrom = _tabOpacity;
+        _pendingIndex = nextIndex;
+        _tabTransition.forward(from: 0);
+      }
     }
     context.go('/?tab=${MainShell.tabRouteFromIndex(nextIndex)}');
   }
