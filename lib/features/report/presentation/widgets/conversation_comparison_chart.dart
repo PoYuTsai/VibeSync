@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../features/analysis/domain/entities/enthusiasm_level.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -95,7 +96,7 @@ class _ConversationBar extends StatelessWidget {
     final animationDuration =
         MediaQuery.maybeOf(context)?.disableAnimations == true
             ? Duration.zero
-            : const Duration(milliseconds: 520);
+            : AppMotion.chartReveal;
 
     return Semantics(
       label: '${comparison.name}，最新投入度 $score 分',

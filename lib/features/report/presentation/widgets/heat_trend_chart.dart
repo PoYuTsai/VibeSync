@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/report_models.dart';
 import 'trend_flow_overlay.dart';
@@ -84,8 +85,7 @@ class HeatTrendChart extends StatelessWidget {
             if (contextLabel != null && contextLabel!.trim().isNotEmpty)
               Container(
                 constraints: const BoxConstraints(maxWidth: 150),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.ctaStart.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
@@ -341,7 +341,7 @@ class HeatTrendChart extends StatelessWidget {
           ),
           duration: MediaQuery.maybeOf(context)?.disableAnimations == true
               ? Duration.zero
-              : const Duration(milliseconds: 700),
+              : AppMotion.chartReveal,
           curve: Curves.easeOutCubic,
         ),
       ),

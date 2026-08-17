@@ -57,8 +57,7 @@ class _TrendFlowOverlayState extends State<TrendFlowOverlay>
   bool? _motionEnabled;
 
   /// 一次性模式把 N 圈攤在同一條 0→1 時間軸上，painter 再拆相位。
-  Duration get _totalDuration =>
-      widget.flowDuration * (widget.cycles ?? 1);
+  Duration get _totalDuration => widget.flowDuration * (widget.cycles ?? 1);
 
   void _play() {
     if (widget.cycles == null) {

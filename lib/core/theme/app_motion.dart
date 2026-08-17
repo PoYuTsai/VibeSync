@@ -31,6 +31,9 @@ abstract final class AppMotion {
   static const Duration modalIn = Duration(milliseconds: 320);
   static const Duration modalOut = Duration(milliseconds: 240);
 
+  /// 報表圖揭示——四張圖共用一個檔位（2026-08 收斂前是 480/520/700 三種）。
+  static const Duration chartReveal = Duration(milliseconds: 300);
+
   /// shared-axis「往內走一層」進場／退場（animations 套件）。
   static const Duration sharedAxisIn = Duration(milliseconds: 300);
   static const Duration sharedAxisOut = Duration(milliseconds: 260);

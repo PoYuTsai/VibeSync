@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../domain/entities/report_models.dart';
@@ -355,7 +356,7 @@ class PracticeTemperatureChart extends StatelessWidget {
           ),
           duration: MediaQuery.maybeOf(context)?.disableAnimations == true
               ? Duration.zero
-              : const Duration(milliseconds: 480),
+              : AppMotion.chartReveal,
           curve: Curves.easeOutCubic,
         ),
       ),

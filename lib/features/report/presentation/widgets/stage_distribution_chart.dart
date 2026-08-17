@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/report_models.dart';
 
@@ -66,7 +67,7 @@ class StageDistributionChart extends StatelessWidget {
                   duration:
                       MediaQuery.maybeOf(context)?.disableAnimations == true
                           ? Duration.zero
-                          : const Duration(milliseconds: 480),
+                          : AppMotion.chartReveal,
                   curve: Curves.easeOutCubic,
                 ),
                 // Center text: total count + "對話"
