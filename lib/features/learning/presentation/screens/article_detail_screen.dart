@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
@@ -84,15 +85,10 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
     final subscription = ref.watch(subscriptionProvider);
     _scheduleReadGate(subscription);
 
-    if (subscription.isLoading ||
-        (subscription.isFreeUser && !_readGateChecked)) {
-      return const BrandPageBackground(
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Center(child: CircularProgressIndicator()),
-        ),
-      );
-    }
+    // 閘門判定中顯示 spinner；判定完 crossfade 進文章（背景與 Scaffold 不參與
+    // 切換，避免整頁雙曝疊影）。
+    final showGate = subscription.isLoading ||
+        (subscription.isFreeUser && !_readGateChecked);
 
     return BrandPageBackground(
       child: Scaffold(
@@ -116,54 +112,66 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Source + read time
-              Row(
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.ctaStart.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Text(
-                      article.category,
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.ctaStart,
-                        fontWeight: FontWeight.w600,
+        body: AnimatedSwitcher(
+          duration: AppMotion.enter,
+          switchInCurve: AppMotion.easeOut,
+          switchOutCurve: AppMotion.easeOut,
+          child: showGate
+              ? const Center(
+                  key: ValueKey('gate'),
+                  child: CircularProgressIndicator(),
+                )
+              : SingleChildScrollView(
+                  key: const ValueKey('article'),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Source + read time
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.ctaStart.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Text(
+                              article.category,
+                              style: AppTypography.caption.copyWith(
+                                color: AppColors.ctaStart,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            article.readTime,
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.onBackgroundSecondary,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      _PracticeBriefCard(
+                          article: article, guide: practiceGuide),
+                      const SizedBox(height: 16),
+                      // Article content in brand surface card
+                      BrandSurfaceCard(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: _parseContent(article.content),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      _PracticeActionCard(guide: practiceGuide),
+                      const SizedBox(height: 32),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    article.readTime,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.onBackgroundSecondary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _PracticeBriefCard(article: article, guide: practiceGuide),
-              const SizedBox(height: 16),
-              // Article content in brand surface card
-              BrandSurfaceCard(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: _parseContent(article.content),
                 ),
-              ),
-              const SizedBox(height: 24),
-              _PracticeActionCard(guide: practiceGuide),
-              const SizedBox(height: 32),
-            ],
-          ),
         ),
       ),
     );
@@ -499,7 +507,8 @@ class _PracticeInfoRow extends StatelessWidget {
               Text(
                 title,
                 style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
                   fontWeight: FontWeight.w700,
                 ),
               ),

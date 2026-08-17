@@ -15,6 +15,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 
 const List<String> kStreamingAnalysisLoadingPhrases = <String>[
@@ -100,10 +101,17 @@ class _StreamingAnalysisLoaderState extends State<StreamingAnalysisLoader> {
             child: CircularProgressIndicator(strokeWidth: 3),
           ),
           const SizedBox(height: 16),
-          Text(
-            phrase,
-            style: Theme.of(context).textTheme.bodyLarge,
-            textAlign: TextAlign.center,
+          // 金句輪換走 200ms 交叉淡變，不硬換字；字串當 key，同句不重播。
+          AnimatedSwitcher(
+            duration: AppMotion.enter,
+            switchInCurve: AppMotion.easeOut,
+            switchOutCurve: AppMotion.easeOut,
+            child: Text(
+              phrase,
+              key: ValueKey(phrase),
+              style: Theme.of(context).textTheme.bodyLarge,
+              textAlign: TextAlign.center,
+            ),
           ),
           if (detail != null && detail.isNotEmpty) ...[
             const SizedBox(height: 8),
