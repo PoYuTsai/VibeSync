@@ -108,12 +108,33 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
       duration: const Duration(seconds: 2),
     );
-
-    // 啟動動畫序列
-    _startAnimationSequence();
   }
 
-  Future<void> _startAnimationSequence() async {
+  bool _sequenceStarted = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // MediaQuery 在 initState 拿不到，序列啟動移到第一次 didChangeDependencies。
+    if (_sequenceStarted) return;
+    _sequenceStarted = true;
+    _startAnimationSequence(
+      MediaQuery.maybeOf(context)?.disableAnimations ?? false,
+    );
+  }
+
+  Future<void> _startAnimationSequence(bool reduceMotion) async {
+    if (reduceMotion) {
+      // 終幕靜置：全部控制器跳到端值，不補間、不脈動，停留縮短後進 app。
+      _titleController.value = 1;
+      _subtitleController.value = 1;
+      _shimmerController.value = 1;
+      _dotController.value = 1;
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (mounted) widget.onComplete();
+      return;
+    }
+
     // 標題入場
     _titleController.forward();
 
@@ -341,5 +362,4 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
   }
-
 }

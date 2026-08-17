@@ -94,6 +94,9 @@ class PartnerRadarSummaryCard extends StatelessWidget {
                   color: AppColors.onBackgroundSecondary,
                 ),
               ),
+              duration: MediaQuery.maybeOf(context)?.disableAnimations == true
+                  ? Duration.zero
+                  : const Duration(milliseconds: 150),
             ),
           ),
         ],

@@ -98,6 +98,9 @@ class DimensionRadarChart extends StatelessWidget {
                   color: AppColors.glassTextSecondary,
                 ),
               ),
+              duration: MediaQuery.maybeOf(context)?.disableAnimations == true
+                  ? Duration.zero
+                  : const Duration(milliseconds: 150),
             ),
           ),
           const SizedBox(height: 16),

@@ -73,12 +73,31 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
         ref.read(keyboardScreenshotSetupCoordinatorProvider).hasEnabledSetup();
     unawaited(_restoreNativePrivacyCleanupState());
     unawaited(_resumeAfterColdRestartIfAwaitingFullAccess());
+    // repeat 在 didChangeDependencies 依 reduced-motion 閘門啟動。
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
       lowerBound: 0.94,
       upperBound: 1.04,
-    )..repeat(reverse: true);
+    );
+  }
+
+  bool? _reduceMotion;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (_reduceMotion == reduceMotion) return;
+    _reduceMotion = reduceMotion;
+    if (reduceMotion) {
+      _pulse
+        ..stop()
+        ..value = 1.0;
+    } else {
+      _pulse.repeat(reverse: true);
+    }
   }
 
   @override

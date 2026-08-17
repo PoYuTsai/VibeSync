@@ -21,26 +21,46 @@ class _GradientBackgroundState extends State<GradientBackground>
   late final AnimationController _controller1;
   late final AnimationController _controller2;
   late final AnimationController _controller3;
+  bool? _reduceMotion;
 
   @override
   void initState() {
     super.initState();
 
-    // 更明顯的動畫效果
+    // 更明顯的動畫效果。repeat 在 didChangeDependencies 依 reduced-motion 閘門啟動。
     _controller1 = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 14),
-    )..repeat(reverse: true);
+    );
 
     _controller2 = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 18),
-    )..repeat(reverse: true);
+    );
 
     _controller3 = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 20),
-    )..repeat(reverse: true);
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (_reduceMotion == reduceMotion) return;
+    _reduceMotion = reduceMotion;
+    for (final controller in [_controller1, _controller2, _controller3]) {
+      if (reduceMotion) {
+        // value 0.5 → sin(π)=0：光球停在位移/縮放中點，靜態置中。
+        controller
+          ..stop()
+          ..value = 0.5;
+      } else {
+        controller.repeat(reverse: true);
+      }
+    }
   }
 
   @override
@@ -81,7 +101,7 @@ class _GradientBackgroundState extends State<GradientBackground>
                     controller: _controller1,
                     color: AppColors.bokehPink,
                     size: 260,
-                    blur: 120,
+                    blur: 60,
                     opacity: 0.18,
                     floatRange: 18,
                     floatAngle: math.pi / 4, // 45度方向浮動
@@ -94,7 +114,7 @@ class _GradientBackgroundState extends State<GradientBackground>
                     controller: _controller2,
                     color: AppColors.bokehCoral,
                     size: 280,
-                    blur: 130,
+                    blur: 60,
                     opacity: 0.14,
                     floatRange: 14,
                     floatAngle: -math.pi / 3, // -60度方向浮動
@@ -107,7 +127,7 @@ class _GradientBackgroundState extends State<GradientBackground>
                     controller: _controller3,
                     color: AppColors.bokehYellow,
                     size: 240,
-                    blur: 120,
+                    blur: 60,
                     opacity: 0.08,
                     floatRange: 12,
                     floatAngle: math.pi / 6, // 30度方向浮動
