@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_typography.dart';
+import '../pressable_scale.dart';
 
 /// Visual tone for shared brand primitives.
 ///
@@ -423,65 +424,68 @@ class BrandPrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final disabled = onPressed == null || isLoading;
     // 灰↔橘可用狀態切換做 240ms 漸變，避免瞬切搶走旁邊動效的注意力。
-    return AnimatedContainer(
-      duration: AppMotion.state,
-      curve: AppMotion.easeOut,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: disabled
-              ? [Colors.grey.shade700, Colors.grey.shade800]
-              : const [AppColors.ctaStart, AppColors.ctaEnd],
-        ),
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: disabled
-            ? null
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.38),
-                  blurRadius: 18,
-                  offset: const Offset(0, 9),
-                ),
-              ],
-      ),
-      child: ElevatedButton(
-        onPressed: disabled ? null : onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          // 橘底字色走 AppColors.onCta 單一開關；disabled 底是灰，前景維持白系
-          // 但改實色（半透明白 on 灰 3.98:1 不及格）。
-          foregroundColor: AppColors.onCta,
-          disabledBackgroundColor: Colors.transparent,
-          disabledForegroundColor: Colors.white,
-          padding: EdgeInsets.symmetric(vertical: verticalPadding),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(999),
+    return PressableScale(
+      enabled: !disabled,
+      child: AnimatedContainer(
+        duration: AppMotion.state,
+        curve: AppMotion.easeOut,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: disabled
+                ? [Colors.grey.shade700, Colors.grey.shade800]
+                : const [AppColors.ctaStart, AppColors.ctaEnd],
           ),
-        ),
-        child: isLoading
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.4,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.onCta),
-                ),
-              )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 18),
-                    const SizedBox(width: 8),
-                  ],
-                  Text(
-                    label,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: disabled
+              ? null
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.38),
+                    blurRadius: 18,
+                    offset: const Offset(0, 9),
                   ),
                 ],
-              ),
+        ),
+        child: ElevatedButton(
+          onPressed: disabled ? null : onPressed,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            // 橘底字色走 AppColors.onCta 單一開關；disabled 底是灰，前景維持白系
+            // 但改實色（半透明白 on 灰 3.98:1 不及格）。
+            foregroundColor: AppColors.onCta,
+            disabledBackgroundColor: Colors.transparent,
+            disabledForegroundColor: Colors.white,
+            padding: EdgeInsets.symmetric(vertical: verticalPadding),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          child: isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.onCta),
+                  ),
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, size: 18),
+                      const SizedBox(width: 8),
+                    ],
+                    Text(
+                      label,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }

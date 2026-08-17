@@ -11,8 +11,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/pressable_scale.dart';
 import '../../../practice_chat/presentation/widgets/practice_room_entry_card.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/articles_data.dart';
@@ -348,28 +350,33 @@ class _CategoryFilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      key: chipKey,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.ctaStart.withValues(alpha: 0.18)
-              : Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
+    return PressableScale(
+      child: GestureDetector(
+        key: chipKey,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: AppMotion.enter,
+          curve: AppMotion.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
             color: selected
-                ? AppColors.ctaStart
-                : Colors.white.withValues(alpha: 0.14),
+                ? AppColors.ctaStart.withValues(alpha: 0.18)
+                : Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected
+                  ? AppColors.ctaStart
+                  : Colors.white.withValues(alpha: 0.14),
+            ),
           ),
-        ),
-        child: Text(
-          label,
-          style: AppTypography.caption.copyWith(
-            color:
-                selected ? AppColors.ctaStart : AppColors.onBackgroundSecondary,
-            fontWeight: FontWeight.w700,
+          child: Text(
+            label,
+            style: AppTypography.caption.copyWith(
+              color: selected
+                  ? AppColors.ctaStart
+                  : AppColors.onBackgroundSecondary,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ),

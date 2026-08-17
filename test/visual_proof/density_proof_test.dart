@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/core/theme/app_typography.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 import 'package:vibesync/shared/widgets/warm_theme_widgets.dart';
 
 import 'proof_support.dart';
@@ -53,7 +54,8 @@ class _AddPartnerWarmBg extends StatelessWidget {
         const Positioned(
           top: -40,
           left: -30,
-          child: _Bubble(color: AppColors.primaryLight, size: 170, opacity: 0.55),
+          child:
+              _Bubble(color: AppColors.primaryLight, size: 170, opacity: 0.55),
         ),
         const Positioned(
           top: 60,
@@ -72,7 +74,8 @@ class _AddPartnerWarmBg extends StatelessWidget {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.color, required this.size, required this.opacity});
+  const _Bubble(
+      {required this.color, required this.size, required this.opacity});
   final Color color;
   final double size;
   final double opacity;
@@ -99,7 +102,8 @@ class _Bubble extends StatelessWidget {
 PreferredSizeWidget _warmAppBar(String title) => AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      leading: const Icon(Icons.arrow_back, color: AppColors.onBackgroundPrimary),
+      leading:
+          const Icon(Icons.arrow_back, color: AppColors.onBackgroundPrimary),
       title: Text(
         title,
         style: const TextStyle(color: AppColors.onBackgroundPrimary),
@@ -110,8 +114,7 @@ PreferredSizeWidget _warmAppBar(String title) => AppBar(
 // Shared copy — byte-identical between before & after so layout is the only
 // variable. No new strings invented.
 const _kAddTitle = '先建立一張對象卡';
-const _kAddSubtitle =
-    '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡';
+const _kAddSubtitle = '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡';
 const _kAddHint = '輸入她的名字或暱稱';
 
 // ===========================================================================
@@ -146,7 +149,7 @@ Widget _addPartnerBefore() {
               const SizedBox(height: 20),
               const GlassmorphicTextField(hintText: _kAddHint),
               const SizedBox(height: 24),
-              GradientButton(text: '建立', onPressed: () {}),
+              BrandPrimaryButton(label: '建立', onPressed: () {}),
             ],
           ),
         ),
@@ -205,7 +208,7 @@ Widget _addPartnerAfter() {
                       const SizedBox(height: 18),
                       const GlassmorphicTextField(hintText: _kAddHint),
                       const SizedBox(height: 18),
-                      GradientButton(text: '建立', onPressed: () {}),
+                      BrandPrimaryButton(label: '建立', onPressed: () {}),
                     ],
                   ),
                 ),
@@ -247,7 +250,8 @@ Widget _seededList() => GlassmorphicContainer(
         leading: const BubbleAvatar(label: '她', isMe: false, size: 28),
         title: Text(_kSeededHer,
             style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextPrimary, fontWeight: FontWeight.w500)),
+                color: AppColors.glassTextPrimary,
+                fontWeight: FontWeight.w500)),
         trailing: Icon(Icons.close, size: 18, color: AppColors.glassTextHint),
       ),
     );
@@ -266,12 +270,13 @@ Widget _hintRow() => Padding(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.info_outline, size: 18, color: AppColors.textSecondary),
+          const Icon(Icons.info_outline,
+              size: 18, color: AppColors.textSecondary),
           const SizedBox(width: 8),
           Expanded(
             child: Text(_kComposerHint,
-                style:
-                    AppTypography.caption.copyWith(color: AppColors.textSecondary)),
+                style: AppTypography.caption
+                    .copyWith(color: AppColors.textSecondary)),
           ),
         ],
       ),
@@ -312,7 +317,8 @@ List<Widget> _settingsBlock(bool expanded) => [
       ),
       const SizedBox(height: 6),
       Text(_kSettingsHint,
-          style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary)),
+          style:
+              AppTypography.bodySmall.copyWith(color: AppColors.textSecondary)),
       if (expanded) ...[
         const SizedBox(height: 16),
         Text('認識情境', style: AppTypography.bodyLarge),
@@ -388,7 +394,7 @@ Widget _convoBefore(bool expanded) => Column(
         const SizedBox(height: 12),
         _hintRow(),
         const SizedBox(height: 32),
-        GradientButton(text: '建立對話', onPressed: () {}),
+        BrandPrimaryButton(label: '建立對話', onPressed: () {}),
       ],
     );
 
@@ -408,7 +414,7 @@ Widget _convoAfter(bool expanded) => Center(
             const SizedBox(height: 16),
             _frostTray(_composerInner()),
             const SizedBox(height: 20),
-            GradientButton(text: '建立對話', onPressed: () {}),
+            BrandPrimaryButton(label: '建立對話', onPressed: () {}),
           ],
         ),
       ),
@@ -478,20 +484,16 @@ void main() {
 
   testWidgets('new_conversation collapsed compare', (tester) async {
     await pumpAndCapture(tester,
-        child: _compare(
-            _newConversation(dense: false, expanded: false),
-            _newConversation(dense: true, expanded: false),
-            880),
+        child: _compare(_newConversation(dense: false, expanded: false),
+            _newConversation(dense: true, expanded: false), 880),
         outPath: outPath('new_conversation_collapsed_compare.png'),
         size: const Size(783, 914));
   });
 
   testWidgets('new_conversation expanded compare', (tester) async {
     await pumpAndCapture(tester,
-        child: _compare(
-            _newConversation(dense: false, expanded: true),
-            _newConversation(dense: true, expanded: true),
-            1320),
+        child: _compare(_newConversation(dense: false, expanded: true),
+            _newConversation(dense: true, expanded: true), 1320),
         outPath: outPath('new_conversation_expanded_compare.png'),
         size: const Size(783, 1354));
   });

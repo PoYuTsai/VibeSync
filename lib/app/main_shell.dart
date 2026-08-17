@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_typography.dart';
 import '../shared/widgets/brand/brand_kit.dart';
+import '../shared/widgets/pressable_scale.dart';
 import '../features/partner/presentation/providers/partner_providers.dart';
 import '../features/partner/presentation/screens/partner_list_screen.dart';
 import '../features/partner/presentation/widgets/home_coach_presence.dart';
@@ -186,30 +187,33 @@ class _MainShellState extends State<MainShell> {
       selected: isSelected,
       button: true,
       label: label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _selectTab(index),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 72, minHeight: 44),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isSelected ? activeIcon : icon,
-                  color: color,
-                  size: 22,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  label,
-                  style: AppTypography.labelMedium.copyWith(
+      child: PressableScale(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _selectTab(index),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 72, minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isSelected ? activeIcon : icon,
                     color: color,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    size: 22,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    style: AppTypography.labelMedium.copyWith(
+                      color: color,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -251,13 +255,15 @@ class HomeFab extends ConsumerWidget {
     // 空態不浮這顆：那一頁已經有整寬「建立對象卡，開始分析」CTA，再疊一顆 +
     // 只會蓋住文案（夥伴稿 2／3 也都沒有 FAB）。有對象後才需要這個捷徑。
     if (ref.watch(partnerListProvider).isEmpty) return const SizedBox.shrink();
-    return FloatingActionButton(
-      onPressed: () => context.push('/partner/new'),
-      backgroundColor: AppColors.ctaStart,
-      foregroundColor: AppColors.onCta,
-      elevation: 0,
-      tooltip: '新增對象',
-      child: const Icon(Icons.add),
+    return PressableScale(
+      child: FloatingActionButton(
+        onPressed: () => context.push('/partner/new'),
+        backgroundColor: AppColors.ctaStart,
+        foregroundColor: AppColors.onCta,
+        elevation: 0,
+        tooltip: '新增對象',
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }

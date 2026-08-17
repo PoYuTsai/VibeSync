@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/pressable_scale.dart';
 
 /// Resolves the single floating surface used by the analysis screen.
 ///
@@ -218,61 +219,64 @@ class _FloatingAnalysisActionButtonState
                 ),
               );
             },
-            child: FilledButton(
-              key: FloatingAnalysisActionButton.buttonKey,
-              onPressed: widget.onPressed,
-              style: FilledButton.styleFrom(
-                fixedSize: const Size.square(62),
-                minimumSize: const Size.square(62),
-                maximumSize: const Size.square(62),
-                padding: EdgeInsets.zero,
-                backgroundColor: AppColors.brandInk,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor:
-                    AppColors.brandInk.withValues(alpha: 0.88),
-                disabledForegroundColor: Colors.white.withValues(alpha: 0.50),
-                elevation: enabled ? 10 : 2,
-                shadowColor: Colors.black.withValues(alpha: 0.52),
-                shape: CircleBorder(
-                  side: BorderSide(
-                    color: enabled
-                        ? Colors.white.withValues(alpha: 0.20)
-                        : Colors.white.withValues(alpha: 0.10),
-                  ),
-                ),
-              ).copyWith(
-                overlayColor: WidgetStatePropertyAll(
-                  AppColors.ctaStart.withValues(alpha: 0.20),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.auto_awesome_rounded,
-                    size: 21,
-                    color: enabled
-                        ? AppColors.bokehYellow
-                        : Colors.white.withValues(alpha: 0.42),
-                  ),
-                  const SizedBox(height: 2),
-                  // 兩個字：圓形按鈕在文字那一行的可用寬度只有直徑的七成多，
-                  // 「開始分析」四字要不被切得把按鈕做到 ~76pt，會壓掉聊天內容。
-                  // 完整語意由 Semantics label「使用目前對話開始分析」承擔。
-                  Text(
-                    '分析',
-                    maxLines: 1,
-                    style: AppTypography.caption.copyWith(
+            child: PressableScale(
+              enabled: enabled,
+              child: FilledButton(
+                key: FloatingAnalysisActionButton.buttonKey,
+                onPressed: widget.onPressed,
+                style: FilledButton.styleFrom(
+                  fixedSize: const Size.square(62),
+                  minimumSize: const Size.square(62),
+                  maximumSize: const Size.square(62),
+                  padding: EdgeInsets.zero,
+                  backgroundColor: AppColors.brandInk,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor:
+                      AppColors.brandInk.withValues(alpha: 0.88),
+                  disabledForegroundColor: Colors.white.withValues(alpha: 0.50),
+                  elevation: enabled ? 10 : 2,
+                  shadowColor: Colors.black.withValues(alpha: 0.52),
+                  shape: CircleBorder(
+                    side: BorderSide(
                       color: enabled
-                          ? Colors.white
-                          : Colors.white.withValues(alpha: 0.50),
-                      fontSize: 13,
-                      height: 1.05,
-                      letterSpacing: -0.2,
-                      fontWeight: FontWeight.w800,
+                          ? Colors.white.withValues(alpha: 0.20)
+                          : Colors.white.withValues(alpha: 0.10),
                     ),
                   ),
-                ],
+                ).copyWith(
+                  overlayColor: WidgetStatePropertyAll(
+                    AppColors.ctaStart.withValues(alpha: 0.20),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 21,
+                      color: enabled
+                          ? AppColors.bokehYellow
+                          : Colors.white.withValues(alpha: 0.42),
+                    ),
+                    const SizedBox(height: 2),
+                    // 兩個字：圓形按鈕在文字那一行的可用寬度只有直徑的七成多，
+                    // 「開始分析」四字要不被切得把按鈕做到 ~76pt，會壓掉聊天內容。
+                    // 完整語意由 Semantics label「使用目前對話開始分析」承擔。
+                    Text(
+                      '分析',
+                      maxLines: 1,
+                      style: AppTypography.caption.copyWith(
+                        color: enabled
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.50),
+                        fontSize: 13,
+                        height: 1.05,
+                        letterSpacing: -0.2,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

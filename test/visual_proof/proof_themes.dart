@@ -1,6 +1,7 @@
 // Before = warm (real shared widgets). After = calm (proof-only variants).
 import 'package:flutter/material.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 import 'package:vibesync/shared/widgets/warm_theme_widgets.dart';
 
 import 'proof_support.dart';
@@ -16,7 +17,7 @@ final ProofTheme warmTheme = ProofTheme(
       GlassmorphicContainer(padding: padding, child: child),
   cardLow: ({required child, padding = const EdgeInsets.all(16)}) =>
       GlassmorphicContainer(padding: padding, child: child),
-  cta: (text) => GradientButton(text: text, onPressed: () {}),
+  cta: (text) => BrandPrimaryButton(label: text, onPressed: () {}),
   onBgPrimary: Colors.white,
   onBgSecondary: AppColors.onBackgroundSecondary,
   onCardPrimary: AppColors.glassTextPrimary,
@@ -44,7 +45,8 @@ class _CalmPalette {
   static const cardBorder = Color(0xFFE7DDCB); // soft warm hairline
   static const cardLowSurface = Color(0xFFE6DECF); // secondary tier — recedes
   static const cardLowBorder = Color(0xFFD8CFBE);
-  static const onCardPrimary = Color(0xFF2E2924); // warm charcoal, high contrast
+  static const onCardPrimary =
+      Color(0xFF2E2924); // warm charcoal, high contrast
   static const onCardSecondary = Color(0xFF6F665A);
   static const onCardHint = Color(0xFF9C9286);
   static const onBgPrimary = Color(0xFFF2EEF6);

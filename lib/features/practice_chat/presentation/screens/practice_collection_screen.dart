@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/practice_chat_providers.dart';
@@ -17,6 +18,7 @@ import '../../domain/entities/practice_girl_catalog.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 import '../../domain/entities/practice_girl_rarity.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/pressable_scale.dart';
 import '../widgets/practice_draw_ceremony.dart';
 import '../widgets/practice_rarity_style.dart';
 
@@ -1035,31 +1037,35 @@ class _RarityFilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      key: chipKey,
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.ctaStart.withValues(alpha: 0.14)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
+    return PressableScale(
+      child: GestureDetector(
+        key: chipKey,
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: AppMotion.enter,
+          curve: AppMotion.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+          decoration: BoxDecoration(
             color: selected
-                ? AppColors.ctaStart.withValues(alpha: 0.45)
+                ? AppColors.ctaStart.withValues(alpha: 0.14)
                 : Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected
+                  ? AppColors.ctaStart.withValues(alpha: 0.45)
+                  : Colors.transparent,
+            ),
           ),
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: AppTypography.caption.copyWith(
-            color: selected
-                ? AppColors.brandFlame
-                : AppColors.onBackgroundSecondary,
-            fontWeight: FontWeight.w700,
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: AppTypography.caption.copyWith(
+              color: selected
+                  ? AppColors.brandFlame
+                  : AppColors.onBackgroundSecondary,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ),
