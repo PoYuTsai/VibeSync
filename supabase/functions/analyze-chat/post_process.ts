@@ -854,6 +854,38 @@ export function postProcessAnalysisResult({
     };
   }
 
+  // Step 3b — 風格卡則數對齊最終建議（2026-08-17 Eric）：五張風格卡的
+  // messages 多於 finalRecommendation.replySegments 段數時裁掉多出的；
+  // 少的無法無中生有補段，維持原樣（既知限制）。舊 client 合併版
+  // replies[style] 同步用裁後訊息重建，兩種顯示路徑則數一致。
+  const finalSegmentCount = Array.isArray(
+      (result.finalRecommendation as { replySegments?: unknown } | undefined)
+        ?.replySegments,
+    )
+    ? ((result.finalRecommendation as { replySegments: unknown[] })
+      .replySegments).length
+    : 0;
+  if (enforceSegmentContract && finalSegmentCount > 0 && result.replyOptions) {
+    const options = result.replyOptions as Record<
+      string,
+      { approach?: string; messages?: { reply?: string }[] }
+    >;
+    const replies = (result.replies ?? {}) as Record<string, string>;
+    for (const [feature, option] of Object.entries(options)) {
+      const messages = Array.isArray(option?.messages) ? option.messages : [];
+      if (messages.length <= finalSegmentCount) continue;
+      option.messages = messages.slice(0, finalSegmentCount);
+      const joined = option.messages
+        .map((message) => (message?.reply ?? "").trim())
+        .filter((reply) => reply.length > 0)
+        .join("\n");
+      if (joined.length > 0) {
+        replies[feature] = joined;
+      }
+    }
+    result.replies = replies;
+  }
+
   // Step 4 — coachActionHint: schema-valid or remove.
   const sanitizedCoachActionHint = sanitizeCoachActionHint(
     result?.coachActionHint,

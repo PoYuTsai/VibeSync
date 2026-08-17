@@ -847,3 +847,107 @@ Deno.test("外語清洗只套生成欄位：reply 清、sourceMessage 引用原�
   );
   assertEquals(replies.extend, "我們要怎麼約～妳來找我");
 });
+
+// ---------------------------------------------------------------------------
+// Step 3b — 風格卡則數對齊最終建議（2026-08-17）
+// ---------------------------------------------------------------------------
+
+Deno.test("Step 3b: style card messages trimmed to final replySegments count", () => {
+  const twoSegments = [1, 2].map((n) => ({
+    sourceIndex: n,
+    sourceMessage: `球${n}`,
+    reply: `回球${n}`,
+    reason: "",
+  }));
+  const result = postProcessAnalysisResult({
+    result: {
+      replies: { extend: "回球1\n回球2", coldRead: "冷1, 冷2, 冷3" },
+      replyOptions: {
+        extend: { approach: "接法", messages: twoSegments },
+        coldRead: {
+          approach: "冷讀接法",
+          messages: [1, 2, 3].map((n) => ({
+            sourceIndex: Math.min(n, 2),
+            sourceMessage: `球${Math.min(n, 2)}`,
+            reply: `冷${n}`,
+            reason: "",
+          })),
+        },
+      },
+      finalRecommendation: {
+        pick: "extend",
+        content: "回球1\n回球2",
+        reason: "r",
+        psychology: "p",
+        replySegments: twoSegments,
+      },
+    },
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend", "coldRead"],
+    requestMessages: [1, 2].map((n) => ({
+      isFromMe: false,
+      content: `球${n}`,
+    })),
+  });
+  const rec = result.finalRecommendation as Record<string, unknown>;
+  assertEquals((rec.replySegments as unknown[]).length, 2);
+  const options = result.replyOptions as Record<
+    string,
+    { messages: { reply: string }[] }
+  >;
+  // 多噴的第 3 則被裁掉，與最終建議同段數
+  assertEquals(options.coldRead.messages.length, 2);
+  assertEquals(options.extend.messages.length, 2);
+  // 舊 client 合併版同步重建
+  const replies = result.replies as Record<string, string>;
+  assertEquals(replies.coldRead, "冷1\n冷2");
+});
+
+Deno.test("Step 3b: style card with fewer messages than final count is left as-is", () => {
+  const twoSegments = [1, 2].map((n) => ({
+    sourceIndex: n,
+    sourceMessage: `球${n}`,
+    reply: `回球${n}`,
+    reason: "",
+  }));
+  const result = postProcessAnalysisResult({
+    result: {
+      replies: { extend: "回球1\n回球2", humor: "只有一句" },
+      replyOptions: {
+        extend: { approach: "接法", messages: twoSegments },
+        humor: {
+          approach: "幽默接法",
+          messages: [{
+            sourceIndex: 1,
+            sourceMessage: "球1",
+            reply: "只有一句",
+            reason: "",
+          }],
+        },
+      },
+      finalRecommendation: {
+        pick: "extend",
+        content: "回球1\n回球2",
+        reason: "r",
+        psychology: "p",
+        replySegments: twoSegments,
+      },
+    },
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend", "humor"],
+    requestMessages: [1, 2].map((n) => ({
+      isFromMe: false,
+      content: `球${n}`,
+    })),
+  });
+  const options = result.replyOptions as Record<
+    string,
+    { messages: { reply: string }[] }
+  >;
+  // 無法無中生有補段：少的維持原樣
+  assertEquals(options.humor.messages.length, 1);
+  const replies = result.replies as Record<string, string>;
+  assertEquals(replies.humor, "只有一句");
+});
