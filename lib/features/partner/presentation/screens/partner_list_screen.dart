@@ -12,11 +12,13 @@
 // row and routes it into the two-mode delete dialog. Counting from the
 // provider — NOT from `aggregate.totalRounds` — guards against the
 // zero-round-conversation false-safe (Codex P1.2).
+import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -28,6 +30,7 @@ import '../../data/repositories/partner_repository.dart';
 import '../../data/services/partner_banner_service.dart';
 import '../../domain/entities/partner.dart';
 import '../providers/partner_providers.dart';
+import 'partner_detail_screen.dart';
 import '../widgets/getting_started_checklist.dart';
 import '../widgets/home_coach_presence.dart';
 import '../widgets/home_feature_entries.dart';
@@ -132,13 +135,46 @@ class PartnerListScreen extends ConsumerWidget {
               // delete dialog and let the user fall straight into the repo throw).
               final convCount =
                   ref.watch(conversationsByPartnerProvider(p.id)).length;
+              // OpenContainer 與系統 reduced-motion 整合不完整，
+              // reduce motion 時退回原本的 go_router push。
+              final reduceMotion =
+                  MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+              if (reduceMotion) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: PartnerListCard(
+                    partner: p,
+                    aggregate: agg,
+                    onTap: () => context.push('/partner/${p.id}'),
+                    onDelete: () => _onDelete(context, ref, p, convCount),
+                  ),
+                );
+              }
+              // 卡片原地長成詳情頁（container transform）。走 Navigator 自家
+              // route、不經 go_router；/partner/:partnerId GoRoute 保留給
+              // deep link 等其他入口。
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                child: PartnerListCard(
-                  partner: p,
-                  aggregate: agg,
-                  onTap: () => context.push('/partner/${p.id}'),
-                  onDelete: () => _onDelete(context, ref, p, convCount),
+                child: OpenContainer(
+                  transitionType: ContainerTransitionType.fadeThrough,
+                  transitionDuration: AppMotion.containerTransform,
+                  closedElevation: 0,
+                  openElevation: 0,
+                  closedColor: Colors.transparent,
+                  openColor: AppColors.partnerDetailBgTop,
+                  middleColor: AppColors.partnerDetailBgTop,
+                  closedShape: RoundedRectangleBorder(
+                    // 對齊 PartnerListCard 實際圓角（22）。
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  closedBuilder: (context, open) => PartnerListCard(
+                    partner: p,
+                    aggregate: agg,
+                    onTap: open,
+                    onDelete: () => _onDelete(context, ref, p, convCount),
+                  ),
+                  openBuilder: (context, _) =>
+                      PartnerDetailScreen(partnerId: p.id),
                 ),
               );
             },

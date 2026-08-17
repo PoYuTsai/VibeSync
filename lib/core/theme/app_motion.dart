@@ -24,6 +24,9 @@ abstract final class AppMotion {
   /// tab fade-through 總長（90ms 出＋210ms 進，Material fade-through 規格）。
   static const Duration tabTransition = Duration(milliseconds: 300);
 
+  /// container transform（卡片原地長成整頁，animations 套件 OpenContainer）。
+  static const Duration containerTransform = Duration(milliseconds: 380);
+
   /// 強力 ease-out：前段比 easeOutCubic 快、尾段收更長，
   /// 同樣時長下動作更「有感」。
   static const Curve easeOut = Cubic(0.23, 1, 0.32, 1);

@@ -73,6 +73,7 @@ dependencies:
   timezone: ^0.9.4
   sentry_flutter: 9.27.0
   flutter_tabler_icons: ^1.43.0
+  animations: ^2.2.0
 
 dev_dependencies:
   flutter_test:
