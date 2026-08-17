@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/session_context.dart';
@@ -356,8 +357,8 @@ class _ScreenshotRecognitionDialogState
         if (blockContext == null || !blockContext.mounted) return;
         Scrollable.ensureVisible(
           blockContext,
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOut,
+          duration: AppMotion.scroll,
+          curve: AppMotion.easeOut,
           alignment: 0.2,
         );
       });

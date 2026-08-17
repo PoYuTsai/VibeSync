@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/revenuecat_service.dart';
@@ -453,8 +454,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOut,
+          duration: AppMotion.scroll,
+          curve: AppMotion.easeOut,
         );
       }
     });
@@ -634,8 +635,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           if (_scrollController.hasClients) {
             _scrollController.animateTo(
               _scrollController.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
+              duration: AppMotion.scroll,
+              curve: AppMotion.easeOut,
             );
           }
         });

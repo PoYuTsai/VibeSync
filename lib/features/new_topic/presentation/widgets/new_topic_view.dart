@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -283,8 +284,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
             _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
+            duration: AppMotion.scroll,
+            curve: AppMotion.easeOut,
           );
         }
       });
@@ -587,7 +588,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       ),
     );
   }
-
 }
 
 /// 結果區（抽成公開 widget 供 widget test 直接驗證排序與可見性；

@@ -187,8 +187,8 @@ class _PracticeCollectionScreenState
       if (estimated != null) {
         await _scrollController.animateTo(
           estimated.clamp(0.0, _scrollController.position.maxScrollExtent),
-          duration: const Duration(milliseconds: 350),
-          curve: Curves.easeOutCubic,
+          duration: AppMotion.scroll,
+          curve: AppMotion.easeOut,
         );
       }
     }
@@ -198,8 +198,8 @@ class _PracticeCollectionScreenState
       await Scrollable.ensureVisible(
         cardContext,
         alignment: 0.35,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
+        duration: AppMotion.scroll,
+        curve: AppMotion.easeOut,
       );
     }
     if (!mounted || _highlightProfileId != profileId) return;

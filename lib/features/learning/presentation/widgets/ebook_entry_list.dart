@@ -16,6 +16,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/models/ebook_block.dart';
 
@@ -76,8 +77,8 @@ class _EbookEntryListViewState extends State<EbookEntryListView> {
           target,
           duration: (MediaQuery.maybeDisableAnimationsOf(context) ?? false)
               ? Duration.zero
-              : const Duration(milliseconds: 320),
-          curve: Curves.easeOutCubic,
+              : AppMotion.scroll,
+          curve: AppMotion.easeOut,
           alignment: 0.1,
         );
       }
@@ -152,7 +153,8 @@ class _EntryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reducedMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    final accent = isExpanded ? AppColors.ctaStart : AppColors.onBackgroundPrimary;
+    final accent =
+        isExpanded ? AppColors.ctaStart : AppColors.onBackgroundPrimary;
 
     return Container(
       decoration: BoxDecoration(
@@ -170,7 +172,8 @@ class _EntryTile extends StatelessWidget {
           Semantics(
             button: true,
             expanded: isExpanded,
-            label: isExpanded ? '${entry.title}。點兩下收合。' : '${entry.title}。點兩下展開。',
+            label:
+                isExpanded ? '${entry.title}。點兩下收合。' : '${entry.title}。點兩下展開。',
             child: Material(
               color: Colors.transparent,
               borderRadius: BorderRadius.circular(18),

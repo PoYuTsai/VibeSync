@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
@@ -139,8 +140,8 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
       );
       _controller.animateToPage(
         _kPostFullAccessPage,
-        duration: const Duration(milliseconds: 360),
-        curve: Curves.easeOutCubic,
+        duration: AppMotion.scroll,
+        curve: AppMotion.easeOut,
       );
     }
   }
@@ -166,9 +167,10 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
       _finishFirstRun();
       return;
     }
+    // PageView 翻頁語意，仍收斂到 scroll token（≤300ms）。
     _controller.nextPage(
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOutCubic,
+      duration: AppMotion.scroll,
+      curve: AppMotion.easeOut,
     );
   }
 

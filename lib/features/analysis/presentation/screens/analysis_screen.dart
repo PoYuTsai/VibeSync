@@ -596,8 +596,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
     await _scrollController.animateTo(
       _scrollController.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOut,
+      duration: AppMotion.scroll,
+      curve: AppMotion.easeOut,
     );
   }
 
@@ -616,8 +616,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (!mounted || !_scrollController.hasClients) return;
     await _scrollController.animateTo(
       _scrollController.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOutCubic,
+      duration: AppMotion.scroll,
+      curve: AppMotion.easeOut,
     );
   }
 
@@ -655,8 +655,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (replyZoneContext == null || !replyZoneContext.mounted) return;
       unawaited(Scrollable.ensureVisible(
         replyZoneContext,
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeOutCubic,
+        duration: AppMotion.scroll,
+        curve: AppMotion.easeOut,
         alignment: 0.04,
       ));
     });
@@ -685,8 +685,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
     await _scrollController.animateTo(
       0,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOut,
+      duration: AppMotion.scroll,
+      curve: AppMotion.easeOut,
     );
   }
 
@@ -729,8 +729,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
     await _scrollController.animateTo(
       0,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOut,
+      duration: AppMotion.scroll,
+      curve: AppMotion.easeOut,
     );
   }
 
@@ -3386,8 +3386,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
+        duration: AppMotion.scroll,
+        curve: AppMotion.easeOut,
       );
     }
   }

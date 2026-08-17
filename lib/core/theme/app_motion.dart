@@ -34,6 +34,9 @@ abstract final class AppMotion {
   /// 報表圖揭示——四張圖共用一個檔位（2026-08 收斂前是 480/520/700 三種）。
   static const Duration chartReveal = Duration(milliseconds: 300);
 
+  /// 程式捲動（scrollTo/animateTo「捲去剛產生的東西」）統一檔位。
+  static const Duration scroll = Duration(milliseconds: 280);
+
   /// shared-axis「往內走一層」進場／退場（animations 套件）。
   static const Duration sharedAxisIn = Duration(milliseconds: 300);
   static const Duration sharedAxisOut = Duration(milliseconds: 260);

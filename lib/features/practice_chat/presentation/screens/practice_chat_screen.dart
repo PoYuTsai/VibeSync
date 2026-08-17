@@ -212,8 +212,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
+        duration: AppMotion.scroll,
+        curve: AppMotion.easeOut,
       );
     });
   }
