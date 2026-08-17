@@ -103,7 +103,7 @@ class _FloatingAnalysisActionButtonState
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 720),
+      duration: const Duration(milliseconds: 480),
     );
   }
 
@@ -145,9 +145,10 @@ class _FloatingAnalysisActionButtonState
             animation: _controller,
             builder: (context, child) {
               final value = _controller.value;
+              // 按鈕本體 240ms 內落定（480×0.5），掃描環裝飾可到 ~440ms。
               final entrance = const Interval(
                 0,
-                0.52,
+                0.5,
                 curve: Curves.easeOutCubic,
               ).transform(value);
               final scan = const Interval(
