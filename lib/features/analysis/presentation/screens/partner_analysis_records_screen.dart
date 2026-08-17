@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/analysis_record.dart';
 import '../widgets/analysis_platform_picker.dart';
@@ -254,9 +256,14 @@ class _PartnerAnalysisRecordsScreenState
   }
 
   Future<void> _openRecord(AnalysisRecord record) async {
+    // SharedAxis scaled（往內走一層）：sheet 留底、詳情放大浮現，pop 縮回
+    // sheet 繼續逛。fillColor 透明讓底下 sheet/scrim 轉場中自然透出。
     final deleted = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => AnalysisRecordDetailScreen(
+      PageRouteBuilder<bool>(
+        transitionDuration: AppMotion.sharedAxisIn,
+        reverseTransitionDuration: AppMotion.sharedAxisOut,
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            AnalysisRecordDetailScreen(
           record: record,
           platform: _platformFor(record),
           onDelete: widget.onDelete == null
@@ -264,6 +271,14 @@ class _PartnerAnalysisRecordsScreenState
               : () async {
                   await Future<void>.sync(() => widget.onDelete!(record));
                 },
+        ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SharedAxisTransition(
+          animation: animation,
+          secondaryAnimation: secondaryAnimation,
+          transitionType: SharedAxisTransitionType.scaled,
+          fillColor: Colors.transparent,
+          child: child,
         ),
       ),
     );
@@ -886,8 +901,8 @@ class _EmptyRecordsCard extends StatelessWidget {
                 child: Text(
                   '每筆都是獨立分析，可自行管理',
                   style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundSecondary
-                        .withValues(alpha: 0.72),
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.72),
                   ),
                 ),
               ),

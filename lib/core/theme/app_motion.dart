@@ -31,6 +31,10 @@ abstract final class AppMotion {
   static const Duration modalIn = Duration(milliseconds: 320);
   static const Duration modalOut = Duration(milliseconds: 240);
 
+  /// shared-axis「往內走一層」進場／退場（animations 套件）。
+  static const Duration sharedAxisIn = Duration(milliseconds: 300);
+  static const Duration sharedAxisOut = Duration(milliseconds: 260);
+
   /// 強力 ease-out：前段比 easeOutCubic 快、尾段收更長，
   /// 同樣時長下動作更「有感」。
   static const Curve easeOut = Cubic(0.23, 1, 0.32, 1);
