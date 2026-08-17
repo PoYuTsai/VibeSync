@@ -585,7 +585,7 @@ class _ScreenshotRecognitionDialogState
       },
       child: AnimatedAlign(
         duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
+        curve: AppMotion.easeOut,
         alignment:
             message.isFromMe ? Alignment.centerRight : Alignment.centerLeft,
         child: GestureDetector(

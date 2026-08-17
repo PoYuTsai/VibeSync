@@ -690,8 +690,8 @@ class _OnboardingGuideOverlay extends StatelessWidget {
             tween: Tween(begin: 0, end: 1),
             duration: reduceMotion
                 ? Duration.zero
-                : const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
+                : AppMotion.enter,
+            curve: AppMotion.easeOut,
             builder: (context, t, child) => Opacity(
               opacity: t,
               child: Transform.translate(

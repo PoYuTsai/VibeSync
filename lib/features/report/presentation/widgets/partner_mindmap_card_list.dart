@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../partner/domain/entities/partner.dart';
 
@@ -183,8 +184,8 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
                         alignment: Alignment.bottomCenter,
                         child: AnimatedScale(
                           scale: scale,
-                          duration: const Duration(milliseconds: 120),
-                          curve: Curves.easeOut,
+                          duration: AppMotion.pressDown,
+                          curve: AppMotion.easeOut,
                           alignment: Alignment.bottomCenter,
                           child: _buildTileShell(index, focus, tileContent!),
                         ),
