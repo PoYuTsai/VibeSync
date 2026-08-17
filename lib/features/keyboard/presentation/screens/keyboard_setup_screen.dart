@@ -594,7 +594,8 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
                 children: List.generate(
                   4,
                   (index) => AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
+                    duration: AppMotion.enter,
+                    curve: AppMotion.easeOut,
                     width: index == _page ? 24 : 8,
                     height: 8,
                     margin: const EdgeInsets.symmetric(horizontal: 4),

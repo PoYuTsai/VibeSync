@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
@@ -233,18 +234,20 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                           )
                         else if (activeError) ...[
                           _CoachFailureNotice(
-                            title:
-                                CoachSurface.failureTitleFor(activeErrorObject!),
-                            subtitle:
-                                CoachSurface.failureSubtitleFor(activeErrorObject),
+                            title: CoachSurface.failureTitleFor(
+                                activeErrorObject!),
+                            subtitle: CoachSurface.failureSubtitleFor(
+                                activeErrorObject),
                             question: _lastAskedQuestion!,
-                            message:
-                                CoachSurface.failureMessageFor(activeErrorObject),
+                            message: CoachSurface.failureMessageFor(
+                                activeErrorObject),
                             actionLabel: CoachSurface.failureActionLabelFor(
                                 activeErrorObject),
-                            onRetry: CoachSurface.isQuotaError(activeErrorObject)
-                                ? (widget.onQuotaExceeded ?? _retryLastQuestion)
-                                : _retryLastQuestion,
+                            onRetry:
+                                CoachSurface.isQuotaError(activeErrorObject)
+                                    ? (widget.onQuotaExceeded ??
+                                        _retryLastQuestion)
+                                    : _retryLastQuestion,
                           ),
                           if (timeline.isNotEmpty) const SizedBox(height: 12),
                         ],
@@ -285,14 +288,14 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
               child: ListenableBuilder(
                 listenable: _focusNode,
                 builder: (context, child) => AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
+                  duration: AppMotion.enter,
+                  curve: AppMotion.easeOut,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: _focusNode.hasFocus
                         ? [
                             BoxShadow(
-                              color:
-                                  AppColors.ctaStart.withValues(alpha: 0.22),
+                              color: AppColors.ctaStart.withValues(alpha: 0.22),
                               blurRadius: 14,
                               offset: const Offset(0, 3),
                             ),

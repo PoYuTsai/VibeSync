@@ -641,7 +641,8 @@ class BrandSegmentedButton<T> extends StatelessWidget {
             child: GestureDetector(
               onTap: () => onChanged(segment.value),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
+                duration: AppMotion.enter,
+                curve: AppMotion.easeOut,
                 padding: const EdgeInsets.symmetric(vertical: 9),
                 decoration: BoxDecoration(
                   // 實色而非漸層：pill 只有 ~80pt 寬，漸層看不出來，只讓右半的

@@ -494,7 +494,8 @@ class _EmptyHomeState extends State<_EmptyHome> {
                 child: IgnorePointer(
                   child: AnimatedOpacity(
                     opacity: _scrolled ? 1 : 0,
-                    duration: const Duration(milliseconds: 180),
+                    duration: AppMotion.enter,
+                    curve: AppMotion.easeOut,
                     // 內容是從提示底下捲過去的，補一層由上而下淡出的遮罩，
                     // 不然標題會跟提示字疊在一起。
                     child: DecoratedBox(

@@ -23,6 +23,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/ebook_providers.dart';
@@ -305,7 +306,8 @@ class _UnitGroupHeader extends StatelessWidget {
           // chevron 旋轉是允許的殘留動畫（非文字、非透明度），不會殘影。
           AnimatedRotation(
             turns: expanded ? 0.5 : 0,
-            duration: const Duration(milliseconds: 200),
+            duration: AppMotion.enter,
+            curve: AppMotion.easeOut,
             child: const Icon(Icons.expand_more,
                 size: 22, color: AppColors.onBackgroundSecondary),
           ),

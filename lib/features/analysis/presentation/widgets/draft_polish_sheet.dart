@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -186,7 +187,8 @@ class _DraftPolishSheetState extends State<DraftPolishSheet> {
                         ListenableBuilder(
                           listenable: _draftFocusNode,
                           builder: (context, child) => AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
+                            duration: AppMotion.enter,
+                            curve: AppMotion.easeOut,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(18),
                               boxShadow: _draftFocusNode.hasFocus
@@ -315,7 +317,8 @@ class _DraftPolishSheetState extends State<DraftPolishSheet> {
                           const SizedBox(height: 20),
                           Row(
                             children: [
-                              const Icon(TablerIcons.sparkles, size: 18, color: AppColors.ctaStart),
+                              const Icon(TablerIcons.sparkles,
+                                  size: 18, color: AppColors.ctaStart),
                               const SizedBox(width: 8),
                               Text(
                                 '優化後草稿',
@@ -335,7 +338,8 @@ class _DraftPolishSheetState extends State<DraftPolishSheet> {
                                 colors: [
                                   AppColors.brandSurface2
                                       .withValues(alpha: 0.94),
-                                  AppColors.brandSurface.withValues(alpha: 0.88),
+                                  AppColors.brandSurface
+                                      .withValues(alpha: 0.88),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(18),
@@ -388,16 +392,15 @@ class _DraftPolishSheetState extends State<DraftPolishSheet> {
                                   ? null
                                   : () => widget.onRefine(result.optimized),
                               icon: const Icon(Icons.tune_rounded, size: 16),
-                              label:
-                                  Text('再調一下', style: AppTypography.labelMedium),
+                              label: Text('再調一下',
+                                  style: AppTypography.labelMedium),
                             ),
                           ),
                         ],
                       ],
                     ),
                   ),
-                  if (result != null &&
-                      result.optimized.trim().isNotEmpty) ...[
+                  if (result != null && result.optimized.trim().isNotEmpty) ...[
                     const SizedBox(height: 8),
                     SizedBox(
                       width: double.infinity,

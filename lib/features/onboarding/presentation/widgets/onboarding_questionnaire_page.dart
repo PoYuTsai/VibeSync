@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 
@@ -105,10 +106,8 @@ class OnboardingQuestionnairePage extends StatelessWidget {
                 // Timer/Future.delayed 當時間軸）。間距收在卡片分支內，空狀態
                 // 版面與未加卡前逐位元一致。
                 AnimatedSize(
-                  duration: reduceMotion
-                      ? Duration.zero
-                      : const Duration(milliseconds: 180),
-                  curve: Curves.easeOut,
+                  duration: reduceMotion ? Duration.zero : AppMotion.enter,
+                  curve: AppMotion.easeOut,
                   alignment: Alignment.topCenter,
                   child: selectedGoals.isEmpty
                       ? const SizedBox(width: double.infinity)
@@ -185,7 +184,8 @@ class OnboardingQuestionnairePage extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
+          duration: AppMotion.enter,
+          curve: AppMotion.easeOut,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             gradient: selected
