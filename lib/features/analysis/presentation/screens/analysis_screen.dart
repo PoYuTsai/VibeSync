@@ -97,6 +97,7 @@ import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 /// Keeps user intent separate from programmatic live-follow movement without
 /// indenting the analysis screen's large child tree.
@@ -707,7 +708,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
     _dismissKeyboard();
     final conversation = ref.read(conversationProvider(widget.conversationId));
-    await showModalBottomSheet<void>(
+    await showAppSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

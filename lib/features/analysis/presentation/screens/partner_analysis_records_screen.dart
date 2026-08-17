@@ -10,6 +10,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/analysis_record.dart';
 import '../widgets/analysis_platform_picker.dart';
 import 'analysis_record_detail_screen.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 typedef AnalysisRecordPlatformResolver = String? Function(
   AnalysisRecord record,
@@ -43,7 +44,7 @@ Future<PartnerAnalysisRecordsSheetAction?> showPartnerAnalysisRecordsSheet(
   DeleteAnalysisRecordCallback? onDelete,
   int archivedConversationCount = 0,
 }) {
-  return showModalBottomSheet<PartnerAnalysisRecordsSheetAction>(
+  return showAppSheet<PartnerAnalysisRecordsSheetAction>(
     context: context,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.72),

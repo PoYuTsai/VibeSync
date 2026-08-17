@@ -60,6 +60,7 @@ import '../widgets/partner_heat_hero_card.dart';
 import '../widgets/partner_mind_map_entry_card.dart';
 import '../widgets/partner_radar_summary_card.dart';
 import '../widgets/partner_traits_card.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 class PartnerDetailScreen extends ConsumerStatefulWidget {
   static const focusQueryParam = 'focus';
@@ -344,7 +345,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showModalBottomSheet(
+        onPressed: () => showAppSheet(
           context: context,
           backgroundColor: Colors.transparent,
           // Keep conversations created from this screen attached to the
@@ -556,7 +557,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
               ),
               children: [
                 _PartnerEmptyStateCard(
-                  onAddConversation: () => showModalBottomSheet<void>(
+                  onAddConversation: () => showAppSheet<void>(
                     context: context,
                     backgroundColor: Colors.transparent,
                     builder: (_) => NewConversationSheet(partnerId: partnerId),

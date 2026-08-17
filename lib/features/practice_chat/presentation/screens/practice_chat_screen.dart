@@ -26,6 +26,7 @@ import '../widgets/practice_girl_photo.dart';
 import '../widgets/practice_profile_sheet.dart';
 import '../widgets/practice_temperature_style.dart';
 import '../widgets/practice_wait_progress.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 /// AI 實戰練習室主畫面：點入直接進聊天（不選目標）。
 /// 使用者先發訊息，AI 扮演模擬對象回覆；最多 20 則 AI 回覆；
@@ -394,7 +395,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
 
   void _openHistory(BuildContext context) {
     final sessions = ref.read(recentPracticeSessionsProvider);
-    showModalBottomSheet<void>(
+    showAppSheet<void>(
       context: context,
       backgroundColor: AppColors.brandInk,
       showDragHandle: true,
@@ -2329,7 +2330,7 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
     String coaching, {
     required bool isGameMode,
   }) {
-    showModalBottomSheet<void>(
+    showAppSheet<void>(
       context: context,
       backgroundColor: AppColors.brandInk,
       showDragHandle: true,

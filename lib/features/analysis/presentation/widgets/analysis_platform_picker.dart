@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 /// The suggested platforms stay deliberately small. A custom value is always
 /// available so the UI does not need a release whenever users move elsewhere.
@@ -34,7 +35,7 @@ Future<AnalysisPlatformPickerResult?> showAnalysisPlatformPicker(
   String? currentValue,
   String title = '選擇平台',
 }) {
-  return showModalBottomSheet<AnalysisPlatformPickerResult>(
+  return showAppSheet<AnalysisPlatformPickerResult>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,

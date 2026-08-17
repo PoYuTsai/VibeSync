@@ -5,6 +5,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/practice_acquaintance_origin.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 import 'practice_girl_photo.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 /// 對象 profile bottom sheet：只展示 server catalog 已知（AI 人設也知道）的資訊，
 /// 絕不新增 client-only 欄位，避免 UI 與 AI 人設說兩套。認識場合是唯一例外——
@@ -16,7 +17,7 @@ Future<void> showPracticeProfileSheet(
   PracticeGirlProfile girl, {
   required String threadId,
 }) {
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
     backgroundColor: AppColors.brandInk,
     showDragHandle: true,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 /// Game 教學卡收合後的去向：開始攻略＝原地關閉；查看方案＝呼叫端導付費牆；
 /// 去圖鑑翻牌＝呼叫端導角色圖鑑（鎖定＋已訂閱：他有每日翻牌額度）。
@@ -23,7 +24,7 @@ Future<PracticeGameIntroResult?> showPracticeGameIntroSheet(
   required bool showUpgradeHook,
   bool locked = false,
 }) {
-  return showModalBottomSheet<PracticeGameIntroResult>(
+  return showAppSheet<PracticeGameIntroResult>(
     context: context,
     backgroundColor: AppColors.brandInk,
     showDragHandle: true,

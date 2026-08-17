@@ -7,6 +7,7 @@ import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../partner/presentation/widgets/partner_picker_sheet.dart';
 import '../../data/providers/conversation_write_controller.dart';
 import '../../domain/entities/conversation.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 /// Modal sheet that lets the user move a single Conversation to another
 /// Partner. Reuses [PartnerPickerSheet] for the list / filter UI.
@@ -24,7 +25,7 @@ Future<void> showConversationReassignPicker(
   required WidgetRef ref,
   DateTime? preservedArchivedAt,
 }) {
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
     backgroundColor: Theme.of(context).cardColor,
     builder: (sheetCtx) => SafeArea(

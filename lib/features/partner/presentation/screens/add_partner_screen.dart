@@ -54,6 +54,7 @@ import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 // 標準 56 縮成 48：整張表單要一頁裝完（proof: add_partner_screen_test 的
 // 「whole form fits one screen」），而這頁的 AppBar 只有標題＋返回。
@@ -364,7 +365,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
     required String Function(T) labelOf,
     required T selected,
   }) {
-    return showModalBottomSheet<T>(
+    return showAppSheet<T>(
       context: context,
       backgroundColor: AppColors.brandSurface,
       shape: const RoundedRectangleBorder(
@@ -424,7 +425,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
   /// 補充背景直接綁 [_backgroundNote]：sheet 用臨時 controller 會在收合動畫
   /// 還在跑時就被 dispose（TextField 仍在重建）→ 「used after disposed」。
   Future<void> _editBackgroundNote() async {
-    await showModalBottomSheet<void>(
+    await showAppSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.brandSurface,

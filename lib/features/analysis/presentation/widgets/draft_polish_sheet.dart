@@ -15,6 +15,7 @@ import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/analysis_models.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 /// 一次潤飾請求的面板層結果。
 ///
@@ -43,7 +44,7 @@ Future<void> showDraftPolishSheet(
   required void Function(String polishedText) onCopy,
   required Future<void> Function(String polishedText) onRefine,
 }) {
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,

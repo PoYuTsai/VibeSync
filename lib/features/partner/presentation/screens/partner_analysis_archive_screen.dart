@@ -16,6 +16,7 @@ import '../providers/partner_providers.dart';
 import '../utils/conversation_archive_sections.dart';
 import '../utils/conversation_record_actions.dart';
 import '../widgets/partner_conversation_tile.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 class PartnerAnalysisArchiveScreen extends ConsumerWidget {
   const PartnerAnalysisArchiveScreen({
@@ -122,7 +123,7 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
         key: const ValueKey('archive-new-conversation'),
         onPressed: partner == null
             ? null
-            : () => showModalBottomSheet(
+            : () => showAppSheet(
                   context: context,
                   backgroundColor: Colors.transparent,
                   builder: (_) => NewConversationSheet(partnerId: partnerId),

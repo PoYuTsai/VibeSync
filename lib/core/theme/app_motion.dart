@@ -46,6 +46,13 @@ abstract final class AppMotion {
   static const Curve easeOut = Cubic(0.23, 1, 0.32, 1);
   static const Curve celebrateCurve = Curves.easeOutBack;
 
+  /// iOS 抽屜曲線（Emil/Vaul 系）：進場尾段極長收束。
+  static const Curve drawer = Cubic(0.32, 0.72, 0, 1);
+
+  /// bottom sheet 進場／退場（showAppSheet 統一入口）；退場比進場快。
+  static const Duration sheetIn = Duration(milliseconds: 340);
+  static const Duration sheetOut = Duration(milliseconds: 260);
+
   /// 按壓縮放比例（PressableScale 全域規格）。
   static const double pressedScale = 0.97;
 }

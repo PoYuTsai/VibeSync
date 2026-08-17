@@ -23,6 +23,7 @@ import '../../data/services/new_topic_request_session.dart';
 import '../../data/services/new_topic_service.dart';
 import '../../domain/entities/new_topic_result.dart';
 import 'new_topic_idea_card.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 /// 新話題（破冰腦力）分頁（計畫 §13）。掛在 OpeningRescueScreen 的
 /// IndexedStack 內：切換模式不 unmount，結果/錯誤/requestId 全保留。
@@ -97,7 +98,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       return;
     }
 
-    final selected = await showModalBottomSheet<String>(
+    final selected = await showAppSheet<String>(
       context: context,
       backgroundColor: AppColors.coachSurfaceRaised,
       shape: const RoundedRectangleBorder(

@@ -10,6 +10,7 @@ import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/services/analysis_fragment_policy.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 class ScreenshotRecognitionDialogResult {
   final String name;
@@ -428,7 +429,7 @@ class _ScreenshotRecognitionDialogState
     final message = _editableMessages[index];
     final quoted = message.quotedReplyController?.text.trim() ?? '';
 
-    await showModalBottomSheet<void>(
+    await showAppSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.brandSurface2,

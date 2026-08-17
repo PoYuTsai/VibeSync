@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 /// 與 server `MAX_REFINE_INSTRUCTION_LENGTH` 對齊。輸入框先擋一次，server 仍會
 /// 再驗一次（超長是 400、0 扣費）。
@@ -85,7 +86,7 @@ Future<ReplyRefineSheetResult?> showReplyRefineSheet(
   String? restoredText,
   String? restoredRequestId,
 }) {
-  return showModalBottomSheet<ReplyRefineSheetResult>(
+  return showAppSheet<ReplyRefineSheetResult>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,

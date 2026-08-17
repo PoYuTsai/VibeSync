@@ -8,6 +8,7 @@ import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/subscription_providers.dart';
+import '../../../../shared/widgets/brand/app_sheet.dart';
 
 /// 首頁免費額度小條（onboarding 轉化 Tier 2 批 1）。
 ///
@@ -40,7 +41,7 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
   }
 
   void _openExplainSheet(BuildContext context, int monthlyLimit) {
-    showModalBottomSheet<void>(
+    showAppSheet<void>(
       context: context,
       backgroundColor: AppColors.brandSurface,
       shape: const RoundedRectangleBorder(
