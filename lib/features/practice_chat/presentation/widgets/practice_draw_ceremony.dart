@@ -312,10 +312,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   void initState() {
     super.initState();
     _sfx = ref.read(practiceDrawSfxProvider);
-    _intro.addListener(_onTick);
-    _reveal.addListener(_onTick);
     _reveal.addListener(_onRevealEdge);
-    _waiting.addListener(_onTick);
     _reveal.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         _toHidden();
@@ -331,12 +328,14 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     });
   }
 
-  void _onTick() {
-    if (mounted) setState(() {});
-  }
+  /// 三條 controller 的合併訊號：疊加層由 AnimatedBuilder 訂閱它重繪，
+  /// 不再 setState-per-tick 重跑整個 State.build（含 ref.listen 重掛）。
+  late final Listenable _ceremonyMotion =
+      Listenable.merge([_intro, _reveal, _waiting]);
 
   /// 揭曉時間軸跨白卡預覽翻面門檻觸發一次叮聲。只比對門檻、設旗標、播一聲——不
-  /// setState（`_onTick` 已負責重繪）。跨幅再大（測試一次 pump 跳過門檻）也用 `>=`
+  /// setState（重繪由 [_ceremonyMotion] 的 AnimatedBuilder 負責）。跨幅再大
+  /// （測試一次 pump 跳過門檻）也用 `>=`
   /// Kept as a timeline edge hook, but intentionally does not play the old
   /// reveal chime. The reference master audio owns all reveal accents.
   void _onRevealEdge() {}
@@ -450,6 +449,17 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       );
     }
 
+    // 疊加層整棵包 RepaintBoundary 與底下 practice room 隔離；動畫幀由
+    // AnimatedBuilder 訂閱三條 controller 驅動，State.build 只在 phase 轉換時重跑。
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _ceremonyMotion,
+        builder: (context, _) => _buildOverlay(),
+      ),
+    );
+  }
+
+  Widget _buildOverlay() {
     // 卡片／特效內容不透明度：抽牌時跟著卡背浮現；reveal 末段（HoldEnd→1）淡出交棒。
     final base = _intro.value;
     double revealFade = 1;
@@ -1392,10 +1402,13 @@ class _GrandInfoBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      key: const ValueKey('practice-draw-ceremony-grand-info'),
-      borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
+    // RepaintBoundary 隔離 blur：BackdropFilter 底下全是每幀在動的東西，
+    // 不隔離會整片合成回讀。
+    return RepaintBoundary(
+      child: ClipRRect(
+        key: const ValueKey('practice-draw-ceremony-grand-info'),
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1407,7 +1420,8 @@ class _GrandInfoBar extends StatelessWidget {
               width: 1,
             ),
           ),
-          child: _FrontInfo(girl: girl, accent: _kTeal, rarity: girl.rarity),
+            child: _FrontInfo(girl: girl, accent: _kTeal, rarity: girl.rarity),
+          ),
         ),
       ),
     );
