@@ -25,7 +25,7 @@ class EnthusiasmGauge extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(level.emoji, style: const TextStyle(fontSize: 24)),
+              Icon(level.icon, size: 24, color: level.color),
               const SizedBox(width: 8),
               Text(
                 '$score/100',

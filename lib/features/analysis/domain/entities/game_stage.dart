@@ -45,20 +45,6 @@ enum GameStage {
     }
   }
 
-  String get emoji {
-    switch (this) {
-      case opening:
-        return '👋';
-      case premise:
-        return '💫';
-      case qualification:
-        return '✨';
-      case narrative:
-        return '📖';
-      case close:
-        return '🎯';
-    }
-  }
 }
 
 /// 對話階段狀態

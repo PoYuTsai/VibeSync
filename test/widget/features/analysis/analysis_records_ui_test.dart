@@ -383,21 +383,21 @@ void main() {
     await tester.pumpAndSettle();
     await tester.drag(detailList, const Offset(0, -700));
     await tester.pumpAndSettle();
-    expect(find.text('🔄 延展'), findsOneWidget);
+    expect(find.text('延展'), findsOneWidget);
     final replyCarousel =
         find.byKey(const ValueKey('analysis-record-reply-styles'));
     await tester.drag(replyCarousel, const Offset(-330, 0));
     await tester.pumpAndSettle();
-    expect(find.text('💬 共鳴'), findsOneWidget);
+    expect(find.text('共鳴'), findsOneWidget);
     await tester.drag(replyCarousel, const Offset(-330, 0));
     await tester.pumpAndSettle();
-    expect(find.text('😏 調情'), findsOneWidget);
+    expect(find.text('調情'), findsOneWidget);
     await tester.drag(replyCarousel, const Offset(-330, 0));
     await tester.pumpAndSettle();
-    expect(find.text('🎭 幽默'), findsOneWidget);
+    expect(find.text('幽默'), findsOneWidget);
     await tester.drag(replyCarousel, const Offset(-330, 0));
     await tester.pumpAndSettle();
-    expect(find.text('🔮 冷讀'), findsOneWidget);
+    expect(find.text('冷讀'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('analysis-record-copy-recommendation')),
       findsOneWidget,

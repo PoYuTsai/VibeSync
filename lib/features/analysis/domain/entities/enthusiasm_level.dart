@@ -2,6 +2,7 @@
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 enum EnthusiasmLevel {
   cold,
@@ -29,16 +30,16 @@ enum EnthusiasmLevel {
     }
   }
 
-  String get emoji {
+  IconData get icon {
     switch (this) {
       case cold:
-        return '❄️';
+        return TablerIcons.snowflake;
       case warm:
-        return '🌤️';
+        return TablerIcons.sun_low;
       case hot:
-        return '🔥';
+        return TablerIcons.flame;
       case veryHot:
-        return '💖';
+        return TablerIcons.hearts;
     }
   }
 

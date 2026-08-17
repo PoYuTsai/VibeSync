@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../onboarding/data/onboarding_service.dart';
@@ -848,8 +849,18 @@ class _StylePreview extends StatelessWidget {
         spacing: 8,
         runSpacing: 8,
         alignment: WrapAlignment.center,
-        children: const ['🔄 延展', '💬 共鳴', '😏 調情', '🎭 幽默', '🔮 冷讀']
-            .map((text) => Chip(label: Text(text)))
+        children: const {
+          'extend': '延展',
+          'resonate': '共鳴',
+          'tease': '調情',
+          'humor': '幽默',
+          'coldRead': '冷讀',
+        }
+            .entries
+            .map((e) => Chip(
+                  avatar: Icon(replyStyleIcons[e.key], size: 16),
+                  label: Text(e.value),
+                ))
             .toList(),
       );
 }
@@ -865,7 +876,8 @@ class _GlobeDemo extends StatelessWidget {
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('🌐', style: TextStyle(fontSize: 36)),
+            Icon(TablerIcons.world,
+                size: 36, color: AppColors.onBackgroundPrimary),
             SizedBox(width: 16),
             Icon(Icons.touch_app, color: AppColors.brandFlame, size: 34),
             SizedBox(width: 8),

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/analysis_result.dart';
@@ -23,7 +24,7 @@ class FinalRecommendationCard extends StatelessWidget {
           // Header with pick badge
           Row(
             children: [
-              const Text('⭐', style: TextStyle(fontSize: 22)),
+              const Icon(TablerIcons.star, size: 22, color: AppColors.ctaStart),
               const SizedBox(width: 8),
               Text('AI 推薦回覆', style: AppTypography.titleLarge),
               const Spacer(),
@@ -65,7 +66,7 @@ class FinalRecommendationCard extends StatelessWidget {
 
           // Why this recommendation
           _InfoRow(
-            icon: '📝',
+            icon: TablerIcons.notes,
             title: '為什麼推薦',
             content: recommendation.reason,
           ),
@@ -73,7 +74,7 @@ class FinalRecommendationCard extends StatelessWidget {
 
           // Interaction basis
           _InfoRow(
-            icon: '🧠',
+            icon: TablerIcons.brain,
             title: '為什麼這樣接',
             content: recommendation.psychology,
           ),
@@ -111,7 +112,7 @@ class FinalRecommendationCard extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
-  final String icon;
+  final IconData icon;
   final String title;
   final String content;
 
@@ -126,7 +127,7 @@ class _InfoRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(icon, style: const TextStyle(fontSize: 16)),
+        Icon(icon, size: 16, color: AppColors.onBackgroundSecondary),
         const SizedBox(width: 8),
         Expanded(
           child: Column(

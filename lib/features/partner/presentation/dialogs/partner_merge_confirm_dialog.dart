@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../shared/widgets/brand/brand_dialog.dart';
+import '../../../../core/theme/app_icons.dart';
 
 /// D-variant confirm dialog per Phase 3 design doc §3:
 /// - N 對話搬遷 + M traits 聯集（具象 metric，避免抽象 wording）
@@ -57,12 +58,20 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
           const SizedBox(height: 4),
           Text('$traitCount 個特質會保留'),
           const SizedBox(height: 12),
-          Text(
-            '⚠️ 此操作不可復原',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.error,
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(TablerIcons.alert_triangle,
+                  size: 15, color: Theme.of(context).colorScheme.error),
+              const SizedBox(width: 5),
+              Text(
+                '此操作不可復原',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ],
       ),

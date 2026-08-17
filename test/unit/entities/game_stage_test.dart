@@ -24,12 +24,7 @@ void main() {
     });
 
     group('emoji', () {
-      test('returns correct emoji for each stage', () {
-        expect(GameStage.opening.emoji, '👋');
-        expect(GameStage.premise.emoji, '💫');
-        expect(GameStage.qualification.emoji, '✨');
-        expect(GameStage.narrative.emoji, '📖');
-        expect(GameStage.close.emoji, '🎯');
+      test('no longer exposes emoji (titles use Tabler icons)', () {
       });
     });
   });

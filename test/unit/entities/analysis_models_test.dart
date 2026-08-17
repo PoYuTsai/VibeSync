@@ -47,10 +47,7 @@ void main() {
       expect(TopicDepthLevel.intimate.label, '曖昧層');
     });
 
-    test('emoji returns correct emoji for each level', () {
-      expect(TopicDepthLevel.event.emoji, '📰');
-      expect(TopicDepthLevel.personal.emoji, '👤');
-      expect(TopicDepthLevel.intimate.emoji, '💕');
+    test('no longer exposes emoji (titles use Tabler icons)', () {
     });
   });
 

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/dimension_radar_chart.dart';
@@ -640,7 +641,8 @@ class _SavedAnalysisCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('⚠️', style: TextStyle(fontSize: 20)),
+                const Icon(TablerIcons.alert_triangle,
+                    size: 20, color: AppColors.error),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -687,7 +689,8 @@ class _SavedAnalysisCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Text('🧠', style: TextStyle(fontSize: 19)),
+                    const Icon(TablerIcons.brain,
+                        size: 19, color: AppColors.primaryLight),
                     const SizedBox(width: 8),
                     Text(
                       '她話裡的意思',
@@ -811,7 +814,8 @@ class _SavedAnalysisCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Text('🩺', style: TextStyle(fontSize: 19)),
+                    const Icon(TablerIcons.stethoscope,
+                        size: 19, color: AppColors.info),
                     const SizedBox(width: 8),
                     Text(
                       '對話健檢',
@@ -1043,7 +1047,8 @@ class _SavedAnalysisCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('💬', style: TextStyle(fontSize: 18)),
+                const Icon(TablerIcons.message_circle,
+                    size: 18, color: AppColors.info),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(

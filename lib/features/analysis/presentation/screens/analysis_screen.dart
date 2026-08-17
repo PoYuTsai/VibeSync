@@ -19,6 +19,7 @@ import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import 'package:image_picker/image_picker.dart';
@@ -7488,8 +7489,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 ),
                                 child: Row(
                                   children: [
-                                    const Text('⚠️',
-                                        style: TextStyle(fontSize: 20)),
+                                    const Icon(TablerIcons.alert_triangle,
+                                        size: 20, color: AppColors.error),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
@@ -7704,9 +7705,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         children: [
                                           Row(
                                             children: [
-                                              const Text('🧠',
-                                                  style:
-                                                      TextStyle(fontSize: 18)),
+                                              const Icon(TablerIcons.brain,
+                                                  size: 18,
+                                                  color:
+                                                      AppColors.primaryLight),
                                               const SizedBox(width: 8),
                                               Text('她話裡的意思',
                                                   style: AppTypography
@@ -7735,9 +7737,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               ),
                                               child: Row(
                                                 children: [
-                                                  const Text('⚠️',
-                                                      style: TextStyle(
-                                                          fontSize: 14)),
+                                                  const Icon(
+                                                      TablerIcons.alert_triangle,
+                                                      size: 14,
+                                                      color: AppColors.warning),
                                                   const SizedBox(width: 8),
                                                   Expanded(
                                                     child: Text(
@@ -7782,8 +7785,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     BrandSurfaceCard(
                                       child: Row(
                                         children: [
-                                          const Text('💡',
-                                              style: TextStyle(fontSize: 20)),
+                                          const Icon(TablerIcons.bulb,
+                                              size: 20,
+                                              color: AppColors.warning),
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child: Text(
@@ -7805,9 +7809,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     BrandSurfaceCard(
                                       child: Row(
                                         children: [
-                                          Text(_topicDepth!.current.emoji,
-                                              style: const TextStyle(
-                                                  fontSize: 20)),
+                                          Icon(
+                                              switch (_topicDepth!.current) {
+                                                TopicDepthLevel.event =>
+                                                  TablerIcons.news,
+                                                TopicDepthLevel.personal =>
+                                                  TablerIcons.user,
+                                                TopicDepthLevel.intimate =>
+                                                  TablerIcons.hearts,
+                                              },
+                                              size: 20,
+                                              color: AppColors.primaryLight),
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child: Column(
@@ -7861,9 +7873,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         children: [
                                           Row(
                                             children: [
-                                              const Text('🩺',
-                                                  style:
-                                                      TextStyle(fontSize: 18)),
+                                              const Icon(
+                                                  TablerIcons.stethoscope,
+                                                  size: 18,
+                                                  color: AppColors.info),
                                               const SizedBox(width: 8),
                                               Text('對話健檢',
                                                   style: AppTypography
@@ -7991,8 +8004,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       children: [
                                         Row(
                                           children: [
-                                            const Text('✏️',
-                                                style: TextStyle(fontSize: 20)),
+                                            const Icon(TablerIcons.pencil,
+                                                size: 20,
+                                                color: AppColors.ctaStart),
                                             const SizedBox(width: 8),
                                             Expanded(
                                               child: Text(
@@ -8047,8 +8061,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               ),
                               child: Row(
                                 children: [
-                                  const Text('💬',
-                                      style: TextStyle(fontSize: 18)),
+                                  const Icon(TablerIcons.message_circle,
+                                      size: 18, color: AppColors.info),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
@@ -8790,7 +8804,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       onPressed: canAddManualMessage
                           ? () => _addMessage(isFromMe: false)
                           : null,
-                      icon: const Text('👩', style: TextStyle(fontSize: 18)),
+                      icon: const Icon(TablerIcons.woman,
+                          size: 18, color: AppColors.veryHot),
                       label: Text('這句是她說',
                           style:
                               TextStyle(color: AppColors.onBackgroundPrimary)),
@@ -8841,7 +8856,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text('👤', style: TextStyle(fontSize: 18)),
+                              Icon(TablerIcons.user,
+                                  size: 18, color: Colors.white),
                               SizedBox(width: 8),
                               Text('這句是我說',
                                   style: TextStyle(
@@ -8990,11 +9006,19 @@ class _EditMessageCoachMark extends StatelessWidget {
                         color: AppColors.ctaStart,
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        '💡 你知道嗎？',
-                        style: AppTypography.titleLarge.copyWith(
-                          color: AppColors.onBackgroundPrimary,
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(TablerIcons.bulb,
+                              size: 22, color: AppColors.warning),
+                          const SizedBox(width: 6),
+                          Text(
+                            '你知道嗎？',
+                            style: AppTypography.titleLarge.copyWith(
+                              color: AppColors.onBackgroundPrimary,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                       Text(

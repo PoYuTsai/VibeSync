@@ -185,7 +185,7 @@ class MyReportScreen extends ConsumerWidget {
       final raw = c.currentGameStage?.trim();
       if (raw != null && raw.isNotEmpty) {
         final stage = GameStage.fromString(raw);
-        return '${stage.emoji} ${stage.label}';
+        return stage.label;
       }
     }
     return null;

@@ -323,7 +323,7 @@ class ProfileCardScreen extends ConsumerWidget {
             ),
           ),
           Text(
-            '$score ${level.emoji} ${level.label}',
+            '$score ${level.label}',
             style: AppTypography.bodyMedium.copyWith(
               color: level.color,
               fontWeight: FontWeight.w600,

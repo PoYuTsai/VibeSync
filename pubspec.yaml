@@ -72,6 +72,7 @@ dependencies:
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.4
   sentry_flutter: 9.27.0
+  flutter_tabler_icons: ^1.43.0
 
 dev_dependencies:
   flutter_test:

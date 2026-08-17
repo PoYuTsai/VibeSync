@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_icons.dart';
 import '../../core/theme/app_typography.dart';
 
 enum ReplyType { extend, resonate, tease, humor, coldRead }
@@ -23,17 +24,19 @@ class ReplyCard extends StatelessWidget {
   String get _label {
     switch (type) {
       case ReplyType.extend:
-        return '🔄 延展・深挖她的回答';
+        return '延展・深挖她的回答';
       case ReplyType.resonate:
-        return '💬 共鳴・讓她覺得你懂她';
+        return '共鳴・讓她覺得你懂她';
       case ReplyType.tease:
-        return '😏 調情・製造曖昧張力';
+        return '調情・製造曖昧張力';
       case ReplyType.humor:
-        return '🎭 幽默・讓她笑著想回';
+        return '幽默・讓她笑著想回';
       case ReplyType.coldRead:
-        return '🔮 冷讀・猜中她沒說的';
+        return '冷讀・猜中她沒說的';
     }
   }
+
+  IconData get _icon => replyStyleIcons[type.name]!;
 
   Color get _color {
     switch (type) {
@@ -83,12 +86,21 @@ class ReplyCard extends StatelessWidget {
                             color: _color.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Text(
-                            _label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style:
-                                AppTypography.caption.copyWith(color: _color),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(_icon, size: 13, color: _color),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  _label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.caption
+                                      .copyWith(color: _color),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

@@ -34,16 +34,6 @@ extension TopicDepthLevelX on TopicDepthLevel {
     }
   }
 
-  String get emoji {
-    switch (this) {
-      case TopicDepthLevel.event:
-        return '📰';
-      case TopicDepthLevel.personal:
-        return '👤';
-      case TopicDepthLevel.intimate:
-        return '💕';
-    }
-  }
 }
 
 /// Topic depth analysis result

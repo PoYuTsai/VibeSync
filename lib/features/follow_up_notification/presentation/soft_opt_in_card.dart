@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_icons.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/brand/brand_dialog.dart';
 
@@ -18,7 +19,14 @@ Future<bool?> showSoftOptInCard(
     context: context,
     barrierDismissible: true,
     builder: (dialogContext) => BrandAlertDialog(
-      title: const Text('要我提醒你跟進嗎？👀'),
+      title: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(TablerIcons.eye, size: 20, color: AppColors.ctaStart),
+          SizedBox(width: 8),
+          Flexible(child: Text('要我提醒你跟進嗎？')),
+        ],
+      ),
       content: Text(
         '跟$name的對話剛分析完。想要的話，我可以在 48 小時後提醒你回來看看下一步、主動出擊。',
       ),

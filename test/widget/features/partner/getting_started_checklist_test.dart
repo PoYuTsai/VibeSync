@@ -202,7 +202,7 @@ void main() {
     expect(find.byKey(OnboardingDrawRewardCard.cardKey), findsOneWidget);
     expect(find.text('去抽卡'), findsOneWidget);
     // free 文案：獎勵＝馬上能抽的那張。
-    expect(find.text('🎉 起步完成！送你一次免費抽卡'), findsOneWidget);
+    expect(find.text('起步完成！送你一次免費抽卡'), findsOneWidget);
   }, variant: iosVariant);
 
   testWidgets('付費 tier 領獎卡文案：獎勵＝疊在每日額度後的 +1', (tester) async {
@@ -230,7 +230,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('🎉 起步完成！加送你 1 次翻牌機會'), findsOneWidget);
+    expect(find.text('起步完成！加送你 1 次翻牌機會'), findsOneWidget);
     expect(find.textContaining('每日免費次數用完後'), findsOneWidget);
     expect(find.text('去抽卡'), findsOneWidget);
   }, variant: iosVariant);

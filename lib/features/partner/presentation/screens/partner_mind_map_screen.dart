@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/mindmap/mind_map_builder.dart';
@@ -108,7 +109,7 @@ class _MindMapDetailPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text('🎯', style: TextStyle(fontSize: 16)),
+              const Icon(TablerIcons.target_arrow, size: 16, color: AppColors.ctaStart),
               const SizedBox(width: 8),
               Text(
                 '作戰重點',

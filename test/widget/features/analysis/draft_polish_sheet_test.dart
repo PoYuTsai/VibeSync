@@ -63,7 +63,7 @@ void main() {
     // 送給呼叫端的是 trim 過的草稿。
     expect(polished, ['今天要不要出來？']);
     expect(find.text('修好的版本'), findsOneWidget);
-    expect(find.text('💡 去掉壓迫感'), findsOneWidget);
+    expect(find.text('去掉壓迫感'), findsOneWidget);
     expect(find.byKey(const ValueKey('draft-polish-copy')), findsOneWidget);
     expect(find.byKey(const ValueKey('draft-polish-refine')), findsOneWidget);
   });

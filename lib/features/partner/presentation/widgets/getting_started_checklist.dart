@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../onboarding/data/onboarding_service.dart';
@@ -273,12 +274,22 @@ class OnboardingDrawRewardCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              isPremium ? '🎉 起步完成！加送你 1 次翻牌機會' : '🎉 起步完成！送你一次免費抽卡',
-              style: AppTypography.titleSmall.copyWith(
-                color: AppColors.onBackgroundPrimary,
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(TablerIcons.confetti,
+                    size: 16, color: AppColors.brandFlame),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    isPremium ? '起步完成！加送你 1 次翻牌機會' : '起步完成！送你一次免費抽卡',
+                    style: AppTypography.titleSmall.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 6),
             Text(

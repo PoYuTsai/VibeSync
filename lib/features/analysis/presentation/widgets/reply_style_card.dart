@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/analysis_models.dart';
@@ -28,11 +29,11 @@ class ReplyStyleCard extends StatelessWidget {
   });
 
   static const labels = {
-    'extend': '\u{1F504} 延展',
-    'resonate': '\u{1F4AC} 共鳴',
-    'tease': '\u{1F60F} 調情',
-    'humor': '\u{1F3AD} 幽默',
-    'coldRead': '\u{1F52E} 冷讀',
+    'extend': '延展',
+    'resonate': '共鳴',
+    'tease': '調情',
+    'humor': '幽默',
+    'coldRead': '冷讀',
   };
 
   static const _reasons = {
@@ -107,6 +108,11 @@ class ReplyStyleCard extends StatelessWidget {
           children: [
             Row(
               children: [
+                if (replyStyleIcons[type] != null) ...[
+                  Icon(replyStyleIcons[type],
+                      size: 18, color: _colorForType(type)),
+                  const SizedBox(width: 6),
+                ],
                 Text(
                   labels[type] ?? type,
                   style: AppTypography.titleMedium.copyWith(

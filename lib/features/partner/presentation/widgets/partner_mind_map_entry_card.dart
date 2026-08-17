@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/mindmap/mind_map_models.dart';
 import '../../domain/mindmap/partner_insight_presentation.dart';
@@ -69,7 +70,7 @@ class PartnerMindMapEntryCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Text('🗺️', style: TextStyle(fontSize: 18)),
+                const Icon(TablerIcons.map_2, size: 18, color: AppColors.ctaStart),
                 const SizedBox(width: 8),
                 Text(
                   '對象作戰板',

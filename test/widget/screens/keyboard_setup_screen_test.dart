@@ -46,7 +46,7 @@ void main() {
     );
 
     expect(find.text('聊天不用再跳出 App'), findsOneWidget);
-    expect(find.text('🔄 延展'), findsOneWidget);
+    expect(find.text('延展'), findsOneWidget);
 
     await tester.tap(find.text('下一步'));
     await tester.pump();

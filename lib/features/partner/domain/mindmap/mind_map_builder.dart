@@ -78,7 +78,7 @@ PartnerMindMap buildPartnerMindMap({
       children: [
         MindMapNode(
           id: 'stage-current',
-          label: '${stage.emoji} ${stage.label}',
+          label: stage.label,
           branch: MindMapBranch.stage,
         ),
       ],
@@ -93,7 +93,7 @@ PartnerMindMap buildPartnerMindMap({
         children: [
           MindMapNode(
             id: 'depth-current',
-            label: '${depth.emoji} ${depth.label}',
+            label: depth.label,
             branch: MindMapBranch.topicDepth,
           ),
         ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../shared/widgets/brand/brand_dialog.dart';
+import '../../../../core/theme/app_icons.dart';
 
 /// Destructive confirm dialog for deleting a single conversation under a Partner.
 ///
@@ -29,12 +30,20 @@ class DeleteConversationConfirmDialog extends StatelessWidget {
             '$dateLabel · $messageCount 則訊息會永久刪除',
           ),
           const SizedBox(height: 12),
-          Text(
-            '⚠️ 此操作不可復原',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.error,
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(TablerIcons.alert_triangle,
+                  size: 15, color: Theme.of(context).colorScheme.error),
+              const SizedBox(width: 5),
+              Text(
+                '此操作不可復原',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ],
       ),

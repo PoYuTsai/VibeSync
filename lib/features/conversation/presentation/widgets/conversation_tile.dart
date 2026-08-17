@@ -88,7 +88,7 @@ class ConversationTile extends StatelessWidget {
             const SizedBox(height: 4),
             Row(
               children: [
-                Text(level.emoji),
+                Icon(level.icon, size: 14, color: level.color),
                 const SizedBox(width: 4),
                 Text(
                   '${conversation.lastEnthusiasmScore}',

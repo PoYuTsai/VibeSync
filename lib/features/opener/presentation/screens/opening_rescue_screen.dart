@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -112,11 +113,11 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
   /// 展示序不看這張 map：paid 走 canonicalPaidOrder，free 走
   /// freeUnlockedOrder（三實卡在前）＋ paidOnlyOrder（兩鎖卡在後）。
   static const openerTypeLabels = {
-    'extend': '🔄 延展',
-    'resonate': '💬 共鳴',
-    'tease': '😏 調情',
-    'humor': '🎭 幽默',
-    'coldRead': '🔮 冷讀',
+    'extend': '延展',
+    'resonate': '共鳴',
+    'tease': '調情',
+    'humor': '幽默',
+    'coldRead': '冷讀',
   };
 
   /// Card list is contract-driven, not payload driven（contract v2）：
@@ -1745,6 +1746,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             // Header row
             Row(
               children: [
+                if (replyStyleIcons[type] != null) ...[
+                  Icon(replyStyleIcons[type],
+                      size: 16, color: AppColors.onBackgroundPrimary),
+                  const SizedBox(width: 6),
+                ],
                 Text(
                   label,
                   style: AppTypography.titleSmall.copyWith(

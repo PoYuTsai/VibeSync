@@ -1,6 +1,7 @@
 // lib/features/analysis/presentation/widgets/psychology_card.dart
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/analysis_result.dart';
@@ -23,7 +24,7 @@ class PsychologyCard extends StatelessWidget {
           // Header
           Row(
             children: [
-              const Text('🧠', style: TextStyle(fontSize: 20)),
+              const Icon(TablerIcons.brain, size: 20, color: AppColors.primaryLight),
               const SizedBox(width: 8),
               Text('她話裡的意思', style: AppTypography.titleMedium),
             ],

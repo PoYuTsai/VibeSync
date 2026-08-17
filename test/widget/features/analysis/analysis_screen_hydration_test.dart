@@ -2254,8 +2254,8 @@ void main() {
 
         // pick=extend：延展風格卡與推薦卡同內容，去重不再出現；
         // 下一張是共鳴（在視口內會被 mount）。
-        expect(find.text('🔄 延展', skipOffstage: false), findsNothing);
-        expect(find.text('💬 共鳴', skipOffstage: false), findsOneWidget);
+        expect(find.text('延展', skipOffstage: false), findsNothing);
+        expect(find.text('共鳴', skipOffstage: false), findsOneWidget);
 
         // 折疊區改名且不再帶回覆相關文案。
         expect(find.text('詳細分析'), findsOneWidget);
