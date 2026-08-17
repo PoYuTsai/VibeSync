@@ -6,22 +6,28 @@
 
 | # | 標題 | 嚴重度 | 狀態 |
 |---|------|--------|------|
-| 001 | 底部 tab fade-through（保狀態）＋TickerMode | HIGH | TODO |
-| 002 | 按壓回饋統一＋GradientButton 死碼清除 | HIGH | TODO |
-| 003 | 無限循環動畫 reduced-motion 閘門 | HIGH | TODO |
-| 004 | Sydney 姿勢降頻＋crossfade | MEDIUM | TODO |
-| 005 | 分析結果回覆區進場（payoff 時刻） | HIGH | TODO |
-| 006 | 對象卡 container transform（引入 animations 套件） | HIGH | TODO |
-| 007 | /paywall modal 轉場 | MEDIUM | TODO |
-| 008 | 載入→內容 crossfade ×2 | MEDIUM | TODO |
-| 009 | 紀錄 sheet → 詳情 SharedAxis | MEDIUM | TODO |
-| 010 | 分析主鈕進場壓進預算 | MEDIUM | TODO |
-| 011 | 圖表揭示 chartReveal token | MEDIUM | TODO |
-| 012 | 程式捲動 AppMotion.scroll（12 處） | MEDIUM | TODO |
-| 013 | showAppSheet() 統一 20 個 bottom sheet | MEDIUM | TODO |
-| 014 | 抽卡儀式效能重構 | HIGH(perf) | TODO |
-| 015 | 首頁效能小刀三處 | MEDIUM(perf) | TODO |
-| 016 | token 採用率總清掃 | LOW | TODO |
+| 001 | 底部 tab fade-through（保狀態）＋TickerMode | HIGH | DONE |
+| 002 | 按壓回饋統一＋GradientButton 死碼清除 | HIGH | DONE |
+| 003 | 無限循環動畫 reduced-motion 閘門 | HIGH | DONE |
+| 004 | Sydney 姿勢降頻＋crossfade | MEDIUM | DONE |
+| 005 | 分析結果回覆區進場（payoff 時刻） | HIGH | DONE |
+| 006 | 對象卡 container transform（引入 animations 套件） | HIGH | DONE |
+| 007 | /paywall modal 轉場 | MEDIUM | DONE |
+| 008 | 載入→內容 crossfade ×2 | MEDIUM | DONE |
+| 009 | 紀錄 sheet → 詳情 SharedAxis | MEDIUM | DONE |
+| 010 | 分析主鈕進場壓進預算 | MEDIUM | DONE |
+| 011 | 圖表揭示 chartReveal token | MEDIUM | DONE |
+| 012 | 程式捲動 AppMotion.scroll（12 處） | MEDIUM | DONE |
+| 013 | showAppSheet() 統一 20 個 bottom sheet | MEDIUM | DONE |
+| 014 | 抽卡儀式效能重構 | HIGH(perf) | DONE |
+| 015 | 首頁效能小刀三處 | MEDIUM(perf) | DONE |
+| 016 | token 採用率總清掃 | LOW | DONE |
+
+> 2026-08-17 全數實作完畢。備註：014 完成核心（拔 setState-per-tick、單一
+> AnimatedBuilder、RepaintBoundary×2），更細的逐節點 child passthrough 留待
+> 真機 DevTools timeline 佐證再做；016-E（report_subject_selector 死動畫）
+> 經查非死碼（色點顏色會過渡），保留原樣；006 步驟 5（對話 tile 同型縫）
+> 選做，待真機驗過第一個縫再決定。
 
 ## 執行順序（Eric 拍板：全做、照批次）
 
