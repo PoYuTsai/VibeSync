@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/ebook_providers.dart';
@@ -228,8 +229,8 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
     }
     _pageController.animateToPage(
       index,
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
+      duration: AppMotion.scroll,
+      curve: AppMotion.easeOut,
     );
   }
 

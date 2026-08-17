@@ -233,7 +233,7 @@ class _EntryTile extends StatelessWidget {
           AnimatedSize(
             duration: reducedMotion
                 ? Duration.zero
-                : const Duration(milliseconds: 200),
+                : AppMotion.enter,
             curve: Curves.easeOutCubic,
             alignment: Alignment.topCenter,
             child: !isExpanded

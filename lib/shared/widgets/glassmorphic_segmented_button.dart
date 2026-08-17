@@ -1,6 +1,7 @@
 // lib/shared/widgets/glassmorphic_segmented_button.dart
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_typography.dart';
 
 class GlassmorphicSegmentedButton<T> extends StatelessWidget {
@@ -30,7 +31,7 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
             child: GestureDetector(
               onTap: () => onChanged(segment.value),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
+                duration: AppMotion.enter,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
                   gradient: isSelected

@@ -1417,7 +1417,7 @@ class _AttentionFlashState extends State<_AttentionFlash>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 320),
+    duration: AppMotion.state,
   );
 
   @override

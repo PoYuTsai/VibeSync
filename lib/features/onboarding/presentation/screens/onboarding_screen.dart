@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/ai_privacy_disclosure.dart';
 import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
@@ -263,7 +264,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   children: List.generate(
                     _pages.length + 2,
                     (index) => AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
+                      duration: AppMotion.enter,
                       margin: const EdgeInsets.symmetric(horizontal: 4),
                       width: _currentPage == index ? 24 : 8,
                       height: 8,

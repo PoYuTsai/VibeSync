@@ -13,6 +13,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/models/ebook_block.dart';
 
@@ -21,7 +22,7 @@ class EbookFlipCard extends StatefulWidget {
 
   final EbookFlipCardBlock block;
 
-  static const Duration flipDuration = Duration(milliseconds: 320);
+  static const Duration flipDuration = AppMotion.celebrate; // 翻面 reveal（320ms）
 
   @override
   State<EbookFlipCard> createState() => _EbookFlipCardState();

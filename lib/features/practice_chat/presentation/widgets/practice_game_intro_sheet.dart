@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
 
@@ -519,7 +520,7 @@ class _PageDots extends StatelessWidget {
         for (var i = 0; i < 2; i++) ...[
           if (i > 0) const SizedBox(width: 6),
           AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
+            duration: AppMotion.enter,
             width: i == page ? 16 : 6,
             height: 6,
             decoration: BoxDecoration(
