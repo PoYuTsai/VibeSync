@@ -149,7 +149,7 @@ enum _AnalysisAppBarAction {
 }
 
 class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   // 訂閱同步屬 best-effort 前置：卡住不得凍結分析/刷新 spinner（2.1(b)）。
   static const _subscriptionSyncTimeout = Duration(seconds: 20);
   static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
@@ -257,6 +257,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   final _messageFocusNode = FocusNode();
   final _messageInputKey = GlobalKey();
   final _replyZoneSectionKey = GlobalKey();
+  // 回覆區進場（payoff 時刻）：區塊 fade+slide 320ms，卡組每張 stagger 50ms。
+  // 總長 = celebrate(320) + 5×50 = 570ms。一次性：新一輪分析（內容歸零後再
+  // 出現）才重播。
+  static const _replyCardStaggerMs = 50;
+  static const _replyZoneEntranceTotalMs = 570;
+  late final AnimationController _replyZoneEntrance = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: _replyZoneEntranceTotalMs),
+  );
+  bool _replyZonePlayed = false;
   // 使用者手指是否正在拖動主捲軸。分析完成的一次性自動捲動只在使用者沒在
   // 拖動時執行，避免把他手上的捲動搶走。不進 setState：純行為旗標，不影響
   // 渲染。
@@ -2314,6 +2324,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _messageController.dispose();
     _messageFocusNode.dispose();
     _scrollController.dispose();
+    _replyZoneEntrance.dispose();
     _feedbackCommentController.dispose();
     _optimizeController.dispose();
     _screenshotAnalysisContextNoteController
@@ -6502,6 +6513,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   @override
   Widget build(BuildContext context) {
+    _syncReplyZoneEntrance();
     final optimizePending = _optimizePendingAwaitingPresentation;
     if (optimizePending != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -7002,8 +7014,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       children: [
                                         Text(
                                           '聊天截圖',
-                                          style: AppTypography.titleSmall
-                                              .copyWith(
+                                          style:
+                                              AppTypography.titleSmall.copyWith(
                                             color:
                                                 AppColors.onBackgroundPrimary,
                                             fontWeight: FontWeight.w700,
@@ -7014,8 +7026,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           '${_selectedImages.length}/3',
                                           style:
                                               AppTypography.bodyMedium.copyWith(
-                                            color: AppColors
-                                                .onBackgroundSecondary,
+                                            color:
+                                                AppColors.onBackgroundSecondary,
                                           ),
                                         ),
                                       ],
@@ -7569,18 +7581,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             // 上方的「下一步」卡）。
                             KeyedSubtree(
                               key: _replyZoneSectionKey,
-                              child: Row(
-                                children: [
-                                  Text('回覆建議',
-                                      style: AppTypography.titleLarge.copyWith(
-                                          color:
-                                              AppColors.onBackgroundPrimary)),
-                                  const Spacer(),
-                                  if (_replyZoneCardCount > 1)
-                                    const SwipeHintNudge(
-                                      child: SwipeHintChip(),
-                                    ),
-                                ],
+                              child: _replyZoneEntranceFade(
+                                child: Row(
+                                  children: [
+                                    Text('回覆建議',
+                                        style: AppTypography.titleLarge
+                                            .copyWith(
+                                                color: AppColors
+                                                    .onBackgroundPrimary)),
+                                    const Spacer(),
+                                    if (_replyZoneCardCount > 1)
+                                      const SwipeHintNudge(
+                                        child: SwipeHintChip(),
+                                      ),
+                                  ],
+                                ),
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -7589,25 +7604,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             // 的事，其他風格卡不跟著拉伸（同日 Eric 真機回報
                             // stretch 版風格卡下方一大塊空白不自然）。卡最多
                             // 6 張，放棄 ListView 的懶載無感。
-                            SingleChildScrollView(
-                              key: const ValueKey('analysis-reply-zone'),
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (_showRecommendedReplyCard)
-                                    _buildRecommendedReplyCard(),
-                                  for (final type in _replyStyleOrder)
-                                    if ((_replies?.containsKey(type) ??
-                                            false) &&
-                                        !(_showRecommendedReplyCard &&
-                                            _isRecommendedReplyType(type)))
-                                      _buildHorizontalReplyCard(
-                                          type, _replies![type]!,
-                                          option: _replyOptions?[type],
-                                          isRecommended:
-                                              _isRecommendedReplyType(type)),
-                                ],
+                            _replyZoneEntranceFade(
+                              child: SingleChildScrollView(
+                                key: const ValueKey('analysis-reply-zone'),
+                                scrollDirection: Axis.horizontal,
+                                child: _buildReplyZoneCardRow(),
                               ),
                             ),
                             if (_showRecommendedReplyCard)
@@ -7738,7 +7739,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               child: Row(
                                                 children: [
                                                   const Icon(
-                                                      TablerIcons.alert_triangle,
+                                                      TablerIcons
+                                                          .alert_triangle,
                                                       size: 14,
                                                       color: AppColors.warning),
                                                   const SizedBox(width: 8),
@@ -8353,6 +8355,90 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   bool get _hasReplyZoneContent =>
       _showRecommendedReplyCard || (_replies?.isNotEmpty ?? false);
+
+  /// 每次 build 開頭呼叫：回覆區內容 false→true 的那次 build 播一次進場，
+  /// 內容歸零（新一輪分析）後解鎖重播。reduced-motion 直接跳到終值。
+  void _syncReplyZoneEntrance() {
+    if (!_hasReplyZoneContent) {
+      _replyZonePlayed = false;
+      return;
+    }
+    if (_replyZonePlayed) return;
+    _replyZonePlayed = true;
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      _replyZoneEntrance.value = 1;
+    } else {
+      _replyZoneEntrance.forward(from: 0);
+    }
+  }
+
+  /// 回覆區塊層進場（標題與卡組共用）：opacity 0→1＋往上 4% 落定，
+  /// 佔總時間軸的前 320ms。
+  Widget _replyZoneEntranceFade({required Widget child}) {
+    final anim = CurvedAnimation(
+      parent: _replyZoneEntrance,
+      curve: Interval(
+        0,
+        AppMotion.celebrate.inMilliseconds / _replyZoneEntranceTotalMs,
+        curve: AppMotion.easeOut,
+      ),
+    );
+    return FadeTransition(
+      opacity: anim,
+      child: SlideTransition(
+        position:
+            Tween(begin: const Offset(0, 0.04), end: Offset.zero).animate(anim),
+        child: child,
+      ),
+    );
+  }
+
+  /// 第 [index] 張卡的 stagger 進場：延遲 index×50ms，fade（easeOut，
+  /// 避免 easeOutBack 超過 1 的 opacity）＋scale 0.96→1（celebrateCurve，
+  /// 全 app 唯一允許彈感的檔位）。純裝飾，不擋互動。
+  Widget _staggeredReplyCard(int index, Widget child) {
+    final startMs = index * _replyCardStaggerMs;
+    final start =
+        (startMs / _replyZoneEntranceTotalMs).clamp(0.0, 1.0).toDouble();
+    final end = ((startMs + AppMotion.celebrate.inMilliseconds) /
+            _replyZoneEntranceTotalMs)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    return FadeTransition(
+      opacity: CurvedAnimation(
+        parent: _replyZoneEntrance,
+        curve: Interval(start, end, curve: AppMotion.easeOut),
+      ),
+      child: ScaleTransition(
+        scale: Tween(begin: 0.96, end: 1.0).animate(
+          CurvedAnimation(
+            parent: _replyZoneEntrance,
+            curve: Interval(start, end, curve: AppMotion.celebrateCurve),
+          ),
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  /// 回覆卡組（推薦卡＋風格卡）帶 stagger 進場的橫列。
+  Widget _buildReplyZoneCardRow() {
+    final cards = <Widget>[
+      if (_showRecommendedReplyCard) _buildRecommendedReplyCard(),
+      for (final type in _replyStyleOrder)
+        if ((_replies?.containsKey(type) ?? false) &&
+            !(_showRecommendedReplyCard && _isRecommendedReplyType(type)))
+          _buildHorizontalReplyCard(type, _replies![type]!,
+              option: _replyOptions?[type],
+              isRecommended: _isRecommendedReplyType(type)),
+    ];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < cards.length; i++) _staggeredReplyCard(i, cards[i]),
+      ],
+    );
+  }
 
   int get _replyZoneCardCount {
     final styleCount = _replies?.keys
