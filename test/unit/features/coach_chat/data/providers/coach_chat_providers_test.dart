@@ -557,8 +557,13 @@ void main() {
         analysisSnapshot: _snapshot(),
       );
 
+      // 跨天備案：不接回舊 session id（照常開新 session），但把上次結論
+      // 壓成一問一答 digest turns 讓教練記得聊到哪。
       expect(calls.single.body['sessionId'], isNot('s-old'));
-      expect(calls.single.body.containsKey('activeSessionTurns'), isFalse);
+      final turns = calls.single.body['activeSessionTurns'] as List<dynamic>;
+      expect(turns.length, 2);
+      final digest = (turns[1] as Map<String, dynamic>)['content'] as String;
+      expect(digest, contains('上次聊到'));
     });
 
     test('recent stored session is resumed with seeded turns', () async {

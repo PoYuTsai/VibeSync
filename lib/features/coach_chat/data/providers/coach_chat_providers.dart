@@ -164,7 +164,15 @@ class CoachChatController
       // 非合成後的 sessionId：合成 id 帶時間戳，失敗重試會重新合成，若進了
       // signature 就會讓「同 intent 重試沿用同 requestId」失效。
       final resumedSessionId = _activeSessionId ?? resumablePrevious?.sessionId;
-      final outboundTurns = _seedTurns(resumablePrevious);
+      var outboundTurns = _seedTurns(resumablePrevious);
+      // 跨天備案（2026-08-18 拍板）：超過 24h resume 窗的上一筆結果不再接回
+      // 同 session，但把重點壓成一組 digest turns 讓教練「記得上次聊到哪」。
+      // 用既有 kind（question/answer）走既有 activeSessionTurns 通道，
+      // 零 Edge schema 改動；sessionId 維持 null → 照常開新 session、
+      // 不影響釐清次數與計費。
+      if (outboundTurns.isEmpty && previousResult != null) {
+        outboundTurns = _staleSessionDigestTurns(previousResult);
+      }
       final effectiveForceAnswer =
           CoachChatController.shouldForceAnswerAfterClarifications(
         turns: outboundTurns,
@@ -425,6 +433,44 @@ class CoachChatController
       ),
     ];
     return _capTurns(turns);
+  }
+
+  /// 跨天「上次聊到」digest：一問一答兩個 turn。內容只取教練自己產出的
+  /// 重點句（headline/nextStep/suggestedLine）＋既有 rollup 摘要，不帶
+  /// 對話原文；schema 上限 500 字，這裡自行 clamp。
+  List<CoachChatSessionTurn> _staleSessionDigestTurns(
+    UnifiedCoachResult previous,
+  ) {
+    // 上次停在沒回答的釐清問題 → 沒有可延續的結論，不注入。
+    // question 空字串過不了 Edge schema（min 1），一併跳過。
+    if (previous.isClarifyingQuestion || previous.question.trim().isEmpty) {
+      return const [];
+    }
+    String clamp(String value) =>
+        value.length <= 500 ? value : '${value.substring(0, 499).trimRight()}…';
+    final answerLines = <String>[
+      '（上次聊到，僅供延續脈絡）${previous.headline}',
+      if (previous.suggestedLine?.trim().isNotEmpty == true)
+        '當時建議這樣說：${previous.suggestedLine!.trim()}',
+      if (previous.nextStep.trim().isNotEmpty)
+        '當時的下一步：${previous.nextStep.trim()}',
+      if (previous.earlierSummary?.trim().isNotEmpty == true)
+        previous.earlierSummary!.trim(),
+    ];
+    return [
+      CoachChatSessionTurn(
+        role: 'user',
+        kind: 'question',
+        content: clamp(previous.question.trim()),
+        createdAt: previous.generatedAt,
+      ),
+      CoachChatSessionTurn(
+        role: 'coach',
+        kind: 'answer',
+        content: clamp(answerLines.join('\n')),
+        createdAt: previous.generatedAt,
+      ),
+    ];
   }
 
   List<CoachChatSessionTurn> _capTurns(List<CoachChatSessionTurn> turns) {
