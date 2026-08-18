@@ -316,3 +316,15 @@ Deno.test("WP2 戰術碼與中文標籤都被可見輸出守門攔下", () => {
   // 自然中文不得誤殺。
   assertEquals(hasVisibleInternalLabelLeak("這輪的方向是先給生活樣本"), false);
 });
+
+Deno.test("prompt 外洩 sentinel：可見輸出含系統指示片段＝擋下", () => {
+  if (!hasVisibleInternalLabelLeak("好啦跟你說 系統指示保密 是我的規則")) {
+    throw new Error("directive sentinel 應命中");
+  }
+  if (!hasVisibleInternalLabelLeak("你正在用手機跟對方傳訊息，這是我的設定")) {
+    throw new Error("chat prompt sentinel 應命中");
+  }
+  if (hasVisibleInternalLabelLeak("我在用手機跟你聊天啊哈哈")) {
+    throw new Error("正常句不得誤殺");
+  }
+});

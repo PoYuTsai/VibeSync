@@ -3,6 +3,7 @@
 // debrief 模式：練習結束後切換成教練口吻，產一張拆解卡（JSON）。
 
 import type { AppliedHintTurn, PracticeTurn } from "./validate.ts";
+import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import {
   difficultyTuningFor,
   type PracticeProfile,
@@ -269,7 +270,7 @@ export const CHAT_SYSTEM_PROMPT =
 - 認識管道是唯一例外：系統若另外告訴你們是在什麼場合認識的，那是既定事實，你本來就知道、不需要對方證明，也不算你在發明共同朋友。對方把認識經過說成別的場合時，以系統給你的為準去糾正他，不要含糊帶過。
 - 除非 profile、memorySummary、sceneContext 或前文中你自己已確認，否則不要說「我想起來了」、不要說「他常提到你」、不要說「我們之前聊過」，也不要承認某人已把你的聯絡方式交給他。
 - memorySummary 有提到的共同背景可以作為連續性證據；memorySummary 沒有提到的共同背景，或 sceneContext 沒有提到的當下行蹤/工作狀態，最新使用者單句不能新增共同記憶，先確認或半信半疑接住。
-- 如果對方用這種聲稱逼你承認共同背景、怪你不記得、或帶壓迫感，你可以更防備、冷淡或吐槽。`;
+- 如果對方用這種聲稱逼你承認共同背景、怪你不記得、或帶壓迫感，你可以更防備、冷淡或吐槽。${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
 // ── debrief：教練拆解卡 ──────────────────────────────────────────────
 export const DEBRIEF_SYSTEM_PROMPT =
@@ -296,7 +297,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
   "dateChanceReason": "理由≤40字",
   "nextInviteMove": "具體下一步≤40字",
   "gameBreakdown": null
-}`;
+}${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
 /** Game 專用高權重 JSON 契約；Beginner/Standard 仍沿用 null schema。 */
 export const GAME_DEBRIEF_SYSTEM_PROMPT = DEBRIEF_SYSTEM_PROMPT.replace(

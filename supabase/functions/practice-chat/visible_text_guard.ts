@@ -368,6 +368,12 @@ const INTERNAL_CHINESE_LABELS = [
   "认识管道",
   "本輪指定戰術",
   "本轮指定战术",
+  // 反 prompt 外洩（2026-08-19）：system prompt 的指示片段出現在可見輸出
+  // ＝系統指示外洩；NPC/教練正常輸出絕不會逐字出現這些句子。
+  "系統指示保密",
+  "系统指示保密",
+  "你正在用手機跟對方傳訊息",
+  "你正在用手机跟对方传讯息",
 ];
 
 export function hasVisibleInternalLabelLeak(value: string): boolean {

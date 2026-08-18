@@ -179,6 +179,10 @@ import {
   OPENER_STREAM_STAGES,
 } from "./opener_stream.ts";
 import {
+  hasAnalyzeChatPromptLeak,
+  PROMPT_LEAK_DEFENSE_DIRECTIVE,
+} from "./prompt_leak.ts";
+import {
   buildOcrRateLimitedPayload,
   classifyOcrRateLimitError,
   OCR_RATE_LIMIT_PER_DAY,
@@ -2241,7 +2245,7 @@ Coach-aligned 底層原則：
 - ✅ 用自然的描述：「縮短讓訊息更簡潔」「精簡字數」
 - ✅ 範例：「精簡字數、用『耶』讓語氣更自然」
 
-${SAFETY_RULES}`;
+${SAFETY_RULES}${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
 const OPTIMIZE_MESSAGE_MAX_TOKENS = 700;
 
@@ -2273,7 +2277,7 @@ Return JSON only with this exact schema:
     "reason": "一句話說明調整重點",
     "unusable": false
   }
-}`;
+}${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
 // 「我說」模式的 System Prompt（話題延續建議）
 const MY_MESSAGE_PROMPT =
@@ -2332,7 +2336,7 @@ const MY_MESSAGE_PROMPT =
 - 只讀已有脈絡，不補不存在的人設。
 - 如果對話太短沒有足夠資訊，就說「對話還太短，多聊幾輪後會更了解她」。
 
-${SAFETY_RULES}`;
+${SAFETY_RULES}${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
 // 開場白生成模式的 System Prompt
 const OPENER_PROMPT =
@@ -2687,7 +2691,7 @@ formulaOpeners 必須恰好兩則，放在最後；先完成前面的原有欄�
 每個 stretchLevels 對應同名 opener 相對使用者舒適區的延伸程度；within=他現在就寫得出來／
 stretch=比他平常大膽一步但做得到／far=差距太大這次先不推；五個 key 裡至少一個要是 stretch。
 當使用者沒有提供舒適區資訊時，全部回傳 "within"。
-Return valid JSON only.`;
+Return valid JSON only.${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
 // 訊息計算：ADR #19 起由 billing.ts 的 resolveBilling 全權負責
 // （逐則 200 字制已退役，舊 countMessages 已移除）。
@@ -5701,6 +5705,25 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
         };
         const newTopicRawText = modelOutput.rawText;
 
+        // 反 prompt 外洩（2026-08-19）：同 opener——整包擋下、release claim、
+        // 不扣費（settle 尚未開始，release 安全）。
+        if (hasAnalyzeChatPromptLeak(newTopicRawText)) {
+          logWarn("prompt_leak_blocked", {
+            user: summarizeUser(user.id),
+            surface: "new_topic",
+            textLength: newTopicRawText.length,
+          });
+          if (!await releaseNewTopicCurrentClaim()) {
+            return newTopicReleaseFailedResponse();
+          }
+          return jsonResponse({
+            error: "NEW_TOPIC_RESPONSE_INVALID",
+            code: "NEW_TOPIC_RESPONSE_INVALID",
+            message: "這次 AI 沒有產出完整的五個新話題，請重新生成一次；本次不會扣額度。",
+            shouldChargeQuota: false,
+          }, 502);
+        }
+
       // 9. 完整性驗證＋最多一次 same-model format repair（禁 model
       //    fallback、共享 generation deadline）。repair 後仍不合格→502
       //    release 不扣（絕不丟壞題只投影剩下的）。
@@ -6451,6 +6474,21 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
           },
           stop_reason: modelOutput.stopReason,
         };
+
+        // 反 prompt 外洩（2026-08-19）：輸出含系統指示片段＝整包擋下，
+        // 不解析、不 repair、不扣費（挑戰式注入的產物不值得修復）。
+        if (hasAnalyzeChatPromptLeak(rawText)) {
+          logWarn("prompt_leak_blocked", {
+            user: summarizeUser(user.id),
+            surface: "opener",
+            textLength: rawText.length,
+          });
+          return jsonResponse({
+            error: "OPENER_RESPONSE_BLOCKED",
+            message: "這次 AI 回傳格式異常，請重新生成一次；本次不會扣額度。",
+            shouldChargeQuota: false,
+          }, 502);
+        }
 
       // Parse and validate JSON from response. Never surface raw model output
       // as an opener; malformed output gets one format-only repair pass before

@@ -5,6 +5,7 @@
 // 兩個 prompt 常數都納入 production prompt blocking scan（new_topic_prompt_test）。
 
 import type { NewTopicSituation } from "./new_topic_payload.ts";
+import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 
 export const NEW_TOPIC_MAX_TOKENS = 3000;
 export const NEW_TOPIC_REQUEST_DEADLINE_MS = 50_000;
@@ -99,7 +100,7 @@ whyItWorks 目標 25–45 個繁中字元，限一句，只說明為什麼這句
   ]
 }
 topics 必須恰好五個；recommendation.index 是 0-4 的整數，指向最推薦那題。
-formulaTopics 必須恰好兩則，放在最後；先完成前面的原有欄位。`;
+formulaTopics 必須恰好兩則，放在最後；先完成前面的原有欄位。${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
 export const NEW_TOPIC_REPAIR_PROMPT = `你是 VibeSync 新話題功能的 JSON 格式修復器。
 

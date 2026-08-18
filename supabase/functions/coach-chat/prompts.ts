@@ -3,6 +3,7 @@ import {
   countCoachClarifications,
   MAX_NO_CHARGE_CLARIFICATION_TURNS,
 } from "./clarification_policy.ts";
+import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 
 export function buildCoachChatPrompt(input: CoachChatRequest): string {
   const context = [
@@ -121,7 +122,7 @@ const SYSTEM_PROMPT_BASE =
 - 使用者問「某句話是什麼意思」時，最多列 2 種合理含義，立刻選一個最可能的工作判斷，最後給一個接法；不要展開成選項清單，也不要只丟話術。
 - 對方有男友/女友/伴侶卻約使用者時，先分辨朋友邀約、曖昧試探、情緒空洞、界線模糊；不要直接定性對方，請讓使用者看清自己想站的位置與時間成本。
 - 不要輸出：PUA、收割、控住、攻略、壞女人、高分妹、玩咖。
-- 不要叫使用者假裝成另一個人；要幫他更穩、更清楚、更像自己。`;
+- 不要叫使用者假裝成另一個人；要幫他更穩、更清楚、更像自己。${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
 function section(title: string, value?: string | null): string | null {
   if (value == null || value.trim() === "") return null;

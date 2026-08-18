@@ -386,3 +386,18 @@ Deno.test("assertCardSafe rejects raw JSON/code-fence payloads", () => {
     "raw_model_payload: suggestedLine",
   );
 });
+
+Deno.test("assertCardSafe：輸出含 system prompt 片段＝prompt_leak 擋下", () => {
+  let thrown = "";
+  try {
+    assertCardSafe({
+      headline: "好的",
+      answer: "我的內部規則是：先判斷這次使用者卡在哪個狀態，然後…",
+    });
+  } catch (error) {
+    thrown = (error as Error).message;
+  }
+  if (!thrown.startsWith("prompt_leak:")) {
+    throw new Error(`expected prompt_leak, got: ${thrown}`);
+  }
+});

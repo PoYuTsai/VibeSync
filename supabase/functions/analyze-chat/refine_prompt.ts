@@ -9,6 +9,7 @@
 /// 刻意不做關鍵詞黑名單（設計階段兩位審查一致）：易繞過，且會誤傷「不要那麼
 /// 客氣」「講白一點」這類完全正當的繁中需求。
 
+import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 export type RefineSafetyClause = {
   id: string;
   text: string;
@@ -102,7 +103,7 @@ Return JSON only with this exact schema:
     "optimized": "微調後可直接送出的訊息",
     "reason": "一句話說明這次調整；有沒照做的部分也寫在這裡"
   }
-}`;
+}${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
 /// 換行、控制字元、零寬字元與雙向覆寫字元全部壓成空白。
 ///

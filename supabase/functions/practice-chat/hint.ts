@@ -1,3 +1,4 @@
+import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import { type ChatMessage, compactCompleteSentenceEvidence } from "./prompt.ts";
 import { PRACTICE_COACHING_RUBRIC } from "./coaching_rubric.ts";
 import {
@@ -1662,7 +1663,8 @@ export function buildHintMessages(opts: {
   return [
     {
       role: "system",
-      content: HIDDEN_HINT_NO_LEAK_RULE + PRACTICE_COACHING_RUBRIC + "\n\n" +
+      content: PROMPT_LEAK_DEFENSE_DIRECTIVE + "\n\n" +
+        HIDDEN_HINT_NO_LEAK_RULE + PRACTICE_COACHING_RUBRIC + "\n\n" +
         (opts.practiceMode === "game"
           ? "你是 VibeSync Game 回覆提示教練。可直接拆技巧，但只輸出繁中 JSON，不要 markdown 或多餘文字。\n"
           : "你是 VibeSync 新手回覆提示教練。只輸出繁中 JSON，不要 markdown 或多餘文字。\n") +

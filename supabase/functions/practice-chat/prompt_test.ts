@@ -923,7 +923,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 2026-08-11 反罐頭：離線黑箱兩場的 gameBreakdown.nextFirstLine 直接照抄戰術行
   // 的教材例句（「妳看起來很有眼光」），加一行「括號裡的是示範不是台詞」，
   // Game-only 固定 bytes，實測 6420，上限 6400→6450。
-  if (maxDebriefWithHint > 6450) {
+  // 2026-08-19 反 prompt 外洩：debrief 與 hint system 各掛
+  // PROMPT_LEAK_DEFENSE_DIRECTIVE（固定 bytes），實測 6658，上限 6450→6700。
+  if (maxDebriefWithHint > 6700) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );

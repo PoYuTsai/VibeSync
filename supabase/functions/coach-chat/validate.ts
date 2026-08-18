@@ -1,4 +1,5 @@
 import { containsBannedToken } from "../_shared/banned_tokens.ts";
+import { containsPromptLeak } from "../_shared/prompt_leak_guard.ts";
 import {
   type CoachChatRequest,
   type CoachChatResponse,
@@ -109,6 +110,15 @@ function looksLikeRawModelPayload(value: string): boolean {
   ].some((marker) => lower.includes(marker));
 }
 
+// 反 prompt 外洩（2026-08-19）：coach system prompt 的內部行話長片段，
+// 正常教練回覆絕不會逐字出現；命中＝系統指示外洩，整卡擋下。
+const COACH_PROMPT_LEAK_SENTINELS: readonly string[] = [
+  "先判斷這次使用者卡在哪個狀態",
+  "suggestedLine 要守投入對等節奏",
+  "內部先判斷，但輸出不要露出推理過程",
+  "你是 VibeSync Coach 1:1：有記憶、有邊界",
+];
+
 export function assertCardSafe(
   card: Record<string, string | number | boolean | null | undefined>,
 ): void {
@@ -121,6 +131,9 @@ export function assertCardSafe(
     const token = containsBannedToken(value);
     if (token != null) {
       throw new Error(`banned_token: ${token} found in ${field}`);
+    }
+    if (containsPromptLeak(value, COACH_PROMPT_LEAK_SENTINELS)) {
+      throw new Error(`prompt_leak: ${field}`);
     }
   }
 }

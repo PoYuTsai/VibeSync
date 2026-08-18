@@ -16,6 +16,7 @@
 
 // Canonical schema field order. Shared with the response parser and asserted
 // in quick_prompt_test.ts so the prompt and parser cannot drift apart.
+import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 export const QUICK_RESPONSE_SCHEMA_FIELDS = [
   "nextStep",
   "pick",
@@ -140,4 +141,4 @@ pick 必須是 extend / resonate / tease / humor / coldRead 之一。
 - 不要每次都選延展。只有對方真的丟出可延伸的球，才延展
 - 複雜、低信心或有風險時，寧可保守降壓，不要裝懂
 
-開始分析。`;
+開始分析。${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
