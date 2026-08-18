@@ -1,3 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+import '../../../../core/config/environment.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/new_topic_result.dart';
 
@@ -64,10 +70,22 @@ class NewTopicException implements Exception {
 }
 
 class NewTopicService {
-  NewTopicService({NewTopicInvoker? invoker})
-      : _invoke = invoker ?? _defaultInvoker;
+  NewTopicService({
+    NewTopicInvoker? invoker,
+    http.Client Function()? streamClientFactory,
+    String? Function()? accessTokenProvider,
+  })  : _invoke = invoker ?? _defaultInvoker,
+        _streamClientFactory = streamClientFactory ?? http.Client.new,
+        _accessTokenProvider =
+            accessTokenProvider ?? (() => SupabaseService.accessToken);
 
   final NewTopicInvoker _invoke;
+  final http.Client Function() _streamClientFactory;
+  final String? Function() _accessTokenProvider;
+
+  /// 同 analysis/opener 串流慣例：connect 45s、單事件 idle 120s。
+  static const Duration _streamConnectTimeout = Duration(seconds: 45);
+  static const Duration _streamIdleTimeout = Duration(seconds: 120);
 
   /// 只回完整 [NewTopicResult]；tier 一律信 server access，不自行推。
   Future<NewTopicResult> generateTopics({
@@ -78,9 +96,147 @@ class NewTopicService {
     String? expectedTier,
     String? revenueCatAppUserId,
   }) async {
-    final body = <String, dynamic>{
+    final body = _buildRequestBody(
+      requestId: requestId,
+      partnerSummary: partnerSummary,
+      effectiveStyleContext: effectiveStyleContext,
+      situation: situation,
+      expectedTier: expectedTier,
+      revenueCatAppUserId: revenueCatAppUserId,
+    );
+
+    final response = await _invoke('analyze-chat', body: body);
+
+    if (response.status == 200) {
+      return _parseSuccessData(response.data, requestId: requestId);
+    }
+    _throwForErrorResponse(response.status, response.data);
+  }
+
+  /// 串流版生成（2026-08-18 呈現精修第 2 包）：`responseMode: 'stream'`，
+  /// 進度經 [onProgress] 回報，結果與錯誤對映和 [generateTopics] 完全一致。
+  /// server flag off／舊 Edge 回一般 JSON 時依 content-type 自動走 legacy。
+  Future<NewTopicResult> generateTopicsStreaming({
+    required String requestId,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? situation,
+    String? expectedTier,
+    String? revenueCatAppUserId,
+    void Function(String label)? onProgress,
+  }) async {
+    final accessToken = _accessTokenProvider();
+    if (accessToken == null) {
+      throw const NewTopicException('請重新登入後再生成新話題。');
+    }
+
+    final body = _buildRequestBody(
+      requestId: requestId,
+      partnerSummary: partnerSummary,
+      effectiveStyleContext: effectiveStyleContext,
+      situation: situation,
+      expectedTier: expectedTier,
+      revenueCatAppUserId: revenueCatAppUserId,
+      responseMode: 'stream',
+    );
+
+    final client = _streamClientFactory();
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('${AppConfig.supabaseUrl}/functions/v1/analyze-chat'),
+      )
+        ..headers.addAll({
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+          'apikey': AppConfig.supabaseAnonKey,
+        })
+        ..body = jsonEncode(body);
+
+      final response =
+          await client.send(request).timeout(_streamConnectTimeout);
+      final contentType = response.headers['content-type'] ?? '';
+
+      if (response.statusCode != 200 || !contentType.contains('x-ndjson')) {
+        final bodyText = await response.stream
+            .bytesToString()
+            .timeout(_streamIdleTimeout);
+        dynamic decoded;
+        try {
+          decoded = bodyText.isEmpty ? null : jsonDecode(bodyText);
+        } catch (_) {
+          decoded = null;
+        }
+        if (response.statusCode != 200) {
+          _throwForErrorResponse(response.statusCode, decoded);
+        }
+        return _parseSuccessData(decoded, requestId: requestId);
+      }
+
+      await for (final rawLine in response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .timeout(_streamIdleTimeout)) {
+        final line = rawLine.trim();
+        if (line.isEmpty) continue;
+        final dynamic decoded;
+        try {
+          decoded = jsonDecode(line);
+        } catch (_) {
+          continue; // 壞行忽略，等 done/error 終局事件。
+        }
+        if (decoded is! Map<String, dynamic>) continue;
+        final type = decoded['type'] as String?;
+        switch (type) {
+          case 'new_topic.started':
+          case 'new_topic.progress':
+            final label = decoded['label'];
+            if (label is String && label.trim().isNotEmpty) {
+              onProgress?.call(label.trim());
+            }
+          case 'new_topic.done':
+            return _parseSuccessData(decoded['result'], requestId: requestId);
+          case 'new_topic.error':
+            final status = (decoded['status'] as num?)?.round() ?? 500;
+            _throwForErrorResponse(status, decoded);
+          default:
+            continue; // 未知事件型別向前相容：忽略。
+        }
+      }
+      // 終局事件沒到＝結果不明（server 可能已 settle）：沿用同 requestId
+      // 重試會 replay 原結果、不會雙扣。
+      throw const NewTopicException(
+        '連線中斷，請再試一次；同一筆請求不會重複扣額度。',
+        retrySameRequest: true,
+      );
+    } on TimeoutException {
+      throw const NewTopicException(
+        '連線逾時，請再試一次；同一筆請求不會重複扣額度。',
+        retrySameRequest: true,
+      );
+    } on http.ClientException {
+      throw const NewTopicException(
+        '連線中斷，請再試一次；同一筆請求不會重複扣額度。',
+        retrySameRequest: true,
+      );
+    } finally {
+      client.close();
+    }
+  }
+
+  Map<String, dynamic> _buildRequestBody({
+    required String requestId,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? situation,
+    String? expectedTier,
+    String? revenueCatAppUserId,
+    String? responseMode,
+  }) {
+    return <String, dynamic>{
       'mode': 'new_topic',
       'requestId': requestId,
+      if (responseMode != null) 'responseMode': responseMode,
       // blank optional fields 不送（server allowlist strict）。
       if (_hasText(partnerSummary)) 'partnerSummary': partnerSummary!.trim(),
       if (_hasText(effectiveStyleContext))
@@ -90,28 +246,28 @@ class NewTopicService {
       if (_hasText(revenueCatAppUserId))
         'revenueCatAppUserId': revenueCatAppUserId!.trim(),
     };
+  }
 
-    final response = await _invoke('analyze-chat', body: body);
-    final data = response.data;
-
-    if (response.status == 200) {
-      final result = NewTopicResult.tryParse(data, requestId: requestId);
-      if (result == null) {
-        // 半套 200 一律視為失敗；同 requestId 重試會 replay 原結果，
-        // 不會雙扣。
-        throw const NewTopicException(
-          '新話題結果格式異常，請再試一次。',
-          retrySameRequest: true,
-        );
-      }
-      return result;
+  NewTopicResult _parseSuccessData(dynamic data, {required String requestId}) {
+    final result = NewTopicResult.tryParse(data, requestId: requestId);
+    if (result == null) {
+      // 半套 200 一律視為失敗；同 requestId 重試會 replay 原結果，
+      // 不會雙扣。
+      throw const NewTopicException(
+        '新話題結果格式異常，請再試一次。',
+        retrySameRequest: true,
+      );
     }
+    return result;
+  }
 
+  /// 非 200 的統一對映（legacy 與 stream 共用）：一定 throw。
+  Never _throwForErrorResponse(int status, dynamic data) {
     final errorData = data is Map ? data : const {};
     final code = errorData['code']?.toString();
     final serverMessage = _localizedMessage(errorData['message']);
 
-    if (response.status == 429) {
+    if (status == 429) {
       if (code == 'MODEL_RATE_LIMITED') {
         throw NewTopicException(
           serverMessage ?? '請求太頻繁，請稍後再試。',
@@ -136,7 +292,7 @@ class NewTopicService {
       );
     }
 
-    if (response.status == 409 && code == 'NEW_TOPIC_REQUEST_IN_PROGRESS') {
+    if (status == 409 && code == 'NEW_TOPIC_REQUEST_IN_PROGRESS') {
       throw NewTopicRequestInProgressException(
         message: serverMessage ?? '這筆請求正在生成中，請稍候再試。',
         retryAfterMs: (errorData['retryAfterMs'] as num?)?.round(),
@@ -147,7 +303,7 @@ class NewTopicService {
         code == 'NEW_TOPIC_SETTLEMENT_PENDING';
     throw NewTopicException(
       serverMessage ??
-          (response.status >= 500
+          (status >= 500
               ? 'AI 暫時生成失敗，請稍後再試；本次不會扣額度。'
               : '新話題生成失敗，請稍後再試。'),
       retrySameRequest: retryable,

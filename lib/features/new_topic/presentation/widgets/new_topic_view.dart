@@ -13,6 +13,7 @@ import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/formula_reply_section.dart';
 import '../../../../shared/widgets/more_below_hint.dart';
+import '../../../../shared/widgets/stream_progress_ticker.dart';
 import '../../../opener/presentation/widgets/opener_generation_progress.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
@@ -70,6 +71,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
 
   String? _selectedPartnerId;
   String? _situation;
+  // 真串流進度（server 事件文字）；每次生成開始清空。空＝還沒收到事件
+  //（或 server 降級 legacy），顯示本地輪播 fallback。
+  final List<String> _streamProgress = [];
   NewTopicResult? _result;
   String? _error;
   bool _isGenerating = false;
@@ -239,6 +243,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
 
     setState(() {
       _isGenerating = true;
+      _streamProgress.clear();
       _error = null;
       _result = null;
     });
@@ -270,13 +275,19 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
 
       final service = NewTopicService();
       // payload 全取 frozen envelope，不用呼叫端新解析值（§12.4）。
-      final result = await service.generateTopics(
+      // 2026-08-18 真串流：進度事件即時上牆；server flag off／舊 Edge
+      // 回一般 JSON 時 service 內自動降級。
+      final result = await service.generateTopicsStreaming(
         requestId: attempt.requestId,
         partnerSummary: attempt.partnerSummary,
         effectiveStyleContext: attempt.effectiveStyleContext,
         situation: attempt.situation,
         expectedTier: expectedTier,
         revenueCatAppUserId: revenueCatAppUserId,
+        onProgress: (label) {
+          if (!mounted || !_isGenerating) return;
+          setState(() => _streamProgress.add(label));
+        },
       );
       _requestSession.markSuccess();
 
@@ -445,11 +456,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           ),
           const SizedBox(height: 16),
           if (_isGenerating)
-            const Center(
-              child: OpenerGenerationProgress(
-                phrases: NewTopicView.progressPhrases,
-              ),
-            ),
+            _streamProgress.isNotEmpty
+                ? StreamProgressTicker(labels: _streamProgress)
+                : const Center(
+                    child: OpenerGenerationProgress(
+                      phrases: NewTopicView.progressPhrases,
+                    ),
+                  ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),

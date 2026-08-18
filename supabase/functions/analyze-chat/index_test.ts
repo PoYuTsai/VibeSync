@@ -1360,8 +1360,9 @@ Deno.test({
     const usages = source.match(/max_tokens: OPENER_MAX_TOKENS/g) ?? [];
     assertEquals(
       usages.length,
-      2,
-      "主呼叫與 repair 兩處都必須用 OPENER_MAX_TOKENS（repair 上限結構上 ≥ 主呼叫）",
+      3,
+      "legacy 主呼叫、stream 主呼叫與 repair 三處都必須用 OPENER_MAX_TOKENS" +
+        "（repair 上限結構上 ≥ 主呼叫）",
     );
     assertFalse(
       source.includes("max_tokens: 1800"),

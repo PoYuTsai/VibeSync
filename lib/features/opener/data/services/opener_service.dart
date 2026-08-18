@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
+import '../../../../core/config/environment.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/utils/formula_reply_guard.dart';
 import '../../domain/opener_access.dart';
@@ -382,10 +385,23 @@ class OpenerQuotaExceededException implements Exception {
 }
 
 class OpenerService {
-  OpenerService({OpenerInvoker? invoker})
-      : _invoke = invoker ?? _defaultInvoker;
+  OpenerService({
+    OpenerInvoker? invoker,
+    http.Client Function()? streamClientFactory,
+    String? Function()? accessTokenProvider,
+  })  : _invoke = invoker ?? _defaultInvoker,
+        _streamClientFactory = streamClientFactory ?? http.Client.new,
+        _accessTokenProvider =
+            accessTokenProvider ?? (() => SupabaseService.accessToken);
 
   final OpenerInvoker _invoke;
+  final http.Client Function() _streamClientFactory;
+  final String? Function() _accessTokenProvider;
+
+  /// 同 analysis_service 串流慣例：connect 45s、單事件 idle 120s（heartbeat
+  /// 每 15s 一定會來，idle 超時＝連線真的斷了）。
+  static const Duration _streamConnectTimeout = Duration(seconds: 45);
+  static const Duration _streamIdleTimeout = Duration(seconds: 120);
 
   Future<OpenerResult> generateOpeners({
     List<Uint8List>? images,
@@ -398,7 +414,148 @@ class OpenerService {
     String? requestId,
     String? effectiveStyleContext,
   }) async {
-    // Build image list as ImageData objects (matching existing format)
+    final body = _buildRequestBody(
+      images: images,
+      name: name,
+      bio: bio,
+      interests: interests,
+      meetingContext: meetingContext,
+      expectedTier: expectedTier,
+      revenueCatAppUserId: revenueCatAppUserId,
+      requestId: requestId,
+      effectiveStyleContext: effectiveStyleContext,
+    );
+
+    final response = await _invoke('analyze-chat', body: body);
+
+    if (response.status != 200) {
+      _throwForErrorResponse(response.status, response.data);
+    }
+    return _parseSuccessData(response.data as Map<String, dynamic>);
+  }
+
+  /// 串流版生成（2026-08-18 呈現精修第 2 包）：同一個 Edge endpoint 帶
+  /// `responseMode: 'stream'`，進度事件經 [onProgress] 回報，最終結果
+  /// 形狀與 [generateOpeners] 完全相同。server flag off 或舊 Edge 會回
+  /// 一般 JSON——依 content-type 自動走 legacy 解析，呼叫端無感。
+  /// 錯誤對映（quota／限流／5xx）與 legacy 版完全一致。
+  Future<OpenerResult> generateOpenersStreaming({
+    List<Uint8List>? images,
+    String? name,
+    String? bio,
+    String? interests,
+    String? meetingContext,
+    String? expectedTier,
+    String? revenueCatAppUserId,
+    String? requestId,
+    String? effectiveStyleContext,
+    void Function(String label)? onProgress,
+  }) async {
+    final accessToken = _accessTokenProvider();
+    if (accessToken == null) {
+      throw Exception('請重新登入後再生成開場白。');
+    }
+
+    final body = _buildRequestBody(
+      images: images,
+      name: name,
+      bio: bio,
+      interests: interests,
+      meetingContext: meetingContext,
+      expectedTier: expectedTier,
+      revenueCatAppUserId: revenueCatAppUserId,
+      requestId: requestId,
+      effectiveStyleContext: effectiveStyleContext,
+      responseMode: 'stream',
+    );
+
+    final client = _streamClientFactory();
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('${AppConfig.supabaseUrl}/functions/v1/analyze-chat'),
+      )
+        ..headers.addAll({
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+          'apikey': AppConfig.supabaseAnonKey,
+        })
+        ..body = jsonEncode(body);
+
+      final response =
+          await client.send(request).timeout(_streamConnectTimeout);
+      final contentType = response.headers['content-type'] ?? '';
+
+      if (response.statusCode != 200 || !contentType.contains('x-ndjson')) {
+        // 非 200 或 legacy JSON（flag off／舊 Edge）：整包讀完走既有路徑。
+        final bodyText = await response.stream
+            .bytesToString()
+            .timeout(_streamIdleTimeout);
+        final decoded = bodyText.isEmpty ? null : jsonDecode(bodyText);
+        if (response.statusCode != 200) {
+          _throwForErrorResponse(response.statusCode, decoded);
+        }
+        return _parseSuccessData(decoded as Map<String, dynamic>);
+      }
+
+      await for (final rawLine in response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .timeout(_streamIdleTimeout)) {
+        final line = rawLine.trim();
+        if (line.isEmpty) continue;
+        final dynamic decoded;
+        try {
+          decoded = jsonDecode(line);
+        } catch (_) {
+          continue; // 壞行忽略，等 done/error 終局事件。
+        }
+        if (decoded is! Map<String, dynamic>) continue;
+        final type = decoded['type'] as String?;
+        switch (type) {
+          case 'opener.started':
+          case 'opener.progress':
+            final label = decoded['label'];
+            if (label is String && label.trim().isNotEmpty) {
+              onProgress?.call(label.trim());
+            }
+          case 'opener.done':
+            final result = decoded['result'];
+            if (result is Map<String, dynamic>) {
+              return _parseSuccessData(result);
+            }
+            throw Exception('開場產生格式異常，請重新生成一次。');
+          case 'opener.error':
+            final status = (decoded['status'] as num?)?.round() ?? 500;
+            _throwForErrorResponse(status, decoded);
+          default:
+            continue; // 未知事件型別向前相容：忽略。
+        }
+      }
+      // 串流中斷沒收到終局事件：可能已在 server 端完成扣費，同一組輸入
+      // 重試會被 requestId 去重、不會雙扣。
+      throw Exception('連線中斷，請再生成一次；同一組輸入不會重複扣額度。');
+    } on TimeoutException {
+      throw Exception('連線逾時，請再生成一次；同一組輸入不會重複扣額度。');
+    } on http.ClientException {
+      throw Exception('連線中斷，請再生成一次；同一組輸入不會重複扣額度。');
+    } finally {
+      client.close();
+    }
+  }
+
+  Map<String, dynamic> _buildRequestBody({
+    List<Uint8List>? images,
+    String? name,
+    String? bio,
+    String? interests,
+    String? meetingContext,
+    String? expectedTier,
+    String? revenueCatAppUserId,
+    String? requestId,
+    String? effectiveStyleContext,
+    String? responseMode,
+  }) {
     List<Map<String, dynamic>>? imageDataList;
     if (images != null && images.isNotEmpty) {
       imageDataList = images.asMap().entries.map((entry) {
@@ -410,109 +567,88 @@ class OpenerService {
       }).toList();
     }
 
-    // Build profile info
     Map<String, String>? profileInfo;
-    if ((name != null && name.trim().isNotEmpty) ||
-        (bio != null && bio.trim().isNotEmpty) ||
-        (interests != null && interests.trim().isNotEmpty) ||
-        (meetingContext != null && meetingContext.trim().isNotEmpty)) {
-      profileInfo = {};
-      if (name != null && name.trim().isNotEmpty) {
-        profileInfo['name'] = name.trim();
-      }
-      if (bio != null && bio.trim().isNotEmpty) {
-        profileInfo['bio'] = bio.trim();
-      }
-      if (interests != null && interests.trim().isNotEmpty) {
-        profileInfo['interests'] = interests.trim();
-      }
-      if (meetingContext != null && meetingContext.trim().isNotEmpty) {
-        profileInfo['meetingContext'] = meetingContext.trim();
-      }
+    void addProfileField(String key, String? value) {
+      final trimmed = value?.trim();
+      if (trimmed == null || trimmed.isEmpty) return;
+      (profileInfo ??= {})[key] = trimmed;
     }
 
-    final body = {
+    addProfileField('name', name);
+    addProfileField('bio', bio);
+    addProfileField('interests', interests);
+    addProfileField('meetingContext', meetingContext);
+
+    return {
       'mode': 'opener',
-      // Contract v2（Free 3 卡）：新 App 一律聲明版本；缺席時 server 以
-      // legacy v1（Free 單卡）投影，避免 Edge 先上線讓舊 App 誤判。
       'openerContractVersion': OpenerAccessContract.contractVersion,
+      if (responseMode != null) 'responseMode': responseMode,
       if (imageDataList != null) 'images': imageDataList,
       if (profileInfo != null) 'profileInfo': profileInfo,
       if (expectedTier != null && expectedTier.trim().isNotEmpty)
         'expectedTier': expectedTier.trim(),
       if (revenueCatAppUserId != null && revenueCatAppUserId.trim().isNotEmpty)
         'revenueCatAppUserId': revenueCatAppUserId.trim(),
-      // 扣費 idempotency：server 靠 (user, requestId) 去重傳輸層重試雙扣。
       if (requestId != null && requestId.trim().isNotEmpty)
         'requestId': requestId.trim(),
-      // F3-1：用戶（發訊者）的風格設定，opener prompt 只拿來調語氣。
       if (effectiveStyleContext != null &&
           effectiveStyleContext.trim().isNotEmpty)
         'effectiveStyleContext': effectiveStyleContext.trim(),
     };
+  }
 
-    final response = await _invoke('analyze-chat', body: body);
-
-    if (response.status != 200) {
-      final errorData = response.data;
-      if (response.status == 429 && errorData is Map) {
-        // server 端 per-user 模型呼叫限流（MODEL_RATE_LIMITED）不是訂閱額度：
-        // 絕不 throw OpenerQuotaExceededException（那會誤開 paywall），
-        // 走一般 Exception 讓 UI 顯示「稍等再試」文案。
-        if (errorData['code'] == 'MODEL_RATE_LIMITED') {
-          throw Exception(
-            errorData['message'] as String? ?? '請求太頻繁，請稍後再試。',
-          );
-        }
-        // 429 但 payload 沒有額度鍵＝不是訂閱額度（lease/限流等其他 429）：
-        // 同 analysis_service _quotaExceptionFrom429 的鍵判別式，絕不誤開
-        // paywall——額度沒真用完不得擋核心功能。
-        if (errorData['monthlyLimit'] == null &&
-            errorData['dailyLimit'] == null) {
-          throw Exception(
-            errorData['message'] as String? ?? '請求太頻繁，請稍後再試。',
-          );
-        }
-        final rawError = errorData['error']?.toString().toLowerCase() ?? '';
-        final fallbackMessage = rawError.contains('monthly')
-            ? '本月額度不足，升級方案可取得更多開場與分析額度。'
-            : rawError.contains('daily')
-                ? '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。'
-                : '額度不足，請先升級方案。';
-        throw OpenerQuotaExceededException(
-          message: errorData['message'] as String? ?? fallbackMessage,
-          monthlyRemaining: (errorData['monthlyRemaining'] as num?)?.round(),
-          dailyRemaining: (errorData['dailyRemaining'] as num?)?.round(),
-          quotaNeeded: (errorData['quotaNeeded'] as num?)?.round(),
+  /// 非 200 的統一對映（legacy 與 stream 共用）：一定 throw。
+  Never _throwForErrorResponse(int status, dynamic errorData) {
+    if (status == 429 && errorData is Map) {
+      // server 端 per-user 模型呼叫限流（MODEL_RATE_LIMITED）不是訂閱額度：
+      // 絕不 throw OpenerQuotaExceededException（那會誤開 paywall），
+      // 走一般 Exception 讓 UI 顯示「稍等再試」文案。
+      if (errorData['code'] == 'MODEL_RATE_LIMITED') {
+        throw Exception(
+          errorData['message'] as String? ?? '請求太頻繁，請稍後再試。',
         );
       }
-
-      final errorMsg = errorData is Map
-          ? _nonQuotaErrorMessage(response.status, errorData)
-          : '開場產生失敗，請稍後再試。';
-      throw Exception(errorMsg);
+      // 429 但 payload 沒有額度鍵＝不是訂閱額度（lease/限流等其他 429）：
+      // 同 analysis_service _quotaExceptionFrom429 的鍵判別式，絕不誤開
+      // paywall——額度沒真用完不得擋核心功能。
+      if (errorData['monthlyLimit'] == null &&
+          errorData['dailyLimit'] == null) {
+        throw Exception(
+          errorData['message'] as String? ?? '請求太頻繁，請稍後再試。',
+        );
+      }
+      final rawError = errorData['error']?.toString().toLowerCase() ?? '';
+      final fallbackMessage = rawError.contains('monthly')
+          ? '本月額度不足，升級方案可取得更多開場與分析額度。'
+          : rawError.contains('daily')
+              ? '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。'
+              : '額度不足，請先升級方案。';
+      throw OpenerQuotaExceededException(
+        message: errorData['message'] as String? ?? fallbackMessage,
+        monthlyRemaining: (errorData['monthlyRemaining'] as num?)?.round(),
+        dailyRemaining: (errorData['dailyRemaining'] as num?)?.round(),
+        quotaNeeded: (errorData['quotaNeeded'] as num?)?.round(),
+      );
     }
 
-    final data = response.data as Map<String, dynamic>;
+    final errorMsg = errorData is Map
+        ? _nonQuotaErrorMessage(status, errorData)
+        : '開場產生失敗，請稍後再試。';
+    throw Exception(errorMsg);
+  }
 
+  OpenerResult _parseSuccessData(Map<String, dynamic> data) {
     // Parse openers defensively. Raw JSON/code fences are not sendable openers.
     final openers = OpenerResult._openerStringMap(data['openers']);
     if (openers.isEmpty) {
       throw Exception('開場產生格式異常，請重新生成一次。');
     }
 
-    // Parse recommendation
     final recommendation = data['recommendation'] as Map<String, dynamic>?;
-
-    // Parse first-message follow-up plan
     final pioneerPlanRaw = data['pioneerPlan'] as Map<String, dynamic>?;
     final pioneerPlan =
         pioneerPlanRaw?.map((k, v) => MapEntry(k, v.toString()));
-
-    // Parse profile analysis
     final profileAnalysis = data['profileAnalysis'] as Map<String, dynamic>?;
-
-    // Parse cost
     final usage = data['usage'] as Map<String, dynamic>?;
     final cost = usage?['cost'] as int? ?? 3;
 

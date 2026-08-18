@@ -25,6 +25,7 @@ import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
 import '../../../../shared/widgets/formula_reply_section.dart';
 import '../../../../shared/widgets/more_below_hint.dart';
+import '../../../../shared/widgets/stream_progress_ticker.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../new_topic/presentation/widgets/new_topic_view.dart';
@@ -234,6 +235,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   // F3-2 進度文案凍結在生成開始送出的 input（Codex R1 P2）：生成中用戶仍可
   // 切 tab/移除截圖，activeInput 會變但後端處理的是原始輸入，文案不得跟漂。
   List<String>? _generationProgressPhrases;
+  // 真串流進度（server 事件文字）；每次生成開始清空。空＝還沒收到事件
+  //（或 server 降級 legacy），顯示本地輪播 fallback。
+  final List<String> _streamProgress = [];
   OpenerResult? _result;
   String? _error;
   final _scrollController = ScrollController();
@@ -541,6 +545,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
     setState(() {
       _isGenerating = true;
+      _streamProgress.clear();
       _generationProgressPhrases = OpenerGenerationProgress.phrasesFor(
         hasImages: input.images?.isNotEmpty ?? false,
       );
@@ -595,7 +600,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       );
 
       final service = OpenerService();
-      final rawResult = await service.generateOpeners(
+      // 2026-08-18 真串流：進度事件即時上牆；server flag off／舊 Edge 會
+      // 回一般 JSON，service 內自動降級，這裡無感。
+      final rawResult = await service.generateOpenersStreaming(
         images: input.images,
         name: input.name,
         bio: input.bio,
@@ -605,6 +612,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         revenueCatAppUserId: revenueCatAppUserId,
         effectiveStyleContext: attempt.styleContext,
         requestId: attempt.requestId,
+        onProgress: (label) {
+          if (!mounted || !_isGenerating) return;
+          setState(() => _streamProgress.add(label));
+        },
       );
       // 結果已到手＝這次計費完結；之後任何失敗（存草稿等）都不該讓
       // 下一次生成沿用同 id 而被 server 當重試去重。
@@ -883,16 +894,19 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Loading state：staged 本地進度文案（F3-2 低配版，
-          // 真 streaming 另案）。文案凍結在 _generate 送出的 input，
+          // Loading state（2026-08-18 真串流）：server 進度事件到達後改顯示
+          // 真實進度 ticker；事件還沒來（連線中）或 server 降級 legacy 時
+          // 沿用本地輪播文案。文案凍結在 _generate 送出的 input，
           // 不讀 activeInput——生成中切 tab/改輸入不得讓文案漂移。
           if (_isGenerating)
-            Center(
-              child: OpenerGenerationProgress(
-                phrases:
-                    _generationProgressPhrases ?? kOpenerManualProgressPhrases,
-              ),
-            ),
+            _streamProgress.isNotEmpty
+                ? StreamProgressTicker(labels: _streamProgress)
+                : Center(
+                    child: OpenerGenerationProgress(
+                      phrases: _generationProgressPhrases ??
+                          kOpenerManualProgressPhrases,
+                    ),
+                  ),
 
           // Error
           if (_error != null)
