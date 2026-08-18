@@ -17,6 +17,7 @@ import '../utils/conversation_archive_sections.dart';
 import '../utils/conversation_record_actions.dart';
 import '../widgets/partner_conversation_tile.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 class PartnerAnalysisArchiveScreen extends ConsumerWidget {
   const PartnerAnalysisArchiveScreen({
@@ -121,13 +122,13 @@ class PartnerAnalysisArchiveScreen extends ConsumerWidget {
                 ),
       floatingActionButton: FloatingActionButton.extended(
         key: const ValueKey('archive-new-conversation'),
-        onPressed: partner == null
+        onPressed: AppHaptics.onPress(partner == null
             ? null
             : () => showAppSheet(
                   context: context,
                   backgroundColor: Colors.transparent,
                   builder: (_) => NewConversationSheet(partnerId: partnerId),
-                ),
+                )),
         backgroundColor: AppColors.ctaStart,
         foregroundColor: AppColors.onCta,
         label: const Text('+ 分析新片段'),

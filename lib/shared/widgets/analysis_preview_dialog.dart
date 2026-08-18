@@ -13,6 +13,7 @@ import '../../core/services/message_calculator.dart';
 import '../../core/services/usage_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/services/app_haptics.dart';
 
 /// Dialog shown before analysis to preview billed usage.
 class AnalysisPreviewDialog extends StatelessWidget {
@@ -130,7 +131,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
             ),
           ),
         ElevatedButton(
-          onPressed: canProceed ? onConfirm : null,
+          onPressed: AppHaptics.onPress(canProceed ? onConfirm : null),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,

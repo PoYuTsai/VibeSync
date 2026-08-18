@@ -4,6 +4,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// Game 教學卡收合後的去向：開始攻略＝原地關閉；查看方案＝呼叫端導付費牆；
 /// 去圖鑑翻牌＝呼叫端導角色圖鑑（鎖定＋已訂閱：他有每日翻牌額度）。
@@ -109,11 +110,11 @@ class _PracticeGameIntroSheetState extends State<_PracticeGameIntroSheet> {
                 child: _page == 0
                     ? FilledButton(
                         key: const ValueKey('practice-game-intro-next'),
-                        onPressed: () => _pageController.animateToPage(
+                        onPressed: AppHaptics.onPress(() => _pageController.animateToPage(
                           1,
                           duration: const Duration(milliseconds: 260),
                           curve: Curves.easeOutCubic,
-                        ),
+                        )),
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.ctaStart,
                           foregroundColor: AppColors.onCta,
@@ -123,13 +124,13 @@ class _PracticeGameIntroSheetState extends State<_PracticeGameIntroSheet> {
                       )
                     : FilledButton(
                         key: const ValueKey('practice-game-intro-cta'),
-                        onPressed: () => Navigator.of(context).pop(
+                        onPressed: AppHaptics.onPress(() => Navigator.of(context).pop(
                           !widget.locked
                               ? PracticeGameIntroResult.start
                               : widget.showUpgradeHook
                                   ? null
                                   : PracticeGameIntroResult.goDraw,
-                        ),
+                        )),
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.ctaStart,
                           foregroundColor: AppColors.onCta,

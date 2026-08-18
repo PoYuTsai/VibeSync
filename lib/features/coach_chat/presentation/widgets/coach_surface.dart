@@ -21,6 +21,7 @@ import '../../domain/entities/unified_coach_result.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import 'coach_chat_progress_notice.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// scope 參數化的統一教練介面，同時是問教練 Sydney 視窗的內容主體
 /// （唯一宿主 GlobalCoachScreen）：上方捲動區＝視窗遞入的 [header]
@@ -194,6 +195,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
       if (error == null) return;
       if (!context.mounted) return;
       if (error is CoachChatQuotaExceededException) {
+        AppHaptics.failure();
         widget.onQuotaExceeded?.call();
         return;
       }
@@ -494,6 +496,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
       return;
     }
     FocusScope.of(context).unfocus();
+    AppHaptics.light();
     setState(() {
       _lastAskedQuestion = question;
       _controller.clear();
@@ -786,6 +789,7 @@ class _CoachChatHistoryTile extends StatelessWidget {
       if (result.suggestedLine != null) '可以這樣說：${result.suggestedLine}',
       '邊界提醒：${result.boundaryReminder}',
     ];
+    AppHaptics.light();
     await Clipboard.setData(ClipboardData(text: parts.join('\n')));
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1093,7 +1097,7 @@ class CoachChatResultView extends ConsumerWidget {
             child: const Text('先補充想法'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
+            onPressed: AppHaptics.onPress(() => Navigator.of(dialogContext).pop(true)),
             child: const Text('扣 1 則並生成'),
           ),
         ],
@@ -1105,6 +1109,7 @@ class CoachChatResultView extends ConsumerWidget {
   }
 
   Future<void> _copyText(BuildContext context, String text) async {
+    AppHaptics.light();
     await Clipboard.setData(ClipboardData(text: text));
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

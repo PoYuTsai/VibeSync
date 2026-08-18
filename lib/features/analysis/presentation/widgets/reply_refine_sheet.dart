@@ -14,6 +14,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// 與 server `MAX_REFINE_INSTRUCTION_LENGTH` 對齊。輸入框先擋一次，server 仍會
 /// 再驗一次（超長是 400、0 扣費）。
@@ -421,10 +422,10 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             key: const ValueKey('reply-refine-submit'),
-                            onPressed: _inFlight ||
+                            onPressed: AppHaptics.onPress(_inFlight ||
                                     _instructionController.text.trim().isEmpty
                                 ? null
-                                : () => _refine(_instructionController.text),
+                                : () => _refine(_instructionController.text)),
                             icon: _inFlight
                                 ? const SizedBox(
                                     width: 16,
@@ -445,7 +446,7 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
                     width: double.infinity,
                     child: FilledButton(
                       key: const ValueKey('reply-refine-adopt'),
-                      onPressed: _inFlight ? null : _adopt,
+                      onPressed: AppHaptics.onPress(_inFlight ? null : _adopt),
                       child: const Text('用這個版本'),
                     ),
                   ),

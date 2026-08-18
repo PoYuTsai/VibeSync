@@ -11,6 +11,7 @@ import '../../domain/entities/analysis_models.dart';
 import '../../domain/services/analysis_fragment_policy.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 class ScreenshotRecognitionDialogResult {
   final String name;
@@ -529,7 +530,7 @@ class _ScreenshotRecognitionDialogState
                   ),
                   const Spacer(),
                   ElevatedButton(
-                    onPressed: () => Navigator.of(sheetContext).pop(),
+                    onPressed: AppHaptics.onPress(() => Navigator.of(sheetContext).pop()),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.ctaStart,
                       foregroundColor: AppColors.onCta,
@@ -1315,7 +1316,7 @@ class _ScreenshotRecognitionDialogState
                       child: ElevatedButton(
                         // 沒勾同對象確認不再 disabled 裝死：一律可按，_submit
                         // 內擋下並捲到確認格＋閃光＋紅字說明。
-                        onPressed: _submit,
+                        onPressed: AppHaptics.onPress(_submit),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.ctaStart,
                           foregroundColor: AppColors.onCta,

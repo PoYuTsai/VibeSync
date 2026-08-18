@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// Pure UI dialog for editing Partner.customNote.
 ///
@@ -67,7 +68,7 @@ class _PartnerNoteEditDialogState extends State<PartnerNoteEditDialog> {
           child: const Text('取消'),
         ),
         ElevatedButton(
-          onPressed: _onSave,
+          onPressed: AppHaptics.onPress(_onSave),
           child: const Text('儲存'),
         ),
       ],

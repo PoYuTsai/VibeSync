@@ -9,6 +9,7 @@ import '../../domain/entities/partner.dart';
 import '../dialogs/partner_merge_confirm_dialog.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_picker_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// Merge picker screen — `/partner/:partnerId/merge[?target=...]`.
 ///
@@ -94,7 +95,7 @@ class _PartnerMergePickerScreenState
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: () => _confirm(_selectedTarget!),
+                    onPressed: AppHaptics.onPress(() => _confirm(_selectedTarget!)),
                     child: Text('確認合併到 ${_selectedTarget!.name}'),
                   ),
                 ),

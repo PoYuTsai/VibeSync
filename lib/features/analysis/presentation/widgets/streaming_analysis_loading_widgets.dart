@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/services/app_haptics.dart';
 
 const List<String> kStreamingAnalysisLoadingPhrases = <String>[
   '正在讀取對話脈絡…',
@@ -309,7 +310,7 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: onViewPlans,
+            onPressed: AppHaptics.onPress(onViewPlans),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.ctaStart,
               foregroundColor: AppColors.onCta,
@@ -417,7 +418,7 @@ class FullAnalysisRetryCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: _canRetry ? onRetry : null,
+            onPressed: AppHaptics.onPress(_canRetry ? onRetry : null),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.ctaStart,
               disabledBackgroundColor: Colors.white.withValues(alpha: 0.16),

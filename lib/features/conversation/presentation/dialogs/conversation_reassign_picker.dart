@@ -8,6 +8,7 @@ import '../../../partner/presentation/widgets/partner_picker_sheet.dart';
 import '../../data/providers/conversation_write_controller.dart';
 import '../../domain/entities/conversation.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// Modal sheet that lets the user move a single Conversation to another
 /// Partner. Reuses [PartnerPickerSheet] for the list / filter UI.
@@ -48,7 +49,7 @@ Future<void> showConversationReassignPicker(
                   child: const Text('取消'),
                 ),
                 ElevatedButton(
-                  onPressed: () => Navigator.of(dialogCtx).pop(true),
+                  onPressed: AppHaptics.onPress(() => Navigator.of(dialogCtx).pop(true)),
                   child: const Text('移過去'),
                 ),
               ],

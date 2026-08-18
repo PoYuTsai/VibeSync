@@ -28,6 +28,7 @@ import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart'
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../new_topic/presentation/widgets/new_topic_view.dart';
 import '../widgets/opener_generation_progress.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// `/opener` 頁的兩個模式：開場白（既有 opener body）與新話題。
 /// `?mode=new_topic` 只決定初始 tab；頁內切換不改 route。
@@ -1635,6 +1636,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   /// 公式開場複製：只複製 openingLine；不掛 outcome/reaction 記錄（拍板
   /// 不混進五風格 adviceType 指標）。
   void _copyFormulaOpeningLine(FormulaReplyEntry entry) {
+    AppHaptics.light();
     Clipboard.setData(ClipboardData(text: entry.openingLine));
     _showOpenerSnackBar(
       '已複製這則公式開場。貼到交友軟體送出，她回覆後點下方「她回覆了，開始分析對話」。',
@@ -1825,6 +1827,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
                   onPressed: () {
+                    AppHaptics.light();
                     Clipboard.setData(ClipboardData(text: content));
                     unawaited(_recordOpenerCopy(type: type, content: content));
                     _showOpenerSnackBar(

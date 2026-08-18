@@ -210,7 +210,7 @@ class _EbookQuizCardState extends State<EbookQuizCard> {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: _selected.isEmpty ? null : _submit,
+                onPressed: AppHaptics.onPress(_selected.isEmpty ? null : _submit),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.ctaStart,
                   disabledBackgroundColor:

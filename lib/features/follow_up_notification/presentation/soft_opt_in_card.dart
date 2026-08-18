@@ -4,6 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_icons.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/brand/brand_dialog.dart';
+import '../../../core/services/app_haptics.dart';
 
 /// 48h 跟進提醒的「軟詢問卡」。
 ///
@@ -41,7 +42,7 @@ Future<bool?> showSoftOptInCard(
           ),
         ),
         ElevatedButton(
-          onPressed: () => Navigator.of(dialogContext).pop(true),
+          onPressed: AppHaptics.onPress(() => Navigator.of(dialogContext).pop(true)),
           child: const Text('幫我提醒'),
         ),
       ],

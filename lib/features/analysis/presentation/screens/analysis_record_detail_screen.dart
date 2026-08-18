@@ -16,6 +16,7 @@ import '../../domain/entities/enthusiasm_level.dart';
 import '../widgets/analysis_platform_picker.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/swipe_hint_nudge.dart';
+import '../../../../core/services/app_haptics.dart';
 
 enum _RecordDetailAction { delete }
 
@@ -114,6 +115,7 @@ class _AnalysisRecordDetailScreenState
   }
 
   Future<void> _copyRecommendation(String content) async {
+    AppHaptics.light();
     await Clipboard.setData(ClipboardData(text: content));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

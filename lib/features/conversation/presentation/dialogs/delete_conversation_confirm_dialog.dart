@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../core/theme/app_icons.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// Destructive confirm dialog for deleting a single conversation under a Partner.
 ///
@@ -57,7 +58,7 @@ class DeleteConversationConfirmDialog extends StatelessWidget {
             backgroundColor: Theme.of(context).colorScheme.error,
             foregroundColor: Theme.of(context).colorScheme.onError,
           ),
-          onPressed: () => Navigator.of(context).pop(true),
+          onPressed: AppHaptics.onPress(() => Navigator.of(context).pop(true)),
           child: const Text('確認刪除'),
         ),
       ],

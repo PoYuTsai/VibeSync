@@ -390,8 +390,13 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final drawSucceeded =
         next.isRevealed && next.errorMessage == null && next.girl != null;
     if (drawSucceeded) {
-      // 中觸覺＋即時停等待 loop（兩條路徑都不等翻面跑完，shimmer loop 在揭曉當下就收）。
-      AppHaptics.medium();
+      // 揭曉觸覺＋即時停等待 loop（兩條路徑都不等翻面跑完，shimmer loop 在揭曉當下就收）。
+      // 稀有（SR）給漸強慶祝，一般給單發重震——稀有的手感必須不一樣（文件觸感 7）。
+      if (next.girl!.rarity == PracticeGirlRarity.sr) {
+        AppHaptics.celebrate();
+      } else {
+        AppHaptics.medium();
+      }
       _sfx.stopWaitingLoop();
       if (_reduceMotion) {
         // reduce-motion：跳過 3D 翻面；不疊舊 chime，避免與 master audio 語意分裂。

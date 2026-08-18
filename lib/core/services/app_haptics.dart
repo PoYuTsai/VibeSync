@@ -59,4 +59,37 @@ abstract final class AppHaptics {
     await Future<void>.delayed(const Duration(milliseconds: 90));
     if (enabled) HapticFeedback.heavyImpact();
   }
+
+  /// 慶祝：漸強三下（輕→中→重）。測驗過關、訂閱成功、稀有揭曉。
+  /// 原生 API 做不了真正的連續漸強曲線；要更綿密得上第三方套件（第 3 步）。
+  static Future<void> celebrate() async {
+    if (!enabled) return;
+    HapticFeedback.lightImpact();
+    await Future<void>.delayed(const Duration(milliseconds: 90));
+    if (!enabled) return;
+    HapticFeedback.mediumImpact();
+    await Future<void>.delayed(const Duration(milliseconds: 110));
+    if (enabled) HapticFeedback.heavyImpact();
+  }
+
+  static DateTime _lastTick = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// 累積感：進度條推進、分數跳動時的細碎「噠噠」。自帶節流——
+  /// 跟著動畫每幀呼叫也只會以固定間隔出聲（iOS 太密會被吞、Android 會變嗡嗡）。
+  static void tick() {
+    if (!enabled) return;
+    final now = DateTime.now();
+    if (now.difference(_lastTick).inMilliseconds < 70) return;
+    _lastTick = now;
+    HapticFeedback.selectionClick();
+  }
+
+  /// 給原生按鈕 onPressed 包一層按壓觸覺；null（disabled）維持 null。
+  static VoidCallback? onPress(VoidCallback? action) {
+    if (action == null) return null;
+    return () {
+      light();
+      action();
+    };
+  }
 }

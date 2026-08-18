@@ -16,6 +16,7 @@ import '../style_pair_draft.dart';
 import '../widgets/growth_preview_sheet.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../widgets/profile_chip_section.dart';
+import '../../../../core/services/app_haptics.dart';
 
 class AboutMeScreen extends ConsumerStatefulWidget {
   const AboutMeScreen({super.key, this.source});
@@ -396,7 +397,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                       ],
                     ),
                     child: ElevatedButton(
-                      onPressed: _onPrimaryTap,
+                      onPressed: AppHaptics.onPress(_onPrimaryTap),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,

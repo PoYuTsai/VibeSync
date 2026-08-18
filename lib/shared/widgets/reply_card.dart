@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_icons.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/services/app_haptics.dart';
 
 enum ReplyType { extend, resonate, tease, humor, coldRead }
 
@@ -134,6 +135,7 @@ class ReplyCard extends StatelessWidget {
   }
 
   void _copyToClipboard(BuildContext context) {
+    AppHaptics.light();
     Clipboard.setData(ClipboardData(text: content));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(

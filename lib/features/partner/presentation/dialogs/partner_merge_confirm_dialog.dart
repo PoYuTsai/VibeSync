@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../core/theme/app_icons.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// D-variant confirm dialog per Phase 3 design doc §3:
 /// - N 對話搬遷 + M traits 聯集（具象 metric，避免抽象 wording）
@@ -81,7 +82,7 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
           child: const Text('取消'),
         ),
         ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(true),
+          onPressed: AppHaptics.onPress(() => Navigator.of(context).pop(true)),
           child: const Text('確認合併'),
         ),
       ],

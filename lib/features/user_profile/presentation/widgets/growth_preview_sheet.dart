@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// 存檔後彈出的成長框架預覽——純顯示，關閉後回到上一頁。
 Future<void> showGrowthPreviewSheet(
@@ -32,7 +33,7 @@ Future<void> showGrowthPreviewSheet(
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => Navigator.of(sheetContext).pop(),
+              onPressed: AppHaptics.onPress(() => Navigator.of(sheetContext).pop()),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.ctaStart,
                 foregroundColor: AppColors.onCta,

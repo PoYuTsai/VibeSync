@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// Single-field rename dialog for a Partner. Pure UI — pops via
 /// `Navigator.pop`:
@@ -67,7 +68,7 @@ class _PartnerEditDialogState extends State<PartnerEditDialog> {
           child: const Text('取消'),
         ),
         ElevatedButton(
-          onPressed: _canSave ? _onSave : null,
+          onPressed: AppHaptics.onPress(_canSave ? _onSave : null),
           child: const Text('儲存'),
         ),
       ],

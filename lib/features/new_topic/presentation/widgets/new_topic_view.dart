@@ -24,6 +24,7 @@ import '../../data/services/new_topic_service.dart';
 import '../../domain/entities/new_topic_result.dart';
 import 'new_topic_idea_card.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// 新話題（破冰腦力）分頁（計畫 §13）。掛在 OpeningRescueScreen 的
 /// IndexedStack 內：切換模式不 unmount，結果/錯誤/requestId 全保留。
@@ -338,6 +339,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   }
 
   void _copyOpeningLine(NewTopicIdea idea) {
+    AppHaptics.light();
     Clipboard.setData(ClipboardData(text: idea.openingLine));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -349,6 +351,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
 
   /// 公式新話題複製：只複製 openingLine，沿用既有 snackbar 語氣。
   void _copyFormulaOpeningLine(FormulaReplyEntry entry) {
+    AppHaptics.light();
     Clipboard.setData(ClipboardData(text: entry.openingLine));
     if (!mounted) return;
     ScaffoldMessenger.of(context)

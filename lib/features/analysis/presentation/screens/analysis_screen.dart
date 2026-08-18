@@ -98,6 +98,7 @@ import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// Keeps user intent separate from programmatic live-follow movement without
 /// indenting the analysis screen's large child tree.
@@ -976,6 +977,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         );
         break;
       case StreamingAnalyzePhase.failedAfterRecommendation:
+        // 額度用盡才震（一般格式失敗不是付費牆時刻，不給錯誤觸覺）。
+        if (s.quotaExceeded != null) AppHaptics.failure();
         setState(() {
           _isAnalyzing = false;
           _fullErrorMessage = s.fullErrorMessage;
@@ -3070,9 +3073,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: (_isRecognizing || _isAnalyzing)
+                  onPressed: AppHaptics.onPress((_isRecognizing || _isAnalyzing)
                       ? null
-                      : _recognizeAndAddToConversation,
+                      : _recognizeAndAddToConversation),
                   icon: _isRecognizing
                       ? const SizedBox(
                           width: 18,
@@ -5039,6 +5042,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   void _copyPolishedDraft(String text) {
+    AppHaptics.light();
     Clipboard.setData(ClipboardData(text: text));
     unawaited(_recordAnalysisCopy(cardKey: 'polish', copiedText: text));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -5220,6 +5224,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
 
     if (!mounted || sheetResult == null || !sheetResult.isRefined) return;
+    AppHaptics.light();
     await Clipboard.setData(ClipboardData(text: sheetResult.adoptedText));
     unawaited(
       _recordRefineCopy(
@@ -5512,6 +5517,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     buffer.writeln('=== 紀錄結束 ===');
 
     // 複製到剪貼簿
+    AppHaptics.light();
     Clipboard.setData(ClipboardData(text: buffer.toString()));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('對話紀錄已複製到剪貼簿')),
@@ -5859,6 +5865,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   void _copyRecommendationText(String text, String label) {
+    AppHaptics.light();
     Clipboard.setData(ClipboardData(text: text));
     unawaited(_recordAnalysisCopy(cardKey: 'final', copiedText: text));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -5895,9 +5902,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: () {
+            onPressed: AppHaptics.onPress(() {
               _copyRecommendationText(content, '已複製到剪貼簿');
-            },
+            }),
             icon: const Icon(Icons.copy),
             label: const Text('複製推薦回覆'),
           ),
@@ -6108,9 +6115,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           width: double.infinity,
           height: 52,
           child: ElevatedButton.icon(
-            onPressed: () {
+            onPressed: AppHaptics.onPress(() {
               _copyRecommendationText(allContent, '已複製整組訊息');
-            },
+            }),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
@@ -6342,7 +6349,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _resumeRecognitionImport,
+                    onPressed: AppHaptics.onPress(_resumeRecognitionImport),
                     icon: const Icon(Icons.edit_note_rounded),
                     label: const Text('繼續確認本次內容'),
                   ),
@@ -6938,10 +6945,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       if (_errorAction != null)
                                         ElevatedButton(
                                           onPressed:
-                                              _isAnalyzing || _isRecognizing
+                                              AppHaptics.onPress(_isAnalyzing || _isRecognizing
                                                   ? null
                                                   : () => _handleErrorAction(
-                                                      _errorAction!),
+                                                      _errorAction!)),
                                           child: Text(
                                             _primaryErrorActionLabel(
                                               _errorAction!,
@@ -7089,9 +7096,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     SizedBox(
                                       width: double.infinity,
                                       child: ElevatedButton.icon(
-                                        onPressed: _isRecognizing
+                                        onPressed: AppHaptics.onPress(_isRecognizing
                                             ? null
-                                            : _recognizeAndAddToConversation,
+                                            : _recognizeAndAddToConversation),
                                         icon: _isRecognizing
                                             ? const SizedBox(
                                                 width: 20,
@@ -8250,12 +8257,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       SizedBox(
                                         width: double.infinity,
                                         child: ElevatedButton(
-                                          onPressed: _feedbackCategory !=
+                                          onPressed: AppHaptics.onPress(_feedbackCategory !=
                                                       null &&
                                                   !_isSubmittingFeedback
                                               ? () =>
                                                   _submitFeedback('negative')
-                                              : null,
+                                              : null),
                                           child: _isSubmittingFeedback
                                               ? const SizedBox(
                                                   width: 18,
@@ -8719,7 +8726,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: _openCoachQuestion,
+                onPressed: AppHaptics.onPress(_openCoachQuestion),
                 icon: const Icon(Icons.forum_outlined),
                 label: const Text('問教練：我現在該怎麼做？'),
                 style: FilledButton.styleFrom(
@@ -9120,7 +9127,7 @@ class _EditMessageCoachMark extends StatelessWidget {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: onDismiss,
+                          onPressed: AppHaptics.onPress(onDismiss),
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             backgroundColor: AppColors.ctaStart,

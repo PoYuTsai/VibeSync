@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// Resolves the single floating surface used by the analysis screen.
 ///
@@ -224,7 +225,7 @@ class _FloatingAnalysisActionButtonState
               enabled: enabled,
               child: FilledButton(
                 key: FloatingAnalysisActionButton.buttonKey,
-                onPressed: widget.onPressed,
+                onPressed: AppHaptics.onPress(widget.onPressed),
                 style: FilledButton.styleFrom(
                   fixedSize: const Size.square(62),
                   minimumSize: const Size.square(62),
@@ -390,7 +391,7 @@ class _AnalysisScrollHintState extends State<AnalysisScrollHint>
       child: ExcludeSemantics(
         child: FilledButton.icon(
           key: AnalysisScrollHint.hintKey,
-          onPressed: widget.onPressed,
+          onPressed: AppHaptics.onPress(widget.onPressed),
           icon: _reduceMotion || widget.interrupted
               ? animatedIcon
               : SlideTransition(position: _offset, child: animatedIcon),

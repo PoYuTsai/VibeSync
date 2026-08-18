@@ -56,6 +56,36 @@ void main() {
     ]);
   });
 
+  test('celebrate 是漸強三下（輕→中→重）', () async {
+    await AppHaptics.celebrate();
+    expect(vibrates, [
+      'HapticFeedbackType.lightImpact',
+      'HapticFeedbackType.mediumImpact',
+      'HapticFeedbackType.heavyImpact',
+    ]);
+  });
+
+  test('tick 有 70ms 節流：連呼只出第一聲，隔夠久再出', () async {
+    AppHaptics.tick();
+    AppHaptics.tick();
+    AppHaptics.tick();
+    expect(vibrates, ['HapticFeedbackType.selectionClick']);
+    await Future<void>.delayed(const Duration(milliseconds: 90));
+    AppHaptics.tick();
+    expect(vibrates, [
+      'HapticFeedbackType.selectionClick',
+      'HapticFeedbackType.selectionClick',
+    ]);
+  });
+
+  test('onPress 包裝：null 保持 null，非 null 先震再執行', () {
+    expect(AppHaptics.onPress(null), isNull);
+    var called = false;
+    AppHaptics.onPress(() => called = true)!();
+    expect(called, isTrue);
+    expect(vibrates, ['HapticFeedbackType.mediumImpact']);
+  });
+
   test('setEnabled 持久化，init 讀得回來', () async {
     await AppHaptics.setEnabled(false);
     expect(AppHaptics.enabled, isFalse);

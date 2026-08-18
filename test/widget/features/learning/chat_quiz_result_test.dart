@@ -165,6 +165,9 @@ void main() {
     );
     // 終點的縮放是 1.0；動畫還在跑的話會小於 1。
     expect(transform.transform.getMaxScaleOnAxis(), closeTo(1.0, 0.001));
+
+    // 過關觸覺是漸強三下（共 200ms），把後兩下的 timer 走完避免殘留。
+    await tester.pump(const Duration(milliseconds: 250));
   });
 
   testWidgets('過關動效跑完會停在終點（沒有無限 repeat）', (tester) async {

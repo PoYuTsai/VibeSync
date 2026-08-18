@@ -27,6 +27,7 @@ import '../widgets/practice_profile_sheet.dart';
 import '../widgets/practice_temperature_style.dart';
 import '../widgets/practice_wait_progress.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// AI 實戰練習室主畫面：點入直接進聊天（不選目標）。
 /// 使用者先發訊息，AI 扮演模擬對象回覆；最多 20 則 AI 回覆；
@@ -170,6 +171,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
     final appliedHintRequestId = appliedHintDraft?.hintRequestId;
     final appliedHintDecision = appliedHintDraft?.decision;
     _controller.clear();
+    AppHaptics.light();
     await ref.read(practiceChatControllerProvider.notifier).sendMessage(
           text,
           appliedHintType: appliedHintType,
@@ -466,7 +468,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
                 width: double.infinity,
                 child: FilledButton(
                   key: const ValueKey('practice-draw-upgrade-primary'),
-                  onPressed: () => context.push('/paywall'),
+                  onPressed: AppHaptics.onPress(() => context.push('/paywall')),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
                     foregroundColor: AppColors.onCta,
@@ -481,7 +483,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
                 width: double.infinity,
                 child: FilledButton(
                   key: const ValueKey('practice-goto-collection-cta'),
-                  onPressed: () => context.push('/practice-collection'),
+                  onPressed: AppHaptics.onPress(() => context.push('/practice-collection')),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
                     foregroundColor: AppColors.onCta,

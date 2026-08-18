@@ -6,6 +6,7 @@ import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/analysis_models.dart';
+import '../../../../core/services/app_haptics.dart';
 
 class ReplyStyleCard extends StatelessWidget {
   final String type;
@@ -205,6 +206,7 @@ class ReplyStyleCard extends StatelessWidget {
                     ),
                   ),
                   onPressed: () {
+                    AppHaptics.light();
                     Clipboard.setData(ClipboardData(text: _copyAllText));
                     onCopy(
                       _copyAllText,
@@ -274,6 +276,7 @@ class _ReplyOptionMessageRow extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: () {
+        AppHaptics.light();
         Clipboard.setData(ClipboardData(text: reply));
         onCopy(reply, total == 1 ? '已複製這句' : '已複製第 ${index + 1} 句');
       },

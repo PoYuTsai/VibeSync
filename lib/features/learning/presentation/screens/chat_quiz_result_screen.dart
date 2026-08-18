@@ -23,6 +23,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/models/chat_quiz.dart';
 import '../widgets/chat_quiz_gate_message.dart';
+import '../../../../core/services/app_haptics.dart';
 
 class ChatQuizResultScreen extends StatefulWidget {
   const ChatQuizResultScreen({
@@ -52,6 +53,7 @@ class ChatQuizResultScreen extends StatefulWidget {
 class _ChatQuizResultScreenState extends State<ChatQuizResultScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  bool _celebrationHapticFired = false;
 
   @override
   void initState() {
@@ -66,6 +68,11 @@ class _ChatQuizResultScreenState extends State<ChatQuizResultScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    // 過關觸覺與慶祝動畫同一時刻；比照抽卡儀式，reduce-motion 關動畫不關震動。
+    if (_passed && !_celebrationHapticFired) {
+      _celebrationHapticFired = true;
+      AppHaptics.celebrate();
+    }
     if (reduceMotion || !_passed) {
       // 沒過就不慶祝；減少動態效果時直接呈現終點狀態。
       _controller.value = 1;

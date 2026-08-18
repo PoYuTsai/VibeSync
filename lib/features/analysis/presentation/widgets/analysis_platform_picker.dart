@@ -4,6 +4,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// The suggested platforms stay deliberately small. A custom value is always
 /// available so the UI does not need a release whenever users move elsewhere.
@@ -246,7 +247,7 @@ class _CustomPlatformDialogState extends State<_CustomPlatformDialog> {
             backgroundColor: AppColors.ctaStart,
             foregroundColor: AppColors.onCta,
           ),
-          onPressed: _submit,
+          onPressed: AppHaptics.onPress(_submit),
           child: const Text('套用'),
         ),
       ],

@@ -12,6 +12,8 @@ void main() {
         ),
       );
 
+      // 分數是 0→72 的 count-up 揭曉，等動畫收斂才停在終點值。
+      await tester.pumpAndSettle();
       expect(find.text('72/100'), findsOneWidget);
     });
 

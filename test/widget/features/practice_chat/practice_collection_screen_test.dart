@@ -979,6 +979,9 @@ void main() {
       await tester.pump();
 
       expect(find.text('今日翻牌額度用完了'), findsOneWidget);
+
+      // 失敗觸覺是兩下（90ms 間隔），把第二下的 timer 走完避免殘留。
+      await tester.pump(const Duration(milliseconds: 120));
     });
   });
 

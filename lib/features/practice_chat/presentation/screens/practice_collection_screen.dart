@@ -394,7 +394,7 @@ class _PracticeCollectionScreenState
           ),
           FilledButton(
             key: const ValueKey('collection-draw-confirm'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
+            onPressed: AppHaptics.onPress(() => Navigator.of(dialogContext).pop(true)),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.ctaStart,
               foregroundColor: AppColors.onCta,
@@ -479,9 +479,11 @@ class _PracticeCollectionScreenState
         // （沿用 paywall/settings 的 refresh seam；paywall 本身 initState 也會
         // refresh，重複呼叫 idempotent）。
         if (!mounted) return;
+        AppHaptics.failure();
         unawaited(ref.read(subscriptionScreenRefreshProvider)());
         context.push('/paywall');
       } else if (next.drawQuotaExceeded || next.errorMessage != null) {
+        AppHaptics.failure();
         _showDrawSnackBar(next.errorMessage ?? '翻牌失敗了，再試一次。');
       }
     });
@@ -580,7 +582,10 @@ class _PracticeCollectionScreenState
                                     const ValueKey('collection-filter-all'),
                                 label: '全部',
                                 selected: _filter == null,
-                                onTap: () => setState(() => _filter = null),
+                                onTap: () {
+                                  AppHaptics.tap();
+                                  setState(() => _filter = null);
+                                },
                               ),
                             ),
                             for (final rarity in PracticeGirlRarity.values)
@@ -590,7 +595,10 @@ class _PracticeCollectionScreenState
                                       'collection-filter-${rarity.label.toLowerCase()}'),
                                   label: rarity.label,
                                   selected: _filter == rarity,
-                                  onTap: () => setState(() => _filter = rarity),
+                                  onTap: () {
+                                    AppHaptics.tap();
+                                    setState(() => _filter = rarity);
+                                  },
                                 ),
                               ),
                           ],

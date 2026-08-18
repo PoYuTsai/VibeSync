@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/services/keyboard_privacy_purge_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../services/link_launch_service.dart';
+import '../../core/services/app_haptics.dart';
 
 class AiDataSharingConsent {
   static const _acceptedKey = 'ai_data_sharing_consent_20260706_v3';
@@ -461,9 +462,9 @@ class _AiDataSharingConsentDialogState
           child: const Text('不同意'),
         ),
         FilledButton(
-          onPressed: _hasReviewedAndAgreed
+          onPressed: AppHaptics.onPress(_hasReviewedAndAgreed
               ? () => Navigator.of(context).pop(true)
-              : null,
+              : null),
           child: const Text('我同意並送出'),
         ),
       ],

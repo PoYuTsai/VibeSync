@@ -8,6 +8,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/glassmorphic_container.dart';
 import '../../data/providers/user_profile_providers.dart';
 import '../../domain/entities/user_profile.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// 我的報告頂部「關於我」卡片。
 ///
@@ -129,7 +130,7 @@ class _EmptyState extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               ElevatedButton(
-                onPressed: onTap,
+                onPressed: AppHaptics.onPress(onTap),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.ctaStart,
                   foregroundColor: AppColors.onCta,

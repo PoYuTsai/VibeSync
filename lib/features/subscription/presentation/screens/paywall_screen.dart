@@ -27,6 +27,7 @@ import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/quarterly_savings.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 import '../subscription_diagnostics_gate.dart';
+import '../../../../core/services/app_haptics.dart';
 
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key});
@@ -1125,6 +1126,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       if (!mounted || result.cancelled) return;
 
       if (!result.success) {
+        AppHaptics.failure();
         _showSnackBar(
           _messageForPurchaseError(
             result.errorCode,
@@ -1146,6 +1148,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       // 錢已扣：成功呈現不得依賴 refresh 成敗，逾時/失敗只記 log。
       await _refreshAfterSuccessBestEffort(notifier);
       if (!mounted) return;
+      AppHaptics.celebrate();
 
       final purchasedTier =
           result.activeTier == SubscriptionTierHelper.essential
@@ -1173,9 +1176,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       _leavePaywall(result.activeTier);
     } on TimeoutException catch (error) {
       debugPrint('Paywall purchase timeout: $error');
+      AppHaptics.failure();
       _showSnackBar('App Store 付款確認逾時，請稍後再試；如果已付款，可按「恢復購買」。');
     } catch (error) {
       debugPrint('Paywall purchase error: $error');
+      AppHaptics.failure();
       _showSnackBar('訂閱處理失敗，請稍後再試。');
     } finally {
       if (mounted) {

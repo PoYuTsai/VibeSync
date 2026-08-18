@@ -6,6 +6,7 @@ import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/analysis_result.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// Card showing AI's final recommendation with coach-style reasoning.
 class FinalRecommendationCard extends StatelessWidget {
@@ -84,7 +85,7 @@ class FinalRecommendationCard extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => _copyToClipboard(context),
+              onPressed: AppHaptics.onPress(() => _copyToClipboard(context)),
               icon: const Icon(Icons.copy, size: 18),
               label: const Text('複製推薦回覆'),
               style: ElevatedButton.styleFrom(
@@ -100,6 +101,7 @@ class FinalRecommendationCard extends StatelessWidget {
   }
 
   void _copyToClipboard(BuildContext context) {
+    AppHaptics.light();
     Clipboard.setData(ClipboardData(text: recommendation.content));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(

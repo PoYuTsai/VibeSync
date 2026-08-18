@@ -17,6 +17,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../core/services/app_haptics.dart';
 
 /// 一次潤飾請求的面板層結果。
 ///
@@ -260,10 +261,10 @@ class _DraftPolishSheetState extends State<DraftPolishSheet> {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             key: const ValueKey('draft-polish-submit'),
-                            onPressed: _isPolishing ||
+                            onPressed: AppHaptics.onPress(_isPolishing ||
                                     widget.draftController.text.trim().isEmpty
                                 ? null
-                                : _polish,
+                                : _polish),
                             icon: _isPolishing
                                 ? const SizedBox(
                                     width: 16,
@@ -406,7 +407,7 @@ class _DraftPolishSheetState extends State<DraftPolishSheet> {
                       width: double.infinity,
                       child: FilledButton.icon(
                         key: const ValueKey('draft-polish-copy'),
-                        onPressed: () => widget.onCopy(result.optimized),
+                        onPressed: AppHaptics.onPress(() => widget.onCopy(result.optimized)),
                         icon: const Icon(Icons.copy, size: 18),
                         label: const Text('複製這段草稿'),
                       ),

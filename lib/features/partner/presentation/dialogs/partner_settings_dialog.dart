@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
+import '../../../../core/services/app_haptics.dart';
 
 class PartnerSettingsResult {
   final String name;
@@ -128,7 +129,7 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
           child: const Text('取消'),
         ),
         ElevatedButton(
-          onPressed: _canSave ? _onSave : null,
+          onPressed: AppHaptics.onPress(_canSave ? _onSave : null),
           child: const Text('儲存'),
         ),
       ],
