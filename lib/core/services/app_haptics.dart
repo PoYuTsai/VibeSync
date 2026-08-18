@@ -26,34 +26,37 @@ abstract final class AppHaptics {
     await prefs.setBool(_prefsKey, value);
   }
 
+  // 2026-08-18 dogfood：selectionClick 起跳的階梯全體感太輕、爽感不足，
+  // 整條往上抬一級（tap=light、按鈕=medium、揭曉=heavy）。太重就整條降回來。
+
   /// 輕點：清單項、選項、切卡片。
   static void tap() {
-    if (enabled) HapticFeedback.selectionClick();
+    if (enabled) HapticFeedback.lightImpact();
   }
 
   /// 按鈕實心感：主要按鈕按下瞬間、抽牌。
   static void light() {
-    if (enabled) HapticFeedback.lightImpact();
+    if (enabled) HapticFeedback.mediumImpact();
   }
 
   /// 單發強調：翻開、揭曉。
   static void medium() {
-    if (enabled) HapticFeedback.mediumImpact();
+    if (enabled) HapticFeedback.heavyImpact();
   }
 
-  /// 答對：兩下往上跳（輕→中）。間隔是體感參數，實機調。
+  /// 答對：兩下往上跳（中→重）。間隔是體感參數，實機調。
   static Future<void> success() async {
     if (!enabled) return;
-    HapticFeedback.lightImpact();
+    HapticFeedback.mediumImpact();
     await Future<void>.delayed(const Duration(milliseconds: 110));
-    if (enabled) HapticFeedback.mediumImpact();
+    if (enabled) HapticFeedback.heavyImpact();
   }
 
-  /// 答錯／失敗：兩下短促（中×2）。明確但不兇，語氣交給文案與顏色。
+  /// 答錯／失敗：兩下短促（重×2）。明確但不兇，語氣交給文案與顏色。
   static Future<void> failure() async {
     if (!enabled) return;
-    HapticFeedback.mediumImpact();
+    HapticFeedback.heavyImpact();
     await Future<void>.delayed(const Duration(milliseconds: 90));
-    if (enabled) HapticFeedback.mediumImpact();
+    if (enabled) HapticFeedback.heavyImpact();
   }
 }

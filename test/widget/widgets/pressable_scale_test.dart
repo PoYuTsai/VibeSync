@@ -41,7 +41,7 @@ void main() {
     await tester.pump();
     expect(vibrates, isEmpty, reason: '按下瞬間不震');
     await gesture.up();
-    expect(vibrates, ['HapticFeedbackType.selectionClick']);
+    expect(vibrates, ['HapticFeedbackType.lightImpact']);
     await tester.pumpAndSettle();
   });
 
@@ -60,9 +60,9 @@ void main() {
     final gesture =
         await tester.startGesture(tester.getCenter(find.byType(PressableScale)));
     await tester.pump();
-    expect(vibrates, ['HapticFeedbackType.lightImpact']);
+    expect(vibrates, ['HapticFeedbackType.mediumImpact']);
     await gesture.up();
-    expect(vibrates, ['HapticFeedbackType.lightImpact'], reason: '放開不再震');
+    expect(vibrates, ['HapticFeedbackType.mediumImpact'], reason: '放開不再震');
     await tester.pumpAndSettle();
   });
 

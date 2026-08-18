@@ -36,23 +36,23 @@ void main() {
     AppHaptics.light();
     AppHaptics.medium();
     expect(vibrates, [
-      'HapticFeedbackType.selectionClick',
       'HapticFeedbackType.lightImpact',
       'HapticFeedbackType.mediumImpact',
+      'HapticFeedbackType.heavyImpact',
     ]);
   });
 
-  test('答對是輕→中兩下、答錯是中×2', () async {
+  test('答對是中→重兩下、答錯是重×2', () async {
     await AppHaptics.success();
     expect(vibrates, [
-      'HapticFeedbackType.lightImpact',
       'HapticFeedbackType.mediumImpact',
+      'HapticFeedbackType.heavyImpact',
     ]);
     vibrates.clear();
     await AppHaptics.failure();
     expect(vibrates, [
-      'HapticFeedbackType.mediumImpact',
-      'HapticFeedbackType.mediumImpact',
+      'HapticFeedbackType.heavyImpact',
+      'HapticFeedbackType.heavyImpact',
     ]);
   });
 
