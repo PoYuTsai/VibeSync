@@ -139,6 +139,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
 
   void _toggleStuckPoint(StuckPoint s) {
     if (_draftStuckPoints.contains(s)) {
+      AppHaptics.light();
       setState(() => _draftStuckPoints.remove(s));
       return;
     }
@@ -151,11 +152,13 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       );
       return;
     }
+    AppHaptics.light();
     setState(() => _draftStuckPoints.add(s));
   }
 
   void _toggleGoal(PracticeGoal g) {
     if (_draftGoals.contains(g)) {
+      AppHaptics.light();
       setState(() => _draftGoals.remove(g));
       return;
     }
@@ -168,11 +171,13 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       );
       return;
     }
+    AppHaptics.light();
     setState(() => _draftGoals.add(g));
   }
 
   void _toggleSeed(TopicSeed s) {
     if (_draftSeeds.contains(s)) {
+      AppHaptics.light();
       setState(() => _draftSeeds.remove(s));
       return;
     }
@@ -185,6 +190,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       );
       return;
     }
+    AppHaptics.light();
     setState(() => _draftSeeds.add(s));
   }
 
@@ -206,11 +212,13 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       try {
         await controller.clear();
       } catch (_) {
+        AppHaptics.failure();
         messenger.showSnackBar(
           const SnackBar(content: Text('儲存失敗，請再試一次')),
         );
         return;
       }
+      unawaited(AppHaptics.success());
       messenger.showSnackBar(
         const SnackBar(content: Text('已清除關於我設定')),
       );
@@ -233,12 +241,14 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       );
       await controller.save(profile);
     } catch (_) {
+      AppHaptics.failure();
       messenger.showSnackBar(
         const SnackBar(content: Text('儲存失敗，請再試一次')),
       );
       return;
     }
 
+    unawaited(AppHaptics.success());
     messenger.showSnackBar(
       const SnackBar(content: Text('已更新關於我')),
     );
