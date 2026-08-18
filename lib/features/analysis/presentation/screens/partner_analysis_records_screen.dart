@@ -10,7 +10,10 @@ import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/analysis_record.dart';
 import '../widgets/analysis_platform_picker.dart';
 import 'analysis_record_detail_screen.dart';
+import '../../../../core/services/app_haptics.dart';
+import '../../../../core/theme/app_icons.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../shared/widgets/brand/brand_dialog.dart';
 
 typedef AnalysisRecordPlatformResolver = String? Function(
   AnalysisRecord record,
@@ -181,6 +184,112 @@ class _PartnerAnalysisRecordsScreenState
   late String? _metVia;
   String _selectedPlatform = _allPlatforms;
   bool _isSettingMetVia = false;
+
+  /// 批次刪除的多選模式（2026-08-18 dogfood：之前只能點進詳情單筆刪）。
+  bool _selecting = false;
+  final Set<String> _selectedIds = <String>{};
+  bool _isDeleting = false;
+
+  bool get _canSelect => widget.onDelete != null && _records.isNotEmpty;
+
+  bool get _allVisibleSelected {
+    final visible = _visibleRecords;
+    return visible.isNotEmpty &&
+        visible.every((record) => _selectedIds.contains(record.id));
+  }
+
+  void _enterSelection([String? firstId]) {
+    if (!_canSelect || _isDeleting) return;
+    AppHaptics.light();
+    setState(() {
+      _selecting = true;
+      if (firstId != null) _selectedIds.add(firstId);
+    });
+  }
+
+  void _exitSelection() {
+    setState(() {
+      _selecting = false;
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleSelected(AnalysisRecord record) {
+    if (_isDeleting) return;
+    AppHaptics.tap();
+    setState(() {
+      if (!_selectedIds.add(record.id)) _selectedIds.remove(record.id);
+    });
+  }
+
+  /// 全選／取消全選只作用在目前篩選看得到的紀錄（篩到 LINE 就只選 LINE）。
+  void _toggleSelectAllVisible() {
+    if (_isDeleting) return;
+    AppHaptics.tap();
+    final visibleIds = _visibleRecords.map((record) => record.id).toSet();
+    setState(() {
+      if (_allVisibleSelected) {
+        _selectedIds.removeAll(visibleIds);
+      } else {
+        _selectedIds.addAll(visibleIds);
+      }
+    });
+  }
+
+  /// 逐筆走呼叫端的 onDelete（沿用單筆刪的完整安全語義），刪一筆掉一筆；
+  /// 中途失敗就停在原地，已刪的不回滾（跟單筆刪一樣是既成事實）。
+  Future<void> _deleteSelected() async {
+    final onDelete = widget.onDelete;
+    if (onDelete == null || _selectedIds.isEmpty || _isDeleting) return;
+    final targets =
+        _records.where((record) => _selectedIds.contains(record.id)).toList();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _BatchDeleteConfirmDialog(count: targets.length),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isDeleting = true);
+    var deleted = 0;
+    var failed = false;
+    for (final record in targets) {
+      try {
+        await Future<void>.sync(() => onDelete(record));
+      } catch (_) {
+        failed = true;
+        break;
+      }
+      deleted += 1;
+      if (!mounted) return;
+      setState(() {
+        _records.removeWhere((item) => item.id == record.id);
+        _selectedIds.remove(record.id);
+      });
+    }
+    if (!mounted) return;
+    setState(() {
+      _isDeleting = false;
+      if (!failed) {
+        _selecting = false;
+        _selectedIds.clear();
+      }
+      if (_selectedPlatform != _allPlatforms &&
+          !_knownPlatformCounts.containsKey(_selectedPlatform)) {
+        _selectedPlatform = _allPlatforms;
+      }
+    });
+    if (failed) {
+      AppHaptics.failure();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('刪除中斷：已刪 $deleted 筆，其餘保留，請再試一次')),
+      );
+    } else {
+      AppHaptics.medium();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已刪除 $deleted 筆分析紀錄')),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -380,12 +489,39 @@ class _PartnerAnalysisRecordsScreenState
                   children: [
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10, top: 4),
-                      child: Text(
-                        '分析紀錄',
-                        style: AppTypography.titleSmall.copyWith(
-                          color: AppColors.onBackgroundPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _selecting ? '已選 ${_selectedIds.length} 筆' : '分析紀錄',
+                              style: AppTypography.titleSmall.copyWith(
+                                color: AppColors.onBackgroundPrimary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          if (_selecting) ...[
+                            _HeaderLinkButton(
+                              key: const ValueKey(
+                                'analysis-record-select-all',
+                              ),
+                              label: _allVisibleSelected ? '取消全選' : '全選',
+                              onTap: _isDeleting ? null : _toggleSelectAllVisible,
+                            ),
+                            _HeaderLinkButton(
+                              key: const ValueKey(
+                                'analysis-record-select-cancel',
+                              ),
+                              label: '取消',
+                              onTap: _isDeleting ? null : _exitSelection,
+                            ),
+                          ] else if (_canSelect)
+                            _HeaderLinkButton(
+                              key: const ValueKey('analysis-record-select'),
+                              label: '選取',
+                              onTap: _enterSelection,
+                            ),
+                        ],
                       ),
                     ),
                     if (_showPlatformFilters) ...[
@@ -433,7 +569,14 @@ class _PartnerAnalysisRecordsScreenState
                           key: ValueKey('analysis-record-${record.id}'),
                           record: record,
                           platform: _platformFor(record),
-                          onTap: () => _openRecord(record),
+                          selecting: _selecting,
+                          selected: _selectedIds.contains(record.id),
+                          onTap: _selecting
+                              ? () => _toggleSelected(record)
+                              : () => _openRecord(record),
+                          onLongPress: _canSelect && !_selecting
+                              ? () => _enterSelection(record.id)
+                              : null,
                         ),
                         const SizedBox(height: 8),
                       ],
@@ -472,9 +615,139 @@ class _PartnerAnalysisRecordsScreenState
                   ],
                 ),
               ),
+              if (_selecting)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      key: const ValueKey('analysis-record-batch-delete'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.error,
+                        foregroundColor: Theme.of(context).colorScheme.onError,
+                        disabledBackgroundColor:
+                            Colors.white.withValues(alpha: 0.06),
+                        disabledForegroundColor:
+                            Colors.white.withValues(alpha: 0.35),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      onPressed: _selectedIds.isEmpty || _isDeleting
+                          ? null
+                          : AppHaptics.onPress(() => _deleteSelected()),
+                      child: _isDeleting
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  '刪除中…',
+                                  style: AppTypography.bodyLarge.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Text(
+                              '刪除（${_selectedIds.length}）',
+                              style: AppTypography.bodyLarge.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 批次刪除確認框：講清楚幾筆、不可復原（比照單筆刪的語氣）。
+class _BatchDeleteConfirmDialog extends StatelessWidget {
+  const _BatchDeleteConfirmDialog({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandAlertDialog(
+      title: Text('刪除 $count 筆分析紀錄？'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('選取的分析紀錄會永久刪除。'),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(TablerIcons.alert_triangle,
+                  size: 15, color: Theme.of(context).colorScheme.error),
+              const SizedBox(width: 5),
+              Text(
+                '此操作不可復原',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('取消'),
+        ),
+        ElevatedButton(
+          key: const ValueKey('analysis-record-batch-delete-confirm'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
+          onPressed: AppHaptics.onPress(() => Navigator.of(context).pop(true)),
+          child: const Text('確認刪除'),
+        ),
+      ],
+    );
+  }
+}
+
+/// section 標題列右側的小文字鈕（選取／全選／取消）。
+class _HeaderLinkButton extends StatelessWidget {
+  const _HeaderLinkButton({super.key, required this.label, this.onTap});
+
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        foregroundColor: _archiveAccentBright,
+      ),
+      child: Text(
+        label,
+        style: AppTypography.bodyMedium.copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -628,11 +901,17 @@ class _AnalysisRecordTile extends StatelessWidget {
     required this.record,
     required this.platform,
     required this.onTap,
+    this.selecting = false,
+    this.selected = false,
+    this.onLongPress,
   });
 
   final AnalysisRecord record;
   final String? platform;
   final VoidCallback onTap;
+  final bool selecting;
+  final bool selected;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -650,6 +929,7 @@ class _AnalysisRecordTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Ink(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -662,13 +942,29 @@ class _AnalysisRecordTile extends StatelessWidget {
             ),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: accent.withValues(alpha: platform == null ? 0.30 : 0.50),
+              color: selected
+                  ? accent.withValues(alpha: 0.95)
+                  : accent.withValues(
+                      alpha: platform == null ? 0.30 : 0.50,
+                    ),
             ),
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
             child: Row(
               children: [
+                if (selecting) ...[
+                  Icon(
+                    selected
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked,
+                    size: 22,
+                    color: selected
+                        ? accent
+                        : Colors.white.withValues(alpha: 0.40),
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 Container(
                   width: 42,
                   height: 42,

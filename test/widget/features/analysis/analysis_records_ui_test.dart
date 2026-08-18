@@ -234,6 +234,125 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('批次刪除：選取→多選→確認後逐筆刪、離開選取模式', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final older = _record(
+      id: 'older',
+      createdAt: DateTime(2026, 7, 10, 21),
+      preview: 'LINE 上的舊片段',
+      sourcePlatform: 'LINE',
+    );
+    final newer = _record(
+      id: 'newer',
+      createdAt: DateTime(2026, 7, 12, 21),
+      preview: 'Omi 上的新片段',
+      sourcePlatform: 'Omi',
+    );
+    final third = _record(
+      id: 'third',
+      createdAt: DateTime(2026, 7, 11, 21),
+      preview: '還沒標記平台的片段',
+    );
+    final deletedIds = <String>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PartnerAnalysisRecordsScreen(
+            subjectName: '小雲',
+            records: [older, newer, third],
+            platformForRecord: (record) => record.sourcePlatform,
+            onDelete: (record) => deletedIds.add(record.id),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('analysis-record-select')));
+    await tester.pump();
+    expect(find.text('已選 0 筆'), findsOneWidget);
+
+    // 選取模式點卡片是勾選，不是進詳情。
+    await tester.tap(find.byKey(const ValueKey('analysis-record-newer')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('analysis-record-older')));
+    await tester.pump();
+    expect(find.text('已選 2 筆'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('analysis-record-detail-menu')),
+      findsNothing,
+    );
+
+    await tester
+        .tap(find.byKey(const ValueKey('analysis-record-batch-delete')));
+    await tester.pumpAndSettle();
+    expect(find.text('刪除 2 筆分析紀錄？'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('analysis-record-batch-delete-confirm')),
+    );
+    await tester.pumpAndSettle();
+
+    // 逐筆刪、順序照列表（最新在前）；成功後退出選取、剩下那筆還在。
+    expect(deletedIds, ['newer', 'older']);
+    expect(find.text('已刪除 2 筆分析紀錄'), findsOneWidget);
+    expect(find.text('她說：「還沒標記平台的片段」'), findsOneWidget);
+    expect(find.byKey(const ValueKey('analysis-record-select')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('長按進選取；篩選下全選只選看得到的', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final line1 = _record(
+      id: 'line-1',
+      createdAt: DateTime(2026, 7, 10, 21),
+      preview: 'LINE 上的舊片段',
+      sourcePlatform: 'LINE',
+    );
+    final omi1 = _record(
+      id: 'omi-1',
+      createdAt: DateTime(2026, 7, 12, 21),
+      preview: 'Omi 上的新片段',
+      sourcePlatform: 'Omi',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PartnerAnalysisRecordsScreen(
+            subjectName: '小雲',
+            records: [line1, omi1],
+            platformForRecord: (record) => record.sourcePlatform,
+            onDelete: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.byKey(const ValueKey('analysis-record-line-1')));
+    await tester.pump();
+    expect(find.text('已選 1 筆'), findsOneWidget);
+
+    // 篩到 Omi 後全選：只加看得到的 omi-1（line-1 原本已選，維持）。
+    await tester.tap(find.byKey(const ValueKey('analysis-record-filter-Omi')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('analysis-record-select-all')));
+    await tester.pump();
+    expect(find.text('已選 2 筆'), findsOneWidget);
+    expect(find.text('取消全選'), findsOneWidget);
+
+    await tester
+        .tap(find.byKey(const ValueKey('analysis-record-select-cancel')));
+    await tester.pump();
+    expect(find.text('分析紀錄'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('未設來源紀錄留在全部，不從認識平台推測或顯示未分類', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
