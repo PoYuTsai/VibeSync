@@ -355,6 +355,7 @@ class HomeFab extends ConsumerWidget {
     // 只會蓋住文案（夥伴稿 2／3 也都沒有 FAB）。有對象後才需要這個捷徑。
     if (ref.watch(partnerListProvider).isEmpty) return const SizedBox.shrink();
     return PressableScale(
+      hapticOnDown: true,
       child: FloatingActionButton(
         onPressed: () => context.push('/partner/new'),
         backgroundColor: AppColors.ctaStart,

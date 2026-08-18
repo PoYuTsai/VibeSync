@@ -7,6 +7,7 @@ import 'app/routes.dart';
 import 'core/config/environment.dart';
 import 'core/observability/crash_reporting.dart';
 import 'core/services/account_deletion_cleanup.dart';
+import 'core/services/app_haptics.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/revenuecat_service.dart';
 import 'core/services/keyboard_token_bridge.dart';
@@ -28,6 +29,9 @@ Future<void> _bootstrapApp() async {
 
   // Initialize local storage
   await StorageService.initialize();
+
+  // 觸覺回饋開關偏好；讀不到就照預設（開）。
+  await AppHaptics.init();
 
   // Initialize Supabase using environment config
   await SupabaseService.initialize(

@@ -17,6 +17,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/models/ebook_block.dart';
@@ -98,6 +99,7 @@ class _EbookQuizCardState extends State<EbookQuizCard> {
   void _submit() {
     if (_selected.isEmpty || _submitted) return;
     final solved = widget.quiz.isSolvedBy(_selected);
+    solved ? AppHaptics.success() : AppHaptics.failure();
     setState(() {
       _submitted = true;
       _solved = solved;

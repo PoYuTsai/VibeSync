@@ -10,6 +10,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../../core/config/environment.dart';
 import '../../../../core/services/account_deletion_cleanup.dart';
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/keyboard_token_bridge.dart';
 import '../../../../core/services/keyboard_privacy_purge_service.dart';
@@ -157,6 +158,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isRefreshingSubscription = true;
   bool _isRefreshingPendingDowngrade = false;
   bool _followUpReminderOn = false;
+  bool _hapticsOn = AppHaptics.enabled;
 
   @override
   void initState() {
@@ -186,6 +188,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (e) {
       debugPrint('FollowUp reminder state load failed: $e');
     }
+  }
+
+  /// 觸覺回饋開關：先寫入再給一發輕震，讓使用者當下確認手感。
+  void _onHapticsToggled(bool value) {
+    setState(() => _hapticsOn = value);
+    unawaited(AppHaptics.setEnabled(value));
+    if (value) AppHaptics.light();
   }
 
   /// 48h 跟進提醒總開關：
@@ -344,6 +353,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ],
               ),
+              if (!kIsWeb)
+                _buildSection(
+                  title: '體驗',
+                  children: [
+                    _buildSwitchTile(
+                      icon: Icons.vibration,
+                      title: '觸覺回饋',
+                      subtitle: '按鈕與互動時的輕微震動。',
+                      value: _hapticsOn,
+                      onChanged: _onHapticsToggled,
+                    ),
+                  ],
+                ),
               if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
                 _buildSection(
                   title: '鍵盤',

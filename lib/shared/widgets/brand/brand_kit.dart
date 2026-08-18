@@ -426,6 +426,7 @@ class BrandPrimaryButton extends StatelessWidget {
     // 灰↔橘可用狀態切換做 240ms 漸變，避免瞬切搶走旁邊動效的注意力。
     return PressableScale(
       enabled: !disabled,
+      hapticOnDown: true,
       child: AnimatedContainer(
         duration: AppMotion.state,
         curve: AppMotion.easeOut,

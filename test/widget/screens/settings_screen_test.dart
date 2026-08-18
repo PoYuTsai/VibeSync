@@ -893,8 +893,9 @@ void main() {
 
       final refreshLink = find.text('我已取消降級，更新狀態');
       expect(refreshLink, findsOneWidget);
-      await tester.ensureVisible(refreshLink);
-      await tester.pump();
+      // 不用 ensureVisible：它的 explicit 對齊會把連結頂到視窗上緣，點擊後
+      // 文字變短、卡片縮矮就整張滑出 lazy ListView 的建構範圍。連結在
+      // 1400 高的測試面板本來就看得到，直接點。
       await tester.tap(refreshLink, warnIfMissed: false);
       await tester.pump();
       expect(find.text('同步中…'), findsOneWidget);

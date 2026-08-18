@@ -1,8 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -91,7 +90,7 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
       }
     }
     if (nearest != null && nearest != _focusedIndex) {
-      HapticFeedback.selectionClick();
+      AppHaptics.tap();
     }
     _focusedIndex = nearest;
     _pointerContentX.value = contentX;

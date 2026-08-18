@@ -2,9 +2,9 @@ import 'dart:math' as math;
 import 'dart:ui' show ImageFilter, PathMetric;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../data/providers/practice_chat_providers.dart';
@@ -254,7 +254,7 @@ Size practiceCeremonyCardSize(Size screen) {
 ///   widget test 不 hang；三條 controller 都在 dispose 先收。
 /// - reduce-motion（`MediaQuery.disableAnimations`）：跳過 3D 翻面與強動畫，抽牌中
 ///   定住靜態卡背、reveal 直接收掉 overlay 露出 hero；haptic／一次性咻聲仍照觸發。
-/// - haptic 走 [HapticFeedback]（抽牌 light、翻開成功 medium）；音效走
+/// - haptic 走 [AppHaptics]（抽牌 light、翻開成功 medium）；音效走
 ///   [PracticeDrawSfx]（由 [practiceDrawSfxProvider] 注入真實音效）。F3 起所有 motion 模式
 ///   的 server 等待期都保持安靜；成功 reveal 才由修正版 master bed 接手。
 ///
@@ -362,7 +362,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
 
     // 進入抽牌：浮現神秘卡背，輕觸覺＋咻聲掛勾。
     if (!wasDrawing && next.isDrawing) {
-      HapticFeedback.lightImpact();
+      AppHaptics.light();
       _sfx.playWhoosh();
       setState(() {
         _phase = _CeremonyPhase.drawing;
@@ -391,7 +391,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         next.isRevealed && next.errorMessage == null && next.girl != null;
     if (drawSucceeded) {
       // 中觸覺＋即時停等待 loop（兩條路徑都不等翻面跑完，shimmer loop 在揭曉當下就收）。
-      HapticFeedback.mediumImpact();
+      AppHaptics.medium();
       _sfx.stopWaitingLoop();
       if (_reduceMotion) {
         // reduce-motion：跳過 3D 翻面；不疊舊 chime，避免與 master audio 語意分裂。
