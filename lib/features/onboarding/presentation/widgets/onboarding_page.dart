@@ -86,6 +86,9 @@ class OnboardingPage extends StatelessWidget {
   }
 
   Widget _buildHero() {
+    // 練習室頁主視覺（2026-08-18 Eric 稿）：女孩照圓形拼貼壓暗＋橘色手把
+    // 疊中央——「百位女孩」用看的不是用講的。
+    if (imagePath == 'practice') return const _PracticeGirlsCollageHero();
     final asset = heroImageAsset;
     if (asset != null) {
       return Semantics(
@@ -126,6 +129,7 @@ class OnboardingPage extends StatelessWidget {
   }
 
   IconData _getIcon() {
+    // 'practice' 不會走到這裡（_buildHero 特判成拼貼）。
     switch (imagePath) {
       case 'welcome':
         return Icons.favorite_border;
@@ -144,5 +148,72 @@ class OnboardingPage extends StatelessWidget {
       default:
         return Icons.lightbulb_outline;
     }
+  }
+}
+
+/// 女孩照 4×4 圓形拼貼＋暗紫遮罩＋橘色手把 icon（夥伴稿 2026-08-18）。
+class _PracticeGirlsCollageHero extends StatelessWidget {
+  const _PracticeGirlsCollageHero();
+
+  /// 16 張、取樣間隔 6：橫跨整批 100 張的風格差異，固定不隨機
+  /// （onboarding 每次看都一樣，也方便 golden／截圖比對）。
+  static final _assets = List.generate(
+    16,
+    (i) => 'assets/images/practice_girls/'
+        'practice_girl_${'${i * 6 + 1}'.padLeft(3, '0')}.jpg',
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      image: true,
+      label: '百位練習室女孩的頭像拼貼',
+      child: SizedBox(
+        key: const ValueKey('onboarding-practice-collage'),
+        width: 220,
+        height: 220,
+        child: ClipOval(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Column(
+                children: [
+                  for (var row = 0; row < 4; row++)
+                    Expanded(
+                      child: Row(
+                        children: [
+                          for (var col = 0; col < 4; col++)
+                            Expanded(
+                              child: Image.asset(
+                                _assets[row * 4 + col],
+                                fit: BoxFit.cover,
+                                // 每格約 55pt，3x 機種 ≈165px；原圖直接解碼
+                                // 16 張會白吃記憶體。
+                                cacheWidth: 168,
+                                excludeFromSemantics: true,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              // 壓暗讓橘色手把成為視覺主角，照片退成質感底（夥伴稿的暗度
+              // 約在 0.7；要照片更搶眼就調低這個值）。
+              ColoredBox(
+                color: AppColors.brandInk.withValues(alpha: 0.70),
+              ),
+              const Center(
+                child: Icon(
+                  Icons.sports_esports_outlined,
+                  size: 84,
+                  color: AppColors.ctaStart,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

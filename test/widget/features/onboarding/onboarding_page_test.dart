@@ -43,6 +43,29 @@ void main() {
     expect(find.byIcon(Icons.favorite_border), findsNothing);
   });
 
+  testWidgets('practice 頁渲染女孩照圓形拼貼＋手把 icon（2026-08-18 夥伴稿）',
+      (tester) async {
+    await tester.pumpWidget(_wrap(const OnboardingPage(
+      title: '還沒有對象？先練',
+      description: 'desc',
+      imagePath: 'practice',
+    )));
+
+    final collage = find.byKey(const ValueKey('onboarding-practice-collage'));
+    expect(collage, findsOneWidget);
+    expect(
+      find.descendant(of: collage, matching: find.byType(Image)),
+      findsNWidgets(16),
+    );
+    expect(
+      find.descendant(
+        of: collage,
+        matching: find.byIcon(Icons.sports_esports_outlined),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('customContent 有值時 hero 讓位、示範內容可見', (tester) async {
     await tester.pumpWidget(_wrap(const OnboardingPage(
       title: '即時看懂她的訊號',
