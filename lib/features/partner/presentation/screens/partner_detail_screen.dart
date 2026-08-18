@@ -27,6 +27,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/pressable_scale.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../analysis/data/providers/analysis_record_providers.dart';
@@ -344,21 +345,24 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showAppSheet(
-          context: context,
-          backgroundColor: Colors.transparent,
-          // Keep conversations created from this screen attached to the
-          // current Partner, including the manual-entry route.
-          builder: (_) => NewConversationSheet(partnerId: partnerId),
-        ),
-        backgroundColor: AppColors.ctaStart,
-        foregroundColor: AppColors.onCta,
-        elevation: 8,
-        shape: const StadiumBorder(),
-        label: const Text(
-          '+ 分析新片段',
-          style: TextStyle(fontWeight: FontWeight.w600),
+      floatingActionButton: PressableScale(
+        hapticOnDown: true,
+        child: FloatingActionButton.extended(
+          onPressed: () => showAppSheet(
+            context: context,
+            backgroundColor: Colors.transparent,
+            // Keep conversations created from this screen attached to the
+            // current Partner, including the manual-entry route.
+            builder: (_) => NewConversationSheet(partnerId: partnerId),
+          ),
+          backgroundColor: AppColors.ctaStart,
+          foregroundColor: AppColors.onCta,
+          elevation: 8,
+          shape: const StadiumBorder(),
+          label: const Text(
+            '+ 分析新片段',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
         ),
       ),
     );
@@ -1439,23 +1443,26 @@ class _PartnerEmptyStateCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: FilledButton(
-              key: const Key('partner-empty-add-conversation'),
+          PressableScale(
+            hapticOnDown: true,
+            child: SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: FilledButton(
+                key: const Key('partner-empty-add-conversation'),
               onPressed: onAddConversation,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.ctaStart,
-                foregroundColor: AppColors.onCta,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.ctaStart,
+                  foregroundColor: AppColors.onCta,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  textStyle: AppTypography.titleSmall.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-                textStyle: AppTypography.titleSmall.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+                child: const Text('+ 分析新片段'),
               ),
-              child: const Text('+ 分析新片段'),
             ),
           ),
         ],

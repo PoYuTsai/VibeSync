@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -970,7 +971,13 @@ class _CollectionDrawButton extends StatelessWidget {
         return GestureDetector(
           key: const ValueKey('collection-draw-button'),
           behavior: HitTestBehavior.opaque,
-          onTap: enabled ? onPressed : null,
+          // 翻牌是全 app 最有儀式感的按鈕：按下就給最重一級（dogfood 點名要重）。
+          onTap: enabled
+              ? () {
+                  AppHaptics.medium();
+                  onPressed();
+                }
+              : null,
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 44),
             child: Container(

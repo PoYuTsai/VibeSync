@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/pressable_scale.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 
 const String kPracticeRoomEntryHeroAsset =
@@ -31,23 +32,25 @@ class PracticeRoomEntryCard extends StatelessWidget {
             ? constraints.maxHeight
             : MediaQuery.sizeOf(context).height * _unboundedFallbackFraction;
 
-        return Material(
-          color: Colors.transparent,
-          borderRadius: radius,
-          child: InkWell(
+        return PressableScale(
+          child: Material(
+            color: Colors.transparent,
             borderRadius: radius,
-            onTap: () => context.push('/practice-collection'),
-            child: SizedBox(
-              height: height,
-              child: ClipRRect(
-                borderRadius: radius,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    const _HeroBackground(),
-                    const _WarmReadabilityScrim(),
-                    const _HeroCopy(),
-                  ],
+            child: InkWell(
+              borderRadius: radius,
+              onTap: () => context.push('/practice-collection'),
+              child: SizedBox(
+                height: height,
+                child: ClipRRect(
+                  borderRadius: radius,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      const _HeroBackground(),
+                      const _WarmReadabilityScrim(),
+                      const _HeroCopy(),
+                    ],
+                  ),
                 ),
               ),
             ),
