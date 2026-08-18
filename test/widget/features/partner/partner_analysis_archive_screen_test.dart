@@ -356,4 +356,47 @@ void main() {
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
   });
+
+  testWidgets('批次刪除：選取→全選→刪除鈕開確認框（含件數），取消可退出', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final a = _conversation('a', DateTime(2026, 7, 10));
+    final b = _conversation('b', DateTime(2026, 7, 9));
+    final store = _MemoryArchiveStore();
+    await store.markArchived(a, archivedAt: DateTime(2026, 7, 11));
+    await store.markArchived(b, archivedAt: DateTime(2026, 7, 11));
+
+    await tester.pumpWidget(
+      _host(conversations: [a, b], archiveStore: store),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('archive-select')));
+    await tester.pump();
+    expect(find.text('已選 0 段'), findsOneWidget);
+    // 選取模式下 ⋮ 選單收起、勾選圈出現。
+    expect(find.byIcon(Icons.more_vert), findsNothing);
+    expect(find.byIcon(Icons.radio_button_unchecked), findsNWidgets(2));
+
+    await tester.tap(find.byKey(const ValueKey('archive-select-all')));
+    await tester.pump();
+    expect(find.text('已選 2 段'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('archive-batch-delete')));
+    await tester.pumpAndSettle();
+    expect(find.text('刪除 2 段互動紀錄？'), findsOneWidget);
+    // 標題列也有「取消」（退出選取），指名 dialog 內那顆。
+    await tester.tap(find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.text('取消'),
+    ));
+    await tester.pumpAndSettle();
+
+    // 退出選取模式回到一般狀態。
+    await tester.tap(find.byKey(const ValueKey('archive-select-cancel')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('archive-select')), findsOneWidget);
+    expect(find.byIcon(Icons.more_vert), findsNWidgets(2));
+  });
 }

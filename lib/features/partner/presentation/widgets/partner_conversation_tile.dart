@@ -29,12 +29,24 @@ class PartnerConversationTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onReassign;
   final VoidCallback? onDelete;
+
+  /// 批次刪除多選模式（沿用分析紀錄/最近練習的同一套互動）。
+  /// selecting 時：leading 換勾選圈、tap 改走 onToggleSelect、⋮ 選單收起。
+  final bool selecting;
+  final bool selected;
+  final VoidCallback? onToggleSelect;
+  final VoidCallback? onLongPress;
+
   const PartnerConversationTile({
     super.key,
     required this.conversation,
     required this.onTap,
     this.onReassign,
     this.onDelete,
+    this.selecting = false,
+    this.selected = false,
+    this.onToggleSelect,
+    this.onLongPress,
   });
 
   @override
@@ -72,10 +84,24 @@ class PartnerConversationTile extends StatelessWidget {
             children: [
               ListTile(
                 contentPadding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
-                onTap: () {
-                  AppHaptics.tap();
-                  onTap();
-                },
+                onTap: selecting
+                    ? onToggleSelect
+                    : () {
+                        AppHaptics.tap();
+                        onTap();
+                      },
+                onLongPress: onLongPress,
+                leading: selecting
+                    ? Icon(
+                        selected
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked,
+                        size: 22,
+                        color: selected
+                            ? AppColors.ctaStart
+                            : Colors.white.withValues(alpha: 0.40),
+                      )
+                    : null,
                 title: Text(
                   '$dateLabel 互動紀錄',
                   style: AppTypography.titleSmall.copyWith(
@@ -89,33 +115,35 @@ class PartnerConversationTile extends StatelessWidget {
                     color: AppColors.onBackgroundSecondary,
                   ),
                 ),
-                trailing: onReassign == null && onDelete == null
-                    ? const Icon(
-                        Icons.chevron_right_rounded,
-                        color: AppColors.onBackgroundSecondary,
-                      )
-                    : PopupMenuButton<String>(
-                        icon: const Icon(
-                          Icons.more_vert,
-                          color: AppColors.onBackgroundPrimary,
-                        ),
-                        onSelected: (v) {
-                          if (v == 'reassign') onReassign?.call();
-                          if (v == 'delete') onDelete?.call();
-                        },
-                        itemBuilder: (_) => [
-                          PopupMenuItem<String>(
-                            value: 'reassign',
-                            enabled: onReassign != null,
-                            child: const Text('改派到其他對象'),
+                trailing: selecting
+                    ? null
+                    : onReassign == null && onDelete == null
+                        ? const Icon(
+                            Icons.chevron_right_rounded,
+                            color: AppColors.onBackgroundSecondary,
+                          )
+                        : PopupMenuButton<String>(
+                            icon: const Icon(
+                              Icons.more_vert,
+                              color: AppColors.onBackgroundPrimary,
+                            ),
+                            onSelected: (v) {
+                              if (v == 'reassign') onReassign?.call();
+                              if (v == 'delete') onDelete?.call();
+                            },
+                            itemBuilder: (_) => [
+                              PopupMenuItem<String>(
+                                value: 'reassign',
+                                enabled: onReassign != null,
+                                child: const Text('改派到其他對象'),
+                              ),
+                              PopupMenuItem<String>(
+                                value: 'delete',
+                                enabled: onDelete != null,
+                                child: const Text('刪除對話'),
+                              ),
+                            ],
                           ),
-                          PopupMenuItem<String>(
-                            value: 'delete',
-                            enabled: onDelete != null,
-                            child: const Text('刪除對話'),
-                          ),
-                        ],
-                      ),
               ),
               Positioned(
                 left: 0,
