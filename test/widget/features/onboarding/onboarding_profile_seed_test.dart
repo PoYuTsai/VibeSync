@@ -75,7 +75,7 @@ Future<void> _pumpToBranchingPage(
     ),
   );
   await tester.pumpAndSettle();
-  for (var i = 0; i < 5; i++) {
+  for (var i = 0; i < 6; i++) {
     await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
     await tester.pumpAndSettle();
   }
@@ -130,7 +130,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 4; i++) {
       await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
       await tester.pumpAndSettle();
     }
@@ -162,7 +162,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 4; i++) {
       await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
       await tester.pumpAndSettle();
     }
@@ -194,8 +194,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 滑 3 次到問卷頁（index 3），選一個目標。
-    for (var i = 0; i < 3; i++) {
+    // 滑 4 次到問卷頁（index 4），選一個目標。
+    for (var i = 0; i < 4; i++) {
       await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
       await tester.pumpAndSettle();
     }

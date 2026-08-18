@@ -291,7 +291,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  '完整分析\n回覆更有把握',
+                  // 定位句（2026-08-18 拍板）：付費理由從「回覆」升到結果。
+                  '完整教練帶路\n把她約出來更有把握',
                   style: AppTypography.headlineLarge.copyWith(
                     color: AppColors.onBackgroundPrimary,
                     height: 1.12,

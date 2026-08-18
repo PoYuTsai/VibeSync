@@ -754,7 +754,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '截圖就能分析，五種風格教你回',
+                      // 定位句（2026-08-18 拍板，docs/positioning.md）：
+                      // 品類＋特性，不用回覆神器語言自我介紹。
+                      '你的 AI 戀愛教練，從曖昧帶到約出來',
                       style: AppTypography.bodyLarge.copyWith(
                         color: AppColors.onBackgroundSecondary,
                       ),

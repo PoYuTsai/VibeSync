@@ -133,6 +133,8 @@ class OnboardingPage extends StatelessWidget {
         return Icons.psychology_outlined;
       case 'reply':
         return Icons.chat_bubble_outline;
+      case 'coach':
+        return Icons.explore_outlined;
       case 'privacy':
         return Icons.privacy_tip_outlined;
       default:

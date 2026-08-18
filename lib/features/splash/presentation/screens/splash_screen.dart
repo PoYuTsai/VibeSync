@@ -249,7 +249,9 @@ class _SplashScreenState extends State<SplashScreen>
                       return Opacity(
                         opacity: _subtitleOpacity.value,
                         child: Text(
-                          '你專屬的 AI 約會教練',
+                          // 品類詞統一「戀愛教練」（2026-08-18 定位拍板，
+                          // docs/positioning.md）：心智與搜尋都在「戀愛」系。
+                          '你專屬的 AI 戀愛教練',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w500,

@@ -58,7 +58,7 @@ Future<void> _swipeToNextPage(WidgetTester tester) async {
 
 /// 從第 1 頁滑 5 次抵達第 6 頁（分流頁；批 2 插入問卷頁後 +1）。
 Future<void> _swipeToBranchingPage(WidgetTester tester) async {
-  for (var i = 0; i < 5; i++) {
+  for (var i = 0; i < 6; i++) {
     await _swipeToNextPage(tester);
   }
 }
@@ -81,7 +81,7 @@ void main() {
       expect(find.textContaining('熱度分析'), findsNothing);
     });
 
-    testWidgets('分流頁顯示標題＋兩顆按鈕，底部「下一步」隱藏、指示點 5 顆', (tester) async {
+    testWidgets('分流頁顯示標題＋兩顆按鈕，底部「下一步」隱藏、指示點 7 顆', (tester) async {
       await _pumpOnboarding(tester);
       await _swipeToBranchingPage(tester);
 
@@ -90,12 +90,12 @@ void main() {
       expect(find.text('還沒，先去練習'), findsOneWidget);
       expect(find.text('下一步'), findsNothing);
       expect(find.text('開始使用'), findsNothing);
-      // 指示點 6 顆（4 頁 + 問卷頁 + 分流頁，批 2）。
+      // 指示點 7 顆（4 賣點頁 + 問卷 + 隱私 + 分流）。
       expect(
         find.byWidgetPredicate(
           (w) => w is AnimatedContainer && w.margin != null,
         ),
-        findsNWidgets(6),
+        findsNWidgets(7),
       );
     });
 
@@ -160,9 +160,9 @@ void main() {
       }
     });
 
-    testWidgets('第 4 頁按「下一步」進入分流頁（不再直接完成 onboarding）', (tester) async {
+    testWidgets('第 6 頁按「下一步」進入分流頁（不再直接完成 onboarding）', (tester) async {
       await _pumpOnboarding(tester);
-      for (var i = 0; i < 4; i++) {
+      for (var i = 0; i < 5; i++) {
         await _swipeToNextPage(tester);
       }
 

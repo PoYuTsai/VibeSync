@@ -42,7 +42,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('onboarding conversion — all six pages', (tester) async {
+  testWidgets('onboarding conversion — all seven pages', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -88,11 +88,12 @@ void main() {
     const pageMarkers = {
       2: '即時看懂她的訊號',
       3: '五種風格，選最對的那句',
-      4: '30 秒，讓建議更像你',
-      5: 'AI 與你的隱私',
-      6: '你現在有正在聊的對象嗎？',
+      4: '不只教你回這句',
+      5: '30 秒，讓建議更像你',
+      6: 'AI 與你的隱私',
+      7: '你現在有正在聊的對象嗎？',
     };
-    for (var page = 2; page <= 6; page++) {
+    for (var page = 2; page <= 7; page++) {
       // 用真實使用者路徑（「下一步」按鈕）翻頁；390 寬畫布上 fling 的
       // 手勢競技場行為與 800 寬預設畫布不同，不可靠。
       await tester.tap(find.text('下一步'));
@@ -105,9 +106,9 @@ void main() {
       );
       await capture('onboarding_page$page.png');
 
-      // 第 4 頁鏡像卡三態：未選（上面那張）→ 選 1 → 選 2。選擇保留著往下走，
-      // 與真實使用者路徑一致（分流頁會把目標種進 profile stub，無妨）。
-      if (page == 4) {
+      // 問卷頁（第 5 頁）鏡像卡三態：未選（上面那張）→ 選 1 → 選 2。選擇保留著
+      // 往下走，與真實使用者路徑一致（分流頁會把目標種進 profile stub，無妨）。
+      if (page == 5) {
         await tester
             .tap(find.byKey(const ValueKey('onboarding-goal-softInvite')));
         await tester.pumpAndSettle();
@@ -116,12 +117,12 @@ void main() {
           findsOneWidget,
           reason: '選 1 個目標應出鏡像卡',
         );
-        await capture('onboarding_page4_selected1.png');
+        await capture('onboarding_page5_selected1.png');
 
         await tester
             .tap(find.byKey(const ValueKey('onboarding-goal-comfortableChat')));
         await tester.pumpAndSettle();
-        await capture('onboarding_page4_selected2.png');
+        await capture('onboarding_page5_selected2.png');
       }
     }
   });

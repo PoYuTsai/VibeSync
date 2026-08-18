@@ -46,8 +46,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   // 對應區塊），只留練習目標。
   List<PracticeGoal> _questionnaireGoals = const [];
 
-  /// 問卷插在示範頁（index 2）之後、隱私頁之前。
-  static const _questionnairePageIndex = 3;
+  /// 問卷插在賣點頁（含定位頁，index 0-3）之後、隱私頁之前。
+  static const _questionnairePageIndex = 4;
 
   final _pages = [
     {
@@ -66,6 +66,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       'title': '五種風格，選最對的那句',
       'description': '延展、共鳴、調情、幽默、冷讀\n每句都幫你控制字數，不會顯得太黏或太急',
       'imagePath': 'reply',
+    },
+    // 定位頁（2026-08-18 定位拍板，docs/positioning.md）：三頁功能演示後
+    // 把自我介紹從「回這句」抬到品類差異化——教練帶完整段；
+    // 記憶不寫「有記憶」，寫成利益句「認得你聊的每一個她」。
+    {
+      'title': '不只教你回這句',
+      'description': '它認得你聊的每一個她——聊到哪、熱度多少、什麼時候該約\n教練帶你從曖昧一路走到約出來',
+      'imagePath': 'coach',
     },
     // R1-4 App Review 保險：靜態揭露第三方 AI 資料外送；實際同意
     // 仍由各 AI 功能首次使用前的 AiDataSharingConsent 同意閘把關。
