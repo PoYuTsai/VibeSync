@@ -427,19 +427,24 @@ class _EmptyHomeState extends State<_EmptyHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          height: pageHeight - 24,
-          child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Tier 2 批 1：額度小條＋功能入口列，空／非空兩態都掛。
-              // 批 2：起步清單卡插在 QuotaStrip 之下、入口列之上。
-              HomeQuotaStrip(),
-              GettingStartedChecklist(),
-              HomeFeatureEntries(),
-              Spacer(),
-              _EmptyHead(),
-            ],
+        // minHeight 而非鎖死高度：矮螢幕或 iOS 字級調大時第一頁內容可能比
+        // 一屏高，鎖死會讓 _EmptyHead 直接畫到第二頁上（release 無警告，
+        // dogfood 疊字回報）。塞不下就讓它長高，外層 ScrollView 自然接手。
+        ConstrainedBox(
+          constraints: BoxConstraints(minHeight: pageHeight - 24),
+          child: const IntrinsicHeight(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Tier 2 批 1：額度小條＋功能入口列，空／非空兩態都掛。
+                // 批 2：起步清單卡插在 QuotaStrip 之下、入口列之上。
+                HomeQuotaStrip(),
+                GettingStartedChecklist(),
+                HomeFeatureEntries(),
+                Spacer(),
+                _EmptyHead(),
+              ],
+            ),
           ),
         ),
         SizedBox(
