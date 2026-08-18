@@ -13,6 +13,7 @@ import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/formula_reply_section.dart';
 import '../../../../shared/widgets/more_below_hint.dart';
+import '../../../../shared/widgets/staggered_appear.dart';
 import '../../../../shared/widgets/stream_progress_ticker.dart';
 import '../../../opener/presentation/widgets/opener_generation_progress.dart';
 import '../../../partner/domain/entities/partner.dart';
@@ -71,9 +72,11 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
 
   String? _selectedPartnerId;
   String? _situation;
-  // 真串流進度（server 事件文字）；每次生成開始清空。空＝還沒收到事件
-  //（或 server 降級 legacy），顯示本地輪播 fallback。
+  // 真串流進度（server 事件）；每次生成開始清空。空＝還沒收到事件
+  //（或 server 降級 legacy），顯示本地輪播 fallback。heartbeat 不進清單。
   final List<String> _streamProgress = [];
+  // 已完成的串流 phase（topic_1…topic_5）：骨架卡點亮用（v2）。
+  final Set<String> _completedStreamPhases = {};
   NewTopicResult? _result;
   String? _error;
   bool _isGenerating = false;
@@ -244,6 +247,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     setState(() {
       _isGenerating = true;
       _streamProgress.clear();
+      _completedStreamPhases.clear();
       _error = null;
       _result = null;
     });
@@ -284,9 +288,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         situation: attempt.situation,
         expectedTier: expectedTier,
         revenueCatAppUserId: revenueCatAppUserId,
-        onProgress: (label) {
+        onProgress: (label, phase) {
           if (!mounted || !_isGenerating) return;
-          setState(() => _streamProgress.add(label));
+          if (phase == 'heartbeat') return; // 活著訊號不進階段清單
+          setState(() {
+            _streamProgress.add(label);
+            if (phase != null) _completedStreamPhases.add(phase);
+          });
         },
       );
       _requestSession.markSuccess();
@@ -447,17 +455,31 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           ),
           const SizedBox(height: 12),
           BrandPrimaryButton(
-            label: _result != null ? '已生成新話題' : '生成新話題',
-            isLoading: _isGenerating,
+            label: _isGenerating
+                ? '生成中…'
+                : (_result != null ? '已生成新話題' : '生成新話題'),
+            // v2：生成中不轉圈（下方骨架卡已有動態），改禁用態純文字。
+            isLoading: false,
             onPressed:
                 (_isGenerating || _result != null || validPartnerId == null)
                     ? null
                     : _generate,
           ),
           const SizedBox(height: 16),
+          // v2：串流事件到達後顯示一行狀態＋五張題卡骨架（topic_n 事件
+          // 點亮）；事件未到（連線中／legacy 降級）沿用本地輪播。
           if (_isGenerating)
             _streamProgress.isNotEmpty
-                ? StreamProgressTicker(labels: _streamProgress)
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      StreamProgressTicker(labels: _streamProgress),
+                      const SizedBox(height: 12),
+                      _TopicSkeletonList(
+                        completedPhases: _completedStreamPhases,
+                      ),
+                    ],
+                  )
                 : const Center(
                     child: OpenerGenerationProgress(
                       phrases: NewTopicView.progressPhrases,
@@ -668,6 +690,11 @@ class NewTopicResultsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final recommendedId = result.recommendation.topicId;
+    // 2026-08-19 v2：AI 推薦題固定排第一（免捲動找），其餘維持原序。
+    final orderedTopics = [
+      ...result.topics.where((idea) => idea.id == recommendedId),
+      ...result.topics.where((idea) => idea.id != recommendedId),
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -699,11 +726,18 @@ class NewTopicResultsSection extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 12),
-        for (final idea in result.topics) ...[
-          NewTopicIdeaCard(
-            idea: idea,
-            isRecommended: idea.id == recommendedId,
-            onCopyOpeningLine: () => onCopyIdeaOpeningLine(idea),
+        // v2：完成揭示逐張彈入（同 opener 卡進場語彙）。
+        for (final (index, idea) in orderedTopics.indexed) ...[
+          StaggeredAppear(
+            key: ValueKey(
+              'topic-card-appear-${identityHashCode(result)}-${idea.id}',
+            ),
+            index: index,
+            child: NewTopicIdeaCard(
+              idea: idea,
+              isRecommended: idea.id == recommendedId,
+              onCopyOpeningLine: () => onCopyIdeaOpeningLine(idea),
+            ),
           ),
           const SizedBox(height: 12),
         ],
@@ -769,6 +803,84 @@ class NewTopicResultsSection extends StatelessWidget {
               ],
             ),
           ),
+      ],
+    );
+  }
+}
+
+/// v2 串流骨架卡列（2026-08-19）：五個新話題的骨架，server 每寫完一題
+/// （topic_n 進度事件）就點亮一張；內容仍是 done 才落地（扣費前零外流）。
+class _TopicSkeletonList extends StatelessWidget {
+  const _TopicSkeletonList({required this.completedPhases});
+
+  final Set<String> completedPhases;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget shimmerBar(double width, bool done) => Container(
+          width: width,
+          height: 10,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: done ? 0.16 : 0.07),
+            borderRadius: BorderRadius.circular(99),
+          ),
+        );
+    return Column(
+      children: [
+        for (var n = 1; n <= 5; n++) ...[
+          if (n > 1) const SizedBox(height: 8),
+          Builder(builder: (context) {
+            final done = completedPhases.contains('topic_$n');
+            return AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: done ? 1 : 0.55,
+              child: BrandSurfaceCard(
+                key: ValueKey(
+                  'topic-skeleton-$n-${done ? 'done' : 'pending'}',
+                ),
+                tone: BrandVisualTone.coach,
+                borderColor: done
+                    ? AppColors.coachAccent.withValues(alpha: 0.55)
+                    : null,
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '新話題 $n',
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.onBackgroundSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          shimmerBar(180, done),
+                          const SizedBox(height: 6),
+                          shimmerBar(120, done),
+                        ],
+                      ),
+                    ),
+                    done
+                        ? const Icon(
+                            Icons.check_circle_rounded,
+                            size: 16,
+                            color: AppColors.coachAccentBright,
+                          )
+                        : Icon(
+                            Icons.circle_outlined,
+                            size: 14,
+                            color: AppColors.onBackgroundSecondary
+                                .withValues(alpha: 0.4),
+                          ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
       ],
     );
   }

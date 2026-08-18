@@ -69,10 +69,10 @@ void main() {
     final result = await _service(client).generateTopicsStreaming(
       requestId: _requestId,
       situation: 'went_cold',
-      onProgress: progress.add,
+      onProgress: (label, phase) => progress.add('$label|${phase ?? '-'}'),
     );
 
-    expect(progress, ['開始生成新話題', '新話題 1/5']);
+    expect(progress, ['開始生成新話題|-', '新話題 1/5|topic_1']);
     expect(result.topics, hasLength(5));
     final body = jsonDecode(capturedBody!) as Map<String, dynamic>;
     expect(body['responseMode'], 'stream');

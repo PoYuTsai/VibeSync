@@ -21,14 +21,16 @@ export interface StreamStageSpec {
   repeat?: number;
 }
 
+// 五種風格各給獨立 phase（style_<type>）：client 骨架卡靠 phase 點亮，
+// label 只是顯示文字、不當 contract 用。
 export const OPENER_STREAM_STAGES: StreamStageSpec[] = [
   { marker: '"profileAnalysis"', phase: "profile", label: "解讀對方資料" },
   { marker: '"openers"', phase: "openers", label: "開始寫五種風格開場白" },
-  { marker: '"extend"', phase: "opener_style", label: "開場白 1/5：延展" },
-  { marker: '"resonate"', phase: "opener_style", label: "開場白 2/5：共鳴" },
-  { marker: '"tease"', phase: "opener_style", label: "開場白 3/5：調情" },
-  { marker: '"humor"', phase: "opener_style", label: "開場白 4/5：幽默" },
-  { marker: '"coldRead"', phase: "opener_style", label: "開場白 5/5：冷讀" },
+  { marker: '"extend"', phase: "style_extend", label: "開場白 1/5：延展" },
+  { marker: '"resonate"', phase: "style_resonate", label: "開場白 2/5：共鳴" },
+  { marker: '"tease"', phase: "style_tease", label: "開場白 3/5：調情" },
+  { marker: '"humor"', phase: "style_humor", label: "開場白 4/5：幽默" },
+  { marker: '"coldRead"', phase: "style_coldRead", label: "開場白 5/5：冷讀" },
   { marker: '"pioneerPlan"', phase: "pioneer", label: "準備先鋒備案" },
   { marker: '"recommendation"', phase: "recommendation", label: "挑選最適推薦" },
   { marker: '"formulaOpeners"', phase: "formula", label: "寫公式開場" },

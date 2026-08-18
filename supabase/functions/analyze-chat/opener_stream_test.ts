@@ -131,3 +131,27 @@ Deno.test("outcome：body 解析失敗不炸，仍發 error 事件", async () =>
   assertEquals(events[0]["type"], "new_topic.error");
   assertEquals(events[0]["status"], 502);
 });
+
+Deno.test("tracker：opener 五種風格 phase 各自獨立（client 骨架卡契約）", () => {
+  const events: Record<string, unknown>[] = [];
+  const tracker = createStreamStageTracker({
+    stages: OPENER_STREAM_STAGES,
+    eventType: "opener.progress",
+    emit: (event) => events.push(event),
+  });
+  tracker.push(
+    '{"openers":{"extend":"a","resonate":"b","tease":"c","humor":"d","coldRead":"e"}}',
+  );
+  const phases = events.map((e) => e["phase"]);
+  for (
+    const phase of [
+      "style_extend",
+      "style_resonate",
+      "style_tease",
+      "style_humor",
+      "style_coldRead",
+    ]
+  ) {
+    assert(phases.includes(phase), `缺 ${phase}`);
+  }
+});

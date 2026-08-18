@@ -69,10 +69,14 @@ void main() {
     final result = await _service(client).generateOpenersStreaming(
       name: '小美',
       requestId: 'req-1',
-      onProgress: progress.add,
+      onProgress: (label, phase) => progress.add('$label|${phase ?? '-'}'),
     );
 
-    expect(progress, ['開始生成開場白', '解讀對方資料', '生成仍在進行']);
+    expect(progress, [
+      '開始生成開場白|-',
+      '解讀對方資料|profile',
+      '生成仍在進行|heartbeat',
+    ]);
     expect(result.openers['extend'], '延展句');
     expect(result.recommendedPick, 'extend');
     expect(result.formulaOpeners, hasLength(2));

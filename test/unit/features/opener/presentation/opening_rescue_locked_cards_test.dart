@@ -19,7 +19,11 @@ void main() {
         isFreeUser: true,
       );
 
-      expect(cards.map((c) => c.type).toList(), freeV2Order);
+      // 2026-08-19 v2：推薦卡（humor）前移到第一張，其餘維持展示序。
+      expect(
+        cards.map((c) => c.type).toList(),
+        ['humor', 'extend', 'tease', 'resonate', 'coldRead'],
+      );
 
       for (final card in cards.take(3)) {
         expect(card.isLocked, isFalse, reason: '${card.type} 應為實卡');
@@ -71,7 +75,11 @@ void main() {
         isFreeUser: false,
       );
 
-      expect(cards.map((c) => c.type).toList(), canonicalOrder);
+      // 2026-08-19 v2：推薦卡（resonate）前移到第一張。
+      expect(
+        cards.map((c) => c.type).toList(),
+        ['resonate', 'extend', 'tease', 'humor', 'coldRead'],
+      );
       expect(cards.any((c) => c.isLocked), isFalse);
       expect(
         cards.where((c) => c.isRecommended).map((c) => c.type),

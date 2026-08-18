@@ -25,6 +25,7 @@ import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
 import '../../../../shared/widgets/formula_reply_section.dart';
 import '../../../../shared/widgets/more_below_hint.dart';
+import '../../../../shared/widgets/staggered_appear.dart';
 import '../../../../shared/widgets/stream_progress_ticker.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
@@ -148,7 +149,7 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
           isRecommended: type == recommendedPick,
         ));
       }
-      return cards;
+      return _recommendedFirst(cards);
     }
 
     for (final type in OpenerAccessContract.freeUnlockedOrder) {
@@ -172,6 +173,16 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
         isRecommended: false,
       ));
     }
+    return _recommendedFirst(cards);
+  }
+
+  /// 2026-08-19 v2：AI 推薦卡固定排第一張（免用戶橫滑找）；其餘維持展示序，
+  /// 鎖卡永遠在最後（推薦卡必為實卡，free 被鎖的 pick 不掛 badge 也不前移）。
+  static List<OpenerCardSpec> _recommendedFirst(List<OpenerCardSpec> cards) {
+    final recommendedIndex = cards.indexWhere((card) => card.isRecommended);
+    if (recommendedIndex <= 0) return cards;
+    final recommended = cards.removeAt(recommendedIndex);
+    cards.insert(0, recommended);
     return cards;
   }
 
@@ -235,9 +246,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   // F3-2 進度文案凍結在生成開始送出的 input（Codex R1 P2）：生成中用戶仍可
   // 切 tab/移除截圖，activeInput 會變但後端處理的是原始輸入，文案不得跟漂。
   List<String>? _generationProgressPhrases;
-  // 真串流進度（server 事件文字）；每次生成開始清空。空＝還沒收到事件
-  //（或 server 降級 legacy），顯示本地輪播 fallback。
+  // 真串流進度（server 事件）；每次生成開始清空。空＝還沒收到事件
+  //（或 server 降級 legacy），顯示本地輪播 fallback。heartbeat 不進清單。
   final List<String> _streamProgress = [];
+  // 已完成的串流 phase（style_extend…）：骨架卡點亮用（v2）。
+  final Set<String> _completedStreamPhases = {};
   OpenerResult? _result;
   String? _error;
   final _scrollController = ScrollController();
@@ -546,6 +559,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     setState(() {
       _isGenerating = true;
       _streamProgress.clear();
+      _completedStreamPhases.clear();
       _generationProgressPhrases = OpenerGenerationProgress.phrasesFor(
         hasImages: input.images?.isNotEmpty ?? false,
       );
@@ -612,9 +626,13 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         revenueCatAppUserId: revenueCatAppUserId,
         effectiveStyleContext: attempt.styleContext,
         requestId: attempt.requestId,
-        onProgress: (label) {
+        onProgress: (label, phase) {
           if (!mounted || !_isGenerating) return;
-          setState(() => _streamProgress.add(label));
+          if (phase == 'heartbeat') return; // 活著訊號不進階段清單
+          setState(() {
+            _streamProgress.add(label);
+            if (phase != null) _completedStreamPhases.add(phase);
+          });
         },
       );
       // 結果已到手＝這次計費完結；之後任何失敗（存草稿等）都不該讓
@@ -881,10 +899,14 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
           // Generate button
           BrandPrimaryButton(
-            label: OpeningRescueScreen.generateButtonText(
-              hasResult: hasGeneratedResult,
-            ),
-            isLoading: _isGenerating,
+            label: _isGenerating
+                ? '生成中…'
+                : OpeningRescueScreen.generateButtonText(
+                    hasResult: hasGeneratedResult,
+                  ),
+            // v2：生成中不轉圈（下方骨架卡已有動態，雙轉圈很吵），
+            // 改禁用態純文字「生成中…」。
+            isLoading: false,
             onPressed: OpeningRescueScreen.canStartGeneration(
               isGenerating: _isGenerating,
               hasResult: hasGeneratedResult,
@@ -894,13 +916,22 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Loading state（2026-08-18 真串流）：server 進度事件到達後改顯示
-          // 真實進度 ticker；事件還沒來（連線中）或 server 降級 legacy 時
-          // 沿用本地輪播文案。文案凍結在 _generate 送出的 input，
-          // 不讀 activeInput——生成中切 tab/改輸入不得讓文案漂移。
+          // Loading state（2026-08-19 v2）：串流事件到達後顯示一行狀態＋
+          // 五張風格骨架卡（server 每寫完一種就點亮一張＝真串流體感）；
+          // 事件還沒來（連線中）或 server 降級 legacy 時沿用本地輪播文案。
+          // 文案凍結在 _generate 送出的 input，不讀 activeInput。
           if (_isGenerating)
             _streamProgress.isNotEmpty
-                ? StreamProgressTicker(labels: _streamProgress)
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      StreamProgressTicker(labels: _streamProgress),
+                      const SizedBox(height: 12),
+                      _OpenerStyleSkeletonRow(
+                        completedPhases: _completedStreamPhases,
+                      ),
+                    ],
+                  )
                 : Center(
                     child: OpenerGenerationProgress(
                       phrases: _generationProgressPhrases ??
@@ -1258,7 +1289,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         ),
         const SizedBox(height: 12),
 
-        // Horizontal scroll opener cards
+        // Horizontal scroll opener cards（v2：完成揭示逐張彈入，
+        // 沿用 analyze-chat 回覆卡進場語彙；key 綁本輪 result 讓
+        // 新結果重播、回看草稿也有同一進場）。
         SizedBox(
           height: 220,
           child: ListView.separated(
@@ -1267,11 +1300,17 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
               final card = openerCards[index];
-              return _buildOpenerCard(
-                type: card.type,
-                content: card.content,
-                isRecommended: card.isRecommended,
-                isLocked: card.isLocked,
+              return StaggeredAppear(
+                key: ValueKey(
+                  'opener-card-appear-${identityHashCode(result)}-${card.type}',
+                ),
+                index: index,
+                child: _buildOpenerCard(
+                  type: card.type,
+                  content: card.content,
+                  isRecommended: card.isRecommended,
+                  isLocked: card.isLocked,
+                ),
               );
             },
           ),
@@ -1948,6 +1987,110 @@ class _CollapsibleBrandCardState extends State<_CollapsibleBrandCard> {
                 : const SizedBox(width: double.infinity),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// v2 串流骨架卡列（2026-08-19）：生成一開始就把五種風格的骨架排出來，
+/// server 每寫完一種（`style_<type>` 進度事件）對應卡點亮打勾——「看著它
+/// 一張一張寫完」的體感，但內容仍是驗證＋扣費全過的 done 才落地，
+/// 扣費前零內容外流。
+class _OpenerStyleSkeletonRow extends StatelessWidget {
+  const _OpenerStyleSkeletonRow({required this.completedPhases});
+
+  final Set<String> completedPhases;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 132,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: OpenerAccessContract.canonicalPaidOrder.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final type = OpenerAccessContract.canonicalPaidOrder[index];
+          return _SkeletonStyleCard(
+            type: type,
+            done: completedPhases.contains('style_$type'),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SkeletonStyleCard extends StatelessWidget {
+  const _SkeletonStyleCard({required this.type, required this.done});
+
+  final String type;
+  final bool done;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = OpeningRescueScreen.openerTypeLabels[type] ?? type;
+    Widget shimmerBar(double width) => Container(
+          width: width,
+          height: 10,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: done ? 0.16 : 0.07),
+            borderRadius: BorderRadius.circular(99),
+          ),
+        );
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 200),
+      opacity: done ? 1 : 0.55,
+      child: SizedBox(
+        width: 148,
+        child: BrandSurfaceCard(
+          key: ValueKey('opener-skeleton-$type-${done ? 'done' : 'pending'}'),
+          tone: BrandVisualTone.coach,
+          borderColor:
+              done ? AppColors.coachAccent.withValues(alpha: 0.55) : null,
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (replyStyleIcons[type] != null) ...[
+                    Icon(replyStyleIcons[type],
+                        size: 14, color: AppColors.onBackgroundSecondary),
+                    const SizedBox(width: 4),
+                  ],
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  done
+                      ? const Icon(
+                          Icons.check_circle_rounded,
+                          size: 16,
+                          color: AppColors.coachAccentBright,
+                        )
+                      : Icon(
+                          Icons.circle_outlined,
+                          size: 14,
+                          color: AppColors.onBackgroundSecondary
+                              .withValues(alpha: 0.4),
+                        ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              shimmerBar(112),
+              const SizedBox(height: 8),
+              shimmerBar(88),
+              const SizedBox(height: 8),
+              shimmerBar(100),
+            ],
+          ),
+        ),
       ),
     );
   }

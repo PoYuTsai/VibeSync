@@ -449,7 +449,7 @@ class OpenerService {
     String? revenueCatAppUserId,
     String? requestId,
     String? effectiveStyleContext,
-    void Function(String label)? onProgress,
+    void Function(String label, String? phase)? onProgress,
   }) async {
     final accessToken = _accessTokenProvider();
     if (accessToken == null) {
@@ -526,7 +526,10 @@ class OpenerService {
           case 'opener.progress':
             final label = decoded['label'];
             if (label is String && label.trim().isNotEmpty) {
-              onProgress?.call(label.trim());
+              onProgress?.call(
+                label.trim(),
+                decoded['phase'] is String ? decoded['phase'] as String : null,
+              );
             }
           case 'opener.done':
             final result = decoded['result'];
