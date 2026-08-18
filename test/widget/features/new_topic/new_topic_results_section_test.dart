@@ -82,10 +82,15 @@ void main() {
     expect(topicDy < formulaDy, isTrue, reason: '原 topics 先顯示');
     expect(formulaDy < upsellDy, isTrue, reason: 'Free upsell 必須在公式之後');
 
-    // 原 Free 1 題不因公式改變；公式兩則全渲染。
+    // 原 Free 1 題不因公式改變；公式預設只展開第 1 則（2026-08-18 拍板），
+    // 第 2 則收在「再看一組」。
     expect(find.text('開場句1'), findsOneWidget);
     expect(find.text('開場句2'), findsNothing);
-    expect(find.text('為什麼好接'), findsNWidgets(2));
+    expect(find.text('為什麼好接'), findsNWidgets(1));
+    expect(
+      find.byKey(const ValueKey('formula-reply-toggle-more')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Paid：五題全在、公式在最後、無升級 CTA', (t) async {
@@ -151,6 +156,12 @@ void main() {
 
     // 公式卡的複製鍵在 FormulaReplySection 內（topics 卡也有複製鍵，
     // 用 descendant 限定範圍）。
+    // 第 2 則預設收合，先展開讓兩張複製鍵都在。
+    await t.tap(
+      find.byKey(const ValueKey('formula-reply-toggle-more')),
+      warnIfMissed: false,
+    );
+    await t.pumpAndSettle();
     final formulaCopy = find.descendant(
       of: find.byType(FormulaReplySection),
       matching: find.text('複製'),

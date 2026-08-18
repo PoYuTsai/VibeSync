@@ -23,7 +23,7 @@ class FormulaReplyEntry {
   final String whyItWorks;
 }
 
-class FormulaReplySection extends StatelessWidget {
+class FormulaReplySection extends StatefulWidget {
   const FormulaReplySection({
     super.key,
     required this.title,
@@ -38,8 +38,25 @@ class FormulaReplySection extends StatelessWidget {
   final ValueChanged<FormulaReplyEntry> onCopyOpeningLine;
 
   @override
+  State<FormulaReplySection> createState() => _FormulaReplySectionState();
+}
+
+class _FormulaReplySectionState extends State<FormulaReplySection> {
+  /// 2026-08-18 拍板：第 1 則主推常駐，其餘收在「再看一組」後——一次一張卡
+  /// 的視覺重量，密度與「兩則怎麼區別」一起解（主推＋備選）。
+  bool _showMore = false;
+
+  @override
+  void didUpdateWidget(FormulaReplySection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.entries, widget.entries)) _showMore = false;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final entries = widget.entries;
     if (entries.isEmpty) return const SizedBox.shrink();
+    final visibleEntries = _showMore ? entries : entries.sublist(0, 1);
     return Container(
       key: const ValueKey('formula-reply-section'),
       width: double.infinity,
@@ -76,14 +93,14 @@ class FormulaReplySection extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title,
+                      widget.title,
                       style: AppTypography.titleMedium.copyWith(
                         color: Colors.white,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      subtitle,
+                      FormulaReplySection.subtitle,
                       style: AppTypography.caption.copyWith(
                         color: AppColors.onBackgroundSecondary,
                       ),
@@ -127,12 +144,45 @@ class FormulaReplySection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          for (var i = 0; i < entries.length; i++) ...[
-            if (i > 0) const SizedBox(height: 8),
-            _FormulaReplyCard(
-              index: i,
-              entry: entries[i],
-              onCopyOpeningLine: () => onCopyOpeningLine(entries[i]),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < visibleEntries.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 8),
+                  _FormulaReplyCard(
+                    index: i,
+                    entry: visibleEntries[i],
+                    onCopyOpeningLine: () =>
+                        widget.onCopyOpeningLine(visibleEntries[i]),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (entries.length > 1) ...[
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.center,
+              child: TextButton.icon(
+                key: const ValueKey('formula-reply-toggle-more'),
+                onPressed: () => setState(() => _showMore = !_showMore),
+                icon: Icon(
+                  _showMore
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                ),
+                label: Text(_showMore ? '收起備選' : '再看一組'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.coachAccentBright,
+                  minimumSize: const Size(72, 44),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
             ),
           ],
         ],

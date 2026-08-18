@@ -12,6 +12,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/formula_reply_section.dart';
+import '../../../../shared/widgets/more_below_hint.dart';
 import '../../../opener/presentation/widgets/opener_generation_progress.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
@@ -61,6 +62,10 @@ class NewTopicView extends ConsumerStatefulWidget {
 
 class _NewTopicViewState extends ConsumerState<NewTopicView> {
   final _scrollController = ScrollController();
+  // 2026-08-18 呈現精修：完成後定格在「新話題建議」標題，不再捲到底
+  // 略過 5 張題卡；公式區 key 給右下滑動提示 pill 當目標。
+  final _resultsSectionKey = GlobalKey();
+  final _formulaSectionKey = GlobalKey();
   final _requestSession = NewTopicRequestSession();
 
   String? _selectedPartnerId;
@@ -281,21 +286,25 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         _isGenerating = false;
       });
 
+      // 先排定格再做額度 refresh：refresh 是網路呼叫，擋在前面會造成
+      // 「結果出現 → 停 1~2 秒 → 突然捲動」的體感。定格錨結果區頂部
+      //（新話題建議標題），不捲到底略過題卡。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final targetContext = _resultsSectionKey.currentContext;
+        if (targetContext == null || !mounted) return;
+        Scrollable.ensureVisible(
+          targetContext,
+          alignment: 0.04,
+          duration: AppMotion.scroll,
+          curve: AppMotion.easeOut,
+        );
+      });
+
       try {
         await ref.read(subscriptionScreenRefreshProvider)();
       } catch (_) {
         // 結果已成功；usage UI 下次 refresh 補上即可。
       }
-      if (!mounted) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: AppMotion.scroll,
-            curve: AppMotion.easeOut,
-          );
-        }
-      });
     } on NewTopicQuotaExceededException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -375,7 +384,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     final hadInvalidInitialPartner =
         _selectedPartnerId != null && validPartnerId == null;
 
-    return SingleChildScrollView(
+    final scrollBody = SingleChildScrollView(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
@@ -455,16 +464,40 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             ),
           if (_result != null) ...[
             const SizedBox(height: 24),
-            NewTopicResultsSection(
-              result: _result!,
-              onCopyIdeaOpeningLine: _copyOpeningLine,
-              onCopyFormulaOpeningLine: _copyFormulaOpeningLine,
-              onUpgrade: _showPaywallAndRefresh,
+            KeyedSubtree(
+              key: _resultsSectionKey,
+              child: NewTopicResultsSection(
+                result: _result!,
+                onCopyIdeaOpeningLine: _copyOpeningLine,
+                onCopyFormulaOpeningLine: _copyFormulaOpeningLine,
+                onUpgrade: _showPaywallAndRefresh,
+                formulaSectionKey: _formulaSectionKey,
+              ),
             ),
           ],
           const SizedBox(height: 40),
         ],
       ),
+    );
+
+    // 滑動提示 pill：公式新話題還在視口下方時提示；進入視口即收起。
+    // StackFit.expand：預設 loose 會讓捲動區縮成內容寬（版面漂移＋pill 定位壞）。
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        scrollBody,
+        if (_result != null && _result!.formulaTopics.isNotEmpty)
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: MoreBelowHint(
+              controller: _scrollController,
+              targetKey: _formulaSectionKey,
+              label: '往下還有公式新話題',
+              resetToken: _result,
+            ),
+          ),
+      ],
     );
   }
 
@@ -608,12 +641,16 @@ class NewTopicResultsSection extends StatelessWidget {
     required this.onCopyIdeaOpeningLine,
     required this.onCopyFormulaOpeningLine,
     required this.onUpgrade,
+    this.formulaSectionKey,
   });
 
   final NewTopicResult result;
   final ValueChanged<NewTopicIdea> onCopyIdeaOpeningLine;
   final ValueChanged<FormulaReplyEntry> onCopyFormulaOpeningLine;
   final VoidCallback onUpgrade;
+
+  /// 滑動提示 pill 的捲動目標（公式新話題區）。
+  final Key? formulaSectionKey;
 
   @override
   Widget build(BuildContext context) {
@@ -663,6 +700,7 @@ class NewTopicResultsSection extends StatelessWidget {
         if (result.formulaTopics.isNotEmpty) ...[
           const SizedBox(height: 8),
           FormulaReplySection(
+            key: formulaSectionKey,
             title: '公式新話題',
             entries: [
               for (final formula in result.formulaTopics)

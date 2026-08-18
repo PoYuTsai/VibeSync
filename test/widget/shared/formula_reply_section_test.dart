@@ -68,15 +68,47 @@ void main() {
         find.byKey(const ValueKey('formula-reply-section')),
         findsOneWidget,
       );
-      expect(find.text('為什麼好接'), findsNWidgets(count));
-      expect(find.text('可直接傳'), findsNWidgets(count));
+      // 2026-08-18 拍板：預設只展開第 1 則（主推），其餘收在「再看一組」。
+      expect(find.text('為什麼好接'), findsOneWidget);
+      expect(find.text('可直接傳'), findsOneWidget);
       expect(
           find.byKey(const ValueKey('formula-reply-card-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('formula-reply-card-1')), findsNothing);
       expect(
-        find.byKey(const ValueKey('formula-reply-card-1')),
+        find.byKey(const ValueKey('formula-reply-toggle-more')),
         count == 2 ? findsOneWidget : findsNothing,
+        reason: '只有一則時不出現「再看一組」',
       );
     }
+  });
+
+  testWidgets('「再看一組」展開第 2 則、可再收起；換新 entries 自動收回', (t) async {
+    Widget build(List<FormulaReplyEntry> entries) => _host(
+          FormulaReplySection(
+            title: '公式開場',
+            entries: entries,
+            onCopyOpeningLine: (_) {},
+          ),
+        );
+    final firstEntries = [_entry(1), _entry(2)];
+    await t.pumpWidget(build(firstEntries));
+
+    await t.tap(find.byKey(const ValueKey('formula-reply-toggle-more')));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('formula-reply-card-1')), findsOneWidget);
+    expect(find.text('收起備選'), findsOneWidget);
+
+    await t.tap(find.byKey(const ValueKey('formula-reply-toggle-more')));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('formula-reply-card-1')), findsNothing);
+    expect(find.text('再看一組'), findsOneWidget);
+
+    // 展開後換新一輪結果（新 list 實例）→ 回到只展開第 1 則。
+    await t.tap(find.byKey(const ValueKey('formula-reply-toggle-more')));
+    await t.pumpAndSettle();
+    await t.pumpWidget(build([_entry(3), _entry(4)]));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('formula-reply-card-1')), findsNothing);
   });
 
   testWidgets('公式區以梅紫群組包住深色扁平卡，和上方一般回覆形成層級', (t) async {
@@ -121,6 +153,9 @@ void main() {
         },
       ),
     ));
+    // 第 2 則預設收合，先展開再複製，確認回呼帶到的是對的 entry。
+    await t.tap(find.byKey(const ValueKey('formula-reply-toggle-more')));
+    await t.pumpAndSettle();
     await t.tap(find.text('複製').last);
     await t.pump();
     expect(tapped?.openingLine, _entry(2).openingLine);

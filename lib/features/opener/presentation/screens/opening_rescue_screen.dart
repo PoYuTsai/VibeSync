@@ -24,6 +24,7 @@ import '../../data/services/opener_service.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
 import '../../../../shared/widgets/formula_reply_section.dart';
+import '../../../../shared/widgets/more_below_hint.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../new_topic/presentation/widgets/new_topic_view.dart';
@@ -236,6 +237,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   OpenerResult? _result;
   String? _error;
   final _scrollController = ScrollController();
+  // 2026-08-18 呈現精修：完成後定格在結果區頂部（開場白建議），不再捲到底
+  // 把 5 張卡整個略過；公式區 key 給右下滑動提示 pill 當目標。
+  final _resultsSectionKey = GlobalKey();
+  final _formulaSectionKey = GlobalKey();
   final _resultCacheService = OpenerResultCacheService();
 
   // 扣費 idempotency（Batch 4#2）：失敗重試沿用同 requestId，成功才 rotate。
@@ -451,14 +456,22 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       _error = null;
     });
 
+    _snapToResults();
+  }
+
+  /// 完成／載入草稿後定格在結果區頂部（沿用 analyze-chat 完成定格拍板：
+  /// 錨用戶當下最想要的內容，這裡是 5 張建議卡的標題列）。post-frame 才
+  /// 量得到新掛載的結果區位置。
+  void _snapToResults() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: AppMotion.scroll,
-          curve: AppMotion.easeOut,
-        );
-      }
+      final targetContext = _resultsSectionKey.currentContext;
+      if (targetContext == null || !mounted) return;
+      Scrollable.ensureVisible(
+        targetContext,
+        alignment: 0.04,
+        duration: AppMotion.scroll,
+        curve: AppMotion.easeOut,
+      );
     });
   }
 
@@ -623,24 +636,16 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           _reloadDrafts();
         });
 
+        // 先排定格再做額度 refresh：refresh 是網路呼叫，擋在前面會造成
+        // 「結果出現 → 停 1~2 秒 → 突然捲動」的體感（dogfood 回報）。
+        _snapToResults();
+
         try {
           await ref.read(subscriptionScreenRefreshProvider)();
         } catch (_) {
           // The opener result already succeeded; usage UI can catch up on the
           // next subscription refresh if this best-effort sync fails.
         }
-        if (!mounted) return;
-
-        // 滾到結果區域
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              _scrollController.position.maxScrollExtent,
-              duration: AppMotion.scroll,
-              curve: AppMotion.easeOut,
-            );
-          }
-        });
       }
     } on OpenerQuotaExceededException catch (e) {
       if (mounted) {
@@ -778,7 +783,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     required OpenerGenerationInput activeInput,
     required bool hasGeneratedResult,
   }) {
-    return SingleChildScrollView(
+    final scrollBody = SingleChildScrollView(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
@@ -913,6 +918,27 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           const SizedBox(height: 40),
         ],
       ),
+    );
+
+    // 滑動提示 pill：結果很長、公式開場在下方看不到時提示還有內容；
+    // 公式區進入視口即收起（MoreBelowHint 內部判定）。
+    // StackFit.expand：預設 loose 會讓捲動區縮成內容寬（版面漂移＋pill 定位壞）。
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        scrollBody,
+        if (_result != null && _result!.formulaOpeners.isNotEmpty)
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: MoreBelowHint(
+              controller: _scrollController,
+              targetKey: _formulaSectionKey,
+              label: '往下還有公式開場',
+              resetToken: _result,
+            ),
+          ),
+      ],
     );
   }
 
@@ -1171,26 +1197,20 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       isFreeUser: isFree,
     );
 
+    // 2026-08-18 呈現精修（減法拍板）：預設展開的只留「5 張卡＋推薦理由＋
+    // 公式第 1 則」；對方資料解讀／先鋒備案／下一步收成一行標題，點開才展。
     return Column(
+      key: _resultsSectionKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Profile analysis card
+        // Profile analysis card（背景資訊非行動項 → 預設收合）
         if (result.profileAnalysis != null) ...[
-          BrandSurfaceCard(
-            tone: BrandVisualTone.coach,
-            padding: const EdgeInsets.all(16),
+          _CollapsibleBrandCard(
+            icon: Icons.person_search_outlined,
+            title: '對方資料解讀',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '對方資料解讀',
-                  style: AppTypography.titleMedium.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ..._buildProfileAnalysisItems(result.profileAnalysis!),
-              ],
+              children: _buildProfileAnalysisItems(result.profileAnalysis!),
             ),
           ),
           const SizedBox(height: 24),
@@ -1288,6 +1308,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         if (result.formulaOpeners.isNotEmpty) ...[
           const SizedBox(height: 24),
           FormulaReplySection(
+            key: _formulaSectionKey,
             title: '公式開場',
             entries: [
               for (final reply in result.formulaOpeners)
@@ -1359,30 +1380,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   Widget _buildNextStepCard() {
-    return BrandSurfaceCard(
-      tone: BrandVisualTone.coach,
-      padding: const EdgeInsets.all(16),
+    return _CollapsibleBrandCard(
+      icon: Icons.route_outlined,
+      title: '下一步怎麼接？',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.route_outlined,
-                size: 18,
-                color: AppColors.coachAccent,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '下一步怎麼接？',
-                style: AppTypography.titleSmall.copyWith(
-                  color: AppColors.onBackgroundPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
           Text(
             '開場救星只是「先鋒」：先複製一則去送出，等她真的回覆後，再建立新對話分析後續。',
             style: AppTypography.bodySmall.copyWith(
@@ -1488,30 +1491,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         .where((entry) => entry.value.trim().isNotEmpty)
         .toList();
 
-    return BrandSurfaceCard(
-      tone: BrandVisualTone.coach,
-      padding: const EdgeInsets.all(16),
+    return _CollapsibleBrandCard(
+      icon: Icons.flag_outlined,
+      title: '先鋒備案',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.flag_outlined,
-                size: 18,
-                color: AppColors.coachAccent,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '先鋒備案',
-                style: AppTypography.titleSmall.copyWith(
-                  color: AppColors.onBackgroundPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
           Text(
             '貼出去後如果她冷回或短回，先照這裡接；有新回覆再回來分析或問教練。',
             style: AppTypography.caption.copyWith(
@@ -1863,6 +1848,90 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 收合式資訊卡（2026-08-18 減法拍板）：預設只露一行標題，點開才展內容。
+/// 用於背景／延後性資訊（對方資料解讀、先鋒備案、下一步），把預設展開的
+/// 內容壓到「5 張卡＋公式第 1 則」左右的一屏多。
+class _CollapsibleBrandCard extends StatefulWidget {
+  const _CollapsibleBrandCard({
+    required this.icon,
+    required this.title,
+    required this.child,
+  });
+
+  final IconData icon;
+  final String title;
+  final Widget child;
+
+  @override
+  State<_CollapsibleBrandCard> createState() => _CollapsibleBrandCardState();
+}
+
+class _CollapsibleBrandCardState extends State<_CollapsibleBrandCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandSurfaceCard(
+      tone: BrandVisualTone.coach,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            key: ValueKey('collapsible-card-header-${widget.title}'),
+            borderRadius: BorderRadius.circular(18),
+            onTap: () {
+              AppHaptics.tap();
+              setState(() => _expanded = !_expanded);
+            },
+            child: Padding(
+              // 觸控高度 ≥44：內容 padding 外再補 4，避免一行標題太難點。
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    widget.icon,
+                    size: 18,
+                    color: AppColors.coachAccent,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: AppTypography.titleSmall.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 20,
+                    color: AppColors.onBackgroundSecondary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: widget.child,
+                  )
+                : const SizedBox(width: double.infinity),
           ),
         ],
       ),

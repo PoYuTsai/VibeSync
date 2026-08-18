@@ -159,9 +159,20 @@ void main() {
     expect(reasonDy < formulaDy, isTrue, reason: '公式區在推薦理由之後');
     expect(formulaDy < pioneerDy, isTrue, reason: '公式區在先鋒備案（pioneerPlan）之前');
 
-    // 兩張公式卡都渲染，教練註解在場。
-    expect(find.text('為什麼好接'), findsNWidgets(2));
+    // 公式預設只展開第 1 則（2026-08-18 拍板），第 2 則收在「再看一組」；
+    // 展開後兩張都在、教練註解在場。
+    expect(find.text('為什麼好接'), findsNWidgets(1));
     expect(find.text(_formulaWhy1), findsOneWidget);
+    await t.ensureVisible(
+      find.byKey(const ValueKey('formula-reply-toggle-more')),
+    );
+    await t.tap(
+      find.byKey(const ValueKey('formula-reply-toggle-more')),
+      warnIfMissed: false,
+    );
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('為什麼好接'), findsNWidgets(2));
 
     // 複製只複製 openingLine（公式區內第一顆複製鍵）。
     final formulaCopy = find.descendant(
