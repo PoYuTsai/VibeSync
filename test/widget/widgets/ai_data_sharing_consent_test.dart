@@ -43,14 +43,17 @@ void main() {
       (tester) async {
     await pumpConsentLauncher(tester);
 
-    expect(find.text('第三方 AI 資料使用同意'), findsOneWidget);
-    expect(
-        find.textContaining('Anthropic Claude API'), findsAtLeastNWidgets(1));
+    expect(find.text('資料使用說明'), findsOneWidget);
+    expect(find.text('你選擇分享的內容'), findsOneWidget);
+    expect(find.text('VibeSync 如何幫你'), findsOneWidget);
+    expect(find.text('資料如何處理'), findsOneWidget);
+    expect(find.textContaining('Anthropic'), findsAtLeastNWidgets(1));
     expect(find.textContaining('聊天文字'), findsOneWidget);
-    expect(find.text('查看服務條款'), findsOneWidget);
-    expect(find.text('查看隱私權政策'), findsOneWidget);
-    expect(find.textContaining('我已閱讀並同意服務條款與隱私權政策'), findsOneWidget);
-    expect(find.text('我同意並送出'), findsOneWidget);
+    expect(find.textContaining('《服務條款》'), findsOneWidget);
+    expect(find.textContaining('《隱私權政策》'), findsOneWidget);
+    expect(find.textContaining('我已閱讀並同意'), findsOneWidget);
+    expect(find.textContaining('若資料用途或服務供應商變更'), findsOneWidget);
+    expect(find.text('同意並繼續'), findsOneWidget);
   });
 
   testWidgets('requires explicit checkbox agreement before accepting',
@@ -58,7 +61,7 @@ void main() {
     await pumpConsentLauncher(tester);
 
     final acceptButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '我同意並送出'),
+      find.widgetWithText(FilledButton, '同意並繼續'),
     );
     expect(acceptButton.onPressed, isNull);
 
@@ -67,7 +70,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final enabledAcceptButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '我同意並送出'),
+      find.widgetWithText(FilledButton, '同意並繼續'),
     );
     expect(enabledAcceptButton.onPressed, isNotNull);
   });
@@ -79,8 +82,8 @@ void main() {
     await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('我同意並送出'));
-    await tester.tap(find.text('我同意並送出'));
+    await tester.ensureVisible(find.text('同意並繼續'));
+    await tester.tap(find.text('同意並繼續'));
     await tester.pumpAndSettle();
 
     result = await AiDataSharingConsent.ensure(
@@ -97,7 +100,7 @@ void main() {
     var result = await pumpConsentLauncher(tester);
     expect(result, isNull);
 
-    await tester.tap(find.text('不同意'));
+    await tester.tap(find.text('暫不同意'));
     await tester.pumpAndSettle();
 
     result = await AiDataSharingConsent.hasAccepted();
@@ -136,8 +139,8 @@ void main() {
     await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('我同意並送出'));
-    await tester.tap(find.text('我同意並送出'));
+    await tester.ensureVisible(find.text('同意並繼續'));
+    await tester.tap(find.text('同意並繼續'));
     await tester.pumpAndSettle();
 
     expect(await AiDataSharingConsent.hasKeyboardScreenshotConsent(), isTrue);
@@ -189,7 +192,7 @@ void main() {
 
     final prefs = await SharedPreferences.getInstance();
     expect(result, isNull);
-    expect(find.text('第三方 AI 資料使用同意'), findsOneWidget);
+    expect(find.text('資料使用說明'), findsOneWidget);
     expect(
       prefs.getBool(
         '${AiDataSharingConsent.keyboardScreenshotConsentKey}::user-a',
@@ -239,8 +242,8 @@ void main() {
     await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('我同意並送出'));
-    await tester.tap(find.text('我同意並送出'));
+    await tester.ensureVisible(find.text('同意並繼續'));
+    await tester.tap(find.text('同意並繼續'));
     await tester.pumpAndSettle();
 
     final prefs = await SharedPreferences.getInstance();
@@ -299,8 +302,8 @@ void main() {
     await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('我同意並送出'));
-    await tester.tap(find.text('我同意並送出'));
+    await tester.ensureVisible(find.text('同意並繼續'));
+    await tester.tap(find.text('同意並繼續'));
     await tester.pumpAndSettle();
 
     final prefs = await SharedPreferences.getInstance();
@@ -371,8 +374,8 @@ void main() {
     await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('我同意並送出'));
-    await tester.tap(find.text('我同意並送出'));
+    await tester.ensureVisible(find.text('同意並繼續'));
+    await tester.tap(find.text('同意並繼續'));
     await tester.pumpAndSettle();
 
     final prefs = await SharedPreferences.getInstance();
@@ -418,7 +421,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('DeepSeek API'), findsAtLeastNWidgets(1));
-    expect(find.textContaining('Anthropic Claude API'), findsNothing);
+    expect(find.textContaining('Anthropic'), findsNothing);
   });
 
   testWidgets('practice 用途文案準確（不混入 Claude 功能用途）', (tester) async {
@@ -551,8 +554,8 @@ void main() {
       await tester.ensureVisible(find.byType(CheckboxListTile));
       await tester.tap(find.byType(CheckboxListTile));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('我同意並送出'));
-      await tester.tap(find.text('我同意並送出'));
+      await tester.ensureVisible(find.text('同意並繼續'));
+      await tester.tap(find.text('同意並繼續'));
       await tester.pumpAndSettle();
 
       expect(await AiDataSharingConsent.hasAccepted(), isTrue);
@@ -618,8 +621,8 @@ void main() {
       await tester.ensureVisible(find.byType(CheckboxListTile));
       await tester.tap(find.byType(CheckboxListTile));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('我同意並送出'));
-      await tester.tap(find.text('我同意並送出'));
+      await tester.ensureVisible(find.text('同意並繼續'));
+      await tester.tap(find.text('同意並繼續'));
       await tester.pumpAndSettle();
 
       expect(result, isFalse);

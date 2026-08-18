@@ -1,7 +1,9 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/services/keyboard_privacy_purge_service.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/services/supabase_service.dart';
 import '../services/link_launch_service.dart';
 import '../../core/services/app_haptics.dart';
@@ -23,10 +25,11 @@ class AiDataSharingConsent {
       '用途：只用來辨識這張截圖並產生本次三個回覆選項。為了在斷線後查回同一結果並避免重複扣額，後端最多 24 小時保留鍵控輸入雜湊與產生結果，不保存截圖或 OCR 逐字稿。對象背景分享是另一個預設關閉、可隨時撤回的設定。';
   static const _privacyUrl = 'https://vibesyncai.app/privacy';
   static const _termsUrl = 'https://vibesyncai.app/terms';
-  static const _defaultDestinationLabel = 'Anthropic Claude API';
+  static const _defaultDestinationLabel = 'Anthropic';
   static const _defaultDataDescription =
-      '可能包含：聊天文字、上傳的聊天或個人檔案截圖、對方名稱、你填寫的情境或草稿，以及本次結果所需的對話脈絡。';
-  static const _defaultPurposeText = '用途：只用來產生你按下的分析、截圖辨識、開場建議或 Coach 1:1 回覆。';
+      '可能包含聊天文字、截圖、對方名稱，以及你補充的情境或草稿。VibeSync 只會處理你主動送出的內容。';
+  static const _defaultPurposeText =
+      '我們會結合關係階段、互動節奏與對話脈絡，提供分析、截圖辨識、開場建議或 Coach 1:1 回覆。';
 
   /// 「我幫你修」與「再調一下」有額外的安全重播暫存，因此使用獨立同意版本；
   /// 已同意其他 AI 功能的帳號仍會在首次使用前看到這項具體揭露。
@@ -46,7 +49,7 @@ class AiDataSharingConsent {
   /// 文案也須準確描述「模擬對象練習對話」而非 Claude 功能用途。
   static const practiceConsentKey =
       'ai_data_sharing_consent_practice_20260706_v2';
-  static const practiceDestinationLabel = 'DeepSeek API';
+  static const practiceDestinationLabel = 'DeepSeek';
   static const practiceDataDescription = '可能包含：你在練習室輸入的訊息，以及本次練習的對話脈絡。';
   static const practicePurposeText = '用途：只用來在 AI 實戰練習室產生陪練女孩的回覆，以及練習結束後的一張拆解卡。';
 
@@ -266,11 +269,11 @@ class AiDataSharingConsent {
     }
     if (!context.mounted) return false;
 
+    // featureLabel 保留簽名相容（11 個呼叫端）；2026-08 新版稿不在彈窗顯示功能名。
     final accepted = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => _AiDataSharingConsentDialog(
-        featureLabel: featureLabel,
         privacyUrl: _privacyUrl,
         termsUrl: _termsUrl,
         destinationLabel: destinationLabel,
@@ -345,7 +348,6 @@ class AiDataSharingConsent {
 
 class _AiDataSharingConsentDialog extends StatefulWidget {
   const _AiDataSharingConsentDialog({
-    required this.featureLabel,
     required this.privacyUrl,
     required this.termsUrl,
     required this.destinationLabel,
@@ -353,7 +355,6 @@ class _AiDataSharingConsentDialog extends StatefulWidget {
     required this.purposeText,
   });
 
-  final String featureLabel;
   final String privacyUrl;
   final String termsUrl;
   final String destinationLabel;
@@ -368,9 +369,20 @@ class _AiDataSharingConsentDialog extends StatefulWidget {
 class _AiDataSharingConsentDialogState
     extends State<_AiDataSharingConsentDialog> {
   bool _hasReviewedAndAgreed = false;
+  late final TapGestureRecognizer _termsTap = TapGestureRecognizer()
+    ..onTap = () => LinkLaunchService.open(widget.termsUrl);
+  late final TapGestureRecognizer _privacyTap = TapGestureRecognizer()
+    ..onTap = () => LinkLaunchService.open(widget.privacyUrl);
 
-  /// 「用途」block 已有標題，body 再以「用途：」開頭會重複一次；只在呈現層
-  /// 剝掉前綴，常數本身不動（合規揭露文案是共用單一來源）。
+  @override
+  void dispose() {
+    _termsTap.dispose();
+    _privacyTap.dispose();
+    super.dispose();
+  }
+
+  /// 各功能的 purposeText 常數以「用途：」開頭（合規揭露單一來源不動）；
+  /// 新版稿此段標題是「VibeSync 如何幫你」，只在呈現層剝掉前綴。
   String get _purposeBody {
     const prefix = '用途：';
     return widget.purposeText.startsWith(prefix)
@@ -380,11 +392,17 @@ class _AiDataSharingConsentDialogState
 
   @override
   Widget build(BuildContext context) {
-    // 2026-08-09 重排（只動呈現層）：長文攤成「一眼一 block」，勾選框釘在
-    // 捲動區外——小螢幕上縮的是揭露內文的捲動區，勾勾與按鈕永遠不用捲就
-    // 按得到。揭露內容、同意語句與按鈕語意完全不變。
+    // 2026-08-18 換版（夥伴稿，Codex 審過）：三段圖標式揭露＋圓形勾選框。
+    // 勾選框與按鈕仍釘在捲動區外，小螢幕上縮的是揭露內文；per-feature
+    // 的 dataDescription／purposeText／destinationLabel 參數化不變，
+    // 所有入口（分析／開場／Coach／練習室／鍵盤／潤飾微調）共用這一版。
+    final colorScheme = Theme.of(context).colorScheme;
+    final linkStyle = TextStyle(
+      color: colorScheme.primary,
+      fontWeight: FontWeight.w600,
+    );
     return AlertDialog(
-      title: const Text('第三方 AI 資料使用同意'),
+      title: const Text('資料使用說明'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,65 +412,71 @@ class _AiDataSharingConsentDialogState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '使用「${widget.featureLabel}」前，VibeSync 需要先取得你的同意。',
+                  const Text(
+                    '為了理解這段互動，並提供更貼近關係脈絡的建議，VibeSync 需要使用你這次主動提交的內容。',
+                    style: TextStyle(fontSize: 14, height: 1.5),
                   ),
-                  const SizedBox(height: 12),
-                  _ConsentBlock(
-                    header: '資料會送到哪',
-                    body:
-                        '你主動送出的資料會經由 VibeSync 後端服務（Supabase Edge Functions）傳送至 ${widget.destinationLabel}，用來產生本次 AI 結果。',
-                  ),
-                  _ConsentBlock(
-                    header: '會送出什麼',
+                  const SizedBox(height: 16),
+                  _ConsentSection(
+                    icon: Icons.description_outlined,
+                    header: '你選擇分享的內容',
                     body: widget.dataDescription,
                   ),
-                  _ConsentBlock(
-                    header: '用途',
+                  const _SectionDivider(),
+                  _ConsentSection(
+                    icon: Icons.chat_bubble_outline,
+                    header: 'VibeSync 如何幫你',
                     body: _purposeBody,
                   ),
-                  const _ConsentBlock(
-                    header: '如果不同意',
-                    body: '如果不同意，本次 AI 請求不會送出，也不會扣除本次 AI 額度。',
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: [
-                      TextButton(
-                        onPressed: () =>
-                            LinkLaunchService.open(widget.termsUrl),
-                        child: const Text('查看服務條款'),
-                      ),
-                      TextButton(
-                        onPressed: () =>
-                            LinkLaunchService.open(widget.privacyUrl),
-                        child: const Text('查看隱私權政策'),
-                      ),
-                    ],
+                  const _SectionDivider(),
+                  _ConsentSection(
+                    icon: Icons.shield_outlined,
+                    header: '資料如何處理',
+                    body:
+                        '你主動提交的內容會傳送至 VibeSync 雲端處理服務（由 Supabase 提供），並由第三方 AI 服務供應商 ${widget.destinationLabel} 處理，用於產生本次分析與回覆建議。',
                   ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 4),
+          const _SectionDivider(),
           CheckboxListTile(
             value: _hasReviewedAndAgreed,
             contentPadding: EdgeInsets.zero,
             dense: true,
             visualDensity: VisualDensity.compact,
             controlAffinity: ListTileControlAffinity.leading,
+            checkboxShape: const CircleBorder(),
             onChanged: (value) {
               AppHaptics.tap();
               setState(() => _hasReviewedAndAgreed = value ?? false);
             },
-            title: Text(
-              '我已閱讀並同意服務條款與隱私權政策，並同意 VibeSync 將上述資料傳送至 Supabase Edge Functions 與 ${widget.destinationLabel} 以產生本次 AI 結果。',
-              style: const TextStyle(fontSize: 12, height: 1.35),
+            title: Text.rich(
+              TextSpan(
+                style: const TextStyle(fontSize: 12, height: 1.4),
+                children: [
+                  const TextSpan(text: '我已閱讀並同意'),
+                  TextSpan(
+                    text: '《服務條款》',
+                    style: linkStyle,
+                    recognizer: _termsTap,
+                  ),
+                  const TextSpan(text: '與'),
+                  TextSpan(
+                    text: '《隱私權政策》',
+                    style: linkStyle,
+                    recognizer: _privacyTap,
+                  ),
+                  TextSpan(
+                    text:
+                        '，並明確同意 VibeSync 將上述內容傳送至 Supabase 與 ${widget.destinationLabel} 進行處理。',
+                  ),
+                ],
+              ),
             ),
           ),
           const Text(
-            '同意後，這個帳號之後不會重複提醒。',
+            '若資料用途或服務供應商變更，我們會再次徵求同意。',
             style: TextStyle(fontSize: 12),
           ),
         ],
@@ -460,52 +484,79 @@ class _AiDataSharingConsentDialogState
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('不同意'),
+          child: const Text('暫不同意'),
         ),
         FilledButton(
           onPressed: AppHaptics.onPress(_hasReviewedAndAgreed
               ? () => Navigator.of(context).pop(true)
               : null),
-          child: const Text('我同意並送出'),
+          child: const Text('同意並繼續'),
         ),
       ],
     );
   }
 }
 
-/// 揭露內文的單一 block：小標＋內文各成一張淺底卡，一眼一件事。
-class _ConsentBlock extends StatelessWidget {
-  const _ConsentBlock({required this.header, required this.body});
+/// 揭露單段：左側品牌橘圖標＋右側小標與內文（夥伴稿版式）。
+class _ConsentSection extends StatelessWidget {
+  const _ConsentSection({
+    required this.icon,
+    required this.header,
+    required this.body,
+  });
 
+  final IconData icon;
   final String header;
   final String body;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      decoration: BoxDecoration(
-        color: colorScheme.onSurface.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            header,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.primary,
-            ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 26, color: AppColors.brandFlame),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                header,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                body,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: colorScheme.onSurface.withValues(alpha: 0.75),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(body, style: const TextStyle(fontSize: 15, height: 1.4)),
-        ],
-      ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionDivider extends StatelessWidget {
+  const _SectionDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Divider(
+      height: 24,
+      thickness: 0.5,
+      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
     );
   }
 }

@@ -391,15 +391,15 @@ void main() {
     await tester.tap(enableButton);
     await tester.pump();
 
-    expect(find.text('第三方 AI 資料使用同意'), findsOneWidget);
+    expect(find.text('資料使用說明'), findsOneWidget);
     expect(find.textContaining('不會自動讀取其他聊天紀錄'), findsOneWidget);
     expect(setup.calls, 0);
 
     await tester.ensureVisible(find.byType(CheckboxListTile));
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pump();
-    await tester.ensureVisible(find.text('我同意並送出'));
-    await tester.tap(find.text('我同意並送出'));
+    await tester.ensureVisible(find.text('同意並繼續'));
+    await tester.tap(find.text('同意並繼續'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
