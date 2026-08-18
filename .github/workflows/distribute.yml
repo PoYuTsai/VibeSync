@@ -36,16 +36,20 @@ jobs:
         run: flutter pub get
 
       - name: Install Traditional Chinese visual-test font
-        # 2026-08-19：apt 套件源偶發卡死曾兩次燒光 job 的 30 分鐘逾時（#471、
-        # 4ddabc5a）。獨立 5 分鐘逾時＋失敗自動重試一次，讓抽風快速失敗重來
-        # 而非拖垮整個 build。
+        # 2026-08-19：apt 的 azure mirror 空轉，光 apt-get update 就能耗掉 5 分
+        # 鐘（#471、4ddabc5a、run 32173679991——逾時＋重試都救不了）。改抓釘版
+        # 單檔 .otf 跳過 apt；sha256 對拍防來源被動手腳。另放一份到 apt 原本的
+        # .ttc 路徑：8 個 visual_proof 測試檔候選只列 .ttc，FontLoader 只看
+        # bytes 不看副檔名，單檔 otf 放這名字照吃、還避開 ttc 集合檔靜默豆腐坑。
         timeout-minutes: 5
         run: |
-          install_font() {
-            sudo apt-get update && \
-            sudo apt-get install --no-install-recommends -y fonts-noto-cjk
-          }
-          install_font || { echo "apt 首次失敗，10 秒後重試一次"; sleep 10; install_font; }
+          FONT=NotoSansCJKtc-Regular.otf
+          SHA=dce08bd4fd91aa8aa76ed8fea4b694c2dfb8550f67871e326843212ddbeb88b4
+          curl -fsSL --retry 3 --retry-all-errors -o "$FONT" \
+            "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/OTF/TraditionalChinese/$FONT"
+          echo "$SHA  $FONT" | sha256sum -c -
+          sudo install -D "$FONT" "/usr/share/fonts/opentype/noto/$FONT"
+          sudo install -D "$FONT" /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
 
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
