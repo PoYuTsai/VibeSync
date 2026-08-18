@@ -112,8 +112,9 @@ function looksLikeRawModelPayload(value: string): boolean {
 
 // 反 prompt 外洩（2026-08-19）：coach system prompt 的內部行話長片段，
 // 正常教練回覆絕不會逐字出現；命中＝系統指示外洩，整卡擋下。
+// R2 主審 MINOR-1：「先判斷這次使用者卡在哪個狀態」是教練口語、正常回覆
+// 可能自然說出 → 依審者建議拔除，只留不可能被說出口的 meta 片段。
 const COACH_PROMPT_LEAK_SENTINELS: readonly string[] = [
-  "先判斷這次使用者卡在哪個狀態",
   "suggestedLine 要守投入對等節奏",
   "內部先判斷，但輸出不要露出推理過程",
   "你是 VibeSync Coach 1:1：有記憶、有邊界",

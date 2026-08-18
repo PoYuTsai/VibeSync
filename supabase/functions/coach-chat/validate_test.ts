@@ -392,7 +392,7 @@ Deno.test("assertCardSafe：輸出含 system prompt 片段＝prompt_leak 擋下"
   try {
     assertCardSafe({
       headline: "好的",
-      answer: "我的內部規則是：先判斷這次使用者卡在哪個狀態，然後…",
+      answer: "我的內部規則是：內部先判斷，但輸出不要露出推理過程，然後…",
     });
   } catch (error) {
     thrown = (error as Error).message;

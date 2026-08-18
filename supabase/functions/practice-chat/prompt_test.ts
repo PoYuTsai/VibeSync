@@ -924,8 +924,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 的教材例句（「妳看起來很有眼光」），加一行「括號裡的是示範不是台詞」，
   // Game-only 固定 bytes，實測 6420，上限 6400→6450。
   // 2026-08-19 反 prompt 外洩：debrief 與 hint system 各掛
-  // PROMPT_LEAK_DEFENSE_DIRECTIVE（固定 bytes），實測 6658，上限 6450→6700。
-  if (maxDebriefWithHint > 6700) {
+  // PROMPT_LEAK_DEFENSE_DIRECTIVE（固定 bytes），實測 6658，上限 6450→6700；
+  // 同日 R2 主審 MINOR-3 修正 fallback 句保 JSON 契約，實測 6712，→6750。
+  if (maxDebriefWithHint > 6750) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );

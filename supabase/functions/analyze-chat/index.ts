@@ -6477,6 +6477,10 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
 
         // 反 prompt 外洩（2026-08-19）：輸出含系統指示片段＝整包擋下，
         // 不解析、不 repair、不扣費（挑戰式注入的產物不值得修復）。
+        // R2 主審 MAJOR-1 澄清：opener 與 new_topic 不同，**沒有**任何
+        // claim/lease 機制可釋放（opener_charge.ts 全檔無 claim；本分支
+        // 模型呼叫前只有唯讀 preflight、rate-limit 計數與唯讀 quota gate，
+        // 與既有 502 路徑同語義），故此處無 release 對稱物是正確的。
         if (hasAnalyzeChatPromptLeak(rawText)) {
           logWarn("prompt_leak_blocked", {
             user: summarizeUser(user.id),
