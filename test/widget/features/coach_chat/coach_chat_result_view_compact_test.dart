@@ -149,4 +149,37 @@ void main() {
     expect(find.text('看完整教練分析'), findsNothing);
     expect(find.text('照著發了'), findsNothing);
   });
+
+  testWidgets('👎 先問哪裡不好：展開五分類＋跳過，點分類才送出', (tester) async {
+    await tester.pumpWidget(_wrap(_formalResult()));
+
+    await tester.ensureVisible(find.byKey(const ValueKey('coach-feedback-down')));
+    await tester.tap(find.byKey(const ValueKey('coach-feedback-down')));
+    await tester.pump();
+
+    // 還沒送出（沒有任何 snackbar），先展開分類。
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.text('哪裡不好？幫我們改進（選一個就好）'), findsOneWidget);
+    for (final key in const [
+      'coach-feedback-category-too_direct',
+      'coach-feedback-category-unnatural',
+      'coach-feedback-category-too_long',
+      'coach-feedback-category-wrong_style',
+      'coach-feedback-category-other',
+      'coach-feedback-category-skip',
+    ]) {
+      expect(find.byKey(ValueKey(key)), findsOneWidget);
+    }
+
+    // 點分類即嘗試送出（測試環境無 Supabase → 走失敗 snackbar，
+    // 證明 submit 路徑被觸發）。
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('coach-feedback-category-too_long')),
+    );
+    await tester
+        .tap(find.byKey(const ValueKey('coach-feedback-category-too_long')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('回饋暫時沒有送出，稍後可以再試一次。'), findsOneWidget);
+  });
 }

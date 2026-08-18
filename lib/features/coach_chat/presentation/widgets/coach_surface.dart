@@ -1425,7 +1425,20 @@ class _CoachAdviceFeedbackRowState
   bool _submitting = false;
   bool _submitted = false;
 
-  Future<void> _submit(String rating) async {
+  /// 👎 後展開的分類選擇（2026-08-18：之前不帶 category，後台全掛「其他」）。
+  /// 選項與分析頁回饋表單同一套，值都在 submit-feedback Edge 白名單內，
+  /// 零後端改動。
+  bool _pickingCategory = false;
+
+  static const _negativeCategories = <(String, String)>[
+    ('too_direct', '太直接'),
+    ('unnatural', '不自然'),
+    ('too_long', '回覆太長'),
+    ('wrong_style', '不符合我的風格'),
+    ('other', '其他'),
+  ];
+
+  Future<void> _submit(String rating, {String? category}) async {
     if (_submitting || _submitted) return;
     setState(() => _submitting = true);
     final tier = ref.read(subscriptionProvider).tier;
@@ -1438,6 +1451,7 @@ class _CoachAdviceFeedbackRowState
         'submit-feedback',
         body: {
           'rating': rating,
+          if (category != null) 'category': category,
           'userTier': tier,
           'modelUsed': widget.result.modelUsed,
           'aiResponse': {
@@ -1488,6 +1502,44 @@ class _CoachAdviceFeedbackRowState
         ),
       );
     }
+    // 👎 之後先問一句「哪裡不好」再送出：點分類即送（帶 category）、
+    // 點跳過送純 negative——保留懶得選也能送的低摩擦路徑。
+    if (_pickingCategory) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '哪裡不好？幫我們改進（選一個就好）',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final (value, label) in _negativeCategories)
+                ActionChip(
+                  key: ValueKey('coach-feedback-category-$value'),
+                  label: Text(label),
+                  onPressed: _submitting
+                      ? null
+                      : AppHaptics.onPress(
+                          () => _submit('negative', category: value),
+                        ),
+                ),
+              ActionChip(
+                key: const ValueKey('coach-feedback-category-skip'),
+                label: const Text('跳過'),
+                onPressed:
+                    _submitting ? null : () => _submit('negative'),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
     return Row(
       children: [
         Text(
@@ -1511,7 +1563,12 @@ class _CoachAdviceFeedbackRowState
           color: AppColors.error,
           tooltip: '沒幫助',
           visualDensity: VisualDensity.compact,
-          onPressed: _submitting ? null : () => _submit('negative'),
+          onPressed: _submitting
+              ? null
+              : () {
+                  AppHaptics.light();
+                  setState(() => _pickingCategory = true);
+                },
         ),
       ],
     );
