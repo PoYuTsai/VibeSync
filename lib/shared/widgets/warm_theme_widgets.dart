@@ -3,7 +3,6 @@
 
 export 'gradient_background.dart';
 export 'glassmorphic_container.dart';
-export 'glassmorphic_segmented_button.dart';
 export 'glassmorphic_text_field.dart';
 export 'bubble_avatar.dart';
 export 'image_picker_widget.dart';

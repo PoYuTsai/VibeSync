@@ -283,8 +283,8 @@ Widget _hintRow() => Padding(
     );
 
 Widget _seg(List<String> labels, String selected) =>
-    GlassmorphicSegmentedButton<String>(
-      segments: labels.map((l) => GlassSegment(value: l, label: l)).toList(),
+    BrandSegmentedButton<String>(
+      segments: labels.map((l) => BrandSegment(value: l, label: l)).toList(),
       selected: selected,
       onChanged: (_) {},
     );
