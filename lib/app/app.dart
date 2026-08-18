@@ -95,6 +95,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         title: 'VibeSync',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
+        builder: clampAppTextScale,
         home: SplashScreen(
           onComplete: () {
             if (!mounted) return;
@@ -115,7 +116,21 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       title: 'VibeSync',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
+      builder: clampAppTextScale,
       routerConfig: router,
     );
   }
+}
+
+/// 全域字級上限 1.4（Eric 2026-08-18 拍板）：iOS 輔助字級最高約 3.1x，
+/// 固定高的圖表空態／chip 在 2x 以上會溢出疊字；縮小方向不動。
+/// 局部另有更嚴 clamp 的元件（ebook 卡）維持自己的上限。
+Widget clampAppTextScale(BuildContext context, Widget? child) {
+  final media = MediaQuery.of(context);
+  return MediaQuery(
+    data: media.copyWith(
+      textScaler: media.textScaler.clamp(maxScaleFactor: 1.4),
+    ),
+    child: child!,
+  );
 }

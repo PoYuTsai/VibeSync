@@ -451,6 +451,61 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('紀錄詳情：長回覆單卡不疊到建議接法（溢出迴歸）', (tester) async {
+    // 病灶同首頁空態疊字（2026-08 dogfood）：固定高容器裝會長高的卡。
+    // 單卡＋多段內容時，卡比 360 高的部分在 release 會直接畫到下方
+    // 「建議接法」區塊上。預設字級就能觸發。
+    await tester.binding.setSurfaceSize(const Size(320, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final longReply = List.generate(
+      14,
+      (i) => '第 ${i + 1} 段：先接住她的分享，再帶一點自己的生活細節。',
+    ).join('\n');
+    final record = _record(
+      id: 'overlap',
+      createdAt: DateTime(2026, 7, 12, 21),
+      preview: '我去了台南，吃到一家很好吃的小店。',
+      analysisSnapshotJson: jsonEncode({
+        'enthusiasm': {'score': 72, 'level': 'warm'},
+        'replies': {'extend': longReply},
+        'finalRecommendation': {
+          'pick': 'extend',
+          'content': '聽起來超有趣，哪一段最讓妳印象深刻？',
+          'reason': '順著她主動分享的內容延伸，回覆壓力比較低。',
+        },
+      }),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AnalysisRecordDetailScreen(
+          record: record,
+          platform: record.sourcePlatform,
+          onDelete: () async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final detailList = find.byKey(const ValueKey('analysis-record-detail'));
+    await tester.drag(detailList, const Offset(0, -700));
+    await tester.pumpAndSettle();
+    await tester.drag(detailList, const Offset(0, -700));
+    await tester.pumpAndSettle();
+
+    final adviceRect =
+        tester.getRect(find.text('建議接法', skipOffstage: false));
+    final replyTexts = find.text(longReply, skipOffstage: false);
+    for (var i = 0; i < replyTexts.evaluate().length; i++) {
+      expect(
+        tester.getRect(replyTexts.at(i)).overlaps(adviceRect),
+        isFalse,
+        reason: '回覆卡內容溢出固定高容器，疊到「建議接法」——'
+            '卡高必須照內容自然長（同 analysis_screen 2026-08-09 拍板）。',
+      );
+    }
+  });
+
   testWidgets('紀錄詳情只讀顯示當時聊天與建議', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));

@@ -111,8 +111,10 @@ class PracticeTemperatureChart extends StatelessWidget {
   }
 
   Widget _buildEmptyState() {
-    return SizedBox(
-      height: 130,
+    // minHeight 而非鎖死高：大字級（clamp 上限 1.4）＋窄機身時文案比
+    // 保留高度高，鎖死會溢出疊到卡片上方的註解行（dogfood 疊字系列）。
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 130),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -149,8 +151,10 @@ class PracticeTemperatureChart extends StatelessWidget {
   }
 
   Widget _buildSinglePointState(HeatTrendPoint point) {
-    return SizedBox(
-      height: 130,
+    // minHeight 而非鎖死高：大字級（clamp 上限 1.4）＋窄機身時文案比
+    // 保留高度高，鎖死會溢出疊到卡片上方的註解行（dogfood 疊字系列）。
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 130),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

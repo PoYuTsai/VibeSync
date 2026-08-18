@@ -117,21 +117,27 @@ class HeatTrendChart extends StatelessWidget {
             ),
           )
         else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                '${sampleCount == null ? '全部平均' : '近期平均'} ${averageScore.round()}',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
+          // FittedBox：大字級＋窄機身時「平均＋前後差」一行擠不下（1.4x/320
+          // 溢 10px），整行微縮而不是截掉分數。
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  '${sampleCount == null ? '全部平均' : '近期平均'} ${averageScore.round()}',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              if (sampleCount == null || count >= 2) _buildDeltaBadge(),
-            ],
+                const SizedBox(width: 8),
+                if (sampleCount == null || count >= 2) _buildDeltaBadge(),
+              ],
+            ),
           ),
         if (count > 0) ...[
           const SizedBox(height: 4),
@@ -178,8 +184,10 @@ class HeatTrendChart extends StatelessWidget {
   // ---------------------------------------------------------------------------
 
   Widget _buildEmptyState() {
-    return SizedBox(
-      height: 150,
+    // minHeight 而非鎖死高：大字級（clamp 上限 1.4）＋窄機身時文案比
+    // 保留高度高，鎖死會溢出疊到卡片上方的註解行（dogfood 疊字系列）。
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 150),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -214,8 +222,10 @@ class HeatTrendChart extends StatelessWidget {
   Widget _buildSinglePointState(BuildContext context) {
     final point = trendPoints.single;
     final date = DateFormat('M/dd').format(point.date);
-    return SizedBox(
-      height: 150,
+    // minHeight 而非鎖死高：大字級（clamp 上限 1.4）＋窄機身時文案比
+    // 保留高度高，鎖死會溢出疊到卡片上方的註解行（dogfood 疊字系列）。
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 150),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

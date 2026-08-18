@@ -923,11 +923,14 @@ class _SavedAnalysisCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          SizedBox(
+          // 高度自適應（同 analysis_screen 2026-08-09 拍板）：不鎖 360 高，
+          // 卡照內容長高、頂端對齊——鎖死時單卡長內容會溢出畫到下方
+          // 「建議接法」上（release 無警告）。卡最多 6 張，不需要懶載。
+          SingleChildScrollView(
             key: const ValueKey('analysis-record-reply-styles'),
-            height: 360,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 for (final type in replyTypes)
                   ReplyStyleCard(
