@@ -167,6 +167,21 @@ class NewTopicService {
         } catch (_) {
           decoded = null;
         }
+        // 舊 Edge 對帶 responseMode 的 new_topic 一律 400（claim 之前拒絕、
+        // 不扣費）：降級重打一次 legacy 請求（R2 主審 minor-5）。新 Edge 的
+        // 真 sanitize 400 會在 legacy 重試時得到同樣錯誤，只多一次呼叫。
+        if (response.statusCode == 400 &&
+            decoded is Map &&
+            decoded['code'] == 'NEW_TOPIC_REQUEST_INVALID') {
+          return await generateTopics(
+            requestId: requestId,
+            partnerSummary: partnerSummary,
+            effectiveStyleContext: effectiveStyleContext,
+            situation: situation,
+            expectedTier: expectedTier,
+            revenueCatAppUserId: revenueCatAppUserId,
+          );
+        }
         if (response.statusCode != 200) {
           _throwForErrorResponse(response.statusCode, decoded);
         }

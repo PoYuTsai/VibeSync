@@ -488,14 +488,23 @@ class OpenerService {
 
       if (response.statusCode != 200 || !contentType.contains('x-ndjson')) {
         // 非 200 或 legacy JSON（flag off／舊 Edge）：整包讀完走既有路徑。
+        // decode 防呆（R2 主審 minor-6）：壞 body 不得炸 FormatException。
         final bodyText = await response.stream
             .bytesToString()
             .timeout(_streamIdleTimeout);
-        final decoded = bodyText.isEmpty ? null : jsonDecode(bodyText);
+        dynamic decoded;
+        try {
+          decoded = bodyText.isEmpty ? null : jsonDecode(bodyText);
+        } catch (_) {
+          decoded = null;
+        }
         if (response.statusCode != 200) {
           _throwForErrorResponse(response.statusCode, decoded);
         }
-        return _parseSuccessData(decoded as Map<String, dynamic>);
+        if (decoded is! Map<String, dynamic>) {
+          throw Exception('開場產生格式異常，請重新生成一次。');
+        }
+        return _parseSuccessData(decoded);
       }
 
       await for (final rawLine in response.stream

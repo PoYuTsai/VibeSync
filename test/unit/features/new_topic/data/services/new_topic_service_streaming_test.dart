@@ -134,6 +134,57 @@ void main() {
     expect(result.topics, hasLength(5));
   });
 
+  test('new_topic.error 409 in-progress → NewTopicRequestInProgressException',
+      () async {
+    final client = _ndjsonClient([
+      {
+        'type': 'new_topic.error',
+        'status': 409,
+        'code': 'NEW_TOPIC_REQUEST_IN_PROGRESS',
+        'message': '這筆請求正在生成中，請稍候片刻再用同一筆請求重試。',
+        'retryAfterMs': 1500,
+      },
+    ]);
+
+    expect(
+      () => _service(client).generateTopicsStreaming(requestId: _requestId),
+      throwsA(isA<NewTopicRequestInProgressException>()
+          .having((e) => e.retryAfterMs, 'retryAfterMs', 1500)),
+    );
+  });
+
+  test('舊 Edge 400 NEW_TOPIC_REQUEST_INVALID → 自動降級 legacy 重打（不雙扣）',
+      () async {
+    final client = MockClient.streaming((request, bodyStream) async {
+      await bodyStream.drain<void>();
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(jsonEncode({
+          'error': 'NEW_TOPIC_REQUEST_INVALID',
+          'code': 'NEW_TOPIC_REQUEST_INVALID',
+          'message': '新話題暫不支援這種回應模式，請更新 App 後再試。本次不會扣額度。',
+        }))),
+        400,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final legacyCalls = <Map<String, dynamic>>[];
+    final service = NewTopicService(
+      streamClientFactory: () => client,
+      accessTokenProvider: () => 'fake-token',
+      invoker: (_, {required body}) async {
+        legacyCalls.add(body);
+        return NewTopicInvokeResponse(status: 200, data: _paidBody());
+      },
+    );
+
+    final result =
+        await service.generateTopicsStreaming(requestId: _requestId);
+    expect(result.topics, hasLength(5));
+    expect(legacyCalls, hasLength(1));
+    expect(legacyCalls.single.containsKey('responseMode'), isFalse,
+        reason: 'legacy 重打不得再帶 responseMode');
+  });
+
   test('串流結束沒收到終局事件 → retrySameRequest（同 requestId 重試不雙扣）', () async {
     final client = _ndjsonClient([
       {'type': 'new_topic.started', 'label': '開始'},

@@ -153,6 +153,23 @@ void main() {
     );
   });
 
+  test('200 但 body 不是合法 JSON object → 友善格式錯誤（不炸 FormatException）',
+      () async {
+    final client = MockClient.streaming((request, bodyStream) async {
+      await bodyStream.drain<void>();
+      return http.StreamedResponse(
+        Stream.value(utf8.encode('not-json')),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+
+    expect(
+      () => _service(client).generateOpenersStreaming(name: '小美'),
+      throwsA(predicate((e) => e.toString().contains('開場產生格式異常'))),
+    );
+  });
+
   test('串流結束沒收到終局事件 → 提示重試且說明不會雙扣', () async {
     final client = _ndjsonClient([
       {'type': 'opener.started', 'label': '開始'},

@@ -48,7 +48,7 @@ Deno.test("opener stream 分支本體不含扣費；扣費只在 completeOpenerR
     "stream 分支不得自帶扣費——必須經 completeOpenerRequest 共用管線",
   );
   assert(
-    streamBranch.includes("await completeOpenerRequest({"),
+    streamBranch.includes("await completeOpenerRequest("),
     "stream 分支必須走 completeOpenerRequest",
   );
   assert(
@@ -94,17 +94,51 @@ Deno.test("new_topic stream 分支本體不含 settle；錯誤路徑必 release 
     "stream 分支不得自帶 settle——必須經 completeNewTopicRequest 共用管線",
   );
   assert(
-    streamBranch.includes("await completeNewTopicRequest({"),
+    streamBranch.includes("await completeNewTopicRequest("),
     "stream 分支必須走 completeNewTopicRequest",
   );
   assert(
-    streamBranch.includes('rejectNewTopicDeadline("primary_or_fallback")'),
+    streamBranch.includes("rejectNewTopicDeadline(") &&
+      streamBranch.includes('"primary_or_fallback"'),
     "deadline 必須沿用 owner-bound release 的既有 helper",
   );
   assert(
     streamBranch.includes("releaseNewTopicCurrentClaim()"),
     "provider 失敗必須 release claim（與 legacy catch 同語義）",
   );
+});
+
+Deno.test("stream 分支：complete*Request 在 provider catch 之外（R2 round-2 修正）", async () => {
+  const source = await readIndexSource();
+  for (
+    const [startNeedle, endNeedle, completeCall] of [
+      [
+        "if (openerStreamRequested) {",
+        "let apiResult: FallbackResult;",
+        "await completeOpenerRequest(",
+      ],
+      [
+        "if (newTopicStreamRequested) {",
+        "let newTopicApiResult: FallbackResult;",
+        "await completeNewTopicRequest(",
+      ],
+    ]
+  ) {
+    const branch = sliceBetween(source, startNeedle, endNeedle);
+    const catchIdx = branch.indexOf("catch (streamError)");
+    const completeIdx = branch.indexOf(completeCall);
+    assert(catchIdx >= 0, "stream 分支必須有 provider catch");
+    assert(completeIdx >= 0, "stream 分支必須呼叫 complete*Request");
+    assert(
+      completeIdx > catchIdx,
+      "complete*Request 必須在 provider catch 之外（之後）——settle/扣費後的" +
+        "非預期例外不得被誤映成 provider 錯誤或誤 release claim",
+    );
+    assert(
+      branch.includes("remainingBudgetMs <= 0"),
+      "provider 呼叫前必須有 deadline 預算先擋（不得帶 1 秒地板硬跑）",
+    );
+  }
 });
 
 Deno.test("stream 分支不外流生成內容：done 之前只有 started/progress 事件", async () => {

@@ -5957,73 +5957,107 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
               detail: "正在等待模型完成，請保持連線。",
             });
           }, 15000);
+          // R2 主審 round-2 修正：try 只包 provider 呼叫與文字累積，
+          // completeNewTopicRequest 在 catch 外——settle 之後的非預期例外
+          // 走 ndjson fail（=連線中斷），絕不會被這裡的 catch 誤 release
+          // 已 settle 的 claim（與 legacy 全域 500 同語義）。
           try {
-            const claude = await callClaudeStreaming(
-              {
-                model: newTopicModel,
-                max_tokens: NEW_TOPIC_MAX_TOKENS,
-                system: NEW_TOPIC_PROMPT,
-                messages: [{ role: "user", content: newTopicUserPrompt }],
-              },
-              CLAUDE_API_KEY,
-              // 與 legacy 同一個 45s generation deadline 預算。
-              {
-                timeout: Math.max(
-                  1000,
-                  newTopicGenerationDeadlineAtMs - Date.now(),
-                ),
-              },
-            );
-            let fullText = "";
-            for await (const chunk of claude.textStream) {
-              fullText += chunk;
-              tracker.push(chunk);
-            }
-            emit({
-              type: "new_topic.progress",
-              phase: "finalizing",
-              label: "整理與驗證結果",
-            });
-            const response = await completeNewTopicRequest({
-              rawText: fullText,
-              model: claude.model,
-              inputTokens: claude.usage.inputTokens,
-              outputTokens: claude.usage.outputTokens,
-            });
-            await emitJsonResponseAsStreamOutcome(response, emit, "new_topic");
-          } catch (streamError) {
-            // 與 legacy catch 同語義：deadline → rejectNewTopicDeadline
-            // （owner-bound release）；其他 → release 後 503。settle 尚未
-            // 開始，release 是安全的；release 失敗回 retryable 不宣稱不扣。
-            let response: Response;
-            if (
-              (streamError instanceof AiStreamingServiceError &&
-                streamError.code === "TIMEOUT") ||
-              Date.now() >= newTopicGenerationDeadlineAtMs
-            ) {
-              response = await rejectNewTopicDeadline("primary_or_fallback");
+            // deadline 先擋：剩餘預算 ≤0 不得再起 provider 呼叫（與 legacy
+            // absoluteDeadlineAtMs 拒絕語義一致；不設 1 秒地板）。已知
+            // transport 差異（flag-on 營運風險）：callClaudeStreaming 走
+            // 自己的 pre-content fallback 鏈、無 maxRetries；settle 前仍有
+            // complete 內 pre_settlement deadline 複檢把關。
+            let modelOutput:
+              | Parameters<typeof completeNewTopicRequest>[0]
+              | null = null;
+            let failureResponse: Response | null = null;
+            const remainingBudgetMs = newTopicGenerationDeadlineAtMs -
+              Date.now();
+            if (remainingBudgetMs <= 0) {
+              failureResponse = await rejectNewTopicDeadline(
+                "primary_or_fallback",
+              );
             } else {
-              logWarn("new_topic_api_error", {
-                user: summarizeUser(user.id),
-                error: getErrorMessage(streamError),
-                code: streamError instanceof AiStreamingServiceError
-                  ? streamError.code
-                  : "UNKNOWN",
-                responseMode: "stream",
-              });
-              if (await releaseNewTopicCurrentClaim()) {
-                response = jsonResponse({
-                  error: "NEW_TOPIC_PROVIDER_UNAVAILABLE",
-                  code: "NEW_TOPIC_PROVIDER_UNAVAILABLE",
-                  message: "AI 暫時生成失敗，請稍後再試；本次不會扣額度。",
-                  retryable: true,
-                  shouldChargeQuota: false,
-                }, 503);
-              } else {
-                response = newTopicReleaseFailedResponse();
+              try {
+                const claude = await callClaudeStreaming(
+                  {
+                    model: newTopicModel,
+                    max_tokens: NEW_TOPIC_MAX_TOKENS,
+                    system: NEW_TOPIC_PROMPT,
+                    messages: [{ role: "user", content: newTopicUserPrompt }],
+                  },
+                  CLAUDE_API_KEY,
+                  { timeout: remainingBudgetMs },
+                );
+                let fullText = "";
+                for await (const chunk of claude.textStream) {
+                  fullText += chunk;
+                  tracker.push(chunk);
+                }
+                modelOutput = {
+                  rawText: fullText,
+                  model: claude.model,
+                  // SSE 不外露 stop_reason；complete 內它只進 telemetry log、
+                  // 無計費/驗證決策（R2 主審 round-2 已核）。
+                  inputTokens: claude.usage.inputTokens,
+                  outputTokens: claude.usage.outputTokens,
+                };
+              } catch (streamError) {
+                // 與 legacy catch 同語義：deadline → rejectNewTopicDeadline
+                // （owner-bound release）；其他 → release 後 503。此時
+                // complete 尚未跑、settle 必然未開始，release 是安全的；
+                // release 失敗回 retryable 不宣稱不扣。
+                if (
+                  (streamError instanceof AiStreamingServiceError &&
+                    streamError.code === "TIMEOUT") ||
+                  Date.now() >= newTopicGenerationDeadlineAtMs
+                ) {
+                  failureResponse = await rejectNewTopicDeadline(
+                    "primary_or_fallback",
+                  );
+                } else {
+                  logWarn("new_topic_api_error", {
+                    user: summarizeUser(user.id),
+                    error: getErrorMessage(streamError),
+                    code: streamError instanceof AiStreamingServiceError
+                      ? streamError.code
+                      : "UNKNOWN",
+                    responseMode: "stream",
+                  });
+                  if (await releaseNewTopicCurrentClaim()) {
+                    failureResponse = jsonResponse({
+                      error: "NEW_TOPIC_PROVIDER_UNAVAILABLE",
+                      code: "NEW_TOPIC_PROVIDER_UNAVAILABLE",
+                      message: "AI 暫時生成失敗，請稍後再試；本次不會扣額度。",
+                      retryable: true,
+                      shouldChargeQuota: false,
+                    }, 503);
+                  } else {
+                    failureResponse = newTopicReleaseFailedResponse();
+                  }
+                }
               }
             }
-            await emitJsonResponseAsStreamOutcome(response, emit, "new_topic");
+
+            if (failureResponse !== null) {
+              await emitJsonResponseAsStreamOutcome(
+                failureResponse,
+                emit,
+                "new_topic",
+              );
+            } else if (modelOutput !== null) {
+              emit({
+                type: "new_topic.progress",
+                phase: "finalizing",
+                label: "整理與驗證結果",
+              });
+              const response = await completeNewTopicRequest(modelOutput);
+              await emitJsonResponseAsStreamOutcome(
+                response,
+                emit,
+                "new_topic",
+              );
+            }
           } finally {
             clearInterval(heartbeat);
             close();
@@ -6793,65 +6827,94 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
               detail: "正在等待模型完成，請保持連線。",
             });
           }, 15000);
+          // R2 主審 round-2 修正：try 只包 provider 呼叫與文字累積，
+          // completeOpenerRequest 在 catch 外——complete 內部（含扣費後）
+          // 的非預期例外走 ndjson fail（=連線中斷），與 legacy 的全域 500
+          // 同語義，不會被誤映成 provider 錯誤。
           try {
-            const claude = await callClaudeStreaming(
-              {
-                model: openerModel,
-                max_tokens: OPENER_MAX_TOKENS,
-                system: OPENER_PROMPT,
-                messages: claudeMessages,
-              },
-              apiKey,
-              // 與 legacy 同一個絕對 deadline 預算（callClaudeStreaming 只有
-              // timeout，換算剩餘毫秒）；超時映射到既有 deadline 語義。
-              {
-                timeout: Math.max(1000, openerDeadlineAtMs - Date.now()),
-              },
-            );
-            let fullText = "";
-            for await (const chunk of claude.textStream) {
-              fullText += chunk;
-              tracker.push(chunk);
-            }
-            emit({
-              type: "opener.progress",
-              phase: "finalizing",
-              label: "整理與驗證結果",
-            });
-            const response = await completeOpenerRequest({
-              rawText: fullText,
-              model: claude.model,
-              fallbackUsed: claude.model !== openerModel,
-              inputTokens: claude.usage.inputTokens,
-              outputTokens: claude.usage.outputTokens,
-            });
-            await emitJsonResponseAsStreamOutcome(response, emit, "opener");
-          } catch (streamError) {
-            // 與 legacy catch 同語義：deadline → 504 body；其他 → 500。
-            // 此時尚未扣費（扣費在 completeOpenerRequest 尾端）。
-            let response: Response;
-            if (
-              (streamError instanceof AiStreamingServiceError &&
-                streamError.code === "TIMEOUT") ||
-              openerDeadlineReached()
-            ) {
-              response = rejectOpenerDeadline("primary_or_fallback");
+            // deadline 先擋：剩餘預算 ≤0 不得再起 provider 呼叫（與 legacy
+            // absoluteDeadlineAtMs 拒絕語義一致；不設 1 秒地板）。
+            // 已知 transport 差異（記錄為 flag-on 營運風險）：
+            // callClaudeStreaming 走自己的 pre-content 模型 fallback 鏈，
+            // 無 maxRetries、無絕對 deadline 參數；扣費前仍有 complete 內
+            // 的 pre_charge deadline 複檢把關。
+            let modelOutput:
+              | Parameters<typeof completeOpenerRequest>[0]
+              | null = null;
+            let failureResponse: Response | null = null;
+            const remainingBudgetMs = openerDeadlineAtMs - Date.now();
+            if (remainingBudgetMs <= 0) {
+              failureResponse = rejectOpenerDeadline("primary_or_fallback");
             } else {
-              logWarn("opener_api_error", {
-                error: getErrorMessage(streamError),
-                code: streamError instanceof AiStreamingServiceError
-                  ? streamError.code
-                  : "UNKNOWN",
-                model: openerModel,
-                imageCount,
-                responseMode: "stream",
-              });
-              response = jsonResponse({
-                error: `AI 生成失敗：${getErrorMessage(streamError)}`,
-                shouldChargeQuota: false,
-              }, 500);
+              try {
+                const claude = await callClaudeStreaming(
+                  {
+                    model: openerModel,
+                    max_tokens: OPENER_MAX_TOKENS,
+                    system: OPENER_PROMPT,
+                    messages: claudeMessages,
+                  },
+                  apiKey,
+                  { timeout: remainingBudgetMs },
+                );
+                let fullText = "";
+                for await (const chunk of claude.textStream) {
+                  fullText += chunk;
+                  tracker.push(chunk);
+                }
+                modelOutput = {
+                  rawText: fullText,
+                  model: claude.model,
+                  // SSE 串流不外露 stop_reason；complete 內它只進 telemetry
+                  // log、無任何計費/驗證決策（R2 主審 round-2 已核）。
+                  fallbackUsed: claude.model !== openerModel,
+                  inputTokens: claude.usage.inputTokens,
+                  outputTokens: claude.usage.outputTokens,
+                };
+              } catch (streamError) {
+                // 與 legacy catch 同語義：deadline → 504 body；其他 → 500。
+                // 此時必然尚未扣費（complete 還沒跑）。
+                if (
+                  (streamError instanceof AiStreamingServiceError &&
+                    streamError.code === "TIMEOUT") ||
+                  openerDeadlineReached()
+                ) {
+                  failureResponse = rejectOpenerDeadline(
+                    "primary_or_fallback",
+                  );
+                } else {
+                  logWarn("opener_api_error", {
+                    error: getErrorMessage(streamError),
+                    code: streamError instanceof AiStreamingServiceError
+                      ? streamError.code
+                      : "UNKNOWN",
+                    model: openerModel,
+                    imageCount,
+                    responseMode: "stream",
+                  });
+                  failureResponse = jsonResponse({
+                    error: `AI 生成失敗：${getErrorMessage(streamError)}`,
+                    shouldChargeQuota: false,
+                  }, 500);
+                }
+              }
             }
-            await emitJsonResponseAsStreamOutcome(response, emit, "opener");
+
+            if (failureResponse !== null) {
+              await emitJsonResponseAsStreamOutcome(
+                failureResponse,
+                emit,
+                "opener",
+              );
+            } else if (modelOutput !== null) {
+              emit({
+                type: "opener.progress",
+                phase: "finalizing",
+                label: "整理與驗證結果",
+              });
+              const response = await completeOpenerRequest(modelOutput);
+              await emitJsonResponseAsStreamOutcome(response, emit, "opener");
+            }
           } finally {
             clearInterval(heartbeat);
             close();
