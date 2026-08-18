@@ -1,11 +1,11 @@
 {
-    "name": "VibeSync - 聊天分析助手",
+    "name": "VibeSync - AI 戀愛教練",
     "short_name": "VibeSync",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#1a1a2e",
     "theme_color": "#6B4EE6",
-    "description": "提升你的社交對話技巧，AI 幫你分析熱度、心理解讀、建議回覆",
+    "description": "你的 AI 戀愛教練：截圖分析熱度、教你開場與回覆，帶你從曖昧走到約出來",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "scope": "/",
