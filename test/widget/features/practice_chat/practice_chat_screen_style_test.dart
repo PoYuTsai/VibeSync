@@ -532,6 +532,60 @@ void main() {
     expect(find.text('還沒有練習紀錄'), findsOneWidget);
   });
 
+  testWidgets('history sheet 批次刪除：選取→全選→確認後全刪、離開選取模式',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    for (final id in ['s1', 's2', 's3']) {
+      await repo.save(PracticeSession(
+        id: id,
+        createdAt: DateTime(2026, 6, 24, 15, 58),
+        aiReplyCount: 1,
+        messages: [PracticeMessage(role: 'user', text: '第 $id 場')],
+        debriefSummary: '已拆解',
+      ));
+    }
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.history));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('practice-session-select')));
+    await tester.pump();
+    expect(find.text('已選 0 場'), findsOneWidget);
+    // 選取模式下每列的單刪垃圾桶要收起來。
+    expect(find.byKey(const ValueKey('delete-practice-s1')), findsNothing);
+
+    await tester
+        .tap(find.byKey(const ValueKey('practice-session-select-all')));
+    await tester.pump();
+    expect(find.text('已選 3 場'), findsOneWidget);
+
+    await tester
+        .tap(find.byKey(const ValueKey('practice-session-batch-delete')));
+    await tester.pumpAndSettle();
+    expect(find.text('刪除 3 場練習？'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('practice-session-batch-delete-confirm')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(repo.getById('s1'), isNull);
+    expect(repo.getById('s2'), isNull);
+    expect(repo.getById('s3'), isNull);
+    expect(find.text('已刪除 3 場練習'), findsOneWidget);
+    expect(find.text('還沒有練習紀錄'), findsOneWidget);
+  });
+
   for (final mode in <(String, String)>[
     ('beginner', 'practice_girl_005'),
     ('game', 'practice_girl_004'),

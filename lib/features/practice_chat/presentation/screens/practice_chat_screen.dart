@@ -27,7 +27,9 @@ import '../widgets/practice_profile_sheet.dart';
 import '../widgets/practice_temperature_style.dart';
 import '../widgets/practice_wait_progress.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../core/services/app_haptics.dart';
+import '../../../../core/theme/app_icons.dart';
 
 /// AI 實戰練習室主畫面：點入直接進聊天（不選目標）。
 /// 使用者先發訊息，AI 扮演模擬對象回覆；最多 20 則 AI 回覆；
@@ -2664,6 +2666,15 @@ class _RecentSessionsSheet extends StatefulWidget {
 class _RecentSessionsSheetState extends State<_RecentSessionsSheet> {
   late List<PracticeSession> _sessions;
 
+  /// 批次刪除多選模式（沿用分析紀錄 sheet 的同一套互動）。
+  bool _selecting = false;
+  final Set<String> _selectedIds = <String>{};
+  bool _isDeleting = false;
+
+  bool get _allSelected =>
+      _sessions.isNotEmpty &&
+      _sessions.every((s) => _selectedIds.contains(s.id));
+
   @override
   void initState() {
     super.initState();
@@ -2678,6 +2689,92 @@ class _RecentSessionsSheetState extends State<_RecentSessionsSheet> {
     });
   }
 
+  void _enterSelection([String? firstId]) {
+    if (_sessions.isEmpty || _isDeleting) return;
+    AppHaptics.light();
+    setState(() {
+      _selecting = true;
+      if (firstId != null) _selectedIds.add(firstId);
+    });
+  }
+
+  void _exitSelection() {
+    setState(() {
+      _selecting = false;
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleSelected(PracticeSession session) {
+    if (_isDeleting) return;
+    AppHaptics.tap();
+    setState(() {
+      if (!_selectedIds.add(session.id)) _selectedIds.remove(session.id);
+    });
+  }
+
+  void _toggleSelectAll() {
+    if (_isDeleting) return;
+    AppHaptics.tap();
+    setState(() {
+      if (_allSelected) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds.addAll(_sessions.map((s) => s.id));
+      }
+    });
+  }
+
+  /// 逐場走呼叫端 onDelete（沿用單場刪的安全語義）；中途失敗停在原地，
+  /// 已刪的不回滾（既成事實，跟分析紀錄批次刪同規則）。
+  Future<void> _deleteSelected() async {
+    if (_selectedIds.isEmpty || _isDeleting) return;
+    final targets =
+        _sessions.where((s) => _selectedIds.contains(s.id)).toList();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _BatchDeleteSessionsConfirmDialog(count: targets.length),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isDeleting = true);
+    var deleted = 0;
+    var failed = false;
+    for (final session in targets) {
+      try {
+        await widget.onDelete(session);
+      } catch (_) {
+        failed = true;
+        break;
+      }
+      deleted += 1;
+      if (!mounted) return;
+      setState(() {
+        _sessions.removeWhere((s) => s.id == session.id);
+        _selectedIds.remove(session.id);
+      });
+    }
+    if (!mounted) return;
+    setState(() {
+      _isDeleting = false;
+      if (!failed) {
+        _selecting = false;
+        _selectedIds.clear();
+      }
+    });
+    if (failed) {
+      AppHaptics.failure();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('刪除中斷：已刪 $deleted 場，其餘保留，請再試一次')),
+      );
+    } else {
+      AppHaptics.medium();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已刪除 $deleted 場練習')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -2686,12 +2783,35 @@ class _RecentSessionsSheetState extends State<_RecentSessionsSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '最近練習',
-            style: AppTypography.titleMedium.copyWith(
-              color: AppColors.onBackgroundPrimary,
-              fontWeight: FontWeight.w800,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _selecting ? '已選 ${_selectedIds.length} 場' : '最近練習',
+                  style: AppTypography.titleMedium.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (_selecting) ...[
+                _SheetLinkButton(
+                  key: const ValueKey('practice-session-select-all'),
+                  label: _allSelected ? '取消全選' : '全選',
+                  onTap: _isDeleting ? null : _toggleSelectAll,
+                ),
+                _SheetLinkButton(
+                  key: const ValueKey('practice-session-select-cancel'),
+                  label: '取消',
+                  onTap: _isDeleting ? null : _exitSelection,
+                ),
+              ] else if (_sessions.isNotEmpty)
+                _SheetLinkButton(
+                  key: const ValueKey('practice-session-select'),
+                  label: '選取',
+                  onTap: _enterSelection,
+                ),
+            ],
           ),
           const SizedBox(height: 4),
           Text(
@@ -2719,10 +2839,143 @@ class _RecentSessionsSheetState extends State<_RecentSessionsSheet> {
                 session: s,
                 onResume: widget.onResume,
                 onDelete: _delete,
+                selecting: _selecting,
+                selected: _selectedIds.contains(s.id),
+                onToggleSelect: () => _toggleSelected(s),
+                onLongPress: !_selecting && !_isDeleting
+                    ? () => _enterSelection(s.id)
+                    : null,
               ),
             ),
+          if (_selecting) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                key: const ValueKey('practice-session-batch-delete'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  foregroundColor: Theme.of(context).colorScheme.onError,
+                  disabledBackgroundColor: Colors.white.withValues(alpha: 0.06),
+                  disabledForegroundColor: Colors.white.withValues(alpha: 0.35),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                onPressed: _selectedIds.isEmpty || _isDeleting
+                    ? null
+                    : AppHaptics.onPress(() => _deleteSelected()),
+                child: _isDeleting
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            '刪除中…',
+                            style: AppTypography.bodyLarge.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        '刪除（${_selectedIds.length}）',
+                        style: AppTypography.bodyLarge.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+              ),
+            ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+/// sheet 標題列右側的小文字鈕（選取／全選／取消），比照分析紀錄 sheet。
+class _SheetLinkButton extends StatelessWidget {
+  const _SheetLinkButton({super.key, required this.label, this.onTap});
+
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        foregroundColor: AppColors.ctaStart,
+      ),
+      child: Text(
+        label,
+        style: AppTypography.bodyMedium.copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+/// 批次刪除確認框：講清楚幾場、不可復原（比照單場刪的語氣）。
+class _BatchDeleteSessionsConfirmDialog extends StatelessWidget {
+  const _BatchDeleteSessionsConfirmDialog({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandAlertDialog(
+      title: Text('刪除 $count 場練習？'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('只會刪除這支手機上的練習紀錄，不會退回已扣額度。'),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(TablerIcons.alert_triangle,
+                  size: 15, color: Theme.of(context).colorScheme.error),
+              const SizedBox(width: 5),
+              Text(
+                '此操作不可復原',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('取消'),
+        ),
+        ElevatedButton(
+          key: const ValueKey('practice-session-batch-delete-confirm'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
+          onPressed: AppHaptics.onPress(() => Navigator.of(context).pop(true)),
+          child: const Text('確認刪除'),
+        ),
+      ],
     );
   }
 }
@@ -2732,11 +2985,19 @@ class _SessionRow extends StatelessWidget {
     required this.session,
     required this.onResume,
     required this.onDelete,
+    this.selecting = false,
+    this.selected = false,
+    this.onToggleSelect,
+    this.onLongPress,
   });
 
   final PracticeSession session;
   final ValueChanged<PracticeSession> onResume;
   final Future<void> Function(PracticeSession session) onDelete;
+  final bool selecting;
+  final bool selected;
+  final VoidCallback? onToggleSelect;
+  final VoidCallback? onLongPress;
 
   String get _preview {
     final firstUser = session.messages
@@ -2770,29 +3031,24 @@ class _SessionRow extends StatelessWidget {
   Future<void> _confirmDelete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.glassWhite,
-        title: Text(
-          '刪除這場練習？',
-          style: AppTypography.titleMedium.copyWith(
-            color: AppColors.onBackgroundPrimary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        content: Text(
-          '只會刪除這支手機上的練習紀錄，不會退回已扣額度。',
-          style: AppTypography.bodyMedium.copyWith(
-            color: AppColors.onBackgroundSecondary,
-            height: 1.45,
-          ),
-        ),
+      // BrandAlertDialog 自帶白玻璃底＋深色玻璃字；之前手刻 AlertDialog 用了
+      // 深色主題的近白文字，白底白字整塊反白刺眼（2026-08-18 dogfood）。
+      builder: (dialogContext) => BrandAlertDialog(
+        title: const Text('刪除這場練習？'),
+        content: const Text('只會刪除這支手機上的練習紀錄，不會退回已扣額度。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('取消'),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+              foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+            ),
+            onPressed: AppHaptics.onPress(
+              () => Navigator.of(dialogContext).pop(true),
+            ),
             child: const Text('刪除'),
           ),
         ],
@@ -2810,20 +3066,37 @@ class _SessionRow extends StatelessWidget {
       child: BrandSurfaceCard(
         elevated: false,
         padding: const EdgeInsets.all(16),
-        onTap: () {
-          Navigator.of(context).pop();
-          if (_canResume) {
-            onResume(session);
-            return;
-          }
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => _SessionReviewScreen(session: session),
-            ),
-          );
-        },
+        borderColor:
+            selected ? AppColors.ctaStart.withValues(alpha: 0.64) : null,
+        onLongPress: onLongPress,
+        onTap: selecting
+            ? onToggleSelect
+            : () {
+                Navigator.of(context).pop();
+                if (_canResume) {
+                  onResume(session);
+                  return;
+                }
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => _SessionReviewScreen(session: session),
+                  ),
+                );
+              },
         child: Row(
           children: [
+            if (selecting) ...[
+              Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked,
+                size: 22,
+                color: selected
+                    ? AppColors.ctaStart
+                    : Colors.white.withValues(alpha: 0.40),
+              ),
+              const SizedBox(width: 10),
+            ],
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2860,19 +3133,21 @@ class _SessionRow extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 4),
-            IconButton(
-              key: ValueKey('delete-practice-${session.id}'),
-              tooltip: '刪除練習',
-              icon: const Icon(Icons.delete_outline, size: 18),
-              color: AppColors.onBackgroundSecondary,
-              onPressed: () => _confirmDelete(context),
-            ),
-            const Icon(
-              Icons.chevron_right,
-              color: AppColors.onBackgroundSecondary,
-              size: 20,
-            ),
+            if (!selecting) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                key: ValueKey('delete-practice-${session.id}'),
+                tooltip: '刪除練習',
+                icon: const Icon(Icons.delete_outline, size: 18),
+                color: AppColors.onBackgroundSecondary,
+                onPressed: () => _confirmDelete(context),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                color: AppColors.onBackgroundSecondary,
+                size: 20,
+              ),
+            ],
           ],
         ),
       ),

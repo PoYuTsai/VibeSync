@@ -191,6 +191,7 @@ class BrandSurfaceCard extends StatelessWidget {
     this.elevated = true,
     this.borderRadius = 24,
     this.onTap,
+    this.onLongPress,
     this.tone = BrandVisualTone.warm,
     this.borderColor,
   });
@@ -200,6 +201,7 @@ class BrandSurfaceCard extends StatelessWidget {
   final bool elevated;
   final double borderRadius;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final BrandVisualTone tone;
   final Color? borderColor;
 
@@ -247,13 +249,14 @@ class BrandSurfaceCard extends StatelessWidget {
       child: child,
     );
 
-    if (onTap == null) return card;
+    if (onTap == null && onLongPress == null) return card;
     return Material(
       color: Colors.transparent,
       borderRadius: radius,
       child: InkWell(
         borderRadius: radius,
         onTap: onTap,
+        onLongPress: onLongPress,
         child: card,
       ),
     );
