@@ -6,7 +6,9 @@
 // widgets, Supabase, or SharedPreferences.
 //
 // Matrix (matchedLocation x isLoggedIn x isOnboardingCompleted x recovery):
-//   - Unauthenticated -> only /login is reachable (auth gate, unchanged).
+//   - Unauthenticated + onboarding incomplete -> forced to /onboarding
+//     (2026-08-18: onboarding moved before login).
+//   - Unauthenticated + onboarding complete -> only /login is reachable.
 //   - Authenticated + onboarding incomplete -> forced to /onboarding.
 //   - Authenticated + onboarding complete   -> never sees /login or /onboarding.
 //   - Password recovery keeps the user on /login to set a new password.
@@ -27,26 +29,61 @@ String? redirect({
     );
 
 void main() {
-  group('resolveAppRedirect — unauthenticated auth gate (unchanged)', () {
-    test('not logged in on /login stays on /login', () {
+  group('resolveAppRedirect — unauthenticated gate（onboarding 先於登入）', () {
+    test('not logged in + onboarding incomplete on /login goes to /onboarding',
+        () {
       expect(
         redirect(
           isLoggedIn: false,
           isOnboardingCompleted: false,
           matchedLocation: '/login',
         ),
+        '/onboarding',
+      );
+    });
+
+    test('not logged in + onboarding incomplete on /onboarding stays', () {
+      expect(
+        redirect(
+          isLoggedIn: false,
+          isOnboardingCompleted: false,
+          matchedLocation: '/onboarding',
+        ),
         isNull,
       );
     });
 
-    test('not logged in on / is sent to /login', () {
+    test('not logged in + onboarding complete on /login stays on /login', () {
+      expect(
+        redirect(
+          isLoggedIn: false,
+          isOnboardingCompleted: true,
+          matchedLocation: '/login',
+        ),
+        isNull,
+      );
+    });
+
+    test('not logged in + onboarding complete on /onboarding goes to /login',
+        () {
+      expect(
+        redirect(
+          isLoggedIn: false,
+          isOnboardingCompleted: true,
+          matchedLocation: '/onboarding',
+        ),
+        '/login',
+      );
+    });
+
+    test('not logged in + onboarding incomplete on / goes to /onboarding', () {
       expect(
         redirect(
           isLoggedIn: false,
           isOnboardingCompleted: false,
           matchedLocation: '/',
         ),
-        '/login',
+        '/onboarding',
       );
     });
 

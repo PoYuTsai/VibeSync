@@ -58,6 +58,33 @@ class OnboardingService {
     await prefs.setBool(_key, true);
   }
 
+  static const _pendingGoalsKey = 'onboarding_pending_goals';
+  static const _pendingRouteKey = 'onboarding_pending_route';
+
+  /// 登入前完成 onboarding 時暫存問卷目標與分流目的地
+  /// （2026-08-18：onboarding 移到登入前），登入後由 MainShell 的
+  /// OnboardingHandoffApplier 取走套用。
+  static Future<void> stashPendingHandoff({
+    required List<String> goalNames,
+    required String route,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_pendingGoalsKey, goalNames);
+    await prefs.setString(_pendingRouteKey, route);
+  }
+
+  /// 取走暫存（讀完即清）。沒有暫存回 null。
+  static Future<({List<String> goalNames, String route})?>
+      takePendingHandoff() async {
+    final prefs = await SharedPreferences.getInstance();
+    final route = prefs.getString(_pendingRouteKey);
+    if (route == null) return null;
+    final goals = prefs.getStringList(_pendingGoalsKey) ?? const [];
+    await prefs.remove(_pendingRouteKey);
+    await prefs.remove(_pendingGoalsKey);
+    return (goalNames: goals, route: route);
+  }
+
   static Future<void> reset() async {
     _completedCache = false;
     _completedThisSession = false;

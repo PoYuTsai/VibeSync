@@ -46,8 +46,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   // 對應區塊），只留練習目標。
   List<PracticeGoal> _questionnaireGoals = const [];
 
-  /// 問卷插在賣點頁（含定位頁，index 0-3）之後、隱私頁之前。
-  static const _questionnairePageIndex = 4;
+  /// 問卷插在賣點頁（含練習室/學習/定位頁，index 0-5）之後、隱私頁之前。
+  static const _questionnairePageIndex = 6;
 
   final _pages = [
     {
@@ -67,7 +67,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       'description': '延展、共鳴、調情、幽默、冷讀\n每句都幫你控制字數，不會顯得太黏或太急',
       'imagePath': 'reply',
     },
-    // 定位頁（2026-08-18 定位拍板，docs/positioning.md）：三頁功能演示後
+    // 練習室＋學習專區（2026-08-18 Eric 指示）：讓「還沒有對象」的用戶
+    // 在分流頁之前就知道有地方可以練——接分流「還沒，先去練習」那條路。
+    {
+      'title': '還沒有對象？先練',
+      'description': '百位風格各異的女孩陪你實戰演練\n練完拿一張教練拆解卡，上場不再手抖',
+      'imagePath': 'practice',
+    },
+    {
+      'title': '越用越會聊',
+      'description': '幽默、EQ、拿回對話重心的社交心法\n文章＋互動測驗，學完直接帶進實戰',
+      'imagePath': 'learning',
+    },
+    // 定位頁（2026-08-18 定位拍板，docs/positioning.md）：功能演示後
     // 把自我介紹從「回這句」抬到品類差異化——教練帶完整段；
     // 記憶不寫「有記憶」，寫成利益句「認得你聊的每一個她」。
     {
@@ -150,6 +162,21 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         },
       ),
     );
+    // onboarding 移到登入前（2026-08-18）：未登入時 profile 沒有 scope 可種、
+    // 目的地也推不進去（會被 auth gate 攔），改暫存 prefs，登入後由
+    // MainShell 的 OnboardingHandoffApplier 取走套用。
+    final uid = await ref.read(authUserProfileScopeProvider.future);
+    if (uid == null) {
+      await OnboardingService.stashPendingHandoff(
+        goalNames: _questionnaireGoals
+            .map((goal) => goal.name)
+            .toList(growable: false),
+        route: route,
+      );
+      await OnboardingService.markCompleted();
+      if (mounted) context.go('/'); // redirect 會落到 /login
+      return;
+    }
     await _seedProfileFromOnboardingAnswers();
     await OnboardingService.markCompleted();
     if (mounted) {

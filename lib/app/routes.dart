@@ -53,8 +53,13 @@ String? resolveAppRedirect({
   final isLoginRoute = matchedLocation == '/login';
   final isOnboardingRoute = matchedLocation == '/onboarding';
 
-  // Unauthenticated: only /login is reachable. (Auth gate — unchanged.)
+  // Unauthenticated: onboarding comes BEFORE login（2026-08-18 拍板：價值主張
+  // 放在要帳號之前）。未完成 onboarding 先看 onboarding；完成後只剩 /login。
+  // 問卷目標與分流目的地由 OnboardingService 暫存、登入後 MainShell 套用。
   if (!isLoggedIn) {
+    if (!isOnboardingCompleted) {
+      return isOnboardingRoute ? null : '/onboarding';
+    }
     return isLoginRoute ? null : '/login';
   }
 

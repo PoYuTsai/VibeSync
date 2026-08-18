@@ -11,7 +11,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibesync/features/onboarding/data/onboarding_service.dart';
 import 'package:vibesync/features/onboarding/presentation/screens/onboarding_screen.dart';
+import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
 
 GoRouter _stubRouter() => GoRouter(
       initialLocation: '/onboarding',
@@ -42,8 +44,18 @@ GoRouter _stubRouter() => GoRouter(
       ],
     );
 
-Future<void> _pumpOnboarding(WidgetTester tester) async {
+/// 預設模擬已登入（覆寫 auth scope）：分流按鈕走「直接種＋push」的原路。
+/// 未登入的暫存交接路徑另有專測。
+Future<void> _pumpOnboarding(
+  WidgetTester tester, {
+  bool loggedIn = true,
+}) async {
   await tester.pumpWidget(ProviderScope(
+    overrides: [
+      if (loggedIn)
+        authUserProfileScopeProvider
+            .overrideWith((ref) => Stream.value('test-uid')),
+    ],
     child: MaterialApp.router(routerConfig: _stubRouter()),
   ));
   await tester.pumpAndSettle();
@@ -56,9 +68,9 @@ Future<void> _swipeToNextPage(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// 從第 1 頁滑 5 次抵達第 6 頁（分流頁；批 2 插入問卷頁後 +1）。
+/// 從第 1 頁滑 8 次抵達第 9 頁分流頁（6 賣點/定位頁＋問卷＋隱私之後）。
 Future<void> _swipeToBranchingPage(WidgetTester tester) async {
-  for (var i = 0; i < 6; i++) {
+  for (var i = 0; i < 8; i++) {
     await _swipeToNextPage(tester);
   }
 }
@@ -81,7 +93,7 @@ void main() {
       expect(find.textContaining('熱度分析'), findsNothing);
     });
 
-    testWidgets('分流頁顯示標題＋兩顆按鈕，底部「下一步」隱藏、指示點 7 顆', (tester) async {
+    testWidgets('分流頁顯示標題＋兩顆按鈕，底部「下一步」隱藏、指示點 9 顆', (tester) async {
       await _pumpOnboarding(tester);
       await _swipeToBranchingPage(tester);
 
@@ -90,12 +102,12 @@ void main() {
       expect(find.text('還沒，先去練習'), findsOneWidget);
       expect(find.text('下一步'), findsNothing);
       expect(find.text('開始使用'), findsNothing);
-      // 指示點 7 顆（4 賣點頁 + 問卷 + 隱私 + 分流）。
+      // 指示點 9 顆（6 賣點/定位頁 + 問卷 + 隱私 + 分流）。
       expect(
         find.byWidgetPredicate(
           (w) => w is AnimatedContainer && w.margin != null,
         ),
-        findsNWidgets(7),
+        findsNWidgets(9),
       );
     });
 
@@ -160,9 +172,9 @@ void main() {
       }
     });
 
-    testWidgets('第 6 頁按「下一步」進入分流頁（不再直接完成 onboarding）', (tester) async {
+    testWidgets('第 8 頁按「下一步」進入分流頁（不再直接完成 onboarding）', (tester) async {
       await _pumpOnboarding(tester);
-      for (var i = 0; i < 5; i++) {
+      for (var i = 0; i < 7; i++) {
         await _swipeToNextPage(tester);
       }
 
@@ -193,6 +205,32 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('main-shell'), findsOneWidget);
+    });
+  });
+
+  group('未登入完成 onboarding（onboarding 先於登入，2026-08-18）', () {
+    testWidgets('分流答「有」→ 暫存目的地與目標、markCompleted、不直接 push',
+        (tester) async {
+      await _pumpOnboarding(tester, loggedIn: false);
+      await _swipeToBranchingPage(tester);
+
+      // 先在問卷頁選目標會被暫存——這裡直接按分流即可驗 route 暫存。
+      await tester.tap(find.text('有，幫我分析對話'));
+      await tester.pumpAndSettle();
+
+      // 未登入：只回到 '/'（真實 app 會被 auth gate 轉去 /login），
+      // 不 push 目的地。
+      expect(find.text('main-shell'), findsOneWidget);
+      expect(find.text('partner-new-screen'), findsNothing);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('onboarding_completed'), isTrue);
+      expect(prefs.getString('onboarding_pending_route'), '/partner/new');
+
+      // 暫存取走即清（登入後 MainShell applier 消費的契約）。
+      final pending = await OnboardingService.takePendingHandoff();
+      expect(pending?.route, '/partner/new');
+      expect(await OnboardingService.takePendingHandoff(), isNull);
     });
   });
 }

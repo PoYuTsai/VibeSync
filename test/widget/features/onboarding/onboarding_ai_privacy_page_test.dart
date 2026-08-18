@@ -35,9 +35,11 @@ void main() {
 
       await _swipeToNextPage(tester); // → 2
       await _swipeToNextPage(tester); // → 3
-      await _swipeToNextPage(tester); // → 4（定位頁）
-      await _swipeToNextPage(tester); // → 5（問卷頁，批 2）
-      await _swipeToNextPage(tester); // → 6（揭露頁）
+      await _swipeToNextPage(tester); // → 4（練習室頁）
+      await _swipeToNextPage(tester); // → 5（學習頁）
+      await _swipeToNextPage(tester); // → 6（定位頁）
+      await _swipeToNextPage(tester); // → 7（問卷頁，批 2）
+      await _swipeToNextPage(tester); // → 8（揭露頁）
 
       expect(find.text('AI 與你的隱私'), findsOneWidget);
       // 保留第一句（送第三方 AI）與第三句（同意閘）。
@@ -59,17 +61,23 @@ void main() {
       expect(find.text('下一步'), findsOneWidget);
       expect(find.text('開始使用'), findsNothing);
 
-      await _swipeToNextPage(tester); // → 4（定位頁）
+      await _swipeToNextPage(tester); // → 4（練習室頁）
       expect(find.text('下一步'), findsOneWidget);
 
-      await _swipeToNextPage(tester); // → 5（問卷頁，批 2）
+      await _swipeToNextPage(tester); // → 5（學習頁）
       expect(find.text('下一步'), findsOneWidget);
 
-      await _swipeToNextPage(tester); // → 6（揭露頁）
+      await _swipeToNextPage(tester); // → 6（定位頁）
+      expect(find.text('下一步'), findsOneWidget);
+
+      await _swipeToNextPage(tester); // → 7（問卷頁，批 2）
+      expect(find.text('下一步'), findsOneWidget);
+
+      await _swipeToNextPage(tester); // → 8（揭露頁）
       expect(find.text('下一步'), findsOneWidget);
       expect(find.text('開始使用'), findsNothing);
 
-      await _swipeToNextPage(tester); // → 7（分流頁）
+      await _swipeToNextPage(tester); // → 9（分流頁）
       expect(find.text('你現在有正在聊的對象嗎？'), findsOneWidget);
       expect(find.text('下一步'), findsNothing);
     });

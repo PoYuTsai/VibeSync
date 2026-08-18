@@ -66,11 +66,21 @@ Future<void> _pump(
 }
 
 void main() {
-  testWidgets('unauthenticated deep link lands on login', (t) async {
+  testWidgets('unauthenticated first-run deep link lands on onboarding',
+      (t) async {
     await _pump(t,
         initialLocation: '/partner/abc',
         isLoggedIn: false,
         isOnboardingCompleted: false);
+    expect(find.text('onboarding-screen'), findsOneWidget);
+  });
+
+  testWidgets('unauthenticated + onboarding done deep link lands on login',
+      (t) async {
+    await _pump(t,
+        initialLocation: '/partner/abc',
+        isLoggedIn: false,
+        isOnboardingCompleted: true);
     expect(find.text('login-screen'), findsOneWidget);
   });
 

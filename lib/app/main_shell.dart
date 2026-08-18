@@ -11,6 +11,7 @@ import '../core/theme/app_motion.dart';
 import '../core/theme/app_typography.dart';
 import '../shared/widgets/brand/brand_kit.dart';
 import '../shared/widgets/pressable_scale.dart';
+import '../features/onboarding/presentation/widgets/onboarding_handoff_applier.dart';
 import '../features/partner/presentation/providers/partner_providers.dart';
 import '../features/partner/presentation/screens/partner_list_screen.dart';
 import '../features/partner/presentation/widgets/home_coach_presence.dart';
@@ -181,41 +182,48 @@ class _MainShellState extends State<MainShell>
             ),
           ],
         ),
-        body: AnimatedBuilder(
-          animation: _tabTransition,
-          builder: (context, child) {
-            final animating =
-                _tabTransition.isAnimating || _pendingIndex != null;
-            return Opacity(
-              opacity: animating ? _tabOpacity : 1.0,
-              child: Transform.scale(
-                scale: animating ? _tabScale : 1.0,
-                child: child,
+        body: Stack(
+          children: [
+            // 登入前完成 onboarding 的暫存交接（種問卷目標＋推分流目的地）；
+            // 平常沒有暫存＝no-op。
+            const OnboardingHandoffApplier(),
+            AnimatedBuilder(
+              animation: _tabTransition,
+              builder: (context, child) {
+                final animating =
+                    _tabTransition.isAnimating || _pendingIndex != null;
+                return Opacity(
+                  opacity: animating ? _tabOpacity : 1.0,
+                  child: Transform.scale(
+                    scale: animating ? _tabScale : 1.0,
+                    child: child,
+                  ),
+                );
+              },
+              // IndexedStack 不會替隱藏 child 關 ticker，各 child 包 TickerMode
+              // 讓背景 tab 的環境動畫真正停下（品牌元件內已有對應閘門）。
+              child: IndexedStack(
+                index: _currentIndex,
+                children: [
+                  TickerMode(
+                    enabled: _currentIndex == 0,
+                    child: PartnerListScreen(
+                      bottomPadding: 32,
+                      coachPose: _coachPose,
+                    ),
+                  ),
+                  TickerMode(
+                    enabled: _currentIndex == 1,
+                    child: const MyReportScreen(),
+                  ),
+                  TickerMode(
+                    enabled: _currentIndex == 2,
+                    child: const LearningScreen(),
+                  ),
+                ],
               ),
-            );
-          },
-          // IndexedStack 不會替隱藏 child 關 ticker，各 child 包 TickerMode
-          // 讓背景 tab 的環境動畫真正停下（品牌元件內已有對應閘門）。
-          child: IndexedStack(
-            index: _currentIndex,
-            children: [
-              TickerMode(
-                enabled: _currentIndex == 0,
-                child: PartnerListScreen(
-                  bottomPadding: 32,
-                  coachPose: _coachPose,
-                ),
-              ),
-              TickerMode(
-                enabled: _currentIndex == 1,
-                child: const MyReportScreen(),
-              ),
-              TickerMode(
-                enabled: _currentIndex == 2,
-                child: const LearningScreen(),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
         floatingActionButton: _currentIndex == 0 ? const HomeFab() : null,
         bottomNavigationBar: _buildBottomNav(),
