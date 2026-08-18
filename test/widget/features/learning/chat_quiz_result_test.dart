@@ -152,6 +152,24 @@ void main() {
     expect(backToMap, 1);
   });
 
+  testWidgets('沒過關時點分數卡就是重跑；過關時點了不動作', (tester) async {
+    var retried = 0;
+    await _pumpResult(tester, correct: 2, onRetry: () => retried += 1);
+
+    // 分數卡標題寫「再跑一次」長得像按鈕（2026-08-18 dogfood），點卡片要有反應。
+    await tester.tap(find.byIcon(Icons.refresh_outlined));
+    await tester.pumpAndSettle();
+    expect(retried, 1);
+
+    retried = 0;
+    await _pumpResult(tester, correct: 5, onRetry: () => retried += 1);
+    await tester.tap(find.byIcon(Icons.emoji_events_outlined));
+    await tester.pumpAndSettle();
+    expect(retried, 0);
+    // 過關觸覺是漸強三下（共 200ms），把後兩下的 timer 走完避免殘留。
+    await tester.pump(const Duration(milliseconds: 250));
+  });
+
   testWidgets('開啟減少動態效果時直接呈現終點狀態，不跑動畫', (tester) async {
     await _pumpResult(tester, correct: 5, reduceMotion: true);
 

@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/pressable_scale.dart';
 import '../../domain/models/chat_quiz.dart';
 import '../widgets/chat_quiz_gate_message.dart';
 import '../../../../core/services/app_haptics.dart';
@@ -110,12 +111,21 @@ class _ChatQuizResultScreenState extends State<ChatQuizResultScreen>
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          _ScoreCard(
-            controller: _controller,
-            passed: _passed,
-            correctCount: _correctCount,
-            total: total,
-            requiredCount: level.requiredCorrectCount,
+          // 沒過關時卡片標題就是「再跑一次」，長得像按鈕——那就讓它真的能點
+          //（2026-08-18 dogfood：真按鈕在漏題清單下面，第一屏看不到）。
+          PressableScale(
+            enabled: !_passed,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _passed ? null : widget.onRetry,
+              child: _ScoreCard(
+                controller: _controller,
+                passed: _passed,
+                correctCount: _correctCount,
+                total: total,
+                requiredCount: level.requiredCorrectCount,
+              ),
+            ),
           ),
           if (_missed.isNotEmpty) ...[
             const SizedBox(height: 16),
