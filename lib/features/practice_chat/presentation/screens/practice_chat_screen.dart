@@ -675,9 +675,15 @@ class _DifficultyChips extends ConsumerWidget {
                   child: _DifficultyChip(
                     label: label,
                     selected: state.difficultyPreference == pref,
-                    onTap: () => ref
-                        .read(practiceChatControllerProvider.notifier)
-                        .setDifficultyPreference(pref),
+                    onTap: () {
+                      // 只在真的切檔時震；重複點已選中那格不震。
+                      if (state.difficultyPreference != pref) {
+                        AppHaptics.light();
+                      }
+                      ref
+                          .read(practiceChatControllerProvider.notifier)
+                          .setDifficultyPreference(pref);
+                    },
                   ),
                 ),
             ],
@@ -815,13 +821,19 @@ class _LearningModeToggle extends StatelessWidget {
                     descriptor: descriptor,
                     selected: state.learningMode == descriptor.mode,
                     enabled: enabled,
-                    onTap: () => onChanged(descriptor.mode),
+                    onTap: () {
+                      // 只在真的切模式時震；重複點已選中那格不震。
+                      if (state.learningMode != descriptor.mode) {
+                        AppHaptics.light();
+                      }
+                      onChanged(descriptor.mode);
+                    },
                     // 鎖定的 Game 分頁點了開教學卡（不切模式），讓非 SR
                     // 用戶也認識玩法；解鎖條件在卡內講清楚。
                     onDisabledTap:
                         descriptor.mode == PracticeLearningMode.game &&
                                 gameLockedByRarity
-                            ? onGameInfoTap
+                            ? AppHaptics.onPress(onGameInfoTap)
                             : null,
                   ),
                 );
@@ -858,7 +870,7 @@ class _LearningModeToggle extends StatelessWidget {
               if (selectedDescriptor.mode == PracticeLearningMode.game)
                 GestureDetector(
                   key: const ValueKey('practice-game-intro-info'),
-                  onTap: onGameInfoTap,
+                  onTap: AppHaptics.onPress(onGameInfoTap),
                   behavior: HitTestBehavior.opaque,
                   child: Padding(
                     padding: const EdgeInsets.only(left: 8),

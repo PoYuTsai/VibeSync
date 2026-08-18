@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -44,13 +45,15 @@ class OnboardingQuestionnairePage extends StatelessWidget {
 
   void _toggleGoal(PracticeGoal goal) {
     if (selectedGoals.contains(goal)) {
+      AppHaptics.light();
       onGoalsChanged(
         selectedGoals.where((g) => g != goal).toList(growable: false),
       );
       return;
     }
-    // 滿 2 顆時點第 3 顆直接不給選（拍板：選簡單的那條路）。
+    // 滿 2 顆時點第 3 顆直接不給選（拍板：選簡單的那條路）——沒改變就不震。
     if (selectedGoals.length >= maxGoals) return;
+    AppHaptics.light();
     onGoalsChanged([...selectedGoals, goal]);
   }
 
