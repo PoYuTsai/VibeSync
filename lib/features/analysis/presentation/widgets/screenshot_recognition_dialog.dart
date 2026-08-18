@@ -333,7 +333,8 @@ class _ScreenshotRecognitionDialogState
                 style: TextStyle(color: AppColors.onBackgroundSecondary)),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed:
+                AppHaptics.onPress(() => Navigator.of(context).pop(true)),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('刪除'),
           ),
@@ -580,7 +581,10 @@ class _ScreenshotRecognitionDialogState
       confirmDismiss: (direction) async {
         // 絕對方向映射，與目前側別無關：右滑一律我說、左滑一律她說。
         _completeSwipeTutorialInteraction();
-        _setMessageSide(index, direction == DismissDirection.startToEnd);
+        final toMe = direction == DismissDirection.startToEnd;
+        // 只在真的換側時震；往同側重滑不震。
+        if (message.isFromMe != toMe) AppHaptics.light();
+        _setMessageSide(index, toMe);
         // 永遠回 false → 不真的移除，泡泡彈回後由 AnimatedAlign 滑到正確側。
         return false;
       },
@@ -592,6 +596,7 @@ class _ScreenshotRecognitionDialogState
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {
+            AppHaptics.tap();
             _cancelSwipeTutorialForInteraction();
             unawaited(_openMessageEditor(index));
           },

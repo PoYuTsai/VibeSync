@@ -443,6 +443,7 @@ class _AiDataSharingConsentDialogState
             visualDensity: VisualDensity.compact,
             controlAffinity: ListTileControlAffinity.leading,
             onChanged: (value) {
+              AppHaptics.tap();
               setState(() => _hasReviewedAndAgreed = value ?? false);
             },
             title: Text(

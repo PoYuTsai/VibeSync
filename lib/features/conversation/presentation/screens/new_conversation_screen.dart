@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
@@ -389,7 +390,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   Widget _buildAddButton(VoidCallback onPressed) {
     return GestureDetector(
-      onTap: onPressed,
+      onTap: AppHaptics.onPress(onPressed),
       child: Container(
         width: 36,
         height: 36,
@@ -460,9 +461,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   List<Widget> _buildAnalysisSettingsSection() {
     return [
       InkWell(
-        onTap: () => setState(
-          () => _showAnalysisSettings = !_showAnalysisSettings,
-        ),
+        onTap: () {
+          AppHaptics.tap();
+          setState(() => _showAnalysisSettings = !_showAnalysisSettings);
+        },
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -635,7 +637,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                       color: AppColors.onBackgroundSecondary
                           .withValues(alpha: 0.70),
                     ),
-                    onPressed: () => _removeMessage(index),
+                    onPressed:
+                        AppHaptics.onPress(() => _removeMessage(index)),
                   ),
                 );
               },

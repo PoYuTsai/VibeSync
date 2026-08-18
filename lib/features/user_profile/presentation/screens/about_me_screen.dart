@@ -137,9 +137,9 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
     return '儲存';
   }
 
+  // chips 的選取觸覺在 ProfileChipSection 元件層，handler 不再各自補。
   void _toggleStuckPoint(StuckPoint s) {
     if (_draftStuckPoints.contains(s)) {
-      AppHaptics.light();
       setState(() => _draftStuckPoints.remove(s));
       return;
     }
@@ -152,13 +152,11 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       );
       return;
     }
-    AppHaptics.light();
     setState(() => _draftStuckPoints.add(s));
   }
 
   void _toggleGoal(PracticeGoal g) {
     if (_draftGoals.contains(g)) {
-      AppHaptics.light();
       setState(() => _draftGoals.remove(g));
       return;
     }
@@ -171,13 +169,11 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       );
       return;
     }
-    AppHaptics.light();
     setState(() => _draftGoals.add(g));
   }
 
   void _toggleSeed(TopicSeed s) {
     if (_draftSeeds.contains(s)) {
-      AppHaptics.light();
       setState(() => _draftSeeds.remove(s));
       return;
     }
@@ -190,7 +186,6 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       );
       return;
     }
-    AppHaptics.light();
     setState(() => _draftSeeds.add(s));
   }
 

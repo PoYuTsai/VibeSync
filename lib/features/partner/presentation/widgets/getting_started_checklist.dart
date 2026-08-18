@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
+
+import '../../../../core/services/app_haptics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -351,7 +353,7 @@ class _ChecklistRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(18),
-      onTap: item.done ? null : item.onTap,
+      onTap: item.done ? null : AppHaptics.onPress(item.onTap),
       // 夥伴稿：清單列比原本鬆，整張卡才「飽滿」不像被壓扁的設定頁。
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 56),

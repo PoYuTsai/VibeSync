@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -168,7 +169,10 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
         // 勾勾的淡入淡出會在快速切換時留殘影＋寬度跳動（2026-08-10
         // Eric 真機回報；同 CoachFollowUpSection 的既有修法）。
         showCheckmark: false,
-        onSelected: (_) => onTap(),
+        onSelected: (_) {
+          AppHaptics.light();
+          onTap();
+        },
       ),
     );
   }
@@ -309,7 +313,7 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
+        onTap: AppHaptics.onPress(onTap),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
           decoration: BoxDecoration(

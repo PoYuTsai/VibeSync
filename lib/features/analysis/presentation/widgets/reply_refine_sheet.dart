@@ -352,7 +352,9 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
                               selected: i == _selectedIndex,
                               onTap: _inFlight
                                   ? null
-                                  : () => setState(() => _selectedIndex = i),
+                                  : AppHaptics.onPress(
+                                      () =>
+                                          setState(() => _selectedIndex = i)),
                             ),
                         ],
                         const SizedBox(height: 16),
@@ -366,7 +368,8 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
                                 label: Text(instruction),
                                 onPressed: _inFlight
                                     ? null
-                                    : () => _refine(instruction),
+                                    : AppHaptics.onPress(
+                                        () => _refine(instruction)),
                               ),
                           ],
                         ),

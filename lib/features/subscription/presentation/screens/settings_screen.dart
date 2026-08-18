@@ -201,6 +201,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   /// 開→requestSoftOptIn（向系統要權限，授權成功才維持開）；
   /// 關→disableAll（cancelAll + opt-in=denied）。
   Future<void> _onFollowUpReminderToggled(bool value) async {
+    AppHaptics.light();
     final service = ref.read(followUpNotificationServiceProvider);
     try {
       if (value) {
@@ -636,7 +637,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             )
           : Icon(Icons.chevron_right,
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7)),
-      onTap: onTap,
+      // 觸覺收在共用 builder：15 列一次有感。
+      onTap: AppHaptics.onPress(onTap),
     );
   }
 
@@ -804,7 +806,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
+                onPressed: AppHaptics.onPress(
+                  () => Navigator.pop(dialogContext, true),
+                ),
                 child: Text(
                   '恢復購買',
                   style: TextStyle(color: AppColors.ctaStart),
@@ -871,7 +875,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
+            onPressed: AppHaptics.onPress(
+              () => Navigator.pop(dialogContext, true),
+            ),
             child: Text(
               '登出',
               style: TextStyle(color: AppColors.error),
@@ -999,7 +1005,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             TextButton(
               onPressed: controller.text.trim().toUpperCase() == 'DELETE'
-                  ? () => Navigator.pop(dialogContext, controller.text.trim())
+                  ? AppHaptics.onPress(
+                      () =>
+                          Navigator.pop(dialogContext, controller.text.trim()),
+                    )
                   : null,
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.error,
@@ -1087,9 +1096,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               actions: [
                 TextButton(
+                  // 明示字色：主題預設紫在深紫底上約 2.6:1，偏暗。
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.ctaStart,
+                  ),
                   onPressed: retrying
                       ? null
-                      : () async {
+                      : AppHaptics.onPress(() async {
                           setDialogState(() => retrying = true);
                           final ok = await _tryDeleteAccountLocalCleanup(
                             ownerUserId: deletionOwnerUserId,
@@ -1100,7 +1113,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             return;
                           }
                           setDialogState(() => retrying = false);
-                        },
+                        }),
                   child: Text(retrying ? '清理中…' : '重試清理'),
                 ),
               ],

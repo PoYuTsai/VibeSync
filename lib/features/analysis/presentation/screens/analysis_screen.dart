@@ -2493,11 +2493,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(null),
-            child:
-                Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+            // unselectedText 是白玻璃底用的暗紫，放深底約 1.8:1 幾乎看不見。
+            child: Text('取消',
+                style: TextStyle(color: AppColors.onBackgroundSecondary)),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            onPressed: AppHaptics.onPress(
+                () => Navigator.of(context).pop(controller.text.trim())),
             style: TextButton.styleFrom(foregroundColor: AppColors.ctaStart),
             child: const Text('儲存'),
           ),
@@ -2558,11 +2560,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child:
-                Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+            // unselectedText 是白玻璃底用的暗紫，放深底約 1.8:1 幾乎看不見。
+            child: Text('取消',
+                style: TextStyle(color: AppColors.onBackgroundSecondary)),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed:
+                AppHaptics.onPress(() => Navigator.of(context).pop(true)),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('刪除'),
           ),
@@ -6390,6 +6394,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       onSelected: _isSubmittingFeedback
           ? null
           : (selected) {
+              AppHaptics.light();
               setState(() => _feedbackCategory = selected ? value : null);
             },
     );
@@ -8169,6 +8174,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                             onChanged: _isSubmittingFeedback
                                                 ? null
                                                 : (value) {
+                                                    AppHaptics.tap();
                                                     setState(() {
                                                       _includeFeedbackContext =
                                                           value ?? false;

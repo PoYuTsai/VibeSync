@@ -97,7 +97,7 @@ class AnalysisRecordsEntryButton extends StatelessWidget {
       label: archivedCount == 0 ? '分析紀錄' : '分析紀錄，$archivedCount 筆',
       child: IconButton(
         tooltip: '分析紀錄',
-        onPressed: onPressed,
+        onPressed: AppHaptics.onPress(onPressed),
         icon: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -867,7 +867,7 @@ class _PlatformFilterChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
-          onTap: onSelected,
+          onTap: AppHaptics.onPress(onSelected),
           child: Ink(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(

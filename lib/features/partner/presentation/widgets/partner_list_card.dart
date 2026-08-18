@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
@@ -207,7 +208,10 @@ class PartnerListCard extends StatelessWidget {
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(22),
       child: InkWell(
-        onTap: onTap,
+        onTap: () {
+          AppHaptics.tap();
+          onTap();
+        },
         borderRadius: BorderRadius.circular(22),
         child: Ink(
           decoration: BoxDecoration(

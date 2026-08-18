@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../../../core/services/app_haptics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -493,7 +495,10 @@ class _KeyboardSetupScreenState extends ConsumerState<KeyboardSetupScreen>
               Expanded(
                 child: PageView(
                   controller: _controller,
-                  onPageChanged: (value) => setState(() => _page = value),
+                  onPageChanged: (value) {
+                    AppHaptics.tap();
+                    setState(() => _page = value);
+                  },
                   children: [
                     _SetupPage(
                       icon: Icons.auto_awesome,

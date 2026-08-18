@@ -85,11 +85,15 @@ class _AnalysisRecordDetailScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.onBackgroundSecondary,
+            ),
             child: const Text('取消'),
           ),
           TextButton(
             key: const ValueKey('analysis-record-delete-confirm'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
+            onPressed: AppHaptics.onPress(
+                () => Navigator.of(dialogContext).pop(true)),
             child: const Text(
               '刪除',
               style: TextStyle(color: AppColors.error),

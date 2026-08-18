@@ -390,6 +390,9 @@ class _PracticeCollectionScreenState
           TextButton(
             key: const ValueKey('collection-draw-cancel'),
             onPressed: () => Navigator.of(dialogContext).pop(false),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.onBackgroundSecondary,
+            ),
             child: const Text('取消'),
           ),
           FilledButton(

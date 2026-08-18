@@ -1,5 +1,6 @@
 // lib/features/conversation/presentation/widgets/conversation_tile.dart
 import 'package:flutter/material.dart';
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../analysis/domain/entities/enthusiasm_level.dart';
@@ -39,12 +40,15 @@ class ConversationTile extends StatelessWidget {
         : null;
 
     return ListTile(
-      onTap: onTap,
+      onTap: () {
+        AppHaptics.tap();
+        onTap();
+      },
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       trailing: onDelete != null
           ? IconButton(
               icon: Icon(Icons.delete_outline, color: AppColors.glassTextHint),
-              onPressed: onDelete,
+              onPressed: AppHaptics.onPress(onDelete),
               tooltip: '刪除對話',
             )
           : null,

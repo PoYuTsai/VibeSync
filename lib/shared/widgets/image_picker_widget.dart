@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../../core/services/app_haptics.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pasteboard/pasteboard.dart';
 
@@ -428,7 +430,10 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
             color: widget.surfaceColor,
             borderColor: widget.surfaceBorderColor,
             child: GestureDetector(
-              onTap: () => _showFullImage(imageBytes),
+              onTap: () {
+                AppHaptics.tap();
+                _showFullImage(imageBytes);
+              },
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(18),
                 child: Image.memory(
@@ -444,7 +449,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
             top: -6,
             right: -6,
             child: GestureDetector(
-              onTap: () => _removeImage(index),
+              onTap: AppHaptics.onPress(() => _removeImage(index)),
               child: Container(
                 width: 22,
                 height: 22,

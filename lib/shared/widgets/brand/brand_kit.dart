@@ -14,6 +14,7 @@
 // 主要動作仍是橘色。本檔不全域改 GlassmorphicContainer。
 import 'package:flutter/material.dart';
 
+import '../../../core/services/app_haptics.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_typography.dart';
@@ -513,7 +514,7 @@ class BrandSecondaryButton extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton(
-        onPressed: onPressed,
+        onPressed: AppHaptics.onPress(onPressed),
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.white,
           backgroundColor: AppColors.brandInk.withValues(alpha: 0.30),
@@ -572,7 +573,11 @@ class BrandChoiceChip extends StatelessWidget {
             ),
       selected: selected,
       showCheckmark: false,
-      onSelected: (_) => onTap(),
+      // 觸覺收在元件層：所有 chip 群一致有感，呼叫端不必各自補。
+      onSelected: (_) {
+        AppHaptics.light();
+        onTap();
+      },
       color: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
           return tone.choiceSelected;
@@ -643,7 +648,11 @@ class BrandSegmentedButton<T> extends StatelessWidget {
           final isSelected = segment.value == selected;
           return Expanded(
             child: GestureDetector(
-              onTap: () => onChanged(segment.value),
+              // 只在真的切檔時震；重複點已選中那格不震。
+              onTap: () {
+                if (!isSelected) AppHaptics.light();
+                onChanged(segment.value);
+              },
               child: AnimatedContainer(
                 duration: AppMotion.enter,
                 curve: AppMotion.easeOut,

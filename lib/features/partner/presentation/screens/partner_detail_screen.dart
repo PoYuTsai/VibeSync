@@ -25,6 +25,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:intl/intl.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
@@ -199,7 +200,9 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           ),
           IconButton(
             tooltip: '對象設定',
-            onPressed: () => _onEditPartnerSettings(context, ref, partner),
+            onPressed: AppHaptics.onPress(
+              () => _onEditPartnerSettings(context, ref, partner),
+            ),
             icon: const Icon(
               Icons.settings_outlined,
               color: AppColors.onBackgroundPrimary,
@@ -250,7 +253,10 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                     aggregate: aggregate,
                     conversations: conversations,
                   ),
-                  onTap: () => context.push('/partner/$partnerId/mindmap'),
+                  onTap: () {
+                    AppHaptics.light();
+                    context.push('/partner/$partnerId/mindmap');
+                  },
                 ),
                 const SizedBox(height: 12),
                 ..._conversationRecordWidgets(
@@ -521,7 +527,9 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           ),
           IconButton(
             tooltip: '對象設定',
-            onPressed: () => _onEditPartnerSettings(context, ref, partner),
+            onPressed: AppHaptics.onPress(
+              () => _onEditPartnerSettings(context, ref, partner),
+            ),
             icon: const Icon(
               Icons.settings_outlined,
               color: AppColors.onBackgroundPrimary,
@@ -870,7 +878,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
+            onPressed: AppHaptics.onPress(() => Navigator.of(ctx).pop(true)),
             child: const Text('確認拆卡'),
           ),
         ],
@@ -1564,7 +1572,7 @@ class _PartnerExpandableDetailSection extends StatelessWidget {
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(18),
-            onTap: onToggle,
+            onTap: AppHaptics.onPress(onToggle),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(

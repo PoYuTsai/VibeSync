@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 
@@ -121,7 +122,11 @@ class ProfileChipSection<T> extends StatelessWidget {
               ),
         selected: selected,
         showCheckmark: false,
-        onSelected: (_) => onTap(opt),
+        // 觸覺收在元件層，呼叫端不必各自補（也別補，會雙震）。
+        onSelected: (_) {
+          AppHaptics.light();
+          onTap(opt);
+        },
         color: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return const Color(0xFF4D2630);

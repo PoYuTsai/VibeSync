@@ -1,6 +1,8 @@
 // lib/shared/widgets/coaching_outcome_capture_card.dart
 import 'package:flutter/material.dart';
 
+import '../../core/services/app_haptics.dart';
+
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../features/coaching_memory/domain/entities/coaching_outcome_event.dart';
@@ -187,7 +189,10 @@ class CoachingOutcomeCaptureCard extends StatelessWidget {
                   size: 16,
                   color: isSelected ? Colors.white : AppColors.primary,
                 ),
-                onSelected: (_) => onUserActionSelected(option.action),
+                onSelected: (_) {
+                  AppHaptics.light();
+                  onUserActionSelected(option.action);
+                },
                 selectedColor: AppColors.primary,
                 backgroundColor: Colors.white.withValues(alpha: 0.62),
                 labelStyle: AppTypography.caption.copyWith(
@@ -228,7 +233,10 @@ class CoachingOutcomeCaptureCard extends StatelessWidget {
                     size: 16,
                     color: isSelected ? Colors.white : AppColors.primary,
                   ),
-                  onSelected: (_) => onOutcomeSelected(option.signal),
+                  onSelected: (_) {
+                    AppHaptics.light();
+                    onOutcomeSelected(option.signal);
+                  },
                   selectedColor: AppColors.primary,
                   backgroundColor: Colors.white.withValues(alpha: 0.62),
                   labelStyle: AppTypography.caption.copyWith(

@@ -1,6 +1,8 @@
 // lib/features/conversation/presentation/widgets/message_bubble.dart
 import 'package:flutter/material.dart';
 
+import '../../../../core/services/app_haptics.dart';
+
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/message.dart';
@@ -47,7 +49,12 @@ class MessageBubble extends StatelessWidget {
       // long-press。預設 deferToChild 只認 Text 渲染區，user 必須按到「字」
       // 才觸發 — Bruce/Eric 2026-05-23 dogfood 點出這個跟視覺直覺落差。
       behavior: HitTestBehavior.opaque,
-      onLongPress: hasActions ? () => _showActionMenu(context) : null,
+      onLongPress: hasActions
+          ? () {
+              AppHaptics.light();
+              _showActionMenu(context);
+            }
+          : null,
       child: Align(
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(

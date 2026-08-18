@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/services/app_haptics.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_motion.dart';
 import '../core/theme/app_typography.dart';
@@ -175,7 +176,7 @@ class _MainShellState extends State<MainShell>
                   foregroundColor: AppColors.onBackgroundPrimary,
                   shape: const CircleBorder(),
                 ),
-                onPressed: () => context.push('/settings'),
+                onPressed: AppHaptics.onPress(() => context.push('/settings')),
               ),
             ),
           ],

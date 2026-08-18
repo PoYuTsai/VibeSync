@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -321,8 +322,9 @@ class PartnerListScreen extends ConsumerWidget {
             ),
           ),
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            onPressed: AppHaptics.onPress(() => Navigator.of(ctx).pop(true)),
+            style:
+                TextButton.styleFrom(foregroundColor: AppColors.errorOnGlass),
             child: const Text('刪除'),
           ),
         ],

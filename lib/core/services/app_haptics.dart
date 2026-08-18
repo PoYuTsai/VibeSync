@@ -7,6 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 強度階梯（常見的最輕、稀有的才重）：
 /// tap < light < medium < success/failure（雙擊節奏）。
 /// Web 上 HapticFeedback 本身是 no-op，不需另外判斷平台。
+///
+/// 測試注意：success/failure/celebrate 用 Future.delayed 排後續下，widget
+/// test 走到這些路徑要在結尾 `pump(const Duration(milliseconds: 250))`
+/// 收掉間隔，否則收尾時會炸 pending timer。
 abstract final class AppHaptics {
   static const String _prefsKey = 'haptics_enabled';
 

@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/ai_privacy_disclosure.dart';
 import '../../../../core/services/funnel_tracker.dart';
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -184,7 +185,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: TextButton(
-                    onPressed: _skipOnboarding,
+                    onPressed: AppHaptics.onPress(_skipOnboarding),
                     child: Text(
                       '略過',
                       style: AppTypography.bodyMedium.copyWith(
@@ -203,6 +204,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   // +2：第 4 頁問卷（批 2）＋最後一頁冷啟動分流頁（案 3）。
                   itemCount: _pages.length + 2,
                   onPageChanged: (page) {
+                    AppHaptics.tap();
                     unawaited(
                       ref.read(funnelTrackerProvider).track(
                         'onboarding_page_view',

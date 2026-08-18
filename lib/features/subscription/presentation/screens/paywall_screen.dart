@@ -1287,7 +1287,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 ),
               ),
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
+                onPressed: AppHaptics.onPress(
+                    () => Navigator.pop(dialogContext, true)),
                 child: Text(
                   '恢復購買',
                   style: AppTypography.bodyMedium.copyWith(

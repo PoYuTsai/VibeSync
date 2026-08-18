@@ -46,6 +46,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
@@ -389,7 +390,10 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
             for (final option in options)
               InkWell(
                 key: ValueKey('add-partner-option-${labelOf(option)}'),
-                onTap: () => Navigator.of(sheetContext).pop(option),
+                onTap: () {
+                  AppHaptics.tap();
+                  Navigator.of(sheetContext).pop(option);
+                },
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 52),
                   child: Padding(
@@ -552,7 +556,7 @@ class _FormRow extends StatelessWidget {
       child: InkWell(
         key: data.key,
         borderRadius: BorderRadius.circular(18),
-        onTap: data.onTap,
+        onTap: AppHaptics.onPress(data.onTap),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 52),
           child: Padding(

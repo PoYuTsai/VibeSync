@@ -858,8 +858,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         onPressed:
                             _isLoading || _validPendingVerificationEmail == null
                                 ? null
-                                : () => _resendVerificationEmail(
-                                    preferPendingEmail: true),
+                                : AppHaptics.onPress(
+                                    () => _resendVerificationEmail(
+                                        preferPendingEmail: true),
+                                  ),
                         child: const Text('重新寄送驗證信'),
                       ),
                       const SizedBox(height: 8),
@@ -872,12 +874,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 12),
                     if (!_isSignUp && !_isPasswordRecoveryMode)
                       TextButton(
-                        onPressed: _isLoading ? null : _sendPasswordResetEmail,
+                        onPressed: _isLoading
+                            ? null
+                            : AppHaptics.onPress(_sendPasswordResetEmail),
                         child: const Text('忘記密碼？'),
                       ),
                     if (!_isPasswordRecoveryMode)
                       TextButton(
-                        onPressed: () {
+                        onPressed: AppHaptics.onPress(() {
                           setState(() {
                             _isSignUp = !_isSignUp;
                             _errorMessage = null;
@@ -886,7 +890,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               _pendingVerificationEmail = null;
                             }
                           });
-                        },
+                        }),
                         child: Text(
                           _isSignUp ? '已經有帳號了？登入' : '還沒有帳號？建立帳號',
                           style: AppTypography.bodyMedium.copyWith(
@@ -1012,7 +1016,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       width: double.infinity,
       height: 50,
       child: OutlinedButton(
-        onPressed: _isLoading ? null : _signInWithGoogle,
+        onPressed: _isLoading ? null : AppHaptics.onPress(_signInWithGoogle),
         style: OutlinedButton.styleFrom(
           backgroundColor: Colors.white,
           foregroundColor: Colors.black87,

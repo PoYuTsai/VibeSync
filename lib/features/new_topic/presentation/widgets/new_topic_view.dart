@@ -153,10 +153,15 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.onBackgroundSecondary,
+            ),
             child: const Text('先不要'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
+            onPressed: AppHaptics.onPress(
+                () => Navigator.pop(dialogContext, true)),
+            style: TextButton.styleFrom(foregroundColor: AppColors.ctaStart),
             child: const Text('清除並更換'),
           ),
         ],

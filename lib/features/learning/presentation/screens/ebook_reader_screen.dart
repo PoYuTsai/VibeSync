@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -167,6 +168,7 @@ class _EbookReaderBodyState extends ConsumerState<_EbookReaderBody> {
       : _book.chapters;
 
   void _onPageChanged(int index) {
+    AppHaptics.tap();
     setState(() => _currentIndex = index);
     // 換章即更新續讀位置；repository 會序列化寫入，快速連滑不會亂序。
     ref.read(ebookProgressControllerProvider.notifier).setLastChapter(
@@ -609,7 +611,7 @@ class _ChapterChip extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
               child: InkWell(
                 borderRadius: BorderRadius.circular(18),
-                onTap: onTap,
+                onTap: AppHaptics.onPress(onTap),
                 child: chip,
               ),
             )

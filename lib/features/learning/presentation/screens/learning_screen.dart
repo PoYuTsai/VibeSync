@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -203,6 +204,7 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
               final article = visibleArticles[index];
               return GestureDetector(
                 onTap: () {
+                  AppHaptics.tap();
                   if (subscription.isFreeUser) {
                     if (!readService.canReadArticle(article.id)) {
                       context.push('/paywall');

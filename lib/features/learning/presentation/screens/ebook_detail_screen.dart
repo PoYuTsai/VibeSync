@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -539,8 +540,9 @@ class _ChapterRow extends StatelessWidget {
           ? AppColors.ctaStart.withValues(alpha: 0.45)
           : null,
       onTap: isLocked
-          ? () => context.push('/paywall')
-          : () => context.push(ebookChapterRoute(book.id, chapter.id)),
+          ? AppHaptics.onPress(() => context.push('/paywall'))
+          : AppHaptics.onPress(
+              () => context.push(ebookChapterRoute(book.id, chapter.id))),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

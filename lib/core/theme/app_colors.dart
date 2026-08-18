@@ -27,6 +27,10 @@ class AppColors {
   // Semantic
   static const success = Color(0xFF4CAF50);
   static const error = Color(0xFFE57373);
+
+  /// 白玻璃（glassWhite）底上的警示紅：error 是深底用的淺紅，
+  /// 放白底只有 ~2.5:1，這顆在 glassWhite 上約 7:1。
+  static const errorOnGlass = Color(0xFFC62828);
   static const warning = Color(0xFFFFB74D);
   static const info = Color(0xFF64B5F6);
 

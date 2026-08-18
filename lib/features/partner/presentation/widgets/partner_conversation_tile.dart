@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../conversation/domain/entities/conversation.dart';
@@ -71,7 +72,10 @@ class PartnerConversationTile extends StatelessWidget {
             children: [
               ListTile(
                 contentPadding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
-                onTap: onTap,
+                onTap: () {
+                  AppHaptics.tap();
+                  onTap();
+                },
                 title: Text(
                   '$dateLabel 互動紀錄',
                   style: AppTypography.titleSmall.copyWith(
