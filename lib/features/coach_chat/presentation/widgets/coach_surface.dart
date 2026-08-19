@@ -938,27 +938,9 @@ class CoachChatResultView extends ConsumerWidget {
           const SizedBox(height: 8),
           _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
           if (!isClarifying)
-            Theme(
-              data: Theme.of(context).copyWith(
-                dividerColor: Colors.transparent,
-              ),
-              child: Material(
-                type: MaterialType.transparency,
-                child: ExpansionTile(
-                  key: ValueKey('coach-full-analysis-${result.id}'),
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: const EdgeInsets.only(bottom: 8),
-                  visualDensity: VisualDensity.compact,
-                  iconColor: AppColors.primary,
-                  collapsedIconColor: AppColors.glassTextSecondary,
-                  title: Text(
-                    '看完整教練分析',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  children: [
+            _FullAnalysisTile(
+              key: ValueKey('coach-full-analysis-${result.id}'),
+              children: [
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Column(
@@ -1000,9 +982,7 @@ class CoachChatResultView extends ConsumerWidget {
                         ],
                       ),
                     ),
-                  ],
-                ),
-              ),
+              ],
             ),
           const SizedBox(height: 12),
           Wrap(
@@ -1313,6 +1293,147 @@ class _CostStatusChip extends StatelessWidget {
           style: AppTypography.caption.copyWith(
             color: AppColors.glassTextPrimary,
             fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 「看完整教練分析」折疊列：正式建議的主體內容收在這裡面，但原版只是
+/// 一行紫色小字，dogfood 回報存在感太低、容易整段漏看（2026-08-19
+/// Bruce/Eric）。改成淡紫 pill 底（讀起來像可點的控件）＋收合時 chevron
+/// 常駐上下點頭；節奏沿用 SwipeHintNudge 的「動、頓、長頓」拍子——
+/// 「播一次太不明顯、改常駐循環」是 2026-08-11 已拍板的品味結論。
+/// 展開後 nudge 停止、chevron 轉 180°；reduced motion 停在原位；
+/// repeat 帶 count 上限避免 pumpAndSettle 測試 timeout（同 SwipeHintNudge）。
+class _FullAnalysisTile extends StatefulWidget {
+  const _FullAnalysisTile({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  State<_FullAnalysisTile> createState() => _FullAnalysisTileState();
+}
+
+class _FullAnalysisTileState extends State<_FullAnalysisTile>
+    with SingleTickerProviderStateMixin {
+  /// chevron 垂直位移量：夠真機有感、又不至於吵。
+  static const double _dip = 5;
+
+  late final AnimationController _controller;
+  late final Animation<double> _offsetY;
+  bool _expanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    );
+    _offsetY = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: _dip)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 12,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: _dip, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 12,
+      ),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 6),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: _dip)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 12,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: _dip, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 12,
+      ),
+      // 長頓＝輪間休息，避免不停點頭變成噪音。
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 46),
+    ]).animate(_controller);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncAnimationState();
+  }
+
+  void _syncAnimationState() {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final enabled =
+        TickerMode.valuesOf(context).enabled && !reduceMotion && !_expanded;
+    if (!enabled) {
+      _controller
+        ..stop()
+        ..value = 0;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(count: 34);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: Material(
+          type: MaterialType.transparency,
+          child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            visualDensity: VisualDensity.compact,
+            backgroundColor: AppColors.primary.withValues(alpha: 0.05),
+            collapsedBackgroundColor: AppColors.primary.withValues(alpha: 0.08),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            collapsedShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            onExpansionChanged: (open) {
+              setState(() => _expanded = open);
+              _syncAnimationState();
+            },
+            // 自訂 trailing 會失去內建旋轉，改用 AnimatedRotation 補回。
+            trailing: AnimatedRotation(
+              turns: _expanded ? 0.5 : 0,
+              duration: AppMotion.state,
+              curve: AppMotion.easeOut,
+              child: AnimatedBuilder(
+                animation: _offsetY,
+                builder: (context, child) => Transform.translate(
+                  offset: Offset(0, _expanded ? 0 : _offsetY.value),
+                  child: child,
+                ),
+                child: const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+            title: Text(
+              '看完整教練分析',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            children: widget.children,
           ),
         ),
       ),
