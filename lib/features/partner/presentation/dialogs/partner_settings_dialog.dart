@@ -58,18 +58,15 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
   /// 快速插入 chips（2026-08-19 Bruce dogfood：只有空白文字框不知道要填什
   /// 麼，要幾個可 Tag 的 default 選項）。維持 schema-light：chip 只是把片
   /// 語塞進備註文字，真相源仍是這串自由文字，使用者可任意改寫。
-  static const List<String> _quickTags = [
-    '剛認識',
-    '慢熱',
-    '回覆慢但都會回',
-    '不太主動但有回',
-    '聊得來但還沒約',
-    '想先約咖啡',
-    '想約出來見面',
-    '想慢慢培養親近感',
-    '喜歡戶外活動',
-    '工作忙碌',
-  ];
+  ///
+  /// 呈現（Eric 拍板）：dialog 空間小，分類分三行、小標固定在行首、chips
+  /// 各自橫向滑動——三類同時可見不藏選項，行尾被切掉的 chip 就是
+  /// 「還能滑」的暗示。
+  static const Map<String, List<String>> _quickTagGroups = {
+    '特質': ['慢熱', '外向健談', '幽默愛鬧', '工作忙碌', '喜歡戶外'],
+    '狀態': ['剛認識', '回覆慢但都會回', '不太主動但有回', '聊得來但還沒約'],
+    '目標': ['想先約咖啡', '想約出來見面', '想慢慢培養親近感'],
+  };
 
   bool _tagInserted(String tag) => _noteController.text.contains(tag);
 
@@ -143,19 +140,43 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
               ),
             ),
             const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final tag in _quickTags)
-                  _QuickTagChip(
-                    label: tag,
-                    inserted: _tagInserted(tag),
-                    onTap: () => _insertTag(tag),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
+            for (final entry in _quickTagGroups.entries) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      entry.key,
+                      style:
+                          Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: AppColors.glassTextSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final tag in entry.value) ...[
+                              _QuickTagChip(
+                                label: tag,
+                                inserted: _tagInserted(tag),
+                                onTap: () => _insertTag(tag),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 2),
             Text(
               '這裡會成為教練理解這個人的長期背景，不需要每次補聊天時重填。',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
