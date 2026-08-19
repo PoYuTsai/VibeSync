@@ -135,7 +135,9 @@ Deno.test("buildCoachChatPrompt carries partner note into 對方提示", () => {
     dataQualityFlagged: false,
     partnerHint: { name: "Jenny", traits: ["慢熱"], note: "喜歡潛水、想先約咖啡" },
   });
-  assertStringIncludes(prompt, "使用者的長期備註：喜歡潛水、想先約咖啡");
+  // 2026-08-19：標籤內嵌主詞判斷規則（意圖句＝用戶目標，非對方意願）。
+  assertStringIncludes(prompt, "主詞不明的意圖句＝用戶自己的目標");
+  assertStringIncludes(prompt, "：喜歡潛水、想先約咖啡");
 });
 
 Deno.test("buildCoachChatPrompt teaches sexual tension without shame or pressure", () => {

@@ -274,7 +274,11 @@ function formatPartnerHint(input: CoachChatRequest): string | null {
   const parts = [
     hint.name ? `名字：${hint.name}` : null,
     hint.traits?.length ? `已知特質：${hint.traits.join("、")}` : null,
-    hint.note ? `使用者的長期備註：${hint.note}` : null,
+    // 備註是用戶手寫側寫，主詞常沒寫清楚（2026-08-19 Bruce dogfood：
+    // 「想約出來見面」被當成她的意願）。規則內嵌在標籤上跟著資料走。
+    hint.note
+      ? `使用者的長期備註（用戶手寫；主詞不明的意圖句＝用戶自己的目標，不是對方的意願，更不得當成對方說過的話引用）：${hint.note}`
+      : null,
   ].filter(Boolean);
   return parts.join("\n");
 }
