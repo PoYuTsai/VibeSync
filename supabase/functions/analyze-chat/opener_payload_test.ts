@@ -24,6 +24,22 @@ const ALL_FEATURES = [
   "coldRead",
 ] as const;
 
+// 2026-08-19 真機實錄：聊天截圖誤餵 opener，模型把拒答說明寫進五張卡照常
+// 渲染＋扣費。拒答句保底清空（第一層是 wrongSurface 旗標，見 index.ts）。
+Deno.test("sanitizeOpenerText 擋拒答說明句", () => {
+  assertEquals(
+    sanitizeOpenerText("目前截圖資訊不足，無法生成開場白，請提供對方的交友軟體或社群截圖。"),
+    null,
+  );
+  assertEquals(sanitizeOpenerText("無法產生開場白，請提供更多資訊"), null);
+  assertEquals(sanitizeOpenerText("請提供對方的個人頁截圖"), null);
+  // 正常開場白不可誤殺（含「截圖」「資訊」字眼但不是拒答）。
+  assertEquals(
+    sanitizeOpenerText("妳那張登山截圖也太猛，這是哪條路線"),
+    "妳那張登山截圖也太猛，這是哪條路線",
+  );
+});
+
 Deno.test("sanitizeOpenerText 擋 JSON/code fence/超長，收合法短句", () => {
   assertEquals(sanitizeOpenerText("你好，看到你養柴犬"), "你好，看到你養柴犬");
   assertEquals(sanitizeOpenerText("  留白修剪  "), "留白修剪");

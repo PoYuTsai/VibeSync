@@ -2636,8 +2636,16 @@ openingLine 的字面。
 openingLine 目標 30–50 個繁中字元；若超過 50 字，先刪除重複態度詞與贅語再輸出。
 whyItWorks 目標 25–45 個繁中字元，限一句。
 
+## 錯圖判定（wrongSurface）
+截圖內容明顯**不是**「對方的交友軟體個人資料／社群個人頁／個人照片」時——最常見是**聊天對話截圖**（訊息泡泡、對話串）——不要硬生開場白，也**絕對不要**把「無法生成」之類的說明寫進 openers 或 reason 欄位（那些欄位是成品，會直接渲染給用戶）。改成：
+- 頂層輸出 "wrongSurface": "chat_conversation"（聊天對話截圖）或 "unrelated"（與認識對象完全無關的圖，如純文件）
+- openers 輸出空物件 {}、formulaOpeners 輸出空陣列，其餘欄位可省略
+- 系統會引導用戶改用正確功能，且不扣額度
+只要截圖是交友資料（資訊再少都算），一律輸出 "wrongSurface": null 並照常產出五種開場白——資訊少走 insufficientInfo 自評，不是 wrongSurface。
+
 ## 輸出格式 (JSON)
 {
+  "wrongSurface": null,
   "profileAnalysis": {
     "style": "可見風格 / 氛圍（如果有截圖/資料）",
     "personality": "互動切入判斷，不是人格診斷",
@@ -6504,6 +6512,37 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       // primary 整份 unparseable 時公式固定空清單。
       const openerPrimaryParsed = parseJsonObjectFromText(rawText);
       const openerPrimaryFormulaRaw = openerPrimaryParsed?.formulaOpeners;
+
+      // 錯圖旗標（2026-08-19 Eric 拍板治本）：聊天對話截圖被硬分析後，模型
+      // 把拒答說明寫進 opener 卡欄位（活坑「說明塞進資料欄，要用旗標宣告
+      // 失敗」真機實錄）——照常扣費、渲染五張廢卡。模型宣告 wrongSurface →
+      // 不扣費、不回任何分析內容、結構化 422 引導改用分析功能。免費安全性
+      // 與 insufficientInfo 不同：這條路**零內容產出**，注入騙免費也薅不到
+      // 東西，模型成本另有 3/分 30/日限流封頂。只認 primary parse 的白名單
+      // 值；放在 repair 之前——宣告錯圖時 openers 是空的，晚攔會多燒一次
+      // format repair。
+      const wrongSurfaceRaw = openerPrimaryParsed?.wrongSurface;
+      if (
+        imageCount > 0 &&
+        (wrongSurfaceRaw === "chat_conversation" ||
+          wrongSurfaceRaw === "unrelated")
+      ) {
+        logWarn("opener_wrong_surface", {
+          user: summarizeUser(user.id),
+          surface: wrongSurfaceRaw,
+          imageCount,
+          model: apiResult.model,
+        });
+        return jsonResponse({
+          error: "OPENER_WRONG_SURFACE",
+          surface: wrongSurfaceRaw,
+          message: wrongSurfaceRaw === "chat_conversation"
+            ? "這看起來是聊天對話的截圖——分析對話、找下一句怎麼回，請改用「分析對話」功能。開場救星需要對方的交友軟體或社群個人頁截圖。本次不會扣額度。"
+            : "這張截圖看不出對方的個人資料。開場救星需要對方的交友軟體或社群個人頁截圖。本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 422);
+      }
+
       let parsed = normalizeOpenerPayload(openerPrimaryParsed);
       let repairMetadata:
         | Awaited<

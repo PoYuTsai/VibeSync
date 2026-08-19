@@ -142,6 +142,14 @@ export function sanitizeOpenerText(value: unknown): string | null {
   // explanation or malformed JSON that would be embarrassing to show.
   if (trimmed.length > 180) return null;
 
+  // 拒答說明不是開場白（2026-08-19 真機實錄：聊天截圖誤餵 opener，模型把
+  // 「截圖資訊不足，無法生成開場白，請提供…」寫進五張卡照常渲染）。第一層
+  // 是 wrongSurface 旗標；這裡是模型漏設旗標時的保底——整包被清空會走
+  // completeness gate 的 502 不扣費路徑，不會端廢卡。
+  if (/無法(?:生成|產生)開場白|截圖資訊不足|請提供.{0,12}截圖/u.test(trimmed)) {
+    return null;
+  }
+
   return trimmed;
 }
 

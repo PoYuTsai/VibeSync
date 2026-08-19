@@ -1254,6 +1254,31 @@ Deno.test({
   },
 });
 
+// 錯圖旗標（2026-08-19）：聊天對話截圖 → 模型宣告 wrongSurface → 422 不扣費
+// 不回內容；判定放在 format repair 之前（宣告錯圖時 openers 是空的，晚攔會
+// 多燒一次 repair）。prompt 端同步要求旗標宣告失敗、不得把說明寫進 openers。
+Deno.test({
+  name: "opener wrong-surface flag returns 422 before repair and never charges",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    assert(source.includes('wrongSurfaceRaw === "chat_conversation"'));
+    assert(source.includes('wrongSurfaceRaw === "unrelated"'));
+    assert(source.includes('"OPENER_WRONG_SURFACE"'));
+    assert(source.includes("opener_wrong_surface"));
+    // 旗標檢查必須在 normalize/repair 之前（primary parse 直讀）。
+    assert(
+      source.indexOf("wrongSurfaceRaw") <
+        source.indexOf("let parsed = normalizeOpenerPayload"),
+    );
+    // prompt 端：schema 帶欄位＋旗標宣告失敗規則。
+    assert(source.includes('"wrongSurface": null'));
+    assert(source.includes("錯圖判定（wrongSurface）"));
+  },
+});
+
 Deno.test({
   name:
     "opener uses one 50s absolute deadline for primary, fallback, repair, and pre-charge gate",
