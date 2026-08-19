@@ -536,6 +536,7 @@ class CoachChatController
     return CoachChatPartnerHint(
       name: partner.name,
       traits: aggregate.unionTraits.take(5).toList(growable: false),
+      note: partner.customNote,
     );
   }
 

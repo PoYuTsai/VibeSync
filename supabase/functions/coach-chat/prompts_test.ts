@@ -120,6 +120,19 @@ Deno.test("buildCoachChatPrompt carries data-quality warning instead of traits",
   assertEquals(prompt.includes("已知特質"), false);
 });
 
+Deno.test("buildCoachChatPrompt carries partner note into 對方提示", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    userQuestion: "她這樣是什麼意思？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+    partnerHint: { name: "Jenny", traits: ["慢熱"], note: "喜歡潛水、想先約咖啡" },
+  });
+  assertStringIncludes(prompt, "使用者的長期備註：喜歡潛水、想先約咖啡");
+});
+
 Deno.test("buildCoachChatPrompt teaches sexual tension without shame or pressure", () => {
   const prompt = buildCoachChatPrompt({
     conversationId: "c1",

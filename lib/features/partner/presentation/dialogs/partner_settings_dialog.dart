@@ -178,7 +178,7 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
             ],
             const SizedBox(height: 2),
             Text(
-              '這裡會成為教練理解這個人的長期背景，不需要每次補聊天時重填。',
+              '儲存後立即生效：教練和下一次分析都會帶上這些背景，不需要每次重填。',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppColors.glassTextSecondary,
                   ),

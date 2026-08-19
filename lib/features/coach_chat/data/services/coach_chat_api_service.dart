@@ -43,9 +43,14 @@ class CoachChatPartnerHint {
   final String? name;
   final List<String> traits;
 
+  /// 使用者在「對象設定」填的長期備註（customNote），2026-08-19 起
+  /// 直接進教練 prompt（先前只進分析/新話題）。
+  final String? note;
+
   const CoachChatPartnerHint({
     this.name,
     this.traits = const [],
+    this.note,
   });
 }
 
@@ -563,6 +568,10 @@ class CoachChatApiService {
             .map((trait) => _clampForWire(trait, 40))
             .take(5)
             .toList(),
+      if (!dataQualityFlagged &&
+          hint.note != null &&
+          hint.note!.trim().isNotEmpty)
+        'note': _clampForWire(hint.note!.trim(), 300),
     };
   }
 

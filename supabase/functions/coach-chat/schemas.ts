@@ -87,6 +87,9 @@ export const AnalysisSnapshotSchema = z.object({
 export const PartnerHintSchema = z.object({
   name: z.string().max(80).nullable().optional(),
   traits: z.array(z.string().max(40)).max(5).optional(),
+  // 2026-08-19：使用者在「對象設定」填的長期備註（客端 customNote，
+  // 上限 300）。選填、缺席＝現行為；dataQualityFlagged 時必須缺席（同 traits）。
+  note: z.string().max(300).nullable().optional(),
 }).strict();
 
 export const RequestSchema = z.object({
@@ -126,6 +129,17 @@ export const RequestSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["partnerHint", "traits"],
       message: "partnerHint.traits must be omitted when dataQualityFlagged",
+    });
+  }
+  if (
+    payload.dataQualityFlagged &&
+    payload.partnerHint?.note != null &&
+    payload.partnerHint.note.length > 0
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["partnerHint", "note"],
+      message: "partnerHint.note must be omitted when dataQualityFlagged",
     });
   }
   if (

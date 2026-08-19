@@ -271,6 +271,7 @@ function formatPartnerHint(input: CoachChatRequest): string | null {
   const parts = [
     hint.name ? `名字：${hint.name}` : null,
     hint.traits?.length ? `已知特質：${hint.traits.join("、")}` : null,
+    hint.note ? `使用者的長期備註：${hint.note}` : null,
   ].filter(Boolean);
   return parts.join("\n");
 }
