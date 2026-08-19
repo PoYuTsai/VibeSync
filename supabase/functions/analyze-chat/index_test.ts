@@ -901,29 +901,27 @@ Deno.test({
     assert(source.includes("每個 opener 10-25 個中文字"));
     assert(source.includes("陳述句收尾優先，不一定要有問號"));
     assert(source.includes("不要解釋招式，不要鋪墊，不要自證有看自介"));
-    assert(source.includes("觀察 + 小框架 + 好回出口"));
-    assert(source.includes("高手觀察法：規則是背景，反差才是入口"));
-    assert(source.includes("真正高手會看，但不會拿來逐條回覆"));
+    // 2026-08-19 瘦身：高手觀察法＋旁路冷讀合併成「怎麼讀她的資料」。
+    assert(source.includes("怎麼讀她的資料：規則是背景，反差與旁路才是入口"));
+    assert(source.includes("只當避雷背景，不當聊天入口"));
     assert(source.includes("規則只是背景紅線"));
-    assert(source.includes("妳是不是那種明明該補眠，結果又突然開一個新坑的人"));
+    // 原範例「妳是不是那種…的人」正是 2026-08-19 反例區要禁的模板句式，
+    // 合併時刪除；改鎖旁路冷讀的具體對照。
+    assert(source.includes("妳看起來不是難聊，是懶得陪人尬聊"));
     assert(source.includes("有點壞但有邊界的鬆弛感"));
-    assert(source.includes("旁路冷讀：不要把線索原文講破"));
+    // 2026-08-19 瘦身：旁路冷讀／三層優先級／框架大於話術／Specialness Gate／
+    // Female Reply Check／品質標準／五題自檢七個區塊合併成兩塊，這裡改鎖語意
+    // 錨點而不是逐句鏡像（逐句鏡像讓每次合併都連鎖打到，本身是維護債）。
+    assert(source.includes("旁路冷讀"));
     assert(source.includes("從資料旁邊長出一個合理但不明說的推測"));
-    assert(source.includes("不要直接說「妳在酒吧上班」或問上班"));
-    assert(source.includes("妳感覺蠻會唱歌"));
-    assert(source.includes("優先讓 coldRead 風格使用旁路冷讀"));
-    assert(source.includes("三層優先級：來回 > 男人框架 > 幽默"));
-    assert(source.includes("像羽毛球一樣能來來回回"));
-    assert(source.includes("不要把球打死"));
-    assert(source.includes("你也在觀察她，而不是單方面求她認可"));
-    assert(source.includes("不刻意的幽默才有吸引力"));
-    assert(source.includes("她有球可以打回來"));
-    assert(source.includes("框架大於話術"));
-    assert(source.includes("所有 opener 都是示範，不是唯一正解"));
-    assert(source.includes("這句在丟哪顆球"));
-    assert(
-      source.includes("recommendation.reason 必須說明「這句示範了什麼框架」"),
-    );
+    assert(source.includes("妳看人應該蠻準"));
+    assert(source.includes("coldRead 風格與兩顆球的第二球優先用旁路冷讀"));
+    assert(source.includes("三層優先級：能來回 > 男人框架 > 幽默"));
+    assert(source.includes("為了幽默硬塞梗、硬搞怪反而扣分"));
+    assert(source.includes("送出前自檢"));
+    assert(source.includes("拿掉她的資料還成立嗎"));
+    assert(source.includes("像客服、像面試、像交作業就重寫"));
+    assert(source.includes("所有 opener 都是示範不是唯一正解"));
     assert(source.includes("兩顆球策略：不必每次都押一句神回"));
     assert(source.includes("第一球：微拉、畫面感、輕微挑戰"));
     assert(source.includes("初期只能微拉，不要重拉"));
@@ -945,26 +943,25 @@ Deno.test({
     assert(source.includes("自介有點像入境規定"));
     assert(source.includes("走私罐頭訊息"));
     assert(source.includes("五種風格各有任務"));
-    assert(source.includes("不要把它們全部做成同一種壞壞推拉"));
-    assert(source.includes("用戶看到的名稱是「調情」"));
-    assert(source.includes("不要輸出「微拉」這個內部術語"));
+    // 2026-08-19 瘦身：「5 種開場白風格」與「五種風格各有任務」兩個重複
+    // 區塊合併成一份（tease 的微拉界線、兩句目標質感全部保留）。
+    assert(source.includes("不要五張都做成同一種壞壞推拉"));
+    assert(source.includes("UI 上叫「調情」"));
+    assert(source.includes("內部術語「微拉」絕不輸出"));
     assert(source.includes("目標質感接近「沒到微胖吧，挺辣，謙虛了。」"));
     assert(source.includes("目標質感接近「妳感覺蠻會唱歌。」"));
     assert(source.includes("不把線索原文說破"));
     assert(source.includes("初期陌生開場只能微拉"));
-    assert(source.includes("這張卡在 UI 叫「調情」"));
-    assert(source.includes("不要把內部術語「微拉」寫給用戶"));
-    assert(source.includes("幽默是加分項，不是必要項"));
+    assert(source.includes("幽默是加分項不是必要項"));
     assert(source.includes("優先保留來回感與男人框架"));
-    assert(source.includes("Specialness Gate：不特別就重寫"));
-    assert(source.includes("如果輸出只是一般人也會問的安全句，產品就失去價值"));
-    assert(source.includes("拿掉對方資料仍然能套在任何人身上"));
-    assert(source.includes("最 special、最有機會從一百則訊息裡跳出來"));
-    assert(source.includes("Female Reply Check：換位思考女生會不會回"));
-    assert(source.includes("想笑、想反駁、想補充、想問「你怎麼知道」"));
-    assert(source.includes("低成本回覆入口"));
-    assert(source.includes("我只會已讀、不知道回什麼、覺得他在自嗨"));
-    assert(source.includes("讓女生真的有可能回"));
+    // 2026-08-19 瘦身：Specialness Gate／Female Reply Check／品質標準／五題
+    // 自檢合併成「送出前自檢（四個問題）」，四個判準逐一鎖住。
+    assert(source.includes("成立＝太通用，任何人都收得到這句，重寫"));
+    assert(source.includes("才不是，我其實"));
+    assert(source.includes("她只會已讀或不知道回什麼＝重寫"));
+    assert(source.includes("會不會覺得被查戶口、被審核、被教育、被油到"));
+    assert(source.includes("最有機會從幾百則訊息裡跳出來的一句，不是最保守的那句"));
+    assert(source.includes("嗨美女、妳好漂亮、在哪上班、要不要喝一杯"));
     assert(source.includes("先鋒備案：開場不是終點"));
     assert(source.includes("開場救星是產品的「先鋒」"));
     assert(source.includes("ifCold"));
@@ -987,8 +984,11 @@ Deno.test({
     assert(source.includes("不喜歡被問工作、不愛喝酒、喜歡學習嘗試新事物"));
     assert(source.includes("心裡刪掉工作與酒局題庫"));
     assert(source.includes("資訊不足：明說線索不足"));
+    // 瘦身：舊版基線句是現行 reason 規格的子集，合併為一條。
     assert(
-      source.includes("這句示範了什麼框架 + 接住哪個可回線索 + 為什麼容易被回"),
+      source.includes(
+        "這句示範了什麼框架 + 接住哪個可回線索 + 刪掉哪個錯誤接法 + 為什麼容易被回",
+      ),
     );
     assert(source.includes("如果內部避開的是「不約」"));
     assert(source.includes("明確標示可見線索不足"));
