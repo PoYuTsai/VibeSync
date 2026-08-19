@@ -1524,6 +1524,37 @@ Deno.test("beginner easy crude offense still deducts full -12 despite easy multi
   assertEquals(json.temperature.familiarityDelta, -12);
 });
 
+// 冒犯冷卻窗（2026-08-19）：罵完下一句講正常話，分類器給好評也不得回暖
+// ——正向 delta 夾 0，只能持平或續跌（真機實錄：咩修桿某後一句還 +12）。
+Deno.test("beginner turn after crude offense clamps positive deltas to zero", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      deepSeekReplies: [
+        "嗯 看你接下來怎麼表現",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "normal",
+      temperatureScore: 40,
+      familiarityScore: 30,
+      turns: [
+        { role: "user", text: "幹妳娘" },
+        { role: "ai", text: "這句話讓我覺得被冒犯" },
+        { role: "user", text: "抱歉啦剛剛失言 妳今天過得好嗎" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  const update = learningUpdateCalls(state)[0].params;
+  assertEquals(update.p_temperature_delta, 0);
+  assertEquals(json.temperature.score, 40);
+  assertEquals(json.temperature.familiarityDelta, 0);
+});
+
 Deno.test("game chat crude sexual offense at threshold floors at zero", async () => {
   const { response, json, state } = await run(
     {

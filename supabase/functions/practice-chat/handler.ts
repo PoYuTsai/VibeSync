@@ -120,6 +120,7 @@ import {
   temperatureBandFor,
   type TurnClassification,
   withMaxNegativeLearningDeltas,
+  withNonPositiveLearningDeltas,
 } from "./temperature.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
 import { normalizeLiteralNewlines } from "./prompt_sanitizer.ts";
@@ -393,6 +394,40 @@ function withDeterministicSafetyOverride(opts: {
     return deterministic;
   }
   return opts.classification;
+}
+
+/**
+ * 冒犯冷卻窗（2026-08-19）：嚴重冒犯的扣滿只罰當下那一句，下一句講正常話
+ * 分類器就用乾淨脈絡評分回暖——真實女生不會被罵完下一句就熱回來。從
+ * transcript 無狀態推導：最後一句**之前**的 K 句 user 內有粗俗冒犯＝
+ * 冷卻中，正向 delta 夾 0、正向心情壓 guarded。最後一句自己命中走扣滿
+ * 路徑，不歸這裡。
+ */
+const OFFENSE_COOLDOWN_USER_TURNS = 3;
+
+function inCrudeOffenseCooldown(
+  turns: Array<{ role: string; text: string }>,
+): boolean {
+  const users = turns.filter((turn) => turn.role === "user");
+  return users
+    .slice(0, -1)
+    .slice(-OFFENSE_COOLDOWN_USER_TURNS)
+    .some((turn) => containsCrudeSexualOffense(turn.text));
+}
+
+const COOLDOWN_DAMPED_MOODS: ReadonlySet<string> = new Set([
+  "curious",
+  "amused",
+  "comfortable",
+]);
+
+function withCooldownDampedMood(
+  classification: TurnClassification,
+): TurnClassification {
+  if (!COOLDOWN_DAMPED_MOODS.has(classification.partnerMood)) {
+    return classification;
+  }
+  return { ...classification, partnerMood: "guarded" };
 }
 
 function lastUserText(turns: Array<{ role: string; text: string }>): string {
@@ -1208,6 +1243,8 @@ async function judgeLearningState(opts: {
   const crudeOffense = containsCrudeSexualOffense(
     lastUserText(opts.request.turns),
   );
+  const offenseCooldown = !crudeOffense &&
+    inCrudeOffenseCooldown(opts.request.turns);
   const applyGameLearningIfNeeded = (
     judgement: LearningJudgement,
     currentTemperature: number,
@@ -1284,8 +1321,15 @@ async function judgeLearningState(opts: {
         : undefined,
       opts.request.practiceMode,
     );
+    const cooledFallback = offenseCooldown
+      ? withNonPositiveLearningDeltas(
+        protectedFallback,
+        currentTemperature,
+        currentFamiliarity,
+      )
+      : protectedFallback;
     return applyGameLearningIfNeeded(
-      protectedFallback,
+      cooledFallback,
       currentTemperature,
       currentFamiliarity,
       currentPartnerState,
@@ -1297,12 +1341,15 @@ async function judgeLearningState(opts: {
     currentPartnerState: PartnerState | null | undefined,
     parsedClassification: TurnClassification,
   ): LearningJudgement => {
-    const classification = withDeterministicSafetyOverride({
+    const overridden = withDeterministicSafetyOverride({
       classification: parsedClassification,
       request: opts.request,
       currentTemperature,
       currentFamiliarity,
     });
+    const classification = offenseCooldown
+      ? withCooldownDampedMood(overridden)
+      : overridden;
     const judgement = applyLearningClassification(
       {
         heatScore: currentTemperature,
@@ -1330,6 +1377,12 @@ async function judgeLearningState(opts: {
     // 不得替它擋下扣分。
     const enforcedJudgement = crudeOffense
       ? withMaxNegativeLearningDeltas(
+        protectedJudgement,
+        currentTemperature,
+        currentFamiliarity,
+      )
+      : offenseCooldown
+      ? withNonPositiveLearningDeltas(
         protectedJudgement,
         currentTemperature,
         currentFamiliarity,
