@@ -7,6 +7,7 @@
 //   export ANTHROPIC_API_KEY="$(cat ~/.config/anthropic/key)"
 //   deno run --allow-read --allow-env --allow-net --allow-run \
 //     tools/opener-prompt-ab/run_ab.ts <baseline-git-ref> [runs] [--mode=opener|newtopic]
+//       [--judge] [--fixture=short]   # --fixture=short 換第二份自介（只有 opener 有）
 //
 // baseline-git-ref 取該 commit 版本的原始檔當對照組，HEAD 工作區當實驗組。
 // 想只量現況基準線（還沒有對照組）時用 --mode=xxx 搭 baseline ref = HEAD。
@@ -14,15 +15,21 @@
 // 指標正則自檢（不打 API、不用金鑰）：
 //   deno run --allow-read --allow-env --allow-run tools/opener-prompt-ab/run_ab.ts --self-check
 
+// echo 從「回一個數字」改成「回證據配對」（2026-08-20）：複述是這批優化的
+// 主要靶，但一個沒有出處的整數沒辦法驗評測員自己有沒有亂判——13/20 跟 8/20
+// 差在哪，看不到配對就只能猜。數字直接由配對數推出來，說不出出處就不算。
+import { parseFullPayload } from "../../supabase/functions/analyze-chat/full_response.ts";
+
 const JUDGE_SYSTEM =
   `你是文本評測員。給你五則要傳給同一個女生的第一句訊息，以及她的公開資料。只輸出 JSON，不要任何說明。
-判斷三件事，每個回 0-5 的整數：
-1. skeleton：有幾則落在「先講一個通則或前提，再轉折到她身上」的骨架。**不管有沒有用「但／不過／其實」這類連接詞**——用逗號接、換行接、或連接詞整個省略但結構還在的，一樣算。
-2. echo：有幾則的開頭是在複述她資料裡已經有的內容（換句話說、換個詞也算），而不是給出一個她沒看過的觀察或判斷。
-3. casual：有幾則讀起來像真人順手丟的（可以不工整、可以不完整、可以只有幾個字），而不是寫過的句子。
-輸出格式：{"skeleton":0,"echo":0,"casual":0,"note":"20字內講最明顯的問題"}`;
+判斷三件事：
+1. skeleton（0-5 整數）：有幾則落在「先講一個通則或前提，再轉折到她身上」的骨架。**不管有沒有用「但／不過／其實」這類連接詞**——用逗號接、換行接、或連接詞整個省略但結構還在的，一樣算。
+2. echoPairs（陣列）：哪幾則是在複述她資料裡已經有的內容（換句話說、換個詞、換個角度講同一件事都算），而不是給出一個她沒看過的觀察或判斷。**每一則都要指出它複述的是自介裡的哪一段原文**；指不出原文就不要列進來。格式 [{"line":2,"bio":"自介原文片段","how":"10字內說它怎麼換皮的"}]。
+3. casual（0-5 整數）：有幾則讀起來像真人順手丟的（可以不工整、可以不完整、可以只有幾個字），而不是寫過的句子。
+輸出格式：{"skeleton":0,"echoPairs":[],"casual":0,"note":"20字內講最明顯的問題"}`;
 
-type Verdict = { skeleton: number; echo: number; casual: number; note: string };
+type EchoPair = { line: number; bio: string; how?: string };
+type Verdict = { skeleton: number; echoPairs: EchoPair[]; casual: number; note: string };
 
 async function judge(lines: string[], profile: string): Promise<Verdict | null> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -34,7 +41,8 @@ async function judge(lines: string[], profile: string): Promise<Verdict | null> 
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 300,
+      // 600：echoPairs 要附原文出處，300 會在配對列到一半被截斷。
+      max_tokens: 600,
       // sonnet-5 已棄用 temperature（API 直接 400）；thinking 關掉就夠穩定。
       thinking: { type: "disabled" },
       system: JUDGE_SYSTEM,
@@ -53,7 +61,12 @@ async function judge(lines: string[], profile: string): Promise<Verdict | null> 
     .find((b) => b?.type === "text")?.text ?? "";
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) throw new Error(`judge 沒回 JSON：${text.slice(0, 200)}`);
-  return JSON.parse(m[0]) as Verdict;
+  const v = JSON.parse(m[0]) as Verdict;
+  // 沒回陣列＝評測員自己壞了，跟 API 錯誤同級要吵，不要靜靜當成 0 則複述。
+  if (!Array.isArray(v.echoPairs)) {
+    throw new Error(`judge 沒回 echoPairs 陣列：${m[0].slice(0, 200)}`);
+  }
+  return v;
 }
 
 // ── 客觀指標 ────────────────────────────────────────────────
@@ -308,6 +321,24 @@ const OPENER_USER_CONTENT = `對方資料：
 認識管道：交友軟體
 請依系統規則產出 JSON。`;
 
+// 第二份開場白自介（--fixture=short）：三行、零規則、兩個具體線索。
+// grace 是「規則牆」極端值，只有她一份的話所有結論都綁死在那一種輸入上
+// （2026-08-20：整晚的複述／骨架結論全部建立在單一樣本）。
+const OPENER_SHORT_USER_CONTENT = `對方資料：
+名字：Ally
+年齡：28
+所在地：台北市
+身高：160 cm
+語言：中文、英文
+產業：設計／文創
+自介：
+養了一隻很兇的貓
+
+假日大多在中和的舊書店
+
+認識管道：交友軟體
+請依系統規則產出 JSON。`;
+
 // 新話題基準線案例：刻意踩三個已知病灶——(1) 興趣清單集中在旅行／咖啡，
 // 看五題會不會全繞同一塊；(2) 備註含主詞不明的用戶目標「想約出來見面」，
 // 看會不會被寫成她的事；(3) 狀態是「聊得來但還沒約」，看會不會催邀約。
@@ -383,6 +414,15 @@ if (!mode) {
   console.error(`未知 --mode=${modeArg}（可用：${Object.keys(MODES).join("／")}）`);
   Deno.exit(2);
 }
+// --fixture=short：換掉開場白的輸入自介，其餘變因不動。
+if (Deno.args.includes("--fixture=short")) {
+  if (modeArg !== "opener") {
+    console.error("--fixture=short 只支援 --mode=opener");
+    Deno.exit(2);
+  }
+  mode.userContent = OPENER_SHORT_USER_CONTENT;
+  mode.echoSource = OPENER_SHORT_USER_CONTENT;
+}
 
 /** 從原始碼抽出指定 prompt 樣板字串的內容。 */
 function extractPrompt(source: string, constName: string): string {
@@ -433,10 +473,18 @@ async function generate(systemPrompt: string, extraUser = ""): Promise<{ lines: 
   if (typeof text !== "string") {
     throw new Error(`API 回覆異常：${JSON.stringify(json).slice(0, 300)}`);
   }
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("回覆沒有 JSON");
-  const parsed = JSON.parse(match[0]);
-  return { lines: mode.lines(parsed), all: mode.allText(parsed), parsed };
+  // 用生產端同一支解析器，不要自己 JSON.parse：模型偶爾回帶尾逗號的 JSON，
+  // 整批 A/B 會死在中間（2026-08-20 實驗臂 run 5）。順帶讓 harness 的容錯
+  // 跟線上一致——線上吞得下的輸出，harness 不該量成失敗。
+  const res2 = parseFullPayload(text);
+  if (!res2.ok) throw new Error(`JSON 解析失敗（${res2.error}）：${text.slice(-400)}`);
+  const parsed = res2.result.payload;
+  const lines = mode.lines(parsed);
+  // 修過的 JSON 可能少掉被截斷的那幾則，指標分母會悄悄從 5 變小。
+  if (res2.result.source === "repaired" || lines.length !== 5) {
+    console.log(`    [解析 ${res2.result.source}，取到 ${lines.length} 則]`);
+  }
+  return { lines, all: mode.allText(parsed), parsed };
 }
 
 function metrics(lines: string[], all: string, prompt: string) {
@@ -543,10 +591,13 @@ for (const [label, prompt, armTwoPass] of arms) {
         console.log("    [judge 無法解析，本輪不計入]");
       } else {
         jAgg.skeleton += v.skeleton;
-        jAgg.echo += v.echo;
+        jAgg.echo += v.echoPairs.length;
         jAgg.casual += v.casual;
         jAgg.n += 1;
-        console.log(`    [judge] 同骨架 ${v.skeleton}/5｜複述 ${v.echo}/5｜隨口 ${v.casual}/5｜${v.note}`);
+        console.log(`    [judge] 同骨架 ${v.skeleton}/5｜複述 ${v.echoPairs.length}/5｜隨口 ${v.casual}/5｜${v.note}`);
+        for (const p of v.echoPairs) {
+          console.log(`      複述 #${p.line} ← 自介「${p.bio}」${p.how ? `（${p.how}）` : ""}`);
+        }
       }
     }
     console.log(`\n[run ${r}] 長度 ${m.lenMin}-${m.lenMax}（均 ${m.lenAvg}）｜轉折骨架 ${m.pivot}/5（那種句型 ${m.thatType}）｜實質問句 ${m.questionForm}/5（句末問號 ${m.asks}）｜>30字 ${m.over30}/5｜唸稿開頭 ${m.quotesBio}/5｜分則 ${m.multiline}/5｜句末句號 ${m.periods}/5｜包裝 ${m.wrapped}/5｜撞已知興趣 ${m.sameInterest}/5｜grounding 洩漏 ${m.leak}｜抄自 prompt ${m.copied}/5｜你妳混用 ${m.mixedYou}/5｜術語外洩 ${m.jargon}`);
