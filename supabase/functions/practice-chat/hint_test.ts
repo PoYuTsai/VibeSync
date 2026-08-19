@@ -268,7 +268,7 @@ Deno.test("GAME_HINT_MOVE_EXAMPLES stay short, visible-safe, parser-safe, and mo
     test_standard_and_deny: [
       "玩笑式小門檻",
       "輕輕取消資格",
-      "注音語氣的小門檻",
+      "笑死開頭的小門檻",
     ],
     tension_pull_push_story: [
       "先拉再推",
