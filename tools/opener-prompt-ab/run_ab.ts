@@ -31,6 +31,13 @@ const THAT_TYPE = /(?:妳|你)(?:是|感覺是|應該是)那種/u;
 const TRAILING_PERIOD = /[。.]\s*$/u;
 /** 不可直接送出的包裝：引號整句包、編號、教學括號。 */
 const WRAPPED = /^[「『"']|^[0-9]+[.、)]|（.*?(?:技巧|鉤子|冷讀|微拉).*?）/u;
+/**
+ * 只有我們懂的詞漏進使用者看得到的欄位（2026-08-19 Eric 真機抓到「內梗」）。
+ * 機制跟示範句一樣：寫在 prompt 裡的東西會出現在輸出裡，不管它是例句還是術語。
+ * 「作戰板」不列入——那是 client 真的在用的 UI 名稱。
+ */
+const JARGON =
+  /內梗|位階|資格審查|共同身分|換皮|情勒|破冰腦力|深度階梯|兩段式|冷讀|鉤子|微拉|唸稿|骨架/gu;
 /** 同一句裡你／妳混用——複製貼上寄出去就露餡（2026-08-19 新話題實測 3/20）。 */
 const MIXED_YOU = /(?=.*你)(?=.*妳)/su;
 /** 用戶自己的目標／備註被寫成「她的事」——grounding 破口，任何欄位都不准出現。 */
@@ -42,6 +49,25 @@ const LEAK = /(?:你|妳)(?:之前|上次)(?:說|提到)|(?:你|妳)想約|(?:�
  * 不維護黑名單也就不會過期。
  * ponytail: 逐長度掃 substring，句子 ≤40 字所以 O(n²) 無所謂；要量長文再換 suffix automaton。
  */
+/**
+ * 唸稿開頭：句子開頭原樣複述她資料裡的字。原本是手維護的關鍵詞名單，
+ * 2026-08-19 實測只抓到 3/25、實際 9/25——名單不維護就過期，跟黑名單式
+ * 照抄偵測同一個毛病。改成跟輸入本文對，換案例也不用改程式。
+ *
+ * k=3 是離線校準值（同一份 25 句：k=3 抓 9 且零誤判、k=4 掉到 3、k=5 掛零）。
+ * ponytail: 只掃句子前 10 字——唸稿感來自「開頭就複述」，句中提到她的詞是正常的。
+ */
+const ECHO_MIN_RUN = 3;
+const ECHO_HEAD = 10;
+function echoesInput(line: string, source: string): boolean {
+  const src = source.replace(/\s/g, "");
+  const head = Array.from(line.replace(/\s/g, "")).slice(0, ECHO_HEAD);
+  for (let i = 0; i + ECHO_MIN_RUN <= head.length; i++) {
+    if (src.includes(head.slice(i, i + ECHO_MIN_RUN).join(""))) return true;
+  }
+  return false;
+}
+
 const COPY_MIN_RUN = 6;
 function copiesFromPrompt(line: string, prompt: string): boolean {
   const chars = Array.from(line.replace(/\s/g, ""));
@@ -93,10 +119,22 @@ if (Deno.args.includes("--self-check")) {
     ["妳是那種行程排到分鐘的人嗎", false],
   ];
   const youBad = youCases.filter(([t, want]) => MIXED_YOU.test(t) !== want);
+  // 唸稿：開頭複述 vs 消化成自己的話。前者是她的原字，後者是模型的詞。
+  const echoCases: Array<[string, boolean]> = [
+    ["大夜班下班還有力氣學新東西 這體力也太狠", true],
+    ["講話直接的人聊起來最省力，喜歡", true],
+    // 「日夜顛倒」不在她自介裡（她寫的是「大夜班」）＝模型自己的話，不算唸稿。
+    ["日夜顛倒的人才懂，別人的晚安是我的早安", false],
+    ["所以妳的假日其實是別人的星期二對吧", false],
+  ];
+  const echoSample = "喜歡認識新朋友，熱愛學習嘗試新事物 從事酒店外場，大夜班工作者 " +
+    "微胖女生 講話直接，不喜歡沒誠意的人";
+  const echoBad = echoCases.filter(([t, want]) => echoesInput(t, echoSample) !== want);
+  for (const [t, want] of echoBad) console.error(`✗ echoesInput 對「${t}」應為 ${want}`);
   for (const [t, want] of youBad) console.error(`✗ MIXED_YOU 對「${t}」應為 ${want}`);
-  const total = bad.length + copyBad.length + youBad.length;
+  const total = bad.length + copyBad.length + youBad.length + echoBad.length;
   console.log(total === 0
-    ? `✓ 指標自檢 ${cases.length + copyCases.length + youCases.length} 項全過`
+    ? `✓ 指標自檢 ${cases.length + copyCases.length + youCases.length + echoCases.length} 項全過`
     : `✗ ${total} 項失敗`);
   Deno.exit(total === 0 ? 0 : 1);
 }
@@ -111,6 +149,12 @@ const positional = Deno.args.filter((a) => !a.startsWith("--"));
 const modeArg = Deno.args.find((a) => a.startsWith("--mode="))?.slice(7) ?? "opener";
 // 實驗組預設是工作區；給 ref 就變成任兩個 commit 對比（回頭驗舊批次的因果結論用）。
 const currentRef = Deno.args.find((a) => a.startsWith("--current="))?.slice(10);
+// client 顯示四欄＋推薦理由；只印 openingLine 會漏掉一半的品質問題。
+const dump = Deno.args.includes("--dump");
+// 原型：把 prompt 裡「先發散再個人化」的第一段拆成獨立呼叫。
+// 同一次呼叫裡作戰板就攤在模型眼前，「暫時放下她的興趣清單」做不到——
+// 第一段必須在看不到作戰板的情況下跑，才可能真的發散（2026-08-19）。
+const twoPass = Deno.args.includes("--twopass");
 const baselineRef = positional[0];
 const runs = Number(positional[1] ?? "3");
 if (!baselineRef) {
@@ -129,10 +173,15 @@ interface Mode {
   lines: (parsed: Record<string, unknown>) => string[];
   /** 全欄位掃描用（grounding 洩漏檢查看得到 nextMove/reason）。 */
   allText: (parsed: Record<string, unknown>) => string;
-  /** 被當開頭＝唸稿感的輸入原句。 */
-  bioPhrases: string[];
+  /**
+   * 唸稿判定的比對來源＝她的資料原文（只放對方欄位，不放指令與段落標題，
+   * 否則會拿「請依系統規則」之類的句子誤判）。
+   */
+  echoSource: string;
   /** 判斷五題是不是換皮不換題用的已知興趣詞。 */
   knownInterests: string[];
+  /** --twopass 第一段的輸入：只有關係階段與狀況，**不含作戰板**。 */
+  divergeUserContent?: string;
 }
 
 // grace（2026-08-19 真機案例）：長自介、規則牆、唯一正向線索是「熱愛學習
@@ -173,7 +222,7 @@ const NEW_TOPIC_USER_CONTENT = `## 對方作戰板（唯一可當對方事實的
 - 最近熱度：68
 - 興趣：旅行、手沖、看展
 - 性格：慢熱、幽默愛鬧
-- 你的備註：慢熱、聊得來還沒約、愛喝咖啡、上次互相叫對方鄰居、想約出來見面
+- 你的備註：慢熱、聊得來還沒約、愛喝咖啡、上次互相叫對方房東、想約出來見面
 - 只可使用以上明確紀錄，不得猜補對方興趣
 
 ## 關於我（用戶本人的風格與興趣，只能做自我揭露）
@@ -196,7 +245,7 @@ const MODES: Record<string, Mode> = {
         .filter((v) => v.length > 0);
     },
     allText: (parsed) => JSON.stringify(parsed),
-    bioPhrases: ["熱愛學習", "熱愛學新", "喜歡認識新朋友", "講話直接", "微胖"],
+    echoSource: OPENER_USER_CONTENT,
     knownInterests: [],
   },
   newtopic: {
@@ -208,10 +257,27 @@ const MODES: Record<string, Mode> = {
         .map((t) => String(t?.openingLine ?? ""))
         .filter((v) => v.length > 0),
     allText: (parsed) => JSON.stringify(parsed),
-    bioPhrases: ["慢熱", "幽默愛鬧", "愛喝咖啡", "聊得來"],
+    echoSource: NEW_TOPIC_USER_CONTENT.split("## 關於我")[0],
     knownInterests: ["旅行", "旅遊", "咖啡", "手沖", "看展", "展覽"],
+    divergeUserContent:
+      "關係階段：聊得來但還沒約。\n目前狀況：聊天卡住了（不知道接什麼新話題）。\n請產出 8 個方向的 JSON。",
   },
 };
+
+const DIVERGE_PROMPT =
+  `你在幫一個聊天教練做「話題發散」。你**拿不到對方的任何資料**，這是刻意的設計——看得到她喜歡什麼，就一定會繞著那幾樣打轉。
+只根據關係階段與目前狀況，想 8 個彼此語意距離很遠的聊天方向。
+- 每個方向一句話（≤20 字），只描述方向本身，不要寫成可以傳出去的訊息。
+- 八個必須落在八個不同的生活面向，不可以是同一件事的八種切法。
+只輸出 JSON，不要 code fence：{"directions":["...","...","...","...","...","...","...","..."]}`;
+
+/** 第二段：把發散結果注進 user message，核心話題只能從這 8 個裡挑。 */
+function buildDirectionsBlock(directions: string[]): string {
+  return "\n\n## 已經先發散好的 8 個方向\n" +
+    directions.map((d, i) => `${i + 1}. ${d}`).join("\n") +
+    "\n從這 8 個裡挑 5 個最合當下階段的，再用作戰板的線索把它們寫成她的語言。" +
+    "核心話題必須來自這 8 個方向，作戰板只提供語言、稱呼和梗，不提供話題本身。";
+}
 
 const mode = MODES[modeArg];
 if (!mode) {
@@ -243,7 +309,7 @@ async function gitShow(ref: string, path: string): Promise<string> {
   return new TextDecoder().decode(stdout);
 }
 
-async function generate(systemPrompt: string): Promise<{ lines: string[]; all: string }> {
+async function generate(systemPrompt: string, extraUser = ""): Promise<{ lines: string[]; all: string; parsed: Record<string, unknown> }> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -258,7 +324,7 @@ async function generate(systemPrompt: string): Promise<{ lines: string[]; all: s
       // 就送 disabled。不跟著關，thinking 會吃光 3000 token 產出零可見輸出。
       thinking: { type: "disabled" },
       system: systemPrompt,
-      messages: [{ role: "user", content: mode.userContent }],
+      messages: [{ role: "user", content: mode.userContent + extraUser }],
     }),
   });
   const json = await res.json();
@@ -271,7 +337,7 @@ async function generate(systemPrompt: string): Promise<{ lines: string[]; all: s
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("回覆沒有 JSON");
   const parsed = JSON.parse(match[0]);
-  return { lines: mode.lines(parsed), all: mode.allText(parsed) };
+  return { lines: mode.lines(parsed), all: mode.allText(parsed), parsed };
 }
 
 function metrics(lines: string[], all: string, prompt: string) {
@@ -288,9 +354,7 @@ function metrics(lines: string[], all: string, prompt: string) {
     thatType: lines.filter((l) => THAT_TYPE.test(l)).length,
     periods: lines.filter((l) => TRAILING_PERIOD.test(l)).length,
     wrapped: lines.filter((l) => WRAPPED.test(l)).length,
-    quotesBio: lines.filter((l) =>
-      mode.bioPhrases.some((p) => l.slice(0, 12).includes(p))
-    ).length,
+    quotesBio: lines.filter((l) => echoesInput(l, mode.echoSource)).length,
     multiline: lines.filter((l) => l.includes("\n")).length,
     // 換皮不換題：五題各自有沒有踩在同一組已知興趣詞上。
     sameInterest: mode.knownInterests.length === 0 ? 0 : lines.filter((l) =>
@@ -300,6 +364,7 @@ function metrics(lines: string[], all: string, prompt: string) {
     leak: (all.match(new RegExp(LEAK, "gu")) ?? []).length,
     copied: lines.filter((l) => copiesFromPrompt(l, prompt)).length,
     mixedYou: lines.filter((l) => MIXED_YOU.test(l)).length,
+    jargon: (all.match(JARGON) ?? []).length,
   };
 }
 
@@ -311,28 +376,74 @@ const currentLabel = currentRef ? `current(${currentRef})` : "current(worktree)"
 const baselinePrompt = extractPrompt(baselineSource, mode.constName);
 const currentPrompt = extractPrompt(currentSource, mode.constName);
 // 兩邊一字不差時（例如量基準線用 baseline=HEAD）只跑一組，不白花一半的錢。
-const arms: Array<[string, string]> = baselinePrompt === currentPrompt
-  ? [[`${currentLabel}＝baseline，只跑一組`, currentPrompt]]
+// --twopass 時兩臂用同一份 prompt，變因只有「發散段有沒有獨立呼叫」。
+const arms: Array<[string, string, boolean]> = twoPass
+  ? [
+    ["單段（現況）", currentPrompt, false],
+    ["兩段式原型", currentPrompt, true],
+  ]
+  : baselinePrompt === currentPrompt
+  ? [[`${currentLabel}＝baseline，只跑一組`, currentPrompt, false]]
   : [
-    [`baseline(${baselineRef})`, baselinePrompt],
-    [currentLabel, currentPrompt],
+    [`baseline(${baselineRef})`, baselinePrompt, false],
+    [currentLabel, currentPrompt, false],
   ];
 
-for (const [label, prompt] of arms) {
+for (const [label, prompt, armTwoPass] of arms) {
   console.log(`\n═══ ${modeArg} ${label} — prompt ${prompt.length} 字元 ═══`);
-  const agg = { pivot: 0, thatType: 0, asks: 0, questionForm: 0, over30: 0, quotesBio: 0, multiline: 0, periods: 0, wrapped: 0, sameInterest: 0, leak: 0, copied: 0, mixedYou: 0, lens: [] as number[] };
+  const agg = { pivot: 0, thatType: 0, asks: 0, questionForm: 0, over30: 0, quotesBio: 0, multiline: 0, periods: 0, wrapped: 0, sameInterest: 0, leak: 0, copied: 0, mixedYou: 0, jargon: 0, lens: [] as number[] };
   for (let r = 1; r <= runs; r++) {
-    const { lines, all } = await generate(prompt);
+    let extraUser = "";
+    if (armTwoPass) {
+      if (!mode.divergeUserContent) throw new Error(`--twopass 不支援 ${modeArg}`);
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 1000,
+          thinking: { type: "disabled" },
+          system: DIVERGE_PROMPT,
+          messages: [{ role: "user", content: mode.divergeUserContent }],
+        }),
+      });
+      const dj = await res.json();
+      const dtext = (dj?.content as Array<{ type: string; text?: string }> ?? [])
+        .find((b) => b?.type === "text")?.text ?? "";
+      const dm = dtext.match(/\{[\s\S]*\}/);
+      if (!dm) throw new Error(`發散段沒有 JSON：${dtext.slice(0, 200)}`);
+      const dirs = (JSON.parse(dm[0]).directions ?? []) as string[];
+      extraUser = buildDirectionsBlock(dirs);
+      if (dump) dirs.forEach((d, i) => console.log(`    [發散 ${i + 1}] ${d}`));
+    }
+    const { lines, all, parsed } = await generate(prompt, extraUser);
     const m = metrics(lines, all, prompt);
     agg.pivot += m.pivot; agg.thatType += m.thatType;
     agg.asks += m.asks; agg.questionForm += m.questionForm; agg.over30 += m.over30;
     agg.quotesBio += m.quotesBio; agg.multiline += m.multiline;
     agg.periods += m.periods; agg.wrapped += m.wrapped;
-    agg.sameInterest += m.sameInterest; agg.leak += m.leak; agg.copied += m.copied; agg.mixedYou += m.mixedYou;
+    agg.sameInterest += m.sameInterest; agg.leak += m.leak; agg.copied += m.copied; agg.mixedYou += m.mixedYou; agg.jargon += m.jargon;
     agg.lens.push(m.lenMin, m.lenMax);
-    console.log(`\n[run ${r}] 長度 ${m.lenMin}-${m.lenMax}（均 ${m.lenAvg}）｜轉折骨架 ${m.pivot}/5（那種句型 ${m.thatType}）｜實質問句 ${m.questionForm}/5（句末問號 ${m.asks}）｜>30字 ${m.over30}/5｜唸稿開頭 ${m.quotesBio}/5｜分則 ${m.multiline}/5｜句末句號 ${m.periods}/5｜包裝 ${m.wrapped}/5｜撞已知興趣 ${m.sameInterest}/5｜grounding 洩漏 ${m.leak}｜抄自 prompt ${m.copied}/5｜你妳混用 ${m.mixedYou}/5`);
-    lines.forEach((l) => console.log("   ", l.replace(/\n/g, " ⏎ ")));
+    console.log(`\n[run ${r}] 長度 ${m.lenMin}-${m.lenMax}（均 ${m.lenAvg}）｜轉折骨架 ${m.pivot}/5（那種句型 ${m.thatType}）｜實質問句 ${m.questionForm}/5（句末問號 ${m.asks}）｜>30字 ${m.over30}/5｜唸稿開頭 ${m.quotesBio}/5｜分則 ${m.multiline}/5｜句末句號 ${m.periods}/5｜包裝 ${m.wrapped}/5｜撞已知興趣 ${m.sameInterest}/5｜grounding 洩漏 ${m.leak}｜抄自 prompt ${m.copied}/5｜你妳混用 ${m.mixedYou}/5｜術語外洩 ${m.jargon}`);
+    if (dump) {
+      // client 顯示四欄＋推薦理由，只看 openingLine 會漏掉一半的品質問題
+      // （2026-08-19 Eric 在手機上抓到「內梗」漏進畫面，harness 當時看不到）。
+      for (const t of (parsed.topics ?? []) as Array<Record<string, unknown>>) {
+        console.log(`    ▸ ${String(t.openingLine ?? "").replace(/\n/g, " ⏎ ")}`);
+        console.log(`      direction : ${t.direction}`);
+        console.log(`      whyItWorks: ${t.whyItWorks}`);
+        console.log(`      nextMove  : ${t.nextMove}`);
+      }
+      const rec = parsed.recommendation as Record<string, unknown> | undefined;
+      console.log(`    推薦理由：${rec?.reason ?? "(無)"}`);
+    } else {
+      lines.forEach((l) => console.log("   ", l.replace(/\n/g, " ⏎ ")));
+    }
   }
   const total = runs * 5;
-  console.log(`\n── ${label} 合計（${total} 句）：轉折骨架 ${agg.pivot}（那種句型 ${agg.thatType}）｜實質問句 ${agg.questionForm}（句末問號 ${agg.asks}）｜>30字 ${agg.over30}｜唸稿開頭 ${agg.quotesBio}｜分則 ${agg.multiline}｜句末句號 ${agg.periods}｜包裝 ${agg.wrapped}｜撞已知興趣 ${agg.sameInterest}｜grounding 洩漏 ${agg.leak}｜抄自 prompt ${agg.copied}｜你妳混用 ${agg.mixedYou}｜最短 ${Math.min(...agg.lens)} 最長 ${Math.max(...agg.lens)}`);
+  console.log(`\n── ${label} 合計（${total} 句）：轉折骨架 ${agg.pivot}（那種句型 ${agg.thatType}）｜實質問句 ${agg.questionForm}（句末問號 ${agg.asks}）｜>30字 ${agg.over30}｜唸稿開頭 ${agg.quotesBio}｜分則 ${agg.multiline}｜句末句號 ${agg.periods}｜包裝 ${agg.wrapped}｜撞已知興趣 ${agg.sameInterest}｜grounding 洩漏 ${agg.leak}｜抄自 prompt ${agg.copied}｜你妳混用 ${agg.mixedYou}｜術語外洩 ${agg.jargon}｜最短 ${Math.min(...agg.lens)} 最長 ${Math.max(...agg.lens)}`);
 }
