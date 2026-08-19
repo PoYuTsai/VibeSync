@@ -3,7 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/partner/presentation/dialogs/partner_settings_dialog.dart';
 
 // 2026-08-19 Bruce dogfood：備註快速插入 chips。鎖三件事：
-// 點 chip 附加片語（用「、」串接）、同片語不重複塞、已插入 chip 顯示打勾態。
+// 點 chip 附加片語（用「、」串接）、同片語不重複塞、再點一次移除片語
+//（toggle 對標「關於我」chips，Eric 拍板；選中態靠色差字重，無勾勾 icon）。
 void main() {
   Future<void> pumpDialog(WidgetTester tester, {String note = ''}) async {
     await tester.pumpWidget(
@@ -40,15 +41,12 @@ void main() {
     expect(field.controller!.text, '慢熱、剛認識');
   });
 
-  testWidgets('備註已含片語時 chip 呈打勾態且不重複插入', (tester) async {
+  testWidgets('已插入的 chip 再點一次會移除片語並清掉頓號', (tester) async {
     await pumpDialog(tester, note: '喜歡潛水、慢熱');
-
-    // 打勾 icon 出現在已插入的 chip 上。
-    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
 
     await tester.tap(find.text('慢熱'));
     await tester.pump();
     final field = tester.widget<TextField>(find.byType(TextField).last);
-    expect(field.controller!.text, '喜歡潛水、慢熱'); // 沒有變成兩份。
+    expect(field.controller!.text, '喜歡潛水'); // 片語連同「、」一起拔掉。
   });
 }

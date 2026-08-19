@@ -86,6 +86,25 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
     setState(() {});
   }
 
+  /// 再點一次取消（2026-08-19 Eric：對標「關於我」chips 的 toggle 行為）。
+  /// 連同前面的「、」一起拔，孤兒頓號再收尾清一次。
+  void _removeTag(String tag) {
+    var text = _noteController.text;
+    if (text.contains('、$tag')) {
+      text = text.replaceFirst('、$tag', '');
+    } else if (text.contains('$tag、')) {
+      text = text.replaceFirst('$tag、', '');
+    } else {
+      text = text.replaceFirst(tag, '');
+    }
+    text = text.trim();
+    if (text.startsWith('、')) text = text.substring(1);
+    if (text.endsWith('、')) text = text.substring(0, text.length - 1);
+    _noteController.text = text;
+    _noteController.selection = TextSelection.collapsed(offset: text.length);
+    setState(() {});
+  }
+
   void _onSave() {
     if (!_canSave) return;
 
@@ -175,7 +194,9 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
                               _QuickTagChip(
                                 label: tag,
                                 inserted: _tagInserted(tag),
-                                onTap: () => _insertTag(tag),
+                                onTap: () => _tagInserted(tag)
+                                    ? _removeTag(tag)
+                                    : _insertTag(tag),
                               ),
                               const SizedBox(width: 6),
                             ],
@@ -211,8 +232,10 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
   }
 }
 
-/// 備註快速插入 chip：點一下把片語附加進備註文字。已插入（備註內含同
-/// 片語）就轉為淡化打勾態，避免重複塞；使用者改寫文字後自動恢復可點。
+/// 備註快速插入 chip：點一下把片語附加進備註文字，再點一次取消。
+/// 選取語言對標「關於我」ProfileChipSection（2026-08-19 Eric：預設不該
+/// 橘色）：未選＝中性細框次要字；已選＝ctaStart 橘框＋橘粗體＋淡橘底。
+/// 不加勾勾 icon——選中靠色差與字重表達（勾勾殘影與寬度跳動是已登記坑）。
 class _QuickTagChip extends StatelessWidget {
   const _QuickTagChip({
     required this.label,
@@ -226,38 +249,32 @@ class _QuickTagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = inserted
-        ? AppColors.glassTextSecondary
-        // 🍊 ctaStart 對齊「關於我」chips 與本彈窗取消/儲存的品牌橘。
-        : AppColors.ctaStart;
     // PressableScale 自帶放開觸覺（tap），不再包 AppHaptics.onPress——會雙震。
     return PressableScale(
-      enabled: !inserted,
       child: InkWell(
-        onTap: inserted ? null : onTap,
+        onTap: onTap,
         borderRadius: BorderRadius.circular(999),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: inserted ? 0.06 : 0.08),
+            color: inserted
+                ? AppColors.ctaStart.withValues(alpha: 0.14)
+                : AppColors.glassTextPrimary.withValues(alpha: 0.04),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: color.withValues(alpha: 0.35)),
+            border: Border.all(
+              color: inserted
+                  ? AppColors.ctaStart.withValues(alpha: 0.64)
+                  : AppColors.glassTextSecondary.withValues(alpha: 0.35),
+            ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (inserted) ...[
-                Icon(Icons.check_rounded, size: 13, color: color),
-                const SizedBox(width: 3),
-              ],
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: color,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-            ],
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: inserted
+                      ? AppColors.ctaStart
+                      : AppColors.glassTextSecondary,
+                  fontWeight: inserted ? FontWeight.w800 : FontWeight.w600,
+                ),
           ),
         ),
       ),
