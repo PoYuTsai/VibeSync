@@ -31,6 +31,7 @@ import '../../../../shared/widgets/staggered_appear.dart';
 import '../../../../shared/widgets/stream_progress_ticker.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
+import '../../../analysis/presentation/widgets/swipe_hint_nudge.dart';
 import '../../../new_topic/presentation/widgets/new_topic_view.dart';
 import '../widgets/opener_generation_progress.dart';
 import '../../../../core/services/app_haptics.dart';
@@ -1281,11 +1282,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               ),
             ),
             const Spacer(),
-            Text(
-              '左右滑動看更多',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.onBackgroundSecondary,
-              ),
+            // 復用分析頁滑動提示（2026-08-19 Eric）：灰字在深底上隱形，
+            // 改白底膠囊＋常駐左右晃動，兩頁同一視覺語言。
+            const SwipeHintNudge(
+              child: SwipeHintChip(),
             ),
           ],
         ),
