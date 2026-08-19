@@ -14,6 +14,48 @@
 // 指標正則自檢（不打 API、不用金鑰）：
 //   deno run --allow-read --allow-env --allow-run tools/opener-prompt-ab/run_ab.ts --self-check
 
+const JUDGE_SYSTEM =
+  `你是文本評測員。給你五則要傳給同一個女生的第一句訊息，以及她的公開資料。只輸出 JSON，不要任何說明。
+判斷三件事，每個回 0-5 的整數：
+1. skeleton：有幾則落在「先講一個通則或前提，再轉折到她身上」的骨架。**不管有沒有用「但／不過／其實」這類連接詞**——用逗號接、換行接、或連接詞整個省略但結構還在的，一樣算。
+2. echo：有幾則的開頭是在複述她資料裡已經有的內容（換句話說、換個詞也算），而不是給出一個她沒看過的觀察或判斷。
+3. casual：有幾則讀起來像真人順手丟的（可以不工整、可以不完整、可以只有幾個字），而不是寫過的句子。
+輸出格式：{"skeleton":0,"echo":0,"casual":0,"note":"20字內講最明顯的問題"}`;
+
+type Verdict = { skeleton: number; echo: number; casual: number; note: string };
+
+async function judge(lines: string[], profile: string): Promise<Verdict | null> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 300,
+      // sonnet-5 已棄用 temperature（API 直接 400）；thinking 關掉就夠穩定。
+      thinking: { type: "disabled" },
+      system: JUDGE_SYSTEM,
+      messages: [{
+        role: "user",
+        content: `她的資料：\n${profile}\n\n五則訊息：\n` +
+          lines.map((l, i) => `${i + 1}. ${l.replace(/\n/g, " ⏎ ")}`).join("\n"),
+      }],
+    }),
+  });
+  const json = await res.json();
+  // 評測員自己壞掉時必須吵——安靜降級成「無法解析」會讓整批評測看起來
+  // 只是少了幾筆，實際上是一筆都沒跑（2026-08-19 踩過）。
+  if (json?.error) throw new Error(`judge API 失敗：${JSON.stringify(json.error)}`);
+  const text = (json?.content as Array<{ type: string; text?: string }> ?? [])
+    .find((b) => b?.type === "text")?.text ?? "";
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error(`judge 沒回 JSON：${text.slice(0, 200)}`);
+  return JSON.parse(m[0]) as Verdict;
+}
+
 // ── 客觀指標 ────────────────────────────────────────────────
 /**
  * 前提＋轉折骨架（「A 但 B」「A，其實 B」「妳感覺是那種…的人」…）。
@@ -163,6 +205,11 @@ const twoPass = Deno.args.includes("--twopass");
 // 方法 A：每次生成換一個切入角度。根因是「同樣輸入永遠同樣輸出」，
 // 種子輪替直接打在那上面，零額外呼叫、零延遲，而且清單是我們定的。
 const seeded = Deno.args.includes("--seeded");
+// LLM judge（照 tools/practice-behavior-smoke 的形狀：確定性 pattern 先跑，
+// 再交給 temperature 0 的 judge）。加進來的原因是正則有結構性盲點——
+// 2026-08-19 禁掉轉折連接詞後模型改用「通常X，妳Y」，正則把規避讀成改善。
+// 每輪多一次呼叫，所以是 opt-in。
+const useJudge = Deno.args.includes("--judge");
 const baselineRef = positional[0];
 const runs = Number(positional[1] ?? "3");
 if (!baselineRef) {
@@ -451,6 +498,7 @@ const arms: Array<[string, string, boolean]> = seeded
 for (const [label, prompt, armTwoPass] of arms) {
   console.log(`\n═══ ${modeArg} ${label} — prompt ${prompt.length} 字元 ═══`);
   const runLines: string[][] = [];
+  const jAgg = { skeleton: 0, echo: 0, casual: 0, n: 0 };
   const agg = { pivot: 0, thatType: 0, asks: 0, questionForm: 0, over30: 0, quotesBio: 0, multiline: 0, periods: 0, wrapped: 0, sameInterest: 0, leak: 0, copied: 0, mixedYou: 0, jargon: 0, lens: [] as number[] };
   for (let r = 1; r <= runs; r++) {
     let extraUser = seeded && label.startsWith("實驗") ? angleBlock(r - 1) : "";
@@ -489,6 +537,18 @@ for (const [label, prompt, armTwoPass] of arms) {
     agg.sameInterest += m.sameInterest; agg.leak += m.leak; agg.copied += m.copied; agg.mixedYou += m.mixedYou; agg.jargon += m.jargon;
     agg.lens.push(m.lenMin, m.lenMax);
     runLines.push(lines);
+    if (useJudge) {
+      const v = await judge(lines, mode.echoSource);
+      if (v === null) {
+        console.log("    [judge 無法解析，本輪不計入]");
+      } else {
+        jAgg.skeleton += v.skeleton;
+        jAgg.echo += v.echo;
+        jAgg.casual += v.casual;
+        jAgg.n += 1;
+        console.log(`    [judge] 同骨架 ${v.skeleton}/5｜複述 ${v.echo}/5｜隨口 ${v.casual}/5｜${v.note}`);
+      }
+    }
     console.log(`\n[run ${r}] 長度 ${m.lenMin}-${m.lenMax}（均 ${m.lenAvg}）｜轉折骨架 ${m.pivot}/5（那種句型 ${m.thatType}）｜實質問句 ${m.questionForm}/5（句末問號 ${m.asks}）｜>30字 ${m.over30}/5｜唸稿開頭 ${m.quotesBio}/5｜分則 ${m.multiline}/5｜句末句號 ${m.periods}/5｜包裝 ${m.wrapped}/5｜撞已知興趣 ${m.sameInterest}/5｜grounding 洩漏 ${m.leak}｜抄自 prompt ${m.copied}/5｜你妳混用 ${m.mixedYou}/5｜術語外洩 ${m.jargon}`);
     if (dump) {
       // client 顯示四欄＋推薦理由，只看 openingLine 會漏掉一半的品質問題
@@ -526,6 +586,11 @@ for (const [label, prompt, armTwoPass] of arms) {
     }
   }
   const total = runs * 5;
+  if (useJudge && jAgg.n > 0) {
+    console.log(
+      `\n── ${label} judge 合計（${jAgg.n * 5} 句）：同骨架 ${jAgg.skeleton}｜複述 ${jAgg.echo}｜隨口 ${jAgg.casual}`,
+    );
+  }
   console.log(`\n── ${label} 跨輪重複：${repeated}/${total} 句跟別次生成撞題`);
   console.log(`\n── ${label} 合計（${total} 句）：轉折骨架 ${agg.pivot}（那種句型 ${agg.thatType}）｜實質問句 ${agg.questionForm}（句末問號 ${agg.asks}）｜>30字 ${agg.over30}｜唸稿開頭 ${agg.quotesBio}｜分則 ${agg.multiline}｜句末句號 ${agg.periods}｜包裝 ${agg.wrapped}｜撞已知興趣 ${agg.sameInterest}｜grounding 洩漏 ${agg.leak}｜抄自 prompt ${agg.copied}｜你妳混用 ${agg.mixedYou}｜術語外洩 ${agg.jargon}｜最短 ${Math.min(...agg.lens)} 最長 ${Math.max(...agg.lens)}`);
 }
