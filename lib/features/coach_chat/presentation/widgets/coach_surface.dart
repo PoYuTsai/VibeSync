@@ -1300,13 +1300,16 @@ class _CostStatusChip extends StatelessWidget {
   }
 }
 
-/// 「看完整教練分析」折疊列：正式建議的主體內容收在這裡面，但原版只是
-/// 一行紫色小字，dogfood 回報存在感太低、容易整段漏看（2026-08-19
-/// Bruce/Eric）。改成淡紫 pill 底（讀起來像可點的控件）＋收合時 chevron
-/// 常駐上下點頭；節奏沿用 SwipeHintNudge 的「動、頓、長頓」拍子——
-/// 「播一次太不明顯、改常駐循環」是 2026-08-11 已拍板的品味結論。
-/// 展開後 nudge 停止、chevron 轉 180°；reduced motion 停在原位；
-/// repeat 帶 count 上限避免 pumpAndSettle 測試 timeout（同 SwipeHintNudge）。
+/// 「看完整教練分析」折疊列：正式建議的主體內容收在這裡面。第一版淡紫
+/// pill＋chevron 點頭在真機仍不夠顯眼（2026-08-19 Eric 二次回報：淡紫底
+/// 在淡紫卡上對比太低、5px chevron 位移看不見）。改走「跟到最新」的
+/// 高對比控件語言：收合時深 brandInk 底＋白粗字＋ctaStart 雙下箭頭與
+/// 細橘框（憲法 §8 前例：淺底上的主要動作控件），並把 SwipeHintNudge
+/// 的「整個控件沿動作軸位移」搬過來——整列上下 nudge 比 chevron 內部
+/// 位移明顯一個量級，動作軸垂直＝「往下打開」。節奏維持「動、頓、
+/// 長頓」拍子（2026-08-11 拍板：播一次太不明顯、改常駐循環）。
+/// 展開後整列退回安靜淡紫、nudge 停止、chevron 轉 180°；reduced motion
+/// 停在原位；repeat 帶 count 上限避免 pumpAndSettle timeout（同 SwipeHintNudge）。
 class _FullAnalysisTile extends StatefulWidget {
   const _FullAnalysisTile({super.key, required this.children});
 
@@ -1389,51 +1392,57 @@ class _FullAnalysisTileState extends State<_FullAnalysisTile>
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: Material(
-          type: MaterialType.transparency,
-          child: ExpansionTile(
-            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            visualDensity: VisualDensity.compact,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.05),
-            collapsedBackgroundColor: AppColors.primary.withValues(alpha: 0.08),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-            ),
-            collapsedShape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-            ),
-            onExpansionChanged: (open) {
-              setState(() => _expanded = open);
-              _syncAnimationState();
-            },
-            // 自訂 trailing 會失去內建旋轉，改用 AnimatedRotation 補回。
-            trailing: AnimatedRotation(
-              turns: _expanded ? 0.5 : 0,
-              duration: AppMotion.state,
-              curve: AppMotion.easeOut,
-              child: AnimatedBuilder(
-                animation: _offsetY,
-                builder: (context, child) => Transform.translate(
-                  offset: Offset(0, _expanded ? 0 : _offsetY.value),
-                  child: child,
-                ),
-                child: const Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  color: AppColors.primary,
+      child: AnimatedBuilder(
+        animation: _offsetY,
+        builder: (context, child) => Transform.translate(
+          offset: Offset(0, _expanded ? 0 : _offsetY.value),
+          child: child,
+        ),
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: Material(
+            type: MaterialType.transparency,
+            child: ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+              childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              visualDensity: VisualDensity.compact,
+              backgroundColor: AppColors.primary.withValues(alpha: 0.05),
+              collapsedBackgroundColor:
+                  AppColors.brandInk.withValues(alpha: 0.94),
+              // 文字/圖示顏色交給 ExpansionTile 內建 ColorTween 跟著開合動畫
+              // 過渡——Text/Icon 不能再各自硬寫顏色，否則蓋掉這裡。
+              textColor: AppColors.primary,
+              collapsedTextColor: Colors.white,
+              iconColor: AppColors.primary,
+              collapsedIconColor: AppColors.ctaStart,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              collapsedShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+                side: BorderSide(
+                  color: AppColors.ctaStart.withValues(alpha: 0.55),
                 ),
               ),
-            ),
-            title: Text(
-              '看完整教練分析',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w700,
+              onExpansionChanged: (open) {
+                setState(() => _expanded = open);
+                _syncAnimationState();
+              },
+              // 自訂 trailing 會失去內建旋轉，改用 AnimatedRotation 補回。
+              trailing: AnimatedRotation(
+                turns: _expanded ? 0.5 : 0,
+                duration: AppMotion.state,
+                curve: AppMotion.easeOut,
+                child: const Icon(Icons.keyboard_double_arrow_down_rounded),
               ),
+              title: Text(
+                '看完整教練分析',
+                style: AppTypography.bodySmall.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              children: widget.children,
             ),
-            children: widget.children,
           ),
         ),
       ),
