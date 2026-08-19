@@ -37,42 +37,49 @@
 
 送出前仍需人工 gate（Eric 側 Batch H）：見 §6.3。
 
-## 1. App Review Information 草稿
+## 1. App Review Information 草稿（1.0.1，2026-08-19 重寫）
 
 可貼到 App Store Connect 的 Review Notes，送審前請補上測試帳號密碼與當前 build number。
 
+1.0.1 重寫重點：①舊稿「does not access photos in the background」與鍵盤「最近截圖」功能直接矛盾（5.1.1 複發面），照片段整段改為兩用途如實揭露；②新增 AI 鍵盤 extension 專段（本版最大新面，主動揭露比被審核員自己發現好）；③舊稿宣稱 onboarding 列廠商名，實況是廠商名在各功能同意 dialog＋設定頁（onboarding 已拍板不列）；④demo flow 對齊 onboarding 先於登入的新順序＋補鍵盤選用步驟；⑤拿掉 5/27 拒審回應段（該 thread 屬 1.0，1.0.1 重貼舊拒審史反而招關注——若 Eric 判斷要留，附錄仍在 git history）。
+
 ```text
-VibeSync is a communication coaching app that helps users review private chat context, understand conversation signals, and receive AI-assisted reply suggestions.
+VibeSync is an AI dating-conversation coaching app for Traditional Chinese users. It helps users review their own private chat context, understand conversation signals, and prepare better replies with AI-assisted suggestions and 1:1 coaching.
 
 The app is not a social network, does not provide public posting or user-to-user messaging, does not automate messages to third parties, and does not guarantee dating or relationship outcomes.
 
-Response to the previous review (rejected 2026-05-27):
-- Guideline 2.1: Purchase, restore, and plan-refresh flows now have explicit timeouts (45s for App Store operations, 20s for state sync). Any failure resolves to a visible, retryable state; the purchase button can no longer spin indefinitely.
-- Guideline 3.1.2(c): The billed price is the most prominent price element on the paywall. The savings badge is computed from actual App Store prices. App name, subscription length, billed price, and tappable links to the Terms of Use (EULA) and Privacy Policy are all shown before purchase. A screen recording of the full subscription purchase flow is attached.
-- Guideline 5.1.1 / 5.1.2: Onboarding now includes an AI & privacy disclosure page that names our third-party AI providers (Anthropic Claude API; DeepSeek API for practice chat). Consent is stored per account, each AI feature asks for consent before any data is sent, and a persistent "AI and your privacy" entry is available in Settings.
-
 Privacy and AI processing:
 - Conversation content is local-first and stored on the user's device by default.
-- When the user explicitly requests analysis, screenshot recognition, opener help, draft polishing, AI coaching, or practice chat, only the minimum required content for that request is sent through our backend processing service and the corresponding third-party AI provider (Anthropic Claude API for analysis/coaching/OCR; DeepSeek API for the practice chat feature) to generate the response.
-- Before an AI request is sent, the app explains what data may be sent, identifies VibeSync backend processing and the specific third-party AI provider (Anthropic Claude API, or DeepSeek API for practice chat) as recipients, and asks the user to agree. Practice chat has its own separate consent. If the user declines, the request is not sent.
+- When the user explicitly requests analysis, screenshot recognition, opener help, draft polishing, AI coaching, or practice chat, only the required content for that request is sent through our backend processing service to the corresponding third-party AI provider (Anthropic Claude API for analysis/coaching/screenshot recognition; DeepSeek API for the practice chat feature) to generate the response.
+- Before the first AI request of each feature is sent, the app shows a consent dialog that explains what data will be sent and names the specific recipients (VibeSync backend processing and Anthropic Claude API, or DeepSeek API for practice chat). Consent is stored per account. Practice chat has its own separate consent. If the user declines, the request is not sent. Onboarding also includes a static "AI & privacy" disclosure page, and a persistent "AI and your privacy" page with the full provider details is always available in Settings.
 - We do not use users' raw conversations to train our own model.
 - Users can delete conversations locally and can delete their account in the app.
-- The app requests Photo Library access only when the user chooses to upload a chat screenshot for OCR/analysis. It does not access photos in the background.
+
+Photo Library access (two uses, both user-initiated):
+1. In the main app, the user can choose a chat screenshot with the photo picker to run screenshot recognition. This is a normal picker flow.
+2. The optional keyboard extension has an opt-in "recent screenshot" assist, described below. It is OFF by default. When enabled by the user, it reads only system screenshots (never other photos) and only while the VibeSync keyboard is open. When the assist is disabled or the keyboard is not in use, the app does not read the photo library.
+
+Keyboard extension (new in this version):
+- VibeSync includes an optional iOS keyboard extension that generates reply suggestions. It requires Full Access for network requests; without Full Access no request is sent and no quota is charged.
+- Text flow: only when the user explicitly loads text into the keyboard, picks a style, and taps generate is that text sent via our backend to Anthropic Claude. Normal typing in other apps is never uploaded.
+- Optional "recent screenshot" assist: the user must first enable it inside the VibeSync app (Settings > Keyboard) through a dedicated consent dialog, then grant Photos permission. Once enabled, while the keyboard is open it detects a newly taken system screenshot and analyzes that one screenshot to suggest replies; the user can also manually choose to analyze the most recent screenshot taken within 3 minutes before opening the keyboard. The keyboard always shows a thumbnail of exactly which screenshot is being used, and the user can cancel before or during the request. Consent can be revoked at any time in Settings.
+- Screenshot handling: the image is downscaled and re-encoded on device (original metadata including location is stripped) before upload. Our servers store neither the screenshot image nor the recognized text; only a keyed hash and the generated suggestions are kept for at most 24 hours to prevent double-charging on retries. Details are in section 11 of our privacy policy (https://vibesyncai.app/privacy).
 
 Subscriptions:
 - Paid plans are Apple auto-renewable subscriptions managed through App Store in-app purchase.
 - The app includes Restore Purchases and subscription management entry points.
-- Free users can try the core analysis flow within quota limits.
+- Free users can use the core analysis flow within quota limits; quota exhaustion leads to the paywall, while model rate limits and transient errors show retry messages instead.
 
 Reviewer demo flow:
-1. Sign in using the provided reviewer account.
-2. Open the home screen and create or select a conversation.
+1. On first launch the app shows onboarding (product intro plus the AI & privacy disclosure page). Complete it, then sign in with the provided reviewer account.
+2. On the home screen, create or select a conversation.
 3. Paste a short sample chat, or upload a chat screenshot.
 4. Tap analysis to view heat score, conversation stage, and reply suggestions.
-5. Tap "Ask Coach" to test the 1:1 coaching flow.
+5. Tap "Ask Coach" to test the 1:1 coaching flow (each feature asks for AI consent on first use).
 6. Open Settings / Subscription to verify plan, quota, Restore Purchases, Terms, Privacy, and account deletion entry points.
 7. Optional: from the new-conversation sheet, try the opener generator (staged progress text is shown while generating).
-8. Optional: in the Learn tab, open the practice chat. It asks for its own separate AI consent (DeepSeek) before starting.
+8. Optional: open the practice chat in the Learn area. It asks for its own separate AI consent (DeepSeek) before starting.
+9. Optional (keyboard): in Settings > Keyboard, follow the setup steps and enable the VibeSync keyboard in iOS Settings (Full Access required for generation). The "recent screenshot" assist is off by default and requires its own consent plus Photos permission, as described above.
 
 Reviewer account:
 - Email: [fill in App Store Connect only]
