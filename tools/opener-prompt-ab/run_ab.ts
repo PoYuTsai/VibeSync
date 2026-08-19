@@ -34,30 +34,47 @@ const JUDGE_SYSTEM =
 type EchoPair = { line: number; bio: string; how?: string };
 type Verdict = { skeleton: number; echoPairs: EchoPair[]; casual: number; note: string };
 
+/**
+ * 過載／限流／暫時性錯誤重試三次。一次 529 就吃掉整批 8 輪，而且是在跑完
+ * 一半之後才死（2026-08-20 連續兩批陣亡）——批次評測的重試不是效能優化，
+ * 是「不要把已經付過的錢丟掉」。
+ */
+const TRANSIENT = new Set(["overloaded_error", "rate_limit_error", "api_error"]);
+async function callApi(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  for (let attempt = 1;; attempt++) {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    const type = (json?.error as { type?: string } | undefined)?.type;
+    if (!type || !TRANSIENT.has(type) || attempt >= 4) return json;
+    const wait = attempt * 5000;
+    console.log(`    [API ${type}，${wait / 1000}s 後第 ${attempt + 1} 次嘗試]`);
+    await new Promise((r) => setTimeout(r, wait));
+  }
+}
+
 // 壞掉一律 throw，不回 null——安靜降級會讓整批評測看起來只是少幾筆。
 async function judge(lines: string[], profile: string): Promise<Verdict> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      // 600：echoPairs 要附原文出處，300 會在配對列到一半被截斷。
-      max_tokens: 600,
-      // sonnet-5 已棄用 temperature（API 直接 400）；thinking 關掉就夠穩定。
-      thinking: { type: "disabled" },
-      system: JUDGE_SYSTEM,
-      messages: [{
-        role: "user",
-        content: `她的資料：\n${profile}\n\n五則訊息：\n` +
-          lines.map((l, i) => `${i + 1}. ${l.replace(/\n/g, " ⏎ ")}`).join("\n"),
-      }],
-    }),
+  const json = await callApi({
+    model: MODEL,
+    // 600：echoPairs 要附原文出處，300 會在配對列到一半被截斷。
+    max_tokens: 600,
+    // sonnet-5 已棄用 temperature（API 直接 400）；thinking 關掉就夠穩定。
+    thinking: { type: "disabled" },
+    system: JUDGE_SYSTEM,
+    messages: [{
+      role: "user",
+      content: `她的資料：\n${profile}\n\n五則訊息：\n` +
+        lines.map((l, i) => `${i + 1}. ${l.replace(/\n/g, " ⏎ ")}`).join("\n"),
+    }],
   });
-  const json = await res.json();
   // 評測員自己壞掉時必須吵——安靜降級成「無法解析」會讓整批評測看起來
   // 只是少了幾筆，實際上是一筆都沒跑（2026-08-19 踩過）。
   if (json?.error) throw new Error(`judge API 失敗：${JSON.stringify(json.error)}`);
@@ -475,24 +492,15 @@ async function gitShow(ref: string, path: string): Promise<string> {
 }
 
 async function generate(systemPrompt: string, extraUser = ""): Promise<{ lines: string[]; all: string; parsed: Record<string, unknown> }> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 3000,
-      // 生產端 fallback.ts resolveThinkingContract：sonnet-5 若 caller 沒指定
-      // 就送 disabled。不跟著關，thinking 會吃光 3000 token 產出零可見輸出。
-      thinking: { type: "disabled" },
-      system: systemPrompt,
-      messages: [{ role: "user", content: mode.userContent + extraUser }],
-    }),
+  const json = await callApi({
+    model: MODEL,
+    max_tokens: 3000,
+    // 生產端 fallback.ts resolveThinkingContract：sonnet-5 若 caller 沒指定
+    // 就送 disabled。不跟著關，thinking 會吃光 3000 token 產出零可見輸出。
+    thinking: { type: "disabled" },
+    system: systemPrompt,
+    messages: [{ role: "user", content: mode.userContent + extraUser }],
   });
-  const json = await res.json();
   // content[0] 不保證是 text（同 fallback.ts extractClaudeText 的理由）。
   const text = (json?.content as Array<{ type: string; text?: string }> ?? [])
     .find((b) => b?.type === "text")?.text;
