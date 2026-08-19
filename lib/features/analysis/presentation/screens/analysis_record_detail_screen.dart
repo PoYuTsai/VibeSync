@@ -9,6 +9,7 @@ import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/dimension_radar_chart.dart';
+import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_record.dart';
@@ -926,21 +927,30 @@ class _SavedAnalysisCard extends StatelessWidget {
           // 高度自適應（同 analysis_screen 2026-08-09 拍板）：不鎖 360 高，
           // 卡照內容長高、頂端對齊——鎖死時單卡長內容會溢出畫到下方
           // 「建議接法」上（release 無警告）。卡最多 6 張，不需要懶載。
-          SingleChildScrollView(
-            key: const ValueKey('analysis-record-reply-styles'),
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final type in replyTypes)
-                  ReplyStyleCard(
-                    type: type,
-                    content: result.replies[type]!,
-                    option: result.replyOptions[type],
-                    isRecommended: result.recommendation.pick.trim() == type,
-                    onCopy: onReplyCopied,
-                  ),
-              ],
+          // ScrollCardTicks：橫掃跨卡打一下輕觸覺（與分析頁本尊/開場白同語彙）。
+          ScrollCardTicks(
+            axis: Axis.horizontal,
+            focusFraction: 0.3,
+            child: SingleChildScrollView(
+              key: const ValueKey('analysis-record-reply-styles'),
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final (index, type) in replyTypes.indexed)
+                    CardTickTarget(
+                      index: index,
+                      child: ReplyStyleCard(
+                        type: type,
+                        content: result.replies[type]!,
+                        option: result.replyOptions[type],
+                        isRecommended:
+                            result.recommendation.pick.trim() == type,
+                        onCopy: onReplyCopied,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ],

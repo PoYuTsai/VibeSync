@@ -28,6 +28,7 @@ import '../../../../shared/services/image_compress_service.dart';
 import '../../../../shared/services/screenshot_preflight_service.dart';
 import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
+import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -7618,10 +7619,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             // stretch 版風格卡下方一大塊空白不自然）。卡最多
                             // 6 張，放棄 ListView 的懶載無感。
                             _replyZoneEntranceFade(
-                              child: SingleChildScrollView(
-                                key: const ValueKey('analysis-reply-zone'),
-                                scrollDirection: Axis.horizontal,
-                                child: _buildReplyZoneCardRow(),
+                              child: ScrollCardTicks(
+                                axis: Axis.horizontal,
+                                focusFraction: 0.3,
+                                child: SingleChildScrollView(
+                                  key: const ValueKey('analysis-reply-zone'),
+                                  scrollDirection: Axis.horizontal,
+                                  child: _buildReplyZoneCardRow(),
+                                ),
                               ),
                             ),
                             if (_showRecommendedReplyCard)
@@ -8449,7 +8454,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var i = 0; i < cards.length; i++) _staggeredReplyCard(i, cards[i]),
+        for (var i = 0; i < cards.length; i++)
+          // CardTickTarget：橫掃跨卡打一下輕觸覺（與開場白/新話題同語彙）。
+          CardTickTarget(index: i, child: _staggeredReplyCard(i, cards[i])),
       ],
     );
   }
