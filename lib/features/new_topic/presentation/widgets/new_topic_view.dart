@@ -13,6 +13,7 @@ import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/formula_reply_section.dart';
 import '../../../../shared/widgets/more_below_hint.dart';
+import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/staggered_appear.dart';
 import '../../../../shared/widgets/stream_progress_ticker.dart';
 import '../../../opener/presentation/widgets/opener_generation_progress.dart';
@@ -520,7 +521,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        scrollBody,
+        ScrollCardTicks(child: scrollBody),
         if (_result != null && _result!.formulaTopics.isNotEmpty)
           Positioned(
             right: 16,
@@ -728,15 +729,19 @@ class NewTopicResultsSection extends StatelessWidget {
         const SizedBox(height: 12),
         // v2：完成揭示逐張彈入（同 opener 卡進場語彙）。
         for (final (index, idea) in orderedTopics.indexed) ...[
-          StaggeredAppear(
-            key: ValueKey(
-              'topic-card-appear-${identityHashCode(result)}-${idea.id}',
-            ),
+          // CardTickTarget：捲過焦點線打一下輕觸覺（Mac Dock 節拍的垂直版）。
+          CardTickTarget(
             index: index,
-            child: NewTopicIdeaCard(
-              idea: idea,
-              isRecommended: idea.id == recommendedId,
-              onCopyOpeningLine: () => onCopyIdeaOpeningLine(idea),
+            child: StaggeredAppear(
+              key: ValueKey(
+                'topic-card-appear-${identityHashCode(result)}-${idea.id}',
+              ),
+              index: index,
+              child: NewTopicIdeaCard(
+                idea: idea,
+                isRecommended: idea.id == recommendedId,
+                onCopyOpeningLine: () => onCopyIdeaOpeningLine(idea),
+              ),
             ),
           ),
           const SizedBox(height: 12),
