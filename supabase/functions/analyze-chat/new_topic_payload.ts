@@ -232,6 +232,16 @@ export type NewTopicModelNormalizeResult =
  * 可見文字守門：raw JSON、code fence、schema 說明洩漏一律判缺。
  * 超長不截斷——整份失敗（設計鐵則：不可修剪後照扣）。
  */
+/**
+ * openingLine 是要原封傳給對方的訊息，對方一律是「妳」。模型會整輪飄成「你」、
+ * 甚至同一句混用（2026-08-19 A/B 實測 3/20），複製貼上寄出去就露餡。
+ * 只正規化 openingLine——whyItWorks／nextMove 是對使用者講話，那裡的「你」是他本人。
+ * ponytail: 「你們」指的可能是混合群體，留著不動；其餘一律轉。
+ */
+function normalizePartnerPronoun(line: string | null): string | null {
+  return line === null ? null : line.replace(/你(?!們)/g, "妳");
+}
+
 function sanitizeVisibleText(value: unknown, maxLen: number): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -287,10 +297,10 @@ export function normalizeNewTopicModelPayload(
       rawTopic.direction,
       NEW_TOPIC_FIELD_CAPS.direction,
     );
-    const openingLine = sanitizeVisibleText(
+    const openingLine = normalizePartnerPronoun(sanitizeVisibleText(
       rawTopic.openingLine,
       NEW_TOPIC_FIELD_CAPS.openingLine,
-    );
+    ));
     const whyItWorks = sanitizeVisibleText(
       rawTopic.whyItWorks,
       NEW_TOPIC_FIELD_CAPS.whyItWorks,

@@ -177,6 +177,28 @@ Deno.test("normalize：合法五題通過", () => {
   assertEquals(result.recommendationReason, "最貼近她的近況");
 });
 
+Deno.test("normalize：openingLine 的「你」轉「妳」，教練欄位不動", () => {
+  const topics = modelTopics();
+  topics[0] = {
+    direction: "方向1",
+    openingLine: "如果拉你去爬山，妳大概走十分鐘就想放棄",
+    whyItWorks: "因為你已經跟她熟到可以開玩笑",
+    nextMove: "她反駁的話你就順著演",
+  };
+  topics[1] = { ...topics[1], openingLine: "鄰居，你們那棟最近吵嗎" };
+  const result = normalizeNewTopicModelPayload({
+    topics,
+    recommendation: { index: 0, reason: "最貼近她的近況" },
+  });
+  assert(result.ok);
+  assertEquals(result.topics[0].openingLine, "如果拉妳去爬山，妳大概走十分鐘就想放棄");
+  // 「你們」可能是混合群體，刻意不動。
+  assertEquals(result.topics[1].openingLine, "鄰居，你們那棟最近吵嗎");
+  // 教練欄位是對使用者講話，「你」＝他本人，不得被改。
+  assertEquals(result.topics[0].whyItWorks, "因為你已經跟她熟到可以開玩笑");
+  assertEquals(result.topics[0].nextMove, "她反駁的話你就順著演");
+});
+
 Deno.test("normalize：項數不是五整份失敗（不可丟壞題續走）", () => {
   assertFalse(
     normalizeNewTopicModelPayload({
