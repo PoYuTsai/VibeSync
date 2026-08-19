@@ -63,10 +63,15 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
   /// 呈現（Eric 拍板）：dialog 空間小，分類分三行、小標固定在行首、chips
   /// 各自橫向滑動——三類同時可見不藏選項，行尾被切掉的 chip 就是
   /// 「還能滑」的暗示。
+  ///
+  /// 主詞契約（2026-08-19 Eric 拍板，Bruce dogfood 抓到「想約出來見面」
+  /// 被 AI 當成她的意願）：這個彈窗填的是對象，chips 一律以**對方**為
+  /// 主詞。原「目標」行（用戶自己的目標）退場改「喜好」（她的興趣＝
+  /// 開場鉤子燃料）；用戶目標想寫就打進備註，prompt 端有主詞判斷接住。
   static const Map<String, List<String>> _quickTagGroups = {
-    '特質': ['慢熱', '外向健談', '幽默愛鬧', '工作忙碌', '喜歡戶外'],
+    '特質': ['慢熱', '外向健談', '幽默愛鬧', '工作忙碌'],
     '狀態': ['剛認識', '回覆慢但都會回', '不太主動但有回', '聊得來但還沒約'],
-    '目標': ['想先約咖啡', '想約出來見面', '想慢慢培養親近感'],
+    '喜好': ['喜歡戶外', '愛喝咖啡', '吃貨', '有在健身', '愛看劇'],
   };
 
   bool _tagInserted(String tag) => _noteController.text.contains(tag);
