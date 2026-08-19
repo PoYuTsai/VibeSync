@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../core/services/app_haptics.dart';
+import '../../../../shared/widgets/pressable_scale.dart';
 
 class PartnerSettingsResult {
   final String name;
@@ -217,32 +218,37 @@ class _QuickTagChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = inserted
         ? AppColors.glassTextSecondary
-        : AppColors.primary;
-    return InkWell(
-      onTap: inserted ? null : AppHaptics.onPress(onTap),
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: inserted ? 0.06 : 0.08),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: color.withValues(alpha: 0.35)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (inserted) ...[
-              Icon(Icons.check_rounded, size: 13, color: color),
-              const SizedBox(width: 3),
+        // 🍊 ctaStart 對齊「關於我」chips 與本彈窗取消/儲存的品牌橘。
+        : AppColors.ctaStart;
+    // PressableScale 自帶放開觸覺（tap），不再包 AppHaptics.onPress——會雙震。
+    return PressableScale(
+      enabled: !inserted,
+      child: InkWell(
+        onTap: inserted ? null : onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: inserted ? 0.06 : 0.08),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: color.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (inserted) ...[
+                Icon(Icons.check_rounded, size: 13, color: color),
+                const SizedBox(width: 3),
+              ],
+              Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
             ],
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ],
+          ),
         ),
       ),
     );
