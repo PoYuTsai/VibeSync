@@ -117,7 +117,7 @@ Deno.test("sanitizeOpenerText 正規化換行：字面 \\n 轉真換行、壓多
 });
 
 Deno.test("sanitizeOpenerText 擋 JSON/code fence/超長，收合法短句", () => {
-  // 傳給對方的訊息一律「妳」（見 partner_pronoun.ts）。
+  // 傳給對方的訊息一律「妳」（見 outgoing_message_text.ts）。
   assertEquals(sanitizeOpenerText("你好，看到你養柴犬"), "妳好，看到妳養柴犬");
   assertEquals(sanitizeOpenerText("  留白修剪  "), "留白修剪");
   assertEquals(sanitizeOpenerText({ text: "巢狀欄位也收" }), "巢狀欄位也收");
@@ -471,4 +471,17 @@ Deno.test("sanitizeOpenerText 把傳給對方的「你」正規化成「妳」",
     sanitizeOpenerText("你這自介有點狠\n但我還敢傳給你"),
     "妳這自介有點狠\n但我還敢傳給妳",
   );
+});
+
+Deno.test("sanitizeOpenerText 修中文之間的半形逗號與全形標點前的空白", () => {
+  assertEquals(
+    sanitizeOpenerText("自介寫到最後我有點想鞠躬,講話直接我喜歡"),
+    "自介寫到最後我有點想鞠躬，講話直接我喜歡",
+  );
+  assertEquals(
+    sanitizeOpenerText("講話直接我喜歡 ，浪費時間我也怕"),
+    "講話直接我喜歡，浪費時間我也怕",
+  );
+  // 數字千分位前後不是中文，不動。
+  assertEquals(sanitizeOpenerText("一個月 1,000 塊而已"), "一個月 1,000 塊而已");
 });

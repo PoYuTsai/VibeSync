@@ -7,7 +7,10 @@
 // 鐵則：任何缺欄、空白、超長、重複、項數不是五、推薦不存在、raw JSON／
 // code fence 修不回，都必須整份失敗；不可丟掉壞題後照樣扣 3。
 
-import { normalizePartnerPronoun } from "./partner_pronoun.ts";
+import {
+  normalizeOutgoingPunctuation,
+  normalizePartnerPronoun,
+} from "./outgoing_message_text.ts";
 
 export const NEW_TOPIC_SITUATIONS = [
   "went_cold",
@@ -289,10 +292,10 @@ export function normalizeNewTopicModelPayload(
       rawTopic.direction,
       NEW_TOPIC_FIELD_CAPS.direction,
     );
-    const openingLine = normalizePartnerPronoun(sanitizeVisibleText(
+    const openingLine = normalizeOutgoingPunctuation(normalizePartnerPronoun(sanitizeVisibleText(
       rawTopic.openingLine,
       NEW_TOPIC_FIELD_CAPS.openingLine,
-    ));
+    )));
     const whyItWorks = sanitizeVisibleText(
       rawTopic.whyItWorks,
       NEW_TOPIC_FIELD_CAPS.whyItWorks,
