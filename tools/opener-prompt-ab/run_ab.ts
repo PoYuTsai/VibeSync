@@ -24,14 +24,18 @@ const JUDGE_SYSTEM =
   `你是文本評測員。給你五則要傳給同一個女生的第一句訊息，以及她的公開資料。只輸出 JSON，不要任何說明。
 判斷三件事：
 1. skeleton（0-5 整數）：有幾則落在「先講一個通則或前提，再轉折到她身上」的骨架。**不管有沒有用「但／不過／其實」這類連接詞**——用逗號接、換行接、或連接詞整個省略但結構還在的，一樣算。
-2. echoPairs（陣列）：哪幾則是在複述她資料裡已經有的內容（換句話說、換個詞、換個角度講同一件事都算），而不是給出一個她沒看過的觀察或判斷。**每一則都要指出它複述的是自介裡的哪一段原文**；指不出原文就不要列進來。格式 [{"line":2,"bio":"自介原文片段","how":"10字內說它怎麼換皮的"}]。
+2. echoPairs（陣列）：哪幾則**沒有給出自介以外的任何新資訊**。唯一判準是：把這則拿給一個只讀過她自介的人看，他有沒有因此多知道一件事？
+   - 沒有＝列進來：把自介的字換句話說、換個角度講同一件事、把兩項資料拼在一起、稱讚自介裡的某一句。
+   - 有＝不要列進來：給了自介沒寫的推測、畫面、後果、對方可以反駁的判斷，或講了說話者自己的事。**句子裡提到自介的內容不算複述**——開場本來就該貼著她的資料，重點是有沒有多長出東西。
+   每一則填 bio（它重複的自介原文）與 how（10 字內說它為什麼沒有多給東西）。指不出 bio 原文就不要列。格式 [{"line":2,"bio":"自介原文片段","how":"換句話說同一件事"}]。
 3. casual（0-5 整數）：有幾則讀起來像真人順手丟的（可以不工整、可以不完整、可以只有幾個字），而不是寫過的句子。
 輸出格式：{"skeleton":0,"echoPairs":[],"casual":0,"note":"20字內講最明顯的問題"}`;
 
 type EchoPair = { line: number; bio: string; how?: string };
 type Verdict = { skeleton: number; echoPairs: EchoPair[]; casual: number; note: string };
 
-async function judge(lines: string[], profile: string): Promise<Verdict | null> {
+// 壞掉一律 throw，不回 null——安靜降級會讓整批評測看起來只是少幾筆。
+async function judge(lines: string[], profile: string): Promise<Verdict> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -223,6 +227,11 @@ const seeded = Deno.args.includes("--seeded");
 // 2026-08-19 禁掉轉折連接詞後模型改用「通常X，妳Y」，正則把規避讀成改善。
 // 每輪多一次呼叫，所以是 opt-in。
 const useJudge = Deno.args.includes("--judge");
+// 同一批句子連判 N 次。判 judge 自己穩不穩用的——跨輪的擺盪分不出是生成
+// 變了還是評測員在跳（2026-08-20：同條件兩批 n=40，複述 29 vs 39）。
+const judgeRepeat = Number(
+  Deno.args.find((a) => a.startsWith("--judge-repeat="))?.slice(15) ?? "1",
+);
 const baselineRef = positional[0];
 const runs = Number(positional[1] ?? "3");
 if (!baselineRef) {
@@ -546,7 +555,7 @@ const arms: Array<[string, string, boolean]> = seeded
 for (const [label, prompt, armTwoPass] of arms) {
   console.log(`\n═══ ${modeArg} ${label} — prompt ${prompt.length} 字元 ═══`);
   const runLines: string[][] = [];
-  const jAgg = { skeleton: 0, echo: 0, casual: 0, n: 0 };
+  const jAgg = { skeleton: 0, echo: 0, casual: 0, n: 0, spread: 0 };
   const agg = { pivot: 0, thatType: 0, asks: 0, questionForm: 0, over30: 0, quotesBio: 0, multiline: 0, periods: 0, wrapped: 0, sameInterest: 0, leak: 0, copied: 0, mixedYou: 0, jargon: 0, lens: [] as number[] };
   for (let r = 1; r <= runs; r++) {
     let extraUser = seeded && label.startsWith("實驗") ? angleBlock(r - 1) : "";
@@ -586,18 +595,29 @@ for (const [label, prompt, armTwoPass] of arms) {
     agg.lens.push(m.lenMin, m.lenMax);
     runLines.push(lines);
     if (useJudge) {
-      const v = await judge(lines, mode.echoSource);
-      if (v === null) {
-        console.log("    [judge 無法解析，本輪不計入]");
+      // 同一批句子連判 judgeRepeat 次＝量評測員自己的重複性。跨輪的差異混著
+      // 「生成不一樣」與「評測員不穩」兩個來源，只有同一份輸入重判才分得開。
+      const vs: Verdict[] = [];
+      for (let j = 0; j < judgeRepeat; j++) vs.push(await judge(lines, mode.echoSource));
+      // 數「有幾則」不是「有幾對」——一則同時複述兩段自介時 judge 會列兩筆，
+      // 用 length 會讓分數超過 5（2026-08-20 舊定義實測跑出 9/5、8/5，
+      // 當時被誤讀成評測員的雜訊）。
+      const echoes = vs.map((v) => new Set(v.echoPairs.map((p) => p.line)).size);
+      const v = vs[0];
+      jAgg.skeleton += v.skeleton;
+      jAgg.echo += echoes[0];
+      jAgg.casual += v.casual;
+      jAgg.n += 1;
+      if (judgeRepeat > 1) {
+        jAgg.spread += Math.max(...echoes) - Math.min(...echoes);
+        console.log(
+          `    [judge ×${judgeRepeat}] 複述 ${echoes.join("/")}／5｜同骨架 ${vs.map((x) => x.skeleton).join("/")}｜隨口 ${vs.map((x) => x.casual).join("/")}`,
+        );
       } else {
-        jAgg.skeleton += v.skeleton;
-        jAgg.echo += v.echoPairs.length;
-        jAgg.casual += v.casual;
-        jAgg.n += 1;
-        console.log(`    [judge] 同骨架 ${v.skeleton}/5｜複述 ${v.echoPairs.length}/5｜隨口 ${v.casual}/5｜${v.note}`);
-        for (const p of v.echoPairs) {
-          console.log(`      複述 #${p.line} ← 自介「${p.bio}」${p.how ? `（${p.how}）` : ""}`);
-        }
+        console.log(`    [judge] 同骨架 ${v.skeleton}/5｜複述 ${echoes[0]}/5｜隨口 ${v.casual}/5｜${v.note}`);
+      }
+      for (const p of v.echoPairs) {
+        console.log(`      複述 #${p.line} ← 自介「${p.bio}」${p.how ? `（${p.how}）` : ""}`);
       }
     }
     console.log(`\n[run ${r}] 長度 ${m.lenMin}-${m.lenMax}（均 ${m.lenAvg}）｜轉折骨架 ${m.pivot}/5（那種句型 ${m.thatType}）｜實質問句 ${m.questionForm}/5（句末問號 ${m.asks}）｜>30字 ${m.over30}/5｜唸稿開頭 ${m.quotesBio}/5｜分則 ${m.multiline}/5｜句末句號 ${m.periods}/5｜包裝 ${m.wrapped}/5｜撞已知興趣 ${m.sameInterest}/5｜grounding 洩漏 ${m.leak}｜抄自 prompt ${m.copied}/5｜你妳混用 ${m.mixedYou}/5｜術語外洩 ${m.jargon}`);
@@ -639,7 +659,10 @@ for (const [label, prompt, armTwoPass] of arms) {
   const total = runs * 5;
   if (useJudge && jAgg.n > 0) {
     console.log(
-      `\n── ${label} judge 合計（${jAgg.n * 5} 句）：同骨架 ${jAgg.skeleton}｜複述 ${jAgg.echo}｜隨口 ${jAgg.casual}`,
+      `\n── ${label} judge 合計（${jAgg.n * 5} 句）：同骨架 ${jAgg.skeleton}｜複述 ${jAgg.echo}｜隨口 ${jAgg.casual}` +
+        (judgeRepeat > 1
+          ? `｜同一批句子重判 ${judgeRepeat} 次的複述極差平均 ${(jAgg.spread / jAgg.n).toFixed(1)}/5`
+          : ""),
     );
   }
   console.log(`\n── ${label} 跨輪重複：${repeated}/${total} 句跟別次生成撞題`);
