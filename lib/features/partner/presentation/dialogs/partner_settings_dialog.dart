@@ -126,21 +126,26 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
               onChanged: (_) => setState(() {}),
               onSubmitted: (_) => FocusScope.of(context).nextFocus(),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Text('一次性資訊 / 目前目標 / 備註', style: fieldLabelStyle),
             const SizedBox(height: 6),
+            // 2026-08-19 Eric 真機回報：4 行起跳＋字數計數列把 chips 全推到
+            // 折線下，「根本不知道要往下滑」。備註欄改 2 行起跳（打滿 4 行後
+            // 內部捲動）、藏計數列、hint 縮成一行——chips 本身就是範例，
+            // 長 hint 是重複資訊。目標：鍵盤開著時三行 chips 進首屏。
             TextField(
               style: const TextStyle(color: AppColors.glassTextPrimary),
               controller: _noteController,
-              minLines: 4,
-              maxLines: 7,
+              minLines: 2,
+              maxLines: 4,
               maxLength: 300,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                hintText: '例如：在 Bumble 認識、慢熱、喜歡戶外活動，目前想先約咖啡。',
+                hintText: '自由填，或點下方快速選項',
+                counterText: '',
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             for (final entry in _quickTagGroups.entries) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
