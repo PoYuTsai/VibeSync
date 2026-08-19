@@ -1691,8 +1691,11 @@ Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable 
   // 同日補「平聊也要埋種子（小周末去逛西門）」與「這場不是永無止盡的閒聊」
   // 兩條（Eric），並把重複的「聊她／聊我／聊我們」併進去。實測 7514，
   // 上限 7450→7650。
+  // 2026-08-19 笑聲量級語意（Eric：「哈/哈哈＝微句點敷衍，哈哈哈哈/笑死＝
+  // 真的好笑」）：寫入回覆規則＋淺溝通讀法，另補台味反應詞（蛤/吼）與
+  // 笑聲去注音化。實測 7673，上限 7650→7780。
   assert(
-    gameText.length <= 7650,
+    gameText.length <= 7780,
     `Game Hint prompt is too long: ${gameText.length}`,
   );
   // Game 比新手多帶整套五階段戰術＋教材契約，差距本來就大；這條只防「無限膨脹」。
