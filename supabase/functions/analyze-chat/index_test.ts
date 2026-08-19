@@ -894,8 +894,10 @@ Deno.test({
     assert(source.includes("少字有勁"));
     assert(source.includes("少字有勁：可複製內容不要長"));
     assert(source.includes("openers 本身是要讓用戶直接貼出去的訊息"));
-    assert(source.includes("每個 opener 建議 12-38 個中文字"));
-    assert(source.includes("特殊情況最多 45 個中文字"));
+    // 2026-08-19 Eric 真機對標：12-38 字是「寫作文」量級，真高手第一則
+    // 10-25 字、常常沒問號（長度本身＝位階訊號）。
+    assert(source.includes("每個 opener 10-25 個中文字"));
+    assert(source.includes("陳述句收尾優先，不一定要有問號"));
     assert(source.includes("不要解釋招式，不要鋪墊，不要自證有看自介"));
     assert(source.includes("觀察 + 小框架 + 好回出口"));
     assert(source.includes("高手觀察法：規則是背景，反差才是入口"));
