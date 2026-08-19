@@ -30,6 +30,11 @@ Deno.test("buildCoachChatPrompt includes coach 1:1 positioning and JSON contract
   // 說「30 組」實給 12 組＋承諾「下一則補完」（下一則要扣額度）；簡體字洩漏。
   assertStringIncludes(prompt, "絕不寫出比實際交付多的數字");
   assertStringIncludes(prompt, "不得混入簡體字");
+  // 2026-08-19 競品拆解提取（Eric/Bruce 拍板 1、2、4）：
+  // 回覆速度降權、邀約被拒四格階梯、吃不準時選不傷人的回法。
+  assertStringIncludes(prompt, "回覆速度是低權重訊號");
+  assertStringIncludes(prompt, "解讀邀約被拒分四格");
+  assertStringIncludes(prompt, "就算判斷錯也不會給對方壓力");
 });
 
 Deno.test("buildCoachChatPrompt carries active coaching turns and clarification rule", () => {
