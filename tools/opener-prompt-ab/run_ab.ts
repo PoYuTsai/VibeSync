@@ -15,8 +15,13 @@
 //   deno run --allow-read --allow-env --allow-run tools/opener-prompt-ab/run_ab.ts --self-check
 
 // ── 客觀指標 ────────────────────────────────────────────────
-/** 前提＋轉折骨架（「A 但 B」「A，其實 B」「妳感覺是那種…的人」…）。 */
-const PIVOT = /[但不過其實可是然而]|感覺(?:妳|你)是那種|通常.{0,8}兩(?:種|個)/u;
+/**
+ * 前提＋轉折骨架（「A 但 B」「A，其實 B」「妳感覺是那種…的人」…）。
+ * 2026-08-19 補：禁掉連接詞之後模型改用「通常X，妳Y」「以為X，結果Y」——
+ * 連接詞消失但骨架原封不動，只抓連接詞會把規避誤讀成改善（實測 20/40 → 真實 24/40）。
+ */
+const PIVOT =
+  /[但不過其實可是然而]|感覺(?:妳|你)是那種|通常.{0,8}兩(?:種|個)|(?:通常|都|大多|一般)[^，,\n]{0,14}[，,\n].{0,6}(?:妳|你)|(?:以為|還以為)[^，,\n]{0,16}[，,\n]/u;
 /** 問號收尾。 */
 const ASKS = /[?？]\s*$/u;
 /**
@@ -172,7 +177,8 @@ const MODEL = "claude-sonnet-5";
  * 切入角度輪替清單：彼此語意距離要遠，才不會輪了跟沒輪一樣。
  * production 用 requestId 取模選一個（同一次生成 replay 會拿到同一個角度）。
  */
-const ANGLES = [
+// 新話題：她已經是熟人，可以用生活面向。
+const NEW_TOPIC_ANGLES = [
   "作息與睡眠",
   "食物與口味的固執",
   "花錢的習慣",
@@ -185,10 +191,26 @@ const ANGLES = [
   "最近一件蠢事",
 ];
 
+// 開場白：只有一份自介、對方是陌生人，角度必須是「讀她資料的鏡頭」，
+// 不能是需要熟悉度的生活面向（那會變成憑空假設）。
+const OPENER_ANGLES = [
+  "她自介裡最沒人問過的那一句",
+  "她刻意沒寫的東西",
+  "她的作息或職業造成的生活時差",
+  "她寫自介的語氣本身，不是內容",
+  "她設下的那些規則在防什麼",
+  "一個她大概每天被問、你偏不問的話題",
+  "把她放進一個具體的日常情境",
+  "她大概會有意見的一件小事",
+  "一個輕微、可否認的誤判",
+  "她自介裡最像人、最不像條件的那一點",
+];
+
 function angleBlock(i: number): string {
-  return `\n\n## 這次的切入角度：${ANGLES[i % ANGLES.length]}\n` +
-    "五題裡至少兩題要從這個角度長出來，其餘自由。這是為了讓同一個對象每次生成不會撞題，" +
-    "不是題目本身——不要把角度的名字寫進訊息裡。";
+  const a = mode.angles[i % mode.angles.length];
+  return `\n\n## 這次的切入角度：${a}\n` +
+    "五個裡至少兩個要從這個角度長出來，其餘自由；風格分工不變。" +
+    "這是為了讓同一份資料每次生成不會撞題，不是題目本身——不要把角度的名字寫進訊息裡。";
 }
 
 interface Mode {
@@ -208,6 +230,8 @@ interface Mode {
   knownInterests: string[];
   /** --twopass 第一段的輸入：只有關係階段與狀況，**不含作戰板**。 */
   divergeUserContent?: string;
+  /** --seeded 的切入角度輪替清單（每個功能的可用角度不同）。 */
+  angles: string[];
 }
 
 // grace（2026-08-19 真機案例）：長自介、規則牆、唯一正向線索是「熱愛學習
@@ -273,6 +297,7 @@ const MODES: Record<string, Mode> = {
     allText: (parsed) => JSON.stringify(parsed),
     echoSource: OPENER_USER_CONTENT,
     knownInterests: [],
+    angles: OPENER_ANGLES,
   },
   newtopic: {
     path: "supabase/functions/analyze-chat/new_topic_prompt.ts",
@@ -283,6 +308,7 @@ const MODES: Record<string, Mode> = {
         .map((t) => String(t?.openingLine ?? ""))
         .filter((v) => v.length > 0),
     allText: (parsed) => JSON.stringify(parsed),
+    angles: NEW_TOPIC_ANGLES,
     echoSource: NEW_TOPIC_USER_CONTENT.split("## 關於我")[0],
     knownInterests: ["旅行", "旅遊", "咖啡", "手沖", "看展", "展覽"],
     divergeUserContent:
