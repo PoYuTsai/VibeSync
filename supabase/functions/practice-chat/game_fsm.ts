@@ -354,6 +354,20 @@ const CRUDE_SEXUAL_OFFENSE_TERMS = [
   "臭機掰",
   "糙你媽",
   "糙妳媽",
+  // 英文粗俗（2026-08-19）：中英夾雜是本產品明寫的輸入常態，清單卻全中文
+  // ＝「wanna fuck」直接繞過。normalized 已 lowercase＋去空白，詞條寫連寫形。
+  // 只收指向對方的完整詞組：裸「fuck／dick」會誤殺（what the fuck 當感嘆、
+  // moby dick）。
+  "fuckyou",
+  "fuckme",
+  "wannafuck",
+  "letsfuck",
+  "fuckbuddy",
+  "sendnude",
+  "dickpic",
+  "blowjob",
+  "suckmydick",
+  "showmeyourtits",
   "幹你",
   "幹妳",
   "幹死你",

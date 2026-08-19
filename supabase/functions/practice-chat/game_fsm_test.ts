@@ -265,6 +265,9 @@ Deno.test("containsCrudeSexualOffense：高精度詞命中、自然語放行", (
       "糙機掰",
       "淦你娘咧",
       "幹妳娘",
+      "wanna fuck?",
+      "send nudes",
+      "Fuck you",
     ]
   ) {
     assertEquals(containsCrudeSexualOffense(offense), true, offense);
@@ -282,6 +285,10 @@ Deno.test("containsCrudeSexualOffense：高精度詞命中、自然語放行", (
       "我們林老師人超好",
       "這米有點糙你會嫌嗎",
       "餅乾你要不要",
+      // 英文只收指向對方的完整詞組：感嘆/一般語境不可誤殺。
+      "what the fuck 這也太扯",
+      "那間 bar 的調酒 fucking good",
+      "我在看 moby dick",
     ]
   ) {
     assertEquals(containsCrudeSexualOffense(benign), false, benign);
