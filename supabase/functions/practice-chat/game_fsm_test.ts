@@ -252,7 +252,16 @@ Deno.test("evaluateGameFsm：粗俗性冒犯即使高溫也判 GREASY＋L0", () 
 
 Deno.test("containsCrudeSexualOffense：高精度詞命中、自然語放行", () => {
   for (
-    const offense of ["想幹妳屁眼", "想內射妳", "傳裸照來看看", "妳這騷貨"]
+    // 「咩修桿某」＝台語諧音「欲相幹無」（2026-08-19 真機實錄繞過字面
+    // 清單還升溫）：known 諧音拼法也要命中。
+    const offense of [
+      "想幹妳屁眼",
+      "想內射妳",
+      "傳裸照來看看",
+      "妳這騷貨",
+      "咩修桿某",
+      "欸 修幹某啦",
+    ]
   ) {
     assertEquals(containsCrudeSexualOffense(offense), true, offense);
   }
