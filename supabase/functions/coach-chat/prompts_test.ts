@@ -26,6 +26,10 @@ Deno.test("buildCoachChatPrompt includes coach 1:1 positioning and JSON contract
   assertStringIncludes(prompt, "fearOfMistake");
   assertStringIncludes(prompt, "30 秒到 5 分鐘內可做完");
   assertStringIncludes(prompt, '"boundaryReminder"');
+  // 2026-08-19 Bruce 蒸餾測試撈到的兩個輸出 bug 鎖：
+  // 說「30 組」實給 12 組＋承諾「下一則補完」（下一則要扣額度）；簡體字洩漏。
+  assertStringIncludes(prompt, "絕不寫出比實際交付多的數字");
+  assertStringIncludes(prompt, "不得混入簡體字");
 });
 
 Deno.test("buildCoachChatPrompt carries active coaching turns and clarification rule", () => {
