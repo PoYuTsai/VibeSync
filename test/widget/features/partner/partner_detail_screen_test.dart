@@ -345,12 +345,13 @@ void main() {
     await t.pumpAndSettle();
 
     // Phase E Task 6：頁面本體多了 CoachSurface 輸入框，改鎖定 dialog 內欄位。
+    // 2026-08-19 備註手填關閉（chips-only）：dialog 只剩名稱一個 TextField。
     final dialogFields = find.descendant(
       of: find.byType(AlertDialog),
       matching: find.byType(TextField),
     );
-    expect(dialogFields, findsNWidgets(2));
-    await t.enterText(dialogFields.at(0), '  Alicia  ');
+    expect(dialogFields, findsOneWidget);
+    await t.enterText(dialogFields, '  Alicia  ');
     await t.tap(find.text('儲存'));
     await t.pumpAndSettle();
 
@@ -465,23 +466,17 @@ void main() {
 
     await t.tap(find.byTooltip('對象設定'));
     await t.pumpAndSettle();
-    // Phase E Task 6：改鎖定 dialog 內欄位（頁面本體有 CoachSurface 輸入框）。
-    await t.enterText(
-      find
-          .descendant(
-            of: find.byType(AlertDialog),
-            matching: find.byType(TextField),
-          )
-          .at(1),
-      '  慢熱，喜歡戶外活動  ',
-    );
+    // 2026-08-19 備註手填關閉（chips-only）：改點 chips，note 由選取以「、」串成。
+    await t.tap(find.text('慢熱'));
+    await t.tap(find.text('喜歡戶外'));
+    await t.pumpAndSettle();
     await t.tap(find.text('儲存'));
     await t.pumpAndSettle();
 
     expect(fake.updateNameCalled, isFalse);
     expect(fake.updateCustomNoteCalled, isTrue);
     expect(fake.notePartner?.id, 'p1');
-    expect(fake.updatedCustomNote, '慢熱，喜歡戶外活動');
+    expect(fake.updatedCustomNote, '慢熱、喜歡戶外');
     expect(find.text('已更新對象設定'), findsOneWidget);
   });
 
