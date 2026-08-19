@@ -4,7 +4,7 @@ import {
   flattenMultiBubbleText,
   scrubRawImageFilenames,
 } from "./prompt_sanitizer.ts";
-import { toTraditionalChinese } from "./traditional_chinese.ts";
+import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
 
 export type TemperatureBand = "frozen" | "cold" | "neutral" | "warm" | "hot";

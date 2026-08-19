@@ -30,7 +30,7 @@ import {
   relationshipStageFor,
   temperatureBandFor,
 } from "./temperature.ts";
-import { toTraditionalChinese } from "./traditional_chinese.ts";
+import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
 import {
   applyStageFloor,

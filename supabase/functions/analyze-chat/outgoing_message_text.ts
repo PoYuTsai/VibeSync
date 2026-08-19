@@ -1,3 +1,5 @@
+import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
+
 // 「要原封傳給對方的訊息」共用的確定性正規化。
 //
 // 只用在那類欄位——教練欄位（whyItWorks／nextMove／reason）是對使用者講話，
@@ -29,4 +31,19 @@ export function normalizeOutgoingPunctuation(line: string | null): string | null
   return line
     .replace(/([\u4e00-\u9fff]),(?=[\u4e00-\u9fff])/g, "$1，")
     .replace(/[ \t]+(?=[，。！？、；：])/g, "");
+}
+
+/**
+ * 簡體字混進來（2026-08-19 A/B 約 600 句出現 1 處：「感覺妳會带我去」）。
+ *
+ * 用練習室已經跑了半年的那支——它同時解掉了「厂厂」這種當注音用的漢字笑聲
+ * 會被 cn2t 轉成「廠廠」的坑（只在旁邊也是注音時才轉成 ㄏ，「工厂」照樣變
+ * 「工廠」）。自己寫一份不完整的對照表正是那支的檔頭明講不要做的事。
+ *
+ * 代價：analyze-chat 的 bundle 多一份 OpenCC 字典（practice-chat 已經在付）。
+ * ponytail: 先靜態載入，跟 practice-chat 一致；真的量到冷啟動變慢再改成偵測到
+ * 簡體字才動態載入。
+ */
+export function normalizeOutgoingScript(line: string | null): string | null {
+  return line === null ? null : toTraditionalChinese(line);
 }

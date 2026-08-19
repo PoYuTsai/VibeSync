@@ -4,6 +4,7 @@
 
 import {
   normalizeOutgoingPunctuation,
+  normalizeOutgoingScript,
   normalizePartnerPronoun,
 } from "./outgoing_message_text.ts";
 
@@ -132,7 +133,7 @@ export function sanitizeOpenerText(value: unknown): string | null {
   // 常吐字面 "\n" 而不是真換行（練習室已登記坑），這裡統一正規化，並把
   // 三行以上的空行壓成單一換行——開場最多兩則。
   // 五張卡都是原封複製貼上傳給對方的訊息，人稱與標點正規化見 outgoing_message_text。
-  const trimmed = normalizeOutgoingPunctuation(normalizePartnerPronoun(text))!
+  const trimmed = normalizeOutgoingScript(normalizeOutgoingPunctuation(normalizePartnerPronoun(text)))!
     .replace(/\\n/g, "\n")
     .replace(/\n{2,}/g, "\n")
     .split("\n")

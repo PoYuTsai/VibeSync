@@ -485,3 +485,12 @@ Deno.test("sanitizeOpenerText 修中文之間的半形逗號與全形標點前�
   // 數字千分位前後不是中文，不動。
   assertEquals(sanitizeOpenerText("一個月 1,000 塊而已"), "一個月 1,000 塊而已");
 });
+
+Deno.test("sanitizeOpenerText 把混進來的簡體字轉繁，但不吃掉注音笑聲", () => {
+  assertEquals(
+    sanitizeOpenerText("感覺妳會带我去妳家巷口那種隱藏美食"),
+    "感覺妳會帶我去妳家巷口那種隱藏美食",
+  );
+  // 練習室踩過的坑：厂厂 是注音笑聲，不可以變成「廠廠」。
+  assertEquals(sanitizeOpenerText("妳這自介我笑了 厂厂"), "妳這自介我笑了 ㄏㄏ");
+});

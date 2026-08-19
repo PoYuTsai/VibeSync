@@ -9,6 +9,7 @@
 
 import {
   normalizeOutgoingPunctuation,
+  normalizeOutgoingScript,
   normalizePartnerPronoun,
 } from "./outgoing_message_text.ts";
 
@@ -292,10 +293,10 @@ export function normalizeNewTopicModelPayload(
       rawTopic.direction,
       NEW_TOPIC_FIELD_CAPS.direction,
     );
-    const openingLine = normalizeOutgoingPunctuation(normalizePartnerPronoun(sanitizeVisibleText(
+    const openingLine = normalizeOutgoingScript(normalizeOutgoingPunctuation(normalizePartnerPronoun(sanitizeVisibleText(
       rawTopic.openingLine,
       NEW_TOPIC_FIELD_CAPS.openingLine,
-    )));
+    ))));
     const whyItWorks = sanitizeVisibleText(
       rawTopic.whyItWorks,
       NEW_TOPIC_FIELD_CAPS.whyItWorks,

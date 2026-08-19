@@ -124,7 +124,7 @@ import {
 } from "./temperature.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
 import { normalizeLiteralNewlines } from "./prompt_sanitizer.ts";
-import { toTraditionalChinese } from "./traditional_chinese.ts";
+import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 import {
   buildPracticeAiLogRow,
   buildPracticeGenerationTelemetry,

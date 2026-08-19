@@ -20,7 +20,7 @@ import {
   type PracticeInviteLevel,
   practiceInviteLevelFor,
 } from "./practice_invite.ts";
-import { toTraditionalChinese } from "./traditional_chinese.ts";
+import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 import {
   assertHintFactClaimsSupported,
   buildHintFactContext,
