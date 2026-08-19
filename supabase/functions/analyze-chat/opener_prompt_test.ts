@@ -14,7 +14,8 @@ Deno.test({
     assert(source.includes("讓用戶看懂「怎麼去回」"));
     assert(source.includes("先選哪顆球、用什麼框架接"));
     assert(source.includes("回完要留下什麼下一球"));
-    assert(source.includes("profileAnalysis.openingStrategy 請用一句話教用戶"));
+    // 瘦身二輪：欄位規格併入「讀資料 → 開場」，措辭改為 **openingStrategy**。
+    assert(source.includes("**openingStrategy**：一句話教用戶怎麼回"));
     assert(source.includes("先接哪個線索、避開哪類題、用哪種球丟回去"));
     assert(source.includes("recommendation.reason 必須像教練講解「怎麼回」"));
     assert(source.includes("刪掉哪種錯誤接法"));

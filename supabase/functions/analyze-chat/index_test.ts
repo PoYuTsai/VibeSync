@@ -850,36 +850,32 @@ Deno.test({
     assert(source.includes("VibeSync 是教練，不是話術產生器"));
     assert(source.includes("回話只是示範，框架大於話術"));
     assert(source.includes("怎麼丟球、怎麼維持男人框架、怎麼讓女生有球可以回"));
+    // 2026-08-19 瘦身二輪：「先讀資料再開場」七步與「可見線索優先」欄位
+    // 規格是同一組欄位講兩次，合併成「讀資料 → 開場：profileAnalysis 各欄
+    // 怎麼寫」。
     assert(
       source.includes(
-        "先讀資料，再開場（Profile Read → Frame → Hook → Opener）",
+        "讀資料 → 開場：profileAnalysis 各欄怎麼寫",
       ),
     );
-    assert(source.includes("先避開 avoidTopics"));
-    assert(source.includes("判斷框架 frameRead"));
-    assert(source.includes("界線要被內化，不一定要被唸出來"));
-    assert(source.includes("可接線索 positiveHooks"));
-    assert(source.includes("高手觀察 masterObservation"));
-    assert(source.includes("好奇心鉤子 curiosityHook"));
-    assert(source.includes("推薦策略 openingStrategy"));
+    assert(source.includes("**avoidTopics**"));
+    assert(source.includes("**frameRead**"));
+    assert(source.includes("界線要被內化不必唸出來"));
+    assert(source.includes("**positiveHooks**"));
+    assert(source.includes("**masterObservation**"));
+    assert(source.includes("**curiosityHook**"));
+    assert(source.includes("**openingStrategy**"));
     assert(source.includes("如果自介明確說不要問工作、不要約酒、討厭沒誠意"));
     assert(source.includes("中文語境注意：「不約」通常表示不要低成本約砲"));
     assert(source.includes("不是「永遠不見面」或「不能認識」"));
     assert(source.includes("不要在 opener 或 reason 裡主動提「不約」"));
     assert(source.includes("讓對話自然走到可約"));
-    assert(source.includes("可見線索優先"));
-    assert(source.includes("不要假裝看出很深的人格"));
-    assert(source.includes("profileAnalysis.avoidTopics"));
-    assert(source.includes("profileAnalysis.frameRead"));
-    assert(source.includes("profileAnalysis.positiveHooks"));
-    assert(source.includes("profileAnalysis.masterObservation"));
-    assert(source.includes("profileAnalysis.curiosityHook"));
-    assert(source.includes("profileAnalysis.openingStrategy"));
+    assert(source.includes("只寫**可見**風格與**互動切入判斷**"));
+    assert(source.includes("不做 Big Five、長期性格、家庭、感情狀態、收入或身材的判斷"));
     assert(source.includes("場景分流"));
     assert(source.includes("自介資訊量分流"));
     assert(source.includes("自介很長、界線很多"));
-    assert(source.includes("自介只有一句話"));
-    assert(source.includes("幾乎沒有自介、只有自拍"));
+    assert(source.includes("自介只有一句話或幾乎沒有自介"));
     assert(source.includes("脫穎而出：好奇心鉤子"));
     assert(source.includes("二選一"));
     assert(source.includes("小反差"));
@@ -927,14 +923,12 @@ Deno.test({
     assert(source.includes("第一球：微拉、畫面感、輕微挑戰"));
     assert(source.includes("初期只能微拉，不要重拉"));
     assert(source.includes("第二球：冷讀、觀察、可被反駁"));
-    assert(source.includes("實戰短句範例"));
-    assert(source.includes("只在她自己先自嘲某個特質時"));
-    assert(source.includes("從她給的線索旁路推測一個互動風格"));
-    assert(source.includes("短、留白、可反駁、可接球"));
+    // 瘦身二輪：兩顆球區塊裡的「實戰短句範例」殼（例句已於前一輪刪除）
+    // 與重複的長自介分支移除，長自介指引併入「自介資訊量分流」。
+    assert(source.includes("兩球都要短、都要留出口"));
     // 2026-08-19 A/B 實測：這區原本三句「目標質感」例句被模型逐字照抄到
     // 每一次生成（同域範例＝發罐頭），改成只描述各風格該做什麼、刻意不給
     // 例句；斷言跟著改鎖做法而非句子。
-    assert(source.includes("長自介 / 規則多 / 仍有正向線索時"));
     assert(source.includes("自介很長不等於「線索少」"));
     assert(source.includes("此處刻意不給例句"));
     assert(source.includes("不要複述規則本身"));
