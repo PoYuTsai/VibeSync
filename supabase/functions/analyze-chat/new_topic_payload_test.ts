@@ -308,7 +308,6 @@ Deno.test("build：paid 五題全存、推薦排第一、topicId 不因排序重
     recommendationIndex: 2,
     recommendationReason: "理由",
     servedTier: "essential",
-    formulaTopics: [],
   });
   assertEquals(result.topics.length, 5);
   assertEquals(result.topics[0].id, "nt_3");
@@ -334,7 +333,6 @@ Deno.test("build：free 只存推薦一題，另外四題文字不落 ledger", (
     recommendationIndex: 4,
     recommendationReason: null,
     servedTier: "free",
-    formulaTopics: [],
   });
   assertEquals(result.topics.length, 1);
   assertEquals(result.topics[0].id, "nt_5");
@@ -359,7 +357,6 @@ Deno.test("validate：頂層夾帶其他鍵、tier 投影不一致、推薦不�
     recommendationIndex: 0,
     recommendationReason: null,
     servedTier: "starter",
-    formulaTopics: [],
   });
 
   assertFalse(
@@ -414,7 +411,6 @@ function ledgerWithFormula(
     recommendationIndex: 0,
     recommendationReason: null,
     servedTier,
-    formulaTopics: [],
   }) as unknown as Record<string, unknown>;
   return { ...base, formulaTopics };
 }
@@ -427,7 +423,6 @@ Deno.test("validate formula：legacy 三-key 仍合法；四-key 0/1/2 則皆合
       recommendationIndex: 0,
       recommendationReason: null,
       servedTier: tier,
-      formulaTopics: [],
     }) as unknown as Record<string, unknown>;
     delete legacy.formulaTopics;
     assert(isValidNewTopicLedgerResult(legacy), `${tier} legacy 三-key 合法`);
@@ -486,52 +481,6 @@ Deno.test("validate formula：cap 以 Unicode code points 計（astral emoji 邊
     ])),
     "whyItWorks 301 code points 應拒絕",
   );
-});
-
-Deno.test("build：新 row 一律帶 formulaTopics（即使空）、0–2 則原封存入、>2 throw", () => {
-  const empty = buildNewTopicLedgerResult({
-    topics: modelTopics(),
-    recommendationIndex: 0,
-    recommendationReason: null,
-    servedTier: "free",
-    formulaTopics: [],
-  });
-  assert("formulaTopics" in empty, "新 row 必帶 formulaTopics 鍵");
-  assertEquals(empty.formulaTopics, []);
-  assert(isValidNewTopicLedgerResult(empty));
-
-  const canonical = [
-    { openingLine: "公式一", whyItWorks: "理由一" },
-    { openingLine: "公式二", whyItWorks: "理由二" },
-  ];
-  const twoFree = buildNewTopicLedgerResult({
-    topics: modelTopics(),
-    recommendationIndex: 0,
-    recommendationReason: null,
-    servedTier: "free",
-    formulaTopics: canonical,
-  });
-  // Free 只存推薦一題，但 formula 原封兩則（不投影）。
-  assertEquals(twoFree.topics.length, 1);
-  assertEquals(twoFree.formulaTopics, canonical);
-  assert(isValidNewTopicLedgerResult(twoFree));
-
-  let threw = false;
-  try {
-    buildNewTopicLedgerResult({
-      topics: modelTopics(),
-      recommendationIndex: 0,
-      recommendationReason: null,
-      servedTier: "free",
-      formulaTopics: [
-        ...canonical,
-        { openingLine: "公式三", whyItWorks: "理由三" },
-      ],
-    });
-  } catch {
-    threw = true;
-  }
-  assert(threw, "formulaTopics >2 應 throw（上游 normalizer 出錯要炸出來）");
 });
 
 Deno.test("validate formula：code fence／raw JSON／schema 洩漏拒絕；formula 不改 tier 投影規則", () => {

@@ -11,8 +11,6 @@ import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
-import '../../../../shared/widgets/formula_reply_section.dart';
-import '../../../../shared/widgets/more_below_hint.dart';
 import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/staggered_appear.dart';
 import '../../../../shared/widgets/stream_progress_ticker.dart';
@@ -66,9 +64,8 @@ class NewTopicView extends ConsumerStatefulWidget {
 class _NewTopicViewState extends ConsumerState<NewTopicView> {
   final _scrollController = ScrollController();
   // 2026-08-18 呈現精修：完成後定格在「新話題建議」標題，不再捲到底
-  // 略過 5 張題卡；公式區 key 給右下滑動提示 pill 當目標。
+  // 略過 5 張題卡。
   final _resultsSectionKey = GlobalKey();
-  final _formulaSectionKey = GlobalKey();
   final _requestSession = NewTopicRequestSession();
 
   String? _selectedPartnerId;
@@ -383,18 +380,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       );
   }
 
-  /// 公式新話題複製：只複製 openingLine，沿用既有 snackbar 語氣。
-  void _copyFormulaOpeningLine(FormulaReplyEntry entry) {
-    AppHaptics.light();
-    Clipboard.setData(ClipboardData(text: entry.openingLine));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text('已複製這句話，貼到聊天室送出試試。')),
-      );
-  }
-
   @override
   Widget build(BuildContext context) {
     final validPartnerId = _validatedPartnerId();
@@ -505,9 +490,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
               child: NewTopicResultsSection(
                 result: _result!,
                 onCopyIdeaOpeningLine: _copyOpeningLine,
-                onCopyFormulaOpeningLine: _copyFormulaOpeningLine,
                 onUpgrade: _showPaywallAndRefresh,
-                formulaSectionKey: _formulaSectionKey,
               ),
             ),
           ],
@@ -516,25 +499,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       ),
     );
 
-    // 滑動提示 pill：公式新話題還在視口下方時提示；進入視口即收起。
-    // StackFit.expand：預設 loose 會讓捲動區縮成內容寬（版面漂移＋pill 定位壞）。
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        ScrollCardTicks(child: scrollBody),
-        if (_result != null && _result!.formulaTopics.isNotEmpty)
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: MoreBelowHint(
-              controller: _scrollController,
-              targetKey: _formulaSectionKey,
-              label: '往下還有公式新話題',
-              resetToken: _result,
-            ),
-          ),
-      ],
-    );
+    return ScrollCardTicks(child: scrollBody);
   }
 
   Widget _buildPartnerCard(Partner? partner, bool hadInvalidInitialPartner) {
@@ -669,24 +634,18 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
 }
 
 /// 結果區（抽成公開 widget 供 widget test 直接驗證排序與可見性；
-/// 計畫 §10.3）：推薦理由 → 原 topics → 公式新話題 → Free upsell。
+/// 計畫 §10.3）：推薦理由 → 原 topics → Free upsell。
 class NewTopicResultsSection extends StatelessWidget {
   const NewTopicResultsSection({
     super.key,
     required this.result,
     required this.onCopyIdeaOpeningLine,
-    required this.onCopyFormulaOpeningLine,
     required this.onUpgrade,
-    this.formulaSectionKey,
   });
 
   final NewTopicResult result;
   final ValueChanged<NewTopicIdea> onCopyIdeaOpeningLine;
-  final ValueChanged<FormulaReplyEntry> onCopyFormulaOpeningLine;
   final VoidCallback onUpgrade;
-
-  /// 滑動提示 pill 的捲動目標（公式新話題區）。
-  final Key? formulaSectionKey;
 
   @override
   Widget build(BuildContext context) {
@@ -743,25 +702,6 @@ class NewTopicResultsSection extends StatelessWidget {
                 onCopyOpeningLine: () => onCopyIdeaOpeningLine(idea),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        // 公式新話題（公式回覆計畫 §10.3）：原 topics 之後、Free upsell
-        // 之前——Free 使用者清楚看到公式本來就可用，CTA 只鎖另外四題。
-        // 空清單整區不渲染。
-        if (result.formulaTopics.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          FormulaReplySection(
-            key: formulaSectionKey,
-            title: '公式新話題',
-            entries: [
-              for (final formula in result.formulaTopics)
-                FormulaReplyEntry(
-                  openingLine: formula.openingLine,
-                  whyItWorks: formula.whyItWorks,
-                ),
-            ],
-            onCopyOpeningLine: onCopyFormulaOpeningLine,
           ),
           const SizedBox(height: 12),
         ],

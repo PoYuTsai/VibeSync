@@ -29,9 +29,8 @@ export const NEW_TOPIC_FIELD_CAPS = {
 
 export const NEW_TOPIC_TOPIC_COUNT = 5;
 
-// 公式新話題（2026-07-24 公式回覆計畫 §3/§7.2）：ledger 選填第四鍵，
-// canonical 0–2 則；cap 以 Unicode code points 計（TS [...text].length＝
-// PostgreSQL char_length()＝Dart runes.length）。
+// Legacy 公式新話題（2026-08-19 下架）：新 row 不再寫入，這組常數與下方
+// isValidStoredFormulaReply 只服務既存 row 的 replay 讀取驗證。
 export const NEW_TOPIC_FORMULA_MAX_COUNT = 2;
 export const NEW_TOPIC_FORMULA_CAPS = {
   openingLine: 180,
@@ -368,8 +367,9 @@ export type NewTopicLedgerResult = {
   topics: NewTopicLedgerTopic[];
   recommendation: { topicId: string; reason?: string };
   access: NewTopicAccess;
-  // 選填第四鍵：舊 stored row 缺席＝合法（client 解析成空清單）；新 Edge
-  // 寫入的 row 一律有，值為 canonical 0–2 則。tier 投影永遠不讀它。
+  // Legacy 第四鍵（公式新話題已於 2026-08-19 下架）：新 row 不再寫入，
+  // 但 2026-07-24～08-19 之間的既存 row 帶著它，replay 讀回必須照樣通過
+  // 驗證，所以型別與讀取端驗證都保留。
   formulaTopics?: NewTopicFormulaReply[];
 };
 
@@ -379,16 +379,12 @@ export type NewTopicLedgerResult = {
  * - 推薦 topic 永遠排 client response 第一位。
  * - Free 只存推薦那一題；另外四題文字不進 ledger、不進 response。
  * - Paid 五題全存（推薦在前）。
- * - formulaTopics（0–2 則 canonical，呼叫端先過 normalizeFormulaReplies）
- *   原封存入兩種 tier 的 ledger，不參與 topics counts／推薦（公式回覆
- *   計畫 §7.2）；必填讓「只回 fresh response 不進 ledger」在編譯期就露餡。
  */
 export function buildNewTopicLedgerResult(opts: {
   topics: NewTopicModelTopic[];
   recommendationIndex: number;
   recommendationReason: string | null;
   servedTier: NewTopicServedTier;
-  formulaTopics: NewTopicFormulaReply[];
 }): NewTopicLedgerResult {
   if (opts.topics.length !== NEW_TOPIC_TOPIC_COUNT) {
     throw new Error("buildNewTopicLedgerResult: topics must be exactly 5");
@@ -400,10 +396,6 @@ export function buildNewTopicLedgerResult(opts: {
   ) {
     throw new Error("buildNewTopicLedgerResult: invalid recommendation index");
   }
-  if (opts.formulaTopics.length > NEW_TOPIC_FORMULA_MAX_COUNT) {
-    throw new Error("buildNewTopicLedgerResult: formulaTopics must be 0-2");
-  }
-
   const withIds: NewTopicLedgerTopic[] = opts.topics.map((topic, index) => ({
     id: `nt_${index + 1}`,
     ...topic,
@@ -433,11 +425,6 @@ export function buildNewTopicLedgerResult(opts: {
       unlockedCount: isFree ? 1 : NEW_TOPIC_TOPIC_COUNT,
       lockedCount: isFree ? NEW_TOPIC_TOPIC_COUNT - 1 : 0,
     },
-    // 新 Edge row 一律帶（即使空）；Free/Paid 存同一份、不投影。
-    formulaTopics: opts.formulaTopics.map((reply) => ({
-      openingLine: reply.openingLine,
-      whyItWorks: reply.whyItWorks,
-    })),
   };
 }
 

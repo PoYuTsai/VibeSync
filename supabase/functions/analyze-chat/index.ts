@@ -30,7 +30,6 @@ import {
   normalizeBlockType,
 } from "./blocktype_fold.ts";
 import { extractTokenUsage, logAiCall } from "./logger.ts";
-import { normalizeFormulaRepliesDetailed } from "./formula_reply.ts";
 import {
   hasOpenerProfileSubstance,
   normalizeOpenerProfileInfo,
@@ -2364,6 +2363,15 @@ const OPENER_PROMPT =
 
 如果自介明確說不要問工作、不要約酒、討厭沒誠意，推薦開場不得再問工作、喝酒或丟通用招呼。但不要每次都機械式寫「我有看完自介」「不問妳在哪上班，也不約喝酒」；除非這樣真的更自然或更幽默。
 
+## 五題自檢：索取資料 vs 給她東西反應
+「妳興趣是什麼／平常都去哪玩／喜歡旅行嗎／週末都幹嘛」這類是**在跟她索取資料**，把整個聊天責任丟給她。開場要先給出東西再開口——一個觀察、一個輕假設、一個畫面或一個立場，她才有得反應。
+每一句送出前自檢三件事：
+1. **是不是換皮版的「妳喜歡什麼」？** 是就重寫。
+2. **她能不能反駁？** 最好的鉤子是讓她想說「才不是，我其實…」；只能回是／不是的題偏弱。
+3. **有沒有畫面？** 「妳週末喜歡幹嘛」畫面弱；「如果突然多一天假，妳第一個會跑去哪」畫面強。
+兩個好用的形狀（不必每次都用，但比查戶口強）：**輕假設可反駁**——「我感覺妳是 X，但我懷疑私底下其實有 Y 的一面」；**人格二選一**——把問題變成兩個都有畫面、都能透露個性的選項（「妳旅行是 Excel 排滿派，還是睡醒才決定去哪派？」），不是「A 還是 B」的空選擇。
+她回答之後不要馬上問下一題（那是採訪）：**先反應→再解讀→才延伸**，把她的答案玩笑式放大成一個小判斷，讓她有得反駁。
+
 中文語境注意：「不約」通常表示不要低成本約砲、不要一上來約、不要沒誠意的快速見面；不是「永遠不見面」或「不能認識」。遇到「不約」只把它當作內部避雷與框架判斷，避免性暗示與急著邀約；不要在 opener 或 reason 裡主動提「不約」。產品目標仍是透過高品質互動，讓對話自然走到可約。
 
 ## 開場技巧詞彙表（7 詞，上限）
@@ -2599,49 +2607,10 @@ recommendation.reason 必須像教練講解「怎麼回」，不能只當文案�
 更好的開場會多一個記憶點，例如輕自嘲、二選一、小反差或畫面感，讓她不用花力氣也想回。
 壞的開場：嗨美女、妳好漂亮、在哪上班、要不要喝一杯、感覺妳很有趣、看起來很外向、我有認真看完妳的自介所以我絕對不會踩雷。這些太通用、踩雷或太像交作業。
 
-## 公式開場（額外兩則，不取代上面的五種風格）
-
-另外產出恰好兩則公式開場。它們是額外選項，不得刪除、合併、改寫或減少
-extend / resonate / tease / humor / coldRead 五種開場。
-
-每則都要同時有：
-1. 鉤子：抓對方資料裡一個具體、可安全說出口的細節；不是稱讚外貌，也不是
-   複述禁忌或內部分析。
-2. 一小段「我」：使用者當下的低風險反應、狀態或感受。不得虛構使用者去過
-   哪裡、做過什麼、擁有什麼經歷；沒有使用者事實時，可寫看到素材後的自然
-   反應。
-3. 好接的開口：讓對方可以反駁、補一個細節、做簡單選擇或分享小故事。
-
-只有輸入明確證明共同經歷／共同興趣時，才能寫「我們／我也」；不得把
-effectiveStyleContext 與對方素材自行拼成共同點。
-
-可選加入一個具體可填補的資訊缺口，但不要變成查戶口或連環問。
-三個元素是內部檢查表，不是三段都要各自展開成完整句。
-三個元素都必須在 openingLine 裡看得到；各用一小片語即可，合成一則自然訊息；
-最多兩個短句，最多一個問句。
-openingLine 可以比五種短句多一小段「我」，但不能變成三段式說明。
-壓縮但不可刪掉「我」：保留一個最短的當下反應、狀態或感受；刪掉重複
-態度詞與證明式前綴。像「我很喜歡、忍不住想問、我自己是那種」若只是
-重複同一個反應，就只留最短、最有畫面的那一個。
-whyItWorks 用一句教練話說明這句接了哪個細節、為什麼好回；不要重複
-openingLine 的字面。
-
-弱例（太空泛）：
-「妳看起來很有趣，平常喜歡做什麼？」
-
-強例只示範結構，不得照抄：
-「妳那張山頂照讓我有點想把週末從沙發救回來。那條是新手也能活著下山的
-路線嗎？」
-＝具體照片線索＋我的當下反應＋容易補充的資訊缺口。
-
-所有既有 avoidTopics、grounding、安全、可見句不夾技巧名規則同樣適用。
-openingLine 目標 30–50 個繁中字元；若超過 50 字，先刪除重複態度詞與贅語再輸出。
-whyItWorks 目標 25–45 個繁中字元，限一句。
-
 ## 錯圖判定（wrongSurface）
 截圖內容明顯**不是**「對方的交友軟體個人資料／社群個人頁／個人照片」時——最常見是**聊天對話截圖**（訊息泡泡、對話串）——不要硬生開場白，也**絕對不要**把「無法生成」之類的說明寫進 openers 或 reason 欄位（那些欄位是成品，會直接渲染給用戶）。改成：
 - 頂層輸出 "wrongSurface": "chat_conversation"（聊天對話截圖）或 "unrelated"（與認識對象完全無關的圖，如純文件）
-- openers 輸出空物件 {}、formulaOpeners 輸出空陣列，其餘欄位可省略
+- openers 輸出空物件 {}，其餘欄位可省略
 - 系統會引導用戶改用正確功能，且不扣額度
 只要截圖是交友資料（資訊再少都算），一律輸出 "wrongSurface": null 並照常產出五種開場白——資訊少走 insufficientInfo 自評，不是 wrongSurface。
 
@@ -2685,20 +2654,9 @@ whyItWorks 目標 25–45 個繁中字元，限一句。
   "recommendation": {
     "pick": "推薦使用的風格（extend/resonate/tease/humor/coldRead）",
     "reason": "教用戶怎麼回：這句示範了什麼框架、接哪顆球、刪掉哪種錯誤接法、女生可以怎麼接回來"
-  },
-  "formulaOpeners": [
-    {
-      "openingLine": "公式開場第一則：具體線索＋我的當下反應＋好接的開口，可直接送出",
-      "whyItWorks": "一句教練註解：這句接了哪個細節、為什麼好回；若自然可補她回後怎麼接"
-    },
-    {
-      "openingLine": "公式開場第二則（與第一則抓不同線索或不同開口）",
-      "whyItWorks": "一句教練註解"
-    }
-  ]
+  }
 }
 
-formulaOpeners 必須恰好兩則，放在最後；先完成前面的原有欄位。
 每個 stretchLevels 對應同名 opener 相對使用者舒適區的延伸程度；within=他現在就寫得出來／
 stretch=比他平常大膽一步但做得到／far=差距太大這次先不推；五個 key 裡至少一個要是 stretch。
 當使用者沒有提供舒適區資訊時，全部回傳 "within"。
@@ -5738,11 +5696,7 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       // 9. 完整性驗證＋最多一次 same-model format repair（禁 model
       //    fallback、共享 generation deadline）。repair 後仍不合格→502
       //    release 不扣（絕不丟壞題只投影剩下的）。
-      //    公式新話題（計畫 §7.1）：同一 primary parse 分兩條路，
-      //    formulaTopics 只認 primary（repair 回覆即使含 formula 也不採
-      //    用）；primary 整份 unparseable 時公式固定空清單。
       const newTopicPrimaryParsed = parseJsonObjectFromText(newTopicRawText);
-      const newTopicPrimaryFormulaRaw = newTopicPrimaryParsed?.formulaTopics;
       let newTopicNormalized = normalizeNewTopicModelPayload(
         newTopicPrimaryParsed,
       );
@@ -5813,23 +5767,8 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
         }, 502);
       }
 
-      // 公式新話題 canonical（§7.1）：base 五題定案（可能經 repair）後才
-      // normalize primary 的 formulaTopics，以五題 openingLine＋prompt
-      // 示範句 cross-field dedupe；內部作戰板標籤整則丟。公式壞掉只得
-      // 空清單——絕不觸發 repair、不影響 base 成敗與扣費。
-      const newTopicFormulaOutcome = normalizeFormulaRepliesDetailed(
-        newTopicPrimaryFormulaRaw,
-        {
-          excludeOpeningLines: newTopicNormalized.topics.map(
-            (topic) => topic.openingLine,
-          ),
-          rejectInternalLabels: true,
-        },
-      );
-
       // 10. Tier 投影：server 權威 servedTier；Free 只留推薦一題，鎖定四題
-      //     文字不進 ledger、不出 server。canonical 公式原封存入兩種 tier
-      //     的 ledger（不投影），replay 才回得出同一份（§7.2）。
+      //     文字不進 ledger、不出 server。
       const newTopicServedTier = (() => {
         const tier = normalizeTier(effectiveTier);
         return tier === "starter" || tier === "essential" ? tier : "free";
@@ -5839,7 +5778,6 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
         recommendationIndex: newTopicNormalized.recommendationIndex,
         recommendationReason: newTopicNormalized.recommendationReason,
         servedTier: newTopicServedTier,
-        formulaTopics: newTopicFormulaOutcome.replies,
       });
 
       // 11. Settlement（5 秒 reserve）：deadline 已過且 settle 未開始→504
@@ -5887,8 +5825,6 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
           outputTokens: newTopicApiData.usage?.output_tokens,
           stopReason: newTopicApiData.stop_reason,
           // §8 telemetry：只記數量絕不記內容。
-          formulaTopicsCount: newTopicFormulaOutcome.replies.length,
-          formulaTopicsDroppedCount: newTopicFormulaOutcome.droppedCount,
         });
         // Handler 永遠回 settlement 回傳的 stored result；即使本地候選不同
         // （late/stale owner race），也丟棄本地結果（設計鐵律 §4-8/9）。
@@ -6508,12 +6444,7 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       // Parse and validate JSON from response. Never surface raw model output
       // as an opener; malformed output gets one format-only repair pass before
       // failing cleanly without charging quota.
-      //
-      // 公式開場（2026-07-24 計畫 §6.1）：同一 primary response 分兩條路，
-      // formulaOpeners 只認 primary（repair 回覆即使含 formula 也不採用）；
-      // primary 整份 unparseable 時公式固定空清單。
       const openerPrimaryParsed = parseJsonObjectFromText(rawText);
-      const openerPrimaryFormulaRaw = openerPrimaryParsed?.formulaOpeners;
 
       // 錯圖旗標（2026-08-19 Eric 拍板治本）：聊天對話截圖被硬分析後，模型
       // 把拒答說明寫進 opener 卡欄位（活坑「說明塞進資料欄，要用旗標宣告
@@ -6680,23 +6611,6 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
         }, 502);
       }
 
-      // 公式開場 canonical（§6.1）：base 五句定案（可能經 repair）後才
-      // normalize primary 的 formulaOpeners，以最終五句＋prompt 示範句做
-      // cross-field dedupe。公式壞掉只得空清單——絕不觸發 repair、不影響
-      // base 成敗、tier 投影與扣費。
-      const openerFinalOpeners = isPlainObject(parsed.openers)
-        ? parsed.openers as Record<string, unknown>
-        : {};
-      const openerFormulaOutcome = normalizeFormulaRepliesDetailed(
-        openerPrimaryFormulaRaw,
-        {
-          excludeOpeningLines: OPENER_TYPES.map((type) =>
-            openerFinalOpeners[type]
-          ).filter((line): line is string => typeof line === "string"),
-          rejectInternalLabels: true,
-        },
-      );
-
       // Free 權益投影：v1（舊 App）維持 legacy extend 單卡；v2 恰好三種
       // extend/humor/tease。Paid 不因 contract version 改變五卡權益。
       // fallbackOrder＝該 tier 的展示序，推薦被鎖時 fallback 用它取首個完整卡。
@@ -6842,17 +6756,10 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
         outputTokens: apiData.usage?.output_tokens,
         fallbackUsed: apiResult.fallbackUsed,
         repaired: !!repairMetadata?.parsed,
-        // §8 telemetry：只記數量絕不記內容。
-        formulaOpenersCount: openerFormulaOutcome.replies.length,
-        formulaOpenersDroppedCount: openerFormulaOutcome.droppedCount,
       });
 
       return jsonResponse({
         ...parsed,
-        // Canonical 公式（§6.2 第二層保險）：normalizer/filter 已剝除 raw
-        // formulaOpeners，這裡再明確覆蓋；全 tier 同一份、成功一律帶
-        //（即使空清單）。
-        formulaOpeners: openerFormulaOutcome.replies,
         // Server 權威 access：client 不可只靠「有幾張卡」猜 tier。
         access: buildOpenerAccess({
           contractVersion: openerContractVersion,

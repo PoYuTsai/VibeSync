@@ -17,10 +17,6 @@ Map<String, dynamic> _successBody() => {
       },
       'pioneerPlan': {'ifCold': '先冷處理'},
       'recommendation': {'pick': 'extend', 'reason': '最自然'},
-      'formulaOpeners': [
-        {'openingLine': '公式一', 'whyItWorks': '好接'},
-        {'openingLine': '公式二', 'whyItWorks': '也好接'},
-      ],
       'access': {
         'contractVersion': 2,
         'servedTier': 'essential',
@@ -79,7 +75,6 @@ void main() {
     ]);
     expect(result.openers['extend'], '延展句');
     expect(result.recommendedPick, 'extend');
-    expect(result.formulaOpeners, hasLength(2));
     final body = jsonDecode(capturedBody!) as Map<String, dynamic>;
     expect(body['responseMode'], 'stream');
     expect(body['mode'], 'opener');

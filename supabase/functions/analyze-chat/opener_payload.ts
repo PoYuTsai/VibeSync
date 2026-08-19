@@ -211,11 +211,9 @@ export function normalizeOpenerPayload(
     return null;
   }
 
-  // Raw formulaOpeners 絕不穿透（2026-07-24 公式回覆計畫 §6.2 第一層）：
-  // canonical 公式由 handler 用 normalizeFormulaReplies 另行計算，
-  // response 再明確覆蓋（第二層）。wrongSurface 同理剝除（R1 主審 P2）：
-  // 它是 handler 在 parse 層就消費完的旗標，healthy 200 不得殘留新鍵。
-  const { formulaOpeners: _rawFormulaOpeners, wrongSurface: _wrongSurface, ...rest } = parsed;
+  // wrongSurface 剝除（R1 主審 P2）：它是 handler 在 parse 層就消費完的
+  // 旗標，healthy 200 不得殘留新鍵。
+  const { wrongSurface: _wrongSurface, ...rest } = parsed;
   return {
     ...rest,
     openers,
@@ -286,9 +284,8 @@ export function filterOpenerPayloadForAllowedFeatures(
   // 內容寫的，硬套會誤導。
   const reason = modelPickVisible ? modelReason : null;
 
-  // 同 normalizeOpenerPayload：raw formulaOpeners／wrongSurface 不隨
-  // ...spread 外洩。
-  const { formulaOpeners: _rawFormulaOpeners, wrongSurface: _wrongSurface, ...rest } = parsed;
+  // 同 normalizeOpenerPayload：wrongSurface 不隨 ...spread 外洩。
+  const { wrongSurface: _wrongSurface, ...rest } = parsed;
   const filtered: Record<string, unknown> = {
     ...rest,
     openers,

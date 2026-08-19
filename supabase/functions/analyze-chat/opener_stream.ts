@@ -33,7 +33,6 @@ export const OPENER_STREAM_STAGES: StreamStageSpec[] = [
   { marker: '"coldRead"', phase: "style_coldRead", label: "開場白 5/5：冷讀" },
   { marker: '"pioneerPlan"', phase: "pioneer", label: "準備先鋒備案" },
   { marker: '"recommendation"', phase: "recommendation", label: "挑選最適推薦" },
-  { marker: '"formulaOpeners"', phase: "formula", label: "寫公式開場" },
 ];
 
 export const NEW_TOPIC_STREAM_STAGES: StreamStageSpec[] = [
@@ -45,7 +44,6 @@ export const NEW_TOPIC_STREAM_STAGES: StreamStageSpec[] = [
     repeat: 5,
   },
   { marker: '"recommendation"', phase: "recommendation", label: "挑選最適推薦" },
-  { marker: '"formulaTopics"', phase: "formula", label: "寫公式新話題" },
 ];
 
 export interface StreamStageTracker {

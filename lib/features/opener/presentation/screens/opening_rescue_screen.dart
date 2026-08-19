@@ -25,8 +25,6 @@ import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
-import '../../../../shared/widgets/formula_reply_section.dart';
-import '../../../../shared/widgets/more_below_hint.dart';
 import '../../../../shared/widgets/staggered_appear.dart';
 import '../../../../shared/widgets/stream_progress_ticker.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
@@ -258,9 +256,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   String? _error;
   final _scrollController = ScrollController();
   // 2026-08-18 呈現精修：完成後定格在結果區頂部（開場白建議），不再捲到底
-  // 把 5 張卡整個略過；公式區 key 給右下滑動提示 pill 當目標。
+  // 把 5 張卡整個略過。
   final _resultsSectionKey = GlobalKey();
-  final _formulaSectionKey = GlobalKey();
   final _resultCacheService = OpenerResultCacheService();
 
   // 扣費 idempotency（Batch 4#2）：失敗重試沿用同 requestId，成功才 rotate。
@@ -968,26 +965,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       ),
     );
 
-    // 滑動提示 pill：結果很長、公式開場在下方看不到時提示還有內容；
-    // 公式區進入視口即收起（MoreBelowHint 內部判定）。
-    // StackFit.expand：預設 loose 會讓捲動區縮成內容寬（版面漂移＋pill 定位壞）。
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        scrollBody,
-        if (_result != null && _result!.formulaOpeners.isNotEmpty)
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: MoreBelowHint(
-              controller: _scrollController,
-              targetKey: _formulaSectionKey,
-              label: '往下還有公式開場',
-              resetToken: _result,
-            ),
-          ),
-      ],
-    );
+    return scrollBody;
   }
 
   Widget _buildScreenshotTab() {
@@ -1246,7 +1224,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     );
 
     // 2026-08-18 呈現精修（減法拍板）：預設展開的只留「5 張卡＋推薦理由＋
-    // 公式第 1 則」；對方資料解讀／先鋒備案／下一步收成一行標題，點開才展。
+    // 對方資料解讀／先鋒備案／下一步收成一行標題，點開才展。
     return Column(
       key: _resultsSectionKey,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1363,25 +1341,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 ),
               ],
             ),
-          ),
-        ],
-
-        // 公式開場（計畫 §10.2）：固定在五風格卡＋outcome bars＋推薦理由
-        // 之後、pioneerPlan 之前；全 tier 可見、不算進「N 種風格」、
-        // 空清單整區不渲染。
-        if (result.formulaOpeners.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          FormulaReplySection(
-            key: _formulaSectionKey,
-            title: '公式開場',
-            entries: [
-              for (final reply in result.formulaOpeners)
-                FormulaReplyEntry(
-                  openingLine: reply.openingLine,
-                  whyItWorks: reply.whyItWorks,
-                ),
-            ],
-            onCopyOpeningLine: _copyFormulaOpeningLine,
           ),
         ],
 
@@ -1685,16 +1644,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     );
   }
 
-  /// 公式開場複製：只複製 openingLine；不掛 outcome/reaction 記錄（拍板
-  /// 不混進五風格 adviceType 指標）。
-  void _copyFormulaOpeningLine(FormulaReplyEntry entry) {
-    AppHaptics.light();
-    Clipboard.setData(ClipboardData(text: entry.openingLine));
-    _showOpenerSnackBar(
-      '已複製這則公式開場。貼到交友軟體送出，她回覆後點下方「她回覆了，開始分析對話」。',
-    );
-  }
-
   Future<void> _recordOpenerCopy({
     required String type,
     required String content,
@@ -1924,7 +1873,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
 /// 收合式資訊卡（2026-08-18 減法拍板）：預設只露一行標題，點開才展內容。
 /// 用於背景／延後性資訊（對方資料解讀、先鋒備案、下一步），把預設展開的
-/// 內容壓到「5 張卡＋公式第 1 則」左右的一屏多。
+/// 內容壓到 5 張卡左右的一屏多。
 class _CollapsibleBrandCard extends StatefulWidget {
   const _CollapsibleBrandCard({
     required this.icon,

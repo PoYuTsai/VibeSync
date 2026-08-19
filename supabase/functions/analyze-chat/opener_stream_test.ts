@@ -29,7 +29,6 @@ Deno.test("tracker：opener 各 stage 首見各發一次，重掃不重發", () 
   tracker.push('"stretchLevels":{"extend":"within","resonate":"within",');
   tracker.push('"tease":"stretch","humor":"within","coldRead":"far"},');
   tracker.push('"pioneerPlan":{},"recommendation":{"pick":"extend"},');
-  tracker.push('"formulaOpeners":[]}');
 
   const labels = events.map((e) => e["label"]);
   assertEquals(labels, [
@@ -42,7 +41,6 @@ Deno.test("tracker：opener 各 stage 首見各發一次，重掃不重發", () 
     "開場白 5/5：冷讀",
     "準備先鋒備案",
     "挑選最適推薦",
-    "寫公式開場",
   ]);
   assert(events.every((e) => e["type"] === "opener.progress"));
 });
@@ -66,7 +64,6 @@ Deno.test("tracker：new_topic 的 direction 計數到 5 為止", () => {
   for (let i = 0; i < 6; i++) {
     tracker.push('{"direction":"d","openingLine":"o"},');
   }
-  tracker.push('],"recommendation":{"index":0},"formulaTopics":[]}');
 
   const topicLabels = events
     .map((e) => e["label"] as string)

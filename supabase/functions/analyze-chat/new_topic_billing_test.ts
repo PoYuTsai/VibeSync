@@ -36,7 +36,6 @@ function ledgerFixture(tier: "free" | "essential" = "free"): NewTopicLedgerResul
     recommendationIndex: 1,
     recommendationReason: "理由",
     servedTier: tier,
-    formulaTopics: [],
   });
 }
 
