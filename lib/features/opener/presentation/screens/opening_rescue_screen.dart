@@ -982,6 +982,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         ImagePickerWidget(
           maxImages: 3,
           allowMultiSelect: true,
+          // 共用元件的提示文字是為聊天截圖寫的（「保留 15 則內」「LINE 回覆框」
+          // 「請上傳聊天畫面」），開場救星只收自介／大頭照，那些提示在這裡
+          // 不只是多餘、還會誤導（2026-08-19 Eric 真機回報）。上面那行
+          // 「上傳對方的交友軟體自介截圖」已經講完這一頁要什麼。
+          showHelperText: false,
           // 對齊分析頁空片段的選圖磚大小（2026-08-14 Eric：原 70 太小）
           tileSize: 104,
           surfaceColor: AppColors.coachSurface,
