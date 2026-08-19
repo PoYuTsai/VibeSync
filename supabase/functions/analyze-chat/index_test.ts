@@ -905,16 +905,17 @@ Deno.test({
     assert(source.includes("怎麼讀她的資料：規則是背景，反差與旁路才是入口"));
     assert(source.includes("只當避雷背景，不當聊天入口"));
     assert(source.includes("規則只是背景紅線"));
-    // 原範例「妳是不是那種…的人」正是 2026-08-19 反例區要禁的模板句式，
-    // 合併時刪除；改鎖旁路冷讀的具體對照。
-    assert(source.includes("妳看起來不是難聊，是懶得陪人尬聊"));
+    // 2026-08-19 A/B 實測：prompt 裡的現成示範句會被模型原樣照抄（黑名單
+    // 與禁令都壓不住，few-shot 大於 instruction），因此改成描述形狀、不給
+    // 可貼的句子；斷言跟著改鎖形狀教學而非例句。
+    assert(source.includes("旁路到那些規則透露的個性"));
     assert(source.includes("有點壞但有邊界的鬆弛感"));
     // 2026-08-19 瘦身：旁路冷讀／三層優先級／框架大於話術／Specialness Gate／
     // Female Reply Check／品質標準／五題自檢七個區塊合併成兩塊，這裡改鎖語意
     // 錨點而不是逐句鏡像（逐句鏡像讓每次合併都連鎖打到，本身是維護債）。
     assert(source.includes("旁路冷讀"));
     assert(source.includes("從資料旁邊長出一個合理但不明說的推測"));
-    assert(source.includes("妳看人應該蠻準"));
+    assert(source.includes("旁路到那份工作養出來的能力"));
     assert(source.includes("coldRead 風格與兩顆球的第二球優先用旁路冷讀"));
     assert(source.includes("三層優先級：能來回 > 男人框架 > 幽默"));
     assert(source.includes("為了幽默硬塞梗、硬搞怪反而扣分"));
@@ -927,29 +928,24 @@ Deno.test({
     assert(source.includes("初期只能微拉，不要重拉"));
     assert(source.includes("第二球：冷讀、觀察、可被反駁"));
     assert(source.includes("實戰短句範例"));
-    assert(source.includes("調情：「沒到微胖吧，挺辣，謙虛了。」"));
-    assert(source.includes("沒到微胖吧，挺辣，謙虛了"));
-    assert(source.includes("只在她自介/標籤/用戶描述已經提到微胖"));
-    assert(source.includes("妳感覺蠻會唱歌"));
+    assert(source.includes("只在她自己先自嘲某個特質時"));
+    assert(source.includes("從她給的線索旁路推測一個互動風格"));
     assert(source.includes("短、留白、可反駁、可接球"));
-    assert(source.includes("長自介 / 規則多 / 仍有正向線索的範例"));
-    assert(source.includes("如果她自介很長，不要誤判成「線索少」"));
-    assert(
-      source.includes(
-        "妳自介寫那麼完整，我反而比較想問：最近最想學的新東西是什麼？",
-      ),
-    );
-    assert(source.includes("不是難聊，是不想把時間浪費在罐頭對話上"));
-    assert(source.includes("自介有點像入境規定"));
-    assert(source.includes("走私罐頭訊息"));
+    // 2026-08-19 A/B 實測：這區原本三句「目標質感」例句被模型逐字照抄到
+    // 每一次生成（同域範例＝發罐頭），改成只描述各風格該做什麼、刻意不給
+    // 例句；斷言跟著改鎖做法而非句子。
+    assert(source.includes("長自介 / 規則多 / 仍有正向線索時"));
+    assert(source.includes("自介很長不等於「線索少」"));
+    assert(source.includes("此處刻意不給例句"));
+    assert(source.includes("不要複述規則本身"));
     assert(source.includes("五種風格各有任務"));
     // 2026-08-19 瘦身：「5 種開場白風格」與「五種風格各有任務」兩個重複
     // 區塊合併成一份（tease 的微拉界線、兩句目標質感全部保留）。
     assert(source.includes("不要五張都做成同一種壞壞推拉"));
     assert(source.includes("UI 上叫「調情」"));
     assert(source.includes("內部術語「微拉」絕不輸出"));
-    assert(source.includes("目標質感接近「沒到微胖吧，挺辣，謙虛了。」"));
-    assert(source.includes("目標質感接近「妳感覺蠻會唱歌。」"));
+    assert(source.includes("接住並否定她的自貶"));
+    assert(source.includes("目標質感：**短、旁路、可否認可補充**"));
     assert(source.includes("不把線索原文說破"));
     assert(source.includes("初期陌生開場只能微拉"));
     assert(source.includes("幽默是加分項不是必要項"));

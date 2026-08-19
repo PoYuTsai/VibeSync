@@ -110,6 +110,10 @@ async function generate(systemPrompt: string): Promise<string[]> {
 const PIVOT = /[但不過其實可是然而]|感覺(?:妳|你)是那種|通常.{0,8}兩(?:種|個)/u;
 /** 問號收尾。 */
 const ASKS = /[?？]\s*$/u;
+/** 句末句號＝聊天情境的冷淡感，複製貼上後直接傷質感。 */
+const TRAILING_PERIOD = /[。.]\s*$/u;
+/** 不可直接送出的包裝：引號整句包、編號、教學括號。 */
+const WRAPPED = /^[「『"']|^[0-9]+[.、)]|（.*?(?:技巧|鉤子|冷讀|微拉).*?）/u;
 /** 她自介裡的原句片語——被當開頭＝唸稿感。 */
 const BIO_PHRASES = ["熱愛學習", "熱愛學新", "喜歡認識新朋友", "講話直接", "微胖"];
 
@@ -123,6 +127,8 @@ function metrics(lines: string[]) {
     over30: lens.filter((l) => l > 30).length,
     pivot: lines.filter((l) => PIVOT.test(l)).length,
     asks: lines.filter((l) => ASKS.test(l)).length,
+    periods: lines.filter((l) => TRAILING_PERIOD.test(l)).length,
+    wrapped: lines.filter((l) => WRAPPED.test(l)).length,
     quotesBio: lines.filter((l) =>
       BIO_PHRASES.some((p) => l.slice(0, 12).includes(p))
     ).length,
@@ -139,16 +145,17 @@ const arms: Array<[string, string]> = [
 
 for (const [label, prompt] of arms) {
   console.log(`\n═══ ${label} — prompt ${prompt.length} 字元 ═══`);
-  const agg = { pivot: 0, asks: 0, over30: 0, quotesBio: 0, multiline: 0, lens: [] as number[] };
+  const agg = { pivot: 0, asks: 0, over30: 0, quotesBio: 0, multiline: 0, periods: 0, wrapped: 0, lens: [] as number[] };
   for (let r = 1; r <= runs; r++) {
     const lines = await generate(prompt);
     const m = metrics(lines);
     agg.pivot += m.pivot; agg.asks += m.asks; agg.over30 += m.over30;
     agg.quotesBio += m.quotesBio; agg.multiline += m.multiline;
+    agg.periods += m.periods; agg.wrapped += m.wrapped;
     agg.lens.push(m.lenMin, m.lenMax);
-    console.log(`\n[run ${r}] 長度 ${m.lenMin}-${m.lenMax}（均 ${m.lenAvg}）｜轉折骨架 ${m.pivot}/5｜問號 ${m.asks}/5｜>30字 ${m.over30}/5｜唸稿開頭 ${m.quotesBio}/5｜分則 ${m.multiline}/5`);
+    console.log(`\n[run ${r}] 長度 ${m.lenMin}-${m.lenMax}（均 ${m.lenAvg}）｜轉折骨架 ${m.pivot}/5｜問號 ${m.asks}/5｜>30字 ${m.over30}/5｜唸稿開頭 ${m.quotesBio}/5｜分則 ${m.multiline}/5｜句末句號 ${m.periods}/5｜包裝 ${m.wrapped}/5`);
     lines.forEach((l) => console.log("   ", l.replace(/\n/g, " ⏎ ")));
   }
   const total = runs * 5;
-  console.log(`\n── ${label} 合計（${total} 句）：轉折骨架 ${agg.pivot}｜問號 ${agg.asks}｜>30字 ${agg.over30}｜唸稿開頭 ${agg.quotesBio}｜分則 ${agg.multiline}｜最短 ${Math.min(...agg.lens)} 最長 ${Math.max(...agg.lens)}`);
+  console.log(`\n── ${label} 合計（${total} 句）：轉折骨架 ${agg.pivot}｜問號 ${agg.asks}｜>30字 ${agg.over30}｜唸稿開頭 ${agg.quotesBio}｜分則 ${agg.multiline}｜句末句號 ${agg.periods}｜包裝 ${agg.wrapped}｜最短 ${Math.min(...agg.lens)} 最長 ${Math.max(...agg.lens)}`);
 }
