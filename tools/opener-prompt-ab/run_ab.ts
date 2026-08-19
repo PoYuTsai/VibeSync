@@ -31,8 +31,25 @@ const THAT_TYPE = /(?:妳|你)(?:是|感覺是|應該是)那種/u;
 const TRAILING_PERIOD = /[。.]\s*$/u;
 /** 不可直接送出的包裝：引號整句包、編號、教學括號。 */
 const WRAPPED = /^[「『"']|^[0-9]+[.、)]|（.*?(?:技巧|鉤子|冷讀|微拉).*?）/u;
+/** 同一句裡你／妳混用——複製貼上寄出去就露餡（2026-08-19 新話題實測 3/20）。 */
+const MIXED_YOU = /(?=.*你)(?=.*妳)/su;
 /** 用戶自己的目標／備註被寫成「她的事」——grounding 破口，任何欄位都不准出現。 */
 const LEAK = /(?:你|妳)(?:之前|上次)(?:說|提到)|(?:你|妳)想約|(?:聽起來|看來|感覺)(?:你|妳)是/u;
+
+/**
+ * 這句有沒有從 prompt 裡抄。2026-08-19 最重要的發現（示範句被逐字照抄＝發罐頭）
+ * 一直靠人眼比對，換個 prompt 就得重新盯一次；改成跟 prompt 本文對，
+ * 不維護黑名單也就不會過期。
+ * ponytail: 逐長度掃 substring，句子 ≤40 字所以 O(n²) 無所謂；要量長文再換 suffix automaton。
+ */
+const COPY_MIN_RUN = 6;
+function copiesFromPrompt(line: string, prompt: string): boolean {
+  const chars = Array.from(line.replace(/\s/g, ""));
+  for (let i = 0; i + COPY_MIN_RUN <= chars.length; i++) {
+    if (prompt.includes(chars.slice(i, i + COPY_MIN_RUN).join(""))) return true;
+  }
+  return false;
+}
 
 // 指標本身會決定 prompt 怎麼改，量錯比不量更糟——樣本取自 2026-08-19 的
 // 真實基準線輸出，正則改壞就會炸。
@@ -57,8 +74,31 @@ if (Deno.args.includes("--self-check")) {
   for (const [re, text, want] of bad) {
     console.error(`✗ ${re.source} 對「${text}」應為 ${want}`);
   }
-  console.log(bad.length === 0 ? `✓ 指標自檢 ${cases.length} 項全過` : `✗ ${bad.length} 項失敗`);
-  Deno.exit(bad.length === 0 ? 0 : 1);
+  // 抄自 prompt：樣本是 40afdb72^ 真的被照抄出來的句子 vs 同批乾淨句。
+  // k=6 是實測校準值：40afdb72^（有示範句）8/15 命中、40afdb72（刪掉後）0/15；
+  // k=5 連乾淨的那組都誤判 3/15，k=7 以上漏掉半數真照抄。
+  const promptSample = "例如「我先把查戶口題庫刪掉」這種先給再問的寫法，或「休假不是補眠就是開新副本」。";
+  const copyCases: Array<[string, boolean]> = [
+    ["我先把查戶口題庫刪一刪 剩下能問的其實不多", true],
+    // 已知天花板：改寫過的照抄（共同片段只剩「查戶口題庫」5 字）抓不到，
+    // 所以這個指標會低估。低估可接受，誤報不行——k=6 是往「寧可漏」那邊站。
+    ["查戶口題庫先刪一半 剩下的問題比較像人話", false],
+    ["大夜班還有力氣學新東西，妳是那種閒不下來的人吧", false],
+  ];
+  const copyBad = copyCases.filter(([t, want]) => copiesFromPrompt(t, promptSample) !== want);
+  for (const [t, want] of copyBad) console.error(`✗ copiesFromPrompt 對「${t}」應為 ${want}`);
+  const youCases: Array<[string, boolean]> = [
+    ["鄰居，我覺得你其實會偷用我家wifi", false],
+    ["如果拉你去爬山，妳大概走十分鐘就想放棄", true],
+    ["妳是那種行程排到分鐘的人嗎", false],
+  ];
+  const youBad = youCases.filter(([t, want]) => MIXED_YOU.test(t) !== want);
+  for (const [t, want] of youBad) console.error(`✗ MIXED_YOU 對「${t}」應為 ${want}`);
+  const total = bad.length + copyBad.length + youBad.length;
+  console.log(total === 0
+    ? `✓ 指標自檢 ${cases.length + copyCases.length + youCases.length} 項全過`
+    : `✗ ${total} 項失敗`);
+  Deno.exit(total === 0 ? 0 : 1);
 }
 
 const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
@@ -69,6 +109,8 @@ if (!apiKey) {
 
 const positional = Deno.args.filter((a) => !a.startsWith("--"));
 const modeArg = Deno.args.find((a) => a.startsWith("--mode="))?.slice(7) ?? "opener";
+// 實驗組預設是工作區；給 ref 就變成任兩個 commit 對比（回頭驗舊批次的因果結論用）。
+const currentRef = Deno.args.find((a) => a.startsWith("--current="))?.slice(10);
 const baselineRef = positional[0];
 const runs = Number(positional[1] ?? "3");
 if (!baselineRef) {
@@ -232,7 +274,7 @@ async function generate(systemPrompt: string): Promise<{ lines: string[]; all: s
   return { lines: mode.lines(parsed), all: mode.allText(parsed) };
 }
 
-function metrics(lines: string[], all: string) {
+function metrics(lines: string[], all: string, prompt: string) {
   const lens = lines.map((l) => Array.from(l.replace(/\n/g, "")).length);
   return {
     n: lines.length,
@@ -256,36 +298,41 @@ function metrics(lines: string[], all: string) {
     ).length,
     // grounding 洩漏掃全欄位（含 nextMove / reason），不只可見訊息。
     leak: (all.match(new RegExp(LEAK, "gu")) ?? []).length,
+    copied: lines.filter((l) => copiesFromPrompt(l, prompt)).length,
+    mixedYou: lines.filter((l) => MIXED_YOU.test(l)).length,
   };
 }
 
 const baselineSource = await gitShow(baselineRef, mode.path);
-const currentSource = await Deno.readTextFile(mode.path);
+const currentSource = currentRef
+  ? await gitShow(currentRef, mode.path)
+  : await Deno.readTextFile(mode.path);
+const currentLabel = currentRef ? `current(${currentRef})` : "current(worktree)";
 const baselinePrompt = extractPrompt(baselineSource, mode.constName);
 const currentPrompt = extractPrompt(currentSource, mode.constName);
 // 兩邊一字不差時（例如量基準線用 baseline=HEAD）只跑一組，不白花一半的錢。
 const arms: Array<[string, string]> = baselinePrompt === currentPrompt
-  ? [["current(worktree)＝baseline，只跑一組", currentPrompt]]
+  ? [[`${currentLabel}＝baseline，只跑一組`, currentPrompt]]
   : [
     [`baseline(${baselineRef})`, baselinePrompt],
-    ["current(worktree)", currentPrompt],
+    [currentLabel, currentPrompt],
   ];
 
 for (const [label, prompt] of arms) {
   console.log(`\n═══ ${modeArg} ${label} — prompt ${prompt.length} 字元 ═══`);
-  const agg = { pivot: 0, thatType: 0, asks: 0, questionForm: 0, over30: 0, quotesBio: 0, multiline: 0, periods: 0, wrapped: 0, sameInterest: 0, leak: 0, lens: [] as number[] };
+  const agg = { pivot: 0, thatType: 0, asks: 0, questionForm: 0, over30: 0, quotesBio: 0, multiline: 0, periods: 0, wrapped: 0, sameInterest: 0, leak: 0, copied: 0, mixedYou: 0, lens: [] as number[] };
   for (let r = 1; r <= runs; r++) {
     const { lines, all } = await generate(prompt);
-    const m = metrics(lines, all);
+    const m = metrics(lines, all, prompt);
     agg.pivot += m.pivot; agg.thatType += m.thatType;
     agg.asks += m.asks; agg.questionForm += m.questionForm; agg.over30 += m.over30;
     agg.quotesBio += m.quotesBio; agg.multiline += m.multiline;
     agg.periods += m.periods; agg.wrapped += m.wrapped;
-    agg.sameInterest += m.sameInterest; agg.leak += m.leak;
+    agg.sameInterest += m.sameInterest; agg.leak += m.leak; agg.copied += m.copied; agg.mixedYou += m.mixedYou;
     agg.lens.push(m.lenMin, m.lenMax);
-    console.log(`\n[run ${r}] 長度 ${m.lenMin}-${m.lenMax}（均 ${m.lenAvg}）｜轉折骨架 ${m.pivot}/5（那種句型 ${m.thatType}）｜實質問句 ${m.questionForm}/5（句末問號 ${m.asks}）｜>30字 ${m.over30}/5｜唸稿開頭 ${m.quotesBio}/5｜分則 ${m.multiline}/5｜句末句號 ${m.periods}/5｜包裝 ${m.wrapped}/5｜撞已知興趣 ${m.sameInterest}/5｜grounding 洩漏 ${m.leak}`);
+    console.log(`\n[run ${r}] 長度 ${m.lenMin}-${m.lenMax}（均 ${m.lenAvg}）｜轉折骨架 ${m.pivot}/5（那種句型 ${m.thatType}）｜實質問句 ${m.questionForm}/5（句末問號 ${m.asks}）｜>30字 ${m.over30}/5｜唸稿開頭 ${m.quotesBio}/5｜分則 ${m.multiline}/5｜句末句號 ${m.periods}/5｜包裝 ${m.wrapped}/5｜撞已知興趣 ${m.sameInterest}/5｜grounding 洩漏 ${m.leak}｜抄自 prompt ${m.copied}/5｜你妳混用 ${m.mixedYou}/5`);
     lines.forEach((l) => console.log("   ", l.replace(/\n/g, " ⏎ ")));
   }
   const total = runs * 5;
-  console.log(`\n── ${label} 合計（${total} 句）：轉折骨架 ${agg.pivot}（那種句型 ${agg.thatType}）｜實質問句 ${agg.questionForm}（句末問號 ${agg.asks}）｜>30字 ${agg.over30}｜唸稿開頭 ${agg.quotesBio}｜分則 ${agg.multiline}｜句末句號 ${agg.periods}｜包裝 ${agg.wrapped}｜撞已知興趣 ${agg.sameInterest}｜grounding 洩漏 ${agg.leak}｜最短 ${Math.min(...agg.lens)} 最長 ${Math.max(...agg.lens)}`);
+  console.log(`\n── ${label} 合計（${total} 句）：轉折骨架 ${agg.pivot}（那種句型 ${agg.thatType}）｜實質問句 ${agg.questionForm}（句末問號 ${agg.asks}）｜>30字 ${agg.over30}｜唸稿開頭 ${agg.quotesBio}｜分則 ${agg.multiline}｜句末句號 ${agg.periods}｜包裝 ${agg.wrapped}｜撞已知興趣 ${agg.sameInterest}｜grounding 洩漏 ${agg.leak}｜抄自 prompt ${agg.copied}｜你妳混用 ${agg.mixedYou}｜最短 ${Math.min(...agg.lens)} 最長 ${Math.max(...agg.lens)}`);
 }
