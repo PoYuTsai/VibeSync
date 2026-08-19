@@ -155,6 +155,9 @@ const dump = Deno.args.includes("--dump");
 // 同一次呼叫裡作戰板就攤在模型眼前，「暫時放下她的興趣清單」做不到——
 // 第一段必須在看不到作戰板的情況下跑，才可能真的發散（2026-08-19）。
 const twoPass = Deno.args.includes("--twopass");
+// 方法 A：每次生成換一個切入角度。根因是「同樣輸入永遠同樣輸出」，
+// 種子輪替直接打在那上面，零額外呼叫、零延遲，而且清單是我們定的。
+const seeded = Deno.args.includes("--seeded");
 const baselineRef = positional[0];
 const runs = Number(positional[1] ?? "3");
 if (!baselineRef) {
@@ -164,6 +167,29 @@ if (!baselineRef) {
 
 // 生產端兩個功能都跑 claude-sonnet-5（index.ts openerModel / newTopicModel）。
 const MODEL = "claude-sonnet-5";
+
+/**
+ * 切入角度輪替清單：彼此語意距離要遠，才不會輪了跟沒輪一樣。
+ * production 用 requestId 取模選一個（同一次生成 replay 會拿到同一個角度）。
+ */
+const ANGLES = [
+  "作息與睡眠",
+  "食物與口味的固執",
+  "花錢的習慣",
+  "小時候與長大的地方",
+  "住的環境與鄰居",
+  "工作以外的身分",
+  "收集癖或怪習慣",
+  "對某件小事的偏激意見",
+  "無厘頭的假設情境",
+  "最近一件蠢事",
+];
+
+function angleBlock(i: number): string {
+  return `\n\n## 這次的切入角度：${ANGLES[i % ANGLES.length]}\n` +
+    "五題裡至少兩題要從這個角度長出來，其餘自由。這是為了讓同一個對象每次生成不會撞題，" +
+    "不是題目本身——不要把角度的名字寫進訊息裡。";
+}
 
 interface Mode {
   path: string;
@@ -377,7 +403,14 @@ const baselinePrompt = extractPrompt(baselineSource, mode.constName);
 const currentPrompt = extractPrompt(currentSource, mode.constName);
 // 兩邊一字不差時（例如量基準線用 baseline=HEAD）只跑一組，不白花一半的錢。
 // --twopass 時兩臂用同一份 prompt，變因只有「發散段有沒有獨立呼叫」。
-const arms: Array<[string, string, boolean]> = twoPass
+// --seeded 第二臂＝工作區 prompt＋種子；第一臂＝baseline ref 的 prompt、無種子。
+// 兩者 prompt 相同時就退化成純種子測試。
+const arms: Array<[string, string, boolean]> = seeded
+  ? [
+    ["對照（baseline prompt，無種子）", baselinePrompt, false],
+    ["實驗（worktree prompt＋種子輪替）", currentPrompt, false],
+  ]
+  : twoPass
   ? [
     ["單段（現況）", currentPrompt, false],
     ["兩段式原型", currentPrompt, true],
@@ -391,9 +424,10 @@ const arms: Array<[string, string, boolean]> = twoPass
 
 for (const [label, prompt, armTwoPass] of arms) {
   console.log(`\n═══ ${modeArg} ${label} — prompt ${prompt.length} 字元 ═══`);
+  const runLines: string[][] = [];
   const agg = { pivot: 0, thatType: 0, asks: 0, questionForm: 0, over30: 0, quotesBio: 0, multiline: 0, periods: 0, wrapped: 0, sameInterest: 0, leak: 0, copied: 0, mixedYou: 0, jargon: 0, lens: [] as number[] };
   for (let r = 1; r <= runs; r++) {
-    let extraUser = "";
+    let extraUser = seeded && label.startsWith("實驗") ? angleBlock(r - 1) : "";
     if (armTwoPass) {
       if (!mode.divergeUserContent) throw new Error(`--twopass 不支援 ${modeArg}`);
       const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -428,6 +462,7 @@ for (const [label, prompt, armTwoPass] of arms) {
     agg.periods += m.periods; agg.wrapped += m.wrapped;
     agg.sameInterest += m.sameInterest; agg.leak += m.leak; agg.copied += m.copied; agg.mixedYou += m.mixedYou; agg.jargon += m.jargon;
     agg.lens.push(m.lenMin, m.lenMax);
+    runLines.push(lines);
     console.log(`\n[run ${r}] 長度 ${m.lenMin}-${m.lenMax}（均 ${m.lenAvg}）｜轉折骨架 ${m.pivot}/5（那種句型 ${m.thatType}）｜實質問句 ${m.questionForm}/5（句末問號 ${m.asks}）｜>30字 ${m.over30}/5｜唸稿開頭 ${m.quotesBio}/5｜分則 ${m.multiline}/5｜句末句號 ${m.periods}/5｜包裝 ${m.wrapped}/5｜撞已知興趣 ${m.sameInterest}/5｜grounding 洩漏 ${m.leak}｜抄自 prompt ${m.copied}/5｜你妳混用 ${m.mixedYou}/5｜術語外洩 ${m.jargon}`);
     if (dump) {
       // client 顯示四欄＋推薦理由，只看 openingLine 會漏掉一半的品質問題
@@ -444,6 +479,27 @@ for (const [label, prompt, armTwoPass] of arms) {
       lines.forEach((l) => console.log("   ", l.replace(/\n/g, " ⏎ ")));
     }
   }
+  // 跨輪重複：同一個對象連按 N 次，有多少句跟「別次生成」的句子撞在一起。
+  // 這是 Eric 真正在抱怨的東西（「連按五次拿到一樣的五題」），先前沒有指標在量。
+  // 4 字連續片段＝實質同題；比對只跨輪，同一輪內五題重複由既有規則負責。
+  const REPEAT_RUN = 4;
+  let repeated = 0;
+  for (let a = 0; a < runLines.length; a++) {
+    for (const line of runLines[a]) {
+      const c = Array.from(line.replace(/\s/g, ""));
+      const hit = runLines.some((other, b) =>
+        b !== a && other.some((ol) => {
+          const oc = ol.replace(/\s/g, "");
+          for (let i = 0; i + REPEAT_RUN <= c.length; i++) {
+            if (oc.includes(c.slice(i, i + REPEAT_RUN).join(""))) return true;
+          }
+          return false;
+        })
+      );
+      if (hit) repeated++;
+    }
+  }
   const total = runs * 5;
+  console.log(`\n── ${label} 跨輪重複：${repeated}/${total} 句跟別次生成撞題`);
   console.log(`\n── ${label} 合計（${total} 句）：轉折骨架 ${agg.pivot}（那種句型 ${agg.thatType}）｜實質問句 ${agg.questionForm}（句末問號 ${agg.asks}）｜>30字 ${agg.over30}｜唸稿開頭 ${agg.quotesBio}｜分則 ${agg.multiline}｜句末句號 ${agg.periods}｜包裝 ${agg.wrapped}｜撞已知興趣 ${agg.sameInterest}｜grounding 洩漏 ${agg.leak}｜抄自 prompt ${agg.copied}｜你妳混用 ${agg.mixedYou}｜術語外洩 ${agg.jargon}｜最短 ${Math.min(...agg.lens)} 最長 ${Math.max(...agg.lens)}`);
 }

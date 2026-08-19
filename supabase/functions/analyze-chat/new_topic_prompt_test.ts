@@ -6,6 +6,8 @@ import {
 import {
   buildNewTopicRepairPrompt,
   buildNewTopicUserPrompt,
+  NEW_TOPIC_ANGLES,
+  pickNewTopicAngle,
   NEW_TOPIC_GENERATION_DEADLINE_MS,
   NEW_TOPIC_MAX_TOKENS,
   NEW_TOPIC_PROMPT,
@@ -147,3 +149,38 @@ Deno.test("buildNewTopicRepairPrompt：夾帶原文並裁 7000", () => {
   assert(buildNewTopicRepairPrompt("   ").includes("(empty)"));
 });
 
+
+Deno.test("角度輪替：同 requestId 穩定、不同 requestId 會換、都在清單內", () => {
+  const a = "123e4567-e89b-42d3-a456-426614174000";
+  const b = "9f8e7d6c-5b4a-4321-8765-0fedcba98765";
+  // replay 契約：同一次生成必須拿到同一個角度。
+  assertEquals(pickNewTopicAngle(a), pickNewTopicAngle(a));
+  assert((NEW_TOPIC_ANGLES as readonly string[]).includes(pickNewTopicAngle(a)));
+  assert((NEW_TOPIC_ANGLES as readonly string[]).includes(pickNewTopicAngle(b)));
+
+  // 十個角度都取得到（否則輪替等於沒輪）。
+  const seen = new Set<string>();
+  for (let i = 0; i < 400; i++) seen.add(pickNewTopicAngle(`req-${i}`));
+  assertEquals(seen.size, NEW_TOPIC_ANGLES.length);
+});
+
+Deno.test("buildNewTopicUserPrompt：給 requestId 才附角度，且不洩漏內部說法", () => {
+  const base = {
+    partnerSummary: "對象：小雅。興趣：爬山。",
+    effectiveStyleContext: null,
+    situation: null,
+  };
+  assert(!buildNewTopicUserPrompt(base).includes("切入角度"));
+
+  const withAngle = buildNewTopicUserPrompt({
+    ...base,
+    requestId: "123e4567-e89b-42d3-a456-426614174000",
+  });
+  assert(withAngle.includes("## 這次的切入角度："));
+  assert(withAngle.includes("不要把角度的名字寫進訊息裡"));
+  // 角度區塊要排在作戰板之後、產出指令之前。
+  assert(
+    withAngle.indexOf("## 對方作戰板") < withAngle.indexOf("## 這次的切入角度") &&
+      withAngle.indexOf("## 這次的切入角度") < withAngle.indexOf("請依系統規則"),
+  );
+});

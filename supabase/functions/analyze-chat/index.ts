@@ -5563,6 +5563,8 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
         partnerSummary: newTopicRequest.partnerSummary,
         effectiveStyleContext: newTopicRequest.effectiveStyleContext,
         situation: newTopicRequest.situation,
+        // 切入角度由 requestId 決定：同次 replay 一致、不同次生成才換。
+        requestId: newTopicRequest.requestId,
       });
       const rejectNewTopicDeadline = async (
         stage: string,
