@@ -102,6 +102,20 @@ Deno.test("normalize/filter 剝除 wrongSurface 鍵", () => {
   assertEquals(filtered !== null && "wrongSurface" in filtered, false);
 });
 
+// 分則（2026-08-19）：模型常吐字面 \n；真換行要留著讓 client 分行渲染。
+Deno.test("sanitizeOpenerText 正規化換行：字面 \\n 轉真換行、壓多餘空行、逐行 trim", () => {
+  assertEquals(
+    sanitizeOpenerText("大夜班還在學新東西\\n有點狠欸"),
+    "大夜班還在學新東西\n有點狠欸",
+  );
+  assertEquals(
+    sanitizeOpenerText("第一則  \n\n\n  第二則"),
+    "第一則\n第二則",
+  );
+  // 單則不受影響。
+  assertEquals(sanitizeOpenerText("大夜班還在學新東西 有點狠欸"), "大夜班還在學新東西 有點狠欸");
+});
+
 Deno.test("sanitizeOpenerText 擋 JSON/code fence/超長，收合法短句", () => {
   assertEquals(sanitizeOpenerText("你好，看到你養柴犬"), "你好，看到你養柴犬");
   assertEquals(sanitizeOpenerText("  留白修剪  "), "留白修剪");
