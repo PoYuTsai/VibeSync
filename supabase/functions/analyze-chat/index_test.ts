@@ -840,8 +840,10 @@ Deno.test({
 
     assert(source.includes("你是 VibeSync 的開場救星先鋒教練"));
     assert(source.includes("開場白的北極星：低壓、具體、可回、像真人"));
-    assert(source.includes("每天可能收到很多罐頭訊息"));
-    assert(source.includes("推薦開場必須有一點好奇心鉤子"));
+    // 2026-08-19 Eric：稀缺的不是技巧是真實；問句要通過「換一個女生問
+    // 就不成立」的判準，否則是索取資料。
+    assert(source.includes("稀缺的不是技巧，是真實"));
+    assert(source.includes("這個問題換一個女生問就不成立了嗎"));
     // Batch 3 game 化（2026-07-02）：玩咖標籤拔除、留定義句（黑名單掃描見 opener_prompt_test.ts）
     assert(source.includes("更鬆、更敢"));
     assert(source.includes("這男的是怎樣？我來跟他尬一下"));
@@ -981,7 +983,7 @@ Deno.test({
     assert(source.includes("推薦開場要在心裡避開禁忌"));
     assert(source.includes("不要把禁忌本身拿出來講"));
     assert(source.includes("不要總是使用「我有認真看完自介」"));
-    assert(source.includes("至少要有一個好奇心鉤子"));
+    assert(source.includes("要有一個真的屬於她的觀察或反應"));
     assert(source.includes("不喜歡被問工作、不愛喝酒、喜歡學習嘗試新事物"));
     assert(source.includes("心裡刪掉工作與酒局題庫"));
     assert(source.includes("資訊不足：明說線索不足"));
