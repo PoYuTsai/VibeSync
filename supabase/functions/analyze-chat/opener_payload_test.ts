@@ -5,6 +5,8 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildOpenerAccess,
+  buildWrongSurfaceErrorBody,
+  detectOpenerWrongSurface,
   filterOpenerPayloadForAllowedFeatures,
   missingOpenerTypes,
   normalizeOpenerPayload,
@@ -33,11 +35,71 @@ Deno.test("sanitizeOpenerText 擋拒答說明句", () => {
   );
   assertEquals(sanitizeOpenerText("無法產生開場白，請提供更多資訊"), null);
   assertEquals(sanitizeOpenerText("請提供對方的個人頁截圖"), null);
-  // 正常開場白不可誤殺（含「截圖」「資訊」字眼但不是拒答）。
+  assertEquals(sanitizeOpenerText("截圖資訊不足，無法判讀對方背景"), null);
+  // 正常開場白不可誤殺——R1 主審 P1 構造的邊界句全部要活著。
+  for (
+    const legit of [
+      "妳那張登山截圖也太猛，這是哪條路線",
+      "請提供那張登山截圖的路線",
+      "下次請提供更多截圖給我看",
+      "妳的截圖資訊不足啊，多放幾張生活照",
+    ]
+  ) {
+    assertEquals(sanitizeOpenerText(legit), legit);
+  }
+});
+
+// R1 主審 P1：422 不扣費路徑的判定與回應體要有可執行測試（source-scan
+// 測不到邏輯被刪）。
+Deno.test("detectOpenerWrongSurface 只認白名單值且要有圖", () => {
   assertEquals(
-    sanitizeOpenerText("妳那張登山截圖也太猛，這是哪條路線"),
-    "妳那張登山截圖也太猛，這是哪條路線",
+    detectOpenerWrongSurface({ wrongSurface: "chat_conversation" }, 1),
+    "chat_conversation",
   );
+  assertEquals(
+    detectOpenerWrongSurface({ wrongSurface: "unrelated" }, 3),
+    "unrelated",
+  );
+  // 無圖＝純手填請求，不得走免費 422（fail-open 進正常計費路）。
+  assertEquals(
+    detectOpenerWrongSurface({ wrongSurface: "chat_conversation" }, 0),
+    null,
+  );
+  // 未知值／注入形狀一律 fail-open。
+  assertEquals(detectOpenerWrongSurface({ wrongSurface: "CHAT_CONVERSATION" }, 1), null);
+  assertEquals(detectOpenerWrongSurface({ wrongSurface: true }, 1), null);
+  assertEquals(detectOpenerWrongSurface({ wrongSurface: null }, 1), null);
+  assertEquals(detectOpenerWrongSurface({}, 1), null);
+  assertEquals(detectOpenerWrongSurface(null, 1), null);
+});
+
+Deno.test("buildWrongSurfaceErrorBody 固定鍵零模型內容且不扣費", () => {
+  for (const surface of ["chat_conversation", "unrelated"] as const) {
+    const body = buildWrongSurfaceErrorBody(surface);
+    assertEquals(
+      Object.keys(body).sort(),
+      ["error", "message", "shouldChargeQuota", "surface"],
+    );
+    assertEquals(body.error, "OPENER_WRONG_SURFACE");
+    assertEquals(body.surface, surface);
+    assertEquals(body.shouldChargeQuota, false);
+    assertEquals(body.message.includes("本次不會扣額度"), true);
+  }
+});
+
+// R1 主審 P2：wrongSurface 是 parse 層消費完的旗標，healthy 200 不得殘留。
+Deno.test("normalize/filter 剝除 wrongSurface 鍵", () => {
+  const parsed = {
+    wrongSurface: null,
+    openers: { extend: "妳那隻柴犬的表情也太欠揍" },
+  };
+  const normalized = normalizeOpenerPayload(parsed);
+  assertEquals(normalized !== null && "wrongSurface" in normalized, false);
+  const filtered = filterOpenerPayloadForAllowedFeatures(
+    parsed,
+    ALL_FEATURES,
+  );
+  assertEquals(filtered !== null && "wrongSurface" in filtered, false);
 });
 
 Deno.test("sanitizeOpenerText 擋 JSON/code fence/超長，收合法短句", () => {

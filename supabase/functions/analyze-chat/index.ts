@@ -43,6 +43,8 @@ import {
 } from "./opener_image_validation.ts";
 import {
   buildOpenerAccess,
+  buildWrongSurfaceErrorBody,
+  detectOpenerWrongSurface,
   filterOpenerPayloadForAllowedFeatures,
   missingOpenerTypes,
   normalizeOpenerPayload,
@@ -6521,26 +6523,23 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       // 東西，模型成本另有 3/分 30/日限流封頂。只認 primary parse 的白名單
       // 值；放在 repair 之前——宣告錯圖時 openers 是空的，晚攔會多燒一次
       // format repair。
-      const wrongSurfaceRaw = openerPrimaryParsed?.wrongSurface;
-      if (
-        imageCount > 0 &&
-        (wrongSurfaceRaw === "chat_conversation" ||
-          wrongSurfaceRaw === "unrelated")
-      ) {
+      // 判定與 422 body 抽純函式（R1 主審 P1：source-scan 測不到邏輯被刪，
+      // 行為測試在 opener_payload_test.ts）。扣費順位證據：opener 限流在模型
+      // 呼叫前（enforceModelRateLimit scope "opener" 3/分 30/日），扣費在本
+      // return 之後的 chargeOpenerQuota——upfrontGateCost 只做上限比較不預扣，
+      // 走到這裡 return 即零落帳。
+      const wrongSurface = detectOpenerWrongSurface(
+        openerPrimaryParsed,
+        imageCount,
+      );
+      if (wrongSurface) {
         logWarn("opener_wrong_surface", {
           user: summarizeUser(user.id),
-          surface: wrongSurfaceRaw,
+          surface: wrongSurface,
           imageCount,
           model: apiResult.model,
         });
-        return jsonResponse({
-          error: "OPENER_WRONG_SURFACE",
-          surface: wrongSurfaceRaw,
-          message: wrongSurfaceRaw === "chat_conversation"
-            ? "這看起來是聊天對話的截圖——分析對話、找下一句怎麼回，請改用「分析對話」功能。開場救星需要對方的交友軟體或社群個人頁截圖。本次不會扣額度。"
-            : "這張截圖看不出對方的個人資料。開場救星需要對方的交友軟體或社群個人頁截圖。本次不會扣額度。",
-          shouldChargeQuota: false,
-        }, 422);
+        return jsonResponse(buildWrongSurfaceErrorBody(wrongSurface), 422);
       }
 
       let parsed = normalizeOpenerPayload(openerPrimaryParsed);

@@ -146,11 +146,50 @@ export function sanitizeOpenerText(value: unknown): string | null {
   // 「截圖資訊不足，無法生成開場白，請提供…」寫進五張卡照常渲染）。第一層
   // 是 wrongSurface 旗標；這裡是模型漏設旗標時的保底——整包被清空會走
   // completeness gate 的 502 不扣費路徑，不會端廢卡。
-  if (/無法(?:生成|產生)開場白|截圖資訊不足|請提供.{0,12}截圖/u.test(trimmed)) {
+  // R1 主審 P1：寬鬆版會誤殺合法調情句（「妳的截圖資訊不足啊，多放幾張
+  // 生活照」）。收窄成拒答句形：無法生成／資訊不足接無法／「對方的…截圖」
+  // （開場白對她說話用「妳」，不會出現「對方的」）。
+  if (
+    /無法(?:生成|產生)開場白|截圖資訊不足[，,]?\s*無法|請提供對方的.{0,12}(?:截圖|個人頁)/u
+      .test(trimmed)
+  ) {
     return null;
   }
 
   return trimmed;
+}
+
+// ── 錯圖旗標（wrongSurface）純函式層：讓 422 不扣費路徑可行為測試 ──
+// R1 主審 P1：source-scan 測不到邏輯被刪；判定與回應體抽純函式釘住。
+
+export const WRONG_SURFACE_VALUES = ["chat_conversation", "unrelated"] as const;
+export type WrongSurface = typeof WRONG_SURFACE_VALUES[number];
+
+/** 只認 primary parse 的白名單值；無圖或未知值一律 fail-open 走正常計費路。 */
+export function detectOpenerWrongSurface(
+  parsed: Record<string, unknown> | null,
+  imageCount: number,
+): WrongSurface | null {
+  if (imageCount <= 0 || !parsed) return null;
+  const raw = parsed.wrongSurface;
+  return raw === "chat_conversation" || raw === "unrelated" ? raw : null;
+}
+
+/** 固定鍵、靜態文案：模型輸出一個字都不得進 422 body（零內容外流）。 */
+export function buildWrongSurfaceErrorBody(surface: WrongSurface): {
+  error: string;
+  surface: WrongSurface;
+  message: string;
+  shouldChargeQuota: false;
+} {
+  return {
+    error: "OPENER_WRONG_SURFACE",
+    surface,
+    message: surface === "chat_conversation"
+      ? "這看起來是聊天對話的截圖——分析對話、找下一句怎麼回，請改用「分析對話」功能。開場救星需要對方的交友軟體或社群個人頁截圖。本次不會扣額度。"
+      : "這張截圖看不出對方的個人資料。開場救星需要對方的交友軟體或社群個人頁截圖。本次不會扣額度。",
+    shouldChargeQuota: false,
+  };
 }
 
 export function normalizeOpenerPayload(
@@ -174,8 +213,9 @@ export function normalizeOpenerPayload(
 
   // Raw formulaOpeners 絕不穿透（2026-07-24 公式回覆計畫 §6.2 第一層）：
   // canonical 公式由 handler 用 normalizeFormulaReplies 另行計算，
-  // response 再明確覆蓋（第二層）。
-  const { formulaOpeners: _rawFormulaOpeners, ...rest } = parsed;
+  // response 再明確覆蓋（第二層）。wrongSurface 同理剝除（R1 主審 P2）：
+  // 它是 handler 在 parse 層就消費完的旗標，healthy 200 不得殘留新鍵。
+  const { formulaOpeners: _rawFormulaOpeners, wrongSurface: _wrongSurface, ...rest } = parsed;
   return {
     ...rest,
     openers,
@@ -246,8 +286,9 @@ export function filterOpenerPayloadForAllowedFeatures(
   // 內容寫的，硬套會誤導。
   const reason = modelPickVisible ? modelReason : null;
 
-  // 同 normalizeOpenerPayload：raw formulaOpeners 不隨 ...spread 外洩。
-  const { formulaOpeners: _rawFormulaOpeners, ...rest } = parsed;
+  // 同 normalizeOpenerPayload：raw formulaOpeners／wrongSurface 不隨
+  // ...spread 外洩。
+  const { formulaOpeners: _rawFormulaOpeners, wrongSurface: _wrongSurface, ...rest } = parsed;
   const filtered: Record<string, unknown> = {
     ...rest,
     openers,

@@ -1264,13 +1264,13 @@ Deno.test({
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
-    assert(source.includes('wrongSurfaceRaw === "chat_conversation"'));
-    assert(source.includes('wrongSurfaceRaw === "unrelated"'));
-    assert(source.includes('"OPENER_WRONG_SURFACE"'));
+    // 判定與 422 body 抽在 opener_payload.ts（行為測試在該檔）；這裡只鎖
+    // index.ts 有接上、且攔截在 normalize/repair 之前。
+    assert(source.includes("detectOpenerWrongSurface("));
+    assert(source.includes("buildWrongSurfaceErrorBody(wrongSurface)"));
     assert(source.includes("opener_wrong_surface"));
-    // 旗標檢查必須在 normalize/repair 之前（primary parse 直讀）。
     assert(
-      source.indexOf("wrongSurfaceRaw") <
+      source.indexOf("detectOpenerWrongSurface(") <
         source.indexOf("let parsed = normalizeOpenerPayload"),
     );
     // prompt 端：schema 帶欄位＋旗標宣告失敗規則。
