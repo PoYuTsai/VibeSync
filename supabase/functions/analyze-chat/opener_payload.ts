@@ -2,6 +2,8 @@
 // the recommendedPick contract can be behavior-tested (index.ts starts the
 // server on import and only supports source-scan tests).
 
+import { normalizePartnerPronoun } from "./partner_pronoun.ts";
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -126,7 +128,8 @@ export function sanitizeOpenerText(value: unknown): string | null {
   // 分則支援（2026-08-19 Eric：對標練習室，高手不把一坨字擠一行）：模型
   // 常吐字面 "\n" 而不是真換行（練習室已登記坑），這裡統一正規化，並把
   // 三行以上的空行壓成單一換行——開場最多兩則。
-  const trimmed = text
+  // 五張卡都是原封複製貼上傳給對方的訊息，人稱一律「妳」（見 partner_pronoun）。
+  const trimmed = normalizePartnerPronoun(text)!
     .replace(/\\n/g, "\n")
     .replace(/\n{2,}/g, "\n")
     .split("\n")

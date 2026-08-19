@@ -117,7 +117,8 @@ Deno.test("sanitizeOpenerText 正規化換行：字面 \\n 轉真換行、壓多
 });
 
 Deno.test("sanitizeOpenerText 擋 JSON/code fence/超長，收合法短句", () => {
-  assertEquals(sanitizeOpenerText("你好，看到你養柴犬"), "你好，看到你養柴犬");
+  // 傳給對方的訊息一律「妳」（見 partner_pronoun.ts）。
+  assertEquals(sanitizeOpenerText("你好，看到你養柴犬"), "妳好，看到妳養柴犬");
   assertEquals(sanitizeOpenerText("  留白修剪  "), "留白修剪");
   assertEquals(sanitizeOpenerText({ text: "巢狀欄位也收" }), "巢狀欄位也收");
   assertEquals(sanitizeOpenerText('{"openers": {}}'), null);
@@ -453,3 +454,21 @@ Deno.test("filterOpener 頂層 recommendedPick 無效時 fallback 首個有句�
   assertEquals("recommendedReason" in (filtered ?? {}), false);
 });
 
+
+Deno.test("sanitizeOpenerText 把傳給對方的「你」正規化成「妳」", () => {
+  // 2026-08-19 真機：同一輪五張卡整輪飄成「你」（25 句量到 3 句）。
+  assertEquals(
+    sanitizeOpenerText("大夜班還有力氣學新東西，你這時間管理是點在哪"),
+    "大夜班還有力氣學新東西，妳這時間管理是點在哪",
+  );
+  // 「你們」可能指混合群體，留著不動。
+  assertEquals(
+    sanitizeOpenerText("你們那棟最近吵嗎"),
+    "你們那棟最近吵嗎",
+  );
+  // 分則（真換行）兩則都要轉。
+  assertEquals(
+    sanitizeOpenerText("你這自介有點狠\n但我還敢傳給你"),
+    "妳這自介有點狠\n但我還敢傳給妳",
+  );
+});
