@@ -1400,10 +1400,10 @@ class _FullAnalysisTileState extends State<_FullAnalysisTile>
             backgroundColor: AppColors.primary.withValues(alpha: 0.05),
             collapsedBackgroundColor: AppColors.primary.withValues(alpha: 0.08),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
             ),
             collapsedShape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
             ),
             onExpansionChanged: (open) {
               setState(() => _expanded = open);
