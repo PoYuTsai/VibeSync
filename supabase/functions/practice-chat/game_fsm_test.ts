@@ -261,6 +261,10 @@ Deno.test("containsCrudeSexualOffense：高精度詞命中、自然語放行", (
       "妳這騷貨",
       "咩修桿某",
       "欸 修幹某啦",
+      "乾林老師勒",
+      "糙機掰",
+      "淦你娘咧",
+      "幹妳娘",
     ]
   ) {
     assertEquals(containsCrudeSexualOffense(offense), true, offense);
@@ -274,6 +278,10 @@ Deno.test("containsCrudeSexualOffense：高精度詞命中、自然語放行", (
       "氣象說今天露點 23 度",
       "我家狗狗一直舔你不放",
       "醫生說精液檢查結果正常",
+      // 諧音拼法只收完整詞組：近鄰的自然語不可誤殺。
+      "我們林老師人超好",
+      "這米有點糙你會嫌嗎",
+      "餅乾你要不要",
     ]
   ) {
     assertEquals(containsCrudeSexualOffense(benign), false, benign);
