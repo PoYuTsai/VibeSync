@@ -10,6 +10,8 @@ import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/reveal_pill.dart';
+import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
@@ -1294,25 +1296,34 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         // 新結果重播、回看草稿也有同一進場）。
         SizedBox(
           height: 220,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: openerCards.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              final card = openerCards[index];
-              return StaggeredAppear(
-                key: ValueKey(
-                  'opener-card-appear-${identityHashCode(result)}-${card.type}',
-                ),
-                index: index,
-                child: _buildOpenerCard(
-                  type: card.type,
-                  content: card.content,
-                  isRecommended: card.isRecommended,
-                  isLocked: card.isLocked,
-                ),
-              );
-            },
+          // ScrollCardTicks 橫向：掃過卡列每換一張打一下輕觸覺——
+          // 報告作戰板 Dock 節拍的原生橫向版（2026-08-19 Eric）。
+          child: ScrollCardTicks(
+            axis: Axis.horizontal,
+            focusFraction: 0.3,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: openerCards.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final card = openerCards[index];
+                return CardTickTarget(
+                  index: index,
+                  child: StaggeredAppear(
+                    key: ValueKey(
+                      'opener-card-appear-${identityHashCode(result)}-${card.type}',
+                    ),
+                    index: index,
+                    child: _buildOpenerCard(
+                      type: card.type,
+                      content: card.content,
+                      isRecommended: card.isRecommended,
+                      isLocked: card.isLocked,
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ),
 
@@ -1433,10 +1444,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   Widget _buildNextStepCard() {
-    return _CollapsibleBrandCard(
-      icon: Icons.route_outlined,
-      title: '下一步怎麼接？',
-      child: Column(
+    // 2026-08-19 Eric 拍板：與教練卡「看完整教練分析」同款懸浮深墨膠囊
+    // （共用 RevealPill）——頁尾折疊的存在感太低，用戶不知道要往下拉。
+    return RevealPill(
+      label: '下一步怎麼接？',
+      children: [
+        Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -1487,7 +1500,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             textAlign: TextAlign.center,
           ),
         ],
-      ),
+        ),
+      ],
     );
   }
 
