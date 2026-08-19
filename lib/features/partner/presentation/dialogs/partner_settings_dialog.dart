@@ -15,11 +15,15 @@ class PartnerSettingsResult {
   });
 }
 
-/// Centralized partner settings for one-time context.
+/// Centralized partner settings.
 ///
-/// Keep this schema-light for Spec 6D v1: the free-form note is where users
-/// can record "where we met / current goal / traits" until we intentionally
-/// add separate Hive fields.
+/// 2026-08-19 Eric 拍板：備註**手填整個關掉，只能選 chips**。自由文字讓
+/// 模型分不清主詞（「想約出來見面」是他還是她），prompt 層修三刀都在
+/// 對抗被污染的資料；改成 chips-only 後，資料保證全是「描述她」。
+/// 底層維持 schema-light：`note` 欄位不動（Hive/Edge 零改），只由選中
+/// 的 chips 用「、」串成存入。舊資料的自由文字：使用者沒動過 chips 就
+/// 原樣保留；一旦動了 chips，note 以當前選取重建（舊污染句就此清掉，
+/// 這是刻意的資料清洗，不是 bug）。
 class PartnerSettingsDialog extends StatefulWidget {
   final String initialName;
   final String initialNote;
@@ -36,80 +40,65 @@ class PartnerSettingsDialog extends StatefulWidget {
 
 class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
   late final TextEditingController _nameController;
-  late final TextEditingController _noteController;
+  late final Set<String> _selected;
+  bool _chipsTouched = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(text: widget.initialName);
-    _noteController = TextEditingController(text: widget.initialNote);
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _noteController.dispose();
-    super.dispose();
-  }
-
-  String get _trimmedName => _nameController.text.trim();
-  String get _trimmedNote => _noteController.text.trim();
-  bool get _canSave => _trimmedName.isNotEmpty;
-
-  /// 快速插入 chips（2026-08-19 Bruce dogfood：只有空白文字框不知道要填什
-  /// 麼，要幾個可 Tag 的 default 選項）。維持 schema-light：chip 只是把片
-  /// 語塞進備註文字，真相源仍是這串自由文字，使用者可任意改寫。
-  ///
-  /// 呈現（Eric 拍板）：dialog 空間小，分類分三行、小標固定在行首、chips
-  /// 各自橫向滑動——三類同時可見不藏選項，行尾被切掉的 chip 就是
-  /// 「還能滑」的暗示。
-  ///
-  /// 主詞契約（2026-08-19 Eric 拍板，Bruce dogfood 抓到「想約出來見面」
-  /// 被 AI 當成她的意願）：這個彈窗填的是對象，chips 一律以**對方**為
-  /// 主詞。原「目標」行（用戶自己的目標）退場改「喜好」（她的興趣＝
-  /// 開場鉤子燃料）；用戶目標想寫就打進備註，prompt 端有主詞判斷接住。
+  /// 主詞契約（2026-08-19 Eric 拍板）：這個彈窗填的是對象，三類 chips
+  /// 一律以**對方**為主詞（特質＝個性、狀態＝互動現況、喜好＝她的興趣
+  /// ＝開場鉤子燃料）。用戶自己的目標不進這裡。
   static const Map<String, List<String>> _quickTagGroups = {
     '特質': ['慢熱', '外向健談', '幽默愛鬧', '工作忙碌'],
     '狀態': ['剛認識', '回覆慢但都會回', '不太主動但有回', '聊得來但還沒約'],
     '喜好': ['喜歡戶外', '愛喝咖啡', '吃貨', '有在健身', '愛看劇'],
   };
 
-  bool _tagInserted(String tag) => _noteController.text.contains(tag);
+  static final Set<String> _allTags =
+      _quickTagGroups.values.expand((tags) => tags).toSet();
 
-  void _insertTag(String tag) {
-    final current = _noteController.text.trimRight();
-    final next = current.isEmpty ? tag : '$current、$tag';
-    if (next.length > 300) return; // 尊重欄位 maxLength，塞不下就不塞。
-    _noteController.text = next;
-    _noteController.selection =
-        TextSelection.collapsed(offset: next.length);
-    setState(() {});
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.initialName);
+    // 從既有 note 還原選取：只認得 chip 片語，其餘（舊自由文字）不進
+    // 選取集。
+    _selected = widget.initialNote
+        .split('、')
+        .map((s) => s.trim())
+        .where(_allTags.contains)
+        .toSet();
   }
 
-  /// 再點一次取消（2026-08-19 Eric：對標「關於我」chips 的 toggle 行為）。
-  /// 連同前面的「、」一起拔，孤兒頓號再收尾清一次。
-  void _removeTag(String tag) {
-    var text = _noteController.text;
-    if (text.contains('、$tag')) {
-      text = text.replaceFirst('、$tag', '');
-    } else if (text.contains('$tag、')) {
-      text = text.replaceFirst('$tag、', '');
-    } else {
-      text = text.replaceFirst(tag, '');
-    }
-    text = text.trim();
-    if (text.startsWith('、')) text = text.substring(1);
-    if (text.endsWith('、')) text = text.substring(0, text.length - 1);
-    _noteController.text = text;
-    _noteController.selection = TextSelection.collapsed(offset: text.length);
-    setState(() {});
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  String get _trimmedName => _nameController.text.trim();
+  bool get _canSave => _trimmedName.isNotEmpty;
+
+  /// chips 沒動過就保留原 note（含舊自由文字）；動過就以選取重建。
+  String get _resultNote {
+    if (!_chipsTouched) return widget.initialNote.trim();
+    return [
+      for (final tags in _quickTagGroups.values)
+        for (final tag in tags)
+          if (_selected.contains(tag)) tag,
+    ].join('、');
+  }
+
+  void _toggleTag(String tag) {
+    setState(() {
+      _chipsTouched = true;
+      if (!_selected.remove(tag)) _selected.add(tag);
+    });
   }
 
   void _onSave() {
     if (!_canSave) return;
 
     final nameUnchanged = _trimmedName == widget.initialName.trim();
-    final noteUnchanged = _trimmedNote == widget.initialNote.trim();
+    final noteUnchanged = _resultNote == widget.initialNote.trim();
     if (nameUnchanged && noteUnchanged) {
       Navigator.of(context).pop();
       return;
@@ -118,7 +107,7 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
     Navigator.of(context).pop(
       PartnerSettingsResult(
         name: _trimmedName,
-        note: _trimmedNote,
+        note: _resultNote,
       ),
     );
   }
@@ -142,33 +131,15 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
             TextField(
               style: const TextStyle(color: AppColors.glassTextPrimary),
               controller: _nameController,
-              autofocus: true,
+              autofocus: widget.initialName.isEmpty,
               decoration: const InputDecoration(
                 hintText: '例如：小雲',
               ),
-              textInputAction: TextInputAction.next,
+              textInputAction: TextInputAction.done,
               onChanged: (_) => setState(() {}),
-              onSubmitted: (_) => FocusScope.of(context).nextFocus(),
             ),
             const SizedBox(height: 12),
-            Text('一次性資訊 / 目前目標 / 備註', style: fieldLabelStyle),
-            const SizedBox(height: 6),
-            // 2026-08-19 Eric 真機回報：4 行起跳＋字數計數列把 chips 全推到
-            // 折線下，「根本不知道要往下滑」。備註欄改 2 行起跳（打滿 4 行後
-            // 內部捲動）、藏計數列、hint 縮成一行——chips 本身就是範例，
-            // 長 hint 是重複資訊。目標：鍵盤開著時三行 chips 進首屏。
-            TextField(
-              style: const TextStyle(color: AppColors.glassTextPrimary),
-              controller: _noteController,
-              minLines: 2,
-              maxLines: 4,
-              maxLength: 300,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                hintText: '自由填，或點下方快速選項',
-                counterText: '',
-              ),
-            ),
+            Text('她是怎樣的人', style: fieldLabelStyle),
             const SizedBox(height: 8),
             for (final entry in _quickTagGroups.entries) ...[
               Padding(
@@ -193,10 +164,8 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
                             for (final tag in entry.value) ...[
                               _QuickTagChip(
                                 label: tag,
-                                inserted: _tagInserted(tag),
-                                onTap: () => _tagInserted(tag)
-                                    ? _removeTag(tag)
-                                    : _insertTag(tag),
+                                inserted: _selected.contains(tag),
+                                onTap: () => _toggleTag(tag),
                               ),
                               const SizedBox(width: 6),
                             ],
@@ -232,10 +201,10 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
   }
 }
 
-/// 備註快速插入 chip：點一下把片語附加進備註文字，再點一次取消。
-/// 選取語言對標「關於我」ProfileChipSection（2026-08-19 Eric：預設不該
-/// 橘色）：未選＝中性細框次要字；已選＝ctaStart 橘框＋橘粗體＋淡橘底。
-/// 不加勾勾 icon——選中靠色差與字重表達（勾勾殘影與寬度跳動是已登記坑）。
+/// 選取 chip：點一下選、再點取消。選取語言對標「關於我」
+/// ProfileChipSection：未選＝中性細框次要字；已選＝ctaStart 橘框＋
+/// 橘粗體＋淡橘底。不加勾勾 icon——選中靠色差與字重表達（勾勾殘影
+/// 與寬度跳動是已登記坑）。
 class _QuickTagChip extends StatelessWidget {
   const _QuickTagChip({
     required this.label,
