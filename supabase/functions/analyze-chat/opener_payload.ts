@@ -7,6 +7,7 @@ import {
   normalizeOutgoingScript,
   normalizePartnerPronoun,
 } from "./outgoing_message_text.ts";
+import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -32,6 +33,119 @@ export const OPENER_FREE_V1_TYPES = ["extend"] as const;
 
 function isOpenerType(value: string): value is OpenerType {
   return (OPENER_TYPES as readonly string[]).includes(value);
+}
+
+const OPENER_PROFILE_EXPLANATION_KEYS = [
+  "style",
+  "personality",
+  "avoidTopics",
+  "frameRead",
+  "positiveHooks",
+  "masterObservation",
+  "curiosityHook",
+  "masterMove",
+  "twoBallPlan",
+  "talkingPoints",
+  "openingStrategy",
+  // Legacy client-visible keys.
+  "vibe",
+  "interests",
+] as const;
+
+const OPENER_PROFILE_ARRAY_KEYS = new Set([
+  "avoidTopics",
+  "positiveHooks",
+  "talkingPoints",
+  "interests",
+]);
+
+const OPENER_PIONEER_KEYS = [
+  "ifCold",
+  "ifShortPositive",
+  "ifEngaged",
+  "handoff",
+] as const;
+
+function sanitizeOpenerProfileAnalysis(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (!isPlainObject(value)) return null;
+  const result: Record<string, unknown> = {};
+  for (const key of OPENER_PROFILE_EXPLANATION_KEYS) {
+    const raw = value[key];
+    if (Array.isArray(raw) && OPENER_PROFILE_ARRAY_KEYS.has(key)) {
+      const items = raw
+        .map((item) => sanitizeCustomerExplanationText(item, 240))
+        .filter((item): item is string => item !== null);
+      if (items.length > 0) result[key] = items;
+      continue;
+    }
+    const text = sanitizeCustomerExplanationText(raw, 500);
+    if (text !== null) result[key] = text;
+  }
+  // Telemetry only; the client whitelist intentionally does not render it.
+  if (typeof value.insufficientInfo === "boolean") {
+    result.insufficientInfo = value.insufficientInfo;
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+function sanitizeOpenerPioneerPlan(
+  value: unknown,
+): Record<string, string> | null {
+  if (!isPlainObject(value)) return null;
+  const result: Record<string, string> = {};
+  for (const key of OPENER_PIONEER_KEYS) {
+    const text = sanitizeCustomerExplanationText(value[key], 500);
+    if (text !== null) result[key] = text;
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+function sanitizeOpenerCustomerExplanations(
+  parsed: Record<string, unknown>,
+): Record<string, unknown> {
+  const {
+    profileAnalysis: _profileAnalysis,
+    pioneerPlan: _pioneerPlan,
+    recommendation: _recommendation,
+    recommendedReason: _recommendedReason,
+    ...rest
+  } = parsed;
+  const result: Record<string, unknown> = { ...rest };
+
+  const profileAnalysis = sanitizeOpenerProfileAnalysis(parsed.profileAnalysis);
+  if (profileAnalysis !== null) result.profileAnalysis = profileAnalysis;
+
+  const pioneerPlan = sanitizeOpenerPioneerPlan(parsed.pioneerPlan);
+  if (pioneerPlan !== null) result.pioneerPlan = pioneerPlan;
+
+  if (isPlainObject(parsed.recommendation)) {
+    const recommendation: Record<string, unknown> = {};
+    if (
+      typeof parsed.recommendation.pick === "string" &&
+      isOpenerType(parsed.recommendation.pick)
+    ) {
+      recommendation.pick = parsed.recommendation.pick;
+    }
+    const reason = sanitizeCustomerExplanationText(
+      parsed.recommendation.reason,
+      500,
+    );
+    if (reason !== null) recommendation.reason = reason;
+    if (Object.keys(recommendation).length > 0) {
+      result.recommendation = recommendation;
+    }
+  }
+
+  const recommendedReason = sanitizeCustomerExplanationText(
+    parsed.recommendedReason,
+    500,
+  );
+  if (recommendedReason !== null) {
+    result.recommendedReason = recommendedReason;
+  }
+  return result;
 }
 
 // 2026-08 關於我重新定位案 批3：stretchLevels 取代批1的本地規則，改由 AI
@@ -230,7 +344,8 @@ export function normalizeOpenerPayload(
 
   // wrongSurface 剝除（R1 主審 P2）：它是 handler 在 parse 層就消費完的
   // 旗標，healthy 200 不得殘留新鍵。
-  const { wrongSurface: _wrongSurface, ...rest } = parsed;
+  const sanitized = sanitizeOpenerCustomerExplanations(parsed);
+  const { wrongSurface: _wrongSurface, ...rest } = sanitized;
   return {
     ...rest,
     openers,
@@ -243,6 +358,7 @@ export function filterOpenerPayloadForAllowedFeatures(
   allowedFeatures: readonly string[],
   options?: { fallbackOrder?: readonly OpenerType[] },
 ): Record<string, unknown> | null {
+  const sanitizedParsed = sanitizeOpenerCustomerExplanations(parsed);
   const allowedOpenerTypes = new Set(
     allowedFeatures.filter((feature): feature is OpenerType =>
       isOpenerType(feature)
@@ -267,19 +383,19 @@ export function filterOpenerPayloadForAllowedFeatures(
   // 指向 tier 可見且清洗後有句的風格；fallback 時依 tier 展示序取第一個完整
   // opener，並清掉只適用原鎖定內容的 reason（nested＋頂層一起清，不得只寫
   // 頂層 legacy recommendedPick 卻留下舊 nested pick）。
-  const modelPick = isPlainObject(parsed.recommendation) &&
-      typeof parsed.recommendation.pick === "string" &&
-      isOpenerType(parsed.recommendation.pick)
-    ? parsed.recommendation.pick
+  const modelPick = isPlainObject(sanitizedParsed.recommendation) &&
+      typeof sanitizedParsed.recommendation.pick === "string" &&
+      isOpenerType(sanitizedParsed.recommendation.pick)
+    ? sanitizedParsed.recommendation.pick
     : null;
 
   const modelPickVisible = modelPick !== null && !!openers[modelPick];
 
   const fallbackOrder = options?.fallbackOrder ?? OPENER_TYPES;
-  const legacyTopLevelPick = typeof parsed.recommendedPick === "string" &&
-      isOpenerType(parsed.recommendedPick) &&
-      openers[parsed.recommendedPick]
-    ? parsed.recommendedPick
+  const legacyTopLevelPick = typeof sanitizedParsed.recommendedPick === "string" &&
+      isOpenerType(sanitizedParsed.recommendedPick) &&
+      openers[sanitizedParsed.recommendedPick]
+    ? sanitizedParsed.recommendedPick
     : null;
 
   const recommendedPick = modelPickVisible
@@ -292,17 +408,17 @@ export function filterOpenerPayloadForAllowedFeatures(
     return null;
   }
 
-  const modelReason = isPlainObject(parsed.recommendation) &&
-      typeof parsed.recommendation.reason === "string" &&
-      parsed.recommendation.reason.trim().length > 0
-    ? parsed.recommendation.reason.trim()
+  const modelReason = isPlainObject(sanitizedParsed.recommendation) &&
+      typeof sanitizedParsed.recommendation.reason === "string" &&
+      sanitizedParsed.recommendation.reason.trim().length > 0
+    ? sanitizedParsed.recommendation.reason.trim()
     : null;
   // reason 只在模型原 pick 仍可見時保留——fallback pick 的 reason 是替被鎖
   // 內容寫的，硬套會誤導。
   const reason = modelPickVisible ? modelReason : null;
 
   // 同 normalizeOpenerPayload：wrongSurface 不隨 ...spread 外洩。
-  const { wrongSurface: _wrongSurface, ...rest } = parsed;
+  const { wrongSurface: _wrongSurface, ...rest } = sanitizedParsed;
   const filtered: Record<string, unknown> = {
     ...rest,
     openers,
@@ -314,7 +430,7 @@ export function filterOpenerPayloadForAllowedFeatures(
   };
 
   // 頂層 legacy recommendedReason 維持舊語意：pick 沒變才保留。
-  if (filtered.recommendedPick !== parsed.recommendedPick) {
+  if (filtered.recommendedPick !== sanitizedParsed.recommendedPick) {
     delete filtered.recommendedReason;
   }
 

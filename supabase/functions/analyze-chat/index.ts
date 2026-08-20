@@ -66,6 +66,7 @@ import {
   allowsNewTopicSharedFrame,
   buildNewTopicLedgerResult,
   hasNewTopicMaterial,
+  mergeNewTopicRepairWithPrimaryOpeningLines,
   normalizeNewTopicModelPayload,
   sanitizeNewTopicRequest,
 } from "./new_topic_payload.ts";
@@ -413,11 +414,12 @@ const OPENER_REPAIR_PROMPT = `你是 VibeSync 開場救星的 JSON 格式修復�
 任務：
 - 只把上一次 AI 回覆修成合法 JSON。
 - 不要重新分析圖片，不要新增不存在的線索。
-- 若原文已有可用開場白，保留其語氣但整理進指定欄位。
+- 若原文已有可用開場白，逐字保留 openers 的內容與順序；只修格式與客戶可見解釋。
 - openers 必須包含 extend / resonate / tease / humor / coldRead 五個 key。
 - 每個 opener 必須是可直接傳出的繁體中文短句，不能是 JSON、Markdown、解釋文字或空字串。
 - stretchLevels 對應同名 opener 相對使用者舒適區的延伸程度（within/stretch/far）；
   沒有舒適區資訊時全部回傳 "within"。
+- profileAnalysis / pioneerPlan / recommendation.reason 都是客戶可見解釋；只用自然中文說明具體線索與下一步，不寫技巧名、內部欄位名或方法標籤。
 - 請只輸出 JSON object，不要 code fence，不要前後說明。
 
 必要 schema：
@@ -429,11 +431,11 @@ const OPENER_REPAIR_PROMPT = `你是 VibeSync 開場救星的 JSON 格式修復�
     "frameRead": "如何尊重界線但不被自介框架綁死",
     "positiveHooks": ["最值得接的可回線索1", "線索2"],
     "masterObservation": "高手會抓到的一個反差、畫面或一句話觀察",
-    "curiosityHook": "本次用哪一種好奇心鉤子",
-    "masterMove": "本次借用的高手開場手法",
-    "twoBallPlan": "是否用兩顆球；第一球推拉/畫面感，第二球冷讀/觀察",
+    "curiosityHook": "她最容易從哪個具體細節接話",
+    "masterMove": "這次要怎麼開，用自然中文描述動作",
+    "twoBallPlan": "若同時留兩個可接點，直接說是哪兩個線索",
     "talkingPoints": ["具體可聊線索1", "線索2", "線索3"],
-    "openingStrategy": "教用戶怎麼回",
+    "openingStrategy": "先接哪個具體線索、避開哪類題、讓她怎麼好接",
     "insufficientInfo": false
   },
   "openers": {
@@ -458,7 +460,7 @@ const OPENER_REPAIR_PROMPT = `你是 VibeSync 開場救星的 JSON 格式修復�
   },
   "recommendation": {
     "pick": "extend/resonate/tease/humor/coldRead",
-    "reason": "這句示範了什麼框架、接哪顆球、刪掉哪種錯誤接法、女生可以怎麼接回來"
+    "reason": "這句接了哪個具體線索、避開什麼、她為什麼好回、之後怎麼接"
   }
 }`;
 
@@ -2366,7 +2368,7 @@ const OPENER_PROMPT =
 
 底層真理（Eric 2026-08-19）：**大家只在乎自己**。她會回你，不是因為你有趣，是因為你給了她一個關於她自己、她想回應的東西。所以開場的重心永遠在她身上——一個只有她會收到的觀察、一個她想澄清的判斷、一個她的世界裡的畫面；自我介紹、自我證明、自我推銷都是在對空氣說話。「給」不等於講自己的事，是給她一個能反應的東西。
 
-產品定位：VibeSync 是教練，不是話術產生器。回話只是示範，框架大於話術。你要讓用戶看懂「怎麼去回」：先選哪顆球、用什麼框架接、哪些題庫刪掉、回完要留下什麼下一球；也要看懂怎麼丟球、怎麼維持男人框架、怎麼讓女生有球可以回，而不是只給一句可複製文字。
+產品定位：VibeSync 是教練，不是話術產生器。回話只是示範，判斷大於話術。你要讓用戶看懂「怎麼去回」：先接哪個具體線索、避開哪類題、她為什麼容易接、回完要留下什麼下一步，而不是只給一句可複製文字。
 
 ## 開場技巧詞彙表（7 詞，上限）
 
@@ -2382,11 +2384,11 @@ const OPENER_PROMPT =
 | 6 | 旁路冷讀 | 見上方「怎麼讀她的資料」 | coldRead 與雙球第二球優先用 | 複述她資料原文 |
 | 7 | 好奇心鉤子 | 傘詞，五型見下方「脫穎而出」 | 標注寫型名，如「好奇心鉤子：二選一」 | 為了鉤子硬演，變油、變自嗨 |
 
-### 顯現規則（硬指令）
-- openingStrategy 與 recommendation.reason 用到表內技巧時，必須標技巧名＋一句為什麼（例：「旁路冷讀：從她的作息線索旁路到生活樣子，不說破、不查戶口」）；twoBallPlan 建議雙球時要標「雙球」。
-- openers 五句本體、talkingPoints、pioneerPlan 永遠是可直接貼出的自然句子，不夾技巧名。
-- 本 prompt 中示範句旁的「（技巧名）」旁注是給你看的教學標注；輸出時絕不把括號標注抄進 openers、talkingPoints、pioneerPlan 的句子裡。
-- 反向禁令：不得為了標名而出招。先有值得接的球才有招；線索不足走安全開場時，整份輸出零技巧標籤也完全合格。
+### 客戶看得懂的解釋（硬指令）
+- 上面的技巧詞彙只供你在內部思考，不是要教客戶背名詞。客戶可見的解釋欄不得出現技巧名、內部欄位名或方法標籤。
+- openingStrategy 與 recommendation.reason 必須用一般人看得懂的話，只說「接了哪個具體線索、避開什麼、她為什麼好回、之後怎麼接」。
+- twoBallPlan 若建議同時留兩個可接點，直接寫出那兩個具體線索，不要寫方法名。curiosityHook 與 masterMove 也只描述具體動作。
+- openers 五句本體、talkingPoints、pioneerPlan 永遠是自然句子，不夾教學標注。不得為了說明方法而硬出招。
 
 ## 讀資料 → 開場：profileAnalysis 各欄怎麼寫
 生成開場白之前先把這幾欄想過一遍，開場白必須看得出這個判斷：
@@ -2395,9 +2397,9 @@ const OPENER_PROMPT =
 - **positiveHooks**：她主動給出的可回線索（興趣、地點、寵物、活動、剛做過的事），2-4 個；比外貌稱讚重要得多。沒有就寫「目前可見線索不足」。
 - **style／personality**：只寫**可見**風格與**互動切入判斷**（「適合用具體細節開場」），不做 Big Five、長期性格、家庭、感情狀態、收入或身材的判斷。有照片就找背景、活動、物件、場景，不從外貌推人格。
 - **masterObservation**：本局最像高手會抓到的**一個**反差或觀察（作息與興趣不搭、規則很多卻說想認識新朋友）。只抓一個點，不要把資料全用上。
-- **curiosityHook**：本次用哪一型鉤子；自然為上，硬演會變油。
-- **twoBallPlan**：是否丟兩顆球（一球推拉／畫面、一球冷讀／觀察），讓她挑一顆接。
-- **openingStrategy**：一句話教用戶怎麼回——先接哪個線索、避開哪類題、用哪種球丟回去；不要只說「自然、有趣、低壓」。
+- **curiosityHook**：寫她最容易從哪個具體細節接話；不寫類型名稱。
+- **twoBallPlan**：若同時留兩個可接點，直接說是哪兩個線索；不寫方法名。
+- **openingStrategy**：一句話教用戶怎麼回——先接哪個具體線索、避開哪類題、讓她怎麼好接；不要只說「自然、有趣、低壓」。
 - **talkingPoints**：具體可聊的線索名詞，不是形容詞；資訊不足就寫「目前可見線索不足」。
 
 如果自介明確說不要問工作、不要約酒、討厭沒誠意，開場不得再問工作、喝酒或丟通用招呼；但也不要機械式寫「我有看完自介」「不問妳在哪上班」——除非那樣真的更自然或更幽默。
@@ -2549,7 +2551,7 @@ profileAnalysis.insufficientInfo 是 AI 對自己輸出品質的誠實自評，�
 - 幽默是加分項不是必要項：會讓句子刻意、自嗨或不好接時，優先保留來回感與男人框架；幽默不穩就用「微拉一球 + 冷讀一球」讓她選，比硬擠笑點實戰。
 - 初期陌生開場只能微拉。若一句話聽起來像攻擊、貶低或需要對方吞下不舒服，必須重寫。
 - emoji 最多 0-1 個，只在能補語氣時使用；不要每句都放。
-- 推薦 reason 要說明「這句示範了什麼框架 + 接住哪個可回線索 + 刪掉哪個錯誤接法 + 為什麼容易被回」，不是只說「有趣」「自然」。所有 opener 都是示範不是唯一正解——**recommendation.reason 必須像教練講解「怎麼回」**，不能只當文案說明：這句在丟哪顆球、怎麼不乞求不查戶口不自證、她可以怎麼反打，以及她冷回時下一步怎麼保持節奏。如果內部避開的是「不約」，reason 也不要複述「她說不約」，只說「避免一上來推進」即可。
+- 所有 opener 都是示範不是唯一正解。推薦 reason 不能只說「有趣」「自然」。**recommendation.reason 必須用一般人看得懂的話**：這句接了哪個具體線索、避開什麼、她為什麼好回、之後怎麼接。不寫技巧名、方法標籤或欄位名。如果內部避開的是「不約」，reason 也不要複述「她說不約」，只說「避免一上來推進」即可。
 - 如果沒有對方資料，生成低風險但不油的開場白，並在 profileAnalysis 裡標示「目前可見線索不足」。
 
 ## 錯圖判定（wrongSurface）
@@ -2569,11 +2571,11 @@ profileAnalysis.insufficientInfo 是 AI 對自己輸出品質的誠實自評，�
     "frameRead": "如何尊重界線但不被自介框架綁死",
     "positiveHooks": ["最值得接的可回線索1", "線索2"],
     "masterObservation": "高手會抓到的一個反差、畫面或一句話觀察",
-    "curiosityHook": "本次用哪一種好奇心鉤子",
-    "masterMove": "本次借用的高手開場手法，例如輕判斷、小框架、非乞求感、先畫面再問題",
-    "twoBallPlan": "是否用兩顆球；第一球推拉/畫面感，第二球冷讀/觀察",
+    "curiosityHook": "她最容易從哪個具體細節接話",
+    "masterMove": "這次要怎麼開，用自然中文描述動作，不寫方法名",
+    "twoBallPlan": "若同時留兩個可接點，直接說是哪兩個線索",
     "talkingPoints": ["具體可聊線索1", "線索2", "線索3"],
-    "openingStrategy": "教用戶怎麼回：先接哪個線索、刪掉哪類錯誤接法、用哪個好奇心鉤子、保留什麼個性",
+    "openingStrategy": "教用戶怎麼回：先接哪個具體線索、避開哪類題、讓她怎麼好接",
     "insufficientInfo": false
   },
   "openers": {
@@ -2598,7 +2600,7 @@ profileAnalysis.insufficientInfo 是 AI 對自己輸出品質的誠實自評，�
   },
   "recommendation": {
     "pick": "推薦使用的風格（extend/resonate/tease/humor/coldRead）",
-    "reason": "教用戶怎麼回：這句示範了什麼框架、接哪顆球、刪掉哪種錯誤接法、女生可以怎麼接回來"
+    "reason": "這句接了哪個具體線索、避開什麼、她為什麼好回、之後怎麼接"
   }
 }
 
@@ -5678,8 +5680,12 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
           const repairedText = extractClaudeText(
             repairResult.data as { content?: Array<{ text?: string }> },
           );
-          const repairedNormalized = normalizeNewTopicModelPayload(
+          const repairedParsed = mergeNewTopicRepairWithPrimaryOpeningLines(
+            newTopicPrimaryParsed,
             parseJsonObjectFromText(repairedText),
+          );
+          const repairedNormalized = normalizeNewTopicModelPayload(
+            repairedParsed,
             newTopicGroundingPolicy,
           );
           if (repairedNormalized.ok) {

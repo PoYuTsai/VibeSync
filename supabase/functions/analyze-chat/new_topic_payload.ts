@@ -12,6 +12,7 @@ import {
   normalizeOutgoingScript,
   normalizePartnerPronoun,
 } from "./outgoing_message_text.ts";
+import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
 
 export const NEW_TOPIC_SITUATIONS = [
   "went_cold",
@@ -325,7 +326,7 @@ export function normalizeNewTopicModelPayload(
     if (!isPlainObject(rawTopic)) {
       return { ok: false, reason: "topic_not_object" };
     }
-    const direction = sanitizeModelVisibleText(
+    const direction = sanitizeCustomerExplanationText(
       rawTopic.direction,
       NEW_TOPIC_FIELD_CAPS.direction,
     );
@@ -337,11 +338,11 @@ export function normalizeNewTopicModelPayload(
         )),
       ),
     );
-    const whyItWorks = sanitizeModelVisibleText(
+    const whyItWorks = sanitizeCustomerExplanationText(
       rawTopic.whyItWorks,
       NEW_TOPIC_FIELD_CAPS.whyItWorks,
     );
-    const nextMove = sanitizeModelVisibleText(
+    const nextMove = sanitizeCustomerExplanationText(
       rawTopic.nextMove,
       NEW_TOPIC_FIELD_CAPS.nextMove,
     );
@@ -379,7 +380,7 @@ export function normalizeNewTopicModelPayload(
   if (
     rawRecommendation.reason !== undefined && rawRecommendation.reason !== null
   ) {
-    recommendationReason = sanitizeModelVisibleText(
+    recommendationReason = sanitizeCustomerExplanationText(
       rawRecommendation.reason,
       NEW_TOPIC_FIELD_CAPS.recommendationReason,
     );
@@ -394,6 +395,51 @@ export function normalizeNewTopicModelPayload(
     recommendationIndex: rawIndex,
     recommendationReason,
   };
+}
+
+/**
+ * A repair request may be needed only because an explanation leaked an
+ * internal label. Preserve every individually valid primary opening line by
+ * array position so that format/explanation repair cannot silently rewrite the
+ * customer’s sendable copy. Invalid/missing primary lines are still repairable.
+ */
+export function mergeNewTopicRepairWithPrimaryOpeningLines(
+  primaryParsed: unknown,
+  repairedParsed: unknown,
+): unknown {
+  if (!isPlainObject(primaryParsed) || !isPlainObject(repairedParsed)) {
+    return repairedParsed;
+  }
+  const primaryTopics = primaryParsed.topics;
+  const repairedTopics = repairedParsed.topics;
+  if (
+    !Array.isArray(primaryTopics) ||
+    !Array.isArray(repairedTopics) ||
+    primaryTopics.length !== NEW_TOPIC_TOPIC_COUNT ||
+    repairedTopics.length !== NEW_TOPIC_TOPIC_COUNT
+  ) {
+    return repairedParsed;
+  }
+
+  const topics = repairedTopics.map((repairedTopic, index) => {
+    const primaryTopic = primaryTopics[index];
+    if (!isPlainObject(repairedTopic) || !isPlainObject(primaryTopic)) {
+      return repairedTopic;
+    }
+    const primaryOpeningLine = normalizeOutgoingScript(
+      normalizeOutgoingPunctuation(
+        normalizePartnerPronoun(sanitizeModelVisibleText(
+          primaryTopic.openingLine,
+          NEW_TOPIC_FIELD_CAPS.openingLine,
+        )),
+      ),
+    );
+    return primaryOpeningLine === null
+      ? repairedTopic
+      : { ...repairedTopic, openingLine: primaryOpeningLine };
+  });
+
+  return { ...repairedParsed, topics };
 }
 
 // ---------------------------------------------------------------------------

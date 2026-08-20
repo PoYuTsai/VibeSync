@@ -146,6 +146,78 @@ Deno.test("normalizeOpenerPayload 全空 openers 回 null，合法句保留", ()
   assertEquals(normalized?.other, "keep");
 });
 
+Deno.test("normalizeOpenerPayload 只清理客戶解釋，不改可直接傳的句子", () => {
+  const normalized = normalizeOpenerPayload({
+    openers: {
+      extend: "妳那張在山上的照片看起來超冷",
+    },
+    profileAnalysis: {
+      style: "她的动态很直接",
+      openingStrategy: "旁路冷讀：從作息旁路到生活樣子",
+      talkingPoints: ["登山照片", "好奇心鉤子：二選一"],
+      insufficientInfo: true,
+      hiddenPromptLabel: "不該穿透的欄位",
+    },
+    pioneerPlan: {
+      ifCold: "她如果只回哈哈，先順著那個細節接",
+      internalStep: "這個 key 不能出現在畫面上",
+    },
+    recommendation: {
+      pick: "extend",
+      reason: "雙球：先畫面再丟另一顆球",
+    },
+    recommendedReason: "框架維持：不自證",
+  });
+
+  assertEquals(normalized?.openers, {
+    extend: "妳那張在山上的照片看起來超冷",
+  });
+  assertEquals(normalized?.profileAnalysis, {
+    style: "她的動態很直接",
+    talkingPoints: ["登山照片"],
+    insufficientInfo: true,
+  });
+  assertEquals(normalized?.pioneerPlan, {
+    ifCold: "她如果只回哈哈，先順著那個細節接",
+  });
+  assertEquals(normalized?.recommendation, { pick: "extend" });
+  assertEquals("recommendedReason" in (normalized ?? {}), false);
+});
+
+Deno.test("filterOpener 從 raw payload 也會白名單化解釋，自然用法不誤殺", () => {
+  const filtered = filterOpenerPayloadForAllowedFeatures(
+    {
+      openers: { extend: "妳這張照片很有記憶點" },
+      profileAnalysis: {
+        frameRead: "這張照片的構圖框架很有趣",
+        masterMove: "用吐槽冷讀開場",
+        unknownKey: "不應出現",
+      },
+      pioneerPlan: {
+        handoff: "她回得多時，把新回覆貼回來分析",
+        debugLabel: "warm_up",
+      },
+      recommendation: {
+        pick: "extend",
+        reason: "她能從照片當下的細節很自然地接話",
+      },
+    },
+    ALL_FEATURES,
+  );
+
+  assertEquals(filtered?.openers, { extend: "妳這張照片很有記憶點" });
+  assertEquals(filtered?.profileAnalysis, {
+    frameRead: "這張照片的構圖框架很有趣",
+  });
+  assertEquals(filtered?.pioneerPlan, {
+    handoff: "她回得多時，把新回覆貼回來分析",
+  });
+  assertEquals(filtered?.recommendation, {
+    pick: "extend",
+    reason: "她能從照片當下的細節很自然地接話",
+  });
+});
+
 Deno.test("normalizeOpenerPayload 附帶 stretchLevels（缺欄 fallback within）", () => {
   const normalized = normalizeOpenerPayload({
     openers: { extend: "延展句" },

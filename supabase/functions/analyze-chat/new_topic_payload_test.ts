@@ -8,6 +8,7 @@ import {
   buildNewTopicLedgerResult,
   hasNewTopicMaterial,
   isValidNewTopicLedgerResult,
+  mergeNewTopicRepairWithPrimaryOpeningLines,
   NEW_TOPIC_FIELD_CAPS,
   NEW_TOPIC_PARTNER_SUMMARY_MAX,
   NEW_TOPIC_SITUATIONS,
@@ -303,6 +304,68 @@ Deno.test("normalize：內部 situation token 不得出現在任何可見欄位"
       topics: leaked,
       recommendation: { index: 0, reason: "符合 warm_up 目標" },
     }).ok,
+  );
+});
+
+Deno.test("normalize：客戶解釋欄擋內部術語，不誤殺自然教練句", () => {
+  const leaks: Array<[keyof NewTopicModelTopic, string]> = [
+    ["direction", "怪選項切角"],
+    ["whyItWorks", "這題用旁路冷讀做好奇心鉤子"],
+    ["nextMove", "她回了就用雙球繼續推進"],
+  ];
+  for (const [field, leakedText] of leaks) {
+    const topics = modelTopics();
+    topics[0] = { ...topics[0], [field]: leakedText };
+    assertFalse(
+      normalizeNewTopicModelPayload({
+        topics,
+        recommendation: { index: 0, reason: "最貼近她的近況" },
+      }).ok,
+      `${field} 的內部術語應拒絕`,
+    );
+  }
+
+  assertFalse(
+    normalizeNewTopicModelPayload({
+      topics: modelTopics(),
+      recommendation: { index: 0, reason: "這張符合 warm_up 目標" },
+    }).ok,
+    "recommendation.reason 的內部代碼應拒絕",
+  );
+
+  const natural = modelTopics();
+  natural[0] = {
+    direction: "休假突然多一天",
+    openingLine: "突然多一天假，你會先跑去哪",
+    whyItWorks: "這句給她一個具體情境，不用想很久就能回",
+    nextMove: "她如果反駁，就順著她補充的細節聊",
+  };
+  const result = normalizeNewTopicModelPayload({
+    topics: natural,
+    recommendation: { index: 0, reason: "這題最容易讓她從自己的日常接話" },
+  });
+  assert(result.ok);
+  assertEquals(result.topics[0].openingLine, "突然多一天假，妳會先跑去哪");
+});
+
+Deno.test("repair merge：只修解釋時保留 primary 可直接傳句子", () => {
+  const primaryTopics = modelTopics();
+  primaryTopics[0].openingLine = "你這張照片有點像電影劇照";
+  primaryTopics[0].whyItWorks = "旁路冷讀：她容易反駁";
+  const repairedTopics = modelTopics();
+  repairedTopics[0].openingLine = "修復器不得改成這句";
+  repairedTopics[0].whyItWorks = "照片本身有具體畫面，她容易補充當時在做什麼";
+
+  const merged = mergeNewTopicRepairWithPrimaryOpeningLines(
+    { topics: primaryTopics, recommendation: { index: 0 } },
+    { topics: repairedTopics, recommendation: { index: 0 } },
+  );
+  const result = normalizeNewTopicModelPayload(merged);
+  assert(result.ok);
+  assertEquals(result.topics[0].openingLine, "妳這張照片有點像電影劇照");
+  assertEquals(
+    result.topics[0].whyItWorks,
+    "照片本身有具體畫面，她容易補充當時在做什麼",
   );
 });
 

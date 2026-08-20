@@ -848,8 +848,12 @@ Deno.test({
     assert(source.includes("更鬆、更敢"));
     assert(source.includes("這男的是怎樣？我來跟他尬一下"));
     assert(source.includes("VibeSync 是教練，不是話術產生器"));
-    assert(source.includes("回話只是示範，框架大於話術"));
-    assert(source.includes("怎麼丟球、怎麼維持男人框架、怎麼讓女生有球可以回"));
+    assert(source.includes("回話只是示範，判斷大於話術"));
+    assert(
+      source.includes(
+        "先接哪個具體線索、避開哪類題、她為什麼容易接、回完要留下什麼下一步",
+      ),
+    );
     // 2026-08-19 瘦身二輪：「先讀資料再開場」七步與「可見線索優先」欄位
     // 規格是同一組欄位講兩次，合併成「讀資料 → 開場：profileAnalysis 各欄
     // 怎麼寫」。
@@ -974,10 +978,11 @@ Deno.test({
     assert(source.includes("不喜歡被問工作、不愛喝酒、喜歡學習嘗試新事物"));
     assert(source.includes("心裡刪掉工作與酒局題庫"));
     assert(source.includes("資訊不足：明說線索不足"));
-    // 瘦身：舊版基線句是現行 reason 規格的子集，合併為一條。
+    // 客戶可見 reason 只說具體線索、避雷、可回性與下一步，
+    // 不把內部方法名端給客戶。
     assert(
       source.includes(
-        "這句示範了什麼框架 + 接住哪個可回線索 + 刪掉哪個錯誤接法 + 為什麼容易被回",
+        "這句接了哪個具體線索、避開什麼、她為什麼好回、之後怎麼接",
       ),
     );
     assert(source.includes("如果內部避開的是「不約」"));

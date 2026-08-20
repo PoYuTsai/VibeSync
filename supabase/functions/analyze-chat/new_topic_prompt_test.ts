@@ -96,6 +96,9 @@ Deno.test("NEW_TOPIC_PROMPT 產出規格：恰好五題＋四欄＋可直接傳"
   assert(NEW_TOPIC_PROMPT.includes("不性化"));
   assert(NEW_TOPIC_PROMPT.includes("recommendation.index 是 0-4 的整數"));
   assert(NEW_TOPIC_PROMPT.includes("不要 code fence"));
+  assert(NEW_TOPIC_PROMPT.includes("direction 是客戶看到的卡片標題"));
+  assert(NEW_TOPIC_PROMPT.includes("whyItWorks 與 nextMove 都用一般人看得懂的話"));
+  assert(NEW_TOPIC_PROMPT.includes("不得出現內部方法名"));
 });
 
 Deno.test("REPAIR prompt：只修格式、不重新發想、五題 schema", () => {
@@ -107,6 +110,8 @@ Deno.test("REPAIR prompt：只修格式、不重新發想、五題 schema", () =
       "direction / openingLine / whyItWorks / nextMove",
     ),
   );
+  assert(NEW_TOPIC_REPAIR_PROMPT.includes("openingLine 必須逐字保留"));
+  assert(NEW_TOPIC_REPAIR_PROMPT.includes("只改寫客戶看到的解釋"));
 });
 
 Deno.test("buildNewTopicUserPrompt：三段分隔明確、缺席走低假設 fallback", () => {
@@ -164,23 +169,24 @@ Deno.test("角度輪替：同 requestId 穩定、不同 requestId 會換、都�
   assertEquals(seen.size, NEW_TOPIC_ANGLES.length);
 });
 
-Deno.test("buildNewTopicUserPrompt：給 requestId 才附角度，且不洩漏內部說法", () => {
+Deno.test("buildNewTopicUserPrompt：給 requestId 才附發想素材，且不暴露「切入角度」標籤", () => {
   const base = {
     partnerSummary: "對象：小雅。興趣：爬山。",
     effectiveStyleContext: null,
     situation: null,
   };
-  assert(!buildNewTopicUserPrompt(base).includes("切入角度"));
+  assert(!buildNewTopicUserPrompt(base).includes("本輪內容素材"));
 
   const withAngle = buildNewTopicUserPrompt({
     ...base,
     requestId: "123e4567-e89b-42d3-a456-426614174000",
   });
-  assert(withAngle.includes("## 這次的切入角度："));
-  assert(withAngle.includes("不要把角度的名字寫進訊息裡"));
+  assert(withAngle.includes("## 本輪內容素材（只供發想，不得照抄）："));
+  assertFalse(withAngle.includes("切入角度"));
+  assert(withAngle.includes("不要把這個素材名稱寫進任何可見欄位"));
   // 角度區塊要排在作戰板之後、產出指令之前。
   assert(
-    withAngle.indexOf("## 對方作戰板") < withAngle.indexOf("## 這次的切入角度") &&
-      withAngle.indexOf("## 這次的切入角度") < withAngle.indexOf("請依系統規則"),
+    withAngle.indexOf("## 對方作戰板") < withAngle.indexOf("## 本輪內容素材") &&
+      withAngle.indexOf("## 本輪內容素材") < withAngle.indexOf("請依系統規則"),
   );
 });

@@ -103,6 +103,30 @@ Deno.test("index：new_topic 契約鐵律錨點", () => {
   assert(branch.includes("quotaNeeded: newTopicCost"));
 });
 
+Deno.test("index：repair 驗證前先還原 primary 可直接傳句子", () => {
+  const branch = indexSource.slice(
+    indexSource.indexOf("if (isNewTopicMode) {"),
+    indexSource.indexOf("// ── Opener mode: generate opening lines ──"),
+  );
+  const parseRepair = branch.indexOf("parseJsonObjectFromText(repairedText)");
+  const preserveOpeningLines = branch.indexOf(
+    "mergeNewTopicRepairWithPrimaryOpeningLines(",
+  );
+  const validateRepair = branch.indexOf(
+    "normalizeNewTopicModelPayload(\n            repairedParsed,",
+  );
+
+  assert(parseRepair >= 0, "repair response 必須先 parse");
+  assert(
+    preserveOpeningLines >= 0 && preserveOpeningLines < parseRepair,
+    "repair parse 必須包在 primary openingLine 保留器內",
+  );
+  assert(
+    validateRepair > parseRepair,
+    "還原 primary openingLine 後才可驗證並採用 repair",
+  );
+});
+
 Deno.test("index：telemetry 事件名逐項對齊計畫 §14.1（Eric 2026-07-24 拍板）", () => {
   const branch = indexSource.slice(
     indexSource.indexOf("if (isNewTopicMode) {"),
