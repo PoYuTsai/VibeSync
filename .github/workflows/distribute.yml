@@ -185,6 +185,19 @@ jobs:
       - name: Signing gate negative checks
         run: ./tools/android/signing-gate-negative-check.sh build/app/outputs/bundle/release/app-release.aab
 
+      # P1-1：install smoke 的 ClassNotFound 掃描必須 fail closed
+      #（防 pipefail＋grep -q SIGPIPE 漏報迴歸；純 bash fake adb）
+      - name: Install smoke negative check
+        run: ./tools/android/install-smoke-negative-check.sh
+
+      # AND-03 seam（P1-2）：deterministic dispatcher 分流單元測試
+      #（Robolectric，不連外、不開瀏覽器；live OAuth 分支用 fake Result）
+      - name: Android dispatcher seam unit test
+        run: |
+          cd android
+          ./gradlew --no-daemon :app:testReleaseUnitTest \
+            --tests "com.vibesync.app.AuthCallbackDispatcherActivityTest"
+
       # 實際合併後的 release manifest 留檔為 CI 證據（dispatcher／
       # intent-filter 契約以真產物為準，不只靠 source manifest 靜態測試）
       - name: Preserve merged release manifest (evidence)
@@ -197,6 +210,32 @@ jobs:
           fi
           cp "$manifest" merged-release-AndroidManifest.xml
           echo "merged manifest 來源：$manifest"
+
+      # 真合併後 manifest 的語意斷言（不只留檔）：凍結 scheme 唯一擁有者
+      # 是 dispatcher、plugin CallbackActivity 沒被 manifest merge 帶回來、
+      # launcher 正確指向 MainActivity
+      - name: Assert merged manifest contract
+        run: |
+          python3 - <<'EOF'
+          import xml.etree.ElementTree as ET
+          A = '{http://schemas.android.com/apk/res/android}'
+          root = ET.parse('merged-release-AndroidManifest.xml').getroot()
+          acts = root.find('application').findall('activity')
+          owners = [a.get(A + 'name') for a in acts if any(
+              d.get(A + 'scheme') == 'com.poyutsai.vibesync'
+              for f in a.findall('intent-filter') for d in f.findall('data'))]
+          assert owners == ['com.vibesync.app.AuthCallbackDispatcherActivity'], \
+              f'凍結 scheme 擁有者必須唯一且是 dispatcher，得到 {owners}'
+          plugin = [a.get(A + 'name') for a in acts
+                    if 'flutter_web_auth_2' in (a.get(A + 'name') or '')]
+          assert not plugin, f'plugin CallbackActivity 不得出現在 merged manifest：{plugin}'
+          launchers = [a.get(A + 'name') for a in acts if any(
+              c.get(A + 'name') == 'android.intent.category.LAUNCHER'
+              for f in a.findall('intent-filter') for c in f.findall('category'))]
+          assert launchers == ['com.vibesync.app.MainActivity'], \
+              f'launcher 必須唯一且是 MainActivity，得到 {launchers}'
+          print('merged manifest 語意斷言 OK：唯一 dispatcher、無 plugin CallbackActivity、launcher=MainActivity')
+          EOF
 
       - name: Upload merged release manifest as artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

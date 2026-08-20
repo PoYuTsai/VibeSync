@@ -26,7 +26,13 @@ class AuthCallbackDispatcherActivity : Activity() {
             uri != null && liveCallback != null -> {
                 Log.i(MainActivity.TAG, "dispatcher route=web-auth host=${uri.host ?: "none"}")
                 liveCallback.success(uri.toString())
-                finishAndRemoveTask()
+                // 偏離 pinned plugin CallbackActivity 的無條件 finishAndRemoveTask：
+                // 只有本 activity 是 task root（task 裡只有自己）才可移除整個
+                // task；否則（被 launch 進含 MainActivity 或 Custom Tab 的
+                // 既有 task）只 finish 自己，絕不連帶清掉既有 app task。
+                // 不額外把 app task 帶回前景：那會對 Main 送 VIEW intent，
+                // 造成 app_links／supabase 對同一 URI 二次處理。
+                if (isTaskRoot) finishAndRemoveTask() else finish()
             }
             uri != null -> {
                 Log.i(MainActivity.TAG, "dispatcher route=main host=${uri.host ?: "none"}")

@@ -62,6 +62,13 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
     }
+
+    // AND-03 seam 測試（Robolectric）需要 Android 資源
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 // release 組建的 fail-closed 守門：缺簽名欄位或 keystore 檔不存在就直接擋，
@@ -87,4 +94,8 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    // AND-03 dispatcher seam 測試（deterministic、不連外），CI 由
+    // distribute／release 的 testReleaseUnitTest 執行
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
 }

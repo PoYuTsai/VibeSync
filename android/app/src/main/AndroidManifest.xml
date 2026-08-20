@@ -44,12 +44,23 @@
              app_links／supabase_flutter 接手。單一擁有者＝不會跳
              activity 選擇器；分流細節見 AuthCallbackDispatcherActivity。
              不得再宣告 flutter_web_auth_2 CallbackActivity 或第二個
-             同 scheme intent-filter，否則會撞選擇器。 -->
+             同 scheme intent-filter，否則會撞選擇器。
+
+             taskAffinity=""（Main 與 dispatcher 皆設）刻意偏離 pinned
+             flutter_web_auth_2 4.1.0 README「移除 taskAffinity」的建議：
+             空 affinity 讓惡意 app 無法用同名 affinity 併進我們的 task
+             （task-hijacking／StrandHogg 緩解，API<30 仍可被利用）。
+             轉送仍正確：NEW_TASK 找既有 task 時，affinity 比對不到會再用
+             task root component 比對（AOSP Task#isSameIntentFilter），
+             MainActivity 是 launcher task 的 root，必回到既有 task 的
+             onNewIntent、不疊第二實例。可執行證據：install-smoke.sh 的
+             「既有 Main→callback→dumpsys 單實例／單 task」步驟（API 24＋36）。 -->
         <activity
             android:name=".AuthCallbackDispatcherActivity"
             android:exported="true"
             android:excludeFromRecents="true"
             android:noHistory="true"
+            android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>

@@ -173,6 +173,39 @@ void main() {
       );
     });
 
+    test('task-hijacking 緩解：Main 與 dispatcher 都是空 taskAffinity', () {
+      // 刻意偏離 pinned flutter_web_auth_2 README「移除 taskAffinity」：
+      // 空 affinity 擋惡意 app 併 task；轉送正確性由 install smoke 的
+      // dumpsys 單實例／單 task 證據扛（理由詳見 manifest 註解）
+      expect(_attr(_activityByName(manifest, '.MainActivity'), 'taskAffinity'),
+          '');
+      expect(_attr(_activityByName(manifest, _dispatcher), 'taskAffinity'), '');
+    });
+
+    test('Dispatcher OAuth 收尾不得移除既有 app task（isTaskRoot 守門）', () {
+      final kotlin = _read(
+        'android/app/src/main/kotlin/com/vibesync/app/'
+        'AuthCallbackDispatcherActivity.kt',
+      );
+      expect(
+        kotlin,
+        contains('if (isTaskRoot) finishAndRemoveTask() else finish()'),
+        reason: '無條件 finishAndRemoveTask 會把含 MainActivity 的 task 整個清掉',
+      );
+    });
+
+    test('P1-2 seam：Robolectric 測試 seed 真 plugin callbacks map', () {
+      final seam = _read(
+        'android/app/src/test/kotlin/com/vibesync/app/'
+        'AuthCallbackDispatcherActivityTest.kt',
+      );
+      expect(seam, contains('FlutterWebAuth2Plugin.callbacks[scheme] = fake'));
+      expect(seam, contains('"$_scheme"'));
+      expect(seam, contains('$_callbackHost#'));
+      expect(seam, contains('nextStartedActivity'));
+      expect(seam, contains('RobolectricTestRunner'));
+    });
+
     test('冷暖路由：MainActivity exported、singleTop、無 VIEW filter', () {
       final main = _activityByName(manifest, '.MainActivity');
       expect(_attr(main, 'exported'), 'true');
@@ -316,6 +349,13 @@ void main() {
       expect(gate, contains('normalize_sha256'));
     });
 
+    test('P2：gate 不印 alias（GitHub secret）與 Owner，只放行效期與指紋', () {
+      final gate = _read('tools/preflight/check-android-signing.sh');
+      expect(gate.contains('Alias name:'), isFalse,
+          reason: 'alias 是 GitHub secret，任何輸出路徑都不得含它');
+      expect(gate, contains('grep -E "Valid from:|SHA256:|SHA-256"'));
+    });
+
     test('P1-3 負向驗證涵蓋 tampered、wrong-package、wrong-fingerprint', () {
       final script = _read('tools/android/signing-gate-negative-check.sh');
       expect(script, contains('expect_gate_fail'));
@@ -425,6 +465,25 @@ void main() {
         isTrue,
         reason: 'P1-3：每次 build 都要跑可執行負向驗證',
       );
+      expect(
+        runs.any((r) => r.contains('install-smoke-negative-check.sh')),
+        isTrue,
+        reason: 'P1-1：ClassNotFound 掃描的 fail-closed 迴歸測試要進 CI',
+      );
+      expect(
+        runs.any((r) =>
+            r.contains('testReleaseUnitTest') &&
+            r.contains('AuthCallbackDispatcherActivityTest')),
+        isTrue,
+        reason: 'P1-2：dispatcher seam 單元測試要進 CI',
+      );
+      expect(
+        runs.any((r) =>
+            r.contains('merged-release-AndroidManifest.xml') &&
+            r.contains('com.poyutsai.vibesync')),
+        isTrue,
+        reason: 'P2：merged manifest 要有語意斷言，不只留檔',
+      );
 
       final uploadNames = steps
           .where((s) =>
@@ -495,6 +554,32 @@ void main() {
         contains('PID'),
         reason: '暖啟必須同 PID（onNewIntent），程序不得重複',
       );
+    });
+
+    test('P1-2：smoke 先建既有 Main 再送 callback，dumpsys 計數單實例／單 task', () {
+      final smoke = _read('tools/android/install-smoke.sh');
+      expect(smoke, contains('dumpsys activity activities'));
+      expect(smoke, contains('assert_single_main_and_task'));
+      expect(
+        smoke.indexOf('MainActivity route=warm'),
+        lessThan(smoke.indexOf('adb shell am force-stop')),
+        reason: '必須先驗「既有 Main 收 callback 走 onNewIntent」，才做 force-stop 冷啟',
+      );
+    });
+
+    test('P1-1：smoke 不得把 adb 輸出串進 grep（SIGPIPE 會漏報），且有負向測試', () {
+      final smoke = _read('tools/android/install-smoke.sh');
+      for (final line in smoke.split('\n')) {
+        expect(
+          RegExp(r'adb .*\|\s*grep').hasMatch(line),
+          isFalse,
+          reason: 'pipefail 下 grep -q 早退會讓上游 SIGPIPE 141 漏報：$line',
+        );
+      }
+      final negative = _read('tools/android/install-smoke-negative-check.sh');
+      expect(negative, contains('ClassNotFoundException'));
+      expect(negative, contains('fail closed'));
+      expect(negative, contains('fake'));
     });
 
     test('P1-4：emulator runner 釘 v2.38.0 immutable SHA，矩陣含 API 24＋36', () {
@@ -586,6 +671,13 @@ void main() {
       expect(
         runs.any((r) => r.contains('check-android-signing.sh keystore')),
         isTrue,
+      );
+      expect(
+        runs.any((r) =>
+            r.contains('testReleaseUnitTest') &&
+            r.contains('AuthCallbackDispatcherActivityTest')),
+        isTrue,
+        reason: 'P1-2：Play 通道也要跑 dispatcher seam 單元測試',
       );
       final artifactSteps = steps
           .where((s) => _run(s).contains('check-android-signing.sh artifact'))
