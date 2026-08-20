@@ -1,5 +1,6 @@
 // test/unit/config/environment_test.dart
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/config/environment.dart';
 
@@ -52,6 +53,37 @@ void main() {
         AppConfig.authRedirectUri,
         startsWith('com.poyutsai.vibesync://login-callback'),
       );
+    });
+
+    group('OAuth 與 email redirect 分流（P1-1）', () {
+      tearDown(() {
+        debugDefaultTargetPlatformOverride = null;
+      });
+
+      test('Android OAuth 用 oauth-callback，email 流程維持 login-callback',
+          () {
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        expect(
+          AppConfig.oauthRedirectUri,
+          'com.poyutsai.vibesync://oauth-callback',
+        );
+        expect(
+          AppConfig.authRedirectUri,
+          'com.poyutsai.vibesync://login-callback',
+        );
+      });
+
+      test('iOS OAuth 與 email 都維持 login-callback（行為不變）', () {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        expect(
+          AppConfig.oauthRedirectUri,
+          'com.poyutsai.vibesync://login-callback',
+        );
+        expect(
+          AppConfig.authRedirectUri,
+          'com.poyutsai.vibesync://login-callback',
+        );
+      });
     });
 
     test('RevenueCat key selection rejects server keys in production', () {

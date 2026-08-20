@@ -35,14 +35,28 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Email 深連結契約（signup 確認／resend／密碼重設）：
+                 com.poyutsai.vibesync://login-callback 唯一擁有者是
+                 MainActivity（singleTop：冷啟走 launch intent、暖啟走
+                 onNewIntent），由 app_links／supabase_flutter 接手處理。
+                 OAuth 走 oauth-callback（下方 CallbackActivity），兩條路
+                 host 不同不會撞 activity 選擇器，密碼重設連結也不會被
+                 CallbackActivity 吞掉。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="com.poyutsai.vibesync"
+                    android:host="login-callback" />
+            </intent-filter>
         </activity>
         <!-- flutter_web_auth_2 4.1.0 的 OAuth callback 契約：
-             com.poyutsai.vibesync://login-callback 唯一擁有者是
-             CallbackActivity。MainActivity 不得重複宣告同 scheme，
-             否則同 App 兩個 activity 都匹配會跳選擇器，OAuth 回不了 App。
-             已知缺口：密碼重設 email 深連結也用同一 redirect URI，會落在
-             CallbackActivity 被吞掉——Android 密碼重設流程屬 AUTH-01
-             （Slice 3）處理，此處先凍結 OAuth 契約。 -->
+             com.poyutsai.vibesync://oauth-callback 唯一擁有者是
+             CallbackActivity。MainActivity 不得宣告同 host，否則同 App
+             兩個 activity 都匹配會跳選擇器，OAuth 回不了 App。
+             此 URI 需在 Supabase Auth Redirect URLs allowlist，
+             見 docs/integrations/auth.md。 -->
         <activity
             android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
             android:exported="true">
@@ -52,7 +66,7 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data
                     android:scheme="com.poyutsai.vibesync"
-                    android:host="login-callback" />
+                    android:host="oauth-callback" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

@@ -435,6 +435,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # P1-6：release-android 是全新 job，.g.dart／.freezed.dart 不在 git，
+      # appbundle 前必須自己跑 build_runner，不能依賴 flutter-gate 的產物
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
       - name: Setup Ruby
         uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
         with:

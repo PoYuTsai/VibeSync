@@ -82,4 +82,56 @@ void main() {
       expect(result, isTrue);
     });
   });
+
+  // P1-1 分流後的 Android 深連結路由回歸：
+  // 冷啟＝getInitialLink 拿到 launch intent 的 URI（login-callback 進
+  // MainActivity）；暖啟＝singleTop onNewIntent 後由 supabase_flutter 發
+  // auth 事件走 nextPasswordRecoveryState 狀態機。
+  group('Android 冷暖深連結路由回歸（P1-1）', () {
+    test('冷啟 initial link：login-callback 密碼重設連結（fragment 與 query 形態）都被辨識',
+        () {
+      final fragmentForm = Uri.parse(
+        'com.poyutsai.vibesync://login-callback#access_token=abc&type=recovery',
+      );
+      final queryForm = Uri.parse(
+        'com.poyutsai.vibesync://login-callback?code=xyz&type=recovery',
+      );
+
+      expect(AuthRecoveryHelper.isPasswordRecoveryLink(fragmentForm), isTrue);
+      expect(AuthRecoveryHelper.isPasswordRecoveryLink(queryForm), isTrue);
+    });
+
+    test('oauth-callback 連結屬 OAuth 流程，不得誤判為密碼重設', () {
+      final oauthCallback = Uri.parse(
+        'com.poyutsai.vibesync://oauth-callback?code=abc123',
+      );
+
+      expect(AuthRecoveryHelper.isPasswordRecoveryLink(oauthCallback), isFalse);
+    });
+
+    test('冷啟 signup 確認連結不進 recovery 模式', () {
+      final signupConfirm = Uri.parse(
+        'com.poyutsai.vibesync://login-callback#access_token=abc&type=signup',
+      );
+
+      expect(
+        AuthRecoveryHelper.isPasswordRecoveryLink(signupConfirm),
+        isFalse,
+      );
+    });
+
+    test('暖啟：recovery 事件進入、signedIn 退出（onNewIntent 後的事件序）', () {
+      var state = AuthRecoveryHelper.nextPasswordRecoveryState(
+        event: AuthChangeEvent.passwordRecovery,
+        currentState: false,
+      );
+      expect(state, isTrue);
+
+      state = AuthRecoveryHelper.nextPasswordRecoveryState(
+        event: AuthChangeEvent.signedIn,
+        currentState: state,
+      );
+      expect(state, isFalse);
+    });
+  });
 }

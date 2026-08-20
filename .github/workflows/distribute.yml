@@ -153,11 +153,27 @@ jobs:
       - name: Verify release APK signing (AND-02 gate)
         run: ./tools/preflight/check-android-signing.sh artifact build/app/outputs/flutter-apk/app-release.apk
 
-      - name: Prepare release notes
+      # P1-2：同一 SHA 同時產出簽名 AAB（Play 通道產物）；APK 留給
+      # Firebase App Distribution 與 emulator smoke
+      - name: Build AAB (Production backend)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
-          echo "Branch: $GIT_REF" > release-notes.txt
-          echo "Commit: $GIT_SHA" >> release-notes.txt
-          echo "Environment: production backend" >> release-notes.txt
+          flutter build appbundle --release \
+            --dart-define=GIT_SHA=$GIT_SHA \
+            --dart-define=ENV=prod \
+            --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN"
+
+      - name: Verify release AAB signing (AND-02 gate)
+        run: ./tools/preflight/check-android-signing.sh artifact build/app/outputs/bundle/release/app-release.aab
+
+      # P1-3：用真簽好的 AAB 證明 gate 對 tampered／wrong-package 會擋
+      - name: Signing gate negative checks
+        run: ./tools/android/signing-gate-negative-check.sh build/app/outputs/bundle/release/app-release.aab
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -166,24 +182,12 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 7
 
-      # SEC-01：只回報 secret 是否存在，不印出任何子字串或長度等衍生內容
-      - name: Check Firebase secrets present
-        run: |
-          missing=0
-          [ -n "$FIREBASE_ANDROID_APP_ID" ] || { echo "::error::FIREBASE_ANDROID_APP_ID is not set"; missing=1; }
-          [ -n "$FIREBASE_SERVICE_ACCOUNT" ] || { echo "::error::FIREBASE_SERVICE_ACCOUNT is not set"; missing=1; }
-          exit "$missing"
-        env:
-          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-
-      - name: Upload to Firebase App Distribution
-        uses: wzieba/Firebase-Distribution-Github-Action@bd494989dd4bec0343f78adee87fe66e48279ad6 # v1
+      - name: Upload AAB as artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
-          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          file: build/app/outputs/flutter-apk/app-release.apk
-          releaseNotesFile: release-notes.txt
+          name: android-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          retention-days: 7
 
   # CI-01：安裝＋冷啟動 smoke（AND-01：ClassNotFound＝0）。
   # 無本地 Android 實機，emulator action 為必要新依賴，釘 immutable SHA。
@@ -217,13 +221,55 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Run install & cold-launch smoke
-        uses: ReactiveCircus/android-emulator-runner@e93c997dcab69054e999e3924af3d21c4a736e13 # v2.9.0
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: ${{ matrix.api-level }}
           target: ${{ matrix.target }}
           arch: x86_64
           disable-animations: true
           script: ./tools/android/install-smoke.sh build/app/outputs/flutter-apk/app-release.apk
+
+  # P1-7：Firebase 派發只在 API 24＋36 兩個 smoke 變體都綠之後才跑；
+  # 冷啟動 crash 或 ClassNotFound 的 build 絕不派發給測試者。
+  firebase-distribute:
+    name: Firebase App Distribution
+    needs: android-install-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GIT_REF: ${{ github.ref_name }}
+      GIT_SHA: ${{ github.sha }}
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: android-apk
+          path: build/app/outputs/flutter-apk/
+
+      - name: Prepare release notes
+        run: |
+          echo "Branch: $GIT_REF" > release-notes.txt
+          echo "Commit: $GIT_SHA" >> release-notes.txt
+          echo "Environment: production backend" >> release-notes.txt
+
+      # SEC-01：只回報 secret 是否存在，不印出任何子字串或長度等衍生內容
+      - name: Check Firebase secrets present
+        run: |
+          missing=0
+          [ -n "$FIREBASE_ANDROID_APP_ID" ] || { echo "::error::FIREBASE_ANDROID_APP_ID is not set"; missing=1; }
+          [ -n "$FIREBASE_SERVICE_ACCOUNT" ] || { echo "::error::FIREBASE_SERVICE_ACCOUNT is not set"; missing=1; }
+          exit "$missing"
+        env:
+          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Upload to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@bd494989dd4bec0343f78adee87fe66e48279ad6 # v1
+        with:
+          appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          file: build/app/outputs/flutter-apk/app-release.apk
+          releaseNotesFile: release-notes.txt
 
   build-ios:
     needs: [flutter-gate, ios-keyboard-gate]
