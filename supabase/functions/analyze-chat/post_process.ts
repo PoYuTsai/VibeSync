@@ -282,9 +282,11 @@ const MEDIA_ONLY_MARKER =
   /(?:貼圖|表情符號|emoji|sticker|photo|image|照片|圖片|影片|語音|通話|missed|ringtone)/i;
 const STABLE_DECLARATION_CUE =
   /(?:喜歡|很愛|熱愛|討厭|不喜歡|興趣|平常|常常|通常|每天|每週|每個週末|固定|有在|習慣|都會|最近在學|養了?|家裡有)/;
-const INTEREST_DECLARATION_CUE =
-  /(?:喜歡|很愛|熱愛|興趣|平常|常常|通常|每天|每週|每個週末|固定|有在|習慣|都會|最近在學|養了?|家裡有)/;
-const NEGATED_INTEREST_CUE = /(?:不喜歡|不愛|討厭|沒(?:有)?興趣)/;
+const INTEREST_CUE =
+  /(?:不是(?:很|超|最|熱)?愛|不是喜歡|不(?:太|怎麼)?(?:喜歡|愛)|不(?:常常|常|通常|每天|每週|固定|會|想|養)|不感興趣|沒(?:有)?(?:很|那麼)?喜歡|沒(?:有)?興趣|沒(?:有)?(?:在|每天|每週|固定|常常|通常|都會|養)|討厭|無興趣|喜歡|(?:很|超|最|熱)?愛|興趣|平常|常常|通常|每天|每週|每個週末|固定|有在|習慣|都會|最近在學|養了?|家裡有)/g;
+const NEGATED_INTEREST_CUE = /^(?:不是|不|沒|討厭|無)/;
+const INTEREST_CLAUSE_BREAK =
+  /(?:[，,。；;！!？?\n]+|但(?:是)?|可是|不過|而是)/;
 
 function meaningfulText(value: string): string {
   return [...value]
@@ -308,7 +310,7 @@ function isSubstantiveProfileEvidence(value: string): boolean {
 function sourceMessagesForTargetProfile({ result, requestMessages }: {
   result?: Record<string, unknown>;
   requestMessages?: BallListMessage[];
-}): { messages: PartnerEvidenceMessage[]; raw: BallListMessage[] } {
+}): PartnerEvidenceMessage[] {
   const recognized = (result?.recognizedConversation as
     | Record<string, unknown>
     | undefined)?.messages;
@@ -325,7 +327,7 @@ function sourceMessagesForTargetProfile({ result, requestMessages }: {
     if (!isSubstantiveProfileEvidence(content)) return;
     messages.push({ content, sourceIndex });
   });
-  return { messages, raw };
+  return messages;
 }
 
 function normalizeTargetProfileValue(
@@ -365,18 +367,30 @@ function sourceDirectlyNamesValue(
     normalizedSource.includes(normalizedValue);
 }
 
-function sourceNegatesInterest(value: string, sourceMessage: string): boolean {
-  if (NEGATED_INTEREST_CUE.test(sourceMessage)) return true;
+function sourceDeclaresInterest(value: string, sourceMessage: string): boolean {
   const normalizedValue = meaningfulText(value);
-  const normalizedSource = meaningfulText(sourceMessage);
-  const valueIndex = normalizedSource.indexOf(normalizedValue);
-  if (valueIndex < 0) return false;
-  const prefix = normalizedSource.slice(
-    Math.max(0, valueIndex - 6),
-    valueIndex,
-  );
-  // 高精確優先：像「我平常不爬山」即使同時命中「平常」，也不能升格。
-  return /[不沒無]/.test(prefix);
+  if (normalizedValue.length === 0) return false;
+  for (const rawClause of sourceMessage.split(INTEREST_CLAUSE_BREAK)) {
+    const clause = meaningfulText(rawClause);
+    let searchFrom = 0;
+    while (searchFrom <= clause.length - normalizedValue.length) {
+      const valueIndex = clause.indexOf(normalizedValue, searchFrom);
+      if (valueIndex < 0) break;
+      const before = clause.slice(0, valueIndex);
+      const after = clause.slice(valueIndex + normalizedValue.length);
+      const beforeCues = before.match(INTEREST_CUE) ?? [];
+      const afterCues = after.match(INTEREST_CUE) ?? [];
+      const nearestCue = beforeCues[beforeCues.length - 1] ?? afterCues[0];
+      // declaration cue 必須跟 value 在同一個語意小句；這同時保住
+      // 「不喜歡爬山，但喜歡潛水」，並擋住「喜歡爬山，但潛水很危險」
+      // 或「潛水我不喜歡」被錯標成潛水興趣。
+      if (nearestCue != null && !NEGATED_INTEREST_CUE.test(nearestCue)) {
+        return true;
+      }
+      searchFrom = valueIndex + normalizedValue.length;
+    }
+  }
+  return false;
 }
 
 function sourceSelfDeclaresTrait(
@@ -406,43 +420,21 @@ function sourceSelfDeclaresTrait(
   ].some((pattern) => normalizedSource.includes(pattern));
 }
 
-function hasTurnBoundaryBetween(
-  evidence: PartnerEvidenceMessage[],
-  rawMessages: BallListMessage[],
-): boolean {
-  const sorted = [...evidence].sort((a, b) => a.sourceIndex - b.sourceIndex);
-  for (let i = 0; i < sorted.length - 1; i++) {
-    for (let j = i + 1; j < sorted.length; j++) {
-      for (
-        let cursor = sorted[i].sourceIndex + 1;
-        cursor < sorted[j].sourceIndex;
-        cursor++
-      ) {
-        if (rawMessages[cursor]?.isFromMe === true) return true;
-      }
-    }
-  }
-  return false;
-}
-
 function isSupportedTargetProfileCandidate({
   kind,
   value,
   evidence,
-  rawMessages,
 }: {
   kind: TargetProfileKind;
   value: string;
   evidence: PartnerEvidenceMessage[];
-  rawMessages: BallListMessage[];
 }): boolean {
   if (evidence.length === 0) return false;
 
   if (kind === "interests") {
     return evidence.some((source) =>
       sourceDirectlyNamesValue(value, source.content) &&
-      INTEREST_DECLARATION_CUE.test(source.content) &&
-      !sourceNegatesInterest(value, source.content)
+      sourceDeclaresInterest(value, source.content)
     );
   }
 
@@ -452,33 +444,22 @@ function isSupportedTargetProfileCandidate({
     );
   }
 
-  // trait：對方明講「我很慢熱」可用單一來源；推測型 trait 必須在兩個
-  // 分開的互動回合都出現，不能把同一波連發的語氣升格成人格。
-  if (
-    evidence.some((source) => sourceSelfDeclaresTrait(value, source.content))
-  ) {
-    return true;
-  }
-  // 「我喜歡幽默的人」雖然字面提到幽默，仍是偏好而非自我描述；若模型
-  // 要從行為推測人格，證據應是實際行為文字，不是把她談論的對象倒灌給她。
-  if (
-    evidence.some((source) => sourceDirectlyNamesValue(value, source.content))
-  ) {
-    return false;
-  }
-  return evidence.length >= 2 && hasTurnBoundaryBetween(evidence, rawMessages);
+  // trait 只接受她直接自述。兩句真實原文只能證明「她說過這兩句」，server
+  // 無法可靠判斷它們是否共同支持「幽默自信」等抽象人格；一律不替模型
+  // 升格，避免把無關跨回合訊息寫進 v1 可信記憶。
+  return evidence.some((source) =>
+    sourceSelfDeclaresTrait(value, source.content)
+  );
 }
 
 function sanitizeTargetProfileCandidates({
   rawCandidates,
   kind,
   sources,
-  rawMessages,
 }: {
   rawCandidates: unknown;
   kind: TargetProfileKind;
   sources: PartnerEvidenceMessage[];
-  rawMessages: BallListMessage[];
 }): Array<{ value: string; sourceMessages: string[] }> {
   if (!Array.isArray(rawCandidates)) return [];
   const accepted: Array<{ value: string; sourceMessages: string[] }> = [];
@@ -521,7 +502,6 @@ function sanitizeTargetProfileCandidates({
         kind,
         value,
         evidence: matched,
-        rawMessages,
       })
     ) {
       continue;
@@ -558,8 +538,7 @@ export function sanitizeTargetProfile({
       sanitizeTargetProfileCandidates({
         rawCandidates: profile[kind],
         kind,
-        sources: sources.messages,
-        rawMessages: sources.raw,
+        sources,
       }),
     ]),
   ) as Record<

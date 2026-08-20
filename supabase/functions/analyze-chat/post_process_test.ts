@@ -220,6 +220,133 @@ Deno.test("targetProfile：提到喜歡某種人格，不等於她本人有該�
   );
 });
 
+Deno.test("targetProfile：跨回合兩句無關原文也不能升格成推測人格", () => {
+  const input = buildBaseResult();
+  input.targetProfile = {
+    interests: [],
+    traits: [{
+      value: "幽默自信",
+      evidence: ["今天天氣不錯", "我待會要去吃飯"],
+    }],
+    notes: [],
+  };
+
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+    requestMessages: [
+      { isFromMe: false, content: "今天天氣不錯" },
+      { isFromMe: true, content: "真的，終於放晴了" },
+      { isFromMe: false, content: "我待會要去吃飯" },
+    ],
+  });
+
+  assertEquals(
+    (result.targetProfile as Record<string, unknown>).traits,
+    [],
+  );
+});
+
+Deno.test("targetProfile：超愛／最愛是明確興趣自述", () => {
+  for (
+    const [value, message] of [
+      ["潛水", "我超愛潛水"],
+      ["爬山", "我最愛爬山"],
+    ]
+  ) {
+    const input = buildBaseResult();
+    input.targetProfile = {
+      interests: [{ value, evidence: [message] }],
+      traits: [],
+      notes: [],
+    };
+
+    const result = postProcessAnalysisResult({
+      result: input,
+      recognizeOnly: false,
+      isMyMessageMode: false,
+      allowedFeatures: ESSENTIAL_FEATURES,
+      requestMessages: [{ isFromMe: false, content: message }],
+    });
+
+    assertEquals(
+      (result.targetProfile as Record<string, unknown>).interests,
+      [value],
+    );
+  }
+});
+
+Deno.test("targetProfile：同句否定爬山不應誤刪明講喜歡的潛水", () => {
+  const input = buildBaseResult();
+  const message = "我不喜歡爬山，我喜歡潛水";
+  input.targetProfile = {
+    interests: [{ value: "潛水", evidence: [message] }],
+    traits: [],
+    notes: [],
+  };
+
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+    requestMessages: [{ isFromMe: false, content: message }],
+  });
+
+  assertEquals(
+    (result.targetProfile as Record<string, unknown>).interests,
+    ["潛水"],
+  );
+});
+
+Deno.test("targetProfile：值後面的否定不能被反向當成興趣自述", () => {
+  const input = buildBaseResult();
+  const message = "潛水我不喜歡";
+  input.targetProfile = {
+    interests: [{ value: "潛水", evidence: [message] }],
+    traits: [],
+    notes: [],
+  };
+
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+    requestMessages: [{ isFromMe: false, content: message }],
+  });
+
+  assertEquals(
+    (result.targetProfile as Record<string, unknown>).interests,
+    [],
+  );
+});
+
+Deno.test("targetProfile：別句的喜歡不能替無關主題提供興趣證據", () => {
+  const input = buildBaseResult();
+  const message = "我喜歡爬山，但潛水很危險";
+  input.targetProfile = {
+    interests: [{ value: "潛水", evidence: [message] }],
+    traits: [],
+    notes: [],
+  };
+
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+    requestMessages: [{ isFromMe: false, content: message }],
+  });
+
+  assertEquals(
+    (result.targetProfile as Record<string, unknown>).interests,
+    [],
+  );
+});
+
 Deno.test("targetProfile：明講不喜歡的主題只能是邊界，不能變成興趣", () => {
   const input = buildBaseResult();
   input.targetProfile = {
