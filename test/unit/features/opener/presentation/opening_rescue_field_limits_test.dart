@@ -55,6 +55,28 @@ void main() {
     await Hive.close();
   });
 
+  test('分析卡方法欄位使用客戶看得懂的小標', () {
+    expect(
+      {
+        for (final key in [
+          'frameRead',
+          'masterObservation',
+          'curiosityHook',
+          'masterMove',
+          'twoBallPlan',
+        ])
+          key: OpeningRescueScreen.profileAnalysisLabelFor(key),
+      },
+      {
+        'frameRead': '互動判斷',
+        'masterObservation': '重點觀察',
+        'curiosityHook': '容易接話',
+        'masterMove': '開場建議',
+        'twoBallPlan': '兩個接點',
+      },
+    );
+  });
+
   testWidgets('名字欄位輸入超過 200 字元會被截斷在 200', (tester) async {
     await _pumpManualTab(tester);
 

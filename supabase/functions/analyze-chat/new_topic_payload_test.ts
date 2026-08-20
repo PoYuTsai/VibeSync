@@ -204,6 +204,29 @@ Deno.test("normalize：openingLine 的「你」轉「妳」，教練欄位不動
   assertEquals(result.topics[0].nextMove, "她反駁的話你就順著演");
 });
 
+Deno.test("normalize：openingLine 丟掉混入外語 token 的整個子句", () => {
+  const topics = modelTopics();
+  topics[0] = {
+    ...topics[0],
+    openingLine: "妳學新東西的時間都long在白天，感覺很自律",
+  };
+  topics[1] = {
+    ...topics[1],
+    openingLine: "大夜班還在學新東西，怎麼約простее。妳平常都幾點睡",
+  };
+  const result = normalizeNewTopicModelPayload({
+    topics,
+    recommendation: { index: 0 },
+  });
+
+  assert(result.ok);
+  assertEquals(result.topics[0].openingLine, "感覺很自律");
+  assertEquals(
+    result.topics[1].openingLine,
+    "大夜班還在學新東西，妳平常都幾點睡",
+  );
+});
+
 Deno.test("normalize：項數不是五整份失敗（不可丟壞題續走）", () => {
   assertFalse(
     normalizeNewTopicModelPayload({

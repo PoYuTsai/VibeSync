@@ -126,6 +126,27 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
     'coldRead': '冷讀',
   };
 
+  /// profileAnalysis 的 server key 保持契約穩定；畫面只顯示客戶看得懂的語言，
+  /// 不把「高手手法／雙球策略」這類內部方法名端出去。
+  static const profileAnalysisLabels = {
+    'style': '風格',
+    'personality': '切入判斷',
+    'avoidTopics': '先避開',
+    'frameRead': '互動判斷',
+    'positiveHooks': '可接線索',
+    'masterObservation': '重點觀察',
+    'curiosityHook': '容易接話',
+    'masterMove': '開場建議',
+    'twoBallPlan': '兩個接點',
+    'talkingPoints': '話題切入點',
+    'openingStrategy': '推薦策略',
+    'vibe': '氛圍',
+    'interests': '興趣',
+  };
+
+  static String? profileAnalysisLabelFor(String key) =>
+      profileAnalysisLabels[key];
+
   /// Card list is contract-driven, not payload driven（contract v2）：
   /// Free 依展示序放 extend/humor/tease 實卡（缺句跳過，舊 v1 單卡快取只有
   /// extend），再固定補 resonate/coldRead 兩張鎖卡升級 CTA；鎖卡 content
@@ -1573,26 +1594,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
   List<Widget> _buildProfileAnalysisItems(Map<String, dynamic> analysis) {
     final items = <Widget>[];
-    final labelMap = {
-      'style': '風格',
-      'personality': '切入判斷',
-      'avoidTopics': '先避開',
-      'frameRead': '框架判斷',
-      'positiveHooks': '可接線索',
-      'masterObservation': '高手觀察',
-      'curiosityHook': '好奇鉤子',
-      'masterMove': '高手手法',
-      'twoBallPlan': '雙球策略',
-      'talkingPoints': '話題切入點',
-      'openingStrategy': '推薦策略',
-      'vibe': '氛圍',
-      'interests': '興趣',
-    };
 
     for (final entry in analysis.entries) {
       // Whitelist: backend may include telemetry keys (e.g. insufficientInfo)
       // in profileAnalysis; only render fields we have a Chinese label for.
-      final label = labelMap[entry.key];
+      final label = OpeningRescueScreen.profileAnalysisLabelFor(entry.key);
       if (label == null) continue;
       final value = entry.value;
       if (value == null) continue;

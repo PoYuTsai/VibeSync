@@ -116,6 +116,19 @@ Deno.test("sanitizeOpenerText 正規化換行：字面 \\n 轉真換行、壓多
   assertEquals(sanitizeOpenerText("大夜班還在學新東西 有點狠欸"), "大夜班還在學新東西 有點狠欸");
 });
 
+Deno.test("sanitizeOpenerText 丟掉混入外語 token 的整個子句", () => {
+  assertEquals(
+    sanitizeOpenerText(
+      "大夜班還在學新東西，應該比妳自己糾結怎麼約простее。妳平常都幾點睡",
+    ),
+    "大夜班還在學新東西，妳平常都幾點睡",
+  );
+  assertEquals(
+    sanitizeOpenerText("妳學新東西的時間都long在白天，感覺很自律"),
+    "感覺很自律",
+  );
+});
+
 Deno.test("sanitizeOpenerText 擋 JSON/code fence/超長，收合法短句", () => {
   // 傳給對方的訊息一律「妳」（見 outgoing_message_text.ts）。
   assertEquals(sanitizeOpenerText("你好，看到你養柴犬"), "妳好，看到妳養柴犬");

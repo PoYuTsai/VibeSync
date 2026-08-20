@@ -8,9 +8,7 @@
 // code fence 修不回，都必須整份失敗；不可丟掉壞題後照樣扣 3。
 
 import {
-  normalizeOutgoingPunctuation,
-  normalizeOutgoingScript,
-  normalizePartnerPronoun,
+  normalizeOutgoingMessageText,
 } from "./outgoing_message_text.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
 
@@ -330,12 +328,10 @@ export function normalizeNewTopicModelPayload(
       rawTopic.direction,
       NEW_TOPIC_FIELD_CAPS.direction,
     );
-    const openingLine = normalizeOutgoingScript(
-      normalizeOutgoingPunctuation(
-        normalizePartnerPronoun(sanitizeModelVisibleText(
-          rawTopic.openingLine,
-          NEW_TOPIC_FIELD_CAPS.openingLine,
-        )),
+    const openingLine = normalizeOutgoingMessageText(
+      sanitizeModelVisibleText(
+        rawTopic.openingLine,
+        NEW_TOPIC_FIELD_CAPS.openingLine,
       ),
     );
     const whyItWorks = sanitizeCustomerExplanationText(
@@ -426,12 +422,10 @@ export function mergeNewTopicRepairWithPrimaryOpeningLines(
     if (!isPlainObject(repairedTopic) || !isPlainObject(primaryTopic)) {
       return repairedTopic;
     }
-    const primaryOpeningLine = normalizeOutgoingScript(
-      normalizeOutgoingPunctuation(
-        normalizePartnerPronoun(sanitizeModelVisibleText(
-          primaryTopic.openingLine,
-          NEW_TOPIC_FIELD_CAPS.openingLine,
-        )),
+    const primaryOpeningLine = normalizeOutgoingMessageText(
+      sanitizeModelVisibleText(
+        primaryTopic.openingLine,
+        NEW_TOPIC_FIELD_CAPS.openingLine,
       ),
     );
     return primaryOpeningLine === null

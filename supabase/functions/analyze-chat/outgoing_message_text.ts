@@ -1,4 +1,5 @@
 import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
+import { stripUnexpectedForeignClauses } from "./unexpected_foreign_text.ts";
 
 // 「要原封傳給對方的訊息」共用的確定性正規化。
 //
@@ -10,8 +11,8 @@ import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 // prompt 又是 0/40，開場白同期 3/25。這種間歇性缺陷 prompt 治不了，但它是
 // 使用者原封複製貼上寄出去的文字，錯一個字就露餡。
 //
-// 這裡刻意獨立成一個沒有 import 的模組：opener_payload 與 new_topic_payload
-// 都要用，而 post_process 已經 import opener_payload，放那裡會成環。
+// 這裡刻意獨立成共用模組：opener_payload 與 new_topic_payload 都要用，而
+// post_process 已經 import opener_payload，放那裡會成環。
 
 /** 「你們」可能指混合群體，留著不動；其餘一律轉成「妳」。 */
 export function normalizePartnerPronoun(line: string | null): string | null {
@@ -46,4 +47,18 @@ export function normalizeOutgoingPunctuation(line: string | null): string | null
  */
 export function normalizeOutgoingScript(line: string | null): string | null {
   return line === null ? null : toTraditionalChinese(line);
+}
+
+/** 所有「可直接傳」文字共用同一條正規化管線，避免 Opener／新話題漏接護欄。 */
+export function normalizeOutgoingMessageText(
+  line: string | null,
+): string | null {
+  const expanded = line
+    ?.replace(/\\n/g, "\n")
+    .replace(/\n{2,}/g, "\n") ?? null;
+  return stripUnexpectedForeignClauses(
+    normalizeOutgoingScript(
+      normalizeOutgoingPunctuation(normalizePartnerPronoun(expanded)),
+    ),
+  );
 }
