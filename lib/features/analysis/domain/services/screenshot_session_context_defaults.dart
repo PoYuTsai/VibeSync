@@ -1,6 +1,7 @@
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../../partner/domain/entities/partner.dart';
+import '../../../partner/domain/services/partner_memory_tag_catalog.dart';
 
 /// Resolves the starting context shown before screenshot analysis.
 ///
@@ -33,7 +34,8 @@ class ScreenshotSessionContextDefaults {
       duration:
           partner?.defaultAcquaintanceDuration ?? AcquaintanceDuration.justMet,
       goal: partner?.defaultGoal ?? UserGoal.dateInvite,
-      analysisContextNote: _normalized(partner?.customNote),
+      analysisContextNote:
+          PartnerMemoryTagCatalog.sanitizedNote(partner?.customNote),
     );
   }
 

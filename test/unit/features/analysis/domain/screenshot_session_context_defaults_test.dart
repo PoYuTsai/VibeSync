@@ -11,7 +11,7 @@ void main() {
     MeetingContext? meetingContext = MeetingContext.friendIntro,
     AcquaintanceDuration? duration = AcquaintanceDuration.fewWeeks,
     UserGoal? goal = UserGoal.maintainHeat,
-    String? note = '  她不喜歡臨時約  ',
+    String? note = '  工作忙碌、異地  ',
   }) {
     return Partner(
       id: 'p1',
@@ -46,7 +46,7 @@ void main() {
     expect(resolved.meetingContext, MeetingContext.friendIntro);
     expect(resolved.duration, AcquaintanceDuration.fewWeeks);
     expect(resolved.goal, UserGoal.maintainHeat);
-    expect(resolved.analysisContextNote, '她不喜歡臨時約');
+    expect(resolved.analysisContextNote, '工作忙碌、住不同縣市');
   });
 
   test('conversation context wins over partner-card defaults', () {
@@ -82,6 +82,16 @@ void main() {
     expect(resolved.meetingContext, MeetingContext.datingApp);
     expect(resolved.duration, AcquaintanceDuration.justMet);
     expect(resolved.goal, UserGoal.dateInvite);
+    expect(resolved.analysisContextNote, isNull);
+  });
+
+  test('legacy free text and relationship-state chips do not enter analysis',
+      () {
+    final resolved = ScreenshotSessionContextDefaults.resolve(
+      conversation: conversation(),
+      partner: partner(note: '想約出來見面、剛認識'),
+    );
+
     expect(resolved.analysisContextNote, isNull);
   });
 }

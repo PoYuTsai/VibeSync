@@ -3,6 +3,7 @@ import 'package:characters/characters.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/domain/extensions/partner_aggregates.dart';
+import '../../../partner/domain/services/partner_memory_tag_catalog.dart';
 
 /// 新話題專用的對象作戰板脈絡（2026-07-24 計畫 §9）。
 ///
@@ -53,7 +54,8 @@ class NewTopicPartnerContextBuilder {
     }
 
     final aggregate = partner.aggregateOver(conversations);
-    final customNote = partner.customNote?.trim();
+    final customNote =
+        PartnerMemoryTagCatalog.sanitizedNote(partner.customNote);
     final hasCustomNote = customNote != null && customNote.isNotEmpty;
     final aggregateNotes =
         hasCustomNote ? const <String>[] : _topNNotes(aggregate.unionNotes);
@@ -92,11 +94,13 @@ class NewTopicPartnerContextBuilder {
       buffer.writeln('- 性格：${aggregate.unionTraits.join('、')}');
     }
     if (hasCustomNote) {
-      buffer.writeln('- 你的備註：$customNote');
+      buffer.writeln('- 使用者確認的對方資料：$customNote');
     } else if (aggregateNotes.isNotEmpty) {
       buffer.writeln('- 過往備註：${aggregateNotes.join('；')}');
     }
-    buffer.writeln('- 只可使用以上明確紀錄，不得猜補對方興趣');
+    buffer.writeln(
+      '- 只可使用以上明確紀錄；手動資料不能冒充她說過的話，也不得猜補未列出的興趣',
+    );
 
     return NewTopicPartnerContext(
       promptText: _capWithGraphemeSafeTruncation(buffer.toString()),

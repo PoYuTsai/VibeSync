@@ -481,9 +481,12 @@ void main() {
     await t.tap(find.byTooltip('對象設定'));
     await t.pumpAndSettle();
     // 2026-08-19 備註手填關閉（chips-only）：改點 chips，note 由選取以「、」串成。
+    await t.ensureVisible(find.text('慢熱'));
     await t.tap(find.text('慢熱'));
+    await t.pump();
+    await t.ensureVisible(find.text('喜歡戶外'));
     await t.tap(find.text('喜歡戶外'));
-    await t.pumpAndSettle();
+    await t.pump();
     await t.tap(find.text('儲存'));
     await t.pumpAndSettle();
 
@@ -503,7 +506,7 @@ void main() {
         coachChatRepositoryProvider
             .overrideWithValue(MemoryCoachChatRepository()),
         partnerByIdProvider('p1')
-            .overrideWith((_) => _p(customNote: '慢熱，喜歡戶外活動')),
+            .overrideWith((_) => _p(customNote: '慢熱、喜歡戶外')),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
         dataQualityFlagProvider('p1')
@@ -511,7 +514,7 @@ void main() {
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => [_conv('existing')]),
         partnerListProvider.overrideWith(
-          (_) => [_p(customNote: '慢熱，喜歡戶外活動')],
+          (_) => [_p(customNote: '慢熱、喜歡戶外')],
         ),
       ],
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
@@ -521,7 +524,7 @@ void main() {
     await _expandDetailedTraits(t);
     await _scrollUntilVisible(t, find.text('你的設定'));
     expect(find.text('你的設定'), findsOneWidget);
-    expect(find.text('慢熱，喜歡戶外活動'), findsOneWidget);
+    expect(find.text('慢熱、喜歡戶外'), findsOneWidget);
   });
 
   testWidgets('⋮ menu: merge DISABLED when only one partner exists', (t) async {

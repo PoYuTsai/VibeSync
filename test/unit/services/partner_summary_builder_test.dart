@@ -91,7 +91,19 @@ void main() {
       conversations: const [],
     );
 
-    expect(s, contains('你的備註：剛認識、工作忙碌、異地'));
+    expect(s, contains('使用者確認的對方資料：工作忙碌、住不同縣市'));
+    expect(s, isNot(contains('剛認識')));
+    expect(s, contains('不是她在本次對話中的原話'));
+  });
+
+  test('只有舊自由文字時不進 prompt', () {
+    final s = builder.build(
+      partner: _partner(customNote: '想約出來見面'),
+      conversations: const [],
+    );
+
+    expect(s, isNot(contains('想約出來見面')));
+    expect(s, contains('尚無對話記錄'));
   });
 
   test('first-conversation partner: summary returns single-line marker', () {
@@ -239,9 +251,7 @@ void main() {
     expect(s, contains('對象 #abcd'));
   });
 
-  test(
-      'user-set customNote 1000 chars: final summary still <= 1500 (truncation works)',
-      () {
+  test('long legacy customNote is excluded and summary remains bounded', () {
     final s = builder.build(
       partner: _partner(customNote: 'X' * 1000),
       conversations: [
@@ -261,18 +271,19 @@ void main() {
       s.characters.length,
       lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap),
     );
+    expect(s, isNot(contains('X' * 20)));
   });
 
   test('truncation preserves "[truncated]" suffix marker', () {
-    // Construct a customNote large enough to force truncation.
+    // 已驗證分析 notes 仍可能很長，builder 的 grapheme cap 必須保留。
     final s = builder.build(
-      partner: _partner(customNote: 'Z' * 4000),
+      partner: _partner(),
       conversations: [
         _convo(
           id: 'c1',
           updatedAt: DateTime(2026, 4, 1),
           lastEnthusiasmScore: 70,
-          snapshotJson: _snapshot(interests: const ['a']),
+          snapshotJson: _snapshot(notes: ['Z' * 4000]),
         ),
       ],
     );
@@ -287,15 +298,14 @@ void main() {
     const family = '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}';
     // Tile enough families that the buffer crosses kHardCharCap mid-cluster.
     // 2000 clusters × 1 grapheme each = 2000 graphemes, well past 1500.
-    final note = family * 2000;
     final s = builder.build(
-      partner: _partner(customNote: note),
+      partner: _partner(),
       conversations: [
         _convo(
           id: 'c1',
           updatedAt: DateTime(2026, 4, 1),
           lastEnthusiasmScore: 70,
-          snapshotJson: _snapshot(interests: const ['a']),
+          snapshotJson: _snapshot(notes: [family * 2000]),
         ),
       ],
     );
@@ -334,15 +344,14 @@ void main() {
   });
 
   test('truncation does NOT split a CJK char (basic non-ASCII boundary)', () {
-    final note = '中' * 4000;
     final s = builder.build(
-      partner: _partner(customNote: note),
+      partner: _partner(),
       conversations: [
         _convo(
           id: 'c1',
           updatedAt: DateTime(2026, 4, 1),
           lastEnthusiasmScore: 70,
-          snapshotJson: _snapshot(interests: const ['a']),
+          snapshotJson: _snapshot(notes: ['中' * 4000]),
         ),
       ],
     );
@@ -380,7 +389,7 @@ void main() {
 
   test('customNote takes precedence over past notes when present', () {
     final s = builder.build(
-      partner: _partner(customNote: '我記得她喜歡跑步'),
+      partner: _partner(customNote: '有在健身'),
       conversations: [
         _convo(
           id: 'c1',
@@ -390,7 +399,23 @@ void main() {
         ),
       ],
     );
-    expect(s, contains('你的備註：我記得她喜歡跑步'));
+    expect(s, contains('使用者確認的對方資料：有在健身'));
     expect(s, isNot(contains('過往備註')));
+  });
+
+  test('不可信 customNote 不會遮掉有出處的過往 notes', () {
+    final s = builder.build(
+      partner: _partner(customNote: '我記得她喜歡跑步'),
+      conversations: [
+        _convo(
+          id: 'c1',
+          updatedAt: DateTime(2026, 4, 1),
+          snapshotJson: _snapshot(notes: const ['她明說週末會爬山']),
+        ),
+      ],
+    );
+
+    expect(s, isNot(contains('我記得她喜歡跑步')));
+    expect(s, contains('過往備註：她明說週末會爬山'));
   });
 }

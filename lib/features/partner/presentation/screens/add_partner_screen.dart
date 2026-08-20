@@ -18,7 +18,8 @@
 //
 // Post-A2 visual redesign (Bruce 2026-04-27 Discord, Eric Q1b/Q2b/Q3a):
 // - VibeSync purple gradient background.
-// - Single free-text hint signals "name OR description" intent.
+// - Name remains free text; partner background is chips-only so third-person
+//   context cannot drift into the user's own goals.
 //
 // 2026-06-17 暗紫橘統一 (BrandKit migration): the explanatory card / input /
 // CTA now use the shared BrandKit primitives (BrandSurfaceCard +
@@ -55,6 +56,8 @@ import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
+import '../../domain/services/partner_memory_tag_catalog.dart';
+import '../widgets/partner_memory_chip_picker.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
 
 // 標準 56 縮成 48：整張表單要一頁裝完（proof: add_partner_screen_test 的
@@ -70,7 +73,7 @@ class AddPartnerScreen extends ConsumerStatefulWidget {
 
 class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
   final _name = TextEditingController();
-  final _backgroundNote = TextEditingController();
+  Set<String> _memoryTags = <String>{};
   MeetingContext _meetingContext = MeetingContext.datingApp;
   AcquaintanceDuration _duration = AcquaintanceDuration.justMet;
   UserGoal _goal = UserGoal.dateInvite;
@@ -92,7 +95,6 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
   void dispose() {
     _name.removeListener(_onNameChanged);
     _name.dispose();
-    _backgroundNote.dispose();
     super.dispose();
   }
 
@@ -135,7 +137,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
   }
 
   String? get _normalizedBackgroundNote {
-    final note = _backgroundNote.text.trim();
+    final note = PartnerMemoryTagCatalog.serialize(_memoryTags);
     return note.isEmpty ? null : note;
   }
 
@@ -278,7 +280,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
   }
 
   Widget _buildContextCard() {
-    final note = _backgroundNote.text.trim();
+    final note = PartnerMemoryTagCatalog.compactSummary(_memoryTags);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -317,10 +319,10 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
           rows: [
             _FormRowData(
               key: const ValueKey('add-partner-background-row'),
-              label: '補充背景',
+              label: '關於她',
               value: note.isEmpty ? '選填' : note,
               muted: note.isEmpty,
-              onTap: _editBackgroundNote,
+              onTap: _editMemoryTags,
             ),
           ],
         ),
@@ -426,70 +428,66 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
     );
   }
 
-  /// 補充背景直接綁 [_backgroundNote]：sheet 用臨時 controller 會在收合動畫
-  /// 還在跑時就被 dispose（TextField 仍在重建）→ 「used after disposed」。
-  Future<void> _editBackgroundNote() async {
-    await showAppSheet<void>(
+  Future<void> _editMemoryTags() async {
+    var draft = Set<String>.of(_memoryTags);
+    final selected = await showAppSheet<Set<String>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.brandSurface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '補充背景（選填）',
-                  style: AppTypography.titleMedium.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    fontWeight: FontWeight.w800,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * 0.82,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '關於她（選填）',
+                    style: AppTypography.titleMedium.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '補上聊天看不到的關係或背景，分析時會先帶入。',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                    height: 1.35,
+                  const SizedBox(height: 6),
+                  Text(
+                    '只選你確定的資料；關係進度和回覆狀態會由聊天分析更新。',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                      height: 1.35,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  key: const ValueKey('add-partner-background-field'),
-                  controller: _backgroundNote,
-                  autofocus: true,
-                  maxLength: 300,
-                  minLines: 3,
-                  maxLines: 5,
-                  textInputAction: TextInputAction.newline,
-                  cursorColor: AppColors.ctaStart,
-                  style: AppTypography.bodyLarge.copyWith(color: Colors.white),
-                  // counterText 清掉：0/300 自己吃掉一列高，maxLength 仍然擋得住。
-                  decoration: brandInputDecoration(hintText: '沒有可以留空')
-                      .copyWith(counterText: ''),
-                ),
-                const SizedBox(height: 12),
-                BrandPrimaryButton(
-                  key: const ValueKey('add-partner-background-save'),
-                  label: '完成',
-                  onPressed: () => Navigator.of(sheetContext).pop(),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: PartnerMemoryChipPicker(
+                        selected: draft,
+                        onChanged: (value) {
+                          setSheetState(() => draft = value);
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  BrandPrimaryButton(
+                    key: const ValueKey('add-partner-background-save'),
+                    label: '完成',
+                    onPressed: () => Navigator.of(sheetContext).pop(draft),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
-    if (mounted) setState(() {});
+    if (selected != null && mounted) {
+      setState(() => _memoryTags = selected);
+    }
   }
 }
 

@@ -541,7 +541,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       ...aggregate.unionInterests,
       ...aggregate.unionTraits,
     ].take(3).toList();
-    final hasNote = (partner.customNote?.trim().isNotEmpty ?? false);
+    final hasNote = partnerContext.hasNoteSignals;
 
     return BrandSurfaceCard(
       tone: BrandVisualTone.coach,

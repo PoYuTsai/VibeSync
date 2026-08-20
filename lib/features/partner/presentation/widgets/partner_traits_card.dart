@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/extensions/partner_aggregates.dart';
+import '../../domain/services/partner_memory_tag_catalog.dart';
 
 class PartnerTraitsCard extends StatelessWidget {
   final PartnerAggregateView view;
@@ -25,9 +26,11 @@ class PartnerTraitsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final trimmedCustomNote = customNote?.trim();
+    final trimmedCustomNote = PartnerMemoryTagCatalog.sanitizedNote(customNote);
     final hasCustomNote =
         trimmedCustomNote != null && trimmedCustomNote.isNotEmpty;
+    final hasLegacyNote =
+        PartnerMemoryTagCatalog.hasUnrecognizedContent(customNote);
 
     return Container(
       decoration: BoxDecoration(
@@ -72,6 +75,16 @@ class PartnerTraitsCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               trimmedCustomNote,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (hasLegacyNote) ...[
+            Text(
+              '有一段舊版背景尚未套用；請到設定重新選擇後再提供給 AI。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary,
                 height: 1.5,

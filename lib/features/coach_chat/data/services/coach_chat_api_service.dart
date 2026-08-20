@@ -43,8 +43,8 @@ class CoachChatPartnerHint {
   final String? name;
   final List<String> traits;
 
-  /// 使用者在「對象設定」填的長期備註（customNote），2026-08-19 起
-  /// 直接進教練 prompt（先前只進分析/新話題）。
+  /// 使用者在「對象設定」確認的 allowlisted chips。Provider 必須先經
+  /// PartnerMemoryTagCatalog 清洗，舊自由文字不得直接進教練 prompt。
   final String? note;
 
   const CoachChatPartnerHint({

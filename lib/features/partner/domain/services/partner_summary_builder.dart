@@ -3,6 +3,7 @@ import 'package:characters/characters.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../entities/partner.dart';
 import '../extensions/partner_aggregates.dart';
+import 'partner_memory_tag_catalog.dart';
 
 /// Composes a compact partner-context summary that the AI prompt prepends
 /// before each `analyze-chat` call. Output is grapheme-safe truncated to
@@ -22,15 +23,16 @@ class PartnerSummaryBuilder {
   }) {
     if (_hasOwnerMismatch(partner, conversations)) return '';
 
-    final customNote = partner.customNote?.trim();
+    final customNote =
+        PartnerMemoryTagCatalog.sanitizedNote(partner.customNote);
     final hasCustomNote = customNote != null && customNote.isNotEmpty;
 
     if (conversations.isEmpty) {
       if (hasCustomNote) {
         return _capWithGraphemeSafeTruncation(
           '[對象背景：${_partnerName(partner)}]\n'
-          '- 你的備註：$customNote\n'
-          '- 注意：這是使用者手動確認的背景；仍不得猜補未提供的事實',
+          '- 使用者確認的對方資料：$customNote\n'
+          '- 注意：這不是她在本次對話中的原話；不得偽造引用或猜補未提供的事實',
         );
       }
       return _renderHeader(partner, '（尚無對話記錄）');
@@ -67,7 +69,7 @@ class PartnerSummaryBuilder {
     }
 
     if (hasCustomNote) {
-      buffer.writeln('- 你的備註：$customNote');
+      buffer.writeln('- 使用者確認的對方資料：$customNote');
     } else if (aggregate.unionNotes != null) {
       final pastNotes = _topNNotes(aggregate.unionNotes!);
       if (pastNotes.isNotEmpty) {
@@ -75,7 +77,9 @@ class PartnerSummaryBuilder {
       }
     }
 
-    buffer.writeln('- 注意：以上是整體背景，當前對話內容仍以本次訊息為主');
+    buffer.writeln(
+      '- 注意：以上是整體背景；手動資料不是她在本次對話中的原話，當前內容仍以本次訊息為主',
+    );
 
     return _capWithGraphemeSafeTruncation(buffer.toString());
   }

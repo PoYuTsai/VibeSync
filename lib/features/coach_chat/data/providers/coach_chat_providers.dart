@@ -4,6 +4,7 @@ import '../../../../core/services/storage_service.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../partner/domain/services/partner_memory_tag_catalog.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
@@ -536,7 +537,7 @@ class CoachChatController
     return CoachChatPartnerHint(
       name: partner.name,
       traits: aggregate.unionTraits.take(5).toList(growable: false),
-      note: partner.customNote,
+      note: PartnerMemoryTagCatalog.sanitizedNote(partner.customNote),
     );
   }
 

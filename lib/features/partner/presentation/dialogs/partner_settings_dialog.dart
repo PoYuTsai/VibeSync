@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../core/services/app_haptics.dart';
-import '../../../../shared/widgets/pressable_scale.dart';
+import '../../domain/services/partner_memory_tag_catalog.dart';
+import '../widgets/partner_memory_chip_picker.dart';
 
 class PartnerSettingsResult {
   final String name;
@@ -20,10 +21,10 @@ class PartnerSettingsResult {
 /// 2026-08-19 Eric 拍板：備註**手填整個關掉，只能選 chips**。自由文字讓
 /// 模型分不清主詞（「想約出來見面」是他還是她），prompt 層修三刀都在
 /// 對抗被污染的資料；改成 chips-only 後，資料保證全是「描述她」。
-/// 底層維持 schema-light：`note` 欄位不動（Hive/Edge 零改），只由選中
-/// 的 chips 用「、」串成存入。舊資料的自由文字：使用者沒動過 chips 就
-/// 原樣保留；一旦動了 chips，note 以當前選取重建（舊污染句就此清掉，
-/// 這是刻意的資料清洗，不是 bug）。
+/// 2026-08-20 再收口：catalog 搬到 domain，新增對象與所有 AI 消費端共用；
+/// 關係進度／回覆狀態不屬於「關於她」。底層維持 schema-light：`note`
+/// 欄位不動，只由 chips 用「、」串成。舊自由文字保留在本機，但 AI 邊界
+/// fail closed；一旦動 chips，就以當前選取重建並清掉舊污染句。
 class PartnerSettingsDialog extends StatefulWidget {
   final String initialName;
   final String initialNote;
@@ -40,42 +41,15 @@ class PartnerSettingsDialog extends StatefulWidget {
 
 class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
   late final TextEditingController _nameController;
-  late final Set<String> _selected;
+  late Set<String> _selected;
   bool _chipsTouched = false;
-
-  /// 主詞契約：這個彈窗填的是對象，四類 chips 一律以**對方**為主詞。
-  /// 關係階段獨立於工作／地點／穩定生活資料，避免「工作忙碌」被模型當
-  /// 人格、「異地」被當興趣。用戶自己的目標不進這裡。
-  static const Map<String, List<String>> _quickTagGroups = {
-    '關係階段': ['剛認識', '回覆慢但都會回', '不太主動但有回', '聊得來但還沒約'],
-    '工作／作息': ['工作忙碌', '輪班', '早睡早起', '夜貓子'],
-    '地點／距離': ['同縣市', '異地', '常出差', '距離有點遠'],
-    '穩定偏好／生活': [
-      '慢熱',
-      '外向健談',
-      '幽默愛鬧',
-      '喜歡戶外',
-      '愛喝咖啡',
-      '吃貨',
-      '有在健身',
-      '愛看劇',
-    ],
-  };
-
-  static final Set<String> _allTags =
-      _quickTagGroups.values.expand((tags) => tags).toSet();
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialName);
-    // 從既有 note 還原選取：只認得 chip 片語，其餘（舊自由文字）不進
-    // 選取集。
-    _selected = widget.initialNote
-        .split('、')
-        .map((s) => s.trim())
-        .where(_allTags.contains)
-        .toSet();
+    // Catalog 同時負責舊 chips 別名與 merge 前綴；自由文字不會被猜成 tag。
+    _selected = PartnerMemoryTagCatalog.parse(widget.initialNote);
   }
 
   @override
@@ -90,17 +64,13 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
   /// chips 沒動過就保留原 note（含舊自由文字）；動過就以選取重建。
   String get _resultNote {
     if (!_chipsTouched) return widget.initialNote.trim();
-    return [
-      for (final tags in _quickTagGroups.values)
-        for (final tag in tags)
-          if (_selected.contains(tag)) tag,
-    ].join('、');
+    return PartnerMemoryTagCatalog.serialize(_selected);
   }
 
-  void _toggleTag(String tag) {
+  void _updateTags(Set<String> selected) {
     setState(() {
       _chipsTouched = true;
-      if (!_selected.remove(tag)) _selected.add(tag);
+      _selected = selected;
     });
   }
 
@@ -149,44 +119,33 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),
-            Text('她是怎樣的人', style: fieldLabelStyle),
-            const SizedBox(height: 8),
-            for (final entry in _quickTagGroups.entries) ...[
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      entry.key,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.glassTextSecondary,
-                            fontWeight: FontWeight.w600,
-                          ),
+            Text('關於她', style: fieldLabelStyle),
+            const SizedBox(height: 4),
+            Text(
+              '只選你確定的資料；關係進度與回覆狀態會由聊天分析更新。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.glassTextSecondary,
+                    height: 1.35,
+                  ),
+            ),
+            if (PartnerMemoryTagCatalog.hasUnrecognizedContent(
+              widget.initialNote,
+            )) ...[
+              const SizedBox(height: 6),
+              Text(
+                '舊版背景目前不會提供給 AI；重新選擇任一項並儲存後，舊內容會被清除。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.ctaStart,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (final tag in entry.value) ...[
-                              _QuickTagChip(
-                                label: tag,
-                                inserted: _selected.contains(tag),
-                                onTap: () => _toggleTag(tag),
-                              ),
-                              const SizedBox(width: 6),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ],
-            const SizedBox(height: 2),
+            const SizedBox(height: 10),
+            PartnerMemoryChipPicker(
+              selected: _selected,
+              onChanged: _updateTags,
+            ),
             Text(
               '儲存後立即生效：教練和下一次分析都會帶上這些背景，不需要每次重填。',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -206,56 +165,6 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
           child: const Text('儲存'),
         ),
       ],
-    );
-  }
-}
-
-/// 選取 chip：點一下選、再點取消。選取語言對標「關於我」
-/// ProfileChipSection：未選＝中性細框次要字；已選＝ctaStart 橘框＋
-/// 橘粗體＋淡橘底。不加勾勾 icon——選中靠色差與字重表達（勾勾殘影
-/// 與寬度跳動是已登記坑）。
-class _QuickTagChip extends StatelessWidget {
-  const _QuickTagChip({
-    required this.label,
-    required this.inserted,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool inserted;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    // PressableScale 自帶放開觸覺（tap），不再包 AppHaptics.onPress——會雙震。
-    return PressableScale(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: inserted
-                ? AppColors.ctaStart.withValues(alpha: 0.14)
-                : AppColors.glassTextPrimary.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: inserted
-                  ? AppColors.ctaStart.withValues(alpha: 0.64)
-                  : AppColors.glassTextSecondary.withValues(alpha: 0.35),
-            ),
-          ),
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: inserted
-                      ? AppColors.ctaStart
-                      : AppColors.glassTextSecondary,
-                  fontWeight: inserted ? FontWeight.w800 : FontWeight.w600,
-                ),
-          ),
-        ),
-      ),
     );
   }
 }

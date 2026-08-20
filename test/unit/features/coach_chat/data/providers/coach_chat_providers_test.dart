@@ -70,12 +70,13 @@ ConversationSummary _summary(String content) => ConversationSummary(
       createdAt: DateTime(2026, 5, 7, 9),
     );
 
-Partner _partner() => Partner(
+Partner _partner({String? customNote}) => Partner(
       id: 'p-1',
       name: 'Mia',
       ownerUserId: 'u-1',
       createdAt: DateTime(2026, 5, 1),
       updatedAt: DateTime(2026, 5, 7),
+      customNote: customNote,
     );
 
 Map<String, dynamic> _edgeSuccess({
@@ -422,7 +423,9 @@ void main() {
           ],
           summaries: [_summary('前面在聊旅行和工作生活。')],
         ),
-        partner: _partner(),
+        partner: _partner(
+          customNote: '想約出來見面、剛認識、異地、慢熱',
+        ),
         styleContext: '- Preferred voice: 幽默；回覆要輕鬆、有留白',
       );
       addTearDown(c.dispose);
@@ -460,6 +463,7 @@ void main() {
       expect(calls.single.body['partnerHint'], {
         'name': 'Mia',
         'traits': ['活潑', '慢熟'],
+        'note': '住不同縣市、慢熱',
       });
       expect(calls.single.body['recentMessages'], [
         {

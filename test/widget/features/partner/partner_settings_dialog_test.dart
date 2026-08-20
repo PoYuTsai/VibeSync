@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/partner/presentation/dialogs/partner_settings_dialog.dart';
 
-// 2026-08-19 Eric 拍板：備註手填關閉、chips-only。鎖四件事：
-// 選 chips 存成「、」串接、再點取消、沒動 chips 時舊自由文字原樣保留、
-// 動了 chips 舊自由文字被清洗（刻意行為，殺主詞污染源）。
+// 2026-08-20：關於她只留六類 allowlisted chips。鎖 catalog 呈現、互斥、
+// 舊 alias、未操作保留原值，以及一旦操作就清掉舊自由文字／關係狀態。
 void main() {
   Future<PartnerSettingsResult?> Function() pendingResult = () async => null;
 
@@ -41,41 +40,66 @@ void main() {
     return pendingResult();
   }
 
-  testWidgets('chips 依關係、工作作息、地點距離、穩定生活分組', (tester) async {
+  Future<void> tapChip(WidgetTester tester, String label) async {
+    final finder = find.text(label);
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+    await tester.tap(finder);
+    await tester.pump();
+  }
+
+  testWidgets('chips 依六個安全面向分組，沒有關係進度', (tester) async {
     await pumpDialog(tester);
 
-    expect(find.text('關係階段'), findsOneWidget);
-    expect(find.text('工作／作息'), findsOneWidget);
+    expect(find.text('工作／學業'), findsOneWidget);
     expect(find.text('地點／距離'), findsOneWidget);
-    expect(find.text('穩定偏好／生活'), findsOneWidget);
+    expect(find.text('作息／生活'), findsOneWidget);
+    expect(find.text('個性／互動'), findsOneWidget);
+    expect(find.text('聊天偏好'), findsOneWidget);
+    expect(find.text('興趣'), findsOneWidget);
     expect(find.text('工作忙碌'), findsOneWidget);
-    expect(find.text('異地'), findsOneWidget);
+    expect(find.text('不想聊工作'), findsOneWidget);
+    expect(find.text('喜歡寵物'), findsOneWidget);
+    expect(find.text('關係階段'), findsNothing);
+    expect(find.text('剛認識'), findsNothing);
   });
 
   testWidgets('選兩個 chips 儲存成「、」串接', (tester) async {
     await pumpDialog(tester);
 
-    await tester.tap(find.text('慢熱'));
-    await tester.pump();
-    await tester.tap(find.text('剛認識'));
-    await tester.pump();
+    await tapChip(tester, '慢熱');
+    await tapChip(tester, '工作忙碌');
 
     final result = await save(tester);
-    expect(result!.note, '剛認識、慢熱');
+    expect(result!.note, '工作忙碌、慢熱');
   });
 
-  testWidgets('既有片語顯示已選，再點一次取消', (tester) async {
-    await pumpDialog(tester, note: '慢熱、剛認識');
+  testWidgets('既有安全 alias 顯示 canonical 已選，再點一次取消', (tester) async {
+    await pumpDialog(tester, note: '慢熱、異地');
 
-    await tester.tap(find.text('慢熱'));
-    await tester.pump();
+    await tapChip(tester, '慢熱');
 
     final result = await save(tester);
-    expect(result!.note, '剛認識');
+    expect(result!.note, '住不同縣市');
+  });
+
+  testWidgets('互斥 chips 後選覆蓋前選', (tester) async {
+    await pumpDialog(tester);
+
+    await tapChip(tester, '住同縣市');
+    await tapChip(tester, '住海外');
+
+    final result = await save(tester);
+    expect(result!.note, '住海外');
   });
 
   testWidgets('沒動 chips 時舊自由文字原樣保留（只改名）', (tester) async {
     await pumpDialog(tester, note: '想約出來見面');
+
+    expect(
+      find.text('舊版背景目前不會提供給 AI；重新選擇任一項並儲存後，舊內容會被清除。'),
+      findsOneWidget,
+    );
 
     await tester.enterText(find.byType(TextField), 'Amy');
     await tester.pump();
@@ -86,13 +110,12 @@ void main() {
   });
 
   testWidgets('動了 chips 後舊自由文字被清洗', (tester) async {
-    await pumpDialog(tester, note: '想約出來見面、慢熱');
+    await pumpDialog(tester, note: '想約出來見面、剛認識、慢熱');
 
-    await tester.tap(find.text('剛認識'));
-    await tester.pump();
+    await tapChip(tester, '喜歡寵物');
 
     final result = await save(tester);
-    // 舊 chip 片語（慢熱）保留、自由句（想約出來見面）清掉。
-    expect(result!.note, '剛認識、慢熱');
+    // 安全片語保留；自由句與關係狀態都清掉。
+    expect(result!.note, '慢熱、喜歡寵物');
   });
 }

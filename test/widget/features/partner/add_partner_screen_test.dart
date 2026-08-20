@@ -95,14 +95,13 @@ void main() {
   // disrupt the test framework's between-test cleanup in our setup; running
   // the non-mutating tests first guarantees they always execute.
 
-  testWidgets('hint shows free-text 範例 with emoji (post-redesign copy)',
-      (t) async {
+  testWidgets('名稱欄只提示名字或暱稱', (t) async {
     await t.pumpWidget(harness());
     await t.pumpAndSettle();
     expect(
       find.text('輸入她的名字或暱稱'),
       findsOneWidget,
-      reason: 'hint must signal free-text intent (name OR description)',
+      reason: '背景已改 chips-only，名稱欄只負責名字或暱稱',
     );
   });
 
@@ -119,7 +118,7 @@ void main() {
     expect(find.text('認識情境'), findsOneWidget);
     expect(find.text('認識多久'), findsOneWidget);
     expect(find.text('目前目標'), findsOneWidget);
-    expect(find.text('補充背景'), findsOneWidget);
+    expect(find.text('關於她'), findsOneWidget);
 
     expect(find.text(MeetingContext.datingApp.displayLabel), findsOneWidget);
     expect(
@@ -142,7 +141,7 @@ void main() {
     expect(find.text(UserGoal.dateInvite.displayLabel), findsNothing);
   });
 
-  testWidgets('補充背景下鑽 sheet 存回列上', (t) async {
+  testWidgets('關於她下鑽只提供 chips，選完摘要存回列上', (t) async {
     await t.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => t.binding.setSurfaceSize(null));
     await t.pumpWidget(harness());
@@ -150,14 +149,20 @@ void main() {
 
     await t.tap(find.byKey(const ValueKey('add-partner-background-row')));
     await t.pumpAndSettle();
-    await t.enterText(
+    expect(
       find.byKey(const ValueKey('add-partner-background-field')),
-      '她不喜歡臨時約',
+      findsNothing,
     );
+    await t.ensureVisible(find.text('輪班工作'));
+    await t.tap(find.text('輪班工作'));
+    await t.pump();
+    await t.ensureVisible(find.text('喜歡寵物'));
+    await t.tap(find.text('喜歡寵物'));
+    await t.pump();
     await t.tap(find.byKey(const ValueKey('add-partner-background-save')));
     await t.pumpAndSettle();
 
-    expect(find.text('她不喜歡臨時約'), findsOneWidget);
+    expect(find.text('輪班工作、喜歡寵物'), findsOneWidget);
     expect(find.text('選填'), findsNothing);
   });
 
@@ -275,10 +280,11 @@ void main() {
       );
       await t.tap(find.byKey(const ValueKey('add-partner-background-row')));
       await t.pumpAndSettle();
-      await t.enterText(
-        find.byKey(const ValueKey('add-partner-background-field')),
-        '她不喜歡臨時約',
-      );
+      await t.tap(find.text('慢熱'));
+      await t.pump();
+      await t.ensureVisible(find.text('不想聊工作'));
+      await t.tap(find.text('不想聊工作'));
+      await t.pump();
       await t.tap(find.byKey(const ValueKey('add-partner-background-save')));
       await t.pumpAndSettle();
       final submit = t.widget<BrandPrimaryButton>(
@@ -296,7 +302,7 @@ void main() {
       expect(p.defaultMeetingContext, MeetingContext.friendIntro);
       expect(p.defaultAcquaintanceDuration, AcquaintanceDuration.fewWeeks);
       expect(p.defaultGoal, UserGoal.maintainHeat);
-      expect(p.customNote, '她不喜歡臨時約');
+      expect(p.customNote, '慢熱、不想聊工作');
     },
     // Headless Windows route replacement does not settle; the same Hive write
     // contract is covered by PartnerWriteController.create.

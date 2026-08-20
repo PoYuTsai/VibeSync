@@ -129,7 +129,7 @@ void main() {
               child: PartnerSettingsDialog(
                 initialName: '安安嗯',
                 // 預填三個片語 → 圖裡同時看得到「已選橘」與「未選中性」兩態。
-                initialNote: '慢熱、回覆慢但都會回、愛喝咖啡',
+                initialNote: '工作忙碌、慢熱、愛喝咖啡',
               ),
             ),
           ),

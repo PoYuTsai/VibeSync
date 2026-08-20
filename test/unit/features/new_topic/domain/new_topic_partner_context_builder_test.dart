@@ -83,7 +83,7 @@ void main() {
     expect(text, contains('最近互動投入：72'));
     expect(text, contains('不是關係階段或長期特質'));
     expect(text, contains('興趣：爬山、手沖'));
-    expect(text, contains('只可使用以上明確紀錄，不得猜補對方興趣'));
+    expect(text, contains('不得猜補未列出的興趣'));
     // 不得帶 analyze 語意的「當前對話優先」句。
     expect(text, isNot(contains('當前對話')));
   });
@@ -127,17 +127,32 @@ void main() {
     expect(context.hasTraitSignals, isFalse);
   });
 
-  test('零對話但有 customNote：必須成功輸出（customNote-only）', () {
+  test('零對話但有 allowlisted chips：必須成功輸出', () {
     final context = builder.build(
-      partner: _partner(customNote: '上週聊到她想去日本'),
+      partner: _partner(customNote: '輪班、喜歡寵物'),
       conversations: const [],
     );
 
     expect(context.hasActionableSignals, isTrue);
     expect(context.hasNoteSignals, isTrue);
-    expect(context.promptText, contains('你的備註：上週聊到她想去日本'));
+    expect(
+      context.promptText,
+      contains('使用者確認的對方資料：輪班工作、喜歡寵物'),
+    );
+    expect(context.promptText, contains('不能冒充她說過的話'));
     // 零對話不輸出累計對話行。
     expect(context.promptText, isNot(contains('累計對話')));
+  });
+
+  test('舊自由文字與關係狀態不算 actionable signal', () {
+    final context = builder.build(
+      partner: _partner(customNote: '上週聊到她想去日本、剛認識'),
+      conversations: const [],
+    );
+
+    expect(context.hasActionableSignals, isFalse);
+    expect(context.hasNoteSignals, isFalse);
+    expect(context.promptText, isNull);
   });
 
   test('customNote 缺席才用近期 aggregate notes（最多 5 則）', () {
@@ -179,8 +194,14 @@ void main() {
 
   test('grapheme cap 1500／code-unit cap 2000', () {
     final context = builder.build(
-      partner: _partner(customNote: '🥰' * 1600),
-      conversations: const [],
+      partner: _partner(),
+      conversations: [
+        _convo(
+          id: 'c1',
+          updatedAt: DateTime(2026, 4, 1),
+          snapshotJson: _snapshot(notes: ['🥰' * 1600]),
+        ),
+      ],
     );
 
     final text = context.promptText!;
@@ -192,5 +213,21 @@ void main() {
       text.length,
       lessThanOrEqualTo(NewTopicPartnerContextBuilder.kServerCodeUnitCap),
     );
+  });
+
+  test('不可信 customNote 不會遮掉有出處的 aggregate notes', () {
+    final context = builder.build(
+      partner: _partner(customNote: '想約出來見面'),
+      conversations: [
+        _convo(
+          id: 'c1',
+          updatedAt: DateTime(2026, 4, 1),
+          snapshotJson: _snapshot(notes: const ['她明說喜歡旅行']),
+        ),
+      ],
+    );
+
+    expect(context.promptText, isNot(contains('想約出來見面')));
+    expect(context.promptText, contains('過往備註：她明說喜歡旅行'));
   });
 }

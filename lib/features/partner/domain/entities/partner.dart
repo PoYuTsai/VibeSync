@@ -33,8 +33,9 @@ class Partner extends HiveObject {
   @HiveField(5)
   String? ownerUserId;
 
-  /// Free-form user note about this partner (Partner-level, separate from
-  /// per-conversation notes). Not auto-extracted by AI.
+  /// Partner-level manual context. Current UI stores allowlisted chips joined
+  /// by `、`; legacy installs may still contain free text. Every AI consumer
+  /// must pass this through `PartnerMemoryTagCatalog.sanitizedNote` first.
   @HiveField(6)
   String? customNote;
 
