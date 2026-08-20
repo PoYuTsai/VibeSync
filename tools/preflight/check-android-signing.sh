@@ -4,7 +4,8 @@
 #   keystore 模式：驗證既有 upload keystore 與 storePassword、keyAlias 互相
 #     匹配（keyPassword 由 Gradle 簽名時驗證），且不是 Android debug 憑證。
 #     密碼一律走 env（keytool -storepass:env），不進 argv、不落地、不輸出；
-#     只印 alias、Owner、效期與 SHA256 fingerprint 等中繼資料。
+#     只印效期與 SHA-256 fingerprint。alias 是 GitHub secret、Owner 含
+#     識別資訊，一律不得輸出。
 #   artifact 模式：驗證 release APK/AAB 已簽名、非 debug 憑證，並對帳
 #     package 為 com.vibesync.app。AAB 用 jarsigner -verify 驗簽名項完整性、
 #     官方釘版 bundletool 做語意層 package 抽取；負向驗證見
@@ -38,8 +39,9 @@ fetch_bundletool() {
 }
 
 print_cert_metadata() {
-  # 只放行憑證中繼資料行，避免未來 keytool 輸出格式變動夾帶多餘內容
-  grep -E "Alias name:|Owner:|Valid from:|SHA256:|SHA-256" <<<"$1" | head -8 || true
+  # 只放行效期與指紋行；alias（GitHub secret）與 Owner 不得輸出。
+  # 白名單式放行也避免未來 keytool 輸出格式變動夾帶多餘內容
+  grep -E "Valid from:|SHA256:|SHA-256" <<<"$1" | head -8 || true
 }
 
 # 指紋正規化：去冒號與空白、轉大寫（公開憑證指紋，非機密，可印出）
