@@ -419,6 +419,53 @@ Deno.test("reframer assembles a legacy-compatible final result", async () => {
   assertEquals(finalResult.strategy, "Back off and rebuild trust.");
 });
 
+Deno.test("reframer normalizes AI oriented topic depth for clients", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.decision",
+    selectedStyle: "resonate",
+    nextStepBody: "繼續了解彼此",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "resonate",
+    message: "聽起來這件事對妳很重要",
+    reason: "接住她分享的感受",
+    quotedContext: "這件事對我很重要",
+  }));
+  reframer.pushText(line({
+    type: "analysis.reply_option",
+    style: "resonate",
+    message: "聽起來這件事對妳很重要",
+    reason: "回應她的個人感受",
+  }));
+  reframer.pushText(line({
+    type: "analysis.metrics",
+    topicDepth: {
+      current: "Personal-oriented",
+      suggestion: "繼續聊感受",
+    },
+  }));
+  reframer.pushText(line({ type: "analysis.done" }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done);
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const topicDepth = finalResult.topicDepth as Record<string, unknown>;
+  assertEquals(topicDepth.current, "personal");
+});
+
 Deno.test("reframer passes through stretchLevel, falls back to within on invalid value", async () => {
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({

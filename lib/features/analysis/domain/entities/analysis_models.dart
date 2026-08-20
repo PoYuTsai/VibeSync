@@ -10,13 +10,16 @@ enum TopicDepthLevel {
 
 extension TopicDepthLevelX on TopicDepthLevel {
   static TopicDepthLevel fromString(String value) {
-    switch (value.toLowerCase()) {
+    switch (value.trim().toLowerCase()) {
       case 'facts':
       case 'event':
+      case 'event-oriented':
         return TopicDepthLevel.event;
       case 'personal':
+      case 'personal-oriented':
         return TopicDepthLevel.personal;
       case 'intimate':
+      case 'intimate-oriented':
         return TopicDepthLevel.intimate;
       default:
         return TopicDepthLevel.event;

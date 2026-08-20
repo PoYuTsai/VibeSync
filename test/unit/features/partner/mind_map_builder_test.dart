@@ -96,6 +96,24 @@ void main() {
       expect(map.topics, ['爬山', '咖啡']);
     });
 
+    test('AI oriented 快照在作戰板保留正確話題深度', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(),
+        conversations: [
+          _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 6, 1),
+            snapshotJson: _snapshot(depth: 'Personal-oriented'),
+          ),
+        ],
+      );
+
+      final depth = map.root.children
+          .firstWhere((node) => node.branch == MindMapBranch.topicDepth);
+      expect(depth.children.single.label, '個人層');
+    });
+
     test('取最新一筆可解析快照（依 updatedAt 降冪）', () {
       final map = buildPartnerMindMap(
         partnerName: 'Vivi',

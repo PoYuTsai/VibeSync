@@ -52,6 +52,21 @@ void main() {
   });
 
   group('TopicDepth', () {
+    test('解析 AI 使用的 oriented 話題深度值', () {
+      expect(
+        TopicDepth.fromJson({'current': 'Event-oriented'}).current,
+        TopicDepthLevel.event,
+      );
+      expect(
+        TopicDepth.fromJson({'current': 'Personal-oriented'}).current,
+        TopicDepthLevel.personal,
+      );
+      expect(
+        TopicDepth.fromJson({'current': 'Intimate-oriented'}).current,
+        TopicDepthLevel.intimate,
+      );
+    });
+
     test('creates instance with required fields', () {
       const topicDepth = TopicDepth(
         current: TopicDepthLevel.personal,

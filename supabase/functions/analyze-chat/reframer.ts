@@ -870,7 +870,9 @@ function createLegacyAnalysisAssembler() {
     }
 
     const topicDepth = recordField(event.topicDepth);
-    if (topicDepth) result.topicDepth = topicDepth;
+    if (topicDepth) {
+      result.topicDepth = normalizeRecordForClient("topicDepth", topicDepth);
+    }
 
     // 2026-07-02 dogfood：stream 協議 v2 後沒有 required 事件承載 gameStage，
     // assembler 種子 opening 永遠外流 → UI 對話進度永遠卡破冰。stage 掛在
@@ -1082,7 +1084,9 @@ function coerceClientShapeValue(
   const text = typeof value === "string" ? value.trim() : "";
 
   if (key === "psychology" && text) return { ...existing, subtext: text };
-  if (key === "topicDepth" && text) return { ...existing, current: text };
+  if (key === "topicDepth" && text) {
+    return { ...existing, current: normalizeTopicDepthCurrent(text) };
+  }
   if (key === "enthusiasm") {
     const score = numberField(value);
     if (score !== null) return { ...existing, score: Math.round(score) };
@@ -1239,7 +1243,25 @@ function normalizeRecordForClient(
   }
   const shapes = CLIENT_RECORD_FIELD_SHAPES[key];
   if (!shapes) return record;
-  return conformRecordFields(record, shapes);
+  const conformed = conformRecordFields(record, shapes);
+  if (key !== "topicDepth" || typeof conformed.current !== "string") {
+    return conformed;
+  }
+  const current = normalizeTopicDepthCurrent(conformed.current);
+  return current === conformed.current ? conformed : { ...conformed, current };
+}
+
+function normalizeTopicDepthCurrent(value: string): string {
+  switch (value.trim().toLowerCase()) {
+    case "event-oriented":
+      return "event";
+    case "personal-oriented":
+      return "personal";
+    case "intimate-oriented":
+      return "intimate";
+    default:
+      return value;
+  }
 }
 
 function conformRecordFields(
