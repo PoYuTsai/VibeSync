@@ -51,7 +51,14 @@ void main() {
   testWidgets('chips 依六個安全面向分組，沒有關係進度', (tester) async {
     await pumpDialog(tester);
 
+    expect(
+      find.text('只選你確定、長期成立的；不確定就不要選。'),
+      findsOneWidget,
+    );
     expect(find.text('工作／學業'), findsOneWidget);
+    expect(find.text('最多選 2 個'), findsOneWidget);
+    expect(find.text('最多選 3 個'), findsNWidgets(4));
+    expect(find.text('最多選 5 個'), findsOneWidget);
     expect(find.text('地點／距離'), findsOneWidget);
     expect(find.text('作息／生活'), findsOneWidget);
     expect(find.text('個性／互動'), findsOneWidget);
@@ -62,6 +69,32 @@ void main() {
     expect(find.text('喜歡寵物'), findsOneWidget);
     expect(find.text('關係階段'), findsNothing);
     expect(find.text('剛認識'), findsNothing);
+  });
+
+  testWidgets('分類選滿後停用未選 chips，已選 chips 仍可取消', (tester) async {
+    await pumpDialog(tester);
+
+    await tapChip(tester, '工作忙碌');
+    await tapChip(tester, '輪班工作');
+
+    final disabledInkWell = tester.widget<InkWell>(
+      find
+          .ancestor(
+            of: find.text('遠端工作'),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
+    final selectedInkWell = tester.widget<InkWell>(
+      find
+          .ancestor(
+            of: find.text('工作忙碌'),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
+    expect(disabledInkWell.onTap, isNull);
+    expect(selectedInkWell.onTap, isNotNull);
   });
 
   testWidgets('選兩個 chips 儲存成「、」串接', (tester) async {

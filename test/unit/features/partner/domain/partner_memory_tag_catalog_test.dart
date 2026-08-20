@@ -88,6 +88,49 @@ void main() {
     expect(selected, isNot(contains('住海外')));
   });
 
+  test('每個分類到達上限後，不再加入同分類的新選項', () {
+    var selected = <String>{};
+    selected = PartnerMemoryTagCatalog.toggle(selected, '工作忙碌');
+    selected = PartnerMemoryTagCatalog.toggle(selected, '輪班工作');
+    selected = PartnerMemoryTagCatalog.toggle(selected, '遠端工作');
+
+    expect(selected, <String>{'工作忙碌', '輪班工作'});
+  });
+
+  test('分類已滿仍可取消已選項，也可直接替換互斥項', () {
+    final fullWorkSelection = <String>{'工作忙碌', '輪班工作'};
+    expect(
+      PartnerMemoryTagCatalog.canToggle(fullWorkSelection, '遠端工作'),
+      isFalse,
+    );
+    expect(
+      PartnerMemoryTagCatalog.canToggle(fullWorkSelection, '工作忙碌'),
+      isTrue,
+    );
+
+    var locationSelection = <String>{'住同縣市', '常在外地', '住得近'};
+    expect(
+      PartnerMemoryTagCatalog.canToggle(locationSelection, '住海外'),
+      isTrue,
+    );
+
+    locationSelection =
+        PartnerMemoryTagCatalog.toggle(locationSelection, '住海外');
+    expect(
+      locationSelection,
+      <String>{'住海外', '常在外地', '住得近'},
+    );
+  });
+
+  test('舊資料超過分類上限時，AI 邊界只保留先出現的項目', () {
+    expect(
+      PartnerMemoryTagCatalog.sanitizedNote(
+        '工作忙碌、輪班工作、遠端工作、慢熱',
+      ),
+      '工作忙碌、輪班工作、慢熱',
+    );
+  });
+
   test('compact summary 顯示前兩顆與剩餘數量', () {
     expect(
       PartnerMemoryTagCatalog.compactSummary(

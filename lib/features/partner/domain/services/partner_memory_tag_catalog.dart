@@ -21,78 +21,109 @@ class PartnerMemoryTag {
 }
 
 class PartnerMemoryTagGroup {
-  const PartnerMemoryTagGroup(this.title, this.tags);
+  const PartnerMemoryTagGroup(
+    this.title,
+    this.tags, {
+    required this.maxSelections,
+  });
 
   final String title;
   final List<PartnerMemoryTag> tags;
+
+  /// 避免把同一分類的通用描述全勾，讓 AI 仍看得出真正重點。
+  final int maxSelections;
 }
 
 abstract final class PartnerMemoryTagCatalog {
   static const groups = <PartnerMemoryTagGroup>[
-    PartnerMemoryTagGroup('工作／學業', <PartnerMemoryTag>[
-      PartnerMemoryTag('工作忙碌'),
-      PartnerMemoryTag('輪班工作', aliases: <String>['輪班']),
-      PartnerMemoryTag('遠端工作'),
-      PartnerMemoryTag('自由工作者', aliases: <String>['自由工作']),
-      PartnerMemoryTag('還在念書'),
-      PartnerMemoryTag('常出差'),
-    ]),
-    PartnerMemoryTagGroup('地點／距離', <PartnerMemoryTag>[
-      PartnerMemoryTag(
-        '住同縣市',
-        exclusiveGroup: 'homeLocation',
-        aliases: <String>['同縣市'],
-      ),
-      PartnerMemoryTag(
-        '住不同縣市',
-        exclusiveGroup: 'homeLocation',
-        aliases: <String>['異地'],
-      ),
-      PartnerMemoryTag('住海外', exclusiveGroup: 'homeLocation'),
-      PartnerMemoryTag('常在外地'),
-      PartnerMemoryTag('住得近', exclusiveGroup: 'distance'),
-      PartnerMemoryTag(
-        '住得較遠',
-        exclusiveGroup: 'distance',
-        aliases: <String>['距離有點遠'],
-      ),
-    ]),
-    PartnerMemoryTagGroup('作息／生活', <PartnerMemoryTag>[
-      PartnerMemoryTag('早睡早起', exclusiveGroup: 'sleepSchedule'),
-      PartnerMemoryTag('夜貓子', exclusiveGroup: 'sleepSchedule'),
-      PartnerMemoryTag('平日較忙'),
-      PartnerMemoryTag('休假不固定'),
-      PartnerMemoryTag('不喝酒'),
-      PartnerMemoryTag('吃素'),
-    ]),
-    PartnerMemoryTagGroup('個性／互動', <PartnerMemoryTag>[
-      PartnerMemoryTag('慢熱'),
-      PartnerMemoryTag('外向健談', exclusiveGroup: 'sociability'),
-      PartnerMemoryTag('安靜內向', exclusiveGroup: 'sociability'),
-      PartnerMemoryTag('幽默愛鬧'),
-      PartnerMemoryTag('直接坦率'),
-      PartnerMemoryTag('重視個人空間'),
-    ]),
-    PartnerMemoryTagGroup('聊天偏好', <PartnerMemoryTag>[
-      PartnerMemoryTag('喜歡深入聊'),
-      PartnerMemoryTag('喜歡互虧'),
-      PartnerMemoryTag('偏好文字聊天'),
-      PartnerMemoryTag('喜歡語音聊天'),
-      PartnerMemoryTag('不想聊工作'),
-      PartnerMemoryTag('不喜歡被催回'),
-    ]),
-    PartnerMemoryTagGroup('興趣', <PartnerMemoryTag>[
-      PartnerMemoryTag('喜歡美食', aliases: <String>['吃貨']),
-      PartnerMemoryTag('愛喝咖啡'),
-      PartnerMemoryTag('喜歡旅行'),
-      PartnerMemoryTag('喜歡戶外'),
-      PartnerMemoryTag('有在健身'),
-      PartnerMemoryTag('喜歡寵物'),
-      PartnerMemoryTag('喜歡音樂'),
-      PartnerMemoryTag('愛看劇／電影', aliases: <String>['愛看劇']),
-      PartnerMemoryTag('喜歡閱讀'),
-      PartnerMemoryTag('喜歡遊戲'),
-    ]),
+    PartnerMemoryTagGroup(
+      '工作／學業',
+      <PartnerMemoryTag>[
+        PartnerMemoryTag('工作忙碌'),
+        PartnerMemoryTag('輪班工作', aliases: <String>['輪班']),
+        PartnerMemoryTag('遠端工作'),
+        PartnerMemoryTag('自由工作者', aliases: <String>['自由工作']),
+        PartnerMemoryTag('還在念書'),
+        PartnerMemoryTag('常出差'),
+      ],
+      maxSelections: 2,
+    ),
+    PartnerMemoryTagGroup(
+      '地點／距離',
+      <PartnerMemoryTag>[
+        PartnerMemoryTag(
+          '住同縣市',
+          exclusiveGroup: 'homeLocation',
+          aliases: <String>['同縣市'],
+        ),
+        PartnerMemoryTag(
+          '住不同縣市',
+          exclusiveGroup: 'homeLocation',
+          aliases: <String>['異地'],
+        ),
+        PartnerMemoryTag('住海外', exclusiveGroup: 'homeLocation'),
+        PartnerMemoryTag('常在外地'),
+        PartnerMemoryTag('住得近', exclusiveGroup: 'distance'),
+        PartnerMemoryTag(
+          '住得較遠',
+          exclusiveGroup: 'distance',
+          aliases: <String>['距離有點遠'],
+        ),
+      ],
+      maxSelections: 3,
+    ),
+    PartnerMemoryTagGroup(
+      '作息／生活',
+      <PartnerMemoryTag>[
+        PartnerMemoryTag('早睡早起', exclusiveGroup: 'sleepSchedule'),
+        PartnerMemoryTag('夜貓子', exclusiveGroup: 'sleepSchedule'),
+        PartnerMemoryTag('平日較忙'),
+        PartnerMemoryTag('休假不固定'),
+        PartnerMemoryTag('不喝酒'),
+        PartnerMemoryTag('吃素'),
+      ],
+      maxSelections: 3,
+    ),
+    PartnerMemoryTagGroup(
+      '個性／互動',
+      <PartnerMemoryTag>[
+        PartnerMemoryTag('慢熱'),
+        PartnerMemoryTag('外向健談', exclusiveGroup: 'sociability'),
+        PartnerMemoryTag('安靜內向', exclusiveGroup: 'sociability'),
+        PartnerMemoryTag('幽默愛鬧'),
+        PartnerMemoryTag('直接坦率'),
+        PartnerMemoryTag('重視個人空間'),
+      ],
+      maxSelections: 3,
+    ),
+    PartnerMemoryTagGroup(
+      '聊天偏好',
+      <PartnerMemoryTag>[
+        PartnerMemoryTag('喜歡深入聊'),
+        PartnerMemoryTag('喜歡互虧'),
+        PartnerMemoryTag('偏好文字聊天'),
+        PartnerMemoryTag('喜歡語音聊天'),
+        PartnerMemoryTag('不想聊工作'),
+        PartnerMemoryTag('不喜歡被催回'),
+      ],
+      maxSelections: 3,
+    ),
+    PartnerMemoryTagGroup(
+      '興趣',
+      <PartnerMemoryTag>[
+        PartnerMemoryTag('喜歡美食', aliases: <String>['吃貨']),
+        PartnerMemoryTag('愛喝咖啡'),
+        PartnerMemoryTag('喜歡旅行'),
+        PartnerMemoryTag('喜歡戶外'),
+        PartnerMemoryTag('有在健身'),
+        PartnerMemoryTag('喜歡寵物'),
+        PartnerMemoryTag('喜歡音樂'),
+        PartnerMemoryTag('愛看劇／電影', aliases: <String>['愛看劇']),
+        PartnerMemoryTag('喜歡閱讀'),
+        PartnerMemoryTag('喜歡遊戲'),
+      ],
+      maxSelections: 5,
+    ),
   ];
 
   static final List<PartnerMemoryTag> tags = <PartnerMemoryTag>[
@@ -104,6 +135,12 @@ abstract final class PartnerMemoryTagCatalog {
     for (final tag in tags) tag.label: tag,
     for (final tag in tags)
       for (final alias in tag.aliases) alias: tag,
+  };
+
+  static final Map<String, PartnerMemoryTagGroup> _groupByLabel =
+      <String, PartnerMemoryTagGroup>{
+    for (final group in groups)
+      for (final tag in group.tags) tag.label: group,
   };
 
   /// 從 Hive 舊字串讀出 canonical selection。
@@ -128,6 +165,14 @@ abstract final class PartnerMemoryTagCatalog {
     if (tag == null) return next;
     if (!next.remove(tag.label)) _insert(next, tag);
     return next;
+  }
+
+  /// UI 是否應允許這次點擊。已選項永遠可取消；互斥替換會先扣掉舊值。
+  static bool canToggle(Set<String> current, String label) {
+    final tag = _byToken[label];
+    if (tag == null) return false;
+    if (current.contains(tag.label)) return true;
+    return _insert(Set<String>.of(current), tag);
   }
 
   /// 依畫面分類順序序列化，讓 prompt、測試與 UI preview 都穩定。
@@ -170,13 +215,26 @@ abstract final class PartnerMemoryTagCatalog {
   static String _withoutMergePrefix(String token) =>
       token.replaceFirst(RegExp(r'^\[from [^\]]+\]\s*'), '').trim();
 
-  static void _insert(Set<String> selected, PartnerMemoryTag tag) {
+  static bool _insert(Set<String> selected, PartnerMemoryTag tag) {
+    final candidate = Set<String>.of(selected);
     final exclusiveGroup = tag.exclusiveGroup;
     if (exclusiveGroup != null) {
-      selected.removeWhere(
+      candidate.removeWhere(
         (label) => _byToken[label]?.exclusiveGroup == exclusiveGroup,
       );
     }
-    selected.add(tag.label);
+
+    final group = _groupByLabel[tag.label];
+    if (group == null) return false;
+    final selectedInGroup = group.tags
+        .where((candidateTag) => candidate.contains(candidateTag.label))
+        .length;
+    if (selectedInGroup >= group.maxSelections) return false;
+
+    candidate.add(tag.label);
+    selected
+      ..clear()
+      ..addAll(candidate);
+    return true;
   }
 }

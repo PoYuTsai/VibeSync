@@ -20,13 +20,35 @@ class PartnerMemoryChipPicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          '只選你確定、長期成立的；不確定就不要選。',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppColors.glassTextSecondary,
+                height: 1.4,
+              ),
+        ),
+        const SizedBox(height: 12),
         for (final group in PartnerMemoryTagCatalog.groups) ...[
-          Text(
-            group.title,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.glassTextSecondary,
-                  fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  group.title,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.glassTextSecondary,
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
+              ),
+              Text(
+                '最多選 ${group.maxSelections} 個',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.glassTextSecondary.withValues(
+                        alpha: 0.76,
+                      ),
+                    ),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           Wrap(
@@ -38,9 +60,17 @@ class PartnerMemoryChipPicker extends StatelessWidget {
                   key: ValueKey('partner-memory-chip-${tag.label}'),
                   label: tag.label,
                   selected: selected.contains(tag.label),
-                  onTap: () => onChanged(
-                    PartnerMemoryTagCatalog.toggle(selected, tag.label),
-                  ),
+                  onTap: PartnerMemoryTagCatalog.canToggle(
+                    selected,
+                    tag.label,
+                  )
+                      ? () => onChanged(
+                            PartnerMemoryTagCatalog.toggle(
+                              selected,
+                              tag.label,
+                            ),
+                          )
+                      : null,
                 ),
             ],
           ),
@@ -61,35 +91,39 @@ class _MemoryTagChip extends StatelessWidget {
 
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return PressableScale(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: selected
-                ? AppColors.ctaStart.withValues(alpha: 0.14)
-                : AppColors.glassTextPrimary.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
+    final enabled = onTap != null;
+    return Opacity(
+      opacity: enabled ? 1 : 0.42,
+      child: PressableScale(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
               color: selected
-                  ? AppColors.ctaStart.withValues(alpha: 0.64)
-                  : AppColors.glassTextSecondary.withValues(alpha: 0.35),
+                  ? AppColors.ctaStart.withValues(alpha: 0.14)
+                  : AppColors.glassTextPrimary.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: selected
+                    ? AppColors.ctaStart.withValues(alpha: 0.64)
+                    : AppColors.glassTextSecondary.withValues(alpha: 0.35),
+              ),
             ),
-          ),
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: selected
-                      ? AppColors.ctaStart
-                      : AppColors.glassTextSecondary,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                ),
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: selected
+                        ? AppColors.ctaStart
+                        : AppColors.glassTextSecondary,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
+            ),
           ),
         ),
       ),
