@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 import 'package:vibesync/features/new_topic/presentation/widgets/new_topic_view.dart';
 import 'package:vibesync/features/opener/presentation/screens/opening_rescue_screen.dart';
 
@@ -49,5 +50,22 @@ void main() {
       '免費版先看最推薦的 1 個完整方案',
     );
     expect(NewTopicView.freeUpsellBody, '升級可再解鎖另外 4 個話題');
+  });
+
+  test('未分類例外一律顯示固定客戶文案，不因含中文就外露 SDK details', () {
+    const raw = FunctionException(
+      status: 409,
+      details: {
+        'code': 'NEW_TOPIC_REQUEST_IN_PROGRESS',
+        'message': '這筆請求正在生成中',
+      },
+      reasonPhrase: 'Conflict',
+    );
+
+    final message = NewTopicView.customerMessageForUnexpectedError(raw);
+
+    expect(message, '新話題暫時生成失敗，請稍後再試。');
+    expect(message, isNot(contains('FunctionException')));
+    expect(message, isNot(contains('NEW_TOPIC_REQUEST_IN_PROGRESS')));
   });
 }

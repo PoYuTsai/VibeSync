@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 
 import '../../../../core/config/environment.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -69,12 +70,30 @@ class NewTopicException implements Exception {
   String toString() => message;
 }
 
+/// 請求內容可能已被 server 受理，但 client transport 沒拿到終局結果。
+/// 只能沿用同 requestId 接回，不能鑄新 id。
+class NewTopicTransportException extends NewTopicException {
+  const NewTopicTransportException(super.message)
+      : super(retrySameRequest: true);
+}
+
+/// Server 已明示 request 狀態尚未收斂（例如 settlement 不確定或 claim
+/// 暫時無法釋放）。只能短暫等待後沿用同 requestId 查回結果。
+class NewTopicStatePendingException extends NewTopicException {
+  final int? retryAfterMs;
+
+  const NewTopicStatePendingException({
+    required String message,
+    this.retryAfterMs,
+  }) : super(message, retrySameRequest: true);
+}
+
 class NewTopicService {
   NewTopicService({
     NewTopicInvoker? invoker,
     http.Client Function()? streamClientFactory,
     String? Function()? accessTokenProvider,
-  })  : _invoke = invoker ?? _defaultInvoker,
+  })  : _invoke = _mapFunctionExceptions(invoker ?? _defaultInvoker),
         _streamClientFactory = streamClientFactory ?? http.Client.new,
         _accessTokenProvider =
             accessTokenProvider ?? (() => SupabaseService.accessToken);
@@ -83,9 +102,27 @@ class NewTopicService {
   final http.Client Function() _streamClientFactory;
   final String? Function() _accessTokenProvider;
 
-  /// 同 analysis/opener 串流慣例：connect 45s、單事件 idle 120s。
-  static const Duration _streamConnectTimeout = Duration(seconds: 45);
+  /// flag on 時 stream headers 會立刻到；flag off／舊 Edge 會等完整 legacy
+  /// 結果才回 headers。server deadline 是 50s，因此 connect 不能沿用 opener
+  /// 的 45s，否則 client 會先誤報失敗、server 卻仍持有 pending claim。
+  static const Duration _streamConnectTimeout = kNewTopicRequestTimeout;
   static const Duration _streamIdleTimeout = Duration(seconds: 120);
+
+  /// functions_client 2.5.0 對非 2xx 直接丟 [FunctionException]，不會回
+  /// [FunctionResponse]。先還原成 service 自己的 response 形狀，才能讓
+  /// 409／429／503 共用同一套 typed error 對映，避免 SDK 例外外露到 UI。
+  static NewTopicInvoker _mapFunctionExceptions(NewTopicInvoker inner) {
+    return (String fn, {required Map<String, dynamic> body}) async {
+      try {
+        return await inner(fn, body: body);
+      } on FunctionException catch (error) {
+        return NewTopicInvokeResponse(
+          status: error.status,
+          data: error.details,
+        );
+      }
+    };
+  }
 
   /// 只回完整 [NewTopicResult]；tier 一律信 server access，不自行推。
   Future<NewTopicResult> generateTopics({
@@ -117,6 +154,55 @@ class NewTopicService {
   /// 進度經 [onProgress] 回報，結果與錯誤對映和 [generateTopics] 完全一致。
   /// server flag off／舊 Edge 回一般 JSON 時依 content-type 自動走 legacy。
   Future<NewTopicResult> generateTopicsStreaming({
+    required String requestId,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? situation,
+    String? expectedTier,
+    String? revenueCatAppUserId,
+    void Function(String label, String? phase)? onProgress,
+  }) async {
+    var inProgressRecoveryCount = 0;
+    var transportRecoveryCount = 0;
+    var stateRecoveryCount = 0;
+    while (true) {
+      try {
+        return await _generateTopicsStreamingOnce(
+          requestId: requestId,
+          partnerSummary: partnerSummary,
+          effectiveStyleContext: effectiveStyleContext,
+          situation: situation,
+          expectedTier: expectedTier,
+          revenueCatAppUserId: revenueCatAppUserId,
+          onProgress: onProgress,
+        );
+      } on NewTopicRequestInProgressException catch (error) {
+        // 同 requestId 已由前一條連線受理：不要叫使用者再按一次，也不能
+        // rotate id。依 server lease 提示等一次，再用同一 envelope 接回
+        // stored result；若第二次仍 pending，交回既有友善錯誤避免無限迴圈。
+        if (inProgressRecoveryCount >= 1) rethrow;
+        inProgressRecoveryCount += 1;
+        onProgress?.call('同一筆結果還在整理，完成後會自動接回', 'reconnecting');
+        await Future<void>.delayed(_inProgressRetryDelay(error.retryAfterMs));
+      } on NewTopicTransportException {
+        // lost response 不代表 server 沒受理。自動重連一次，同 requestId
+        // 會得到 pending 或 replay；第二次仍斷才把友善錯誤交回 UI。
+        if (transportRecoveryCount >= 1) rethrow;
+        transportRecoveryCount += 1;
+        onProgress?.call('連線剛剛中斷，正在接回同一筆結果', 'reconnecting');
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      } on NewTopicStatePendingException catch (error) {
+        // 這類 503 代表帳本／claim 狀態還沒收斂，不是可安全鑄新 id 的
+        // 一般生成失敗。先用同 id 接一次；若轉成 409，再依 lease 等候。
+        if (stateRecoveryCount >= 1) rethrow;
+        stateRecoveryCount += 1;
+        onProgress?.call('正在確認同一筆結果，完成後會自動接回', 'reconnecting');
+        await Future<void>.delayed(_inProgressRetryDelay(error.retryAfterMs));
+      }
+    }
+  }
+
+  Future<NewTopicResult> _generateTopicsStreamingOnce({
     required String requestId,
     String? partnerSummary,
     String? effectiveStyleContext,
@@ -158,9 +244,8 @@ class NewTopicService {
       final contentType = response.headers['content-type'] ?? '';
 
       if (response.statusCode != 200 || !contentType.contains('x-ndjson')) {
-        final bodyText = await response.stream
-            .bytesToString()
-            .timeout(_streamIdleTimeout);
+        final bodyText =
+            await response.stream.bytesToString().timeout(_streamIdleTimeout);
         dynamic decoded;
         try {
           decoded = bodyText.isEmpty ? null : jsonDecode(bodyText);
@@ -223,23 +308,28 @@ class NewTopicService {
       }
       // 終局事件沒到＝結果不明（server 可能已 settle）：沿用同 requestId
       // 重試會 replay 原結果、不會雙扣。
-      throw const NewTopicException(
+      throw const NewTopicTransportException(
         '連線中斷，請再試一次；同一筆請求不會重複扣額度。',
-        retrySameRequest: true,
       );
     } on TimeoutException {
-      throw const NewTopicException(
+      throw const NewTopicTransportException(
         '連線逾時，請再試一次；同一筆請求不會重複扣額度。',
-        retrySameRequest: true,
       );
     } on http.ClientException {
-      throw const NewTopicException(
+      throw const NewTopicTransportException(
         '連線中斷，請再試一次；同一筆請求不會重複扣額度。',
-        retrySameRequest: true,
       );
     } finally {
       client.close();
     }
+  }
+
+  static Duration _inProgressRetryDelay(int? retryAfterMs) {
+    final serverDelay = retryAfterMs ?? 1000;
+    // 加一點邊界緩衝，避免剛好在 lease 到期前重送又拿到同一個 409；
+    // 同時封頂，壞 payload 不得把畫面卡住數分鐘。
+    final boundedMs = (serverDelay + 250).clamp(250, 65000);
+    return Duration(milliseconds: boundedMs);
   }
 
   Map<String, dynamic> _buildRequestBody({
@@ -317,13 +407,19 @@ class NewTopicService {
       );
     }
 
+    if (code == 'NEW_TOPIC_SETTLEMENT_PENDING' ||
+        code == 'NEW_TOPIC_CLAIM_RELEASE_RETRYABLE') {
+      throw NewTopicStatePendingException(
+        message: serverMessage ?? '這筆請求的結果正在確認，請稍候再試。',
+        retryAfterMs: (errorData['retryAfterMs'] as num?)?.round(),
+      );
+    }
+
     final retryable = errorData['retryable'] == true ||
         code == 'NEW_TOPIC_SETTLEMENT_PENDING';
     throw NewTopicException(
       serverMessage ??
-          (status >= 500
-              ? 'AI 暫時生成失敗，請稍後再試；本次不會扣額度。'
-              : '新話題生成失敗，請稍後再試。'),
+          (status >= 500 ? 'AI 暫時生成失敗，請稍後再試；本次不會扣額度。' : '新話題生成失敗，請稍後再試。'),
       retrySameRequest: retryable,
     );
   }

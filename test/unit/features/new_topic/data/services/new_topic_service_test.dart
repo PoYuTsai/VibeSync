@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 import 'package:vibesync/features/new_topic/data/services/new_topic_service.dart';
 import 'package:vibesync/features/new_topic/domain/entities/new_topic_result.dart';
 
@@ -145,7 +146,6 @@ void main() {
     });
   });
 
-
   group('NewTopicService errors', () {
     test('quota 429 → NewTopicQuotaExceededException（開 paywall）', () async {
       final service = NewTopicService(
@@ -200,8 +200,7 @@ void main() {
       );
     });
 
-    test('無額度鍵的 429 不當 quota 例外（lease/未知限流不得誤開 paywall）',
-        () async {
+    test('無額度鍵的 429 不當 quota 例外（lease/未知限流不得誤開 paywall）', () async {
       final service = NewTopicService(
         invoker: (_, {required body}) async => const NewTopicInvokeResponse(
           status: 429,
@@ -243,6 +242,35 @@ void main() {
         throwsA(
           isA<NewTopicRequestInProgressException>()
               .having((e) => e.retryAfterMs, 'retryAfterMs', 1200),
+        ),
+      );
+    });
+
+    test('SDK 直接丟 409 FunctionException 時仍轉成 in-progress domain 例外', () async {
+      final service = NewTopicService(
+        invoker: (_, {required body}) async => throw const FunctionException(
+          status: 409,
+          details: {
+            'error': 'NEW_TOPIC_REQUEST_IN_PROGRESS',
+            'code': 'NEW_TOPIC_REQUEST_IN_PROGRESS',
+            'message': '這筆請求正在生成中，請稍候片刻再用同一筆請求重試。',
+            'retryable': true,
+            'retryAfterMs': 36054,
+          },
+          reasonPhrase: 'Conflict',
+        ),
+      );
+
+      await expectLater(
+        service.generateTopics(requestId: _requestId),
+        throwsA(
+          isA<NewTopicRequestInProgressException>()
+              .having((e) => e.retryAfterMs, 'retryAfterMs', 36054)
+              .having(
+                (e) => e.message,
+                'message',
+                '這筆請求正在生成中，請稍候片刻再用同一筆請求重試。',
+              ),
         ),
       );
     });

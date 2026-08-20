@@ -57,6 +57,12 @@ class NewTopicView extends ConsumerStatefulWidget {
   static const freeUpsellHeadline = '免費版先看最推薦的 1 個完整方案';
   static const freeUpsellBody = '升級可再解鎖另外 4 個話題';
 
+  /// 未分類例外可能含 SDK 類名、HTTP status、server code 與整包 details。
+  /// 已知錯誤應在 service 轉成 typed exception；漏網者一律固定文案，
+  /// 不能再用「字串裡有中文」當成可直接顯示的安全判準。
+  static String customerMessageForUnexpectedError(Object _) =>
+      '新話題暫時生成失敗，請稍後再試。';
+
   @override
   ConsumerState<NewTopicView> createState() => _NewTopicViewState();
 }
@@ -169,8 +175,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             child: const Text('先不要'),
           ),
           TextButton(
-            onPressed: AppHaptics.onPress(
-                () => Navigator.pop(dialogContext, true)),
+            onPressed:
+                AppHaptics.onPress(() => Navigator.pop(dialogContext, true)),
             style: TextButton.styleFrom(foregroundColor: AppColors.ctaStart),
             child: const Text('清除並更換'),
           ),
@@ -343,11 +349,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       });
     } catch (e) {
       if (!mounted) return;
-      final message = e.toString().replaceFirst('Exception: ', '').trim();
-      final hasChinese = RegExp(r'[一-鿿]').hasMatch(message);
+      debugPrint('NewTopicView unexpected generation error: $e');
       setState(() {
-        _error =
-            hasChinese && message.isNotEmpty ? message : '新話題暫時生成失敗，請稍後再試。';
+        _error = NewTopicView.customerMessageForUnexpectedError(e);
         _isGenerating = false;
       });
     }
@@ -441,9 +445,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           ),
           const SizedBox(height: 12),
           BrandPrimaryButton(
-            label: _isGenerating
-                ? '生成中…'
-                : (_result != null ? '已生成新話題' : '生成新話題'),
+            label:
+                _isGenerating ? '生成中…' : (_result != null ? '已生成新話題' : '生成新話題'),
             // v2：生成中不轉圈（下方骨架卡已有動態），改禁用態純文字。
             isLoading: false,
             onPressed:
@@ -784,9 +787,8 @@ class _TopicSkeletonList extends StatelessWidget {
                   'topic-skeleton-$n-${done ? 'done' : 'pending'}',
                 ),
                 tone: BrandVisualTone.coach,
-                borderColor: done
-                    ? AppColors.coachAccent.withValues(alpha: 0.55)
-                    : null,
+                borderColor:
+                    done ? AppColors.coachAccent.withValues(alpha: 0.55) : null,
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
