@@ -56,6 +56,14 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
+  # CI-01：iOS RevenueCat key 與 keyboard contract 只擋 iOS release，
+  # Android release 不因 iOS 前置被擋
+  ios-preflight:
+    if: inputs.platform == 'ios' || inputs.platform == 'both'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Smoke test RevenueCat server key
         shell: pwsh
         run: ./tools/preflight/check-revenuecat-secret-smoke.ps1
@@ -118,7 +126,7 @@ jobs:
 
   release-ios:
     if: inputs.platform == 'ios' || inputs.platform == 'both'
-    needs: [production-preflight, flutter-gate]
+    needs: [production-preflight, ios-preflight, flutter-gate]
     runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -459,11 +467,12 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: ./tools/preflight/check-android-signing.sh keystore android/app/keystore.jks
 
+      # CI-01：Android 不注入 iOS RevenueCat key；Android RevenueCat 維持
+      # 休眠（程式端 isAndroidPlatform 早退），BILL-02 才接 goog_ key
       - name: Build Android (Production)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
-          REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           flutter build appbundle --release \
@@ -473,7 +482,6 @@ jobs:
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
-            --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
             --dart-define=SENTRY_DSN="$SENTRY_DSN"
 
       - name: Verify release AAB signing (AND-02 gate)
