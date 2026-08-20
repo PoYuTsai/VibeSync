@@ -1,9 +1,19 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- AND-04 fail-closed 備份政策：token／加密 Hive／聊天與圖片等敏感
+         資料一律不進雲端備份與換機轉移。allowBackup=false 為主閘，兩份
+         rules 檔是防未來誤開 allowBackup 的第二道欄（全域 exclude）。
+         OEM 轉移工具是否尊重此設定不能只看 XML，見
+         docs/android-backup-restore-checklist.md 的實機驗證清單。 -->
     <application
         android:label="VibeSync"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        tools:targetApi="s">
         <activity
             android:name=".MainActivity"
             android:exported="true"

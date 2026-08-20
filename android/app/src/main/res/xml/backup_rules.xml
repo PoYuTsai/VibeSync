@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 以下 auto backup 規則（fail-closed：全部排除）。
+     涵蓋 flutter_secure_storage 的 sharedpref、Hive／聊天狀態與圖片所在
+     的 file／root、以及任何 database。主閘是 manifest 的
+     allowBackup=false，此檔防未來誤開時仍不外洩。 -->
+<full-backup-content>
+    <exclude domain="root" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+</full-backup-content>
