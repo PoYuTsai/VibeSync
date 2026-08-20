@@ -63,10 +63,8 @@ class PartnerMindMapScreen extends ConsumerWidget {
                               _pushCoachFollowUp(context, partnerId),
                         ),
                       ),
-                      // 內頁拆解 panel：關係信號 / 本輪訊號 / 可接話題 /
-                      // 下一步行動全文。
-                      // 圖節點只放短標籤，整句教練建議在這裡完整呈現（而非重貼
-                      // 詳情頁外層那一句）。
+                      // 既有大字作戰重點 panel 保留；心智圖已直接呈現互動脈絡
+                      // 與完整下一步，panel 只作為易讀摘要與問教練入口。
                       _MindMapDetailPanel(
                         map: map,
                         onAskCoach: () =>
@@ -88,8 +86,8 @@ void _pushCoachFollowUp(BuildContext context, String partnerId) {
   context.push('/coach?partnerId=$partnerId');
 }
 
-/// 作戰板內頁底部的拆解面板。把「下一步行動全文」與關係信號、可接話題拆開
-/// 呈現，而不是在圖節點重貼整句。圖節點只負責導航（問教練）。
+/// 作戰板內頁底部的大字摘要。心智圖本身已可完整閱讀；這裡保留既有的
+/// 關係信號、可接話題與問教練入口，不是展開節點後才出現的第二層。
 class _MindMapDetailPanel extends StatelessWidget {
   final PartnerMindMap map;
   final VoidCallback onAskCoach;

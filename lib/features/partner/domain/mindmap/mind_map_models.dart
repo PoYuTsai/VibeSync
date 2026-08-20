@@ -4,6 +4,7 @@ enum MindMapBranch {
   root,
   stage,
   topicDepth,
+  interactionHistory,
   currentSignal,
   confirmedFacts,
   interests,
@@ -37,14 +38,15 @@ class PartnerMindMap {
   /// （僅 currentGameStage fallback）時為 null → 節點不可點。
   final String? nextStepSourceConversationId;
 
-  /// 作戰板詳情用拆解欄位（決策：圖節點放短標籤，整句/拆解進詳情 panel，
-  /// 避免「圖節點 = 詳情頁外層同一句」的重貼感）。
+  /// 作戰板底部大字摘要用拆解欄位；心智圖本身也會直接顯示互動脈絡與
+  /// 完整下一步，使用者不必點節點才能讀到內容。
   ///
   /// [relationshipSignal] 關係信號（階段描述衍生）；hasAnalysisData 時必有。
   /// [currentSignal] 最新分析中有足夠信心、且能回查聊天內容的具體可接球點。
   /// [confirmedFacts] 使用者在「關於她」親自勾選的 allowlist chips。
   /// [topics] 可接話題（= 聚合興趣）；無興趣時為空。
-  /// [fullNextStep] 下一步行動全文；無可解析快照或無 nextStep 時為 null。
+  /// [fullNextStep] 下一步行動全文（圖節點與底部摘要共用）；無可解析快照
+  /// 或無 nextStep 時為 null。
   final String? relationshipSignal;
   final String? currentSignal;
   final List<String> confirmedFacts;

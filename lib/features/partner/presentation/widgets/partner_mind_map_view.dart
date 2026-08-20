@@ -301,6 +301,8 @@ class _MindMapNodeChip extends StatelessWidget {
 
   bool get _isNextStepLeaf => _isNextStep && node.children.isEmpty;
 
+  bool get _isCurrentSignal => node.branch == MindMapBranch.currentSignal;
+
   @override
   Widget build(BuildContext context) {
     final Gradient? gradient;
@@ -325,6 +327,18 @@ class _MindMapNodeChip extends StatelessWidget {
           color: Colors.black.withValues(alpha: 0.30),
           blurRadius: 18,
           offset: const Offset(0, 8),
+        ),
+      ];
+    } else if (_isCurrentSignal) {
+      gradient = null;
+      fillColor = AppColors.ctaStart.withValues(alpha: 0.10);
+      borderColor = AppColors.ctaStart.withValues(alpha: 0.55);
+      textColor = Colors.white.withValues(alpha: 0.96);
+      shadows = [
+        BoxShadow(
+          color: AppColors.brandFlame.withValues(alpha: 0.12),
+          blurRadius: 16,
+          offset: const Offset(0, 7),
         ),
       ];
     } else if (_isNextStepLeaf) {

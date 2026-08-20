@@ -225,11 +225,16 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    expect(find.text('建立男女感 → 準備邀約'), findsOneWidget);
-    expect(find.text('事件層 → 個人層'), findsOneWidget);
-    expect(find.text('本輪訊號'), findsWidgets);
+    expect(find.text('Alice・已分析 2 次'), findsOneWidget);
+    expect(find.text('準備邀約'), findsOneWidget);
+    expect(find.text('歷程：建立男女感 → 準備邀約'), findsOneWidget);
+    expect(find.text('個人層'), findsOneWidget);
+    expect(find.text('歷程：事件層 → 個人層'), findsOneWidget);
+    expect(find.text('互動脈絡'), findsOneWidget);
+    expect(find.text('本輪｜她說週末想去看展'), findsOneWidget);
+    expect(find.text('上輪｜她說：「測試訊息」'), findsOneWidget);
     expect(find.text('她說週末想去看展'), findsWidgets);
-    expect(find.text('已確認資料'), findsOneWidget);
+    expect(find.text('關於她（已確認）'), findsOneWidget);
     expect(find.text('慢熱'), findsOneWidget);
     expect(find.text('喜歡旅行'), findsOneWidget);
   });
@@ -252,8 +257,15 @@ void main() {
 
     expect(find.text('作戰重點'), findsOneWidget);
     expect(find.text('關係信號'), findsOneWidget);
-    // 圖節點只放短標籤；全文在 panel 的「下一步行動」列。
-    expect(find.text('下一步行動'), findsWidgets);
+    expect(
+      find.descendant(
+        of: find.byType(PartnerMindMapView),
+        matching: find.text('本輪更新｜約她週末喝咖啡'),
+      ),
+      findsOneWidget,
+      reason: '使用者打開作戰板就能在心智圖看到完整下一步，不必點節點',
+    );
+    // 底部既有作戰重點仍保留純全文，作為大字摘要與問教練入口。
     expect(find.text('約她週末喝咖啡'), findsOneWidget);
     expect(find.widgetWithText(TextButton, '問教練'), findsOneWidget);
   });
@@ -295,10 +307,10 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    // 圖節點短標籤 '下一步行動' 也出現在底部 panel 列，tap 要鎖定圖內節點。
+    // 完整下一步已直接顯示在圖內；tap 只是額外問教練入口，不是閱讀必要步驟。
     await t.tap(find.descendant(
       of: find.byType(PartnerMindMapView),
-      matching: find.text('下一步行動'),
+      matching: find.text('本輪更新｜約她週末喝咖啡'),
     ));
     // 單擊與背景雙擊重置並存 → 等競技場 timeout 裁決。
     await t.pump(const Duration(milliseconds: 400));

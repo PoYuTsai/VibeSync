@@ -37,6 +37,34 @@ PartnerMindMap _map({String nextStepLabel = '約她週末喝咖啡'}) => Partner
       ),
     );
 
+PartnerMindMap _mapWithCurrentSignal() => PartnerMindMap(
+      hasAnalysisData: true,
+      root: const MindMapNode(
+        id: 'root',
+        label: 'Vivi・已分析 3 次',
+        branch: MindMapBranch.root,
+        children: [
+          MindMapNode(
+            id: 'interaction-history',
+            label: '互動脈絡',
+            branch: MindMapBranch.interactionHistory,
+            children: [
+              MindMapNode(
+                id: 'interaction-current',
+                label: '本輪｜她主動分享爬山計畫',
+                branch: MindMapBranch.currentSignal,
+              ),
+              MindMapNode(
+                id: 'interaction-previous',
+                label: '上輪｜聊到週末看展',
+                branch: MindMapBranch.interactionHistory,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
 void main() {
   testWidgets('渲染根節點與全部枝節點文字', (tester) async {
     await tester.pumpWidget(
@@ -67,6 +95,35 @@ void main() {
     final decoration = container.decoration! as BoxDecoration;
     final gradient = decoration.gradient! as LinearGradient;
     expect(gradient.colors, [AppColors.ctaStart, AppColors.ctaEnd]);
+  });
+
+  testWidgets('本輪互動訊號使用暖橘提示，舊輪次維持低調紫色', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: PartnerMindMapView(map: _mapWithCurrentSignal())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    BoxDecoration decorationFor(String label) {
+      final container = tester.widget<Container>(
+        find
+            .ancestor(of: find.text(label), matching: find.byType(Container))
+            .first,
+      );
+      return container.decoration! as BoxDecoration;
+    }
+
+    final current = decorationFor('本輪｜她主動分享爬山計畫');
+    final previous = decorationFor('上輪｜聊到週末看展');
+    expect(
+      current.border!.top.color,
+      AppColors.ctaStart.withValues(alpha: 0.55),
+    );
+    expect(
+      previous.border!.top.color,
+      Colors.white.withValues(alpha: 0.16),
+    );
   });
 
   testWidgets('下一步葉節點長文完整顯示不截斷；其他枝維持 3 行截斷', (tester) async {

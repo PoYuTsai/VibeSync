@@ -13,11 +13,13 @@ import 'mind_map_models.dart';
 /// 資料來源（與 partner_aggregates 同一套快照，不打任何新 API）：
 /// - 階段 / 話題深度 / 下一步：最新一筆可完整解析（JSON + shape）的分析
 ///   紀錄；沒有獨立紀錄的舊資料才回退到 lastAnalysisSnapshotJson。
-/// - 上次 → 這次 / 連續次數：依可解析的獨立分析紀錄計算；Conversation
+/// - 目前狀態 / 連續次數 / 歷程：依可解析的獨立分析紀錄計算；Conversation
 ///   裡相同快照只是鏡像，不重複計次。
-/// - 本輪訊號：最新快照既有、非低信心的 coachActionHint.catchablePoint。
+/// - 互動脈絡：最近三次優先採既有高信心 catchablePoint，否則引用該次
+///   真實聊天摘錄；更舊分析濃縮成階段與話題深度歷程，不新增 AI 呼叫。
 /// - 已確認資料：Partner.customNote 經 allowlist chips 解析，舊自由文字不採用。
-/// - 興趣 / 特質：PartnerAggregateView 跨對話聚合（已去重、各上限 8）。
+/// - AI 聚合興趣 / 特質不進「關於她」節點；aggregate 興趣只保留給既有
+///   作戰重點 panel 的可接話題。
 PartnerMindMap buildPartnerMindMap({
   required String partnerName,
   required PartnerAggregateView aggregate,
@@ -35,7 +37,6 @@ PartnerMindMap buildPartnerMindMap({
   final latestSnapshot = parsedSnapshots.isEmpty ? null : parsedSnapshots.first;
   final stageInfo = latestSnapshot?.stageInfo;
   final topicDepth = latestSnapshot?.topicDepth;
-  final snapshotStrategy = latestSnapshot?.strategy ?? '';
   final snapshotConversationId = latestSnapshot?.conversationId;
   final currentSignal = latestSnapshot?.coachActionHint?.catchablePoint.trim();
   final confirmedFacts = _confirmedFacts(partnerCustomNote);
@@ -65,18 +66,14 @@ PartnerMindMap buildPartnerMindMap({
       id: 'stage',
       label: '關係階段',
       branch: MindMapBranch.stage,
-      children: [
-        MindMapNode(
-          id: 'stage-current',
-          label: _progressLabel(
-            current: stage.label,
-            newestFirst: parsedSnapshots.map(
-              (snapshot) => snapshot.stageInfo.current.label,
-            ),
-          ),
-          branch: MindMapBranch.stage,
+      children: _progressNodes(
+        idPrefix: 'stage',
+        branch: MindMapBranch.stage,
+        current: stage.label,
+        newestFirst: parsedSnapshots.map(
+          (snapshot) => snapshot.stageInfo.current.label,
         ),
-      ],
+      ),
     ));
 
     if (topicDepth != null) {
@@ -85,88 +82,47 @@ PartnerMindMap buildPartnerMindMap({
         id: 'depth',
         label: '話題深度',
         branch: MindMapBranch.topicDepth,
-        children: [
-          MindMapNode(
-            id: 'depth-current',
-            label: _progressLabel(
-              current: depth.label,
-              newestFirst: parsedSnapshots.map(
-                (snapshot) => snapshot.topicDepth.current.label,
-              ),
-            ),
-            branch: MindMapBranch.topicDepth,
+        children: _progressNodes(
+          idPrefix: 'depth',
+          branch: MindMapBranch.topicDepth,
+          current: depth.label,
+          newestFirst: parsedSnapshots.map(
+            (snapshot) => snapshot.topicDepth.current.label,
           ),
-        ],
+        ),
       ));
     }
 
-    if (currentSignal != null && currentSignal.isNotEmpty) {
+    final recentInteractionNodes = _recentInteractionNodes(parsedSnapshots);
+    if (recentInteractionNodes.isNotEmpty) {
       branches.add(MindMapNode(
-        id: 'current-signal',
-        label: '本輪訊號',
-        branch: MindMapBranch.currentSignal,
-        children: [
-          MindMapNode(
-            id: 'current-signal-value',
-            label: currentSignal,
-            branch: MindMapBranch.currentSignal,
-          ),
-        ],
+        id: 'interaction-history',
+        label: '互動脈絡',
+        branch: MindMapBranch.interactionHistory,
+        children: recentInteractionNodes,
       ));
     }
 
-    if (confirmedFacts.isNotEmpty) {
-      branches.add(_confirmedFactsBranch(confirmedFacts));
-    }
-
-    if (aggregate.unionInterests.isNotEmpty) {
-      branches.add(MindMapNode(
-        id: 'interests',
-        label: '興趣',
-        branch: MindMapBranch.interests,
-        children: [
-          for (var i = 0; i < aggregate.unionInterests.length; i++)
-            MindMapNode(
-              id: 'interest-$i',
-              label: aggregate.unionInterests[i],
-              branch: MindMapBranch.interests,
-            ),
-        ],
-      ));
-    }
-
-    if (aggregate.unionTraits.isNotEmpty) {
-      branches.add(MindMapNode(
-        id: 'traits',
-        label: '特質',
-        branch: MindMapBranch.traits,
-        children: [
-          for (var i = 0; i < aggregate.unionTraits.length; i++)
-            MindMapNode(
-              id: 'trait-$i',
-              label: aggregate.unionTraits[i],
-              branch: MindMapBranch.traits,
-            ),
-        ],
-      ));
-    }
+    branches.add(_confirmedFactsBranch(confirmedFacts));
 
     if (stageInfo != null) {
-      final nextStep = stageInfo.nextStep.trim().isNotEmpty
-          ? stageInfo.nextStep.trim()
-          : snapshotStrategy;
+      final nextStep = latestSnapshot!.effectiveNextStep;
       if (nextStep.isNotEmpty) {
         fullNextStep = nextStep;
+        final previousNextStep = parsedSnapshots.length >= 2
+            ? parsedSnapshots[1].effectiveNextStep
+            : null;
+        final updateLabel = previousNextStep == nextStep ? '沿用上輪' : '本輪更新';
         branches.add(MindMapNode(
           id: 'next',
           label: '下一步',
           branch: MindMapBranch.nextStep,
           children: [
-            // 圖節點放短標籤；整句教練建議改由 [PartnerMindMap.fullNextStep]
-            // 在詳情 panel 呈現（避免圖節點重貼整句）。
+            // 打開作戰板就直接看得到完整行動；點擊只負責額外導向問教練，
+            // 不是閱讀全文的必要步驟。
             MindMapNode(
               id: 'next-step',
-              label: '下一步行動',
+              label: '$updateLabel｜$nextStep',
               branch: MindMapBranch.nextStep,
             ),
           ],
@@ -178,7 +134,9 @@ PartnerMindMap buildPartnerMindMap({
   return PartnerMindMap(
     root: MindMapNode(
       id: 'root',
-      label: partnerName,
+      label: parsedSnapshots.isEmpty
+          ? partnerName
+          : '$partnerName・已分析 ${parsedSnapshots.length} 次',
       branch: MindMapBranch.root,
       children: branches,
     ),
@@ -191,6 +149,59 @@ PartnerMindMap buildPartnerMindMap({
     topics: aggregate.unionInterests,
     fullNextStep: fullNextStep,
   );
+}
+
+List<MindMapNode> _recentInteractionNodes(
+  List<_ParsedMindMapSnapshot> snapshots,
+) {
+  const prefixes = ['本輪', '上輪', '上上輪'];
+  final nodes = <MindMapNode>[];
+  for (var i = 0; i < snapshots.length && i < prefixes.length; i++) {
+    final trustedSignal =
+        snapshots[i].coachActionHint?.catchablePoint.trim() ?? '';
+    final fallbackHighlight = snapshots[i].fallbackHighlight.trim();
+    final highlight = trustedSignal.isNotEmpty
+        ? trustedSignal
+        : fallbackHighlight.isNotEmpty
+            ? fallbackHighlight
+            : '沒有足夠可確認的聊天摘錄';
+    nodes.add(MindMapNode(
+      id: 'interaction-$i',
+      label: '${prefixes[i]}｜$highlight',
+      branch: i == 0 && trustedSignal.isNotEmpty
+          ? MindMapBranch.currentSignal
+          : MindMapBranch.interactionHistory,
+    ));
+  }
+  if (snapshots.length > prefixes.length) {
+    final older = snapshots.skip(prefixes.length).toList(growable: false);
+    final stagePath = _transitionPath(
+      older.map((snapshot) => snapshot.stageInfo.current.label),
+    );
+    final depthPath = _transitionPath(
+      older.map((snapshot) => snapshot.topicDepth.current.label),
+    );
+    nodes.add(MindMapNode(
+      id: 'interaction-older',
+      label: '前 ${older.length} 次｜關係：$stagePath；話題：$depthPath',
+      branch: MindMapBranch.interactionHistory,
+    ));
+  }
+  return nodes;
+}
+
+String _transitionPath(Iterable<String> newestFirst) {
+  final transitions = <String>[];
+  for (final label in newestFirst.toList(growable: false).reversed) {
+    if (transitions.isEmpty || transitions.last != label) {
+      transitions.add(label);
+    }
+  }
+  if (transitions.length > 4) {
+    return '${transitions.first} → … → '
+        '${transitions[transitions.length - 2]} → ${transitions.last}';
+  }
+  return transitions.join(' → ');
 }
 
 const _maxConfirmedFactLeaves = 5;
@@ -208,9 +219,15 @@ MindMapNode _confirmedFactsBranch(List<String> facts) {
   final directLimit = hasOverflow ? _maxConfirmedFactLeaves - 1 : facts.length;
   return MindMapNode(
     id: 'confirmed-facts',
-    label: '已確認資料',
+    label: '關於她（已確認）',
     branch: MindMapBranch.confirmedFacts,
     children: [
+      if (facts.isEmpty)
+        const MindMapNode(
+          id: 'confirmed-fact-empty',
+          label: '尚無已確認資料',
+          branch: MindMapBranch.confirmedFacts,
+        ),
       for (var i = 0; i < directLimit; i++)
         MindMapNode(
           id: 'confirmed-fact-$i',
@@ -227,21 +244,35 @@ MindMapNode _confirmedFactsBranch(List<String> facts) {
   );
 }
 
-String _progressLabel({
+List<MindMapNode> _progressNodes({
+  required String idPrefix,
+  required MindMapBranch branch,
   required String current,
   required Iterable<String> newestFirst,
 }) {
   final history = newestFirst.toList(growable: false);
-  if (history.length < 2) return current;
-  final previous = history[1];
-  if (previous != current) return '$previous → $current';
-
   var streak = 0;
   for (final label in history) {
     if (label != current) break;
     streak++;
   }
-  return '$current（連續 $streak 次）';
+  final currentLabel = streak >= 2 ? '$current（連續 $streak 次）' : current;
+  final nodes = <MindMapNode>[
+    MindMapNode(
+      id: '$idPrefix-current',
+      label: currentLabel,
+      branch: branch,
+    ),
+  ];
+  final path = _transitionPath(history);
+  if (path.isNotEmpty && path != current) {
+    nodes.add(MindMapNode(
+      id: '$idPrefix-history',
+      label: '歷程：$path',
+      branch: branch,
+    ));
+  }
+  return nodes;
 }
 
 List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
@@ -261,6 +292,7 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
       rawJson: raw,
       sourceId: 'record:${record.id}',
       isRecord: true,
+      fallbackHighlight: record.archiveTitle,
     ));
   }
 
@@ -276,6 +308,7 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
       rawJson: raw,
       sourceId: 'conversation:${conversation.id}',
       isRecord: false,
+      fallbackHighlight: _conversationArchiveTitle(conversation),
     ));
   }
 
@@ -297,6 +330,20 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
 
 String _snapshotMirrorKey(String conversationId, String rawJson) =>
     '$conversationId\u0000${rawJson.trim()}';
+
+String _conversationArchiveTitle(Conversation conversation) {
+  if (conversation.messages.isEmpty) return '';
+  final message = conversation.messages.reversed.firstWhere(
+    (item) => !item.isFromMe,
+    orElse: () => conversation.messages.last,
+  );
+  final normalized = message.content.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (normalized.isEmpty) return '';
+  final preview =
+      normalized.length <= 32 ? normalized : '${normalized.substring(0, 32)}…';
+  final speaker = message.isFromMe ? '你說' : '她說';
+  return '$speaker：「$preview」';
+}
 
 _ParsedMindMapSnapshot? _parseMindMapSnapshot(
   _MindMapSnapshotSource source,
@@ -328,6 +375,7 @@ _ParsedMindMapSnapshot? _parseMindMapSnapshot(
       topicDepth: parsedDepth,
       strategy: (rawStrategy as String?)?.trim() ?? '',
       coachActionHint: coachActionHint,
+      fallbackHighlight: source.fallbackHighlight,
     );
   } catch (_) {
     // 與 partner_aggregates._parseSnapshot 同策略：壞 JSON / 錯 shape 跳過。
@@ -353,6 +401,7 @@ class _MindMapSnapshotSource {
     required this.rawJson,
     required this.sourceId,
     required this.isRecord,
+    required this.fallbackHighlight,
   });
 
   final String conversationId;
@@ -360,6 +409,7 @@ class _MindMapSnapshotSource {
   final String rawJson;
   final String sourceId;
   final bool isRecord;
+  final String fallbackHighlight;
 }
 
 class _ParsedMindMapSnapshot {
@@ -368,6 +418,7 @@ class _ParsedMindMapSnapshot {
     required this.stageInfo,
     required this.topicDepth,
     required this.strategy,
+    required this.fallbackHighlight,
     this.coachActionHint,
   });
 
@@ -375,5 +426,11 @@ class _ParsedMindMapSnapshot {
   final GameStageInfo stageInfo;
   final TopicDepth topicDepth;
   final String strategy;
+  final String fallbackHighlight;
   final CoachActionHint? coachActionHint;
+
+  String get effectiveNextStep {
+    final nextStep = stageInfo.nextStep.trim();
+    return nextStep.isNotEmpty ? nextStep : strategy.trim();
+  }
 }

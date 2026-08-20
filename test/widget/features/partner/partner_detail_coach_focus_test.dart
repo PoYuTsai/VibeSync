@@ -175,7 +175,7 @@ void main() {
     // Tap the nextStep leaf node (single tap settles via the gesture arena).
     await t.tap(find.descendant(
       of: find.byType(PartnerMindMapView),
-      matching: find.text('下一步行動'),
+      matching: find.text('本輪更新｜約她週末喝咖啡'),
     ));
     await t.pump(const Duration(milliseconds: 400));
     await t.pumpAndSettle();
