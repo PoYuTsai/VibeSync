@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="vibesync"
+        android:label="VibeSync"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -25,7 +25,18 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <intent-filter>
+        </activity>
+        <!-- flutter_web_auth_2 4.1.0 的 OAuth callback 契約：
+             com.poyutsai.vibesync://login-callback 唯一擁有者是
+             CallbackActivity。MainActivity 不得重複宣告同 scheme，
+             否則同 App 兩個 activity 都匹配會跳選擇器，OAuth 回不了 App。
+             已知缺口：密碼重設 email 深連結也用同一 redirect URI，會落在
+             CallbackActivity 被吞掉——Android 密碼重設流程屬 AUTH-01
+             （Slice 3）處理，此處先凍結 OAuth 契約。 -->
+        <activity
+            android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
+            android:exported="true">
+            <intent-filter android:label="flutter_web_auth_2">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
