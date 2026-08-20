@@ -182,7 +182,7 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.byType(PartnerMindMapView), findsOneWidget);
-    // premise → '💫 建立男女感'（mind_map_builder：'${stage.emoji} ${stage.label}'）
+    // premise →「建立男女感」。
     expect(find.textContaining('建立男女感'), findsOneWidget);
     expect(find.text('完成一次對話分析，解鎖她的作戰板'), findsNothing);
   });

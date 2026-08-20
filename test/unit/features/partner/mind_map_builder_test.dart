@@ -59,7 +59,7 @@ AnalysisRecord _record({
   required String conversationId,
   required DateTime createdAt,
   required String snapshotJson,
-  String message = '測試訊息',
+  String? message = '測試訊息',
 }) =>
     AnalysisRecord(
       id: id,
@@ -71,12 +71,13 @@ AnalysisRecord _record({
       segmentEnd: 1,
       createdAt: createdAt,
       messages: [
-        AnalysisRecordMessage(
-          id: 'm-$id',
-          content: message,
-          isFromMe: false,
-          timestamp: createdAt,
-        ),
+        if (message != null)
+          AnalysisRecordMessage(
+            id: 'm-$id',
+            content: message,
+            isFromMe: false,
+            timestamp: createdAt,
+          ),
       ],
       analysisSnapshotJson: snapshotJson,
       analyzedContentRevision: 'revision-$id',
@@ -246,6 +247,31 @@ void main() {
       expect(map.currentSignal, isNull, reason: '聊天摘錄只能補歷史節點，不能偽裝成模型確認的本輪訊號');
     });
 
+    test('分析紀錄沒有保存聊天文字時，明確顯示無可確認摘錄', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(interests: [], traits: []),
+        conversations: const [],
+        analysisRecords: [
+          _record(
+            id: 'record-without-messages',
+            conversationId: 'c1',
+            createdAt: DateTime(2026, 6, 1),
+            snapshotJson: _snapshot(),
+            message: null,
+          ),
+        ],
+      );
+
+      final history = map.root.children.firstWhere(
+        (node) => node.branch == MindMapBranch.interactionHistory,
+      );
+      expect(
+        history.children.single.label,
+        '本輪｜沒有足夠可確認的聊天摘錄',
+      );
+    });
+
     test('舊版只有 Conversation 快照時，也用真實聊天補上互動脈絡', () {
       final map = buildPartnerMindMap(
         partnerName: 'Vivi',
@@ -315,6 +341,67 @@ void main() {
         '個人層',
         '歷程：事件層 → 個人層',
       ]);
+    });
+
+    test('舊快照缺少階段或深度欄位時，不把預設值混進累積歷程', () {
+      final fieldlessSnapshot = jsonEncode({
+        'strategy': '先延續現有話題',
+      });
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(interests: [], traits: []),
+        conversations: const [],
+        analysisRecords: [
+          _record(
+            id: 'new',
+            conversationId: 'c4',
+            createdAt: DateTime(2026, 6, 4),
+            snapshotJson: _snapshot(stage: 'close', depth: 'personal'),
+          ),
+          _record(
+            id: 'missing-middle',
+            conversationId: 'c3',
+            createdAt: DateTime(2026, 6, 3),
+            snapshotJson: fieldlessSnapshot,
+          ),
+          _record(
+            id: 'old',
+            conversationId: 'c2',
+            createdAt: DateTime(2026, 6, 2),
+            snapshotJson: _snapshot(stage: 'premise', depth: 'event'),
+          ),
+          _record(
+            id: 'missing-oldest',
+            conversationId: 'c1',
+            createdAt: DateTime(2026, 6, 1),
+            snapshotJson: fieldlessSnapshot,
+          ),
+        ],
+      );
+
+      final stage = map.root.children.firstWhere(
+        (node) => node.branch == MindMapBranch.stage,
+      );
+      expect(stage.children.map((node) => node.label), [
+        '準備邀約',
+        '歷程：建立男女感 → 準備邀約',
+      ]);
+
+      final depth = map.root.children.firstWhere(
+        (node) => node.branch == MindMapBranch.topicDepth,
+      );
+      expect(depth.children.map((node) => node.label), [
+        '個人層',
+        '歷程：事件層 → 個人層',
+      ]);
+
+      final history = map.root.children.firstWhere(
+        (node) => node.branch == MindMapBranch.interactionHistory,
+      );
+      expect(
+        history.children.last.label,
+        '前 1 次｜關係：未確認；話題：未確認',
+      );
     });
 
     test('判定反覆變動時濃縮歷程，避免心智圖節點無限變長', () {
@@ -697,7 +784,7 @@ void main() {
       expect(facts.children.single.label, '尚無已確認資料');
     });
 
-    test('無快照但有 currentGameStage → 退化為僅階段枝、hasAnalysisData true', () {
+    test('無快照但有 currentGameStage → 保留階段與已確認資料主枝', () {
       final map = buildPartnerMindMap(
         partnerName: 'Vivi',
         aggregate: _aggregate(interests: [], traits: []),

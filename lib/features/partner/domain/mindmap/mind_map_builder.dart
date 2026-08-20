@@ -35,8 +35,13 @@ PartnerMindMap buildPartnerMindMap({
     analysisRecords: analysisRecords,
   );
   final latestSnapshot = parsedSnapshots.isEmpty ? null : parsedSnapshots.first;
-  final stageInfo = latestSnapshot?.stageInfo;
-  final topicDepth = latestSnapshot?.topicDepth;
+  GameStageInfo? stageInfo;
+  TopicDepth? topicDepth;
+  for (final snapshot in parsedSnapshots) {
+    stageInfo ??= snapshot.stageInfo;
+    topicDepth ??= snapshot.topicDepth;
+    if (stageInfo != null && topicDepth != null) break;
+  }
   final snapshotConversationId = latestSnapshot?.conversationId;
   final currentSignal = latestSnapshot?.coachActionHint?.catchablePoint.trim();
   final confirmedFacts = _confirmedFacts(partnerCustomNote);
@@ -50,31 +55,32 @@ PartnerMindMap buildPartnerMindMap({
     }
   }
 
-  final hasAnalysisData = stageInfo != null || fallbackStageRaw != null;
+  final hasAnalysisData =
+      parsedSnapshots.isNotEmpty || fallbackStageRaw != null;
   final branches = <MindMapNode>[];
   String? relationshipSignal;
   String? fullNextStep;
 
   if (hasAnalysisData) {
-    // 階段枝（hasAnalysisData 成立時必有，全圖至少一條邊）
-    final stage = stageInfo != null
-        ? stageInfo.current
-        : GameStage.fromString(fallbackStageRaw!);
-    // 關係信號 = 階段描述（詳情 panel 用；hasAnalysisData 時必有）。
-    relationshipSignal = stage.description;
-    branches.add(MindMapNode(
-      id: 'stage',
-      label: '關係階段',
-      branch: MindMapBranch.stage,
-      children: _progressNodes(
-        idPrefix: 'stage',
+    if (stageInfo != null || fallbackStageRaw != null) {
+      final stage = stageInfo != null
+          ? stageInfo.current
+          : GameStage.fromString(fallbackStageRaw!);
+      relationshipSignal = stage.description;
+      branches.add(MindMapNode(
+        id: 'stage',
+        label: '關係階段',
         branch: MindMapBranch.stage,
-        current: stage.label,
-        newestFirst: parsedSnapshots.map(
-          (snapshot) => snapshot.stageInfo.current.label,
+        children: _progressNodes(
+          idPrefix: 'stage',
+          branch: MindMapBranch.stage,
+          current: stage.label,
+          newestFirst: parsedSnapshots.map(
+            (snapshot) => snapshot.stageInfo?.current.label,
+          ),
         ),
-      ),
-    ));
+      ));
+    }
 
     if (topicDepth != null) {
       final depth = topicDepth.current;
@@ -87,7 +93,7 @@ PartnerMindMap buildPartnerMindMap({
           branch: MindMapBranch.topicDepth,
           current: depth.label,
           newestFirst: parsedSnapshots.map(
-            (snapshot) => snapshot.topicDepth.current.label,
+            (snapshot) => snapshot.topicDepth?.current.label,
           ),
         ),
       ));
@@ -105,8 +111,8 @@ PartnerMindMap buildPartnerMindMap({
 
     branches.add(_confirmedFactsBranch(confirmedFacts));
 
-    if (stageInfo != null) {
-      final nextStep = latestSnapshot!.effectiveNextStep;
+    if (latestSnapshot != null) {
+      final nextStep = latestSnapshot.effectiveNextStep;
       if (nextStep.isNotEmpty) {
         fullNextStep = nextStep;
         final previousNextStep = parsedSnapshots.length >= 2
@@ -176,23 +182,27 @@ List<MindMapNode> _recentInteractionNodes(
   if (snapshots.length > prefixes.length) {
     final older = snapshots.skip(prefixes.length).toList(growable: false);
     final stagePath = _transitionPath(
-      older.map((snapshot) => snapshot.stageInfo.current.label),
+      older.map((snapshot) => snapshot.stageInfo?.current.label),
     );
     final depthPath = _transitionPath(
-      older.map((snapshot) => snapshot.topicDepth.current.label),
+      older.map((snapshot) => snapshot.topicDepth?.current.label),
     );
     nodes.add(MindMapNode(
       id: 'interaction-older',
-      label: '前 ${older.length} 次｜關係：$stagePath；話題：$depthPath',
+      label: '前 ${older.length} 次｜'
+          '關係：${stagePath.isEmpty ? '未確認' : stagePath}；'
+          '話題：${depthPath.isEmpty ? '未確認' : depthPath}',
       branch: MindMapBranch.interactionHistory,
     ));
   }
   return nodes;
 }
 
-String _transitionPath(Iterable<String> newestFirst) {
+String _transitionPath(Iterable<String?> newestFirst) {
   final transitions = <String>[];
-  for (final label in newestFirst.toList(growable: false).reversed) {
+  for (final rawLabel in newestFirst.toList(growable: false).reversed) {
+    final label = rawLabel?.trim();
+    if (label == null || label.isEmpty) continue;
     if (transitions.isEmpty || transitions.last != label) {
       transitions.add(label);
     }
@@ -248,7 +258,7 @@ List<MindMapNode> _progressNodes({
   required String idPrefix,
   required MindMapBranch branch,
   required String current,
-  required Iterable<String> newestFirst,
+  required Iterable<String?> newestFirst,
 }) {
   final history = newestFirst.toList(growable: false);
   var streak = 0;
@@ -292,7 +302,7 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
       rawJson: raw,
       sourceId: 'record:${record.id}',
       isRecord: true,
-      fallbackHighlight: record.archiveTitle,
+      fallbackHighlight: _analysisRecordArchiveTitle(record),
     ));
   }
 
@@ -331,6 +341,13 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
 String _snapshotMirrorKey(String conversationId, String rawJson) =>
     '$conversationId\u0000${rawJson.trim()}';
 
+String _analysisRecordArchiveTitle(AnalysisRecord record) {
+  final hasSavedText = record.messages.any(
+    (message) => message.content.trim().isNotEmpty,
+  );
+  return hasSavedText ? record.archiveTitle : '';
+}
+
 String _conversationArchiveTitle(Conversation conversation) {
   if (conversation.messages.isEmpty) return '';
   final message = conversation.messages.reversed.firstWhere(
@@ -360,8 +377,12 @@ _ParsedMindMapSnapshot? _parseMindMapSnapshot(
     final rawStrategy = json['strategy'];
     if (rawStrategy != null && rawStrategy is! String) return null;
 
-    final parsedStage = GameStageInfo.fromJson(gameStageJson);
-    final parsedDepth = TopicDepth.fromJson(topicDepthJson);
+    final parsedStage = _hasNonEmptyCurrent(gameStageJson)
+        ? GameStageInfo.fromJson(gameStageJson)
+        : null;
+    final parsedDepth = _hasNonEmptyCurrent(topicDepthJson)
+        ? TopicDepth.fromJson(topicDepthJson)
+        : null;
     CoachActionHint? coachActionHint;
     final hintJson = _lenientJsonMap(json['coachActionHint']);
     if (hintJson != null) {
@@ -394,6 +415,11 @@ Map<String, dynamic>? _lenientJsonMap(Object? value) {
   return value.map((key, value) => MapEntry(key.toString(), value));
 }
 
+bool _hasNonEmptyCurrent(Map<String, dynamic>? json) {
+  final current = json?['current'];
+  return current is String && current.trim().isNotEmpty;
+}
+
 class _MindMapSnapshotSource {
   const _MindMapSnapshotSource({
     required this.conversationId,
@@ -423,14 +449,14 @@ class _ParsedMindMapSnapshot {
   });
 
   final String conversationId;
-  final GameStageInfo stageInfo;
-  final TopicDepth topicDepth;
+  final GameStageInfo? stageInfo;
+  final TopicDepth? topicDepth;
   final String strategy;
   final String fallbackHighlight;
   final CoachActionHint? coachActionHint;
 
   String get effectiveNextStep {
-    final nextStep = stageInfo.nextStep.trim();
+    final nextStep = stageInfo?.nextStep.trim() ?? '';
     return nextStep.isNotEmpty ? nextStep : strategy.trim();
   }
 }
