@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
@@ -21,6 +23,7 @@ import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart'
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
+import 'package:vibesync/features/analysis/presentation/screens/partner_analysis_records_screen.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_action_widgets.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
@@ -487,6 +490,20 @@ class _StubConversationRepository extends ConversationRepository {
   }
 }
 
+class _BlockingConversationRepository extends _StubConversationRepository {
+  _BlockingConversationRepository(super.conversation);
+
+  final saveStarted = Completer<void>();
+  final allowSave = Completer<void>();
+
+  @override
+  Future<void> updateConversation(Conversation conversation) async {
+    if (!saveStarted.isCompleted) saveStarted.complete();
+    await allowSave.future;
+    await super.updateConversation(conversation);
+  }
+}
+
 class _MemoryConversationArchiveStore implements ConversationArchiveStore {
   final Map<String, ConversationArchiveEntry> entries = {};
 
@@ -809,6 +826,22 @@ class _MutableHydrationHarness extends _HydrationHarness {
   final _MutableStreamingAnalyzeNotifier notifier;
 }
 
+class _NavigationPersistenceHarness {
+  const _NavigationPersistenceHarness({
+    required this.notifier,
+    required this.repository,
+    required this.recordStore,
+    required this.history,
+    required this.router,
+  });
+
+  final _MutableStreamingAnalyzeNotifier notifier;
+  final _BlockingConversationRepository repository;
+  final AnalysisRecordStore recordStore;
+  final MemoryAnalysisHistoryRepository history;
+  final GoRouter router;
+}
+
 Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
   WidgetTester tester, {
   required StreamingAnalysisState seed,
@@ -919,6 +952,117 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
     archiveStore: resolvedArchiveStore,
     notifier: notifier,
   );
+}
+
+Future<_NavigationPersistenceHarness> _pumpAnalysisScreenWithBlockedPersistence(
+  WidgetTester tester, {
+  required StreamingAnalysisState seed,
+  required Conversation conversation,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(430, 1400));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+
+  final recorder = _RecordingAnalysisService();
+  final repository = _BlockingConversationRepository(conversation);
+  final history = MemoryAnalysisHistoryRepository();
+  final archiveStore = _defaultArchiveStore(conversation);
+  final recordBox = _MemoryBox();
+  final recordStore = HiveAnalysisRecordStore(() => recordBox);
+  late final _MutableStreamingAnalyzeNotifier notifier;
+  final testRouter = GoRouter(
+    initialLocation: '/conversation',
+    routes: [
+      GoRoute(
+        path: '/',
+        builder: (_, __) => const Scaffold(
+          body: Center(child: Text('測試首頁')),
+        ),
+      ),
+      GoRoute(
+        path: '/conversation',
+        builder: (_, __) =>
+            const AnalysisScreen(conversationId: _conversationId),
+      ),
+    ],
+  );
+  addTearDown(testRouter.dispose);
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(MemoryCoachingOutcomeRepository()),
+        analysisHistoryRepositoryProvider.overrideWithValue(history),
+        conversationArchiveStoreProvider.overrideWithValue(archiveStore),
+        conversationRepositoryProvider.overrideWithValue(repository),
+        conversationProvider(_conversationId).overrideWithValue(conversation),
+        analysisRecordStoreProvider.overrideWithValue(recordStore),
+        analysisRecordOwnerProvider.overrideWithValue('record-owner'),
+        analysisServiceProvider.overrideWithValue(recorder),
+        coachChatRepositoryProvider.overrideWithValue(
+          _EmptyCoachChatRepository(),
+        ),
+        coachChatHistoryProvider(const CoachScope.conversation(_conversationId))
+            .overrideWithValue(const []),
+        streamingAnalyzeProvider.overrideWith(() {
+          notifier = _MutableStreamingAnalyzeNotifier(seed);
+          return notifier;
+        }),
+      ],
+      child: MaterialApp.router(routerConfig: testRouter),
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+  return _NavigationPersistenceHarness(
+    notifier: notifier,
+    repository: repository,
+    recordStore: recordStore,
+    history: history,
+    router: testRouter,
+  );
+}
+
+Future<_NavigationPersistenceHarness> _completeAnalysisWithBlockedPersistence(
+  WidgetTester tester, {
+  required String runId,
+}) async {
+  final conversation = _conversation()..ownerUserId = 'record-owner';
+  final revision = conversationContentRevision(conversation);
+  final preview = _preview(runId: runId);
+  final harness = await _pumpAnalysisScreenWithBlockedPersistence(
+    tester,
+    seed: StreamingAnalysisState(
+      phase: StreamingAnalyzePhase.streamingReport,
+      recommendationPreview: preview,
+      analysisRunId: preview.analysisRunId,
+      previousAnalyzedCount: 0,
+      analyzedMessageCount: conversation.messages.length,
+      conversationMessageCount: conversation.messages.length,
+      conversationContentRevision: revision,
+    ),
+    conversation: conversation,
+  );
+
+  harness.notifier.emit(
+    StreamingAnalysisState(
+      phase: StreamingAnalyzePhase.done,
+      recommendationPreview: preview,
+      full: _fullWithRawResponse(_fullRawResponse()),
+      analysisRunId: preview.analysisRunId,
+      previousAnalyzedCount: 0,
+      analyzedMessageCount: conversation.messages.length,
+      conversationMessageCount: conversation.messages.length,
+      conversationContentRevision: revision,
+    ),
+  );
+  await tester.pump();
+  tester.takeException();
+  for (var i = 0; i < 10 && !harness.repository.saveStarted.isCompleted; i++) {
+    await tester.pump(const Duration(milliseconds: 1));
+  }
+  expect(harness.repository.saveStarted.isCompleted, isTrue);
+  return harness;
 }
 
 Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
@@ -2705,6 +2849,84 @@ void main() {
         await tester.pump(const Duration(milliseconds: 500));
       },
     );
+  });
+
+  group('完成後立即離頁仍要保存本輪分析', () {
+    testWidgets('返回會等快照、獨立紀錄與報告事件全部落盤', (tester) async {
+      final harness = await _completeAnalysisWithBlockedPersistence(
+        tester,
+        runId: 'run_immediate_leave',
+      );
+
+      tester
+          .widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.arrow_back).first,
+          )
+          .onPressed!();
+      await tester.pump(const Duration(milliseconds: 500));
+      final stayedUntilSaved =
+          find.byType(AnalysisScreen).evaluate().isNotEmpty &&
+              find.text('測試首頁').evaluate().isEmpty &&
+              harness.router.routeInformationProvider.value.uri.path ==
+                  '/conversation';
+
+      harness.repository.allowSave.complete();
+      await tester.pumpAndSettle();
+
+      expect(
+        stayedUntilSaved,
+        isTrue,
+        reason: '畫面顯示完成後，返回仍須等待本輪持久化，不能先 dispose。',
+      );
+      expect(find.text('測試首頁'), findsOneWidget);
+      expect(
+        harness.recordStore.listArchived(
+          ownerUserId: 'record-owner',
+          conversationIds: const [_conversationId],
+        ),
+        hasLength(1),
+      );
+      expect(harness.history.events, hasLength(1));
+    });
+
+    testWidgets('分析紀錄按鈕也會等本輪落盤後才開啟', (tester) async {
+      final harness = await _completeAnalysisWithBlockedPersistence(
+        tester,
+        runId: 'run_immediate_records',
+      );
+
+      tester
+          .widget<AnalysisRecordsEntryButton>(
+            find.byKey(const ValueKey('analysis-records-entry')),
+          )
+          .onPressed();
+      await tester.pump(const Duration(milliseconds: 500));
+      final openedBeforeSave = find
+          .byKey(const ValueKey('partner-analysis-records-list'))
+          .evaluate()
+          .isNotEmpty;
+
+      harness.repository.allowSave.complete();
+      await tester.pumpAndSettle();
+
+      expect(
+        openedBeforeSave,
+        isFalse,
+        reason: '紀錄頁不能在本輪尚未寫入時先顯示舊資料。',
+      );
+      expect(
+        find.byKey(const ValueKey('partner-analysis-records-list')),
+        findsOneWidget,
+      );
+      expect(
+        harness.recordStore.listArchived(
+          ownerUserId: 'record-owner',
+          conversationIds: const [_conversationId],
+        ),
+        hasLength(1),
+      );
+      expect(harness.history.events, hasLength(1));
+    });
   });
 
   group('案2：analyze 歷史事件 hook', () {

@@ -249,6 +249,31 @@ void main() {
       expect(depth.children.single.label, '個人層（連續 2 次）');
     });
 
+    test('連續四次判定相同時，顯示實際連續次數', () {
+      final snapshot = _snapshot(stage: 'narrative', depth: 'personal');
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(interests: [], traits: []),
+        conversations: const [],
+        analysisRecords: [
+          for (var day = 4; day >= 1; day--)
+            _record(
+              id: 'record-$day',
+              conversationId: 'c1',
+              createdAt: DateTime(2026, 6, day),
+              snapshotJson: snapshot,
+            ),
+        ],
+      );
+
+      final stage =
+          map.root.children.firstWhere((n) => n.branch == MindMapBranch.stage);
+      final depth = map.root.children
+          .firstWhere((n) => n.branch == MindMapBranch.topicDepth);
+      expect(stage.children.single.label, '展現個人魅力（連續 4 次）');
+      expect(depth.children.single.label, '個人層（連續 4 次）');
+    });
+
     test('只顯示最新且可用的本輪訊號；低信心訊號 fail closed', () {
       final usable = buildPartnerMindMap(
         partnerName: 'Vivi',

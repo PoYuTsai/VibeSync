@@ -120,11 +120,8 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
       entryFor: archiveStore.entryFor,
       latestAnalysisAtFor: latestAnalysisAtFor,
     );
-    final analysisRecordOwner = ref.watch(analysisRecordOwnerProvider)?.trim();
-    final archivedAnalysisRecords = _listArchivedAnalysisRecords(
-      conversations: conversations,
-      ownerUserId: analysisRecordOwner,
-    );
+    final archivedAnalysisRecords =
+        ref.watch(partnerAnalysisRecordsProvider(partnerId));
     final legacyArchivedConversationCount = conversationSections.archived
         .where(
           (item) => !AnalysisArchiveLifecycle.hasStandaloneFragmentRecord(
@@ -415,6 +412,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
         }
         return;
       }
+      ref.invalidate(partnerAnalysisRecordsProvider(partner.id));
     }
     final records = _listArchivedAnalysisRecords(
       conversations: conversations,

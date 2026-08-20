@@ -13,8 +13,8 @@ import 'mind_map_models.dart';
 /// 資料來源（與 partner_aggregates 同一套快照，不打任何新 API）：
 /// - 階段 / 話題深度 / 下一步：最新一筆可完整解析（JSON + shape）的分析
 ///   紀錄；沒有獨立紀錄的舊資料才回退到 lastAnalysisSnapshotJson。
-/// - 上次 → 這次：最近兩筆可解析的獨立分析紀錄；Conversation 裡相同快照
-///   只是鏡像，不重複計次。
+/// - 上次 → 這次 / 連續次數：依可解析的獨立分析紀錄計算；Conversation
+///   裡相同快照只是鏡像，不重複計次。
 /// - 本輪訊號：最新快照既有、非低信心的 coachActionHint.catchablePoint。
 /// - 已確認資料：Partner.customNote 經 allowlist chips 解析，舊自由文字不採用。
 /// - 興趣 / 特質：PartnerAggregateView 跨對話聚合（已去重、各上限 8）。
@@ -31,11 +31,8 @@ PartnerMindMap buildPartnerMindMap({
   final parsedSnapshots = _latestParsedSnapshots(
     conversations: descByDate,
     analysisRecords: analysisRecords,
-    limit: 2,
   );
   final latestSnapshot = parsedSnapshots.isEmpty ? null : parsedSnapshots.first;
-  final previousSnapshot =
-      parsedSnapshots.length < 2 ? null : parsedSnapshots[1];
   final stageInfo = latestSnapshot?.stageInfo;
   final topicDepth = latestSnapshot?.topicDepth;
   final snapshotStrategy = latestSnapshot?.strategy ?? '';
@@ -64,7 +61,6 @@ PartnerMindMap buildPartnerMindMap({
         : GameStage.fromString(fallbackStageRaw!);
     // 關係信號 = 階段描述（詳情 panel 用；hasAnalysisData 時必有）。
     relationshipSignal = stage.description;
-    final previousStageLabel = previousSnapshot?.stageInfo.current.label;
     branches.add(MindMapNode(
       id: 'stage',
       label: '關係階段',
@@ -74,7 +70,9 @@ PartnerMindMap buildPartnerMindMap({
           id: 'stage-current',
           label: _progressLabel(
             current: stage.label,
-            previous: previousStageLabel,
+            newestFirst: parsedSnapshots.map(
+              (snapshot) => snapshot.stageInfo.current.label,
+            ),
           ),
           branch: MindMapBranch.stage,
         ),
@@ -83,7 +81,6 @@ PartnerMindMap buildPartnerMindMap({
 
     if (topicDepth != null) {
       final depth = topicDepth.current;
-      final previousDepthLabel = previousSnapshot?.topicDepth.current.label;
       branches.add(MindMapNode(
         id: 'depth',
         label: '話題深度',
@@ -93,7 +90,9 @@ PartnerMindMap buildPartnerMindMap({
             id: 'depth-current',
             label: _progressLabel(
               current: depth.label,
-              previous: previousDepthLabel,
+              newestFirst: parsedSnapshots.map(
+                (snapshot) => snapshot.topicDepth.current.label,
+              ),
             ),
             branch: MindMapBranch.topicDepth,
           ),
@@ -228,15 +227,26 @@ MindMapNode _confirmedFactsBranch(List<String> facts) {
   );
 }
 
-String _progressLabel({required String current, String? previous}) {
-  if (previous == null || previous.isEmpty) return current;
-  return previous == current ? '$current（連續 2 次）' : '$previous → $current';
+String _progressLabel({
+  required String current,
+  required Iterable<String> newestFirst,
+}) {
+  final history = newestFirst.toList(growable: false);
+  if (history.length < 2) return current;
+  final previous = history[1];
+  if (previous != current) return '$previous → $current';
+
+  var streak = 0;
+  for (final label in history) {
+    if (label != current) break;
+    streak++;
+  }
+  return '$current（連續 $streak 次）';
 }
 
 List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
   required List<Conversation> conversations,
   required List<AnalysisRecord> analysisRecords,
-  required int limit,
 }) {
   final sources = <_MindMapSnapshotSource>[];
   final recordMirrorKeys = <String>{};
@@ -281,7 +291,6 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
     final snapshot = _parseMindMapSnapshot(source);
     if (snapshot == null) continue;
     parsed.add(snapshot);
-    if (parsed.length == limit) break;
   }
   return parsed;
 }

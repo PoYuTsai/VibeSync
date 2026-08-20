@@ -234,6 +234,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   List<AnalysisStreamContent> _streamContents = const [];
   int? _activeAnalysisMessageCount;
   int _analysisPersistenceInFlight = 0;
+  final Set<Future<void>> _pendingAnalysisPersistenceTasks = {};
+  bool _isLeavingAfterPersistence = false;
   bool _analysisRecordNeedsRepair = false;
   Future<void>? _analysisRecordRepairFuture;
   String? _analysisArchiveCountScopeKey;
@@ -1057,13 +1059,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       analyzedContentRevision: analyzedContentRevision,
     );
     if (alreadyPersisted) {
-      _analysisRecordRepairFuture = _repairAnalysisRecord(
-        conversation: conv,
-        result: result,
-        completionKey: completionKey,
-        previousAnalyzedCount: previousAnalyzedCount,
-        analyzedMessageCount: expectedAnalyzedCount,
-        analyzedContentRevision: analyzedContentRevision,
+      _analysisRecordRepairFuture = _trackAnalysisPersistenceTask(
+        _repairAnalysisRecord(
+          conversation: conv,
+          result: result,
+          completionKey: completionKey,
+          previousAnalyzedCount: previousAnalyzedCount,
+          analyzedMessageCount: expectedAnalyzedCount,
+          analyzedContentRevision: analyzedContentRevision,
+        ),
       );
       return;
     }
@@ -1564,9 +1568,22 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _analysisArchiveCountScopeKey = null;
   }
 
+  void _invalidatePartnerAnalysisRecords(Conversation conversation) {
+    if (!mounted) return;
+    final partnerId = conversation.partnerId?.trim();
+    if (partnerId == null || partnerId.isEmpty) return;
+    ref.invalidate(partnerAnalysisRecordsProvider(partnerId));
+  }
+
   Future<void> _openPartnerAnalysisRecords(
     Conversation conversation,
   ) async {
+    await _awaitPendingAnalysisPersistence();
+    if (!mounted) return;
+    conversation = ref
+            .read(conversationRepositoryProvider)
+            .getConversation(conversation.id) ??
+        conversation;
     final ownerUserId = _analysisRecordOwner(conversation);
     if (ownerUserId == null) return;
     final partnerId = conversation.partnerId?.trim();
@@ -1814,13 +1831,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (repairRecord) {
         final analyzedCount = conversation.lastAnalyzedMessageCount!;
         final current = _currentAnalysisRecord(conversation);
-        _analysisRecordRepairFuture = _repairAnalysisRecord(
-          conversation: conversation,
-          result: restoredResult,
-          completionKey: null,
-          previousAnalyzedCount: current?.segmentEnd ?? 0,
-          analyzedMessageCount: analyzedCount,
-          analyzedContentRevision: conversationContentRevision(conversation),
+        _analysisRecordRepairFuture = _trackAnalysisPersistenceTask(
+          _repairAnalysisRecord(
+            conversation: conversation,
+            result: restoredResult,
+            completionKey: null,
+            previousAnalyzedCount: current?.segmentEnd ?? 0,
+            analyzedMessageCount: analyzedCount,
+            analyzedContentRevision: conversationContentRevision(conversation),
+          ),
         );
       }
     } catch (error) {
@@ -1979,6 +1998,56 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   Future<void> _persistLatestAnalysisSnapshot(
+    AnalysisResult result, {
+    String? completionKey,
+    int? previousAnalyzedCount,
+    int? analyzedMessageCount,
+    String? analyzedContentRevision,
+    bool allowArchivedRecordRefresh = false,
+  }) {
+    return _trackAnalysisPersistenceTask(
+      _runPersistLatestAnalysisSnapshot(
+        result,
+        completionKey: completionKey,
+        previousAnalyzedCount: previousAnalyzedCount,
+        analyzedMessageCount: analyzedMessageCount,
+        analyzedContentRevision: analyzedContentRevision,
+        allowArchivedRecordRefresh: allowArchivedRecordRefresh,
+      ),
+    );
+  }
+
+  Future<void> _trackAnalysisPersistenceTask(Future<void> task) {
+    _pendingAnalysisPersistenceTasks.add(task);
+    unawaited(
+      task.then<void>(
+        (_) => _pendingAnalysisPersistenceTasks.remove(task),
+        onError: (Object _, StackTrace __) {
+          _pendingAnalysisPersistenceTasks.remove(task);
+        },
+      ),
+    );
+    return task;
+  }
+
+  Future<void> _awaitPendingAnalysisPersistence() async {
+    while (_pendingAnalysisPersistenceTasks.isNotEmpty) {
+      final pending = List<Future<void>>.of(_pendingAnalysisPersistenceTasks);
+      await Future.wait(
+        pending.map((task) async {
+          try {
+            await task;
+          } catch (_) {
+            // The existing repair path remains responsible for a failed
+            // best-effort record write; leaving must never become a dead end.
+          }
+        }),
+      );
+      _pendingAnalysisPersistenceTasks.removeAll(pending);
+    }
+  }
+
+  Future<void> _runPersistLatestAnalysisSnapshot(
     AnalysisResult result, {
     String? completionKey,
     int? previousAnalyzedCount,
@@ -2181,6 +2250,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 );
         _setAnalysisRecordNeedsRepair(!archived);
         if (archived) _invalidateAnalysisArchiveCount();
+        if (archived) _invalidatePartnerAnalysisRecords(conversation);
         return;
       }
       final saved = await _ensureAnalysisRecord(
@@ -2267,6 +2337,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         return false;
       }
       _invalidateAnalysisArchiveCount();
+      _invalidatePartnerAnalysisRecords(conversation);
       if (mounted) setState(() {});
       return true;
     } catch (error) {
@@ -2386,6 +2457,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   ///   the entire stack regardless of how the user arrived.
   ///   (Bruce TF feedback 2026-04-28).
   Future<void> _cleanupAndGoBack() async {
+    if (_isLeavingAfterPersistence) return;
+    _isLeavingAfterPersistence = true;
+    await _awaitPendingAnalysisPersistence();
+    if (!mounted) return;
     final repository = ref.read(conversationRepositoryProvider);
     final conversation = repository.getConversation(widget.conversationId);
     try {
