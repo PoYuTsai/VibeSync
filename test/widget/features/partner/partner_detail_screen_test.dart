@@ -93,7 +93,16 @@ String _analysisSnapshot({
             },
         ],
       },
+      'coachActionHint': {
+        'catchablePoint': sourceMessage ?? '生活故事',
+        'read': '她願意補生活細節，這顆球可以低壓延伸',
+        'microMove': '接住她的生活故事，再補一個低壓問題',
+        'avoid': '不要直接跳邀約',
+        'actionType': 'extendTopicStoryFrame',
+        'confidence': 'high',
+      },
       'targetProfile': {
+        'provenanceVersion': 1,
         'interests': ['爬山', '咖啡'],
         'traits': ['幽默'],
         'notes': <String>[],
@@ -222,6 +231,11 @@ void main() {
 
     expect(find.textContaining(sourceMessage), findsWidgets);
     expect(find.textContaining(recommendedReply), findsWidgets);
+    expect(find.text('接住她的生活故事，再補一個低壓問題'), findsOneWidget);
+    expect(find.text('幽默 + 爬山'), findsNothing,
+        reason: '頂卡「接法」必須顯示本輪 microMove，不能拿特質＋興趣冒充策略');
+    expect(find.text('個性：幽默'), findsOneWidget);
+    expect(find.text('偏好：爬山'), findsOneWidget);
     expect(find.textContaining(fullNextStep), findsNothing,
         reason: '詳情頁主卡應改用互動摘錄；作戰板 nextStep 留在作戰板內頁');
   });

@@ -61,6 +61,7 @@ String _snapshot({
 }) =>
     jsonEncode({
       'targetProfile': {
+        'provenanceVersion': 1,
         'interests': interests,
         'traits': traits,
         'notes': notes,
@@ -82,6 +83,15 @@ void main() {
       s.characters.length,
       lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap),
     );
+  });
+
+  test('手動 chips 是高信任背景，零分析快照也要帶進下一次 analyze', () {
+    final s = builder.build(
+      partner: _partner(customNote: '剛認識、工作忙碌、異地'),
+      conversations: const [],
+    );
+
+    expect(s, contains('你的備註：剛認識、工作忙碌、異地'));
   });
 
   test('first-conversation partner: summary returns single-line marker', () {

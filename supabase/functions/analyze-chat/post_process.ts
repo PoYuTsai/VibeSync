@@ -15,8 +15,9 @@
 //   3. finalRecommendation normalize  — guarantee non-empty pick/content/
 //      reason/psychology, falling back to safe defaults
 //   4. sanitizeCoachActionHint        — schema-check or remove
-//   5. healthCheck entitlement gate   — strip when tier excludes health_check
-//   6. enthusiasm score calibration   — display score = ceil(raw * 0.9)
+//   5. targetProfile evidence gate    — persist only source-matched memory
+//   6. healthCheck entitlement gate   — strip when tier excludes health_check
+//   7. enthusiasm score calibration   — display score = ceil(raw * 0.9)
 //
 // Invariants (must hold in BOTH modes):
 //   I1. result.healthCheck is absent unless allowedFeatures.includes("health_check")
@@ -212,7 +213,11 @@ export function sanitizeReplySegments(value: unknown) {
 
 const BALL_LIST_FALLBACK_LIMIT = 10;
 
-export type BallListMessage = { isFromMe?: unknown; content?: unknown };
+export type BallListMessage = {
+  isFromMe?: unknown;
+  content?: unknown;
+  blockType?: unknown;
+};
 
 export function extractPartnerBallList({ result, requestMessages }: {
   result?: Record<string, unknown>;
@@ -247,6 +252,328 @@ export function extractPartnerBallList({ result, requestMessages }: {
     if (fallback.length >= BALL_LIST_FALLBACK_LIMIT) break;
   }
   return fallback;
+}
+
+// ---------------------------------------------------------------------------
+// targetProfile evidence contract
+//
+// targetProfile 會跨對話持久化，並回灌後續分析／新話題；它不是本輪描述。
+// 模型因此只能提出「值＋她的文字原句」，server 再把出處對回輸入。沒有
+// provenance 的舊字串陣列、貼圖／emoji／媒體描述、或對不到原文的候選一律
+// 不升格。這不是關鍵字黑名單，而是跨輪記憶的資料來源契約。
+// ---------------------------------------------------------------------------
+
+export const TARGET_PROFILE_PROVENANCE_VERSION = 1;
+
+type TargetProfileKind = "interests" | "traits" | "notes";
+
+type PartnerEvidenceMessage = {
+  content: string;
+  sourceIndex: number;
+};
+
+const TARGET_PROFILE_KINDS: TargetProfileKind[] = [
+  "interests",
+  "traits",
+  "notes",
+];
+
+const MEDIA_ONLY_MARKER =
+  /(?:貼圖|表情符號|emoji|sticker|photo|image|照片|圖片|影片|語音|通話|missed|ringtone)/i;
+const STABLE_DECLARATION_CUE =
+  /(?:喜歡|很愛|熱愛|討厭|不喜歡|興趣|平常|常常|通常|每天|每週|每個週末|固定|有在|習慣|都會|最近在學|養了?|家裡有)/;
+const INTEREST_DECLARATION_CUE =
+  /(?:喜歡|很愛|熱愛|興趣|平常|常常|通常|每天|每週|每個週末|固定|有在|習慣|都會|最近在學|養了?|家裡有)/;
+const NEGATED_INTEREST_CUE = /(?:不喜歡|不愛|討厭|沒(?:有)?興趣)/;
+
+function meaningfulText(value: string): string {
+  return [...value]
+    .filter((char) => /[\p{L}\p{N}]/u.test(char))
+    .join("")
+    .toLowerCase();
+}
+
+function isSubstantiveProfileEvidence(value: string): boolean {
+  const normalized = normalizeAiText(value);
+  if (meaningfulText(normalized).length < 2) return false;
+  if (
+    MEDIA_ONLY_MARKER.test(normalized) &&
+    !STABLE_DECLARATION_CUE.test(normalized)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function sourceMessagesForTargetProfile({ result, requestMessages }: {
+  result?: Record<string, unknown>;
+  requestMessages?: BallListMessage[];
+}): { messages: PartnerEvidenceMessage[]; raw: BallListMessage[] } {
+  const recognized = (result?.recognizedConversation as
+    | Record<string, unknown>
+    | undefined)?.messages;
+  const raw =
+    (Array.isArray(recognized) && recognized.length > 0
+      ? recognized
+      : (requestMessages ?? [])) as BallListMessage[];
+
+  const messages: PartnerEvidenceMessage[] = [];
+  raw.forEach((item, sourceIndex) => {
+    if (!item || typeof item !== "object") return;
+    if (item.isFromMe !== false || item.blockType === "quoted_preview") return;
+    const content = normalizeAiText(item.content);
+    if (!isSubstantiveProfileEvidence(content)) return;
+    messages.push({ content, sourceIndex });
+  });
+  return { messages, raw };
+}
+
+function normalizeTargetProfileValue(
+  value: unknown,
+  kind: TargetProfileKind,
+): string {
+  const maxLength = kind === "notes" ? 80 : 32;
+  return clampNormalizedText(value, maxLength);
+}
+
+function evidenceMatchesSource(
+  evidence: string,
+  source: PartnerEvidenceMessage,
+): boolean {
+  return textMatchesBall(evidence, source.content);
+}
+
+function valueCoverage(value: string, sourceMessage: string): number {
+  const valueChars = [...meaningfulText(value)];
+  const sourceChars = [...meaningfulText(sourceMessage)];
+  if (valueChars.length === 0) return 0;
+  let matched = 0;
+  for (const sourceChar of sourceChars) {
+    if (sourceChar === valueChars[matched]) matched += 1;
+    if (matched >= valueChars.length) break;
+  }
+  return matched / valueChars.length;
+}
+
+function sourceDirectlyNamesValue(
+  value: string,
+  sourceMessage: string,
+): boolean {
+  const normalizedValue = meaningfulText(value);
+  const normalizedSource = meaningfulText(sourceMessage);
+  return normalizedValue.length >= 2 &&
+    normalizedSource.includes(normalizedValue);
+}
+
+function sourceNegatesInterest(value: string, sourceMessage: string): boolean {
+  if (NEGATED_INTEREST_CUE.test(sourceMessage)) return true;
+  const normalizedValue = meaningfulText(value);
+  const normalizedSource = meaningfulText(sourceMessage);
+  const valueIndex = normalizedSource.indexOf(normalizedValue);
+  if (valueIndex < 0) return false;
+  const prefix = normalizedSource.slice(
+    Math.max(0, valueIndex - 6),
+    valueIndex,
+  );
+  // 高精確優先：像「我平常不爬山」即使同時命中「平常」，也不能升格。
+  return /[不沒無]/.test(prefix);
+}
+
+function sourceSelfDeclaresTrait(
+  value: string,
+  sourceMessage: string,
+): boolean {
+  const normalizedValue = meaningfulText(value);
+  const normalizedSource = meaningfulText(sourceMessage);
+  if (normalizedValue.length < 2) return false;
+  return [
+    `我是${normalizedValue}`,
+    `我就是${normalizedValue}`,
+    `我其實${normalizedValue}`,
+    `我其實很${normalizedValue}`,
+    `我很${normalizedValue}`,
+    `我算${normalizedValue}`,
+    `我算是${normalizedValue}`,
+    `我比較${normalizedValue}`,
+    `我有點${normalizedValue}`,
+    `我蠻${normalizedValue}`,
+    `我滿${normalizedValue}`,
+    `我超${normalizedValue}`,
+    `我個性${normalizedValue}`,
+    `我的個性${normalizedValue}`,
+    `我是個${normalizedValue}`,
+    `我這個人${normalizedValue}`,
+  ].some((pattern) => normalizedSource.includes(pattern));
+}
+
+function hasTurnBoundaryBetween(
+  evidence: PartnerEvidenceMessage[],
+  rawMessages: BallListMessage[],
+): boolean {
+  const sorted = [...evidence].sort((a, b) => a.sourceIndex - b.sourceIndex);
+  for (let i = 0; i < sorted.length - 1; i++) {
+    for (let j = i + 1; j < sorted.length; j++) {
+      for (
+        let cursor = sorted[i].sourceIndex + 1;
+        cursor < sorted[j].sourceIndex;
+        cursor++
+      ) {
+        if (rawMessages[cursor]?.isFromMe === true) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isSupportedTargetProfileCandidate({
+  kind,
+  value,
+  evidence,
+  rawMessages,
+}: {
+  kind: TargetProfileKind;
+  value: string;
+  evidence: PartnerEvidenceMessage[];
+  rawMessages: BallListMessage[];
+}): boolean {
+  if (evidence.length === 0) return false;
+
+  if (kind === "interests") {
+    return evidence.some((source) =>
+      sourceDirectlyNamesValue(value, source.content) &&
+      INTEREST_DECLARATION_CUE.test(source.content) &&
+      !sourceNegatesInterest(value, source.content)
+    );
+  }
+
+  if (kind === "notes") {
+    return evidence.some((source) =>
+      valueCoverage(value, source.content) >= 0.8
+    );
+  }
+
+  // trait：對方明講「我很慢熱」可用單一來源；推測型 trait 必須在兩個
+  // 分開的互動回合都出現，不能把同一波連發的語氣升格成人格。
+  if (
+    evidence.some((source) => sourceSelfDeclaresTrait(value, source.content))
+  ) {
+    return true;
+  }
+  // 「我喜歡幽默的人」雖然字面提到幽默，仍是偏好而非自我描述；若模型
+  // 要從行為推測人格，證據應是實際行為文字，不是把她談論的對象倒灌給她。
+  if (
+    evidence.some((source) => sourceDirectlyNamesValue(value, source.content))
+  ) {
+    return false;
+  }
+  return evidence.length >= 2 && hasTurnBoundaryBetween(evidence, rawMessages);
+}
+
+function sanitizeTargetProfileCandidates({
+  rawCandidates,
+  kind,
+  sources,
+  rawMessages,
+}: {
+  rawCandidates: unknown;
+  kind: TargetProfileKind;
+  sources: PartnerEvidenceMessage[];
+  rawMessages: BallListMessage[];
+}): Array<{ value: string; sourceMessages: string[] }> {
+  if (!Array.isArray(rawCandidates)) return [];
+  const accepted: Array<{ value: string; sourceMessages: string[] }> = [];
+  const seenValues = new Set<string>();
+
+  for (const rawCandidate of rawCandidates.slice(0, 5)) {
+    // Legacy string arrays deliberately fail closed: they have no auditable
+    // source and must not be re-labelled as verified by the server.
+    if (
+      !rawCandidate || typeof rawCandidate !== "object" ||
+      Array.isArray(rawCandidate)
+    ) {
+      continue;
+    }
+    const candidate = rawCandidate as Record<string, unknown>;
+    const value = normalizeTargetProfileValue(candidate.value, kind);
+    if (value.length === 0) continue;
+    const valueKey = meaningfulText(value);
+    if (valueKey.length < 2 || seenValues.has(valueKey)) continue;
+
+    const rawEvidence = Array.isArray(candidate.evidence)
+      ? candidate.evidence
+      : [];
+    const matched: PartnerEvidenceMessage[] = [];
+    const matchedIndices = new Set<number>();
+    for (const item of rawEvidence.slice(0, 2)) {
+      const evidenceText = normalizeAiText(item);
+      if (!isSubstantiveProfileEvidence(evidenceText)) continue;
+      const source = sources.find((candidateSource) =>
+        !matchedIndices.has(candidateSource.sourceIndex) &&
+        evidenceMatchesSource(evidenceText, candidateSource)
+      );
+      if (!source) continue;
+      matched.push(source);
+      matchedIndices.add(source.sourceIndex);
+    }
+
+    if (
+      !isSupportedTargetProfileCandidate({
+        kind,
+        value,
+        evidence: matched,
+        rawMessages,
+      })
+    ) {
+      continue;
+    }
+
+    seenValues.add(valueKey);
+    accepted.push({
+      value,
+      sourceMessages: matched.map((source) => source.content.slice(0, 200)),
+    });
+  }
+  return accepted;
+}
+
+export function sanitizeTargetProfile({
+  rawProfile,
+  result,
+  requestMessages,
+}: {
+  rawProfile: unknown;
+  result?: Record<string, unknown>;
+  requestMessages?: BallListMessage[];
+}): Record<string, unknown> | undefined {
+  if (
+    !rawProfile || typeof rawProfile !== "object" || Array.isArray(rawProfile)
+  ) {
+    return undefined;
+  }
+  const profile = rawProfile as Record<string, unknown>;
+  const sources = sourceMessagesForTargetProfile({ result, requestMessages });
+  const evidence = Object.fromEntries(
+    TARGET_PROFILE_KINDS.map((kind) => [
+      kind,
+      sanitizeTargetProfileCandidates({
+        rawCandidates: profile[kind],
+        kind,
+        sources: sources.messages,
+        rawMessages: sources.raw,
+      }),
+    ]),
+  ) as Record<
+    TargetProfileKind,
+    Array<{ value: string; sourceMessages: string[] }>
+  >;
+
+  return {
+    provenanceVersion: TARGET_PROFILE_PROVENANCE_VERSION,
+    interests: evidence.interests.map((item) => item.value),
+    traits: evidence.traits.map((item) => item.value),
+    notes: evidence.notes.map((item) => item.value),
+    evidence,
+  };
 }
 
 function normalizeForBallMatch(value: string): string {
@@ -862,8 +1189,8 @@ export function postProcessAnalysisResult({
       (result.finalRecommendation as { replySegments?: unknown } | undefined)
         ?.replySegments,
     )
-    ? ((result.finalRecommendation as { replySegments: unknown[] })
-      .replySegments).length
+    ? (result.finalRecommendation as { replySegments: unknown[] })
+      .replySegments.length
     : 0;
   if (enforceSegmentContract && finalSegmentCount > 0 && result.replyOptions) {
     const options = result.replyOptions as Record<
@@ -894,6 +1221,19 @@ export function postProcessAnalysisResult({
     result.coachActionHint = sanitizedCoachActionHint;
   } else {
     delete result.coachActionHint;
+  }
+
+  // Step 4b — targetProfile 是會跨輪回灌的長期記憶，必須先通過可核對
+  // 出處契約；本輪策略／貼圖觀察不能直接原樣落盤。
+  const sanitizedTargetProfile = sanitizeTargetProfile({
+    rawProfile: result?.targetProfile,
+    result,
+    requestMessages,
+  });
+  if (sanitizedTargetProfile) {
+    result.targetProfile = sanitizedTargetProfile;
+  } else {
+    delete result.targetProfile;
   }
 
   // Step 5 — healthCheck entitlement gate. THIS is the step full mode was

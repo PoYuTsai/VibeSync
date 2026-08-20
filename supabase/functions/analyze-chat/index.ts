@@ -63,6 +63,7 @@ import {
   settleNewTopicRequest,
 } from "./new_topic_billing.ts";
 import {
+  allowsNewTopicSharedFrame,
   buildNewTopicLedgerResult,
   hasNewTopicMaterial,
   normalizeNewTopicModelPayload,
@@ -1954,11 +1955,16 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
 - AI 的角色是幫用戶「說得更好」，不是「變成另一個人」
 
 ## 對方個人檔案提取 (targetProfile)
-根據對話內容，提取對方的：
-- interests: 她明確提到或暗示的興趣愛好（如：旅遊、咖啡、韓劇、健身）
-- traits: 從對話風格推測的性格特質（如：外向、幽默、直接、慢熱）
-- notes: 值得記住的重點（如：「不喜歡聊工作」「週末通常在家」「養了一隻貓叫 Mochi」）
-每個欄位最多 5 項。必須有明確文字證據或多輪一致訊號才寫入；如果對話太短無法判斷，返回空陣列。不要把一次玩笑、一次情緒或一次敷衍推測成長期人格。
+這裡是會跨對話保存並回灌的**長期記憶**，不是本輪互動標籤。高精確優先，寧可空白：
+- interests：只有她用文字明講的穩定喜好、固定活動或正在持續學的事。一次吃飯、照片內容、貼圖題材、你拿來開玩笑的角度都不是興趣。
+- traits：只有她直接自述，或至少兩個分開的互動回合都有一致文字行為時才寫。主動熱絡、這輪幽默、回很快等當下訊號不是長期人格。
+- notes：她用文字明講、下次仍有用的具體事實或邊界（如「不喜歡聊工作」「週末通常在家」「養了一隻貓叫 Mochi」）。
+
+每個欄位最多 5 項，每一項必須回傳 value 與 evidence；evidence 最多 2 句：
+- evidence 逐字複製**她自己的文字訊息**，不得摘要、改寫或引用我方訊息。
+- 貼圖、emoji、照片、影片、媒體佔位字或圖片裡出現的物件，單獨都不是文字證據。
+- value 儘量沿用 evidence 裡實際出現的名詞，不要把一個場景抽象成「互動玩笑」「生活感」等策略標籤。
+- 沒有可核對的文字原句就不要寫；如果對話太短，回空陣列。
 
 ## 可接球點教練卡 (coachActionHint)
 這張卡會貼在聊天窗正下方，使用者會期待你真的讀懂上方對話。它不是一般教學，也不是熱度摘要。
@@ -2111,9 +2117,15 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
     "suggestions": ["對應這個雷點的 1 個修正方向；沒有明顯雷點就回空陣列"]
   },
   "targetProfile": {
-    "interests": ["她提到的興趣1", "興趣2"],
-    "traits": ["推測的性格特質1", "特質2"],
-    "notes": ["值得記住的重點1", "重點2"]
+    "interests": [
+      { "value": "爬山", "evidence": ["我每個週末都會去爬山"] }
+    ],
+    "traits": [
+      { "value": "慢熱", "evidence": ["我其實很慢熱"] }
+    ],
+    "notes": [
+      { "value": "不喜歡聊工作", "evidence": ["我不喜歡一直聊工作"] }
+    ]
   },
   "strategy": "這回合的工作判斷，例如：先接生活分享，不急著邀約",
   "reminder": "一個最容易踩的提醒，例如：別連問三題"
@@ -5566,6 +5578,12 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
         // 切入角度由 requestId 決定：同次 replay 一致、不同次生成才換。
         requestId: newTopicRequest.requestId,
       });
+      const newTopicGroundingPolicy = {
+        allowSharedFrame: allowsNewTopicSharedFrame({
+          partnerSummary: newTopicRequest.partnerSummary,
+          situation: newTopicRequest.situation,
+        }),
+      };
       const rejectNewTopicDeadline = async (
         stage: string,
       ): Promise<Response> => {
@@ -5634,6 +5652,7 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       const newTopicPrimaryParsed = parseJsonObjectFromText(newTopicRawText);
       let newTopicNormalized = normalizeNewTopicModelPayload(
         newTopicPrimaryParsed,
+        newTopicGroundingPolicy,
       );
       let newTopicRepaired = false;
       if (!newTopicNormalized.ok) {
@@ -5661,6 +5680,7 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
           );
           const repairedNormalized = normalizeNewTopicModelPayload(
             parseJsonObjectFromText(repairedText),
+            newTopicGroundingPolicy,
           );
           if (repairedNormalized.ok) {
             newTopicNormalized = repairedNormalized;

@@ -56,6 +56,219 @@ Deno.test("postProcess returns the calibrated enthusiasm score", () => {
   );
 });
 
+Deno.test("targetProfile：貼圖／emoji 不能被包裝成寵物興趣", () => {
+  const input = buildBaseResult();
+  input.targetProfile = {
+    interests: [{
+      value: "寵物互動玩笑",
+      evidence: ["🐶", "狗狗貼圖"],
+    }],
+    traits: [],
+    notes: [],
+  };
+
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+    requestMessages: [
+      { isFromMe: false, content: "🐶" },
+      { isFromMe: false, content: "狗狗貼圖" },
+      { isFromMe: true, content: "哈哈" },
+    ],
+  });
+
+  assertEquals(result.targetProfile, {
+    provenanceVersion: 1,
+    interests: [],
+    traits: [],
+    notes: [],
+    evidence: { interests: [], traits: [], notes: [] },
+  });
+});
+
+Deno.test("targetProfile：一餐與本輪連發都不是穩定興趣／人格", () => {
+  const input = buildBaseResult();
+  input.targetProfile = {
+    interests: [{
+      value: "茄汁牛肉飯",
+      evidence: ["今天終於吃到想吃的茄汁牛肉飯"],
+    }],
+    traits: [{
+      value: "幽默自信",
+      evidence: ["肯定是看我有禮貌又可愛", "今天終於吃到了嗎"],
+    }],
+    notes: [],
+  };
+
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+    requestMessages: [
+      { isFromMe: false, content: "肯定是看我有禮貌又可愛" },
+      { isFromMe: false, content: "今天終於吃到了嗎" },
+      { isFromMe: false, content: "今天終於吃到想吃的茄汁牛肉飯" },
+    ],
+  });
+
+  const profile = result.targetProfile as Record<string, unknown>;
+  assertEquals(profile.interests, []);
+  assertEquals(profile.traits, []);
+});
+
+Deno.test("targetProfile：不能拿我方訊息當她的證據", () => {
+  const input = buildBaseResult();
+  input.targetProfile = {
+    interests: [{ value: "養狗", evidence: ["我每週都會帶狗散步"] }],
+    traits: [],
+    notes: [],
+  };
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+    requestMessages: [{
+      isFromMe: true,
+      content: "我每週都會帶狗散步",
+    }],
+  });
+
+  assertEquals(
+    (result.targetProfile as Record<string, unknown>).interests,
+    [],
+  );
+});
+
+Deno.test("targetProfile：只保留能對回她文字原句的穩定資料與出處", () => {
+  const input = buildBaseResult();
+  input.targetProfile = {
+    interests: [{
+      value: "爬山",
+      evidence: ["我每個週末都會去爬山"],
+    }],
+    traits: [{
+      value: "慢熱",
+      evidence: ["我其實很慢熱"],
+    }],
+    notes: [{
+      value: "不喜歡聊工作",
+      evidence: ["我不喜歡一直聊工作"],
+    }],
+  };
+
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+    requestMessages: [
+      { isFromMe: false, content: "我每個週末都會去爬山" },
+      { isFromMe: true, content: "感覺很健康" },
+      { isFromMe: false, content: "我其實很慢熱" },
+      { isFromMe: true, content: "慢慢來就好" },
+      { isFromMe: false, content: "我不喜歡一直聊工作" },
+    ],
+  });
+
+  const profile = result.targetProfile as Record<string, unknown>;
+  assertEquals(profile.provenanceVersion, 1);
+  assertEquals(profile.interests, ["爬山"]);
+  assertEquals(profile.traits, ["慢熱"]);
+  assertEquals(profile.notes, ["不喜歡聊工作"]);
+  assertEquals(profile.evidence, {
+    interests: [{
+      value: "爬山",
+      sourceMessages: ["我每個週末都會去爬山"],
+    }],
+    traits: [{
+      value: "慢熱",
+      sourceMessages: ["我其實很慢熱"],
+    }],
+    notes: [{
+      value: "不喜歡聊工作",
+      sourceMessages: ["我不喜歡一直聊工作"],
+    }],
+  });
+});
+
+Deno.test("targetProfile：提到喜歡某種人格，不等於她本人有該人格", () => {
+  const input = buildBaseResult();
+  input.targetProfile = {
+    interests: [],
+    traits: [{
+      value: "幽默",
+      evidence: ["我喜歡幽默的人"],
+    }],
+    notes: [],
+  };
+
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+    requestMessages: [{ isFromMe: false, content: "我喜歡幽默的人" }],
+  });
+
+  assertEquals(
+    (result.targetProfile as Record<string, unknown>).traits,
+    [],
+  );
+});
+
+Deno.test("targetProfile：明講不喜歡的主題只能是邊界，不能變成興趣", () => {
+  const input = buildBaseResult();
+  input.targetProfile = {
+    interests: [{
+      value: "工作",
+      evidence: ["我不喜歡一直聊工作"],
+    }],
+    traits: [],
+    notes: [{
+      value: "不喜歡聊工作",
+      evidence: ["我不喜歡一直聊工作"],
+    }],
+  };
+
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+    requestMessages: [{ isFromMe: false, content: "我不喜歡一直聊工作" }],
+  });
+
+  const profile = result.targetProfile as Record<string, unknown>;
+  assertEquals(profile.interests, []);
+  assertEquals(profile.notes, ["不喜歡聊工作"]);
+});
+
+Deno.test("targetProfile：舊式字串陣列沒有出處，一律不升格成可信記憶", () => {
+  const input = buildBaseResult();
+  input.targetProfile = {
+    interests: ["寵物互動玩笑"],
+    traits: ["幽默自信"],
+    notes: ["她喜歡狗"],
+  };
+
+  const result = postProcessAnalysisResult({
+    result: input,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ESSENTIAL_FEATURES,
+    requestMessages: [{ isFromMe: false, content: "🐶" }],
+  });
+
+  const profile = result.targetProfile as Record<string, unknown>;
+  assertEquals(profile.interests, []);
+  assertEquals(profile.traits, []);
+  assertEquals(profile.notes, []);
+});
+
 // Mirror of TIER_FEATURES from index.ts. If the tier definition there
 // changes, update this fixture too.
 const FREE_FEATURES = ["extend", "tease"];
@@ -809,7 +1022,9 @@ Deno.test("stripForeignScriptChars 清外語洩漏、保中英 emoji 與の", ()
   // 2026-08-17 Eric 實測：冷讀卡混出俄文「простее」。含外語的整個子句
   // 要丟掉，不是只摳詞——摳詞會留缺謂語的殘句。
   assertEquals(
-    stripForeignScriptChars("妳下課後直接來找我，應該比妳自己糾結怎麼約простее"),
+    stripForeignScriptChars(
+      "妳下課後直接來找我，應該比妳自己糾結怎麼約простее",
+    ),
     "妳下課後直接來找我",
   );
   // 整段只剩外語子句時退回摳字，寧可短也不要空。

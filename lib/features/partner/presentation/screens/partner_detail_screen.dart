@@ -51,7 +51,6 @@ import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
 import '../../domain/mindmap/mind_map_builder.dart';
-import '../../domain/mindmap/partner_insight_presentation.dart';
 import '../dialogs/partner_settings_dialog.dart';
 import '../providers/partner_providers.dart';
 import '../utils/conversation_archive_sections.dart';
@@ -160,6 +159,10 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
       );
     }
 
+    final latestInsight = _PartnerLatestInsight.fromConversations(
+      conversations,
+    );
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
@@ -243,6 +246,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   partner: partner,
                   aggregate: aggregate,
                   conversations: conversations,
+                  latestInsight: latestInsight,
                 ),
                 const SizedBox(height: 16),
                 PartnerHeatHeroCard(heat: aggregate.latestHeat),
@@ -266,9 +270,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                 ),
                 const SizedBox(height: 12),
                 _PartnerNextStepCard(
-                  latestInsight: _PartnerLatestInsight.fromConversations(
-                    conversations,
-                  ),
+                  latestInsight: latestInsight,
                   hasConversations: conversations.isNotEmpty,
                 ),
                 const SizedBox(height: 16),
@@ -994,12 +996,14 @@ class _PartnerLatestInsight {
   final String? nextStep;
   final String? recentInsight;
   final String? interactionAction;
+  final String? coachMicroMove;
   final DateTime? analyzedAt;
 
   const _PartnerLatestInsight({
     this.nextStep,
     this.recentInsight,
     this.interactionAction,
+    this.coachMicroMove,
     this.analyzedAt,
   });
 
@@ -1050,6 +1054,7 @@ class _PartnerLatestInsight {
             result.topicDepth.suggestion,
             result.recommendation.reason,
           ]),
+          coachMicroMove: hintAction,
           analyzedAt: conversation.updatedAt,
         );
       } catch (_) {
@@ -1098,23 +1103,21 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
   final Partner partner;
   final PartnerAggregateView aggregate;
   final List<Conversation> conversations;
+  final _PartnerLatestInsight latestInsight;
 
   const _PartnerCommandSummaryCard({
     required this.partner,
     required this.aggregate,
     required this.conversations,
+    required this.latestInsight,
   });
 
   @override
   Widget build(BuildContext context) {
     final state = PartnerHeatMessaging.labelFor(aggregate.latestHeat);
-    // 總覽卡只放「短抓手」，不再重貼完整下一步（資訊架構去重：完整建議只在
-    // 下方主卡出現一次）。抓手由特質/興趣衍生，與 nextStep 解耦。
-    final hook = PartnerInsightPresentation.derive(
-          interests: aggregate.unionInterests,
-          traits: aggregate.unionTraits,
-        ).tacticalHook ??
-        _emptyHook(conversations);
+    // 「接法」只能顯示本輪 coachActionHint.microMove。特質＋興趣是對象
+    // 線索，不是策略；把兩者拼起來會讓 UI 對使用者宣稱 AI 給了不存在的接法。
+    final hook = latestInsight.coachMicroMove ?? _emptyHook(conversations);
     final tags = _highValueTags(aggregate, state);
 
     return _PartnerDetailSection(
@@ -1195,10 +1198,10 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
             : aggregate.unionTraits.length;
     for (var i = 0; i < maxLength && result.length < 4; i++) {
       if (i < aggregate.unionTraits.length) {
-        result.add(aggregate.unionTraits[i]);
+        result.add('個性：${aggregate.unionTraits[i]}');
       }
       if (i < aggregate.unionInterests.length && result.length < 4) {
-        result.add(aggregate.unionInterests[i]);
+        result.add('偏好：${aggregate.unionInterests[i]}');
       }
     }
     return result;
@@ -1458,7 +1461,7 @@ class _PartnerEmptyStateCard extends StatelessWidget {
               height: 56,
               child: FilledButton(
                 key: const Key('partner-empty-add-conversation'),
-              onPressed: onAddConversation,
+                onPressed: onAddConversation,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.ctaStart,
                   foregroundColor: AppColors.onCta,

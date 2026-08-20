@@ -33,6 +33,7 @@ String _snapshot({
       'topicDepth': {'current': depth, 'suggestion': ''},
       'strategy': strategy,
       'targetProfile': {
+        'provenanceVersion': 1,
         'interests': ['爬山', '咖啡'],
         'traits': ['幽默'],
         'notes': <String>[],
@@ -267,7 +268,9 @@ void main() {
       expect(map.nextStepSourceConversationId, 'old');
     });
 
-    test('無可解析快照（僅 currentGameStage fallback）→ nextStepSourceConversationId null', () {
+    test(
+        '無可解析快照（僅 currentGameStage fallback）→ nextStepSourceConversationId null',
+        () {
       final map = buildPartnerMindMap(
         partnerName: 'Vivi',
         aggregate: _aggregate(interests: [], traits: []),

@@ -81,7 +81,9 @@ class NewTopicPartnerContextBuilder {
       );
     }
     if (hasHeatSignal) {
-      buffer.writeln('- 最近熱度：${aggregate.latestHeat}');
+      buffer.writeln(
+        '- 最近互動投入：${aggregate.latestHeat}（只調整節奏，不是關係階段或長期特質）',
+      );
     }
     if (hasInterestSignals) {
       buffer.writeln('- 興趣：${aggregate.unionInterests.join('、')}');

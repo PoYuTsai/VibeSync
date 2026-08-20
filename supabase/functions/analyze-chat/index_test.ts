@@ -1017,7 +1017,11 @@ Deno.test({
     assert(source.includes("Go / No-Go 判斷"));
     assert(source.includes("RelationshipRiskAndTimeCostFrame"));
     assert(source.includes("可見輸出禁用內部術語"));
-    assert(source.includes("不要把一次玩笑、一次情緒或一次敷衍推測成長期人格"));
+    assert(source.includes("長期記憶**，不是本輪互動標籤"));
+    assert(source.includes("貼圖、emoji、照片、影片、媒體佔位字"));
+    assert(source.includes("每一項必須回傳 value 與 evidence"));
+    assert(source.includes('{ "value": "爬山", "evidence":'));
+    assert(source.includes("主動熱絡、這輪幽默、回很快等當下訊號不是長期人格"));
     assert(source.includes("go_no_go"));
   },
 });

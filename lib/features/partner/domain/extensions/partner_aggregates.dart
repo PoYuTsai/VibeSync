@@ -96,16 +96,27 @@ _Parsed? _parseSnapshot(DateTime updatedAt, String? jsonStr) {
     if (decoded is! Map) return null;
     final tp = decoded['targetProfile'];
     if (tp is! Map) return null;
+    // v1 以前的 targetProfile 只有模型字串陣列，沒有任何可核對出處。
+    // 這些舊標籤可以留在歷史快照，但不得再升格成跨輪記憶或新話題事實。
+    if (tp['provenanceVersion'] != 1) return null;
     return _Parsed(
       updatedAt: updatedAt,
-      interests: (tp['interests'] as List?)?.cast<String>() ?? const [],
-      traits: (tp['traits'] as List?)?.cast<String>() ?? const [],
-      notes: (tp['notes'] as List?)?.cast<String>() ?? const [],
+      interests: _stringList(tp['interests']),
+      traits: _stringList(tp['traits']),
+      notes: _stringList(tp['notes']),
     );
   } catch (_) {
     return null;
   }
 }
+
+List<String> _stringList(Object? value) => value is List
+    ? value
+        .whereType<String>()
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList()
+    : const [];
 
 List<String> _rankByRecency(
   List<_Parsed> descByDate,

@@ -22,7 +22,17 @@ class PartnerSummaryBuilder {
   }) {
     if (_hasOwnerMismatch(partner, conversations)) return '';
 
+    final customNote = partner.customNote?.trim();
+    final hasCustomNote = customNote != null && customNote.isNotEmpty;
+
     if (conversations.isEmpty) {
+      if (hasCustomNote) {
+        return _capWithGraphemeSafeTruncation(
+          '[對象背景：${_partnerName(partner)}]\n'
+          '- 你的備註：$customNote\n'
+          '- 注意：這是使用者手動確認的背景；仍不得猜補未提供的事實',
+        );
+      }
       return _renderHeader(partner, '（尚無對話記錄）');
     }
 
@@ -31,7 +41,7 @@ class PartnerSummaryBuilder {
         aggregate.unionTraits.isNotEmpty ||
         aggregate.unionNotes != null;
 
-    if (!hasParsedSnapshot) {
+    if (!hasParsedSnapshot && !hasCustomNote) {
       if (conversations.length == 1) {
         return _renderHeader(partner, '這是你跟此對象的第一次對話');
       }
@@ -56,8 +66,7 @@ class PartnerSummaryBuilder {
       buffer.writeln('- 性格：${aggregate.unionTraits.join('、')}');
     }
 
-    final customNote = partner.customNote?.trim();
-    if (customNote != null && customNote.isNotEmpty) {
+    if (hasCustomNote) {
       buffer.writeln('- 你的備註：$customNote');
     } else if (aggregate.unionNotes != null) {
       final pastNotes = _topNNotes(aggregate.unionNotes!);

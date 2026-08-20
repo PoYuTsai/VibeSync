@@ -51,6 +51,7 @@ String _snapshot({
 }) =>
     jsonEncode({
       'targetProfile': {
+        'provenanceVersion': 1,
         'interests': interests,
         'traits': traits,
         'notes': notes,
@@ -59,6 +60,27 @@ String _snapshot({
 
 void main() {
   group('PartnerAggregates.aggregateOver', () {
+    test('legacy snapshot 沒有 provenance，不再升格成跨輪記憶', () {
+      final legacy = jsonEncode({
+        'targetProfile': {
+          'interests': ['寵物互動玩笑'],
+          'traits': ['幽默自信'],
+          'notes': ['她喜歡狗'],
+        },
+      });
+      final view = _partner().aggregateOver([
+        _convo(
+          id: 'legacy',
+          updatedAt: DateTime(2026, 8, 20),
+          snapshotJson: legacy,
+        ),
+      ]);
+
+      expect(view.unionInterests, isEmpty);
+      expect(view.unionTraits, isEmpty);
+      expect(view.unionNotes, isNull);
+    });
+
     test('empty conversation list returns safe defaults', () {
       final view = _partner().aggregateOver(const []);
       expect(view.unionInterests, isEmpty);

@@ -43,13 +43,23 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
   late final Set<String> _selected;
   bool _chipsTouched = false;
 
-  /// 主詞契約（2026-08-19 Eric 拍板）：這個彈窗填的是對象，三類 chips
-  /// 一律以**對方**為主詞（特質＝個性、狀態＝互動現況、喜好＝她的興趣
-  /// ＝開場鉤子燃料）。用戶自己的目標不進這裡。
+  /// 主詞契約：這個彈窗填的是對象，四類 chips 一律以**對方**為主詞。
+  /// 關係階段獨立於工作／地點／穩定生活資料，避免「工作忙碌」被模型當
+  /// 人格、「異地」被當興趣。用戶自己的目標不進這裡。
   static const Map<String, List<String>> _quickTagGroups = {
-    '特質': ['慢熱', '外向健談', '幽默愛鬧', '工作忙碌'],
-    '狀態': ['剛認識', '回覆慢但都會回', '不太主動但有回', '聊得來但還沒約'],
-    '喜好': ['喜歡戶外', '愛喝咖啡', '吃貨', '有在健身', '愛看劇'],
+    '關係階段': ['剛認識', '回覆慢但都會回', '不太主動但有回', '聊得來但還沒約'],
+    '工作／作息': ['工作忙碌', '輪班', '早睡早起', '夜貓子'],
+    '地點／距離': ['同縣市', '異地', '常出差', '距離有點遠'],
+    '穩定偏好／生活': [
+      '慢熱',
+      '外向健談',
+      '幽默愛鬧',
+      '喜歡戶外',
+      '愛喝咖啡',
+      '吃貨',
+      '有在健身',
+      '愛看劇',
+    ],
   };
 
   static final Set<String> _allTags =
@@ -149,11 +159,10 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
                   children: [
                     Text(
                       entry.key,
-                      style:
-                          Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: AppColors.glassTextSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppColors.glassTextSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(

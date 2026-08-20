@@ -208,7 +208,9 @@ export function sanitizeNewTopicRequest(
  * 三類素材（作戰板摘要／關於我風格／情境）至少一類有實質內容才可生成；
  * 全空必須在 rate limit、model、claim、charge 前回 422（§1.4）。
  */
-export function hasNewTopicMaterial(request: NewTopicSanitizedRequest): boolean {
+export function hasNewTopicMaterial(
+  request: NewTopicSanitizedRequest,
+): boolean {
   return request.partnerSummary !== null ||
     request.effectiveStyleContext !== null ||
     request.situation !== null;
@@ -234,6 +236,15 @@ export type NewTopicModelNormalizeResult =
   }
   | { ok: false; reason: string };
 
+export type NewTopicGroundingPolicy = {
+  allowSharedFrame: boolean;
+};
+
+const INTERNAL_VISIBLE_TOKEN =
+  /\b(?:went_cold|after_date|warm_up|stuck|new_topic)\b/i;
+const UNVERIFIED_SHARED_FRAME =
+  /(?:如果|假設|要是|改天|下次)?我們(?:一起|兩個|家|以後|會|要|去|來|找|約|玩|吃|喝|看|養|住)|一起(?:養|住|搬|過夜|成家)/;
+
 /**
  * 可見文字守門：raw JSON、code fence、schema 說明洩漏一律判缺。
  * 超長不截斷——整份失敗（設計鐵則：不可修剪後照扣）。
@@ -257,6 +268,30 @@ function sanitizeVisibleText(value: unknown, maxLen: number): string | null {
   return trimmed;
 }
 
+function sanitizeModelVisibleText(
+  value: unknown,
+  maxLen: number,
+): string | null {
+  const sanitized = sanitizeVisibleText(value, maxLen);
+  if (sanitized === null || INTERNAL_VISIBLE_TOKEN.test(sanitized)) return null;
+  return sanitized;
+}
+
+/**
+ * 「想升溫」是使用者的生成目標，不是兩人已熟的證據。共同想像只在手動
+ * 對象卡明列熟悉階段，或確定剛約完會時放行；AI 興趣／熱度不能自己升級。
+ */
+export function allowsNewTopicSharedFrame(input: {
+  partnerSummary: string | null;
+  situation: NewTopicSituation | null;
+}): boolean {
+  if (input.situation === "after_date") return true;
+  if (input.partnerSummary === null) return false;
+  return /(?:^|\n)- 你的備註：[^\n]*聊得來但還沒約/.test(
+    input.partnerSummary,
+  );
+}
+
 /** 重複判定用 normalize：小寫＋去空白（全形空白一併吃掉）。 */
 function dedupeKey(value: string): string {
   return value.toLowerCase().replace(/[\s　]+/g, "");
@@ -269,6 +304,7 @@ function dedupeKey(value: string): string {
  */
 export function normalizeNewTopicModelPayload(
   parsed: unknown,
+  policy: NewTopicGroundingPolicy = { allowSharedFrame: true },
 ): NewTopicModelNormalizeResult {
   if (!isPlainObject(parsed)) {
     return { ok: false, reason: "payload_not_object" };
@@ -289,24 +325,31 @@ export function normalizeNewTopicModelPayload(
     if (!isPlainObject(rawTopic)) {
       return { ok: false, reason: "topic_not_object" };
     }
-    const direction = sanitizeVisibleText(
+    const direction = sanitizeModelVisibleText(
       rawTopic.direction,
       NEW_TOPIC_FIELD_CAPS.direction,
     );
-    const openingLine = normalizeOutgoingScript(normalizeOutgoingPunctuation(normalizePartnerPronoun(sanitizeVisibleText(
-      rawTopic.openingLine,
-      NEW_TOPIC_FIELD_CAPS.openingLine,
-    ))));
-    const whyItWorks = sanitizeVisibleText(
+    const openingLine = normalizeOutgoingScript(
+      normalizeOutgoingPunctuation(
+        normalizePartnerPronoun(sanitizeModelVisibleText(
+          rawTopic.openingLine,
+          NEW_TOPIC_FIELD_CAPS.openingLine,
+        )),
+      ),
+    );
+    const whyItWorks = sanitizeModelVisibleText(
       rawTopic.whyItWorks,
       NEW_TOPIC_FIELD_CAPS.whyItWorks,
     );
-    const nextMove = sanitizeVisibleText(
+    const nextMove = sanitizeModelVisibleText(
       rawTopic.nextMove,
       NEW_TOPIC_FIELD_CAPS.nextMove,
     );
     if (!direction || !openingLine || !whyItWorks || !nextMove) {
       return { ok: false, reason: "topic_field_invalid" };
+    }
+    if (!policy.allowSharedFrame && UNVERIFIED_SHARED_FRAME.test(openingLine)) {
+      return { ok: false, reason: "shared_frame_without_verified_stage" };
     }
 
     const directionKey = dedupeKey(direction);
@@ -336,7 +379,7 @@ export function normalizeNewTopicModelPayload(
   if (
     rawRecommendation.reason !== undefined && rawRecommendation.reason !== null
   ) {
-    recommendationReason = sanitizeVisibleText(
+    recommendationReason = sanitizeModelVisibleText(
       rawRecommendation.reason,
       NEW_TOPIC_FIELD_CAPS.recommendationReason,
     );

@@ -47,6 +47,7 @@ String _snapshot({
 }) =>
     jsonEncode({
       'targetProfile': {
+        'provenanceVersion': 1,
         'interests': interests,
         'traits': traits,
         'notes': notes,
@@ -79,14 +80,16 @@ void main() {
     expect(context.hasTraitSignals, isTrue);
     final text = context.promptText!;
     expect(text, contains('[對象作戰板：糖糖]'));
-    expect(text, contains('最近熱度：72'));
+    expect(text, contains('最近互動投入：72'));
+    expect(text, contains('不是關係階段或長期特質'));
     expect(text, contains('興趣：爬山、手沖'));
     expect(text, contains('只可使用以上明確紀錄，不得猜補對方興趣'));
     // 不得帶 analyze 語意的「當前對話優先」句。
     expect(text, isNot(contains('當前對話')));
   });
 
-  test('只有名稱/對話數/日期＝無 actionable signal → promptText null 且無 placeholder header',
+  test(
+      '只有名稱/對話數/日期＝無 actionable signal → promptText null 且無 placeholder header',
       () {
     final context = builder.build(
       partner: _partner(),
@@ -98,6 +101,30 @@ void main() {
 
     expect(context.hasActionableSignals, isFalse);
     expect(context.promptText, isNull);
+  });
+
+  test('舊版無出處的寵物標籤不可進新話題對象卡', () {
+    final legacy = jsonEncode({
+      'targetProfile': {
+        'interests': ['寵物互動玩笑'],
+        'traits': ['幽默自信'],
+        'notes': <String>[],
+      },
+    });
+    final context = builder.build(
+      partner: _partner(),
+      conversations: [
+        _convo(
+          id: 'legacy',
+          updatedAt: DateTime(2026, 8, 20),
+          snapshotJson: legacy,
+        ),
+      ],
+    );
+
+    expect(context.promptText, isNull);
+    expect(context.hasInterestSignals, isFalse);
+    expect(context.hasTraitSignals, isFalse);
   });
 
   test('零對話但有 customNote：必須成功輸出（customNote-only）', () {

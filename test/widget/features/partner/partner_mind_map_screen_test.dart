@@ -35,6 +35,7 @@ String _snapshot() => jsonEncode({
       'topicDepth': {'current': 'personal', 'suggestion': ''},
       'strategy': '維持神祕感',
       'targetProfile': {
+        'provenanceVersion': 1,
         'interests': ['爬山'],
         'traits': ['幽默'],
         'notes': <String>[],

@@ -4,6 +4,7 @@ import {
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  allowsNewTopicSharedFrame,
   buildNewTopicLedgerResult,
   hasNewTopicMaterial,
   isValidNewTopicLedgerResult,
@@ -191,7 +192,10 @@ Deno.test("normalize：openingLine 的「你」轉「妳」，教練欄位不動
     recommendation: { index: 0, reason: "最貼近她的近況" },
   });
   assert(result.ok);
-  assertEquals(result.topics[0].openingLine, "如果拉妳去爬山，妳大概走十分鐘就想放棄");
+  assertEquals(
+    result.topics[0].openingLine,
+    "如果拉妳去爬山，妳大概走十分鐘就想放棄",
+  );
   // 「你們」可能是混合群體，刻意不動。
   assertEquals(result.topics[1].openingLine, "鄰居，你們那棟最近吵嗎");
   // 教練欄位是對使用者講話，「你」＝他本人，不得被改。
@@ -288,6 +292,58 @@ Deno.test("normalize：code fence／raw JSON 洩漏判缺", () => {
       topics: jsonLeak,
       recommendation: { index: 0 },
     }).ok,
+  );
+});
+
+Deno.test("normalize：內部 situation token 不得出現在任何可見欄位", () => {
+  const leaked = modelTopics();
+  leaked[0].whyItWorks = "warm_up 階段適合增加互動深度";
+  assertFalse(
+    normalizeNewTopicModelPayload({
+      topics: leaked,
+      recommendation: { index: 0, reason: "符合 warm_up 目標" },
+    }).ok,
+  );
+});
+
+Deno.test("normalize：未知關係階段不得用共同生活的『我們』框架", () => {
+  const overstepped = modelTopics();
+  overstepped[0].openingLine = "如果我們一起養狗妳一定搶著取名";
+  assertFalse(
+    normalizeNewTopicModelPayload(
+      {
+        topics: overstepped,
+        recommendation: { index: 0 },
+      },
+      { allowSharedFrame: false },
+    ).ok,
+  );
+  assert(
+    normalizeNewTopicModelPayload(
+      {
+        topics: overstepped,
+        recommendation: { index: 0 },
+      },
+      { allowSharedFrame: true },
+    ).ok,
+  );
+});
+
+Deno.test("shared frame 權限只來自明確熟悉階段，不把 warm_up 當階段", () => {
+  assertFalse(
+    allowsNewTopicSharedFrame({ partnerSummary: null, situation: "warm_up" }),
+  );
+  assertFalse(
+    allowsNewTopicSharedFrame({
+      partnerSummary: "[對象作戰板：Miya]\n- 興趣：咖啡",
+      situation: "warm_up",
+    }),
+  );
+  assert(
+    allowsNewTopicSharedFrame({
+      partnerSummary: "[對象作戰板：Miya]\n- 你的備註：聊得來但還沒約",
+      situation: "warm_up",
+    }),
   );
 });
 

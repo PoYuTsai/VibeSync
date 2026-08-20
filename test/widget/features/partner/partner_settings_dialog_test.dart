@@ -41,6 +41,17 @@ void main() {
     return pendingResult();
   }
 
+  testWidgets('chips 依關係、工作作息、地點距離、穩定生活分組', (tester) async {
+    await pumpDialog(tester);
+
+    expect(find.text('關係階段'), findsOneWidget);
+    expect(find.text('工作／作息'), findsOneWidget);
+    expect(find.text('地點／距離'), findsOneWidget);
+    expect(find.text('穩定偏好／生活'), findsOneWidget);
+    expect(find.text('工作忙碌'), findsOneWidget);
+    expect(find.text('異地'), findsOneWidget);
+  });
+
   testWidgets('選兩個 chips 儲存成「、」串接', (tester) async {
     await pumpDialog(tester);
 
@@ -50,7 +61,7 @@ void main() {
     await tester.pump();
 
     final result = await save(tester);
-    expect(result!.note, '慢熱、剛認識');
+    expect(result!.note, '剛認識、慢熱');
   });
 
   testWidgets('既有片語顯示已選，再點一次取消', (tester) async {
@@ -82,6 +93,6 @@ void main() {
 
     final result = await save(tester);
     // 舊 chip 片語（慢熱）保留、自由句（想約出來見面）清掉。
-    expect(result!.note, '慢熱、剛認識');
+    expect(result!.note, '剛認識、慢熱');
   });
 }

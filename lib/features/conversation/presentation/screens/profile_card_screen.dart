@@ -150,7 +150,9 @@ class ProfileCardScreen extends ConsumerWidget {
     try {
       final decoded = jsonDecode(snapshotJson);
       if (decoded is! Map) return null;
-      return decoded['targetProfile'] as Map<String, dynamic>?;
+      final raw = decoded['targetProfile'];
+      if (raw is! Map || raw['provenanceVersion'] != 1) return null;
+      return raw.map((key, value) => MapEntry(key.toString(), value));
     } catch (_) {
       return null;
     }
