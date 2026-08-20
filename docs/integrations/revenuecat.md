@@ -31,6 +31,19 @@
 | `essential_monthly` | Essential | 月繳 | NT$1,290 |
 | `essential_quarterly` | Essential | 季繳 | （季繳價，以 App Store 為準） |
 
+### Legacy fallback product IDs
+
+上表 4 個是現行 canonical ID，但 client 實際識別的是 **12 個** —— 每個 tier/週期各有 `vibesync_` 前綴與 `_v2` 後綴兩個舊 ID，用來向後相容早期購買：
+
+| Tier / 週期 | Canonical | Legacy fallback |
+|------------|-----------|-----------------|
+| Starter 月繳 | `starter_monthly` | `vibesync_starter_monthly`、`vibesync_starter_monthly_v2` |
+| Starter 季繳 | `starter_quarterly` | `vibesync_starter_quarterly`、`vibesync_starter_quarterly_v2` |
+| Essential 月繳 | `essential_monthly` | `vibesync_essential_monthly`、`vibesync_essential_monthly_v2` |
+| Essential 季繳 | `essential_quarterly` | `vibesync_essential_quarterly`、`vibesync_essential_quarterly_v2` |
+
+真相源是 `lib/features/subscription/data/providers/subscription_providers.dart` 的 `_subscriptionProductIds`。改動 tier 判定或 paywall 對應時，四組清單要一起看——只比對 canonical ID 會讓持有舊 product ID 的付費用戶被判成 Free。
+
 ### 額度（2026-04-22 起）
 | Tier | 月訊息 | 日上限 | AI 模型 |
 |------|--------|--------|---------|
