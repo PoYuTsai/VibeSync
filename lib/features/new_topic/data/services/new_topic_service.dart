@@ -162,10 +162,13 @@ class NewTopicService {
     String? revenueCatAppUserId,
     void Function(String label, String? phase)? onProgress,
   }) async {
+    const maxAttemptCount = 3;
+    var attemptCount = 0;
     var inProgressRecoveryCount = 0;
     var transportRecoveryCount = 0;
     var stateRecoveryCount = 0;
     while (true) {
+      attemptCount += 1;
       try {
         return await _generateTopicsStreamingOnce(
           requestId: requestId,
@@ -180,21 +183,27 @@ class NewTopicService {
         // 同 requestId 已由前一條連線受理：不要叫使用者再按一次，也不能
         // rotate id。依 server lease 提示等一次，再用同一 envelope 接回
         // stored result；若第二次仍 pending，交回既有友善錯誤避免無限迴圈。
-        if (inProgressRecoveryCount >= 1) rethrow;
+        if (attemptCount >= maxAttemptCount || inProgressRecoveryCount >= 1) {
+          rethrow;
+        }
         inProgressRecoveryCount += 1;
         onProgress?.call('同一筆結果還在整理，完成後會自動接回', 'reconnecting');
         await Future<void>.delayed(_inProgressRetryDelay(error.retryAfterMs));
       } on NewTopicTransportException {
         // lost response 不代表 server 沒受理。自動重連一次，同 requestId
         // 會得到 pending 或 replay；第二次仍斷才把友善錯誤交回 UI。
-        if (transportRecoveryCount >= 1) rethrow;
+        if (attemptCount >= maxAttemptCount || transportRecoveryCount >= 1) {
+          rethrow;
+        }
         transportRecoveryCount += 1;
         onProgress?.call('連線剛剛中斷，正在接回同一筆結果', 'reconnecting');
         await Future<void>.delayed(const Duration(milliseconds: 250));
       } on NewTopicStatePendingException catch (error) {
         // 這類 503 代表帳本／claim 狀態還沒收斂，不是可安全鑄新 id 的
         // 一般生成失敗。先用同 id 接一次；若轉成 409，再依 lease 等候。
-        if (stateRecoveryCount >= 1) rethrow;
+        if (attemptCount >= maxAttemptCount || stateRecoveryCount >= 1) {
+          rethrow;
+        }
         stateRecoveryCount += 1;
         onProgress?.call('正在確認同一筆結果，完成後會自動接回', 'reconnecting');
         await Future<void>.delayed(_inProgressRetryDelay(error.retryAfterMs));

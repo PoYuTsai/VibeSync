@@ -268,6 +268,27 @@ void main() {
     expect(requestIds, [_requestId, _requestId]);
   });
 
+  test('transport 連斷兩次：同 requestId 只接回一次後停止', () async {
+    final requestIds = <String>[];
+    final service = NewTopicService(
+      streamClientFactory: () =>
+          MockClient.streaming((request, bodyStream) async {
+        final body = jsonDecode(await utf8.decodeStream(bodyStream))
+            as Map<String, dynamic>;
+        requestIds.add(body['requestId'] as String);
+        throw http.ClientException('connection lost');
+      }),
+      accessTokenProvider: () => 'fake-token',
+    );
+
+    await expectLater(
+      service.generateTopicsStreaming(requestId: _requestId),
+      throwsA(isA<NewTopicTransportException>()),
+    );
+
+    expect(requestIds, [_requestId, _requestId]);
+  });
+
   test('第一次回報 claim 狀態待恢復：同 requestId 經 pending 後自動接回結果', () async {
     var clientCount = 0;
     final requestIds = <String>[];
@@ -319,6 +340,66 @@ void main() {
     final result = await service.generateTopicsStreaming(requestId: _requestId);
 
     expect(result.topics, hasLength(5));
+    expect(requestIds, [_requestId, _requestId, _requestId]);
+  });
+
+  test('混合 pending／409／transport：全局最多三次同 requestId 呼叫', () async {
+    var clientCount = 0;
+    final requestIds = <String>[];
+    final service = NewTopicService(
+      streamClientFactory: () {
+        clientCount += 1;
+        return MockClient.streaming((request, bodyStream) async {
+          final body = jsonDecode(await utf8.decodeStream(bodyStream))
+              as Map<String, dynamic>;
+          requestIds.add(body['requestId'] as String);
+          if (clientCount == 1) {
+            final lines = '${jsonEncode({
+                  'type': 'new_topic.error',
+                  'status': 503,
+                  'code': 'NEW_TOPIC_CLAIM_RELEASE_RETRYABLE',
+                  'message': '請求狀態暫時無法釋放，請稍後用同一筆請求重試。',
+                  'retryable': true,
+                })}\n';
+            return http.StreamedResponse(
+              Stream.value(utf8.encode(lines)),
+              200,
+              headers: {'content-type': 'application/x-ndjson'},
+            );
+          }
+          if (clientCount == 2) {
+            final lines = '${jsonEncode({
+                  'type': 'new_topic.error',
+                  'status': 409,
+                  'code': 'NEW_TOPIC_REQUEST_IN_PROGRESS',
+                  'message': '這筆請求正在生成中，請稍候片刻再用同一筆請求重試。',
+                  'retryAfterMs': 1,
+                })}\n';
+            return http.StreamedResponse(
+              Stream.value(utf8.encode(lines)),
+              200,
+              headers: {'content-type': 'application/x-ndjson'},
+            );
+          }
+          if (clientCount == 3) {
+            throw http.ClientException('connection lost');
+          }
+          return http.StreamedResponse(
+            Stream.value(utf8.encode(jsonEncode(_paidBody()))),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        });
+      },
+      accessTokenProvider: () => 'fake-token',
+    );
+
+    await expectLater(
+      service.generateTopicsStreaming(requestId: _requestId),
+      throwsA(isA<NewTopicTransportException>()),
+    );
+
+    expect(clientCount, 3);
     expect(requestIds, [_requestId, _requestId, _requestId]);
   });
 

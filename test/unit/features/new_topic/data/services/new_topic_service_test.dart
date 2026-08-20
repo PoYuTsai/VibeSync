@@ -40,6 +40,10 @@ Map<String, dynamic> _freeBody() => {
     };
 
 void main() {
+  test('client timeout 明確高於 server 50 秒 deadline', () {
+    expect(kNewTopicRequestTimeout, greaterThan(const Duration(seconds: 50)));
+  });
+
   group('NewTopicService request body', () {
     test('必送 mode/requestId；blank optional 欄位不送', () async {
       final calls = <Map<String, dynamic>>[];
@@ -270,6 +274,29 @@ void main() {
                 (e) => e.message,
                 'message',
                 '這筆請求正在生成中，請稍候片刻再用同一筆請求重試。',
+              ),
+        ),
+      );
+    });
+
+    test('SDK FunctionException details 不是 Map 時仍只回安全 domain 錯誤', () async {
+      final service = NewTopicService(
+        invoker: (_, {required body}) async => throw const FunctionException(
+          status: 409,
+          details: 'Conflict',
+          reasonPhrase: 'Conflict',
+        ),
+      );
+
+      await expectLater(
+        service.generateTopics(requestId: _requestId),
+        throwsA(
+          isA<NewTopicException>()
+              .having((e) => e.message, 'message', '新話題生成失敗，請稍後再試。')
+              .having(
+                (e) => e.message,
+                '不洩漏 SDK details',
+                isNot(contains('Conflict')),
               ),
         ),
       );
