@@ -448,10 +448,16 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > android/app/keystore.jks
-          echo "storeFile=keystore.jks" >> android/key.properties
+          echo "storeFile=keystore.jks" > android/key.properties
           echo "storePassword=$KEYSTORE_PASSWORD" >> android/key.properties
           echo "keyAlias=$KEY_ALIAS" >> android/key.properties
           echo "keyPassword=$KEY_PASSWORD" >> android/key.properties
+
+      - name: Verify keystore identity (SEC-01 gate)
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: ./tools/preflight/check-android-signing.sh keystore android/app/keystore.jks
 
       - name: Build Android (Production)
         env:
@@ -469,6 +475,9 @@ jobs:
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
             --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
             --dart-define=SENTRY_DSN="$SENTRY_DSN"
+
+      - name: Verify release AAB signing (AND-02 gate)
+        run: ./tools/preflight/check-android-signing.sh artifact build/app/outputs/bundle/release/app-release.aab
 
       - name: Upload to Play Store (Internal)
         env:
