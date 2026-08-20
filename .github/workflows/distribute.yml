@@ -129,7 +129,12 @@ jobs:
           echo "keyAlias=$KEY_ALIAS" >> android/key.properties
           echo "keyPassword=$KEY_PASSWORD" >> android/key.properties
 
+      # gate 會把 keystore 憑證的 normalized SHA-256（公開中繼資料）寫進
+      # step outputs，後面 APK/AAB 驗簽步驟拿它對帳 signer fingerprint。
+      # 注意：這只是「repo 端自我一致」守門；keystore 是否為 Play 已核可的
+      # upload key（SEC-01 live 驗證）仍待 Play Console 端人工確認。
       - name: Verify keystore identity (SEC-01 gate)
+        id: keystore-gate
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -151,6 +156,8 @@ jobs:
             --dart-define=SENTRY_DSN="$SENTRY_DSN"
 
       - name: Verify release APK signing (AND-02 gate)
+        env:
+          ANDROID_KEYSTORE_SHA256: ${{ steps.keystore-gate.outputs.keystore_sha256 }}
         run: ./tools/preflight/check-android-signing.sh artifact build/app/outputs/flutter-apk/app-release.apk
 
       # P1-2：同一 SHA 同時產出簽名 AAB（Play 通道產物）；APK 留給
@@ -169,11 +176,34 @@ jobs:
             --dart-define=SENTRY_DSN="$SENTRY_DSN"
 
       - name: Verify release AAB signing (AND-02 gate)
+        env:
+          ANDROID_KEYSTORE_SHA256: ${{ steps.keystore-gate.outputs.keystore_sha256 }}
         run: ./tools/preflight/check-android-signing.sh artifact build/app/outputs/bundle/release/app-release.aab
 
-      # P1-3：用真簽好的 AAB 證明 gate 對 tampered／wrong-package 會擋
+      # P1-3：用真簽好的 AAB 證明 gate 對 tampered／wrong-package／
+      # wrong-fingerprint 會擋
       - name: Signing gate negative checks
         run: ./tools/android/signing-gate-negative-check.sh build/app/outputs/bundle/release/app-release.aab
+
+      # 實際合併後的 release manifest 留檔為 CI 證據（dispatcher／
+      # intent-filter 契約以真產物為準，不只靠 source manifest 靜態測試）
+      - name: Preserve merged release manifest (evidence)
+        run: |
+          manifest=$(find build/app/intermediates -ipath "*merged_manifest*" \
+            -ipath "*release*" -name AndroidManifest.xml | head -1)
+          if [ -z "$manifest" ]; then
+            echo "::error::找不到 merged release manifest（AGP 中間產物路徑變動？）"
+            exit 1
+          fi
+          cp "$manifest" merged-release-AndroidManifest.xml
+          echo "merged manifest 來源：$manifest"
+
+      - name: Upload merged release manifest as artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-merged-manifest
+          path: merged-release-AndroidManifest.xml
+          retention-days: 30
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -240,6 +270,8 @@ jobs:
       GIT_REF: ${{ github.ref_name }}
       GIT_SHA: ${{ github.sha }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Download APK artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
@@ -262,6 +294,24 @@ jobs:
         env:
           FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      # secret 的 Firebase app ID 必須等於版控內 google-services.json 的
+      # mobilesdk_app_id（同一 Firebase Android app 身分）；只回報一致與否，
+      # 不印任何一邊的值
+      - name: Verify Firebase app ID matches tracked google-services.json
+        env:
+          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+        run: |
+          tracked=$(jq -r '.client[0].client_info.mobilesdk_app_id' android/app/google-services.json)
+          if [ -z "$tracked" ] || [ "$tracked" = "null" ]; then
+            echo "::error::google-services.json 讀不到 mobilesdk_app_id"
+            exit 1
+          fi
+          if [ "$FIREBASE_ANDROID_APP_ID" != "$tracked" ]; then
+            echo "::error::FIREBASE_ANDROID_APP_ID 與 android/app/google-services.json 的 mobilesdk_app_id 不一致（值不輸出）"
+            exit 1
+          fi
+          echo "Firebase app ID 身分對帳 OK（值不輸出）"
 
       - name: Upload to Firebase App Distribution
         uses: wzieba/Firebase-Distribution-Github-Action@bd494989dd4bec0343f78adee87fe66e48279ad6 # v1

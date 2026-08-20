@@ -142,22 +142,13 @@ class AppConfig {
 
   static const String _nativeAuthRedirectUri =
       'com.poyutsai.vibesync://login-callback';
-  static const String _androidOAuthRedirectUri =
-      'com.poyutsai.vibesync://oauth-callback';
 
-  /// OAuth（flutter_web_auth_2）專用 redirect URI。
-  /// Android 用 oauth-callback：manifest 上唯一擁有者是
-  /// flutter_web_auth_2 CallbackActivity，與 email 深連結
-  /// （login-callback → MainActivity/app_links）分流，密碼重設連結
-  /// 才不會被 CallbackActivity 吞掉。iOS 維持 login-callback（行為不變）。
-  /// 注意：此 URI 需在 Supabase Auth Redirect URLs allowlist 內，
-  /// 見 docs/integrations/auth.md。
-  static String get oauthRedirectUri {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return _androidOAuthRedirectUri;
-    }
-    return authRedirectUri;
-  }
+  /// OAuth（flutter_web_auth_2）redirect URI。
+  /// 兩平台都凍結在 login-callback（既有 Supabase allowlist 條目，免新增）。
+  /// Android 端 OAuth 與 email 深連結的分流不靠 host，而是 manifest 的
+  /// AuthCallbackDispatcherActivity：OAuth 進行中交回 plugin，否則原樣
+  /// 轉送 MainActivity 的 app_links／supabase_flutter。iOS 行為不變。
+  static String get oauthRedirectUri => authRedirectUri;
 
   /// Email 流程（signup 確認、resend、密碼重設）redirect URI。
   static String get authRedirectUri {

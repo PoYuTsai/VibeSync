@@ -36,4 +36,9 @@ expect_gate_fail "竄改後的 AAB" "$gate" artifact "$tampered"
 expect_gate_fail "錯誤 expected package" \
   env ANDROID_EXPECTED_PACKAGE=com.wrong.package "$gate" artifact "$aab"
 
-echo "signing gate 負向驗證全部通過：tampered 與 wrong-package 都會被擋"
+# 3) 錯誤的 keystore fingerprint → signer SHA-256 對帳必須擋
+expect_gate_fail "錯誤 keystore fingerprint" \
+  env ANDROID_KEYSTORE_SHA256=0000000000000000000000000000000000000000000000000000000000000000 \
+  "$gate" artifact "$aab"
+
+echo "signing gate 負向驗證全部通過：tampered、wrong-package、wrong-fingerprint 都會被擋"

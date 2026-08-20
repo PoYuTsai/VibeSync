@@ -55,17 +55,16 @@ void main() {
       );
     });
 
-    group('OAuth 與 email redirect 分流（P1-1）', () {
+    group('OAuth 與 email redirect 凍結單一 URI（P1 修訂）', () {
       tearDown(() {
         debugDefaultTargetPlatformOverride = null;
       });
 
-      test('Android OAuth 用 oauth-callback，email 流程維持 login-callback',
-          () {
+      test('Android OAuth 與 email 都是 login-callback（分流在原生 dispatcher）', () {
         debugDefaultTargetPlatformOverride = TargetPlatform.android;
         expect(
           AppConfig.oauthRedirectUri,
-          'com.poyutsai.vibesync://oauth-callback',
+          'com.poyutsai.vibesync://login-callback',
         );
         expect(
           AppConfig.authRedirectUri,

@@ -1,0 +1,7 @@
+# android/Gemfile
+# release.yml 的 ruby/setup-ruby（bundler-cache＋working-directory: android）
+# 吃這份 Gemfile：fastlane 釘 2.238.0（目前驗證過的版本）。
+# lockfile 由 setup-ruby 端 bundle lock 產生；不手造、不提交手寫 lockfile。
+source "https://rubygems.org"
+
+gem "fastlane", "2.238.0"

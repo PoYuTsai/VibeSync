@@ -47,8 +47,8 @@ class SocialAuthServiceImpl implements SocialAuthService {
 
   @override
   Future<AuthResponse> signInWithGoogle() async {
-    // OAuth 專用 redirect：Android 是 oauth-callback（CallbackActivity 唯一
-    // 擁有），iOS 維持 login-callback。與 email 深連結分流見 AppConfig。
+    // OAuth redirect：兩平台都凍結 login-callback。Android 端與 email
+    // 深連結的分流在原生 AuthCallbackDispatcherActivity，見 AppConfig。
     final expectedCallback = Uri.parse(AppConfig.oauthRedirectUri);
     final authUrl = await Supabase.instance.client.auth.getOAuthSignInUrl(
       provider: OAuthProvider.google,

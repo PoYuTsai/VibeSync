@@ -42,6 +42,11 @@ print_cert_metadata() {
   grep -E "Alias name:|Owner:|Valid from:|SHA256:|SHA-256" <<<"$1" | head -8 || true
 }
 
+# 指紋正規化：去冒號與空白、轉大寫（公開憑證指紋，非機密，可印出）
+normalize_sha256() {
+  tr -d ': ' <<<"$1" | tr '[:lower:]' '[:upper:]'
+}
+
 mode="${1:-}"
 case "$mode" in
   keystore)
@@ -58,6 +63,25 @@ case "$mode" in
     if grep -q "CN=Android Debug" <<<"$out"; then
       fail "SEC-01 gate：keystore 是 Android debug 憑證，禁止用於 release"
     fi
+    # Play upload key 效期守門：notAfter 必須晚於 2033-10-22，否則 fail closed
+    until_str=$(sed -n 's/.*until: //p' <<<"$out" | head -1)
+    [ -n "$until_str" ] || fail "SEC-01 gate：讀不到憑證效期（keytool 輸出格式變動？）"
+    until_epoch=$(date -d "$until_str" +%s 2>/dev/null) \
+      || fail "SEC-01 gate：憑證效期解析失敗：$until_str"
+    # 「晚於 2033-10-22」＝ notAfter 落在 2033-10-23 00:00 之後（當天到期也擋）
+    min_epoch=$(date -d "2033-10-23" +%s)
+    [ "$until_epoch" -ge "$min_epoch" ] \
+      || fail "SEC-01 gate：upload 憑證效期（$until_str）未晚於 2033-10-22"
+    # 公開 SHA-256 fingerprint 正規化後輸出，供產物 signer 對帳（非機密）
+    ks_sha256=$(sed -n 's/^[[:space:]]*SHA256: //p' <<<"$out" | head -1)
+    [ -n "$ks_sha256" ] || fail "SEC-01 gate：讀不到 keystore SHA-256 fingerprint"
+    ks_sha256=$(normalize_sha256 "$ks_sha256")
+    [ "${#ks_sha256}" -eq 64 ] \
+      || fail "SEC-01 gate：keystore fingerprint 正規化後長度異常"
+    echo "keystore 憑證 SHA-256（normalized）：$ks_sha256"
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+      echo "keystore_sha256=$ks_sha256" >> "$GITHUB_OUTPUT"
+    fi
     echo "SEC-01 keystore gate OK（keyPassword 由 Gradle 簽名步驟驗證）"
     ;;
   artifact)
@@ -72,6 +96,8 @@ case "$mode" in
         [ -n "$apksigner" ] && [ -n "$aapt" ] || fail "build-tools 缺 apksigner/aapt"
         certs=$("$apksigner" verify --print-certs "$artifact") \
           || fail "AND-02 gate：APK 簽名驗證失敗"
+        signer_sha256_raw=$(sed -n \
+          's/^Signer #1 certificate SHA-256 digest: //p' <<<"$certs" | head -1)
         pkg=$("$aapt" dump badging "$artifact" \
           | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
         [ "$pkg" = "$EXPECTED_PACKAGE" ] \
@@ -90,6 +116,8 @@ case "$mode" in
         certs=$(keytool -printcert -jarfile "$artifact") \
           || fail "AND-02 gate：AAB 憑證讀取失敗"
         grep -q "Owner:" <<<"$certs" || fail "AND-02 gate：AAB 未簽名"
+        signer_sha256_raw=$(sed -n \
+          's/^[[:space:]]*SHA256: //p' <<<"$certs" | head -1)
         # 語意層 package 對帳：官方釘版 bundletool 解 protobuf manifest，
         # 不做位元組 grep 粗檢
         fetch_bundletool
@@ -106,6 +134,19 @@ case "$mode" in
     print_cert_metadata "$certs"
     if grep -q "Android Debug" <<<"$certs"; then
       fail "AND-02 gate：release 產物使用 debug 憑證，擋下"
+    fi
+    # 產物 signer SHA-256 對帳 keystore fingerprint（CI 由 keystore gate 的
+    # GITHUB_OUTPUT 供值；本機未提供時跳過並明說，不靜默）
+    [ -n "$signer_sha256_raw" ] \
+      || fail "AND-02 gate：讀不到產物 signer SHA-256（工具輸出格式變動？）"
+    signer_sha256=$(normalize_sha256 "$signer_sha256_raw")
+    if [ -n "${ANDROID_KEYSTORE_SHA256:-}" ]; then
+      expected_sha=$(normalize_sha256 "$ANDROID_KEYSTORE_SHA256")
+      [ "$signer_sha256" = "$expected_sha" ] \
+        || fail "AND-02 gate：產物 signer SHA-256（$signer_sha256）與 keystore fingerprint 不一致"
+      echo "signer fingerprint 對帳 OK：$signer_sha256"
+    else
+      echo "未提供 ANDROID_KEYSTORE_SHA256，跳過 signer fingerprint 對帳（CI 的 distribute／release job 都會提供）"
     fi
     echo "AND-02 artifact gate OK：package=$pkg，憑證非 debug"
     ;;

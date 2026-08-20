@@ -25,25 +25,22 @@
 | iOS OAuth Client ID | `568378103108-ptl0icvkk7v2vp6ob21hatm73unokg52.apps.googleusercontent.com` |
 | Web OAuth Client ID | `568378103108-3nsc1ecskfpod51dqgko2d7g2q7pccad.apps.googleusercontent.com` |
 | Supabase Google Provider | ✅（Client ID + Secret） |
-| `flutter_web_auth_2` 套件 | v4.0.1（ASWebAuthenticationSession） |
-| OAuth Callback（iOS） | `com.poyutsai.vibesync://login-callback` |
-| OAuth Callback（Android） | `com.poyutsai.vibesync://oauth-callback` |
+| `flutter_web_auth_2` 套件 | v4.1.0（ASWebAuthenticationSession） |
+| OAuth Callback（兩平台） | `com.poyutsai.vibesync://login-callback` |
 | Email 深連結（兩平台） | `com.poyutsai.vibesync://login-callback` |
 
-### Android callback 分流（Slice 2 P1-1）
+### Android callback 分流（Slice 2 P1 修訂）
 
-Android 上 OAuth 與 email 深連結用不同 host 分流：OAuth 的
-`oauth-callback` 唯一擁有者是 `flutter_web_auth_2` 的 CallbackActivity；
-signup 確認／resend／密碼重設的 `login-callback` 唯一擁有者是
-MainActivity（app_links／supabase_flutter 處理）。同 host 兩個 activity
-會跳選擇器、密碼重設連結會被 CallbackActivity 吞掉，不得合併。
-iOS 維持單一 `login-callback`，行為不變。
-
-> **上線前必做（Supabase Dashboard，人工操作）**：
-> `com.poyutsai.vibesync://oauth-callback` 必須加進 Supabase Auth →
-> URL Configuration → Redirect URLs allowlist，否則 Android Google 登入
-> 會在 redirect 驗證被 Supabase 擋下。此操作不在 repo 自動化範圍內，
-> 由 Eric 在 Android OAuth 開測前手動加入；`login-callback` 既有條目保留。
+OAuth 與 email 深連結兩平台都凍結在同一 URI
+`com.poyutsai.vibesync://login-callback`（既有 Supabase Redirect URLs
+allowlist 條目，免新增）。Android 端分流不靠 host，而是 manifest 上該
+URI 的唯一擁有者 `AuthCallbackDispatcherActivity`：`flutter_web_auth_2`
+有 live callback（OAuth 進行中）就把 URI 交回 plugin，否則原樣轉送
+singleTop MainActivity（冷啟 onCreate、暖啟 onNewIntent），由
+app_links／supabase_flutter 處理 signup 確認／resend／密碼重設。
+單一擁有者＝不跳 activity 選擇器；不得再宣告 plugin 的
+CallbackActivity 或第二個同 scheme intent-filter。
+iOS 維持 ASWebAuthenticationSession 單一 `login-callback`，行為不變。
 
 ### Info.plist 配置
 - 加入 reversed iOS client ID 作為 URL Scheme

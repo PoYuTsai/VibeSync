@@ -88,8 +88,7 @@ void main() {
   // MainActivity）；暖啟＝singleTop onNewIntent 後由 supabase_flutter 發
   // auth 事件走 nextPasswordRecoveryState 狀態機。
   group('Android 冷暖深連結路由回歸（P1-1）', () {
-    test('冷啟 initial link：login-callback 密碼重設連結（fragment 與 query 形態）都被辨識',
-        () {
+    test('冷啟 initial link：login-callback 密碼重設連結（fragment 與 query 形態）都被辨識', () {
       final fragmentForm = Uri.parse(
         'com.poyutsai.vibesync://login-callback#access_token=abc&type=recovery',
       );
@@ -101,9 +100,9 @@ void main() {
       expect(AuthRecoveryHelper.isPasswordRecoveryLink(queryForm), isTrue);
     });
 
-    test('oauth-callback 連結屬 OAuth 流程，不得誤判為密碼重設', () {
+    test('OAuth 回跳（login-callback?code=…，無 type=recovery）不得誤判為密碼重設', () {
       final oauthCallback = Uri.parse(
-        'com.poyutsai.vibesync://oauth-callback?code=abc123',
+        'com.poyutsai.vibesync://login-callback?code=abc123',
       );
 
       expect(AuthRecoveryHelper.isPasswordRecoveryLink(oauthCallback), isFalse);

@@ -12,8 +12,8 @@ import 'package:yaml/yaml.dart';
 
 const _package = 'com.vibesync.app';
 const _scheme = 'com.poyutsai.vibesync';
-const _oauthHost = 'oauth-callback';
-const _emailHost = 'login-callback';
+const _callbackHost = 'login-callback';
+const _dispatcher = '.AuthCallbackDispatcherActivity';
 
 // 缺檔直接丟 FileSystemException（訊息含路徑）
 String _read(String path) => File(path).readAsStringSync();
@@ -29,16 +29,14 @@ List<XmlElement> _activities(XmlDocument manifest) => manifest.rootElement
     .toList();
 
 XmlElement _activityByName(XmlDocument manifest, String name) {
-  final matches = _activities(manifest)
-      .where((a) => _attr(a, 'name') == name)
-      .toList();
+  final matches =
+      _activities(manifest).where((a) => _attr(a, 'name') == name).toList();
   expect(matches, hasLength(1), reason: '應恰有一個 $name activity');
   return matches.first;
 }
 
-bool _hasCategory(XmlElement filter, String category) => filter
-    .findElements('category')
-    .any((c) => _attr(c, 'name') == category);
+bool _hasCategory(XmlElement filter, String category) =>
+    filter.findElements('category').any((c) => _attr(c, 'name') == category);
 
 /// activity 內所有宣告 [_scheme] 的 intent-filter data host
 Set<String> _schemeHosts(XmlElement activity) => activity
@@ -129,89 +127,129 @@ void main() {
     });
   });
 
-  group('AND-03／P1-1 label 與深連結分流契約', () {
+  group('AND-03／P1 修訂：label 與凍結深連結 dispatcher 契約', () {
     test('App label 是 VibeSync', () {
       final application =
           manifest.rootElement.findElements('application').single;
       expect(_attr(application, 'label'), 'VibeSync');
     });
 
-    test('CallbackActivity 是 $_scheme://$_oauthHost 唯一擁有者', () {
-      final callback = _activityByName(
-        manifest,
-        'com.linusu.flutter_web_auth_2.CallbackActivity',
-      );
-      expect(_attr(callback, 'exported'), 'true');
-      expect(_schemeHosts(callback), {_oauthHost});
+    test('Dispatcher 是 $_scheme://$_callbackHost 唯一擁有者（無 chooser）', () {
+      final dispatcher = _activityByName(manifest, _dispatcher);
+      expect(_attr(dispatcher, 'exported'), 'true');
+      expect(_schemeHosts(dispatcher), {_callbackHost});
 
-      for (final activity in _activities(manifest)) {
-        if (identical(activity, callback)) continue;
-        expect(
-          _schemeHosts(activity).contains(_oauthHost),
-          isFalse,
-          reason:
-              '$_oauthHost 只能屬於 CallbackActivity，否則 OAuth 回跳會撞 activity 選擇器',
-        );
-      }
-    });
-
-    test('MainActivity 是 $_scheme://$_emailHost 唯一擁有者（email 深連結）', () {
-      final main = _activityByName(manifest, '.MainActivity');
-      expect(_schemeHosts(main), {_emailHost});
-
-      final emailFilter = main.findElements('intent-filter').where(
-            (f) => f
-                .findElements('data')
-                .any((d) => _attr(d, 'host') == _emailHost),
-          );
-      expect(emailFilter, hasLength(1));
+      final filter = dispatcher.findElements('intent-filter').single;
       expect(
-        _hasCategory(emailFilter.single, 'android.intent.category.BROWSABLE'),
+        _hasCategory(filter, 'android.intent.category.BROWSABLE'),
         isTrue,
         reason: '瀏覽器／郵件 App 開啟需要 BROWSABLE',
       );
-      expect(
-        _hasCategory(emailFilter.single, 'android.intent.category.DEFAULT'),
-        isTrue,
-      );
+      expect(_hasCategory(filter, 'android.intent.category.DEFAULT'), isTrue);
 
       for (final activity in _activities(manifest)) {
-        if (identical(activity, main)) continue;
+        if (identical(activity, dispatcher)) continue;
         expect(
-          _schemeHosts(activity).contains(_emailHost),
-          isFalse,
-          reason: '$_emailHost 只能屬於 MainActivity，否則密碼重設連結會被吞掉',
+          _schemeHosts(activity),
+          isEmpty,
+          reason: '$_scheme 深連結只能屬於 dispatcher，否則會撞 activity 選擇器',
         );
       }
     });
 
-    test('冷暖路由：MainActivity exported 且 singleTop（暖啟走 onNewIntent）',
-        () {
+    test('oauth-callback 與 plugin CallbackActivity 已移除（凍結單一 URI）', () {
+      final manifestRaw = _read('android/app/src/main/AndroidManifest.xml');
+      expect(
+        manifestRaw.contains('oauth-callback'),
+        isFalse,
+        reason: '凍結 URI 是 login-callback，oauth-callback 已廢止',
+      );
+      expect(
+        _activities(manifest).where(
+          (a) => (_attr(a, 'name') ?? '').contains('flutter_web_auth_2'),
+        ),
+        isEmpty,
+        reason: 'plugin CallbackActivity 不得再宣告，分流由 dispatcher 負責',
+      );
+    });
+
+    test('冷暖路由：MainActivity exported、singleTop、無 VIEW filter', () {
       final main = _activityByName(manifest, '.MainActivity');
       expect(_attr(main, 'exported'), 'true');
       expect(
         _attr(main, 'launchMode'),
         'singleTop',
-        reason: '暖啟時 login-callback 必須進既有實例的 onNewIntent，不得疊新實例',
+        reason: '暖啟時深連結必須進既有實例的 onNewIntent，不得疊新實例',
+      );
+      expect(
+        main
+            .findElements('intent-filter')
+            .expand((f) => f.findElements('action'))
+            .where(
+              (a) => _attr(a, 'name') == 'android.intent.action.VIEW',
+            ),
+        isEmpty,
+        reason: 'MainActivity 不得自己接 VIEW，深連結一律經 dispatcher 轉送',
       );
     });
 
-    test('Dart 端 redirect 契約與 manifest 一致', () {
+    test('Dispatcher Kotlin：live callback 交回 plugin、否則明確轉送 MainActivity', () {
+      final kotlin = _read(
+        'android/app/src/main/kotlin/com/vibesync/app/'
+        'AuthCallbackDispatcherActivity.kt',
+      );
+      expect(kotlin, contains('FlutterWebAuth2Plugin.callbacks'));
+      expect(kotlin, contains('MainActivity::class.java'));
+      expect(kotlin, contains('Intent.ACTION_VIEW'));
+      expect(kotlin, contains('FLAG_ACTIVITY_SINGLE_TOP'));
+    });
+
+    test('原生路由 log 決定性且非機密（只記 route 與 host）', () {
+      final main = _read(
+        'android/app/src/main/kotlin/com/vibesync/app/MainActivity.kt',
+      );
+      expect(main, contains('route=cold'));
+      expect(main, contains('route=warm'));
+      expect(main, contains('override fun onNewIntent'));
+
+      final dispatcher = _read(
+        'android/app/src/main/kotlin/com/vibesync/app/'
+        'AuthCallbackDispatcherActivity.kt',
+      );
+      expect(dispatcher, contains('route=web-auth'));
+      expect(dispatcher, contains('route=main'));
+      for (final file in [main, dispatcher]) {
+        for (final line in file.split('\n')) {
+          if (!line.contains('Log.')) continue;
+          expect(
+            line.contains('toString') || line.contains('query'),
+            isFalse,
+            reason: 'route log 不得帶 query/fragment（token 不落 log）：$line',
+          );
+        }
+      }
+    });
+
+    test('Dart 端 redirect 契約：單一凍結 URI，無 oauth-callback', () {
       final environment = _read('lib/core/config/environment.dart');
-      expect(environment, contains("'$_scheme://$_emailHost'"));
-      expect(environment, contains("'$_scheme://$_oauthHost'"));
+      expect(environment, contains("'$_scheme://$_callbackHost'"));
+      expect(
+        environment.contains('oauth-callback'),
+        isFalse,
+        reason: 'oauth-callback 已廢止，OAuth 與 email 共用凍結 URI',
+      );
 
       final socialAuth =
           _read('lib/core/services/social_auth/social_auth_native.dart');
       expect(
         socialAuth,
         contains('AppConfig.oauthRedirectUri'),
-        reason: 'OAuth 必須走平台分流的 oauthRedirectUri',
+        reason: 'OAuth 必須走 AppConfig.oauthRedirectUri',
       );
       expect(
-        socialAuth.contains("'$_emailHost'"),
+        socialAuth.contains("'$_callbackHost'"),
         isFalse,
-        reason: 'social auth 不得再硬編 login-callback 字串常數',
+        reason: 'social auth 不得硬編 callback host 字串常數',
       );
     });
   });
@@ -257,11 +295,32 @@ void main() {
       );
     });
 
-    test('P1-3 負向驗證腳本存在且涵蓋 tampered 與 wrong-package', () {
-      final script =
-          _read('tools/android/signing-gate-negative-check.sh');
+    test('P1 修訂：gate 含效期守門、指紋輸出與 signer 對帳', () {
+      final gate = _read('tools/preflight/check-android-signing.sh');
+      expect(
+        gate,
+        contains('2033-10-22'),
+        reason: 'upload 憑證效期必須晚於 2033-10-22（fail closed）',
+      );
+      expect(
+        gate,
+        contains('keystore_sha256='),
+        reason: 'normalized 公開 SHA-256 要寫進 GITHUB_OUTPUT 供產物對帳',
+      );
+      expect(gate, contains('GITHUB_OUTPUT'));
+      expect(
+        gate,
+        contains('ANDROID_KEYSTORE_SHA256'),
+        reason: 'artifact 模式要對帳產物 signer SHA-256 與 keystore fingerprint',
+      );
+      expect(gate, contains('normalize_sha256'));
+    });
+
+    test('P1-3 負向驗證涵蓋 tampered、wrong-package、wrong-fingerprint', () {
+      final script = _read('tools/android/signing-gate-negative-check.sh');
       expect(script, contains('expect_gate_fail'));
       expect(script, contains('ANDROID_EXPECTED_PACKAGE=com.wrong.package'));
+      expect(script, contains('ANDROID_KEYSTORE_SHA256='));
       expect(script, contains('zip -q'));
     });
   });
@@ -372,11 +431,73 @@ void main() {
               s['uses'].toString().startsWith('actions/upload-artifact@'))
           .map((s) => (s['with'] as YamlMap)['name'].toString())
           .toSet();
-      expect(uploadNames, {'android-apk', 'android-aab'});
+      expect(
+        uploadNames,
+        {'android-apk', 'android-aab', 'android-merged-manifest'},
+        reason: '真合併後的 release manifest 要留檔為 CI 證據',
+      );
     });
 
-    test('P1-4：emulator runner 釘 v2.38.0 immutable SHA，矩陣含 API 24＋36',
+    test('P1 修訂：keystore 指紋接進 APK/AAB signer 對帳（distribute）', () {
+      final steps = _steps(distribute, 'build-android');
+      final keystoreStep = steps.where(
+        (s) => _run(s).contains('check-android-signing.sh keystore'),
+      );
+      expect(keystoreStep, hasLength(1));
+      expect(keystoreStep.single['id'], 'keystore-gate',
+          reason: '指紋要從 step outputs 流進 artifact 驗簽步驟');
+
+      final artifactSteps = steps
+          .where((s) => _run(s).contains('check-android-signing.sh artifact'))
+          .toList();
+      expect(artifactSteps, hasLength(2), reason: 'APK 與 AAB 各一');
+      for (final step in artifactSteps) {
+        expect(
+          ((step['env'] as YamlMap?)?['ANDROID_KEYSTORE_SHA256'] ?? '')
+              .toString(),
+          contains('steps.keystore-gate.outputs.keystore_sha256'),
+        );
+      }
+    });
+
+    test('P1 修訂：firebase-distribute 對帳 secret app ID 與 google-services.json',
         () {
+      final steps = _steps(distribute, 'firebase-distribute');
+      expect(
+        steps.any((s) => s['uses'].toString().startsWith('actions/checkout@')),
+        isTrue,
+        reason: '要 checkout 才能讀 tracked google-services.json',
+      );
+      final identityStep = steps.where(
+        (s) => _run(s).contains('mobilesdk_app_id'),
+      );
+      expect(identityStep, hasLength(1));
+      expect(
+        _run(identityStep.single),
+        contains('google-services.json'),
+      );
+    });
+
+    test('P1 修訂：install smoke 涵蓋深連結唯一解析與冷暖路由', () {
+      final smoke = _read('tools/android/install-smoke.sh');
+      expect(smoke, contains('$_scheme://$_callbackHost'));
+      expect(smoke, contains('AuthCallbackDispatcherActivity'));
+      expect(smoke, contains('route=cold'));
+      expect(smoke, contains('route=warm'));
+      expect(smoke, contains('force-stop'));
+      expect(
+        smoke,
+        contains('ResolverActivity'),
+        reason: '要擋 chooser（深連結唯一擁有者被打破時）',
+      );
+      expect(
+        smoke,
+        contains('PID'),
+        reason: '暖啟必須同 PID（onNewIntent），程序不得重複',
+      );
+    });
+
+    test('P1-4：emulator runner 釘 v2.38.0 immutable SHA，矩陣含 API 24＋36', () {
       final smoke = _job(distribute, 'android-install-smoke');
       expect(_needs(smoke), ['build-android']);
 
@@ -394,9 +515,8 @@ void main() {
         ),
       );
 
-      final matrixInclude =
-          ((smoke['strategy'] as YamlMap)['matrix'] as YamlMap)['include']
-              as YamlList;
+      final matrixInclude = ((smoke['strategy'] as YamlMap)['matrix']
+          as YamlMap)['include'] as YamlList;
       final apiLevels = matrixInclude
           .map((entry) => (entry as YamlMap)['api-level'] as int)
           .toSet();
@@ -460,16 +580,49 @@ void main() {
       expect(bundleIndex, greaterThan(generateIndex));
     });
 
-    test('release-android 掛 SEC-01 與 AND-02 守門', () {
-      final runs = _steps(release, 'release-android').map(_run).toList();
+    test('release-android 掛 SEC-01 與 AND-02 守門，含 signer 指紋對帳', () {
+      final steps = _steps(release, 'release-android');
+      final runs = steps.map(_run).toList();
       expect(
         runs.any((r) => r.contains('check-android-signing.sh keystore')),
         isTrue,
       );
+      final artifactSteps = steps
+          .where((s) => _run(s).contains('check-android-signing.sh artifact'))
+          .toList();
+      expect(artifactSteps, hasLength(1));
       expect(
-        runs.any((r) => r.contains('check-android-signing.sh artifact')),
+        ((artifactSteps.single['env']
+                    as YamlMap?)?['ANDROID_KEYSTORE_SHA256'] ??
+                '')
+            .toString(),
+        contains('steps.keystore-gate.outputs.keystore_sha256'),
+      );
+    });
+
+    test('P1 修訂：Android fastlane 走釘版 Gemfile＋bundle exec，無 ad-hoc gem install',
+        () {
+      final gemfile = _read('android/Gemfile');
+      expect(gemfile, contains('gem "fastlane", "2.238.0"'));
+
+      final runs = _steps(release, 'release-android').map(_run).toList();
+      expect(
+        runs.any((r) => r.contains('bundle exec fastlane internal')),
         isTrue,
       );
+      expect(
+        runs.any((r) => r.contains('gem install fastlane')),
+        isFalse,
+        reason: 'fastlane 版本由 Gemfile 釘住，不得 ad-hoc gem install',
+      );
+
+      final setupRuby = _steps(release, 'release-android').where(
+        (s) => s['uses'].toString().startsWith('ruby/setup-ruby@'),
+      );
+      expect(setupRuby, hasLength(1));
+      final withMap = setupRuby.single['with'] as YamlMap;
+      expect(withMap['bundler-cache'], true);
+      expect(withMap['working-directory'].toString(), 'android');
     });
   });
 }
