@@ -1,6 +1,9 @@
 // lib/features/partner/presentation/providers/partner_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../analysis/data/providers/analysis_record_providers.dart';
+import '../../../analysis/data/services/analysis_archive_lifecycle.dart';
+import '../../../analysis/domain/entities/analysis_record.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../data/repositories/partner_repository.dart';
@@ -55,6 +58,26 @@ final conversationsByPartnerProvider =
   ref.watch(authConversationScopeProvider);
   final repo = ref.watch(conversationRepositoryProvider);
   return repo.listByPartner(partnerId);
+});
+
+/// 對象作戰板可直接消費的獨立分析歷史（新到舊）。
+///
+/// 沿用既有加密 AnalysisRecord store，不開新表、不打新 API；未登入、box 尚未
+/// 初始化或沒有紀錄時一律 fail closed 為空清單，builder 會回退到 Conversation
+/// 的最後快照，兼容舊資料。autoDispose 避免離開分析頁後沿用 record 寫入前的
+/// 舊快取；再次進作戰板時會重讀現有紀錄。
+final partnerAnalysisRecordsProvider =
+    Provider.autoDispose.family<List<AnalysisRecord>, String>((ref, partnerId) {
+  final ownerUserId = ref.watch(analysisRecordOwnerProvider)?.trim();
+  final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
+  if (ownerUserId == null || ownerUserId.isEmpty || conversations.isEmpty) {
+    return const <AnalysisRecord>[];
+  }
+  return AnalysisArchiveLifecycle.recordsFor(
+    store: ref.read(analysisRecordStoreProvider),
+    ownerUserId: ownerUserId,
+    conversations: conversations,
+  );
 });
 
 /// Aggregated Partner view for the detail screen + AI prompt summary.

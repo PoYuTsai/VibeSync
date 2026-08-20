@@ -30,11 +30,15 @@ class PartnerMindMapScreen extends ConsumerWidget {
 
     final aggregate = ref.watch(partnerAggregateProvider(partnerId));
     final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
+    final analysisRecords =
+        ref.watch(partnerAnalysisRecordsProvider(partnerId));
 
     final map = buildPartnerMindMap(
       partnerName: partner.name,
       aggregate: aggregate,
       conversations: conversations,
+      analysisRecords: analysisRecords,
+      partnerCustomNote: partner.customNote,
     );
 
     return _MindMapBackground(
@@ -59,12 +63,14 @@ class PartnerMindMapScreen extends ConsumerWidget {
                               _pushCoachFollowUp(context, partnerId),
                         ),
                       ),
-                      // 內頁拆解 panel：關係信號 / 可接話題 / 下一步行動全文。
+                      // 內頁拆解 panel：關係信號 / 本輪訊號 / 可接話題 /
+                      // 下一步行動全文。
                       // 圖節點只放短標籤，整句教練建議在這裡完整呈現（而非重貼
                       // 詳情頁外層那一句）。
                       _MindMapDetailPanel(
                         map: map,
-                        onAskCoach: () => _pushCoachFollowUp(context, partnerId),
+                        onAskCoach: () =>
+                            _pushCoachFollowUp(context, partnerId),
                       ),
                     ],
                   )
@@ -109,7 +115,8 @@ class _MindMapDetailPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(TablerIcons.target_arrow, size: 16, color: AppColors.ctaStart),
+              const Icon(TablerIcons.target_arrow,
+                  size: 16, color: AppColors.ctaStart),
               const SizedBox(width: 8),
               Text(
                 '作戰重點',
@@ -123,6 +130,10 @@ class _MindMapDetailPanel extends StatelessWidget {
           if (map.relationshipSignal != null) ...[
             const SizedBox(height: 12),
             _DetailRow(label: '關係信號', value: map.relationshipSignal!),
+          ],
+          if (map.currentSignal != null) ...[
+            const SizedBox(height: 8),
+            _DetailRow(label: '本輪訊號', value: map.currentSignal!),
           ],
           if (topicsLine != null) ...[
             const SizedBox(height: 8),

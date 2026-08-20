@@ -11,7 +11,7 @@ import '../../domain/mindmap/mind_map_models.dart';
 /// 「下一步」枝橘色加重（作戰板定位），其餘 glass 語彙。
 ///
 /// graph / byId 仍在 build() 每次重建，parent（provider）rebuild 換新
-/// map 時不會殘留舊 graph（不變量，勿移進 State）。節點數 ≤ ~20，
+/// map 時不會殘留舊 graph（不變量，勿移進 State）。節點數 ≤ ~35，
 /// 重建成本可忽略。State 只持有縮放/重置兩個 controller。
 class PartnerMindMapView extends StatefulWidget {
   final PartnerMindMap map;

@@ -256,6 +256,8 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                     partnerName: partner.name,
                     aggregate: aggregate,
                     conversations: conversations,
+                    analysisRecords: archivedAnalysisRecords,
+                    partnerCustomNote: partner.customNote,
                   ),
                   onTap: () {
                     AppHaptics.light();

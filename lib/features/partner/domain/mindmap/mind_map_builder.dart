@@ -1,54 +1,47 @@
 import 'dart:convert';
 
 import '../../../analysis/domain/entities/analysis_models.dart';
+import '../../../analysis/domain/entities/analysis_record.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../extensions/partner_aggregates.dart';
+import '../services/partner_memory_tag_catalog.dart';
 import 'mind_map_models.dart';
 
 /// 把對象的既有分析資料組成作戰板節點樹。
 ///
 /// 資料來源（與 partner_aggregates 同一套快照，不打任何新 API）：
-/// - 階段 / 話題深度 / 下一步：最新一筆可完整解析（JSON + shape）的
-///   lastAnalysisSnapshotJson；
-///   階段另有 conversation.currentGameStage 作 fallback。
+/// - 階段 / 話題深度 / 下一步：最新一筆可完整解析（JSON + shape）的分析
+///   紀錄；沒有獨立紀錄的舊資料才回退到 lastAnalysisSnapshotJson。
+/// - 上次 → 這次：最近兩筆可解析的獨立分析紀錄；Conversation 裡相同快照
+///   只是鏡像，不重複計次。
+/// - 本輪訊號：最新快照既有、非低信心的 coachActionHint.catchablePoint。
+/// - 已確認資料：Partner.customNote 經 allowlist chips 解析，舊自由文字不採用。
 /// - 興趣 / 特質：PartnerAggregateView 跨對話聚合（已去重、各上限 8）。
 PartnerMindMap buildPartnerMindMap({
   required String partnerName,
   required PartnerAggregateView aggregate,
   required List<Conversation> conversations,
+  List<AnalysisRecord> analysisRecords = const [],
+  String? partnerCustomNote,
 }) {
   final descByDate = [...conversations]
     ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-  GameStageInfo? stageInfo;
-  TopicDepth? topicDepth;
-  String snapshotStrategy = '';
-  String? snapshotConversationId;
-  for (final c in descByDate) {
-    final raw = c.lastAnalysisSnapshotJson;
-    if (raw == null || raw.trim().isEmpty) continue;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map<String, dynamic>) {
-        // 在同一個 try 裡先把要用的欄位全部解掉：
-        // 只有 shape 完整可消費的快照才會被選中。
-        final parsedStage = GameStageInfo.fromJson(
-            decoded['gameStage'] as Map<String, dynamic>?);
-        final parsedDepth =
-            TopicDepth.fromJson(decoded['topicDepth'] as Map<String, dynamic>?);
-        final parsedStrategy = (decoded['strategy'] as String?)?.trim() ?? '';
-        stageInfo = parsedStage;
-        topicDepth = parsedDepth;
-        snapshotStrategy = parsedStrategy;
-        snapshotConversationId = c.id;
-        break;
-      }
-    } catch (_) {
-      // 與 partner_aggregates._parseSnapshot 同策略：
-      // 壞快照（含 JSON 語法錯誤與錯 shape 的 type error）靜默跳過。
-    }
-  }
+  final parsedSnapshots = _latestParsedSnapshots(
+    conversations: descByDate,
+    analysisRecords: analysisRecords,
+    limit: 2,
+  );
+  final latestSnapshot = parsedSnapshots.isEmpty ? null : parsedSnapshots.first;
+  final previousSnapshot =
+      parsedSnapshots.length < 2 ? null : parsedSnapshots[1];
+  final stageInfo = latestSnapshot?.stageInfo;
+  final topicDepth = latestSnapshot?.topicDepth;
+  final snapshotStrategy = latestSnapshot?.strategy ?? '';
+  final snapshotConversationId = latestSnapshot?.conversationId;
+  final currentSignal = latestSnapshot?.coachActionHint?.catchablePoint.trim();
+  final confirmedFacts = _confirmedFacts(partnerCustomNote);
 
   String? fallbackStageRaw;
   for (final c in descByDate) {
@@ -71,6 +64,7 @@ PartnerMindMap buildPartnerMindMap({
         : GameStage.fromString(fallbackStageRaw!);
     // 關係信號 = 階段描述（詳情 panel 用；hasAnalysisData 時必有）。
     relationshipSignal = stage.description;
+    final previousStageLabel = previousSnapshot?.stageInfo.current.label;
     branches.add(MindMapNode(
       id: 'stage',
       label: '關係階段',
@@ -78,7 +72,10 @@ PartnerMindMap buildPartnerMindMap({
       children: [
         MindMapNode(
           id: 'stage-current',
-          label: stage.label,
+          label: _progressLabel(
+            current: stage.label,
+            previous: previousStageLabel,
+          ),
           branch: MindMapBranch.stage,
         ),
       ],
@@ -86,6 +83,7 @@ PartnerMindMap buildPartnerMindMap({
 
     if (topicDepth != null) {
       final depth = topicDepth.current;
+      final previousDepthLabel = previousSnapshot?.topicDepth.current.label;
       branches.add(MindMapNode(
         id: 'depth',
         label: '話題深度',
@@ -93,11 +91,33 @@ PartnerMindMap buildPartnerMindMap({
         children: [
           MindMapNode(
             id: 'depth-current',
-            label: depth.label,
+            label: _progressLabel(
+              current: depth.label,
+              previous: previousDepthLabel,
+            ),
             branch: MindMapBranch.topicDepth,
           ),
         ],
       ));
+    }
+
+    if (currentSignal != null && currentSignal.isNotEmpty) {
+      branches.add(MindMapNode(
+        id: 'current-signal',
+        label: '本輪訊號',
+        branch: MindMapBranch.currentSignal,
+        children: [
+          MindMapNode(
+            id: 'current-signal-value',
+            label: currentSignal,
+            branch: MindMapBranch.currentSignal,
+          ),
+        ],
+      ));
+    }
+
+    if (confirmedFacts.isNotEmpty) {
+      branches.add(_confirmedFactsBranch(confirmedFacts));
     }
 
     if (aggregate.unionInterests.isNotEmpty) {
@@ -166,7 +186,185 @@ PartnerMindMap buildPartnerMindMap({
     hasAnalysisData: hasAnalysisData,
     nextStepSourceConversationId: snapshotConversationId,
     relationshipSignal: relationshipSignal,
+    currentSignal:
+        currentSignal == null || currentSignal.isEmpty ? null : currentSignal,
+    confirmedFacts: confirmedFacts,
     topics: aggregate.unionInterests,
     fullNextStep: fullNextStep,
   );
+}
+
+const _maxConfirmedFactLeaves = 5;
+
+List<String> _confirmedFacts(String? stored) {
+  final serialized = PartnerMemoryTagCatalog.serialize(
+    PartnerMemoryTagCatalog.parse(stored),
+  );
+  if (serialized.isEmpty) return const [];
+  return List.unmodifiable(serialized.split('、'));
+}
+
+MindMapNode _confirmedFactsBranch(List<String> facts) {
+  final hasOverflow = facts.length > _maxConfirmedFactLeaves;
+  final directLimit = hasOverflow ? _maxConfirmedFactLeaves - 1 : facts.length;
+  return MindMapNode(
+    id: 'confirmed-facts',
+    label: '已確認資料',
+    branch: MindMapBranch.confirmedFacts,
+    children: [
+      for (var i = 0; i < directLimit; i++)
+        MindMapNode(
+          id: 'confirmed-fact-$i',
+          label: facts[i],
+          branch: MindMapBranch.confirmedFacts,
+        ),
+      if (hasOverflow)
+        MindMapNode(
+          id: 'confirmed-fact-more',
+          label: '另有 ${facts.length - directLimit} 項',
+          branch: MindMapBranch.confirmedFacts,
+        ),
+    ],
+  );
+}
+
+String _progressLabel({required String current, String? previous}) {
+  if (previous == null || previous.isEmpty) return current;
+  return previous == current ? '$current（連續 2 次）' : '$previous → $current';
+}
+
+List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
+  required List<Conversation> conversations,
+  required List<AnalysisRecord> analysisRecords,
+  required int limit,
+}) {
+  final sources = <_MindMapSnapshotSource>[];
+  final recordMirrorKeys = <String>{};
+
+  for (final record in analysisRecords) {
+    final raw = record.analysisSnapshotJson.trim();
+    if (raw.isEmpty) continue;
+    recordMirrorKeys.add(_snapshotMirrorKey(record.conversationId, raw));
+    sources.add(_MindMapSnapshotSource(
+      conversationId: record.conversationId,
+      occurredAt: record.createdAt,
+      rawJson: raw,
+      sourceId: 'record:${record.id}',
+      isRecord: true,
+    ));
+  }
+
+  for (final conversation in conversations) {
+    final raw = conversation.lastAnalysisSnapshotJson?.trim();
+    if (raw == null || raw.isEmpty) continue;
+    if (recordMirrorKeys.contains(_snapshotMirrorKey(conversation.id, raw))) {
+      continue;
+    }
+    sources.add(_MindMapSnapshotSource(
+      conversationId: conversation.id,
+      occurredAt: conversation.updatedAt,
+      rawJson: raw,
+      sourceId: 'conversation:${conversation.id}',
+      isRecord: false,
+    ));
+  }
+
+  sources.sort((a, b) {
+    final byDate = b.occurredAt.compareTo(a.occurredAt);
+    if (byDate != 0) return byDate;
+    if (a.isRecord != b.isRecord) return a.isRecord ? -1 : 1;
+    return b.sourceId.compareTo(a.sourceId);
+  });
+
+  final parsed = <_ParsedMindMapSnapshot>[];
+  for (final source in sources) {
+    final snapshot = _parseMindMapSnapshot(source);
+    if (snapshot == null) continue;
+    parsed.add(snapshot);
+    if (parsed.length == limit) break;
+  }
+  return parsed;
+}
+
+String _snapshotMirrorKey(String conversationId, String rawJson) =>
+    '$conversationId\u0000${rawJson.trim()}';
+
+_ParsedMindMapSnapshot? _parseMindMapSnapshot(
+  _MindMapSnapshotSource source,
+) {
+  try {
+    final decoded = jsonDecode(source.rawJson);
+    if (decoded is! Map) return null;
+    final json = decoded.map(
+      (key, value) => MapEntry(key.toString(), value),
+    );
+
+    final gameStageJson = _strictOptionalJsonMap(json['gameStage']);
+    final topicDepthJson = _strictOptionalJsonMap(json['topicDepth']);
+    final rawStrategy = json['strategy'];
+    if (rawStrategy != null && rawStrategy is! String) return null;
+
+    final parsedStage = GameStageInfo.fromJson(gameStageJson);
+    final parsedDepth = TopicDepth.fromJson(topicDepthJson);
+    CoachActionHint? coachActionHint;
+    final hintJson = _lenientJsonMap(json['coachActionHint']);
+    if (hintJson != null) {
+      final parsedHint = CoachActionHint.fromJson(hintJson);
+      if (parsedHint.isUsable) coachActionHint = parsedHint;
+    }
+
+    return _ParsedMindMapSnapshot(
+      conversationId: source.conversationId,
+      stageInfo: parsedStage,
+      topicDepth: parsedDepth,
+      strategy: (rawStrategy as String?)?.trim() ?? '',
+      coachActionHint: coachActionHint,
+    );
+  } catch (_) {
+    // 與 partner_aggregates._parseSnapshot 同策略：壞 JSON / 錯 shape 跳過。
+    return null;
+  }
+}
+
+Map<String, dynamic>? _strictOptionalJsonMap(Object? value) {
+  if (value == null) return null;
+  if (value is! Map) throw const FormatException('Expected object shape');
+  return value.map((key, value) => MapEntry(key.toString(), value));
+}
+
+Map<String, dynamic>? _lenientJsonMap(Object? value) {
+  if (value is! Map) return null;
+  return value.map((key, value) => MapEntry(key.toString(), value));
+}
+
+class _MindMapSnapshotSource {
+  const _MindMapSnapshotSource({
+    required this.conversationId,
+    required this.occurredAt,
+    required this.rawJson,
+    required this.sourceId,
+    required this.isRecord,
+  });
+
+  final String conversationId;
+  final DateTime occurredAt;
+  final String rawJson;
+  final String sourceId;
+  final bool isRecord;
+}
+
+class _ParsedMindMapSnapshot {
+  const _ParsedMindMapSnapshot({
+    required this.conversationId,
+    required this.stageInfo,
+    required this.topicDepth,
+    required this.strategy,
+    this.coachActionHint,
+  });
+
+  final String conversationId;
+  final GameStageInfo stageInfo;
+  final TopicDepth topicDepth;
+  final String strategy;
+  final CoachActionHint? coachActionHint;
 }

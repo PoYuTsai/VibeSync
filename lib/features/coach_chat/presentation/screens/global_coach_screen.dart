@@ -212,6 +212,9 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
         aggregate: ref.watch(partnerAggregateProvider(contextPartner.id)),
         conversations:
             ref.watch(conversationsByPartnerProvider(contextPartner.id)),
+        analysisRecords:
+            ref.watch(partnerAnalysisRecordsProvider(contextPartner.id)),
+        partnerCustomNote: contextPartner.customNote,
       );
       final nextStep = map.fullNextStep?.trim();
       if (nextStep != null && nextStep.isNotEmpty) {

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/domain/mindmap/mind_map_builder.dart';
@@ -27,6 +28,8 @@ String _snapshot({
   String nextStep = '約她週末喝咖啡',
   String depth = 'personal',
   String strategy = '維持神秘感',
+  String? catchablePoint,
+  String confidence = 'high',
 }) =>
     jsonEncode({
       'gameStage': {'current': stage, 'status': 'normal', 'nextStep': nextStep},
@@ -38,7 +41,47 @@ String _snapshot({
         'traits': ['幽默'],
         'notes': <String>[],
       },
+      if (catchablePoint != null)
+        'coachActionHint': {
+          'catchablePoint': catchablePoint,
+          'read': '她主動提供了可延伸的具體內容',
+          'microMove': '接住這個內容，多問一小步',
+          'avoid': '不要突然換話題',
+          'actionType': 'extendTopicStoryFrame',
+          'confidence': confidence,
+        },
     });
+
+AnalysisRecord _record({
+  required String id,
+  required String conversationId,
+  required DateTime createdAt,
+  required String snapshotJson,
+}) =>
+    AnalysisRecord(
+      id: id,
+      ownerUserId: 'u1',
+      conversationId: conversationId,
+      partnerId: 'p1',
+      subjectName: 'Vivi',
+      segmentStart: 0,
+      segmentEnd: 1,
+      createdAt: createdAt,
+      messages: [
+        AnalysisRecordMessage(
+          id: 'm-$id',
+          content: '測試訊息',
+          isFromMe: false,
+          timestamp: createdAt,
+        ),
+      ],
+      analysisSnapshotJson: snapshotJson,
+      analyzedContentRevision: 'revision-$id',
+      completionKey: 'completion-$id',
+      sourcePlatform: 'LINE',
+      enthusiasmScore: 60,
+      gameStageLabel: '測試階段',
+    );
 
 PartnerAggregateView _aggregate({
   List<String> interests = const ['爬山', '咖啡'],
@@ -132,6 +175,153 @@ void main() {
       final stage =
           map.root.children.firstWhere((n) => n.branch == MindMapBranch.stage);
       expect(stage.children.single.label, contains('準備邀約'));
+    });
+
+    test('兩次分析顯示上次 → 這次；Conversation 鏡像不會被誤算成第三次', () {
+      final oldSnapshot = _snapshot(stage: 'premise', depth: 'event');
+      final newSnapshot = _snapshot(
+        stage: 'close',
+        depth: 'personal',
+        catchablePoint: '她說週末想去看展',
+      );
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(interests: [], traits: []),
+        conversations: [
+          _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 6, 2),
+            snapshotJson: newSnapshot,
+          ),
+        ],
+        analysisRecords: [
+          _record(
+            id: 'new',
+            conversationId: 'c1',
+            createdAt: DateTime(2026, 6, 2),
+            snapshotJson: newSnapshot,
+          ),
+          _record(
+            id: 'old',
+            conversationId: 'c1',
+            createdAt: DateTime(2026, 6, 1),
+            snapshotJson: oldSnapshot,
+          ),
+        ],
+      );
+
+      final stage =
+          map.root.children.firstWhere((n) => n.branch == MindMapBranch.stage);
+      final depth = map.root.children
+          .firstWhere((n) => n.branch == MindMapBranch.topicDepth);
+      expect(stage.children.single.label, '建立男女感 → 準備邀約');
+      expect(depth.children.single.label, '事件層 → 個人層');
+      expect(map.currentSignal, '她說週末想去看展');
+      expect(map.nextStepSourceConversationId, 'c1');
+    });
+
+    test('最近兩次判定相同時，明確標示連續 2 次', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(interests: [], traits: []),
+        conversations: const [],
+        analysisRecords: [
+          _record(
+            id: 'new',
+            conversationId: 'c2',
+            createdAt: DateTime(2026, 6, 2),
+            snapshotJson: _snapshot(stage: 'close', depth: 'personal'),
+          ),
+          _record(
+            id: 'old',
+            conversationId: 'c1',
+            createdAt: DateTime(2026, 6, 1),
+            snapshotJson: _snapshot(stage: 'close', depth: 'personal'),
+          ),
+        ],
+      );
+
+      final stage =
+          map.root.children.firstWhere((n) => n.branch == MindMapBranch.stage);
+      final depth = map.root.children
+          .firstWhere((n) => n.branch == MindMapBranch.topicDepth);
+      expect(stage.children.single.label, '準備邀約（連續 2 次）');
+      expect(depth.children.single.label, '個人層（連續 2 次）');
+    });
+
+    test('只顯示最新且可用的本輪訊號；低信心訊號 fail closed', () {
+      final usable = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(interests: [], traits: []),
+        conversations: [
+          _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 6, 1),
+            snapshotJson: _snapshot(catchablePoint: '她主動提到最近開始爬山'),
+          ),
+        ],
+      );
+      final signal = usable.root.children
+          .firstWhere((n) => n.branch == MindMapBranch.currentSignal);
+      expect(signal.children.single.label, '她主動提到最近開始爬山');
+      expect(usable.currentSignal, '她主動提到最近開始爬山');
+
+      final lowConfidence = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(interests: [], traits: []),
+        conversations: [
+          _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 6, 1),
+            snapshotJson: _snapshot(
+              catchablePoint: '訊號太少，沒有明確可接球點',
+              confidence: 'low',
+            ),
+          ),
+        ],
+      );
+      expect(
+        lowConfidence.root.children.map((n) => n.branch),
+        isNot(contains(MindMapBranch.currentSignal)),
+      );
+      expect(lowConfidence.currentSignal, isNull);
+    });
+
+    test('「關於她」只接入 allowlist chips；舊自由文字不進作戰板', () {
+      final confirmed = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(interests: [], traits: []),
+        conversations: [
+          _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 6, 1),
+            snapshotJson: _snapshot(),
+          ),
+        ],
+        partnerCustomNote: '慢熱、喜歡旅行',
+      );
+      final facts = confirmed.root.children
+          .firstWhere((n) => n.branch == MindMapBranch.confirmedFacts);
+      expect(facts.children.map((n) => n.label), ['慢熱', '喜歡旅行']);
+      expect(confirmed.confirmedFacts, ['慢熱', '喜歡旅行']);
+
+      final legacyFreeText = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(interests: [], traits: []),
+        conversations: [
+          _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 6, 1),
+            snapshotJson: _snapshot(),
+          ),
+        ],
+        partnerCustomNote: '她其實很慢熱，可能是內向的人',
+      );
+      expect(
+        legacyFreeText.root.children.map((n) => n.branch),
+        isNot(contains(MindMapBranch.confirmedFacts)),
+      );
+      expect(legacyFreeText.confirmedFacts, isEmpty);
     });
 
     test('nextStep 空字串 → fallback 到 strategy', () {
