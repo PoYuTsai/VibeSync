@@ -334,13 +334,7 @@ class _MindMapNodeChip extends StatelessWidget {
       fillColor = AppColors.ctaStart.withValues(alpha: 0.10);
       borderColor = AppColors.ctaStart.withValues(alpha: 0.55);
       textColor = Colors.white.withValues(alpha: 0.96);
-      shadows = [
-        BoxShadow(
-          color: AppColors.brandFlame.withValues(alpha: 0.12),
-          blurRadius: 16,
-          offset: const Offset(0, 7),
-        ),
-      ];
+      shadows = const [];
     } else if (_isNextStepLeaf) {
       gradient = const LinearGradient(
         colors: [AppColors.ctaStart, AppColors.ctaEnd],
