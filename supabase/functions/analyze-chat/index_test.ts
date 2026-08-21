@@ -25,6 +25,7 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
   const files = [
     "./index.ts",
     "./optimize_refine_flow.ts",
+    "./my_message_flow.ts",
     "./recognize_flow.ts",
     "./new_topic_handler.ts",
     "./opener_handler.ts",

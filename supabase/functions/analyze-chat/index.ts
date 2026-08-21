@@ -68,6 +68,10 @@ import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
 import { handleOpenerRequest } from "./opener_handler.ts";
 import {
+  enforceMyMessageEssentialGate,
+  validateMyMessageShape,
+} from "./my_message_flow.ts";
+import {
   buildRecognitionObservability,
   enforceOcrRateLimit,
   enforceRecognitionGates,
@@ -955,13 +959,9 @@ async function handleAnalyzeChat(
         }, 400);
       }
 
-      if (
-        analyzeMode === "my_message" && !messages[messages.length - 1]?.isFromMe
-      ) {
-        return jsonResponse({
-          error:
-            "my_message mode requires the latest message to be from the user",
-        }, 400);
+      if (analyzeMode === "my_message") {
+        const myMessageShapeResponse = validateMyMessageShape(messages);
+        if (myMessageShapeResponse !== null) return myMessageShapeResponse;
       }
 
       if (
@@ -1259,18 +1259,12 @@ ${recentText}`;
     // Only "my_message" is still an Essential-gated feature. The optimize
     // (draft polish) gate was removed on purpose: optimize_message and
     // refine_reply are open to every tier and metered by quota instead.
-    if (isMyMessageMode && effectiveTier !== "essential") {
-      const refreshStatus = await maybeRefreshSubscriptionTierFromRevenueCat(
-        "feature_gate_my_message",
-      );
-      const refreshed = refreshStatus === "applied";
-      if (!(refreshed && effectiveTier === "essential")) {
-        return jsonResponse({
-          error: "「我說」分析功能僅限 Essential 方案",
-          code: "FEATURE_NOT_AVAILABLE",
-          requiredTier: "essential",
-        }, 403);
-      }
+    if (isMyMessageMode) {
+      const myMessageGateResponse = await enforceMyMessageEssentialGate({
+        refreshTierFromRevenueCat: maybeRefreshSubscriptionTierFromRevenueCat,
+        readEffectiveTier: () => effectiveTier,
+      });
+      if (myMessageGateResponse !== null) return myMessageGateResponse;
     }
 
     // A known replay is an already-paid result. It still passed auth, payload

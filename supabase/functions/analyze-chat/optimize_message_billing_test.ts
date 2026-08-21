@@ -547,7 +547,7 @@ Deno.test("optimize-message replay preflight read failure returns retryable 503 
 Deno.test("optimize replay returns after the tier gate and no tier can block an optimize request", () => {
   const featureGate = requiredIndex(
     indexSource,
-    'if (isMyMessageMode && effectiveTier !== "essential") {',
+    "await enforceMyMessageEssentialGate({",
   );
   const replayReturn = requiredIndex(
     indexSource,
@@ -562,7 +562,8 @@ Deno.test("optimize replay returns after the tier gate and no tier can block an 
   // refinement are quota-metered, not tier-gated). A second tier 403 anywhere
   // in the handler means someone walled optimize back up.
   assertEquals(
-    indexSource.split('effectiveTier !== "essential"').length - 1,
+    indexSource.split("enforceMyMessageEssentialGate(").length - 1,
+    // 唯一的 call site；沒有第二個 tier gate。
     1,
     "the only tier 403 left must be the my_message one",
   );
