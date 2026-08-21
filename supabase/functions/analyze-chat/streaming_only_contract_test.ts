@@ -44,15 +44,15 @@ Deno.test("AnalyzeChat has exactly one executable response mode", async () => {
 });
 
 Deno.test("plain screenshot analysis cannot bypass the streaming-only guard", async () => {
+  // 行為驗證：request_shape_test.ts 鎖「有圖無草稿＝plain_analyze」、
+  // analyze_chat_handler_test.ts 鎖 plain legacy → 410。這裡守住 index.ts
+  // 的 streaming-only guard 仍掛在 shape union 的 plain_analyze 上。
   const source = await read("./index.ts");
-  const start = source.indexOf("const plainAnalyzeRequest =");
-  const end = source.indexOf("const modeResolution =", start);
-  const classifier = source.slice(start, end);
-
-  assert(start >= 0);
-  assert(end > start);
-  assert(classifier.includes("!recognizeOnly"));
-  assertFalse(classifier.includes("images"));
+  assert(
+    source.includes(
+      'const plainAnalyzeRequest = requestShape.kind === "plain_analyze";',
+    ),
+  );
 });
 
 Deno.test("stream fail-closed rejection precedes overcharge claim", async () => {

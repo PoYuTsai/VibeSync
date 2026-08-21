@@ -120,6 +120,8 @@ Deno.test("handler：quick/full/plain legacy 皆 410 tombstone，且訂閱/額�
       messages: [{ content: "hi", isFromMe: false }],
     }],
     ["plainLegacy", { messages: [{ content: "hi", isFromMe: false }] }],
+    // 截圖分析（有圖、無草稿）也是 plain analyze，不得繞過 guard。
+    ["plainLegacy", { messages: [], images: ["ZmFrZQ=="] }],
   ];
   for (const [key, body] of cases) {
     const { response, counters } = await runWithFakes(body);

@@ -3,8 +3,10 @@
 // generic gate 排除、settlement 權威與 migration 的 correctness 錨點。
 import {
   assert,
+  assertEquals,
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { classifyAnalyzeChatRequest } from "./request_shape.ts";
 
 const indexSource = await Deno.readTextFile(
   new URL("./index.ts", import.meta.url),
@@ -17,13 +19,21 @@ const migrationSource = await Deno.readTextFile(
 );
 Deno.test("index：new_topic 不被 generic analyze gates／optimize shape 接管", () => {
   assert(
-    indexSource.includes('const isNewTopicMode = rawMode === "new_topic";'),
-  );
-  // optimize shape 排除 new_topic（同 opener 前例）。
-  assert(
     indexSource.includes(
-      'rawMode !== "opener" &&\n      rawMode !== "new_topic" &&',
+      'const isNewTopicMode = requestShape.kind === "new_topic";',
     ),
+  );
+  // optimize shape 排除 new_topic：形狀優先序由 request_shape.ts 分類器
+  // 決定（new_topic 帶草稿仍分類為 new_topic），行為由其單元測試鎖定。
+  assertEquals(
+    (() => {
+      const resolution = classifyAnalyzeChatRequest({
+        mode: "new_topic",
+        userDraft: "草稿",
+      });
+      return resolution.ok ? resolution.shape.kind : "";
+    })(),
+    "new_topic",
   );
   // generic 月/日 gate 排除（new_topic 用自己的固定 cost 3 gate）。
   const monthlyGate = indexSource.indexOf(

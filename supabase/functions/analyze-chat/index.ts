@@ -144,6 +144,7 @@ import {
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { resolveRequestMode } from "./request_mode.ts";
+import { classifyAnalyzeChatRequest } from "./request_shape.ts";
 import { hashConversation } from "./conversation_hash.ts";
 import { isStreamingAllowed } from "./stream_gate.ts";
 import {
@@ -4665,28 +4666,27 @@ async function handleAnalyzeChat(
       analysisRunId: rawAnalysisRunId,
     } = requestBody;
 
-    if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
+    const shapeResolution = classifyAnalyzeChatRequest({
+      recognizeOnly: rawRecognizeOnly,
+      mode: rawMode,
+      analyzeMode: rawAnalyzeMode,
+      userDraft: rawUserDraft,
+      images,
+    });
+    if (!shapeResolution.ok) {
       return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
     }
-    const recognizeOnly = rawRecognizeOnly === true;
-    // 涵蓋草稿潤飾與回覆微調兩者：微調一定帶非空 userDraft、沒有圖、不是 opener／
-    // new_topic／my_message，所以這個形狀判斷不必為微調加寬。下游的月/日額度
-    // early gate 用的就是它，改動這裡等於同時改動計費邊界。
-    const isOptimizeMessageRequestShape = !recognizeOnly &&
-      rawMode !== "opener" &&
-      rawMode !== "new_topic" &&
-      !(Array.isArray(images) && images.length > 0) &&
-      typeof rawUserDraft === "string" &&
-      rawUserDraft.trim().length > 0 &&
-      rawAnalyzeMode !== "my_message";
+    const requestShape = shapeResolution.shape;
+    // raw 旗標（非 dispatch 形狀）：paid-tier sync gate 的歷史語意，
+    // 見 request_shape.ts 的說明。
+    const recognizeOnly = shapeResolution.recognizeOnlyRequested;
+    // 涵蓋草稿潤飾與回覆微調兩者；形狀定義與計費邊界見 request_shape.ts。
+    const isOptimizeMessageRequestShape =
+      requestShape.kind === "optimize_message";
 
     // Main AnalyzeChat is streaming-only. Other request shapes still share
     // this Edge Function and retain their existing response contract.
-    const plainAnalyzeRequest = !recognizeOnly &&
-      rawMode !== "opener" &&
-      rawMode !== "new_topic" &&
-      rawAnalyzeMode !== "my_message" &&
-      !(typeof rawUserDraft === "string" && rawUserDraft.trim().length > 0);
+    const plainAnalyzeRequest = requestShape.kind === "plain_analyze";
     const modeResolution = resolveRequestMode({
       responseMode: rawResponseMode,
       analysisRunId: rawAnalysisRunId,
@@ -4759,10 +4759,10 @@ async function handleAnalyzeChat(
       return jsonResponse({ error: "Invalid confirmedOvercharge" }, 400);
     }
     const confirmedOvercharge = confirmedParse.value;
-    const isOpenerMode = rawMode === "opener";
+    const isOpenerMode = requestShape.kind === "opener";
     // 新話題 mode（2026-07-24）：自帶 sanitize／claim／fixed-cost-3 gate，
     // generic analyze 月/日 gate 與 optimize shape 檢查都不得接管。
-    const isNewTopicMode = rawMode === "new_topic";
+    const isNewTopicMode = requestShape.kind === "new_topic";
     if (rawExpectedTier != null && typeof rawExpectedTier !== "string") {
       return jsonResponse({ error: "Invalid expectedTier" }, 400);
     }
