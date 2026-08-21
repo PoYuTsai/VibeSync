@@ -7,6 +7,10 @@ import {
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  applySingleVisibleSpeakerPattern,
+  type NormalizedRecognizedMessage,
+} from "./ocr_normalizer.ts";
+import {
   MAX_IMAGE_BYTES,
   MAX_TOTAL_IMAGE_BYTES,
   validateOpenerImages,
@@ -20,6 +24,7 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
   if (scanCorpusCache !== null) return scanCorpusCache;
   const files = [
     "./index.ts",
+    "./ocr_normalizer.ts",
     "./analysis_input_compiler.ts",
     "./ocr_recognition_prompt.ts",
     "./analyze_system_prompt.ts",
@@ -2144,53 +2149,12 @@ Deno.test({
 //      沒法確定性地逼模型「整體報 only_right 又標一顆決定性左泡」的自我矛盾。
 // 故用「真函式邏輯的 byte-faithful 複本」＋「source-assertion 把複本鎖死在真源現狀」
 // （複本與真源一旦漂移，前提鎖立即紅燈逼更新，杜絕殭屍複本）。
-type ReproVisibleMessage = {
-  side: "left" | "right" | "unknown";
-  isFromMe: boolean;
-  content: string;
-  geometryDecisive?: boolean;
-};
-
-// index.ts:2850-2895 邏輯的 byte-faithful 複本（含已補的 geometryDecisive guard）。
-function reproApplySingleVisibleSpeakerPattern(
-  messages: ReproVisibleMessage[],
-  pattern: "mixed" | "only_left" | "only_right" | "unknown",
-): { messages: ReproVisibleMessage[]; adjustedCount: number } {
-  if (pattern !== "only_left" && pattern !== "only_right") {
-    return { messages, adjustedCount: 0 };
-  }
-  const targetSide: "left" | "right" = pattern === "only_left"
-    ? "left"
-    : "right";
-  const targetIsFromMe = targetSide === "right";
-  const adjusted = messages.map((message) => ({ ...message }));
-  let adjustedCount = 0;
-  for (let index = 0; index < adjusted.length; index += 1) {
-    if (adjusted[index].geometryDecisive === true) {
-      continue;
-    }
-
-    if (
-      adjusted[index].side !== targetSide ||
-      adjusted[index].isFromMe !== targetIsFromMe
-    ) {
-      adjusted[index] = {
-        ...adjusted[index],
-        side: targetSide,
-        isFromMe: targetIsFromMe,
-      };
-      adjustedCount += 1;
-    }
-  }
-  return { messages: adjusted, adjustedCount };
-}
-
 Deno.test({
   name:
     "applySingleVisibleSpeakerPattern：only_right 下 geometryDecisive=true 的反側 media 泡不被壓單側（guard 後）",
   permissions: { read: true },
   fn: async () => {
-    // 前提鎖：確認真函式已有 geometryDecisive guard，且本檔複本與真源邏輯一致。
+    // 前提鎖：確認真函式已有 geometryDecisive guard（直接測 production 函式）。
     const source = await readAnalyzeChatScanCorpus();
     const start = source.indexOf("function applySingleVisibleSpeakerPattern(");
     assert(start >= 0, "找不到 applySingleVisibleSpeakerPattern");
@@ -2214,7 +2178,7 @@ Deno.test({
     );
 
     // only_right 截圖（模型整體自報全右），但其中一顆 [貼圖] 被決定性幾何判為左（她貼的）。
-    const input: ReproVisibleMessage[] = [
+    const input: NormalizedRecognizedMessage[] = [
       { side: "right", isFromMe: true, content: "哈囉" },
       { side: "right", isFromMe: true, content: "在嗎" },
       {
@@ -2225,8 +2189,10 @@ Deno.test({
       },
     ];
 
-    const { messages: out, adjustedCount } =
-      reproApplySingleVisibleSpeakerPattern(input, "only_right");
+    const { messages: out, adjustedCount } = applySingleVisibleSpeakerPattern(
+      input,
+      "only_right",
+    );
 
     // guard 後：決定性左泡保留左/她說不被壓；非決定性右泡本就 = target，零調整。
     assertEquals(out[2].side, "left");

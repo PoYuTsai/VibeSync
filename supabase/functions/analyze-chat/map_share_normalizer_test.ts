@@ -83,7 +83,7 @@ Deno.test({
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
+      new URL("./ocr_normalizer.ts", import.meta.url),
     );
     const normalizeIndex = source.indexOf("normalizeGoogleMapsShares(");
     const deduplicateIndex = source.indexOf(
