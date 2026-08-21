@@ -24,7 +24,7 @@ let scanCorpusCache: string | null = null;
 async function readAnalyzeChatScanCorpus(): Promise<string> {
   if (scanCorpusCache !== null) return scanCorpusCache;
   const files = [
-    "./index.ts",
+    "./analyze_chat_handler.ts",
     "./model_selection.ts",
     "./analyze_stream_handler.ts",
     "./optimize_refine_flow.ts",
@@ -189,7 +189,7 @@ Deno.test({
     // reset 邏輯已抽到 subscription_access.ts；index.ts 與該模組都不得
     // 出現本地時間比較。
     const indexSource = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
+      new URL("./analyze_chat_handler.ts", import.meta.url),
     );
     const accessSource = await Deno.readTextFile(
       new URL("./subscription_access.ts", import.meta.url),
@@ -2283,7 +2283,7 @@ Deno.test({
     // OCR parse-fail 單次呼叫 fail-closed 已抽到 recognize_flow.ts；
     // index.ts 只留 call site，順序仍鎖在 index 管線內。
     const indexOnly = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
+      new URL("./analyze_chat_handler.ts", import.meta.url),
     );
     const parseFailureAt = indexOnly.indexOf(
       'logWarn("ai_response_parse_failed_will_retry"',
@@ -2481,7 +2481,7 @@ Deno.test({
     // 成本保護 → gate 在 AI 護欄 checkInput 之前（更在 Claude 呼叫前）。
     // RPC 本體在 recognize_flow.ts；index 端以 call site 鎖順序。
     const indexOnly = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
+      new URL("./analyze_chat_handler.ts", import.meta.url),
     );
     const gateAt = indexOnly.indexOf("await enforceOcrRateLimit({");
     const requiresImagesAt = indexOnly.indexOf(

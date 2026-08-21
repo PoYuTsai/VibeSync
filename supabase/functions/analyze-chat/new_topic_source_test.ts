@@ -9,7 +9,7 @@ import {
 import { classifyAnalyzeChatRequest } from "./request_shape.ts";
 
 const indexSource = await Deno.readTextFile(
-  new URL("./index.ts", import.meta.url),
+  new URL("./analyze_chat_handler.ts", import.meta.url),
 );
 const newTopicHandlerSource = await Deno.readTextFile(
   new URL("./new_topic_handler.ts", import.meta.url),

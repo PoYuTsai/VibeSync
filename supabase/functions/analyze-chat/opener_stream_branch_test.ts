@@ -11,7 +11,7 @@ import {
 
 // new_topic 分支已抽到 new_topic_handler.ts；掃描 corpus 串接兩檔。
 async function readIndexSource(): Promise<string> {
-  const index = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const index = await Deno.readTextFile(new URL("./analyze_chat_handler.ts", import.meta.url));
   const opener = await Deno.readTextFile(
     new URL("./opener_handler.ts", import.meta.url),
   );

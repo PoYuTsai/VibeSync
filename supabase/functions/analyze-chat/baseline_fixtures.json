@@ -44,13 +44,13 @@
       "sha256": "3291b27b089c9488a78319fd07f705ee690fad40e514d75e2d875ed5c0e444d8"
     },
     "TIER_MONTHLY_LIMITS": {
-      "file": "index.ts",
+      "file": "analyze_chat_handler.ts",
       "start": "const TIER_MONTHLY_LIMITS: Record<string, number> = {",
       "end": "\n};",
       "sha256": "d8042b93d2380bc89e081361ed516883d0049bf66f76542cdfb8a41877ed8407"
     },
     "TIER_DAILY_LIMITS": {
-      "file": "index.ts",
+      "file": "analyze_chat_handler.ts",
       "start": "const TIER_DAILY_LIMITS: Record<string, number> = {",
       "end": "\n};",
       "sha256": "f33d1ad88b48a4992ae5fde9822d4f351ed8b6a55a8b56888e003ce9c9586613"

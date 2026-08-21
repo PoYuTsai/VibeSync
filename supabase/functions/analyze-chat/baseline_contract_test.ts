@@ -102,7 +102,7 @@ Deno.test("baseline：quick/full/plain legacy 請求維持 410/400 tombstone 判
 });
 
 Deno.test("baseline：tombstone 對用戶的訊息文案未漂移", async () => {
-  const source = await readSource("index.ts");
+  const source = await readSource("analyze_chat_handler.ts");
   const seen = new Set<string>();
   for (const rejection of Object.values(fixtures.requestModeRejections)) {
     if (seen.has(rejection.message)) continue;

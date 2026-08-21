@@ -9,7 +9,7 @@ async function read(relativeUrl: string): Promise<string> {
 }
 
 Deno.test("AnalyzeChat mode guard runs before subscription, quota, or model work", async () => {
-  const source = await read("./index.ts");
+  const source = await read("./analyze_chat_handler.ts");
   const guard = source.indexOf("const modeResolution = resolveRequestMode({");
   const subscription = source.indexOf("// Check subscription");
   const streamBranch = source.indexOf(
@@ -22,7 +22,7 @@ Deno.test("AnalyzeChat mode guard runs before subscription, quota, or model work
 });
 
 Deno.test("AnalyzeChat has exactly one executable response mode", async () => {
-  const source = await read("./index.ts");
+  const source = await read("./analyze_chat_handler.ts");
 
   assert(source.includes('responseMode === "stream"'));
   assertFalse(source.includes('if (responseMode === "quick")'));
@@ -47,7 +47,7 @@ Deno.test("plain screenshot analysis cannot bypass the streaming-only guard", as
   // 行為驗證：request_shape_test.ts 鎖「有圖無草稿＝plain_analyze」、
   // analyze_chat_handler_test.ts 鎖 plain legacy → 410。這裡守住 index.ts
   // 的 streaming-only guard 仍掛在 shape union 的 plain_analyze 上。
-  const source = await read("./index.ts");
+  const source = await read("./analyze_chat_handler.ts");
   assert(
     source.includes(
       'const plainAnalyzeRequest = requestShape.kind === "plain_analyze";',
@@ -56,7 +56,7 @@ Deno.test("plain screenshot analysis cannot bypass the streaming-only guard", as
 });
 
 Deno.test("stream fail-closed rejection precedes overcharge claim", async () => {
-  const source = await read("./index.ts");
+  const source = await read("./analyze_chat_handler.ts");
   const rejection = source.indexOf(
     'logWarn("stream_request_rejected_without_fallback"',
   );

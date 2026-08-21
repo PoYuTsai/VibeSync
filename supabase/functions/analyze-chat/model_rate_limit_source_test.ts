@@ -5,7 +5,7 @@
 import { assert } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 const indexSource = await Deno.readTextFile(
-  new URL("./index.ts", import.meta.url),
+  new URL("./analyze_chat_handler.ts", import.meta.url),
 );
 const openerSource = await Deno.readTextFile(
   new URL("./opener_handler.ts", import.meta.url),

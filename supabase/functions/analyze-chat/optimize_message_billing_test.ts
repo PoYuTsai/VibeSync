@@ -443,7 +443,7 @@ const indexSource = `${await Deno.readTextFile(
   new URL("./optimize_refine_flow.ts", import.meta.url),
 )}
 ${await Deno.readTextFile(
-  new URL("./index.ts", import.meta.url),
+  new URL("./analyze_chat_handler.ts", import.meta.url),
 )}`;
 const migrationSource = await Deno.readTextFile(
   new URL(

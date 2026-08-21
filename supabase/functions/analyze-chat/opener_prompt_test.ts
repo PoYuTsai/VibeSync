@@ -180,7 +180,7 @@ Deno.test({
 // 讓 PROMPT_SEGMENTS 的「宣告→下一個頂層宣告」切界策略維持有效。
 async function readIndexSource(): Promise<string> {
   const files = [
-    "./index.ts",
+    "./analyze_chat_handler.ts",
     "./opener_handler.ts",
     "./ocr_recognition_prompt.ts",
     "./analyze_system_prompt.ts",

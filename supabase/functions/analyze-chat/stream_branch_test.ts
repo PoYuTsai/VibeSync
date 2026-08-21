@@ -7,7 +7,7 @@ import {
 // stream 分支已抽到 analyze_stream_handler.ts；index.ts 留 dispatch 與
 // fail-closed gate。corpus 串接兩檔（index 在前）。
 async function readIndexSource(): Promise<string> {
-  const index = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const index = await Deno.readTextFile(new URL("./analyze_chat_handler.ts", import.meta.url));
   const streamHandler = await Deno.readTextFile(
     new URL("./analyze_stream_handler.ts", import.meta.url),
   );
