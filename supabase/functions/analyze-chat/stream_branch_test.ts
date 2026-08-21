@@ -19,34 +19,26 @@ async function readRetryLeaseMigration(): Promise<string> {
 
 function streamBranch(source: string): string {
   const branchStart = source.indexOf(
-    'if (responseMode === "stream" && streamSupported && streamAllowed)',
+    'if (responseMode === "stream") {\n      const streamReplyStyles',
   );
-  const branchEnd = source.indexOf(
-    'if (responseMode === "stream")',
-    branchStart + 1,
-  );
+  const branchEnd = source.indexOf("let claudeResult;", branchStart);
   return source.slice(branchStart, branchEnd);
 }
 
 function streamFailClosedBranch(source: string): string {
   const branchStart = source.indexOf(
-    'if (responseMode === "stream")',
-    source.indexOf(
-      'if (responseMode === "stream" && streamSupported && streamAllowed)',
-    ) + 1,
+    'if (\n      responseMode === "stream" && (!streamSupported || !streamAllowed)\n    )',
   );
-  const branchEnd = source.indexOf("let claudeResult;", branchStart);
+  const branchEnd = source.indexOf("const claimStore =", branchStart);
   return source.slice(branchStart, branchEnd);
 }
 
 Deno.test("stream branch is gated and uses the stream ledger", async () => {
   const source = await readIndexSource();
 
-  assert(
-    source.includes(
-      'if (responseMode === "stream" && streamSupported && streamAllowed)',
-    ),
-  );
+  assert(source.includes(
+    'if (responseMode === "stream") {\n      const streamReplyStyles',
+  ));
   assert(source.includes("isStreamingAllowed({"));
   assert(source.includes("streamStore.createPendingRun({"));
   assert(source.includes("streamStore.reserveRetry({"));

@@ -7546,6 +7546,46 @@ ${recentText}`;
       return jsonResponse(replayResponse);
     }
 
+    // Stream requests fail closed before the overcharge confirmation claim.
+    // This keeps an unavailable/unsupported stream from consuming a valid
+    // confirmation identity when no model call can be made.
+    const streamSupported = !hasImages && !recognizeOnly && !isMyMessageMode &&
+      !isOptimizeMessageMode;
+    const streamAllowed = isStreamingAllowed({
+      email: user.email,
+      flagOn: STREAM_ANALYZE_ENABLED,
+      whitelist: STREAM_WHITELIST,
+      tier: effectiveTier,
+    });
+    if (
+      responseMode === "stream" && (!streamSupported || !streamAllowed)
+    ) {
+      const code = streamSupported
+        ? "STREAM_MODE_UNAVAILABLE"
+        : "STREAM_MODE_UNSUPPORTED_FOR_REQUEST";
+      logWarn("stream_request_rejected_without_fallback", {
+        user: summarizeUser(user.id),
+        code,
+        supported: streamSupported,
+        allowed: streamAllowed,
+        expectedTier,
+        effectiveTier,
+        allowedFeatureCount: allowedFeatures.length,
+        hasImages,
+        recognizeOnly,
+        requestType,
+      });
+      return jsonResponse({
+        error: code,
+        code,
+        message: streamSupported
+          ? "串流分析目前無法開始，請稍後再試。本次不會扣額度。"
+          : "這種請求不支援串流分析，請更新 App 後再試。本次不會扣額度。",
+        retryable: streamSupported,
+        shouldChargeQuota: false,
+      }, streamSupported ? 503 : 400);
+    }
+
     // ------------------------------------------------------------------
     // ADR #19 定案 #4/#5 — >2000 字確認帶閘門（server 守門層）。
     // ------------------------------------------------------------------
@@ -7890,15 +7930,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     // Plain AnalyzeChat reaches exactly one active generator: streaming.
     // Retired quick/full and plain legacy requests were rejected before
     // subscription, quota, prompt, DB-run, or model work.
-    const streamSupported = !hasImages && !recognizeOnly && !isMyMessageMode &&
-      !isOptimizeMessageMode;
-    const streamAllowed = isStreamingAllowed({
-      email: user.email,
-      flagOn: STREAM_ANALYZE_ENABLED,
-      whitelist: STREAM_WHITELIST,
-      tier: effectiveTier,
-    });
-    if (responseMode === "stream" && streamSupported && streamAllowed) {
+    if (responseMode === "stream") {
       const streamReplyStyles = streamReplyStylesForTier(effectiveTier).filter(
         (style) => allowedFeatures.includes(style),
       );
@@ -8255,33 +8287,6 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           });
         },
       });
-    }
-
-    if (responseMode === "stream") {
-      const code = streamSupported
-        ? "STREAM_MODE_UNAVAILABLE"
-        : "STREAM_MODE_UNSUPPORTED_FOR_REQUEST";
-      logWarn("stream_request_rejected_without_fallback", {
-        user: summarizeUser(user.id),
-        code,
-        supported: streamSupported,
-        allowed: streamAllowed,
-        expectedTier,
-        effectiveTier,
-        allowedFeatureCount: allowedFeatures.length,
-        hasImages,
-        recognizeOnly,
-        requestType,
-      });
-      return jsonResponse({
-        error: code,
-        code,
-        message: streamSupported
-          ? "串流分析目前無法開始，請稍後再試。本次不會扣額度。"
-          : "這種請求不支援串流分析，請更新 App 後再試。本次不會扣額度。",
-        retryable: streamSupported,
-        shouldChargeQuota: false,
-      }, streamSupported ? 503 : 400);
     }
 
     let claudeResult;

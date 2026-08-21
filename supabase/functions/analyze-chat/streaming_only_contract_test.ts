@@ -13,7 +13,7 @@ Deno.test("AnalyzeChat mode guard runs before subscription, quota, or model work
   const guard = source.indexOf("const modeResolution = resolveRequestMode({");
   const subscription = source.indexOf("// Check subscription");
   const streamBranch = source.indexOf(
-    'if (responseMode === "stream" && streamSupported && streamAllowed)',
+    'if (responseMode === "stream") {\n      const streamReplyStyles',
   );
 
   assert(guard >= 0);
@@ -53,6 +53,44 @@ Deno.test("plain screenshot analysis cannot bypass the streaming-only guard", as
   assert(end > start);
   assert(classifier.includes("!recognizeOnly"));
   assertFalse(classifier.includes("images"));
+});
+
+Deno.test("stream fail-closed rejection precedes overcharge claim", async () => {
+  const source = await read("./index.ts");
+  const rejection = source.indexOf(
+    'logWarn("stream_request_rejected_without_fallback"',
+  );
+  const claim = source.indexOf("claimStore.claim");
+  const claimedLog = source.indexOf(
+    'logInfo("overcharge_confirmation_claimed"',
+  );
+  const generator = source.indexOf(
+    'if (responseMode === "stream") {\n      const streamReplyStyles',
+  );
+  const generatorEnd = source.indexOf("let claudeResult;", generator);
+
+  assert(rejection >= 0);
+  assert(claim > rejection);
+  assert(claimedLog > rejection);
+  assert(generator > claim);
+  assert(generatorEnd > generator);
+  assert(
+    source.slice(rejection, claim).includes("shouldChargeQuota: false"),
+  );
+  assertEquals(
+    source.match(/stream_request_rejected_without_fallback/g)?.length ?? 0,
+    1,
+  );
+  assertFalse(
+    source.slice(generator, generatorEnd).includes(
+      "stream_request_rejected_without_fallback",
+    ),
+  );
+  assertFalse(
+    source.slice(generator, generatorEnd).includes(
+      "callClaudeWithFallback",
+    ),
+  );
 });
 
 Deno.test("Flutter AnalyzeChat client exposes stream start and retry only", async () => {
