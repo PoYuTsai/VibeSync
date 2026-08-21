@@ -1,6 +1,6 @@
-// Canonical conversation hash for two-stage analyze run validation.
-// Goal: quick → full must reject if any field of the analyzed context drifts
-// (I5: RUN_CONVERSATION_MISMATCH). Hash must be:
+// Canonical conversation hash for durable stream validation.
+// A reconnect/retry must reject when any analyzed context field drifts
+// (RUN_CONVERSATION_MISMATCH). Hash must be:
 //   - deterministic across key order (JSON insertion order is not stable)
 //   - stable across Unicode normalization forms (NFC vs NFD)
 //   - stable across trivial whitespace on user-typed strings

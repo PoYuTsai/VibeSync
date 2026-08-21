@@ -28,6 +28,17 @@ function streamBranch(source: string): string {
   return source.slice(branchStart, branchEnd);
 }
 
+function streamFailClosedBranch(source: string): string {
+  const branchStart = source.indexOf(
+    'if (responseMode === "stream")',
+    source.indexOf(
+      'if (responseMode === "stream" && streamSupported && streamAllowed)',
+    ) + 1,
+  );
+  const branchEnd = source.indexOf("let claudeResult;", branchStart);
+  return source.slice(branchStart, branchEnd);
+}
+
 Deno.test("stream branch is gated and uses the stream ledger", async () => {
   const source = await readIndexSource();
 
@@ -188,52 +199,16 @@ Deno.test("stream branch does not use the two-stage run charge path", async () =
   assertFalse(branch.includes("create_charged_analysis_run"));
 });
 
-Deno.test("stream fallback telemetry keeps enough gate context", async () => {
+Deno.test("stream request fails closed instead of calling the legacy model path", async () => {
   const source = await readIndexSource();
+  const branch = streamFailClosedBranch(source);
 
-  assert(source.includes("stream_request_fell_back_to_legacy"));
-  assert(source.includes("supported: streamSupported"));
-  assert(source.includes("allowed: streamAllowed"));
-});
-
-Deno.test("legacy fallback validates stream retry before waiving billing", async () => {
-  const source = await readIndexSource();
-
-  // Codex P1：isStreamRetryMode 只是 responseMode+analysisRunId，client 可控。
-  // 豁免 legacy 扣費前必須驗證 run 存在、屬於本人、綁同一份對話 hash 且
-  // 已扣費（charged_at）；查無此 run 直接 409，偽造 runId 拿不到免費分析。
-  assert(source.includes("let streamRetryChargeWaived = false"));
-  assert(source.includes("fallbackStreamStore.getRun({"));
-  assert(
-    source.includes(
-      "streamRetryChargeWaived = fallbackStreamRun.charged_at !== null",
-    ),
-  );
-  assert(source.includes("stream_retry_fallback_run_invalid"));
-
-  // 扣費點只看驗證後的 flag，不看 client 可控的 isStreamRetryMode；
-  // 已扣費 run 的 retry 不得在 legacy 二次 increment_usage。
-  assert(
-    source.includes(
-      "quotaUsage.shouldChargeQuota && quotaUsage.chargedMessageCount > 0 &&\n" +
-        "      !streamRetryChargeWaived",
-    ),
-  );
-});
-
-Deno.test("legacy fallback usage reports zero charge when billing is waived", async () => {
-  const source = await readIndexSource();
-
-  // Codex P2：豁免扣費時 usage/telemetry 不得報假扣費——Flutter 拿
-  // messagesUsed / remaining 做扣費 toast 與本地額度同步。
-  assert(
-    source.includes("const legacyReportedCharge = streamRetryChargeWaived"),
-  );
-  assert(source.includes("messagesUsed: legacyReportedCharge"));
-  assert(source.includes("chargedMessageCount: legacyReportedCharge"));
-  assert(
-    source.includes(
-      "quotaUsage.shouldChargeQuota &&\n        !streamRetryChargeWaived",
-    ),
-  );
+  assert(branch.includes("stream_request_rejected_without_fallback"));
+  assert(branch.includes('"STREAM_MODE_UNAVAILABLE"'));
+  assert(branch.includes('"STREAM_MODE_UNSUPPORTED_FOR_REQUEST"'));
+  assert(branch.includes("shouldChargeQuota: false"));
+  assert(branch.includes("return jsonResponse"));
+  assertFalse(branch.includes("callClaudeWithFallback"));
+  assertFalse(source.includes("stream_request_fell_back_to_legacy"));
+  assertFalse(source.includes("streamRetryChargeWaived"));
 });

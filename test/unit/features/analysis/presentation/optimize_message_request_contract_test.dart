@@ -44,12 +44,16 @@ void main() {
     // 留在面板上）。計費順序契約不變。
     final methodStart =
         source.indexOf('Future<DraftPolishOutcome?> _polishDraft(');
-    final methodEnd = source.indexOf('// ===== 分析輔助方法', methodStart);
+    final methodEnd = source.indexOf(
+      'Future<void> _openDraftPolishSheet()',
+      methodStart,
+    );
     expect(methodStart, greaterThanOrEqualTo(0));
     expect(methodEnd, greaterThan(methodStart));
     final method = source.substring(methodStart, methodEnd);
 
-    final runnerCall = method.indexOf('_optimizeRequestRunner.run<AnalysisResult>(');
+    final runnerCall =
+        method.indexOf('_optimizeRequestRunner.run<AnalysisResult>(');
     final apiCall = method.indexOf('analysisService.analyzeConversation(');
     final requestIdWire = method.indexOf('requestId: pending.requestId,');
     final presented =
@@ -64,7 +68,8 @@ void main() {
         source.indexOf('Future<void> _clearOptimizePendingAfterVisibleFrame(');
     expect(clearStart, greaterThanOrEqualTo(0));
     final clearBody = source.substring(clearStart, clearStart + 1200);
-    final routeGuard = clearBody.indexOf('ModalRoute.of(context)?.isCurrent !=');
+    final routeGuard =
+        clearBody.indexOf('ModalRoute.of(context)?.isCurrent !=');
     final markSuccess =
         clearBody.indexOf('_optimizeRequestSession.markSuccess(pending);');
     expect(routeGuard, greaterThanOrEqualTo(0));

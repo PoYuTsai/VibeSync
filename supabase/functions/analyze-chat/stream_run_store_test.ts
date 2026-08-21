@@ -33,6 +33,10 @@ const NOW = "2026-06-03T00:00:00.000Z";
 const CHARGED_AT = "2026-06-03T00:00:03.000Z";
 const EXPIRES_AT = "2026-06-03T00:30:00.000Z";
 
+function asyncResult<T>(operation: () => T): Promise<T> {
+  return Promise.resolve().then(operation);
+}
+
 const RECOMMENDATION: StreamRecommendationForCharge = {
   selectedStyle: "resonate",
   message: "I hear you. Let's slow down and make this easy to answer.",
@@ -68,113 +72,120 @@ function makeDriver(): FakeHarness {
   };
 
   const driver: AnalysisStreamRunDriver = {
-    async createPendingRun(
+    createPendingRun(
       input: CreatePendingStreamRunInput,
     ): Promise<AnalysisStreamRun> {
-      const row: AnalysisStreamRun = {
-        id: `stream-run-${++seq}`,
-        user_id: input.userId,
-        conversation_hash: input.conversationHash,
-        status: "pending",
-        selected_style: null,
-        recommendation_json: null,
-        final_result_json: null,
-        charged_at: null,
-        last_error_code: null,
-        retry_count: 0,
-        request_context: input.requestContext ?? null,
-        created_at: NOW,
-        expires_at: EXPIRES_AT,
-      };
-      table.set(row.id, row);
-      return { ...row };
+      return asyncResult(() => {
+        const row: AnalysisStreamRun = {
+          id: `stream-run-${++seq}`,
+          user_id: input.userId,
+          conversation_hash: input.conversationHash,
+          status: "pending",
+          selected_style: null,
+          recommendation_json: null,
+          final_result_json: null,
+          charged_at: null,
+          last_error_code: null,
+          retry_count: 0,
+          request_context: input.requestContext ?? null,
+          created_at: NOW,
+          expires_at: EXPIRES_AT,
+        };
+        table.set(row.id, row);
+        return { ...row };
+      });
     },
 
-    async getRun(input: GetStreamRunInput): Promise<AnalysisStreamRun> {
-      return {
+    getRun(input: GetStreamRunInput): Promise<AnalysisStreamRun> {
+      return asyncResult(() => ({
         ...findMatching(input.runId, input.userId, input.conversationHash),
-      };
+      }));
     },
 
-    async reserveRetry(
+    reserveRetry(
       input: ReserveStreamRetryInput,
     ): Promise<AnalysisStreamRun> {
-      const row = findMatching(
-        input.runId,
-        input.userId,
-        input.conversationHash,
-      );
-      const expired = Date.parse(row.expires_at) <= Date.parse(CHARGED_AT);
-      if (
-        row.status !== "failed" ||
-        row.final_result_json !== null ||
-        !row.charged_at ||
-        !row.recommendation_json ||
-        !row.selected_style ||
-        expired ||
-        row.retry_count >= input.maxRetries
-      ) {
-        throw new Error("STREAM_RETRY_NOT_AVAILABLE");
-      }
-      row.retry_count += 1;
-      row.status = "charged";
-      row.last_error_code = null;
-      return { ...row };
+      return asyncResult(() => {
+        const row = findMatching(
+          input.runId,
+          input.userId,
+          input.conversationHash,
+        );
+        const expired = Date.parse(row.expires_at) <= Date.parse(CHARGED_AT);
+        if (
+          row.status !== "failed" ||
+          row.final_result_json !== null ||
+          !row.charged_at ||
+          !row.recommendation_json ||
+          !row.selected_style ||
+          expired ||
+          row.retry_count >= input.maxRetries
+        ) {
+          throw new Error("STREAM_RETRY_NOT_AVAILABLE");
+        }
+        row.retry_count += 1;
+        row.status = "charged";
+        row.last_error_code = null;
+        return { ...row };
+      });
     },
 
-    async chargeRun(
+    chargeRun(
       input: ChargeStreamRunDriverInput,
     ): Promise<AnalysisStreamRun> {
-      chargeInputs.push(input);
-      const row = findMatching(
-        input.runId,
-        input.userId,
-        input.conversationHash,
-      );
+      return asyncResult(() => {
+        chargeInputs.push(input);
+        const row = findMatching(
+          input.runId,
+          input.userId,
+          input.conversationHash,
+        );
 
-      if (row.charged_at) {
+        if (row.charged_at) return { ...row };
+        if (row.status !== "pending") {
+          throw new Error("STREAM_RUN_NOT_PENDING");
+        }
+
+        row.status = "charged";
+        row.charged_at = CHARGED_AT;
+        row.recommendation_json = input.recommendationJson;
+        row.selected_style = input.selectedStyle;
+        row.last_error_code = null;
         return { ...row };
-      }
-
-      if (row.status !== "pending") {
-        throw new Error("STREAM_RUN_NOT_PENDING");
-      }
-
-      row.status = "charged";
-      row.charged_at = CHARGED_AT;
-      row.recommendation_json = input.recommendationJson;
-      row.selected_style = input.selectedStyle;
-      row.last_error_code = null;
-      return { ...row };
+      });
     },
 
-    async markDone(
+    markDone(
       input: MarkStreamRunDoneInput,
     ): Promise<AnalysisStreamRun> {
-      doneInputs.push(input);
-      const row = findMatching(
-        input.runId,
-        input.userId,
-        input.conversationHash,
-      );
-      row.status = "done";
-      row.final_result_json = input.finalResult;
-      row.last_error_code = null;
-      return { ...row };
+      return asyncResult(() => {
+        doneInputs.push(input);
+        const row = findMatching(
+          input.runId,
+          input.userId,
+          input.conversationHash,
+        );
+        row.status = "done";
+        row.final_result_json = input.finalResult;
+        row.last_error_code = null;
+        return { ...row };
+      });
     },
 
-    async markFailed(
+    markFailed(
       input: MarkStreamRunFailedInput,
     ): Promise<AnalysisStreamRun> {
-      failedInputs.push(input);
-      const row = findMatching(
-        input.runId,
-        input.userId,
-        input.conversationHash,
-      );
-      row.status = "failed";
-      row.last_error_code = input.code;
-      return { ...row };
+      return asyncResult(() => {
+        failedInputs.push(input);
+        const row = findMatching(
+          input.runId,
+          input.userId,
+          input.conversationHash,
+        );
+        row.status = "failed";
+        row.last_error_code = input.code;
+        return { ...row };
+      });
     },
   };
 

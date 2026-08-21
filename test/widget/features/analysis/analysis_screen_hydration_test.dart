@@ -77,48 +77,14 @@ class _MutableStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
   }
 }
 
-/// Records any call to analyzeQuick/analyzeFull so tests can assert the
-/// screen did not re-trigger an analyze after hydrating.
+/// Records streaming calls so tests can assert the screen did not re-trigger
+/// an analysis after hydrating.
 class _RecordingAnalysisService extends AnalysisService {
-  int recommendationPreviewCalls = 0;
-  int fullCalls = 0;
   int streamCalls = 0;
   List<Message>? streamMessages;
   int? streamPreviousAnalyzedCount;
   int? streamPreviousAnalyzedCharCount;
   AnalysisResult? streamResult;
-
-  @override
-  Future<AnalysisRecommendationPreview> analyzeQuick({
-    required List<Message> messages,
-    SessionContext? sessionContext,
-    String? conversationSummary,
-    String? partnerSummary,
-    String? effectiveStyleContext,
-    String? knownContactName,
-    int? previousAnalyzedCount,
-    int? previousAnalyzedCharCount,
-    OverchargeConfirmationPayload? confirmedOvercharge,
-  }) async {
-    recommendationPreviewCalls++;
-    throw StateError('analyzeQuick must not be called on remount');
-  }
-
-  @override
-  Future<AnalysisResult> analyzeFull({
-    required String analysisRunId,
-    required List<Message> messages,
-    SessionContext? sessionContext,
-    String? conversationSummary,
-    String? partnerSummary,
-    String? effectiveStyleContext,
-    String? knownContactName,
-    int? previousAnalyzedCount,
-    int? previousAnalyzedCharCount,
-  }) async {
-    fullCalls++;
-    throw StateError('analyzeFull must not be called on remount');
-  }
 
   @override
   Stream<AnalysisStreamUpdate> analyzeStream({
@@ -138,7 +104,7 @@ class _RecordingAnalysisService extends AnalysisService {
     streamPreviousAnalyzedCount = previousAnalyzedCount;
     streamPreviousAnalyzedCharCount = previousAnalyzedCharCount;
     yield AnalysisStreamUpdate.done(
-      result: streamResult ?? _full(),
+      result: streamResult ?? _analysisResult(),
       runId: analysisRunId ?? 'stream-premium-refresh',
     );
   }
@@ -259,11 +225,11 @@ AnalysisRecommendationPreview _preview({
     shortReason: '情緒先接住',
     insufficientContext: false,
     confidence: 'high',
-    estimatedFullSeconds: eta,
+    estimatedReportSeconds: eta,
   );
 }
 
-AnalysisResult _full() {
+AnalysisResult _analysisResult() {
   return const AnalysisResult(
     enthusiasmScore: 72,
     strategy: '保持沉穩',
@@ -316,8 +282,9 @@ AnalysisResult _full() {
 /// compare the analysis payload while ignoring reserved client metadata. The
 /// fields below mirror what the Edge `analyze-chat` shape returns for the
 /// persistence path.
-AnalysisResult _fullWithRawResponse(Map<String, dynamic> rawResponse) {
-  final base = _full();
+AnalysisResult _analysisResultWithRawResponse(
+    Map<String, dynamic> rawResponse) {
+  final base = _analysisResult();
   return AnalysisResult(
     enthusiasmScore: base.enthusiasmScore,
     strategy: base.strategy,
@@ -336,7 +303,7 @@ AnalysisResult _fullWithRawResponse(Map<String, dynamic> rawResponse) {
   );
 }
 
-Map<String, dynamic> _fullRawResponse() {
+Map<String, dynamic> _analysisRawResponse() {
   return <String, dynamic>{
     'enthusiasm': {'score': 72},
     'strategy': '保持沉穩',
@@ -373,7 +340,7 @@ Map<String, dynamic> _fullRawResponse() {
 }
 
 Map<String, dynamic> _freeDualReplyRawResponse() {
-  final raw = _fullRawResponse();
+  final raw = _analysisRawResponse();
   raw['replies'] = <String, dynamic>{
     'extend': 'free extend reply',
     'tease': 'free tease reply',
@@ -391,7 +358,7 @@ Map<String, dynamic> _freeDualReplyRawResponse() {
 }
 
 Map<String, dynamic> _paidRawResponse() {
-  final raw = _fullRawResponse();
+  final raw = _analysisRawResponse();
   raw['usage'] = <String, dynamic>{
     'tierUsed': SubscriptionTierHelper.essential,
   };
@@ -751,7 +718,7 @@ _MemoryConversationArchiveStore _defaultArchiveStore(
 
 /// Old-run analysis snapshot used to seed `lastAnalysisSnapshotJson` so
 /// `_restorePersistedAnalysis()` populates `_enthusiasmScore` etc. The
-/// numbers/labels intentionally differ from `_full()` so a stale value
+/// numbers/labels intentionally differ from `_analysisResult()` so a stale value
 /// would be visually distinguishable from a freshly hydrated full result.
 Map<String, dynamic> _staleSnapshotJson() {
   return <String, dynamic>{
@@ -1048,7 +1015,7 @@ Future<_NavigationPersistenceHarness> _completeAnalysisWithBlockedPersistence(
     StreamingAnalysisState(
       phase: StreamingAnalyzePhase.done,
       recommendationPreview: preview,
-      full: _fullWithRawResponse(_fullRawResponse()),
+      result: _analysisResultWithRawResponse(_analysisRawResponse()),
       analysisRunId: preview.analysisRunId,
       previousAnalyzedCount: 0,
       analyzedMessageCount: conversation.messages.length,
@@ -1144,12 +1111,12 @@ void main() {
 
   group('AnalysisScreen hydration on remount (P1)', () {
     testWidgets(
-      'recommendationReady state hydrates → streaming loader, no analyze re-fire',
+      'streamingReport preview hydrates → streaming loader, no analyze re-fire',
       (tester) async {
         final recorder = await _pumpHydratedAnalysisScreen(
           tester,
           seed: StreamingAnalysisState(
-            phase: StreamingAnalyzePhase.recommendationReady,
+            phase: StreamingAnalyzePhase.streamingReport,
             recommendationPreview: _preview(runId: 'run_qr'),
             analysisRunId: 'run_qr',
           ),
@@ -1159,14 +1126,12 @@ void main() {
         expect(find.byType(StreamingAnalysisLoader), findsOneWidget);
         expect(find.byType(AnalysisScrollHint), findsOneWidget);
         expect(find.byType(CoachActionCard), findsNothing);
-        expect(find.byType(FullAnalysisPlaceholder), findsNothing);
-        expect(find.byType(FullAnalysisRetryCard), findsNothing);
+        expect(find.byType(StreamingAnalysisRetryCard), findsNothing);
         expect(find.byType(ImagePickerWidget), findsNothing,
             reason:
                 'A hydrated full-streaming run must not re-open the pre-analysis upload card.');
-        expect(recorder.recommendationPreviewCalls, 0,
-            reason: 'I-P1-a: must not re-fire analyzeQuick on hydration');
-        expect(recorder.fullCalls, 0);
+        expect(recorder.streamCalls, 0,
+            reason: 'Hydration must not start another streaming request.');
 
         await tester.pump(const Duration(seconds: 30));
         expect(find.byType(AnalysisScrollHint), findsOneWidget,
@@ -1343,8 +1308,8 @@ void main() {
         expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsNothing);
         expect(find.byType(StreamingAnalysisLoader), findsOneWidget);
         expect(find.byType(CoachActionCard), findsNothing);
-        expect(find.byType(FullAnalysisPlaceholder), findsNothing);
-        expect(find.byType(FullAnalysisRetryCard), findsNothing);
+        expect(recorder.streamCalls, 0);
+        expect(find.byType(StreamingAnalysisRetryCard), findsNothing);
         expect(find.byType(ImagePickerWidget), findsNothing,
             reason:
                 'Running full analysis should show streaming progress, not the upload/start-analysis card.');
@@ -1352,8 +1317,6 @@ void main() {
         expect(find.text('貼上或輸入新的一則訊息…'), findsNothing,
             reason:
                 'Manual composer should collapse while full analysis is streaming so it does not cover the result area.');
-        expect(recorder.recommendationPreviewCalls, 0);
-        expect(recorder.fullCalls, 0);
       },
     );
 
@@ -1387,22 +1350,20 @@ void main() {
             phase: StreamingAnalyzePhase.failedAfterRecommendation,
             recommendationPreview: _preview(runId: 'run_ff'),
             analysisRunId: 'run_ff',
-            fullErrorMessage: '完整分析失敗，可以重試。',
-            fullErrorCode: 'FULL_FAILED',
+            streamErrorMessage: '完整分析失敗，可以重試。',
+            streamErrorCode: 'FULL_FAILED',
             retriesRemaining: 2,
           ),
         );
 
         expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsNothing);
         expect(find.byType(CoachActionCard), findsNothing);
-        expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
+        expect(find.byType(StreamingAnalysisRetryCard), findsOneWidget);
         expect(find.text('查看中斷'), findsOneWidget);
-        expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(find.byType(ImagePickerWidget), findsNothing,
             reason:
                 'Full retry state should not insert the upload/start-analysis card above retry.');
-        expect(recorder.recommendationPreviewCalls, 0);
-        expect(recorder.fullCalls, 0);
+        expect(recorder.streamCalls, 0);
       },
     );
 
@@ -1414,7 +1375,7 @@ void main() {
           seed: StreamingAnalysisState(
             phase: StreamingAnalyzePhase.done,
             recommendationPreview: _preview(runId: 'run_fr'),
-            full: _full(),
+            result: _analysisResult(),
             analysisRunId: 'run_fr',
           ),
         );
@@ -1432,11 +1393,9 @@ void main() {
         expect(find.text('Core 先行'), findsNothing);
         expect(find.text('Full 原始判斷'), findsNothing);
         expect(find.text('完整分析推薦回覆'), findsNothing);
+        expect(recorder.streamCalls, 0);
         expect(find.text('AI 推薦回覆'), findsOneWidget);
-        expect(find.byType(FullAnalysisPlaceholder), findsNothing);
-        expect(find.byType(FullAnalysisRetryCard), findsNothing);
-        expect(recorder.recommendationPreviewCalls, 0);
-        expect(recorder.fullCalls, 0);
+        expect(find.byType(StreamingAnalysisRetryCard), findsNothing);
       },
     );
 
@@ -1444,7 +1403,7 @@ void main() {
       'live streamingReport to done does not render rollback preview/Core comparison',
       (tester) async {
         final recommendationPreview = _preview(runId: 'run_live_compare');
-        final raw = _fullRawResponse();
+        final raw = _analysisRawResponse();
         final conv = _conversation();
 
         final harness = await _pumpMutableAnalysisScreenWithRepo(
@@ -1460,13 +1419,12 @@ void main() {
         );
 
         expect(find.byType(StreamingAnalysisLoader), findsOneWidget);
-        expect(find.byType(FullAnalysisPlaceholder), findsNothing);
 
         harness.notifier.emit(
           StreamingAnalysisState(
             phase: StreamingAnalyzePhase.done,
             recommendationPreview: recommendationPreview,
-            full: _fullWithRawResponse(raw),
+            result: _analysisResultWithRawResponse(raw),
             analysisRunId: recommendationPreview.analysisRunId,
             conversationMessageCount: conv.messages.length,
             conversationContentRevision: conversationContentRevision(conv),
@@ -1484,9 +1442,6 @@ void main() {
         expect(find.text('Full 原始判斷'), findsNothing);
         expect(find.text(recommendationPreview.recommendedReply), findsNothing);
         expect(find.text('AI 推薦回覆'), findsOneWidget);
-        expect(find.byType(FullAnalysisPlaceholder), findsNothing);
-        expect(harness.recorder.recommendationPreviewCalls, 0);
-        expect(harness.recorder.fullCalls, 0);
       },
     );
   });
@@ -1501,20 +1456,20 @@ void main() {
       'psychology equals reason → 🧠 line is hidden, only 📝 renders',
       (tester) async {
         final full = AnalysisResult(
-          enthusiasmScore: _full().enthusiasmScore,
-          strategy: _full().strategy,
-          gameStage: _full().gameStage,
-          psychology: _full().psychology,
-          topicDepth: _full().topicDepth,
-          replies: _full().replies,
-          replyOptions: _full().replyOptions,
+          enthusiasmScore: _analysisResult().enthusiasmScore,
+          strategy: _analysisResult().strategy,
+          gameStage: _analysisResult().gameStage,
+          psychology: _analysisResult().psychology,
+          topicDepth: _analysisResult().topicDepth,
+          replies: _analysisResult().replies,
+          replyOptions: _analysisResult().replyOptions,
           recommendation: const FinalRecommendation(
             pick: 'tease',
             content: 'c',
             reason: '順著她主動分享的內容延伸，回覆壓力比較低。',
             psychology: '順著她主動分享的內容延伸，回覆壓力比較低。',
           ),
-          reminder: _full().reminder,
+          reminder: _analysisResult().reminder,
         );
 
         await _pumpHydratedAnalysisScreen(
@@ -1522,7 +1477,7 @@ void main() {
           seed: StreamingAnalysisState(
             phase: StreamingAnalyzePhase.done,
             recommendationPreview: _preview(runId: 'run_dup'),
-            full: full,
+            result: full,
             analysisRunId: 'run_dup',
           ),
         );
@@ -1541,20 +1496,20 @@ void main() {
       'psychology differs from reason → both 📝 and 🧠 render',
       (tester) async {
         final full = AnalysisResult(
-          enthusiasmScore: _full().enthusiasmScore,
-          strategy: _full().strategy,
-          gameStage: _full().gameStage,
-          psychology: _full().psychology,
-          topicDepth: _full().topicDepth,
-          replies: _full().replies,
-          replyOptions: _full().replyOptions,
+          enthusiasmScore: _analysisResult().enthusiasmScore,
+          strategy: _analysisResult().strategy,
+          gameStage: _analysisResult().gameStage,
+          psychology: _analysisResult().psychology,
+          topicDepth: _analysisResult().topicDepth,
+          replies: _analysisResult().replies,
+          replyOptions: _analysisResult().replyOptions,
           recommendation: const FinalRecommendation(
             pick: 'tease',
             content: 'c',
             reason: '順著她主動分享的內容延伸，回覆壓力比較低。',
             psychology: '讓她感覺你真的有在聽，而不是急著換話題。',
           ),
-          reminder: _full().reminder,
+          reminder: _analysisResult().reminder,
         );
 
         await _pumpHydratedAnalysisScreen(
@@ -1562,7 +1517,7 @@ void main() {
           seed: StreamingAnalysisState(
             phase: StreamingAnalyzePhase.done,
             recommendationPreview: _preview(runId: 'run_distinct'),
-            full: full,
+            result: full,
             analysisRunId: 'run_distinct',
           ),
         );
@@ -1584,15 +1539,16 @@ void main() {
   // Codex round-2 P1: when a conversation already has a persisted detailed
   // analysis (`lastAnalysisSnapshotJson`), `_restorePersistedAnalysis()` seeds
   // `_enthusiasmScore` and the rest of the detailed-analysis local mirrors in
-  // initState. If hydration of a *partial* streaming phase (recommendationReady /
-  // streamingReport / failedAfterRecommendation / failedBeforeRecommendation) doesn't clear those mirrors, the
+  // initState. If hydration of a partial phase (streamingReport /
+  // failedAfterRecommendation / failedBeforeRecommendation) doesn't clear
+  // those mirrors, the
   // build tree keeps showing the stale detailed analysis on top of (or instead
   // of) the live streaming loader / retry state. I-P1-c.
   group(
     'AnalysisScreen hydration with stale persisted snapshot (Codex round-2 P1)',
     () {
       testWidgets(
-        'recommendationReady hydrate over stale snapshot → streaming loader, no stale detailed analysis',
+        'streamingReport preview over stale snapshot → loader, no stale detailed analysis',
         (tester) async {
           final convWithStaleSnapshot = _conversation(
             lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
@@ -1603,7 +1559,7 @@ void main() {
           final harness = await _pumpHydratedAnalysisScreenWithRepo(
             tester,
             seed: StreamingAnalysisState(
-              phase: StreamingAnalyzePhase.recommendationReady,
+              phase: StreamingAnalyzePhase.streamingReport,
               recommendationPreview: _preview(runId: 'run_qr_stale'),
               analysisRunId: 'run_qr_stale',
             ),
@@ -1613,15 +1569,11 @@ void main() {
           expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsNothing);
           expect(find.byType(StreamingAnalysisLoader), findsOneWidget);
           expect(find.byType(CoachActionCard), findsNothing);
-          expect(find.byType(FullAnalysisPlaceholder), findsNothing,
-              reason:
-                  'I-P1-c: stale _enthusiasmScore from persisted snapshot must be cleared so the render tree flips to streaming.');
-          expect(find.byType(FullAnalysisRetryCard), findsNothing);
+          expect(find.byType(StreamingAnalysisRetryCard), findsNothing);
           // Stale detailed copy must not bleed through.
           expect(find.text('舊建議內容'), findsNothing);
           expect(find.text('舊策略：保守'), findsNothing);
-          expect(harness.recorder.recommendationPreviewCalls, 0);
-          expect(harness.recorder.fullCalls, 0);
+          expect(harness.recorder.streamCalls, 0);
         },
       );
 
@@ -1647,11 +1599,9 @@ void main() {
           expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsNothing);
           expect(find.byType(StreamingAnalysisLoader), findsOneWidget);
           expect(find.byType(CoachActionCard), findsNothing);
-          expect(find.byType(FullAnalysisPlaceholder), findsNothing);
-          expect(find.byType(FullAnalysisRetryCard), findsNothing);
+          expect(find.byType(StreamingAnalysisRetryCard), findsNothing);
           expect(find.text('舊建議內容'), findsNothing);
-          expect(harness.recorder.recommendationPreviewCalls, 0);
-          expect(harness.recorder.fullCalls, 0);
+          expect(harness.recorder.streamCalls, 0);
         },
       );
 
@@ -1670,8 +1620,8 @@ void main() {
               phase: StreamingAnalyzePhase.failedAfterRecommendation,
               recommendationPreview: _preview(runId: 'run_ff_stale'),
               analysisRunId: 'run_ff_stale',
-              fullErrorMessage: '完整分析失敗，可以重試。',
-              fullErrorCode: 'FULL_FAILED',
+              streamErrorMessage: '完整分析失敗，可以重試。',
+              streamErrorCode: 'FULL_FAILED',
               retriesRemaining: 2,
             ),
             conversation: convWithStaleSnapshot,
@@ -1679,11 +1629,9 @@ void main() {
 
           expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsNothing);
           expect(find.byType(CoachActionCard), findsNothing);
-          expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
-          expect(find.byType(FullAnalysisPlaceholder), findsNothing);
+          expect(harness.recorder.streamCalls, 0);
+          expect(find.byType(StreamingAnalysisRetryCard), findsOneWidget);
           expect(find.text('舊建議內容'), findsNothing);
-          expect(harness.recorder.recommendationPreviewCalls, 0);
-          expect(harness.recorder.fullCalls, 0);
         },
       );
     },
@@ -1701,7 +1649,7 @@ void main() {
       testWidgets(
         'off-screen completion (no matching snapshot) → hydrate persists + updates conv snapshot',
         (tester) async {
-          final raw = _fullRawResponse();
+          final raw = _analysisRawResponse();
           // No prior snapshot, listener never ran for this run.
           final conv = _conversation();
 
@@ -1710,7 +1658,7 @@ void main() {
             seed: StreamingAnalysisState(
               phase: StreamingAnalyzePhase.done,
               recommendationPreview: _preview(runId: 'run_off_screen'),
-              full: _fullWithRawResponse(raw),
+              result: _analysisResultWithRawResponse(raw),
               analysisRunId: 'run_off_screen',
               conversationContentRevision: conversationContentRevision(conv),
             ),
@@ -1750,7 +1698,7 @@ void main() {
       testWidgets(
         'matching snapshot still ensures one owner-scoped analysis record',
         (tester) async {
-          final raw = _fullRawResponse();
+          final raw = _analysisRawResponse();
           final conv = _conversation(
             lastAnalyzedMessageCount: 1,
             lastEnthusiasmScore: 72,
@@ -1766,7 +1714,7 @@ void main() {
             tester,
             seed: StreamingAnalysisState(
               phase: StreamingAnalyzePhase.done,
-              full: _fullWithRawResponse(raw),
+              result: _analysisResultWithRawResponse(raw),
               analysisRunId: 'run-record-ensure',
               previousAnalyzedCount: 0,
               analyzedMessageCount: 1,
@@ -1796,7 +1744,7 @@ void main() {
       testWidgets(
         'cold idle restore retries a missing record from canonical snapshot metadata',
         (tester) async {
-          final raw = _fullRawResponse();
+          final raw = _analysisRawResponse();
           final conv = _conversation(
             lastAnalyzedMessageCount: 1,
             lastEnthusiasmScore: 72,
@@ -1916,7 +1864,7 @@ void main() {
       testWidgets(
         'cold idle restore shows canonical newer fragment while old current repair fails',
         (tester) async {
-          final raw = _fullRawResponse();
+          final raw = _analysisRawResponse();
           final conv = _conversation(
             lastAnalyzedMessageCount: 4,
             lastEnthusiasmScore: 72,
@@ -1996,8 +1944,8 @@ void main() {
       testWidgets(
         'listener already persisted matching snapshot → hydrate must not double-write',
         (tester) async {
-          final raw = _fullRawResponse();
-          // Listener already ran during the original recommendationReady→done
+          final raw = _analysisRawResponse();
+          // Listener already ran during the original streamingReport→done
           // transition, persisted the snapshot, then user navigated away and
           // came back. Payload + metadata equality must short-circuit hydrate
           // persist.
@@ -2016,7 +1964,7 @@ void main() {
             seed: StreamingAnalysisState(
               phase: StreamingAnalyzePhase.done,
               recommendationPreview: _preview(runId: 'run_already_persisted'),
-              full: _fullWithRawResponse(raw),
+              result: _analysisResultWithRawResponse(raw),
               analysisRunId: 'run_already_persisted',
               conversationContentRevision: conversationContentRevision(conv),
             ),
@@ -2036,7 +1984,7 @@ void main() {
       testWidgets(
         'matching payload with stale metadata rewrites hydrate snapshot',
         (tester) async {
-          final raw = _fullRawResponse();
+          final raw = _analysisRawResponse();
           final conv = _conversation(
             lastAnalyzedMessageCount: 1,
             lastEnthusiasmScore: 72,
@@ -2064,7 +2012,7 @@ void main() {
             seed: StreamingAnalysisState(
               phase: StreamingAnalyzePhase.done,
               recommendationPreview: _preview(runId: 'run_stale_metadata'),
-              full: _fullWithRawResponse(raw),
+              result: _analysisResultWithRawResponse(raw),
               analysisRunId: 'run_stale_metadata',
               conversationMessageCount: 1,
               analyzedMessageCount: 1,
@@ -2121,7 +2069,7 @@ void main() {
             seed: StreamingAnalysisState(
               phase: StreamingAnalyzePhase.done,
               recommendationPreview: _preview(runId: 'run_prefix_dedupe'),
-              full: _fullWithRawResponse(raw),
+              result: _analysisResultWithRawResponse(raw),
               analysisRunId: 'run_prefix_dedupe',
               conversationMessageCount: conv.messages.length,
               analyzedMessageCount: 1,
@@ -2145,7 +2093,7 @@ void main() {
       testWidgets(
         'stale snapshot from a prior run does not count as matching → hydrate still persists',
         (tester) async {
-          final raw = _fullRawResponse();
+          final raw = _analysisRawResponse();
           // Snapshot exists but it's from a different (older) run.
           final conv = _conversation(
             lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
@@ -2158,7 +2106,7 @@ void main() {
             seed: StreamingAnalysisState(
               phase: StreamingAnalyzePhase.done,
               recommendationPreview: _preview(runId: 'run_after_stale'),
-              full: _fullWithRawResponse(raw),
+              result: _analysisResultWithRawResponse(raw),
               analysisRunId: 'run_after_stale',
               conversationContentRevision: conversationContentRevision(conv),
             ),
@@ -2412,7 +2360,7 @@ void main() {
     testWidgets(
       'done for an older message count shows stale-result retry and skips stale persist',
       (tester) async {
-        final raw = _fullRawResponse();
+        final raw = _analysisRawResponse();
         final conversationWithNewMessage = _conversation(
           lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
           lastAnalyzedMessageCount: 1,
@@ -2432,7 +2380,7 @@ void main() {
           seed: StreamingAnalysisState(
             phase: StreamingAnalyzePhase.done,
             recommendationPreview: _preview(runId: 'run_stale_message_count'),
-            full: _fullWithRawResponse(raw),
+            result: _analysisResultWithRawResponse(raw),
             analysisRunId: 'run_stale_message_count',
             conversationMessageCount: 1,
           ),
@@ -2440,22 +2388,19 @@ void main() {
         );
 
         expect(find.byType(CoachActionCard), findsNothing);
-        expect(find.byType(FullAnalysisRetryCard), findsOneWidget,
+        expect(find.byType(StreamingAnalysisRetryCard), findsOneWidget,
             reason:
                 'Older full result must not render as the current detailed report after the user adds messages.');
-        expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(harness.repo.updateCalls, 0,
             reason:
                 'Stale full result must not persist or advance analyzed count.');
-        expect(harness.recorder.recommendationPreviewCalls, 0);
-        expect(harness.recorder.fullCalls, 0);
       },
     );
 
     testWidgets(
       'done for an older same-count content revision skips stale persist',
       (tester) async {
-        final raw = _fullRawResponse();
+        final raw = _analysisRawResponse();
         final conversation = _conversation(
           lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
           lastAnalyzedMessageCount: 1,
@@ -2476,7 +2421,7 @@ void main() {
           seed: StreamingAnalysisState(
             phase: StreamingAnalyzePhase.done,
             recommendationPreview: _preview(runId: 'run_stale_revision'),
-            full: _fullWithRawResponse(raw),
+            result: _analysisResultWithRawResponse(raw),
             analysisRunId: 'run_stale_revision',
             conversationMessageCount: 1,
             conversationContentRevision: analyzedRevision,
@@ -2485,7 +2430,7 @@ void main() {
         );
 
         expect(find.byType(CoachActionCard), findsNothing);
-        expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
+        expect(find.byType(StreamingAnalysisRetryCard), findsOneWidget);
         expect(harness.repo.updateCalls, 0,
             reason:
                 'Same-count edits must invalidate an older full result before persistence.');
@@ -2495,7 +2440,7 @@ void main() {
     testWidgets(
       'same-count edit during snapshot write skips new history evidence',
       (tester) async {
-        final raw = _fullRawResponse();
+        final raw = _analysisRawResponse();
         final previousRaw = _staleSnapshotJson();
         final conversation = _conversation(
           lastAnalysisSnapshotJson: jsonEncode(previousRaw),
@@ -2530,7 +2475,7 @@ void main() {
           StreamingAnalysisState(
             phase: StreamingAnalyzePhase.done,
             recommendationPreview: preview,
-            full: _fullWithRawResponse(raw),
+            result: _analysisResultWithRawResponse(raw),
             analysisRunId: preview.analysisRunId,
             conversationMessageCount: conversation.messages.length,
             conversationContentRevision: analyzedRevision,
@@ -2598,7 +2543,7 @@ void main() {
         await _pumpAnalysisScreenForPremiumRefresh(
           tester,
           conversation: conversationWithMixedPending,
-          streamResult: _fullWithRawResponse(_paidRawResponse()),
+          streamResult: _analysisResultWithRawResponse(_paidRawResponse()),
         );
         tester.takeException();
 
@@ -2628,7 +2573,7 @@ void main() {
         await _pumpAnalysisScreenForPremiumRefresh(
           tester,
           conversation: conversationWithOutgoingOnlyPending,
-          streamResult: _fullWithRawResponse(_paidRawResponse()),
+          streamResult: _analysisResultWithRawResponse(_paidRawResponse()),
         );
         tester.takeException();
 
@@ -2666,7 +2611,7 @@ void main() {
         final harness = await _pumpAnalysisScreenForPremiumRefresh(
           tester,
           conversation: conversation,
-          streamResult: _fullWithRawResponse(_paidRawResponse()),
+          streamResult: _analysisResultWithRawResponse(_paidRawResponse()),
           analysisRecordStore: recordStore,
           analysisRecordOwnerUserId: 'record-owner',
         );
@@ -2703,8 +2648,6 @@ void main() {
         expect(recordStore.saveCalls, 2,
             reason:
                 'Starting another analysis must retry the missing record once.');
-        expect(harness.recorder.recommendationPreviewCalls, 0);
-        expect(harness.recorder.fullCalls, 0);
         expect(harness.recorder.streamCalls, 0,
             reason:
                 'A fresh analysis must not start while the canonical record still needs repair.');
@@ -2758,7 +2701,7 @@ void main() {
         final harness = await _pumpAnalysisScreenForPremiumRefresh(
           tester,
           conversation: conversationWithPendingOutgoing,
-          streamResult: _fullWithRawResponse(paidRaw),
+          streamResult: _analysisResultWithRawResponse(paidRaw),
           analysisRecordStore: successfulRecordStore,
           analysisRecordOwnerUserId: 'premium-refresh-owner',
         );
@@ -2931,7 +2874,7 @@ void main() {
 
   group('案2：analyze 歷史事件 hook', () {
     testWidgets('hydrate persist 成功 → 寫入一筆 analyze 歷史事件', (tester) async {
-      final raw = _fullRawResponse();
+      final raw = _analysisRawResponse();
       final conv = _conversation(
         partnerId: 'partner-history',
       ); // 無既有 snapshot → 會走 persist
@@ -2941,7 +2884,7 @@ void main() {
         seed: StreamingAnalysisState(
           phase: StreamingAnalyzePhase.done,
           recommendationPreview: _preview(runId: 'run_history_write'),
-          full: _fullWithRawResponse(raw),
+          result: _analysisResultWithRawResponse(raw),
           analysisRunId: 'run_history_write',
           conversationContentRevision: conversationContentRevision(conv),
         ),
@@ -2962,7 +2905,7 @@ void main() {
     });
 
     testWidgets('alreadyPersisted gate 命中 → 不寫歷史事件（去重繼承）', (tester) async {
-      final raw = _fullRawResponse();
+      final raw = _analysisRawResponse();
       final conv = _conversation(
         lastAnalysisSnapshotJson: jsonEncode(raw),
         lastAnalyzedMessageCount: 1,
@@ -2974,7 +2917,7 @@ void main() {
         seed: StreamingAnalysisState(
           phase: StreamingAnalyzePhase.done,
           recommendationPreview: _preview(runId: 'run_history_dedupe'),
-          full: _fullWithRawResponse(raw),
+          result: _analysisResultWithRawResponse(raw),
           analysisRunId: 'run_history_dedupe',
           conversationContentRevision: conversationContentRevision(conv),
         ),

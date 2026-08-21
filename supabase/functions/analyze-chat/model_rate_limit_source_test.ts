@@ -47,7 +47,8 @@ Deno.test("analyze 限流：在所有非模型拒絕 gate 後、最早的模型�
     'logInfo("overcharge_confirmation_claimed"',
   );
   const earliestModelCallAt = indexOfRequired(
-    "quickClaude = await callClaudeWithFallback(",
+    "const claude = await callClaudeStreaming(",
+    scopeAt,
   );
   assert(
     scopeAt > dailyGateAt,
@@ -63,7 +64,7 @@ Deno.test("analyze 限流：在所有非模型拒絕 gate 後、最早的模型�
   );
   assert(
     scopeAt < earliestModelCallAt,
-    "analyze 限流必須在最早的模型呼叫（quick）之前",
+    "analyze 限流必須在最早的 AnalyzeChat 串流模型呼叫之前",
   );
 
   // recognizeOnly 已有 increment_ocr_usage 限流，analyze scope 不得重複計

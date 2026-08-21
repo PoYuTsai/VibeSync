@@ -1,9 +1,6 @@
-// stream_run_store: data-access boundary for full streaming analyze runs.
-//
-// This intentionally uses a dedicated `analysis_stream_runs` table instead of
-// the older two-stage `analysis_runs` table. The two lifecycles have different
-// charge/resume semantics, and keeping them separate protects the live quota
-// path while streaming is dogfooded.
+// stream_run_store: data-access boundary for durable AnalyzeChat streams.
+// The `analysis_stream_runs` ledger is the sole live AnalyzeChat charge/resume
+// lifecycle and keeps persistence details out of the request handler.
 
 import type { StreamRecommendationForCharge } from "./reframer.ts";
 import type { StreamStyle } from "./stream_events.ts";

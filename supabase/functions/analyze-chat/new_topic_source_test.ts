@@ -15,17 +15,16 @@ const migrationSource = await Deno.readTextFile(
     import.meta.url,
   ),
 );
-const formulaMigrationSource = await Deno.readTextFile(
-  new URL(
-    "../../migrations/20260724180000_new_topic_formula_topics.sql",
-    import.meta.url,
-  ),
-);
-
 Deno.test("index：new_topic 不被 generic analyze gates／optimize shape 接管", () => {
-  assert(indexSource.includes('const isNewTopicMode = rawMode === "new_topic";'));
+  assert(
+    indexSource.includes('const isNewTopicMode = rawMode === "new_topic";'),
+  );
   // optimize shape 排除 new_topic（同 opener 前例）。
-  assert(indexSource.includes('rawMode !== "opener" &&\n      rawMode !== "new_topic" &&'));
+  assert(
+    indexSource.includes(
+      'rawMode !== "opener" &&\n      rawMode !== "new_topic" &&',
+    ),
+  );
   // generic 月/日 gate 排除（new_topic 用自己的固定 cost 3 gate）。
   const monthlyGate = indexSource.indexOf(
     "!recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&",
@@ -85,7 +84,9 @@ Deno.test("index：new_topic 契約鐵律錨點", () => {
   assert(branch.includes("model: newTopicApiResult.model"));
   assert(branch.includes("allowModelFallback: false"));
   // handler 永遠回 settlement 的 stored result。
-  assert(branch.includes("settlement.result as unknown as Record<string, unknown>"));
+  assert(
+    branch.includes("settlement.result as unknown as Record<string, unknown>"),
+  );
   // settle transport 不明絕不 release：retryable 分支不得呼叫 release。
   const retryableAt = branch.indexOf('settlement.kind === "retryable"');
   const failedAt = branch.indexOf('// settlement.kind === "failed"');

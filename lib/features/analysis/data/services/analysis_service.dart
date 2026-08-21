@@ -88,10 +88,6 @@ const ocrRecognitionProgressMilestones = <AnalysisProgressMilestone>[
   ),
 ];
 
-/// Must stay outside the server's single 20s Sonnet 5 quick-generation fence
-/// so a successful atomic charge/result response is not discarded in transit.
-const kAnalyzeQuickRequestTimeout = Duration(seconds: 25);
-
 /// Client fences must outlive the Edge request-level model budgets (50s text,
 /// 120s image) so parsing and quota settlement can finish before the socket is
 /// closed locally.
@@ -1572,8 +1568,8 @@ class AnalysisService {
     // 空字串等同沒帶：只有非空指令才能進 payload，否則 server 端 input hash
     // 會與同一份草稿的純潤飾請求分岔，舊請求就 replay 不回來。
     final trimmedRefineInstruction = refineInstruction?.trim();
-    final hasRefineInstruction = trimmedRefineInstruction != null &&
-        trimmedRefineInstruction.isNotEmpty;
+    final hasRefineInstruction =
+        trimmedRefineInstruction != null && trimmedRefineInstruction.isNotEmpty;
     // 多輪漂移錨：只在微調時有意義；與 anchor==draft 時一樣省略（server
     // 端也會忽略）。刻意不進 fingerprint／input hash——同 draft＋指令＋脈絡
     // 幾乎必同 anchor，不值得為它毀掉 7 天窗內的 replay。
@@ -1694,8 +1690,8 @@ class AnalysisService {
         ),
       );
 
-      // 走注入的 factory（預設即 http.Client.new，同 analyzeQuick/analyzeFull），
-      // 測試才能攔截 recognizeOnly 的 HTTP 層。
+      // 走注入的 factory（預設即 http.Client.new），測試才能攔截
+      // recognizeOnly 的 HTTP 層。
       final httpClient = _clientFactory();
       try {
         final requestStartTime = DateTime.now();
@@ -1910,91 +1906,6 @@ class AnalysisService {
     }
   }
 
-  /// Legacy quick/full rollback — recommendation phase.
-  ///
-  /// Posts `responseMode: 'quick'` to `analyze-chat`. Returns a [AnalysisRecommendationPreview]
-  /// carrying the `analysisRunId` that [analyzeFull] must echo.
-  Future<AnalysisRecommendationPreview> analyzeQuick({
-    required List<Message> messages,
-    SessionContext? sessionContext,
-    String? conversationSummary,
-    String? partnerSummary,
-    String? effectiveStyleContext,
-    String? knownContactName,
-    int? previousAnalyzedCount,
-    int? previousAnalyzedCharCount,
-    OverchargeConfirmationPayload? confirmedOvercharge,
-  }) async {
-    final entitlementContext = await _buildEntitlementContext();
-    final responseData = await _postAnalyzeModeRequest(
-      body: _buildAnalyzeModeBody(
-        responseMode: 'quick',
-        analysisRunId: null,
-        messages: messages,
-        sessionContext: sessionContext,
-        conversationSummary: conversationSummary,
-        partnerSummary: partnerSummary,
-        effectiveStyleContext: effectiveStyleContext,
-        knownContactName: knownContactName,
-        previousAnalyzedCount: previousAnalyzedCount,
-        previousAnalyzedCharCount: previousAnalyzedCharCount,
-        confirmedOvercharge: confirmedOvercharge,
-        entitlementContext: entitlementContext,
-      ),
-      timeout: kAnalyzeQuickRequestTimeout,
-    );
-    try {
-      return AnalysisRecommendationPreview.fromJson(responseData);
-    } on FormatException catch (_) {
-      // Backend should not return a malformed 200, but if it does the user has
-      // already been charged quick quota. Surface a coded error so the
-      // notifier maps it to a failedBeforeRecommendation state and the UI offers retry rather
-      // than rendering blank fields (I-P3).
-      throw AnalysisException(
-        '這次分析沒順利完成，請稍後再試。',
-        code: 'INVALID_QUICK_RESPONSE',
-      );
-    }
-  }
-
-  /// Legacy quick/full rollback — full phase.
-  ///
-  /// Echoes [analysisRunId] from a prior [analyzeQuick] so the server can match
-  /// the run, validate conversation hash, and avoid double-charging quota (I1).
-  /// Maps server `RUN_*` codes to [FullModeException] so the orchestrator can
-  /// decide between user-facing retry CTA and a hard "重新分析" path.
-  Future<AnalysisResult> analyzeFull({
-    required String analysisRunId,
-    required List<Message> messages,
-    SessionContext? sessionContext,
-    String? conversationSummary,
-    String? partnerSummary,
-    String? effectiveStyleContext,
-    String? knownContactName,
-    int? previousAnalyzedCount,
-    int? previousAnalyzedCharCount,
-  }) async {
-    final entitlementContext = await _buildEntitlementContext();
-    final responseData = await _postAnalyzeModeRequest(
-      body: _buildAnalyzeModeBody(
-        responseMode: 'full',
-        analysisRunId: analysisRunId,
-        messages: messages,
-        sessionContext: sessionContext,
-        conversationSummary: conversationSummary,
-        partnerSummary: partnerSummary,
-        effectiveStyleContext: effectiveStyleContext,
-        knownContactName: knownContactName,
-        previousAnalyzedCount: previousAnalyzedCount,
-        previousAnalyzedCharCount: previousAnalyzedCharCount,
-        entitlementContext: entitlementContext,
-      ),
-      timeout: kAnalyzeTextRequestTimeout,
-      onErrorResponse: _mapFullModeError,
-    );
-    return AnalysisResult.fromJson(_extractFullResultPayload(responseData));
-  }
-
   Stream<AnalysisStreamUpdate> analyzeStream({
     String? analysisRunId,
     required List<Message> messages,
@@ -2020,7 +1931,6 @@ class AnalysisService {
     final client = _clientFactory();
     String? runId;
     int? etaSeconds;
-    var sawTypedStreamEvent = false;
     var sawDone = false;
 
     try {
@@ -2078,6 +1988,19 @@ class AnalysisService {
         );
       }
 
+      final contentType = response.headers['content-type']
+          ?.split(';')
+          .first
+          .trim()
+          .toLowerCase();
+      if (contentType != 'application/x-ndjson') {
+        throw AnalysisException(
+          '這次分析沒有以串流方式回傳，請重新分析一次。',
+          code: 'INVALID_STREAM_CONTENT_TYPE',
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      }
+
       await for (final rawLine in response.stream
           .transform(utf8.decoder)
           .transform(const LineSplitter())
@@ -2089,17 +2012,6 @@ class AnalysisService {
         final type = event['type'] as String?;
 
         if (type == null) {
-          if (!sawTypedStreamEvent) {
-            final resultPayload = _streamResultPayload(event);
-            if (resultPayload != null) {
-              sawDone = true;
-              yield AnalysisStreamUpdate.done(
-                result: _parseStreamAnalysisResult(resultPayload),
-                rawEvent: event,
-              );
-              return;
-            }
-          }
           throw AnalysisException(
             '這次分析沒順利完成，請重新分析一次。',
             code: 'INVALID_STREAM_RESPONSE',
@@ -2107,7 +2019,6 @@ class AnalysisService {
           );
         }
 
-        sawTypedStreamEvent = true;
         runId = _stringField(event['runId']) ?? runId;
         etaSeconds = _intField(event['etaSeconds']) ?? etaSeconds;
 
@@ -2241,28 +2152,6 @@ class AnalysisService {
     }
   }
 
-  Map<String, dynamic> _extractFullResultPayload(
-    Map<String, dynamic> responseData,
-  ) {
-    final result = responseData['result'];
-    if (result is Map<String, dynamic>) {
-      return result;
-    }
-    if (result is Map) {
-      return result.map((key, value) => MapEntry(key.toString(), value));
-    }
-
-    if (responseData['responseMode'] == 'full') {
-      throw AnalysisException(
-        '完整分析資料異常，請再試一次。',
-        code: 'INVALID_FULL_RESPONSE',
-        suggestedAction: AnalysisErrorAction.retry,
-      );
-    }
-
-    return responseData;
-  }
-
   Map<String, dynamic> _decodeStreamEventLine(String line) {
     try {
       final decoded = jsonDecode(line);
@@ -2343,7 +2232,7 @@ class AnalysisService {
       shortReason: reason,
       insufficientContext: false,
       confidence: 'high',
-      estimatedFullSeconds: etaSeconds,
+      estimatedReportSeconds: etaSeconds,
     );
   }
 
@@ -2437,114 +2326,6 @@ class AnalysisService {
         'revenueCatAppUserId': entitlementContext.revenueCatAppUserId,
     };
   }
-
-  Future<Map<String, dynamic>> _postAnalyzeModeRequest({
-    required Map<String, dynamic> body,
-    required Duration timeout,
-    Exception Function(int status, Map<String, dynamic> data)? onErrorResponse,
-  }) async {
-    final accessToken = _accessTokenProvider();
-    if (accessToken == null) {
-      throw AnalysisException(
-        '請先重新登入後再試。',
-        code: 'UNAUTHORIZED',
-        suggestedAction: AnalysisErrorAction.relogin,
-      );
-    }
-
-    final client = _clientFactory();
-    try {
-      final response = await client
-          .post(
-            Uri.parse('${AppConfig.supabaseUrl}/functions/v1/analyze-chat'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $accessToken',
-              'apikey': AppConfig.supabaseAnonKey,
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(timeout);
-
-      final responseData = _decodeResponseBody(response);
-      final status = response.statusCode;
-
-      if (responseData['_nonJson'] == true && status == 200) {
-        throw AnalysisException(
-          '這次分析沒順利完成，請稍後再試。',
-          code: 'INVALID_RESPONSE_FORMAT',
-          suggestedAction: AnalysisErrorAction.retry,
-        );
-      }
-
-      if (status == 200) {
-        return responseData;
-      }
-
-      if (status == 429) {
-        final quotaException = _quotaExceptionFrom429(responseData);
-        if (quotaException != null) throw quotaException;
-      }
-
-      if (onErrorResponse != null) {
-        throw onErrorResponse(status, responseData);
-      }
-
-      throw AnalysisException(
-        (responseData['message'] as String?) ??
-            (responseData['error'] as String?) ??
-            '分析暫時失敗，請稍後再試。',
-        code: responseData['code'] as String?,
-        suggestedAction: AnalysisErrorAction.retry,
-      );
-    } on TimeoutException {
-      throw AnalysisException(
-        '分析花太久了，請稍後再試。',
-        code: 'TIMEOUT',
-        suggestedAction: AnalysisErrorAction.wait,
-      );
-    } finally {
-      client.close();
-    }
-  }
-
-  Exception _mapFullModeError(int status, Map<String, dynamic> data) {
-    final code = (data['code'] as String?) ?? (data['error'] as String?);
-    final retriesRemainingRaw = data['retriesRemaining'];
-    final retriesRemaining =
-        retriesRemainingRaw is num ? retriesRemainingRaw.toInt() : 0;
-
-    switch (code) {
-      case 'RUN_EXPIRED':
-        return FullModeException(
-          '分析記錄已過期，請重新分析。',
-          code: 'RUN_EXPIRED',
-          retriesRemaining: 0,
-          suggestedAction: AnalysisErrorAction.retry,
-        );
-      case 'RUN_CONVERSATION_MISMATCH':
-        return FullModeException(
-          '對話內容已變動，請重新分析。',
-          code: 'RUN_CONVERSATION_MISMATCH',
-          retriesRemaining: 0,
-          suggestedAction: AnalysisErrorAction.retry,
-        );
-      case 'RUN_RETRY_EXHAUSTED':
-        return FullModeException(
-          '完整分析已達重試上限，請重新分析。',
-          code: 'RUN_RETRY_EXHAUSTED',
-          retriesRemaining: 0,
-          suggestedAction: AnalysisErrorAction.retry,
-        );
-      default:
-        return FullModeException(
-          (data['message'] as String?) ?? '完整分析失敗，可以重試。',
-          code: code ?? 'FULL_FAILED',
-          retriesRemaining: retriesRemaining,
-          suggestedAction: AnalysisErrorAction.retry,
-        );
-    }
-  }
 }
 
 class _AnalysisEntitlementContext {
@@ -2627,21 +2408,4 @@ class MonthlyLimitExceededException extends AnalysisException {
           code: 'MONTHLY_LIMIT_EXCEEDED',
           suggestedAction: AnalysisErrorAction.upgrade,
         );
-}
-
-/// Raised when the legacy quick/full `full` phase fails on the server.
-///
-/// [retriesRemaining] is 0 for terminal failures (`RUN_EXPIRED`,
-/// `RUN_CONVERSATION_MISMATCH`, `RUN_RETRY_EXHAUSTED`) and matches the server
-/// budget for generic 502 `FULL_FAILED`. The orchestrator uses it to decide
-/// whether to surface a retry CTA or force "重新分析".
-class FullModeException extends AnalysisException {
-  final int retriesRemaining;
-
-  FullModeException(
-    super.message, {
-    super.code,
-    super.suggestedAction,
-    required this.retriesRemaining,
-  });
 }

@@ -30,11 +30,11 @@ AnalysisRecommendationPreview _preview(
     shortReason: '接情緒延伸',
     insufficientContext: false,
     confidence: 'high',
-    estimatedFullSeconds: eta,
+    estimatedReportSeconds: eta,
   );
 }
 
-AnalysisResult _full() {
+AnalysisResult _analysisResult() {
   return const AnalysisResult(
     enthusiasmScore: 70,
     strategy: '保持沉穩',
@@ -74,59 +74,17 @@ class _FakeAnalysisService extends AnalysisService {
 
   AnalysisRecommendationPreview? recommendationPreviewResult;
   Exception? recommendationPreviewError;
-  AnalysisResult? fullResult;
-  Exception? fullError;
+  AnalysisResult? streamResult;
   Exception? streamError;
   List<Exception?> streamCallErrors = <Exception?>[];
   Completer<void>? streamStartGate;
-  Completer<void>? fullGate;
+  Completer<void>? streamGate;
   List<AnalysisStreamContent> streamContents = const [];
   bool emitRunIdOnlyOnDone = false;
 
   int streamCallCount = 0;
-  int recommendationPreviewCallCount = 0;
-  int fullCallCount = 0;
   String? lastStreamRunId;
-  String? lastFullRunId;
   List<Message>? capturedStreamMessages;
-  List<Message>? capturedFullMessages;
-
-  @override
-  Future<AnalysisRecommendationPreview> analyzeQuick({
-    required List<Message> messages,
-    SessionContext? sessionContext,
-    String? conversationSummary,
-    String? partnerSummary,
-    String? effectiveStyleContext,
-    String? knownContactName,
-    int? previousAnalyzedCount,
-    int? previousAnalyzedCharCount,
-    OverchargeConfirmationPayload? confirmedOvercharge,
-  }) async {
-    recommendationPreviewCallCount++;
-    if (recommendationPreviewError != null) throw recommendationPreviewError!;
-    return recommendationPreviewResult!;
-  }
-
-  @override
-  Future<AnalysisResult> analyzeFull({
-    required String analysisRunId,
-    required List<Message> messages,
-    SessionContext? sessionContext,
-    String? conversationSummary,
-    String? partnerSummary,
-    String? effectiveStyleContext,
-    String? knownContactName,
-    int? previousAnalyzedCount,
-    int? previousAnalyzedCharCount,
-  }) async {
-    fullCallCount++;
-    lastFullRunId = analysisRunId;
-    capturedFullMessages = List<Message>.from(messages);
-    if (fullGate != null) await fullGate!.future;
-    if (fullError != null) throw fullError!;
-    return fullResult!;
-  }
 
   @override
   Stream<AnalysisStreamUpdate> analyzeStream({
@@ -164,15 +122,14 @@ class _FakeAnalysisService extends AnalysisService {
         runId: recommendationPreviewResult!.analysisRunId,
       );
     }
-    if (fullGate != null) await fullGate!.future;
+    if (streamGate != null) await streamGate!.future;
     final callError = callIndex < streamCallErrors.length
         ? streamCallErrors[callIndex]
         : streamError;
     if (callError != null) throw callError;
-    if (fullError != null) throw fullError!;
-    if (fullResult != null) {
+    if (streamResult != null) {
       yield AnalysisStreamUpdate.done(
-        result: fullResult!,
+        result: streamResult!,
         runId: emitRunIdOnlyOnDone
             ? 'done-only-run'
             : recommendationPreviewResult?.analysisRunId ?? 'stream-run',
@@ -197,15 +154,14 @@ void main() {
       final state = container.read(streamingAnalyzeProvider('conv-1'));
       expect(state.phase, StreamingAnalyzePhase.idle);
       expect(state.recommendationPreview, isNull);
-      expect(state.full, isNull);
+      expect(state.result, isNull);
     });
 
-    test('start streams full analysis without calling legacy quick API',
-        () async {
+    test('start uses the streaming analysis transport', () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'run_happy')
-        ..fullResult = _full()
-        ..fullGate = Completer<void>();
+        ..streamResult = _analysisResult()
+        ..streamGate = Completer<void>();
 
       final container = _container(fake);
       addTearDown(container.dispose);
@@ -237,7 +193,7 @@ void main() {
       expect(afterQuick.previousAnalyzedCount, 2);
       expect(afterQuick.conversationContentRevision, 'revision-happy');
 
-      fake.fullGate!.complete();
+      fake.streamGate!.complete();
       await startFuture;
 
       final afterFull = container.read(streamingAnalyzeProvider('conv-1'));
@@ -245,7 +201,7 @@ void main() {
       expect(afterFull.conversationMessageCount, 3);
       expect(afterFull.previousAnalyzedCount, 2);
       expect(afterFull.conversationContentRevision, 'revision-happy');
-      expect(afterFull.full?.strategy, '保持沉穩');
+      expect(afterFull.result?.strategy, '保持沉穩');
 
       expect(
         phases,
@@ -257,8 +213,6 @@ void main() {
       );
 
       expect(fake.streamCallCount, 1);
-      expect(fake.recommendationPreviewCallCount, 0);
-      expect(fake.fullCallCount, 0);
       expect(fake.capturedStreamMessages?.map((m) => m.content).toList(), [
         'hi',
       ]);
@@ -268,7 +222,7 @@ void main() {
         () async {
       final fake = _FakeAnalysisService()
         ..emitRunIdOnlyOnDone = true
-        ..fullResult = _full();
+        ..streamResult = _analysisResult();
       final container = _container(fake);
       addTearDown(container.dispose);
 
@@ -308,13 +262,12 @@ void main() {
       expect(state.phase, StreamingAnalyzePhase.failedAfterRecommendation);
       expect(state.recommendationPreview, isNull);
       expect(state.analysisRunId, 'stream-run');
-      expect(state.fullErrorMessage, '網路忙線');
-      expect(state.fullErrorCode, 'NETWORK_ERROR');
+      expect(state.streamErrorMessage, '網路忙線');
+      expect(state.streamErrorCode, 'NETWORK_ERROR');
       expect(state.retriesRemaining, 1);
       expect(fake.streamCallCount, 3);
       expect(state.previousAnalyzedCount, 2);
       expect(state.conversationContentRevision, 'revision-failure');
-      expect(fake.fullCallCount, 0);
     });
 
     test('quota exhaustion failure uses localized streaming error copy',
@@ -350,7 +303,7 @@ void main() {
     });
 
     test(
-        'full failure preserves recommendation preview and emits failedAfterRecommendation with retries',
+        'stream failure preserves recommendation preview and emits failedAfterRecommendation with retries',
         () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'run_keep')
@@ -376,13 +329,11 @@ void main() {
           'run_keep'); // recommendation preview preserved
       expect(state.analysisRunId, 'run_keep');
       expect(state.retriesRemaining, 2);
-      expect(state.fullErrorCode, 'STREAM_INTERRUPTED_AFTER_RECOMMENDATION');
+      expect(state.streamErrorCode, 'STREAM_INTERRUPTED_AFTER_RECOMMENDATION');
       expect(fake.streamCallCount, 1);
-      expect(fake.recommendationPreviewCallCount, 0);
-      expect(fake.fullCallCount, 0);
     });
 
-    test('retryFull reuses analysisRunId; does not call analyzeQuick',
+    test('retryStream reuses analysisRunId on the streaming transport',
         () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'run_retry')
@@ -406,18 +357,14 @@ void main() {
         conversationContentRevision: 'revision-retry',
       );
       expect(fake.streamCallCount, 1);
-      expect(fake.recommendationPreviewCallCount, 0);
-      expect(fake.fullCallCount, 0);
 
       // Now retry succeeds.
       fake.streamError = null;
-      fake.fullResult = _full();
+      fake.streamResult = _analysisResult();
 
-      await notifier.retryFull();
+      await notifier.retryStream();
 
-      expect(fake.recommendationPreviewCallCount, 0); // unchanged
       expect(fake.streamCallCount, 2);
-      expect(fake.fullCallCount, 0);
       expect(fake.lastStreamRunId, 'run_retry');
 
       final state = container.read(streamingAnalyzeProvider('conv-1'));
@@ -426,7 +373,8 @@ void main() {
       expect(state.conversationContentRevision, 'revision-retry');
     });
 
-    test('retryFull after unrecoverable stream error keeps retriesRemaining=0',
+    test(
+        'retryStream after unrecoverable stream error keeps retriesRemaining=0',
         () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview()
@@ -445,12 +393,12 @@ void main() {
           container.read(streamingAnalyzeProvider('conv-1').notifier);
 
       await notifier.start(messages: [_msg('hi')]);
-      await notifier.retryFull();
+      await notifier.retryStream();
 
       final state = container.read(streamingAnalyzeProvider('conv-1'));
       expect(state.phase, StreamingAnalyzePhase.failedAfterRecommendation);
       expect(state.retriesRemaining, 0);
-      expect(state.fullErrorCode, 'STREAM_RUN_RETRY_UNAVAILABLE');
+      expect(state.streamErrorCode, 'STREAM_RUN_RETRY_UNAVAILABLE');
     });
   });
 
@@ -482,7 +430,7 @@ void main() {
       expect(state.quotaExceeded!.remaining, 2);
       expect(state.quotaExceeded!.quotaNeeded, 5);
       expect(state.retriesRemaining, 0);
-      expect(state.fullErrorCode, 'MONTHLY_LIMIT_EXCEEDED');
+      expect(state.streamErrorCode, 'MONTHLY_LIMIT_EXCEEDED');
     });
 
     test(
@@ -521,7 +469,8 @@ void main() {
       expect(state.retriesRemaining, 0);
     });
 
-    test('retryFull 撞 quota 429 → quotaExceeded state（Bruce 實際觸發路）', () async {
+    test('retryStream 撞 quota 429 → quotaExceeded state（Bruce 實際觸發路）',
+        () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'run_retry_quota')
         ..streamError = StreamModeException(
@@ -551,7 +500,7 @@ void main() {
         quotaNeeded: 4,
       );
 
-      await notifier.retryFull();
+      await notifier.retryStream();
 
       final state = container.read(streamingAnalyzeProvider('conv-1'));
       expect(state.phase, StreamingAnalyzePhase.failedAfterRecommendation);
@@ -584,9 +533,9 @@ void main() {
       );
 
       fake.streamError = null;
-      fake.fullResult = _full();
+      fake.streamResult = _analysisResult();
 
-      await notifier.retryFull();
+      await notifier.retryStream();
 
       final state = container.read(streamingAnalyzeProvider('conv-1'));
       expect(state.phase, StreamingAnalyzePhase.done);
@@ -646,29 +595,29 @@ void main() {
     test('can explicitly clear nullable fields via null', () {
       const state = StreamingAnalysisState(
         phase: StreamingAnalyzePhase.failedAfterRecommendation,
-        fullErrorMessage: '舊錯誤',
-        fullErrorCode: 'OLD_CODE',
+        streamErrorMessage: '舊錯誤',
+        streamErrorCode: 'OLD_CODE',
         retriesRemaining: 3,
       );
 
       final cleared = state.copyWith(
         phase: StreamingAnalyzePhase.streamingReport,
-        fullErrorMessage: null,
-        fullErrorCode: null,
+        streamErrorMessage: null,
+        streamErrorCode: null,
         retriesRemaining: 0,
       );
 
       expect(cleared.phase, StreamingAnalyzePhase.streamingReport);
-      expect(cleared.fullErrorMessage, isNull);
-      expect(cleared.fullErrorCode, isNull);
+      expect(cleared.streamErrorMessage, isNull);
+      expect(cleared.streamErrorCode, isNull);
       expect(cleared.retriesRemaining, 0);
     });
 
     test('preserves existing values when params are omitted', () {
       const state = StreamingAnalysisState(
         phase: StreamingAnalyzePhase.failedAfterRecommendation,
-        fullErrorMessage: 'keep me',
-        fullErrorCode: 'KEEP',
+        streamErrorMessage: 'keep me',
+        streamErrorCode: 'KEEP',
         retriesRemaining: 2,
         previousAnalyzedCount: 4,
         conversationContentRevision: 'revision-copy',
@@ -678,8 +627,8 @@ void main() {
           state.copyWith(phase: StreamingAnalyzePhase.streamingReport);
 
       expect(preserved.phase, StreamingAnalyzePhase.streamingReport);
-      expect(preserved.fullErrorMessage, 'keep me');
-      expect(preserved.fullErrorCode, 'KEEP');
+      expect(preserved.streamErrorMessage, 'keep me');
+      expect(preserved.streamErrorCode, 'KEEP');
       expect(preserved.retriesRemaining, 2);
       expect(preserved.previousAnalyzedCount, 4);
       expect(preserved.conversationContentRevision, 'revision-copy');
@@ -687,7 +636,7 @@ void main() {
   });
 
   group('StreamingAnalyzeNotifier — retry clears stale error (P2)', () {
-    test('retryFull clears fullErrorMessage/code during streamingReport',
+    test('retryStream clears streamErrorMessage/code during streamingReport',
         () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'run_clear')
@@ -708,37 +657,37 @@ void main() {
       await notifier.start(messages: [_msg('hi')]);
       final failed = container.read(streamingAnalyzeProvider('conv-1'));
       expect(failed.phase, StreamingAnalyzePhase.failedAfterRecommendation);
-      expect(failed.fullErrorMessage, 'stale failure');
+      expect(failed.streamErrorMessage, 'stale failure');
 
       // Gate the retry full call so we can observe streamingReport state in flight.
       fake.streamError = null;
-      fake.fullResult = _full();
-      fake.fullGate = Completer<void>();
+      fake.streamResult = _analysisResult();
+      fake.streamGate = Completer<void>();
 
-      final retryFuture = notifier.retryFull();
+      final retryFuture = notifier.retryStream();
 
-      // Let retryFull push the streamingReport transition.
+      // Let retryStream push the streamingReport transition.
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
 
       final midFlight = container.read(streamingAnalyzeProvider('conv-1'));
       expect(midFlight.phase, StreamingAnalyzePhase.streamingReport);
-      expect(midFlight.fullErrorMessage, isNull,
+      expect(midFlight.streamErrorMessage, isNull,
           reason: 'I-P2-b: streamingReport must not carry stale error');
-      expect(midFlight.fullErrorCode, isNull);
+      expect(midFlight.streamErrorCode, isNull);
       expect(midFlight.retriesRemaining, 0);
 
-      fake.fullGate!.complete();
+      fake.streamGate!.complete();
       await retryFuture;
 
       final done = container.read(streamingAnalyzeProvider('conv-1'));
       expect(done.phase, StreamingAnalyzePhase.done);
-      expect(done.fullErrorMessage, isNull,
+      expect(done.streamErrorMessage, isNull,
           reason: 'I-P2-c: done must not carry stale error');
-      expect(done.fullErrorCode, isNull);
+      expect(done.streamErrorCode, isNull);
     });
 
-    test('retryFull clears preserved stream content before replay', () async {
+    test('retryStream clears preserved stream content before replay', () async {
       final fake = _FakeAnalysisService()
         ..streamError = StreamModeException(
           'stream reset',
@@ -769,10 +718,10 @@ void main() {
       expect(failed.streamContents, hasLength(1));
 
       fake.streamError = null;
-      fake.fullResult = _full();
+      fake.streamResult = _analysisResult();
       fake.streamStartGate = Completer<void>();
 
-      final retryFuture = notifier.retryFull();
+      final retryFuture = notifier.retryStream();
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
 
@@ -786,7 +735,7 @@ void main() {
   });
 
   group('StreamingAnalyzeNotifier — retry args caching (P1)', () {
-    test('retryFull() with no args reuses messages cached from start()',
+    test('retryStream() with no args reuses messages cached from start()',
         () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'run_cached')
@@ -807,24 +756,21 @@ void main() {
       final original = [_msg('original-1'), _msg('original-2')];
       await notifier.start(messages: original);
       expect(fake.streamCallCount, 1);
-      expect(fake.recommendationPreviewCallCount, 0);
-      expect(fake.fullCallCount, 0);
 
       // Reconfigure for retry success and capture the messages the service sees.
       fake.streamError = null;
-      fake.fullResult = _full();
+      fake.streamResult = _analysisResult();
       fake.capturedStreamMessages = null;
 
       // Caller passes nothing — notifier must reuse cached args from start().
-      await notifier.retryFull();
+      await notifier.retryStream();
 
       expect(fake.streamCallCount, 2);
-      expect(fake.fullCallCount, 0);
       expect(fake.lastStreamRunId, 'run_cached');
       expect(
         fake.capturedStreamMessages?.map((m) => m.content).toList(),
         ['original-1', 'original-2'],
-        reason: 'I-P1-b: retryFull must reuse messages cached from start()',
+        reason: 'I-P1-b: retryStream must reuse messages cached from start()',
       );
 
       final state = container.read(streamingAnalyzeProvider('conv-1'));
@@ -856,10 +802,10 @@ void main() {
       await notifier.start(messages: [_msg('second-call')]);
 
       fake.streamError = null;
-      fake.fullResult = _full();
+      fake.streamResult = _analysisResult();
       fake.capturedStreamMessages = null;
 
-      await notifier.retryFull();
+      await notifier.retryStream();
 
       expect(fake.lastStreamRunId, 'run_B');
       expect(
@@ -869,7 +815,7 @@ void main() {
       );
     });
 
-    test('retryFull is no-op when called before start (no cached runId)',
+    test('retryStream is no-op when called before start (no cached runId)',
         () async {
       final fake = _FakeAnalysisService();
       final container = _container(fake);
@@ -878,24 +824,24 @@ void main() {
       final notifier =
           container.read(streamingAnalyzeProvider('conv-1').notifier);
 
-      await notifier.retryFull();
+      await notifier.retryStream();
 
-      expect(fake.fullCallCount, 0);
       final state = container.read(streamingAnalyzeProvider('conv-1'));
       expect(state.phase, StreamingAnalyzePhase.idle);
     });
   });
 
   group('StreamingAnalyzeNotifier — stale guard', () {
-    test('a new start() supersedes an in-flight full; old full is discarded',
+    test(
+        'a new start() supersedes an in-flight stream; old stream is discarded',
         () async {
       // First start: recommendation preview yields runId A, full is gated and never publishes
       // because a second start() arrives mid-flight.
       final gateA = Completer<void>();
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'run_A')
-        ..fullResult = _full()
-        ..fullGate = gateA;
+        ..streamResult = _analysisResult()
+        ..streamGate = gateA;
 
       final container = _container(fake);
       addTearDown(container.dispose);
@@ -911,7 +857,7 @@ void main() {
 
       // Reconfigure fake for second start (new runId).
       fake.recommendationPreviewResult = _preview(runId: 'run_B');
-      fake.fullGate = null; // second full resolves immediately
+      fake.streamGate = null; // second full resolves immediately
       final secondStart = notifier.start(messages: [_msg('b')]);
 
       await secondStart;
@@ -932,7 +878,7 @@ void main() {
         () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'run_prelude')
-        ..fullResult = _full()
+        ..streamResult = _analysisResult()
         ..streamStartGate = Completer<void>();
 
       final container = _container(fake);
@@ -963,12 +909,12 @@ void main() {
       expect(done.previousAnalyzedCount, 3);
     });
 
-    test('accumulates structured content while full stream is running',
+    test('accumulates structured content while report stream is running',
         () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'run_content')
-        ..fullResult = _full()
-        ..fullGate = Completer<void>()
+        ..streamResult = _analysisResult()
+        ..streamGate = Completer<void>()
         ..streamContents = const [
           AnalysisStreamContent(
             kind: AnalysisStreamContentKind.decision,
@@ -994,11 +940,11 @@ void main() {
       expect(running.streamContents.single.title, '下一步策略');
       expect(running.streamContents.single.body, '先承接情緒，再把回覆壓短。');
 
-      fake.fullGate!.complete();
+      fake.streamGate!.complete();
       await startFuture;
     });
 
-    test('content-before-recommendation failure keeps retryable full state',
+    test('content-before-recommendation failure keeps retryable stream state',
         () async {
       final fake = _FakeAnalysisService()
         ..streamError = StreamModeException(
@@ -1034,9 +980,9 @@ void main() {
 
     test('server progress takes over and is not overwritten locally', () async {
       final fake = _FakeAnalysisService()
-        ..fullResult = _full()
+        ..streamResult = _analysisResult()
         ..streamStartGate = Completer<void>()
-        ..fullGate = Completer<void>();
+        ..streamGate = Completer<void>();
 
       final container = _container(fake);
       addTearDown(container.dispose);
@@ -1061,7 +1007,7 @@ void main() {
           container.read(streamingAnalyzeProvider('conv-1'));
       expect(stillServerEvent.streamProgressLabel, 'starting stream');
 
-      fake.fullGate!.complete();
+      fake.streamGate!.complete();
       await startFuture;
     });
   });
@@ -1071,7 +1017,7 @@ void main() {
         () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'stream-run')
-        ..fullResult = _full()
+        ..streamResult = _analysisResult()
         ..streamCallErrors = <Exception?>[
           AnalysisException(
             '網路連線中斷。',
@@ -1089,7 +1035,7 @@ void main() {
 
       final state = container.read(streamingAnalyzeProvider('conv-1'));
       expect(state.phase, StreamingAnalyzePhase.done);
-      expect(state.full, same(fake.fullResult));
+      expect(state.result, same(fake.streamResult));
       expect(fake.streamCallCount, 2);
       expect(fake.lastStreamRunId, 'stream-run');
     });
@@ -1098,7 +1044,7 @@ void main() {
         () async {
       final fake = _FakeAnalysisService()
         ..recommendationPreviewResult = _preview(runId: 'stream-run')
-        ..fullResult = _full()
+        ..streamResult = _analysisResult()
         ..streamCallErrors = <Exception?>[
           AnalysisException(
             '網路連線中斷。',
@@ -1152,8 +1098,8 @@ void main() {
 
       fake
         ..streamError = null
-        ..fullResult = _full();
-      await notifier.retryFull();
+        ..streamResult = _analysisResult();
+      await notifier.retryStream();
 
       expect(
         container.read(streamingAnalyzeProvider('conv-1')).phase,

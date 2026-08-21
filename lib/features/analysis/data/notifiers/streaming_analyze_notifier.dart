@@ -12,16 +12,14 @@ import '../services/analysis_service.dart';
 
 /// Phases of the analyze flow.
 ///
-/// Streaming full dogfood path:
+/// Streaming-only path:
 ///   idle -> connecting(connecting) -> streamingReport(preview) -> done
-/// Legacy recommendation-ready state remains for rollback and retry UI compatibility.
 /// Failure branches:
 ///   connecting -> failedBeforeRecommendation                 (no recommendation emitted)
 ///   streamingReport  -> failedAfterRecommendation                  (preview preserved, retry CTA)
 enum StreamingAnalyzePhase {
   idle,
   connecting,
-  recommendationReady,
   failedBeforeRecommendation,
   streamingReport,
   done,
@@ -90,18 +88,18 @@ class QuotaExceededInfo {
   static int _nonNegative(int value) => value < 0 ? 0 : value;
 }
 
-/// Immutable orchestrator state. Carries the streaming preview + full result,
-/// plus the cached [analysisRunId] used by [StreamingAnalyzeNotifier.retryFull]
+/// Immutable orchestrator state. Carries the streaming preview + final result,
+/// plus the cached [analysisRunId] used by [StreamingAnalyzeNotifier.retryStream]
 /// so the server can match the run without re-charging quota (invariant I1).
 class StreamingAnalysisState {
   final StreamingAnalyzePhase phase;
   final AnalysisRecommendationPreview? recommendationPreview;
-  final AnalysisResult? full;
+  final AnalysisResult? result;
   final String? analysisRunId;
   final String? recommendationPreviewErrorMessage;
   final String? recommendationPreviewErrorCode;
-  final String? fullErrorMessage;
-  final String? fullErrorCode;
+  final String? streamErrorMessage;
+  final String? streamErrorCode;
   final String? streamProgressLabel;
   final String? streamProgressDetail;
   final List<AnalysisStreamContent> streamContents;
@@ -117,12 +115,12 @@ class StreamingAnalysisState {
   const StreamingAnalysisState({
     required this.phase,
     this.recommendationPreview,
-    this.full,
+    this.result,
     this.analysisRunId,
     this.recommendationPreviewErrorMessage,
     this.recommendationPreviewErrorCode,
-    this.fullErrorMessage,
-    this.fullErrorCode,
+    this.streamErrorMessage,
+    this.streamErrorCode,
     this.streamProgressLabel,
     this.streamProgressDetail,
     this.streamContents = const [],
@@ -145,12 +143,12 @@ class StreamingAnalysisState {
   StreamingAnalysisState copyWith({
     StreamingAnalyzePhase? phase,
     Object? recommendationPreview = _unset,
-    Object? full = _unset,
+    Object? result = _unset,
     Object? analysisRunId = _unset,
     Object? recommendationPreviewErrorMessage = _unset,
     Object? recommendationPreviewErrorCode = _unset,
-    Object? fullErrorMessage = _unset,
-    Object? fullErrorCode = _unset,
+    Object? streamErrorMessage = _unset,
+    Object? streamErrorCode = _unset,
     Object? streamProgressLabel = _unset,
     Object? streamProgressDetail = _unset,
     List<AnalysisStreamContent>? streamContents,
@@ -166,7 +164,8 @@ class StreamingAnalysisState {
       recommendationPreview: identical(recommendationPreview, _unset)
           ? this.recommendationPreview
           : recommendationPreview as AnalysisRecommendationPreview?,
-      full: identical(full, _unset) ? this.full : full as AnalysisResult?,
+      result:
+          identical(result, _unset) ? this.result : result as AnalysisResult?,
       analysisRunId: identical(analysisRunId, _unset)
           ? this.analysisRunId
           : analysisRunId as String?,
@@ -178,12 +177,12 @@ class StreamingAnalysisState {
           identical(recommendationPreviewErrorCode, _unset)
               ? this.recommendationPreviewErrorCode
               : recommendationPreviewErrorCode as String?,
-      fullErrorMessage: identical(fullErrorMessage, _unset)
-          ? this.fullErrorMessage
-          : fullErrorMessage as String?,
-      fullErrorCode: identical(fullErrorCode, _unset)
-          ? this.fullErrorCode
-          : fullErrorCode as String?,
+      streamErrorMessage: identical(streamErrorMessage, _unset)
+          ? this.streamErrorMessage
+          : streamErrorMessage as String?,
+      streamErrorCode: identical(streamErrorCode, _unset)
+          ? this.streamErrorCode
+          : streamErrorCode as String?,
       streamProgressLabel: identical(streamProgressLabel, _unset)
           ? this.streamProgressLabel
           : streamProgressLabel as String?,
@@ -217,11 +216,10 @@ final streamingAnalyzeProvider = NotifierProvider.autoDispose
   StreamingAnalyzeNotifier.new,
 );
 
-/// Streaming full analyze orchestrator for a single conversation. State
+/// Streaming AnalyzeChat orchestrator for a single conversation. State
 /// survives navigation while in flight via [Ref.keepAlive]; once the user
 /// starts an analysis the provider stays alive for the rest of the app session
-/// (in-memory only; Phase 4 will persist). The legacy quick/full branch
-/// below stays wired for rollback.
+/// (in-memory only; durable run recovery lives on the server).
 class StreamingAnalyzeNotifier
     extends AutoDisposeFamilyNotifier<StreamingAnalysisState, String> {
   int _generation = 0;
@@ -229,7 +227,7 @@ class StreamingAnalyzeNotifier
 
   // Retry payload cached from the most recent [start] call. The notifier
   // outlives the screen via [Ref.keepAlive], so these fields survive screen
-  // remount -> [retryFull] then does not depend on screen-instance local state
+  // remount -> [retryStream] then does not depend on screen-instance local state
   // (invariant I-P1-b). A second [start] overwrites them (I-P1-c).
   List<Message>? _cachedMessages;
   SessionContext? _cachedSessionContext;
@@ -257,9 +255,6 @@ class StreamingAnalyzeNotifier
   }
 
   AnalysisService get _service => ref.read(analysisServiceProvider);
-  // Dogfood default: run full analysis through the streaming endpoint. Keep this
-  // as a getter so the legacy quick/full branch below can stay wired for rollback.
-  bool get _shouldUseStreamingFull => true;
 
   /// Run the analysis pipeline. Multiple concurrent calls supersede
   /// older ones via a generation guard; results from stale generations are
@@ -284,8 +279,8 @@ class StreamingAnalyzeNotifier
     final effectiveAnalyzedMessageCount =
         analyzedMessageCount ?? conversationMessageCount ?? messages.length;
 
-    // Cache the payload so retryFull can replay analyzeFull with the same
-    // conversation hash even after the calling screen is disposed/remounted.
+    // Cache the payload so retryStream can resume the same request after the
+    // calling screen is disposed/remounted.
     _cachedMessages = List<Message>.unmodifiable(messages);
     _cachedSessionContext = sessionContext;
     _cachedConversationSummary = conversationSummary;
@@ -311,69 +306,8 @@ class StreamingAnalyzeNotifier
       conversationContentRevision: conversationContentRevision,
     );
 
-    if (_shouldUseStreamingFull) {
-      await _runStreamingFull(
-        generation: myGen,
-        messages: messages,
-        sessionContext: sessionContext,
-        conversationSummary: conversationSummary,
-        partnerSummary: partnerSummary,
-        effectiveStyleContext: effectiveStyleContext,
-        knownContactName: knownContactName,
-        previousAnalyzedCount: previousAnalyzedCount,
-        previousAnalyzedCharCount: previousAnalyzedCharCount,
-        confirmedOvercharge: confirmedOvercharge,
-        conversationMessageCount: conversationMessageCount,
-        analyzedMessageCount: effectiveAnalyzedMessageCount,
-        conversationContentRevision: conversationContentRevision,
-      );
-      return;
-    }
-
-    final AnalysisRecommendationPreview recommendationPreview;
-    try {
-      recommendationPreview = await _service.analyzeQuick(
-        messages: messages,
-        sessionContext: sessionContext,
-        conversationSummary: conversationSummary,
-        partnerSummary: partnerSummary,
-        effectiveStyleContext: effectiveStyleContext,
-        knownContactName: knownContactName,
-        previousAnalyzedCount: previousAnalyzedCount,
-        previousAnalyzedCharCount: previousAnalyzedCharCount,
-        confirmedOvercharge: confirmedOvercharge,
-      );
-    } on Exception catch (e) {
-      if (myGen != _generation) return;
-      final message = e is AnalysisException ? e.message : '分析失敗，請稍後再試。';
-      final code = e is AnalysisException ? e.code : null;
-      state = StreamingAnalysisState(
-        phase: StreamingAnalyzePhase.failedBeforeRecommendation,
-        recommendationPreviewErrorMessage: message,
-        recommendationPreviewErrorCode: code,
-        conversationMessageCount: conversationMessageCount,
-        previousAnalyzedCount: previousAnalyzedCount,
-        analyzedMessageCount: effectiveAnalyzedMessageCount,
-        conversationContentRevision: conversationContentRevision,
-      );
-      return;
-    }
-
-    if (myGen != _generation) return;
-
-    state = StreamingAnalysisState(
-      phase: StreamingAnalyzePhase.recommendationReady,
-      recommendationPreview: recommendationPreview,
-      analysisRunId: recommendationPreview.analysisRunId,
-      conversationMessageCount: conversationMessageCount,
-      previousAnalyzedCount: previousAnalyzedCount,
-      analyzedMessageCount: effectiveAnalyzedMessageCount,
-      conversationContentRevision: conversationContentRevision,
-    );
-
-    await _runFull(
+    await _runStream(
       generation: myGen,
-      analysisRunId: recommendationPreview.analysisRunId,
       messages: messages,
       sessionContext: sessionContext,
       conversationSummary: conversationSummary,
@@ -381,12 +315,15 @@ class StreamingAnalyzeNotifier
       effectiveStyleContext: effectiveStyleContext,
       knownContactName: knownContactName,
       previousAnalyzedCount: previousAnalyzedCount,
+      previousAnalyzedCharCount: previousAnalyzedCharCount,
+      confirmedOvercharge: confirmedOvercharge,
       conversationMessageCount: conversationMessageCount,
       analyzedMessageCount: effectiveAnalyzedMessageCount,
+      conversationContentRevision: conversationContentRevision,
     );
   }
 
-  Future<void> _runStreamingFull({
+  Future<void> _runStream({
     required int generation,
     String? analysisRunId,
     required List<Message> messages,
@@ -444,8 +381,8 @@ class StreamingAnalyzeNotifier
             state = state.copyWith(
               phase: StreamingAnalyzePhase.streamingReport,
               analysisRunId: update.runId ?? state.analysisRunId,
-              fullErrorMessage: null,
-              fullErrorCode: null,
+              streamErrorMessage: null,
+              streamErrorCode: null,
               streamProgressLabel: update.label ?? content.title,
               streamProgressDetail: update.detail ?? content.body,
               streamContents: List<AnalysisStreamContent>.unmodifiable(
@@ -467,8 +404,8 @@ class StreamingAnalyzeNotifier
               phase: StreamingAnalyzePhase.streamingReport,
               recommendationPreview: recommendationPreview,
               analysisRunId: recommendationPreview.analysisRunId,
-              fullErrorMessage: null,
-              fullErrorCode: null,
+              streamErrorMessage: null,
+              streamErrorCode: null,
               streamProgressLabel: update.label,
               streamProgressDetail: update.detail,
               retriesRemaining: 0,
@@ -478,8 +415,8 @@ class StreamingAnalyzeNotifier
             );
             break;
           case AnalysisStreamUpdateKind.done:
-            final full = update.result;
-            if (full == null) {
+            final result = update.result;
+            if (result == null) {
               throw AnalysisException(
                 '完整分析串流缺少結果，請重新分析。',
                 code: 'INVALID_STREAM_RESULT',
@@ -488,10 +425,10 @@ class StreamingAnalyzeNotifier
             }
             state = state.copyWith(
               phase: StreamingAnalyzePhase.done,
-              full: full,
+              result: result,
               analysisRunId: update.runId ?? state.analysisRunId,
-              fullErrorMessage: null,
-              fullErrorCode: null,
+              streamErrorMessage: null,
+              streamErrorCode: null,
               streamProgressLabel: null,
               streamProgressDetail: null,
               retriesRemaining: 0,
@@ -523,8 +460,8 @@ class StreamingAnalyzeNotifier
               ? StreamingAnalyzePhase.streamingReport
               : StreamingAnalyzePhase.connecting,
           analysisRunId: resumeRunId,
-          fullErrorMessage: null,
-          fullErrorCode: null,
+          streamErrorMessage: null,
+          streamErrorCode: null,
           streamProgressLabel: '連線中斷，正在取回分析結果',
           streamProgressDetail: '會接續原本的分析，不會重新扣除額度。',
           streamContents: const <AnalysisStreamContent>[],
@@ -533,7 +470,7 @@ class StreamingAnalyzeNotifier
           analyzedMessageCount: analyzedMessageCount,
           quotaExceeded: null,
         );
-        await _runStreamingFull(
+        await _runStream(
           generation: generation,
           analysisRunId: resumeRunId,
           messages: messages,
@@ -576,8 +513,8 @@ class StreamingAnalyzeNotifier
           hasRecoverableRun) {
         state = state.copyWith(
           phase: StreamingAnalyzePhase.failedAfterRecommendation,
-          fullErrorMessage: message,
-          fullErrorCode: code,
+          streamErrorMessage: message,
+          streamErrorCode: code,
           streamProgressLabel: null,
           streamProgressDetail: null,
           retriesRemaining: retriesRemaining,
@@ -681,16 +618,16 @@ class StreamingAnalyzeNotifier
     }.contains(error.code);
   }
 
-  /// Retry the full call with the cached [StreamingAnalysisState.analysisRunId]
-  /// and the payload captured by the most recent [start]. Does NOT call
-  /// analyzeQuick and does NOT re-charge recommendation quota. No-op if there is no
-  /// cached run (caller should invoke [start] instead).
+  /// Resume the same streaming run with its cached
+  /// [StreamingAnalysisState.analysisRunId] and request payload. It never
+  /// changes transport or starts a non-stream path, and does not re-charge
+  /// recommendation quota. No-op if there is no cached run.
   ///
   /// Caller passes no args so the retry survives screen remount; see
   /// invariant I-P1-b. The screen that triggered [start] may have been
   /// disposed by the time the user taps "重試"; the notifier itself owns the
   /// payload because it outlives the screen via [Ref.keepAlive].
-  Future<void> retryFull() async {
+  Future<void> retryStream() async {
     final runId = state.analysisRunId;
     final cachedMessages = _cachedMessages;
     if (runId == null || cachedMessages == null) return;
@@ -699,8 +636,8 @@ class StreamingAnalyzeNotifier
 
     state = state.copyWith(
       phase: StreamingAnalyzePhase.streamingReport,
-      fullErrorMessage: null,
-      fullErrorCode: null,
+      streamErrorMessage: null,
+      streamErrorCode: null,
       streamContents: const <AnalysisStreamContent>[],
       retriesRemaining: 0,
       conversationMessageCount: _cachedConversationMessageCount,
@@ -710,27 +647,7 @@ class StreamingAnalyzeNotifier
       quotaExceeded: null,
     );
 
-    if (_shouldUseStreamingFull) {
-      await _runStreamingFull(
-        generation: myGen,
-        analysisRunId: runId,
-        messages: cachedMessages,
-        sessionContext: _cachedSessionContext,
-        conversationSummary: _cachedConversationSummary,
-        partnerSummary: _cachedPartnerSummary,
-        effectiveStyleContext: _cachedEffectiveStyleContext,
-        knownContactName: _cachedKnownContactName,
-        previousAnalyzedCount: _cachedPreviousAnalyzedCount,
-        previousAnalyzedCharCount: _cachedPreviousAnalyzedCharCount,
-        confirmedOvercharge: _cachedConfirmedOvercharge,
-        conversationMessageCount: _cachedConversationMessageCount,
-        analyzedMessageCount: _cachedAnalyzedMessageCount,
-        conversationContentRevision: _cachedConversationContentRevision,
-      );
-      return;
-    }
-
-    await _runFull(
+    await _runStream(
       generation: myGen,
       analysisRunId: runId,
       messages: cachedMessages,
@@ -740,84 +657,11 @@ class StreamingAnalyzeNotifier
       effectiveStyleContext: _cachedEffectiveStyleContext,
       knownContactName: _cachedKnownContactName,
       previousAnalyzedCount: _cachedPreviousAnalyzedCount,
+      previousAnalyzedCharCount: _cachedPreviousAnalyzedCharCount,
+      confirmedOvercharge: _cachedConfirmedOvercharge,
       conversationMessageCount: _cachedConversationMessageCount,
       analyzedMessageCount: _cachedAnalyzedMessageCount,
+      conversationContentRevision: _cachedConversationContentRevision,
     );
-  }
-
-  Future<void> _runFull({
-    required int generation,
-    required String analysisRunId,
-    required List<Message> messages,
-    SessionContext? sessionContext,
-    String? conversationSummary,
-    String? partnerSummary,
-    String? effectiveStyleContext,
-    String? knownContactName,
-    int? previousAnalyzedCount,
-    int? conversationMessageCount,
-    int? analyzedMessageCount,
-  }) async {
-    if (generation != _generation) return;
-    // Clear any stale error fields on every full attempt so invariants
-    // I-P2-b/c hold even if a future call site forgets to clear (e.g. retryFull
-    // already clears, but defense-in-depth makes the streamingReport invariant
-    // unconditional).
-    state = state.copyWith(
-      phase: StreamingAnalyzePhase.streamingReport,
-      fullErrorMessage: null,
-      fullErrorCode: null,
-      retriesRemaining: 0,
-      conversationMessageCount: conversationMessageCount,
-      analyzedMessageCount: analyzedMessageCount,
-      quotaExceeded: null,
-    );
-
-    try {
-      final full = await _service.analyzeFull(
-        analysisRunId: analysisRunId,
-        messages: messages,
-        sessionContext: sessionContext,
-        conversationSummary: conversationSummary,
-        partnerSummary: partnerSummary,
-        effectiveStyleContext: effectiveStyleContext,
-        knownContactName: knownContactName,
-        previousAnalyzedCount: previousAnalyzedCount,
-      );
-      if (generation != _generation) return;
-      state = state.copyWith(
-        phase: StreamingAnalyzePhase.done,
-        full: full,
-        fullErrorMessage: null,
-        fullErrorCode: null,
-        retriesRemaining: 0,
-        conversationMessageCount: conversationMessageCount,
-        analyzedMessageCount: analyzedMessageCount,
-        quotaExceeded: null,
-      );
-    } on FullModeException catch (e) {
-      if (generation != _generation) return;
-      state = state.copyWith(
-        phase: StreamingAnalyzePhase.failedAfterRecommendation,
-        fullErrorMessage: e.message,
-        fullErrorCode: e.code,
-        retriesRemaining: e.retriesRemaining,
-        conversationMessageCount: conversationMessageCount,
-        analyzedMessageCount: analyzedMessageCount,
-        quotaExceeded: null,
-      );
-    } on Exception catch (e) {
-      if (generation != _generation) return;
-      state = state.copyWith(
-        phase: StreamingAnalyzePhase.failedAfterRecommendation,
-        fullErrorMessage: e is AnalysisException ? e.message : '完整分析失敗，可以重試。',
-        fullErrorCode: e is AnalysisException ? e.code : null,
-        retriesRemaining: 0,
-        conversationMessageCount: conversationMessageCount,
-        analyzedMessageCount: analyzedMessageCount,
-        // Legacy 回退路同樣分流 quota 429（smoke P1 fix 2026-06-11）。
-        quotaExceeded: QuotaExceededInfo.fromException(e),
-      );
-    }
   }
 }

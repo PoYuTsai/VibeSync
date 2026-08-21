@@ -457,14 +457,16 @@ Deno.test("optimize-message cannot be quota-blocked before replay or routed thro
     indexSource,
     "OPTIMIZE_MESSAGE_UNSUPPORTED_RESPONSE_MODE",
   );
-  const quickBranch = requiredIndex(
+  const modeResolution = requiredIndex(
     indexSource,
-    'if (responseMode === "quick")',
+    "const modeResolution = resolveRequestMode({",
   );
   assert(
-    responseModeRejection < quickBranch,
-    "optimize compatibility modes must be rejected before quick can charge",
+    modeResolution < responseModeRejection,
+    "retired compatibility modes must fail before optimize can charge",
   );
+  assertFalse(indexSource.includes('if (responseMode === "quick")'));
+  assertFalse(indexSource.includes('if (responseMode === "full")'));
 
   for (
     const counterGate of [
