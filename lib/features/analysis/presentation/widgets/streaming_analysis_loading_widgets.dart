@@ -1,14 +1,8 @@
-// lib/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart
+// UI primitives for the streaming AnalyzeChat flow.
 //
-// UI primitives for the full-streaming analyze flow.
-//
-// - [StreamingAnalysisLoader]    Spinner + rotating Chinese narrative copy. The
-//   historical class name remains for compatibility; it now represents the
-//   full-streaming prelude before content events arrive.
-// - [FullAnalysisPlaceholder] Legacy skeleton retained for rollback tests.
-// - [FullAnalysisRetryCard]   Card shown after full failure. Disables the
-//   retry CTA when [retriesRemaining] reaches 0 and switches copy to
-//   「無法再重試，請重新分析」.
+// - [StreamingAnalysisLoader] shows progress until structured events arrive.
+// - [StreamingAnalysisRetryCard] handles recoverable stream failures.
+// - [QuotaExceededUpgradeCard] keeps quota exhaustion out of retry semantics.
 
 import 'dart:async';
 
@@ -30,15 +24,9 @@ const List<String> kStreamingAnalysisLoadingPhrases = <String>[
 const Duration kStreamingAnalysisRotationInterval =
     Duration(milliseconds: 1000);
 
-const String kFullPlaceholderClosing = '正在補上完整報告…';
-const List<String> kFullPlaceholderSectionLabels = <String>[
-  '五大回覆風格整理中…',
-  '互動雷達整理中…',
-  '深層策略整理中…',
-];
 const String kRetryExhaustedMessage = '無法再重試，請重新分析。';
 
-/// Rotating loader for the full-streaming prelude.
+/// Rotating loader for the streaming prelude.
 ///
 /// Cycles through [phrases] every [interval] to reduce perceived dead time.
 /// Caller may inject custom phrases for tests; production uses
@@ -128,96 +116,9 @@ class _StreamingAnalysisLoaderState extends State<StreamingAnalysisLoader> {
   }
 }
 
-/// Static placeholder shown while full analysis is in flight.
-///
-/// [estimatedFullSeconds] is the server's ETA. When null, falls back to a
-/// hard-coded 15-20s range so the copy never reads "預估 null 秒".
-class FullAnalysisPlaceholder extends StatelessWidget {
-  final int? estimatedFullSeconds;
-  final List<String> sectionLabels;
-  final String closingLabel;
-
-  const FullAnalysisPlaceholder({
-    super.key,
-    this.estimatedFullSeconds,
-    this.sectionLabels = kFullPlaceholderSectionLabels,
-    this.closingLabel = kFullPlaceholderClosing,
-  });
-
-  static String formatEtaRange(int? seconds) {
-    if (seconds == null || seconds <= 0) return '15-20';
-    final low = (seconds - 2).clamp(1, 999);
-    final high = (seconds + 3).clamp(low + 1, 999);
-    return '$low-$high';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final headerCopy = '完整分析整理中，預估 ${formatEtaRange(estimatedFullSeconds)} 秒';
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  headerCopy,
-                  style: theme.textTheme.titleSmall,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          for (final label in sectionLabels) _SkeletonBlock(label: label),
-          if (closingLabel.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              closingLabel,
-              style: theme.textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _SkeletonBlock extends StatelessWidget {
-  final String label;
-
-  const _SkeletonBlock({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.bodyMedium,
-      ),
-    );
-  }
-}
-
 /// 額度不足升級卡（smoke P1 fix 2026-06-11）。
 ///
-/// Quota 429 中止分析時取代 [FullAnalysisRetryCard]：解釋剩餘/需要則數並給
+/// Quota 429 中止分析時取代 [StreamingAnalysisRetryCard]：解釋剩餘/需要則數並給
 /// 「查看方案」CTA（caller 接 paywall）。絕不顯示「無法再重試」——額度不足
 /// 不是技術失敗，重試只會再撞 429。
 class QuotaExceededUpgradeCard extends StatelessWidget {
@@ -332,17 +233,17 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
   }
 }
 
-/// Retry CTA card for failed full analysis.
+/// Retry CTA card for an interrupted analysis stream.
 ///
 /// When [retriesRemaining] > 0, shows the user-facing error plus a primary
 /// retry button labelled "重試完整分析（剩 N 次）". When 0, swaps the body
 /// for [kRetryExhaustedMessage] and disables the button to force "重新分析".
-class FullAnalysisRetryCard extends StatelessWidget {
+class StreamingAnalysisRetryCard extends StatelessWidget {
   final String? errorMessage;
   final int retriesRemaining;
   final VoidCallback? onRetry;
 
-  const FullAnalysisRetryCard({
+  const StreamingAnalysisRetryCard({
     super.key,
     required this.retriesRemaining,
     this.errorMessage,

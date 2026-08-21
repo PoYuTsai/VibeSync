@@ -1,5 +1,3 @@
-// ignore_for_file: dead_code, unchecked_use_of_nullable_value
-
 // lib/features/analysis/presentation/screens/analysis_screen.dart
 import 'dart:async';
 import 'dart:convert';
@@ -74,7 +72,6 @@ import '../../data/services/reply_refine_draft_store.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_record.dart';
-import '../../domain/entities/game_stage.dart';
 import '../../domain/services/analysis_fragment_policy.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
 import '../../domain/services/screenshot_session_context_defaults.dart';
@@ -83,7 +80,6 @@ import '../widgets/analysis_platform_picker.dart';
 import '../widgets/draft_polish_sheet.dart';
 import '../widgets/reply_refine_sheet.dart';
 import '../widgets/reply_style_card.dart';
-import '../widgets/screenshot_added_feedback_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/swipe_hint_nudge.dart';
 import '../widgets/analysis_usage_summary_line.dart';
@@ -220,14 +216,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String? _feedbackCategory;
   final _feedbackCommentController = TextEditingController();
 
-  // Streaming analyze mirrors from the notifier. The backend now runs full
-  // streaming directly; old rollback preview data stays inside the notifier
-  // only for retry compatibility and is not rendered on this screen.
-  String? _fullErrorMessage;
-  int _fullErrorRetriesRemaining = 0;
+  // UI-facing progress and error mirrors from the single streaming notifier.
+  // The notifier remains authoritative for the durable run and final result.
+  String? _streamErrorMessage;
+  int _streamErrorRetriesRemaining = 0;
 
   /// Quota 429 分流（smoke P1 fix 2026-06-11）：非 null 時 retry 卡換升級卡。
-  /// 生命週期與 _fullErrorMessage 配對——所有清除/賦值點必須同步。
+  /// 生命週期與 _streamErrorMessage 配對——所有清除/賦值點必須同步。
   QuotaExceededInfo? _quotaExceededInfo;
   String? _streamProgressLabel;
   String? _streamProgressDetail;
@@ -255,12 +250,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// 數字，好讓下一次開面板時能在動手前就顯示；沒問過就是 null（不猜）。
   int? _refineFreeRemaining;
 
-  // 對話延續功能
-  final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final _analysisProgressEndKey = GlobalKey();
-  final _messageFocusNode = FocusNode();
-  final _messageInputKey = GlobalKey();
   final _replyZoneSectionKey = GlobalKey();
   // 回覆區進場（payoff 時刻）：區塊 fade+slide 320ms，卡組每張 stagger 50ms。
   // 總長 = celebrate(320) + 5×50 = 570ms。一次性：新一輪分析（內容歸零後再
@@ -276,13 +267,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // 拖動時執行，避免把他手上的捲動搶走。不進 setState：純行為旗標，不影響
   // 渲染。
   bool _userDragInProgress = false;
-  String? _lastManualAddedMessageId;
-  String? _lastManualAddedContent;
-  bool? _lastManualAddedIsFromMe;
-  String? _lastScreenshotAddedMessageId;
-  String? _lastScreenshotAddedPreview;
-  bool? _lastScreenshotAddedIsFromMe;
-  int? _lastScreenshotAddedCount;
   bool _followLiveAnalysis = false;
   bool _analysisFollowScrollScheduled = false;
 
@@ -318,10 +302,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   AcquaintanceDuration _screenshotDuration = AcquaintanceDuration.justMet;
   UserGoal _screenshotGoal = UserGoal.dateInvite;
   final _screenshotAnalysisContextNoteController = TextEditingController();
-  bool _showScreenshotAnalysisSettings = false;
-
-  // 分析後繼續對話展開狀態
-  bool _showContinueConversation = false;
 
   /// 重入防護（Codex 雙審 r1-P2b 2026-06-11）：quota 升級卡新增了高頻
   /// paywall 入口，快速連點不得 push 多個 paywall route。
@@ -720,25 +700,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  Future<void> _collapseComposerAndShowMessages() async {
-    _dismissKeyboard();
-    if (_enthusiasmScore != null && _showContinueConversation) {
-      setState(() {
-        _showContinueConversation = false;
-      });
-      await Future.delayed(const Duration(milliseconds: 80));
-    }
-
-    if (!mounted || !_scrollController.hasClients) {
-      return;
-    }
-    await _scrollController.animateTo(
-      0,
-      duration: AppMotion.scroll,
-      curve: AppMotion.easeOut,
-    );
-  }
-
   void _dismissKeyboard() {
     FocusManager.instance.primaryFocus?.unfocus();
     unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
@@ -811,10 +772,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _messageFocusNode.addListener(_handleMessageInputFocus);
     _hydrateScreenshotAnalysisSettings();
-    _screenshotAnalysisContextNoteController
-        .addListener(_refreshScreenshotAnalysisSettingsSummary);
     final initialState =
         ref.read(streamingAnalyzeProvider(widget.conversationId));
     _restorePersistedAnalysis(
@@ -877,7 +835,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   bool _isStreamingAnalyzePartialPhase(StreamingAnalyzePhase p) {
     switch (p) {
       case StreamingAnalyzePhase.connecting:
-      case StreamingAnalyzePhase.recommendationReady:
       case StreamingAnalyzePhase.streamingReport:
       case StreamingAnalyzePhase.failedAfterRecommendation:
       case StreamingAnalyzePhase.failedBeforeRecommendation:
@@ -899,8 +856,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case StreamingAnalyzePhase.connecting:
         setState(() {
           _isAnalyzing = true;
-          _fullErrorMessage = null;
-          _fullErrorRetriesRemaining = 0;
+          _streamErrorMessage = null;
+          _streamErrorRetriesRemaining = 0;
           _quotaExceededInfo = null;
           _streamProgressLabel = s.streamProgressLabel;
           _streamProgressDetail = s.streamProgressDetail;
@@ -910,12 +867,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
-      case StreamingAnalyzePhase.recommendationReady:
       case StreamingAnalyzePhase.streamingReport:
         setState(() {
           _isAnalyzing = true;
-          _fullErrorMessage = null;
-          _fullErrorRetriesRemaining = 0;
+          _streamErrorMessage = null;
+          _streamErrorRetriesRemaining = 0;
           _quotaExceededInfo = null;
           _streamProgressLabel = s.streamProgressLabel;
           _streamProgressDetail = s.streamProgressDetail;
@@ -926,13 +882,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         });
         break;
       case StreamingAnalyzePhase.done:
-        final result = s.full;
+        final result = s.result;
         if (result == null) return;
         if (_isStreamingAnalyzeResultStaleForCurrentConversation(s)) {
           setState(() {
             _isAnalyzing = false;
-            _fullErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
-            _fullErrorRetriesRemaining = 0;
+            _streamErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
+            _streamErrorRetriesRemaining = 0;
             _quotaExceededInfo = null;
             _streamContents = const [];
             _activeAnalysisMessageCount =
@@ -943,8 +899,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         }
         setState(() {
           _isAnalyzing = false;
-          _fullErrorMessage = null;
-          _fullErrorRetriesRemaining = 0;
+          _streamErrorMessage = null;
+          _streamErrorRetriesRemaining = 0;
           _quotaExceededInfo = null;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
@@ -984,8 +940,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         if (s.quotaExceeded != null) AppHaptics.failure();
         setState(() {
           _isAnalyzing = false;
-          _fullErrorMessage = s.fullErrorMessage;
-          _fullErrorRetriesRemaining = s.retriesRemaining;
+          _streamErrorMessage = s.streamErrorMessage;
+          _streamErrorRetriesRemaining = s.retriesRemaining;
           _quotaExceededInfo = s.quotaExceeded;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
@@ -1091,7 +1047,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   /// Wipe the local mirrors of a *previous* completed analysis so the render
-  /// tree shows only the live full-streaming state during a fresh run.
+  /// tree shows only the live streaming state during a fresh run.
   /// `_restorePersistedAnalysis()` seeds these from `lastAnalysisSnapshotJson`
   /// in initState; without clearing on hydrate of a partial phase the build
   /// tree would keep showing the stale detailed analysis (I-P1-c, Codex
@@ -1281,43 +1237,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
   }
 
-  @override
-  void didChangeMetrics() {
-    super.didChangeMetrics();
-    if (_messageFocusNode.hasFocus) {
-      _scheduleMessageInputIntoView();
-    }
-  }
-
-  void _handleMessageInputFocus() {
-    if (mounted) {
-      setState(() {});
-    }
-    if (!_messageFocusNode.hasFocus) {
-      return;
-    }
-    _scheduleMessageInputIntoView();
-  }
-
-  void _scheduleMessageInputIntoView() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_messageFocusNode.hasFocus) {
-        return;
-      }
-      final context = _messageInputKey.currentContext;
-      if (context == null) {
-        unawaited(_scrollToBottom());
-        return;
-      }
-      unawaited(
-        Scrollable.ensureVisible(
-          context,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-        ),
-      );
-    });
-  }
-
   int _effectiveLastAnalyzedMessageCount(Conversation conversation) {
     if (_lastAnalyzedMessageCount > 0) {
       return _lastAnalyzedMessageCount;
@@ -1339,14 +1258,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return completed;
   }
 
-  int _pendingMessageCount(Conversation conversation) {
-    final diff = conversation.messages.length -
-        _pendingAnalysisBaselineMessageCount(
-          conversation,
-        );
-    return diff > 0 ? diff : 0;
-  }
-
   List<Message> _pendingMessages(Conversation conversation) {
     final baseline = _pendingAnalysisBaselineMessageCount(conversation);
     if (baseline >= conversation.messages.length) {
@@ -1359,10 +1270,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final pendingMessages = _pendingMessages(conversation);
     return pendingMessages.isNotEmpty &&
         pendingMessages.every((message) => message.isFromMe);
-  }
-
-  bool _pendingMessagesContainIncoming(Conversation conversation) {
-    return _pendingMessages(conversation).any((message) => !message.isFromMe);
   }
 
   String? _analysisRecordOwner(Conversation conversation) {
@@ -2397,14 +2304,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       coachMark.remove();
     }
     _editMessageCoachMarkEntry = null;
-    _messageController.dispose();
-    _messageFocusNode.dispose();
     _scrollController.dispose();
     _replyZoneEntrance.dispose();
     _feedbackCommentController.dispose();
     _optimizeController.dispose();
-    _screenshotAnalysisContextNoteController
-        .removeListener(_refreshScreenshotAnalysisSettingsSummary);
     _screenshotAnalysisContextNoteController.dispose();
     super.dispose();
   }
@@ -2511,14 +2414,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         .save(conversation);
     if (!mounted) return;
     ref.invalidate(conversationProvider(widget.conversationId));
-    setState(() {
-      if (_lastManualAddedMessageId == message.id) {
-        _lastManualAddedIsFromMe = !message.isFromMe;
-      }
-      if (_lastScreenshotAddedMessageId == message.id) {
-        _lastScreenshotAddedIsFromMe = !message.isFromMe;
-      }
-    });
     _showEditedAnalyzedMessageSnackBar();
   }
 
@@ -2606,16 +2501,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         .save(conversation);
     if (!mounted) return;
     ref.invalidate(conversationProvider(widget.conversationId));
-    setState(() {
-      if (_lastManualAddedMessageId == message.id) {
-        _lastManualAddedContent = edited;
-        _lastManualAddedIsFromMe = message.isFromMe;
-      }
-      if (_lastScreenshotAddedMessageId == message.id) {
-        _lastScreenshotAddedPreview = edited;
-        _lastScreenshotAddedIsFromMe = message.isFromMe;
-      }
-    });
     _showEditedAnalyzedMessageSnackBar();
   }
 
@@ -2658,16 +2543,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         .save(conversation);
     if (!mounted) return;
     ref.invalidate(conversationProvider(widget.conversationId));
-    setState(() {
-      if (_lastManualAddedMessageId == message.id) {
-        _lastManualAddedMessageId = null;
-        _lastManualAddedContent = null;
-        _lastManualAddedIsFromMe = null;
-      }
-      if (_lastScreenshotAddedMessageId == message.id) {
-        _clearScreenshotAddedFeedback();
-      }
-    });
   }
 
   /// 啟動識別計時器
@@ -2779,13 +2654,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         : '辨識截圖文字（${_selectedImages.length} 張）';
   }
 
-  void _clearScreenshotAddedFeedback() {
-    _lastScreenshotAddedMessageId = null;
-    _lastScreenshotAddedPreview = null;
-    _lastScreenshotAddedIsFromMe = null;
-    _lastScreenshotAddedCount = null;
-  }
-
   void _handleSelectedImagesChanged(List<Uint8List> images) {
     setState(() {
       _selectedImages = List<Uint8List>.from(images);
@@ -2796,7 +2664,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _recognizedWarningMessage = null;
       _hasPendingRecognitionImport = false;
       _lastRecognizeTelemetry = null;
-      _clearScreenshotAddedFeedback();
       if (_selectedImages.isNotEmpty) {
         _resetErrorState();
       }
@@ -2921,24 +2788,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return typed.isEmpty ? null : typed;
   }
 
-  void _refreshScreenshotAnalysisSettingsSummary() {
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  String _screenshotAnalysisSettingsSummary() {
-    final parts = [
-      _screenshotMeetingContext.displayLabel,
-      _screenshotDuration.displayLabel,
-      _screenshotGoal.displayLabel,
-    ];
-    if (_screenshotAnalysisContextNoteController.text.trim().isNotEmpty) {
-      parts.insert(0, '已補充背景');
-    }
-    return parts.join('・');
-  }
-
   /// 空白新片段的「截圖小提醒」列（對標示意稿）：橘 icon＋純文字，
   /// 不加卡片框（2026-08-14 Eric 拍板拆淺色框）。
   Widget _buildScreenshotTipRow({
@@ -2962,252 +2811,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildScreenshotSettingSection() {
-    Text settingLabel(String text) {
-      return Text(
-        text,
-        style: AppTypography.bodyMedium.copyWith(
-          color: AppColors.onBackgroundPrimary,
-          fontWeight: FontWeight.w700,
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 18),
-        InkWell(
-          onTap: () => setState(
-            () => _showScreenshotAnalysisSettings =
-                !_showScreenshotAnalysisSettings,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                _showScreenshotAnalysisSettings
-                    ? Icons.expand_less
-                    : Icons.expand_more,
-                color: AppColors.onBackgroundSecondary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '這次分析設定（可不改）',
-                      style: AppTypography.bodyLarge.copyWith(
-                        color: AppColors.onBackgroundPrimary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _screenshotAnalysisSettingsSummary(),
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.onBackgroundSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          '不確定可以先跳過；會先沿用對象卡的設定。',
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.onBackgroundSecondary,
-            height: 1.35,
-          ),
-        ),
-        if (_showScreenshotAnalysisSettings) ...[
-          const SizedBox(height: 14),
-          Text(
-            '截圖看不到你們的關係；這些設定只影響本次分析，不會改動對象資料。',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.onBackgroundSecondary,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 14),
-          settingLabel('認識情境'),
-          const SizedBox(height: 8),
-          BrandSegmentedButton<MeetingContext>(
-            segments: MeetingContext.visibleAnalysisOptions
-                .map(
-                  (value) => BrandSegment(
-                    value: value,
-                    label: value.displayLabel,
-                  ),
-                )
-                .toList(),
-            selected: _screenshotMeetingContext,
-            onChanged: (value) =>
-                setState(() => _screenshotMeetingContext = value),
-          ),
-          const SizedBox(height: 14),
-          settingLabel('認識多久'),
-          const SizedBox(height: 8),
-          BrandSegmentedButton<AcquaintanceDuration>(
-            segments: AcquaintanceDuration.values
-                .map(
-                  (value) => BrandSegment(
-                    value: value,
-                    label: value.displayLabel,
-                  ),
-                )
-                .toList(),
-            selected: _screenshotDuration,
-            onChanged: (value) => setState(() => _screenshotDuration = value),
-          ),
-          const SizedBox(height: 14),
-          settingLabel('目前目標'),
-          const SizedBox(height: 8),
-          BrandSegmentedButton<UserGoal>(
-            segments: UserGoal.values
-                .map(
-                  (value) => BrandSegment(
-                    value: value,
-                    label: value.displayLabel,
-                  ),
-                )
-                .toList(),
-            selected: _screenshotGoal,
-            onChanged: (value) => setState(() => _screenshotGoal = value),
-          ),
-          const SizedBox(height: 14),
-          settingLabel('補充背景（選填）'),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _screenshotAnalysisContextNoteController,
-            maxLength: 300,
-            minLines: 1,
-            maxLines: 3,
-            textInputAction: TextInputAction.done,
-            onEditingComplete: _dismissKeyboard,
-            onTapOutside: (_) => _dismissKeyboard(),
-            decoration: InputDecoration(
-              hintText: '沒有可以留空',
-              hintStyle: AppTypography.bodyMedium.copyWith(
-                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
-              ),
-              filled: true,
-              fillColor: AppColors.brandInk.withValues(alpha: 0.4),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 12,
-              ),
-            ),
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.onBackgroundPrimary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '補上截圖裡看不到的關係、背景或你的真實狀態；只影響本次分析。',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.onBackgroundSecondary,
-              height: 1.35,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildConversationScreenshotSection({
-    bool showAnalysisSettings = true,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          '也可以直接上傳聊天截圖，辨識並確認後作為本次片段，再開始分析。',
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
-          ),
-        ),
-        const SizedBox(height: 8),
-        ImagePickerWidget(
-          maxImages: 3,
-          externalImages: _selectedImages,
-          helperTextColor: AppColors.onBackgroundSecondary,
-          onImagesChanged: _handleSelectedImagesChanged,
-          onMetricsChanged: _handleSelectedImageMetricsChanged,
-        ),
-        if (showAnalysisSettings) _buildScreenshotSettingSection(),
-        if (_selectedImages.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: AppHaptics.onPress((_isRecognizing || _isAnalyzing)
-                      ? null
-                      : _recognizeAndAddToConversation),
-                  icon: _isRecognizing
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.add_photo_alternate),
-                  label: Text(_recognizeButtonLabel),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.ctaStart,
-                    foregroundColor: AppColors.onCta,
-                    disabledBackgroundColor:
-                        AppColors.ctaStart.withValues(alpha: 0.7),
-                    disabledForegroundColor:
-                        Colors.white.withValues(alpha: 0.95),
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // 強制重新辨識按鈕（忽略快取）
-              Tooltip(
-                message: '忽略快取，重新辨識',
-                child: OutlinedButton(
-                  onPressed: (_isRecognizing || _isAnalyzing)
-                      ? null
-                      : () =>
-                          _recognizeAndAddToConversation(forceRefresh: true),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 13, horizontal: 12),
-                  ),
-                  child: const Icon(Icons.refresh_rounded),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _isRecognizing
-                ? '辨識中：${_recognizeStageLabel(_recognizeStage)}'
-                : '先把截圖辨識進本次片段；右邊按鈕可忽略快取重新辨識。',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.unselectedText,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ],
     );
   }
 
@@ -3290,7 +2893,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _recognizedConversation = updatedRecognized;
         _recognizedWarningMessage = null;
         _hasPendingRecognitionImport = false;
-        _clearScreenshotAddedFeedback();
       });
 
       // OCR 匯入浮動提示全拆（2026-08-16 Eric：沒什麼用）。來源已完成分析
@@ -3368,10 +2970,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _recognizedConversation = updatedRecognized;
       _recognizedWarningMessage = null;
       _hasPendingRecognitionImport = false;
-      _lastManualAddedMessageId = null;
-      _lastManualAddedContent = null;
-      _lastManualAddedIsFromMe = null;
-      _clearScreenshotAddedFeedback();
     });
 
     // 「已確認本次片段／查看本次內容」浮動提示已拆（2026-08-16 Eric：
@@ -3419,264 +3017,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _recognizedWarningMessage = warningMessage;
       _hasPendingRecognitionImport = true;
     });
-  }
-
-  Future<void> _addMessage({required bool isFromMe}) async {
-    final content = _messageController.text.trim();
-    if (content.isEmpty) {
-      final hint =
-          isFromMe ? '先輸入你要補上的訊息，再點「這句是我說」。' : '先貼上或輸入對方的新回覆，再點「這句是她說」。';
-      _showFloatingSnackBar(hint);
-      return;
-    }
-
-    _dismissKeyboard();
-    final repository = ref.read(conversationRepositoryProvider);
-    final conversation = repository.getConversation(widget.conversationId);
-    if (conversation == null) return;
-    if (!AnalysisFragmentPolicy.canAppendInput(conversation) ||
-        _enthusiasmScore != null) {
-      _showFloatingSnackBar('這段已完成分析，請用「分析新片段」加入新內容。');
-      return;
-    }
-
-    // 建立新訊息
-    final newMessage = Message(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      content: content,
-      isFromMe: isFromMe,
-      timestamp: DateTime.now(),
-    );
-
-    // 更新對話
-    conversation.messages.add(newMessage);
-    await ref
-        .read(conversationWriteControllerProvider.notifier)
-        .save(conversation);
-    if (!mounted) return;
-
-    // 清空輸入框
-    _messageController.clear();
-    setState(() {
-      _lastManualAddedMessageId = newMessage.id;
-      _lastManualAddedContent = content;
-      _lastManualAddedIsFromMe = isFromMe;
-      _clearScreenshotAddedFeedback();
-    });
-
-    // 補訊息只記錄內容；是否分析由使用者明確點「分析新增內容」決定。
-
-    // 滾動到頂部顯示新分析結果
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: AppMotion.scroll,
-        curve: AppMotion.easeOut,
-      );
-    }
-  }
-
-  Future<void> _editLastManualAddedMessage() async {
-    final messageId = _lastManualAddedMessageId;
-    if (messageId == null) return;
-
-    final repository = ref.read(conversationRepositoryProvider);
-    final conversation = repository.getConversation(widget.conversationId);
-    if (conversation == null) return;
-
-    Message? message;
-    for (final candidate in conversation.messages) {
-      if (candidate.id == messageId) {
-        message = candidate;
-        break;
-      }
-    }
-    if (message == null) return;
-
-    await _editMessage(conversation, message);
-  }
-
-  Widget _buildManualAddedFeedback() {
-    final content = _lastManualAddedContent;
-    final isFromMe = _lastManualAddedIsFromMe;
-    if (content == null || isFromMe == null) {
-      return const SizedBox.shrink();
-    }
-
-    final conversation = ref.watch(conversationProvider(widget.conversationId));
-    final pendingCount =
-        conversation == null ? 1 : _pendingMessageCount(conversation);
-    final displayPendingCount = pendingCount > 0 ? pendingCount : 1;
-    final countLabel = displayPendingCount > 1
-        ? '已補上 $displayPendingCount 則新訊息'
-        : '已補上 1 則新訊息';
-    final speakerLabel = isFromMe ? '我說' : '她說';
-    final isFullWorkingOnOlderMessages = conversation != null &&
-        _activeAnalysisMessageCount != null &&
-        conversation.messages.length > _activeAnalysisMessageCount!;
-    final nextStep = isFromMe
-        ? '已記錄你剛剛回覆的內容。等她回覆後，再補上「她說」，我會用最新來回分析下一步。'
-        : '已放到上方對話框。按「分析新增內容」後，會開始串流整理下一步與完整分析。';
-    final workingNote = isFullWorkingOnOlderMessages
-        ? '目前完整分析仍在整理上一版；你補的新訊息會等你按「分析新增內容」後才納入。'
-        : null;
-    final preview =
-        content.length > 36 ? '${content.substring(0, 36)}…' : content;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.success.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.success.withValues(alpha: 0.28),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.check_circle,
-                color: AppColors.success,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '$countLabel｜最新：$speakerLabel「$preview」',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    fontWeight: FontWeight.w700,
-                    height: 1.35,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            workingNote == null ? nextStep : '$nextStep\n$workingNote',
-            style: AppTypography.caption.copyWith(
-              color: AppColors.onBackgroundSecondary,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              TextButton.icon(
-                onPressed: _editLastManualAddedMessage,
-                icon: const Icon(Icons.edit, size: 16),
-                label: const Text('編輯剛剛那則'),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.ctaStart,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                ),
-              ),
-              TextButton.icon(
-                onPressed: _collapseComposerAndShowMessages,
-                icon: const Icon(Icons.keyboard_arrow_up, size: 16),
-                label: const Text('看上方對話'),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.ctaStart,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                ),
-              ),
-              if (!isFromMe)
-                TextButton.icon(
-                  onPressed: _isAnalyzing ? null : _runAnalysis,
-                  icon: const Icon(Icons.auto_graph, size: 16),
-                  label: const Text('分析新增內容'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.ctaStart,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildScreenshotAddedFeedback() {
-    final count = _lastScreenshotAddedCount;
-    final preview = _lastScreenshotAddedPreview;
-    final isFromMe = _lastScreenshotAddedIsFromMe;
-    if (count == null || preview == null || isFromMe == null) {
-      return const SizedBox.shrink();
-    }
-    final conversation = ref.read(conversationProvider(widget.conversationId));
-
-    return ScreenshotAddedFeedbackCard(
-      messageCount: count,
-      lastMessageIsFromMe: isFromMe,
-      lastMessagePreview: preview,
-      isAnalyzing: _isAnalyzing,
-      canAnalyzeNow: conversation == null
-          ? !isFromMe
-          : _pendingMessagesContainIncoming(conversation),
-      onShowConversation: _collapseComposerAndShowMessages,
-      onAnalyze: _runAnalysis,
-    );
-  }
-
-  Widget _buildManualInputGuide({required bool isContinue}) {
-    final title = isContinue ? '繼續整理本次片段' : '建立本次片段';
-    final description = isContinue
-        ? '只補新的來回訊息。舊對話會用必要摘要和最近訊息當背景，不用重貼；按分析前會先確認本次額度，已分析過的舊訊息不重複扣。'
-        : '照聊天順序一則一則補上，先選這句是誰說的。分析前會先確認本次額度。';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.ctaStart.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.ctaStart.withValues(alpha: 0.18),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            isContinue ? Icons.playlist_add : Icons.chat_bubble_outline,
-            color: AppColors.ctaStart,
-            size: 18,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showFloatingSnackBar(String message) {
@@ -4702,8 +4042,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       setState(() {
         _isAnalyzing = true;
         _followLiveAnalysis = false;
-        _fullErrorMessage = null;
-        _fullErrorRetriesRemaining = 0;
+        _streamErrorMessage = null;
+        _streamErrorRetriesRemaining = 0;
         _quotaExceededInfo = null;
         _streamProgressLabel = '開始完整分析';
         _streamProgressDetail = '正在建立串流連線。';
@@ -4725,7 +4065,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         return;
       }
 
-      // Fire-and-forget. The notifier caches the payload for retryFull and
+      // Fire-and-forget. The notifier caches the payload for retryStream and
       // keeps itself alive across screen navigation; ref.listen + the initState
       // hydration path mirror provider state back into local fields so the
       // legacy render tree (which reads _enthusiasmScore, _isAnalyzing, etc.)
@@ -4780,7 +4120,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (!mounted) return;
     if (prev?.phase == next.phase &&
         prev?.analysisRunId == next.analysisRunId &&
-        prev?.full == next.full &&
+        prev?.result == next.result &&
         prev?.streamProgressLabel == next.streamProgressLabel &&
         prev?.streamProgressDetail == next.streamProgressDetail &&
         prev?.streamContents == next.streamContents) {
@@ -4790,8 +4130,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case StreamingAnalyzePhase.connecting:
         setState(() {
           _isAnalyzing = true;
-          _fullErrorMessage = null;
-          _fullErrorRetriesRemaining = 0;
+          _streamErrorMessage = null;
+          _streamErrorRetriesRemaining = 0;
           _quotaExceededInfo = null;
           _streamProgressLabel = next.streamProgressLabel;
           _streamProgressDetail = next.streamProgressDetail;
@@ -4802,29 +4142,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _resetErrorState();
         });
         break;
-      case StreamingAnalyzePhase.recommendationReady:
-        setState(() {
-          _isAnalyzing = true;
-          _fullErrorMessage = null;
-          _fullErrorRetriesRemaining = 0;
-          _quotaExceededInfo = null;
-          _streamProgressLabel = next.streamProgressLabel;
-          _streamProgressDetail = next.streamProgressDetail;
-          _streamContents = next.streamContents;
-          _activeAnalysisMessageCount =
-              next.analyzedMessageCount ?? next.conversationMessageCount;
-          _clearDetailedAnalysisStateForStreamingAnalyzePartial();
-        });
-        break;
       case StreamingAnalyzePhase.streamingReport:
         // Mirror the notifier's cleared error fields (I-P2-d) so the build
         // tree flips from retry back to live streaming when the user taps
-        // retry. Without this the local _fullErrorMessage keeps the RetryCard
+        // retry. Without this the local _streamErrorMessage keeps the RetryCard
         // rendered even though the notifier is mid-flight.
         setState(() {
           _isAnalyzing = true;
-          _fullErrorMessage = null;
-          _fullErrorRetriesRemaining = 0;
+          _streamErrorMessage = null;
+          _streamErrorRetriesRemaining = 0;
           _quotaExceededInfo = null;
           _streamProgressLabel = next.streamProgressLabel;
           _streamProgressDetail = next.streamProgressDetail;
@@ -4835,14 +4161,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         });
         break;
       case StreamingAnalyzePhase.done:
-        final result = next.full;
+        final result = next.result;
         if (result == null) return;
         if (_isStreamingAnalyzeResultStaleForCurrentConversation(next)) {
           setState(() {
             _isAnalyzing = false;
             _followLiveAnalysis = false;
-            _fullErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
-            _fullErrorRetriesRemaining = 0;
+            _streamErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
+            _streamErrorRetriesRemaining = 0;
             _quotaExceededInfo = null;
             _streamContents = const [];
             _activeAnalysisMessageCount =
@@ -4861,8 +4187,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = false;
           _followLiveAnalysis = false;
-          _fullErrorMessage = null;
-          _fullErrorRetriesRemaining = 0;
+          _streamErrorMessage = null;
+          _streamErrorRetriesRemaining = 0;
           _quotaExceededInfo = null;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
@@ -4907,8 +4233,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = false;
           _followLiveAnalysis = false;
-          _fullErrorMessage = next.fullErrorMessage;
-          _fullErrorRetriesRemaining = next.retriesRemaining;
+          _streamErrorMessage = next.streamErrorMessage;
+          _streamErrorRetriesRemaining = next.retriesRemaining;
           _quotaExceededInfo = next.quotaExceeded;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
@@ -4957,14 +4283,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _scheduleFollowCurrentAnalysis();
   }
 
-  /// Retry the last failed full analysis. The notifier owns the cached
+  /// Retry the last interrupted analysis stream. The notifier owns the cached
   /// payload from the most recent `start()` (survives screen remount via
   /// `ref.keepAlive`), so we just delegate. I-P1-b.
-  void _retryFullAnalysis() {
+  void _retryStreamAnalysis() {
     unawaited(
       ref
           .read(streamingAnalyzeProvider(widget.conversationId).notifier)
-          .retryFull(),
+          .retryStream(),
     );
   }
 
@@ -5378,131 +4704,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         unawaited(_clearOptimizePendingAfterVisibleFrame(pending));
       }
     });
-  }
-
-  // ===== 分析輔助方法 (Mock 邏輯，之後會被真正的 AI 取代) =====
-
-  // ignore: unused_element
-  int _calculateEnthusiasmScore(
-      List<Message> theirMessages, List<Message> myMessages, int totalRounds) {
-    if (theirMessages.isEmpty) return 20;
-
-    // 基礎分數根據對話輪數
-    int baseScore = 30;
-    if (totalRounds == 1) baseScore = 25;
-    if (totalRounds > 3) baseScore = 40;
-    if (totalRounds > 5) baseScore = 50;
-
-    // 根據她的訊息長度加分
-    final avgLength =
-        theirMessages.map((m) => m.content.length).reduce((a, b) => a + b) /
-            theirMessages.length;
-    if (avgLength > 20) baseScore += 15;
-    if (avgLength > 50) baseScore += 10;
-
-    // 檢查是否有問號（表示她有興趣問你）
-    final hasQuestions = theirMessages
-        .any((m) => m.content.contains('?') || m.content.contains('？'));
-    if (hasQuestions) baseScore += 15;
-
-    // 確保分數在合理範圍
-    return baseScore.clamp(15, 95);
-  }
-
-  // ignore: unused_element
-  GameStage _determineGameStage(int totalRounds, List<Message> theirMessages) {
-    if (totalRounds <= 1) return GameStage.opening;
-    if (totalRounds <= 3) return GameStage.premise;
-    if (totalRounds <= 6) return GameStage.qualification;
-    if (totalRounds <= 10) return GameStage.narrative;
-    return GameStage.close;
-  }
-
-  // ignore: unused_element
-  TopicDepthLevel _determineTopicDepth(List<Message> theirMessages) {
-    if (theirMessages.isEmpty) return TopicDepthLevel.event;
-
-    final allContent = theirMessages.map((m) => m.content).join(' ');
-
-    // 檢查是否有個人情感關鍵字
-    final personalKeywords = ['喜歡', '討厭', '覺得', '想', '希望', '感覺', '心情'];
-    final hasPersonal = personalKeywords.any((k) => allContent.contains(k));
-
-    // 檢查是否有曖昧關鍵字
-    final intimateKeywords = ['約', '見面', '一起', '下次', '週末', '有空'];
-    final hasIntimate = intimateKeywords.any((k) => allContent.contains(k));
-
-    if (hasIntimate) return TopicDepthLevel.intimate;
-    if (hasPersonal) return TopicDepthLevel.personal;
-    return TopicDepthLevel.event;
-  }
-
-  // ignore: unused_element
-  List<String> _checkHealthIssues(
-      List<Message> myMessages, List<Message> theirMessages) {
-    final issues = <String>[];
-
-    if (myMessages.isEmpty) return issues;
-
-    // 檢查是否連續發多則訊息
-    // (簡化邏輯，實際應該看時間戳)
-
-    // 檢查訊息長度比例
-    if (theirMessages.isNotEmpty) {
-      final myAvg =
-          myMessages.map((m) => m.content.length).reduce((a, b) => a + b) /
-              myMessages.length;
-      final theirAvg =
-          theirMessages.map((m) => m.content.length).reduce((a, b) => a + b) /
-              theirMessages.length;
-      if (myAvg > theirAvg * 2) {
-        issues.add('你的訊息比她長太多，可能顯得過於積極');
-      }
-    }
-
-    return issues;
-  }
-
-  // ignore: unused_element
-  String _getNextStepForStage(GameStage stage) {
-    switch (stage) {
-      case GameStage.opening:
-        return '建立基本連結，創造對話理由';
-      case GameStage.premise:
-        return '可以開始評估她的興趣程度';
-      case GameStage.qualification:
-        return '確認互相興趣，準備建立更深連結';
-      case GameStage.narrative:
-        return '建立情感連結，分享故事';
-      case GameStage.close:
-        return '可以考慮邀約見面';
-    }
-  }
-
-  // ignore: unused_element
-  String _generateSubtext(String lastMessage, GameStage stage) {
-    if (lastMessage.isEmpty) return '等待她的回應';
-    if (lastMessage.length < 5) return '她的回覆很簡短，可能在忙或興趣一般';
-    if (lastMessage.contains('?') || lastMessage.contains('？')) {
-      return '她主動問你問題，對你有好奇心';
-    }
-    if (stage == GameStage.opening) {
-      return '剛開始對話，她在觀察你是什麼樣的人';
-    }
-    return '她願意回覆代表對話還在進行中';
-  }
-
-  // ignore: unused_element
-  Map<String, String> _generateReplies(String lastMessage) {
-    // 簡化版本，實際應該由 AI 生成
-    final msg = lastMessage.isEmpty ? '嗨' : lastMessage;
-    return {
-      'extend': '關於「$msg」可以多聊聊',
-      'resonate': '我也有類似的感覺',
-      'tease': '你這樣說讓我很好奇欸',
-      'humor': '哈哈這讓我想到一個笑話',
-      'coldRead': '感覺你是那種很有想法的人',
-    };
   }
 
   /// 匯出對話紀錄 (含 AI 分析結果)
@@ -6664,7 +5865,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final showInitialScreenshotSetup = !hasCompletedAnalysisEvidence &&
         !_isAnalyzing &&
         _errorMessage == null &&
-        _fullErrorMessage == null;
+        _streamErrorMessage == null;
     final isScreenshotOnlyEmptyState =
         showInitialScreenshotSetup && conversation.messages.isEmpty;
     final showFloatingAnalysisAction = showInitialScreenshotSetup &&
@@ -6673,8 +5874,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // 空白新片段（對標示意稿 2026-08-14）：整頁走深色平鋪，不再用白卡框住。
     final isEmptyFragmentSetup =
         isScreenshotOnlyEmptyState && analysisFragmentMessages.isEmpty;
-    final showStreamInterruptedAction =
-        !_isAnalyzing && _enthusiasmScore == null && _fullErrorMessage != null;
+    final showStreamInterruptedAction = !_isAnalyzing &&
+        _enthusiasmScore == null &&
+        _streamErrorMessage != null;
 
     return BrandScaffold(
       // body 自帶 SafeArea（見下方），故關掉鷹架的外層 SafeArea 避免雙層巢套。
@@ -7025,8 +6227,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     children: [
                                       if (_errorAction != null)
                                         ElevatedButton(
-                                          onPressed:
-                                              AppHaptics.onPress(_isAnalyzing || _isRecognizing
+                                          onPressed: AppHaptics.onPress(
+                                              _isAnalyzing || _isRecognizing
                                                   ? null
                                                   : () => _handleErrorAction(
                                                       _errorAction!)),
@@ -7177,9 +6379,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     SizedBox(
                                       width: double.infinity,
                                       child: ElevatedButton.icon(
-                                        onPressed: AppHaptics.onPress(_isRecognizing
-                                            ? null
-                                            : _recognizeAndAddToConversation),
+                                        onPressed: AppHaptics.onPress(
+                                            _isRecognizing
+                                                ? null
+                                                : _recognizeAndAddToConversation),
                                         icon: _isRecognizing
                                             ? const SizedBox(
                                                 width: 20,
@@ -8042,7 +7245,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             ),
                           ],
 
-                          if ((_isAnalyzing || _fullErrorMessage != null) &&
+                          if ((_isAnalyzing || _streamErrorMessage != null) &&
                               _streamContents.isNotEmpty) ...[
                             const SizedBox(height: 12),
                             _buildStreamingContentCard(),
@@ -8050,8 +7253,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                           // gate 含 _quotaExceededInfo：fresh-start quota 429
                           // （failedBeforeRecommendation）只設 quota state、
-                          // 不設 _fullErrorMessage（Codex 雙審 r1-P2a）。
-                          if (_fullErrorMessage != null ||
+                          // 不設 _streamErrorMessage（Codex 雙審 r1-P2a）。
+                          if (_streamErrorMessage != null ||
                               _quotaExceededInfo != null) ...[
                             const SizedBox(height: 12),
                             // Quota 429 分流：額度不足不是技術失敗，渲染升級卡
@@ -8064,17 +7267,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 onViewPlans: () => _showPaywall(context),
                               )
                             else
-                              FullAnalysisRetryCard(
-                                retriesRemaining: _fullErrorRetriesRemaining,
-                                errorMessage: _fullErrorMessage,
-                                onRetry: _fullErrorRetriesRemaining > 0
-                                    ? _retryFullAnalysis
+                              StreamingAnalysisRetryCard(
+                                retriesRemaining: _streamErrorRetriesRemaining,
+                                errorMessage: _streamErrorMessage,
+                                onRetry: _streamErrorRetriesRemaining > 0
+                                    ? _retryStreamAnalysis
                                     : null,
                               ),
                           ],
 
                           if (_isAnalyzing ||
-                              _fullErrorMessage != null ||
+                              _streamErrorMessage != null ||
                               _quotaExceededInfo != null)
                             SizedBox(
                               key: _analysisProgressEndKey,
@@ -8343,12 +7546,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       SizedBox(
                                         width: double.infinity,
                                         child: ElevatedButton(
-                                          onPressed: AppHaptics.onPress(_feedbackCategory !=
-                                                      null &&
-                                                  !_isSubmittingFeedback
-                                              ? () =>
-                                                  _submitFeedback('negative')
-                                              : null),
+                                          onPressed: AppHaptics.onPress(
+                                              _feedbackCategory != null &&
+                                                      !_isSubmittingFeedback
+                                                  ? () => _submitFeedback(
+                                                      'negative')
+                                                  : null),
                                           child: _isSubmittingFeedback
                                               ? const SizedBox(
                                                   width: 18,
@@ -8842,294 +8045,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  /// 建立訊息輸入區
-  // Legacy composer implementation retained for older recovery work while the
-  // single-batch fragment contract intentionally keeps it unreachable.
-  // ignore: unused_element
-  Widget _buildMessageInput({
-    required bool showScreenshotUpload,
-    bool showScreenshotAnalysisSettings = true,
-  }) {
-    final canAddManualMessage =
-        !_isAnalyzing && !_isRecognizing && _selectedImages.isEmpty;
-    final isTypingMessage = _messageFocusNode.hasFocus;
-    final showComposerHelp = !isTypingMessage;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.brandSurface2,
-        border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (showScreenshotUpload) ...[
-              _buildContinueComposerToolbar(),
-              const SizedBox(height: 12),
-            ],
-            if (showScreenshotUpload && showComposerHelp) ...[
-              _buildConversationScreenshotSection(
-                showAnalysisSettings: showScreenshotAnalysisSettings,
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (showComposerHelp) ...[
-              if (_lastManualAddedContent != null)
-                _buildManualAddedFeedback()
-              else if (_lastScreenshotAddedCount != null)
-                _buildScreenshotAddedFeedback()
-              else
-                _buildManualInputGuide(isContinue: _enthusiasmScore != null),
-              const SizedBox(height: 10),
-            ],
-            // 輸入框 + 貼上按鈕
-            TextField(
-              key: _messageInputKey,
-              controller: _messageController,
-              focusNode: _messageFocusNode,
-              onTap: _scheduleMessageInputIntoView,
-              style: AppTypography.bodyMedium
-                  .copyWith(color: AppColors.onBackgroundPrimary),
-              decoration: InputDecoration(
-                hintText: '貼上或輸入新的一則訊息…',
-                helperText: showScreenshotUpload
-                    ? '輸入完選「她說／我說」。不想補了可點上方「回分析」。'
-                    : '輸入完先收起鍵盤，再選這句是她說，還是我說。',
-                helperStyle: AppTypography.caption.copyWith(
-                  color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
-                ),
-                hintStyle: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
-                ),
-                filled: true,
-                fillColor: AppColors.brandInk.withValues(alpha: 0.4),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      const BorderSide(color: AppColors.ctaStart, width: 1.5),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 16,
-                ),
-                suffixIconConstraints: const BoxConstraints(minWidth: 96),
-                // iOS multiline keyboards do not always show an obvious dismiss
-                // affordance, so keep explicit controls inside the visible field.
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.keyboard_hide,
-                          color: AppColors.onBackgroundSecondary
-                              .withValues(alpha: 0.6)),
-                      onPressed: _dismissKeyboard,
-                      tooltip: '收起鍵盤',
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.content_paste,
-                          color: AppColors.onBackgroundSecondary
-                              .withValues(alpha: 0.6)),
-                      onPressed: _isAnalyzing
-                          ? null
-                          : () async {
-                              final data =
-                                  await Clipboard.getData(Clipboard.kTextPlain);
-                              if (data?.text != null &&
-                                  data!.text!.isNotEmpty) {
-                                _messageController.text = data.text!;
-                                _messageController.selection =
-                                    TextSelection.fromPosition(
-                                  TextPosition(
-                                      offset: _messageController.text.length),
-                                );
-                              }
-                            },
-                      tooltip: '貼上',
-                    ),
-                  ],
-                ),
-              ),
-              maxLines: 5,
-              minLines: 2,
-              textInputAction: TextInputAction.done,
-              onEditingComplete: _dismissKeyboard,
-              onTapOutside: (_) => _dismissKeyboard(),
-              enabled: !_isAnalyzing,
-            ),
-            const SizedBox(height: 12),
-            // 新增按鈕 - 加大點擊區域
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 48,
-                    child: OutlinedButton.icon(
-                      onPressed: canAddManualMessage
-                          ? () => _addMessage(isFromMe: false)
-                          : null,
-                      icon: const Icon(TablerIcons.woman,
-                          size: 18, color: AppColors.veryHot),
-                      label: Text('這句是她說',
-                          style:
-                              TextStyle(color: AppColors.onBackgroundPrimary)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.12),
-                            width: 1.5),
-                        backgroundColor: Colors.white.withValues(alpha: 0.08),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Container(
-                    height: 48,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: canAddManualMessage
-                            ? const [AppColors.ctaStart, AppColors.ctaEnd]
-                            : [
-                                AppColors.ctaStart.withValues(alpha: 0.35),
-                                AppColors.ctaEnd.withValues(alpha: 0.35),
-                              ],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(
-                              alpha: canAddManualMessage ? 0.38 : 0.16),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: canAddManualMessage
-                            ? () => _addMessage(isFromMe: true)
-                            : null,
-                        borderRadius: BorderRadius.circular(12),
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(TablerIcons.user,
-                                  size: 18, color: Colors.white),
-                              SizedBox(width: 8),
-                              Text('這句是我說',
-                                  style: TextStyle(
-                                      color: canAddManualMessage
-                                          ? Colors.white
-                                          : Colors.white70,
-                                      fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContinueComposerToolbar() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.ctaStart.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: AppColors.ctaStart.withValues(alpha: 0.18),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: AppColors.ctaStart.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              Icons.add_comment_outlined,
-              color: AppColors.ctaStart,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '正在補聊天紀錄',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '只補新的來回訊息，不會重扣已分析內容。',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                    height: 1.25,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: _collapseComposerAndShowMessages,
-            icon: const Icon(Icons.keyboard_arrow_down, size: 18),
-            label: const Text('回分析'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.ctaStart,
-              side: BorderSide(
-                color: AppColors.ctaStart.withValues(alpha: 0.35),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              visualDensity: VisualDensity.compact,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

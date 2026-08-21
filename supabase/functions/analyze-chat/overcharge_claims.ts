@@ -50,9 +50,8 @@ export class OverchargeClaimStore {
   constructor(private readonly driver: OverchargeClaimDriver) {}
 
   claim(input: OverchargeClaimInput): Promise<OverchargeClaimVerdict> {
-    // index.ts 已驗證過 request 欄位；這裡是 defense-in-depth（與
-    // analysis_run_store.createChargedRun 的 messageCount 防護同模式），
-    // 防未來新 caller 繞過驗證打進 DB。
+    // index.ts 已驗證過 request 欄位；這裡仍做 defense-in-depth，防未來
+    // 新 caller 繞過 handler 驗證直接打進 DB。
     if (!input.userId || !input.confirmationId) {
       return Promise.reject(
         new Error("overcharge claim: userId and confirmationId are required"),
@@ -78,7 +77,7 @@ export class OverchargeClaimStore {
 }
 
 // -----------------------------------------------------------------------------
-// Supabase-backed driver（service_role only，同 analysis_run_store 模式）。
+// Supabase-backed driver（service_role only）。
 // -----------------------------------------------------------------------------
 
 interface MinimalSupabaseRpcClient {

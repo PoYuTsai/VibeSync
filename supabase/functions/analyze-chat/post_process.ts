@@ -2,11 +2,10 @@
 //
 // Shared post-processing for analyze-chat result payloads.
 //
-// CONTRACT — both the legacy (single-pass) and full (Phase 2.1 two-stage)
-// branches MUST run the same set of post-processing steps before returning
-// to the client. Skipping any step in one branch creates an entitlement or
-// data-quality drift between modes (e.g. Free user receives a paid-tier
-// healthCheck because full mode forgot to gate it).
+// CONTRACT — every successful AnalyzeChat result MUST run the same
+// post-processing steps before persistence and emission. Shared non-Analyze
+// request shapes may also reuse this helper, but cannot bypass entitlement or
+// data-quality gates.
 //
 // Steps applied in order:
 //   1. ensureNonEmptyAnalysisOutput  — backfill missing replies / pick
@@ -19,7 +18,7 @@
 //   6. healthCheck entitlement gate   — strip when tier excludes health_check
 //   7. enthusiasm score calibration   — display score = ceil(raw * 0.9)
 //
-// Invariants (must hold in BOTH modes):
+// Invariants:
 //   I1. result.healthCheck is absent unless allowedFeatures.includes("health_check")
 //   I2. Object.keys(result.replies) ⊆ allowedFeatures
 //   I3. result.finalRecommendation, if present, has non-empty pick/content/
@@ -1215,8 +1214,7 @@ export function postProcessAnalysisResult({
     delete result.targetProfile;
   }
 
-  // Step 5 — healthCheck entitlement gate. THIS is the step full mode was
-  // missing prior to extracting this helper (Codex Phase 2 P1).
+  // Step 5 — healthCheck entitlement gate.
   if (!allowedFeatures.includes("health_check")) {
     delete result.healthCheck;
   }

@@ -1,15 +1,8 @@
 // supabase/functions/analyze-chat/post_process_test.ts
 //
-// Parity tests for the shared post-processing helper.
-//
-// Codex Phase 2 P1 — full mode previously bypassed legacy post-processing,
-// causing entitlement leaks (Free users receiving healthCheck) and missing
-// normalization. These tests pin the contract so any future divergence
-// between modes will fail loudly.
-//
-// The helper itself is mode-agnostic; legacy and full branches both call it
-// with the same args, so unit-testing the helper IS the parity test. The
-// fixtures mirror the TIER_FEATURES table in index.ts.
+// Contract tests for the shared post-processing boundary. These pin
+// entitlement and normalization rules independently from transport. Fixtures
+// mirror the TIER_FEATURES table in index.ts.
 
 import {
   assert,

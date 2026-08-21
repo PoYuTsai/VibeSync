@@ -56,41 +56,11 @@ void main() {
     });
   });
 
-  group('FullAnalysisPlaceholder', () {
-    testWidgets('renders ETA range derived from server seconds',
-        (tester) async {
-      await tester.pumpWidget(_wrap(const FullAnalysisPlaceholder(
-        estimatedFullSeconds: 17,
-      )));
-
-      expect(find.textContaining('預估 15-20 秒'), findsOneWidget);
-      expect(find.text('五大回覆風格整理中…'), findsOneWidget);
-      expect(find.text('互動雷達整理中…'), findsOneWidget);
-      expect(find.text('深層策略整理中…'), findsOneWidget);
-      expect(find.text(kFullPlaceholderClosing), findsOneWidget);
-    });
-
-    testWidgets('falls back to 15-20 when server omits estimatedFullSeconds',
-        (tester) async {
-      await tester.pumpWidget(_wrap(const FullAnalysisPlaceholder()));
-
-      expect(find.textContaining('預估 15-20 秒'), findsOneWidget);
-    });
-
-    testWidgets('formatEtaRange returns server-based range, never negative',
-        (tester) async {
-      expect(FullAnalysisPlaceholder.formatEtaRange(17), '15-20');
-      expect(FullAnalysisPlaceholder.formatEtaRange(null), '15-20');
-      expect(FullAnalysisPlaceholder.formatEtaRange(0), '15-20');
-      expect(FullAnalysisPlaceholder.formatEtaRange(3), '1-6');
-    });
-  });
-
-  group('FullAnalysisRetryCard', () {
+  group('StreamingAnalysisRetryCard', () {
     testWidgets('shows retry button enabled with remaining count',
         (tester) async {
       var tapped = 0;
-      await tester.pumpWidget(_wrap(FullAnalysisRetryCard(
+      await tester.pumpWidget(_wrap(StreamingAnalysisRetryCard(
         retriesRemaining: 2,
         errorMessage: '完整分析暫時失敗，可以重試。',
         onRetry: () => tapped++,
@@ -106,7 +76,7 @@ void main() {
     testWidgets('disables retry and shows exhausted copy when 0 left',
         (tester) async {
       var tapped = 0;
-      await tester.pumpWidget(_wrap(FullAnalysisRetryCard(
+      await tester.pumpWidget(_wrap(StreamingAnalysisRetryCard(
         retriesRemaining: 0,
         errorMessage: '不該顯示',
         onRetry: () => tapped++,
@@ -125,8 +95,7 @@ void main() {
   });
 
   group('QuotaExceededUpgradeCard（smoke P1 fix 2026-06-11）', () {
-    testWidgets('monthly：顯示剩餘/需要則數 + 升級文案 + 查看方案，絕不出現「無法再重試」',
-        (tester) async {
+    testWidgets('monthly：顯示剩餘/需要則數 + 升級文案 + 查看方案，絕不出現「無法再重試」', (tester) async {
       var viewed = 0;
       await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
         isMonthly: true,
@@ -177,5 +146,4 @@ void main() {
       expect(find.textContaining('null'), findsNothing);
     });
   });
-
 }

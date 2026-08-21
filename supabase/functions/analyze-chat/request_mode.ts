@@ -1,60 +1,76 @@
-// supabase/functions/analyze-chat/request_mode.ts
+// Resolves analyze-chat routing before quota, DB, prompt, or model work.
 //
-// Normalizes analyze-chat routing fields before any quota, DB, or Claude work.
-//
-// Invariants:
-// - Unknown `responseMode` values degrade to `legacy` for backwards
-//   compatibility with older app builds.
-// - `analysisRunId` is trimmed, and empty/non-string values become `null`.
-// - `stream` is only a routing value here. Access gating and handler behavior
-//   live in the streaming branch.
+// Plain AnalyzeChat is streaming-only. Compatibility quick/full modes are
+// retired instead of silently falling back to the legacy single-response
+// handler. The legacy value remains only for other request shapes sharing this
+// Edge Function (OCR, optimize/refine, opener, new_topic, and my_message).
 
-export type ResponseMode = "quick" | "full" | "legacy" | "stream";
+export type ResponseMode = "legacy" | "stream";
 
-export interface NormalizedRequestMode {
-  responseMode: ResponseMode;
-  analysisRunId: string | null;
-}
+export type RequestModeErrorCode =
+  | "ANALYZE_RESPONSE_MODE_RETIRED"
+  | "ANALYZE_STREAMING_REQUIRED"
+  | "INVALID_RESPONSE_MODE";
+
+export type RequestModeResolution =
+  | {
+    ok: true;
+    responseMode: ResponseMode;
+    analysisRunId: string | null;
+  }
+  | {
+    ok: false;
+    status: 400 | 410;
+    code: RequestModeErrorCode;
+  };
 
 export interface RequestModeInput {
   responseMode?: unknown;
   analysisRunId?: unknown;
+
+  /// True only for the main AnalyzeChat request shape. Other modes sharing
+  /// analyze-chat may keep their existing legacy response contract.
+  plainAnalyzeRequest: boolean;
 }
 
-export function normalizeRequestMode(
+export function resolveRequestMode(
   input: RequestModeInput,
-): NormalizedRequestMode {
-  const responseMode: ResponseMode = input.responseMode === "quick"
-    ? "quick"
-    : input.responseMode === "full"
-    ? "full"
+): RequestModeResolution {
+  if (input.responseMode === "quick" || input.responseMode === "full") {
+    return {
+      ok: false,
+      status: 410,
+      code: "ANALYZE_RESPONSE_MODE_RETIRED",
+    };
+  }
+
+  const responseMode = input.responseMode === undefined ||
+      input.responseMode === "legacy"
+    ? "legacy"
     : input.responseMode === "stream"
     ? "stream"
-    : "legacy";
+    : null;
+  if (responseMode === null) {
+    return {
+      ok: false,
+      status: 400,
+      code: "INVALID_RESPONSE_MODE",
+    };
+  }
+
+  if (input.plainAnalyzeRequest && responseMode !== "stream") {
+    return {
+      ok: false,
+      status: 410,
+      code: "ANALYZE_STREAMING_REQUIRED",
+    };
+  }
 
   let analysisRunId: string | null = null;
-  if (typeof input.analysisRunId === "string") {
+  if (responseMode === "stream" && typeof input.analysisRunId === "string") {
     const trimmed = input.analysisRunId.trim();
     if (trimmed.length > 0) analysisRunId = trimmed;
   }
 
-  return { responseMode, analysisRunId };
-}
-
-// Pure early bouncer for full mode. The handler calls this immediately after
-// normalizeRequestMode so missing-runId requests fail before hash, quota, DB,
-// prompt, or Claude work.
-export type FullRejection =
-  | { reject: false }
-  | { reject: true; status: 400; code: "MISSING_RUN_ID" };
-
-export function shouldRejectFullMode(
-  state: NormalizedRequestMode,
-): FullRejection {
-  if (state.responseMode !== "full") return { reject: false };
-  if (!state.analysisRunId) {
-    return { reject: true, status: 400, code: "MISSING_RUN_ID" };
-  }
-
-  return { reject: false };
+  return { ok: true, responseMode, analysisRunId };
 }

@@ -1,9 +1,10 @@
 # AI 實戰練習室「模擬社群動態（朋友圈）」實作開發報告
 
 2026-08-21 初版（研究 + 架構設計 + 分階段實作計畫）。
-2026-08-21 修訂，處理複審 BLOCK 的兩項：P1 全域模型呼叫上限（第 3 節決策 C、第 4 節、第 8 節）、P2 交付路徑（第 9 節）；並把第 10 節的產品項目由「待拍板」改為「已決策」。
+2026-08-21 修訂一：P1 全域模型呼叫上限、P2 交付路徑，第 10 節產品項目改為已決策。
+2026-08-21 修訂二（第二輪複審）：補 `reserve` 狀態轉移表並修正 `attempts` 起算與 token-null 分支（第 4 節）、縮小記憶承諾為三態契約（第 2、3 節）、feed 補生成加總死線（第 3 節）、長度守門三層對齊（第 5 節）、交付路徑改回「一 PR 一目的、base 指向 `main`」（第 9 節）。
 
-**產品方向已確認，可以據此實作。** `main` 全程不動；production migration 與 Edge 部署仍保持 pending。
+**產品方向已確認，可以據此實作。** production migration 與 Edge 部署仍保持 pending，合併與發佈由 Eric 決定。
 
 需求原文（Eric）：
 > 「AI 實戰練習室」chatbot 的「模擬 social Media」。角色圖鑑已抽到的角色會在一個像 WeChat 朋友圈的區塊上傳貼文，
@@ -85,7 +86,8 @@ return events[fnv1a(seed) % events.length];   // life_schedule.ts:249-267
 1. 新區塊「動態」：只顯示**這個帳號已抽到**的角色的貼文，倒序時間軸，版面近似 WeChat 朋友圈。
 2. 貼文型態兩種：**純文字**、**圖＋文**。
 3. 每位角色**每日隨機**新增 0～2 則（多數日子 0 或 1 則）。
-4. 角色在 1:1 聊天中**記得自己發過的貼文**；使用者提到時能自然承接，使用者捏造沒發過的貼文時能自然否認。
+4. 角色在 1:1 聊天中**記得自己最近七天內發過的貼文**：使用者提到時能自然承接。
+   **超出這個窗口的貼文她不否認、也不硬掰**，用不確定語氣帶過（理由見決策 E）。
 
 ---
 
@@ -96,7 +98,7 @@ return events[fnv1a(seed) % events.length];   // life_schedule.ts:249-267
 同一則貼文，所有抽到她的使用者看到的一模一樣。
 
 - **隱私鐵則**：若貼文由「她跟某使用者的對話」生成，A 的私人對話會透過貼文外洩給 B。這一條單獨就足以否決 per-user 方案。
-- **成本**：per-user＝角色數 × 使用者數；全域＝每天最多 100 位角色 × 最多 2 則 = **≤200 次生成/天，與使用者數無關**。
+- **成本**：per-user＝角色數 × 使用者數；全域＝每天最多 100 位角色 × 2 slot × 3 attempts = **≤600 次模型呼叫/天，與使用者數無關**（見決策 C 與第 4 節）。
 - **真實性**：朋友圈本來就是「她發一則，所有好友看到同一則」。
 
 **硬規則（要寫進程式碼註解與測試）：貼文生成的輸入只有 server profile + 日期 + 場景種子，永不包含任何使用者對話、暱稱、hint、debrief、relationship thread。**
@@ -135,7 +137,12 @@ C3 之所以在這個產品成立，正是因為決策 A：**貼文全域共用*
 防重複生成與防慢請求：
 
 - `INSERT ... ON CONFLICT DO NOTHING` 原子搶生成權（`unique(profile_id, post_date, slot)`），沒搶到的請求直接讀既有資料，**多人同時開不會重複打模型**。
-- 單次請求最多補 **K = 3** 則（優先補「使用者最近聊過 / 最新解鎖」的角色），其餘留給下一次請求或 client 背景補位請求。→ feed 首屏永遠在 Edge 逾時安全範圍內。
+- 單次請求最多補 **K = 3** 則（優先補「使用者最近聊過 / 最新解鎖」的角色），其餘留給下一次請求或 client 背景補位請求。
+- **補生成有總死線，不是 K × 單次逾時**（複審 2026-08-21 P2）：
+  - `MOMENT_FILL_DEADLINE_MS = 8000`，從進入 handler 起算。
+  - K 則**平行**送出（`Promise.allSettled`），不是循序；每一則的 `timeoutMs` 取 `min(20000, 剩餘死線)`。
+  - 死線到就不等：已完成的照常回，未完成的這次就是沒有——**列仍在 DB，token 由下一次請求或租約逾時接手**，不浪費 attempts。
+  - 所以 feed 最壞回應時間是 **8 秒，與 K 無關**。原文只寫 K=3、單次 20 秒，循序最壞會到 60 秒。
 - 缺貼文時 feed 顯示既有內容即可，**不塞罐頭、不報錯**（沿用 no-canned 鐵則）。
 
 **全域模型呼叫上限**：`unique(profile_id, post_date, slot)`（slot ∈ {0,1}）×「每個 slot 最多 3 次認領」→ **全站每日模型呼叫硬上界 600 次**，與使用者數、重新整理次數完全無關。
@@ -164,7 +171,22 @@ Bundle 預算：現況 `assets/images/practice_girls` 13 MB / 100 張（約 130 
 
 - `prompt.ts` 新增 `herRecentMomentsPrompt()`，`buildChatMessages()` 增一個 optional 欄位；handler 讀她最近 7 天、最多 3 則 ready 貼文注入。
 - 仍然包防注入封套（比照 `memorySummary` 慣例），並加**現實錨定**：貼文只證明「她自己做過什麼」，**不能證明對方在場、不能當成共同回憶**。
-- 使用者提到真實存在的貼文 → 自然承接；捏造沒發過的貼文 → 自然疑惑／否認。這是既有 Reality Anchoring 規則的直接延伸，不需新機制。
+- 使用者提到**注入窗口內**真實存在的貼文 → 自然承接。
+- 使用者捏造貼文 → 自然疑惑，**但不得斷言「我沒發過」**。
+
+> **承諾範圍已縮小（2026-08-21 複審 P1）。** 第一版寫「存在就承接、捏造才否認」，那做不到：prompt 只注入最近 7 天／最多 3 則，第 8 天的真貼文她一樣看不到，照「捏造就否認」的規則會**否認自己真的發過的東西**——那比忘記更傷人設。
+>
+> 正確的契約是三態，不是兩態：
+>
+> | 使用者提到的貼文 | 她看得到嗎 | 該有的反應 |
+> | --- | --- | --- |
+> | 七天內、確實存在 | 看得到 | 自然承接，可延伸聊 |
+> | 七天外、確實存在 | **看不到** | 不確定語氣（「有喔？我忘了」「哪一篇啊」），**不否認** |
+> | 完全捏造 | 看不到 | 同上——不承認也不斷言否認，可要細節 |
+>
+> 「七天外的真貼文」與「捏造」在她眼中無法區分，所以兩者共用同一種安全反應。這不是妥協，是唯一誠實的實作：模型不該對自己看不到的事下斷言。
+>
+> 若日後要做到全歷史可判真，需在生成端加一次查詢（把使用者訊息裡疑似指涉貼文的片段拿去比對 `practice_moment_posts` 全歷史），那是額外的 DB round-trip 與一組比對規則，屬另案，不在首版。
 - 長度控制：每則裁到 60 字，直接用既有 `compactCompleteSentenceEvidence()`（`prompt.ts:91-115`）。
 - **鐵則連動**：新注入的內部標籤（`herMoments` / `momentTheme` / `momentDayPart`…）必須同步加進 `visible_text_guard.ts` 的 `INTERNAL_VISIBLE_LABELS`，否則模型會原樣抄進可見回覆而沒人攔。
 
@@ -206,12 +228,30 @@ RPC（全部 `SECURITY DEFINER` + `REVOKE ... FROM PUBLIC, anon, authenticated` 
 
 | RPC | 職責 |
 | --- | --- |
-| `reserve_practice_moment_slot(profile_id, post_date, slot, day_part, theme_id, token)` | `INSERT ... ON CONFLICT DO NOTHING`，未插入則 `SELECT ... FOR UPDATE`。`ready`／`exhausted` → 直接拒絕，**不呼叫模型**；`reserved` 且租約未逾時 → 拒絕（別人正在跑）；`reserved` 且逾時（`reserved_at < now() - 2 min`）且 `attempts < 3` → `attempts + 1`、換發 token、放行。`attempts` 已達 3 → 轉 `exhausted` 並拒絕 |
+| `reserve_practice_moment_slot(...)` | 依下方狀態轉移表判定，回傳 `{ claimed, token }` |
 | `commit_practice_moment_post(profile_id, post_date, slot, token, body, image_id, model)` | 只有持 token 者能改 `ready`；不匹配回 false |
-| `release_practice_moment_slot(profile_id, post_date, slot, token)` | 生成失敗時**只清 token、保留列與 `attempts`**（讓別人可立即重認領，不必等租約逾時）；`attempts` 已達 3 就一併轉 `exhausted`。**絕不刪列、絕不寫罐頭** |
+| `release_practice_moment_slot(profile_id, post_date, slot, token)` | 生成失敗時清 token；`attempts` 已達上限就一併轉 `exhausted`。**絕不刪列、絕不寫罐頭** |
 | `list_practice_moment_posts(profile_ids TEXT[], since DATE)` | 只回 `ready` |
 
-**為什麼 `release` 不能刪列**（2026-08-21 複審 P1 抓到的設計錯誤）：原設計是「失敗即刪列」，那樣 `unique` 約束就只能限制**成功存下來的貼文數**，完全限制不了**模型呼叫數**——同一個一直失敗的 slot 會被無限次重新 reserve，成本隨流量成長。保留列 + `attempts` 上限才讓上限是真的。
+### `reserve` 狀態轉移表（複審 2026-08-21 P1 要求明確化）
+
+`MAX_MOMENT_ATTEMPTS = 3`。所有判定在同一交易內，先 `INSERT ... ON CONFLICT DO NOTHING`，未插入則 `SELECT ... FOR UPDATE` 鎖列再走下表。
+
+| 進入時的列狀態 | 動作 | 結果 |
+| --- | --- | --- |
+| 不存在（INSERT 成功） | 寫入 `status='reserved'`、**`attempts = 1`**、`generation_token = :token`、`reserved_at = now()` | ✅ 放行（這是第 1 次） |
+| `ready` | 不動 | ❌ 拒絕，不呼叫模型 |
+| `exhausted` | 不動 | ❌ 拒絕，不呼叫模型 |
+| `reserved` 且 `generation_token IS NOT NULL` 且 `reserved_at > now() - 2min` | 不動 | ❌ 拒絕（別人正在跑，租約still有效） |
+| `reserved` 且（`generation_token IS NULL` **或** 租約已逾時）且 `attempts < 3` | `attempts + 1`、換發 token、`reserved_at = now()` | ✅ 放行 |
+| `reserved` 且（token 為 NULL 或租約逾時）且 `attempts >= 3` | 轉 `status='exhausted'`、清 token | ❌ 拒絕 |
+
+兩個容易寫錯、複審點名的地方：
+
+1. **首次 INSERT 必須明寫 `attempts = 1`，不能靠 `DEFAULT 0`。** 用預設值 0 的話，第一次認領不計數，之後還能再遞增三次 → 每 slot 實際跑 4 次、全站每日 800 次，上限就不是 600。
+2. **`generation_token IS NULL` 必須是獨立的放行分支。** `release` 的用途就是「我失敗了，別人不必等租約逾時就能接手」；若 `reserve` 只看租約時間，被 release 的列會被自己的新鮮 `reserved_at` 擋住兩分鐘，等於 release 沒有作用。
+
+`attempts` 的 CHECK 上界與 `MAX_MOMENT_ATTEMPTS` 必須一起改；migration source test 要斷言這兩個數字相同。
 
 **向後相容**：純新增表與函式，舊版 client / 舊版 Edge 完全不碰它 → 可安全先套 migration 再上 Edge（符合 shared-agent-rules 的「migration 先於依賴它的 Edge 碼」）。
 
@@ -276,7 +316,8 @@ user 段只餵 server 事實：`themeId` 的中文題材描述、`dayPart`、是
 ### 驗證管線（`moments_validate.ts`，失敗一律 release 不落盤）
 
 ```
-JSON.parse → text 必為字串且 1..220 字
+JSON.parse → text 必為字串
+→ 長度 18..66 字（產品規格 20-60 的 ±10% 容差，見下）
 → toTraditionalChinese()
 → containsRawImageFilename() 命中即拒
 → rejectVisibleInternalLabelLeak()
@@ -284,6 +325,16 @@ JSON.parse → text 必為字串且 1..220 字
 → 禁詞掃描（「你」「妳」等第二人稱、問號結尾）→ 命中即拒
 → imageId ∈ allowlist ∩ 本 slot 候選（否則降級為純文字貼文）
 ```
+
+**長度是三層，數字必須對得起來（複審 2026-08-21 P2）**：第一版 prompt 寫「硬限制 20-60 字」，驗證卻收 1-220，等於完全沒守。現在：
+
+| 層 | 範圍 | 角色 |
+| --- | --- | --- |
+| prompt 指示 | 20-60 字 | 告訴模型要寫多長 |
+| `moments_validate` | **18-66 字** | 真正的產品守門。留 ±10% 容差是因為打回一則就吃掉一次 attempts；為了 61 字丟掉一則好貼文不划算 |
+| DB `CHECK` | 1-220 字 | 縱深防禦，擋的是程式碼繞過驗證直接寫入，不是產品規格 |
+
+容差刻意寫死在常數並附測試；若上線後發現打回率偏高，**要調的是 prompt 的引導方式，不是偷偷放寬驗證**。
 
 ---
 
@@ -343,16 +394,26 @@ JSON.parse → text 必為字串且 1..220 字
 
 指令依 `.agent/environment.json`：Flutter 走 WSL（`analyze` / `test`），Deno 測試依 `flutter-ci.yml:41-51` 的既有形式。
 
-### 交付路徑（2026-08-21 兩人協作流程拍板，取代原本的單人預設）
+### 交付路徑（依 `AGENTS.md` 兩人協作流程；取代原本的 umbrella 集成分支規劃）
 
-例行工作 PR 一律：**從集成分支 `claude/ai-practice-social-media-z507pd` 開分支 → 驗證 → commit → push → 開 PR（base 指向集成分支）→ 只跑 PR CI → 兩個模型複審 → request changes 就改完再推。**
+**一個 PR 一個目的，base 是 `main`。** 每個 PR 都要能獨立測試、獨立合併、獨立回退。
 
-- **例行 PR 分支不跑 `Build & Distribute`。** 這一條在第一版寫錯了（2026-08-21 複審 P2）：原文照抄 AGENTS.md 的單人 Change/Fix 預設，要求每條分支都對該 SHA 跑打包。那是給「直接推 `main`」設計的守門，套在兩人流程的例行 PR 上只是白燒 CI 分鐘數（含 macOS runner）。
-- **`main` 全程不動**，production migration 與 Edge 部署全部保持 pending。
-- **真機驗收**在集成分支功能完整後才做，不是每個 PR 都做——PR 1 / PR 2 在真機上沒有可見行為，硬測是測空氣。
-- **合進 `main` 與 `Release to App Stores` 由 Eric 收尾**，agent 不觸發。
+- 依賴未落地的 PR 時，**可以暫時**把 base 指向那個 Draft parent；**parent 一落地就要 retarget 回 `main` 並跑正常 CI**，這是共享規則明訂的臨時措施，不是常態架構。
+- 第一版把四個實作 PR 都規劃成合進 umbrella 集成分支，而那條分支已知不跑 CI——等於用一個永久結構換來零守門。**已作廢**（複審 2026-08-21）。
+- 例行 PR **不跑** `Build & Distribute`；那是給「直接推 `main`」的單人流程設計的守門。
+- 真機驗收綁功能完整度，不綁每個 PR：PR 1 / PR 2 在真機上沒有可見行為。
+- 合進 `main`、`Release to App Stores` 由 Eric 收尾；agent 不觸發、不合併。
+- 交棒用**唯一一個** `next:*` 標籤（`next:eric-ai` / `next:bruce` / `next:discuss`），與 Draft/Ready 無關；完成一輪就在同一個動作換掉舊標籤。
 
-> 待決：目前 `flutter-ci.yml` 的 `pull_request.branches: [main]` 會讓所有 base 指向集成分支的 PR **完全不跑 CI**。需要 Eric 選定觸發條件的改法（見 PR #22 討論），否則「只跑 PR CI」這一條實際上是零守門。
+實際順序：
+
+| PR | base | 何時 retarget |
+| --- | --- | --- |
+| 設計稿（本 PR） | `main` | — |
+| 排程純函式 | 暫時指向設計稿 PR | 設計稿落地後改回 `main`，跑正式 PR CI |
+| 後端／前端／記憶 | `main` | — |
+
+> 附帶結論：`flutter-ci.yml` 的 `pull_request.branches: [main]` 只認 base 為 `main` 的 PR。回到「一 PR 一目的、base 指向 `main`」之後，**這個限制不再是問題**——只有暫時掛在 Draft parent 底下的那段期間沒有 CI，而那段期間本來就短。先前提議改 CI 觸發條件的事因此撤回，不必為了 umbrella 架構去動共享 workflow。
 
 ---
 
@@ -374,7 +435,6 @@ JSON.parse → text 必為字串且 1..220 字
 
 | 項目 | 卡在哪 |
 | --- | --- |
-| `flutter-ci.yml` 觸發條件 | base 指向集成分支的 PR 目前完全不跑 CI。要選：把集成分支加進 `branches` 清單／拿掉 `branches` 過濾（每個 PR 都燒 macOS runner）／分層（便宜的跑全部 PR、macOS 只跑對 `main` 的 PR）。**建議分層。** |
 | PR 3 的真機驗收路徑 | branch build 連正式後端，但 `AGENTS.md` 禁止從非 `main` 分支部署正式 Edge。PR 3 開始前要決定走法 |
 
 ---

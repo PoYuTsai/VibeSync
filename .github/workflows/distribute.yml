@@ -8,6 +8,22 @@ on:
   push:
     branches: [main, develop]
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build manually
+        required: true
+        default: ios
+        type: choice
+        options:
+          - ios
+          - android
+          - both
+
+# Only the newest automatic build for a branch is useful. Keep manual runs in a
+# separate group so a push cannot cancel a deliberately selected release check.
+concurrency:
+  group: build-distribute-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -67,6 +83,9 @@ jobs:
           SUPABASE_PROD_ANON_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
 
   build-android:
+    # Current delivery focus is iOS. Android stays available for an explicit
+    # manual run, but automatic main/develop pushes must not spend time on it.
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.platform == 'android' || inputs.platform == 'both') }}
     needs: flutter-gate
     runs-on: ubuntu-latest
     env:
@@ -160,6 +179,7 @@ jobs:
           releaseNotesFile: release-notes.txt
 
   build-ios:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.platform == 'ios' || inputs.platform == 'both')) }}
     needs: flutter-gate
     runs-on: macos-26
     env:

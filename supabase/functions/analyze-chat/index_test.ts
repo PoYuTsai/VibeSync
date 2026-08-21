@@ -63,14 +63,16 @@ Deno.test("extractClaudeText skips Sonnet 5 thinking blocks", () => {
 Deno.test("Claude request forwards OCR thinking and structured output", async () => {
   const originalFetch = globalThis.fetch;
   const capturedBodies: Array<Record<string, unknown>> = [];
-  globalThis.fetch = async (_input, init) => {
+  globalThis.fetch = (_input, init) => {
     const requestInit = init as { body?: BodyInit | null } | undefined;
     capturedBodies.push(
       JSON.parse(String(requestInit?.body)) as Record<string, unknown>,
     );
-    return new Response(
-      JSON.stringify({ content: [{ type: "text", text: '{"ok":true}' }] }),
-      { status: 200, headers: { "content-type": "application/json" } },
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ content: [{ type: "text", text: '{"ok":true}' }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
     );
   };
 
@@ -128,16 +130,13 @@ Deno.test({
     );
     const blocks = source.match(/await logAiCall\([\s\S]*?\n\s*\}\);/g) ?? [];
     const meteredBlocks = blocks.filter((block) =>
-      /inputTokens: (quickTokenUsage|fullTokenUsage|tokenUsage)\.inputTokens/
-        .test(
-          block,
-        )
+      /inputTokens: tokenUsage\.inputTokens/.test(block)
     );
 
-    assertEquals(meteredBlocks.length, 8);
+    assertEquals(meteredBlocks.length, 4);
     for (const block of meteredBlocks) {
       const usageName = block.match(
-        /inputTokens: (quickTokenUsage|fullTokenUsage|tokenUsage)\.inputTokens/,
+        /inputTokens: (tokenUsage)\.inputTokens/,
       )?.[1];
       assert(usageName !== undefined);
       assert(
@@ -263,7 +262,7 @@ Deno.test("selectModel - complex emotions uses Sonnet", () => {
 });
 
 Deno.test({
-  name: "production routing uses Sonnet 5 for Free and paid primary paths",
+  name: "production routing uses Sonnet 5 for Free, paid, and stream paths",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
@@ -291,19 +290,16 @@ Deno.test({
     assert(source.includes(
       'const openerModel = "claude-sonnet-5"',
     ));
-    assert(source.includes('const quickModel = "claude-sonnet-5"'));
-    assert(source.includes("const quickTimeoutMs = 20_000;"));
-    assert(source.includes(
-      "const quickDeadlineAtMs = requestStartedAtMs + quickTimeoutMs;",
-    ));
-    assert(source.includes(
-      "maxRetries: 1,\n            absoluteDeadlineAtMs: quickDeadlineAtMs,",
-    ));
+    assert(source.includes("let streamModel = selectedModel;"));
+    assert(source.includes("model: selectedModel,"));
+    assertFalse(source.includes("quickModel"));
+    assertFalse(source.includes("quickTimeoutMs"));
   },
 });
 
 Deno.test({
-  name: "legacy Sonnet 5 primary, fallback, and JSON repair share one deadline",
+  name:
+    "shared non-stream primary, fallback, and JSON repair share one deadline",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
@@ -324,12 +320,8 @@ Deno.test({
         ?.length,
       2,
     );
-    assert(source.includes(
-      "const fullDeadlineAtMs = requestStartedAtMs + 50_000;",
-    ));
-    assert(source.includes(
-      "maxRetries: 1,\n            allowModelFallback: true,\n            absoluteDeadlineAtMs: fullDeadlineAtMs,",
-    ));
+    assertFalse(source.includes("fullDeadlineAtMs"));
+    assertFalse(source.includes("quickDeadlineAtMs"));
   },
 });
 
@@ -875,7 +867,11 @@ Deno.test({
     assert(source.includes("不要在 opener 或 reason 裡主動提「不約」"));
     assert(source.includes("讓對話自然走到可約"));
     assert(source.includes("只寫**可見**風格與**互動切入判斷**"));
-    assert(source.includes("不做 Big Five、長期性格、家庭、感情狀態、收入或身材的判斷"));
+    assert(
+      source.includes(
+        "不做 Big Five、長期性格、家庭、感情狀態、收入或身材的判斷",
+      ),
+    );
     assert(source.includes("場景分流"));
     assert(source.includes("自介資訊量分流"));
     assert(source.includes("自介很長、界線很多"));
@@ -954,7 +950,9 @@ Deno.test({
     assert(source.includes("才不是，我其實"));
     assert(source.includes("她只會已讀或不知道回什麼＝重寫"));
     assert(source.includes("會不會覺得被查戶口、被審核、被教育、被油到"));
-    assert(source.includes("最有機會從幾百則訊息裡跳出來的一句，不是最保守的那句"));
+    assert(
+      source.includes("最有機會從幾百則訊息裡跳出來的一句，不是最保守的那句"),
+    );
     assert(source.includes("嗨美女、妳好漂亮、在哪上班、要不要喝一杯"));
     assert(source.includes("先鋒備案：開場不是終點"));
     assert(source.includes("開場救星是產品的「先鋒」"));
@@ -1614,8 +1612,7 @@ Deno.test({
   name: "visible AI text sanitizer rejects raw model payload strings",
   permissions: { read: true },
   fn: async () => {
-    // Moved to post_process.ts as part of Codex Phase 2 P1 parity fix —
-    // helpers live in the shared module so both legacy + full mode use them.
+    // Visible-text helpers stay behind the shared post-processing boundary.
     const source = await Deno.readTextFile(
       new URL("./post_process.ts", import.meta.url),
     );

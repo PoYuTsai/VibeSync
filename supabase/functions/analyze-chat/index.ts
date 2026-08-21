@@ -140,18 +140,8 @@ import {
   TEST_EMAILS,
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
-import {
-  normalizeRequestMode,
-  type ResponseMode,
-  shouldRejectFullMode,
-} from "./request_mode.ts";
-import {
-  AnalysisRunStore,
-  createSupabaseAnalysisRunDriver,
-  MAX_FULL_RETRIES,
-} from "./analysis_run_store.ts";
+import { resolveRequestMode } from "./request_mode.ts";
 import { hashConversation } from "./conversation_hash.ts";
-import { QUICK_SYSTEM_PROMPT } from "./quick_prompt.ts";
 import { isStreamingAllowed } from "./stream_gate.ts";
 import {
   handleStreamAnalysisRequest,
@@ -169,7 +159,7 @@ import {
   isThinRecommendationEvent,
   type StreamRecommendationForCharge,
 } from "./reframer.ts";
-import { isStreamStyle, STREAM_STYLES } from "./stream_events.ts";
+import { isStreamStyle } from "./stream_events.ts";
 import {
   AiStreamingServiceError,
   callClaudeStreaming,
@@ -199,13 +189,6 @@ import {
   subscriptionTierRank,
   type TierSyncRefreshStatus,
 } from "./tier_sync_contract.ts";
-import {
-  applyQuickGuardrails,
-  estimateFullSeconds,
-  parseQuickResponse,
-} from "./quick_response.ts";
-import { parseFullPayload } from "./full_response.ts";
-import { detectAnchorDrift } from "./anchor_drift.ts";
 import { normalizeGoogleMapsShares } from "./map_share_normalizer.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
@@ -279,52 +262,6 @@ const TIER_DAILY_LIMITS: Record<string, number> = {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function normalizeDogfoodRecommendation(
-  value: unknown,
-): Record<string, unknown> | null {
-  if (!isPlainObject(value)) return null;
-
-  const data = value as Record<string, unknown>;
-  const pick = typeof data.pick === "string" && data.pick.trim().length > 0
-    ? data.pick.trim()
-    : "extend";
-  const replySegments = Array.isArray(data.replySegments)
-    ? data.replySegments
-    : [];
-  const segmentContent = replySegments
-    .map((segment) =>
-      isPlainObject(segment) && typeof segment.reply === "string"
-        ? segment.reply.trim()
-        : ""
-    )
-    .filter((reply) => reply.length > 0)
-    .join("\n");
-  const content =
-    typeof data.content === "string" && data.content.trim().length > 0
-      ? data.content.trim()
-      : segmentContent;
-  if (content.length === 0) return null;
-
-  return {
-    pick,
-    content,
-    reason: typeof data.reason === "string" ? data.reason.trim() : "",
-    psychology: typeof data.psychology === "string"
-      ? data.psychology.trim()
-      : "",
-    replySegments,
-  };
-}
-
-function dogfoodRecommendationsDiffer(
-  left: Record<string, unknown> | null,
-  right: Record<string, unknown> | null,
-): boolean {
-  if (!left || !right) return false;
-  return String(left.pick ?? "") !== String(right.pick ?? "") ||
-    String(left.content ?? "") !== String(right.content ?? "");
 }
 
 function stripJsonCodeFence(text: string): string {
@@ -4706,21 +4643,6 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       analysisRunId: rawAnalysisRunId,
     } = requestBody;
 
-    // Two-stage analyze routing (Phase 1.2):
-    //   "quick"  → 新 fast path（Haiku + 短 prompt + analysis_runs row）
-    //   "full"   → 帶 analysisRunId 完成 deep analyze，不再扣 quota
-    //   "legacy" → build 211 行為（I10 backwards compat for old clients）
-    // 任何非預期 responseMode 值一律 fall back 到 legacy，避免新欄位讓舊客戶端炸掉。
-    const { responseMode, analysisRunId }: {
-      responseMode: ResponseMode;
-      analysisRunId: string | null;
-    } = normalizeRequestMode({
-      responseMode: rawResponseMode,
-      analysisRunId: rawAnalysisRunId,
-    });
-    const isStreamRetryMode = responseMode === "stream" &&
-      analysisRunId !== null;
-
     if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
       return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
     }
@@ -4736,9 +4658,46 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       rawUserDraft.trim().length > 0 &&
       rawAnalyzeMode !== "my_message";
 
+    // Main AnalyzeChat is streaming-only. Other request shapes still share
+    // this Edge Function and retain their existing response contract.
+    const plainAnalyzeRequest = !recognizeOnly &&
+      rawMode !== "opener" &&
+      rawMode !== "new_topic" &&
+      rawAnalyzeMode !== "my_message" &&
+      !(typeof rawUserDraft === "string" && rawUserDraft.trim().length > 0);
+    const modeResolution = resolveRequestMode({
+      responseMode: rawResponseMode,
+      analysisRunId: rawAnalysisRunId,
+      plainAnalyzeRequest,
+    });
+    if (!modeResolution.ok) {
+      const message = modeResolution.code === "ANALYZE_RESPONSE_MODE_RETIRED"
+        ? "快速／完整相容模式已退役，請更新 App 使用串流分析。本次不會扣額度。"
+        : modeResolution.code === "ANALYZE_STREAMING_REQUIRED"
+        ? "AnalyzeChat 現在只支援串流分析，請更新 App 後再試。本次不會扣額度。"
+        : "不支援的回應模式。本次不會扣額度。";
+      logInfo("analyze_response_mode_rejected", {
+        user: summarizeUser(user.id),
+        code: modeResolution.code,
+        rawResponseMode: typeof rawResponseMode === "string"
+          ? rawResponseMode
+          : typeof rawResponseMode,
+        plainAnalyzeRequest,
+      });
+      return jsonResponse({
+        error: modeResolution.code,
+        code: modeResolution.code,
+        message,
+        shouldChargeQuota: false,
+      }, modeResolution.status);
+    }
+    const { responseMode, analysisRunId } = modeResolution;
+    const isStreamRetryMode = responseMode === "stream" &&
+      analysisRunId !== null;
+
     // optimize_message has exactly one authoritative response/billing path.
-    // Reject compatibility quick/full/stream modes before any model or quota
-    // work so they cannot bypass the fixed-one idempotency ledger.
+    // Reject stream mode before any model or quota work so it cannot bypass
+    // the fixed-one idempotency ledger.
     if (isOptimizeMessageRequestShape && responseMode !== "legacy") {
       return jsonResponse({
         error: "OPTIMIZE_MESSAGE_UNSUPPORTED_RESPONSE_MODE",
@@ -4747,39 +4706,6 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
           "草稿潤飾暫不支援這種回應模式，請更新 App 後再試。本次不會扣額度。",
         shouldChargeQuota: false,
       }, 400);
-    }
-
-    // ------------------------------------------------------------------
-    // Phase 1.3 (Codex round-2) — early MISSING_RUN_ID bounce.
-    // Phase 2.1 — full+runId now flows through to the real handler below.
-    // ------------------------------------------------------------------
-    // Why early: a full request with NO runId is unrecoverable. We don't
-    // want to pay for subscription lookup / hash / DB / Claude work to
-    // reject something the request shape alone can refuse. A user whose
-    // quick mode just exhausted their quota also needs to get 400 here,
-    // not 429 from the quota preflight (full is not quota-gated — see
-    // the `responseMode !== "full"` skips on the preflights below). Stream
-    // retry with an analysisRunId also skips quota preflights because its
-    // recommendation was already charged in analysis_stream_runs.
-    //
-    // The full handler with valid runId lives next to the quick branch
-    // (~line 6080) and uses `AnalysisRunStore.validateRunForFull` for
-    // the runId / owner / hash / expiry / charged checks.
-    const fullRejection = shouldRejectFullMode({ responseMode, analysisRunId });
-    if (fullRejection.reject) {
-      logInfo("full_mode_rejected_missing_run_id", {
-        user: summarizeUser(user.id),
-      });
-      return jsonResponse(
-        {
-          error: fullRejection.code,
-          code: fullRejection.code,
-          message:
-            "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。",
-          retryable: false,
-        },
-        fullRejection.status,
-      );
     }
 
     // ADR #19：新欄位只有新 client 會送，可嚴格驗證（舊欄位
@@ -5115,16 +5041,11 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
         }, 409);
       }
     }
-    // Phase 2.1 — `responseMode === "full"` skips the monthly/daily
-    // preflight: quick already charged via atomic RPC and the run row
-    // exists, so the post-quick full call MUST NOT be 429'd just because
-    // quick's charge pushed the user to the cap. I1 (single charge) is
-    // enforced by full not calling increment_usage. The full handler
-    // validates the run via AnalysisRunStore.validateRunForFull instead.
+    // A stream retry already charged the recommendation on its original run,
+    // so it resumes by run id without being blocked by a now-exhausted quota.
     if (
       !recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&
       !isOptimizeMessageRequestShape &&
-      responseMode !== "full" &&
       !isStreamRetryMode &&
       sub.monthly_messages_used >= monthlyLimit
     ) {
@@ -5158,11 +5079,10 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       }
     }
 
-    // Check daily limit (測試帳號跳過, full mode 跳過 — 同上)
+    // Check daily limit（測試帳號與 stream retry 跳過，同上）。
     if (
       !recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&
       !isOptimizeMessageRequestShape &&
-      responseMode !== "full" &&
       !isStreamRetryMode &&
       sub.daily_messages_used >= dailyLimit
     ) {
@@ -5210,7 +5130,7 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
 
       // 1. Strict allowlist sanitize＋material readiness：全部發生在 claim、
       //    rate limit、模型與扣費之前（400/422 路徑扣 0、不佔限流名額）。
-      //    2026-08-18：stream 模式放行（quick/full 照舊 400）；flag off 時
+      //    2026-08-18：stream 模式放行；flag off 時
       //    stream 靜默降級 legacy，client 依 content-type 相容。
       if (responseMode !== "legacy" && responseMode !== "stream") {
         return jsonResponse({
@@ -6742,8 +6662,8 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       });
       };
 
-      // stream 模式：flag off 時靜默降級 legacy（client 依 content-type 相容，
-      // 與 analysis 的 stream_request_fell_back_to_legacy 同策略）。
+      // Opener 尚保留自己的 stream flag 相容行為；AnalyzeChat 本身已改為
+      // streaming-only 並在不可用時 fail closed，兩者不可混用。
       const openerStreamRequested = responseMode === "stream" &&
         Deno.env.get("OPENER_STREAM_ENABLED") === "true";
       if (responseMode === "stream" && !openerStreamRequested) {
@@ -7194,8 +7114,6 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
         message.isFromMe ? "Me" : "Her"
       }${replyPrefix}: ${message.content}`;
     };
-    let conversationText = "";
-
     if (messages.length > MAX_RECENT_MESSAGES + OPENING_MESSAGES) {
       // 長對話：保留開頭 + 最近
       const openingMessages = messages.slice(0, OPENING_MESSAGES);
@@ -7211,24 +7129,7 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       const openingText = openingMessages.map(formatConversationLine).join(
         "\n",
       );
-      /*
-      const openingText = openingMessages
-        .map(
-          (m: { isFromMe: boolean; content: string }) =>
-            `${m.isFromMe ? "我" : "她"}: ${m.content}`
-        )
-        .join("\n");
-      */
-
       const recentText = recentMessages.map(formatConversationLine).join("\n");
-      /*
-      const recentText = recentMessages
-        .map(
-          (m: { isFromMe: boolean; content: string }) =>
-            `${m.isFromMe ? "我" : "她"}: ${m.content}`
-        )
-        .join("\n");
-      */
 
       compiledConversationText = `## 對話開頭（破冰階段）
 ${openingText}
@@ -7244,14 +7145,6 @@ ${recentText}`;
       );
       compiledMessageCount = messages.length;
       recentMessagesUsed = messages.length;
-      /*
-      conversationText = messages
-        .map(
-          (m: { isFromMe: boolean; content: string }) =>
-            `${m.isFromMe ? "我" : "她"}: ${m.content}`
-        )
-        .join("\n");
-      */
     }
 
     // Select model based on complexity (or force for testing)
@@ -7511,7 +7404,6 @@ ${recentText}`;
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
       optimizeReplayResult === null &&
-      responseMode !== "full" &&
       !isStreamRetryMode &&
       projectedMonthlyUsage > monthlyLimit
     ) {
@@ -7544,7 +7436,6 @@ ${recentText}`;
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
       optimizeReplayResult === null &&
-      responseMode !== "full" &&
       !isStreamRetryMode &&
       projectedDailyUsage > dailyLimit
     ) {
@@ -7655,20 +7546,57 @@ ${recentText}`;
       return jsonResponse(replayResponse);
     }
 
+    // Stream requests fail closed before the overcharge confirmation claim.
+    // This keeps an unavailable/unsupported stream from consuming a valid
+    // confirmation identity when no model call can be made.
+    const streamSupported = !hasImages && !recognizeOnly && !isMyMessageMode &&
+      !isOptimizeMessageMode;
+    const streamAllowed = isStreamingAllowed({
+      email: user.email,
+      flagOn: STREAM_ANALYZE_ENABLED,
+      whitelist: STREAM_WHITELIST,
+      tier: effectiveTier,
+    });
+    if (
+      responseMode === "stream" && (!streamSupported || !streamAllowed)
+    ) {
+      const code = streamSupported
+        ? "STREAM_MODE_UNAVAILABLE"
+        : "STREAM_MODE_UNSUPPORTED_FOR_REQUEST";
+      logWarn("stream_request_rejected_without_fallback", {
+        user: summarizeUser(user.id),
+        code,
+        supported: streamSupported,
+        allowed: streamAllowed,
+        expectedTier,
+        effectiveTier,
+        allowedFeatureCount: allowedFeatures.length,
+        hasImages,
+        recognizeOnly,
+        requestType,
+      });
+      return jsonResponse({
+        error: code,
+        code,
+        message: streamSupported
+          ? "串流分析目前無法開始，請稍後再試。本次不會扣額度。"
+          : "這種請求不支援串流分析，請更新 App 後再試。本次不會扣額度。",
+        retryable: streamSupported,
+        shouldChargeQuota: false,
+      }, streamSupported ? 503 : 400);
+    }
+
     // ------------------------------------------------------------------
     // ADR #19 定案 #4/#5 — >2000 字確認帶閘門（server 守門層）。
     // ------------------------------------------------------------------
     // 順序（定案 #4）：算出則數 → 額度/每日上限檢查（上方 429，額度不足
     // 不出確認框）→ 功能權限（403）→ 才輪到本閘。
     // 只在真的會扣費時生效：recognizeOnly / 測試帳號（shouldChargeQuota
-    // 已為 false）、full（quick 階段已扣）、stream retry（原始 stream 已扣）
-    // 都不進閘。舊 client 永遠不會走到這（billing.outcome 對 legacy 是
-    // cap 10 的 "charge"）。
+    // 已為 false）、stream retry（原始 stream 已扣）都不進閘。
     if (
       billing.outcome === "requires_confirmation" &&
       !isOptimizeMessageMode &&
       quotaUsage.shouldChargeQuota &&
-      responseMode !== "full" &&
       !isStreamRetryMode
     ) {
       const serverPayloadHash = await computeBillingPayloadHash(messages);
@@ -7748,8 +7676,8 @@ ${recentText}`;
       }
       if (claimVerdict === "replay") {
         // 同一確認 + 同 payload 重送（網路 retry / 雙送）：上次已扣 20，
-        // 本次扣 0、分析照常。shouldChargeQuota=false 會傳遍 quick /
-        // stream / legacy 三條扣費路徑。
+        // 本次扣 0、分析照常。shouldChargeQuota=false 會傳遍 stream 與
+        // 其他共用模式的扣費路徑。
         logInfo("overcharge_confirmation_replayed", {
           user: summarizeUser(user.id),
           confirmationId: confirmedOvercharge!.confirmationId,
@@ -7768,7 +7696,7 @@ ${recentText}`;
       }
     }
 
-    // 模型呼叫限流：analyze 6/分、60/日（quick/full/stream 所有模型路徑的
+    // 模型呼叫限流：analyze 6/分、60/日（stream 與其他共用模型路徑的
     // 共同入口）。Codex R1 P2：必須在所有「不打模型的拒絕 gate」之後——
     // projected quota 429、Essential 功能 403、overcharge 確認 409/503 都
     // 不佔限流名額；recognizeOnly 已有 increment_ocr_usage 獨立限流不重複計。
@@ -7956,10 +7884,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     const requestObservability = {
       requestType,
       analyzeMode,
-      // Phase 2.3 — surface routing decision on every ai_logs row regardless
-      // of which branch ends up calling logAiCall. Quick / full branches
-      // still spread an explicit `responseMode` override for greppability,
-      // but the legacy fall-through path now inherits "legacy" automatically.
+      // Surface the active routing decision on every ai_logs row.
       responseMode,
       analysisRunId,
       hasImages,
@@ -8002,761 +7927,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       contextMode: compiledContextMode,
     };
 
-    // Note: `responseMode === "full"` was already rejected by
-    // shouldRejectFullMode() near line ~4530 (above subscription lookup +
-    // quota preflight). By the time control reaches here, responseMode is
-    // either "quick" or "legacy". Do not add a second full-mode branch
-    // — there is exactly one rejection site so Codex can grep for it.
-
-    // ------------------------------------------------------------------
-    // Phase 1.3 — Two-stage analyze: QUICK branch.
-    // ------------------------------------------------------------------
-    //
-    // When `responseMode === "quick"`:
-    //   - force Sonnet 5 regardless of tier/forceModel
-    //   - use the slim QUICK_SYSTEM_PROMPT (~3.6 KB) + 400 max_tokens
-    //   - 20s timeout, no model fallback (per plan D6: don't auto-fallback)
-    //   - on Claude success → parse + guardrail + hash + atomic charge + insert
-    //     row via AnalysisRunStore.createChargedRun
-    //   - on Claude failure / parse failure: return BEFORE the DB call so no
-    //     row is inserted and no quota is charged (I8)
-    //
-    // legacy + full both fall through to the existing handler below (Phase
-    // 2.1 will branch full into its own block; until then full requests use
-    // the legacy path defensively — no quota bypass risk since the legacy
-    // path always charges).
-    if (responseMode === "quick") {
-      const quickModel = "claude-sonnet-5";
-      // Sonnet 5 is slower than the former Haiku quick path. Keep one bounded
-      // attempt and leave the Flutter client's 25s fence enough room to receive
-      // the atomic charge/result response instead of timing out at the same
-      // instant as the provider deadline.
-      const quickTimeoutMs = 20_000;
-      const quickDeadlineAtMs = requestStartedAtMs + quickTimeoutMs;
-      const quickStart = Date.now();
-
-      // Codex P2 scope clarification (build 213): vision quick is deliberately
-      // OUT OF SCOPE — see docs/plans/2026-05-28-two-stage-analyze.md §Out of
-      // Scope. Screenshot/OCR analyze keeps using the legacy single-call path
-      // (~18-25s) because:
-      //   - Vision quality and latency use a separate OCR-calibrated contract.
-      //   - Quick path's 15s hard budget is too tight for vision inference.
-      //   - The 3-5s "perceived latency" promise applies to manual-text quick;
-      //     OCR users already accept the longer wait today.
-      // Client SDK must NOT send `responseMode=quick` when uploading images.
-      // Old build-211 clients (no responseMode field) never hit this branch —
-      // they fall through to legacy unchanged.
-      if (hasImages) {
-        logWarn("quick_mode_rejected_images", {
-          user: summarizeUser(user.id),
-          imageCount: images.length,
-        });
-        return jsonResponse(
-          {
-            error: "QUICK_MODE_IMAGES_UNSUPPORTED",
-            code: "QUICK_MODE_IMAGES_UNSUPPORTED",
-            message:
-              "圖片分析尚未支援快速模式，請使用完整模式（responseMode=legacy 或省略此欄位）。",
-          },
-          400,
-        );
-      }
-
-      logInfo("quick_request_started", {
-        user: summarizeUser(user.id),
-        model: quickModel,
-        timeoutMs: quickTimeoutMs,
-        analysisRunIdProvided: !!analysisRunId,
-        requestType,
-      });
-
-      let quickClaude;
-      try {
-        quickClaude = await callClaudeWithFallback(
-          {
-            model: quickModel,
-            max_tokens: 400,
-            system: QUICK_SYSTEM_PROMPT,
-            messages: [{ role: "user", content: userPrompt }],
-          },
-          CLAUDE_API_KEY,
-          {
-            timeout: quickTimeoutMs,
-            allowModelFallback: false,
-            // Codex P1-1 review fix: callClaudeWithFallback defaults to
-            // maxRetries=2, which would let a flaky upstream burn two full
-            // attempts and exceed the request's 20s wall-clock budget.
-            // Pin to 1 attempt so the
-            // wall-clock hard budget stays at `quickTimeoutMs`. If the upstream
-            // fails once, surface the error and let the client retry the whole
-            // quick request — D6 forbids auto-fallback to legacy anyway.
-            maxRetries: 1,
-            absoluteDeadlineAtMs: quickDeadlineAtMs,
-          },
-        );
-      } catch (error) {
-        // I8: Claude failure → no row, no charge. Surface the error so the
-        // client can show a generic retry CTA (per D6, no auto-fallback to legacy).
-        const latencyMs = Date.now() - quickStart;
-        const code = error instanceof AiServiceError
-          ? error.code
-          : "QUICK_AI_FAILED";
-        const message = error instanceof AiServiceError
-          ? error.message
-          : "快速分析暫時失敗，請再試一次。";
-        const retryable = error instanceof AiServiceError
-          ? error.retryable
-          : true;
-        logWarn("quick_request_failed", {
-          user: summarizeUser(user.id),
-          latencyMs,
-          code,
-          message,
-        });
-        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-          userId: user.id,
-          model: quickModel,
-          requestType,
-          inputTokens: 0,
-          outputTokens: 0,
-          latencyMs,
-          status: "failed",
-          errorCode: code,
-          errorMessage: message,
-          requestBody: { ...requestObservability, responseMode: "quick" },
-          responseBody: { failureStage: "quick_upstream", retryable },
-        });
-        return jsonResponse(
-          { error: message, code, retryable },
-          502,
-        );
-      }
-
-      const quickData = quickClaude.data as {
-        content?: Array<{ text?: string }>;
-        [key: string]: unknown;
-      };
-      const quickText = extractClaudeText(quickData);
-      const quickTokenUsage = extractTokenUsage(quickData);
-      const quickLatencyMs = Date.now() - quickStart;
-
-      const parsed = parseQuickResponse(quickText);
-      if (!parsed.ok) {
-        // I8: parse failure also short-circuits before any DB write.
-        logWarn("quick_response_parse_failed", {
-          user: summarizeUser(user.id),
-          model: quickClaude.model,
-          error: parsed.error,
-          textLength: quickText.length,
-        });
-        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-          userId: user.id,
-          model: quickClaude.model,
-          requestType,
-          inputTokens: quickTokenUsage.inputTokens,
-          outputTokens: quickTokenUsage.outputTokens,
-          cacheCreationTokens: quickTokenUsage.cacheCreationTokens,
-          cacheReadTokens: quickTokenUsage.cacheReadTokens,
-          latencyMs: quickLatencyMs,
-          status: "failed",
-          errorCode: "QUICK_RESPONSE_INVALID",
-          errorMessage: parsed.error,
-          requestBody: { ...requestObservability, responseMode: "quick" },
-          responseBody: {
-            failureStage: "quick_parse",
-            parseError: parsed.error,
-          },
-        });
-        return jsonResponse(
-          {
-            error: "QUICK_RESPONSE_INVALID",
-            message: "這次快速分析格式異常，請再試一次。本次不會扣額度。",
-          },
-          502,
-        );
-      }
-
-      // I9: same safety guardrails on quick path.
-      const guarded = applyQuickGuardrails(parsed.payload);
-
-      // Hash the canonical request context. Phase 2.1 will re-hash on full
-      // and compare to detect drift (I5).
-      const conversationHashValue = await hashConversation({
-        messages,
-        userDraft,
-        partnerSummary,
-        sessionContext,
-        conversationSummary,
-        effectiveStyleContext,
-        knownContactName,
-      });
-
-      // Atomic charge + insert. The PL/pgSQL RPC wraps increment_usage +
-      // INSERT in one TX, so we never have a "charged but no row" state (the
-      // Phase 0 P1 fix). Test accounts skip the increment_usage call but still
-      // get a row so subsequent full calls can validate.
-      const shouldCharge = quotaUsage.shouldChargeQuota && !accountIsTest &&
-        !isStreamRetryMode;
-      // The supabase-js client surface is wider than the AnalysisRunStore's
-      // MinimalSupabaseClient duck-type, but the shapes match at runtime; the
-      // duck-type stays narrow so unit tests can swap in an in-memory client.
-      const store = new AnalysisRunStore(
-        createSupabaseAnalysisRunDriver(
-          supabase as unknown as Parameters<
-            typeof createSupabaseAnalysisRunDriver
-          >[0],
-        ),
-      );
-      let createdRun;
-      try {
-        createdRun = await store.createChargedRun({
-          userId: user.id,
-          conversationHash: conversationHashValue,
-          quickResult: guarded.payload as unknown as Record<string, unknown>,
-          requestContext: {
-            responseMode: "quick",
-            requestType,
-            analyzeMode,
-            tier: effectiveTier,
-            isTestAccount: accountIsTest,
-            estimatedMessageCount: quotaUsage.estimatedMessageCount,
-            chargedMessageCount: shouldCharge
-              ? quotaUsage.chargedMessageCount
-              : 0,
-          },
-          chargeQuota: shouldCharge,
-          messageCount: shouldCharge ? quotaUsage.chargedMessageCount : 0,
-        });
-      } catch (error) {
-        // Atomic RPC failed（DB outage / constraint violation）。注意：
-        // increment_usage 目前沒有超限 RAISE 保護——並發超限不會在這裡被
-        // 擋下（交易內 FOR UPDATE 驗上限的改造屬 Batch C）。The atomic TX
-        // guarantees nothing partially committed.
-        logError("quick_run_create_failed", {
-          user: summarizeUser(user.id),
-          error: getErrorMessage(error),
-          shouldCharge,
-        });
-        return jsonResponse(
-          {
-            error: "QUICK_RUN_CREATE_FAILED",
-            message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
-          },
-          500,
-        );
-      }
-
-      const fullModelForEta = "claude-sonnet-5";
-      const fullEtaSeconds = estimateFullSeconds({
-        model: fullModelForEta,
-        hasImages,
-        cacheHit: (quickTokenUsage.cacheReadTokens ?? 0) > 0,
-      });
-
-      logInfo("quick_request_succeeded", {
-        user: summarizeUser(user.id),
-        analysisRunId: createdRun.id,
-        model: quickClaude.model,
-        latencyMs: quickLatencyMs,
-        inputTokens: quickTokenUsage.inputTokens,
-        outputTokens: quickTokenUsage.outputTokens,
-        cacheCreationTokens: quickTokenUsage.cacheCreationTokens,
-        cacheReadTokens: quickTokenUsage.cacheReadTokens,
-        safetyFiltered: guarded.safetyFiltered,
-        chargedQuota: shouldCharge,
-      });
-
-      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-        userId: user.id,
-        model: quickClaude.model,
-        requestType,
-        inputTokens: quickTokenUsage.inputTokens,
-        outputTokens: quickTokenUsage.outputTokens,
-        cacheCreationTokens: quickTokenUsage.cacheCreationTokens,
-        cacheReadTokens: quickTokenUsage.cacheReadTokens,
-        latencyMs: quickLatencyMs,
-        status: guarded.safetyFiltered ? "filtered" : "success",
-        fallbackUsed: quickClaude.fallbackUsed,
-        retryCount: quickClaude.retries,
-        requestBody: {
-          ...requestObservability,
-          responseMode: "quick",
-          analysisRunId: createdRun.id,
-        },
-        responseBody: {
-          filtered: guarded.safetyFiltered,
-          retries: quickClaude.retries,
-          fallbackUsed: quickClaude.fallbackUsed,
-          fullEtaSeconds,
-          cacheReadTokens: quickTokenUsage.cacheReadTokens ?? 0,
-          cacheCreationTokens: quickTokenUsage.cacheCreationTokens ?? 0,
-        },
-      });
-
-      const monthlyRemaining = accountIsTest ? 999999 : Math.max(
-        0,
-        monthlyLimit - sub.monthly_messages_used -
-          (shouldCharge ? quotaUsage.chargedMessageCount : 0),
-      );
-      const dailyRemaining = accountIsTest ? 999999 : Math.max(
-        0,
-        dailyLimit - sub.daily_messages_used -
-          (shouldCharge ? quotaUsage.chargedMessageCount : 0),
-      );
-
-      return jsonResponse({
-        responseMode: "quick",
-        analysisRunId: createdRun.id,
-        quickResult: guarded.payload,
-        estimatedFullSeconds: fullEtaSeconds,
-        safetyFiltered: guarded.safetyFiltered,
-        usage: {
-          messagesUsed: shouldCharge ? quotaUsage.chargedMessageCount : 0,
-          estimatedMessages: quotaUsage.estimatedMessageCount,
-          monthlyRemaining,
-          dailyRemaining,
-          model: quickClaude.model,
-          tierUsed: effectiveTier,
-          isTestAccount: accountIsTest,
-          requestType,
-          shouldChargeQuota: shouldCharge,
-          quotaReason: quotaUsage.quotaReason,
-          quotaUnit: quotaUsage.quotaUnit,
-        },
-        telemetry: {
-          requestType,
-          serverAiLatencyMs: quickLatencyMs,
-          timeoutMs: quickTimeoutMs,
-          fallbackUsed: quickClaude.fallbackUsed,
-          retries: quickClaude.retries,
-          totalTokens: (quickTokenUsage.inputTokens ?? 0) +
-            (quickTokenUsage.outputTokens ?? 0),
-        },
-      });
-    }
-
-    // ------------------------------------------------------------------
-    // Phase 2.1 — Two-stage analyze: FULL branch.
-    // ------------------------------------------------------------------
-    // Preconditions enforced upstream:
-    //   - responseMode === "full" AND analysisRunId is non-empty
-    //     (shouldRejectFullMode bounced the empty case at line ~4559).
-    //   - Monthly/daily/projected quota preflights skipped earlier for
-    //     `responseMode !== "full"` so quick's charge doesn't 429 us.
-    //
-    // What this branch does, in order:
-    //   1. Reject images (vision is not part of two-stage in build 213).
-    //   2. Re-hash the canonical request context (must match what quick
-    //      stored, per I5).
-    //   3. validateRunForFull — pure read (owner / hash / expiry / charged).
-    //      Status code per validation error:
-    //        RUN_NOT_FOUND        → 404
-    //        RUN_FORBIDDEN        → 403
-    //        RUN_NOT_CHARGED      → 409 (defensive — atomic RPC makes this
-    //                               unreachable in production but we keep
-    //                               the test pin so future regressions fail
-    //                               loudly)
-    //        RUN_EXPIRED          → 410
-    //        RUN_CONVERSATION_MISMATCH → 409
-    //   4. reserveRetrySlot — atomic UPDATE that bumps retry_count BEFORE
-    //      the Claude call. 0 rows → 429 RUN_RETRY_EXHAUSTED. Reserving
-    //      first means every Claude attempt (success OR failure) consumes
-    //      one of the 3 slots — I6.
-    //   5. Build the full prompt from the original conversation only. The
-    //      quick/Core result is kept for telemetry + dogfood comparison after
-    //      the full result returns, but is intentionally NOT shown to Claude.
-    //      This keeps the full answer independent instead of anchoring it to
-    //      the fast candidate.
-    //   6. Call Claude with selectedModel / SYSTEM_PROMPT / 30s timeout.
-    //      I1 — NO RPC. NO increment_usage. NO quota changes.
-    //   7. Parse + checkAiOutput guardrail (same safety swap as legacy).
-    //   8. detectAnchorDrift — warn-only telemetry; never blocks success.
-    //
-    // On Claude failure or parse failure the reservation IS consumed
-    // (already counted by step 4). Returning 502 with `retriesRemaining`
-    // lets the client decide whether to send another full request.
-    if (responseMode === "full") {
-      // Vision: quick already rejects images, so a run-from-quick can never
-      // have come from a vision request. Reject early with the same code
-      // for symmetry — saves a DB hit + Claude call on a malformed flow.
-      if (hasImages) {
-        logWarn("full_mode_rejected_images", {
-          user: summarizeUser(user.id),
-          imageCount: images.length,
-        });
-        return jsonResponse(
-          {
-            error: "FULL_MODE_IMAGES_UNSUPPORTED",
-            code: "FULL_MODE_IMAGES_UNSUPPORTED",
-            message:
-              "圖片分析尚未支援兩階段流程，請改用 responseMode=legacy 或省略此欄位。",
-          },
-          400,
-        );
-      }
-
-      // I2 already enforced by shouldRejectFullMode, but TS narrowing needs
-      // an explicit check here.
-      if (!analysisRunId) {
-        return jsonResponse(
-          {
-            error: "MISSING_RUN_ID",
-            code: "MISSING_RUN_ID",
-            message:
-              "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。",
-            retryable: false,
-          },
-          400,
-        );
-      }
-
-      const conversationHashValue = await hashConversation({
-        messages,
-        userDraft,
-        partnerSummary,
-        sessionContext,
-        conversationSummary,
-        effectiveStyleContext,
-        knownContactName,
-      });
-
-      const fullStore = new AnalysisRunStore(
-        createSupabaseAnalysisRunDriver(
-          supabase as unknown as Parameters<
-            typeof createSupabaseAnalysisRunDriver
-          >[0],
-        ),
-      );
-
-      // Step 3 — pure read validation.
-      const validation = await fullStore.validateRunForFull({
-        runId: analysisRunId,
-        userId: user.id,
-        conversationHash: conversationHashValue,
-      });
-      if (!validation.ok) {
-        const statusByError: Record<string, number> = {
-          MISSING_RUN_ID: 400,
-          RUN_NOT_FOUND: 404,
-          RUN_FORBIDDEN: 403,
-          RUN_NOT_CHARGED: 409,
-          RUN_EXPIRED: 410,
-          RUN_CONVERSATION_MISMATCH: 409,
-        };
-        logWarn("full_validation_failed", {
-          user: summarizeUser(user.id),
-          analysisRunId,
-          code: validation.error,
-        });
-        return jsonResponse(
-          {
-            error: validation.error,
-            code: validation.error,
-          },
-          statusByError[validation.error] ?? 400,
-        );
-      }
-
-      // Step 4 — atomic retry reservation. MUST happen before Claude.
-      const reservation = await fullStore.reserveRetrySlot({
-        runId: analysisRunId,
-        userId: user.id,
-        conversationHash: conversationHashValue,
-      });
-      if (!reservation.ok) {
-        logWarn("full_retry_exhausted", {
-          user: summarizeUser(user.id),
-          analysisRunId,
-        });
-        return jsonResponse(
-          {
-            error: "RUN_RETRY_EXHAUSTED",
-            code: "RUN_RETRY_EXHAUSTED",
-            message: "完整分析已達重試上限。請重新進行一次快速分析。",
-          },
-          429,
-        );
-      }
-      const run = reservation.run;
-      // retry_count has just been incremented by the RPC — remaining slots
-      // is (MAX - current count). 0 means the NEXT request would be refused.
-      const retriesRemaining = Math.max(0, MAX_FULL_RETRIES - run.retry_count);
-      // Phase 2.3 — perceived two-stage latency. Quick run.created_at is the
-      // moment we INSERTed the row (after Claude+guardrail+charge), so this
-      // measures "how long did the user wait between seeing the quick card
-      // and clicking through to full". Negative or absurdly large values
-      // would signal clock skew or a leaked run; surface as-is for dashboards
-      // to alarm on. null on the failure paths where run is unavailable.
-      const quickToFullLagMs = Math.max(
-        0,
-        Date.now() - new Date(run.created_at).getTime(),
-      );
-
-      // Step 5 — independent full analysis. Do not inject the quick/Core
-      // candidate here; Eric/Bruce dogfood needs a real blind comparison
-      // between the fast Core answer and the full prompt's judgment.
-      const fullUserPrompt = userPrompt;
-
-      const fullStart = Date.now();
-      const fullDeadlineAtMs = requestStartedAtMs + 50_000;
-      logInfo("full_request_started", {
-        user: summarizeUser(user.id),
-        analysisRunId: run.id,
-        model: selectedModel,
-        retryCount: run.retry_count,
-        retriesRemaining,
-        requestType,
-      });
-
-      // Step 6 — Claude. I1: NO `supabase.rpc("increment_usage", ...)`
-      // anywhere in this branch. (Greppable comment so reviewers can verify.)
-      let fullClaude;
-      try {
-        fullClaude = await callClaudeWithFallback(
-          {
-            model: selectedModel,
-            max_tokens: 1536,
-            system: SYSTEM_PROMPT,
-            messages: [{ role: "user", content: fullUserPrompt }],
-          },
-          CLAUDE_API_KEY,
-          {
-            timeout: 30000,
-            maxRetries: 1,
-            allowModelFallback: true,
-            absoluteDeadlineAtMs: fullDeadlineAtMs,
-          },
-        );
-      } catch (error) {
-        // Reservation already consumed — surface to client with remaining
-        // slot count so they can decide whether to retry.
-        const latencyMs = Date.now() - fullStart;
-        const code = error instanceof AiServiceError
-          ? error.code
-          : "FULL_AI_FAILED";
-        const message = error instanceof AiServiceError
-          ? error.message
-          : "完整分析暫時失敗，請再試一次。";
-        logWarn("full_request_failed", {
-          user: summarizeUser(user.id),
-          analysisRunId: run.id,
-          latencyMs,
-          code,
-          message,
-          retriesRemaining,
-        });
-        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-          userId: user.id,
-          model: selectedModel,
-          requestType,
-          inputTokens: 0,
-          outputTokens: 0,
-          latencyMs,
-          status: "failed",
-          errorCode: code,
-          errorMessage: message,
-          requestBody: {
-            ...requestObservability,
-            responseMode: "full",
-            analysisRunId: run.id,
-            quickToFullLagMs,
-          },
-          responseBody: {
-            failureStage: "full_upstream",
-            retriesRemaining,
-          },
-        });
-        return jsonResponse(
-          {
-            error: "FULL_AI_FAILED",
-            code: "FULL_AI_FAILED",
-            message,
-            retriesRemaining,
-          },
-          502,
-        );
-      }
-
-      // Step 7 — parse + guardrail.
-      const fullData = fullClaude.data as {
-        content?: Array<{ text?: string }>;
-        [key: string]: unknown;
-      };
-      const fullText = extractClaudeText(fullData);
-      const fullTokenUsage = extractTokenUsage(fullData);
-      const fullLatencyMs = Date.now() - fullStart;
-
-      const parsed = parseFullPayload(fullText);
-      if (!parsed.ok) {
-        // Parse failure: same accounting as upstream failure (reservation
-        // already burned). Client may retry while slots remain.
-        logWarn("full_response_parse_failed", {
-          user: summarizeUser(user.id),
-          analysisRunId: run.id,
-          model: fullClaude.model,
-          error: parsed.error,
-          textLength: fullText.length,
-          retriesRemaining,
-        });
-        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-          userId: user.id,
-          model: fullClaude.model,
-          requestType,
-          inputTokens: fullTokenUsage.inputTokens,
-          outputTokens: fullTokenUsage.outputTokens,
-          cacheCreationTokens: fullTokenUsage.cacheCreationTokens,
-          cacheReadTokens: fullTokenUsage.cacheReadTokens,
-          latencyMs: fullLatencyMs,
-          status: "failed",
-          errorCode: "FULL_RESPONSE_INVALID",
-          errorMessage: parsed.error,
-          requestBody: {
-            ...requestObservability,
-            responseMode: "full",
-            analysisRunId: run.id,
-            quickToFullLagMs,
-          },
-          responseBody: {
-            failureStage: "full_parse",
-            parseError: parsed.error,
-            retriesRemaining,
-          },
-        });
-        return jsonResponse(
-          {
-            error: "FULL_RESPONSE_INVALID",
-            code: "FULL_RESPONSE_INVALID",
-            message: "這次完整分析格式異常，請再試一次。",
-            retriesRemaining,
-          },
-          502,
-        );
-      }
-
-      const guarded = checkAiOutput(
-        parsed.result.payload as GuardrailAnalysisResult,
-      ) as Record<string, unknown>;
-      const dogfoodRawFullRecommendation = normalizeDogfoodRecommendation(
-        guarded.finalRecommendation,
-      );
-
-      // Codex Phase 2 P1 — apply legacy post-processing parity here so full
-      // mode honors the same entitlement gates + finalRecommendation fallbacks
-      // + coachActionHint sanitization that the legacy branch always ran.
-      // Full mode is always a re-analysis path, so recognizeOnly is false.
-      const postProcessed = postProcessAnalysisResult({
-        result: guarded,
-        recognizeOnly: false,
-        isMyMessageMode,
-        allowedFeatures,
-        requestMessages: messages,
-      });
-      const dogfoodOfficialFullRecommendation = normalizeDogfoodRecommendation(
-        postProcessed.finalRecommendation,
-      );
-      if (dogfoodRawFullRecommendation) {
-        postProcessed.dogfoodComparison = {
-          rawFullRecommendation: dogfoodRawFullRecommendation,
-          officialFullRecommendation: dogfoodOfficialFullRecommendation,
-          entitlementAdjusted: dogfoodRecommendationsDiffer(
-            dogfoodRawFullRecommendation,
-            dogfoodOfficialFullRecommendation,
-          ),
-          tierUsed: effectiveTier,
-          allowedFeatures,
-        };
-      }
-
-      // Step 8 — Core/Full drift detector (warn only). Runs against the
-      // post-processed payload so drift reflects user-visible deviation from
-      // the quick answer, not raw model output we never showed.
-      const drift = detectAnchorDrift(
-        run.quick_result as Record<string, unknown>,
-        postProcessed,
-      );
-      if (drift.driftedFields.length > 0) {
-        logWarn("full_anchor_drift_detected", {
-          user: summarizeUser(user.id),
-          analysisRunId: run.id,
-          driftedFields: drift.driftedFields,
-          replyOverlapRatio: drift.replyOverlapRatio,
-        });
-      }
-
-      logInfo("full_request_succeeded", {
-        user: summarizeUser(user.id),
-        analysisRunId: run.id,
-        model: fullClaude.model,
-        latencyMs: fullLatencyMs,
-        inputTokens: fullTokenUsage.inputTokens,
-        outputTokens: fullTokenUsage.outputTokens,
-        cacheCreationTokens: fullTokenUsage.cacheCreationTokens,
-        cacheReadTokens: fullTokenUsage.cacheReadTokens,
-        retryCount: run.retry_count,
-        retriesRemaining,
-        parseSource: parsed.result.source,
-        driftedFields: drift.driftedFields,
-      });
-
-      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-        userId: user.id,
-        model: fullClaude.model,
-        requestType,
-        inputTokens: fullTokenUsage.inputTokens,
-        outputTokens: fullTokenUsage.outputTokens,
-        cacheCreationTokens: fullTokenUsage.cacheCreationTokens,
-        cacheReadTokens: fullTokenUsage.cacheReadTokens,
-        latencyMs: fullLatencyMs,
-        status: "success",
-        fallbackUsed: fullClaude.fallbackUsed,
-        retryCount: fullClaude.retries,
-        requestBody: {
-          ...requestObservability,
-          responseMode: "full",
-          analysisRunId: run.id,
-          quickToFullLagMs,
-        },
-        responseBody: {
-          parseSource: parsed.result.source,
-          driftedFields: drift.driftedFields,
-          replyOverlapRatio: drift.replyOverlapRatio,
-          retryCount: run.retry_count,
-          retriesRemaining,
-          cacheReadTokens: fullTokenUsage.cacheReadTokens ?? 0,
-          cacheCreationTokens: fullTokenUsage.cacheCreationTokens ?? 0,
-        },
-      });
-
-      return jsonResponse({
-        responseMode: "full",
-        analysisRunId: run.id,
-        quickResult: run.quick_result,
-        result: postProcessed,
-        retriesRemaining,
-        telemetry: {
-          requestType,
-          serverAiLatencyMs: fullLatencyMs,
-          quickToFullLagMs,
-          fallbackUsed: fullClaude.fallbackUsed,
-          retries: fullClaude.retries,
-          parseSource: parsed.result.source,
-          driftedFields: drift.driftedFields,
-          replyOverlapRatio: drift.replyOverlapRatio,
-          totalTokens: (fullTokenUsage.inputTokens ?? 0) +
-            (fullTokenUsage.outputTokens ?? 0),
-        },
-      });
-    }
-
-    const streamSupported = !hasImages && !recognizeOnly && !isMyMessageMode &&
-      !isOptimizeMessageMode;
-    const streamAllowed = isStreamingAllowed({
-      email: user.email,
-      flagOn: STREAM_ANALYZE_ENABLED,
-      whitelist: STREAM_WHITELIST,
-      tier: effectiveTier,
-    });
-    if (responseMode === "stream" && streamSupported && streamAllowed) {
+    // Plain AnalyzeChat reaches exactly one active generator: streaming.
+    // Retired quick/full and plain legacy requests were rejected before
+    // subscription, quota, prompt, DB-run, or model work.
+    if (responseMode === "stream") {
       const streamReplyStyles = streamReplyStylesForTier(effectiveTier).filter(
         (style) => allowedFeatures.includes(style),
       );
@@ -9115,69 +8289,6 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       });
     }
 
-    let streamRetryChargeWaived = false;
-    if (responseMode === "stream") {
-      logInfo("stream_request_fell_back_to_legacy", {
-        user: summarizeUser(user.id),
-        supported: streamSupported,
-        allowed: streamAllowed,
-        expectedTier,
-        effectiveTier,
-        allowedFeatureCount: allowedFeatures.length,
-        hasImages,
-        recognizeOnly,
-        requestType,
-      });
-
-      // Codex P1：isStreamRetryMode 只是 responseMode+analysisRunId，client
-      // 可控。豁免 legacy 扣費前必須驗證這顆 run 真的存在、屬於本人、綁同
-      // 一份對話 hash，且已扣過費（charged_at）；查無此 run ＝偽造或過期
-      // retry，直接 409 拒絕（在呼叫 Claude 之前，不付白工的 AI 成本）。
-      // run 存在但還沒扣費（stream 在扣費前就掛）→ 不豁免，legacy 正常扣，
-      // 符合「扣 1 則 ⇔ AI 真正生成的回覆」。
-      if (isStreamRetryMode && analysisRunId) {
-        const fallbackConversationHash = await hashConversation({
-          messages,
-          userDraft,
-          partnerSummary,
-          sessionContext,
-          conversationSummary,
-          effectiveStyleContext,
-          knownContactName,
-        });
-        const fallbackStreamStore = new AnalysisStreamRunStore(
-          createSupabaseAnalysisStreamRunDriver(
-            supabase as unknown as Parameters<
-              typeof createSupabaseAnalysisStreamRunDriver
-            >[0],
-          ),
-        );
-        try {
-          const fallbackStreamRun = await fallbackStreamStore.getRun({
-            runId: analysisRunId,
-            userId: user.id,
-            conversationHash: fallbackConversationHash,
-          });
-          streamRetryChargeWaived = fallbackStreamRun.charged_at !== null;
-        } catch (error) {
-          logError("stream_retry_fallback_run_invalid", {
-            user: summarizeUser(user.id),
-            analysisRunId,
-            error: getErrorMessage(error),
-          });
-          return jsonResponse(
-            {
-              error: "STREAM_RUN_RETRY_UNAVAILABLE",
-              code: "STREAM_RUN_RETRY_UNAVAILABLE",
-              message: "這次串流分析無法接續，請重新分析。",
-              retryable: false,
-            },
-            409,
-          );
-        }
-      }
-    }
-
     let claudeResult;
     try {
       // OCR-only image requests can fail faster than full image analysis,
@@ -9320,10 +8431,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       }
 
       // 嘗試直接解析
-      let jsonToParse = jsonMatch[0];
+      const jsonToParse = jsonMatch[0];
       try {
         result = JSON.parse(jsonToParse);
-      } catch (firstParseError) {
+      } catch {
         // 嘗試修復 JSON
         logInfo("ai_response_json_repair_attempt", {
           user: summarizeUser(user.id),
@@ -9766,7 +8877,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         filtered: wasFiltered,
         retries: claudeResult.retries,
         fallbackUsed: claudeResult.fallbackUsed,
-        // Phase 2.3 — cache hit telemetry parity with quick / full paths.
+        // Cache-hit telemetry parity with the active streaming path.
         // Helps DC discussion's Path 5 (cache hit rate monitoring).
         cacheReadTokens: tokenUsage.cacheReadTokens ?? 0,
         cacheCreationTokens: tokenUsage.cacheCreationTokens ?? 0,
@@ -9960,13 +9071,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         : "optimize_message_idempotent_replay";
     }
 
-    // Update usage count (測試帳號、純識別模式不扣額度)。
-    // 已驗證且已扣費的 stream retry fallback 也不扣（streamRetryChargeWaived
-    // ＝上面 getRun 驗過 charged_at）：原始 stream 已在 analysis_stream_runs
-    // 扣過費，再走 increment_usage 會變成同一次分析扣兩次。
+    // Update usage count（測試帳號、純識別模式不扣額度）。Streaming
+    // requests always returned through their handler or the fail-closed gate
+    // above, so this settlement path can never become a stream fallback.
     if (
-      quotaUsage.shouldChargeQuota && quotaUsage.chargedMessageCount > 0 &&
-      !streamRetryChargeWaived
+      quotaUsage.shouldChargeQuota && quotaUsage.chargedMessageCount > 0
     ) {
       // Single source of truth for usage accounting (avoid double counting).
       // Batch C#2：帶 tier 上限讓 increment_usage 鎖內複檢，超限 RAISE 映射 429。
@@ -10010,27 +9119,25 @@ Return \`optimizedMessage\` in the structured JSON response.`,
 
     // Add usage info to response。豁免扣費時不得報假扣費——Flutter 拿
     // messagesUsed / remaining 做扣費 toast 與本地額度同步。
-    const legacyReportedCharge = streamRetryChargeWaived
-      ? 0
-      : (optimizeSettledReportedCharge ?? quotaUsage.chargedMessageCount);
+    const reportedCharge =
+      optimizeSettledReportedCharge ?? quotaUsage.chargedMessageCount;
     const reportedShouldCharge = optimizeSettledReportedCharge == null
-      ? quotaUsage.shouldChargeQuota &&
-        !streamRetryChargeWaived
+      ? quotaUsage.shouldChargeQuota
       : optimizeSettledReportedCharge > 0;
     result.usage = {
-      messagesUsed: legacyReportedCharge,
+      messagesUsed: reportedCharge,
       estimatedMessages: quotaUsage.estimatedMessageCount,
       monthlyRemaining: accountIsTest ? 999999 : Math.max(
         0,
         monthlyLimit -
           (optimizeSettledMonthlyUsed ??
-            (sub.monthly_messages_used + legacyReportedCharge)),
+            (sub.monthly_messages_used + reportedCharge)),
       ),
       dailyRemaining: accountIsTest ? 999999 : Math.max(
         0,
         dailyLimit -
           (optimizeSettledDailyUsed ??
-            (sub.daily_messages_used + legacyReportedCharge)),
+            (sub.daily_messages_used + reportedCharge)),
       ),
       model: actualModel,
       fallbackUsed: claudeResult.fallbackUsed,
@@ -10090,7 +9197,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       guardrailFlags: successGuardrails.guardrailFlags,
       totalTokens: successGuardrails.totalTokens,
       shouldChargeQuota: reportedShouldCharge,
-      chargedMessageCount: legacyReportedCharge,
+      chargedMessageCount: reportedCharge,
       estimatedMessageCount: quotaUsage.estimatedMessageCount,
       quotaReason: quotaUsage.quotaReason,
       refineFreeGranted,
