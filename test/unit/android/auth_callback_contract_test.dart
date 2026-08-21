@@ -24,6 +24,21 @@ void main() {
       );
     });
 
+    test('Supabase allowlist 欄位由 scheme+host 推導且對帳 config.toml', () {
+      expect(
+        contract.supabaseAllowlistEntry,
+        contract.uri,
+        reason: '三方契約的 allowlist 條目必須等於 scheme://host，'
+            '不得各自漂移',
+      );
+      expect(
+        supabaseAdditionalRedirectUrlsBlock(),
+        contains('"${contract.supabaseAllowlistEntry}"'),
+        reason: 'supabase/config.toml 的 additional_redirect_urls 必須含'
+            '凍結 callback URI（三方契約的 Supabase 端）',
+      );
+    });
+
     test('App label 是 VibeSync', () {
       expect(androidAttr(applicationElement(manifest), 'label'), 'VibeSync');
     });

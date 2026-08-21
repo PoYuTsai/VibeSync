@@ -16,7 +16,12 @@ const kAndroidPackage = 'com.vibesync.app';
 
 /// AND-03 凍結契約唯一真相源
 class AuthCallbackContract {
-  AuthCallbackContract._(this.scheme, this.host, this.callbackActivity);
+  AuthCallbackContract._(
+    this.scheme,
+    this.host,
+    this.callbackActivity,
+    this.supabaseAllowlistEntry,
+  );
 
   factory AuthCallbackContract.load() {
     final json = jsonDecode(readRepoFile('contracts/auth-callback.json'))
@@ -25,14 +30,29 @@ class AuthCallbackContract {
       json['scheme'] as String,
       json['host'] as String,
       json['androidCallbackActivity'] as String,
+      json['supabaseRedirectAllowlistEntry'] as String,
     );
   }
 
   final String scheme;
   final String host;
   final String callbackActivity;
+  final String supabaseAllowlistEntry;
 
   String get uri => '$scheme://$host';
+}
+
+/// supabase/config.toml 的 additional_redirect_urls 陣列原始內容
+/// （最小 TOML 擷取：只取該賦值的 [ … ] 區塊，夠契約對帳用）
+String supabaseAdditionalRedirectUrlsBlock() {
+  final config = readRepoFile('supabase/config.toml');
+  final match = RegExp(
+    r'additional_redirect_urls\s*=\s*\[(.*?)\]',
+    dotAll: true,
+  ).firstMatch(config);
+  expect(match, isNotNull,
+      reason: 'supabase/config.toml 找不到 additional_redirect_urls');
+  return match!.group(1)!;
 }
 
 // 缺檔直接丟 FileSystemException（訊息含路徑）
