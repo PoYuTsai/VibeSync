@@ -170,8 +170,10 @@ class _GsapTextRevealState extends State<GsapTextReveal>
     if (_decided) return;
     _decided = true;
     if (!widget.animate || motionDisabled(context)) {
-      _controller.value = 1;
+      // value = 1 會同步送出 completed status；先標記完成，避免 status listener
+      // 與這條直接落地路徑各呼叫一次 onEnd。
       _done = true;
+      _controller.value = 1;
       widget.onEnd?.call();
     } else {
       _controller.forward();

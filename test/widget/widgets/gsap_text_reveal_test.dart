@@ -188,23 +188,32 @@ void main() {
   });
 
   group('直接落地的路徑', () {
-    testWidgets('reduce motion：不拆字、直接完整文字', (t) async {
+    testWidgets('reduce motion：不拆字、直接完整文字，onEnd 只回呼一次', (t) async {
+      var ended = 0;
       await t.pumpWidget(_host(
-        const GsapTextReveal(text: '小美'),
+        GsapTextReveal(text: '小美', onEnd: () => ended++),
         disableAnimations: true,
       ));
 
       expect(find.text('小美'), findsOneWidget);
       expect(find.text('小'), findsNothing);
+      expect(ended, 1);
     });
 
-    testWidgets('animate: false（捲動回收後重建）：直接完整文字', (t) async {
+    testWidgets('animate: false（捲動回收後重建）：直接完整文字，onEnd 只回呼一次',
+        (t) async {
+      var ended = 0;
       await t.pumpWidget(_host(
-        const GsapTextReveal(text: '小美', animate: false),
+        GsapTextReveal(
+          text: '小美',
+          animate: false,
+          onEnd: () => ended++,
+        ),
       ));
 
       expect(find.text('小美'), findsOneWidget);
       expect(find.text('小'), findsNothing);
+      expect(ended, 1);
     });
 
     testWidgets('演到一半被改名：直接落在新名字，不會演錯字', (t) async {
