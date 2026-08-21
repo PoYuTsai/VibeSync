@@ -43,12 +43,6 @@ import {
   sanitizeRefineInstructionForPrompt,
 } from "./refine_prompt.ts";
 import {
-  hasUsableOptimizedMessage,
-  OPTIMIZE_MESSAGE_COST,
-  type OptimizeMessageReplayRow,
-} from "./optimize_message_billing.ts";
-import { findClientShapeViolations } from "./client_shape_validator.ts";
-import {
   computeBillingPayloadHash,
   MAX_BILLABLE_CHARS,
   parseBillingProtocolVersion,
@@ -73,6 +67,12 @@ import { loadSubscriptionAccess } from "./subscription_access.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
 import { handleOpenerRequest } from "./opener_handler.ts";
+import {
+  buildRecognitionObservability,
+  enforceOcrRateLimit,
+  enforceRecognitionGates,
+  respondRecognizeParseFailure,
+} from "./recognize_flow.ts";
 import {
   buildOptimizeReplayResponse,
   consumeRefineFreeAllowanceForUser,
@@ -141,12 +141,6 @@ import { isStreamStyle } from "./stream_events.ts";
 import {
   callClaudeStreaming,
 } from "./streaming_fallback.ts";
-import {
-  buildOcrRateLimitedPayload,
-  classifyOcrRateLimitError,
-  OCR_RATE_LIMIT_PER_DAY,
-  OCR_RATE_LIMIT_PER_MINUTE,
-} from "./ocr_rate_limit.ts";
 import {
   normalizeSubscriptionTier,
   shouldFailPaidTierSync,
@@ -295,104 +289,6 @@ function streamResumeSnapshotFromRun(
     retriesRemaining: Math.max(0, MAX_STREAM_RETRIES - run.retry_count),
     wasCharged: run.charged_at !== null,
   };
-}
-
-function buildRecognitionObservability(
-  recognizedConversation:
-    | {
-      classification?: string;
-      importPolicy?: string;
-      confidence?: string;
-      sideConfidence?: string;
-      messageCount?: number;
-      uncertainSideCount?: number;
-      normalizationTelemetry?: {
-        continuityAdjustedCount?: number;
-        groupedAdjustedCount?: number;
-        layoutFirstAdjustedCount?: number;
-        systemRowsRemovedCount?: number;
-        quotedPreviewRemovedCount?: number;
-        quotedPreviewAttachedCount?: number;
-        overlapRemovedCount?: number;
-        mapShareCollapsedCount?: number;
-      };
-    }
-    | undefined,
-) {
-  return {
-    recognizedClassification: recognizedConversation?.classification ?? null,
-    recognizedImportPolicy: recognizedConversation?.importPolicy ?? null,
-    recognizedConfidence: recognizedConversation?.confidence ?? null,
-    recognizedSideConfidence: recognizedConversation?.sideConfidence ?? null,
-    recognizedMessageCount: recognizedConversation?.messageCount ?? null,
-    uncertainSideCount: recognizedConversation?.uncertainSideCount ?? null,
-    continuityAdjustedCount: recognizedConversation?.normalizationTelemetry
-      ?.continuityAdjustedCount ?? 0,
-    groupedAdjustedCount: recognizedConversation?.normalizationTelemetry
-      ?.groupedAdjustedCount ?? 0,
-    layoutFirstAdjustedCount: recognizedConversation?.normalizationTelemetry
-      ?.layoutFirstAdjustedCount ?? 0,
-    systemRowsRemovedCount: recognizedConversation?.normalizationTelemetry
-      ?.systemRowsRemovedCount ?? 0,
-    quotedPreviewRemovedCount: recognizedConversation?.normalizationTelemetry
-      ?.quotedPreviewRemovedCount ?? 0,
-    quotedPreviewAttachedCount: recognizedConversation?.normalizationTelemetry
-      ?.quotedPreviewAttachedCount ?? 0,
-    overlapRemovedCount: recognizedConversation?.normalizationTelemetry
-      ?.overlapRemovedCount ?? 0,
-    mapShareCollapsedCount: recognizedConversation?.normalizationTelemetry
-      ?.mapShareCollapsedCount ?? 0,
-  };
-}
-
-function buildServerGuardrailObservability(input: {
-  requestType: string;
-  imageCount: number;
-  latencyMs: number;
-  timeoutMs?: number | null;
-  fallbackUsed?: boolean;
-  retryCount?: number;
-  totalImageBytes?: number;
-  truncatedMessageCount?: number;
-  conversationSummaryUsed?: boolean;
-  contextMode?: string | null;
-  recognizedClassification?: string | null;
-  recognizedSideConfidence?: string | null;
-  uncertainSideCount?: number | null;
-  continuityAdjustedCount?: number | null;
-  groupedAdjustedCount?: number | null;
-  layoutFirstAdjustedCount?: number | null;
-  systemRowsRemovedCount?: number | null;
-  quotedPreviewAttachedCount?: number | null;
-  overlapRemovedCount?: number | null;
-  inputTokens?: number;
-  outputTokens?: number;
-  safetyFiltered?: boolean;
-}) {
-  return buildServerGuardrails({
-    requestType: input.requestType,
-    imageCount: input.imageCount,
-    latencyMs: input.latencyMs,
-    timeoutMs: input.timeoutMs,
-    fallbackUsed: input.fallbackUsed,
-    retryCount: input.retryCount,
-    totalImageBytes: input.totalImageBytes,
-    truncatedMessageCount: input.truncatedMessageCount,
-    conversationSummaryUsed: input.conversationSummaryUsed,
-    contextMode: input.contextMode,
-    recognizedClassification: input.recognizedClassification,
-    recognizedSideConfidence: input.recognizedSideConfidence,
-    uncertainSideCount: input.uncertainSideCount,
-    continuityAdjustedCount: input.continuityAdjustedCount,
-    groupedAdjustedCount: input.groupedAdjustedCount,
-    layoutFirstAdjustedCount: input.layoutFirstAdjustedCount,
-    systemRowsRemovedCount: input.systemRowsRemovedCount,
-    quotedPreviewAttachedCount: input.quotedPreviewAttachedCount,
-    overlapRemovedCount: input.overlapRemovedCount,
-    inputTokens: input.inputTokens,
-    outputTokens: input.outputTokens,
-    safetyFiltered: input.safetyFiltered,
-  });
 }
 
 // 建構 Vision API 內容格式
@@ -1039,31 +935,14 @@ async function handleAnalyzeChat(
     // 免費 Sonnet vision 入口的成本上界：6/分、60/天。放在圖片驗證後
     // （非法請求 400 不佔名額）、prompt/Claude 流程前；計 attempt 不計
     // success——限的是成本不是產出。與訂閱額度（increment_usage）零交集。
+    // recognizeOnly OCR 成本限流（詳見 recognize_flow.ts）。放在圖片驗證後
+    // （非法請求 400 不佔名額）、prompt/Claude 流程前。
     if (recognizeOnly && !accountIsTest) {
-      const { error: ocrRateError } = await supabase.rpc(
-        "increment_ocr_usage",
-        {
-          p_user_id: user.id,
-          p_minute_limit: OCR_RATE_LIMIT_PER_MINUTE,
-          p_daily_limit: OCR_RATE_LIMIT_PER_DAY,
-        },
-      );
-      if (ocrRateError) {
-        const ocrRateReason = classifyOcrRateLimitError(ocrRateError.message);
-        if (ocrRateReason) {
-          logWarn("ocr_rate_limited", {
-            user: summarizeUser(user.id),
-            reason: ocrRateReason,
-          });
-          return jsonResponse(buildOcrRateLimitedPayload(ocrRateReason), 429);
-        }
-        // fail-open：infra 錯誤（非超限 RAISE）不擋免費核心匯入流程——RPC
-        // 失敗非用戶可誘發，漏計一次成本上界仍近似成立；但必留 telemetry。
-        logError("ocr_rate_limit_check_failed", {
-          user: summarizeUser(user.id),
-          error: ocrRateError.message,
-        });
-      }
+      const ocrLimited = await enforceOcrRateLimit({
+        supabase,
+        userId: user.id,
+      });
+      if (ocrLimited !== null) return ocrLimited;
     }
 
     // Check input for safety (AI 護欄)
@@ -2206,7 +2085,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       const latencyMs = Date.now() - startTime;
 
       if (error instanceof AiServiceError) {
-        const upstreamGuardrails = buildServerGuardrailObservability({
+        const upstreamGuardrails = buildServerGuardrails({
           requestType,
           imageCount: hasImages ? images.length : 0,
           latencyMs,
@@ -2336,41 +2215,21 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       // surfaced immediately instead of uploading the screenshots a second
       // time in the same Edge invocation.
       if (recognizeOnly) {
-        const parseLatencyMs = Date.now() - startTime;
-        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        return await respondRecognizeParseFailure({
+          supabaseUrl: SUPABASE_URL,
+          supabaseServiceKey: SUPABASE_SERVICE_KEY,
           userId: user.id,
-          model: actualModel,
+          actualModel,
           requestType,
-          inputTokens: tokenUsage.inputTokens,
-          outputTokens: tokenUsage.outputTokens,
-          cacheCreationTokens: tokenUsage.cacheCreationTokens,
-          cacheReadTokens: tokenUsage.cacheReadTokens,
-          latencyMs: parseLatencyMs,
-          status: "failed",
-          errorCode: "AI_RESPONSE_INVALID",
-          errorMessage: "OCR response did not match the JSON contract",
+          tokenUsage,
+          latencyMs: Date.now() - startTime,
           fallbackUsed: claudeResult.fallbackUsed,
-          retryCount: claudeResult.retries,
-          requestBody: requestObservability,
-          responseBody: {
-            failureStage: "response_parse",
-            stopReason,
-            contentBlockTypeSummary: contentBlockTypes.join(","),
-            textLength: content.length,
-            retries: claudeResult.retries,
-            fallbackUsed: claudeResult.fallbackUsed,
-          },
+          retries: claudeResult.retries,
+          stopReason,
+          contentBlockTypes,
+          textLength: content.length,
+          requestObservability,
         });
-        return jsonResponse(
-          {
-            error: "AI_RESPONSE_INVALID",
-            code: "AI_RESPONSE_INVALID",
-            message: "這次辨識結果格式異常，請再試一次。本次不會扣額度。",
-            retryable: false,
-            shouldChargeQuota: false,
-          },
-          502,
-        );
       }
 
       // 重試一次 Claude API 呼叫
@@ -2488,114 +2347,29 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     const recognitionObservability = buildRecognitionObservability(
       recognizedConversation,
     );
-    if (
-      hasImages &&
-      recognizedConversation?.importPolicy === "reject"
-    ) {
-      const rejectMessage = recognizedConversation.warning ||
-        recognizedConversation.summary ||
-        "這張圖片不像可支援的聊天截圖，請換一張再試。";
-      const rejectGuardrails = buildServerGuardrailObservability({
-        requestType,
-        imageCount: hasImages ? images.length : 0,
-        latencyMs,
-        timeoutMs,
-        fallbackUsed: claudeResult.fallbackUsed,
-        retryCount: claudeResult.retries,
-        totalImageBytes: Math.round(totalImageBytes),
-        truncatedMessageCount,
-        conversationSummaryUsed: !!conversationSummary,
-        contextMode: compiledContextMode,
-        recognizedClassification:
-          recognitionObservability.recognizedClassification,
-        recognizedSideConfidence:
-          recognitionObservability.recognizedSideConfidence,
-        uncertainSideCount: recognitionObservability.uncertainSideCount,
-        continuityAdjustedCount:
-          recognitionObservability.continuityAdjustedCount,
-        groupedAdjustedCount: recognitionObservability.groupedAdjustedCount,
-        layoutFirstAdjustedCount:
-          recognitionObservability.layoutFirstAdjustedCount,
-        quotedPreviewAttachedCount:
-          recognitionObservability.quotedPreviewAttachedCount,
-        overlapRemovedCount: recognitionObservability.overlapRemovedCount,
-        inputTokens: tokenUsage.inputTokens,
-        outputTokens: tokenUsage.outputTokens,
-      });
-
-      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-        userId: user.id,
-        model: actualModel,
-        requestType,
-        inputTokens: tokenUsage.inputTokens,
-        outputTokens: tokenUsage.outputTokens,
-        cacheCreationTokens: tokenUsage.cacheCreationTokens,
-        cacheReadTokens: tokenUsage.cacheReadTokens,
-        latencyMs,
-        status: "failed",
-        errorCode: "RECOGNITION_UNSUPPORTED",
-        errorMessage: rejectMessage,
-        requestBody: requestObservability,
-        responseBody: {
-          failureStage: "recognition_gate",
-          ...recognitionObservability,
-          ...rejectGuardrails,
+    if (hasImages) {
+      const recognitionGateResponse = await enforceRecognitionGates(
+        recognizedConversation,
+        {
+          supabaseUrl: SUPABASE_URL,
+          supabaseServiceKey: SUPABASE_SERVICE_KEY,
+          userId: user.id,
+          actualModel,
+          requestType,
+          imageCount: images.length,
+          latencyMs,
+          timeoutMs,
+          fallbackUsed: claudeResult.fallbackUsed,
+          retries: claudeResult.retries,
+          totalImageBytes: Math.round(totalImageBytes),
+          truncatedMessageCount,
+          conversationSummaryUsed: !!conversationSummary,
+          contextMode: compiledContextMode,
+          tokenUsage,
+          requestObservability,
         },
-      });
-
-      return jsonResponse({
-        error: rejectMessage,
-        code: "RECOGNITION_UNSUPPORTED",
-        message: rejectMessage,
-        shouldChargeQuota: false,
-      }, 400);
-    }
-    if (
-      hasImages &&
-      (!recognizedConversation || recognizedConversation.messageCount === 0)
-    ) {
-      const recognitionFailedGuardrails = buildServerGuardrailObservability({
-        requestType,
-        imageCount: hasImages ? images.length : 0,
-        latencyMs,
-        timeoutMs,
-        fallbackUsed: claudeResult.fallbackUsed,
-        retryCount: claudeResult.retries,
-        totalImageBytes: Math.round(totalImageBytes),
-        truncatedMessageCount,
-        conversationSummaryUsed: !!conversationSummary,
-        contextMode: compiledContextMode,
-        inputTokens: tokenUsage.inputTokens,
-        outputTokens: tokenUsage.outputTokens,
-      });
-
-      // Log failed recognition
-      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-        userId: user.id,
-        model: actualModel,
-        requestType,
-        inputTokens: tokenUsage.inputTokens,
-        outputTokens: tokenUsage.outputTokens,
-        cacheCreationTokens: tokenUsage.cacheCreationTokens,
-        cacheReadTokens: tokenUsage.cacheReadTokens,
-        latencyMs,
-        status: "failed",
-        errorCode: "RECOGNITION_FAILED",
-        errorMessage: "No recognizedConversation in response",
-        requestBody: requestObservability,
-        responseBody: {
-          failureStage: "recognition_missing_output",
-          ...recognitionFailedGuardrails,
-        },
-      });
-
-      return jsonResponse({
-        error: "無法識別截圖中的對話內容",
-        code: "RECOGNITION_FAILED",
-        message:
-          "請確認截圖清晰、包含聊天泡泡，並盡量帶到對話頂部與最新訊息；單張截圖也可以分析，但畫面太裁切時容易失敗",
-        shouldChargeQuota: false,
-      }, 400);
+      );
+      if (recognitionGateResponse !== null) return recognitionGateResponse;
     }
 
     // Check AI output for safety (AI 護欄)
@@ -2636,7 +2410,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     const wasFiltered = warnings.some((warning) =>
       warning.type === "safety_filter"
     );
-    const successGuardrails = buildServerGuardrailObservability({
+    const successGuardrails = buildServerGuardrails({
       requestType,
       imageCount: hasImages ? images.length : 0,
       latencyMs,

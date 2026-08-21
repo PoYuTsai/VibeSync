@@ -25,6 +25,7 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
   const files = [
     "./index.ts",
     "./optimize_refine_flow.ts",
+    "./recognize_flow.ts",
     "./new_topic_handler.ts",
     "./opener_handler.ts",
     "./json_text.ts",
@@ -157,14 +158,16 @@ Deno.test({
   fn: async () => {
     const source = await readAnalyzeChatScanCorpus();
     const blocks = source.match(/await logAiCall\([\s\S]*?\n\s*\}\);/g) ?? [];
+    // recognize gate 的 logAiCall 抽到 recognize_flow.ts 後以
+    // args./context. 前綴讀 tokenUsage；語意不變。
     const meteredBlocks = blocks.filter((block) =>
-      /inputTokens: tokenUsage\.inputTokens/.test(block)
+      /inputTokens: (?:(?:args|context)\.)?tokenUsage\.inputTokens/.test(block)
     );
 
     assertEquals(meteredBlocks.length, 4);
     for (const block of meteredBlocks) {
       const usageName = block.match(
-        /inputTokens: (tokenUsage)\.inputTokens/,
+        /inputTokens: ((?:(?:args|context)\.)?tokenUsage)\.inputTokens/,
       )?.[1];
       assert(usageName !== undefined);
       assert(
@@ -2300,11 +2303,19 @@ Deno.test({
       "OCR 的 Edge provider attempt 必須只有一次",
     );
 
-    const parseFailureAt = source.indexOf(
+    // OCR parse-fail 單次呼叫 fail-closed 已抽到 recognize_flow.ts；
+    // index.ts 只留 call site，順序仍鎖在 index 管線內。
+    const indexOnly = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const parseFailureAt = indexOnly.indexOf(
       'logWarn("ai_response_parse_failed_will_retry"',
     );
-    const ocrExitAt = source.indexOf("if (recognizeOnly) {", parseFailureAt);
-    const legacyRetryAt = source.indexOf(
+    const ocrExitAt = indexOnly.indexOf(
+      "return await respondRecognizeParseFailure({",
+      parseFailureAt,
+    );
+    const legacyRetryAt = indexOnly.indexOf(
       'logInfo("claude_retry_after_parse_failure"',
       parseFailureAt,
     );
@@ -2313,7 +2324,13 @@ Deno.test({
       legacyRetryAt > ocrExitAt,
       "OCR parse failure 必須在舊版第二次圖片呼叫之前直接結束",
     );
-    const ocrExitBody = source.slice(ocrExitAt, legacyRetryAt);
+    const flowSource = await Deno.readTextFile(
+      new URL("./recognize_flow.ts", import.meta.url),
+    );
+    const ocrExitBody = flowSource.slice(
+      flowSource.indexOf("respondRecognizeParseFailure"),
+      flowSource.indexOf("RecognitionGateContext"),
+    );
     assert(ocrExitBody.includes('errorCode: "AI_RESPONSE_INVALID"'));
     assert(ocrExitBody.includes('code: "AI_RESPONSE_INVALID"'));
     assert(ocrExitBody.includes("retryable: false"));
@@ -2484,18 +2501,24 @@ Deno.test({
     );
 
     // 順序：非法請求（無圖 400）不佔名額 → RPC 在 requires images 之後；
-    // 成本保護 → RPC 在 AI 護欄 checkInput 之前（更在 Claude 呼叫前）。
-    const rpcAt = source.search(rpcCallPattern);
-    const requiresImagesAt = source.indexOf("recognizeOnly requires images");
-    const checkInputAt = source.indexOf("checkInput(messages)");
+    // 成本保護 → gate 在 AI 護欄 checkInput 之前（更在 Claude 呼叫前）。
+    // RPC 本體在 recognize_flow.ts；index 端以 call site 鎖順序。
+    const indexOnly = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const gateAt = indexOnly.indexOf("await enforceOcrRateLimit({");
+    const requiresImagesAt = indexOnly.indexOf(
+      "recognizeOnly requires images",
+    );
+    const checkInputAt = indexOnly.indexOf("checkInput(messages)");
     assert(requiresImagesAt >= 0 && checkInputAt >= 0);
     assert(
-      rpcAt > requiresImagesAt,
-      "限流 RPC 必須在圖片驗證（400 拒絕）之後，非法請求不得佔名額",
+      gateAt > requiresImagesAt,
+      "限流 gate 必須在圖片驗證（400 拒絕）之後，非法請求不得佔名額",
     );
     assert(
-      rpcAt < checkInputAt,
-      "限流 RPC 必須在 prompt/Claude 流程之前（preflight）",
+      gateAt < checkInputAt,
+      "限流 gate 必須在 prompt/Claude 流程之前（preflight）",
     );
 
     // I4/I5：429 走 buildOcrRateLimitedPayload（保證無 monthlyLimit/dailyLimit 鍵）
