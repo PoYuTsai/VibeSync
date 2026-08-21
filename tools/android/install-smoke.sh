@@ -10,7 +10,11 @@
 #      本 package 的 app task 恰一（AND-03：taskAffinity="" 偏離 pinned
 #      flutter_web_auth_2 README 的可執行證據——NEW_TASK 轉送靠 task root
 #      component 比對回到既有 task，不疊第二個實例／task）
-#   3. 深連結唯一解析到 AuthCallbackDispatcherActivity，無 chooser
+#   3. 深連結唯一解析到 AuthCallbackDispatcherActivity（resolve-activity
+#      單獨驗證，無 chooser）。dispatcher 是 noHistory＋立即 finish 的
+#      transient activity，am start -W 常把最終 drawn activity 報成
+#      MainActivity——不拿 -W 輸出驗 owner，啟動後靠 route log／PID／
+#      dumpsys 驗結果
 #   4. force-stop 後冷啟送 callback → MainActivity onCreate（route=cold）
 #   5. 暖啟再送一發 → 同 PID 走 onNewIntent（route=warm），程序不重複
 # P1-1：本腳本在 set -o pipefail 下不得把 adb 輸出串進會早退的 grep -q
@@ -95,19 +99,35 @@ assert_single_main_and_task() {
   exit 1
 }
 
+# 深連結 owner 驗證走 resolver（Round1 P0）：對同一支 VIEW intent 單獨
+# resolve，唯一解析結果必須是 dispatcher 且無 chooser，否則 fail closed。
+# 不要求 am start -W 把 transient dispatcher 報成最終 drawn activity。
+assert_unique_dispatcher_owner() {
+  local out
+  out=$(adb shell "cmd package resolve-activity --brief -a android.intent.action.VIEW -d '$callback_uri'")
+  out=$(tr -d '\r' <<<"$out")
+  echo "resolver: $out"
+  assert_no_chooser "$out" "resolver 解析"
+  case "$out" in
+    *"$package/.$dispatcher_class"*|*"$package/$package.$dispatcher_class"*) ;;
+    *)
+      echo "::error::深連結未唯一解析到 $dispatcher_class（唯一擁有者契約被打破）：$out"
+      exit 1 ;;
+  esac
+}
+
 send_callback() {
   local out
   out=$(adb shell "am start -W -a android.intent.action.VIEW -d '$callback_uri'")
   echo "$out"
   grep -q "Status: ok" <<<"$out" \
     || { echo "::error::深連結 VIEW intent 啟動失敗"; exit 1; }
-  grep -qF "$dispatcher_class" <<<"$out" \
-    || { echo "::error::深連結未解析到 $dispatcher_class（唯一擁有者契約被打破）"; exit 1; }
   assert_no_chooser "$out" "深連結（$1）"
 }
 
 adb wait-for-device
 adb install -r "$apk"
+assert_unique_dispatcher_owner
 adb logcat -c || true
 
 # --- 1. launcher 冷啟動 ---
@@ -171,4 +191,4 @@ if [ -n "$cnf_lines" ]; then
   exit 1
 fi
 
-echo "install smoke OK：安裝、launcher 冷啟動、既有 Main callback 重用（單一實例／單一 task）、冷啟（dispatcher→onCreate）、暖啟（onNewIntent 同 PID）、無 chooser、無 ClassNotFound"
+echo "install smoke OK：安裝、resolver 唯一 dispatcher owner、launcher 冷啟動、既有 Main callback 重用（單一實例／單一 task）、冷啟（dispatcher→onCreate）、暖啟（onNewIntent 同 PID）、無 chooser、無 ClassNotFound"

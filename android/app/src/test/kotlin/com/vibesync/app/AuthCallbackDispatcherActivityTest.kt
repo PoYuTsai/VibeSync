@@ -47,7 +47,7 @@ class AuthCallbackDispatcherActivityTest {
     }
 
     @Test
-    fun `live OAuth callback 原字串交回 plugin、移除 map、不轉送 MainActivity`() {
+    fun `live OAuth callback 原字串交回 plugin 恰一次、移除 map、no-data MAIN 前景 intent`() {
         val fake = FakeResult()
         FlutterWebAuth2Plugin.callbacks[scheme] = fake
 
@@ -62,8 +62,20 @@ class AuthCallbackDispatcherActivityTest {
             "callback 應已從 map 移除",
             !FlutterWebAuth2Plugin.callbacks.containsKey(scheme),
         )
+
+        val foreground = shadowOf(activity).nextStartedActivity
+            ?: return fail("OAuth 完成後應把既有 MainActivity task 帶回前景")
+        assertEquals(MainActivity::class.java.name, foreground.component?.className)
         assertNull(
-            "OAuth 分支不得走 Main fallback",
+            "前景 intent 不得帶 callback URI（避免 app_links/supabase 二次處理）",
+            foreground.data,
+        )
+        assertEquals(Intent.ACTION_MAIN, foreground.action)
+        assertTrue(foreground.hasCategory(Intent.CATEGORY_LAUNCHER))
+        assertTrue(foreground.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0)
+        assertTrue(foreground.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP != 0)
+        assertNull(
+            "OAuth 分支只得送一個前景 intent（不得再夾帶 VIEW 轉送）",
             shadowOf(activity).nextStartedActivity,
         )
         assertTrue(activity.isFinishing)

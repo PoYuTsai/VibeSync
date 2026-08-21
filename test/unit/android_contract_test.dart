@@ -235,6 +235,10 @@ void main() {
       expect(kotlin, contains('MainActivity::class.java'));
       expect(kotlin, contains('Intent.ACTION_VIEW'));
       expect(kotlin, contains('FLAG_ACTIVITY_SINGLE_TOP'));
+      // Round1 P0：OAuth 完成後用 no-data MAIN/LAUNCHER intent 帶回前景，
+      // 不得帶 callback URI（避免 app_links/supabase 二次處理）
+      expect(kotlin, contains('Intent.ACTION_MAIN'));
+      expect(kotlin, contains('Intent.CATEGORY_LAUNCHER'));
     });
 
     test('原生路由 log 決定性且非機密（只記 route 與 host）', () {
@@ -480,9 +484,15 @@ void main() {
       expect(
         runs.any((r) =>
             r.contains('merged-release-AndroidManifest.xml') &&
-            r.contains('com.poyutsai.vibesync')),
+            r.contains('com.poyutsai.vibesync') &&
+            r.contains('login-callback') &&
+            r.contains('android.intent.action.VIEW') &&
+            r.contains('android.intent.category.BROWSABLE') &&
+            r.contains("exported") &&
+            r.contains('android.intent.action.MAIN')),
         isTrue,
-        reason: 'P2：merged manifest 要有語意斷言，不只留檔',
+        reason: 'Round1 P0：merged manifest 語意斷言要涵蓋 exported、'
+            'exact scheme/host、VIEW、DEFAULT＋BROWSABLE 與唯一 MAIN/LAUNCHER',
       );
 
       final uploadNames = steps
@@ -549,6 +559,10 @@ void main() {
         contains('ResolverActivity'),
         reason: '要擋 chooser（深連結唯一擁有者被打破時）',
       );
+      // Round1 P0：owner 驗證走 resolver，不得要求 am start -W 把
+      // transient dispatcher 報成最終 drawn activity
+      expect(smoke, contains('resolve-activity'));
+      expect(smoke, contains('assert_unique_dispatcher_owner'));
       expect(
         smoke,
         contains('PID'),
@@ -580,6 +594,11 @@ void main() {
       expect(negative, contains('ClassNotFoundException'));
       expect(negative, contains('fail closed'));
       expect(negative, contains('fake'));
+      // Round1 P0：正向情境（-W 報 MainActivity 仍須通過）＋
+      // wrong-owner／chooser 負向情境
+      expect(negative, contains('Activity: com.vibesync.app/.MainActivity'));
+      expect(negative, contains('ResolverActivity'));
+      expect(negative, contains('wrong-owner'));
     });
 
     test('P1-4：emulator runner 釘 v2.38.0 immutable SHA，矩陣含 API 24＋36', () {
@@ -696,6 +715,16 @@ void main() {
         () {
       final gemfile = _read('android/Gemfile');
       expect(gemfile, contains('gem "fastlane", "2.238.0"'));
+
+      // Round1 P0：真 Bundler lock 必須提交且釘住 fastlane 與 CI 平台
+      final lock = _read('android/Gemfile.lock');
+      expect(lock, contains('fastlane (2.238.0)'));
+      expect(lock, contains('BUNDLED WITH'));
+      expect(
+        lock,
+        contains('x86_64-linux'),
+        reason: 'release-android 跑 ubuntu-latest，lock 需含 x86_64-linux 平台',
+      );
 
       final runs = _steps(release, 'release-android').map(_run).toList();
       expect(
