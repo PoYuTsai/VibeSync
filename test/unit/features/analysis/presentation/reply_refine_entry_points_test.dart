@@ -56,7 +56,7 @@ void main() {
 
     final fingerprint = method.indexOf('fingerprintFor(');
     final runnerCall = method.indexOf('_optimizeRequestRunner.run<AnalysisResult>(');
-    final send = method.indexOf('analyzeConversation(');
+    final send = method.indexOf('AnalysisAuxiliaryClient().refineReply(');
     expect(fingerprint, greaterThanOrEqualTo(0));
     expect(runnerCall, greaterThan(fingerprint));
     expect(send, greaterThan(runnerCall));

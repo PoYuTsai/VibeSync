@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
+import 'package:vibesync/features/analysis/data/services/analyze_stream_client.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
 Message _msg(String content) {
@@ -24,8 +25,8 @@ Message _msg(String content) {
 //   2. 映射成 wait 動作＋優先顯示 server 文案
 //   3. 不自動重試（重試只會繼續 429，養出 retry storm）
 
-AnalysisService _service(MockClient client) {
-  return AnalysisService(
+AnalyzeStreamClient _service(MockClient client) {
+  return AnalyzeStreamClient(
     clientFactory: () => client,
     accessTokenProvider: () => 'fake-token',
     expectedTierProvider: () => null,
@@ -60,7 +61,9 @@ void main() {
 
       AnalysisException? caught;
       try {
-        await _service(mockClient).analyzeConversation([_msg('她已讀不回')]);
+        await _service(mockClient)
+            .stream(AnalyzeStreamRequest(messages: [_msg('她已讀不回')]))
+            .toList();
         fail('expected AnalysisException');
       } on AnalysisException catch (error) {
         caught = error;
@@ -85,7 +88,9 @@ void main() {
 
       Object? caught;
       try {
-        await _service(mockClient).analyzeConversation([_msg('她已讀不回')]);
+        await _service(mockClient)
+            .stream(AnalyzeStreamRequest(messages: [_msg('她已讀不回')]))
+            .toList();
         fail('expected AnalysisException');
       } catch (error) {
         caught = error;
@@ -98,7 +103,7 @@ void main() {
 
     test('MODEL_RATE_LIMITED is not auto-retriable', () {
       expect(
-        AnalysisService.isAutoRetriableAnalysisError(
+        AnalysisAuxiliaryClient.isAutoRetriableAnalysisError(
           code: 'MODEL_RATE_LIMITED',
           hasImages: false,
           recognizeOnly: false,

@@ -3752,12 +3752,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           metrics: metricsToProcess,
         );
       } else {
-        final analysisService = AnalysisService();
-
         // 使用 Future.any 來實現強制 timeout
         result = await Future.any([
-          analysisService.analyzeConversation(
-            const <Message>[],
+          // 純識別模式：只識別截圖，不扣額度
+          AnalysisAuxiliaryClient().recognizeScreenshots(
             images: imagesToProcess,
             sessionContext: _screenshotSessionContextFor(conversation),
             knownContactName:
@@ -3768,7 +3766,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             ),
             onProgress: _handleRecognizeProgress,
             onTelemetry: _handleRecognizeTelemetry,
-            recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
           ),
           // Screen fence also includes local payload preparation, so it must
           // stay outside AnalysisService's 130-second HTTP fence.
@@ -4356,9 +4353,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           return true;
         },
         send: (pending) async {
-          final analysisService = AnalysisService();
-          final result = await analysisService.analyzeConversation(
-            analysisContext.requestMessages,
+          final result = await AnalysisAuxiliaryClient().optimizeDraft(
+            messages: analysisContext.requestMessages,
             sessionContext: conversation.sessionContext,
             conversationSummary: analysisContext.conversationSummary,
             partnerSummary: partnerSummary,
@@ -4555,8 +4551,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             );
           },
           send: (pending) async {
-            final result = await AnalysisService().analyzeConversation(
-              analysisContext.requestMessages,
+            final result = await AnalysisAuxiliaryClient().refineReply(
+              messages: analysisContext.requestMessages,
               sessionContext: conversation.sessionContext,
               conversationSummary: analysisContext.conversationSummary,
               partnerSummary: partnerSummary,

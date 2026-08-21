@@ -54,7 +54,7 @@ void main() {
 
     final runnerCall =
         method.indexOf('_optimizeRequestRunner.run<AnalysisResult>(');
-    final apiCall = method.indexOf('analysisService.analyzeConversation(');
+    final apiCall = method.indexOf('AnalysisAuxiliaryClient().optimizeDraft(');
     final requestIdWire = method.indexOf('requestId: pending.requestId,');
     final presented =
         method.indexOf('_clearOptimizePendingAfterVisibleFrame(pending)');

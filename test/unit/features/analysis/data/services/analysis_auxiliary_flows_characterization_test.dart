@@ -44,8 +44,8 @@ const Map<String, dynamic> _optimizedSuccessBody = {
   },
 };
 
-AnalysisService _service(List<Map<String, dynamic>> capturedBodies) {
-  return AnalysisService(
+AnalysisAuxiliaryClient _service(List<Map<String, dynamic>> capturedBodies) {
+  return AnalysisAuxiliaryClient(
     clientFactory: () => MockClient((request) async {
       capturedBodies.add(jsonDecode(request.body) as Map<String, dynamic>);
       return http.Response(
@@ -66,8 +66,8 @@ void main() {
   group('回覆微調 refineAnchorText 守門（多輪漂移錨）', () {
     test('指令非空且錨句 != 草稿時，錨句才進 payload', () async {
       final bodies = <Map<String, dynamic>>[];
-      await _service(bodies).analyzeConversation(
-        [_msg('最近有空嗎？')],
+      await _service(bodies).refineReply(
+        messages: [_msg('最近有空嗎？')],
         userDraft: '第 3 版微調稿',
         refineInstruction: '短一點',
         refineAnchorText: '原始那句話',
@@ -79,8 +79,8 @@ void main() {
 
     test('錨句與草稿相同時省略（server 端也會忽略，省 payload）', () async {
       final bodies = <Map<String, dynamic>>[];
-      await _service(bodies).analyzeConversation(
-        [_msg('最近有空嗎？')],
+      await _service(bodies).refineReply(
+        messages: [_msg('最近有空嗎？')],
         userDraft: '同一句話',
         refineInstruction: '短一點',
         refineAnchorText: '  同一句話  ',
@@ -91,10 +91,11 @@ void main() {
 
     test('沒有微調指令時錨句不得出現（純潤飾 payload 不分岔）', () async {
       final bodies = <Map<String, dynamic>>[];
-      await _service(bodies).analyzeConversation(
-        [_msg('最近有空嗎？')],
+      // typed 入口下「沒有指令」只能走 optimizeDraft，錨句在介面層就進不來；
+      // wire 上仍須確認兩鍵都缺席。
+      await _service(bodies).optimizeDraft(
+        messages: [_msg('最近有空嗎？')],
         userDraft: '要不要喝咖啡',
-        refineAnchorText: '原始那句話',
         requestId: requestId,
       );
       expect(bodies.single.containsKey('refineAnchorText'), isFalse);
@@ -105,7 +106,7 @@ void main() {
   group('OCR recognizeOnly wire 形狀', () {
     test('圖片依序編 1..n、mediaType 固定 jpeg、recognizeOnly 旗標在場', () async {
       final bodies = <Map<String, dynamic>>[];
-      final service = AnalysisService(
+      final service = AnalysisAuxiliaryClient(
         clientFactory: () => MockClient((request) async {
           bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
           return http.Response(
@@ -136,10 +137,8 @@ void main() {
 
       final imageA = Uint8List.fromList([1, 2, 3]);
       final imageB = Uint8List.fromList([4, 5, 6]);
-      final result = await service.analyzeConversation(
-        const <Message>[],
+      final result = await service.recognizeScreenshots(
         images: [imageA, imageB],
-        recognizeOnly: true,
       );
 
       final body = bodies.single;

@@ -44,7 +44,7 @@ const Map<String, dynamic> _fullSuccessBody = {
 };
 
 void main() {
-  group('AnalysisService.optimizeMessage billing contract', () {
+  group('AnalysisAuxiliaryClient optimize billing contract', () {
     const requestId = '123e4567-e89b-42d3-a456-426614174000';
 
     test('wires one logical request id and reuses it across HTTP retry',
@@ -86,15 +86,15 @@ void main() {
         );
       }
 
-      final service = AnalysisService(
+      final service = AnalysisAuxiliaryClient(
         clientFactory: () => MockClient(handler),
         accessTokenProvider: () => 'fake-token',
         expectedTierProvider: () => 'essential',
         revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:optimize',
       );
 
-      final result = await service.analyzeConversation(
-        [_msg('最近有空嗎？')],
+      final result = await service.optimizeDraft(
+        messages: [_msg('最近有空嗎？')],
         userDraft: '要不要喝咖啡',
         requestId: requestId,
       );
@@ -129,27 +129,27 @@ void main() {
         );
       }
 
-      final service = AnalysisService(
+      final service = AnalysisAuxiliaryClient(
         clientFactory: () => MockClient(handler),
         accessTokenProvider: () => 'fake-token',
         expectedTierProvider: () => 'essential',
         revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:optimize',
       );
 
-      await service.analyzeConversation(
-        [_msg('最近有空嗎？')],
+      await service.refineReply(
+        messages: [_msg('最近有空嗎？')],
         userDraft: '要不要喝咖啡',
         refineInstruction: '  短一點  ',
         requestId: requestId,
       );
-      await service.analyzeConversation(
-        [_msg('最近有空嗎？')],
+      await service.refineReply(
+        messages: [_msg('最近有空嗎？')],
         userDraft: '要不要喝咖啡',
         refineInstruction: '   ',
         requestId: requestId,
       );
-      await service.analyzeConversation(
-        [_msg('最近有空嗎？')],
+      await service.optimizeDraft(
+        messages: [_msg('最近有空嗎？')],
         userDraft: '要不要喝咖啡',
         requestId: requestId,
       );
@@ -163,7 +163,8 @@ void main() {
     });
 
     test('錯誤文案依入口切換：微調不得說成草稿潤飾', () async {
-      AnalysisService serviceFor(int status, String code) => AnalysisService(
+      AnalysisAuxiliaryClient serviceFor(int status, String code) =>
+          AnalysisAuxiliaryClient(
             clientFactory: () => MockClient((request) async {
               return http.Response(
                 jsonEncode({'error': code, 'code': code}),
@@ -182,12 +183,21 @@ void main() {
         String? refineInstruction,
       }) async {
         try {
-          await serviceFor(status, code).analyzeConversation(
-            [_msg('最近有空嗎？')],
-            userDraft: '要不要喝咖啡',
-            refineInstruction: refineInstruction,
-            requestId: requestId,
-          );
+          final client = serviceFor(status, code);
+          if (refineInstruction != null) {
+            await client.refineReply(
+              messages: [_msg('最近有空嗎？')],
+              userDraft: '要不要喝咖啡',
+              refineInstruction: refineInstruction,
+              requestId: requestId,
+            );
+          } else {
+            await client.optimizeDraft(
+              messages: [_msg('最近有空嗎？')],
+              userDraft: '要不要喝咖啡',
+              requestId: requestId,
+            );
+          }
         } on AnalysisException catch (error) {
           return error.message;
         }
@@ -246,7 +256,7 @@ void main() {
     });
 
     test('安全攔下：專屬文案引導改寫、依入口切換、保住不扣費，不得說「請稍後再試」', () async {
-      AnalysisService service() => AnalysisService(
+      AnalysisAuxiliaryClient service() => AnalysisAuxiliaryClient(
             clientFactory: () => MockClient((request) async {
               return http.Response(
                 jsonEncode({
@@ -266,12 +276,20 @@ void main() {
 
       Future<String> messageFor({String? refineInstruction}) async {
         try {
-          await service().analyzeConversation(
-            [_msg('最近有空嗎？')],
-            userDraft: '你不答應我就不走',
-            refineInstruction: refineInstruction,
-            requestId: requestId,
-          );
+          if (refineInstruction != null) {
+            await service().refineReply(
+              messages: [_msg('最近有空嗎？')],
+              userDraft: '你不答應我就不走',
+              refineInstruction: refineInstruction,
+              requestId: requestId,
+            );
+          } else {
+            await service().optimizeDraft(
+              messages: [_msg('最近有空嗎？')],
+              userDraft: '你不答應我就不走',
+              requestId: requestId,
+            );
+          }
         } on AnalysisException catch (error) {
           expect(error.code, 'OPTIMIZE_MESSAGE_SAFETY_BLOCKED');
           return error.message;
@@ -291,7 +309,7 @@ void main() {
     });
 
     test('亂碼草稿：專屬文案引導換草稿、保住不扣費，不得說「請稍後再試」', () async {
-      final service = AnalysisService(
+      final service = AnalysisAuxiliaryClient(
         clientFactory: () => MockClient((request) async {
           return http.Response(
             jsonEncode({
@@ -310,8 +328,8 @@ void main() {
       );
 
       await expectLater(
-        () => service.analyzeConversation(
-          [_msg('最近有空嗎？')],
+        () => service.optimizeDraft(
+          messages: [_msg('最近有空嗎？')],
           userDraft: '烏龜殼獸',
           requestId: requestId,
         ),
@@ -336,7 +354,7 @@ void main() {
     });
 
     test('maps fixed-cost monthly 429 with quotaNeeded one', () async {
-      final service = AnalysisService(
+      final service = AnalysisAuxiliaryClient(
         clientFactory: () => MockClient((request) async {
           return http.Response(
             jsonEncode({
@@ -360,8 +378,8 @@ void main() {
       );
 
       await expectLater(
-        () => service.analyzeConversation(
-          [_msg('最近有空嗎？')],
+        () => service.optimizeDraft(
+          messages: [_msg('最近有空嗎？')],
           userDraft: '要不要喝咖啡',
           requestId: requestId,
         ),
@@ -376,7 +394,7 @@ void main() {
     test('surfaces authoritative invalid-result failure without usage',
         () async {
       var calls = 0;
-      final service = AnalysisService(
+      final service = AnalysisAuxiliaryClient(
         clientFactory: () => MockClient((request) async {
           calls += 1;
           return http.Response(
@@ -396,8 +414,8 @@ void main() {
       );
 
       await expectLater(
-        () => service.analyzeConversation(
-          [_msg('最近有空嗎？')],
+        () => service.optimizeDraft(
+          messages: [_msg('最近有空嗎？')],
           userDraft: '要不要喝咖啡',
           requestId: requestId,
         ),
@@ -421,7 +439,7 @@ void main() {
     test('surfaces settlement failure as no-charge and does not retry',
         () async {
       var calls = 0;
-      final service = AnalysisService(
+      final service = AnalysisAuxiliaryClient(
         clientFactory: () => MockClient((request) async {
           calls += 1;
           return http.Response(
@@ -440,8 +458,8 @@ void main() {
       );
 
       await expectLater(
-        () => service.analyzeConversation(
-          [_msg('最近有空嗎？')],
+        () => service.optimizeDraft(
+          messages: [_msg('最近有空嗎？')],
           userDraft: '要不要喝咖啡',
           requestId: requestId,
         ),

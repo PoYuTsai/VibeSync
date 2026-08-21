@@ -52,7 +52,8 @@ void main() {
       refinedText: '調過的',
     );
     final key = box.keys.firstWhere(
-      (key) => key.toString().startsWith(HiveReplyRefineDraftStore.storageKeyPrefix),
+      (key) =>
+          key.toString().startsWith(HiveReplyRefineDraftStore.storageKeyPrefix),
     );
 
     now = now.add(const Duration(hours: 24));
