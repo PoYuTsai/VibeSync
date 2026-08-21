@@ -11,10 +11,14 @@
 //    intentional, not "broken".
 //  - Right-side orb is pure Flutter (RadialGradient + BoxShadow). NO image
 //    asset, NO DALL-E.
+//  - 進頁時數字從 0 跑到 heat（GSAP `power2.out` + `snap: 1`）。這是純呈現，
+//    跑的是同一個 heat，沒有第二個數字來源。null heat 沒有東西可以跑，直接
+//    顯示 "--"。
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/motion/count_up_text.dart';
 
 /// Deterministic mapping from heat (0-100, nullable) to display strings.
 /// Locked spec — see partner_heat_hero_card_test.dart for the contract.
@@ -42,9 +46,32 @@ class PartnerHeatMessaging {
   static String numberFor(int? heat) => heat?.toString() ?? '--';
 }
 
+/// 56pt 的主數字。拆成常數是為了讓「跑動中」與「靜態 --」共用同一份字體
+/// 規格——兩邊分別寫一次遲早會走鐘。
+const _heatNumberStyle = TextStyle(
+  fontSize: 56,
+  fontWeight: FontWeight.w700,
+  color: AppColors.onBackgroundPrimary,
+  height: 1.0,
+  letterSpacing: -1.5,
+);
+
 class PartnerHeatHeroCard extends StatelessWidget {
   final int? heat;
-  const PartnerHeatHeroCard({super.key, required this.heat});
+
+  /// false＝直接顯示終值，不跑數字。詳情頁 body 是 lazy ListView，本卡捲出
+  /// cacheExtent 會被回收重建；由畫面持有「已播過」旗標避免重播。
+  final bool animate;
+
+  /// 數字跑完時呼叫一次。
+  final VoidCallback? onCountUpEnd;
+
+  const PartnerHeatHeroCard({
+    super.key,
+    required this.heat,
+    this.animate = true,
+    this.onCountUpEnd,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -82,16 +109,15 @@ class PartnerHeatHeroCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  number,
-                  style: const TextStyle(
-                    fontSize: 56,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.onBackgroundPrimary,
-                    height: 1.0,
-                    letterSpacing: -1.5,
+                if (heat == null)
+                  Text(number, style: _heatNumberStyle)
+                else
+                  CountUpText(
+                    value: heat!,
+                    style: _heatNumberStyle,
+                    animate: animate,
+                    onEnd: onCountUpEnd,
                   ),
-                ),
                 const SizedBox(height: 8),
                 Text(
                   label,
