@@ -211,58 +211,20 @@ jobs:
           cp "$manifest" merged-release-AndroidManifest.xml
           echo "merged manifest 來源：$manifest"
 
+      # Round1 P2：先用 fixture 證明守門本身 fail closed（alias 擁有
+      # scheme、alias 搶 launcher、data 帶 port/path* 限制都要擋），
+      # 再拿守門驗真 merged manifest——守門壞掉時這步先紅，不會假綠
+      - name: Manifest gate negative regression
+        run: ./tools/android/manifest-gate-negative-check.sh
+
       # 真合併後 manifest 的語意斷言（不只留檔）：凍結 scheme 唯一擁有者
-      # 是 dispatcher（exported=true、exact scheme/host、VIEW、DEFAULT＋
+      # 是 dispatcher activity（含 activity-alias 掃描、exported=true、
+      # exact scheme/host 且無額外 URI 限制屬性、VIEW、DEFAULT＋
       # BROWSABLE）、plugin CallbackActivity 沒被 manifest merge 帶回來、
-      # MAIN/LAUNCHER 唯一且是 MainActivity
+      # MAIN/LAUNCHER 唯一且是 MainActivity（斷言邏輯版本化在
+      # tools/android/assert-merged-manifest.py，含負向回歸）
       - name: Assert merged manifest contract
-        run: |
-          python3 - <<'EOF'
-          import xml.etree.ElementTree as ET
-          A = '{http://schemas.android.com/apk/res/android}'
-          SCHEME, HOST = 'com.poyutsai.vibesync', 'login-callback'
-          DISPATCHER = 'com.vibesync.app.AuthCallbackDispatcherActivity'
-          root = ET.parse('merged-release-AndroidManifest.xml').getroot()
-          acts = root.find('application').findall('activity')
-
-          def scheme_filters(a):
-              return [f for f in a.findall('intent-filter') if any(
-                  d.get(A + 'scheme') == SCHEME for d in f.findall('data'))]
-
-          owners = [a.get(A + 'name') for a in acts if scheme_filters(a)]
-          assert owners == [DISPATCHER], \
-              f'凍結 scheme 擁有者必須唯一且是 dispatcher，得到 {owners}'
-
-          disp = next(a for a in acts if a.get(A + 'name') == DISPATCHER)
-          assert disp.get(A + 'exported') == 'true', \
-              'dispatcher 必須 exported=true（瀏覽器／郵件 App 要能開）'
-          fs = scheme_filters(disp)
-          assert len(fs) == 1, f'凍結 scheme intent-filter 必須恰一個，得到 {len(fs)}'
-          f = fs[0]
-          datas = {(d.get(A + 'scheme'), d.get(A + 'host')) for d in f.findall('data')}
-          assert datas == {(SCHEME, HOST)}, \
-              f'data 必須恰為 {SCHEME}://{HOST}，得到 {datas}'
-          actions = {x.get(A + 'name') for x in f.findall('action')}
-          assert 'android.intent.action.VIEW' in actions, f'缺 VIEW action：{actions}'
-          cats = {c.get(A + 'name') for c in f.findall('category')}
-          assert {'android.intent.category.DEFAULT',
-                  'android.intent.category.BROWSABLE'} <= cats, \
-              f'缺 DEFAULT/BROWSABLE category：{cats}'
-
-          plugin = [a.get(A + 'name') for a in acts
-                    if 'flutter_web_auth_2' in (a.get(A + 'name') or '')]
-          assert not plugin, f'plugin CallbackActivity 不得出現在 merged manifest：{plugin}'
-
-          launchers = [a.get(A + 'name') for a in acts
-                       for lf in a.findall('intent-filter')
-                       if any(c.get(A + 'name') == 'android.intent.category.LAUNCHER'
-                              for c in lf.findall('category'))
-                       and any(x.get(A + 'name') == 'android.intent.action.MAIN'
-                               for x in lf.findall('action'))]
-          assert launchers == ['com.vibesync.app.MainActivity'], \
-              f'MAIN/LAUNCHER 必須唯一且是 MainActivity，得到 {launchers}'
-          print('merged manifest 語意斷言 OK：唯一 dispatcher（exported、exact scheme/host、VIEW、DEFAULT＋BROWSABLE）、無 plugin CallbackActivity、唯一 MAIN/LAUNCHER=MainActivity')
-          EOF
+        run: python3 tools/android/assert-merged-manifest.py merged-release-AndroidManifest.xml
 
       - name: Upload merged release manifest as artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
