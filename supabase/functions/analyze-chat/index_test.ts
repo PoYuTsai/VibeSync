@@ -24,6 +24,9 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
   if (scanCorpusCache !== null) return scanCorpusCache;
   const files = [
     "./index.ts",
+    "./new_topic_handler.ts",
+    "./json_text.ts",
+    "./http_response.ts",
     "./ocr_normalizer.ts",
     "./analysis_input_compiler.ts",
     "./ocr_recognition_prompt.ts",
@@ -2404,16 +2407,17 @@ Deno.test({
     const source = await readAnalyzeChatScanCorpus();
 
     // 異常 tier 字串（如 " Starter "、"STARTER"）直接查表會 fallback 成
-    // free 30/15 提早 429；四處查表（含 new_topic quota gate 的
-    // RevenueCat refresh 重算）都必須先過 normalizeTier。
+    // free 30/15 提早 429；所有查表都必須先過 normalizeTier。
+    // （new_topic quota gate 的 refresh 重算已由 applyRefreshedSub 統一，
+    // 查表點從 4 收斂為 3。）
     assertEquals(
       source.match(/TIER_MONTHLY_LIMITS\[normalizeTier\(sub\.tier\)\]/g)
         ?.length,
-      4,
+      3,
     );
     assertEquals(
       source.match(/TIER_DAILY_LIMITS\[normalizeTier\(sub\.tier\)\]/g)?.length,
-      4,
+      3,
     );
     assertFalse(source.includes("TIER_MONTHLY_LIMITS[sub.tier]"));
     assertFalse(source.includes("TIER_DAILY_LIMITS[sub.tier]"));

@@ -11,6 +11,9 @@ import { classifyAnalyzeChatRequest } from "./request_shape.ts";
 const indexSource = await Deno.readTextFile(
   new URL("./index.ts", import.meta.url),
 );
+const newTopicHandlerSource = await Deno.readTextFile(
+  new URL("./new_topic_handler.ts", import.meta.url),
+);
 const migrationSource = await Deno.readTextFile(
   new URL(
     "../../migrations/20260724120000_new_topic_exactly_once.sql",
@@ -50,10 +53,11 @@ Deno.test("index：new_topic 不被 generic analyze gates／optimize shape 接�
 });
 
 Deno.test("index：new_topic branch 固定順序 sanitize→material→config→preflight→claim→quota→rate→renew→generate→settle", () => {
+  // dispatch 順序仍鎖在 index.ts；分支本體已抽到 new_topic_handler.ts。
   const branch = indexSource.indexOf("if (isNewTopicMode) {");
-  assert(branch >= 0, "new_topic branch 必須存在");
+  assert(branch >= 0, "new_topic dispatch 必須存在");
   const openerBranch = indexSource.indexOf("if (isOpenerMode) {");
-  assert(branch < openerBranch, "new_topic branch 在 opener branch 之前");
+  assert(branch < openerBranch, "new_topic dispatch 在 opener branch 之前");
 
   const anchors = [
     "sanitizeNewTopicRequest(",
@@ -70,22 +74,16 @@ Deno.test("index：new_topic branch 固定順序 sanitize→material→config→
     "buildNewTopicLedgerResult({",
     "settleNewTopicRequest({",
   ];
-  let cursor = branch;
+  let cursor = 0;
   for (const anchor of anchors) {
-    const at = indexSource.indexOf(anchor, cursor);
-    assert(
-      at > cursor && at < openerBranch + 1000,
-      `分支順序錨點缺失或錯位：${anchor}`,
-    );
+    const at = newTopicHandlerSource.indexOf(anchor, cursor);
+    assert(at > cursor, `分支順序錨點缺失或錯位：${anchor}`);
     cursor = at;
   }
 });
 
 Deno.test("index：new_topic 契約鐵律錨點", () => {
-  const branch = indexSource.slice(
-    indexSource.indexOf("if (isNewTopicMode) {"),
-    indexSource.indexOf("// ── Opener mode: generate opening lines ──"),
-  );
+  const branch = newTopicHandlerSource;
   // 缺 secret 只有 new_topic fail closed。
   assert(branch.includes("NEW_TOPIC_REPLAY_NOT_CONFIGURED"));
   // ledger read 失敗 fail closed（不打模型不扣）。
@@ -115,16 +113,13 @@ Deno.test("index：new_topic 契約鐵律錨點", () => {
 });
 
 Deno.test("index：repair 驗證前先還原 primary 可直接傳句子", () => {
-  const branch = indexSource.slice(
-    indexSource.indexOf("if (isNewTopicMode) {"),
-    indexSource.indexOf("// ── Opener mode: generate opening lines ──"),
-  );
+  const branch = newTopicHandlerSource;
   const parseRepair = branch.indexOf("parseJsonObjectFromText(repairedText)");
   const preserveOpeningLines = branch.indexOf(
     "mergeNewTopicRepairWithPrimaryOpeningLines(",
   );
   const validateRepair = branch.indexOf(
-    "normalizeNewTopicModelPayload(\n            repairedParsed,",
+    "normalizeNewTopicModelPayload(\n          repairedParsed,",
   );
 
   assert(parseRepair >= 0, "repair response 必須先 parse");
@@ -139,10 +134,7 @@ Deno.test("index：repair 驗證前先還原 primary 可直接傳句子", () => 
 });
 
 Deno.test("index：telemetry 事件名逐項對齊計畫 §14.1（Eric 2026-07-24 拍板）", () => {
-  const branch = indexSource.slice(
-    indexSource.indexOf("if (isNewTopicMode) {"),
-    indexSource.indexOf("// ── Opener mode: generate opening lines ──"),
-  );
+  const branch = newTopicHandlerSource;
   for (
     const event of [
       "new_topic_request_received",
