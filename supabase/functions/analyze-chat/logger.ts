@@ -248,3 +248,31 @@ export async function trackTokenUsage(
 }
 
 export { calculateCost };
+
+// ── analyze-chat 結構化 console log helpers ─────────────────────────────
+// 事件名與欄位是 dashboard 查詢契約的一部分，改字串等於改觀測契約。
+
+const LOG_PREFIX = "[analyze-chat]";
+
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+export function summarizeUser(userId: string): string {
+  return userId.length <= 8 ? userId : `${userId.slice(0, 8)}...`;
+}
+
+export function logInfo(event: string, metadata?: Record<string, unknown>) {
+  console.log(`${LOG_PREFIX} ${event}`, metadata ?? {});
+}
+
+export function logWarn(event: string, metadata?: Record<string, unknown>) {
+  console.warn(`${LOG_PREFIX} ${event}`, metadata ?? {});
+}
+
+export function logError(event: string, metadata?: Record<string, unknown>) {
+  console.error(`${LOG_PREFIX} ${event}`, metadata ?? {});
+}

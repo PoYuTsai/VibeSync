@@ -32,7 +32,15 @@ import {
   foldQuotedPreviewBlocks,
   normalizeBlockType,
 } from "./blocktype_fold.ts";
-import { extractTokenUsage, logAiCall } from "./logger.ts";
+import {
+  extractTokenUsage,
+  getErrorMessage,
+  logAiCall,
+  logError,
+  logInfo,
+  logWarn,
+  summarizeUser,
+} from "./logger.ts";
 import {
   hasOpenerProfileSubstance,
   normalizeOpenerProfileInfo,
@@ -138,13 +146,12 @@ import { buildServerGuardrails } from "./server_guardrails.ts";
 import {
   buildQuotaExceededPayload,
   classifyQuotaRpcError,
-  sameUtcDay,
-  sameUtcMonth,
   TEST_EMAILS,
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { resolveRequestMode } from "./request_mode.ts";
 import { classifyAnalyzeChatRequest } from "./request_shape.ts";
+import { loadSubscriptionAccess } from "./subscription_access.ts";
 import { hashConversation } from "./conversation_hash.ts";
 import { isStreamingAllowed } from "./stream_gate.ts";
 import {
@@ -685,30 +692,6 @@ const CALL_EVENT_KEYWORDS = [
   "missed a call",
   "called you",
 ];
-const LOG_PREFIX = "[analyze-chat]";
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
-function summarizeUser(userId: string): string {
-  return userId.length <= 8 ? userId : `${userId.slice(0, 8)}...`;
-}
-
-function logInfo(event: string, metadata?: Record<string, unknown>) {
-  console.log(`${LOG_PREFIX} ${event}`, metadata ?? {});
-}
-
-function logWarn(event: string, metadata?: Record<string, unknown>) {
-  console.warn(`${LOG_PREFIX} ${event}`, metadata ?? {});
-}
-
-function logError(event: string, metadata?: Record<string, unknown>) {
-  console.error(`${LOG_PREFIX} ${event}`, metadata ?? {});
-}
 
 function mapStreamChargeFailure(error: unknown): {
   code: string;
@@ -4777,97 +4760,17 @@ async function handleAnalyzeChat(
       ? rawRevenueCatAppUserId.trim()
       : "";
 
-    // Check subscription
-    let { data: sub, error: subError } = await supabase
-      .from("subscriptions")
-      .select(
-        "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
-      )
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    logInfo("subscription_lookup", {
-      user: summarizeUser(user.id),
-      hasSubscription: !!sub,
-      tier: sub?.tier ?? null,
-      subscriptionErrorCode: subError?.code ?? null,
+    // Check subscription：lookup／self-heal／日月 UTC reset CAS
+    // （細節見 subscription_access.ts）。
+    const subscriptionAccess = await loadSubscriptionAccess({
+      supabase,
+      userId: user.id,
     });
-
-    if (!sub) {
-      logWarn("subscription_missing_self_heal", {
-        user: summarizeUser(user.id),
-        error: subError?.message ?? null,
-      });
-
-      const nowIso = new Date().toISOString();
-      const { data: insertedSub, error: insertSubError } = await supabase
-        .from("subscriptions")
-        .insert({
-          user_id: user.id,
-          tier: "free",
-          monthly_messages_used: 0,
-          daily_messages_used: 0,
-          daily_reset_at: nowIso,
-          monthly_reset_at: nowIso,
-          started_at: nowIso,
-        })
-        .select(
-          "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
-        )
-        .single();
-
-      if (insertSubError || !insertedSub) {
-        logError("subscription_self_heal_failed", {
-          user: summarizeUser(user.id),
-          error: insertSubError?.message ?? null,
-        });
-        return jsonResponse({ error: "No subscription found" }, 403);
-      }
-
-      sub = insertedSub;
+    if (!subscriptionAccess.ok) {
+      return jsonResponse({ error: "No subscription found" }, 403);
     }
-
-    // Check if daily reset needed
-    // Batch C#4：CAS 條件化——WHERE reset_at = 舊值（null 用 IS NULL）。只有
-    // 第一個跨窗口的請求能歸零；後到者 CAS 匹配 0 rows＝別人已 reset，放棄
-    // 覆寫，才不會抹掉並發請求剛扣的額度。
-    const now = new Date();
-    // 安全處理 null 值
-    const dailyResetAt = sub.daily_reset_at
-      ? new Date(sub.daily_reset_at)
-      : new Date(0);
-    if (!sameUtcDay(now, dailyResetAt)) {
-      let dailyResetQuery = supabase
-        .from("subscriptions")
-        .update({ daily_messages_used: 0, daily_reset_at: now.toISOString() })
-        .eq("user_id", user.id);
-      dailyResetQuery = sub.daily_reset_at === null
-        ? dailyResetQuery.is("daily_reset_at", null)
-        : dailyResetQuery.eq("daily_reset_at", sub.daily_reset_at);
-      await dailyResetQuery;
-      sub.daily_messages_used = 0;
-      logInfo("daily_quota_reset", { user: summarizeUser(user.id) });
-    }
-
-    // Check monthly reset needed
-    const monthlyResetAt = sub.monthly_reset_at
-      ? new Date(sub.monthly_reset_at)
-      : new Date(0);
-    if (!sameUtcMonth(now, monthlyResetAt)) {
-      let monthlyResetQuery = supabase
-        .from("subscriptions")
-        .update({
-          monthly_messages_used: 0,
-          monthly_reset_at: now.toISOString(),
-        })
-        .eq("user_id", user.id);
-      monthlyResetQuery = sub.monthly_reset_at === null
-        ? monthlyResetQuery.is("monthly_reset_at", null)
-        : monthlyResetQuery.eq("monthly_reset_at", sub.monthly_reset_at);
-      await monthlyResetQuery;
-      sub.monthly_messages_used = 0;
-      logInfo("monthly_quota_reset", { user: summarizeUser(user.id) });
-    }
+    // deno-lint-ignore no-explicit-any
+    let sub: any = subscriptionAccess.sub;
 
     // Check monthly limit (測試帳號跳過)
     let effectiveTier = accountIsTest ? "essential" : sub.tier;

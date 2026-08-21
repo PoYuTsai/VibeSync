@@ -151,15 +151,22 @@ Deno.test({
   name: "quota reset comparisons use UTC helpers, not local time",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
+    // reset 邏輯已抽到 subscription_access.ts；index.ts 與該模組都不得
+    // 出現本地時間比較。
+    const indexSource = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
+    );
+    const accessSource = await Deno.readTextFile(
+      new URL("./subscription_access.ts", import.meta.url),
     );
 
     // D3：Edge 跑 UTC，本地時間比較會受宿主時區影響
-    assertFalse(source.includes("toDateString()"));
-    assertFalse(source.includes(".getMonth()"));
-    assert(source.includes("sameUtcDay("));
-    assert(source.includes("sameUtcMonth("));
+    for (const source of [indexSource, accessSource]) {
+      assertFalse(source.includes("toDateString()"));
+      assertFalse(source.includes(".getMonth()"));
+    }
+    assert(accessSource.includes("sameUtcDay("));
+    assert(accessSource.includes("sameUtcMonth("));
   },
 });
 
@@ -2667,17 +2674,21 @@ Deno.test({
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
-    if (/anonymous/i.test(source)) {
+    const accessSource = await Deno.readTextFile(
+      new URL("./subscription_access.ts", import.meta.url),
+    );
+    if (/anonymous/i.test(source) || /anonymous/i.test(accessSource)) {
       throw new Error("anonymous branch residue found");
     }
     if (source.includes("GUEST_TOTAL_LIMIT")) {
       throw new Error("GUEST_TOTAL_LIMIT residue found");
     }
-    // reset 閘還原為無條件（拿掉 !anonymous && 之後語意必須保留）
-    if (!source.includes("if (!sameUtcDay(now, dailyResetAt))")) {
+    // reset 閘還原為無條件（拿掉 !anonymous && 之後語意必須保留）；
+    // reset 邏輯現居 subscription_access.ts。
+    if (!accessSource.includes("if (!sameUtcDay(now, dailyResetAt))")) {
       throw new Error("daily reset gate missing");
     }
-    if (!source.includes("if (!sameUtcMonth(now, monthlyResetAt))")) {
+    if (!accessSource.includes("if (!sameUtcMonth(now, monthlyResetAt))")) {
       throw new Error("monthly reset gate missing");
     }
   },
