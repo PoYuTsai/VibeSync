@@ -28,6 +28,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/motion/gsap_text_reveal.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
@@ -97,6 +98,13 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   // → 高度暴縮觸發捲動 offset 反覆修正（畫面橫跳），修正期間 tap 都被
   // 當成停捲動作吃掉，面板收不起來。
   bool _detailTraitsExpanded = false;
+
+  // 開場動畫（名字逐字揭示、投入度數字從 0 跑上來）只在「打開這一頁」時播一
+  // 次。旗標同樣不能放在卡片自己的 State，理由跟上面同一條：body 是 lazy
+  // ListView，往下捲一頁就把頂部這兩張卡回收掉，捲回來會整組重播——外加一
+  // 串觸覺回饋，變成捲動懲罰。
+  bool _nameIntroPlayed = false;
+  bool _heatIntroPlayed = false;
 
   @override
   void dispose() {
@@ -244,9 +252,15 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   aggregate: aggregate,
                   conversations: conversations,
                   latestInsight: latestInsight,
+                  animateName: !_nameIntroPlayed,
+                  onNameIntroEnd: () => _nameIntroPlayed = true,
                 ),
                 const SizedBox(height: 16),
-                PartnerHeatHeroCard(heat: aggregate.latestHeat),
+                PartnerHeatHeroCard(
+                  heat: aggregate.latestHeat,
+                  animate: !_heatIntroPlayed,
+                  onCountUpEnd: () => _heatIntroPlayed = true,
+                ),
                 const SizedBox(height: 12),
                 PartnerMindMapEntryCard(
                   map: buildPartnerMindMap(
@@ -1105,11 +1119,17 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
   final List<Conversation> conversations;
   final _PartnerLatestInsight latestInsight;
 
+  /// 名字開場只在打開這一頁時播一次；旗標由 [_PartnerDetailScreenState] 持有。
+  final bool animateName;
+  final VoidCallback? onNameIntroEnd;
+
   const _PartnerCommandSummaryCard({
     required this.partner,
     required this.aggregate,
     required this.conversations,
     required this.latestInsight,
+    this.animateName = true,
+    this.onNameIntroEnd,
   });
 
   @override
@@ -1131,8 +1151,11 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      partner.name,
+                    // 打開對象頁時，名字逐字錯開進場，每次隨機抽一種手感
+                    // （GSAP SplitText + stagger 的語彙）。收尾會塌回單一
+                    // Text，無障礙樹與可選取性不受影響。
+                    GsapTextReveal(
+                      text: partner.name,
                       style: const TextStyle(
                         color: AppColors.onBackgroundPrimary,
                         fontSize: 30,
@@ -1140,6 +1163,8 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
                         height: 1.05,
                         letterSpacing: -0.5,
                       ),
+                      animate: animateName,
+                      onEnd: onNameIntroEnd,
                     ),
                     const SizedBox(height: 8),
                     Text(
