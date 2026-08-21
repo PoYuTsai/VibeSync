@@ -456,21 +456,46 @@ function interestThemesFor(girl: PracticeGirlProfile): MomentTheme[] {
     .map((entry) => entry.theme);
 }
 
+/** 題材 + 它對這位角色實際可用的時段；`dayParts` 由建構方式保證非空。 */
+interface EligibleTheme {
+  theme: MomentTheme;
+  dayParts: readonly TaipeiDayPart[];
+}
+
+/**
+ * 當日題材池：每個項目都已經算好可用時段，且保證非空。
+ *
+ * 這裡把「可用時段」跟題材綁在一起回傳，而不是讓呼叫端事後再算一次——
+ * 事後再算就得處理「算出來是空的」這個情況，而任何 fallback 寫法都會直接
+ * 違反 PROFESSION_QUIET_DAY_PARTS 的硬規則（複審 2026-08-21 抓到：原本的
+ * `parts.length > 0 ? parts : POSTABLE_DAY_PARTS` 雖然當下不可達，但後人擴充
+ * 作息表時會靜默讓角色在上班時段發文）。綁在一起就沒有那個分支可寫。
+ */
 function themePoolFor(
   girl: PracticeGirlProfile,
   isWeekend: boolean,
-): MomentTheme[] {
+): EligibleTheme[] {
   const professionTheme = PROFESSION_THEMES[girl.professionId];
   const pool = [
     ...BASE_THEMES,
     ...(isWeekend ? WEEKEND_THEMES : []),
     ...interestThemesFor(girl),
     ...(professionTheme ? [professionTheme] : []),
-  ].filter((theme) => eligibleDayParts(theme, girl.professionId).length > 0);
-  // 保底：任何職業的作息設定都不該把整個池子清空。全時段題材（rainy_mood、
-  // pet_moment 這類沒有 dayParts 限制的）保證這行不會用到，留著是防後人擴充
-  // PROFESSION_QUIET_DAY_PARTS 時把某個職業寫死。
-  return pool.length > 0 ? pool : [...BASE_THEMES];
+  ]
+    .map((theme) => ({
+      theme,
+      dayParts: eligibleDayParts(theme, girl.professionId),
+    }))
+    .filter((entry) => entry.dayParts.length > 0);
+
+  if (pool.length === 0) {
+    // 不可達，且刻意不做 fallback：走到這裡代表有人把某個職業的
+    // PROFESSION_QUIET_DAY_PARTS 填滿了所有可發文時段。那是設定錯誤，
+    // 必須大聲壞掉讓測試抓到，不能默默讓她在上班時段發文。
+    // 呼叫端（feed handler）負責降級成「今天沒有新貼文」，不是在這裡吞掉。
+    throw new Error(`moment_schedule_empty_theme_pool:${girl.professionId}`);
+  }
+  return pool;
 }
 
 function dayPartsForTheme(theme: MomentTheme): readonly TaipeiDayPart[] {
@@ -518,6 +543,21 @@ export function momentPostPropensityFor(girl: PracticeGirlProfile): number {
 }
 
 /**
+ * 作息表健康檢查：回傳「安靜時段已覆蓋所有可發文時段」的職業。
+ *
+ * 正常一定是空陣列。非空代表那個職業一則都發不了——themePoolFor 會丟錯。
+ * 這個函式存在的唯一理由是讓「後人擴充 PROFESSION_QUIET_DAY_PARTS 把某個
+ * 職業寫死」這件事在測試就被抓到，而不是等上線後才發現她整個消失。
+ */
+export function professionsWithoutPostableDayParts(): string[] {
+  return Object.entries(PROFESSION_QUIET_DAY_PARTS)
+    .filter(([, quiet]) =>
+      POSTABLE_DAY_PARTS.every((part) => quiet.includes(part))
+    )
+    .map(([professionId]) => professionId);
+}
+
+/**
  * 算出這位角色在這一天的貼文計畫。純函式：同樣的 profile + 日期永遠得到
  * 同樣的結果，故生成端可安全重試而不會產生第二則不同內容的貼文。
  *
@@ -537,12 +577,8 @@ export function momentPlanFor(opts: {
     const threshold = slot === 0 ? propensity : propensity * SECOND_SLOT_FACTOR;
     if (rollUnit(`${seed}|post`) >= threshold) continue;
 
-    const theme = pickFrom(pool, `${seed}|theme`);
-    const parts = eligibleDayParts(theme, girl.professionId);
-    const dayPart = pickFrom(
-      parts.length > 0 ? parts : POSTABLE_DAY_PARTS,
-      `${seed}|part`,
-    );
+    const { theme, dayParts } = pickFrom(pool, `${seed}|theme`);
+    const dayPart = pickFrom(dayParts, `${seed}|part`);
     const candidates = momentImagesForTags(theme.imageTags);
     const wantsImage = candidates.length > 0 &&
       rollUnit(`${seed}|image`) < IMAGE_PROBABILITY;

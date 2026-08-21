@@ -8,6 +8,7 @@ import {
   MAX_MOMENT_SLOTS_PER_DAY,
   momentPlanFor,
   momentPostPropensityFor,
+  professionsWithoutPostableDayParts,
 } from "./moments_schedule.ts";
 import { isMomentImageId, SCENE_IMAGE_COUNT } from "./moments_image_catalog.ts";
 import { getPracticeGirlProfile, GIRL_PROFILES } from "./practice_persona.ts";
@@ -197,5 +198,24 @@ Deno.test("post propensity stays inside the clamped range", () => {
       propensity >= 0.15 && propensity <= 0.85,
       `${profile.profileId} propensity ${propensity} escaped the clamp`,
     );
+  }
+});
+
+// 複審 2026-08-21 的非阻擋提醒：原本 momentPlanFor 有一段「可用時段被濾空就
+// 退回未過濾時段」的 fallback，與 PROFESSION_QUIET_DAY_PARTS 的硬規則矛盾。
+// 那段已移除（可用時段現在跟題材綁在一起回傳，沒有那個分支可寫），改成在
+// 題材池真的空掉時大聲丟錯。以下兩個測試守住這個新契約。
+
+Deno.test("no profession has its whole postable window marked quiet", () => {
+  // 這是最可能的未來破壞方式：有人擴充作息表時把某個職業所有時段都標成上班。
+  assertEquals(professionsWithoutPostableDayParts(), []);
+});
+
+Deno.test("planning never throws for any profile across a long window", () => {
+  for (const profile of GIRL_PROFILES) {
+    for (let day = 1; day <= 60; day++) {
+      const time = taipeiTimeContextFor(new Date(Date.UTC(2026, 8, day, 4)));
+      momentPlanFor({ girl: profile, time });
+    }
   }
 });
