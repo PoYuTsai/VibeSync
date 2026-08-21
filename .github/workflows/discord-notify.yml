@@ -1,4 +1,5 @@
-# Metadata-only notifications for the two-person GitHub workflow.
+# Metadata-only notifications for the two-person GitHub workflow. A next-owner
+# label is the only PR handoff signal; Draft/Ready state does not affect it.
 # Security: this workflow never checks out or executes PR code. All event text
 # is treated as untrusted display data and Discord mentions are allowlisted.
 
@@ -6,9 +7,7 @@ name: Discord Collaboration Notifications
 
 on:
   pull_request_target:
-    types: [opened, reopened, ready_for_review, labeled, closed]
-  pull_request_review:
-    types: [submitted]
+    types: [labeled, closed]
   workflow_run:
     workflows:
       - Flutter CI
@@ -95,35 +94,17 @@ jobs:
               $Url = [string]$Pr.html_url
 
               switch ([string]$Event.action) {
-                'opened' {
-                  if (-not [bool]$Pr.draft) {
-                    $MentionIds = @($env:DISCORD_ERIC_USER_ID)
-                    $Content = "<@$($env:DISCORD_ERIC_USER_ID)> PR #$Number 已可審核：$Title" + [Environment]::NewLine + $Url
-                  }
-                }
-                'ready_for_review' {
-                  $MentionIds = @($env:DISCORD_ERIC_USER_ID)
-                  $Content = "<@$($env:DISCORD_ERIC_USER_ID)> PR #$Number 已可審核：$Title" + [Environment]::NewLine + $Url
-                }
-                'reopened' {
-                  if (-not [bool]$Pr.draft) {
-                    $MentionIds = @($env:DISCORD_ERIC_USER_ID)
-                    $Content = "<@$($env:DISCORD_ERIC_USER_ID)> PR #$Number 已重新開啟並可審核：$Title" + [Environment]::NewLine + $Url
-                  }
-                }
                 'labeled' {
-                  if (-not [bool]$Pr.draft) {
-                    $Label = [string]$Event.label.name
-                    if ($Label -eq 'next:bruce') {
-                      $MentionIds = @($env:DISCORD_BRUCE_USER_ID)
-                      $Content = "<@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 輪到你處理：$Title" + [Environment]::NewLine + $Url
-                    } elseif ($Label -eq 'next:eric-ai') {
-                      $MentionIds = @($env:DISCORD_BRUCE_USER_ID)
-                      $Content = "<@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 已由 Eric／AI 接手，你先不用處理：$Title" + [Environment]::NewLine + $Url
-                    } elseif ($Label -eq 'next:discuss') {
-                      $MentionIds = @($env:DISCORD_ERIC_USER_ID, $env:DISCORD_BRUCE_USER_ID)
-                      $Content = "<@$($env:DISCORD_ERIC_USER_ID)> <@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 需要一起討論：$Title" + [Environment]::NewLine + $Url
-                    }
+                  $Label = [string]$Event.label.name
+                  if ($Label -eq 'next:bruce') {
+                    $MentionIds = @($env:DISCORD_BRUCE_USER_ID)
+                    $Content = "<@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 輪到你處理：$Title" + [Environment]::NewLine + $Url
+                  } elseif ($Label -eq 'next:eric-ai') {
+                    $MentionIds = @($env:DISCORD_ERIC_USER_ID)
+                    $Content = "<@$($env:DISCORD_ERIC_USER_ID)> PR #$Number 輪到 Eric／AI 處理：$Title" + [Environment]::NewLine + $Url
+                  } elseif ($Label -eq 'next:discuss') {
+                    $MentionIds = @($env:DISCORD_ERIC_USER_ID, $env:DISCORD_BRUCE_USER_ID)
+                    $Content = "<@$($env:DISCORD_ERIC_USER_ID)> <@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 需要一起討論：$Title" + [Environment]::NewLine + $Url
                   }
                 }
                 'closed' {
@@ -131,24 +112,6 @@ jobs:
                     $Content = "PR #$Number 已合併：$Title" + [Environment]::NewLine + $Url
                   }
                 }
-              }
-            } elseif ($env:GH_EVENT_NAME -eq 'pull_request_review') {
-              $Pr = $Event.pull_request
-              $Number = [int]$Pr.number
-              $Title = Normalize-Text $Pr.title
-              $Url = [string]$Pr.html_url
-              $State = ([string]$Event.review.state).ToLowerInvariant()
-              if ($State -eq 'approved') {
-                $MentionIds = @($env:DISCORD_BRUCE_USER_ID)
-                $Verdict = if (([string]$Event.review.body) -match 'APPROVE_WITH_RISK') {
-                  'Approve with risk'
-                } else {
-                  'Approve'
-                }
-                $Content = "<@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 已 $Verdict：$Title" + [Environment]::NewLine + $Url
-              } elseif ($State -eq 'changes_requested') {
-                $MentionIds = @($env:DISCORD_BRUCE_USER_ID)
-                $Content = "<@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 已 Request changes：$Title" + [Environment]::NewLine + $Url
               }
             } elseif ($env:GH_EVENT_NAME -eq 'workflow_run') {
               $Run = $Event.workflow_run
