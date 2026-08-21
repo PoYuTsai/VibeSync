@@ -56,7 +56,7 @@
       "sha256": "f33d1ad88b48a4992ae5fde9822d4f351ed8b6a55a8b56888e003ce9c9586613"
     },
     "VALID_FORCE_MODELS": {
-      "file": "index.ts",
+      "file": "model_selection.ts",
       "start": "const VALID_FORCE_MODELS = new Set([",
       "end": "\n]);",
       "sha256": "9dc87a429271afa449b7b0d76286237cd701197153467f6a7a6d97a6214ec38f"
@@ -146,7 +146,7 @@
       "sha256": "a91e0d9b544609989a44e33b0761cf4b083d4e02f98714e327959ba2b02887dd"
     },
     "selectModel": {
-      "file": "index.ts",
+      "file": "model_selection.ts",
       "start": "function selectModel(",
       "end": "\n}",
       "sha256": "f7b239e1a2b3e0c8a99d13fb5c01e76556d9745db75e1c824e0b089c81addfa8"

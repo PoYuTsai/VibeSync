@@ -68,6 +68,7 @@ import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
 import { handleOpenerRequest } from "./opener_handler.ts";
 import { handleAnalyzeStream } from "./analyze_stream_handler.ts";
+import { selectModel, VALID_FORCE_MODELS } from "./model_selection.ts";
 import {
   enforceMyMessageEssentialGate,
   validateMyMessageShape,
@@ -192,11 +193,7 @@ const TIER_FEATURES: Record<string, string[]> = {
 
 // 截圖上傳相關類型
 const VALID_ANALYZE_MODES = new Set(["normal", "my_message"]);
-const VALID_FORCE_MODELS = new Set([
-  "claude-haiku-4-5-20251001",
-  "claude-sonnet-4-6",
-  "claude-sonnet-5",
-]);
+
 const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
 
 // 建構 Vision API 內容格式
@@ -206,39 +203,6 @@ const STREAM_ANALYZE_ENABLED =
   Deno.env.get("STREAM_ANALYZE_ENABLED") === "true";
 const STREAM_WHITELIST = Deno.env.get("STREAM_WHITELIST");
 
-// 模型選擇函數 (設計規格 4.9)
-function selectModel(context: {
-  conversationLength: number;
-  enthusiasmLevel: string | null;
-  hasComplexEmotions: boolean;
-  isFirstAnalysis: boolean;
-  tier: string;
-}): string {
-  // Free 分析固定提供延展＋調情，並使用最新 Sonnet 守住首次體驗品質。
-  if (context.tier === "free") {
-    return "claude-sonnet-5";
-  }
-
-  // Starter / Essential 與 Free 分析都以最新 Sonnet 作為主模型；
-  // 4.6 僅保留在 fallback chain，避免上游短暫異常直接失敗。
-  if (context.tier === "starter" || context.tier === "essential") {
-    return "claude-sonnet-5";
-  }
-
-  // 使用 Sonnet 的情況 (30%)
-  if (
-    context.conversationLength > 20 || // 長對話
-    context.enthusiasmLevel === "cold" || // 冷淡需要策略
-    context.hasComplexEmotions || // 複雜情緒
-    context.isFirstAnalysis // 首次分析建立基準
-  ) {
-    return "claude-sonnet-5";
-  }
-
-  // 未知但已通過訂閱正規化的 tier 也維持 Sonnet 5，避免新增方案時
-  // 靜默降級到舊模型。舊模型只存在於明確的 outage fallback chain。
-  return "claude-sonnet-5";
-}
 
 // Handler factory：測試可注入假 Supabase client，不啟動 HTTP server。
 // serve 只在 import.meta.main（Edge runtime 入口）時執行。
@@ -944,13 +908,8 @@ ${recentText}`;
 
     // Select model based on complexity (or force for testing)
     // 有圖片時強制使用 Sonnet (Vision 功能需要)
-    const VALID_MODELS = [
-      "claude-haiku-4-5-20251001",
-      "claude-sonnet-4-6",
-      "claude-sonnet-5",
-    ];
     const model = (forceModel && (accountIsTest || TEST_MODE) &&
-        VALID_MODELS.includes(forceModel))
+        VALID_FORCE_MODELS.has(forceModel))
       ? forceModel
       : selectModel({
         conversationLength: messages.length,

@@ -16,6 +16,7 @@ import {
   validateOpenerImages,
 } from "./opener_image_validation.ts";
 import { callClaudeWithFallback, extractClaudeText } from "./fallback.ts";
+import { selectModel } from "./model_selection.ts";
 
 // 重構後 index.ts 的 prompt／sanitize 內容分居多個模組；本 corpus 依固定順序
 // 串接，讓既有 source-scan 斷言不因搬家而失效（順序敏感的測試各自讀單檔）。
@@ -24,6 +25,7 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
   if (scanCorpusCache !== null) return scanCorpusCache;
   const files = [
     "./index.ts",
+    "./model_selection.ts",
     "./analyze_stream_handler.ts",
     "./optimize_refine_flow.ts",
     "./my_message_flow.ts",
@@ -203,34 +205,6 @@ Deno.test({
   },
 });
 
-// 模型選擇函數
-function selectModel(context: {
-  conversationLength: number;
-  enthusiasmLevel: string | null;
-  hasComplexEmotions: boolean;
-  isFirstAnalysis: boolean;
-  tier: string;
-}): string {
-  if (context.tier === "free") {
-    return "claude-sonnet-5";
-  }
-
-  if (context.tier === "starter" || context.tier === "essential") {
-    return "claude-sonnet-5";
-  }
-
-  if (
-    context.conversationLength > 20 ||
-    context.enthusiasmLevel === "cold" ||
-    context.hasComplexEmotions ||
-    context.isFirstAnalysis
-  ) {
-    return "claude-sonnet-5";
-  }
-
-  return "claude-sonnet-5";
-}
-
 // countMessages 殭屍測試已移除：它測的是本檔內的舊公式複本（逐則 200 字制），
 // 非真實 code。ADR #19 計費測試在 billing_test.ts。
 
@@ -321,6 +295,7 @@ Deno.test({
     assert(source.includes(
       "const selectedModel = (accountIsTest || TEST_MODE) && forceModel",
     ));
+    assert(source.includes("VALID_FORCE_MODELS.has(forceModel)"));
     assert(source.includes('? model\n      : "claude-sonnet-5";'));
     assertFalse(source.includes(
       'if (TEST_MODE) {\n    return "claude-haiku-4-5-20251001";',
