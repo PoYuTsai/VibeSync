@@ -1,7 +1,5 @@
 // lib/features/analysis/presentation/screens/analysis_screen.dart
 import 'dart:async';
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/message_calculator.dart';
 import '../../../../core/services/keyboard_privacy_purge_service.dart';
 import '../../../../core/services/storage_service.dart';
@@ -39,7 +36,6 @@ import '../../../coach_chat/presentation/widgets/coach_cta_card.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
-import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../conversation/data/providers/conversation_archive_providers.dart';
@@ -52,6 +48,7 @@ import '../../../follow_up_notification/presentation/soft_opt_in_card.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../partner/presentation/utils/conversation_archive_sections.dart';
 import '../../data/providers/analysis_record_providers.dart';
+import '../../application/analysis_persistence_coordinator.dart';
 import '../../application/analysis_run_preparer.dart';
 import '../../data/providers/analysis_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
@@ -149,9 +146,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin {
   // 訂閱同步屬 best-effort 前置：卡住不得凍結分析/刷新 spinner（2.1(b)）。
   static const _subscriptionSyncTimeout = Duration(seconds: 20);
-  static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
-  static const _snapshotRevisionKey = 'contentRevision';
-  static const _snapshotMessageCountKey = 'messageCount';
   bool get _showTelemetryDiagnostics => kDebugMode;
   bool _isAnalyzing = false;
   bool _isRefreshingPremiumReplies = false;
@@ -225,11 +219,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String? _streamProgressDetail;
   List<AnalysisStreamContent> _streamContents = const [];
   int? _activeAnalysisMessageCount;
-  int _analysisPersistenceInFlight = 0;
-  final Set<Future<void>> _pendingAnalysisPersistenceTasks = {};
   bool _isLeavingAfterPersistence = false;
-  bool _analysisRecordNeedsRepair = false;
-  Future<void>? _analysisRecordRepairFuture;
+  late final AnalysisPersistenceCoordinator _persistence =
+      AnalysisPersistenceCoordinator(
+    conversationId: widget.conversationId,
+    read: ref.read,
+    notifyStateChanged: () {
+      if (mounted) setState(() {});
+    },
+    invalidateRecordViews: (conversation) {
+      _invalidateAnalysisArchiveCount();
+      _invalidatePartnerAnalysisRecords(conversation);
+      if (mounted) setState(() {});
+    },
+    afterAnalysisPersisted: _maybeScheduleFollowUpNotification,
+  );
   String? _analysisArchiveCountScopeKey;
   int _analysisArchiveCount = 0;
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
@@ -1004,7 +1008,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (conv == null) return;
     final expectedAnalyzedCount = analyzedMessageCount ?? conv.messages.length;
 
-    final alreadyPersisted = _analysisSnapshotMatches(
+    final alreadyPersisted = _persistence.snapshotMatches(
       conversation: conv,
       snapshotJson: conv.lastAnalysisSnapshotJson,
       rawResponse: result.rawResponse,
@@ -1012,15 +1016,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       analyzedContentRevision: analyzedContentRevision,
     );
     if (alreadyPersisted) {
-      _analysisRecordRepairFuture = _trackAnalysisPersistenceTask(
-        _repairAnalysisRecord(
-          conversation: conv,
-          result: result,
-          completionKey: completionKey,
-          previousAnalyzedCount: previousAnalyzedCount,
-          analyzedMessageCount: expectedAnalyzedCount,
-          analyzedContentRevision: analyzedContentRevision,
-        ),
+      _persistence.scheduleRecordRepair(
+        conversation: conv,
+        result: result,
+        completionKey: completionKey,
+        previousAnalyzedCount: previousAnalyzedCount,
+        analyzedMessageCount: expectedAnalyzedCount,
+        analyzedContentRevision: analyzedContentRevision,
       );
       return;
     }
@@ -1030,13 +1032,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _lastAnalyzedMessageCount = expectedAnalyzedCount;
       });
     }
-    _persistLatestAnalysisSnapshot(
+    _persistence
+        .persistLatestSnapshot(
       result,
       completionKey: completionKey,
       previousAnalyzedCount: previousAnalyzedCount,
       analyzedMessageCount: expectedAnalyzedCount,
       analyzedContentRevision: analyzedContentRevision,
-    ).catchError((_) {
+    )
+        .catchError((_) {
       // Same fire-and-forget contract as the listener path — Hive failures in
       // tests must not surface as unhandled futures.
     });
@@ -1269,27 +1273,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         pendingMessages.every((message) => message.isFromMe);
   }
 
-  String? _analysisRecordOwner(Conversation conversation) {
-    final currentUserId = ref.read(analysisRecordOwnerProvider)?.trim();
-    if (currentUserId == null || currentUserId.isEmpty) return null;
-    final conversationOwner = conversation.ownerUserId?.trim();
-    if (conversationOwner != null &&
-        conversationOwner.isNotEmpty &&
-        conversationOwner != currentUserId) {
-      return null;
-    }
-    return currentUserId;
-  }
-
-  AnalysisRecord? _currentAnalysisRecord(Conversation conversation) {
-    final ownerUserId = _analysisRecordOwner(conversation);
-    if (ownerUserId == null) return null;
-    return ref.read(analysisRecordStoreProvider).currentFor(
-          ownerUserId: ownerUserId,
-          conversationId: conversation.id,
-        );
-  }
-
   List<Message> _analysisFragmentMessages(Conversation conversation) {
     if (conversation.messages.isEmpty) return const <Message>[];
 
@@ -1312,7 +1295,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       }
     }
 
-    final current = _currentAnalysisRecord(conversation);
+    final current = _persistence.currentRecordFor(conversation);
     final streamingState =
         ref.read(streamingAnalyzeProvider(widget.conversationId));
     final streamTarget = streamingState.analyzedMessageCount;
@@ -1377,7 +1360,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   String? _conversationAnalysisSource(Conversation conversation) {
-    final ownerUserId = _analysisRecordOwner(conversation);
+    final ownerUserId = _persistence.recordOwnerFor(conversation);
     if (ownerUserId == null) return null;
     return ref.read(analysisRecordStoreProvider).conversationSource(
           ownerUserId: ownerUserId,
@@ -1388,7 +1371,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Future<void> _chooseConversationAnalysisSource(
     Conversation conversation,
   ) async {
-    final ownerUserId = _analysisRecordOwner(conversation);
+    final ownerUserId = _persistence.recordOwnerFor(conversation);
     if (ownerUserId == null) return;
     final result = await showAnalysisPlatformPicker(
       context,
@@ -1396,16 +1379,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       title: '這段聊天來自哪裡？',
     );
     if (!mounted || result == null) return;
-    if (_analysisPersistenceInFlight != 0) {
+    if (_persistence.inFlightCount != 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('分析紀錄正在保存，完成後再設定聊天來源')),
       );
       return;
     }
-    final relabelCurrent = !_analysisRecordNeedsRepair &&
-        _analysisPersistenceInFlight == 0 &&
+    final relabelCurrent = !_persistence.recordNeedsRepair &&
+        _persistence.inFlightCount == 0 &&
         !_isShowingPendingAnalysisFragment(conversation) &&
-        _currentAnalysisRecord(conversation) != null;
+        _persistence.currentRecordFor(conversation) != null;
     try {
       final saved =
           await ref.read(analysisRecordStoreProvider).setConversationSource(
@@ -1437,7 +1420,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   List<AnalysisRecord> _archivedAnalysisRecordsFor(
     Conversation conversation,
   ) {
-    final ownerUserId = _analysisRecordOwner(conversation);
+    final ownerUserId = _persistence.recordOwnerFor(conversation);
     if (ownerUserId == null) return const [];
     return AnalysisArchiveLifecycle.recordsFor(
       store: ref.read(analysisRecordStoreProvider),
@@ -1447,7 +1430,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   int _archivedAnalysisRecordCountFor(Conversation conversation) {
-    final ownerUserId = _analysisRecordOwner(conversation);
+    final ownerUserId = _persistence.recordOwnerFor(conversation);
     if (ownerUserId == null) {
       _analysisArchiveCountScopeKey = null;
       _analysisArchiveCount = 0;
@@ -1482,13 +1465,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Future<void> _openPartnerAnalysisRecords(
     Conversation conversation,
   ) async {
-    await _awaitPendingAnalysisPersistence();
+    await _persistence.awaitSettled();
     if (!mounted) return;
     conversation = ref
             .read(conversationRepositoryProvider)
             .getConversation(conversation.id) ??
         conversation;
-    final ownerUserId = _analysisRecordOwner(conversation);
+    final ownerUserId = _persistence.recordOwnerFor(conversation);
     if (ownerUserId == null) return;
     final partnerId = conversation.partnerId?.trim();
     final conversations = _analysisArchiveConversations(conversation);
@@ -1603,9 +1586,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Widget _buildConversationSourcePill(Conversation conversation) {
     final source = _conversationAnalysisSource(conversation);
     final sourceLabel = source == null ? '來源未設定' : '來源：$source';
-    final canEdit = _analysisRecordOwner(conversation) != null &&
+    final canEdit = _persistence.recordOwnerFor(conversation) != null &&
         !_isAnalyzing &&
-        _analysisPersistenceInFlight == 0;
+        _persistence.inFlightCount == 0;
     return Material(
       color: AppColors.ctaStart.withValues(alpha: 0.10),
       borderRadius: BorderRadius.circular(999),
@@ -1691,190 +1674,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  void _restorePersistedAnalysis({bool repairRecord = true}) {
-    final repository = ref.read(conversationRepositoryProvider);
-    final conversation = repository.getConversation(widget.conversationId);
-    if (conversation == null) {
-      return;
-    }
-
-    final snapshotJson = conversation.lastAnalysisSnapshotJson;
-    if (snapshotJson == null || snapshotJson.trim().isEmpty) {
-      return;
-    }
-
-    try {
-      final snapshot = _normalizeJsonMap(jsonDecode(snapshotJson));
-      if (snapshot == null) {
-        return;
-      }
-      if (!_canRestorePersistedAnalysis(conversation, snapshot)) {
-        return;
-      }
-      _lastAnalyzedMessageCount = conversation.lastAnalyzedMessageCount!;
-
-      if (!snapshot.containsKey(_snapshotClientMetaKey)) {
-        final analyzedCount = conversation.lastAnalyzedMessageCount!;
-        snapshot[_snapshotClientMetaKey] = <String, Object>{
-          _snapshotRevisionKey: conversationContentRevision(
-            conversation,
-            messageCount: analyzedCount,
-          ),
-          _snapshotMessageCountKey: analyzedCount,
-        };
-        // Upgrade legacy snapshots in memory immediately. The next normal
-        // conversation save carries this metadata even if the archive marker
-        // write fails, closing same-count edit restores without a Hive schema.
-        conversation.lastAnalysisSnapshotJson = jsonEncode(snapshot);
-      }
-
-      final analysisPayload = Map<String, dynamic>.from(snapshot)
-        ..remove(_snapshotClientMetaKey);
-      final restoredResult = AnalysisResult.fromJson(analysisPayload);
-      _applyAnalysisResult(restoredResult);
-      if (repairRecord) {
-        final analyzedCount = conversation.lastAnalyzedMessageCount!;
-        final current = _currentAnalysisRecord(conversation);
-        _analysisRecordRepairFuture = _trackAnalysisPersistenceTask(
-          _repairAnalysisRecord(
-            conversation: conversation,
-            result: restoredResult,
-            completionKey: null,
-            previousAnalyzedCount: current?.segmentEnd ?? 0,
-            analyzedMessageCount: analyzedCount,
-            analyzedContentRevision: conversationContentRevision(conversation),
-          ),
-        );
-      }
-    } catch (error) {
-      _debugLog(
-        '[AnalysisScreen] Failed to restore persisted analysis for '
-        '${widget.conversationId}: $error',
-      );
-    }
-  }
-
-  bool _canRestorePersistedAnalysis(
-    Conversation conversation,
-    Map<String, dynamic> snapshot,
-  ) {
-    final analyzedCount = conversation.lastAnalyzedMessageCount;
-    if (analyzedCount == null ||
-        analyzedCount < 0 ||
-        analyzedCount > conversation.messages.length) {
-      return false;
-    }
-    if (snapshot.containsKey(_snapshotClientMetaKey)) {
-      final rawMeta = snapshot[_snapshotClientMetaKey];
-      if (rawMeta is! Map) return false;
-      final embeddedRevision = rawMeta[_snapshotRevisionKey];
-      final embeddedCount = rawMeta[_snapshotMessageCountKey];
-      if (embeddedRevision is! String ||
-          embeddedRevision.trim().isEmpty ||
-          embeddedCount is! int ||
-          embeddedCount != analyzedCount) {
-        return false;
-      }
-      return embeddedRevision ==
-          conversationContentRevision(
-            conversation,
-            messageCount: embeddedCount,
-          );
-    }
-
-    final archiveEntry =
-        ref.read(conversationArchiveStoreProvider).entryFor(conversation);
-    if (archiveEntry != null) {
-      final analyzedRevision = archiveEntry.contentRevision;
-      if (archiveEntry.status == ConversationArchiveStatus.archived &&
-          analyzedCount != conversation.messages.length) {
-        return false;
-      }
-      return analyzedRevision != null &&
-          analyzedRevision ==
-              conversationContentRevision(
-                conversation,
-                messageCount: analyzedCount,
-              );
-    }
-
-    // Snapshot persistence predates both embedded revisions and archive
-    // markers. A markerless payload without client metadata is therefore true
-    // legacy compatibility. Every new snapshot embeds its own revision, so a
-    // failed marker write can no longer make a post-feature row look legacy.
-    return true;
-  }
-
-  String? _encodeAnalysisSnapshot(
-    Map<String, dynamic>? rawResponse, {
-    required String contentRevision,
-    required int messageCount,
-  }) {
-    if (rawResponse == null || rawResponse.isEmpty) {
-      return null;
-    }
-    final snapshot = Map<String, dynamic>.from(rawResponse)
-      ..[_snapshotClientMetaKey] = <String, Object>{
-        _snapshotRevisionKey: contentRevision,
-        _snapshotMessageCountKey: messageCount,
-      };
-    return jsonEncode(snapshot);
-  }
-
-  bool _analysisSnapshotMatches({
-    required Conversation conversation,
-    required String? snapshotJson,
-    required Map<String, dynamic>? rawResponse,
-    required int messageCount,
-    required String? analyzedContentRevision,
-  }) {
-    if (snapshotJson == null ||
-        snapshotJson.trim().isEmpty ||
-        rawResponse == null ||
-        rawResponse.isEmpty ||
-        messageCount < 0 ||
-        messageCount > conversation.messages.length ||
-        analyzedContentRevision == null ||
-        conversationContentRevision(conversation) != analyzedContentRevision) {
-      return false;
-    }
-    try {
-      final snapshot = _normalizeJsonMap(jsonDecode(snapshotJson));
-      if (snapshot == null) {
-        return false;
-      }
-      final rawMeta = snapshot[_snapshotClientMetaKey];
-      if (rawMeta is! Map ||
-          rawMeta[_snapshotMessageCountKey] != messageCount ||
-          rawMeta[_snapshotRevisionKey] !=
-              conversationContentRevision(
-                conversation,
-                messageCount: messageCount,
-              )) {
-        return false;
-      }
-      snapshot.remove(_snapshotClientMetaKey);
-      return jsonEncode(snapshot) == jsonEncode(rawResponse);
-    } catch (_) {
-      // A corrupt durable snapshot must not suppress a replacement write.
-      return false;
-    }
-  }
-
-  Map<String, dynamic>? _normalizeJsonMap(dynamic value) {
-    if (value is Map<String, dynamic>) {
-      return value;
-    }
-
-    if (value is Map) {
-      return value.map(
-        (key, value) => MapEntry(key.toString(), value),
-      );
-    }
-
-    return null;
-  }
-
   void _applyAnalysisResult(
     AnalysisResult result, {
     bool resetFeedbackState = true,
@@ -1898,357 +1697,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     if (resetFeedbackState) {
       _resetFeedbackState();
-    }
-  }
-
-  Future<void> _persistLatestAnalysisSnapshot(
-    AnalysisResult result, {
-    String? completionKey,
-    int? previousAnalyzedCount,
-    int? analyzedMessageCount,
-    String? analyzedContentRevision,
-    bool allowArchivedRecordRefresh = false,
-  }) {
-    return _trackAnalysisPersistenceTask(
-      _runPersistLatestAnalysisSnapshot(
-        result,
-        completionKey: completionKey,
-        previousAnalyzedCount: previousAnalyzedCount,
-        analyzedMessageCount: analyzedMessageCount,
-        analyzedContentRevision: analyzedContentRevision,
-        allowArchivedRecordRefresh: allowArchivedRecordRefresh,
-      ),
-    );
-  }
-
-  Future<void> _trackAnalysisPersistenceTask(Future<void> task) {
-    _pendingAnalysisPersistenceTasks.add(task);
-    unawaited(
-      task.then<void>(
-        (_) => _pendingAnalysisPersistenceTasks.remove(task),
-        onError: (Object _, StackTrace __) {
-          _pendingAnalysisPersistenceTasks.remove(task);
-        },
-      ),
-    );
-    return task;
-  }
-
-  Future<void> _awaitPendingAnalysisPersistence() async {
-    while (_pendingAnalysisPersistenceTasks.isNotEmpty) {
-      final pending = List<Future<void>>.of(_pendingAnalysisPersistenceTasks);
-      await Future.wait(
-        pending.map((task) async {
-          try {
-            await task;
-          } catch (_) {
-            // The existing repair path remains responsible for a failed
-            // best-effort record write; leaving must never become a dead end.
-          }
-        }),
-      );
-      _pendingAnalysisPersistenceTasks.removeAll(pending);
-    }
-  }
-
-  Future<void> _runPersistLatestAnalysisSnapshot(
-    AnalysisResult result, {
-    String? completionKey,
-    int? previousAnalyzedCount,
-    int? analyzedMessageCount,
-    String? analyzedContentRevision,
-    bool allowArchivedRecordRefresh = false,
-  }) async {
-    _analysisPersistenceInFlight++;
-    if (mounted) setState(() {});
-    try {
-      await _persistLatestAnalysisSnapshotCore(
-        result,
-        completionKey: completionKey,
-        previousAnalyzedCount: previousAnalyzedCount,
-        analyzedMessageCount: analyzedMessageCount,
-        analyzedContentRevision: analyzedContentRevision,
-        allowArchivedRecordRefresh: allowArchivedRecordRefresh,
-      );
-    } finally {
-      if (_analysisPersistenceInFlight > 0) {
-        _analysisPersistenceInFlight--;
-      }
-      if (mounted) setState(() {});
-    }
-  }
-
-  Future<void> _persistLatestAnalysisSnapshotCore(
-    AnalysisResult result, {
-    String? completionKey,
-    int? previousAnalyzedCount,
-    int? analyzedMessageCount,
-    String? analyzedContentRevision,
-    bool allowArchivedRecordRefresh = false,
-  }) async {
-    final repository = ref.read(conversationRepositoryProvider);
-    final conv = repository.getConversation(widget.conversationId);
-    if (conv == null) {
-      return;
-    }
-    if (analyzedContentRevision == null ||
-        conversationContentRevision(conv) != analyzedContentRevision) {
-      return;
-    }
-
-    final previousAnalysis = (
-      enthusiasmScore: conv.lastEnthusiasmScore,
-      analyzedMessageCount: conv.lastAnalyzedMessageCount,
-      analyzedCharCount: conv.lastAnalyzedCharCount,
-      gameStage: conv.currentGameStage,
-      snapshotJson: conv.lastAnalysisSnapshotJson,
-    );
-    final targetAnalyzedMessageCount =
-        analyzedMessageCount ?? conv.messages.length;
-    final targetSnapshotJson = _encodeAnalysisSnapshot(
-      result.rawResponse,
-      contentRevision: conversationContentRevision(
-        conv,
-        messageCount: targetAnalyzedMessageCount,
-      ),
-      messageCount: targetAnalyzedMessageCount,
-    );
-
-    conv.lastEnthusiasmScore = result.enthusiasmScore;
-    conv.lastAnalyzedMessageCount = targetAnalyzedMessageCount;
-    // ADR #19 規格 #8：char baseline 對應「實際送出的 requestMessages」
-    //（notifier 在 start 時計），不是完成時 repository 裡的最新 messages
-    //（避免分析中新進訊息造成 baseline 漂移）。
-    final payloadCharCount = ref
-        .read(streamingAnalyzeProvider(widget.conversationId).notifier)
-        .lastPayloadCharCount;
-    if (payloadCharCount != null) {
-      conv.lastAnalyzedCharCount = payloadCharCount;
-    }
-    conv.currentGameStage = result.gameStage.current.name;
-    conv.lastAnalysisSnapshotJson = targetSnapshotJson;
-
-    final writeController =
-        ref.read(conversationWriteControllerProvider.notifier);
-    await writeController.save(
-      conv,
-      intent: ConversationSaveIntent.analysisCompleted,
-      expectedContentRevision: analyzedContentRevision,
-    );
-
-    if (conversationContentRevision(conv) != analyzedContentRevision) {
-      // Content changed while the snapshot write was in flight. Roll back this
-      // run's analysis fields only if they are still the values we wrote; a
-      // genuinely newer, different analysis must win. Then persist the latest
-      // messages as active and avoid creating fresh legacy-history evidence.
-      if (conv.lastAnalysisSnapshotJson == targetSnapshotJson &&
-          conv.lastAnalyzedMessageCount == targetAnalyzedMessageCount) {
-        conv.lastEnthusiasmScore = previousAnalysis.enthusiasmScore;
-        conv.lastAnalyzedMessageCount = previousAnalysis.analyzedMessageCount;
-        conv.lastAnalyzedCharCount = previousAnalysis.analyzedCharCount;
-        conv.currentGameStage = previousAnalysis.gameStage;
-        conv.lastAnalysisSnapshotJson = previousAnalysis.snapshotJson;
-        try {
-          await writeController.save(
-            conv,
-            intent: ConversationSaveIntent.contentChanged,
-          );
-        } catch (_) {
-          // The compensating conversation write can fail independently. Still
-          // leave an explicit active marker when settings storage is healthy,
-          // so cold restore cannot treat this post-feature row as legacy.
-          await ref
-              .read(conversationArchiveControllerProvider.notifier)
-              .markActive(conv);
-          rethrow;
-        }
-      }
-      return;
-    }
-
-    final recordSaved = await _ensureAnalysisRecord(
-      conversation: conv,
-      result: result,
-      completionKey: completionKey,
-      previousAnalyzedCount: previousAnalyzedCount,
-      analyzedMessageCount: targetAnalyzedMessageCount,
-      analyzedContentRevision: analyzedContentRevision,
-      allowArchivedRefresh: allowArchivedRecordRefresh,
-    );
-    _setAnalysisRecordNeedsRepair(!recordSaved);
-
-    // 案2：analyze 歷史事件（best-effort：失敗只 debugPrint，絕不 rethrow，
-    // 分析呈現完全不受影響）。去重靠呼叫端既有 gate（hydrate 路徑
-    // _maybePersistAndSyncOnHydrate 的 alreadyPersisted 比對＋listener 路徑
-    // 一次性觸發），同一次分析絕不重複記錄，這裡不另做冪等。
-    try {
-      await ref.read(analysisHistoryRepositoryProvider).append(
-            AnalysisHistoryEvent.analyze(
-              id: const Uuid().v4(),
-              createdAt: DateTime.now(),
-              conversationId: widget.conversationId,
-              partnerId: conv.partnerId,
-              subjectName: conv.name,
-              enthusiasmScore: result.enthusiasmScore,
-              gameStageLabel: result.gameStage.current.name,
-            ),
-          );
-    } catch (e) {
-      debugPrint('AnalysisHistory analyze append failed: $e');
-    }
-
-    // Tier 2 批 1.5：首次分析完成漏斗事件（once-flag 去重，best-effort）。
-    unawaited(
-      ref.read(funnelTrackerProvider).trackOnce('first_analysis_completed'),
-    );
-
-    // 案4：48h 跟進提醒 — 綁 partner 的分析完成後，首次詢問軟卡並排程。
-    // best-effort：失敗只 debugPrint，絕不影響分析呈現與快照持久化。
-    await _maybeScheduleFollowUpNotification(conv);
-  }
-
-  void _setAnalysisRecordNeedsRepair(bool value) {
-    if (_analysisRecordNeedsRepair == value) return;
-    _analysisRecordNeedsRepair = value;
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _repairAnalysisRecord({
-    required Conversation conversation,
-    required AnalysisResult result,
-    required String? completionKey,
-    required int? previousAnalyzedCount,
-    required int analyzedMessageCount,
-    required String? analyzedContentRevision,
-  }) async {
-    _analysisPersistenceInFlight++;
-    if (mounted) setState(() {});
-    try {
-      final prefixRevision = analyzedMessageCount > 0 &&
-              analyzedMessageCount <= conversation.messages.length
-          ? conversationContentRevision(
-              conversation,
-              messageCount: analyzedMessageCount,
-            )
-          : null;
-      final rawResponse = result.rawResponse;
-      final current = _currentAnalysisRecord(conversation);
-      final canonicalSnapshotMatches = _analysisSnapshotMatches(
-        conversation: conversation,
-        snapshotJson: conversation.lastAnalysisSnapshotJson,
-        rawResponse: rawResponse,
-        messageCount: analyzedMessageCount,
-        analyzedContentRevision: analyzedContentRevision,
-      );
-      if (!_analysisRecordNeedsRepair &&
-          prefixRevision != null &&
-          rawResponse != null &&
-          current != null &&
-          current.segmentEnd == analyzedMessageCount &&
-          current.analyzedContentRevision == prefixRevision &&
-          current.analysisSnapshotJson == jsonEncode(rawResponse)) {
-        final archived =
-            await ref.read(analysisRecordStoreProvider).archiveCurrentRecord(
-                  ownerUserId: _analysisRecordOwner(conversation) ?? '',
-                  conversationId: conversation.id,
-                );
-        _setAnalysisRecordNeedsRepair(!archived);
-        if (archived) _invalidateAnalysisArchiveCount();
-        if (archived) _invalidatePartnerAnalysisRecords(conversation);
-        return;
-      }
-      final saved = await _ensureAnalysisRecord(
-        conversation: conversation,
-        result: result,
-        completionKey: completionKey,
-        previousAnalyzedCount: previousAnalyzedCount,
-        analyzedMessageCount: analyzedMessageCount,
-        analyzedContentRevision: analyzedContentRevision,
-        allowArchivedRefresh: canonicalSnapshotMatches,
-      );
-      _setAnalysisRecordNeedsRepair(!saved);
-    } finally {
-      if (_analysisPersistenceInFlight > 0) {
-        _analysisPersistenceInFlight--;
-      }
-      if (mounted) setState(() {});
-    }
-  }
-
-  Future<bool> _ensureAnalysisRecord({
-    required Conversation conversation,
-    required AnalysisResult result,
-    required String? completionKey,
-    required int? previousAnalyzedCount,
-    required int analyzedMessageCount,
-    required String? analyzedContentRevision,
-    bool allowArchivedRefresh = false,
-  }) async {
-    final ownerUserId = _analysisRecordOwner(conversation);
-    final rawResponse = result.rawResponse;
-    if (ownerUserId == null ||
-        rawResponse == null ||
-        rawResponse.isEmpty ||
-        analyzedContentRevision == null ||
-        analyzedMessageCount <= 0 ||
-        analyzedMessageCount > conversation.messages.length ||
-        conversationContentRevision(conversation) != analyzedContentRevision) {
-      return false;
-    }
-
-    final analyzedPrefixRevision = conversationContentRevision(
-      conversation,
-      messageCount: analyzedMessageCount,
-    );
-    final snapshotJson = jsonEncode(rawResponse);
-    final snapshotDigest = sha256.convert(utf8.encode(snapshotJson));
-    final stableCompletionKey = completionKey?.trim().isNotEmpty == true
-        ? completionKey!.trim()
-        : 'snapshot:$analyzedPrefixRevision:$analyzedMessageCount:'
-            '$snapshotDigest';
-    final runStartPreviousCount =
-        (previousAnalyzedCount ?? 0).clamp(0, analyzedMessageCount).toInt();
-    final store = ref.read(analysisRecordStoreProvider);
-    try {
-      final saveResult = await store.saveSuccessfulAnalysis(
-        ownerUserId: ownerUserId,
-        conversation: conversation,
-        completionKey: stableCompletionKey,
-        runStartPreviousCount: runStartPreviousCount,
-        analyzedMessageCount: analyzedMessageCount,
-        analyzedContentRevision: analyzedPrefixRevision,
-        analysisSnapshotJson: snapshotJson,
-        enthusiasmScore: result.enthusiasmScore,
-        gameStageLabel: result.gameStage.current.label,
-        allowArchivedRefresh: allowArchivedRefresh,
-        sourcePlatform: store.conversationSource(
-          ownerUserId: ownerUserId,
-          conversationId: conversation.id,
-        ),
-      );
-      if (!saveResult.accepted) {
-        debugPrint(
-          'Analysis record save rejected: ${saveResult.rejectionReason}',
-        );
-        return false;
-      }
-      final archived = await store.archiveCurrentRecord(
-        ownerUserId: ownerUserId,
-        conversationId: conversation.id,
-      );
-      if (!archived) {
-        debugPrint('Analysis record archive rejected: ${conversation.id}');
-        return false;
-      }
-      _invalidateAnalysisArchiveCount();
-      _invalidatePartnerAnalysisRecords(conversation);
-      if (mounted) setState(() {});
-      return true;
-    } catch (error) {
-      // The canonical analysis snapshot already succeeded. Keep the result
-      // usable and let hydrate retry this idempotent record write later.
-      debugPrint('Analysis record save failed: $error');
-      return false;
     }
   }
 
@@ -2289,6 +1737,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String _partnerDisplayName(String partnerId) {
     final partner = ref.read(partnerRepositoryProvider).getById(partnerId);
     return partner?.name ?? '';
+  }
+
+  /// 冷啟動還原：委派 coordinator，成功時套用畫面本地鏡像。
+  void _restorePersistedAnalysis({bool repairRecord = true}) {
+    final outcome = _persistence.restore(repairRecord: repairRecord);
+    if (outcome == null) return;
+    _lastAnalyzedMessageCount = outcome.analyzedMessageCount;
+    _applyAnalysisResult(outcome.result);
   }
 
   @override
@@ -2359,7 +1815,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Future<void> _cleanupAndGoBack() async {
     if (_isLeavingAfterPersistence) return;
     _isLeavingAfterPersistence = true;
-    await _awaitPendingAnalysisPersistence();
+    await _persistence.awaitSettled();
     if (!mounted) return;
     final repository = ref.read(conversationRepositoryProvider);
     final conversation = repository.getConversation(widget.conversationId);
@@ -3802,17 +3258,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     int? analysisMessageLimit,
     bool allowPendingOutgoingRefresh = false,
   }) async {
-    final pendingRecordRepair = _analysisRecordRepairFuture;
+    final pendingRecordRepair = _persistence.recordRepairFuture;
     if (pendingRecordRepair != null) {
       await pendingRecordRepair;
     }
     if (!mounted) return;
-    if (_analysisRecordNeedsRepair) {
+    if (_persistence.recordNeedsRepair) {
       _restorePersistedAnalysis();
-      final retry = _analysisRecordRepairFuture;
+      final retry = _persistence.recordRepairFuture;
       if (retry != null) await retry;
       if (!mounted) return;
-      if (_analysisRecordNeedsRepair) {
+      if (_persistence.recordNeedsRepair) {
         setState(() {
           _isAnalyzing = false;
           _applyErrorState(
@@ -4097,14 +3553,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _lastAiResponse = result.rawResponse;
           _resetFeedbackState();
         });
-        _persistLatestAnalysisSnapshot(
+        _persistence
+            .persistLatestSnapshot(
           result,
           completionKey: next.analysisRunId,
           previousAnalyzedCount: next.previousAnalyzedCount,
           analyzedMessageCount: analyzedMessageCount,
           analyzedContentRevision: next.conversationContentRevision,
           allowArchivedRecordRefresh: _isRefreshingPremiumReplies,
-        ).catchError((_) {
+        )
+            .catchError((_) {
           // Ignore errors in test environment.
         });
         _syncSubscriptionUsageFromResult(result, showChargeToast: true);
@@ -5909,7 +5367,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     ),
                                   ),
                                 ],
-                                if (_analysisRecordNeedsRepair) ...[
+                                if (_persistence.recordNeedsRepair) ...[
                                   const SizedBox(height: 7),
                                   Text(
                                     '分析已完成，但紀錄尚未儲存；系統會自動重試。',
