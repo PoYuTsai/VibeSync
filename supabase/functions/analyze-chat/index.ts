@@ -1,6 +1,9 @@
 // supabase/functions/analyze-chat/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { withOperationalErrorMonitoring } from "../_shared/operational_error_monitor.ts";
 import {
   type AnalysisResult as GuardrailAnalysisResult,
@@ -4549,7 +4552,26 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
+// Handler factory：測試可注入假 Supabase client，不啟動 HTTP server。
+// serve 只在 import.meta.main（Edge runtime 入口）時執行。
+export interface AnalyzeChatHandlerDeps {
+  // deno-lint-ignore no-explicit-any
+  createSupabaseClient: () => SupabaseClient<any, "public", any>;
+}
+
+export function createAnalyzeChatHandler(
+  deps: AnalyzeChatHandlerDeps = {
+    createSupabaseClient: () =>
+      createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY),
+  },
+): (req: Request) => Promise<Response> {
+  return (req) => handleAnalyzeChat(req, deps);
+}
+
+async function handleAnalyzeChat(
+  req: Request,
+  deps: AnalyzeChatHandlerDeps,
+): Promise<Response> {
   // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -4567,7 +4589,7 @@ serve(withOperationalErrorMonitoring("analyze-chat", async (req) => {
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const supabase = deps.createSupabaseClient();
     const token = authHeader.replace("Bearer ", "");
     const {
       data: { user },
@@ -9215,7 +9237,13 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     logError("unhandled_error", { error: getErrorMessage(error) });
     return jsonResponse({ error: "Internal server error" }, 500);
   }
-}));
+}
+
+if (import.meta.main) {
+  serve(
+    withOperationalErrorMonitoring("analyze-chat", createAnalyzeChatHandler()),
+  );
+}
 
 // Prompt Caching enabled
 // Last deployed: 2026-03-06
