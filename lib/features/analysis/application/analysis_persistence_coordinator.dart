@@ -18,25 +18,12 @@ import 'package:uuid/uuid.dart';
 
 import '../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../analysis_history/domain/repositories/analysis_history_repository.dart';
-import '../../conversation/data/providers/conversation_write_controller.dart'
-    show ConversationSaveIntent;
-import '../../conversation/data/repositories/conversation_archive_store.dart'
-    show
-        ConversationArchiveEntry,
-        ConversationArchiveStatus,
-        conversationContentRevision;
 import '../../conversation/domain/entities/conversation.dart';
-import '../data/repositories/analysis_record_store.dart';
-import '../data/services/analysis_transport_support.dart' show analysisDebugLog;
+import '../../conversation/domain/services/conversation_content_revision.dart';
 import '../domain/entities/analysis_models.dart';
 import '../domain/entities/analysis_record.dart';
-
-/// canonical 對話存檔（含 analysisCompleted 的修訂前置檢查與補償路徑）。
-typedef SaveConversation = Future<void> Function(
-  Conversation conversation, {
-  required ConversationSaveIntent intent,
-  String? expectedContentRevision,
-});
+import 'ports/analysis_record_port.dart';
+import 'ports/conversation_write_ports.dart';
 
 /// [AnalysisPersistenceCoordinator.restore] 的結果：畫面據此套用本地鏡像。
 class AnalysisRestoreOutcome {
@@ -56,13 +43,12 @@ class AnalysisPersistenceCoordinator {
 
   AnalysisPersistenceCoordinator({
     required this.conversationId,
-    required Conversation? Function(String conversationId) getConversation,
-    required SaveConversation saveConversation,
-    required Future<void> Function(Conversation conversation)
-        markConversationActive,
-    required ConversationArchiveEntry? Function(Conversation conversation)
-        archiveEntryFor,
-    required AnalysisRecordStore Function() recordStore,
+    required GetConversation getConversation,
+    required PersistAnalysisCompletedConversation persistAnalysisCompleted,
+    required PersistContentChangedConversation persistContentChanged,
+    required MarkConversationActive markConversationActive,
+    required ArchiveMarkerLookup archiveMarkerFor,
+    required AnalysisRecordPort recordPort,
     required String? Function() currentRecordOwnerUserId,
     required AnalysisHistoryRepository Function() historyRepository,
     required Future<void> Function(String eventKey) trackFunnelOnce,
@@ -72,10 +58,11 @@ class AnalysisPersistenceCoordinator {
     required Future<void> Function(Conversation conversation)
         afterAnalysisPersisted,
   })  : _getConversation = getConversation,
-        _saveConversation = saveConversation,
+        _persistAnalysisCompleted = persistAnalysisCompleted,
+        _persistContentChanged = persistContentChanged,
         _markConversationActive = markConversationActive,
-        _archiveEntryFor = archiveEntryFor,
-        _recordStore = recordStore,
+        _archiveMarkerFor = archiveMarkerFor,
+        _recordPort = recordPort,
         _currentRecordOwnerUserId = currentRecordOwnerUserId,
         _historyRepository = historyRepository,
         _trackFunnelOnce = trackFunnelOnce,
@@ -85,15 +72,14 @@ class AnalysisPersistenceCoordinator {
         _afterAnalysisPersisted = afterAnalysisPersisted;
 
   final String conversationId;
-  final Conversation? Function(String conversationId) _getConversation;
-  final SaveConversation _saveConversation;
-  final Future<void> Function(Conversation conversation)
-      _markConversationActive;
-  final ConversationArchiveEntry? Function(Conversation conversation)
-      _archiveEntryFor;
+  final GetConversation _getConversation;
+  final PersistAnalysisCompletedConversation _persistAnalysisCompleted;
+  final PersistContentChangedConversation _persistContentChanged;
+  final MarkConversationActive _markConversationActive;
+  final ArchiveMarkerLookup _archiveMarkerFor;
 
-  /// 紀錄存放層每次呼叫時解析（維持與原 per-call `ref.read` 相同的新鮮度）。
-  final AnalysisRecordStore Function() _recordStore;
+  /// 紀錄存放層 port（adapter 內部 per-call 解析，新鮮度與原 read 相同）。
+  final AnalysisRecordPort _recordPort;
   final String? Function() _currentRecordOwnerUserId;
   final AnalysisHistoryRepository Function() _historyRepository;
   final Future<void> Function(String eventKey) _trackFunnelOnce;
@@ -183,10 +169,12 @@ class AnalysisPersistenceCoordinator {
         analyzedMessageCount: conversation.lastAnalyzedMessageCount!,
       );
     } catch (error) {
-      analysisDebugLog(
-        '[AnalysisPersistenceCoordinator] Failed to restore persisted '
-        'analysis for $conversationId: $error',
-      );
+      if (kDebugMode) {
+        debugPrint(
+          '[AnalysisPersistenceCoordinator] Failed to restore persisted '
+          'analysis for $conversationId: $error',
+        );
+      }
       return null;
     }
   }
@@ -240,10 +228,10 @@ class AnalysisPersistenceCoordinator {
           );
     }
 
-    final archiveEntry = _archiveEntryFor(conversation);
+    final archiveEntry = _archiveMarkerFor(conversation);
     if (archiveEntry != null) {
       final analyzedRevision = archiveEntry.contentRevision;
-      if (archiveEntry.status == ConversationArchiveStatus.archived &&
+      if (archiveEntry.isArchived &&
           analyzedCount != conversation.messages.length) {
         return false;
       }
@@ -456,9 +444,8 @@ class AnalysisPersistenceCoordinator {
     conv.currentGameStage = result.gameStage.current.name;
     conv.lastAnalysisSnapshotJson = targetSnapshotJson;
 
-    await _saveConversation(
+    await _persistAnalysisCompleted(
       conv,
-      intent: ConversationSaveIntent.analysisCompleted,
       expectedContentRevision: analyzedContentRevision,
     );
 
@@ -475,10 +462,7 @@ class AnalysisPersistenceCoordinator {
         conv.currentGameStage = previousAnalysis.gameStage;
         conv.lastAnalysisSnapshotJson = previousAnalysis.snapshotJson;
         try {
-          await _saveConversation(
-            conv,
-            intent: ConversationSaveIntent.contentChanged,
-          );
+          await _persistContentChanged(conv);
         } catch (_) {
           // The compensating conversation write can fail independently. Still
           // leave an explicit active marker when settings storage is healthy,
@@ -571,7 +555,7 @@ class AnalysisPersistenceCoordinator {
           current.segmentEnd == analyzedMessageCount &&
           current.analyzedContentRevision == prefixRevision &&
           current.analysisSnapshotJson == jsonEncode(rawResponse)) {
-        final archived = await _recordStore().archiveCurrentRecord(
+        final archived = await _recordPort.archiveCurrentRecord(
           ownerUserId: recordOwnerFor(conversation) ?? '',
           conversationId: conversation.id,
         );
@@ -630,9 +614,8 @@ class AnalysisPersistenceCoordinator {
             '$snapshotDigest';
     final runStartPreviousCount =
         (previousAnalyzedCount ?? 0).clamp(0, analyzedMessageCount).toInt();
-    final store = _recordStore();
     try {
-      final saveResult = await store.saveSuccessfulAnalysis(
+      final saveResult = await _recordPort.saveSuccessfulAnalysis(
         ownerUserId: ownerUserId,
         conversation: conversation,
         completionKey: stableCompletionKey,
@@ -643,7 +626,7 @@ class AnalysisPersistenceCoordinator {
         enthusiasmScore: result.enthusiasmScore,
         gameStageLabel: result.gameStage.current.label,
         allowArchivedRefresh: allowArchivedRefresh,
-        sourcePlatform: store.conversationSource(
+        sourcePlatform: _recordPort.conversationSource(
           ownerUserId: ownerUserId,
           conversationId: conversation.id,
         ),
@@ -654,7 +637,7 @@ class AnalysisPersistenceCoordinator {
         );
         return false;
       }
-      final archived = await store.archiveCurrentRecord(
+      final archived = await _recordPort.archiveCurrentRecord(
         ownerUserId: ownerUserId,
         conversationId: conversation.id,
       );
@@ -687,7 +670,7 @@ class AnalysisPersistenceCoordinator {
   AnalysisRecord? currentRecordFor(Conversation conversation) {
     final ownerUserId = recordOwnerFor(conversation);
     if (ownerUserId == null) return null;
-    return _recordStore().currentFor(
+    return _recordPort.currentFor(
       ownerUserId: ownerUserId,
       conversationId: conversation.id,
     );

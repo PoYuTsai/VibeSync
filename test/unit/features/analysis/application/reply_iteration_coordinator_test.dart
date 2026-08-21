@@ -1,5 +1,7 @@
 // 取代 optimize_message_request_contract / reply_refine_entry_points 的
-// source scan：以可執行行為釘住潤飾／微調的計費契約。
+// source scan：以可執行行為釘住潤飾／微調的計費契約。走與 production
+// 相同的 data adapter（OptimizeBillingAdapter／ReplyRefineDraftAdapter）
+// 實作 application port，等於同時驗證 port adapter 的 exactly-once 語意。
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,8 +9,11 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vibesync/features/analysis/application/analysis_run_preparer.dart';
 import 'package:vibesync/features/analysis/application/reply_iteration_coordinator.dart';
+import 'package:vibesync/features/analysis/application/ports/reply_refine_draft_port.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
+import 'package:vibesync/features/analysis/data/services/optimize_billing_adapter.dart';
 import 'package:vibesync/features/analysis/data/services/optimize_message_request_session.dart';
+import 'package:vibesync/features/analysis/data/services/reply_refine_draft_adapter.dart';
 import 'package:vibesync/features/analysis/data/services/reply_refine_draft_store.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
@@ -47,9 +52,9 @@ const Map<String, dynamic> _successBody = {
   },
 };
 
-class _ThrowingDraftStore implements ReplyRefineDraftStore {
+class _ThrowingDraftPort implements ReplyRefineDraftPort {
   @override
-  Future<ReplyRefineDraft?> loadFor({
+  Future<ReplyRefineDraftSnapshot?> loadFor({
     required String ownerUserId,
     required String originText,
   }) async =>
@@ -86,11 +91,9 @@ AuxiliaryAnalysisContext _contextWith(List<Message> messages) {
 ({
   ReplyIterationCoordinator coordinator,
   List<Map<String, dynamic>> bodies,
-  OptimizeMessageRequestIdSession session,
-  ReplyRefineDraftStore draftStore,
 }) _harness({
   Map<String, dynamic>? responseBody,
-  ReplyRefineDraftStore? draftStore,
+  ReplyRefineDraftPort? draftPort,
 }) {
   final bodies = <Map<String, dynamic>>[];
   final client = AnalysisAuxiliaryClient(
@@ -106,19 +109,19 @@ AuxiliaryAnalysisContext _contextWith(List<Message> messages) {
     expectedTierProvider: () => null,
     revenueCatAppUserIdProvider: () async => null,
   );
-  final session = OptimizeMessageRequestIdSession(
-    store: InMemoryOptimizeMessagePendingRequestStore(),
-  );
-  final resolvedDraftStore = draftStore ?? InMemoryReplyRefineDraftStore();
   return (
     coordinator: ReplyIterationCoordinator(
-      session: session,
-      draftStore: resolvedDraftStore,
-      auxiliaryClient: client,
+      billing: OptimizeBillingAdapter(
+        session: OptimizeMessageRequestIdSession(
+          store: InMemoryOptimizeMessagePendingRequestStore(),
+        ),
+      ),
+      draftStore: draftPort ??
+          ReplyRefineDraftAdapter(store: InMemoryReplyRefineDraftStore()),
+      optimizeDraft: client.optimizeDraft,
+      refineReply: client.refineReply,
     ),
     bodies: bodies,
-    session: session,
-    draftStore: resolvedDraftStore,
   );
 }
 
@@ -290,7 +293,7 @@ void main() {
     });
 
     test('暫存寫入失敗：restorable=false（pending 保留走 replay），round 不炸', () async {
-      final h = _harness(draftStore: _ThrowingDraftStore());
+      final h = _harness(draftPort: _ThrowingDraftPort());
       final round = await h.coordinator.runRefineRound(
         ownerUserId: owner,
         context: _contextWith([_msg('hi')]),

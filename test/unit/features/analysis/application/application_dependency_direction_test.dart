@@ -1,9 +1,11 @@
 // 架構回歸：application 層的依賴方向。
 //
-// Round 2 corrective 之後，application coordinator 只能依賴具名注入的
-// callable／介面：不得 import Riverpod（等於不得自行解析 provider）、
-// 不得反向 import presentation。Riverpod／Hive store／具體 client 的
-// 組裝一律在 composition root（analysis_providers.dart）。
+// application → 窄 port（domain/application）→ data：application 只能
+// 依賴具名注入的 callable／port，不得 import Riverpod（等於不得自行
+// 解析 provider）、不得反向 import presentation、也不得 import 任何
+// /data/ 路徑（含具體 store／client／notifier 型別）。Riverpod／Hive
+// ／具體 client 的組裝一律在 composition root（analysis_providers.dart）
+// 以 data adapter 完成。
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -42,6 +44,14 @@ void main() {
         imports.where((line) => line.contains('/presentation/')),
         isEmpty,
         reason: '依賴方向是 presentation → application，不可回頭',
+      );
+    });
+
+    test('${file.uri.pathSegments.last}：不 import 任何 /data/ 路徑', () {
+      expect(
+        imports.where((line) => line.contains('/data/')),
+        isEmpty,
+        reason: 'application 只能經 port 觸及 data；具體型別由 adapter 供給',
       );
     });
   }

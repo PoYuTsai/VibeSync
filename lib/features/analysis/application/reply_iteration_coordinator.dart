@@ -3,18 +3,21 @@
 /// 快取、微調稿 durable 暫存（先存得回來、才清付費身分）與
 /// acknowledgePresented（畫面確認付費結果可見後才 markSuccess）。
 /// 畫面保留同意書、面板與可見幀／route 判斷；順序與計費語意逐字沿用
-/// 拆分前實作。session／draft store／auxiliary client 一律由
-/// composition root（`analysis_providers.dart`）組裝注入，這裡不自建
-/// Hive store、不解析 provider。
+/// 拆分前實作。計費 port／draft port／傳輸
+/// callable 一律由 composition root（`analysis_providers.dart`）以
+/// data adapter 組裝注入；這裡看不到 Hive store、session、runner 或
+/// 具體 client 型別。
 library;
 
 import '../../conversation/domain/entities/session_context.dart';
-import '../data/services/analysis_service.dart';
-import '../data/services/optimize_message_request_session.dart';
-import '../data/services/optimize_request_runner.dart';
-import '../data/services/reply_refine_draft_store.dart';
 import '../domain/entities/analysis_models.dart';
+import '../domain/entities/analysis_telemetry.dart';
+import '../domain/entities/optimize_message_pending_request.dart';
+import '../domain/errors/analysis_exceptions.dart';
 import 'analysis_run_preparer.dart';
+import 'ports/optimize_billing_port.dart';
+import 'ports/reply_iteration_ports.dart';
+import 'ports/reply_refine_draft_port.dart';
 
 /// 一次成功潤飾：畫面憑 [pending] 在付費結果可見後 acknowledge。
 class PolishRunResult {
@@ -48,19 +51,19 @@ class RefineRoundResult {
 
 class ReplyIterationCoordinator {
   ReplyIterationCoordinator({
-    required OptimizeMessageRequestIdSession session,
-    required ReplyRefineDraftStore draftStore,
-    required AnalysisAuxiliaryClient auxiliaryClient,
-  })  : _session = session,
+    required OptimizeBillingPort billing,
+    required ReplyRefineDraftPort draftStore,
+    required OptimizeDraftCall optimizeDraft,
+    required RefineReplyCall refineReply,
+  })  : _billing = billing,
         _draftStore = draftStore,
-        _client = auxiliaryClient {
-    _runner = OptimizeRequestRunner(session: _session);
-  }
+        _optimizeDraft = optimizeDraft,
+        _refineReply = refineReply;
 
-  final OptimizeMessageRequestIdSession _session;
-  final ReplyRefineDraftStore _draftStore;
-  final AnalysisAuxiliaryClient _client;
-  late final OptimizeRequestRunner _runner;
+  final OptimizeBillingPort _billing;
+  final ReplyRefineDraftPort _draftStore;
+  final OptimizeDraftCall _optimizeDraft;
+  final RefineReplyCall _refineReply;
 
   OptimizeMessagePendingRequest? _pendingAwaitingPresentation;
 
@@ -85,7 +88,7 @@ class ReplyIterationCoordinator {
     required Future<bool> Function() onReadyToSend,
     required AnalysisTelemetryCallback onTelemetry,
   }) async {
-    final optimizeFingerprint = OptimizeMessageRequestIdSession.fingerprintFor(
+    final optimizeFingerprint = _billing.fingerprintFor(
       messages: context.requestMessages,
       userDraft: draft,
       sessionContext: sessionContext,
@@ -94,14 +97,12 @@ class ReplyIterationCoordinator {
       effectiveStyleContext: context.effectiveStyleContext,
       knownContactName: context.knownContactName,
     );
-    final outcome = await _runner.run<AnalysisResult>(
-      input: OptimizeRunInput(
-        ownerUserId: ownerUserId,
-        fingerprint: optimizeFingerprint,
-      ),
+    final outcome = await _billing.run(
+      ownerUserId: ownerUserId,
+      fingerprint: optimizeFingerprint,
       onReadyToSend: onReadyToSend,
       send: (pending) async {
-        final result = await _client.optimizeDraft(
+        final result = await _optimizeDraft(
           messages: context.requestMessages,
           sessionContext: sessionContext,
           conversationSummary: context.conversationSummary,
@@ -140,7 +141,7 @@ class ReplyIterationCoordinator {
     if (_pendingAwaitingPresentation?.requestId != pending.requestId) {
       return;
     }
-    await _session.markSuccess(pending);
+    await _billing.markSuccess(pending);
     if (_pendingAwaitingPresentation?.requestId == pending.requestId) {
       _pendingAwaitingPresentation = null;
     }
@@ -148,7 +149,7 @@ class ReplyIterationCoordinator {
 
   /// 讀回同一原句最近一次微調稿。讀失敗就當作沒有草稿：這只是方便用的
   /// 快取，不能為了它擋住面板。
-  Future<ReplyRefineDraft?> restoreRefineDraft({
+  Future<ReplyRefineDraftSnapshot?> restoreRefineDraft({
     required String ownerUserId,
     required String originText,
   }) async {
@@ -178,7 +179,7 @@ class ReplyIterationCoordinator {
     required Future<bool> Function() onReadyToSend,
     required AnalysisTelemetryCallback onTelemetry,
   }) async {
-    final fingerprint = OptimizeMessageRequestIdSession.fingerprintFor(
+    final fingerprint = _billing.fingerprintFor(
       messages: context.requestMessages,
       userDraft: currentText,
       sessionContext: sessionContext,
@@ -188,14 +189,12 @@ class ReplyIterationCoordinator {
       knownContactName: context.knownContactName,
       refineInstruction: instruction,
     );
-    final outcome = await _runner.run<AnalysisResult>(
-      input: OptimizeRunInput(
-        ownerUserId: ownerUserId,
-        fingerprint: fingerprint,
-      ),
+    final outcome = await _billing.run(
+      ownerUserId: ownerUserId,
+      fingerprint: fingerprint,
       onReadyToSend: onReadyToSend,
       send: (pending) async {
-        final result = await _client.refineReply(
+        final result = await _refineReply(
           messages: context.requestMessages,
           sessionContext: sessionContext,
           conversationSummary: context.conversationSummary,
@@ -273,6 +272,6 @@ class ReplyIterationCoordinator {
   Future<void> acknowledgeRefinePresented(
     OptimizeMessagePendingRequest pending,
   ) {
-    return _session.markSuccess(pending);
+    return _billing.markSuccess(pending);
   }
 }

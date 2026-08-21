@@ -4,13 +4,12 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/application/analysis_persistence_coordinator.dart';
+import 'package:vibesync/features/analysis/application/ports/analysis_record_port.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
-import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart'
-    show ConversationSaveIntent;
-import 'package:vibesync/features/conversation/data/repositories/conversation_archive_store.dart'
-    show conversationContentRevision;
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/domain/services/conversation_content_revision.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
 import '../../../../helpers/memory_analysis_history_repository.dart';
@@ -61,13 +60,53 @@ Conversation _conversation({String? snapshotJson, int? analyzedCount}) {
   );
 }
 
+/// 擁有者缺席時任何方法被呼叫都算違規。
+class _ThrowingAnalysisRecordPort implements AnalysisRecordPort {
+  @override
+  AnalysisRecord? currentFor({
+    required String ownerUserId,
+    required String conversationId,
+  }) =>
+      throw UnimplementedError('record port must not be hit');
+
+  @override
+  Future<AnalysisRecordSaveOutcome> saveSuccessfulAnalysis({
+    required String ownerUserId,
+    required Conversation conversation,
+    required String completionKey,
+    required int runStartPreviousCount,
+    required int analyzedMessageCount,
+    required String analyzedContentRevision,
+    required String analysisSnapshotJson,
+    required int enthusiasmScore,
+    required String gameStageLabel,
+    bool allowArchivedRefresh = false,
+    String? sourcePlatform,
+  }) =>
+      throw UnimplementedError('record port must not be hit');
+
+  @override
+  Future<bool> archiveCurrentRecord({
+    required String ownerUserId,
+    required String conversationId,
+  }) =>
+      throw UnimplementedError('record port must not be hit');
+
+  @override
+  String? conversationSource({
+    required String ownerUserId,
+    required String conversationId,
+  }) =>
+      throw UnimplementedError('record port must not be hit');
+}
+
 class _Harness {
   _Harness({required this.conversation});
 
   final Conversation conversation;
   final history = MemoryAnalysisHistoryRepository();
-  final savedIntents = <ConversationSaveIntent>[];
-  final savedExpectedRevisions = <String?>[];
+  final analysisCompletedSaves = <String>[];
+  final contentChangedSaves = <String>[];
   final funnelEvents = <String>[];
   final afterPersisted = <Conversation>[];
   int notifyCount = 0;
@@ -77,14 +116,16 @@ class _Harness {
       AnalysisPersistenceCoordinator(
     conversationId: _conversationId,
     getConversation: (id) => id == conversation.id ? conversation : null,
-    saveConversation: (conv, {required intent, expectedContentRevision}) async {
-      savedIntents.add(intent);
-      savedExpectedRevisions.add(expectedContentRevision);
+    persistAnalysisCompleted: (conv, {required expectedContentRevision}) async {
+      analysisCompletedSaves.add(expectedContentRevision);
+    },
+    persistContentChanged: (conv) async {
+      contentChangedSaves.add(conv.id);
     },
     markConversationActive: (_) async {},
-    archiveEntryFor: (_) => null,
-    // 擁有者缺席時所有紀錄路徑都必須在碰 store 之前就短路；真的碰到就炸。
-    recordStore: () => throw UnimplementedError('record store must not be hit'),
+    archiveMarkerFor: (_) => null,
+    // 擁有者缺席時所有紀錄路徑都必須在碰 record port 之前就短路。
+    recordPort: _ThrowingAnalysisRecordPort(),
     currentRecordOwnerUserId: () => null,
     historyRepository: () => history,
     trackFunnelOnce: (eventKey) async => funnelEvents.add(eventKey),
@@ -149,7 +190,8 @@ void main() {
       analyzedContentRevision: 'stale-revision',
     );
 
-    expect(harness.savedIntents, isEmpty);
+    expect(harness.analysisCompletedSaves, isEmpty);
+    expect(harness.contentChangedSaves, isEmpty);
     expect(harness.history.listRecent(), isEmpty);
     expect(harness.funnelEvents, isEmpty);
     expect(harness.afterPersisted, isEmpty);
@@ -170,8 +212,8 @@ void main() {
     );
     await harness.coordinator.awaitSettled();
 
-    expect(harness.savedIntents, [ConversationSaveIntent.analysisCompleted]);
-    expect(harness.savedExpectedRevisions, [revision]);
+    expect(harness.analysisCompletedSaves, [revision]);
+    expect(harness.contentChangedSaves, isEmpty);
     // ADR #19 規格 #8：char baseline 來自注入的 lastPayloadCharCount。
     expect(harness.conversation.lastAnalyzedCharCount, 42);
     expect(harness.conversation.lastAnalysisSnapshotJson, isNotNull);

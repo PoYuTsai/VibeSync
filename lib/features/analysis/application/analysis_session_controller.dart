@@ -8,15 +8,14 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../../conversation/data/repositories/conversation_archive_store.dart'
-    show conversationContentRevision;
 import '../../conversation/domain/entities/conversation.dart';
-import '../data/notifiers/streaming_analyze_notifier.dart';
-import '../data/services/analysis_transport_support.dart'
-    show OverchargeConfirmationPayload;
+import '../../conversation/domain/services/conversation_content_revision.dart';
 import '../domain/entities/analysis_models.dart';
+import '../domain/entities/overcharge_confirmation.dart';
+import '../domain/entities/streaming_analysis_state.dart';
 import 'analysis_persistence_coordinator.dart';
 import 'analysis_run_preparer.dart';
+import 'ports/streaming_run_port.dart';
 
 class AnalysisSessionController {
   // 訂閱同步屬 best-effort 前置：卡住不得凍結分析/刷新 spinner（2.1(b)）。
@@ -24,24 +23,26 @@ class AnalysisSessionController {
 
   AnalysisSessionController({
     required this.conversationId,
-    required StreamingAnalyzeNotifier Function() analyzeNotifier,
+    required StartAnalysisRun startRun,
+    required RetryAnalysisRun retryRun,
     required Future<void> Function() ensureServerEntitlementSynced,
     required Conversation? Function() currentConversation,
     required AnalysisPersistenceCoordinator persistence,
-  })  : _analyzeNotifier = analyzeNotifier,
+  })  : _startRun = startRun,
+        _retryRun = retryRun,
         _ensureServerEntitlementSynced = ensureServerEntitlementSynced,
         _currentConversation = currentConversation,
         _persistence = persistence;
 
   final String conversationId;
 
-  /// 唯一 reactive 真相的存取器（autoDispose family，須逐次解析）。
-  final StreamingAnalyzeNotifier Function() _analyzeNotifier;
+  /// 唯一 reactive 真相（StreamingAnalyzeNotifier）只透過這兩個 port
+  /// callable 觸碰；composition root 逐次解析 autoDispose family。
+  final StartAnalysisRun _startRun;
+  final RetryAnalysisRun _retryRun;
   final Future<void> Function() _ensureServerEntitlementSynced;
   final Conversation? Function() _currentConversation;
   final AnalysisPersistenceCoordinator _persistence;
-
-  StreamingAnalyzeNotifier get _notifier => _analyzeNotifier();
 
   /// 啟動主分析：best-effort 訂閱權益預同步（逾時放行，額度由 server 最終
   /// 把關）→ [shouldProceed] 守門（畫面傳 mounted）→ fire 唯一串流 run。
@@ -64,7 +65,7 @@ class AnalysisSessionController {
       return;
     }
 
-    final analysisFuture = _notifier.start(
+    final analysisFuture = _startRun(
       messages: preparation.requestMessages,
       sessionContext: conversation.sessionContext,
       conversationSummary: preparation.conversationSummary,
@@ -87,7 +88,7 @@ class AnalysisSessionController {
 
   /// 以 notifier 快取的 runId＋payload 續跑同一個串流 run（不重扣額度）。
   /// 沒有可續跑的 run 時 no-op。
-  Future<void> retry() => _notifier.retryStream();
+  Future<void> retry() => _retryRun();
 
   /// 完成結果是否已對不上目前對話內容（同數量編輯靠 contentRevision 認出；
   /// 舊 state 無修訂時退回訊息數比對）。

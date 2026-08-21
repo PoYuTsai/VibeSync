@@ -11,12 +11,11 @@ import '../../conversation/domain/entities/conversation.dart';
 import '../../conversation/domain/entities/message.dart';
 import '../../conversation/domain/entities/session_context.dart';
 import '../../partner/domain/entities/partner.dart';
-import '../data/services/analysis_auxiliary_client.dart';
-import '../data/services/analysis_service.dart';
-import '../data/services/ocr_recognition_cache_service.dart';
 import '../domain/entities/analysis_models.dart';
+import '../domain/entities/analysis_telemetry.dart';
 import '../domain/services/analysis_fragment_policy.dart';
 import '../domain/services/screenshot_recognition_helper.dart';
+import 'ports/screenshot_recognition_ports.dart';
 
 /// 建立新對話片段（匯入另開新片段路徑）。
 typedef CreateConversation = Future<Conversation> Function({
@@ -58,13 +57,15 @@ class ScreenshotImportCoordinator {
     required CreateConversation createConversation,
     required Future<void> Function(Conversation conversation) saveConversation,
     required Partner? Function(String partnerId) partnerById,
-    required AnalysisAuxiliaryClient auxiliaryClient,
+    required RecognizeScreenshots recognizeScreenshots,
+    required OcrRecognitionCachePort recognitionCache,
     required void Function() invalidateConversationProvider,
   })  : _getConversation = getConversation,
         _createConversation = createConversation,
         _saveConversation = saveConversation,
         _partnerById = partnerById,
-        _auxiliaryClient = auxiliaryClient,
+        _recognizeScreenshots = recognizeScreenshots,
+        _recognitionCache = recognitionCache,
         _invalidateConversationProvider = invalidateConversationProvider;
 
   final String conversationId;
@@ -72,7 +73,8 @@ class ScreenshotImportCoordinator {
   final CreateConversation _createConversation;
   final Future<void> Function(Conversation conversation) _saveConversation;
   final Partner? Function(String partnerId) _partnerById;
-  final AnalysisAuxiliaryClient _auxiliaryClient;
+  final RecognizeScreenshots _recognizeScreenshots;
+  final OcrRecognitionCachePort _recognitionCache;
 
   /// repo 寫入後讓畫面的 conversationProvider 失效重讀。
   final void Function() _invalidateConversationProvider;
@@ -101,11 +103,11 @@ class ScreenshotImportCoordinator {
     AnalysisTelemetryCallback? onTelemetry,
   }) async {
     if (forceRefresh) {
-      await OcrRecognitionCacheService.invalidate(images, conversationId);
+      await _recognitionCache.invalidate(images, conversationId);
     }
     final cachedRecognition = forceRefresh
         ? null
-        : await OcrRecognitionCacheService.read(images, conversationId);
+        : await _recognitionCache.read(images, conversationId);
     if (cachedRecognition != null) {
       onTelemetry?.call(
         AnalysisTelemetry(
@@ -117,23 +119,17 @@ class ScreenshotImportCoordinator {
           edgeAiDuration: Duration.zero,
           totalCompressedImageBytes: totalCompressedImageBytes,
           cacheHit: true,
-          recognizedClassification:
-              cachedRecognition.recognizedConversation.classification,
-          recognizedConfidence:
-              cachedRecognition.recognizedConversation.confidence,
-          recognizedSideConfidence:
-              cachedRecognition.recognizedConversation.sideConfidence,
-          recognizedMessageCount:
-              cachedRecognition.recognizedConversation.messageCount,
-          uncertainSideCount:
-              cachedRecognition.recognizedConversation.uncertainSideCount,
+          recognizedClassification: cachedRecognition.classification,
+          recognizedConfidence: cachedRecognition.confidence,
+          recognizedSideConfidence: cachedRecognition.sideConfidence,
+          recognizedMessageCount: cachedRecognition.messageCount,
+          uncertainSideCount: cachedRecognition.uncertainSideCount,
         ),
       );
       return (
         result: AnalysisResult.fromJson(
           {
-            'recognizedConversation':
-                cachedRecognition.recognizedConversation.toJson(),
+            'recognizedConversation': cachedRecognition.toJson(),
           },
         ),
         fromCache: true,
@@ -143,7 +139,7 @@ class ScreenshotImportCoordinator {
     // 使用 Future.any 來實現強制 timeout。
     final result = await Future.any([
       // 純識別模式：只識別截圖，不扣額度
-      _auxiliaryClient.recognizeScreenshots(
+      _recognizeScreenshots(
         images: images,
         sessionContext: sessionContext,
         knownContactName: ScreenshotRecognitionHelper.resolveKnownContactName(
@@ -154,14 +150,14 @@ class ScreenshotImportCoordinator {
         onTelemetry: onTelemetry,
       ),
       // Screen fence also includes local payload preparation, so it must
-      // stay outside AnalysisAuxiliaryClient's 130-second HTTP fence.
+      // stay outside the auxiliary client's 130-second HTTP fence.
       Future.delayed(kAnalyzeOcrScreenTimeout, () {
         throw TimeoutException('辨識超時 (135秒)');
       }),
     ]);
 
     if (result.recognizedConversation != null) {
-      await OcrRecognitionCacheService.write(
+      await _recognitionCache.write(
         images: images,
         recognizedConversation: result.recognizedConversation!,
         conversationId: conversationId,

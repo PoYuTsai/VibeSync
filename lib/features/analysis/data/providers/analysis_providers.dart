@@ -10,6 +10,8 @@ import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
 import '../../../conversation/data/providers/conversation_archive_providers.dart';
+import '../../../conversation/data/repositories/conversation_archive_store.dart'
+    show ConversationArchiveStatus;
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
 import '../../../conversation/domain/entities/conversation.dart';
@@ -23,12 +25,18 @@ import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repo_view.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../../application/analysis_persistence_coordinator.dart';
+import '../../application/ports/conversation_write_ports.dart';
 import '../../application/analysis_run_preparer.dart';
 import '../../application/analysis_session_controller.dart';
 import '../../application/reply_iteration_coordinator.dart';
 import '../../application/screenshot_import_coordinator.dart';
 import '../notifiers/streaming_analyze_notifier.dart';
+import '../repositories/analysis_record_port_adapter.dart';
 import '../services/analysis_auxiliary_client.dart';
+import '../services/conversation_memory_adapter.dart';
+import '../services/ocr_recognition_cache_adapter.dart';
+import '../services/optimize_billing_adapter.dart';
+import '../services/reply_refine_draft_adapter.dart';
 import '../services/optimize_message_request_session.dart';
 import '../services/reply_refine_draft_store.dart';
 import 'analysis_record_providers.dart';
@@ -152,6 +160,7 @@ final analysisRunPreparerProvider = Provider<AnalysisRunPreparer>((ref) {
   }
 
   return AnalysisRunPreparer(
+    memory: ConversationMemoryAdapter(),
     resolvePartnerSummary: (conversation) =>
         ref.read(partnerContextResolverProvider).resolve(conversation),
     resolveEffectiveStyleContext: resolveEffectiveStyleContext,
@@ -182,22 +191,35 @@ final analysisPersistenceCoordinatorFactoryProvider =
       conversationId: conversationId,
       getConversation: (id) =>
           ref.read(conversationRepositoryProvider).getConversation(id),
-      saveConversation: (
+      persistAnalysisCompleted: (
         conversation, {
-        required intent,
-        expectedContentRevision,
+        required expectedContentRevision,
       }) =>
           ref.read(conversationWriteControllerProvider.notifier).save(
                 conversation,
-                intent: intent,
+                intent: ConversationSaveIntent.analysisCompleted,
                 expectedContentRevision: expectedContentRevision,
+              ),
+      persistContentChanged: (conversation) =>
+          ref.read(conversationWriteControllerProvider.notifier).save(
+                conversation,
+                intent: ConversationSaveIntent.contentChanged,
               ),
       markConversationActive: (conversation) => ref
           .read(conversationArchiveControllerProvider.notifier)
           .markActive(conversation),
-      archiveEntryFor: (conversation) =>
-          ref.read(conversationArchiveStoreProvider).entryFor(conversation),
-      recordStore: () => ref.read(analysisRecordStoreProvider),
+      archiveMarkerFor: (conversation) {
+        final entry =
+            ref.read(conversationArchiveStoreProvider).entryFor(conversation);
+        if (entry == null) return null;
+        return ArchiveMarkerSnapshot(
+          contentRevision: entry.contentRevision,
+          isArchived: entry.status == ConversationArchiveStatus.archived,
+        );
+      },
+      recordPort: AnalysisRecordPortAdapter(
+        store: () => ref.read(analysisRecordStoreProvider),
+      ),
       currentRecordOwnerUserId: () => ref.read(analysisRecordOwnerProvider),
       historyRepository: () => ref.read(analysisHistoryRepositoryProvider),
       trackFunnelOnce: (eventKey) =>
@@ -227,8 +249,37 @@ final analysisSessionControllerFactoryProvider =
   }) {
     return AnalysisSessionController(
       conversationId: conversationId,
-      analyzeNotifier: () =>
-          ref.read(streamingAnalyzeProvider(conversationId).notifier),
+      startRun: ({
+        required messages,
+        sessionContext,
+        conversationSummary,
+        partnerSummary,
+        effectiveStyleContext,
+        knownContactName,
+        previousAnalyzedCount,
+        previousAnalyzedCharCount,
+        confirmedOvercharge,
+        conversationMessageCount,
+        analyzedMessageCount,
+        conversationContentRevision,
+      }) =>
+          ref.read(streamingAnalyzeProvider(conversationId).notifier).start(
+                messages: messages,
+                sessionContext: sessionContext,
+                conversationSummary: conversationSummary,
+                partnerSummary: partnerSummary,
+                effectiveStyleContext: effectiveStyleContext,
+                knownContactName: knownContactName,
+                previousAnalyzedCount: previousAnalyzedCount,
+                previousAnalyzedCharCount: previousAnalyzedCharCount,
+                confirmedOvercharge: confirmedOvercharge,
+                conversationMessageCount: conversationMessageCount,
+                analyzedMessageCount: analyzedMessageCount,
+                conversationContentRevision: conversationContentRevision,
+              ),
+      retryRun: () => ref
+          .read(streamingAnalyzeProvider(conversationId).notifier)
+          .retryStream(),
       ensureServerEntitlementSynced: () => ref
           .read(subscriptionProvider.notifier)
           .ensureServerEntitlementSyncedForAnalysis(),
@@ -271,7 +322,8 @@ final screenshotImportCoordinatorFactoryProvider =
           .save(conversation),
       partnerById: (partnerId) =>
           ref.read(partnerRepositoryProvider).getById(partnerId),
-      auxiliaryClient: AnalysisAuxiliaryClient(),
+      recognizeScreenshots: AnalysisAuxiliaryClient().recognizeScreenshots,
+      recognitionCache: const OcrRecognitionCacheAdapter(),
       invalidateConversationProvider: invalidateConversationProvider,
     );
   };
@@ -282,15 +334,23 @@ final screenshotImportCoordinatorFactoryProvider =
 /// 首次真正讀寫才碰 Hive）。
 final replyIterationCoordinatorFactoryProvider =
     Provider<ReplyIterationCoordinator Function()>((ref) {
-  return () => ReplyIterationCoordinator(
+  return () {
+    final auxiliaryClient = AnalysisAuxiliaryClient();
+    return ReplyIterationCoordinator(
+      billing: OptimizeBillingAdapter(
         session: OptimizeMessageRequestIdSession(
           store: HiveOptimizeMessagePendingRequestStore(
             () => StorageService.settingsBox,
           ),
         ),
-        draftStore: HiveReplyRefineDraftStore(
+      ),
+      draftStore: ReplyRefineDraftAdapter(
+        store: HiveReplyRefineDraftStore(
           () => StorageService.settingsBox,
         ),
-        auxiliaryClient: AnalysisAuxiliaryClient(),
-      );
+      ),
+      optimizeDraft: auxiliaryClient.optimizeDraft,
+      refineReply: auxiliaryClient.refineReply,
+    );
+  };
 });

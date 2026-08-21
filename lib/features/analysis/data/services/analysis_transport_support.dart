@@ -13,28 +13,8 @@ import '../../../conversation/domain/entities/message.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import 'analysis_exceptions.dart';
 
-/// ADR #19 定案 #5 — >2000 字確認帶的用戶確認憑證。
-///
-/// 用戶在本地確認框按下「確認扣 20 則」後生成；綁定送出 payload 的
-/// hash（MessageCalculator.computeBillingPayloadHash）＋計費字數＋
-/// 一次性 confirmationId（idempotency：同一確認重送絕不重扣）。
-class OverchargeConfirmationPayload {
-  final String payloadHash;
-  final int billableChars;
-  final String confirmationId;
-
-  const OverchargeConfirmationPayload({
-    required this.payloadHash,
-    required this.billableChars,
-    required this.confirmationId,
-  });
-
-  Map<String, dynamic> toJson() => {
-        'payloadHash': payloadHash,
-        'billableChars': billableChars,
-        'confirmationId': confirmationId,
-      };
-}
+export '../../domain/entities/overcharge_confirmation.dart'
+    show OverchargeConfirmationPayload;
 
 class AnalysisEntitlementContext {
   const AnalysisEntitlementContext({

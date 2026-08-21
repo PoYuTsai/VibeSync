@@ -3,13 +3,11 @@
 /// 行為逐字沿用拆分前 AnalysisScreen 的實作。
 library;
 
-import '../../conversation/data/repositories/conversation_archive_store.dart'
-    show conversationContentRevision;
-import '../../conversation/data/services/memory_service.dart';
 import '../../conversation/domain/entities/conversation.dart';
-import '../../conversation/domain/entities/conversation_summary.dart';
 import '../../conversation/domain/entities/message.dart';
+import '../../conversation/domain/services/conversation_content_revision.dart';
 import '../domain/services/screenshot_recognition_helper.dart';
+import 'ports/conversation_memory_port.dart';
 
 /// 主分析組裝失敗的可判別原因；錯誤文案由畫面層決定。
 enum AnalysisRunPrepareFailure {
@@ -85,15 +83,15 @@ class AuxiliaryAnalysisContext {
 
 class AnalysisRunPreparer {
   AnalysisRunPreparer({
-    MemoryService? memoryService,
+    required ConversationMemoryPort memory,
     required String? Function(Conversation conversation) resolvePartnerSummary,
     required String? Function(Conversation conversation)
         resolveEffectiveStyleContext,
-  })  : _memoryService = memoryService ?? MemoryService(),
+  })  : _memory = memory,
         _resolvePartnerSummary = resolvePartnerSummary,
         _resolveEffectiveStyleContext = resolveEffectiveStyleContext;
 
-  final MemoryService _memoryService;
+  final ConversationMemoryPort _memory;
   final String? Function(Conversation conversation) _resolvePartnerSummary;
   final String? Function(Conversation conversation)
       _resolveEffectiveStyleContext;
@@ -193,26 +191,19 @@ class AnalysisRunPreparer {
   Future<String?> _buildHistoricalContextSummary(
     Conversation conversation,
   ) async {
-    final persistedSummary =
-        _memoryService.buildHistoricalSummary(conversation);
+    final persistedSummary = _memory.persistedHistoricalSummary(conversation);
     if (persistedSummary != null && persistedSummary.isNotEmpty) {
       return persistedSummary;
     }
 
-    final olderRounds =
-        conversation.currentRound - MemoryService.maxRecentRounds;
-    if (olderRounds < MemoryService.minRoundsPerSummary) {
+    final olderRounds = conversation.currentRound - _memory.maxRecentRounds;
+    if (olderRounds < _memory.minRoundsPerSummary) {
       return null;
     }
 
-    final ephemeralSummary = await _memoryService.generateSummary(
+    final formattedSummary = await _memory.formatEphemeralSummary(
       conversation,
-      0,
       olderRounds,
-    );
-
-    final formattedSummary = _memoryService.formatSummarySegments(
-      <ConversationSummary>[ephemeralSummary],
     );
 
     return formattedSummary.isEmpty ? null : formattedSummary;
@@ -234,9 +225,9 @@ class AnalysisRunPreparer {
       );
     }
 
-    final requestMessages = _memoryService.clipToRecentRounds(
+    final requestMessages = _memory.clipToRecentRounds(
       baseMessages,
-      MemoryService.maxRecentRounds,
+      _memory.maxRecentRounds,
     );
 
     return (

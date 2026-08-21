@@ -4,11 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/application/analysis_persistence_coordinator.dart';
 import 'package:vibesync/features/analysis/application/analysis_session_controller.dart';
 import 'package:vibesync/features/analysis/application/screenshot_import_coordinator.dart';
-import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
-import 'package:vibesync/features/analysis/data/services/analysis_auxiliary_client.dart';
+import 'package:vibesync/features/analysis/application/ports/analysis_record_port.dart'
+    show AnalysisRecordPort;
+import 'package:vibesync/features/analysis/application/ports/screenshot_recognition_ports.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
-import 'package:vibesync/features/conversation/data/repositories/conversation_archive_store.dart'
-    show conversationContentRevision;
+import 'package:vibesync/features/analysis/domain/entities/streaming_analysis_state.dart';
+import 'package:vibesync/features/conversation/domain/services/conversation_content_revision.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
@@ -46,13 +47,41 @@ ScreenshotImportCoordinator _importCoordinator({
         throw UnimplementedError('replace-batch path must not create'),
     saveConversation: (conv) async => saved.add(conv),
     partnerById: partnerById ?? (_) => null,
-    auxiliaryClient: AnalysisAuxiliaryClient(
-      accessTokenProvider: () => null,
-      expectedTierProvider: () => null,
-      revenueCatAppUserIdProvider: () async => null,
-    ),
+    recognizeScreenshots: ({
+      required images,
+      sessionContext,
+      knownContactName,
+      onProgress,
+      onTelemetry,
+    }) =>
+        throw UnimplementedError('commit/partner paths must not recognize'),
+    recognitionCache: _ThrowingRecognitionCache(),
     invalidateConversationProvider: () => invalidations.add(1),
   );
+}
+
+class _ThrowingRecordPort implements AnalysisRecordPort {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('record port must not be hit');
+}
+
+class _ThrowingRecognitionCache implements OcrRecognitionCachePort {
+  @override
+  Future<void> invalidate(images, String conversationId) =>
+      throw UnimplementedError('cache must not be hit');
+
+  @override
+  Future<RecognizedConversation?> read(images, String conversationId) =>
+      throw UnimplementedError('cache must not be hit');
+
+  @override
+  Future<void> write({
+    required images,
+    required RecognizedConversation recognizedConversation,
+    required String conversationId,
+  }) =>
+      throw UnimplementedError('cache must not be hit');
 }
 
 void main() {
@@ -123,17 +152,33 @@ void main() {
     AnalysisSessionController controller(Conversation? Function() current) {
       return AnalysisSessionController(
         conversationId: _conversationId,
-        analyzeNotifier: () => throw UnimplementedError('not used here'),
+        startRun: ({
+          required messages,
+          sessionContext,
+          conversationSummary,
+          partnerSummary,
+          effectiveStyleContext,
+          knownContactName,
+          previousAnalyzedCount,
+          previousAnalyzedCharCount,
+          confirmedOvercharge,
+          conversationMessageCount,
+          analyzedMessageCount,
+          conversationContentRevision,
+        }) =>
+            throw UnimplementedError('not used here'),
+        retryRun: () => throw UnimplementedError('not used here'),
         ensureServerEntitlementSynced: () async {},
         currentConversation: current,
         persistence: AnalysisPersistenceCoordinator(
           conversationId: _conversationId,
           getConversation: (_) => null,
-          saveConversation: (_,
-              {required intent, expectedContentRevision}) async {},
+          persistAnalysisCompleted: (_,
+              {required expectedContentRevision}) async {},
+          persistContentChanged: (_) async {},
           markConversationActive: (_) async {},
-          archiveEntryFor: (_) => null,
-          recordStore: () => throw UnimplementedError('not used here'),
+          archiveMarkerFor: (_) => null,
+          recordPort: _ThrowingRecordPort(),
           currentRecordOwnerUserId: () => null,
           historyRepository: () => throw UnimplementedError('not used here'),
           trackFunnelOnce: (_) async {},
