@@ -50,6 +50,7 @@ import '../../../partner/presentation/utils/conversation_archive_sections.dart';
 import '../../data/providers/analysis_record_providers.dart';
 import '../../application/analysis_persistence_coordinator.dart';
 import '../../application/analysis_run_preparer.dart';
+import '../../application/analysis_session_controller.dart';
 import '../../data/providers/analysis_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/message.dart';
@@ -233,6 +234,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (mounted) setState(() {});
     },
     afterAnalysisPersisted: _maybeScheduleFollowUpNotification,
+  );
+  late final AnalysisSessionController _session = AnalysisSessionController(
+    conversationId: widget.conversationId,
+    read: ref.read,
+    persistence: _persistence,
   );
   String? _analysisArchiveCountScopeKey;
   int _analysisArchiveCount = 0;
@@ -785,7 +791,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // analysis on top of the new run's streaming loader / retry state.
     // (I-P1-c, Codex round-2).
     if (_isStreamingAnalyzePartialPhase(initialState.phase) ||
-        _isStreamingAnalyzeResultStaleForCurrentConversation(initialState)) {
+        _session.isResultStaleForCurrentConversation(initialState)) {
       _clearDetailedAnalysisStateForStreamingAnalyzePartial();
     }
     // Hydrate from existing streaming analyze notifier state on remount.
@@ -885,7 +891,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case StreamingAnalyzePhase.done:
         final result = s.result;
         if (result == null) return;
-        if (_isStreamingAnalyzeResultStaleForCurrentConversation(s)) {
+        if (_session.isResultStaleForCurrentConversation(s)) {
           setState(() {
             _isAnalyzing = false;
             _streamErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
@@ -928,13 +934,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         // streamingReport and the done transition arrived off-screen). If the
         // listener already wrote this exact snapshot, the dedup signal below
         // short-circuits to avoid double-writes (I-P2-e/f, Codex round-2).
-        _maybePersistAndSyncOnHydrate(
-          result,
-          completionKey: s.analysisRunId,
-          previousAnalyzedCount: s.previousAnalyzedCount,
-          analyzedMessageCount: s.analyzedMessageCount,
-          analyzedContentRevision: s.conversationContentRevision,
-        );
+        _maybePersistAndSyncOnHydrate(s, result);
         break;
       case StreamingAnalyzePhase.failedAfterRecommendation:
         // 額度用盡才震（一般格式失敗不是付費牆時刻，不給錯誤觸覺）。
@@ -997,53 +997,28 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// while the listener is unmounted; on return the screen sees `done`
   /// but the snapshot + usage were never written.
   void _maybePersistAndSyncOnHydrate(
-    AnalysisResult result, {
-    String? completionKey,
-    int? previousAnalyzedCount,
-    int? analyzedMessageCount,
-    String? analyzedContentRevision,
-  }) {
+    StreamingAnalysisState s,
+    AnalysisResult result,
+  ) {
     final repository = ref.read(conversationRepositoryProvider);
     final conv = repository.getConversation(widget.conversationId);
     if (conv == null) return;
-    final expectedAnalyzedCount = analyzedMessageCount ?? conv.messages.length;
+    final expectedAnalyzedCount =
+        s.analyzedMessageCount ?? conv.messages.length;
 
-    final alreadyPersisted = _persistence.snapshotMatches(
+    final persisted = _session.persistHydratedResultIfNeeded(
+      s,
+      result,
+      expectedAnalyzedCount: expectedAnalyzedCount,
       conversation: conv,
-      snapshotJson: conv.lastAnalysisSnapshotJson,
-      rawResponse: result.rawResponse,
-      messageCount: expectedAnalyzedCount,
-      analyzedContentRevision: analyzedContentRevision,
     );
-    if (alreadyPersisted) {
-      _persistence.scheduleRecordRepair(
-        conversation: conv,
-        result: result,
-        completionKey: completionKey,
-        previousAnalyzedCount: previousAnalyzedCount,
-        analyzedMessageCount: expectedAnalyzedCount,
-        analyzedContentRevision: analyzedContentRevision,
-      );
-      return;
-    }
+    if (!persisted) return;
 
     if (mounted) {
       setState(() {
         _lastAnalyzedMessageCount = expectedAnalyzedCount;
       });
     }
-    _persistence
-        .persistLatestSnapshot(
-      result,
-      completionKey: completionKey,
-      previousAnalyzedCount: previousAnalyzedCount,
-      analyzedMessageCount: expectedAnalyzedCount,
-      analyzedContentRevision: analyzedContentRevision,
-    )
-        .catchError((_) {
-      // Same fire-and-forget contract as the listener path — Hive failures in
-      // tests must not surface as unhandled futures.
-    });
     _syncSubscriptionUsageFromResult(result);
   }
 
@@ -1634,22 +1609,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         ),
       ),
     );
-  }
-
-  bool _isStreamingAnalyzeResultStaleForCurrentConversation(
-    StreamingAnalysisState state,
-  ) {
-    final conversation = ref.read(conversationProvider(widget.conversationId));
-    if (conversation == null) return false;
-    final expectedRevision = state.conversationContentRevision;
-    if (expectedRevision != null) {
-      return conversationContentRevision(conversation) != expectedRevision;
-    }
-    // Backward-compatible guard for states created before content revisions
-    // were added (and for narrowly-scoped widget test seeds).
-    final expectedCount = state.conversationMessageCount;
-    if (expectedCount == null) return false;
-    return conversation.messages.length != expectedCount;
   }
 
   void _showEditedAnalyzedMessageSnackBar() {
@@ -3354,9 +3313,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         gate: runGate,
       );
       final analyzedMessageCount = preparation.analyzedMessageCount;
-      // gate 已在任何 await 之前同步擷取內容修訂。notifier 帶著這個修訂走完
-      // retry/remount，old run 才不可能蓋掉同數量的新編輯。
-      final analyzedContentRevision = preparation.contentRevision;
 
       // 呼叫 Supabase Edge Function（不帶圖片，因為截圖已轉成文字存入）
       // skipPreview 路徑刻意拿不到 overcharge 憑證：>2000 字會被 server
@@ -3395,46 +3351,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _activeAnalysisMessageCount = analyzedMessageCount;
       });
 
-      try {
-        await ref
-            .read(subscriptionProvider.notifier)
-            .ensureServerEntitlementSyncedForAnalysis()
-            .timeout(_subscriptionSyncTimeout);
-      } on TimeoutException catch (error) {
-        // 該方法內部已 catch-all（只剩卡住這一種失敗模式）；逾時放行，
-        // 額度/權益由 server 端最終把關，不得讓分析卡在「開始完整分析」。
-        debugPrint('Analysis entitlement pre-sync timeout: $error');
-      }
-      if (!mounted) {
-        return;
-      }
-
-      // Fire-and-forget. The notifier caches the payload for retryStream and
-      // keeps itself alive across screen navigation; ref.listen + the initState
-      // hydration path mirror provider state back into local fields so the
-      // legacy render tree (which reads _enthusiasmScore, _isAnalyzing, etc.)
-      // keeps working (Eric 2026-05-28 UX spec).
-      final analysisFuture = ref
-          .read(streamingAnalyzeProvider(widget.conversationId).notifier)
-          .start(
-            messages: preparation.requestMessages,
-            sessionContext: conversation.sessionContext,
-            conversationSummary: preparation.conversationSummary,
-            partnerSummary: preparation.partnerSummary,
-            effectiveStyleContext: preparation.effectiveStyleContext,
-            knownContactName: preparation.knownContactName,
-            previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
-            previousAnalyzedCharCount: conversation.lastAnalyzedCharCount,
-            confirmedOvercharge: previewDecision.overcharge,
-            conversationMessageCount: conversation.messages.length,
-            analyzedMessageCount: analyzedMessageCount,
-            conversationContentRevision: analyzedContentRevision,
-          );
-      if (waitForCompletion) {
-        await analysisFuture;
-      } else {
-        unawaited(analysisFuture);
-      }
+      // Fire-and-forget（waitForCompletion 之外）。notifier 快取 payload 供
+      // retryStream 並跨畫面導航存活；ref.listen + initState hydration 把
+      // provider 狀態鏡射回本地欄位，讓讀 _enthusiasmScore、_isAnalyzing 的
+      // 舊 render tree 繼續運作（Eric 2026-05-28 UX spec）。
+      await _session.start(
+        conversation: conversation,
+        preparation: preparation,
+        confirmedOvercharge: previewDecision.overcharge,
+        waitForCompletion: waitForCompletion,
+        shouldProceed: () => mounted,
+      );
     } catch (e) {
       setState(() {
         _isAnalyzing = false;
@@ -3502,7 +3429,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case StreamingAnalyzePhase.done:
         final result = next.result;
         if (result == null) return;
-        if (_isStreamingAnalyzeResultStaleForCurrentConversation(next)) {
+        if (_session.isResultStaleForCurrentConversation(next)) {
           setState(() {
             _isAnalyzing = false;
             _followLiveAnalysis = false;
@@ -3553,18 +3480,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _lastAiResponse = result.rawResponse;
           _resetFeedbackState();
         });
-        _persistence
-            .persistLatestSnapshot(
+        _session.persistCompletedRun(
+          next,
           result,
-          completionKey: next.analysisRunId,
-          previousAnalyzedCount: next.previousAnalyzedCount,
           analyzedMessageCount: analyzedMessageCount,
-          analyzedContentRevision: next.conversationContentRevision,
           allowArchivedRecordRefresh: _isRefreshingPremiumReplies,
-        )
-            .catchError((_) {
-          // Ignore errors in test environment.
-        });
+        );
         _syncSubscriptionUsageFromResult(result, showChargeToast: true);
         // 一次性捲到「回覆建議」區頂。只在 live 完成轉場做（hydrate 不做），
         // setState 排定的重建幀之後才量得到新位置。
@@ -3628,11 +3549,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// payload from the most recent `start()` (survives screen remount via
   /// `ref.keepAlive`), so we just delegate. I-P1-b.
   void _retryStreamAnalysis() {
-    unawaited(
-      ref
-          .read(streamingAnalyzeProvider(widget.conversationId).notifier)
-          .retryStream(),
-    );
+    unawaited(_session.retry());
   }
 
   /// 優化用戶訊息
