@@ -24,6 +24,7 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
   if (scanCorpusCache !== null) return scanCorpusCache;
   const files = [
     "./index.ts",
+    "./analyze_stream_handler.ts",
     "./optimize_refine_flow.ts",
     "./my_message_flow.ts",
     "./recognize_flow.ts",
@@ -327,7 +328,7 @@ Deno.test({
     assert(source.includes(
       'const openerModel = "claude-sonnet-5"',
     ));
-    assert(source.includes("let streamModel = selectedModel;"));
+    assert(source.includes("let streamModel = deps.selectedModel;"));
     assert(source.includes("model: selectedModel,"));
     assertFalse(source.includes("quickModel"));
     assertFalse(source.includes("quickTimeoutMs"));

@@ -13,7 +13,7 @@ Deno.test("AnalyzeChat mode guard runs before subscription, quota, or model work
   const guard = source.indexOf("const modeResolution = resolveRequestMode({");
   const subscription = source.indexOf("// Check subscription");
   const streamBranch = source.indexOf(
-    'if (responseMode === "stream") {\n      const streamReplyStyles',
+    'if (responseMode === "stream") {\n      return await handleAnalyzeStream({',
   );
 
   assert(guard >= 0);
@@ -65,7 +65,7 @@ Deno.test("stream fail-closed rejection precedes overcharge claim", async () => 
     'logInfo("overcharge_confirmation_claimed"',
   );
   const generator = source.indexOf(
-    'if (responseMode === "stream") {\n      const streamReplyStyles',
+    'if (responseMode === "stream") {\n      return await handleAnalyzeStream({',
   );
   const generatorEnd = source.indexOf("let claudeResult;", generator);
 

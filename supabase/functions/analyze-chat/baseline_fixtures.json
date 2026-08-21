@@ -140,7 +140,7 @@
       "sha256": "ba2f415545b102a33873c3dbaee3aa5c2627152b95d4c82de7b5571b4020d6a4"
     },
     "STREAM_BUDGET_CONSTANTS": {
-      "file": "index.ts",
+      "file": "analyze_stream_handler.ts",
       "start": "const MAX_STREAM_RETRIES = ",
       "end": "const STREAM_PROVIDER_MAX_ATTEMPTS = 3;",
       "sha256": "a91e0d9b544609989a44e33b0761cf4b083d4e02f98714e327959ba2b02887dd"

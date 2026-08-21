@@ -67,6 +67,7 @@ import { loadSubscriptionAccess } from "./subscription_access.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
 import { handleOpenerRequest } from "./opener_handler.ts";
+import { handleAnalyzeStream } from "./analyze_stream_handler.ts";
 import {
   enforceMyMessageEssentialGate,
   validateMyMessageShape,
@@ -86,7 +87,6 @@ import {
   validateOptimizeOutcome,
 } from "./optimize_refine_flow.ts";
 import { repairJson } from "./json_text.ts";
-import { isPlainObject } from "../_shared/quota.ts";
 import {
   extractPhase1VisionTelemetry,
   normalizeRecognizedConversation,
@@ -123,32 +123,15 @@ import {
   buildRevenueCatUserIdCandidates,
   createRevenueCatTierRefresher,
 } from "./revenuecat_reconciliation.ts";
-import { hashConversation } from "./conversation_hash.ts";
 import { isStreamingAllowed } from "./stream_gate.ts";
 import {
-  handleStreamAnalysisRequest,
-  handleStreamAnalysisResume,
-  type StreamAnalysisResumeSnapshot,
-} from "./stream_handler.ts";
-import { buildStreamSystemPrompt } from "./stream_prompt.ts";
-import { streamAnalyzeMaxTokensForStyleCount } from "./stream_budget.ts";
-import {
-  type AnalysisStreamRun,
   AnalysisStreamRunStore,
   createSupabaseAnalysisStreamRunDriver,
 } from "./stream_run_store.ts";
-import {
-  isThinRecommendationEvent,
-  type StreamRecommendationForCharge,
-} from "./reframer.ts";
 import { isStreamStyle } from "./stream_events.ts";
-import {
-  callClaudeStreaming,
-} from "./streaming_fallback.ts";
 import {
   normalizeSubscriptionTier,
   shouldFailPaidTierSync,
-  streamReplyStylesForTier,
   subscriptionTierRank,
 } from "./tier_sync_contract.ts";
 
@@ -216,94 +199,12 @@ const VALID_FORCE_MODELS = new Set([
 ]);
 const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
 
-function mapStreamChargeFailure(error: unknown): {
-  code: string;
-  message: string;
-} {
-  const message = getErrorMessage(error);
-  const normalized = message.toUpperCase();
-  if (
-    normalized.includes("QUOTA") ||
-    normalized.includes("LIMIT") ||
-    normalized.includes("INSUFFICIENT")
-  ) {
-    return {
-      code: "QUOTA_EXHAUSTED",
-      message: "額度已用完，請升級或下個週期再試。",
-    };
-  }
-
-  return {
-    code: "STREAM_CHARGE_FAILED",
-    message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
-  };
-}
-
-function streamRecommendationFromRun(
-  run: AnalysisStreamRun,
-): StreamRecommendationForCharge | null {
-  const stored = run.recommendation_json;
-  if (!isPlainObject(stored)) return null;
-
-  const selectedStyle = stored.selectedStyle;
-  const message = typeof stored.message === "string"
-    ? stored.message.trim()
-    : "";
-  const reason = typeof stored.reason === "string" ? stored.reason.trim() : "";
-  const quotedContext = typeof stored.quotedContext === "string"
-    ? stored.quotedContext.trim()
-    : "";
-  const rawWarnings = Array.isArray(stored.warnings) ? stored.warnings : [];
-  const warnings = rawWarnings
-    .filter((warning): warning is string => typeof warning === "string")
-    .map((warning) => warning.trim())
-    .filter(Boolean);
-  const raw = isPlainObject(stored.raw) ? stored.raw : stored;
-
-  // Codex r1 P2：瘦卡 fallback 扣費（message 空、raw 是合法瘦卡形狀）的
-  // 已扣費 run 必須可 resume——reframer init 會重掛 pendingThin，由 replay
-  // 的 selected reply_option 綁卡回填。否則回 null → STREAM_RUN_NOT_RETRYABLE，
-  // 已扣費卻不可續跑。
-  const thinResume = message.length === 0 && reason.length > 0 &&
-    isThinRecommendationEvent(raw);
-
-  if (
-    !isStreamStyle(selectedStyle) || (message.length === 0 && !thinResume)
-  ) {
-    return null;
-  }
-
-  return {
-    selectedStyle,
-    message,
-    reason,
-    quotedContext,
-    warnings,
-    raw,
-  };
-}
-
-function streamResumeSnapshotFromRun(
-  run: AnalysisStreamRun,
-): StreamAnalysisResumeSnapshot {
-  return {
-    status: run.status,
-    finalResult: run.final_result_json,
-    lastErrorCode: run.last_error_code,
-    retriesRemaining: Math.max(0, MAX_STREAM_RETRIES - run.retry_count),
-    wasCharged: run.charged_at !== null,
-  };
-}
-
 // 建構 Vision API 內容格式
 // 測試模式：強制使用 Haiku + 不扣額度
 const TEST_MODE = Deno.env.get("TEST_MODE") === "true";
 const STREAM_ANALYZE_ENABLED =
   Deno.env.get("STREAM_ANALYZE_ENABLED") === "true";
 const STREAM_WHITELIST = Deno.env.get("STREAM_WHITELIST");
-const MAX_STREAM_RETRIES = 2;
-const STREAM_CLAUDE_TIMEOUT_MS = 120000;
-const STREAM_PROVIDER_MAX_ATTEMPTS = 3;
 
 // 模型選擇函數 (設計規格 4.9)
 function selectModel(context: {
@@ -1673,362 +1574,45 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     // Plain AnalyzeChat reaches exactly one active generator: streaming.
     // Retired quick/full and plain legacy requests were rejected before
     // subscription, quota, prompt, DB-run, or model work.
+    // 唯一 AnalyzeStreamHandler：analyze_stream_handler.ts（narrow ports）。
     if (responseMode === "stream") {
-      const streamReplyStyles = streamReplyStylesForTier(effectiveTier).filter(
-        (style) => allowedFeatures.includes(style),
-      );
-      const streamMaxOutputTokens = streamAnalyzeMaxTokensForStyleCount(
-        streamReplyStyles.length,
-      );
-      const conversationHashValue = await hashConversation({
-        messages,
-        userDraft,
-        partnerSummary,
-        sessionContext,
-        conversationSummary,
-        effectiveStyleContext,
-        knownContactName,
-      });
-      const shouldCharge = quotaUsage.shouldChargeQuota && !accountIsTest &&
-        !isStreamRetryMode;
-      const streamStore = new AnalysisStreamRunStore(
-        createSupabaseAnalysisStreamRunDriver(
-          supabase as unknown as Parameters<
-            typeof createSupabaseAnalysisStreamRunDriver
-          >[0],
+      return await handleAnalyzeStream({
+        store: new AnalysisStreamRunStore(
+          createSupabaseAnalysisStreamRunDriver(
+            supabase as unknown as Parameters<
+              typeof createSupabaseAnalysisStreamRunDriver
+            >[0],
+          ),
         ),
-      );
-
-      let streamRun: AnalysisStreamRun;
-      let prechargedRecommendation: StreamRecommendationForCharge | undefined;
-      try {
-        if (analysisRunId) {
-          streamRun = await streamStore.getRun({
-            runId: analysisRunId,
-            userId: user.id,
-            conversationHash: conversationHashValue,
-          });
-          if (Date.parse(streamRun.expires_at) <= Date.now()) {
-            throw new Error("STREAM_RUN_EXPIRED");
-          }
-          if (
-            streamRun.status === "done" &&
-            !streamRun.final_result_json
-          ) {
-            throw new Error("STREAM_DONE_RESULT_MISSING");
-          }
-          if (
-            streamRun.final_result_json ||
-            streamRun.status === "done" ||
-            streamRun.status === "pending" ||
-            streamRun.status === "charged"
-          ) {
-            logInfo("stream_run_resume_attached", {
-              user: summarizeUser(user.id),
-              analysisRunId: streamRun.id,
-              status: streamRun.status,
-              retryCount: streamRun.retry_count,
-            });
-            return handleStreamAnalysisResume({
-              runId: streamRun.id,
-              conversationHash: conversationHashValue,
-              headers: corsHeaders,
-              initialRun: streamResumeSnapshotFromRun(streamRun),
-              loadRun: async () => {
-                const currentRun = await streamStore.getRun({
-                  runId: analysisRunId,
-                  userId: user.id,
-                  conversationHash: conversationHashValue,
-                });
-                return streamResumeSnapshotFromRun(currentRun);
-              },
-              onOutcome: (outcome, details) => {
-                logInfo("stream_run_resume_outcome", {
-                  user: summarizeUser(user.id),
-                  analysisRunId: streamRun.id,
-                  outcome,
-                  ...details,
-                });
-              },
-            });
-          }
-          streamRun = await streamStore.reserveRetry({
-            runId: analysisRunId,
-            userId: user.id,
-            conversationHash: conversationHashValue,
-            maxRetries: MAX_STREAM_RETRIES,
-          });
-          prechargedRecommendation = streamRecommendationFromRun(streamRun) ??
-            undefined;
-          if (!prechargedRecommendation) {
-            throw new Error("STREAM_RUN_NOT_RETRYABLE");
-          }
-        } else {
-          streamRun = await streamStore.createPendingRun({
-            userId: user.id,
-            conversationHash: conversationHashValue,
-            requestContext: {
-              responseMode: "stream",
-              requestType,
-              analyzeMode,
-              tier: effectiveTier,
-              isTestAccount: accountIsTest,
-              estimatedMessageCount: quotaUsage.estimatedMessageCount,
-              chargedMessageCount: shouldCharge
-                ? quotaUsage.chargedMessageCount
-                : 0,
-            },
-          });
-        }
-      } catch (error) {
-        const code = analysisRunId
-          ? "STREAM_RUN_RETRY_UNAVAILABLE"
-          : "STREAM_RUN_CREATE_FAILED";
-        logError(
-          analysisRunId
-            ? "stream_run_retry_failed"
-            : "stream_run_create_failed",
-          {
-            user: summarizeUser(user.id),
-            analysisRunId,
-            error: getErrorMessage(error),
-          },
-        );
-        return jsonResponse(
-          {
-            error: code,
-            code,
-            message: analysisRunId
-              ? "這次串流分析無法接續，請重新分析。"
-              : "串流分析暫時無法開始，請稍後再試。",
-            retryable: false,
-          },
-          analysisRunId ? 409 : 500,
-        );
-      }
-
-      let streamModel = selectedModel;
-      // Sonnet 5 enables adaptive thinking by default. This endpoint needs its
-      // entire fixed output budget for the user-visible NDJSON contract; hidden
-      // thinking can otherwise consume the visible-output budget and emit zero
-      // contract events.
-      let streamThinkingDisabled = selectedModel === "claude-sonnet-5";
-      const streamStartTime = Date.now();
-      let streamTokenUsage = {
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheCreationTokens: 0,
-        cacheReadTokens: 0,
-      };
-      const streamUsage = {
-        messagesUsed: shouldCharge ? quotaUsage.chargedMessageCount : 0,
-        estimatedMessages: quotaUsage.estimatedMessageCount,
-        monthlyRemaining: accountIsTest ? 999999 : Math.max(
-          0,
-          monthlyLimit - sub.monthly_messages_used -
-            (shouldCharge ? quotaUsage.chargedMessageCount : 0),
-        ),
-        dailyRemaining: accountIsTest ? 999999 : Math.max(
-          0,
-          dailyLimit - sub.daily_messages_used -
-            (shouldCharge ? quotaUsage.chargedMessageCount : 0),
-        ),
-        model: streamModel,
-        tierUsed: effectiveTier,
-        isTestAccount: accountIsTest,
+        userId: user.id,
+        analysisRunId,
         requestType,
-        shouldChargeQuota: shouldCharge,
-        quotaReason: quotaUsage.quotaReason,
-        quotaUnit: quotaUsage.quotaUnit,
-      };
-
-      logInfo("stream_request_started", {
-        user: summarizeUser(user.id),
-        analysisRunId: streamRun.id,
-        model: selectedModel,
-        requestType,
+        analyzeMode,
         expectedTier,
         effectiveTier,
-        allowedFeatureCount: allowedFeatures.length,
-        streamReplyStyleCount: streamReplyStyles.length,
-        retrying: !!analysisRunId,
-        chargedQuota: shouldCharge,
-        thinkingDisabled: streamThinkingDisabled,
-      });
-
-      return handleStreamAnalysisRequest({
-        runId: streamRun.id,
-        conversationHash: conversationHashValue,
-        etaSeconds: 18,
-        headers: corsHeaders,
-        callClaude: async () => {
-          const claude = await callClaudeStreaming(
-            {
-              model: selectedModel,
-              max_tokens: streamMaxOutputTokens,
-              system: buildStreamSystemPrompt(
-                SYSTEM_PROMPT,
-                streamReplyStyles,
-              ),
-              messages: [{ role: "user", content: userMessageContent }],
-              thinking: streamThinkingDisabled
-                ? { type: "disabled" }
-                : undefined,
-            },
-            CLAUDE_API_KEY,
-            { timeout: STREAM_CLAUDE_TIMEOUT_MS },
-          );
-          streamModel = claude.model;
-          streamThinkingDisabled = claude.model === "claude-sonnet-5";
-          streamTokenUsage = claude.usage;
-          streamUsage.model = claude.model;
-          return claude;
+        accountIsTest,
+        allowedFeatures,
+        quotaUsage,
+        monthlyLimit,
+        dailyLimit,
+        subMonthlyUsed: sub.monthly_messages_used,
+        subDailyUsed: sub.daily_messages_used,
+        selectedModel,
+        userMessageContent,
+        requestObservability,
+        messages,
+        hashInput: {
+          messages,
+          userDraft,
+          partnerSummary,
+          sessionContext,
+          conversationSummary,
+          effectiveStyleContext,
+          knownContactName,
         },
-        chargeRun: async (recommendation) => {
-          try {
-            await streamStore.chargeRun({
-              runId: streamRun.id,
-              userId: user.id,
-              conversationHash: conversationHashValue,
-              recommendation,
-              chargeQuota: shouldCharge,
-              messageCount: shouldCharge ? quotaUsage.chargedMessageCount : 0,
-            });
-            return { charged: true };
-          } catch (error) {
-            const mapped = mapStreamChargeFailure(error);
-            logError("stream_charge_failed", {
-              user: summarizeUser(user.id),
-              analysisRunId: streamRun.id,
-              code: mapped.code,
-              error: getErrorMessage(error),
-            });
-            return {
-              charged: false,
-              code: mapped.code,
-              message: mapped.message,
-              recoverable: true,
-            };
-          }
-        },
-        prechargedRecommendation,
-        requiredReplyStyles: streamReplyStyles,
-        markDone: async (finalResult) => {
-          const guarded = checkAiOutput(
-            finalResult as GuardrailAnalysisResult,
-          ) as Record<string, unknown>;
-          const postProcessed = postProcessAnalysisResult({
-            result: guarded,
-            recognizeOnly: false,
-            isMyMessageMode: false,
-            allowedFeatures,
-            requestMessages: messages,
-          });
-          const latencyMs = Date.now() - streamStartTime;
-          const finalPayload = {
-            ...postProcessed,
-            usage: { ...streamUsage, model: streamModel },
-            telemetry: {
-              requestType,
-              responseMode: "stream",
-              serverAiLatencyMs: latencyMs,
-              timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
-              model: streamModel,
-              shouldChargeQuota: shouldCharge,
-              chargedMessageCount: shouldCharge
-                ? quotaUsage.chargedMessageCount
-                : 0,
-              estimatedMessageCount: quotaUsage.estimatedMessageCount,
-            },
-          };
-
-          await streamStore.markDone({
-            runId: streamRun.id,
-            userId: user.id,
-            conversationHash: conversationHashValue,
-            finalResult: finalPayload,
-          });
-
-          await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-            userId: user.id,
-            model: streamModel,
-            requestType,
-            inputTokens: streamTokenUsage.inputTokens,
-            outputTokens: streamTokenUsage.outputTokens,
-            cacheCreationTokens: streamTokenUsage.cacheCreationTokens,
-            cacheReadTokens: streamTokenUsage.cacheReadTokens,
-            latencyMs,
-            status: "success",
-            requestBody: {
-              ...requestObservability,
-              responseMode: "stream",
-              analysisRunId: streamRun.id,
-              thinkingDisabled: streamThinkingDisabled,
-              timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
-              providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
-              maxOutputTokens: streamMaxOutputTokens,
-            },
-            responseBody: {
-              streamRunStatus: "done",
-              chargedQuota: shouldCharge,
-              cacheCreationTokens: streamTokenUsage.cacheCreationTokens,
-              cacheReadTokens: streamTokenUsage.cacheReadTokens,
-            },
-          });
-
-          logInfo("stream_request_succeeded", {
-            user: summarizeUser(user.id),
-            analysisRunId: streamRun.id,
-            model: streamModel,
-            latencyMs,
-          });
-
-          return finalPayload;
-        },
-        markFailed: async (code, details) => {
-          const failedRun = await streamStore.markFailed({
-            runId: streamRun.id,
-            userId: user.id,
-            conversationHash: conversationHashValue,
-            code,
-          });
-
-          const event = isPlainObject(details?.event) ? details.event : {};
-          event.retriesRemaining = Math.max(
-            0,
-            MAX_STREAM_RETRIES - failedRun.retry_count,
-          );
-          const message = typeof event.message === "string"
-            ? event.message
-            : code;
-          await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-            userId: user.id,
-            model: streamModel,
-            requestType,
-            inputTokens: streamTokenUsage.inputTokens,
-            outputTokens: streamTokenUsage.outputTokens,
-            cacheCreationTokens: streamTokenUsage.cacheCreationTokens,
-            cacheReadTokens: streamTokenUsage.cacheReadTokens,
-            latencyMs: Date.now() - streamStartTime,
-            status: "failed",
-            errorCode: code,
-            errorMessage: message,
-            requestBody: {
-              ...requestObservability,
-              responseMode: "stream",
-              analysisRunId: streamRun.id,
-              thinkingDisabled: streamThinkingDisabled,
-              timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
-              providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
-              maxOutputTokens: streamMaxOutputTokens,
-            },
-            responseBody: {
-              streamRunStatus: "failed",
-              event,
-              retryable: event.recoverable ?? true,
-            },
-          });
-        },
+        claudeApiKey: CLAUDE_API_KEY,
+        supabaseUrl: SUPABASE_URL,
+        supabaseServiceKey: SUPABASE_SERVICE_KEY,
       });
     }
 
