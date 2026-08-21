@@ -1,4 +1,4 @@
-package com.vibesync.vibesync
+package com.vibesync.app
 
 import io.flutter.embedding.android.FlutterActivity
 
