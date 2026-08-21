@@ -14,10 +14,6 @@ import 'social_auth_interface.dart';
 
 /// Native 平台的社群登入服務
 class SocialAuthServiceImpl implements SocialAuthService {
-  // Callback scheme for OAuth
-  static const String _callbackScheme = 'com.poyutsai.vibesync';
-  static const String _callbackHost = 'login-callback';
-
   @override
   bool get isAvailable => true;
 
@@ -51,6 +47,9 @@ class SocialAuthServiceImpl implements SocialAuthService {
 
   @override
   Future<AuthResponse> signInWithGoogle() async {
+    // 凍結 redirect 契約的唯一真相源是 AppConfig.authRedirectUri
+    // （contracts/auth-callback.json 對帳），此處不得硬編第二份
+    final expectedCallback = Uri.parse(AppConfig.authRedirectUri);
     final authUrl = await Supabase.instance.client.auth.getOAuthSignInUrl(
       provider: OAuthProvider.google,
       redirectTo: AppConfig.authRedirectUri,
@@ -60,15 +59,15 @@ class SocialAuthServiceImpl implements SocialAuthService {
     // This provides the smooth native OAuth experience like Claude app
     final result = await FlutterWebAuth2.authenticate(
       url: authUrl.url,
-      callbackUrlScheme: _callbackScheme,
+      callbackUrlScheme: expectedCallback.scheme,
       options: const FlutterWebAuth2Options(
         preferEphemeral: false, // Use shared Safari cookies
       ),
     );
 
     final callbackUri = Uri.parse(result);
-    if (callbackUri.scheme != _callbackScheme ||
-        callbackUri.host != _callbackHost) {
+    if (callbackUri.scheme != expectedCallback.scheme ||
+        callbackUri.host != expectedCallback.host) {
       throw const AuthException('Google Sign In failed: Invalid callback URL');
     }
 

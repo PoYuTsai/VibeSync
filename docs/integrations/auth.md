@@ -25,8 +25,21 @@
 | iOS OAuth Client ID | `568378103108-ptl0icvkk7v2vp6ob21hatm73unokg52.apps.googleusercontent.com` |
 | Web OAuth Client ID | `568378103108-3nsc1ecskfpod51dqgko2d7g2q7pccad.apps.googleusercontent.com` |
 | Supabase Google Provider | ✅（Client ID + Secret） |
-| `flutter_web_auth_2` 套件 | v4.0.1（ASWebAuthenticationSession） |
+| `flutter_web_auth_2` 套件 | v4.1.0（ASWebAuthenticationSession） |
 | Callback Scheme | `com.poyutsai.vibesync://login-callback` |
+
+### Android callback 契約（AND-03，Slice 2 凍結）
+
+機器可讀唯一真相源：`contracts/auth-callback.json`。
+
+- OAuth callback 兩平台都凍結在 `com.poyutsai.vibesync://login-callback`
+  （既有 Supabase Redirect URLs allowlist 條目，免新增）。
+- Android 端該 URI 的唯一擁有者是 `flutter_web_auth_2` 4.1.0 的
+  `CallbackActivity`（manifest 宣告）；MainActivity 不得重複宣告同
+  scheme，否則會跳 activity 選擇器導致 OAuth 回不了 App。
+- 已知缺口：Android 密碼重設等 email 深連結共用同一 redirect URI，會落在
+  `CallbackActivity` 被吞掉——屬 AUTH-01（Slice 3）處理範圍。
+- iOS 維持 ASWebAuthenticationSession 單一 `login-callback`，行為不變。
 
 ### Info.plist 配置
 - 加入 reversed iOS client ID 作為 URL Scheme
