@@ -76,6 +76,14 @@ jobs:
       - name: Run full test suite serially
         run: flutter test --concurrency=1
 
+  # CI-01：iOS keyboard contract 只擋 iOS 產物，Android 不因此被擋
+  ios-keyboard-gate:
+    name: iOS keyboard contract gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Verify production keyboard contract
         shell: pwsh
         run: ./tools/preflight/check-keyboard-contract.ps1
@@ -125,11 +133,33 @@ jobs:
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
 
+      # AND-02：release 簽名走既有 GitHub secrets 四件組（SEC-01：保留、
+      # 先驗證、失效才另行授權重建）。secret 值只進檔案與 env，不印出。
+      - name: Setup Android release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./tools/android/setup-release-signing.sh
+
+      # gate 會把 keystore 憑證的 normalized SHA-256（公開中繼資料）寫進
+      # step outputs，後面 APK/AAB 驗簽步驟拿它對帳 signer fingerprint。
+      # 注意：這只是「repo 端自我一致」守門；keystore 是否為 Play 已核可的
+      # upload key（SEC-01 live 驗證）仍待 Play Console 端人工確認。
+      - name: Verify keystore identity (SEC-01 gate)
+        id: keystore-gate
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: ./tools/preflight/check-android-signing.sh keystore android/app/keystore.jks
+
+      # CI-01：Android 不注入 iOS RevenueCat key；Android RevenueCat 維持
+      # 休眠（程式端 isAndroidPlatform 早退），BILL-02 才接 goog_ key
       - name: Build APK (Production backend)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
-          REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           flutter build apk --release \
@@ -137,14 +167,75 @@ jobs:
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
-            --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
             --dart-define=SENTRY_DSN="$SENTRY_DSN"
 
-      - name: Prepare release notes
+      - name: Verify release APK signing (AND-02 gate)
+        env:
+          ANDROID_KEYSTORE_SHA256: ${{ steps.keystore-gate.outputs.keystore_sha256 }}
+        run: ./tools/preflight/check-android-signing.sh artifact build/app/outputs/flutter-apk/app-release.apk
+
+      # 同一 SHA 同時產出簽名 AAB（Play 通道產物）；APK 留給
+      # Firebase App Distribution 與 emulator smoke
+      - name: Build AAB (Production backend)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
-          echo "Branch: $GIT_REF" > release-notes.txt
-          echo "Commit: $GIT_SHA" >> release-notes.txt
-          echo "Environment: production backend" >> release-notes.txt
+          flutter build appbundle --release \
+            --dart-define=GIT_SHA=$GIT_SHA \
+            --dart-define=ENV=prod \
+            --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN"
+
+      - name: Verify release AAB signing (AND-02 gate)
+        env:
+          ANDROID_KEYSTORE_SHA256: ${{ steps.keystore-gate.outputs.keystore_sha256 }}
+        run: ./tools/preflight/check-android-signing.sh artifact build/app/outputs/bundle/release/app-release.aab
+
+      # 用真簽好的 AAB 證明 gate 對 tampered／wrong-package／
+      # wrong-fingerprint 會擋
+      - name: Signing gate negative checks
+        run: ./tools/android/signing-gate-negative-check.sh build/app/outputs/bundle/release/app-release.aab
+
+      # install smoke 的 ClassNotFound 掃描必須 fail closed
+      #（防 pipefail＋grep -q SIGPIPE 漏報迴歸；純 bash fake adb）
+      - name: Install smoke negative check
+        run: ./tools/android/install-smoke-negative-check.sh
+
+      # 實際合併後的 release manifest 留檔為 CI 證據（CallbackActivity／
+      # intent-filter 契約以真產物為準，不只靠 source manifest 靜態測試）
+      - name: Preserve merged release manifest (evidence)
+        run: |
+          manifest=$(find build/app/intermediates -ipath "*merged_manifest*" \
+            -ipath "*release*" -name AndroidManifest.xml | head -1)
+          if [ -z "$manifest" ]; then
+            echo "::error::找不到 merged release manifest（AGP 中間產物路徑變動？）"
+            exit 1
+          fi
+          cp "$manifest" merged-release-AndroidManifest.xml
+          echo "merged manifest 來源：$manifest"
+
+      # 先用 fixture 證明守門本身 fail closed（alias 擁有 scheme、自訂
+      # dispatcher、alias 搶 launcher、data 帶 port/path* 限制都要擋），
+      # 再拿守門驗真 merged manifest——守門壞掉時這步先紅，不會假綠
+      - name: Manifest gate negative regression
+        run: ./tools/android/manifest-gate-negative-check.sh
+
+      # 真合併後 manifest 的語意斷言（不只留檔）：凍結 scheme 唯一擁有者
+      # 是 flutter_web_auth_2 CallbackActivity（凍結值對帳
+      # contracts/auth-callback.json；斷言邏輯版本化在
+      # tools/android/assert-merged-manifest.py，含負向回歸）
+      - name: Assert merged manifest contract
+        run: python3 tools/android/assert-merged-manifest.py merged-release-AndroidManifest.xml
+
+      - name: Upload merged release manifest as artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-merged-manifest
+          path: merged-release-AndroidManifest.xml
+          retention-days: 30
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -153,22 +244,106 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 7
 
-      - name: Debug Firebase config
+      - name: Upload AAB as artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          retention-days: 7
+
+  # CI-01：安裝＋冷啟動 smoke（AND-01：ClassNotFound＝0）。
+  # 無本地 Android 實機，emulator action 為必要新依賴，釘 immutable SHA。
+  # API 24＝minSdk 下限、API 36＝現行目標世代。
+  android-install-smoke:
+    name: Android install smoke (API ${{ matrix.api-level }})
+    needs: build-android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api-level: 24
+            target: default
+          - api-level: 36
+            target: google_apis
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: android-apk
+          path: build/app/outputs/flutter-apk/
+
+      - name: Enable KVM
         run: |
-          echo "Checking Firebase secrets..."
-          if [ -z "${{ secrets.FIREBASE_ANDROID_APP_ID }}" ]; then
-            echo "❌ FIREBASE_ANDROID_APP_ID is not set"
-          else
-            echo "✅ FIREBASE_ANDROID_APP_ID is set (starts with: ${FIREBASE_ANDROID_APP_ID:0:20}...)"
-          fi
-          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
-            echo "❌ FIREBASE_SERVICE_ACCOUNT is not set"
-          else
-            echo "✅ FIREBASE_SERVICE_ACCOUNT is set (length: ${#FIREBASE_SERVICE_ACCOUNT} chars)"
-          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run install & cold-launch smoke
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          disable-animations: true
+          script: ./tools/android/install-smoke.sh build/app/outputs/flutter-apk/app-release.apk
+
+  # Firebase 派發只在 API 24＋36 兩個 smoke 變體都綠之後才跑；
+  # 冷啟動 crash 或 ClassNotFound 的 build 絕不派發給測試者。
+  firebase-distribute:
+    name: Firebase App Distribution
+    needs: android-install-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GIT_REF: ${{ github.ref_name }}
+      GIT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: android-apk
+          path: build/app/outputs/flutter-apk/
+
+      - name: Prepare release notes
+        run: |
+          echo "Branch: $GIT_REF" > release-notes.txt
+          echo "Commit: $GIT_SHA" >> release-notes.txt
+          echo "Environment: production backend" >> release-notes.txt
+
+      # SEC-01：只回報 secret 是否存在，不印出任何子字串或長度等衍生內容
+      - name: Check Firebase secrets present
+        run: |
+          missing=0
+          [ -n "$FIREBASE_ANDROID_APP_ID" ] || { echo "::error::FIREBASE_ANDROID_APP_ID is not set"; missing=1; }
+          [ -n "$FIREBASE_SERVICE_ACCOUNT" ] || { echo "::error::FIREBASE_SERVICE_ACCOUNT is not set"; missing=1; }
+          exit "$missing"
         env:
           FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      # secret 的 Firebase app ID 必須等於版控內 google-services.json 的
+      # mobilesdk_app_id（同一 Firebase Android app 身分）；只回報一致與否，
+      # 不印任何一邊的值
+      - name: Verify Firebase app ID matches tracked google-services.json
+        env:
+          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+        run: |
+          tracked=$(jq -r '.client[0].client_info.mobilesdk_app_id' android/app/google-services.json)
+          if [ -z "$tracked" ] || [ "$tracked" = "null" ]; then
+            echo "::error::google-services.json 讀不到 mobilesdk_app_id"
+            exit 1
+          fi
+          if [ "$FIREBASE_ANDROID_APP_ID" != "$tracked" ]; then
+            echo "::error::FIREBASE_ANDROID_APP_ID 與 android/app/google-services.json 的 mobilesdk_app_id 不一致（值不輸出）"
+            exit 1
+          fi
+          echo "Firebase app ID 身分對帳 OK（值不輸出）"
 
       - name: Upload to Firebase App Distribution
         uses: wzieba/Firebase-Distribution-Github-Action@bd494989dd4bec0343f78adee87fe66e48279ad6 # v1
@@ -180,7 +355,7 @@ jobs:
 
   build-ios:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.platform == 'ios' || inputs.platform == 'both')) }}
-    needs: flutter-gate
+    needs: [flutter-gate, ios-keyboard-gate]
     runs-on: macos-26
     env:
       GIT_REF: ${{ github.ref_name }}
