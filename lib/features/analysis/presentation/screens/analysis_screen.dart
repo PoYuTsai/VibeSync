@@ -52,10 +52,9 @@ import '../../../follow_up_notification/presentation/soft_opt_in_card.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../partner/presentation/utils/conversation_archive_sections.dart';
 import '../../data/providers/analysis_record_providers.dart';
+import '../../application/analysis_run_preparer.dart';
 import '../../data/providers/analysis_providers.dart';
-import '../../../conversation/data/services/memory_service.dart';
 import '../../../conversation/domain/entities/conversation.dart';
-import '../../../conversation/domain/entities/conversation_summary.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
@@ -92,7 +91,6 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
-import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
 import '../../../../core/services/app_haptics.dart';
@@ -154,7 +152,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
   static const _snapshotRevisionKey = 'contentRevision';
   static const _snapshotMessageCountKey = 'messageCount';
-  final MemoryService _memoryService = MemoryService();
   bool get _showTelemetryDiagnostics => kDebugMode;
   bool _isAnalyzing = false;
   bool _isRefreshingPremiumReplies = false;
@@ -3142,107 +3139,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         );
   }
 
-  List<Message>? _buildMessagesForReplyAnalysis(List<Message> messages) {
-    if (messages.isEmpty) return null;
-
-    final lastIncomingIndex =
-        messages.lastIndexWhere((message) => !message.isFromMe);
-    if (lastIncomingIndex == -1) {
-      return null;
-    }
-
-    return messages.sublist(0, lastIncomingIndex + 1);
-  }
-
-  Future<String?> _buildHistoricalContextSummary(
-    Conversation conversation,
-  ) async {
-    final persistedSummary =
-        _memoryService.buildHistoricalSummary(conversation);
-    if (persistedSummary != null && persistedSummary.isNotEmpty) {
-      return persistedSummary;
-    }
-
-    final olderRounds =
-        conversation.currentRound - MemoryService.maxRecentRounds;
-    if (olderRounds < MemoryService.minRoundsPerSummary) {
-      return null;
-    }
-
-    final ephemeralSummary = await _memoryService.generateSummary(
-      conversation,
-      0,
-      olderRounds,
-    );
-
-    final formattedSummary = _memoryService.formatSummarySegments(
-      <ConversationSummary>[ephemeralSummary],
-    );
-
-    return formattedSummary.isEmpty ? null : formattedSummary;
-  }
-
-  /// Build the per-call partner-context block for `analyze-chat`. Returns
-  /// null when the conversation has no partner attached, the partner row is
-  /// missing, or the summary builder yields empty (owner-mismatch defense).
-  /// Rebuilt every call — partner aggregate must reflect the latest snapshot.
-  String? _resolvePartnerSummary(Conversation conversation) {
-    return ref.read(partnerContextResolverProvider).resolve(conversation);
-  }
-
-  /// Spec 2.5: About Me + per-partner style becomes compact prompt context.
-  /// If Spec 3 flags this partner card, partner-specific style is suspended
-  /// and only global About Me remains trusted.
-  String? _resolveEffectiveStyleContext(Conversation conversation) {
-    final global = ref.read(userProfileControllerProvider).valueOrNull;
-    final partnerId = conversation.partnerId;
-    if (partnerId == null) {
-      return ref.read(effectiveStylePromptBuilderProvider).buildForAnalysis(
-            global: global,
-            partner: null,
-            includePartnerOverride: false,
-          );
-    }
-
-    final includePartnerOverride =
-        !ref.read(dataQualityFlagProvider(partnerId)).isFlagged;
-    final partner = includePartnerOverride
-        ? ref.read(partnerStyleOverrideProvider(partnerId)).valueOrNull
-        : null;
-    return ref.read(effectiveStylePromptBuilderProvider).buildForAnalysis(
-          global: global,
-          partner: partner,
-          includePartnerOverride: includePartnerOverride,
-        );
-  }
-
-  Future<({List<Message> requestMessages, String? conversationSummary})>
-      _buildSummaryAwareAnalysisContext({
-    required Conversation conversation,
-    required List<Message> baseMessages,
-  }) async {
-    final conversationSummary = await _buildHistoricalContextSummary(
-      conversation,
-    );
-
-    if (conversationSummary == null || conversationSummary.isEmpty) {
-      return (
-        requestMessages: baseMessages,
-        conversationSummary: null,
-      );
-    }
-
-    final requestMessages = _memoryService.clipToRecentRounds(
-      baseMessages,
-      MemoryService.maxRecentRounds,
-    );
-
-    return (
-      requestMessages: requestMessages.isEmpty ? baseMessages : requestMessages,
-      conversationSummary: conversationSummary,
-    );
-  }
-
   String? _buildRecognitionWarning({
     required RecognizedConversation recognized,
     required Conversation currentConversation,
@@ -3950,40 +3846,36 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    // 驗證分析條件：必須有訊息
-    if (conversation.messages.isEmpty) {
-      setState(() {
-        _isAnalyzing = false;
-        _applyErrorState(
-          message: '請先輸入對話內容或上傳截圖',
-          action: AnalysisErrorAction.addIncomingMessage,
-          origin: _AnalysisErrorOrigin.analysis,
-          guidance: '請重新選擇包含她回覆的聊天截圖，確認文字後再分析。',
-        );
-      });
-      return;
-    }
-
-    final clampedAnalysisMessageLimit =
-        analysisMessageLimit?.clamp(0, conversation.messages.length).toInt();
-    final sourceMessages = clampedAnalysisMessageLimit == null
-        ? conversation.messages
-        : conversation.messages
-            .take(clampedAnalysisMessageLimit)
-            .toList(growable: false);
-
-    final messagesForAnalysis = _buildMessagesForReplyAnalysis(sourceMessages);
-    if (messagesForAnalysis == null) {
-      setState(() {
-        _isAnalyzing = false;
-        _applyErrorState(
-          message: '目前還沒有她的新回覆可以分析。',
-          action: AnalysisErrorAction.addIncomingMessage,
-          origin: _AnalysisErrorOrigin.analysis,
-          guidance: '請重新選擇包含她回覆的聊天截圖，再按「開始分析」。',
-        );
-      });
-      return;
+    final preparer = ref.read(analysisRunPreparerProvider);
+    final runGate = preparer.gate(
+      conversation: conversation,
+      analysisMessageLimit: analysisMessageLimit,
+    );
+    switch (runGate.failure) {
+      case AnalysisRunPrepareFailure.emptyConversation:
+        setState(() {
+          _isAnalyzing = false;
+          _applyErrorState(
+            message: '請先輸入對話內容或上傳截圖',
+            action: AnalysisErrorAction.addIncomingMessage,
+            origin: _AnalysisErrorOrigin.analysis,
+            guidance: '請重新選擇包含她回覆的聊天截圖，確認文字後再分析。',
+          );
+        });
+        return;
+      case AnalysisRunPrepareFailure.noIncomingReply:
+        setState(() {
+          _isAnalyzing = false;
+          _applyErrorState(
+            message: '目前還沒有她的新回覆可以分析。',
+            action: AnalysisErrorAction.addIncomingMessage,
+            origin: _AnalysisErrorOrigin.analysis,
+            guidance: '請重新選擇包含她回覆的聊天截圖，再按「開始分析」。',
+          );
+        });
+        return;
+      case null:
+        break;
     }
 
     if (!allowPendingOutgoingRefresh &&
@@ -4001,15 +3893,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     try {
-      final analyzedMessageCount = sourceMessages.length;
-      // Capture synchronously, before any preview/network await. The notifier
-      // carries this exact message revision through retry/remount so an older
-      // result can never archive or overwrite a same-count edit.
-      final analyzedContentRevision = conversationContentRevision(conversation);
-      final analysisContext = await _buildSummaryAwareAnalysisContext(
+      final preparation = await preparer.assemble(
         conversation: conversation,
-        baseMessages: messagesForAnalysis,
+        gate: runGate,
       );
+      final analyzedMessageCount = preparation.analyzedMessageCount;
+      // gate 已在任何 await 之前同步擷取內容修訂。notifier 帶著這個修訂走完
+      // retry/remount，old run 才不可能蓋掉同數量的新編輯。
+      final analyzedContentRevision = preparation.contentRevision;
 
       // 呼叫 Supabase Edge Function（不帶圖片，因為截圖已轉成文字存入）
       // skipPreview 路徑刻意拿不到 overcharge 憑證：>2000 字會被 server
@@ -4022,7 +3913,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         previewDecision = (confirmed: true, overcharge: null);
       } else {
         previewDecision = await _confirmAnalysisPreview(
-          analysisContext.requestMessages,
+          preparation.requestMessages,
         );
       }
       if (!previewDecision.confirmed || !mounted) {
@@ -4070,17 +3961,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       final analysisFuture = ref
           .read(streamingAnalyzeProvider(widget.conversationId).notifier)
           .start(
-            messages: analysisContext.requestMessages,
+            messages: preparation.requestMessages,
             sessionContext: conversation.sessionContext,
-            conversationSummary: analysisContext.conversationSummary,
-            partnerSummary: _resolvePartnerSummary(conversation),
-            effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
-            knownContactName:
-                ScreenshotRecognitionHelper.isPlaceholderConversationName(
-              conversation.name,
-            )
-                    ? null
-                    : conversation.name.trim(),
+            conversationSummary: preparation.conversationSummary,
+            partnerSummary: preparation.partnerSummary,
+            effectiveStyleContext: preparation.effectiveStyleContext,
+            knownContactName: preparation.knownContactName,
             previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
             previousAnalyzedCharCount: conversation.lastAnalyzedCharCount,
             confirmedOvercharge: previewDecision.overcharge,
@@ -4308,27 +4194,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     try {
-      final analysisContext = await _buildSummaryAwareAnalysisContext(
-        conversation: conversation,
-        baseMessages: conversation.messages,
-      );
-      final partnerSummary = _resolvePartnerSummary(conversation);
-      final effectiveStyleContext = _resolveEffectiveStyleContext(conversation);
-      final knownContactName =
-          ScreenshotRecognitionHelper.isPlaceholderConversationName(
-        conversation.name,
-      )
-              ? null
-              : conversation.name.trim();
+      final analysisContext = await ref
+          .read(analysisRunPreparerProvider)
+          .prepareAuxiliary(conversation: conversation);
       final optimizeFingerprint =
           OptimizeMessageRequestIdSession.fingerprintFor(
         messages: analysisContext.requestMessages,
         userDraft: draft,
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
-        partnerSummary: partnerSummary,
-        effectiveStyleContext: effectiveStyleContext,
-        knownContactName: knownContactName,
+        partnerSummary: analysisContext.partnerSummary,
+        effectiveStyleContext: analysisContext.effectiveStyleContext,
+        knownContactName: analysisContext.knownContactName,
       );
       final outcome = await _optimizeRequestRunner.run<AnalysisResult>(
         input: OptimizeRunInput(
@@ -4357,9 +4234,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             messages: analysisContext.requestMessages,
             sessionContext: conversation.sessionContext,
             conversationSummary: analysisContext.conversationSummary,
-            partnerSummary: partnerSummary,
-            effectiveStyleContext: effectiveStyleContext,
-            knownContactName: knownContactName,
+            partnerSummary: analysisContext.partnerSummary,
+            effectiveStyleContext: analysisContext.effectiveStyleContext,
+            knownContactName: analysisContext.knownContactName,
             userDraft: draft,
             requestId: pending.requestId,
             onTelemetry: _handleAnalysisTelemetry,
@@ -4491,19 +4368,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    final analysisContext = await _buildSummaryAwareAnalysisContext(
-      conversation: conversation,
-      baseMessages: conversation.messages,
-    );
+    final analysisContext = await ref
+        .read(analysisRunPreparerProvider)
+        .prepareAuxiliary(conversation: conversation);
     if (!mounted) return;
-    final partnerSummary = _resolvePartnerSummary(conversation);
-    final effectiveStyleContext = _resolveEffectiveStyleContext(conversation);
-    final knownContactName =
-        ScreenshotRecognitionHelper.isPlaceholderConversationName(
-      conversation.name,
-    )
-            ? null
-            : conversation.name.trim();
 
     // 讀失敗就當作沒有草稿：這只是方便用的快取，不能為了它擋住面板。
     ReplyRefineDraft? restored;
@@ -4529,9 +4397,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           userDraft: currentText,
           sessionContext: conversation.sessionContext,
           conversationSummary: analysisContext.conversationSummary,
-          partnerSummary: partnerSummary,
-          effectiveStyleContext: effectiveStyleContext,
-          knownContactName: knownContactName,
+          partnerSummary: analysisContext.partnerSummary,
+          effectiveStyleContext: analysisContext.effectiveStyleContext,
+          knownContactName: analysisContext.knownContactName,
           refineInstruction: instruction,
         );
         final outcome = await _optimizeRequestRunner.run<AnalysisResult>(
@@ -4555,9 +4423,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               messages: analysisContext.requestMessages,
               sessionContext: conversation.sessionContext,
               conversationSummary: analysisContext.conversationSummary,
-              partnerSummary: partnerSummary,
-              effectiveStyleContext: effectiveStyleContext,
-              knownContactName: knownContactName,
+              partnerSummary: analysisContext.partnerSummary,
+              effectiveStyleContext: analysisContext.effectiveStyleContext,
+              knownContactName: analysisContext.knownContactName,
               userDraft: currentText,
               refineInstruction: instruction,
               // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的

@@ -9,8 +9,11 @@ import '../../../partner/domain/services/partner_summary_builder.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
+import '../../../user_profile/data/providers/partner_style_providers.dart';
+import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repo_view.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
+import '../../application/analysis_run_preparer.dart';
 import '../services/analyze_stream_client.dart';
 import '../services/partner_context_resolver.dart';
 
@@ -100,3 +103,39 @@ class _ConversationListByPartnerAdapter
   List<Conversation> listByPartner(String partnerId) =>
       _listByPartner(partnerId);
 }
+
+/// AnalyzeChat 請求組裝器。partner 脈絡與有效風格解析走既有 provider；
+/// 兩者皆為 per-call `read`（一次性快照，不做 reactive 監聽）。
+final analysisRunPreparerProvider = Provider<AnalysisRunPreparer>((ref) {
+  // Spec 2.5: About Me + per-partner style becomes compact prompt context.
+  // If Spec 3 flags this partner card, partner-specific style is suspended
+  // and only global About Me remains trusted.
+  String? resolveEffectiveStyleContext(Conversation conversation) {
+    final global = ref.read(userProfileControllerProvider).valueOrNull;
+    final partnerId = conversation.partnerId;
+    if (partnerId == null) {
+      return ref.read(effectiveStylePromptBuilderProvider).buildForAnalysis(
+            global: global,
+            partner: null,
+            includePartnerOverride: false,
+          );
+    }
+
+    final includePartnerOverride =
+        !ref.read(dataQualityFlagProvider(partnerId)).isFlagged;
+    final partner = includePartnerOverride
+        ? ref.read(partnerStyleOverrideProvider(partnerId)).valueOrNull
+        : null;
+    return ref.read(effectiveStylePromptBuilderProvider).buildForAnalysis(
+          global: global,
+          partner: partner,
+          includePartnerOverride: includePartnerOverride,
+        );
+  }
+
+  return AnalysisRunPreparer(
+    resolvePartnerSummary: (conversation) =>
+        ref.read(partnerContextResolverProvider).resolve(conversation),
+    resolveEffectiveStyleContext: resolveEffectiveStyleContext,
+  );
+});
