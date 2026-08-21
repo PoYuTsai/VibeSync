@@ -89,6 +89,11 @@ dev_dependencies:
   # Testing
   mocktail: ^1.0.4
 
+  # Android 契約靜態測試的結構化解析（manifest/backup XML、workflow YAML）；
+  # 已是 transitive 相依，升為直接 dev 相依供 test import
+  xml: ^6.5.0
+  yaml: ^3.1.2
+
 flutter:
   uses-material-design: true
   assets:
