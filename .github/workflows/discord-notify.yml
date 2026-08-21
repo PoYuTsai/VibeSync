@@ -1,0 +1,209 @@
+# Metadata-only notifications for the two-person GitHub workflow.
+# Security: this workflow never checks out or executes PR code. All event text
+# is treated as untrusted display data and Discord mentions are allowlisted.
+
+name: Discord Collaboration Notifications
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, labeled, closed]
+  pull_request_review:
+    types: [submitted]
+  workflow_run:
+    workflows:
+      - Flutter CI
+      - Build & Distribute
+      - Deploy Edge Function
+      - Deploy Keyboard Assist
+      - Deploy Web to Vercel
+      - Release to App Stores
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  notify:
+    name: Notify Discord
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Build and send notification
+        shell: pwsh
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_ERIC_USER_ID: ${{ vars.DISCORD_ERIC_USER_ID }}
+          DISCORD_BRUCE_USER_ID: ${{ vars.DISCORD_BRUCE_USER_ID }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Normalize-Text([object]$Value, [int]$Limit = 180) {
+            $Text = ([string]$Value) -replace '[\r\n\t]+', ' '
+            $Text = $Text.Trim()
+            if ($Text.Length -gt $Limit) {
+              return $Text.Substring(0, $Limit - 1) + '…'
+            }
+            return $Text
+          }
+
+          function Get-NextOwner([int]$Number, [string]$Author) {
+            $Headers = @{
+              Authorization = "Bearer $env:GH_TOKEN"
+              Accept = 'application/vnd.github+json'
+              'X-GitHub-Api-Version' = '2022-11-28'
+            }
+            try {
+              $Uri = "https://api.github.com/repos/$env:GH_REPOSITORY/issues/$Number/labels?per_page=100"
+              $Response = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Headers
+              $Names = @($Response | ForEach-Object { $_.name })
+              if ($Names -contains 'next:eric-ai') { return @($env:DISCORD_ERIC_USER_ID) }
+              if ($Names -contains 'next:bruce') { return @($env:DISCORD_BRUCE_USER_ID) }
+              if ($Names -contains 'next:discuss') {
+                return @($env:DISCORD_ERIC_USER_ID, $env:DISCORD_BRUCE_USER_ID)
+              }
+            } catch {
+              Write-Warning 'Could not read PR labels; falling back to the PR author.'
+            }
+            if ($Author -eq 'PoYuTsai') { return @($env:DISCORD_ERIC_USER_ID) }
+            return @($env:DISCORD_BRUCE_USER_ID)
+          }
+
+          try {
+            if ([string]::IsNullOrWhiteSpace($env:DISCORD_WEBHOOK_URL)) {
+              Write-Warning 'DISCORD_WEBHOOK_URL is not configured; notification skipped.'
+              exit 0
+            }
+            if ($env:DISCORD_ERIC_USER_ID -notmatch '^\d+$' -or
+                $env:DISCORD_BRUCE_USER_ID -notmatch '^\d+$') {
+              Write-Warning 'Discord user ID variables are missing or invalid; notification skipped.'
+              exit 0
+            }
+
+            $Event = Get-Content -Raw $env:GITHUB_EVENT_PATH | ConvertFrom-Json -Depth 100
+            $Content = $null
+            $MentionIds = @()
+
+            if ($env:GH_EVENT_NAME -eq 'pull_request_target') {
+              $Pr = $Event.pull_request
+              $Number = [int]$Pr.number
+              $Title = Normalize-Text $Pr.title
+              $Url = [string]$Pr.html_url
+
+              switch ([string]$Event.action) {
+                'opened' {
+                  if (-not [bool]$Pr.draft) {
+                    $MentionIds = @($env:DISCORD_ERIC_USER_ID)
+                    $Content = "<@$($env:DISCORD_ERIC_USER_ID)> PR #$Number 已可審核：$Title" + [Environment]::NewLine + $Url
+                  }
+                }
+                'ready_for_review' {
+                  $MentionIds = @($env:DISCORD_ERIC_USER_ID)
+                  $Content = "<@$($env:DISCORD_ERIC_USER_ID)> PR #$Number 已可審核：$Title" + [Environment]::NewLine + $Url
+                }
+                'reopened' {
+                  if (-not [bool]$Pr.draft) {
+                    $MentionIds = @($env:DISCORD_ERIC_USER_ID)
+                    $Content = "<@$($env:DISCORD_ERIC_USER_ID)> PR #$Number 已重新開啟並可審核：$Title" + [Environment]::NewLine + $Url
+                  }
+                }
+                'labeled' {
+                  if (-not [bool]$Pr.draft) {
+                    $Label = [string]$Event.label.name
+                    if ($Label -eq 'next:bruce') {
+                      $MentionIds = @($env:DISCORD_BRUCE_USER_ID)
+                      $Content = "<@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 輪到你處理：$Title" + [Environment]::NewLine + $Url
+                    } elseif ($Label -eq 'next:eric-ai') {
+                      $MentionIds = @($env:DISCORD_BRUCE_USER_ID)
+                      $Content = "<@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 已由 Eric／AI 接手，你先不用處理：$Title" + [Environment]::NewLine + $Url
+                    } elseif ($Label -eq 'next:discuss') {
+                      $MentionIds = @($env:DISCORD_ERIC_USER_ID, $env:DISCORD_BRUCE_USER_ID)
+                      $Content = "<@$($env:DISCORD_ERIC_USER_ID)> <@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 需要一起討論：$Title" + [Environment]::NewLine + $Url
+                    }
+                  }
+                }
+                'closed' {
+                  if ([bool]$Pr.merged) {
+                    $Content = "PR #$Number 已合併：$Title" + [Environment]::NewLine + $Url
+                  }
+                }
+              }
+            } elseif ($env:GH_EVENT_NAME -eq 'pull_request_review') {
+              $Pr = $Event.pull_request
+              $Number = [int]$Pr.number
+              $Title = Normalize-Text $Pr.title
+              $Url = [string]$Pr.html_url
+              $State = ([string]$Event.review.state).ToLowerInvariant()
+              if ($State -eq 'approved') {
+                $MentionIds = @($env:DISCORD_BRUCE_USER_ID)
+                $Verdict = if (([string]$Event.review.body) -match 'APPROVE_WITH_RISK') {
+                  'Approve with risk'
+                } else {
+                  'Approve'
+                }
+                $Content = "<@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 已 $Verdict：$Title" + [Environment]::NewLine + $Url
+              } elseif ($State -eq 'changes_requested') {
+                $MentionIds = @($env:DISCORD_BRUCE_USER_ID)
+                $Content = "<@$($env:DISCORD_BRUCE_USER_ID)> PR #$Number 已 Request changes：$Title" + [Environment]::NewLine + $Url
+              }
+            } elseif ($env:GH_EVENT_NAME -eq 'workflow_run') {
+              $Run = $Event.workflow_run
+              $Conclusion = ([string]$Run.conclusion).ToLowerInvariant()
+              $FailureStates = @('failure', 'timed_out', 'startup_failure', 'action_required')
+              if ($FailureStates -contains $Conclusion) {
+                $WorkflowName = Normalize-Text $Run.name
+                $Branch = Normalize-Text $Run.head_branch 80
+                $Url = [string]$Run.html_url
+                $Pulls = @($Run.pull_requests)
+
+                if ($WorkflowName -eq 'Flutter CI' -and $Pulls.Count -gt 0) {
+                  $Number = [int]$Pulls[0].number
+                  $Headers = @{
+                    Authorization = "Bearer $env:GH_TOKEN"
+                    Accept = 'application/vnd.github+json'
+                    'X-GitHub-Api-Version' = '2022-11-28'
+                  }
+                  $Author = ''
+                  try {
+                    $PrUri = "https://api.github.com/repos/$env:GH_REPOSITORY/pulls/$Number"
+                    $PrData = Invoke-RestMethod -Method Get -Uri $PrUri -Headers $Headers
+                    $Author = [string]$PrData.user.login
+                  } catch {
+                    Write-Warning 'Could not read PR author; using collaborator fallback.'
+                  }
+                  $MentionIds = @(Get-NextOwner -Number $Number -Author $Author)
+                  $Mentions = ($MentionIds | ForEach-Object { "<@$_>" }) -join ' '
+                  $Content = "$Mentions PR #$Number 的必要 CI 失敗：$WorkflowName" + [Environment]::NewLine + $Url
+                } else {
+                  $MentionIds = @($env:DISCORD_ERIC_USER_ID, $env:DISCORD_BRUCE_USER_ID)
+                  $Content = "<@$($env:DISCORD_ERIC_USER_ID)> <@$($env:DISCORD_BRUCE_USER_ID)> $WorkflowName 在 $Branch 失敗：$Conclusion" + [Environment]::NewLine + $Url
+                }
+              }
+            }
+
+            if ([string]::IsNullOrWhiteSpace($Content)) {
+              exit 0
+            }
+
+            $AllowedIds = @($MentionIds |
+              Where-Object { $_ -in @($env:DISCORD_ERIC_USER_ID, $env:DISCORD_BRUCE_USER_ID) } |
+              Select-Object -Unique)
+            $Payload = @{
+              username = 'VibeSync GitHub'
+              content = $Content
+              allowed_mentions = @{
+                parse = @()
+                users = $AllowedIds
+              }
+            }
+            $Body = $Payload | ConvertTo-Json -Depth 6 -Compress
+            Invoke-RestMethod -Method Post -Uri $env:DISCORD_WEBHOOK_URL -ContentType 'application/json' -Body $Body | Out-Null
+          } catch {
+            # Notifications must never change PR/CI status or expose the webhook.
+            Write-Warning 'Discord notification failed; GitHub collaboration state is unchanged.'
+            exit 0
+          }

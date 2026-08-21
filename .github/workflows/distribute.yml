@@ -9,6 +9,12 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
+# Only the newest automatic build for a branch is useful. Keep manual runs in a
+# separate group so a push cannot cancel a deliberately selected release check.
+concurrency:
+  group: build-distribute-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
