@@ -32,13 +32,13 @@
   },
   "promptSlices": {
     "OPENER_TOKEN_BUDGET": {
-      "file": "index.ts",
+      "file": "opener_prompt.ts",
       "start": "const OPENER_MAX_TOKENS = ",
       "end": ";\nconst OPENER_DEADLINE_MS = 50_000;",
       "sha256": "10fb0592156e631ef48425a9a2ab7a42668891944f6f4ada1a235205698a44fc"
     },
     "OPENER_REPAIR_PROMPT": {
-      "file": "index.ts",
+      "file": "opener_prompt.ts",
       "start": "const OPENER_REPAIR_PROMPT = `",
       "end": "`;",
       "sha256": "3291b27b089c9488a78319fd07f705ee690fad40e514d75e2d875ed5c0e444d8"
@@ -62,79 +62,79 @@
       "sha256": "9dc87a429271afa449b7b0d76286237cd701197153467f6a7a6d97a6214ec38f"
     },
     "OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT": {
-      "file": "index.ts",
+      "file": "ocr_recognition_prompt.ts",
       "start": "const OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT =",
       "end": "`;",
       "sha256": "0c1a33c5c084a2fa1f9bf4bc45bb5b2f600280b2035fa695e01f138d3ad34520"
     },
     "RECOGNIZED_CONVERSATION_SCHEMA": {
-      "file": "index.ts",
+      "file": "ocr_recognition_prompt.ts",
       "start": "const RECOGNIZED_CONVERSATION_SCHEMA = `",
       "end": "`;",
       "sha256": "9edfb8926f7cbeb8c7671e7b5ec7ed3c549c08fb33026b6c186d0a4829b5c51c"
     },
     "OCR_RECOGNITION_OUTPUT_SCHEMA": {
-      "file": "index.ts",
+      "file": "ocr_recognition_prompt.ts",
       "start": "const OCR_RECOGNITION_OUTPUT_SCHEMA: Record<string, unknown> = {",
       "end": "\n};",
       "sha256": "d8415e470758d5db8785223657c7e011968c82a7576af536e61c6dc829057a03"
     },
     "joinPromptSections": {
-      "file": "index.ts",
+      "file": "ocr_recognition_prompt.ts",
       "start": "function joinPromptSections(",
       "end": "\n}",
       "sha256": "3a032da93e8700144308366f5aa656df514e36c2203076ff8bbd0a7fb3f30782"
     },
     "buildRecognizeOnlyImagePrompt": {
-      "file": "index.ts",
+      "file": "ocr_recognition_prompt.ts",
       "start": "function buildRecognizeOnlyImagePrompt(",
       "end": "\n}",
       "sha256": "a1305072731fdc3449daf2f53070a89ac60167647996dc4db7f70900ff9b7125"
     },
     "buildImageAnalysisPrompt": {
-      "file": "index.ts",
+      "file": "analyze_system_prompt.ts",
       "start": "function buildImageAnalysisPrompt(",
       "end": "\n}",
       "sha256": "0c8c8820ab48f2b9e60eec7adb350abb2df46db2693c0bc1a464851bdd3f6e40"
     },
     "buildVisionContent": {
-      "file": "index.ts",
+      "file": "analyze_system_prompt.ts",
       "start": "function buildVisionContent(",
       "end": "\n}",
       "sha256": "a628722b761f0a51604a5d2a4f570269239e345a28492c53ce702eceb7b86846"
     },
     "SYSTEM_PROMPT": {
-      "file": "index.ts",
+      "file": "analyze_system_prompt.ts",
       "start": "const SYSTEM_PROMPT = `",
       "end": "`;",
       "sha256": "38fcd9015dedf34dfc559958c98319752e7027fb477cd990e3f74902578d962c"
     },
     "OPTIMIZE_MESSAGE_MAX_TOKENS": {
-      "file": "index.ts",
+      "file": "optimize_message_prompt.ts",
       "start": "const OPTIMIZE_MESSAGE_MAX_TOKENS = ",
       "end": ";",
       "sha256": "9536b71cd4cb196fd7da7cf4ca5be11d22ab479b727094191edf377e5f7e551d"
     },
     "OPTIMIZE_MESSAGE_PROMPT": {
-      "file": "index.ts",
+      "file": "optimize_message_prompt.ts",
       "start": "const OPTIMIZE_MESSAGE_PROMPT = `",
       "end": "`;",
       "sha256": "346bae3c6e26cc7016ab5f743cd70c5514fb3f3eb0e86a0c3b3db3e31f16d697"
     },
     "MY_MESSAGE_PROMPT": {
-      "file": "index.ts",
+      "file": "my_message_prompt.ts",
       "start": "const MY_MESSAGE_PROMPT =",
       "end": "`;",
       "sha256": "a3a743bbe2a1e250fc57f273cedebbcdf8f00c19ef29b778ffdebe5acb6addcf"
     },
     "OPENER_PROMPT": {
-      "file": "index.ts",
+      "file": "opener_prompt.ts",
       "start": "const OPENER_PROMPT =",
       "end": "`;",
       "sha256": "0225f53392127ef134e96b770edb3f08fe92b6add219fedfd6956cacf08c6c99"
     },
     "PHASE1_VISION_INSTRUMENT_ADDENDUM": {
-      "file": "index.ts",
+      "file": "ocr_recognition_prompt.ts",
       "start": "const PHASE1_VISION_INSTRUMENT_ADDENDUM =",
       "end": "`;",
       "sha256": "ba2f415545b102a33873c3dbaee3aa5c2627152b95d4c82de7b5571b4020d6a4"

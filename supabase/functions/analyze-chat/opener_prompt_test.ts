@@ -7,9 +7,7 @@ Deno.test({
   name: "OPENER_PROMPT teaches users how to reply, not just what to paste",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readIndexSource();
 
     assert(source.includes("讓用戶看懂「怎麼去回」"));
     assert(source.includes("先接哪個具體線索、避開哪類題"));
@@ -33,9 +31,7 @@ Deno.test({
     "opener no-charge billing is decided server-side, AI insufficientInfo flag is telemetry only",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readIndexSource();
 
     // Prompt: AI is told the flag is observability, not a billing lever.
     assert(
@@ -146,9 +142,7 @@ Deno.test({
     "opener flat-cost: 3 quota per request regardless of image count, user-text-only case prompted to avoid blind A/B guessing",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readIndexSource();
 
     // Cost is now flat 3 regardless of image count. The per-image
     // surcharge formula must not come back.
@@ -180,8 +174,22 @@ Deno.test({
 
 // ─── Batch 3：opener prompt Game 化（2026-07-02 opener-game-design）───
 
+// Prompt 常數已依 mode 分居各模組；掃描 corpus 依固定順序串接，
+// 讓 PROMPT_SEGMENTS 的「宣告→下一個頂層宣告」切界策略維持有效。
 async function readIndexSource(): Promise<string> {
-  return await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const files = [
+    "./index.ts",
+    "./ocr_recognition_prompt.ts",
+    "./analyze_system_prompt.ts",
+    "./optimize_message_prompt.ts",
+    "./my_message_prompt.ts",
+    "./opener_prompt.ts",
+  ];
+  const parts: string[] = [];
+  for (const file of files) {
+    parts.push(await Deno.readTextFile(new URL(file, import.meta.url)));
+  }
+  return parts.join("\n");
 }
 
 // 6 個 prompt 常數的切界：起點＝宣告、終點＝下一個頂層宣告（同 index_test.ts
@@ -215,7 +223,7 @@ const PROMPT_SEGMENTS: Array<[string, string, string]> = [
   [
     "OPENER_PROMPT",
     "const OPENER_PROMPT",
-    "function normalizeScreenshotClassification",
+    "\nexport {",
   ],
 ];
 
@@ -237,7 +245,7 @@ async function readOpenerPrompt(): Promise<string> {
     source,
     "OPENER_PROMPT",
     "const OPENER_PROMPT",
-    "function normalizeScreenshotClassification",
+    "\nexport {",
   );
 }
 

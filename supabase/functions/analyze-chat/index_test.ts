@@ -13,6 +13,28 @@ import {
 } from "./opener_image_validation.ts";
 import { callClaudeWithFallback, extractClaudeText } from "./fallback.ts";
 
+// 重構後 index.ts 的 prompt／sanitize 內容分居多個模組；本 corpus 依固定順序
+// 串接，讓既有 source-scan 斷言不因搬家而失效（順序敏感的測試各自讀單檔）。
+let scanCorpusCache: string | null = null;
+async function readAnalyzeChatScanCorpus(): Promise<string> {
+  if (scanCorpusCache !== null) return scanCorpusCache;
+  const files = [
+    "./index.ts",
+    "./analysis_input_compiler.ts",
+    "./ocr_recognition_prompt.ts",
+    "./analyze_system_prompt.ts",
+    "./optimize_message_prompt.ts",
+    "./my_message_prompt.ts",
+    "./opener_prompt.ts",
+  ];
+  const parts: string[] = [];
+  for (const file of files) {
+    parts.push(await Deno.readTextFile(new URL(file, import.meta.url)));
+  }
+  scanCorpusCache = parts.join("\n");
+  return scanCorpusCache;
+}
+
 function base64PayloadWithEstimatedBytes(bytes: number): string {
   return "A".repeat(Math.ceil((bytes * 4) / 3));
 }
@@ -20,9 +42,7 @@ function base64PayloadWithEstimatedBytes(bytes: number): string {
 Deno.test({
   name: "付費邊界：草稿潤飾／回覆微調全方案開放，「我說」維持 Essential",
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // 拆牆是對外可見的商業變更，退回去必須讓測試紅掉而不是靜靜生效。
     assertFalse(source.includes("feature_gate_optimize_message"));
@@ -125,9 +145,7 @@ Deno.test({
   name: "every metered non-stream log forwards prompt-cache usage into cost",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     const blocks = source.match(/await logAiCall\([\s\S]*?\n\s*\}\);/g) ?? [];
     const meteredBlocks = blocks.filter((block) =>
       /inputTokens: tokenUsage\.inputTokens/.test(block)
@@ -272,9 +290,7 @@ Deno.test({
   name: "production routing uses Sonnet 5 for Free, paid, and stream paths",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes('if (context.tier === "free")'));
     assert(source.includes('return "claude-sonnet-5";'));
@@ -309,9 +325,7 @@ Deno.test({
     "shared non-stream primary, fallback, and JSON repair share one deadline",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     assert(source.includes("const requestStartedAtMs = Date.now();"));
     assert(source.includes(
       "const modelDeadlineAtMs = requestStartedAtMs +\n      (hasImages ? 120_000 : 50_000);",
@@ -354,9 +368,7 @@ Deno.test({
     "Free analysis exposes extend and tease while Free Opener projects v1 single / v2 exact-three",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes('free: ["extend", "tease"]'));
     // Opener contract v2（2026-07-24）：Free 依 contract version 投影——
@@ -382,9 +394,7 @@ Deno.test({
     "SYSTEM_PROMPT treats analysisContextNote as current premise without fabricating user experience",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("analysisContextNote?: string"));
     assert(source.includes('"analysisContextNote"'));
@@ -402,9 +412,7 @@ Deno.test({
     "SYSTEM_PROMPT locks personality-observation replies into half-agree + image + question",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("情境2.6: 人格觀察/輕鬆貼標籤"));
     assert(source.includes("承認一半 + 補一個具體畫面 + 反問她是哪一派"));
@@ -446,9 +454,7 @@ Deno.test({
     "SYSTEM_PROMPT forces all five reply styles to be approach plus message groups",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("五種回覆品質契約"));
     assert(source.includes("推薦接法 + 訊息組"));
@@ -474,9 +480,7 @@ Deno.test({
   name: "SYSTEM_PROMPT selects the best cues from multi-message life updates",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("多句連續分享的選球規則"));
     assert(source.includes("不要逐句查戶口"));
@@ -504,9 +508,7 @@ Deno.test({
   name: "SYSTEM_PROMPT teaches OCR media marker semantics (方案二件2)",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // A/B 實證：裸 marker 會讓模型判「別提」，要用人話教語意。
     assert(source.includes("截圖媒體標記語意"));
@@ -532,9 +534,7 @@ Deno.test({
     "SYSTEM_PROMPT treats Mandarin questions as functional cues, not mandatory answers",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("中文問句框架判斷"));
     assert(source.includes("問號不等於必答題"));
@@ -558,9 +558,7 @@ Deno.test({
     "SYSTEM_PROMPT supports structured split replies with quoted source messages",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // #12 一球一回：條件式改強制式（≥2 球必分段、source 必填）。
     // 方案二 D1：cap 3→5。
@@ -588,9 +586,7 @@ Deno.test({
     "SYSTEM_PROMPT preserves userDraft intent instead of answering latest partner message",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("這是用戶真正想表達的主要意圖"));
     assert(source.includes("不要為了接上一句而改掉主題"));
@@ -615,9 +611,7 @@ Deno.test({
     "SYSTEM_PROMPT keeps draft polish natural, bounded, and non-AI sounding",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("emoji 只在補語氣、補情緒或降低壓力時使用"));
     assert(source.includes("最多 0-1 個"));
@@ -634,9 +628,7 @@ Deno.test({
   name: "draft polish uses a narrow prompt and token budget",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("const OPTIMIZE_MESSAGE_MAX_TOKENS = 700"));
     assert(source.includes("const OPTIMIZE_MESSAGE_PROMPT ="));
@@ -659,9 +651,7 @@ Deno.test({
     "OPTIMIZE_MESSAGE_PROMPT distills long-form polish rules into the lean prompt",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     const start = source.indexOf("const OPTIMIZE_MESSAGE_PROMPT =");
     const end = source.indexOf("const MY_MESSAGE_PROMPT =");
     assert(start !== -1 && end !== -1 && start < end);
@@ -695,9 +685,7 @@ Deno.test({
     "draft optimization contract teaches partner context usage on the shared path",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     const start = source.indexOf("## User Draft To Optimize");
     assert(start !== -1);
     const end = source.indexOf(
@@ -719,9 +707,7 @@ Deno.test({
   name: "optimize userDraft injection is hardened like refine inputs",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     const start = source.indexOf("## User Draft To Optimize");
     assert(start !== -1);
     const end = source.indexOf("in the structured JSON response.", start);
@@ -813,9 +799,7 @@ Deno.test({
     "MY_MESSAGE_PROMPT provides concrete branch planning without invented topics",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("你是 VibeSync 的「我說模式」教練"));
     assert(source.includes("這不是完整分析報告，也不是算命"));
@@ -833,9 +817,7 @@ Deno.test({
     "OPENER_PROMPT prioritizes visible cues and replyability over personality guesses",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("你是 VibeSync 的開場救星先鋒教練"));
     assert(source.includes("開場白的北極星：低壓、具體、可回、像真人"));
@@ -1008,9 +990,7 @@ Deno.test({
     "SYSTEM_PROMPT aligns analyze-chat with VibeSync memory coach positioning",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("你是 VibeSync：有記憶的 AI 約會教練"));
     assert(
@@ -1044,9 +1024,7 @@ Deno.test({
     "SYSTEM_PROMPT requires coachActionHint to cite a concrete catchable point",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("可接球點教練卡 (coachActionHint)"));
     assert(source.includes("這張卡會貼在聊天窗正下方"));
@@ -1063,9 +1041,7 @@ Deno.test({
     "SYSTEM_PROMPT acknowledges short-term intimacy intent without teaching manipulation",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("情境10: 短期關係 / 約炮 / 炮友意圖"));
     assert(source.includes("不要忽略、羞辱或假裝他想認真交往"));
@@ -1089,9 +1065,7 @@ Deno.test({
   name: "SYSTEM_PROMPT keeps flirtation calibrated without becoming explicit",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("情境11: 聊騷尺度 / 曖昧張力"));
     assert(source.includes("不要裝沒看到，也不要立刻升級成露骨性內容"));
@@ -1111,9 +1085,7 @@ Deno.test({
   name: "SYSTEM_PROMPT handles complex emotional dynamics in main analysis",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("情境12: 複雜情緒 / 關係修復 / 全局判讀"));
     assert(source.includes("先同理用戶，也同理對方可能處境"));
@@ -1140,9 +1112,7 @@ Deno.test({
     "SYSTEM_PROMPT uses relationship risk and time-cost triage without over-expanding",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("RelationshipRiskAndTimeCostFrame"));
     assert(
@@ -1169,9 +1139,7 @@ Deno.test({
     "SYSTEM_PROMPT treats partner labels according to committed-partner context",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     for (
       const term of [
@@ -1193,9 +1161,7 @@ Deno.test({
     "SYSTEM_PROMPT treats qualificationSignal as investment, not proving herself",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("興趣 / 投入訊號 (qualificationSignal)"));
     assert(source.includes("不是「她在證明自己」"));
@@ -1210,9 +1176,7 @@ Deno.test({
     "SYSTEM_PROMPT demotes old technique library and keeps visible fields coach-like",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("備用技巧工具箱（服從狀態機）"));
     assert(source.includes("不是必套模板"));
@@ -1242,9 +1206,7 @@ Deno.test({
   name: "opener mode rejects raw JSON/code-fence text before charging quota",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("function parseJsonObjectFromText"));
     assert(source.includes("repairJson(candidate)"));
@@ -1272,9 +1234,7 @@ Deno.test({
   name: "opener wrong-surface flag returns 422 before repair and never charges",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     // 判定與 422 body 抽在 opener_payload.ts（行為測試在該檔）；這裡只鎖
     // index.ts 有接上、且攔截在 normalize/repair 之前。
     assert(source.includes("detectOpenerWrongSurface("));
@@ -1295,9 +1255,7 @@ Deno.test({
     "opener uses one 50s absolute deadline for primary, fallback, repair, and pre-charge gate",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("const OPENER_DEADLINE_MS = 50_000;"));
     const openerBranch = source.indexOf("if (isOpenerMode) {");
@@ -1386,9 +1344,7 @@ Deno.test({
     "opener 主呼叫與 repair 共用 OPENER_MAX_TOKENS=3000（1800/1400 不得殘留）",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     assert(
       source.includes("const OPENER_MAX_TOKENS = 3000"),
       "必須有單一 OPENER_MAX_TOKENS 常數",
@@ -1415,9 +1371,7 @@ Deno.test({
   name: "opener 主呼叫 stop_reason 進 telemetry（截斷可觀測）",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     assert(
       source.includes("stop_reason?: string"),
       "opener 主呼叫 apiData type 必須含 stop_reason",
@@ -1445,9 +1399,7 @@ Deno.test({
   name: "opener mode filters paid styles before charging quota",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // 函式本體在 opener_payload.ts（行為測試在 opener_payload_test.ts）
     assert(source.includes("filterOpenerPayloadForAllowedFeatures,"));
@@ -1471,9 +1423,7 @@ Deno.test({
   name: "request body guard allows three max opener screenshots",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024"));
   },
@@ -1483,9 +1433,7 @@ Deno.test({
   name: "opener mode validates image payload before Claude call",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     const validationSource = await Deno.readTextFile(
       new URL("./opener_image_validation.ts", import.meta.url),
     );
@@ -1666,9 +1614,7 @@ Deno.test({
   name: "quota refresh accepts client RevenueCat identity hints safely",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("expectedTier: rawExpectedTier"));
     assert(source.includes("revenueCatAppUserId: rawRevenueCatAppUserId"));
@@ -1691,9 +1637,7 @@ Deno.test({
   name: "analysis parse failure returns before quota deduction",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes("AI_RESPONSE_INVALID"));
     assert(source.includes("本次不會扣額度"));
@@ -1706,9 +1650,7 @@ Deno.test({
   name: "analysis quota deduction failure returns credit_deduct_failed",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assert(source.includes('await supabase.rpc("increment_usage"'));
     assert(source.includes("analysis_credit_deduct_failed"));
@@ -1725,9 +1667,7 @@ Deno.test({
     "SYSTEM_PROMPT carries voice few-shot example 1 (warm/established stage with callback and hook)",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // 關係階段標籤（核心原則：高手感隨關係階段縮放）
     assert(source.includes("已升溫／熟絡局"));
@@ -1747,9 +1687,7 @@ Deno.test({
     "SYSTEM_PROMPT carries voice few-shot example 2 (Wen cold-open arc with cooperative frame, 2026-06-12 game-system design §5)",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // 關係階段標籤（檔位制：冷開→升溫中完整弧線）
     assert(source.includes("陌生冷開局→升溫中"));
@@ -1776,9 +1714,7 @@ Deno.test({
   name: "SYSTEM_PROMPT mines callbacks from history instead of forcing them",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // callback 挖掘指令：從對象歷史/對話挖用戶自造梗、暱稱、重複元素
     assert(source.includes("用戶自造梗"));
@@ -1791,9 +1727,7 @@ Deno.test({
     "SYSTEM_PROMPT JSON schema examples carry golden voice values instead of placeholder prose",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // 占位句移除：模型會模仿 JSON 範例值，不能讓它學「描述腔」
     assertFalse(
@@ -1815,9 +1749,7 @@ Deno.test({
     "SYSTEM_PROMPT audit cut A: duplicated rules collapse to one canonical copy",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // Audit 拍板（Eric 2026-06-12）A 組全砍：重複規則去重，每條留一份 canonical。
     // A1 fallback 規則 ×2 → 留 1.2 輸出分工那份，砍 1.8 品質契約的重複句
@@ -1842,9 +1774,7 @@ Deno.test({
     "SYSTEM_PROMPT audit cut B: zero-manifestation technique prose removed, C group kept",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // Audit 拍板（Eric 2026-06-12）B 組全砍：10 份 baseline catchphrase grep 全零命中的技巧散文。
     assertFalse(source.includes("### 橫向思維 (Lateral Thinking)"));
@@ -1874,9 +1804,7 @@ Deno.test({
     "SYSTEM_PROMPT guards hot-stage invites: never insert into the other person's third-party plans (升溫≠可帶隊)",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // case1 實錘：新版 tease「我帶你們去」把自己插進她跟學妹的局（Eric+Bruce 一致判輸）
     assert(source.includes("### 對方的局不是你的局（升溫 ≠ 可帶隊）"));
@@ -1895,9 +1823,7 @@ Deno.test({
     "SYSTEM_PROMPT keeps frame on playful labels: never hand evaluation power back (case2 框架修正)",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // case2 實錘：「這樣算加分還是扣分，妳給我一個說法」把評價權丟給對方（Eric 拍板照 Bruce＝新輸）
     assert(source.includes("自己給定性"));
@@ -1915,10 +1841,10 @@ Deno.test({
 // OPENER_PROMPT 的 Game 化是下一案，殘留行話不在本刀範圍。
 async function readAnalyzeSystemPrompt(): Promise<string> {
   const source = await Deno.readTextFile(
-    new URL("./index.ts", import.meta.url),
+    new URL("./analyze_system_prompt.ts", import.meta.url),
   );
   const start = source.indexOf("const SYSTEM_PROMPT");
-  const end = source.indexOf("const OPTIMIZE_MESSAGE_MAX_TOKENS");
+  const end = source.indexOf("\nexport {", start);
   assert(start >= 0 && end > start, "SYSTEM_PROMPT 邊界定位失敗");
   return source.slice(start, end);
 }
@@ -2160,9 +2086,7 @@ Deno.test({
     "四 neighbour speaker heuristics 都以 geometryDecisive guard 保護幾何已定側的泡不被翻側",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // 抽出某 function 從宣告到下一個 top-level `function` 之間的 body。
     const bodyOf = (name: string): string => {
@@ -2267,9 +2191,7 @@ Deno.test({
   permissions: { read: true },
   fn: async () => {
     // 前提鎖：確認真函式已有 geometryDecisive guard，且本檔複本與真源邏輯一致。
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     const start = source.indexOf("function applySingleVisibleSpeakerPattern(");
     assert(start >= 0, "找不到 applySingleVisibleSpeakerPattern");
     const body = source.slice(start + 1);
@@ -2325,9 +2247,7 @@ Deno.test({
   name: "index.ts 改從 screenshot_ocr_rules 模組取規則（inline 陣列已移除）",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     assert(
       source.includes('from "./screenshot_ocr_rules.ts"'),
       "index.ts 必須匯入 screenshot_ocr_rules 模組",
@@ -2344,9 +2264,7 @@ Deno.test({
     "recognize-only prompt 用 meta 錨點版＋schema note；full-analysis prompt 維持 baseline",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     const bodyOf = (name: string): string => {
       const start = source.indexOf(`function ${name}(`);
       assert(start >= 0, `找不到 function ${name}`);
@@ -2385,9 +2303,7 @@ Deno.test({
   name: "recognizeOnly uses one bounded Sonnet 5 structured-output call",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     assert(
       /const maxOutputTokens = recognizeOnly\s*\n?\s*\? 6000/.test(source),
       "OCR 必須保留 6000 output tokens，避免長圖 JSON 被截斷",
@@ -2436,9 +2352,7 @@ Deno.test({
     "normalize 步驟以 isReadReceiptSideDecisive 設 metaDecisive 並鎖 isFromMe=true",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     assert(
       source.includes("isReadReceiptSideDecisive(record)"),
       "normalize map 必須呼叫 isReadReceiptSideDecisive",
@@ -2466,9 +2380,7 @@ Deno.test({
     "四 neighbour heuristic＋single-visible 都以 metaDecisive guard 保護已讀鎖定的泡不被翻側",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     const bodyOf = (name: string): string => {
       const start = source.indexOf(`function ${name}(`);
       assert(start >= 0, `找不到 function ${name}`);
@@ -2523,9 +2435,7 @@ Deno.test({
   name: "tier limit lookups normalize sub.tier before indexing",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // 異常 tier 字串（如 " Starter "、"STARTER"）直接查表會 fallback 成
     // free 30/15 提早 429；四處查表（含 new_topic quota gate 的
@@ -2548,9 +2458,7 @@ Deno.test({
   name: "TEST_EMAILS comes from _shared/quota (single source, no drift)",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     assertFalse(source.includes("const TEST_EMAILS"));
     assert(
@@ -2564,9 +2472,7 @@ Deno.test({
   name: "applyLayoutFirstParser 的 catch 必須 logWarn，不得靜默吞錯",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     assert(
       source.includes('logWarn("layout_first_parser_failed"'),
       "layout parser 失敗必須留 telemetry（layout_first_parser_failed），否則出錯不可見",
@@ -2584,9 +2490,7 @@ Deno.test({
     "recognizeOnly 限流：RPC gate 在圖片驗證後、AI 護欄前，且測試帳號 bypass",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // I1/I2：走 increment_ocr_usage RPC 原子計數（regex 容忍 fmt 斷行）
     const rpcCallPattern = /supabase\.rpc\(\s*"increment_ocr_usage"/;
@@ -2639,9 +2543,7 @@ Deno.test({
     "OCR normalize：metaDecisive 蓋過幾何確定左側時必留衝突 telemetry（不改判定）",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
 
     // P2-2（Bruce 掃描）：readReceipt 已讀鎖無條件蓋過 geometry-decisive-left
     // 訊號。bench 29 例零捏造，但線上若捏造一次會無聲翻掉硬幾何證據且無法
@@ -2679,9 +2581,7 @@ Deno.test({
   name: "訪客拆除：index.ts 無任何 anonymous/guest 殘留",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readAnalyzeChatScanCorpus();
     const accessSource = await Deno.readTextFile(
       new URL("./subscription_access.ts", import.meta.url),
     );
