@@ -6,6 +6,8 @@ const _runnerPath =
     'lib/features/analysis/data/services/optimize_request_runner.dart';
 const _screenPath =
     'lib/features/analysis/presentation/screens/analysis_screen.dart';
+const _coordinatorPath =
+    'lib/features/analysis/application/reply_iteration_coordinator.dart';
 
 void main() {
   test('共用 runner 的 exactly-once 順序：先找回、才鑄身分、才送出', () {
@@ -38,45 +40,43 @@ void main() {
   });
 
   test('草稿潤飾跨手動重試沿用 requestId，成功後才結束請求', () {
-    final source = File(_screenPath).readAsStringSync();
-    // 2026-08-16 面板化：_optimizeMessage 改名 _polishDraft，改回傳結果
-    // 給 DraftPolishSheet 顯示；同日改回傳 DraftPolishOutcome（擋下說明
-    // 留在面板上）。計費順序契約不變。
-    final methodStart =
-        source.indexOf('Future<DraftPolishOutcome?> _polishDraft(');
-    final methodEnd = source.indexOf(
-      'Future<void> _openDraftPolishSheet()',
-      methodStart,
-    );
-    expect(methodStart, greaterThanOrEqualTo(0));
-    expect(methodEnd, greaterThan(methodStart));
-    final method = source.substring(methodStart, methodEnd);
-
-    final runnerCall =
-        method.indexOf('_optimizeRequestRunner.run<AnalysisResult>(');
-    final apiCall = method.indexOf('AnalysisAuxiliaryClient().optimizeDraft(');
-    final requestIdWire = method.indexOf('requestId: pending.requestId,');
-    final presented =
-        method.indexOf('_clearOptimizePendingAfterVisibleFrame(pending)');
+    // Work B：計費路徑收斂進 ReplyIterationCoordinator；畫面只留可見幀
+    // 判斷與 acknowledge 呼叫。計費順序契約不變。
+    final coordinator = File(_coordinatorPath).readAsStringSync();
+    final runStart = coordinator.indexOf('Future<PolishRunResult?> runPolish(');
+    expect(runStart, greaterThanOrEqualTo(0));
+    final runBody = coordinator.substring(runStart);
+    final runnerCall = runBody.indexOf('_runner.run<AnalysisResult>(');
+    final apiCall = runBody.indexOf('AnalysisAuxiliaryClient().optimizeDraft(');
+    final requestIdWire = runBody.indexOf('requestId: pending.requestId,');
     expect(runnerCall, greaterThanOrEqualTo(0));
     expect(apiCall, greaterThan(runnerCall));
     expect(requestIdWire, greaterThan(apiCall));
-    expect(presented, greaterThan(requestIdWire));
 
-    // markSuccess 只能發生在畫面確實呈現付費結果之後。
+    // markSuccess 只能發生在畫面確實呈現付費結果之後：畫面的可見幀／
+    // route 守門先行，coordinator 的 acknowledge 才 markSuccess。
+    final source = File(_screenPath).readAsStringSync();
     final clearStart =
         source.indexOf('Future<void> _clearOptimizePendingAfterVisibleFrame(');
     expect(clearStart, greaterThanOrEqualTo(0));
     final clearBody = source.substring(clearStart, clearStart + 1200);
     final routeGuard =
         clearBody.indexOf('ModalRoute.of(context)?.isCurrent !=');
-    final markSuccess =
-        clearBody.indexOf('_optimizeRequestSession.markSuccess(pending);');
+    final acknowledge = clearBody
+        .indexOf('_replyIteration.acknowledgePolishPresented(pending);');
     expect(routeGuard, greaterThanOrEqualTo(0));
-    expect(markSuccess, greaterThan(routeGuard));
+    expect(acknowledge, greaterThan(routeGuard));
 
-    expect(source, contains('HiveOptimizeMessagePendingRequestStore('));
-    expect(source, contains('() => StorageService.settingsBox'));
+    final ackStart =
+        coordinator.indexOf('Future<void> acknowledgePolishPresented(');
+    expect(ackStart, greaterThanOrEqualTo(0));
+    expect(
+      coordinator.substring(ackStart, ackStart + 600),
+      contains('_session.markSuccess(pending);'),
+    );
+
+    expect(coordinator, contains('HiveOptimizeMessagePendingRequestStore('));
+    expect(coordinator, contains('() => StorageService.settingsBox'));
   });
 
   test('草稿潤飾已對全方案開放：畫面不得再出現付費閘門文案', () {

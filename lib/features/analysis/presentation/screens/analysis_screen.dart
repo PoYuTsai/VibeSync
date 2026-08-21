@@ -10,7 +10,6 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/services/message_calculator.dart';
 import '../../../../core/services/keyboard_privacy_purge_service.dart';
-import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -50,6 +49,7 @@ import '../../data/providers/analysis_record_providers.dart';
 import '../../application/analysis_persistence_coordinator.dart';
 import '../../application/analysis_run_preparer.dart';
 import '../../application/analysis_session_controller.dart';
+import '../../application/reply_iteration_coordinator.dart';
 import '../../application/screenshot_import_coordinator.dart';
 import '../../data/providers/analysis_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
@@ -63,8 +63,6 @@ import '../../data/services/analysis_hint_service.dart';
 import '../../data/services/analysis_service.dart';
 import '../../data/services/analysis_telemetry_guardrail_helper.dart';
 import '../../data/services/optimize_message_request_session.dart';
-import '../../data/services/optimize_request_runner.dart';
-import '../../data/services/reply_refine_draft_store.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_record.dart';
@@ -189,20 +187,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // 訊息優化功能（顯示狀態在 DraftPolishSheet；這裡只留草稿與計費路徑）
   bool _showDetailedAnalysis = false;
   final _optimizeController = TextEditingController();
-  final _optimizeRequestSession = OptimizeMessageRequestIdSession(
-    store: HiveOptimizeMessagePendingRequestStore(
-      () => StorageService.settingsBox,
-    ),
-  );
-  late final _optimizeRequestRunner = OptimizeRequestRunner(
-    session: _optimizeRequestSession,
-  );
-
-  /// 微調的最後一版留在本機加密暫存 24 小時，離開畫面再回來還接得上。
-  final _refineDraftStore = HiveReplyRefineDraftStore(
-    () => StorageService.settingsBox,
-  );
-  OptimizeMessagePendingRequest? _optimizePendingAwaitingPresentation;
+  final _replyIteration = ReplyIterationCoordinator();
 
   String? _feedbackCategory;
   final _feedbackCommentController = TextEditingController();
@@ -258,10 +243,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   /// 潤飾稿獨立 runKey（_polishDraft 不走 _applyAnalysisResult 漏斗）。
   String? _polishRunKey;
-
-  /// 今日剩餘免費微調次數。真相源在 server，這裡只記住最近一次回應帶回來的
-  /// 數字，好讓下一次開面板時能在動手前就顯示；沒問過就是 null（不猜）。
-  int? _refineFreeRemaining;
 
   final _scrollController = ScrollController();
   final _analysisProgressEndKey = GlobalKey();
@@ -3388,21 +3369,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       final analysisContext = await ref
           .read(analysisRunPreparerProvider)
           .prepareAuxiliary(conversation: conversation);
-      final optimizeFingerprint =
-          OptimizeMessageRequestIdSession.fingerprintFor(
-        messages: analysisContext.requestMessages,
-        userDraft: draft,
+      final polishOutcome = await _replyIteration.runPolish(
+        ownerUserId: ownerUserId,
+        context: analysisContext,
         sessionContext: conversation.sessionContext,
-        conversationSummary: analysisContext.conversationSummary,
-        partnerSummary: analysisContext.partnerSummary,
-        effectiveStyleContext: analysisContext.effectiveStyleContext,
-        knownContactName: analysisContext.knownContactName,
-      );
-      final outcome = await _optimizeRequestRunner.run<AnalysisResult>(
-        input: OptimizeRunInput(
-          ownerUserId: ownerUserId,
-          fingerprint: optimizeFingerprint,
-        ),
+        draft: draft,
         onReadyToSend: () async {
           if (!mounted) return false;
           final consented = await AiDataSharingConsent.ensure(
@@ -3420,39 +3391,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           });
           return true;
         },
-        send: (pending) async {
-          final result = await AnalysisAuxiliaryClient().optimizeDraft(
-            messages: analysisContext.requestMessages,
-            sessionContext: conversation.sessionContext,
-            conversationSummary: analysisContext.conversationSummary,
-            partnerSummary: analysisContext.partnerSummary,
-            effectiveStyleContext: analysisContext.effectiveStyleContext,
-            knownContactName: analysisContext.knownContactName,
-            userDraft: draft,
-            requestId: pending.requestId,
-            onTelemetry: _handleAnalysisTelemetry,
-          );
-          if (result.optimizedMessage == null ||
-              result.optimizedMessage!.optimized.trim().isEmpty) {
-            throw AnalysisException(
-              '這次沒有產生可用的優化結果，請稍後再試。',
-              code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
-              suggestedAction: AnalysisErrorAction.wait,
-            );
-          }
-          return result;
-        },
+        onTelemetry: _handleAnalysisTelemetry,
       );
 
       // cancelled：使用者拒絕同意或畫面已離開，什麼都沒送出也沒鑄身分。
-      if (!outcome.isSuccess) return null;
+      if (polishOutcome == null) return null;
       if (!mounted) return null;
 
-      final pending = outcome.pending!;
-      final result = outcome.result!;
+      final pending = polishOutcome.pending;
+      final result = polishOutcome.result;
       setState(() {
         _polishRunKey = const Uuid().v4();
-        _optimizePendingAwaitingPresentation = pending;
       });
 
       _syncSubscriptionUsageFromResult(
@@ -3526,14 +3475,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted ||
         WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
-        ModalRoute.of(context)?.isCurrent != true ||
-        _optimizePendingAwaitingPresentation?.requestId != pending.requestId) {
+        ModalRoute.of(context)?.isCurrent != true) {
       return;
     }
-    await _optimizeRequestSession.markSuccess(pending);
-    if (_optimizePendingAwaitingPresentation?.requestId == pending.requestId) {
-      _optimizePendingAwaitingPresentation = null;
-    }
+    await _replyIteration.acknowledgePolishPresented(pending);
   }
 
   /// 「再調一下」：把一則已經產出的回覆就地再修一次，可以連續迭代。
@@ -3565,15 +3510,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (!mounted) return;
 
     // 讀失敗就當作沒有草稿：這只是方便用的快取，不能為了它擋住面板。
-    ReplyRefineDraft? restored;
-    try {
-      restored = await _refineDraftStore.loadFor(
-        ownerUserId: ownerUserId,
-        originText: origin,
-      );
-    } catch (_) {
-      restored = null;
-    }
+    final restored = await _replyIteration.restoreRefineDraft(
+      ownerUserId: ownerUserId,
+      originText: origin,
+    );
     if (!mounted) return;
 
     final sheetResult = await showReplyRefineSheet(
@@ -3581,23 +3521,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       originalText: origin,
       restoredText: restored?.refinedText,
       restoredRequestId: restored?.requestId,
-      freeRemaining: _refineFreeRemaining,
+      freeRemaining: _replyIteration.refineFreeRemaining,
       onRefine: ({required currentText, required instruction}) async {
-        final fingerprint = OptimizeMessageRequestIdSession.fingerprintFor(
-          messages: analysisContext.requestMessages,
-          userDraft: currentText,
+        final round = await _replyIteration.runRefineRound(
+          ownerUserId: ownerUserId,
+          context: analysisContext,
           sessionContext: conversation.sessionContext,
-          conversationSummary: analysisContext.conversationSummary,
-          partnerSummary: analysisContext.partnerSummary,
-          effectiveStyleContext: analysisContext.effectiveStyleContext,
-          knownContactName: analysisContext.knownContactName,
-          refineInstruction: instruction,
-        );
-        final outcome = await _optimizeRequestRunner.run<AnalysisResult>(
-          input: OptimizeRunInput(
-            ownerUserId: ownerUserId,
-            fingerprint: fingerprint,
-          ),
+          currentText: currentText,
+          instruction: instruction,
+          // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的
+          // anchor_action 條款有錨可判——第 N 版不得長出原句沒有的邀約。
+          anchorText: origin,
           onReadyToSend: () async {
             if (!mounted) return false;
             return AiDataSharingConsent.ensure(
@@ -3609,77 +3543,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               purposeText: AiDataSharingConsent.optimizeReplayPurposeText,
             );
           },
-          send: (pending) async {
-            final result = await AnalysisAuxiliaryClient().refineReply(
-              messages: analysisContext.requestMessages,
-              sessionContext: conversation.sessionContext,
-              conversationSummary: analysisContext.conversationSummary,
-              partnerSummary: analysisContext.partnerSummary,
-              effectiveStyleContext: analysisContext.effectiveStyleContext,
-              knownContactName: analysisContext.knownContactName,
-              userDraft: currentText,
-              refineInstruction: instruction,
-              // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的
-              // anchor_action 條款有錨可判——第 N 版不得長出原句沒有的邀約。
-              refineAnchorText: origin,
-              requestId: pending.requestId,
-              onTelemetry: _handleAnalysisTelemetry,
-            );
-            final refined = result.optimizedMessage?.optimized.trim();
-            if (refined == null || refined.isEmpty) {
-              throw AnalysisException(
-                '這次沒有調出可用的版本，請再試一次。',
-                code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
-                suggestedAction: AnalysisErrorAction.wait,
-              );
-            }
-            return result;
-          },
+          onTelemetry: _handleAnalysisTelemetry,
         );
-        if (!outcome.isSuccess) return null;
+        if (round == null) return null;
 
-        final pending = outcome.pending!;
-        final result = outcome.result!;
         _syncSubscriptionUsageFromResult(
-          result,
+          round.result,
           showChargeToast: false,
           chargeActionLabel: '微調',
         );
-        final usage = result.rawResponse?['usage'];
-        final freeRemaining =
-            usage is Map ? usage['refineFreeRemaining'] : null;
-        final freeDailyLimit =
-            usage is Map ? usage['refineFreeDailyLimit'] : null;
-        if (freeRemaining is num) {
-          _refineFreeRemaining = freeRemaining.round();
-        }
-        final refinedText = result.optimizedMessage!.optimized.trim();
-        // 順序不能反：先把已付費結果落到本機暫存，成功了才清掉付費身分。
-        //
-        // 面板是可下滑關閉的 route，使用者可能在等待中就把它關掉，結果回來時
-        // 根本沒被看到；此時本機暫存是唯一還能把它接回來的東西。若先
-        // markSuccess 再存檔而存檔失敗，requestId 就永久消失，下一次只能鑄一顆
-        // 新的再扣一次錢。存檔失敗時保留 pending，同一份輸入的下一次送出會走
-        // replay 拿回同一個結果，不重複扣費。
-        var restorable = false;
-        try {
-          await _refineDraftStore.save(
-            ownerUserId: ownerUserId,
-            originText: origin,
-            refinedText: refinedText,
-            requestId: pending.requestId,
-          );
-          restorable = true;
-        } catch (_) {}
-        if (restorable) {
-          unawaited(_markRefinePendingAfterVisibleFrame(pending));
+        // durable 暫存已在 coordinator 內先落地（順序不能反：先存得回來、
+        // 才在可見幀後清掉付費身分）；存檔失敗時保留 pending 走 replay。
+        if (round.restorable) {
+          unawaited(_markRefinePendingAfterVisibleFrame(round.pending));
         }
         return ReplyRefineOutcome(
-          refinedText: refinedText,
-          requestId: pending.requestId,
-          freeRemaining: freeRemaining is num ? freeRemaining.round() : null,
-          freeDailyLimit: freeDailyLimit is num ? freeDailyLimit.round() : null,
-          chargedQuota: usage is Map && usage['shouldChargeQuota'] == true,
+          refinedText: round.refinedText,
+          requestId: round.pending.requestId,
+          freeRemaining: round.freeRemaining,
+          freeDailyLimit: round.freeDailyLimit,
+          chargedQuota: round.chargedQuota,
         );
       },
     );
@@ -3746,13 +3629,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
       return;
     }
-    await _optimizeRequestSession.markSuccess(pending);
+    await _replyIteration.acknowledgeRefinePresented(pending);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
-    final pending = _optimizePendingAwaitingPresentation;
+    final pending = _replyIteration.pendingAwaitingPresentation;
     if (pending == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -4859,7 +4742,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   @override
   Widget build(BuildContext context) {
     _syncReplyZoneEntrance();
-    final optimizePending = _optimizePendingAwaitingPresentation;
+    final optimizePending = _replyIteration.pendingAwaitingPresentation;
     if (optimizePending != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {

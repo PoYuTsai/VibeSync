@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 const _screenPath =
     'lib/features/analysis/presentation/screens/analysis_screen.dart';
+const _coordinatorPath =
+    'lib/features/analysis/application/reply_iteration_coordinator.dart';
 
 void main() {
   late String source;
@@ -12,12 +14,14 @@ void main() {
 
   test('三個入口都接上「再調一下」', () {
     // AI 推薦回覆：單段、舊 ①② 段落、結構化分段三種渲染路徑都要有。
-    expect(source, contains("_buildRefineButton(content, originCardKey: 'final')"));
+    expect(source,
+        contains("_buildRefineButton(content, originCardKey: 'final')"));
     expect(
       source,
       contains("_buildRefineButton(replyText, originCardKey: 'final')"),
     );
-    expect(source, contains("_buildRefineButton(reply, originCardKey: 'final')"));
+    expect(
+        source, contains("_buildRefineButton(reply, originCardKey: 'final')"));
     // 五張風格卡：來源卡別就是風格 type。
     expect(
       source,
@@ -50,12 +54,15 @@ void main() {
   });
 
   test('微調每一輪都走共用 runner，指令同時進 fingerprint 與 payload', () {
-    final methodStart = source.indexOf('Future<void> _refineReply(');
+    // Work B：一輪微調的計費編排移入 ReplyIterationCoordinator。
+    final coordinator = File(_coordinatorPath).readAsStringSync();
+    final methodStart =
+        coordinator.indexOf('Future<RefineRoundResult?> runRefineRound(');
     expect(methodStart, greaterThanOrEqualTo(0));
-    final method = source.substring(methodStart, methodStart + 5000);
+    final method = coordinator.substring(methodStart);
 
     final fingerprint = method.indexOf('fingerprintFor(');
-    final runnerCall = method.indexOf('_optimizeRequestRunner.run<AnalysisResult>(');
+    final runnerCall = method.indexOf('_runner.run<AnalysisResult>(');
     final send = method.indexOf('AnalysisAuxiliaryClient().refineReply(');
     expect(fingerprint, greaterThanOrEqualTo(0));
     expect(runnerCall, greaterThan(fingerprint));
@@ -105,26 +112,36 @@ void main() {
     // 沒被看到。本機暫存是唯一還能把已付費結果接回來的東西，所以順序必須是
     // 「存檔成功 → markSuccess」。反過來寫且存檔失敗，requestId 就永久消失，
     // 下一次只能鑄新的再扣一次。
-    final methodStart = source.indexOf('Future<void> _refineReply(');
-    final methodEnd = source.indexOf('Future<void> _recordRefineCopy(');
+    final coordinator = File(_coordinatorPath).readAsStringSync();
+    final methodStart =
+        coordinator.indexOf('Future<RefineRoundResult?> runRefineRound(');
     expect(methodStart, greaterThanOrEqualTo(0));
-    expect(methodEnd, greaterThan(methodStart));
-    final method = source.substring(methodStart, methodEnd);
-
-    final save = method.indexOf('_refineDraftStore.save(');
-    final mark = method.indexOf('_markRefinePendingAfterVisibleFrame(');
+    final method = coordinator.substring(methodStart);
+    final save = method.indexOf('_draftStore.save(');
     expect(save, greaterThanOrEqualTo(0));
-    expect(mark, greaterThan(save), reason: 'markSuccess 不得早於本機暫存寫入');
+    // coordinator 先落地暫存並回報 restorable，畫面才在可見幀後 acknowledge。
+    expect(method.substring(save, save + 400), contains('restorable = true'));
 
+    final refineStart = source.indexOf('Future<void> _refineReply(');
+    final refineEnd = source.indexOf('Future<void> _recordRefineCopy(');
+    expect(refineStart, greaterThanOrEqualTo(0));
+    expect(refineEnd, greaterThan(refineStart));
+    final screenMethod = source.substring(refineStart, refineEnd);
+    final mark = screenMethod.indexOf('_markRefinePendingAfterVisibleFrame(');
+    expect(mark, greaterThanOrEqualTo(0));
     // 存檔失敗時必須跳過 markSuccess，讓 pending 留著走 replay。
-    expect(method.substring(save, mark), contains('restorable = true'));
-    expect(method.substring(mark - 60, mark), contains('if (restorable)'));
+    expect(
+      screenMethod.substring(mark - 80, mark),
+      contains('if (round.restorable)'),
+    );
   });
 
   test('免費剩餘次數只信 server 回來的數字', () {
-    expect(source, contains("usage['refineFreeRemaining']"));
+    final coordinator = File(_coordinatorPath).readAsStringSync();
+    expect(coordinator, contains("usage['refineFreeRemaining']"));
     // client 不自己遞減：面板顯示的次數和真正扣費的帳本必須是同一本。
-    expect(source.contains('_refineFreeRemaining--'), isFalse);
-    expect(source.contains('_refineFreeRemaining -= '), isFalse);
+    expect(coordinator.contains('_refineFreeRemaining--'), isFalse);
+    expect(coordinator.contains('_refineFreeRemaining -= '), isFalse);
+    expect(source.contains('_refineFreeRemaining'), isFalse);
   });
 }
