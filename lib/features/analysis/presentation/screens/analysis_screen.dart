@@ -41,7 +41,6 @@ import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../conversation/data/providers/conversation_archive_providers.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
-import '../../../conversation/data/repositories/conversation_archive_store.dart';
 import '../../../follow_up_notification/data/providers/follow_up_notification_service.dart';
 import '../../../follow_up_notification/domain/follow_up_opt_in.dart';
 import '../../../follow_up_notification/presentation/soft_opt_in_card.dart';
@@ -51,6 +50,7 @@ import '../../data/providers/analysis_record_providers.dart';
 import '../../application/analysis_persistence_coordinator.dart';
 import '../../application/analysis_run_preparer.dart';
 import '../../application/analysis_session_controller.dart';
+import '../../application/screenshot_import_coordinator.dart';
 import '../../data/providers/analysis_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/message.dart';
@@ -58,7 +58,6 @@ import '../../../conversation/domain/entities/session_context.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../data/notifiers/streaming_analyze_notifier.dart';
-import '../../data/services/ocr_recognition_cache_service.dart';
 import '../../data/services/analysis_archive_lifecycle.dart';
 import '../../data/services/analysis_hint_service.dart';
 import '../../data/services/analysis_service.dart';
@@ -239,6 +238,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     conversationId: widget.conversationId,
     read: ref.read,
     persistence: _persistence,
+  );
+  late final ScreenshotImportCoordinator _screenshotImport =
+      ScreenshotImportCoordinator(
+    conversationId: widget.conversationId,
+    read: ref.read,
+    invalidateConversationProvider: () =>
+        ref.invalidate(conversationProvider(widget.conversationId)),
   );
   String? _analysisArchiveCountScopeKey;
   int _analysisArchiveCount = 0;
@@ -2230,163 +2236,66 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     required ScreenshotRecognitionDialogResult dialogResult,
     required RecognizedConversation recognized,
   }) async {
-    final repository = ref.read(conversationRepositoryProvider);
-    final editedRecognizedMessages = dialogResult.messages;
-    final importedMessages = _buildImportedMessages(editedRecognizedMessages);
-    final newName = dialogResult.name;
-    final meeting = dialogResult.meetingContext;
-    final duration = dialogResult.duration;
-    final goal = dialogResult.goal;
-    final analysisContextNote = dialogResult.analysisContextNote;
-    final sourceConversation =
-        repository.getConversation(widget.conversationId);
-    final mustStartNewFragment = sourceConversation != null &&
-        AnalysisFragmentPolicy.mustCreateNewFragmentForImport(
-          conversation: sourceConversation,
-          hasLoadedAnalysisResult: _enthusiasmScore != null,
-        );
-    final sourcePartnerId = sourceConversation?.partnerId?.trim();
-    final isPartnerBound =
-        sourcePartnerId != null && sourcePartnerId.isNotEmpty;
-    final expectedPartnerName = sourceConversation == null
-        ? null
-        : _recognitionExpectedPartnerName(sourceConversation);
-    final updatedRecognized = recognized.copyWith(
-      contactName: isPartnerBound
-          ? recognized.contactName
-          : newName.isNotEmpty
-              ? newName
-              : recognized.contactName,
-      messageCount: editedRecognizedMessages.length,
-      messages: editedRecognizedMessages,
+    final commit = await _screenshotImport.commitImport(
+      editedRecognizedMessages: dialogResult.messages,
+      newName: dialogResult.name,
+      meeting: dialogResult.meetingContext,
+      duration: dialogResult.duration,
+      goal: dialogResult.goal,
+      analysisContextNote: dialogResult.analysisContextNote,
+      recognized: recognized,
+      hasLoadedAnalysisResult: _enthusiasmScore != null,
     );
 
-    if (mustStartNewFragment) {
-      final controller = ref.read(conversationWriteControllerProvider.notifier);
-      // Inherit partnerId from the source conversation so the new "互動紀錄"
-      // shows up under the same Partner detail page. Pre-A2 this path
-      // created orphan conversations (partnerId=null) which silently
-      // disappeared from `conversationsByPartnerProvider(partnerId)`.
-      // (Bruce TF feedback 2026-04-28.)
-      final createdConversation = await controller.create(
-        name: isPartnerBound
-            ? ScreenshotRecognitionHelper.resolvePartnerBoundNewFragmentName(
-                currentConversation: sourceConversation,
-                expectedPartnerName: expectedPartnerName,
-              )
-            : _resolveImportedConversationName(
-                enteredName: newName,
-                recognizedName: recognized.contactName,
-              ),
-        messages: importedMessages,
-        partnerId: sourceConversation.partnerId,
-      );
-
-      if (meeting != null && duration != null) {
-        createdConversation.sessionContext = SessionContext(
-          meetingContext: meeting,
-          duration: duration,
-          goal: goal ?? UserGoal.dateInvite,
-          analysisContextNote: analysisContextNote,
-        );
-      }
-      await controller.save(createdConversation);
-      ref.invalidate(conversationProvider(widget.conversationId));
-
-      if (!mounted || _recognizeCancelled) {
-        _debugLog(
-            '[Recognize] Ignore post-save UI update after cancel/dispose');
+    switch (commit.kind) {
+      case ScreenshotImportCommitKind.conversationMissing:
+        if (!mounted || _recognizeCancelled) {
+          return;
+        }
+        setState(() {
+          _isRecognizing = false;
+          _applyErrorState(
+            message: '目前對話不存在，請重新進入後再試一次',
+            action: AnalysisErrorAction.retry,
+            origin: _AnalysisErrorOrigin.recognition,
+          );
+        });
         return;
-      }
-
-      setState(() {
-        _selectedImages = [];
-        _selectedImageMetrics = [];
-        _recognizedConversation = updatedRecognized;
-        _recognizedWarningMessage = null;
-        _hasPendingRecognitionImport = false;
-      });
-
-      // OCR 匯入浮動提示全拆（2026-08-16 Eric：沒什麼用）。來源已完成分析
-      // 而另開新片段時，直接帶使用者過去，不留在舊片段乾等。
-      context.push('/conversation/${createdConversation.id}');
-      return;
-    }
-
-    final conv = repository.getConversation(widget.conversationId);
-    if (conv == null) {
-      if (!mounted || _recognizeCancelled) {
+      case ScreenshotImportCommitKind.createdNewFragment:
+        if (!mounted || _recognizeCancelled) {
+          _debugLog(
+              '[Recognize] Ignore post-save UI update after cancel/dispose');
+          return;
+        }
+        setState(() {
+          _selectedImages = [];
+          _selectedImageMetrics = [];
+          _recognizedConversation = commit.updatedRecognized;
+          _recognizedWarningMessage = null;
+          _hasPendingRecognitionImport = false;
+        });
+        // OCR 匯入浮動提示全拆（2026-08-16 Eric：沒什麼用）。來源已完成分析
+        // 而另開新片段時，直接帶使用者過去，不留在舊片段乾等。
+        context.push('/conversation/${commit.createdConversationId}');
         return;
-      }
-      setState(() {
-        _isRecognizing = false;
-        _applyErrorState(
-          message: '目前對話不存在，請重新進入後再試一次',
-          action: AnalysisErrorAction.retry,
-          origin: _AnalysisErrorOrigin.recognition,
-        );
-      });
-      return;
+      case ScreenshotImportCommitKind.replacedBatch:
+        if (!mounted || _recognizeCancelled) {
+          _debugLog(
+              '[Recognize] Ignore post-save UI update after cancel/dispose');
+          return;
+        }
+        setState(() {
+          _selectedImages = [];
+          _selectedImageMetrics = [];
+          _recognizedConversation = commit.updatedRecognized;
+          _recognizedWarningMessage = null;
+          _hasPendingRecognitionImport = false;
+        });
+        // 「已確認本次片段／查看本次內容」浮動提示已拆（2026-08-16 Eric：
+        // 沒什麼用——內容就在眼前，確認框也已揭露取代規則）。另開新片段的
+        // 「前往新片段」提示保留，那個有導航作用。
+        return;
     }
-
-    final partnerId = conv.partnerId?.trim();
-    if (partnerId != null && partnerId.isNotEmpty) {
-      conv.name =
-          ScreenshotRecognitionHelper.resolvePartnerBoundConversationName(
-        currentConversation: conv,
-        expectedPartnerName: _recognitionExpectedPartnerName(conv),
-      );
-    } else if (newName.isNotEmpty &&
-        ScreenshotRecognitionHelper.isPlaceholderConversationName(conv.name)) {
-      conv.name = newName;
-    }
-
-    if (conv.sessionContext == null && meeting != null && duration != null) {
-      conv.sessionContext = SessionContext(
-        meetingContext: meeting,
-        duration: duration,
-        goal: goal ?? UserGoal.dateInvite,
-        analysisContextNote: analysisContextNote,
-      );
-    } else if (conv.sessionContext != null &&
-        analysisContextNote != null &&
-        analysisContextNote.trim().isNotEmpty) {
-      final existing = conv.sessionContext!;
-      conv.sessionContext = SessionContext(
-        meetingContext: existing.meetingContext,
-        duration: existing.duration,
-        goal: existing.goal,
-        userStyle: existing.userStyle,
-        userInterests: existing.userInterests,
-        targetDescription: existing.targetDescription,
-        analysisContextNote: analysisContextNote.trim(),
-      );
-    }
-
-    // 一次 OCR 選取（1–3 張）就是完整的一個待分析片段。重新選圖時
-    // 整批取代，不把不連貫的新內容接成越來越長的逐字稿。
-    AnalysisFragmentPolicy.replaceDraftBatch(
-      conversation: conv,
-      messages: importedMessages,
-    );
-    await ref.read(conversationWriteControllerProvider.notifier).save(conv);
-    ref.invalidate(conversationProvider(widget.conversationId));
-
-    if (!mounted || _recognizeCancelled) {
-      _debugLog('[Recognize] Ignore post-save UI update after cancel/dispose');
-      return;
-    }
-    setState(() {
-      _selectedImages = [];
-      _selectedImageMetrics = [];
-      _recognizedConversation = updatedRecognized;
-      _recognizedWarningMessage = null;
-      _hasPendingRecognitionImport = false;
-    });
-
-    // 「已確認本次片段／查看本次內容」浮動提示已拆（2026-08-16 Eric：
-    // 沒什麼用——內容就在眼前，確認框也已揭露取代規則）。另開新片段的
-    // 「前往新片段」提示保留，那個有導航作用。
   }
 
   Future<void> _resumeRecognitionImport() async {
@@ -2562,41 +2471,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         recognized: recognized,
         currentConversation: currentConversation,
         expectedPartnerName:
-            _recognitionExpectedPartnerName(currentConversation),
-      );
-
-  String? _recognitionExpectedPartnerName(Conversation conversation) {
-    final partnerId = conversation.partnerId?.trim();
-    if (partnerId == null || partnerId.isEmpty) {
-      return null;
-    }
-    final name =
-        ref.read(partnerRepositoryProvider).getById(partnerId)?.name.trim();
-    return name == null || name.isEmpty ? null : name;
-  }
-
-  List<Message> _buildImportedMessages(List<RecognizedMessage> recognized) {
-    final baseTimestamp = DateTime.now();
-    return List.generate(recognized.length, (index) {
-      final message = recognized[index];
-      return Message(
-        id: '${baseTimestamp.microsecondsSinceEpoch}_$index',
-        content: message.content,
-        isFromMe: message.isFromMe,
-        timestamp: baseTimestamp.add(Duration(milliseconds: index)),
-        quotedReplyPreview: message.quotedReplyPreview,
-        quotedReplyPreviewIsFromMe: message.quotedReplyPreviewIsFromMe,
-      );
-    });
-  }
-
-  String _resolveImportedConversationName({
-    required String? enteredName,
-    required String? recognizedName,
-  }) =>
-      ScreenshotRecognitionHelper.resolveImportedConversationName(
-        enteredName: enteredName,
-        recognizedName: recognizedName,
+            _screenshotImport.expectedPartnerName(currentConversation),
       );
 
   String _recognitionClassificationLabel(String classification) =>
@@ -2918,7 +2793,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     String? warningMessage,
   }) async {
     final expectedPartnerName =
-        _recognitionExpectedPartnerName(currentConversation);
+        _screenshotImport.expectedPartnerName(currentConversation);
     final partnerId = currentConversation.partnerId?.trim();
     final isPartnerBound = partnerId != null && partnerId.isNotEmpty;
     final initialContext = _screenshotSessionContextFor(currentConversation);
@@ -3015,85 +2890,27 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     try {
       // 呼叫 API 識別截圖（純識別模式，不做完整分析，節省時間和額度）
       _debugLog('呼叫 API... (timeout: 120s)');
-      if (forceRefresh) {
-        await OcrRecognitionCacheService.invalidate(
-          imagesToProcess,
-          widget.conversationId,
-        );
-      }
-      final cachedRecognition = forceRefresh
-          ? null
-          : await OcrRecognitionCacheService.read(
-              imagesToProcess,
-              widget.conversationId,
-            );
-      AnalysisResult result;
-      if (cachedRecognition != null) {
+      final recognition = await _screenshotImport.recognize(
+        images: imagesToProcess,
+        conversation: conversation,
+        sessionContext: _screenshotSessionContextFor(conversation),
+        forceRefresh: forceRefresh,
+        totalCompressedImageBytes: _totalCompressedImageBytes,
+        onProgress: _handleRecognizeProgress,
+        onTelemetry: _handleRecognizeTelemetry,
+      );
+      final result = recognition.result;
+      final isFromCache = recognition.fromCache;
+      if (isFromCache) {
         _debugLog('[Recognize] OCR cache hit');
-        _handleRecognizeTelemetry(
-          AnalysisTelemetry(
-            requestType: 'recognize_only',
-            imageCount: imagesToProcess.length,
-            requestBodyBytes: 0,
-            payloadPreparationDuration: Duration.zero,
-            roundTripDuration: Duration.zero,
-            edgeAiDuration: Duration.zero,
-            totalCompressedImageBytes: _totalCompressedImageBytes,
-            cacheHit: true,
-            recognizedClassification:
-                cachedRecognition.recognizedConversation.classification,
-            recognizedConfidence:
-                cachedRecognition.recognizedConversation.confidence,
-            recognizedSideConfidence:
-                cachedRecognition.recognizedConversation.sideConfidence,
-            recognizedMessageCount:
-                cachedRecognition.recognizedConversation.messageCount,
-            uncertainSideCount:
-                cachedRecognition.recognizedConversation.uncertainSideCount,
-          ),
-        );
-        result = AnalysisResult.fromJson(
-          {
-            'recognizedConversation':
-                cachedRecognition.recognizedConversation.toJson(),
-          },
-        );
         _rememberRecognitionReplay(
           images: imagesToProcess,
           metrics: metricsToProcess,
         );
       } else {
-        // 使用 Future.any 來實現強制 timeout
-        result = await Future.any([
-          // 純識別模式：只識別截圖，不扣額度
-          AnalysisAuxiliaryClient().recognizeScreenshots(
-            images: imagesToProcess,
-            sessionContext: _screenshotSessionContextFor(conversation),
-            knownContactName:
-                ScreenshotRecognitionHelper.resolveKnownContactName(
-              currentConversation: conversation,
-              expectedPartnerName:
-                  _recognitionExpectedPartnerName(conversation),
-            ),
-            onProgress: _handleRecognizeProgress,
-            onTelemetry: _handleRecognizeTelemetry,
-          ),
-          // Screen fence also includes local payload preparation, so it must
-          // stay outside AnalysisService's 130-second HTTP fence.
-          Future.delayed(kAnalyzeOcrScreenTimeout, () {
-            throw TimeoutException('辨識超時 (135秒)');
-          }),
-        ]);
         _debugLog(
             'API 回應成功，耗時: ${DateTime.now().difference(startTime).inSeconds}s');
-
-        // 把識別結果存入對話
         if (result.recognizedConversation != null) {
-          await OcrRecognitionCacheService.write(
-            images: imagesToProcess,
-            recognizedConversation: result.recognizedConversation!,
-            conversationId: widget.conversationId,
-          );
           _rememberRecognitionReplay(
             images: imagesToProcess,
             metrics: metricsToProcess,
@@ -3115,7 +2932,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           currentConversation: conversation,
         );
 
-        final isFromCache = cachedRecognition != null;
         if (recognized.importPolicy == 'reject') {
           setState(() {
             _isRecognizing = false;
