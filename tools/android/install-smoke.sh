@@ -10,6 +10,10 @@
 #      （CallbackActivity 與 App 同程序，不 crash、不疊程序）
 #   4. 全程 logcat 掃本 package 的 runtime 例外與 ClassNotFoundException，
 #      fail closed
+# 證據邊界：synthetic VIEW intent 只驗 callback「routing」與 process
+# stability，不驗 FlutterWebAuth2.authenticate 真的收到 OAuth 結果
+# （plugin callback map 只在 live auth session 進行中才有 entry）。
+# live OAuth completion 屬實機驗證證據，見 docs/integrations/auth.md。
 # 注意：本腳本在 set -o pipefail 下不得把 adb 輸出串進會早退的 grep -q
 # （命中時上游 SIGPIPE 141 會讓 pipeline 判失敗而漏報）。一律先把 log 完整
 # 擷取進變數，再用 here-string 單次掃描；迴歸防護見
@@ -85,7 +89,8 @@ grep -q "Status: ok" <<<"$launch_out" \
 sleep "$startup_wait"
 launcher_pid=$(single_pid)
 
-# --- 2. App 執行中送 callback VIEW intent（AND-03 契約可重現）---
+# --- 2. App 執行中送 callback VIEW intent（AND-03 routing 契約；
+#        不驗 live OAuth completion，見檔頭證據邊界）---
 callback_out=$(adb shell "am start -W -a android.intent.action.VIEW -d '$callback_uri'")
 echo "$callback_out"
 grep -q "Status: ok" <<<"$callback_out" \

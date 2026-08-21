@@ -64,6 +64,19 @@ void main() {
       );
     });
 
+    test('任何 activity 都不得宣告 taskAffinity（plugin 官方 troubleshooting）', () {
+      // flutter_web_auth_2 4.1.0 官方 Android troubleshooting：manifest 不得
+      // 設 taskAffinity（含空字串），否則 OAuth 回跳可能落在錯的 task，
+      // authenticate 收不到結果
+      for (final activity in manifestActivities(manifest)) {
+        expect(
+          androidAttr(activity, 'taskAffinity'),
+          isNull,
+          reason: '${androidAttr(activity, 'name')} 不得宣告 taskAffinity',
+        );
+      }
+    });
+
     test('MainActivity exported、singleTop、無 VIEW filter', () {
       final main = activityByName(manifest, '.MainActivity');
       expect(androidAttr(main, 'exported'), 'true');

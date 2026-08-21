@@ -40,6 +40,10 @@
 - 已知缺口：Android 密碼重設等 email 深連結共用同一 redirect URI，會落在
   `CallbackActivity` 被吞掉——屬 AUTH-01（Slice 3）處理範圍。
 - iOS 維持 ASWebAuthenticationSession 單一 `login-callback`，行為不變。
+- 證據邊界：CI 的 install smoke（synthetic VIEW intent）只驗 callback
+  routing（唯一擁有者、無 chooser）與 process stability（同 PID、不
+  crash），**不等於**已驗證 `FlutterWebAuth2.authenticate` 收到 OAuth
+  結果；live Google OAuth 完成流程屬實機驗證證據（AUTH-01／QA 階段）。
 
 ### Info.plist 配置
 - 加入 reversed iOS client ID 作為 URL Scheme
