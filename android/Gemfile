@@ -1,0 +1,9 @@
+# android/Gemfile
+# release.yml 的 ruby/setup-ruby（bundler-cache＋working-directory: android）
+# 吃這份 Gemfile＋提交的 Gemfile.lock：fastlane 釘 2.238.0（驗證過的版本）。
+# Gemfile.lock 一律由 Bundler 產生、不得手寫：
+#   bundle lock && bundle lock --add-platform x86_64-linux ruby
+# （release-android 跑 ubuntu-latest，lock 需含 x86_64-linux 平台）
+source "https://rubygems.org"
+
+gem "fastlane", "2.238.0"
