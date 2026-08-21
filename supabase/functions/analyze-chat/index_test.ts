@@ -1675,7 +1675,15 @@ Deno.test({
     assert(source.includes("Invalid revenueCatAppUserId"));
     assert(source.includes("revenueCatUserIdCandidates"));
     assert(source.includes("client_expected_paid_tier"));
-    assert(source.includes("revenueCatUser: summarizeUser(revenueCatUserId)"));
+    // RevenueCat 查詢與 telemetry 已抽到 revenuecat_reconciliation.ts。
+    const reconciliationSource = await Deno.readTextFile(
+      new URL("./revenuecat_reconciliation.ts", import.meta.url),
+    );
+    assert(
+      reconciliationSource.includes(
+        "revenueCatUser: summarizeUser(revenueCatUserId)",
+      ),
+    );
   },
 });
 

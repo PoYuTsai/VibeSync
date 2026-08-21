@@ -152,6 +152,10 @@ import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { resolveRequestMode } from "./request_mode.ts";
 import { classifyAnalyzeChatRequest } from "./request_shape.ts";
 import { loadSubscriptionAccess } from "./subscription_access.ts";
+import {
+  buildRevenueCatUserIdCandidates,
+  createRevenueCatTierRefresher,
+} from "./revenuecat_reconciliation.ts";
 import { hashConversation } from "./conversation_hash.ts";
 import { isStreamingAllowed } from "./stream_gate.ts";
 import {
@@ -193,12 +197,10 @@ import {
   OCR_RATE_LIMIT_PER_MINUTE,
 } from "./ocr_rate_limit.ts";
 import {
-  finalizeTierSyncRefreshStatus,
   normalizeSubscriptionTier,
   shouldFailPaidTierSync,
   streamReplyStylesForTier,
   subscriptionTierRank,
-  type TierSyncRefreshStatus,
 } from "./tier_sync_contract.ts";
 import { normalizeGoogleMapsShares } from "./map_share_normalizer.ts";
 
@@ -482,100 +484,6 @@ function normalizeTier(value: unknown): "free" | "starter" | "essential" {
 
 function tierRank(value: "free" | "starter" | "essential"): number {
   return subscriptionTierRank(value);
-}
-
-function tierFromProductId(
-  productId: unknown,
-): "free" | "starter" | "essential" {
-  if (typeof productId !== "string") return "free";
-  const normalized = productId.trim().toLowerCase();
-  if (normalized.includes("essential")) return "essential";
-  if (normalized.includes("starter")) return "starter";
-  return "free";
-}
-
-function highestTier(
-  tiers: Iterable<"free" | "starter" | "essential">,
-): "free" | "starter" | "essential" {
-  const all = Array.from(tiers);
-  if (all.includes("essential")) return "essential";
-  if (all.includes("starter")) return "starter";
-  return "free";
-}
-
-function parseRevenueCatDate(value: unknown): Date | null {
-  if (typeof value !== "string" || !value.trim()) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function isActiveAt(expiresDate: unknown): boolean {
-  const parsed = parseRevenueCatDate(expiresDate);
-  if (parsed == null) return true;
-  return parsed.getTime() > Date.now();
-}
-
-function collectTiersFromRevenueCatPayload(
-  subscriber: Record<string, unknown>,
-): "free" | "starter" | "essential" {
-  const activeTiers: Array<"free" | "starter" | "essential"> = [];
-
-  const entitlements = isPlainObject(subscriber.entitlements)
-    ? subscriber.entitlements
-    : {};
-  for (const value of Object.values(entitlements)) {
-    if (!isPlainObject(value)) continue;
-    if (!isActiveAt(value.expires_date)) continue;
-    activeTiers.push(tierFromProductId(value.product_identifier));
-  }
-
-  const subscriptions = isPlainObject(subscriber.subscriptions)
-    ? subscriber.subscriptions
-    : {};
-  for (const [productId, value] of Object.entries(subscriptions)) {
-    if (!isPlainObject(value)) continue;
-    if (!isActiveAt(value.expires_date)) continue;
-    activeTiers.push(tierFromProductId(productId));
-  }
-
-  return highestTier(activeTiers);
-}
-
-function collectLatestExpirationFromRevenueCatPayload(
-  subscriber: Record<string, unknown>,
-): string | null {
-  let latestTimestamp: number | null = null;
-  let latestIso: string | null = null;
-
-  const considerExpiration = (rawValue: unknown) => {
-    const parsed = parseRevenueCatDate(rawValue);
-    if (parsed == null) return;
-    const timestamp = parsed.getTime();
-    if (latestTimestamp == null || timestamp > latestTimestamp) {
-      latestTimestamp = timestamp;
-      latestIso = parsed.toISOString();
-    }
-  };
-
-  const entitlements = isPlainObject(subscriber.entitlements)
-    ? subscriber.entitlements
-    : {};
-  for (const value of Object.values(entitlements)) {
-    if (!isPlainObject(value)) continue;
-    if (!isActiveAt(value.expires_date)) continue;
-    considerExpiration(value.expires_date);
-  }
-
-  const subscriptions = isPlainObject(subscriber.subscriptions)
-    ? subscriber.subscriptions
-    : {};
-  for (const value of Object.values(subscriptions)) {
-    if (!isPlainObject(value)) continue;
-    if (!isActiveAt(value.expires_date)) continue;
-    considerExpiration(value.expires_date);
-  }
-
-  return latestIso;
 }
 
 // 功能權限
@@ -4775,158 +4683,31 @@ async function handleAnalyzeChat(
     // Check monthly limit (測試帳號跳過)
     let effectiveTier = accountIsTest ? "essential" : sub.tier;
     let allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
-    const revenueCatUserIdCandidates = Array.from(
-      new Set(
-        [revenueCatAppUserId, user.id]
-          .map((value) => (typeof value === "string" ? value.trim() : ""))
-          .filter((value) => value.length > 0),
-      ),
-    );
-    const maybeRefreshSubscriptionTierFromRevenueCat = async (
-      reason: string,
-    ): Promise<TierSyncRefreshStatus> => {
-      if (!REVENUECAT_IOS_API_KEY) {
-        logError("subscription_revenuecat_refresh_unconfigured", {
-          user: summarizeUser(user.id),
-          reason,
-          expectedTier,
-          effectiveTier,
-          currentTier: normalizeTier(sub?.tier),
-          revenueCatHintPresent: revenueCatAppUserId.length > 0,
-          revenueCatUserIdCandidateCount: revenueCatUserIdCandidates.length,
-        });
-        return "not_configured";
-      }
-
-      const previousTier = normalizeTier(sub?.tier);
-      if (previousTier === "essential") {
-        return "not_paid";
-      }
-
-      try {
-        let unavailable = false;
-        let sawValidSubscriber = false;
-        for (const revenueCatUserId of revenueCatUserIdCandidates) {
-          const revenueCatResponse = await fetch(
-            `https://api.revenuecat.com/v1/subscribers/${
-              encodeURIComponent(revenueCatUserId)
-            }`,
-            {
-              headers: {
-                Authorization: `Bearer ${REVENUECAT_IOS_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-            },
-          );
-
-          if (!revenueCatResponse.ok) {
-            const detail = await revenueCatResponse.text().catch(() => "");
-            logWarn("subscription_revenuecat_refresh_failed", {
-              user: summarizeUser(user.id),
-              revenueCatUser: summarizeUser(revenueCatUserId),
-              reason,
-              previousTier,
-              status: revenueCatResponse.status,
-              detail,
-            });
-            unavailable = true;
-            continue;
-          }
-
-          const revenueCatPayload = await revenueCatResponse.json().catch(() =>
-            null
-          );
-          if (
-            !isPlainObject(revenueCatPayload) ||
-            !isPlainObject(revenueCatPayload.subscriber)
-          ) {
-            logWarn("subscription_revenuecat_refresh_invalid_payload", {
-              user: summarizeUser(user.id),
-              revenueCatUser: summarizeUser(revenueCatUserId),
-              reason,
-              previousTier,
-            });
-            unavailable = true;
-            continue;
-          }
-
-          const subscriber = revenueCatPayload.subscriber;
-          sawValidSubscriber = true;
-          const refreshedTier = collectTiersFromRevenueCatPayload(subscriber);
-          if (tierRank(refreshedTier) <= tierRank(previousTier)) {
-            continue;
-          }
-
-          const refreshedExpiresAt =
-            collectLatestExpirationFromRevenueCatPayload(
-              subscriber,
-            );
-          const updatePayload: Record<string, unknown> = {
-            tier: refreshedTier,
-            status: "active",
-          };
-          if (refreshedExpiresAt) {
-            updatePayload.expires_at = refreshedExpiresAt;
-          }
-
-          const { data: refreshedSub, error: refreshedError } = await supabase
-            .from("subscriptions")
-            .update(updatePayload)
-            .eq("user_id", user.id)
-            .select(
-              "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
-            )
-            .maybeSingle();
-
-          if (refreshedSub) {
-            sub = refreshedSub;
-          } else {
-            sub = { ...sub, tier: refreshedTier };
-          }
-
+    const revenueCatUserIdCandidates = buildRevenueCatUserIdCandidates({
+      revenueCatAppUserId,
+      userId: user.id,
+    });
+    // RevenueCat 對帳（詳見 revenuecat_reconciliation.ts）。applied 時回寫
+    // sub 並重算 effectiveTier／allowedFeatures／日月上限。
+    const maybeRefreshSubscriptionTierFromRevenueCat =
+      createRevenueCatTierRefresher({
+        supabase,
+        apiKey: REVENUECAT_IOS_API_KEY,
+        userId: user.id,
+        revenueCatAppUserId,
+        expectedTier,
+        candidates: revenueCatUserIdCandidates,
+        readState: () => ({ sub, effectiveTier }),
+        applyRefreshedSub: (nextSub) => {
+          sub = nextSub;
           effectiveTier = accountIsTest ? "essential" : sub.tier;
           allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
           monthlyLimit = TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
-              TIER_MONTHLY_LIMITS.free;
+            TIER_MONTHLY_LIMITS.free;
           dailyLimit = TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
-              TIER_DAILY_LIMITS.free;
-
-          if (refreshedError) {
-            logError("subscription_revenuecat_refresh_persist_failed", {
-              user: summarizeUser(user.id),
-              revenueCatUser: summarizeUser(revenueCatUserId),
-              reason,
-              previousTier,
-              refreshedTier,
-              error: refreshedError.message,
-            });
-          }
-
-          logInfo("subscription_revenuecat_refresh_applied", {
-            user: summarizeUser(user.id),
-            revenueCatUser: summarizeUser(revenueCatUserId),
-            reason,
-            previousTier,
-            refreshedTier,
-            persisted: !refreshedError,
-          });
-          return "applied";
-        }
-
-        return finalizeTierSyncRefreshStatus({
-          sawValidSubscriber,
-          sawUnavailableCandidate: unavailable,
-        });
-      } catch (error) {
-        logWarn("subscription_revenuecat_refresh_exception", {
-          user: summarizeUser(user.id),
-          reason,
-          previousTier,
-          error: getErrorMessage(error),
-        });
-        return "unavailable";
-      }
-    };
+            TIER_DAILY_LIMITS.free;
+        },
+      });
 
     let monthlyLimit = TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
         TIER_MONTHLY_LIMITS.free;
