@@ -49,6 +49,7 @@ class ReplyIterationCoordinator {
   ReplyIterationCoordinator({
     OptimizeMessageRequestIdSession? session,
     ReplyRefineDraftStore? draftStore,
+    AnalysisAuxiliaryClient? auxiliaryClient,
   })  : _session = session ??
             OptimizeMessageRequestIdSession(
               store: HiveOptimizeMessagePendingRequestStore(
@@ -58,13 +59,18 @@ class ReplyIterationCoordinator {
         _draftStore = draftStore ??
             HiveReplyRefineDraftStore(
               () => StorageService.settingsBox,
-            ) {
+            ),
+        _auxiliaryClient = auxiliaryClient {
     _runner = OptimizeRequestRunner(session: _session);
   }
 
   final OptimizeMessageRequestIdSession _session;
   final ReplyRefineDraftStore _draftStore;
+  final AnalysisAuxiliaryClient? _auxiliaryClient;
   late final OptimizeRequestRunner _runner;
+
+  AnalysisAuxiliaryClient get _client =>
+      _auxiliaryClient ?? AnalysisAuxiliaryClient();
 
   OptimizeMessagePendingRequest? _pendingAwaitingPresentation;
 
@@ -105,7 +111,7 @@ class ReplyIterationCoordinator {
       ),
       onReadyToSend: onReadyToSend,
       send: (pending) async {
-        final result = await AnalysisAuxiliaryClient().optimizeDraft(
+        final result = await _client.optimizeDraft(
           messages: context.requestMessages,
           sessionContext: sessionContext,
           conversationSummary: context.conversationSummary,
@@ -199,7 +205,7 @@ class ReplyIterationCoordinator {
       ),
       onReadyToSend: onReadyToSend,
       send: (pending) async {
-        final result = await AnalysisAuxiliaryClient().refineReply(
+        final result = await _client.refineReply(
           messages: context.requestMessages,
           sessionContext: sessionContext,
           conversationSummary: context.conversationSummary,
@@ -256,6 +262,20 @@ class ReplyIterationCoordinator {
       chargedQuota: usage is Map && usage['shouldChargeQuota'] == true,
       restorable: restorable,
     );
+  }
+
+  /// 微調後複製的獨立事件 key。原卡的 adviceId 是決定論的，覆寫它污染的
+  /// 不只是統計：outcome digest 會回注 coach prompt，教練會以為你送出的是
+  /// 原句。requestId 是這一輪微調的冪等鍵，重複複製同一版不會多記一筆；
+  /// 沒有穩定冪等鍵就回 null——寧可少一筆樣本，也不要記出無法去重的髒資料。
+  static String? refineCopyEventId({
+    required String? originAdviceId,
+    required String? requestId,
+  }) {
+    if (originAdviceId == null || requestId == null || requestId.isEmpty) {
+      return null;
+    }
+    return 'refine:$originAdviceId:$requestId';
   }
 
   /// 微調結果呈現在面板（蓋在本頁上的 route）後的收尾：只 markSuccess，

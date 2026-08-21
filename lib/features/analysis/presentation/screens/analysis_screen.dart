@@ -3592,12 +3592,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     required String? requestId,
     required String copiedText,
   }) async {
-    final originAdviceId = _analyzeAdviceId(originCardKey);
     // 沒有穩定的冪等鍵就不記：寧可少一筆樣本，也不要記出無法去重的髒資料。
-    if (originAdviceId == null || requestId == null || requestId.isEmpty) {
-      return;
-    }
-    final eventId = 'refine:$originAdviceId:$requestId';
+    final eventId = ReplyIterationCoordinator.refineCopyEventId(
+      originAdviceId: _analyzeAdviceId(originCardKey),
+      requestId: requestId,
+    );
+    if (eventId == null) return;
     final conversation = ref.read(conversationProvider(widget.conversationId));
     try {
       await ref.read(coachingOutcomeRecorderProvider).recordAdviceCopied(
