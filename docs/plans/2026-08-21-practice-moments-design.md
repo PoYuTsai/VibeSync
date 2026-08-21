@@ -1,6 +1,9 @@
 # AI 實戰練習室「模擬社群動態（朋友圈）」實作開發報告
 
-2026-08-21。範圍：需求研究 + 架構設計 + 分階段實作計畫。**本次不 commit、不 push、不動任何 runtime 檔案、不跑 migration、不部署。**
+2026-08-21 初版（研究 + 架構設計 + 分階段實作計畫）。
+2026-08-21 修訂，處理複審 BLOCK 的兩項：P1 全域模型呼叫上限（第 3 節決策 C、第 4 節、第 8 節）、P2 交付路徑（第 9 節）；並把第 10 節的產品項目由「待拍板」改為「已決策」。
+
+**產品方向已確認，可以據此實作。** `main` 全程不動；production migration 與 Edge 部署仍保持 pending。
 
 需求原文（Eric）：
 > 「AI 實戰練習室」chatbot 的「模擬 social Media」。角色圖鑑已抽到的角色會在一個像 WeChat 朋友圈的區塊上傳貼文，
@@ -135,7 +138,11 @@ C3 之所以在這個產品成立，正是因為決策 A：**貼文全域共用*
 - 單次請求最多補 **K = 3** 則（優先補「使用者最近聊過 / 最新解鎖」的角色），其餘留給下一次請求或 client 背景補位請求。→ feed 首屏永遠在 Edge 逾時安全範圍內。
 - 缺貼文時 feed 顯示既有內容即可，**不塞罐頭、不報錯**（沿用 no-canned 鐵則）。
 
-**全域生成上限由 schema 自帶**：`unique(profile_id, post_date, slot)` + slot ∈ {0,1} → 全站每日生成硬上界 200 次，任何流量都突破不了。per-user 面另掛既有 `model_call_rate_limits` 的新 scope `practice_moment`（建議 6/min・60/day）。
+**全域模型呼叫上限**：`unique(profile_id, post_date, slot)`（slot ∈ {0,1}）×「每個 slot 最多 3 次認領」→ **全站每日模型呼叫硬上界 600 次**，與使用者數、重新整理次數完全無關。
+
+> 這一段在第一版是錯的（2026-08-21 複審 P1）。原本寫「schema 自帶 200 次上限」，但當時的設計是失敗即刪佔位列，`unique` 就只能限制成功存下來的貼文數，限制不了模型呼叫。現在改成保留列 + `attempts` 計數（見第 4 節），上限才真正由 schema 與 RPC 共同強制，不是口頭承諾。
+
+per-user 面另掛既有 `model_call_rate_limits` 的新 scope `practice_moment`（建議 6/min・60/day），擋單一帳號放大。
 
 ### 決策 D：圖片來源——**bundled 場景圖 allowlist**
 
@@ -174,7 +181,10 @@ CREATE TABLE IF NOT EXISTS public.practice_moment_posts (
   slot             SMALLINT    NOT NULL CHECK (slot BETWEEN 0 AND 1),
   day_part         TEXT        NOT NULL,
   theme_id         TEXT        NOT NULL,
-  status           TEXT        NOT NULL CHECK (status IN ('reserved','ready')),
+  status           TEXT        NOT NULL CHECK (status IN ('reserved','ready','exhausted')),
+  -- 已消耗的模型呼叫次數。認領時就 +1（不是失敗時才 +1）：worker 中途死掉
+  -- 也算用掉一次，否則 crash loop 仍然無界。這一欄是全域成本上限的來源。
+  attempts         SMALLINT    NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 3),
   body             TEXT        CHECK (body IS NULL OR char_length(body) BETWEEN 1 AND 220),
   image_id         TEXT,                          -- NULL = 純文字貼文
   generation_token TEXT,                          -- token-fenced latch（比照 debrief）
@@ -196,10 +206,12 @@ RPC（全部 `SECURITY DEFINER` + `REVOKE ... FROM PUBLIC, anon, authenticated` 
 
 | RPC | 職責 |
 | --- | --- |
-| `reserve_practice_moment_slot(profile_id, post_date, slot, day_part, theme_id, token)` | `INSERT ... ON CONFLICT DO NOTHING` 原子搶生成權；回傳是否搶到。逾時（`reserved_at < now() - 2 min`）的 `reserved` 列可被重新認領 |
+| `reserve_practice_moment_slot(profile_id, post_date, slot, day_part, theme_id, token)` | `INSERT ... ON CONFLICT DO NOTHING`，未插入則 `SELECT ... FOR UPDATE`。`ready`／`exhausted` → 直接拒絕，**不呼叫模型**；`reserved` 且租約未逾時 → 拒絕（別人正在跑）；`reserved` 且逾時（`reserved_at < now() - 2 min`）且 `attempts < 3` → `attempts + 1`、換發 token、放行。`attempts` 已達 3 → 轉 `exhausted` 並拒絕 |
 | `commit_practice_moment_post(profile_id, post_date, slot, token, body, image_id, model)` | 只有持 token 者能改 `ready`；不匹配回 false |
-| `release_practice_moment_slot(profile_id, post_date, slot, token)` | 生成失敗即刪除佔位列，**絕不寫罐頭** |
+| `release_practice_moment_slot(profile_id, post_date, slot, token)` | 生成失敗時**只清 token、保留列與 `attempts`**（讓別人可立即重認領，不必等租約逾時）；`attempts` 已達 3 就一併轉 `exhausted`。**絕不刪列、絕不寫罐頭** |
 | `list_practice_moment_posts(profile_ids TEXT[], since DATE)` | 只回 `ready` |
+
+**為什麼 `release` 不能刪列**（2026-08-21 複審 P1 抓到的設計錯誤）：原設計是「失敗即刪列」，那樣 `unique` 約束就只能限制**成功存下來的貼文數**，完全限制不了**模型呼叫數**——同一個一直失敗的 slot 會被無限次重新 reserve，成本隨流量成長。保留列 + `attempts` 上限才讓上限是真的。
 
 **向後相容**：純新增表與函式，舊版 client / 舊版 Edge 完全不碰它 → 可安全先套 migration 再上 Edge（符合 shared-agent-rules 的「migration 先於依賴它的 Edge 碼」）。
 
@@ -244,7 +256,8 @@ await deps.callDeepSeek({
 });
 ```
 
-- 重試：每則最多 **2 次**（比照 `CHAT_GENERATION_ATTEMPTS`），第 2 次仍失敗就 `release_practice_moment_slot`，該角色今天這個 slot 留白，下次請求再試。
+- 重試：**單次請求內不重試**（打一次就好，失敗即 release）。跨請求的重試由 `attempts` 控制，全域上限 3 次；第 3 次仍失敗 → slot 轉 `exhausted`，那位角色今天這一則就留白，隔天是新的 `post_date` 自然重來。
+  這裡刻意不沿用 chat 的 `CHAT_GENERATION_ATTEMPTS = 2`：chat 是使用者正在等的前景請求，值得當場多試一次；貼文是背景補位，當場重試只會拖慢 feed，而且 `attempts` 已經提供跨請求的重試，兩層疊加會讓成本上限變成 200 × 3 × 2 = 1200。
 - **為什麼是 DeepSeek 而不是 Claude `single_shot`**：貼文是「她的口語」，必須跟聊天同一把聲音、同一個模型；`single_shot.ts` 是給結構化教練產出（hint/debrief）的 forcedTool 契約，貴且形狀不符。
 - **為什麼開 jsonMode**：要同時拿回 `text` 與 `imageId`，且 `imageId` 必須落在 allowlist——結構化輸出才驗得動。這正是既有分類器路徑（`handler.ts:1411-1426`）的用法。
 
@@ -309,8 +322,10 @@ JSON.parse → text 必為字串且 1..220 字
 
 每則貼文約 600 prompt tokens + 120 completion tokens（`maxTokens: 200` 封頂）。
 
-- 全站每日硬上界：100 角色 × 2 slot = 200 則 → **約 14.4 萬 tokens/天**。
-- 實際發文率（決策 B 的擲骰）預估 0.6-0.8 則/角色/天 → **約 5-6 萬 tokens/天**。
+- **最壞情況**（每個 slot 都用滿 3 次認領才放棄）：100 角色 × 2 slot × 3 attempts = 600 次模型呼叫 → **約 43 萬 tokens/天**。這是真正的天花板，由 schema 與 RPC 強制。
+- **成功路徑上界**（每個 slot 一次就成功）：200 次呼叫 → **約 14.4 萬 tokens/天**。
+- **實際預期**：發文率經 PR 1 實測為 0.661 則/角色/天 → 每天約 66 次呼叫 → **約 4.8 萬 tokens/天**。
+- 最壞情況與實際預期差 9 倍，但最壞情況只在 provider 全面故障時才會發生——而那時候呼叫本來就會失敗、不產生 completion tokens。真正要盯的是**持續性的守門失敗**（例如 prompt 改壞導致大量候選被 `moments_validate` 打回），那會讓 attempts 天天燒滿。上線第一週要看 `exhausted` 列的比例，超過 5% 就是 prompt 或守門有問題。
 - 這個量級與**使用者數無關**（決策 A）。以 `deepseek-v4-flash` 的定位屬極低成本，但**具體金額請以實際帳單為準**——repo 內 `docs/api-cost-management.md` 目前沒有 DeepSeek 的單價紀錄，我不憑印象填數字。
 - 建議上線後在 `ai_logs` 用既有 `buildPracticeAiLogRow()`（`telemetry.ts:264`）打 `mode: "moment"` 標記，第一週對帳。
 
@@ -328,21 +343,39 @@ JSON.parse → text 必為字串且 1..220 字
 
 指令依 `.agent/environment.json`：Flutter 走 WSL（`analyze` / `test`），Deno 測試依 `flutter-ci.yml:41-51` 的既有形式。
 
-交付路徑（依 AGENTS.md）：P1 起屬 Change/Fix，**在目前分支 `claude/ai-practice-social-media-z507pd` 上做 → 驗證 → commit → push 該分支 → 對該 SHA 跑 `Build & Distribute`；production migration 與 Edge 部署保持 pending，直到 landing 到 `main` 另行授權。**
+### 交付路徑（2026-08-21 兩人協作流程拍板，取代原本的單人預設）
+
+例行工作 PR 一律：**從集成分支 `claude/ai-practice-social-media-z507pd` 開分支 → 驗證 → commit → push → 開 PR（base 指向集成分支）→ 只跑 PR CI → 兩個模型複審 → request changes 就改完再推。**
+
+- **例行 PR 分支不跑 `Build & Distribute`。** 這一條在第一版寫錯了（2026-08-21 複審 P2）：原文照抄 AGENTS.md 的單人 Change/Fix 預設，要求每條分支都對該 SHA 跑打包。那是給「直接推 `main`」設計的守門，套在兩人流程的例行 PR 上只是白燒 CI 分鐘數（含 macOS runner）。
+- **`main` 全程不動**，production migration 與 Edge 部署全部保持 pending。
+- **真機驗收**在集成分支功能完整後才做，不是每個 PR 都做——PR 1 / PR 2 在真機上沒有可見行為，硬測是測空氣。
+- **合進 `main` 與 `Release to App Stores` 由 Eric 收尾**，agent 不觸發。
+
+> 待決：目前 `flutter-ci.yml` 的 `pull_request.branches: [main]` 會讓所有 base 指向集成分支的 PR **完全不跑 CI**。需要 Eric 選定觸發條件的改法（見 PR #22 討論），否則「只跑 PR CI」這一條實際上是零守門。
 
 ---
 
-## 10. 需要 Eric 拍板的事（照目前設計已有預設答案，但值得你確認）
+## 10. 產品決策（2026-08-21 群組討論已確認）
 
-| # | 問題 | 我的建議 |
-| --- | --- | --- |
-| 1 | 貼文全域共用，還是每人看到不同？ | **全域**（隱私 + 成本 + 真實感三贏；per-user 幾乎不可行） |
-| 2 | 場景圖幾張？bundle 預算多少？ | P1 二十張 WebP，2-3 MB |
-| 3 | 要不要按讚／留言？ | **P1 不做**（額度、審核、App Review UGC 面全部一次打開） |
-| 4 | 看動態要不要扣額度？ | **不扣**（邊際成本≈0，且符合 Free 核心可用原則） |
-| 5 | 每角色每日貼文上限？ | 0-2 則，平均約 0.7 則 |
-| 6 | 要不要做排程預熱（pg_net 或 CI secret）？ | P1 不需要；使用者量上來再說，屬憑證操作要另外授權 |
-| 7 | 入口位置：圖鑑頁內的分頁，還是獨立路由？ | 獨立路由 `/practice-moments`，入口卡片放圖鑑頭部 |
+以下七項在 2026-08-21 的群組討論中確認產品方向，**不再是待拍板**。實作以本表為準；日後要改請直接改這張表並註記日期。
+
+| # | 決策 | 內容 | 狀態 |
+| --- | --- | --- | --- |
+| 1 | 貼文可見範圍 | **全域共用**——同一角色同一天的貼文，所有抽到她的人看到同一則。per-user 生成會讓使用者的私人對話外洩給其他人，且成本隨使用者數成長 | ✅ 已決策 |
+| 2 | 場景圖預算 | 首版 20 張 WebP，控制在 2-3 MB | ✅ 已決策 |
+| 3 | 按讚／留言 | **首版不做**——會一次打開額度、內容審核與 App Review UGC 三個面 | ✅ 已決策 |
+| 4 | 額度 | 看動態**不扣額度**。貼文全域生成，多一人看的邊際成本趨近 0；也符合 Free 用戶核心功能可用到額度真的耗盡的既有原則 | ✅ 已決策 |
+| 5 | 每角色每日則數 | 0-2 則。PR 1 實測平均 0.661 則／角色／天 | ✅ 已決策 |
+| 6 | 排程預熱 | **首版不做**。需要 pg_net 或新 CI secret，屬憑證操作；使用者量上來再另案處理 | ✅ 已決策 |
+| 7 | 入口位置 | 獨立路由 `/practice-moments`，入口卡片放在角色圖鑑頭部 | ✅ 已決策 |
+
+### 仍然待決（與產品方向無關，是流程／基礎設施）
+
+| 項目 | 卡在哪 |
+| --- | --- |
+| `flutter-ci.yml` 觸發條件 | base 指向集成分支的 PR 目前完全不跑 CI。要選：把集成分支加進 `branches` 清單／拿掉 `branches` 過濾（每個 PR 都燒 macOS runner）／分層（便宜的跑全部 PR、macOS 只跑對 `main` 的 PR）。**建議分層。** |
+| PR 3 的真機驗收路徑 | branch build 連正式後端，但 `AGENTS.md` 禁止從非 `main` 分支部署正式 Edge。PR 3 開始前要決定走法 |
 
 ---
 
