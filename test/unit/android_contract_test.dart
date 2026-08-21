@@ -481,18 +481,48 @@ void main() {
         isTrue,
         reason: 'P1-2：dispatcher seam 單元測試要進 CI',
       );
+      // Round1 P2：merged manifest 語意斷言已下沉到版控 Python 守門；
+      // workflow 只需先跑負向 harness（守門壞掉先紅、不假綠），再對
+      // 真產物跑守門，凍結不變量改成直接對帳版控守門腳本本身
+      final negativeIndex = runs.indexWhere(
+        (r) => r.contains('tools/android/manifest-gate-negative-check.sh'),
+      );
+      final gateIndex = runs.indexWhere(
+        (r) => r.contains('python3 tools/android/assert-merged-manifest.py '
+            'merged-release-AndroidManifest.xml'),
+      );
+      expect(negativeIndex, greaterThanOrEqualTo(0),
+          reason: 'Round1 P0：manifest gate 負向 harness 要進 CI');
+      expect(gateIndex, greaterThan(negativeIndex),
+          reason: '負向 harness 必須先於語意守門執行，守門壞掉時先紅');
+
+      final manifestGate = _read('tools/android/assert-merged-manifest.py');
       expect(
-        runs.any((r) =>
-            r.contains('merged-release-AndroidManifest.xml') &&
-            r.contains('com.poyutsai.vibesync') &&
-            r.contains('login-callback') &&
-            r.contains('android.intent.action.VIEW') &&
-            r.contains('android.intent.category.BROWSABLE') &&
-            r.contains("exported") &&
-            r.contains('android.intent.action.MAIN')),
-        isTrue,
-        reason: 'Round1 P0：merged manifest 語意斷言要涵蓋 exported、'
-            'exact scheme/host、VIEW、DEFAULT＋BROWSABLE 與唯一 MAIN/LAUNCHER',
+        manifestGate,
+        contains("SCHEME, HOST = '$_scheme', '$_callbackHost'"),
+        reason: '守門凍結的 scheme/host 必須與契約一致',
+      );
+      expect(manifestGate, contains("disp.get(A + 'exported') == 'true'"));
+      expect(
+        manifestGate,
+        contains("('activity', 'activity-alias')"),
+        reason: 'activity-alias 也算深連結／launcher 候選擁有者，必須掃到',
+      );
+      expect(
+        manifestGate,
+        contains("ALLOWED_DATA_ATTRS = {A + 'scheme', A + 'host'}"),
+        reason: 'data 屬性嚴格 allowlist：只准 scheme＋host',
+      );
+      expect(manifestGate, contains('k not in ALLOWED_DATA_ATTRS'));
+      expect(manifestGate, contains("'android.intent.action.VIEW' in actions"));
+      expect(manifestGate, contains('android.intent.category.DEFAULT'));
+      expect(manifestGate, contains('android.intent.category.BROWSABLE'));
+      expect(manifestGate, contains('android.intent.action.MAIN'));
+      expect(manifestGate, contains('android.intent.category.LAUNCHER'));
+      expect(
+        manifestGate,
+        contains("launchers == [('activity', MAIN)]"),
+        reason: 'MAIN/LAUNCHER 必須唯一且是 MainActivity activity',
       );
 
       final uploadNames = steps
