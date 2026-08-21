@@ -14,7 +14,11 @@
 // 刻意不與 life_schedule.ts 共用 fnv1a：抽共用 helper 會動到已上線的每日場景
 // 選擇路徑，那是另一個 PR 的事。若複審認為該抽，我另開 PR 處理。
 
-import type { PersonaId, PracticeGirlProfile } from "./practice_persona.ts";
+import type {
+  PersonaId,
+  PracticeGirlProfile,
+  ProfessionId,
+} from "./practice_persona.ts";
 import type { TaipeiDayPart, TaipeiTimeContext } from "./time_context.ts";
 import {
   momentImagesForTags,
@@ -373,17 +377,85 @@ const PROFESSION_THEMES: Record<string, MomentTheme> = {
   },
 };
 
-/** 她在上班／上課，不太可能發文的時段。 */
-const PROFESSION_QUIET_DAY_PARTS: Record<string, readonly TaipeiDayPart[]> = {
-  nurse_hospital: ["morning", "afternoon"],
-  nurse_clinic: ["morning", "afternoon"],
-  flight_attendant: ["morning", "noon", "afternoon"],
-  barista: ["morning"],
-  college_student: ["morning", "noon"],
-  graduate_student: ["morning"],
-  dental_assistant: ["morning", "afternoon"],
+/**
+ * 她在上班／上課／帶課，不太可能發文的時段。
+ *
+ * 型別是 `Record<ProfessionId, ...>` 而不是 `Partial<...>`：43 種職業每一種都
+ * 必須明講，新增職業時編譯器會強迫作者想過作息，不會默默被當成「全天都有空」
+ * （複審 2026-08-21 P2：原本只覆蓋 9 種，其餘 34 種等於沒有安靜時段，
+ * 但 PR 承諾的是「上班時段不發文」）。
+ *
+ * 空陣列＝作息本來就不固定（接案、自由工作、輪班無定式），不是「還沒填」。
+ * 清晨已由 POSTABLE_DAY_PARTS 全域排除，這裡不必重複列。
+ * 任何一種職業都不得填滿所有可發文時段——那會讓她整個從動態消失，
+ * 由 professionsWithoutPostableDayParts() 的測試守住。
+ */
+const PROFESSION_QUIET_DAY_PARTS: Record<
+  ProfessionId,
+  readonly TaipeiDayPart[]
+> = {
+  // ── 固定日班（約 9-18）：上班中不滑手機，午休與下班路上可以 ──────────
+  marketing_planner: ["morning", "afternoon"],
+  product_manager: ["morning", "afternoon"],
+  data_analyst: ["morning", "afternoon"],
+  ux_researcher: ["morning", "afternoon"],
+  hr_consultant: ["morning", "afternoon"],
   bank_staff: ["morning", "afternoon"],
   civil_servant: ["morning", "afternoon"],
+  social_worker: ["morning", "afternoon"],
+  occupational_therapist: ["morning", "afternoon"],
+  pharmacist: ["morning", "afternoon"],
+  librarian: ["morning", "afternoon"],
+  architect: ["morning", "afternoon"],
+
+  // ── 醫療／診所：跟診與輪班，白天整段被吃掉 ─────────────────────────
+  nurse_hospital: ["morning", "afternoon"],
+  nurse_clinic: ["morning", "afternoon"],
+  dental_assistant: ["morning", "afternoon"],
+
+  // ── 學生：上課與實驗室 ─────────────────────────────────────────────
+  college_student: ["morning", "noon"],
+  graduate_student: ["morning"],
+
+  // ── 飛行：整段航班加上落地後的時差 ────────────────────────────────
+  flight_attendant: ["morning", "noon", "afternoon"],
+
+  // ── 接案／創作：作息不固定，但趕稿多在白天 ────────────────────────
+  designer: ["afternoon"],
+  illustrator: ["afternoon"],
+  interior_designer: ["morning", "afternoon"],
+  podcast_editor: ["afternoon"],
+  ceramic_artist: ["afternoon"],
+  photographer: ["afternoon", "early_evening"],
+
+  // ── 門市／服務業：尖峰在下午到晚上 ────────────────────────────────
+  luxury_sales: ["afternoon", "early_evening"],
+  stylist: ["afternoon", "early_evening"],
+  hair_stylist: ["afternoon", "early_evening"],
+  nail_artist: ["afternoon", "early_evening"],
+  pet_groomer: ["morning", "afternoon"],
+  bookstore_staff: ["afternoon", "early_evening"],
+
+  // ── 餐飲：開店早、出餐時段忙 ──────────────────────────────────────
+  barista: ["morning"],
+  pastry_chef: ["morning"],
+  chef: ["noon", "early_evening"],
+  mixologist: ["evening", "late_night"],
+
+  // ── 課程／教練：早課與晚課 ────────────────────────────────────────
+  yoga_teacher: ["morning", "evening"],
+  fitness_coach: ["morning", "evening"],
+  dance_teacher: ["early_evening", "evening"],
+  language_tutor: ["early_evening", "evening"],
+  surf_instructor: ["morning", "noon", "afternoon"],
+
+  // ── 現場／夜間 ────────────────────────────────────────────────────
+  event_pr: ["early_evening", "evening"],
+  indie_musician: ["evening", "late_night"],
+
+  // ── 作息本來就不固定 ──────────────────────────────────────────────
+  florist: ["morning"],
+  inn_host: ["morning", "early_evening"],
 };
 
 // ── 發文傾向 ───────────────────────────────────────────────────────────
@@ -511,9 +583,9 @@ function dayPartsForTheme(theme: MomentTheme): readonly TaipeiDayPart[] {
  */
 function eligibleDayParts(
   theme: MomentTheme,
-  professionId: string,
+  professionId: ProfessionId,
 ): readonly TaipeiDayPart[] {
-  const quiet = PROFESSION_QUIET_DAY_PARTS[professionId] ?? [];
+  const quiet = PROFESSION_QUIET_DAY_PARTS[professionId];
   return dayPartsForTheme(theme).filter((part) =>
     POSTABLE_DAY_PARTS.includes(part) && !quiet.includes(part)
   );
@@ -549,6 +621,16 @@ export function momentPostPropensityFor(girl: PracticeGirlProfile): number {
  * 這個函式存在的唯一理由是讓「後人擴充 PROFESSION_QUIET_DAY_PARTS 把某個
  * 職業寫死」這件事在測試就被抓到，而不是等上線後才發現她整個消失。
  */
+export function momentQuietDayPartsFor(
+  professionId: ProfessionId,
+): readonly TaipeiDayPart[] {
+  return PROFESSION_QUIET_DAY_PARTS[professionId];
+}
+
+/** 作息表涵蓋的職業數；型別已保證 exhaustive，這裡供測試再擋一次退化。 */
+export const PROFESSION_SCHEDULE_COVERAGE =
+  Object.keys(PROFESSION_QUIET_DAY_PARTS).length;
+
 export function professionsWithoutPostableDayParts(): string[] {
   return Object.entries(PROFESSION_QUIET_DAY_PARTS)
     .filter(([, quiet]) =>

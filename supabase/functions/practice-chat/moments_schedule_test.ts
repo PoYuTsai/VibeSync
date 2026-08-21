@@ -8,6 +8,8 @@ import {
   MAX_MOMENT_SLOTS_PER_DAY,
   momentPlanFor,
   momentPostPropensityFor,
+  momentQuietDayPartsFor,
+  PROFESSION_SCHEDULE_COVERAGE,
   professionsWithoutPostableDayParts,
 } from "./moments_schedule.ts";
 import { isMomentImageId, SCENE_IMAGE_COUNT } from "./moments_image_catalog.ts";
@@ -111,18 +113,33 @@ Deno.test("nobody is scheduled to post at dawn", () => {
   }
 });
 
-Deno.test("shift workers are never scheduled during their working hours", () => {
-  const nurse = getPracticeGirlProfile("practice_girl_003")!;
-  assertEquals(nurse.professionId, "nurse_hospital");
-
-  for (let day = 1; day <= 60; day++) {
-    const time = taipeiTimeContextFor(new Date(Date.UTC(2026, 8, day, 4)));
-    for (const slot of momentPlanFor({ girl: nurse, time }).slots) {
-      assert(
-        slot.dayPart !== "morning" && slot.dayPart !== "afternoon",
-        `hospital nurse planned a post during a shift (${slot.dayPart})`,
-      );
+Deno.test("nobody is ever scheduled during their own working hours", () => {
+  // 複審 2026-08-21 P2：原本只具體驗醫院護理師一種職業，而作息表當時只覆蓋
+  // 43 種裡的 9 種。現在作息表對全部職業 exhaustive，測試也掃全 catalog。
+  for (const profile of GIRL_PROFILES) {
+    const quiet = momentQuietDayPartsFor(profile.professionId);
+    for (let day = 1; day <= 60; day++) {
+      const time = taipeiTimeContextFor(new Date(Date.UTC(2026, 8, day, 4)));
+      for (const slot of momentPlanFor({ girl: profile, time }).slots) {
+        assert(
+          !quiet.includes(slot.dayPart),
+          `${profile.profileId} (${profile.professionId}) planned a post ` +
+            `during a working ${slot.dayPart}`,
+        );
+      }
     }
+  }
+});
+
+Deno.test("the working-hours table covers every profession in the catalog", () => {
+  // 型別是 Record<ProfessionId, ...> 已經保證 exhaustive；這一行擋的是有人
+  // 之後改回 Partial<> 讓沒填的職業默默變成「全天都有空」。
+  assertEquals(PROFESSION_SCHEDULE_COVERAGE, 43);
+  for (const profile of GIRL_PROFILES) {
+    assert(
+      Array.isArray(momentQuietDayPartsFor(profile.professionId)),
+      `${profile.professionId} has no working-hours entry`,
+    );
   }
 });
 
