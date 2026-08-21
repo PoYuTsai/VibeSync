@@ -4,9 +4,13 @@
 
 import { assert } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
-const source = await Deno.readTextFile(
+const indexSource = await Deno.readTextFile(
   new URL("./index.ts", import.meta.url),
 );
+const openerSource = await Deno.readTextFile(
+  new URL("./opener_handler.ts", import.meta.url),
+);
+const source = `${indexSource}\n${openerSource}`;
 
 function indexOfRequired(snippet: string, from = 0): number {
   const index = source.indexOf(snippet, from);

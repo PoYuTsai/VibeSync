@@ -12,10 +12,13 @@ import {
 // new_topic 分支已抽到 new_topic_handler.ts；掃描 corpus 串接兩檔。
 async function readIndexSource(): Promise<string> {
   const index = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const opener = await Deno.readTextFile(
+    new URL("./opener_handler.ts", import.meta.url),
+  );
   const newTopic = await Deno.readTextFile(
     new URL("./new_topic_handler.ts", import.meta.url),
   );
-  return `${index}\n${newTopic}`;
+  return `${index}\n${opener}\n${newTopic}`;
 }
 
 function sliceBetween(source: string, startNeedle: string, endNeedle: string) {
@@ -30,8 +33,8 @@ Deno.test("opener stream：flag 閘門＋fall back to legacy 存在", async () =
   const source = await readIndexSource();
   assert(
     source.includes(
-      'const openerStreamRequested = responseMode === "stream" &&\n' +
-        '        Deno.env.get("OPENER_STREAM_ENABLED") === "true";',
+      'const openerStreamRequested = deps.responseMode === "stream" &&\n' +
+        '    Deno.env.get("OPENER_STREAM_ENABLED") === "true";',
     ),
     "opener stream 必須被 OPENER_STREAM_ENABLED flag 閘住",
   );

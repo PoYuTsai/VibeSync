@@ -22,7 +22,9 @@ Deno.test({
         "recommendation.reason 必須用一般人看得懂的話**：這句接了哪個具體線索、避開什麼、她為什麼好回、之後怎麼接",
       ),
     );
-    assert(source.includes("客戶可見的解釋欄不得出現技巧名、內部欄位名或方法標籤"));
+    assert(
+      source.includes("客戶可見的解釋欄不得出現技巧名、內部欄位名或方法標籤"),
+    );
   },
 });
 
@@ -55,7 +57,7 @@ Deno.test({
     assert(source.includes("const hasProfileSubstance ="));
     assert(
       source.includes(
-        "const serverEligibleForNoCharge = imageCount === 0 &&\n        !hasProfileSubstance;",
+        "const serverEligibleForNoCharge = imageCount === 0 &&\n    !hasProfileSubstance;",
       ),
     );
     assert(
@@ -66,12 +68,12 @@ Deno.test({
     // Upfront 429 gate must use the eligibility-aware cost.
     assert(
       source.includes(
-        "sub.monthly_messages_used + upfrontGateCost > monthlyLimit",
+        "quota().sub.monthly_messages_used + upfrontGateCost > quota().monthlyLimit",
       ),
     );
     assert(
       source.includes(
-        "sub.daily_messages_used + upfrontGateCost > dailyLimit",
+        "quota().sub.daily_messages_used + upfrontGateCost > quota().dailyLimit",
       ),
     );
     // Final billing must be driven by server eligibility, not the AI flag.
@@ -80,7 +82,7 @@ Deno.test({
         "const effectiveOpenerCost = serverEligibleForNoCharge ? 0 : openerCost;",
       ),
     );
-    assert(source.includes("!accountIsTest && effectiveOpenerCost > 0"));
+    assert(source.includes("!deps.accountIsTest && effectiveOpenerCost > 0"));
     // 扣費已抽進 chargeOpenerQuota（idempotency ledger 版）；index.ts 只
     // 決定 effectiveOpenerCost 並轉交，canonical RPC 錨點移到 helper 檔。
     assert(source.includes("const chargeOutcome = await chargeOpenerQuota({"));
@@ -101,7 +103,7 @@ Deno.test({
     assert(source.includes("const aiInsufficientFlag ="));
     assert(
       source.includes(
-        "serverEligibleForNoCharge,\n        aiInsufficientFlag,",
+        "serverEligibleForNoCharge,\n    aiInsufficientFlag,",
       ),
     );
 
@@ -116,7 +118,7 @@ Deno.test({
     );
     assert(
       source.includes(
-        "const normalizedProfile = normalizeOpenerProfileInfo(rawProfileInfo);",
+        "const normalizedProfile = normalizeOpenerProfileInfo(deps.rawProfileInfo);",
       ),
     );
     assert(
@@ -131,7 +133,7 @@ Deno.test({
     );
     // The prior fragile read pattern must not come back.
     assert(
-      !source.includes("rawProfileInfo as Record<string, string>"),
+      !source.includes("deps.rawProfileInfo as Record<string, string>"),
       "prompt builder must not cast rawProfileInfo to Record<string,string>; use normalizedProfile instead",
     );
   },
@@ -179,6 +181,7 @@ Deno.test({
 async function readIndexSource(): Promise<string> {
   const files = [
     "./index.ts",
+    "./opener_handler.ts",
     "./ocr_recognition_prompt.ts",
     "./analyze_system_prompt.ts",
     "./optimize_message_prompt.ts",
@@ -437,7 +440,10 @@ Deno.test({
     }
     assert(prompt.includes("## 五種風格各有任務"));
     // prompt 不得出現依 tier 少產風格的指令（免費/付費分流是 server 的事）
-    assertFalse(prompt.includes("免費版"), "OPENER_PROMPT 不得含 tier 分流指令");
+    assertFalse(
+      prompt.includes("免費版"),
+      "OPENER_PROMPT 不得含 tier 分流指令",
+    );
     assertFalse(prompt.includes("Free"), "OPENER_PROMPT 不得含 tier 分流指令");
 
     // completeness gate 走既有 repair：OPENER_REPAIR_PROMPT 必須繼續強制

@@ -25,6 +25,7 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
   const files = [
     "./index.ts",
     "./new_topic_handler.ts",
+    "./opener_handler.ts",
     "./json_text.ts",
     "./http_response.ts",
     "./ocr_normalizer.ts",
@@ -384,10 +385,10 @@ Deno.test({
     assert(source.includes("parseOpenerContractVersion("));
     assert(source.includes("OPENER_CONTRACT_VERSION_INVALID"));
     assert(source.includes(
-      'const openerVisibleTypes = effectiveTier === "free"\n        ? (openerContractVersion >= 2\n          ? OPENER_FREE_V2_TYPES\n          : OPENER_FREE_V1_TYPES)\n        : OPENER_TYPES;',
+      'const openerVisibleTypes = quota().effectiveTier === "free"\n    ? (openerContractVersion >= 2\n      ? OPENER_FREE_V2_TYPES\n      : OPENER_FREE_V1_TYPES)\n    : OPENER_TYPES;',
     ));
     assert(source.includes(
-      "filterOpenerPayloadForAllowedFeatures(\n        parsed,\n        openerAllowedFeatures,\n        { fallbackOrder: openerVisibleTypes },",
+      "filterOpenerPayloadForAllowedFeatures(\n    parsed,\n    openerAllowedFeatures,\n    { fallbackOrder: openerVisibleTypes },",
     ));
     // tier filter 前的五種 completeness gate＋一次 repair，仍不足→502 不扣
     assert(source.includes("missingOpenerTypes(parsed)"));
@@ -1268,24 +1269,24 @@ Deno.test({
     assert(source.includes("const OPENER_DEADLINE_MS = 50_000;"));
     const openerBranch = source.indexOf("if (isOpenerMode) {");
     const deadlineStart = source.indexOf(
-      "const openerDeadlineAtMs = requestStartedAtMs + OPENER_DEADLINE_MS;",
+      "const openerDeadlineAtMs = deps.requestStartedAtMs + OPENER_DEADLINE_MS;",
       openerBranch,
     );
     const validation = source.indexOf(
-      "const openerImageValidation = validateOpenerImages(images);",
+      "const openerImageValidation = validateOpenerImages(deps.images);",
       openerBranch,
     );
     assert(openerBranch >= 0 && deadlineStart > openerBranch);
     assert(deadlineStart < validation);
 
     assert(source.includes(
-      "maxRetries: 1,\n            allowModelFallback: true,\n            absoluteDeadlineAtMs: openerDeadlineAtMs,",
+      "maxRetries: 1,\n        allowModelFallback: true,\n        absoluteDeadlineAtMs: openerDeadlineAtMs,",
     ));
     assertFalse(source.includes(
       "{ timeout: 60000, maxRetries: 2, allowModelFallback: true }",
     ));
     assert(source.includes(
-      "repairMalformedOpenerPayload({\n            rawText,\n            apiKey,\n            absoluteDeadlineAtMs: openerDeadlineAtMs,",
+      "repairMalformedOpenerPayload({\n        rawText,\n        apiKey,\n        absoluteDeadlineAtMs: openerDeadlineAtMs,",
     ));
     assert(source.includes('apiError.code === "DEADLINE_EXCEEDED"'));
     assert(source.includes('repairError.code === "DEADLINE_EXCEEDED"'));
@@ -1418,10 +1419,18 @@ Deno.test({
     );
     assert(source.includes("opener_response_no_allowed_styles"));
     assert(source.includes("shouldChargeQuota: false"));
+    // 扣費已抽進 chargeOpenerQuota；順序鎖在 opener_handler.ts 內：
+    // style filter 必須在 charge 呼叫之前。
+    const openerHandlerSource = await Deno.readTextFile(
+      new URL("./opener_handler.ts", import.meta.url),
+    );
     assert(
-      source.indexOf(
+      openerHandlerSource.indexOf(
         "const filteredOpenerPayload = filterOpenerPayloadForAllowedFeatures",
-      ) < source.indexOf('await supabase.rpc("increment_usage"'),
+      ) <
+        openerHandlerSource.indexOf(
+          "const chargeOutcome = await chargeOpenerQuota({",
+        ),
       "opener style filtering must happen before quota deduction",
     );
   },
@@ -2408,16 +2417,16 @@ Deno.test({
 
     // 異常 tier 字串（如 " Starter "、"STARTER"）直接查表會 fallback 成
     // free 30/15 提早 429；所有查表都必須先過 normalizeTier。
-    // （new_topic quota gate 的 refresh 重算已由 applyRefreshedSub 統一，
-    // 查表點從 4 收斂為 3。）
+    // （mode handler 的 refresh 重算已由 applyRefreshedSub 統一，
+    // 查表點收斂為 2：初始上限計算與 applyRefreshedSub。）
     assertEquals(
       source.match(/TIER_MONTHLY_LIMITS\[normalizeTier\(sub\.tier\)\]/g)
         ?.length,
-      3,
+      2,
     );
     assertEquals(
       source.match(/TIER_DAILY_LIMITS\[normalizeTier\(sub\.tier\)\]/g)?.length,
-      3,
+      2,
     );
     assertFalse(source.includes("TIER_MONTHLY_LIMITS[sub.tier]"));
     assertFalse(source.includes("TIER_DAILY_LIMITS[sub.tier]"));
