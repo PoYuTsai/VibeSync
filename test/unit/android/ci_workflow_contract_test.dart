@@ -30,9 +30,19 @@ void main() {
         yamlScalars(iosGate).any((s) => s.contains('check-keyboard-contract')),
         isTrue,
       );
+      final buildIos = workflowJob(distribute, 'build-ios');
+      expect(jobNeeds(buildIos), containsAll(['flutter-gate', 'ios-keyboard-gate']));
+
+      // gate 的 if 必須與 build-ios 完全一致：手動 platform=android 時
+      // gate 直接 skip，不會因 iOS gate 執行而讓整個 workflow 紅
+      final gateIf = (iosGate['if'] ?? '').toString();
+      expect(gateIf, isNotEmpty, reason: 'ios-keyboard-gate 缺 if 平台閘門');
+      expect(gateIf, (buildIos['if'] ?? '').toString());
+      expect(gateIf, contains("inputs.platform == 'ios'"));
       expect(
-        jobNeeds(workflowJob(distribute, 'build-ios')),
-        containsAll(['flutter-gate', 'ios-keyboard-gate']),
+        gateIf.contains("inputs.platform == 'android'"),
+        isFalse,
+        reason: 'iOS gate 不得在 android-only dispatch 執行',
       );
       expect(
         jobNeeds(workflowJob(distribute, 'build-android')),

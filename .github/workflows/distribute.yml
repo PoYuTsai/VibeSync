@@ -76,9 +76,12 @@ jobs:
       - name: Run full test suite serially
         run: flutter test --concurrency=1
 
-  # CI-01：iOS keyboard contract 只擋 iOS 產物，Android 不因此被擋
+  # CI-01：iOS keyboard contract 只擋 iOS 產物，Android 不因此被擋。
+  # if 與 build-ios 完全一致：手動 platform=android 時本 gate 直接 skip，
+  # 不會因 iOS gate 紅掉整個 workflow
   ios-keyboard-gate:
     name: iOS keyboard contract gate
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.platform == 'ios' || inputs.platform == 'both')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
