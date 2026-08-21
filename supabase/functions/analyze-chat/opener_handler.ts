@@ -48,12 +48,7 @@ import {
   hasOpenerProfileSubstance,
   normalizeOpenerProfileInfo,
 } from "./opener_profile.ts";
-import {
-  MAX_IMAGE_BYTES,
-  MAX_TOTAL_IMAGE_BYTES,
-  VALID_IMAGE_MEDIA_TYPES,
-  validateOpenerImages,
-} from "./opener_image_validation.ts";
+import { validateOpenerImages } from "./opener_image_validation.ts";
 import {
   buildOpenerRepairPrompt,
   OPENER_DEADLINE_MS,
@@ -61,16 +56,13 @@ import {
   OPENER_PROMPT,
   OPENER_REPAIR_PROMPT,
 } from "./opener_prompt.ts";
-import { sanitizeContactNameValue } from "./ocr_normalizer.ts";
 import {
   type ImageData,
   sanitizeEffectiveStyleContext,
 } from "./analysis_input_compiler.ts";
 import { hasAnalyzeChatPromptLeak } from "./prompt_leak.ts";
 import {
-  extractTokenUsage,
   getErrorMessage,
-  logAiCall,
   logError,
   logInfo,
   logWarn,
@@ -78,10 +70,7 @@ import {
 } from "./logger.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { parseJsonObjectFromText } from "./json_text.ts";
-import {
-  normalizeSubscriptionTier,
-  type TierSyncRefreshStatus,
-} from "./tier_sync_contract.ts";
+import { type TierSyncRefreshStatus } from "./tier_sync_contract.ts";
 
 export interface OpenerQuotaView {
   // deno-lint-ignore no-explicit-any
@@ -350,12 +339,10 @@ export async function handleOpenerRequest(
       quota().sub.daily_messages_used + upfrontGateCost > quota().dailyLimit;
 
     if (openerExceedsQuota()) {
-      const refreshStatus =
-        await deps.refreshTierFromRevenueCat(
-          "opener_quota_exceeded",
-        );
-      const refreshed = refreshStatus === "applied";
-          // refreshed 時 applyRefreshedSub 已重算上限；quota() 即新值。
+      await deps.refreshTierFromRevenueCat(
+        "opener_quota_exceeded",
+      );
+      // refresh applied 時 applyRefreshedSub 已重算上限；quota() 即新值。
     }
 
     if (openerExceedsQuota()) {

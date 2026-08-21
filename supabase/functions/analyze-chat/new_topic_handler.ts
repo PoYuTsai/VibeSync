@@ -365,10 +365,10 @@ export async function handleNewTopicRequest(
       quota().sub.monthly_messages_used + newTopicCost > quota().monthlyLimit ||
       quota().sub.daily_messages_used + newTopicCost > quota().dailyLimit;
     if (newTopicExceedsQuota()) {
-      const refreshStatus = await deps.refreshTierFromRevenueCat(
+      await deps.refreshTierFromRevenueCat(
         "new_topic_quota_exceeded",
       );
-      // refreshStatus === "applied" 時，applyRefreshedSub 已在 handler 端
+      // refresh applied 時，applyRefreshedSub 已在 handler 端
       // 重算 monthly/daily limit；quota() 取得的即是刷新後的值。
     }
     if (newTopicExceedsQuota()) {
