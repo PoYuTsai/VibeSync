@@ -27,6 +27,15 @@
 - Use one independent AI reviewer for ordinary PRs, preferably not the model that wrote the change. Use both Codex and Claude Code for payment/subscription/quota, auth/account deletion, user data, DB migrations, Edge schemas, AI cost, or production-deployment risk. If an AI makes a substantive fix, the other AI quickly reviews the final diff.
 - `AGENTS.md` is the shared source; `CLAUDE.md` imports it. After pulling rule changes, start a new Codex task or Claude Code session because an already-running session may not reload them.
 
+## Fast PR Flow And Completion States
+
+- Normal collaborator path: Bruce finishes one purpose on a branch/PR -> hands off with `next:eric-ai` (and marks Ready when it is merge-ready) -> Discord notifies Eric -> an AI checks the live head diff and required CI -> Eric submits the formal GitHub review and decides whether to Squash Merge -> `main` starts Build & Distribute -> Eric separately starts any store/TestFlight release and performs physical-device acceptance.
+- **Review complete** means the final PR head was reviewed and required CI passed; a GitHub `Approved` review only clears the review gate. It does not mean the PR was merged, released, or tested on a phone.
+- **PR/Git complete** means GitHub shows the PR as Squash Merged into `main`. Closing without merge is not Git complete.
+- **Build complete** means Build & Distribute succeeded for the exact merged `main` SHA. A triggered or running workflow is not build complete, and build complete is not the same as TestFlight delivery.
+- **Feature complete** means the full intended user path and acceptance criteria are implemented and verified, not merely a report, schema, helper, mock, or wiring PR. Until then, report the exact completed scope instead of calling the feature complete.
+- **Dogfood-approved** means the exact delivered build is available in the intended test channel and Eric has accepted it on a physical iPhone. Keep this separate from review, merge, build, and release status.
+
 ## Context Loading
 
 - Do not automatically read `docs/snapshot.md`, `docs/shared-agent-rules.md`, review queues, old plans, handoffs, logs, or git history at session start.
