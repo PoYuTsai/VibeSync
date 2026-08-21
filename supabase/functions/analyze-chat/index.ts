@@ -9,7 +9,6 @@ import {
   type AnalysisResult as GuardrailAnalysisResult,
   checkAiOutput,
   checkInput,
-  hasOutboundSafetyWarning,
 } from "./guardrails.ts";
 import { postProcessAnalysisResult } from "./post_process.ts";
 import {
@@ -34,16 +33,8 @@ import {
 } from "./opener_image_validation.ts";
 import { buildQuotaUsageMetadata, deriveRequestType } from "./quota_usage.ts";
 import {
-  exceedsRefineOutputLimit,
-  refineMaxOutputChars,
-} from "./refine_output.ts";
-import {
-  classifyRefineFreeConsumption,
-  projectRefineFreeAllowance,
   REFINE_FREE_DAILY_LIMIT,
   type RefineFreeProjection,
-  refineQuotaOutcomeFor,
-  utcDayString,
 } from "./refine_allowance.ts";
 import { validateRefineInstruction } from "./refine_instruction.ts";
 import {
@@ -52,17 +43,9 @@ import {
   sanitizeRefineInstructionForPrompt,
 } from "./refine_prompt.ts";
 import {
-  buildOptimizeMessageLedgerResult,
-  classifyOptimizeMessageReplayPreflight,
-  computeOptimizeMessageInputHash,
   hasUsableOptimizedMessage,
-  hydrateOptimizeMessageReplayResult,
-  isOptimizeDraftUnreadable,
-  isValidOptimizeMessageRequestId,
   OPTIMIZE_MESSAGE_COST,
-  optimizeMessageReplayCutoffIso,
   type OptimizeMessageReplayRow,
-  settleOptimizeMessageRequest,
 } from "./optimize_message_billing.ts";
 import { findClientShapeViolations } from "./client_shape_validator.ts";
 import {
@@ -90,6 +73,14 @@ import { loadSubscriptionAccess } from "./subscription_access.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
 import { handleOpenerRequest } from "./opener_handler.ts";
+import {
+  buildOptimizeReplayResponse,
+  consumeRefineFreeAllowanceForUser,
+  projectRefineFreeAllowanceForUser,
+  resolveOptimizeIdentity,
+  settleOptimizeMessage,
+  validateOptimizeOutcome,
+} from "./optimize_refine_flow.ts";
 import { repairJson } from "./json_text.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import {
@@ -1212,123 +1203,31 @@ ${recentText}`;
     let optimizeReplayResult: Record<string, unknown> | null = null;
 
     if (isOptimizeMessageMode) {
-      // Missing requestId is allowed only for old clients. Current clients
-      // always send a UUID; malformed identities fail closed instead of
-      // silently losing retry idempotency.
-      if (
-        rawRequestId != null &&
-        !isValidOptimizeMessageRequestId(rawRequestId)
-      ) {
-        return jsonResponse({
-          error: "INVALID_OPTIMIZE_MESSAGE_REQUEST_ID",
-          code: "INVALID_OPTIMIZE_MESSAGE_REQUEST_ID",
-          message: "草稿潤飾請求格式有誤，請重新送出。本次不會扣額度。",
-        }, 400);
-      }
-      optimizeRequestId = isValidOptimizeMessageRequestId(rawRequestId)
-        ? rawRequestId
-        : null;
-
-      // Draft polish tolerates a missing requestId for old clients. Reply
-      // refinement has none -- it never shipped without one -- so a refine
-      // request without a durable identity is rejected instead of being run
-      // with no idempotency at all. Without it the free-allowance claim has no
-      // key, and concurrent retries would each take a slot.
-      if (isRefineReplyMode && optimizeRequestId === null) {
-        return jsonResponse({
-          error: "INVALID_OPTIMIZE_MESSAGE_REQUEST_ID",
-          code: "INVALID_OPTIMIZE_MESSAGE_REQUEST_ID",
-          message: "這次微調請求無法安全重送，請重新操作。本次不會扣額度。",
-        }, 400);
-      }
-
-      if (optimizeRequestId !== null && userDraft) {
-        optimizeInputHash = await computeOptimizeMessageInputHash({
+      const optimizeIdentity = await resolveOptimizeIdentity({
+        supabase,
+        userId: user.id,
+        rawRequestId,
+        isRefineReplyMode,
+        userDraft,
+        hashContext: {
           messages,
-          userDraft,
           sessionContext,
           conversationSummary,
           partnerSummary,
           effectiveStyleContext,
           knownContactName,
           forceModel: typeof forceModel === "string" ? forceModel : null,
-          // 指令必須綁進冪等鍵，否則同一句草稿的兩種不同微調會共用同一顆
-          // request id 的帳本列，第二次會 replay 出第一次的結果。
           refineInstruction: refineInstruction ?? null,
-        });
-        const { data: replayRow, error: replayReadError } = await supabase
-          .from("optimize_message_requests")
-          .select("input_hash, result_json, created_at")
-          .eq("user_id", user.id)
-          .eq("request_id", optimizeRequestId)
-          .gte("created_at", optimizeMessageReplayCutoffIso())
-          .maybeSingle();
-        if (replayReadError) {
-          // A paid result may already exist. Treating a failed read as fresh
-          // can strand the final credit behind the projected quota gate, so
-          // fail closed and let the client retry with the same durable UUID.
-          logError("optimize_message_replay_preflight_read_failed", {
-            user: summarizeUser(user.id),
-            error: replayReadError.message,
-          });
-          return jsonResponse({
-            error: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
-            code: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
-            message:
-              "草稿潤飾安全重試確認中斷，請再試一次。本次不會重複扣額度。",
-            retryable: true,
-          }, 503);
-        } else {
-          const replay = classifyOptimizeMessageReplayPreflight(
-            replayRow as OptimizeMessageReplayRow | null,
-            optimizeInputHash,
-          );
-          if (replay.kind === "mismatch") {
-            return jsonResponse({
-              error: "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH",
-              code: "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH",
-              message:
-                "這次草稿和先前的重試不一致，請重新送出。本次不會扣額度。",
-            }, 400);
-          }
-          if (replay.kind === "replay") {
-            const hydratedReplay = hydrateOptimizeMessageReplayResult(
-              replay.result,
-              userDraft,
-            );
-            const replayShapeViolations = findClientShapeViolations(
-              hydratedReplay,
-            );
-            if (
-              hydratedReplay === null ||
-              !hasUsableOptimizedMessage(hydratedReplay) ||
-              replayShapeViolations.length > 0
-            ) {
-              logError("optimize_message_replay_result_invalid", {
-                user: summarizeUser(user.id),
-                requestId: optimizeRequestId,
-                violationCount: replayShapeViolations.length,
-                violationPaths: replayShapeViolations
-                  .slice(0, 8)
-                  .map((violation) => violation.path),
-              });
-              return jsonResponse({
-                error: "OPTIMIZE_MESSAGE_REPLAY_INVALID",
-                code: "OPTIMIZE_MESSAGE_REPLAY_INVALID",
-                message:
-                  "草稿潤飾結果暫時無法恢復，請重新送出。本次不會扣額度。",
-              }, 500);
-            }
-            optimizeReplayResult = hydratedReplay;
-          }
-        }
-      } else {
-        logWarn("optimize_message_request_id_missing_legacy", {
-          user: summarizeUser(user.id),
-        });
+        },
+      });
+      if (optimizeIdentity.kind === "response") {
+        return optimizeIdentity.response;
       }
+      optimizeRequestId = optimizeIdentity.requestId;
+      optimizeInputHash = optimizeIdentity.inputHash;
+      optimizeReplayResult = optimizeIdentity.replayResult;
     }
-    // ADR #19 r3：全對話字數合併計費。增量 = 字數差（三層 compat fallback）、
+    // ADR #19 r3：全對話字數合併計費。    // ADR #19 r3：全對話字數合併計費。增量 = 字數差（三層 compat fallback）、
     // 分段帶 1~40=1 / 41~400=ceil/40 / 401~2000=10 / 2001~4000=20（新 client
     // 需確認）/ 4001+ reject。詳見 billing.ts。
     const billing = resolveBilling({
@@ -1398,20 +1297,9 @@ ${recentText}`;
     // 因為投影樂觀而多扣錢。測試帳號本來就豁免，不去動它的免費計數。
     let refineFreeProjection: RefineFreeProjection | null = null;
     if (isRefineReplyMode && !accountIsTest && optimizeReplayResult === null) {
-      const { data: allowanceRow, error: allowanceReadError } = await supabase
-        .from("refine_free_allowance")
-        .select("day_utc, used_count")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (allowanceReadError) {
-        logWarn("refine_free_allowance_read_failed", {
-          user: summarizeUser(user.id),
-          error: allowanceReadError.message,
-        });
-      }
-      refineFreeProjection = projectRefineFreeAllowance({
-        row: allowanceReadError ? null : allowanceRow,
-        todayUtc: utcDayString(new Date()),
+      refineFreeProjection = await projectRefineFreeAllowanceForUser({
+        supabase,
+        userId: user.id,
       });
     }
     const quotaUsage = buildQuotaUsageMetadata({
@@ -1512,62 +1400,20 @@ ${recentText}`;
     // so this block now only handles usage sync and returning the stored
     // result without re-charging.
     if (isOptimizeMessageMode && optimizeReplayResult !== null) {
-      let replayMonthlyUsed = sub.monthly_messages_used;
-      let replayDailyUsed = sub.daily_messages_used;
-      if (!accountIsTest) {
-        const { data: replayUsage, error: replayUsageError } = await supabase
-          .from("subscriptions")
-          .select("monthly_messages_used, daily_messages_used")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        if (replayUsageError || !replayUsage) {
-          logError("optimize_message_replay_usage_sync_failed", {
-            user: summarizeUser(user.id),
-            requestId: optimizeRequestId,
-            error: replayUsageError?.message ?? "subscription missing",
-          });
-          return jsonResponse({
-            error: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
-            code: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
-            message: "草稿潤飾額度確認回應中斷，正在安全重試。",
-            retryable: true,
-          }, 503);
-        }
-        replayMonthlyUsed = replayUsage.monthly_messages_used;
-        replayDailyUsed = replayUsage.daily_messages_used;
-      }
-      const replayResponse = { ...optimizeReplayResult };
-      replayResponse.usage = {
-        messagesUsed: 0,
-        estimatedMessages: OPTIMIZE_MESSAGE_COST,
-        monthlyRemaining: accountIsTest
-          ? 999999
-          : Math.max(0, monthlyLimit - replayMonthlyUsed),
-        dailyRemaining: accountIsTest
-          ? 999999
-          : Math.max(0, dailyLimit - replayDailyUsed),
-        model,
-        imagesUsed: 0,
-        tierUsed: effectiveTier,
-        isTestAccount: accountIsTest,
-        requestType,
-        shouldChargeQuota: false,
-        quotaReason: "optimize_message_idempotent_replay",
-        quotaUnit: "messages",
-      };
-      replayResponse.telemetry = {
-        requestType,
-        shouldChargeQuota: false,
-        chargedMessageCount: 0,
-        estimatedMessageCount: 1,
-        quotaReason: "optimize_message_idempotent_replay",
-        idempotentReplay: true,
-      };
-      logInfo("optimize_message_replayed_without_charge", {
-        user: summarizeUser(user.id),
+      return await buildOptimizeReplayResponse({
+        supabase,
+        userId: user.id,
+        accountIsTest,
         requestId: optimizeRequestId,
+        replayResult: optimizeReplayResult,
+        subMonthlyUsed: sub.monthly_messages_used,
+        subDailyUsed: sub.daily_messages_used,
+        monthlyLimit,
+        dailyLimit,
+        model,
+        effectiveTier,
+        requestType,
       });
-      return jsonResponse(replayResponse);
     }
 
     // Stream requests fail closed before the overcharge confirmation claim.
@@ -2768,83 +2614,19 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       allowedFeatures,
       requestMessages: messages,
     });
-    // 亂碼防呆：模型宣告 userDraft 無法理解（unusable: true）。必須在
-    // hasUsableOptimizedMessage 之前攔——模型可能違規把說明文字塞進
-    // optimized，讓結果看起來「可用」而被當成潤飾成果渲染（含「再調
-    // 一下」「複製」）。與安全守門同一條不扣費路徑，但回專屬碼讓
-    // client 顯示「看不懂這段草稿」。
-    // 只限草稿潤飾：isOptimizeMessageMode 涵蓋微調（帳本共用），但
-    // unusable 條款只在 OPTIMIZE_MESSAGE_PROMPT；微調 schema 沒這個
-    // 欄位，模型誤設不該把有效微調結果丟成「看不懂」。
-    if (
-      isOptimizeMessageMode && !isRefineReplyMode &&
-      isOptimizeDraftUnreadable(result)
-    ) {
-      logWarn("optimize_message_draft_unreadable_no_charge", {
-        user: summarizeUser(user.id),
-        model: actualModel,
+    // Optimize/refine 的結果守門（不扣費 fail-closed）在
+    // optimize_refine_flow.ts；含 unusable 亂碼防呆、client shape、
+    // 微調輸出過長與安全守門專屬文案。
+    if (isOptimizeMessageMode) {
+      const optimizeOutcomeResponse = validateOptimizeOutcome({
+        result,
+        isRefineReplyMode,
+        userDraft,
         requestId: optimizeRequestId,
+        userId: user.id,
+        actualModel,
       });
-      return jsonResponse({
-        error: "OPTIMIZE_MESSAGE_DRAFT_UNREADABLE",
-        code: "OPTIMIZE_MESSAGE_DRAFT_UNREADABLE",
-        message: "看不懂這段草稿，請換成想傳的訊息再試一次。本次不會扣額度。",
-        shouldChargeQuota: false,
-      }, 502);
-    }
-    const optimizeClientShapeViolations = isOptimizeMessageMode
-      ? findClientShapeViolations(result)
-      : [];
-    // 只作用於微調。草稿潤飾的輸出長度行為一個字不改。
-    const refineOutputTooLong = isRefineReplyMode &&
-      hasUsableOptimizedMessage(result) &&
-      exceedsRefineOutputLimit({
-        sourceDraft: userDraft ?? "",
-        optimized: (result.optimizedMessage as Record<string, unknown>)
-          .optimized as string,
-      });
-    if (
-      isOptimizeMessageMode &&
-      (
-        !hasUsableOptimizedMessage(result) ||
-        optimizeClientShapeViolations.length > 0 ||
-        refineOutputTooLong
-      )
-    ) {
-      logWarn("optimize_message_result_invalid_no_charge", {
-        user: summarizeUser(user.id),
-        model: actualModel,
-        requestId: optimizeRequestId,
-        // 安全守門攔下 vs 模型輸出格式壞掉，兩者都走這條「不扣費」路徑，
-        // 但要能分辨——否則沒辦法知道守門到底有沒有在動。
-        safetyBlocked: hasOutboundSafetyWarning(result),
-        violationCount: optimizeClientShapeViolations.length,
-        violationPaths: optimizeClientShapeViolations
-          .slice(0, 8)
-          .map((violation) => violation.path),
-        // 「越調越長」是可預期的模型行為，不是格式壞掉，必須分得出來。
-        refineOutputTooLong,
-        refineMaxOutputChars: isRefineReplyMode
-          ? refineMaxOutputChars(userDraft ?? "")
-          : null,
-      });
-      // 安全守門攔下要有專屬文案（2026-08-16 Eric 拍板）：通用的「請稍後
-      // 再試」會誤導使用者原句重送——這不是暫時性失敗，是內容問題。
-      if (hasOutboundSafetyWarning(result)) {
-        return jsonResponse({
-          error: "OPTIMIZE_MESSAGE_SAFETY_BLOCKED",
-          code: "OPTIMIZE_MESSAGE_SAFETY_BLOCKED",
-          message:
-            "這段內容帶有施壓或威脅的說法，安全守門已攔下，不提供結果。請改成尊重對方意願的說法。本次不會扣額度。",
-          shouldChargeQuota: false,
-        }, 502);
-      }
-      return jsonResponse({
-        error: "OPTIMIZE_MESSAGE_RESULT_INVALID",
-        code: "OPTIMIZE_MESSAGE_RESULT_INVALID",
-        message: "這次沒有產生可用的潤飾結果，請稍後再試。本次不會扣額度。",
-        shouldChargeQuota: false,
-      }, 502);
+      if (optimizeOutcomeResponse !== null) return optimizeOutcomeResponse;
     }
     const warnings = Array.isArray((result as { warnings?: unknown }).warnings)
       ? ((result as {
@@ -2923,42 +2705,15 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     let refineFreeRemaining: number | null = refineFreeProjection?.remaining ??
       null;
     if (isRefineReplyMode && !accountIsTest) {
-      const { data: allowanceData, error: allowanceError } = await supabase.rpc(
-        "consume_refine_free_allowance",
-        {
-          p_user_id: user.id,
-          p_daily_limit: REFINE_FREE_DAILY_LIMIT,
-          // 冪等鍵。同一 requestId 的並行重試都會走到這裡（ledger 尚未寫入，
-          // replay preflight 兩邊都看不到），少了這個參數免費次數會被扣兩次。
-          p_request_id: optimizeRequestId,
-        },
-      );
-      const consumption = classifyRefineFreeConsumption(
-        allowanceData,
-        allowanceError,
-      );
-      if (consumption.kind === "unavailable") {
-        // 不扣費。分不出「額度已扣但回應中斷」與「完全沒扣到」時，改為扣錢
-        // 的風險是使用者同時被吃掉一次免費額度又被扣 1 則。
-        logError("refine_free_allowance_consume_failed", {
-          user: summarizeUser(user.id),
-          requestId: optimizeRequestId,
-          error: consumption.message,
-        });
-      } else {
-        refineFreeRemaining = consumption.remaining;
-      }
-      const refineOutcome = refineQuotaOutcomeFor(consumption);
-      const refineShouldCharge = refineOutcome.shouldCharge;
-      refineFreeGranted = refineOutcome.granted;
-      quotaUsage.shouldChargeQuota = refineShouldCharge;
-      quotaUsage.quotaReason = refineOutcome.quotaReason;
-      quotaUsage.chargedMessageCount = refineShouldCharge
-        ? OPTIMIZE_MESSAGE_COST
-        : 0;
-      quotaUsage.estimatedMessageCount = refineShouldCharge
-        ? OPTIMIZE_MESSAGE_COST
-        : 0;
+      const consumption = await consumeRefineFreeAllowanceForUser({
+        supabase,
+        userId: user.id,
+        requestId: optimizeRequestId,
+        quotaUsage,
+        projectedRemaining: refineFreeRemaining,
+      });
+      refineFreeGranted = consumption.granted;
+      refineFreeRemaining = consumption.remaining;
     }
 
     // Current optimize clients settle the validated result and fixed one-unit
@@ -2971,128 +2726,27 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       isOptimizeMessageMode && optimizeRequestId !== null &&
       optimizeInputHash !== null
     ) {
-      const optimizeLedgerResult = buildOptimizeMessageLedgerResult(result);
-      if (optimizeLedgerResult === null) {
-        logError("optimize_message_ledger_snapshot_invalid", {
-          user: summarizeUser(user.id),
-          requestId: optimizeRequestId,
-        });
-        return jsonResponse({
-          error: "OPTIMIZE_MESSAGE_RESULT_INVALID",
-          code: "OPTIMIZE_MESSAGE_RESULT_INVALID",
-          message: "這次沒有產生可用的潤飾結果，本次不會扣額度。",
-        }, 500);
-      }
-      const settlement = await settleOptimizeMessageRequest({
-        rpc: (fn, params) => supabase.rpc(fn, params),
+      const settlementOutcome = await settleOptimizeMessage({
+        supabase,
         userId: user.id,
+        accountIsTest,
+        isRefineReplyMode,
+        refineFreeGranted,
         requestId: optimizeRequestId,
         inputHash: optimizeInputHash,
-        result: optimizeLedgerResult,
+        result,
+        userDraft,
         monthlyLimit,
         dailyLimit,
-        chargeQuota: quotaUsage.shouldChargeQuota && !accountIsTest,
+        quotaUsage,
       });
-      if (settlement.kind === "quota_exceeded") {
-        const { data: authoritativeSub, error: authoritativeSubError } =
-          await supabase
-            .from("subscriptions")
-            .select(
-              "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
-            )
-            .eq("user_id", user.id)
-            .maybeSingle();
-        if (authoritativeSubError || !authoritativeSub) {
-          logError("optimize_message_quota_usage_sync_failed", {
-            user: summarizeUser(user.id),
-            requestId: optimizeRequestId,
-            reason: settlement.reason,
-            error: authoritativeSubError?.message ?? "subscription missing",
-          });
-          return jsonResponse({
-            error: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
-            code: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
-            message: "草稿潤飾額度確認回應中斷，正在安全重試。",
-            retryable: true,
-          }, 503);
-        }
-        return jsonResponse(
-          buildQuotaExceededPayload({
-            sub: authoritativeSub,
-            cost: OPTIMIZE_MESSAGE_COST,
-            reason: settlement.reason,
-            monthlyLimit,
-            dailyLimit,
-          }),
-          429,
-        );
+      if (settlementOutcome.kind === "response") {
+        return settlementOutcome.response;
       }
-      if (settlement.kind === "mismatch") {
-        return jsonResponse({
-          error: "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH",
-          code: "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH",
-          message: "這次草稿和先前的重試不一致，請重新送出。本次不會扣額度。",
-        }, 409);
-      }
-      if (settlement.kind === "retryable") {
-        logError("optimize_message_settlement_transport_unknown", {
-          user: summarizeUser(user.id),
-          requestId: optimizeRequestId,
-          error: settlement.message,
-        });
-        return jsonResponse({
-          error: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
-          code: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
-          message: "草稿潤飾額度確認回應中斷，正在安全重試。",
-          retryable: true,
-        }, 503);
-      }
-      if (settlement.kind === "failed") {
-        logError("optimize_message_settlement_failed", {
-          user: summarizeUser(user.id),
-          requestId: optimizeRequestId,
-          error: settlement.message,
-        });
-        return jsonResponse({
-          error: "OPTIMIZE_MESSAGE_SETTLEMENT_FAILED",
-          code: "OPTIMIZE_MESSAGE_SETTLEMENT_FAILED",
-          message: "草稿潤飾額度確認失敗，請稍後再試。本次不會扣額度。",
-        }, 500);
-      }
-
-      const hydratedSettlement = hydrateOptimizeMessageReplayResult(
-        settlement.result,
-        userDraft ?? "",
-      );
-      if (hydratedSettlement === null) {
-        logError("optimize_message_settlement_result_invalid", {
-          user: summarizeUser(user.id),
-          requestId: optimizeRequestId,
-        });
-        return jsonResponse({
-          error: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
-          code: "OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE",
-          message: "草稿潤飾結果恢復中斷，正在安全重試。",
-          retryable: true,
-        }, 503);
-      }
-      result = hydratedSettlement;
-      optimizeSettledReportedCharge = settlement.charged
-        ? OPTIMIZE_MESSAGE_COST
-        : 0;
-      optimizeSettledMonthlyUsed = settlement.monthlyUsed;
-      optimizeSettledDailyUsed = settlement.dailyUsed;
-      quotaUsage.shouldChargeQuota = false;
-      quotaUsage.quotaReason = settlement.charged
-        ? (isRefineReplyMode
-          ? "refine_reply_fixed_1"
-          : "optimize_message_fixed_1")
-        : accountIsTest
-        ? "test_account_waived"
-        // 微調的免費輪次是刻意帶 chargeQuota:false 進帳本的，不是冪等重播。
-        : refineFreeGranted === true
-        ? "refine_free_daily"
-        : "optimize_message_idempotent_replay";
+      result = settlementOutcome.result;
+      optimizeSettledReportedCharge = settlementOutcome.reportedCharge;
+      optimizeSettledMonthlyUsed = settlementOutcome.monthlyUsed;
+      optimizeSettledDailyUsed = settlementOutcome.dailyUsed;
     }
 
     // Update usage count（測試帳號、純識別模式不扣額度）。Streaming

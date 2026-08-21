@@ -24,6 +24,7 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
   if (scanCorpusCache !== null) return scanCorpusCache;
   const files = [
     "./index.ts",
+    "./optimize_refine_flow.ts",
     "./new_topic_handler.ts",
     "./opener_handler.ts",
     "./json_text.ts",
@@ -762,14 +763,12 @@ Deno.test({
     // optimized 讓結果看似可用）。
     // 必須排除微調：isOptimizeMessageMode 涵蓋 refine_reply（帳本共用），
     // 但 unusable 條款只存在於潤飾 prompt。
+    // unusable 守門已抽到 optimize_refine_flow.ts：只限草稿潤飾
+    // （!isRefineReplyMode），且在 shape 檢查之前。
     const unreadableIdx = source.indexOf(
-      "isOptimizeMessageMode && !isRefineReplyMode &&",
+      "!args.isRefineReplyMode && isOptimizeDraftUnreadable(args.result)",
     );
     assert(unreadableIdx !== -1);
-    assert(
-      source.slice(unreadableIdx, unreadableIdx + 200)
-        .includes("isOptimizeDraftUnreadable(result)"),
-    );
     const invalidIdx = source.indexOf(
       "optimize_message_result_invalid_no_charge",
     );
@@ -796,7 +795,7 @@ Deno.test({
     assert(safetyBlock.includes("施壓或威脅"));
     // 專屬碼由 outbound 守門訊號驅動。
     const guardIdx = source.lastIndexOf(
-      "hasOutboundSafetyWarning(result)",
+      "hasOutboundSafetyWarning(args.result)",
       safetyIdx,
     );
     assert(guardIdx !== -1 && safetyIdx - guardIdx < 600);

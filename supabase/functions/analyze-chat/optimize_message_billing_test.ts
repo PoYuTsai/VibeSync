@@ -436,9 +436,15 @@ Deno.test("optimize-message settlement requires authoritative usage counters", a
   });
 });
 
-const indexSource = await Deno.readTextFile(
+// optimize/refine 金流已抽到 optimize_refine_flow.ts；index.ts 保留管線
+// 骨架。corpus 依「flow 在前、index 在後」串接，維持 preflight → 管線
+// gate 的順序斷言有效。
+const indexSource = `${await Deno.readTextFile(
+  new URL("./optimize_refine_flow.ts", import.meta.url),
+)}
+${await Deno.readTextFile(
   new URL("./index.ts", import.meta.url),
-);
+)}`;
 const migrationSource = await Deno.readTextFile(
   new URL(
     "../../migrations/20260716170000_optimize_message_fixed_charge.sql",
@@ -508,7 +514,7 @@ Deno.test("optimize-message replay preflight enforces the seven-day window", () 
   );
   const replayReturn = requiredIndex(
     indexSource,
-    "optimizeReplayResult = hydratedReplay",
+    "replayResult: hydratedReplay",
     replayValidation,
   );
   assert(
@@ -592,11 +598,11 @@ Deno.test("optimize-message handler preserves caps and validates output before a
 
   const clientShapeValidation = requiredIndex(
     indexSource,
-    "findClientShapeViolations(result)",
+    "findClientShapeViolations(args.result)",
   );
   const usableValidation = requiredIndex(
     indexSource,
-    "!hasUsableOptimizedMessage(result)",
+    "!hasUsableOptimizedMessage(args.result)",
     clientShapeValidation,
   );
   const settlement = requiredIndex(
@@ -616,7 +622,7 @@ Deno.test("optimize-message handler preserves caps and validates output before a
   );
   const minimalLedger = requiredIndex(
     indexSource,
-    "buildOptimizeMessageLedgerResult(result)",
+    "buildOptimizeMessageLedgerResult(args.result)",
     usableValidation,
   );
   assert(
@@ -652,11 +658,13 @@ Deno.test("optimize-message handler preserves caps and validates output before a
     "quota-race response must refresh counters before building the 429 payload",
   );
   assert(
-    indexSource.includes(
-      "optimizeSettledMonthlyUsed = settlement.monthlyUsed",
-    ) &&
+    indexSource.includes("monthlyUsed: settlement.monthlyUsed") &&
+      indexSource.includes("dailyUsed: settlement.dailyUsed") &&
       indexSource.includes(
-        "optimizeSettledDailyUsed = settlement.dailyUsed",
+        "optimizeSettledMonthlyUsed = settlementOutcome.monthlyUsed",
+      ) &&
+      indexSource.includes(
+        "optimizeSettledDailyUsed = settlementOutcome.dailyUsed",
       ),
     "successful settlement must use transaction-authoritative counters",
   );
