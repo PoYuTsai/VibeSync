@@ -7,19 +7,23 @@ library;
 import 'dart:async';
 import 'dart:typed_data';
 
-import '../../conversation/data/providers/conversation_providers.dart';
-import '../../conversation/data/providers/conversation_write_controller.dart';
 import '../../conversation/domain/entities/conversation.dart';
 import '../../conversation/domain/entities/message.dart';
 import '../../conversation/domain/entities/session_context.dart';
-import '../../partner/presentation/providers/partner_providers.dart';
+import '../../partner/domain/entities/partner.dart';
 import '../data/services/analysis_auxiliary_client.dart';
 import '../data/services/analysis_service.dart';
 import '../data/services/ocr_recognition_cache_service.dart';
 import '../domain/entities/analysis_models.dart';
 import '../domain/services/analysis_fragment_policy.dart';
 import '../domain/services/screenshot_recognition_helper.dart';
-import 'analysis_persistence_coordinator.dart' show ProviderReader;
+
+/// 建立新對話片段（匯入另開新片段路徑）。
+typedef CreateConversation = Future<Conversation> Function({
+  required String name,
+  required List<Message> messages,
+  String? partnerId,
+});
 
 /// [ScreenshotImportCoordinator.commitImport] 的落地結果。
 enum ScreenshotImportCommitKind {
@@ -50,13 +54,25 @@ class ScreenshotImportCommit {
 class ScreenshotImportCoordinator {
   ScreenshotImportCoordinator({
     required this.conversationId,
-    required ProviderReader read,
+    required Conversation? Function(String conversationId) getConversation,
+    required CreateConversation createConversation,
+    required Future<void> Function(Conversation conversation) saveConversation,
+    required Partner? Function(String partnerId) partnerById,
+    required AnalysisAuxiliaryClient auxiliaryClient,
     required void Function() invalidateConversationProvider,
-  })  : _read = read,
+  })  : _getConversation = getConversation,
+        _createConversation = createConversation,
+        _saveConversation = saveConversation,
+        _partnerById = partnerById,
+        _auxiliaryClient = auxiliaryClient,
         _invalidateConversationProvider = invalidateConversationProvider;
 
   final String conversationId;
-  final ProviderReader _read;
+  final Conversation? Function(String conversationId) _getConversation;
+  final CreateConversation _createConversation;
+  final Future<void> Function(Conversation conversation) _saveConversation;
+  final Partner? Function(String partnerId) _partnerById;
+  final AnalysisAuxiliaryClient _auxiliaryClient;
 
   /// repo 寫入後讓畫面的 conversationProvider 失效重讀。
   final void Function() _invalidateConversationProvider;
@@ -67,8 +83,7 @@ class ScreenshotImportCoordinator {
     if (partnerId == null || partnerId.isEmpty) {
       return null;
     }
-    final name =
-        _read(partnerRepositoryProvider).getById(partnerId)?.name.trim();
+    final name = _partnerById(partnerId)?.name.trim();
     return name == null || name.isEmpty ? null : name;
   }
 
@@ -128,7 +143,7 @@ class ScreenshotImportCoordinator {
     // 使用 Future.any 來實現強制 timeout。
     final result = await Future.any([
       // 純識別模式：只識別截圖，不扣額度
-      AnalysisAuxiliaryClient().recognizeScreenshots(
+      _auxiliaryClient.recognizeScreenshots(
         images: images,
         sessionContext: sessionContext,
         knownContactName: ScreenshotRecognitionHelper.resolveKnownContactName(
@@ -168,9 +183,8 @@ class ScreenshotImportCoordinator {
     required RecognizedConversation recognized,
     required bool hasLoadedAnalysisResult,
   }) async {
-    final repository = _read(conversationRepositoryProvider);
     final importedMessages = _buildImportedMessages(editedRecognizedMessages);
-    final sourceConversation = repository.getConversation(conversationId);
+    final sourceConversation = _getConversation(conversationId);
     final mustStartNewFragment = sourceConversation != null &&
         AnalysisFragmentPolicy.mustCreateNewFragmentForImport(
           conversation: sourceConversation,
@@ -193,13 +207,12 @@ class ScreenshotImportCoordinator {
     );
 
     if (mustStartNewFragment) {
-      final controller = _read(conversationWriteControllerProvider.notifier);
       // Inherit partnerId from the source conversation so the new "互動紀錄"
       // shows up under the same Partner detail page. Pre-A2 this path
       // created orphan conversations (partnerId=null) which silently
       // disappeared from `conversationsByPartnerProvider(partnerId)`.
       // (Bruce TF feedback 2026-04-28.)
-      final createdConversation = await controller.create(
+      final createdConversation = await _createConversation(
         name: isPartnerBound
             ? ScreenshotRecognitionHelper.resolvePartnerBoundNewFragmentName(
                 currentConversation: sourceConversation,
@@ -221,7 +234,7 @@ class ScreenshotImportCoordinator {
           analysisContextNote: analysisContextNote,
         );
       }
-      await controller.save(createdConversation);
+      await _saveConversation(createdConversation);
       _invalidateConversationProvider();
 
       return ScreenshotImportCommit._(
@@ -231,7 +244,7 @@ class ScreenshotImportCoordinator {
       );
     }
 
-    final conv = repository.getConversation(conversationId);
+    final conv = _getConversation(conversationId);
     if (conv == null) {
       return const ScreenshotImportCommit._(
         ScreenshotImportCommitKind.conversationMissing,
@@ -278,7 +291,7 @@ class ScreenshotImportCoordinator {
       conversation: conv,
       messages: importedMessages,
     );
-    await _read(conversationWriteControllerProvider.notifier).save(conv);
+    await _saveConversation(conv);
     _invalidateConversationProvider();
 
     return ScreenshotImportCommit._(

@@ -187,7 +187,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // 訊息優化功能（顯示狀態在 DraftPolishSheet；這裡只留草稿與計費路徑）
   bool _showDetailedAnalysis = false;
   final _optimizeController = TextEditingController();
-  final _replyIteration = ReplyIterationCoordinator();
+  late final ReplyIterationCoordinator _replyIteration =
+      ref.read(replyIterationCoordinatorFactoryProvider)();
 
   String? _feedbackCategory;
   final _feedbackCommentController = TextEditingController();
@@ -205,10 +206,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   List<AnalysisStreamContent> _streamContents = const [];
   int? _activeAnalysisMessageCount;
   bool _isLeavingAfterPersistence = false;
+  // application coordinator 一律經 composition root 工廠組裝；畫面只
+  // 提供 UI callback（重繪、provider 失效、48h 跟進軟卡）。
   late final AnalysisPersistenceCoordinator _persistence =
-      AnalysisPersistenceCoordinator(
+      ref.read(analysisPersistenceCoordinatorFactoryProvider)(
     conversationId: widget.conversationId,
-    read: ref.read,
     notifyStateChanged: () {
       if (mounted) setState(() {});
     },
@@ -219,15 +221,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     },
     afterAnalysisPersisted: _maybeScheduleFollowUpNotification,
   );
-  late final AnalysisSessionController _session = AnalysisSessionController(
+  late final AnalysisSessionController _session =
+      ref.read(analysisSessionControllerFactoryProvider)(
     conversationId: widget.conversationId,
-    read: ref.read,
     persistence: _persistence,
   );
   late final ScreenshotImportCoordinator _screenshotImport =
-      ScreenshotImportCoordinator(
+      ref.read(screenshotImportCoordinatorFactoryProvider)(
     conversationId: widget.conversationId,
-    read: ref.read,
     invalidateConversationProvider: () =>
         ref.invalidate(conversationProvider(widget.conversationId)),
   );

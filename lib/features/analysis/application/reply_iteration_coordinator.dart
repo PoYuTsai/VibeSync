@@ -3,10 +3,11 @@
 /// 快取、微調稿 durable 暫存（先存得回來、才清付費身分）與
 /// acknowledgePresented（畫面確認付費結果可見後才 markSuccess）。
 /// 畫面保留同意書、面板與可見幀／route 判斷；順序與計費語意逐字沿用
-/// 拆分前實作。
+/// 拆分前實作。session／draft store／auxiliary client 一律由
+/// composition root（`analysis_providers.dart`）組裝注入，這裡不自建
+/// Hive store、不解析 provider。
 library;
 
-import '../../../core/services/storage_service.dart';
 import '../../conversation/domain/entities/session_context.dart';
 import '../data/services/analysis_service.dart';
 import '../data/services/optimize_message_request_session.dart';
@@ -47,30 +48,19 @@ class RefineRoundResult {
 
 class ReplyIterationCoordinator {
   ReplyIterationCoordinator({
-    OptimizeMessageRequestIdSession? session,
-    ReplyRefineDraftStore? draftStore,
-    AnalysisAuxiliaryClient? auxiliaryClient,
-  })  : _session = session ??
-            OptimizeMessageRequestIdSession(
-              store: HiveOptimizeMessagePendingRequestStore(
-                () => StorageService.settingsBox,
-              ),
-            ),
-        _draftStore = draftStore ??
-            HiveReplyRefineDraftStore(
-              () => StorageService.settingsBox,
-            ),
-        _auxiliaryClient = auxiliaryClient {
+    required OptimizeMessageRequestIdSession session,
+    required ReplyRefineDraftStore draftStore,
+    required AnalysisAuxiliaryClient auxiliaryClient,
+  })  : _session = session,
+        _draftStore = draftStore,
+        _client = auxiliaryClient {
     _runner = OptimizeRequestRunner(session: _session);
   }
 
   final OptimizeMessageRequestIdSession _session;
   final ReplyRefineDraftStore _draftStore;
-  final AnalysisAuxiliaryClient? _auxiliaryClient;
+  final AnalysisAuxiliaryClient _client;
   late final OptimizeRequestRunner _runner;
-
-  AnalysisAuxiliaryClient get _client =>
-      _auxiliaryClient ?? AnalysisAuxiliaryClient();
 
   OptimizeMessagePendingRequest? _pendingAwaitingPresentation;
 

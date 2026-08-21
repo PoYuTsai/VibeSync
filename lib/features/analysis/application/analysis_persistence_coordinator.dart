@@ -1,8 +1,12 @@
 /// AnalyzeChat 分析結果持久化協調器：冷啟動還原（restore）、canonical
 /// snapshot 寫入與補償回滾（persist）、分析紀錄修復（repair）、離場前
 /// 等待落定（awaitSettled）。所有寫入語意逐字沿用拆分前
-/// AnalysisScreen 的實作；UI 重繪與 provider 失效透過注入的 callback
-/// 回到畫面層。
+/// AnalysisScreen 的實作。
+///
+/// 依賴方向：這裡只收具名注入的 callable／repository 介面，不解析
+/// Riverpod provider、不 import presentation；組裝在
+/// `analysis_providers.dart` 的 composition root。UI 重繪與 provider
+/// 失效透過注入的 callback 回到畫面層。
 library;
 
 import 'dart:async';
@@ -10,26 +14,29 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../core/services/funnel_tracker.dart';
-import '../../analysis_history/data/providers/analysis_history_providers.dart';
 import '../../analysis_history/domain/entities/analysis_history_event.dart';
-import '../../conversation/data/providers/conversation_archive_providers.dart';
-import '../../conversation/data/providers/conversation_providers.dart';
-import '../../conversation/data/providers/conversation_write_controller.dart';
-import '../../conversation/data/repositories/conversation_archive_store.dart';
+import '../../analysis_history/domain/repositories/analysis_history_repository.dart';
+import '../../conversation/data/providers/conversation_write_controller.dart'
+    show ConversationSaveIntent;
+import '../../conversation/data/repositories/conversation_archive_store.dart'
+    show
+        ConversationArchiveEntry,
+        ConversationArchiveStatus,
+        conversationContentRevision;
 import '../../conversation/domain/entities/conversation.dart';
-import '../data/notifiers/streaming_analyze_notifier.dart';
-import '../data/providers/analysis_record_providers.dart';
+import '../data/repositories/analysis_record_store.dart';
 import '../data/services/analysis_transport_support.dart' show analysisDebugLog;
 import '../domain/entities/analysis_models.dart';
 import '../domain/entities/analysis_record.dart';
 
-/// coordinator 對 Riverpod 的唯一觸角：一個泛型 read。畫面把 `ref.read`
-/// tear-off 進來，測試可以塞假 container 的 read。
-typedef ProviderReader = T Function<T>(ProviderListenable<T> provider);
+/// canonical 對話存檔（含 analysisCompleted 的修訂前置檢查與補償路徑）。
+typedef SaveConversation = Future<void> Function(
+  Conversation conversation, {
+  required ConversationSaveIntent intent,
+  String? expectedContentRevision,
+});
 
 /// [AnalysisPersistenceCoordinator.restore] 的結果：畫面據此套用本地鏡像。
 class AnalysisRestoreOutcome {
@@ -49,18 +56,51 @@ class AnalysisPersistenceCoordinator {
 
   AnalysisPersistenceCoordinator({
     required this.conversationId,
-    required ProviderReader read,
+    required Conversation? Function(String conversationId) getConversation,
+    required SaveConversation saveConversation,
+    required Future<void> Function(Conversation conversation)
+        markConversationActive,
+    required ConversationArchiveEntry? Function(Conversation conversation)
+        archiveEntryFor,
+    required AnalysisRecordStore Function() recordStore,
+    required String? Function() currentRecordOwnerUserId,
+    required AnalysisHistoryRepository Function() historyRepository,
+    required Future<void> Function(String eventKey) trackFunnelOnce,
+    required int? Function() lastPayloadCharCount,
     required void Function() notifyStateChanged,
     required void Function(Conversation conversation) invalidateRecordViews,
     required Future<void> Function(Conversation conversation)
         afterAnalysisPersisted,
-  })  : _read = read,
+  })  : _getConversation = getConversation,
+        _saveConversation = saveConversation,
+        _markConversationActive = markConversationActive,
+        _archiveEntryFor = archiveEntryFor,
+        _recordStore = recordStore,
+        _currentRecordOwnerUserId = currentRecordOwnerUserId,
+        _historyRepository = historyRepository,
+        _trackFunnelOnce = trackFunnelOnce,
+        _lastPayloadCharCount = lastPayloadCharCount,
         _notifyStateChanged = notifyStateChanged,
         _invalidateRecordViews = invalidateRecordViews,
         _afterAnalysisPersisted = afterAnalysisPersisted;
 
   final String conversationId;
-  final ProviderReader _read;
+  final Conversation? Function(String conversationId) _getConversation;
+  final SaveConversation _saveConversation;
+  final Future<void> Function(Conversation conversation)
+      _markConversationActive;
+  final ConversationArchiveEntry? Function(Conversation conversation)
+      _archiveEntryFor;
+
+  /// 紀錄存放層每次呼叫時解析（維持與原 per-call `ref.read` 相同的新鮮度）。
+  final AnalysisRecordStore Function() _recordStore;
+  final String? Function() _currentRecordOwnerUserId;
+  final AnalysisHistoryRepository Function() _historyRepository;
+  final Future<void> Function(String eventKey) _trackFunnelOnce;
+
+  /// ADR #19 規格 #8：最近一次 start 實際送出 payload 的計費字數
+  /// （真相在 streaming notifier，這裡以 callable 注入避免鏡射）。
+  final int? Function() _lastPayloadCharCount;
 
   /// in-flight 計數或修復旗標翻動時通知畫面重繪（畫面自行守 mounted）。
   final void Function() _notifyStateChanged;
@@ -89,8 +129,7 @@ class AnalysisPersistenceCoordinator {
   /// 冷啟動還原：讀 durable snapshot、驗證修訂、就地升級 legacy meta，
   /// 需要時排程紀錄修復。回傳畫面要套用的結果；不可還原時回 null。
   AnalysisRestoreOutcome? restore({required bool repairRecord}) {
-    final repository = _read(conversationRepositoryProvider);
-    final conversation = repository.getConversation(conversationId);
+    final conversation = _getConversation(conversationId);
     if (conversation == null) {
       return null;
     }
@@ -201,8 +240,7 @@ class AnalysisPersistenceCoordinator {
           );
     }
 
-    final archiveEntry =
-        _read(conversationArchiveStoreProvider).entryFor(conversation);
+    final archiveEntry = _archiveEntryFor(conversation);
     if (archiveEntry != null) {
       final analyzedRevision = archiveEntry.contentRevision;
       if (archiveEntry.status == ConversationArchiveStatus.archived &&
@@ -379,8 +417,7 @@ class AnalysisPersistenceCoordinator {
     String? analyzedContentRevision,
     bool allowArchivedRecordRefresh = false,
   }) async {
-    final repository = _read(conversationRepositoryProvider);
-    final conv = repository.getConversation(conversationId);
+    final conv = _getConversation(conversationId);
     if (conv == null) {
       return;
     }
@@ -412,17 +449,14 @@ class AnalysisPersistenceCoordinator {
     // ADR #19 規格 #8：char baseline 對應「實際送出的 requestMessages」
     //（notifier 在 start 時計），不是完成時 repository 裡的最新 messages
     //（避免分析中新進訊息造成 baseline 漂移）。
-    final payloadCharCount =
-        _read(streamingAnalyzeProvider(conversationId).notifier)
-            .lastPayloadCharCount;
+    final payloadCharCount = _lastPayloadCharCount();
     if (payloadCharCount != null) {
       conv.lastAnalyzedCharCount = payloadCharCount;
     }
     conv.currentGameStage = result.gameStage.current.name;
     conv.lastAnalysisSnapshotJson = targetSnapshotJson;
 
-    final writeController = _read(conversationWriteControllerProvider.notifier);
-    await writeController.save(
+    await _saveConversation(
       conv,
       intent: ConversationSaveIntent.analysisCompleted,
       expectedContentRevision: analyzedContentRevision,
@@ -441,7 +475,7 @@ class AnalysisPersistenceCoordinator {
         conv.currentGameStage = previousAnalysis.gameStage;
         conv.lastAnalysisSnapshotJson = previousAnalysis.snapshotJson;
         try {
-          await writeController.save(
+          await _saveConversation(
             conv,
             intent: ConversationSaveIntent.contentChanged,
           );
@@ -449,8 +483,7 @@ class AnalysisPersistenceCoordinator {
           // The compensating conversation write can fail independently. Still
           // leave an explicit active marker when settings storage is healthy,
           // so cold restore cannot treat this post-feature row as legacy.
-          await _read(conversationArchiveControllerProvider.notifier)
-              .markActive(conv);
+          await _markConversationActive(conv);
           rethrow;
         }
       }
@@ -473,7 +506,7 @@ class AnalysisPersistenceCoordinator {
     // _maybePersistAndSyncOnHydrate 的 alreadyPersisted 比對＋listener 路徑
     // 一次性觸發），同一次分析絕不重複記錄，這裡不另做冪等。
     try {
-      await _read(analysisHistoryRepositoryProvider).append(
+      await _historyRepository().append(
         AnalysisHistoryEvent.analyze(
           id: const Uuid().v4(),
           createdAt: DateTime.now(),
@@ -490,7 +523,7 @@ class AnalysisPersistenceCoordinator {
 
     // Tier 2 批 1.5：首次分析完成漏斗事件（once-flag 去重，best-effort）。
     unawaited(
-      _read(funnelTrackerProvider).trackOnce('first_analysis_completed'),
+      _trackFunnelOnce('first_analysis_completed'),
     );
 
     // 案4：48h 跟進提醒 — 綁 partner 的分析完成後，首次詢問軟卡並排程。
@@ -538,8 +571,7 @@ class AnalysisPersistenceCoordinator {
           current.segmentEnd == analyzedMessageCount &&
           current.analyzedContentRevision == prefixRevision &&
           current.analysisSnapshotJson == jsonEncode(rawResponse)) {
-        final archived =
-            await _read(analysisRecordStoreProvider).archiveCurrentRecord(
+        final archived = await _recordStore().archiveCurrentRecord(
           ownerUserId: recordOwnerFor(conversation) ?? '',
           conversationId: conversation.id,
         );
@@ -598,7 +630,7 @@ class AnalysisPersistenceCoordinator {
             '$snapshotDigest';
     final runStartPreviousCount =
         (previousAnalyzedCount ?? 0).clamp(0, analyzedMessageCount).toInt();
-    final store = _read(analysisRecordStoreProvider);
+    final store = _recordStore();
     try {
       final saveResult = await store.saveSuccessfulAnalysis(
         ownerUserId: ownerUserId,
@@ -641,7 +673,7 @@ class AnalysisPersistenceCoordinator {
   }
 
   String? recordOwnerFor(Conversation conversation) {
-    final currentUserId = _read(analysisRecordOwnerProvider)?.trim();
+    final currentUserId = _currentRecordOwnerUserId()?.trim();
     if (currentUserId == null || currentUserId.isEmpty) return null;
     final conversationOwner = conversation.ownerUserId?.trim();
     if (conversationOwner != null &&
@@ -655,7 +687,7 @@ class AnalysisPersistenceCoordinator {
   AnalysisRecord? currentRecordFor(Conversation conversation) {
     final ownerUserId = recordOwnerFor(conversation);
     if (ownerUserId == null) return null;
-    return _read(analysisRecordStoreProvider).currentFor(
+    return _recordStore().currentFor(
       ownerUserId: ownerUserId,
       conversationId: conversation.id,
     );

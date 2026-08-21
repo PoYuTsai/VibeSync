@@ -8,11 +8,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../../conversation/data/providers/conversation_providers.dart';
 import '../../conversation/data/repositories/conversation_archive_store.dart'
     show conversationContentRevision;
 import '../../conversation/domain/entities/conversation.dart';
-import '../../subscription/data/providers/subscription_providers.dart';
 import '../data/notifiers/streaming_analyze_notifier.dart';
 import '../data/services/analysis_transport_support.dart'
     show OverchargeConfirmationPayload;
@@ -26,17 +24,24 @@ class AnalysisSessionController {
 
   AnalysisSessionController({
     required this.conversationId,
-    required ProviderReader read,
+    required StreamingAnalyzeNotifier Function() analyzeNotifier,
+    required Future<void> Function() ensureServerEntitlementSynced,
+    required Conversation? Function() currentConversation,
     required AnalysisPersistenceCoordinator persistence,
-  })  : _read = read,
+  })  : _analyzeNotifier = analyzeNotifier,
+        _ensureServerEntitlementSynced = ensureServerEntitlementSynced,
+        _currentConversation = currentConversation,
         _persistence = persistence;
 
   final String conversationId;
-  final ProviderReader _read;
+
+  /// 唯一 reactive 真相的存取器（autoDispose family，須逐次解析）。
+  final StreamingAnalyzeNotifier Function() _analyzeNotifier;
+  final Future<void> Function() _ensureServerEntitlementSynced;
+  final Conversation? Function() _currentConversation;
   final AnalysisPersistenceCoordinator _persistence;
 
-  StreamingAnalyzeNotifier get _notifier =>
-      _read(streamingAnalyzeProvider(conversationId).notifier);
+  StreamingAnalyzeNotifier get _notifier => _analyzeNotifier();
 
   /// 啟動主分析：best-effort 訂閱權益預同步（逾時放行，額度由 server 最終
   /// 把關）→ [shouldProceed] 守門（畫面傳 mounted）→ fire 唯一串流 run。
@@ -49,9 +54,7 @@ class AnalysisSessionController {
     required bool Function() shouldProceed,
   }) async {
     try {
-      await _read(subscriptionProvider.notifier)
-          .ensureServerEntitlementSyncedForAnalysis()
-          .timeout(_subscriptionSyncTimeout);
+      await _ensureServerEntitlementSynced().timeout(_subscriptionSyncTimeout);
     } on TimeoutException catch (error) {
       // 該方法內部已 catch-all（只剩卡住這一種失敗模式）；逾時放行，
       // 額度/權益由 server 端最終把關，不得讓分析卡在「開始完整分析」。
@@ -89,7 +92,7 @@ class AnalysisSessionController {
   /// 完成結果是否已對不上目前對話內容（同數量編輯靠 contentRevision 認出；
   /// 舊 state 無修訂時退回訊息數比對）。
   bool isResultStaleForCurrentConversation(StreamingAnalysisState state) {
-    final conversation = _read(conversationProvider(conversationId));
+    final conversation = _currentConversation();
     if (conversation == null) return false;
     final expectedRevision = state.conversationContentRevision;
     if (expectedRevision != null) {
