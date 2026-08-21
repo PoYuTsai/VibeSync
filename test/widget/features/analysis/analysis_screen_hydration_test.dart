@@ -16,7 +16,7 @@ import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_noti
 import 'package:vibesync/features/analysis/data/providers/analysis_record_providers.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/analysis/data/repositories/analysis_record_store.dart';
-import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
+import 'package:vibesync/features/analysis/data/services/analyze_stream_client.dart';
 import 'package:vibesync/features/analysis/data/services/partner_context_resolver.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
@@ -37,7 +37,6 @@ import 'package:vibesync/features/conversation/data/repositories/conversation_ar
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
-import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/message_bubble.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/services/partner_summary_builder.dart';
@@ -79,7 +78,7 @@ class _MutableStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
 
 /// Records streaming calls so tests can assert the screen did not re-trigger
 /// an analysis after hydrating.
-class _RecordingAnalysisService extends AnalysisService {
+class _RecordingAnalyzeStreamClient extends AnalyzeStreamClient {
   int streamCalls = 0;
   List<Message>? streamMessages;
   int? streamPreviousAnalyzedCount;
@@ -87,25 +86,14 @@ class _RecordingAnalysisService extends AnalysisService {
   AnalysisResult? streamResult;
 
   @override
-  Stream<AnalysisStreamUpdate> analyzeStream({
-    String? analysisRunId,
-    required List<Message> messages,
-    SessionContext? sessionContext,
-    String? conversationSummary,
-    String? partnerSummary,
-    String? effectiveStyleContext,
-    String? knownContactName,
-    int? previousAnalyzedCount,
-    int? previousAnalyzedCharCount,
-    OverchargeConfirmationPayload? confirmedOvercharge,
-  }) async* {
+  Stream<AnalysisStreamUpdate> stream(AnalyzeStreamRequest request) async* {
     streamCalls++;
-    streamMessages = List<Message>.from(messages);
-    streamPreviousAnalyzedCount = previousAnalyzedCount;
-    streamPreviousAnalyzedCharCount = previousAnalyzedCharCount;
+    streamMessages = List<Message>.from(request.messages);
+    streamPreviousAnalyzedCount = request.previousAnalyzedCount;
+    streamPreviousAnalyzedCharCount = request.previousAnalyzedCharCount;
     yield AnalysisStreamUpdate.done(
       result: streamResult ?? _analysisResult(),
-      runId: analysisRunId ?? 'stream-premium-refresh',
+      runId: request.analysisRunId ?? 'stream-premium-refresh',
     );
   }
 }
@@ -754,7 +742,7 @@ Map<String, dynamic> _staleSnapshotJson() {
   };
 }
 
-Future<_RecordingAnalysisService> _pumpHydratedAnalysisScreen(
+Future<_RecordingAnalyzeStreamClient> _pumpHydratedAnalysisScreen(
   WidgetTester tester, {
   required StreamingAnalysisState seed,
 }) async {
@@ -774,7 +762,7 @@ class _HydrationHarness {
     required this.archiveStore,
     this.subscription,
   });
-  final _RecordingAnalysisService recorder;
+  final _RecordingAnalyzeStreamClient recorder;
   final _StubConversationRepository repo;
   final MemoryAnalysisHistoryRepository history;
   final _MemoryConversationArchiveStore archiveStore;
@@ -820,7 +808,7 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  final recorder = _RecordingAnalysisService();
+  final recorder = _RecordingAnalyzeStreamClient();
   final repo = _StubConversationRepository(conversation);
   final history = MemoryAnalysisHistoryRepository();
   final resolvedArchiveStore =
@@ -842,7 +830,7 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
         if (analysisRecordOwnerUserId != null)
           analysisRecordOwnerProvider
               .overrideWithValue(analysisRecordOwnerUserId),
-        analysisServiceProvider.overrideWithValue(recorder),
+        analyzeStreamClientProvider.overrideWithValue(recorder),
         coachChatRepositoryProvider.overrideWithValue(
           _EmptyCoachChatRepository(),
         ),
@@ -876,7 +864,7 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  final recorder = _RecordingAnalysisService();
+  final recorder = _RecordingAnalyzeStreamClient();
   final repo = _StubConversationRepository(conversation);
   final history = MemoryAnalysisHistoryRepository();
   final resolvedArchiveStore =
@@ -894,7 +882,7 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
         ),
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
-        analysisServiceProvider.overrideWithValue(recorder),
+        analyzeStreamClientProvider.overrideWithValue(recorder),
         coachChatRepositoryProvider.overrideWithValue(
           _EmptyCoachChatRepository(),
         ),
@@ -929,7 +917,7 @@ Future<_NavigationPersistenceHarness> _pumpAnalysisScreenWithBlockedPersistence(
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  final recorder = _RecordingAnalysisService();
+  final recorder = _RecordingAnalyzeStreamClient();
   final repository = _BlockingConversationRepository(conversation);
   final history = MemoryAnalysisHistoryRepository();
   final archiveStore = _defaultArchiveStore(conversation);
@@ -965,7 +953,7 @@ Future<_NavigationPersistenceHarness> _pumpAnalysisScreenWithBlockedPersistence(
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisRecordStoreProvider.overrideWithValue(recordStore),
         analysisRecordOwnerProvider.overrideWithValue('record-owner'),
-        analysisServiceProvider.overrideWithValue(recorder),
+        analyzeStreamClientProvider.overrideWithValue(recorder),
         coachChatRepositoryProvider.overrideWithValue(
           _EmptyCoachChatRepository(),
         ),
@@ -1042,7 +1030,7 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
   await tester.binding.setSurfaceSize(const Size(430, 1800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  final recorder = _RecordingAnalysisService()..streamResult = streamResult;
+  final recorder = _RecordingAnalyzeStreamClient()..streamResult = streamResult;
   final repo = _StubConversationRepository(conversation);
   final history = MemoryAnalysisHistoryRepository();
   final archiveStore = _defaultArchiveStore(conversation);
@@ -1069,7 +1057,7 @@ Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
         if (analysisRecordOwnerUserId != null)
           analysisRecordOwnerProvider
               .overrideWithValue(analysisRecordOwnerUserId),
-        analysisServiceProvider.overrideWithValue(recorder),
+        analyzeStreamClientProvider.overrideWithValue(recorder),
         partnerContextResolverProvider.overrideWithValue(
           _emptyPartnerContextResolver(),
         ),

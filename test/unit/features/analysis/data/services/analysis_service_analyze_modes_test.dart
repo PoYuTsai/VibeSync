@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
+import 'package:vibesync/features/analysis/data/services/analyze_stream_client.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
 Message _msg(String content, {bool fromMe = false}) {
@@ -462,7 +463,7 @@ void main() {
     });
   });
 
-  group('AnalysisService.analyzeStream', () {
+  group('AnalyzeStreamClient.stream', () {
     test('POSTs responseMode:stream and parses NDJSON updates', () async {
       late http.Request capturedRequest;
       final mockClient = MockClient((request) async {
@@ -511,16 +512,16 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
         expectedTierProvider: () => 'starter',
         revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:def',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       expect(updates.map((u) => u.kind).toList(), [
         AnalysisStreamUpdateKind.started,
@@ -585,13 +586,15 @@ void main() {
           headers: {'content-type': 'application/x-ndjson'},
         );
       });
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
       expect(
-        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        () => service
+            .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+            .toList(),
         throwsA(
           isA<AnalysisException>()
               .having((error) => error.code, 'code', 'NETWORK_ERROR')
@@ -629,13 +632,15 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
       expect(
-        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        () => service
+            .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+            .toList(),
         throwsA(
           isA<MonthlyLimitExceededException>()
               .having((e) => e.remaining, 'remaining', 2)
@@ -667,13 +672,15 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
       expect(
-        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        () => service
+            .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+            .toList(),
         throwsA(
           isA<DailyLimitExceededException>()
               .having((e) => e.remaining, 'remaining', 1)
@@ -696,13 +703,15 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
       expect(
-        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        () => service
+            .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+            .toList(),
         throwsA(isA<DailyLimitExceededException>()),
       );
     });
@@ -728,14 +737,14 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       expect(updates.first.label, '進展順利');
       expect(updates.first.detail, contains('她的興趣/偏好：健康飲食、義美品牌'));
@@ -755,13 +764,13 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
       await expectLater(
-        service.analyzeStream(messages: [_msg('hi')]).toList(),
+        service.stream(AnalyzeStreamRequest(messages: [_msg('hi')])).toList(),
         throwsA(
           isA<AnalysisException>()
               .having(
@@ -792,14 +801,14 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       expect(updates.map((u) => u.kind).toList(), [
         AnalysisStreamUpdateKind.done,
@@ -832,14 +841,14 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       expect(updates.first.content?.title, '心理訊號');
       expect(updates.first.content?.body, contains('她用活潑的方式回應'));
@@ -871,14 +880,14 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       expect(updates.first.content?.title, '關係階段');
       expect(updates.first.content?.body, contains('目前狀態：破冰階段'));
@@ -910,14 +919,14 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       expect(updates.first.content?.title, '關係狀態');
       expect(updates.first.content?.body, '進展順利');
@@ -945,14 +954,14 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       expect(
         updates
@@ -983,14 +992,14 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       expect(updates.first.content?.body, contains('進展順利'));
       expect(updates.first.content?.body, contains('個人層階段'));
@@ -1018,14 +1027,14 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       expect(updates.first.content?.body, contains('進展順利'));
       expect(updates.first.content?.body, isNot(contains('Normal')));
@@ -1054,14 +1063,14 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       final body = updates.first.content?.body;
       expect(body, contains('她的興趣/偏好：健康飲食、義美品牌'));
@@ -1093,14 +1102,14 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       final body = updates.first.content?.body;
       expect(body, contains('她的興趣/偏好：健康飲食、義美品牌'));
@@ -1136,14 +1145,14 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      final updates = await service.analyzeStream(
-        messages: [_msg('hi')],
-      ).toList();
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+          .toList();
 
       final body = updates.first.content?.body;
       expect(body, contains('她的興趣/偏好：健康飲食、義美品牌'));
@@ -1171,15 +1180,17 @@ void main() {
         );
       });
 
-      final service = AnalysisService(
+      final service = AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
 
-      await service.analyzeStream(
-        analysisRunId: 'stream_retry_1',
-        messages: [_msg('hi')],
-      ).toList();
+      await service
+          .stream(AnalyzeStreamRequest(
+            analysisRunId: 'stream_retry_1',
+            messages: [_msg('hi')],
+          ))
+          .toList();
 
       final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
       expect(body['responseMode'], 'stream');
@@ -1191,7 +1202,7 @@ void main() {
     // fragments, or empty). Must match the production fallback string.
     const streamErrorFallback = '這次分析沒順利完成，請稍後再試一次。';
 
-    AnalysisService streamErrorService(Map<String, dynamic> errorEvent) {
+    AnalyzeStreamClient streamErrorService(Map<String, dynamic> errorEvent) {
       final mockClient = MockClient((request) async {
         // Encode as UTF-8 bytes so Chinese message bodies survive (the String
         // Response constructor defaults to Latin1 and rejects CJK).
@@ -1201,7 +1212,7 @@ void main() {
           headers: {'content-type': 'application/x-ndjson'},
         );
       });
-      return AnalysisService(
+      return AnalyzeStreamClient(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
@@ -1222,7 +1233,9 @@ void main() {
       });
 
       await expectLater(
-        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        () => service
+            .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+            .toList(),
         throwsA(
           isA<StreamModeException>()
               .having((e) => e.code, 'code', 'STREAM_CHARGE_FAILED')
@@ -1245,7 +1258,9 @@ void main() {
       });
 
       await expectLater(
-        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        () => service
+            .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+            .toList(),
         throwsA(
           isA<StreamModeException>()
               .having((e) => e.code, 'code', 'STREAM_CHARGE_FAILED')
@@ -1265,7 +1280,9 @@ void main() {
       });
 
       await expectLater(
-        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        () => service
+            .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+            .toList(),
         throwsA(
           isA<StreamModeException>()
               .having((e) => e.message, 'message', streamErrorFallback),
@@ -1283,7 +1300,9 @@ void main() {
       });
 
       await expectLater(
-        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        () => service
+            .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
+            .toList(),
         throwsA(
           isA<StreamModeException>()
               .having((e) => e.message, 'message', streamErrorFallback),

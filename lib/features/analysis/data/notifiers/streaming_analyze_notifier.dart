@@ -9,6 +9,7 @@ import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_recommendation_preview.dart';
 import '../providers/analysis_providers.dart';
 import '../services/analysis_service.dart';
+import '../services/analyze_stream_client.dart';
 
 /// Phases of the analyze flow.
 ///
@@ -254,7 +255,7 @@ class StreamingAnalyzeNotifier
     return const StreamingAnalysisState.idle();
   }
 
-  AnalysisService get _service => ref.read(analysisServiceProvider);
+  AnalyzeStreamClient get _client => ref.read(analyzeStreamClientProvider);
 
   /// Run the analysis pipeline. Multiple concurrent calls supersede
   /// older ones via a generation guard; results from stale generations are
@@ -346,7 +347,7 @@ class StreamingAnalyzeNotifier
       analyzedMessageCount: analyzedMessageCount,
     );
     try {
-      await for (final update in _service.analyzeStream(
+      await for (final update in _client.stream(AnalyzeStreamRequest(
         analysisRunId: analysisRunId,
         messages: messages,
         sessionContext: sessionContext,
@@ -357,7 +358,7 @@ class StreamingAnalyzeNotifier
         previousAnalyzedCount: previousAnalyzedCount,
         previousAnalyzedCharCount: previousAnalyzedCharCount,
         confirmedOvercharge: confirmedOvercharge,
-      )) {
+      ))) {
         stopLocalProgress();
         if (generation != _generation) return;
 

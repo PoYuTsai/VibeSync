@@ -5,11 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
+import 'package:vibesync/features/analysis/data/services/analyze_stream_client.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
-import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 
 Message _msg(String content, {bool fromMe = false}) {
   return Message(
@@ -69,8 +69,8 @@ AnalysisResult _analysisResult() {
   );
 }
 
-class _FakeAnalysisService extends AnalysisService {
-  _FakeAnalysisService();
+class _FakeAnalyzeStreamClient extends AnalyzeStreamClient {
+  _FakeAnalyzeStreamClient();
 
   AnalysisRecommendationPreview? recommendationPreviewResult;
   Exception? recommendationPreviewError;
@@ -87,21 +87,10 @@ class _FakeAnalysisService extends AnalysisService {
   List<Message>? capturedStreamMessages;
 
   @override
-  Stream<AnalysisStreamUpdate> analyzeStream({
-    String? analysisRunId,
-    required List<Message> messages,
-    SessionContext? sessionContext,
-    String? conversationSummary,
-    String? partnerSummary,
-    String? effectiveStyleContext,
-    String? knownContactName,
-    int? previousAnalyzedCount,
-    int? previousAnalyzedCharCount,
-    OverchargeConfirmationPayload? confirmedOvercharge,
-  }) async* {
+  Stream<AnalysisStreamUpdate> stream(AnalyzeStreamRequest request) async* {
     final callIndex = streamCallCount++;
-    lastStreamRunId = analysisRunId;
-    capturedStreamMessages = List<Message>.from(messages);
+    lastStreamRunId = request.analysisRunId;
+    capturedStreamMessages = List<Message>.from(request.messages);
     if (streamStartGate != null) await streamStartGate!.future;
     yield AnalysisStreamUpdate.started(
       runId: emitRunIdOnlyOnDone ? null : 'stream-run',
@@ -138,16 +127,16 @@ class _FakeAnalysisService extends AnalysisService {
   }
 }
 
-ProviderContainer _container(AnalysisService fake) {
+ProviderContainer _container(AnalyzeStreamClient fake) {
   return ProviderContainer(overrides: [
-    analysisServiceProvider.overrideWithValue(fake),
+    analyzeStreamClientProvider.overrideWithValue(fake),
   ]);
 }
 
 void main() {
   group('StreamingAnalyzeNotifier — happy path', () {
     test('build returns idle state', () {
-      final fake = _FakeAnalysisService();
+      final fake = _FakeAnalyzeStreamClient();
       final container = _container(fake);
       addTearDown(container.dispose);
 
@@ -158,7 +147,7 @@ void main() {
     });
 
     test('start uses the streaming analysis transport', () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_happy')
         ..streamResult = _analysisResult()
         ..streamGate = Completer<void>();
@@ -220,7 +209,7 @@ void main() {
 
     test('done event preserves a run id not emitted by earlier events',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..emitRunIdOnlyOnDone = true
         ..streamResult = _analysisResult();
       final container = _container(fake);
@@ -239,7 +228,7 @@ void main() {
   group('StreamingAnalyzeNotifier — failure paths', () {
     test('pre-recommendation transport failure keeps the server run retryable',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewError = AnalysisException(
           '網路忙線',
           code: 'NETWORK_ERROR',
@@ -272,7 +261,7 @@ void main() {
 
     test('quota exhaustion failure uses localized streaming error copy',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..streamError = DailyLimitExceededException(
           dailyLimit: 15,
           used: 15,
@@ -305,7 +294,7 @@ void main() {
     test(
         'stream failure preserves recommendation preview and emits failedAfterRecommendation with retries',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_keep')
         ..streamError = StreamModeException(
           '完整分析失敗，可以重試。',
@@ -335,7 +324,7 @@ void main() {
 
     test('retryStream reuses analysisRunId on the streaming transport',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_retry')
         ..streamError = StreamModeException(
           'transient',
@@ -376,7 +365,7 @@ void main() {
     test(
         'retryStream after unrecoverable stream error keeps retriesRemaining=0',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview()
         ..streamError = StreamModeException(
           '完整分析已達重試上限，請重新分析。',
@@ -406,7 +395,7 @@ void main() {
     test(
         'monthly quota 429 after preview → quotaExceeded state（不得落 generic retry-exhausted）',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_quota')
         ..streamError = MonthlyLimitExceededException(
           monthlyLimit: 200,
@@ -436,7 +425,7 @@ void main() {
     test(
         'daily quota 429 after content → quotaExceeded daily + retriesRemaining 0'
         '（regression：wait action 過去會給 1 次無意義 retry）', () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..streamError = DailyLimitExceededException(
           dailyLimit: 15,
           used: 15,
@@ -471,7 +460,7 @@ void main() {
 
     test('retryStream 撞 quota 429 → quotaExceeded state（Bruce 實際觸發路）',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_retry_quota')
         ..streamError = StreamModeException(
           'transient',
@@ -511,7 +500,7 @@ void main() {
     });
 
     test('成功 retry 後 quotaExceeded 清空（不殘留舊 quota 卡）', () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_quota_clear')
         ..streamError = MonthlyLimitExceededException(
           monthlyLimit: 200,
@@ -545,7 +534,7 @@ void main() {
     test(
         'fresh-start quota 429（無 content）維持 failedBeforeRecommendation 並帶 quotaExceeded',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..streamError = MonthlyLimitExceededException(
           monthlyLimit: 30,
           used: 30,
@@ -569,7 +558,7 @@ void main() {
     });
 
     test('exception 未帶 remaining 時 fallback 用 limit-used 計算', () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_fallback')
         ..streamError = DailyLimitExceededException(
           dailyLimit: 15,
@@ -638,7 +627,7 @@ void main() {
   group('StreamingAnalyzeNotifier — retry clears stale error (P2)', () {
     test('retryStream clears streamErrorMessage/code during streamingReport',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_clear')
         ..streamError = StreamModeException(
           'stale failure',
@@ -688,7 +677,7 @@ void main() {
     });
 
     test('retryStream clears preserved stream content before replay', () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..streamError = StreamModeException(
           'stream reset',
           code: 'STREAM_INTERRUPTED_AFTER_CONTENT',
@@ -737,7 +726,7 @@ void main() {
   group('StreamingAnalyzeNotifier — retry args caching (P1)', () {
     test('retryStream() with no args reuses messages cached from start()',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_cached')
         ..streamError = StreamModeException(
           'transient',
@@ -778,7 +767,7 @@ void main() {
     });
 
     test('a second start() supersedes the cached retry args', () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_A')
         ..streamError = StreamModeException(
           'fail-A',
@@ -817,7 +806,7 @@ void main() {
 
     test('retryStream is no-op when called before start (no cached runId)',
         () async {
-      final fake = _FakeAnalysisService();
+      final fake = _FakeAnalyzeStreamClient();
       final container = _container(fake);
       addTearDown(container.dispose);
 
@@ -838,7 +827,7 @@ void main() {
       // First start: recommendation preview yields runId A, full is gated and never publishes
       // because a second start() arrives mid-flight.
       final gateA = Completer<void>();
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_A')
         ..streamResult = _analysisResult()
         ..streamGate = gateA;
@@ -876,7 +865,7 @@ void main() {
   group('StreamingAnalyzeNotifier streaming local prelude progress', () {
     test('updates local progress while waiting for first server event',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_prelude')
         ..streamResult = _analysisResult()
         ..streamStartGate = Completer<void>();
@@ -911,7 +900,7 @@ void main() {
 
     test('accumulates structured content while report stream is running',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'run_content')
         ..streamResult = _analysisResult()
         ..streamGate = Completer<void>()
@@ -946,7 +935,7 @@ void main() {
 
     test('content-before-recommendation failure keeps retryable stream state',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..streamError = StreamModeException(
           'stream reset',
           code: 'STREAM_INTERRUPTED_AFTER_CONTENT',
@@ -979,7 +968,7 @@ void main() {
     });
 
     test('server progress takes over and is not overwritten locally', () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..streamResult = _analysisResult()
         ..streamStartGate = Completer<void>()
         ..streamGate = Completer<void>();
@@ -1015,7 +1004,7 @@ void main() {
   group('StreamingAnalyzeNotifier stream recovery', () {
     test('automatically resumes the same run after a recoverable disconnect',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'stream-run')
         ..streamResult = _analysisResult()
         ..streamCallErrors = <Exception?>[
@@ -1042,7 +1031,7 @@ void main() {
 
     test('uses the same run when recovery reports that a retry is ready',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..recommendationPreviewResult = _preview(runId: 'stream-run')
         ..streamResult = _analysisResult()
         ..streamCallErrors = <Exception?>[
@@ -1075,7 +1064,7 @@ void main() {
 
     test('keeps the run retryable when recovery times out before a preview',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..streamError = StreamModeException(
           '原本的分析仍在整理中。',
           code: 'STREAM_RUN_STILL_PROCESSING',
@@ -1110,7 +1099,7 @@ void main() {
 
     test('does not attempt same-run recovery before receiving a run id',
         () async {
-      final fake = _FakeAnalysisService()
+      final fake = _FakeAnalyzeStreamClient()
         ..emitRunIdOnlyOnDone = true
         ..streamError = AnalysisException(
           '連線中斷。',

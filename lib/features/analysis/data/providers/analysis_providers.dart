@@ -12,26 +12,39 @@ import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repo_view.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../services/analysis_service.dart';
+import '../services/analyze_stream_client.dart';
 import '../services/partner_context_resolver.dart';
+
+Future<String?> _revenueCatAppUserId() async {
+  final userId = SupabaseService.currentUser?.id;
+  final customerInfo = userId == null
+      ? await RevenueCatService.getCustomerInfo().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => null,
+        )
+      : await RevenueCatService.getCustomerInfoForAppUserId(userId).timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => null,
+        );
+  return RevenueCatService.getRevenueCatAppUserId(customerInfo);
+}
 
 /// Provider for AnalysisService
 final analysisServiceProvider = Provider<AnalysisService>((ref) {
   final subscription = ref.watch(subscriptionProvider);
   return AnalysisService(
     expectedTierProvider: () => subscription.tier,
-    revenueCatAppUserIdProvider: () async {
-      final userId = SupabaseService.currentUser?.id;
-      final customerInfo = userId == null
-          ? await RevenueCatService.getCustomerInfo().timeout(
-              const Duration(seconds: 3),
-              onTimeout: () => null,
-            )
-          : await RevenueCatService.getCustomerInfoForAppUserId(userId).timeout(
-              const Duration(seconds: 3),
-              onTimeout: () => null,
-            );
-      return RevenueCatService.getRevenueCatAppUserId(customerInfo);
-    },
+    revenueCatAppUserIdProvider: _revenueCatAppUserId,
+  );
+});
+
+/// AnalyzeChat 主分析唯一串流傳輸的 provider（entitlement 佐證與
+/// [analysisServiceProvider] 同一套 wiring）。
+final analyzeStreamClientProvider = Provider<AnalyzeStreamClient>((ref) {
+  final subscription = ref.watch(subscriptionProvider);
+  return AnalyzeStreamClient(
+    expectedTierProvider: () => subscription.tier,
+    revenueCatAppUserIdProvider: _revenueCatAppUserId,
   );
 });
 
