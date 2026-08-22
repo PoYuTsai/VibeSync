@@ -338,8 +338,25 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
   return parsed;
 }
 
+const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
+
 String _snapshotMirrorKey(String conversationId, String rawJson) =>
-    '$conversationId\u0000${rawJson.trim()}';
+    '$conversationId\u0000${_normalizedSnapshotPayload(rawJson)}';
+
+String _normalizedSnapshotPayload(String rawJson) {
+  final trimmed = rawJson.trim();
+  try {
+    final decoded = jsonDecode(trimmed);
+    if (decoded is! Map) return trimmed;
+    final snapshot = decoded.map(
+      (key, value) => MapEntry(key.toString(), value),
+    )..remove(_snapshotClientMetaKey);
+    return jsonEncode(snapshot);
+  } catch (_) {
+    // 損壞的舊資料仍沿用原始字串比對，避免正規化失敗影響作戰板顯示。
+    return trimmed;
+  }
+}
 
 String _analysisRecordArchiveTitle(AnalysisRecord record) {
   final hasSavedText = record.messages.any(

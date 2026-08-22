@@ -54,6 +54,17 @@ String _snapshot({
         },
     });
 
+String _conversationSnapshotWithMeta(String analysisSnapshotJson) {
+  final snapshot = Map<String, dynamic>.from(
+    jsonDecode(analysisSnapshotJson) as Map,
+  );
+  snapshot['__vibesync_snapshot_meta_v1'] = {
+    'contentRevision': 'revision-c1',
+    'messageCount': 1,
+  };
+  return jsonEncode(snapshot);
+}
+
 AnalysisRecord _record({
   required String id,
   required String conversationId,
@@ -127,6 +138,48 @@ void main() {
       );
       expect(history.label, '互動脈絡');
       expect(history.children.single.label, '本輪｜她主動提到最近開始爬山');
+    });
+
+    test('第一次分析的 Conversation metadata 鏡像不會被誤算為第二次', () {
+      final snapshot = _snapshot(
+        catchablePoint: '她分享新發現的高蛋白牛奶，還補了騎車配畫面',
+      );
+      final map = buildPartnerMindMap(
+        partnerName: 'test',
+        aggregate: _aggregate(interests: [], traits: []),
+        conversations: [
+          _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 8, 22),
+            snapshotJson: _conversationSnapshotWithMeta(snapshot),
+          ),
+        ],
+        analysisRecords: [
+          _record(
+            id: 'first',
+            conversationId: 'c1',
+            createdAt: DateTime(2026, 8, 22),
+            snapshotJson: snapshot,
+          ),
+        ],
+      );
+
+      expect(map.root.label, 'test・已分析 1 次');
+      final stage = map.root.children.firstWhere(
+        (node) => node.branch == MindMapBranch.stage,
+      );
+      expect(stage.children.single.label, '建立男女感');
+      final depth = map.root.children.firstWhere(
+        (node) => node.branch == MindMapBranch.topicDepth,
+      );
+      expect(depth.children.single.label, '個人層');
+      final history = map.root.children.firstWhere(
+        (node) => node.branch == MindMapBranch.interactionHistory,
+      );
+      expect(
+        history.children.single.label,
+        '本輪｜她分享新發現的高蛋白牛奶，還補了騎車配畫面',
+      );
     });
 
     test('第二、三次分析依序顯示本輪、上輪、上上輪', () {
