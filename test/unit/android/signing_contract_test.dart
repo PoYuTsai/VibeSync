@@ -80,10 +80,21 @@ void main() {
         contains(r"grep -qE '^[0-9A-F]{64}$'"),
         reason: '正規化後必須恰為 64 位十六進位（fail closed）',
       );
+      expect(
+        gate,
+        contains('extract_single_apk_signer_sha256'),
+        reason: 'APK signer digest 必須恰好一個，多 signer 不得被 head -1 吞掉',
+      );
+      expect(
+        gate.contains('CHECK_ANDROID_SIGNING_LIB_ONLY'),
+        isFalse,
+        reason: '正式 gate 不得存在可由環境變數觸發的 bypass',
+      );
       final parserTest =
           readRepoFile('tools/preflight/check-android-signing-parser-test.sh');
       expect(parserTest, contains('extract_apk_signer_sha256'));
       expect(parserTest, contains('validate_signer_sha256'));
+      expect(parserTest, contains('extract_single_apk_signer_sha256'));
       expect(
         readRepoFile('.github/workflows/distribute.yml'),
         contains('check-android-signing-parser-test.sh'),

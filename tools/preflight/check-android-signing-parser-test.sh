@@ -6,8 +6,9 @@
 # tools/android/signing-gate-negative-check.sh 提供。
 set -euo pipefail
 
+# gate 腳本偵測「被 source」就只載入函式；直接執行一律走完整檢查
 gate="$(cd "$(dirname "$0")" && pwd)/check-android-signing.sh"
-CHECK_ANDROID_SIGNING_LIB_ONLY=1 source "$gate"
+source "$gate"
 
 expected="1468e4a3a63f403d524285a6de07dbd040d38d09090b2736f2877761fc8b32ee"
 expected_norm="1468E4A3A63F403D524285A6DE07DBD040D38D09090B2736F2877761FC8B32EE"
@@ -68,5 +69,33 @@ for bad in "1468e4" "${expected}ff" "${expected%??}zz" ""; do
   pass=$((pass + 1))
   echo "OK：畸形 digest 被擋下（${bad:-空字串}）"
 done
+
+# 7) 唯一 signer 守門：恰好一個 digest 才成功；零個、相異雙 signer、
+#    同 digest 重複行（多 signer）都必須非零退出（fail closed）
+other="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+check "唯一 signer 成功輸出" \
+  "$(extract_single_apk_signer_sha256 "$current_output")" "$expected"
+dual_diff="Signer #1 certificate SHA-256 digest: $expected
+Signer #2 certificate SHA-256 digest: $other"
+dual_same="V2 Signer: certificate SHA-256 digest: $expected
+Signer #1 certificate SHA-256 digest: $expected"
+for multi in "$dual_diff" "$dual_same" "no digest here"; do
+  if extract_single_apk_signer_sha256 "$multi" >/dev/null 2>&1; then
+    echo "::error::parser 回歸測試失敗：非唯一 signer 輸出應被擋下卻通過了"
+    exit 1
+  fi
+  pass=$((pass + 1))
+done
+echo "OK：零個／雙 signer／重複 digest 都被擋下"
+
+# 8) bypass 負向回歸：直接執行 gate 時，環境變數不能讓它跳過檢查；
+#    即使帶舊 bypass 變數且 artifact 不存在，也必須非零退出
+if CHECK_ANDROID_SIGNING_LIB_ONLY=1 "$gate" artifact /nonexistent/app.apk \
+    >/dev/null 2>&1; then
+  echo "::error::parser 回歸測試失敗：直接執行 gate 竟被環境變數 bypass 成功退出"
+  exit 1
+fi
+pass=$((pass + 1))
+echo "OK：直接執行 gate 無法被環境變數 bypass"
 
 echo "AND-02 parser 回歸測試全部通過（$pass 項）"

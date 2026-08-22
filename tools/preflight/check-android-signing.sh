@@ -49,13 +49,24 @@ normalize_sha256() {
   tr -d ': ' <<<"$1" | tr '[:lower:]' '[:upper:]'
 }
 
-# 從 apksigner --print-certs 輸出擷取 signer 憑證 SHA-256（行首錨定）。
-# 接受現行「V2 Signer:」與舊版「Signer #N」兩種前綴；找不到就輸出空字串。
+# 從 apksigner --print-certs 輸出擷取所有 signer 憑證 SHA-256（行首錨定，
+# 每行一個）。接受現行「V2 Signer:」與舊版「Signer #N」兩種前綴。
 # 迴歸背景：run 32544433425 的 apksigner 只印 V2 Signer: 前綴，
 # 舊解析器只認 Signer #1 導致誤擋。
 extract_apk_signer_sha256() {
   sed -nE 's/^(V2 Signer:|Signer #[0-9]+) certificate SHA-256 digest: //p' \
-    <<<"$1" | head -1
+    <<<"$1"
+}
+
+# 本專案 release APK 只該有單一 signer：digest 行必須恰好一行才成功並輸出
+# 該值；零行（讀不到）、多行（多 signer 或相異 signer）都非零退出（fail
+# closed），不得用 head -1 靜默吞掉額外 signer。
+extract_single_apk_signer_sha256() {
+  local digests count
+  digests=$(extract_apk_signer_sha256 "$1")
+  count=$(grep -c . <<<"$digests" || true)
+  [ "$count" -eq 1 ] || return 1
+  printf '%s\n' "$digests"
 }
 
 # 正規化並驗證 signer SHA-256：正規化後必須恰為 64 位十六進位，
@@ -67,9 +78,11 @@ validate_signer_sha256() {
   echo "$normalized"
 }
 
-# 給 parser 回歸測試 source 用：只載入函式，不進主流程
-if [ "${CHECK_ANDROID_SIGNING_LIB_ONLY:-}" = "1" ]; then
-  return 0 2>/dev/null || exit 0
+# 給 parser 回歸測試 source 用：只有「被 source」才跳過主流程。
+# 直接執行時一律走完整 gate，任何環境變數都不能關掉正式檢查
+# （負向回歸見 check-android-signing-parser-test.sh）。
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  return 0
 fi
 
 mode="${1:-}"
@@ -121,7 +134,8 @@ case "$mode" in
         [ -n "$apksigner" ] && [ -n "$aapt" ] || fail "build-tools 缺 apksigner/aapt"
         certs=$("$apksigner" verify --print-certs "$artifact") \
           || fail "AND-02 gate：APK 簽名驗證失敗"
-        signer_sha256_raw=$(extract_apk_signer_sha256 "$certs")
+        signer_sha256_raw=$(extract_single_apk_signer_sha256 "$certs") \
+          || fail "AND-02 gate：APK signer digest 必須恰好一個（讀不到、多 signer 或相異 signer 都擋下，fail closed）"
         pkg=$("$aapt" dump badging "$artifact" \
           | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
         [ "$pkg" = "$EXPECTED_PACKAGE" ] \
