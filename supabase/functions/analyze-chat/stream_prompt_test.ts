@@ -126,6 +126,17 @@ Deno.test("v2: recommendation event is thin (selectedStyle + reason + expectedRe
   const prompt = buildStreamSystemPrompt("BASE");
 
   assert(prompt.includes("`expectedReaction`"));
+  assert(
+    prompt.includes(
+      "The `analysis.recommendation.selectedStyle` must match `analysis.decision.selectedStyle`.",
+    ),
+  );
+  assertEquals(
+    prompt.includes(
+      "match the final recommendation direction in `analysis.done.finalResult`",
+    ),
+    false,
+  );
   // 瘦卡：不再要求 message/quotedContext 全文欄位。
   assertEquals(
     prompt.includes(
@@ -262,6 +273,12 @@ Deno.test("metrics, coach hint, and report sections name their payload contracts
   assert(reportStart >= 0 && doneStart > reportStart);
 
   const metrics = prompt.slice(metricsStart, coachStart);
+  assert(prompt.includes("Emit `analysis.metrics` exactly once (REQUIRED)"));
+  assert(prompt.includes("`score` 0–100"));
+  assert(prompt.includes("all 0–100"));
+  for (const level of ["cold", "warm", "hot", "veryHot"]) {
+    assert(metrics.includes(level), `enthusiasm level missing ${level}`);
+  }
   assert(metrics.includes("enthusiasm"));
   assert(metrics.includes("score"));
   assert(metrics.includes("level"));
@@ -285,6 +302,7 @@ Deno.test("metrics, coach hint, and report sections name their payload contracts
   }
 
   const coach = prompt.slice(coachStart, reportStart);
+  assert(prompt.includes("Emit `analysis.coach_hint` exactly once (REQUIRED)"));
   for (const key of [
     "coachActionHint",
     "catchablePoint",
@@ -351,6 +369,26 @@ Deno.test("metrics, coach hint, and report sections name their payload contracts
     assert(done.includes(key), `done payload missing ${key}`);
   }
   assertEquals(done.includes("every legacy-compatible analysis field"), false);
+  assert(done.includes("one enum string"));
+  assert(done.includes("warnings` (string array; `[]` if none)"));
+  for (const scenario of [
+    "normal",
+    "purpose_test",
+    "emotion_test",
+    "personality_observation",
+    "cold_display",
+    "vague_invite",
+    "reconnect",
+    "confirm_invite",
+    "strong_screening",
+    "deep_connection",
+    "go_no_go",
+    "risk_time_cost",
+    "complex_emotion",
+  ]) {
+    assert(done.includes(scenario), `scenario value missing ${scenario}`);
+  }
+  assert(done.includes("Map `coordination_handoff` to `confirm_invite`"));
 });
 
 Deno.test("stage prior section: legal stage renders weak-prior block, junk renders nothing", () => {
