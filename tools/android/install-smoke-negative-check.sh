@@ -29,7 +29,12 @@ cat > "$work/adb" <<'FAKE'
 # 極簡 fake adb：只回答 install-smoke.sh 會問的問題，行為由環境變數控制。
 #   FAKE_RESOLVE  — cmd package resolve-activity 的輸出（必填）
 #   FAKE_TAIL_LOG — clean|crash|cnf：全量 logcat 的異常內容
+#   FAKE_HANG     — 子字串；命中「cmd＋參數」的 adb 呼叫永不返回（模擬
+#                   emulator/adbd wedge；exec sleep 讓 timeout 信號直達）
 cmd="${1:-}"; shift || true
+case "$cmd $*" in
+  *"${FAKE_HANG:-__none__}"*) exec sleep 300 ;;
+esac
 case "$cmd" in
   logcat)
     case "${FAKE_TAIL_LOG:-clean}" in
@@ -106,4 +111,58 @@ expect_fail "crash" "runtime 例外"
 run_smoke "$good_resolve" cnf
 expect_fail "ClassNotFound" "ClassNotFoundException"
 
-echo "install-smoke fake-adb 迴歸 OK：正向通過；wrong-owner／chooser／crash／ClassNotFound 全數 fail closed"
+# --- 6. post-launch adb 卡死（API24 smoke 掛滿 45 分鐘 job timeout 迴歸）---
+# 最小區間重現：MainActivity am start -W 回 Status ok 之後，逐一（單變數）讓
+# 一個 post-launch adb 邊界永不返回：pidof、callback am start（-a 只中
+# callback、不中 launcher 的 -n）、logcat。smoke 必須「自己」以 exit 1
+# fail closed 並點名精確 stage；掛到外層 timeout 15（exit=124）或 stage
+# 對不上都判紅。
+for spec in "pidof|launcher-alive" "am start -W -a|callback-start" "logcat|logcat"; do
+  hang="${spec%%|*}"; stage="${spec##*|}"
+  set +e
+  FAKE_RESOLVE="$good_resolve" FAKE_TAIL_LOG=clean FAKE_HANG="$hang" \
+    SMOKE_STARTUP_WAIT=0 SMOKE_ADB_TIMEOUT=2 \
+    PATH="$work:$PATH" timeout 15 bash "$smoke" "$work/app.apk" >"$work/out" 2>&1
+  status=$?
+  set -e
+  if [ "$status" -eq 124 ]; then
+    cat "$work/out"
+    echo "::error::adb 卡死（$hang）掛到外層 timeout（exit=124），smoke 未自行 fail closed"
+    exit 1
+  fi
+  if [ "$status" -ne 1 ]; then
+    cat "$work/out"
+    echo "::error::adb 卡死（$hang）應由 smoke 內部以 exit 1 fail closed，卻回 exit=$status"
+    exit 1
+  fi
+  grep -qF "adb 卡住（stage：$stage）" "$work/out" || {
+    cat "$work/out"
+    echo "::error::adb 卡死（$hang）診斷未點名精確 stage「$stage」"
+    exit 1
+  }
+done
+
+# --- 7. SMOKE_ADB_TIMEOUT 驗證（GNU timeout 0＝停用上限，必須 fail closed）---
+# 0、超上限、非數字、溢位長數字串（bash 數值比較會 integer expression
+# expected 後放行）、前導零都不得進到任何 adb 呼叫；必須 exit 1 並給
+# 可行動訊息。
+for bad in 0 601 abc 99999999999999999999999 0001; do
+  set +e
+  FAKE_RESOLVE="$good_resolve" FAKE_TAIL_LOG=clean \
+    SMOKE_STARTUP_WAIT=0 SMOKE_ADB_TIMEOUT="$bad" \
+    PATH="$work:$PATH" timeout 15 bash "$smoke" "$work/app.apk" >"$work/out" 2>&1
+  status=$?
+  set -e
+  if [ "$status" -ne 1 ]; then
+    cat "$work/out"
+    echo "::error::SMOKE_ADB_TIMEOUT=$bad 應 fail closed（exit 1），卻回 exit=$status"
+    exit 1
+  fi
+  grep -qF "SMOKE_ADB_TIMEOUT" "$work/out" || {
+    cat "$work/out"
+    echo "::error::SMOKE_ADB_TIMEOUT=$bad 的錯誤訊息未指出該變數"
+    exit 1
+  }
+done
+
+echo "install-smoke fake-adb 迴歸 OK：正向通過；wrong-owner／chooser／crash／ClassNotFound／post-launch adb 卡死（launcher-alive、callback-start、logcat 精確 stage）／SMOKE_ADB_TIMEOUT 非法值 全數 fail closed"
