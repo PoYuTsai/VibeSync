@@ -49,7 +49,7 @@ The user-facing rendering of the latest stage snapshot. It highlights one curren
 _Avoid_: Relationship maturity, achievement ladder
 
 **Interaction investment**:
-The other person's observable effort in the latest analyzed fragment: substantive content, questions, extensions, callbacks, self-disclosure, emotional specificity, invitation windows, and reciprocity. It does not measure attraction, relationship maturity, or whether continuing is advisable.
+The other person's observable effort in the latest analyzed fragment: substantive content, questions, extensions, callbacks, self-disclosure, emotional specificity, invitation windows, and reciprocity. Model reasoning uses 0–100 and the approved product calibration exposes 0–90 to the user; 90 is the visible maximum. It does not measure attraction, relationship maturity, or whether continuing is advisable.
 _Avoid_: Love score, partner background score, user's message effort
 
 **Relationship context**:
