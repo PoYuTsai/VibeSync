@@ -39,6 +39,9 @@ function makeRun(overrides: Record<string, unknown> = {}): any {
 function makeDeps(options: {
   calls: string[];
   analysisRunId?: string | null;
+  effectiveTier?: string;
+  allowedFeatures?: string[];
+  capturedMaxTokens?: number[];
   // deno-lint-ignore no-explicit-any
   getRunResult?: any;
   modelChunks?: string[];
@@ -77,9 +80,9 @@ function makeDeps(options: {
     requestType: "analyze",
     analyzeMode: "normal",
     expectedTier: "free",
-    effectiveTier: "free",
+    effectiveTier: options.effectiveTier ?? "free",
     accountIsTest: false,
-    allowedFeatures: ["extend", "tease"],
+    allowedFeatures: options.allowedFeatures ?? ["extend", "tease"],
     quotaUsage: {
       shouldChargeQuota: true,
       quotaReason: "analyze_message_based",
@@ -107,8 +110,9 @@ function makeDeps(options: {
     claudeApiKey: "fake-key",
     supabaseUrl: "http://localhost:54321",
     supabaseServiceKey: "fake-service-key",
-    callModel: () => {
+    callModel: (request) => {
       calls.push("callModel");
+      options.capturedMaxTokens?.push(request.max_tokens);
       if (options.modelError) return Promise.reject(options.modelError);
       return Promise.resolve({
         model: "claude-sonnet-5",
@@ -194,6 +198,29 @@ Deno.test("stream fresh run：createPendingRun → callModel → chargeRun → m
   assert(!calls.includes("getRun"), "fresh run 不讀舊 run");
   assert(!calls.includes("reserveRetry"), "fresh run 不佔 retry 名額");
   assert(!calls.includes("markFailed"));
+});
+
+Deno.test("stream Free provider request uses 4500 output-token cap", async () => {
+  const calls: string[] = [];
+  const capturedMaxTokens: number[] = [];
+
+  await runWithStubbedFetch(makeDeps({ calls, capturedMaxTokens }));
+
+  assertEquals(capturedMaxTokens, [4500]);
+});
+
+Deno.test("stream paid provider request keeps 6000 output-token cap", async () => {
+  const calls: string[] = [];
+  const capturedMaxTokens: number[] = [];
+
+  await runWithStubbedFetch(makeDeps({
+    calls,
+    capturedMaxTokens,
+    effectiveTier: "essential",
+    allowedFeatures: ["extend", "resonate", "tease", "humor", "coldRead"],
+  }));
+
+  assertEquals(capturedMaxTokens, [6000]);
 });
 
 Deno.test("stream provider 失敗：markFailed，絕不 chargeRun", async () => {

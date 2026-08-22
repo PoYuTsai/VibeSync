@@ -6,8 +6,8 @@ import {
 } from "./stream_budget.ts";
 
 Deno.test("stream budget keeps two-style Free compact", () => {
-  assertEquals(STREAM_ANALYZE_BASE_MAX_TOKENS, 3200);
-  assertEquals(streamAnalyzeMaxTokensForStyleCount(2), 3200);
+  assertEquals(STREAM_ANALYZE_BASE_MAX_TOKENS, 4500);
+  assertEquals(streamAnalyzeMaxTokensForStyleCount(2), 4500);
 });
 
 Deno.test("stream budget gives the five-style paid contract enough headroom", () => {

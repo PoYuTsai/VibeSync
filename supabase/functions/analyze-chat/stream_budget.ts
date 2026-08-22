@@ -1,4 +1,4 @@
-export const STREAM_ANALYZE_BASE_MAX_TOKENS = 3200;
+export const STREAM_ANALYZE_BASE_MAX_TOKENS = 4500;
 export const STREAM_ANALYZE_FULL_STYLE_MAX_TOKENS = 6000;
 
 /// Free requests currently emit two reply styles, while paid requests emit the
