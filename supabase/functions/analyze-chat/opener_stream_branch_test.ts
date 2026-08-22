@@ -9,8 +9,16 @@ import {
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
+// new_topic 分支已抽到 new_topic_handler.ts；掃描 corpus 串接兩檔。
 async function readIndexSource(): Promise<string> {
-  return await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const index = await Deno.readTextFile(new URL("./analyze_chat_handler.ts", import.meta.url));
+  const opener = await Deno.readTextFile(
+    new URL("./opener_handler.ts", import.meta.url),
+  );
+  const newTopic = await Deno.readTextFile(
+    new URL("./new_topic_handler.ts", import.meta.url),
+  );
+  return `${index}\n${opener}\n${newTopic}`;
 }
 
 function sliceBetween(source: string, startNeedle: string, endNeedle: string) {
@@ -25,8 +33,8 @@ Deno.test("opener stream：flag 閘門＋fall back to legacy 存在", async () =
   const source = await readIndexSource();
   assert(
     source.includes(
-      'const openerStreamRequested = responseMode === "stream" &&\n' +
-        '        Deno.env.get("OPENER_STREAM_ENABLED") === "true";',
+      'const openerStreamRequested = deps.responseMode === "stream" &&\n' +
+        '    Deno.env.get("OPENER_STREAM_ENABLED") === "true";',
     ),
     "opener stream 必須被 OPENER_STREAM_ENABLED flag 閘住",
   );
@@ -65,14 +73,14 @@ Deno.test("new_topic stream：quick/full 照舊 400、stream 放行且被 flag �
   const source = await readIndexSource();
   assert(
     source.includes(
-      'if (responseMode !== "legacy" && responseMode !== "stream") {',
+      'if (deps.responseMode !== "legacy" && deps.responseMode !== "stream") {',
     ),
     "new_topic 只放行 legacy 與 stream；quick/full 仍 400",
   );
   assert(
     source.includes(
-      'const newTopicStreamRequested = responseMode === "stream" &&\n' +
-        '        Deno.env.get("OPENER_STREAM_ENABLED") === "true";',
+      'const newTopicStreamRequested = deps.responseMode === "stream" &&\n' +
+        '    Deno.env.get("OPENER_STREAM_ENABLED") === "true";',
     ),
     "new_topic stream 必須被同一個 OPENER_STREAM_ENABLED flag 閘住",
   );
@@ -156,7 +164,8 @@ Deno.test("stream 分支不外流生成內容：done 之前只有 started/progre
     // emit 呼叫只允許固定事件常數與共用 outcome 轉換；不得把 fullText /
     // parsed 內容塞進 progress 事件。
     assertFalse(
-      branch.includes("fullText.slice") || branch.includes("fullText.substring"),
+      branch.includes("fullText.slice") ||
+        branch.includes("fullText.substring"),
       "progress 事件不得帶模型輸出片段（扣費前不外流內容）",
     );
   }

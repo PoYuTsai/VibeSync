@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/message_calculator.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
-import '../../domain/entities/analysis_models.dart';
-import '../../domain/entities/analysis_recommendation_preview.dart';
+
 import '../providers/analysis_providers.dart';
 import '../services/analysis_service.dart';
+import '../services/analyze_stream_client.dart';
+import '../../domain/entities/analysis_models.dart';
+import '../../domain/entities/analysis_recommendation_preview.dart';
 
 /// Phases of the analyze flow.
 ///
@@ -25,27 +27,6 @@ enum StreamingAnalyzePhase {
   done,
   failedAfterRecommendation,
 }
-
-const List<(String, String)> _streamPreludeProgress = <(String, String)>[
-  (
-    '正在送出完整分析請求',
-    '正在把最新對話與脈絡送到分析端。',
-  ),
-  (
-    '正在讀取對話脈絡',
-    '正在整理對方訊號、你的回覆與上下文。',
-  ),
-  (
-    '正在推演回覆策略',
-    '正在判斷關係階段、對方這次的投入訊號與最適合的下一步。',
-  ),
-  (
-    '完整分析仍在進行',
-    '正在等待模型完成深度推理，請保持連線。',
-  ),
-];
-
-const Duration _streamPreludeProgressInterval = Duration(seconds: 3);
 
 /// Quota 不足明細。當 analyze 串流以 429 的
 /// [DailyLimitExceededException] / [MonthlyLimitExceededException] 中止時
@@ -211,6 +192,27 @@ class StreamingAnalysisState {
   }
 }
 
+const List<(String, String)> _streamPreludeProgress = <(String, String)>[
+  (
+    '正在送出完整分析請求',
+    '正在把最新對話與脈絡送到分析端。',
+  ),
+  (
+    '正在讀取對話脈絡',
+    '正在整理對方訊號、你的回覆與上下文。',
+  ),
+  (
+    '正在推演回覆策略',
+    '正在判斷關係階段、對方這次的投入訊號與最適合的下一步。',
+  ),
+  (
+    '完整分析仍在進行',
+    '正在等待模型完成深度推理，請保持連線。',
+  ),
+];
+
+const Duration _streamPreludeProgressInterval = Duration(seconds: 3);
+
 final streamingAnalyzeProvider = NotifierProvider.autoDispose
     .family<StreamingAnalyzeNotifier, StreamingAnalysisState, String>(
   StreamingAnalyzeNotifier.new,
@@ -254,7 +256,7 @@ class StreamingAnalyzeNotifier
     return const StreamingAnalysisState.idle();
   }
 
-  AnalysisService get _service => ref.read(analysisServiceProvider);
+  AnalyzeStreamClient get _client => ref.read(analyzeStreamClientProvider);
 
   /// Run the analysis pipeline. Multiple concurrent calls supersede
   /// older ones via a generation guard; results from stale generations are
@@ -346,7 +348,7 @@ class StreamingAnalyzeNotifier
       analyzedMessageCount: analyzedMessageCount,
     );
     try {
-      await for (final update in _service.analyzeStream(
+      await for (final update in _client.stream(AnalyzeStreamRequest(
         analysisRunId: analysisRunId,
         messages: messages,
         sessionContext: sessionContext,
@@ -357,7 +359,7 @@ class StreamingAnalyzeNotifier
         previousAnalyzedCount: previousAnalyzedCount,
         previousAnalyzedCharCount: previousAnalyzedCharCount,
         confirmedOvercharge: confirmedOvercharge,
-      )) {
+      ))) {
         stopLocalProgress();
         if (generation != _generation) return;
 

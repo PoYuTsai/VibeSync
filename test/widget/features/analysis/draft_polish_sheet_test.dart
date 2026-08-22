@@ -30,6 +30,11 @@ void main() {
     return controller;
   }
 
+  testWidgets('操作前明示成功固定使用一則（原 source-scan 契約改行為驗證）', (tester) async {
+    await pumpSheet(tester, onPolish: (_) async => null);
+    expect(find.textContaining('成功完成使用 1 則'), findsOneWidget);
+  });
+
   testWidgets('空草稿送出鈕鎖住；有字才可送，成功後顯示結果與複製鈕', (tester) async {
     final polished = <String>[];
     await pumpSheet(

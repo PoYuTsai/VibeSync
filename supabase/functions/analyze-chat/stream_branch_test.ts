@@ -4,8 +4,14 @@ import {
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
+// stream 分支已抽到 analyze_stream_handler.ts；index.ts 留 dispatch 與
+// fail-closed gate。corpus 串接兩檔（index 在前）。
 async function readIndexSource(): Promise<string> {
-  return await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const index = await Deno.readTextFile(new URL("./analyze_chat_handler.ts", import.meta.url));
+  const streamHandler = await Deno.readTextFile(
+    new URL("./analyze_stream_handler.ts", import.meta.url),
+  );
+  return `${index}\n${streamHandler}`;
 }
 
 async function readRetryLeaseMigration(): Promise<string> {
@@ -19,10 +25,10 @@ async function readRetryLeaseMigration(): Promise<string> {
 
 function streamBranch(source: string): string {
   const branchStart = source.indexOf(
-    'if (responseMode === "stream") {\n      const streamReplyStyles',
+    "export async function handleAnalyzeStream(",
   );
-  const branchEnd = source.indexOf("let claudeResult;", branchStart);
-  return source.slice(branchStart, branchEnd);
+  assert(branchStart >= 0, "handleAnalyzeStream 定位失敗");
+  return source.slice(branchStart);
 }
 
 function streamFailClosedBranch(source: string): string {
@@ -37,13 +43,14 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   const source = await readIndexSource();
 
   assert(source.includes(
-    'if (responseMode === "stream") {\n      const streamReplyStyles',
+    'if (responseMode === "stream") {\n      return await handleAnalyzeStream({',
   ));
+  assert(source.includes("const streamReplyStyles"));
   assert(source.includes("isStreamingAllowed({"));
-  assert(source.includes("streamStore.createPendingRun({"));
-  assert(source.includes("streamStore.reserveRetry({"));
+  assert(source.includes("deps.store.createPendingRun({"));
+  assert(source.includes("deps.store.reserveRetry({"));
   assert(source.includes("handleStreamAnalysisRequest({"));
-  assert(source.includes("callClaudeStreaming("));
+  assert(source.includes("(deps.callModel ?? callClaudeStreaming)("));
   assert(source.includes("buildStreamSystemPrompt("));
   assert(source.includes("streamReplyStyles"));
   assert(source.includes("requiredReplyStyles: streamReplyStyles"));
@@ -52,7 +59,7 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   assert(source.includes("maxOutputTokens: streamMaxOutputTokens"));
   assert(
     source.includes(
-      'let streamThinkingDisabled = selectedModel === "claude-sonnet-5"',
+      'let streamThinkingDisabled = deps.selectedModel === "claude-sonnet-5"',
     ),
   );
   assert(source.includes("thinking: streamThinkingDisabled"));
@@ -76,9 +83,9 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
     ).length - 1,
     2,
   );
-  assert(source.includes("streamStore.chargeRun({"));
-  assert(source.includes("streamStore.markDone({"));
-  assert(source.includes("streamStore.markFailed({"));
+  assert(source.includes("deps.store.chargeRun({"));
+  assert(source.includes("deps.store.markDone({"));
+  assert(source.includes("deps.store.markFailed({"));
 });
 
 Deno.test("stream retry reuses the stream ledger without charging again", async () => {
@@ -90,8 +97,9 @@ Deno.test("stream retry reuses the stream ledger without charging again", async 
   );
   assert(
     branch.includes(
-      "const shouldCharge = quotaUsage.shouldChargeQuota && !accountIsTest &&\n" +
-        "        !isStreamRetryMode;",
+      "const shouldCharge = deps.quotaUsage.shouldChargeQuota &&\n" +
+        "    !deps.accountIsTest &&\n" +
+        "    !(analysisRunId !== null);",
     ),
   );
   assert(
@@ -106,9 +114,9 @@ Deno.test("stream retry reuses the stream ledger without charging again", async 
 Deno.test("stream reconnect replays done runs before reserving a retry", async () => {
   const source = await readIndexSource();
   const branch = streamBranch(source);
-  const loadRun = branch.indexOf("streamStore.getRun({");
+  const loadRun = branch.indexOf("deps.store.getRun({");
   const resume = branch.indexOf("handleStreamAnalysisResume({");
-  const reserveRetry = branch.indexOf("streamStore.reserveRetry({");
+  const reserveRetry = branch.indexOf("deps.store.reserveRetry({");
 
   assert(loadRun >= 0);
   assert(resume > loadRun);
@@ -146,27 +154,27 @@ Deno.test("stream retry reports non-charging usage and telemetry", async () => {
 
   assert(
     branch.includes(
-      "messagesUsed: shouldCharge ? quotaUsage.chargedMessageCount : 0",
+      "messagesUsed: shouldCharge ? deps.quotaUsage.chargedMessageCount : 0",
     ),
   );
   assert(
     branch.includes(
-      "monthlyLimit - sub.monthly_messages_used -\n" +
-        "            (shouldCharge ? quotaUsage.chargedMessageCount : 0)",
+      "deps.monthlyLimit - deps.subMonthlyUsed -\n" +
+        "        (shouldCharge ? deps.quotaUsage.chargedMessageCount : 0)",
     ),
   );
   assert(
     branch.includes(
-      "dailyLimit - sub.daily_messages_used -\n" +
-        "            (shouldCharge ? quotaUsage.chargedMessageCount : 0)",
+      "deps.dailyLimit - deps.subDailyUsed -\n" +
+        "        (shouldCharge ? deps.quotaUsage.chargedMessageCount : 0)",
     ),
   );
   assert(branch.includes("shouldChargeQuota: shouldCharge"));
   assert(
     branch.includes(
       "chargedMessageCount: shouldCharge\n" +
-        "                ? quotaUsage.chargedMessageCount\n" +
-        "                : 0",
+        "            ? deps.quotaUsage.chargedMessageCount\n" +
+        "            : 0",
     ),
   );
 });
@@ -175,7 +183,7 @@ Deno.test("stream failures report remaining retry slots from the ledger", async 
   const branch = streamBranch(await readIndexSource());
 
   assert(
-    branch.includes("const failedRun = await streamStore.markFailed({"),
+    branch.includes("const failedRun = await deps.store.markFailed({"),
   );
   assert(branch.includes("event.retriesRemaining = Math.max("));
   assert(branch.includes("MAX_STREAM_RETRIES - failedRun.retry_count"));
@@ -185,7 +193,8 @@ Deno.test("stream branch does not use the two-stage run charge path", async () =
   const source = await readIndexSource();
   const branch = streamBranch(source);
 
-  assert(branch.includes("createSupabaseAnalysisStreamRunDriver"));
+  // store 建構已移到 index dispatch（narrow port 注入）。
+  assert(source.includes("createSupabaseAnalysisStreamRunDriver"));
   assertFalse(branch.includes("createSupabaseAnalysisRunDriver"));
   assertFalse(branch.includes("createChargedRun"));
   assertFalse(branch.includes("create_charged_analysis_run"));

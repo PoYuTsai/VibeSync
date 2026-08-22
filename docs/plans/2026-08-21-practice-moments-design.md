@@ -98,7 +98,7 @@ return events[fnv1a(seed) % events.length];   // life_schedule.ts:249-267
 同一則貼文，所有抽到她的使用者看到的一模一樣。
 
 - **隱私鐵則**：若貼文由「她跟某使用者的對話」生成，A 的私人對話會透過貼文外洩給 B。這一條單獨就足以否決 per-user 方案。
-- **成本**：per-user＝角色數 × 使用者數；全域＝每天最多 100 位角色 × 2 slot × 3 attempts = **≤600 次模型呼叫/天，與使用者數無關**（見決策 C 與第 4 節）。
+- **成本**：per-user＝角色數 × 使用者數；全域＝每天最多 100 位角色 × 2 slot × 3 attempts = **≤600 次模型呼叫/天，與使用者數無關**。其中 DB 強制「每個 profile-day ≤6 次」，「100 位角色」這個係數由 Edge 的 allowlist 與正確台北日保證（見決策 C 與第 4 節）。
 - **真實性**：朋友圈本來就是「她發一則，所有好友看到同一則」。
 
 **硬規則（要寫進程式碼註解與測試）：貼文生成的輸入只有 server profile + 日期 + 場景種子，永不包含任何使用者對話、暱稱、hint、debrief、relationship thread。**
@@ -145,9 +145,9 @@ C3 之所以在這個產品成立，正是因為決策 A：**貼文全域共用*
   - 所以 feed 最壞回應時間是 **8 秒，與 K 無關**。原文只寫 K=3、單次 20 秒，循序最壞會到 60 秒。
 - 缺貼文時 feed 顯示既有內容即可，**不塞罐頭、不報錯**（沿用 no-canned 鐵則）。
 
-**全域模型呼叫上限**：`unique(profile_id, post_date, slot)`（slot ∈ {0,1}）×「每個 slot 最多 3 次認領」→ **全站每日模型呼叫硬上界 600 次**，與使用者數、重新整理次數完全無關。
+**全域模型呼叫上限**：**DB 側**由 `unique(profile_id, post_date, slot)`（slot ∈ {0,1}）×「每個 slot 最多 3 次認領」強制，得到**每個 profile-day 最多 6 次**。**全站每日 600 次**要再加上 **Edge 側**的保證：`profile_id` 只來自 100 位角色的 allowlist、`post_date` 是正確的台北日。兩者相乘才是 100 × 6 = 600，與使用者數、重新整理次數無關。
 
-> 這一段在第一版是錯的（2026-08-21 複審 P1）。原本寫「schema 自帶 200 次上限」，但當時的設計是失敗即刪佔位列，`unique` 就只能限制成功存下來的貼文數，限制不了模型呼叫。現在改成保留列 + `attempts` 計數（見第 4 節），上限才真正由 schema 與 RPC 共同強制，不是口頭承諾。
+> 這一段在第一版是錯的（2026-08-21 複審 P1）。原本寫「schema 自帶 200 次上限」，但當時的設計是失敗即刪佔位列，`unique` 就只能限制成功存下來的貼文數，限制不了模型呼叫。現在改成保留列 + `attempts` 計數（見第 4 節），每個 profile-day 的 6 次上限才真正由 schema 與 RPC 強制。（2026-08-22 複審 P2-1 再修一次：DB 不認識角色名冊，任意 `profile_id` 都會拿到自己的 6 次額度，所以全站 600 是 Edge allowlist 與 DB 共同保證，不是 DB 單獨強制。Edge 側契約測試由生成端 PR 補。）
 
 per-user 面另掛既有 `model_call_rate_limits` 的新 scope `practice_moment`（建議 6/min・60/day），擋單一帳號放大。
 
@@ -248,7 +248,7 @@ RPC（全部 `SECURITY DEFINER` + `REVOKE ... FROM PUBLIC, anon, authenticated` 
 
 兩個容易寫錯、複審點名的地方：
 
-1. **首次 INSERT 必須明寫 `attempts = 1`，不能靠 `DEFAULT 0`。** 用預設值 0 的話，第一次認領不計數，之後還能再遞增三次 → 每 slot 實際跑 4 次、全站每日 800 次，上限就不是 600。
+1. **首次 INSERT 必須明寫 `attempts = 1`，不能靠 `DEFAULT 0`。** 用預設值 0 的話，第一次認領不計數，之後還能再遞增三次 → 每 slot 實際跑 4 次而不是 3 次，整體上限上浮 1/3（在 Edge allowlist 成立的前提下，全站每日 600 → 800）。
 2. **`generation_token IS NULL` 必須是獨立的放行分支。** `release` 的用途就是「我失敗了，別人不必等租約逾時就能接手」；若 `reserve` 只看租約時間，被 release 的列會被自己的新鮮 `reserved_at` 擋住兩分鐘，等於 release 沒有作用。
 
 `attempts` 的 CHECK 上界與 `MAX_MOMENT_ATTEMPTS` 必須一起改；migration source test 要斷言這兩個數字相同。
@@ -365,7 +365,7 @@ JSON.parse → text 必為字串
 3. **AI 揭露**：動態頁需比照練習室既有的 AI 揭露慣例標示「AI 模擬練習內容」（實作前確認現行揭露文案位置，與 `ai_data_sharing_consent.dart` 對齊）。
 4. **圖片授權**：新增場景圖必須是自有或可商用授權，登錄 `docs/licenses`；**不得生成像真實人物的新圖**。
 5. **成年設定**：貼文可見文字走與 chat 完全同一組 L4 守門，沒有第二套標準。
-6. **額度**：建議**讀取動態完全免費、不扣 quota**——貼文全域生成，邊際成本趨近 0，也符合「Free 用戶核心可用到額度真的耗盡為止」的既有產品原則。成本上界由 schema 的 unique 約束保護。
+6. **額度**：建議**讀取動態完全免費、不扣 quota**——貼文全域生成，邊際成本趨近 0，也符合「Free 用戶核心可用到額度真的耗盡為止」的既有產品原則。成本上界由 Edge 的 100 位角色 allowlist 與正確台北日，搭配 DB 的每個 profile-day 6 次上限共同保護。
 
 ---
 
@@ -373,7 +373,7 @@ JSON.parse → text 必為字串
 
 每則貼文約 600 prompt tokens + 120 completion tokens（`maxTokens: 200` 封頂）。
 
-- **最壞情況**（每個 slot 都用滿 3 次認領才放棄）：100 角色 × 2 slot × 3 attempts = 600 次模型呼叫 → **約 43 萬 tokens/天**。這是真正的天花板，由 schema 與 RPC 強制。
+- **最壞情況**（每個 slot 都用滿 3 次認領才放棄）：100 角色 × 2 slot × 3 attempts = 600 次模型呼叫 → **約 43 萬 tokens/天**。DB 強制的是其中「每個 profile-day 最多 6 次」那一半；乘上 100 這個係數要靠 Edge 只放行 allowlist 內的 100 位角色與正確台北日。
 - **成功路徑上界**（每個 slot 一次就成功）：200 次呼叫 → **約 14.4 萬 tokens/天**。
 - **實際預期**：發文率經 PR 1 實測為 0.661 則/角色/天 → 每天約 66 次呼叫 → **約 4.8 萬 tokens/天**。
 - 最壞情況與實際預期差 9 倍，但最壞情況只在 provider 全面故障時才會發生——而那時候呼叫本來就會失敗、不產生 completion tokens。真正要盯的是**持續性的守門失敗**（例如 prompt 改壞導致大量候選被 `moments_validate` 打回），那會讓 attempts 天天燒滿。上線第一週要看 `exhausted` 列的比例，超過 5% 就是 prompt 或守門有問題。

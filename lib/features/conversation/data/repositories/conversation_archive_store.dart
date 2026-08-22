@@ -1,6 +1,8 @@
-import 'dart:convert';
+import '../../domain/services/conversation_content_revision.dart';
 
-import 'package:crypto/crypto.dart';
+export '../../domain/services/conversation_content_revision.dart'
+    show conversationContentRevision;
+
 import 'package:hive_ce/hive_ce.dart';
 
 import '../../domain/entities/conversation.dart';
@@ -150,26 +152,4 @@ class HiveConversationArchiveStore implements ConversationArchiveStore {
     final ownerScope = owner == null || owner.isEmpty ? '_legacy' : owner;
     return '$_keyPrefix:$ownerScope:${conversation.id}';
   }
-}
-
-/// Durable, privacy-preserving revision of the ordered message input behind
-/// the latest restorable analysis snapshot. Markers store only this digest,
-/// never conversation text. Metadata-only changes intentionally keep it.
-String conversationContentRevision(
-  Conversation conversation, {
-  int? messageCount,
-}) {
-  final messages = messageCount == null
-      ? conversation.messages
-      : conversation.messages.take(messageCount);
-  final canonicalMessages = messages
-      .map((message) => <Object?>[
-            message.id,
-            message.content,
-            message.isFromMe,
-            message.quotedReplyPreview,
-            message.quotedReplyPreviewIsFromMe,
-          ])
-      .toList(growable: false);
-  return sha256.convert(utf8.encode(jsonEncode(canonicalMessages))).toString();
 }

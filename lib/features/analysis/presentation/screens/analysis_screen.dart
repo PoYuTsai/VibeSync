@@ -1,7 +1,5 @@
 // lib/features/analysis/presentation/screens/analysis_screen.dart
 import 'dart:async';
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,14 +8,11 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/message_calculator.dart';
 import '../../../../core/services/keyboard_privacy_purge_service.dart';
-import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import 'package:image_picker/image_picker.dart';
@@ -26,49 +21,42 @@ import '../../../../shared/services/image_compress_service.dart';
 import '../../../../shared/services/screenshot_preflight_service.dart';
 import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
-import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
-import '../../../../shared/widgets/game_stage_indicator.dart';
-import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/coach_action_card.dart';
-import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../coach_chat/data/services/coach_chat_api_service.dart';
 import '../../../coach_chat/presentation/widgets/coach_cta_card.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
-import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../conversation/data/providers/conversation_archive_providers.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
-import '../../../conversation/data/repositories/conversation_archive_store.dart';
 import '../../../follow_up_notification/data/providers/follow_up_notification_service.dart';
 import '../../../follow_up_notification/domain/follow_up_opt_in.dart';
 import '../../../follow_up_notification/presentation/soft_opt_in_card.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../partner/presentation/utils/conversation_archive_sections.dart';
 import '../../data/providers/analysis_record_providers.dart';
+import '../../application/analysis_persistence_coordinator.dart';
+import '../../application/analysis_run_preparer.dart';
+import '../../application/analysis_session_controller.dart';
+import '../../application/reply_iteration_coordinator.dart';
+import '../../application/screenshot_import_coordinator.dart';
 import '../../data/providers/analysis_providers.dart';
-import '../../../conversation/data/services/memory_service.dart';
 import '../../../conversation/domain/entities/conversation.dart';
-import '../../../conversation/domain/entities/conversation_summary.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
-import '../../../conversation/presentation/widgets/message_bubble.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../data/notifiers/streaming_analyze_notifier.dart';
-import '../../data/services/ocr_recognition_cache_service.dart';
 import '../../data/services/analysis_archive_lifecycle.dart';
 import '../../data/services/analysis_hint_service.dart';
 import '../../data/services/analysis_service.dart';
 import '../../data/services/analysis_telemetry_guardrail_helper.dart';
 import '../../data/services/optimize_message_request_session.dart';
-import '../../data/services/optimize_request_runner.dart';
-import '../../data/services/reply_refine_draft_store.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_record.dart';
@@ -81,8 +69,21 @@ import '../widgets/draft_polish_sheet.dart';
 import '../widgets/reply_refine_sheet.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
-import '../widgets/swipe_hint_nudge.dart';
 import '../widgets/analysis_usage_summary_line.dart';
+import '../helpers/analysis_progress_stage_copy.dart';
+import '../sections/analysis_banners_section.dart';
+import '../sections/analysis_error_card.dart';
+import '../sections/analysis_followup_section.dart';
+import '../sections/analysis_fragment_section.dart';
+import '../sections/analysis_feedback_section.dart';
+import '../sections/detailed_analysis_section.dart';
+import '../sections/edit_message_coach_mark.dart';
+import '../sections/recognized_conversation_section.dart';
+import '../sections/reply_zone_section.dart';
+import '../sections/screenshot_intake_section.dart';
+import '../sections/streaming_content_section.dart';
+import '../sections/telemetry_diagnostics_section.dart';
+import '../helpers/analysis_run_metadata_mapping.dart';
 import '../helpers/analysis_usage_copy.dart';
 import '../widgets/analysis_action_widgets.dart';
 import '../widgets/streaming_analysis_loading_widgets.dart';
@@ -92,7 +93,6 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
-import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
 import '../../../../core/services/app_haptics.dart';
@@ -148,13 +148,15 @@ enum _AnalysisAppBarAction {
 }
 
 class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
-    with WidgetsBindingObserver, TickerProviderStateMixin {
+    with WidgetsBindingObserver, TickerProviderStateMixin
+    implements
+        AnalysisFeedbackActions,
+        AnalysisFragmentActions,
+        RecognitionDraftActions,
+        ReplyZoneActions,
+        ScreenshotIntakeActions {
   // 訂閱同步屬 best-effort 前置：卡住不得凍結分析/刷新 spinner（2.1(b)）。
   static const _subscriptionSyncTimeout = Duration(seconds: 20);
-  static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
-  static const _snapshotRevisionKey = 'contentRevision';
-  static const _snapshotMessageCountKey = 'messageCount';
-  final MemoryService _memoryService = MemoryService();
   bool get _showTelemetryDiagnostics => kDebugMode;
   bool _isAnalyzing = false;
   bool _isRefreshingPremiumReplies = false;
@@ -198,20 +200,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // 訊息優化功能（顯示狀態在 DraftPolishSheet；這裡只留草稿與計費路徑）
   bool _showDetailedAnalysis = false;
   final _optimizeController = TextEditingController();
-  final _optimizeRequestSession = OptimizeMessageRequestIdSession(
-    store: HiveOptimizeMessagePendingRequestStore(
-      () => StorageService.settingsBox,
-    ),
-  );
-  late final _optimizeRequestRunner = OptimizeRequestRunner(
-    session: _optimizeRequestSession,
-  );
-
-  /// 微調的最後一版留在本機加密暫存 24 小時，離開畫面再回來還接得上。
-  final _refineDraftStore = HiveReplyRefineDraftStore(
-    () => StorageService.settingsBox,
-  );
-  OptimizeMessagePendingRequest? _optimizePendingAwaitingPresentation;
+  late final ReplyIterationCoordinator _replyIteration =
+      ref.read(replyIterationCoordinatorFactoryProvider)();
 
   String? _feedbackCategory;
   final _feedbackCommentController = TextEditingController();
@@ -228,11 +218,31 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String? _streamProgressDetail;
   List<AnalysisStreamContent> _streamContents = const [];
   int? _activeAnalysisMessageCount;
-  int _analysisPersistenceInFlight = 0;
-  final Set<Future<void>> _pendingAnalysisPersistenceTasks = {};
   bool _isLeavingAfterPersistence = false;
-  bool _analysisRecordNeedsRepair = false;
-  Future<void>? _analysisRecordRepairFuture;
+  // application coordinator 一律經 composition root 工廠組裝；畫面只
+  // 提供 UI callback（重繪、provider 失效、48h 跟進軟卡）。
+  late final AnalysisPersistenceCoordinator _persistence =
+      ref.read(analysisPersistenceCoordinatorFactoryProvider)(
+    conversationId: widget.conversationId,
+    notifyStateChanged: () {
+      if (mounted) setState(() {});
+    },
+    invalidateRecordViews: (conversation) {
+      _invalidateAnalysisArchiveCount();
+      _invalidatePartnerAnalysisRecords(conversation);
+      if (mounted) setState(() {});
+    },
+    afterAnalysisPersisted: _maybeScheduleFollowUpNotification,
+  );
+  late final AnalysisSessionController _session =
+      ref.read(analysisSessionControllerFactoryProvider)(
+    conversationId: widget.conversationId,
+    persistence: _persistence,
+  );
+  late final ScreenshotImportCoordinator _screenshotImport =
+      ref.read(screenshotImportCoordinatorFactoryProvider)(
+    conversationId: widget.conversationId,
+  );
   String? _analysisArchiveCountScopeKey;
   int _analysisArchiveCount = 0;
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
@@ -246,21 +256,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// 潤飾稿獨立 runKey（_polishDraft 不走 _applyAnalysisResult 漏斗）。
   String? _polishRunKey;
 
-  /// 今日剩餘免費微調次數。真相源在 server，這裡只記住最近一次回應帶回來的
-  /// 數字，好讓下一次開面板時能在動手前就顯示；沒問過就是 null（不猜）。
-  int? _refineFreeRemaining;
-
   final _scrollController = ScrollController();
   final _analysisProgressEndKey = GlobalKey();
   final _replyZoneSectionKey = GlobalKey();
-  // 回覆區進場（payoff 時刻）：區塊 fade+slide 320ms，卡組每張 stagger 50ms。
-  // 總長 = celebrate(320) + 5×50 = 570ms。一次性：新一輪分析（內容歸零後再
-  // 出現）才重播。
-  static const _replyCardStaggerMs = 50;
-  static const _replyZoneEntranceTotalMs = 570;
+  // 進場時間軸的單一真相源在 ReplyZoneSection（區塊 320ms＋每卡 stagger
+  // 50ms＝總長 570ms）；controller 與一次性播放時機由本 screen 持有。
   late final AnimationController _replyZoneEntrance = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: _replyZoneEntranceTotalMs),
+    duration: const Duration(milliseconds: ReplyZoneSection.entranceTotalMs),
   );
   bool _replyZonePlayed = false;
   // 使用者手指是否正在拖動主捲軸。分析完成的一次性自動捲動只在使用者沒在
@@ -784,7 +787,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // analysis on top of the new run's streaming loader / retry state.
     // (I-P1-c, Codex round-2).
     if (_isStreamingAnalyzePartialPhase(initialState.phase) ||
-        _isStreamingAnalyzeResultStaleForCurrentConversation(initialState)) {
+        _session.isResultStaleForCurrentConversation(
+            initialState.toRunMetadata())) {
       _clearDetailedAnalysisStateForStreamingAnalyzePartial();
     }
     // Hydrate from existing streaming analyze notifier state on remount.
@@ -884,7 +888,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case StreamingAnalyzePhase.done:
         final result = s.result;
         if (result == null) return;
-        if (_isStreamingAnalyzeResultStaleForCurrentConversation(s)) {
+        if (_session.isResultStaleForCurrentConversation(s.toRunMetadata())) {
           setState(() {
             _isAnalyzing = false;
             _streamErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
@@ -927,13 +931,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         // streamingReport and the done transition arrived off-screen). If the
         // listener already wrote this exact snapshot, the dedup signal below
         // short-circuits to avoid double-writes (I-P2-e/f, Codex round-2).
-        _maybePersistAndSyncOnHydrate(
-          result,
-          completionKey: s.analysisRunId,
-          previousAnalyzedCount: s.previousAnalyzedCount,
-          analyzedMessageCount: s.analyzedMessageCount,
-          analyzedContentRevision: s.conversationContentRevision,
-        );
+        _maybePersistAndSyncOnHydrate(s, result);
         break;
       case StreamingAnalyzePhase.failedAfterRecommendation:
         // 額度用盡才震（一般格式失敗不是付費牆時刻，不給錯誤觸覺）。
@@ -996,53 +994,28 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// while the listener is unmounted; on return the screen sees `done`
   /// but the snapshot + usage were never written.
   void _maybePersistAndSyncOnHydrate(
-    AnalysisResult result, {
-    String? completionKey,
-    int? previousAnalyzedCount,
-    int? analyzedMessageCount,
-    String? analyzedContentRevision,
-  }) {
+    StreamingAnalysisState s,
+    AnalysisResult result,
+  ) {
     final repository = ref.read(conversationRepositoryProvider);
     final conv = repository.getConversation(widget.conversationId);
     if (conv == null) return;
-    final expectedAnalyzedCount = analyzedMessageCount ?? conv.messages.length;
+    final expectedAnalyzedCount =
+        s.analyzedMessageCount ?? conv.messages.length;
 
-    final alreadyPersisted = _analysisSnapshotMatches(
+    final persisted = _session.persistHydratedResultIfNeeded(
+      s.toRunMetadata(),
+      result,
+      expectedAnalyzedCount: expectedAnalyzedCount,
       conversation: conv,
-      snapshotJson: conv.lastAnalysisSnapshotJson,
-      rawResponse: result.rawResponse,
-      messageCount: expectedAnalyzedCount,
-      analyzedContentRevision: analyzedContentRevision,
     );
-    if (alreadyPersisted) {
-      _analysisRecordRepairFuture = _trackAnalysisPersistenceTask(
-        _repairAnalysisRecord(
-          conversation: conv,
-          result: result,
-          completionKey: completionKey,
-          previousAnalyzedCount: previousAnalyzedCount,
-          analyzedMessageCount: expectedAnalyzedCount,
-          analyzedContentRevision: analyzedContentRevision,
-        ),
-      );
-      return;
-    }
+    if (!persisted) return;
 
     if (mounted) {
       setState(() {
         _lastAnalyzedMessageCount = expectedAnalyzedCount;
       });
     }
-    _persistLatestAnalysisSnapshot(
-      result,
-      completionKey: completionKey,
-      previousAnalyzedCount: previousAnalyzedCount,
-      analyzedMessageCount: expectedAnalyzedCount,
-      analyzedContentRevision: analyzedContentRevision,
-    ).catchError((_) {
-      // Same fire-and-forget contract as the listener path — Hive failures in
-      // tests must not surface as unhandled futures.
-    });
     _syncSubscriptionUsageFromResult(result);
   }
 
@@ -1071,150 +1044,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _resetFeedbackState();
   }
 
-  Widget _buildStreamingContentCard() {
-    final contents = _streamContents;
-    if (contents.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.backgroundGradientMid,
-            Color(0xFF3A185B),
-            Color(0xFF612C65),
-          ],
+  /// data 層 wire 型別 → section view model 的映射（icon 對映留在
+  /// composition root，section 維持 data-neutral）。
+  List<StreamingContentItem> get _streamContentItems => _streamContents
+      .map(
+        (content) => StreamingContentItem(
+          icon: _streamContentIcon(content.kind),
+          title: content.title,
+          body: content.body,
         ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.24),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.40),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppColors.ctaStart, AppColors.brandBlush],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.auto_awesome,
-                  size: 18,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '完整分析即時整理中',
-                      style: AppTypography.titleMedium.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    if (_streamProgressLabel != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _streamProgressLabel!,
-                        style: AppTypography.caption.copyWith(
-                          color: Colors.white.withValues(alpha: 0.78),
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          for (var i = 0; i < contents.length; i++) ...[
-            _buildStreamingContentItem(
-              contents[i],
-              isLatest: i == contents.length - 1,
-            ),
-            if (i != contents.length - 1) const SizedBox(height: 10),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStreamingContentItem(
-    AnalysisStreamContent content, {
-    required bool isLatest,
-  }) {
-    final accent = isLatest ? AppColors.bokehYellow : AppColors.primaryLight;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: isLatest ? 0.14 : 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: isLatest ? 0.32 : 0.18),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            _streamContentIcon(content.kind),
-            size: 18,
-            color: accent,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  content.title,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  content.body,
-                  maxLines: 8,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: Colors.white.withValues(alpha: 0.84),
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+      )
+      .toList(growable: false);
 
   IconData _streamContentIcon(AnalysisStreamContentKind kind) {
     switch (kind) {
@@ -1272,27 +1112,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         pendingMessages.every((message) => message.isFromMe);
   }
 
-  String? _analysisRecordOwner(Conversation conversation) {
-    final currentUserId = ref.read(analysisRecordOwnerProvider)?.trim();
-    if (currentUserId == null || currentUserId.isEmpty) return null;
-    final conversationOwner = conversation.ownerUserId?.trim();
-    if (conversationOwner != null &&
-        conversationOwner.isNotEmpty &&
-        conversationOwner != currentUserId) {
-      return null;
-    }
-    return currentUserId;
-  }
-
-  AnalysisRecord? _currentAnalysisRecord(Conversation conversation) {
-    final ownerUserId = _analysisRecordOwner(conversation);
-    if (ownerUserId == null) return null;
-    return ref.read(analysisRecordStoreProvider).currentFor(
-          ownerUserId: ownerUserId,
-          conversationId: conversation.id,
-        );
-  }
-
   List<Message> _analysisFragmentMessages(Conversation conversation) {
     if (conversation.messages.isEmpty) return const <Message>[];
 
@@ -1315,7 +1134,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       }
     }
 
-    final current = _currentAnalysisRecord(conversation);
+    final current = _persistence.currentRecordFor(conversation);
     final streamingState =
         ref.read(streamingAnalyzeProvider(widget.conversationId));
     final streamTarget = streamingState.analyzedMessageCount;
@@ -1380,7 +1199,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   String? _conversationAnalysisSource(Conversation conversation) {
-    final ownerUserId = _analysisRecordOwner(conversation);
+    final ownerUserId = _persistence.recordOwnerFor(conversation);
     if (ownerUserId == null) return null;
     return ref.read(analysisRecordStoreProvider).conversationSource(
           ownerUserId: ownerUserId,
@@ -1391,7 +1210,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Future<void> _chooseConversationAnalysisSource(
     Conversation conversation,
   ) async {
-    final ownerUserId = _analysisRecordOwner(conversation);
+    final ownerUserId = _persistence.recordOwnerFor(conversation);
     if (ownerUserId == null) return;
     final result = await showAnalysisPlatformPicker(
       context,
@@ -1399,16 +1218,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       title: '這段聊天來自哪裡？',
     );
     if (!mounted || result == null) return;
-    if (_analysisPersistenceInFlight != 0) {
+    if (_persistence.inFlightCount != 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('分析紀錄正在保存，完成後再設定聊天來源')),
       );
       return;
     }
-    final relabelCurrent = !_analysisRecordNeedsRepair &&
-        _analysisPersistenceInFlight == 0 &&
+    final relabelCurrent = !_persistence.recordNeedsRepair &&
+        _persistence.inFlightCount == 0 &&
         !_isShowingPendingAnalysisFragment(conversation) &&
-        _currentAnalysisRecord(conversation) != null;
+        _persistence.currentRecordFor(conversation) != null;
     try {
       final saved =
           await ref.read(analysisRecordStoreProvider).setConversationSource(
@@ -1440,7 +1259,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   List<AnalysisRecord> _archivedAnalysisRecordsFor(
     Conversation conversation,
   ) {
-    final ownerUserId = _analysisRecordOwner(conversation);
+    final ownerUserId = _persistence.recordOwnerFor(conversation);
     if (ownerUserId == null) return const [];
     return AnalysisArchiveLifecycle.recordsFor(
       store: ref.read(analysisRecordStoreProvider),
@@ -1450,7 +1269,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   int _archivedAnalysisRecordCountFor(Conversation conversation) {
-    final ownerUserId = _analysisRecordOwner(conversation);
+    final ownerUserId = _persistence.recordOwnerFor(conversation);
     if (ownerUserId == null) {
       _analysisArchiveCountScopeKey = null;
       _analysisArchiveCount = 0;
@@ -1485,13 +1304,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Future<void> _openPartnerAnalysisRecords(
     Conversation conversation,
   ) async {
-    await _awaitPendingAnalysisPersistence();
+    await _persistence.awaitSettled();
     if (!mounted) return;
     conversation = ref
             .read(conversationRepositoryProvider)
             .getConversation(conversation.id) ??
         conversation;
-    final ownerUserId = _analysisRecordOwner(conversation);
+    final ownerUserId = _persistence.recordOwnerFor(conversation);
     if (ownerUserId == null) return;
     final partnerId = conversation.partnerId?.trim();
     final conversations = _analysisArchiveConversations(conversation);
@@ -1603,75 +1422,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (mounted) setState(() {});
   }
 
-  Widget _buildConversationSourcePill(Conversation conversation) {
-    final source = _conversationAnalysisSource(conversation);
-    final sourceLabel = source == null ? '來源未設定' : '來源：$source';
-    final canEdit = _analysisRecordOwner(conversation) != null &&
-        !_isAnalyzing &&
-        _analysisPersistenceInFlight == 0;
-    return Material(
-      color: AppColors.ctaStart.withValues(alpha: 0.10),
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        key: const ValueKey('analysis-source-pill'),
-        borderRadius: BorderRadius.circular(999),
-        onTap: canEdit
-            ? () => _chooseConversationAnalysisSource(conversation)
-            : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.layers_outlined,
-                size: 15,
-                color: AppColors.ctaStart,
-              ),
-              const SizedBox(width: 5),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 96),
-                child: Text(
-                  sourceLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.ctaStart,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (canEdit) ...[
-                const SizedBox(width: 2),
-                Icon(
-                  Icons.arrow_drop_down_rounded,
-                  size: 18,
-                  color: AppColors.ctaStart,
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  bool _isStreamingAnalyzeResultStaleForCurrentConversation(
-    StreamingAnalysisState state,
-  ) {
-    final conversation = ref.read(conversationProvider(widget.conversationId));
-    if (conversation == null) return false;
-    final expectedRevision = state.conversationContentRevision;
-    if (expectedRevision != null) {
-      return conversationContentRevision(conversation) != expectedRevision;
-    }
-    // Backward-compatible guard for states created before content revisions
-    // were added (and for narrowly-scoped widget test seeds).
-    final expectedCount = state.conversationMessageCount;
-    if (expectedCount == null) return false;
-    return conversation.messages.length != expectedCount;
-  }
-
   void _showEditedAnalyzedMessageSnackBar() {
     if (!mounted) return;
 
@@ -1692,190 +1442,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         },
       ),
     );
-  }
-
-  void _restorePersistedAnalysis({bool repairRecord = true}) {
-    final repository = ref.read(conversationRepositoryProvider);
-    final conversation = repository.getConversation(widget.conversationId);
-    if (conversation == null) {
-      return;
-    }
-
-    final snapshotJson = conversation.lastAnalysisSnapshotJson;
-    if (snapshotJson == null || snapshotJson.trim().isEmpty) {
-      return;
-    }
-
-    try {
-      final snapshot = _normalizeJsonMap(jsonDecode(snapshotJson));
-      if (snapshot == null) {
-        return;
-      }
-      if (!_canRestorePersistedAnalysis(conversation, snapshot)) {
-        return;
-      }
-      _lastAnalyzedMessageCount = conversation.lastAnalyzedMessageCount!;
-
-      if (!snapshot.containsKey(_snapshotClientMetaKey)) {
-        final analyzedCount = conversation.lastAnalyzedMessageCount!;
-        snapshot[_snapshotClientMetaKey] = <String, Object>{
-          _snapshotRevisionKey: conversationContentRevision(
-            conversation,
-            messageCount: analyzedCount,
-          ),
-          _snapshotMessageCountKey: analyzedCount,
-        };
-        // Upgrade legacy snapshots in memory immediately. The next normal
-        // conversation save carries this metadata even if the archive marker
-        // write fails, closing same-count edit restores without a Hive schema.
-        conversation.lastAnalysisSnapshotJson = jsonEncode(snapshot);
-      }
-
-      final analysisPayload = Map<String, dynamic>.from(snapshot)
-        ..remove(_snapshotClientMetaKey);
-      final restoredResult = AnalysisResult.fromJson(analysisPayload);
-      _applyAnalysisResult(restoredResult);
-      if (repairRecord) {
-        final analyzedCount = conversation.lastAnalyzedMessageCount!;
-        final current = _currentAnalysisRecord(conversation);
-        _analysisRecordRepairFuture = _trackAnalysisPersistenceTask(
-          _repairAnalysisRecord(
-            conversation: conversation,
-            result: restoredResult,
-            completionKey: null,
-            previousAnalyzedCount: current?.segmentEnd ?? 0,
-            analyzedMessageCount: analyzedCount,
-            analyzedContentRevision: conversationContentRevision(conversation),
-          ),
-        );
-      }
-    } catch (error) {
-      _debugLog(
-        '[AnalysisScreen] Failed to restore persisted analysis for '
-        '${widget.conversationId}: $error',
-      );
-    }
-  }
-
-  bool _canRestorePersistedAnalysis(
-    Conversation conversation,
-    Map<String, dynamic> snapshot,
-  ) {
-    final analyzedCount = conversation.lastAnalyzedMessageCount;
-    if (analyzedCount == null ||
-        analyzedCount < 0 ||
-        analyzedCount > conversation.messages.length) {
-      return false;
-    }
-    if (snapshot.containsKey(_snapshotClientMetaKey)) {
-      final rawMeta = snapshot[_snapshotClientMetaKey];
-      if (rawMeta is! Map) return false;
-      final embeddedRevision = rawMeta[_snapshotRevisionKey];
-      final embeddedCount = rawMeta[_snapshotMessageCountKey];
-      if (embeddedRevision is! String ||
-          embeddedRevision.trim().isEmpty ||
-          embeddedCount is! int ||
-          embeddedCount != analyzedCount) {
-        return false;
-      }
-      return embeddedRevision ==
-          conversationContentRevision(
-            conversation,
-            messageCount: embeddedCount,
-          );
-    }
-
-    final archiveEntry =
-        ref.read(conversationArchiveStoreProvider).entryFor(conversation);
-    if (archiveEntry != null) {
-      final analyzedRevision = archiveEntry.contentRevision;
-      if (archiveEntry.status == ConversationArchiveStatus.archived &&
-          analyzedCount != conversation.messages.length) {
-        return false;
-      }
-      return analyzedRevision != null &&
-          analyzedRevision ==
-              conversationContentRevision(
-                conversation,
-                messageCount: analyzedCount,
-              );
-    }
-
-    // Snapshot persistence predates both embedded revisions and archive
-    // markers. A markerless payload without client metadata is therefore true
-    // legacy compatibility. Every new snapshot embeds its own revision, so a
-    // failed marker write can no longer make a post-feature row look legacy.
-    return true;
-  }
-
-  String? _encodeAnalysisSnapshot(
-    Map<String, dynamic>? rawResponse, {
-    required String contentRevision,
-    required int messageCount,
-  }) {
-    if (rawResponse == null || rawResponse.isEmpty) {
-      return null;
-    }
-    final snapshot = Map<String, dynamic>.from(rawResponse)
-      ..[_snapshotClientMetaKey] = <String, Object>{
-        _snapshotRevisionKey: contentRevision,
-        _snapshotMessageCountKey: messageCount,
-      };
-    return jsonEncode(snapshot);
-  }
-
-  bool _analysisSnapshotMatches({
-    required Conversation conversation,
-    required String? snapshotJson,
-    required Map<String, dynamic>? rawResponse,
-    required int messageCount,
-    required String? analyzedContentRevision,
-  }) {
-    if (snapshotJson == null ||
-        snapshotJson.trim().isEmpty ||
-        rawResponse == null ||
-        rawResponse.isEmpty ||
-        messageCount < 0 ||
-        messageCount > conversation.messages.length ||
-        analyzedContentRevision == null ||
-        conversationContentRevision(conversation) != analyzedContentRevision) {
-      return false;
-    }
-    try {
-      final snapshot = _normalizeJsonMap(jsonDecode(snapshotJson));
-      if (snapshot == null) {
-        return false;
-      }
-      final rawMeta = snapshot[_snapshotClientMetaKey];
-      if (rawMeta is! Map ||
-          rawMeta[_snapshotMessageCountKey] != messageCount ||
-          rawMeta[_snapshotRevisionKey] !=
-              conversationContentRevision(
-                conversation,
-                messageCount: messageCount,
-              )) {
-        return false;
-      }
-      snapshot.remove(_snapshotClientMetaKey);
-      return jsonEncode(snapshot) == jsonEncode(rawResponse);
-    } catch (_) {
-      // A corrupt durable snapshot must not suppress a replacement write.
-      return false;
-    }
-  }
-
-  Map<String, dynamic>? _normalizeJsonMap(dynamic value) {
-    if (value is Map<String, dynamic>) {
-      return value;
-    }
-
-    if (value is Map) {
-      return value.map(
-        (key, value) => MapEntry(key.toString(), value),
-      );
-    }
-
-    return null;
   }
 
   void _applyAnalysisResult(
@@ -1901,357 +1467,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     if (resetFeedbackState) {
       _resetFeedbackState();
-    }
-  }
-
-  Future<void> _persistLatestAnalysisSnapshot(
-    AnalysisResult result, {
-    String? completionKey,
-    int? previousAnalyzedCount,
-    int? analyzedMessageCount,
-    String? analyzedContentRevision,
-    bool allowArchivedRecordRefresh = false,
-  }) {
-    return _trackAnalysisPersistenceTask(
-      _runPersistLatestAnalysisSnapshot(
-        result,
-        completionKey: completionKey,
-        previousAnalyzedCount: previousAnalyzedCount,
-        analyzedMessageCount: analyzedMessageCount,
-        analyzedContentRevision: analyzedContentRevision,
-        allowArchivedRecordRefresh: allowArchivedRecordRefresh,
-      ),
-    );
-  }
-
-  Future<void> _trackAnalysisPersistenceTask(Future<void> task) {
-    _pendingAnalysisPersistenceTasks.add(task);
-    unawaited(
-      task.then<void>(
-        (_) => _pendingAnalysisPersistenceTasks.remove(task),
-        onError: (Object _, StackTrace __) {
-          _pendingAnalysisPersistenceTasks.remove(task);
-        },
-      ),
-    );
-    return task;
-  }
-
-  Future<void> _awaitPendingAnalysisPersistence() async {
-    while (_pendingAnalysisPersistenceTasks.isNotEmpty) {
-      final pending = List<Future<void>>.of(_pendingAnalysisPersistenceTasks);
-      await Future.wait(
-        pending.map((task) async {
-          try {
-            await task;
-          } catch (_) {
-            // The existing repair path remains responsible for a failed
-            // best-effort record write; leaving must never become a dead end.
-          }
-        }),
-      );
-      _pendingAnalysisPersistenceTasks.removeAll(pending);
-    }
-  }
-
-  Future<void> _runPersistLatestAnalysisSnapshot(
-    AnalysisResult result, {
-    String? completionKey,
-    int? previousAnalyzedCount,
-    int? analyzedMessageCount,
-    String? analyzedContentRevision,
-    bool allowArchivedRecordRefresh = false,
-  }) async {
-    _analysisPersistenceInFlight++;
-    if (mounted) setState(() {});
-    try {
-      await _persistLatestAnalysisSnapshotCore(
-        result,
-        completionKey: completionKey,
-        previousAnalyzedCount: previousAnalyzedCount,
-        analyzedMessageCount: analyzedMessageCount,
-        analyzedContentRevision: analyzedContentRevision,
-        allowArchivedRecordRefresh: allowArchivedRecordRefresh,
-      );
-    } finally {
-      if (_analysisPersistenceInFlight > 0) {
-        _analysisPersistenceInFlight--;
-      }
-      if (mounted) setState(() {});
-    }
-  }
-
-  Future<void> _persistLatestAnalysisSnapshotCore(
-    AnalysisResult result, {
-    String? completionKey,
-    int? previousAnalyzedCount,
-    int? analyzedMessageCount,
-    String? analyzedContentRevision,
-    bool allowArchivedRecordRefresh = false,
-  }) async {
-    final repository = ref.read(conversationRepositoryProvider);
-    final conv = repository.getConversation(widget.conversationId);
-    if (conv == null) {
-      return;
-    }
-    if (analyzedContentRevision == null ||
-        conversationContentRevision(conv) != analyzedContentRevision) {
-      return;
-    }
-
-    final previousAnalysis = (
-      enthusiasmScore: conv.lastEnthusiasmScore,
-      analyzedMessageCount: conv.lastAnalyzedMessageCount,
-      analyzedCharCount: conv.lastAnalyzedCharCount,
-      gameStage: conv.currentGameStage,
-      snapshotJson: conv.lastAnalysisSnapshotJson,
-    );
-    final targetAnalyzedMessageCount =
-        analyzedMessageCount ?? conv.messages.length;
-    final targetSnapshotJson = _encodeAnalysisSnapshot(
-      result.rawResponse,
-      contentRevision: conversationContentRevision(
-        conv,
-        messageCount: targetAnalyzedMessageCount,
-      ),
-      messageCount: targetAnalyzedMessageCount,
-    );
-
-    conv.lastEnthusiasmScore = result.enthusiasmScore;
-    conv.lastAnalyzedMessageCount = targetAnalyzedMessageCount;
-    // ADR #19 規格 #8：char baseline 對應「實際送出的 requestMessages」
-    //（notifier 在 start 時計），不是完成時 repository 裡的最新 messages
-    //（避免分析中新進訊息造成 baseline 漂移）。
-    final payloadCharCount = ref
-        .read(streamingAnalyzeProvider(widget.conversationId).notifier)
-        .lastPayloadCharCount;
-    if (payloadCharCount != null) {
-      conv.lastAnalyzedCharCount = payloadCharCount;
-    }
-    conv.currentGameStage = result.gameStage.current.name;
-    conv.lastAnalysisSnapshotJson = targetSnapshotJson;
-
-    final writeController =
-        ref.read(conversationWriteControllerProvider.notifier);
-    await writeController.save(
-      conv,
-      intent: ConversationSaveIntent.analysisCompleted,
-      expectedContentRevision: analyzedContentRevision,
-    );
-
-    if (conversationContentRevision(conv) != analyzedContentRevision) {
-      // Content changed while the snapshot write was in flight. Roll back this
-      // run's analysis fields only if they are still the values we wrote; a
-      // genuinely newer, different analysis must win. Then persist the latest
-      // messages as active and avoid creating fresh legacy-history evidence.
-      if (conv.lastAnalysisSnapshotJson == targetSnapshotJson &&
-          conv.lastAnalyzedMessageCount == targetAnalyzedMessageCount) {
-        conv.lastEnthusiasmScore = previousAnalysis.enthusiasmScore;
-        conv.lastAnalyzedMessageCount = previousAnalysis.analyzedMessageCount;
-        conv.lastAnalyzedCharCount = previousAnalysis.analyzedCharCount;
-        conv.currentGameStage = previousAnalysis.gameStage;
-        conv.lastAnalysisSnapshotJson = previousAnalysis.snapshotJson;
-        try {
-          await writeController.save(
-            conv,
-            intent: ConversationSaveIntent.contentChanged,
-          );
-        } catch (_) {
-          // The compensating conversation write can fail independently. Still
-          // leave an explicit active marker when settings storage is healthy,
-          // so cold restore cannot treat this post-feature row as legacy.
-          await ref
-              .read(conversationArchiveControllerProvider.notifier)
-              .markActive(conv);
-          rethrow;
-        }
-      }
-      return;
-    }
-
-    final recordSaved = await _ensureAnalysisRecord(
-      conversation: conv,
-      result: result,
-      completionKey: completionKey,
-      previousAnalyzedCount: previousAnalyzedCount,
-      analyzedMessageCount: targetAnalyzedMessageCount,
-      analyzedContentRevision: analyzedContentRevision,
-      allowArchivedRefresh: allowArchivedRecordRefresh,
-    );
-    _setAnalysisRecordNeedsRepair(!recordSaved);
-
-    // 案2：analyze 歷史事件（best-effort：失敗只 debugPrint，絕不 rethrow，
-    // 分析呈現完全不受影響）。去重靠呼叫端既有 gate（hydrate 路徑
-    // _maybePersistAndSyncOnHydrate 的 alreadyPersisted 比對＋listener 路徑
-    // 一次性觸發），同一次分析絕不重複記錄，這裡不另做冪等。
-    try {
-      await ref.read(analysisHistoryRepositoryProvider).append(
-            AnalysisHistoryEvent.analyze(
-              id: const Uuid().v4(),
-              createdAt: DateTime.now(),
-              conversationId: widget.conversationId,
-              partnerId: conv.partnerId,
-              subjectName: conv.name,
-              enthusiasmScore: result.enthusiasmScore,
-              gameStageLabel: result.gameStage.current.name,
-            ),
-          );
-    } catch (e) {
-      debugPrint('AnalysisHistory analyze append failed: $e');
-    }
-
-    // Tier 2 批 1.5：首次分析完成漏斗事件（once-flag 去重，best-effort）。
-    unawaited(
-      ref.read(funnelTrackerProvider).trackOnce('first_analysis_completed'),
-    );
-
-    // 案4：48h 跟進提醒 — 綁 partner 的分析完成後，首次詢問軟卡並排程。
-    // best-effort：失敗只 debugPrint，絕不影響分析呈現與快照持久化。
-    await _maybeScheduleFollowUpNotification(conv);
-  }
-
-  void _setAnalysisRecordNeedsRepair(bool value) {
-    if (_analysisRecordNeedsRepair == value) return;
-    _analysisRecordNeedsRepair = value;
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _repairAnalysisRecord({
-    required Conversation conversation,
-    required AnalysisResult result,
-    required String? completionKey,
-    required int? previousAnalyzedCount,
-    required int analyzedMessageCount,
-    required String? analyzedContentRevision,
-  }) async {
-    _analysisPersistenceInFlight++;
-    if (mounted) setState(() {});
-    try {
-      final prefixRevision = analyzedMessageCount > 0 &&
-              analyzedMessageCount <= conversation.messages.length
-          ? conversationContentRevision(
-              conversation,
-              messageCount: analyzedMessageCount,
-            )
-          : null;
-      final rawResponse = result.rawResponse;
-      final current = _currentAnalysisRecord(conversation);
-      final canonicalSnapshotMatches = _analysisSnapshotMatches(
-        conversation: conversation,
-        snapshotJson: conversation.lastAnalysisSnapshotJson,
-        rawResponse: rawResponse,
-        messageCount: analyzedMessageCount,
-        analyzedContentRevision: analyzedContentRevision,
-      );
-      if (!_analysisRecordNeedsRepair &&
-          prefixRevision != null &&
-          rawResponse != null &&
-          current != null &&
-          current.segmentEnd == analyzedMessageCount &&
-          current.analyzedContentRevision == prefixRevision &&
-          current.analysisSnapshotJson == jsonEncode(rawResponse)) {
-        final archived =
-            await ref.read(analysisRecordStoreProvider).archiveCurrentRecord(
-                  ownerUserId: _analysisRecordOwner(conversation) ?? '',
-                  conversationId: conversation.id,
-                );
-        _setAnalysisRecordNeedsRepair(!archived);
-        if (archived) _invalidateAnalysisArchiveCount();
-        if (archived) _invalidatePartnerAnalysisRecords(conversation);
-        return;
-      }
-      final saved = await _ensureAnalysisRecord(
-        conversation: conversation,
-        result: result,
-        completionKey: completionKey,
-        previousAnalyzedCount: previousAnalyzedCount,
-        analyzedMessageCount: analyzedMessageCount,
-        analyzedContentRevision: analyzedContentRevision,
-        allowArchivedRefresh: canonicalSnapshotMatches,
-      );
-      _setAnalysisRecordNeedsRepair(!saved);
-    } finally {
-      if (_analysisPersistenceInFlight > 0) {
-        _analysisPersistenceInFlight--;
-      }
-      if (mounted) setState(() {});
-    }
-  }
-
-  Future<bool> _ensureAnalysisRecord({
-    required Conversation conversation,
-    required AnalysisResult result,
-    required String? completionKey,
-    required int? previousAnalyzedCount,
-    required int analyzedMessageCount,
-    required String? analyzedContentRevision,
-    bool allowArchivedRefresh = false,
-  }) async {
-    final ownerUserId = _analysisRecordOwner(conversation);
-    final rawResponse = result.rawResponse;
-    if (ownerUserId == null ||
-        rawResponse == null ||
-        rawResponse.isEmpty ||
-        analyzedContentRevision == null ||
-        analyzedMessageCount <= 0 ||
-        analyzedMessageCount > conversation.messages.length ||
-        conversationContentRevision(conversation) != analyzedContentRevision) {
-      return false;
-    }
-
-    final analyzedPrefixRevision = conversationContentRevision(
-      conversation,
-      messageCount: analyzedMessageCount,
-    );
-    final snapshotJson = jsonEncode(rawResponse);
-    final snapshotDigest = sha256.convert(utf8.encode(snapshotJson));
-    final stableCompletionKey = completionKey?.trim().isNotEmpty == true
-        ? completionKey!.trim()
-        : 'snapshot:$analyzedPrefixRevision:$analyzedMessageCount:'
-            '$snapshotDigest';
-    final runStartPreviousCount =
-        (previousAnalyzedCount ?? 0).clamp(0, analyzedMessageCount).toInt();
-    final store = ref.read(analysisRecordStoreProvider);
-    try {
-      final saveResult = await store.saveSuccessfulAnalysis(
-        ownerUserId: ownerUserId,
-        conversation: conversation,
-        completionKey: stableCompletionKey,
-        runStartPreviousCount: runStartPreviousCount,
-        analyzedMessageCount: analyzedMessageCount,
-        analyzedContentRevision: analyzedPrefixRevision,
-        analysisSnapshotJson: snapshotJson,
-        enthusiasmScore: result.enthusiasmScore,
-        gameStageLabel: result.gameStage.current.label,
-        allowArchivedRefresh: allowArchivedRefresh,
-        sourcePlatform: store.conversationSource(
-          ownerUserId: ownerUserId,
-          conversationId: conversation.id,
-        ),
-      );
-      if (!saveResult.accepted) {
-        debugPrint(
-          'Analysis record save rejected: ${saveResult.rejectionReason}',
-        );
-        return false;
-      }
-      final archived = await store.archiveCurrentRecord(
-        ownerUserId: ownerUserId,
-        conversationId: conversation.id,
-      );
-      if (!archived) {
-        debugPrint('Analysis record archive rejected: ${conversation.id}');
-        return false;
-      }
-      _invalidateAnalysisArchiveCount();
-      _invalidatePartnerAnalysisRecords(conversation);
-      if (mounted) setState(() {});
-      return true;
-    } catch (error) {
-      // The canonical analysis snapshot already succeeded. Keep the result
-      // usable and let hydrate retry this idempotent record write later.
-      debugPrint('Analysis record save failed: $error');
-      return false;
     }
   }
 
@@ -2294,6 +1509,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return partner?.name ?? '';
   }
 
+  /// 冷啟動還原：委派 coordinator，成功時套用畫面本地鏡像。
+  void _restorePersistedAnalysis({bool repairRecord = true}) {
+    final outcome = _persistence.restore(repairRecord: repairRecord);
+    if (outcome == null) return;
+    _lastAnalyzedMessageCount = outcome.analyzedMessageCount;
+    _applyAnalysisResult(outcome.result);
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -2334,7 +1557,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     late OverlayEntry entry;
     entry = OverlayEntry(
-      builder: (ctx) => _EditMessageCoachMark(
+      builder: (ctx) => EditMessageCoachMark(
         onDismiss: () async {
           if (entry.mounted) entry.remove();
           if (_editMessageCoachMarkEntry == entry) {
@@ -2362,7 +1585,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Future<void> _cleanupAndGoBack() async {
     if (_isLeavingAfterPersistence) return;
     _isLeavingAfterPersistence = true;
-    await _awaitPendingAnalysisPersistence();
+    await _persistence.awaitSettled();
     if (!mounted) return;
     final repository = ref.read(conversationRepositoryProvider);
     final conversation = repository.getConversation(widget.conversationId);
@@ -2623,23 +1846,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           (sum, metric) => sum + metric.compressedBytes,
         );
 
-  String _formatBytes(int bytes) {
-    if (bytes >= 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-
-    return '${(bytes / 1024).toStringAsFixed(0)} KB';
-  }
-
-  String _formatDuration(Duration? duration) {
-    if (duration == null) {
-      return '--';
-    }
-
-    final seconds = duration.inMilliseconds / 1000;
-    return '${seconds.toStringAsFixed(seconds >= 10 ? 0 : 1)} 秒';
-  }
-
   String get _recognizeButtonLabel {
     if (_isRecognizing) {
       return _recognizeStageLabel(_recognizeStage);
@@ -2788,193 +1994,70 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return typed.isEmpty ? null : typed;
   }
 
-  /// 空白新片段的「截圖小提醒」列（對標示意稿）：橘 icon＋純文字，
-  /// 不加卡片框（2026-08-14 Eric 拍板拆淺色框）。
-  Widget _buildScreenshotTipRow({
-    required IconData icon,
-    required String text,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: AppColors.ctaStart),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.onBackgroundPrimary.withValues(alpha: 0.92),
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _applyRecognitionImport({
     required ScreenshotRecognitionDialogResult dialogResult,
     required RecognizedConversation recognized,
   }) async {
-    final repository = ref.read(conversationRepositoryProvider);
-    final editedRecognizedMessages = dialogResult.messages;
-    final importedMessages = _buildImportedMessages(editedRecognizedMessages);
-    final newName = dialogResult.name;
-    final meeting = dialogResult.meetingContext;
-    final duration = dialogResult.duration;
-    final goal = dialogResult.goal;
-    final analysisContextNote = dialogResult.analysisContextNote;
-    final sourceConversation =
-        repository.getConversation(widget.conversationId);
-    final mustStartNewFragment = sourceConversation != null &&
-        AnalysisFragmentPolicy.mustCreateNewFragmentForImport(
-          conversation: sourceConversation,
-          hasLoadedAnalysisResult: _enthusiasmScore != null,
-        );
-    final sourcePartnerId = sourceConversation?.partnerId?.trim();
-    final isPartnerBound =
-        sourcePartnerId != null && sourcePartnerId.isNotEmpty;
-    final expectedPartnerName = sourceConversation == null
-        ? null
-        : _recognitionExpectedPartnerName(sourceConversation);
-    final updatedRecognized = recognized.copyWith(
-      contactName: isPartnerBound
-          ? recognized.contactName
-          : newName.isNotEmpty
-              ? newName
-              : recognized.contactName,
-      messageCount: editedRecognizedMessages.length,
-      messages: editedRecognizedMessages,
+    final commit = await _screenshotImport.commitImport(
+      editedRecognizedMessages: dialogResult.messages,
+      newName: dialogResult.name,
+      meeting: dialogResult.meetingContext,
+      duration: dialogResult.duration,
+      goal: dialogResult.goal,
+      analysisContextNote: dialogResult.analysisContextNote,
+      recognized: recognized,
+      hasLoadedAnalysisResult: _enthusiasmScore != null,
     );
 
-    if (mustStartNewFragment) {
-      final controller = ref.read(conversationWriteControllerProvider.notifier);
-      // Inherit partnerId from the source conversation so the new "互動紀錄"
-      // shows up under the same Partner detail page. Pre-A2 this path
-      // created orphan conversations (partnerId=null) which silently
-      // disappeared from `conversationsByPartnerProvider(partnerId)`.
-      // (Bruce TF feedback 2026-04-28.)
-      final createdConversation = await controller.create(
-        name: isPartnerBound
-            ? ScreenshotRecognitionHelper.resolvePartnerBoundNewFragmentName(
-                currentConversation: sourceConversation,
-                expectedPartnerName: expectedPartnerName,
-              )
-            : _resolveImportedConversationName(
-                enteredName: newName,
-                recognizedName: recognized.contactName,
-              ),
-        messages: importedMessages,
-        partnerId: sourceConversation.partnerId,
-      );
-
-      if (meeting != null && duration != null) {
-        createdConversation.sessionContext = SessionContext(
-          meetingContext: meeting,
-          duration: duration,
-          goal: goal ?? UserGoal.dateInvite,
-          analysisContextNote: analysisContextNote,
-        );
-      }
-      await controller.save(createdConversation);
-      ref.invalidate(conversationProvider(widget.conversationId));
-
-      if (!mounted || _recognizeCancelled) {
-        _debugLog(
-            '[Recognize] Ignore post-save UI update after cancel/dispose');
+    switch (commit.kind) {
+      case ScreenshotImportCommitKind.conversationMissing:
+        if (!mounted || _recognizeCancelled) {
+          return;
+        }
+        setState(() {
+          _isRecognizing = false;
+          _applyErrorState(
+            message: '目前對話不存在，請重新進入後再試一次',
+            action: AnalysisErrorAction.retry,
+            origin: _AnalysisErrorOrigin.recognition,
+          );
+        });
         return;
-      }
-
-      setState(() {
-        _selectedImages = [];
-        _selectedImageMetrics = [];
-        _recognizedConversation = updatedRecognized;
-        _recognizedWarningMessage = null;
-        _hasPendingRecognitionImport = false;
-      });
-
-      // OCR 匯入浮動提示全拆（2026-08-16 Eric：沒什麼用）。來源已完成分析
-      // 而另開新片段時，直接帶使用者過去，不留在舊片段乾等。
-      context.push('/conversation/${createdConversation.id}');
-      return;
-    }
-
-    final conv = repository.getConversation(widget.conversationId);
-    if (conv == null) {
-      if (!mounted || _recognizeCancelled) {
+      case ScreenshotImportCommitKind.createdNewFragment:
+        if (!mounted || _recognizeCancelled) {
+          _debugLog(
+              '[Recognize] Ignore post-save UI update after cancel/dispose');
+          return;
+        }
+        setState(() {
+          _selectedImages = [];
+          _selectedImageMetrics = [];
+          _recognizedConversation = commit.updatedRecognized;
+          _recognizedWarningMessage = null;
+          _hasPendingRecognitionImport = false;
+        });
+        // OCR 匯入浮動提示全拆（2026-08-16 Eric：沒什麼用）。來源已完成分析
+        // 而另開新片段時，直接帶使用者過去，不留在舊片段乾等。
+        context.push('/conversation/${commit.createdConversationId}');
         return;
-      }
-      setState(() {
-        _isRecognizing = false;
-        _applyErrorState(
-          message: '目前對話不存在，請重新進入後再試一次',
-          action: AnalysisErrorAction.retry,
-          origin: _AnalysisErrorOrigin.recognition,
-        );
-      });
-      return;
+      case ScreenshotImportCommitKind.replacedBatch:
+        if (!mounted || _recognizeCancelled) {
+          _debugLog(
+              '[Recognize] Ignore post-save UI update after cancel/dispose');
+          return;
+        }
+        setState(() {
+          _selectedImages = [];
+          _selectedImageMetrics = [];
+          _recognizedConversation = commit.updatedRecognized;
+          _recognizedWarningMessage = null;
+          _hasPendingRecognitionImport = false;
+        });
+        // 「已確認本次片段／查看本次內容」浮動提示已拆（2026-08-16 Eric：
+        // 沒什麼用——內容就在眼前，確認框也已揭露取代規則）。另開新片段的
+        // 「前往新片段」提示保留，那個有導航作用。
+        return;
     }
-
-    final partnerId = conv.partnerId?.trim();
-    if (partnerId != null && partnerId.isNotEmpty) {
-      conv.name =
-          ScreenshotRecognitionHelper.resolvePartnerBoundConversationName(
-        currentConversation: conv,
-        expectedPartnerName: _recognitionExpectedPartnerName(conv),
-      );
-    } else if (newName.isNotEmpty &&
-        ScreenshotRecognitionHelper.isPlaceholderConversationName(conv.name)) {
-      conv.name = newName;
-    }
-
-    if (conv.sessionContext == null && meeting != null && duration != null) {
-      conv.sessionContext = SessionContext(
-        meetingContext: meeting,
-        duration: duration,
-        goal: goal ?? UserGoal.dateInvite,
-        analysisContextNote: analysisContextNote,
-      );
-    } else if (conv.sessionContext != null &&
-        analysisContextNote != null &&
-        analysisContextNote.trim().isNotEmpty) {
-      final existing = conv.sessionContext!;
-      conv.sessionContext = SessionContext(
-        meetingContext: existing.meetingContext,
-        duration: existing.duration,
-        goal: existing.goal,
-        userStyle: existing.userStyle,
-        userInterests: existing.userInterests,
-        targetDescription: existing.targetDescription,
-        analysisContextNote: analysisContextNote.trim(),
-      );
-    }
-
-    // 一次 OCR 選取（1–3 張）就是完整的一個待分析片段。重新選圖時
-    // 整批取代，不把不連貫的新內容接成越來越長的逐字稿。
-    AnalysisFragmentPolicy.replaceDraftBatch(
-      conversation: conv,
-      messages: importedMessages,
-    );
-    await ref.read(conversationWriteControllerProvider.notifier).save(conv);
-    ref.invalidate(conversationProvider(widget.conversationId));
-
-    if (!mounted || _recognizeCancelled) {
-      _debugLog('[Recognize] Ignore post-save UI update after cancel/dispose');
-      return;
-    }
-    setState(() {
-      _selectedImages = [];
-      _selectedImageMetrics = [];
-      _recognizedConversation = updatedRecognized;
-      _recognizedWarningMessage = null;
-      _hasPendingRecognitionImport = false;
-    });
-
-    // 「已確認本次片段／查看本次內容」浮動提示已拆（2026-08-16 Eric：
-    // 沒什麼用——內容就在眼前，確認框也已揭露取代規則）。另開新片段的
-    // 「前往新片段」提示保留，那個有導航作用。
   }
 
   Future<void> _resumeRecognitionImport() async {
@@ -3142,107 +2225,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         );
   }
 
-  List<Message>? _buildMessagesForReplyAnalysis(List<Message> messages) {
-    if (messages.isEmpty) return null;
-
-    final lastIncomingIndex =
-        messages.lastIndexWhere((message) => !message.isFromMe);
-    if (lastIncomingIndex == -1) {
-      return null;
-    }
-
-    return messages.sublist(0, lastIncomingIndex + 1);
-  }
-
-  Future<String?> _buildHistoricalContextSummary(
-    Conversation conversation,
-  ) async {
-    final persistedSummary =
-        _memoryService.buildHistoricalSummary(conversation);
-    if (persistedSummary != null && persistedSummary.isNotEmpty) {
-      return persistedSummary;
-    }
-
-    final olderRounds =
-        conversation.currentRound - MemoryService.maxRecentRounds;
-    if (olderRounds < MemoryService.minRoundsPerSummary) {
-      return null;
-    }
-
-    final ephemeralSummary = await _memoryService.generateSummary(
-      conversation,
-      0,
-      olderRounds,
-    );
-
-    final formattedSummary = _memoryService.formatSummarySegments(
-      <ConversationSummary>[ephemeralSummary],
-    );
-
-    return formattedSummary.isEmpty ? null : formattedSummary;
-  }
-
-  /// Build the per-call partner-context block for `analyze-chat`. Returns
-  /// null when the conversation has no partner attached, the partner row is
-  /// missing, or the summary builder yields empty (owner-mismatch defense).
-  /// Rebuilt every call — partner aggregate must reflect the latest snapshot.
-  String? _resolvePartnerSummary(Conversation conversation) {
-    return ref.read(partnerContextResolverProvider).resolve(conversation);
-  }
-
-  /// Spec 2.5: About Me + per-partner style becomes compact prompt context.
-  /// If Spec 3 flags this partner card, partner-specific style is suspended
-  /// and only global About Me remains trusted.
-  String? _resolveEffectiveStyleContext(Conversation conversation) {
-    final global = ref.read(userProfileControllerProvider).valueOrNull;
-    final partnerId = conversation.partnerId;
-    if (partnerId == null) {
-      return ref.read(effectiveStylePromptBuilderProvider).buildForAnalysis(
-            global: global,
-            partner: null,
-            includePartnerOverride: false,
-          );
-    }
-
-    final includePartnerOverride =
-        !ref.read(dataQualityFlagProvider(partnerId)).isFlagged;
-    final partner = includePartnerOverride
-        ? ref.read(partnerStyleOverrideProvider(partnerId)).valueOrNull
-        : null;
-    return ref.read(effectiveStylePromptBuilderProvider).buildForAnalysis(
-          global: global,
-          partner: partner,
-          includePartnerOverride: includePartnerOverride,
-        );
-  }
-
-  Future<({List<Message> requestMessages, String? conversationSummary})>
-      _buildSummaryAwareAnalysisContext({
-    required Conversation conversation,
-    required List<Message> baseMessages,
-  }) async {
-    final conversationSummary = await _buildHistoricalContextSummary(
-      conversation,
-    );
-
-    if (conversationSummary == null || conversationSummary.isEmpty) {
-      return (
-        requestMessages: baseMessages,
-        conversationSummary: null,
-      );
-    }
-
-    final requestMessages = _memoryService.clipToRecentRounds(
-      baseMessages,
-      MemoryService.maxRecentRounds,
-    );
-
-    return (
-      requestMessages: requestMessages.isEmpty ? baseMessages : requestMessages,
-      conversationSummary: conversationSummary,
-    );
-  }
-
   String? _buildRecognitionWarning({
     required RecognizedConversation recognized,
     required Conversation currentConversation,
@@ -3251,187 +2233,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         recognized: recognized,
         currentConversation: currentConversation,
         expectedPartnerName:
-            _recognitionExpectedPartnerName(currentConversation),
+            _screenshotImport.expectedPartnerName(currentConversation),
       );
 
-  String? _recognitionExpectedPartnerName(Conversation conversation) {
-    final partnerId = conversation.partnerId?.trim();
-    if (partnerId == null || partnerId.isEmpty) {
-      return null;
-    }
-    final name =
-        ref.read(partnerRepositoryProvider).getById(partnerId)?.name.trim();
-    return name == null || name.isEmpty ? null : name;
-  }
-
-  List<Message> _buildImportedMessages(List<RecognizedMessage> recognized) {
-    final baseTimestamp = DateTime.now();
-    return List.generate(recognized.length, (index) {
-      final message = recognized[index];
-      return Message(
-        id: '${baseTimestamp.microsecondsSinceEpoch}_$index',
-        content: message.content,
-        isFromMe: message.isFromMe,
-        timestamp: baseTimestamp.add(Duration(milliseconds: index)),
-        quotedReplyPreview: message.quotedReplyPreview,
-        quotedReplyPreviewIsFromMe: message.quotedReplyPreviewIsFromMe,
-      );
-    });
-  }
-
-  String _resolveImportedConversationName({
-    required String? enteredName,
-    required String? recognizedName,
-  }) =>
-      ScreenshotRecognitionHelper.resolveImportedConversationName(
-        enteredName: enteredName,
-        recognizedName: recognizedName,
-      );
-
-  String _recognitionClassificationLabel(String classification) =>
-      ScreenshotRecognitionHelper.classificationLabel(classification);
-
-  String _recognitionConfidenceLabel(String confidence) =>
-      ScreenshotRecognitionHelper.confidenceLabel(confidence);
-
-  String _recognitionSideConfidenceLabel(String confidence) =>
-      ScreenshotRecognitionHelper.sideConfidenceLabel(confidence);
-
-  String? _recognizeTelemetryRecognitionSummary(AnalysisTelemetry telemetry) {
-    if (telemetry.recognizedClassification == null &&
-        telemetry.recognizedSideConfidence == null &&
-        telemetry.recognizedMessageCount == null) {
-      return null;
-    }
-
-    final parts = <String>[
-      if (telemetry.recognizedClassification != null)
-        '分類 ${_recognitionClassificationLabel(telemetry.recognizedClassification!)}',
-      if (telemetry.recognizedSideConfidence != null)
-        '方向 ${_recognitionSideConfidenceLabel(telemetry.recognizedSideConfidence!)}',
-      if (telemetry.recognizedMessageCount != null)
-        '訊息 ${telemetry.recognizedMessageCount} 則',
-      if ((telemetry.uncertainSideCount ?? 0) > 0)
-        '待確認 ${telemetry.uncertainSideCount} 則',
-    ];
-
-    return parts.isEmpty ? null : parts.join('｜');
-  }
-
-  String? _recognizeTelemetryNormalizationSummary(AnalysisTelemetry telemetry) {
-    final parts = <String>[
-      if ((telemetry.quotedPreviewAttachedCount ?? 0) > 0)
-        '引用併回 ${telemetry.quotedPreviewAttachedCount} 次',
-      if ((telemetry.quotedPreviewRemovedCount ?? 0) > 0 &&
-          (telemetry.quotedPreviewAttachedCount ?? 0) == 0)
-        '引用忽略 ${telemetry.quotedPreviewRemovedCount} 次',
-      if ((telemetry.continuityAdjustedCount ?? 0) > 0)
-        '方向校正 ${telemetry.continuityAdjustedCount} 次',
-      if ((telemetry.groupedAdjustedCount ?? 0) > 0)
-        '群組校正 ${telemetry.groupedAdjustedCount} 次',
-      if ((telemetry.layoutFirstAdjustedCount ?? 0) > 0)
-        '版面分群 ${telemetry.layoutFirstAdjustedCount} 次',
-      if ((telemetry.overlapRemovedCount ?? 0) > 0)
-        '重疊去重 ${telemetry.overlapRemovedCount} 次',
-    ];
-
-    return parts.isEmpty ? null : parts.join('｜');
-  }
-
-  String? _recognizeTelemetryContextSummary(AnalysisTelemetry telemetry) {
-    if (telemetry.contextMode == null &&
-        telemetry.truncatedMessageCount == null &&
-        telemetry.conversationSummaryUsed == false) {
-      return null;
-    }
-
-    final modeLabel = telemetry.contextMode == 'opening_plus_recent'
-        ? '上下文 開頭+最近'
-        : telemetry.contextMode == 'full'
-            ? '上下文 全量'
-            : null;
-
-    final parts = <String>[
-      if (modeLabel != null) modeLabel,
-      if ((telemetry.inputMessageCount ?? 0) > 0 &&
-          (telemetry.compiledMessageCount ?? 0) > 0)
-        '送出 ${telemetry.compiledMessageCount}/${telemetry.inputMessageCount} 則',
-      if ((telemetry.truncatedMessageCount ?? 0) > 0)
-        '省略 ${telemetry.truncatedMessageCount} 則',
-      if (telemetry.conversationSummaryUsed) '含舊摘要',
-    ];
-
-    return parts.isEmpty ? null : parts.join('｜');
-  }
-
-  String _analysisTelemetryRequestLabel(AnalysisTelemetry telemetry) {
-    switch (telemetry.requestType) {
-      case 'my_message':
-        return '上次「我說」量測';
-      case 'optimize_message':
-        return '上次優化量測';
-      case 'analyze_with_images':
-        return '上次帶圖分析量測';
-      default:
-        return '上次分析量測';
-    }
-  }
-
-  String _analysisTelemetryTransportSummary(AnalysisTelemetry telemetry) {
-    final retrySummary =
-        telemetry.retryCount > 0 ? '重試 ${telemetry.retryCount} 次' : null;
-    final fallbackSummary = telemetry.fallbackUsed ? '有 fallback' : null;
-    final timeoutSummary = telemetry.timeoutDuration != null
-        ? '逾時上限 ${_formatDuration(telemetry.timeoutDuration)}'
-        : null;
-
-    final parts = <String>[
-      '請求 ${_formatBytes(telemetry.requestBodyBytes)}',
-      '本機準備 ${_formatDuration(telemetry.payloadPreparationDuration)}',
-      '往返 ${_formatDuration(telemetry.roundTripDuration)}',
-      if (retrySummary != null) retrySummary,
-      if (fallbackSummary != null) fallbackSummary,
-      if (timeoutSummary != null) timeoutSummary,
-    ];
-
-    return parts.join('｜');
-  }
-
-  String? _analysisTelemetryQuotaSummary(AnalysisTelemetry telemetry) {
-    final estimatedCount =
-        telemetry.estimatedMessageCount ?? telemetry.chargedMessageCount;
-
-    if (telemetry.shouldChargeQuota == true) {
-      final chargedCount = telemetry.chargedMessageCount ?? estimatedCount;
-      if ((chargedCount ?? 0) > 0) {
-        return '本次扣 $chargedCount 則訊息額度';
-      }
-      return '本次會扣訊息額度';
-    }
-
-    if (telemetry.requestType == 'recognize_only' ||
-        telemetry.quotaReason == 'recognize_only_free') {
-      return '本次純辨識，不扣額度';
-    }
-
-    if (telemetry.quotaReason == 'test_account_waived') {
-      if ((estimatedCount ?? 0) > 0) {
-        return '測試帳號，本次未扣額度（原本會扣 $estimatedCount 則）';
-      }
-      return '測試帳號，本次未扣額度';
-    }
-
-    if (telemetry.shouldChargeQuota == false && (estimatedCount ?? 0) > 0) {
-      return '本次未扣額度';
-    }
-
-    return null;
-  }
-
-  List<AnalysisTelemetryGuardrail> _telemetryGuardrails(
+  /// data 層守門評估 → section 展示資料（severity 映射留在 composition root）。
+  List<TelemetryGuardrailChipData> _telemetryGuardrailChips(
     AnalysisTelemetry telemetry,
   ) =>
-      AnalysisTelemetryGuardrailHelper.evaluate(telemetry);
+      AnalysisTelemetryGuardrailHelper.evaluate(telemetry)
+          .map(
+            (guardrail) => TelemetryGuardrailChipData(
+              color: _telemetryGuardrailColor(guardrail),
+              icon: _telemetryGuardrailIcon(guardrail),
+              label: guardrail.label,
+              detail: guardrail.detail,
+            ),
+          )
+          .toList(growable: false);
 
   Color _telemetryGuardrailColor(AnalysisTelemetryGuardrail guardrail) {
     switch (guardrail.severity) {
@@ -3455,151 +2273,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
-  Widget _buildTelemetryGuardrailSection(AnalysisTelemetry telemetry) {
-    final guardrails = _telemetryGuardrails(telemetry);
-    if (guardrails.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: guardrails.map((guardrail) {
-              final color = _telemetryGuardrailColor(guardrail);
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: color.withValues(alpha: 0.20),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _telemetryGuardrailIcon(guardrail),
-                      size: 14,
-                      color: color,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      guardrail.label,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 8),
-          ...guardrails.map(
-            (guardrail) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                '${guardrail.label}：${guardrail.detail}',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.textSecondary,
-                  height: 1.45,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _recognitionConfidenceColor(RecognizedConversation recognized) {
-    if (recognized.importPolicy == 'reject') {
-      return AppColors.error;
-    }
-    switch (recognized.confidence) {
-      case 'low':
-        return AppColors.warning;
-      case 'medium':
-        return AppColors.info;
-      case 'high':
-      default:
-        return AppColors.success;
-    }
-  }
-
-  String _recognitionActionGuidance(RecognizedConversation recognized) =>
-      ScreenshotRecognitionHelper.actionGuidance(recognized);
-
-  ScreenshotRecognitionGuidance _recognitionGuidance(
-    RecognizedConversation recognized,
-  ) =>
-      ScreenshotRecognitionHelper.guidance(recognized);
-
-  Color _recognitionGuidanceColor(RecognizedConversation recognized) {
-    switch (_recognitionGuidance(recognized).tone) {
-      case ScreenshotRecognitionGuidanceTone.reject:
-        return AppColors.error;
-      case ScreenshotRecognitionGuidanceTone.caution:
-        return AppColors.warning;
-      case ScreenshotRecognitionGuidanceTone.review:
-        return AppColors.info;
-      case ScreenshotRecognitionGuidanceTone.stable:
-        return AppColors.success;
-    }
-  }
-
-  IconData _recognitionGuidanceIcon(RecognizedConversation recognized) {
-    switch (_recognitionGuidance(recognized).tone) {
-      case ScreenshotRecognitionGuidanceTone.reject:
-        return Icons.block_rounded;
-      case ScreenshotRecognitionGuidanceTone.caution:
-        return Icons.call_split_rounded;
-      case ScreenshotRecognitionGuidanceTone.review:
-        return Icons.fact_check_rounded;
-      case ScreenshotRecognitionGuidanceTone.stable:
-        return Icons.check_circle_outline_rounded;
-    }
-  }
-
-  Widget _buildRecognitionStatusChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: AppTypography.bodySmall.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// 顯示識別確認對話框，讓用戶設定對方名字和情境
   Future<ScreenshotRecognitionDialogResult?> _showRecognitionConfirmDialog({
     required RecognizedConversation recognized,
@@ -3607,7 +2280,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     String? warningMessage,
   }) async {
     final expectedPartnerName =
-        _recognitionExpectedPartnerName(currentConversation);
+        _screenshotImport.expectedPartnerName(currentConversation);
     final partnerId = currentConversation.partnerId?.trim();
     final isPartnerBound = partnerId != null && partnerId.isNotEmpty;
     final initialContext = _screenshotSessionContextFor(currentConversation);
@@ -3704,88 +2377,27 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     try {
       // 呼叫 API 識別截圖（純識別模式，不做完整分析，節省時間和額度）
       _debugLog('呼叫 API... (timeout: 120s)');
-      if (forceRefresh) {
-        await OcrRecognitionCacheService.invalidate(
-          imagesToProcess,
-          widget.conversationId,
-        );
-      }
-      final cachedRecognition = forceRefresh
-          ? null
-          : await OcrRecognitionCacheService.read(
-              imagesToProcess,
-              widget.conversationId,
-            );
-      AnalysisResult result;
-      if (cachedRecognition != null) {
+      final recognition = await _screenshotImport.recognize(
+        images: imagesToProcess,
+        conversation: conversation,
+        sessionContext: _screenshotSessionContextFor(conversation),
+        forceRefresh: forceRefresh,
+        totalCompressedImageBytes: _totalCompressedImageBytes,
+        onProgress: _handleRecognizeProgress,
+        onTelemetry: _handleRecognizeTelemetry,
+      );
+      final result = recognition.result;
+      final isFromCache = recognition.fromCache;
+      if (isFromCache) {
         _debugLog('[Recognize] OCR cache hit');
-        _handleRecognizeTelemetry(
-          AnalysisTelemetry(
-            requestType: 'recognize_only',
-            imageCount: imagesToProcess.length,
-            requestBodyBytes: 0,
-            payloadPreparationDuration: Duration.zero,
-            roundTripDuration: Duration.zero,
-            edgeAiDuration: Duration.zero,
-            totalCompressedImageBytes: _totalCompressedImageBytes,
-            cacheHit: true,
-            recognizedClassification:
-                cachedRecognition.recognizedConversation.classification,
-            recognizedConfidence:
-                cachedRecognition.recognizedConversation.confidence,
-            recognizedSideConfidence:
-                cachedRecognition.recognizedConversation.sideConfidence,
-            recognizedMessageCount:
-                cachedRecognition.recognizedConversation.messageCount,
-            uncertainSideCount:
-                cachedRecognition.recognizedConversation.uncertainSideCount,
-          ),
-        );
-        result = AnalysisResult.fromJson(
-          {
-            'recognizedConversation':
-                cachedRecognition.recognizedConversation.toJson(),
-          },
-        );
         _rememberRecognitionReplay(
           images: imagesToProcess,
           metrics: metricsToProcess,
         );
       } else {
-        final analysisService = AnalysisService();
-
-        // 使用 Future.any 來實現強制 timeout
-        result = await Future.any([
-          analysisService.analyzeConversation(
-            const <Message>[],
-            images: imagesToProcess,
-            sessionContext: _screenshotSessionContextFor(conversation),
-            knownContactName:
-                ScreenshotRecognitionHelper.resolveKnownContactName(
-              currentConversation: conversation,
-              expectedPartnerName:
-                  _recognitionExpectedPartnerName(conversation),
-            ),
-            onProgress: _handleRecognizeProgress,
-            onTelemetry: _handleRecognizeTelemetry,
-            recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
-          ),
-          // Screen fence also includes local payload preparation, so it must
-          // stay outside AnalysisService's 130-second HTTP fence.
-          Future.delayed(kAnalyzeOcrScreenTimeout, () {
-            throw TimeoutException('辨識超時 (135秒)');
-          }),
-        ]);
         _debugLog(
             'API 回應成功，耗時: ${DateTime.now().difference(startTime).inSeconds}s');
-
-        // 把識別結果存入對話
         if (result.recognizedConversation != null) {
-          await OcrRecognitionCacheService.write(
-            images: imagesToProcess,
-            recognizedConversation: result.recognizedConversation!,
-            conversationId: widget.conversationId,
-          );
           _rememberRecognitionReplay(
             images: imagesToProcess,
             metrics: metricsToProcess,
@@ -3807,7 +2419,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           currentConversation: conversation,
         );
 
-        final isFromCache = cachedRecognition != null;
         if (recognized.importPolicy == 'reject') {
           setState(() {
             _isRecognizing = false;
@@ -3909,17 +2520,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     int? analysisMessageLimit,
     bool allowPendingOutgoingRefresh = false,
   }) async {
-    final pendingRecordRepair = _analysisRecordRepairFuture;
+    final pendingRecordRepair = _persistence.recordRepairFuture;
     if (pendingRecordRepair != null) {
       await pendingRecordRepair;
     }
     if (!mounted) return;
-    if (_analysisRecordNeedsRepair) {
+    if (_persistence.recordNeedsRepair) {
       _restorePersistedAnalysis();
-      final retry = _analysisRecordRepairFuture;
+      final retry = _persistence.recordRepairFuture;
       if (retry != null) await retry;
       if (!mounted) return;
-      if (_analysisRecordNeedsRepair) {
+      if (_persistence.recordNeedsRepair) {
         setState(() {
           _isAnalyzing = false;
           _applyErrorState(
@@ -3953,40 +2564,36 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    // 驗證分析條件：必須有訊息
-    if (conversation.messages.isEmpty) {
-      setState(() {
-        _isAnalyzing = false;
-        _applyErrorState(
-          message: '請先輸入對話內容或上傳截圖',
-          action: AnalysisErrorAction.addIncomingMessage,
-          origin: _AnalysisErrorOrigin.analysis,
-          guidance: '請重新選擇包含她回覆的聊天截圖，確認文字後再分析。',
-        );
-      });
-      return;
-    }
-
-    final clampedAnalysisMessageLimit =
-        analysisMessageLimit?.clamp(0, conversation.messages.length).toInt();
-    final sourceMessages = clampedAnalysisMessageLimit == null
-        ? conversation.messages
-        : conversation.messages
-            .take(clampedAnalysisMessageLimit)
-            .toList(growable: false);
-
-    final messagesForAnalysis = _buildMessagesForReplyAnalysis(sourceMessages);
-    if (messagesForAnalysis == null) {
-      setState(() {
-        _isAnalyzing = false;
-        _applyErrorState(
-          message: '目前還沒有她的新回覆可以分析。',
-          action: AnalysisErrorAction.addIncomingMessage,
-          origin: _AnalysisErrorOrigin.analysis,
-          guidance: '請重新選擇包含她回覆的聊天截圖，再按「開始分析」。',
-        );
-      });
-      return;
+    final preparer = ref.read(analysisRunPreparerProvider);
+    final runGate = preparer.gate(
+      conversation: conversation,
+      analysisMessageLimit: analysisMessageLimit,
+    );
+    switch (runGate.failure) {
+      case AnalysisRunPrepareFailure.emptyConversation:
+        setState(() {
+          _isAnalyzing = false;
+          _applyErrorState(
+            message: '請先輸入對話內容或上傳截圖',
+            action: AnalysisErrorAction.addIncomingMessage,
+            origin: _AnalysisErrorOrigin.analysis,
+            guidance: '請重新選擇包含她回覆的聊天截圖，確認文字後再分析。',
+          );
+        });
+        return;
+      case AnalysisRunPrepareFailure.noIncomingReply:
+        setState(() {
+          _isAnalyzing = false;
+          _applyErrorState(
+            message: '目前還沒有她的新回覆可以分析。',
+            action: AnalysisErrorAction.addIncomingMessage,
+            origin: _AnalysisErrorOrigin.analysis,
+            guidance: '請重新選擇包含她回覆的聊天截圖，再按「開始分析」。',
+          );
+        });
+        return;
+      case null:
+        break;
     }
 
     if (!allowPendingOutgoingRefresh &&
@@ -4004,15 +2611,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     try {
-      final analyzedMessageCount = sourceMessages.length;
-      // Capture synchronously, before any preview/network await. The notifier
-      // carries this exact message revision through retry/remount so an older
-      // result can never archive or overwrite a same-count edit.
-      final analyzedContentRevision = conversationContentRevision(conversation);
-      final analysisContext = await _buildSummaryAwareAnalysisContext(
+      final preparation = await preparer.assemble(
         conversation: conversation,
-        baseMessages: messagesForAnalysis,
+        gate: runGate,
       );
+      final analyzedMessageCount = preparation.analyzedMessageCount;
 
       // 呼叫 Supabase Edge Function（不帶圖片，因為截圖已轉成文字存入）
       // skipPreview 路徑刻意拿不到 overcharge 憑證：>2000 字會被 server
@@ -4025,7 +2628,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         previewDecision = (confirmed: true, overcharge: null);
       } else {
         previewDecision = await _confirmAnalysisPreview(
-          analysisContext.requestMessages,
+          preparation.requestMessages,
         );
       }
       if (!previewDecision.confirmed || !mounted) {
@@ -4051,51 +2654,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _activeAnalysisMessageCount = analyzedMessageCount;
       });
 
-      try {
-        await ref
-            .read(subscriptionProvider.notifier)
-            .ensureServerEntitlementSyncedForAnalysis()
-            .timeout(_subscriptionSyncTimeout);
-      } on TimeoutException catch (error) {
-        // 該方法內部已 catch-all（只剩卡住這一種失敗模式）；逾時放行，
-        // 額度/權益由 server 端最終把關，不得讓分析卡在「開始完整分析」。
-        debugPrint('Analysis entitlement pre-sync timeout: $error');
-      }
-      if (!mounted) {
-        return;
-      }
-
-      // Fire-and-forget. The notifier caches the payload for retryStream and
-      // keeps itself alive across screen navigation; ref.listen + the initState
-      // hydration path mirror provider state back into local fields so the
-      // legacy render tree (which reads _enthusiasmScore, _isAnalyzing, etc.)
-      // keeps working (Eric 2026-05-28 UX spec).
-      final analysisFuture = ref
-          .read(streamingAnalyzeProvider(widget.conversationId).notifier)
-          .start(
-            messages: analysisContext.requestMessages,
-            sessionContext: conversation.sessionContext,
-            conversationSummary: analysisContext.conversationSummary,
-            partnerSummary: _resolvePartnerSummary(conversation),
-            effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
-            knownContactName:
-                ScreenshotRecognitionHelper.isPlaceholderConversationName(
-              conversation.name,
-            )
-                    ? null
-                    : conversation.name.trim(),
-            previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
-            previousAnalyzedCharCount: conversation.lastAnalyzedCharCount,
-            confirmedOvercharge: previewDecision.overcharge,
-            conversationMessageCount: conversation.messages.length,
-            analyzedMessageCount: analyzedMessageCount,
-            conversationContentRevision: analyzedContentRevision,
-          );
-      if (waitForCompletion) {
-        await analysisFuture;
-      } else {
-        unawaited(analysisFuture);
-      }
+      // Fire-and-forget（waitForCompletion 之外）。notifier 快取 payload 供
+      // retryStream 並跨畫面導航存活；ref.listen + initState hydration 把
+      // provider 狀態鏡射回本地欄位，讓讀 _enthusiasmScore、_isAnalyzing 的
+      // 舊 render tree 繼續運作（Eric 2026-05-28 UX spec）。
+      await _session.start(
+        conversation: conversation,
+        preparation: preparation,
+        confirmedOvercharge: previewDecision.overcharge,
+        waitForCompletion: waitForCompletion,
+        shouldProceed: () => mounted,
+      );
     } catch (e) {
       setState(() {
         _isAnalyzing = false;
@@ -4163,7 +2732,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case StreamingAnalyzePhase.done:
         final result = next.result;
         if (result == null) return;
-        if (_isStreamingAnalyzeResultStaleForCurrentConversation(next)) {
+        if (_session
+            .isResultStaleForCurrentConversation(next.toRunMetadata())) {
           setState(() {
             _isAnalyzing = false;
             _followLiveAnalysis = false;
@@ -4214,16 +2784,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _lastAiResponse = result.rawResponse;
           _resetFeedbackState();
         });
-        _persistLatestAnalysisSnapshot(
+        _session.persistCompletedRun(
+          next.toRunMetadata(),
           result,
-          completionKey: next.analysisRunId,
-          previousAnalyzedCount: next.previousAnalyzedCount,
           analyzedMessageCount: analyzedMessageCount,
-          analyzedContentRevision: next.conversationContentRevision,
           allowArchivedRecordRefresh: _isRefreshingPremiumReplies,
-        ).catchError((_) {
-          // Ignore errors in test environment.
-        });
+        );
         _syncSubscriptionUsageFromResult(result, showChargeToast: true);
         // 一次性捲到「回覆建議」區頂。只在 live 完成轉場做（hydrate 不做），
         // setState 排定的重建幀之後才量得到新位置。
@@ -4287,11 +2853,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// payload from the most recent `start()` (survives screen remount via
   /// `ref.keepAlive`), so we just delegate. I-P1-b.
   void _retryStreamAnalysis() {
-    unawaited(
-      ref
-          .read(streamingAnalyzeProvider(widget.conversationId).notifier)
-          .retryStream(),
-    );
+    unawaited(_session.retry());
   }
 
   /// 優化用戶訊息
@@ -4311,33 +2873,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     try {
-      final analysisContext = await _buildSummaryAwareAnalysisContext(
-        conversation: conversation,
-        baseMessages: conversation.messages,
-      );
-      final partnerSummary = _resolvePartnerSummary(conversation);
-      final effectiveStyleContext = _resolveEffectiveStyleContext(conversation);
-      final knownContactName =
-          ScreenshotRecognitionHelper.isPlaceholderConversationName(
-        conversation.name,
-      )
-              ? null
-              : conversation.name.trim();
-      final optimizeFingerprint =
-          OptimizeMessageRequestIdSession.fingerprintFor(
-        messages: analysisContext.requestMessages,
-        userDraft: draft,
+      final analysisContext = await ref
+          .read(analysisRunPreparerProvider)
+          .prepareAuxiliary(conversation: conversation);
+      final polishOutcome = await _replyIteration.runPolish(
+        ownerUserId: ownerUserId,
+        context: analysisContext,
         sessionContext: conversation.sessionContext,
-        conversationSummary: analysisContext.conversationSummary,
-        partnerSummary: partnerSummary,
-        effectiveStyleContext: effectiveStyleContext,
-        knownContactName: knownContactName,
-      );
-      final outcome = await _optimizeRequestRunner.run<AnalysisResult>(
-        input: OptimizeRunInput(
-          ownerUserId: ownerUserId,
-          fingerprint: optimizeFingerprint,
-        ),
+        draft: draft,
         onReadyToSend: () async {
           if (!mounted) return false;
           final consented = await AiDataSharingConsent.ensure(
@@ -4355,40 +2898,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           });
           return true;
         },
-        send: (pending) async {
-          final analysisService = AnalysisService();
-          final result = await analysisService.analyzeConversation(
-            analysisContext.requestMessages,
-            sessionContext: conversation.sessionContext,
-            conversationSummary: analysisContext.conversationSummary,
-            partnerSummary: partnerSummary,
-            effectiveStyleContext: effectiveStyleContext,
-            knownContactName: knownContactName,
-            userDraft: draft,
-            requestId: pending.requestId,
-            onTelemetry: _handleAnalysisTelemetry,
-          );
-          if (result.optimizedMessage == null ||
-              result.optimizedMessage!.optimized.trim().isEmpty) {
-            throw AnalysisException(
-              '這次沒有產生可用的優化結果，請稍後再試。',
-              code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
-              suggestedAction: AnalysisErrorAction.wait,
-            );
-          }
-          return result;
-        },
+        onTelemetry: _handleAnalysisTelemetry,
       );
 
       // cancelled：使用者拒絕同意或畫面已離開，什麼都沒送出也沒鑄身分。
-      if (!outcome.isSuccess) return null;
+      if (polishOutcome == null) return null;
       if (!mounted) return null;
 
-      final pending = outcome.pending!;
-      final result = outcome.result!;
+      final pending = polishOutcome.pending;
+      final result = polishOutcome.result;
       setState(() {
         _polishRunKey = const Uuid().v4();
-        _optimizePendingAwaitingPresentation = pending;
       });
 
       _syncSubscriptionUsageFromResult(
@@ -4462,14 +2982,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted ||
         WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
-        ModalRoute.of(context)?.isCurrent != true ||
-        _optimizePendingAwaitingPresentation?.requestId != pending.requestId) {
+        ModalRoute.of(context)?.isCurrent != true) {
       return;
     }
-    await _optimizeRequestSession.markSuccess(pending);
-    if (_optimizePendingAwaitingPresentation?.requestId == pending.requestId) {
-      _optimizePendingAwaitingPresentation = null;
-    }
+    await _replyIteration.acknowledgePolishPresented(pending);
   }
 
   /// 「再調一下」：把一則已經產出的回覆就地再修一次，可以連續迭代。
@@ -4495,30 +3011,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    final analysisContext = await _buildSummaryAwareAnalysisContext(
-      conversation: conversation,
-      baseMessages: conversation.messages,
-    );
+    final analysisContext = await ref
+        .read(analysisRunPreparerProvider)
+        .prepareAuxiliary(conversation: conversation);
     if (!mounted) return;
-    final partnerSummary = _resolvePartnerSummary(conversation);
-    final effectiveStyleContext = _resolveEffectiveStyleContext(conversation);
-    final knownContactName =
-        ScreenshotRecognitionHelper.isPlaceholderConversationName(
-      conversation.name,
-    )
-            ? null
-            : conversation.name.trim();
 
     // 讀失敗就當作沒有草稿：這只是方便用的快取，不能為了它擋住面板。
-    ReplyRefineDraft? restored;
-    try {
-      restored = await _refineDraftStore.loadFor(
-        ownerUserId: ownerUserId,
-        originText: origin,
-      );
-    } catch (_) {
-      restored = null;
-    }
+    final restored = await _replyIteration.restoreRefineDraft(
+      ownerUserId: ownerUserId,
+      originText: origin,
+    );
     if (!mounted) return;
 
     final sheetResult = await showReplyRefineSheet(
@@ -4526,23 +3028,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       originalText: origin,
       restoredText: restored?.refinedText,
       restoredRequestId: restored?.requestId,
-      freeRemaining: _refineFreeRemaining,
+      freeRemaining: _replyIteration.refineFreeRemaining,
       onRefine: ({required currentText, required instruction}) async {
-        final fingerprint = OptimizeMessageRequestIdSession.fingerprintFor(
-          messages: analysisContext.requestMessages,
-          userDraft: currentText,
+        final round = await _replyIteration.runRefineRound(
+          ownerUserId: ownerUserId,
+          context: analysisContext,
           sessionContext: conversation.sessionContext,
-          conversationSummary: analysisContext.conversationSummary,
-          partnerSummary: partnerSummary,
-          effectiveStyleContext: effectiveStyleContext,
-          knownContactName: knownContactName,
-          refineInstruction: instruction,
-        );
-        final outcome = await _optimizeRequestRunner.run<AnalysisResult>(
-          input: OptimizeRunInput(
-            ownerUserId: ownerUserId,
-            fingerprint: fingerprint,
-          ),
+          currentText: currentText,
+          instruction: instruction,
+          // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的
+          // anchor_action 條款有錨可判——第 N 版不得長出原句沒有的邀約。
+          anchorText: origin,
           onReadyToSend: () async {
             if (!mounted) return false;
             return AiDataSharingConsent.ensure(
@@ -4554,77 +3050,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               purposeText: AiDataSharingConsent.optimizeReplayPurposeText,
             );
           },
-          send: (pending) async {
-            final result = await AnalysisService().analyzeConversation(
-              analysisContext.requestMessages,
-              sessionContext: conversation.sessionContext,
-              conversationSummary: analysisContext.conversationSummary,
-              partnerSummary: partnerSummary,
-              effectiveStyleContext: effectiveStyleContext,
-              knownContactName: knownContactName,
-              userDraft: currentText,
-              refineInstruction: instruction,
-              // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的
-              // anchor_action 條款有錨可判——第 N 版不得長出原句沒有的邀約。
-              refineAnchorText: origin,
-              requestId: pending.requestId,
-              onTelemetry: _handleAnalysisTelemetry,
-            );
-            final refined = result.optimizedMessage?.optimized.trim();
-            if (refined == null || refined.isEmpty) {
-              throw AnalysisException(
-                '這次沒有調出可用的版本，請再試一次。',
-                code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
-                suggestedAction: AnalysisErrorAction.wait,
-              );
-            }
-            return result;
-          },
+          onTelemetry: _handleAnalysisTelemetry,
         );
-        if (!outcome.isSuccess) return null;
+        if (round == null) return null;
 
-        final pending = outcome.pending!;
-        final result = outcome.result!;
         _syncSubscriptionUsageFromResult(
-          result,
+          round.result,
           showChargeToast: false,
           chargeActionLabel: '微調',
         );
-        final usage = result.rawResponse?['usage'];
-        final freeRemaining =
-            usage is Map ? usage['refineFreeRemaining'] : null;
-        final freeDailyLimit =
-            usage is Map ? usage['refineFreeDailyLimit'] : null;
-        if (freeRemaining is num) {
-          _refineFreeRemaining = freeRemaining.round();
-        }
-        final refinedText = result.optimizedMessage!.optimized.trim();
-        // 順序不能反：先把已付費結果落到本機暫存，成功了才清掉付費身分。
-        //
-        // 面板是可下滑關閉的 route，使用者可能在等待中就把它關掉，結果回來時
-        // 根本沒被看到；此時本機暫存是唯一還能把它接回來的東西。若先
-        // markSuccess 再存檔而存檔失敗，requestId 就永久消失，下一次只能鑄一顆
-        // 新的再扣一次錢。存檔失敗時保留 pending，同一份輸入的下一次送出會走
-        // replay 拿回同一個結果，不重複扣費。
-        var restorable = false;
-        try {
-          await _refineDraftStore.save(
-            ownerUserId: ownerUserId,
-            originText: origin,
-            refinedText: refinedText,
-            requestId: pending.requestId,
-          );
-          restorable = true;
-        } catch (_) {}
-        if (restorable) {
-          unawaited(_markRefinePendingAfterVisibleFrame(pending));
+        // durable 暫存已在 coordinator 內先落地（順序不能反：先存得回來、
+        // 才在可見幀後清掉付費身分）；存檔失敗時保留 pending 走 replay。
+        if (round.restorable) {
+          unawaited(_markRefinePendingAfterVisibleFrame(round.pending));
         }
         return ReplyRefineOutcome(
-          refinedText: refinedText,
-          requestId: pending.requestId,
-          freeRemaining: freeRemaining is num ? freeRemaining.round() : null,
-          freeDailyLimit: freeDailyLimit is num ? freeDailyLimit.round() : null,
-          chargedQuota: usage is Map && usage['shouldChargeQuota'] == true,
+          refinedText: round.refinedText,
+          requestId: round.pending.requestId,
+          freeRemaining: round.freeRemaining,
+          freeDailyLimit: round.freeDailyLimit,
+          chargedQuota: round.chargedQuota,
         );
       },
     );
@@ -4654,12 +3099,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     required String? requestId,
     required String copiedText,
   }) async {
-    final originAdviceId = _analyzeAdviceId(originCardKey);
     // 沒有穩定的冪等鍵就不記：寧可少一筆樣本，也不要記出無法去重的髒資料。
-    if (originAdviceId == null || requestId == null || requestId.isEmpty) {
-      return;
-    }
-    final eventId = 'refine:$originAdviceId:$requestId';
+    final eventId = ReplyIterationCoordinator.refineCopyEventId(
+      originAdviceId: _analyzeAdviceId(originCardKey),
+      requestId: requestId,
+    );
+    if (eventId == null) return;
     final conversation = ref.read(conversationProvider(widget.conversationId));
     try {
       await ref.read(coachingOutcomeRecorderProvider).recordAdviceCopied(
@@ -4691,13 +3136,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
       return;
     }
-    await _optimizeRequestSession.markSuccess(pending);
+    await _replyIteration.acknowledgeRefinePresented(pending);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
-    final pending = _optimizePendingAwaitingPresentation;
+    final pending = _replyIteration.pendingAwaitingPresentation;
     if (pending == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -4899,6 +3344,142 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
+  // ── AnalysisFeedbackActions（反饋 section 的動作實作）──────────────
+
+  @override
+  void submitPositiveFeedback() => unawaited(_submitFeedback('positive'));
+
+  @override
+  void openNegativeFeedbackForm() =>
+      setState(() => _showFeedbackForm = true);
+
+  @override
+  void selectFeedbackCategory(String? category) {
+    AppHaptics.light();
+    setState(() => _feedbackCategory = category);
+  }
+
+  @override
+  void setIncludeFeedbackContext(bool include) {
+    AppHaptics.tap();
+    setState(() => _includeFeedbackContext = include);
+  }
+
+  @override
+  void submitNegativeFeedback() => unawaited(_submitFeedback('negative'));
+
+  @override
+  void dismissKeyboard() => _dismissKeyboard();
+
+  // ── ReplyZoneActions（回覆區 section 的動作實作）─────────────────────
+
+  @override
+  void copyRecommendationText(String text, String label) {
+    AppHaptics.light();
+    Clipboard.setData(ClipboardData(text: text));
+    unawaited(_recordAnalysisCopy(cardKey: 'final', copiedText: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label，發出後記得回來回報結果')),
+    );
+  }
+
+  @override
+  void copyStyleReply(String type, String text, String snackBarMessage) {
+    unawaited(_recordAnalysisCopy(cardKey: type, copiedText: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$snackBarMessage，發出後記得回來回報結果'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
+  void refineReply(String text, String originCardKey) => unawaited(
+        _refineReply(originText: text, originCardKey: originCardKey),
+      );
+
+  @override
+  void openPaywall() => unawaited(_showPaywall(context));
+
+  @override
+  void refreshPremiumReplies() => unawaited(_refreshPremiumReplies());
+
+  /// 回覆區尾端提示的種類；null＝不顯示。顯示條件沿用既有規則：
+  /// 有回覆且（Free 用戶／已升級但看舊 Free 結果／付費單一 extend fallback）。
+  ReplyZoneNoticeKind? _replyZoneNoticeKind(SubscriptionState subscription) {
+    final replies = _replies;
+    if (replies == null || replies.isEmpty) return null;
+    if (subscription.isFreeUser) return ReplyZoneNoticeKind.freeUpgrade;
+    if (_analysisNeedsReplyRefresh(subscription)) {
+      return ReplyZoneNoticeKind.refreshStale;
+    }
+    if (replies.length == 1 && replies.containsKey('extend')) {
+      return ReplyZoneNoticeKind.premiumDefault;
+    }
+    return null;
+  }
+
+  // ── AnalysisFragmentActions（片段卡的動作實作）──────────────────────
+
+  @override
+  void chooseConversationSource() {
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) return;
+    unawaited(_chooseConversationAnalysisSource(conversation));
+  }
+
+  @override
+  void editFragmentMessage(Message message) {
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) return;
+    unawaited(_editMessage(conversation, message));
+  }
+
+  @override
+  void swapFragmentMessageSide(Message message) {
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) return;
+    unawaited(_swapMessageSide(conversation, message));
+  }
+
+  @override
+  void deleteFragmentMessage(Message message) {
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) return;
+    unawaited(_deleteMessage(conversation, message));
+  }
+
+  // ── ScreenshotIntakeActions（選圖／辨識區的動作實作）────────────────
+
+  @override
+  void selectedImagesChanged(List<Uint8List> images) =>
+      _handleSelectedImagesChanged(images);
+
+  @override
+  void selectedImageMetricsChanged(List<SelectedImageMetrics> metrics) =>
+      _handleSelectedImageMetricsChanged(metrics);
+
+  @override
+  void recognizeScreenshots() => unawaited(_recognizeAndAddToConversation());
+
+  @override
+  void cancelRecognition() => _cancelRecognize();
+
+  // ── RecognitionDraftActions（辨識結果卡的動作實作）──────────────────
+
+  @override
+  void forceReRecognizeLastBatch() => unawaited(_forceReRecognizeLastBatch());
+
+  @override
+  void repickScreenshots() => unawaited(_repickScreenshots());
+
+  @override
+  void resumeRecognitionImport() => unawaited(_resumeRecognitionImport());
+
+  @override
+  void discardRecognitionDraft() => _discardPendingRecognitionDraft();
+
   void _resetFeedbackState() {
     _feedbackSubmitted = false;
     _showFeedbackForm = false;
@@ -4972,45 +3553,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     return payload.length > 1 ? payload : null;
-  }
-
-  List<String> _extractRecommendationSegments(String content) {
-    final normalized = content.replaceAll('\r\n', '\n').trim();
-    if (normalized.isEmpty) {
-      return const [];
-    }
-
-    final matches = RegExp(r'[①②③④⑤💡]').allMatches(normalized).toList();
-    if (matches.isEmpty) {
-      return [normalized];
-    }
-
-    final segments = <String>[];
-    for (var i = 0; i < matches.length; i++) {
-      final start = matches[i].start;
-      final end =
-          i + 1 < matches.length ? matches[i + 1].start : normalized.length;
-      final segment = normalized.substring(start, end).trim();
-      if (segment.isNotEmpty) {
-        segments.add(segment);
-      }
-    }
-    return segments;
-  }
-
-  String? _extractRecommendationReplyText(String segment) {
-    final normalized = segment.replaceAll('\r\n', '\n').trim();
-    final match =
-        RegExp(r'^[①②③④⑤]\s*[^→\n]{0,80}\s*→\s*').firstMatch(normalized);
-    if (match == null) {
-      return null;
-    }
-
-    final replyText = normalized
-        .substring(match.end)
-        .trim()
-        .replaceAll(RegExp(r'^[「『"“]+|[」』"”]+$'), '');
-    return replyText.isEmpty ? null : replyText;
   }
 
   String? _analyzeAdviceId(String cardKey) {
@@ -5124,687 +3666,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  /// 每一顆「再調一下」都只綁一則回覆——整組合併後的文字不給微調。
-  Widget _buildRefineButton(String replyText, {required String originCardKey}) {
-    final text = replyText.trim();
-    if (text.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: SizedBox(
-        width: double.infinity,
-        height: 34,
-        child: TextButton.icon(
-          key: ValueKey('refine-reply-${text.hashCode}'),
-          onPressed: () => unawaited(
-            _refineReply(originText: text, originCardKey: originCardKey),
-          ),
-          icon: const Icon(Icons.tune_rounded, size: 16),
-          label: Text('再調一下', style: AppTypography.labelMedium),
-        ),
-      ),
-    );
-  }
-
-  void _copyRecommendationText(String text, String label) {
-    AppHaptics.light();
-    Clipboard.setData(ClipboardData(text: text));
-    unawaited(_recordAnalysisCopy(cardKey: 'final', copiedText: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label，發出後記得回來回報結果')),
-    );
-  }
-
-  /// 截圖識別結果卡片
-  /// 優先呈現結構化分段回覆；舊版 ①② 格式只保留相容。
-  List<Widget> _buildRecommendationContent(FinalRecommendation recommendation) {
-    final content = recommendation.content.trim();
-    final structuredSegments = recommendation.replySegments
-        .where((segment) => segment.reply.trim().isNotEmpty)
-        .toList();
-    if (structuredSegments.isNotEmpty) {
-      return _buildStructuredRecommendationSegments(
-        recommendation: recommendation,
-        segments: structuredSegments,
-      );
-    }
-
-    final segments = _extractRecommendationSegments(content);
-    if (segments.length <= 1) {
-      return [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(content, style: AppTypography.bodyLarge),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: AppHaptics.onPress(() {
-              _copyRecommendationText(content, '已複製到剪貼簿');
-            }),
-            icon: const Icon(Icons.copy),
-            label: const Text('複製推薦回覆'),
-          ),
-        ),
-        _buildRefineButton(content, originCardKey: 'final'),
-      ];
-    }
-
-    final widgets = <Widget>[];
-    for (final segment in segments) {
-      final trimmed = segment.trim();
-      final isHint = trimmed.startsWith('💡');
-      final replyText =
-          isHint ? null : _extractRecommendationReplyText(trimmed);
-
-      widgets.add(
-        Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isHint
-                ? AppColors.info.withValues(alpha: 0.08)
-                : AppColors.surface,
-            borderRadius: BorderRadius.circular(8),
-            border: isHint
-                ? Border.all(color: AppColors.info.withValues(alpha: 0.2))
-                : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                trimmed,
-                style: AppTypography.bodyMedium.copyWith(
-                  color:
-                      isHint ? AppColors.textSecondary : AppColors.textPrimary,
-                ),
-              ),
-              if (!isHint && replyText != null && replyText.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  height: 36,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      _copyRecommendationText(replyText, '已複製這句');
-                    },
-                    icon: const Icon(Icons.copy, size: 16),
-                    label: const Text('複製這句', style: TextStyle(fontSize: 13)),
-                  ),
-                ),
-                _buildRefineButton(replyText, originCardKey: 'final'),
-              ],
-            ],
-          ),
-        ),
-      );
-    }
-
-    return widgets;
-  }
-
-  List<Widget> _buildStructuredRecommendationSegments({
-    required FinalRecommendation recommendation,
-    required List<ReplySegment> segments,
-  }) {
-    final widgets = <Widget>[
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.045),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-        ),
-        child: Text(
-          segments.length == 1
-              ? '這是推薦訊息素材；下方保留引用，方便你確認 AI 接的是哪顆球。'
-              : '建議拆成 ${segments.length} 則短訊息。每段都引用她的原句，也能單獨複製。',
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.onBackgroundPrimary.withValues(alpha: 0.88),
-            height: 1.45,
-          ),
-        ),
-      ),
-      const SizedBox(height: 12),
-    ];
-
-    for (var i = 0; i < segments.length; i++) {
-      final segment = segments[i];
-      final source = segment.sourceMessage.trim();
-      final reply = segment.reply.trim();
-      final reason = segment.reason.trim();
-      widgets.add(
-        Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.format_quote_rounded,
-                    size: 16,
-                    color: AppColors.ctaStart,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      segment.displayLabel,
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.ctaStart,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (source.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.background.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border(
-                      left: BorderSide(
-                        color: AppColors.ctaStart.withValues(alpha: 0.45),
-                        width: 3,
-                      ),
-                    ),
-                  ),
-                  child: Text(
-                    source,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.textSecondary,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 10),
-              Text(
-                reply,
-                style: AppTypography.bodyLarge.copyWith(height: 1.45),
-              ),
-              if (reason.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  reason,
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.textSecondary,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 46,
-                child: TextButton.icon(
-                  onPressed: () {
-                    _copyRecommendationText(reply, '已複製第 ${i + 1} 句');
-                  },
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha: 0.05),
-                    foregroundColor: AppColors.onBackgroundPrimary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      side: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.14),
-                      ),
-                    ),
-                  ),
-                  icon: const Icon(
-                    Icons.copy_rounded,
-                    size: 17,
-                    color: AppColors.coachAccent,
-                  ),
-                  label: Text(
-                    segments.length == 1 ? '複製這句' : '複製第 ${i + 1} 句',
-                    style: AppTypography.labelLarge.copyWith(
-                      color: AppColors.onBackgroundPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-              _buildRefineButton(reply, originCardKey: 'final'),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final allContent = recommendation.content.trim();
-    if (segments.length > 1 && allContent.isNotEmpty) {
-      widgets.add(
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton.icon(
-            onPressed: AppHaptics.onPress(() {
-              _copyRecommendationText(allContent, '已複製整組訊息');
-            }),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-            ),
-            icon: const Icon(Icons.copy_rounded, size: 18),
-            label: Text(
-              '複製整組訊息',
-              style: AppTypography.titleSmall.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return widgets;
-  }
-
-  Widget _buildRecognizedConversationCard() {
-    final recognized = _recognizedConversation!;
-    final displayWarning = _recognizedWarningMessage ?? recognized.warning;
-    final displayRecognized = recognized.copyWith(warning: displayWarning);
-    final guidance = _recognitionGuidance(displayRecognized);
-    final guidanceColor = _recognitionGuidanceColor(displayRecognized);
-    return BrandSurfaceCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.photo_library,
-                  size: 20, color: AppColors.ctaStart),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  ScreenshotRecognitionHelper.recognitionPreviewTitle(
-                    recognized,
-                  ),
-                  style: AppTypography.bodyMedium.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.onBackgroundPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildRecognitionStatusChip(
-                icon: Icons.chat_bubble_outline,
-                label: _recognitionClassificationLabel(
-                  displayRecognized.classification,
-                ),
-                color: displayRecognized.importPolicy == 'reject'
-                    ? AppColors.error
-                    : AppColors.ctaStart,
-              ),
-              _buildRecognitionStatusChip(
-                icon: Icons.auto_awesome,
-                label:
-                    _recognitionConfidenceLabel(displayRecognized.confidence),
-                color: _recognitionConfidenceColor(displayRecognized),
-              ),
-              _buildRecognitionStatusChip(
-                icon: Icons.compare_arrows_rounded,
-                label: _recognitionSideConfidenceLabel(
-                  displayRecognized.sideConfidence,
-                ),
-                color: _recognitionConfidenceColor(
-                  displayRecognized.copyWith(
-                    confidence: displayRecognized.sideConfidence,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: guidanceColor.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: guidanceColor.withValues(alpha: 0.18),
-              ),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  _recognitionGuidanceIcon(displayRecognized),
-                  size: 18,
-                  color: guidanceColor,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        guidance.title,
-                        style: AppTypography.bodySmall.copyWith(
-                          color: guidanceColor,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _recognitionActionGuidance(displayRecognized),
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.onBackgroundPrimary,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (displayWarning != null && displayWarning.trim().isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: AppColors.error.withValues(alpha: 0.25),
-                  ),
-                ),
-                child: Text(
-                  displayWarning,
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    height: 1.45,
-                  ),
-                ),
-              ),
-            ),
-          // 「查看辨識內容」摺疊清單已拆（2026-08-16 Bruce 回饋：內容與上方
-          // 主卡的訊息泡泡重複）。
-          if (_recognitionFromCache && _canForceReRecognize) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.info.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: AppColors.info.withValues(alpha: 0.25),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.cached_rounded,
-                    size: 18,
-                    color: AppColors.info,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '這是上次相同截圖的快取結果',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.onBackgroundPrimary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: _forceReRecognizeLastBatch,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('強制重新辨識'),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '如果結果有誤，點「強制重新辨識」會忽略快取，重新辨識。',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.unselectedText,
-                height: 1.4,
-              ),
-            ),
-          ] else ...[
-            // 「重新讀圖」改「重新選圖」（2026-08-16 Bruce 回饋）：重讀同一批
-            // 錯照舊，直接開相簿換截圖才解得了「選錯圖」；確認後整批取代。
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                key: const ValueKey('recognized-repick'),
-                onPressed: _isRecognizing ? null : _repickScreenshots,
-                icon: const Icon(Icons.add_photo_alternate_outlined),
-                label: const Text('重新選圖'),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '選錯截圖或漏拉訊息？重新選 1–3 張，確認後會整批取代這次內容。',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.unselectedText,
-                height: 1.4,
-              ),
-            ),
-          ],
-          if (_hasPendingRecognitionImport) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: AppHaptics.onPress(_resumeRecognitionImport),
-                    icon: const Icon(Icons.edit_note_rounded),
-                    label: const Text('繼續確認本次內容'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (_canForceReRecognize)
-                  TextButton(
-                    onPressed: _forceReRecognizeLastBatch,
-                    child: const Text('重讀這批圖'),
-                  ),
-                if (_canForceReRecognize) const SizedBox(width: 4),
-                TextButton(
-                  onPressed: _discardPendingRecognitionDraft,
-                  child: const Text('清除草稿'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '剛剛的辨識結果已暫存在這裡，不用重新辨識。',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.unselectedText,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFeedbackCategoryChip(String value, String label) {
-    final isSelected = _feedbackCategory == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      // 勾勾淡入淡出在快速切換時會留殘影＋寬度跳動，全 App chips 一律不顯示。
-      showCheckmark: false,
-      onSelected: _isSubmittingFeedback
-          ? null
-          : (selected) {
-              AppHaptics.light();
-              setState(() => _feedbackCategory = selected ? value : null);
-            },
-    );
-  }
-
-  Widget _buildDetailedAnalysisToggle() {
-    return Semantics(
-      button: true,
-      label: _showDetailedAnalysis ? '收起詳細分析' : '展開詳細分析',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => setState(
-          () => _showDetailedAnalysis = !_showDetailedAnalysis,
-        ),
-        child: BrandSurfaceCard(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: AppColors.ctaStart.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      Icons.insights_outlined,
-                      color: AppColors.ctaStart,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '詳細分析',
-                          style: AppTypography.titleMedium.copyWith(
-                            color: AppColors.onBackgroundPrimary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '本次投入、階段、心理訊號與互動雷達',
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.onBackgroundSecondary,
-                            height: 1.25,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: AppColors.ctaStart,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _showDetailedAnalysis ? '收起' : '展開',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        AnimatedRotation(
-                          turns: _showDetailedAnalysis ? 0.5 : 0,
-                          duration: AppMotion.state,
-                          curve: AppMotion.easeOut,
-                          child: const Icon(
-                            Icons.expand_more,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (_enthusiasmScore != null)
-                    _buildDetailedAnalysisPill('本次投入 $_enthusiasmScore'),
-                  if (_gameStage != null)
-                    _buildDetailedAnalysisPill(_gameStage!.current.label),
-                  if (_dimensionScores != null)
-                    _buildDetailedAnalysisPill('互動雷達'),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailedAnalysisPill(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-      ),
-      child: Text(
-        label,
-        style: AppTypography.caption.copyWith(
-          color: AppColors.onBackgroundSecondary,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    _syncReplyZoneEntrance();
-    final optimizePending = _optimizePendingAwaitingPresentation;
+    final replyZoneCards = ReplyZoneCards(
+      recommendation: _finalRecommendation,
+      replies: _replies,
+      replyOptions: _replyOptions,
+    );
+    _syncReplyZoneEntrance(hasContent: replyZoneCards.hasContent);
+    final optimizePending = _replyIteration.pendingAwaitingPresentation;
     if (optimizePending != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -5839,6 +3709,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     final analysisFragmentMessages = _analysisFragmentMessages(conversation);
+    final conversationSource = _conversationAnalysisSource(conversation);
     final isPendingAnalysisFragment =
         _isShowingPendingAnalysisFragment(conversation);
     final hasCompletedAnalysisEvidence =
@@ -5982,290 +3853,63 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Messages preview（空白新片段時平鋪深色、不上白卡）
-                          Container(
-                            width: double.infinity,
-                            padding: isEmptyFragmentSetup
-                                ? EdgeInsets.zero
-                                : const EdgeInsets.all(14),
-                            decoration: isEmptyFragmentSetup
-                                ? null
-                                : BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.96),
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(
-                                      color: AppColors.ctaStart
-                                          .withValues(alpha: 0.24),
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black
-                                            .withValues(alpha: 0.12),
-                                        blurRadius: 18,
-                                        offset: const Offset(0, 10),
-                                      ),
-                                    ],
-                                  ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        isPendingAnalysisFragment
-                                            ? '待分析的新片段'
-                                            : isCompletedAnalysisFragment
-                                                ? '本次分析片段'
-                                                : '新的分析片段',
-                                        style:
-                                            AppTypography.titleMedium.copyWith(
-                                          color: isEmptyFragmentSetup
-                                              ? AppColors.onBackgroundPrimary
-                                              : AppColors.glassTextPrimary,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    _buildConversationSourcePill(conversation),
-                                  ],
+                          AnalysisFragmentCard(
+                            isEmptyFragmentSetup: isEmptyFragmentSetup,
+                            isPendingFragment: isPendingAnalysisFragment,
+                            isCompletedFragment: isCompletedAnalysisFragment,
+                            showRecordRepairWarning:
+                                _persistence.recordNeedsRepair,
+                            isScreenshotOnlyEmptyState:
+                                isScreenshotOnlyEmptyState,
+                            showEmptyState: analysisFragmentMessages.isEmpty &&
+                                !(isEmptyFragmentSetup &&
+                                    _selectedImages.isNotEmpty),
+                            messages: [
+                              for (final message in analysisFragmentMessages)
+                                FragmentMessageItem(
+                                  message: message,
+                                  mutable: !_isAnalyzing &&
+                                      _canMutateMessage(conversation, message),
                                 ),
-                                // 空片段與待分析片段都不放副標（2026-08-14 對標
-                                // 示意稿拆「先加入…」；2026-08-16 Bruce 回饋再拆
-                                // 「這批新聊天會獨立分析…」）。只有封存片段需要
-                                // 唯讀說明。
-                                if (isCompletedAnalysisFragment) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '這次分析已獨立封存，內容唯讀；新內容請另開分析片段。',
-                                    style: AppTypography.bodySmall.copyWith(
-                                      color: AppColors.glassTextSecondary,
-                                      height: 1.35,
-                                    ),
-                                  ),
-                                ],
-                                if (_analysisRecordNeedsRepair) ...[
-                                  const SizedBox(height: 7),
-                                  Text(
-                                    '分析已完成，但紀錄尚未儲存；系統會自動重試。',
-                                    key: const ValueKey(
-                                      'analysis-record-repair-warning',
-                                    ),
-                                    style: AppTypography.bodySmall.copyWith(
-                                      color: AppColors.warning,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                                const SizedBox(height: 10),
-                                // 已選圖時空態主視覺讓位給選圖列＋辨識 CTA，
-                                // 整頁不用捲就看得到下一步。
-                                if (analysisFragmentMessages.isEmpty &&
-                                    !(isEmptyFragmentSetup &&
-                                        _selectedImages.isNotEmpty))
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 20,
-                                      horizontal: 8,
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        if (isEmptyFragmentSetup)
-                                          // 對標示意稿：紫色聊天泡泡直接放大，
-                                          // 不加圓框（2026-08-14 Eric 拍板拆框）
-                                          const Icon(
-                                            Icons.sms_outlined,
-                                            color: AppColors.coachAccentBright,
-                                            size: 72,
-                                          )
-                                        else
-                                          Icon(
-                                            Icons.chat_bubble_outline,
-                                            color: AppColors.ctaStart,
-                                            size: 34,
-                                          ),
-                                        SizedBox(
-                                          height:
-                                              isEmptyFragmentSetup ? 14 : 10,
-                                        ),
-                                        Text(
-                                          '還沒有訊息',
-                                          style: (isEmptyFragmentSetup
-                                                  ? AppTypography.titleLarge
-                                                  : AppTypography.titleMedium)
-                                              .copyWith(
-                                            color: isEmptyFragmentSetup
-                                                ? AppColors.onBackgroundPrimary
-                                                : AppColors.glassTextPrimary,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          isScreenshotOnlyEmptyState
-                                              ? '先上傳 1–3 張聊天截圖，確認文字後作為本次片段。'
-                                              : '請回到上一頁建立新的獨立分析片段。',
-                                          textAlign: TextAlign.center,
-                                          style:
-                                              AppTypography.bodySmall.copyWith(
-                                            color: isEmptyFragmentSetup
-                                                ? AppColors
-                                                    .onBackgroundSecondary
-                                                : AppColors.glassTextSecondary,
-                                            height: 1.35,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ...analysisFragmentMessages.map((m) =>
-                                    MessageBubble(
-                                      message: m,
-                                      onEdit: _isAnalyzing ||
-                                              !_canMutateMessage(
-                                                  conversation, m)
-                                          ? null
-                                          : () => _editMessage(conversation, m),
-                                      onSwapSide: _isAnalyzing ||
-                                              !_canMutateMessage(
-                                                  conversation, m)
-                                          ? null
-                                          : () =>
-                                              _swapMessageSide(conversation, m),
-                                      onDelete: _isAnalyzing ||
-                                              !_canMutateMessage(
-                                                  conversation, m)
-                                          ? null
-                                          : () =>
-                                              _deleteMessage(conversation, m),
-                                    )),
-                              ],
-                            ),
+                            ],
+                            sourceLabel: conversationSource == null
+                                ? '來源未設定'
+                                : '來源：$conversationSource',
+                            sourceEditable:
+                                _persistence.recordOwnerFor(conversation) !=
+                                        null &&
+                                    !_isAnalyzing &&
+                                    _persistence.inFlightCount == 0,
+                            actions: this,
                           ),
 
                           const SizedBox(height: 24),
 
                           if (_isRefreshingPremiumReplies) ...[
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color:
-                                    AppColors.ctaStart.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: AppColors.ctaStart
-                                      .withValues(alpha: 0.28),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      '正在重新產生完整分析，完成後會更新新版回覆選項。',
-                                      style: AppTypography.bodyMedium.copyWith(
-                                        color: AppColors.ctaStart,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            const PremiumRefreshBanner(),
                             const SizedBox(height: 16),
                           ],
 
                           // Error message
                           if (_errorMessage != null) ...[
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: AppColors.error.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color:
-                                        AppColors.error.withValues(alpha: 0.3)),
-                              ),
-                              child: Column(
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.error_outline,
-                                          color: AppColors.error),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          _errorMessage!,
-                                          style: AppTypography.bodyMedium
-                                              .copyWith(color: AppColors.error),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  if (_errorGuidance != null) ...[
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      _errorGuidance!,
-                                      style: AppTypography.bodySmall.copyWith(
-                                          color: AppColors.textSecondary),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                  const SizedBox(height: 12),
-                                  Wrap(
-                                    alignment: WrapAlignment.center,
-                                    spacing: 10,
-                                    runSpacing: 10,
-                                    children: [
-                                      if (_errorAction != null)
-                                        ElevatedButton(
-                                          onPressed: AppHaptics.onPress(
-                                              _isAnalyzing || _isRecognizing
-                                                  ? null
-                                                  : () => _handleErrorAction(
-                                                      _errorAction!)),
-                                          child: Text(
-                                            _primaryErrorActionLabel(
-                                              _errorAction!,
-                                            ),
-                                          ),
-                                        ),
-                                      // 強制重新辨識按鈕（當有之前的圖片可以重試時）
-                                      if (_canForceReRecognize &&
-                                          _errorOrigin ==
-                                              _AnalysisErrorOrigin.recognition)
-                                        OutlinedButton.icon(
-                                          onPressed:
-                                              _isAnalyzing || _isRecognizing
-                                                  ? null
-                                                  : _forceReRecognizeLastBatch,
-                                          icon:
-                                              const Icon(Icons.refresh_rounded),
-                                          label: const Text('強制重新辨識'),
-                                        ),
-                                      if (_shouldShowSecondaryErrorAction())
-                                        OutlinedButton(
-                                          onPressed: _isAnalyzing ||
-                                                  _isRecognizing
-                                              ? null
-                                              : () =>
-                                                  setState(_resetErrorState),
-                                          child: Text(
-                                            _secondaryErrorActionLabel(),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                            AnalysisErrorCard(
+                              message: _errorMessage!,
+                              guidance: _errorGuidance,
+                              primaryActionLabel: _errorAction == null
+                                  ? null
+                                  : _primaryErrorActionLabel(_errorAction!),
+                              secondaryActionLabel:
+                                  _secondaryErrorActionLabel(),
+                              showSecondaryAction:
+                                  _shouldShowSecondaryErrorAction(),
+                              showForceReRecognize: _canForceReRecognize &&
+                                  _errorOrigin ==
+                                      _AnalysisErrorOrigin.recognition,
+                              busy: _isAnalyzing || _isRecognizing,
+                              onPrimaryAction: () =>
+                                  _handleErrorAction(_errorAction!),
+                              onForceReRecognize: _forceReRecognizeLastBatch,
+                              onDismiss: () => setState(_resetErrorState),
                             ),
                             const SizedBox(height: 24),
                           ],
@@ -6275,330 +3919,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // 展開，讓使用者增刪縮圖後自己按「辨識並取代」。
                           if (isEmptyFragmentSetup ||
                               _selectedImages.isNotEmpty) ...[
-                            Container(
-                              padding: isEmptyFragmentSetup
-                                  ? EdgeInsets.zero
-                                  : const EdgeInsets.all(24),
-                              decoration: isEmptyFragmentSetup
-                                  ? null
-                                  : BoxDecoration(
-                                      color: AppColors.ctaStart
-                                          .withValues(alpha: 0.05),
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                          color: AppColors.ctaStart
-                                              .withValues(alpha: 0.2)),
-                                    ),
-                              child: Column(
-                                crossAxisAlignment: isEmptyFragmentSetup
-                                    ? CrossAxisAlignment.stretch
-                                    : CrossAxisAlignment.center,
-                                children: [
-                                  if (isEmptyFragmentSetup) ...[
-                                    Divider(
-                                      height: 1,
-                                      color:
-                                          Colors.white.withValues(alpha: 0.10),
-                                    ),
-                                    const SizedBox(height: 18),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          '聊天截圖',
-                                          style:
-                                              AppTypography.titleSmall.copyWith(
-                                            color:
-                                                AppColors.onBackgroundPrimary,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const Spacer(),
-                                        Text(
-                                          '${_selectedImages.length}/3',
-                                          style:
-                                              AppTypography.bodyMedium.copyWith(
-                                            color:
-                                                AppColors.onBackgroundSecondary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                  ],
-                                  // 「本次片段已有 N 則…整批取代」提示已拆
-                                  // （2026-08-16 Bruce 回饋）；取代規則由辨識
-                                  // 確認對話框揭露，這裡只留選圖入口——下方
-                                  // 辨識預覽卡的「重新讀圖」只能重讀同一批，
-                                  // 換截圖仍必須走這裡。
-                                  ImagePickerWidget(
-                                    maxImages: 3,
-                                    externalImages: _selectedImages, // 同步外部狀態
-                                    helperTextColor:
-                                        AppColors.onBackgroundSecondary,
-                                    // 教學文字全拆：空片段由「截圖小提醒」承擔，
-                                    // 已有片段不再重複教學（2026-08-16 Bruce 回饋）
-                                    showHelperText: false,
-                                    tileSize: isEmptyFragmentSetup ? 104 : 70,
-                                    onImagesChanged:
-                                        _handleSelectedImagesChanged,
-                                    onMetricsChanged:
-                                        _handleSelectedImageMetricsChanged,
-                                  ),
-                                  // 選圖後小提醒功成身退，讓「辨識截圖文字」
-                                  // 直接頂上來，一頁內看得到 CTA（2026-08-14
-                                  // Eric 真機回報要往下滑才找得到按鈕）。
-                                  if (isEmptyFragmentSetup &&
-                                      _selectedImages.isEmpty) ...[
-                                    const SizedBox(height: 22),
-                                    Text(
-                                      '截圖小提醒',
-                                      style: AppTypography.titleSmall.copyWith(
-                                        color: AppColors.onBackgroundPrimary,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    _buildScreenshotTipRow(
-                                      icon: Icons.crop_free_rounded,
-                                      text: '請保留標題列、訊息泡泡與前後文',
-                                    ),
-                                    const SizedBox(height: 8),
-                                    _buildScreenshotTipRow(
-                                      icon: Icons.text_fields_rounded,
-                                      text: '每張建議 15 則內；過長可拆成 2-3 張',
-                                    ),
-                                  ],
-                                  // 「這次分析設定」已拆（2026-08-14 Eric 拍板：
-                                  // 對象卡建立時已引導填過，這裡重複）。
-                                  // 「建議每張截圖保留 15 則內…」也拆
-                                  // （2026-08-16 Bruce 回饋：與截圖小提醒重複）。
-                                  const SizedBox(height: 8),
-
-                                  // 如果有截圖，先顯示「辨識截圖文字」按鈕
-                                  if (_selectedImages.isNotEmpty) ...[
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton.icon(
-                                        onPressed: AppHaptics.onPress(
-                                            _isRecognizing
-                                                ? null
-                                                : _recognizeAndAddToConversation),
-                                        icon: _isRecognizing
-                                            ? const SizedBox(
-                                                width: 20,
-                                                height: 20,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: Colors.white),
-                                              )
-                                            : const Icon(
-                                                Icons.add_photo_alternate),
-                                        label: Text(_recognizeButtonLabel),
-                                        /*
-                                            ? '辨識中…'
-                                            : '辨識截圖文字 （${_selectedImages.length} 張）'),
-                                        */
-                                        style: ElevatedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 14),
-                                          backgroundColor: AppColors.ctaStart,
-                                          foregroundColor: AppColors.onCta,
-                                          disabledBackgroundColor: AppColors
-                                              .primary
-                                              .withValues(alpha: 0.7),
-                                          disabledForegroundColor: Colors.white
-                                              .withValues(alpha: 0.95),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    // Debug 狀態顯示
-                                    if (_showTelemetryDiagnostics &&
-                                        _isRecognizing)
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.orange
-                                              .withValues(alpha: 0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          border: Border.all(
-                                              color: Colors.orange
-                                                  .withValues(alpha: 0.3)),
-                                        ),
-                                        child: Column(
-                                          children: [
-                                            Text(
-                                              '目前階段：${_recognizeStageLabel(_recognizeStage)} ($_recognizeElapsedSeconds 秒)',
-                                              style: AppTypography.bodySmall
-                                                  .copyWith(
-                                                color: Colors.orange,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '圖片：${_selectedImages.length} 張｜原始 ${_formatBytes(_totalOriginalImageBytes)} -> 壓縮 ${_formatBytes(_totalCompressedImageBytes)}',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: Colors.orange
-                                                    .withValues(alpha: 0.8),
-                                                fontFamily: 'monospace',
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                            if (_lastRecognizeTelemetry != null)
-                                              Text(
-                                                _lastRecognizeTelemetry!
-                                                        .cacheHit
-                                                    ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
-                                                    : '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
-                                                style: AppTypography.caption
-                                                    .copyWith(
-                                                  color: Colors.orange
-                                                      .withValues(alpha: 0.8),
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            if (_lastRecognizeTelemetry != null)
-                                              Text(
-                                                _lastRecognizeTelemetry!
-                                                        .cacheHit
-                                                    ? '本次使用本機快取，未重新上傳或呼叫 AI'
-                                                    : 'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
-                                                style: AppTypography.caption
-                                                    .copyWith(
-                                                  color: Colors.orange
-                                                      .withValues(alpha: 0.8),
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            if (_lastRecognizeTelemetry !=
-                                                    null &&
-                                                _recognizeTelemetryRecognitionSummary(
-                                                        _lastRecognizeTelemetry!) !=
-                                                    null)
-                                              Text(
-                                                _recognizeTelemetryRecognitionSummary(
-                                                    _lastRecognizeTelemetry!)!,
-                                                style: AppTypography.caption
-                                                    .copyWith(
-                                                  color: Colors.orange
-                                                      .withValues(alpha: 0.8),
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            if (_lastRecognizeTelemetry !=
-                                                    null &&
-                                                _recognizeTelemetryNormalizationSummary(
-                                                        _lastRecognizeTelemetry!) !=
-                                                    null)
-                                              Text(
-                                                _recognizeTelemetryNormalizationSummary(
-                                                    _lastRecognizeTelemetry!)!,
-                                                style: AppTypography.caption
-                                                    .copyWith(
-                                                  color: Colors.orange
-                                                      .withValues(alpha: 0.8),
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            Text(
-                                              '若超過 130 秒仍無結果，建議換更少訊息的截圖再試。',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: Colors.orange
-                                                    .withValues(alpha: 0.8),
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                            /*
-                                            Text(
-                                              '正在辨識截圖… ($_recognizeElapsedSeconds 秒)',
-                                              style: AppTypography.bodySmall
-                                                  .copyWith(
-                                                color: Colors.orange,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '圖片: ${_selectedImages.length}張 (${_selectedImages.map((i) => '${(i.length / 1024).toStringAsFixed(0)}KB').join(', ')})',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: Colors.orange
-                                                    .withValues(alpha: 0.8),
-                                                fontFamily: 'monospace',
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                            Text(
-                                              '最長等待 130 秒',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: Colors.orange
-                                                    .withValues(alpha: 0.8),
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            // 取消按鈕
-                                            */
-                                            /*
-                                            TextButton(
-                                              onPressed: _cancelRecognize,
-                                              child: Text(
-                                                '取消',
-                                                style: AppTypography.bodySmall
-                                                    .copyWith(
-                                                  color: Colors.red,
-                                                ),
-                                              ),
-                                            ),
-                                            */
-                                            TextButton(
-                                              onPressed: _cancelRecognize,
-                                              child: const Text('取消'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    if (!_isRecognizing)
-                                      Text(
-                                        '截圖會先辨識成對話文字。請確認我說／她說與內容；確認後會成為本次完整片段。',
-                                        style: AppTypography.bodySmall.copyWith(
-                                          color: AppColors.warning,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    /*
-                                      // 提示：有截圖時要先識別
-                                      Text(
-                                        '請先點擊上方按鈕辨識截圖，再進行分析',
-                                        style: AppTypography.bodySmall.copyWith(
-                                          color: AppColors.warning,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    */
-                                    const SizedBox(height: 12),
-                                  ],
-                                  // 價值主張只留首次上傳的空片段；已有片段時
-                                  // 不再重複（2026-08-16 Bruce 回饋）。
-                                  if (isEmptyFragmentSetup) ...[
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      // 縮短到一行放得下（2026-08-14 Eric 真機回報換行）
-                                      'AI 會分析對方投入度、讀懂語意，教你最適合的回覆方式',
-                                      style: AppTypography.bodySmall.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                ],
-                              ),
+                            ScreenshotIntakeSection(
+                              isEmptyFragmentSetup: isEmptyFragmentSetup,
+                              selectedImages: _selectedImages,
+                              isRecognizing: _isRecognizing,
+                              recognizeButtonLabel: _recognizeButtonLabel,
+                              showRecognizeDiagnostics:
+                                  _showTelemetryDiagnostics && _isRecognizing,
+                              recognizeStageLabel:
+                                  _recognizeStageLabel(_recognizeStage),
+                              recognizeElapsedSeconds:
+                                  _recognizeElapsedSeconds,
+                              totalOriginalImageBytes:
+                                  _totalOriginalImageBytes,
+                              totalCompressedImageBytes:
+                                  _totalCompressedImageBytes,
+                              lastRecognizeTelemetry: _lastRecognizeTelemetry,
+                              actions: this,
                             ),
                             const SizedBox(height: 24),
                           ],
@@ -6607,90 +3944,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           if (_showTelemetryDiagnostics &&
                               _lastRecognizeTelemetry != null &&
                               !_isRecognizing) ...[
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color:
-                                    AppColors.ctaStart.withValues(alpha: 0.06),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: AppColors.ctaStart
-                                      .withValues(alpha: 0.16),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '上次 OCR 量測',
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: AppColors.onBackgroundPrimary,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _lastRecognizeTelemetry!.cacheHit
-                                        ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
-                                        : '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  if (_analysisTelemetryQuotaSummary(
-                                          _lastRecognizeTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _analysisTelemetryQuotaSummary(
-                                        _lastRecognizeTelemetry!,
-                                      )!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  Text(
-                                    _lastRecognizeTelemetry!.cacheHit
-                                        ? '本次使用本機快取，未重新上傳或呼叫 AI'
-                                        : 'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  if (_recognizeTelemetryRecognitionSummary(
-                                          _lastRecognizeTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _recognizeTelemetryRecognitionSummary(
-                                          _lastRecognizeTelemetry!)!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  if (_recognizeTelemetryNormalizationSummary(
-                                          _lastRecognizeTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _recognizeTelemetryNormalizationSummary(
-                                          _lastRecognizeTelemetry!)!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  if (_recognizeTelemetryContextSummary(
-                                          _lastRecognizeTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _recognizeTelemetryContextSummary(
-                                          _lastRecognizeTelemetry!)!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  _buildTelemetryGuardrailSection(
-                                    _lastRecognizeTelemetry!,
-                                  ),
-                                ],
+                            OcrTelemetryPanel(
+                              telemetry: _lastRecognizeTelemetry!,
+                              guardrails: _telemetryGuardrailChips(
+                                _lastRecognizeTelemetry!,
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -6699,69 +3956,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           if (_showTelemetryDiagnostics &&
                               _lastAnalysisTelemetry != null &&
                               !_isAnalyzing) ...[
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.info.withValues(alpha: 0.06),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: AppColors.info.withValues(alpha: 0.16),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _analysisTelemetryRequestLabel(
-                                      _lastAnalysisTelemetry!,
-                                    ),
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: AppColors.onBackgroundPrimary,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _analysisTelemetryTransportSummary(
-                                      _lastAnalysisTelemetry!,
-                                    ),
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  if (_analysisTelemetryQuotaSummary(
-                                          _lastAnalysisTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _analysisTelemetryQuotaSummary(
-                                        _lastAnalysisTelemetry!,
-                                      )!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  Text(
-                                    'AI ${_formatDuration(_lastAnalysisTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastAnalysisTelemetry!.estimatedTransferDuration)}',
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  if (_recognizeTelemetryContextSummary(
-                                          _lastAnalysisTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _recognizeTelemetryContextSummary(
-                                        _lastAnalysisTelemetry!,
-                                      )!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  _buildTelemetryGuardrailSection(
-                                    _lastAnalysisTelemetry!,
-                                  ),
-                                ],
+                            AnalysisTelemetryPanel(
+                              telemetry: _lastAnalysisTelemetry!,
+                              guardrails: _telemetryGuardrailChips(
+                                _lastAnalysisTelemetry!,
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -6776,35 +3974,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               _enthusiasmScore == null &&
                               _recognizedConversation != null &&
                               _recognizedConversation!.messageCount > 0) ...[
-                            _buildRecognizedConversationCard(),
+                            RecognizedConversationCard(
+                              recognized: _recognizedConversation!,
+                              warningMessage: _recognizedWarningMessage,
+                              fromCache: _recognitionFromCache,
+                              canForceReRecognize: _canForceReRecognize,
+                              hasPendingImport: _hasPendingRecognitionImport,
+                              isRecognizing: _isRecognizing,
+                              actions: this,
+                            ),
                             const SizedBox(height: 16),
                           ],
 
                           if (_enthusiasmScore != null) ...[
                             if (_shouldGiveUp) ...[
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.error.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                      color: AppColors.error
-                                          .withValues(alpha: 0.3)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(TablerIcons.alert_triangle,
-                                        size: 20, color: AppColors.error),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        '這段互動目前不建議再投入，先保護自己的時間與情緒成本。',
-                                        style: AppTypography.bodyMedium,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              const GiveUpAdviceBanner(),
                               const SizedBox(height: 16),
                             ] else if (_gameStage != null &&
                                 _finalRecommendation != null) ...[
@@ -6868,62 +4052,29 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // 回覆區合併（Bruce dogfood 2026-08-08 拍板）：
                           // AI 推薦回覆是橫滑卡組第一張，右滑接其他風格；
                           // 回覆不再藏在詳細分析折疊裡。
-                          if (_hasReplyZoneContent) ...[
-                            // 分析完成的一次性自動捲動錨在這裡（回覆區頂、不錨
-                            // 上方的「下一步」卡）。
-                            KeyedSubtree(
-                              key: _replyZoneSectionKey,
-                              child: _replyZoneEntranceFade(
-                                child: Row(
-                                  children: [
-                                    Text('回覆建議',
-                                        style: AppTypography.titleLarge
-                                            .copyWith(
-                                                color: AppColors
-                                                    .onBackgroundPrimary)),
-                                    const Spacer(),
-                                    if (_replyZoneCardCount > 1)
-                                      const SwipeHintNudge(
-                                        child: SwipeHintChip(),
-                                      ),
-                                  ],
-                                ),
-                              ),
+                          if (replyZoneCards.hasContent)
+                            ReplyZoneSection(
+                              cards: replyZoneCards,
+                              entrance: _replyZoneEntrance,
+                              anchorKey: _replyZoneSectionKey,
+                              actions: this,
+                              noticeKind: _replyZoneNoticeKind(subscription),
+                              noticeBusy: _isAnalyzing ||
+                                  _isRefreshingPremiumReplies,
+                              outcomeBars: [
+                                if (replyZoneCards.showRecommended)
+                                  _buildAnalysisOutcomeBar(
+                                    cardKey: 'final',
+                                    label: 'AI 推薦回覆',
+                                  ),
+                                for (final type
+                                    in replyZoneCards.presentStyleTypes)
+                                  _buildAnalysisOutcomeBar(
+                                    cardKey: type,
+                                    label: ReplyStyleCard.labels[type] ?? type,
+                                  ),
+                              ],
                             ),
-                            const SizedBox(height: 12),
-                            // 高度自適應（2026-08-09 拍板）：拆掉固定 400 高，
-                            // 每張卡各自照內容長高、頂端對齊——推薦卡長是它自己
-                            // 的事，其他風格卡不跟著拉伸（同日 Eric 真機回報
-                            // stretch 版風格卡下方一大塊空白不自然）。卡最多
-                            // 6 張，放棄 ListView 的懶載無感。
-                            _replyZoneEntranceFade(
-                              child: ScrollCardTicks(
-                                axis: Axis.horizontal,
-                                focusFraction: 0.3,
-                                child: SingleChildScrollView(
-                                  key: const ValueKey('analysis-reply-zone'),
-                                  scrollDirection: Axis.horizontal,
-                                  child: _buildReplyZoneCardRow(),
-                                ),
-                              ),
-                            ),
-                            if (_showRecommendedReplyCard)
-                              _buildAnalysisOutcomeBar(
-                                cardKey: 'final',
-                                label: 'AI 推薦回覆',
-                              ),
-                            for (final type in _replyStyleOrder)
-                              if (_replies?.containsKey(type) ?? false)
-                                _buildAnalysisOutcomeBar(
-                                  cardKey: type,
-                                  label: ReplyStyleCard.labels[type] ?? type,
-                                ),
-                            if (_shouldShowReplyZoneNotice(subscription)) ...[
-                              const SizedBox(height: 12),
-                              _buildReplyZoneNotice(subscription),
-                            ],
-                            const SizedBox(height: 16),
-                          ],
 
                           if (_enthusiasmScore != null) ...[
                             // 實扣顯示常駐行（smoke P2 fix 2026-06-11）：
@@ -6948,291 +4099,27 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
 
                           if (_enthusiasmScore != null) ...[
-                            _buildDetailedAnalysisToggle(),
+                            DetailedAnalysisToggleCard(
+                              expanded: _showDetailedAnalysis,
+                              onToggle: () => setState(
+                                () => _showDetailedAnalysis =
+                                    !_showDetailedAnalysis,
+                              ),
+                              enthusiasmScore: _enthusiasmScore,
+                              stageLabel: _gameStage?.current.label,
+                              hasRadar: _dimensionScores != null,
+                            ),
                             if (_showDetailedAnalysis)
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  const SizedBox(height: 12),
-                                  ScoreHeroCard(
-                                    score: _enthusiasmScore!,
-                                    // previousScore: null for now
-                                  ),
-
-                                  // 五維度剖析 (Starter / Essential only)
-                                  if (_dimensionScores != null &&
-                                      subscription.isPremium) ...[
-                                    const SizedBox(height: 16),
-                                    DimensionRadarChart(
-                                      scores: DimensionScores(
-                                        heat: _dimensionScores!['heat'] ?? 50,
-                                        engagement:
-                                            _dimensionScores!['engagement'] ??
-                                                50,
-                                        topicDepth:
-                                            _dimensionScores!['topicDepth'] ??
-                                                50,
-                                        replyWillingness: _dimensionScores![
-                                                'replyWillingness'] ??
-                                            50,
-                                        emotionalConnection: _dimensionScores![
-                                                'emotionalConnection'] ??
-                                            50,
-                                      ),
-                                    ),
-                                  ],
-
-                                  // 對話階段指示器
-                                  if (_gameStage != null) ...[
-                                    const SizedBox(height: 16),
-                                    GameStageIndicator(
-                                      currentStage: _gameStage!.current,
-                                      status: _gameStage!.status,
-                                      nextStep: _gameStage!.nextStep,
-                                    ),
-                                  ],
-
-                                  // 她話裡的意思
-                                  if (_psychology != null) ...[
-                                    const SizedBox(height: 16),
-                                    BrandSurfaceCard(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              const Icon(TablerIcons.brain,
-                                                  size: 18,
-                                                  color:
-                                                      AppColors.primaryLight),
-                                              const SizedBox(width: 8),
-                                              Text('她話裡的意思',
-                                                  style: AppTypography
-                                                      .titleMedium
-                                                      .copyWith(
-                                                          color: AppColors
-                                                              .onBackgroundPrimary)),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(_psychology!.subtext,
-                                              style: AppTypography.bodyMedium
-                                                  .copyWith(
-                                                      color: AppColors
-                                                          .onBackgroundPrimary)),
-                                          if (_psychology!.shitTest !=
-                                              null) ...[
-                                            const SizedBox(height: 8),
-                                            Container(
-                                              padding: const EdgeInsets.all(8),
-                                              decoration: BoxDecoration(
-                                                color: AppColors.warning
-                                                    .withValues(alpha: 0.1),
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
-                                              ),
-                                              child: Row(
-                                                children: [
-                                                  const Icon(
-                                                      TablerIcons
-                                                          .alert_triangle,
-                                                      size: 14,
-                                                      color: AppColors.warning),
-                                                  const SizedBox(width: 8),
-                                                  Expanded(
-                                                    child: Text(
-                                                      '互動測試訊號: ${_psychology!.shitTest}',
-                                                      style: AppTypography
-                                                          .caption
-                                                          .copyWith(
-                                                              color: AppColors
-                                                                  .onBackgroundPrimary),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                          if (_psychology!
-                                              .qualificationSignal) ...[
-                                            const SizedBox(height: 8),
-                                            Row(
-                                              children: [
-                                                const Icon(Icons.check_circle,
-                                                    size: 16,
-                                                    color: AppColors.success),
-                                                const SizedBox(width: 4),
-                                                Text('她有主動投入訊號',
-                                                    style: AppTypography.caption
-                                                        .copyWith(
-                                                            color: AppColors
-                                                                .onBackgroundPrimary)),
-                                              ],
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-
-                                  // Strategy
-                                  if (_strategy != null &&
-                                      _strategy!.trim().isNotEmpty) ...[
-                                    const SizedBox(height: 16),
-                                    BrandSurfaceCard(
-                                      child: Row(
-                                        children: [
-                                          const Icon(TablerIcons.bulb,
-                                              size: 20,
-                                              color: AppColors.warning),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              _strategy!,
-                                              style: AppTypography.bodyMedium
-                                                  .copyWith(
-                                                      color: AppColors
-                                                          .onBackgroundPrimary),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-
-                                  // Topic Depth (話題深度)
-                                  if (_topicDepth != null) ...[
-                                    const SizedBox(height: 16),
-                                    BrandSurfaceCard(
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                              switch (_topicDepth!.current) {
-                                                TopicDepthLevel.event =>
-                                                  TablerIcons.news,
-                                                TopicDepthLevel.personal =>
-                                                  TablerIcons.user,
-                                                TopicDepthLevel.intimate =>
-                                                  TablerIcons.hearts,
-                                              },
-                                              size: 20,
-                                              color: AppColors.primaryLight),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                    '話題深度: ${_topicDepth!.current.label}',
-                                                    style: AppTypography
-                                                        .bodyMedium
-                                                        .copyWith(
-                                                            color: AppColors
-                                                                .onBackgroundPrimary)),
-                                                if (_topicDepth!
-                                                    .suggestion.isNotEmpty)
-                                                  Text(_topicDepth!.suggestion,
-                                                      style: AppTypography
-                                                          .caption
-                                                          .copyWith(
-                                                              color: AppColors
-                                                                  .onBackgroundSecondary
-                                                                  .withValues(
-                                                                      alpha:
-                                                                          0.6))),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-
-                                  // Health Check (對話健檢 - Essential 專屬)
-                                  if (_healthCheck != null &&
-                                      subscription.isEssential &&
-                                      _healthCheck!.issues.isNotEmpty) ...[
-                                    const SizedBox(height: 16),
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.warning
-                                            .withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                            color: AppColors.warning
-                                                .withValues(alpha: 0.3)),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              const Icon(
-                                                  TablerIcons.stethoscope,
-                                                  size: 18,
-                                                  color: AppColors.info),
-                                              const SizedBox(width: 8),
-                                              Text('對話健檢',
-                                                  style: AppTypography
-                                                      .titleMedium),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 8),
-                                          ..._healthCheck!.issues.map((issue) =>
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                    bottom: 4),
-                                                child: Row(
-                                                  children: [
-                                                    const Icon(
-                                                        Icons.warning_amber,
-                                                        size: 16,
-                                                        color:
-                                                            AppColors.warning),
-                                                    const SizedBox(width: 8),
-                                                    Expanded(
-                                                        child: Text(issue,
-                                                            style: AppTypography
-                                                                .bodyMedium)),
-                                                  ],
-                                                ),
-                                              )),
-                                          if (_healthCheck!
-                                              .suggestions.isNotEmpty) ...[
-                                            const SizedBox(height: 8),
-                                            ..._healthCheck!.suggestions
-                                                .map((suggestion) => Padding(
-                                                      padding:
-                                                          const EdgeInsets.only(
-                                                              bottom: 4),
-                                                      child: Row(
-                                                        children: [
-                                                          const Icon(
-                                                              Icons
-                                                                  .lightbulb_outline,
-                                                              size: 16,
-                                                              color: AppColors
-                                                                  .success),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Expanded(
-                                                              child: Text(
-                                                                  suggestion,
-                                                                  style: AppTypography
-                                                                      .caption)),
-                                                        ],
-                                                      ),
-                                                    )),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ],
+                              DetailedAnalysisContent(
+                                enthusiasmScore: _enthusiasmScore!,
+                                dimensionScores: _dimensionScores,
+                                isPremium: subscription.isPremium,
+                                isEssential: subscription.isEssential,
+                                gameStage: _gameStage,
+                                psychology: _psychology,
+                                strategy: _strategy,
+                                topicDepth: _topicDepth,
+                                healthCheck: _healthCheck,
                               ),
                           ],
 
@@ -7248,7 +4135,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           if ((_isAnalyzing || _streamErrorMessage != null) &&
                               _streamContents.isNotEmpty) ...[
                             const SizedBox(height: 12),
-                            _buildStreamingContentCard(),
+                            StreamingContentCard(
+                              progressLabel: _streamProgressLabel,
+                              items: _streamContentItems,
+                            ),
                           ],
 
                           // gate 含 _quotaExceededInfo：fresh-start quota 429
@@ -7288,61 +4178,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // 從收合卡升級成整頁式）。判斷/策略仍交給 Coach 1:1。
                           if (_enthusiasmScore != null) ...[
                             const SizedBox(height: 24),
-                            BrandSurfaceCard(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  GestureDetector(
-                                    key: const ValueKey('draft-polish-entry'),
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: _openDraftPolishSheet,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            const Icon(TablerIcons.pencil,
-                                                size: 20,
-                                                color: AppColors.ctaStart),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                '我已有草稿，幫我修自然',
-                                                style: AppTypography.titleMedium
-                                                    .copyWith(
-                                                        color: AppColors
-                                                            .onBackgroundPrimary),
-                                              ),
-                                            ),
-                                            Icon(
-                                              Icons.chevron_right,
-                                              color: AppColors
-                                                  .onBackgroundSecondary
-                                                  .withValues(alpha: 0.6),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          '適合你已經知道想回什麼，只想調整語氣、長度和壓迫感。還不確定該不該回，就用「問教練」。',
-                                          style:
-                                              AppTypography.bodySmall.copyWith(
-                                            color:
-                                                AppColors.onBackgroundSecondary,
-                                            height: 1.35,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  // 複製過潤飾稿才浮出的成效回報列，留在本頁：
-                                  // 使用者發完訊息回來時，面板通常已經關了。
-                                  _buildAnalysisOutcomeBar(
-                                    cardKey: 'polish',
-                                    label: '潤飾草稿',
-                                  ),
-                                ],
+                            DraftPolishEntryCard(
+                              onOpen: _openDraftPolishSheet,
+                              outcomeBar: _buildAnalysisOutcomeBar(
+                                cardKey: 'polish',
+                                label: '潤飾草稿',
                               ),
                             ),
                           ],
@@ -7351,232 +4191,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           if (_reminder != null &&
                               _reminder!.trim().isNotEmpty) ...[
                             const SizedBox(height: 16),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.info.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(TablerIcons.message_circle,
-                                      size: 18, color: AppColors.info),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _reminder!,
-                                      style: AppTypography.bodyMedium.copyWith(
-                                        fontStyle: FontStyle.italic,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            ReminderBanner(text: _reminder!),
                           ],
 
                           // 反饋區塊 (有分析結果時顯示)
                           if (_enthusiasmScore != null) ...[
                             const SizedBox(height: 24),
-                            if (!_feedbackSubmitted) ...[
-                              Divider(
-                                  color: AppColors.onBackgroundSecondary
-                                      .withValues(alpha: 0.5)),
-                              const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text('這個建議有幫助嗎？',
-                                      style: AppTypography.bodyMedium.copyWith(
-                                          color:
-                                              AppColors.onBackgroundPrimary)),
-                                  const SizedBox(width: 16),
-                                  IconButton(
-                                    icon: const Icon(Icons.thumb_up_outlined),
-                                    onPressed: _isSubmittingFeedback
-                                        ? null
-                                        : () => _submitFeedback('positive'),
-                                    tooltip: '有幫助',
-                                    color: AppColors.success,
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.thumb_down_outlined),
-                                    onPressed: _isSubmittingFeedback
-                                        ? null
-                                        : () => setState(
-                                            () => _showFeedbackForm = true),
-                                    tooltip: '需要改進',
-                                    color: AppColors.error,
-                                  ),
-                                ],
-                              ),
-                              if (_showFeedbackForm) ...[
-                                const SizedBox(height: 16),
-                                BrandSurfaceCard(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text('哪裡需要改進？',
-                                          style: AppTypography.bodyLarge
-                                              .copyWith(
-                                                  color: AppColors
-                                                      .onBackgroundPrimary)),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        '預設只送評分類別與結構化分析資訊，不附原始對話。',
-                                        style: AppTypography.caption.copyWith(
-                                          color: AppColors.onBackgroundSecondary
-                                              .withValues(alpha: 0.6),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          _buildFeedbackCategoryChip(
-                                              'too_direct', '太直接'),
-                                          _buildFeedbackCategoryChip(
-                                              'unnatural', '不自然'),
-                                          _buildFeedbackCategoryChip(
-                                              'too_long', '回覆太長'),
-                                          _buildFeedbackCategoryChip(
-                                              'wrong_style', '不符合我的風格'),
-                                          _buildFeedbackCategoryChip(
-                                              'other', '其他'),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 16),
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Checkbox(
-                                            value: _includeFeedbackContext,
-                                            onChanged: _isSubmittingFeedback
-                                                ? null
-                                                : (value) {
-                                                    AppHaptics.tap();
-                                                    setState(() {
-                                                      _includeFeedbackContext =
-                                                          value ?? false;
-                                                    });
-                                                  },
-                                          ),
-                                          Expanded(
-                                            child: Padding(
-                                              padding: const EdgeInsets.only(
-                                                  top: 12),
-                                              child: Text(
-                                                '附上最後 6 則對話片段，幫助我們排查（選填）',
-                                                style: AppTypography.bodySmall
-                                                    .copyWith(
-                                                  color: AppColors
-                                                      .onBackgroundPrimary,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      TextField(
-                                        controller: _feedbackCommentController,
-                                        enabled: !_isSubmittingFeedback,
-                                        style: AppTypography.bodyMedium
-                                            .copyWith(
-                                                color: AppColors
-                                                    .onBackgroundPrimary),
-                                        decoration: InputDecoration(
-                                          hintText: '補充說明（選填）',
-                                          helperText: '輸入完可先收起鍵盤，再送出反饋。',
-                                          hintStyle: AppTypography.bodyMedium
-                                              .copyWith(
-                                                  color: AppColors
-                                                      .onBackgroundSecondary
-                                                      .withValues(alpha: 0.6)),
-                                          helperStyle:
-                                              AppTypography.caption.copyWith(
-                                            color: AppColors
-                                                .onBackgroundSecondary
-                                                .withValues(alpha: 0.6),
-                                          ),
-                                          isDense: true,
-                                          filled: true,
-                                          fillColor: AppColors.brandInk
-                                              .withValues(alpha: 0.4),
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            borderSide: BorderSide(
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.12)),
-                                          ),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            borderSide: BorderSide(
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.12)),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            borderSide: const BorderSide(
-                                                color: AppColors.ctaStart,
-                                                width: 1.5),
-                                          ),
-                                          suffixIcon: IconButton(
-                                            icon: Icon(Icons.keyboard_hide,
-                                                color: AppColors
-                                                    .onBackgroundSecondary
-                                                    .withValues(alpha: 0.6)),
-                                            onPressed: _dismissKeyboard,
-                                            tooltip: '收起鍵盤',
-                                          ),
-                                        ),
-                                        maxLength: 300,
-                                        maxLines: 3,
-                                        textInputAction: TextInputAction.done,
-                                        onEditingComplete: _dismissKeyboard,
-                                        onTapOutside: (_) => _dismissKeyboard(),
-                                      ),
-                                      const SizedBox(height: 16),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: ElevatedButton(
-                                          onPressed: AppHaptics.onPress(
-                                              _feedbackCategory != null &&
-                                                      !_isSubmittingFeedback
-                                                  ? () => _submitFeedback(
-                                                      'negative')
-                                                  : null),
-                                          child: _isSubmittingFeedback
-                                              ? const SizedBox(
-                                                  width: 18,
-                                                  height: 18,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                  ),
-                                                )
-                                              : const Text('送出反饋'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ] else ...[
-                              Center(
-                                child: Text(
-                                  '已收到你的回饋',
-                                  style: AppTypography.bodyMedium
-                                      .copyWith(color: AppColors.textSecondary),
-                                ),
-                              ),
-                            ],
+                            AnalysisFeedbackSection(
+                              submitted: _feedbackSubmitted,
+                              showForm: _showFeedbackForm,
+                              isSubmitting: _isSubmittingFeedback,
+                              selectedCategory: _feedbackCategory,
+                              includeContext: _includeFeedbackContext,
+                              commentController: _feedbackCommentController,
+                              actions: this,
+                            ),
                           ],
 
                           const SizedBox(height: 24),
@@ -7607,56 +4236,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  bool _isRecommendedReplyType(String type) {
-    final pick = _finalRecommendation?.pick.trim();
-    return pick == type && (_replies?[type]?.trim().isNotEmpty ?? false);
-  }
-
-  Widget _buildHorizontalReplyCard(
-    String type,
-    String content, {
-    ReplyOption? option,
-    bool isRecommended = false,
-  }) {
-    return ReplyStyleCard(
-      type: type,
-      content: content,
-      option: option,
-      isRecommended: isRecommended,
-      onCopy: (text, message) {
-        unawaited(_recordAnalysisCopy(cardKey: type, copiedText: text));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$message，發出後記得回來回報結果'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      },
-      onRefine: (text) => unawaited(
-        _refineReply(originText: text, originCardKey: type),
-      ),
-    );
-  }
-
-  static const _replyStyleOrder = [
-    'extend',
-    'resonate',
-    'tease',
-    'humor',
-    'coldRead',
-  ];
-
-  bool get _showRecommendedReplyCard =>
-      _finalRecommendation != null &&
-      _finalRecommendation!.content.trim().isNotEmpty;
-
-  bool get _hasReplyZoneContent =>
-      _showRecommendedReplyCard || (_replies?.isNotEmpty ?? false);
-
   /// 每次 build 開頭呼叫：回覆區內容 false→true 的那次 build 播一次進場，
   /// 內容歸零（新一輪分析）後解鎖重播。reduced-motion 直接跳到終值。
-  void _syncReplyZoneEntrance() {
-    if (!_hasReplyZoneContent) {
+  void _syncReplyZoneEntrance({required bool hasContent}) {
+    if (!hasContent) {
       _replyZonePlayed = false;
       return;
     }
@@ -7667,322 +4250,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     } else {
       _replyZoneEntrance.forward(from: 0);
     }
-  }
-
-  /// 回覆區塊層進場（標題與卡組共用）：opacity 0→1＋往上 4% 落定，
-  /// 佔總時間軸的前 320ms。
-  Widget _replyZoneEntranceFade({required Widget child}) {
-    final anim = CurvedAnimation(
-      parent: _replyZoneEntrance,
-      curve: Interval(
-        0,
-        AppMotion.celebrate.inMilliseconds / _replyZoneEntranceTotalMs,
-        curve: AppMotion.easeOut,
-      ),
-    );
-    return FadeTransition(
-      opacity: anim,
-      child: SlideTransition(
-        position:
-            Tween(begin: const Offset(0, 0.04), end: Offset.zero).animate(anim),
-        child: child,
-      ),
-    );
-  }
-
-  /// 第 [index] 張卡的 stagger 進場：延遲 index×50ms，fade（easeOut，
-  /// 避免 easeOutBack 超過 1 的 opacity）＋scale 0.96→1（celebrateCurve，
-  /// 全 app 唯一允許彈感的檔位）。純裝飾，不擋互動。
-  Widget _staggeredReplyCard(int index, Widget child) {
-    final startMs = index * _replyCardStaggerMs;
-    final start =
-        (startMs / _replyZoneEntranceTotalMs).clamp(0.0, 1.0).toDouble();
-    final end = ((startMs + AppMotion.celebrate.inMilliseconds) /
-            _replyZoneEntranceTotalMs)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    return FadeTransition(
-      opacity: CurvedAnimation(
-        parent: _replyZoneEntrance,
-        curve: Interval(start, end, curve: AppMotion.easeOut),
-      ),
-      child: ScaleTransition(
-        scale: Tween(begin: 0.96, end: 1.0).animate(
-          CurvedAnimation(
-            parent: _replyZoneEntrance,
-            curve: Interval(start, end, curve: AppMotion.celebrateCurve),
-          ),
-        ),
-        child: child,
-      ),
-    );
-  }
-
-  /// 回覆卡組（推薦卡＋風格卡）帶 stagger 進場的橫列。
-  Widget _buildReplyZoneCardRow() {
-    final cards = <Widget>[
-      if (_showRecommendedReplyCard) _buildRecommendedReplyCard(),
-      for (final type in _replyStyleOrder)
-        if ((_replies?.containsKey(type) ?? false) &&
-            !(_showRecommendedReplyCard && _isRecommendedReplyType(type)))
-          _buildHorizontalReplyCard(type, _replies![type]!,
-              option: _replyOptions?[type],
-              isRecommended: _isRecommendedReplyType(type)),
-    ];
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < cards.length; i++)
-          // CardTickTarget：橫掃跨卡打一下輕觸覺（與開場白/新話題同語彙）。
-          CardTickTarget(index: i, child: _staggeredReplyCard(i, cards[i])),
-      ],
-    );
-  }
-
-  int get _replyZoneCardCount {
-    final styleCount = _replies?.keys
-            .where((type) =>
-                !(_showRecommendedReplyCard && _isRecommendedReplyType(type)))
-            .length ??
-        0;
-    return styleCount + (_showRecommendedReplyCard ? 1 : 0);
-  }
-
-  /// 回覆區第一張：AI 推薦回覆。內容沿用 [_buildRecommendationContent]
-  /// 三條路徑；比風格卡寬一號、卡高照內容自然長（回覆區已無固定高，
-  /// 卡內不再需要縱向捲動吃高度差）。
-  Widget _buildRecommendedReplyCard() {
-    final recommendation = _finalRecommendation!;
-    // 對標示意稿（2026-08-14）：拆掉外層漸層框卡，內容平鋪在頁面底上；
-    // 標題換圓形靶心徽章＋白字，理由收進帶 icon 座的說明卡。
-    return Container(
-      key: const ValueKey('analysis-recommended-reply-card'),
-      width: 340,
-      margin: const EdgeInsets.only(right: 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.ctaStart.withValues(alpha: 0.16),
-                  border: Border.all(
-                    color: AppColors.ctaStart.withValues(alpha: 0.55),
-                  ),
-                ),
-                child: const Icon(
-                  Icons.track_changes_rounded,
-                  size: 19,
-                  color: AppColors.ctaStart,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'AI 推薦回覆',
-                style: AppTypography.titleMedium.copyWith(
-                  color: AppColors.onBackgroundPrimary,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ..._buildRecommendationContent(recommendation),
-          const SizedBox(height: 12),
-          _buildRecommendationNote(recommendation),
-        ],
-      ),
-    );
-  }
-
-  /// 推薦理由說明卡：icon 座＋灰字，取代舊 📝/🧠 emoji 前綴行。
-  Widget _buildRecommendationNote(FinalRecommendation recommendation) {
-    final reason = recommendation.reason.trim();
-    final psychology = recommendation.psychology.trim();
-    if (reason.isEmpty && psychology.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.045),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primary.withValues(alpha: 0.22),
-            ),
-            child: Icon(
-              Icons.description_outlined,
-              size: 16,
-              color: AppColors.coachAccent,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (reason.isNotEmpty)
-                  Text(
-                    reason,
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
-                      height: 1.45,
-                    ),
-                  ),
-                if (psychology.isNotEmpty && psychology != reason) ...[
-                  if (reason.isNotEmpty) const SizedBox(height: 4),
-                  Text(
-                    psychology,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.textSecondary,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  bool _shouldShowReplyZoneNotice(SubscriptionState subscription) {
-    final replies = _replies;
-    if (replies == null || replies.isEmpty) return false;
-    return subscription.isFreeUser ||
-        _analysisNeedsReplyRefresh(subscription) ||
-        (replies.length == 1 && replies.containsKey('extend'));
-  }
-
-  /// 回覆區尾端提示：Free 升級入口／已升級但看舊 Free 結果的重新分析
-  /// ／付費 fallback 說明。原本在詳細分析折疊內，隨回覆區一起上移。
-  Widget _buildReplyZoneNotice(SubscriptionState subscription) {
-    if (subscription.isFreeUser) {
-      return GestureDetector(
-        onTap: () async => _showPaywall(context),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.ctaStart.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: AppColors.ctaStart.withValues(alpha: 0.3),
-            ),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.lock_outline, color: AppColors.ctaStart),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '你已可比較延展、調情；升級解鎖共鳴、幽默、冷讀等完整 5 種風格',
-                  style: AppTypography.bodyMedium
-                      .copyWith(color: AppColors.primary),
-                ),
-              ),
-              const Icon(Icons.arrow_forward_ios,
-                  size: 16, color: AppColors.ctaStart),
-            ],
-          ),
-        ),
-      );
-    }
-    if (_analysisNeedsReplyRefresh(subscription)) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.ctaStart.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: AppColors.ctaStart.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.auto_awesome, color: AppColors.ctaStart),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '你已升級，這份分析仍是免費版結果。',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.ctaStart,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '重新分析一次，就能拿到完整分析結果。',
-              style: AppTypography.caption.copyWith(color: AppColors.ctaStart),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: (_isAnalyzing || _isRefreshingPremiumReplies)
-                    ? null
-                    : _refreshPremiumReplies,
-                icon: (_isAnalyzing || _isRefreshingPremiumReplies)
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh_rounded),
-                label: Text(
-                  (_isAnalyzing || _isRefreshingPremiumReplies)
-                      ? '正在刷新完整分析…'
-                      : '重新產生完整分析',
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-    // 付費用戶：AI 判斷此情境最適合延展
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.onBackgroundSecondary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.lightbulb_outline, color: AppColors.onBackgroundSecondary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'AI 判斷此情境最適合使用延展回覆',
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.onBackgroundSecondary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildCollapsibleMessageInput() {
@@ -8000,153 +4267,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return const SizedBox.shrink();
     }
 
-    // 分析完成後關閉原片段；任何新內容都另開獨立片段。
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.brandSurface2,
-        border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: AppHaptics.onPress(_openCoachQuestion),
-                icon: const Icon(Icons.forum_outlined),
-                label: const Text('問教練：我現在該怎麼做？'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: AppColors.ctaStart,
-                  foregroundColor: AppColors.onCta,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _openNewConversationSheet,
-                icon: const Icon(Icons.add_circle_outline),
-                label: const Text('分析新片段'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  side: BorderSide(
-                    color: AppColors.ctaStart.withValues(alpha: 0.45),
-                  ),
-                  foregroundColor: AppColors.ctaStart,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 第一次分析結果出現時的 coach mark。
-/// 暗色 backdrop + 卡片置於螢幕下半，向上的箭頭視覺指向上方 bubble 區。
-class _EditMessageCoachMark extends StatelessWidget {
-  const _EditMessageCoachMark({required this.onDismiss});
-
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black.withValues(alpha: 0.6),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onDismiss,
-        child: SafeArea(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 80),
-              child: GestureDetector(
-                onTap: () {}, // 吸收卡片內部點擊，避免穿透到 backdrop dismiss
-                child: Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.brandSurface2.withValues(alpha: 0.96),
-                        AppColors.brandSurface.withValues(alpha: 0.98),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.10),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.32),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.keyboard_double_arrow_up_rounded,
-                        size: 44,
-                        color: AppColors.ctaStart,
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(TablerIcons.bulb,
-                              size: 22, color: AppColors.warning),
-                          const SizedBox(width: 6),
-                          Text(
-                            '你知道嗎？',
-                            style: AppTypography.titleLarge.copyWith(
-                              color: AppColors.onBackgroundPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '長按上方的訊息泡泡可以\n編輯內容、切換角色、或刪除整則',
-                        textAlign: TextAlign.center,
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.onBackgroundSecondary,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: AppHaptics.onPress(onDismiss),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            backgroundColor: AppColors.ctaStart,
-                            foregroundColor: AppColors.onCta,
-                          ),
-                          child: const Text('知道了'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+    return ConversationContinuationBar(
+      onAskCoach: _openCoachQuestion,
+      onNewFragment: _openNewConversationSheet,
     );
   }
 }
