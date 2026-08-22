@@ -270,15 +270,39 @@ grep -qF "二次健康檢查通過" "$work/out" || {
   echo "::error::timeout＋健康 通過但缺少明確警告訊息"
   exit 1
 }
+# 成功路徑不得無條件灌診斷 log
+if grep -qF "logcat 診斷" "$work/out"; then
+  cat "$work/out"
+  echo "::error::timeout＋健康 通過卻仍輸出失敗診斷 log（成功路徑不應 dump）"
+  exit 1
+fi
 
-# 10b. timeout＋無 PID → fail closed
+# 失敗分支必須在退出前輸出 package logcat 診斷區塊
+expect_diag() {  # $1=情境
+  grep -qF "logcat 診斷" "$work/out" || {
+    cat "$work/out"
+    echo "::error::$1 fail closed 前未輸出 package logcat 診斷"
+    exit 1
+  }
+}
+
+# 10b. timeout＋無 PID → fail closed，且退出前輸出診斷區塊
 FAKE_PIDOF="" run_smoke_timeout
 expect_fail "timeout-no-pid" "程序不存在"
+expect_diag "timeout-no-pid"
 
-# 10c. timeout＋前景 resumed 是別的 activity → fail closed
+# 10c. timeout＋前景 resumed 是別的 activity → fail closed，且診斷要
+# 帶出本 package 本次啟動後的 log 內容（用 crash log 驗證真的印出來）
 FAKE_RESUMED="    mResumedActivity: ActivityRecord{f00 u0 com.android.launcher3/.Launcher t2}" \
+  FAKE_TAIL_LOG=crash \
   run_smoke_timeout
 expect_fail "timeout-wrong-foreground" "前景 resumed activity 不是"
+expect_diag "timeout-wrong-foreground"
+grep -qF "AndroidRuntime: Process: com.vibesync.app" "$work/out" || {
+  cat "$work/out"
+  echo "::error::timeout-wrong-foreground 診斷未包含 package logcat 內容"
+  exit 1
+}
 
 # 10d. timeout＋runtime crash → fail closed
 FAKE_TAIL_LOG=crash run_smoke_timeout

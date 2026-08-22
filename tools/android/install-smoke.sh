@@ -126,6 +126,22 @@ assert_no_pkg_crash() {  # $1=logcat stage 標籤
   fi
 }
 
+# 失敗前診斷：有界抓一次本次啟動後 logcat（啟動前已 logcat -c），只印本
+# package 相關行、上限 200 行。只在 fail closed 路徑呼叫，成功路徑不
+# 無條件灌 log。
+dump_pkg_log() {  # $1=stage 標籤
+  local stage="$1" full_log pkg_lines
+  full_log=$(adb_call "$stage" logcat -d)
+  pkg_lines=$(grep -F "$package" <<<"$full_log" | tail -n 200 || true)
+  echo "--- $package 本次啟動後 logcat 診斷（stage：$stage，最多 200 行）---"
+  if [ -n "$pkg_lines" ]; then
+    printf '%s\n' "$pkg_lines"
+  else
+    echo "（無 $package 相關行）"
+  fi
+  echo "--- logcat 診斷結束 ---"
+}
+
 # AND-03：對凍結深連結單獨 resolve，唯一解析結果必須是 plugin
 # CallbackActivity 且無 chooser，否則 fail closed。
 assert_unique_callback_owner() {
@@ -162,12 +178,22 @@ elif grep -q "Status: timeout" <<<"$launch_out"; then
   # resumed、本 package 無 runtime crash／ClassNotFound——全過才以警告放行，
   # 任一不過 fail closed。ok／timeout 以外的狀態照樣直接失敗。
   echo "::warning::launcher am start -W 回 Status: timeout，啟動未確認，改用二次健康檢查判定"
+  # no-PID／PID 重複也要在退出前輸出 package 診斷，所以不讓 single_pid
+  # 的內部 exit 直接終止：先攔 status，失敗時 dump 後再 fail closed
+  set +e
   timeout_pid=$(single_pid launcher-timeout-alive)
+  pid_status=$?
+  set -e
+  if [ "$pid_status" -ne 0 ]; then
+    dump_pkg_log launcher-timeout-pid-diag
+    exit 1
+  fi
   resumed_out=$(adb_call launcher-timeout-resumed shell dumpsys activity activities)
   resumed_lines=$(grep "ResumedActivity" <<<"$resumed_out" || true)
   if ! grep -qF "$component" <<<"$resumed_lines"; then
     echo "$resumed_lines"
     echo "::error::Status timeout 且前景 resumed activity 不是 $component，判啟動失敗"
+    dump_pkg_log launcher-timeout-foreground-diag
     exit 1
   fi
   assert_no_pkg_crash launcher-timeout-logcat
