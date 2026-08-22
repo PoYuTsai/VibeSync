@@ -18,12 +18,22 @@
 //   實跑（需 Eric 當次授權——會產生 Anthropic 費用）：
 //     ANTHROPIC_API_KEY=... deno run --allow-read --allow-write --allow-env \
 //       --allow-net=api.anthropic.com tools/opener-prompt-ab/run_blackbox.ts --live
+//   續跑（沿用既有 run 目錄的 checkpoint.json，已完成臂不重打；累計 attempt
+//   數必須明確申報——checkpoint 只記到「臂成功」當下，失敗的最後一次 attempt
+//   不在裡面）：
+//     ANTHROPIC_API_KEY=... deno run --allow-read --allow-write --allow-env \
+//       --allow-net=api.anthropic.com tools/opener-prompt-ab/run_blackbox.ts \
+//       --live --resume=tools/opener-prompt-ab/out/run-<ts> --attempts-used=<n>
 //
-// 呼叫上限：正常一輪 16 次（A=4、B=4、C=4×2），含重試全域硬上限 24 次
-// HTTP attempt，超過直接 throw 停跑。模型固定 claude-sonnet-5、thinking
-// disabled（同生產）。輸出：out/run-<ts>/checkpoint.json（每臂成功即整包
-// 增量落盤：原始＋正規化＋usage/attempt——中途炸掉不丟已付費產出）、
-// results.json（完跑全量）、blind/profile-*.md（臂標籤洗牌、推薦卡排最前）、
+// 呼叫上限：正常一輪 16 次（A=4、B=4、C=4×2），含重試與續跑累計全域硬上限
+// 24 次 HTTP attempt，超過直接 throw 停跑。每個未完成臂另允許至多一次
+// 「格式級重試」（parse／驗證失敗整臂重跑一次），計入同一個全域上限並在
+// results 報告；API 硬錯誤與撞上限不觸發格式級重試。模型固定
+// claude-sonnet-5、thinking disabled（同生產）。輸出：out/run-<ts>/
+// attempts.jsonl（每次 provider 回應「立即」append 原文＋usage＋attempt 序號，
+// parse/驗證失敗也不丟證據）、checkpoint.json（每臂成功即整包增量落盤：
+// 原始＋正規化＋usage/attempt——中途炸掉不丟已付費產出）、results.json
+// （完跑全量）、blind/profile-*.md（臂標籤洗牌、推薦卡排最前）、
 // answer-key.md（對照表，另檔存放）。不落任何金鑰。品質最終判定是人眼
 // 盲評，不設 LLM judge。
 
@@ -314,13 +324,21 @@ type Transport = (body: Record<string, unknown>) => Promise<Record<string, unkno
 
 const TRANSIENT = new Set(["overloaded_error", "rate_limit_error", "api_error"]);
 
+/** 撞全域 attempt 硬上限：不得被格式級重試吞掉。 */
+class CapExceededError extends Error {}
+/** 非暫時性 API 硬錯誤：callModel 已對暫時性錯誤重試過，不再格式級重試。 */
+class ApiError extends Error {}
+
+/** 每次 provider 回應（含失敗）當下就落盤的證據記錄器。 */
+type AttemptRecorder = (entry: Record<string, unknown>) => Promise<void>;
+
 class AttemptBudget {
-  used = 0;
-  constructor(readonly max: number) {}
+  /** initialUsed：續跑時明確申報的累計 attempt 數（含前輪失敗那次）。 */
+  constructor(readonly max: number, public used = 0) {}
   take(): void {
     if (this.used >= this.max) {
-      throw new Error(
-        `已達全域 HTTP attempt 上限 ${this.max} 次，停跑（正常一輪應為 16 次呼叫）`,
+      throw new CapExceededError(
+        `已達全域 HTTP attempt 上限 ${this.max} 次（含前輪累計），停跑（正常一輪應為 16 次呼叫）`,
       );
     }
     this.used++;
@@ -333,15 +351,33 @@ async function callModel(
   system: string,
   userContent: string,
   usageTally: Usage,
+  label = "",
+  recorder: AttemptRecorder | null = null,
 ): Promise<CallResult> {
   for (let attempt = 0; ; attempt++) {
     budget.take();
-    const json = await transport({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      thinking: { type: "disabled" },
-      system,
-      messages: [{ role: "user", content: userContent }],
+    let json: Record<string, unknown>;
+    try {
+      json = await transport({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        thinking: { type: "disabled" },
+        system,
+        messages: [{ role: "user", content: userContent }],
+      });
+    } catch (e) {
+      await recorder?.({ attempt: budget.used, label, transportError: String(e) });
+      throw e;
+    }
+    const rawText = (json?.content as Array<{ type: string; text?: string }> ?? [])
+      .find((b) => b?.type === "text")?.text ?? null;
+    // 證據即時保全：不管下游 parse／驗證成敗，原文與 usage 先落盤
+    await recorder?.({
+      attempt: budget.used,
+      label,
+      error: json?.error ?? null,
+      rawText,
+      usage: json?.usage ?? null,
     });
     const errType = (json?.error as { type?: string } | undefined)?.type;
     if (errType && TRANSIENT.has(errType) && attempt < RETRIES_PER_CALL) {
@@ -351,18 +387,16 @@ async function callModel(
       continue;
     }
     if (json?.error) {
-      throw new Error(`API 失敗：${JSON.stringify(json.error)}`);
+      throw new ApiError(`API 失敗：${JSON.stringify(json.error)}`);
     }
-    const text = (json?.content as Array<{ type: string; text?: string }> ?? [])
-      .find((b) => b?.type === "text")?.text;
-    if (typeof text !== "string") {
+    if (typeof rawText !== "string") {
       throw new Error(`API 回覆異常：${JSON.stringify(json).slice(0, 300)}`);
     }
     const usage = json?.usage as { input_tokens?: number; output_tokens?: number } | undefined;
     const u = { inputTokens: usage?.input_tokens ?? 0, outputTokens: usage?.output_tokens ?? 0 };
     usageTally.inputTokens += u.inputTokens;
     usageTally.outputTokens += u.outputTokens;
-    return { text, usage: u };
+    return { text: rawText, usage: u };
   }
 }
 
@@ -430,8 +464,10 @@ async function runSingleCallArm(
   budget: AttemptBudget,
   userContent: string,
   usageTally: Usage,
+  label = "",
+  recorder: AttemptRecorder | null = null,
 ): Promise<ArmResult> {
-  const { text } = await callModel(transport, budget, system, userContent, usageTally);
+  const { text } = await callModel(transport, budget, system, userContent, usageTally, label, recorder);
   const { openers, pick, normalized } = assertCompleteNormalized(
     arm,
     normalizeOpenerPayload(parseJsonObjectFromText(text)),
@@ -445,12 +481,18 @@ async function runArmC(
   budget: AttemptBudget,
   userContent: string,
   usageTally: Usage,
+  label = "",
+  recorder: AttemptRecorder | null = null,
 ): Promise<ArmResult> {
-  const gen = await callModel(transport, budget, CANDIDATES_PROMPT, userContent, usageTally);
+  const gen = await callModel(
+    transport, budget, CANDIDATES_PROMPT, userContent, usageTally, `${label}:gen`, recorder,
+  );
   const candidates = parseCandidates(parseJsonObjectFromText(gen.text));
   const selectorUser = userContent + "\n\n候選清單：\n" +
     JSON.stringify(candidates, null, 2);
-  const sel = await callModel(transport, budget, SELECTOR_PROMPT, selectorUser, usageTally);
+  const sel = await callModel(
+    transport, budget, SELECTOR_PROMPT, selectorUser, usageTally, `${label}:sel`, recorder,
+  );
   const selected = applySelection(candidates, parseJsonObjectFromText(sel.text));
   // 被選中的候選不得生食比較：走 A/B 同一條 normalizeOpenerPayload，再過
   // 同一個五卡/pick 完整性檢查，比較與落盤都用正規化後的輸出。
@@ -471,7 +513,35 @@ interface RunSnapshot {
   maxHttpAttempts: number;
   usage: Usage;
   completedArms: number;
+  formatRetries: Array<{ label: string; error: string }>;
   profiles: Record<string, unknown>[];
+}
+
+interface RunOptions {
+  /** 續跑：前一輪 checkpoint 的 profiles 陣列，命中的臂原樣還原、不重打。 */
+  restoredProfiles?: Record<string, unknown>[];
+  recorder?: AttemptRecorder;
+}
+
+/** checkpoint 裡的臂紀錄→ArmResult。欄位缺漏 fail-loud，不默默半還原。 */
+function restoreArmResult(rec: Record<string, unknown>): ArmResult {
+  const arm = rec.arm;
+  if (arm !== "A" && arm !== "B" && arm !== "C") {
+    throw new Error(`resume：checkpoint 臂標籤不合法：${JSON.stringify(arm)}`);
+  }
+  if (!Array.isArray(rec.rawTexts) || rec.rawTexts.length === 0) {
+    throw new Error(`resume：${arm} 臂 checkpoint 缺 rawTexts`);
+  }
+  if (!rec.openers || typeof rec.openers !== "object" || !rec.normalized) {
+    throw new Error(`resume：${arm} 臂 checkpoint 缺 openers/normalized`);
+  }
+  return {
+    arm,
+    rawTexts: rec.rawTexts as string[],
+    openers: rec.openers as Record<string, string>,
+    pick: (rec.pick as string) ?? null,
+    normalized: rec.normalized as Record<string, unknown>,
+  };
 }
 
 async function runAllProfiles(
@@ -479,14 +549,28 @@ async function runAllProfiles(
   budget: AttemptBudget,
   tally: Usage,
   onArmDone: (snapshot: RunSnapshot) => Promise<void>,
+  opts: RunOptions = {},
 ): Promise<{
   results: Record<string, unknown>[];
   blindSheets: Array<{ id: string; sheet: string }>;
   answerKey: string[];
+  formatRetries: Array<{ label: string; error: string }>;
 }> {
+  const recorder = opts.recorder ?? null;
+  const restoredMap = new Map<string, Record<string, unknown>>();
+  for (const p of opts.restoredProfiles ?? []) {
+    const pid = String(p.profile);
+    if (!PROFILES.some((x) => x.id === pid)) {
+      throw new Error(`resume：checkpoint 含未知 profile「${pid}」`);
+    }
+    for (const a of (p.arms as Record<string, unknown>[] | undefined) ?? []) {
+      restoredMap.set(`${pid}:${a.arm}`, a);
+    }
+  }
   const results: Record<string, unknown>[] = [];
   const blindSheets: Array<{ id: string; sheet: string }> = [];
   const answerKey: string[] = [];
+  const formatRetries: Array<{ label: string; error: string }> = [];
   let completedArms = 0;
   for (const profile of PROFILES) {
     const userContent = compileTextOnlyUserContent(profile.profileInfo);
@@ -516,21 +600,44 @@ async function runAllProfiles(
         maxHttpAttempts: budget.max,
         usage: { ...tally },
         completedArms,
+        formatRetries: [...formatRetries],
         profiles: results,
       });
     };
-    await finishArm(
-      await runSingleCallArm("A", OPENER_PROMPT, transport, budget, userContent, tally),
-    );
-    await finishArm(
-      await runSingleCallArm("B", CARDS_ONLY_PROMPT, transport, budget, userContent, tally),
-    );
-    await finishArm(await runArmC(transport, budget, userContent, tally));
+    // 每臂：checkpoint 命中直接還原（不重打、不耗 attempt）；新跑的臂
+    // parse／驗證失敗允許整臂重跑一次（計入同一個全域上限）；
+    // API 硬錯誤與撞上限一律直接拋，不吞進重試。
+    const runArm = async (
+      armLabel: "A" | "B" | "C",
+      exec: (label: string) => Promise<ArmResult>,
+    ) => {
+      const key = `${profile.id}:${armLabel}`;
+      const prior = restoredMap.get(key);
+      if (prior) {
+        arms.push(restoreArmResult(prior));
+        armRecords.push(prior);
+        completedArms++;
+        return;
+      }
+      try {
+        await finishArm(await exec(key));
+      } catch (e) {
+        if (e instanceof CapExceededError || e instanceof ApiError) throw e;
+        formatRetries.push({ label: key, error: String(e) });
+        console.log(`  [${key} 格式級失敗，整臂重試一次：${String(e).slice(0, 160)}]`);
+        await finishArm(await exec(key));
+      }
+    };
+    await runArm("A", (l) =>
+      runSingleCallArm("A", OPENER_PROMPT, transport, budget, userContent, tally, l, recorder));
+    await runArm("B", (l) =>
+      runSingleCallArm("B", CARDS_ONLY_PROMPT, transport, budget, userContent, tally, l, recorder));
+    await runArm("C", (l) => runArmC(transport, budget, userContent, tally, l, recorder));
     const { sheet, keyLines } = buildBlindSheet(profile, arms);
     blindSheets.push({ id: profile.id, sheet });
     answerKey.push(...keyLines);
   }
-  return { results, blindSheets, answerKey };
+  return { results, blindSheets, answerKey, formatRetries };
 }
 
 // ── 盲評輸出 ───────────────────────────────────────────────────
@@ -714,7 +821,7 @@ async function selfCheck(): Promise<void> {
   if (last.completedArms !== 12 || last.profiles.length !== 4 || last.httpAttempts !== 16) {
     throw new Error("最後一個 checkpoint 未含全量資料");
   }
-  const allowedKeys = ["model", "httpAttempts", "maxHttpAttempts", "usage", "completedArms", "profiles"];
+  const allowedKeys = ["model", "httpAttempts", "maxHttpAttempts", "usage", "completedArms", "formatRetries", "profiles"];
   const extraneous = Object.keys(last).filter((k) => !allowedKeys.includes(k));
   if (extraneous.length > 0) {
     throw new Error(`checkpoint 出現非白名單頂層鍵（金鑰外洩防線）：${extraneous.join(", ")}`);
@@ -748,8 +855,156 @@ async function selfCheck(): Promise<void> {
     if (partial.length !== 3 || partial[2].completedArms !== 3) {
       throw new Error(`中途失敗後前 3 臂 checkpoint 沒保住：${partial.length} 個`);
     }
+    if (calls !== 5) {
+      throw new Error(`API 硬錯誤不應觸發格式級重試：實際呼叫 ${calls} 次`);
+    }
   }
-  console.log("✓ checkpoint 中途失敗自檢：後臂炸掉不丟前臂已落盤快照");
+  console.log("✓ checkpoint 中途失敗自檢：後臂炸掉不丟前臂快照、API 硬錯誤不觸發格式級重試");
+
+  // 續跑自檢：格式失敗（原呼叫＋一次整臂重試都回垃圾）→ 停跑，失敗原文
+  // 已即時保全；再從最後 checkpoint 續跑：已完成臂不重打、累計 attempt 沿用
+  {
+    // 第一段：第 7 次起（short-concrete 的 C 臂候選呼叫）回垃圾文字
+    let calls1 = 0;
+    const evidence1: Record<string, unknown>[] = [];
+    const garbageTransport: Transport = (body) => {
+      calls1++;
+      if (calls1 >= 7) return Promise.resolve(fakeBody("這不是 JSON 垃圾輸出"));
+      return okTransport(body);
+    };
+    const budget1 = new AttemptBudget(MAX_HTTP_ATTEMPTS);
+    const snaps1: RunSnapshot[] = [];
+    let failed1 = false;
+    try {
+      await runAllProfiles(
+        garbageTransport,
+        budget1,
+        { inputTokens: 0, outputTokens: 0 },
+        (snap) => {
+          snaps1.push(JSON.parse(JSON.stringify(snap)));
+          return Promise.resolve();
+        },
+        {
+          recorder: (e) => {
+            evidence1.push(JSON.parse(JSON.stringify(e)));
+            return Promise.resolve();
+          },
+        },
+      );
+    } catch {
+      failed1 = true;
+    }
+    if (!failed1) throw new Error("續跑自檢：垃圾輸出＋一次重試後應停跑");
+    if (budget1.used !== 8) {
+      throw new Error(`續跑自檢：預期 8 次 attempt（6 成功＋原呼叫＋重試各 1 垃圾），實際 ${budget1.used}`);
+    }
+    const garbage = evidence1.filter((e) => e.rawText === "這不是 JSON 垃圾輸出");
+    if (evidence1.length !== 8 || garbage.length !== 2) {
+      throw new Error(
+        `失敗原文未即時保全：共 ${evidence1.length} 筆、垃圾 ${garbage.length} 筆（應 8/2）`,
+      );
+    }
+    const lastSnap = snaps1[snaps1.length - 1];
+    if (lastSnap.completedArms !== 5) {
+      throw new Error(`續跑自檢：中斷時應有 5 臂完成，實際 ${lastSnap.completedArms}`);
+    }
+
+    // 第二段：帶最後 checkpoint 續跑，明確申報累計 attempts=8
+    let calls2 = 0;
+    const countingOk: Transport = (body) => {
+      calls2++;
+      return okTransport(body);
+    };
+    const budget2 = new AttemptBudget(MAX_HTTP_ATTEMPTS, 8);
+    const tally2: Usage = { ...lastSnap.usage };
+    const resumeSnaps: RunSnapshot[] = [];
+    const { results: r2, formatRetries: fr2 } = await runAllProfiles(
+      countingOk,
+      budget2,
+      tally2,
+      (snap) => {
+        resumeSnaps.push(JSON.parse(JSON.stringify(snap)));
+        return Promise.resolve();
+      },
+      { restoredProfiles: lastSnap.profiles },
+    );
+    if (calls2 !== 10) {
+      throw new Error(`已完成臂被重打：續跑應只打剩餘 10 次，實際 ${calls2}`);
+    }
+    if (budget2.used !== 18) {
+      throw new Error(`累計 attempt 應為 8+10=18，實際 ${budget2.used}`);
+    }
+    if (
+      r2.length !== 4 ||
+      r2.some((p) => (p as { arms: unknown[] }).arms.length !== 3)
+    ) {
+      throw new Error("續跑後結果不是 4 profile × 3 臂");
+    }
+    const origA = (lastSnap.profiles[0] as { arms: Record<string, unknown>[] }).arms[0];
+    const restoredA = (r2[0] as { arms: Record<string, unknown>[] }).arms[0];
+    if (JSON.stringify(restoredA.rawTexts) !== JSON.stringify(origA.rawTexts)) {
+      throw new Error("續跑未原樣保留前輪已完成臂的原始輸出");
+    }
+    if (resumeSnaps[0].completedArms !== 6 || resumeSnaps[0].profiles.length < 2) {
+      throw new Error("續跑第一個新臂落盤時未帶齊前輪 5 臂");
+    }
+    if (fr2.length !== 0) {
+      throw new Error(`續跑乾淨流程不應有格式級重試：${JSON.stringify(fr2)}`);
+    }
+    if (tally2.inputTokens !== 1600 || tally2.outputTokens !== 800) {
+      throw new Error(`續跑 usage 未累計自 checkpoint：${JSON.stringify(tally2)}`);
+    }
+
+    // 第三段：累計上限——override 申報 23，續跑第 2 次呼叫必撞 24 硬上限
+    const budget3 = new AttemptBudget(MAX_HTTP_ATTEMPTS, 23);
+    let capOnResume = false;
+    try {
+      await runAllProfiles(
+        okTransport,
+        budget3,
+        { inputTokens: 0, outputTokens: 0 },
+        () => Promise.resolve(),
+        { restoredProfiles: lastSnap.profiles },
+      );
+    } catch (e) {
+      capOnResume = e instanceof CapExceededError;
+    }
+    if (!capOnResume || budget3.used !== 24) {
+      throw new Error(`累計上限未生效：used=${budget3.used}`);
+    }
+  }
+  console.log("✓ 續跑自檢：失敗原文即時保全、已完成臂不重打、usage/attempt 累計、24 硬上限跨輪有效");
+
+  // 格式級重試成功自檢：第 1 次呼叫垃圾→整臂重試成功，全程 17 次、報告在 checkpoint
+  {
+    let calls = 0;
+    const flaky: Transport = (body) => {
+      calls++;
+      if (calls === 1) return Promise.resolve(fakeBody("垃圾"));
+      return okTransport(body);
+    };
+    const budget = new AttemptBudget(MAX_HTTP_ATTEMPTS);
+    let lastSnap: RunSnapshot | null = null;
+    const { formatRetries } = await runAllProfiles(
+      flaky,
+      budget,
+      { inputTokens: 0, outputTokens: 0 },
+      (snap) => {
+        lastSnap = JSON.parse(JSON.stringify(snap));
+        return Promise.resolve();
+      },
+    );
+    if (budget.used !== 17) {
+      throw new Error(`格式級重試應多耗 1 次 attempt（16+1），實際 ${budget.used}`);
+    }
+    if (
+      formatRetries.length !== 1 || formatRetries[0].label !== "rule-wall:A" ||
+      (lastSnap as RunSnapshot | null)?.formatRetries.length !== 1
+    ) {
+      throw new Error(`格式級重試未正確報告：${JSON.stringify(formatRetries)}`);
+    }
+  }
+  console.log("✓ 格式級重試自檢：每臂一次、計入全域上限、results/checkpoint 都有報告");
 
   // A/B 完整性負自檢：正規化後缺卡／超長被清／pick 不合法都必須炸
   const negativeBodies: Array<[string, Record<string, unknown>]> = [
@@ -911,14 +1166,63 @@ async function liveRun(): Promise<void> {
     return await res.json();
   };
 
-  const budget = new AttemptBudget(MAX_HTTP_ATTEMPTS);
-  const tally: Usage = { inputTokens: 0, outputTokens: 0 };
-  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const outDir = new URL(`out/run-${ts}/`, import.meta.url);
+  const resumeArg = Deno.args.find((a) => a.startsWith("--resume="))
+    ?.slice("--resume=".length);
+  const attemptsArg = Deno.args.find((a) => a.startsWith("--attempts-used="))
+    ?.slice("--attempts-used=".length);
+  if ((resumeArg == null) !== (attemptsArg == null)) {
+    console.error(
+      "--resume 與 --attempts-used 必須成對出現（checkpoint 記不到失敗的最後一次 attempt，累計數必須明確申報）",
+    );
+    Deno.exit(2);
+  }
+
+  let budget: AttemptBudget;
+  let tally: Usage;
+  let restoredProfiles: Record<string, unknown>[] | undefined;
+  let outDir: URL;
+  if (resumeArg != null) {
+    outDir = new URL(`file://${await Deno.realPath(resumeArg)}/`);
+    const prev = JSON.parse(
+      await Deno.readTextFile(new URL("checkpoint.json", outDir)),
+    ) as RunSnapshot;
+    const attemptsUsed = Number(attemptsArg);
+    if (
+      !Number.isInteger(attemptsUsed) || attemptsUsed < prev.httpAttempts ||
+      attemptsUsed >= MAX_HTTP_ATTEMPTS
+    ) {
+      throw new Error(
+        `--attempts-used 不合法：${attemptsArg}（須為整數、≥ checkpoint 記錄的 ${prev.httpAttempts}、< ${MAX_HTTP_ATTEMPTS}）`,
+      );
+    }
+    budget = new AttemptBudget(MAX_HTTP_ATTEMPTS, attemptsUsed);
+    // usage 續算自 checkpoint（前輪 parse 失敗那幾次的 usage 不在內，
+    // 逐 attempt 精確值以 attempts.jsonl 為準）。
+    tally = { ...prev.usage };
+    restoredProfiles = prev.profiles;
+    console.log(
+      `續跑：${resumeArg}（已完成 ${prev.completedArms}/12 臂、累計 attempt ${attemptsUsed}/${MAX_HTTP_ATTEMPTS}）`,
+    );
+  } else {
+    budget = new AttemptBudget(MAX_HTTP_ATTEMPTS);
+    tally = { inputTokens: 0, outputTokens: 0 };
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    outDir = new URL(`out/run-${ts}/`, import.meta.url);
+  }
   await Deno.mkdir(new URL("blind/", outDir), { recursive: true });
   const checkpointUrl = new URL("checkpoint.json", outDir);
+  const attemptsUrl = new URL("attempts.jsonl", outDir);
+  // 每次 provider 回應立即 append 一行（原文＋usage＋attempt 序號，無金鑰
+  // 欄位）：後面 parse／驗證炸掉也不丟已付費證據。
+  const recorder: AttemptRecorder = async (entry) => {
+    await Deno.writeTextFile(
+      attemptsUrl,
+      JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n",
+      { append: true },
+    );
+  };
 
-  const { results, blindSheets, answerKey } = await runAllProfiles(
+  const { results, blindSheets, answerKey, formatRetries } = await runAllProfiles(
     transport,
     budget,
     tally,
@@ -930,6 +1234,7 @@ async function liveRun(): Promise<void> {
         `  checkpoint：${snap.completedArms}/12 臂完成（attempt ${snap.httpAttempts}/${snap.maxHttpAttempts}）已落盤`,
       );
     },
+    { restoredProfiles, recorder },
   );
 
   for (const { id, sheet } of blindSheets) {
@@ -943,6 +1248,8 @@ async function liveRun(): Promise<void> {
         httpAttempts: budget.used,
         maxHttpAttempts: budget.max,
         usage: tally,
+        resumedFrom: resumeArg ?? null,
+        formatRetries,
         profiles: results,
       },
       null,
