@@ -94,28 +94,62 @@ Deno.test("stream fail-closed rejection precedes overcharge claim", async () => 
 });
 
 Deno.test("Flutter AnalyzeChat client exposes stream start and retry only", async () => {
+  // 現行唯一 production seam：StreamingAnalyzeNotifier.start →
+  // _client.stream(AnalyzeStreamRequest(...))；retryStream 保留。
   const notifier = await read(
     "../../../lib/features/analysis/data/notifiers/streaming_analyze_notifier.dart",
   );
-  const service = await read(
-    "../../../lib/features/analysis/data/services/analysis_service.dart",
-  );
-  const preview = await read(
-    "../../../lib/features/analysis/domain/entities/analysis_recommendation_preview.dart",
-  );
-  const loadingWidgets = await read(
-    "../../../lib/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart",
-  );
-  const source = `${notifier}\n${service}\n${preview}\n${loadingWidgets}`;
+  assert(notifier.includes("Future<void> start({"));
+  assert(notifier.includes("_client.stream(AnalyzeStreamRequest("));
+  assert(notifier.includes("Future<void> retryStream()"));
 
-  assert(source.includes("analyzeStream("));
-  assert(source.includes("retryStream()"));
-  assert(service.includes("contentType != 'application/x-ndjson'"));
-  assertEquals(source.match(/analyzeQuick/g)?.length ?? 0, 0);
-  assertEquals(source.match(/analyzeFull/g)?.length ?? 0, 0);
-  assertEquals(source.match(/retryFull/g)?.length ?? 0, 0);
-  assertEquals(source.match(/_shouldUseStreamingFull/g)?.length ?? 0, 0);
-  assertEquals(source.match(/quickResult/g)?.length ?? 0, 0);
-  assertEquals(source.match(/FullAnalysisPlaceholder/g)?.length ?? 0, 0);
-  assertEquals(source.match(/FullAnalysisRetryCard/g)?.length ?? 0, 0);
+  // NDJSON content-type guard 在 stream client（wire decode 歸 data 層）。
+  const streamClient = await read(
+    "../../../lib/features/analysis/data/services/analyze_stream_client.dart",
+  );
+  assert(streamClient.includes("contentType != 'application/x-ndjson'"));
+});
+
+async function* dartFiles(dir: URL): AsyncGenerator<URL> {
+  for await (const entry of Deno.readDir(dir)) {
+    if (entry.isDirectory) {
+      yield* dartFiles(new URL(`${entry.name}/`, dir));
+    } else if (entry.name.endsWith(".dart")) {
+      yield new URL(entry.name, dir);
+    }
+  }
+}
+
+Deno.test("no quick/full fallback identifiers anywhere in lib/features/analysis", async () => {
+  // 遞迴掃整個 feature 樹（固定檔名清單掃不到搬移後的新檔）。
+  const bannedTokens = [
+    "analyzeQuick",
+    "analyzeFull",
+    "retryFull",
+    "_shouldUseStreamingFull",
+    "quickResult",
+    "FullAnalysisPlaceholder",
+    "FullAnalysisRetryCard",
+  ];
+  const root = new URL("../../../lib/features/analysis/", import.meta.url);
+
+  const violations: string[] = [];
+  const scanned: string[] = [];
+  for await (const file of dartFiles(root)) {
+    scanned.push(file.pathname);
+    const source = await Deno.readTextFile(file);
+    for (const token of bannedTokens) {
+      if (source.includes(token)) {
+        violations.push(`${file.pathname}: ${token}`);
+      }
+    }
+  }
+
+  // 掃描器假綠防護：樹必須非空且涵蓋 notifier 與 Work C 抽出的 sections。
+  assert(scanned.length > 0);
+  assert(
+    scanned.some((path) => path.endsWith("streaming_analyze_notifier.dart")),
+  );
+  assert(scanned.some((path) => path.includes("/presentation/sections/")));
+  assertEquals(violations, []);
 });
