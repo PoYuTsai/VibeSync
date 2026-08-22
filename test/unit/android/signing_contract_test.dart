@@ -66,6 +66,31 @@ void main() {
       expect(gate, contains('normalize_sha256'));
     });
 
+    test('APK signer digest 解析錨定 V2 Signer: 與 Signer #N 且 64 位 hex 驗證', () {
+      // 迴歸：run 32544433425 的 apksigner 只印 V2 Signer: 前綴，
+      // 舊解析器只認 Signer #1 導致誤擋
+      final gate = readRepoFile('tools/preflight/check-android-signing.sh');
+      expect(
+        gate,
+        contains(r'^(V2 Signer:|Signer #[0-9]+) certificate SHA-256 digest: '),
+        reason: '解析必須行首錨定並同時接受現行與舊版前綴',
+      );
+      expect(
+        gate,
+        contains(r"grep -qE '^[0-9A-F]{64}$'"),
+        reason: '正規化後必須恰為 64 位十六進位（fail closed）',
+      );
+      final parserTest =
+          readRepoFile('tools/preflight/check-android-signing-parser-test.sh');
+      expect(parserTest, contains('extract_apk_signer_sha256'));
+      expect(parserTest, contains('validate_signer_sha256'));
+      expect(
+        readRepoFile('.github/workflows/distribute.yml'),
+        contains('check-android-signing-parser-test.sh'),
+        reason: 'parser 回歸測試必須在 Android 簽名 gate 前於 CI 執行',
+      );
+    });
+
     test('SEC-01：gate 不印 alias（GitHub secret）與 Owner，只放行效期與指紋', () {
       final gate = readRepoFile('tools/preflight/check-android-signing.sh');
       expect(gate.contains('Alias name:'), isFalse,

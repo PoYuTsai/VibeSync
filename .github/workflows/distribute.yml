@@ -172,6 +172,11 @@ jobs:
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
             --dart-define=SENTRY_DSN="$SENTRY_DSN"
 
+      # AND-02 parser 回歸測試（純 fixture、不需 SDK）：擋 run 32544433425
+      # 型的 apksigner signer-digest 輸出格式迴歸
+      - name: Signing gate parser regression tests
+        run: ./tools/preflight/check-android-signing-parser-test.sh
+
       - name: Verify release APK signing (AND-02 gate)
         env:
           ANDROID_KEYSTORE_SHA256: ${{ steps.keystore-gate.outputs.keystore_sha256 }}

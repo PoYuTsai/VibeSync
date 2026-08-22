@@ -49,6 +49,29 @@ normalize_sha256() {
   tr -d ': ' <<<"$1" | tr '[:lower:]' '[:upper:]'
 }
 
+# 從 apksigner --print-certs 輸出擷取 signer 憑證 SHA-256（行首錨定）。
+# 接受現行「V2 Signer:」與舊版「Signer #N」兩種前綴；找不到就輸出空字串。
+# 迴歸背景：run 32544433425 的 apksigner 只印 V2 Signer: 前綴，
+# 舊解析器只認 Signer #1 導致誤擋。
+extract_apk_signer_sha256() {
+  sed -nE 's/^(V2 Signer:|Signer #[0-9]+) certificate SHA-256 digest: //p' \
+    <<<"$1" | head -1
+}
+
+# 正規化並驗證 signer SHA-256：正規化後必須恰為 64 位十六進位，
+# 否則非零退出（fail closed），成功時印出 normalized 值
+validate_signer_sha256() {
+  local normalized
+  normalized=$(normalize_sha256 "$1")
+  grep -qE '^[0-9A-F]{64}$' <<<"$normalized" || return 1
+  echo "$normalized"
+}
+
+# 給 parser 回歸測試 source 用：只載入函式，不進主流程
+if [ "${CHECK_ANDROID_SIGNING_LIB_ONLY:-}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+
 mode="${1:-}"
 case "$mode" in
   keystore)
@@ -98,8 +121,7 @@ case "$mode" in
         [ -n "$apksigner" ] && [ -n "$aapt" ] || fail "build-tools 缺 apksigner/aapt"
         certs=$("$apksigner" verify --print-certs "$artifact") \
           || fail "AND-02 gate：APK 簽名驗證失敗"
-        signer_sha256_raw=$(sed -n \
-          's/^Signer #1 certificate SHA-256 digest: //p' <<<"$certs" | head -1)
+        signer_sha256_raw=$(extract_apk_signer_sha256 "$certs")
         pkg=$("$aapt" dump badging "$artifact" \
           | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
         [ "$pkg" = "$EXPECTED_PACKAGE" ] \
@@ -141,7 +163,8 @@ case "$mode" in
     # GITHUB_OUTPUT 供值；本機未提供時跳過並明說，不靜默）
     [ -n "$signer_sha256_raw" ] \
       || fail "AND-02 gate：讀不到產物 signer SHA-256（工具輸出格式變動？）"
-    signer_sha256=$(normalize_sha256 "$signer_sha256_raw")
+    signer_sha256=$(validate_signer_sha256 "$signer_sha256_raw") \
+      || fail "AND-02 gate：signer SHA-256 正規化後非 64 位十六進位（格式異常，fail closed）"
     if [ -n "${ANDROID_KEYSTORE_SHA256:-}" ]; then
       expected_sha=$(normalize_sha256 "$ANDROID_KEYSTORE_SHA256")
       [ "$signer_sha256" = "$expected_sha" ] \
