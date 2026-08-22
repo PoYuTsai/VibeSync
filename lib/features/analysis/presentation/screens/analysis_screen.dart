@@ -78,6 +78,7 @@ import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/swipe_hint_nudge.dart';
 import '../widgets/analysis_usage_summary_line.dart';
 import '../helpers/analysis_progress_stage_copy.dart';
+import '../sections/streaming_content_section.dart';
 import '../helpers/analysis_run_metadata_mapping.dart';
 import '../helpers/analysis_usage_copy.dart';
 import '../widgets/analysis_action_widgets.dart';
@@ -1036,150 +1037,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _resetFeedbackState();
   }
 
-  Widget _buildStreamingContentCard() {
-    final contents = _streamContents;
-    if (contents.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.backgroundGradientMid,
-            Color(0xFF3A185B),
-            Color(0xFF612C65),
-          ],
+  /// data 層 wire 型別 → section view model 的映射（icon 對映留在
+  /// composition root，section 維持 data-neutral）。
+  List<StreamingContentItem> get _streamContentItems => _streamContents
+      .map(
+        (content) => StreamingContentItem(
+          icon: _streamContentIcon(content.kind),
+          title: content.title,
+          body: content.body,
         ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.24),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.40),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppColors.ctaStart, AppColors.brandBlush],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.auto_awesome,
-                  size: 18,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '完整分析即時整理中',
-                      style: AppTypography.titleMedium.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    if (_streamProgressLabel != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _streamProgressLabel!,
-                        style: AppTypography.caption.copyWith(
-                          color: Colors.white.withValues(alpha: 0.78),
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          for (var i = 0; i < contents.length; i++) ...[
-            _buildStreamingContentItem(
-              contents[i],
-              isLatest: i == contents.length - 1,
-            ),
-            if (i != contents.length - 1) const SizedBox(height: 10),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStreamingContentItem(
-    AnalysisStreamContent content, {
-    required bool isLatest,
-  }) {
-    final accent = isLatest ? AppColors.bokehYellow : AppColors.primaryLight;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: isLatest ? 0.14 : 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: isLatest ? 0.32 : 0.18),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            _streamContentIcon(content.kind),
-            size: 18,
-            color: accent,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  content.title,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  content.body,
-                  maxLines: 8,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: Colors.white.withValues(alpha: 0.84),
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+      )
+      .toList(growable: false);
 
   IconData _streamContentIcon(AnalysisStreamContentKind kind) {
     switch (kind) {
@@ -6189,7 +6057,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           if ((_isAnalyzing || _streamErrorMessage != null) &&
                               _streamContents.isNotEmpty) ...[
                             const SizedBox(height: 12),
-                            _buildStreamingContentCard(),
+                            StreamingContentCard(
+                              progressLabel: _streamProgressLabel,
+                              items: _streamContentItems,
+                            ),
                           ],
 
                           // gate 含 _quotaExceededInfo：fresh-start quota 429
