@@ -13,7 +13,6 @@ import '../../../../core/services/keyboard_privacy_purge_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import 'package:image_picker/image_picker.dart';
@@ -51,7 +50,6 @@ import '../../data/providers/analysis_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
-import '../../../conversation/presentation/widgets/message_bubble.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../data/notifiers/streaming_analyze_notifier.dart';
 import '../../data/services/analysis_archive_lifecycle.dart';
@@ -73,11 +71,16 @@ import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/analysis_usage_summary_line.dart';
 import '../helpers/analysis_progress_stage_copy.dart';
+import '../sections/analysis_banners_section.dart';
 import '../sections/analysis_error_card.dart';
+import '../sections/analysis_followup_section.dart';
+import '../sections/analysis_fragment_section.dart';
 import '../sections/analysis_feedback_section.dart';
 import '../sections/detailed_analysis_section.dart';
+import '../sections/edit_message_coach_mark.dart';
 import '../sections/recognized_conversation_section.dart';
 import '../sections/reply_zone_section.dart';
+import '../sections/screenshot_intake_section.dart';
 import '../sections/streaming_content_section.dart';
 import '../sections/telemetry_diagnostics_section.dart';
 import '../helpers/analysis_run_metadata_mapping.dart';
@@ -148,8 +151,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin
     implements
         AnalysisFeedbackActions,
+        AnalysisFragmentActions,
         RecognitionDraftActions,
-        ReplyZoneActions {
+        ReplyZoneActions,
+        ScreenshotIntakeActions {
   // 訂閱同步屬 best-effort 前置：卡住不得凍結分析/刷新 spinner（2.1(b)）。
   static const _subscriptionSyncTimeout = Duration(seconds: 20);
   bool get _showTelemetryDiagnostics => kDebugMode;
@@ -1417,59 +1422,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (mounted) setState(() {});
   }
 
-  Widget _buildConversationSourcePill(Conversation conversation) {
-    final source = _conversationAnalysisSource(conversation);
-    final sourceLabel = source == null ? '來源未設定' : '來源：$source';
-    final canEdit = _persistence.recordOwnerFor(conversation) != null &&
-        !_isAnalyzing &&
-        _persistence.inFlightCount == 0;
-    return Material(
-      color: AppColors.ctaStart.withValues(alpha: 0.10),
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        key: const ValueKey('analysis-source-pill'),
-        borderRadius: BorderRadius.circular(999),
-        onTap: canEdit
-            ? () => _chooseConversationAnalysisSource(conversation)
-            : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.layers_outlined,
-                size: 15,
-                color: AppColors.ctaStart,
-              ),
-              const SizedBox(width: 5),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 96),
-                child: Text(
-                  sourceLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.ctaStart,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (canEdit) ...[
-                const SizedBox(width: 2),
-                Icon(
-                  Icons.arrow_drop_down_rounded,
-                  size: 18,
-                  color: AppColors.ctaStart,
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   void _showEditedAnalyzedMessageSnackBar() {
     if (!mounted) return;
 
@@ -1605,7 +1557,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     late OverlayEntry entry;
     entry = OverlayEntry(
-      builder: (ctx) => _EditMessageCoachMark(
+      builder: (ctx) => EditMessageCoachMark(
         onDismiss: () async {
           if (entry.mounted) entry.remove();
           if (_editMessageCoachMarkEntry == entry) {
@@ -2040,32 +1992,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String? _screenshotAnalysisContextNoteFor() {
     final typed = _screenshotAnalysisContextNoteController.text.trim();
     return typed.isEmpty ? null : typed;
-  }
-
-  /// 空白新片段的「截圖小提醒」列（對標示意稿）：橘 icon＋純文字，
-  /// 不加卡片框（2026-08-14 Eric 拍板拆淺色框）。
-  Widget _buildScreenshotTipRow({
-    required IconData icon,
-    required String text,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: AppColors.ctaStart),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.onBackgroundPrimary.withValues(alpha: 0.92),
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _applyRecognitionImport({
@@ -3494,6 +3420,52 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return null;
   }
 
+  // ── AnalysisFragmentActions（片段卡的動作實作）──────────────────────
+
+  @override
+  void chooseConversationSource() {
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) return;
+    unawaited(_chooseConversationAnalysisSource(conversation));
+  }
+
+  @override
+  void editFragmentMessage(Message message) {
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) return;
+    unawaited(_editMessage(conversation, message));
+  }
+
+  @override
+  void swapFragmentMessageSide(Message message) {
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) return;
+    unawaited(_swapMessageSide(conversation, message));
+  }
+
+  @override
+  void deleteFragmentMessage(Message message) {
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) return;
+    unawaited(_deleteMessage(conversation, message));
+  }
+
+  // ── ScreenshotIntakeActions（選圖／辨識區的動作實作）────────────────
+
+  @override
+  void selectedImagesChanged(List<Uint8List> images) =>
+      _handleSelectedImagesChanged(images);
+
+  @override
+  void selectedImageMetricsChanged(List<SelectedImageMetrics> metrics) =>
+      _handleSelectedImageMetricsChanged(metrics);
+
+  @override
+  void recognizeScreenshots() => unawaited(_recognizeAndAddToConversation());
+
+  @override
+  void cancelRecognition() => _cancelRecognize();
+
   // ── RecognitionDraftActions（辨識結果卡的動作實作）──────────────────
 
   @override
@@ -3737,6 +3709,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     final analysisFragmentMessages = _analysisFragmentMessages(conversation);
+    final conversationSource = _conversationAnalysisSource(conversation);
     final isPendingAnalysisFragment =
         _isShowingPendingAnalysisFragment(conversation);
     final hasCompletedAnalysisEvidence =
@@ -3880,204 +3853,40 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Messages preview（空白新片段時平鋪深色、不上白卡）
-                          Container(
-                            width: double.infinity,
-                            padding: isEmptyFragmentSetup
-                                ? EdgeInsets.zero
-                                : const EdgeInsets.all(14),
-                            decoration: isEmptyFragmentSetup
-                                ? null
-                                : BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.96),
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(
-                                      color: AppColors.ctaStart
-                                          .withValues(alpha: 0.24),
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black
-                                            .withValues(alpha: 0.12),
-                                        blurRadius: 18,
-                                        offset: const Offset(0, 10),
-                                      ),
-                                    ],
-                                  ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        isPendingAnalysisFragment
-                                            ? '待分析的新片段'
-                                            : isCompletedAnalysisFragment
-                                                ? '本次分析片段'
-                                                : '新的分析片段',
-                                        style:
-                                            AppTypography.titleMedium.copyWith(
-                                          color: isEmptyFragmentSetup
-                                              ? AppColors.onBackgroundPrimary
-                                              : AppColors.glassTextPrimary,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    _buildConversationSourcePill(conversation),
-                                  ],
+                          AnalysisFragmentCard(
+                            isEmptyFragmentSetup: isEmptyFragmentSetup,
+                            isPendingFragment: isPendingAnalysisFragment,
+                            isCompletedFragment: isCompletedAnalysisFragment,
+                            showRecordRepairWarning:
+                                _persistence.recordNeedsRepair,
+                            isScreenshotOnlyEmptyState:
+                                isScreenshotOnlyEmptyState,
+                            showEmptyState: analysisFragmentMessages.isEmpty &&
+                                !(isEmptyFragmentSetup &&
+                                    _selectedImages.isNotEmpty),
+                            messages: [
+                              for (final message in analysisFragmentMessages)
+                                FragmentMessageItem(
+                                  message: message,
+                                  mutable: !_isAnalyzing &&
+                                      _canMutateMessage(conversation, message),
                                 ),
-                                // 空片段與待分析片段都不放副標（2026-08-14 對標
-                                // 示意稿拆「先加入…」；2026-08-16 Bruce 回饋再拆
-                                // 「這批新聊天會獨立分析…」）。只有封存片段需要
-                                // 唯讀說明。
-                                if (isCompletedAnalysisFragment) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '這次分析已獨立封存，內容唯讀；新內容請另開分析片段。',
-                                    style: AppTypography.bodySmall.copyWith(
-                                      color: AppColors.glassTextSecondary,
-                                      height: 1.35,
-                                    ),
-                                  ),
-                                ],
-                                if (_persistence.recordNeedsRepair) ...[
-                                  const SizedBox(height: 7),
-                                  Text(
-                                    '分析已完成，但紀錄尚未儲存；系統會自動重試。',
-                                    key: const ValueKey(
-                                      'analysis-record-repair-warning',
-                                    ),
-                                    style: AppTypography.bodySmall.copyWith(
-                                      color: AppColors.warning,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                                const SizedBox(height: 10),
-                                // 已選圖時空態主視覺讓位給選圖列＋辨識 CTA，
-                                // 整頁不用捲就看得到下一步。
-                                if (analysisFragmentMessages.isEmpty &&
-                                    !(isEmptyFragmentSetup &&
-                                        _selectedImages.isNotEmpty))
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 20,
-                                      horizontal: 8,
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        if (isEmptyFragmentSetup)
-                                          // 對標示意稿：紫色聊天泡泡直接放大，
-                                          // 不加圓框（2026-08-14 Eric 拍板拆框）
-                                          const Icon(
-                                            Icons.sms_outlined,
-                                            color: AppColors.coachAccentBright,
-                                            size: 72,
-                                          )
-                                        else
-                                          Icon(
-                                            Icons.chat_bubble_outline,
-                                            color: AppColors.ctaStart,
-                                            size: 34,
-                                          ),
-                                        SizedBox(
-                                          height:
-                                              isEmptyFragmentSetup ? 14 : 10,
-                                        ),
-                                        Text(
-                                          '還沒有訊息',
-                                          style: (isEmptyFragmentSetup
-                                                  ? AppTypography.titleLarge
-                                                  : AppTypography.titleMedium)
-                                              .copyWith(
-                                            color: isEmptyFragmentSetup
-                                                ? AppColors.onBackgroundPrimary
-                                                : AppColors.glassTextPrimary,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          isScreenshotOnlyEmptyState
-                                              ? '先上傳 1–3 張聊天截圖，確認文字後作為本次片段。'
-                                              : '請回到上一頁建立新的獨立分析片段。',
-                                          textAlign: TextAlign.center,
-                                          style:
-                                              AppTypography.bodySmall.copyWith(
-                                            color: isEmptyFragmentSetup
-                                                ? AppColors
-                                                    .onBackgroundSecondary
-                                                : AppColors.glassTextSecondary,
-                                            height: 1.35,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ...analysisFragmentMessages.map((m) =>
-                                    MessageBubble(
-                                      message: m,
-                                      onEdit: _isAnalyzing ||
-                                              !_canMutateMessage(
-                                                  conversation, m)
-                                          ? null
-                                          : () => _editMessage(conversation, m),
-                                      onSwapSide: _isAnalyzing ||
-                                              !_canMutateMessage(
-                                                  conversation, m)
-                                          ? null
-                                          : () =>
-                                              _swapMessageSide(conversation, m),
-                                      onDelete: _isAnalyzing ||
-                                              !_canMutateMessage(
-                                                  conversation, m)
-                                          ? null
-                                          : () =>
-                                              _deleteMessage(conversation, m),
-                                    )),
-                              ],
-                            ),
+                            ],
+                            sourceLabel: conversationSource == null
+                                ? '來源未設定'
+                                : '來源：$conversationSource',
+                            sourceEditable:
+                                _persistence.recordOwnerFor(conversation) !=
+                                        null &&
+                                    !_isAnalyzing &&
+                                    _persistence.inFlightCount == 0,
+                            actions: this,
                           ),
 
                           const SizedBox(height: 24),
 
                           if (_isRefreshingPremiumReplies) ...[
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color:
-                                    AppColors.ctaStart.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: AppColors.ctaStart
-                                      .withValues(alpha: 0.28),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      '正在重新產生完整分析，完成後會更新新版回覆選項。',
-                                      style: AppTypography.bodyMedium.copyWith(
-                                        color: AppColors.ctaStart,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            const PremiumRefreshBanner(),
                             const SizedBox(height: 16),
                           ],
 
@@ -4110,330 +3919,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // 展開，讓使用者增刪縮圖後自己按「辨識並取代」。
                           if (isEmptyFragmentSetup ||
                               _selectedImages.isNotEmpty) ...[
-                            Container(
-                              padding: isEmptyFragmentSetup
-                                  ? EdgeInsets.zero
-                                  : const EdgeInsets.all(24),
-                              decoration: isEmptyFragmentSetup
-                                  ? null
-                                  : BoxDecoration(
-                                      color: AppColors.ctaStart
-                                          .withValues(alpha: 0.05),
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                          color: AppColors.ctaStart
-                                              .withValues(alpha: 0.2)),
-                                    ),
-                              child: Column(
-                                crossAxisAlignment: isEmptyFragmentSetup
-                                    ? CrossAxisAlignment.stretch
-                                    : CrossAxisAlignment.center,
-                                children: [
-                                  if (isEmptyFragmentSetup) ...[
-                                    Divider(
-                                      height: 1,
-                                      color:
-                                          Colors.white.withValues(alpha: 0.10),
-                                    ),
-                                    const SizedBox(height: 18),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          '聊天截圖',
-                                          style:
-                                              AppTypography.titleSmall.copyWith(
-                                            color:
-                                                AppColors.onBackgroundPrimary,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const Spacer(),
-                                        Text(
-                                          '${_selectedImages.length}/3',
-                                          style:
-                                              AppTypography.bodyMedium.copyWith(
-                                            color:
-                                                AppColors.onBackgroundSecondary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                  ],
-                                  // 「本次片段已有 N 則…整批取代」提示已拆
-                                  // （2026-08-16 Bruce 回饋）；取代規則由辨識
-                                  // 確認對話框揭露，這裡只留選圖入口——下方
-                                  // 辨識預覽卡的「重新讀圖」只能重讀同一批，
-                                  // 換截圖仍必須走這裡。
-                                  ImagePickerWidget(
-                                    maxImages: 3,
-                                    externalImages: _selectedImages, // 同步外部狀態
-                                    helperTextColor:
-                                        AppColors.onBackgroundSecondary,
-                                    // 教學文字全拆：空片段由「截圖小提醒」承擔，
-                                    // 已有片段不再重複教學（2026-08-16 Bruce 回饋）
-                                    showHelperText: false,
-                                    tileSize: isEmptyFragmentSetup ? 104 : 70,
-                                    onImagesChanged:
-                                        _handleSelectedImagesChanged,
-                                    onMetricsChanged:
-                                        _handleSelectedImageMetricsChanged,
-                                  ),
-                                  // 選圖後小提醒功成身退，讓「辨識截圖文字」
-                                  // 直接頂上來，一頁內看得到 CTA（2026-08-14
-                                  // Eric 真機回報要往下滑才找得到按鈕）。
-                                  if (isEmptyFragmentSetup &&
-                                      _selectedImages.isEmpty) ...[
-                                    const SizedBox(height: 22),
-                                    Text(
-                                      '截圖小提醒',
-                                      style: AppTypography.titleSmall.copyWith(
-                                        color: AppColors.onBackgroundPrimary,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    _buildScreenshotTipRow(
-                                      icon: Icons.crop_free_rounded,
-                                      text: '請保留標題列、訊息泡泡與前後文',
-                                    ),
-                                    const SizedBox(height: 8),
-                                    _buildScreenshotTipRow(
-                                      icon: Icons.text_fields_rounded,
-                                      text: '每張建議 15 則內；過長可拆成 2-3 張',
-                                    ),
-                                  ],
-                                  // 「這次分析設定」已拆（2026-08-14 Eric 拍板：
-                                  // 對象卡建立時已引導填過，這裡重複）。
-                                  // 「建議每張截圖保留 15 則內…」也拆
-                                  // （2026-08-16 Bruce 回饋：與截圖小提醒重複）。
-                                  const SizedBox(height: 8),
-
-                                  // 如果有截圖，先顯示「辨識截圖文字」按鈕
-                                  if (_selectedImages.isNotEmpty) ...[
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton.icon(
-                                        onPressed: AppHaptics.onPress(
-                                            _isRecognizing
-                                                ? null
-                                                : _recognizeAndAddToConversation),
-                                        icon: _isRecognizing
-                                            ? const SizedBox(
-                                                width: 20,
-                                                height: 20,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: Colors.white),
-                                              )
-                                            : const Icon(
-                                                Icons.add_photo_alternate),
-                                        label: Text(_recognizeButtonLabel),
-                                        /*
-                                            ? '辨識中…'
-                                            : '辨識截圖文字 （${_selectedImages.length} 張）'),
-                                        */
-                                        style: ElevatedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 14),
-                                          backgroundColor: AppColors.ctaStart,
-                                          foregroundColor: AppColors.onCta,
-                                          disabledBackgroundColor: AppColors
-                                              .primary
-                                              .withValues(alpha: 0.7),
-                                          disabledForegroundColor: Colors.white
-                                              .withValues(alpha: 0.95),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    // Debug 狀態顯示
-                                    if (_showTelemetryDiagnostics &&
-                                        _isRecognizing)
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.orange
-                                              .withValues(alpha: 0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          border: Border.all(
-                                              color: Colors.orange
-                                                  .withValues(alpha: 0.3)),
-                                        ),
-                                        child: Column(
-                                          children: [
-                                            Text(
-                                              '目前階段：${_recognizeStageLabel(_recognizeStage)} ($_recognizeElapsedSeconds 秒)',
-                                              style: AppTypography.bodySmall
-                                                  .copyWith(
-                                                color: Colors.orange,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '圖片：${_selectedImages.length} 張｜原始 ${formatTelemetryBytes(_totalOriginalImageBytes)} -> 壓縮 ${formatTelemetryBytes(_totalCompressedImageBytes)}',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: Colors.orange
-                                                    .withValues(alpha: 0.8),
-                                                fontFamily: 'monospace',
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                            if (_lastRecognizeTelemetry != null)
-                                              Text(
-                                                _lastRecognizeTelemetry!
-                                                        .cacheHit
-                                                    ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
-                                                    : '請求 ${formatTelemetryBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${formatTelemetryDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${formatTelemetryDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
-                                                style: AppTypography.caption
-                                                    .copyWith(
-                                                  color: Colors.orange
-                                                      .withValues(alpha: 0.8),
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            if (_lastRecognizeTelemetry != null)
-                                              Text(
-                                                _lastRecognizeTelemetry!
-                                                        .cacheHit
-                                                    ? '本次使用本機快取，未重新上傳或呼叫 AI'
-                                                    : 'AI ${formatTelemetryDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${formatTelemetryDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
-                                                style: AppTypography.caption
-                                                    .copyWith(
-                                                  color: Colors.orange
-                                                      .withValues(alpha: 0.8),
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            if (_lastRecognizeTelemetry !=
-                                                    null &&
-                                                recognizeTelemetryRecognitionSummary(
-                                                        _lastRecognizeTelemetry!) !=
-                                                    null)
-                                              Text(
-                                                recognizeTelemetryRecognitionSummary(
-                                                    _lastRecognizeTelemetry!)!,
-                                                style: AppTypography.caption
-                                                    .copyWith(
-                                                  color: Colors.orange
-                                                      .withValues(alpha: 0.8),
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            if (_lastRecognizeTelemetry !=
-                                                    null &&
-                                                recognizeTelemetryNormalizationSummary(
-                                                        _lastRecognizeTelemetry!) !=
-                                                    null)
-                                              Text(
-                                                recognizeTelemetryNormalizationSummary(
-                                                    _lastRecognizeTelemetry!)!,
-                                                style: AppTypography.caption
-                                                    .copyWith(
-                                                  color: Colors.orange
-                                                      .withValues(alpha: 0.8),
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            Text(
-                                              '若超過 130 秒仍無結果，建議換更少訊息的截圖再試。',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: Colors.orange
-                                                    .withValues(alpha: 0.8),
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                            /*
-                                            Text(
-                                              '正在辨識截圖… ($_recognizeElapsedSeconds 秒)',
-                                              style: AppTypography.bodySmall
-                                                  .copyWith(
-                                                color: Colors.orange,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '圖片: ${_selectedImages.length}張 (${_selectedImages.map((i) => '${(i.length / 1024).toStringAsFixed(0)}KB').join(', ')})',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: Colors.orange
-                                                    .withValues(alpha: 0.8),
-                                                fontFamily: 'monospace',
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                            Text(
-                                              '最長等待 130 秒',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                color: Colors.orange
-                                                    .withValues(alpha: 0.8),
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            // 取消按鈕
-                                            */
-                                            /*
-                                            TextButton(
-                                              onPressed: _cancelRecognize,
-                                              child: Text(
-                                                '取消',
-                                                style: AppTypography.bodySmall
-                                                    .copyWith(
-                                                  color: Colors.red,
-                                                ),
-                                              ),
-                                            ),
-                                            */
-                                            TextButton(
-                                              onPressed: _cancelRecognize,
-                                              child: const Text('取消'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    if (!_isRecognizing)
-                                      Text(
-                                        '截圖會先辨識成對話文字。請確認我說／她說與內容；確認後會成為本次完整片段。',
-                                        style: AppTypography.bodySmall.copyWith(
-                                          color: AppColors.warning,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    /*
-                                      // 提示：有截圖時要先識別
-                                      Text(
-                                        '請先點擊上方按鈕辨識截圖，再進行分析',
-                                        style: AppTypography.bodySmall.copyWith(
-                                          color: AppColors.warning,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    */
-                                    const SizedBox(height: 12),
-                                  ],
-                                  // 價值主張只留首次上傳的空片段；已有片段時
-                                  // 不再重複（2026-08-16 Bruce 回饋）。
-                                  if (isEmptyFragmentSetup) ...[
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      // 縮短到一行放得下（2026-08-14 Eric 真機回報換行）
-                                      'AI 會分析對方投入度、讀懂語意，教你最適合的回覆方式',
-                                      style: AppTypography.bodySmall.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                ],
-                              ),
+                            ScreenshotIntakeSection(
+                              isEmptyFragmentSetup: isEmptyFragmentSetup,
+                              selectedImages: _selectedImages,
+                              isRecognizing: _isRecognizing,
+                              recognizeButtonLabel: _recognizeButtonLabel,
+                              showRecognizeDiagnostics:
+                                  _showTelemetryDiagnostics && _isRecognizing,
+                              recognizeStageLabel:
+                                  _recognizeStageLabel(_recognizeStage),
+                              recognizeElapsedSeconds:
+                                  _recognizeElapsedSeconds,
+                              totalOriginalImageBytes:
+                                  _totalOriginalImageBytes,
+                              totalCompressedImageBytes:
+                                  _totalCompressedImageBytes,
+                              lastRecognizeTelemetry: _lastRecognizeTelemetry,
+                              actions: this,
                             ),
                             const SizedBox(height: 24),
                           ],
@@ -4486,29 +3988,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                           if (_enthusiasmScore != null) ...[
                             if (_shouldGiveUp) ...[
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.error.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                      color: AppColors.error
-                                          .withValues(alpha: 0.3)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(TablerIcons.alert_triangle,
-                                        size: 20, color: AppColors.error),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        '這段互動目前不建議再投入，先保護自己的時間與情緒成本。',
-                                        style: AppTypography.bodyMedium,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              const GiveUpAdviceBanner(),
                               const SizedBox(height: 16),
                             ] else if (_gameStage != null &&
                                 _finalRecommendation != null) ...[
@@ -4698,61 +4178,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // 從收合卡升級成整頁式）。判斷/策略仍交給 Coach 1:1。
                           if (_enthusiasmScore != null) ...[
                             const SizedBox(height: 24),
-                            BrandSurfaceCard(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  GestureDetector(
-                                    key: const ValueKey('draft-polish-entry'),
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: _openDraftPolishSheet,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            const Icon(TablerIcons.pencil,
-                                                size: 20,
-                                                color: AppColors.ctaStart),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                '我已有草稿，幫我修自然',
-                                                style: AppTypography.titleMedium
-                                                    .copyWith(
-                                                        color: AppColors
-                                                            .onBackgroundPrimary),
-                                              ),
-                                            ),
-                                            Icon(
-                                              Icons.chevron_right,
-                                              color: AppColors
-                                                  .onBackgroundSecondary
-                                                  .withValues(alpha: 0.6),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          '適合你已經知道想回什麼，只想調整語氣、長度和壓迫感。還不確定該不該回，就用「問教練」。',
-                                          style:
-                                              AppTypography.bodySmall.copyWith(
-                                            color:
-                                                AppColors.onBackgroundSecondary,
-                                            height: 1.35,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  // 複製過潤飾稿才浮出的成效回報列，留在本頁：
-                                  // 使用者發完訊息回來時，面板通常已經關了。
-                                  _buildAnalysisOutcomeBar(
-                                    cardKey: 'polish',
-                                    label: '潤飾草稿',
-                                  ),
-                                ],
+                            DraftPolishEntryCard(
+                              onOpen: _openDraftPolishSheet,
+                              outcomeBar: _buildAnalysisOutcomeBar(
+                                cardKey: 'polish',
+                                label: '潤飾草稿',
                               ),
                             ),
                           ],
@@ -4761,28 +4191,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           if (_reminder != null &&
                               _reminder!.trim().isNotEmpty) ...[
                             const SizedBox(height: 16),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.info.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(TablerIcons.message_circle,
-                                      size: 18, color: AppColors.info),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _reminder!,
-                                      style: AppTypography.bodyMedium.copyWith(
-                                        fontStyle: FontStyle.italic,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            ReminderBanner(text: _reminder!),
                           ],
 
                           // 反饋區塊 (有分析結果時顯示)
@@ -4858,153 +4267,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return const SizedBox.shrink();
     }
 
-    // 分析完成後關閉原片段；任何新內容都另開獨立片段。
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.brandSurface2,
-        border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: AppHaptics.onPress(_openCoachQuestion),
-                icon: const Icon(Icons.forum_outlined),
-                label: const Text('問教練：我現在該怎麼做？'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: AppColors.ctaStart,
-                  foregroundColor: AppColors.onCta,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _openNewConversationSheet,
-                icon: const Icon(Icons.add_circle_outline),
-                label: const Text('分析新片段'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  side: BorderSide(
-                    color: AppColors.ctaStart.withValues(alpha: 0.45),
-                  ),
-                  foregroundColor: AppColors.ctaStart,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 第一次分析結果出現時的 coach mark。
-/// 暗色 backdrop + 卡片置於螢幕下半，向上的箭頭視覺指向上方 bubble 區。
-class _EditMessageCoachMark extends StatelessWidget {
-  const _EditMessageCoachMark({required this.onDismiss});
-
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black.withValues(alpha: 0.6),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onDismiss,
-        child: SafeArea(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 80),
-              child: GestureDetector(
-                onTap: () {}, // 吸收卡片內部點擊，避免穿透到 backdrop dismiss
-                child: Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.brandSurface2.withValues(alpha: 0.96),
-                        AppColors.brandSurface.withValues(alpha: 0.98),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.10),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.32),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.keyboard_double_arrow_up_rounded,
-                        size: 44,
-                        color: AppColors.ctaStart,
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(TablerIcons.bulb,
-                              size: 22, color: AppColors.warning),
-                          const SizedBox(width: 6),
-                          Text(
-                            '你知道嗎？',
-                            style: AppTypography.titleLarge.copyWith(
-                              color: AppColors.onBackgroundPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '長按上方的訊息泡泡可以\n編輯內容、切換角色、或刪除整則',
-                        textAlign: TextAlign.center,
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.onBackgroundSecondary,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: AppHaptics.onPress(onDismiss),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            backgroundColor: AppColors.ctaStart,
-                            foregroundColor: AppColors.onCta,
-                          ),
-                          child: const Text('知道了'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+    return ConversationContinuationBar(
+      onAskCoach: _openCoachQuestion,
+      onNewFragment: _openNewConversationSheet,
     );
   }
 }
