@@ -2,6 +2,7 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { ANALYZE_CORE_PROMPT_V2 } from "./analyze_system_prompt.ts";
 import {
   buildStagePriorSection,
   buildStreamSystemPrompt,
@@ -63,9 +64,10 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   assert(prompt.includes("within"));
   assert(prompt.includes("`stretch`"));
   assert(prompt.includes("too large a jump"));
-  // Keep the transport contract bounded; runtime prompt-size coverage is tested
-  // against the legacy prompt in analyze_prompt_v2_test.ts.
-  assert(prompt.length < 6800);
+  // Keep the transport contract bounded; the coordination invariant adds a
+  // small fixed amount, while runtime prompt-size coverage is tested against
+  // the legacy prompt in analyze_prompt_v2_test.ts.
+  assert(prompt.length < 7200);
 });
 
 Deno.test("stream prompt trims the base prompt before appending contract", () => {
@@ -226,6 +228,23 @@ Deno.test("coverage contract: every style uses the same authored source coverage
   assert(prompt.includes("the set must not change with style"));
   assert(prompt.includes("selected style first"));
   assert(prompt.includes("Do not emit reply styles outside this request list."));
+});
+
+Deno.test("coverage contract: each option copies the ordered catchable inventory pairs", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  assert(prompt.includes("Copy the inventory's ordered full source pairs"));
+  assert(prompt.includes("`disposition=接` verbatim"));
+  assert(prompt.includes("never re-select, omit, replace, or reorder per style"));
+});
+
+Deno.test("coordination contract: direction and neutral next step are explicit", () => {
+  const prompt = buildStreamSystemPrompt(ANALYZE_CORE_PROMPT_V2);
+
+  assert(prompt.includes("由使用者提供已知現況或下一確認點"));
+  assert(prompt.includes("妳下課再跟我說"));
+  assert(prompt.includes("不要把物流決策丟回"));
+  assert(prompt.includes("保持 unknown logistics"));
 });
 
 Deno.test("coverage contract: short options are valid when they match independent moves", () => {

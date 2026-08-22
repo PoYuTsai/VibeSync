@@ -189,3 +189,38 @@ Deno.test("lean core keeps the canonical-plan and style guardrails at the reason
     assert(ANALYZE_CORE_PROMPT_V2.includes(anchor), `missing ${anchor}`);
   }
 });
+
+Deno.test("coordination handoff keeps the user's known anchor and neutral confirmation point", () => {
+  const prompt = buildStreamSystemPrompt(ANALYZE_CORE_PROMPT_V2);
+
+  for (const anchor of [
+    "由使用者提供已知現況或下一確認點",
+    "不要把物流決策丟回",
+    "妳下課再跟我說",
+    "妳下課後告訴我",
+    "你決定就好",
+    "看你想怎樣",
+    "隨你啦",
+    "保持 unknown logistics",
+    "不要新增誰去找誰、誰來找誰或直接回家",
+  ]) {
+    assert(prompt.includes(anchor), `missing coordination invariant: ${anchor}`);
+  }
+});
+
+Deno.test("style overlays keep coordination neutral and reject guilt or unsupported cold reads", () => {
+  const prompt = buildStreamSystemPrompt(ANALYZE_CORE_PROMPT_V2);
+
+  for (const anchor of [
+    "放棄我",
+    "不後悔嗎",
+    "乖乖聽課",
+    "老師在看",
+    "快回去裝認真",
+    "疲累、懶惰",
+    "沒有證據的負面猜測",
+    "風格不得改變這個主動作",
+  ]) {
+    assert(prompt.includes(anchor), `missing style guardrail: ${anchor}`);
+  }
+});
