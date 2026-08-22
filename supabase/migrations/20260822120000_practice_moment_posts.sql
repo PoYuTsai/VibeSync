@@ -463,7 +463,7 @@ REVOKE ALL ON FUNCTION public.list_practice_moment_posts(TEXT[], DATE) FROM anon
 GRANT EXECUTE ON FUNCTION public.list_practice_moment_posts(TEXT[], DATE) TO service_role;
 
 COMMENT ON TABLE public.practice_moment_posts
-IS 'Global practice moment feed posts: one row per (profile_id, post_date, slot). Never stores user-derived content; attempts is the schema-enforced daily model-call ceiling.';
+IS 'Global practice moment feed posts: one row per (profile_id, post_date, slot). Never stores user-derived content; attempts caps model calls at 3 per (profile_id, post_date, slot), i.e. 6 per profile-day. The daily 600 ceiling also requires the Edge layer to keep profile_id inside the 100-profile allowlist and post_date on the correct Taipei day.';
 COMMENT ON FUNCTION public.reserve_practice_moment_slot(TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, INTEGER, INTEGER)
 IS 'Atomically leases one moment slot for generation. First claim writes attempts = 1; a NULL generation_token is an independent takeover branch so release is effective immediately.';
 COMMENT ON FUNCTION public.commit_practice_moment_post(TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, TEXT)
