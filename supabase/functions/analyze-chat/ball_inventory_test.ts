@@ -5,10 +5,8 @@ import {
 import {
   type BallInventory,
   coveredIndependentBalls,
-  hasExactIndependentCoverage,
-  independentMoveSourceIndices,
   parseBallInventory,
-  validateReplySegments,
+  validateSelectedSegments,
 } from "./ball_inventory.ts";
 
 function inventoryOf(
@@ -22,17 +20,7 @@ function inventoryOf(
     if (disp === "接" || disp === "併") catchableCount += 1;
     if (disp === "接") independentCount += 1;
   }
-  return {
-    dispositions,
-    catchableCount,
-    independentCount,
-    expectedIndependentMoves: entries
-      .filter(([, disposition]) => disposition === "接")
-      .map(([sourceIndex]) => ({
-        sourceIndex,
-        sourceMessage: `m${sourceIndex}`,
-      })),
-  };
+  return { dispositions, catchableCount, independentCount };
 }
 
 function seg(sourceIndex: number): Record<string, unknown> {
@@ -178,15 +166,15 @@ Deno.test("parseBallInventory counts duplicate source indices only once", () => 
   assertEquals(inv.independentCount, 1);
 });
 
-Deno.test("併 balls enrich context without becoming an independent segment", () => {
+Deno.test("併 balls enrich context without raising the independent segment floor", () => {
   const inv = inventoryOf([
     [1, "接"],
     [2, "併"],
     [3, "併"],
     [4, "併"],
   ]);
-  assertEquals(validateReplySegments(inv, [seg(1)]), { ok: true });
-  const mergedOnly = validateReplySegments(inv, [seg(2)]);
+  assertEquals(validateSelectedSegments(inv, [seg(1)]), { ok: true });
+  const mergedOnly = validateSelectedSegments(inv, [seg(2)]);
   assert(!mergedOnly.ok);
   assert(
     (mergedOnly as { reason: string }).reason.includes(
@@ -195,68 +183,71 @@ Deno.test("併 balls enrich context without becoming an independent segment", ()
   );
 });
 
-Deno.test("validateReplySegments allows a real two-move option", () => {
+Deno.test("validateSelectedSegments rejects below-floor count (4接, 2段) — failure matrix row1", () => {
   const inv = inventoryOf([[3, "接"], [4, "接"], [5, "接"], [6, "接"]]);
-  assertEquals(validateReplySegments(inv, [seg(5), seg(6)]), { ok: true });
+  const result = validateSelectedSegments(inv, [seg(5), seg(6)]);
+  assert(!result.ok);
+  assert((result as { reason: string }).reason.includes("下限"));
 });
 
-Deno.test("validateReplySegments allows a three-move option", () => {
+Deno.test("validateSelectedSegments passes 3 catchable segments (4接, 3段) — failure matrix row2", () => {
   const inv = inventoryOf([[3, "接"], [4, "接"], [5, "接"], [6, "接"]]);
-  assertEquals(validateReplySegments(inv, [seg(4), seg(5), seg(6)]), {
+  assertEquals(validateSelectedSegments(inv, [seg(4), seg(5), seg(6)]), {
     ok: true,
   });
 });
 
-Deno.test("validateReplySegments rejects a segment sourced from a 略 ball", () => {
+Deno.test("validateSelectedSegments rejects a segment sourced from a 略 ball — failure matrix row3", () => {
   const inv = inventoryOf([[1, "略"], [3, "接"], [4, "接"], [5, "接"], [
     6,
     "接",
   ]]);
-  const result = validateReplySegments(inv, [seg(1), seg(4), seg(5)]);
+  const result = validateSelectedSegments(inv, [seg(1), seg(4), seg(5)]);
   assert(!result.ok);
   assert((result as { reason: string }).reason.includes("略"));
 });
 
-Deno.test("validateReplySegments accepts all real independent moves", () => {
+Deno.test("validateSelectedSegments floor caps at real ball count (2接, 2段) — failure matrix row4", () => {
   const inv = inventoryOf([[3, "接"], [5, "接"]]);
-  assertEquals(validateReplySegments(inv, [seg(3), seg(5)]), { ok: true });
+  assertEquals(validateSelectedSegments(inv, [seg(3), seg(5)]), { ok: true });
 });
 
-// Exact coverage telemetry still exposes duplicate/order drift; source validation
-// rejects duplicate independent moves but never rejects an option for being short.
-Deno.test("validateReplySegments rejects duplicate independent moves", () => {
+// Codex adversarial P2：下限必須數「不同的獨立接球」，否則重複/盤點外索引可灌水
+// 過關卻沒真接到球。下面四個 case 鎖住 INV-H6'。
+
+Deno.test("validateSelectedSegments counts DISTINCT catchable balls — duplicates do not satisfy the floor", () => {
   const inv = inventoryOf([[3, "接"], [4, "接"], [5, "接"], [6, "接"]]);
-  const result = validateReplySegments(inv, [seg(5), seg(5), seg(5)]);
+  const result = validateSelectedSegments(inv, [seg(5), seg(5), seg(5)]);
   assert(!result.ok);
-  assert((result as { reason: string }).reason.includes("重複"));
+  assert((result as { reason: string }).reason.includes("下限"));
 });
 
-Deno.test("validateReplySegments is fail-soft for absent source indices", () => {
+Deno.test("validateSelectedSegments rejects a floor met only by indices absent from the inventory", () => {
   const inv = inventoryOf([[3, "接"], [4, "接"], [5, "接"], [6, "接"]]);
-  // Unknown indices are observable in the option/source telemetry but do not
-  // turn the soft validator into a hard reject.
-  assertEquals(validateReplySegments(inv, [seg(9), seg(10), seg(11)]), {
-    ok: true,
-  });
+  // idx 9,10,11 不在盤點 → 不算真接球 → 達不到下限。
+  const result = validateSelectedSegments(inv, [seg(9), seg(10), seg(11)]);
+  assert(!result.ok);
+  assert((result as { reason: string }).reason.includes("下限"));
 });
 
-Deno.test("validateReplySegments keeps a phantom source fail-soft", () => {
+Deno.test("validateSelectedSegments rejects when distinct real catches fall below the floor even with a phantom segment", () => {
   const inv = inventoryOf([[3, "接"], [4, "接"], [5, "接"], [6, "接"]]);
-  assertEquals(validateReplySegments(inv, [seg(4), seg(5), seg(9)]), {
-    ok: true,
-  });
+  // 只真接 4,5 兩顆，idx 9 是盤點外 → 2 < 3，REJECT（非誤殺：確實只接 2 顆）。
+  const result = validateSelectedSegments(inv, [seg(4), seg(5), seg(9)]);
+  assert(!result.ok);
 });
 
-Deno.test("validateReplySegments allows an extra absent-index segment", () => {
+Deno.test("validateSelectedSegments does not 誤殺: an extra absent-index segment rides along once the floor is met", () => {
   const inv = inventoryOf([[3, "接"], [4, "接"], [5, "接"], [6, "接"]]);
+  // 已用 3 顆真球達標，第 4 段 idx 9 盤點外 → 不算分也不致 REJECT。
   assertEquals(
-    validateReplySegments(inv, [seg(3), seg(4), seg(5), seg(9)]),
+    validateSelectedSegments(inv, [seg(3), seg(4), seg(5), seg(9)]),
     { ok: true },
   );
 });
 
-// coveredIndependentBalls remains the distinct-count view for diagnostics;
-// exact coverage uses independentMoveSourceIndices to preserve order/count.
+// 球數對齊批（2026-08-09）：coveredIndependentBalls 是下限計數與
+// [ball_coverage] telemetry 的共用來源，直接鎖住它的邊界行為。
 
 Deno.test("coveredIndependentBalls counts distinct 接 only — duplicates, 併/略, absent index all excluded", () => {
   const inv = inventoryOf([[1, "略"], [2, "併"], [3, "接"], [4, "接"]]);
@@ -280,116 +271,3 @@ Deno.test("coveredIndependentBalls ignores segments without a numeric sourceInde
   ]);
   assertEquals(covered.size, 0);
 });
-
-Deno.test("reply segment validation follows authored move count", () => {
-  const inv = inventoryOf([[3, "接"], [4, "接"], [5, "接"], [6, "接"]]);
-
-  assertEquals(validateReplySegments(inv, [seg(5), seg(6)]), { ok: true });
-  assertEquals(validateReplySegments(inv, [seg(5)]), { ok: true });
-});
-
-Deno.test("independent move source indices preserve exact option order and count", () => {
-  const inv = inventoryOf([[3, "接"], [4, "併"], [5, "接"], [6, "略"]]);
-
-  assertEquals(
-    independentMoveSourceIndices(inv, [seg(5), seg(3)]),
-    [5, 3],
-  );
-  assertEquals(
-    independentMoveSourceIndices(inv, [seg(5), seg(5)]),
-    [5, 5],
-  );
-});
-
-Deno.test("inventory preserves the ordered independent source pairs", () => {
-  const inv = parseBallInventory({
-    type: "analysis.inventory",
-    balls: [
-      { sourceIndex: 5, sourceMessage: "先吃飯", disposition: "接" },
-      { sourceIndex: 3, sourceMessage: "剛下班", disposition: "接" },
-      { sourceIndex: 4, sourceMessage: "在比賽", disposition: "併" },
-    ],
-  });
-
-  assert(inv !== null);
-  assertEquals(inv!.expectedIndependentMoves, [
-    { sourceIndex: 5, sourceMessage: "先吃飯" },
-    { sourceIndex: 3, sourceMessage: "剛下班" },
-  ]);
-});
-
-Deno.test("exact independent coverage requires every expected source pair", () => {
-  const inv = inventoryOf([[3, "接"], [4, "接"], [5, "接"], [6, "接"]]);
-  const cases: Array<[string, Record<string, unknown>[]]> = [
-    ["all options omit a ball", [seg(3), seg(4)]],
-    ["phantom index", [seg(3), seg(4), seg(5), seg(9)]],
-    ["same index with different sourceMessage", [
-      seg(3),
-      seg(4),
-      { ...seg(5), sourceMessage: "不是原句" },
-      seg(6),
-    ]],
-    ["reordered", [seg(3), seg(5), seg(4), seg(6)]],
-    ["duplicate", [seg(3), seg(4), seg(5), seg(5), seg(6)]],
-    ["different segment count", [seg(3), seg(4), seg(5)]],
-  ];
-
-  for (const [name, segments] of cases) {
-    assertEquals(
-      hasExactIndependentCoverage(inv, segments),
-      false,
-      name,
-    );
-  }
-  assertEquals(
-    hasExactIndependentCoverage(inv, [seg(3), seg(4), seg(5), seg(6)]),
-    true,
-  );
-});
-
-Deno.test(
-  "exact independent coverage rejects blank source messages and invalid indices",
-  () => {
-    const inv = inventoryOf([[1, "接"]]);
-    for (const sourceMessage of ["", " \t"]) {
-      assertEquals(
-        hasExactIndependentCoverage(inv, [{
-          ...seg(1),
-          sourceMessage,
-        }]),
-        false,
-        `observed blank sourceMessage: ${JSON.stringify(sourceMessage)}`,
-      );
-    }
-
-    for (const sourceIndex of [0, -1, 1.5]) {
-      assertEquals(
-        hasExactIndependentCoverage(inv, [{
-          ...seg(1),
-          sourceIndex,
-        }]),
-        false,
-        `observed invalid sourceIndex: ${sourceIndex}`,
-      );
-    }
-
-    const blankExpected = inventoryOf([[1, "接"]]);
-    blankExpected.expectedIndependentMoves[0].sourceMessage = "\n";
-    assertEquals(
-      hasExactIndependentCoverage(blankExpected, [seg(1)]),
-      false,
-      "expected blank sourceMessage",
-    );
-
-    for (const sourceIndex of [0, -1, 1.5]) {
-      const invalidExpected = inventoryOf([[sourceIndex, "接"]]);
-      assertEquals(
-        hasExactIndependentCoverage(invalidExpected, [{
-          ...seg(sourceIndex),
-        }]),
-        false,
-        `expected invalid sourceIndex: ${sourceIndex}`,
-      );
-    }
-  },
-);

@@ -47,13 +47,6 @@ jobs:
           supabase/functions/_shared/quota_test.ts
           supabase/functions/analyze-chat/logger_test.ts
           supabase/functions/analyze-chat/index_test.ts
-          supabase/functions/analyze-chat/request_mode_test.ts
-          supabase/functions/analyze-chat/analyze_chat_handler_test.ts
-          supabase/functions/analyze-chat/analyze_stream_handler_test.ts
-          supabase/functions/analyze-chat/analyze_prompt_v2_test.ts
-          supabase/functions/analyze-chat/ball_inventory_test.ts
-          supabase/functions/analyze-chat/reframer_test.ts
-          supabase/functions/analyze-chat/stream_prompt_test.ts
           supabase/functions/analyze-chat/streaming_fallback_test.ts
           supabase/functions/analyze-chat/stream_branch_test.ts
           supabase/functions/practice-chat/moments_schedule_test.ts

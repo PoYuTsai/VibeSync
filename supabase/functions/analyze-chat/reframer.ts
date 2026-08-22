@@ -7,10 +7,9 @@ import {
 import {
   type BallInventory,
   coveredIndependentBalls,
-  hasExactIndependentCoverage,
-  independentMoveSourceIndices,
   parseBallInventory,
-  validateReplySegments,
+  segmentFloor,
+  validateSelectedSegments,
 } from "./ball_inventory.ts";
 import {
   type RecommendationValidation,
@@ -92,8 +91,8 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     { compat: StreamEvent; segments: Record<string, unknown>[] }
   >();
   let decisionSelectedStyle: StreamStyle | null = null;
-  // 保留模型最先 emit 的盤點 disposition map，等每個 reply_option 到貨時
-  // 驗證 source semantics，並觀測 exact source coverage。缺席/全略＝null＝
+  // 球數案硬版：保留模型最先 emit 的盤點 disposition map，等選中風格的
+  // reply_option 到貨時驗「段⊆接/併」＋「段數達下限」。缺席/全略＝null＝退回
   // soft 不驗證（INV-H4 fallback，絕不誤殺）。
   let inventory: BallInventory | null = null;
   const preChargeEvents: StreamEvent[] = [];
@@ -236,7 +235,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     const compat = withReplyOptionCompatFields(event, segments);
     const style = replyStyleFrom(compat);
     // 球數案閘 — 2026-06-13 改 fail-soft（log-only）。
-    // 原硬擋（短 option／取略球→丟 option→終局 INCOMPLETE）在 dogfood 造成真實
+    // 原硬擋（不達下限/取略球→丟 option→終局 INCOMPLETE）在 dogfood 造成真實
     // 分析失敗（「請重新分析」）＝guard 非 generator，模型不服從時倒楣的是用戶。
     // 定調（2026-06-13 dogfood 後）：只記錄、不擋，照出選中風格回覆；接球率由
     // (b)(c) prompt 提升，dogfood 第2/3張圖確認 prompt 單獨即達標。
@@ -245,31 +244,24 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     // verdict.ok=false 的 log 是「prompt 接球率退步」的免費預警，不擋用戶。
     // ⚠️ 絕不把此 block 改回丟 option／終局 INCOMPLETE——那正是炸過的 guard。
     //
-    // 2026-08-23 Prompt V2：每個 option 都做 source semantics 檢查與 exact
-    // coverage telemetry，仍然 log-only。不得把品質訊號變成拒絕、重試或缺卡。
+    // 2026-08-09 球數對齊批：檢查從「只驗選中風格」擴成每個 option 都驗（prompt
+    // 同批改成 EVERY option 適用 floor），仍然 log-only。[ball_coverage] 每個
+    // option 記一行覆蓋數，上線一週後對拍驗 prompt 成效（黑箱重驗）。
     if (inventory && style) {
-      const verdict = validateReplySegments(inventory, segments);
+      const verdict = validateSelectedSegments(inventory, segments);
       // 錨點（瘦卡/decision）還沒建立時標 unknown，不誤標 non-selected 污染
       // telemetry（Codex 雙審 P2；precharged legacy 路徑可能整條無錨）。
       const anchor = selectedStyleNow();
       const selectedLabel = anchor == null ? "unknown" : `${style === anchor}`;
-      const sourceIndices = independentMoveSourceIndices(inventory, segments);
       const covered = coveredIndependentBalls(inventory, segments);
-      // Keep authored order and count visible. A sorted Set would hide order drift
-      // and duplicate independent moves, which are both meaningful prompt signals.
-      // Compare every option to the inventory's ordered full source pair list;
-      // selected/first option is never an expected baseline.
-      const exact = hasExactIndependentCoverage(inventory, segments);
-      const expectedIndices = inventory.expectedIndependentMoves
-        .map((move) => move.sourceIndex)
-        .join(",");
-      const expectedSegments = inventory.expectedIndependentMoves.length;
+      // indices 必記：same-set 對拍要比「集合」，只看 covered 數會把
+      // {1,2,3} 與 {3,4,5} 都當 3/N（Codex 雙審 Spec P1）。
+      const indices = [...covered].sort((a, b) => a - b).join(",");
       console.log(
-        `[ball_coverage_exact] style=${style} selected=${selectedLabel} ` +
-          `coverage=${exact ? "exact" : "mismatch"} ` +
-          `indices=[${sourceIndices.join(",")}] segments=${segments.length} ` +
-          `expectedIndices=[${expectedIndices}] expectedSegments=${expectedSegments} ` +
-          `covered=${covered.size}/${inventory.independentCount} ok=${verdict.ok}`,
+        `[ball_coverage] style=${style} selected=${selectedLabel} ` +
+          `covered=${covered.size}/${inventory.independentCount} ` +
+          `indices=[${indices}] floor=${segmentFloor(inventory)} ` +
+          `segments=${segments.length} ok=${verdict.ok}`,
       );
       if (!verdict.ok) {
         console.warn(
@@ -280,12 +272,6 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
               ? "selected"
               : "non-selected"
           } style ${style}: ${verdict.reason}`,
-        );
-      }
-      if (!exact) {
-        console.warn(
-          `[ball_coverage_exact] mismatch style=${style} ` +
-            `expectedIndices=[${expectedIndices}] expectedSegments=${expectedSegments}`,
         );
       }
     }
