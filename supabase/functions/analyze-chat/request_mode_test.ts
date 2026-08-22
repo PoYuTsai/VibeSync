@@ -2,7 +2,10 @@ import {
   assertEquals,
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { resolveRequestMode } from "./request_mode.ts";
+import {
+  resolveRequestMode,
+  shouldIncludeLegacyDraftPrompt,
+} from "./request_mode.ts";
 
 Deno.test("plain AnalyzeChat accepts stream and trims its run id", () => {
   const result = resolveRequestMode({
@@ -89,4 +92,39 @@ Deno.test("non-string or blank stream run id becomes null", () => {
       },
     );
   }
+});
+
+Deno.test("draft optimization prompt is legacy-only", () => {
+  assertEquals(
+    shouldIncludeLegacyDraftPrompt({
+      responseMode: "legacy",
+      isMyMessageMode: false,
+      userDraft: "想約妳喝咖啡",
+    }),
+    true,
+  );
+  assertEquals(
+    shouldIncludeLegacyDraftPrompt({
+      responseMode: "stream",
+      isMyMessageMode: false,
+      userDraft: "想約妳喝咖啡",
+    }),
+    false,
+  );
+  assertEquals(
+    shouldIncludeLegacyDraftPrompt({
+      responseMode: "legacy",
+      isMyMessageMode: true,
+      userDraft: "想約妳喝咖啡",
+    }),
+    false,
+  );
+  assertEquals(
+    shouldIncludeLegacyDraftPrompt({
+      responseMode: "legacy",
+      isMyMessageMode: false,
+      userDraft: "   ",
+    }),
+    false,
+  );
 });

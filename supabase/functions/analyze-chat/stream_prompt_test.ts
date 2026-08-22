@@ -47,8 +47,8 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
     prompt.indexOf("analysis.decision") <
       prompt.indexOf("analysis.recommendation"),
   );
-  // 球數案修法二：inventory 是 step 0，decision 改為 step 1（不再是「first」）。
-  assert(prompt.includes("as soon as you know the next move"));
+  // inventory is step 0; decision follows as soon as the next move is known.
+  assert(prompt.includes("as soon as the next move is known"));
   assert(prompt.includes("analysis.progress` is optional after"));
   assert(prompt.includes("status/waiting copy only"));
   assert(prompt.includes("Do not include advice"));
@@ -62,16 +62,9 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   assert(prompt.includes("`stretchLevel`"));
   assert(prompt.includes("within"));
   assert(prompt.includes("`stretch`"));
-  assert(prompt.includes("too big a jump"));
-  // v2 few-shot、硬版 compliance floor (b)＋callback (c)＋黑箱後選中風格強化 (b2)
-  // 後再放寬，仍鎖上限防 contract 無限膨脹。
-  // 2026-07-02 metrics 掛 gameStage（enum 值域必須全列，UI 對話進度卡破冰案）
-  // 語意分群加入 接/併 的獨立球定義與對照範例，再放寬一檔。
-  // 2026-08 關於我重新定位案 批3：reply_option 新增必填 stretchLevel
-  // （within/stretch/far），與 Task 11 的 coachFollowUpMaxChars 500→900
-  // 同一批次拍板的刻意放寬，非無意義膨脹。
-  // 2026-08-09 球數對齊批：floor 擴成 EVERY option＋同接球集合＋equal effort
-  // （實測 6643），再放寬一檔，仍鎖上限防 contract 無限膨脹。
+  assert(prompt.includes("too large a jump"));
+  // Keep the transport contract bounded; runtime prompt-size coverage is tested
+  // against the legacy prompt in analyze_prompt_v2_test.ts.
   assert(prompt.length < 6800);
 });
 
@@ -101,12 +94,8 @@ Deno.test("stream prompt can restrict reply styles for the active tier", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 方案二件3 stream 協議 v2 — segments[] 一等公民 + 瘦 recommendation + few-shot
-//
-// #12 root cause：分段規格從未進事件協議（只在 finalResult 一句話帶過，又被
-// compact 指令吃掉）。v2 把 segments 直接定義在 reply_option 事件上，模型不再
-// 寫 flat message（D4，server join 合成相容欄位）、recommendation 不再帶回覆
-// 全文（D2 瘦推薦卡，字只寫一次在 selected reply_option）。
+// Stream contract observables: segmented reply options, thin recommendation,
+// exact style coverage, and no content-like few-shot payloads.
 // ---------------------------------------------------------------------------
 
 Deno.test("v2: reply_option spec makes segments first-class, no flat message", () => {
@@ -115,23 +104,22 @@ Deno.test("v2: reply_option spec makes segments first-class, no flat message", (
   assert(prompt.includes("`segments`"));
   assert(prompt.includes("`sourceIndex`"));
   assert(prompt.includes("`sourceMessage`"));
-  assert(prompt.includes("one segment per independent ball marked `接`"));
-  assert(prompt.includes("Fold `併` context naturally"));
-  assert(prompt.includes("never create a segment just to acknowledge a `併`"));
+  assert(prompt.includes("independent conversational moves"));
+  assert(prompt.includes("Fold `併` context into its related `接`"));
+  assert(prompt.includes("never create a segment for `併` or `略`"));
   assert(prompt.includes("Use stated/established facts only; never invent"));
-  assert(prompt.includes('"next month" is not "first day promoted"'));
-  assert(prompt.includes("segment sources must be balls marked `接`"));
-  assert(prompt.includes("may incorporate related `併` context"));
+  assert(prompt.includes("exact same sourceIndex/sourceMessage set, order, and count"));
   // D4：模型不寫 flat message，server join 合成。
   assert(prompt.includes("Do not write a flat `message` field"));
-  // 舊規格殘骸不得留下：finalResult replySegments 條款與 max 3 cap。
+  // Legacy content-like examples and the old three-segment cap must stay out.
   assertEquals(
     prompt.includes("finalResult.finalRecommendation.replySegments"),
     false,
   );
   assertEquals(prompt.includes("(max 3)"), false);
-  // D1：cap 放寬到 5。
-  assert(prompt.includes("up to 5"));
+  // Segment cap is observable without inventing a minimum.
+  assert(prompt.includes("at most 5"));
+  assert(prompt.includes("There is no minimum of 3"));
 });
 
 Deno.test("v2: recommendation event is thin (selectedStyle + reason + expectedReaction)", () => {
@@ -145,29 +133,24 @@ Deno.test("v2: recommendation event is thin (selectedStyle + reason + expectedRe
     ),
     false,
   );
-  assert(prompt.includes("Do not repeat the reply text"));
+  assert(prompt.includes("Do not repeat reply text here"));
 });
 
-Deno.test("v2: thin recommendation is explicitly required with its own few-shot", () => {
-  // prod 黑箱 r1：瘦卡內容少到被模型視為可省略 → 整條 stream 沒出
-  // recommendation。標 REQUIRED + 給 few-shot，與 reply_option 同款待遇。
+Deno.test("v2: thin recommendation is explicitly required without a few-shot", () => {
   const prompt = buildStreamSystemPrompt("BASE");
 
-  assert(prompt.includes("analysis.recommendation` is REQUIRED"));
-  assert(prompt.includes('{"type":"analysis.recommendation"'));
-  assert(prompt.includes('"expectedReaction"'));
+  assert(prompt.includes("`analysis.recommendation` once, thin"));
+  assert(prompt.includes("This event is REQUIRED"));
+  assert(prompt.includes("`expectedReaction`"));
+  assertEquals(prompt.includes('{"type":"analysis.recommendation"'), false);
 });
 
-Deno.test("v2: prompt carries a one-line multi-ball reply_option few-shot", () => {
+Deno.test("v2: stream contract carries no content-like reply examples", () => {
   const prompt = buildStreamSystemPrompt("BASE");
 
-  assert(prompt.includes('{"type":"analysis.reply_option"'));
-  assert(prompt.includes('"segments":['));
-  // few-shot 必須示範多球（≥2 段），單段範例會被模型當預設形狀。
-  const example = prompt.slice(
-    prompt.indexOf('{"type":"analysis.reply_option"'),
-  );
-  assertEquals(example.split('"sourceIndex"').length >= 3, true);
+  assertEquals(prompt.includes('{"type":"analysis.reply_option"'), false);
+  assertEquals(prompt.includes('{"type":"analysis.recommendation"'), false);
+  assertEquals(prompt.includes("完整範例"), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -188,102 +171,58 @@ Deno.test("inventory: stream prompt emits analysis.inventory as step 0 before th
     "inventory step must precede the decision step",
   );
   // 列全 N 球、寫進 inventory 事件而非只寫進 reason（堵事後辯解後門）。
-  assert(prompt.includes("before you pick a style"));
-  assert(prompt.includes("not only"));
+  assert(prompt.includes("before choosing a style"));
+  assert(prompt.includes("Latest Analysis Fragment"));
 });
 
-Deno.test("inventory: stream prompt ships a 接/併/略 example inventory line", () => {
+Deno.test("inventory: stream prompt names the 接/併/略 event fields", () => {
   const prompt = buildStreamSystemPrompt("BASE");
 
-  assert(prompt.includes('{"type":"analysis.inventory"'));
-  assert(prompt.includes('"disposition"'));
-  // 範例必須示範三種處置，模型才知道 略 也要顯式列出（吞球的反面）。
-  const example = prompt.slice(prompt.indexOf('{"type":"analysis.inventory"'));
-  const head = example.slice(0, example.indexOf("\n"));
-  assert(head.includes("接"));
-  assert(head.includes("併"));
-  assert(head.includes("略"));
+  assert(prompt.includes("analysis.inventory` first"));
+  assert(prompt.includes("`disposition`"));
+  assert(prompt.includes("(`接`/`併`/`略`)"));
+  assert(prompt.includes("Each item needs 1-based `sourceIndex`"));
+  assertEquals(prompt.includes('{"type":"analysis.inventory"'), false);
 });
 
 // ---------------------------------------------------------------------------
-// 球數案硬版：compliance prompt (b) ＋ callback 分類原則 (c)
-//
-// (b) reframer 已加 server 硬閘（段數下限＋略球擋），但閘是 guard 非 generator：
-//     不告訴模型「會被退回」它仍只寫 2 段→只是把 reply 變 INCOMPLETE error。
-//     prompt 必須宣告 server 強制下限，模型才上游服從而非被退。
-// (c) golden msg1「只喜歡江果先」被誤判略：partnerSummary 顯示自造梗時，缺
-//     背景的個人 callback 應順著接住，不判略。略只留給真的沒文字鉤的球。
+// Exact source coverage and fail-soft semantics.
 // ---------------------------------------------------------------------------
 
-Deno.test("compliance(b): prompt declares the server-enforced segment floor and 略-ball block", () => {
+Deno.test("coverage contract: no minimum floor or retry language", () => {
   const prompt = buildStreamSystemPrompt("BASE");
 
-  assert(prompt.includes("Server-enforced floor"));
-  assert(prompt.includes("min(3, number of independent balls marked 接)"));
-  assert(
-    prompt.includes(
-      "A `併` line enriches a related segment but does not raise the floor",
-    ),
-  );
-  // 明說不足/取略球會被退回重來，模型才知道要上游服從。
-  assert(prompt.includes("rejects and forces a retry"));
-  assert(prompt.includes("from a `略` ball"));
+  assert(prompt.includes("Runtime coverage validation is fail-soft and log-only"));
+  assert(prompt.includes("exact source coverage is the quality signal"));
+  assert(prompt.includes("There is no minimum of 3"));
+  assertEquals(prompt.includes("Server-enforced floor"), false);
+  assertEquals(prompt.includes("rejects and forces a retry"), false);
 });
 
-Deno.test("callback(c): prompt tells model not to mark a personal callback 略 for lack of backstory", () => {
+Deno.test("coverage contract: source disposition remains explicit", () => {
   const prompt = buildStreamSystemPrompt("BASE");
 
-  assert(prompt.includes("inside joke"));
-  assert(prompt.includes("play along"));
-  assert(
-    prompt.includes("never mark it `略` only because you lack the backstory"),
-  );
-  // (c) 屬分類原則，須落在 inventory step（decision 之前）。
-  assert(
-    prompt.indexOf("never mark it `略` only because you lack the backstory") <
-      prompt.indexOf("analysis.decision"),
-    "callback principle must live in the inventory step",
-  );
-  // 略 可用於不需獨立回覆的承接、重複或背景細節，但不能因缺 backstory 略掉 callback。
-  assert(
-    prompt.includes(
-      "acknowledgement, duplicate, or detail that needs no reply",
-    ),
-  );
+  assert(prompt.includes("Group by independent conversational move"));
+  assert(prompt.includes("`併` enriches a related `接`"));
+  assert(prompt.includes("`略` needs no reply"));
+  assert(prompt.includes("Never use earlier messages, conversationSummary, or partnerSummary as a ball/sourceMessage"));
 });
 
-Deno.test("compliance(b3): floor applies to EVERY option — same 接 ball set, equal effort", () => {
-  // 2026-08-09 球數對齊批：黑箱實證模型會把非選中風格寫少段，使用者橫滑挑
-  // 其他風格時吃到漏球版。floor 從 SELECTED 擴成 EVERY option，並要求與選中
-  // 同一組接球集合＋equal effort（覆蓋等量、字數不強求）。
+Deno.test("coverage contract: every style uses the same authored source coverage", () => {
   const prompt = buildStreamSystemPrompt("BASE");
 
-  assert(prompt.includes("EVERY `analysis.reply_option`"));
-  assert(prompt.includes("not only the selected style"));
-  assert(
-    prompt.includes("cover the same set of `接` balls as the selected style"),
-  );
-  assert(prompt.includes("if any option misses that floor"));
-  // 同日追修：威嚇句必須把「漏接選中已覆蓋的接球」列為違規（首筆真機
-  // telemetry 顯示模型只把 reject 當 floor=3 合規線）。
-  assert(
-    prompt.includes("drops a `接` ball the selected style covers"),
-  );
-  assert(prompt.includes("write every option with equal effort"));
-  assert(
-    prompt.includes(
-      "equal effort means equal ball coverage, not equal word count",
-    ),
-  );
+  assert(prompt.includes("exact same sourceIndex/sourceMessage set, order, and count"));
+  assert(prompt.includes("the set must not change with style"));
+  assert(prompt.includes("selected style first"));
+  assert(prompt.includes("Do not emit reply styles outside this request list."));
 });
 
-Deno.test("compliance(b2): selected style covers independent balls without matching the longest alternative", () => {
+Deno.test("coverage contract: short options are valid when they match independent moves", () => {
   const prompt = buildStreamSystemPrompt("BASE");
 
-  // 黑箱實證：模型把「主打/選中」風格寫最短（coldRead/tease 2 段），非選中
-  // 卻到 3 段 → 閘每跑退回選中風格。專打這個系統性偏差。
-  assert(prompt.includes("does not need to match the longest alternative"));
-  assert(prompt.includes("precision beats padding"));
+  assert(prompt.includes("usually 1–3 and at most 5"));
+  assert(prompt.includes("There is no minimum of 3"));
+  assert(prompt.includes("Never split one move into filler segments"));
 });
 
 Deno.test("metrics step requires gameStage with client enum values and context rule", () => {

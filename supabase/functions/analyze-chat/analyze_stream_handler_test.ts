@@ -10,6 +10,8 @@ import {
   handleAnalyzeStream,
 } from "./analyze_stream_handler.ts";
 import { AiStreamingServiceError } from "./streaming_fallback.ts";
+import { SAFETY_RULES } from "./guardrails.ts";
+import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "./prompt_leak.ts";
 
 function line(value: Record<string, unknown>): string {
   return `${JSON.stringify(value)}\n`;
@@ -42,6 +44,7 @@ function makeDeps(options: {
   effectiveTier?: string;
   allowedFeatures?: string[];
   capturedMaxTokens?: number[];
+  capturedSystem?: string[];
   // deno-lint-ignore no-explicit-any
   getRunResult?: any;
   modelChunks?: string[];
@@ -113,6 +116,7 @@ function makeDeps(options: {
     callModel: (request) => {
       calls.push("callModel");
       options.capturedMaxTokens?.push(request.max_tokens);
+      options.capturedSystem?.push(request.system);
       if (options.modelError) return Promise.reject(options.modelError);
       return Promise.resolve({
         model: "claude-sonnet-5",
@@ -207,6 +211,29 @@ Deno.test("stream Free provider request uses 4500 output-token cap", async () =>
   await runWithStubbedFetch(makeDeps({ calls, capturedMaxTokens }));
 
   assertEquals(capturedMaxTokens, [4500]);
+});
+
+Deno.test("stream handler sends the lean core without the legacy draft contract", async () => {
+  const calls: string[] = [];
+  const capturedSystem: string[] = [];
+
+  await runWithStubbedFetch(makeDeps({ calls, capturedSystem }));
+
+  assertEquals(capturedSystem.length, 1);
+  const systemPrompt = capturedSystem[0];
+  assert(systemPrompt.includes("## Streaming Output Contract"));
+  assert(systemPrompt.includes("canonical reply plan"));
+  assert(systemPrompt.includes("coordination_handoff"));
+  assert(systemPrompt.includes(SAFETY_RULES));
+  assert(systemPrompt.includes(PROMPT_LEAK_DEFENSE_DIRECTIVE));
+  for (const legacyOnly of [
+    "用戶訊息優化功能",
+    "optimizedMessage",
+    "## 輸出格式 (JSON)",
+    "完整範例 1",
+  ]) {
+    assertEquals(systemPrompt.includes(legacyOnly), false, legacyOnly);
+  }
 });
 
 Deno.test("stream paid provider request keeps 6000 output-token cap", async () => {

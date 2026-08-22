@@ -2,7 +2,7 @@
 //
 // 球數案硬版：把模型最先 emit 的 `analysis.inventory` 事件解析成可比對的
 // disposition map（sourceIndex → 接/併/略）。reframer 保留這份 map，等
-// selected reply_option 到貨時用來驗「段只以獨立接球為主來源」＋「段數達下限」。
+// 每個 reply_option 到貨時觀測獨立接球的 exact source coverage。
 //
 // 安全紅線（INV-H4 / INV-H6 / failure matrix）：
 //   - 缺席 / 空 / 全略 / 無法解析 → 回傳 null（退回 soft，不驗證，絕不誤殺）。
@@ -20,7 +20,7 @@ export interface BallInventory {
   dispositions: Map<number, BallDisposition>;
   // 標 接 或 併 的可用內容數；用來判斷是否存在可驗證盤點。
   catchableCount: number;
-  // 只有「接」是獨立真球；「併」只提供同一球的上下文，不增加段數下限。
+  // 只有「接」是獨立 conversational move；「併」只提供同一球的上下文。
   independentCount: number;
 }
 
@@ -53,8 +53,8 @@ export function parseBallInventory(
     dispositions.set(sourceIndex, value);
   }
 
-  // sourceIndex 是盤點主鍵。模型偶爾可能重複列同一索引，段數下限只能以
-  // 去重後的最終 disposition 計算，否則同一顆球會被灌成多顆。
+  // sourceIndex 是盤點主鍵。模型偶爾可能重複列同一索引，inventory count 以
+  // 去重後的最終 disposition 計算，避免同一顆球被灌成多顆。
   const dispositionValues = [...dispositions.values()];
   const catchableCount = dispositionValues.filter(isCatchable).length;
   const independentCount = dispositionValues.filter((value) => value === "接")
@@ -74,25 +74,16 @@ export type SegmentValidation =
   | { ok: true }
   | { ok: false; reason: string };
 
-// 下限：連發多球時選中風格段數至少 min(3, 獨立「接」球數)。「併」只補
-// 同一球的背景，不得把段數膨脹。獨立真球少於 3 時不可
-// 要求超過真球數（failure matrix「2 接 → 2 段 PASS」例外）。
-export function segmentFloor(inventory: BallInventory): number {
-  return Math.min(3, inventory.independentCount);
-}
-
-// 硬版唯一新增閘（2026-08-09 球數對齊批起，reframer 對每個風格都跑這個檢查，
-// 不再只驗選中風格；fail-soft log-only 不變）：option 的 segments 必須
-//   (1) 不來自標「併／略」的球（INV-H6 segments ⊆ 接）；未在盤點出現的
-//       sourceIndex 視為放行（絕不誤殺，盤點可能漏列）。
-//   (2) 段數 ≥ segmentFloor（治 (b) inventory→reply 斷層）。
-// 不改既有合法 segment 的處理（INV-H5）；只回 ok/理由。2026-06-13 起 reframer
-// 對失敗僅記 log（fail-soft），不再 reject／走 INCOMPLETE。函式名裡的
-// Selected 是歷史沿革（原本只驗選中風格）；改名會牽動大量測試，刻意保留。
-export function validateSelectedSegments(
+// Validate only source semantics. Coverage count is determined by the
+// inventory's independent moves and compared across options by the reframer;
+// there is deliberately no minimum-three floor here. The caller keeps this
+// validation fail-soft and log-only so malformed model output never blocks a
+// usable option or triggers a retry.
+export function validateReplySegments(
   inventory: BallInventory,
   segments: readonly Record<string, unknown>[],
 ): SegmentValidation {
+  const seenIndependentSources = new Set<number>();
   for (const segment of segments) {
     const sourceIndex = segment?.sourceIndex;
     if (typeof sourceIndex !== "number" || !Number.isFinite(sourceIndex)) {
@@ -111,27 +102,37 @@ export function validateSelectedSegments(
         reason: `segment 把標「併」的背景獨立成段 (sourceIndex=${sourceIndex})`,
       };
     }
+    if (disposition === "接") {
+      if (seenIndependentSources.has(sourceIndex)) {
+        return {
+          ok: false,
+          reason: `segment 重複獨立 conversational move (sourceIndex=${sourceIndex})`,
+        };
+      }
+      seenIndependentSources.add(sourceIndex);
+    }
   }
-
-  // 下限數「不同的獨立接球」而非段數（Codex adversarial P2）：重複 sourceIndex
-  // 只算一次，盤點外（absent）的索引不算真接球。盤點外的段不會單獨致 REJECT
-  // ——達標後多帶一段盤點外的句子仍放行（不誤殺 INV-H6'）。
-  const covered = coveredIndependentBalls(inventory, segments);
-
-  const floor = segmentFloor(inventory);
-  if (covered.size < floor) {
-    return {
-      ok: false,
-      reason: `風格實際接到 ${covered.size} 顆不同的獨立接球，未達下限 ${floor}`,
-    };
-  }
-
   return { ok: true };
 }
 
+// Return independent source indices in the option's authored order. Duplicates
+// remain visible so exact coverage telemetry can flag count/order drift rather
+// than silently treating repeated segments as a valid set.
+export function independentMoveSourceIndices(
+  inventory: BallInventory,
+  segments: readonly Record<string, unknown>[],
+): number[] {
+  return segments.flatMap((segment) => {
+    const sourceIndex = segment?.sourceIndex;
+    if (typeof sourceIndex !== "number" || !Number.isFinite(sourceIndex)) {
+      return [];
+    }
+    return inventory.dispositions.get(sourceIndex) === "接" ? [sourceIndex] : [];
+  });
+}
+
 // 一個 option 的 segments 實際覆蓋到哪些「接」球（去重、盤點外索引不算）。
-// validateSelectedSegments 的下限計數與 reframer 的 [ball_coverage] telemetry
-// 共用這一份，兩邊數字才對得起來。
+// 與 exact coverage telemetry 共用同一份 independent source 定義。
 export function coveredIndependentBalls(
   inventory: BallInventory,
   segments: readonly Record<string, unknown>[],

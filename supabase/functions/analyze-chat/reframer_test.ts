@@ -2343,7 +2343,7 @@ Deno.test("inventory: never charges, never pollutes finalResult, never touches s
   }
 });
 
-// ── 球數案硬版：inventory disposition gate（INV-H1..H6 / failure matrix） ──
+// ── inventory source semantics + exact coverage telemetry (fail-soft) ──
 
 function inventoryLine(balls: Array<[number, string, string]>): string {
   return line({
@@ -2402,9 +2402,8 @@ const FOUR_CATCHABLE: Array<[number, string, string]> = [
   [6, "接", "視訊"],
 ];
 
-Deno.test("fail-soft: selected style below floor is NOT blocked (logged, passes through)", async () => {
-  // 2026-06-13 dogfood：硬擋會讓真實分析失敗（「請重新分析」）。閘改 fail-soft：
-  // 選中風格不達下限時不擋、照出，避免 block 用戶；接球率靠 prompt 提升。
+Deno.test("fail-soft: selected style with two moves is not blocked", async () => {
+  // 短回覆照出；exact coverage is observability only and never blocks a user.
   let chargeCalls = 0;
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({
@@ -2420,7 +2419,7 @@ Deno.test("fail-soft: selected style below floor is NOT blocked (logged, passes 
   reframer.pushText(inventoryLine(FOUR_CATCHABLE));
   reframer.pushText(decisionLine("coldRead"));
   reframer.pushText(thinRecommendationLine("coldRead"));
-  reframer.pushText(replyOptionLine("coldRead", [5, 6])); // selected, only 2 segs
+  reframer.pushText(replyOptionLine("coldRead", [5, 6])); // selected, two moves
   reframer.pushText(replyOptionLine("extend", [3, 4, 5]));
   reframer.pushText(line({
     type: "analysis.done",
@@ -2440,7 +2439,7 @@ Deno.test("fail-soft: selected style below floor is NOT blocked (logged, passes 
   ));
 });
 
-Deno.test("hard gate: selected style meets floor (4接,3段 皆接) → PASS, done emitted", async () => {
+Deno.test("source semantics: selected style with three moves emits normally", async () => {
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({
     emit(event) {
@@ -2468,7 +2467,7 @@ Deno.test("hard gate: selected style meets floor (4接,3段 皆接) → PASS, do
   ));
 });
 
-Deno.test("hard gate: absent inventory → soft fallback, 2段選中風格不被誤殺", async () => {
+Deno.test("source semantics: absent inventory keeps soft fallback", async () => {
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({
     emit(event) {
@@ -2491,7 +2490,7 @@ Deno.test("hard gate: absent inventory → soft fallback, 2段選中風格不被
   assert(events.some((e) => e.type === "analysis.done"));
 });
 
-Deno.test("hard gate: per-style isolation — non-selected below floor does not block", async () => {
+Deno.test("source semantics: non-selected short option does not block", async () => {
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({
     emit(event) {
@@ -2548,8 +2547,8 @@ Deno.test("fail-soft: selected style segment sourced from 略 ball is NOT blocke
 });
 
 // ---------------------------------------------------------------------------
-// 球數對齊批（2026-08-09）：[ball_coverage] telemetry — 每個 option 記一行
-// 覆蓋集合（indices），selected 三態（true/false/unknown），fail-soft 不變。
+// Prompt V2 exact coverage telemetry：每個 option 記一行 authored source
+// order/count；第一個 option 建立 baseline，後續 option 對 baseline 比對。
 // ---------------------------------------------------------------------------
 
 async function _withCapturedConsole(
@@ -2570,7 +2569,7 @@ async function _withCapturedConsole(
   return { logs, warns };
 }
 
-Deno.test("ball_coverage: every option logs one line with covered indices and selected flag", async () => {
+Deno.test("ball_coverage_exact: every option logs authored indices and selected flag", async () => {
   const events: StreamOutputEvent[] = [];
   const { logs } = await _withCapturedConsole(async () => {
     const reframer = createStreamReframer({
@@ -2589,19 +2588,50 @@ Deno.test("ball_coverage: every option logs one line with covered indices and se
     await reframer.flush();
   });
 
-  const coverage = logs.filter((entry) => entry.includes("[ball_coverage]"));
+  const coverage = logs.filter((entry) => entry.includes("[ball_coverage_exact]"));
   assertEquals(coverage.length, 2);
   assert(coverage[0].includes("style=coldRead"));
   assert(coverage[0].includes("selected=true"));
   assert(coverage[0].includes("covered=3/4"));
-  // same-set 對拍靠集合本身，不能只看 covered 數（Codex 雙審 Spec P1）。
+  assert(coverage[0].includes("coverage=baseline"));
   assert(coverage[0].includes("indices=[4,5,6]"));
   assert(coverage[1].includes("style=extend"));
   assert(coverage[1].includes("selected=false"));
   assert(coverage[1].includes("indices=[3,4,5]"));
 });
 
-Deno.test("ball_coverage: non-selected below floor logs warn but still emits the option (fail-soft)", async () => {
+Deno.test("ball_coverage_exact: same source order/count is observable without a floor", async () => {
+  const events: StreamOutputEvent[] = [];
+  const { logs } = await _withCapturedConsole(async () => {
+    const reframer = createStreamReframer({
+      emit(event) {
+        events.push(event);
+      },
+      onRecommendation() {
+        return { charged: true };
+      },
+    });
+    reframer.pushText(inventoryLine(FOUR_CATCHABLE));
+    reframer.pushText(decisionLine("coldRead"));
+    reframer.pushText(thinRecommendationLine("coldRead"));
+    // Two independent moves are valid; all options carry the exact same
+    // source order/count even though the inventory has four independent balls.
+    reframer.pushText(replyOptionLine("coldRead", [4, 5]));
+    reframer.pushText(replyOptionLine("extend", [4, 5]));
+    await reframer.flush();
+  });
+
+  assert(events.some((event) => event.type === "analysis.done"));
+  const coverage = logs.filter((entry) => entry.includes("[ball_coverage_exact]"));
+  assertEquals(coverage.length, 2);
+  assert(coverage[0].includes("coverage=baseline"));
+  assert(coverage[1].includes("coverage=exact"));
+  assert(coverage[0].includes("indices=[4,5]"));
+  assert(coverage[0].includes("segments=2"));
+  assertEquals(coverage.some((entry) => entry.includes("floor=")), false);
+});
+
+Deno.test("ball_coverage_exact: non-selected coverage mismatch warns but still emits", async () => {
   const events: StreamOutputEvent[] = [];
   const { warns } = await _withCapturedConsole(async () => {
     const reframer = createStreamReframer({
@@ -2616,15 +2646,13 @@ Deno.test("ball_coverage: non-selected below floor logs warn but still emits the
     reframer.pushText(decisionLine("coldRead"));
     reframer.pushText(thinRecommendationLine("coldRead"));
     reframer.pushText(replyOptionLine("coldRead", [4, 5, 6]));
-    reframer.pushText(replyOptionLine("extend", [3])); // 1 段 < floor 3
+    reframer.pushText(replyOptionLine("extend", [3])); // different authored coverage
     await reframer.flush();
   });
 
-  assert(
-    warns.some((entry) =>
-      entry.includes("[ball_inventory] soft-pass non-selected style extend")
-    ),
-  );
+  assert(warns.some((entry) => entry.includes(
+    "[ball_coverage_exact] mismatch style=extend",
+  )));
   assert(!events.some((e) => e.type === "analysis.error"));
   assert(events.some(
     (e) =>
@@ -2633,7 +2661,7 @@ Deno.test("ball_coverage: non-selected below floor logs warn but still emits the
   ));
 });
 
-Deno.test("ball_coverage: legacy full-card resume labels selected correctly (not unknown)", async () => {
+Deno.test("ball_coverage_exact: legacy full-card resume labels selected correctly", async () => {
   // Codex 雙審 P2：legacy 全卡 resume 原本不寫 decisionSelectedStyle，整條
   // telemetry 會被標成 non-selected/unknown。修法＝resume 錨點風格一律照記。
   const events: StreamOutputEvent[] = [];
@@ -2666,7 +2694,7 @@ Deno.test("ball_coverage: legacy full-card resume labels selected correctly (not
     await reframer.flush();
   });
 
-  const coverage = logs.filter((entry) => entry.includes("[ball_coverage]"));
+  const coverage = logs.filter((entry) => entry.includes("[ball_coverage_exact]"));
   assertEquals(coverage.length, 2);
   assert(coverage[0].includes("style=coldRead"));
   assert(coverage[0].includes("selected=true"));

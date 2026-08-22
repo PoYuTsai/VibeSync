@@ -33,6 +33,17 @@ export interface RequestModeInput {
   plainAnalyzeRequest: boolean;
 }
 
+export function shouldIncludeLegacyDraftPrompt(input: {
+  responseMode: ResponseMode;
+  isMyMessageMode: boolean;
+  userDraft: unknown;
+}): boolean {
+  return input.responseMode === "legacy" &&
+    !input.isMyMessageMode &&
+    typeof input.userDraft === "string" &&
+    input.userDraft.trim().length > 0;
+}
+
 export function resolveRequestMode(
   input: RequestModeInput,
 ): RequestModeResolution {

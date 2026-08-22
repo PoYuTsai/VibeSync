@@ -61,7 +61,10 @@ import {
   TEST_EMAILS,
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
-import { resolveRequestMode } from "./request_mode.ts";
+import {
+  resolveRequestMode,
+  shouldIncludeLegacyDraftPrompt,
+} from "./request_mode.ts";
 import {
   classifyAnalyzeChatRequest,
   routeUserStyleContext,
@@ -1456,16 +1459,21 @@ ${recentText}`;
       }
     }
 
-    // 如果有用戶草稿，加入優化請求（只在 normal 模式）
-    if (
-      !isMyMessageMode && userDraft && typeof userDraft === "string" &&
-      userDraft.trim()
-    ) {
+    // 如果有用戶草稿，加入優化請求（只在 legacy 模式）。先正規化成區域
+    // 值，讓 routing helper 不會遮蔽 TypeScript 對字串 narrowing 的判斷。
+    const normalizedUserDraft = typeof userDraft === "string"
+      ? userDraft.trim()
+      : "";
+    if (shouldIncludeLegacyDraftPrompt({
+      responseMode,
+      isMyMessageMode,
+      userDraft,
+    })) {
       userPrompt = isRefineReplyMode
         ? joinPromptSections(
           userPrompt,
           buildRefineUserSection({
-            draft: userDraft.trim(),
+            draft: normalizedUserDraft,
             instruction: refineInstruction!,
             anchorText: refineAnchorText,
           }),
@@ -1480,7 +1488,7 @@ ${
             // 代價（與微調相同、刻意一致）：多行草稿的換行會壓成空白，
             // 模型看不到段落結構。
             JSON.stringify({
-              userDraft: sanitizeRefineInstructionForPrompt(userDraft.trim()),
+              userDraft: sanitizeRefineInstructionForPrompt(normalizedUserDraft),
             })}
 
 Optimization contract:

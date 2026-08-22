@@ -25,7 +25,7 @@ import {
   checkAiOutput,
 } from "./guardrails.ts";
 import { postProcessAnalysisResult } from "./post_process.ts";
-import { SYSTEM_PROMPT } from "./analyze_system_prompt.ts";
+import { ANALYZE_CORE_PROMPT_V2 } from "./analyze_system_prompt.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import {
@@ -393,7 +393,7 @@ export async function handleAnalyzeStream(
           model: deps.selectedModel,
           max_tokens: streamMaxOutputTokens,
           system: buildStreamSystemPrompt(
-            SYSTEM_PROMPT,
+            ANALYZE_CORE_PROMPT_V2,
             streamReplyStyles,
           ),
           messages: [{ role: "user", content: deps.userMessageContent }],
