@@ -22,7 +22,6 @@ import '../../../../shared/services/image_compress_service.dart';
 import '../../../../shared/services/screenshot_preflight_service.dart';
 import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
-import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -72,12 +71,12 @@ import '../widgets/draft_polish_sheet.dart';
 import '../widgets/reply_refine_sheet.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
-import '../widgets/swipe_hint_nudge.dart';
 import '../widgets/analysis_usage_summary_line.dart';
 import '../helpers/analysis_progress_stage_copy.dart';
 import '../sections/analysis_error_card.dart';
 import '../sections/analysis_feedback_section.dart';
 import '../sections/detailed_analysis_section.dart';
+import '../sections/reply_zone_section.dart';
 import '../sections/streaming_content_section.dart';
 import '../helpers/analysis_run_metadata_mapping.dart';
 import '../helpers/analysis_usage_copy.dart';
@@ -145,7 +144,7 @@ enum _AnalysisAppBarAction {
 
 class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin
-    implements AnalysisFeedbackActions {
+    implements AnalysisFeedbackActions, ReplyZoneActions {
   // 訂閱同步屬 best-effort 前置：卡住不得凍結分析/刷新 spinner（2.1(b)）。
   static const _subscriptionSyncTimeout = Duration(seconds: 20);
   bool get _showTelemetryDiagnostics => kDebugMode;
@@ -250,14 +249,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   final _scrollController = ScrollController();
   final _analysisProgressEndKey = GlobalKey();
   final _replyZoneSectionKey = GlobalKey();
-  // 回覆區進場（payoff 時刻）：區塊 fade+slide 320ms，卡組每張 stagger 50ms。
-  // 總長 = celebrate(320) + 5×50 = 570ms。一次性：新一輪分析（內容歸零後再
-  // 出現）才重播。
-  static const _replyCardStaggerMs = 50;
-  static const _replyZoneEntranceTotalMs = 570;
+  // 進場時間軸的單一真相源在 ReplyZoneSection（區塊 320ms＋每卡 stagger
+  // 50ms＝總長 570ms）；controller 與一次性播放時機由本 screen 持有。
   late final AnimationController _replyZoneEntrance = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: _replyZoneEntranceTotalMs),
+    duration: const Duration(milliseconds: ReplyZoneSection.entranceTotalMs),
   );
   bool _replyZonePlayed = false;
   // 使用者手指是否正在拖動主捲軸。分析完成的一次性自動捲動只在使用者沒在
@@ -3736,6 +3732,55 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   @override
   void dismissKeyboard() => _dismissKeyboard();
 
+  // ── ReplyZoneActions（回覆區 section 的動作實作）─────────────────────
+
+  @override
+  void copyRecommendationText(String text, String label) {
+    AppHaptics.light();
+    Clipboard.setData(ClipboardData(text: text));
+    unawaited(_recordAnalysisCopy(cardKey: 'final', copiedText: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label，發出後記得回來回報結果')),
+    );
+  }
+
+  @override
+  void copyStyleReply(String type, String text, String snackBarMessage) {
+    unawaited(_recordAnalysisCopy(cardKey: type, copiedText: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$snackBarMessage，發出後記得回來回報結果'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
+  void refineReply(String text, String originCardKey) => unawaited(
+        _refineReply(originText: text, originCardKey: originCardKey),
+      );
+
+  @override
+  void openPaywall() => unawaited(_showPaywall(context));
+
+  @override
+  void refreshPremiumReplies() => unawaited(_refreshPremiumReplies());
+
+  /// 回覆區尾端提示的種類；null＝不顯示。顯示條件沿用既有規則：
+  /// 有回覆且（Free 用戶／已升級但看舊 Free 結果／付費單一 extend fallback）。
+  ReplyZoneNoticeKind? _replyZoneNoticeKind(SubscriptionState subscription) {
+    final replies = _replies;
+    if (replies == null || replies.isEmpty) return null;
+    if (subscription.isFreeUser) return ReplyZoneNoticeKind.freeUpgrade;
+    if (_analysisNeedsReplyRefresh(subscription)) {
+      return ReplyZoneNoticeKind.refreshStale;
+    }
+    if (replies.length == 1 && replies.containsKey('extend')) {
+      return ReplyZoneNoticeKind.premiumDefault;
+    }
+    return null;
+  }
+
   void _resetFeedbackState() {
     _feedbackSubmitted = false;
     _showFeedbackForm = false;
@@ -3809,45 +3854,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     return payload.length > 1 ? payload : null;
-  }
-
-  List<String> _extractRecommendationSegments(String content) {
-    final normalized = content.replaceAll('\r\n', '\n').trim();
-    if (normalized.isEmpty) {
-      return const [];
-    }
-
-    final matches = RegExp(r'[①②③④⑤💡]').allMatches(normalized).toList();
-    if (matches.isEmpty) {
-      return [normalized];
-    }
-
-    final segments = <String>[];
-    for (var i = 0; i < matches.length; i++) {
-      final start = matches[i].start;
-      final end =
-          i + 1 < matches.length ? matches[i + 1].start : normalized.length;
-      final segment = normalized.substring(start, end).trim();
-      if (segment.isNotEmpty) {
-        segments.add(segment);
-      }
-    }
-    return segments;
-  }
-
-  String? _extractRecommendationReplyText(String segment) {
-    final normalized = segment.replaceAll('\r\n', '\n').trim();
-    final match =
-        RegExp(r'^[①②③④⑤]\s*[^→\n]{0,80}\s*→\s*').firstMatch(normalized);
-    if (match == null) {
-      return null;
-    }
-
-    final replyText = normalized
-        .substring(match.end)
-        .trim()
-        .replaceAll(RegExp(r'^[「『"“]+|[」』"”]+$'), '');
-    return replyText.isEmpty ? null : replyText;
   }
 
   String? _analyzeAdviceId(String cardKey) {
@@ -3959,304 +3965,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         ),
       ),
     );
-  }
-
-  /// 每一顆「再調一下」都只綁一則回覆——整組合併後的文字不給微調。
-  Widget _buildRefineButton(String replyText, {required String originCardKey}) {
-    final text = replyText.trim();
-    if (text.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: SizedBox(
-        width: double.infinity,
-        height: 34,
-        child: TextButton.icon(
-          key: ValueKey('refine-reply-${text.hashCode}'),
-          onPressed: () => unawaited(
-            _refineReply(originText: text, originCardKey: originCardKey),
-          ),
-          icon: const Icon(Icons.tune_rounded, size: 16),
-          label: Text('再調一下', style: AppTypography.labelMedium),
-        ),
-      ),
-    );
-  }
-
-  void _copyRecommendationText(String text, String label) {
-    AppHaptics.light();
-    Clipboard.setData(ClipboardData(text: text));
-    unawaited(_recordAnalysisCopy(cardKey: 'final', copiedText: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label，發出後記得回來回報結果')),
-    );
-  }
-
-  /// 截圖識別結果卡片
-  /// 優先呈現結構化分段回覆；舊版 ①② 格式只保留相容。
-  List<Widget> _buildRecommendationContent(FinalRecommendation recommendation) {
-    final content = recommendation.content.trim();
-    final structuredSegments = recommendation.replySegments
-        .where((segment) => segment.reply.trim().isNotEmpty)
-        .toList();
-    if (structuredSegments.isNotEmpty) {
-      return _buildStructuredRecommendationSegments(
-        recommendation: recommendation,
-        segments: structuredSegments,
-      );
-    }
-
-    final segments = _extractRecommendationSegments(content);
-    if (segments.length <= 1) {
-      return [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(content, style: AppTypography.bodyLarge),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: AppHaptics.onPress(() {
-              _copyRecommendationText(content, '已複製到剪貼簿');
-            }),
-            icon: const Icon(Icons.copy),
-            label: const Text('複製推薦回覆'),
-          ),
-        ),
-        _buildRefineButton(content, originCardKey: 'final'),
-      ];
-    }
-
-    final widgets = <Widget>[];
-    for (final segment in segments) {
-      final trimmed = segment.trim();
-      final isHint = trimmed.startsWith('💡');
-      final replyText =
-          isHint ? null : _extractRecommendationReplyText(trimmed);
-
-      widgets.add(
-        Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isHint
-                ? AppColors.info.withValues(alpha: 0.08)
-                : AppColors.surface,
-            borderRadius: BorderRadius.circular(8),
-            border: isHint
-                ? Border.all(color: AppColors.info.withValues(alpha: 0.2))
-                : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                trimmed,
-                style: AppTypography.bodyMedium.copyWith(
-                  color:
-                      isHint ? AppColors.textSecondary : AppColors.textPrimary,
-                ),
-              ),
-              if (!isHint && replyText != null && replyText.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  height: 36,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      _copyRecommendationText(replyText, '已複製這句');
-                    },
-                    icon: const Icon(Icons.copy, size: 16),
-                    label: const Text('複製這句', style: TextStyle(fontSize: 13)),
-                  ),
-                ),
-                _buildRefineButton(replyText, originCardKey: 'final'),
-              ],
-            ],
-          ),
-        ),
-      );
-    }
-
-    return widgets;
-  }
-
-  List<Widget> _buildStructuredRecommendationSegments({
-    required FinalRecommendation recommendation,
-    required List<ReplySegment> segments,
-  }) {
-    final widgets = <Widget>[
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.045),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-        ),
-        child: Text(
-          segments.length == 1
-              ? '這是推薦訊息素材；下方保留引用，方便你確認 AI 接的是哪顆球。'
-              : '建議拆成 ${segments.length} 則短訊息。每段都引用她的原句，也能單獨複製。',
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.onBackgroundPrimary.withValues(alpha: 0.88),
-            height: 1.45,
-          ),
-        ),
-      ),
-      const SizedBox(height: 12),
-    ];
-
-    for (var i = 0; i < segments.length; i++) {
-      final segment = segments[i];
-      final source = segment.sourceMessage.trim();
-      final reply = segment.reply.trim();
-      final reason = segment.reason.trim();
-      widgets.add(
-        Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.format_quote_rounded,
-                    size: 16,
-                    color: AppColors.ctaStart,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      segment.displayLabel,
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.ctaStart,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (source.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.background.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border(
-                      left: BorderSide(
-                        color: AppColors.ctaStart.withValues(alpha: 0.45),
-                        width: 3,
-                      ),
-                    ),
-                  ),
-                  child: Text(
-                    source,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.textSecondary,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 10),
-              Text(
-                reply,
-                style: AppTypography.bodyLarge.copyWith(height: 1.45),
-              ),
-              if (reason.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  reason,
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.textSecondary,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 46,
-                child: TextButton.icon(
-                  onPressed: () {
-                    _copyRecommendationText(reply, '已複製第 ${i + 1} 句');
-                  },
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha: 0.05),
-                    foregroundColor: AppColors.onBackgroundPrimary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      side: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.14),
-                      ),
-                    ),
-                  ),
-                  icon: const Icon(
-                    Icons.copy_rounded,
-                    size: 17,
-                    color: AppColors.coachAccent,
-                  ),
-                  label: Text(
-                    segments.length == 1 ? '複製這句' : '複製第 ${i + 1} 句',
-                    style: AppTypography.labelLarge.copyWith(
-                      color: AppColors.onBackgroundPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-              _buildRefineButton(reply, originCardKey: 'final'),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final allContent = recommendation.content.trim();
-    if (segments.length > 1 && allContent.isNotEmpty) {
-      widgets.add(
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton.icon(
-            onPressed: AppHaptics.onPress(() {
-              _copyRecommendationText(allContent, '已複製整組訊息');
-            }),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-            ),
-            icon: const Icon(Icons.copy_rounded, size: 18),
-            label: Text(
-              '複製整組訊息',
-              style: AppTypography.titleSmall.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return widgets;
   }
 
   Widget _buildRecognizedConversationCard() {
@@ -4500,7 +4208,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   @override
   Widget build(BuildContext context) {
-    _syncReplyZoneEntrance();
+    final replyZoneCards = ReplyZoneCards(
+      recommendation: _finalRecommendation,
+      replies: _replies,
+      replyOptions: _replyOptions,
+    );
+    _syncReplyZoneEntrance(hasContent: replyZoneCards.hasContent);
     final optimizePending = _replyIteration.pendingAwaitingPresentation;
     if (optimizePending != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -5502,62 +5215,29 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // 回覆區合併（Bruce dogfood 2026-08-08 拍板）：
                           // AI 推薦回覆是橫滑卡組第一張，右滑接其他風格；
                           // 回覆不再藏在詳細分析折疊裡。
-                          if (_hasReplyZoneContent) ...[
-                            // 分析完成的一次性自動捲動錨在這裡（回覆區頂、不錨
-                            // 上方的「下一步」卡）。
-                            KeyedSubtree(
-                              key: _replyZoneSectionKey,
-                              child: _replyZoneEntranceFade(
-                                child: Row(
-                                  children: [
-                                    Text('回覆建議',
-                                        style: AppTypography.titleLarge
-                                            .copyWith(
-                                                color: AppColors
-                                                    .onBackgroundPrimary)),
-                                    const Spacer(),
-                                    if (_replyZoneCardCount > 1)
-                                      const SwipeHintNudge(
-                                        child: SwipeHintChip(),
-                                      ),
-                                  ],
-                                ),
-                              ),
+                          if (replyZoneCards.hasContent)
+                            ReplyZoneSection(
+                              cards: replyZoneCards,
+                              entrance: _replyZoneEntrance,
+                              anchorKey: _replyZoneSectionKey,
+                              actions: this,
+                              noticeKind: _replyZoneNoticeKind(subscription),
+                              noticeBusy: _isAnalyzing ||
+                                  _isRefreshingPremiumReplies,
+                              outcomeBars: [
+                                if (replyZoneCards.showRecommended)
+                                  _buildAnalysisOutcomeBar(
+                                    cardKey: 'final',
+                                    label: 'AI 推薦回覆',
+                                  ),
+                                for (final type
+                                    in replyZoneCards.presentStyleTypes)
+                                  _buildAnalysisOutcomeBar(
+                                    cardKey: type,
+                                    label: ReplyStyleCard.labels[type] ?? type,
+                                  ),
+                              ],
                             ),
-                            const SizedBox(height: 12),
-                            // 高度自適應（2026-08-09 拍板）：拆掉固定 400 高，
-                            // 每張卡各自照內容長高、頂端對齊——推薦卡長是它自己
-                            // 的事，其他風格卡不跟著拉伸（同日 Eric 真機回報
-                            // stretch 版風格卡下方一大塊空白不自然）。卡最多
-                            // 6 張，放棄 ListView 的懶載無感。
-                            _replyZoneEntranceFade(
-                              child: ScrollCardTicks(
-                                axis: Axis.horizontal,
-                                focusFraction: 0.3,
-                                child: SingleChildScrollView(
-                                  key: const ValueKey('analysis-reply-zone'),
-                                  scrollDirection: Axis.horizontal,
-                                  child: _buildReplyZoneCardRow(),
-                                ),
-                              ),
-                            ),
-                            if (_showRecommendedReplyCard)
-                              _buildAnalysisOutcomeBar(
-                                cardKey: 'final',
-                                label: 'AI 推薦回覆',
-                              ),
-                            for (final type in _replyStyleOrder)
-                              if (_replies?.containsKey(type) ?? false)
-                                _buildAnalysisOutcomeBar(
-                                  cardKey: type,
-                                  label: ReplyStyleCard.labels[type] ?? type,
-                                ),
-                            if (_shouldShowReplyZoneNotice(subscription)) ...[
-                              const SizedBox(height: 12),
-                              _buildReplyZoneNotice(subscription),
-                            ],
-                            const SizedBox(height: 16),
-                          ],
 
                           if (_enthusiasmScore != null) ...[
                             // 實扣顯示常駐行（smoke P2 fix 2026-06-11）：
@@ -5790,56 +5470,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  bool _isRecommendedReplyType(String type) {
-    final pick = _finalRecommendation?.pick.trim();
-    return pick == type && (_replies?[type]?.trim().isNotEmpty ?? false);
-  }
-
-  Widget _buildHorizontalReplyCard(
-    String type,
-    String content, {
-    ReplyOption? option,
-    bool isRecommended = false,
-  }) {
-    return ReplyStyleCard(
-      type: type,
-      content: content,
-      option: option,
-      isRecommended: isRecommended,
-      onCopy: (text, message) {
-        unawaited(_recordAnalysisCopy(cardKey: type, copiedText: text));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$message，發出後記得回來回報結果'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      },
-      onRefine: (text) => unawaited(
-        _refineReply(originText: text, originCardKey: type),
-      ),
-    );
-  }
-
-  static const _replyStyleOrder = [
-    'extend',
-    'resonate',
-    'tease',
-    'humor',
-    'coldRead',
-  ];
-
-  bool get _showRecommendedReplyCard =>
-      _finalRecommendation != null &&
-      _finalRecommendation!.content.trim().isNotEmpty;
-
-  bool get _hasReplyZoneContent =>
-      _showRecommendedReplyCard || (_replies?.isNotEmpty ?? false);
-
   /// 每次 build 開頭呼叫：回覆區內容 false→true 的那次 build 播一次進場，
   /// 內容歸零（新一輪分析）後解鎖重播。reduced-motion 直接跳到終值。
-  void _syncReplyZoneEntrance() {
-    if (!_hasReplyZoneContent) {
+  void _syncReplyZoneEntrance({required bool hasContent}) {
+    if (!hasContent) {
       _replyZonePlayed = false;
       return;
     }
@@ -5850,322 +5484,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     } else {
       _replyZoneEntrance.forward(from: 0);
     }
-  }
-
-  /// 回覆區塊層進場（標題與卡組共用）：opacity 0→1＋往上 4% 落定，
-  /// 佔總時間軸的前 320ms。
-  Widget _replyZoneEntranceFade({required Widget child}) {
-    final anim = CurvedAnimation(
-      parent: _replyZoneEntrance,
-      curve: Interval(
-        0,
-        AppMotion.celebrate.inMilliseconds / _replyZoneEntranceTotalMs,
-        curve: AppMotion.easeOut,
-      ),
-    );
-    return FadeTransition(
-      opacity: anim,
-      child: SlideTransition(
-        position:
-            Tween(begin: const Offset(0, 0.04), end: Offset.zero).animate(anim),
-        child: child,
-      ),
-    );
-  }
-
-  /// 第 [index] 張卡的 stagger 進場：延遲 index×50ms，fade（easeOut，
-  /// 避免 easeOutBack 超過 1 的 opacity）＋scale 0.96→1（celebrateCurve，
-  /// 全 app 唯一允許彈感的檔位）。純裝飾，不擋互動。
-  Widget _staggeredReplyCard(int index, Widget child) {
-    final startMs = index * _replyCardStaggerMs;
-    final start =
-        (startMs / _replyZoneEntranceTotalMs).clamp(0.0, 1.0).toDouble();
-    final end = ((startMs + AppMotion.celebrate.inMilliseconds) /
-            _replyZoneEntranceTotalMs)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    return FadeTransition(
-      opacity: CurvedAnimation(
-        parent: _replyZoneEntrance,
-        curve: Interval(start, end, curve: AppMotion.easeOut),
-      ),
-      child: ScaleTransition(
-        scale: Tween(begin: 0.96, end: 1.0).animate(
-          CurvedAnimation(
-            parent: _replyZoneEntrance,
-            curve: Interval(start, end, curve: AppMotion.celebrateCurve),
-          ),
-        ),
-        child: child,
-      ),
-    );
-  }
-
-  /// 回覆卡組（推薦卡＋風格卡）帶 stagger 進場的橫列。
-  Widget _buildReplyZoneCardRow() {
-    final cards = <Widget>[
-      if (_showRecommendedReplyCard) _buildRecommendedReplyCard(),
-      for (final type in _replyStyleOrder)
-        if ((_replies?.containsKey(type) ?? false) &&
-            !(_showRecommendedReplyCard && _isRecommendedReplyType(type)))
-          _buildHorizontalReplyCard(type, _replies![type]!,
-              option: _replyOptions?[type],
-              isRecommended: _isRecommendedReplyType(type)),
-    ];
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < cards.length; i++)
-          // CardTickTarget：橫掃跨卡打一下輕觸覺（與開場白/新話題同語彙）。
-          CardTickTarget(index: i, child: _staggeredReplyCard(i, cards[i])),
-      ],
-    );
-  }
-
-  int get _replyZoneCardCount {
-    final styleCount = _replies?.keys
-            .where((type) =>
-                !(_showRecommendedReplyCard && _isRecommendedReplyType(type)))
-            .length ??
-        0;
-    return styleCount + (_showRecommendedReplyCard ? 1 : 0);
-  }
-
-  /// 回覆區第一張：AI 推薦回覆。內容沿用 [_buildRecommendationContent]
-  /// 三條路徑；比風格卡寬一號、卡高照內容自然長（回覆區已無固定高，
-  /// 卡內不再需要縱向捲動吃高度差）。
-  Widget _buildRecommendedReplyCard() {
-    final recommendation = _finalRecommendation!;
-    // 對標示意稿（2026-08-14）：拆掉外層漸層框卡，內容平鋪在頁面底上；
-    // 標題換圓形靶心徽章＋白字，理由收進帶 icon 座的說明卡。
-    return Container(
-      key: const ValueKey('analysis-recommended-reply-card'),
-      width: 340,
-      margin: const EdgeInsets.only(right: 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.ctaStart.withValues(alpha: 0.16),
-                  border: Border.all(
-                    color: AppColors.ctaStart.withValues(alpha: 0.55),
-                  ),
-                ),
-                child: const Icon(
-                  Icons.track_changes_rounded,
-                  size: 19,
-                  color: AppColors.ctaStart,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'AI 推薦回覆',
-                style: AppTypography.titleMedium.copyWith(
-                  color: AppColors.onBackgroundPrimary,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ..._buildRecommendationContent(recommendation),
-          const SizedBox(height: 12),
-          _buildRecommendationNote(recommendation),
-        ],
-      ),
-    );
-  }
-
-  /// 推薦理由說明卡：icon 座＋灰字，取代舊 📝/🧠 emoji 前綴行。
-  Widget _buildRecommendationNote(FinalRecommendation recommendation) {
-    final reason = recommendation.reason.trim();
-    final psychology = recommendation.psychology.trim();
-    if (reason.isEmpty && psychology.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.045),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primary.withValues(alpha: 0.22),
-            ),
-            child: Icon(
-              Icons.description_outlined,
-              size: 16,
-              color: AppColors.coachAccent,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (reason.isNotEmpty)
-                  Text(
-                    reason,
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
-                      height: 1.45,
-                    ),
-                  ),
-                if (psychology.isNotEmpty && psychology != reason) ...[
-                  if (reason.isNotEmpty) const SizedBox(height: 4),
-                  Text(
-                    psychology,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.textSecondary,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  bool _shouldShowReplyZoneNotice(SubscriptionState subscription) {
-    final replies = _replies;
-    if (replies == null || replies.isEmpty) return false;
-    return subscription.isFreeUser ||
-        _analysisNeedsReplyRefresh(subscription) ||
-        (replies.length == 1 && replies.containsKey('extend'));
-  }
-
-  /// 回覆區尾端提示：Free 升級入口／已升級但看舊 Free 結果的重新分析
-  /// ／付費 fallback 說明。原本在詳細分析折疊內，隨回覆區一起上移。
-  Widget _buildReplyZoneNotice(SubscriptionState subscription) {
-    if (subscription.isFreeUser) {
-      return GestureDetector(
-        onTap: () async => _showPaywall(context),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.ctaStart.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: AppColors.ctaStart.withValues(alpha: 0.3),
-            ),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.lock_outline, color: AppColors.ctaStart),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '你已可比較延展、調情；升級解鎖共鳴、幽默、冷讀等完整 5 種風格',
-                  style: AppTypography.bodyMedium
-                      .copyWith(color: AppColors.primary),
-                ),
-              ),
-              const Icon(Icons.arrow_forward_ios,
-                  size: 16, color: AppColors.ctaStart),
-            ],
-          ),
-        ),
-      );
-    }
-    if (_analysisNeedsReplyRefresh(subscription)) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.ctaStart.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: AppColors.ctaStart.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.auto_awesome, color: AppColors.ctaStart),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '你已升級，這份分析仍是免費版結果。',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.ctaStart,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '重新分析一次，就能拿到完整分析結果。',
-              style: AppTypography.caption.copyWith(color: AppColors.ctaStart),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: (_isAnalyzing || _isRefreshingPremiumReplies)
-                    ? null
-                    : _refreshPremiumReplies,
-                icon: (_isAnalyzing || _isRefreshingPremiumReplies)
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh_rounded),
-                label: Text(
-                  (_isAnalyzing || _isRefreshingPremiumReplies)
-                      ? '正在刷新完整分析…'
-                      : '重新產生完整分析',
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-    // 付費用戶：AI 判斷此情境最適合延展
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.onBackgroundSecondary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.lightbulb_outline, color: AppColors.onBackgroundSecondary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'AI 判斷此情境最適合使用延展回覆',
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.onBackgroundSecondary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildCollapsibleMessageInput() {
