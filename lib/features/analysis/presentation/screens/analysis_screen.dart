@@ -76,8 +76,10 @@ import '../helpers/analysis_progress_stage_copy.dart';
 import '../sections/analysis_error_card.dart';
 import '../sections/analysis_feedback_section.dart';
 import '../sections/detailed_analysis_section.dart';
+import '../sections/recognized_conversation_section.dart';
 import '../sections/reply_zone_section.dart';
 import '../sections/streaming_content_section.dart';
+import '../sections/telemetry_diagnostics_section.dart';
 import '../helpers/analysis_run_metadata_mapping.dart';
 import '../helpers/analysis_usage_copy.dart';
 import '../widgets/analysis_action_widgets.dart';
@@ -144,7 +146,10 @@ enum _AnalysisAppBarAction {
 
 class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin
-    implements AnalysisFeedbackActions, ReplyZoneActions {
+    implements
+        AnalysisFeedbackActions,
+        RecognitionDraftActions,
+        ReplyZoneActions {
   // 訂閱同步屬 best-effort 前置：卡住不得凍結分析/刷新 spinner（2.1(b)）。
   static const _subscriptionSyncTimeout = Duration(seconds: 20);
   bool get _showTelemetryDiagnostics => kDebugMode;
@@ -1889,23 +1894,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           (sum, metric) => sum + metric.compressedBytes,
         );
 
-  String _formatBytes(int bytes) {
-    if (bytes >= 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-
-    return '${(bytes / 1024).toStringAsFixed(0)} KB';
-  }
-
-  String _formatDuration(Duration? duration) {
-    if (duration == null) {
-      return '--';
-    }
-
-    final seconds = duration.inMilliseconds / 1000;
-    return '${seconds.toStringAsFixed(seconds >= 10 ? 0 : 1)} 秒';
-  }
-
   String get _recognizeButtonLabel {
     if (_isRecognizing) {
       return _recognizeStageLabel(_recognizeStage);
@@ -2322,150 +2310,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             _screenshotImport.expectedPartnerName(currentConversation),
       );
 
-  String _recognitionClassificationLabel(String classification) =>
-      ScreenshotRecognitionHelper.classificationLabel(classification);
-
-  String _recognitionConfidenceLabel(String confidence) =>
-      ScreenshotRecognitionHelper.confidenceLabel(confidence);
-
-  String _recognitionSideConfidenceLabel(String confidence) =>
-      ScreenshotRecognitionHelper.sideConfidenceLabel(confidence);
-
-  String? _recognizeTelemetryRecognitionSummary(AnalysisTelemetry telemetry) {
-    if (telemetry.recognizedClassification == null &&
-        telemetry.recognizedSideConfidence == null &&
-        telemetry.recognizedMessageCount == null) {
-      return null;
-    }
-
-    final parts = <String>[
-      if (telemetry.recognizedClassification != null)
-        '分類 ${_recognitionClassificationLabel(telemetry.recognizedClassification!)}',
-      if (telemetry.recognizedSideConfidence != null)
-        '方向 ${_recognitionSideConfidenceLabel(telemetry.recognizedSideConfidence!)}',
-      if (telemetry.recognizedMessageCount != null)
-        '訊息 ${telemetry.recognizedMessageCount} 則',
-      if ((telemetry.uncertainSideCount ?? 0) > 0)
-        '待確認 ${telemetry.uncertainSideCount} 則',
-    ];
-
-    return parts.isEmpty ? null : parts.join('｜');
-  }
-
-  String? _recognizeTelemetryNormalizationSummary(AnalysisTelemetry telemetry) {
-    final parts = <String>[
-      if ((telemetry.quotedPreviewAttachedCount ?? 0) > 0)
-        '引用併回 ${telemetry.quotedPreviewAttachedCount} 次',
-      if ((telemetry.quotedPreviewRemovedCount ?? 0) > 0 &&
-          (telemetry.quotedPreviewAttachedCount ?? 0) == 0)
-        '引用忽略 ${telemetry.quotedPreviewRemovedCount} 次',
-      if ((telemetry.continuityAdjustedCount ?? 0) > 0)
-        '方向校正 ${telemetry.continuityAdjustedCount} 次',
-      if ((telemetry.groupedAdjustedCount ?? 0) > 0)
-        '群組校正 ${telemetry.groupedAdjustedCount} 次',
-      if ((telemetry.layoutFirstAdjustedCount ?? 0) > 0)
-        '版面分群 ${telemetry.layoutFirstAdjustedCount} 次',
-      if ((telemetry.overlapRemovedCount ?? 0) > 0)
-        '重疊去重 ${telemetry.overlapRemovedCount} 次',
-    ];
-
-    return parts.isEmpty ? null : parts.join('｜');
-  }
-
-  String? _recognizeTelemetryContextSummary(AnalysisTelemetry telemetry) {
-    if (telemetry.contextMode == null &&
-        telemetry.truncatedMessageCount == null &&
-        telemetry.conversationSummaryUsed == false) {
-      return null;
-    }
-
-    final modeLabel = telemetry.contextMode == 'opening_plus_recent'
-        ? '上下文 開頭+最近'
-        : telemetry.contextMode == 'full'
-            ? '上下文 全量'
-            : null;
-
-    final parts = <String>[
-      if (modeLabel != null) modeLabel,
-      if ((telemetry.inputMessageCount ?? 0) > 0 &&
-          (telemetry.compiledMessageCount ?? 0) > 0)
-        '送出 ${telemetry.compiledMessageCount}/${telemetry.inputMessageCount} 則',
-      if ((telemetry.truncatedMessageCount ?? 0) > 0)
-        '省略 ${telemetry.truncatedMessageCount} 則',
-      if (telemetry.conversationSummaryUsed) '含舊摘要',
-    ];
-
-    return parts.isEmpty ? null : parts.join('｜');
-  }
-
-  String _analysisTelemetryRequestLabel(AnalysisTelemetry telemetry) {
-    switch (telemetry.requestType) {
-      case 'my_message':
-        return '上次「我說」量測';
-      case 'optimize_message':
-        return '上次優化量測';
-      case 'analyze_with_images':
-        return '上次帶圖分析量測';
-      default:
-        return '上次分析量測';
-    }
-  }
-
-  String _analysisTelemetryTransportSummary(AnalysisTelemetry telemetry) {
-    final retrySummary =
-        telemetry.retryCount > 0 ? '重試 ${telemetry.retryCount} 次' : null;
-    final fallbackSummary = telemetry.fallbackUsed ? '有 fallback' : null;
-    final timeoutSummary = telemetry.timeoutDuration != null
-        ? '逾時上限 ${_formatDuration(telemetry.timeoutDuration)}'
-        : null;
-
-    final parts = <String>[
-      '請求 ${_formatBytes(telemetry.requestBodyBytes)}',
-      '本機準備 ${_formatDuration(telemetry.payloadPreparationDuration)}',
-      '往返 ${_formatDuration(telemetry.roundTripDuration)}',
-      if (retrySummary != null) retrySummary,
-      if (fallbackSummary != null) fallbackSummary,
-      if (timeoutSummary != null) timeoutSummary,
-    ];
-
-    return parts.join('｜');
-  }
-
-  String? _analysisTelemetryQuotaSummary(AnalysisTelemetry telemetry) {
-    final estimatedCount =
-        telemetry.estimatedMessageCount ?? telemetry.chargedMessageCount;
-
-    if (telemetry.shouldChargeQuota == true) {
-      final chargedCount = telemetry.chargedMessageCount ?? estimatedCount;
-      if ((chargedCount ?? 0) > 0) {
-        return '本次扣 $chargedCount 則訊息額度';
-      }
-      return '本次會扣訊息額度';
-    }
-
-    if (telemetry.requestType == 'recognize_only' ||
-        telemetry.quotaReason == 'recognize_only_free') {
-      return '本次純辨識，不扣額度';
-    }
-
-    if (telemetry.quotaReason == 'test_account_waived') {
-      if ((estimatedCount ?? 0) > 0) {
-        return '測試帳號，本次未扣額度（原本會扣 $estimatedCount 則）';
-      }
-      return '測試帳號，本次未扣額度';
-    }
-
-    if (telemetry.shouldChargeQuota == false && (estimatedCount ?? 0) > 0) {
-      return '本次未扣額度';
-    }
-
-    return null;
-  }
-
-  List<AnalysisTelemetryGuardrail> _telemetryGuardrails(
+  /// data 層守門評估 → section 展示資料（severity 映射留在 composition root）。
+  List<TelemetryGuardrailChipData> _telemetryGuardrailChips(
     AnalysisTelemetry telemetry,
   ) =>
-      AnalysisTelemetryGuardrailHelper.evaluate(telemetry);
+      AnalysisTelemetryGuardrailHelper.evaluate(telemetry)
+          .map(
+            (guardrail) => TelemetryGuardrailChipData(
+              color: _telemetryGuardrailColor(guardrail),
+              icon: _telemetryGuardrailIcon(guardrail),
+              label: guardrail.label,
+              detail: guardrail.detail,
+            ),
+          )
+          .toList(growable: false);
 
   Color _telemetryGuardrailColor(AnalysisTelemetryGuardrail guardrail) {
     switch (guardrail.severity) {
@@ -2487,151 +2345,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case AnalysisTelemetryGuardrailSeverity.info:
         return Icons.insights_rounded;
     }
-  }
-
-  Widget _buildTelemetryGuardrailSection(AnalysisTelemetry telemetry) {
-    final guardrails = _telemetryGuardrails(telemetry);
-    if (guardrails.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: guardrails.map((guardrail) {
-              final color = _telemetryGuardrailColor(guardrail);
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: color.withValues(alpha: 0.20),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _telemetryGuardrailIcon(guardrail),
-                      size: 14,
-                      color: color,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      guardrail.label,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 8),
-          ...guardrails.map(
-            (guardrail) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                '${guardrail.label}：${guardrail.detail}',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.textSecondary,
-                  height: 1.45,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _recognitionConfidenceColor(RecognizedConversation recognized) {
-    if (recognized.importPolicy == 'reject') {
-      return AppColors.error;
-    }
-    switch (recognized.confidence) {
-      case 'low':
-        return AppColors.warning;
-      case 'medium':
-        return AppColors.info;
-      case 'high':
-      default:
-        return AppColors.success;
-    }
-  }
-
-  String _recognitionActionGuidance(RecognizedConversation recognized) =>
-      ScreenshotRecognitionHelper.actionGuidance(recognized);
-
-  ScreenshotRecognitionGuidance _recognitionGuidance(
-    RecognizedConversation recognized,
-  ) =>
-      ScreenshotRecognitionHelper.guidance(recognized);
-
-  Color _recognitionGuidanceColor(RecognizedConversation recognized) {
-    switch (_recognitionGuidance(recognized).tone) {
-      case ScreenshotRecognitionGuidanceTone.reject:
-        return AppColors.error;
-      case ScreenshotRecognitionGuidanceTone.caution:
-        return AppColors.warning;
-      case ScreenshotRecognitionGuidanceTone.review:
-        return AppColors.info;
-      case ScreenshotRecognitionGuidanceTone.stable:
-        return AppColors.success;
-    }
-  }
-
-  IconData _recognitionGuidanceIcon(RecognizedConversation recognized) {
-    switch (_recognitionGuidance(recognized).tone) {
-      case ScreenshotRecognitionGuidanceTone.reject:
-        return Icons.block_rounded;
-      case ScreenshotRecognitionGuidanceTone.caution:
-        return Icons.call_split_rounded;
-      case ScreenshotRecognitionGuidanceTone.review:
-        return Icons.fact_check_rounded;
-      case ScreenshotRecognitionGuidanceTone.stable:
-        return Icons.check_circle_outline_rounded;
-    }
-  }
-
-  Widget _buildRecognitionStatusChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: AppTypography.bodySmall.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   /// 顯示識別確認對話框，讓用戶設定對方名字和情境
@@ -3781,6 +3494,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return null;
   }
 
+  // ── RecognitionDraftActions（辨識結果卡的動作實作）──────────────────
+
+  @override
+  void forceReRecognizeLastBatch() => unawaited(_forceReRecognizeLastBatch());
+
+  @override
+  void repickScreenshots() => unawaited(_repickScreenshots());
+
+  @override
+  void resumeRecognitionImport() => unawaited(_resumeRecognitionImport());
+
+  @override
+  void discardRecognitionDraft() => _discardPendingRecognitionDraft();
+
   void _resetFeedbackState() {
     _feedbackSubmitted = false;
     _showFeedbackForm = false;
@@ -3963,245 +3690,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           cardKey: cardKey,
           signal: signal,
         ),
-      ),
-    );
-  }
-
-  Widget _buildRecognizedConversationCard() {
-    final recognized = _recognizedConversation!;
-    final displayWarning = _recognizedWarningMessage ?? recognized.warning;
-    final displayRecognized = recognized.copyWith(warning: displayWarning);
-    final guidance = _recognitionGuidance(displayRecognized);
-    final guidanceColor = _recognitionGuidanceColor(displayRecognized);
-    return BrandSurfaceCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.photo_library,
-                  size: 20, color: AppColors.ctaStart),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  ScreenshotRecognitionHelper.recognitionPreviewTitle(
-                    recognized,
-                  ),
-                  style: AppTypography.bodyMedium.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.onBackgroundPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildRecognitionStatusChip(
-                icon: Icons.chat_bubble_outline,
-                label: _recognitionClassificationLabel(
-                  displayRecognized.classification,
-                ),
-                color: displayRecognized.importPolicy == 'reject'
-                    ? AppColors.error
-                    : AppColors.ctaStart,
-              ),
-              _buildRecognitionStatusChip(
-                icon: Icons.auto_awesome,
-                label:
-                    _recognitionConfidenceLabel(displayRecognized.confidence),
-                color: _recognitionConfidenceColor(displayRecognized),
-              ),
-              _buildRecognitionStatusChip(
-                icon: Icons.compare_arrows_rounded,
-                label: _recognitionSideConfidenceLabel(
-                  displayRecognized.sideConfidence,
-                ),
-                color: _recognitionConfidenceColor(
-                  displayRecognized.copyWith(
-                    confidence: displayRecognized.sideConfidence,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: guidanceColor.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: guidanceColor.withValues(alpha: 0.18),
-              ),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  _recognitionGuidanceIcon(displayRecognized),
-                  size: 18,
-                  color: guidanceColor,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        guidance.title,
-                        style: AppTypography.bodySmall.copyWith(
-                          color: guidanceColor,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _recognitionActionGuidance(displayRecognized),
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.onBackgroundPrimary,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (displayWarning != null && displayWarning.trim().isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: AppColors.error.withValues(alpha: 0.25),
-                  ),
-                ),
-                child: Text(
-                  displayWarning,
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    height: 1.45,
-                  ),
-                ),
-              ),
-            ),
-          // 「查看辨識內容」摺疊清單已拆（2026-08-16 Bruce 回饋：內容與上方
-          // 主卡的訊息泡泡重複）。
-          if (_recognitionFromCache && _canForceReRecognize) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.info.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: AppColors.info.withValues(alpha: 0.25),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.cached_rounded,
-                    size: 18,
-                    color: AppColors.info,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '這是上次相同截圖的快取結果',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.onBackgroundPrimary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: _forceReRecognizeLastBatch,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('強制重新辨識'),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '如果結果有誤，點「強制重新辨識」會忽略快取，重新辨識。',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.unselectedText,
-                height: 1.4,
-              ),
-            ),
-          ] else ...[
-            // 「重新讀圖」改「重新選圖」（2026-08-16 Bruce 回饋）：重讀同一批
-            // 錯照舊，直接開相簿換截圖才解得了「選錯圖」；確認後整批取代。
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                key: const ValueKey('recognized-repick'),
-                onPressed: _isRecognizing ? null : _repickScreenshots,
-                icon: const Icon(Icons.add_photo_alternate_outlined),
-                label: const Text('重新選圖'),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '選錯截圖或漏拉訊息？重新選 1–3 張，確認後會整批取代這次內容。',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.unselectedText,
-                height: 1.4,
-              ),
-            ),
-          ],
-          if (_hasPendingRecognitionImport) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: AppHaptics.onPress(_resumeRecognitionImport),
-                    icon: const Icon(Icons.edit_note_rounded),
-                    label: const Text('繼續確認本次內容'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (_canForceReRecognize)
-                  TextButton(
-                    onPressed: _forceReRecognizeLastBatch,
-                    child: const Text('重讀這批圖'),
-                  ),
-                if (_canForceReRecognize) const SizedBox(width: 4),
-                TextButton(
-                  onPressed: _discardPendingRecognitionDraft,
-                  child: const Text('清除草稿'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '剛剛的辨識結果已暫存在這裡，不用重新辨識。',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.unselectedText,
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }
@@ -4786,7 +4274,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                             ),
                                             const SizedBox(height: 4),
                                             Text(
-                                              '圖片：${_selectedImages.length} 張｜原始 ${_formatBytes(_totalOriginalImageBytes)} -> 壓縮 ${_formatBytes(_totalCompressedImageBytes)}',
+                                              '圖片：${_selectedImages.length} 張｜原始 ${formatTelemetryBytes(_totalOriginalImageBytes)} -> 壓縮 ${formatTelemetryBytes(_totalCompressedImageBytes)}',
                                               style: AppTypography.caption
                                                   .copyWith(
                                                 color: Colors.orange
@@ -4800,7 +4288,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                 _lastRecognizeTelemetry!
                                                         .cacheHit
                                                     ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
-                                                    : '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
+                                                    : '請求 ${formatTelemetryBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${formatTelemetryDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${formatTelemetryDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
                                                 style: AppTypography.caption
                                                     .copyWith(
                                                   color: Colors.orange
@@ -4813,7 +4301,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                 _lastRecognizeTelemetry!
                                                         .cacheHit
                                                     ? '本次使用本機快取，未重新上傳或呼叫 AI'
-                                                    : 'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
+                                                    : 'AI ${formatTelemetryDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${formatTelemetryDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
                                                 style: AppTypography.caption
                                                     .copyWith(
                                                   color: Colors.orange
@@ -4823,11 +4311,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               ),
                                             if (_lastRecognizeTelemetry !=
                                                     null &&
-                                                _recognizeTelemetryRecognitionSummary(
+                                                recognizeTelemetryRecognitionSummary(
                                                         _lastRecognizeTelemetry!) !=
                                                     null)
                                               Text(
-                                                _recognizeTelemetryRecognitionSummary(
+                                                recognizeTelemetryRecognitionSummary(
                                                     _lastRecognizeTelemetry!)!,
                                                 style: AppTypography.caption
                                                     .copyWith(
@@ -4838,11 +4326,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               ),
                                             if (_lastRecognizeTelemetry !=
                                                     null &&
-                                                _recognizeTelemetryNormalizationSummary(
+                                                recognizeTelemetryNormalizationSummary(
                                                         _lastRecognizeTelemetry!) !=
                                                     null)
                                               Text(
-                                                _recognizeTelemetryNormalizationSummary(
+                                                recognizeTelemetryNormalizationSummary(
                                                     _lastRecognizeTelemetry!)!,
                                                 style: AppTypography.caption
                                                     .copyWith(
@@ -4954,90 +4442,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           if (_showTelemetryDiagnostics &&
                               _lastRecognizeTelemetry != null &&
                               !_isRecognizing) ...[
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color:
-                                    AppColors.ctaStart.withValues(alpha: 0.06),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: AppColors.ctaStart
-                                      .withValues(alpha: 0.16),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '上次 OCR 量測',
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: AppColors.onBackgroundPrimary,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _lastRecognizeTelemetry!.cacheHit
-                                        ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
-                                        : '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  if (_analysisTelemetryQuotaSummary(
-                                          _lastRecognizeTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _analysisTelemetryQuotaSummary(
-                                        _lastRecognizeTelemetry!,
-                                      )!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  Text(
-                                    _lastRecognizeTelemetry!.cacheHit
-                                        ? '本次使用本機快取，未重新上傳或呼叫 AI'
-                                        : 'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  if (_recognizeTelemetryRecognitionSummary(
-                                          _lastRecognizeTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _recognizeTelemetryRecognitionSummary(
-                                          _lastRecognizeTelemetry!)!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  if (_recognizeTelemetryNormalizationSummary(
-                                          _lastRecognizeTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _recognizeTelemetryNormalizationSummary(
-                                          _lastRecognizeTelemetry!)!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  if (_recognizeTelemetryContextSummary(
-                                          _lastRecognizeTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _recognizeTelemetryContextSummary(
-                                          _lastRecognizeTelemetry!)!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  _buildTelemetryGuardrailSection(
-                                    _lastRecognizeTelemetry!,
-                                  ),
-                                ],
+                            OcrTelemetryPanel(
+                              telemetry: _lastRecognizeTelemetry!,
+                              guardrails: _telemetryGuardrailChips(
+                                _lastRecognizeTelemetry!,
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -5046,69 +4454,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           if (_showTelemetryDiagnostics &&
                               _lastAnalysisTelemetry != null &&
                               !_isAnalyzing) ...[
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.info.withValues(alpha: 0.06),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: AppColors.info.withValues(alpha: 0.16),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _analysisTelemetryRequestLabel(
-                                      _lastAnalysisTelemetry!,
-                                    ),
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: AppColors.onBackgroundPrimary,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _analysisTelemetryTransportSummary(
-                                      _lastAnalysisTelemetry!,
-                                    ),
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  if (_analysisTelemetryQuotaSummary(
-                                          _lastAnalysisTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _analysisTelemetryQuotaSummary(
-                                        _lastAnalysisTelemetry!,
-                                      )!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  Text(
-                                    'AI ${_formatDuration(_lastAnalysisTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastAnalysisTelemetry!.estimatedTransferDuration)}',
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  if (_recognizeTelemetryContextSummary(
-                                          _lastAnalysisTelemetry!) !=
-                                      null)
-                                    Text(
-                                      _recognizeTelemetryContextSummary(
-                                        _lastAnalysisTelemetry!,
-                                      )!,
-                                      style: AppTypography.caption.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  _buildTelemetryGuardrailSection(
-                                    _lastAnalysisTelemetry!,
-                                  ),
-                                ],
+                            AnalysisTelemetryPanel(
+                              telemetry: _lastAnalysisTelemetry!,
+                              guardrails: _telemetryGuardrailChips(
+                                _lastAnalysisTelemetry!,
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -5123,7 +4472,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               _enthusiasmScore == null &&
                               _recognizedConversation != null &&
                               _recognizedConversation!.messageCount > 0) ...[
-                            _buildRecognizedConversationCard(),
+                            RecognizedConversationCard(
+                              recognized: _recognizedConversation!,
+                              warningMessage: _recognizedWarningMessage,
+                              fromCache: _recognitionFromCache,
+                              canForceReRecognize: _canForceReRecognize,
+                              hasPendingImport: _hasPendingRecognitionImport,
+                              isRecognizing: _isRecognizing,
+                              actions: this,
+                            ),
                             const SizedBox(height: 16),
                           ],
 
