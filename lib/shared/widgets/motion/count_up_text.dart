@@ -3,7 +3,7 @@
 // 數字揭曉：從 0 快速跑到目標值。
 //
 // 等價於 GSAP 的計數器慣用寫法——
-//   gsap.to(obj, { val: 36, duration: .9, ease: 'power2.out', snap: { val: 1 } })
+//   gsap.to(obj, { val: 36, duration: 1.2, ease: 'power2.out', snap: { val: 1 } })
 // `snap: { val: 1 }` 就是這裡的 `value.round()`：畫面上永遠是整數，不會出現
 // 36.4183 這種中間態。
 //
@@ -17,6 +17,7 @@ import 'package:flutter/widgets.dart';
 import '../../../core/animation/gsap_ease.dart';
 import '../../../core/animation/motion_preference.dart';
 import '../../../core/services/app_haptics.dart';
+import '../../../core/theme/app_motion.dart';
 
 class CountUpText extends StatefulWidget {
   const CountUpText({
@@ -24,7 +25,7 @@ class CountUpText extends StatefulWidget {
     required this.value,
     this.style,
     this.textAlign,
-    this.duration = const Duration(milliseconds: 900),
+    this.duration = AppMotion.countUp,
     this.curve = GsapEase.power2Out,
     this.haptic = true,
     this.animate = true,

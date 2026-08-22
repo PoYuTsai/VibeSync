@@ -22,6 +22,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../../core/animation/gsap_ease.dart';
 import '../../../core/animation/motion_preference.dart';
+import '../../../core/theme/app_motion.dart';
 
 /// 開場變體。每種各自對應一條 GSAP ease，手感刻意不一樣。
 enum GsapRevealVariant {
@@ -49,8 +50,8 @@ class GsapTextReveal extends StatefulWidget {
     this.textAlign,
     this.variant,
     this.random,
-    this.charDuration = const Duration(milliseconds: 520),
-    this.stagger = const Duration(milliseconds: 55),
+    this.charDuration = AppMotion.textRevealChar,
+    this.stagger = AppMotion.textRevealStagger,
     this.maxSplitLength = 12,
     this.animate = true,
     this.onEnd,

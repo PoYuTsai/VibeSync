@@ -34,6 +34,17 @@ abstract final class AppMotion {
   /// 報表圖揭示——四張圖共用一個檔位（2026-08 收斂前是 480/520/700 三種）。
   static const Duration chartReveal = Duration(milliseconds: 300);
 
+  /// 數字揭曉（分數 0→終值 的跑動）。比 chartReveal 長是刻意的：這是一個
+  /// 要被看著跑完的時刻，不是狀態切換，太快就只剩「畫面閃一下」。
+  static const Duration countUp = Duration(milliseconds: 1200);
+
+  /// 文字逐字開場：單一字元自己的進場時長。
+  static const Duration textRevealChar = Duration(milliseconds: 680);
+
+  /// 文字逐字開場：相鄰字元的起跑時間差。整串總長＝char + stagger×(字數-1)，
+  /// 調 stagger 比調 char 更能改變「一個一個蹦出來」的顆粒感。
+  static const Duration textRevealStagger = Duration(milliseconds: 75);
+
   /// 程式捲動（scrollTo/animateTo「捲去剛產生的東西」）統一檔位。
   static const Duration scroll = Duration(milliseconds: 280);
 
