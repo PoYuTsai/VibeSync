@@ -1030,3 +1030,21 @@
 5. Eric 已於 2026-08-21 明確授權 requirements roundtable，由 CC（Fable 5）與 Codex 完成盤點、Frozen Spec v1 與 Reviewed Plan v1；後續角色為 CC = code owner、Codex = main reviewer，P0 由 Codex 用白話逐步引導 Eric 完成 Android／Google 人工設定。實作與外部操作仍依後續的分段明確授權，不由文件本身自動放行。
 
 **進度更新（2026-08-22）**: `VibeSync AI Studio` Personal 開發者帳戶已建立並完成註冊付款；身分文件正在由 Google 審核，Android 15 實體裝置驗證已完成，聯絡電話驗證須等待身分審核通過。Play App 尚未建立，封閉測試尚未啟動。
+
+---
+
+## ADR #43 — [2026-08-22] Android 備份與裝置轉移採 fail-closed：全域排除，不做選擇性備份
+
+**狀態**: 🟢 Active
+
+**背景**: Android 的 Auto Backup 與裝置間轉移（D2D）預設會把 app 資料帶進 Google 雲端備份或新手機。VibeSync 本機存有 auth token（flutter_secure_storage 的 sharedpref）、加密 Hive 的金鑰與聊天／分析資料、以及使用者匯入的聊天截圖；任何一項被還原到非預期裝置或殘留在雲端，都是隱私與帳號安全風險。AND-04（Slice 2）要求在首次 Android 上架前把政策定死。
+
+**決定**:
+
+1. **主閘**：manifest `android:allowBackup="false"`——整個 App 不參與 Auto Backup。
+2. **第二道欄**：`backup_rules.xml`（Android 11-）與 `data_extraction_rules.xml`（Android 12+ 的 cloud-backup 與 device-transfer 兩區塊）把官方九個 domain（root／file／database／sharedpref／external／device_root／device_file／device_database／device_sharedpref）全域 exclude 且零 include。就算未來有人誤開 allowBackup，敏感資料仍不外洩。
+3. **不做選擇性備份**：不維護「哪些檔案可以備份」的白名單。要新增任何可備份資料，必須先回到本 ADR 重新決策，不得只改 XML。
+4. **驗證方式**：不使用已淘汰的 `adb backup` 當證據；靜態守門走 merged manifest 與契約測試，行為驗證走受支援的實機重裝／雲端還原／D2D 轉機路徑（步驟見 `docs/launch-readiness-checklist.md` §6）。OEM 轉移工具（如 Samsung Smart Switch）是否尊重宣告必須實機驗證，XML 只能證明我們宣告了什麼。
+5. **容錯要求**：若任何路徑導致部分資料殘留（OEM 不尊重宣告），App 首啟必須走全新狀態或明確重登，不得 crash、不得顯示他人或舊帳號殘留內容。
+
+**取捨**: 使用者換機後需要重新登入、聊天與分析資料不隨行——以現階段「本機是快取、server 與加密儲存是真相源」的架構，這是可接受的代價；比起任何 token 或聊天資料經雲端備份外洩，fail-closed 是唯一安全預設。
