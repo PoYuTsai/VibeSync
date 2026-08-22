@@ -9,7 +9,7 @@ import '../../../partner/domain/entities/partner.dart';
 
 /// 報告頁底部「對象作戰板」dock（2026-08-14 對標夥伴示意稿）。
 ///
-/// 每個對象一張玻璃卡：方形漸層圖示（名字首字）＋名字＋階段＋色點。
+/// 每個對象一張玻璃卡：寫實 3D 階段物件＋名字＋階段＋身份色點。
 /// 手指按住在列上左右滑，靠近手指的卡會像 macOS Dock 一樣放大，
 /// 焦點換到另一張卡時給一下 selection 震動；放開全部回彈。
 /// 系統關閉動畫（disableAnimations）時不放大，只保留點擊。
@@ -36,6 +36,8 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
   static const _tileWidth = 88.0;
   static const _tileGap = 12.0;
   static const _cardHeight = 132.0;
+  static const _stageImageSize = 60.0;
+  static const _identityDotSize = 9.0;
   // 放大最多 22%，向上長；列高留足空間讓放大不被裁掉。
   static const _maxBoost = 0.22;
   // 外層霧面托盤的內距；卡片坐在托盤裡，放大時往上凸出托盤。
@@ -44,14 +46,24 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
   // 距手指多遠內受影響（px）
   static const _influence = 120.0;
 
-  // 圖示磚漸層＝對象識別色（下方色點同色），依對象 id 定色。
-  // 色值取自夥伴示意稿（2026-08-15 Eric 拍板），色票本體在 AppColors。
-  static const _tileGradients = [
+  // 對象識別色只留在下方圓點，依對象 id 穩定定色；階段辨識改由上方
+  // 3D 物件負責，避免「身份」和「進度」兩套語意擠在同一個色塊裡。
+  static const _identityGradients = [
     [AppColors.partnerRoseStart, AppColors.partnerRoseEnd], // 霧玫瑰
     [AppColors.partnerGoldStart, AppColors.partnerGoldEnd], // 古銅金
     [AppColors.partnerOrangeStart, AppColors.partnerOrangeEnd], // 鮮橘
     [AppColors.partnerOrchidStart, AppColors.partnerOrchidEnd], // 蘭花粉
   ];
+
+  static const _unknownStageAsset =
+      'assets/images/partner_stage_unknown.webp';
+  static const _stageAssetsByLabel = <String, String>{
+    '破冰階段': 'assets/images/partner_stage_opening.webp',
+    '建立男女感': 'assets/images/partner_stage_premise.webp',
+    '互相評估': 'assets/images/partner_stage_qualification.webp',
+    '展現個人魅力': 'assets/images/partner_stage_narrative.webp',
+    '準備邀約': 'assets/images/partner_stage_close.webp',
+  };
 
   final _scrollController = ScrollController();
   final _dockKey = GlobalKey();
@@ -223,7 +235,7 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
     );
   }
 
-  /// 不隨指針變的內容（圖示磚＋名字＋階段＋色點）。
+  /// 不隨指針變的內容（3D 階段物件＋名字＋階段＋身份色點）。
   Widget _buildTileContent(int index) {
     final partner = widget.partners[index];
     final stage = widget.stageLabelOf(partner.id);
@@ -231,35 +243,26 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
     // 不用 String.hashCode（跨 Dart 版本不保證穩定）。
     final colorKey =
         partner.id.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
-    final gradient = _tileGradients[colorKey % _tileGradients.length];
-    final initial = partner.name.isEmpty
-        ? '?'
-        : partner.name.characters.first.toUpperCase();
+    final identityGradient =
+        _identityGradients[colorKey % _identityGradients.length];
+    final stageAsset = _stageAssetFor(stage);
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Container(
-          width: 52,
-          height: 52,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: LinearGradient(
-              colors: gradient,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: Text(
-            initial,
-            style: AppTypography.titleMedium.copyWith(
-              color: AppColors.onBackgroundPrimary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+        Image.asset(
+          stageAsset,
+          key: ValueKey('partner-stage-image-${partner.id}'),
+          width: _stageImageSize,
+          height: _stageImageSize,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.medium,
+          gaplessPlayback: true,
+          isAntiAlias: true,
+          // 下方已有可朗讀的階段文字，圖片純裝飾，避免 VoiceOver 重複播報。
+          excludeFromSemantics: true,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 5),
         Text(
           partner.name,
           maxLines: 1,
@@ -282,16 +285,26 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 5),
+        const SizedBox(height: 4),
         Container(
-          width: 6,
-          height: 6,
+          key: ValueKey('partner-identity-dot-${partner.id}'),
+          width: _identityDotSize,
+          height: _identityDotSize,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: gradient.first,
+            color: identityGradient.first,
           ),
         ),
       ],
     );
+  }
+
+  static String _stageAssetFor(String? label) {
+    if (label == null) return _unknownStageAsset;
+    for (final entry in _stageAssetsByLabel.entries) {
+      // 報告標籤偶爾會帶 emoji／狀態前綴，使用 contains 才不會誤回未知圖。
+      if (label.contains(entry.key)) return entry.value;
+    }
+    return _unknownStageAsset;
   }
 }
