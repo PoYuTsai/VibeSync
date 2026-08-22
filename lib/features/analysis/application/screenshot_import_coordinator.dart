@@ -24,6 +24,10 @@ typedef CreateConversation = Future<Conversation> Function({
   String? partnerId,
 });
 
+/// The coordinator-level OCR fence wraps payload preparation as well as the
+/// HTTP call, so it stays outside the auxiliary client's 130s HTTP fence.
+const kAnalyzeOcrScreenTimeout = Duration(seconds: 135);
+
 /// [ScreenshotImportCoordinator.commitImport] 的落地結果。
 enum ScreenshotImportCommitKind {
   /// 來源片段已完成分析：已另開新片段，畫面應導向 [createdConversationId]。
@@ -55,29 +59,29 @@ class ScreenshotImportCoordinator {
     required this.conversationId,
     required Conversation? Function(String conversationId) getConversation,
     required CreateConversation createConversation,
-    required Future<void> Function(Conversation conversation) saveConversation,
+    required Future<void> Function(Conversation conversation)
+        persistImportedConversation,
     required Partner? Function(String partnerId) partnerById,
     required RecognizeScreenshots recognizeScreenshots,
     required OcrRecognitionCachePort recognitionCache,
-    required void Function() invalidateConversationProvider,
   })  : _getConversation = getConversation,
         _createConversation = createConversation,
-        _saveConversation = saveConversation,
+        _persistImportedConversation = persistImportedConversation,
         _partnerById = partnerById,
         _recognizeScreenshots = recognizeScreenshots,
-        _recognitionCache = recognitionCache,
-        _invalidateConversationProvider = invalidateConversationProvider;
+        _recognitionCache = recognitionCache;
 
   final String conversationId;
   final Conversation? Function(String conversationId) _getConversation;
   final CreateConversation _createConversation;
-  final Future<void> Function(Conversation conversation) _saveConversation;
+
+  /// 深 write operation：存檔＋畫面讀取快取刷新（composition/data 端
+  /// 封裝，成功後 exactly-once；失敗不刷新）。
+  final Future<void> Function(Conversation conversation)
+      _persistImportedConversation;
   final Partner? Function(String partnerId) _partnerById;
   final RecognizeScreenshots _recognizeScreenshots;
   final OcrRecognitionCachePort _recognitionCache;
-
-  /// repo 寫入後讓畫面的 conversationProvider 失效重讀。
-  final void Function() _invalidateConversationProvider;
 
   /// 綁定 partner 時的預期對方名（辨識警告與匯入命名共用）。
   String? expectedPartnerName(Conversation conversation) {
@@ -230,8 +234,7 @@ class ScreenshotImportCoordinator {
           analysisContextNote: analysisContextNote,
         );
       }
-      await _saveConversation(createdConversation);
-      _invalidateConversationProvider();
+      await _persistImportedConversation(createdConversation);
 
       return ScreenshotImportCommit._(
         ScreenshotImportCommitKind.createdNewFragment,
@@ -287,8 +290,7 @@ class ScreenshotImportCoordinator {
       conversation: conv,
       messages: importedMessages,
     );
-    await _saveConversation(conv);
-    _invalidateConversationProvider();
+    await _persistImportedConversation(conv);
 
     return ScreenshotImportCommit._(
       ScreenshotImportCommitKind.replacedBatch,

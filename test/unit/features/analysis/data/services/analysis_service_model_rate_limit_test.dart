@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
 import 'package:vibesync/features/analysis/data/services/analyze_stream_client.dart';
+import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
 Message _msg(String content) {
@@ -27,6 +28,7 @@ Message _msg(String content) {
 
 AnalyzeStreamClient _service(MockClient client) {
   return AnalyzeStreamClient(
+    displayMapper: const AnalysisStreamContentDisplayMapper(),
     clientFactory: () => client,
     accessTokenProvider: () => 'fake-token',
     expectedTierProvider: () => null,

@@ -26,6 +26,7 @@ import '../../../user_profile/data/repositories/partner_data_quality_repo_view.d
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../../application/analysis_persistence_coordinator.dart';
 import '../../application/ports/conversation_write_ports.dart';
+import '../../presentation/helpers/analysis_stream_content_display.dart';
 import '../../application/analysis_run_preparer.dart';
 import '../../application/analysis_session_controller.dart';
 import '../../application/reply_iteration_coordinator.dart';
@@ -34,6 +35,7 @@ import '../notifiers/streaming_analyze_notifier.dart';
 import '../repositories/analysis_record_port_adapter.dart';
 import '../services/analysis_auxiliary_client.dart';
 import '../services/conversation_memory_adapter.dart';
+import '../services/imported_conversation_writer.dart';
 import '../services/ocr_recognition_cache_adapter.dart';
 import '../services/optimize_billing_adapter.dart';
 import '../services/reply_refine_draft_adapter.dart';
@@ -62,6 +64,9 @@ Future<String?> _revenueCatAppUserId() async {
 final analyzeStreamClientProvider = Provider<AnalyzeStreamClient>((ref) {
   final subscription = ref.watch(subscriptionProvider);
   return AnalyzeStreamClient(
+    // wire decode 在 client；顯示映射由 presentation mapper 經 data seam
+    // 注入（composition root 是唯一接線點）。
+    displayMapper: const AnalysisStreamContentDisplayMapper(),
     expectedTierProvider: () => subscription.tier,
     revenueCatAppUserIdProvider: _revenueCatAppUserId,
   );
@@ -292,17 +297,20 @@ final analysisSessionControllerFactoryProvider =
 /// [ScreenshotImportCoordinator] 的工廠：對話讀寫、partner 查名與免費
 /// OCR client 的組裝都在這裡。
 typedef ScreenshotImportCoordinatorFactory = ScreenshotImportCoordinator
-    Function({
-  required String conversationId,
-  required void Function() invalidateConversationProvider,
-});
+    Function({required String conversationId});
 
 final screenshotImportCoordinatorFactoryProvider =
     Provider<ScreenshotImportCoordinatorFactory>((ref) {
-  return ({
-    required String conversationId,
-    required void Function() invalidateConversationProvider,
-  }) {
+  return ({required String conversationId}) {
+    // 深 write operation：save 成功後 conversationProvider 失效恰好一次；
+    // save 失敗或 conversation 缺席不失效。
+    final writer = ImportedConversationWriter(
+      save: (conversation) => ref
+          .read(conversationWriteControllerProvider.notifier)
+          .save(conversation),
+      refreshConversationViews: () =>
+          ref.invalidate(conversationProvider(conversationId)),
+    );
     return ScreenshotImportCoordinator(
       conversationId: conversationId,
       getConversation: (id) =>
@@ -317,14 +325,11 @@ final screenshotImportCoordinatorFactoryProvider =
                 messages: messages,
                 partnerId: partnerId,
               ),
-      saveConversation: (conversation) => ref
-          .read(conversationWriteControllerProvider.notifier)
-          .save(conversation),
+      persistImportedConversation: writer.persist,
       partnerById: (partnerId) =>
           ref.read(partnerRepositoryProvider).getById(partnerId),
       recognizeScreenshots: AnalysisAuxiliaryClient().recognizeScreenshots,
       recognitionCache: const OcrRecognitionCacheAdapter(),
-      invalidateConversationProvider: invalidateConversationProvider,
     );
   };
 });

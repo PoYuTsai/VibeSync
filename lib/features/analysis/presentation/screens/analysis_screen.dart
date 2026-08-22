@@ -77,6 +77,7 @@ import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/swipe_hint_nudge.dart';
 import '../widgets/analysis_usage_summary_line.dart';
+import '../helpers/analysis_progress_stage_copy.dart';
 import '../helpers/analysis_run_metadata_mapping.dart';
 import '../helpers/analysis_usage_copy.dart';
 import '../widgets/analysis_action_widgets.dart';
@@ -230,8 +231,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   late final ScreenshotImportCoordinator _screenshotImport =
       ref.read(screenshotImportCoordinatorFactoryProvider)(
     conversationId: widget.conversationId,
-    invalidateConversationProvider: () =>
-        ref.invalidate(conversationProvider(widget.conversationId)),
   );
   String? _analysisArchiveCountScopeKey;
   int _analysisArchiveCount = 0;

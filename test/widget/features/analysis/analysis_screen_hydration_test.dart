@@ -17,6 +17,7 @@ import 'package:vibesync/features/analysis/data/providers/analysis_record_provid
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/analysis/data/repositories/analysis_record_store.dart';
 import 'package:vibesync/features/analysis/data/services/analyze_stream_client.dart';
+import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/analysis/data/services/partner_context_resolver.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
@@ -79,6 +80,9 @@ class _MutableStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
 /// Records streaming calls so tests can assert the screen did not re-trigger
 /// an analysis after hydrating.
 class _RecordingAnalyzeStreamClient extends AnalyzeStreamClient {
+  _RecordingAnalyzeStreamClient()
+      : super(displayMapper: const AnalysisStreamContentDisplayMapper());
+
   int streamCalls = 0;
   List<Message>? streamMessages;
   int? streamPreviousAnalyzedCount;

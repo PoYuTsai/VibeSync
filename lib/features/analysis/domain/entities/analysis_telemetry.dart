@@ -1,7 +1,10 @@
-/// AnalyzeChat 輔助請求的進度階段、等待里程碑、圍籬時限與 telemetry
-/// 值物件（domain）。screen／application／data client 共用；歷史
-/// import 路徑（auxiliary client／analysis_service barrel）以
-/// re-export 相容。
+/// AnalyzeChat 輔助請求的純資料 telemetry／進度值物件（domain）。
+///
+/// 這裡只有可跨層共享的 VO 與 callback typedef：進度階段 enum、進度
+/// 更新、telemetry。中文顯示 label 在 presentation
+/// （analysis_progress_stage_copy）、HTTP 圍籬與等待里程碑在 data
+/// （auxiliary client）、135s 畫面圍籬在 application（screenshot
+/// coordinator，真正的 fence owner）。歷史 import 路徑以 re-export 相容。
 library;
 
 enum AnalysisProgressStage {
@@ -12,62 +15,6 @@ enum AnalysisProgressStage {
   resolvingSpeakers,
   finalizingRecognition,
 }
-
-String analysisProgressStageLabel(AnalysisProgressStage stage) {
-  switch (stage) {
-    case AnalysisProgressStage.preparingPayload:
-      return '準備圖片中';
-    case AnalysisProgressStage.uploadingRequest:
-      return '上傳圖片中';
-    case AnalysisProgressStage.awaitingAi:
-      return 'AI 讀取圖片中';
-    case AnalysisProgressStage.recognizingMessages:
-      return '辨識訊息內容中';
-    case AnalysisProgressStage.resolvingSpeakers:
-      return '校對說話者中';
-    case AnalysisProgressStage.finalizingRecognition:
-      return '整理辨識結果中';
-  }
-}
-
-class AnalysisProgressMilestone {
-  final Duration delay;
-  final AnalysisProgressStage stage;
-
-  const AnalysisProgressMilestone(this.delay, this.stage);
-}
-
-/// recognizeOnly 不傳輸中間分析內容，只在等待同一個 OCR
-/// request 時送出輕量狀態。這些是用戶等待進度，不是伺服器承諾的
-/// 精確百分比；response schema、quota 與 OCR 結果契約都不變。
-const ocrRecognitionProgressMilestones = <AnalysisProgressMilestone>[
-  AnalysisProgressMilestone(
-    Duration(milliseconds: 700),
-    AnalysisProgressStage.awaitingAi,
-  ),
-  AnalysisProgressMilestone(
-    Duration(seconds: 4),
-    AnalysisProgressStage.recognizingMessages,
-  ),
-  AnalysisProgressMilestone(
-    Duration(seconds: 9),
-    AnalysisProgressStage.resolvingSpeakers,
-  ),
-  AnalysisProgressMilestone(
-    Duration(seconds: 15),
-    AnalysisProgressStage.finalizingRecognition,
-  ),
-];
-
-/// Client fences must outlive the Edge request-level model budgets (50s text,
-/// 120s image) so parsing and quota settlement can finish before the socket is
-/// closed locally.
-const kAnalyzeTextRequestTimeout = Duration(seconds: 65);
-const kAnalyzeImageRequestTimeout = Duration(seconds: 130);
-
-/// The screen-level OCR fence wraps payload preparation as well as the HTTP
-/// call, so it stays outside [kAnalyzeImageRequestTimeout].
-const kAnalyzeOcrScreenTimeout = Duration(seconds: 135);
 
 class AnalysisProgressUpdate {
   final AnalysisProgressStage stage;

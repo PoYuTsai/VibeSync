@@ -18,9 +18,7 @@ import '../../../../core/services/supabase_service.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
-import '../../domain/entities/analysis_stream_content.dart';
 
-export '../../domain/entities/analysis_stream_content.dart';
 import '../../domain/entities/analysis_recommendation_preview.dart';
 import 'analysis_exceptions.dart';
 import 'analysis_transport_support.dart';
@@ -51,6 +49,44 @@ class AnalyzeStreamRequest {
     this.previousAnalyzedCharCount,
     this.confirmedOvercharge,
   });
+}
+
+enum AnalysisStreamContentKind {
+  decision,
+  replyOption,
+  metrics,
+  coachHint,
+  reportSection,
+}
+
+class AnalysisStreamContent {
+  final AnalysisStreamContentKind kind;
+  final String title;
+  final String body;
+  final String? tag;
+  final Map<String, dynamic> rawEvent;
+
+  const AnalysisStreamContent({
+    required this.kind,
+    required this.title,
+    required this.body,
+    this.tag,
+    required this.rawEvent,
+  });
+}
+
+/// wire decode 之後、顯示映射之前的 seam（data-owned）。
+///
+/// client 只負責 NDJSON decode 與事件分流；把 event 變成顯示內容
+/// （中文標題／內文、schema-leak 清洗）的責任在 presentation 的
+/// mapper 實作，於 composition root 注入。production adapter 與測試
+/// 走同一條 seam。
+abstract class AnalysisStreamDisplayMapper {
+  /// 內容型事件 → 顯示內容；不可顯示（未知型別／空內文）回 null。
+  AnalysisStreamContent? contentFromEvent(Map<String, dynamic> event);
+
+  /// 進度 label／detail 的顯示守門（trim ＋ schema-leak 清洗）。
+  String? displayText(dynamic value);
 }
 
 enum AnalysisStreamUpdateKind {
@@ -191,17 +227,20 @@ class AnalyzeStreamClient {
   static const Duration _streamConnectTimeout = Duration(seconds: 45);
   static const Duration _streamIdleTimeout = Duration(seconds: 120);
 
+  final AnalysisStreamDisplayMapper _displayMapper;
   final http.Client Function() _clientFactory;
   final String? Function() _accessTokenProvider;
   final String? Function() _expectedTierProvider;
   final Future<String?> Function() _revenueCatAppUserIdProvider;
 
   AnalyzeStreamClient({
+    required AnalysisStreamDisplayMapper displayMapper,
     http.Client Function()? clientFactory,
     String? Function()? accessTokenProvider,
     String? Function()? expectedTierProvider,
     Future<String?> Function()? revenueCatAppUserIdProvider,
-  })  : _clientFactory = clientFactory ?? http.Client.new,
+  })  : _displayMapper = displayMapper,
+        _clientFactory = clientFactory ?? http.Client.new,
         _accessTokenProvider =
             accessTokenProvider ?? (() => SupabaseService.accessToken),
         _expectedTierProvider =
@@ -306,11 +345,11 @@ class AnalyzeStreamClient {
           case 'analysis.started':
             yield AnalysisStreamUpdate.started(
               runId: runId,
-              label: AnalysisStreamContent.displayTextField(
+              label: _displayMapper.displayText(
                     event['label'],
                   ) ??
                   '開始完整分析',
-              detail: AnalysisStreamContent.displayTextField(
+              detail: _displayMapper.displayText(
                 event['detail'],
               ),
               etaSeconds: etaSeconds,
@@ -320,11 +359,11 @@ class AnalyzeStreamClient {
           case 'analysis.progress':
             yield AnalysisStreamUpdate.progress(
               runId: runId,
-              label: AnalysisStreamContent.displayTextField(
+              label: _displayMapper.displayText(
                     event['label'],
                   ) ??
                   '完整分析進行中',
-              detail: AnalysisStreamContent.displayTextField(
+              detail: _displayMapper.displayText(
                 event['detail'],
               ),
               etaSeconds: etaSeconds,
@@ -336,7 +375,7 @@ class AnalyzeStreamClient {
           case 'analysis.metrics':
           case 'analysis.coach_hint':
           case 'analysis.report_section':
-            final content = AnalysisStreamContent.fromEvent(event);
+            final content = _displayMapper.contentFromEvent(event);
             if (content == null || content.body.trim().isEmpty) {
               break;
             }

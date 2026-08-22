@@ -6,6 +6,7 @@ import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_noti
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
 import 'package:vibesync/features/analysis/data/services/analyze_stream_client.dart';
+import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
@@ -70,7 +71,8 @@ AnalysisResult _analysisResult() {
 }
 
 class _FakeAnalyzeStreamClient extends AnalyzeStreamClient {
-  _FakeAnalyzeStreamClient();
+  _FakeAnalyzeStreamClient()
+      : super(displayMapper: const AnalysisStreamContentDisplayMapper());
 
   AnalysisRecommendationPreview? recommendationPreviewResult;
   Exception? recommendationPreviewError;

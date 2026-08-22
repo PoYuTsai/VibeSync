@@ -1,36 +1,25 @@
-/// AnalyzeChat 串流事件的顯示內容模型（domain 值物件）：事件 → 標題／
-/// 內文的解析與 schema-leak 顯示清洗。
+/// AnalyzeChat 串流事件 → 顯示內容的映射（presentation-owned）。
 ///
-/// 歷史 import 路徑（analyze_stream_client／analysis_service barrel）以
-/// re-export 相容。
+/// wire decode（NDJSON 行 → event map）留在 data 的
+/// [AnalyzeStreamClient]；這裡負責事件分型、中文標題／內文、schema-leak
+/// 顯示清洗。經 data-owned 的 [AnalysisStreamDisplayMapper] seam 注入，
+/// production 與測試都走同一條路。
 library;
 
 import 'dart:convert';
 
-enum AnalysisStreamContentKind {
-  decision,
-  replyOption,
-  metrics,
-  coachHint,
-  reportSection,
-}
+import '../../data/services/analyze_stream_client.dart'
+    show
+        AnalysisStreamContent,
+        AnalysisStreamContentKind,
+        AnalysisStreamDisplayMapper;
 
-class AnalysisStreamContent {
-  final AnalysisStreamContentKind kind;
-  final String title;
-  final String body;
-  final String? tag;
-  final Map<String, dynamic> rawEvent;
+class AnalysisStreamContentDisplayMapper
+    implements AnalysisStreamDisplayMapper {
+  const AnalysisStreamContentDisplayMapper();
 
-  const AnalysisStreamContent({
-    required this.kind,
-    required this.title,
-    required this.body,
-    this.tag,
-    required this.rawEvent,
-  });
-
-  static AnalysisStreamContent? fromEvent(Map<String, dynamic> event) {
+  @override
+  AnalysisStreamContent? contentFromEvent(Map<String, dynamic> event) {
     final type = _stringField(event['type']);
     switch (type) {
       case 'analysis.decision':
@@ -169,9 +158,8 @@ class AnalysisStreamContent {
     return trimmed.isEmpty ? null : trimmed;
   }
 
-  /// 對外顯示文字的統一守門：trim ＋ schema-leak 清洗（progress label/
-  /// detail 與事件內文共用）。
-  static String? displayTextField(dynamic value) {
+  @override
+  String? displayText(dynamic value) {
     final raw = _stringField(value);
     if (raw == null) return null;
     final sanitized = _sanitizeSchemaLeakText(raw).trim();

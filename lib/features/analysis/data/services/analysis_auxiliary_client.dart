@@ -16,6 +16,41 @@ export '../../domain/entities/analysis_telemetry.dart';
 import 'analysis_exceptions.dart';
 import 'analysis_transport_support.dart';
 
+class AnalysisProgressMilestone {
+  final Duration delay;
+  final AnalysisProgressStage stage;
+
+  const AnalysisProgressMilestone(this.delay, this.stage);
+}
+
+/// recognizeOnly 不傳輸中間分析內容，只在等待同一個 OCR
+/// request 時送出輕量狀態。這些是用戶等待進度，不是伺服器承諾的
+/// 精確百分比；response schema、quota 與 OCR 結果契約都不變。
+const ocrRecognitionProgressMilestones = <AnalysisProgressMilestone>[
+  AnalysisProgressMilestone(
+    Duration(milliseconds: 700),
+    AnalysisProgressStage.awaitingAi,
+  ),
+  AnalysisProgressMilestone(
+    Duration(seconds: 4),
+    AnalysisProgressStage.recognizingMessages,
+  ),
+  AnalysisProgressMilestone(
+    Duration(seconds: 9),
+    AnalysisProgressStage.resolvingSpeakers,
+  ),
+  AnalysisProgressMilestone(
+    Duration(seconds: 15),
+    AnalysisProgressStage.finalizingRecognition,
+  ),
+];
+
+/// Client fences must outlive the Edge request-level model budgets (50s text,
+/// 120s image) so parsing and quota settlement can finish before the socket is
+/// closed locally.
+const kAnalyzeTextRequestTimeout = Duration(seconds: 65);
+const kAnalyzeImageRequestTimeout = Duration(seconds: 130);
+
 class ImageData {
   final String data;
   final String mediaType;
