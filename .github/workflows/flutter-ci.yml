@@ -52,12 +52,20 @@ jobs:
           supabase/functions/practice-chat/moments_schedule_test.ts
           supabase/functions/practice-chat/moments_migration_source_test.ts
 
-      # PGlite（WASM Postgres）要下載 npm 套件並讀取 wasm/data 檔，需要比上面那組
-      # 純函式契約測試更寬的旗標。獨立成一步：失敗時一眼看得出是資料層契約掛了，
-      # 也不必為了它放寬其他測試的權限。
+      # PGlite（WASM Postgres）獨立成一步：它是唯一會拉 npm 套件的測試（約 8 秒），
+      # 分開跑讓上面那組純函式契約測試 fail fast，失敗時也一眼看得出是資料層掛了。
+      #
+      # 權限刻意比上面那一步更窄——只有 --allow-read，連 --allow-env 都不給
+      # （2026-08-22 複審 P2-2）。原本寫的
+      # `--allow-env --allow-read --allow-net --allow-write --allow-sys`
+      # 是照抄推測，實測後四個旗標全部不需要：deno 2.9.5 下逐一移除後 13 條測試
+      # 仍全過，全部拿掉只留 --allow-read 也全過；完全不給權限才會出現
+      # `NotCapable: Requires read access`。npm 套件下載屬模組解析，不歸 --allow-net 管。
+      # 不縮成 --allow-read=supabase，因為還要讀 deno 的 npm cache，其路徑隨
+      # DENO_DIR 與執行環境而異，寫死會比不限定更脆弱。
       - name: Run Edge Postgres contract tests
         run: >-
-          deno test --allow-env --allow-read --allow-net --allow-write --allow-sys
+          deno test --allow-read
           supabase/functions/practice-chat/moments_migration_postgres_test.ts
 
   ios-keyboard-compile:
