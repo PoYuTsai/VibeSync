@@ -26,10 +26,7 @@ import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
-import '../../../../shared/widgets/game_stage_indicator.dart';
-import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/coach_action_card.dart';
-import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../coach_chat/data/services/coach_chat_api_service.dart';
 import '../../../coach_chat/presentation/widgets/coach_cta_card.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
@@ -78,6 +75,7 @@ import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/swipe_hint_nudge.dart';
 import '../widgets/analysis_usage_summary_line.dart';
 import '../helpers/analysis_progress_stage_copy.dart';
+import '../sections/detailed_analysis_section.dart';
 import '../sections/streaming_content_section.dart';
 import '../helpers/analysis_run_metadata_mapping.dart';
 import '../helpers/analysis_usage_copy.dart';
@@ -4486,130 +4484,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  Widget _buildDetailedAnalysisToggle() {
-    return Semantics(
-      button: true,
-      label: _showDetailedAnalysis ? '收起詳細分析' : '展開詳細分析',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => setState(
-          () => _showDetailedAnalysis = !_showDetailedAnalysis,
-        ),
-        child: BrandSurfaceCard(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: AppColors.ctaStart.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      Icons.insights_outlined,
-                      color: AppColors.ctaStart,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '詳細分析',
-                          style: AppTypography.titleMedium.copyWith(
-                            color: AppColors.onBackgroundPrimary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '本次投入、階段、心理訊號與互動雷達',
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.onBackgroundSecondary,
-                            height: 1.25,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: AppColors.ctaStart,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _showDetailedAnalysis ? '收起' : '展開',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        AnimatedRotation(
-                          turns: _showDetailedAnalysis ? 0.5 : 0,
-                          duration: AppMotion.state,
-                          curve: AppMotion.easeOut,
-                          child: const Icon(
-                            Icons.expand_more,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (_enthusiasmScore != null)
-                    _buildDetailedAnalysisPill('本次投入 $_enthusiasmScore'),
-                  if (_gameStage != null)
-                    _buildDetailedAnalysisPill(_gameStage!.current.label),
-                  if (_dimensionScores != null)
-                    _buildDetailedAnalysisPill('互動雷達'),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailedAnalysisPill(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-      ),
-      child: Text(
-        label,
-        style: AppTypography.caption.copyWith(
-          color: AppColors.onBackgroundSecondary,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     _syncReplyZoneEntrance();
@@ -5757,291 +5631,27 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
 
                           if (_enthusiasmScore != null) ...[
-                            _buildDetailedAnalysisToggle(),
+                            DetailedAnalysisToggleCard(
+                              expanded: _showDetailedAnalysis,
+                              onToggle: () => setState(
+                                () => _showDetailedAnalysis =
+                                    !_showDetailedAnalysis,
+                              ),
+                              enthusiasmScore: _enthusiasmScore,
+                              stageLabel: _gameStage?.current.label,
+                              hasRadar: _dimensionScores != null,
+                            ),
                             if (_showDetailedAnalysis)
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  const SizedBox(height: 12),
-                                  ScoreHeroCard(
-                                    score: _enthusiasmScore!,
-                                    // previousScore: null for now
-                                  ),
-
-                                  // 五維度剖析 (Starter / Essential only)
-                                  if (_dimensionScores != null &&
-                                      subscription.isPremium) ...[
-                                    const SizedBox(height: 16),
-                                    DimensionRadarChart(
-                                      scores: DimensionScores(
-                                        heat: _dimensionScores!['heat'] ?? 50,
-                                        engagement:
-                                            _dimensionScores!['engagement'] ??
-                                                50,
-                                        topicDepth:
-                                            _dimensionScores!['topicDepth'] ??
-                                                50,
-                                        replyWillingness: _dimensionScores![
-                                                'replyWillingness'] ??
-                                            50,
-                                        emotionalConnection: _dimensionScores![
-                                                'emotionalConnection'] ??
-                                            50,
-                                      ),
-                                    ),
-                                  ],
-
-                                  // 對話階段指示器
-                                  if (_gameStage != null) ...[
-                                    const SizedBox(height: 16),
-                                    GameStageIndicator(
-                                      currentStage: _gameStage!.current,
-                                      status: _gameStage!.status,
-                                      nextStep: _gameStage!.nextStep,
-                                    ),
-                                  ],
-
-                                  // 她話裡的意思
-                                  if (_psychology != null) ...[
-                                    const SizedBox(height: 16),
-                                    BrandSurfaceCard(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              const Icon(TablerIcons.brain,
-                                                  size: 18,
-                                                  color:
-                                                      AppColors.primaryLight),
-                                              const SizedBox(width: 8),
-                                              Text('她話裡的意思',
-                                                  style: AppTypography
-                                                      .titleMedium
-                                                      .copyWith(
-                                                          color: AppColors
-                                                              .onBackgroundPrimary)),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(_psychology!.subtext,
-                                              style: AppTypography.bodyMedium
-                                                  .copyWith(
-                                                      color: AppColors
-                                                          .onBackgroundPrimary)),
-                                          if (_psychology!.shitTest !=
-                                              null) ...[
-                                            const SizedBox(height: 8),
-                                            Container(
-                                              padding: const EdgeInsets.all(8),
-                                              decoration: BoxDecoration(
-                                                color: AppColors.warning
-                                                    .withValues(alpha: 0.1),
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
-                                              ),
-                                              child: Row(
-                                                children: [
-                                                  const Icon(
-                                                      TablerIcons
-                                                          .alert_triangle,
-                                                      size: 14,
-                                                      color: AppColors.warning),
-                                                  const SizedBox(width: 8),
-                                                  Expanded(
-                                                    child: Text(
-                                                      '互動測試訊號: ${_psychology!.shitTest}',
-                                                      style: AppTypography
-                                                          .caption
-                                                          .copyWith(
-                                                              color: AppColors
-                                                                  .onBackgroundPrimary),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                          if (_psychology!
-                                              .qualificationSignal) ...[
-                                            const SizedBox(height: 8),
-                                            Row(
-                                              children: [
-                                                const Icon(Icons.check_circle,
-                                                    size: 16,
-                                                    color: AppColors.success),
-                                                const SizedBox(width: 4),
-                                                Text('她有主動投入訊號',
-                                                    style: AppTypography.caption
-                                                        .copyWith(
-                                                            color: AppColors
-                                                                .onBackgroundPrimary)),
-                                              ],
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-
-                                  // Strategy
-                                  if (_strategy != null &&
-                                      _strategy!.trim().isNotEmpty) ...[
-                                    const SizedBox(height: 16),
-                                    BrandSurfaceCard(
-                                      child: Row(
-                                        children: [
-                                          const Icon(TablerIcons.bulb,
-                                              size: 20,
-                                              color: AppColors.warning),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              _strategy!,
-                                              style: AppTypography.bodyMedium
-                                                  .copyWith(
-                                                      color: AppColors
-                                                          .onBackgroundPrimary),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-
-                                  // Topic Depth (話題深度)
-                                  if (_topicDepth != null) ...[
-                                    const SizedBox(height: 16),
-                                    BrandSurfaceCard(
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                              switch (_topicDepth!.current) {
-                                                TopicDepthLevel.event =>
-                                                  TablerIcons.news,
-                                                TopicDepthLevel.personal =>
-                                                  TablerIcons.user,
-                                                TopicDepthLevel.intimate =>
-                                                  TablerIcons.hearts,
-                                              },
-                                              size: 20,
-                                              color: AppColors.primaryLight),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                    '話題深度: ${_topicDepth!.current.label}',
-                                                    style: AppTypography
-                                                        .bodyMedium
-                                                        .copyWith(
-                                                            color: AppColors
-                                                                .onBackgroundPrimary)),
-                                                if (_topicDepth!
-                                                    .suggestion.isNotEmpty)
-                                                  Text(_topicDepth!.suggestion,
-                                                      style: AppTypography
-                                                          .caption
-                                                          .copyWith(
-                                                              color: AppColors
-                                                                  .onBackgroundSecondary
-                                                                  .withValues(
-                                                                      alpha:
-                                                                          0.6))),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-
-                                  // Health Check (對話健檢 - Essential 專屬)
-                                  if (_healthCheck != null &&
-                                      subscription.isEssential &&
-                                      _healthCheck!.issues.isNotEmpty) ...[
-                                    const SizedBox(height: 16),
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.warning
-                                            .withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                            color: AppColors.warning
-                                                .withValues(alpha: 0.3)),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              const Icon(
-                                                  TablerIcons.stethoscope,
-                                                  size: 18,
-                                                  color: AppColors.info),
-                                              const SizedBox(width: 8),
-                                              Text('對話健檢',
-                                                  style: AppTypography
-                                                      .titleMedium),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 8),
-                                          ..._healthCheck!.issues.map((issue) =>
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                    bottom: 4),
-                                                child: Row(
-                                                  children: [
-                                                    const Icon(
-                                                        Icons.warning_amber,
-                                                        size: 16,
-                                                        color:
-                                                            AppColors.warning),
-                                                    const SizedBox(width: 8),
-                                                    Expanded(
-                                                        child: Text(issue,
-                                                            style: AppTypography
-                                                                .bodyMedium)),
-                                                  ],
-                                                ),
-                                              )),
-                                          if (_healthCheck!
-                                              .suggestions.isNotEmpty) ...[
-                                            const SizedBox(height: 8),
-                                            ..._healthCheck!.suggestions
-                                                .map((suggestion) => Padding(
-                                                      padding:
-                                                          const EdgeInsets.only(
-                                                              bottom: 4),
-                                                      child: Row(
-                                                        children: [
-                                                          const Icon(
-                                                              Icons
-                                                                  .lightbulb_outline,
-                                                              size: 16,
-                                                              color: AppColors
-                                                                  .success),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Expanded(
-                                                              child: Text(
-                                                                  suggestion,
-                                                                  style: AppTypography
-                                                                      .caption)),
-                                                        ],
-                                                      ),
-                                                    )),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ],
+                              DetailedAnalysisContent(
+                                enthusiasmScore: _enthusiasmScore!,
+                                dimensionScores: _dimensionScores,
+                                isPremium: subscription.isPremium,
+                                isEssential: subscription.isEssential,
+                                gameStage: _gameStage,
+                                psychology: _psychology,
+                                strategy: _strategy,
+                                topicDepth: _topicDepth,
+                                healthCheck: _healthCheck,
                               ),
                           ],
 
