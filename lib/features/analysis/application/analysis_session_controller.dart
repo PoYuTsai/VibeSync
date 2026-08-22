@@ -12,8 +12,8 @@ import '../../conversation/domain/entities/conversation.dart';
 import '../../conversation/domain/services/conversation_content_revision.dart';
 import '../domain/entities/analysis_models.dart';
 import '../domain/entities/overcharge_confirmation.dart';
-import '../domain/entities/streaming_analysis_state.dart';
 import 'analysis_persistence_coordinator.dart';
+import 'analysis_run_metadata.dart';
 import 'analysis_run_preparer.dart';
 import 'ports/streaming_run_port.dart';
 
@@ -91,17 +91,17 @@ class AnalysisSessionController {
   Future<void> retry() => _retryRun();
 
   /// 完成結果是否已對不上目前對話內容（同數量編輯靠 contentRevision 認出；
-  /// 舊 state 無修訂時退回訊息數比對）。
-  bool isResultStaleForCurrentConversation(StreamingAnalysisState state) {
+  /// 舊 run 無修訂時退回訊息數比對）。
+  bool isResultStaleForCurrentConversation(AnalysisRunMetadata run) {
     final conversation = _currentConversation();
     if (conversation == null) return false;
-    final expectedRevision = state.conversationContentRevision;
+    final expectedRevision = run.contentRevision;
     if (expectedRevision != null) {
       return conversationContentRevision(conversation) != expectedRevision;
     }
-    // Backward-compatible guard for states created before content revisions
+    // Backward-compatible guard for runs created before content revisions
     // were added (and for narrowly-scoped widget test seeds).
-    final expectedCount = state.conversationMessageCount;
+    final expectedCount = run.conversationMessageCount;
     if (expectedCount == null) return false;
     return conversation.messages.length != expectedCount;
   }
@@ -109,7 +109,7 @@ class AnalysisSessionController {
   /// live 完成轉場的持久化排程（fire-and-forget；測試環境的 Hive 失敗
   /// 不得變成 unhandled future）。
   void persistCompletedRun(
-    StreamingAnalysisState state,
+    AnalysisRunMetadata run,
     AnalysisResult result, {
     required int? analyzedMessageCount,
     required bool allowArchivedRecordRefresh,
@@ -117,10 +117,10 @@ class AnalysisSessionController {
     _persistence
         .persistLatestSnapshot(
       result,
-      completionKey: state.analysisRunId,
-      previousAnalyzedCount: state.previousAnalyzedCount,
+      completionKey: run.runId,
+      previousAnalyzedCount: run.previousAnalyzedCount,
       analyzedMessageCount: analyzedMessageCount,
-      analyzedContentRevision: state.conversationContentRevision,
+      analyzedContentRevision: run.contentRevision,
       allowArchivedRecordRefresh: allowArchivedRecordRefresh,
     )
         .catchError((_) {
@@ -132,7 +132,7 @@ class AnalysisSessionController {
   /// 就只補紀錄修復並回 false；否則排程持久化並回 true，畫面據此更新
   /// 本地 count 鏡像與 usage 同步。
   bool persistHydratedResultIfNeeded(
-    StreamingAnalysisState state,
+    AnalysisRunMetadata run,
     AnalysisResult result, {
     required int expectedAnalyzedCount,
     required Conversation conversation,
@@ -142,16 +142,16 @@ class AnalysisSessionController {
       snapshotJson: conversation.lastAnalysisSnapshotJson,
       rawResponse: result.rawResponse,
       messageCount: expectedAnalyzedCount,
-      analyzedContentRevision: state.conversationContentRevision,
+      analyzedContentRevision: run.contentRevision,
     );
     if (alreadyPersisted) {
       _persistence.scheduleRecordRepair(
         conversation: conversation,
         result: result,
-        completionKey: state.analysisRunId,
-        previousAnalyzedCount: state.previousAnalyzedCount,
+        completionKey: run.runId,
+        previousAnalyzedCount: run.previousAnalyzedCount,
         analyzedMessageCount: expectedAnalyzedCount,
-        analyzedContentRevision: state.conversationContentRevision,
+        analyzedContentRevision: run.contentRevision,
       );
       return false;
     }
@@ -159,10 +159,10 @@ class AnalysisSessionController {
     _persistence
         .persistLatestSnapshot(
       result,
-      completionKey: state.analysisRunId,
-      previousAnalyzedCount: state.previousAnalyzedCount,
+      completionKey: run.runId,
+      previousAnalyzedCount: run.previousAnalyzedCount,
       analyzedMessageCount: expectedAnalyzedCount,
-      analyzedContentRevision: state.conversationContentRevision,
+      analyzedContentRevision: run.contentRevision,
     )
         .catchError((_) {
       // Same fire-and-forget contract as the listener path — Hive failures in

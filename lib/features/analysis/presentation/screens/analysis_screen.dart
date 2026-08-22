@@ -77,6 +77,7 @@ import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/swipe_hint_nudge.dart';
 import '../widgets/analysis_usage_summary_line.dart';
+import '../helpers/analysis_run_metadata_mapping.dart';
 import '../helpers/analysis_usage_copy.dart';
 import '../widgets/analysis_action_widgets.dart';
 import '../widgets/streaming_analysis_loading_widgets.dart';
@@ -779,7 +780,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // analysis on top of the new run's streaming loader / retry state.
     // (I-P1-c, Codex round-2).
     if (_isStreamingAnalyzePartialPhase(initialState.phase) ||
-        _session.isResultStaleForCurrentConversation(initialState)) {
+        _session.isResultStaleForCurrentConversation(
+            initialState.toRunMetadata())) {
       _clearDetailedAnalysisStateForStreamingAnalyzePartial();
     }
     // Hydrate from existing streaming analyze notifier state on remount.
@@ -879,7 +881,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case StreamingAnalyzePhase.done:
         final result = s.result;
         if (result == null) return;
-        if (_session.isResultStaleForCurrentConversation(s)) {
+        if (_session.isResultStaleForCurrentConversation(s.toRunMetadata())) {
           setState(() {
             _isAnalyzing = false;
             _streamErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
@@ -995,7 +997,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         s.analyzedMessageCount ?? conv.messages.length;
 
     final persisted = _session.persistHydratedResultIfNeeded(
-      s,
+      s.toRunMetadata(),
       result,
       expectedAnalyzedCount: expectedAnalyzedCount,
       conversation: conv,
@@ -3227,7 +3229,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case StreamingAnalyzePhase.done:
         final result = next.result;
         if (result == null) return;
-        if (_session.isResultStaleForCurrentConversation(next)) {
+        if (_session
+            .isResultStaleForCurrentConversation(next.toRunMetadata())) {
           setState(() {
             _isAnalyzing = false;
             _followLiveAnalysis = false;
@@ -3279,7 +3282,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _resetFeedbackState();
         });
         _session.persistCompletedRun(
-          next,
+          next.toRunMetadata(),
           result,
           analyzedMessageCount: analyzedMessageCount,
           allowArchivedRecordRefresh: _isRefreshingPremiumReplies,

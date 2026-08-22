@@ -1,15 +1,10 @@
-// 注入回歸：ScreenshotImportCoordinator 與 AnalysisSessionController
-// 只透過具名注入的依賴工作（不碰 Riverpod、不反向依賴 presentation）。
+// 注入回歸：ScreenshotImportCoordinator 只透過具名注入的依賴工作
+//（不碰 Riverpod、不反向依賴 presentation）。session controller 的
+// narrow run seam 行為在 analysis_session_run_seam_test.dart。
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vibesync/features/analysis/application/analysis_persistence_coordinator.dart';
-import 'package:vibesync/features/analysis/application/analysis_session_controller.dart';
 import 'package:vibesync/features/analysis/application/screenshot_import_coordinator.dart';
-import 'package:vibesync/features/analysis/application/ports/analysis_record_port.dart'
-    show AnalysisRecordPort;
 import 'package:vibesync/features/analysis/application/ports/screenshot_recognition_ports.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
-import 'package:vibesync/features/analysis/domain/entities/streaming_analysis_state.dart';
-import 'package:vibesync/features/conversation/domain/services/conversation_content_revision.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
@@ -58,12 +53,6 @@ ScreenshotImportCoordinator _importCoordinator({
     recognitionCache: _ThrowingRecognitionCache(),
     invalidateConversationProvider: () => invalidations.add(1),
   );
-}
-
-class _ThrowingRecordPort implements AnalysisRecordPort {
-  @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      throw UnimplementedError('record port must not be hit');
 }
 
 class _ThrowingRecognitionCache implements OcrRecognitionCachePort {
@@ -145,97 +134,6 @@ void main() {
         ['嗨', '哈囉'],
       );
       expect(invalidations, hasLength(1));
-    });
-  });
-
-  group('AnalysisSessionController（具名注入）', () {
-    AnalysisSessionController controller(Conversation? Function() current) {
-      return AnalysisSessionController(
-        conversationId: _conversationId,
-        startRun: ({
-          required messages,
-          sessionContext,
-          conversationSummary,
-          partnerSummary,
-          effectiveStyleContext,
-          knownContactName,
-          previousAnalyzedCount,
-          previousAnalyzedCharCount,
-          confirmedOvercharge,
-          conversationMessageCount,
-          analyzedMessageCount,
-          conversationContentRevision,
-        }) =>
-            throw UnimplementedError('not used here'),
-        retryRun: () => throw UnimplementedError('not used here'),
-        ensureServerEntitlementSynced: () async {},
-        currentConversation: current,
-        persistence: AnalysisPersistenceCoordinator(
-          conversationId: _conversationId,
-          getConversation: (_) => null,
-          persistAnalysisCompleted: (_,
-              {required expectedContentRevision}) async {},
-          persistContentChanged: (_) async {},
-          markConversationActive: (_) async {},
-          archiveMarkerFor: (_) => null,
-          recordPort: _ThrowingRecordPort(),
-          currentRecordOwnerUserId: () => null,
-          historyRepository: () => throw UnimplementedError('not used here'),
-          trackFunnelOnce: (_) async {},
-          lastPayloadCharCount: () => null,
-          notifyStateChanged: () {},
-          invalidateRecordViews: (_) {},
-          afterAnalysisPersisted: (_) async {},
-        ),
-      );
-    }
-
-    test('staleness：以注入的 currentConversation 比對 contentRevision', () {
-      final conversation = _conversation();
-      final session = controller(() => conversation);
-
-      expect(
-        session.isResultStaleForCurrentConversation(
-          StreamingAnalysisState(
-            phase: StreamingAnalyzePhase.done,
-            conversationContentRevision:
-                conversationContentRevision(conversation),
-          ),
-        ),
-        isFalse,
-      );
-      expect(
-        session.isResultStaleForCurrentConversation(
-          const StreamingAnalysisState(
-            phase: StreamingAnalyzePhase.done,
-            conversationContentRevision: 'edited-away',
-          ),
-        ),
-        isTrue,
-      );
-    });
-
-    test('staleness：舊 state 無修訂時退回訊息數比對', () {
-      final session = controller(_conversation);
-
-      expect(
-        session.isResultStaleForCurrentConversation(
-          const StreamingAnalysisState(
-            phase: StreamingAnalyzePhase.done,
-            conversationMessageCount: 1,
-          ),
-        ),
-        isFalse,
-      );
-      expect(
-        session.isResultStaleForCurrentConversation(
-          const StreamingAnalysisState(
-            phase: StreamingAnalyzePhase.done,
-            conversationMessageCount: 3,
-          ),
-        ),
-        isTrue,
-      );
     });
   });
 }
