@@ -50,6 +50,15 @@ jobs:
           supabase/functions/analyze-chat/streaming_fallback_test.ts
           supabase/functions/analyze-chat/stream_branch_test.ts
           supabase/functions/practice-chat/moments_schedule_test.ts
+          supabase/functions/practice-chat/moments_migration_source_test.ts
+
+      # PGlite（WASM Postgres）要下載 npm 套件並讀取 wasm/data 檔，需要比上面那組
+      # 純函式契約測試更寬的旗標。獨立成一步：失敗時一眼看得出是資料層契約掛了，
+      # 也不必為了它放寬其他測試的權限。
+      - name: Run Edge Postgres contract tests
+        run: >-
+          deno test --allow-env --allow-read --allow-net --allow-write --allow-sys
+          supabase/functions/practice-chat/moments_migration_postgres_test.ts
 
   ios-keyboard-compile:
     name: iOS keyboard compile
