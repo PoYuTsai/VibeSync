@@ -239,7 +239,7 @@ void main() {
     expect(find.text('喜歡旅行'), findsOneWidget);
   });
 
-  testWidgets('內頁底部拆解 panel：關係信號 + 下一步行動全文 + 問教練', (t) async {
+  testWidgets('內頁底部拆解 panel：互動重點 + 下一步行動全文 + 問教練', (t) async {
     await t.binding.setSurfaceSize(const Size(400, 900));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
@@ -256,7 +256,7 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.text('作戰重點'), findsOneWidget);
-    expect(find.text('關係信號'), findsOneWidget);
+    expect(find.text('互動重點'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(PartnerMindMapView),
