@@ -43,6 +43,7 @@ class AnalysisPersistenceCoordinator {
   static const _snapshotRevisionKey = 'contentRevision';
   static const _snapshotMessageCountKey = 'messageCount';
   static const _snapshotHistoryEventIdKey = 'historyEventId';
+  static const _snapshotIsReconnectKey = 'isReconnect';
 
   AnalysisPersistenceCoordinator({
     required this.conversationId,
@@ -258,6 +259,7 @@ class AnalysisPersistenceCoordinator {
     required String contentRevision,
     required int messageCount,
     required String historyEventId,
+    bool? isReconnect,
   }) {
     if (rawResponse == null || rawResponse.isEmpty) {
       return null;
@@ -267,6 +269,7 @@ class AnalysisPersistenceCoordinator {
         _snapshotRevisionKey: contentRevision,
         _snapshotMessageCountKey: messageCount,
         _snapshotHistoryEventIdKey: historyEventId,
+        if (isReconnect != null) _snapshotIsReconnectKey: isReconnect,
       };
     return jsonEncode(snapshot);
   }
@@ -277,6 +280,8 @@ class AnalysisPersistenceCoordinator {
     required Map<String, dynamic>? rawResponse,
     required int messageCount,
     required String? analyzedContentRevision,
+    String? analyzedPartnerId,
+    bool? analyzedIsReconnect,
   }) {
     if (snapshotJson == null ||
         snapshotJson.trim().isEmpty ||
@@ -285,6 +290,11 @@ class AnalysisPersistenceCoordinator {
         messageCount < 0 ||
         messageCount > conversation.messages.length ||
         analyzedContentRevision == null ||
+        !_sameCapturedPartner(
+          conversation,
+          analyzedPartnerId: analyzedPartnerId,
+          analyzedIsReconnect: analyzedIsReconnect,
+        ) ||
         conversationContentRevision(conversation) != analyzedContentRevision) {
       return false;
     }
@@ -300,7 +310,9 @@ class AnalysisPersistenceCoordinator {
               conversationContentRevision(
                 conversation,
                 messageCount: messageCount,
-              )) {
+              ) ||
+          (analyzedIsReconnect != null &&
+              rawMeta[_snapshotIsReconnectKey] != analyzedIsReconnect)) {
         return false;
       }
       snapshot.remove(_snapshotClientMetaKey);
@@ -343,6 +355,61 @@ class AnalysisPersistenceCoordinator {
     }
   }
 
+  bool? _snapshotIsReconnect(String? snapshotJson) {
+    if (snapshotJson == null || snapshotJson.trim().isEmpty) return null;
+    try {
+      final snapshot = _normalizeJsonMap(jsonDecode(snapshotJson));
+      final rawMeta = snapshot?[_snapshotClientMetaKey];
+      final rawValue = rawMeta is Map ? rawMeta[_snapshotIsReconnectKey] : null;
+      return rawValue is bool ? rawValue : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  AnalysisHistoryEvent? _findLegacyRerunEvent(
+    AnalysisHistoryRepository repository, {
+    required int? previousEnthusiasmScore,
+    required String? previousGameStage,
+  }) {
+    if (previousEnthusiasmScore == null) return null;
+    final previousStage = GameStage.tryFromString(previousGameStage);
+    for (final event in repository.listByConversation(conversationId)) {
+      if (event.kind != AnalysisHistoryKind.analyze ||
+          event.enthusiasmScore != previousEnthusiasmScore ||
+          GameStage.tryFromString(event.gameStageLabel) != previousStage) {
+        continue;
+      }
+      return event;
+    }
+    return null;
+  }
+
+  String _stableHistoryEventId({
+    required String revision,
+    required int messageCount,
+  }) {
+    final digest = sha256.convert(
+      utf8.encode(
+          'analysis-history-v1|$conversationId|$revision|$messageCount'),
+    );
+    return 'analysis-${digest.toString().substring(0, 32)}';
+  }
+
+  bool _sameCapturedPartner(
+    Conversation conversation, {
+    required String? analyzedPartnerId,
+    required bool? analyzedIsReconnect,
+  }) {
+    // Old in-memory/test run metadata has no marker and keeps the historical
+    // revision-only behavior. Every new run sends a non-null reconnect bool,
+    // including false, so an explicitly captured orphan scope is distinguishable
+    // from legacy missing metadata.
+    if (analyzedIsReconnect == null) return true;
+    return AnalysisHistoryEvent.normalizeScope(conversation.partnerId) ==
+        AnalysisHistoryEvent.normalizeScope(analyzedPartnerId);
+  }
+
   Map<String, dynamic>? _normalizeJsonMap(dynamic value) {
     if (value is Map<String, dynamic>) {
       return value;
@@ -363,6 +430,8 @@ class AnalysisPersistenceCoordinator {
     int? previousAnalyzedCount,
     int? analyzedMessageCount,
     String? analyzedContentRevision,
+    String? analyzedPartnerId,
+    bool? analyzedIsReconnect,
     bool allowArchivedRecordRefresh = false,
   }) {
     return _trackTask(
@@ -372,6 +441,8 @@ class AnalysisPersistenceCoordinator {
         previousAnalyzedCount: previousAnalyzedCount,
         analyzedMessageCount: analyzedMessageCount,
         analyzedContentRevision: analyzedContentRevision,
+        analyzedPartnerId: analyzedPartnerId,
+        analyzedIsReconnect: analyzedIsReconnect,
         allowArchivedRecordRefresh: allowArchivedRecordRefresh,
       ),
     );
@@ -413,6 +484,8 @@ class AnalysisPersistenceCoordinator {
     int? previousAnalyzedCount,
     int? analyzedMessageCount,
     String? analyzedContentRevision,
+    String? analyzedPartnerId,
+    bool? analyzedIsReconnect,
     bool allowArchivedRecordRefresh = false,
   }) async {
     _inFlightCount++;
@@ -424,6 +497,8 @@ class AnalysisPersistenceCoordinator {
         previousAnalyzedCount: previousAnalyzedCount,
         analyzedMessageCount: analyzedMessageCount,
         analyzedContentRevision: analyzedContentRevision,
+        analyzedPartnerId: analyzedPartnerId,
+        analyzedIsReconnect: analyzedIsReconnect,
         allowArchivedRecordRefresh: allowArchivedRecordRefresh,
       );
     } finally {
@@ -440,6 +515,8 @@ class AnalysisPersistenceCoordinator {
     int? previousAnalyzedCount,
     int? analyzedMessageCount,
     String? analyzedContentRevision,
+    String? analyzedPartnerId,
+    bool? analyzedIsReconnect,
     bool allowArchivedRecordRefresh = false,
   }) async {
     final conv = _getConversation(conversationId);
@@ -447,6 +524,11 @@ class AnalysisPersistenceCoordinator {
       return;
     }
     if (analyzedContentRevision == null ||
+        !_sameCapturedPartner(
+          conv,
+          analyzedPartnerId: analyzedPartnerId,
+          analyzedIsReconnect: analyzedIsReconnect,
+        ) ||
         conversationContentRevision(conv) != analyzedContentRevision) {
       return;
     }
@@ -473,17 +555,43 @@ class AnalysisPersistenceCoordinator {
       messageCount: targetAnalyzedMessageCount,
     );
     // 新 snapshot 先綁定唯一 history event id，再依相同 id 做 best-effort
-    // put。即使第一次事件寫入失敗，重跑也只會補回這次，不會誤覆蓋更早
-    // 的趨勢點。舊版 snapshot 沒有 id 時生成新 id，優先避免破壞舊資料。
+    // put。即使第一次事件寫入失敗，重跑也只會補回這次。舊版 snapshot
+    // 只有 revision/count 時，先以覆蓋前的 score＋stage 找到它對應的最新
+    // event；找不到才用 revision 衍生的穩定 id，避免每次重跑長新趨勢點。
     final previousHistoryEventId = sameRevisionRerun
         ? _snapshotHistoryEventId(previousAnalysis.snapshotJson)
         : null;
-    final historyEventId = previousHistoryEventId ?? const Uuid().v4();
+    AnalysisHistoryEvent? legacyRerunEvent;
+    if (sameRevisionRerun && previousHistoryEventId == null) {
+      try {
+        legacyRerunEvent = _findLegacyRerunEvent(
+          _historyRepository(),
+          previousEnthusiasmScore: previousAnalysis.enthusiasmScore,
+          previousGameStage: previousAnalysis.gameStage,
+        );
+      } catch (_) {
+        // History is best-effort. Canonical snapshot persistence must remain
+        // usable even if the local history box is temporarily unavailable.
+      }
+    }
+    final historyEventId = previousHistoryEventId ??
+        legacyRerunEvent?.id ??
+        (sameRevisionRerun
+            ? _stableHistoryEventId(
+                revision: targetPrefixRevision,
+                messageCount: targetAnalyzedMessageCount,
+              )
+            : const Uuid().v4());
+    final frozenReconnectContext = analyzedIsReconnect ??
+        _snapshotIsReconnect(previousAnalysis.snapshotJson) ??
+        (conv.sessionContext?.meetingContext ==
+            MeetingContext.committedPartner);
     final targetSnapshotJson = _encodeAnalysisSnapshot(
       result.rawResponse,
       contentRevision: targetPrefixRevision,
       messageCount: targetAnalyzedMessageCount,
       historyEventId: historyEventId,
+      isReconnect: frozenReconnectContext,
     );
 
     conv.lastEnthusiasmScore = result.enthusiasmScore;
@@ -507,8 +615,14 @@ class AnalysisPersistenceCoordinator {
       expectedContentRevision: analyzedContentRevision,
     );
 
-    if (conversationContentRevision(conv) != analyzedContentRevision) {
-      // Content changed while the snapshot write was in flight. Roll back this
+    if (conversationContentRevision(conv) != analyzedContentRevision ||
+        !_sameCapturedPartner(
+          conv,
+          analyzedPartnerId: analyzedPartnerId,
+          analyzedIsReconnect: analyzedIsReconnect,
+        )) {
+      // Content or partner scope changed while the snapshot write was in
+      // flight. Roll back this
       // run's analysis fields only if they are still the values we wrote; a
       // genuinely newer, different analysis must win. Then persist the latest
       // messages as active and avoid creating fresh legacy-history evidence.
@@ -539,6 +653,7 @@ class AnalysisPersistenceCoordinator {
       previousAnalyzedCount: previousAnalyzedCount,
       analyzedMessageCount: targetAnalyzedMessageCount,
       analyzedContentRevision: analyzedContentRevision,
+      analyzedIsReconnect: frozenReconnectContext,
       allowArchivedRefresh: allowArchivedRecordRefresh,
     );
     _setAnalysisRecordNeedsRepair(!recordSaved);
@@ -550,7 +665,7 @@ class AnalysisPersistenceCoordinator {
     // 時間點都不會漂移。非法 stage 也保留該事件原本的有效 stage。
     try {
       final historyRepository = _historyRepository();
-      AnalysisHistoryEvent? rerunEvent;
+      AnalysisHistoryEvent? rerunEvent = legacyRerunEvent;
       if (sameRevisionRerun) {
         for (final event
             in historyRepository.listByConversation(conversationId)) {
@@ -561,6 +676,13 @@ class AnalysisPersistenceCoordinator {
           }
         }
       }
+      final eventStageLabel = result.gameStage.hasValidStage
+          ? result.gameStage.current.name
+          : rerunEvent?.gameStageLabel;
+      final eventIsReconnect = result.gameStage.hasValidStage
+          ? result.gameStage.current == GameStage.opening &&
+              frozenReconnectContext
+          : rerunEvent?.isReconnect;
       await historyRepository.append(
         AnalysisHistoryEvent.analyze(
           id: historyEventId,
@@ -569,9 +691,8 @@ class AnalysisPersistenceCoordinator {
           partnerId: conv.partnerId,
           subjectName: conv.name,
           enthusiasmScore: result.enthusiasmScore,
-          gameStageLabel: result.gameStage.hasValidStage
-              ? result.gameStage.current.name
-              : rerunEvent?.gameStageLabel,
+          gameStageLabel: eventStageLabel,
+          isReconnect: eventStageLabel == null ? null : eventIsReconnect,
         ),
       );
     } catch (e) {
@@ -643,6 +764,8 @@ class AnalysisPersistenceCoordinator {
         previousAnalyzedCount: previousAnalyzedCount,
         analyzedMessageCount: analyzedMessageCount,
         analyzedContentRevision: analyzedContentRevision,
+        analyzedIsReconnect:
+            _snapshotIsReconnect(conversation.lastAnalysisSnapshotJson),
         allowArchivedRefresh: canonicalSnapshotMatches,
       );
       _setAnalysisRecordNeedsRepair(!saved);
@@ -661,6 +784,7 @@ class AnalysisPersistenceCoordinator {
     required int? previousAnalyzedCount,
     required int analyzedMessageCount,
     required String? analyzedContentRevision,
+    bool? analyzedIsReconnect,
     bool allowArchivedRefresh = false,
   }) async {
     final ownerUserId = recordOwnerFor(conversation);
@@ -701,9 +825,15 @@ class AnalysisPersistenceCoordinator {
         // opening into durable records. Reuse only the conversation's latest
         // strictly valid stage; otherwise persist a blank label.
         gameStageLabel: result.gameStage.hasValidStage
-            ? _visibleRecordStageLabel(conversation, result.gameStage.current)
-            : GameStage.tryFromString(conversation.currentGameStage)?.label ??
-                '',
+            ? _visibleRecordStageLabel(
+                conversation,
+                result.gameStage.current,
+                isReconnectOverride: analyzedIsReconnect,
+              )
+            : _visibleStoredRecordStageLabel(
+                conversation,
+                isReconnectOverride: analyzedIsReconnect,
+              ),
         allowArchivedRefresh: allowArchivedRefresh,
         sourcePlatform: _recordPort.conversationSource(
           ownerUserId: ownerUserId,
@@ -746,16 +876,28 @@ class AnalysisPersistenceCoordinator {
     return currentUserId;
   }
 
-  String _visibleRecordStageLabel(
-    Conversation conversation,
-    GameStage stage,
-  ) {
+  String _visibleRecordStageLabel(Conversation conversation, GameStage stage,
+      {bool? isReconnectOverride}) {
     if (stage == GameStage.opening &&
-        conversation.sessionContext?.meetingContext ==
-            MeetingContext.committedPartner) {
+        (isReconnectOverride ??
+            conversation.sessionContext?.meetingContext ==
+                MeetingContext.committedPartner)) {
       return '重新連線';
     }
     return stage.label;
+  }
+
+  String _visibleStoredRecordStageLabel(
+    Conversation conversation, {
+    bool? isReconnectOverride,
+  }) {
+    final stage = GameStage.tryFromString(conversation.currentGameStage);
+    if (stage == null) return '';
+    return _visibleRecordStageLabel(
+      conversation,
+      stage,
+      isReconnectOverride: isReconnectOverride,
+    );
   }
 
   AnalysisRecord? currentRecordFor(Conversation conversation) {

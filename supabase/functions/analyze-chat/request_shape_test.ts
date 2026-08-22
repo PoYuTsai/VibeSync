@@ -2,7 +2,10 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { classifyAnalyzeChatRequest } from "./request_shape.ts";
+import {
+  acceptsUserStyleContext,
+  classifyAnalyzeChatRequest,
+} from "./request_shape.ts";
 
 function kindOf(input: Parameters<typeof classifyAnalyzeChatRequest>[0]) {
   const resolution = classifyAnalyzeChatRequest(input);
@@ -55,4 +58,26 @@ Deno.test("形狀分類：recognizeOnly 非布林值 fail-closed", () => {
   const nullish = classifyAnalyzeChatRequest({ recognizeOnly: null });
   assert(nullish.ok);
   if (nullish.ok) assertEquals(nullish.recognizeOnlyRequested, false);
+});
+
+Deno.test("style context 只進輔助寫訊息路徑，主分析與 OCR 一律丟棄", () => {
+  for (
+    const kind of [
+      "my_message",
+      "optimize_message",
+      "new_topic",
+      "opener",
+    ] as const
+  ) {
+    assert(acceptsUserStyleContext({ kind }));
+  }
+  for (
+    const kind of [
+      "plain_analyze",
+      "draft_with_images_analyze",
+      "recognize",
+    ] as const
+  ) {
+    assertEquals(acceptsUserStyleContext({ kind }), false);
+  }
 });

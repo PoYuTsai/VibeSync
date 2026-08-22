@@ -1986,9 +1986,11 @@ Deno.test({
     assert(prompt.includes("逐項標「接／併／略」"));
     // 併球不得當吞球後門（6 球縮 2 球）。
     assert(prompt.includes("把 6 句連發硬縮成 2 球是吞球，不是併球"));
-    // 對象歷史延續球（糖糖梗）務必列進清單——這是被漏掉的那組。
-    assert(prompt.includes("把對象歷史的延續球"));
-    assert(prompt.includes("它最常被漏掉、卻是最高價值的球"));
+    // 對象歷史只幫忙辨認本輪 callback；歷史本身不能灌成本輪球或評分證據。
+    assert(prompt.includes("只把 Latest Analysis Fragment"));
+    assert(prompt.includes("它們不是本輪球"));
+    assert(prompt.includes("不得另列 inventory"));
+    assert(prompt.includes("歷史本身不是額外一球"));
     // reason 要交代盤點結論（接／併／略各一句）。
     assert(prompt.includes("要交代這張盤點表的結論"));
   },

@@ -204,7 +204,11 @@ final analysisRunPreparerProvider = Provider<AnalysisRunPreparer>((ref) {
           .latestStageFor(
             partnerId,
             ref.read(analysisHistoryRepositoryProvider).listRecent(),
-            ref.read(conversationRepositoryProvider).listByPartner(partnerId),
+            // Must include conversations that moved between partner cards.
+            // The resolver uses the current Conversation owner as canonical;
+            // passing only this partner's rows lets the persisted old owner
+            // incorrectly claim the same event too.
+            ref.read(conversationRepositoryProvider).getAllConversations(),
           )
           ?.name;
     },
@@ -308,6 +312,8 @@ final analysisSessionControllerFactoryProvider =
         conversationMessageCount,
         analyzedMessageCount,
         conversationContentRevision,
+        conversationPartnerId,
+        isReconnectContext,
       }) =>
           ref.read(streamingAnalyzeProvider(conversationId).notifier).start(
                 messages: messages,
@@ -324,6 +330,8 @@ final analysisSessionControllerFactoryProvider =
                 conversationMessageCount: conversationMessageCount,
                 analyzedMessageCount: analyzedMessageCount,
                 conversationContentRevision: conversationContentRevision,
+                conversationPartnerId: conversationPartnerId,
+                isReconnectContext: isReconnectContext,
               ),
       retryRun: () => ref
           .read(streamingAnalyzeProvider(conversationId).notifier)

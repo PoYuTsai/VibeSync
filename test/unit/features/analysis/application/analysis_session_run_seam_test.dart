@@ -48,7 +48,7 @@ Map<String, dynamic> _resultJson() => {
       'strategy': '保持沉穩',
     };
 
-Conversation _conversation({String? snapshotJson}) {
+Conversation _conversation({String? snapshotJson, String? partnerId}) {
   return Conversation(
     id: _conversationId,
     name: '小雲',
@@ -63,6 +63,7 @@ Conversation _conversation({String? snapshotJson}) {
     createdAt: DateTime(2026, 5, 28, 12),
     updatedAt: DateTime(2026, 5, 28, 12),
     lastAnalysisSnapshotJson: snapshotJson,
+    partnerId: partnerId,
   );
 }
 
@@ -79,6 +80,8 @@ class _Harness {
   final AnalysisHistoryRepository history = MemoryAnalysisHistoryRepository();
   final analysisCompletedSaves = <String>[];
   SessionContext? startedSessionContext;
+  String? startedPartnerId;
+  bool? startedReconnectContext;
   var startCalls = 0;
 
   late final AnalysisPersistenceCoordinator persistence =
@@ -118,9 +121,13 @@ class _Harness {
       conversationMessageCount,
       analyzedMessageCount,
       conversationContentRevision,
+      conversationPartnerId,
+      isReconnectContext,
     }) async {
       startCalls++;
       startedSessionContext = sessionContext;
+      startedPartnerId = conversationPartnerId;
+      startedReconnectContext = isReconnectContext;
     },
     retryRun: () => throw UnimplementedError('not used here'),
     ensureServerEntitlementSynced: () async {},
@@ -149,6 +156,8 @@ void main() {
       effectiveStyleContext: null,
       knownContactName: null,
       sessionContext: sentContext,
+      conversationPartnerId: null,
+      isReconnectContext: true,
       previousStage: null,
       analysisFragmentStartIndex: 0,
       analyzedMessageCount: 1,
@@ -164,6 +173,8 @@ void main() {
 
     expect(harness.startCalls, 1);
     expect(harness.startedSessionContext, same(sentContext));
+    expect(harness.startedPartnerId, isNull);
+    expect(harness.startedReconnectContext, isTrue);
     expect(conversation.sessionContext, same(sentContext));
   });
 
@@ -184,6 +195,8 @@ void main() {
         meetingContext: MeetingContext.committedPartner,
         duration: AcquaintanceDuration.monthPlus,
       ),
+      conversationPartnerId: null,
+      isReconnectContext: true,
       previousStage: null,
       analysisFragmentStartIndex: 0,
       analyzedMessageCount: 1,
@@ -201,13 +214,43 @@ void main() {
     expect(conversation.sessionContext, same(originalContext));
   });
 
-  test('presentation 映射：reactive state → 最小 run metadata（只帶四個欄位）', () {
+  test('start：等待權益期間若對話已換對象，不送出舊對象脈絡', () async {
+    final conversation = _conversation(partnerId: 'partner-b');
+    final harness = _Harness(conversation: conversation);
+    final preparation = AnalysisRunPreparation(
+      requestMessages: conversation.messages,
+      conversationSummary: null,
+      partnerSummary: 'partner-a context',
+      effectiveStyleContext: null,
+      knownContactName: null,
+      sessionContext: null,
+      conversationPartnerId: 'partner-a',
+      isReconnectContext: false,
+      previousStage: null,
+      analysisFragmentStartIndex: 0,
+      analyzedMessageCount: 1,
+      contentRevision: conversationContentRevision(conversation),
+    );
+
+    await harness.session.start(
+      conversation: conversation,
+      preparation: preparation,
+      waitForCompletion: true,
+      shouldProceed: () => true,
+    );
+
+    expect(harness.startCalls, 0);
+  });
+
+  test('presentation 映射：reactive state → 最小 run metadata', () {
     const state = StreamingAnalysisState(
       phase: StreamingAnalyzePhase.done,
       analysisRunId: 'run-77',
       previousAnalyzedCount: 3,
       conversationMessageCount: 9,
       conversationContentRevision: 'rev-abc',
+      conversationPartnerId: 'partner-1',
+      isReconnectContext: true,
       streamErrorMessage: '這些 UI 欄位不得進 application',
       retriesRemaining: 2,
     );
@@ -217,6 +260,8 @@ void main() {
     expect(run.previousAnalyzedCount, 3);
     expect(run.conversationMessageCount, 9);
     expect(run.contentRevision, 'rev-abc');
+    expect(run.conversationPartnerId, 'partner-1');
+    expect(run.isReconnectContext, isTrue);
   });
 
   group('staleness（narrow seam）', () {
@@ -253,6 +298,21 @@ void main() {
         ),
         isTrue,
       );
+    });
+
+    test('分析中途 Conversation 重新分配到另一對象 → stale', () {
+      final conversation = _conversation(partnerId: 'partner-a');
+      final harness = _Harness(conversation: conversation);
+      final revision = conversationContentRevision(conversation);
+      final run = AnalysisRunMetadata(
+        contentRevision: revision,
+        conversationPartnerId: 'partner-a',
+        isReconnectContext: false,
+      );
+
+      expect(harness.session.isResultStaleForCurrentConversation(run), isFalse);
+      conversation.partnerId = 'partner-b';
+      expect(harness.session.isResultStaleForCurrentConversation(run), isTrue);
     });
   });
 

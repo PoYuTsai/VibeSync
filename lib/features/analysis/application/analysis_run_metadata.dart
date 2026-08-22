@@ -20,10 +20,18 @@ class AnalysisRunMetadata {
   /// run 起點同步擷取的內容修訂（同數量編輯的 staleness／持久化守門）。
   final String? contentRevision;
 
+  /// run 起點的對象 scope；新 run 一律帶值（孤兒對話為 null）。
+  final String? conversationPartnerId;
+
+  /// run 起點送出的情境是否為既有伴侶，供 history/record 凍結顯示語意。
+  final bool? isReconnectContext;
+
   const AnalysisRunMetadata({
     this.runId,
     this.previousAnalyzedCount,
     this.conversationMessageCount,
     this.contentRevision,
+    this.conversationPartnerId,
+    this.isReconnectContext,
   });
 }

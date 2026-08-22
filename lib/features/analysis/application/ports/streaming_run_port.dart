@@ -22,6 +22,8 @@ typedef StartAnalysisRun = Future<void> Function({
   int? conversationMessageCount,
   int? analyzedMessageCount,
   String? conversationContentRevision,
+  String? conversationPartnerId,
+  bool? isReconnectContext,
 });
 
 /// 以快取的 runId＋payload 續跑同一 run（不重扣額度）；無可續跑時 no-op。

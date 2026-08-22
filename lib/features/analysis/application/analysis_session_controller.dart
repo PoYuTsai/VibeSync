@@ -64,6 +64,14 @@ class AnalysisSessionController {
     if (!shouldProceed()) {
       return;
     }
+    final currentConversation = _currentConversation();
+    if (currentConversation == null ||
+        _normalizeScope(currentConversation.partnerId) !=
+            _normalizeScope(preparation.conversationPartnerId)) {
+      // Partner reassignment during the entitlement await must not spend a
+      // request using the old partner summary/context.
+      return;
+    }
 
     // 凍結「這次真的送出的」情境。新片段可能從對象卡帶入最新 defaults；
     // 若第一次請求失敗後以同內容重跑，必須沿用同一份 context，不能被之後
@@ -85,6 +93,8 @@ class AnalysisSessionController {
       conversationMessageCount: conversation.messages.length,
       analyzedMessageCount: preparation.analyzedMessageCount,
       conversationContentRevision: preparation.contentRevision,
+      conversationPartnerId: preparation.conversationPartnerId,
+      isReconnectContext: preparation.isReconnectContext,
     );
     if (waitForCompletion) {
       await analysisFuture;
@@ -103,6 +113,13 @@ class AnalysisSessionController {
     final conversation = _currentConversation();
     if (conversation == null) return false;
     final expectedRevision = run.contentRevision;
+    final expectedPartnerId = _normalizeScope(run.conversationPartnerId);
+    // isReconnectContext is non-null on every new run and doubles as the
+    // compatibility marker that partner scope was explicitly captured.
+    if (run.isReconnectContext != null &&
+        _normalizeScope(conversation.partnerId) != expectedPartnerId) {
+      return true;
+    }
     if (expectedRevision != null) {
       return conversationContentRevision(conversation) != expectedRevision;
     }
@@ -111,6 +128,11 @@ class AnalysisSessionController {
     final expectedCount = run.conversationMessageCount;
     if (expectedCount == null) return false;
     return conversation.messages.length != expectedCount;
+  }
+
+  String? _normalizeScope(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
   }
 
   /// live 完成轉場的持久化排程（fire-and-forget；測試環境的 Hive 失敗
@@ -128,6 +150,8 @@ class AnalysisSessionController {
       previousAnalyzedCount: run.previousAnalyzedCount,
       analyzedMessageCount: analyzedMessageCount,
       analyzedContentRevision: run.contentRevision,
+      analyzedPartnerId: run.conversationPartnerId,
+      analyzedIsReconnect: run.isReconnectContext,
       allowArchivedRecordRefresh: allowArchivedRecordRefresh,
     )
         .catchError((_) {
@@ -150,6 +174,8 @@ class AnalysisSessionController {
       rawResponse: result.rawResponse,
       messageCount: expectedAnalyzedCount,
       analyzedContentRevision: run.contentRevision,
+      analyzedPartnerId: run.conversationPartnerId,
+      analyzedIsReconnect: run.isReconnectContext,
     );
     if (alreadyPersisted) {
       _persistence.scheduleRecordRepair(
@@ -170,6 +196,8 @@ class AnalysisSessionController {
       previousAnalyzedCount: run.previousAnalyzedCount,
       analyzedMessageCount: expectedAnalyzedCount,
       analyzedContentRevision: run.contentRevision,
+      analyzedPartnerId: run.conversationPartnerId,
+      analyzedIsReconnect: run.isReconnectContext,
     )
         .catchError((_) {
       // Same fire-and-forget contract as the listener path — Hive failures in

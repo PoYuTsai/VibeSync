@@ -185,6 +185,7 @@ void main() {
       String? stageLabel,
       DateTime createdAt, {
       String? conversationId,
+      bool? isReconnect,
     }) =>
         AnalysisHistoryEvent.analyze(
           id: id,
@@ -194,6 +195,7 @@ void main() {
           subjectName: '小雲',
           enthusiasmScore: 60,
           gameStageLabel: stageLabel,
+          isReconnect: isReconnect,
         );
 
     test('依分析完成時間取最新有效 stage，可前進也可後退，不保留歷史最高', () {
@@ -332,6 +334,71 @@ void main() {
       );
 
       expect(resolution?.isReconnect, isFalse);
+    });
+
+    test('新事件凍結重新連線語意，不受 Conversation 後續設定改寫', () {
+      final nowDatingApp = _conversation(
+        'c-1',
+        'p-1',
+        '小雲',
+        meetingContext: MeetingContext.datingApp,
+      );
+      final frozenReconnect = stageEvent(
+        'e1',
+        'p-1',
+        'opening',
+        DateTime(2026, 6, 9),
+        conversationId: 'c-1',
+        isReconnect: true,
+      );
+      expect(
+        service.latestStageResolutionFor(
+          'p-1',
+          [frozenReconnect],
+          [nowDatingApp],
+        )?.isReconnect,
+        isTrue,
+      );
+
+      final nowCommitted = _conversation(
+        'c-2',
+        'p-1',
+        '小雲',
+        meetingContext: MeetingContext.committedPartner,
+      );
+      final frozenOpening = stageEvent(
+        'e2',
+        'p-1',
+        'opening',
+        DateTime(2026, 6, 10),
+        conversationId: 'c-2',
+        isReconnect: false,
+      );
+      expect(
+        service.latestStageResolutionFor(
+          'p-1',
+          [frozenOpening],
+          [nowCommitted],
+        )?.isReconnect,
+        isFalse,
+      );
+    });
+
+    test('Conversation 從 A 重分配到 B 後，同一事件只屬於 B', () {
+      final moved = _conversation('c-1', 'partner-b', '小雲');
+      final event = stageEvent(
+        'e1',
+        'partner-a',
+        'qualification',
+        DateTime(2026, 6, 9),
+        conversationId: 'c-1',
+      );
+
+      expect(service.latestStageFor('partner-a', [event], [moved]), isNull);
+      expect(
+        service.latestStageFor('partner-b', [event], [moved]),
+        GameStage.qualification,
+      );
     });
   });
 

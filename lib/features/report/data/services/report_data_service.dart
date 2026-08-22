@@ -212,10 +212,13 @@ class ReportDataService {
     final conversationId =
         AnalysisHistoryEvent.normalizeScope(event.conversationId);
     if (conversationId != null) {
-      final currentPartner = AnalysisHistoryEvent.normalizeScope(
-        conversationsById[conversationId]?.partnerId,
-      );
-      if (currentPartner != null) return currentPartner;
+      final currentConversation = conversationsById[conversationId];
+      if (currentConversation != null) {
+        return AnalysisHistoryEvent.normalizeScope(
+              currentConversation.partnerId,
+            ) ??
+            conversationId;
+      }
     }
 
     final persistedPartner =

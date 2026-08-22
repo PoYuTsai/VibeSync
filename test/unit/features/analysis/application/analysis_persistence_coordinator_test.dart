@@ -176,13 +176,16 @@ class _Harness {
     AnalysisRecordPort? recordPort,
     String? recordOwnerUserId,
     AnalysisHistoryRepository? historyRepository,
+    void Function(Conversation conversation)? onPersistAnalysisCompleted,
   })  : _recordPort = recordPort ?? _ThrowingAnalysisRecordPort(),
         _recordOwnerUserId = recordOwnerUserId,
+        _onPersistAnalysisCompleted = onPersistAnalysisCompleted,
         history = historyRepository ?? MemoryAnalysisHistoryRepository();
 
   final Conversation conversation;
   final AnalysisRecordPort _recordPort;
   final String? _recordOwnerUserId;
+  final void Function(Conversation conversation)? _onPersistAnalysisCompleted;
   final AnalysisHistoryRepository history;
   final analysisCompletedSaves = <String>[];
   final contentChangedSaves = <String>[];
@@ -197,6 +200,7 @@ class _Harness {
     getConversation: (id) => id == conversation.id ? conversation : null,
     persistAnalysisCompleted: (conv, {required expectedContentRevision}) async {
       analysisCompletedSaves.add(expectedContentRevision);
+      _onPersistAnalysisCompleted?.call(conv);
     },
     persistContentChanged: (conv) async {
       contentChangedSaves.add(conv.id);
@@ -362,6 +366,7 @@ void main() {
       await harness.coordinator.awaitSettled();
 
       expect(harness.history.listRecent().single.gameStageLabel, 'opening');
+      expect(harness.history.listRecent().single.isReconnect, isTrue);
       expect(recordPort.savedStageLabels, ['重新連線']);
     });
 
@@ -526,6 +531,130 @@ void main() {
           );
       expect(repaired.enthusiasmScore, 81);
       expect(repaired.gameStageLabel, 'close');
+    });
+
+    test('舊 snapshot 只有 revision/count：重跑更新匹配事件，不新增趨勢', () async {
+      final conversation = _conversation(
+        partnerId: 'partner-1',
+        currentGameStage: 'premise',
+      )..lastEnthusiasmScore = 70;
+      final revision = conversationContentRevision(conversation);
+      final legacySnapshot = _resultJson()
+        ..['__vibesync_snapshot_meta_v1'] = {
+          'contentRevision': revision,
+          'messageCount': 1,
+        };
+      conversation
+        ..lastAnalysisSnapshotJson = jsonEncode(legacySnapshot)
+        ..lastAnalyzedMessageCount = 1;
+
+      final history = MemoryAnalysisHistoryRepository();
+      await history.append(
+        AnalysisHistoryEvent.analyze(
+          id: 'older-event',
+          createdAt: DateTime.utc(2026, 5, 1),
+          conversationId: _conversationId,
+          partnerId: 'partner-1',
+          enthusiasmScore: 45,
+          gameStageLabel: 'opening',
+          isReconnect: false,
+        ),
+      );
+      await history.append(
+        AnalysisHistoryEvent.analyze(
+          id: 'legacy-current',
+          createdAt: DateTime.utc(2026, 5, 28),
+          conversationId: _conversationId,
+          partnerId: 'partner-1',
+          enthusiasmScore: 70,
+          gameStageLabel: 'premise',
+          isReconnect: false,
+        ),
+      );
+      final harness = _Harness(
+        conversation: conversation,
+        historyRepository: history,
+      );
+      final rerunJson = _resultJson()
+        ..['enthusiasm'] = {'score': 82, 'level': 'veryHot'}
+        ..['gameStage'] = {
+          'current': 'qualification',
+          'status': 'canAdvance',
+          'nextStep': '確認彼此偏好',
+        };
+
+      await harness.coordinator.persistLatestSnapshot(
+        AnalysisResult.fromJson(rerunJson),
+        completionKey: 'rerun-legacy-meta',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: revision,
+        analyzedPartnerId: 'partner-1',
+        analyzedIsReconnect: false,
+      );
+      await harness.coordinator.awaitSettled();
+
+      expect(history.listRecent(), hasLength(2));
+      final updated = history.listRecent().singleWhere(
+            (event) => event.id == 'legacy-current',
+          );
+      expect(updated.enthusiasmScore, 82);
+      expect(updated.gameStageLabel, 'qualification');
+      final older = history.listRecent().singleWhere(
+            (event) => event.id == 'older-event',
+          );
+      expect(older.enthusiasmScore, 45);
+      expect(older.gameStageLabel, 'opening');
+    });
+
+    test('run 起點的 partner scope 已變更：不寫 snapshot、record 或 history', () async {
+      final conversation = _conversation(partnerId: 'partner-b');
+      final harness = _Harness(conversation: conversation);
+      final revision = conversationContentRevision(conversation);
+
+      await harness.coordinator.persistLatestSnapshot(
+        AnalysisResult.fromJson(_resultJson()),
+        completionKey: 'run-started-on-a',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: revision,
+        analyzedPartnerId: 'partner-a',
+        analyzedIsReconnect: false,
+      );
+      await harness.coordinator.awaitSettled();
+
+      expect(harness.analysisCompletedSaves, isEmpty);
+      expect(conversation.lastAnalysisSnapshotJson, isNull);
+      expect(harness.history.listRecent(), isEmpty);
+      expect(harness.afterPersisted, isEmpty);
+    });
+
+    test('snapshot 寫入途中才換對象：回滾分析欄位且不產生 history', () async {
+      final conversation = _conversation(partnerId: 'partner-a');
+      final harness = _Harness(
+        conversation: conversation,
+        onPersistAnalysisCompleted: (conv) => conv.partnerId = 'partner-b',
+      );
+      final revision = conversationContentRevision(conversation);
+
+      await harness.coordinator.persistLatestSnapshot(
+        AnalysisResult.fromJson(_resultJson()),
+        completionKey: 'run-reassigned-during-save',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: revision,
+        analyzedPartnerId: 'partner-a',
+        analyzedIsReconnect: false,
+      );
+      await harness.coordinator.awaitSettled();
+
+      expect(harness.analysisCompletedSaves, [revision]);
+      expect(harness.contentChangedSaves, [_conversationId]);
+      expect(conversation.partnerId, 'partner-b');
+      expect(conversation.lastAnalysisSnapshotJson, isNull);
+      expect(conversation.lastEnthusiasmScore, isNull);
+      expect(harness.history.listRecent(), isEmpty);
+      expect(harness.afterPersisted, isEmpty);
     });
 
     test('缺 stage：從未有有效階段時 currentGameStage 維持 null（問號）', () async {

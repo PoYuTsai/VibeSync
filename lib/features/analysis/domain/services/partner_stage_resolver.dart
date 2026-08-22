@@ -68,7 +68,11 @@ class PartnerStageResolver {
           conversationId == null ? null : conversationsById[conversationId];
       return PartnerStageResolution(
         stage: stage,
-        isReconnect: _isReconnect(stage, sourceConversation),
+        isReconnect: _isReconnect(
+          stage,
+          frozenValue: latestValid.isReconnect,
+          legacyConversation: sourceConversation,
+        ),
         conversationId: conversationId,
       );
     }
@@ -87,7 +91,10 @@ class PartnerStageResolver {
       if (stage != null) {
         return PartnerStageResolution(
           stage: stage,
-          isReconnect: _isReconnect(stage, conversation),
+          isReconnect: _isReconnect(
+            stage,
+            legacyConversation: conversation,
+          ),
           conversationId: conversation.id,
         );
       }
@@ -95,10 +102,15 @@ class PartnerStageResolver {
     return null;
   }
 
-  bool _isReconnect(GameStage stage, Conversation? conversation) {
-    return stage == GameStage.opening &&
-        conversation?.sessionContext?.meetingContext ==
-            MeetingContext.committedPartner;
+  bool _isReconnect(
+    GameStage stage, {
+    bool? frozenValue,
+    Conversation? legacyConversation,
+  }) {
+    if (stage != GameStage.opening) return false;
+    if (frozenValue != null) return frozenValue;
+    return legacyConversation?.sessionContext?.meetingContext ==
+        MeetingContext.committedPartner;
   }
 
   /// Strictly parses the durable stage on one legacy conversation.
@@ -128,10 +140,13 @@ class PartnerStageResolver {
     final conversationId =
         AnalysisHistoryEvent.normalizeScope(event.conversationId);
     if (conversationId != null) {
-      final currentPartner = AnalysisHistoryEvent.normalizeScope(
-        conversationsById[conversationId]?.partnerId,
-      );
-      if (currentPartner != null) return currentPartner;
+      final currentConversation = conversationsById[conversationId];
+      if (currentConversation != null) {
+        return AnalysisHistoryEvent.normalizeScope(
+              currentConversation.partnerId,
+            ) ??
+            conversationId;
+      }
     }
 
     final persistedPartner =

@@ -64,6 +64,12 @@ class AnalysisHistoryEvent {
   @HiveField(12)
   final String? partnerId;
 
+  /// `opening` 是否代表分析當下的既有伴侶重新連線。
+  /// null 只供舊資料相容；新 analyze event 一律寫入明確布林值，避免日後
+  /// 修改 Conversation 情境時回寫舊歷史語意。
+  @HiveField(13)
+  final bool? isReconnect;
+
   /// Hive rebuild 用寬鬆建構子；寫入路徑一律走 [analyze] / [practice] factory。
   const AnalysisHistoryEvent({
     required this.id,
@@ -79,6 +85,7 @@ class AnalysisHistoryEvent {
     this.familiarityScore,
     this.relationshipStageLabel,
     this.partnerId,
+    this.isReconnect,
   });
 
   factory AnalysisHistoryEvent.analyze({
@@ -89,6 +96,7 @@ class AnalysisHistoryEvent {
     String? subjectName,
     int? enthusiasmScore,
     String? gameStageLabel,
+    bool? isReconnect,
   }) {
     return AnalysisHistoryEvent(
       id: _requireId(id),
@@ -99,6 +107,7 @@ class AnalysisHistoryEvent {
       subjectName: _optionalTrim(subjectName),
       enthusiasmScore: enthusiasmScore,
       gameStageLabel: _optionalTrim(gameStageLabel),
+      isReconnect: isReconnect,
     );
   }
 
@@ -140,6 +149,7 @@ class AnalysisHistoryEvent {
       familiarityScore: familiarityScore,
       relationshipStageLabel: relationshipStageLabel,
       partnerId: _optionalTrim(partnerId),
+      isReconnect: isReconnect,
     );
   }
 

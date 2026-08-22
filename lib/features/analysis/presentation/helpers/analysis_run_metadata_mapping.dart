@@ -14,5 +14,7 @@ extension StreamingAnalysisStateRunMetadata on StreamingAnalysisState {
         previousAnalyzedCount: previousAnalyzedCount,
         conversationMessageCount: conversationMessageCount,
         contentRevision: conversationContentRevision,
+        conversationPartnerId: conversationPartnerId,
+        isReconnectContext: isReconnectContext,
       );
 }

@@ -67,3 +67,13 @@ export function classifyAnalyzeChatRequest(
 
   return { ok: true, shape, recognizeOnlyRequested };
 }
+
+/// About Me / voice preferences belong to auxiliary reply-writing paths.
+/// Main AnalyzeChat (including screenshot analysis) must ignore the field even
+/// when an older client still sends it, so it cannot affect score/stage/style.
+export function acceptsUserStyleContext(
+  shape: AnalyzeChatRequestShape,
+): boolean {
+  return shape.kind === "my_message" || shape.kind === "optimize_message" ||
+    shape.kind === "new_topic" || shape.kind === "opener";
+}

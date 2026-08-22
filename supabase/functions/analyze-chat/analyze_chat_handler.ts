@@ -62,7 +62,10 @@ import {
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { resolveRequestMode } from "./request_mode.ts";
-import { classifyAnalyzeChatRequest } from "./request_shape.ts";
+import {
+  acceptsUserStyleContext,
+  classifyAnalyzeChatRequest,
+} from "./request_shape.ts";
 import { loadSubscriptionAccess } from "./subscription_access.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
@@ -756,17 +759,20 @@ async function handleAnalyzeChat(
     }
     const partnerSummary = partnerSummaryValidation.partnerSummary;
 
-    const effectiveStyleContextValidation = sanitizeEffectiveStyleContext(
-      rawEffectiveStyleContext,
-    );
-    if (effectiveStyleContextValidation.error) {
-      return jsonResponse(
-        { error: effectiveStyleContextValidation.error },
-        400,
+    let effectiveStyleContext: string | undefined;
+    if (acceptsUserStyleContext(requestShape)) {
+      const effectiveStyleContextValidation = sanitizeEffectiveStyleContext(
+        rawEffectiveStyleContext,
       );
+      if (effectiveStyleContextValidation.error) {
+        return jsonResponse(
+          { error: effectiveStyleContextValidation.error },
+          400,
+        );
+      }
+      effectiveStyleContext =
+        effectiveStyleContextValidation.effectiveStyleContext;
     }
-    const effectiveStyleContext =
-      effectiveStyleContextValidation.effectiveStyleContext;
 
     const knownContactName = sanitizeContactNameValue(rawKnownContactName);
     if (rawKnownContactName != null && !knownContactName) {

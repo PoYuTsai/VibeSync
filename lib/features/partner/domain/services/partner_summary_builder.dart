@@ -58,9 +58,9 @@ class PartnerSummaryBuilder {
         '最後互動 ${_formatDate(aggregate.lastInteraction)}',
       );
 
-    if (aggregate.latestHeat != null) {
-      buffer.writeln('- 最近熱度：${aggregate.latestHeat}');
-    }
+    // AnalyzeChat must score only the latest fragment. Feeding the previous
+    // score back into the prompt creates anchoring and can make a low/high
+    // historical result look like evidence in the current screenshots.
     if (aggregate.unionInterests.isNotEmpty) {
       buffer.writeln('- 興趣：${aggregate.unionInterests.join('、')}');
     }

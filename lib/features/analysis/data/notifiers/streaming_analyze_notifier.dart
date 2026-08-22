@@ -89,6 +89,8 @@ class StreamingAnalysisState {
   final int? previousAnalyzedCount;
   final int? analyzedMessageCount;
   final String? conversationContentRevision;
+  final String? conversationPartnerId;
+  final bool? isReconnectContext;
 
   /// 非 null 表示這次失敗是額度不足（429），UI 必須走升級卡分流。
   final QuotaExceededInfo? quotaExceeded;
@@ -110,6 +112,8 @@ class StreamingAnalysisState {
     this.previousAnalyzedCount,
     this.analyzedMessageCount,
     this.conversationContentRevision,
+    this.conversationPartnerId,
+    this.isReconnectContext,
     this.quotaExceeded,
   });
 
@@ -138,6 +142,8 @@ class StreamingAnalysisState {
     Object? previousAnalyzedCount = _unset,
     Object? analyzedMessageCount = _unset,
     Object? conversationContentRevision = _unset,
+    Object? conversationPartnerId = _unset,
+    Object? isReconnectContext = _unset,
     Object? quotaExceeded = _unset,
   }) {
     return StreamingAnalysisState(
@@ -185,6 +191,12 @@ class StreamingAnalysisState {
           identical(conversationContentRevision, _unset)
               ? this.conversationContentRevision
               : conversationContentRevision as String?,
+      conversationPartnerId: identical(conversationPartnerId, _unset)
+          ? this.conversationPartnerId
+          : conversationPartnerId as String?,
+      isReconnectContext: identical(isReconnectContext, _unset)
+          ? this.isReconnectContext
+          : isReconnectContext as bool?,
       quotaExceeded: identical(quotaExceeded, _unset)
           ? this.quotaExceeded
           : quotaExceeded as QuotaExceededInfo?,
@@ -243,6 +255,8 @@ class StreamingAnalyzeNotifier
   int? _cachedConversationMessageCount;
   int? _cachedAnalyzedMessageCount;
   String? _cachedConversationContentRevision;
+  String? _cachedConversationPartnerId;
+  bool? _cachedIsReconnectContext;
   int? _cachedPreviousAnalyzedCharCount;
   OverchargeConfirmationPayload? _cachedConfirmedOvercharge;
   int? _cachedPayloadCharCount;
@@ -279,6 +293,8 @@ class StreamingAnalyzeNotifier
     int? conversationMessageCount,
     int? analyzedMessageCount,
     String? conversationContentRevision,
+    String? conversationPartnerId,
+    bool? isReconnectContext,
   }) async {
     final myGen = ++_generation;
     _keepAliveLink ??= ref.keepAlive();
@@ -299,6 +315,8 @@ class StreamingAnalyzeNotifier
     _cachedConversationMessageCount = conversationMessageCount;
     _cachedAnalyzedMessageCount = effectiveAnalyzedMessageCount;
     _cachedConversationContentRevision = conversationContentRevision;
+    _cachedConversationPartnerId = conversationPartnerId;
+    _cachedIsReconnectContext = isReconnectContext;
     _cachedPreviousAnalyzedCharCount = previousAnalyzedCharCount;
     _cachedConfirmedOvercharge = confirmedOvercharge;
     // ADR #19 規格 #8：baseline 對應這次送出的 requestMessages。
@@ -312,6 +330,8 @@ class StreamingAnalyzeNotifier
       previousAnalyzedCount: previousAnalyzedCount,
       analyzedMessageCount: effectiveAnalyzedMessageCount,
       conversationContentRevision: conversationContentRevision,
+      conversationPartnerId: conversationPartnerId,
+      isReconnectContext: isReconnectContext,
     );
 
     await _runStream(
@@ -330,6 +350,8 @@ class StreamingAnalyzeNotifier
       conversationMessageCount: conversationMessageCount,
       analyzedMessageCount: effectiveAnalyzedMessageCount,
       conversationContentRevision: conversationContentRevision,
+      conversationPartnerId: conversationPartnerId,
+      isReconnectContext: isReconnectContext,
     );
   }
 
@@ -350,6 +372,8 @@ class StreamingAnalyzeNotifier
     int? conversationMessageCount,
     int? analyzedMessageCount,
     String? conversationContentRevision,
+    String? conversationPartnerId,
+    bool? isReconnectContext,
     int automaticRecoveryAttempt = 0,
   }) async {
     final stopLocalProgress = _startLocalStreamPreludeProgress(
@@ -501,6 +525,8 @@ class StreamingAnalyzeNotifier
           conversationMessageCount: conversationMessageCount,
           analyzedMessageCount: analyzedMessageCount,
           conversationContentRevision: conversationContentRevision,
+          conversationPartnerId: conversationPartnerId,
+          isReconnectContext: isReconnectContext,
           automaticRecoveryAttempt: automaticRecoveryAttempt + 1,
         );
         return;
@@ -549,6 +575,8 @@ class StreamingAnalyzeNotifier
         previousAnalyzedCount: previousAnalyzedCount,
         analyzedMessageCount: analyzedMessageCount,
         conversationContentRevision: conversationContentRevision,
+        conversationPartnerId: conversationPartnerId,
+        isReconnectContext: isReconnectContext,
         quotaExceeded: quotaExceeded,
       );
     } finally {
@@ -660,6 +688,8 @@ class StreamingAnalyzeNotifier
       previousAnalyzedCount: _cachedPreviousAnalyzedCount,
       analyzedMessageCount: _cachedAnalyzedMessageCount,
       conversationContentRevision: _cachedConversationContentRevision,
+      conversationPartnerId: _cachedConversationPartnerId,
+      isReconnectContext: _cachedIsReconnectContext,
       quotaExceeded: null,
     );
 
@@ -680,6 +710,8 @@ class StreamingAnalyzeNotifier
       conversationMessageCount: _cachedConversationMessageCount,
       analyzedMessageCount: _cachedAnalyzedMessageCount,
       conversationContentRevision: _cachedConversationContentRevision,
+      conversationPartnerId: _cachedConversationPartnerId,
+      isReconnectContext: _cachedIsReconnectContext,
     );
   }
 }

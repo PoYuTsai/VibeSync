@@ -366,7 +366,7 @@ void main() {
     expect(s, endsWith('[truncated]'));
   });
 
-  test('summary mentions latest heat from most-recent conversation', () {
+  test('summary never feeds previous heat back into the next analysis', () {
     final s = builder.build(
       partner: _partner(),
       conversations: [
@@ -384,7 +384,8 @@ void main() {
         ),
       ],
     );
-    expect(s, contains('最近熱度：88'));
+    expect(s, isNot(contains('最近熱度')));
+    expect(s, isNot(contains('88')));
   });
 
   test('customNote takes precedence over past notes when present', () {

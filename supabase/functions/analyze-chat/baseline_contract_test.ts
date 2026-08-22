@@ -1,9 +1,9 @@
-// AnalyzeChat Edge 行為基準鎖（fc8bbe84）。
+// AnalyzeChat Edge 行為基準鎖（源自 fc8bbe84）。
 //
 // 重構期間的安全網：prompt bytes、模型選擇、token/quota 常數的原始碼切片
-// SHA-256 必須與 baseline_fixtures.json 一致。搬移程式碼時只能改 fixtures 的
-// file 欄位（指向新家），sha256 永遠是 baseline 的值——期望值不得由新實作
-// 重新產生。
+// SHA-256 必須與 baseline_fixtures.json 一致。純搬移程式碼時只能改 fixtures 的
+// file 欄位（指向新家）；只有已核准且另有行為測試的產品規格變更，才可更新
+// 對應 slice 的 sha256，避免把意外漂移誤當成新 baseline。
 
 import {
   assert,
@@ -69,14 +69,15 @@ async function sha256Hex(text: string): Promise<string> {
     .join("");
 }
 
-Deno.test("baseline：prompt/model/token 原始碼切片 hash 與 fc8bbe84 一致", async () => {
+Deno.test("baseline：prompt/model/token 原始碼切片 hash 與核准 fixture 一致", async () => {
   for (const [name, slice] of Object.entries(fixtures.promptSlices)) {
     const source = await readSource(slice.file);
     const extracted = extractSlice(source, slice, name);
+    const actualHash = await sha256Hex(extracted);
     assertEquals(
-      await sha256Hex(extracted),
+      actualHash,
       slice.sha256,
-      `${name} 的原始碼位元組偏離 baseline（${slice.file}）`,
+      `${name} 的原始碼位元組偏離 baseline（${slice.file}）：${actualHash}`,
     );
   }
 });

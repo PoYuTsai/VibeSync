@@ -355,6 +355,11 @@ Deno.test("system prompt carries the weak-prior rule and the partner-context bou
   assert(prompt.includes("messages after Latest Analysis Fragment"));
   assert(prompt.includes("history/previous score only disambiguate"));
   assert(prompt.includes("never add points"));
+  assert(
+    prompt.includes(
+      "Never use earlier messages, conversationSummary, or partnerSummary as a ball/sourceMessage",
+    ),
+  );
 });
 
 Deno.test("metrics step carries the five-stage criteria and the opening guard", () => {

@@ -28,6 +28,14 @@ class AnalysisRunPreparation {
   final String? knownContactName;
   final SessionContext? sessionContext;
 
+  /// Conversation 在 run 起點所屬的對象。完成前若被重新分配，結果必須
+  /// 視為 stale，不能把舊對象脈絡生成的結果寫到新對象。
+  final String? conversationPartnerId;
+
+  /// 這次送出的情境是否為既有伴侶。與 event 一起凍結，避免日後修改
+  /// Conversation 情境時，把舊 opening 改寫成／取消「重新連線」。
+  final bool isReconnectContext;
+
   /// 上一個 partner-scoped 有效互動階段（弱先驗，閉環規則 8）；
   /// 從未有有效階段時為 null，絕不偽造。
   final String? previousStage;
@@ -49,6 +57,8 @@ class AnalysisRunPreparation {
     required this.effectiveStyleContext,
     required this.knownContactName,
     required this.sessionContext,
+    required this.conversationPartnerId,
+    required this.isReconnectContext,
     this.previousStage,
     required this.analysisFragmentStartIndex,
     required this.analyzedMessageCount,
@@ -171,6 +181,11 @@ class AnalysisRunPreparer {
       previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
       isNewFragment: isNewFragment,
     );
+    final sessionContext = isNewFragment
+        ? (_resolveSessionContext?.call(conversation) ??
+            conversation.sessionContext)
+        : conversation.sessionContext;
+    final normalizedPartnerId = conversation.partnerId?.trim();
 
     return AnalysisRunPreparation(
       requestMessages: context.requestMessages,
@@ -185,10 +200,13 @@ class AnalysisRunPreparer {
       // New fragments use the partner card's latest defaults. An exact
       // same-boundary rerun keeps the conversation's original context so a
       // later card edit cannot rewrite that historical fragment.
-      sessionContext: isNewFragment
-          ? (_resolveSessionContext?.call(conversation) ??
-              conversation.sessionContext)
-          : conversation.sessionContext,
+      sessionContext: sessionContext,
+      conversationPartnerId:
+          normalizedPartnerId == null || normalizedPartnerId.isEmpty
+              ? null
+              : normalizedPartnerId,
+      isReconnectContext:
+          sessionContext?.meetingContext == MeetingContext.committedPartner,
       previousStage: _resolvePreviousStage?.call(conversation),
       analysisFragmentStartIndex: analysisFragmentStartIndex,
       analyzedMessageCount: gate.analyzedMessageCount!,
