@@ -283,7 +283,22 @@ void main() {
   test(
       'persistLatestSnapshot：happy path 走注入依賴——canonical 存檔、'
       'payload 字數 baseline、歷史事件、漏斗與畫面後續', () async {
-    final harness = _Harness(conversation: _conversation());
+    final originalContext = SessionContext(
+      meetingContext: MeetingContext.inPerson,
+      duration: AcquaintanceDuration.justMet,
+    );
+    final analyzedContext = SessionContext(
+      meetingContext: MeetingContext.committedPartner,
+      duration: AcquaintanceDuration.monthPlus,
+      goal: UserGoal.maintainHeat,
+      userStyle: UserStyle.steady,
+      userInterests: '咖啡',
+      targetDescription: '慢熟',
+      analysisContextNote: '重新連線',
+    );
+    final harness = _Harness(
+      conversation: _conversation(sessionContext: originalContext),
+    );
     final revision = conversationContentRevision(harness.conversation);
 
     await harness.coordinator.persistLatestSnapshot(
@@ -292,6 +307,9 @@ void main() {
       previousAnalyzedCount: 0,
       analyzedMessageCount: 1,
       analyzedContentRevision: revision,
+      analyzedPartnerId: null,
+      analyzedIsReconnect: true,
+      analyzedSessionContext: analyzedContext,
     );
     await harness.coordinator.awaitSettled();
 
@@ -300,6 +318,22 @@ void main() {
     // ADR #19 規格 #8：char baseline 來自注入的 lastPayloadCharCount。
     expect(harness.conversation.lastAnalyzedCharCount, 42);
     expect(harness.conversation.lastAnalysisSnapshotJson, isNotNull);
+    expect(harness.conversation.sessionContext, same(originalContext));
+    final snapshot = jsonDecode(
+      harness.conversation.lastAnalysisSnapshotJson!,
+    ) as Map<String, dynamic>;
+    final meta =
+        snapshot['__vibesync_snapshot_meta_v1'] as Map<String, dynamic>;
+    final frozen = meta['sessionContext'] as Map<String, dynamic>;
+    expect(frozen, {
+      'meetingContext': 'committedPartner',
+      'duration': 'monthPlus',
+      'goal': 'maintainHeat',
+      'userStyle': 'steady',
+      'userInterests': '咖啡',
+      'targetDescription': '慢熟',
+      'analysisContextNote': '重新連線',
+    });
     expect(
       harness.history.listRecent().single.kind,
       AnalysisHistoryKind.analyze,
@@ -608,7 +642,12 @@ void main() {
     });
 
     test('run 起點的 partner scope 已變更：不寫 snapshot、record 或 history', () async {
-      final conversation = _conversation(partnerId: 'partner-b');
+      final originalContext = SessionContext(
+        meetingContext: MeetingContext.datingApp,
+        duration: AcquaintanceDuration.fewDays,
+      );
+      final conversation = _conversation(partnerId: 'partner-b')
+        ..sessionContext = originalContext;
       final harness = _Harness(conversation: conversation);
       final revision = conversationContentRevision(conversation);
 
@@ -620,17 +659,31 @@ void main() {
         analyzedContentRevision: revision,
         analyzedPartnerId: 'partner-a',
         analyzedIsReconnect: false,
+        analyzedSessionContext: SessionContext(
+          meetingContext: MeetingContext.committedPartner,
+          duration: AcquaintanceDuration.monthPlus,
+        ),
       );
       await harness.coordinator.awaitSettled();
 
       expect(harness.analysisCompletedSaves, isEmpty);
       expect(conversation.lastAnalysisSnapshotJson, isNull);
+      expect(conversation.sessionContext, same(originalContext));
       expect(harness.history.listRecent(), isEmpty);
       expect(harness.afterPersisted, isEmpty);
     });
 
     test('snapshot 寫入途中才換對象：回滾分析欄位且不產生 history', () async {
-      final conversation = _conversation(partnerId: 'partner-a');
+      final originalContext = SessionContext(
+        meetingContext: MeetingContext.datingApp,
+        duration: AcquaintanceDuration.fewDays,
+      );
+      final analyzedContext = SessionContext(
+        meetingContext: MeetingContext.committedPartner,
+        duration: AcquaintanceDuration.monthPlus,
+      );
+      final conversation = _conversation(partnerId: 'partner-a')
+        ..sessionContext = originalContext;
       final harness = _Harness(
         conversation: conversation,
         onPersistAnalysisCompleted: (conv) => conv.partnerId = 'partner-b',
@@ -645,6 +698,7 @@ void main() {
         analyzedContentRevision: revision,
         analyzedPartnerId: 'partner-a',
         analyzedIsReconnect: false,
+        analyzedSessionContext: analyzedContext,
       );
       await harness.coordinator.awaitSettled();
 
@@ -653,6 +707,7 @@ void main() {
       expect(conversation.partnerId, 'partner-b');
       expect(conversation.lastAnalysisSnapshotJson, isNull);
       expect(conversation.lastEnthusiasmScore, isNull);
+      expect(conversation.sessionContext, same(originalContext));
       expect(harness.history.listRecent(), isEmpty);
       expect(harness.afterPersisted, isEmpty);
     });

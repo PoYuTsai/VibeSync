@@ -63,8 +63,8 @@ import {
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { resolveRequestMode } from "./request_mode.ts";
 import {
-  acceptsUserStyleContext,
   classifyAnalyzeChatRequest,
+  routeUserStyleContext,
 } from "./request_shape.ts";
 import { loadSubscriptionAccess } from "./subscription_access.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
@@ -759,20 +759,21 @@ async function handleAnalyzeChat(
     }
     const partnerSummary = partnerSummaryValidation.partnerSummary;
 
-    let effectiveStyleContext: string | undefined;
-    if (acceptsUserStyleContext(requestShape)) {
-      const effectiveStyleContextValidation = sanitizeEffectiveStyleContext(
-        rawEffectiveStyleContext,
+    const effectiveStyleContextValidation = sanitizeEffectiveStyleContext(
+      rawEffectiveStyleContext,
+    );
+    const styleContextRouting = routeUserStyleContext(
+      requestShape,
+      effectiveStyleContextValidation,
+    );
+    if (styleContextRouting.error) {
+      return jsonResponse(
+        { error: styleContextRouting.error },
+        400,
       );
-      if (effectiveStyleContextValidation.error) {
-        return jsonResponse(
-          { error: effectiveStyleContextValidation.error },
-          400,
-        );
-      }
-      effectiveStyleContext =
-        effectiveStyleContextValidation.effectiveStyleContext;
     }
+    const effectiveStyleContext = styleContextRouting.modelValue;
+    const effectiveStyleContextForHash = styleContextRouting.hashValue;
 
     const knownContactName = sanitizeContactNameValue(rawKnownContactName);
     if (rawKnownContactName != null && !knownContactName) {
@@ -1609,7 +1610,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           partnerSummary,
           sessionContext,
           conversationSummary,
-          effectiveStyleContext,
+          effectiveStyleContext: effectiveStyleContextForHash,
           knownContactName,
           previousStage: isMyMessageMode
             ? undefined

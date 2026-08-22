@@ -3,6 +3,8 @@
 /// 行為逐字沿用拆分前 AnalysisScreen 的實作。
 library;
 
+import 'dart:convert';
+
 import '../../conversation/domain/entities/conversation.dart';
 import '../../conversation/domain/entities/message.dart';
 import '../../conversation/domain/entities/session_context.dart';
@@ -105,6 +107,9 @@ class AuxiliaryAnalysisContext {
 }
 
 class AnalysisRunPreparer {
+  static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
+  static const _snapshotSessionContextKey = 'sessionContext';
+
   AnalysisRunPreparer({
     required ConversationMemoryPort memory,
     required String? Function(Conversation conversation) resolvePartnerSummary,
@@ -181,10 +186,17 @@ class AnalysisRunPreparer {
       previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
       isNewFragment: isNewFragment,
     );
+    final frozenSessionContext = isNewFragment
+        ? (found: false, value: null)
+        : _sessionContextFromSnapshot(
+            conversation.lastAnalysisSnapshotJson,
+          );
     final sessionContext = isNewFragment
         ? (_resolveSessionContext?.call(conversation) ??
             conversation.sessionContext)
-        : conversation.sessionContext;
+        : frozenSessionContext.found
+            ? frozenSessionContext.value
+            : conversation.sessionContext;
     final normalizedPartnerId = conversation.partnerId?.trim();
 
     return AnalysisRunPreparation(
@@ -198,8 +210,9 @@ class AnalysisRunPreparer {
       effectiveStyleContext: null,
       knownContactName: _knownContactName(conversation),
       // New fragments use the partner card's latest defaults. An exact
-      // same-boundary rerun keeps the conversation's original context so a
-      // later card edit cannot rewrite that historical fragment.
+      // same-boundary rerun uses the context frozen inside its snapshot, so a
+      // later card edit cannot rewrite that historical fragment. Legacy
+      // snapshots without this metadata fall back to Conversation context.
       sessionContext: sessionContext,
       conversationPartnerId:
           normalizedPartnerId == null || normalizedPartnerId.isEmpty
@@ -237,6 +250,82 @@ class AnalysisRunPreparer {
       )
           ? null
           : conversation.name.trim();
+
+  ({bool found, SessionContext? value}) _sessionContextFromSnapshot(
+    String? snapshotJson,
+  ) {
+    if (snapshotJson == null || snapshotJson.trim().isEmpty) {
+      return (found: false, value: null);
+    }
+
+    try {
+      final decoded = jsonDecode(snapshotJson);
+      if (decoded is! Map) return (found: false, value: null);
+      final meta = decoded[_snapshotClientMetaKey];
+      if (meta is! Map || !meta.containsKey(_snapshotSessionContextKey)) {
+        return (found: false, value: null);
+      }
+
+      final rawContext = meta[_snapshotSessionContextKey];
+      if (rawContext == null) return (found: true, value: null);
+      if (rawContext is! Map) return (found: true, value: null);
+
+      final meetingContext = _enumByName(
+        MeetingContext.values,
+        rawContext['meetingContext'],
+      );
+      final duration = _enumByName(
+        AcquaintanceDuration.values,
+        rawContext['duration'],
+      );
+      if (meetingContext == null || duration == null) {
+        return (found: true, value: null);
+      }
+
+      final rawGoal = rawContext['goal'];
+      final goal = rawGoal == null
+          ? UserGoal.dateInvite
+          : _enumByName(UserGoal.values, rawGoal);
+      if (goal == null) return (found: true, value: null);
+
+      final rawUserStyle = rawContext['userStyle'];
+      final userStyle = rawUserStyle == null
+          ? null
+          : _enumByName(UserStyle.values, rawUserStyle);
+      if (rawUserStyle != null && userStyle == null) {
+        return (found: true, value: null);
+      }
+
+      return (
+        found: true,
+        value: SessionContext(
+          meetingContext: meetingContext,
+          duration: duration,
+          goal: goal,
+          userStyle: userStyle,
+          userInterests: rawContext['userInterests'] is String
+              ? rawContext['userInterests'] as String
+              : null,
+          targetDescription: rawContext['targetDescription'] is String
+              ? rawContext['targetDescription'] as String
+              : null,
+          analysisContextNote: rawContext['analysisContextNote'] is String
+              ? rawContext['analysisContextNote'] as String
+              : null,
+        ),
+      );
+    } catch (_) {
+      return (found: false, value: null);
+    }
+  }
+
+  T? _enumByName<T extends Enum>(List<T> values, Object? rawName) {
+    if (rawName is! String) return null;
+    for (final value in values) {
+      if (value.name == rawName) return value;
+    }
+    return null;
+  }
 
   List<Message>? _buildMessagesForReplyAnalysis(List<Message> messages) {
     if (messages.isEmpty) return null;

@@ -137,12 +137,12 @@ class _Harness {
 }
 
 void main() {
-  test('start：把實際送出的 context 凍結到 Conversation，供同片段重跑沿用', () async {
-    final conversation = _conversation()
-      ..sessionContext = SessionContext(
-        meetingContext: MeetingContext.datingApp,
-        duration: AcquaintanceDuration.justMet,
-      );
+  test('start：送出 context 但成功前不污染 Conversation', () async {
+    final originalContext = SessionContext(
+      meetingContext: MeetingContext.datingApp,
+      duration: AcquaintanceDuration.justMet,
+    );
+    final conversation = _conversation()..sessionContext = originalContext;
     final sentContext = SessionContext(
       meetingContext: MeetingContext.committedPartner,
       duration: AcquaintanceDuration.monthPlus,
@@ -175,7 +175,7 @@ void main() {
     expect(harness.startedSessionContext, same(sentContext));
     expect(harness.startedPartnerId, isNull);
     expect(harness.startedReconnectContext, isTrue);
-    expect(conversation.sessionContext, same(sentContext));
+    expect(conversation.sessionContext, same(originalContext));
   });
 
   test('start：畫面已失效時不送出，也不改寫 Conversation context', () async {
@@ -243,7 +243,11 @@ void main() {
   });
 
   test('presentation 映射：reactive state → 最小 run metadata', () {
-    const state = StreamingAnalysisState(
+    final sentContext = SessionContext(
+      meetingContext: MeetingContext.committedPartner,
+      duration: AcquaintanceDuration.monthPlus,
+    );
+    final state = StreamingAnalysisState(
       phase: StreamingAnalyzePhase.done,
       analysisRunId: 'run-77',
       previousAnalyzedCount: 3,
@@ -251,6 +255,7 @@ void main() {
       conversationContentRevision: 'rev-abc',
       conversationPartnerId: 'partner-1',
       isReconnectContext: true,
+      analyzedSessionContext: sentContext,
       streamErrorMessage: '這些 UI 欄位不得進 application',
       retriesRemaining: 2,
     );
@@ -262,6 +267,7 @@ void main() {
     expect(run.contentRevision, 'rev-abc');
     expect(run.conversationPartnerId, 'partner-1');
     expect(run.isReconnectContext, isTrue);
+    expect(run.analyzedSessionContext, same(sentContext));
   });
 
   group('staleness（narrow seam）', () {
@@ -317,14 +323,26 @@ void main() {
   });
 
   test('persistCompletedRun：以 metadata 的 revision 排程 canonical 持久化', () async {
-    final harness = _Harness(conversation: _conversation());
+    final originalContext = SessionContext(
+      meetingContext: MeetingContext.inPerson,
+      duration: AcquaintanceDuration.justMet,
+    );
+    final harness = _Harness(
+      conversation: _conversation()..sessionContext = originalContext,
+    );
     final revision = conversationContentRevision(harness.conversation);
+    final sentContext = SessionContext(
+      meetingContext: MeetingContext.datingApp,
+      duration: AcquaintanceDuration.fewWeeks,
+    );
 
     harness.session.persistCompletedRun(
       AnalysisRunMetadata(
         runId: 'run-1',
         previousAnalyzedCount: 0,
         contentRevision: revision,
+        isReconnectContext: false,
+        analyzedSessionContext: sentContext,
       ),
       AnalysisResult.fromJson(_resultJson()),
       analyzedMessageCount: 1,
@@ -333,6 +351,15 @@ void main() {
     await harness.persistence.awaitSettled();
 
     expect(harness.analysisCompletedSaves, [revision]);
+    expect(harness.conversation.sessionContext, same(originalContext));
+    final snapshot = jsonDecode(
+      harness.conversation.lastAnalysisSnapshotJson!,
+    ) as Map<String, dynamic>;
+    final meta =
+        snapshot['__vibesync_snapshot_meta_v1'] as Map<String, dynamic>;
+    final frozen = meta['sessionContext'] as Map<String, dynamic>;
+    expect(frozen['meetingContext'], 'datingApp');
+    expect(frozen['duration'], 'fewWeeks');
   });
 
   group('persistHydratedResultIfNeeded（narrow seam）', () {

@@ -5,6 +5,7 @@ import {
 import {
   acceptsUserStyleContext,
   classifyAnalyzeChatRequest,
+  routeUserStyleContext,
 } from "./request_shape.ts";
 
 function kindOf(input: Parameters<typeof classifyAnalyzeChatRequest>[0]) {
@@ -80,4 +81,40 @@ Deno.test("style context 只進輔助寫訊息路徑，主分析與 OCR 一律�
   ) {
     assertEquals(acceptsUserStyleContext({ kind }), false);
   }
+});
+
+Deno.test("主分析把 legacy style 留在 hash 相容層，但不送進模型", () => {
+  const valid = { effectiveStyleContext: "偏好自然短句" };
+  assertEquals(
+    routeUserStyleContext({ kind: "plain_analyze" }, valid),
+    { hashValue: "偏好自然短句" },
+  );
+  assertEquals(
+    routeUserStyleContext({ kind: "draft_with_images_analyze" }, valid),
+    { hashValue: "偏好自然短句" },
+  );
+  assertEquals(
+    routeUserStyleContext({ kind: "my_message" }, valid),
+    {
+      modelValue: "偏好自然短句",
+      hashValue: "偏好自然短句",
+      error: undefined,
+    },
+  );
+});
+
+Deno.test("主分析忽略非法 legacy style；輔助路徑維持 400", () => {
+  const invalid = { error: "Invalid effectiveStyleContext" };
+  assertEquals(
+    routeUserStyleContext({ kind: "plain_analyze" }, invalid),
+    {},
+  );
+  assertEquals(
+    routeUserStyleContext({ kind: "optimize_message" }, invalid),
+    {
+      modelValue: undefined,
+      hashValue: undefined,
+      error: "Invalid effectiveStyleContext",
+    },
+  );
 });

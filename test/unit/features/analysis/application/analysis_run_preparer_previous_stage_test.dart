@@ -1,6 +1,8 @@
 // 跨次連續性 seam（對象卡互動階段閉環）：第二個分析片段送出前，
 // 請求組裝器能取得上一個 partner-scoped 有效 stage（弱先驗），
 // 並隨 AnalyzeStreamRequest 進 wire payload。
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/application/analysis_run_preparer.dart';
 import 'package:vibesync/features/analysis/application/ports/conversation_memory_port.dart';
@@ -130,7 +132,7 @@ void main() {
     );
   });
 
-  test('同一訊息邊界重跑保留當時 context，不被今天的對象卡改寫', () async {
+  test('舊 snapshot 同一訊息邊界重跑沿用 Conversation context', () async {
     final originalContext = SessionContext(
       meetingContext: MeetingContext.datingApp,
       duration: AcquaintanceDuration.fewWeeks,
@@ -157,6 +159,82 @@ void main() {
     );
 
     expect(preparation.sessionContext, same(originalContext));
+  });
+
+  test('同一訊息邊界重跑讀 snapshot 凍結的完整 context', () async {
+    final conversation = _conversation()
+      ..sessionContext = SessionContext(
+        meetingContext: MeetingContext.inPerson,
+        duration: AcquaintanceDuration.justMet,
+      )
+      ..lastAnalyzedMessageCount = 1
+      ..lastAnalysisSnapshotJson = jsonEncode({
+        '__vibesync_snapshot_meta_v1': {
+          'sessionContext': {
+            'meetingContext': 'committedPartner',
+            'duration': 'monthPlus',
+            'goal': 'maintainHeat',
+            'userStyle': 'gentle',
+            'userInterests': '旅行、咖啡',
+            'targetDescription': '慢熟',
+            'analysisContextNote': '剛吵完架',
+          },
+        },
+      });
+    final preparer = AnalysisRunPreparer(
+      memory: _NoopMemory(),
+      resolvePartnerSummary: (_) => null,
+      resolveEffectiveStyleContext: (_) => null,
+      resolveSessionContext: (_) => SessionContext(
+        meetingContext: MeetingContext.datingApp,
+        duration: AcquaintanceDuration.fewWeeks,
+      ),
+    );
+
+    final preparation = await preparer.assemble(
+      conversation: conversation,
+      gate: preparer.gate(conversation: conversation),
+    );
+
+    expect(
+      preparation.sessionContext?.meetingContext,
+      MeetingContext.committedPartner,
+    );
+    expect(
+      preparation.sessionContext?.duration,
+      AcquaintanceDuration.monthPlus,
+    );
+    expect(preparation.sessionContext?.goal, UserGoal.maintainHeat);
+    expect(preparation.sessionContext?.userStyle, UserStyle.gentle);
+    expect(preparation.sessionContext?.userInterests, '旅行、咖啡');
+    expect(preparation.sessionContext?.targetDescription, '慢熟');
+    expect(preparation.sessionContext?.analysisContextNote, '剛吵完架');
+  });
+
+  test('snapshot 明確凍結為無 context 時不回退到今天的設定', () async {
+    final conversation = _conversation()
+      ..sessionContext = SessionContext(
+        meetingContext: MeetingContext.committedPartner,
+        duration: AcquaintanceDuration.monthPlus,
+      )
+      ..lastAnalyzedMessageCount = 1
+      ..lastAnalysisSnapshotJson = jsonEncode({
+        '__vibesync_snapshot_meta_v1': {'sessionContext': null},
+      });
+    final preparer = AnalysisRunPreparer(
+      memory: _NoopMemory(),
+      resolvePartnerSummary: (_) => null,
+      resolveEffectiveStyleContext: (_) => null,
+      resolveSessionContext: (_) => conversation.sessionContext,
+    );
+
+    final preparation = await preparer.assemble(
+      conversation: conversation,
+      gate: preparer.gate(conversation: conversation),
+    );
+
+    expect(preparation.sessionContext, isNull);
+    expect(preparation.isReconnectContext, isFalse);
   });
 
   test('新片段起點以 requestMessages 的相對索引送出', () async {

@@ -73,11 +73,6 @@ class AnalysisSessionController {
       return;
     }
 
-    // 凍結「這次真的送出的」情境。新片段可能從對象卡帶入最新 defaults；
-    // 若第一次請求失敗後以同內容重跑，必須沿用同一份 context，不能被之後
-    // 的對象卡編輯改寫。成功持久化時 Conversation 會連同此欄位一起保存。
-    conversation.sessionContext = preparation.sessionContext;
-
     final analysisFuture = _startRun(
       messages: preparation.requestMessages,
       sessionContext: preparation.sessionContext,
@@ -152,6 +147,7 @@ class AnalysisSessionController {
       analyzedContentRevision: run.contentRevision,
       analyzedPartnerId: run.conversationPartnerId,
       analyzedIsReconnect: run.isReconnectContext,
+      analyzedSessionContext: run.analyzedSessionContext,
       allowArchivedRecordRefresh: allowArchivedRecordRefresh,
     )
         .catchError((_) {
@@ -198,6 +194,7 @@ class AnalysisSessionController {
       analyzedContentRevision: run.contentRevision,
       analyzedPartnerId: run.conversationPartnerId,
       analyzedIsReconnect: run.isReconnectContext,
+      analyzedSessionContext: run.analyzedSessionContext,
     )
         .catchError((_) {
       // Same fire-and-forget contract as the listener path — Hive failures in

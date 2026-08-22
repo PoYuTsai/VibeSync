@@ -5,6 +5,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 import { hashConversation } from "./conversation_hash.ts";
+import { routeUserStyleContext } from "./request_shape.ts";
 
 Deno.test("identical inputs produce identical hash", async () => {
   const a = await hashConversation({
@@ -34,6 +35,38 @@ Deno.test("different partnerSummary produces different hash", async () => {
   const a = await hashConversation({ messages: [], partnerSummary: "alice" });
   const b = await hashConversation({ messages: [], partnerSummary: "bob" });
   assertNotEquals(a, b);
+});
+
+Deno.test("跨部署主分析 resume：About Me 不進模型但保留舊 hash", async () => {
+  const base = {
+    messages: [{ isFromMe: false, content: "今天有點累" }],
+    partnerSummary: "她最近工作忙",
+  };
+  const style = "偏好自然短句";
+  const legacyHash = await hashConversation({
+    ...base,
+    effectiveStyleContext: style,
+  });
+  const routed = routeUserStyleContext(
+    { kind: "plain_analyze" },
+    { effectiveStyleContext: style },
+  );
+
+  assertEquals(routed.modelValue, undefined);
+  assertEquals(
+    await hashConversation({
+      ...base,
+      effectiveStyleContext: routed.hashValue,
+    }),
+    legacyHash,
+  );
+  assertNotEquals(
+    await hashConversation({
+      ...base,
+      effectiveStyleContext: routed.modelValue,
+    }),
+    legacyHash,
+  );
 });
 
 Deno.test("different previousStage produces different hash", async () => {

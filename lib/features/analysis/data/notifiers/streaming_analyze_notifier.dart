@@ -91,6 +91,7 @@ class StreamingAnalysisState {
   final String? conversationContentRevision;
   final String? conversationPartnerId;
   final bool? isReconnectContext;
+  final SessionContext? analyzedSessionContext;
 
   /// 非 null 表示這次失敗是額度不足（429），UI 必須走升級卡分流。
   final QuotaExceededInfo? quotaExceeded;
@@ -114,6 +115,7 @@ class StreamingAnalysisState {
     this.conversationContentRevision,
     this.conversationPartnerId,
     this.isReconnectContext,
+    this.analyzedSessionContext,
     this.quotaExceeded,
   });
 
@@ -144,6 +146,7 @@ class StreamingAnalysisState {
     Object? conversationContentRevision = _unset,
     Object? conversationPartnerId = _unset,
     Object? isReconnectContext = _unset,
+    Object? analyzedSessionContext = _unset,
     Object? quotaExceeded = _unset,
   }) {
     return StreamingAnalysisState(
@@ -197,6 +200,9 @@ class StreamingAnalysisState {
       isReconnectContext: identical(isReconnectContext, _unset)
           ? this.isReconnectContext
           : isReconnectContext as bool?,
+      analyzedSessionContext: identical(analyzedSessionContext, _unset)
+          ? this.analyzedSessionContext
+          : analyzedSessionContext as SessionContext?,
       quotaExceeded: identical(quotaExceeded, _unset)
           ? this.quotaExceeded
           : quotaExceeded as QuotaExceededInfo?,
@@ -332,6 +338,7 @@ class StreamingAnalyzeNotifier
       conversationContentRevision: conversationContentRevision,
       conversationPartnerId: conversationPartnerId,
       isReconnectContext: isReconnectContext,
+      analyzedSessionContext: sessionContext,
     );
 
     await _runStream(
@@ -577,6 +584,7 @@ class StreamingAnalyzeNotifier
         conversationContentRevision: conversationContentRevision,
         conversationPartnerId: conversationPartnerId,
         isReconnectContext: isReconnectContext,
+        analyzedSessionContext: sessionContext,
         quotaExceeded: quotaExceeded,
       );
     } finally {
@@ -690,6 +698,7 @@ class StreamingAnalyzeNotifier
       conversationContentRevision: _cachedConversationContentRevision,
       conversationPartnerId: _cachedConversationPartnerId,
       isReconnectContext: _cachedIsReconnectContext,
+      analyzedSessionContext: _cachedSessionContext,
       quotaExceeded: null,
     );
 

@@ -35,6 +35,7 @@ String _snapshot({
   String strategy = '維持神秘感',
   String? catchablePoint,
   String confidence = 'high',
+  bool? isReconnect,
 }) =>
     jsonEncode({
       'gameStage': {'current': stage, 'status': 'normal', 'nextStep': nextStep},
@@ -55,6 +56,8 @@ String _snapshot({
           'actionType': 'extendTopicStoryFrame',
           'confidence': confidence,
         },
+      if (isReconnect != null)
+        '__vibesync_snapshot_meta_v1': {'isReconnect': isReconnect},
     });
 
 String _conversationSnapshotWithMeta(String analysisSnapshotJson) {
@@ -142,6 +145,34 @@ void main() {
       expect(stageBranch.label, '目前互動重點');
       expect(stageBranch.children.first.label, '重新連線');
       expect(map.relationshipSignal, contains('不代表關係退回陌生人'));
+    });
+
+    test('Conversation snapshot 的 frozen reconnect 優先於後續可變設定', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(),
+        conversations: [
+          _convo(
+            id: 'frozen-reconnect',
+            updatedAt: DateTime(2026, 8, 22),
+            snapshotJson: _snapshot(
+              stage: 'opening',
+              isReconnect: true,
+            ),
+            currentGameStage: 'opening',
+            sessionContext: SessionContext(
+              meetingContext: MeetingContext.datingApp,
+              duration: AcquaintanceDuration.fewDays,
+              goal: UserGoal.dateInvite,
+            ),
+          ),
+        ],
+      );
+
+      final stageBranch = map.root.children.singleWhere(
+        (node) => node.branch == MindMapBranch.stage,
+      );
+      expect(stageBranch.children.first.label, '重新連線');
     });
 
     test('第一次分析直接顯示分析次數與本輪互動脈絡', () {

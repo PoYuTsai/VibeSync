@@ -334,8 +334,9 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
       rawJson: raw,
       sourceId: 'conversation:${conversation.id}',
       isRecord: false,
-      reconnectWording: conversation.sessionContext?.meetingContext ==
-          MeetingContext.committedPartner,
+      reconnectWording: _snapshotIsReconnect(raw) ??
+          conversation.sessionContext?.meetingContext ==
+              MeetingContext.committedPartner,
       fallbackHighlight: _conversationArchiveTitle(conversation),
     ));
   }
@@ -357,6 +358,20 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
 }
 
 const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
+const _snapshotIsReconnectKey = 'isReconnect';
+
+bool? _snapshotIsReconnect(String rawJson) {
+  try {
+    final decoded = jsonDecode(rawJson);
+    if (decoded is! Map) return null;
+    final meta = decoded[_snapshotClientMetaKey];
+    if (meta is! Map) return null;
+    final value = meta[_snapshotIsReconnectKey];
+    return value is bool ? value : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 String _snapshotMirrorKey(String conversationId, String rawJson) =>
     '$conversationId\u0000${_normalizedSnapshotPayload(rawJson)}';

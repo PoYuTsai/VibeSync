@@ -44,6 +44,7 @@ class AnalysisPersistenceCoordinator {
   static const _snapshotMessageCountKey = 'messageCount';
   static const _snapshotHistoryEventIdKey = 'historyEventId';
   static const _snapshotIsReconnectKey = 'isReconnect';
+  static const _snapshotSessionContextKey = 'sessionContext';
 
   AnalysisPersistenceCoordinator({
     required this.conversationId,
@@ -260,16 +261,30 @@ class AnalysisPersistenceCoordinator {
     required int messageCount,
     required String historyEventId,
     bool? isReconnect,
+    SessionContext? sessionContext,
+    bool freezeSessionContext = false,
   }) {
     if (rawResponse == null || rawResponse.isEmpty) {
       return null;
     }
     final snapshot = Map<String, dynamic>.from(rawResponse)
-      ..[_snapshotClientMetaKey] = <String, Object>{
+      ..[_snapshotClientMetaKey] = <String, Object?>{
         _snapshotRevisionKey: contentRevision,
         _snapshotMessageCountKey: messageCount,
         _snapshotHistoryEventIdKey: historyEventId,
         if (isReconnect != null) _snapshotIsReconnectKey: isReconnect,
+        if (freezeSessionContext)
+          _snapshotSessionContextKey: sessionContext == null
+              ? null
+              : {
+                  'meetingContext': sessionContext.meetingContext.name,
+                  'duration': sessionContext.duration.name,
+                  'goal': sessionContext.goal.name,
+                  'userStyle': sessionContext.userStyle?.name,
+                  'userInterests': sessionContext.userInterests,
+                  'targetDescription': sessionContext.targetDescription,
+                  'analysisContextNote': sessionContext.analysisContextNote,
+                },
       };
     return jsonEncode(snapshot);
   }
@@ -432,6 +447,7 @@ class AnalysisPersistenceCoordinator {
     String? analyzedContentRevision,
     String? analyzedPartnerId,
     bool? analyzedIsReconnect,
+    SessionContext? analyzedSessionContext,
     bool allowArchivedRecordRefresh = false,
   }) {
     return _trackTask(
@@ -443,6 +459,7 @@ class AnalysisPersistenceCoordinator {
         analyzedContentRevision: analyzedContentRevision,
         analyzedPartnerId: analyzedPartnerId,
         analyzedIsReconnect: analyzedIsReconnect,
+        analyzedSessionContext: analyzedSessionContext,
         allowArchivedRecordRefresh: allowArchivedRecordRefresh,
       ),
     );
@@ -486,6 +503,7 @@ class AnalysisPersistenceCoordinator {
     String? analyzedContentRevision,
     String? analyzedPartnerId,
     bool? analyzedIsReconnect,
+    SessionContext? analyzedSessionContext,
     bool allowArchivedRecordRefresh = false,
   }) async {
     _inFlightCount++;
@@ -499,6 +517,7 @@ class AnalysisPersistenceCoordinator {
         analyzedContentRevision: analyzedContentRevision,
         analyzedPartnerId: analyzedPartnerId,
         analyzedIsReconnect: analyzedIsReconnect,
+        analyzedSessionContext: analyzedSessionContext,
         allowArchivedRecordRefresh: allowArchivedRecordRefresh,
       );
     } finally {
@@ -517,6 +536,7 @@ class AnalysisPersistenceCoordinator {
     String? analyzedContentRevision,
     String? analyzedPartnerId,
     bool? analyzedIsReconnect,
+    SessionContext? analyzedSessionContext,
     bool allowArchivedRecordRefresh = false,
   }) async {
     final conv = _getConversation(conversationId);
@@ -592,6 +612,8 @@ class AnalysisPersistenceCoordinator {
       messageCount: targetAnalyzedMessageCount,
       historyEventId: historyEventId,
       isReconnect: frozenReconnectContext,
+      sessionContext: analyzedSessionContext,
+      freezeSessionContext: analyzedIsReconnect != null,
     );
 
     conv.lastEnthusiasmScore = result.enthusiasmScore;

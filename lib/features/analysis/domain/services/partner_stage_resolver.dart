@@ -16,8 +16,8 @@ class PartnerStageResolution {
 
   /// `opening` 在分析當下屬於既有伴侶的重新連線，而不是陌生人破冰。
   ///
-  /// 這個值只可取自該次分析所屬 Conversation 的持久化 context；不得用
-  /// Partner 今天的預設值回寫舊歷史。
+  /// 新資料取自 event／snapshot 凍結值；只有舊資料缺欄位時才退回該次
+  /// Conversation 的持久化 context，不得用 Partner 今天的預設值回寫。
   final bool isReconnect;
   final String? conversationId;
 }
@@ -29,6 +29,10 @@ class PartnerStageResolution {
 /// report board uses the same result as its current-stage source of truth.
 class PartnerStageResolver {
   const PartnerStageResolver();
+
+  static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
+  static const _snapshotHistoryEventIdKey = 'historyEventId';
+  static const _snapshotIsReconnectKey = 'isReconnect';
 
   GameStage? latestStageFor(
     String partnerId,
@@ -70,7 +74,11 @@ class PartnerStageResolver {
         stage: stage,
         isReconnect: _isReconnect(
           stage,
-          frozenValue: latestValid.isReconnect,
+          frozenValue: latestValid.isReconnect ??
+              _snapshotIsReconnect(
+                sourceConversation,
+                expectedHistoryEventId: latestValid.id,
+              ),
           legacyConversation: sourceConversation,
         ),
         conversationId: conversationId,
@@ -93,6 +101,7 @@ class PartnerStageResolver {
           stage: stage,
           isReconnect: _isReconnect(
             stage,
+            frozenValue: _snapshotIsReconnect(conversation),
             legacyConversation: conversation,
           ),
           conversationId: conversation.id,
@@ -111,6 +120,28 @@ class PartnerStageResolver {
     if (frozenValue != null) return frozenValue;
     return legacyConversation?.sessionContext?.meetingContext ==
         MeetingContext.committedPartner;
+  }
+
+  bool? _snapshotIsReconnect(
+    Conversation? conversation, {
+    String? expectedHistoryEventId,
+  }) {
+    final raw = conversation?.lastAnalysisSnapshotJson;
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final meta = decoded[_snapshotClientMetaKey];
+      if (meta is! Map) return null;
+      if (expectedHistoryEventId != null &&
+          meta[_snapshotHistoryEventIdKey] != expectedHistoryEventId) {
+        return null;
+      }
+      final value = meta[_snapshotIsReconnectKey];
+      return value is bool ? value : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Strictly parses the durable stage on one legacy conversation.

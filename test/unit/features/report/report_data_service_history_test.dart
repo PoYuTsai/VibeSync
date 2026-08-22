@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
@@ -37,6 +39,7 @@ Conversation _conversation(
   String partnerId,
   String name, {
   MeetingContext? meetingContext,
+  String? snapshotJson,
 }) =>
     Conversation(
       id: id,
@@ -45,6 +48,7 @@ Conversation _conversation(
       createdAt: DateTime(2026, 1, 1),
       updatedAt: DateTime(2026, 1, 1),
       partnerId: partnerId,
+      lastAnalysisSnapshotJson: snapshotJson,
       sessionContext: meetingContext == null
           ? null
           : SessionContext(
@@ -381,6 +385,65 @@ void main() {
           [nowCommitted],
         )?.isReconnect,
         isFalse,
+      );
+    });
+
+    test('history 缺 frozen 欄位時，先讀同事件 snapshot meta 再退回目前設定', () {
+      final snapshot = jsonEncode({
+        'gameStage': {'current': 'opening'},
+        '__vibesync_snapshot_meta_v1': {
+          'historyEventId': 'e1',
+          'isReconnect': true,
+        },
+      });
+      final conversation = _conversation(
+        'c-1',
+        'p-1',
+        '小雲',
+        meetingContext: MeetingContext.datingApp,
+        snapshotJson: snapshot,
+      )..currentGameStage = 'opening';
+      final legacyEvent = stageEvent(
+        'e1',
+        'p-1',
+        'opening',
+        DateTime(2026, 6, 9),
+        conversationId: 'c-1',
+      );
+
+      expect(
+        service.latestStageResolutionFor(
+          'p-1',
+          [legacyEvent],
+          [conversation],
+        )?.isReconnect,
+        isTrue,
+      );
+    });
+
+    test('history 寫入失敗時，Conversation snapshot 仍凍結重新連線語意', () {
+      final snapshot = jsonEncode({
+        'gameStage': {'current': 'opening'},
+        '__vibesync_snapshot_meta_v1': {
+          'historyEventId': 'missing-event',
+          'isReconnect': true,
+        },
+      });
+      final conversation = _conversation(
+        'c-1',
+        'p-1',
+        '小雲',
+        meetingContext: MeetingContext.datingApp,
+        snapshotJson: snapshot,
+      )..currentGameStage = 'opening';
+
+      expect(
+        service.latestStageResolutionFor(
+          'p-1',
+          const [],
+          [conversation],
+        )?.isReconnect,
+        isTrue,
       );
     });
 

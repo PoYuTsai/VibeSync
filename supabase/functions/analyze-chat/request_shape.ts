@@ -77,3 +77,26 @@ export function acceptsUserStyleContext(
   return shape.kind === "my_message" || shape.kind === "optimize_message" ||
     shape.kind === "new_topic" || shape.kind === "opener";
 }
+
+export function routeUserStyleContext(
+  shape: AnalyzeChatRequestShape,
+  validation: { effectiveStyleContext?: string; error?: string },
+): {
+  modelValue?: string;
+  hashValue?: string;
+  error?: string;
+} {
+  if (acceptsUserStyleContext(shape)) {
+    return {
+      modelValue: validation.effectiveStyleContext,
+      hashValue: validation.effectiveStyleContext,
+      error: validation.error,
+    };
+  }
+  // Main analysis ignores About Me even when an old client still sends it.
+  // A valid legacy value remains hash-only so an in-flight run created before
+  // this deployment can reconnect without becoming a second paid analysis.
+  return validation.error
+    ? {}
+    : { hashValue: validation.effectiveStyleContext };
+}
