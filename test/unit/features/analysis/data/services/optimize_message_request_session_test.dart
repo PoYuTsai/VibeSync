@@ -246,8 +246,7 @@ void main() {
       // 舊版存下的 pending 是以「沒有指令」的 fingerprint 建的；升級後同一筆
       // 重送必須找回同一個 requestId，而不是鑄一顆新的（＝重複計費）。
       final session = OptimizeMessageRequestIdSession();
-      final legacyFingerprint =
-          OptimizeMessageRequestIdSession.fingerprintFor(
+      final legacyFingerprint = OptimizeMessageRequestIdSession.fingerprintFor(
         messages: [_message('嗨')],
         userDraft: '想約妳喝咖啡',
       );

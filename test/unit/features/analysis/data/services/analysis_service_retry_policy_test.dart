@@ -5,15 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
-import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
 void main() {
-  group('AnalysisService.isAutoRetriableAnalysisError', () {
+  group('AnalysisAuxiliaryClient.isAutoRetriableAnalysisError', () {
     test('圖片完整分析（已扣費路徑）的 TIMEOUT 不自動重試', () {
       // server request-level deadline 是 120s、client 是 130s；若本機仍逾時，
       // server 可能已完成並進入結算，自動重打會造成重複扣額風險。
       expect(
-        AnalysisService.isAutoRetriableAnalysisError(
+        AnalysisAuxiliaryClient.isAutoRetriableAnalysisError(
           code: 'TIMEOUT',
           hasImages: true,
           recognizeOnly: false,
@@ -31,7 +30,7 @@ void main() {
         'UPSTREAM_UNAVAILABLE',
       ]) {
         expect(
-          AnalysisService.isAutoRetriableAnalysisError(
+          AnalysisAuxiliaryClient.isAutoRetriableAnalysisError(
             code: code,
             hasImages: true,
             recognizeOnly: true,
@@ -45,7 +44,7 @@ void main() {
 
     test('無圖路徑的 TIMEOUT 也不自動重試，避免結算期間重複扣額', () {
       expect(
-        AnalysisService.isAutoRetriableAnalysisError(
+        AnalysisAuxiliaryClient.isAutoRetriableAnalysisError(
           code: 'TIMEOUT',
           hasImages: false,
           recognizeOnly: false,
@@ -62,7 +61,7 @@ void main() {
         'UPSTREAM_UNAVAILABLE',
       ]) {
         expect(
-          AnalysisService.isAutoRetriableAnalysisError(
+          AnalysisAuxiliaryClient.isAutoRetriableAnalysisError(
             code: code,
             hasImages: true,
             recognizeOnly: false,
@@ -83,7 +82,7 @@ void main() {
         'OPTIMIZE_MESSAGE_SETTLEMENT_RETRYABLE',
       ]) {
         expect(
-          AnalysisService.isAutoRetriableAnalysisError(
+          AnalysisAuxiliaryClient.isAutoRetriableAnalysisError(
             code: code,
             hasImages: false,
             recognizeOnly: false,
@@ -97,7 +96,7 @@ void main() {
 
     test('非 retriable code 一律不重試', () {
       expect(
-        AnalysisService.isAutoRetriableAnalysisError(
+        AnalysisAuxiliaryClient.isAutoRetriableAnalysisError(
           code: 'QUOTA_EXCEEDED',
           hasImages: false,
           recognizeOnly: false,
@@ -106,7 +105,7 @@ void main() {
         isFalse,
       );
       expect(
-        AnalysisService.isAutoRetriableAnalysisError(
+        AnalysisAuxiliaryClient.isAutoRetriableAnalysisError(
           code: null,
           hasImages: false,
           recognizeOnly: false,
@@ -118,7 +117,7 @@ void main() {
 
     test('recognizeOnly 收到 AI_RESPONSE_INVALID 時整個操作只送一次 HTTP', () async {
       var calls = 0;
-      final service = AnalysisService(
+      final service = AnalysisAuxiliaryClient(
         clientFactory: () => MockClient((request) async {
           calls += 1;
           return http.Response(
@@ -139,12 +138,10 @@ void main() {
       );
 
       await expectLater(
-        () => service.analyzeConversation(
-          const <Message>[],
+        () => service.recognizeScreenshots(
           images: [
             Uint8List.fromList([1, 2, 3])
           ],
-          recognizeOnly: true,
         ),
         throwsA(
           isA<AnalysisException>()

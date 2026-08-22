@@ -7,9 +7,7 @@ Deno.test({
   name: "OPENER_PROMPT teaches users how to reply, not just what to paste",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readIndexSource();
 
     assert(source.includes("讓用戶看懂「怎麼去回」"));
     assert(source.includes("先接哪個具體線索、避開哪類題"));
@@ -24,7 +22,9 @@ Deno.test({
         "recommendation.reason 必須用一般人看得懂的話**：這句接了哪個具體線索、避開什麼、她為什麼好回、之後怎麼接",
       ),
     );
-    assert(source.includes("客戶可見的解釋欄不得出現技巧名、內部欄位名或方法標籤"));
+    assert(
+      source.includes("客戶可見的解釋欄不得出現技巧名、內部欄位名或方法標籤"),
+    );
   },
 });
 
@@ -33,9 +33,7 @@ Deno.test({
     "opener no-charge billing is decided server-side, AI insufficientInfo flag is telemetry only",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readIndexSource();
 
     // Prompt: AI is told the flag is observability, not a billing lever.
     assert(
@@ -59,7 +57,7 @@ Deno.test({
     assert(source.includes("const hasProfileSubstance ="));
     assert(
       source.includes(
-        "const serverEligibleForNoCharge = imageCount === 0 &&\n        !hasProfileSubstance;",
+        "const serverEligibleForNoCharge = imageCount === 0 &&\n    !hasProfileSubstance;",
       ),
     );
     assert(
@@ -70,12 +68,12 @@ Deno.test({
     // Upfront 429 gate must use the eligibility-aware cost.
     assert(
       source.includes(
-        "sub.monthly_messages_used + upfrontGateCost > monthlyLimit",
+        "quota().sub.monthly_messages_used + upfrontGateCost > quota().monthlyLimit",
       ),
     );
     assert(
       source.includes(
-        "sub.daily_messages_used + upfrontGateCost > dailyLimit",
+        "quota().sub.daily_messages_used + upfrontGateCost > quota().dailyLimit",
       ),
     );
     // Final billing must be driven by server eligibility, not the AI flag.
@@ -84,7 +82,7 @@ Deno.test({
         "const effectiveOpenerCost = serverEligibleForNoCharge ? 0 : openerCost;",
       ),
     );
-    assert(source.includes("!accountIsTest && effectiveOpenerCost > 0"));
+    assert(source.includes("!deps.accountIsTest && effectiveOpenerCost > 0"));
     // 扣費已抽進 chargeOpenerQuota（idempotency ledger 版）；index.ts 只
     // 決定 effectiveOpenerCost 並轉交，canonical RPC 錨點移到 helper 檔。
     assert(source.includes("const chargeOutcome = await chargeOpenerQuota({"));
@@ -105,7 +103,7 @@ Deno.test({
     assert(source.includes("const aiInsufficientFlag ="));
     assert(
       source.includes(
-        "serverEligibleForNoCharge,\n        aiInsufficientFlag,",
+        "serverEligibleForNoCharge,\n    aiInsufficientFlag,",
       ),
     );
 
@@ -120,7 +118,7 @@ Deno.test({
     );
     assert(
       source.includes(
-        "const normalizedProfile = normalizeOpenerProfileInfo(rawProfileInfo);",
+        "const normalizedProfile = normalizeOpenerProfileInfo(deps.rawProfileInfo);",
       ),
     );
     assert(
@@ -135,7 +133,7 @@ Deno.test({
     );
     // The prior fragile read pattern must not come back.
     assert(
-      !source.includes("rawProfileInfo as Record<string, string>"),
+      !source.includes("deps.rawProfileInfo as Record<string, string>"),
       "prompt builder must not cast rawProfileInfo to Record<string,string>; use normalizedProfile instead",
     );
   },
@@ -146,9 +144,7 @@ Deno.test({
     "opener flat-cost: 3 quota per request regardless of image count, user-text-only case prompted to avoid blind A/B guessing",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    const source = await readIndexSource();
 
     // Cost is now flat 3 regardless of image count. The per-image
     // surcharge formula must not come back.
@@ -180,8 +176,23 @@ Deno.test({
 
 // ─── Batch 3：opener prompt Game 化（2026-07-02 opener-game-design）───
 
+// Prompt 常數已依 mode 分居各模組；掃描 corpus 依固定順序串接，
+// 讓 PROMPT_SEGMENTS 的「宣告→下一個頂層宣告」切界策略維持有效。
 async function readIndexSource(): Promise<string> {
-  return await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const files = [
+    "./analyze_chat_handler.ts",
+    "./opener_handler.ts",
+    "./ocr_recognition_prompt.ts",
+    "./analyze_system_prompt.ts",
+    "./optimize_message_prompt.ts",
+    "./my_message_prompt.ts",
+    "./opener_prompt.ts",
+  ];
+  const parts: string[] = [];
+  for (const file of files) {
+    parts.push(await Deno.readTextFile(new URL(file, import.meta.url)));
+  }
+  return parts.join("\n");
 }
 
 // 6 個 prompt 常數的切界：起點＝宣告、終點＝下一個頂層宣告（同 index_test.ts
@@ -215,7 +226,7 @@ const PROMPT_SEGMENTS: Array<[string, string, string]> = [
   [
     "OPENER_PROMPT",
     "const OPENER_PROMPT",
-    "function normalizeScreenshotClassification",
+    "\nexport {",
   ],
 ];
 
@@ -237,7 +248,7 @@ async function readOpenerPrompt(): Promise<string> {
     source,
     "OPENER_PROMPT",
     "const OPENER_PROMPT",
-    "function normalizeScreenshotClassification",
+    "\nexport {",
   );
 }
 
@@ -429,7 +440,10 @@ Deno.test({
     }
     assert(prompt.includes("## 五種風格各有任務"));
     // prompt 不得出現依 tier 少產風格的指令（免費/付費分流是 server 的事）
-    assertFalse(prompt.includes("免費版"), "OPENER_PROMPT 不得含 tier 分流指令");
+    assertFalse(
+      prompt.includes("免費版"),
+      "OPENER_PROMPT 不得含 tier 分流指令",
+    );
     assertFalse(prompt.includes("Free"), "OPENER_PROMPT 不得含 tier 分流指令");
 
     // completeness gate 走既有 repair：OPENER_REPAIR_PROMPT 必須繼續強制

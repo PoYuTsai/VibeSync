@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
+import 'package:vibesync/features/analysis/presentation/helpers/analysis_progress_stage_copy.dart';
 
 void main() {
   test('OCR waiting milestones are ordered and end in result finalization', () {

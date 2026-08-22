@@ -4,9 +4,13 @@
 
 import { assert } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
-const source = await Deno.readTextFile(
-  new URL("./index.ts", import.meta.url),
+const indexSource = await Deno.readTextFile(
+  new URL("./analyze_chat_handler.ts", import.meta.url),
 );
+const openerSource = await Deno.readTextFile(
+  new URL("./opener_handler.ts", import.meta.url),
+);
+const source = `${indexSource}\n${openerSource}`;
 
 function indexOfRequired(snippet: string, from = 0): number {
   const index = source.indexOf(snippet, from);
@@ -42,7 +46,10 @@ Deno.test("analyze 限流：在所有非模型拒絕 gate 後、最早的模型�
   const dailyGateAt = indexOfRequired('reason: "daily_limit_exceeded"');
   // Codex R1 P2：Essential 403 與 overcharge 確認 409/503 都不打模型，
   // 不得白吃限流名額——gate 必須在它們全部之後。
-  const featureGateAt = indexOfRequired('code: "FEATURE_NOT_AVAILABLE"');
+  // Essential 403 本體在 my_message_flow.ts；index 端以 call site 鎖順序。
+  const featureGateAt = indexOfRequired(
+    "await enforceMyMessageEssentialGate({",
+  );
   const overchargeGateAt = indexOfRequired(
     'logInfo("overcharge_confirmation_claimed"',
   );

@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
-import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
 // recognizeOnly OCR 限流 429 的 client 側契約
 // （docs/plans/2026-07-02-ocr-rate-limit-design.md I4/I5）。
@@ -16,8 +15,8 @@ import 'package:vibesync/features/conversation/domain/entities/message.dart';
 //   2. 映射成 wait 動作的限流文案（不是 retry 的「暫時失敗」）
 //   3. 不自動重試（重試只會繼續 429，養出 retry storm）
 
-AnalysisService _service(MockClient client) {
-  return AnalysisService(
+AnalysisAuxiliaryClient _service(MockClient client) {
+  return AnalysisAuxiliaryClient(
     clientFactory: () => client,
     accessTokenProvider: () => 'fake-token',
     expectedTierProvider: () => null,
@@ -49,20 +48,13 @@ void main() {
       });
 
       try {
-        await _service(mockClient).analyzeConversation(
-          [
-            Message(
-              id: 'discarded-old-batch',
-              content: '這句舊內容不可出現在 OCR request',
-              isFromMe: false,
-              timestamp: DateTime(2026, 7, 16),
-            ),
-          ],
+        // typed 入口在介面層就擋掉夾帶舊對話列（recognizeScreenshots 收不
+        // 進 messages）；wire 上仍必須是空 messages。
+        await _service(mockClient).recognizeScreenshots(
           images: [
             Uint8List.fromList([1, 2, 3])
           ],
           knownContactName: 'Bruce',
-          recognizeOnly: true,
         );
         fail('expected AnalysisException');
       } on AnalysisException {
@@ -93,12 +85,10 @@ void main() {
 
       AnalysisException? caught;
       try {
-        await _service(mockClient).analyzeConversation(
-          const [],
+        await _service(mockClient).recognizeScreenshots(
           images: [
             Uint8List.fromList([1, 2, 3])
           ],
-          recognizeOnly: true,
         );
         fail('expected AnalysisException');
       } on AnalysisException catch (error) {
@@ -123,12 +113,10 @@ void main() {
 
       AnalysisException? caught;
       try {
-        await _service(mockClient).analyzeConversation(
-          const [],
+        await _service(mockClient).recognizeScreenshots(
           images: [
             Uint8List.fromList([1, 2, 3])
           ],
-          recognizeOnly: true,
         );
         fail('expected AnalysisException');
       } on AnalysisException catch (error) {
@@ -153,12 +141,10 @@ void main() {
 
       AnalysisException? caught;
       try {
-        await _service(mockClient).analyzeConversation(
-          const [],
+        await _service(mockClient).recognizeScreenshots(
           images: [
             Uint8List.fromList([1, 2, 3])
           ],
-          recognizeOnly: true,
         );
         fail('expected AnalysisException');
       } on AnalysisException catch (error) {
@@ -171,7 +157,7 @@ void main() {
 
     test('OCR_RATE_LIMITED is not auto-retriable (I5 pin)', () {
       expect(
-        AnalysisService.isAutoRetriableAnalysisError(
+        AnalysisAuxiliaryClient.isAutoRetriableAnalysisError(
           code: 'OCR_RATE_LIMITED',
           hasImages: true,
           recognizeOnly: true,
