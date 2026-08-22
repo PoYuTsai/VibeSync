@@ -61,8 +61,7 @@ class ReplyZoneCards {
     required this.recommendation,
     required Map<String, String>? replies,
     required Map<String, ReplyOption>? replyOptions,
-  })  : _hasReplies = replies?.isNotEmpty ?? false,
-        presentStyleTypes = List.unmodifiable(
+  })  : presentStyleTypes = List.unmodifiable(
           styleOrder.where((type) => replies?.containsKey(type) ?? false),
         ),
         styleCards = List.unmodifiable(
@@ -92,7 +91,6 @@ class ReplyZoneCards {
   ];
 
   final FinalRecommendation? recommendation;
-  final bool _hasReplies;
 
   /// 顯示的風格卡（有序、已依推薦卡去重）。
   final List<ReplyStyleCardSpec> styleCards;
@@ -116,7 +114,9 @@ class ReplyZoneCards {
 
   int get cardCount => styleCards.length + (showRecommended ? 1 : 0);
 
-  bool get hasContent => showRecommended || _hasReplies;
+  /// 由 canonical 卡組推導（Codex r1-P2）：只有推薦卡或至少一張五風格卡
+  /// 才算有內容；原始 replies map 含未知鍵不再撐開空回覆區。
+  bool get hasContent => showRecommended || styleCards.isNotEmpty;
 }
 
 /// 回覆區（分析完成的 payoff 區塊）：標題列＋橫滑卡組（推薦卡＋風格卡，

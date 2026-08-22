@@ -108,6 +108,31 @@ void main() {
     expect(cards.styleCards.every((c) => !c.isRecommended), isTrue);
   });
 
+  test('回覆只含未知鍵且無推薦：canonical 空態（不因原始 map 非空撐開回覆區）', () {
+    final cards = ReplyZoneCards(
+      recommendation: null,
+      replies: const {'unknownStyle': '未知風格回覆', 'another': '另一個'},
+      replyOptions: const {},
+    );
+
+    expect(cards.hasContent, isFalse, reason: 'hasContent 必須由 canonical 卡組推導');
+    expect(cards.cardCount, 0);
+    expect(cards.styleCards, isEmpty);
+    expect(cards.presentStyleTypes, isEmpty);
+  });
+
+  test('回覆只含未知鍵但推薦卡存在：只有推薦卡', () {
+    final cards = ReplyZoneCards(
+      recommendation: _recommendation(pick: 'unknownStyle', content: '推薦內容'),
+      replies: const {'unknownStyle': '未知風格回覆'},
+      replyOptions: const {},
+    );
+
+    expect(cards.hasContent, isTrue);
+    expect(cards.cardCount, 1);
+    expect(cards.styleCards, isEmpty);
+  });
+
   test('無推薦亦無回覆：無內容', () {
     final cards = ReplyZoneCards(
       recommendation: null,
