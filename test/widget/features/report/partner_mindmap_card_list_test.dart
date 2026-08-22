@@ -33,7 +33,8 @@ void main() {
     expect(find.text('對象作戰板'), findsOneWidget);
     expect(find.text('Vivi'), findsOneWidget);
     expect(find.text('小美'), findsOneWidget);
-    expect(find.text('💫 建立男女感'), findsOneWidget);
+    expect(find.text('升溫'), findsOneWidget);
+    expect(find.text('💫 建立男女感'), findsNothing);
     expect(find.text('尚未分析'), findsOneWidget);
     expect(
       _stageAssetName(tester, 'p1'),
@@ -86,6 +87,35 @@ void main() {
     expect(
       _stageAssetName(tester, 'unknown'),
       'assets/images/partner_stage_unknown.webp',
+    );
+    for (final shortLabel in const [
+      '破冰',
+      '升溫',
+      '深入',
+      '連結',
+      '邀約',
+    ]) {
+      expect(find.text(shortLabel), findsOneWidget);
+    }
+    expect(find.text('無法識別的階段'), findsNothing);
+    expect(find.text('尚未分析'), findsOneWidget);
+  });
+
+  testWidgets('重新連線保留伴侶文案，仍使用同一顆冰塊', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerMindMapCardList(
+          partners: [_partner('reconnect', '伴侶')],
+          stageLabelOf: (_) => '重新連線',
+          onTapPartner: (_) {},
+        ),
+      ),
+    ));
+
+    expect(find.text('重新連線'), findsOneWidget);
+    expect(
+      _stageAssetName(tester, 'reconnect'),
+      'assets/images/partner_stage_opening.webp',
     );
   });
 

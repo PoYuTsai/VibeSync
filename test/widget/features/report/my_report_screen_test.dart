@@ -382,7 +382,7 @@ void main() {
         ],
       );
 
-      expect(find.text('準備邀約'), findsOneWidget);
+      expect(find.text('邀約'), findsOneWidget);
       expect(find.text('建立男女感'), findsNothing);
     });
 
@@ -480,7 +480,7 @@ void main() {
         ],
       );
 
-      expect(find.text('破冰階段'), findsOneWidget);
+      expect(find.text('破冰'), findsOneWidget);
       expect(find.text('重新連線'), findsNothing);
     });
   });

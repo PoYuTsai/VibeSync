@@ -239,6 +239,7 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
     final identityGradient =
         _identityGradients[colorKey % _identityGradients.length];
     final stageAsset = partnerStageAssetFor(stage);
+    final shortStageLabel = partnerStageShortLabelFor(stage);
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -268,7 +269,7 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
         ),
         const SizedBox(height: 2),
         Text(
-          stage ?? '尚未分析',
+          shortStageLabel,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: AppTypography.caption.copyWith(
