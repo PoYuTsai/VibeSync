@@ -35,34 +35,56 @@ cat > "$work/adb" <<'FAKE'
 #                   模擬 Error／異常輸出；預設為成功送出標記
 #   FAKE_CALLBACK_STDERR — 額外寫到 stderr 的 callback 輸出（真 adb 的
 #                   Error／chooser 文字可能走 stderr 且 exit 0）
+#   FAKE_LAUNCH_STATUS — launcher am start -W 的狀態：ok（預設）｜timeout
+#                   （重現 API 36 的 Status: timeout＋Activity 正確）｜其他
+#                   字串原樣進 Status: 行
+#   FAKE_PIDOF    — pidof 輸出覆寫；設成空字串＝程序不存在（預設 1234）
+#   FAKE_RESUMED  — dumpsys activity 的 resumed 行覆寫（預設 MainActivity
+#                   前景 resumed）
 cmd="${1:-}"; shift || true
 case "$cmd $*" in
   *"${FAKE_HANG:-__none__}"*) exec sleep 300 ;;
 esac
 case "$cmd" in
   logcat)
-    case "${FAKE_TAIL_LOG:-clean}" in
-      crash)
-        echo "08-22 00:00:01.000  1234  1234 E AndroidRuntime: FATAL EXCEPTION: main"
-        echo "08-22 00:00:01.001  1234  1234 E AndroidRuntime: Process: com.vibesync.app, PID: 1234"
-        ;;
-      cnf)
-        # 命中行在前；之後 2 萬行「有 ClassNotFoundException、無 package」
-        # 的行，讓舊寫法第一層 grep 在 grep -q 早退後必吃 SIGPIPE
-        echo "08-22 00:00:01.000  1234  1234 E art: java.lang.ClassNotFoundException: com.vibesync.app.Boom"
-        yes "08-22 00:00:01.001  1234  1234 E art: java.lang.ClassNotFoundException: com.other.junk" \
-          | head -n 20000
-        ;;
-      *) echo "08-22 00:00:01.000  1234  1234 I chatty: benign line" ;;
+    case "$*" in
+      *-c*) ;;  # logcat -c 清空：無輸出
+      *)
+        case "${FAKE_TAIL_LOG:-clean}" in
+          crash)
+            echo "08-22 00:00:01.000  1234  1234 E AndroidRuntime: FATAL EXCEPTION: main"
+            echo "08-22 00:00:01.001  1234  1234 E AndroidRuntime: Process: com.vibesync.app, PID: 1234"
+            ;;
+          cnf)
+            # 命中行在前；之後 2 萬行「有 ClassNotFoundException、無 package」
+            # 的行，讓舊寫法第一層 grep 在 grep -q 早退後必吃 SIGPIPE
+            echo "08-22 00:00:01.000  1234  1234 E art: java.lang.ClassNotFoundException: com.vibesync.app.Boom"
+            yes "08-22 00:00:01.001  1234  1234 E art: java.lang.ClassNotFoundException: com.other.junk" \
+              | head -n 20000
+            ;;
+          *) echo "08-22 00:00:01.000  1234  1234 I chatty: benign line" ;;
+        esac ;;
     esac ;;
   shell)
     case "$*" in
       *resolve-activity*) echo "$FAKE_RESOLVE" ;;
-      *pidof*) echo 1234 ;;
+      *pidof*) pid_out="${FAKE_PIDOF-1234}"; [ -n "$pid_out" ] && echo "$pid_out" ;;
+      *"dumpsys activity"*)
+        echo "${FAKE_RESUMED:-    mResumedActivity: ActivityRecord{f00 u0 com.vibesync.app/.MainActivity t7}}" ;;
       *"am start"*)
         # -W（launcher 冷啟動）回等待式輸出；無 -W（callback）回非等待輸出
         case "$*" in
-          *" -W "*) echo "Status: ok" ;;
+          *" -W "*)
+            case "${FAKE_LAUNCH_STATUS:-ok}" in
+              ok) echo "Status: ok" ;;
+              timeout)
+                echo "Starting: Intent { cmp=com.vibesync.app/.MainActivity }"
+                echo "Status: timeout"
+                echo "Activity: com.vibesync.app/.MainActivity"
+                echo "WaitTime: 10666"
+                ;;
+              *) echo "Status: ${FAKE_LAUNCH_STATUS}" ;;
+            esac ;;
           *)
             echo "${FAKE_CALLBACK_START:-Starting: Intent { act=android.intent.action.VIEW dat=scheme://host?smoke=1 }}"
             [ -n "${FAKE_CALLBACK_STDERR:-}" ] && echo "$FAKE_CALLBACK_STDERR" >&2
@@ -173,7 +195,9 @@ expect_fail "callback-stderr-error" "輸出含 Error"
 # 「am start -a」只中 callback、不中 launcher 的 -W -n）、logcat。smoke 必須
 # 「自己」以 exit 1 fail closed 並點名精確 stage；掛到外層 timeout 15
 # （exit=124）或 stage 對不上都判紅。
-for spec in "pidof|launcher-alive" "am start -a|callback-start" "logcat|logcat"; do
+# logcat 的 hang 樣式用「logcat -d」：啟動前多了 logcat -c 清空呼叫，
+# 用裸「logcat」會先掛在 logcat-clear stage 而測不到 post-launch 邊界
+for spec in "pidof|launcher-alive" "am start -a|callback-start" "logcat -d|logcat"; do
   hang="${spec%%|*}"; stage="${spec##*|}"
   set +e
   FAKE_RESOLVE="$good_resolve" FAKE_TAIL_LOG=clean FAKE_HANG="$hang" \
@@ -221,4 +245,52 @@ for bad in 0 601 abc 99999999999999999999999 0001; do
   }
 done
 
-echo "install-smoke fake-adb 迴歸 OK：正向通過；wrong-owner／chooser／crash／ClassNotFound／post-launch adb 卡死（launcher-alive、callback-start、logcat 精確 stage）／SMOKE_ADB_TIMEOUT 非法值 全數 fail closed"
+# --- 10. launcher Status timeout 二次健康檢查（API 36 迴歸）---
+# am start -W 回 Status: timeout 時不得直接判死也不得直接放行：
+# PID 唯一＋MainActivity 前景 resumed＋log 乾淨 → 以警告放行；
+# 任一健康檢查不過 → fail closed。ok／timeout 以外的狀態照樣直接失敗。
+run_smoke_timeout() {  # 額外 FAKE_* 由呼叫端前綴
+  set +e
+  FAKE_RESOLVE="$good_resolve" FAKE_LAUNCH_STATUS=timeout \
+    SMOKE_STARTUP_WAIT=0 \
+    PATH="$work:$PATH" timeout 15 bash "$smoke" "$work/app.apk" >"$work/out" 2>&1
+  status=$?
+  set -e
+}
+
+# 10a. timeout＋PID 唯一＋MainActivity resumed＋log 乾淨 → 必須通過（帶警告）
+run_smoke_timeout
+if [ "$status" -ne 0 ]; then
+  cat "$work/out"
+  echo "::error::timeout＋健康檢查全過 應以警告放行，卻失敗（exit=$status）"
+  exit 1
+fi
+grep -qF "二次健康檢查通過" "$work/out" || {
+  cat "$work/out"
+  echo "::error::timeout＋健康 通過但缺少明確警告訊息"
+  exit 1
+}
+
+# 10b. timeout＋無 PID → fail closed
+FAKE_PIDOF="" run_smoke_timeout
+expect_fail "timeout-no-pid" "程序不存在"
+
+# 10c. timeout＋前景 resumed 是別的 activity → fail closed
+FAKE_RESUMED="    mResumedActivity: ActivityRecord{f00 u0 com.android.launcher3/.Launcher t2}" \
+  run_smoke_timeout
+expect_fail "timeout-wrong-foreground" "前景 resumed activity 不是"
+
+# 10d. timeout＋runtime crash → fail closed
+FAKE_TAIL_LOG=crash run_smoke_timeout
+expect_fail "timeout-crash" "runtime 例外"
+
+# 10e. ok／timeout 以外的任何 Status 仍必須直接失敗（strict path 未放寬）
+set +e
+FAKE_RESOLVE="$good_resolve" FAKE_LAUNCH_STATUS="unable-to-resolve" \
+  SMOKE_STARTUP_WAIT=0 \
+  PATH="$work:$PATH" timeout 15 bash "$smoke" "$work/app.apk" >"$work/out" 2>&1
+status=$?
+set -e
+expect_fail "launch-status-not-ok" "啟動失敗"
+
+echo "install-smoke fake-adb 迴歸 OK：正向通過；wrong-owner／chooser／crash／ClassNotFound／post-launch adb 卡死（launcher-alive、callback-start、logcat 精確 stage）／SMOKE_ADB_TIMEOUT 非法值／launcher Status timeout 健康檢查（健康放行、無 PID／錯前景／crash／其他狀態 fail closed）全數符合預期"

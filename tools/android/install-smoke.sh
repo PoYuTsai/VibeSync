@@ -104,6 +104,28 @@ assert_no_chooser() {
   fi
 }
 
+# 全量抓一次 logcat，掃本 package 的 runtime 例外與 ClassNotFoundException，
+# 命中即 fail closed。啟動前已 logcat -c，掃到的都是本次啟動後的 log，
+# 安裝前殘留的舊 crash 不會決定結果。
+# 無 pipeline、無 grep -q 早退：先完整擷取，再取 package 相關行各掃一次。
+assert_no_pkg_crash() {  # $1=logcat stage 標籤
+  local stage="$1" full_log pkg_lines crash_lines cnf_lines
+  full_log=$(adb_call "$stage" logcat -d)
+  pkg_lines=$(grep -F "$package" <<<"$full_log" || true)
+  crash_lines=$(grep "AndroidRuntime" <<<"$pkg_lines" || true)
+  if [ -n "$crash_lines" ]; then
+    echo "$crash_lines"
+    echo "::error::logcat 出現 $package 的 runtime 例外（stage：$stage）"
+    exit 1
+  fi
+  cnf_lines=$(grep -F "ClassNotFoundException" <<<"$pkg_lines" || true)
+  if [ -n "$cnf_lines" ]; then
+    echo "$cnf_lines"
+    echo "::error::logcat 出現 $package 的 ClassNotFoundException（stage：$stage）"
+    exit 1
+  fi
+}
+
 # AND-03：對凍結深連結單獨 resolve，唯一解析結果必須是 plugin
 # CallbackActivity 且無 chooser，否則 fail closed。
 assert_unique_callback_owner() {
@@ -124,11 +146,36 @@ adb_call wait-for-device wait-for-device
 adb_call install install -r "$apk"
 assert_unique_callback_owner
 
+# 啟動前清空 logcat：timeout 二次健康檢查與最終掃描都只能看本次啟動後的
+# log，安裝前殘留的舊 crash 不得決定結果
+adb_call logcat-clear logcat -c
+
 # --- 1. launcher 冷啟動（AND-01：ClassNotFound＝0 的行為證據）---
 launch_out=$(adb_call launcher-start shell am start -W -n "$component")
 echo "$launch_out"
-grep -q "Status: ok" <<<"$launch_out" \
-  || { echo "::error::$component 啟動失敗（launcher 解析或啟動錯誤）"; exit 1; }
+if grep -q "Status: ok" <<<"$launch_out"; then
+  :  # 嚴格正常路徑
+elif grep -q "Status: timeout" <<<"$launch_out"; then
+  # API 36 迴歸：署名 APK 實際正常啟動，但 am start -W 等 idle 超過上限回
+  # Status: timeout（Activity 正確、WaitTime 10666）。timeout 不直接判死也
+  # 不直接放行：改用有界二次健康檢查——PID 恰好一個、MainActivity 前景
+  # resumed、本 package 無 runtime crash／ClassNotFound——全過才以警告放行，
+  # 任一不過 fail closed。ok／timeout 以外的狀態照樣直接失敗。
+  echo "::warning::launcher am start -W 回 Status: timeout，啟動未確認，改用二次健康檢查判定"
+  timeout_pid=$(single_pid launcher-timeout-alive)
+  resumed_out=$(adb_call launcher-timeout-resumed shell dumpsys activity activities)
+  resumed_lines=$(grep "ResumedActivity" <<<"$resumed_out" || true)
+  if ! grep -qF "$component" <<<"$resumed_lines"; then
+    echo "$resumed_lines"
+    echo "::error::Status timeout 且前景 resumed activity 不是 $component，判啟動失敗"
+    exit 1
+  fi
+  assert_no_pkg_crash launcher-timeout-logcat
+  echo "::warning::Status timeout 但二次健康檢查通過（PID 唯一：$timeout_pid、$component 前景 resumed、無 runtime crash／ClassNotFound），視為啟動成功續跑"
+else
+  echo "::error::$component 啟動失敗（launcher 解析或啟動錯誤）"
+  exit 1
+fi
 
 # 冷啟動後程序要活過數秒（沒有立即 crash）
 sleep "$startup_wait"
@@ -158,20 +205,6 @@ if [ "$launcher_pid" != "$after_pid" ]; then
 fi
 
 # --- crash／ClassNotFound 掃描（fail closed）---
-# 無 pipeline、無 grep -q 早退：先完整擷取，再取 package 相關行各掃一次
-full_log=$(adb_call logcat logcat -d)
-pkg_lines=$(grep -F "$package" <<<"$full_log" || true)
-crash_lines=$(grep "AndroidRuntime" <<<"$pkg_lines" || true)
-if [ -n "$crash_lines" ]; then
-  echo "$crash_lines"
-  echo "::error::logcat 出現 $package 的 runtime 例外"
-  exit 1
-fi
-cnf_lines=$(grep -F "ClassNotFoundException" <<<"$pkg_lines" || true)
-if [ -n "$cnf_lines" ]; then
-  echo "$cnf_lines"
-  echo "::error::logcat 出現 $package 的 ClassNotFoundException"
-  exit 1
-fi
+assert_no_pkg_crash logcat
 
 echo "install smoke OK：安裝、resolver 唯一 CallbackActivity owner、launcher 冷啟動存活、callback VIEW intent（同 PID、無 chooser）、無 runtime 例外、無 ClassNotFound"
