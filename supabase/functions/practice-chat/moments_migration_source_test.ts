@@ -17,7 +17,9 @@ const migration = await Deno.readTextFile(
 
 /**
  * 與 migration 內 CHECK (attempts BETWEEN 0 AND 3) 的上界一致，也是全站每日
- * 模型呼叫上限（100 角色 × 2 slot × 3 attempts = 600）的分母。
+ * 模型呼叫上限的 DB 側分母：每個 (profile_id, post_date) 最多 2 slot × 3 attempts。
+ * 全站每日 600 需要 Edge 額外保證 profile_id 只來自 100 位角色的 allowlist
+ * 且 post_date 是正確台北日（複審 P2-1；Edge 側契約測試由 PR B 補）。
  *
  * TODO(PR B)：PR B 會在 TS 側引入 MAX_MOMENT_ATTEMPTS；那時要把這裡改成
  * 直接 import 該常數做雙向比對，而不是留一份字面值。
@@ -174,7 +176,7 @@ Deno.test("reserve anchors the two review-flagged pitfalls in SQL", () => {
   // 坑 #1：首次 INSERT 明寫 attempts = 1，不能靠 DEFAULT 0。
   assert(
     body.includes("'reserved', 1, p_generation_token"),
-    "首次 INSERT 必須明寫 attempts = 1，否則每 slot 會跑 4 次、每日上限變 800",
+    "首次 INSERT 必須明寫 attempts = 1，否則每 slot 會跑 4 次而不是 3 次",
   );
   assert(body.includes("ON CONFLICT (profile_id, post_date, slot) DO NOTHING"));
   assert(body.includes("FOR UPDATE"));

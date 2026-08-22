@@ -142,7 +142,9 @@ async function countPosts(db: PGlite): Promise<number> {
 
 // 轉移表第 1 格。★ 複審點名的坑 #1：首次 INSERT 必須明寫 attempts = 1，
 // 不能靠 DEFAULT 0。用 0 的話第一次認領不計數，之後還能再遞增三次 →
-// 每 slot 實際跑 4 次、全域每日上限從 600 變成 800。
+// 每 slot 實際跑 4 次而不是 3 次，整體上限上浮 1/3。
+// 註（複審 P2-1）：全站每日 600 是「Edge allowlist × DB」共同保證，不是 DB 單獨
+// 保證——DB 只機械保證每個 (profile_id, post_date) 最多 2 slot × 3 attempts。
 Deno.test("PostgreSQL reserve claims a missing moment slot and counts the first attempt", async () => {
   const db = await createDatabase();
   try {
@@ -152,7 +154,7 @@ Deno.test("PostgreSQL reserve claims a missing moment slot and counts the first 
     assertEquals(
       claim.attempt_count,
       1,
-      "首次認領就必須計入一次模型呼叫，否則全域成本上限會從 600 變成 800",
+      "首次認領就必須計入一次模型呼叫，否則每個 slot 會跑 4 次而不是 3 次（整體上限上浮 1/3）",
     );
 
     const row = await readPost(db);

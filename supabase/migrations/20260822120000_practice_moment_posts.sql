@@ -5,9 +5,18 @@
 -- 讀到的是同一則。因此本表沒有 user_id，也永遠不得寫入任何使用者對話、暱稱、
 -- hint、debrief 或 relationship thread 衍生的內容（隱私鐵則）。
 --
--- 本表同時是全站每日模型呼叫上限的來源：
---   unique(profile_id, post_date, slot) × CHECK (attempts BETWEEN 0 AND 3)
---   → 100 位角色 × 2 slot × 3 attempts = 每日最多 600 次，schema 強制。
+-- 本表是全站每日模型呼叫上限的「DB 側」來源。注意 DB 單獨不足以保證每日 600 次
+-- （2026-08-22 複審 P2-1）：
+--   DB 機械保證的是「每個 (profile_id, post_date) 最多 6 次」——
+--     unique(profile_id, post_date, slot)
+--     × CHECK (slot BETWEEN 0 AND 1)      → 每天最多 2 個 slot
+--     × CHECK (attempts BETWEEN 0 AND 3)  → 每個 slot 最多 3 次模型呼叫
+--   DB 不保證、必須由 Edge 保證的是：
+--     · profile_id 只來自 100 位角色的固定 allowlist（DB 不認識角色名冊，
+--       任意字串都會被接受並各自獲得自己的 6 次額度）
+--     · post_date 是正確的台北日期（否則同一天可被算成多天）
+--   兩者相乘才是 100 × 6 = 每日最多 600 次。
+--   → Edge 側 allowlist 與台北日的契約測試由 PR B 補上。
 --
 -- 契約測試：supabase/functions/practice-chat/moments_migration_postgres_test.ts
 --          （PGlite 真 Postgres，逐格驗 reserve 的六態轉移表）
@@ -58,7 +67,8 @@ CREATE INDEX IF NOT EXISTS practice_moment_posts_date_idx
 --
 -- 兩個複審點名、很容易寫錯的地方（都有專屬契約測試釘死）：
 --   1. 首次 INSERT 必須明寫 attempts = 1，不能靠 DEFAULT 0。用 0 的話第一次認領
---      不計數，之後還能再遞增三次 → 每 slot 實際跑 4 次、全站每日 800 次。
+--      不計數，之後還能再遞增三次 → 每 slot 實際跑 4 次而不是 3 次，整體上限
+--      上浮 1/3（在 Edge allowlist 成立的前提下，全站每日 600 → 800）。
 --   2. generation_token IS NULL 必須是獨立的放行分支。release 的用途就是「我失敗
 --      了，別人不必等租約逾時就能接手」；若只看租約時間，被 release 的列會被自己
 --      剛寫下的新鮮 reserved_at 擋住整個租約，release 等於沒有作用。
