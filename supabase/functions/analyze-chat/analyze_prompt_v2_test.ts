@@ -191,7 +191,7 @@ Deno.test("lean core keeps the canonical-plan and style guardrails at the reason
 });
 
 Deno.test("coordination handoff keeps the user's known anchor and neutral confirmation point", () => {
-  const prompt = buildStreamSystemPrompt(ANALYZE_CORE_PROMPT_V2);
+  const prompt = ANALYZE_CORE_PROMPT_V2;
 
   for (const anchor of [
     "由使用者提供已知現況或下一確認點",
@@ -209,7 +209,7 @@ Deno.test("coordination handoff keeps the user's known anchor and neutral confir
 });
 
 Deno.test("style overlays keep coordination neutral and reject guilt or unsupported cold reads", () => {
-  const prompt = buildStreamSystemPrompt(ANALYZE_CORE_PROMPT_V2);
+  const prompt = ANALYZE_CORE_PROMPT_V2;
 
   for (const anchor of [
     "放棄我",

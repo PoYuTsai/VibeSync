@@ -2,7 +2,6 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { ANALYZE_CORE_PROMPT_V2 } from "./analyze_system_prompt.ts";
 import {
   buildStagePriorSection,
   buildStreamSystemPrompt,
@@ -26,8 +25,6 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   assert(prompt.includes("analysis.report_section"));
   assert(prompt.includes("analysis.done"));
   assert(prompt.includes("Emit exactly 5 `analysis.reply_option` events"));
-  assert(prompt.includes("Low-investment rule for every option"));
-  assert(prompt.includes("no pressure, guilt, or bids for reassurance"));
   assert(
     prompt.includes(
       "Complete all required `analysis.reply_option` events before any metrics, report sections, or done event.",
@@ -64,9 +61,9 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   assert(prompt.includes("within"));
   assert(prompt.includes("`stretch`"));
   assert(prompt.includes("too large a jump"));
-  // Keep the transport contract bounded; the coordination invariant adds a
-  // small fixed amount, while runtime prompt-size coverage is tested against
-  // the legacy prompt in analyze_prompt_v2_test.ts.
+  assert(prompt.includes("Keep time exact"));
+  // Keep the transport contract bounded; runtime prompt-size coverage is
+  // tested against the legacy prompt in analyze_prompt_v2_test.ts.
   assert(prompt.length < 7200);
 });
 
@@ -238,13 +235,23 @@ Deno.test("coverage contract: each option copies the ordered catchable inventory
   assert(prompt.includes("never re-select, omit, replace, or reorder per style"));
 });
 
-Deno.test("coordination contract: direction and neutral next step are explicit", () => {
-  const prompt = buildStreamSystemPrompt(ANALYZE_CORE_PROMPT_V2);
+Deno.test("stream wrapper keeps coordination semantics in the base prompt owner", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
 
-  assert(prompt.includes("由使用者提供已知現況或下一確認點"));
-  assert(prompt.includes("妳下課再跟我說"));
-  assert(prompt.includes("不要把物流決策丟回"));
-  assert(prompt.includes("保持 unknown logistics"));
+  assert(prompt.includes("The canonical plan is shared by every style"));
+  for (const semanticRule of [
+    "由使用者提供已知現況或下一確認點",
+    "你決定就好",
+    "看你想怎樣",
+    "隨你啦",
+    "不要新增誰去找誰、誰來找誰或直接回家",
+    "放棄我",
+    "不後悔嗎",
+    "妳下課再跟我說",
+    "保持 unknown logistics",
+  ]) {
+    assertEquals(prompt.includes(semanticRule), false, semanticRule);
+  }
 });
 
 Deno.test("coverage contract: short options are valid when they match independent moves", () => {

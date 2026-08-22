@@ -224,6 +224,11 @@ Deno.test("stream handler sends the lean core without the legacy draft contract"
   assert(systemPrompt.includes("## Streaming Output Contract"));
   assert(systemPrompt.includes("canonical reply plan"));
   assert(systemPrompt.includes("coordination_handoff"));
+  assert(systemPrompt.includes("由使用者提供已知現況或下一確認點"));
+  assert(systemPrompt.includes("不要把物流決策丟回她"));
+  assert(systemPrompt.includes("妳下課再跟我說"));
+  assert(systemPrompt.includes("不要新增誰去找誰、誰來找誰或直接回家"));
+  assert(systemPrompt.includes("Keep time exact"));
   assert(systemPrompt.includes(SAFETY_RULES));
   assert(systemPrompt.includes(PROMPT_LEAK_DEFENSE_DIRECTIVE));
   for (const legacyOnly of [
