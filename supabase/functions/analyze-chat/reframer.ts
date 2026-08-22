@@ -7,6 +7,7 @@ import {
 import {
   type BallInventory,
   coveredIndependentBalls,
+  hasExactIndependentCoverage,
   independentMoveSourceIndices,
   parseBallInventory,
   validateReplySegments,
@@ -95,10 +96,6 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   // 驗證 source semantics，並觀測 exact source coverage。缺席/全略＝null＝
   // soft 不驗證（INV-H4 fallback，絕不誤殺）。
   let inventory: BallInventory | null = null;
-  const replyCoverageByStyle = new Map<
-    StreamStyle,
-    { sourceIndices: number[]; segmentCount: number }
-  >();
   const preChargeEvents: StreamEvent[] = [];
   const requiredReplyStyles = normalizeRequiredReplyStyles(
     options.requiredReplyStyles,
@@ -260,22 +257,16 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       const covered = coveredIndependentBalls(inventory, segments);
       // Keep authored order and count visible. A sorted Set would hide order drift
       // and duplicate independent moves, which are both meaningful prompt signals.
-      const previous = anchor == null
-        ? [...replyCoverageByStyle.values()][0]
-        : replyCoverageByStyle.get(anchor);
-      const exact = previous == null
-        ? null
-        : arraysEqual(sourceIndices, previous.sourceIndices) &&
-          segments.length === previous.segmentCount;
-      const expectedIndices = previous?.sourceIndices.join(",") ?? "";
-      const expectedSegments = previous?.segmentCount ?? "unknown";
-      replyCoverageByStyle.set(style, {
-        sourceIndices: [...sourceIndices],
-        segmentCount: segments.length,
-      });
+      // Compare every option to the inventory's ordered full source pair list;
+      // selected/first option is never an expected baseline.
+      const exact = hasExactIndependentCoverage(inventory, segments);
+      const expectedIndices = inventory.expectedIndependentMoves
+        .map((move) => move.sourceIndex)
+        .join(",");
+      const expectedSegments = inventory.expectedIndependentMoves.length;
       console.log(
         `[ball_coverage_exact] style=${style} selected=${selectedLabel} ` +
-          `coverage=${exact == null ? "baseline" : exact ? "exact" : "mismatch"} ` +
+          `coverage=${exact ? "exact" : "mismatch"} ` +
           `indices=[${sourceIndices.join(",")}] segments=${segments.length} ` +
           `expectedIndices=[${expectedIndices}] expectedSegments=${expectedSegments} ` +
           `covered=${covered.size}/${inventory.independentCount} ok=${verdict.ok}`,
@@ -291,7 +282,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
           } style ${style}: ${verdict.reason}`,
         );
       }
-      if (exact === false) {
+      if (!exact) {
         console.warn(
           `[ball_coverage_exact] mismatch style=${style} ` +
             `expectedIndices=[${expectedIndices}] expectedSegments=${expectedSegments}`,
@@ -1487,11 +1478,6 @@ function hasUsableReplySegments(value: unknown): boolean {
 
 function doneResultField(event: Record<string, unknown>) {
   return recordField(event.finalResult) ?? recordField(event.result);
-}
-
-function arraysEqual(left: readonly number[], right: readonly number[]): boolean {
-  return left.length === right.length &&
-    left.every((value, index) => value === right[index]);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

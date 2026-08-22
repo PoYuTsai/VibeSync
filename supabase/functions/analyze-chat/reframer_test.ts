@@ -2548,7 +2548,7 @@ Deno.test("fail-soft: selected style segment sourced from 略 ball is NOT blocke
 
 // ---------------------------------------------------------------------------
 // Prompt V2 exact coverage telemetry：每個 option 記一行 authored source
-// order/count；第一個 option 建立 baseline，後續 option 對 baseline 比對。
+// order/count，並直接對 inventory 的 expected 接球 pair 比對。
 // ---------------------------------------------------------------------------
 
 async function _withCapturedConsole(
@@ -2593,11 +2593,12 @@ Deno.test("ball_coverage_exact: every option logs authored indices and selected 
   assert(coverage[0].includes("style=coldRead"));
   assert(coverage[0].includes("selected=true"));
   assert(coverage[0].includes("covered=3/4"));
-  assert(coverage[0].includes("coverage=baseline"));
+  assert(coverage[0].includes("coverage=mismatch"));
   assert(coverage[0].includes("indices=[4,5,6]"));
   assert(coverage[1].includes("style=extend"));
   assert(coverage[1].includes("selected=false"));
   assert(coverage[1].includes("indices=[3,4,5]"));
+  assert(coverage[1].includes("coverage=mismatch"));
 });
 
 Deno.test("ball_coverage_exact: same source order/count is observable without a floor", async () => {
@@ -2614,8 +2615,8 @@ Deno.test("ball_coverage_exact: same source order/count is observable without a 
     reframer.pushText(inventoryLine(FOUR_CATCHABLE));
     reframer.pushText(decisionLine("coldRead"));
     reframer.pushText(thinRecommendationLine("coldRead"));
-    // Two independent moves are valid; all options carry the exact same
-    // source order/count even though the inventory has four independent balls.
+    // Two independent moves are valid, but exact coverage is against the
+    // inventory's four expected 接 pairs; matching another option is not enough.
     reframer.pushText(replyOptionLine("coldRead", [4, 5]));
     reframer.pushText(replyOptionLine("extend", [4, 5]));
     await reframer.flush();
@@ -2624,10 +2625,12 @@ Deno.test("ball_coverage_exact: same source order/count is observable without a 
   assert(events.some((event) => event.type === "analysis.done"));
   const coverage = logs.filter((entry) => entry.includes("[ball_coverage_exact]"));
   assertEquals(coverage.length, 2);
-  assert(coverage[0].includes("coverage=baseline"));
-  assert(coverage[1].includes("coverage=exact"));
+  assert(coverage[0].includes("coverage=mismatch"));
+  assert(coverage[1].includes("coverage=mismatch"));
   assert(coverage[0].includes("indices=[4,5]"));
   assert(coverage[0].includes("segments=2"));
+  assert(coverage[0].includes("expectedIndices=[3,4,5,6]"));
+  assert(coverage[0].includes("expectedSegments=4"));
   assertEquals(coverage.some((entry) => entry.includes("floor=")), false);
 });
 

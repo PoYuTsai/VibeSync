@@ -175,7 +175,7 @@ selectedStyle 依主動作與證據選，不設安全預設值：物流或真問
 
 \`targetProfile\` 是長期可回灌記憶，不是本輪標籤：interests、traits、notes 只有對方以文字明確說過且之後仍有用才填，每欄最多 5 項；每項必須有 \`value\` 與最多 2 句逐字 \`evidence\`，evidence 只能是她的文字，不能引用我方、圖片、貼圖或推測。沒有可核對文字就回空陣列。
 
-\`coachActionHint\` 要指出一個當前可接球點，包含 catchablePoint、read、microMove、avoid、actionType、confidence；它解釋怎麼接，不重複可送出的 finalRecommendation。訊號太少就明說沒有明確可接球點並降低 confidence。\`healthCheck\` 只有真的有安全、界線、第三方、利用或明顯情緒風險才填，最多一個 issue 與一個 suggestion，沒有證據就用空陣列。
+\`coachActionHint\` 要指出一個當前可接球點，包含 catchablePoint、read、microMove、avoid、actionType、confidence；它解釋怎麼接，不重複可送出的 finalRecommendation。訊號太少就明說沒有明確可接球點並降低 confidence。\`healthCheck\` 只有真的有安全、界線、第三方、利用或明顯情緒風險才填，issues 與 suggestions 都用陣列承載；沒有證據就用空陣列。
 
 所有可見文字用台灣繁體中文。分析欄位可簡短說明互動判斷，但不要把內部術語塞進可複製訊息；不要為了標技巧名而硬出招。遵守下方 streaming contract 的 event order、thin recommendation、五 style count、selected first、NDJSON shape 與 legacy-compatible done 規則。
 

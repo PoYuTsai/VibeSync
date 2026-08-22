@@ -12,6 +12,11 @@ import type { StreamEvent } from "./stream_events.ts";
 
 export type BallDisposition = "接" | "併" | "略";
 
+export interface ExpectedIndependentMove {
+  sourceIndex: number;
+  sourceMessage: string;
+}
+
 const BALL_DISPOSITIONS = new Set<string>(["接", "併", "略"]);
 const CATCHABLE_DISPOSITIONS = new Set<BallDisposition>(["接", "併"]);
 
@@ -22,6 +27,8 @@ export interface BallInventory {
   catchableCount: number;
   // 只有「接」是獨立 conversational move；「併」只提供同一球的上下文。
   independentCount: number;
+  // 盤點原順序中的完整獨立接球 pair；exact coverage 以此為唯一 expected。
+  expectedIndependentMoves: ExpectedIndependentMove[];
 }
 
 export function parseBallInventory(
@@ -33,6 +40,7 @@ export function parseBallInventory(
   if (!Array.isArray(balls) || balls.length === 0) return null;
 
   const dispositions = new Map<number, BallDisposition>();
+  const sourceMessages = new Map<number, string>();
   for (const ball of balls) {
     if (!ball || typeof ball !== "object") continue;
     const record = ball as Record<string, unknown>;
@@ -51,19 +59,33 @@ export function parseBallInventory(
 
     const value = disposition as BallDisposition;
     dispositions.set(sourceIndex, value);
+    sourceMessages.set(
+      sourceIndex,
+      typeof record.sourceMessage === "string" ? record.sourceMessage : "",
+    );
   }
 
   // sourceIndex 是盤點主鍵。模型偶爾可能重複列同一索引，inventory count 以
   // 去重後的最終 disposition 計算，避免同一顆球被灌成多顆。
   const dispositionValues = [...dispositions.values()];
   const catchableCount = dispositionValues.filter(isCatchable).length;
-  const independentCount = dispositionValues.filter((value) => value === "接")
-    .length;
+  const expectedIndependentMoves = [...dispositions.entries()]
+    .filter(([, value]) => value === "接")
+    .map(([sourceIndex]) => ({
+      sourceIndex,
+      sourceMessage: sourceMessages.get(sourceIndex) ?? "",
+    }));
+  const independentCount = expectedIndependentMoves.length;
 
   // 缺席等義的軟退回：沒有任何可接球（全略或全壞）＝不驗證，絕不誤殺。
   if (catchableCount === 0) return null;
 
-  return { dispositions, catchableCount, independentCount };
+  return {
+    dispositions,
+    catchableCount,
+    independentCount,
+    expectedIndependentMoves,
+  };
 }
 
 export function isCatchable(disposition: BallDisposition): boolean {
@@ -129,6 +151,40 @@ export function independentMoveSourceIndices(
     }
     return inventory.dispositions.get(sourceIndex) === "接" ? [sourceIndex] : [];
   });
+}
+
+interface SourcePair {
+  sourceIndex: number | null;
+  sourceMessage: string;
+}
+
+function sourcePairsFromSegments(
+  segments: readonly Record<string, unknown>[],
+): SourcePair[] {
+  return segments.map((segment) => ({
+    sourceIndex: typeof segment?.sourceIndex === "number" &&
+        Number.isFinite(segment.sourceIndex)
+      ? segment.sourceIndex
+      : null,
+    sourceMessage: typeof segment?.sourceMessage === "string"
+      ? segment.sourceMessage
+      : "",
+  }));
+}
+
+// Exact coverage is deliberately stricter than source validation: every option
+// must carry the inventory-ordered sourceIndex/sourceMessage pair sequence.
+// This is an observability verdict only; the reframer remains fail-soft.
+export function hasExactIndependentCoverage(
+  inventory: BallInventory,
+  segments: readonly Record<string, unknown>[],
+): boolean {
+  const observed = sourcePairsFromSegments(segments);
+  const expected = inventory.expectedIndependentMoves;
+  return observed.length === expected.length && observed.every((pair, index) =>
+    pair.sourceIndex === expected[index].sourceIndex &&
+    pair.sourceMessage === expected[index].sourceMessage
+  );
 }
 
 // 一個 option 的 segments 實際覆蓋到哪些「接」球（去重、盤點外索引不算）。

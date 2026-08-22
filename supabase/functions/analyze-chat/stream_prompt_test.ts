@@ -251,6 +251,76 @@ Deno.test("metrics step requires gameStage with client enum values and context r
   assert(prompt.includes("認識場景"));
 });
 
+Deno.test("metrics, coach hint, and report sections name their payload contracts", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
+  const metricsStart = prompt.indexOf("`analysis.metrics`");
+  const coachStart = prompt.indexOf("`analysis.coach_hint`");
+  const reportStart = prompt.indexOf("`analysis.report_section`");
+  const doneStart = prompt.indexOf("`analysis.done`");
+  assert(metricsStart >= 0 && coachStart > metricsStart);
+  assert(coachStart >= 0 && reportStart > coachStart);
+  assert(reportStart >= 0 && doneStart > reportStart);
+
+  const metrics = prompt.slice(metricsStart, coachStart);
+  assert(metrics.includes("enthusiasm"));
+  assert(metrics.includes("score"));
+  assert(metrics.includes("level"));
+  assert(metrics.includes("dimensions"));
+  for (const key of [
+    "heat",
+    "engagement",
+    "topicDepth",
+    "replyWillingness",
+    "emotionalConnection",
+    "gameStage",
+    "current",
+    "suggestion",
+    "status",
+    "nextStep",
+  ]) {
+    assert(metrics.includes(key), `metrics missing ${key}`);
+  }
+
+  const coach = prompt.slice(coachStart, reportStart);
+  for (const key of [
+    "coachActionHint",
+    "catchablePoint",
+    "read",
+    "microMove",
+    "avoid",
+    "actionType",
+    "confidence",
+  ]) {
+    assert(coach.includes(key), `coach hint missing ${key}`);
+  }
+
+  const report = prompt.slice(reportStart, doneStart);
+  for (const key of [
+    "section",
+    "payload",
+    "psychology",
+    "strategy",
+    "reminder",
+    "targetProfile",
+    "healthCheck",
+    "issues",
+    "suggestions",
+    "empty arrays",
+  ]) {
+    assert(report.includes(key), `report section missing ${key}`);
+  }
+
+  const done = prompt.slice(doneStart);
+  for (const key of [
+    "finalResult",
+    "scenarioDetected",
+    "warnings",
+    "legacy-compatible",
+  ]) {
+    assert(done.includes(key), `done payload missing ${key}`);
+  }
+});
+
 Deno.test("stage prior section: legal stage renders weak-prior block, junk renders nothing", () => {
   // 跨次連續性 seam：上次有效階段是弱先驗，隨片段送入；非法值絕不偽造。
   const section = buildStagePriorSection("qualification");

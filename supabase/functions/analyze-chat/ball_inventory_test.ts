@@ -5,6 +5,7 @@ import {
 import {
   type BallInventory,
   coveredIndependentBalls,
+  hasExactIndependentCoverage,
   independentMoveSourceIndices,
   parseBallInventory,
   validateReplySegments,
@@ -21,7 +22,17 @@ function inventoryOf(
     if (disp === "接" || disp === "併") catchableCount += 1;
     if (disp === "接") independentCount += 1;
   }
-  return { dispositions, catchableCount, independentCount };
+  return {
+    dispositions,
+    catchableCount,
+    independentCount,
+    expectedIndependentMoves: entries
+      .filter(([, disposition]) => disposition === "接")
+      .map(([sourceIndex]) => ({
+        sourceIndex,
+        sourceMessage: `m${sourceIndex}`,
+      })),
+  };
 }
 
 function seg(sourceIndex: number): Record<string, unknown> {
@@ -287,5 +298,51 @@ Deno.test("independent move source indices preserve exact option order and count
   assertEquals(
     independentMoveSourceIndices(inv, [seg(5), seg(5)]),
     [5, 5],
+  );
+});
+
+Deno.test("inventory preserves the ordered independent source pairs", () => {
+  const inv = parseBallInventory({
+    type: "analysis.inventory",
+    balls: [
+      { sourceIndex: 5, sourceMessage: "先吃飯", disposition: "接" },
+      { sourceIndex: 3, sourceMessage: "剛下班", disposition: "接" },
+      { sourceIndex: 4, sourceMessage: "在比賽", disposition: "併" },
+    ],
+  });
+
+  assert(inv !== null);
+  assertEquals(inv!.expectedIndependentMoves, [
+    { sourceIndex: 5, sourceMessage: "先吃飯" },
+    { sourceIndex: 3, sourceMessage: "剛下班" },
+  ]);
+});
+
+Deno.test("exact independent coverage requires every expected source pair", () => {
+  const inv = inventoryOf([[3, "接"], [4, "接"], [5, "接"], [6, "接"]]);
+  const cases: Array<[string, Record<string, unknown>[]]> = [
+    ["all options omit a ball", [seg(3), seg(4)]],
+    ["phantom index", [seg(3), seg(4), seg(5), seg(9)]],
+    ["same index with different sourceMessage", [
+      seg(3),
+      seg(4),
+      { ...seg(5), sourceMessage: "不是原句" },
+      seg(6),
+    ]],
+    ["reordered", [seg(3), seg(5), seg(4), seg(6)]],
+    ["duplicate", [seg(3), seg(4), seg(5), seg(5), seg(6)]],
+    ["different segment count", [seg(3), seg(4), seg(5)]],
+  ];
+
+  for (const [name, segments] of cases) {
+    assertEquals(
+      hasExactIndependentCoverage(inv, segments),
+      false,
+      name,
+    );
+  }
+  assertEquals(
+    hasExactIndependentCoverage(inv, [seg(3), seg(4), seg(5), seg(6)]),
+    true,
   );
 });

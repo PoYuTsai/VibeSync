@@ -9,8 +9,6 @@ import {
 } from "./analyze_system_prompt.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "./prompt_leak.ts";
 import { SAFETY_RULES } from "./guardrails.ts";
-import { classifyAnalyzeChatRequest } from "./request_shape.ts";
-import { shouldIncludeLegacyDraftPrompt } from "./request_mode.ts";
 import { buildStreamSystemPrompt } from "./stream_prompt.ts";
 
 function utf8Bytes(value: string): number {
@@ -50,6 +48,76 @@ Deno.test("active stream uses a runtime lean core and is at least half the base 
   }
 });
 
+Deno.test("active stream contract carries complete analysis event payloads", () => {
+  const prompt = buildStreamSystemPrompt(ANALYZE_CORE_PROMPT_V2);
+  const metricsStart = prompt.indexOf("`analysis.metrics`");
+  const coachStart = prompt.indexOf("`analysis.coach_hint`");
+  const reportStart = prompt.indexOf("`analysis.report_section`");
+  const doneStart = prompt.indexOf("`analysis.done`");
+  assert(metricsStart >= 0 && coachStart > metricsStart);
+  assert(coachStart >= 0 && reportStart > coachStart);
+  assert(reportStart >= 0 && doneStart > reportStart);
+
+  const metrics = prompt.slice(metricsStart, coachStart);
+  for (const key of [
+    "enthusiasm",
+    "score",
+    "level",
+    "dimensions",
+    "heat",
+    "engagement",
+    "topicDepth",
+    "replyWillingness",
+    "emotionalConnection",
+    "current",
+    "suggestion",
+    "gameStage",
+    "status",
+    "nextStep",
+  ]) {
+    assert(metrics.includes(key), `metrics missing ${key}`);
+  }
+
+  const coach = prompt.slice(coachStart, reportStart);
+  for (const key of [
+    "coachActionHint",
+    "catchablePoint",
+    "read",
+    "microMove",
+    "avoid",
+    "actionType",
+    "confidence",
+  ]) {
+    assert(coach.includes(key), `coach hint missing ${key}`);
+  }
+
+  const report = prompt.slice(reportStart, doneStart);
+  for (const key of [
+    "section",
+    "payload",
+    "psychology",
+    "strategy",
+    "reminder",
+    "targetProfile",
+    "healthCheck",
+    "issues",
+    "suggestions",
+    "empty arrays",
+  ]) {
+    assert(report.includes(key), `report section missing ${key}`);
+  }
+
+  const done = prompt.slice(doneStart);
+  for (const key of [
+    "finalResult",
+    "scenarioDetected",
+    "warnings",
+    "legacy-compatible",
+  ]) {
+    assert(done.includes(key), `done payload missing ${key}`);
+  }
+});
+
 Deno.test("legacy SYSTEM_PROMPT still owns structured draft and image behavior", () => {
   assert(SYSTEM_PROMPT.includes("用戶訊息優化功能"));
   assert(SYSTEM_PROMPT.includes("optimizedMessage"));
@@ -66,25 +134,6 @@ Deno.test("legacy SYSTEM_PROMPT still owns structured draft and image behavior",
   });
   assert(imagePrompt.includes("recognizedConversation"));
   assert(imagePrompt.includes("First extract the visible conversation"));
-});
-
-Deno.test("draft-with-images stays on the legacy draft prompt seam", () => {
-  const shape = classifyAnalyzeChatRequest({
-    userDraft: "想約妳喝咖啡",
-    images: ["ZmFrZQ=="],
-  });
-
-  assert(shape.ok);
-  if (!shape.ok) return;
-  assertEquals(shape.shape.kind, "draft_with_images_analyze");
-  assertEquals(
-    shouldIncludeLegacyDraftPrompt({
-      responseMode: "legacy",
-      isMyMessageMode: false,
-      userDraft: "想約妳喝咖啡",
-    }),
-    true,
-  );
 });
 
 Deno.test("lean core keeps the canonical-plan and style guardrails at the reasoning seam", () => {

@@ -5,7 +5,16 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { createAnalyzeChatHandler } from "./index.ts";
+import {
+  buildLegacyDraftModelCapture,
+  createAnalyzeChatHandler,
+} from "./analyze_chat_handler.ts";
+import {
+  buildImageAnalysisPrompt,
+  SYSTEM_PROMPT,
+} from "./analyze_system_prompt.ts";
+import { classifyAnalyzeChatRequest } from "./request_shape.ts";
+import { resolveRequestMode } from "./request_mode.ts";
 
 interface FakeCounters {
   from: number;
@@ -49,6 +58,52 @@ function postRequest(body: Record<string, unknown>): Request {
     body: JSON.stringify(body),
   });
 }
+
+Deno.test("handler seam keeps classified draft+images on legacy model capture", () => {
+  const request = {
+    userDraft: "想約妳喝咖啡",
+    images: ["ZmFrZQ=="],
+  };
+  const shape = classifyAnalyzeChatRequest(request);
+  assert(shape.ok);
+  if (!shape.ok) return;
+  assertEquals(shape.shape.kind, "draft_with_images_analyze");
+
+  const mode = resolveRequestMode({
+    responseMode: undefined,
+    analysisRunId: undefined,
+    plainAnalyzeRequest: shape.shape.kind === "plain_analyze",
+  });
+  assert(mode.ok);
+  if (!mode.ok) return;
+
+  const imagePrompt = buildImageAnalysisPrompt({
+    imageCount: 1,
+    contextInfo: "",
+    partnerContextInfo: "",
+    styleContextInfo: "",
+    historicalContextInfo: "",
+    compiledConversationText: "她：嗨",
+  });
+  const capture = buildLegacyDraftModelCapture({
+    responseMode: mode.responseMode,
+    isMyMessageMode: false,
+    userDraft: request.userDraft,
+    systemPrompt: SYSTEM_PROMPT,
+    baseUserPrompt: imagePrompt,
+    images: [{ data: "ZmFrZQ==", mediaType: "image/png", order: 0 }],
+  });
+
+  assert(capture !== null);
+  if (!capture) return;
+  assertEquals(capture.systemPrompt, SYSTEM_PROMPT);
+  assert(capture.userPrompt.includes("First extract the visible conversation"));
+  assert(capture.userPrompt.includes('"userDraft":"想約妳喝咖啡"'));
+  assert(Array.isArray(capture.userMessageContent));
+  if (!Array.isArray(capture.userMessageContent)) return;
+  const textPart = capture.userMessageContent.find((part) => part.type === "text");
+  assertEquals(textPart?.text, capture.userPrompt);
+});
 
 async function runWithFakes(
   body: Record<string, unknown>,

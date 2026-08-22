@@ -1,8 +1,8 @@
 // Streaming prompt adapter for analyze-chat.
 //
-// Keep the base reasoning prompt as the source of truth. This wrapper changes
-// only the transport contract so Claude emits complete JSONL events in the
-// order the streaming reframer can validate and assemble.
+// This wrapper states transport and event-level invariants: JSONL ordering,
+// payload requirements, and the fail-soft checks the reframer observes. The
+// selected base prompt remains responsible for reasoning and safety semantics.
 
 import {
   isStreamStyle,
@@ -38,10 +38,10 @@ export function buildStreamSystemPrompt(
     "Use stated/established facts only; never invent. Keep time exact and keep unknown logistics unknown. Each segment needs non-empty `sourceIndex`, exact `sourceMessage`, sendable `reply`, and short `reason`. Do not write a flat `message` field; the server joins `segments` into legacy-compatible fields.",
     "`stretchLevel` (`within`/`stretch`/`far`) describes the user's current level, one doable step beyond it, or too large a jump. With no comfort-zone information, use `within` for all.",
     "Runtime coverage validation is fail-soft and log-only. It never rejects an option or asks for a retry; exact source coverage is the quality signal.",
-    "4. `analysis.metrics`: gameStage.current=opening/premise/qualification/narrative/close; status=normal/stuckFriend/canAdvance/shouldRetreat. Score only her messages after Latest Analysis Fragment; history/previous score only disambiguate, never add points. Stage = latest task, not relationship level; current evidence beats Stage Continuity (weak prior, never a floor). Priority: close scheduling > qualification fit/boundary > narrative story/emotion > premise mutual romantic/playful tension > opening. Stage may skip/retreat. `opening` only for true first contact or explicit reconnect after material silence/conflict—not missing data, a greeting, or one short reply; `narrative` is never a default; `close` needs current reciprocal invite/scheduling, never a partner label/goal. 認識場景/Partner Context only tunes advice; never changes score/stage or excuses low investment. Topic Depth limits reply escalation, not stage.",
-    "5. `analysis.coach_hint` once when useful.",
-    "6. `analysis.report_section` for deeper sections.",
-    "7. `analysis.done` once at the end. Include a compact `finalResult` with legacy-compatible analysis fields.",
+    "4. `analysis.metrics`: payload must carry `enthusiasm` (`score`,`level`), `dimensions` (`heat`,`engagement`,`topicDepth`,`replyWillingness`,`emotionalConnection`), `topicDepth` (`current`,`suggestion`), and `gameStage` (`current`,`status`,`nextStep`). `gameStage.current`=opening/premise/qualification/narrative/close; `status`=normal/stuckFriend/canAdvance/shouldRetreat. Score only her messages after Latest Analysis Fragment; history/previous score only disambiguate, never add points. Stage = latest task, not relationship level; current evidence beats Stage Continuity (weak prior, never a floor). Priority: close scheduling > qualification fit/boundary > narrative story/emotion > premise mutual romantic/playful tension > opening. Stage may skip/retreat. `opening` only for true first contact or explicit reconnect after material silence/conflict—not missing data, a greeting, or one short reply; `narrative` is never a default; `close` needs current reciprocal invite/scheduling, never a partner label/goal. 認識場景/Partner Context only tunes advice; never changes score/stage or excuses low investment. Topic Depth limits reply escalation, not stage.",
+    "5. `analysis.coach_hint` once when useful; its payload must carry `coachActionHint` with `catchablePoint`, `read`, `microMove`, `avoid`, `actionType`, and `confidence`.",
+    "6. `analysis.report_section` carries explicit `section` + `payload`; cover `psychology`, `strategy`, `reminder`, `targetProfile`, and `healthCheck`. `healthCheck` uses plural `issues` and `suggestions`; with no evidence both are empty arrays. Entitlement postprocess may remove gated report data after assembly.",
+    "7. `analysis.done` once at the end. Its compact `finalResult` must preserve `scenarioDetected`, `warnings`, and every legacy-compatible analysis field not already carried by an event.",
     "Do not spend finalResult tokens duplicating the full five-style replyOptions or reply segments; the stream assembler copies emitted `analysis.reply_option` events into `replies`, `replyOptions`, and the final recommendation.",
     "`analysis.progress` is optional after `analysis.decision` only. It must contain status/waiting copy only. Do not include advice, reply text, selected style, doThis, avoidThis, or conversation-specific coaching in progress events.",
     "",
