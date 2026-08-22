@@ -6,8 +6,8 @@
 #   1. 安裝與 launcher 冷啟動存活數秒且 PID 唯一（AND-01：ClassNotFound＝0）
 #   2. 凍結深連結（contracts/auth-callback.json）唯一解析到
 #      flutter_web_auth_2 CallbackActivity，無 chooser（AND-03）
-#   3. App 執行中送 callback VIEW intent：Status ok、無 chooser、同 PID
-#      （CallbackActivity 與 App 同程序，不 crash、不疊程序）
+#   3. App 執行中送 callback VIEW intent：Starting: Intent 送出、無 Error、
+#      無 chooser、同 PID（CallbackActivity 與 App 同程序，不 crash、不疊程序）
 #   4. 全程 logcat 掃本 package 的 runtime 例外與 ClassNotFoundException，
 #      fail closed
 # 證據邊界：synthetic VIEW intent 只驗 callback「routing」與 process
@@ -60,11 +60,12 @@ die_if_hung() {  # $1=timeout exit status $2=stage $3…=被呼叫的 adb 參數
 }
 
 # 所有 adb 一律經此包裝：有限 timeout、精確 stage 診斷、fail closed。
-# stdout 原樣回傳供 $(…) 擷取。
+# stdout＋stderr 合流回傳供 $(…) 擷取：真 adb 的 Error／chooser 文字可能
+# 走 stderr 且 exit 0，只擷取 stdout 會讓下游內容檢查假綠。
 adb_call() {  # $1=stage 標籤，其餘為 adb 參數
   local stage="$1" out status; shift
   set +e
-  out=$(timeout -k 5 "$adb_timeout" adb "$@")
+  out=$(timeout -k 5 "$adb_timeout" adb "$@" 2>&1)
   status=$?
   set -e
   die_if_hung "$status" "$stage" "$@"
@@ -135,10 +136,19 @@ launcher_pid=$(single_pid launcher-alive)
 
 # --- 2. App 執行中送 callback VIEW intent（AND-03 routing 契約；
 #        不驗 live OAuth completion，見檔頭證據邊界）---
-callback_out=$(adb_call callback-start shell "am start -W -a android.intent.action.VIEW -d '$callback_uri'")
+# API 24 迴歸（run 32553387019）：CallbackActivity 無 live auth session 時
+# 立即 finish，Android 7 的 am start -W 會等不到這個秒關 activity 而永久
+# 卡住（吃滿 callback-start timeout）。callback 一律用非等待形式；成功證據
+# 改驗「Starting: Intent」送出標記，且輸出不得含 Error 或 chooser。
+# launcher 冷啟動（上方 -W -n）不受影響，MainActivity 會真的顯示。
+callback_out=$(adb_call callback-start shell "am start -a android.intent.action.VIEW -d '$callback_uri'")
 echo "$callback_out"
-grep -q "Status: ok" <<<"$callback_out" \
-  || { echo "::error::深連結 VIEW intent 啟動失敗"; exit 1; }
+grep -q "Starting: Intent" <<<"$callback_out" \
+  || { echo "::error::深連結 VIEW intent 啟動失敗（無 Starting: Intent 送出標記）：$callback_out"; exit 1; }
+if grep -q "Error" <<<"$callback_out"; then
+  echo "::error::深連結 VIEW intent 啟動失敗（輸出含 Error）：$callback_out"
+  exit 1
+fi
 assert_no_chooser "$callback_out" "深連結"
 sleep 2
 after_pid=$(single_pid callback-alive)

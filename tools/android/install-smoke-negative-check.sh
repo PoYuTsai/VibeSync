@@ -31,6 +31,10 @@ cat > "$work/adb" <<'FAKE'
 #   FAKE_TAIL_LOG — clean|crash|cnf：全量 logcat 的異常內容
 #   FAKE_HANG     — 子字串；命中「cmd＋參數」的 adb 呼叫永不返回（模擬
 #                   emulator/adbd wedge；exec sleep 讓 timeout 信號直達）
+#   FAKE_CALLBACK_START — 覆寫「非等待 am start」（callback）的 stdout，
+#                   模擬 Error／異常輸出；預設為成功送出標記
+#   FAKE_CALLBACK_STDERR — 額外寫到 stderr 的 callback 輸出（真 adb 的
+#                   Error／chooser 文字可能走 stderr 且 exit 0）
 cmd="${1:-}"; shift || true
 case "$cmd $*" in
   *"${FAKE_HANG:-__none__}"*) exec sleep 300 ;;
@@ -55,7 +59,15 @@ case "$cmd" in
     case "$*" in
       *resolve-activity*) echo "$FAKE_RESOLVE" ;;
       *pidof*) echo 1234 ;;
-      *"am start"*) echo "Status: ok" ;;
+      *"am start"*)
+        # -W（launcher 冷啟動）回等待式輸出；無 -W（callback）回非等待輸出
+        case "$*" in
+          *" -W "*) echo "Status: ok" ;;
+          *)
+            echo "${FAKE_CALLBACK_START:-Starting: Intent { act=android.intent.action.VIEW dat=scheme://host?smoke=1 }}"
+            [ -n "${FAKE_CALLBACK_STDERR:-}" ] && echo "$FAKE_CALLBACK_STDERR" >&2
+            ;;
+        esac ;;
     esac ;;
   *) ;;  # wait-for-device / install → 成功
 esac
@@ -111,13 +123,57 @@ expect_fail "crash" "runtime 例外"
 run_smoke "$good_resolve" cnf
 expect_fail "ClassNotFound" "ClassNotFoundException"
 
-# --- 6. post-launch adb 卡死（API24 smoke 掛滿 45 分鐘 job timeout 迴歸）---
+# --- 6. API24 -W 迴歸：am start -W 對秒關的 CallbackActivity 永久等待 ---
+# 真實故障重現（run 32553387019）：API24 上 CallbackActivity 無 live auth
+# session 時立即 finish，am start -W 等不到它而掛滿 callback-start 上限。
+# fake adb 只對「帶等待旗標的 callback 形式」（am start -W -a）卡死；修正後
+# callback 命令不含 -W，整條 smoke 必須通過（exit 0）。掛到內部 timeout
+# （exit 1）或外層 timeout 15（exit=124）都判紅。
+set +e
+FAKE_RESOLVE="$good_resolve" FAKE_TAIL_LOG=clean FAKE_HANG="am start -W -a" \
+  SMOKE_STARTUP_WAIT=0 SMOKE_ADB_TIMEOUT=1 \
+  PATH="$work:$PATH" timeout 15 bash "$smoke" "$work/app.apk" >"$work/out" 2>&1
+status=$?
+set -e
+if [ "$status" -eq 124 ]; then
+  cat "$work/out"
+  echo "::error::API24 -W 迴歸掛到外層 timeout（exit=124），smoke 未有界返回"
+  exit 1
+fi
+if [ "$status" -ne 0 ]; then
+  cat "$work/out"
+  echo "::error::callback 不得使用 am start -W（API24 對秒關 CallbackActivity 永久等待）；smoke 應不受 -W 卡死影響並通過，卻回 exit=$status"
+  exit 1
+fi
+
+# --- 7. callback 非等待輸出含錯誤 → 必須 fail closed ---
+# 7a. Error 取代 stdout 的送出標記（無 Starting: Intent → 標記檢查攔下）
+run_smoke_cb_error() {  # 環境變數由呼叫端前綴
+  set +e
+  FAKE_RESOLVE="$good_resolve" FAKE_TAIL_LOG=clean SMOKE_STARTUP_WAIT=0 \
+    PATH="$work:$PATH" bash "$smoke" "$work/app.apk" >"$work/out" 2>&1
+  status=$?
+  set -e
+}
+FAKE_CALLBACK_START="Error: Activity not started, unable to resolve Intent" \
+  run_smoke_cb_error
+expect_fail "callback-error-output" "深連結 VIEW intent"
+
+# 7b. 分流迴歸（Codex round1 P1）：真 adb 可能 stdout 給正常
+# 「Starting: Intent」、Error 走 stderr 且 exit 0。只擷取 stdout 的舊寫法
+# 會假綠；驗證必須看 stdout+stderr 合流，且失敗原因必須正中 Error 分支
+# 訊息「輸出含 Error」（刪掉 Error 檢查分支時本案例要紅）。
+FAKE_CALLBACK_STDERR="Error: Activity not started, unable to resolve Intent" \
+  run_smoke_cb_error
+expect_fail "callback-stderr-error" "輸出含 Error"
+
+# --- 8. post-launch adb 卡死（API24 smoke 掛滿 45 分鐘 job timeout 迴歸）---
 # 最小區間重現：MainActivity am start -W 回 Status ok 之後，逐一（單變數）讓
-# 一個 post-launch adb 邊界永不返回：pidof、callback am start（-a 只中
-# callback、不中 launcher 的 -n）、logcat。smoke 必須「自己」以 exit 1
-# fail closed 並點名精確 stage；掛到外層 timeout 15（exit=124）或 stage
-# 對不上都判紅。
-for spec in "pidof|launcher-alive" "am start -W -a|callback-start" "logcat|logcat"; do
+# 一個 post-launch adb 邊界永不返回：pidof、callback am start（非等待形式
+# 「am start -a」只中 callback、不中 launcher 的 -W -n）、logcat。smoke 必須
+# 「自己」以 exit 1 fail closed 並點名精確 stage；掛到外層 timeout 15
+# （exit=124）或 stage 對不上都判紅。
+for spec in "pidof|launcher-alive" "am start -a|callback-start" "logcat|logcat"; do
   hang="${spec%%|*}"; stage="${spec##*|}"
   set +e
   FAKE_RESOLVE="$good_resolve" FAKE_TAIL_LOG=clean FAKE_HANG="$hang" \
@@ -142,7 +198,7 @@ for spec in "pidof|launcher-alive" "am start -W -a|callback-start" "logcat|logca
   }
 done
 
-# --- 7. SMOKE_ADB_TIMEOUT 驗證（GNU timeout 0＝停用上限，必須 fail closed）---
+# --- 9. SMOKE_ADB_TIMEOUT 驗證（GNU timeout 0＝停用上限，必須 fail closed）---
 # 0、超上限、非數字、溢位長數字串（bash 數值比較會 integer expression
 # expected 後放行）、前導零都不得進到任何 adb 呼叫；必須 exit 1 並給
 # 可行動訊息。
