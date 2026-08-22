@@ -75,6 +75,8 @@ import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/swipe_hint_nudge.dart';
 import '../widgets/analysis_usage_summary_line.dart';
 import '../helpers/analysis_progress_stage_copy.dart';
+import '../sections/analysis_error_card.dart';
+import '../sections/analysis_feedback_section.dart';
 import '../sections/detailed_analysis_section.dart';
 import '../sections/streaming_content_section.dart';
 import '../helpers/analysis_run_metadata_mapping.dart';
@@ -142,7 +144,8 @@ enum _AnalysisAppBarAction {
 }
 
 class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
-    with WidgetsBindingObserver, TickerProviderStateMixin {
+    with WidgetsBindingObserver, TickerProviderStateMixin
+    implements AnalysisFeedbackActions {
   // 訂閱同步屬 best-effort 前置：卡住不得凍結分析/刷新 spinner（2.1(b)）。
   static const _subscriptionSyncTimeout = Duration(seconds: 20);
   bool get _showTelemetryDiagnostics => kDebugMode;
@@ -3706,6 +3709,33 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
+  // ── AnalysisFeedbackActions（反饋 section 的動作實作）──────────────
+
+  @override
+  void submitPositiveFeedback() => unawaited(_submitFeedback('positive'));
+
+  @override
+  void openNegativeFeedbackForm() =>
+      setState(() => _showFeedbackForm = true);
+
+  @override
+  void selectFeedbackCategory(String? category) {
+    AppHaptics.light();
+    setState(() => _feedbackCategory = category);
+  }
+
+  @override
+  void setIncludeFeedbackContext(bool include) {
+    AppHaptics.tap();
+    setState(() => _includeFeedbackContext = include);
+  }
+
+  @override
+  void submitNegativeFeedback() => unawaited(_submitFeedback('negative'));
+
+  @override
+  void dismissKeyboard() => _dismissKeyboard();
+
   void _resetFeedbackState() {
     _feedbackSubmitted = false;
     _showFeedbackForm = false;
@@ -4468,22 +4498,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  Widget _buildFeedbackCategoryChip(String value, String label) {
-    final isSelected = _feedbackCategory == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      // 勾勾淡入淡出在快速切換時會留殘影＋寬度跳動，全 App chips 一律不顯示。
-      showCheckmark: false,
-      onSelected: _isSubmittingFeedback
-          ? null
-          : (selected) {
-              AppHaptics.light();
-              setState(() => _feedbackCategory = selected ? value : null);
-            },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     _syncReplyZoneEntrance();
@@ -4868,87 +4882,24 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                           // Error message
                           if (_errorMessage != null) ...[
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: AppColors.error.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color:
-                                        AppColors.error.withValues(alpha: 0.3)),
-                              ),
-                              child: Column(
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.error_outline,
-                                          color: AppColors.error),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          _errorMessage!,
-                                          style: AppTypography.bodyMedium
-                                              .copyWith(color: AppColors.error),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  if (_errorGuidance != null) ...[
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      _errorGuidance!,
-                                      style: AppTypography.bodySmall.copyWith(
-                                          color: AppColors.textSecondary),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                  const SizedBox(height: 12),
-                                  Wrap(
-                                    alignment: WrapAlignment.center,
-                                    spacing: 10,
-                                    runSpacing: 10,
-                                    children: [
-                                      if (_errorAction != null)
-                                        ElevatedButton(
-                                          onPressed: AppHaptics.onPress(
-                                              _isAnalyzing || _isRecognizing
-                                                  ? null
-                                                  : () => _handleErrorAction(
-                                                      _errorAction!)),
-                                          child: Text(
-                                            _primaryErrorActionLabel(
-                                              _errorAction!,
-                                            ),
-                                          ),
-                                        ),
-                                      // 強制重新辨識按鈕（當有之前的圖片可以重試時）
-                                      if (_canForceReRecognize &&
-                                          _errorOrigin ==
-                                              _AnalysisErrorOrigin.recognition)
-                                        OutlinedButton.icon(
-                                          onPressed:
-                                              _isAnalyzing || _isRecognizing
-                                                  ? null
-                                                  : _forceReRecognizeLastBatch,
-                                          icon:
-                                              const Icon(Icons.refresh_rounded),
-                                          label: const Text('強制重新辨識'),
-                                        ),
-                                      if (_shouldShowSecondaryErrorAction())
-                                        OutlinedButton(
-                                          onPressed: _isAnalyzing ||
-                                                  _isRecognizing
-                                              ? null
-                                              : () =>
-                                                  setState(_resetErrorState),
-                                          child: Text(
-                                            _secondaryErrorActionLabel(),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                            AnalysisErrorCard(
+                              message: _errorMessage!,
+                              guidance: _errorGuidance,
+                              primaryActionLabel: _errorAction == null
+                                  ? null
+                                  : _primaryErrorActionLabel(_errorAction!),
+                              secondaryActionLabel:
+                                  _secondaryErrorActionLabel(),
+                              showSecondaryAction:
+                                  _shouldShowSecondaryErrorAction(),
+                              showForceReRecognize: _canForceReRecognize &&
+                                  _errorOrigin ==
+                                      _AnalysisErrorOrigin.recognition,
+                              busy: _isAnalyzing || _isRecognizing,
+                              onPrimaryAction: () =>
+                                  _handleErrorAction(_errorAction!),
+                              onForceReRecognize: _forceReRecognizeLastBatch,
+                              onDismiss: () => setState(_resetErrorState),
                             ),
                             const SizedBox(height: 24),
                           ],
@@ -5800,205 +5751,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // 反饋區塊 (有分析結果時顯示)
                           if (_enthusiasmScore != null) ...[
                             const SizedBox(height: 24),
-                            if (!_feedbackSubmitted) ...[
-                              Divider(
-                                  color: AppColors.onBackgroundSecondary
-                                      .withValues(alpha: 0.5)),
-                              const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text('這個建議有幫助嗎？',
-                                      style: AppTypography.bodyMedium.copyWith(
-                                          color:
-                                              AppColors.onBackgroundPrimary)),
-                                  const SizedBox(width: 16),
-                                  IconButton(
-                                    icon: const Icon(Icons.thumb_up_outlined),
-                                    onPressed: _isSubmittingFeedback
-                                        ? null
-                                        : () => _submitFeedback('positive'),
-                                    tooltip: '有幫助',
-                                    color: AppColors.success,
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.thumb_down_outlined),
-                                    onPressed: _isSubmittingFeedback
-                                        ? null
-                                        : () => setState(
-                                            () => _showFeedbackForm = true),
-                                    tooltip: '需要改進',
-                                    color: AppColors.error,
-                                  ),
-                                ],
-                              ),
-                              if (_showFeedbackForm) ...[
-                                const SizedBox(height: 16),
-                                BrandSurfaceCard(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text('哪裡需要改進？',
-                                          style: AppTypography.bodyLarge
-                                              .copyWith(
-                                                  color: AppColors
-                                                      .onBackgroundPrimary)),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        '預設只送評分類別與結構化分析資訊，不附原始對話。',
-                                        style: AppTypography.caption.copyWith(
-                                          color: AppColors.onBackgroundSecondary
-                                              .withValues(alpha: 0.6),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          _buildFeedbackCategoryChip(
-                                              'too_direct', '太直接'),
-                                          _buildFeedbackCategoryChip(
-                                              'unnatural', '不自然'),
-                                          _buildFeedbackCategoryChip(
-                                              'too_long', '回覆太長'),
-                                          _buildFeedbackCategoryChip(
-                                              'wrong_style', '不符合我的風格'),
-                                          _buildFeedbackCategoryChip(
-                                              'other', '其他'),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 16),
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Checkbox(
-                                            value: _includeFeedbackContext,
-                                            onChanged: _isSubmittingFeedback
-                                                ? null
-                                                : (value) {
-                                                    AppHaptics.tap();
-                                                    setState(() {
-                                                      _includeFeedbackContext =
-                                                          value ?? false;
-                                                    });
-                                                  },
-                                          ),
-                                          Expanded(
-                                            child: Padding(
-                                              padding: const EdgeInsets.only(
-                                                  top: 12),
-                                              child: Text(
-                                                '附上最後 6 則對話片段，幫助我們排查（選填）',
-                                                style: AppTypography.bodySmall
-                                                    .copyWith(
-                                                  color: AppColors
-                                                      .onBackgroundPrimary,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      TextField(
-                                        controller: _feedbackCommentController,
-                                        enabled: !_isSubmittingFeedback,
-                                        style: AppTypography.bodyMedium
-                                            .copyWith(
-                                                color: AppColors
-                                                    .onBackgroundPrimary),
-                                        decoration: InputDecoration(
-                                          hintText: '補充說明（選填）',
-                                          helperText: '輸入完可先收起鍵盤，再送出反饋。',
-                                          hintStyle: AppTypography.bodyMedium
-                                              .copyWith(
-                                                  color: AppColors
-                                                      .onBackgroundSecondary
-                                                      .withValues(alpha: 0.6)),
-                                          helperStyle:
-                                              AppTypography.caption.copyWith(
-                                            color: AppColors
-                                                .onBackgroundSecondary
-                                                .withValues(alpha: 0.6),
-                                          ),
-                                          isDense: true,
-                                          filled: true,
-                                          fillColor: AppColors.brandInk
-                                              .withValues(alpha: 0.4),
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            borderSide: BorderSide(
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.12)),
-                                          ),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            borderSide: BorderSide(
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.12)),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            borderSide: const BorderSide(
-                                                color: AppColors.ctaStart,
-                                                width: 1.5),
-                                          ),
-                                          suffixIcon: IconButton(
-                                            icon: Icon(Icons.keyboard_hide,
-                                                color: AppColors
-                                                    .onBackgroundSecondary
-                                                    .withValues(alpha: 0.6)),
-                                            onPressed: _dismissKeyboard,
-                                            tooltip: '收起鍵盤',
-                                          ),
-                                        ),
-                                        maxLength: 300,
-                                        maxLines: 3,
-                                        textInputAction: TextInputAction.done,
-                                        onEditingComplete: _dismissKeyboard,
-                                        onTapOutside: (_) => _dismissKeyboard(),
-                                      ),
-                                      const SizedBox(height: 16),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: ElevatedButton(
-                                          onPressed: AppHaptics.onPress(
-                                              _feedbackCategory != null &&
-                                                      !_isSubmittingFeedback
-                                                  ? () => _submitFeedback(
-                                                      'negative')
-                                                  : null),
-                                          child: _isSubmittingFeedback
-                                              ? const SizedBox(
-                                                  width: 18,
-                                                  height: 18,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                  ),
-                                                )
-                                              : const Text('送出反饋'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ] else ...[
-                              Center(
-                                child: Text(
-                                  '已收到你的回饋',
-                                  style: AppTypography.bodyMedium
-                                      .copyWith(color: AppColors.textSecondary),
-                                ),
-                              ),
-                            ],
+                            AnalysisFeedbackSection(
+                              submitted: _feedbackSubmitted,
+                              showForm: _showFeedbackForm,
+                              isSubmitting: _isSubmittingFeedback,
+                              selectedCategory: _feedbackCategory,
+                              includeContext: _includeFeedbackContext,
+                              commentController: _feedbackCommentController,
+                              actions: this,
+                            ),
                           ],
 
                           const SizedBox(height: 24),
