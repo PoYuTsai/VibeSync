@@ -221,7 +221,9 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
       child: Container(
         width: _tileWidth,
         height: _cardHeight,
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+        // 3D 階段圖固定 60px、身份點放大至 9px；保留 4px 內垂直餘裕，
+        // 避免小螢幕／測試字型的 Text line metrics 讓內容溢出卡片。
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
         decoration: BoxDecoration(
           // 深底上的淡玻璃，不用 glassWhite 實色（真機刺眼）。
           color: Colors.white.withValues(alpha: 0.08 + 0.10 * focus),
