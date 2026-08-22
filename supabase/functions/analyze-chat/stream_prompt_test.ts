@@ -280,6 +280,9 @@ Deno.test("metrics, coach hint, and report sections name their payload contracts
   ]) {
     assert(metrics.includes(key), `metrics missing ${key}`);
   }
+  for (const key of ["event", "personal", "intimate"]) {
+    assert(metrics.includes(key), `metrics missing ${key}`);
+  }
 
   const coach = prompt.slice(coachStart, reportStart);
   for (const key of [
@@ -290,6 +293,22 @@ Deno.test("metrics, coach hint, and report sections name their payload contracts
     "avoid",
     "actionType",
     "confidence",
+  ]) {
+    assert(coach.includes(key), `coach hint missing ${key}`);
+  }
+  for (const key of [
+    "softInvite",
+    "lowerPressureReply",
+    "extendTopicStoryFrame",
+    "emotionalResonance",
+    "rightSizeReply",
+    "playfulReply",
+    "pausePursuit",
+    "preferenceSignal",
+    "fitCheck",
+    "high",
+    "medium",
+    "low",
   ]) {
     assert(coach.includes(key), `coach hint missing ${key}`);
   }
@@ -309,16 +328,29 @@ Deno.test("metrics, coach hint, and report sections name their payload contracts
   ]) {
     assert(report.includes(key), `report section missing ${key}`);
   }
+  for (const key of [
+    "subtext",
+    "shitTest",
+    "detected",
+    "type",
+    "qualificationSignal",
+    "short strings",
+    "value",
+    "evidence",
+  ]) {
+    assert(report.includes(key), `report section missing ${key}`);
+  }
 
   const done = prompt.slice(doneStart);
   for (const key of [
     "finalResult",
     "scenarioDetected",
     "warnings",
-    "legacy-compatible",
+    "events and assembler",
   ]) {
     assert(done.includes(key), `done payload missing ${key}`);
   }
+  assertEquals(done.includes("every legacy-compatible analysis field"), false);
 });
 
 Deno.test("stage prior section: legal stage renders weak-prior block, junk renders nothing", () => {

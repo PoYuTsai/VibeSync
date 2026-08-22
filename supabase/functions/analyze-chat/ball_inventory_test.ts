@@ -346,3 +346,50 @@ Deno.test("exact independent coverage requires every expected source pair", () =
     true,
   );
 });
+
+Deno.test(
+  "exact independent coverage rejects blank source messages and invalid indices",
+  () => {
+    const inv = inventoryOf([[1, "接"]]);
+    for (const sourceMessage of ["", " \t"]) {
+      assertEquals(
+        hasExactIndependentCoverage(inv, [{
+          ...seg(1),
+          sourceMessage,
+        }]),
+        false,
+        `observed blank sourceMessage: ${JSON.stringify(sourceMessage)}`,
+      );
+    }
+
+    for (const sourceIndex of [0, -1, 1.5]) {
+      assertEquals(
+        hasExactIndependentCoverage(inv, [{
+          ...seg(1),
+          sourceIndex,
+        }]),
+        false,
+        `observed invalid sourceIndex: ${sourceIndex}`,
+      );
+    }
+
+    const blankExpected = inventoryOf([[1, "接"]]);
+    blankExpected.expectedIndependentMoves[0].sourceMessage = "\n";
+    assertEquals(
+      hasExactIndependentCoverage(blankExpected, [seg(1)]),
+      false,
+      "expected blank sourceMessage",
+    );
+
+    for (const sourceIndex of [0, -1, 1.5]) {
+      const invalidExpected = inventoryOf([[sourceIndex, "接"]]);
+      assertEquals(
+        hasExactIndependentCoverage(invalidExpected, [{
+          ...seg(sourceIndex),
+        }]),
+        false,
+        `expected invalid sourceIndex: ${sourceIndex}`,
+      );
+    }
+  },
+);

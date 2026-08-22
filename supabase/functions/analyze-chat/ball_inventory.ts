@@ -181,10 +181,22 @@ export function hasExactIndependentCoverage(
 ): boolean {
   const observed = sourcePairsFromSegments(segments);
   const expected = inventory.expectedIndependentMoves;
-  return observed.length === expected.length && observed.every((pair, index) =>
-    pair.sourceIndex === expected[index].sourceIndex &&
-    pair.sourceMessage === expected[index].sourceMessage
-  );
+  const isValidPair = (pair: {
+    sourceIndex: number | null;
+    sourceMessage: string;
+  }): boolean =>
+    pair.sourceIndex !== null &&
+    Number.isInteger(pair.sourceIndex) &&
+    pair.sourceIndex > 0 &&
+    pair.sourceMessage.trim().length > 0;
+
+  return observed.length === expected.length &&
+    expected.every(isValidPair) &&
+    observed.every(isValidPair) &&
+    observed.every((pair, index) =>
+      pair.sourceIndex === expected[index].sourceIndex &&
+      pair.sourceMessage === expected[index].sourceMessage
+    );
 }
 
 // 一個 option 的 segments 實際覆蓋到哪些「接」球（去重、盤點外索引不算）。

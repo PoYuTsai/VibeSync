@@ -18,6 +18,7 @@ import {
 import { callClaudeWithFallback, extractClaudeText } from "./fallback.ts";
 import { selectModel } from "./model_selection.ts";
 import { buildUserDraftPromptPayload } from "./refine_prompt.ts";
+import { OPTIMIZE_MESSAGE_PROMPT } from "./optimize_message_prompt.ts";
 
 // 重構後 index.ts 的 prompt／sanitize 內容分居多個模組；本 corpus 依固定順序
 // 串接，讓既有 source-scan 斷言不因搬家而失效（順序敏感的測試各自讀單檔）。
@@ -672,25 +673,14 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "draft optimization contract teaches partner context usage on the shared path",
-  permissions: { read: true },
-  fn: async () => {
-    const source = await readAnalyzeChatScanCorpus();
-    const start = source.indexOf("## User Draft To Optimize");
-    assert(start !== -1);
-    const end = source.indexOf(
-      "in the structured JSON response.",
-      start,
-    );
-    assert(end !== -1);
-    const contractBlock = source.slice(start, end);
-
-    // 契約塊為純文字與帶圖兩條路徑共用，partner 指引補這裡兩路徑同吃
-    assert(contractBlock.includes("Use Partner Context"));
-    assert(contractBlock.includes("User Voice & Coaching Preferences"));
-    assert(contractBlock.includes("likely to respond to"));
-    assert(contractBlock.includes("never invent facts"));
+  name: "draft optimization prompt keeps draft intent and context boundaries",
+  fn: () => {
+    assert(OPTIMIZE_MESSAGE_PROMPT.includes("保留 userDraft 的核心主題"));
+    assert(OPTIMIZE_MESSAGE_PROMPT.includes("對話脈絡只用來調整語氣"));
+    assert(OPTIMIZE_MESSAGE_PROMPT.includes("不要改成回答對方最後一題"));
+    assert(OPTIMIZE_MESSAGE_PROMPT.includes("不要新增 userDraft 沒有的事實"));
+    assert(OPTIMIZE_MESSAGE_PROMPT.includes('"optimizedMessage"'));
+    assert(OPTIMIZE_MESSAGE_PROMPT.includes("Do not include full analysis fields"));
   },
 });
 
