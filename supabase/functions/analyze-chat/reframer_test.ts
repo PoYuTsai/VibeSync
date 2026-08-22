@@ -2222,8 +2222,18 @@ Deno.test("inventory: leading inventory is forwarded after charge, never blocks 
   reframer.pushText(line({
     type: "analysis.inventory",
     balls: [
-      { sourceIndex: 1, sourceMessage: "剛來吃晚餐", disposition: "接", reason: "生活分享可延伸" },
-      { sourceIndex: 2, sourceMessage: "[Photo]", disposition: "略", reason: "無文字訊息點" },
+      {
+        sourceIndex: 1,
+        sourceMessage: "剛來吃晚餐",
+        disposition: "接",
+        reason: "生活分享可延伸",
+      },
+      {
+        sourceIndex: 2,
+        sourceMessage: "[Photo]",
+        disposition: "略",
+        reason: "無文字訊息點",
+      },
     ],
   }));
   reframer.pushText(line({
@@ -2269,9 +2279,24 @@ Deno.test("inventory: never charges, never pollutes finalResult, never touches s
   reframer.pushText(line({
     type: "analysis.inventory",
     balls: [
-      { sourceIndex: 1, sourceMessage: "剛來吃晚餐", disposition: "接", reason: "可延伸" },
-      { sourceIndex: 2, sourceMessage: "等等去夜市", disposition: "併", reason: "同片段合併" },
-      { sourceIndex: 3, sourceMessage: "[Photo]", disposition: "略", reason: "無文字點" },
+      {
+        sourceIndex: 1,
+        sourceMessage: "剛來吃晚餐",
+        disposition: "接",
+        reason: "可延伸",
+      },
+      {
+        sourceIndex: 2,
+        sourceMessage: "等等去夜市",
+        disposition: "併",
+        reason: "同片段合併",
+      },
+      {
+        sourceIndex: 3,
+        sourceMessage: "[Photo]",
+        disposition: "略",
+        reason: "無文字點",
+      },
     ],
   }));
   reframer.pushText(line({
@@ -2409,7 +2434,8 @@ Deno.test("fail-soft: selected style below floor is NOT blocked (logged, passes 
   assert(!events.some((e) => e.type === "analysis.error"));
   assert(events.some((e) => e.type === "analysis.done"));
   assert(events.some(
-    (e) => e.type === "analysis.reply_option" &&
+    (e) =>
+      e.type === "analysis.reply_option" &&
       (e as Record<string, unknown>).style === "coldRead",
   ));
 });
@@ -2436,7 +2462,8 @@ Deno.test("hard gate: selected style meets floor (4接,3段 皆接) → PASS, do
   assert(!events.some((e) => e.type === "analysis.error"));
   assert(events.some((e) => e.type === "analysis.done"));
   assert(events.some(
-    (e) => e.type === "analysis.reply_option" &&
+    (e) =>
+      e.type === "analysis.reply_option" &&
       (e as Record<string, unknown>).style === "coldRead",
   ));
 });
@@ -2514,7 +2541,8 @@ Deno.test("fail-soft: selected style segment sourced from 略 ball is NOT blocke
   assert(!events.some((e) => e.type === "analysis.error"));
   assert(events.some((e) => e.type === "analysis.done"));
   assert(events.some(
-    (e) => e.type === "analysis.reply_option" &&
+    (e) =>
+      e.type === "analysis.reply_option" &&
       (e as Record<string, unknown>).style === "coldRead",
   ));
 });
@@ -2599,7 +2627,8 @@ Deno.test("ball_coverage: non-selected below floor logs warn but still emits the
   );
   assert(!events.some((e) => e.type === "analysis.error"));
   assert(events.some(
-    (e) => e.type === "analysis.reply_option" &&
+    (e) =>
+      e.type === "analysis.reply_option" &&
       (e as Record<string, unknown>).style === "extend",
   ));
 });
@@ -2865,14 +2894,16 @@ Deno.test("ambiguous multi-stage strings refuse to map and keep defaults", async
   assert(done, "expected analysis.done");
   const finalResult = done.finalResult as Record<string, unknown>;
   const gameStage = finalResult.gameStage as Record<string, unknown>;
-  assertEquals(gameStage.current, "opening");
-  assertEquals(gameStage.status, "normal");
+  // 對象卡互動階段閉環：歧義＝拒絕映射；缺值不得假裝成 opening——
+  // finalResult 不出 stage claim，client 據此保留上一個有效快照。
+  assertEquals(gameStage.current, undefined);
+  assertEquals(gameStage.status, undefined);
 });
 
-Deno.test("unmappable gameStage values keep assembler defaults instead of clobbering", async () => {
-  // 值域守門：模型寫出無法映射的 stage 值時，保留 assembler 既有值
-  //（client 端 fallback 也是 opening/normal，寧可 server 端就守住，
-  //  不讓垃圾字串流出去）。
+Deno.test("unmappable gameStage values emit no stage claim instead of opening", async () => {
+  // 值域守門（閉環改版）：模型寫出無法映射的 stage 值時，不得讓種子
+  // opening 外流成「本次判定是破冰」；finalResult 不帶 current/status，
+  // client 端視為本次無有效 stage、保留舊快照或問號。
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({
     emit(event) {
@@ -2907,6 +2938,71 @@ Deno.test("unmappable gameStage values keep assembler defaults instead of clobbe
   const finalResult = done.finalResult as Record<string, unknown>;
   const gameStage = finalResult.gameStage as Record<string, unknown>;
   assertEquals(typeof finalResult.gameStage, "object");
-  assertEquals(gameStage.current, "opening");
-  assertEquals(gameStage.status, "normal");
+  assertEquals(gameStage.current, undefined);
+  assertEquals(gameStage.status, undefined);
+});
+
+Deno.test("stream without any gameStage emits no stage claim (not opening)", async () => {
+  // 對象卡互動階段閉環驗收 7：模型整條 stream 都沒給 stage 時，
+  // finalResult.gameStage 不得帶種子 opening——缺值不是破冰。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "Sounds like a plan.",
+    reason: "Keep it light.",
+    quotedContext: "saturday coffee",
+  }));
+  reframer.pushText(line({ type: "analysis.metrics", heat: 61 }));
+  reframer.pushText(line({ type: "analysis.done" }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const gameStage = finalResult.gameStage as Record<string, unknown>;
+  assertEquals(gameStage.current, undefined);
+  assertEquals(gameStage.status, undefined);
+  // nextStep 骨架仍在，client fromJson 照常解析。
+  assertEquals(gameStage.nextStep, "");
+
+  // 合法 stage 照常通過（對照組）。
+  const events2: StreamOutputEvent[] = [];
+  const reframer2 = createStreamReframer({
+    emit(event) {
+      events2.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+  reframer2.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "Sounds like a plan.",
+    reason: "Keep it light.",
+    quotedContext: "saturday coffee",
+  }));
+  reframer2.pushText(line({
+    type: "analysis.metrics",
+    heat: 61,
+    gameStage: { current: "premise", status: "normal" },
+  }));
+  reframer2.pushText(line({ type: "analysis.done" }));
+  await reframer2.flush();
+  const done2 = events2.find((event) => event.type === "analysis.done");
+  assert(done2, "expected analysis.done");
+  const gameStage2 = (done2.finalResult as Record<string, unknown>)
+    .gameStage as Record<string, unknown>;
+  assertEquals(gameStage2.current, "premise");
 });

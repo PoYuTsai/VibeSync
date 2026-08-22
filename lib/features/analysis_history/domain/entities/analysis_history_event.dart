@@ -4,8 +4,9 @@ import 'package:hive_ce/hive_ce.dart';
 part 'analysis_history_event.g.dart';
 
 /// 案2：本機分析事件歷史（analyze 熱度 / practice 溫度共用一張表）。
-/// 本機 only，絕不上傳。分數事件 append-only；legacy scope metadata 可回填。
-/// repository 寫入時超過 500 筆刪最舊。
+/// 本機 only，絕不上傳。新 id 形成新事件；同一內容修訂重跑會以相同 id
+/// 原地更新，避免趨勢重複。legacy scope metadata 可回填；repository 寫入
+/// 時超過 500 筆刪最舊。
 @HiveType(typeId: 25)
 enum AnalysisHistoryKind {
   @HiveField(0)

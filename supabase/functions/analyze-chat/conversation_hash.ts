@@ -14,6 +14,8 @@ export interface HashInput {
   conversationSummary?: unknown;
   effectiveStyleContext?: unknown;
   knownContactName?: unknown;
+  previousStage?: unknown;
+  analysisFragmentStartIndex?: unknown;
 }
 
 function normalizeString(value: string): string {
@@ -38,7 +40,7 @@ function canonicalize(value: unknown): unknown {
 }
 
 export async function hashConversation(input: HashInput): Promise<string> {
-  const canonical = canonicalize({
+  const hashPayload: Record<string, unknown> = {
     messages: input.messages ?? [],
     userDraft: input.userDraft ?? "",
     partnerSummary: input.partnerSummary ?? "",
@@ -46,7 +48,19 @@ export async function hashConversation(input: HashInput): Promise<string> {
     conversationSummary: input.conversationSummary ?? "",
     effectiveStyleContext: input.effectiveStyleContext ?? "",
     knownContactName: input.knownContactName ?? "",
-  });
+  };
+  // Preserve the pre-stage-prior hash for requests that do not carry this
+  // optional field, so a deploy cannot invalidate an already-running stream.
+  if (
+    typeof input.previousStage === "string" &&
+    normalizeString(input.previousStage).length > 0
+  ) {
+    hashPayload.previousStage = input.previousStage;
+  }
+  if (Number.isInteger(input.analysisFragmentStartIndex)) {
+    hashPayload.analysisFragmentStartIndex = input.analysisFragmentStartIndex;
+  }
+  const canonical = canonicalize(hashPayload);
   const encoded = new TextEncoder().encode(JSON.stringify(canonical));
   const digest = await crypto.subtle.digest("SHA-256", encoded);
   return Array.from(new Uint8Array(digest))

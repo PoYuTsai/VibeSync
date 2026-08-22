@@ -10,6 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
+import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/report/data/providers/report_providers.dart';
@@ -42,12 +44,18 @@ class _NullUserProfileController extends UserProfileController {
   Future<UserProfile?> build() async => null;
 }
 
-Partner _partner(String id, String name) => Partner(
+Partner _partner(
+  String id,
+  String name, {
+  MeetingContext? meetingContext,
+}) =>
+    Partner(
       id: id,
       name: name,
       createdAt: DateTime(2026, 1, 1),
       updatedAt: DateTime(2026, 1, 1),
       ownerUserId: 'u-1',
+      defaultMeetingContext: meetingContext,
     );
 
 const _emptyReport = ReportData(
@@ -103,6 +111,7 @@ Future<void> _pumpReportScreen(
   required ReportData report,
   required List<Partner> partners,
   List<AnalysisHistoryEvent> historyEvents = const [],
+  List<Conversation> conversations = const [],
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 2400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -115,9 +124,13 @@ Future<void> _pumpReportScreen(
         ),
         reportDataProvider.overrideWithValue(report),
         analysisHistoryEventsProvider.overrideWithValue(historyEvents),
-        conversationsProvider.overrideWithValue(const []),
+        conversationsProvider.overrideWithValue(conversations),
         partnerListProvider.overrideWithValue(partners),
-        conversationsByPartnerProvider.overrideWith((ref, id) => const []),
+        conversationsByPartnerProvider.overrideWith(
+          (ref, id) => conversations
+              .where((conversation) => conversation.partnerId == id)
+              .toList(),
+        ),
         userProfileControllerProvider.overrideWith(
           _NullUserProfileController.new,
         ),
@@ -313,6 +326,162 @@ void main() {
 
       expect(find.byType(PracticeTemperatureChart), findsOneWidget);
       expect(find.text('練習溫度成長'), findsOneWidget);
+    });
+  });
+
+  group('作戰板互動階段閉環', () {
+    Conversation conversationWithStage({
+      required String id,
+      required String partnerId,
+      String? stage,
+      MeetingContext? meetingContext,
+      required DateTime updatedAt,
+    }) =>
+        Conversation(
+          id: id,
+          name: 'Vivi',
+          messages: const [],
+          createdAt: DateTime(2026, 1, 1),
+          updatedAt: updatedAt,
+          partnerId: partnerId,
+          currentGameStage: stage,
+          sessionContext: meetingContext == null
+              ? null
+              : SessionContext(
+                  meetingContext: meetingContext,
+                  duration: AcquaintanceDuration.fewWeeks,
+                ),
+        );
+
+    testWidgets('history event 優先於較晚 updatedAt 的 Conversation 快照',
+        (tester) async {
+      await _pumpReportScreen(
+        tester,
+        subscription:
+            const SubscriptionState(tier: SubscriptionTierHelper.free),
+        report: _emptyReport,
+        partners: [_partner('p1', 'Vivi')],
+        historyEvents: [
+          AnalysisHistoryEvent.analyze(
+            id: 'e1',
+            createdAt: DateTime(2026, 6, 9),
+            partnerId: 'p1',
+            subjectName: 'Vivi',
+            enthusiasmScore: 70,
+            gameStageLabel: 'close',
+          ),
+        ],
+        conversations: [
+          // 普通欄位更新讓 updatedAt 更晚，但不得超車較新的分析事件。
+          conversationWithStage(
+            id: 'c-1',
+            partnerId: 'p1',
+            stage: 'premise',
+            updatedAt: DateTime(2026, 7, 1),
+          ),
+        ],
+      );
+
+      expect(find.text('準備邀約'), findsOneWidget);
+      expect(find.text('建立男女感'), findsNothing);
+    });
+
+    testWidgets('未知 stage 值 → 問號（尚未分析），不得假裝成破冰', (tester) async {
+      await _pumpReportScreen(
+        tester,
+        subscription:
+            const SubscriptionState(tier: SubscriptionTierHelper.free),
+        report: _emptyReport,
+        partners: [_partner('p1', 'Vivi')],
+        historyEvents: [
+          AnalysisHistoryEvent.analyze(
+            id: 'e1',
+            createdAt: DateTime(2026, 6, 9),
+            partnerId: 'p1',
+            subjectName: 'Vivi',
+            enthusiasmScore: 70,
+            gameStageLabel: 'vibing hard',
+          ),
+        ],
+      );
+
+      expect(find.text('尚未分析'), findsOneWidget);
+      expect(find.text('破冰階段'), findsNothing);
+    });
+
+    testWidgets('分析來源當時是伴侶＋opening → 顯示「重新連線」', (tester) async {
+      await _pumpReportScreen(
+        tester,
+        subscription:
+            const SubscriptionState(tier: SubscriptionTierHelper.free),
+        report: _emptyReport,
+        partners: [
+          _partner('p1', 'Vivi',
+              meetingContext: MeetingContext.committedPartner),
+        ],
+        historyEvents: [
+          AnalysisHistoryEvent.analyze(
+            id: 'e1',
+            createdAt: DateTime(2026, 6, 9),
+            conversationId: 'c-1',
+            partnerId: 'p1',
+            subjectName: 'Vivi',
+            enthusiasmScore: 70,
+            gameStageLabel: 'opening',
+          ),
+        ],
+        conversations: [
+          conversationWithStage(
+            id: 'c-1',
+            partnerId: 'p1',
+            stage: 'opening',
+            meetingContext: MeetingContext.committedPartner,
+            updatedAt: DateTime(2026, 6, 9),
+          ),
+        ],
+      );
+
+      expect(find.text('重新連線'), findsOneWidget);
+      expect(find.text('破冰階段'), findsNothing);
+    });
+
+    testWidgets('今天改成伴侶，不得把交友軟體時期的舊 opening 改寫成重新連線', (tester) async {
+      await _pumpReportScreen(
+        tester,
+        subscription:
+            const SubscriptionState(tier: SubscriptionTierHelper.free),
+        report: _emptyReport,
+        partners: [
+          _partner(
+            'p1',
+            'Vivi',
+            meetingContext: MeetingContext.committedPartner,
+          ),
+        ],
+        historyEvents: [
+          AnalysisHistoryEvent.analyze(
+            id: 'e1',
+            createdAt: DateTime(2026, 6, 9),
+            conversationId: 'c-1',
+            partnerId: 'p1',
+            subjectName: 'Vivi',
+            enthusiasmScore: 70,
+            gameStageLabel: 'opening',
+          ),
+        ],
+        conversations: [
+          conversationWithStage(
+            id: 'c-1',
+            partnerId: 'p1',
+            stage: 'opening',
+            meetingContext: MeetingContext.datingApp,
+            updatedAt: DateTime(2026, 6, 9),
+          ),
+        ],
+      );
+
+      expect(find.text('破冰階段'), findsOneWidget);
+      expect(find.text('重新連線'), findsNothing);
     });
   });
 }

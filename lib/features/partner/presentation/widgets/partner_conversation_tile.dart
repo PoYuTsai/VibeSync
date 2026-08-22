@@ -22,6 +22,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 
 class PartnerConversationTile extends StatelessWidget {
@@ -51,7 +52,9 @@ class PartnerConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final heat = conversation.lastEnthusiasmScore;
+    final heat = conversation.lastEnthusiasmScore == null
+        ? null
+        : clampVisibleInvestmentScore(conversation.lastEnthusiasmScore!);
     final dateLabel = DateFormat('MM/dd').format(conversation.updatedAt);
     final accent = _accentColorForHeat(heat);
     return ClipRRect(

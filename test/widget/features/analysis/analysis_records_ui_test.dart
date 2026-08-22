@@ -61,6 +61,7 @@ AnalysisRecord _record({
   required String preview,
   String? sourcePlatform,
   String? analysisSnapshotJson,
+  String gameStageLabel = '建立男女感',
 }) {
   return AnalysisRecord(
     id: id,
@@ -92,7 +93,7 @@ AnalysisRecord _record({
     completionKey: 'completion-$id',
     sourcePlatform: sourcePlatform,
     enthusiasmScore: 72,
-    gameStageLabel: '建立男女感',
+    gameStageLabel: gameStageLabel,
   );
 }
 
@@ -299,7 +300,8 @@ void main() {
     expect(deletedIds, ['newer', 'older']);
     expect(find.text('已刪除 2 筆分析紀錄'), findsOneWidget);
     expect(find.text('她說：「還沒標記平台的片段」'), findsOneWidget);
-    expect(find.byKey(const ValueKey('analysis-record-select')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('analysis-record-select')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -334,7 +336,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.longPress(find.byKey(const ValueKey('analysis-record-line-1')));
+    await tester
+        .longPress(find.byKey(const ValueKey('analysis-record-line-1')));
     await tester.pump();
     expect(find.text('已選 1 筆'), findsOneWidget);
 
@@ -493,8 +496,7 @@ void main() {
     await tester.drag(detailList, const Offset(0, -700));
     await tester.pumpAndSettle();
 
-    final adviceRect =
-        tester.getRect(find.text('建議接法', skipOffstage: false));
+    final adviceRect = tester.getRect(find.text('建議接法', skipOffstage: false));
     final replyTexts = find.text(longReply, skipOffstage: false);
     for (var i = 0; i < replyTexts.evaluate().length; i++) {
       expect(
@@ -542,7 +544,7 @@ void main() {
     expect(find.text('為什麼這樣回'), findsOneWidget);
     expect(find.text('順著她主動分享的內容延伸，回覆壓力比較低。'), findsOneWidget);
     expect(find.text('五維度剖析', skipOffstage: false), findsOneWidget);
-    expect(find.text('對話進度', skipOffstage: false), findsOneWidget);
+    expect(find.text('目前互動重點', skipOffstage: false), findsOneWidget);
     expect(find.text('她在確認你是不是只會嘴上說說。', skipOffstage: false), findsOneWidget);
     expect(find.text('從旅行經驗聊到她在意的生活感受。', skipOffstage: false), findsOneWidget);
     expect(find.text('連續問句偏多', skipOffstage: false), findsOneWidget);
@@ -586,6 +588,35 @@ void main() {
     expect(find.textContaining('重新分析'), findsNothing);
     expect(find.textContaining('繼續這一段'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('伴侶 opening 封存詳情顯示重新連線，不顯示破冰', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(430, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final record = _record(
+      id: 'reconnect-detail',
+      createdAt: DateTime(2026, 8, 22),
+      preview: '我們好久沒好好聊了。',
+      gameStageLabel: '重新連線',
+      analysisSnapshotJson: jsonEncode({
+        'enthusiasm': {'score': 62, 'level': 'hot'},
+        'gameStage': {
+          'current': 'opening',
+          'status': 'normal',
+          'nextStep': '先重新接上互動',
+        },
+        'strategy': '先接住彼此近況。',
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('目前・重新連線', skipOffstage: false), findsOneWidget);
+    expect(find.text('目前・破冰', skipOffstage: false), findsNothing);
   });
 
   testWidgets('冰點分析紀錄會保留當時的停損警示', (tester) async {

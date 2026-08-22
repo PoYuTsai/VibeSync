@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../domain/entities/enthusiasm_level.dart';
 import '../../domain/entities/analysis_record.dart';
 import '../widgets/analysis_platform_picker.dart';
 import 'analysis_record_detail_screen.dart';
@@ -493,7 +494,9 @@ class _PartnerAnalysisRecordsScreenState
                         children: [
                           Expanded(
                             child: Text(
-                              _selecting ? '已選 ${_selectedIds.length} 筆' : '分析紀錄',
+                              _selecting
+                                  ? '已選 ${_selectedIds.length} 筆'
+                                  : '分析紀錄',
                               style: AppTypography.titleSmall.copyWith(
                                 color: AppColors.onBackgroundPrimary,
                                 fontWeight: FontWeight.w700,
@@ -506,7 +509,8 @@ class _PartnerAnalysisRecordsScreenState
                                 'analysis-record-select-all',
                               ),
                               label: _allVisibleSelected ? '取消全選' : '全選',
-                              onTap: _isDeleting ? null : _toggleSelectAllVisible,
+                              onTap:
+                                  _isDeleting ? null : _toggleSelectAllVisible,
                             ),
                             _HeaderLinkButton(
                               key: const ValueKey(
@@ -918,8 +922,9 @@ class _AnalysisRecordTile extends StatelessWidget {
     final localDate = record.createdAt.toLocal();
     final accent = _platformAccent(platform);
     final stage = record.gameStageLabel.trim();
+    final visibleScore = clampVisibleInvestmentScore(record.enthusiasmScore);
     final metadata = StringBuffer(
-      '${record.messages.length} 則訊息 · 本次投入 ${record.enthusiasmScore}',
+      '${record.messages.length} 則訊息 · 本次投入 $visibleScore',
     );
     if (stage.isNotEmpty) metadata.write(' · $stage');
 

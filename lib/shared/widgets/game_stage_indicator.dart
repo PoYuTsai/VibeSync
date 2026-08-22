@@ -4,22 +4,30 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../features/analysis/domain/entities/game_stage.dart';
 
+/// 目前互動重點（對象卡互動階段閉環）：五個點只凸顯本次 stage，
+/// 不是完成式進度條——premise／qualification／narrative 可反覆切換，
+/// close 之後也可以回到其他互動任務，較早的點不得畫成已完成成就。
 class GameStageIndicator extends StatelessWidget {
   final GameStage currentStage;
   final GameStageStatus status;
   final String? nextStep;
+
+  /// 伴侶（已是伴侶）的 opening 可見語意固定為「重新連線」，
+  /// 不是退回陌生人；由呼叫端依認識情境傳入。
+  final bool reconnectWording;
 
   const GameStageIndicator({
     super.key,
     required this.currentStage,
     this.status = GameStageStatus.normal,
     this.nextStep,
+    this.reconnectWording = false,
   });
 
   String _shortLabel(GameStage stage) {
     switch (stage) {
       case GameStage.opening:
-        return '破冰';
+        return reconnectWording ? '重新連線' : '破冰';
       case GameStage.premise:
         return '升溫';
       case GameStage.qualification:
@@ -47,7 +55,7 @@ class GameStageIndicator extends StatelessWidget {
           Row(
             children: [
               Text(
-                '對話進度',
+                '目前互動重點',
                 style: AppTypography.titleMedium.copyWith(
                   color: AppColors.glassTextPrimary,
                   fontWeight: FontWeight.w700,
@@ -83,7 +91,7 @@ class GameStageIndicator extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: AppTypography.caption.copyWith(
                     fontSize: 12,
-                    color: stage.index <= currentStage.index
+                    color: stage == currentStage
                         ? AppColors.glassTextPrimary
                         : AppColors.glassTextHint.withValues(alpha: 0.5),
                     fontWeight: stage == currentStage
@@ -93,6 +101,25 @@ class GameStageIndicator extends StatelessWidget {
                 ),
               );
             }).toList(),
+          ),
+          // 階段內節奏狀態（維持節奏／互動偏平／可以推進／放慢一點）。
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(
+                Icons.speed_rounded,
+                size: 14,
+                color: AppColors.glassTextSecondary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '節奏：${status.label}',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.glassTextSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
           // Next step description
           if (nextStep != null) ...[
@@ -145,9 +172,8 @@ class GameStageIndicator extends StatelessWidget {
             if (i.isEven) {
               final stageIndex = i ~/ 2;
               final stage = stages[stageIndex];
-              final isCompleted = stage.index < currentStage.index;
+              // 只凸顯本次 stage：較早的點不塗成已完成。
               final isCurrent = stage == currentStage;
-              final isActive = isCompleted || isCurrent;
               final size = isCurrent ? currentCircleSize : circleSize;
 
               return Container(
@@ -155,8 +181,8 @@ class GameStageIndicator extends StatelessWidget {
                 height: size,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isActive ? coralColor : Colors.transparent,
-                  border: isActive
+                  color: isCurrent ? coralColor : Colors.transparent,
+                  border: isCurrent
                       ? null
                       : Border.all(color: greyColor, width: 1.5),
                 ),
@@ -166,19 +192,16 @@ class GameStageIndicator extends StatelessWidget {
                   style: TextStyle(
                     fontSize: isCurrent ? 14 : 12,
                     fontWeight: FontWeight.w700,
-                    color: isActive ? Colors.white : greyColor,
+                    color: isCurrent ? Colors.white : greyColor,
                   ),
                 ),
               );
             } else {
-              // Connecting line
-              final leftStageIndex = i ~/ 2;
-              final isLineActive = leftStageIndex < currentStage.index;
-
+              // 連接線一律中性：線段不承載「已完成」語意。
               return Expanded(
                 child: Container(
                   height: 2,
-                  color: isLineActive ? coralColor : greyColor,
+                  color: greyColor,
                 ),
               );
             }

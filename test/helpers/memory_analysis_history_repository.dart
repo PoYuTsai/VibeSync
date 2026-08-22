@@ -9,7 +9,14 @@ class MemoryAnalysisHistoryRepository implements AnalysisHistoryRepository {
 
   @override
   Future<void> append(AnalysisHistoryEvent event) async {
-    events.add(event);
+    // Mirror Hive repository semantics: append uses event.id as the key, so
+    // retrying the same logical event replaces it instead of duplicating it.
+    final existingIndex = events.indexWhere((item) => item.id == event.id);
+    if (existingIndex >= 0) {
+      events[existingIndex] = event;
+    } else {
+      events.add(event);
+    }
   }
 
   @override

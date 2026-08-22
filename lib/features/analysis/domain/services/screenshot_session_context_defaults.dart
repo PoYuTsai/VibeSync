@@ -5,9 +5,11 @@ import '../../../partner/domain/services/partner_memory_tag_catalog.dart';
 
 /// Resolves the starting context shown before screenshot analysis.
 ///
-/// A context already saved on the conversation is the most specific source.
-/// Partner-card values are defaults for conversations that do not have one
-/// yet; legacy partners fall back to the product defaults.
+/// 對象卡是 meetingContext／duration／goal 的最新真相：卡上有設定就蓋過
+/// conversation 既有 context（閉環規則——改成「已是伴侶」後的下一個分析
+/// 片段必須拿到最新設定，舊 context 不得靜默擋住）。conversation 專屬
+/// 欄位（userStyle／interests／描述／本次補充背景）仍沿用既有 context；
+/// legacy partner（未設預設）與孤兒對話退回既有 context 或產品預設。
 class ScreenshotSessionContextDefaults {
   const ScreenshotSessionContextDefaults._();
 
@@ -18,9 +20,10 @@ class ScreenshotSessionContextDefaults {
     final existing = conversation?.sessionContext;
     if (existing != null) {
       return SessionContext(
-        meetingContext: existing.meetingContext,
-        duration: existing.duration,
-        goal: existing.goal,
+        meetingContext:
+            partner?.defaultMeetingContext ?? existing.meetingContext,
+        duration: partner?.defaultAcquaintanceDuration ?? existing.duration,
+        goal: partner?.defaultGoal ?? existing.goal,
         userStyle: existing.userStyle,
         userInterests: existing.userInterests,
         targetDescription: existing.targetDescription,

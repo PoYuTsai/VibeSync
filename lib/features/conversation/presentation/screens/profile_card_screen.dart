@@ -312,7 +312,8 @@ class ProfileCardScreen extends ConsumerWidget {
     if (score == null) {
       return _buildInfoRow('本次投入', '--');
     }
-    final level = EnthusiasmLevel.fromScore(score);
+    final visibleScore = clampVisibleInvestmentScore(score);
+    final level = EnthusiasmLevel.fromScore(visibleScore);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -325,7 +326,7 @@ class ProfileCardScreen extends ConsumerWidget {
             ),
           ),
           Text(
-            '$score ${level.label}',
+            '$visibleScore ${level.label}',
             style: AppTypography.bodyMedium.copyWith(
               color: level.color,
               fontWeight: FontWeight.w600,
@@ -419,8 +420,8 @@ class ProfileCardScreen extends ConsumerWidget {
   }
 
   String _stageLabel(String? stageStr) {
-    if (stageStr == null || stageStr.isEmpty) return '--';
-    final stage = GameStage.fromString(stageStr);
+    final stage = GameStage.tryFromString(stageStr);
+    if (stage == null) return '--';
     switch (stage) {
       case GameStage.opening:
         return '破冰';

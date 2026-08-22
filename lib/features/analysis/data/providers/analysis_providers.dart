@@ -26,6 +26,9 @@ import '../../../user_profile/data/repositories/partner_data_quality_repo_view.d
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../../application/analysis_persistence_coordinator.dart';
 import '../../application/ports/conversation_write_ports.dart';
+import '../../domain/entities/game_stage.dart';
+import '../../domain/services/partner_stage_resolver.dart';
+import '../../domain/services/screenshot_session_context_defaults.dart';
 import '../../presentation/helpers/analysis_stream_content_display.dart';
 import '../../application/analysis_run_preparer.dart';
 import '../../application/analysis_session_controller.dart';
@@ -135,12 +138,15 @@ class _ConversationListByPartnerAdapter
       _listByPartner(partnerId);
 }
 
-/// AnalyzeChat 請求組裝器。partner 脈絡與有效風格解析走既有 provider；
-/// 兩者皆為 per-call `read`（一次性快照，不做 reactive 監聽）。
+/// AnalyzeChat 請求組裝器。partner 脈絡與 session defaults 走既有 provider；
+/// 皆為 per-call `read`（一次性快照，不做 reactive 監聽）。
+///
+/// 有效風格只保留給潤飾／微調等 auxiliary flow；主 AnalyzeChat 會在
+/// [AnalysisRunPreparer.assemble] 明確送出 null，避免 About Me 影響投入度、
+/// 互動階段與五種回覆風格判斷。
 final analysisRunPreparerProvider = Provider<AnalysisRunPreparer>((ref) {
-  // Spec 2.5: About Me + per-partner style becomes compact prompt context.
-  // If Spec 3 flags this partner card, partner-specific style is suspended
-  // and only global About Me remains trusted.
+  // Auxiliary refine/optimize 仍可使用 About Me + per-partner style；若該
+  // partner card 被標記資料品質問題，停用 partner override，只保留全域偏好。
   String? resolveEffectiveStyleContext(Conversation conversation) {
     final global = ref.read(userProfileControllerProvider).valueOrNull;
     final partnerId = conversation.partnerId;
@@ -169,6 +175,39 @@ final analysisRunPreparerProvider = Provider<AnalysisRunPreparer>((ref) {
     resolvePartnerSummary: (conversation) =>
         ref.read(partnerContextResolverProvider).resolve(conversation),
     resolveEffectiveStyleContext: resolveEffectiveStyleContext,
+    resolveSessionContext: (conversation) {
+      final partnerId = conversation.partnerId?.trim();
+      Partner? partner;
+      if (partnerId != null && partnerId.isNotEmpty) {
+        try {
+          partner = ref.read(partnerRepositoryProvider).getById(partnerId);
+        } catch (_) {
+          // Latest defaults are convenience context, never an analysis gate.
+          return conversation.sessionContext;
+        }
+      }
+      return ScreenshotSessionContextDefaults.resolve(
+        conversation: conversation,
+        partner: partner,
+      );
+    },
+    // 跨次連續性（閉環規則 8）：上一個 partner-scoped 有效 stage 是弱先驗，
+    // 隨下一個分析片段送入 AnalyzeChat。partner-bound 走最新成功 history
+    // event（Conversation 僅 legacy fallback，見 latestStageFor）；孤兒對話
+    // 退回自身 currentGameStage 的嚴格解析，垃圾值回 null 不偽造。
+    resolvePreviousStage: (conversation) {
+      final partnerId = conversation.partnerId?.trim();
+      if (partnerId == null || partnerId.isEmpty) {
+        return GameStage.tryFromString(conversation.currentGameStage)?.name;
+      }
+      return const PartnerStageResolver()
+          .latestStageFor(
+            partnerId,
+            ref.read(analysisHistoryRepositoryProvider).listRecent(),
+            ref.read(conversationRepositoryProvider).listByPartner(partnerId),
+          )
+          ?.name;
+    },
   );
 });
 
@@ -261,6 +300,8 @@ final analysisSessionControllerFactoryProvider =
         partnerSummary,
         effectiveStyleContext,
         knownContactName,
+        previousStage,
+        analysisFragmentStartIndex,
         previousAnalyzedCount,
         previousAnalyzedCharCount,
         confirmedOvercharge,
@@ -275,6 +316,8 @@ final analysisSessionControllerFactoryProvider =
                 partnerSummary: partnerSummary,
                 effectiveStyleContext: effectiveStyleContext,
                 knownContactName: knownContactName,
+                previousStage: previousStage,
+                analysisFragmentStartIndex: analysisFragmentStartIndex,
                 previousAnalyzedCount: previousAnalyzedCount,
                 previousAnalyzedCharCount: previousAnalyzedCharCount,
                 confirmedOvercharge: confirmedOvercharge,

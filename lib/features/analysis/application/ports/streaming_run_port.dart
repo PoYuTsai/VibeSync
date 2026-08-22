@@ -14,6 +14,8 @@ typedef StartAnalysisRun = Future<void> Function({
   String? partnerSummary,
   String? effectiveStyleContext,
   String? knownContactName,
+  String? previousStage,
+  int? analysisFragmentStartIndex,
   int? previousAnalyzedCount,
   int? previousAnalyzedCharCount,
   OverchargeConfirmationPayload? confirmedOvercharge,

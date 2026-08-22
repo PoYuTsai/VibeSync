@@ -41,7 +41,7 @@ class PartnerMindMap {
   /// 作戰板底部大字摘要用拆解欄位；心智圖本身也會直接顯示互動脈絡與
   /// 完整下一步，使用者不必點節點才能讀到內容。
   ///
-  /// [relationshipSignal] 關係信號（階段描述衍生）；hasAnalysisData 時必有。
+  /// [relationshipSignal] 互動重點（階段描述衍生）；hasAnalysisData 時必有。
   /// [currentSignal] 最新分析中有足夠信心、且能回查聊天內容的具體可接球點。
   /// [confirmedFacts] 使用者在「關於她」親自勾選的 allowlist chips。
   /// [topics] 可接話題（= 聚合興趣）；無興趣時為空。

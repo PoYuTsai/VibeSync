@@ -1,6 +1,7 @@
 // lib/app/routes.dart
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../core/services/supabase_service.dart';
@@ -24,6 +25,7 @@ import '../features/practice_chat/presentation/screens/practice_collection_scree
 import '../features/onboarding/data/onboarding_service.dart';
 import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/subscription/presentation/screens/ai_privacy_screen.dart';
+import '../features/report/presentation/screens/partner_stage_preview_screen.dart';
 import '../features/subscription/presentation/screens/paywall_screen.dart';
 import '../features/conversation/presentation/screens/profile_card_screen.dart';
 import '../features/partner/presentation/screens/add_partner_screen.dart';
@@ -170,6 +172,12 @@ final router = GoRouter(
       path: '/settings',
       builder: (context, state) => const SettingsScreen(),
     ),
+    // 六狀態資產預覽：開發／測試入口（零 AI 呼叫），不出現在正式導航。
+    if (kDebugMode)
+      GoRoute(
+        path: '/dev/partner-stage-preview',
+        builder: (context, state) => const PartnerStagePreviewScreen(),
+      ),
     GoRoute(
       path: '/settings/keyboard',
       builder: (context, state) => KeyboardSetupScreen(

@@ -65,13 +65,20 @@ class AnalysisSessionController {
       return;
     }
 
+    // 凍結「這次真的送出的」情境。新片段可能從對象卡帶入最新 defaults；
+    // 若第一次請求失敗後以同內容重跑，必須沿用同一份 context，不能被之後
+    // 的對象卡編輯改寫。成功持久化時 Conversation 會連同此欄位一起保存。
+    conversation.sessionContext = preparation.sessionContext;
+
     final analysisFuture = _startRun(
       messages: preparation.requestMessages,
-      sessionContext: conversation.sessionContext,
+      sessionContext: preparation.sessionContext,
       conversationSummary: preparation.conversationSummary,
       partnerSummary: preparation.partnerSummary,
       effectiveStyleContext: preparation.effectiveStyleContext,
       knownContactName: preparation.knownContactName,
+      previousStage: preparation.previousStage,
+      analysisFragmentStartIndex: preparation.analysisFragmentStartIndex,
       previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
       previousAnalyzedCharCount: conversation.lastAnalyzedCharCount,
       confirmedOvercharge: confirmedOvercharge,

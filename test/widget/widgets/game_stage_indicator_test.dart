@@ -81,5 +81,66 @@ void main() {
       expect(find.text('目前・邀約'), findsOneWidget);
       expect(find.text('收尾'), findsNothing);
     });
+
+    testWidgets('標題是目前互動重點，節奏狀態文案可見（互動重點 seam）', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GameStageIndicator(
+              currentStage: GameStage.qualification,
+              status: GameStageStatus.stuckFriend,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('目前互動重點'), findsOneWidget);
+      expect(find.text('對話進度'), findsNothing);
+      // stuckFriend 對使用者顯示「互動偏平」，不得出現「朋友」字樣。
+      expect(find.textContaining('互動偏平'), findsOneWidget);
+      expect(find.textContaining('朋友'), findsNothing);
+    });
+
+    testWidgets('只凸顯本次 stage：較早的點不畫成已完成成就', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GameStageIndicator(
+              currentStage: GameStage.close,
+            ),
+          ),
+        ),
+      );
+
+      // 五個圓點中只有目前 stage 一顆是實心（closed-loop：五個點只凸顯
+      // 本次焦點，不是完成式進度條）。
+      final filledCircles = tester
+          .widgetList<Container>(find.byType(Container))
+          .where((container) {
+        final decoration = container.decoration;
+        return decoration is BoxDecoration &&
+            decoration.shape == BoxShape.circle &&
+            decoration.color != null &&
+            decoration.color != Colors.transparent;
+      }).length;
+      expect(filledCircles, 1);
+    });
+
+    testWidgets('伴侶 reconnect：opening 顯示「重新連線」而不是破冰', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GameStageIndicator(
+              currentStage: GameStage.opening,
+              reconnectWording: true,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('目前・重新連線'), findsOneWidget);
+      expect(find.text('重新連線'), findsOneWidget);
+      expect(find.text('破冰'), findsNothing);
+    });
   });
 }

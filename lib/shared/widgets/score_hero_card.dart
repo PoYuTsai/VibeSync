@@ -1,5 +1,6 @@
 // lib/shared/widgets/score_hero_card.dart
 import 'package:flutter/material.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../features/analysis/domain/entities/enthusiasm_level.dart';
@@ -18,8 +19,13 @@ class ScoreHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final level = EnthusiasmLevel.fromScore(score);
-    final delta = previousScore != null ? score - previousScore! : null;
+    final visibleScore = clampVisibleInvestmentScore(score);
+    final visiblePrevious = previousScore == null
+        ? null
+        : clampVisibleInvestmentScore(previousScore!);
+    final level = EnthusiasmLevel.fromScore(visibleScore);
+    final delta =
+        visiblePrevious != null ? visibleScore - visiblePrevious : null;
 
     // 分數第一次揭示（State 掛載）時播一次玻璃反光橫掃；一般 rebuild 不重播。
     // 圓角跟 GlassmorphicContainer 預設 12 對齊，光帶才會貼著卡緣裁切。
@@ -40,7 +46,9 @@ class ScoreHeroCard extends StatelessWidget {
                     width: 80,
                     height: 80,
                     child: CircularProgressIndicator(
-                      value: score / 100,
+                      // 可見滿分 90：server finalize × 0.9 後 90 就是滿圈。
+                      value: (visibleScore / AppConstants.investmentVisibleMax)
+                          .clamp(0.0, 1.0),
                       strokeWidth: 6,
                       backgroundColor: level.color.withValues(alpha: 0.15),
                       valueColor: AlwaysStoppedAnimation(level.color),
@@ -51,7 +59,7 @@ class ScoreHeroCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        '$score',
+                        '$visibleScore',
                         style: AppTypography.headlineLarge.copyWith(
                           color: AppColors.glassTextPrimary,
                           fontSize: 24,

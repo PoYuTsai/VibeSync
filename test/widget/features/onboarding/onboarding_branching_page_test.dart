@@ -87,7 +87,7 @@ void main() {
 
       expect(find.text('即時看懂她的訊號'), findsOneWidget);
       expect(
-        find.text('對方這次的投入度 0-100 一目瞭然\n讀懂她這輪話裡的訊號'),
+        find.text('對方這次的投入度 0-90 一目瞭然\n讀懂她這輪話裡的訊號'),
         findsOneWidget,
       );
       expect(find.textContaining('熱度分析'), findsNothing);
@@ -209,8 +209,7 @@ void main() {
   });
 
   group('未登入完成 onboarding（onboarding 先於登入，2026-08-18）', () {
-    testWidgets('分流答「有」→ 暫存目的地與目標、markCompleted、不直接 push',
-        (tester) async {
+    testWidgets('分流答「有」→ 暫存目的地與目標、markCompleted、不直接 push', (tester) async {
       await _pumpOnboarding(tester, loggedIn: false);
       await _swipeToBranchingPage(tester);
 

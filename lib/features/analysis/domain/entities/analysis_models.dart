@@ -36,7 +36,6 @@ extension TopicDepthLevelX on TopicDepthLevel {
         return '曖昧層';
     }
   }
-
 }
 
 /// Topic depth analysis result
@@ -97,20 +96,37 @@ class GameStageInfo {
   final GameStageStatus status;
   final String nextStep;
 
+  /// 本次分析是否帶回合法五階段值。false 時 [current] 只是顯示用
+  /// fallback（opening），不得寫入 stage snapshot 或覆蓋舊快照。
+  final bool hasValidStage;
+
   const GameStageInfo({
     required this.current,
     this.status = GameStageStatus.normal,
     required this.nextStep,
+    this.hasValidStage = true,
   });
 
   factory GameStageInfo.fromJson(Map<String, dynamic>? json) {
     if (json == null) {
-      return const GameStageInfo(current: GameStage.opening, nextStep: '');
+      return const GameStageInfo(
+        current: GameStage.opening,
+        nextStep: '',
+        hasValidStage: false,
+      );
     }
+    final rawCurrent = json['current'];
+    final rawStatus = json['status'];
+    final rawNextStep = json['nextStep'];
+    final parsedStage =
+        GameStage.tryFromString(rawCurrent is String ? rawCurrent : null);
     return GameStageInfo(
-      current: GameStage.fromString(json['current'] as String? ?? 'opening'),
-      status: GameStageStatus.fromString(json['status'] as String? ?? 'normal'),
-      nextStep: json['nextStep'] as String? ?? '',
+      current: parsedStage ?? GameStage.opening,
+      status: GameStageStatus.fromString(
+        rawStatus is String ? rawStatus : 'normal',
+      ),
+      nextStep: rawNextStep is String ? rawNextStep : '',
+      hasValidStage: parsedStage != null,
     );
   }
 }
@@ -854,6 +870,7 @@ class AnalysisResult {
   final HealthCheck? healthCheck; // null for Free users
   final Map<String, String> replies;
   final Map<String, ReplyOption> replyOptions;
+
   /// 每種回覆風格相對使用者舒適區的延伸程度（within/stretch/far），
   /// 後端 AI 自判（2026-08 關於我重新定位案 批3）。缺席或值不合法時該
   /// key 不存在——呼叫端應 fallback 到 ReplyStretchClassifier 本地規則。

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/message_calculator.dart';
 import '../../../../core/services/keyboard_privacy_purge_service.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -59,6 +60,8 @@ import '../../data/services/analysis_telemetry_guardrail_helper.dart';
 import '../../data/services/optimize_message_request_session.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
+import '../../domain/entities/enthusiasm_level.dart';
+import '../../domain/entities/game_stage.dart';
 import '../../domain/entities/analysis_record.dart';
 import '../../domain/services/analysis_fragment_policy.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
@@ -918,7 +921,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _replyOptions = result.replyOptions;
           _topicDepth = result.topicDepth;
           _healthCheck = result.healthCheck;
-          _gameStage = result.gameStage;
+          // 閉環驗收 7：本次無有效 stage（缺值／未知值）不得渲染成破冰。
+          _gameStage = result.gameStage.hasValidStage ? result.gameStage : null;
           _psychology = result.psychology;
           _finalRecommendation = result.recommendation;
           _coachActionHint = result.coachActionHint;
@@ -1042,6 +1046,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _lastAiResponse = null;
     _showDetailedAnalysis = false;
     _resetFeedbackState();
+  }
+
+  /// 已是伴侶（認識情境）判定：opening 的可見語意要換成「重新連線」。
+  bool _isCommittedPartner(Conversation? conversation) =>
+      conversation?.sessionContext?.meetingContext ==
+      MeetingContext.committedPartner;
+
+  String? _visibleGameStageLabel(Conversation? conversation) {
+    final stage = _gameStage?.current;
+    if (stage == null) return null;
+    if (_isCommittedPartner(conversation) && stage == GameStage.opening) {
+      return '重新連線';
+    }
+    return stage.label;
   }
 
   /// data 層 wire 型別 → section view model 的映射（icon 對映留在
@@ -1456,7 +1474,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _replyOptions = result.replyOptions;
     _topicDepth = result.topicDepth;
     _healthCheck = result.healthCheck;
-    _gameStage = result.gameStage;
+    // 閉環驗收 7：本次無有效 stage（缺值／未知值）不得渲染成破冰。
+    _gameStage = result.gameStage.hasValidStage ? result.gameStage : null;
     _psychology = result.psychology;
     _finalRecommendation = result.recommendation;
     _coachActionHint = result.coachActionHint;
@@ -2775,7 +2794,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _replyOptions = result.replyOptions;
           _topicDepth = result.topicDepth;
           _healthCheck = result.healthCheck;
-          _gameStage = result.gameStage;
+          // 閉環驗收 7：本次無有效 stage（缺值／未知值）不得渲染成破冰。
+          _gameStage = result.gameStage.hasValidStage ? result.gameStage : null;
           _psychology = result.psychology;
           _finalRecommendation = result.recommendation;
           _coachActionHint = result.coachActionHint;
@@ -3172,11 +3192,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // AI 分析結果
     if (_enthusiasmScore != null) {
       buffer.writeln('--- AI 分析結果 ---');
-      buffer.writeln('對方這次的投入度: $_enthusiasmScore/100');
+      final visibleScore = clampVisibleInvestmentScore(_enthusiasmScore!);
+      buffer.writeln(
+        '對方這次的投入度: $visibleScore/${AppConstants.investmentVisibleMax}',
+      );
 
       if (_gameStage != null) {
-        buffer.writeln('對話進度: ${_gameStage!.current.label}');
-        buffer.writeln('狀態: ${_gameStage!.status}');
+        buffer.writeln(
+          '目前互動重點: ${_visibleGameStageLabel(conversation)}',
+        );
+        buffer.writeln('節奏: ${_gameStage!.status.label}');
         buffer.writeln('下一步: ${_gameStage!.nextStep}');
       }
 
@@ -3350,8 +3375,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   void submitPositiveFeedback() => unawaited(_submitFeedback('positive'));
 
   @override
-  void openNegativeFeedbackForm() =>
-      setState(() => _showFeedbackForm = true);
+  void openNegativeFeedbackForm() => setState(() => _showFeedbackForm = true);
 
   @override
   void selectFeedbackCategory(String? category) {
@@ -3928,10 +3952,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   _showTelemetryDiagnostics && _isRecognizing,
                               recognizeStageLabel:
                                   _recognizeStageLabel(_recognizeStage),
-                              recognizeElapsedSeconds:
-                                  _recognizeElapsedSeconds,
-                              totalOriginalImageBytes:
-                                  _totalOriginalImageBytes,
+                              recognizeElapsedSeconds: _recognizeElapsedSeconds,
+                              totalOriginalImageBytes: _totalOriginalImageBytes,
                               totalCompressedImageBytes:
                                   _totalCompressedImageBytes,
                               lastRecognizeTelemetry: _lastRecognizeTelemetry,
@@ -4059,8 +4081,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               anchorKey: _replyZoneSectionKey,
                               actions: this,
                               noticeKind: _replyZoneNoticeKind(subscription),
-                              noticeBusy: _isAnalyzing ||
-                                  _isRefreshingPremiumReplies,
+                              noticeBusy:
+                                  _isAnalyzing || _isRefreshingPremiumReplies,
                               outcomeBars: [
                                 if (replyZoneCards.showRecommended)
                                   _buildAnalysisOutcomeBar(
@@ -4106,7 +4128,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     !_showDetailedAnalysis,
                               ),
                               enthusiasmScore: _enthusiasmScore,
-                              stageLabel: _gameStage?.current.label,
+                              // 伴侶的 opening 可見語意固定為「重新連線」
+                              // （閉環規則 5），不是退回陌生人。
+                              stageLabel: _visibleGameStageLabel(conversation),
                               hasRadar: _dimensionScores != null,
                             ),
                             if (_showDetailedAnalysis)
@@ -4120,6 +4144,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 strategy: _strategy,
                                 topicDepth: _topicDepth,
                                 healthCheck: _healthCheck,
+                                reconnectWording:
+                                    _isCommittedPartner(conversation),
                               ),
                           ],
 

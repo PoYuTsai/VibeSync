@@ -35,9 +35,11 @@ class ConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final level = conversation.lastEnthusiasmScore != null
-        ? EnthusiasmLevel.fromScore(conversation.lastEnthusiasmScore!)
-        : null;
+    final visibleScore = conversation.lastEnthusiasmScore == null
+        ? null
+        : clampVisibleInvestmentScore(conversation.lastEnthusiasmScore!);
+    final level =
+        visibleScore != null ? EnthusiasmLevel.fromScore(visibleScore) : null;
 
     return ListTile(
       onTap: () {
@@ -75,13 +77,15 @@ class ConversationTile extends StatelessWidget {
           Expanded(
             child: Text(
               conversation.name,
-              style: AppTypography.titleLarge.copyWith(color: AppColors.glassTextPrimary),
+              style: AppTypography.titleLarge
+                  .copyWith(color: AppColors.glassTextPrimary),
               overflow: TextOverflow.ellipsis,
             ),
           ),
           Text(
             _formatDate(conversation.updatedAt),
-            style: AppTypography.caption.copyWith(color: AppColors.glassTextHint),
+            style:
+                AppTypography.caption.copyWith(color: AppColors.glassTextHint),
           ),
         ],
       ),
@@ -95,7 +99,7 @@ class ConversationTile extends StatelessWidget {
                 Icon(level.icon, size: 14, color: level.color),
                 const SizedBox(width: 4),
                 Text(
-                  '${conversation.lastEnthusiasmScore}',
+                  '$visibleScore',
                   style: AppTypography.caption.copyWith(color: level.color),
                 ),
               ],
@@ -105,7 +109,8 @@ class ConversationTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               conversation.lastMessage!.content,
-              style: AppTypography.caption.copyWith(color: AppColors.glassTextHint),
+              style: AppTypography.caption
+                  .copyWith(color: AppColors.glassTextHint),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

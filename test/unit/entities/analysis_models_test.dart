@@ -47,8 +47,7 @@ void main() {
       expect(TopicDepthLevel.intimate.label, '曖昧層');
     });
 
-    test('no longer exposes emoji (titles use Tabler icons)', () {
-    });
+    test('no longer exposes emoji (titles use Tabler icons)', () {});
   });
 
   group('TopicDepth', () {
@@ -125,6 +124,44 @@ void main() {
       );
 
       expect(stageInfo.status, GameStageStatus.canAdvance);
+    });
+
+    test('fromJson 合法 stage → hasValidStage true', () {
+      final stageInfo = GameStageInfo.fromJson(const {
+        'current': 'premise',
+        'status': 'normal',
+        'nextStep': '',
+      });
+
+      expect(stageInfo.current, GameStage.premise);
+      expect(stageInfo.hasValidStage, isTrue);
+    });
+
+    test('fromJson 缺值／未知值 → hasValidStage false，current 僅顯示用預設', () {
+      expect(GameStageInfo.fromJson(null).hasValidStage, isFalse);
+      expect(GameStageInfo.fromJson(const {}).hasValidStage, isFalse);
+      expect(
+        GameStageInfo.fromJson(const {'current': 'vibing hard'}).hasValidStage,
+        isFalse,
+      );
+      // 顯示層 fallback 不變：仍回 opening 供舊 UI 呈現。
+      expect(
+        GameStageInfo.fromJson(const {'current': 'vibing hard'}).current,
+        GameStage.opening,
+      );
+    });
+
+    test('fromJson 非字串 stage 欄位不拋錯且視為無效', () {
+      final stageInfo = GameStageInfo.fromJson({
+        'current': 42,
+        'status': <String, Object?>{'bad': true},
+        'nextStep': false,
+      });
+
+      expect(stageInfo.current, GameStage.opening);
+      expect(stageInfo.status, GameStageStatus.normal);
+      expect(stageInfo.nextStep, isEmpty);
+      expect(stageInfo.hasValidStage, isFalse);
     });
   });
 

@@ -2,6 +2,7 @@ import 'package:characters/characters.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../entities/analysis_models.dart';
+import '../entities/enthusiasm_level.dart';
 import '../entities/game_stage.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
@@ -272,8 +273,9 @@ class CoachActionPolicy {
     CoachActionHint? coachActionHint,
     PsychologyAnalysis? psychology,
   }) {
+    final visibleHeatScore = clampVisibleInvestmentScore(heatScore);
     final card = _select(
-      heatScore: heatScore,
+      heatScore: visibleHeatScore,
       gameStage: gameStage,
       finalRecommendation: finalRecommendation,
       messages: messages,
@@ -283,7 +285,7 @@ class CoachActionPolicy {
       coachActionHint: coachActionHint,
       psychology: psychology,
     );
-    return _filterSuggestedLine(card, heatScore);
+    return _filterSuggestedLine(card, visibleHeatScore);
   }
 
   static CoachActionCardData _select({

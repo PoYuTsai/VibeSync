@@ -5,6 +5,7 @@ library;
 
 import '../../conversation/domain/entities/conversation.dart';
 import '../../conversation/domain/entities/message.dart';
+import '../../conversation/domain/entities/session_context.dart';
 import '../../conversation/domain/services/conversation_content_revision.dart';
 import '../domain/services/screenshot_recognition_helper.dart';
 import 'ports/conversation_memory_port.dart';
@@ -25,6 +26,15 @@ class AnalysisRunPreparation {
   final String? partnerSummary;
   final String? effectiveStyleContext;
   final String? knownContactName;
+  final SessionContext? sessionContext;
+
+  /// 上一個 partner-scoped 有效互動階段（弱先驗，閉環規則 8）；
+  /// 從未有有效階段時為 null，絕不偽造。
+  final String? previousStage;
+
+  /// 本次分析片段在 [requestMessages] 的 0-based 起點。起點前只供脈絡
+  /// 消歧；投入度只評起點後「她」的可觀察投入。
+  final int analysisFragmentStartIndex;
 
   /// 本次實際納入分析的訊息數（clamp 過 limit 的 sourceMessages 長度）。
   final int analyzedMessageCount;
@@ -38,6 +48,9 @@ class AnalysisRunPreparation {
     required this.partnerSummary,
     required this.effectiveStyleContext,
     required this.knownContactName,
+    required this.sessionContext,
+    this.previousStage,
+    required this.analysisFragmentStartIndex,
     required this.analyzedMessageCount,
     required this.contentRevision,
   });
@@ -87,14 +100,24 @@ class AnalysisRunPreparer {
     required String? Function(Conversation conversation) resolvePartnerSummary,
     required String? Function(Conversation conversation)
         resolveEffectiveStyleContext,
+    String? Function(Conversation conversation)? resolvePreviousStage,
+    SessionContext? Function(Conversation conversation)? resolveSessionContext,
   })  : _memory = memory,
         _resolvePartnerSummary = resolvePartnerSummary,
-        _resolveEffectiveStyleContext = resolveEffectiveStyleContext;
+        _resolveEffectiveStyleContext = resolveEffectiveStyleContext,
+        _resolvePreviousStage = resolvePreviousStage,
+        _resolveSessionContext = resolveSessionContext;
 
   final ConversationMemoryPort _memory;
   final String? Function(Conversation conversation) _resolvePartnerSummary;
   final String? Function(Conversation conversation)
       _resolveEffectiveStyleContext;
+
+  /// 上一個 partner-scoped 有效 stage（弱先驗）；composition root 注入，
+  /// null＝呼叫端不提供連續性（輔助流程用不到）。
+  final String? Function(Conversation conversation)? _resolvePreviousStage;
+  final SessionContext? Function(Conversation conversation)?
+      _resolveSessionContext;
 
   /// 主分析同步守門：驗證（空對話、無對方訊息）、切出本次要分析的訊息、
   /// 同步擷取內容修訂——修訂必須在任何 await 之前取，old run 才不可能
@@ -140,13 +163,34 @@ class AnalysisRunPreparer {
       conversation: conversation,
       baseMessages: gate.messagesForAnalysis!,
     );
+    final isNewFragment =
+        conversation.lastAnalyzedMessageCount != gate.analyzedMessageCount;
+    final analysisFragmentStartIndex = _analysisFragmentStartIndex(
+      baseMessages: gate.messagesForAnalysis!,
+      requestMessages: context.requestMessages,
+      previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
+      isNewFragment: isNewFragment,
+    );
 
     return AnalysisRunPreparation(
       requestMessages: context.requestMessages,
       conversationSummary: context.conversationSummary,
       partnerSummary: _resolvePartnerSummary(conversation),
-      effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
+      // Product boundary: About Me / style chips do not enter AnalyzeChat's
+      // score, stage, or five reply-style decision. Auxiliary composition
+      // remains a separate path; the current profile builder also returns
+      // null there under the existing Coach-1:1-only product decision.
+      effectiveStyleContext: null,
       knownContactName: _knownContactName(conversation),
+      // New fragments use the partner card's latest defaults. An exact
+      // same-boundary rerun keeps the conversation's original context so a
+      // later card edit cannot rewrite that historical fragment.
+      sessionContext: isNewFragment
+          ? (_resolveSessionContext?.call(conversation) ??
+              conversation.sessionContext)
+          : conversation.sessionContext,
+      previousStage: _resolvePreviousStage?.call(conversation),
+      analysisFragmentStartIndex: analysisFragmentStartIndex,
       analyzedMessageCount: gate.analyzedMessageCount!,
       contentRevision: gate.contentRevision!,
     );
@@ -186,6 +230,47 @@ class AnalysisRunPreparer {
     }
 
     return messages.sublist(0, lastIncomingIndex + 1);
+  }
+
+  int _analysisFragmentStartIndex({
+    required List<Message> baseMessages,
+    required List<Message> requestMessages,
+    required int? previousAnalyzedCount,
+    required bool isNewFragment,
+  }) {
+    if (requestMessages.isEmpty || baseMessages.isEmpty) return 0;
+
+    final firstRequest = requestMessages.first;
+    var requestSliceStart = baseMessages.indexWhere(
+      (message) => identical(message, firstRequest),
+    );
+    requestSliceStart = requestSliceStart >= 0
+        ? requestSliceStart
+        : baseMessages.indexWhere((message) => message.id == firstRequest.id);
+    if (requestSliceStart < 0) {
+      // Memory adapters are contractually suffix clippers. A custom/test
+      // adapter that copied messages still gets a safe suffix fallback.
+      requestSliceStart = (baseMessages.length - requestMessages.length)
+          .clamp(0, baseMessages.length)
+          .toInt();
+    }
+
+    var sourceStart = isNewFragment
+        ? (previousAnalyzedCount ?? 0).clamp(0, baseMessages.length).toInt()
+        : baseMessages.length;
+    // Exact-boundary reruns (or an outgoing-only delta) have no new incoming
+    // boundary. Reuse the latest contiguous incoming run instead of scoring
+    // the whole history or emitting an empty fragment.
+    if (sourceStart >= baseMessages.length) {
+      sourceStart = baseMessages.length - 1;
+      while (sourceStart > 0 && !baseMessages[sourceStart - 1].isFromMe) {
+        sourceStart--;
+      }
+    }
+
+    return (sourceStart - requestSliceStart)
+        .clamp(0, requestMessages.length - 1)
+        .toInt();
   }
 
   Future<String?> _buildHistoricalContextSummary(

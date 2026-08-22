@@ -8,6 +8,8 @@ library;
 
 import 'dart:convert';
 
+import '../../../../core/constants/app_constants.dart';
+import '../../domain/entities/enthusiasm_level.dart';
 import '../../data/services/analyze_stream_client.dart'
     show
         AnalysisStreamContent,
@@ -64,7 +66,12 @@ class AnalysisStreamContentDisplayMapper
           kind: AnalysisStreamContentKind.metrics,
           title: '互動指標',
           body: _joinNonEmpty([
-            score == null ? null : '本次投入：$score/100',
+            // 串流 heat 是 raw（0–100）：先套與 server finalize 相同的
+            // × 0.9 校準，可見分母固定 90，避免與最終分數尺度打架。
+            score == null
+                ? null
+                : '本次投入：${calibrateVisibleInvestment(score)}'
+                    '/${AppConstants.investmentVisibleMax}',
             _prefix(
               '話題深度',
               _stringField(topicDepth?['suggestion']) ??
@@ -348,7 +355,7 @@ class AnalysisStreamContentDisplayMapper
     );
     text = text.replaceAllMapped(
       RegExp(r'(^|[^A-Za-z])normal(?=([^A-Za-z]|$))', caseSensitive: false),
-      (match) => '${match.group(1) ?? ''}進展順利',
+      (match) => '${match.group(1) ?? ''}維持節奏',
     );
 
     return _replaceSchemaListFields(text);
@@ -415,13 +422,13 @@ class AnalysisStreamContentDisplayMapper
   static String? _schemaStatusLabel(String value) {
     switch (value.trim()) {
       case 'normal':
-        return '進展順利';
+        return '維持節奏';
       case 'stuckFriend':
-        return '偏向朋友';
+        return '互動偏平';
       case 'canAdvance':
-        return '可以更進一步';
+        return '可以推進';
       case 'shouldRetreat':
-        return '放慢節奏';
+        return '放慢一點';
       default:
         return null;
     }

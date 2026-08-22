@@ -200,7 +200,9 @@ class PartnerListCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tags = _previewTags(aggregate.unionInterests, aggregate.unionTraits);
-    final heat = aggregate.latestHeat;
+    final heat = aggregate.latestHeat == null
+        ? null
+        : clampVisibleInvestmentScore(aggregate.latestHeat!);
     final level = heat != null ? EnthusiasmLevel.fromScore(heat) : null;
     final date = _formatDate(aggregate.lastInteraction);
 

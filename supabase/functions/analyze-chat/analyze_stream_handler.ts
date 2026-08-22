@@ -123,6 +123,8 @@ export interface AnalyzeStreamDeps {
     conversationSummary: string | undefined;
     effectiveStyleContext: string | undefined;
     knownContactName: string | undefined;
+    previousStage?: string;
+    analysisFragmentStartIndex?: number;
   };
   claudeApiKey: string;
   supabaseUrl: string;

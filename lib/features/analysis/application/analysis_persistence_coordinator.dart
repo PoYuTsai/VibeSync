@@ -19,9 +19,11 @@ import 'package:uuid/uuid.dart';
 import '../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../analysis_history/domain/repositories/analysis_history_repository.dart';
 import '../../conversation/domain/entities/conversation.dart';
+import '../../conversation/domain/entities/session_context.dart';
 import '../../conversation/domain/services/conversation_content_revision.dart';
 import '../domain/entities/analysis_models.dart';
 import '../domain/entities/analysis_record.dart';
+import '../domain/entities/game_stage.dart';
 import 'ports/analysis_record_port.dart';
 import 'ports/conversation_write_ports.dart';
 
@@ -40,6 +42,7 @@ class AnalysisPersistenceCoordinator {
   static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
   static const _snapshotRevisionKey = 'contentRevision';
   static const _snapshotMessageCountKey = 'messageCount';
+  static const _snapshotHistoryEventIdKey = 'historyEventId';
 
   AnalysisPersistenceCoordinator({
     required this.conversationId,
@@ -254,6 +257,7 @@ class AnalysisPersistenceCoordinator {
     Map<String, dynamic>? rawResponse, {
     required String contentRevision,
     required int messageCount,
+    required String historyEventId,
   }) {
     if (rawResponse == null || rawResponse.isEmpty) {
       return null;
@@ -262,6 +266,7 @@ class AnalysisPersistenceCoordinator {
       ..[_snapshotClientMetaKey] = <String, Object>{
         _snapshotRevisionKey: contentRevision,
         _snapshotMessageCountKey: messageCount,
+        _snapshotHistoryEventIdKey: historyEventId,
       };
     return jsonEncode(snapshot);
   }
@@ -303,6 +308,38 @@ class AnalysisPersistenceCoordinator {
     } catch (_) {
       // A corrupt durable snapshot must not suppress a replacement write.
       return false;
+    }
+  }
+
+  /// 覆蓋前的 durable snapshot 是否已內嵌同一個 prefix revision＋訊息數。
+  /// true＝這次是同內容重試／重新整理；legacy 無 meta 或壞 JSON 回 false。
+  bool _snapshotCoversRevision(
+    String? snapshotJson, {
+    required String revision,
+    required int messageCount,
+  }) {
+    if (snapshotJson == null || snapshotJson.trim().isEmpty) return false;
+    try {
+      final snapshot = _normalizeJsonMap(jsonDecode(snapshotJson));
+      final rawMeta = snapshot?[_snapshotClientMetaKey];
+      return rawMeta is Map &&
+          rawMeta[_snapshotRevisionKey] == revision &&
+          rawMeta[_snapshotMessageCountKey] == messageCount;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String? _snapshotHistoryEventId(String? snapshotJson) {
+    if (snapshotJson == null || snapshotJson.trim().isEmpty) return null;
+    try {
+      final snapshot = _normalizeJsonMap(jsonDecode(snapshotJson));
+      final rawMeta = snapshot?[_snapshotClientMetaKey];
+      final rawId = rawMeta is Map ? rawMeta[_snapshotHistoryEventIdKey] : null;
+      if (rawId is! String || rawId.trim().isEmpty) return null;
+      return rawId.trim();
+    } catch (_) {
+      return null;
     }
   }
 
@@ -423,13 +460,30 @@ class AnalysisPersistenceCoordinator {
     );
     final targetAnalyzedMessageCount =
         analyzedMessageCount ?? conv.messages.length;
+    final targetPrefixRevision = conversationContentRevision(
+      conv,
+      messageCount: targetAnalyzedMessageCount,
+    );
+    // 閉環驗收 16：同一 content revision 的重試／重新整理只更新同一次
+    // 分析，不新增趨勢事件。以「覆蓋前的 durable snapshot 是否已內嵌同
+    // prefix revision＋訊息數」判定；legacy 無 meta 一律當新分析。
+    final sameRevisionRerun = _snapshotCoversRevision(
+      previousAnalysis.snapshotJson,
+      revision: targetPrefixRevision,
+      messageCount: targetAnalyzedMessageCount,
+    );
+    // 新 snapshot 先綁定唯一 history event id，再依相同 id 做 best-effort
+    // put。即使第一次事件寫入失敗，重跑也只會補回這次，不會誤覆蓋更早
+    // 的趨勢點。舊版 snapshot 沒有 id 時生成新 id，優先避免破壞舊資料。
+    final previousHistoryEventId = sameRevisionRerun
+        ? _snapshotHistoryEventId(previousAnalysis.snapshotJson)
+        : null;
+    final historyEventId = previousHistoryEventId ?? const Uuid().v4();
     final targetSnapshotJson = _encodeAnalysisSnapshot(
       result.rawResponse,
-      contentRevision: conversationContentRevision(
-        conv,
-        messageCount: targetAnalyzedMessageCount,
-      ),
+      contentRevision: targetPrefixRevision,
       messageCount: targetAnalyzedMessageCount,
+      historyEventId: historyEventId,
     );
 
     conv.lastEnthusiasmScore = result.enthusiasmScore;
@@ -441,7 +495,11 @@ class AnalysisPersistenceCoordinator {
     if (payloadCharCount != null) {
       conv.lastAnalyzedCharCount = payloadCharCount;
     }
-    conv.currentGameStage = result.gameStage.current.name;
+    // 對象卡互動階段閉環規則 9：缺少或非法 stage 不得寫入新 stage
+    // snapshot，保留上一個有效階段；從未有有效階段則維持 null（問號）。
+    if (result.gameStage.hasValidStage) {
+      conv.currentGameStage = result.gameStage.current.name;
+    }
     conv.lastAnalysisSnapshotJson = targetSnapshotJson;
 
     await _persistAnalysisCompleted(
@@ -486,19 +544,34 @@ class AnalysisPersistenceCoordinator {
     _setAnalysisRecordNeedsRepair(!recordSaved);
 
     // 案2：analyze 歷史事件（best-effort：失敗只 debugPrint，絕不 rethrow，
-    // 分析呈現完全不受影響）。去重靠呼叫端既有 gate（hydrate 路徑
-    // _maybePersistAndSyncOnHydrate 的 alreadyPersisted 比對＋listener 路徑
-    // 一次性觸發），同一次分析絕不重複記錄，這裡不另做冪等。
+    // 分析呈現完全不受影響）。同 content revision 重跑時必須「更新同一
+    // 事件」而不只是略過 append；否則作戰板仍會讀到重跑前的舊 stage。
+    // repository 以相同 id put 覆寫，createdAt 保留原值，所以趨勢筆數與
+    // 時間點都不會漂移。非法 stage 也保留該事件原本的有效 stage。
     try {
-      await _historyRepository().append(
+      final historyRepository = _historyRepository();
+      AnalysisHistoryEvent? rerunEvent;
+      if (sameRevisionRerun) {
+        for (final event
+            in historyRepository.listByConversation(conversationId)) {
+          if (event.kind == AnalysisHistoryKind.analyze &&
+              event.id == historyEventId) {
+            rerunEvent = event;
+            break;
+          }
+        }
+      }
+      await historyRepository.append(
         AnalysisHistoryEvent.analyze(
-          id: const Uuid().v4(),
-          createdAt: DateTime.now(),
+          id: historyEventId,
+          createdAt: rerunEvent?.createdAt ?? DateTime.now(),
           conversationId: conversationId,
           partnerId: conv.partnerId,
           subjectName: conv.name,
           enthusiasmScore: result.enthusiasmScore,
-          gameStageLabel: result.gameStage.current.name,
+          gameStageLabel: result.gameStage.hasValidStage
+              ? result.gameStage.current.name
+              : rerunEvent?.gameStageLabel,
         ),
       );
     } catch (e) {
@@ -624,7 +697,13 @@ class AnalysisPersistenceCoordinator {
         analyzedContentRevision: analyzedPrefixRevision,
         analysisSnapshotJson: snapshotJson,
         enthusiasmScore: result.enthusiasmScore,
-        gameStageLabel: result.gameStage.current.label,
+        // Missing/unknown model output must not leak the display fallback
+        // opening into durable records. Reuse only the conversation's latest
+        // strictly valid stage; otherwise persist a blank label.
+        gameStageLabel: result.gameStage.hasValidStage
+            ? _visibleRecordStageLabel(conversation, result.gameStage.current)
+            : GameStage.tryFromString(conversation.currentGameStage)?.label ??
+                '',
         allowArchivedRefresh: allowArchivedRefresh,
         sourcePlatform: _recordPort.conversationSource(
           ownerUserId: ownerUserId,
@@ -665,6 +744,18 @@ class AnalysisPersistenceCoordinator {
       return null;
     }
     return currentUserId;
+  }
+
+  String _visibleRecordStageLabel(
+    Conversation conversation,
+    GameStage stage,
+  ) {
+    if (stage == GameStage.opening &&
+        conversation.sessionContext?.meetingContext ==
+            MeetingContext.committedPartner) {
+      return '重新連線';
+    }
+    return stage.label;
   }
 
   AnalysisRecord? currentRecordFor(Conversation conversation) {

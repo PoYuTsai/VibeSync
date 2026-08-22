@@ -308,120 +308,122 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       child: BrandScaffold(
         title: '關於我',
         body: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _AboutMeIntroCard(),
-                  if (_initialProfile != null && !_initialProfile!.isEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      '最後更新：${_formatUpdatedAt(_initialProfile!.updatedAt)}',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.onBackgroundSecondary
-                            .withValues(alpha: 0.6),
-                      ),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _AboutMeIntroCard(),
+              if (_initialProfile != null && !_initialProfile!.isEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '最後更新：${_formatUpdatedAt(_initialProfile!.updatedAt)}',
+                  style: AppTypography.caption.copyWith(
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              ProfileChipSection<StuckPoint>(
+                title: '我現在卡在哪',
+                subtitle: '最多 2 個，教練會盯著這裡幫你推一把。',
+                options: StuckPoint.values,
+                labelOf: _stuckPointLabel,
+                isSelected: _draftStuckPoints.contains,
+                onTap: _toggleStuckPoint,
+              ),
+              const SizedBox(height: 16),
+              ProfileChipSection<PracticeGoal>(
+                title: '我想達成什麼',
+                subtitle: '最多 3 個，這是教練幫你的主要方向。',
+                options: PracticeGoal.values,
+                labelOf: _practiceGoalLabel,
+                isSelected: _draftGoals.contains,
+                onTap: _toggleGoal,
+              ),
+              const SizedBox(height: 16),
+              ProfileChipSection<TopicSeed>(
+                title: '常聊話題',
+                // topic seeds 目前不進 AnalyzeChat／教練，文案不得
+                // 宣稱 AI 會用（對象卡互動階段閉環驗收 18 附帶）。
+                subtitle: '最多 5 個，先記下你聊得來的話題。',
+                options: TopicSeed.values,
+                labelOf: _topicSeedLabel,
+                isSelected: _draftSeeds.contains,
+                onTap: _toggleSeed,
+              ),
+              const SizedBox(height: 16),
+              _ProfileInputSection(
+                title: '想聊但沒在上面的話題',
+                child: TextField(
+                  key: const Key('about-me-custom-topics'),
+                  controller: _customController,
+                  maxLength: UserProfile.maxCustomTopicsLength,
+                  onChanged: (_) => setState(() {}),
+                  cursorColor: AppColors.ctaStart,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: Colors.white,
+                  ),
+                  decoration: _fieldDecoration('例如：日劇、週末探店'),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _ProfileInputSection(
+                title: '想讓 AI 知道的事',
+                subtitle: '有什麼是你不想做的？例如「不要太快邀約」「不要開黃腔」。',
+                child: TextField(
+                  key: const Key('about-me-notes'),
+                  controller: _notesController,
+                  maxLength: UserProfile.maxNotesLength,
+                  maxLines: 3,
+                  onChanged: (_) => setState(() {}),
+                  cursorColor: AppColors.ctaStart,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: Colors.white,
+                    height: 1.35,
+                  ),
+                  decoration: _fieldDecoration('寫一句你希望 AI 記住的事'),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const _PrivacyNote(),
+              const SizedBox(height: 24),
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                  ),
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.38),
+                      blurRadius: 18,
+                      offset: const Offset(0, 9),
                     ),
                   ],
-                  const SizedBox(height: 16),
-                  ProfileChipSection<StuckPoint>(
-                    title: '我現在卡在哪',
-                    subtitle: '最多 2 個，教練會盯著這裡幫你推一把。',
-                    options: StuckPoint.values,
-                    labelOf: _stuckPointLabel,
-                    isSelected: _draftStuckPoints.contains,
-                    onTap: _toggleStuckPoint,
-                  ),
-                  const SizedBox(height: 16),
-                  ProfileChipSection<PracticeGoal>(
-                    title: '我想達成什麼',
-                    subtitle: '最多 3 個，這是教練幫你的主要方向。',
-                    options: PracticeGoal.values,
-                    labelOf: _practiceGoalLabel,
-                    isSelected: _draftGoals.contains,
-                    onTap: _toggleGoal,
-                  ),
-                  const SizedBox(height: 16),
-                  ProfileChipSection<TopicSeed>(
-                    title: '常聊話題',
-                    subtitle: '最多 5 個，幫 AI 發想話題。',
-                    options: TopicSeed.values,
-                    labelOf: _topicSeedLabel,
-                    isSelected: _draftSeeds.contains,
-                    onTap: _toggleSeed,
-                  ),
-                  const SizedBox(height: 16),
-                  _ProfileInputSection(
-                    title: '想聊但沒在上面的話題',
-                    child: TextField(
-                      key: const Key('about-me-custom-topics'),
-                      controller: _customController,
-                      maxLength: UserProfile.maxCustomTopicsLength,
-                      onChanged: (_) => setState(() {}),
-                      cursorColor: AppColors.ctaStart,
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: Colors.white,
-                      ),
-                      decoration: _fieldDecoration('例如：日劇、週末探店'),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _ProfileInputSection(
-                    title: '想讓 AI 知道的事',
-                    subtitle: '有什麼是你不想做的？例如「不要太快邀約」「不要開黃腔」。',
-                    child: TextField(
-                      key: const Key('about-me-notes'),
-                      controller: _notesController,
-                      maxLength: UserProfile.maxNotesLength,
-                      maxLines: 3,
-                      onChanged: (_) => setState(() {}),
-                      cursorColor: AppColors.ctaStart,
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: Colors.white,
-                        height: 1.35,
-                      ),
-                      decoration: _fieldDecoration('寫一句你希望 AI 記住的事'),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const _PrivacyNote(),
-                  const SizedBox(height: 24),
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppColors.ctaStart, AppColors.ctaEnd],
-                      ),
+                ),
+                child: ElevatedButton(
+                  onPressed: AppHaptics.onPress(_onPrimaryTap),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    foregroundColor: AppColors.onCta,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(999),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.38),
-                          blurRadius: 18,
-                          offset: const Offset(0, 9),
-                        ),
-                      ],
-                    ),
-                    child: ElevatedButton(
-                      onPressed: AppHaptics.onPress(_onPrimaryTap),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.transparent,
-                        shadowColor: Colors.transparent,
-                        foregroundColor: AppColors.onCta,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                      child: Text(
-                        _primaryLabel,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
                     ),
                   ),
-                  const SizedBox(height: 32),
-                ],
+                  child: Text(
+                    _primaryLabel,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 32),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -517,7 +519,7 @@ class _AboutMeIntroCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'AI 會用這些設定了解你的處境，幫你往前推一步；不會照你現在的樣子模仿你。',
+            '教練 1:1 會用這些設定了解你的處境，幫你往前推一步；對話分析不讀這裡，也不會照你現在的樣子模仿你。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
               height: 1.45,

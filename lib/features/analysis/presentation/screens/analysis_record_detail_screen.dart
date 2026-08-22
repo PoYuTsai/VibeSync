@@ -14,6 +14,7 @@ import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_record.dart';
 import '../../domain/entities/enthusiasm_level.dart';
+import '../../domain/entities/game_stage.dart';
 import '../widgets/analysis_platform_picker.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/swipe_hint_nudge.dart';
@@ -93,8 +94,8 @@ class _AnalysisRecordDetailScreenState
           ),
           TextButton(
             key: const ValueKey('analysis-record-delete-confirm'),
-            onPressed: AppHaptics.onPress(
-                () => Navigator.of(dialogContext).pop(true)),
+            onPressed:
+                AppHaptics.onPress(() => Navigator.of(dialogContext).pop(true)),
             child: const Text(
               '刪除',
               style: TextStyle(color: AppColors.error),
@@ -212,6 +213,7 @@ class _AnalysisRecordDetailScreenState
               else
                 _SavedAnalysisCard(
                   result: _result,
+                  reconnectWording: record.gameStageLabel.trim() == '重新連線',
                   onCopyRecommendation: _copyRecommendation,
                   onReplyCopied: _showReplyCopyFeedback,
                 ),
@@ -554,11 +556,13 @@ class _ArchivedMessageBubble extends StatelessWidget {
 class _SavedAnalysisCard extends StatelessWidget {
   const _SavedAnalysisCard({
     required this.result,
+    required this.reconnectWording,
     required this.onCopyRecommendation,
     required this.onReplyCopied,
   });
 
   final AnalysisResult result;
+  final bool reconnectWording;
   final Future<void> Function(String content) onCopyRecommendation;
   final void Function(String text, String message) onReplyCopied;
 
@@ -596,8 +600,11 @@ class _SavedAnalysisCard extends StatelessWidget {
     final replyTypes = _availableReplyTypes;
     final rawGameStage = result.rawResponse?['gameStage'];
     final rawTopicDepth = result.rawResponse?['topicDepth'];
-    final hasGameStage =
-        rawGameStage is Map && rawGameStage['current'] is String;
+    // 閉環驗收 7：只有合法五階段值才渲染互動重點；未知字串不得畫成破冰。
+    final rawStageCurrent =
+        rawGameStage is Map ? rawGameStage['current'] : null;
+    final hasGameStage = rawStageCurrent is String &&
+        GameStage.tryFromString(rawStageCurrent) != null;
     final hasPsychology = psychology.isNotEmpty ||
         result.psychology.shitTest?.trim().isNotEmpty == true ||
         result.psychology.qualificationSignal;
@@ -685,6 +692,7 @@ class _SavedAnalysisCard extends StatelessWidget {
             nextStep: result.gameStage.nextStep.trim().isEmpty
                 ? null
                 : result.gameStage.nextStep.trim(),
+            reconnectWording: reconnectWording,
           ),
         if ((dimensions != null || hasGameStage) && hasPsychology)
           const SizedBox(height: 12),

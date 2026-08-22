@@ -11,7 +11,8 @@ abstract class AnalysisHistoryRepository {
     int? limit,
   });
 
-  /// append-only；寫入後超過上限（500）刪最舊。
+  /// 以 event.id 冪等寫入；新 id 是 append，相同 id 用於同一內容修訂重跑
+  /// 的原地更新。寫入後超過上限（500）刪最舊。
   Future<void> append(AnalysisHistoryEvent event);
 
   Future<void> clearAll();

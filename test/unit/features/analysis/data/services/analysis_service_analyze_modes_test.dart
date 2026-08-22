@@ -771,7 +771,7 @@ void main() {
           .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
           .toList();
 
-      expect(updates.first.label, '進展順利');
+      expect(updates.first.label, '維持節奏');
       expect(updates.first.detail, contains('她的興趣/偏好：健康飲食、義美品牌'));
       expect(updates.first.detail, contains('個人層階段'));
       expect(updates.first.detail, isNot(contains('interests:')));
@@ -920,7 +920,7 @@ void main() {
 
       expect(updates.first.content?.title, '關係階段');
       expect(updates.first.content?.body, contains('目前狀態：破冰階段'));
-      expect(updates.first.content?.body, contains('狀態：進展順利'));
+      expect(updates.first.content?.body, contains('狀態：維持節奏'));
       expect(updates.first.content?.body, contains('下一步：可以開始輕鬆互動'));
       expect(updates.first.content?.body, isNot(contains('{"current"')));
       expect(updates.first.content?.body, isNot(contains('"nextStep"')));
@@ -959,7 +959,7 @@ void main() {
           .toList();
 
       expect(updates.first.content?.title, '關係狀態');
-      expect(updates.first.content?.body, '進展順利');
+      expect(updates.first.content?.body, '維持節奏');
       expect(updates.first.content?.body, isNot(contains('normal')));
     });
 
@@ -1033,7 +1033,7 @@ void main() {
           .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
           .toList();
 
-      expect(updates.first.content?.body, contains('進展順利'));
+      expect(updates.first.content?.body, contains('維持節奏'));
       expect(updates.first.content?.body, contains('個人層階段'));
       expect(updates.first.content?.body, isNot(contains('normal')));
       expect(updates.first.content?.body, isNot(contains('Personal')));
@@ -1069,7 +1069,7 @@ void main() {
           .stream(AnalyzeStreamRequest(messages: [_msg('hi')]))
           .toList();
 
-      expect(updates.first.content?.body, contains('進展順利'));
+      expect(updates.first.content?.body, contains('維持節奏'));
       expect(updates.first.content?.body, isNot(contains('Normal')));
       expect(updates.first.content?.body, isNot(contains('normal')));
     });

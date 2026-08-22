@@ -24,18 +24,39 @@ void main() {
     });
 
     group('emoji', () {
-      test('no longer exposes emoji (titles use Tabler icons)', () {
-      });
+      test('no longer exposes emoji (titles use Tabler icons)', () {});
+    });
+  });
+
+  group('GameStage.tryFromString', () {
+    test('accepts exactly the five legal stage names (trimmed)', () {
+      expect(GameStage.tryFromString('opening'), GameStage.opening);
+      expect(GameStage.tryFromString('premise'), GameStage.premise);
+      expect(GameStage.tryFromString('qualification'), GameStage.qualification);
+      expect(GameStage.tryFromString('narrative'), GameStage.narrative);
+      expect(GameStage.tryFromString(' close '), GameStage.close);
+    });
+
+    test('missing or unknown values never default to opening', () {
+      expect(GameStage.tryFromString(null), isNull);
+      expect(GameStage.tryFromString(''), isNull);
+      expect(GameStage.tryFromString('   '), isNull);
+      expect(GameStage.tryFromString('vibing hard'), isNull);
+      expect(GameStage.tryFromString('Opening'), isNull); // 大小寫敏感
+      expect(GameStage.tryFromString('破冰階段'), isNull);
     });
   });
 
   group('GameStageStatus', () {
     group('label', () {
-      test('returns correct label for each status', () {
-        expect(GameStageStatus.normal.label, '進展順利');
-        expect(GameStageStatus.stuckFriend.label, '偏向朋友');
-        expect(GameStageStatus.canAdvance.label, '可以更進一步');
-        expect(GameStageStatus.shouldRetreat.label, '放慢節奏');
+      test('節奏狀態可見文案（閉環拍板）：不得出現「朋友區／偏朋友」字樣', () {
+        expect(GameStageStatus.normal.label, '維持節奏');
+        expect(GameStageStatus.stuckFriend.label, '互動偏平');
+        expect(GameStageStatus.canAdvance.label, '可以推進');
+        expect(GameStageStatus.shouldRetreat.label, '放慢一點');
+        for (final status in GameStageStatus.values) {
+          expect(status.label.contains('朋友'), isFalse);
+        }
       });
     });
   });

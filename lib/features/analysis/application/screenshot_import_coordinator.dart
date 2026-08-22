@@ -269,18 +269,22 @@ class ScreenshotImportCoordinator {
         goal: goal ?? UserGoal.dateInvite,
         analysisContextNote: analysisContextNote,
       );
-    } else if (conv.sessionContext != null &&
-        analysisContextNote != null &&
-        analysisContextNote.trim().isNotEmpty) {
+    } else if (conv.sessionContext != null) {
+      // 閉環規則：本次匯入帶進的認識情境三欄位是最新真相（對象卡或匯入
+      // UI 的最新值），既有 sessionContext 不得靜默擋住；conversation
+      // 專屬欄位（userStyle 等）照舊保留。
       final existing = conv.sessionContext!;
+      final trimmedNote = analysisContextNote?.trim();
       conv.sessionContext = SessionContext(
-        meetingContext: existing.meetingContext,
-        duration: existing.duration,
-        goal: existing.goal,
+        meetingContext: meeting ?? existing.meetingContext,
+        duration: duration ?? existing.duration,
+        goal: goal ?? existing.goal,
         userStyle: existing.userStyle,
         userInterests: existing.userInterests,
         targetDescription: existing.targetDescription,
-        analysisContextNote: analysisContextNote.trim(),
+        analysisContextNote: trimmedNote == null || trimmedNote.isEmpty
+            ? existing.analysisContextNote
+            : trimmedNote,
       );
     }
 

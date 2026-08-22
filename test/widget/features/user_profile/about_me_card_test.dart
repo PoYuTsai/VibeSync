@@ -48,6 +48,16 @@ Widget _harness({UserProfile? initial}) {
 }
 
 void main() {
+  testWidgets('文案誠實（About Me seam）：只宣稱教練 1:1 參考，不宣稱影響對話分析', (tester) async {
+    await tester.pumpWidget(_harness(initial: null));
+    await tester.pumpAndSettle();
+
+    // 實際接線：buildForAnalysis 恆為 null，關於我只進 Coach 1:1。
+    expect(find.text('教練 1:1 參考'), findsOneWidget);
+    expect(find.text('影響 AI 建議'), findsNothing);
+    expect(find.textContaining('教練 1:1 會參考'), findsWidgets);
+  });
+
   testWidgets('empty profile shows prominent CTA', (tester) async {
     await tester.pumpWidget(_harness(initial: null));
     await tester.pumpAndSettle();
@@ -104,8 +114,7 @@ void main() {
     await tester.pumpWidget(_harness(initial: profile));
     await tester.pumpAndSettle();
     expect(find.textContaining('卡在哪'), findsOneWidget);
-    expect(find.textContaining('聊一聊就冷掉，不知道怎麼接下去、一直被已讀不回'),
-        findsOneWidget);
+    expect(find.textContaining('聊一聊就冷掉，不知道怎麼接下去、一直被已讀不回'), findsOneWidget);
   });
 
   testWidgets('tap 開始設定 navigates to /profile/about-me', (tester) async {

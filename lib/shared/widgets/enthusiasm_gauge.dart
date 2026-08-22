@@ -1,5 +1,6 @@
 // lib/shared/widgets/enthusiasm_gauge.dart
 import 'package:flutter/material.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/services/app_haptics.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
@@ -24,7 +25,8 @@ class _EnthusiasmGaugeState extends State<EnthusiasmGauge> {
   Widget build(BuildContext context) {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final level = EnthusiasmLevel.fromScore(widget.score);
+    final visibleScore = clampVisibleInvestmentScore(widget.score);
+    final level = EnthusiasmLevel.fromScore(visibleScore);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -34,7 +36,7 @@ class _EnthusiasmGaugeState extends State<EnthusiasmGauge> {
         border: Border.all(color: AppColors.glassBorder),
       ),
       child: TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0, end: widget.score.toDouble()),
+        tween: Tween(begin: 0, end: visibleScore.toDouble()),
         duration:
             reduceMotion ? Duration.zero : const Duration(milliseconds: 900),
         curve: AppMotion.easeOut,
@@ -53,7 +55,8 @@ class _EnthusiasmGaugeState extends State<EnthusiasmGauge> {
                   Icon(level.icon, size: 24, color: level.color),
                   const SizedBox(width: 8),
                   Text(
-                    '$shown/100',
+                    // 可見滿分 90（server finalize × 0.9 校準後的尺度）。
+                    '$shown/${AppConstants.investmentVisibleMax}',
                     style: AppTypography.headlineMedium
                         .copyWith(color: AppColors.glassTextPrimary),
                   ),
@@ -68,7 +71,8 @@ class _EnthusiasmGaugeState extends State<EnthusiasmGauge> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
-                  value: value / 100,
+                  value: (value / AppConstants.investmentVisibleMax)
+                      .clamp(0.0, 1.0),
                   backgroundColor: AppColors.glassBorder,
                   valueColor: AlwaysStoppedAnimation(level.color),
                   minHeight: 8,

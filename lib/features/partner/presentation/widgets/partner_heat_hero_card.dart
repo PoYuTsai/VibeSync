@@ -19,8 +19,9 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/motion/count_up_text.dart';
+import '../../../analysis/domain/entities/enthusiasm_level.dart';
 
-/// Deterministic mapping from heat (0-100, nullable) to display strings.
+/// Deterministic mapping from visible investment (0-90, nullable) to strings.
 /// Locked spec — see partner_heat_hero_card_test.dart for the contract.
 class PartnerHeatMessaging {
   PartnerHeatMessaging._();
@@ -43,7 +44,8 @@ class PartnerHeatMessaging {
     return '這次文字訊號呈現高度投入';
   }
 
-  static String numberFor(int? heat) => heat?.toString() ?? '--';
+  static String numberFor(int? heat) =>
+      heat == null ? '--' : clampVisibleInvestmentScore(heat).toString();
 }
 
 /// 56pt 的主數字。拆成常數是為了讓「跑動中」與「靜態 --」共用同一份字體
@@ -75,9 +77,11 @@ class PartnerHeatHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final number = PartnerHeatMessaging.numberFor(heat);
-    final label = PartnerHeatMessaging.labelFor(heat);
-    final subtitle = PartnerHeatMessaging.subtitleFor(heat);
+    final visibleHeat =
+        heat == null ? null : clampVisibleInvestmentScore(heat!);
+    final number = PartnerHeatMessaging.numberFor(visibleHeat);
+    final label = PartnerHeatMessaging.labelFor(visibleHeat);
+    final subtitle = PartnerHeatMessaging.subtitleFor(visibleHeat);
 
     return Container(
       decoration: BoxDecoration(
@@ -109,11 +113,11 @@ class PartnerHeatHeroCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                if (heat == null)
+                if (visibleHeat == null)
                   Text(number, style: _heatNumberStyle)
                 else
                   CountUpText(
-                    value: heat!,
+                    value: visibleHeat,
                     style: _heatNumberStyle,
                     animate: animate,
                     onEnd: onCountUpEnd,

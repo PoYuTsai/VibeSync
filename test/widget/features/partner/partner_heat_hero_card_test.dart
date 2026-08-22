@@ -42,9 +42,9 @@ void main() {
       expect(PartnerHeatMessaging.labelFor(80), '投入明顯');
     });
 
-    test('81..100 → 高度投入 (boundary 81 / 100)', () {
+    test('81..90 → 高度投入；legacy 超界值仍歸入同段', () {
       expect(PartnerHeatMessaging.labelFor(81), '高度投入');
-      expect(PartnerHeatMessaging.labelFor(95), '高度投入');
+      expect(PartnerHeatMessaging.labelFor(90), '高度投入');
       expect(PartnerHeatMessaging.labelFor(100), '高度投入');
     });
   });
@@ -72,9 +72,9 @@ void main() {
       expect(PartnerHeatMessaging.subtitleFor(80), '這次有多個明顯的投入訊號');
     });
 
-    test('81..100 → 這次文字訊號呈現高度投入', () {
+    test('81..90 → 這次文字訊號呈現高度投入', () {
       expect(PartnerHeatMessaging.subtitleFor(81), '這次文字訊號呈現高度投入');
-      expect(PartnerHeatMessaging.subtitleFor(100), '這次文字訊號呈現高度投入');
+      expect(PartnerHeatMessaging.subtitleFor(90), '這次文字訊號呈現高度投入');
     });
   });
 
@@ -83,10 +83,10 @@ void main() {
       expect(PartnerHeatMessaging.numberFor(null), '--');
     });
 
-    test('int → toString', () {
+    test('int → 0–90 可見範圍，legacy 100 clamp 成 90', () {
       expect(PartnerHeatMessaging.numberFor(0), '0');
       expect(PartnerHeatMessaging.numberFor(85), '85');
-      expect(PartnerHeatMessaging.numberFor(100), '100');
+      expect(PartnerHeatMessaging.numberFor(100), '90');
     });
   });
 
@@ -126,7 +126,7 @@ void main() {
       expect(find.text('這次有多個明顯的投入訊號'), findsOneWidget);
     });
 
-    testWidgets('heat=95 → "95" + 高度投入', (t) async {
+    testWidgets('legacy heat=95 → 可見滿分 "90" + 高度投入', (t) async {
       await t.pumpWidget(const MaterialApp(
         home: Scaffold(
           body: PartnerHeatHeroCard(heat: 95),
@@ -134,7 +134,8 @@ void main() {
       ));
       await t.pumpAndSettle();
 
-      expect(find.text('95'), findsOneWidget);
+      expect(find.text('90'), findsOneWidget);
+      expect(find.text('95'), findsNothing);
       expect(find.text('高度投入'), findsOneWidget);
     });
   });

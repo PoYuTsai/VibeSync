@@ -14,7 +14,23 @@ void main() {
 
       // 分數是 0→72 的 count-up 揭曉，等動畫收斂才停在終點值。
       await tester.pumpAndSettle();
-      expect(find.text('72/100'), findsOneWidget);
+      // 可見滿分是 90（對象卡互動階段閉環驗收 15），不得再出現 /100。
+      expect(find.text('72/90'), findsOneWidget);
+      expect(find.textContaining('/100'), findsNothing);
+    });
+
+    testWidgets('90 分＝滿條（可見滿分 90）', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: EnthusiasmGauge(score: 90)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('90/90'), findsOneWidget);
+      final bar = tester.widget<LinearProgressIndicator>(
+        find.byType(LinearProgressIndicator),
+      );
+      expect(bar.value, 1.0);
     });
 
     testWidgets('displays cold icon for low score', (tester) async {

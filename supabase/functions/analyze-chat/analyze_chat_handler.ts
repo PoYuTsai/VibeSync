@@ -96,13 +96,20 @@ import {
 import {
   type AnalyzeMessage,
   type ImageData,
+  inferLatestIncomingRunStart,
   MAX_USER_DRAFT_LENGTH,
+  sanitizeAnalysisFragmentStartIndex,
   sanitizeConversationSummary,
   sanitizeEffectiveStyleContext,
   sanitizeMessages,
   sanitizePartnerSummary,
   sanitizeSessionContext,
 } from "./analysis_input_compiler.ts";
+import {
+  buildStagePriorSection,
+  markLatestAnalysisFragment,
+  normalizeStagePrior,
+} from "./stream_prompt.ts";
 import {
   buildRecognizeOnlyImagePrompt,
   joinPromptSections,
@@ -157,7 +164,6 @@ const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
 // 不碰任何 isFromMe/side 判讀路徑。設計：docs/plans/2026-06-14-ocr-dark-fill-color-side-design.md
 const OCR_PHASE1_INSTRUMENT = Deno.env.get("OCR_PHASE1_INSTRUMENT") === "1";
 
-
 function normalizeTier(value: unknown): "free" | "starter" | "essential" {
   return normalizeSubscriptionTier(value);
 }
@@ -201,7 +207,6 @@ const TEST_MODE = Deno.env.get("TEST_MODE") === "true";
 const STREAM_ANALYZE_ENABLED =
   Deno.env.get("STREAM_ANALYZE_ENABLED") === "true";
 const STREAM_WHITELIST = Deno.env.get("STREAM_WHITELIST");
-
 
 // Handler factory：測試可注入假 Supabase client，不啟動 HTTP server。
 // serve 只在 import.meta.main（Edge runtime 入口）時執行。
@@ -308,6 +313,8 @@ async function handleAnalyzeChat(
       requestId: rawRequestId,
       previousAnalyzedCount: rawPreviousAnalyzedCount,
       previousAnalyzedCharCount: rawPreviousAnalyzedCharCount,
+      previousStage: rawPreviousStage,
+      analysisFragmentStartIndex: rawAnalysisFragmentStartIndex,
       billingProtocolVersion: rawBillingProtocolVersion,
       confirmedOvercharge: rawConfirmedOvercharge,
       expectedTier: rawExpectedTier,
@@ -469,9 +476,9 @@ async function handleAnalyzeChat(
       });
 
     let monthlyLimit = TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
-        TIER_MONTHLY_LIMITS.free;
+      TIER_MONTHLY_LIMITS.free;
     let dailyLimit = TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
-        TIER_DAILY_LIMITS.free;
+      TIER_DAILY_LIMITS.free;
     if (
       !recognizeOnly && !accountIsTest &&
       tierRank(expectedTier) > tierRank(normalizeTier(sub.tier))
@@ -601,7 +608,6 @@ async function handleAnalyzeChat(
       });
     }
 
-
     // ── Opener mode: generate opening lines ──
     if (isOpenerMode) {
       return await handleOpenerRequest({
@@ -652,6 +658,17 @@ async function handleAnalyzeChat(
       }, 400);
     }
     const messages = messageValidation.messages;
+    const fragmentStartValidation = sanitizeAnalysisFragmentStartIndex(
+      rawAnalysisFragmentStartIndex,
+      messages.length,
+    );
+    if (fragmentStartValidation.error) {
+      return jsonResponse({ error: fragmentStartValidation.error }, 400);
+    }
+    const providedAnalysisFragmentStartIndex =
+      fragmentStartValidation.analysisFragmentStartIndex;
+    const analysisFragmentStartIndex = providedAnalysisFragmentStartIndex ??
+      inferLatestIncomingRunStart(messages);
 
     if (
       rawAnalyzeMode != null &&
@@ -663,6 +680,7 @@ async function handleAnalyzeChat(
     const analyzeMode = rawAnalyzeMode === "my_message"
       ? "my_message"
       : "normal";
+    const isMyMessageMode = analyzeMode === "my_message";
 
     if (
       rawForceModel != null &&
@@ -705,7 +723,9 @@ async function handleAnalyzeChat(
     // 微調多輪漂移錨（anchor_action 條款）：可選、只在微調時有意義。
     // 刻意不進 input hash——比照 refineInstruction 的「非空才 append」教訓，
     // 且同 draft＋指令＋脈絡幾乎必同 anchor，不值得為它毀掉 7 天窗 pending。
-    if (rawRefineAnchorText != null && typeof rawRefineAnchorText !== "string") {
+    if (
+      rawRefineAnchorText != null && typeof rawRefineAnchorText !== "string"
+    ) {
       return jsonResponse({ error: "Invalid refineAnchorText" }, 400);
     }
     const refineAnchorText = typeof rawRefineAnchorText === "string"
@@ -887,7 +907,15 @@ async function handleAnalyzeChat(
       const openingText = openingMessages.map(formatConversationLine).join(
         "\n",
       );
-      const recentText = recentMessages.map(formatConversationLine).join("\n");
+      const recentStartIndex = messages.length - recentMessages.length;
+      const recentLines = recentMessages.map(formatConversationLine);
+      const recentText = isMyMessageMode
+        ? recentLines.join("\n")
+        : markLatestAnalysisFragment(
+          recentLines,
+          Math.max(analysisFragmentStartIndex, recentStartIndex) -
+            recentStartIndex,
+        );
 
       compiledConversationText = `## 對話開頭（破冰階段）
 ${openingText}
@@ -898,9 +926,13 @@ ${openingText}
 ${recentText}`;
     } else {
       // 訊息數量在限制內，完整送出
-      compiledConversationText = messages.map(formatConversationLine).join(
-        "\n",
-      );
+      const conversationLines = messages.map(formatConversationLine);
+      compiledConversationText = isMyMessageMode
+        ? conversationLines.join("\n")
+        : markLatestAnalysisFragment(
+          conversationLines,
+          analysisFragmentStartIndex,
+        );
       compiledMessageCount = messages.length;
       recentMessagesUsed = messages.length;
     }
@@ -922,7 +954,6 @@ ${recentText}`;
     // 測試帳號強制使用 essential tier 功能
 
     // 檢查「我說」模式權限（只限 Essential）
-    const isMyMessageMode = analyzeMode === "my_message";
     const requestType = deriveRequestType({
       recognizeOnly,
       hasImages,
@@ -1352,6 +1383,13 @@ ${recentText}`;
     const historicalContextInfo = conversationSummary
       ? ["## Older Context Summary", conversationSummary].join("\n")
       : "";
+    // 對象卡互動階段閉環：上次有效階段是弱先驗。非法／缺值回空字串，
+    // 空 section 由 joinPromptSections 自然吞掉。正規化後的值同時納入
+    // stream conversation hash，避免續傳／重試把不同 prompt 當成同一輸入。
+    const previousStage = normalizeStagePrior(rawPreviousStage);
+    const stagePriorInfo = isMyMessageMode
+      ? ""
+      : buildStagePriorSection(previousStage);
     const partnerContextInfo = partnerSummary
       ? ["## Partner Context", partnerSummary].join("\n")
       : "";
@@ -1375,6 +1413,7 @@ ${recentText}`;
       )
       : joinPromptSections(
         contextInfo,
+        stagePriorInfo,
         partnerContextInfo,
         styleContextInfo,
         historicalContextInfo,
@@ -1435,8 +1474,7 @@ ${
             // 模型看不到段落結構。
             JSON.stringify({
               userDraft: sanitizeRefineInstructionForPrompt(userDraft.trim()),
-            })
-          }
+            })}
 
 Optimization contract:
 - Treat this draft as the user's intended message, not merely a hint.
@@ -1567,6 +1605,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           conversationSummary,
           effectiveStyleContext,
           knownContactName,
+          previousStage: isMyMessageMode
+            ? undefined
+            : previousStage ?? undefined,
+          analysisFragmentStartIndex: isMyMessageMode
+            ? undefined
+            : providedAnalysisFragmentStartIndex,
         },
         claudeApiKey: CLAUDE_API_KEY,
         supabaseUrl: SUPABASE_URL,
@@ -2107,8 +2151,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
 
     // Add usage info to response。豁免扣費時不得報假扣費——Flutter 拿
     // messagesUsed / remaining 做扣費 toast 與本地額度同步。
-    const reportedCharge =
-      optimizeSettledReportedCharge ?? quotaUsage.chargedMessageCount;
+    const reportedCharge = optimizeSettledReportedCharge ??
+      quotaUsage.chargedMessageCount;
     const reportedShouldCharge = optimizeSettledReportedCharge == null
       ? quotaUsage.shouldChargeQuota
       : optimizeSettledReportedCharge > 0;

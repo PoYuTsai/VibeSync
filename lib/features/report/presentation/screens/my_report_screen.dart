@@ -16,6 +16,8 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
+import '../../../analysis/domain/services/partner_stage_resolver.dart';
+import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/presentation/widgets/about_me_card.dart';
@@ -39,8 +41,20 @@ class MyReportScreen extends ConsumerWidget {
     final partners = ref.watch(partnerListProvider);
     // Stage labels 必須在 build 階段 eager 解析：ListView 的 itemBuilder 在
     // layout 階段執行，callback 裡用 ref.watch 會逸出 build contract。
+    // 作戰板真相：最新成功的 partner-scoped history event 優先（依分析完成
+    // 時間），Conversation 只作 legacy fallback；未知值顯示問號。
+    final stageService = ref.watch(reportDataServiceProvider);
+    final stageEvents = ref.watch(analysisHistoryEventsProvider);
+    final allConversations = ref.watch(conversationsProvider);
     final stageLabels = {
-      for (final p in partners) p.id: _latestStageLabel(ref, p.id),
+      for (final p in partners)
+        p.id: _visibleStageLabel(
+          stageService.latestStageResolutionFor(
+            p.id,
+            stageEvents,
+            allConversations,
+          ),
+        ),
     };
 
     // 對象選擇器＋單對象歷史序列。折線、平均與 delta 必須全部來自同一位
@@ -177,18 +191,14 @@ class MyReportScreen extends ConsumerWidget {
     );
   }
 
-  /// 最新階段標籤：conversationsByPartnerProvider 由 repo `listByPartner`
-  /// 保證 updatedAt desc，掃到第一個非空 currentGameStage 即最新。
-  String? _latestStageLabel(WidgetRef ref, String partnerId) {
-    final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
-    for (final c in conversations) {
-      final raw = c.currentGameStage?.trim();
-      if (raw != null && raw.isNotEmpty) {
-        final stage = GameStage.fromString(raw);
-        return stage.label;
-      }
+  /// 可見階段標籤：已是伴侶的 opening 顯示「重新連線」（閉環規則 5），
+  /// 不暗示退回陌生人；其餘照 stage label；null＝尚未分析（問號）。
+  String? _visibleStageLabel(PartnerStageResolution? resolution) {
+    if (resolution == null) return null;
+    if (resolution.stage == GameStage.opening && resolution.isReconnect) {
+      return '重新連線';
     }
-    return null;
+    return resolution.stage.label;
   }
 
   Widget _lockedReportCard(BuildContext context) {

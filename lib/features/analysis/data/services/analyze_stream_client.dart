@@ -33,6 +33,10 @@ class AnalyzeStreamRequest {
   final String? partnerSummary;
   final String? effectiveStyleContext;
   final String? knownContactName;
+
+  /// 上一個 partner-scoped 有效互動階段（弱先驗，閉環規則 8）。
+  final String? previousStage;
+  final int? analysisFragmentStartIndex;
   final int? previousAnalyzedCount;
   final int? previousAnalyzedCharCount;
   final OverchargeConfirmationPayload? confirmedOvercharge;
@@ -45,6 +49,8 @@ class AnalyzeStreamRequest {
     this.partnerSummary,
     this.effectiveStyleContext,
     this.knownContactName,
+    this.previousStage,
+    this.analysisFragmentStartIndex,
     this.previousAnalyzedCount,
     this.previousAnalyzedCharCount,
     this.confirmedOvercharge,
@@ -277,7 +283,7 @@ class AnalyzeStreamClient {
           'Authorization': 'Bearer $accessToken',
           'apikey': AppConfig.supabaseAnonKey,
         })
-        ..body = jsonEncode(_buildStreamBody(request, entitlementContext));
+        ..body = jsonEncode(buildStreamBody(request, entitlementContext));
 
       final response =
           await client.send(httpRequest).timeout(_streamConnectTimeout);
@@ -471,7 +477,9 @@ class AnalyzeStreamClient {
     }
   }
 
-  Map<String, dynamic> _buildStreamBody(
+  /// Wire payload builder（公開 seam）：情境接線測試據此驗證
+  /// `sessionContext.meetingContext` 等欄位實際送出的值。
+  static Map<String, dynamic> buildStreamBody(
     AnalyzeStreamRequest request,
     AnalysisEntitlementContext entitlementContext,
   ) {
@@ -504,6 +512,11 @@ class AnalyzeStreamClient {
         'effectiveStyleContext': effectiveStyleContext.trim(),
       if (knownContactName != null && knownContactName.trim().isNotEmpty)
         'knownContactName': knownContactName.trim(),
+      if (request.previousStage != null &&
+          request.previousStage!.trim().isNotEmpty)
+        'previousStage': request.previousStage!.trim(),
+      if (request.analysisFragmentStartIndex != null)
+        'analysisFragmentStartIndex': request.analysisFragmentStartIndex,
       if (previousAnalyzedCount != null && previousAnalyzedCount > 0)
         'previousAnalyzedCount': previousAnalyzedCount,
       // ADR #19 定案 #6 capability contract：所有 analyze 請求必送。

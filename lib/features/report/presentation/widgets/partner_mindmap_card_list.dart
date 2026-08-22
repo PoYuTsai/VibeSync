@@ -6,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../partner/domain/entities/partner.dart';
+import 'partner_stage_assets.dart';
 
 /// 報告頁底部「對象作戰板」dock（2026-08-14 對標夥伴示意稿）。
 ///
@@ -54,16 +55,6 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
     [AppColors.partnerOrangeStart, AppColors.partnerOrangeEnd], // 鮮橘
     [AppColors.partnerOrchidStart, AppColors.partnerOrchidEnd], // 蘭花粉
   ];
-
-  static const _unknownStageAsset =
-      'assets/images/partner_stage_unknown.webp';
-  static const _stageAssetsByLabel = <String, String>{
-    '破冰階段': 'assets/images/partner_stage_opening.webp',
-    '建立男女感': 'assets/images/partner_stage_premise.webp',
-    '互相評估': 'assets/images/partner_stage_qualification.webp',
-    '展現個人魅力': 'assets/images/partner_stage_narrative.webp',
-    '準備邀約': 'assets/images/partner_stage_close.webp',
-  };
 
   final _scrollController = ScrollController();
   final _dockKey = GlobalKey();
@@ -247,7 +238,7 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
         partner.id.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
     final identityGradient =
         _identityGradients[colorKey % _identityGradients.length];
-    final stageAsset = _stageAssetFor(stage);
+    final stageAsset = partnerStageAssetFor(stage);
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -299,14 +290,5 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
         ),
       ],
     );
-  }
-
-  static String _stageAssetFor(String? label) {
-    if (label == null) return _unknownStageAsset;
-    for (final entry in _stageAssetsByLabel.entries) {
-      // 報告標籤偶爾會帶 emoji／狀態前綴，使用 contains 才不會誤回未知圖。
-      if (label.contains(entry.key)) return entry.value;
-    }
-    return _unknownStageAsset;
   }
 }

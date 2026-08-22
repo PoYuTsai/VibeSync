@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/application/analysis_persistence_coordinator.dart';
 import 'package:vibesync/features/analysis/application/analysis_run_metadata.dart';
 import 'package:vibesync/features/analysis/application/analysis_session_controller.dart';
+import 'package:vibesync/features/analysis/application/analysis_run_preparer.dart';
 import 'package:vibesync/features/analysis/application/ports/analysis_record_port.dart';
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
@@ -15,6 +16,7 @@ import 'package:vibesync/features/analysis/presentation/helpers/analysis_run_met
 import 'package:vibesync/features/analysis_history/domain/repositories/analysis_history_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/conversation/domain/services/conversation_content_revision.dart';
 
 import '../../../../helpers/memory_analysis_history_repository.dart';
@@ -76,6 +78,8 @@ class _Harness {
   final Conversation conversation;
   final AnalysisHistoryRepository history = MemoryAnalysisHistoryRepository();
   final analysisCompletedSaves = <String>[];
+  SessionContext? startedSessionContext;
+  var startCalls = 0;
 
   late final AnalysisPersistenceCoordinator persistence =
       AnalysisPersistenceCoordinator(
@@ -106,14 +110,18 @@ class _Harness {
       partnerSummary,
       effectiveStyleContext,
       knownContactName,
+      previousStage,
+      analysisFragmentStartIndex,
       previousAnalyzedCount,
       previousAnalyzedCharCount,
       confirmedOvercharge,
       conversationMessageCount,
       analyzedMessageCount,
       conversationContentRevision,
-    }) =>
-        throw UnimplementedError('not used here'),
+    }) async {
+      startCalls++;
+      startedSessionContext = sessionContext;
+    },
     retryRun: () => throw UnimplementedError('not used here'),
     ensureServerEntitlementSynced: () async {},
     currentConversation: () => conversation,
@@ -122,6 +130,77 @@ class _Harness {
 }
 
 void main() {
+  test('start：把實際送出的 context 凍結到 Conversation，供同片段重跑沿用', () async {
+    final conversation = _conversation()
+      ..sessionContext = SessionContext(
+        meetingContext: MeetingContext.datingApp,
+        duration: AcquaintanceDuration.justMet,
+      );
+    final sentContext = SessionContext(
+      meetingContext: MeetingContext.committedPartner,
+      duration: AcquaintanceDuration.monthPlus,
+      goal: UserGoal.maintainHeat,
+    );
+    final harness = _Harness(conversation: conversation);
+    final preparation = AnalysisRunPreparation(
+      requestMessages: conversation.messages,
+      conversationSummary: null,
+      partnerSummary: null,
+      effectiveStyleContext: null,
+      knownContactName: null,
+      sessionContext: sentContext,
+      previousStage: null,
+      analysisFragmentStartIndex: 0,
+      analyzedMessageCount: 1,
+      contentRevision: conversationContentRevision(conversation),
+    );
+
+    await harness.session.start(
+      conversation: conversation,
+      preparation: preparation,
+      waitForCompletion: true,
+      shouldProceed: () => true,
+    );
+
+    expect(harness.startCalls, 1);
+    expect(harness.startedSessionContext, same(sentContext));
+    expect(conversation.sessionContext, same(sentContext));
+  });
+
+  test('start：畫面已失效時不送出，也不改寫 Conversation context', () async {
+    final originalContext = SessionContext(
+      meetingContext: MeetingContext.datingApp,
+      duration: AcquaintanceDuration.justMet,
+    );
+    final conversation = _conversation()..sessionContext = originalContext;
+    final harness = _Harness(conversation: conversation);
+    final preparation = AnalysisRunPreparation(
+      requestMessages: conversation.messages,
+      conversationSummary: null,
+      partnerSummary: null,
+      effectiveStyleContext: null,
+      knownContactName: null,
+      sessionContext: SessionContext(
+        meetingContext: MeetingContext.committedPartner,
+        duration: AcquaintanceDuration.monthPlus,
+      ),
+      previousStage: null,
+      analysisFragmentStartIndex: 0,
+      analyzedMessageCount: 1,
+      contentRevision: conversationContentRevision(conversation),
+    );
+
+    await harness.session.start(
+      conversation: conversation,
+      preparation: preparation,
+      waitForCompletion: true,
+      shouldProceed: () => false,
+    );
+
+    expect(harness.startCalls, 0);
+    expect(conversation.sessionContext, same(originalContext));
+  });
+
   test('presentation 映射：reactive state → 最小 run metadata（只帶四個欄位）', () {
     const state = StreamingAnalysisState(
       phase: StreamingAnalyzePhase.done,

@@ -2,7 +2,13 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { buildStreamSystemPrompt } from "./stream_prompt.ts";
+import {
+  buildStagePriorSection,
+  buildStreamSystemPrompt,
+  LATEST_ANALYSIS_FRAGMENT_MARKER,
+  markLatestAnalysisFragment,
+  normalizeStagePrior,
+} from "./stream_prompt.ts";
 
 Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   const prompt = buildStreamSystemPrompt("Base full reasoning prompt.");
@@ -265,7 +271,9 @@ Deno.test("compliance(b3): floor applies to EVERY option — same 接 ball set, 
   );
   assert(prompt.includes("write every option with equal effort"));
   assert(
-    prompt.includes("equal effort means equal ball coverage, not equal word count"),
+    prompt.includes(
+      "equal effort means equal ball coverage, not equal word count",
+    ),
   );
 });
 
@@ -302,4 +310,79 @@ Deno.test("metrics step requires gameStage with client enum values and context r
     assert(prompt.includes(status), `missing status value ${status}`);
   }
   assert(prompt.includes("認識場景"));
+});
+
+Deno.test("stage prior section: legal stage renders weak-prior block, junk renders nothing", () => {
+  // 跨次連續性 seam：上次有效階段是弱先驗，隨片段送入；非法值絕不偽造。
+  const section = buildStagePriorSection("qualification");
+  assert(section.includes("## Stage Continuity"));
+  assert(section.includes("qualification"));
+  assert(section.includes("Weak prior only"));
+
+  assertEquals(buildStagePriorSection(undefined), "");
+  assertEquals(buildStagePriorSection(null), "");
+  assertEquals(buildStagePriorSection(""), "");
+  assertEquals(buildStagePriorSection("vibing hard"), "");
+  assertEquals(buildStagePriorSection("Opening"), "");
+  assertEquals(buildStagePriorSection(42), "");
+  assertEquals(normalizeStagePrior(" qualification "), "qualification");
+  assertEquals(normalizeStagePrior("Opening"), null);
+});
+
+Deno.test("latest fragment marker is inserted at the exact message boundary", () => {
+  const marked = markLatestAnalysisFragment(
+    ["Her: old", "Me: reply", "Her: new 1", "Her: new 2"],
+    2,
+  ).split("\n");
+
+  assertEquals(marked[2], LATEST_ANALYSIS_FRAGMENT_MARKER);
+  assertEquals(marked.slice(3), ["Her: new 1", "Her: new 2"]);
+  assertEquals(markLatestAnalysisFragment([], 0), "");
+});
+
+Deno.test("system prompt carries the weak-prior rule and the partner-context boundary", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  // 弱先驗：模糊證據保留、強證據可跳／可回退，不是下限。
+  assert(prompt.includes("Stage Continuity"));
+  assert(prompt.includes("weak prior"));
+  // 關於她 chips（Partner Context）邊界：可調節奏／話題／可行性，
+  // 不可直接改分、改 stage、不是她本輪原話、不替低投入找藉口。
+  assert(prompt.includes("Partner Context only tunes advice"));
+  assert(prompt.includes("never changes score/stage"));
+  assert(prompt.includes("excuses low investment"));
+  // 投入度只看最新片段中她的可觀察投入；舊內容與上次分數不直接進分。
+  assert(prompt.includes("messages after Latest Analysis Fragment"));
+  assert(prompt.includes("history/previous score only disambiguate"));
+  assert(prompt.includes("never add points"));
+});
+
+Deno.test("metrics step carries the five-stage criteria and the opening guard", () => {
+  // 對象卡互動階段閉環：五階段判準與 opening 正面證據 guard 必須存在於
+  // stream prompt（Edge 分類契約 seam）。
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  // opening 需要正面證據；缺值、短訊息、普通問候不得判成 opening。
+  assert(prompt.includes("`opening` only for true first contact"));
+  assert(prompt.includes("explicit reconnect after material silence/conflict"));
+  assert(prompt.includes("not missing data, a greeting, or one short reply"));
+  // close 必須有本次可落地的邀約／安排證據，不由伴侶標籤或用戶目標觸發。
+  assert(
+    prompt.includes(
+      "`close` needs current reciprocal invite/scheduling, never a partner label/goal",
+    ),
+  );
+  // narrative 不是中間預設值。
+  assert(prompt.includes("`narrative` is never a default"));
+  // 前次 stage／歷史是連續性證據，但本次訊息是主要證據。
+  assert(prompt.includes("current evidence beats Stage Continuity"));
+  // 混合證據有唯一優先順序；Topic Depth 的循序漸進只約束回覆升級，
+  // 不得被誤讀成 stage 不可跳轉或回退。
+  assert(
+    prompt.includes(
+      "close scheduling > qualification fit/boundary > narrative story/emotion > premise mutual romantic/playful tension > opening",
+    ),
+  );
+  assert(prompt.includes("Stage may skip/retreat"));
+  assert(prompt.includes("Topic Depth limits reply escalation, not stage"));
 });

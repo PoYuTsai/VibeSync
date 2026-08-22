@@ -21,7 +21,11 @@ import 'package:vibesync/features/partner/domain/entities/partner.dart';
 
 const _conversationId = 'inject-conv';
 
-Conversation _conversation({String name = '新對話', String? partnerId}) {
+Conversation _conversation({
+  String name = '新對話',
+  String? partnerId,
+  SessionContext? sessionContext,
+}) {
   return Conversation(
     id: _conversationId,
     name: name,
@@ -36,6 +40,7 @@ Conversation _conversation({String name = '新對話', String? partnerId}) {
     createdAt: DateTime(2026, 5, 28, 12),
     updatedAt: DateTime(2026, 5, 28, 12),
     partnerId: partnerId,
+    sessionContext: sessionContext,
   );
 }
 
@@ -176,6 +181,50 @@ void main() {
         persisted.single.messages.map((message) => message.content).toList(),
         ['嗨', '哈囉'],
       );
+    });
+
+    test('commitImport 取代片段：既有 sessionContext 不得擋住最新的認識情境三欄位', () async {
+      // 閉環規則：對象卡改成「已是伴侶」後的下一次截圖匯入，帶進來的
+      // meeting／duration／goal 必須落到 conversation.sessionContext——
+      // 分析 payload 直接讀它，舊值留著就會把「已是伴侶」擋在外面。
+      final conversation = _conversation(
+        partnerId: null,
+        sessionContext: SessionContext(
+          meetingContext: MeetingContext.datingApp,
+          duration: AcquaintanceDuration.justMet,
+          goal: UserGoal.dateInvite,
+          userStyle: UserStyle.steady,
+          userInterests: '爬山',
+        ),
+      );
+      final persisted = <Conversation>[];
+      final coordinator = _importCoordinator(
+        conversation: conversation,
+        persisted: persisted,
+      );
+
+      final commit = await coordinator.commitImport(
+        editedRecognizedMessages: const [
+          RecognizedMessage(content: '嗨', isFromMe: false),
+        ],
+        newName: '',
+        meeting: MeetingContext.committedPartner,
+        duration: AcquaintanceDuration.monthPlus,
+        goal: UserGoal.justChat,
+        analysisContextNote: null,
+        recognized:
+            const RecognizedConversation(messageCount: 1, summary: '一則'),
+        hasLoadedAnalysisResult: false,
+      );
+
+      expect(commit.kind, ScreenshotImportCommitKind.replacedBatch);
+      final context = persisted.single.sessionContext!;
+      expect(context.meetingContext, MeetingContext.committedPartner);
+      expect(context.duration, AcquaintanceDuration.monthPlus);
+      expect(context.goal, UserGoal.justChat);
+      // conversation 專屬欄位不被匯入覆蓋。
+      expect(context.userStyle, UserStyle.steady);
+      expect(context.userInterests, '爬山');
     });
 
     test('commitImport：對話缺席回 conversationMissing，深 write 不得被觸發', () async {

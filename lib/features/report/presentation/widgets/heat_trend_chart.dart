@@ -3,8 +3,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
+import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/report_models.dart';
 import 'trend_flow_overlay.dart';
@@ -127,7 +129,8 @@ class HeatTrendChart extends StatelessWidget {
               textBaseline: TextBaseline.alphabetic,
               children: [
                 Text(
-                  '${sampleCount == null ? '全部平均' : '近期平均'} ${averageScore.round()}',
+                  '${sampleCount == null ? '全部平均' : '近期平均'} '
+                  '${clampVisibleInvestmentScore(averageScore)}',
                   style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
@@ -221,6 +224,7 @@ class HeatTrendChart extends StatelessWidget {
 
   Widget _buildSinglePointState(BuildContext context) {
     final point = trendPoints.single;
+    final visibleScore = clampVisibleInvestmentScore(point.score);
     final date = DateFormat('M/dd').format(point.date);
     // minHeight 而非鎖死高：大字級（clamp 上限 1.4）＋窄機身時文案比
     // 保留高度高，鎖死會溢出疊到卡片上方的註解行（dogfood 疊字系列）。
@@ -249,7 +253,7 @@ class HeatTrendChart extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              '起點 ${point.score} · $date',
+              '起點 $visibleScore · $date',
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
@@ -285,7 +289,10 @@ class HeatTrendChart extends StatelessWidget {
 
     final spots = [
       for (final point in sorted)
-        FlSpot(xOf(point.date), point.score.toDouble()),
+        FlSpot(
+          xOf(point.date),
+          clampVisibleInvestmentScore(point.score).toDouble(),
+        ),
     ];
     // 全部同一時刻（maxX=0）時 fl_chart 需要 minX<maxX，退 1 天刻度。
     final maxX = spots.last.x <= 0 ? 1.0 : spots.last.x;
@@ -297,7 +304,7 @@ class HeatTrendChart extends StatelessWidget {
       for (final spot in spots)
         Offset(
           (spot.x - plotMinX) / (plotMaxX - plotMinX),
-          spot.y / 100,
+          spot.y / AppConstants.investmentVisibleMax,
         ),
     ];
     return SizedBox(
@@ -320,7 +327,8 @@ class HeatTrendChart extends StatelessWidget {
             minX: plotMinX,
             maxX: plotMaxX,
             minY: 0,
-            maxY: 100,
+            // 投入度可見滿分 90（server × 0.9 校準後的尺度）。
+            maxY: AppConstants.investmentVisibleMax.toDouble(),
             clipData: const FlClipData.all(),
             gridData: _gridData(),
             titlesData: _titlesData(firstDate, maxX),
@@ -330,7 +338,9 @@ class HeatTrendChart extends StatelessWidget {
             extraLinesData: ExtraLinesData(
               horizontalLines: [
                 HorizontalLine(
-                  y: averageScore.clamp(0, 100).toDouble(),
+                  y: averageScore
+                      .clamp(0, AppConstants.investmentVisibleMax)
+                      .toDouble(),
                   color: Colors.white.withValues(alpha: 0.22),
                   strokeWidth: 1,
                   dashArray: [4, 5],
@@ -389,7 +399,7 @@ class HeatTrendChart extends StatelessWidget {
     return FlGridData(
       show: true,
       drawVerticalLine: false,
-      horizontalInterval: 25,
+      horizontalInterval: 30,
       getDrawingHorizontalLine: (value) {
         return FlLine(
           color: Colors.white.withValues(alpha: 0.10),
@@ -411,10 +421,10 @@ class HeatTrendChart extends StatelessWidget {
         sideTitles: SideTitles(
           showTitles: true,
           reservedSize: 32,
-          interval: 25,
+          interval: 30,
           getTitlesWidget: (value, meta) {
-            // Only show 0, 25, 50, 75, 100
-            if (value % 25 != 0) return const SizedBox.shrink();
+            // 滿分 90 的尺度：只標 0、30、60、90（對齊投入度分段邊界）。
+            if (value % 30 != 0) return const SizedBox.shrink();
             return Text(
               value.toInt().toString(),
               style: TextStyle(

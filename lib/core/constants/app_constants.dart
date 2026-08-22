@@ -9,7 +9,12 @@ class AppConstants {
   static const coldMax = 30;
   static const warmMax = 60;
   static const hotMax = 80;
-  // veryHot: 81-100
+  // veryHot: 81–investmentVisibleMax
+
+  // 本次投入度可見滿分（對象卡互動階段閉環拍板）：server finalize 以
+  // ceil(raw × 0.9) 校準，raw 100 → 顯示 90。所有圓環、進度條與可見
+  // 分母一律以 90 為滿分，不得再出現 /100。
+  static const investmentVisibleMax = 90;
 
   // Golden Rule
   static const goldenRuleMultiplier = 1.8;

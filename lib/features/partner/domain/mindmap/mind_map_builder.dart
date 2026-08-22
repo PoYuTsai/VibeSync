@@ -4,6 +4,7 @@ import '../../../analysis/domain/entities/analysis_models.dart';
 import '../../../analysis/domain/entities/analysis_record.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../conversation/domain/entities/session_context.dart';
 import '../extensions/partner_aggregates.dart';
 import '../services/partner_memory_tag_catalog.dart';
 import 'mind_map_models.dart';
@@ -36,9 +37,13 @@ PartnerMindMap buildPartnerMindMap({
   );
   final latestSnapshot = parsedSnapshots.isEmpty ? null : parsedSnapshots.first;
   GameStageInfo? stageInfo;
+  _ParsedMindMapSnapshot? stageSnapshot;
   TopicDepth? topicDepth;
   for (final snapshot in parsedSnapshots) {
-    stageInfo ??= snapshot.stageInfo;
+    if (stageInfo == null && snapshot.stageInfo != null) {
+      stageInfo = snapshot.stageInfo;
+      stageSnapshot = snapshot;
+    }
     topicDepth ??= snapshot.topicDepth;
     if (stageInfo != null && topicDepth != null) break;
   }
@@ -46,37 +51,47 @@ PartnerMindMap buildPartnerMindMap({
   final currentSignal = latestSnapshot?.coachActionHint?.catchablePoint.trim();
   final confirmedFacts = _confirmedFacts(partnerCustomNote);
 
-  String? fallbackStageRaw;
+  ({GameStage stage, bool reconnectWording})? fallbackStage;
   for (final c in descByDate) {
-    final raw = c.currentGameStage?.trim();
-    if (raw != null && raw.isNotEmpty) {
-      fallbackStageRaw = raw;
+    final parsed = GameStage.tryFromString(c.currentGameStage);
+    if (parsed != null) {
+      fallbackStage = (
+        stage: parsed,
+        reconnectWording: parsed == GameStage.opening &&
+            c.sessionContext?.meetingContext == MeetingContext.committedPartner,
+      );
       break;
     }
   }
 
-  final hasAnalysisData =
-      parsedSnapshots.isNotEmpty || fallbackStageRaw != null;
+  final hasAnalysisData = parsedSnapshots.isNotEmpty || fallbackStage != null;
   final branches = <MindMapNode>[];
   String? relationshipSignal;
   String? fullNextStep;
 
   if (hasAnalysisData) {
-    if (stageInfo != null || fallbackStageRaw != null) {
-      final stage = stageInfo != null
-          ? stageInfo.current
-          : GameStage.fromString(fallbackStageRaw!);
-      relationshipSignal = stage.description;
+    if (stageInfo != null || fallbackStage != null) {
+      final stage = stageInfo?.current ?? fallbackStage!.stage;
+      final reconnectWording = stageInfo != null
+          ? stageSnapshot!.reconnectWording
+          : fallbackStage!.reconnectWording;
+      final currentStageLabel = _visibleStageLabel(
+        stage,
+        reconnectWording: reconnectWording,
+      );
+      relationshipSignal = reconnectWording && stage == GameStage.opening
+          ? '這輪重點是重新接上互動，不代表關係退回陌生人'
+          : stage.description;
       branches.add(MindMapNode(
         id: 'stage',
-        label: '關係階段',
+        label: '目前互動重點',
         branch: MindMapBranch.stage,
         children: _progressNodes(
           idPrefix: 'stage',
           branch: MindMapBranch.stage,
-          current: stage.label,
+          current: currentStageLabel,
           newestFirst: parsedSnapshots.map(
-            (snapshot) => snapshot.stageInfo?.current.label,
+            (snapshot) => snapshot.visibleStageLabel,
           ),
         ),
       ));
@@ -182,7 +197,7 @@ List<MindMapNode> _recentInteractionNodes(
   if (snapshots.length > prefixes.length) {
     final older = snapshots.skip(prefixes.length).toList(growable: false);
     final stagePath = _transitionPath(
-      older.map((snapshot) => snapshot.stageInfo?.current.label),
+      older.map((snapshot) => snapshot.visibleStageLabel),
     );
     final depthPath = _transitionPath(
       older.map((snapshot) => snapshot.topicDepth?.current.label),
@@ -190,7 +205,7 @@ List<MindMapNode> _recentInteractionNodes(
     nodes.add(MindMapNode(
       id: 'interaction-older',
       label: '前 ${older.length} 次｜'
-          '關係：${stagePath.isEmpty ? '未確認' : stagePath}；'
+          '互動重點：${stagePath.isEmpty ? '未確認' : stagePath}；'
           '話題：${depthPath.isEmpty ? '未確認' : depthPath}',
       branch: MindMapBranch.interactionHistory,
     ));
@@ -302,6 +317,7 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
       rawJson: raw,
       sourceId: 'record:${record.id}',
       isRecord: true,
+      reconnectWording: record.gameStageLabel.trim() == '重新連線',
       fallbackHighlight: _analysisRecordArchiveTitle(record),
     ));
   }
@@ -318,6 +334,8 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
       rawJson: raw,
       sourceId: 'conversation:${conversation.id}',
       isRecord: false,
+      reconnectWording: conversation.sessionContext?.meetingContext ==
+          MeetingContext.committedPartner,
       fallbackHighlight: _conversationArchiveTitle(conversation),
     ));
   }
@@ -394,9 +412,11 @@ _ParsedMindMapSnapshot? _parseMindMapSnapshot(
     final rawStrategy = json['strategy'];
     if (rawStrategy != null && rawStrategy is! String) return null;
 
-    final parsedStage = _hasNonEmptyCurrent(gameStageJson)
+    final stageCandidate = _hasNonEmptyCurrent(gameStageJson)
         ? GameStageInfo.fromJson(gameStageJson)
         : null;
+    final parsedStage =
+        stageCandidate?.hasValidStage == true ? stageCandidate : null;
     final parsedDepth = _hasNonEmptyCurrent(topicDepthJson)
         ? TopicDepth.fromJson(topicDepthJson)
         : null;
@@ -410,6 +430,7 @@ _ParsedMindMapSnapshot? _parseMindMapSnapshot(
     return _ParsedMindMapSnapshot(
       conversationId: source.conversationId,
       stageInfo: parsedStage,
+      reconnectWording: source.reconnectWording,
       topicDepth: parsedDepth,
       strategy: (rawStrategy as String?)?.trim() ?? '',
       coachActionHint: coachActionHint,
@@ -444,6 +465,7 @@ class _MindMapSnapshotSource {
     required this.rawJson,
     required this.sourceId,
     required this.isRecord,
+    required this.reconnectWording,
     required this.fallbackHighlight,
   });
 
@@ -452,6 +474,7 @@ class _MindMapSnapshotSource {
   final String rawJson;
   final String sourceId;
   final bool isRecord;
+  final bool reconnectWording;
   final String fallbackHighlight;
 }
 
@@ -459,6 +482,7 @@ class _ParsedMindMapSnapshot {
   const _ParsedMindMapSnapshot({
     required this.conversationId,
     required this.stageInfo,
+    required this.reconnectWording,
     required this.topicDepth,
     required this.strategy,
     required this.fallbackHighlight,
@@ -467,13 +491,28 @@ class _ParsedMindMapSnapshot {
 
   final String conversationId;
   final GameStageInfo? stageInfo;
+  final bool reconnectWording;
   final TopicDepth? topicDepth;
   final String strategy;
   final String fallbackHighlight;
   final CoachActionHint? coachActionHint;
 
+  String? get visibleStageLabel {
+    final stage = stageInfo?.current;
+    if (stage == null) return null;
+    return _visibleStageLabel(stage, reconnectWording: reconnectWording);
+  }
+
   String get effectiveNextStep {
     final nextStep = stageInfo?.nextStep.trim() ?? '';
     return nextStep.isNotEmpty ? nextStep : strategy.trim();
   }
+}
+
+String _visibleStageLabel(
+  GameStage stage, {
+  required bool reconnectWording,
+}) {
+  if (stage == GameStage.opening && reconnectWording) return '重新連線';
+  return stage.label;
 }

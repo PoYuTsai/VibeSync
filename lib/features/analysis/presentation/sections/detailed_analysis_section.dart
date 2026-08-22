@@ -9,6 +9,7 @@ import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
 import '../../domain/entities/analysis_models.dart';
+import '../../domain/entities/enthusiasm_level.dart';
 
 /// 詳細分析折疊卡（收合狀態的入口）。
 ///
@@ -121,7 +122,10 @@ class DetailedAnalysisToggleCard extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   if (enthusiasmScore != null)
-                    _DetailedAnalysisPill(label: '本次投入 $enthusiasmScore'),
+                    _DetailedAnalysisPill(
+                      label:
+                          '本次投入 ${clampVisibleInvestmentScore(enthusiasmScore!)}',
+                    ),
                   if (stageLabel != null)
                     _DetailedAnalysisPill(label: stageLabel!),
                   if (hasRadar) const _DetailedAnalysisPill(label: '互動雷達'),
@@ -177,6 +181,7 @@ class DetailedAnalysisContent extends StatelessWidget {
     required this.strategy,
     required this.topicDepth,
     required this.healthCheck,
+    this.reconnectWording = false,
   });
 
   final int enthusiasmScore;
@@ -188,6 +193,9 @@ class DetailedAnalysisContent extends StatelessWidget {
   final String? strategy;
   final TopicDepth? topicDepth;
   final HealthCheck? healthCheck;
+
+  /// 已是伴侶時 opening 的可見語意是「重新連線」（閉環規則 5）。
+  final bool reconnectWording;
 
   @override
   Widget build(BuildContext context) {
@@ -215,13 +223,14 @@ class DetailedAnalysisContent extends StatelessWidget {
           ),
         ],
 
-        // 對話階段指示器
+        // 目前互動重點指示器
         if (gameStage != null) ...[
           const SizedBox(height: 16),
           GameStageIndicator(
             currentStage: gameStage!.current,
             status: gameStage!.status,
             nextStep: gameStage!.nextStep,
+            reconnectWording: reconnectWording,
           ),
         ],
 
@@ -262,8 +271,8 @@ class DetailedAnalysisContent extends StatelessWidget {
                         Expanded(
                           child: Text(
                             '互動測試訊號: ${psychology!.shitTest}',
-                            style: AppTypography.caption.copyWith(
-                                color: AppColors.onBackgroundPrimary),
+                            style: AppTypography.caption
+                                .copyWith(color: AppColors.onBackgroundPrimary),
                           ),
                         ),
                       ],
@@ -278,8 +287,8 @@ class DetailedAnalysisContent extends StatelessWidget {
                           size: 16, color: AppColors.success),
                       const SizedBox(width: 4),
                       Text('她有主動投入訊號',
-                          style: AppTypography.caption.copyWith(
-                              color: AppColors.onBackgroundPrimary)),
+                          style: AppTypography.caption
+                              .copyWith(color: AppColors.onBackgroundPrimary)),
                     ],
                   ),
                 ],

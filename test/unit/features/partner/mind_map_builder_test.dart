@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/domain/mindmap/mind_map_builder.dart';
 import 'package:vibesync/features/partner/domain/mindmap/mind_map_models.dart';
@@ -14,6 +15,7 @@ Conversation _convo({
   String? snapshotJson,
   String? currentGameStage,
   List<Message> messages = const [],
+  SessionContext? sessionContext,
 }) =>
     Conversation(
       id: id,
@@ -23,6 +25,7 @@ Conversation _convo({
       updatedAt: updatedAt,
       currentGameStage: currentGameStage,
       lastAnalysisSnapshotJson: snapshotJson,
+      sessionContext: sessionContext,
     );
 
 String _snapshot({
@@ -114,6 +117,33 @@ PartnerAggregateView _aggregate({
 
 void main() {
   group('buildPartnerMindMap', () {
+    test('伴侶 opening 顯示重新連線，節點語意是目前互動重點', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(),
+        conversations: [
+          _convo(
+            id: 'reconnect',
+            updatedAt: DateTime(2026, 8, 22),
+            snapshotJson: _snapshot(stage: 'opening'),
+            currentGameStage: 'opening',
+            sessionContext: SessionContext(
+              meetingContext: MeetingContext.committedPartner,
+              duration: AcquaintanceDuration.monthPlus,
+              goal: UserGoal.justChat,
+            ),
+          ),
+        ],
+      );
+
+      final stageBranch = map.root.children.singleWhere(
+        (node) => node.branch == MindMapBranch.stage,
+      );
+      expect(stageBranch.label, '目前互動重點');
+      expect(stageBranch.children.first.label, '重新連線');
+      expect(map.relationshipSignal, contains('不代表關係退回陌生人'));
+    });
+
     test('第一次分析直接顯示分析次數與本輪互動脈絡', () {
       final snapshot = _snapshot(
         catchablePoint: '她主動提到最近開始爬山',
@@ -273,7 +303,7 @@ void main() {
       ]);
       expect(
         history.children.last.label,
-        '前 5 次｜關係：破冰階段 → 建立男女感 → 展現個人魅力；話題：事件層 → 個人層',
+        '前 5 次｜互動重點：破冰階段 → 建立男女感 → 展現個人魅力；話題：事件層 → 個人層',
       );
     });
 
@@ -453,7 +483,7 @@ void main() {
       );
       expect(
         history.children.last.label,
-        '前 1 次｜關係：未確認；話題：未確認',
+        '前 1 次｜互動重點：未確認；話題：未確認',
       );
     });
 
@@ -857,6 +887,50 @@ void main() {
       // 僅 fallback 階段 → 仍有關係信號（階段描述），但無下一步全文。
       expect(map.relationshipSignal, isNotNull);
       expect(map.fullNextStep, isNull);
+    });
+
+    test('非法 currentGameStage 不得 fallback 成破冰', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: PartnerAggregateView.empty(),
+        conversations: [
+          _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 6, 1),
+            currentGameStage: 'vibing hard',
+          ),
+        ],
+      );
+
+      expect(map.hasAnalysisData, isFalse);
+      expect(
+        map.root.children.where((n) => n.branch == MindMapBranch.stage),
+        isEmpty,
+      );
+    });
+
+    test('快照 stage 未知時保留其他分析支線，但不畫假破冰', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(),
+        conversations: [
+          _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 6, 1),
+            snapshotJson: _snapshot(stage: 'vibing hard'),
+          ),
+        ],
+      );
+
+      expect(map.hasAnalysisData, isTrue);
+      expect(
+        map.root.children.where((n) => n.branch == MindMapBranch.stage),
+        isEmpty,
+      );
+      expect(
+        map.root.children.where((n) => n.branch == MindMapBranch.topicDepth),
+        isNotEmpty,
+      );
     });
 
     test('完全沒分析過 → hasAnalysisData false、不 crash', () {

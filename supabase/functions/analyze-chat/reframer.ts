@@ -18,7 +18,7 @@ import {
   validateRecommendationEvent,
   validateThinRecommendationEvent,
 } from "./stream_recommendation_guardrail.ts";
-import { type StretchLevel, STRETCH_LEVELS } from "./opener_payload.ts";
+import { STRETCH_LEVELS, type StretchLevel } from "./opener_payload.ts";
 
 function normalizeStretchLevel(value: unknown): StretchLevel {
   return typeof value === "string" &&
@@ -684,9 +684,10 @@ export function toRecommendationEvent(
 
 function createLegacyAnalysisAssembler() {
   const result: Record<string, unknown> = {
+    // 對象卡互動階段閉環：不種 current/status 種子——模型整條 stream 沒給
+    // 可映射 stage 時，finalResult 不得假裝「本次判定是 opening」。client
+    // 端把缺 current 視為本次無有效 stage（保留上一個有效快照或問號）。
     gameStage: {
-      current: "opening",
-      status: "normal",
       nextStep: "",
     },
     enthusiasm: {

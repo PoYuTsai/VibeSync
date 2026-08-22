@@ -6,8 +6,10 @@
 // 的示範卡是靜態櫥窗，不需要跟著真實分析畫面演進。
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../data/demo_conversation.dart';
 
 const _styleOrder = ['extend', 'resonate', 'tease', 'humor', 'coldRead'];
@@ -26,15 +28,15 @@ class DemoSignalPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final result = DemoConversation.demoResult;
+    final visibleScore = clampVisibleInvestmentScore(result.enthusiasmScore);
     return _DemoCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (final msg in DemoConversation.messages) ...[
             Align(
-              alignment: msg.isFromMe
-                  ? Alignment.centerRight
-                  : Alignment.centerLeft,
+              alignment:
+                  msg.isFromMe ? Alignment.centerRight : Alignment.centerLeft,
               child: Container(
                 constraints: const BoxConstraints(maxWidth: 250),
                 padding:
@@ -61,8 +63,8 @@ class DemoSignalPreview extends StatelessWidget {
               Text(
                 '投入度',
                 style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.onBackgroundSecondary
-                      .withValues(alpha: 0.85),
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.85),
                 ),
               ),
               const SizedBox(width: 8),
@@ -73,10 +75,11 @@ class DemoSignalPreview extends StatelessWidget {
                     height: 8,
                     child: Stack(
                       children: [
-                        Container(
-                            color: Colors.white.withValues(alpha: 0.10)),
+                        Container(color: Colors.white.withValues(alpha: 0.10)),
                         FractionallySizedBox(
-                          widthFactor: result.enthusiasmScore / 100,
+                          widthFactor:
+                              (visibleScore / AppConstants.investmentVisibleMax)
+                                  .clamp(0.0, 1.0),
                           child: Container(color: AppColors.ctaStart),
                         ),
                       ],
@@ -86,7 +89,7 @@ class DemoSignalPreview extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                '${result.enthusiasmScore}',
+                '$visibleScore',
                 style: AppTypography.titleMedium.copyWith(
                   color: AppColors.ctaStart,
                   fontWeight: FontWeight.w800,

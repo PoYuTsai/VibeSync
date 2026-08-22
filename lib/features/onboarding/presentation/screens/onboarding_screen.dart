@@ -59,7 +59,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     },
     {
       'title': '即時看懂她的訊號',
-      'description': '對方這次的投入度 0-100 一目瞭然\n讀懂她這輪話裡的訊號',
+      'description': '對方這次的投入度 0-90 一目瞭然\n讀懂她這輪話裡的訊號',
       'imagePath': 'analyze',
     },
     {

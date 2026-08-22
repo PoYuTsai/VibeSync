@@ -24,8 +24,17 @@ void main() {
     expect(find.text('略過'), findsNothing);
   });
 
-  testWidgets('A1（我現在卡在哪）與 A2（我想達成什麼）兩區塊都渲染，舊練習目標區塊已移除',
-      (tester) async {
+  testWidgets('文案誠實（About Me seam）：常聊話題不再宣稱幫 AI 發想', (tester) async {
+    await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
+    await tester.pumpAndSettle();
+
+    // topic seeds 目前不進 AnalyzeChat（也不進教練），文案不得再宣稱
+    // 「幫 AI 發想話題」；改成純紀錄語意。
+    expect(find.textContaining('幫 AI 發想'), findsNothing);
+    expect(find.text('最多 5 個，先記下你聊得來的話題。'), findsOneWidget);
+  });
+
+  testWidgets('A1（我現在卡在哪）與 A2（我想達成什麼）兩區塊都渲染，舊練習目標區塊已移除', (tester) async {
     await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
     await tester.pumpAndSettle();
     expect(find.text('我現在卡在哪'), findsOneWidget);
@@ -257,8 +266,7 @@ void main() {
     expect(find.text('最後更新：$expected'), findsOneWidget);
   });
 
-  testWidgets('bottom privacy note 這些設定只用來讓建議更貼近你的語氣 renders',
-      (tester) async {
+  testWidgets('bottom privacy note 這些設定只用來讓建議更貼近你的語氣 renders', (tester) async {
     await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(

@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -90,9 +91,10 @@ class _ConversationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final score = comparison.score.clamp(0, 100);
+    // 投入度可見滿分 90：條長以 90 為滿格。
+    final score = comparison.score.clamp(0, AppConstants.investmentVisibleMax);
     final barColor = EnthusiasmLevel.fromScore(score).color;
-    final fraction = score / 100.0;
+    final fraction = score / AppConstants.investmentVisibleMax;
     final animationDuration =
         MediaQuery.maybeOf(context)?.disableAnimations == true
             ? Duration.zero

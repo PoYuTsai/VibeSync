@@ -237,6 +237,8 @@ class StreamingAnalyzeNotifier
   String? _cachedPartnerSummary;
   String? _cachedEffectiveStyleContext;
   String? _cachedKnownContactName;
+  String? _cachedPreviousStage;
+  int? _cachedAnalysisFragmentStartIndex;
   int? _cachedPreviousAnalyzedCount;
   int? _cachedConversationMessageCount;
   int? _cachedAnalyzedMessageCount;
@@ -269,6 +271,8 @@ class StreamingAnalyzeNotifier
     String? partnerSummary,
     String? effectiveStyleContext,
     String? knownContactName,
+    String? previousStage,
+    int? analysisFragmentStartIndex,
     int? previousAnalyzedCount,
     int? previousAnalyzedCharCount,
     OverchargeConfirmationPayload? confirmedOvercharge,
@@ -289,6 +293,8 @@ class StreamingAnalyzeNotifier
     _cachedPartnerSummary = partnerSummary;
     _cachedEffectiveStyleContext = effectiveStyleContext;
     _cachedKnownContactName = knownContactName;
+    _cachedPreviousStage = previousStage;
+    _cachedAnalysisFragmentStartIndex = analysisFragmentStartIndex;
     _cachedPreviousAnalyzedCount = previousAnalyzedCount;
     _cachedConversationMessageCount = conversationMessageCount;
     _cachedAnalyzedMessageCount = effectiveAnalyzedMessageCount;
@@ -316,6 +322,8 @@ class StreamingAnalyzeNotifier
       partnerSummary: partnerSummary,
       effectiveStyleContext: effectiveStyleContext,
       knownContactName: knownContactName,
+      previousStage: previousStage,
+      analysisFragmentStartIndex: analysisFragmentStartIndex,
       previousAnalyzedCount: previousAnalyzedCount,
       previousAnalyzedCharCount: previousAnalyzedCharCount,
       confirmedOvercharge: confirmedOvercharge,
@@ -334,6 +342,8 @@ class StreamingAnalyzeNotifier
     String? partnerSummary,
     String? effectiveStyleContext,
     String? knownContactName,
+    String? previousStage,
+    int? analysisFragmentStartIndex,
     int? previousAnalyzedCount,
     int? previousAnalyzedCharCount,
     OverchargeConfirmationPayload? confirmedOvercharge,
@@ -356,6 +366,8 @@ class StreamingAnalyzeNotifier
         partnerSummary: partnerSummary,
         effectiveStyleContext: effectiveStyleContext,
         knownContactName: knownContactName,
+        previousStage: previousStage,
+        analysisFragmentStartIndex: analysisFragmentStartIndex,
         previousAnalyzedCount: previousAnalyzedCount,
         previousAnalyzedCharCount: previousAnalyzedCharCount,
         confirmedOvercharge: confirmedOvercharge,
@@ -481,6 +493,8 @@ class StreamingAnalyzeNotifier
           partnerSummary: partnerSummary,
           effectiveStyleContext: effectiveStyleContext,
           knownContactName: knownContactName,
+          previousStage: previousStage,
+          analysisFragmentStartIndex: analysisFragmentStartIndex,
           previousAnalyzedCount: previousAnalyzedCount,
           previousAnalyzedCharCount: previousAnalyzedCharCount,
           confirmedOvercharge: confirmedOvercharge,
@@ -658,6 +672,8 @@ class StreamingAnalyzeNotifier
       partnerSummary: _cachedPartnerSummary,
       effectiveStyleContext: _cachedEffectiveStyleContext,
       knownContactName: _cachedKnownContactName,
+      previousStage: _cachedPreviousStage,
+      analysisFragmentStartIndex: _cachedAnalysisFragmentStartIndex,
       previousAnalyzedCount: _cachedPreviousAnalyzedCount,
       previousAnalyzedCharCount: _cachedPreviousAnalyzedCharCount,
       confirmedOvercharge: _cachedConfirmedOvercharge,

@@ -27,7 +27,7 @@ export function buildStreamSystemPrompt(
     "Every object must include a string `type` field.",
     "",
     "Emit events in this exact order:",
-    "0. `analysis.inventory` first, before the decision and before anything else. Take the ball inventory (盤點) you build before replying and emit it here as a `balls` array — one entry per message and per media marker in her latest run ([Photo], [Missed call] each count as one). Each entry needs `sourceIndex` (1-based position in her run), `sourceMessage` (her original text), `disposition` (`接` / `併` / `略`), and a one-line `reason`. Classify every line here before you pick a style; never silently drop one. `接` means an independent conversational move that deserves its own reply segment. `併` means useful background, image, emotion, or follow-up from the same episode that MUST be folded into a nearby `接` segment, never given a standalone segment. `略` means an acknowledgement, duplicate, or detail that needs no reply. Put the inventory here, not only inside `finalRecommendation.reason`.",
+    "0. `analysis.inventory` first; before you pick a style, emit one `balls` entry per message/media marker in her latest run—never silently drop one. Each needs `sourceIndex` (1-based), `sourceMessage`, `disposition` (`接`/`併`/`略`), and `reason`. `接` = independent move needing a reply segment; `併` = related context folded into nearby `接`; `略` = an acknowledgement, duplicate, or detail that needs no reply. Put inventory here, not only in `finalRecommendation.reason`.",
     "Disposition rule: do not mark every textual line `接` just because it has a hook. Group by conversational move first. A personal callback or inside joke can be `接` or `併`; play along or tease back, and never mark it `略` only because you lack the backstory.",
     'Example inventory line: {"type":"analysis.inventory","balls":[{"sourceIndex":1,"sourceMessage":"剛來吃晚餐","disposition":"接","reason":"晚餐生活球"},{"sourceIndex":2,"sourceMessage":"這家排超久","disposition":"併","reason":"同一晚餐球的背景"},{"sourceIndex":3,"sourceMessage":"等等去樂華夜市","disposition":"接","reason":"另一個可延伸行程"},{"sourceIndex":4,"sourceMessage":"哈哈","disposition":"略","reason":"收尾語氣，不需獨立回"}]}',
     "1. `analysis.decision`, as soon as you know the next move. Do not wait for the full report. Include `selectedStyle`, `nextStepTitle`, `nextStepBody`, `doThis`, `avoidThis`, and `confidence`. Your `selectedStyle`'s segment sources must be balls marked `接`; their wording may incorporate related `併` context.",
@@ -49,9 +49,9 @@ export function buildStreamSystemPrompt(
     //    reject 威嚇當 floor=3 合規線——威嚇句必須把「漏接選中已覆蓋的接球」
     //    也列為違規，same-set 才有服從壓力。
     "Server-enforced floor: EVERY `analysis.reply_option` — not only the selected style — must contain at least min(3, number of independent balls marked 接) segments, each sourced from a different `接` ball. The floor is the minimum, not the target: keep one segment per `接` ball (up to 5) in every option, so all options cover the same set of `接` balls as the selected style. The server rejects and forces a retry if any option misses that floor, pulls from a `略` ball, or drops a `接` ball the selected style covers, so satisfy it without inventing extra balls. A `併` line enriches a related segment but does not raise the floor.",
-    "The selected style is the reply the user will actually send, but write every option with equal effort: same `接` ball coverage, full quality in that style's own voice. An option does not need to match the longest alternative in length — equal effort means equal ball coverage, not equal word count. Keep each segment sharp; precision beats padding.",
+    "The selected style is sent; write every option with equal effort: equal effort means equal ball coverage, not equal word count. An option does not need to match the longest alternative; precision beats padding.",
     'Example reply_option line: {"type":"analysis.reply_option","style":"extend","reason":"把排隊併進晚餐球，再接夜市行程","stretchLevel":"stretch","segments":[{"sourceIndex":1,"sourceMessage":"剛來吃晚餐","reply":"排那麼久，希望真的有好吃到值得","reason":"接晚餐並合併排隊背景"},{"sourceIndex":3,"sourceMessage":"等等去樂華夜市","reply":"夜市幫我吃份地瓜球","reason":"接另一個獨立行程球"}]}',
-    "4. `analysis.metrics` once. Include `gameStage`: `current` one of `opening`/`premise`/`qualification`/`narrative`/`close`, `status` one of `normal`/`stuckFriend`/`canAdvance`/`shouldRetreat`. Judge the stage from the whole conversation plus the 認識場景 context — 已是伴侶 or clearly dating is never `opening` unless restarting after a long silence.",
+    "4. `analysis.metrics`: gameStage.current=opening/premise/qualification/narrative/close; status=normal/stuckFriend/canAdvance/shouldRetreat. Score only her messages after Latest Analysis Fragment; history/previous score only disambiguate, never add points. Stage = latest task, not relationship level; current evidence beats Stage Continuity (weak prior, never floor). Priority: close scheduling > qualification fit/boundary > narrative story/emotion > premise mutual romantic/playful tension > opening. Stage may skip/retreat. `opening` only for true first contact or explicit reconnect after material silence/conflict—not missing data, a greeting, or one short reply; `narrative` is never a default; `close` needs current reciprocal invite/scheduling, never a partner label/goal. 認識場景/Partner Context only tunes advice; never changes score/stage or excuses low investment. Topic Depth limits reply escalation, not stage.",
     "5. `analysis.coach_hint` once when useful.",
     "6. `analysis.report_section` for deeper sections.",
     "7. `analysis.done` once at the end. Include a compact `finalResult` with legacy-compatible analysis fields.",
@@ -64,6 +64,51 @@ export function buildStreamSystemPrompt(
     "The selected style must be one of the request style values.",
     "If output is getting long, shorten optional report sections before you omit any required `analysis.reply_option` event or any of its `segments`.",
     "Traditional Chinese (Taiwan) only; never Simplified.",
+  ].join("\n");
+}
+
+const LEGAL_GAME_STAGES = [
+  "opening",
+  "premise",
+  "qualification",
+  "narrative",
+  "close",
+] as const;
+
+export function normalizeStagePrior(previousStage: unknown): string | null {
+  if (typeof previousStage !== "string") return null;
+  const trimmed = previousStage.trim();
+  return (LEGAL_GAME_STAGES as readonly string[]).includes(trimmed)
+    ? trimmed
+    : null;
+}
+
+/// 上次有效階段（partner-scoped 弱先驗）→ user prompt 的 Stage Continuity
+/// 區塊。只接受五個合法 enum 名；缺值、未知值、大小寫不符一律回空字串——
+/// 弱先驗缺失時不得偽造，也不得讓垃圾字串進 prompt。
+export function buildStagePriorSection(previousStage: unknown): string {
+  const normalized = normalizeStagePrior(previousStage);
+  if (normalized === null) return "";
+  return [
+    "## Stage Continuity",
+    `- Previous valid interaction stage for this partner: ${normalized}`,
+    "- Weak prior only: keep it when current evidence is ambiguous; strong current evidence may advance, skip, or retreat. Never treat it as a floor.",
+  ].join("\n");
+}
+
+export const LATEST_ANALYSIS_FRAGMENT_MARKER =
+  "## Latest Analysis Fragment (only her messages below this marker are scored)";
+
+export function markLatestAnalysisFragment(
+  lines: readonly string[],
+  startIndex: number,
+): string {
+  if (lines.length === 0) return "";
+  const safeStart = Math.max(0, Math.min(lines.length - 1, startIndex));
+  return [
+    ...lines.slice(0, safeStart),
+    LATEST_ANALYSIS_FRAGMENT_MARKER,
+    ...lines.slice(safeStart),
   ].join("\n");
 }
 

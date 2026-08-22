@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/report/data/services/report_data_service.dart';
 
@@ -30,7 +32,12 @@ AnalysisHistoryEvent _practice(
       temperatureScore: temperature,
     );
 
-Conversation _conversation(String id, String partnerId, String name) =>
+Conversation _conversation(
+  String id,
+  String partnerId,
+  String name, {
+  MeetingContext? meetingContext,
+}) =>
     Conversation(
       id: id,
       name: name,
@@ -38,6 +45,12 @@ Conversation _conversation(String id, String partnerId, String name) =>
       createdAt: DateTime(2026, 1, 1),
       updatedAt: DateTime(2026, 1, 1),
       partnerId: partnerId,
+      sessionContext: meetingContext == null
+          ? null
+          : SessionContext(
+              meetingContext: meetingContext,
+              duration: AcquaintanceDuration.fewWeeks,
+            ),
     );
 
 Partner _partner(String id, String name) => Partner(
@@ -162,6 +175,163 @@ void main() {
       );
 
       expect(subjects.single.subjectId, 'p-1');
+    });
+  });
+
+  group('latestStageFor（作戰板真相）', () {
+    AnalysisHistoryEvent stageEvent(
+      String id,
+      String partnerId,
+      String? stageLabel,
+      DateTime createdAt, {
+      String? conversationId,
+    }) =>
+        AnalysisHistoryEvent.analyze(
+          id: id,
+          createdAt: createdAt,
+          conversationId: conversationId,
+          partnerId: partnerId,
+          subjectName: '小雲',
+          enthusiasmScore: 60,
+          gameStageLabel: stageLabel,
+        );
+
+    test('依分析完成時間取最新有效 stage，可前進也可後退，不保留歷史最高', () {
+      final events = [
+        stageEvent('e1', 'p-1', 'premise', DateTime(2026, 6, 1)),
+        stageEvent('e2', 'p-1', 'qualification', DateTime(2026, 6, 5)),
+        stageEvent('e3', 'p-1', 'close', DateTime(2026, 6, 9)),
+      ];
+      expect(
+        service.latestStageFor('p-1', events, const []),
+        GameStage.close,
+      );
+
+      // close 之後回到 qualification：最新成功分析才是真相。
+      final retreated = [
+        ...events,
+        stageEvent('e4', 'p-1', 'qualification', DateTime(2026, 6, 12)),
+      ];
+      expect(
+        service.latestStageFor('p-1', retreated, const []),
+        GameStage.qualification,
+      );
+    });
+
+    test('最新事件 stage 缺失或未知 → 保留較舊的有效 stage', () {
+      final events = [
+        stageEvent('e1', 'p-1', 'close', DateTime(2026, 6, 1)),
+        stageEvent('e2', 'p-1', null, DateTime(2026, 6, 5)),
+        stageEvent('e3', 'p-1', 'vibing hard', DateTime(2026, 6, 9)),
+      ];
+      expect(
+        service.latestStageFor('p-1', events, const []),
+        GameStage.close,
+      );
+    });
+
+    test('全部無效且無 legacy → null（問號），不得默認 opening', () {
+      final events = [
+        stageEvent('e1', 'p-1', 'vibing hard', DateTime(2026, 6, 1)),
+      ];
+      expect(service.latestStageFor('p-1', events, const []), isNull);
+      expect(service.latestStageFor('p-1', const [], const []), isNull);
+    });
+
+    test('事件透過 conversationId 對照 partner scope', () {
+      final event = AnalysisHistoryEvent.analyze(
+        id: 'e1',
+        createdAt: DateTime(2026, 6, 1),
+        conversationId: 'c-1',
+        subjectName: '小雲',
+        enthusiasmScore: 60,
+        gameStageLabel: 'narrative',
+      );
+      expect(
+        service.latestStageFor(
+          'p-1',
+          [event],
+          [_conversation('c-1', 'p-1', '小雲')],
+        ),
+        GameStage.narrative,
+      );
+    });
+
+    test('無事件時 legacy fallback 只接受五個合法值', () {
+      final valid = _conversation('c-1', 'p-1', '小雲')
+        ..currentGameStage = 'narrative';
+      expect(
+        service.latestStageFor('p-1', const [], [valid]),
+        GameStage.narrative,
+      );
+
+      final garbage = _conversation('c-2', 'p-1', '小雲')
+        ..currentGameStage = 'vibing hard';
+      expect(service.latestStageFor('p-1', const [], [garbage]), isNull);
+    });
+
+    test('普通 Conversation 更新不得超車較新的分析事件', () {
+      // conversation updatedAt 晚於事件，但事件才是分析完成時間的真相。
+      final conv = _conversation('c-1', 'p-1', '小雲')
+        ..currentGameStage = 'opening'
+        ..updatedAt = DateTime(2026, 7, 1);
+      final events = [
+        stageEvent('e1', 'p-1', 'close', DateTime(2026, 6, 9)),
+      ];
+      expect(
+        service.latestStageFor('p-1', events, [conv]),
+        GameStage.close,
+      );
+    });
+
+    test('重新連線只取分析來源 Conversation 的已保存 context', () {
+      final committedConversation = _conversation(
+        'c-1',
+        'p-1',
+        '小雲',
+        meetingContext: MeetingContext.committedPartner,
+      );
+      final event = stageEvent(
+        'e1',
+        'p-1',
+        'opening',
+        DateTime(2026, 6, 9),
+        conversationId: 'c-1',
+      );
+
+      final resolution = service.latestStageResolutionFor(
+        'p-1',
+        [event],
+        [committedConversation],
+      );
+
+      expect(resolution?.stage, GameStage.opening);
+      expect(resolution?.isReconnect, isTrue);
+      expect(resolution?.conversationId, 'c-1');
+    });
+
+    test('舊分析當時不是伴侶，之後的對象卡設定不得把它改寫成重新連線', () {
+      final datingAppConversation = _conversation(
+        'c-1',
+        'p-1',
+        '小雲',
+        meetingContext: MeetingContext.datingApp,
+      );
+      final event = stageEvent(
+        'e1',
+        'p-1',
+        'opening',
+        DateTime(2026, 6, 9),
+        conversationId: 'c-1',
+      );
+
+      final resolution = service.latestStageResolutionFor(
+        'p-1',
+        [event],
+        [datingAppConversation],
+      );
+
+      expect(resolution?.isReconnect, isFalse);
     });
   });
 

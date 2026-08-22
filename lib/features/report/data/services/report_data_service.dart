@@ -1,7 +1,7 @@
 // lib/features/report/data/services/report_data_service.dart
 
-import 'dart:convert';
-
+import '../../../analysis/domain/services/partner_stage_resolver.dart';
+import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../partner/domain/entities/partner.dart';
@@ -9,6 +9,8 @@ import '../../../analysis/domain/entities/game_stage.dart';
 import '../../domain/entities/report_models.dart';
 
 class ReportDataService {
+  static const _partnerStageResolver = PartnerStageResolver();
+
   /// 對話階段短標籤對照
   static const _stageShortLabels = {
     GameStage.opening: '破冰',
@@ -30,7 +32,7 @@ class ReportDataService {
     final trendPoints = recentScored
         .map((c) => HeatTrendPoint(
               date: c.updatedAt,
-              score: c.lastEnthusiasmScore!,
+              score: clampVisibleInvestmentScore(c.lastEnthusiasmScore!),
               conversationName: c.name,
             ))
         .toList();
@@ -38,7 +40,9 @@ class ReportDataService {
     // 3. 計算平均分數
     final averageScore = scored.isEmpty
         ? 0.0
-        : scored.map((c) => c.lastEnthusiasmScore!).reduce((a, b) => a + b) /
+        : scored
+                .map((c) => clampVisibleInvestmentScore(c.lastEnthusiasmScore!))
+                .reduce((a, b) => a + b) /
             scored.length;
 
     // 4. 計算分數趨勢 (較新一半平均 - 較舊一半平均)
@@ -47,12 +51,14 @@ class ReportDataService {
       final mid = scored.length ~/ 2;
       final olderHalf = scored.sublist(0, mid);
       final newerHalf = scored.sublist(mid);
-      final olderAvg =
-          olderHalf.map((c) => c.lastEnthusiasmScore!).reduce((a, b) => a + b) /
-              olderHalf.length;
-      final newerAvg =
-          newerHalf.map((c) => c.lastEnthusiasmScore!).reduce((a, b) => a + b) /
-              newerHalf.length;
+      final olderAvg = olderHalf
+              .map((c) => clampVisibleInvestmentScore(c.lastEnthusiasmScore!))
+              .reduce((a, b) => a + b) /
+          olderHalf.length;
+      final newerAvg = newerHalf
+              .map((c) => clampVisibleInvestmentScore(c.lastEnthusiasmScore!))
+              .reduce((a, b) => a + b) /
+          newerHalf.length;
       scoreDelta = newerAvg - olderAvg;
     }
 
@@ -62,7 +68,7 @@ class ReportDataService {
     for (final c in scored) {
       mergedMap[c.name.trim()] = ConversationComparison(
         name: c.name.trim(),
-        score: c.lastEnthusiasmScore!,
+        score: clampVisibleInvestmentScore(c.lastEnthusiasmScore!),
       );
     }
     final comparisons = mergedMap.values.toList()
@@ -101,31 +107,39 @@ class ReportDataService {
         analyzedCount == conversation.messages.length;
   }
 
-  GameStage? _stageForConversation(Conversation conversation) {
-    final directStage = conversation.currentGameStage?.trim();
-    if (directStage != null && directStage.isNotEmpty) {
-      return GameStage.fromString(directStage);
-    }
+  GameStage? _stageForConversation(Conversation conversation) =>
+      _partnerStageResolver.stageForConversation(conversation);
 
-    final snapshotJson = conversation.lastAnalysisSnapshotJson;
-    if (snapshotJson == null || snapshotJson.trim().isEmpty) {
-      return null;
-    }
+  /// 作戰板真相：一個對象的最新有效互動階段。
+  ///
+  /// 優先取該對象最新成功且帶合法 stage 的 analyze history event
+  /// （依分析完成時間 createdAt 排序）；沒有有效事件證據時，才用該對象
+  /// Conversation 的有效快照做 legacy fallback（updatedAt desc）。
+  /// 回 null＝從未有有效階段＝作戰板顯示問號。
+  GameStage? latestStageFor(
+    String partnerId,
+    List<AnalysisHistoryEvent> events,
+    List<Conversation> conversations,
+  ) {
+    return _partnerStageResolver.latestStageFor(
+      partnerId,
+      events,
+      conversations,
+    );
+  }
 
-    try {
-      final decoded = jsonDecode(snapshotJson);
-      if (decoded is! Map) return null;
-
-      final gameStage = decoded['gameStage'];
-      if (gameStage is! Map) return null;
-
-      final current = gameStage['current'];
-      if (current is! String || current.trim().isEmpty) return null;
-
-      return GameStage.fromString(current.trim());
-    } catch (_) {
-      return null;
-    }
+  /// 與 [latestStageFor] 相同來源，但一併保留「分析當下是否為伴侶重連」；
+  /// UI 不得拿 Partner 今天的預設值改寫舊事件文案。
+  PartnerStageResolution? latestStageResolutionFor(
+    String partnerId,
+    List<AnalysisHistoryEvent> events,
+    List<Conversation> conversations,
+  ) {
+    return _partnerStageResolver.latestResolutionFor(
+      partnerId,
+      events,
+      conversations,
+    );
   }
 
   /// 對象清單。partnerId 是 canonical scope；舊事件沒有 partnerId 時，
@@ -184,7 +198,7 @@ class ReportDataService {
             event.enthusiasmScore != null)
         .map((event) => HeatTrendPoint(
               date: event.createdAt,
-              score: event.enthusiasmScore!,
+              score: clampVisibleInvestmentScore(event.enthusiasmScore!),
               conversationName: event.subjectName ?? '',
             ))
         .toList()

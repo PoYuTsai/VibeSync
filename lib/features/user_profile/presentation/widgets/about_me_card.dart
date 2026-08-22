@@ -96,7 +96,9 @@ class _EmptyState extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              const _ProfilePill(label: '影響 AI 建議'),
+              // 實際接線（2026-08-04 拍板）：關於我只進 Coach 1:1，
+              // 不進 AnalyzeChat 的投入度／stage／五風格判讀。
+              const _ProfilePill(label: '教練 1:1 參考'),
             ],
           ),
           const SizedBox(height: 16),
@@ -109,7 +111,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '填一下你卡在哪、想達成什麼，AI 會幫你抓方向、推你一步，不會照你現在的樣子模仿你。',
+            '填一下你卡在哪、想達成什麼，教練 1:1 會參考幫你抓方向、推你一步；對話分析不讀這裡。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.glassTextSecondary,
               height: 1.5,
@@ -245,7 +247,7 @@ class _FilledState extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'AI 會參考這些設定幫你抓方向、推你一步',
+                    '教練 1:1 會參考這些設定幫你抓方向、推你一步',
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.glassTextSecondary,
                       fontWeight: FontWeight.w600,

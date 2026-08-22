@@ -36,6 +36,31 @@ Deno.test("different partnerSummary produces different hash", async () => {
   assertNotEquals(a, b);
 });
 
+Deno.test("different previousStage produces different hash", async () => {
+  const a = await hashConversation({
+    messages: [],
+    previousStage: "qualification",
+  });
+  const b = await hashConversation({ messages: [], previousStage: "close" });
+  assertNotEquals(a, b);
+});
+
+Deno.test("different analysis fragment boundary produces different hash", async () => {
+  const messages = [
+    { isFromMe: false, content: "old" },
+    { isFromMe: false, content: "new" },
+  ];
+  const a = await hashConversation({
+    messages,
+    analysisFragmentStartIndex: 0,
+  });
+  const b = await hashConversation({
+    messages,
+    analysisFragmentStartIndex: 1,
+  });
+  assertNotEquals(a, b);
+});
+
 Deno.test("key order does not affect hash", async () => {
   const a = await hashConversation({ userDraft: "a", messages: [] });
   const b = await hashConversation({ messages: [], userDraft: "a" });
@@ -98,6 +123,7 @@ Deno.test("missing optional fields default to empty (deterministic)", async () =
     conversationSummary: "",
     effectiveStyleContext: "",
     knownContactName: "",
+    previousStage: "",
   });
   assertEquals(a, b);
 });

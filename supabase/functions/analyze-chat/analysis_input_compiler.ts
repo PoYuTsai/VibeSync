@@ -257,7 +257,39 @@ function sanitizeEffectiveStyleContext(
   return { effectiveStyleContext: trimmed };
 }
 
+function sanitizeAnalysisFragmentStartIndex(
+  input: unknown,
+  messageCount: number,
+): { analysisFragmentStartIndex?: number; error?: string } {
+  if (input == null) return {};
+  if (!Number.isInteger(input)) {
+    return { error: "Invalid analysisFragmentStartIndex" };
+  }
+  const index = input as number;
+  const valid = messageCount === 0
+    ? index === 0
+    : index >= 0 && index < messageCount;
+  return valid
+    ? { analysisFragmentStartIndex: index }
+    : { error: "Invalid analysisFragmentStartIndex" };
+}
+
+function inferLatestIncomingRunStart(messages: AnalyzeMessage[]): number {
+  if (messages.length === 0) return 0;
+  let lastIncoming = messages.length - 1;
+  while (lastIncoming >= 0 && messages[lastIncoming].isFromMe) {
+    lastIncoming--;
+  }
+  if (lastIncoming < 0) return 0;
+  let start = lastIncoming;
+  while (start > 0 && !messages[start - 1].isFromMe) {
+    start--;
+  }
+  return start;
+}
+
 export {
+  inferLatestIncomingRunStart,
   MAX_CONTACT_NAME_LENGTH,
   MAX_CONVERSATION_SUMMARY_LENGTH,
   MAX_EFFECTIVE_STYLE_CONTEXT_LENGTH,
@@ -268,6 +300,7 @@ export {
   MAX_SESSION_FIELD_LENGTH,
   MAX_TOTAL_MESSAGE_CHARS,
   MAX_USER_DRAFT_LENGTH,
+  sanitizeAnalysisFragmentStartIndex,
   sanitizeConversationSummary,
   sanitizeEffectiveStyleContext,
   sanitizeMessages,

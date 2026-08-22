@@ -15,6 +15,18 @@ enum GameStage {
     );
   }
 
+  /// 嚴格解析：只接受五個合法 enum 名（trim 後精確比對）。
+  /// 缺值、未知值、中文標籤一律回 null，不得默認成 opening——
+  /// 「問號 vs 冰塊」的判讀靠這條守住（見 docs/plans 對象卡互動階段閉環）。
+  static GameStage? tryFromString(String? value) {
+    final normalized = value?.trim();
+    if (normalized == null || normalized.isEmpty) return null;
+    for (final stage in GameStage.values) {
+      if (stage.name == normalized) return stage;
+    }
+    return null;
+  }
+
   String get label {
     switch (this) {
       case opening:
@@ -44,7 +56,6 @@ enum GameStage {
         return '時機對了，可以邀她出來見面';
     }
   }
-
 }
 
 /// 對話階段狀態
@@ -64,13 +75,13 @@ enum GameStageStatus {
   String get label {
     switch (this) {
       case normal:
-        return '進展順利';
+        return '維持節奏';
       case stuckFriend:
-        return '偏向朋友';
+        return '互動偏平';
       case canAdvance:
-        return '可以更進一步';
+        return '可以推進';
       case shouldRetreat:
-        return '放慢節奏';
+        return '放慢一點';
     }
   }
 }

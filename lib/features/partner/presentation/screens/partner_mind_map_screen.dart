@@ -87,7 +87,7 @@ void _pushCoachFollowUp(BuildContext context, String partnerId) {
 }
 
 /// 作戰板內頁底部的大字摘要。心智圖本身已可完整閱讀；這裡保留既有的
-/// 關係信號、可接話題與問教練入口，不是展開節點後才出現的第二層。
+/// 互動重點、可接話題與問教練入口，不是展開節點後才出現的第二層。
 class _MindMapDetailPanel extends StatelessWidget {
   final PartnerMindMap map;
   final VoidCallback onAskCoach;
@@ -127,7 +127,7 @@ class _MindMapDetailPanel extends StatelessWidget {
           ),
           if (map.relationshipSignal != null) ...[
             const SizedBox(height: 12),
-            _DetailRow(label: '關係信號', value: map.relationshipSignal!),
+            _DetailRow(label: '互動重點', value: map.relationshipSignal!),
           ],
           if (map.currentSignal != null) ...[
             const SizedBox(height: 8),
