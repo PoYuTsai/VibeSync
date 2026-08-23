@@ -9,7 +9,9 @@ import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../config/auth_callback_contract.dart';
 import '../../config/environment.dart';
+import '../../utils/platform_info.dart';
 import 'social_auth_interface.dart';
 
 /// Native 平台的社群登入服務
@@ -19,6 +21,20 @@ class SocialAuthServiceImpl implements SocialAuthService {
 
   @override
   Future<AuthResponse> signInWithApple() async {
+    // Android deliberately uses the Supabase Apple web provider so an
+    // existing iPhone Apple account (including Hide My Email) can return
+    // through the frozen OAuth callback. iOS keeps the native token flow.
+    if (isAndroidPlatform) {
+      return _signInWithOAuth(
+        provider: OAuthProvider.apple,
+        providerLabel: 'Apple',
+      );
+    }
+
+    return _signInWithAppleNative();
+  }
+
+  Future<AuthResponse> _signInWithAppleNative() async {
     // Generate a secure random nonce
     final rawNonce = _generateRandomString(32);
     final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
@@ -47,16 +63,27 @@ class SocialAuthServiceImpl implements SocialAuthService {
 
   @override
   Future<AuthResponse> signInWithGoogle() async {
+    return _signInWithOAuth(
+      provider: OAuthProvider.google,
+      providerLabel: 'Google',
+    );
+  }
+
+  Future<AuthResponse> _signInWithOAuth({
+    required OAuthProvider provider,
+    required String providerLabel,
+  }) async {
     // 凍結 redirect 契約的唯一真相源是 AppConfig.authRedirectUri
     // （contracts/auth-callback.json 對帳），此處不得硬編第二份
     final expectedCallback = Uri.parse(AppConfig.authRedirectUri);
     final authUrl = await Supabase.instance.client.auth.getOAuthSignInUrl(
-      provider: OAuthProvider.google,
+      provider: provider,
       redirectTo: AppConfig.authRedirectUri,
     );
 
-    // Use flutter_web_auth_2 for ASWebAuthenticationSession on iOS
-    // This provides the smooth native OAuth experience like Claude app
+    // Use flutter_web_auth_2 for both native platforms. On Android this is
+    // also the Apple web flow; on iOS the existing Google behavior remains
+    // ASWebAuthenticationSession.
     final result = await FlutterWebAuth2.authenticate(
       url: authUrl.url,
       callbackUrlScheme: expectedCallback.scheme,
@@ -66,9 +93,10 @@ class SocialAuthServiceImpl implements SocialAuthService {
     );
 
     final callbackUri = Uri.parse(result);
-    if (callbackUri.scheme != expectedCallback.scheme ||
-        callbackUri.host != expectedCallback.host) {
-      throw const AuthException('Google Sign In failed: Invalid callback URL');
+    if (!AuthCallbackUriPolicy.isOAuthCallback(callbackUri)) {
+      throw AuthException(
+        '$providerLabel Sign In failed: Invalid callback URL',
+      );
     }
 
     final sessionResponse =

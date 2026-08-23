@@ -1,0 +1,12 @@
+{
+  "comment": "AUTH-01 Email callback contract：signup confirmation、resend confirmation 與 password recovery 共用獨立 URI。Android 只由 MainActivity 擁有；Dart、AndroidManifest、Supabase local config、contract tests 與 gate scripts 必須對帳本檔。",
+  "scheme": "com.poyutsai.vibesync",
+  "host": "email-callback",
+  "androidCallbackActivity": "com.vibesync.app.MainActivity",
+  "supabaseRedirectAllowlistEntry": "com.poyutsai.vibesync://email-callback",
+  "purposes": [
+    "signup_confirmation",
+    "resend_confirmation",
+    "password_recovery"
+  ]
+}

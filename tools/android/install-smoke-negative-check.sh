@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # install-smoke.sh 的 fake adb 迴歸，全部情境確定性重現：
-#   1. 正向：resolver 唯一解析到 plugin CallbackActivity → smoke 必須通過。
+#   1. 正向：OAuth resolver 唯一解析到 plugin CallbackActivity、Email
+#      resolver 唯一解析到 MainActivity → smoke 必須通過。
 #   2. wrong-owner：resolver 解析到別的 activity → 必須 fail closed。
 #   3. chooser：resolver 回 ResolverActivity → 必須 fail closed。
 #   4. crash：全量 log 有本 package 的 AndroidRuntime 例外 → 必須攔下。
@@ -19,6 +20,11 @@ callback_activity=$(python3 -c '
 import json, sys
 print(json.load(open(sys.argv[1]))["androidCallbackActivity"])
 ' "$contract")
+email_contract="$here/../../contracts/email-auth-callback.json"
+email_callback_activity=$(python3 -c '
+import json, sys
+print(json.load(open(sys.argv[1]))["androidCallbackActivity"])
+' "$email_contract")
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -67,6 +73,7 @@ case "$cmd" in
     esac ;;
   shell)
     case "$*" in
+      *resolve-activity*email-callback*) echo "${FAKE_RESOLVE_EMAIL:-$FAKE_RESOLVE}" ;;
       *resolve-activity*) echo "$FAKE_RESOLVE" ;;
       *pidof*) pid_out="${FAKE_PIDOF-1234}"; [ -n "$pid_out" ] && echo "$pid_out" ;;
       *"dumpsys activity"*)
@@ -98,6 +105,8 @@ FAKE
 chmod +x "$work/adb"
 
 good_resolve="com.vibesync.app/$callback_activity"
+good_email_resolve="com.vibesync.app/$email_callback_activity"
+export FAKE_RESOLVE_EMAIL="$good_email_resolve"
 
 status=0
 run_smoke() {  # $1=FAKE_RESOLVE $2=FAKE_TAIL_LOG
@@ -179,7 +188,7 @@ run_smoke_cb_error() {  # 環境變數由呼叫端前綴
 }
 FAKE_CALLBACK_START="Error: Activity not started, unable to resolve Intent" \
   run_smoke_cb_error
-expect_fail "callback-error-output" "深連結 VIEW intent"
+expect_fail "callback-error-output" "VIEW intent"
 
 # 7b. 分流迴歸（Codex round1 P1）：真 adb 可能 stdout 給正常
 # 「Starting: Intent」、Error 走 stderr 且 exit 0。只擷取 stdout 的舊寫法

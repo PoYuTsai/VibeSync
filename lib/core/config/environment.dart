@@ -142,6 +142,8 @@ class AppConfig {
 
   static const String _nativeAuthRedirectUri =
       'com.poyutsai.vibesync://login-callback';
+  static const String _nativeEmailAuthRedirectUri =
+      'com.poyutsai.vibesync://email-callback';
 
   static String get authRedirectUri {
     if (kIsWeb) {
@@ -155,6 +157,25 @@ class AppConfig {
     }
 
     return _nativeAuthRedirectUri;
+  }
+
+  /// Independent native callback shared by signup confirmation, resend, and
+  /// password recovery. Keeping Email off the OAuth host prevents
+  /// flutter_web_auth_2's CallbackActivity from consuming an Email link on
+  /// Android. iOS still receives the same scheme through app_links; its
+  /// Google and native Apple flows continue to use [authRedirectUri].
+  static String get authEmailRedirectUri {
+    if (kIsWeb) {
+      return Uri.base
+          .replace(
+            path: '/login',
+            queryParameters: null,
+            fragment: null,
+          )
+          .toString();
+    }
+
+    return _nativeEmailAuthRedirectUri;
   }
 
   /// 顯示環境名稱

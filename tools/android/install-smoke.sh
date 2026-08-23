@@ -4,10 +4,12 @@
 #   tools/android/install-smoke.sh build/app/outputs/flutter-apk/app-release.apk
 # 驗證重點：
 #   1. 安裝與 launcher 冷啟動存活數秒且 PID 唯一（AND-01：ClassNotFound＝0）
-#   2. 凍結深連結（contracts/auth-callback.json）唯一解析到
+#   2. OAuth 凍結深連結（contracts/auth-callback.json）唯一解析到
 #      flutter_web_auth_2 CallbackActivity，無 chooser（AND-03）
-#   3. App 執行中送 callback VIEW intent：Starting: Intent 送出、無 Error、
-#      無 chooser、同 PID（CallbackActivity 與 App 同程序，不 crash、不疊程序）
+#   3. Email 凍結深連結（contracts/email-auth-callback.json）唯一解析到
+#      MainActivity，無 chooser（AUTH-01）
+#   4. App 執行中送兩條 callback VIEW intent：Starting: Intent 送出、無
+#      Error、無 chooser、同 PID（不 crash、不疊程序）
 #   4. 全程 logcat 掃本 package 的 runtime 例外與 ClassNotFoundException，
 #      fail closed
 # 證據邊界：synthetic VIEW intent 只驗 callback「routing」與 process
@@ -23,18 +25,26 @@ set -euo pipefail
 apk="${1:?usage: install-smoke.sh <apk-path>}"
 [ -s "$apk" ] || { echo "::error::找不到 APK：$apk"; exit 1; }
 
-# 凍結契約唯一真相源：contracts/auth-callback.json
-contract="$(cd "$(dirname "$0")/../.." && pwd)/contracts/auth-callback.json"
+# 凍結契約唯一真相源：兩份 machine-readable callback contract
+repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+contract="$repo_root/contracts/auth-callback.json"
 read -r scheme host callback_activity < <(python3 -c '
 import json, sys
 c = json.load(open(sys.argv[1]))
 print(c["scheme"], c["host"], c["androidCallbackActivity"])
 ' "$contract")
+email_contract="$repo_root/contracts/email-auth-callback.json"
+read -r email_scheme email_host email_callback_activity < <(python3 -c '
+import json, sys
+c = json.load(open(sys.argv[1]))
+print(c["scheme"], c["host"], c["androidCallbackActivity"])
+' "$email_contract")
 
 package="com.vibesync.app"
 component="$package/.MainActivity"
 # 深連結用非機密 dummy query（token 不進 log）
 callback_uri="$scheme://$host?smoke=1"
+email_callback_uri="$email_scheme://$email_host?smoke=1"
 # 負向 harness 用 fake adb 重現時免等真冷啟動
 startup_wait="${SMOKE_STARTUP_WAIT:-5}"
 # 每個 adb 呼叫的時間上限（秒）。API 24 emulator 曾在 MainActivity 啟動後
@@ -142,25 +152,39 @@ dump_pkg_log() {  # $1=stage 標籤
   echo "--- logcat 診斷結束 ---"
 }
 
-# AND-03：對凍結深連結單獨 resolve，唯一解析結果必須是 plugin
-# CallbackActivity 且無 chooser，否則 fail closed。
+# AND-03／AUTH-01：對兩條凍結深連結單獨 resolve，唯一解析結果必須是
+# 各自 contract 指定 owner 且無 chooser，否則 fail closed。
 assert_unique_callback_owner() {
-  local out
-  out=$(adb_call resolver shell "cmd package resolve-activity --brief -a android.intent.action.VIEW -d '$callback_uri'")
+  local uri="$1" expected_activity="$2" label="$3" out
+  out=$(adb_call "resolver-$label" shell "cmd package resolve-activity --brief -a android.intent.action.VIEW -d '$uri'")
   out=$(tr -d '\r' <<<"$out")
-  echo "resolver: $out"
-  assert_no_chooser "$out" "resolver 解析"
+  echo "resolver ($label): $out"
+  assert_no_chooser "$out" "resolver $label 解析"
   case "$out" in
-    *"$package/$callback_activity"*) ;;
+    *"$package/$expected_activity"*) ;;
     *)
-      echo "::error::深連結未唯一解析到 $callback_activity（唯一擁有者契約被打破）：$out"
+      echo "::error::$uri 未唯一解析到 $expected_activity（唯一擁有者契約被打破）：$out"
       exit 1 ;;
   esac
 }
 
+send_callback_intent() {
+  local uri="$1" label="$2" out
+  out=$(adb_call "$label" shell "am start -a android.intent.action.VIEW -d '$uri'")
+  echo "$out"
+  grep -q "Starting: Intent" <<<"$out" \
+    || { echo "::error::$label VIEW intent 啟動失敗（無 Starting: Intent 送出標記）：$out"; exit 1; }
+  if grep -q "Error" <<<"$out"; then
+    echo "::error::$label VIEW intent 啟動失敗（輸出含 Error）：$out"
+    exit 1
+  fi
+  assert_no_chooser "$out" "$label 深連結"
+}
+
 adb_call wait-for-device wait-for-device
 adb_call install install -r "$apk"
-assert_unique_callback_owner
+assert_unique_callback_owner "$callback_uri" "$callback_activity" oauth
+assert_unique_callback_owner "$email_callback_uri" "$email_callback_activity" email
 
 # 啟動前清空 logcat：timeout 二次健康檢查與最終掃描都只能看本次啟動後的
 # log，安裝前殘留的舊 crash 不得決定結果
@@ -207,22 +231,15 @@ fi
 sleep "$startup_wait"
 launcher_pid=$(single_pid launcher-alive)
 
-# --- 2. App 執行中送 callback VIEW intent（AND-03 routing 契約；
+# --- 2. App 執行中送 callback VIEW intent（AND-03／AUTH-01 routing 契約；
 #        不驗 live OAuth completion，見檔頭證據邊界）---
 # API 24 迴歸（run 32553387019）：CallbackActivity 無 live auth session 時
 # 立即 finish，Android 7 的 am start -W 會等不到這個秒關 activity 而永久
 # 卡住（吃滿 callback-start timeout）。callback 一律用非等待形式；成功證據
 # 改驗「Starting: Intent」送出標記，且輸出不得含 Error 或 chooser。
 # launcher 冷啟動（上方 -W -n）不受影響，MainActivity 會真的顯示。
-callback_out=$(adb_call callback-start shell "am start -a android.intent.action.VIEW -d '$callback_uri'")
-echo "$callback_out"
-grep -q "Starting: Intent" <<<"$callback_out" \
-  || { echo "::error::深連結 VIEW intent 啟動失敗（無 Starting: Intent 送出標記）：$callback_out"; exit 1; }
-if grep -q "Error" <<<"$callback_out"; then
-  echo "::error::深連結 VIEW intent 啟動失敗（輸出含 Error）：$callback_out"
-  exit 1
-fi
-assert_no_chooser "$callback_out" "深連結"
+send_callback_intent "$callback_uri" callback-start
+send_callback_intent "$email_callback_uri" email-callback-start
 sleep 2
 after_pid=$(single_pid callback-alive)
 if [ "$launcher_pid" != "$after_pid" ]; then
@@ -233,4 +250,4 @@ fi
 # --- crash／ClassNotFound 掃描（fail closed）---
 assert_no_pkg_crash logcat
 
-echo "install smoke OK：安裝、resolver 唯一 CallbackActivity owner、launcher 冷啟動存活、callback VIEW intent（同 PID、無 chooser）、無 runtime 例外、無 ClassNotFound"
+echo "install smoke OK：安裝、OAuth 唯一 CallbackActivity owner、Email 唯一 MainActivity owner、launcher 冷啟動存活、兩條 callback VIEW intent（同 PID、無 chooser）、無 runtime 例外、無 ClassNotFound"

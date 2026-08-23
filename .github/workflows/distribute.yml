@@ -233,7 +233,8 @@ jobs:
 
       # 真合併後 manifest 的語意斷言（不只留檔）：凍結 scheme 唯一擁有者
       # 是 flutter_web_auth_2 CallbackActivity（凍結值對帳
-      # contracts/auth-callback.json；斷言邏輯版本化在
+      # contracts/auth-callback.json 與 contracts/email-auth-callback.json；
+      # 斷言邏輯版本化在
       # tools/android/assert-merged-manifest.py，含負向回歸）
       - name: Assert merged manifest contract
         run: python3 tools/android/assert-merged-manifest.py merged-release-AndroidManifest.xml

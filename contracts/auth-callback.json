@@ -1,5 +1,5 @@
 {
-  "comment": "AND-03 凍結三方契約：app scheme／flutter_web_auth_2 CallbackActivity／Supabase redirect allowlist 共用同一 URI。scheme 與 host 的唯一真相源在這裡；Dart 常數、AndroidManifest、CI 守門與 install smoke 都對帳本檔，不得各自硬編第二份。",
+  "comment": "AND-03 凍結三方契約：OAuth app scheme＋host／flutter_web_auth_2 CallbackActivity／Supabase redirect allowlist 共用同一 URI。OAuth scheme＋host 的唯一真相源在這裡；Email callback 可共用 scheme 但使用不同 host，Dart 常數、AndroidManifest、CI 守門與 install smoke 都對帳本檔，不得各自硬編第二份。",
   "scheme": "com.poyutsai.vibesync",
   "host": "login-callback",
   "androidCallbackActivity": "com.linusu.flutter_web_auth_2.CallbackActivity",

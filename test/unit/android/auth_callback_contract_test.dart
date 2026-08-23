@@ -1,8 +1,9 @@
 // test/unit/android/auth_callback_contract_test.dart
-// AND-03：App label 與凍結 OAuth callback 三方契約（app scheme／
+// AND-03：App label 與凍結 OAuth callback 三方契約（app scheme＋host／
 // flutter_web_auth_2 CallbackActivity／Supabase redirect allowlist）。
 // 凍結值唯一真相源是 contracts/auth-callback.json；本檔驗證 manifest、
-// Dart 常數與 CI 守門都對帳同一份，不各自硬編第二份。
+// Dart 常數與 CI 守門都對帳同一份；Email callback 可共用 scheme 但不可
+// 共用 OAuth host。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xml/xml.dart';
 
@@ -61,9 +62,10 @@ void main() {
           continue;
         }
         expect(
-          schemeHosts(activity, contract.scheme),
-          isEmpty,
-          reason: '${contract.scheme} 深連結只能屬於 CallbackActivity，'
+          schemeHosts(activity, contract.scheme).contains(contract.host),
+          isFalse,
+          reason: '${contract.uri} 深連結只能屬於 CallbackActivity；'
+              'Email callback 可共用 scheme，但不得共用 OAuth host，'
               '否則會撞 activity 選擇器',
         );
       }
@@ -92,20 +94,19 @@ void main() {
       }
     });
 
-    test('MainActivity exported、singleTop、無 VIEW filter', () {
+    test('MainActivity exported、singleTop、只接 Email VIEW filter', () {
       final main = activityByName(manifest, '.MainActivity');
       expect(androidAttr(main, 'exported'), 'true');
       expect(androidAttr(main, 'launchMode'), 'singleTop');
+      final viewFilters = main.findElements('intent-filter').where(
+            (filter) => filter.findElements('action').any(
+                (a) => androidAttr(a, 'name') == 'android.intent.action.VIEW'),
+          );
+      expect(viewFilters, hasLength(1));
       expect(
-        main
-            .findElements('intent-filter')
-            .expand((f) => f.findElements('action'))
-            .where(
-              (a) => androidAttr(a, 'name') == 'android.intent.action.VIEW',
-            ),
-        isEmpty,
-        reason: 'MainActivity 不得自己接 VIEW，凍結 URI 唯一擁有者是 '
-            'CallbackActivity',
+        schemeHosts(main, contract.scheme).contains(contract.host),
+        isFalse,
+        reason: 'MainActivity 只能接獨立 Email host，不得接 OAuth host',
       );
     });
 

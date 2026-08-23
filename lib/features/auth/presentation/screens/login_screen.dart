@@ -21,6 +21,7 @@ import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../../core/services/app_haptics.dart';
+import '../../domain/auth_entry_policy.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -48,6 +49,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String? _pendingVerificationEmail;
 
   bool get _isIOS => isIOSPlatform;
+  bool get _isAndroid => isAndroidPlatform;
   bool get _hasPendingVerification =>
       (_pendingVerificationEmail ?? '').trim().isNotEmpty;
   String get _typedEmail => _emailController.text.trim();
@@ -721,6 +723,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final entryPolicy = AuthEntryPolicy.forPlatform(
+      isAndroid: _isAndroid,
+      isIOS: _isIOS,
+    );
     final headline = _isPasswordRecoveryMode
         ? '設定新密碼'
         : _isSignUp
@@ -767,6 +773,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       _buildGoogleSignInButton(),
                       const SizedBox(height: 12),
                       _buildAppleSignInButton(),
+                      const SizedBox(height: 24),
+                      _buildDivider(),
+                      const SizedBox(height: 24),
+                    ],
+                    if (_isAndroid &&
+                        !_isSignUp &&
+                        !_isPasswordRecoveryMode) ...[
+                      // Android keeps Google visually above the Email form as
+                      // a primary entry; Apple is rendered below as a
+                      // continuity-only secondary entry.
+                      _buildGoogleSignInButton(),
                       const SizedBox(height: 24),
                       _buildDivider(),
                       const SizedBox(height: 24),
@@ -900,6 +917,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                       ),
+                    if (_isAndroid &&
+                        !_isSignUp &&
+                        !_isPasswordRecoveryMode) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        entryPolicy.appleLabel,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.onBackgroundSecondary,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      _buildAppleSignInButton(label: '使用 Apple 繼續'),
+                    ],
                     const SizedBox(height: 24),
                     _buildLegalDisclaimer(),
                   ],
@@ -980,7 +1011,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _buildAppleSignInButton() {
+  Widget _buildAppleSignInButton({String label = '使用 Apple 繼續'}) {
     return SizedBox(
       width: double.infinity,
       height: 50,
@@ -1001,7 +1032,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             const Icon(Icons.apple, size: 24),
             const SizedBox(width: 12),
             Text(
-              '使用 Apple 繼續',
+              label,
               style: AppTypography.bodyLarge.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,

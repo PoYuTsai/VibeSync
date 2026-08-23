@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'keyboard_privacy_purge_service.dart';
+import '../config/auth_callback_contract.dart';
 import '../config/environment.dart';
 import 'auth_recovery_helper.dart';
 import 'auth_diagnostics_service.dart';
@@ -16,6 +17,7 @@ class SupabaseService {
   static late SupabaseClient _client;
   static bool _initialized = false;
   static StreamSubscription<AuthState>? _authStateSubscription;
+  static StreamSubscription<Uri>? _authDeepLinkSubscription;
   static bool _passwordRecoveryInProgress = false;
   static final AppLinks _appLinks = AppLinks();
 
@@ -30,6 +32,10 @@ class SupabaseService {
       anonKey: anonKey,
       authOptions: const FlutterAuthClientOptions(
         authFlowType: AuthFlowType.pkce,
+        // Supabase's default observer accepts any URI carrying `code`.
+        // Native callbacks are routed through the exact Email policy below;
+        // keep web's existing URL handling unchanged.
+        detectSessionInUri: kIsWeb,
       ),
       debug: kDebugMode,
     );
@@ -38,14 +44,48 @@ class SupabaseService {
     _authStateSubscription = _client.auth.onAuthStateChange.listen(
       _handleAuthStateChange,
     );
+    _authDeepLinkSubscription?.cancel();
+    if (!kIsWeb) {
+      _authDeepLinkSubscription = _appLinks.uriLinkStream.listen(
+        (uri) => unawaited(_handleIncomingAuthLink(uri)),
+        onError: (error, stackTrace) {
+          debugPrint('Email auth callback listener skipped: $error');
+        },
+      );
+    }
     await _syncPasswordRecoveryStateFromInitialLink();
     _initialized = true;
+  }
+
+  static Future<void> _handleIncomingAuthLink(Uri uri) async {
+    if (!AuthCallbackUriPolicy.isProcessableEmailAuthCallback(uri)) {
+      // OAuth callbacks belong to FlutterWebAuth2; wrong/early Email links
+      // are ignored before any session exchange can occur.
+      return;
+    }
+
+    try {
+      await _client.auth.getSessionFromUrl(uri);
+    } on AuthException catch (error, stackTrace) {
+      // Keep Supabase's existing error stream behavior for the Email retry UI.
+      // ignore: invalid_use_of_internal_member
+      _client.auth.notifyException(error, stackTrace);
+      debugPrint('Email auth callback rejected: ${error.runtimeType}');
+    } catch (error) {
+      debugPrint('Email auth callback failed: ${error.runtimeType}');
+    }
   }
 
   static Future<void> _syncPasswordRecoveryStateFromInitialLink() async {
     try {
       final initialLink = await _appLinks.getInitialLink();
-      _passwordRecoveryInProgress =
+      // Password recovery is an Email flow. Do not let an OAuth callback (or
+      // a wrong scheme/host) put the login screen into recovery mode before
+      // Supabase has accepted an Email callback session.
+      final isAllowedEmailLink = initialLink == null ||
+          kIsWeb ||
+          AuthCallbackUriPolicy.isProcessableEmailAuthCallback(initialLink);
+      _passwordRecoveryInProgress = isAllowedEmailLink &&
           AuthRecoveryHelper.isPasswordRecoveryLink(initialLink);
       if (_passwordRecoveryInProgress) {
         unawaited(
@@ -105,7 +145,6 @@ class SupabaseService {
     return _client.auth.onAuthStateChange;
   }
 
-
   /// Sign in with email and password
   static Future<AuthResponse> signInWithEmail({
     required String email,
@@ -125,7 +164,7 @@ class SupabaseService {
     return await client.auth.signUp(
       email: email,
       password: password,
-      emailRedirectTo: AppConfig.authRedirectUri,
+      emailRedirectTo: AppConfig.authEmailRedirectUri,
     );
   }
 
@@ -135,7 +174,7 @@ class SupabaseService {
     await client.auth.resend(
       email: email,
       type: OtpType.signup,
-      emailRedirectTo: AppConfig.authRedirectUri,
+      emailRedirectTo: AppConfig.authEmailRedirectUri,
     );
   }
 
@@ -144,7 +183,7 @@ class SupabaseService {
   }) async {
     await client.auth.resetPasswordForEmail(
       email,
-      redirectTo: AppConfig.authRedirectUri,
+      redirectTo: AppConfig.authEmailRedirectUri,
     );
   }
 

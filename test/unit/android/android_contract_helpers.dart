@@ -42,6 +42,40 @@ class AuthCallbackContract {
   String get uri => '$scheme://$host';
 }
 
+/// AUTH-01 Email deep-link contract. Kept separate from the frozen OAuth
+/// contract because the two callbacks deliberately have different Android
+/// activity owners.
+class EmailAuthCallbackContract {
+  EmailAuthCallbackContract._(
+    this.scheme,
+    this.host,
+    this.callbackActivity,
+    this.supabaseAllowlistEntry,
+    this.purposes,
+  );
+
+  factory EmailAuthCallbackContract.load() {
+    final json = jsonDecode(
+      readRepoFile('contracts/email-auth-callback.json'),
+    ) as Map<String, dynamic>;
+    return EmailAuthCallbackContract._(
+      json['scheme'] as String,
+      json['host'] as String,
+      json['androidCallbackActivity'] as String,
+      json['supabaseRedirectAllowlistEntry'] as String,
+      (json['purposes'] as List<dynamic>).cast<String>(),
+    );
+  }
+
+  final String scheme;
+  final String host;
+  final String callbackActivity;
+  final String supabaseAllowlistEntry;
+  final List<String> purposes;
+
+  String get uri => '$scheme://$host';
+}
+
 /// supabase/config.toml 的 additional_redirect_urls 陣列原始內容
 /// （最小 TOML 擷取：只取該賦值的 [ … ] 區塊，夠契約對帳用）
 String supabaseAdditionalRedirectUrlsBlock() {
@@ -80,8 +114,9 @@ XmlElement activityByName(XmlDocument manifest, String name) {
   return matches.first;
 }
 
-bool hasCategory(XmlElement filter, String category) =>
-    filter.findElements('category').any((c) => androidAttr(c, 'name') == category);
+bool hasCategory(XmlElement filter, String category) => filter
+    .findElements('category')
+    .any((c) => androidAttr(c, 'name') == category);
 
 /// activity 內所有宣告 [scheme] 的 intent-filter data host
 Set<String> schemeHosts(XmlElement activity, String scheme) => activity

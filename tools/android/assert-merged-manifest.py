@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""merged release manifest 語意守門（AND-03）。
+"""merged release manifest 語意守門（AND-03／AUTH-01）。
 
 真合併後 manifest 的語意斷言（不只留檔），凍結值以
-contracts/auth-callback.json 為唯一真相源：
-  1. 凍結 scheme 唯一擁有者是 flutter_web_auth_2 的 CallbackActivity
-     「activity」——activity-alias 也算候選擁有者，出現即擋（alias 可被
-     merge 帶進來搶深連結）。
-  2. CallbackActivity 的 data 規則必須恰為 scheme＋host，且不得帶任何
+contracts/auth-callback.json 與 contracts/email-auth-callback.json 為各自
+URI 的唯一真相源：
+  1. OAuth 凍結 URI 唯一擁有者是 flutter_web_auth_2 的 CallbackActivity
+     「activity」；Email 凍結 URI 唯一擁有者是 MainActivity。兩者都把
+     activity-alias 視為候選擁有者，出現即擋。
+  2. 兩個 callback 的 data 規則都必須恰為 scheme＋host，且不得帶任何
      額外 URI 限制屬性（port、path、pathPrefix、pathPattern、
      pathAdvancedPattern、pathSuffix、mimeType…）——多一個屬性就會
      窄化比對讓真 callback 掉到別的 handler，一律 fail closed。
@@ -28,7 +29,13 @@ _contract = json.load(open(os.path.join(
     'contracts', 'auth-callback.json')))
 SCHEME, HOST = _contract['scheme'], _contract['host']
 CALLBACK = _contract['androidCallbackActivity']
-MAIN = 'com.vibesync.app.MainActivity'
+_email_contract = json.load(open(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), '..', '..',
+    'contracts', 'email-auth-callback.json')))
+EMAIL_SCHEME = _email_contract['scheme']
+EMAIL_HOST = _email_contract['host']
+EMAIL_CALLBACK = _email_contract['androidCallbackActivity']
+MAIN = EMAIL_CALLBACK
 # data 元素只允許這兩個屬性；其餘一律視為未預期的 URI 限制
 ALLOWED_DATA_ATTRS = {A + 'scheme', A + 'host'}
 
@@ -38,35 +45,71 @@ def main(path):
     # VIEW owner／launcher 的候選是 activity「與」activity-alias
     comps = [c for c in app if c.tag in ('activity', 'activity-alias')]
 
-    def scheme_filters(c):
+    def pair_filters(c, scheme, host):
         return [f for f in c.findall('intent-filter') if any(
-            d.get(A + 'scheme') == SCHEME for d in f.findall('data'))]
+            d.get(A + 'scheme') == scheme and d.get(A + 'host') == host
+            for d in f.findall('data'))]
 
-    owners = [(c.tag, c.get(A + 'name')) for c in comps if scheme_filters(c)]
+    def assert_filter_contract(component, filters, scheme, host, label):
+        assert len(filters) == 1, (
+            f'{label} intent-filter 必須恰一個，得到 {len(filters)}')
+        filter_element = filters[0]
+        datas = filter_element.findall('data')
+        pairs = {(d.get(A + 'scheme'), d.get(A + 'host')) for d in datas}
+        assert pairs == {(scheme, host)}, (
+            f'{label} data 必須恰為 {scheme}://{host}，得到 {pairs}')
+        for d in datas:
+            extra = sorted(k.replace(A, 'android:') for k in d.keys()
+                           if k not in ALLOWED_DATA_ATTRS)
+            assert not extra, (
+                f'{label} data 不得帶額外 URI 限制屬性，得到 {extra}')
+        actions = {x.get(A + 'name') for x in filter_element.findall('action')}
+        assert 'android.intent.action.VIEW' in actions, (
+            f'{label} 缺 VIEW action：{actions}')
+        cats = {c.get(A + 'name') for c in filter_element.findall('category')}
+        assert {'android.intent.category.DEFAULT',
+                'android.intent.category.BROWSABLE'} <= cats, (
+            f'{label} 缺 DEFAULT/BROWSABLE category：{cats}')
+        return filter_element
+
+    # A contract host may never be declared under a different scheme. This
+    # catches an early/incorrect callback filter before Android can resolve it.
+    for component in comps:
+        for filter_element in component.findall('intent-filter'):
+            for data in filter_element.findall('data'):
+                data_host = data.get(A + 'host')
+                if data_host == HOST:
+                    assert data.get(A + 'scheme') == SCHEME, (
+                        f'OAuth host {HOST} 不得搭配錯誤 scheme')
+                if data_host == EMAIL_HOST:
+                    assert data.get(A + 'scheme') == EMAIL_SCHEME, (
+                        f'Email host {EMAIL_HOST} 不得搭配錯誤 scheme')
+
+    owners = [(c.tag, c.get(A + 'name')) for c in comps
+              if pair_filters(c, SCHEME, HOST)]
     assert owners == [('activity', CALLBACK)], \
-        f'凍結 scheme 擁有者必須唯一且是 {CALLBACK}（alias 也不行），得到 {owners}'
+        f'OAuth URI 擁有者必須唯一且是 {CALLBACK}（alias 也不行），得到 {owners}'
 
     cb = next(c for c in comps if c.get(A + 'name') == CALLBACK)
     assert cb.get(A + 'exported') == 'true', \
         'CallbackActivity 必須 exported=true（瀏覽器要能開）'
-    fs = scheme_filters(cb)
-    assert len(fs) == 1, f'凍結 scheme intent-filter 必須恰一個，得到 {len(fs)}'
-    f = fs[0]
-    datas = f.findall('data')
-    pairs = {(d.get(A + 'scheme'), d.get(A + 'host')) for d in datas}
-    assert pairs == {(SCHEME, HOST)}, \
-        f'data 必須恰為 {SCHEME}://{HOST}，得到 {pairs}'
-    for d in datas:
-        extra = sorted(k.replace(A, 'android:') for k in d.keys()
-                       if k not in ALLOWED_DATA_ATTRS)
-        assert not extra, \
-            f'data 不得帶額外 URI 限制屬性（會窄化深連結比對），得到 {extra}'
-    actions = {x.get(A + 'name') for x in f.findall('action')}
-    assert 'android.intent.action.VIEW' in actions, f'缺 VIEW action：{actions}'
-    cats = {c.get(A + 'name') for c in f.findall('category')}
-    assert {'android.intent.category.DEFAULT',
-            'android.intent.category.BROWSABLE'} <= cats, \
-        f'缺 DEFAULT/BROWSABLE category：{cats}'
+    assert_filter_contract(
+        cb, pair_filters(cb, SCHEME, HOST), SCHEME, HOST, 'OAuth callback')
+
+    email_owners = [(c.tag, c.get(A + 'name')) for c in comps
+                    if pair_filters(c, EMAIL_SCHEME, EMAIL_HOST)]
+    assert email_owners == [('activity', EMAIL_CALLBACK)], \
+        f'Email URI 擁有者必須唯一且是 {EMAIL_CALLBACK}（alias 也不行），得到 {email_owners}'
+    email_activity = next(c for c in comps if c.get(A + 'name') == EMAIL_CALLBACK)
+    assert email_activity.get(A + 'exported') == 'true', \
+        'MainActivity 必須 exported=true（Email link 要能開）'
+    assert_filter_contract(
+        email_activity,
+        pair_filters(email_activity, EMAIL_SCHEME, EMAIL_HOST),
+        EMAIL_SCHEME,
+        EMAIL_HOST,
+        'Email callback',
+    )
 
     dispatchers = [c.get(A + 'name') for c in comps
                    if 'Dispatcher' in (c.get(A + 'name') or '')]
@@ -81,10 +124,10 @@ def main(path):
                          for x in lf.findall('action'))]
     assert launchers == [('activity', MAIN)], \
         f'MAIN/LAUNCHER 必須唯一且是 MainActivity activity（alias 也不行），得到 {launchers}'
-    print('merged manifest 語意斷言 OK：唯一 CallbackActivity owner'
-          '（exported、exact scheme/host、無額外 URI 限制、VIEW、DEFAULT＋'
-          'BROWSABLE，含 alias 掃描）、無自訂 dispatcher、唯一 '
-          'MAIN/LAUNCHER=MainActivity')
+    print('merged manifest 語意斷言 OK：OAuth 唯一 CallbackActivity owner、'
+          'Email 唯一 MainActivity owner（皆 exported、exact scheme/host、'
+          '無額外 URI 限制、VIEW、DEFAULT＋BROWSABLE，含 alias 掃描）、'
+          '無自訂 dispatcher、唯一 MAIN/LAUNCHER=MainActivity')
 
 
 if __name__ == '__main__':
