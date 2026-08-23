@@ -176,16 +176,24 @@ component_matches_expected() {
     expected_short="$package/.${expected_activity#"$package."}"
   fi
 
-  local line
+  local line component_count=0 component_line=""
   while IFS= read -r line; do
     line="${line//$'\r'/}"
     line="${line#"${line%%[![:space:]]*}"}"
     line="${line%"${line##*[![:space:]]}"}"
-    if [[ "$line" == "$expected_full" ||
-      ( -n "$expected_short" && "$line" == "$expected_short" ) ]]; then
-      return 0
+    if [[ "$line" =~ ^[^[:space:]/]+/[^[:space:]/]+$ ]]; then
+      component_count=$((component_count + 1))
+      component_line="$line"
     fi
   done <<<"$output"
+
+  # Resolver metadata is allowed, but more than one component-shaped result
+  # is ambiguous and must never pass the unique-owner gate.
+  if [ "$component_count" -ne 1 ]; then
+    return 1
+  fi
+  [[ "$component_line" == "$expected_full" ]] && return 0
+  [[ -n "$expected_short" && "$component_line" == "$expected_short" ]] && return 0
   return 1
 }
 

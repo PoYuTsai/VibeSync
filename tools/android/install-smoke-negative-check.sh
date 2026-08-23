@@ -107,12 +107,24 @@ chmod +x "$work/adb"
 good_resolve="com.vibesync.app/$callback_activity"
 good_email_resolve="com.vibesync.app/.MainActivity"
 good_email_resolve_full="com.vibesync.app/$email_callback_activity"
-export FAKE_RESOLVE_EMAIL="$good_email_resolve"
+resolver_metadata='priority=0 preferredOrder=0 match=0x108000'
+good_resolve_with_metadata="$resolver_metadata"$'\n'"$good_resolve"
+good_email_resolve_with_metadata="$resolver_metadata"$'\n'"$good_email_resolve"
+export FAKE_RESOLVE_EMAIL="$good_email_resolve_with_metadata"
 
 status=0
 run_smoke() {  # $1=FAKE_RESOLVE $2=FAKE_TAIL_LOG
   set +e
   FAKE_RESOLVE="$1" FAKE_TAIL_LOG="${2:-clean}" SMOKE_STARTUP_WAIT=0 \
+    PATH="$work:$PATH" bash "$smoke" "$work/app.apk" >"$work/out" 2>&1
+  status=$?
+  set -e
+}
+
+run_smoke_email() {  # $1=Email FAKE_RESOLVE_EMAIL $2=FAKE_TAIL_LOG
+  set +e
+  FAKE_RESOLVE="$good_resolve" FAKE_RESOLVE_EMAIL="$1" \
+    FAKE_TAIL_LOG="${2:-clean}" SMOKE_STARTUP_WAIT=0 \
     PATH="$work:$PATH" bash "$smoke" "$work/app.apk" >"$work/out" 2>&1
   status=$?
   set -e
@@ -132,7 +144,7 @@ expect_fail() {  # $1=情境 $2=必須出現的錯誤字串
 }
 
 # --- 1. 正向：resolver=CallbackActivity → 必須通過 ---
-run_smoke "$good_resolve" clean
+run_smoke "$good_resolve_with_metadata" clean
 if [ "$status" -ne 0 ]; then
   cat "$work/out"
   echo "::error::合法情境（resolver=$good_resolve）應通過，卻失敗（exit=$status）"
@@ -148,6 +160,24 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 export FAKE_RESOLVE_EMAIL="$good_email_resolve"
+
+# --- 1c. expected component 與另一個 component 同時出現 → 必須 fail closed ---
+wrong_oauth_component="com.vibesync.app/com.linusu.flutter_web_auth_2.OtherActivity"
+for resolver_output in \
+  "$good_resolve"$'\n'"$wrong_oauth_component" \
+  "$wrong_oauth_component"$'\n'"$good_resolve"; do
+  run_smoke "$resolver_output" clean
+  expect_fail "resolver-multiple-components" "唯一擁有者契約被打破"
+done
+
+# --- 1d. Email shorthand 只接受 exact owner/class → 其餘必須 fail closed ---
+for fake_email_owner in \
+  "com.vibesync.application/.MainActivity" \
+  "com.vibesync.app/.XMainActivity" \
+  "com.vibesync.app/.MainActivityExtra"; do
+  run_smoke_email "$fake_email_owner" clean
+  expect_fail "email-component-fake-$fake_email_owner" "唯一擁有者契約被打破"
+done
 
 # --- 2. resolver 解析到錯的 owner ---
 run_smoke "com.vibesync.app/.MainActivity" clean
