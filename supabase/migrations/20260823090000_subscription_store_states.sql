@@ -4,6 +4,10 @@
 -- contract。legacy subscriptions 仍由既有讀者使用，後續 reconciliation 會
 -- 以這裡可證明的 store state 重算 aggregate。
 
+-- Reuse public.infer_subscription_billing_period from the earlier product
+-- details migration. Upsert and finalization must call that one canonical
+-- helper instead of carrying separate product-id inference branches.
+
 CREATE TABLE public.subscription_store_states (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -48,6 +52,28 @@ CREATE TABLE public.subscription_store_state_reconciliations (
   baseline_store TEXT CHECK (baseline_store IN ('app_store', 'play_store')),
   baseline_revenuecat_environment TEXT CHECK (baseline_revenuecat_environment IN ('sandbox', 'production')),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Immutable evidence for one complete RevenueCat CustomerInfo snapshot. The
+-- manifest is separate from the per-store materialization: a transient empty
+-- API response cannot manufacture a complete snapshot, and a later state row
+-- cannot silently change which snapshot was reviewed.
+CREATE TABLE public.subscription_store_state_snapshot_manifests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  snapshot_id TEXT NOT NULL CHECK (length(trim(snapshot_id)) > 0),
+  observed_at TIMESTAMPTZ NOT NULL,
+  present_stores TEXT[] NOT NULL,
+  present_store_event_ids JSONB NOT NULL,
+  revenuecat_environment TEXT CHECK (revenuecat_environment IN ('sandbox', 'production')),
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT subscription_snapshot_manifest_supported_stores CHECK (
+    present_stores <@ ARRAY['app_store', 'play_store']::TEXT[]
+  ),
+  CONSTRAINT subscription_snapshot_manifest_event_map_object CHECK (
+    jsonb_typeof(present_store_event_ids) = 'object'
+  ),
+  UNIQUE (user_id, snapshot_id)
 );
 
 -- A missing store is meaningful only when it comes from one complete,
@@ -101,6 +127,18 @@ CREATE POLICY "Service role can manage subscription reconciliation"
   WITH CHECK (true);
 
 ALTER TABLE public.subscription_store_state_reconciliations ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.subscription_store_state_snapshot_manifests ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role can view subscription snapshot manifests"
+  ON public.subscription_store_state_snapshot_manifests
+  FOR SELECT TO service_role
+  USING (true);
+
+REVOKE ALL ON TABLE public.subscription_store_state_snapshot_manifests
+  FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.subscription_store_state_snapshot_manifests
+  TO service_role;
 
 ALTER TABLE public.subscription_store_state_snapshot_absences ENABLE ROW LEVEL SECURITY;
 
@@ -446,14 +484,7 @@ BEGIN
         status = v_new_status,
         expires_at = v_winner.expires_at,
         active_product_id = v_winner.product_id,
-        billing_period = CASE
-          WHEN lower(COALESCE(v_winner.product_id, '')) LIKE '%quarter%'
-            OR lower(COALESCE(v_winner.product_id, '')) LIKE '%p3m%' THEN 'quarterly'
-          WHEN lower(COALESCE(v_winner.product_id, '')) LIKE '%monthly%'
-            OR lower(COALESCE(v_winner.product_id, '')) LIKE '%p1m%' THEN 'monthly'
-          WHEN NULLIF(trim(COALESCE(v_winner.product_id, '')), '') IS NULL THEN NULL
-          ELSE 'unknown'
-        END,
+        billing_period = public.infer_subscription_billing_period(v_winner.product_id),
         store = v_winner.store,
         revenuecat_environment = v_winner.revenuecat_environment,
         monthly_messages_used = 0,
@@ -467,14 +498,7 @@ BEGIN
         status = v_new_status,
         expires_at = v_winner.expires_at,
         active_product_id = v_winner.product_id,
-        billing_period = CASE
-          WHEN lower(COALESCE(v_winner.product_id, '')) LIKE '%quarter%'
-            OR lower(COALESCE(v_winner.product_id, '')) LIKE '%p3m%' THEN 'quarterly'
-          WHEN lower(COALESCE(v_winner.product_id, '')) LIKE '%monthly%'
-            OR lower(COALESCE(v_winner.product_id, '')) LIKE '%p1m%' THEN 'monthly'
-          WHEN NULLIF(trim(COALESCE(v_winner.product_id, '')), '') IS NULL THEN NULL
-          ELSE 'unknown'
-        END,
+        billing_period = public.infer_subscription_billing_period(v_winner.product_id),
         store = v_winner.store,
         revenuecat_environment = v_winner.revenuecat_environment
     WHERE user_id = p_user_id;
@@ -491,6 +515,137 @@ REVOKE ALL ON FUNCTION public.upsert_subscription_store_state(
 GRANT EXECUTE ON FUNCTION public.upsert_subscription_store_state(
   uuid, text, text, text, text, text, timestamptz, timestamptz, text,
   text, text, text, boolean
+) TO service_role;
+
+-- Record the immutable manifest for a complete RevenueCat snapshot. Present
+-- store events must already be verified and match the supplied event map; the
+-- absence writer below records the complementary tombstone rows. Keeping this
+-- manifest in a service-role table lets finalization prove the exact snapshot
+-- instead of trusting a caller's coverage label.
+CREATE OR REPLACE FUNCTION public.record_revenuecat_snapshot_manifest(
+  p_user_id UUID,
+  p_snapshot_id TEXT,
+  p_observed_at TIMESTAMPTZ,
+  p_present_stores TEXT[],
+  p_present_store_event_ids JSONB,
+  p_revenuecat_environment TEXT DEFAULT NULL
+)
+RETURNS TABLE(recorded BOOLEAN, reason TEXT)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_canonical_present_stores TEXT[];
+  v_manifest RECORD;
+BEGIN
+  IF p_user_id IS NULL
+     OR NULLIF(trim(p_snapshot_id), '') IS NULL
+     OR p_observed_at IS NULL
+     OR p_observed_at > NOW()
+     OR p_present_stores IS NULL
+     OR p_present_store_event_ids IS NULL
+     OR jsonb_typeof(p_present_store_event_ids) <> 'object'
+     OR (
+       p_revenuecat_environment IS NOT NULL
+       AND p_revenuecat_environment NOT IN ('sandbox', 'production')
+     )
+  THEN
+    RETURN QUERY SELECT FALSE, 'invalid_snapshot';
+    RETURN;
+  END IF;
+
+  SELECT COALESCE(array_agg(listed.store_name ORDER BY listed.store_name), ARRAY[]::TEXT[])
+  INTO v_canonical_present_stores
+  FROM unnest(p_present_stores) AS listed(store_name);
+
+  IF cardinality(p_present_stores) <> (
+       SELECT count(DISTINCT listed.store_name)::INTEGER
+       FROM unnest(p_present_stores) AS listed(store_name)
+     )
+     OR EXISTS (
+       SELECT 1
+       FROM unnest(p_present_stores) AS listed(store_name)
+       WHERE listed.store_name NOT IN ('app_store', 'play_store')
+          OR jsonb_typeof(p_present_store_event_ids -> listed.store_name) <> 'string'
+          OR NULLIF(trim(p_present_store_event_ids ->> listed.store_name), '') IS NULL
+     )
+     OR EXISTS (
+       SELECT 1
+       FROM jsonb_object_keys(p_present_store_event_ids) AS supplied(store_name)
+       WHERE NOT (supplied.store_name = ANY(p_present_stores))
+     )
+  THEN
+    RETURN QUERY SELECT FALSE, 'invalid_snapshot';
+    RETURN;
+  END IF;
+
+  -- The parent lock serializes manifest creation with the writer/finalizer.
+  PERFORM 1 FROM public.users WHERE id = p_user_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT FALSE, 'missing_user';
+    RETURN;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM unnest(v_canonical_present_stores) AS listed(store_name)
+    LEFT JOIN public.subscription_store_states AS state
+      ON state.user_id = p_user_id
+     AND state.store = listed.store_name
+     AND state.event_id = p_present_store_event_ids ->> listed.store_name
+     AND state.verification_status = 'verified'
+     AND state.revenuecat_environment IS NOT DISTINCT FROM p_revenuecat_environment
+     AND state.event_at <= p_observed_at
+    WHERE state.user_id IS NULL
+  ) THEN
+    RETURN QUERY SELECT FALSE, 'missing_present_event';
+    RETURN;
+  END IF;
+
+  SELECT * INTO v_manifest
+  FROM public.subscription_store_state_snapshot_manifests
+  WHERE user_id = p_user_id AND snapshot_id = trim(p_snapshot_id)
+  FOR UPDATE;
+
+  IF FOUND THEN
+    IF v_manifest.observed_at IS DISTINCT FROM p_observed_at
+       OR v_manifest.present_stores IS DISTINCT FROM v_canonical_present_stores
+       OR v_manifest.present_store_event_ids IS DISTINCT FROM p_present_store_event_ids
+       OR v_manifest.revenuecat_environment IS DISTINCT FROM p_revenuecat_environment
+    THEN
+      RETURN QUERY SELECT FALSE, 'snapshot_conflict';
+      RETURN;
+    END IF;
+    RETURN QUERY SELECT TRUE, 'duplicate';
+    RETURN;
+  END IF;
+
+  INSERT INTO public.subscription_store_state_snapshot_manifests (
+    user_id,
+    snapshot_id,
+    observed_at,
+    present_stores,
+    present_store_event_ids,
+    revenuecat_environment
+  ) VALUES (
+    p_user_id,
+    trim(p_snapshot_id),
+    p_observed_at,
+    v_canonical_present_stores,
+    p_present_store_event_ids,
+    p_revenuecat_environment
+  );
+
+  RETURN QUERY SELECT TRUE, 'recorded';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.record_revenuecat_snapshot_manifest(
+  UUID, TEXT, TIMESTAMPTZ, TEXT[], JSONB, TEXT
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_revenuecat_snapshot_manifest(
+  UUID, TEXT, TIMESTAMPTZ, TEXT[], JSONB, TEXT
 ) TO service_role;
 
 -- Record one store that is absent from a complete RevenueCat snapshot. The
@@ -591,6 +746,7 @@ BEGIN
      AND state.store = listed.store_name
      AND state.event_id = p_present_store_event_ids ->> listed.store_name
      AND state.verification_status = 'verified'
+     AND state.revenuecat_environment IS NOT DISTINCT FROM p_revenuecat_environment
      AND state.event_at <= p_observed_at
     WHERE state.user_id IS NULL
   ) THEN
@@ -609,6 +765,25 @@ BEGIN
         OR prior.present_stores IS DISTINCT FROM v_canonical_present_stores
         OR prior.present_store_event_ids IS DISTINCT FROM p_present_store_event_ids
         OR prior.revenuecat_environment IS DISTINCT FROM p_revenuecat_environment
+      )
+  ) THEN
+    RETURN QUERY SELECT FALSE, 'snapshot_conflict';
+    RETURN;
+  END IF;
+
+  -- Every absence anchors the same immutable complete-snapshot manifest only
+  -- after the tombstone writer has completed all checks. This ordering avoids
+  -- leaving an orphan manifest when the atomic state writer rejects input.
+  IF EXISTS (
+    SELECT 1
+    FROM public.subscription_store_state_snapshot_manifests AS prior_manifest
+    WHERE prior_manifest.user_id = p_user_id
+      AND prior_manifest.snapshot_id = trim(p_snapshot_id)
+      AND (
+        prior_manifest.observed_at IS DISTINCT FROM p_observed_at
+        OR prior_manifest.present_stores IS DISTINCT FROM v_canonical_present_stores
+        OR prior_manifest.present_store_event_ids IS DISTINCT FROM p_present_store_event_ids
+        OR prior_manifest.revenuecat_environment IS DISTINCT FROM p_revenuecat_environment
       )
   ) THEN
     RETURN QUERY SELECT FALSE, 'snapshot_conflict';
@@ -639,6 +814,23 @@ BEGIN
     RETURN QUERY SELECT COALESCE(v_accepted, FALSE), COALESCE(v_reason, 'invalid_response');
     RETURN;
   END IF;
+
+  INSERT INTO public.subscription_store_state_snapshot_manifests (
+    user_id,
+    snapshot_id,
+    observed_at,
+    present_stores,
+    present_store_event_ids,
+    revenuecat_environment
+  ) VALUES (
+    p_user_id,
+    trim(p_snapshot_id),
+    p_observed_at,
+    v_canonical_present_stores,
+    p_present_store_event_ids,
+    p_revenuecat_environment
+  )
+  ON CONFLICT (user_id, snapshot_id) DO NOTHING;
 
   INSERT INTO public.subscription_store_state_snapshot_absences (
     user_id,
@@ -678,8 +870,11 @@ GRANT EXECUTE ON FUNCTION public.record_revenuecat_snapshot_absence(
 -- multi-store RevenueCat snapshot; one non-empty subscription is insufficient.
 CREATE OR REPLACE FUNCTION public.finalize_subscription_store_state_reconciliation(
   p_user_id UUID,
-  p_completed_by TEXT DEFAULT 'service_role',
-  p_coverage TEXT DEFAULT 'unknown'
+  p_snapshot_id TEXT,
+  p_observed_at TIMESTAMPTZ,
+  p_present_stores TEXT[],
+  p_present_store_event_ids JSONB,
+  p_completed_by TEXT DEFAULT 'service_role'
 )
 RETURNS TABLE(finalized BOOLEAN, reason TEXT)
 LANGUAGE plpgsql
@@ -689,13 +884,50 @@ AS $$
 DECLARE
   v_legacy public.subscriptions%ROWTYPE;
   v_state public.subscription_store_states%ROWTYPE;
+  v_manifest public.subscription_store_state_snapshot_manifests%ROWTYPE;
+  v_proof_state public.subscription_store_states%ROWTYPE;
+  v_canonical_present_stores TEXT[];
+  v_store TEXT;
+  v_present_event_id TEXT;
+  v_expected_absence_event_id TEXT;
 BEGIN
-  -- A caller must present evidence that the RevenueCat CustomerInfo snapshot
-  -- covered every supported store. A single non-empty subscription entry is
-  -- not coverage: RevenueCat can hold App Store and Play subscriptions for
-  -- the same customer concurrently.
-  IF p_coverage IS DISTINCT FROM 'complete_revenuecat_snapshot' THEN
-    RETURN QUERY SELECT FALSE, 'coverage_not_authoritative';
+  -- Finalization is bound to an immutable service-role manifest. A caller's
+  -- former coverage label is not evidence: every store must match either its
+  -- exact verified event or the exact audited absence for this snapshot.
+  IF p_user_id IS NULL
+     OR NULLIF(trim(p_snapshot_id), '') IS NULL
+     OR p_observed_at IS NULL
+     OR p_observed_at > NOW()
+     OR p_present_stores IS NULL
+     OR p_present_store_event_ids IS NULL
+     OR jsonb_typeof(p_present_store_event_ids) <> 'object'
+  THEN
+    RETURN QUERY SELECT FALSE, 'invalid_snapshot';
+    RETURN;
+  END IF;
+
+  SELECT COALESCE(array_agg(listed.store_name ORDER BY listed.store_name), ARRAY[]::TEXT[])
+  INTO v_canonical_present_stores
+  FROM unnest(p_present_stores) AS listed(store_name);
+
+  IF cardinality(p_present_stores) <> (
+       SELECT count(DISTINCT listed.store_name)::INTEGER
+       FROM unnest(p_present_stores) AS listed(store_name)
+     )
+     OR EXISTS (
+       SELECT 1
+       FROM unnest(p_present_stores) AS listed(store_name)
+       WHERE listed.store_name NOT IN ('app_store', 'play_store')
+          OR jsonb_typeof(p_present_store_event_ids -> listed.store_name) <> 'string'
+          OR NULLIF(trim(p_present_store_event_ids ->> listed.store_name), '') IS NULL
+     )
+     OR EXISTS (
+       SELECT 1
+       FROM jsonb_object_keys(p_present_store_event_ids) AS supplied(store_name)
+       WHERE NOT (supplied.store_name = ANY(p_present_stores))
+     )
+  THEN
+    RETURN QUERY SELECT FALSE, 'invalid_snapshot';
     RETURN;
   END IF;
 
@@ -704,6 +936,84 @@ BEGIN
     RETURN QUERY SELECT FALSE, 'missing_user';
     RETURN;
   END IF;
+
+  SELECT * INTO v_manifest
+  FROM public.subscription_store_state_snapshot_manifests
+  WHERE user_id = p_user_id AND snapshot_id = trim(p_snapshot_id)
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT FALSE, 'snapshot_manifest_missing';
+    RETURN;
+  END IF;
+  IF v_manifest.observed_at IS DISTINCT FROM p_observed_at
+     OR v_manifest.present_stores IS DISTINCT FROM v_canonical_present_stores
+     OR v_manifest.present_store_event_ids IS DISTINCT FROM p_present_store_event_ids
+  THEN
+    RETURN QUERY SELECT FALSE, 'snapshot_manifest_mismatch';
+    RETURN;
+  END IF;
+
+  -- Verify both stores against the same immutable manifest. Both-present,
+  -- one-present/one-absent, and both-absent snapshots all take this path.
+  FOR v_store IN
+    SELECT unnest(ARRAY['app_store', 'play_store']::TEXT[])
+  LOOP
+    IF v_store IN ('app_store', 'play_store')
+       AND v_store = ANY(v_manifest.present_stores)
+    THEN
+      v_present_event_id := v_manifest.present_store_event_ids ->> v_store;
+      SELECT * INTO v_proof_state
+      FROM public.subscription_store_states AS state
+      WHERE state.user_id = p_user_id
+        AND state.store = v_store
+        AND state.event_id = v_present_event_id
+        AND state.verification_status = 'verified'
+        AND state.revenuecat_environment IS NOT DISTINCT FROM v_manifest.revenuecat_environment
+        AND state.event_at <= v_manifest.observed_at
+      FOR UPDATE;
+      IF NOT FOUND THEN
+        RETURN QUERY SELECT FALSE, 'missing_present_event';
+        RETURN;
+      END IF;
+    ELSE
+      v_expected_absence_event_id := 'snapshot_absence:' || md5(
+        p_user_id::TEXT || '|' || v_store || '|' || trim(p_snapshot_id) || '|' ||
+        extract(epoch FROM v_manifest.observed_at)::TEXT || '|' ||
+        COALESCE(array_to_string(v_manifest.present_stores, ','), '') || '|' ||
+        v_manifest.present_store_event_ids::TEXT
+      );
+      IF NOT EXISTS (
+        SELECT 1
+        FROM public.subscription_store_state_snapshot_absences AS absence
+        WHERE absence.user_id = p_user_id
+          AND absence.store = v_store
+          AND absence.snapshot_id = trim(p_snapshot_id)
+          AND absence.observed_at = v_manifest.observed_at
+          AND absence.present_stores = v_manifest.present_stores
+          AND absence.present_store_event_ids = v_manifest.present_store_event_ids
+          AND absence.absence_event_id = v_expected_absence_event_id
+          AND absence.revenuecat_environment IS NOT DISTINCT FROM v_manifest.revenuecat_environment
+      ) THEN
+        RETURN QUERY SELECT FALSE, 'missing_snapshot_absence';
+        RETURN;
+      END IF;
+      SELECT * INTO v_proof_state
+      FROM public.subscription_store_states AS state
+      WHERE state.user_id = p_user_id
+        AND state.store = v_store
+        AND state.event_id = v_expected_absence_event_id
+        AND state.tier = 'free'
+        AND state.status = 'expired'
+        AND state.verification_status = 'verified'
+        AND state.revenuecat_environment IS NOT DISTINCT FROM v_manifest.revenuecat_environment
+        AND state.event_at = v_manifest.observed_at
+      FOR UPDATE;
+      IF NOT FOUND THEN
+        RETURN QUERY SELECT FALSE, 'missing_snapshot_absence';
+        RETURN;
+      END IF;
+    END IF;
+  END LOOP;
 
   SELECT * INTO v_legacy
   FROM public.subscriptions
@@ -849,6 +1159,10 @@ BEGIN
       END,
       expires_at = CASE WHEN v_state.user_id IS NULL THEN NULL ELSE v_state.expires_at END,
       active_product_id = CASE WHEN v_state.user_id IS NULL THEN NULL ELSE v_state.product_id END,
+      billing_period = CASE
+        WHEN v_state.user_id IS NULL THEN NULL
+        ELSE public.infer_subscription_billing_period(v_state.product_id)
+      END,
       store = CASE WHEN v_state.user_id IS NULL THEN NULL ELSE v_state.store END,
       revenuecat_environment = CASE WHEN v_state.user_id IS NULL THEN NULL ELSE v_state.revenuecat_environment END
   WHERE user_id = p_user_id;
@@ -857,9 +1171,13 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.finalize_subscription_store_state_reconciliation(UUID, TEXT, TEXT)
+REVOKE ALL ON FUNCTION public.finalize_subscription_store_state_reconciliation(
+  UUID, TEXT, TIMESTAMPTZ, TEXT[], JSONB, TEXT
+)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.finalize_subscription_store_state_reconciliation(UUID, TEXT, TEXT)
+GRANT EXECUTE ON FUNCTION public.finalize_subscription_store_state_reconciliation(
+  UUID, TEXT, TIMESTAMPTZ, TEXT[], JSONB, TEXT
+)
   TO service_role;
 
 CREATE OR REPLACE FUNCTION public.rollback_subscription_store_state_reconciliation(

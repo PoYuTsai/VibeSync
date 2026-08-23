@@ -14,6 +14,13 @@ const backfillMigrationSource = await Deno.readTextFile(
   ),
 );
 
+const productDetailsMigrationSource = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260526005000_subscription_product_details.sql",
+    import.meta.url,
+  ),
+);
+
 function requiredSql(snippet: string): void {
   assert(
     migrationSource.includes(snippet),
@@ -25,6 +32,13 @@ function requiredBackfillSql(snippet: string): void {
   assert(
     backfillMigrationSource.includes(snippet),
     `subscription store state backfill migration must contain: ${snippet}`,
+  );
+}
+
+function requiredProductDetailsSql(snippet: string): void {
+  assert(
+    productDetailsMigrationSource.includes(snippet),
+    `subscription product details migration must contain: ${snippet}`,
   );
 }
 
@@ -89,10 +103,6 @@ Deno.test("legacy cutover has an explicit per-user service-role state", () => {
   requiredSql("NULLIF(trim(covered.product_id), '') IS NOT NULL");
   requiredSql("v_state.tier IN ('starter', 'essential')");
   requiredSql("ambiguous_verified_product");
-  requiredSql("p_coverage TEXT DEFAULT 'unknown'");
-  requiredSql("complete_revenuecat_snapshot");
-  requiredSql("p_coverage IS DISTINCT FROM 'complete_revenuecat_snapshot'");
-  requiredSql("A single non-empty subscription entry is");
   requiredSql("covered.store = v_legacy.store");
   requiredSql("missing_cutover_baseline");
   requiredSql("baseline_active_product_id = NULL");
@@ -100,6 +110,91 @@ Deno.test("legacy cutover has an explicit per-user service-role state", () => {
   requiredSql(
     "GRANT EXECUTE ON FUNCTION public.finalize_subscription_store_state_reconciliation(",
   );
+});
+
+Deno.test("finalizer requires one immutable complete snapshot manifest", () => {
+  requiredSql(
+    "CREATE TABLE public.subscription_store_state_snapshot_manifests (",
+  );
+  requiredSql("snapshot_id TEXT NOT NULL");
+  requiredSql("observed_at TIMESTAMPTZ NOT NULL");
+  requiredSql("present_stores TEXT[] NOT NULL");
+  requiredSql("present_store_event_ids JSONB NOT NULL");
+  requiredSql("UNIQUE (user_id, snapshot_id)");
+  requiredSql(
+    "CREATE OR REPLACE FUNCTION public.record_revenuecat_snapshot_manifest(",
+  );
+  requiredSql("v_manifest.observed_at IS DISTINCT FROM p_observed_at");
+  requiredSql(
+    "v_manifest.present_store_event_ids IS DISTINCT FROM p_present_store_event_ids",
+  );
+
+  requiredSql("p_snapshot_id TEXT");
+  requiredSql("p_observed_at TIMESTAMPTZ");
+  requiredSql("p_present_stores TEXT[]");
+  requiredSql("p_present_store_event_ids JSONB");
+  requiredSql("v_manifest");
+  requiredSql("v_store IN ('app_store', 'play_store')");
+  requiredSql("v_store = ANY(v_manifest.present_stores)");
+  requiredSql("v_manifest.present_store_event_ids ->> v_store");
+  requiredSql(
+    "state.revenuecat_environment IS NOT DISTINCT FROM v_manifest.revenuecat_environment",
+  );
+  requiredSql(
+    "absence.revenuecat_environment IS NOT DISTINCT FROM v_manifest.revenuecat_environment",
+  );
+  requiredSql("missing_present_event");
+  requiredSql("missing_snapshot_absence");
+  requiredSql("v_expected_absence_event_id");
+  requiredSql("snapshot_manifest_mismatch");
+  requiredSql("p_observed_at > NOW()");
+  requiredSql("p_present_store_event_ids IS NULL");
+  requiredSql("ARRAY['app_store', 'play_store']::TEXT[]");
+  requiredSql(
+    "ALTER TABLE public.subscription_store_state_snapshot_manifests ENABLE ROW LEVEL SECURITY;",
+  );
+  requiredSql(
+    'CREATE POLICY "Service role can view subscription snapshot manifests"',
+  );
+  requiredSql(
+    "REVOKE ALL ON TABLE public.subscription_store_state_snapshot_manifests",
+  );
+  requiredSql(
+    "GRANT SELECT ON TABLE public.subscription_store_state_snapshot_manifests",
+  );
+  requiredSql(
+    "REVOKE ALL ON FUNCTION public.record_revenuecat_snapshot_manifest(\n  UUID, TEXT, TIMESTAMPTZ, TEXT[], JSONB, TEXT",
+  );
+  requiredSql(
+    "GRANT EXECUTE ON FUNCTION public.record_revenuecat_snapshot_manifest(\n  UUID, TEXT, TIMESTAMPTZ, TEXT[], JSONB, TEXT",
+  );
+  requiredSql(
+    "REVOKE ALL ON FUNCTION public.finalize_subscription_store_state_reconciliation(\n  UUID, TEXT, TIMESTAMPTZ, TEXT[], JSONB, TEXT",
+  );
+  requiredSql(
+    "GRANT EXECUTE ON FUNCTION public.finalize_subscription_store_state_reconciliation(\n  UUID, TEXT, TIMESTAMPTZ, TEXT[], JSONB, TEXT",
+  );
+
+  const finalizerStart = migrationSource.indexOf(
+    "CREATE OR REPLACE FUNCTION public.finalize_subscription_store_state_reconciliation(",
+  );
+  const finalizer = migrationSource.slice(finalizerStart);
+  const userLock = finalizer.indexOf(
+    "PERFORM 1 FROM public.users WHERE id = p_user_id FOR UPDATE;",
+  );
+  const manifestLock = finalizer.indexOf(
+    "FROM public.subscription_store_state_snapshot_manifests",
+  );
+  const proofLock = finalizer.indexOf(
+    "FROM public.subscription_store_states AS state",
+  );
+  const legacyLock = finalizer.indexOf(
+    "FROM public.subscriptions\n  WHERE user_id = p_user_id\n  FOR UPDATE;",
+  );
+  assert(userLock >= 0, "finalizer must lock parent user first");
+  assert(manifestLock > userLock, "manifest lock must follow parent user lock");
+  assert(proofLock > manifestLock, "proof rows must follow manifest lock");
+  assert(legacyLock > proofLock, "legacy row must follow proof locks");
 });
 
 Deno.test("subscription_store_states schema has fail-closed access and lookup contracts", () => {
@@ -153,6 +248,61 @@ Deno.test("store state writer serializes missing-row races and preserves usage",
   requiredSql("v_new_status := CASE");
   requiredSql("WHEN v_winner.status = 'billing_issue' THEN 'active'");
   requiredSql("v_should_reset := p_reset_usage");
+});
+
+Deno.test("billing period inference is one canonical SQL helper", () => {
+  requiredProductDetailsSql(
+    "CREATE OR REPLACE FUNCTION public.infer_subscription_billing_period(",
+  );
+  requiredProductDetailsSql("RETURNS TEXT AS $$");
+  requiredProductDetailsSql(
+    "IF product_id IS NULL OR length(trim(product_id)) = 0",
+  );
+  requiredProductDetailsSql(
+    "IF lower(product_id) LIKE '%quarter%' OR lower(product_id) LIKE '%p3m%'",
+  );
+  requiredProductDetailsSql(
+    "IF lower(product_id) LIKE '%monthly%' OR lower(product_id) LIKE '%p1m%'",
+  );
+  requiredProductDetailsSql("RETURN 'unknown';");
+  requiredProductDetailsSql("$$ LANGUAGE plpgsql IMMUTABLE;");
+  requiredSql("public.infer_subscription_billing_period(v_winner.product_id)");
+  requiredSql("public.infer_subscription_billing_period(v_state.product_id)");
+
+  const helperStart = productDetailsMigrationSource.indexOf(
+    "CREATE OR REPLACE FUNCTION public.infer_subscription_billing_period(",
+  );
+  const helperEnd = productDetailsMigrationSource.indexOf(
+    "WITH latest_product AS (",
+    helperStart,
+  );
+  const helper = productDetailsMigrationSource.slice(helperStart, helperEnd);
+  const fixtures = [
+    {
+      productId: "pro-quarterly",
+      expected: "quarterly",
+      marker: "RETURN 'quarterly';",
+    },
+    {
+      productId: "pro-monthly",
+      expected: "monthly",
+      marker: "RETURN 'monthly';",
+    },
+    {
+      productId: "pro-lifetime",
+      expected: "unknown",
+      marker: "RETURN 'unknown';",
+    },
+    { productId: null, expected: null, marker: "RETURN NULL;" },
+  ];
+  for (const fixture of fixtures) {
+    assert(
+      helper.includes(fixture.marker),
+      `${fixture.productId ?? "null"} fixture must map to ${
+        fixture.expected ?? "null"
+      }`,
+    );
+  }
 });
 
 Deno.test("legacy aggregate winner uses the same no-expiry effective predicate", () => {
@@ -286,6 +436,9 @@ Deno.test("verified RevenueCat absence is an audited service-role tombstone work
     "state.event_id = p_present_store_event_ids ->> listed.store_name",
   );
   requiredSql("state.verification_status = 'verified'");
+  requiredSql(
+    "state.revenuecat_environment IS NOT DISTINCT FROM p_revenuecat_environment",
+  );
   requiredSql("state.event_at <= p_observed_at");
   requiredSql("upsert_subscription_store_state");
   requiredSql("verification_status => 'verified'");
@@ -301,6 +454,12 @@ Deno.test("verified RevenueCat absence is an audited service-role tombstone work
   );
   requiredSql(
     "REVOKE ALL ON FUNCTION public.record_revenuecat_snapshot_absence(",
+  );
+  requiredSql(
+    "REVOKE ALL ON FUNCTION public.record_revenuecat_snapshot_absence(\n  UUID, TEXT, TEXT, TIMESTAMPTZ, TEXT[], JSONB, TEXT",
+  );
+  requiredSql(
+    "GRANT EXECUTE ON FUNCTION public.record_revenuecat_snapshot_absence(\n  UUID, TEXT, TEXT, TIMESTAMPTZ, TEXT[], JSONB, TEXT",
   );
   requiredSql("PERFORM 1 FROM public.users WHERE id = p_user_id FOR UPDATE;");
 
@@ -319,10 +478,17 @@ Deno.test("verified RevenueCat absence is an audited service-role tombstone work
   const writerCall = absence.indexOf(
     "FROM public.upsert_subscription_store_state(",
   );
+  const manifestInsert = absence.indexOf(
+    "INSERT INTO public.subscription_store_state_snapshot_manifests (",
+  );
   assert(eventLock >= 0, "absence workflow must take its event lock");
   assert(userLock > eventLock, "absence workflow must lock event before user");
   assert(
     writerCall > userLock,
     "absence workflow must validate before writing",
+  );
+  assert(
+    manifestInsert > writerCall,
+    "absence manifest must be anchored after the tombstone writer",
   );
 });

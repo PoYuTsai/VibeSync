@@ -70,6 +70,21 @@
 
    完全空的完整 snapshot 必須以同一個 snapshot id / observed time 分別呼叫
    `app_store` 與 `play_store`，兩次都傳 `ARRAY[]::TEXT[]` 與 `'{}'::JSONB`。
+   若兩個 store 都 present（沒有 absence call），則在 present event 已寫入後
+   額外呼叫一次 manifest writer，讓兩種情況都留下 immutable manifest：
+
+   ```sql
+   -- both-present snapshot：兩個 event 都必須先由 atomic writer 接受。
+   SELECT *
+   FROM public.record_revenuecat_snapshot_manifest(
+     '<USER_UUID>',
+     '<REVENUECAT_SNAPSHOT_ID>',
+     '<SNAPSHOT_OBSERVED_AT>',
+     ARRAY['app_store', 'play_store']::TEXT[],
+     '{"app_store":"<APP_EVENT_ID>","play_store":"<PLAY_EVENT_ID>"}'::JSONB,
+     'production'
+   );
+   ```
    tombstone 是 verified `free/expired` store event：比現有事件舊時會回 `stale`
    且不覆寫；較新的購買事件仍可正常取代它。每次證據另存 audit row，重送相同
    snapshot 是 idempotent，內容不同卻重用 snapshot id 則回 `snapshot_conflict`。
@@ -81,16 +96,22 @@
    SELECT *
    FROM public.finalize_subscription_store_state_reconciliation(
      '<USER_UUID>',
-     'migration-reviewer',
-     'complete_revenuecat_snapshot'
+     '<REVENUECAT_SNAPSHOT_ID>',
+     '<SNAPSHOT_OBSERVED_AT>',
+     ARRAY['app_store']::TEXT[],
+     '{"app_store":"<APP_STORE_EVENT_ID>"}'::JSONB,
+     'migration-reviewer'
    );
    ```
 
-   沒有完整 coverage 時，`coverage_not_authoritative` 或 backfill 的
-   `ambiguous_legacy_store` 都代表維持 `pending`、保留較安全的 legacy paid
-   aggregate，不可把單一 snapshot 猜成 `complete`。
+   finalize 不接受只填 coverage 字串；snapshot id、observed time、present
+   stores、event map 必須逐字匹配 immutable manifest，且兩個 store 各自都要
+   是同 snapshot 的 verified event 或同 snapshot 的 audited absence/tombstone。
+   錯 snapshot/time/event、漏 store、混 snapshot、future time、額外 store 都
+   fail closed；驗證失敗維持 `pending`，保留較安全的 legacy paid aggregate。
    finalize 會在 user lock 下依所有 verified store rows 的 read-time winner 重算
-   legacy entitlement，但不會清除月/日 quota counters。
+   legacy entitlement，並以 canonical helper 同步寫入 billing_period，不會清除
+   月/日 quota counters。
 
 7. 若抽樣 diff 或後續事件證明 coverage 不完整，service-role 才可 rollback marker：
 
