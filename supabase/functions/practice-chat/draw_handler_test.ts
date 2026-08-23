@@ -38,6 +38,9 @@ function sub(
 interface MockOpts {
   sub: Record<string, unknown> | null;
   preparedSub?: Record<string, unknown> | null;
+  storeStates?: ReadonlyArray<Record<string, unknown>>;
+  reconciliationStatus?: "pending" | "auto" | "complete";
+  storeStatesError?: string;
   subError?: string;
   drawn?: string[];
   /** 完整 draw events 列（含 reset_window_start_at）；優先於 drawn。 */
@@ -81,7 +84,19 @@ function mockClient(
             },
             // deno-lint-ignore no-explicit-any
             then(onF: any, onR: any) {
-              const res = opts.drawnError
+              const res = table === "subscription_store_states"
+                ? opts.storeStatesError
+                  ? { data: null, error: { message: opts.storeStatesError } }
+                  : { data: opts.storeStates ?? [], error: null }
+                : table === "subscription_store_state_reconciliations"
+                ? {
+                  data: opts.reconciliationStatus &&
+                      opts.reconciliationStatus !== "pending"
+                    ? [{ status: opts.reconciliationStatus }]
+                    : [],
+                  error: null,
+                }
+                : opts.drawnError
                 ? { data: null, error: { message: opts.drawnError } }
                 : {
                   data: opts.drawnRows ??
@@ -168,6 +183,24 @@ function receipt(over: Record<string, unknown> = {}) {
   };
 }
 
+function verifiedStoreState(overrides: Record<string, unknown> = {}) {
+  return {
+    user_id: "u-1",
+    store: "play_store",
+    product_id: "starter:monthly",
+    base_plan_id: "monthly",
+    tier: "starter",
+    status: "active",
+    expires_at: "2026-07-26T06:00:00.000Z",
+    event_at: "2026-06-26T05:00:00.000Z",
+    event_id: "play-event-1",
+    verification_source: "revenuecat_api",
+    verification_status: "verified",
+    revenuecat_environment: "production",
+    ...overrides,
+  };
+}
+
 async function run(
   opts: MockOpts,
   request = req(),
@@ -223,6 +256,52 @@ Deno.test("draw prepares subscription resets through the DB row lock", async () 
   assertEquals(result.status, 200);
   assertEquals(prepareCalls, [{ p_user_id: "u-1" }]);
   assertEquals(subscriptionUpdates, []);
+});
+
+Deno.test(
+  "draw uses free limits when complete/auto verified source state is expired",
+  async () => {
+    for (const reconciliationStatus of ["auto", "complete"] as const) {
+      const { rpcCalls, result } = await run({
+        sub: sub("essential"),
+        preparedSub: sub("essential"),
+        reconciliationStatus,
+        storeStates: [verifiedStoreState({
+          tier: "essential",
+          product_id: "essential:monthly",
+          base_plan_id: "monthly",
+          status: "expired",
+          expires_at: "2026-06-25T06:00:00.000Z",
+          event_id: `expired-${reconciliationStatus}`,
+        })],
+        drawn: [],
+        rpc: [{ data: receipt() }],
+      });
+
+      assertEquals(result.status, 200);
+      assertEquals(rpcCalls[0].p_free_allowance, 0);
+      assertEquals(rpcCalls[0].p_allow_paid_extra, false);
+      assertEquals(rpcCalls[0].p_daily_limit, 15);
+      assertEquals(rpcCalls[0].p_monthly_limit, 30);
+    }
+  },
+);
+
+Deno.test("draw lets an active verified store source win across stores", async () => {
+  const { rpcCalls, result } = await run({
+    sub: sub("essential"),
+    preparedSub: sub("essential"),
+    reconciliationStatus: "complete",
+    storeStates: [verifiedStoreState()],
+    drawn: [],
+    rpc: [{ data: receipt() }],
+  });
+
+  assertEquals(result.status, 200);
+  assertEquals(rpcCalls[0].p_free_allowance, 3);
+  assertEquals(rpcCalls[0].p_allow_paid_extra, true);
+  assertEquals(rpcCalls[0].p_daily_limit, 50);
+  assertEquals(rpcCalls[0].p_monthly_limit, 300);
 });
 
 // ── Free（贈抽制：判定/消耗全在 RPC 交易內，Edge 只傳純 tier 額度）──────────
@@ -608,7 +687,6 @@ Deno.test("duplicate telemetry：idempotent replay 與池滿退避的歷史重�
     false,
   );
 });
-
 
 // ── SR 限定翻牌券（srTicket: true）────────────────────────────────────────
 

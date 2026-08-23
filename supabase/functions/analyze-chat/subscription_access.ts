@@ -5,10 +5,16 @@
 // 會抹掉並發請求剛扣的額度。呼叫端拿到的 sub 是 reset 後的本地視圖。
 
 import { sameUtcDay, sameUtcMonth } from "../_shared/quota.ts";
+import { resolveSourceAwareSubscriptionRow } from "../_shared/subscription_store_state.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 
 export interface SubscriptionRow {
   tier: string;
+  status?: string | null;
+  expires_at?: string | null;
+  active_product_id?: string | null;
+  store?: string | null;
+  revenuecat_environment?: string | null;
   monthly_messages_used: number;
   daily_messages_used: number;
   daily_reset_at: string | null;
@@ -20,7 +26,8 @@ export type SubscriptionAccessResult =
   | { ok: false; reason: "self_heal_failed" };
 
 const SUBSCRIPTION_COLUMNS =
-  "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
+  "tier, status, expires_at, active_product_id, store, revenuecat_environment, " +
+  "monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
 
 export async function loadSubscriptionAccess({
   supabase,
@@ -74,6 +81,17 @@ export async function loadSubscriptionAccess({
 
     sub = insertedSub;
   }
+
+  // Read store rows again at this request's clock. An event may have expired
+  // since the last write, and an empty/error source read must conservatively
+  // retain the legacy row rather than inventing a downgrade.
+  const sourceAware = await resolveSourceAwareSubscriptionRow(
+    supabase,
+    userId,
+    sub as Record<string, unknown>,
+    new Date(),
+  );
+  sub = sourceAware.row as unknown as SubscriptionRow;
 
   const now = new Date();
   // 安全處理 null 值

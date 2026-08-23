@@ -9,6 +9,7 @@ import {
   TEST_EMAILS,
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
+import { resolveSourceAwareSubscriptionRow } from "../_shared/subscription_store_state.ts";
 import {
   type AppliedHintDecision,
   type AppliedHintTurn,
@@ -1785,8 +1786,14 @@ export function createPracticeChatHandler(
         });
         return jsonResponse({ error: "sr_ticket_ensure_failed" }, 500);
       }
+      const sourceAware = await resolveSourceAwareSubscriptionRow(
+        supabase,
+        user.id,
+        (subRow ?? { tier: "free" }) as Record<string, unknown>,
+        new Date(),
+      );
       const tier = normalizeTier(
-        typeof subRow?.tier === "string" ? subRow.tier : null,
+        typeof sourceAware.row.tier === "string" ? sourceAware.row.tier : null,
       );
       if (tier === "free") {
         return jsonResponse({
@@ -1972,11 +1979,32 @@ export function createPracticeChatHandler(
       }
       return jsonResponse({ error: "subscription_fetch_failed" }, 500);
     }
-    const sub = preparedSubscriptionFromRpc(preparedSubData);
-    if (!sub) {
+    const preparedSub = preparedSubscriptionFromRpc(preparedSubData);
+    if (!preparedSub) {
       logWarn("practice_chat_sub_fetch_error", {
         user: summarizeUser(user.id),
         error: "invalid prepare_practice_subscription_usage response",
+      });
+      return jsonResponse({ error: "subscription_fetch_failed" }, 500);
+    }
+
+    // The prepare RPC locks and returns legacy counters, but entitlement tier
+    // must be projected from verified store rows at this request clock before
+    // any continuation/quota gate. This keeps expired complete/auto sources
+    // free while allowing an active verified store on another platform to win.
+    const sourceAware = await resolveSourceAwareSubscriptionRow(
+      supabase as unknown as Parameters<
+        typeof resolveSourceAwareSubscriptionRow
+      >[0],
+      user.id,
+      preparedSub as unknown as Record<string, unknown>,
+      requestNow,
+    );
+    const sub = preparedSubscriptionFromRpc(sourceAware.row);
+    if (!sub) {
+      logWarn("practice_chat_sub_fetch_error", {
+        user: summarizeUser(user.id),
+        error: "invalid source-aware subscription response",
       });
       return jsonResponse({ error: "subscription_fetch_failed" }, 500);
     }

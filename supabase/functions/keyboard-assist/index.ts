@@ -19,6 +19,11 @@ import {
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
+  buildRevenueCatStoreEvents,
+  persistSubscriptionStoreState,
+  resolveSourceAwareSubscriptionRow,
+} from "../_shared/subscription_store_state.ts";
+import {
   claimKeyboardAssistRequest,
   expireKeyboardAssistRequest,
   hasAllKeyboardAssistHmacVersions,
@@ -60,7 +65,8 @@ const KEYBOARD_SCREENSHOT_V1_ALLOWLIST = new Set(
 );
 const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY") ?? "";
 const SUBSCRIPTION_COLUMNS =
-  "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
+  "tier, status, expires_at, active_product_id, store, revenuecat_environment, " +
+  "monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
 
 const parsedKeyring = parseKeyboardAssistHmacKeyring({
   currentVersion: Deno.env.get("KEYBOARD_ASSIST_HMAC_CURRENT_VERSION"),
@@ -95,7 +101,15 @@ async function fetchSubscription(
     .select(SUBSCRIPTION_COLUMNS)
     .eq("user_id", userId)
     .maybeSingle();
-  if (!error && data) return data as SubscriptionRow;
+  if (!error && data) {
+    const sourceAware = await resolveSourceAwareSubscriptionRow(
+      client,
+      userId,
+      data as unknown as Record<string, unknown>,
+      new Date(),
+    );
+    return sourceAware.row as unknown as SubscriptionRow;
+  }
   if (error) console.warn("keyboard_assist_subscription_lookup_failed");
 
   const now = new Date().toISOString();
@@ -109,14 +123,27 @@ async function fetchSubscription(
     started_at: now,
   }).select(SUBSCRIPTION_COLUMNS).single();
   if (!inserted.error && inserted.data) {
-    return inserted.data as SubscriptionRow;
+    const sourceAware = await resolveSourceAwareSubscriptionRow(
+      client,
+      userId,
+      inserted.data as unknown as Record<string, unknown>,
+      new Date(),
+    );
+    return sourceAware.row as unknown as SubscriptionRow;
   }
   if (inserted.error?.code === "23505") {
     const retry = await client.from("subscriptions")
       .select(SUBSCRIPTION_COLUMNS)
       .eq("user_id", userId)
       .maybeSingle();
-    return retry.data as SubscriptionRow | null;
+    if (!retry.data) return null;
+    const sourceAware = await resolveSourceAwareSubscriptionRow(
+      client,
+      userId,
+      retry.data as unknown as Record<string, unknown>,
+      new Date(),
+    );
+    return sourceAware.row as unknown as SubscriptionRow;
   }
   console.warn("keyboard_assist_subscription_self_heal_failed");
   return null;
@@ -187,17 +214,35 @@ async function maybeRefreshTier(
     }
     const parsed = parseRevenueCatSubscriber(payload.subscriber);
     if (!parsed || tierRank(parsed.tier) <= tierRank(previousTier)) return null;
-    const update: Record<string, unknown> = {
-      tier: parsed.tier,
-      status: "active",
-    };
-    if (parsed.expiresAt) update.expires_at = parsed.expiresAt;
-    const { data } = await client.from("subscriptions")
-      .update(update)
-      .eq("user_id", userId)
+    const snapshotEvents = buildRevenueCatStoreEvents(payload.subscriber, {});
+    if (snapshotEvents.length === 0) return null;
+    for (const snapshotEvent of snapshotEvents) {
+      const persistResult = await persistSubscriptionStoreState(
+        client,
+        userId,
+        snapshotEvent,
+      );
+      if (
+        !persistResult.accepted && persistResult.reason !== "duplicate" &&
+        persistResult.reason !== "stale"
+      ) {
+        return null;
+      }
+    }
+    const { data, error: refreshedReadError } = await client.from(
+      "subscriptions",
+    )
       .select(SUBSCRIPTION_COLUMNS)
+      .eq("user_id", userId)
       .maybeSingle();
-    return (data ?? { ...sub, tier: parsed.tier }) as SubscriptionRow;
+    if (refreshedReadError || !data) return null;
+    const sourceAware = await resolveSourceAwareSubscriptionRow(
+      client,
+      userId,
+      data as unknown as Record<string, unknown>,
+      new Date(),
+    );
+    return sourceAware.row as unknown as SubscriptionRow;
   } catch {
     console.warn("keyboard_assist_revenuecat_refresh_failed");
     return null;

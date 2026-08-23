@@ -63,6 +63,260 @@ bool _isExpired(DateTime? value, {DateTime? now}) {
   return !value.toUtc().isAfter((now ?? DateTime.now()).toUtc());
 }
 
+@visibleForTesting
+Map<String, dynamic>? resolveEffectiveSubscriptionStoreState(
+  Iterable<Map<String, dynamic>> rows, {
+  String? userId,
+  DateTime? now,
+}) {
+  final at = (now ?? DateTime.now()).toUtc();
+  final candidates = <Map<String, dynamic>>[];
+  for (final row in rows) {
+    if (userId != null && row['user_id'] != userId) continue;
+    if (row['store'] != 'app_store' && row['store'] != 'play_store') {
+      continue;
+    }
+    if (row['verification_status'] != 'verified') continue;
+
+    final rawTier = row['tier'];
+    if (rawTier != SubscriptionTierHelper.free &&
+        rawTier != SubscriptionTierHelper.starter &&
+        rawTier != SubscriptionTierHelper.essential) {
+      continue;
+    }
+    final status = row['status'];
+    if (status != 'active' &&
+        status != 'cancelled' &&
+        status != 'expired' &&
+        status != 'billing_issue') {
+      continue;
+    }
+    final eventAt = _parseSubscriptionStateDate(row['event_at']);
+    if (eventAt == null || eventAt.isAfter(at)) continue;
+    final expiresAt = _parseSubscriptionStateDate(row['expires_at']);
+    if (status == 'expired') continue;
+    if (expiresAt == null) {
+      if (status != 'active') continue;
+    } else if (!expiresAt.isAfter(at)) {
+      continue;
+    }
+    final eventId = row['event_id'];
+    if (eventId is! String || eventId.trim().isEmpty) continue;
+    candidates.add(row);
+  }
+
+  candidates.sort((left, right) {
+    final tierDifference =
+        SubscriptionTierHelper.rankOf(right['tier'] as String?) -
+            SubscriptionTierHelper.rankOf(left['tier'] as String?);
+    if (tierDifference != 0) return tierDifference;
+
+    final rightEvent = _parseSubscriptionStateDate(right['event_at'])!;
+    final leftEvent = _parseSubscriptionStateDate(left['event_at'])!;
+    final eventDifference = rightEvent.compareTo(leftEvent);
+    if (eventDifference != 0) return eventDifference;
+    return (left['store'] as String).compareTo(right['store'] as String);
+  });
+  return candidates.firstOrNull;
+}
+
+DateTime? _parseSubscriptionStateDate(Object? value) {
+  if (value is DateTime) return value.toUtc();
+  if (value is String && value.trim().isNotEmpty) {
+    return DateTime.tryParse(value)?.toUtc();
+  }
+  return null;
+}
+
+bool _isParseableSubscriptionStoreStateRow(
+  Map<String, dynamic> row,
+  String userId,
+) {
+  if (row['user_id'] != userId) return false;
+  if (row['store'] != 'app_store' && row['store'] != 'play_store') {
+    return false;
+  }
+  if (row['tier'] != SubscriptionTierHelper.free &&
+      row['tier'] != SubscriptionTierHelper.starter &&
+      row['tier'] != SubscriptionTierHelper.essential) {
+    return false;
+  }
+  if (row['status'] != 'active' &&
+      row['status'] != 'cancelled' &&
+      row['status'] != 'expired' &&
+      row['status'] != 'billing_issue') {
+    return false;
+  }
+  if (row['verification_status'] != 'verified' &&
+      row['verification_status'] != 'unverified') {
+    return false;
+  }
+  final eventId = row['event_id'];
+  if (eventId is! String || eventId.trim().isEmpty) return false;
+  if (_parseSubscriptionStateDate(row['event_at']) == null) return false;
+  if (row['expires_at'] != null &&
+      _parseSubscriptionStateDate(row['expires_at']) == null) {
+    return false;
+  }
+  for (final key in const ['product_id', 'base_plan_id']) {
+    final value = row[key];
+    if (value != null && value is! String) return false;
+  }
+  final source = row['verification_source'];
+  if (source != 'revenuecat_webhook' &&
+      source != 'revenuecat_api' &&
+      source != 'legacy_backfill') {
+    return false;
+  }
+  // The database contract requires legacy backfill rows to remain unverified.
+  if (source == 'legacy_backfill' && row['verification_status'] == 'verified') {
+    return false;
+  }
+  if (row['tier'] != SubscriptionTierHelper.free &&
+      (row['product_id'] as String?)?.trim().isEmpty != false) {
+    return false;
+  }
+  final environment = row['revenuecat_environment'];
+  if (environment != null &&
+      environment != 'sandbox' &&
+      environment != 'production') {
+    return false;
+  }
+  return true;
+}
+
+@visibleForTesting
+List<Map<String, dynamic>> filterVerifiedSubscriptionStoreStateRows(
+  Iterable<Map<String, dynamic>> rows, {
+  required String userId,
+  DateTime? now,
+}) {
+  final at = (now ?? DateTime.now()).toUtc();
+  return rows
+      .where((row) => _isParseableSubscriptionStoreStateRow(row, userId))
+      .where((row) {
+    final eventAt = _parseSubscriptionStateDate(row['event_at']);
+    return row['verification_status'] == 'verified' &&
+        eventAt != null &&
+        !eventAt.isAfter(at);
+  }).toList(growable: false);
+}
+
+@visibleForTesting
+Map<String, dynamic> mergeSourceAwareSubscriptionState({
+  required Map<String, dynamic> legacy,
+  Map<String, dynamic>? source,
+}) {
+  if (source == null) return legacy;
+  final rawStatus = source['status'];
+  return {
+    ...legacy,
+    'tier': source['tier'],
+    'status': rawStatus == 'billing_issue' ? 'active' : rawStatus,
+    'expires_at': source['expires_at'],
+    'active_product_id': source['product_id'],
+    'store': source['store'],
+    'base_plan_id': source['base_plan_id'],
+    'verification_source': source['verification_source'],
+    'revenuecat_environment': source['revenuecat_environment'],
+  };
+}
+
+class SourceAwareSubscriptionStateRead {
+  final Map<String, dynamic>? effective;
+  final List<Map<String, dynamic>> sources;
+  final bool hasVerifiedSource;
+  final String cutoverStatus;
+  final String? error;
+
+  const SourceAwareSubscriptionStateRead({
+    required this.effective,
+    this.sources = const [],
+    required this.hasVerifiedSource,
+    this.cutoverStatus = 'pending',
+    this.error,
+  });
+
+  bool get canOverrideLegacy =>
+      error == null &&
+      hasVerifiedSource &&
+      (cutoverStatus == 'complete' || cutoverStatus == 'auto');
+
+  bool canSafelyUpgradeLegacy(Map<String, dynamic> legacy) {
+    if (error != null || !hasVerifiedSource || effective == null) return false;
+    return SubscriptionTierHelper.rankOf(effective!['tier'] as String?) >
+        SubscriptionTierHelper.rankOf(legacy['tier'] as String?);
+  }
+}
+
+@visibleForTesting
+bool shouldApplySourceAwareSubscriptionMetadata({
+  required Map<String, dynamic> legacy,
+  required SourceAwareSubscriptionStateRead read,
+}) {
+  return read.error == null &&
+      (read.canOverrideLegacy || read.canSafelyUpgradeLegacy(legacy));
+}
+
+@visibleForTesting
+bool resolveSourceStateAuthorityAfterRead({
+  required bool current,
+  required Map<String, dynamic> legacy,
+  required SourceAwareSubscriptionStateRead read,
+}) {
+  if (read.error != null) return current;
+  return shouldApplySourceAwareSubscriptionMetadata(
+    legacy: legacy,
+    read: read,
+  );
+}
+
+@visibleForTesting
+String resolveSubscriptionTierAfterSourceAwareSync({
+  required String currentTier,
+  required String revenueCatTier,
+  String? syncedTier,
+  required bool sourceAuthoritative,
+}) {
+  if (sourceAuthoritative) {
+    return SubscriptionTierHelper.normalizeTier(currentTier);
+  }
+  return SubscriptionTierHelper.normalizeTier(syncedTier ?? revenueCatTier);
+}
+
+@visibleForTesting
+Map<String, dynamic> applySourceAwareSubscriptionStateRead({
+  required Map<String, dynamic> legacy,
+  required SourceAwareSubscriptionStateRead read,
+}) {
+  if (read.error != null || !read.hasVerifiedSource) return legacy;
+  if (!read.canOverrideLegacy && !read.canSafelyUpgradeLegacy(legacy)) {
+    return legacy;
+  }
+  final source = read.effective;
+  if (source != null) {
+    return mergeSourceAwareSubscriptionState(
+      legacy: legacy,
+      source: source,
+    );
+  }
+
+  // A successful read with a valid verified source but no currently effective
+  // row is an authoritative free/expired result. Do not retain legacy paid
+  // metadata while the source row is expired.
+  return {
+    ...legacy,
+    'tier': SubscriptionTierHelper.free,
+    'status': 'expired',
+    'expires_at': null,
+    'active_product_id': null,
+    'store': null,
+    'base_plan_id': null,
+    'verification_source': null,
+    'revenuecat_environment': null,
+  };
+}
+
 /// 鏡像 server `_shared/quota.ts` 的 UTC 窗判定（稽核 #1，2026-08-07）。
 ///
 /// subscriptions row 的原始計數只在下一次扣費時被 server 歸零；client 直讀
@@ -172,6 +426,12 @@ class SubscriptionState {
   final DateTime? pendingDowngradeEffectiveAt;
   final DateTime? renewsAt;
   final String? activeProductId;
+  final String? activeStore;
+  final String? activeBasePlanId;
+  final String? activeVerificationSource;
+  final String? activeRevenueCatEnvironment;
+  final List<String> sourceStores;
+  final bool sourceStateAuthoritative;
 
   const SubscriptionState({
     this.tier = SubscriptionTierHelper.free,
@@ -188,6 +448,12 @@ class SubscriptionState {
     this.pendingDowngradeEffectiveAt,
     this.renewsAt,
     this.activeProductId,
+    this.activeStore,
+    this.activeBasePlanId,
+    this.activeVerificationSource,
+    this.activeRevenueCatEnvironment,
+    this.sourceStores = const [],
+    this.sourceStateAuthoritative = false,
   });
 
   bool get isFreeUser => tier == SubscriptionTierHelper.free;
@@ -450,6 +716,12 @@ class SubscriptionState {
     Object? pendingDowngradeEffectiveAt = _subscriptionStateUnset,
     Object? renewsAt = _subscriptionStateUnset,
     Object? activeProductId = _subscriptionStateUnset,
+    Object? activeStore = _subscriptionStateUnset,
+    Object? activeBasePlanId = _subscriptionStateUnset,
+    Object? activeVerificationSource = _subscriptionStateUnset,
+    Object? activeRevenueCatEnvironment = _subscriptionStateUnset,
+    Object? sourceStores = _subscriptionStateUnset,
+    bool? sourceStateAuthoritative,
   }) {
     return SubscriptionState(
       tier: tier ?? this.tier,
@@ -478,6 +750,25 @@ class SubscriptionState {
       activeProductId: activeProductId == _subscriptionStateUnset
           ? this.activeProductId
           : activeProductId as String?,
+      activeStore: activeStore == _subscriptionStateUnset
+          ? this.activeStore
+          : activeStore as String?,
+      activeBasePlanId: activeBasePlanId == _subscriptionStateUnset
+          ? this.activeBasePlanId
+          : activeBasePlanId as String?,
+      activeVerificationSource:
+          activeVerificationSource == _subscriptionStateUnset
+              ? this.activeVerificationSource
+              : activeVerificationSource as String?,
+      activeRevenueCatEnvironment:
+          activeRevenueCatEnvironment == _subscriptionStateUnset
+              ? this.activeRevenueCatEnvironment
+              : activeRevenueCatEnvironment as String?,
+      sourceStores: sourceStores == _subscriptionStateUnset
+          ? this.sourceStores
+          : List<String>.from(sourceStores as List),
+      sourceStateAuthoritative:
+          sourceStateAuthoritative ?? this.sourceStateAuthoritative,
     );
   }
 }
@@ -532,6 +823,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   SubscriptionNotifier() : super(_initialStateFromUsageSnapshot()) {
     _initialize();
   }
+
+  // RevenueCat CustomerInfo product/expiry fields have no per-subscription
+  // store provenance. Once a verified source row is applied, keep its
+  // complete metadata tuple intact until the server returns a new winner.
+  bool get _hasAuthoritativeSourceMetadata => state.sourceStateAuthoritative;
 
   static SubscriptionState _initialStateFromUsageSnapshot() {
     try {
@@ -749,15 +1045,66 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         } else {
           final data = response.data;
           if (data is Map) {
-            final tier = SubscriptionTierHelper.normalizeTier(
-              data['tier'] as String?,
+            final returnedRow = <String, dynamic>{
+              ...Map<String, dynamic>.from(data),
+              'status': data['tier'] == SubscriptionTierHelper.free
+                  ? 'expired'
+                  : 'active',
+              'expires_at': data['expiresAt'],
+              'active_product_id': data['activeProductId'],
+              'store': data['store'],
+              'revenuecat_environment': data['revenueCatEnvironment'],
+            };
+            final userId = SupabaseService.currentUser?.id;
+            final sourceRead = userId == null
+                ? const SourceAwareSubscriptionStateRead(
+                    effective: null,
+                    hasVerifiedSource: false,
+                    error: 'not logged in',
+                  )
+                : await _loadEffectiveSubscriptionStoreState(userId);
+            final sourceAuthoritative = resolveSourceStateAuthorityAfterRead(
+              current: state.sourceStateAuthoritative,
+              legacy: returnedRow,
+              read: sourceRead,
             );
+            final sourceReadUnavailableWhileAuthoritative =
+                sourceRead.error != null && state.sourceStateAuthoritative;
+            final mergedRow = sourceReadUnavailableWhileAuthoritative
+                ? {
+                    ...returnedRow,
+                    'tier': state.tier,
+                    'status': state.tier == SubscriptionTierHelper.free
+                        ? 'expired'
+                        : 'active',
+                    'expires_at': state.renewsAt?.toIso8601String(),
+                    'active_product_id': state.activeProductId,
+                    'store': state.activeStore,
+                    'base_plan_id': state.activeBasePlanId,
+                    'verification_source': state.activeVerificationSource,
+                    'revenuecat_environment': state.activeRevenueCatEnvironment,
+                  }
+                : applySourceAwareSubscriptionStateRead(
+                    legacy: returnedRow,
+                    read: sourceRead,
+                  );
+            final sourceMetadataAvailable =
+                sourceRead.error == null && sourceAuthoritative;
+            final sourceRowsAvailable =
+                sourceRead.error == null && sourceRead.hasVerifiedSource;
+            final tier = sourceReadUnavailableWhileAuthoritative
+                ? state.tier
+                : SubscriptionTierHelper.normalizeTier(
+                    mergedRow['tier'] as String?,
+                  );
             final limits = SubscriptionTierHelper.limitsFor(tier);
-            final monthlyUsed = _readInt(data['monthlyMessagesUsed']);
-            final dailyUsed = _readInt(data['dailyMessagesUsed']);
-            final renewsAt = _parseDateTime(data['expiresAt']);
+            final monthlyUsed = _readInt(mergedRow['monthlyMessagesUsed']);
+            final dailyUsed = _readInt(mergedRow['dailyMessagesUsed']);
+            final renewsAt = sourceReadUnavailableWhileAuthoritative
+                ? state.renewsAt
+                : _parseDateTime(mergedRow['expires_at']);
             final activeProductId = _cleanProductId(
-              data['activeProductId'] as String?,
+              mergedRow['active_product_id'] as String?,
             );
 
             state = _applyPendingDowngradeMetadata(state.copyWith(
@@ -766,10 +1113,42 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
               dailyLimit: limits.daily,
               monthlyMessagesUsed: monthlyUsed,
               dailyMessagesUsed: dailyUsed,
-              renewsAt: renewsAt ?? state.renewsAt,
-              activeProductId: tier == SubscriptionTierHelper.free
-                  ? null
-                  : activeProductId ?? state.activeProductId,
+              renewsAt: sourceMetadataAvailable
+                  ? renewsAt
+                  : renewsAt ?? state.renewsAt,
+              activeProductId: sourceMetadataAvailable
+                  ? activeProductId
+                  : tier == SubscriptionTierHelper.free
+                      ? null
+                      : activeProductId ?? state.activeProductId,
+              activeStore: sourceMetadataAvailable
+                  ? mergedRow['store'] as String?
+                  : sourceReadUnavailableWhileAuthoritative
+                      ? state.activeStore
+                      : _subscriptionStateUnset,
+              activeBasePlanId: sourceMetadataAvailable
+                  ? mergedRow['base_plan_id'] as String?
+                  : sourceReadUnavailableWhileAuthoritative
+                      ? state.activeBasePlanId
+                      : _subscriptionStateUnset,
+              activeVerificationSource: sourceMetadataAvailable
+                  ? mergedRow['verification_source'] as String?
+                  : sourceReadUnavailableWhileAuthoritative
+                      ? state.activeVerificationSource
+                      : _subscriptionStateUnset,
+              activeRevenueCatEnvironment: sourceMetadataAvailable
+                  ? mergedRow['revenuecat_environment'] as String?
+                  : sourceReadUnavailableWhileAuthoritative
+                      ? state.activeRevenueCatEnvironment
+                      : _subscriptionStateUnset,
+              sourceStores: sourceRowsAvailable
+                  ? sourceRead.sources
+                      .map((row) => row['store'])
+                      .whereType<String>()
+                      .toSet()
+                      .toList(growable: false)
+                  : _subscriptionStateUnset,
+              sourceStateAuthoritative: sourceAuthoritative,
               error: null,
             ));
             UsageService.syncSubscriptionSnapshot(
@@ -779,8 +1158,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
               monthlyUsed: monthlyUsed,
               dailyUsed: dailyUsed,
               paidExpiresAt: renewsAt,
-              clearPaidSnapshot:
-                  tier == SubscriptionTierHelper.free && _isExpired(renewsAt),
+              clearPaidSnapshot: tier == SubscriptionTierHelper.free &&
+                  (sourceAuthoritative || _isExpired(renewsAt)),
             );
 
             debugPrint(
@@ -915,6 +1294,91 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
   }
 
+  Future<SourceAwareSubscriptionStateRead> _loadEffectiveSubscriptionStoreState(
+    String userId,
+  ) async {
+    try {
+      var cutoverStatus = 'pending';
+      try {
+        final reconciliation = await SupabaseService.client
+            .from('subscription_store_state_reconciliations')
+            .select('status')
+            .eq('user_id', userId)
+            .maybeSingle();
+        final reconciliationStatus = reconciliation?['status'];
+        if (reconciliationStatus == 'complete' ||
+            reconciliationStatus == 'auto') {
+          cutoverStatus = reconciliationStatus as String;
+        }
+      } catch (error) {
+        // Treat an unavailable cutover marker as a read failure, not a normal
+        // pending result. A fresh session still falls back to legacy, while an
+        // already-authoritative state keeps its exact source tuple until the
+        // marker can be read again.
+        debugPrint(
+          '[subscription] reconciliation status unavailable: $error',
+        );
+        return SourceAwareSubscriptionStateRead(
+          effective: null,
+          hasVerifiedSource: false,
+          error: 'reconciliation status unavailable: $error',
+        );
+      }
+
+      final dynamic result = await SupabaseService.client
+          .from('subscription_store_states')
+          .select(
+            'user_id, store, product_id, base_plan_id, tier, status, '
+            'expires_at, event_at, event_id, verification_source, '
+            'verification_status, revenuecat_environment',
+          )
+          .eq('user_id', userId);
+      if (result is! List) {
+        return const SourceAwareSubscriptionStateRead(
+          effective: null,
+          hasVerifiedSource: false,
+          error: 'invalid source-aware state response',
+        );
+      }
+
+      final rows = result
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+      final readAt = DateTime.now().toUtc();
+      final validRows = rows
+          .where((row) => _isParseableSubscriptionStoreStateRow(row, userId))
+          .toList(growable: false);
+      final verifiedRows = filterVerifiedSubscriptionStoreStateRows(
+        validRows,
+        userId: userId,
+        now: readAt,
+      );
+      return SourceAwareSubscriptionStateRead(
+        effective: resolveEffectiveSubscriptionStoreState(
+          validRows,
+          userId: userId,
+          now: readAt,
+        ),
+        // Only verified rows whose authoritative event has happened may be
+        // exposed as source provenance. Future/unverified rows stay internal
+        // until a later reconciliation.
+        sources: verifiedRows,
+        hasVerifiedSource: verifiedRows.isNotEmpty,
+        cutoverStatus: cutoverStatus,
+      );
+    } catch (error) {
+      debugPrint(
+        '[subscription] source-aware state read unavailable; using legacy row: $error',
+      );
+      return SourceAwareSubscriptionStateRead(
+        effective: null,
+        hasVerifiedSource: false,
+        error: error.toString(),
+      );
+    }
+  }
+
   Future<void> _initialize() async {
     await _loadSubscription();
     await _loadOfferings();
@@ -935,10 +1399,26 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         user.id,
       );
 
-      final response = await _loadOrCreateSubscriptionRecord(
+      final legacyResponse = await _loadOrCreateSubscriptionRecord(
         userId: user.id,
         tier: SubscriptionTierHelper.free,
       );
+      final sourceRead = await _loadEffectiveSubscriptionStoreState(user.id);
+      final response = applySourceAwareSubscriptionStateRead(
+        legacy: legacyResponse,
+        read: sourceRead,
+      );
+      final sourceAuthoritative = resolveSourceStateAuthorityAfterRead(
+        current: state.sourceStateAuthoritative,
+        legacy: legacyResponse,
+        read: sourceRead,
+      );
+      final sourceReadUnavailableWhileAuthoritative =
+          sourceRead.error != null && state.sourceStateAuthoritative;
+      final sourceMetadataAvailable =
+          sourceRead.error == null && sourceAuthoritative;
+      final sourceRowsAvailable =
+          sourceRead.error == null && sourceRead.hasVerifiedSource;
 
       final initialTier = SubscriptionTierHelper.normalizeTier(
         response['tier'] as String?,
@@ -963,13 +1443,24 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
       );
       final cachedTier = state.tier;
-      final displayTier = resolveStartupSubscriptionTier(
-        databaseTier: initialTier,
-        revenueCatTier: revenueCatTier,
-        cachedTier: cachedTier,
-        serverExpiresAt: renewsAt,
-      );
+      // A complete cutover or a safe free-baseline upgrade may use the source
+      // row as a trusted projection. RevenueCat's Flutter CustomerInfo does
+      // not expose per-product store provenance, so its product id must not
+      // be mixed into a verified multi-store winner.
+      final displayTier = sourceMetadataAvailable
+          ? initialTier
+          : sourceReadUnavailableWhileAuthoritative
+              ? state.tier
+              : resolveStartupSubscriptionTier(
+                  databaseTier: initialTier,
+                  revenueCatTier: revenueCatTier,
+                  cachedTier: cachedTier,
+                  serverExpiresAt: renewsAt,
+                );
       final displayLimits = SubscriptionTierHelper.limitsFor(displayTier);
+      final sourceProductId = _cleanProductId(
+        response['active_product_id'] as String?,
+      );
 
       state = _applyPendingDowngradeMetadata(state.copyWith(
         tier: displayTier,
@@ -977,10 +1468,43 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         dailyMessagesUsed: rowDailyUsed,
         monthlyLimit: displayLimits.monthly,
         dailyLimit: displayLimits.daily,
-        renewsAt: renewsAt,
-        activeProductId: displayTier == SubscriptionTierHelper.free
-            ? null
-            : revenueCatProductId ?? state.activeProductId,
+        renewsAt:
+            sourceReadUnavailableWhileAuthoritative ? state.renewsAt : renewsAt,
+        activeProductId: sourceMetadataAvailable
+            ? sourceProductId
+            : sourceReadUnavailableWhileAuthoritative
+                ? state.activeProductId
+                : displayTier == SubscriptionTierHelper.free
+                    ? null
+                    : revenueCatProductId ?? state.activeProductId,
+        activeStore: sourceMetadataAvailable
+            ? response['store'] as String?
+            : sourceReadUnavailableWhileAuthoritative
+                ? state.activeStore
+                : _subscriptionStateUnset,
+        activeBasePlanId: sourceMetadataAvailable
+            ? response['base_plan_id'] as String?
+            : sourceReadUnavailableWhileAuthoritative
+                ? state.activeBasePlanId
+                : _subscriptionStateUnset,
+        activeVerificationSource: sourceMetadataAvailable
+            ? response['verification_source'] as String?
+            : sourceReadUnavailableWhileAuthoritative
+                ? state.activeVerificationSource
+                : _subscriptionStateUnset,
+        activeRevenueCatEnvironment: sourceMetadataAvailable
+            ? response['revenuecat_environment'] as String?
+            : sourceReadUnavailableWhileAuthoritative
+                ? state.activeRevenueCatEnvironment
+                : _subscriptionStateUnset,
+        sourceStores: sourceRowsAvailable
+            ? sourceRead.sources
+                .map((row) => row['store'])
+                .whereType<String>()
+                .toSet()
+                .toList(growable: false)
+            : _subscriptionStateUnset,
+        sourceStateAuthoritative: sourceAuthoritative,
         isLoading: false,
         error: null,
       ));
@@ -990,9 +1514,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         dailyLimit: displayLimits.daily,
         monthlyUsed: rowMonthlyUsed,
         dailyUsed: rowDailyUsed,
-        paidExpiresAt: renewsAt,
-        clearPaidSnapshot:
-            displayTier == SubscriptionTierHelper.free && _isExpired(renewsAt),
+        paidExpiresAt: state.renewsAt,
+        clearPaidSnapshot: displayTier == SubscriptionTierHelper.free &&
+            (sourceAuthoritative || _isExpired(state.renewsAt)),
       );
 
       final syncedDisplayTier = await _syncSubscriptionViaEdgeFunction(
@@ -1076,12 +1600,16 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
 
     final limits = SubscriptionTierHelper.limitsFor(tier);
+    final preserveSourceMetadata = _hasAuthoritativeSourceMetadata;
     state = _applyPendingDowngradeMetadata(state.copyWith(
       tier: tier,
       monthlyLimit: limits.monthly,
       dailyLimit: limits.daily,
-      renewsAt: renewsAt ?? state.renewsAt,
-      activeProductId: activeProductId ?? state.activeProductId,
+      renewsAt:
+          preserveSourceMetadata ? state.renewsAt : renewsAt ?? state.renewsAt,
+      activeProductId: preserveSourceMetadata
+          ? state.activeProductId
+          : activeProductId ?? state.activeProductId,
       isLoading: false,
       error: null,
     ));
@@ -1257,16 +1785,27 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             resolvedTier != SubscriptionTierHelper.free,
         revenueCatAppUserId: revenueCatAppUserId,
       );
-      final tier = syncedTier ?? resolvedTier;
+      final preserveSourceMetadata = _hasAuthoritativeSourceMetadata;
+      final tier = resolveSubscriptionTierAfterSourceAwareSync(
+        currentTier: state.tier,
+        revenueCatTier: resolvedTier,
+        syncedTier: syncedTier,
+        sourceAuthoritative: preserveSourceMetadata,
+      );
       final limits = SubscriptionTierHelper.limitsFor(tier);
 
       state = _applyPendingDowngradeMetadata(state.copyWith(
         tier: tier,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
-        renewsAt: purchasedRenewsAt ?? state.renewsAt,
-        activeProductId:
-            tier == SubscriptionTierHelper.free ? null : purchasedProductId,
+        renewsAt: preserveSourceMetadata
+            ? state.renewsAt
+            : purchasedRenewsAt ?? state.renewsAt,
+        activeProductId: tier == SubscriptionTierHelper.free
+            ? null
+            : preserveSourceMetadata
+                ? state.activeProductId
+                : purchasedProductId,
         isLoading: false,
         error: null,
       ));
@@ -1425,20 +1964,30 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         return false;
       }
 
+      final preserveSourceMetadata = _hasAuthoritativeSourceMetadata;
       final tier =
           isScheduledDowngradeSnapshot || shouldPreservePaidFreeSnapshot
               ? previousTier
-              : syncedTier ?? restoredTier;
+              : resolveSubscriptionTierAfterSourceAwareSync(
+                  currentTier: state.tier,
+                  revenueCatTier: restoredTier,
+                  syncedTier: syncedTier,
+                  sourceAuthoritative: preserveSourceMetadata,
+                );
       final limits = SubscriptionTierHelper.limitsFor(tier);
 
       state = _applyPendingDowngradeMetadata(state.copyWith(
         tier: tier,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
-        renewsAt: renewsAt ?? state.renewsAt,
+        renewsAt: preserveSourceMetadata
+            ? state.renewsAt
+            : renewsAt ?? state.renewsAt,
         activeProductId: tier == SubscriptionTierHelper.free
             ? null
-            : isScheduledDowngradeSnapshot || shouldPreservePaidFreeSnapshot
+            : preserveSourceMetadata ||
+                    isScheduledDowngradeSnapshot ||
+                    shouldPreservePaidFreeSnapshot
                 ? state.activeProductId
                 : restoredProductId ?? state.activeProductId,
         isLoading: false,
@@ -1486,7 +2035,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           resetUsage: false,
           revenueCatAppUserId: revenueCatAppUserId,
         );
-        if (renewsAt != null && renewsAt != state.renewsAt) {
+        if (!_hasAuthoritativeSourceMetadata &&
+            renewsAt != null &&
+            renewsAt != state.renewsAt) {
           state = _applyPendingDowngradeMetadata(state.copyWith(
             renewsAt: renewsAt,
           ));
@@ -1514,17 +2065,23 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
               state.tier != rcTier && rcTier != SubscriptionTierHelper.free,
           revenueCatAppUserId: revenueCatAppUserId,
         );
-        final tier = syncedTier ?? rcTier;
+        final preserveSourceMetadata = _hasAuthoritativeSourceMetadata;
+        final tier =
+            syncedTier ?? (preserveSourceMetadata ? state.tier : rcTier);
         final limits = SubscriptionTierHelper.limitsFor(tier);
 
         state = _applyPendingDowngradeMetadata(state.copyWith(
           tier: tier,
           monthlyLimit: limits.monthly,
           dailyLimit: limits.daily,
-          renewsAt: renewsAt ?? state.renewsAt,
+          renewsAt: preserveSourceMetadata
+              ? state.renewsAt
+              : renewsAt ?? state.renewsAt,
           activeProductId: tier == SubscriptionTierHelper.free
               ? null
-              : activeProductId ?? state.activeProductId,
+              : preserveSourceMetadata
+                  ? state.activeProductId
+                  : activeProductId ?? state.activeProductId,
         ));
         _syncUsageCache(tier, limits, paidExpiresAt: state.renewsAt);
       } else {
@@ -1536,9 +2093,10 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           );
         }
 
-        final shouldRefreshMetadata = (activeProductId != null &&
-                activeProductId != state.activeProductId) ||
-            (renewsAt != null && renewsAt != state.renewsAt);
+        final shouldRefreshMetadata = !_hasAuthoritativeSourceMetadata &&
+            ((activeProductId != null &&
+                    activeProductId != state.activeProductId) ||
+                (renewsAt != null && renewsAt != state.renewsAt));
         if (shouldRefreshMetadata) {
           state = _applyPendingDowngradeMetadata(state.copyWith(
             activeProductId: activeProductId ?? state.activeProductId,
@@ -1654,12 +2212,16 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     final renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
 
     _clearPendingDowngrade();
+    final preserveSourceMetadata = _hasAuthoritativeSourceMetadata;
     state = state.copyWith(
       pendingDowngradeToTier: null,
       pendingDowngradeProductId: null,
       pendingDowngradeEffectiveAt: null,
-      activeProductId: activeProductId ?? state.activeProductId,
-      renewsAt: renewsAt ?? state.renewsAt,
+      activeProductId: preserveSourceMetadata
+          ? state.activeProductId
+          : activeProductId ?? state.activeProductId,
+      renewsAt:
+          preserveSourceMetadata ? state.renewsAt : renewsAt ?? state.renewsAt,
     );
     await syncWithRevenueCat();
     return true;

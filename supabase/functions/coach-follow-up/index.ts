@@ -31,13 +31,18 @@ import {
   isPlainObject,
   normalizeTier,
   parseRevenueCatSubscriber,
-  resolveLimits,
   type ResetResult,
+  resolveLimits,
   type SubscriptionRow,
   TEST_EMAILS,
   tierRank,
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
+import {
+  buildRevenueCatStoreEvents,
+  persistSubscriptionStoreState,
+  resolveSourceAwareSubscriptionRow,
+} from "../_shared/subscription_store_state.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -78,7 +83,8 @@ function getErrorMessage(error: unknown): string {
 }
 
 const SUBSCRIPTION_COLUMNS =
-  "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
+  "tier, status, expires_at, active_product_id, store, revenuecat_environment, " +
+  "monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
 
 // ---------------------------------------------------------------------------
 // Supabase wrappers (DB-touching; not unit-tested — verified by T10 curl smoke)
@@ -100,7 +106,14 @@ async function fetchSubscription(
       error: error.message,
     });
   }
-  return data ?? null;
+  if (!data) return null;
+  const sourceAware = await resolveSourceAwareSubscriptionRow(
+    supabase,
+    userId,
+    data as Record<string, unknown>,
+    new Date(),
+  );
+  return sourceAware.row as unknown as SubscriptionRow;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -141,7 +154,13 @@ export async function selfHealSubscription(
     return null;
   }
   logInfo("subscription_self_healed", { user: summarizeUser(userId) });
-  return data;
+  const sourceAware = await resolveSourceAwareSubscriptionRow(
+    supabase,
+    userId,
+    data as Record<string, unknown>,
+    new Date(),
+  );
+  return sourceAware.row as unknown as SubscriptionRow;
 }
 
 async function persistResets(
@@ -249,26 +268,27 @@ async function maybeRefreshTierFromRevenueCat(
       return null;
     }
 
-    const update: Record<string, unknown> = {
-      tier: parsed.tier,
-      status: "active",
-    };
-    if (parsed.expiresAt) update.expires_at = parsed.expiresAt;
-
-    const { data: refreshed, error } = await supabase
-      .from("subscriptions")
-      .update(update)
-      .eq("user_id", userId)
-      .select(SUBSCRIPTION_COLUMNS)
-      .maybeSingle();
-    if (error) {
-      logError("subscription_revenuecat_refresh_persist_failed", {
-        user: summarizeUser(userId),
-        reason,
-        previousTier,
-        refreshedTier: parsed.tier,
-        error: error.message,
-      });
+    const snapshotEvents = buildRevenueCatStoreEvents(payload.subscriber, {});
+    if (snapshotEvents.length === 0) return null;
+    for (const snapshotEvent of snapshotEvents) {
+      const persistResult = await persistSubscriptionStoreState(
+        supabase,
+        userId,
+        snapshotEvent,
+      );
+      if (
+        !persistResult.accepted && persistResult.reason !== "duplicate" &&
+        persistResult.reason !== "stale"
+      ) {
+        logError("subscription_revenuecat_refresh_persist_failed", {
+          user: summarizeUser(userId),
+          reason,
+          previousTier,
+          refreshedTier: parsed.tier,
+          error: persistResult.reason,
+        });
+        return null;
+      }
     }
 
     logInfo("subscription_revenuecat_refresh_applied", {
@@ -276,9 +296,28 @@ async function maybeRefreshTierFromRevenueCat(
       reason,
       previousTier,
       refreshedTier: parsed.tier,
-      persisted: !error,
+      persisted: true,
     });
-    return refreshed ?? { ...sub, tier: parsed.tier };
+    const { data: refreshed, error: refreshedReadError } = await supabase
+      .from("subscriptions")
+      .select(SUBSCRIPTION_COLUMNS)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (refreshedReadError || !refreshed) {
+      logError("subscription_revenuecat_refresh_legacy_read_failed", {
+        user: summarizeUser(userId),
+        reason,
+        error: refreshedReadError?.message ?? "legacy row missing",
+      });
+      return null;
+    }
+    const sourceAware = await resolveSourceAwareSubscriptionRow(
+      supabase,
+      userId,
+      refreshed as Record<string, unknown>,
+      new Date(),
+    );
+    return sourceAware.row as unknown as SubscriptionRow;
   } catch (e) {
     logWarn("subscription_revenuecat_refresh_exception", {
       user: summarizeUser(userId),

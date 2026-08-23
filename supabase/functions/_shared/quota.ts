@@ -73,6 +73,11 @@ export function resolveLimits(
 
 export interface SubscriptionRow {
   tier: string | null;
+  status?: string | null;
+  expires_at?: string | null;
+  active_product_id?: string | null;
+  store?: string | null;
+  revenuecat_environment?: string | null;
   monthly_messages_used: number;
   daily_messages_used: number;
   daily_reset_at: string | null;

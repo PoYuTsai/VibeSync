@@ -21,6 +21,11 @@ import {
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
+  buildRevenueCatStoreEvents,
+  persistSubscriptionStoreState,
+  resolveSourceAwareSubscriptionRow,
+} from "../_shared/subscription_store_state.ts";
+import {
   claimKeyboardReplyRequest,
   classifyKeyboardReplyReplayPreflight,
   computeKeyboardReplyInputHash,
@@ -47,7 +52,8 @@ const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
 const COST = KEYBOARD_REPLY_COST;
 const MAX_BODY_BYTES = 32 * 1024;
 const SUBSCRIPTION_COLUMNS =
-  "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
+  "tier, status, expires_at, active_product_id, store, revenuecat_environment, " +
+  "monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
 export const KEYBOARD_REPLY_CONTRACT_VERSION = "keyboard-reply-exactly-once-v1";
 
 export const corsHeaders = {
@@ -69,7 +75,14 @@ async function fetchSubscription(client: any, userId: string) {
   const { data, error } = await client.from("subscriptions")
     .select(SUBSCRIPTION_COLUMNS).eq("user_id", userId).maybeSingle();
   if (error) console.warn("keyboard_reply_subscription_lookup_failed");
-  return data as SubscriptionRow | null;
+  if (!data) return null;
+  const sourceAware = await resolveSourceAwareSubscriptionRow(
+    client,
+    userId,
+    data as Record<string, unknown>,
+    new Date(),
+  );
+  return sourceAware.row as unknown as SubscriptionRow;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -84,7 +97,15 @@ async function selfHealSubscription(client: any, userId: string) {
     monthly_reset_at: now,
     started_at: now,
   }).select(SUBSCRIPTION_COLUMNS).single();
-  if (!error) return data as SubscriptionRow;
+  if (!error && data) {
+    const sourceAware = await resolveSourceAwareSubscriptionRow(
+      client,
+      userId,
+      data as Record<string, unknown>,
+      new Date(),
+    );
+    return sourceAware.row as unknown as SubscriptionRow;
+  }
   if (error.code === "23505") return await fetchSubscription(client, userId);
   console.error("keyboard_reply_subscription_self_heal_failed");
   return null;
@@ -159,14 +180,33 @@ async function maybeRefreshTier(
     }
     const parsed = parseRevenueCatSubscriber(payload.subscriber);
     if (!parsed || tierRank(parsed.tier) <= tierRank(previousTier)) return null;
-    const update: Record<string, unknown> = {
-      tier: parsed.tier,
-      status: "active",
-    };
-    if (parsed.expiresAt) update.expires_at = parsed.expiresAt;
-    const { data } = await client.from("subscriptions").update(update)
-      .eq("user_id", userId).select(SUBSCRIPTION_COLUMNS).maybeSingle();
-    return (data ?? { ...sub, tier: parsed.tier }) as SubscriptionRow;
+    const snapshotEvents = buildRevenueCatStoreEvents(payload.subscriber, {});
+    if (snapshotEvents.length === 0) return null;
+    for (const snapshotEvent of snapshotEvents) {
+      const persistResult = await persistSubscriptionStoreState(
+        client,
+        userId,
+        snapshotEvent,
+      );
+      if (
+        !persistResult.accepted && persistResult.reason !== "duplicate" &&
+        persistResult.reason !== "stale"
+      ) {
+        return null;
+      }
+    }
+    const { data, error: refreshedReadError } = await client.from(
+      "subscriptions",
+    )
+      .select(SUBSCRIPTION_COLUMNS).eq("user_id", userId).maybeSingle();
+    if (refreshedReadError || !data) return null;
+    const sourceAware = await resolveSourceAwareSubscriptionRow(
+      client,
+      userId,
+      data as unknown as Record<string, unknown>,
+      new Date(),
+    );
+    return sourceAware.row as unknown as SubscriptionRow;
   } catch {
     console.warn("keyboard_reply_revenuecat_refresh_failed");
     return null;

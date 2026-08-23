@@ -3,11 +3,11 @@ import {
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2";
 import { withOperationalErrorMonitoring } from "../_shared/operational_error_monitor.ts";
-import { getTierFromProductId } from "./tiers.ts";
 import {
-  buildSubscriptionProductMetadata,
-  resolveSubscriptionUpdateForWebhookEvent,
-} from "./subscription_update.ts";
+  persistSubscriptionStoreState,
+  type StoreSubscriptionEventInput,
+} from "../_shared/subscription_store_state.ts";
+import { buildRevenueCatWebhookStoreEvent } from "./webhook_store_event.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -204,6 +204,14 @@ function extractValidUuidList(value: unknown): string[] {
     .filter((item) => item.length > 0 && isValidUuid(item));
 }
 
+function hasInvalidUuidList(value: unknown): boolean {
+  if (value == null) return false;
+  if (!Array.isArray(value)) return true;
+  return value.some((item) =>
+    typeof item !== "string" || !isValidUuid(item.trim())
+  );
+}
+
 async function sha256Prefix(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -296,8 +304,6 @@ Deno.serve(withOperationalErrorMonitoring("revenuecat-webhook", async (req) => {
     const new_product_id = typeof event.new_product_id === "string"
       ? event.new_product_id.trim()
       : "";
-    const expiration_at_ms = event.expiration_at_ms;
-
     if (!type) {
       return jsonResponse({ error: "Invalid event type" }, 400);
     }
@@ -307,8 +313,6 @@ Deno.serve(withOperationalErrorMonitoring("revenuecat-webhook", async (req) => {
         new_product_id
         ? new_product_id
         : product_id;
-    const expiresAt = normalizeExpirationAt(expiration_at_ms);
-
     console.log(
       `Event type: ${type}, User: ${app_user_id}, product_id: ${product_id}, new_product_id: ${new_product_id}`,
     );
@@ -371,155 +375,33 @@ Deno.serve(withOperationalErrorMonitoring("revenuecat-webhook", async (req) => {
       });
     }
 
-    const { data: existingSubscription, error: subscriptionLookupError } =
-      await supabase
-        .from("subscriptions")
-        .select("tier, expires_at")
-        .eq("user_id", app_user_id)
-        .maybeSingle();
-
-    if (subscriptionLookupError) {
-      console.error(
-        "Failed to verify webhook subscription row:",
-        subscriptionLookupError,
-      );
-      return jsonResponse({ error: "Database error" }, 500);
-    }
-
     let newTier = "free";
     let shouldUpdate = false;
-    let subscriptionUpdate: Record<string, unknown> | null = null;
-    const nowIso = new Date().toISOString();
-    const currentTier = typeof existingSubscription?.tier === "string"
-      ? existingSubscription.tier
-      : "free";
-    const currentExpiresAt =
-      typeof existingSubscription?.expires_at === "string"
-        ? existingSubscription.expires_at
-        : null;
+    let webhookStateEvent: StoreSubscriptionEventInput | null = null;
 
     switch (type) {
       case "INITIAL_PURCHASE":
       case "RENEWAL":
       case "UNCANCELLATION":
-      case "SUBSCRIPTION_EXTENDED": {
-        const decision = resolveSubscriptionUpdateForWebhookEvent({
-          type,
-          effectiveProductId,
-          currentTier,
-          expiresAt,
-          nowIso,
-          event,
-        });
-        if (decision.kind === "unsupported_product") {
-          console.error(
-            `Unsupported product_id for ${type}: "${effectiveProductId}"`,
-          );
-          return jsonResponse({ error: "Unsupported product_id" }, 400);
-        }
-
-        newTier = decision.newTier;
-        shouldUpdate = decision.kind === "update";
-        subscriptionUpdate = decision.subscriptionUpdate ?? null;
-        console.log(`Upgrading user ${app_user_id} to ${newTier}`);
-        break;
-      }
-
-      case "PRODUCT_CHANGE": {
-        const decision = resolveSubscriptionUpdateForWebhookEvent({
-          type,
-          effectiveProductId,
-          currentTier,
-          expiresAt,
-          nowIso,
-          event,
-        });
-        if (decision.kind === "unsupported_product") {
-          console.error(
-            `Unsupported product_id for PRODUCT_CHANGE: "${effectiveProductId}"`,
-          );
-          return jsonResponse({ error: "Unsupported product_id" }, 400);
-        }
-
-        newTier = decision.newTier;
-        shouldUpdate = decision.kind === "update";
-        subscriptionUpdate = decision.subscriptionUpdate ?? null;
-        if (shouldUpdate) {
-          console.log(
-            `Applying PRODUCT_CHANGE upgrade for user ${app_user_id}: ${currentTier} -> ${newTier}`,
-          );
-        } else {
-          console.log(
-            `Ignoring PRODUCT_CHANGE downgrade until renewal for user ${app_user_id}: ${currentTier} -> ${newTier}`,
-          );
-        }
-        break;
-      }
-
+      case "SUBSCRIPTION_EXTENDED":
+      case "PRODUCT_CHANGE":
       case "EXPIRATION":
-        {
-          const decision = resolveSubscriptionUpdateForWebhookEvent({
-            type,
-            effectiveProductId,
-            currentTier,
-            currentExpiresAt,
-            expiresAt,
-            nowIso,
-            event,
-          });
-          newTier = decision.newTier;
-          shouldUpdate = decision.kind === "update";
-          subscriptionUpdate = decision.subscriptionUpdate ?? null;
-          if (shouldUpdate) {
-            console.log(`Downgrading user ${app_user_id} to free`);
-          } else {
-            console.log(
-              `Ignoring stale EXPIRATION for user ${app_user_id}: DB expiry ${currentExpiresAt} is newer than event expiry ${expiresAt}`,
-            );
-          }
-        }
-        break;
-
-      case "BILLING_ISSUE": {
-        const decision = resolveSubscriptionUpdateForWebhookEvent({
-          type,
-          effectiveProductId,
-          currentTier,
-          expiresAt,
-          nowIso,
-          event,
-        });
-
-        newTier = decision.newTier;
-        shouldUpdate = decision.kind === "update";
-        subscriptionUpdate = decision.subscriptionUpdate ?? null;
-        if (!shouldUpdate) {
-          console.warn(
-            `Ignoring BILLING_ISSUE for user ${app_user_id}: no paid tier in DB or product_id`,
-          );
+      case "BILLING_ISSUE":
+      case "CANCELLATION": {
+        const built = buildRevenueCatWebhookStoreEvent(type, event);
+        if (built.kind === "ignored") {
+          console.log(`Ignored ${type}: ${built.reason}`);
           break;
         }
-
+        if (built.kind !== "event") {
+          console.error(`Invalid ${type} store event: ${built.reason}`);
+          return jsonResponse({ error: "Invalid event provenance" }, 400);
+        }
+        webhookStateEvent = built.event;
+        newTier = built.event.tier as string;
+        shouldUpdate = true;
         console.log(
-          `Billing issue for user ${app_user_id}; preserving ${newTier} quota usage until expiration`,
-        );
-        break;
-      }
-
-      case "CANCELLATION": {
-        const decision = resolveSubscriptionUpdateForWebhookEvent({
-          type,
-          effectiveProductId,
-          currentTier,
-          expiresAt,
-          nowIso,
-          event,
-        });
-        newTier = decision.newTier;
-        shouldUpdate = decision.kind === "update";
-        subscriptionUpdate = decision.subscriptionUpdate ?? null;
-        console.log(
-          `User ${app_user_id} cancelled, will expire at ${expiration_at_ms}`,
+          `Prepared ${type} for ${app_user_id} store=${built.event.store} tier=${newTier}`,
         );
         break;
       }
@@ -531,9 +413,18 @@ Deno.serve(withOperationalErrorMonitoring("revenuecat-webhook", async (req) => {
         break;
 
       case "TRANSFER": {
-        const nowIso = new Date().toISOString();
-        const transferTier = getTierFromProductId(effectiveProductId) ??
-          currentTier;
+        const built = buildRevenueCatWebhookStoreEvent(type, event);
+        if (built.kind !== "event") {
+          return jsonResponse({ error: "Invalid transfer provenance" }, 400);
+        }
+        if (
+          hasInvalidUuidList(event.transferred_from) ||
+          hasInvalidUuidList(event.transferred_to)
+        ) {
+          return jsonResponse({ error: "Invalid transfer targets" }, 400);
+        }
+        const transferEvent = built.event;
+        const transferTier = transferEvent.tier as string;
         const transferredFrom = extractValidUuidList(event.transferred_from);
         const transferredTo = Array.from(
           new Set([
@@ -544,97 +435,72 @@ Deno.serve(withOperationalErrorMonitoring("revenuecat-webhook", async (req) => {
         const transferredFromOnly = transferredFrom.filter((id) =>
           !transferredTo.includes(id)
         );
-
-        if (transferredTo.length > 0) {
-          const { data: existingRows, error: existingRowsError } =
-            await supabase
-              .from("subscriptions")
-              .select("user_id")
-              .in("user_id", transferredTo);
-
-          if (existingRowsError) {
-            console.error(
-              "Failed to load transfer recipients:",
-              existingRowsError,
-            );
-            return jsonResponse({ error: "Database error" }, 500);
-          }
-
-          const existingUserIds = new Set(
-            (existingRows ?? [])
-              .map((row) => typeof row.user_id === "string" ? row.user_id : "")
-              .filter((userId) => userId.length > 0),
+        const transferTargetIds = Array.from(
+          new Set([...transferredTo, ...transferredFromOnly]),
+        );
+        const { data: transferUsers, error: transferUsersError } =
+          await supabase
+            .from("users")
+            .select("id")
+            .in("id", transferTargetIds);
+        if (transferUsersError) {
+          console.error(
+            "Failed to validate transfer targets",
+            transferUsersError,
           );
-          const missingUserIds = transferredTo.filter((userId) =>
-            !existingUserIds.has(userId)
-          );
+          return jsonResponse({ error: "Database error" }, 500);
+        }
+        const existingTransferUsers = new Set(
+          (transferUsers ?? [])
+            .map((row) => typeof row.id === "string" ? row.id : null)
+            .filter((id): id is string => id !== null),
+        );
+        if (existingTransferUsers.size !== transferTargetIds.length) {
+          return jsonResponse({ error: "Invalid transfer targets" }, 400);
+        }
 
-          const { error: updateRecipientsError } = await supabase
-            .from("subscriptions")
-            .update({
+        for (const recipientId of transferredTo) {
+          const result = await persistSubscriptionStoreState(
+            supabase,
+            recipientId,
+            {
+              ...transferEvent,
               tier: transferTier,
               status: "active",
-              expires_at: expiresAt,
-              ...buildSubscriptionProductMetadata(effectiveProductId, event),
-            })
-            .in("user_id", transferredTo);
-
-          if (updateRecipientsError) {
-            console.error(
-              "Failed to update transfer recipients:",
-              updateRecipientsError,
-            );
+            },
+          );
+          if (
+            !result.accepted && result.reason !== "duplicate" &&
+            result.reason !== "stale"
+          ) {
+            console.error("Failed to persist transfer recipient state", {
+              recipientId,
+              reason: result.reason,
+            });
             return jsonResponse({ error: "Database error" }, 500);
-          }
-
-          if (missingUserIds.length > 0) {
-            const inserts = missingUserIds.map((userId) => ({
-              user_id: userId,
-              tier: transferTier,
-              status: "active",
-              expires_at: expiresAt,
-              ...buildSubscriptionProductMetadata(effectiveProductId, event),
-              monthly_messages_used: 0,
-              daily_messages_used: 0,
-              daily_reset_at: nowIso,
-              monthly_reset_at: nowIso,
-              started_at: nowIso,
-            }));
-
-            const { error: insertRecipientsError } = await supabase
-              .from("subscriptions")
-              .insert(inserts);
-
-            if (insertRecipientsError) {
-              console.error(
-                "Failed to insert transfer recipients:",
-                insertRecipientsError,
-              );
-              return jsonResponse({ error: "Database error" }, 500);
-            }
           }
         }
 
-        if (transferredFromOnly.length > 0) {
-          const { error: downgradeError } = await supabase
-            .from("subscriptions")
-            .update({
+        for (const sourceId of transferredFromOnly) {
+          const result = await persistSubscriptionStoreState(
+            supabase,
+            sourceId,
+            {
+              ...transferEvent,
               tier: "free",
               status: "expired",
-              expires_at: expiresAt ?? nowIso,
-              ...buildSubscriptionProductMetadata(effectiveProductId, event),
-              monthly_messages_used: 0,
-              daily_messages_used: 0,
-              monthly_reset_at: nowIso,
-              daily_reset_at: nowIso,
-            })
-            .in("user_id", transferredFromOnly);
-
-          if (downgradeError) {
-            console.error(
-              "Failed to downgrade transfer source users:",
-              downgradeError,
-            );
+              expiresAt: transferEvent.expiresAt ?? transferEvent.eventAt,
+            },
+            { resetUsage: true },
+          );
+          if (
+            !result.accepted && result.reason !== "duplicate" &&
+            result.reason !== "stale"
+          ) {
+            console.error("Failed to persist transfer source state", {
+              sourceId,
+              reason: result.reason,
+            });
             return jsonResponse({ error: "Database error" }, 500);
           }
         }
@@ -663,68 +529,28 @@ Deno.serve(withOperationalErrorMonitoring("revenuecat-webhook", async (req) => {
     );
 
     if (shouldUpdate) {
-      // The pre-read stale-EXPIRATION guard (see EXPIRATION case) is not enough
-      // on its own: a RENEWAL can commit a newer expiry between our read and
-      // this write. Re-check expires_at atomically at write time so a stale
-      // EXPIRATION can never clobber a concurrently-renewed paid period. Only
-      // rows whose stored expiry is null/absent or <= this event's expiry are
-      // downgraded; a newer expiry means the row already reflects a live renewal.
-      const isExpiration = type === "EXPIRATION";
-
-      let updateQuery = supabase
-        .from("subscriptions")
-        .update(subscriptionUpdate ?? { tier: newTier })
-        .eq("user_id", app_user_id);
-      if (isExpiration) {
-        if (expiresAt) {
-          updateQuery = updateQuery.or(
-            `expires_at.is.null,expires_at.lte.${expiresAt}`,
-          );
-        } else {
-          // Malformed EXPIRATION with no authoritative expiry: we cannot prove
-          // it supersedes any live period, so only downgrade a row that has no
-          // active expiry recorded. Never clobber a non-null (paid) expiry.
-          updateQuery = updateQuery.is("expires_at", null);
-        }
+      if (webhookStateEvent == null) {
+        return jsonResponse({ error: "Invalid event provenance" }, 400);
       }
 
-      const { data: updatedRows, error: updateError } = await updateQuery
-        .select("user_id")
-        .limit(1);
+      const result = await persistSubscriptionStoreState(
+        supabase,
+        app_user_id,
+        webhookStateEvent,
+        {
+          resetUsage: type === "EXPIRATION",
+        },
+      );
 
-      if (updateError) {
-        console.error("Failed to update subscription:", updateError);
+      if (
+        !result.accepted && result.reason !== "duplicate" &&
+        result.reason !== "stale"
+      ) {
+        console.error("Failed to persist subscription store state", {
+          userId: app_user_id,
+          reason: result.reason,
+        });
         return jsonResponse({ error: "Database error" }, 500);
-      }
-
-      if (!updatedRows || updatedRows.length === 0) {
-        if (isExpiration) {
-          // No row matched: either the user has no subscription row (nothing to
-          // expire) or a newer paid period now guards it. Never insert a fresh
-          // free/expired row here — that would fabricate state and zero usage.
-          console.log(
-            `Skipped EXPIRATION write for user ${app_user_id}: no stale paid row matched (expiry guard)`,
-          );
-        } else {
-          const { error: insertError } = await supabase
-            .from("subscriptions")
-            .insert({
-              user_id: app_user_id,
-              ...(subscriptionUpdate ?? { tier: newTier }),
-              monthly_messages_used: 0,
-              daily_messages_used: 0,
-              daily_reset_at: nowIso,
-              monthly_reset_at: nowIso,
-              started_at: nowIso,
-            });
-
-          if (insertError) {
-            console.error("Failed to insert subscription:", insertError);
-            return jsonResponse({ error: "Database error" }, 500);
-          }
-
-          console.log(`Inserted subscription record for user ${app_user_id}`);
-        }
       }
 
       console.log(

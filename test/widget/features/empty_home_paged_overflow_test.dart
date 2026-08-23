@@ -5,8 +5,6 @@
 // （release 無警告；2026-08 dogfood 疊字回報）。掃描多組高度×字級，斷言兩段
 // 說明文字的矩形永不相交。預設測試畫布 600 高進不了兩頁分支（>620 門檻），
 // 所以必須自訂 view size 才蓋得到這條路。
-import 'dart:ui' show Size;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

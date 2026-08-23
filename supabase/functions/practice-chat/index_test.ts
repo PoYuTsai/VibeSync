@@ -37,6 +37,9 @@ interface FakeOptions {
   userError?: string;
   sub?: Record<string, unknown> | null;
   preparedSub?: Record<string, unknown> | null;
+  storeStates?: ReadonlyArray<Record<string, unknown>>;
+  reconciliationStatus?: "pending" | "auto" | "complete";
+  storeStatesError?: string;
   subError?: string;
   ledger?: Record<string, unknown> | null;
   ledgerError?: string;
@@ -81,6 +84,24 @@ function subscription(overrides: Record<string, unknown> = {}) {
     daily_messages_used: 2,
     daily_reset_at: RESET_AT,
     monthly_reset_at: RESET_AT,
+    ...overrides,
+  };
+}
+
+function verifiedStoreState(overrides: Record<string, unknown> = {}) {
+  return {
+    user_id: "user-1",
+    store: "play_store",
+    product_id: "starter:monthly",
+    base_plan_id: "monthly",
+    tier: "starter",
+    status: "active",
+    expires_at: "2026-07-28T04:00:00.000Z",
+    event_at: "2026-06-28T03:00:00.000Z",
+    event_id: "play-event-1",
+    verification_source: "revenuecat_api",
+    verification_status: "verified",
+    revenuecat_environment: "production",
     ...overrides,
   };
 }
@@ -351,7 +372,10 @@ function makeFake(options: FakeOptions = {}) {
               : null,
           });
         },
-        upsert(values: Record<string, unknown>, _opts?: Record<string, unknown>) {
+        upsert(
+          values: Record<string, unknown>,
+          _opts?: Record<string, unknown>,
+        ) {
           state.upserts.push({ table, values });
           state.events.push(`upsert:${table}`);
           return Promise.resolve({
@@ -365,6 +389,25 @@ function makeFake(options: FakeOptions = {}) {
         select(columns: string) {
           state.selects.push({ table, columns });
           function selectResult() {
+            if (table === "subscription_store_states") {
+              return Promise.resolve(
+                options.storeStatesError
+                  ? {
+                    data: null,
+                    error: { message: options.storeStatesError },
+                  }
+                  : { data: options.storeStates ?? [], error: null },
+              );
+            }
+            if (table === "subscription_store_state_reconciliations") {
+              return Promise.resolve({
+                data: options.reconciliationStatus &&
+                    options.reconciliationStatus !== "pending"
+                  ? [{ status: options.reconciliationStatus }]
+                  : [],
+                error: null,
+              });
+            }
             if (table === "practice_profile_draw_events") {
               return Promise.resolve(
                 options.drawEventsError
@@ -834,6 +877,45 @@ Deno.test("practice-chat prepares subscription resets through the DB row lock", 
     state.events.indexOf("rpc:prepare_practice_subscription_usage") <
       state.events.indexOf("deepseek"),
   );
+});
+
+Deno.test(
+  "practice chat uses free limits when complete/auto verified source is expired",
+  async () => {
+    for (const reconciliationStatus of ["auto", "complete"] as const) {
+      const { response, json } = await run({
+        sub: subscription({ tier: "essential" }),
+        preparedSub: subscription({ tier: "essential" }),
+        reconciliationStatus,
+        storeStates: [verifiedStoreState({
+          tier: "essential",
+          product_id: "essential:monthly",
+          status: "expired",
+          expires_at: "2026-06-27T04:00:00.000Z",
+          event_id: `expired-${reconciliationStatus}`,
+        })],
+        ledger: ledger({ practice_mode: "standard" }),
+      });
+
+      assertEquals(response.status, 200);
+      assertEquals(json.monthlyRemaining, 19);
+      assertEquals(json.dailyRemaining, 12);
+    }
+  },
+);
+
+Deno.test("practice chat uses an active verified source across stores", async () => {
+  const { response, json } = await run({
+    sub: subscription({ tier: "essential" }),
+    preparedSub: subscription({ tier: "essential" }),
+    reconciliationStatus: "complete",
+    storeStates: [verifiedStoreState()],
+    ledger: ledger({ practice_mode: "standard" }),
+  });
+
+  assertEquals(response.status, 200);
+  assertEquals(json.monthlyRemaining, 289);
+  assertEquals(json.dailyRemaining, 47);
 });
 
 Deno.test("standard chat response does not include temperature and does not judge or update", async () => {

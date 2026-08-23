@@ -20,6 +20,7 @@ import {
   type SubscriptionRow,
   TEST_EMAILS,
 } from "../_shared/quota.ts";
+import { resolveSourceAwareSubscriptionRow } from "../_shared/subscription_store_state.ts";
 import {
   drawAllowanceForTier,
   paidExtraDrawAllowedForTier,
@@ -134,11 +135,32 @@ export async function handleDrawProfile(
     }
     return { body: { error: "subscription_fetch_failed" }, status: 500 };
   }
-  const sub = preparedSubscriptionFromRpc(preparedSubData);
-  if (!sub) {
+  const preparedSub = preparedSubscriptionFromRpc(preparedSubData);
+  if (!preparedSub) {
     logWarn("practice_draw_sub_fetch_error", {
       user: summarizeUser(userId),
       error: "invalid prepare_practice_subscription_usage response",
+    });
+    return { body: { error: "subscription_fetch_failed" }, status: 500 };
+  }
+
+  // The prepare RPC supplies locked counters, but its tier is the materialized
+  // legacy value. Resolve the source rows at this request clock before deriving
+  // limits or claim arguments, so an expired store cannot keep paid draw rights
+  // and an active store in another platform is still honored.
+  const sourceAware = await resolveSourceAwareSubscriptionRow(
+    supabase as unknown as Parameters<
+      typeof resolveSourceAwareSubscriptionRow
+    >[0],
+    userId,
+    preparedSub as unknown as Record<string, unknown>,
+    now,
+  );
+  const sub = preparedSubscriptionFromRpc(sourceAware.row);
+  if (!sub) {
+    logWarn("practice_draw_sub_fetch_error", {
+      user: summarizeUser(userId),
+      error: "invalid source-aware subscription response",
     });
     return { body: { error: "subscription_fetch_failed" }, status: 500 };
   }
@@ -344,8 +366,18 @@ export async function handleDrawStatus(args: {
     // status 不得憑贈抽顯示「還能抽」（Codex 雙審 blocking 1）。
     return { body: { error: "No subscription found" }, status: 403 };
   }
+  const sourceAware = await resolveSourceAwareSubscriptionRow(
+    // The draw mock/client is structurally compatible with the shared read
+    // boundary; the cast keeps this isolated handler's richer thenable type.
+    supabase as unknown as Parameters<
+      typeof resolveSourceAwareSubscriptionRow
+    >[0],
+    userId,
+    subRow,
+    now,
+  );
   const tier = normalizeTier(
-    typeof subRow.tier === "string" ? subRow.tier : null,
+    typeof sourceAware.row.tier === "string" ? sourceAware.row.tier : null,
   );
   const window = taipeiNoonResetWindow(now);
 

@@ -31,6 +31,7 @@ import {
 } from "./refine_allowance.ts";
 import { hasOutboundSafetyWarning } from "./guardrails.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
+import { resolveSourceAwareSubscriptionRow } from "../_shared/subscription_store_state.ts";
 import { jsonResponse } from "./http_response.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import type {
@@ -240,8 +241,14 @@ export async function buildOptimizeReplayResponse(args: {
         retryable: true,
       }, 503);
     }
-    replayMonthlyUsed = replayUsage.monthly_messages_used;
-    replayDailyUsed = replayUsage.daily_messages_used;
+    const sourceAwareUsage = await resolveSourceAwareSubscriptionRow(
+      args.supabase,
+      args.userId,
+      replayUsage as Record<string, unknown>,
+      new Date(),
+    );
+    replayMonthlyUsed = Number(sourceAwareUsage.row.monthly_messages_used ?? 0);
+    replayDailyUsed = Number(sourceAwareUsage.row.daily_messages_used ?? 0);
   }
   const replayResponse = { ...args.replayResult };
   replayResponse.usage = {
@@ -517,11 +524,23 @@ export async function settleOptimizeMessage(args: {
         }, 503),
       };
     }
+    const sourceAwareSub = await resolveSourceAwareSubscriptionRow(
+      args.supabase,
+      args.userId,
+      authoritativeSub as Record<string, unknown>,
+      new Date(),
+    );
     return {
       kind: "response",
       response: jsonResponse(
         buildQuotaExceededPayload({
-          sub: authoritativeSub,
+          sub: sourceAwareSub.row as {
+            tier: string;
+            monthly_messages_used: number;
+            daily_messages_used: number;
+            daily_reset_at: string | null;
+            monthly_reset_at: string | null;
+          },
           cost: OPTIMIZE_MESSAGE_COST,
           reason: settlement.reason,
           monthlyLimit: args.monthlyLimit,

@@ -2,8 +2,8 @@
 // RevenueCat 查詢實際訂閱並向上修正 DB tier（只升不降；essential 不再查）。
 //
 // Refresher 是工廠：一次請求內共用 candidates 與身分，呼叫端以 readState
-// 提供當下的 sub/effectiveTier 視圖，applied 時經 applyRefreshedSub 回寫
-// （持久化失敗仍回 applied，但 telemetry 標 persisted:false——歷史行為）。
+// 提供當下的 sub/effectiveTier 視圖；只有 atomic persistence 與 legacy
+// reread 都成功時才經 applyRefreshedSub 回寫。
 
 import { isPlainObject } from "../_shared/quota.ts";
 import {
@@ -20,6 +20,11 @@ import {
   subscriptionTierRank,
   type TierSyncRefreshStatus,
 } from "./tier_sync_contract.ts";
+import {
+  buildRevenueCatStoreEvents,
+  persistSubscriptionStoreState,
+  resolveSourceAwareSubscriptionRow,
+} from "../_shared/subscription_store_state.ts";
 
 export function tierFromProductId(productId: unknown): SubscriptionTier {
   if (typeof productId !== "string") return "free";
@@ -117,13 +122,13 @@ export function buildRevenueCatUserIdCandidates(input: {
   revenueCatAppUserId: string;
   userId: string;
 }): string[] {
-  return Array.from(
-    new Set(
-      [input.revenueCatAppUserId, input.userId]
-        .map((value) => (typeof value === "string" ? value.trim() : ""))
-        .filter((value) => value.length > 0),
-    ),
-  );
+  const primary = input.userId.trim();
+  const hinted = input.revenueCatAppUserId.trim();
+  const candidates = [primary];
+  if (hinted.startsWith("$RCAnonymousID") && hinted !== primary) {
+    candidates.push(hinted);
+  }
+  return candidates;
 }
 
 export interface RevenueCatRefresherDeps {
@@ -230,40 +235,58 @@ export function createRevenueCatTierRefresher(
           continue;
         }
 
-        const refreshedExpiresAt = collectLatestExpirationFromRevenueCatPayload(
-          subscriber,
-        );
-        const updatePayload: Record<string, unknown> = {
-          tier: refreshedTier,
-          status: "active",
-        };
-        if (refreshedExpiresAt) {
-          updatePayload.expires_at = refreshedExpiresAt;
+        const snapshotEvents = buildRevenueCatStoreEvents(subscriber, {});
+        if (snapshotEvents.length === 0) continue;
+        let persisted = false;
+        for (const snapshotEvent of snapshotEvents) {
+          const persistResult = await persistSubscriptionStoreState(
+            supabase,
+            userId,
+            snapshotEvent,
+          );
+          if (
+            !persistResult.accepted &&
+            persistResult.reason !== "duplicate" &&
+            persistResult.reason !== "stale"
+          ) {
+            logError("subscription_revenuecat_refresh_persist_failed", {
+              user: summarizeUser(userId),
+              revenueCatUser: summarizeUser(revenueCatUserId),
+              reason,
+              previousTier,
+              refreshedTier,
+              error: persistResult.reason,
+            });
+            return "unavailable";
+          }
+          persisted = true;
         }
 
-        const { data: refreshedSub, error: refreshedError } = await supabase
+        const { data: refreshedSub, error: refreshedReadError } = await supabase
           .from("subscriptions")
-          .update(updatePayload)
-          .eq("user_id", userId)
           .select(
             "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
           )
+          .eq("user_id", userId)
           .maybeSingle();
 
-        deps.applyRefreshedSub(
-          refreshedSub ?? { ...state.sub, tier: refreshedTier },
-        );
-
-        if (refreshedError) {
-          logError("subscription_revenuecat_refresh_persist_failed", {
+        if (refreshedReadError || !refreshedSub) {
+          logError("subscription_revenuecat_refresh_legacy_read_failed", {
             user: summarizeUser(userId),
             revenueCatUser: summarizeUser(revenueCatUserId),
             reason,
-            previousTier,
-            refreshedTier,
-            error: refreshedError.message,
+            error: refreshedReadError?.message ?? "legacy row missing",
           });
+          return "unavailable";
         }
+
+        const sourceAware = await resolveSourceAwareSubscriptionRow(
+          supabase,
+          userId,
+          refreshedSub as Record<string, unknown>,
+          new Date(),
+        );
+        deps.applyRefreshedSub(sourceAware.row);
 
         logInfo("subscription_revenuecat_refresh_applied", {
           user: summarizeUser(userId),
@@ -271,7 +294,7 @@ export function createRevenueCatTierRefresher(
           reason,
           previousTier,
           refreshedTier,
-          persisted: !refreshedError,
+          persisted,
         });
         return "applied";
       }

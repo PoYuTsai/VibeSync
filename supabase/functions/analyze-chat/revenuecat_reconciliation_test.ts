@@ -16,6 +16,7 @@ function makeDeps(overrides: Partial<{
   subTier: string;
   updateError: { message: string } | null;
   updateReturnsRow: boolean;
+  readError: { message: string } | null;
 }> = {}) {
   const updates: Array<Record<string, unknown>> = [];
   const applied: Array<Record<string, unknown>> = [];
@@ -34,24 +35,28 @@ function makeDeps(overrides: Partial<{
     monthly_reset_at: null,
   };
   const supabase = {
+    rpc(_name: string, args: Record<string, unknown>) {
+      updates.push(args);
+      return Promise.resolve({
+        data: overrides.updateError == null
+          ? [{ accepted: true, reason: "accepted" }]
+          : null,
+        error: overrides.updateError ?? null,
+      });
+    },
     from(_table: string) {
       return {
-        update(values: Record<string, unknown>) {
-          updates.push(values);
-          return {
-            eq: () => ({
-              select: () => ({
-                maybeSingle: () =>
-                  Promise.resolve({
-                    data: overrides.updateReturnsRow === false
-                      ? null
-                      : refreshedRow,
-                    error: overrides.updateError ?? null,
-                  }),
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: overrides.updateReturnsRow === false
+                  ? null
+                  : refreshedRow,
+                error: overrides.readError ?? null,
               }),
-            }),
-          };
-        },
+          }),
+        }),
       };
     },
     // deno-lint-ignore no-explicit-any
@@ -112,7 +117,10 @@ Deno.test("RC 對帳：查到更高 tier → 升級持久化並回寫 applied", 
       subscriberResponse({
         entitlements: {
           pro: {
+            store: "app_store",
             product_identifier: "vibesync_essential_monthly",
+            purchase_date: new Date(Date.now() - 60_000).toISOString(),
+            transaction_id: "rc-essential-1",
             expires_date: new Date(Date.now() + 86400_000).toISOString(),
           },
         },
@@ -122,13 +130,13 @@ Deno.test("RC 對帳：查到更高 tier → 升級持久化並回寫 applied", 
     },
   );
   assertEquals(updates.length, 1);
-  assertEquals(updates[0].tier, "essential");
-  assertEquals(updates[0].status, "active");
-  assert(typeof updates[0].expires_at === "string");
+  assertEquals(updates[0].p_tier, "essential");
+  assertEquals(updates[0].p_status, "active");
+  assert(typeof updates[0].p_expires_at === "string");
   assertEquals(applied, [refreshedRow]);
 });
 
-Deno.test("RC 對帳：持久化失敗仍 applied，回寫本地升級視圖", async () => {
+Deno.test("RC 對帳：持久化失敗時 fail closed，不回寫本地升級視圖", async () => {
   const { refresher, applied, sub } = makeDeps({
     updateError: { message: "boom" },
     updateReturnsRow: false,
@@ -138,15 +146,64 @@ Deno.test("RC 對帳：持久化失敗仍 applied，回寫本地升級視圖", a
       subscriberResponse({
         subscriptions: {
           vibesync_starter_monthly: {
+            store: "app_store",
+            purchase_date: new Date(Date.now() - 60_000).toISOString(),
+            transaction_id: "rc-starter-1",
             expires_date: new Date(Date.now() + 86400_000).toISOString(),
           },
         },
       }),
     async () => {
-      assertEquals(await refresher("monthly_limit_exceeded"), "applied");
+      assertEquals(await refresher("monthly_limit_exceeded"), "unavailable");
     },
   );
-  assertEquals(applied, [{ ...sub, tier: "starter" }]);
+  assertEquals(applied, []);
+});
+
+Deno.test("RC 對帳：持久化後 legacy read error 仍 fail closed", async () => {
+  const { refresher, applied } = makeDeps({
+    readError: { message: "legacy read failed" },
+  });
+  await withFakeFetch(
+    () =>
+      subscriberResponse({
+        entitlements: {
+          pro: {
+            store: "app_store",
+            product_identifier: "vibesync_essential_monthly",
+            purchase_date: new Date(Date.now() - 60_000).toISOString(),
+            transaction_id: "rc-essential-read-error",
+            expires_date: new Date(Date.now() + 86400_000).toISOString(),
+          },
+        },
+      }),
+    async () => {
+      assertEquals(await refresher("read_error"), "unavailable");
+    },
+  );
+  assertEquals(applied, []);
+});
+
+Deno.test("RC 對帳：持久化後 legacy row 缺失仍 fail closed", async () => {
+  const { refresher, applied } = makeDeps({ updateReturnsRow: false });
+  await withFakeFetch(
+    () =>
+      subscriberResponse({
+        entitlements: {
+          pro: {
+            store: "app_store",
+            product_identifier: "vibesync_essential_monthly",
+            purchase_date: new Date(Date.now() - 60_000).toISOString(),
+            transaction_id: "rc-essential-read-empty",
+            expires_date: new Date(Date.now() + 86400_000).toISOString(),
+          },
+        },
+      }),
+    async () => {
+      assertEquals(await refresher("read_empty"), "unavailable");
+    },
+  );
+  assertEquals(applied, []);
 });
 
 Deno.test("RC 對帳：全部 candidate 失敗 → unavailable；查到但沒更高 tier → not_paid", async () => {

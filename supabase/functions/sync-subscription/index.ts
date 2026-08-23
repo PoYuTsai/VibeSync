@@ -8,7 +8,17 @@ import {
   latestIsoDate,
 } from "./revenuecat_expiration.ts";
 import { shouldResetUsageOnTierSync } from "./usage_reset.ts";
+import {
+  type RevenueCatSnapshotPersistencePolicy,
+  selectRevenueCatSnapshotEventsForPersistence,
+} from "./store_event_policy.ts";
 import { applyResetsIfNeeded } from "../_shared/quota.ts";
+import {
+  buildRevenueCatStoreEvents,
+  persistSubscriptionStoreState,
+  resolveSourceAwareSubscriptionRow,
+} from "../_shared/subscription_store_state.ts";
+import { readAuthoritativeSubscriptionAggregate } from "./response.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -260,7 +270,7 @@ serve(withOperationalErrorMonitoring("sync-subscription", async (req) => {
     const { data: existingSub, error: existingError } = await supabase
       .from("subscriptions")
       .select(
-        "user_id, tier, monthly_messages_used, daily_messages_used, expires_at, active_product_id, billing_period",
+        "user_id, tier, status, store, revenuecat_environment, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at, expires_at, active_product_id, billing_period",
       )
       .eq("user_id", user.id)
       .maybeSingle();
@@ -270,7 +280,17 @@ serve(withOperationalErrorMonitoring("sync-subscription", async (req) => {
       return jsonResponse({ error: "Subscription lookup failed" }, 500);
     }
 
-    const previousTier = normalizeTier(existingSub?.tier);
+    const sourceAwareExistingResult = existingSub == null
+      ? null
+      : await resolveSourceAwareSubscriptionRow(
+        supabase,
+        user.id,
+        existingSub as Record<string, unknown>,
+        new Date(),
+      );
+    const sourceAwareExistingSub = sourceAwareExistingResult?.row ?? null;
+    const decisionSub = sourceAwareExistingSub ?? existingSub;
+    const previousTier = normalizeTier(decisionSub?.tier);
     const activeProductIds = Array.from(
       new Set(
         subscriberSnapshots.flatMap((snapshot) => snapshot.activeProductIds),
@@ -330,14 +350,13 @@ serve(withOperationalErrorMonitoring("sync-subscription", async (req) => {
       tierPreservedReason = "paid_tier_free_snapshot_guard";
     }
 
-    const existingProductId = typeof existingSub?.active_product_id === "string"
-      ? existingSub.active_product_id
+    const existingProductId = typeof decisionSub?.active_product_id === "string"
+      ? decisionSub.active_product_id
       : null;
     const finalActiveProductId = finalTier === "free"
       ? null
       : revenueCatProductId ?? existingProductId;
 
-    const limits = TIER_LIMITS[finalTier] ?? TIER_LIMITS.free;
     // A confirmed paid upgrade starts the new plan with a fresh usage bucket.
     // Same-tier restore / scheduled downgrade / transient RC free snapshot
     // still preserve counters to avoid accidental quota erasure.
@@ -348,56 +367,79 @@ serve(withOperationalErrorMonitoring("sync-subscription", async (req) => {
       revenueCatTier,
       tierPreservedReason,
     });
-    const nowIso = new Date().toISOString();
-    const updatePayload: Record<string, unknown> = {
-      tier: finalTier,
-      status: finalTier == "free" ? "active" : "active",
-      active_product_id: finalActiveProductId,
-      billing_period: inferBillingPeriod(finalActiveProductId),
-    };
-    if (finalTier !== "free" && revenueCatExpiresAt !== null) {
-      updatePayload.expires_at = revenueCatExpiresAt;
-    }
-    if (shouldResetUsage) {
-      updatePayload.monthly_messages_used = 0;
-      updatePayload.daily_messages_used = 0;
-      updatePayload.monthly_reset_at = nowIso;
-      updatePayload.daily_reset_at = nowIso;
-    }
-
     let syncedRow: Record<string, unknown> | null = null;
 
-    if (!existingSub) {
-      const { data, error } = await supabase.from("subscriptions").insert({
-        user_id: user.id,
-        ...updatePayload,
-        monthly_messages_used: 0,
-        daily_messages_used: 0,
-        monthly_reset_at: nowIso,
-        daily_reset_at: nowIso,
-        started_at: nowIso,
-      }).select(
-        "tier, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at, expires_at, active_product_id, billing_period",
-      ).single();
+    // An empty/transient RevenueCat snapshot must never clear an already-paid
+    // legacy row. Webhooks own expiration and billing-issue transitions; keep
+    // this refresh read-only in that case.
+    const preservePaidSnapshot = revenueCatTier === "free" &&
+      tierRank(previousTier) > tierRank("free");
 
-      if (error) {
-        console.error("sync-subscription insert error", error);
-        return jsonResponse({ error: "Subscription sync failed" }, 500);
-      }
-      syncedRow = data;
+    if (preservePaidSnapshot) {
+      syncedRow = decisionSub as Record<string, unknown>;
     } else {
-      const { data, error } = await supabase.from("subscriptions").update(
-        updatePayload,
-      ).eq("user_id", user.id).select(
-        "tier, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at, expires_at, active_product_id, billing_period",
-      ).single();
+      const candidateSnapshotEvents = subscriberSnapshots.flatMap((snapshot) =>
+        buildRevenueCatStoreEvents(snapshot.subscriber, {})
+      );
+      const persistencePolicy: RevenueCatSnapshotPersistencePolicy = {
+        previousTier,
+        finalTier,
+        revenueCatTier,
+        tierPreservedReason,
+        cutoverStatus: sourceAwareExistingResult?.read.cutoverStatus ??
+          "pending",
+      };
+      const snapshotEvents = selectRevenueCatSnapshotEventsForPersistence(
+        candidateSnapshotEvents,
+        persistencePolicy,
+      );
+      if (candidateSnapshotEvents.length === 0 && revenueCatTier !== "free") {
+        console.error(
+          "sync-subscription RevenueCat paid snapshot lacks store provenance",
+        );
+        return jsonResponse({ error: "Subscription sync unavailable" }, 502);
+      }
+      for (const snapshotEvent of snapshotEvents) {
+        const persistence = await persistSubscriptionStoreState(
+          supabase,
+          user.id,
+          snapshotEvent,
+          { resetUsage: shouldResetUsage },
+        );
 
-      if (error) {
-        console.error("sync-subscription update error", error);
+        if (
+          !persistence.accepted && persistence.reason !== "duplicate" &&
+          persistence.reason !== "stale"
+        ) {
+          console.error("sync-subscription store-state persistence failed", {
+            reason: persistence.reason,
+          });
+          return jsonResponse({ error: "Subscription sync failed" }, 500);
+        }
+      }
+
+      const { data, error } = await supabase.from("subscriptions").select(
+        "user_id, tier, status, store, revenuecat_environment, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at, expires_at, active_product_id, billing_period",
+      ).eq("user_id", user.id).maybeSingle();
+
+      if (error || !data) {
+        console.error("sync-subscription post-persist lookup error", error);
         return jsonResponse({ error: "Subscription sync failed" }, 500);
       }
-      syncedRow = data;
+      syncedRow = (await resolveSourceAwareSubscriptionRow(
+        supabase,
+        user.id,
+        data as Record<string, unknown>,
+        new Date(),
+      )).row;
     }
+
+    const authoritative = readAuthoritativeSubscriptionAggregate(syncedRow);
+    if (authoritative == null) {
+      console.error("sync-subscription legacy aggregate read unavailable");
+      return jsonResponse({ error: "Subscription sync unavailable" }, 502);
+    }
+    const limits = TIER_LIMITS[authoritative.tier] ?? TIER_LIMITS.free;
 
     // 稽核 #1（2026-08-07）：row 的原始計數只在下一次扣費時由扣費路徑
     // 持久化歸零；這裡只讀不寫，但回應必須先在記憶體內套窗歸零——否則
@@ -407,8 +449,8 @@ serve(withOperationalErrorMonitoring("sync-subscription", async (req) => {
       ? applyResetsIfNeeded(
         {
           tier: (syncedRow.tier as string) ?? null,
-          monthly_messages_used:
-            (syncedRow.monthly_messages_used as number) ?? 0,
+          monthly_messages_used: (syncedRow.monthly_messages_used as number) ??
+            0,
           daily_messages_used: (syncedRow.daily_messages_used as number) ?? 0,
           daily_reset_at: (syncedRow.daily_reset_at as string) ?? null,
           monthly_reset_at: (syncedRow.monthly_reset_at as string) ?? null,
@@ -419,21 +461,21 @@ serve(withOperationalErrorMonitoring("sync-subscription", async (req) => {
 
     return jsonResponse({
       success: true,
-      tier: finalTier,
+      tier: authoritative.tier,
       previousTier,
       revenueCatTier,
-      activeProductId: finalActiveProductId,
-      billingPeriod: syncedRow?.billing_period ??
-        inferBillingPeriod(finalActiveProductId),
+      activeProductId: authoritative.activeProductId,
+      store: authoritative.store,
+      revenueCatEnvironment: authoritative.revenueCatEnvironment,
+      billingPeriod: authoritative.billingPeriod,
       matchedRevenueCatAppUserId,
       revenueCatAppUserIdsChecked: revenueCatCandidates.length,
       expectedTier,
-      tierConfirmedByRevenueCat: revenueCatTier === finalTier,
+      tierConfirmedByRevenueCat: revenueCatTier === authoritative.tier,
       tierPreservedReason,
       monthlyMessagesUsed: windowCorrected?.monthly_messages_used ?? 0,
       dailyMessagesUsed: windowCorrected?.daily_messages_used ?? 0,
-      expiresAt: syncedRow?.expires_at ?? revenueCatExpiresAt ??
-        existingSub?.expires_at ?? null,
+      expiresAt: authoritative.expiresAt,
       monthlyLimit: limits.monthly,
       dailyLimit: limits.daily,
       resetUsage: shouldResetUsage,
