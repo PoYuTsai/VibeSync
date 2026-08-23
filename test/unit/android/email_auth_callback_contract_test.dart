@@ -37,26 +37,19 @@ void main() {
       final main = activityByName(manifest, '.MainActivity');
       expect(androidAttr(main, 'exported'), 'true');
       expect(
-        main.findElements('intent-filter').where(
-              (filter) => callbackFilterMayMatch(
-                filter,
-                scheme: contract.scheme,
-                host: contract.host,
-              ),
-            ),
+        matchingCallbackFilters(
+          main,
+          scheme: contract.scheme,
+          host: contract.host,
+        ),
         hasLength(1),
       );
 
-      final emailFilters = main
-          .findElements('intent-filter')
-          .where(
-            (filter) => callbackFilterMayMatch(
-              filter,
-              scheme: contract.scheme,
-              host: contract.host,
-            ),
-          )
-          .toList();
+      final emailFilters = matchingCallbackFilters(
+        main,
+        scheme: contract.scheme,
+        host: contract.host,
+      );
       expect(emailFilters, hasLength(1));
       final emailFilter = emailFilters.single;
       expect(
@@ -71,13 +64,11 @@ void main() {
       for (final activity in manifestActivities(manifest)) {
         if (androidAttr(activity, 'name') == '.MainActivity') continue;
         expect(
-          activity.findElements('intent-filter').where(
-                (filter) => callbackFilterMayMatch(
-                  filter,
-                  scheme: contract.scheme,
-                  host: contract.host,
-                ),
-              ),
+          matchingCallbackFilters(
+            activity,
+            scheme: contract.scheme,
+            host: contract.host,
+          ),
           isEmpty,
           reason: '${contract.uri} 只能由 MainActivity 擁有',
         );
@@ -87,25 +78,21 @@ void main() {
     test('OAuth callback remains exclusively owned by CallbackActivity', () {
       final callback = activityByName(manifest, oauth.callbackActivity);
       expect(
-        callback.findElements('intent-filter').where(
-              (filter) => callbackFilterMayMatch(
-                filter,
-                scheme: oauth.scheme,
-                host: oauth.host,
-              ),
-            ),
+        matchingCallbackFilters(
+          callback,
+          scheme: oauth.scheme,
+          host: oauth.host,
+        ),
         hasLength(1),
       );
       for (final activity in manifestActivities(manifest)) {
         if (androidAttr(activity, 'name') == oauth.callbackActivity) continue;
         expect(
-          activity.findElements('intent-filter').where(
-                (filter) => callbackFilterMayMatch(
-                  filter,
-                  scheme: oauth.scheme,
-                  host: oauth.host,
-                ),
-              ),
+          matchingCallbackFilters(
+            activity,
+            scheme: oauth.scheme,
+            host: oauth.host,
+          ),
           isEmpty,
           reason: '${oauth.uri} 不得由其他 activity 擁有',
         );
@@ -175,6 +162,28 @@ void main() {
         ),
         isTrue,
       );
+    });
+
+    test(
+        'leading wildcard host competitors match Email callback conservatively',
+        () {
+      for (final host in ['*', '*callback', '*-callback']) {
+        final wildcard = XmlDocument.parse('''
+          <intent-filter xmlns:android="http://schemas.android.com/apk/res/android">
+            <data android:scheme="${contract.scheme}" android:host="$host" />
+          </intent-filter>
+        ''').rootElement;
+
+        expect(
+          callbackFilterMayMatch(
+            wildcard,
+            scheme: contract.scheme,
+            host: contract.host,
+          ),
+          isTrue,
+          reason: 'host pattern $host may claim the Email callback',
+        );
+      }
     });
   });
 }

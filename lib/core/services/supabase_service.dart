@@ -10,6 +10,7 @@ import '../config/auth_callback_contract.dart';
 import '../config/environment.dart';
 import 'auth_recovery_helper.dart';
 import 'auth_diagnostics_service.dart';
+import 'email_auth_callback_failure.dart';
 import 'revenuecat_service.dart';
 import 'social_auth/social_auth_service.dart';
 
@@ -20,6 +21,8 @@ class SupabaseService {
   static StreamSubscription<Uri>? _authDeepLinkSubscription;
   static bool _passwordRecoveryInProgress = false;
   static final AppLinks _appLinks = AppLinks();
+  static final EmailAuthCallbackFailureStore _emailCallbackFailures =
+      EmailAuthCallbackFailureStore();
 
   static Future<void> initialize({
     required String url,
@@ -49,7 +52,9 @@ class SupabaseService {
       _authDeepLinkSubscription = _appLinks.uriLinkStream.listen(
         (uri) => unawaited(_handleIncomingAuthLink(uri)),
         onError: (error, stackTrace) {
-          debugPrint('Email auth callback listener skipped: $error');
+          debugPrint(
+            'Email auth callback listener skipped: ${error.runtimeType}',
+          );
         },
       );
     }
@@ -57,20 +62,25 @@ class SupabaseService {
   }
 
   static Future<void> _handleIncomingAuthLink(Uri uri) async {
-    if (!AuthCallbackUriPolicy.isProcessableEmailAuthCallback(uri)) {
-      // OAuth callbacks belong to FlutterWebAuth2; wrong/early Email links
+    if (!AuthCallbackUriPolicy.isEmailCallback(uri)) {
+      // OAuth callbacks belong to FlutterWebAuth2; wrong-scheme/host links
       // are ignored before any session exchange can occur.
+      return;
+    }
+
+    if (!AuthCallbackUriPolicy.isProcessableEmailAuthCallback(uri)) {
+      _publishEmailAuthCallbackFailure(uri);
       return;
     }
 
     try {
       await _client.auth.getSessionFromUrl(uri);
-    } on AuthException catch (error, stackTrace) {
-      // Keep Supabase's existing error stream behavior for the Email retry UI.
-      // ignore: invalid_use_of_internal_member
-      _client.auth.notifyException(error, stackTrace);
+      clearEmailAuthCallbackFailure();
+    } on AuthException catch (error) {
+      _publishEmailAuthCallbackFailure(uri, error: error);
       debugPrint('Email auth callback rejected: ${error.runtimeType}');
     } catch (error) {
+      _publishEmailAuthCallbackFailure(uri, error: error);
       debugPrint('Email auth callback failed: ${error.runtimeType}');
     }
   }
@@ -80,6 +90,10 @@ class SupabaseService {
       event: authState.event,
       currentState: _passwordRecoveryInProgress,
     );
+    if (authState.event == AuthChangeEvent.passwordRecovery ||
+        authState.event == AuthChangeEvent.signedIn) {
+      clearEmailAuthCallbackFailure();
+    }
     if (authState.event == AuthChangeEvent.passwordRecovery) {
       unawaited(
         AuthDiagnosticsService.log(
@@ -106,6 +120,28 @@ class SupabaseService {
   static bool get isAuthenticated => currentUser != null;
 
   static bool get isPasswordRecoveryInProgress => _passwordRecoveryInProgress;
+
+  static EmailAuthCallbackFailure? get pendingEmailAuthCallbackFailure =>
+      _emailCallbackFailures.pending;
+
+  static Stream<EmailAuthCallbackFailure> get emailAuthCallbackFailureChanges =>
+      _emailCallbackFailures.events;
+
+  static EmailAuthCallbackFailure? consumeEmailAuthCallbackFailure() =>
+      _emailCallbackFailures.consume();
+
+  static void clearEmailAuthCallbackFailure() {
+    _emailCallbackFailures.clear();
+  }
+
+  static void _publishEmailAuthCallbackFailure(
+    Uri uri, {
+    Object? error,
+  }) {
+    _emailCallbackFailures.publish(
+      EmailAuthCallbackFailureClassifier.fromCallback(uri, error: error),
+    );
+  }
 
   static Stream<AuthState> get authStateChanges {
     if (!_initialized) {

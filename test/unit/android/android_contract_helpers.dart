@@ -136,11 +136,33 @@ bool callbackFilterMayMatch(
       data.map((d) => androidAttr(d, 'scheme')).whereType<String>().toSet();
   final hosts =
       data.map((d) => androidAttr(d, 'host')).whereType<String>().toSet();
+  bool hostMayMatch(String pattern) {
+    if (pattern == host) return true;
+    if (!pattern.startsWith('*')) return false;
+    return host.endsWith(pattern.substring(1));
+  }
 
-  return (schemes.contains(scheme) &&
-          (hosts.isEmpty || hosts.contains(host))) ||
-      (hosts.contains(host) && (schemes.isEmpty || schemes.contains(scheme)));
+  final hostMatches = hosts.any(hostMayMatch);
+
+  return (schemes.contains(scheme) && (hosts.isEmpty || hostMatches)) ||
+      (hostMatches && (schemes.isEmpty || schemes.contains(scheme)));
 }
+
+List<XmlElement> matchingCallbackFilters(
+  XmlElement component, {
+  required String scheme,
+  required String host,
+}) =>
+    component
+        .findElements('intent-filter')
+        .where(
+          (filter) => callbackFilterMayMatch(
+            filter,
+            scheme: scheme,
+            host: host,
+          ),
+        )
+        .toList();
 
 Set<String> excludedDomains(XmlElement parent) => parent
     .findElements('exclude')

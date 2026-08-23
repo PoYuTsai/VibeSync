@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import '../android/android_contract_helpers.dart';
@@ -9,7 +11,7 @@ void main() {
       'lib/features/auth/presentation/screens/login_screen.dart',
     );
 
-    expect(source, contains('AuthEntryPlatform.fromTargetPlatform'));
+    expect(source, contains('AuthEntryPlatform.fromRuntime'));
     expect(source, contains('AuthEntryPolicy'));
     expect(
       readRepoFile('lib/features/auth/presentation/auth_entry_policy.dart'),
@@ -71,21 +73,53 @@ void main() {
     final source = readRepoFile(
       'lib/features/auth/presentation/screens/login_screen.dart',
     );
+    final policy = readRepoFile(
+      'lib/features/auth/presentation/auth_cancellation_policy.dart',
+    );
     expect(source, contains('AuthCancellationPolicy.isCancellation(e)'));
     expect(source, isNot(contains('_isCancellationError')));
     expect(source, contains('finally'));
     expect(source, contains('setState(() => _isLoading = false)'));
+    expect(policy, contains('PlatformException'));
+    expect(policy, contains('AuthException'));
+    expect(policy, contains('AuthorizationErrorCode.canceled'));
+    expect(policy, isNot(contains('toString')));
+    expect(
+      File('lib/features/auth/domain/auth_cancellation_policy.dart')
+          .existsSync(),
+      isFalse,
+    );
   });
 
   test('entry policy drives rendered primary and secondary entries', () {
     final source = readRepoFile(
       'lib/features/auth/presentation/screens/login_screen.dart',
     );
-    expect(source, contains('entryPolicy.primaryEntries'));
-    expect(source, contains('entryPolicy.secondaryEntries'));
-    expect(source, contains('AuthEntryPlatform.fromTargetPlatform'));
+    expect(source, contains('entryPolicy.primarySocialEntries'));
+    expect(source, contains('entryPolicy.showEmailPrimary'));
+    expect(source, contains('entryPolicy.secondarySocialEntries'));
+    expect(source, contains('AuthEntryPlatform.fromRuntime'));
+    expect(source, contains('kIsWeb'));
+    expect(source,
+        isNot(contains('.where((entry) => entry != AuthEntryPoint.email)')));
     expect(source, isNot(contains('_isAndroid')));
     expect(source, isNot(contains('_isIOS')));
+  });
+
+  test('Email callback failures use a buffered typed state, not auth errors',
+      () {
+    final source = readRepoFile('lib/core/services/supabase_service.dart');
+    final login = readRepoFile(
+      'lib/features/auth/presentation/screens/login_screen.dart',
+    );
+
+    expect(source, contains('EmailAuthCallbackFailureStore'));
+    expect(source, contains('pendingEmailAuthCallbackFailure'));
+    expect(source, contains('emailAuthCallbackFailureChanges'));
+    expect(source, isNot(contains('notifyException')));
+    expect(login, contains('pendingEmailAuthCallbackFailure'));
+    expect(login, contains('emailAuthCallbackFailureChanges'));
+    expect(login, contains('EmailAuthCallbackFailureMessage'));
   });
 
   test('Apple runbook preserves ordered client ID audiences and URL layers',
@@ -99,5 +133,14 @@ void main() {
     expect(docs, contains('Supabase HTTPS callback'));
     expect(docs, contains('App custom redirect'));
     expect(docs, contains('signInWithIdToken'));
+  });
+
+  test('manifest gate treats leading wildcard hosts as possible owners', () {
+    final gate = readRepoFile('tools/android/assert-merged-manifest.py');
+
+    expect(gate, contains('def host_may_match'));
+    expect(gate, contains("pattern.startswith('*')"));
+    expect(gate, contains('def assert_filter_contract(filters'));
+    expect(gate, isNot(contains('def assert_filter_contract(component')));
   });
 }

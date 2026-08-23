@@ -45,6 +45,12 @@ def main(path):
     # VIEW owner／launcher 的候選是 activity「與」activity-alias
     comps = [c for c in app if c.tag in ('activity', 'activity-alias')]
 
+    def host_may_match(pattern, expected):
+        """Conservatively model Android's leading-* host matching."""
+        return (pattern == expected or
+                (pattern.startswith('*') and
+                 expected.endswith(pattern[1:])))
+
     def filter_may_match(filter_element, scheme, host):
         """Conservatively model Android's merged <data> matching.
 
@@ -59,14 +65,15 @@ def main(path):
                    if d.get(A + 'scheme') is not None}
         hosts = {d.get(A + 'host') for d in data
                  if d.get(A + 'host') is not None}
-        return ((scheme in schemes and (not hosts or host in hosts)) or
-                (host in hosts and (not schemes or scheme in schemes)))
+        host_matches = any(host_may_match(pattern, host) for pattern in hosts)
+        return ((scheme in schemes and (not hosts or host_matches)) or
+                (host_matches and (not schemes or scheme in schemes)))
 
     def matching_filters(c, scheme, host):
         return [f for f in c.findall('intent-filter')
                 if filter_may_match(f, scheme, host)]
 
-    def assert_filter_contract(component, filters, scheme, host, label):
+    def assert_filter_contract(filters, scheme, host, label):
         assert len(filters) == 1, (
             f'{label} intent-filter 必須恰一個，得到 {len(filters)}')
         filter_element = filters[0]
@@ -97,10 +104,12 @@ def main(path):
                        if d.get(A + 'scheme') is not None}
             hosts = {d.get(A + 'host') for d in data
                      if d.get(A + 'host') is not None}
-            if HOST in hosts and schemes and SCHEME not in schemes:
+            if any(host_may_match(pattern, HOST) for pattern in hosts) and \
+                    schemes and SCHEME not in schemes:
                 raise AssertionError(
                     f'OAuth host {HOST} 不得搭配錯誤 scheme')
-            if EMAIL_HOST in hosts and schemes and EMAIL_SCHEME not in schemes:
+            if any(host_may_match(pattern, EMAIL_HOST) for pattern in hosts) and \
+                    schemes and EMAIL_SCHEME not in schemes:
                 raise AssertionError(
                     f'Email host {EMAIL_HOST} 不得搭配錯誤 scheme')
 
@@ -113,7 +122,7 @@ def main(path):
     assert cb.get(A + 'exported') == 'true', \
         'CallbackActivity 必須 exported=true（瀏覽器要能開）'
     assert_filter_contract(
-        cb, matching_filters(cb, SCHEME, HOST), SCHEME, HOST,
+        matching_filters(cb, SCHEME, HOST), SCHEME, HOST,
         'OAuth callback')
 
     email_owners = [(c.tag, c.get(A + 'name')) for c in comps
@@ -124,7 +133,6 @@ def main(path):
     assert email_activity.get(A + 'exported') == 'true', \
         'MainActivity 必須 exported=true（Email link 要能開）'
     assert_filter_contract(
-        email_activity,
         matching_filters(email_activity, EMAIL_SCHEME, EMAIL_HOST),
         EMAIL_SCHEME,
         EMAIL_HOST,

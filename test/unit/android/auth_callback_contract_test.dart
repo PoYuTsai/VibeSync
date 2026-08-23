@@ -47,16 +47,11 @@ void main() {
     test('CallbackActivity 是凍結 URI 唯一擁有者（無 chooser）', () {
       final callback = activityByName(manifest, contract.callbackActivity);
       expect(androidAttr(callback, 'exported'), 'true');
-      final matchingFilters = callback
-          .findElements('intent-filter')
-          .where(
-            (filter) => callbackFilterMayMatch(
-              filter,
-              scheme: contract.scheme,
-              host: contract.host,
-            ),
-          )
-          .toList();
+      final matchingFilters = matchingCallbackFilters(
+        callback,
+        scheme: contract.scheme,
+        host: contract.host,
+      );
       expect(matchingFilters, hasLength(1));
 
       final filter = matchingFilters.single;
@@ -72,13 +67,11 @@ void main() {
           continue;
         }
         expect(
-          activity.findElements('intent-filter').where(
-                (filter) => callbackFilterMayMatch(
-                  filter,
-                  scheme: contract.scheme,
-                  host: contract.host,
-                ),
-              ),
+          matchingCallbackFilters(
+            activity,
+            scheme: contract.scheme,
+            host: contract.host,
+          ),
           isEmpty,
           reason: '${contract.uri} 深連結只能屬於 CallbackActivity；'
               'Email callback 可共用 scheme，但不得共用 OAuth host，'
@@ -120,16 +113,36 @@ void main() {
           );
       expect(viewFilters, hasLength(1));
       expect(
-        main.findElements('intent-filter').where(
-              (filter) => callbackFilterMayMatch(
-                filter,
-                scheme: contract.scheme,
-                host: contract.host,
-              ),
-            ),
+        matchingCallbackFilters(
+          main,
+          scheme: contract.scheme,
+          host: contract.host,
+        ),
         isEmpty,
         reason: 'MainActivity 只能接獨立 Email host，不得接 OAuth host',
       );
+    });
+
+    test(
+        'leading wildcard host competitors match OAuth callback conservatively',
+        () {
+      for (final host in ['*', '*callback', '*-callback']) {
+        final wildcard = XmlDocument.parse('''
+          <intent-filter xmlns:android="http://schemas.android.com/apk/res/android">
+            <data android:scheme="${contract.scheme}" android:host="$host" />
+          </intent-filter>
+        ''').rootElement;
+
+        expect(
+          callbackFilterMayMatch(
+            wildcard,
+            scheme: contract.scheme,
+            host: contract.host,
+          ),
+          isTrue,
+          reason: 'host pattern $host may claim the OAuth callback',
+        );
+      }
     });
 
     test('Dart 端 redirect 契約對帳 contract JSON，無第二份硬編', () {

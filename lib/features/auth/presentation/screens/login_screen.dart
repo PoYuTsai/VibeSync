@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/services/auth_diagnostics_service.dart';
+import '../../../../core/services/email_auth_callback_failure.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -21,8 +22,9 @@ import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../../core/services/app_haptics.dart';
-import '../../domain/auth_cancellation_policy.dart';
+import '../auth_cancellation_policy.dart';
 import '../auth_entry_policy.dart';
+import '../email_auth_callback_failure_message.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -39,6 +41,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _confirmPasswordController = TextEditingController();
 
   StreamSubscription<AuthState>? _authSubscription;
+  StreamSubscription<EmailAuthCallbackFailure>? _emailFailureSubscription;
 
   bool _isLoading = false;
   bool _isSignUp = false;
@@ -48,6 +51,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String? _errorMessage;
   String? _noticeMessage;
   String? _pendingVerificationEmail;
+  EmailAuthCallbackFailure? _emailCallbackFailure;
 
   bool get _hasPendingVerification =>
       (_pendingVerificationEmail ?? '').trim().isNotEmpty;
@@ -83,12 +87,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (_isPasswordRecoveryMode) {
       _noticeMessage = '已驗證重設連結，請輸入新密碼完成設定。';
     }
+    _emailFailureSubscription = SupabaseService.emailAuthCallbackFailureChanges
+        .listen(_handleEmailAuthCallbackFailure);
     _authSubscription =
         SupabaseService.authStateChanges.listen(_handleAuthStateChange);
+
+    final pendingFailure = SupabaseService.pendingEmailAuthCallbackFailure;
+    if (pendingFailure != null) {
+      _handleEmailAuthCallbackFailure(pendingFailure);
+    }
   }
 
   @override
   void dispose() {
+    _emailFailureSubscription?.cancel();
     _authSubscription?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
@@ -101,6 +113,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     _invalidateSessionScopedProviders();
 
+    if (authState.event == AuthChangeEvent.passwordRecovery ||
+        authState.event == AuthChangeEvent.signedIn) {
+      SupabaseService.clearEmailAuthCallbackFailure();
+      _emailCallbackFailure = null;
+    }
+
     if (authState.event == AuthChangeEvent.passwordRecovery) {
       _passwordController.clear();
       _confirmPasswordController.clear();
@@ -112,6 +130,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _errorMessage = null;
         _noticeMessage = '已驗證重設連結，請輸入新密碼完成設定。';
         _pendingVerificationEmail = null;
+        _emailCallbackFailure = null;
       });
       return;
     }
@@ -122,6 +141,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _isPasswordRecoveryMode = false;
       });
     }
+  }
+
+  void _handleEmailAuthCallbackFailure(EmailAuthCallbackFailure failure) {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+      _emailCallbackFailure = failure;
+      _errorMessage = EmailAuthCallbackFailureMessage.forFailure(failure);
+      _noticeMessage = null;
+      // A failed recovery callback must never put the screen into recovery
+      // mode. An already accepted Supabase recovery event remains authoritative.
+      _isPasswordRecoveryMode = SupabaseService.isPasswordRecoveryInProgress;
+      _isSignUp = false;
+    });
+    SupabaseService.consumeEmailAuthCallbackFailure();
   }
 
   bool _isValidEmail(String value) {
@@ -154,6 +189,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _setError(String message) {
+    _emailCallbackFailure = null;
+    SupabaseService.clearEmailAuthCallbackFailure();
     setState(() {
       _errorMessage = message;
       _noticeMessage = null;
@@ -161,6 +198,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _setNotice(String message) {
+    _emailCallbackFailure = null;
+    SupabaseService.clearEmailAuthCallbackFailure();
     setState(() {
       _noticeMessage = message;
       _errorMessage = null;
@@ -262,9 +301,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!mounted) return;
 
     SupabaseService.clearPasswordRecoveryState();
+    SupabaseService.clearEmailAuthCallbackFailure();
     setState(() {
       _isPasswordRecoveryMode = false;
       _pendingVerificationEmail = null;
+      _emailCallbackFailure = null;
       _errorMessage = null;
       _noticeMessage = null;
     });
@@ -272,6 +313,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _confirmPasswordController.clear();
     _invalidateSessionScopedProviders();
     context.go('/');
+  }
+
+  Future<void> _retryEmailCallback() async {
+    final failure = _emailCallbackFailure;
+    if (failure == null) return;
+
+    if (failure.isPasswordRecovery) {
+      await _sendPasswordResetEmail();
+    } else {
+      await _resendVerificationEmail();
+    }
   }
 
   Future<void> _resendVerificationEmail({
@@ -292,6 +344,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     setState(() {
       _isLoading = true;
+      _emailCallbackFailure = null;
       _errorMessage = null;
       _noticeMessage = null;
     });
@@ -360,6 +413,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     setState(() {
       _isLoading = true;
+      _emailCallbackFailure = null;
       _errorMessage = null;
       _noticeMessage = null;
     });
@@ -716,11 +770,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final entryPolicy = AuthEntryPolicy.forPlatform(
-      AuthEntryPlatform.fromTargetPlatform(defaultTargetPlatform),
+      AuthEntryPlatform.fromRuntime(
+        defaultTargetPlatform,
+        isWeb: kIsWeb,
+      ),
     );
-    final primarySocialEntries = entryPolicy.primaryEntries
-        .where((entry) => entry != AuthEntryPoint.email)
-        .toList();
+    final primarySocialEntries = entryPolicy.primarySocialEntries;
     final headline = _isPasswordRecoveryMode
         ? '設定新密碼'
         : _isSignUp
@@ -778,7 +833,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    if (!_isPasswordRecoveryMode) ...[
+                    if (!_isPasswordRecoveryMode &&
+                        entryPolicy.showEmailPrimary) ...[
                       _buildLabeledTextField(
                         label: 'Email',
                         controller: _emailController,
@@ -868,6 +924,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                     ],
+                    if (_emailCallbackFailure != null &&
+                        !_showPendingVerificationResend &&
+                        !_isSignUp &&
+                        !_isPasswordRecoveryMode) ...[
+                      TextButton(
+                        onPressed: _isLoading
+                            ? null
+                            : AppHaptics.onPress(_retryEmailCallback),
+                        child: Text(
+                          EmailAuthCallbackFailureMessage.retryLabel(
+                            _emailCallbackFailure!,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     BrandPrimaryButton(
                       label: primaryButtonText,
                       onPressed: _isLoading ? null : _submit,
@@ -902,7 +974,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     if (!_isSignUp &&
                         !_isPasswordRecoveryMode &&
-                        entryPolicy.secondaryEntries
+                        entryPolicy.secondarySocialEntries
                             .contains(AuthEntryPoint.apple)) ...[
                       const SizedBox(height: 16),
                       Text(
@@ -942,8 +1014,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return _buildGoogleSignInButton();
       case AuthEntryPoint.apple:
         return _buildAppleSignInButton();
-      case AuthEntryPoint.email:
-        return const SizedBox.shrink();
     }
   }
 

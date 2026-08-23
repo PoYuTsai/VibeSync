@@ -84,6 +84,15 @@ sed "s|</application>|<activity android:name=\"com.vibesync.app.SplitOAuthActivi
   "$good" > "$work/oauth-split-data.xml"
 expect_gate_fail "OAuth split scheme/host activity 搶走 callback" "$work/oauth-split-data.xml"
 
+# 1d) Android leading-* hosts are broad matches, including bare * and suffix
+# patterns. Any competitor that can claim the frozen OAuth host must fail.
+for wildcard_host in '*' '*callback'; do
+  sed "s|</application>|<activity android:name=\"com.vibesync.app.WildcardOAuth${wildcard_host//\*/Any}Activity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\" android:host=\"$wildcard_host\"/></intent-filter></activity></application>|" \
+    "$good" > "$work/oauth-wildcard-${wildcard_host//\*/star}.xml"
+  expect_gate_fail "OAuth wildcard host $wildcard_host 搶走 callback" \
+    "$work/oauth-wildcard-${wildcard_host//\*/star}.xml"
+done
+
 # 2) 自訂 dispatcher activity 搶走凍結 OAuth URI → 偏離凍結契約，必須擋
 sed "s|</application>|<activity android:name=\"com.vibesync.app.AuthCallbackDispatcherActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\" android:host=\"$host\"/></intent-filter></activity></application>|" \
   "$good" > "$work/custom-dispatcher.xml"
@@ -122,9 +131,18 @@ sed "s|</application>|<activity android:name=\"com.vibesync.app.SplitEmailActivi
   "$good" > "$work/email-split-data.xml"
 expect_gate_fail "Email split scheme/host activity 搶走 callback" "$work/email-split-data.xml"
 
+# 5d) Wildcard Email hosts are also competitors; do not allow a chooser or
+# ambiguous ownership for the independent MainActivity callback.
+for wildcard_host in '*' '*callback'; do
+  sed "s|</application>|<activity android:name=\"com.vibesync.app.WildcardEmail${wildcard_host//\*/Any}Activity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\" android:host=\"$wildcard_host\"/></intent-filter></activity></application>|" \
+    "$good" > "$work/email-wildcard-${wildcard_host//\*/star}.xml"
+  expect_gate_fail "Email wildcard host $wildcard_host 搶走 callback" \
+    "$work/email-wildcard-${wildcard_host//\*/star}.xml"
+done
+
 # 6) Email callback data 帶額外 URI 限制 → 也必須 fail closed
 sed "s|android:host=\"$email_host\"|android:host=\"$email_host\" android:path=\"/wrong\"|" \
   "$good" > "$work/email-restricted.xml"
 expect_gate_fail "Email callback data 帶額外 URI 限制" "$work/email-restricted.xml"
 
-echo "manifest gate 負向驗證全部通過：OAuth／Email ownership、自訂 dispatcher、alias launcher、URI 限制屬性都會被擋"
+echo "manifest gate 負向驗證全部通過：OAuth／Email ownership（含 wildcard）、自訂 dispatcher、alias launcher、URI 限制屬性都會被擋"

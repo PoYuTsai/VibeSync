@@ -3,9 +3,15 @@ import 'package:flutter/foundation.dart' show TargetPlatform;
 enum AuthEntryPlatform {
   android,
   ios,
+  web,
   other;
 
-  static AuthEntryPlatform fromTargetPlatform(TargetPlatform platform) {
+  static AuthEntryPlatform fromRuntime(
+    TargetPlatform platform, {
+    required bool isWeb,
+  }) {
+    if (isWeb) return AuthEntryPlatform.web;
+
     switch (platform) {
       case TargetPlatform.android:
         return AuthEntryPlatform.android;
@@ -17,7 +23,7 @@ enum AuthEntryPlatform {
   }
 }
 
-enum AuthEntryPoint { google, email, apple }
+enum AuthEntryPoint { google, apple }
 
 /// Presentation policy for the native authentication entry points.
 ///
@@ -26,8 +32,9 @@ enum AuthEntryPoint { google, email, apple }
 /// its existing Google-then-Apple primary order.
 class AuthEntryPolicy {
   const AuthEntryPolicy._({
-    required this.primaryEntries,
-    required this.secondaryEntries,
+    required this.primarySocialEntries,
+    required this.showEmailPrimary,
+    required this.secondarySocialEntries,
     required this.appleLabel,
   });
 
@@ -35,26 +42,38 @@ class AuthEntryPolicy {
     switch (platform) {
       case AuthEntryPlatform.android:
         return const AuthEntryPolicy._(
-          primaryEntries: [AuthEntryPoint.google, AuthEntryPoint.email],
-          secondaryEntries: [AuthEntryPoint.apple],
+          primarySocialEntries: [AuthEntryPoint.google],
+          showEmailPrimary: true,
+          secondarySocialEntries: [AuthEntryPoint.apple],
           appleLabel: '已有 iPhone VibeSync 帳號？使用 Apple 繼續',
         );
       case AuthEntryPlatform.ios:
         return const AuthEntryPolicy._(
-          primaryEntries: [AuthEntryPoint.google, AuthEntryPoint.apple],
-          secondaryEntries: [],
+          primarySocialEntries: [AuthEntryPoint.google, AuthEntryPoint.apple],
+          showEmailPrimary: true,
+          secondarySocialEntries: [],
           appleLabel: '使用 Apple 繼續',
         );
+      case AuthEntryPlatform.web:
       case AuthEntryPlatform.other:
         return const AuthEntryPolicy._(
-          primaryEntries: [AuthEntryPoint.email],
-          secondaryEntries: [],
+          primarySocialEntries: [],
+          showEmailPrimary: true,
+          secondarySocialEntries: [],
           appleLabel: '使用 Apple 繼續',
         );
     }
   }
 
-  final List<AuthEntryPoint> primaryEntries;
-  final List<AuthEntryPoint> secondaryEntries;
+  /// Social entries rendered in the primary social region, in order.
+  final List<AuthEntryPoint> primarySocialEntries;
+
+  /// Whether the independent Email form is rendered as the primary Email
+  /// region. Email is deliberately not represented as a social entry.
+  final bool showEmailPrimary;
+
+  /// Social entries rendered in the secondary region, in order.
+  final List<AuthEntryPoint> secondarySocialEntries;
+
   final String appleLabel;
 }

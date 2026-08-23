@@ -4,42 +4,77 @@ import 'package:vibesync/features/auth/presentation/auth_entry_policy.dart';
 
 void main() {
   group('Android auth entry policy', () {
-    test('Google and Email are primary, Apple is secondary', () {
+    test(
+        'Google is primary social, Email is its own primary region, Apple is secondary',
+        () {
       final policy = AuthEntryPolicy.forPlatform(AuthEntryPlatform.android);
 
-      expect(
-          policy.primaryEntries, [AuthEntryPoint.google, AuthEntryPoint.email]);
-      expect(policy.secondaryEntries, [AuthEntryPoint.apple]);
+      expect(policy.primarySocialEntries, [AuthEntryPoint.google]);
+      expect(policy.showEmailPrimary, isTrue);
+      expect(policy.secondarySocialEntries, [AuthEntryPoint.apple]);
       expect(policy.appleLabel, contains('已有 iPhone VibeSync 帳號'));
     });
 
     test('iOS keeps the existing Google then Apple primary order', () {
       final policy = AuthEntryPolicy.forPlatform(AuthEntryPlatform.ios);
 
-      expect(
-          policy.primaryEntries, [AuthEntryPoint.google, AuthEntryPoint.apple]);
-      expect(policy.secondaryEntries, isEmpty);
+      expect(policy.primarySocialEntries,
+          [AuthEntryPoint.google, AuthEntryPoint.apple]);
+      expect(policy.showEmailPrimary, isTrue);
+      expect(policy.secondarySocialEntries, isEmpty);
       expect(policy.appleLabel, '使用 Apple 繼續');
+    });
+
+    test('Web exposes Email only and no native social entry', () {
+      final policy = AuthEntryPolicy.forPlatform(AuthEntryPlatform.web);
+
+      expect(policy.primarySocialEntries, isEmpty);
+      expect(policy.showEmailPrimary, isTrue);
+      expect(policy.secondarySocialEntries, isEmpty);
     });
 
     test('unsupported platforms expose no native social entry', () {
       final policy = AuthEntryPolicy.forPlatform(AuthEntryPlatform.other);
 
-      expect(policy.primaryEntries, [AuthEntryPoint.email]);
-      expect(policy.secondaryEntries, isEmpty);
+      expect(policy.primarySocialEntries, isEmpty);
+      expect(policy.showEmailPrimary, isTrue);
+      expect(policy.secondarySocialEntries, isEmpty);
     });
 
-    test('TargetPlatform maps to one auth platform value', () {
+    test('runtime platform maps Web before target platform', () {
       expect(
-        AuthEntryPlatform.fromTargetPlatform(TargetPlatform.android),
+        AuthEntryPlatform.fromRuntime(
+          TargetPlatform.android,
+          isWeb: false,
+        ),
         AuthEntryPlatform.android,
       );
       expect(
-        AuthEntryPlatform.fromTargetPlatform(TargetPlatform.iOS),
+        AuthEntryPlatform.fromRuntime(
+          TargetPlatform.iOS,
+          isWeb: false,
+        ),
         AuthEntryPlatform.ios,
       );
       expect(
-        AuthEntryPlatform.fromTargetPlatform(TargetPlatform.linux),
+        AuthEntryPlatform.fromRuntime(
+          TargetPlatform.android,
+          isWeb: true,
+        ),
+        AuthEntryPlatform.web,
+      );
+      expect(
+        AuthEntryPlatform.fromRuntime(
+          TargetPlatform.iOS,
+          isWeb: true,
+        ),
+        AuthEntryPlatform.web,
+      );
+      expect(
+        AuthEntryPlatform.fromRuntime(
+          TargetPlatform.linux,
+          isWeb: false,
+        ),
         AuthEntryPlatform.other,
       );
     });
