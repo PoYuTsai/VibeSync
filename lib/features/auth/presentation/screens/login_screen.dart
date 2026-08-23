@@ -53,8 +53,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String? _pendingVerificationEmail;
   EmailAuthCallbackFailure? _emailCallbackFailure;
 
-  bool get _hasPendingVerification =>
-      (_pendingVerificationEmail ?? '').trim().isNotEmpty;
   String get _typedEmail => _emailController.text.trim();
   String? get _validTypedEmail =>
       _isValidEmail(_typedEmail) ? _typedEmail : null;
@@ -64,9 +62,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   bool get _showPendingVerificationResend {
-    final pending = (_pendingVerificationEmail ?? '').trim().toLowerCase();
-    final typed = _typedEmail.toLowerCase();
-    return _hasPendingVerification && (typed.isEmpty || typed == pending);
+    return EmailAuthRetryVisibilityPolicy.showPendingVerificationResend(
+      pendingEmail: _pendingVerificationEmail,
+      typedEmail: _typedEmail,
+      hasCallbackFailure: _emailCallbackFailure != null,
+    );
   }
 
   String? get _pendingVerificationHint {

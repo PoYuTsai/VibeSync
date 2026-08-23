@@ -1,5 +1,26 @@
 import '../../../core/services/email_auth_callback_failure.dart';
 
+/// Chooses which Email retry region owns the UI when multiple auth notices
+/// are pending. A callback failure is more specific than a stale signup
+/// verification reminder, so its dedicated retry must remain visible.
+class EmailAuthRetryVisibilityPolicy {
+  const EmailAuthRetryVisibilityPolicy._();
+
+  static bool showPendingVerificationResend({
+    required String? pendingEmail,
+    required String typedEmail,
+    required bool hasCallbackFailure,
+  }) {
+    if (hasCallbackFailure) return false;
+
+    final pending = (pendingEmail ?? '').trim();
+    if (pending.isEmpty) return false;
+
+    final typed = typedEmail.trim().toLowerCase();
+    return typed.isEmpty || typed == pending.toLowerCase();
+  }
+}
+
 /// Small lifecycle reducer for the dedicated Email callback retry action.
 /// Starting a request and a failed request preserve the callback failure;
 /// only a successful resend/reset clears it.

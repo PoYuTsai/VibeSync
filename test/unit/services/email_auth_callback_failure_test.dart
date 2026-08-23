@@ -261,4 +261,47 @@ void main() {
       expect(state.noticeMessage, '重設密碼信已重新寄出。');
     });
   });
+
+  group('EmailAuthRetryVisibilityPolicy', () {
+    test(
+      'callback failure owns retry region over matching or blank pending email',
+      () {
+        expect(
+          EmailAuthRetryVisibilityPolicy.showPendingVerificationResend(
+            pendingEmail: 'pending@example.com',
+            typedEmail: '',
+            hasCallbackFailure: true,
+          ),
+          isFalse,
+        );
+        expect(
+          EmailAuthRetryVisibilityPolicy.showPendingVerificationResend(
+            pendingEmail: 'pending@example.com',
+            typedEmail: 'pending@example.com',
+            hasCallbackFailure: true,
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test('pending verification remains visible without callback failure', () {
+      expect(
+        EmailAuthRetryVisibilityPolicy.showPendingVerificationResend(
+          pendingEmail: 'pending@example.com',
+          typedEmail: '',
+          hasCallbackFailure: false,
+        ),
+        isTrue,
+      );
+      expect(
+        EmailAuthRetryVisibilityPolicy.showPendingVerificationResend(
+          pendingEmail: 'pending@example.com',
+          typedEmail: 'pending@example.com',
+          hasCallbackFailure: false,
+        ),
+        isTrue,
+      );
+    });
+  });
 }
