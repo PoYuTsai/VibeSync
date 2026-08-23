@@ -105,7 +105,8 @@ FAKE
 chmod +x "$work/adb"
 
 good_resolve="com.vibesync.app/$callback_activity"
-good_email_resolve="com.vibesync.app/$email_callback_activity"
+good_email_resolve="com.vibesync.app/.MainActivity"
+good_email_resolve_full="com.vibesync.app/$email_callback_activity"
 export FAKE_RESOLVE_EMAIL="$good_email_resolve"
 
 status=0
@@ -138,9 +139,28 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 
+# --- 1b. 完整 component 寫法仍是合法等價形式 → 必須通過 ---
+export FAKE_RESOLVE_EMAIL="$good_email_resolve_full"
+run_smoke "$good_resolve" clean
+if [ "$status" -ne 0 ]; then
+  cat "$work/out"
+  echo "::error::合法完整 component（resolver=$good_email_resolve_full）應通過，卻失敗（exit=$status）"
+  exit 1
+fi
+export FAKE_RESOLVE_EMAIL="$good_email_resolve"
+
 # --- 2. resolver 解析到錯的 owner ---
 run_smoke "com.vibesync.app/.MainActivity" clean
 expect_fail "wrong-owner" "唯一擁有者契約被打破"
+
+# --- 2b. component package/class 前後綴假命中也必須 fail closed ---
+for fake_owner in \
+  "com.vibesync.application/com.linusu.flutter_web_auth_2.CallbackActivity" \
+  "com.vibesync.app/com.linusu.flutter_web_auth_2.CallbackActivityExtra" \
+  "com.vibesync.app/com.linusu.flutter_web_auth_2.XCallbackActivity"; do
+  run_smoke "$fake_owner" clean
+  expect_fail "component-fake-$fake_owner" "唯一擁有者契約被打破"
+done
 
 # --- 3. resolver 回 chooser ---
 run_smoke "android/com.android.internal.app.ResolverActivity" clean

@@ -10,7 +10,7 @@
 #      MainActivity，無 chooser（AUTH-01）
 #   4. App 執行中送兩條 callback VIEW intent：Starting: Intent 送出、無
 #      Error、無 chooser、同 PID（不 crash、不疊程序）
-#   4. 全程 logcat 掃本 package 的 runtime 例外與 ClassNotFoundException，
+#   5. 全程 logcat 掃本 package 的 runtime 例外與 ClassNotFoundException，
 #      fail closed
 # 證據邊界：synthetic VIEW intent 只驗 callback「routing」與 process
 # stability，不驗 FlutterWebAuth2.authenticate 真的收到 OAuth 結果
@@ -165,18 +165,40 @@ dump_pkg_log() {  # $1=stage 標籤
 
 # AND-03／AUTH-01：對兩條凍結深連結單獨 resolve，唯一解析結果必須是
 # 各自 contract 指定 owner 且無 chooser，否則 fail closed。
+component_matches_expected() {
+  local output="$1" expected_activity="$2"
+  local expected_full="$package/$expected_activity" expected_short=""
+
+  # Android resolver output may abbreviate an activity in the owning package
+  # as package/.Class. Accept exactly that form and the fully-qualified form;
+  # do not use substring matching, which would accept suffix/prefix impostors.
+  if [[ "$expected_activity" == "$package."* ]]; then
+    expected_short="$package/.${expected_activity#"$package."}"
+  fi
+
+  local line
+  while IFS= read -r line; do
+    line="${line//$'\r'/}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    if [[ "$line" == "$expected_full" ||
+      ( -n "$expected_short" && "$line" == "$expected_short" ) ]]; then
+      return 0
+    fi
+  done <<<"$output"
+  return 1
+}
+
 assert_unique_callback_owner() {
   local uri="$1" expected_activity="$2" label="$3" out
   out=$(adb_call "resolver-$label" shell "cmd package resolve-activity --brief -a android.intent.action.VIEW -d '$uri'")
   out=$(tr -d '\r' <<<"$out")
   echo "resolver ($label): $out"
   assert_no_chooser "$out" "resolver $label 解析"
-  case "$out" in
-    *"$package/$expected_activity"*) ;;
-    *)
-      echo "::error::$uri 未唯一解析到 $expected_activity（唯一擁有者契約被打破）：$out"
-      exit 1 ;;
-  esac
+  if ! component_matches_expected "$out" "$expected_activity"; then
+    echo "::error::$uri 未唯一解析到 $expected_activity（唯一擁有者契約被打破）：$out"
+    exit 1
+  fi
 }
 
 send_callback_intent() {
