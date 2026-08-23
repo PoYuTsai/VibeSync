@@ -5,6 +5,23 @@ import 'package:flutter/foundation.dart';
 /// 應用程式執行環境
 enum Environment { dev, staging, prod }
 
+/// The only Email callback provenance markers accepted by the native app.
+///
+/// This marker chooses the retry copy/operation only; Supabase's accepted
+/// auth event remains the authority for session and password-recovery state.
+enum EmailAuthFlow { signup, recovery }
+
+extension EmailAuthFlowValue on EmailAuthFlow {
+  String get marker {
+    switch (this) {
+      case EmailAuthFlow.signup:
+        return 'signup';
+      case EmailAuthFlow.recovery:
+        return 'recovery';
+    }
+  }
+}
+
 /// 環境配置
 ///
 /// 根據編譯時定義的 ENV 環境變數決定配置:
@@ -24,6 +41,8 @@ enum Environment { dev, staging, prod }
 /// flutter run --dart-define=ENV=prod
 /// ```
 class AppConfig {
+  static const emailAuthFlowQueryParameter = 'auth_flow';
+
   static const _envKey = 'ENV';
   static const gitSha = String.fromEnvironment(
     'GIT_SHA',
@@ -176,6 +195,24 @@ class AppConfig {
     }
 
     return _nativeEmailAuthRedirectUri;
+  }
+
+  /// Signup confirmation and resend callbacks use one fixed provenance marker.
+  static String get authEmailSignupRedirectUri =>
+      _emailRedirectUriFor(EmailAuthFlow.signup);
+
+  /// Password recovery callbacks use a distinct fixed provenance marker.
+  static String get authEmailRecoveryRedirectUri =>
+      _emailRedirectUriFor(EmailAuthFlow.recovery);
+
+  static String _emailRedirectUriFor(EmailAuthFlow flow) {
+    final uri = Uri.parse(authEmailRedirectUri);
+    return uri.replace(
+      queryParameters: {
+        ...uri.queryParameters,
+        emailAuthFlowQueryParameter: flow.marker,
+      },
+    ).toString();
   }
 
   /// 顯示環境名稱

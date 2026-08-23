@@ -46,8 +46,18 @@ void main() {
 
   test('all Android Email auth requests use the Email callback getter', () {
     final source = readRepoFile('lib/core/services/supabase_service.dart');
-    expect(source, contains('emailRedirectTo: AppConfig.authEmailRedirectUri'));
-    expect(source, contains('redirectTo: AppConfig.authEmailRedirectUri'));
+    expect(
+      source,
+      contains('emailRedirectTo: AppConfig.authEmailSignupRedirectUri'),
+    );
+    expect(
+      source,
+      contains('redirectTo: AppConfig.authEmailRecoveryRedirectUri'),
+    );
+    expect(
+      source,
+      isNot(contains('emailRedirectTo: AppConfig.authEmailRedirectUri')),
+    );
   });
 
   test('Email deep links disable permissive auto handling and use the gate',
@@ -116,10 +126,42 @@ void main() {
     expect(source, contains('EmailAuthCallbackFailureStore'));
     expect(source, contains('pendingEmailAuthCallbackFailure'));
     expect(source, contains('emailAuthCallbackFailureChanges'));
+    expect(source, contains('AuthCallbackUriPolicy.emailAuthFlow(uri)'));
+    expect(
+        source, contains('EmailAuthCallbackFailureClassifier.tryFromCallback'));
     expect(source, isNot(contains('notifyException')));
+    expect(source, isNot(contains("queryParameters['type']")));
     expect(login, contains('pendingEmailAuthCallbackFailure'));
     expect(login, contains('emailAuthCallbackFailureChanges'));
     expect(login, contains('EmailAuthCallbackFailureMessage'));
+  });
+
+  test(
+      'callback failure handler is passive and retry validation preserves state',
+      () {
+    final source = readRepoFile(
+      'lib/features/auth/presentation/screens/login_screen.dart',
+    );
+    final handler = RegExp(
+      r'void _handleEmailAuthCallbackFailure\([\s\S]*?\n  }',
+    ).firstMatch(source)?.group(0);
+    expect(handler, isNotNull);
+    expect(handler, isNot(contains('_isLoading')));
+    expect(handler, isNot(contains('_isSignUp')));
+    expect(handler, isNot(contains('_isPasswordRecoveryMode')));
+    expect(source, contains('_setEmailCallbackRetryValidationError'));
+    expect(source, contains('if (!_isValidEmail(email))'));
+  });
+
+  test('signed out and explicit sign out clear buffered Email failures', () {
+    final source = readRepoFile('lib/core/services/supabase_service.dart');
+    expect(source, contains('AuthChangeEvent.signedOut'));
+    expect(source, contains('clearEmailAuthCallbackFailure();'));
+    final signOut = RegExp(
+      r'static Future<void> signOut\(\) async \{[\s\S]*?\n  }',
+    ).firstMatch(source)?.group(0);
+    expect(signOut, isNotNull);
+    expect(signOut, contains('clearEmailAuthCallbackFailure();'));
   });
 
   test('Apple runbook preserves ordered client ID audiences and URL layers',

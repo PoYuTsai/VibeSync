@@ -82,7 +82,7 @@ void main() {
       expect(
         AuthCallbackUriPolicy.isProcessableEmailAuthCallback(
           Uri.parse(
-            'com.poyutsai.vibesync://email-callback?type=recovery&code=abc',
+            'com.poyutsai.vibesync://email-callback?auth_flow=recovery&code=abc',
           ),
         ),
         isTrue,
@@ -90,14 +90,30 @@ void main() {
       expect(
         AuthCallbackUriPolicy.isProcessableEmailAuthCallback(
           Uri.parse(
-            'com.poyutsai.vibesync://email-callback?error_description=expired',
+            'com.poyutsai.vibesync://email-callback?auth_flow=signup&error_description=expired',
           ),
         ),
         isTrue,
       );
       expect(
         AuthCallbackUriPolicy.isProcessableEmailAuthCallback(
-          Uri.parse('com.poyutsai.vibesync://email-callback?type=recovery'),
+          Uri.parse(
+            'com.poyutsai.vibesync://email-callback?auth_flow=recovery',
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        AuthCallbackUriPolicy.isProcessableEmailAuthCallback(
+          Uri.parse('com.poyutsai.vibesync://email-callback?code=abc'),
+        ),
+        isFalse,
+      );
+      expect(
+        AuthCallbackUriPolicy.isProcessableEmailAuthCallback(
+          Uri.parse(
+            'com.poyutsai.vibesync://email-callback?auth_flow=recovery&auth_flow=signup&code=abc',
+          ),
         ),
         isFalse,
       );
@@ -123,6 +139,38 @@ void main() {
         ),
         isFalse,
       );
+    });
+
+    test('classifies only one fixed Email flow marker', () {
+      expect(
+        AuthCallbackUriPolicy.emailAuthFlow(
+          Uri.parse(
+            'com.poyutsai.vibesync://email-callback?auth_flow=recovery&code=abc',
+          ),
+        ),
+        EmailAuthFlow.recovery,
+      );
+      expect(
+        AuthCallbackUriPolicy.emailAuthFlow(
+          Uri.parse(
+            'com.poyutsai.vibesync://email-callback?auth_flow=signup&code=abc',
+          ),
+        ),
+        EmailAuthFlow.signup,
+      );
+      for (final query in [
+        'code=abc',
+        'auth_flow=unknown&code=abc',
+        'auth_flow=recovery&auth_flow=signup&code=abc',
+      ]) {
+        expect(
+          AuthCallbackUriPolicy.emailAuthFlow(
+            Uri.parse('com.poyutsai.vibesync://email-callback?$query'),
+          ),
+          isNull,
+          reason: 'invalid marker must fail closed: $query',
+        );
+      }
     });
 
     test('AppConfig exposes independent Android Email callback', () {

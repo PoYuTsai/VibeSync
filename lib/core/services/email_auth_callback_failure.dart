@@ -2,7 +2,8 @@ import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'auth_recovery_helper.dart';
+import '../config/auth_callback_contract.dart';
+import '../config/environment.dart';
 
 /// The only callback failure details that may cross the service boundary.
 ///
@@ -14,15 +15,21 @@ enum EmailAuthCallbackFailureKind { expired, denied, malformed }
 class EmailAuthCallbackFailure {
   const EmailAuthCallbackFailure({
     required this.kind,
-    required this.isPasswordRecovery,
-  });
+    EmailAuthFlow? flow,
+    bool? isPasswordRecovery,
+  })  : assert(flow != null || isPasswordRecovery != null),
+        flow = flow ??
+            (isPasswordRecovery == true
+                ? EmailAuthFlow.recovery
+                : EmailAuthFlow.signup);
 
   final EmailAuthCallbackFailureKind kind;
-  final bool isPasswordRecovery;
+  final EmailAuthFlow flow;
+
+  bool get isPasswordRecovery => flow == EmailAuthFlow.recovery;
 
   @override
-  String toString() =>
-      'EmailAuthCallbackFailure(kind: $kind, recovery: $isPasswordRecovery)';
+  String toString() => 'EmailAuthCallbackFailure(kind: $kind, flow: $flow)';
 }
 
 /// Buffers the latest Email callback failure until the presentation layer has
@@ -60,11 +67,38 @@ class EmailAuthCallbackFailureStore {
 class EmailAuthCallbackFailureClassifier {
   const EmailAuthCallbackFailureClassifier._();
 
+  static EmailAuthCallbackFailure? tryFromCallback(
+    Uri callback, {
+    Object? error,
+  }) {
+    final flow = AuthCallbackUriPolicy.emailAuthFlow(callback);
+    if (flow == null) {
+      return null;
+    }
+    return _fromMarkedCallback(callback, flow: flow, error: error);
+  }
+
   static EmailAuthCallbackFailure fromCallback(
     Uri callback, {
     Object? error,
   }) {
-    final normalized = AuthRecoveryHelper.normalizeAuthCallbackUri(callback);
+    final selectedFlow = AuthCallbackUriPolicy.emailAuthFlow(callback);
+    if (selectedFlow == null) {
+      throw ArgumentError.value(
+        callback,
+        'callback',
+        'Email callback must carry exactly one supported auth_flow marker',
+      );
+    }
+    return _fromMarkedCallback(callback, flow: selectedFlow, error: error);
+  }
+
+  static EmailAuthCallbackFailure _fromMarkedCallback(
+    Uri callback, {
+    required EmailAuthFlow flow,
+    Object? error,
+  }) {
+    final normalized = _normalize(callback);
     final signals = <String>[
       normalized.queryParameters['error'] ?? '',
       normalized.queryParameters['error_code'] ?? '',
@@ -87,8 +121,14 @@ class EmailAuthCallbackFailureClassifier {
 
     return EmailAuthCallbackFailure(
       kind: kind,
-      isPasswordRecovery:
-          normalized.queryParameters['type']?.toLowerCase() == 'recovery',
+      flow: flow,
     );
+  }
+
+  static Uri _normalize(Uri uri) {
+    final normalizedRaw = uri.hasQuery
+        ? uri.toString().replaceAll('#', '&')
+        : uri.toString().replaceAll('#', '?');
+    return Uri.parse(normalizedRaw);
   }
 }

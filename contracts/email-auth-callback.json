@@ -3,7 +3,17 @@
   "scheme": "com.poyutsai.vibesync",
   "host": "email-callback",
   "androidCallbackActivity": "com.vibesync.app.MainActivity",
-  "supabaseRedirectAllowlistEntry": "com.poyutsai.vibesync://email-callback",
+  "flowMarker": {
+    "parameter": "auth_flow",
+    "values": {
+      "signup": "signup",
+      "recovery": "recovery"
+    }
+  },
+  "supabaseRedirectAllowlistEntries": [
+    "com.poyutsai.vibesync://email-callback?auth_flow=signup",
+    "com.poyutsai.vibesync://email-callback?auth_flow=recovery"
+  ],
   "purposes": [
     "signup_confirmation",
     "resend_confirmation",

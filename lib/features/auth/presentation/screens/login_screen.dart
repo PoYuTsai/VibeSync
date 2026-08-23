@@ -114,7 +114,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _invalidateSessionScopedProviders();
 
     if (authState.event == AuthChangeEvent.passwordRecovery ||
-        authState.event == AuthChangeEvent.signedIn) {
+        authState.event == AuthChangeEvent.signedIn ||
+        authState.event == AuthChangeEvent.signedOut) {
       SupabaseService.clearEmailAuthCallbackFailure();
       _emailCallbackFailure = null;
     }
@@ -135,10 +136,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    if (authState.event == AuthChangeEvent.signedOut &&
-        _isPasswordRecoveryMode) {
+    if (authState.event == AuthChangeEvent.signedOut) {
       setState(() {
         _isPasswordRecoveryMode = false;
+        _emailCallbackFailure = null;
+        _errorMessage = null;
       });
     }
   }
@@ -146,15 +148,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void _handleEmailAuthCallbackFailure(EmailAuthCallbackFailure failure) {
     if (!mounted) return;
 
+    final presentation =
+        EmailAuthCallbackFailurePresentationState.fromFailure(failure);
     setState(() {
-      _isLoading = false;
-      _emailCallbackFailure = failure;
-      _errorMessage = EmailAuthCallbackFailureMessage.forFailure(failure);
-      _noticeMessage = null;
-      // A failed recovery callback must never put the screen into recovery
-      // mode. An already accepted Supabase recovery event remains authoritative.
-      _isPasswordRecoveryMode = SupabaseService.isPasswordRecoveryInProgress;
-      _isSignUp = false;
+      _emailCallbackFailure = presentation.failure;
+      _errorMessage = presentation.errorMessage;
+      _noticeMessage = presentation.noticeMessage;
     });
     SupabaseService.consumeEmailAuthCallbackFailure();
   }
@@ -194,6 +193,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() {
       _errorMessage = message;
       _noticeMessage = null;
+    });
+  }
+
+  /// Retry validation must not discard the callback failure that explains why
+  /// this specialized action is shown. A valid retry or a successful auth
+  /// operation may clear it through the normal state paths.
+  void _setEmailCallbackRetryValidationError(String message) {
+    final failure = _emailCallbackFailure;
+    if (failure == null) {
+      _setError(message);
+      return;
+    }
+    final presentation =
+        EmailAuthCallbackFailurePresentationState.retryValidation(
+      failure: failure,
+      message: message,
+    );
+    setState(() {
+      _emailCallbackFailure = presentation.failure;
+      _errorMessage = presentation.errorMessage;
+      _noticeMessage = presentation.noticeMessage;
     });
   }
 
@@ -338,7 +358,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         email.toLowerCase() == pendingEmail.toLowerCase();
 
     if (!_isValidEmail(email)) {
-      _setError('請先輸入有效的 Email 再重新寄送驗證信。');
+      _setEmailCallbackRetryValidationError(
+        '請先輸入有效的 Email 再重新寄送驗證信。',
+      );
       return;
     }
 
@@ -407,7 +429,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final email = _emailController.text.trim();
 
     if (!_isValidEmail(email)) {
-      _setError('請先輸入有效的 Email 再重設密碼。');
+      _setEmailCallbackRetryValidationError(
+        '請先輸入有效的 Email 再重設密碼。',
+      );
       return;
     }
 
@@ -925,9 +949,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: 8),
                     ],
                     if (_emailCallbackFailure != null &&
-                        !_showPendingVerificationResend &&
-                        !_isSignUp &&
-                        !_isPasswordRecoveryMode) ...[
+                        !_showPendingVerificationResend) ...[
                       TextButton(
                         onPressed: _isLoading
                             ? null

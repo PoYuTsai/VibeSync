@@ -15,11 +15,31 @@ import 'package:yaml/yaml.dart';
 const kAndroidPackage = 'com.vibesync.app';
 
 /// AND-03 凍結契約唯一真相源
+class _CallbackContractBase {
+  const _CallbackContractBase({
+    required this.scheme,
+    required this.host,
+    required this.callbackActivity,
+  });
+
+  factory _CallbackContractBase.fromJson(Map<String, dynamic> json) {
+    return _CallbackContractBase(
+      scheme: json['scheme'] as String,
+      host: json['host'] as String,
+      callbackActivity: json['androidCallbackActivity'] as String,
+    );
+  }
+
+  final String scheme;
+  final String host;
+  final String callbackActivity;
+
+  String get uri => '$scheme://$host';
+}
+
 class AuthCallbackContract {
   AuthCallbackContract._(
-    this.scheme,
-    this.host,
-    this.callbackActivity,
+    this._base,
     this.supabaseAllowlistEntry,
   );
 
@@ -27,19 +47,18 @@ class AuthCallbackContract {
     final json = jsonDecode(readRepoFile('contracts/auth-callback.json'))
         as Map<String, dynamic>;
     return AuthCallbackContract._(
-      json['scheme'] as String,
-      json['host'] as String,
-      json['androidCallbackActivity'] as String,
+      _CallbackContractBase.fromJson(json),
       json['supabaseRedirectAllowlistEntry'] as String,
     );
   }
 
-  final String scheme;
-  final String host;
-  final String callbackActivity;
+  final _CallbackContractBase _base;
   final String supabaseAllowlistEntry;
 
-  String get uri => '$scheme://$host';
+  String get scheme => _base.scheme;
+  String get host => _base.host;
+  String get callbackActivity => _base.callbackActivity;
+  String get uri => _base.uri;
 }
 
 /// AUTH-01 Email deep-link contract. Kept separate from the frozen OAuth
@@ -47,11 +66,11 @@ class AuthCallbackContract {
 /// activity owners.
 class EmailAuthCallbackContract {
   EmailAuthCallbackContract._(
-    this.scheme,
-    this.host,
-    this.callbackActivity,
-    this.supabaseAllowlistEntry,
+    this._base,
     this.purposes,
+    this.markerParameter,
+    this.markerValues,
+    this.supabaseAllowlistEntries,
   );
 
   factory EmailAuthCallbackContract.load() {
@@ -59,21 +78,28 @@ class EmailAuthCallbackContract {
       readRepoFile('contracts/email-auth-callback.json'),
     ) as Map<String, dynamic>;
     return EmailAuthCallbackContract._(
-      json['scheme'] as String,
-      json['host'] as String,
-      json['androidCallbackActivity'] as String,
-      json['supabaseRedirectAllowlistEntry'] as String,
+      _CallbackContractBase.fromJson(json),
       (json['purposes'] as List<dynamic>).cast<String>(),
+      (json['flowMarker']['parameter'] as String),
+      (json['flowMarker']['values'] as Map<String, dynamic>).map(
+        (key, value) => MapEntry(key, value as String),
+      ),
+      (json['supabaseRedirectAllowlistEntries'] as List<dynamic>)
+          .cast<String>(),
     );
   }
 
-  final String scheme;
-  final String host;
-  final String callbackActivity;
-  final String supabaseAllowlistEntry;
+  final _CallbackContractBase _base;
   final List<String> purposes;
+  final String markerParameter;
+  final Map<String, String> markerValues;
+  final List<String> supabaseAllowlistEntries;
 
-  String get uri => '$scheme://$host';
+  String get scheme => _base.scheme;
+  String get host => _base.host;
+  String get callbackActivity => _base.callbackActivity;
+  String get supabaseAllowlistEntry => _base.uri;
+  String get uri => _base.uri;
 }
 
 /// supabase/config.toml 的 additional_redirect_urls 陣列原始內容

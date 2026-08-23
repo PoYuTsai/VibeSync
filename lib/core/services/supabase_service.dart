@@ -68,6 +68,13 @@ class SupabaseService {
       return;
     }
 
+    // The fixed marker only selects the retry operation.  It is deliberately
+    // validated before any parser/session exchange so an unknown, missing, or
+    // duplicated marker cannot change auth state or publish misleading UI.
+    if (AuthCallbackUriPolicy.emailAuthFlow(uri) == null) {
+      return;
+    }
+
     if (!AuthCallbackUriPolicy.isProcessableEmailAuthCallback(uri)) {
       _publishEmailAuthCallbackFailure(uri);
       return;
@@ -91,7 +98,8 @@ class SupabaseService {
       currentState: _passwordRecoveryInProgress,
     );
     if (authState.event == AuthChangeEvent.passwordRecovery ||
-        authState.event == AuthChangeEvent.signedIn) {
+        authState.event == AuthChangeEvent.signedIn ||
+        authState.event == AuthChangeEvent.signedOut) {
       clearEmailAuthCallbackFailure();
     }
     if (authState.event == AuthChangeEvent.passwordRecovery) {
@@ -138,9 +146,13 @@ class SupabaseService {
     Uri uri, {
     Object? error,
   }) {
-    _emailCallbackFailures.publish(
-      EmailAuthCallbackFailureClassifier.fromCallback(uri, error: error),
+    final failure = EmailAuthCallbackFailureClassifier.tryFromCallback(
+      uri,
+      error: error,
     );
+    if (failure != null) {
+      _emailCallbackFailures.publish(failure);
+    }
   }
 
   static Stream<AuthState> get authStateChanges {
@@ -170,7 +182,7 @@ class SupabaseService {
     return await client.auth.signUp(
       email: email,
       password: password,
-      emailRedirectTo: AppConfig.authEmailRedirectUri,
+      emailRedirectTo: AppConfig.authEmailSignupRedirectUri,
     );
   }
 
@@ -180,7 +192,7 @@ class SupabaseService {
     await client.auth.resend(
       email: email,
       type: OtpType.signup,
-      emailRedirectTo: AppConfig.authEmailRedirectUri,
+      emailRedirectTo: AppConfig.authEmailSignupRedirectUri,
     );
   }
 
@@ -189,7 +201,7 @@ class SupabaseService {
   }) async {
     await client.auth.resetPasswordForEmail(
       email,
-      redirectTo: AppConfig.authEmailRedirectUri,
+      redirectTo: AppConfig.authEmailRecoveryRedirectUri,
     );
   }
 
@@ -233,6 +245,9 @@ class SupabaseService {
 
   /// Sign out
   static Future<void> signOut() async {
+    // Clear the buffered callback notice before any best-effort cleanup can
+    // fail, so an explicit sign-out can never carry it into the next login.
+    clearEmailAuthCallbackFailure();
     final ownerUserId = currentUser?.id;
     await KeyboardPrivacyPurgeService.live.purge(
       KeyboardContextPurgeScope.logout,
@@ -281,6 +296,7 @@ class SupabaseService {
     }
 
     _passwordRecoveryInProgress = false;
+    clearEmailAuthCallbackFailure();
   }
 
   // 社群登入服務實例 (平台相容)

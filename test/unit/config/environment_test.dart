@@ -54,6 +54,17 @@ void main() {
       );
     });
 
+    test('Email auth redirect markers are fixed per flow', () {
+      expect(
+        AppConfig.authEmailSignupRedirectUri,
+        'com.poyutsai.vibesync://email-callback?auth_flow=signup',
+      );
+      expect(
+        AppConfig.authEmailRecoveryRedirectUri,
+        'com.poyutsai.vibesync://email-callback?auth_flow=recovery',
+      );
+    });
+
     test('RevenueCat key selection rejects server keys in production', () {
       final selected = AppConfig.selectRevenueCatPublicSdkKey(
         isProduction: true,

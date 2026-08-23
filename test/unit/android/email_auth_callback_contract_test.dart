@@ -24,12 +24,26 @@ void main() {
           'password_recovery'
         ]),
       );
+      expect(contract.markerParameter, 'auth_flow');
+      expect(
+          contract.markerValues, {'signup': 'signup', 'recovery': 'recovery'});
+      expect(
+        contract.supabaseAllowlistEntries,
+        containsAll([
+          'com.poyutsai.vibesync://email-callback?auth_flow=signup',
+          'com.poyutsai.vibesync://email-callback?auth_flow=recovery',
+        ]),
+      );
     });
 
     test('Supabase local redirect allowlist includes Email callback', () {
       expect(
         supabaseAdditionalRedirectUrlsBlock(),
-        contains('"${contract.uri}"'),
+        contains('"${contract.supabaseAllowlistEntries[0]}"'),
+      );
+      expect(
+        supabaseAdditionalRedirectUrlsBlock(),
+        contains('"${contract.supabaseAllowlistEntries[1]}"'),
       );
     });
 
@@ -104,7 +118,11 @@ void main() {
       expect(environment, contains(contract.uri));
       expect(
         readRepoFile('lib/core/services/supabase_service.dart'),
-        contains('AppConfig.authEmailRedirectUri'),
+        contains('AppConfig.authEmailSignupRedirectUri'),
+      );
+      expect(
+        readRepoFile('lib/core/services/supabase_service.dart'),
+        contains('AppConfig.authEmailRecoveryRedirectUri'),
       );
       for (final path in [
         'tools/android/assert-merged-manifest.py',
@@ -128,6 +146,8 @@ void main() {
       expect(value['host'], isA<String>());
       expect(value['androidCallbackActivity'], isA<String>());
       expect(value['purposes'], isA<List<dynamic>>());
+      expect(value['flowMarker'], isA<Map<String, dynamic>>());
+      expect(value['supabaseRedirectAllowlistEntries'], isA<List<dynamic>>());
       expect(readRepoFile('contracts/email-auth-callback.json'),
           isNot(contains('client_secret')));
     });

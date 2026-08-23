@@ -50,13 +50,21 @@
   否則會跳 activity 選擇器導致 OAuth 回不了 App。
 - Email signup confirmation、resend confirmation、password recovery 共用
   獨立的 machine-readable contract：`contracts/email-auth-callback.json`。
-  URI 是 `com.poyutsai.vibesync://email-callback`，Android 唯一 owner 是
-  `MainActivity`；不得把它加到 OAuth `CallbackActivity`，也不得讓其他
+  base URI 是 `com.poyutsai.vibesync://email-callback`，Android 唯一 owner
+  是 `MainActivity`；不得把它加到 OAuth `CallbackActivity`，也不得讓其他
   activity／alias 搶走，否則 gate 會 fail closed。
-- `AppConfig.authEmailRedirectUri`、AndroidManifest、`supabase/config.toml`、
-  Android gate 與 contract tests 都必須對帳上述 contract。Supabase Auth 仍
-  會驗證 code／error；錯 scheme、host、path 或沒有有效 auth payload 不得建立
-  session。
+- 三個寄信入口使用固定 machine-readable flow marker：signup／resend 使用
+  `com.poyutsai.vibesync://email-callback?auth_flow=signup`，password reset
+  使用 `com.poyutsai.vibesync://email-callback?auth_flow=recovery`。
+  `AppConfig`、`supabase/config.toml`、Android gate 與 contract tests 必須
+  對帳這兩個 exact allowlist entries；不保留 bare Email URI 作為寄信
+  redirect。marker 只選擇失敗後的 retry 文案／操作，不能證明 session 或
+  recovery；PKCE code 交換與 Supabase accepted auth event 才是權威。
+- Email callback 若 marker 缺失、未知、重複或錯誤，native listener 會
+  fail closed，不 exchange、不改 auth state，也不發布 retry failure。Supabase
+  error redirect 可沒有 `type=recovery`；不可把 raw `type` 當 provenance。
+  Supabase Auth 仍會驗證 code／error；錯 scheme、host、path 或沒有有效 auth
+  payload 不得建立 session。
 - Native 端關閉 Supabase 的寬鬆 URI auto-detect；`app_links` 只把 exact Email
   callback 且帶 code／error payload 的連結交給 `getSessionFromUrl`。OAuth
   callback 不走這條 listener，仍只由 `flutter_web_auth_2` 回傳給社群登入流程。
@@ -124,10 +132,10 @@ log 或本文件；只留遮罩後的名稱／fingerprint 與 pass/fail 結果�
    移除或誤替換成 Services ID。
 4. 在 Supabase provider／Apple Service 設定中分層對照 URL：Apple 的 return
    URL 是 Supabase Dashboard 顯示的 **Supabase HTTPS callback**（provider
-   層）；App 的 `com.poyutsai.vibesync://login-callback` 與
-   `com.poyutsai.vibesync://email-callback` 是 **App custom redirect**，只放
-   在 Supabase Auth redirect allowlist（App 層），不可把 custom URI 填成
-   Apple return URL，也不可混用兩個 callback。
+   層）；App 的 `com.poyutsai.vibesync://login-callback` 與兩個 marked
+   Email URI (`...?auth_flow=signup`／`...?auth_flow=recovery`) 是 **App custom redirect**，
+   只放在 Supabase Auth redirect allowlist（App 層），
+   不可把 custom URI 填成 Apple return URL，也不可混用兩個 callback。
 5. Hide My Email 必須用一個既有 iOS Apple 帳號做受控 live test，核對
    Android web flow 回到同一 Supabase `auth.users.id`。這是外部 gate，M2
    code candidate 不得宣稱已完成；若出現第二個 user，立即隱藏 Android

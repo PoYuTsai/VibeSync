@@ -15,23 +15,42 @@ class AuthCallbackUriPolicy {
     return _matches(uri, AppConfig.authEmailRedirectUri);
   }
 
+  /// Returns one and only one fixed Email flow marker. The marker is merely
+  /// retry provenance; it never authenticates the callback or enters recovery.
+  static EmailAuthFlow? emailAuthFlow(Uri uri) {
+    if (!isEmailCallback(uri)) {
+      return null;
+    }
+
+    final normalized = _normalize(uri);
+    final markers =
+        normalized.queryParametersAll[AppConfig.emailAuthFlowQueryParameter] ??
+            const <String>[];
+    if (markers.length != 1) {
+      return null;
+    }
+
+    switch (markers.single) {
+      case 'signup':
+        return EmailAuthFlow.signup;
+      case 'recovery':
+        return EmailAuthFlow.recovery;
+      default:
+        return null;
+    }
+  }
+
   /// Returns true only for an exact Email callback carrying a result that
   /// Supabase's PKCE callback parser can consume or reject explicitly.
   ///
   /// Keeping this gate separate from [isEmailCallback] prevents a bare,
   /// early, or malformed deep link from reaching [getSessionFromUrl].
   static bool isProcessableEmailAuthCallback(Uri uri) {
-    if (!isEmailCallback(uri)) {
+    if (emailAuthFlow(uri) == null) {
       return false;
     }
 
-    final normalized = uri.hasQuery
-        ? uri.toString().replaceAll('#', '&')
-        : uri.toString().replaceAll('#', '?');
-    final normalizedUri = Uri.tryParse(normalized);
-    if (normalizedUri == null) {
-      return false;
-    }
+    final normalizedUri = _normalize(uri);
 
     const resultKeys = {
       'code',
@@ -42,6 +61,13 @@ class AuthCallbackUriPolicy {
     return resultKeys.any(
       (key) => (normalizedUri.queryParameters[key] ?? '').trim().isNotEmpty,
     );
+  }
+
+  static Uri _normalize(Uri uri) {
+    final normalizedRaw = uri.hasQuery
+        ? uri.toString().replaceAll('#', '&')
+        : uri.toString().replaceAll('#', '?');
+    return Uri.tryParse(normalizedRaw) ?? uri;
   }
 
   static bool _matches(Uri uri, String expectedUri) {

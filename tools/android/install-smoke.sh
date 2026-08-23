@@ -39,12 +39,20 @@ import json, sys
 c = json.load(open(sys.argv[1]))
 print(c["scheme"], c["host"], c["androidCallbackActivity"])
 ' "$email_contract")
+email_signup_callback_uri=$(python3 -c '
+import json, sys
+c = json.load(open(sys.argv[1]))
+print(c["supabaseRedirectAllowlistEntries"][0])
+' "$email_contract")
 
 package="com.vibesync.app"
 component="$package/.MainActivity"
 # 深連結用非機密 dummy query（token 不進 log）
 callback_uri="$scheme://$host?smoke=1"
-email_callback_uri="$email_scheme://$email_host?smoke=1"
+# Keep the synthetic Email VIEW intent on a frozen marked URI. It has no code
+# or error payload, so the app must route it to MainActivity and then fail
+# closed before any session exchange.
+email_callback_uri="$email_signup_callback_uri"
 # 負向 harness 用 fake adb 重現時免等真冷啟動
 startup_wait="${SMOKE_STARTUP_WAIT:-5}"
 # 每個 adb 呼叫的時間上限（秒）。API 24 emulator 曾在 MainActivity 啟動後
