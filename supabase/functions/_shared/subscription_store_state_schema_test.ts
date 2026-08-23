@@ -21,6 +21,10 @@ const productDetailsMigrationSource = await Deno.readTextFile(
   ),
 );
 
+const initialSchemaSource = await Deno.readTextFile(
+  new URL("../../migrations/00001_initial_schema.sql", import.meta.url),
+);
+
 function requiredSql(snippet: string): void {
   assert(
     migrationSource.includes(snippet),
@@ -80,6 +84,61 @@ Deno.test("subscription_store_states schema is additive, per-store, and typed", 
   );
 });
 
+Deno.test("finalizer captures and preserves one grouped legacy baseline", () => {
+  assert(
+    initialSchemaSource.includes(
+      "tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free', 'starter', 'essential'))",
+    ),
+    "legacy subscription tier must be non-null for the baseline sentinel",
+  );
+
+  const finalizerStart = migrationSource.indexOf(
+    "CREATE OR REPLACE FUNCTION public.finalize_subscription_store_state_reconciliation(",
+  );
+  const finalizerEnd = migrationSource.indexOf(
+    "REVOKE ALL ON FUNCTION public.finalize_subscription_store_state_reconciliation(",
+    finalizerStart,
+  );
+  const finalizer = migrationSource.slice(finalizerStart, finalizerEnd);
+  const updateStart = finalizer.indexOf("ON CONFLICT (user_id) DO UPDATE");
+  const updateEnd = finalizer.indexOf("updated_at = NOW();", updateStart);
+  const baselineUpdate = finalizer.slice(updateStart, updateEnd);
+  const sentinel =
+    "public.subscription_store_state_reconciliations.baseline_tier IS NULL";
+  const baselineColumns = [
+    "baseline_tier",
+    "baseline_status",
+    "baseline_expires_at",
+    "baseline_active_product_id",
+    "baseline_billing_period",
+    "baseline_store",
+    "baseline_revenuecat_environment",
+  ];
+
+  assert(updateStart >= 0, "finalizer must upsert the reconciliation marker");
+  assert(baselineUpdate.includes(`${sentinel}\n          THEN`));
+  assert(!baselineUpdate.includes("COALESCE("));
+  for (const column of baselineColumns) {
+    assert(
+      baselineUpdate.includes(
+        `${column} = CASE\n        WHEN ${sentinel}\n          THEN EXCLUDED.${column}\n        ELSE public.subscription_store_state_reconciliations.${column}\n      END`,
+      ),
+      `${column} must use the same baseline presence sentinel`,
+    );
+  }
+
+  const rollbackStart = migrationSource.indexOf(
+    "CREATE OR REPLACE FUNCTION public.rollback_subscription_store_state_reconciliation(",
+  );
+  const rollback = migrationSource.slice(rollbackStart);
+  for (const column of baselineColumns) {
+    assert(
+      rollback.includes(`${column} = NULL`),
+      `rollback must clear ${column} with the baseline sentinel`,
+    );
+  }
+});
+
 Deno.test("legacy cutover has an explicit per-user service-role state", () => {
   requiredSql(
     "CREATE TABLE public.subscription_store_state_reconciliations (",
@@ -94,6 +153,15 @@ Deno.test("legacy cutover has an explicit per-user service-role state", () => {
   requiredSql("user_id UUID PRIMARY KEY REFERENCES public.users(id)");
   requiredSql(
     'CREATE POLICY "Users can view own subscription reconciliation"',
+  );
+  requiredSql(
+    'CREATE POLICY "Service role can view subscription reconciliation"',
+  );
+  requiredSql(
+    "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER\n  ON TABLE public.subscription_store_state_reconciliations\n  FROM service_role;",
+  );
+  requiredSql(
+    "GRANT SELECT ON TABLE public.subscription_store_state_reconciliations\n  TO service_role;",
   );
   requiredSql(
     "CREATE OR REPLACE FUNCTION public.finalize_subscription_store_state_reconciliation(",
@@ -157,6 +225,9 @@ Deno.test("finalizer requires one immutable complete snapshot manifest", () => {
     'CREATE POLICY "Service role can view subscription snapshot manifests"',
   );
   requiredSql(
+    "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER\n  ON TABLE public.subscription_store_state_snapshot_manifests\n  FROM service_role;",
+  );
+  requiredSql(
     "REVOKE ALL ON TABLE public.subscription_store_state_snapshot_manifests",
   );
   requiredSql(
@@ -211,10 +282,40 @@ Deno.test("subscription_store_states schema has fail-closed access and lookup co
     'CREATE POLICY "Users can view own subscription store states" ON public.subscription_store_states',
   );
   requiredSql(
-    'CREATE POLICY "Service role can manage subscription store states" ON public.subscription_store_states',
+    'CREATE POLICY "Service role can view subscription store states" ON public.subscription_store_states',
+  );
+  requiredSql(
+    "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER\n  ON TABLE public.subscription_store_states\n  FROM service_role;",
+  );
+  requiredSql(
+    "GRANT SELECT ON TABLE public.subscription_store_states\n  TO service_role;",
   );
   requiredSql("TO service_role");
   requiredSql("NOTIFY pgrst, 'reload schema';");
+});
+
+Deno.test("service-role writes stay behind SECURITY DEFINER owner functions", () => {
+  const functionNames = [
+    "upsert_subscription_store_state",
+    "record_revenuecat_snapshot_manifest",
+    "record_revenuecat_snapshot_absence",
+    "finalize_subscription_store_state_reconciliation",
+    "rollback_subscription_store_state_reconciliation",
+  ];
+  for (const functionName of functionNames) {
+    const functionStart = migrationSource.indexOf(
+      `CREATE OR REPLACE FUNCTION public.${functionName}(`,
+    );
+    const functionEnd = migrationSource.indexOf("$$;", functionStart);
+    assert(functionStart >= 0, `${functionName} must exist`);
+    assert(functionEnd > functionStart, `${functionName} must have a body`);
+    assert(
+      migrationSource.slice(functionStart, functionEnd).includes(
+        "SECURITY DEFINER",
+      ),
+      `${functionName} must remain SECURITY DEFINER after direct DML revocation`,
+    );
+  }
 });
 
 Deno.test("store state writer is atomic and owns legacy aggregate updates", () => {
@@ -447,7 +548,16 @@ Deno.test("verified RevenueCat absence is an audited service-role tombstone work
     "ALTER TABLE public.subscription_store_state_snapshot_absences ENABLE ROW LEVEL SECURITY;",
   );
   requiredSql(
+    'CREATE POLICY "Service role can view subscription snapshot absences"',
+  );
+  requiredSql(
     "REVOKE ALL ON TABLE public.subscription_store_state_snapshot_absences",
+  );
+  requiredSql(
+    "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER\n  ON TABLE public.subscription_store_state_snapshot_absences\n  FROM service_role;",
+  );
+  requiredSql(
+    "GRANT SELECT ON TABLE public.subscription_store_state_snapshot_absences\n  TO service_role;",
   );
   requiredSql(
     "GRANT EXECUTE ON FUNCTION public.record_revenuecat_snapshot_absence(",

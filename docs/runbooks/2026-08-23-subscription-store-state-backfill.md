@@ -10,6 +10,10 @@
 - event id 是 legacy row 欄位的 deterministic hash；重跑應回 `duplicate`。任何已存在的 verified store row 由 atomic upsert 保護，不會被 legacy backfill 覆蓋；verified event 可以取代同 store 的 unverified backfill，即使 event time 較早。
 - pending paid legacy 的 source upgrade 只在 read-time projection 暫時顯示，不能物化覆寫 baseline；free legacy 第一次遇到 verified source 才會記錄窄化的 `no_paid_legacy_baseline` auto marker。
 - production migration、backfill、reconciliation 都維持 pending；這個分支不連 production DB、不使用真實 credentials。
+- `subscription_store_states`、snapshot manifest/absence evidence 與 reconciliation
+  marker 對 `service_role` 都撤銷 INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER，
+  service-role 只可讀；所有寫入只能經既有 `SECURITY DEFINER` owner function，避免
+  direct DML 繞過 event ordering、snapshot proof 或 finalizer gate。
 
 ## 先做 branch/local dry-run
 
@@ -123,9 +127,10 @@
    );
    ```
 
-   rollback 會先用 reconciliation 保存的 baseline 還原 legacy aggregate，再撤銷
-   cutover marker；不刪除 store-state evidence。重新 finalize 前要重新取得完整
-   snapshot 並重跑 diff。
+   rollback 會先用 reconciliation 保存的整組 baseline（以 non-null
+   `baseline_tier` 作 presence sentinel）還原 legacy aggregate，再把所有 baseline
+   欄位與 marker 一起清空；不刪除 store-state evidence。重新 finalize 前要重新
+   取得完整 snapshot 並重跑 diff，下一次 finalize 才能重新 capture 整組 baseline。
 
 8. 驗證不變式：
 

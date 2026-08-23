@@ -110,23 +110,33 @@ CREATE POLICY "Users can view own subscription store states" ON public.subscript
   FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
 
-CREATE POLICY "Service role can manage subscription store states" ON public.subscription_store_states
-  FOR ALL TO service_role
-  USING (true)
-  WITH CHECK (true);
+CREATE POLICY "Service role can view subscription store states" ON public.subscription_store_states
+  FOR SELECT TO service_role
+  USING (true);
 
 CREATE POLICY "Users can view own subscription reconciliation"
   ON public.subscription_store_state_reconciliations
   FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
 
-CREATE POLICY "Service role can manage subscription reconciliation"
+CREATE POLICY "Service role can view subscription reconciliation"
   ON public.subscription_store_state_reconciliations
-  FOR ALL TO service_role
-  USING (true)
-  WITH CHECK (true);
+  FOR SELECT TO service_role
+  USING (true);
 
 ALTER TABLE public.subscription_store_state_reconciliations ENABLE ROW LEVEL SECURITY;
+
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON TABLE public.subscription_store_states
+  FROM service_role;
+GRANT SELECT ON TABLE public.subscription_store_states
+  TO service_role;
+
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON TABLE public.subscription_store_state_reconciliations
+  FROM service_role;
+GRANT SELECT ON TABLE public.subscription_store_state_reconciliations
+  TO service_role;
 
 ALTER TABLE public.subscription_store_state_snapshot_manifests ENABLE ROW LEVEL SECURITY;
 
@@ -137,6 +147,9 @@ CREATE POLICY "Service role can view subscription snapshot manifests"
 
 REVOKE ALL ON TABLE public.subscription_store_state_snapshot_manifests
   FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON TABLE public.subscription_store_state_snapshot_manifests
+  FROM service_role;
 GRANT SELECT ON TABLE public.subscription_store_state_snapshot_manifests
   TO service_role;
 
@@ -149,6 +162,9 @@ CREATE POLICY "Service role can view subscription snapshot absences"
 
 REVOKE ALL ON TABLE public.subscription_store_state_snapshot_absences
   FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON TABLE public.subscription_store_state_snapshot_absences
+  FROM service_role;
 GRANT SELECT ON TABLE public.subscription_store_state_snapshot_absences
   TO service_role;
 
@@ -1108,34 +1124,41 @@ BEGIN
       coverage = 'complete_revenuecat_snapshot',
       completed_at = NOW(),
       completed_by = EXCLUDED.completed_by,
-      baseline_tier = COALESCE(
-        public.subscription_store_state_reconciliations.baseline_tier,
-        EXCLUDED.baseline_tier
-      ),
-      baseline_status = COALESCE(
-        public.subscription_store_state_reconciliations.baseline_status,
-        EXCLUDED.baseline_status
-      ),
-      baseline_expires_at = COALESCE(
-        public.subscription_store_state_reconciliations.baseline_expires_at,
-        EXCLUDED.baseline_expires_at
-      ),
-      baseline_active_product_id = COALESCE(
-        public.subscription_store_state_reconciliations.baseline_active_product_id,
-        EXCLUDED.baseline_active_product_id
-      ),
-      baseline_billing_period = COALESCE(
-        public.subscription_store_state_reconciliations.baseline_billing_period,
-        EXCLUDED.baseline_billing_period
-      ),
-      baseline_store = COALESCE(
-        public.subscription_store_state_reconciliations.baseline_store,
-        EXCLUDED.baseline_store
-      ),
-      baseline_revenuecat_environment = COALESCE(
-        public.subscription_store_state_reconciliations.baseline_revenuecat_environment,
-        EXCLUDED.baseline_revenuecat_environment
-      ),
+      baseline_tier = CASE
+        WHEN public.subscription_store_state_reconciliations.baseline_tier IS NULL
+          THEN EXCLUDED.baseline_tier
+        ELSE public.subscription_store_state_reconciliations.baseline_tier
+      END,
+      baseline_status = CASE
+        WHEN public.subscription_store_state_reconciliations.baseline_tier IS NULL
+          THEN EXCLUDED.baseline_status
+        ELSE public.subscription_store_state_reconciliations.baseline_status
+      END,
+      baseline_expires_at = CASE
+        WHEN public.subscription_store_state_reconciliations.baseline_tier IS NULL
+          THEN EXCLUDED.baseline_expires_at
+        ELSE public.subscription_store_state_reconciliations.baseline_expires_at
+      END,
+      baseline_active_product_id = CASE
+        WHEN public.subscription_store_state_reconciliations.baseline_tier IS NULL
+          THEN EXCLUDED.baseline_active_product_id
+        ELSE public.subscription_store_state_reconciliations.baseline_active_product_id
+      END,
+      baseline_billing_period = CASE
+        WHEN public.subscription_store_state_reconciliations.baseline_tier IS NULL
+          THEN EXCLUDED.baseline_billing_period
+        ELSE public.subscription_store_state_reconciliations.baseline_billing_period
+      END,
+      baseline_store = CASE
+        WHEN public.subscription_store_state_reconciliations.baseline_tier IS NULL
+          THEN EXCLUDED.baseline_store
+        ELSE public.subscription_store_state_reconciliations.baseline_store
+      END,
+      baseline_revenuecat_environment = CASE
+        WHEN public.subscription_store_state_reconciliations.baseline_tier IS NULL
+          THEN EXCLUDED.baseline_revenuecat_environment
+        ELSE public.subscription_store_state_reconciliations.baseline_revenuecat_environment
+      END,
       updated_at = NOW();
 
   -- Recompute immediately under the same locks; subsequent readers also
