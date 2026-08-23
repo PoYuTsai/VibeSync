@@ -29,6 +29,22 @@ void main() {
         ),
         isFalse,
       );
+      expect(
+        AuthCallbackUriPolicy.isOAuthCallback(
+          Uri.parse(
+            'com.poyutsai.vibesync://login-callback:443?code=abc',
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        AuthCallbackUriPolicy.isOAuthCallback(
+          Uri.parse(
+            'user:pass@com.poyutsai.vibesync://login-callback?code=abc',
+          ),
+        ),
+        isFalse,
+      );
     });
 
     test('accepts Email confirmation, resend, and recovery callbacks only', () {
@@ -96,6 +112,14 @@ void main() {
       expect(
         AuthCallbackUriPolicy.isProcessableEmailAuthCallback(
           Uri.parse('com.poyutsai.vibesync://login-callback?code=abc'),
+        ),
+        isFalse,
+      );
+      expect(
+        AuthCallbackUriPolicy.isProcessableEmailAuthCallback(
+          Uri.parse(
+            'com.poyutsai.vibesync://email-callback:443?code=abc',
+          ),
         ),
         isFalse,
       );

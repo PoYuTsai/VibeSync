@@ -36,12 +36,26 @@ void main() {
     test('MainActivity is the sole exact Email callback owner', () {
       final main = activityByName(manifest, '.MainActivity');
       expect(androidAttr(main, 'exported'), 'true');
-      expect(schemeHosts(main, contract.scheme), contains(contract.host));
+      expect(
+        main.findElements('intent-filter').where(
+              (filter) => callbackFilterMayMatch(
+                filter,
+                scheme: contract.scheme,
+                host: contract.host,
+              ),
+            ),
+        hasLength(1),
+      );
 
       final emailFilters = main
           .findElements('intent-filter')
-          .where((filter) => schemeHostsFromFilter(filter, contract.scheme)
-              .contains(contract.host))
+          .where(
+            (filter) => callbackFilterMayMatch(
+              filter,
+              scheme: contract.scheme,
+              host: contract.host,
+            ),
+          )
           .toList();
       expect(emailFilters, hasLength(1));
       final emailFilter = emailFilters.single;
@@ -57,8 +71,14 @@ void main() {
       for (final activity in manifestActivities(manifest)) {
         if (androidAttr(activity, 'name') == '.MainActivity') continue;
         expect(
-          schemeHosts(activity, contract.scheme).contains(contract.host),
-          isFalse,
+          activity.findElements('intent-filter').where(
+                (filter) => callbackFilterMayMatch(
+                  filter,
+                  scheme: contract.scheme,
+                  host: contract.host,
+                ),
+              ),
+          isEmpty,
           reason: '${contract.uri} 只能由 MainActivity 擁有',
         );
       }
@@ -67,14 +87,26 @@ void main() {
     test('OAuth callback remains exclusively owned by CallbackActivity', () {
       final callback = activityByName(manifest, oauth.callbackActivity);
       expect(
-        schemeHosts(callback, oauth.scheme),
-        contains(oauth.host),
+        callback.findElements('intent-filter').where(
+              (filter) => callbackFilterMayMatch(
+                filter,
+                scheme: oauth.scheme,
+                host: oauth.host,
+              ),
+            ),
+        hasLength(1),
       );
       for (final activity in manifestActivities(manifest)) {
         if (androidAttr(activity, 'name') == oauth.callbackActivity) continue;
         expect(
-          schemeHosts(activity, oauth.scheme).contains(oauth.host),
-          isFalse,
+          activity.findElements('intent-filter').where(
+                (filter) => callbackFilterMayMatch(
+                  filter,
+                  scheme: oauth.scheme,
+                  host: oauth.host,
+                ),
+              ),
+          isEmpty,
           reason: '${oauth.uri} 不得由其他 activity 擁有',
         );
       }
@@ -112,14 +144,37 @@ void main() {
       expect(readRepoFile('contracts/email-auth-callback.json'),
           isNot(contains('client_secret')));
     });
+
+    test('Dart helper models scheme-only and split data as matching owners',
+        () {
+      final schemeOnly = XmlDocument.parse('''
+        <intent-filter xmlns:android="http://schemas.android.com/apk/res/android">
+          <data android:scheme="com.poyutsai.vibesync" />
+        </intent-filter>
+      ''').rootElement;
+      final split = XmlDocument.parse('''
+        <intent-filter xmlns:android="http://schemas.android.com/apk/res/android">
+          <data android:scheme="com.poyutsai.vibesync" />
+          <data android:host="email-callback" />
+        </intent-filter>
+      ''').rootElement;
+
+      expect(
+        callbackFilterMayMatch(
+          schemeOnly,
+          scheme: contract.scheme,
+          host: contract.host,
+        ),
+        isTrue,
+      );
+      expect(
+        callbackFilterMayMatch(
+          split,
+          scheme: contract.scheme,
+          host: contract.host,
+        ),
+        isTrue,
+      );
+    });
   });
 }
-
-Set<String> schemeHostsFromFilter(XmlElement filter, String scheme) => filter
-    .findElements('data')
-    .where((data) => androidAttrFromElement(data, 'scheme') == scheme)
-    .map((data) => androidAttrFromElement(data, 'host') ?? '')
-    .toSet();
-
-String? androidAttrFromElement(XmlElement element, String name) =>
-    element.getAttribute('android:$name');

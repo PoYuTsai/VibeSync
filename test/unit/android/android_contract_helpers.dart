@@ -126,6 +126,22 @@ Set<String> schemeHosts(XmlElement activity, String scheme) => activity
     .map((d) => androidAttr(d, 'host') ?? '')
     .toSet();
 
+bool callbackFilterMayMatch(
+  XmlElement filter, {
+  required String scheme,
+  required String host,
+}) {
+  final data = filter.findElements('data').toList();
+  final schemes =
+      data.map((d) => androidAttr(d, 'scheme')).whereType<String>().toSet();
+  final hosts =
+      data.map((d) => androidAttr(d, 'host')).whereType<String>().toSet();
+
+  return (schemes.contains(scheme) &&
+          (hosts.isEmpty || hosts.contains(host))) ||
+      (hosts.contains(host) && (schemes.isEmpty || schemes.contains(scheme)));
+}
+
 Set<String> excludedDomains(XmlElement parent) => parent
     .findElements('exclude')
     .where((e) => e.getAttribute('path') == '.')

@@ -48,6 +48,8 @@ class AuthCallbackUriPolicy {
     final expected = Uri.parse(expectedUri);
     return uri.scheme == expected.scheme &&
         uri.host == expected.host &&
+        uri.port == expected.port &&
+        uri.userInfo == expected.userInfo &&
         uri.path == expected.path;
   }
 }

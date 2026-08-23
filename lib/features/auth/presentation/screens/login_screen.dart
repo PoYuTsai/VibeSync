@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -11,7 +12,6 @@ import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/utils/platform_info.dart';
 import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 // warm_theme_widgets is still imported for the animated GradientBackground /
@@ -21,7 +21,8 @@ import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../../core/services/app_haptics.dart';
-import '../../domain/auth_entry_policy.dart';
+import '../../domain/auth_cancellation_policy.dart';
+import '../auth_entry_policy.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -48,8 +49,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String? _noticeMessage;
   String? _pendingVerificationEmail;
 
-  bool get _isIOS => isIOSPlatform;
-  bool get _isAndroid => isAndroidPlatform;
   bool get _hasPendingVerification =>
       (_pendingVerificationEmail ?? '').trim().isNotEmpty;
   String get _typedEmail => _emailController.text.trim();
@@ -152,13 +151,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     return null;
-  }
-
-  bool _isCancellationError(Object error) {
-    final normalized = error.toString().toLowerCase();
-    return normalized.contains('cancel') ||
-        normalized.contains('canceled') ||
-        normalized.contains('cancelled');
   }
 
   void _setError(String message) {
@@ -501,7 +493,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await _handleSuccessfulLogin(response.user!);
       }
     } on AuthException catch (e) {
-      if (_isCancellationError(e)) {
+      if (AuthCancellationPolicy.isCancellation(e)) {
         return;
       }
       if (!mounted) return;
@@ -513,7 +505,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
       );
     } catch (e) {
-      if (_isCancellationError(e)) {
+      if (AuthCancellationPolicy.isCancellation(e)) {
         return;
       }
       if (!mounted) return;
@@ -538,7 +530,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await _handleSuccessfulLogin(response.user!);
       }
     } on AuthException catch (e) {
-      if (_isCancellationError(e)) {
+      if (AuthCancellationPolicy.isCancellation(e)) {
         return;
       }
       if (!mounted) return;
@@ -550,7 +542,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
       );
     } catch (e) {
-      if (_isCancellationError(e)) {
+      if (AuthCancellationPolicy.isCancellation(e)) {
         return;
       }
       if (!mounted) return;
@@ -724,9 +716,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final entryPolicy = AuthEntryPolicy.forPlatform(
-      isAndroid: _isAndroid,
-      isIOS: _isIOS,
+      AuthEntryPlatform.fromTargetPlatform(defaultTargetPlatform),
     );
+    final primarySocialEntries = entryPolicy.primaryEntries
+        .where((entry) => entry != AuthEntryPoint.email)
+        .toList();
     final headline = _isPasswordRecoveryMode
         ? '設定新密碼'
         : _isSignUp
@@ -769,21 +763,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 48),
-                    if (_isIOS && !_isSignUp && !_isPasswordRecoveryMode) ...[
-                      _buildGoogleSignInButton(),
-                      const SizedBox(height: 12),
-                      _buildAppleSignInButton(),
-                      const SizedBox(height: 24),
-                      _buildDivider(),
-                      const SizedBox(height: 24),
-                    ],
-                    if (_isAndroid &&
+                    if (primarySocialEntries.isNotEmpty &&
                         !_isSignUp &&
                         !_isPasswordRecoveryMode) ...[
-                      // Android keeps Google visually above the Email form as
-                      // a primary entry; Apple is rendered below as a
-                      // continuity-only secondary entry.
-                      _buildGoogleSignInButton(),
+                      ..._buildPrimarySocialEntries(primarySocialEntries),
                       const SizedBox(height: 24),
                       _buildDivider(),
                       const SizedBox(height: 24),
@@ -917,9 +900,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                       ),
-                    if (_isAndroid &&
-                        !_isSignUp &&
-                        !_isPasswordRecoveryMode) ...[
+                    if (!_isSignUp &&
+                        !_isPasswordRecoveryMode &&
+                        entryPolicy.secondaryEntries
+                            .contains(AuthEntryPoint.apple)) ...[
                       const SizedBox(height: 16),
                       Text(
                         entryPolicy.appleLabel,
@@ -929,7 +913,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
-                      _buildAppleSignInButton(label: '使用 Apple 繼續'),
+                      _buildAppleSignInButton(),
                     ],
                     const SizedBox(height: 24),
                     _buildLegalDisclaimer(),
@@ -941,6 +925,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildPrimarySocialEntries(List<AuthEntryPoint> entries) {
+    return [
+      for (var index = 0; index < entries.length; index++) ...[
+        if (index > 0) const SizedBox(height: 12),
+        _buildAuthEntry(entries[index]),
+      ],
+    ];
+  }
+
+  Widget _buildAuthEntry(AuthEntryPoint entry) {
+    switch (entry) {
+      case AuthEntryPoint.google:
+        return _buildGoogleSignInButton();
+      case AuthEntryPoint.apple:
+        return _buildAppleSignInButton();
+      case AuthEntryPoint.email:
+        return const SizedBox.shrink();
+    }
   }
 
   Widget _buildMessageCard({

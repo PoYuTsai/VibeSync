@@ -53,7 +53,6 @@ class SupabaseService {
         },
       );
     }
-    await _syncPasswordRecoveryStateFromInitialLink();
     _initialized = true;
   }
 
@@ -73,35 +72,6 @@ class SupabaseService {
       debugPrint('Email auth callback rejected: ${error.runtimeType}');
     } catch (error) {
       debugPrint('Email auth callback failed: ${error.runtimeType}');
-    }
-  }
-
-  static Future<void> _syncPasswordRecoveryStateFromInitialLink() async {
-    try {
-      final initialLink = await _appLinks.getInitialLink();
-      // Password recovery is an Email flow. Do not let an OAuth callback (or
-      // a wrong scheme/host) put the login screen into recovery mode before
-      // Supabase has accepted an Email callback session.
-      final isAllowedEmailLink = initialLink == null ||
-          kIsWeb ||
-          AuthCallbackUriPolicy.isProcessableEmailAuthCallback(initialLink);
-      _passwordRecoveryInProgress = isAllowedEmailLink &&
-          AuthRecoveryHelper.isPasswordRecoveryLink(initialLink);
-      if (_passwordRecoveryInProgress) {
-        unawaited(
-          AuthDiagnosticsService.log(
-            event: 'recovery_link_detected',
-            status: 'info',
-            message: 'Password recovery deep link detected on app start.',
-            metadata: {
-              'coldStart': true,
-              'hasCurrentUser': currentUser != null,
-            },
-          ),
-        );
-      }
-    } catch (error) {
-      debugPrint('Password recovery link sync skipped: $error');
     }
   }
 

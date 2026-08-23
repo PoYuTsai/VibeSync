@@ -74,6 +74,16 @@ sed "s|</application>|<activity-alias android:name=\"com.vibesync.app.HijackAlia
   "$good" > "$work/alias-owner.xml"
 expect_gate_fail "activity-alias 持有凍結 scheme" "$work/alias-owner.xml"
 
+# 1b) 第二個 activity 只宣告 OAuth scheme → Android 會匹配任意 host，必須擋
+sed "s|</application>|<activity android:name=\"com.vibesync.app.SchemeOnlyOAuthActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\"/></intent-filter></activity></application>|" \
+  "$good" > "$work/oauth-scheme-only.xml"
+expect_gate_fail "OAuth scheme-only activity 搶走 callback" "$work/oauth-scheme-only.xml"
+
+# 1c) 分拆 data 的 scheme／host 仍會被 Android 合併，必須擋
+sed "s|</application>|<activity android:name=\"com.vibesync.app.SplitOAuthActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\"/><data android:host=\"$host\"/></intent-filter></activity></application>|" \
+  "$good" > "$work/oauth-split-data.xml"
+expect_gate_fail "OAuth split scheme/host activity 搶走 callback" "$work/oauth-split-data.xml"
+
 # 2) 自訂 dispatcher activity 搶走凍結 OAuth URI → 偏離凍結契約，必須擋
 sed "s|</application>|<activity android:name=\"com.vibesync.app.AuthCallbackDispatcherActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\" android:host=\"$host\"/></intent-filter></activity></application>|" \
   "$good" > "$work/custom-dispatcher.xml"
@@ -101,6 +111,16 @@ done
 sed "s|</application>|<activity android:name=\"com.vibesync.app.EmailHijackActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\" android:host=\"$email_host\"/></intent-filter></activity></application>|" \
   "$good" > "$work/email-owner.xml"
 expect_gate_fail "Email callback 被第二個 activity 搶走" "$work/email-owner.xml"
+
+# 5b) Email scheme-only activity 也可能匹配任意 Email host，必須擋
+sed "s|</application>|<activity android:name=\"com.vibesync.app.SchemeOnlyEmailActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\"/></intent-filter></activity></application>|" \
+  "$good" > "$work/email-scheme-only.xml"
+expect_gate_fail "Email scheme-only activity 搶走 callback" "$work/email-scheme-only.xml"
+
+# 5c) Email split scheme/host data 也會被 Android 合併，必須擋
+sed "s|</application>|<activity android:name=\"com.vibesync.app.SplitEmailActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\"/><data android:host=\"$email_host\"/></intent-filter></activity></application>|" \
+  "$good" > "$work/email-split-data.xml"
+expect_gate_fail "Email split scheme/host activity 搶走 callback" "$work/email-split-data.xml"
 
 # 6) Email callback data 帶額外 URI 限制 → 也必須 fail closed
 sed "s|android:host=\"$email_host\"|android:host=\"$email_host\" android:path=\"/wrong\"|" \

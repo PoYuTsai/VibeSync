@@ -9,10 +9,10 @@ void main() {
       'lib/features/auth/presentation/screens/login_screen.dart',
     );
 
-    expect(source, contains('isAndroidPlatform'));
+    expect(source, contains('AuthEntryPlatform.fromTargetPlatform'));
     expect(source, contains('AuthEntryPolicy'));
     expect(
-      readRepoFile('lib/features/auth/domain/auth_entry_policy.dart'),
+      readRepoFile('lib/features/auth/presentation/auth_entry_policy.dart'),
       contains('已有 iPhone VibeSync 帳號'),
     );
     expect(source, contains('_signInWithGoogle'));
@@ -57,5 +57,47 @@ void main() {
       source,
       contains('AuthCallbackUriPolicy.isProcessableEmailAuthCallback(uri)'),
     );
+  });
+
+  test('recovery state is driven by accepted auth events, not raw links', () {
+    final source = readRepoFile('lib/core/services/supabase_service.dart');
+    expect(source, contains('AuthRecoveryHelper.nextPasswordRecoveryState'));
+    expect(source, isNot(contains('isPasswordRecoveryLink(')));
+    expect(
+        source, isNot(contains('_syncPasswordRecoveryStateFromInitialLink')));
+  });
+
+  test('OAuth cancellation uses typed policy and always clears loading', () {
+    final source = readRepoFile(
+      'lib/features/auth/presentation/screens/login_screen.dart',
+    );
+    expect(source, contains('AuthCancellationPolicy.isCancellation(e)'));
+    expect(source, isNot(contains('_isCancellationError')));
+    expect(source, contains('finally'));
+    expect(source, contains('setState(() => _isLoading = false)'));
+  });
+
+  test('entry policy drives rendered primary and secondary entries', () {
+    final source = readRepoFile(
+      'lib/features/auth/presentation/screens/login_screen.dart',
+    );
+    expect(source, contains('entryPolicy.primaryEntries'));
+    expect(source, contains('entryPolicy.secondaryEntries'));
+    expect(source, contains('AuthEntryPlatform.fromTargetPlatform'));
+    expect(source, isNot(contains('_isAndroid')));
+    expect(source, isNot(contains('_isIOS')));
+  });
+
+  test('Apple runbook preserves ordered client ID audiences and URL layers',
+      () {
+    final docs = readRepoFile('docs/integrations/auth.md');
+    expect(
+        docs,
+        contains(
+            '[Services ID first, com.poyutsai.vibesync native App ID later]'));
+    expect(docs, contains('M2 external pending'));
+    expect(docs, contains('Supabase HTTPS callback'));
+    expect(docs, contains('App custom redirect'));
+    expect(docs, contains('signInWithIdToken'));
   });
 }

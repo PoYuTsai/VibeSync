@@ -81,5 +81,52 @@ void main() {
 
       expect(result, isTrue);
     });
+
+    test('expired or denied recovery links never establish verified state', () {
+      expect(
+        AuthRecoveryHelper.nextPasswordRecoveryState(
+          event: AuthChangeEvent.signedIn,
+          currentState: false,
+        ),
+        isFalse,
+      );
+      expect(
+        AuthRecoveryHelper.nextPasswordRecoveryState(
+          event: AuthChangeEvent.userUpdated,
+          currentState: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('only accepted passwordRecovery event enters recovery mode', () {
+      expect(
+        AuthRecoveryHelper.nextPasswordRecoveryState(
+          event: AuthChangeEvent.passwordRecovery,
+          currentState: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('recovery-shaped expired or denied links stay unverified', () {
+      for (final uri in [
+        Uri.parse(
+          'com.poyutsai.vibesync://email-callback?type=recovery&error=access_denied',
+        ),
+        Uri.parse(
+          'com.poyutsai.vibesync://email-callback?type=recovery&error_description=expired',
+        ),
+      ]) {
+        expect(AuthRecoveryHelper.isPasswordRecoveryLink(uri), isTrue);
+        expect(
+          AuthRecoveryHelper.nextPasswordRecoveryState(
+            event: AuthChangeEvent.signedIn,
+            currentState: false,
+          ),
+          isFalse,
+        );
+      }
+    });
   });
 }

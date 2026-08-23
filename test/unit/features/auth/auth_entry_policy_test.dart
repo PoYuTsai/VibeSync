@@ -1,13 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vibesync/features/auth/domain/auth_entry_policy.dart';
+import 'package:vibesync/features/auth/presentation/auth_entry_policy.dart';
 
 void main() {
   group('Android auth entry policy', () {
     test('Google and Email are primary, Apple is secondary', () {
-      final policy = AuthEntryPolicy.forPlatform(
-        isAndroid: true,
-        isIOS: false,
-      );
+      final policy = AuthEntryPolicy.forPlatform(AuthEntryPlatform.android);
 
       expect(
           policy.primaryEntries, [AuthEntryPoint.google, AuthEntryPoint.email]);
@@ -16,10 +14,7 @@ void main() {
     });
 
     test('iOS keeps the existing Google then Apple primary order', () {
-      final policy = AuthEntryPolicy.forPlatform(
-        isAndroid: false,
-        isIOS: true,
-      );
+      final policy = AuthEntryPolicy.forPlatform(AuthEntryPlatform.ios);
 
       expect(
           policy.primaryEntries, [AuthEntryPoint.google, AuthEntryPoint.apple]);
@@ -28,13 +23,25 @@ void main() {
     });
 
     test('unsupported platforms expose no native social entry', () {
-      final policy = AuthEntryPolicy.forPlatform(
-        isAndroid: false,
-        isIOS: false,
-      );
+      final policy = AuthEntryPolicy.forPlatform(AuthEntryPlatform.other);
 
       expect(policy.primaryEntries, [AuthEntryPoint.email]);
       expect(policy.secondaryEntries, isEmpty);
+    });
+
+    test('TargetPlatform maps to one auth platform value', () {
+      expect(
+        AuthEntryPlatform.fromTargetPlatform(TargetPlatform.android),
+        AuthEntryPlatform.android,
+      );
+      expect(
+        AuthEntryPlatform.fromTargetPlatform(TargetPlatform.iOS),
+        AuthEntryPlatform.ios,
+      );
+      expect(
+        AuthEntryPlatform.fromTargetPlatform(TargetPlatform.linux),
+        AuthEntryPlatform.other,
+      );
     });
   });
 }

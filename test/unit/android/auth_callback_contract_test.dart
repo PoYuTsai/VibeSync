@@ -47,9 +47,19 @@ void main() {
     test('CallbackActivity 是凍結 URI 唯一擁有者（無 chooser）', () {
       final callback = activityByName(manifest, contract.callbackActivity);
       expect(androidAttr(callback, 'exported'), 'true');
-      expect(schemeHosts(callback, contract.scheme), {contract.host});
+      final matchingFilters = callback
+          .findElements('intent-filter')
+          .where(
+            (filter) => callbackFilterMayMatch(
+              filter,
+              scheme: contract.scheme,
+              host: contract.host,
+            ),
+          )
+          .toList();
+      expect(matchingFilters, hasLength(1));
 
-      final filter = callback.findElements('intent-filter').single;
+      final filter = matchingFilters.single;
       expect(
         hasCategory(filter, 'android.intent.category.BROWSABLE'),
         isTrue,
@@ -62,8 +72,14 @@ void main() {
           continue;
         }
         expect(
-          schemeHosts(activity, contract.scheme).contains(contract.host),
-          isFalse,
+          activity.findElements('intent-filter').where(
+                (filter) => callbackFilterMayMatch(
+                  filter,
+                  scheme: contract.scheme,
+                  host: contract.host,
+                ),
+              ),
+          isEmpty,
           reason: '${contract.uri} 深連結只能屬於 CallbackActivity；'
               'Email callback 可共用 scheme，但不得共用 OAuth host，'
               '否則會撞 activity 選擇器',
@@ -104,8 +120,14 @@ void main() {
           );
       expect(viewFilters, hasLength(1));
       expect(
-        schemeHosts(main, contract.scheme).contains(contract.host),
-        isFalse,
+        main.findElements('intent-filter').where(
+              (filter) => callbackFilterMayMatch(
+                filter,
+                scheme: contract.scheme,
+                host: contract.host,
+              ),
+            ),
+        isEmpty,
         reason: 'MainActivity 只能接獨立 Email host，不得接 OAuth host',
       );
     });

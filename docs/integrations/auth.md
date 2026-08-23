@@ -12,7 +12,7 @@
 
 | 項目 | 狀態 | 備註 |
 |------|------|------|
-| Supabase Apple Provider | ✅ | Client ID: `com.poyutsai.vibesync` |
+| Supabase Apple Provider | M2 external pending | Client IDs（有序完整保留）：`[Services ID first, com.poyutsai.vibesync native App ID later]`；provider／client secret live 對帳待授權 |
 | Xcode Entitlements | ✅ | `ios/Runner/Runner.entitlements` |
 | `sign_in_with_apple` 套件 | ✅ | v7.0.1 |
 | LoginScreen 按鈕 | ✅ | 黑底白字 Apple 風格 |
@@ -117,12 +117,17 @@ log 或本文件；只留遮罩後的名稱／fingerprint 與 pass/fail 結果�
    關聯該 primary App ID；不要把 Services ID、Bundle ID 與 Team ID 互相
    猜成同一個值。
 3. 以 Apple Developer 顯示的 Services ID 對照 Supabase Apple provider 的
-   client ID；Supabase provider 使用的 client ID 順序必須是 Services ID，
-   iOS 原生 token flow 的 primary App ID 則維持 `com.poyutsai.vibesync`。
-4. 在 Supabase provider／Apple Service 設定中對照 return URL：Supabase
-   provider callback（由 Supabase Dashboard 顯示的 project callback）與
-   App redirect `com.poyutsai.vibesync://login-callback` 必須分層且完全對齊；
-   Email 的 `com.poyutsai.vibesync://email-callback` 另列，不可混用。
+   Client IDs 欄位；欄位必須完整保留有序清單
+   `[Services ID first, com.poyutsai.vibesync native App ID later]`。第一個
+   Services ID 供 Android web OAuth 使用；iOS 原生
+   `signInWithIdToken` 可接受清單內任一 audience，不能把後面的 native App ID
+   移除或誤替換成 Services ID。
+4. 在 Supabase provider／Apple Service 設定中分層對照 URL：Apple 的 return
+   URL 是 Supabase Dashboard 顯示的 **Supabase HTTPS callback**（provider
+   層）；App 的 `com.poyutsai.vibesync://login-callback` 與
+   `com.poyutsai.vibesync://email-callback` 是 **App custom redirect**，只放
+   在 Supabase Auth redirect allowlist（App 層），不可把 custom URI 填成
+   Apple return URL，也不可混用兩個 callback。
 5. Hide My Email 必須用一個既有 iOS Apple 帳號做受控 live test，核對
    Android web flow 回到同一 Supabase `auth.users.id`。這是外部 gate，M2
    code candidate 不得宣稱已完成；若出現第二個 user，立即隱藏 Android

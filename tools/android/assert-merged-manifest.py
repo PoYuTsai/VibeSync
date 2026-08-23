@@ -45,10 +45,26 @@ def main(path):
     # VIEW owner／launcher 的候選是 activity「與」activity-alias
     comps = [c for c in app if c.tag in ('activity', 'activity-alias')]
 
-    def pair_filters(c, scheme, host):
-        return [f for f in c.findall('intent-filter') if any(
-            d.get(A + 'scheme') == scheme and d.get(A + 'host') == host
-            for d in f.findall('data'))]
+    def filter_may_match(filter_element, scheme, host):
+        """Conservatively model Android's merged <data> matching.
+
+        Multiple <data> elements and attributes in one intent-filter are
+        combined by Android. A scheme-only or host-only declaration can
+        therefore still claim a callback, as can a split scheme/host pair.
+        Treat every such candidate as an owner so a chooser cannot be hidden
+        by a too-narrow exact-pair scan.
+        """
+        data = filter_element.findall('data')
+        schemes = {d.get(A + 'scheme') for d in data
+                   if d.get(A + 'scheme') is not None}
+        hosts = {d.get(A + 'host') for d in data
+                 if d.get(A + 'host') is not None}
+        return ((scheme in schemes and (not hosts or host in hosts)) or
+                (host in hosts and (not schemes or scheme in schemes)))
+
+    def matching_filters(c, scheme, host):
+        return [f for f in c.findall('intent-filter')
+                if filter_may_match(f, scheme, host)]
 
     def assert_filter_contract(component, filters, scheme, host, label):
         assert len(filters) == 1, (
@@ -76,17 +92,20 @@ def main(path):
     # catches an early/incorrect callback filter before Android can resolve it.
     for component in comps:
         for filter_element in component.findall('intent-filter'):
-            for data in filter_element.findall('data'):
-                data_host = data.get(A + 'host')
-                if data_host == HOST:
-                    assert data.get(A + 'scheme') == SCHEME, (
-                        f'OAuth host {HOST} 不得搭配錯誤 scheme')
-                if data_host == EMAIL_HOST:
-                    assert data.get(A + 'scheme') == EMAIL_SCHEME, (
-                        f'Email host {EMAIL_HOST} 不得搭配錯誤 scheme')
+            data = filter_element.findall('data')
+            schemes = {d.get(A + 'scheme') for d in data
+                       if d.get(A + 'scheme') is not None}
+            hosts = {d.get(A + 'host') for d in data
+                     if d.get(A + 'host') is not None}
+            if HOST in hosts and schemes and SCHEME not in schemes:
+                raise AssertionError(
+                    f'OAuth host {HOST} 不得搭配錯誤 scheme')
+            if EMAIL_HOST in hosts and schemes and EMAIL_SCHEME not in schemes:
+                raise AssertionError(
+                    f'Email host {EMAIL_HOST} 不得搭配錯誤 scheme')
 
     owners = [(c.tag, c.get(A + 'name')) for c in comps
-              if pair_filters(c, SCHEME, HOST)]
+              if matching_filters(c, SCHEME, HOST)]
     assert owners == [('activity', CALLBACK)], \
         f'OAuth URI 擁有者必須唯一且是 {CALLBACK}（alias 也不行），得到 {owners}'
 
@@ -94,10 +113,11 @@ def main(path):
     assert cb.get(A + 'exported') == 'true', \
         'CallbackActivity 必須 exported=true（瀏覽器要能開）'
     assert_filter_contract(
-        cb, pair_filters(cb, SCHEME, HOST), SCHEME, HOST, 'OAuth callback')
+        cb, matching_filters(cb, SCHEME, HOST), SCHEME, HOST,
+        'OAuth callback')
 
     email_owners = [(c.tag, c.get(A + 'name')) for c in comps
-                    if pair_filters(c, EMAIL_SCHEME, EMAIL_HOST)]
+                    if matching_filters(c, EMAIL_SCHEME, EMAIL_HOST)]
     assert email_owners == [('activity', EMAIL_CALLBACK)], \
         f'Email URI 擁有者必須唯一且是 {EMAIL_CALLBACK}（alias 也不行），得到 {email_owners}'
     email_activity = next(c for c in comps if c.get(A + 'name') == EMAIL_CALLBACK)
@@ -105,7 +125,7 @@ def main(path):
         'MainActivity 必須 exported=true（Email link 要能開）'
     assert_filter_contract(
         email_activity,
-        pair_filters(email_activity, EMAIL_SCHEME, EMAIL_HOST),
+        matching_filters(email_activity, EMAIL_SCHEME, EMAIL_HOST),
         EMAIL_SCHEME,
         EMAIL_HOST,
         'Email callback',
