@@ -54,14 +54,44 @@ void main() {
       );
     });
 
-    test('Email auth redirect markers are fixed per flow', () {
+    test('native Email auth redirects use exact flow paths', () {
       expect(
         AppConfig.authEmailSignupRedirectUri,
-        'com.poyutsai.vibesync://email-callback?auth_flow=signup',
+        'com.poyutsai.vibesync://email-callback/signup',
       );
       expect(
         AppConfig.authEmailRecoveryRedirectUri,
-        'com.poyutsai.vibesync://email-callback?auth_flow=recovery',
+        'com.poyutsai.vibesync://email-callback/recovery',
+      );
+    });
+
+    test('web Email auth redirects stay on the existing bare login path', () {
+      final webBase = Uri.parse(
+        'https://web.example.test/previous?stale=1#fragment',
+      );
+
+      expect(
+        AppConfig.emailAuthRedirectUriFor(
+          flow: EmailAuthFlow.signup,
+          isWeb: true,
+          webBaseUri: webBase,
+        ),
+        'https://web.example.test/login',
+      );
+      expect(
+        AppConfig.emailAuthRedirectUriFor(
+          flow: EmailAuthFlow.recovery,
+          isWeb: true,
+          webBaseUri: webBase,
+        ),
+        'https://web.example.test/login',
+      );
+      expect(
+        AppConfig.emailAuthRedirectUriFor(
+          flow: EmailAuthFlow.signup,
+          isWeb: false,
+        ),
+        'com.poyutsai.vibesync://email-callback/signup',
       );
     });
 

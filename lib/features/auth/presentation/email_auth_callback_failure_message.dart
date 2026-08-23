@@ -1,5 +1,54 @@
 import '../../../core/services/email_auth_callback_failure.dart';
 
+/// Small lifecycle reducer for the dedicated Email callback retry action.
+/// Starting a request and a failed request preserve the callback failure;
+/// only a successful resend/reset clears it.
+class EmailAuthCallbackRetryState {
+  const EmailAuthCallbackRetryState({
+    required this.failure,
+    required this.errorMessage,
+    required this.noticeMessage,
+  });
+
+  factory EmailAuthCallbackRetryState.fromFailure(
+    EmailAuthCallbackFailure failure,
+  ) {
+    return EmailAuthCallbackRetryState(
+      failure: failure,
+      errorMessage: EmailAuthCallbackFailureMessage.forFailure(failure),
+      noticeMessage: null,
+    );
+  }
+
+  final EmailAuthCallbackFailure? failure;
+  final String? errorMessage;
+  final String? noticeMessage;
+
+  EmailAuthCallbackRetryState requestStarted() {
+    return EmailAuthCallbackRetryState(
+      failure: failure,
+      errorMessage: null,
+      noticeMessage: null,
+    );
+  }
+
+  EmailAuthCallbackRetryState requestFailed(String message) {
+    return EmailAuthCallbackRetryState(
+      failure: failure,
+      errorMessage: message,
+      noticeMessage: null,
+    );
+  }
+
+  EmailAuthCallbackRetryState requestSucceeded(String message) {
+    return EmailAuthCallbackRetryState(
+      failure: null,
+      errorMessage: null,
+      noticeMessage: message,
+    );
+  }
+}
+
 /// Immutable presentation state for a callback failure notice.
 ///
 /// Loading and auth-mode state intentionally do not live here: a callback

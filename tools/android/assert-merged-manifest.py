@@ -35,12 +35,21 @@ _email_contract = json.load(open(os.path.join(
 EMAIL_SCHEME = _email_contract['scheme']
 EMAIL_HOST = _email_contract['host']
 EMAIL_CALLBACK = _email_contract['androidCallbackActivity']
+EMAIL_FLOW_PATHS = set(_email_contract['flowPath']['values'].values())
+EMAIL_ALLOWLIST = set(_email_contract['supabaseRedirectAllowlistEntries'])
 MAIN = EMAIL_CALLBACK
 # data 元素只允許這兩個屬性；其餘一律視為未預期的 URI 限制
 ALLOWED_DATA_ATTRS = {A + 'scheme', A + 'host'}
 
 
 def main(path):
+    expected_email_allowlist = {
+        f'{EMAIL_SCHEME}://{EMAIL_HOST}{flow_path}'
+        for flow_path in EMAIL_FLOW_PATHS
+    }
+    assert EMAIL_ALLOWLIST == expected_email_allowlist, (
+        'Email flow paths 與 Supabase redirect allowlist 必須逐字一致：'
+        f'{EMAIL_ALLOWLIST} vs {expected_email_allowlist}')
     app = ET.parse(path).getroot().find('application')
     # VIEW owner／launcher 的候選是 activity「與」activity-alias
     comps = [c for c in app if c.tag in ('activity', 'activity-alias')]
@@ -154,7 +163,8 @@ def main(path):
         f'MAIN/LAUNCHER 必須唯一且是 MainActivity activity（alias 也不行），得到 {launchers}'
     print('merged manifest 語意斷言 OK：OAuth 唯一 CallbackActivity owner、'
           'Email 唯一 MainActivity owner（皆 exported、exact scheme/host、'
-          '無額外 URI 限制、VIEW、DEFAULT＋BROWSABLE，含 alias 掃描）、'
+          f'flow paths={sorted(EMAIL_FLOW_PATHS)}、無額外 URI 限制、'
+          'VIEW、DEFAULT＋BROWSABLE，含 alias 掃描）、'
           '無自訂 dispatcher、唯一 MAIN/LAUNCHER=MainActivity')
 
 

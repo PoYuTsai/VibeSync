@@ -3,16 +3,15 @@
   "scheme": "com.poyutsai.vibesync",
   "host": "email-callback",
   "androidCallbackActivity": "com.vibesync.app.MainActivity",
-  "flowMarker": {
-    "parameter": "auth_flow",
+  "flowPath": {
     "values": {
-      "signup": "signup",
-      "recovery": "recovery"
+      "signup": "/signup",
+      "recovery": "/recovery"
     }
   },
   "supabaseRedirectAllowlistEntries": [
-    "com.poyutsai.vibesync://email-callback?auth_flow=signup",
-    "com.poyutsai.vibesync://email-callback?auth_flow=recovery"
+    "com.poyutsai.vibesync://email-callback/signup",
+    "com.poyutsai.vibesync://email-callback/recovery"
   ],
   "purposes": [
     "signup_confirmation",

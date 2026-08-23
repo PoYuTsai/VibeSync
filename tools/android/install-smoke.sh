@@ -43,13 +43,16 @@ email_signup_callback_uri=$(python3 -c '
 import json, sys
 c = json.load(open(sys.argv[1]))
 print(c["supabaseRedirectAllowlistEntries"][0])
+assert c["supabaseRedirectAllowlistEntries"][0] == (
+    c["scheme"] + "://" + c["host"] + c["flowPath"]["values"]["signup"]
+)
 ' "$email_contract")
 
 package="com.vibesync.app"
 component="$package/.MainActivity"
-# 深連結用非機密 dummy query（token 不進 log）
+# OAuth 深連結用非機密 dummy query（token 不進 log）
 callback_uri="$scheme://$host?smoke=1"
-# Keep the synthetic Email VIEW intent on a frozen marked URI. It has no code
+# Keep the synthetic Email VIEW intent on the frozen signup flow path. It has no code
 # or error payload, so the app must route it to MainActivity and then fail
 # closed before any session exchange.
 email_callback_uri="$email_signup_callback_uri"

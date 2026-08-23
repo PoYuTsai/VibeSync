@@ -4,43 +4,36 @@ import 'environment.dart';
 ///
 /// The scheme/host values are declared in AppConfig and audited against the
 /// machine-readable contract files by Android contract tests and gate scripts.
-/// A callback is valid only when it has the exact contract origin and no path;
-/// query/fragment data is intentionally left to Supabase Auth to validate.
+/// A callback is valid only when it has the exact contract origin and one of
+/// the two fixed Email flow paths. Query/fragment data is intentionally left
+/// to Supabase Auth to validate.
 class AuthCallbackUriPolicy {
   static bool isOAuthCallback(Uri uri) {
     return _matches(uri, AppConfig.authRedirectUri);
   }
 
   static bool isEmailCallback(Uri uri) {
-    return _matches(uri, AppConfig.authEmailRedirectUri);
+    return emailAuthFlow(uri) != null;
   }
 
-  /// Returns one and only one fixed Email flow marker. The marker is merely
-  /// retry provenance; it never authenticates the callback or enters recovery.
+  /// Returns one and only one fixed Email flow path. The path is merely retry
+  /// provenance; it never authenticates the callback or enters recovery.
   static EmailAuthFlow? emailAuthFlow(Uri uri) {
-    if (!isEmailCallback(uri)) {
+    if (!_matchesEmailOrigin(uri)) {
       return null;
     }
 
-    final normalized = _normalize(uri);
-    final markers =
-        normalized.queryParametersAll[AppConfig.emailAuthFlowQueryParameter] ??
-            const <String>[];
-    if (markers.length != 1) {
-      return null;
-    }
-
-    switch (markers.single) {
-      case 'signup':
+    switch (uri.path) {
+      case '/signup':
         return EmailAuthFlow.signup;
-      case 'recovery':
+      case '/recovery':
         return EmailAuthFlow.recovery;
       default:
         return null;
     }
   }
 
-  /// Returns true only for an exact Email callback carrying a result that
+  /// Returns true only for an exact Email flow path carrying a result that
   /// Supabase's PKCE callback parser can consume or reject explicitly.
   ///
   /// Keeping this gate separate from [isEmailCallback] prevents a bare,
@@ -77,5 +70,13 @@ class AuthCallbackUriPolicy {
         uri.port == expected.port &&
         uri.userInfo == expected.userInfo &&
         uri.path == expected.path;
+  }
+
+  static bool _matchesEmailOrigin(Uri uri) {
+    final expected = Uri.parse(AppConfig.authEmailRedirectUri);
+    return uri.scheme == expected.scheme &&
+        uri.host == expected.host &&
+        uri.port == expected.port &&
+        uri.userInfo == expected.userInfo;
   }
 }

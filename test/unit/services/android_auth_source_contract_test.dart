@@ -65,10 +65,14 @@ void main() {
     final source = readRepoFile('lib/core/services/supabase_service.dart');
     expect(source, contains('detectSessionInUri: kIsWeb'));
     expect(source, contains('_appLinks.uriLinkStream'));
+    expect(source, contains('.asyncMap(_emailCallbackProcessor.enqueue)'));
+    expect(source, isNot(contains('unawaited(_handleIncomingAuthLink')));
     expect(
       source,
       contains('AuthCallbackUriPolicy.isProcessableEmailAuthCallback(uri)'),
     );
+    expect(source, contains('_emailCallbackAcceptance.shouldPublishFailure'));
+    expect(source, contains('_emailCallbackAcceptance.markAccepted()'));
   });
 
   test('recovery state is driven by accepted auth events, not raw links', () {
@@ -129,6 +133,7 @@ void main() {
     expect(source, contains('AuthCallbackUriPolicy.emailAuthFlow(uri)'));
     expect(
         source, contains('EmailAuthCallbackFailureClassifier.tryFromCallback'));
+    expect(source, contains('EmailAuthCallbackAcceptanceGate'));
     expect(source, isNot(contains('notifyException')));
     expect(source, isNot(contains("queryParameters['type']")));
     expect(login, contains('pendingEmailAuthCallbackFailure'));
@@ -150,13 +155,39 @@ void main() {
     expect(handler, isNot(contains('_isSignUp')));
     expect(handler, isNot(contains('_isPasswordRecoveryMode')));
     expect(source, contains('_setEmailCallbackRetryValidationError'));
+    expect(source, contains('_setEmailCallbackRetryFailureError'));
+    expect(source, contains('_beginEmailCallbackRetry'));
+    expect(source, contains('EmailAuthCallbackRetryState'));
     expect(source, contains('if (!_isValidEmail(email))'));
+  });
+
+  test('Email callback failure accepts only a required typed flow', () {
+    final source = readRepoFile(
+      'lib/core/services/email_auth_callback_failure.dart',
+    );
+    expect(source, contains('required this.flow'));
+    expect(source, isNot(contains('bool? isPasswordRecovery')));
+    expect(source, contains('EmailAuthCallbackSerialProcessor'));
+  });
+
+  test('Email redirect builder keeps Web bare and native paths distinct', () {
+    final source = readRepoFile('lib/core/config/environment.dart');
+    expect(source, contains('emailAuthRedirectUriFor'));
+    expect(source, contains('required bool isWeb'));
+    expect(source, contains("return _bareWebLoginRedirectUri(base)"));
+    expect(source, contains(r".replace(path: '/${flow.path}')"));
   });
 
   test('signed out and explicit sign out clear buffered Email failures', () {
     final source = readRepoFile('lib/core/services/supabase_service.dart');
     expect(source, contains('AuthChangeEvent.signedOut'));
     expect(source, contains('clearEmailAuthCallbackFailure();'));
+    expect(source, contains('_emailCallbackAcceptance.reset();'));
+    final signedOut = RegExp(
+      r'if \(authState.event == AuthChangeEvent.signedOut\) \{[\s\S]*?\n    \}',
+    ).firstMatch(source)?.group(0);
+    expect(signedOut, isNotNull);
+    expect(signedOut, contains('_emailCallbackAcceptance.reset();'));
     final signOut = RegExp(
       r'static Future<void> signOut\(\) async \{[\s\S]*?\n  }',
     ).firstMatch(source)?.group(0);
@@ -174,6 +205,9 @@ void main() {
     expect(docs, contains('M2 external pending'));
     expect(docs, contains('Supabase HTTPS callback'));
     expect(docs, contains('App custom redirect'));
+    expect(docs, contains('com.poyutsai.vibesync://email-callback/signup'));
+    expect(docs, contains('com.poyutsai.vibesync://email-callback/recovery'));
+    expect(docs, isNot(contains('auth_flow=')));
     expect(docs, contains('signInWithIdToken'));
   });
 

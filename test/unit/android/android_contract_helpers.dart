@@ -68,8 +68,7 @@ class EmailAuthCallbackContract {
   EmailAuthCallbackContract._(
     this._base,
     this.purposes,
-    this.markerParameter,
-    this.markerValues,
+    this.flowPaths,
     this.supabaseAllowlistEntries,
   );
 
@@ -80,8 +79,7 @@ class EmailAuthCallbackContract {
     return EmailAuthCallbackContract._(
       _CallbackContractBase.fromJson(json),
       (json['purposes'] as List<dynamic>).cast<String>(),
-      (json['flowMarker']['parameter'] as String),
-      (json['flowMarker']['values'] as Map<String, dynamic>).map(
+      (json['flowPath']['values'] as Map<String, dynamic>).map(
         (key, value) => MapEntry(key, value as String),
       ),
       (json['supabaseRedirectAllowlistEntries'] as List<dynamic>)
@@ -91,8 +89,7 @@ class EmailAuthCallbackContract {
 
   final _CallbackContractBase _base;
   final List<String> purposes;
-  final String markerParameter;
-  final Map<String, String> markerValues;
+  final Map<String, String> flowPaths;
   final List<String> supabaseAllowlistEntries;
 
   String get scheme => _base.scheme;

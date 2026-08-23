@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xml/xml.dart';
+import 'package:vibesync/core/config/environment.dart';
 
 import 'android_contract_helpers.dart';
 
@@ -17,6 +18,10 @@ void main() {
       expect(contract.callbackActivity, 'com.vibesync.app.MainActivity');
       expect(contract.uri, 'com.poyutsai.vibesync://email-callback');
       expect(
+        contract.flowPaths,
+        {'signup': '/signup', 'recovery': '/recovery'},
+      );
+      expect(
         contract.purposes,
         containsAll([
           'signup_confirmation',
@@ -24,14 +29,11 @@ void main() {
           'password_recovery'
         ]),
       );
-      expect(contract.markerParameter, 'auth_flow');
-      expect(
-          contract.markerValues, {'signup': 'signup', 'recovery': 'recovery'});
       expect(
         contract.supabaseAllowlistEntries,
         containsAll([
-          'com.poyutsai.vibesync://email-callback?auth_flow=signup',
-          'com.poyutsai.vibesync://email-callback?auth_flow=recovery',
+          'com.poyutsai.vibesync://email-callback/signup',
+          'com.poyutsai.vibesync://email-callback/recovery',
         ]),
       );
     });
@@ -44,6 +46,14 @@ void main() {
       expect(
         supabaseAdditionalRedirectUrlsBlock(),
         contains('"${contract.supabaseAllowlistEntries[1]}"'),
+      );
+      expect(
+        AppConfig.authEmailSignupRedirectUri,
+        contract.supabaseAllowlistEntries[0],
+      );
+      expect(
+        AppConfig.authEmailRecoveryRedirectUri,
+        contract.supabaseAllowlistEntries[1],
       );
     });
 
@@ -146,7 +156,7 @@ void main() {
       expect(value['host'], isA<String>());
       expect(value['androidCallbackActivity'], isA<String>());
       expect(value['purposes'], isA<List<dynamic>>());
-      expect(value['flowMarker'], isA<Map<String, dynamic>>());
+      expect(value['flowPath'], isA<Map<String, dynamic>>());
       expect(value['supabaseRedirectAllowlistEntries'], isA<List<dynamic>>());
       expect(readRepoFile('contracts/email-auth-callback.json'),
           isNot(contains('client_secret')));

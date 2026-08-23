@@ -5,14 +5,14 @@ import 'package:flutter/foundation.dart';
 /// 應用程式執行環境
 enum Environment { dev, staging, prod }
 
-/// The only Email callback provenance markers accepted by the native app.
+/// The only Email callback provenance paths accepted by the native app.
 ///
-/// This marker chooses the retry copy/operation only; Supabase's accepted
+/// This path chooses the retry copy/operation only; Supabase's accepted
 /// auth event remains the authority for session and password-recovery state.
 enum EmailAuthFlow { signup, recovery }
 
 extension EmailAuthFlowValue on EmailAuthFlow {
-  String get marker {
+  String get path {
     switch (this) {
       case EmailAuthFlow.signup:
         return 'signup';
@@ -41,8 +41,6 @@ extension EmailAuthFlowValue on EmailAuthFlow {
 /// flutter run --dart-define=ENV=prod
 /// ```
 class AppConfig {
-  static const emailAuthFlowQueryParameter = 'auth_flow';
-
   static const _envKey = 'ENV';
   static const gitSha = String.fromEnvironment(
     'GIT_SHA',
@@ -166,13 +164,7 @@ class AppConfig {
 
   static String get authRedirectUri {
     if (kIsWeb) {
-      return Uri.base
-          .replace(
-            path: '/login',
-            queryParameters: null,
-            fragment: null,
-          )
-          .toString();
+      return _bareWebLoginRedirectUri(Uri.base);
     }
 
     return _nativeAuthRedirectUri;
@@ -185,33 +177,48 @@ class AppConfig {
   /// Google and native Apple flows continue to use [authRedirectUri].
   static String get authEmailRedirectUri {
     if (kIsWeb) {
-      return Uri.base
-          .replace(
-            path: '/login',
-            queryParameters: null,
-            fragment: null,
-          )
-          .toString();
+      return _bareWebLoginRedirectUri(Uri.base);
     }
 
     return _nativeEmailAuthRedirectUri;
   }
 
-  /// Signup confirmation and resend callbacks use one fixed provenance marker.
+  /// Signup confirmation and resend callbacks use one fixed provenance path.
   static String get authEmailSignupRedirectUri =>
-      _emailRedirectUriFor(EmailAuthFlow.signup);
+      emailAuthRedirectUriFor(flow: EmailAuthFlow.signup, isWeb: kIsWeb);
 
-  /// Password recovery callbacks use a distinct fixed provenance marker.
+  /// Password recovery callbacks use a distinct fixed provenance path.
   static String get authEmailRecoveryRedirectUri =>
-      _emailRedirectUriFor(EmailAuthFlow.recovery);
+      emailAuthRedirectUriFor(flow: EmailAuthFlow.recovery, isWeb: kIsWeb);
 
-  static String _emailRedirectUriFor(EmailAuthFlow flow) {
-    final uri = Uri.parse(authEmailRedirectUri);
-    return uri.replace(
-      queryParameters: {
-        ...uri.queryParameters,
-        emailAuthFlowQueryParameter: flow.marker,
-      },
+  /// Builds the callback for one runtime platform.
+  ///
+  /// Web intentionally keeps the existing bare `/login` callback for all
+  /// Email operations. Native callbacks use exact paths so Supabase's glob
+  /// redirect matching cannot reinterpret a query marker as a wildcard.
+  @visibleForTesting
+  static String emailAuthRedirectUriFor({
+    required EmailAuthFlow flow,
+    required bool isWeb,
+    Uri? webBaseUri,
+  }) {
+    if (isWeb) {
+      final base = webBaseUri ?? Uri.base;
+      return _bareWebLoginRedirectUri(base);
+    }
+
+    return Uri.parse(_nativeEmailAuthRedirectUri)
+        .replace(path: '/${flow.path}')
+        .toString();
+  }
+
+  static String _bareWebLoginRedirectUri(Uri base) {
+    return Uri(
+      scheme: base.scheme,
+      userInfo: base.userInfo,
+      host: base.host,
+      port: base.port,
+      path: '/login',
     ).toString();
   }
 

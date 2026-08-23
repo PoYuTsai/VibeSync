@@ -206,14 +206,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
     final presentation =
-        EmailAuthCallbackFailurePresentationState.retryValidation(
-      failure: failure,
-      message: message,
-    );
+        EmailAuthCallbackRetryState.fromFailure(failure).requestFailed(message);
     setState(() {
       _emailCallbackFailure = presentation.failure;
       _errorMessage = presentation.errorMessage;
       _noticeMessage = presentation.noticeMessage;
+    });
+  }
+
+  void _setEmailCallbackRetryFailureError(String message) {
+    final failure = _emailCallbackFailure;
+    if (failure == null) {
+      _setError(message);
+      return;
+    }
+    final presentation =
+        EmailAuthCallbackRetryState.fromFailure(failure).requestFailed(message);
+    setState(() {
+      _emailCallbackFailure = presentation.failure;
+      _errorMessage = presentation.errorMessage;
+      _noticeMessage = presentation.noticeMessage;
+    });
+  }
+
+  void _beginEmailCallbackRetry() {
+    final failure = _emailCallbackFailure;
+    final retryState = failure == null
+        ? null
+        : EmailAuthCallbackRetryState.fromFailure(failure).requestStarted();
+    setState(() {
+      _isLoading = true;
+      _emailCallbackFailure = retryState?.failure ?? failure;
+      _errorMessage = retryState?.errorMessage;
+      _noticeMessage = retryState?.noticeMessage;
     });
   }
 
@@ -364,12 +389,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _emailCallbackFailure = null;
-      _errorMessage = null;
-      _noticeMessage = null;
-    });
+    _beginEmailCallbackRetry();
     unawaited(
       AuthDiagnosticsService.log(
         event: 'signup_resend_requested',
@@ -408,7 +428,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           message: e.message,
         ),
       );
-      _setError(_mapAuthError(e, isSignUp: true));
+      _setEmailCallbackRetryFailureError(_mapAuthError(e, isSignUp: true));
     } catch (_) {
       if (!mounted) return;
       _logAuthDiagnostic(
@@ -417,7 +437,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         status: 'error',
         message: 'Signup confirmation email resend failed unexpectedly.',
       );
-      _setError('重新寄送驗證信失敗，請再試一次。');
+      _setEmailCallbackRetryFailureError('重新寄送驗證信失敗，請再試一次。');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -435,12 +455,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _emailCallbackFailure = null;
-      _errorMessage = null;
-      _noticeMessage = null;
-    });
+    _beginEmailCallbackRetry();
     _logAuthDiagnostic(
       event: 'password_reset_requested',
       email: email,
@@ -470,7 +485,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
       final message = e.message.toLowerCase();
       if (message.contains('rate limit') || e.statusCode == '429') {
-        _setError('重設密碼請求過多，請稍候再試。');
+        _setEmailCallbackRetryFailureError('重設密碼請求過多，請稍候再試。');
+      } else if (_emailCallbackFailure != null) {
+        _setEmailCallbackRetryFailureError(
+          '寄送重設密碼信失敗，請再試一次。',
+        );
       } else {
         _setNotice(
           '如果這個 Email 已註冊，我們已寄出重設密碼連結；請在這台裝置上開啟。',
@@ -478,7 +497,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     } catch (_) {
       if (!mounted) return;
-      _setError('寄送重設密碼信失敗，請再試一次。');
+      _setEmailCallbackRetryFailureError('寄送重設密碼信失敗，請再試一次。');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);

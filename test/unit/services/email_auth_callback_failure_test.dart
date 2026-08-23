@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vibesync/core/config/auth_callback_contract.dart';
@@ -11,7 +13,7 @@ void main() {
       final store = EmailAuthCallbackFailureStore();
       const failure = EmailAuthCallbackFailure(
         kind: EmailAuthCallbackFailureKind.expired,
-        isPasswordRecovery: true,
+        flow: EmailAuthFlow.recovery,
       );
 
       store.publish(failure);
@@ -26,7 +28,7 @@ void main() {
       final store = EmailAuthCallbackFailureStore();
       const failure = EmailAuthCallbackFailure(
         kind: EmailAuthCallbackFailureKind.denied,
-        isPasswordRecovery: false,
+        flow: EmailAuthFlow.signup,
       );
       final event = store.events.first;
 
@@ -39,11 +41,59 @@ void main() {
     });
   });
 
+  test('serial callback processing waits for accepted work before failures',
+      () async {
+    final order = <String>[];
+    final publishedFailures = <String>[];
+    final releaseAccepted = Completer<void>();
+    final acceptance = EmailAuthCallbackAcceptanceGate();
+    final processor = EmailAuthCallbackSerialProcessor((uri) async {
+      if (uri.path == '/signup') {
+        order.add('signup:start');
+        acceptance.markAccepted();
+        await releaseAccepted.future;
+        order.add('signup:end');
+        return;
+      }
+      order.add('recovery:failure');
+      if (acceptance.shouldPublishFailure) {
+        publishedFailures.add(uri.path);
+      }
+    });
+
+    final accepted = processor.enqueue(
+      Uri.parse('com.poyutsai.vibesync://email-callback/signup?code=ok'),
+    );
+    final staleFailure = processor.enqueue(
+      Uri.parse(
+        'com.poyutsai.vibesync://email-callback/recovery?error=expired',
+      ),
+    );
+
+    await Future<void>.delayed(Duration.zero);
+    expect(order, ['signup:start']);
+    expect(publishedFailures, isEmpty);
+
+    releaseAccepted.complete();
+    await accepted;
+    await staleFailure;
+    expect(order, ['signup:start', 'signup:end', 'recovery:failure']);
+    expect(publishedFailures, isEmpty);
+
+    acceptance.reset();
+    await processor.enqueue(
+      Uri.parse(
+        'com.poyutsai.vibesync://email-callback/recovery?error=expired',
+      ),
+    );
+    expect(publishedFailures, ['/recovery']);
+  });
+
   group('EmailAuthCallbackFailureClassifier', () {
     test('classifies expired recovery callback without retaining raw data', () {
       final failure = EmailAuthCallbackFailureClassifier.fromCallback(
         Uri.parse(
-          'com.poyutsai.vibesync://email-callback?auth_flow=recovery&error_code=otp_expired&email=private@example.com',
+          'com.poyutsai.vibesync://email-callback/recovery?error_code=otp_expired&email=private@example.com',
         ),
       );
 
@@ -56,7 +106,7 @@ void main() {
     test('classifies denied confirmation callback', () {
       final failure = EmailAuthCallbackFailureClassifier.fromCallback(
         Uri.parse(
-          'com.poyutsai.vibesync://email-callback?auth_flow=signup&error=access_denied',
+          'com.poyutsai.vibesync://email-callback/signup?error=access_denied',
         ),
       );
 
@@ -66,7 +116,7 @@ void main() {
 
     test('classifies a malformed callback as retryable without raw error', () {
       final failure = EmailAuthCallbackFailureClassifier.fromCallback(
-        Uri.parse('com.poyutsai.vibesync://email-callback?auth_flow=recovery'),
+        Uri.parse('com.poyutsai.vibesync://email-callback/recovery'),
         error: AuthException('raw provider token should not be retained'),
       );
 
@@ -79,7 +129,7 @@ void main() {
         () {
       final failure = EmailAuthCallbackFailureClassifier.tryFromCallback(
         Uri.parse(
-          'com.poyutsai.vibesync://email-callback?auth_flow=recovery&error=invalid_grant&error_code=otp_expired',
+          'com.poyutsai.vibesync://email-callback/recovery?error=invalid_grant&error_code=otp_expired',
         ),
       );
 
@@ -88,24 +138,24 @@ void main() {
       expect(failure.isPasswordRecovery, isTrue);
     });
 
-    test('unknown, missing, or duplicate markers publish no failure', () {
+    test('unknown, missing, or extra flow paths publish no failure', () {
       for (final query in [
-        'error=access_denied',
-        'auth_flow=unknown&error=access_denied',
-        'auth_flow=signup&auth_flow=recovery&error=access_denied',
+        'com.poyutsai.vibesync://email-callback?error=access_denied',
+        'com.poyutsai.vibesync://email-callback/unknown?error=access_denied',
+        'com.poyutsai.vibesync://email-callback/signup/recovery?error=access_denied',
       ]) {
         expect(
           EmailAuthCallbackFailureClassifier.tryFromCallback(
-            Uri.parse('com.poyutsai.vibesync://email-callback?$query'),
+            Uri.parse(query),
           ),
           isNull,
-          reason: 'marker must fail closed: $query',
+          reason: 'flow path must fail closed: $query',
         );
       }
       expect(
         EmailAuthCallbackFailureClassifier.tryFromCallback(
           Uri.parse(
-            'com.poyutsai.vibesync://email-callback?auth_flow=recovery&type=signup&error=access_denied',
+            'com.poyutsai.vibesync://email-callback/recovery?auth_flow=signup&type=signup&error=access_denied',
           ),
         ),
         isNotNull,
@@ -117,18 +167,18 @@ void main() {
       expect(
         AuthCallbackUriPolicy.isProcessableEmailAuthCallback(
           Uri.parse(
-            'com.poyutsai.vibesync://email-callback?auth_flow=signup&code=accepted-code',
+            'com.poyutsai.vibesync://email-callback/signup?code=accepted-code',
           ),
         ),
         isTrue,
       );
       expect(
         AppConfig.authEmailSignupRedirectUri,
-        contains('auth_flow=signup'),
+        endsWith('/signup'),
       );
       expect(
         AppConfig.authEmailRecoveryRedirectUri,
-        contains('auth_flow=recovery'),
+        endsWith('/recovery'),
       );
     });
   });
@@ -138,7 +188,7 @@ void main() {
         () {
       const failure = EmailAuthCallbackFailure(
         kind: EmailAuthCallbackFailureKind.expired,
-        isPasswordRecovery: true,
+        flow: EmailAuthFlow.recovery,
       );
 
       final notice = EmailAuthCallbackFailurePresentationState.fromFailure(
@@ -161,7 +211,7 @@ void main() {
         EmailAuthCallbackFailureMessage.forFailure(
           const EmailAuthCallbackFailure(
             kind: EmailAuthCallbackFailureKind.expired,
-            isPasswordRecovery: true,
+            flow: EmailAuthFlow.recovery,
           ),
         ),
         allOf(contains('重設密碼'), contains('重新寄送')),
@@ -170,11 +220,45 @@ void main() {
         EmailAuthCallbackFailureMessage.retryLabel(
           const EmailAuthCallbackFailure(
             kind: EmailAuthCallbackFailureKind.denied,
-            isPasswordRecovery: false,
+            flow: EmailAuthFlow.signup,
           ),
         ),
         contains('驗證信'),
       );
+    });
+
+    test('signup failure survives resend failure and clears on success', () {
+      const failure = EmailAuthCallbackFailure(
+        kind: EmailAuthCallbackFailureKind.denied,
+        flow: EmailAuthFlow.signup,
+      );
+
+      var state = EmailAuthCallbackRetryState.fromFailure(failure);
+      state = state.requestStarted();
+      state = state.requestFailed('重新寄送驗證信失敗，請再試一次。');
+      expect(state.failure, same(failure));
+      expect(state.errorMessage, contains('重新寄送驗證信失敗'));
+
+      state = state.requestSucceeded('驗證信已重新寄出。');
+      expect(state.failure, isNull);
+      expect(state.noticeMessage, '驗證信已重新寄出。');
+    });
+
+    test('recovery failure survives reset failure and clears on success', () {
+      const failure = EmailAuthCallbackFailure(
+        kind: EmailAuthCallbackFailureKind.expired,
+        flow: EmailAuthFlow.recovery,
+      );
+
+      var state = EmailAuthCallbackRetryState.fromFailure(failure);
+      state = state.requestStarted();
+      state = state.requestFailed('寄送重設密碼信失敗，請再試一次。');
+      expect(state.failure, same(failure));
+      expect(state.errorMessage, contains('寄送重設密碼信失敗'));
+
+      state = state.requestSucceeded('重設密碼信已重新寄出。');
+      expect(state.failure, isNull);
+      expect(state.noticeMessage, '重設密碼信已重新寄出。');
     });
   });
 }

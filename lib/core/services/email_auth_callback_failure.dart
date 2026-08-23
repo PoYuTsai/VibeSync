@@ -15,13 +15,8 @@ enum EmailAuthCallbackFailureKind { expired, denied, malformed }
 class EmailAuthCallbackFailure {
   const EmailAuthCallbackFailure({
     required this.kind,
-    EmailAuthFlow? flow,
-    bool? isPasswordRecovery,
-  })  : assert(flow != null || isPasswordRecovery != null),
-        flow = flow ??
-            (isPasswordRecovery == true
-                ? EmailAuthFlow.recovery
-                : EmailAuthFlow.signup);
+    required this.flow,
+  });
 
   final EmailAuthCallbackFailureKind kind;
   final EmailAuthFlow flow;
@@ -30,6 +25,41 @@ class EmailAuthCallbackFailure {
 
   @override
   String toString() => 'EmailAuthCallbackFailure(kind: $kind, flow: $flow)';
+}
+
+/// Guards the failure stream after Supabase has accepted an Email callback.
+/// A signed-out session resets this gate before the next login attempt.
+class EmailAuthCallbackAcceptanceGate {
+  bool _accepted = false;
+
+  bool get shouldPublishFailure => !_accepted;
+
+  void markAccepted() {
+    _accepted = true;
+  }
+
+  void reset() {
+    _accepted = false;
+  }
+}
+
+/// Serializes callback work so a second deep link cannot race the first
+/// Supabase code exchange. The tail remains usable even if one operation
+/// throws; the returned future still reports that operation's error.
+class EmailAuthCallbackSerialProcessor {
+  EmailAuthCallbackSerialProcessor(this._handler);
+
+  final Future<void> Function(Uri callback) _handler;
+  Future<void> _tail = Future<void>.value();
+
+  Future<void> enqueue(Uri callback) {
+    final next = _tail.then((_) => _handler(callback));
+    _tail = next.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return next;
+  }
 }
 
 /// Buffers the latest Email callback failure until the presentation layer has
@@ -87,7 +117,7 @@ class EmailAuthCallbackFailureClassifier {
       throw ArgumentError.value(
         callback,
         'callback',
-        'Email callback must carry exactly one supported auth_flow marker',
+        'Email callback must carry exactly one supported flow path',
       );
     }
     return _fromMarkedCallback(callback, flow: selectedFlow, error: error);

@@ -18,9 +18,13 @@ class SupabaseService {
   static late SupabaseClient _client;
   static bool _initialized = false;
   static StreamSubscription<AuthState>? _authStateSubscription;
-  static StreamSubscription<Uri>? _authDeepLinkSubscription;
+  static StreamSubscription<void>? _authDeepLinkSubscription;
   static bool _passwordRecoveryInProgress = false;
   static final AppLinks _appLinks = AppLinks();
+  static final EmailAuthCallbackAcceptanceGate _emailCallbackAcceptance =
+      EmailAuthCallbackAcceptanceGate();
+  static final EmailAuthCallbackSerialProcessor _emailCallbackProcessor =
+      EmailAuthCallbackSerialProcessor(_handleIncomingAuthLink);
   static final EmailAuthCallbackFailureStore _emailCallbackFailures =
       EmailAuthCallbackFailureStore();
 
@@ -49,8 +53,10 @@ class SupabaseService {
     );
     _authDeepLinkSubscription?.cancel();
     if (!kIsWeb) {
-      _authDeepLinkSubscription = _appLinks.uriLinkStream.listen(
-        (uri) => unawaited(_handleIncomingAuthLink(uri)),
+      _authDeepLinkSubscription = _appLinks.uriLinkStream
+          .asyncMap(_emailCallbackProcessor.enqueue)
+          .listen(
+        (_) {},
         onError: (error, stackTrace) {
           debugPrint(
             'Email auth callback listener skipped: ${error.runtimeType}',
@@ -68,10 +74,16 @@ class SupabaseService {
       return;
     }
 
-    // The fixed marker only selects the retry operation.  It is deliberately
+    // The fixed flow path only selects the retry operation. It is deliberately
     // validated before any parser/session exchange so an unknown, missing, or
-    // duplicated marker cannot change auth state or publish misleading UI.
+    // extra path cannot change auth state or publish misleading UI.
     if (AuthCallbackUriPolicy.emailAuthFlow(uri) == null) {
+      return;
+    }
+
+    // Once Supabase accepted a callback and established session/recovery,
+    // queued stale links and later provider errors must not reopen retry UI.
+    if (!_emailCallbackAcceptance.shouldPublishFailure) {
       return;
     }
 
@@ -82,6 +94,7 @@ class SupabaseService {
 
     try {
       await _client.auth.getSessionFromUrl(uri);
+      _emailCallbackAcceptance.markAccepted();
       clearEmailAuthCallbackFailure();
     } on AuthException catch (error) {
       _publishEmailAuthCallbackFailure(uri, error: error);
@@ -97,6 +110,13 @@ class SupabaseService {
       event: authState.event,
       currentState: _passwordRecoveryInProgress,
     );
+    if (authState.event == AuthChangeEvent.passwordRecovery ||
+        authState.event == AuthChangeEvent.signedIn) {
+      _emailCallbackAcceptance.markAccepted();
+    }
+    if (authState.event == AuthChangeEvent.signedOut) {
+      _emailCallbackAcceptance.reset();
+    }
     if (authState.event == AuthChangeEvent.passwordRecovery ||
         authState.event == AuthChangeEvent.signedIn ||
         authState.event == AuthChangeEvent.signedOut) {
@@ -146,6 +166,9 @@ class SupabaseService {
     Uri uri, {
     Object? error,
   }) {
+    if (!_emailCallbackAcceptance.shouldPublishFailure) {
+      return;
+    }
     final failure = EmailAuthCallbackFailureClassifier.tryFromCallback(
       uri,
       error: error,
@@ -248,6 +271,7 @@ class SupabaseService {
     // Clear the buffered callback notice before any best-effort cleanup can
     // fail, so an explicit sign-out can never carry it into the next login.
     clearEmailAuthCallbackFailure();
+    _emailCallbackAcceptance.reset();
     final ownerUserId = currentUser?.id;
     await KeyboardPrivacyPurgeService.live.purge(
       KeyboardContextPurgeScope.logout,
@@ -296,6 +320,7 @@ class SupabaseService {
     }
 
     _passwordRecoveryInProgress = false;
+    _emailCallbackAcceptance.reset();
     clearEmailAuthCallbackFailure();
   }
 
