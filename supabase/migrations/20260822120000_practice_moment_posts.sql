@@ -16,7 +16,8 @@
 --       任意字串都會被接受並各自獲得自己的 6 次額度）
 --     · post_date 是正確的台北日期（否則同一天可被算成多天）
 --   兩者相乘才是 100 × 6 = 每日最多 600 次。
---   → Edge 側 allowlist 與台北日的契約測試由 PR B 補上。
+--   → Edge 側 allowlist 與台北日的契約測試：
+--     supabase/functions/practice-chat/moments_edge_contract_test.ts（PR B 補齊）
 --
 -- 契約測試：supabase/functions/practice-chat/moments_migration_postgres_test.ts
 --          （PGlite 真 Postgres，逐格驗 reserve 的六態轉移表）

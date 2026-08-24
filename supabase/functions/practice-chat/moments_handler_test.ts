@@ -44,7 +44,7 @@ interface HarnessOptions {
   commit?: (params: Row) => Row;
   release?: (params: Row) => Row;
   rateLimitError?: string;
-  model?: (index: number) => Promise<string>;
+  model?: (index: number, timeoutMs: number) => Promise<string>;
 }
 
 interface Harness {
@@ -158,7 +158,7 @@ function run(
           timeoutMs: args.timeoutMs,
           system: args.messages[0]?.content ?? "",
         });
-        if (model) return await model(index);
+        if (model) return await model(index, args.timeoutMs);
         return JSON.stringify({ text: VALID_BODY, imageId: null });
       },
     },
@@ -167,6 +167,16 @@ function run(
 
 function rpcNames(harness: Harness): string[] {
   return harness.rpcCalls.map((call) => call.fn);
+}
+
+/**
+ * 等一小段時間讓「handler 回應之後才落地」的尾隨呼叫也被記錄下來。
+ *
+ * 死線那組測試如果不 drain，就只是在驗「release 比回應晚」——那是競態，
+ * 不是契約。契約是「release 從頭到尾都不該發生」。
+ */
+function drain(ms = 120): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function body(result: { body: unknown }): Record<string, unknown> {
@@ -417,6 +427,7 @@ Deno.test("模型全部掛住 → 在死線內回應，且不 release（token �
   const elapsed = Date.now() - startedAt;
   assertEquals(result.status, 200);
   assert(elapsed < 3000, `死線沒有生效，等了 ${elapsed}ms`);
+  await drain();
   assertEquals(
     rpcNames(harness).includes("release_practice_moment_slot"),
     false,
@@ -424,6 +435,47 @@ Deno.test("模型全部掛住 → 在死線內回應，且不 release（token �
   );
   assertEquals(body(result).generatedCount, 0);
   assert((body(result).pendingCount as number) > 0);
+});
+
+Deno.test("模型在死線上 abort（比照 callDeepSeek 真實行為）→ 仍不得 release", async () => {
+  // 上一條用「永遠不 resolve」的 stub，蓋不到 production 的實際路徑：
+  // callDeepSeek 的 AbortController 會在 timeoutMs 到點時丟 deepseek_timeout，
+  // 也就是說 catch 區塊**會**被執行。死線判斷必須擋在 release 之前。
+  const due = profilesDueAt(NOON);
+  const unlocked = [...new Set(due.map((entry) => entry.profileId))]
+    .slice(0, 3)
+    .map((profileId) => ({ profileId }));
+  const harness = makeHarness({
+    unlocked,
+    model: (_index, timeoutMs) =>
+      new Promise<string>((_resolve, reject) => {
+        setTimeout(() => reject(new Error("deepseek_timeout")), timeoutMs);
+      }),
+  });
+  const result = await run(harness, { fillDeadlineMs: 300 });
+  assertEquals(result.status, 200);
+  await drain();
+  assertEquals(
+    rpcNames(harness).includes("release_practice_moment_slot"),
+    false,
+    "死線上的 abort 屬於死線中止，不是生成失敗：release 會讓下一個請求" +
+      "立刻接手並多燒一次 attempts",
+  );
+  assertEquals(body(result).generatedCount, 0);
+});
+
+Deno.test("模型在死線之前就失敗 → 這才是生成失敗，必須 release", async () => {
+  const due = profilesDueAt(NOON);
+  const harness = makeHarness({
+    unlocked: [{ profileId: due[0].profileId }],
+    model: () =>
+      new Promise<string>((_resolve, reject) => {
+        setTimeout(() => reject(new Error("deepseek_timeout")), 20);
+      }),
+  });
+  await run(harness, { fillDeadlineMs: 2000 });
+  await drain();
+  assert(rpcNames(harness).includes("release_practice_moment_slot"));
 });
 
 Deno.test("1 則成功、其餘掛住 → 回 1 則，pendingCount 記其餘", async () => {
