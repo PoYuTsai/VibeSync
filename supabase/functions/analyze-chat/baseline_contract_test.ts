@@ -11,6 +11,10 @@ import {
 import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
 import { SYSTEM_PROMPT } from "./analyze_prompt/system_prompt.ts";
 import { resolveRequestMode } from "./request_mode.ts";
+import { STREAM_STYLES } from "./stream_events.ts";
+
+const seamRequiresExplicitStyles: [] extends
+  Parameters<typeof buildAnalyzeStreamSystemPrompt> ? false : true = true;
 
 interface PromptSlice {
   file: string;
@@ -78,8 +82,8 @@ async function sha256Hex(text: string): Promise<string> {
 Deno.test("baseline：active Analyze rendered prompts 與穩定版完全相同", async () => {
   const rendered: Record<string, string> = {
     base: SYSTEM_PROMPT,
-    paidFiveStyle: buildAnalyzeStreamSystemPrompt(),
-    freeOneStyle: buildAnalyzeStreamSystemPrompt(["extend"]),
+    paidFiveStyle: buildAnalyzeStreamSystemPrompt(STREAM_STYLES),
+    singleExtendStyle: buildAnalyzeStreamSystemPrompt(["extend"]),
   };
 
   for (const [name, prompt] of Object.entries(rendered)) {
@@ -93,6 +97,10 @@ Deno.test("baseline：active Analyze rendered prompts 與穩定版完全相同",
     );
     assertEquals(await sha256Hex(prompt), expected.sha256, `${name}: SHA-256`);
   }
+});
+
+Deno.test("Analyze prompt seam requires an explicit style list", () => {
+  assert(seamRequiresExplicitStyles);
 });
 
 Deno.test("baseline：prompt/model/token 原始碼切片 hash 與核准 fixture 一致", async () => {
