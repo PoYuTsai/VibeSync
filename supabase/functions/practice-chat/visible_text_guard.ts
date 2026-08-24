@@ -81,6 +81,13 @@ const INTERNAL_VISIBLE_LABELS = [
   "frameoverreach",
   "fakefamiliarity",
   "socialproofattempt",
+  // 模擬社群動態貼文（moments_prompt.ts）注入的結構標籤；鐵則＝注入內部詞
+  // 必同步擴可見輸出守門，否則模型把標籤原樣抄進貼文沒人攔。
+  // 全用英文複合詞，中文標籤表（INTERNAL_CHINESE_LABELS）不必新增。
+  "momentpostspec",
+  "momentdaypart",
+  "momentthemebrief",
+  "momentimageoptions",
 ];
 
 const L4_UNSAFE_VISIBLE_PATTERNS = [
