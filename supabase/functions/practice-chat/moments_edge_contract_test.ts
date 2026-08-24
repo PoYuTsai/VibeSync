@@ -207,9 +207,9 @@ Deno.test("post_date 與 p_since 一律是台北日，跨日邊界不會算錯",
   ) {
     const now = new Date(utcIso);
     assertEquals(taipeiTimeContextFor(now).isoDate, expectedTaipeiDay, utcIso);
-    const harness = harnessWith(GIRL_PROFILES.slice(0, 6).map((g) =>
-      g.profileId
-    ));
+    const harness = harnessWith(
+      GIRL_PROFILES.slice(0, 6).map((g) => g.profileId),
+    );
     await run(harness, now);
     for (const call of harness.calls) {
       if ("p_post_date" in call.params) {
@@ -238,7 +238,9 @@ Deno.test("post_date 與 p_since 一律是台北日，跨日邊界不會算錯",
 
 Deno.test("同一次請求內所有 RPC 的 post_date 完全一致（不會半夜跨日撕裂）", async () => {
   const now = new Date(Date.UTC(2026, 7, 22, 15, 59, 59));
-  const harness = harnessWith(GIRL_PROFILES.slice(0, 10).map((g) => g.profileId));
+  const harness = harnessWith(
+    GIRL_PROFILES.slice(0, 10).map((g) => g.profileId),
+  );
   await run(harness, now);
   const dates = new Set(
     harness.calls
@@ -250,7 +252,9 @@ Deno.test("同一次請求內所有 RPC 的 post_date 完全一致（不會半�
 });
 
 Deno.test("p_slot 一律落在 SQL CHECK 的 0..1 內", async () => {
-  const harness = harnessWith(GIRL_PROFILES.slice(0, 20).map((g) => g.profileId));
+  const harness = harnessWith(
+    GIRL_PROFILES.slice(0, 20).map((g) => g.profileId),
+  );
   await run(harness, new Date(Date.UTC(2026, 7, 22, 15, 59, 59)));
   const slots = harness.calls
     .filter((call) => "p_slot" in call.params)

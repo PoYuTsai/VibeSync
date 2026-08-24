@@ -34,9 +34,9 @@ import { momentPostedAtFor } from "./moments_time.ts";
 import { buildMomentMessages } from "./moments_prompt.ts";
 import { validateMomentDraft } from "./moments_validate.ts";
 import {
-  taipeiTimeContextFor,
   type TaipeiDayPart,
   type TaipeiTimeContext,
+  taipeiTimeContextFor,
 } from "./time_context.ts";
 import {
   FEED_WINDOW_DAYS,
@@ -118,7 +118,9 @@ interface MissingSlot {
 /** PostgREST 把 RETURNS TABLE 包成陣列；統一取第一列。 */
 function firstRow(data: unknown): Row | null {
   const row = Array.isArray(data) ? data[0] : data;
-  if (typeof row !== "object" || row === null || Array.isArray(row)) return null;
+  if (typeof row !== "object" || row === null || Array.isArray(row)) {
+    return null;
+  }
   return row as Row;
 }
 

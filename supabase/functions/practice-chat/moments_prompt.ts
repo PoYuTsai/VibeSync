@@ -82,7 +82,8 @@ export function buildMomentMessages(opts: {
   const { girl, themeId, brief, dayPart, isoDate, isWeekend, imageCandidates } =
     opts;
 
-  const system = `你是${girl.displayName}，${girl.age} 歲，在${girl.city}的${girl.professionLabel}。
+  const system =
+    `你是${girl.displayName}，${girl.age} 歲，在${girl.city}的${girl.professionLabel}。
 ${girl.professionPrompt}
 
 現在你要寫一則自己的社群動態貼文。這是你發在社群上給不特定多數人看的動態，不是傳訊息給某一個人。
@@ -93,8 +94,8 @@ ${girl.professionPrompt}
 3. 不可以提到任何特定的人、任何對話內容、任何跟誰約好的事。這則貼文只講你自己。
 4. 不可以出現真實品牌、真實店名、真實地址、真實帳號或真實網址。
 5. 語氣要像你的個性：${girl.personalityTags.join("、")}。你平常在意的是${
-    girl.interestTags.join("、")
-  }，生活習慣是${girl.lifestyleTags.join("、")}。
+      girl.interestTags.join("、")
+    }，生活習慣是${girl.lifestyleTags.join("、")}。
 6. 不要用開頭問候語、不要加 hashtag、不要寫成廣告或文案。
 ${imageDirective(imageCandidates)}
 

@@ -139,7 +139,10 @@ Deno.test("SQL 的 profile_ids 上限等於角色 allowlist 大小", () => {
 Deno.test("每個有 SQL 對應物的 TS 常數都能在 migration 內找到", () => {
   for (
     const [label, snippet] of [
-      ["attempts CHECK", `CHECK (attempts BETWEEN 0 AND ${MAX_MOMENT_ATTEMPTS})`],
+      [
+        "attempts CHECK",
+        `CHECK (attempts BETWEEN 0 AND ${MAX_MOMENT_ATTEMPTS})`,
+      ],
       ["slot CHECK", `CHECK (slot BETWEEN 0 AND ${MOMENT_SLOT_COUNT - 1})`],
       [
         "body CHECK",
@@ -155,7 +158,10 @@ Deno.test("每個有 SQL 對應物的 TS 常數都能在 migration 內找到", (
       ],
     ] as const
   ) {
-    assert(migration.includes(snippet), `${label} 在 migration 內找不到：${snippet}`);
+    assert(
+      migration.includes(snippet),
+      `${label} 在 migration 內找不到：${snippet}`,
+    );
   }
 });
 

@@ -182,7 +182,9 @@ Deno.test("dispatch 是純加法，且不碰 chat／hint／debrief 路徑", () =
   const collectionAt = practiceHandler.indexOf(
     'rawBody.mode === "practice_collection"',
   );
-  const validateAt = practiceHandler.indexOf("request = validateRequest(rawBody)");
+  const validateAt = practiceHandler.indexOf(
+    "request = validateRequest(rawBody)",
+  );
   assert(collectionAt > 0 && validateAt > 0);
   assert(
     dispatchAt > collectionAt && dispatchAt < validateAt,
@@ -194,7 +196,9 @@ Deno.test("dispatch 是純加法，且不碰 chat／hint／debrief 路徑", () =
       practiceHandler.indexOf("return jsonResponse(momentsResult", dispatchAt),
     ),
   );
-  for (const forbidden of ["buildChatMessages", "buildHintMessages", "debrief"]) {
+  for (
+    const forbidden of ["buildChatMessages", "buildHintMessages", "debrief"]
+  ) {
     assertEquals(branch.includes(forbidden), false);
   }
 });

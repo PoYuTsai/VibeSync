@@ -38,6 +38,11 @@ jobs:
       - name: Type-check keyboard function
         run: deno check supabase/functions/keyboard-reply/*.ts
 
+      # 動態貼文生成端會被 handler.ts 的 practice_moments 分支載入，但整個
+      # practice-chat 目錄不在 CI 的測試名單裡，型別錯誤只會在部署時才炸。
+      - name: Type-check practice moments generation
+        run: deno check supabase/functions/practice-chat/moments_handler.ts
+
       - name: Run Edge contract tests
         run: >-
           deno test --allow-env --allow-read
@@ -51,6 +56,15 @@ jobs:
           supabase/functions/analyze-chat/stream_branch_test.ts
           supabase/functions/practice-chat/moments_schedule_test.ts
           supabase/functions/practice-chat/moments_migration_source_test.ts
+          supabase/functions/practice-chat/moments_constants_test.ts
+          supabase/functions/practice-chat/moments_image_gate_test.ts
+          supabase/functions/practice-chat/moments_time_test.ts
+          supabase/functions/practice-chat/moments_prompt_test.ts
+          supabase/functions/practice-chat/moments_validate_test.ts
+          supabase/functions/practice-chat/moments_handler_test.ts
+          supabase/functions/practice-chat/moments_edge_contract_test.ts
+          supabase/functions/practice-chat/moments_generated_only_source_test.ts
+          supabase/functions/practice-chat/visible_text_guard_test.ts
 
       # PGlite（WASM Postgres）獨立成一步：它是唯一會拉 npm 套件的測試（約 8 秒），
       # 分開跑讓上面那組純函式契約測試 fail fast，失敗時也一眼看得出是資料層掛了。

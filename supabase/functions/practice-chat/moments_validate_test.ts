@@ -86,7 +86,10 @@ Deno.test("非 JSON、text 非字串、text 空白一律拒", () => {
 Deno.test("模型加了 markdown code fence 仍解析得出來", () => {
   const text = "今天的第一杯咖啡比鬧鐘有用多了，終於覺得自己醒著";
   const fenced = "```json\n" + raw(text) + "\n```";
-  assertEquals(validateMomentDraft({ raw: fenced, imageCandidates: [] }).body, text);
+  assertEquals(
+    validateMomentDraft({ raw: fenced, imageCandidates: [] }).body,
+    text,
+  );
 });
 
 // ── 守門 ──────────────────────────────────────────────────────────────
@@ -134,19 +137,23 @@ Deno.test("貼文正文裡出現任何圖庫 id 即拒", () => {
 // ── 全域內容不得對某個使用者說話（決策 A 的延伸限制）──────────────
 
 Deno.test("出現第二人稱「你」或「妳」即拒", () => {
-  for (const text of [
-    "今天的咖啡好喝到我想推薦給你，下次一起去那間店坐坐吧",
-    "剛剛看到路邊那隻貓，忽然覺得妳應該也會喜歡牠那個表情",
-  ]) {
+  for (
+    const text of [
+      "今天的咖啡好喝到我想推薦給你，下次一起去那間店坐坐吧",
+      "剛剛看到路邊那隻貓，忽然覺得妳應該也會喜歡牠那個表情",
+    ]
+  ) {
     assertThrows(() => accept(text), Error, "moment_second_person");
   }
 });
 
 Deno.test("問句結尾即拒（不管全形半形）", () => {
-  for (const text of [
-    "今天下午的天氣好到有點過分，是不是應該翹班去走走呢？",
-    "今天下午的天氣好到有點過分，是不是應該翹班去走走呢?",
-  ]) {
+  for (
+    const text of [
+      "今天下午的天氣好到有點過分，是不是應該翹班去走走呢？",
+      "今天下午的天氣好到有點過分，是不是應該翹班去走走呢?",
+    ]
+  ) {
     assertThrows(() => accept(text), Error, "moment_question_form");
   }
 });
@@ -171,7 +178,10 @@ Deno.test("簡體輸入轉繁體後通過", () => {
 
 Deno.test("imageId 在 allowlist 且在本 slot 候選內 → 保留", () => {
   const result = validateMomentDraft({
-    raw: raw("今天的第一杯咖啡比鬧鐘有用多了，終於覺得自己醒著", SELF_PORTRAIT_IMAGE_ID),
+    raw: raw(
+      "今天的第一杯咖啡比鬧鐘有用多了，終於覺得自己醒著",
+      SELF_PORTRAIT_IMAGE_ID,
+    ),
     imageCandidates: CANDIDATES,
   });
   assertEquals(result.imageId, SELF_PORTRAIT_IMAGE_ID);
@@ -179,7 +189,10 @@ Deno.test("imageId 在 allowlist 且在本 slot 候選內 → 保留", () => {
 
 Deno.test("imageId 不在 allowlist → 降級成純文字，不是整則拒", () => {
   const result = validateMomentDraft({
-    raw: raw("今天的第一杯咖啡比鬧鐘有用多了，終於覺得自己醒著", "moment_not_real"),
+    raw: raw(
+      "今天的第一杯咖啡比鬧鐘有用多了，終於覺得自己醒著",
+      "moment_not_real",
+    ),
     imageCandidates: CANDIDATES,
   });
   assertEquals(result.imageId, null);
@@ -188,7 +201,10 @@ Deno.test("imageId 不在 allowlist → 降級成純文字，不是整則拒", (
 
 Deno.test("imageId 在 allowlist 但不在本 slot 候選 → 同樣降級", () => {
   const result = validateMomentDraft({
-    raw: raw("今天的第一杯咖啡比鬧鐘有用多了，終於覺得自己醒著", "moment_coffee_cup"),
+    raw: raw(
+      "今天的第一杯咖啡比鬧鐘有用多了，終於覺得自己醒著",
+      "moment_coffee_cup",
+    ),
     imageCandidates: CANDIDATES,
   });
   assertEquals(result.imageId, null);
@@ -196,7 +212,10 @@ Deno.test("imageId 在 allowlist 但不在本 slot 候選 → 同樣降級", () 
 
 Deno.test("本 slot 沒有候選圖時，模型硬塞 imageId 一律降級", () => {
   const result = validateMomentDraft({
-    raw: raw("今天的第一杯咖啡比鬧鐘有用多了，終於覺得自己醒著", SELF_PORTRAIT_IMAGE_ID),
+    raw: raw(
+      "今天的第一杯咖啡比鬧鐘有用多了，終於覺得自己醒著",
+      SELF_PORTRAIT_IMAGE_ID,
+    ),
     imageCandidates: [],
   });
   assertEquals(result.imageId, null);

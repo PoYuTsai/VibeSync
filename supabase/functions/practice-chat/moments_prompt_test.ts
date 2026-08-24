@@ -98,7 +98,10 @@ Deno.test("prompt sentinel 真的抓得到自己的 prompt 外洩", () => {
     assert(text.includes(sentinel), `sentinel 不在 prompt 內：${sentinel}`);
     assert(containsPromptLeak(sentinel, MOMENT_PROMPT_SENTINELS));
   }
-  assertEquals(containsPromptLeak("今天的咖啡比鬧鐘有用", MOMENT_PROMPT_SENTINELS), false);
+  assertEquals(
+    containsPromptLeak("今天的咖啡比鬧鐘有用", MOMENT_PROMPT_SENTINELS),
+    false,
+  );
 });
 
 Deno.test("注入的每一個內部標籤都已登記進可見輸出守門", () => {

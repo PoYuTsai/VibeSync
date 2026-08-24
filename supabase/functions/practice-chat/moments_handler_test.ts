@@ -73,7 +73,10 @@ function makeHarness(options: HarnessOptions): Harness {
             then(resolve: (value: unknown) => unknown) {
               if (options.drawError) {
                 return Promise.resolve(
-                  resolve({ data: null, error: { message: options.drawError } }),
+                  resolve({
+                    data: null,
+                    error: { message: options.drawError },
+                  }),
                 );
               }
               const rows = (options.unlocked ?? []).map((entry) => ({
@@ -124,7 +127,9 @@ function makeHarness(options: HarnessOptions): Harness {
       }
       if (fn === "release_practice_moment_slot") {
         return Promise.resolve({
-          data: [options.release ? options.release(params) : { released: true }],
+          data: [
+            options.release ? options.release(params) : { released: true },
+          ],
           error: null,
         });
       }
@@ -248,7 +253,10 @@ Deno.test("所有到時間的 slot 都已 ready → 零模型呼叫（成本模�
   const result = await run(harness, { now: END_OF_DAY });
   assertEquals(result.status, 200);
   assertEquals(harness.modelCalls.length, 0);
-  assertEquals(rpcNames(harness).includes("reserve_practice_moment_slot"), false);
+  assertEquals(
+    rpcNames(harness).includes("reserve_practice_moment_slot"),
+    false,
+  );
   assertEquals((body(result).posts as unknown[]).length, covered.length);
   assertEquals(body(result).pendingCount, 0);
 });
@@ -314,7 +322,10 @@ Deno.test("補生成成功 → commit 帶著驗證後的 body，且回應含新�
   assertEquals(commits[0].params.p_profile_id, due[0].profileId);
   assertEquals(body(result).generatedCount, 1);
   assertEquals((body(result).posts as unknown[]).length, 1);
-  assertEquals(rpcNames(harness).includes("release_practice_moment_slot"), false);
+  assertEquals(
+    rpcNames(harness).includes("release_practice_moment_slot"),
+    false,
+  );
 });
 
 Deno.test("單一請求最多補 K 則，其餘留給下次（pendingCount 說明剩幾則）", async () => {
@@ -322,15 +333,18 @@ Deno.test("單一請求最多補 K 則，其餘留給下次（pendingCount 說�
   const unlocked = [...new Set(due.map((entry) => entry.profileId))]
     .slice(0, MOMENT_FILL_MAX_PER_REQUEST + 4)
     .map((profileId) => ({ profileId }));
-  const missing = due.filter((entry) =>
-    unlocked.some((u) => u.profileId === entry.profileId)
-  ).length;
+  const missing =
+    due.filter((entry) => unlocked.some((u) => u.profileId === entry.profileId))
+      .length;
   assert(missing > MOMENT_FILL_MAX_PER_REQUEST);
   const harness = makeHarness({ unlocked });
   const result = await run(harness, {});
   assertEquals(harness.modelCalls.length, MOMENT_FILL_MAX_PER_REQUEST);
   assertEquals(body(result).generatedCount, MOMENT_FILL_MAX_PER_REQUEST);
-  assertEquals(body(result).pendingCount, missing - MOMENT_FILL_MAX_PER_REQUEST);
+  assertEquals(
+    body(result).pendingCount,
+    missing - MOMENT_FILL_MAX_PER_REQUEST,
+  );
 });
 
 Deno.test("沒搶到 latch（別人正在跑）→ 不打模型、不 release", async () => {
@@ -342,7 +356,10 @@ Deno.test("沒搶到 latch（別人正在跑）→ 不打模型、不 release", 
   const result = await run(harness, {});
   assertEquals(result.status, 200);
   assertEquals(harness.modelCalls.length, 0);
-  assertEquals(rpcNames(harness).includes("release_practice_moment_slot"), false);
+  assertEquals(
+    rpcNames(harness).includes("release_practice_moment_slot"),
+    false,
+  );
   assertEquals(body(result).generatedCount, 0);
   assertEquals(body(result).pendingCount, 1);
 });
@@ -383,7 +400,9 @@ Deno.test("驗證打回（模型寫太長）→ release、不 commit、不落盤
   const harness = makeHarness({
     unlocked: [{ profileId: due[0].profileId }],
     model: () =>
-      Promise.resolve(JSON.stringify({ text: "咖".repeat(200), imageId: null })),
+      Promise.resolve(
+        JSON.stringify({ text: "咖".repeat(200), imageId: null }),
+      ),
   });
   const result = await run(harness, {});
   const names = rpcNames(harness);
@@ -483,9 +502,9 @@ Deno.test("1 則成功、其餘掛住 → 回 1 則，pendingCount 記其餘", a
   const unlocked = [...new Set(due.map((entry) => entry.profileId))]
     .slice(0, 3)
     .map((profileId) => ({ profileId }));
-  const missing = due.filter((entry) =>
-    unlocked.some((u) => u.profileId === entry.profileId)
-  ).length;
+  const missing =
+    due.filter((entry) => unlocked.some((u) => u.profileId === entry.profileId))
+      .length;
   const harness = makeHarness({
     unlocked,
     model: (index) =>
@@ -522,7 +541,10 @@ Deno.test("限流命中 → 429，且一次 reserve 都沒有", async () => {
   const result = await run(harness, {});
   assertEquals(result.status, 429);
   assertEquals(harness.modelCalls.length, 0);
-  assertEquals(rpcNames(harness).includes("reserve_practice_moment_slot"), false);
+  assertEquals(
+    rpcNames(harness).includes("reserve_practice_moment_slot"),
+    false,
+  );
   assertEquals(body(result).retryable, false);
   // 429 絕不帶訂閱額度鍵，否則 client 會把限流誤導成升級 CTA。
   assertEquals("monthlyLimit" in body(result), false);
@@ -554,7 +576,9 @@ Deno.test("限流 RPC infra 錯誤 → fail-open 放行，不擋 feed", async ()
 Deno.test("沒有到時間的缺口時，連限流都不打（純讀路徑零成本）", async () => {
   const early = new Date(Date.UTC(2026, 7, 21, 22, 0, 0)); // 台北 06:00
   const harness = makeHarness({
-    unlocked: GIRL_PROFILES.slice(0, 10).map((g) => ({ profileId: g.profileId })),
+    unlocked: GIRL_PROFILES.slice(0, 10).map((g) => ({
+      profileId: g.profileId,
+    })),
   });
   const result = await run(harness, { now: early });
   assertEquals(result.status, 200);
@@ -567,7 +591,10 @@ Deno.test("沒有到時間的缺口時，連限流都不打（純讀路徑零成
 
 Deno.test("momentPlanFor 對某一位丟例外 → 其他角色照常，狀態 200", async () => {
   const due = profilesDueAt(NOON);
-  const unlocked = [...new Set(due.map((entry) => entry.profileId))].slice(0, 3);
+  const unlocked = [...new Set(due.map((entry) => entry.profileId))].slice(
+    0,
+    3,
+  );
   const broken = unlocked[0];
   const harness = makeHarness({
     unlocked: unlocked.map((profileId) => ({ profileId })),
@@ -636,7 +663,10 @@ Deno.test("缺 DeepSeek 金鑰 → 回既有貼文但不生成，不是 500", as
   });
   assertEquals(result.status, 200);
   assertEquals(body(result).generatedCount, 0);
-  assertEquals(rpcNames(harness).includes("reserve_practice_moment_slot"), false);
+  assertEquals(
+    rpcNames(harness).includes("reserve_practice_moment_slot"),
+    false,
+  );
   assert(time.isoDate.length > 0);
 });
 

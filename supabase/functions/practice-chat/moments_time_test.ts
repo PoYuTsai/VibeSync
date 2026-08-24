@@ -13,10 +13,7 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import {
-  MOMENT_DAY_PART_WINDOWS,
-  momentPostedAtFor,
-} from "./moments_time.ts";
+import { MOMENT_DAY_PART_WINDOWS, momentPostedAtFor } from "./moments_time.ts";
 import { MOMENT_SLOT_COUNT } from "./moments_constants.ts";
 import { type TaipeiDayPart, taipeiTimeContextFor } from "./time_context.ts";
 import { GIRL_PROFILES } from "./practice_persona.ts";
@@ -86,7 +83,11 @@ Deno.test("台北日不會漂移：算出來的時刻仍在 post_date 當天", (
           slot,
           dayPart,
         });
-        assertEquals(taipeiPartsOf(at).isoDate, isoDate, `${isoDate} ${dayPart}`);
+        assertEquals(
+          taipeiPartsOf(at).isoDate,
+          isoDate,
+          `${isoDate} ${dayPart}`,
+        );
       }
     }
   }
