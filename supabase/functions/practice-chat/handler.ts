@@ -2819,6 +2819,15 @@ export function createPracticeChatHandler(
           acquaintanceOrigin,
           memorySummary: promptMemorySummary,
         });
+        // 第二刀 B6（2026-08-24）：兩顆球的尺度類熱度門，與 prompt 同源用
+        // FSM snapshot 算，L3（天花板）才開；非 game 模式恆低熱。
+        const hintSpicyAllowed = request.practiceMode === "game" &&
+          evaluateGameFsm({
+              turns: request.turns,
+              temperatureScore: hintTemperatureScore,
+              familiarityScore: hintFamiliarityScore,
+              partnerMood: hintPartnerMood,
+            }).spicyLevel === "L3";
         const generatedHintParseOptions = {
           mode: request.practiceMode,
           turns: request.turns,
@@ -2826,6 +2835,7 @@ export function createPracticeChatHandler(
           partnerFactualEvidence: hintFactualEvidence.partner,
           trustedFactClaims: hintFactualEvidence.claims,
           enforceGeneratedQuality: true,
+          spicyAllowed: hintSpicyAllowed,
           // client 能力宣告；缺席＝舊 build，維持舊契約（server 也不會教模型
           // 輸出那個形狀，見 buildHintMessages）。
           allowNoPasteableReply: request.acceptsNoPasteableHint === true,
@@ -3603,6 +3613,17 @@ export function createPracticeChatHandler(
           acquaintanceOrigin,
           memorySummary: promptMemorySummary,
         });
+        // 第二刀 B6（2026-08-24）：建議句欄的尺度類熱度門。與 prompt 同源用
+        // FSM snapshot 算，L3（天花板）才開；非 game 模式恆低熱。
+        const debriefSpicyAllowed = debriefPracticeMode === "game" &&
+          evaluateGameFsm({
+              turns: request.turns,
+              temperatureScore: ledger.temperatureScore ??
+                difficultyStartTemperature,
+              familiarityScore: ledger.familiarityScore ?? 0,
+              partnerMood: (partnerStateFromLedger(ledger) ??
+                relationshipThreadState?.partnerState)?.mood ?? null,
+            }).spicyLevel === "L3";
         const generatedDebriefParseOptions = {
           allowGameBreakdown: debriefPracticeMode === "game",
           requireCompleteCard: true,
@@ -3612,6 +3633,7 @@ export function createPracticeChatHandler(
           partnerFactualEvidence: debriefFactualEvidence.partner,
           trustedFactClaims: debriefFactualEvidence.claims,
           enforceGeneratedQuality: true,
+          spicyAllowed: debriefSpicyAllowed,
         } as const;
         debriefParseOptionsForSalvage = generatedDebriefParseOptions;
         debriefPromptChars = countPromptChars(baseDebriefMessages);
@@ -4032,8 +4054,23 @@ export function createPracticeChatHandler(
           // DeepSeek 偶爾在短/冒犯輸入下退回訓練分佈的簡體字，繁體鐵則守不住；
           // 其他 AI 輸出欄位（hint/debrief/temperature）都已過這道轉換，這裡補齊。
           reply = toTraditionalChinese(normalizeLiteralNewlines(reply));
-          rejectVisibleInternalLabelLeak(reply, "chat_internal_label_leak");
-          rejectL4UnsafeVisibleText(reply, "chat_l4_unsafe");
+          rejectVisibleInternalLabelLeak(reply, "chat_internal_label_leak", {
+            // 第二刀 A 組：NPC 引用對話裡出現過的詞不是機制外洩。
+            transcript: request.turns.map((turn) => turn.text).join("\n"),
+          });
+          // 第二刀（Eric 2026-08-24 拍板）：NPC 可以反撩——尺度類按本輪熱度
+          // （與 prompt 的 allowSpicyLevel 同源），同意權類永遠攔。
+          rejectL4UnsafeVisibleText(reply, "chat_l4_unsafe", {
+            fieldClass: "strict",
+            spicyAllowed: assistedMode && request.practiceMode === "game" &&
+              evaluateGameFsm({
+                  turns: request.turns,
+                  temperatureScore: currentTemperature ??
+                    difficultyStartTemperature,
+                  familiarityScore: currentFamiliarity ?? 0,
+                  partnerMood: promptPartnerState?.mood ?? null,
+                }).spicyLevel === "L3",
+          });
           break;
         } catch (e) {
           lastError = e;

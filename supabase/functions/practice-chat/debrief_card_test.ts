@@ -976,7 +976,9 @@ Deno.test("visible fields with L4 unsafe text are rejected", () => {
     const leaked of [
       { suggestedLine: "今晚直接上床吧" },
       { nextInviteMove: "帶她回家睡" },
-      { strengths: ["想看裸照"] },
+      // 第二刀後 strengths/watchouts 是分析欄：尺度類提及放行（見「第二刀」
+      // 測試組），同意權類照攔。
+      { strengths: ["提議把她灌醉"] },
       { watchouts: ["不能拒絕"] },
       {
         gameBreakdown: {
@@ -2441,5 +2443,83 @@ Deno.test("W3 debrief：核心欄位缺席不在降級範圍，degrade 與 salva
     () => parseDebriefCard(incompleteCard, salvageOptions),
     Error,
     "debrief_missing_fields",
+  );
+});
+
+// ── 第二刀（2026-08-24 案例表）：欄位分級接線 ─────────────────────────
+// 分析欄（summary/watchouts…）尺度類放行；建議句（suggestedLine/
+// nextFirstLine）按 spicyAllowed；同意權類任何欄位任何熱度都攔；
+// 代號表吃本局原話豁免。
+Deno.test("第二刀：debrief 分析欄尺度放行、建議句按熱度、同意權永遠攔", () => {
+  const base = {
+    strengths: ["有察覺氣氛"],
+    watchouts: ["開頭就暗示開房，是這局翻車的主因"], // B3
+    vibe: "中性",
+  };
+  // B2/B3/B5：分析欄尺度詞不再殺卡。
+  const analysisCard = parseDebriefCard(JSON.stringify({
+    ...base,
+    summary: "她說「我不想那麼快上床」，你應該先退一步",
+    suggestedLine: "那家店我也想去，週末有空一起？",
+  }));
+  assertEquals(analysisCard.summary.includes("上床"), true);
+  // B6 低熱：建議句尺度詞照攔。
+  assertThrows(
+    () =>
+      parseDebriefCard(JSON.stringify({
+        ...base,
+        summary: "整體有來有往",
+        suggestedLine: "今晚來我家過夜吧",
+      })),
+    Error,
+    "debrief_l4_unsafe",
+  );
+  // B6 高熱：建議句尺度詞放行。
+  const hot = parseDebriefCard(
+    JSON.stringify({
+      ...base,
+      summary: "整體有來有往",
+      suggestedLine: "今晚來我家過夜吧",
+    }),
+    { spicyAllowed: true },
+  );
+  assertEquals(hot.suggestedLine, "今晚來我家過夜吧");
+  // B7：同意權類高熱也攔。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        JSON.stringify({
+          ...base,
+          summary: "整體有來有往",
+          suggestedLine: "跟她說不能拒絕你",
+        }),
+        { spicyAllowed: true },
+      ),
+    Error,
+    "debrief_l4_unsafe",
+  );
+});
+
+Deno.test("第二刀：debrief 代號表吃本局原話豁免", () => {
+  const withBoring = JSON.stringify({
+    summary: "她說你 boring 之後你馬上解釋，反而顯得慌", // A2
+    strengths: ["自嘲有到位"],
+    watchouts: ["別急著解釋"],
+    suggestedLine: "那家店我也想去，週末有空一起？",
+    vibe: "中性",
+  });
+  // 原話有 boring → 放行。
+  const card = parseDebriefCard(withBoring, {
+    turns: [
+      { role: "ai", text: "你不覺得自己有點 boring 嗎？" },
+      { role: "user", text: "我很 boring 嗎哈哈" },
+    ],
+  });
+  assertEquals(card.summary.includes("boring"), true);
+  // 原話沒有 → 照攔（A3 同型）。
+  assertThrows(
+    () => parseDebriefCard(withBoring),
+    Error,
+    "debrief_internal_label_leak",
   );
 });

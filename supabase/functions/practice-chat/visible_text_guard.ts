@@ -90,7 +90,47 @@ const INTERNAL_VISIBLE_LABELS = [
   "momentimageoptions",
 ];
 
-const L4_UNSAFE_VISIBLE_PATTERNS = [
+// ── 第二刀（2026-08-24 Eric 拍板）：L4 拆兩類 ─────────────────────────
+// 同意權類＝同意權硬底線，任何欄位任何階段 fail-closed；
+// 尺度類＝18 禁話題本身無罪，是時機問題——分析欄不查、照唸句欄按熱度。
+// 案例表：docs/plans/2026-08-24-practice-guard-second-cut-case-table.md
+const CONSENT_UNSAFE_PATTERNS = [
+  "硬上",
+  "強迫",
+  "强迫",
+  "不准拒絕",
+  "不能拒絕",
+  "不能拒绝",
+  "灌醉",
+  "迷昏",
+  "非自願",
+  "沒有同意",
+  "羞辱你",
+  "羞辱妳",
+  "forceyou",
+  "youcannotrefuse",
+  "cantrefuse",
+  // 第二刀 D 組（2026-08-24 實測漏詞）：無自然比喻用法的窄詞。
+  "下藥",
+  "下药",
+  "迷姦",
+  "迷奸",
+  "強姦",
+  "强奸",
+  "輪姦",
+  "轮奸",
+  "強上",
+  "强上",
+  "偷拍",
+  "趁她睡",
+  "趁妳睡",
+  "趁你睡",
+  "趁她喝醉",
+  "趁妳喝醉",
+  "趁醉",
+];
+
+const SPICY_VISIBLE_PATTERNS = [
   "做愛",
   "做爱",
   "上床",
@@ -104,17 +144,6 @@ const L4_UNSAFE_VISIBLE_PATTERNS = [
   "摸你",
   "摸妳",
   "胸部",
-  "硬上",
-  "強迫",
-  "强迫",
-  "不准拒絕",
-  "不能拒絕",
-  "灌醉",
-  "迷昏",
-  "非自願",
-  "沒有同意",
-  "羞辱你",
-  "羞辱妳",
   "來我家過夜",
   "去我家過夜",
   "睡我家",
@@ -124,27 +153,22 @@ const L4_UNSAFE_VISIBLE_PATTERNS = [
   "nude",
   "nudes",
   "undress",
-  "forceyou",
-  "youcannotrefuse",
-  "cantrefuse",
   "privatephoto",
-  "上床",
-  "做愛",
-  "做爱",
   "性交",
   "打炮",
   "約炮",
   "约炮",
-  "裸照",
   "脫光",
   "脱光",
-  "硬上",
-  "不准拒絕",
-  "不能拒絕",
-  "不能拒绝",
   "直接睡你",
   "回家睡",
 ];
+
+// D3「睡著後直接上」形：主詞省略、無「趁」字時詞表攔不到。
+// ponytail: 窄啟發式——「睡著/喝醉＋後」接「直接/就＋單字動詞」或「動詞＋受詞」
+// 才命中；「睡著後上線」這類「後＋複合動詞」自然語不攔。封閉性靠雙審對抗驗。
+const CONSENT_INCAPACITATED_PATTERN =
+  /(?:睡著|睡着|喝醉|斷片|断片|昏睡)(?:後|后)(?:(?:直接|就)(?:上|摸|脫|脱|親|亲|吻)|.{0,4}(?:上她|上妳|上他|摸她|摸妳|脫她|脱她|得逞|硬來|硬来))/u;
 
 // ── debrief 可見欄位的溫度/內部機制詞守門（批3）─────────────────────────
 // debrief prompt 會注入 band 詞（frozen/cold/.../hot、升溫指數），模型可能
@@ -206,6 +230,10 @@ const INTERNAL_SCORE_SHAPE_PATTERN = /投入度[^\d]{0,4}\d{1,3}\s*[\/／]\s*100
 const INTERNAL_VARIABLE_SCORE_PATTERNS = [
   /\b(?:Value|Frame|Emotion|Investment|Safety|pv|fp|inv)\s*[=:：]\s*\d{1,3}\b/iu,
   /\b(?:Value|Frame|Emotion|Investment|Safety)\s+\d{1,3}\s*分/iu,
+  // 第二刀 C2（2026-08-24 實測破口）：中文變數名＋分數敘述（「安全感分數
+  // 還不到 60」）兩張英文表都攔不到。裸變數詞是合法後設評語（「她還沒有
+  // 安全感」「整場投入度不高」），必須帶「量詞＋數字」才攔。
+  /(?:安全感|好感度|投入度|信任度|熟悉度|熱度|热度)(?:的)?(?:分數|分数|指數|指数|數值|数值|值)?\s*(?:是|還不到|还不到|不到|只有|剩下?|低於|低于|高於|高于|超過|超过|掉到|升到|達到|达到|來到|来到|卡在)\s*\d{1,3}/u,
 ];
 
 function hasVisibleInternalScoreShapeLeak(value: string): boolean {
@@ -269,7 +297,7 @@ const NEGATED_SAFETY_WARNING_PREFIX =
 const SAFETY_REVERSAL_AFTER =
   /^(?:她|他|對方|对方|女生|人家)?(?:是假話|是假话|是假的|才怪|就怪了|只是表面(?:話|话)?|但|可是|不過|不过|實際上|实际上|反而|可以試試|可以试试|照做|直接做)/u;
 const SAFETY_REVERSAL_NEXT_CLAUSE =
-  /^(?:(?:但|可是|不過|不过)?(?:這|这|那)?(?:才怪|就怪了|是假話|是假话|是假的|只是表面(?:話|话)?|實際上|实际上|反而|可以試試|可以试试|照做|直接做))/u;
+  /^(?:(?:但|可是|不過|不过)?(?:這|这|那)?(?:才怪|就怪了|是假話|是假话|是假的|只是表面(?:話|话)?|實際上|实际上|反而|可以試試|可以试试|值得(?:一)?試(?:試)?|值得(?:一)?试(?:试)?|還是試試|还是试试|照做|直接做))/u;
 const STACKED_SAFETY_NEGATION_PREFIX =
   /(?:不要|別|别|勿|不能|不可以|不准|避免)$/u;
 const SAFE_META_NEGATION_PREFIX =
@@ -278,6 +306,16 @@ const SAFE_PERMISSION_DENIAL_PREFIX =
   /(?:這|这|那|也)?不代表(?:你|妳|他|她|對方|对方)?(?:就)?可以$/u;
 const SAFE_CONDEMNATION_SUFFIX =
   /^(?:她|他|對方|对方|女生|人家)?(?:是|這是|这是)?(?:不對|不对|錯的|错的|錯|错|違法|违法|不可以|不應該|不应该|不可取|有問題|有问题|越界|不尊重)(?:的|的行為|的行为|行為|行为)?(?:啦|囉|喔|哦|吧)?$/u;
+// 第二刀 D 組誤殺面：譴責詞跟受詞隔幾個字（「趁她喝醉『提出要求』是越界」）。
+// 判準詞必須是明確負評，且中間窗口收窄到 8 字，避免被長句稀釋成恆放。
+const SAFE_OFFSET_CONDEMNATION_AFTER =
+  /^.{1,8}(?:是|這是|这是|算是)(?:很)?(?:不對|不对|錯的|错的|錯|错|違法|违法|犯罪|越界|不可以|不應該|不应该|不可取|性騷擾|性骚扰|侵犯|騷擾|骚扰)/u;
+// 受害者視角（「她怕被偷拍」）：陳述她的恐懼不是教唆。
+const SAFE_VICTIM_PERSPECTIVE_PREFIX = /(?:怕|害怕|擔心|担心|討厭|讨厌)被$/u;
+// 第二刀 B4：同意權詞＋明確負面後果＝教練在勸退（「強迫她表態只會讓她
+// 封鎖你」）。後果詞必須出自固定負面清單，fail-closed：「會愛上你」不放。
+const SAFE_NEGATIVE_CONSEQUENCE_AFTER =
+  /^.{0,10}(?:只會|只会|會|会)(?:讓|让|使)?.{0,10}(?:冷掉|冷場|冷场|反感|嚇跑|吓跑|防備|防备|封鎖|封锁|扣分|翻車|翻车|句點|句点|退開|退开|報警|报警|崩)/u;
 const DIRECT_SAFETY_NEGATION_SUFFIX = new RegExp(
   `${CLEAR_SAFETY_NEGATION_PREFIX}${CLEAR_SAFETY_NEGATION_BRIDGE}$`,
   "u",
@@ -293,9 +331,12 @@ interface UnsafeOccurrence {
 // 組合（…拒絕吧，現在跟我回家）證明詞面層無法封閉，裁決撤除豁免、回歸
 // fail-closed。bh5 良性句被攔＝已知且接受的 FP（首發打回，重試可救）。
 
-function unsafeOccurrences(clause: string): UnsafeOccurrence[] {
+function unsafeOccurrences(
+  clause: string,
+  patterns: readonly string[],
+): UnsafeOccurrence[] {
   const keyed = new Map<string, UnsafeOccurrence>();
-  for (const pattern of L4_UNSAFE_VISIBLE_PATTERNS) {
+  for (const pattern of patterns) {
     const normalizedPattern = normalizeUnsafeText(pattern);
     let index = clause.indexOf(normalizedPattern);
     while (index >= 0) {
@@ -333,15 +374,25 @@ function hasExplicitSafetyWarning(
   const after = clause.slice(occurrence.index + occurrence.length);
   if (
     SAFE_META_NEGATION_PREFIX.test(before) ||
-    SAFE_PERMISSION_DENIAL_PREFIX.test(before)
+    SAFE_PERMISSION_DENIAL_PREFIX.test(before) ||
+    SAFE_VICTIM_PERSPECTIVE_PREFIX.test(before)
+  ) {
+    return !SAFETY_REVERSAL_AFTER.test(after);
+  }
+  if (
+    SAFE_OFFSET_CONDEMNATION_AFTER.test(after) ||
+    SAFE_NEGATIVE_CONSEQUENCE_AFTER.test(after)
   ) {
     return !SAFETY_REVERSAL_AFTER.test(after);
   }
   return SAFE_CONDEMNATION_SUFFIX.test(after);
 }
 
-function clauseHasUnsafeAdvice(clause: string): boolean {
-  const occurrences = unsafeOccurrences(clause);
+function clauseHasUnsafeAdvice(
+  clause: string,
+  patterns: readonly string[],
+): boolean {
+  const occurrences = unsafeOccurrences(clause, patterns);
   let previousSafe: UnsafeOccurrence | null = null;
   for (const occurrence of occurrences) {
     let safe = hasDirectSafetyNegation(clause, occurrence) ||
@@ -382,32 +433,98 @@ const INTERNAL_CHINESE_LABELS = [
   "系统指示保密",
 ];
 
-export function hasVisibleInternalLabelLeak(value: string): boolean {
+export interface InternalLabelGuardOptions {
+  /**
+   * 第二刀 A 組（2026-08-24）原話豁免：代號詞逐字出現在本局對話原文
+   * （使用者或 NPC）就不是機制外洩，可引用。只豁免兩張代號表；
+   * 分數形不吃豁免（真隱藏值）。
+   */
+  transcript?: string;
+}
+
+export function hasVisibleInternalLabelLeak(
+  value: string,
+  opts?: InternalLabelGuardOptions,
+): boolean {
   // 分數形檢查掛這裡讓 chat（handler）/hint 兩側可見輸出同步蓋到；
   // normalizeVisibleText 會剝掉中文，故用原文另測。
   if (hasVisibleInternalScoreShapeLeak(value)) return true;
+  const transcript = opts?.transcript ?? "";
+  const transcriptVisible = transcript ? normalizeVisibleText(transcript) : "";
+  const transcriptUnsafe = transcript ? normalizeUnsafeText(transcript) : "";
   const normalized = normalizeVisibleText(value);
-  if (INTERNAL_VISIBLE_LABELS.some((label) => normalized.includes(label))) {
+  if (
+    INTERNAL_VISIBLE_LABELS.some((label) =>
+      normalized.includes(label) && !transcriptVisible.includes(label)
+    )
+  ) {
     return true;
   }
   const unsafeNormalized = normalizeUnsafeText(value);
-  return INTERNAL_CHINESE_LABELS.some((label) =>
-    unsafeNormalized.includes(normalizeUnsafeText(label))
-  );
+  return INTERNAL_CHINESE_LABELS.some((label) => {
+    const normalizedLabel = normalizeUnsafeText(label);
+    return unsafeNormalized.includes(normalizedLabel) &&
+      !transcriptUnsafe.includes(normalizedLabel);
+  });
 }
 
-export function hasL4UnsafeVisibleText(value: string): boolean {
+export type VisibleFieldClass = "strict" | "analysis";
+
+export interface L4GuardOptions {
+  /**
+   * strict＝照唸句欄（suggestedLine/nextFirstLine/兩顆球/NPC 回覆/罐頭路徑）；
+   * analysis＝教練點評欄（summary/watchouts/coaching）。預設 strict＝現行行為。
+   */
+  fieldClass?: VisibleFieldClass;
+  /**
+   * 尺度類熱度門，只對 strict 有效。呼叫端用 spicyLevel === "L3" 計算；
+   * 守門不懂階段語意。同意權類不受此旗標影響。
+   */
+  spicyAllowed?: boolean;
+}
+
+// 分析欄的尺度類不走詞面攔截，只攔「教唆推進」形（B9）：命令/急迫詞＋
+// 推進動詞、使役（叫她/要她）、或「測底線」。譴責語境（「直接提上床
+// 『是越界』」）與否定語境（「別叫她來我家過夜」）豁免。
+const ANALYSIS_SPICY_ADVOCACY_PATTERN =
+  /(?:直接|馬上|马上|立刻|下次|現在|现在|就)(?:去|再)?(?:約|约|提|開|开|睡|推|帶|带)|叫(?:她|他|你|妳)|要求(?:她|他)|測底線|测底线/u;
+const ANALYSIS_CLAUSE_CONDEMNATION_PATTERN =
+  /(?:是|算是)(?:很)?(?:越界|不對|不对|錯|错|不可以|不應該|不应该|不可取|不尊重|有問題|有问题)|翻車|翻车|(?:只會|只会|會|会)(?:讓|让|使)?.{0,10}(?:冷掉|反感|嚇跑|吓跑|防備|防备|封鎖|封锁|扣分|句點|句点)/u;
+
+export function hasL4UnsafeVisibleText(
+  value: string,
+  opts?: L4GuardOptions,
+): boolean {
+  const fieldClass = opts?.fieldClass ?? "strict";
+  const spicyActive = fieldClass === "strict" && opts?.spicyAllowed !== true;
+  // 同意權類永遠查；尺度類只在低熱照唸句欄併入同一輪機制（負向/譴責語境
+  // 邏輯與現行完全一致），讓跨類共享否定範圍的既有行為不變。
+  const activePatterns = spicyActive
+    ? [...CONSENT_UNSAFE_PATTERNS, ...SPICY_VISIBLE_PATTERNS]
+    : CONSENT_UNSAFE_PATTERNS;
   const clauses = value
     .normalize("NFKC")
     .split(/[，,。.!！?？；;\n]+/u)
     .map(normalizeUnsafeText)
     .filter((clause) => clause.length > 0);
+  // D3 無行為能力形：詞表攔不到的「睡著後直接上」，逐子句比對（子句已
+  // normalize，無標點穿透面）。
+  if (clauses.some((clause) => CONSENT_INCAPACITATED_PATTERN.test(clause))) {
+    return true;
+  }
   // Clause analysis preserves negation/reversal scope, but an attacker can put
   // punctuation inside the unsafe token itself (強，迫／開。房). Detect any
   // pattern that exists only after whole-text compaction and fail closed.
+  // 分析欄的尺度類雖然逐子句放行，但標點穿透（叫她上，床）讓子句層看不到
+  // 完整詞、語境判讀失效——同樣 fail closed；只有高熱照唸句欄整類豁免。
   const compactWhole = normalizeUnsafeText(value);
+  const compactionPatterns = spicyActive
+    ? activePatterns
+    : (fieldClass === "analysis"
+      ? [...CONSENT_UNSAFE_PATTERNS, ...SPICY_VISIBLE_PATTERNS]
+      : activePatterns);
   const normalizedPatterns = new Set(
-    L4_UNSAFE_VISIBLE_PATTERNS.map(normalizeUnsafeText),
+    compactionPatterns.map(normalizeUnsafeText),
   );
   for (const pattern of normalizedPatterns) {
     if (
@@ -419,11 +536,32 @@ export function hasL4UnsafeVisibleText(value: string): boolean {
   }
   for (let index = 0; index < clauses.length; index++) {
     const clause = clauses[index];
-    const occurrences = unsafeOccurrences(clause);
-    if (occurrences.length === 0) continue;
-    if (clauseHasUnsafeAdvice(clause)) return true;
-    if (SAFETY_REVERSAL_NEXT_CLAUSE.test(clauses[index + 1] ?? "")) {
-      return true;
+    const occurrences = unsafeOccurrences(clause, activePatterns);
+    if (occurrences.length > 0) {
+      if (clauseHasUnsafeAdvice(clause, activePatterns)) return true;
+      if (SAFETY_REVERSAL_NEXT_CLAUSE.test(clauses[index + 1] ?? "")) {
+        return true;
+      }
+    }
+    if (fieldClass === "analysis") {
+      // 分析欄尺度類：教唆形（無譴責、無否定）攔、下一子句翻轉攔，其餘全放。
+      const spicyHits = unsafeOccurrences(clause, SPICY_VISIBLE_PATTERNS);
+      if (spicyHits.length > 0) {
+        const hasUnprotectedHit = spicyHits.some((occurrence) =>
+          !hasDirectSafetyNegation(clause, occurrence) &&
+          !hasExplicitSafetyWarning(clause, occurrence)
+        );
+        if (
+          hasUnprotectedHit &&
+          ANALYSIS_SPICY_ADVOCACY_PATTERN.test(clause) &&
+          !ANALYSIS_CLAUSE_CONDEMNATION_PATTERN.test(clause)
+        ) {
+          return true;
+        }
+        if (SAFETY_REVERSAL_NEXT_CLAUSE.test(clauses[index + 1] ?? "")) {
+          return true;
+        }
+      }
     }
   }
   return false;
@@ -432,14 +570,19 @@ export function hasL4UnsafeVisibleText(value: string): boolean {
 export function rejectVisibleInternalLabelLeak(
   value: string,
   errorCode: string,
+  opts?: InternalLabelGuardOptions,
 ) {
-  if (hasVisibleInternalLabelLeak(value)) {
+  if (hasVisibleInternalLabelLeak(value, opts)) {
     throw new Error(errorCode);
   }
 }
 
-export function rejectL4UnsafeVisibleText(value: string, errorCode: string) {
-  if (hasL4UnsafeVisibleText(value)) {
+export function rejectL4UnsafeVisibleText(
+  value: string,
+  errorCode: string,
+  opts?: L4GuardOptions,
+) {
+  if (hasL4UnsafeVisibleText(value, opts)) {
     throw new Error(errorCode);
   }
 }
