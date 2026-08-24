@@ -17,7 +17,7 @@ import {
 } from "./opener_image_validation.ts";
 import { callClaudeWithFallback, extractClaudeText } from "./fallback.ts";
 import { selectModel } from "./model_selection.ts";
-import { SYSTEM_PROMPT } from "./analyze_system_prompt.ts";
+import { SYSTEM_PROMPT } from "./analyze_prompt/system_prompt.ts";
 
 // Source wiring 與實際 rendered Analyze prompt 分開收集。Prompt 內容測試透過
 // runtime export 觀察行為，不再依賴文字位於哪個檔案；其餘 wiring/sanitize
@@ -40,7 +40,6 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
     "./analysis_input_compiler.ts",
     "./ocr_recognition_prompt.ts",
     "./analyze_image_prompt.ts",
-    "./analyze_system_prompt.ts",
     "./optimize_message_prompt.ts",
     "./my_message_prompt.ts",
     "./opener_prompt.ts",

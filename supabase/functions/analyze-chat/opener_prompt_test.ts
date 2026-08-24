@@ -2,6 +2,7 @@ import {
   assert,
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { SYSTEM_PROMPT } from "./analyze_prompt/system_prompt.ts";
 
 Deno.test({
   name: "OPENER_PROMPT teaches users how to reply, not just what to paste",
@@ -176,14 +177,13 @@ Deno.test({
 
 // ─── Batch 3：opener prompt Game 化（2026-07-02 opener-game-design）───
 
-// Prompt 常數已依 mode 分居各模組；掃描 corpus 依固定順序串接，
-// 讓 PROMPT_SEGMENTS 的「宣告→下一個頂層宣告」切界策略維持有效。
+// 其他 mode prompt 的 source wiring 依固定順序串接；AnalyzeChat 本體改從
+// rendered interface 驗證，不再依賴實作檔案位置。
 async function readIndexSource(): Promise<string> {
   const files = [
     "./analyze_chat_handler.ts",
     "./opener_handler.ts",
     "./ocr_recognition_prompt.ts",
-    "./analyze_system_prompt.ts",
     "./optimize_message_prompt.ts",
     "./my_message_prompt.ts",
     "./opener_prompt.ts",
@@ -195,8 +195,7 @@ async function readIndexSource(): Promise<string> {
   return parts.join("\n");
 }
 
-// 6 個 prompt 常數的切界：起點＝宣告、終點＝下一個頂層宣告（同 index_test.ts
-// readAnalyzeSystemPrompt 的邊界策略；段落間夾到少量 code/註解是刻意的保守掃描）。
+// 其他 5 個 prompt 常數仍以 source 宣告切界；AnalyzeChat 本體另測 rendered value。
 const PROMPT_SEGMENTS: Array<[string, string, string]> = [
   [
     "OPENER_REPAIR_PROMPT",
@@ -206,12 +205,7 @@ const PROMPT_SEGMENTS: Array<[string, string, string]> = [
   [
     "OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT",
     "const OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT",
-    "const SYSTEM_PROMPT",
-  ],
-  [
-    "SYSTEM_PROMPT",
-    "const SYSTEM_PROMPT",
-    "const OPTIMIZE_MESSAGE_MAX_TOKENS",
+    "const RECOGNIZED_CONVERSATION_SCHEMA",
   ],
   [
     "OPTIMIZE_MESSAGE_PROMPT",
@@ -254,7 +248,7 @@ async function readOpenerPrompt(): Promise<string> {
 
 Deno.test({
   name:
-    "all 6 prompt constants keep layer 2-3 blacklist words out (三層線 blocking 掃描)",
+    "all prompt constants keep layer 2-3 blacklist words out (三層線 blocking 掃描)",
   permissions: { read: true },
   fn: async () => {
     const source = await readIndexSource();
@@ -281,8 +275,15 @@ Deno.test({
       "玩咖",
     ];
 
-    for (const [name, startMarker, endMarker] of PROMPT_SEGMENTS) {
-      const segment = slicePromptSegment(source, name, startMarker, endMarker);
+    const segments: Array<[string, string]> = PROMPT_SEGMENTS.map(
+      ([name, startMarker, endMarker]) => [
+        name,
+        slicePromptSegment(source, name, startMarker, endMarker),
+      ],
+    );
+    segments.push(["SYSTEM_PROMPT", SYSTEM_PROMPT]);
+
+    for (const [name, segment] of segments) {
       for (const word of banned) {
         assertFalse(
           segment.includes(word),

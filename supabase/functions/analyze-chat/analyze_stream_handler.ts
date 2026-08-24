@@ -25,7 +25,7 @@ import {
   checkAiOutput,
 } from "./guardrails.ts";
 import { postProcessAnalysisResult } from "./post_process.ts";
-import { SYSTEM_PROMPT } from "./analyze_system_prompt.ts";
+import { SYSTEM_PROMPT } from "./analyze_prompt/system_prompt.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import {

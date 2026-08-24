@@ -124,7 +124,7 @@ import {
   buildImageAnalysisPrompt,
   buildVisionContent,
 } from "./analyze_image_prompt.ts";
-import { SYSTEM_PROMPT } from "./analyze_system_prompt.ts";
+import { SYSTEM_PROMPT } from "./analyze_prompt/system_prompt.ts";
 import {
   OPTIMIZE_MESSAGE_MAX_TOKENS,
   OPTIMIZE_MESSAGE_PROMPT,

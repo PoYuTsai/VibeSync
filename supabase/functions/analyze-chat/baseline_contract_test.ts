@@ -9,7 +9,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
-import { SYSTEM_PROMPT } from "./analyze_system_prompt.ts";
+import { SYSTEM_PROMPT } from "./analyze_prompt/system_prompt.ts";
 import { resolveRequestMode } from "./request_mode.ts";
 
 interface PromptSlice {
@@ -86,7 +86,11 @@ Deno.test("baseline：active Analyze rendered prompts 與穩定版完全相同",
     const expected = fixtures.renderedPrompts[name];
     assert(expected, `${name}: rendered baseline fixture missing`);
     assertEquals(prompt.length, expected.charCount, `${name}: char count`);
-    assertEquals(prompt.split("\n").length, expected.lineCount, `${name}: lines`);
+    assertEquals(
+      prompt.split("\n").length,
+      expected.lineCount,
+      `${name}: lines`,
+    );
     assertEquals(await sha256Hex(prompt), expected.sha256, `${name}: SHA-256`);
   }
 });
