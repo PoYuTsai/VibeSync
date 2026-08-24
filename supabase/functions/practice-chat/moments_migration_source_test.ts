@@ -7,6 +7,17 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+/**
+ * 與 migration 內 CHECK (attempts BETWEEN 0 AND 3) 的上界一致，也是全站每日
+ * 模型呼叫上限的 DB 側分母：每個 (profile_id, post_date) 最多 2 slot × 3 attempts。
+ * 全站每日 600 需要 Edge 額外保證 profile_id 只來自 100 位角色的 allowlist
+ * 且 post_date 是正確台北日（複審 P2-1）——Edge 側的契約測試在
+ * moments_edge_contract_test.ts。
+ *
+ * PR B 起改成直接 import TS 常數（不再留字面值），雙向比對在
+ * moments_constants_test.ts。
+ */
+import { MAX_MOMENT_ATTEMPTS } from "./moments_constants.ts";
 
 const migration = await Deno.readTextFile(
   new URL(
@@ -15,16 +26,6 @@ const migration = await Deno.readTextFile(
   ),
 );
 
-/**
- * 與 migration 內 CHECK (attempts BETWEEN 0 AND 3) 的上界一致，也是全站每日
- * 模型呼叫上限的 DB 側分母：每個 (profile_id, post_date) 最多 2 slot × 3 attempts。
- * 全站每日 600 需要 Edge 額外保證 profile_id 只來自 100 位角色的 allowlist
- * 且 post_date 是正確台北日（複審 P2-1；Edge 側契約測試由 PR B 補）。
- *
- * TODO(PR B)：PR B 會在 TS 側引入 MAX_MOMENT_ATTEMPTS；那時要把這裡改成
- * 直接 import 該常數做雙向比對，而不是留一份字面值。
- */
-const MAX_MOMENT_ATTEMPTS = 3;
 
 const RPC_NAMES = [
   "reserve_practice_moment_slot",
