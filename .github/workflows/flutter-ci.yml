@@ -64,6 +64,7 @@ jobs:
           supabase/functions/practice-chat/moments_handler_test.ts
           supabase/functions/practice-chat/moments_edge_contract_test.ts
           supabase/functions/practice-chat/moments_generated_only_source_test.ts
+          supabase/functions/practice-chat/moments_dispatch_test.ts
           supabase/functions/practice-chat/visible_text_guard_test.ts
 
       # PGlite（WASM Postgres）獨立成一步：它是唯一會拉 npm 套件的測試（約 8 秒），
