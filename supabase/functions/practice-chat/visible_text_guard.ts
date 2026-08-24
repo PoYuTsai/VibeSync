@@ -128,6 +128,11 @@ const CONSENT_UNSAFE_PATTERNS = [
   "趁她喝醉",
   "趁妳喝醉",
   "趁醉",
+  // R1 主審 P1a（2026-08-24）：D1 拍板含「餵她吃藥」，補足餵藥族。
+  "餵她吃藥",
+  "餵妳吃藥",
+  "喂她吃药",
+  "喂妳吃药",
 ];
 
 const SPICY_VISIBLE_PATTERNS = [
@@ -291,7 +296,7 @@ function normalizeUnsafeText(value: string): string {
 const CLEAR_SAFETY_NEGATION_PREFIX =
   "(?:千萬不要|千万不要|不可以|不能|不准|不必|不用|不要|別|别|不可|不該|不该|不應|不应|避免|勿)";
 const CLEAR_SAFETY_NEGATION_BRIDGE =
-  "(?:再|去)?(?:說|说|叫|讓|让|逼|要求|帶|带)?(?:她|他|對方|对方|女生|人家)?";
+  "(?:再|去)?(?:說|说|叫|讓|让|逼|要求|帶|带)?(?:在)?(?:她|他|對方|对方|女生|人家)?";
 const NEGATED_SAFETY_WARNING_PREFIX =
   /(?:誰說|谁说|不代表|不是(?:說|说|叫(?:你|妳|他|她)?|要(?:你|妳|他|她)?)?|並不是|并不是|並非|并非|沒(?:有)?(?:說|说|要(?:你|妳|他|她)?)?|没(?:有)?(?:说|要(?:你|妳|他|她)?)?|未必)$/u;
 const SAFETY_REVERSAL_AFTER =
@@ -488,6 +493,18 @@ export interface L4GuardOptions {
 // 『是越界』」）與否定語境（「別叫她來我家過夜」）豁免。
 const ANALYSIS_SPICY_ADVOCACY_PATTERN =
   /(?:直接|馬上|马上|立刻|下次|現在|现在|就)(?:去|再)?(?:約|约|提|開|开|睡|推|帶|带)|叫(?:她|他|你|妳)|要求(?:她|他)|測底線|测底线/u;
+// R1 主審 P2（2026-08-24）：18 禁詞彙是開放集合，「她說不想，所以你下次直接
+// 問什麼姿勢最爽測底線」不含詞表詞也是拒絕後翻轉教唆。啟發式三條件齊備才攔：
+// 拒絕訊號（本句或前句）＋越線推進標記＋對用戶的指示語氣；「她在測你底線」
+// 這類合法教練判讀沒有指示語氣，不誤殺。
+// ponytail: 開放詞彙教唆無法在詞面層封閉，主力在 prompt；這裡只封拒絕後翻轉
+// 的窄形。
+const ANALYSIS_REFUSAL_PATTERN =
+  /(?:不想|不願|不愿|拒絕|拒绝|還沒準備好|还没准备好|別這樣|别这样)/u;
+const ANALYSIS_PUSH_MARKER_PATTERN =
+  /(?:測|测)底(?:線|线)|硬(?:要|推|來|来)|施壓|施压|不管(?:她|他|對方|对方)(?:願不願|愿不愿)/u;
+const ANALYSIS_USER_DIRECTED_PATTERN =
+  /(?:你|妳)(?:下次|直接|就|再|去|可以|應該|应该)|(?:下次|接下來|接下来)(?:直接|就)/u;
 const ANALYSIS_CLAUSE_CONDEMNATION_PATTERN =
   /(?:是|算是)(?:很)?(?:越界|不對|不对|錯|错|不可以|不應該|不应该|不可取|不尊重|有問題|有问题)|翻車|翻车|(?:只會|只会|會|会)(?:讓|让|使)?.{0,10}(?:冷掉|反感|嚇跑|吓跑|防備|防备|封鎖|封锁|扣分|句點|句点)/u;
 
@@ -507,9 +524,17 @@ export function hasL4UnsafeVisibleText(
     .split(/[，,。.!！?？；;\n]+/u)
     .map(normalizeUnsafeText)
     .filter((clause) => clause.length > 0);
-  // D3 無行為能力形：詞表攔不到的「睡著後直接上」，逐子句比對（子句已
-  // normalize，無標點穿透面）。
-  if (clauses.some((clause) => CONSENT_INCAPACITATED_PATTERN.test(clause))) {
+  // D3 無行為能力形：詞表攔不到的「睡著後直接上」。R1 主審 P1b：不再無條件
+  // 攔——當成同意權 occurrence 走同一套否定/譴責語境判斷（「不要在她睡著後
+  // 直接上」「…是越界」放行）；標點穿透（直接。上）子句層看不到完整形，
+  // 比照詞表 fail closed。
+  const incapacitatedInClause = clauses.some((clause) =>
+    CONSENT_INCAPACITATED_PATTERN.test(clause)
+  );
+  if (
+    !incapacitatedInClause &&
+    CONSENT_INCAPACITATED_PATTERN.test(normalizeUnsafeText(value))
+  ) {
     return true;
   }
   // Clause analysis preserves negation/reversal scope, but an attacker can put
@@ -543,7 +568,32 @@ export function hasL4UnsafeVisibleText(
         return true;
       }
     }
+    // D3 無行為能力形（R1 P1b）：regex 命中當 occurrence 走同一套語境判斷。
+    const incapacitated = clause.match(CONSENT_INCAPACITATED_PATTERN);
+    if (incapacitated && incapacitated.index !== undefined) {
+      const occurrence = {
+        index: incapacitated.index,
+        length: incapacitated[0].length,
+      };
+      const safe = hasDirectSafetyNegation(clause, occurrence) ||
+        hasExplicitSafetyWarning(clause, occurrence);
+      if (!safe) return true;
+      if (SAFETY_REVERSAL_NEXT_CLAUSE.test(clauses[index + 1] ?? "")) {
+        return true;
+      }
+    }
     if (fieldClass === "analysis") {
+      // R1 P2：拒絕後翻轉教唆不依賴尺度詞表（開放詞彙）。
+      const refusalInScope = ANALYSIS_REFUSAL_PATTERN.test(clause) ||
+        ANALYSIS_REFUSAL_PATTERN.test(clauses[index - 1] ?? "");
+      if (
+        refusalInScope &&
+        ANALYSIS_PUSH_MARKER_PATTERN.test(clause) &&
+        ANALYSIS_USER_DIRECTED_PATTERN.test(clause) &&
+        !ANALYSIS_CLAUSE_CONDEMNATION_PATTERN.test(clause)
+      ) {
+        return true;
+      }
       // 分析欄尺度類：教唆形（無譴責、無否定）攔、下一子句翻轉攔，其餘全放。
       const spicyHits = unsafeOccurrences(clause, SPICY_VISIBLE_PATTERNS);
       if (spicyHits.length > 0) {

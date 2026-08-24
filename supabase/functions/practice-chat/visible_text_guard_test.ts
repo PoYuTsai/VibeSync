@@ -578,3 +578,50 @@ Deno.test("C組：等級碼攔、質性判讀語言放", () => {
     );
   }
 });
+
+// ── R1 主審修正（Codex 2026-08-24 round 1：2×P1＋1×P2）──────────────
+Deno.test("R1-P1a：餵藥族補進同意權名單（D1 拍板全條落地）", () => {
+  for (const leak of ["餵她吃藥", "偷偷餵她吃藥", "喂她吃药"]) {
+    assertEquals(hasL4UnsafeVisibleText(leak), true, leak);
+  }
+  // 誤殺面：否定/譴責語境照放。
+  assertEquals(hasL4UnsafeVisibleText("不要餵她吃藥"), false);
+});
+
+Deno.test("R1-P1b：睡著後型態走同一套否定/譴責語境，不再無條件攔", () => {
+  const analysis = { fieldClass: "analysis" as const };
+  for (
+    const safe of [
+      "不要在她睡著後直接上",
+      "她睡著後直接上是越界",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(safe, analysis), false, safe);
+  }
+  // 裸教唆與標點穿透照攔（strict 與 analysis 都攔）。
+  for (const attack of ["她睡著後直接上", "她睡著後直接。上"]) {
+    assertEquals(hasL4UnsafeVisibleText(attack), true, attack);
+    assertEquals(hasL4UnsafeVisibleText(attack, analysis), true, attack);
+  }
+});
+
+Deno.test("R1-P2：拒絕後翻轉教唆不靠尺度詞表也要攔（開放詞彙）", () => {
+  const analysis = { fieldClass: "analysis" as const };
+  for (
+    const attack of [
+      "她說不想，所以你下次直接問什麼姿勢最爽測底線",
+      "她拒絕了，你就再硬推一次",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(attack, analysis), true, attack);
+  }
+  for (
+    const safe of [
+      "她說不想太快，你下次直接約杯咖啡就好", // 一般邀約建議不誤殺
+      "她說不想太快，其實是在測底線", // 「她在測你底線」是合法教練判讀
+      "她拒絕後你退一步，處理得不錯",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(safe, analysis), false, safe);
+  }
+});
