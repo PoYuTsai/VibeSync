@@ -88,6 +88,10 @@ const INTERNAL_VISIBLE_LABELS = [
   "momentdaypart",
   "momentthemebrief",
   "momentimageoptions",
+  // 1:1 聊天的貼文記憶注入（PR D）。同樣全用英文複合詞，
+  // 中文標籤表（INTERNAL_CHINESE_LABELS）不必新增。
+  "herrecentmoments",
+  "herownposts",
 ];
 
 // ── 第二刀（2026-08-24 Eric 拍板）：L4 拆兩類 ─────────────────────────

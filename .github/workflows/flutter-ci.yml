@@ -43,6 +43,12 @@ jobs:
       - name: Type-check practice moments generation
         run: deno check supabase/functions/practice-chat/moments_handler.ts
 
+      # 1:1 記憶接線（PR D）動到 prompt.ts 與 handler.ts 的聊天主路徑，
+      # 迴歸證據在 index_test.ts（239 條既有 ＋ 7 條接線行為）與 prompt_test.ts。
+      # 在此之前這兩支都不在白名單裡＝聊天主路徑在 PR CI 完全沒有守門。
+      #
+      # 註解只能放在這裡：下面是 `>-` 折疊純量，換行會折成空格，
+      # 行內 `#` 會讓 shell 把後面所有測試檔一起吃掉。
       - name: Run Edge contract tests
         run: >-
           deno test --allow-env --allow-read
@@ -66,6 +72,9 @@ jobs:
           supabase/functions/practice-chat/moments_generated_only_source_test.ts
           supabase/functions/practice-chat/moments_dispatch_test.ts
           supabase/functions/practice-chat/visible_text_guard_test.ts
+          supabase/functions/practice-chat/moments_memory_test.ts
+          supabase/functions/practice-chat/index_test.ts
+          supabase/functions/practice-chat/prompt_test.ts
 
       # PGlite（WASM Postgres）獨立成一步：它是唯一會拉 npm 套件的測試（約 8 秒），
       # 分開跑讓上面那組純函式契約測試 fail fast，失敗時也一眼看得出是資料層掛了。

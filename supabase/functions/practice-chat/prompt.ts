@@ -541,6 +541,17 @@ export function buildChatMessages(
     sceneContext?: PracticeSceneContext | null;
     acquaintanceOrigin?: AcquaintanceOrigin | null;
     memorySummary?: string | null;
+    /**
+     * 已渲染好的朋友圈記憶區塊（moments_memory.ts 的 herRecentMomentsPrompt）。
+     *
+     * 這裡刻意收「渲染完的字串」而不是貼文資料：moments_memory.ts 需要本檔的
+     * compactCompleteSentenceEvidence，本檔再反向 import 它就會形成循環 import。
+     * 朋友圈的 prompt 文字本來就住在 moments_* 檔（沿用 moments_prompt.ts 的分工）。
+     *
+     * **省略此欄位時，system prompt 必須與接線前逐字相同**——
+     * moments_memory_test.ts 用 SHA-256 黃金雜湊守著這件事。
+     */
+    herRecentMomentsBlock?: string | null;
     gameState?: PersistedGameState | null;
   } = {},
 ): ChatMessage[] {
@@ -609,7 +620,9 @@ export function buildChatMessages(
         acquaintanceOriginPrompt(options.acquaintanceOrigin)
       }${sceneContextPrompt(options.sceneContext)}${
         memorySummaryPrompt(options.memorySummary)
-      }${safePartnerStatePrompt(options.partnerState)}${
+      }${options.herRecentMomentsBlock ?? ""}${
+        safePartnerStatePrompt(options.partnerState)
+      }${
         options.partnerState ? `\n${LEGACY_PARTNER_STATE_NO_LEAK_MARKER}` : ""
       }${
         gameSnapshot
