@@ -382,13 +382,22 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                     aiReplyCount: current.aiReplyCount,
                   );
                 },
-                onFinish: () {
-                  // 收尾持久化（fire-and-forget：Hive 本機寫入，pop 不必等）。
-                  // 沒有這步，拆解失敗的場會被練習室無限接回。
-                  ref
+                onFinish: () async {
+                  // 收尾必須等持久化成功才離開；失敗時留在畫面，否則這局
+                  // 下次會被練習室無限接回（R1 主審 P1：不得靜默漏標記）。
+                  final closed = await ref
                       .read(practiceChatControllerProvider.notifier)
                       .closeCurrentSession();
-                  context.pop();
+                  if (!context.mounted) return;
+                  if (closed) {
+                    context.pop();
+                    return;
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('收尾沒有存檔成功，請再按一次「完成」。'),
+                    ),
+                  );
                 },
                 onContinueSamePartner: _continueSamePartner,
                 // 換人＝回圖鑑翻牌（top-level route，go 收斂 stack）。

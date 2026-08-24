@@ -5382,21 +5382,54 @@ void main() {
       expect(s.roundIndex, 1);
     });
 
-    test('closeCurrentSession：把當前場持久化標記為 closed', () async {
+    test('closeCurrentSession：把當前場持久化標記為 closed，回 true', () async {
       final session = openSessionFor('practice_girl_009');
       await repo.save(session);
       final c = makeControllerFrom(session);
       expect(c.currentState.sessionId, 'open-9');
 
-      await c.closeCurrentSession();
+      expect(await c.closeCurrentSession(), true);
 
       expect(repo.getById('open-9')!.closed, true);
     });
 
-    test('closeCurrentSession：場次從未持久化 → no-op 不 crash', () async {
+    test('closeCurrentSession：場次從未持久化 → no-op 回 true 不 crash',
+        () async {
       final c = makeController(); // locked 狀態，repo 無此場
-      await c.closeCurrentSession();
+      expect(await c.closeCurrentSession(), true);
       expect(repo.getById(c.currentState.sessionId), isNull);
+    });
+
+    test('closeCurrentSession：save 失敗 → 回 false，場仍是 open', () async {
+      final session = openSessionFor('practice_girl_009');
+      await repo.save(session);
+      final controlled = _ControlledPracticeSessionRepository(box);
+      controlled.saveHandler =
+          (_) async => throw HiveError('simulated close save failure');
+      final c = makeControllerFrom(session, repository: controlled);
+
+      expect(await c.closeCurrentSession(), false);
+
+      expect(controlled.getById('open-9')!.closed, false);
+    });
+
+    test('close 後 in-flight 訊息完成觸發 _persist → closed 不被覆寫回 open',
+        () async {
+      final session = openSessionFor('practice_girl_009');
+      await repo.save(session);
+      final c = makeControllerFrom(session);
+      final gate = Completer<PracticeChatReply>();
+      api.sendHandler = (_, {profile}) => gate.future;
+
+      final sending = c.sendMessage('還在飛的最後一句');
+      expect(await c.closeCurrentSession(), true);
+      expect(repo.getById('open-9')!.closed, true);
+
+      gate.complete(reply(text: '嗯', aiTurnCount: 2));
+      await sending;
+
+      // _persist 以 state 重建整列；若沒保留既有 closed，這裡會退回 false。
+      expect(repo.getById('open-9')!.closed, true);
     });
 
     test('較新已完成場＋較舊未完成場 → 續玩較舊未完成場', () async {

@@ -300,6 +300,17 @@ class _MessageApi extends _NoopPracticeChatApi {
   }
 }
 
+/// save 一律失敗：驗「完成」收尾失敗時不得靜默離開。
+class _FailingSavePracticeSessionRepository
+    extends _MemoryPracticeSessionRepository {
+  _FailingSavePracticeSessionRepository(super.seed);
+
+  @override
+  Future<void> save(PracticeSession session) async {
+    throw StateError('simulated close save failure');
+  }
+}
+
 class _SeededPracticeChatController extends PracticeChatController {
   _SeededPracticeChatController({
     required PracticeChatState seed,
@@ -1230,6 +1241,122 @@ void main() {
     expect(find.text('再試一次'), findsNothing);
     expect(find.text('完成'), findsOneWidget);
     expect(find.text('輸入訊息…'), findsNothing);
+  });
+
+  testWidgets('拆解失敗按完成：先持久化 closed 再離開畫面', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final girl = practiceGirlProfiles.first;
+    final open = PracticeSession(
+      id: 'debrief-failed-close',
+      createdAt: DateTime(2026, 6, 25, 18),
+      aiReplyCount: 1,
+      messages: const [
+        PracticeMessage(role: 'user', text: '嗨'),
+        PracticeMessage(role: 'ai', text: '嗯？'),
+      ],
+      profileId: girl.profileId,
+    );
+    final sessionRepo = _MemoryPracticeSessionRepository([open]);
+    final seed = PracticeChatState(
+      sessionId: 'debrief-failed-close',
+      createdAt: DateTime(2026, 6, 25, 18),
+      girl: girl,
+      personaId: girl.personaId,
+      personaLabel: '慢熱上班族',
+      difficulty: 'normal',
+      difficultyLabel: '一般',
+      aiReplyCount: 1,
+      ended: true,
+      debriefFailed: true,
+      messages: open.messages,
+    );
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: sessionRepo);
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => Scaffold(
+            body: TextButton(
+              onPressed: () => context.push('/practice'),
+              child: const Text('進練習室'),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/practice',
+          builder: (context, state) => const PracticeChatScreen(),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.tap(find.text('進練習室'));
+    await tester.pumpAndSettle();
+    expect(find.text('完成'), findsOneWidget);
+
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+
+    expect(sessionRepo.getById('debrief-failed-close')!.closed, true);
+    expect(find.text('進練習室'), findsOneWidget); // 已 pop 回上一頁
+  });
+
+  testWidgets('拆解失敗按完成但存檔失敗：留在畫面並提示，不靜默漏標記', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final girl = practiceGirlProfiles.first;
+    final open = PracticeSession(
+      id: 'debrief-failed-close-fail',
+      createdAt: DateTime(2026, 6, 25, 18),
+      aiReplyCount: 1,
+      messages: const [
+        PracticeMessage(role: 'user', text: '嗨'),
+        PracticeMessage(role: 'ai', text: '嗯？'),
+      ],
+      profileId: girl.profileId,
+    );
+    final sessionRepo = _FailingSavePracticeSessionRepository([open]);
+    final seed = PracticeChatState(
+      sessionId: 'debrief-failed-close-fail',
+      createdAt: DateTime(2026, 6, 25, 18),
+      girl: girl,
+      personaId: girl.personaId,
+      personaLabel: '慢熱上班族',
+      difficulty: 'normal',
+      difficultyLabel: '一般',
+      aiReplyCount: 1,
+      ended: true,
+      debriefFailed: true,
+      messages: open.messages,
+    );
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: sessionRepo);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('完成'), findsOneWidget); // 沒離開畫面
+    expect(find.text('收尾沒有存檔成功，請再按一次「完成」。'), findsOneWidget);
+    expect(
+      sessionRepo.getById('debrief-failed-close-fail')!.closed,
+      false,
+    );
   });
 
   testWidgets('首屏點大照可看未裁切全圖', (tester) async {

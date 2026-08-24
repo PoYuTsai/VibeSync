@@ -1327,11 +1327,18 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 
   /// 按「完成」收尾：把當前場持久化標記為 closed，之後不再被接回。
   /// 拆解卡可能永遠產不出來（守門紅線／斷網），出口不能綁在拆解成功上。
-  /// 已拆解場本來就不會被接回，不用重寫。
-  Future<void> closeCurrentSession() async {
+  /// 已拆解場本來就不會被接回，不用重寫（回 true）。回 false＝寫入失敗，
+  /// 呼叫端不得離開畫面，否則下次進練習室又被接回（R1 主審 P1）。
+  Future<bool> closeCurrentSession() async {
     final existing = _repo.getById(state.sessionId);
-    if (existing == null || !existing.isOpen) return;
-    await _repo.save(existing.copyWith(closed: true));
+    if (existing == null || !existing.isOpen) return true;
+    try {
+      await _repo.save(existing.copyWith(closed: true));
+      return true;
+    } catch (e) {
+      debugPrint('closeCurrentSession save failed: $e');
+      return false;
+    }
   }
 
   void resumeSession(PracticeSession session) {
@@ -2625,6 +2632,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       relationshipStageLabel:
           s.isAssistedLearningMode ? s.relationshipStageLabel : null,
       hintUsedCount: s.isAssistedLearningMode ? s.hintUsedCount : null,
+      // _persist 以 state 重建整列，state 不帶 closed；不保留既有值的話，
+      // close 後才完成的 in-flight 訊息會把這局又翻回 open（R1 主審殘餘風險）。
+      closed: _repo.getById(s.sessionId)?.closed ?? false,
     ));
   }
 

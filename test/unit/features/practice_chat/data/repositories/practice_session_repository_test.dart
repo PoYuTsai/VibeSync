@@ -5,6 +5,83 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.da
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 
+/// commit a251116c^（closed 欄位出現前）generated writer 的原樣複本：
+/// 30 欄、無 field 30。只給 legacy bytes 相容測試用。
+class _LegacyPracticeSessionWriter extends TypeAdapter<PracticeSession> {
+  @override
+  final typeId = 23;
+
+  @override
+  PracticeSession read(BinaryReader reader) =>
+      throw UnimplementedError('write-only legacy fixture');
+
+  @override
+  void write(BinaryWriter writer, PracticeSession obj) {
+    writer
+      ..writeByte(30)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.createdAt)
+      ..writeByte(2)
+      ..write(obj.messages)
+      ..writeByte(3)
+      ..write(obj.aiReplyCount)
+      ..writeByte(4)
+      ..write(obj.debriefSummary)
+      ..writeByte(5)
+      ..write(obj.debriefStrengths)
+      ..writeByte(6)
+      ..write(obj.debriefWatchouts)
+      ..writeByte(7)
+      ..write(obj.debriefSuggestedLine)
+      ..writeByte(8)
+      ..write(obj.debriefVibe)
+      ..writeByte(9)
+      ..write(obj.personaId)
+      ..writeByte(10)
+      ..write(obj.personaLabel)
+      ..writeByte(11)
+      ..write(obj.difficulty)
+      ..writeByte(12)
+      ..write(obj.difficultyLabel)
+      ..writeByte(13)
+      ..write(obj.visiblePracticeThreadId)
+      ..writeByte(14)
+      ..write(obj.roundIndex)
+      ..writeByte(15)
+      ..write(obj.profileId)
+      ..writeByte(16)
+      ..write(obj.practiceMode)
+      ..writeByte(17)
+      ..write(obj.temperatureScore)
+      ..writeByte(18)
+      ..write(obj.hintUsedCount)
+      ..writeByte(19)
+      ..write(obj.familiarityScore)
+      ..writeByte(20)
+      ..write(obj.relationshipStageLabel)
+      ..writeByte(21)
+      ..write(obj.debriefDateChance)
+      ..writeByte(22)
+      ..write(obj.debriefDateChanceReason)
+      ..writeByte(23)
+      ..write(obj.debriefNextInviteMove)
+      ..writeByte(24)
+      ..write(obj.debriefGamePhaseReached)
+      ..writeByte(25)
+      ..write(obj.debriefGameMissedVariable)
+      ..writeByte(26)
+      ..write(obj.debriefGameFailureState)
+      ..writeByte(27)
+      ..write(obj.debriefGameNextFirstLine)
+      ..writeByte(28)
+      ..write(obj.debriefGameInviteDirection)
+      ..writeByte(29)
+      ..write(obj.debriefQualitySchemaVersion);
+  }
+}
+
 void main() {
   late Box<PracticeSession> box;
   late PracticeSessionRepository repo;
@@ -195,6 +272,28 @@ void main() {
 
     await repo.save(repo.getById('close-me')!.copyWith(closed: true));
     expect(repo.getById('close-me')!.closed, true);
+  });
+
+  test('舊版 build 寫的 bytes（無 field 30）→ 新 adapter 讀回 closed=false', () async {
+    // 用 commit a251116c^ 的 writer 原碼寫出真正的 legacy bytes，
+    // 再換回現行 adapter 從磁碟重讀，證明相容不是靠推論。
+    final ts = DateTime.now().microsecondsSinceEpoch;
+    final name = 'practice_legacy_$ts';
+    Hive.registerAdapter(_LegacyPracticeSessionWriter(), override: true);
+    // 就算本測試中途失敗，也要把現行 adapter 換回去，不汙染後續測試。
+    addTearDown(
+      () => Hive.registerAdapter(PracticeSessionAdapter(), override: true),
+    );
+    var legacyBox = await Hive.openBox<PracticeSession>(name);
+    await legacyBox.put('legacy-open', session('legacy-open', 10));
+    await legacyBox.close();
+
+    Hive.registerAdapter(PracticeSessionAdapter(), override: true);
+    legacyBox = await Hive.openBox<PracticeSession>(name);
+    addTearDown(legacyBox.deleteFromDisk);
+    final loaded = legacyBox.get('legacy-open');
+    expect(loaded!.closed, false);
+    expect(loaded.isOpen, true);
   });
 
   test('isOpen：無拆解卡且未 closed 才算進行中', () {
