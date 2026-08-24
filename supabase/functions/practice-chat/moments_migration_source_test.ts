@@ -7,16 +7,12 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-/**
- * 與 migration 內 CHECK (attempts BETWEEN 0 AND 3) 的上界一致，也是全站每日
- * 模型呼叫上限的 DB 側分母：每個 (profile_id, post_date) 最多 2 slot × 3 attempts。
- * 全站每日 600 需要 Edge 額外保證 profile_id 只來自 100 位角色的 allowlist
- * 且 post_date 是正確台北日（複審 P2-1）——Edge 側的契約測試在
- * moments_edge_contract_test.ts。
- *
- * PR B 起改成直接 import TS 常數（不再留字面值），雙向比對在
- * moments_constants_test.ts。
- */
+// MAX_MOMENT_ATTEMPTS 是全站每日模型呼叫上限的 DB 側分母：每個
+// (profile_id, post_date) 最多 2 slot × 3 attempts。全站每日 600 還需要 Edge
+// 額外保證 profile_id 只來自 100 位角色的 allowlist、post_date 是正確台北日
+// （複審 P2-1）——那半邊的契約測試在 moments_edge_contract_test.ts。
+// PR B 起這裡直接 import TS 常數，不再留字面值；SQL↔TS 的雙向比對在
+// moments_constants_test.ts。
 import { MAX_MOMENT_ATTEMPTS } from "./moments_constants.ts";
 
 const migration = await Deno.readTextFile(
@@ -106,17 +102,15 @@ Deno.test("moment posts table is service_role only and has no policy", () => {
 
 Deno.test("moment migration keeps every post global and free of user-derived columns", () => {
   // 隱私鐵則：貼文是全域的，資料層不得有任何使用者關聯欄位。
-  for (
-    const forbidden of [
-      "user_id",
-      "session_id",
-      "relationship_thread",
-      "memory",
-      "hint",
-      "debrief",
-      "turns",
-    ]
-  ) {
+  for (const forbidden of [
+    "user_id",
+    "session_id",
+    "relationship_thread",
+    "memory",
+    "hint",
+    "debrief",
+    "turns",
+  ]) {
     assert(
       !new RegExp(`\\b${forbidden}\\b`).test(executable),
       `migration 不得出現使用者關聯欄位或概念：${forbidden}`,
@@ -127,10 +121,7 @@ Deno.test("moment migration keeps every post global and free of user-derived col
 Deno.test("moment RPCs all carry the SECURITY DEFINER and grant template", () => {
   for (const name of RPC_NAMES) {
     const body = functionBody(name);
-    assert(
-      body.includes("SECURITY DEFINER"),
-      `${name} 必須是 SECURITY DEFINER`,
-    );
+    assert(body.includes("SECURITY DEFINER"), `${name} 必須是 SECURITY DEFINER`);
     assert(
       body.includes("SET search_path = public"),
       `${name} 必須釘死 search_path`,
@@ -154,13 +145,11 @@ Deno.test("moment RPCs all carry the SECURITY DEFINER and grant template", () =>
   const revokeFromPublic =
     executable.match(/REVOKE ALL ON FUNCTION[\s\S]*?FROM PUBLIC;/g) ?? [];
   assertEquals(revokeFromPublic.length, RPC_NAMES.length);
-  const revokeFromClients = executable.match(
-    /REVOKE ALL ON FUNCTION[\s\S]*?FROM anon, authenticated;/g,
-  ) ?? [];
+  const revokeFromClients =
+    executable.match(/REVOKE ALL ON FUNCTION[\s\S]*?FROM anon, authenticated;/g) ?? [];
   assertEquals(revokeFromClients.length, RPC_NAMES.length);
   const grantsToServiceRole =
-    executable.match(/GRANT EXECUTE ON FUNCTION[\s\S]*?TO service_role;/g) ??
-      [];
+    executable.match(/GRANT EXECUTE ON FUNCTION[\s\S]*?TO service_role;/g) ?? [];
   assertEquals(grantsToServiceRole.length, RPC_NAMES.length);
 
   assert(
@@ -191,9 +180,7 @@ Deno.test("reserve anchors the two review-flagged pitfalls in SQL", () => {
   // 坑 #2：租約拒絕分支必須同時看 token 非 NULL；token IS NULL 是獨立放行路徑。
   assert(
     body.includes("v_row.generation_token IS NOT NULL") &&
-      body.includes(
-        "AND v_row.reserved_at > now() - make_interval(secs => p_lease_seconds)",
-      ),
+      body.includes("AND v_row.reserved_at > now() - make_interval(secs => p_lease_seconds)"),
     "租約拒絕分支必須是「token 非 NULL 且租約未逾時」，否則 release 會被自己的 reserved_at 擋住",
   );
 
@@ -242,10 +229,7 @@ Deno.test("commit is token fenced and clears the token", () => {
 Deno.test("list only ever returns ready posts", () => {
   const body = functionBody("list_practice_moment_posts");
 
-  assert(
-    body.includes("AND mp.status = 'ready'"),
-    "reserved／exhausted 不得外流",
-  );
+  assert(body.includes("AND mp.status = 'ready'"), "reserved／exhausted 不得外流");
   assert(body.includes("mp.post_date >= p_since"));
   assert(body.includes("mp.profile_id = ANY (p_profile_ids)"));
   assert(body.includes("STABLE"), "唯讀 RPC 標成 STABLE");
