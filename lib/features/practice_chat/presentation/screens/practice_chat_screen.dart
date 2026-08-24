@@ -382,7 +382,14 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                     aiReplyCount: current.aiReplyCount,
                   );
                 },
-                onFinish: () => context.pop(),
+                onFinish: () {
+                  // 收尾持久化（fire-and-forget：Hive 本機寫入，pop 不必等）。
+                  // 沒有這步，拆解失敗的場會被練習室無限接回。
+                  ref
+                      .read(practiceChatControllerProvider.notifier)
+                      .closeCurrentSession();
+                  context.pop();
+                },
                 onContinueSamePartner: _continueSamePartner,
                 // 換人＝回圖鑑翻牌（top-level route，go 收斂 stack）。
                 onNewPartner: () => context.go('/practice-collection'),
@@ -3014,16 +3021,18 @@ class _SessionRow extends StatelessWidget {
     return '${d.month}/${d.day} ${two(d.hour)}:${two(d.minute)}';
   }
 
-  bool get _canResume => !session.hasDebrief;
+  bool get _canResume => session.isOpen;
 
   String get _statusLabel {
     if (session.hasDebrief) return '已拆解';
+    if (session.closed) return '已結束';
     if (session.aiReplyCount >= kMaxPracticeAiReplies) return '待拆解';
     return '可續聊';
   }
 
   Color get _statusColor {
     if (session.hasDebrief) return AppColors.success;
+    if (session.closed) return AppColors.onBackgroundSecondary;
     if (session.aiReplyCount >= kMaxPracticeAiReplies) return AppColors.warning;
     return AppColors.info;
   }

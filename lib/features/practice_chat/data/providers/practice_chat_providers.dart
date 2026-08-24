@@ -1325,6 +1325,15 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     );
   }
 
+  /// 按「完成」收尾：把當前場持久化標記為 closed，之後不再被接回。
+  /// 拆解卡可能永遠產不出來（守門紅線／斷網），出口不能綁在拆解成功上。
+  /// 已拆解場本來就不會被接回，不用重寫。
+  Future<void> closeCurrentSession() async {
+    final existing = _repo.getById(state.sessionId);
+    if (existing == null || !existing.isOpen) return;
+    await _repo.save(existing.copyWith(closed: true));
+  }
+
   void resumeSession(PracticeSession session) {
     if (session.id == state.sessionId) return;
     _hintGeneration++; // 換場：在途 hint 全部作廢
@@ -1338,11 +1347,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 不走 draw、不扣翻牌額度、不寫翻牌 draft／pending（都只由翻牌鏈路寫）。
   void startSessionWithProfile(String profileId) {
     // recentSessions 已依時間新到舊 → 第一筆吻合＝該對象最新一段未完成場。
-    // 已拆解（hasDebrief）場不可續玩（比照歷史列表 _canResume 與
-    // _latestOpenPracticeSession 的未完成判斷），否則 Free 會卡在拆解態的付費續聊 gate。
+    // 已拆解或已按「完成」收尾（isOpen=false）場不可續玩（比照歷史列表
+    // _canResume 與 _latestOpenPracticeSession），否則 Free 會卡在拆解態的付費續聊 gate。
     for (final session in _repo.recentSessions()) {
       if (session.profileId == profileId &&
-          !session.hasDebrief &&
+          session.isOpen &&
           session.messages.isNotEmpty) {
         resumeSession(session);
         return;
@@ -2887,7 +2896,7 @@ final recentPracticeSessionsProvider =
 
 PracticeSession? _latestOpenPracticeSession(List<PracticeSession> sessions) {
   for (final session in sessions) {
-    if (!session.hasDebrief && session.messages.isNotEmpty) {
+    if (session.isOpen && session.messages.isNotEmpty) {
       return session;
     }
   }

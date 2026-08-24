@@ -110,6 +110,11 @@ class PracticeSession {
   @HiveField(29)
   final String? debriefQualitySchemaVersion;
 
+  /// 使用者按「完成」明確收尾。拆解卡可能因守門／斷網永遠產不出來，
+  /// 「結束了沒」不能只看 hasDebrief，否則這局會被無限接回。
+  @HiveField(30)
+  final bool closed;
+
   const PracticeSession({
     required this.id,
     required this.createdAt,
@@ -141,9 +146,13 @@ class PracticeSession {
     this.debriefGameNextFirstLine,
     this.debriefGameInviteDirection,
     this.debriefQualitySchemaVersion,
+    this.closed = false,
   });
 
   bool get hasDebrief => debriefSummary != null;
+
+  /// 還在進行中（可續玩／可被練習室接回）。已拆解或已按「完成」都算結束。
+  bool get isOpen => !hasDebrief && !closed;
 
   bool get hasRestorableDebrief =>
       hasDebrief &&
@@ -178,6 +187,7 @@ class PracticeSession {
     String? debriefGameNextFirstLine,
     String? debriefGameInviteDirection,
     String? debriefQualitySchemaVersion,
+    bool? closed,
   }) {
     return PracticeSession(
       id: id,
@@ -220,6 +230,7 @@ class PracticeSession {
           debriefGameInviteDirection ?? this.debriefGameInviteDirection,
       debriefQualitySchemaVersion:
           debriefQualitySchemaVersion ?? this.debriefQualitySchemaVersion,
+      closed: closed ?? this.closed,
     );
   }
 }

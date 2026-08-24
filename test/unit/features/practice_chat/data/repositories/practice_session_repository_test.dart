@@ -188,6 +188,22 @@ void main() {
     expect(updated.hintUsedCount, 2);
   });
 
+  // ── closed（按「完成」收尾）語意 ─────────────────────────────────────────
+  test('closed 預設 false，copyWith 標記後 roundtrip 保留', () async {
+    await repo.save(session('close-me', 10));
+    expect(repo.getById('close-me')!.closed, false);
+
+    await repo.save(repo.getById('close-me')!.copyWith(closed: true));
+    expect(repo.getById('close-me')!.closed, true);
+  });
+
+  test('isOpen：無拆解卡且未 closed 才算進行中', () {
+    final open = session('o', 1);
+    expect(open.isOpen, true);
+    expect(open.copyWith(closed: true).isOpen, false);
+    expect(open.copyWith(debriefSummary: '拆解了').isOpen, false);
+  });
+
   test('delete 移除指定練習紀錄，不影響其他場', () async {
     await repo.save(session('keep', 10));
     await repo.save(session('drop', 11));

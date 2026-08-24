@@ -5367,6 +5367,38 @@ void main() {
       expect(s.roundIndex, 1);
     });
 
+    // ── 按「完成」收尾：closed 場不可續玩（拆解失敗也能真正離開這局）──────
+    test('已 closed 場 → 不 resume，免費開新局', () async {
+      await repo
+          .save(openSessionFor('practice_girl_009').copyWith(closed: true));
+      final c = makeController();
+
+      c.startSessionWithProfile('practice_girl_009');
+
+      final s = c.currentState;
+      expect(s.sessionId, isNot('open-9'));
+      expect(s.girl!.profileId, 'practice_girl_009');
+      expect(s.messages, isEmpty);
+      expect(s.roundIndex, 1);
+    });
+
+    test('closeCurrentSession：把當前場持久化標記為 closed', () async {
+      final session = openSessionFor('practice_girl_009');
+      await repo.save(session);
+      final c = makeControllerFrom(session);
+      expect(c.currentState.sessionId, 'open-9');
+
+      await c.closeCurrentSession();
+
+      expect(repo.getById('open-9')!.closed, true);
+    });
+
+    test('closeCurrentSession：場次從未持久化 → no-op 不 crash', () async {
+      final c = makeController(); // locked 狀態，repo 無此場
+      await c.closeCurrentSession();
+      expect(repo.getById(c.currentState.sessionId), isNull);
+    });
+
     test('較新已完成場＋較舊未完成場 → 續玩較舊未完成場', () async {
       await repo.save(openSessionFor('practice_girl_009'));
       await repo.save(PracticeSession(
