@@ -1,5 +1,5 @@
 {
-  "description": "AnalyzeChat Edge 行為基準（源自 fc8bbe84）。promptSlices 鎖定 prompt/model/token 相關原始碼位元組的 SHA-256；純重構搬移時只允許改 file 欄位，只有已核准且另有行為測試的產品規格變更才可更新對應 sha256。",
+  "description": "AnalyzeChat Edge 行為基準（源自 fc8bbe84）。renderedPrompts 鎖定 active prompt 輸出；promptSlices 只鎖模型、token 與非 prompt helper 原始碼。只有已核准且另有行為測試的產品規格變更才可更新 baseline。",
   "baseline": {
     "behaviorBaselineCommit": "fc8bbe84",
     "capturedAtCommit": "dc504e72bad693c5b5e29c74e04ea9dd6ada1789"
@@ -119,12 +119,6 @@
       "start": "function buildVisionContent(",
       "end": "\n}",
       "sha256": "a628722b761f0a51604a5d2a4f570269239e345a28492c53ce702eceb7b86846"
-    },
-    "SYSTEM_PROMPT": {
-      "file": "analyze_system_prompt.ts",
-      "start": "const SYSTEM_PROMPT = `",
-      "end": "`;",
-      "sha256": "5245a2601e06d4f4eb67e2100509ece2e5db116dc17566feeb67a84b0b60181e"
     },
     "OPTIMIZE_MESSAGE_MAX_TOKENS": {
       "file": "optimize_message_prompt.ts",

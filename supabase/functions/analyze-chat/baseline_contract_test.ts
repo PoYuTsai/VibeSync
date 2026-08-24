@@ -1,9 +1,8 @@
 // AnalyzeChat Edge 行為基準鎖（源自 fc8bbe84）。
 //
-// 重構期間的安全網：prompt bytes、模型選擇、token/quota 常數的原始碼切片
-// SHA-256 必須與 baseline_fixtures.json 一致。純搬移程式碼時只能改 fixtures 的
-// file 欄位（指向新家）；只有已核准且另有行為測試的產品規格變更，才可更新
-// 對應 slice 的 sha256，避免把意外漂移誤當成新 baseline。
+// 重構期間的安全網：active prompt 鎖 rendered bytes；模型選擇、token/quota
+// 常數與其他非 prompt helper 才鎖原始碼切片。只有已核准且另有行為測試的
+// 產品規格變更，才可更新 baseline，避免把意外漂移誤當成新行為。
 
 import {
   assert,
