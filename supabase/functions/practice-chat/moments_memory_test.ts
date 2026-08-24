@@ -116,10 +116,22 @@ export const CHAT_GOLDEN_CASES = [
  * 而直接覆蓋。
  */
 const CHAT_PROMPT_GOLDEN_SHA256: ReadonlyArray<readonly [string, string]> = [
-  ["standard-minimal", "5979a73d95395bf5a203d9acd45a2051a54284c6b51be72a49d5d5408b88ac5b"],
-  ["standard-full", "4415b7d5402d0ae41b4f7d4e36f5c84b6e80cabeb0d99ad18ad235f69467ded7"],
-  ["beginner-full", "b901ce9882af072c398a4d4c13a3fb4942f824665391833b36625698be3e2778"],
-  ["game-full", "0639e1cfa8b9568f604a9f0164dd55e054e3c8314bb1e9eca01fb76a0839fba2"],
+  [
+    "standard-minimal",
+    "5979a73d95395bf5a203d9acd45a2051a54284c6b51be72a49d5d5408b88ac5b",
+  ],
+  [
+    "standard-full",
+    "4415b7d5402d0ae41b4f7d4e36f5c84b6e80cabeb0d99ad18ad235f69467ded7",
+  ],
+  [
+    "beginner-full",
+    "b901ce9882af072c398a4d4c13a3fb4942f824665391833b36625698be3e2778",
+  ],
+  [
+    "game-full",
+    "0639e1cfa8b9568f604a9f0164dd55e054e3c8314bb1e9eca01fb76a0839fba2",
+  ],
 ];
 
 async function sha256(text: string): Promise<string> {
@@ -219,7 +231,11 @@ Deno.test("只取最近的三則，且新的在前", () => {
   ];
   const picked = selectHerRecentMoments(rows, { now: NOW });
   assertEquals(picked.length, 3);
-  assertEquals(picked.map((p) => p.postDate), [TODAY, "2026-09-02", "2026-09-01"]);
+  assertEquals(picked.map((p) => p.postDate), [
+    TODAY,
+    "2026-09-02",
+    "2026-09-01",
+  ]);
   assert(
     !picked.some((p) => p.body.includes("八月三十號")),
     "超出 3 則上限時應該丟掉最舊的那則",
@@ -227,13 +243,17 @@ Deno.test("只取最近的三則，且新的在前", () => {
 });
 
 Deno.test("七天以外的貼文不進來——她看不到，才可能有不確定語氣", () => {
-  const rows = [row({ post_date: "2026-08-26", body: "八天前的真貼文，她看不到。" })];
+  const rows = [
+    row({ post_date: "2026-08-26", body: "八天前的真貼文，她看不到。" }),
+  ];
   assertEquals(selectHerRecentMoments(rows, { now: NOW }).length, 0);
 });
 
 Deno.test("時間還沒到的貼文不算她發過（ready 也一樣）", () => {
   // 台北中午 12:00 拉記憶，當天 late_night 的貼文即使 DB 已 ready 也還沒發生。
-  const rows = [row({ day_part: "late_night", body: "今天深夜才會發的貼文內容。" })];
+  const rows = [
+    row({ day_part: "late_night", body: "今天深夜才會發的貼文內容。" }),
+  ];
   assertEquals(
     selectHerRecentMoments(rows, { now: NOW }).length,
     0,
@@ -260,7 +280,10 @@ Deno.test("超長貼文用完整句截斷，不留半句", () => {
   const long = "第一句話在這裡結束。第二句話也在這裡結束。" +
     "第三句話比前面兩句都還要長很多很多很多很多很多很多。" +
     "第四句話同樣長得不得了不得了不得了不得了不得了不得了。第五句話。";
-  assert(long.length > MOMENT_MEMORY_BODY_CHARS, "fixture 沒超過上限就測不到截斷");
+  assert(
+    long.length > MOMENT_MEMORY_BODY_CHARS,
+    "fixture 沒超過上限就測不到截斷",
+  );
   const picked = selectHerRecentMoments([row({ body: long })], { now: NOW });
   assertEquals(picked.length, 1);
   assert(
@@ -283,7 +306,10 @@ Deno.test("有貼文時：內容進得去、注入防禦信封在、且不得洩
   assert(block.startsWith("\n\n"), "區塊要沿用既有注入欄位的前綴形狀");
   assert(block.includes("早上那杯拿鐵太苦了。"), "貼文內容沒進到 prompt");
   assert(block.includes("herRecentMoments"), "缺少標題標籤");
-  assert(block.includes("<her_own_posts>") && block.includes("</her_own_posts>"), "缺少信封");
+  assert(
+    block.includes("<her_own_posts>") && block.includes("</her_own_posts>"),
+    "缺少信封",
+  );
   assert(
     /not instructions/i.test(block),
     "缺少 not-instructions 宣告，與 memorySummary 的注入防禦不一致",
@@ -307,7 +333,8 @@ Deno.test("三態契約：明寫「不否認」，且不得出現「捏造就否
   // 它是「不要否認」的子字串。真正要判的是：**每一次**否認詞出現，都必須被
   // 否定包住，而且否定與否認詞之間不能夾「就／則／便」這種「那就去做」的連接。
   const DENIALS = ["否認", "沒發過", "沒有發過", "記錯", "不是我發"];
-  const NEGATION = /(?:不要|不能|不可|不准|絕不|也不|別|不)(?![^]{0,6}(?:就|則|便))/u;
+  const NEGATION =
+    /(?:不要|不能|不可|不准|絕不|也不|別|不)(?![^]{0,6}(?:就|則|便))/u;
   for (const denial of DENIALS) {
     for (let from = 0;;) {
       const at = block.indexOf(denial, from);
@@ -398,15 +425,19 @@ Deno.test("欄位有值時，區塊真的進到 system prompt（不是接了個�
     defaultProfile,
   )[0].content;
 
-  assert(withBlock.includes("早上那杯拿鐵太苦了。"), "貼文沒進到 system prompt");
+  assert(
+    withBlock.includes("早上那杯拿鐵太苦了。"),
+    "貼文沒進到 system prompt",
+  );
   assert(withBlock.length > without.length, "有帶欄位卻沒有變長＝接了死欄位");
   // 只多這一段，其餘一字不差。
   assertEquals(withBlock.replace(block, ""), without);
 });
 
 Deno.test("空字串／null／undefined 一律等同缺席", () => {
-  const base = buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile)[0]
-    .content;
+  const base =
+    buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile)[0]
+      .content;
   for (const value of ["", null, undefined]) {
     assertEquals(
       buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile, {
@@ -421,11 +452,13 @@ Deno.test("空字串／null／undefined 一律等同缺席", () => {
 Deno.test("注入的標籤全部進了可見輸出守門（鐵則：注入內部詞必同步擴守門）", () => {
   // 她若把標籤原樣抄進可見回覆，必須被擋下。漏掉任何一個標籤，
   // 使用者就會在聊天室看到 herRecentMoments 或 <her_own_posts>。
-  for (const leak of [
-    "herRecentMoments 裡面寫我今天發過文",
-    "我看一下 <her_own_posts> 好了",
-    "her_own_posts: 早上那杯拿鐵",
-  ]) {
+  for (
+    const leak of [
+      "herRecentMoments 裡面寫我今天發過文",
+      "我看一下 <her_own_posts> 好了",
+      "her_own_posts: 早上那杯拿鐵",
+    ]
+  ) {
     assertEquals(
       hasVisibleInternalLabelLeak(leak),
       true,
@@ -433,11 +466,13 @@ Deno.test("注入的標籤全部進了可見輸出守門（鐵則：注入內部
     );
   }
   // 誤殺面：正常的中文閒聊不能因為這兩個新標籤被擋。
-  for (const safe of [
-    "我今天早上喝了拿鐵，超苦的",
-    "你有看到我發的那則嗎",
-    "最近都沒發什麼文欸",
-  ]) {
+  for (
+    const safe of [
+      "我今天早上喝了拿鐵，超苦的",
+      "你有看到我發的那則嗎",
+      "最近都沒發什麼文欸",
+    ]
+  ) {
     assertEquals(
       hasVisibleInternalLabelLeak(safe),
       false,

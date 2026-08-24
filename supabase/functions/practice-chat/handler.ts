@@ -127,6 +127,10 @@ import {
   withNonPositiveLearningDeltas,
 } from "./temperature.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
+import {
+  fetchHerRecentMoments,
+  herRecentMomentsPrompt,
+} from "./moments_memory.ts";
 import { normalizeLiteralNewlines } from "./prompt_sanitizer.ts";
 import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 import {
@@ -3996,6 +4000,24 @@ export function createPracticeChatHandler(
       return jsonResponse({ error: mapped.error }, mapped.status);
     }
 
+    // 朋友圈記憶：她記得自己最近發過什麼（moments_memory.ts）。
+    // 一次唯讀 RPC，走 feed 既有的 list_practice_moment_posts，不需要新 migration。
+    // **fail-open**：拉不到就當作沒有貼文，聊天照常進行——記憶是加值，聊天是核心。
+    // 隱私鐵則不變：貼文是全域的，輸入只有 server profile + 日期 + 題材，
+    // 這裡也只用 profileId 去讀，不帶任何使用者對話或暱稱。
+    const herRecentMoments = await fetchHerRecentMoments({
+      supabase,
+      profileId: request.profile.girl.profileId,
+      isoDate: taipeiTimeContextFor(requestNow).isoDate,
+      now: requestNow,
+      onError: (message) =>
+        logWarn("practice_moment_memory_read_failed", {
+          user: summarizeUser(user.id),
+          error: message,
+        }),
+    });
+    const herRecentMomentsBlock = herRecentMomentsPrompt(herRecentMoments);
+
     let reply: string | null = null;
     try {
       let lastError: unknown;
@@ -4016,6 +4038,7 @@ export function createPracticeChatHandler(
                   sceneContext,
                   acquaintanceOrigin,
                   memorySummary: promptMemorySummary,
+                  herRecentMomentsBlock,
                   gameState: ledgerGameState,
                 }
                 : {
@@ -4023,6 +4046,7 @@ export function createPracticeChatHandler(
                   sceneContext,
                   acquaintanceOrigin,
                   memorySummary: promptMemorySummary,
+                  herRecentMomentsBlock,
                 },
             ),
             maxTokens: CHAT_MAX_TOKENS,

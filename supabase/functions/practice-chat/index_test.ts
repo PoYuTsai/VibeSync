@@ -7970,3 +7970,142 @@ Deno.test("SR 券 ensure：無訂閱列 → 視同 free、不發券", async () =
   assertEquals(response.status, 200);
   assertEquals(json, { eligible: false, granted: false, consumed: false });
 });
+
+// ---------------------------------------------------------------------------
+// 朋友圈記憶接線（PR D）：她在 1:1 聊天記得自己最近發過什麼。
+//
+// 這幾條走真的 handler，從 HTTP Request 到 DeepSeek 的 system prompt，
+// 守的是「分支有沒有真的接上」「該讀的時候讀、不該讀的時候不讀」「拉不到
+// 也不能弄壞聊天」——這些是純函式測試（moments_memory_test.ts）看不到的。
+// NOW = 2026-06-28T04:00Z＝台北 6/28 12:00，所以七天窗起點是 6/22。
+// ---------------------------------------------------------------------------
+
+function momentMemoryCalls(state: FakeState) {
+  return state.rpcCalls.filter((call) =>
+    call.fn === "list_practice_moment_posts"
+  );
+}
+
+function momentRow(overrides: Record<string, unknown> = {}) {
+  return {
+    profile_id: "practice_girl_001",
+    post_date: "2026-06-27",
+    slot: 0,
+    day_part: "morning",
+    theme_id: "cafe-morning",
+    body: "昨天早上那杯拿鐵苦到我皺眉走出店門。",
+    image_id: null,
+    created_at: "2026-06-27T01:00:00.000Z",
+    ...overrides,
+  };
+}
+
+Deno.test("聊天會讀她最近七天的貼文，且只帶這一個角色", async () => {
+  const { response, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: ["AI reply"],
+    rpc: { list_practice_moment_posts: [{ data: [momentRow()] }] },
+  });
+
+  assertEquals(response.status, 200);
+  const calls = momentMemoryCalls(state);
+  assertEquals(calls.length, 1, "聊天每輪應該剛好讀一次，不多不少");
+  assertEquals(calls[0].params.p_profile_ids, ["practice_girl_001"]);
+  assertEquals(
+    calls[0].params.p_since,
+    "2026-06-22",
+    "七天窗起點算錯，她會記得太多或太少",
+  );
+});
+
+Deno.test("讀到的貼文真的進到 system prompt（不是讀完就丟）", async () => {
+  const { state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: ["AI reply"],
+    rpc: { list_practice_moment_posts: [{ data: [momentRow()] }] },
+  });
+
+  const prompt = state.deepSeekCalls[0].messages[0].content;
+  assert(
+    prompt.includes("昨天早上那杯拿鐵苦到我皺眉走出店門。"),
+    "貼文內容沒進到 system prompt",
+  );
+  assert(prompt.includes("herRecentMoments"), "缺少注入區塊標題");
+  assert(prompt.includes("<her_own_posts>"), "缺少注入防禦信封");
+});
+
+Deno.test("沒有貼文時，system prompt 不出現朋友圈記憶區塊", async () => {
+  const { state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: ["AI reply"],
+    rpc: { list_practice_moment_posts: [{ data: [] }] },
+  });
+
+  const prompt = state.deepSeekCalls[0].messages[0].content;
+  assertEquals(prompt.includes("herRecentMoments"), false);
+  assertEquals(prompt.includes("her_own_posts"), false);
+});
+
+Deno.test("時間還沒到的貼文不會被她記得（中午不知道自己深夜要發什麼）", async () => {
+  const { state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: ["AI reply"],
+    rpc: {
+      list_practice_moment_posts: [{
+        data: [momentRow({
+          post_date: "2026-06-28",
+          day_part: "late_night",
+          body: "今天深夜才會發生的事情內容在這裡。",
+        })],
+      }],
+    },
+  });
+
+  const prompt = state.deepSeekCalls[0].messages[0].content;
+  assertEquals(
+    prompt.includes("今天深夜才會發生的事情內容在這裡。"),
+    false,
+    "還沒發生的貼文變成她的記憶＝穿越",
+  );
+  assertEquals(prompt.includes("herRecentMoments"), false);
+});
+
+Deno.test("貼文讀取失敗時聊天照常完成（fail-open，記憶是加值不是核心）", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: ["AI reply"],
+    rpc: {
+      list_practice_moment_posts: [{ error: "function missing" }],
+    },
+  });
+
+  assertEquals(response.status, 200, "朋友圈記憶拉不到不該弄壞聊天");
+  assertEquals(json.reply, "AI reply");
+  assertEquals(state.deepSeekCalls.length, 1, "仍然要正常呼叫模型");
+  const prompt = state.deepSeekCalls[0].messages[0].content;
+  assertEquals(prompt.includes("herRecentMoments"), false);
+});
+
+Deno.test("Hint 不讀朋友圈貼文", async () => {
+  const { state } = await run({
+    ledger: beginnerStartedLedger(),
+    claudeReplies: [validHintJson()],
+  }, hintBody({ practiceMode: "beginner", requestId: "hint-no-moments" }));
+
+  assertEquals(
+    momentMemoryCalls(state).length,
+    0,
+    "Hint 走的是教練視角，不該為它多打一次 DB",
+  );
+  await Promise.all(state.backgroundTasks);
+});
+
+Deno.test("Debrief 不讀朋友圈貼文", async () => {
+  const { state } = await run({
+    ledger: ledger({ ai_count: 2, charged: true }),
+    claudeReplies: [validDebriefJson()],
+  }, debriefBody());
+
+  assertEquals(momentMemoryCalls(state).length, 0);
+  await Promise.all(state.backgroundTasks);
+});
