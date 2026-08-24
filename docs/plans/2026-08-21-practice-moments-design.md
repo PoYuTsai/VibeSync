@@ -149,7 +149,7 @@ C3 之所以在這個產品成立，正是因為決策 A：**貼文全域共用*
 
 > 這一段在第一版是錯的（2026-08-21 複審 P1）。原本寫「schema 自帶 200 次上限」，但當時的設計是失敗即刪佔位列，`unique` 就只能限制成功存下來的貼文數，限制不了模型呼叫。現在改成保留列 + `attempts` 計數（見第 4 節），每個 profile-day 的 6 次上限才真正由 schema 與 RPC 強制。（2026-08-22 複審 P2-1 再修一次：DB 不認識角色名冊，任意 `profile_id` 都會拿到自己的 6 次額度，所以全站 600 是 Edge allowlist 與 DB 共同保證，不是 DB 單獨強制。Edge 側契約測試由生成端 PR 補。）
 
-per-user 面另掛既有 `model_call_rate_limits` 的新 scope `practice_moment`（建議 6/min・60/day），擋單一帳號放大。
+per-user 面另掛既有 `model_call_rate_limits` 的新 scope `practice_moment`（建議 6/min・60/day），擋單一帳號放大。這次計數必須包在 `reserve_practice_moment_slot` 的同一筆 transaction：只有真正 `claimed=true` 的分支才同時增加 `attempts` 與 user usage；搶不到 slot 不計數，撞限流則整筆 claim rollback。
 
 ### 決策 D：圖片來源——**bundled 場景圖 allowlist**
 
@@ -228,7 +228,7 @@ RPC（全部 `SECURITY DEFINER` + `REVOKE ... FROM PUBLIC, anon, authenticated` 
 
 | RPC | 職責 |
 | --- | --- |
-| `reserve_practice_moment_slot(...)` | 依下方狀態轉移表判定，回傳 `{ claimed, token }` |
+| `reserve_practice_moment_slot(...)` | 依下方狀態轉移表判定；成功 claim 時在同一 transaction 計 `attempts` 與 per-user model usage，回傳 `{ claimed, token }` |
 | `commit_practice_moment_post(profile_id, post_date, slot, token, body, image_id, model)` | 只有持 token 者能改 `ready`；不匹配回 false |
 | `release_practice_moment_slot(profile_id, post_date, slot, token)` | 生成失敗時清 token；`attempts` 已達上限就一併轉 `exhausted`。**絕不刪列、絕不寫罐頭** |
 | `list_practice_moment_posts(profile_ids TEXT[], since DATE)` | 只回 `ready` |

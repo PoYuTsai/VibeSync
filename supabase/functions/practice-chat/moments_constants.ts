@@ -1,0 +1,70 @@
+// 練習室模擬社群動態的共用常數（零依賴，生成端與資料層契約的單一真相源）。
+//
+// 這裡的每一個數字都有對應的守門：
+// - 與 migration SQL 對得起來的（attempts / slot / body / lease / allowlist 大小）
+//   由 moments_constants_test.ts 做**雙向**比對，任何一邊漂移都會紅。
+// - 純 Edge 側的（死線、每次補幾則、feed 天數、模型參數）由該測試的內部
+//   一致性斷言與 moments_handler_test.ts 釘住。
+//
+// 為什麼獨立成一支而不是放在 moments_handler.ts：migration source test 要
+// import 它做雙向比對，而那支測試不該把整個 handler（連帶 supabase client
+// 型別、DeepSeek）拉進來。
+
+// ── 與 migration SQL 對齊（雙向比對）─────────────────────────────────
+
+/** 每個 (profile_id, post_date, slot) 最多幾次模型呼叫。SQL: CHECK (attempts BETWEEN 0 AND 3)。 */
+export const MAX_MOMENT_ATTEMPTS = 3;
+
+/** 一天最多幾則。SQL: CHECK (slot BETWEEN 0 AND 1)，即 MOMENT_SLOT_COUNT - 1。 */
+export const MOMENT_SLOT_COUNT = 2;
+
+/** reserve 租約長度。SQL: p_lease_seconds INTEGER DEFAULT 120。 */
+export const MOMENT_RESERVE_LEASE_MS = 120_000;
+
+/** DB 的 body 長度上界（縱深防禦，不是產品規格）。SQL: char_length(body) BETWEEN 1 AND 220。 */
+export const MOMENT_BODY_DB_MAX_CHARS = 220;
+
+/**
+ * 角色 allowlist 大小，同時是 list RPC 的 p_profile_ids 上限。
+ *
+ * 「全站每日最多 600 次模型呼叫」＝ 100 位角色 × 2 slot × 3 attempts。
+ * DB 只保證後面兩項；前面那個 100 是 Edge 的責任（profile_id 只能來自
+ * GIRL_PROFILES），所以這個數字必須同時等於 SQL 內的 100 與 Edge 名冊大小。
+ */
+export const MOMENT_PROFILE_ALLOWLIST_MAX = 100;
+
+// ── 產品長度守門（三層的中間那層）───────────────────────────────────
+
+/** prompt 給模型的字數指示下界。 */
+export const MOMENT_PROMPT_MIN_CHARS = 20;
+/** prompt 給模型的字數指示上界。 */
+export const MOMENT_PROMPT_MAX_CHARS = 60;
+
+/**
+ * 真正的產品守門：18-66 字（prompt 指示 20-60 的 ±10% 容差）。
+ *
+ * 留容差是因為打回一則就吃掉一次 attempts，為了 61 字丟掉一則好貼文不划算。
+ * 若上線後打回率偏高，要調的是 prompt 的引導方式，不是偷偷放寬這裡。
+ */
+export const MOMENT_BODY_MIN_CHARS = 18;
+export const MOMENT_BODY_MAX_CHARS = 66;
+
+// ── Edge 側的補生成預算 ─────────────────────────────────────────────
+
+/** 進 handler 起算的總死線；到點就不等，未完成的列留給租約與下次請求。 */
+export const MOMENT_FILL_DEADLINE_MS = 8_000;
+
+/** 單一請求最多補幾則（K）。 */
+export const MOMENT_FILL_MAX_PER_REQUEST = 3;
+
+/** feed 往回看幾天（D6：feed 14 天、DB 永久保留）。 */
+export const FEED_WINDOW_DAYS = 14;
+
+// ── DeepSeek 呼叫參數（設計報告 §5）─────────────────────────────────
+
+/** 貼文 20-60 字，比照 CHAT_MAX_TOKENS。 */
+export const MOMENT_MODEL_MAX_TOKENS = 200;
+/** 略高於聊天的 0.9：100 位角色要看得出差異。 */
+export const MOMENT_MODEL_TEMPERATURE = 0.95;
+/** 低於 chat 的 30s：背景補位不該拖住 feed。 */
+export const MOMENT_MODEL_TIMEOUT_MS = 20_000;

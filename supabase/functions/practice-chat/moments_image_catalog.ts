@@ -96,3 +96,46 @@ export function momentImagesForTags(
     .filter((entry) => entry.tags.some((tag) => wanted.has(tag)))
     .map((entry) => entry.id);
 }
+
+// ── 可用素材閘門（DECISIONS.md D1 修正）──────────────────────────────
+//
+// 上面那 20 個場景 id 是**宣告**，素材檔案還不存在；v1 只有自拍 sentinel
+// 是真的可用的（client 把它解析成該角色的 photoAssetPath，零新素材）。
+//
+// 語義刻意是「替換」不是「過濾」。過濾寫法會失敗，理由是硬的：42 個題材裡
+// 只有 4 個帶 "self" 標籤，把候選過濾成只剩自拍的話 38/42 得到空候選 →
+// wantsImage 恆假 → v1 一則圖文貼文都不會有，真機驗收的兩種貼文型態就少一種。
+//
+// 素材到位那天只要把 20 個 id 加進 AVAILABLE_MOMENT_IMAGE_IDS，替換分支
+// 自然停止觸發，生成端與 UI 一行都不用改（D5c）。
+
+/** 目前真的有素材、可以送進 prompt 給模型挑的 id。 */
+export const AVAILABLE_MOMENT_IMAGE_IDS: readonly string[] = [
+  SELF_PORTRAIT_IMAGE_ID,
+];
+
+/**
+ * 把排程算出的候選收斂成「現在真的配得出來的圖」。
+ *
+ * - 候選內有可用 id → 只回那些（保持宣告順序、去重）。
+ * - 候選非空但全部不可用 → 整批替換成自拍 sentinel。
+ * - 候選為空（這個 slot 本來就是純文字貼文）→ 回空陣列，不無中生有。
+ *
+ * `available` 只給測試重放「未來素材到位」的情境用；runtime 一律用預設值。
+ */
+export function resolveAvailableMomentImages(
+  candidates: readonly string[],
+  available: readonly string[] = AVAILABLE_MOMENT_IMAGE_IDS,
+): readonly string[] {
+  if (candidates.length === 0) return [];
+  const usable = new Set(available);
+  const seen = new Set<string>();
+  const resolved: string[] = [];
+  for (const id of candidates) {
+    if (!usable.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    resolved.push(id);
+  }
+  if (resolved.length > 0) return resolved;
+  return usable.has(SELF_PORTRAIT_IMAGE_ID) ? [SELF_PORTRAIT_IMAGE_ID] : [];
+}

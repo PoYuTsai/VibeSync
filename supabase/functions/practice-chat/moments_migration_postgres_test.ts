@@ -19,12 +19,26 @@ const momentPostsMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const modelRateLimitMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260703170000_model_call_rate_limit.sql",
+    import.meta.url,
+  ),
+);
+const momentUsageUpgradeMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260824063344_practice_moment_reserve_usage_gate.sql",
+    import.meta.url,
+  ),
+);
 
 const PROFILE_ID = "practice_girl_007";
 const POST_DATE = "2026-08-22";
 const SLOT = 0;
 const DAY_PART = "afternoon";
 const THEME_ID = "coffee_break";
+const USER_ID = "11111111-2222-3333-4444-555555555555";
+const CONTENDER_USER_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
 /** 與 migration 內 CHECK (attempts BETWEEN 0 AND 3) 的上界一致。 */
 const MAX_MOMENT_ATTEMPTS = 3;
@@ -46,11 +60,18 @@ interface PostRow {
   theme_id: string;
 }
 
+interface UsageRow {
+  minute_count: number;
+  day_count: number;
+}
+
 async function createDatabase(): Promise<PGlite> {
   const db = new PGlite();
   // 忠實重現 Supabase 的角色與預設授權：新建物件會自動拿到 anon/authenticated
   // 的權限，所以 migration 內的 REVOKE 是否真的有效，只有在這個前提下才驗得準。
   await db.exec(`
+    CREATE SCHEMA auth;
+    CREATE TABLE auth.users (id UUID PRIMARY KEY);
     CREATE ROLE anon;
     CREATE ROLE authenticated;
     CREATE ROLE service_role;
@@ -59,18 +80,194 @@ async function createDatabase(): Promise<PGlite> {
     ALTER DEFAULT PRIVILEGES IN SCHEMA public
       GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
   `);
+  await db.exec(modelRateLimitMigration);
   await db.exec(momentPostsMigration);
+  await db.exec(momentUsageUpgradeMigration);
+  await db.query(
+    `INSERT INTO auth.users(id) VALUES ($1), ($2)`,
+    [USER_ID, CONTENDER_USER_ID],
+  );
   return db;
 }
+
+Deno.test("PostgreSQL corrective migration replaces the applied 8-arg reserve overload", async () => {
+  const db = await createDatabase();
+  try {
+    // Production already recorded 20260822120000 while this was still the
+    // service-role callable signature. Recreate that exact catalog shape:
+    // old overload present, new atomic usage-gated overload absent.
+    await db.exec(`
+      DROP FUNCTION public.reserve_practice_moment_slot(
+        TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,
+        INTEGER, INTEGER
+      );
+      CREATE FUNCTION public.reserve_practice_moment_slot(
+        p_profile_id TEXT,
+        p_post_date DATE,
+        p_slot INTEGER,
+        p_day_part TEXT,
+        p_theme_id TEXT,
+        p_generation_token TEXT,
+        p_max_attempts INTEGER DEFAULT 3,
+        p_lease_seconds INTEGER DEFAULT 120
+      )
+      RETURNS TABLE(claimed BOOLEAN, token TEXT, attempt_count SMALLINT)
+      LANGUAGE SQL
+      SECURITY DEFINER
+      SET search_path = public
+      AS $$ SELECT TRUE, p_generation_token, 1::SMALLINT $$;
+      GRANT EXECUTE ON FUNCTION public.reserve_practice_moment_slot(
+        TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, INTEGER, INTEGER
+      ) TO service_role;
+    `);
+
+    const before = await db.query<{
+      legacy_signature: string | null;
+      gated_signature: string | null;
+    }>(`
+      SELECT
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,integer,integer)'
+        )::TEXT AS legacy_signature,
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,uuid,integer,integer,boolean,integer,integer)'
+        )::TEXT AS gated_signature
+    `);
+    assert(before.rows[0].legacy_signature !== null);
+    assertEquals(before.rows[0].gated_signature, null);
+
+    await db.exec(momentUsageUpgradeMigration);
+
+    const after = await db.query<{
+      legacy_signature: string | null;
+      gated_signature: string | null;
+    }>(`
+      SELECT
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,integer,integer)'
+        )::TEXT AS legacy_signature,
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,uuid,integer,integer,boolean,integer,integer)'
+        )::TEXT AS gated_signature
+    `);
+    assertEquals(
+      after.rows[0].legacy_signature,
+      null,
+      "production 的舊 8-arg overload 必須被移除，不能繞過 per-user 限流",
+    );
+    assert(after.rows[0].gated_signature !== null);
+
+    const security = await db.query<{
+      security_definer: boolean;
+      anon_execute: boolean;
+      authenticated_execute: boolean;
+      service_execute: boolean;
+    }>(`
+      SELECT
+        p.prosecdef AS security_definer,
+        has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_execute,
+        has_function_privilege('authenticated', p.oid, 'EXECUTE')
+          AS authenticated_execute,
+        has_function_privilege('service_role', p.oid, 'EXECUTE')
+          AS service_execute
+      FROM pg_proc AS p
+      WHERE p.oid = to_regprocedure(
+        'public.reserve_practice_moment_slot(text,date,integer,text,text,text,uuid,integer,integer,boolean,integer,integer)'
+      )
+    `);
+    assertEquals(security.rows[0], {
+      security_definer: true,
+      anon_execute: false,
+      authenticated_execute: false,
+      service_execute: true,
+    });
+
+    const claim = await reserve(db, "token-after-upgrade");
+    assertEquals(claim.claimed, true);
+    assertEquals(await readUsage(db, USER_ID), {
+      minute_count: 1,
+      day_count: 1,
+    });
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL corrective migration rejects an unknown overload before DROP", async () => {
+  const db = await createDatabase();
+  try {
+    await db.exec(`
+      DROP FUNCTION public.reserve_practice_moment_slot(
+        TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,
+        INTEGER, INTEGER
+      );
+      CREATE FUNCTION public.reserve_practice_moment_slot(
+        p_profile_id TEXT,
+        p_post_date DATE,
+        p_slot INTEGER,
+        p_day_part TEXT,
+        p_theme_id TEXT,
+        p_generation_token TEXT,
+        p_unexpected_flag BOOLEAN,
+        p_max_attempts INTEGER
+      )
+      RETURNS TABLE(claimed BOOLEAN, token TEXT, attempt_count SMALLINT)
+      LANGUAGE SQL
+      SECURITY DEFINER
+      SET search_path = public
+      AS $$ SELECT TRUE, p_generation_token, 1::SMALLINT $$;
+    `);
+
+    let denied = "";
+    try {
+      await db.exec(momentUsageUpgradeMigration);
+    } catch (error) {
+      denied = String(error);
+    }
+    assert(
+      denied.includes(
+        "reserve_practice_moment_slot: unexpected overload(s)",
+      ),
+      `未知 overload 應在任何 DROP 前 fail closed，實際：${denied}`,
+    );
+
+    const catalog = await db.query<{
+      unexpected_signature: string | null;
+      gated_signature: string | null;
+    }>(`
+      SELECT
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,boolean,integer)'
+        )::TEXT AS unexpected_signature,
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,uuid,integer,integer,boolean,integer,integer)'
+        )::TEXT AS gated_signature
+    `);
+    assert(catalog.rows[0].unexpected_signature !== null);
+    assertEquals(catalog.rows[0].gated_signature, null);
+  } finally {
+    await db.close();
+  }
+});
 
 async function reserve(
   db: PGlite,
   token: string,
-  options: { slot?: number; postDate?: string; profileId?: string } = {},
+  options: {
+    slot?: number;
+    postDate?: string;
+    profileId?: string;
+    userId?: string;
+    countUserUsage?: boolean;
+    minuteLimit?: number;
+    dailyLimit?: number;
+  } = {},
 ): Promise<ReserveRow> {
   const result = await db.query<ReserveRow>(
     `SELECT claimed, token, attempt_count
-     FROM public.reserve_practice_moment_slot($1, $2::DATE, $3, $4, $5, $6)`,
+     FROM public.reserve_practice_moment_slot(
+       $1, $2::DATE, $3, $4, $5, $6, $7::UUID, $8, $9, $10
+     )`,
     [
       options.profileId ?? PROFILE_ID,
       options.postDate ?? POST_DATE,
@@ -78,6 +275,10 @@ async function reserve(
       DAY_PART,
       THEME_ID,
       token,
+      options.userId ?? USER_ID,
+      options.minuteLimit ?? 6,
+      options.dailyLimit ?? 60,
+      options.countUserUsage ?? true,
     ],
   );
   return result.rows[0];
@@ -136,6 +337,19 @@ async function countPosts(db: PGlite): Promise<number> {
   return result.rows[0].total;
 }
 
+async function readUsage(
+  db: PGlite,
+  userId: string,
+): Promise<UsageRow | null> {
+  const result = await db.query<UsageRow>(
+    `SELECT minute_count, day_count
+     FROM public.model_call_rate_limits
+     WHERE user_id = $1::UUID AND scope = 'practice_moment'`,
+    [userId],
+  );
+  return result.rows[0] ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // 六態轉移表（設計報告 §4）：一格一條
 // ---------------------------------------------------------------------------
@@ -168,6 +382,21 @@ Deno.test("PostgreSQL reserve claims a missing moment slot and counts the first 
     assertEquals(row.body, null);
     assertEquals(row.day_part, DAY_PART);
     assertEquals(row.theme_id, THEME_ID);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL test-account reserve counts the global attempt but bypasses user usage", async () => {
+  const db = await createDatabase();
+  try {
+    const claim = await reserve(db, "token-test-account", {
+      countUserUsage: false,
+    });
+    assertEquals(claim.claimed, true);
+    assertEquals(claim.attempt_count, 1);
+    assertEquals((await readPost(db)).attempts, 1);
+    assertEquals(await readUsage(db, USER_ID), null);
   } finally {
     await db.close();
   }
@@ -241,6 +470,65 @@ Deno.test("PostgreSQL reserve refuses a slot whose lease is still fresh", async 
       "租約有效時不得換發 token",
     );
     assertEquals(row.attempts, 1, "被擋下的併發請求不得消耗 attempts");
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL contested reserve does not consume the losing user's model usage", async () => {
+  const db = await createDatabase();
+  try {
+    assertEquals((await reserve(db, "token-owner")).claimed, true);
+    assertEquals(await readUsage(db, USER_ID), {
+      minute_count: 1,
+      day_count: 1,
+    });
+
+    const contender = await reserve(db, "token-contender", {
+      userId: CONTENDER_USER_ID,
+    });
+    assertEquals(contender.claimed, false);
+    assertEquals(
+      await readUsage(db, CONTENDER_USER_ID),
+      null,
+      "沒有取得 slot 就沒有模型呼叫，不得建立或遞增使用者限流計數",
+    );
+    assertEquals((await readPost(db)).attempts, 1);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL rate-limit rejection rolls back the whole slot claim", async () => {
+  const db = await createDatabase();
+  try {
+    await db.query(
+      `INSERT INTO public.model_call_rate_limits(
+         user_id, scope, minute_window_start, minute_count,
+         day_window_start, day_count
+       ) VALUES ($1::UUID, 'practice_moment', now(), 6, now(), 6)`,
+      [USER_ID],
+    );
+
+    let denied = "";
+    try {
+      await reserve(db, "token-over-user-limit");
+    } catch (error) {
+      denied = String(error);
+    }
+    assert(
+      denied.includes("MODEL_RATE_LIMITED_MINUTE"),
+      `應由同一筆 transaction 擋下限流，實際：${denied}`,
+    );
+    assertEquals(
+      await countPosts(db),
+      0,
+      "限流 RAISE 必須連首次 INSERT 與 attempts 一起 rollback",
+    );
+    assertEquals(await readUsage(db, USER_ID), {
+      minute_count: 6,
+      day_count: 6,
+    });
   } finally {
     await db.close();
   }
@@ -540,7 +828,8 @@ Deno.test("PostgreSQL keeps moment posts and RPCs away from anon and authenticat
         await db.query(
           `SELECT claimed
            FROM public.reserve_practice_moment_slot(
-             'practice_girl_001', '2026-08-22'::DATE, 0, 'morning', 'x', 'tok'
+             'practice_girl_001', '2026-08-22'::DATE, 0, 'morning', 'x', 'tok',
+             '${USER_ID}'::UUID, 6, 60, TRUE
            )`,
         );
       } catch (error) {

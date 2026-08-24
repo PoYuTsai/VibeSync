@@ -7,6 +7,13 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+// MAX_MOMENT_ATTEMPTS 是全站每日模型呼叫上限的 DB 側分母：每個
+// (profile_id, post_date) 最多 2 slot × 3 attempts。全站每日 600 還需要 Edge
+// 額外保證 profile_id 只來自 100 位角色的 allowlist、post_date 是正確台北日
+// （複審 P2-1）——那半邊的契約測試在 moments_edge_contract_test.ts。
+// PR B 起這裡直接 import TS 常數，不再留字面值；SQL↔TS 的雙向比對在
+// moments_constants_test.ts。
+import { MAX_MOMENT_ATTEMPTS } from "./moments_constants.ts";
 
 const migration = await Deno.readTextFile(
   new URL(
@@ -14,17 +21,12 @@ const migration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
-
-/**
- * 與 migration 內 CHECK (attempts BETWEEN 0 AND 3) 的上界一致，也是全站每日
- * 模型呼叫上限的 DB 側分母：每個 (profile_id, post_date) 最多 2 slot × 3 attempts。
- * 全站每日 600 需要 Edge 額外保證 profile_id 只來自 100 位角色的 allowlist
- * 且 post_date 是正確台北日（複審 P2-1；Edge 側契約測試由 PR B 補）。
- *
- * TODO(PR B)：PR B 會在 TS 側引入 MAX_MOMENT_ATTEMPTS；那時要把這裡改成
- * 直接 import 該常數做雙向比對，而不是留一份字面值。
- */
-const MAX_MOMENT_ATTEMPTS = 3;
+const usageGateUpgrade = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260824063344_practice_moment_reserve_usage_gate.sql",
+    import.meta.url,
+  ),
+);
 
 const RPC_NAMES = [
   "reserve_practice_moment_slot",
@@ -47,12 +49,16 @@ function withoutComments(sql: string): string {
 const executable = withoutComments(migration);
 
 /** 取單一函式的定義區塊（CREATE ... 到它自己的 $$; 為止）。 */
-function functionBody(name: string): string {
-  const start = migration.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
+function functionBodyFrom(sql: string, name: string): string {
+  const start = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
   assert(start >= 0, `Migration must declare public.${name}`);
-  const end = migration.indexOf("\n$$;\n", start);
+  const end = sql.indexOf("\n$$;\n", start);
   assert(end > start, `public.${name} must be terminated with $$;`);
-  return migration.slice(start, end + "\n$$;\n".length);
+  return sql.slice(start, end + "\n$$;\n".length);
+}
+
+function functionBody(name: string): string {
+  return functionBodyFrom(migration, name);
 }
 
 Deno.test("moment migration creates the posts table with the cost ceiling and no-canned guards", () => {
@@ -122,10 +128,20 @@ Deno.test("moment migration keeps every post global and free of user-derived col
   }
 });
 
-Deno.test("moment RPCs all carry the SECURITY DEFINER and grant template", () => {
+Deno.test("moment RPCs all end service-role-only and SECURITY DEFINER", () => {
   for (const name of RPC_NAMES) {
     const body = functionBody(name);
-    assert(body.includes("SECURITY DEFINER"), `${name} 必須是 SECURITY DEFINER`);
+    if (name === "reserve_practice_moment_slot") {
+      assert(
+        body.includes("SECURITY INVOKER"),
+        "reserve 建立當下不得先暴露 SECURITY DEFINER 給預設 PUBLIC EXECUTE",
+      );
+    } else {
+      assert(
+        body.includes("SECURITY DEFINER"),
+        `${name} 必須是 SECURITY DEFINER`,
+      );
+    }
     assert(
       body.includes("SET search_path = public"),
       `${name} 必須釘死 search_path`,
@@ -160,6 +176,24 @@ Deno.test("moment RPCs all carry the SECURITY DEFINER and grant template", () =>
     !/GRANT[\s\S]*?TO (anon|authenticated|PUBLIC)/.test(executable),
     "任何 RPC 都不得授權給 anon/authenticated/PUBLIC",
   );
+
+  const reserveGrant = executable.indexOf(
+    "GRANT EXECUTE ON FUNCTION public.reserve_practice_moment_slot",
+  );
+  const reserveDefiner = executable.indexOf(
+    "ALTER FUNCTION public.reserve_practice_moment_slot",
+    reserveGrant,
+  );
+  assert(reserveGrant >= 0 && reserveDefiner > reserveGrant);
+  assert(
+    executable.slice(reserveDefiner).startsWith(
+      "ALTER FUNCTION public.reserve_practice_moment_slot",
+    ),
+  );
+  assert(
+    executable.slice(reserveDefiner).includes(") SECURITY DEFINER;"),
+    "reserve 只能在 service-role ACL 完成後升成 SECURITY DEFINER",
+  );
 });
 
 Deno.test("moment migration reloads the PostgREST schema cache last", () => {
@@ -167,6 +201,75 @@ Deno.test("moment migration reloads the PostgREST schema cache last", () => {
     executable.trimEnd().endsWith("NOTIFY pgrst, 'reload schema';"),
     true,
     "檔尾必須 NOTIFY pgrst，否則新 RPC 在 PostgREST 的 schema cache 內不存在",
+  );
+});
+
+Deno.test("corrective migration upgrades the already-recorded production reserve signature", () => {
+  const normalized = withoutComments(usageGateUpgrade).replace(/\s+/g, " ");
+  const guardIndex = normalized.indexOf("DO $$");
+  const dropIndex = normalized.indexOf(
+    "DROP FUNCTION IF EXISTS public.reserve_practice_moment_slot",
+  );
+  assert(
+    guardIndex >= 0 && dropIndex > guardIndex,
+    "catalog overload guard 必須在任何 DROP 前執行",
+  );
+  const canonicalReserve = withoutComments(
+    functionBody("reserve_practice_moment_slot"),
+  ).replace(/\s+/g, " ").trim();
+  const upgradedReserve = withoutComments(
+    functionBodyFrom(usageGateUpgrade, "reserve_practice_moment_slot"),
+  ).replace(/\s+/g, " ").trim();
+  assertEquals(
+    upgradedReserve,
+    canonicalReserve,
+    "fresh install 與 production corrective migration 的 reserve 邏輯不得漂移",
+  );
+  assert(
+    normalized.includes(
+      "DROP FUNCTION IF EXISTS public.reserve_practice_moment_slot( TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, INTEGER, INTEGER );",
+    ),
+    "production 已套過的 8-arg overload 必須由新 migration version 明確移除",
+  );
+  assert(
+    normalized.includes(
+      "CREATE OR REPLACE FUNCTION public.reserve_practice_moment_slot( p_profile_id TEXT, p_post_date DATE, p_slot INTEGER, p_day_part TEXT, p_theme_id TEXT, p_generation_token TEXT, p_user_id UUID, p_minute_limit INTEGER, p_daily_limit INTEGER, p_count_user_usage BOOLEAN,",
+    ),
+  );
+  assert(
+    normalized.includes(
+      "RAISE EXCEPTION 'reserve_practice_moment_slot: unexpected overload(s): %', v_unexpected;",
+    ),
+    "未知 production overload 必須在 DROP 前 fail closed",
+  );
+  assert(
+    normalized.includes(
+      "PERFORM public.increment_model_usage( p_user_id, 'practice_moment', p_minute_limit, p_daily_limit );",
+    ),
+  );
+  assert(
+    normalized.includes(
+      "REVOKE ALL ON FUNCTION public.reserve_practice_moment_slot( TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN, INTEGER, INTEGER ) FROM PUBLIC;",
+    ),
+  );
+  assert(
+    normalized.includes(
+      "GRANT EXECUTE ON FUNCTION public.reserve_practice_moment_slot( TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN, INTEGER, INTEGER ) TO service_role;",
+    ),
+  );
+  const grantIndex = normalized.indexOf(
+    "GRANT EXECUTE ON FUNCTION public.reserve_practice_moment_slot",
+  );
+  const definerIndex = normalized.indexOf(
+    "ALTER FUNCTION public.reserve_practice_moment_slot",
+  );
+  assert(
+    grantIndex >= 0 && definerIndex > grantIndex,
+    "必須先鎖 ACL，再切 SECURITY DEFINER",
+  );
+  assertEquals(
+    normalized.trimEnd().endsWith("NOTIFY pgrst, 'reload schema';"),
+    true,
   );
 });
 
@@ -194,6 +297,36 @@ Deno.test("reserve anchors the two review-flagged pitfalls in SQL", () => {
   );
   assert(body.includes("IF v_row.attempts >= p_max_attempts THEN"));
   assert(body.includes("SET status = 'exhausted'"));
+
+  // 使用者限流與 slot attempts 必須是同一筆 transaction。只有兩個真正會
+  // claimed=true 的分支能計數；ready／exhausted／fresh lease 都不能先扣額度。
+  assertEquals(
+    [...body.matchAll(/PERFORM public\.increment_model_usage\(/g)].length,
+    2,
+  );
+  const firstClaimAt = body.indexOf("IF v_inserted = 1 THEN");
+  const firstUsageAt = body.indexOf(
+    "PERFORM public.increment_model_usage(",
+    firstClaimAt,
+  );
+  const firstReturnAt = body.indexOf("RETURN NEXT;", firstClaimAt);
+  assert(
+    firstClaimAt < firstUsageAt && firstUsageAt < firstReturnAt,
+    "首次 claimed 分支必須先在同一 transaction 計 usage 才能放行",
+  );
+  const takeoverAt = body.indexOf("-- 第 5 格：接手");
+  const takeoverUsageAt = body.indexOf(
+    "PERFORM public.increment_model_usage(",
+    takeoverAt,
+  );
+  const takeoverUpdateAt = body.indexOf(
+    "UPDATE public.practice_moment_posts AS mp",
+    takeoverAt,
+  );
+  assert(
+    takeoverAt < takeoverUsageAt && takeoverUsageAt < takeoverUpdateAt,
+    "接手分支必須把 usage 與 attempts 更新包在同一 transaction",
+  );
 });
 
 Deno.test("release never deletes a row, never writes a body, never refunds attempts", () => {
