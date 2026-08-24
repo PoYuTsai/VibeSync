@@ -7,6 +7,7 @@ import 'package:vibesync/features/practice_chat/data/repositories/practice_pendi
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_moment_post.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
 
 /// 一則送進 practice-chat 的對話 turn。
@@ -970,6 +971,34 @@ class PracticeChatApiService {
       throw PracticeGenerationFailedException('practice_collection_failed');
     }
     return ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
+  }
+
+  /// 模擬社群動態 feed（唯讀）。只回這個帳號**已抽到**的角色、**已到時間**的貼文
+  /// （可見範圍由 server 裁決，client 不過濾）。貼文是全域的，client 沒有任何
+  /// 寫入路徑。失敗丟例外，由畫面顯示重試——**絕不退回空集合假裝她們今天沒發文**
+  /// （沿用 [fetchPracticeCollection] 的既有原則）。
+  Future<List<PracticeMomentPost>> fetchPracticeMoments() async {
+    final response = await _invoke(
+      _functionName,
+      body: const {'mode': 'practice_moments'},
+    );
+    final data = response.data;
+    if (response.status != 200 || data is! Map) {
+      throw PracticeGenerationFailedException('practice_moments_failed');
+    }
+    final posts = data['posts'];
+    if (posts is! List) {
+      throw PracticeGenerationFailedException('practice_moments_failed');
+    }
+    // 單則壞掉只丟那一則：整份 feed 不該被一筆髒資料清空。排序以 server 的
+    // postedAt 遞減為準，client 自己再排一次以防後端漏排。
+    final parsed = <PracticeMomentPost>[];
+    for (final raw in posts) {
+      final post = PracticeMomentPost.fromJson(raw);
+      if (post != null) parsed.add(post);
+    }
+    parsed.sort((a, b) => b.postedAt.compareTo(a.postedAt));
+    return parsed;
   }
 
   /// 每日翻牌：server 選一位新對象並原子扣費（免費額度／付費額外）。

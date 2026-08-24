@@ -17,6 +17,7 @@ import '../../domain/entities/practice_girl_rarity.dart';
 import '../../domain/entities/practice_hint.dart';
 import '../../domain/entities/practice_learning_mode.dart';
 import '../../domain/entities/practice_message.dart';
+import '../../domain/entities/practice_moment_post.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
 import '../repositories/practice_draw_draft_store.dart';
@@ -2829,6 +2830,44 @@ class PracticeCollectionNotifier extends AsyncNotifier<Set<String>> {
 final practiceCollectionProvider =
     AsyncNotifierProvider<PracticeCollectionNotifier, Set<String>>(
   PracticeCollectionNotifier.new,
+);
+
+/// 模擬社群動態 feed。與 [PracticeCollectionNotifier] 同一套帳號歸屬語義：
+/// 綁 [practiceCollectionOwnerProvider]，換帳號／登出時整份重抓、未登入回空。
+///
+/// **v1 不做離線快取（D7）**：不碰 Hive、不留本機副本，每次進畫面打 API。
+/// 少一組「帳號歸屬與刪帳號清除」的正確性負擔（高風險區），也與
+/// [practiceCollectionProvider] 一致（2026-08-13 ADR #40 刻意收掉本機副本）。
+class PracticeMomentsNotifier extends AsyncNotifier<List<PracticeMomentPost>> {
+  @override
+  Future<List<PracticeMomentPost>> build() async {
+    final owner = await ref.watch(practiceCollectionOwnerProvider.future);
+    // 未登入不抓、也不沿用上一個帳號的 feed。
+    if (owner == null || owner.trim().isEmpty) {
+      return const <PracticeMomentPost>[];
+    }
+    return ref.read(practiceChatApiServiceProvider).fetchPracticeMoments();
+  }
+
+  /// 下拉重整／錯誤重試。失敗時 state 轉 AsyncError，畫面顯示重試
+  /// （絕不吞成空 feed 假裝她們今天沒發文）。
+  Future<void> refresh() async {
+    state = const AsyncLoading<List<PracticeMomentPost>>().copyWithPrevious(
+      state,
+    );
+    state = await AsyncValue.guard(() async {
+      final owner = await ref.read(practiceCollectionOwnerProvider.future);
+      if (owner == null || owner.trim().isEmpty) {
+        return const <PracticeMomentPost>[];
+      }
+      return ref.read(practiceChatApiServiceProvider).fetchPracticeMoments();
+    });
+  }
+}
+
+final practiceMomentsProvider =
+    AsyncNotifierProvider<PracticeMomentsNotifier, List<PracticeMomentPost>>(
+  PracticeMomentsNotifier.new,
 );
 
 /// 目前已知的解鎖集合；載入中／失敗時是空集合。畫格子用它，

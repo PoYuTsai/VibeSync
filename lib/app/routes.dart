@@ -22,6 +22,7 @@ import '../features/keyboard/presentation/screens/keyboard_setup_screen.dart';
 import '../features/opener/presentation/screens/opening_rescue_screen.dart';
 import '../features/practice_chat/presentation/screens/practice_chat_screen.dart';
 import '../features/practice_chat/presentation/screens/practice_collection_screen.dart';
+import '../features/practice_chat/presentation/screens/practice_moments_screen.dart';
 import '../features/onboarding/data/onboarding_service.dart';
 import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/subscription/presentation/screens/ai_privacy_screen.dart';
@@ -252,6 +253,11 @@ final router = GoRouter(
       builder: (context, state) => PracticeCollectionScreen(
         showOnboardingGuide: state.uri.queryParameters['guide'] == '1',
       ),
+    ),
+    // 模擬社群動態（Threads 版面）：唯讀 feed，只顯示已抽到角色的貼文。
+    GoRoute(
+      path: '/practice-moments',
+      builder: (context, state) => const PracticeMomentsScreen(),
     ),
     // literal '/profile/about-me' MUST come before '/profile/:id' so
     // 'about-me' isn't matched as a conversationId by the parametric route.
