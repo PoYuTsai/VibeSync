@@ -10,6 +10,10 @@ import {
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
+  handlePracticeMoments,
+  type MomentsSupabaseClient,
+} from "./moments_handler.ts";
+import {
   type AppliedHintDecision,
   type AppliedHintTurn,
   SEMANTIC_QUALITY_SCHEMA_VERSION,
@@ -1881,6 +1885,22 @@ export function createPracticeChatHandler(
         userId: user.id,
       });
       return jsonResponse(collectionResult.body, collectionResult.status);
+    }
+
+    if (isPlainObject(rawBody) && rawBody.mode === "practice_moments") {
+      // 模擬社群動態 feed：唯讀 + 有界補生成。與 chat/hint/debrief 完全隔離，
+      // 生成輸入只有 server profile + 日期 + 題材（隱私鐵則）。
+      const momentsResult = await handlePracticeMoments({
+        supabase: supabase as unknown as MomentsSupabaseClient,
+        userId: user.id,
+        now: deps.now?.() ?? new Date(),
+        isTestAccount: TEST_EMAILS.includes(user.email || ""),
+        deps: {
+          apiKey: deps.getEnv("DEEPSEEK_API_KEY") ?? "",
+          callDeepSeek: deps.callDeepSeek,
+        },
+      });
+      return jsonResponse(momentsResult.body, momentsResult.status);
     }
 
     if (isPlainObject(rawBody) && rawBody.mode === "draw_profile") {
