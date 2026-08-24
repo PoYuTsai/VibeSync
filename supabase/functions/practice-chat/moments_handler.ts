@@ -314,23 +314,15 @@ export async function handlePracticeMoments(args: {
     };
   }
 
-  // 6. 限流：在任何 reserve／模型呼叫之前。
-  const limit = await enforceModelRateLimit({
-    supabase,
-    userId,
-    scope: "practice_moment",
-    isTestAccount,
-  });
-  if (limit.kind === "limited") {
-    return { body: limit.payload, status: 429 };
-  }
-  if (limit.kind === "failOpen") {
-    logWarn("model_rate_limit_check_failed", {
-      user: summarizeUser(userId),
-      scope: "practice_moment",
-      error: limit.errorMessage,
-    });
-  }
+  // 6. 限流刻意「不在這裡」做，理由有兩個（2026-08-24 複審 BLOCK 1 與 2）：
+  //
+  //    a. 限流命中時不可以回 429。feed 已經讀到的既有貼文會整包消失，
+  //       與設計稿「缺貼文時顯示既有內容、不塞罐頭、不報錯」直接衝突。
+  //       正確行為是「跳過補生成」，仍回 200 + 既有 posts + generatedCount: 0。
+  //    b. 在這裡只會記 1 次，但下面最多平行打 MOMENT_FILL_MAX_PER_REQUEST 次模型，
+  //       6/min、60/day 會被放大成 18/min、180/day，宣稱的成本上界就是假的。
+  //
+  //    所以限流下放到 fillOneSlot，**每一次模型呼叫算一次**，語義才對得起數字。
 
   // 7. 取前 K 則平行補。排序：最新解鎖優先（她剛被抽到，最值得先有貼文），
   //    再用 profileId／slot 讓結果決定論。
@@ -346,7 +338,7 @@ export async function handlePracticeMoments(args: {
   const deadlineAt = startedAt + deadlineMs;
   const filled: MomentFeedPost[] = [];
   const tasks = batch.map((item) =>
-    fillOneSlot({ supabase, userId, item, deps, deadlineAt }).then((post) => {
+    fillOneSlot({ supabase, userId, item, deps, deadlineAt, isTestAccount }).then((post) => {
       if (post) filled.push(post);
     })
   );
@@ -399,9 +391,34 @@ async function fillOneSlot(opts: {
   item: MissingSlot;
   deps: MomentsHandlerDeps;
   deadlineAt: number;
+  isTestAccount: boolean;
 }): Promise<MomentFeedPost | null> {
-  const { supabase, userId, item, deps, deadlineAt } = opts;
+  const { supabase, userId, item, deps, deadlineAt, isTestAccount } = opts;
   const { girl, isoDate, plan, imageCandidates } = item;
+
+  // 複審 BLOCK 3：死線守門必須在 reserve 之前。reserve 會先把 attempts +1，
+  // 前置 DB 慢的時候可能一次模型都沒打就白白燒掉一次額度。
+  if (Date.now() >= deadlineAt) return null;
+
+  // 複審 BLOCK 2：一次模型呼叫算一次，不是一次 request 算一次。
+  // 命中就跳過這個 slot（回 null），由呼叫端維持 200 + 既有貼文。
+  const limit = await enforceModelRateLimit({
+    supabase,
+    userId,
+    scope: "practice_moment",
+    isTestAccount,
+  });
+  if (limit.kind === "limited") return null;
+  if (limit.kind === "failOpen") {
+    logWarn("model_rate_limit_check_failed", {
+      user: summarizeUser(userId),
+      scope: "practice_moment",
+      error: limit.errorMessage,
+    });
+  }
+
+  // 限流的 RPC 也要花時間，回來後再確認一次死線。
+  if (Date.now() >= deadlineAt) return null;
 
   const generationToken = (deps.randomToken ?? (() => crypto.randomUUID()))();
   const slotParams = {

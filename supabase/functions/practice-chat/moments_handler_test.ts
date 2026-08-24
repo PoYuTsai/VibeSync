@@ -532,23 +532,111 @@ Deno.test("模型逾時上限不得超過剩餘死線", async () => {
 // 限流
 // ---------------------------------------------------------------------------
 
-Deno.test("限流命中 → 429，且一次 reserve 都沒有", async () => {
+// 2026-08-24 複審 BLOCK 1：這一條原本斷言 429。那是錯的契約——429 會讓 feed
+// 已經讀到的既有貼文整包消失，與設計稿「缺貼文時顯示既有內容、不塞罐頭、不報錯」
+// 直接衝突。限流命中時正確行為是「跳過補生成」，仍回 200。
+Deno.test("限流命中 → 200，既有貼文不受影響，只是不補生成", async () => {
   const due = profilesDueAt(NOON);
+  // 兩位角色都解鎖：第一位已有貼文，第二位缺貼文且會撞上限流。
+  const withPost = due[0];
+  const withoutPost = due[1];
+  assert(
+    withoutPost && withoutPost.profileId !== withPost.profileId,
+    "這條測試需要兩位不同角色",
+  );
+
+  const time = taipeiTimeContextFor(NOON);
+  const girl = getPracticeGirlProfile(withPost.profileId)!;
+  const plan = momentPlanFor({ girl, time }).slots.find((s) =>
+    s.slot === withPost.slot
+  )!;
+
   const harness = makeHarness({
-    unlocked: [{ profileId: due[0].profileId }],
+    unlocked: [
+      { profileId: withPost.profileId },
+      { profileId: withoutPost.profileId },
+    ],
+    existing: [{
+      profile_id: withPost.profileId,
+      post_date: time.isoDate,
+      slot: withPost.slot,
+      day_part: plan.dayPart,
+      theme_id: plan.themeId,
+      body: VALID_BODY,
+      image_id: null,
+      created_at: "2026-08-24T00:00:00.000Z",
+    }],
     rateLimitError: 'unhandled exception: "MODEL_RATE_LIMITED_MINUTE"',
   });
+
   const result = await run(harness, {});
-  assertEquals(result.status, 429);
+
+  // 關鍵斷言：不是 429，而且既有貼文還在。
+  assertEquals(result.status, 200);
+  const kept = body(result).posts as { profileId: string }[];
+  assertEquals(kept.length, 1);
+  assertEquals(kept[0].profileId, withPost.profileId);
+  assertEquals(body(result).generatedCount, 0);
+  assert(
+    (body(result).pendingCount as number) > 0,
+    "缺的那則要如實回報為 pending，不能假裝沒事",
+  );
+
+  // 限流命中就不該打模型，也不該浪費 attempts。
   assertEquals(harness.modelCalls.length, 0);
   assertEquals(
     rpcNames(harness).includes("reserve_practice_moment_slot"),
     false,
   );
-  assertEquals(body(result).retryable, false);
-  // 429 絕不帶訂閱額度鍵，否則 client 會把限流誤導成升級 CTA。
+
+  // 既然不再是 429，就更不該出現訂閱額度鍵誤導成升級 CTA。
   assertEquals("monthlyLimit" in body(result), false);
   assertEquals("dailyLimit" in body(result), false);
+});
+
+// 2026-08-24 複審 BLOCK 2：6/min、60/day 必須對得起「模型呼叫次數」。
+// 舊實作在 handler 進入點只記 1 次，卻平行打最多 MOMENT_FILL_MAX_PER_REQUEST 次，
+// 實際上界被放大成 18/min、180/day。
+Deno.test("限流是每次模型呼叫記一次，不是每個 request 記一次", async () => {
+  const due = profilesDueAt(NOON);
+  const unlocked = due.slice(0, MOMENT_FILL_MAX_PER_REQUEST).map((entry) => ({
+    profileId: entry.profileId,
+  }));
+  assert(
+    unlocked.length > 1,
+    "這條測試需要一次補多於一則，才驗得出放大效果",
+  );
+
+  const harness = makeHarness({ unlocked });
+  await run(harness, {});
+
+  const usageCalls =
+    rpcNames(harness).filter((n) => n === "increment_model_usage").length;
+  assertEquals(
+    usageCalls,
+    harness.modelCalls.length,
+    `限流記了 ${usageCalls} 次但打了 ${harness.modelCalls.length} 次模型`,
+  );
+  assert(harness.modelCalls.length > 1, "抽樣要真的有補到多於一則");
+});
+
+// 2026-08-24 複審 BLOCK 3：死線守門必須在 reserve 之前。reserve 會先把 attempts +1，
+// 前置 DB 慢的時候可能一次模型都沒打就白白燒掉一次額度。
+Deno.test("死線已過 → 連 reserve 都不做，不浪費 attempts", async () => {
+  const due = profilesDueAt(NOON);
+  const harness = makeHarness({ unlocked: [{ profileId: due[0].profileId }] });
+
+  // 死線設為 0：進到 fillOneSlot 時必定已過期。
+  const result = await run(harness, { fillDeadlineMs: 0 });
+
+  assertEquals(result.status, 200);
+  assertEquals(harness.modelCalls.length, 0);
+  assertEquals(
+    rpcNames(harness).includes("reserve_practice_moment_slot"),
+    false,
+    "死線已過還去 reserve，會白燒一次 attempts",
+  );
+  assertEquals(body(result).generatedCount, 0);
 });
 
 Deno.test("限流的 RPC 一定排在第一個 reserve 之前", async () => {
