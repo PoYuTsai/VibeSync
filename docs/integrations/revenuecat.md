@@ -1,6 +1,6 @@
 # RevenueCat 整合
 
-> iOS 訂閱管理使用 RevenueCat。本檔記錄配置、產品、webhook、除錯歷史。
+> iOS 與 Android 訂閱管理使用 RevenueCat。本檔記錄配置、產品、webhook、除錯歷史。
 >
 > Common pitfall（每次部署都會重新踩到的）已搬到 CLAUDE.md；此檔是深度細節與歷史。
 
@@ -12,13 +12,29 @@
 |------|-----|
 | RevenueCat Project | VibeSync (`projd482586c`) |
 | iOS App | `app73a7f8a72d` |
-| iOS Public API Key | `appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY` |
+| iOS Public SDK Key | 由 `REVENUECAT_IOS_PUBLIC_SDK_KEY` 注入，不寫入 client fallback |
 | In-App Purchase Key | `SF836SBCKL`（P8 uploaded） |
 | App Store Connect API Key | 另建的 App Manager 權限 Key |
 | Issuer ID | `35ed1ede-ef4b-4b24-9dd1-47d777cb032b` |
 | Vendor Number | `94060817` |
 | Bundle ID | `com.poyutsai.vibesync` |
 | Team ID | `TTQHTVG8CC` |
+
+### 平台 public SDK key contract（M4）
+
+| 平台 | Flutter dart-define / GitHub secret | 合法格式 | 缺值行為 |
+|------|--------------------------------------|----------|----------|
+| iOS | `REVENUECAT_API_KEY`（workflow 由 `REVENUECAT_IOS_PUBLIC_SDK_KEY` 注入） | `appl_...` | 缺值／錯 prefix 時不 configure RevenueCat |
+| Android | `REVENUECAT_ANDROID_API_KEY` | `goog_...` | 不 configure RevenueCat，Paywall 維持不可購買 |
+
+Android 不得讀取 generic `REVENUECAT_PROD_KEY`、iOS `appl_` key、server secret 或
+hardcoded fallback。`Build & Distribute`／`Release to App Stores` 只傳入明確的
+`REVENUECAT_ANDROID_API_KEY`；目前 secret 是否存在仍是 EXT-03 的外部 gate，本 tranche
+不建立或修改 GitHub Secret。
+
+`REVENUECAT_IOS_API_KEY` 是 Supabase／Edge Functions 使用的 server key，不能注入
+Flutter client。iOS app build 若尚未建立 `REVENUECAT_IOS_PUBLIC_SDK_KEY`，應維持
+RevenueCat 未 configure；不得以 server key 或 hardcoded key 代替。
 
 ---
 
@@ -52,6 +68,32 @@
 | Essential | 800 | 120 | 分析對話 Sonnet 5 |
 
 雷達圖限 Starter / Essential 可見，Free 隱藏。
+
+### Android Play／RevenueCat 四商品 exact contract（M4）
+
+Android 只接受 current Offering 內同時符合 package、combined StoreProduct ID、
+`SubscriptionOption.id`（base plan）與 `SubscriptionOption.storeProductId` 的四列；缺一、重複或錯配時整個 Paywall fail
+closed，不使用 title／description／localized text／週期猜測，也不呼叫
+`Purchases.getProducts` 或 direct StoreProduct purchase。
+
+| Play product + base plan | RevenueCat package | App tier |
+|---|---|---|
+| `vibesync_starter:monthly` | `starter_monthly` | Starter |
+| `vibesync_starter:quarterly` | `starter_quarterly` | Starter |
+| `vibesync_essential:monthly` | `essential_monthly` | Essential |
+| `vibesync_essential:quarterly` | `essential_quarterly` | Essential |
+
+Google Play replacement 的原方案欄位一律傳 bare product ID（例如
+`vibesync_starter`），不能把 `:monthly` 一起傳入；bare／combined 只有在
+authoritative product + base-plan tuple 完整且相符時才可正規化。模式固定為：
+
+- Starter → Essential：`immediateAndChargeProratedPrice`（立即生效、按剩餘期間補差額）。
+- Essential → Starter：`deferred`（下期續訂生效）。
+- 同 tier 月繳 ↔ 季繳：`immediateWithoutProration`（方案立即切換，新價格下次續訂才扣）。
+- 缺少 authoritative Play 原方案時 fail closed，不能猜 replacement mode。
+
+Offering 名稱 `default` 與 entitlement `premium` 仍是 dashboard 候選，不是 code 自行
+認定的外部事實；M4 只依 current Offering 的四列 exact contract。
 
 ---
 
@@ -87,8 +129,8 @@
 
 ## App 內入口（目前 UX）
 
-- `恢復購買`：重新向商店 / RevenueCat 同步既有訂閱，不會再次扣款
-- `管理訂閱`：跳 App Store 管理目前方案、續訂與取消
+- `恢復購買`：重新向原商店 / RevenueCat 同步既有訂閱，不會再次扣款
+- `管理訂閱`：使用 CustomerInfo 的 store-native `managementURL` 回原購買商店管理目前方案、續訂與取消；來源不明時不猜 URL
 - 若已排程降級：App 會顯示 pending downgrade；使用者去 App Store 取消後，回 App 可點「我已取消降級，更新狀態」重新驗證
 
 ---

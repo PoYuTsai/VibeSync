@@ -17,6 +17,7 @@ import '../../../../core/services/keyboard_privacy_purge_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
+import '../../../../core/utils/platform_info.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
@@ -48,6 +49,21 @@ String formatSettingsRenewalDate(DateTime? dateTime, {DateTime? now}) {
   }
 
   return '${local.year}/${local.month}/${local.day}';
+}
+
+@visibleForTesting
+String subscriptionManagementStoreLabel({
+  required String? authoritativeStore,
+  required bool isAndroid,
+}) {
+  switch (authoritativeStore) {
+    case 'play_store':
+      return 'Google Play';
+    case 'app_store':
+      return 'App Store';
+    default:
+      return isAndroid ? 'Google Play' : 'App Store';
+  }
 }
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -148,8 +164,6 @@ class DefaultAccountLogoutActions extends AccountLogoutActions {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  static const _manageSubscriptionsUrl =
-      'https://apps.apple.com/account/subscriptions';
   static const _supportEmail = 'vibesyncaiapp@gmail.com';
   static const _pendingDowngradeRefreshTimeout = Duration(seconds: 20);
   static const _restoreTimeout = Duration(seconds: 45);
@@ -338,7 +352,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     icon: Icons.person_outline,
                     title: '關於我',
                     trailing: '教練怎麼認識你',
-                    onTap: () => context.push('/profile/about-me?source=settings'),
+                    onTap: () =>
+                        context.push('/profile/about-me?source=settings'),
                   ),
                 ],
               ),
@@ -794,7 +809,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               style: TextStyle(color: AppColors.onBackgroundPrimary),
             ),
             content: Text(
-              '如果這個 Apple ID 已經有訂閱，但 App 尚未更新狀態，可以在這裡重新同步。',
+              '如果這個商店帳號已經有訂閱，但 App 尚未更新狀態，可以在這裡重新同步。',
               style: TextStyle(color: AppColors.onBackgroundSecondary),
             ),
             actions: [
@@ -837,7 +852,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            restored ? '訂閱狀態已更新。' : '這個 Apple ID 目前沒有可恢復的有效訂閱。',
+            restored ? '訂閱狀態已更新。' : '這個商店帳號目前沒有可恢復的有效訂閱。',
           ),
           backgroundColor: restored ? AppColors.success : null,
         ),
@@ -846,7 +861,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (!context.mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('App Store 恢復購買逾時，請稍後再試。')),
+        SnackBar(
+          content: Text(
+            '${isAndroidPlatform ? 'Google Play' : 'App Store'} 恢復購買逾時，請稍後再試。',
+          ),
+        ),
       );
     } catch (error) {
       if (!context.mounted) return;
@@ -1243,19 +1262,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _openManageSubscriptions() async {
-    final openedNative =
-        await RevenueCatService.showNativeManageSubscriptions();
+    final subscription = ref.read(subscriptionProvider);
+    final expectedStore = subscription.activeStore;
+    final storeName = subscriptionManagementStoreLabel(
+      authoritativeStore: expectedStore,
+      isAndroid: isAndroidPlatform,
+    );
+    final openedNative = await RevenueCatService.showNativeManageSubscriptions(
+      expectedStore: expectedStore,
+    );
     if (openedNative) {
       return;
     }
 
-    final managementUrl =
-        await RevenueCatService.getManagementUrl() ?? _manageSubscriptionsUrl;
+    final managementUrl = await RevenueCatService.getManagementUrl(
+      expectedStore: expectedStore,
+    );
+    if (managementUrl == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('目前尚未確認訂閱來源，請先恢復／同步訂閱後再管理。'),
+          ),
+        );
+      }
+      return;
+    }
     final launched = await LinkLaunchService.open(managementUrl);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('目前無法開啟 App Store 訂閱管理。'),
+        SnackBar(
+          content: Text('目前無法開啟 $storeName 訂閱管理。'),
         ),
       );
     }
@@ -1264,6 +1301,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _refreshAfterExternalDowngradeCancel() async {
     if (_isRefreshingPendingDowngrade) return;
 
+    final subscription = ref.read(subscriptionProvider);
+    final storeName = subscriptionManagementStoreLabel(
+      authoritativeStore: subscription.activeStore,
+      isAndroid: isAndroidPlatform,
+    );
     setState(() => _isRefreshingPendingDowngrade = true);
     try {
       final didClear = await ref
@@ -1275,7 +1317,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            didClear ? '已重新同步訂閱狀態。' : 'App Store 仍顯示降級排程，請確認取消後稍後再試。',
+            didClear ? '已重新同步訂閱狀態。' : '$storeName 仍顯示降級排程，請確認取消後稍後再試。',
           ),
           backgroundColor: didClear ? AppColors.success : null,
         ),

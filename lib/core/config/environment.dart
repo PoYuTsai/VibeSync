@@ -105,12 +105,13 @@ class AppConfig {
     }
   }
 
-  /// RevenueCat API Key (iOS)
-  /// Dev/Staging 使用同一個 key，Production 可透過環境變數覆蓋
-  static const _defaultRevenueCatPublicKey = 'appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY';
+  /// RevenueCat API Key (iOS).
+  ///
+  /// The build must explicitly inject this public SDK key.  There is no
+  /// checked-in fallback: a missing or wrongly-prefixed value disables the
+  /// RevenueCat client instead of silently selecting another environment.
   static const _revenueCatApiKey = String.fromEnvironment(
     'REVENUECAT_API_KEY',
-    defaultValue: _defaultRevenueCatPublicKey,
   );
   static const _revenueCatSandboxKey = String.fromEnvironment(
     'REVENUECAT_SANDBOX_KEY',
@@ -118,24 +119,28 @@ class AppConfig {
   static const _revenueCatProdKey = String.fromEnvironment(
     'REVENUECAT_PROD_KEY',
   );
+  // Android has its own public SDK key namespace.  Do not fall back to any
+  // generic or iOS key here: an absent Android key intentionally disables the
+  // RevenueCat client until the Android Console setup is ready.
+  static const _revenueCatAndroidPublicSdkKey = String.fromEnvironment(
+    'REVENUECAT_ANDROID_API_KEY',
+  );
 
   static bool _isRevenueCatPublicSdkKey(String key) {
-    return key.trim().startsWith('appl_');
+    final trimmed = key.trim();
+    return trimmed.startsWith('appl_') && trimmed.length > 'appl_'.length;
   }
 
-  @visibleForTesting
-  static String selectRevenueCatPublicSdkKey({
+  static String? selectRevenueCatPublicSdkKey({
     required bool isProduction,
     required String revenueCatApiKey,
     required String revenueCatSandboxKey,
     required String revenueCatProdKey,
-    String fallback = _defaultRevenueCatPublicKey,
   }) {
     final candidates = [
       if (isProduction) revenueCatProdKey,
       if (!isProduction) revenueCatSandboxKey,
       revenueCatApiKey,
-      fallback,
     ];
 
     for (final candidate in candidates) {
@@ -145,15 +150,54 @@ class AppConfig {
       }
     }
 
-    return fallback;
+    return null;
   }
 
-  static String get revenueCatApiKey {
+  static String? get revenueCatApiKey {
     return selectRevenueCatPublicSdkKey(
       isProduction: isProduction,
       revenueCatApiKey: _revenueCatApiKey,
       revenueCatSandboxKey: _revenueCatSandboxKey,
       revenueCatProdKey: _revenueCatProdKey,
+    );
+  }
+
+  /// Android RevenueCat public SDK key.
+  ///
+  /// This getter is nullable by design.  Android must not inherit the iOS
+  /// `appl_` key, the generic `REVENUECAT_PROD_KEY`, or a server secret while
+  /// the Play/RevenueCat setup is incomplete.
+  static String? get revenueCatAndroidPublicSdkKey {
+    return selectRevenueCatPublicSdkKeyForPlatform(
+      isAndroid: true,
+      androidPublicSdkKey: _revenueCatAndroidPublicSdkKey,
+      isProduction: isProduction,
+      revenueCatApiKey: _revenueCatApiKey,
+      revenueCatSandboxKey: _revenueCatSandboxKey,
+      revenueCatProdKey: _revenueCatProdKey,
+    );
+  }
+
+  static String? selectRevenueCatPublicSdkKeyForPlatform({
+    required bool isAndroid,
+    String androidPublicSdkKey = '',
+    required bool isProduction,
+    required String revenueCatApiKey,
+    required String revenueCatSandboxKey,
+    required String revenueCatProdKey,
+  }) {
+    if (isAndroid) {
+      final trimmed = androidPublicSdkKey.trim();
+      return trimmed.startsWith('goog_') && trimmed.length > 'goog_'.length
+          ? trimmed
+          : null;
+    }
+
+    return selectRevenueCatPublicSdkKey(
+      isProduction: isProduction,
+      revenueCatApiKey: revenueCatApiKey,
+      revenueCatSandboxKey: revenueCatSandboxKey,
+      revenueCatProdKey: revenueCatProdKey,
     );
   }
 

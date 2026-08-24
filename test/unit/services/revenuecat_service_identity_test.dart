@@ -65,6 +65,7 @@ void main() {
       });
 
       RevenueCatService.debugIsIOSPlatformOverride = true;
+      RevenueCatService.debugIosPublicSdkKeyOverride = 'appl_test_public_key';
       await RevenueCatService.initialize(appUserId: 'supabase-user-id');
       await RevenueCatService.logout();
 
@@ -79,6 +80,22 @@ void main() {
       expect(calls.map((call) => call.method), isNot(contains('logOut')));
     },
   );
+
+  test('Android missing goog key does not configure with the iOS key',
+      () async {
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return null;
+    });
+
+    RevenueCatService.debugIsAndroidPlatformOverride = true;
+    await RevenueCatService.initialize(appUserId: 'android-user');
+
+    expect(calls.map((call) => call.method), isNot(contains('setupPurchases')));
+    expect(RevenueCatService.isInitialized, isFalse);
+  });
 
   test('debug snapshot exposes RevenueCat identity and paid entitlement',
       () async {
@@ -99,6 +116,7 @@ void main() {
     });
 
     RevenueCatService.debugIsIOSPlatformOverride = true;
+    RevenueCatService.debugIosPublicSdkKeyOverride = 'appl_test_public_key';
     await RevenueCatService.initialize(appUserId: 'supabase-user-id');
 
     final snapshot = await RevenueCatService.buildDebugSnapshot();
@@ -132,6 +150,7 @@ void main() {
     });
 
     RevenueCatService.debugIsIOSPlatformOverride = true;
+    RevenueCatService.debugIosPublicSdkKeyOverride = 'appl_test_public_key';
     await RevenueCatService.initialize(appUserId: 'current-user-id');
 
     final customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
@@ -164,6 +183,7 @@ void main() {
     });
 
     RevenueCatService.debugIsIOSPlatformOverride = true;
+    RevenueCatService.debugIosPublicSdkKeyOverride = 'appl_test_public_key';
     await RevenueCatService.initialize(appUserId: 'current-user-id');
 
     final customerInfo =
@@ -174,5 +194,43 @@ void main() {
     expect(customerInfo, isNull);
     expect(calls, isNot(contains('syncPurchases')));
     expect(calls, isNot(contains('getCustomerInfo')));
+  });
+
+  test('management URL stays on the authoritative original store', () {
+    expect(
+      RevenueCatService.validateManagementUrlForStore(
+        'https://apps.apple.com/account/subscriptions',
+        store: 'app_store',
+      ),
+      'https://apps.apple.com/account/subscriptions',
+    );
+    expect(
+      RevenueCatService.validateManagementUrlForStore(
+        'https://play.google.com/store/account/subscriptions',
+        store: 'play_store',
+      ),
+      'https://play.google.com/store/account/subscriptions',
+    );
+    expect(
+      RevenueCatService.validateManagementUrlForStore(
+        'https://play.google.com/store/account/subscriptions',
+        store: 'app_store',
+      ),
+      isNull,
+    );
+    expect(
+      RevenueCatService.validateManagementUrlForStore(
+        'https://apps.apple.com/account/subscriptions',
+        store: 'play_store',
+      ),
+      isNull,
+    );
+    expect(
+      RevenueCatService.validateManagementUrlForStore(
+        'https://example.invalid/manage',
+        store: 'play_store',
+      ),
+      isNull,
+    );
   });
 }

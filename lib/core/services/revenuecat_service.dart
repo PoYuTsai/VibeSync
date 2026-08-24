@@ -12,6 +12,12 @@ class RevenueCatService {
   static bool _isInitialized = false;
   @visibleForTesting
   static bool? debugIsIOSPlatformOverride;
+  @visibleForTesting
+  static bool? debugIsAndroidPlatformOverride;
+  @visibleForTesting
+  static String? debugIosPublicSdkKeyOverride;
+  @visibleForTesting
+  static String? debugAndroidPublicSdkKeyOverride;
 
   static const MethodChannel _subscriptionManagementChannel = MethodChannel(
     'vibesync/subscription_management',
@@ -28,23 +34,44 @@ class RevenueCatService {
       return;
     }
 
-    final apiKey = AppConfig.revenueCatApiKey;
-    if (apiKey.isEmpty) {
-      debugPrint('RevenueCat: API key not configured');
-      return;
-    }
-
     await Purchases.setLogLevel(LogLevel.debug);
 
     final cleanedAppUserId = appUserId?.trim();
     PurchasesConfiguration configuration;
     final isIOS = debugIsIOSPlatformOverride ?? isIOSPlatform;
+    final isAndroid = debugIsAndroidPlatformOverride ?? isAndroidPlatform;
     if (isIOS) {
+      final apiKey = debugIosPublicSdkKeyOverride == null
+          ? AppConfig.revenueCatApiKey
+          : AppConfig.selectRevenueCatPublicSdkKey(
+              isProduction: false,
+              revenueCatApiKey: debugIosPublicSdkKeyOverride!,
+              revenueCatSandboxKey: '',
+              revenueCatProdKey: '',
+            );
+      if (apiKey == null || apiKey.isEmpty) {
+        debugPrint('RevenueCat: iOS public SDK key not configured');
+        return;
+      }
       configuration = PurchasesConfiguration(apiKey);
-    } else if (isAndroidPlatform) {
-      // Android 暫不支援，之後再加
-      debugPrint('RevenueCat: Android not yet configured');
-      return;
+    } else if (isAndroid) {
+      final apiKey = debugAndroidPublicSdkKeyOverride == null
+          ? AppConfig.revenueCatAndroidPublicSdkKey
+          : AppConfig.selectRevenueCatPublicSdkKeyForPlatform(
+              isAndroid: true,
+              androidPublicSdkKey: debugAndroidPublicSdkKeyOverride!,
+              isProduction: false,
+              revenueCatApiKey: '',
+              revenueCatSandboxKey: '',
+              revenueCatProdKey: '',
+            );
+      if (apiKey == null || apiKey.isEmpty) {
+        debugPrint(
+          'RevenueCat: Android public SDK key not configured; billing remains unavailable',
+        );
+        return;
+      }
+      configuration = PurchasesConfiguration(apiKey);
     } else {
       debugPrint('RevenueCat: Unsupported platform');
       return;
@@ -70,6 +97,9 @@ class RevenueCatService {
   static void debugResetForTesting() {
     _isInitialized = false;
     debugIsIOSPlatformOverride = null;
+    debugIsAndroidPlatformOverride = null;
+    debugIosPublicSdkKeyOverride = null;
+    debugAndroidPublicSdkKeyOverride = null;
   }
 
   /// 關聯用戶 ID（登入後呼叫）
@@ -107,55 +137,27 @@ class RevenueCatService {
     }
   }
 
-  /// Fetches App Store subscription products directly by product id.
-  /// This is a safety net when RevenueCat Offerings are temporarily empty or
-  /// misconfigured, so the paywall can still show prices and start purchase.
-  static Future<List<StoreProduct>> getSubscriptionProducts(
-    List<String> productIds,
-  ) async {
-    if (!_isInitialized) return const [];
-
-    try {
-      return await Purchases.getProducts(
-        productIds,
-        productCategory: ProductCategory.subscription,
-      );
-    } catch (e) {
-      debugPrint('RevenueCat getProducts error: $e');
-      return const [];
-    }
-  }
-
   /// 購買訂閱
   /// 回傳 CustomerInfo，購買失敗會拋出例外
-  static Future<CustomerInfo> purchase(Package package) async {
+  static Future<CustomerInfo> purchase(
+    Package package, {
+    GoogleProductChangeInfo? googleProductChangeInfo,
+  }) async {
     if (!_isInitialized) {
       throw Exception('RevenueCat not initialized');
     }
 
     try {
-      final result = await Purchases.purchase(PurchaseParams.package(package));
+      final result = await Purchases.purchase(
+        PurchaseParams.package(
+          package,
+          googleProductChangeInfo: googleProductChangeInfo,
+        ),
+      );
       debugPrint('RevenueCat: Purchase successful');
       return result.customerInfo;
     } catch (e) {
       debugPrint('RevenueCat purchase error: $e');
-      rethrow;
-    }
-  }
-
-  /// Purchases a store product directly when no RevenueCat Package is present.
-  static Future<CustomerInfo> purchaseStoreProduct(StoreProduct product) async {
-    if (!_isInitialized) {
-      throw Exception('RevenueCat not initialized');
-    }
-
-    try {
-      final result =
-          await Purchases.purchase(PurchaseParams.storeProduct(product));
-      debugPrint('RevenueCat: Store product purchase successful');
-      return result.customerInfo;
-    } catch (e) {
-      debugPrint('RevenueCat store product purchase error: $e');
       rethrow;
     }
   }
@@ -476,15 +478,47 @@ class RevenueCatService {
     return best;
   }
 
+  /// Validates a store-native management URL without crossing stores.
+  @visibleForTesting
+  static String? validateManagementUrlForStore(
+    String? rawUrl, {
+    required String store,
+  }) {
+    if (rawUrl == null || rawUrl.trim().isEmpty) return null;
+
+    final uri = Uri.tryParse(rawUrl.trim());
+    if (uri == null || uri.scheme != 'https' || uri.userInfo.isNotEmpty) {
+      return null;
+    }
+
+    final host = uri.host.toLowerCase();
+    final allowed = switch (store) {
+      'app_store' => host == 'apps.apple.com' || host == 'itunes.apple.com',
+      'play_store' => host == 'play.google.com',
+      _ => false,
+    };
+    return allowed ? uri.toString() : null;
+  }
+
   /// Returns the store-native subscription management URL when available.
-  static Future<String?> getManagementUrl() async {
+  ///
+  /// The caller must provide the server-authoritative source store. Without
+  /// it, returning a guessed App Store/Play URL could expose or cancel the
+  /// wrong subscription.
+  static Future<String?> getManagementUrl({String? expectedStore}) async {
+    if (expectedStore == null || expectedStore.trim().isEmpty) return null;
     final customerInfo = await getCustomerInfo();
-    return customerInfo?.managementURL;
+    return validateManagementUrlForStore(
+      customerInfo?.managementURL,
+      store: expectedStore,
+    );
   }
 
   /// Opens the platform-native subscription management UI when supported.
-  static Future<bool> showNativeManageSubscriptions() async {
-    if (kIsWeb || !isIOSPlatform) {
+  static Future<bool> showNativeManageSubscriptions(
+      {String? expectedStore}) async {
+    final isIOS = debugIsIOSPlatformOverride ?? isIOSPlatform;
+    if (kIsWeb || !isIOS || expectedStore != 'app_store') {
       return false;
     }
 

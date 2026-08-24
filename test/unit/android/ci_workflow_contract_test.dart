@@ -11,18 +11,32 @@ void main() {
   final release = loadWorkflow('.github/workflows/release.yml');
 
   group('CI-01 distribute workflow 結構契約', () {
-    test('build-android 只依賴 flutter-gate，且不含 iOS RevenueCat key', () {
+    test('build-android 只依賴 flutter-gate，且只接明確 Android key', () {
       final job = workflowJob(distribute, 'build-android');
       expect(jobNeeds(job), ['flutter-gate']);
       for (final scalar in yamlScalars(job)) {
         expect(scalar.contains('appl_'), isFalse,
             reason: 'Android build 不得出現 iOS RevenueCat key');
-        expect(scalar.contains('REVENUECAT'), isFalse);
+        expect(scalar.contains('REVENUECAT_PROD_KEY'), isFalse);
+        expect(scalar.contains('REVENUECAT_API_KEY'), isFalse);
       }
+      final runs = jobSteps(distribute, 'build-android').map(stepRun).toList();
+      expect(
+        runs.where(
+            (run) => run.contains('--dart-define=REVENUECAT_ANDROID_API_KEY=')),
+        hasLength(2),
+        reason: 'APK 與 AAB 都要只傳明確 Android public key（可為空值）',
+      );
+      expect(
+        yamlScalars(job)
+            .where((scalar) => scalar.contains('REVENUECAT_ANDROID_API_KEY')),
+        isNotEmpty,
+      );
     });
 
     test('flutter-gate 不含 iOS keyboard contract；獨立 gate 只擋 build-ios', () {
-      for (final scalar in yamlScalars(workflowJob(distribute, 'flutter-gate'))) {
+      for (final scalar
+          in yamlScalars(workflowJob(distribute, 'flutter-gate'))) {
         expect(scalar.contains('check-keyboard-contract'), isFalse);
       }
       final iosGate = workflowJob(distribute, 'ios-keyboard-gate');
@@ -31,7 +45,8 @@ void main() {
         isTrue,
       );
       final buildIos = workflowJob(distribute, 'build-ios');
-      expect(jobNeeds(buildIos), containsAll(['flutter-gate', 'ios-keyboard-gate']));
+      expect(jobNeeds(buildIos),
+          containsAll(['flutter-gate', 'ios-keyboard-gate']));
 
       // gate 的 if 必須與 build-ios 完全一致：手動 platform=android 時
       // gate 直接 skip，不會因 iOS gate 執行而讓整個 workflow 紅
@@ -48,6 +63,22 @@ void main() {
         jobNeeds(workflowJob(distribute, 'build-android')),
         isNot(contains('ios-keyboard-gate')),
         reason: 'Android 不得被 iOS keyboard gate 擋住',
+      );
+    });
+
+    test('build-ios 明確注入 iOS public key，不依賴 client fallback', () {
+      final job = workflowJob(distribute, 'build-ios');
+      expect(
+        yamlScalars(job).any((scalar) =>
+            scalar.contains('REVENUECAT_IOS_PUBLIC_SDK_KEY') &&
+            scalar.contains('secrets.REVENUECAT_IOS_PUBLIC_SDK_KEY')),
+        isTrue,
+      );
+      final runs = jobSteps(distribute, 'build-ios').map(stepRun).toList();
+      expect(
+        runs.any((run) => run.contains(
+            r'--dart-define=REVENUECAT_API_KEY="$REVENUECAT_IOS_PUBLIC_SDK_KEY"')),
+        isTrue,
       );
     });
 
@@ -128,7 +159,8 @@ void main() {
           reason: '指紋要從 step outputs 流進 artifact 驗簽步驟');
 
       final artifactSteps = steps
-          .where((s) => stepRun(s).contains('check-android-signing.sh artifact'))
+          .where(
+              (s) => stepRun(s).contains('check-android-signing.sh artifact'))
           .toList();
       expect(artifactSteps, hasLength(2), reason: 'APK 與 AAB 各一');
       for (final step in artifactSteps) {
@@ -241,13 +273,24 @@ void main() {
       expect(trigger.keys.map((k) => k.toString()), ['workflow_dispatch']);
     });
 
-    test('release-android 不被 iOS 前置擋，且不含 iOS RevenueCat key', () {
+    test('release-android 不被 iOS 前置擋，且只接明確 Android key', () {
       final job = workflowJob(release, 'release-android');
       expect(jobNeeds(job), ['production-preflight', 'flutter-gate']);
       for (final scalar in yamlScalars(job)) {
         expect(scalar.contains('appl_'), isFalse);
-        expect(scalar.contains('REVENUECAT'), isFalse);
+        expect(scalar.contains('REVENUECAT_PROD_KEY'), isFalse);
+        expect(scalar.contains('REVENUECAT_API_KEY'), isFalse);
       }
+      expect(
+        yamlScalars(job)
+            .where((scalar) => scalar.contains('REVENUECAT_ANDROID_API_KEY')),
+        isNotEmpty,
+      );
+      expect(
+        jobSteps(release, 'release-android').map(stepRun).where(
+            (run) => run.contains('--dart-define=REVENUECAT_ANDROID_API_KEY=')),
+        hasLength(1),
+      );
     });
 
     test('共同 preflight 不含 iOS keyboard／RevenueCat 檢查', () {
@@ -259,6 +302,43 @@ void main() {
       expect(
         jobNeeds(workflowJob(release, 'release-ios')),
         containsAll(['production-preflight', 'ios-preflight', 'flutter-gate']),
+      );
+    });
+
+    test('release-ios 明確注入 iOS public key，不依賴 client fallback', () {
+      final job = workflowJob(release, 'release-ios');
+      expect(
+        yamlScalars(job).any((scalar) =>
+            scalar.contains('REVENUECAT_IOS_PUBLIC_SDK_KEY') &&
+            scalar.contains('secrets.REVENUECAT_IOS_PUBLIC_SDK_KEY')),
+        isTrue,
+      );
+      final runs = jobSteps(release, 'release-ios').map(stepRun).toList();
+      expect(
+        runs.any((run) => run.contains(
+            r'--dart-define=REVENUECAT_API_KEY="$REVENUECAT_IOS_PUBLIC_SDK_KEY"')),
+        isTrue,
+      );
+
+      final smokeStep = jobSteps(release, 'ios-preflight').singleWhere(
+        (step) => stepRun(step).contains('check-revenuecat-secret-smoke.ps1'),
+      );
+      final smokeEnv = smokeStep['env'] as YamlMap;
+      expect(
+        smokeEnv['REVENUECAT_IOS_API_KEY'].toString(),
+        contains('secrets.REVENUECAT_IOS_API_KEY'),
+        reason: 'server smoke 必須繼續使用 Edge Functions server key',
+      );
+      expect(
+        smokeEnv.containsKey('REVENUECAT_IOS_PUBLIC_SDK_KEY'),
+        isFalse,
+        reason: 'server smoke 不得改吃 client public SDK key',
+      );
+      expect(
+        yamlScalars(job)
+            .any((scalar) => scalar.contains('REVENUECAT_IOS_API_KEY')),
+        isFalse,
+        reason: 'iOS client build 不得注入 server key',
       );
     });
 
@@ -281,19 +361,20 @@ void main() {
         isTrue,
       );
       final artifactSteps = steps
-          .where((s) => stepRun(s).contains('check-android-signing.sh artifact'))
+          .where(
+              (s) => stepRun(s).contains('check-android-signing.sh artifact'))
           .toList();
       expect(artifactSteps, hasLength(1));
       expect(
-        ((artifactSteps.single['env'] as YamlMap?)?['ANDROID_KEYSTORE_SHA256'] ??
+        ((artifactSteps.single['env']
+                    as YamlMap?)?['ANDROID_KEYSTORE_SHA256'] ??
                 '')
             .toString(),
         contains('steps.keystore-gate.outputs.keystore_sha256'),
       );
     });
 
-    test('Android fastlane 走釘版 Gemfile＋bundle exec，無 ad-hoc gem install',
-        () {
+    test('Android fastlane 走釘版 Gemfile＋bundle exec，無 ad-hoc gem install', () {
       final gemfile = readRepoFile('android/Gemfile');
       expect(gemfile, contains('gem "fastlane", "2.238.0"'));
 

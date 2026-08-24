@@ -312,6 +312,32 @@ void main() {
     });
   });
 
+  group('subscriptionManagementStoreLabel', () {
+    test('uses authoritative store and platform fallback', () {
+      expect(
+        subscriptionManagementStoreLabel(
+          authoritativeStore: 'play_store',
+          isAndroid: false,
+        ),
+        'Google Play',
+      );
+      expect(
+        subscriptionManagementStoreLabel(
+          authoritativeStore: 'app_store',
+          isAndroid: true,
+        ),
+        'App Store',
+      );
+      expect(
+        subscriptionManagementStoreLabel(
+          authoritativeStore: null,
+          isAndroid: true,
+        ),
+        'Google Play',
+      );
+    });
+  });
+
   group('SettingsScreen', () {
     testWidgets('refreshes subscription usage snapshot on entry',
         (tester) async {
@@ -947,5 +973,4 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     });
   });
-
 }

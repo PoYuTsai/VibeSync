@@ -95,16 +95,16 @@ void main() {
       );
     });
 
-    test('RevenueCat key selection rejects server keys in production', () {
+    test('RevenueCat iOS key selection fails closed without a valid appl key',
+        () {
       final selected = AppConfig.selectRevenueCatPublicSdkKey(
         isProduction: true,
         revenueCatApiKey: 'sk_live_should_not_enter_app',
         revenueCatSandboxKey: 'sk_sandbox_should_not_enter_app',
         revenueCatProdKey: 'sk_prod_should_not_enter_app',
-        fallback: 'appl_fallback_public_key',
       );
 
-      expect(selected, 'appl_fallback_public_key');
+      expect(selected, isNull);
     });
 
     test('RevenueCat key selection prefers valid prod public key', () {
@@ -113,7 +113,6 @@ void main() {
         revenueCatApiKey: 'appl_generic_public_key',
         revenueCatSandboxKey: 'appl_sandbox_public_key',
         revenueCatProdKey: 'appl_prod_public_key',
-        fallback: 'appl_fallback_public_key',
       );
 
       expect(selected, 'appl_prod_public_key');
@@ -127,10 +126,57 @@ void main() {
         revenueCatApiKey: 'appl_generic_public_key',
         revenueCatSandboxKey: 'appl_sandbox_public_key',
         revenueCatProdKey: 'appl_prod_public_key',
-        fallback: 'appl_fallback_public_key',
       );
 
       expect(selected, 'appl_sandbox_public_key');
+    });
+
+    test('RevenueCat Android key selection only accepts explicit goog key', () {
+      final selected = AppConfig.selectRevenueCatPublicSdkKeyForPlatform(
+        isAndroid: true,
+        isProduction: true,
+        androidPublicSdkKey: 'goog_android_public_key',
+        revenueCatApiKey: 'appl_ios_public_key',
+        revenueCatSandboxKey: 'appl_ios_sandbox_key',
+        revenueCatProdKey: 'appl_ios_prod_key',
+      );
+
+      expect(selected, 'goog_android_public_key');
+    });
+
+    test(
+        'RevenueCat Android key rejects iOS, generic, server, and missing keys',
+        () {
+      for (final invalid in [
+        '',
+        'appl_ios_public_key',
+        'sk_live_server_key',
+        'generic_public_key',
+      ]) {
+        final selected = AppConfig.selectRevenueCatPublicSdkKeyForPlatform(
+          isAndroid: true,
+          isProduction: true,
+          androidPublicSdkKey: invalid,
+          revenueCatApiKey: 'appl_ios_public_key',
+          revenueCatSandboxKey: 'appl_ios_sandbox_key',
+          revenueCatProdKey: 'appl_ios_prod_key',
+        );
+
+        expect(selected, isNull, reason: 'unexpected Android key: $invalid');
+      }
+    });
+
+    test('Android selector never falls back to generic or iOS inputs', () {
+      final selected = AppConfig.selectRevenueCatPublicSdkKeyForPlatform(
+        isAndroid: true,
+        isProduction: true,
+        androidPublicSdkKey: '',
+        revenueCatApiKey: 'appl_ios_public_key',
+        revenueCatSandboxKey: 'appl_ios_sandbox_key',
+        revenueCatProdKey: 'goog_wrongly_generic_key',
+      );
+
+      expect(selected, isNull);
     });
   });
 

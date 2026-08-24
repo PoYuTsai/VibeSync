@@ -157,12 +157,13 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: ./tools/preflight/check-android-signing.sh keystore android/app/keystore.jks
 
-      # CI-01：Android 不注入 iOS RevenueCat key；Android RevenueCat 維持
-      # 休眠（程式端 isAndroidPlatform 早退），BILL-02 才接 goog_ key
+      # BILL-02：Android 只接明確的 Android public SDK key。此 secret 尚未
+      # 建立時傳入空值，App 會 fail closed；不得改用 iOS 或 generic key。
       - name: Build APK (Production backend)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
+          REVENUECAT_ANDROID_API_KEY: ${{ secrets.REVENUECAT_ANDROID_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           flutter build apk --release \
@@ -170,6 +171,7 @@ jobs:
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
+            --dart-define=REVENUECAT_ANDROID_API_KEY="$REVENUECAT_ANDROID_API_KEY" \
             --dart-define=SENTRY_DSN="$SENTRY_DSN"
 
       # AND-02 parser 回歸測試（純 fixture、不需 SDK）：擋 run 32544433425
@@ -188,6 +190,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
+          REVENUECAT_ANDROID_API_KEY: ${{ secrets.REVENUECAT_ANDROID_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           flutter build appbundle --release \
@@ -195,6 +198,7 @@ jobs:
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
+            --dart-define=REVENUECAT_ANDROID_API_KEY="$REVENUECAT_ANDROID_API_KEY" \
             --dart-define=SENTRY_DSN="$SENTRY_DSN"
 
       - name: Verify release AAB signing (AND-02 gate)
@@ -420,7 +424,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
-          REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
+          REVENUECAT_IOS_PUBLIC_SDK_KEY: ${{ secrets.REVENUECAT_IOS_PUBLIC_SDK_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           rm -rf build/ios/ipa build/ios/archive
@@ -429,7 +433,7 @@ jobs:
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
-            --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
+            --dart-define=REVENUECAT_API_KEY="$REVENUECAT_IOS_PUBLIC_SDK_KEY" \
             --dart-define=SENTRY_DSN="$SENTRY_DSN" \
             --export-options-plist=ios/ExportOptions.plist
 

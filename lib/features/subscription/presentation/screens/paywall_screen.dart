@@ -16,6 +16,7 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
+import '../../../../core/utils/platform_info.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -24,6 +25,7 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/brand/one_shot_comet_border.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
 import '../../data/providers/subscription_providers.dart';
+import '../../domain/services/subscription_product_contract.dart';
 import '../../domain/services/quarterly_savings.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 import '../subscription_diagnostics_gate.dart';
@@ -39,8 +41,6 @@ class PaywallScreen extends ConsumerStatefulWidget {
 class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   static const _privacyUrl = 'https://vibesyncai.app/privacy';
   static const _termsUrl = 'https://vibesyncai.app/terms';
-  static const _manageSubscriptionsUrl =
-      'https://apps.apple.com/account/subscriptions';
   static const _purchaseTimeout = Duration(seconds: 45);
   static const _planRefreshTimeout = Duration(seconds: 20);
   static const _postSuccessRefreshTimeout = Duration(seconds: 20);
@@ -78,16 +78,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       SubscriptionTierHelper.essential,
     );
     final starterQuarterlyDiscount = quarterlySavingsLabel(
-      monthly: subscription.starterMonthlyPackage?.storeProduct ??
-          subscription.starterMonthlyStoreProduct,
-      quarterly: subscription.starterQuarterlyPackage?.storeProduct ??
-          subscription.starterQuarterlyStoreProduct,
+      monthly: subscription.starterMonthlyPackage?.storeProduct,
+      quarterly: subscription.starterQuarterlyPackage?.storeProduct,
     );
     final essentialQuarterlyDiscount = quarterlySavingsLabel(
-      monthly: subscription.essentialMonthlyPackage?.storeProduct ??
-          subscription.essentialMonthlyStoreProduct,
-      quarterly: subscription.essentialQuarterlyPackage?.storeProduct ??
-          subscription.essentialQuarterlyStoreProduct,
+      monthly: subscription.essentialMonthlyPackage?.storeProduct,
+      quarterly: subscription.essentialQuarterlyPackage?.storeProduct,
     );
     return [
       _PaywallOption(
@@ -98,7 +94,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         badge: '入門',
         discount: null,
         package: subscription.starterMonthlyPackage,
-        storeProduct: subscription.starterMonthlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
           '五種風格全開 + 完整回覆比較',
@@ -114,7 +109,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         badge: '入門',
         discount: starterQuarterlyDiscount,
         package: subscription.starterQuarterlyPackage,
-        storeProduct: subscription.starterQuarterlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
           '五種風格全開 + 完整回覆比較',
@@ -130,7 +124,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         badge: '推薦',
         discount: null,
         package: subscription.essentialMonthlyPackage,
-        storeProduct: subscription.essentialMonthlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
           '五種風格全開 + 完整回覆比較',
@@ -146,7 +139,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         badge: '最划算',
         discount: essentialQuarterlyDiscount,
         package: subscription.essentialQuarterlyPackage,
-        storeProduct: subscription.essentialQuarterlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
           '五種風格全開 + 完整回覆比較',
@@ -255,6 +247,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final pendingDowngradeMatchesSelection =
         _pendingDowngradeMatchesOption(subscription, selected);
     final canManagePendingDowngrade = hasPendingDowngrade && isCurrentPlan;
+    final storeName = isAndroidPlatform ? 'Google Play' : 'Apple';
 
     VoidCallback? primaryAction;
     if (_isPurchasing || _isRefreshingPlans) {
@@ -301,7 +294,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '升級會立即生效，Apple 會自動按比例調整本期費用。降級則會在下次續訂時生效，今天不會再次扣款。',
+                  '升級會立即生效，$storeName 會依方案規則計算本期費用。降級則會在下次續訂時生效，今天不會再次扣款。',
                   style: AppTypography.bodyLarge.copyWith(
                     color: AppColors.onBackgroundSecondary,
                   ),
@@ -321,8 +314,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         : Icons.info_outline,
                     title: subscription.isLoading ? '正在同步方案資訊' : '方案資訊尚未就緒',
                     message: subscription.isLoading
-                        ? 'App Store 產品同步可能需要 1 到 2 分鐘。'
-                        : '目前還拿不到最新的 App Store 方案，請稍後再試。',
+                        ? '${isAndroidPlatform ? 'Google Play' : 'App Store'} 產品同步可能需要 1 到 2 分鐘。'
+                        : '目前還拿不到最新的 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 方案，請稍後再試。',
                     iconColor: subscription.isLoading
                         ? AppColors.info
                         : AppColors.warning,
@@ -482,7 +475,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return '已排程降級到 ${_tierLabel(selectedTier)}';
     }
     if (isCurrentPlan) return '目前方案';
-    if (selectedProduct == null) return '重新載入 App Store 價格';
+    if (selectedProduct == null) {
+      return '重新載入 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 價格';
+    }
     final price = selected?.priceString ?? selectedProduct.priceString;
     final planName = '${_tierLabel(selectedTier)} ${selected?.period ?? ''}';
     if (subscription.tier == selectedTier) {
@@ -508,19 +503,37 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (canManagePendingDowngrade) {
       return '${_tierLabel(subscription.pendingDowngradeToTier)} 的降級已排程於 '
           '${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。'
-          '在那之前目前方案仍會持續生效；如要取消降級，請前往 App Store 訂閱管理。';
+          '在那之前目前方案仍會持續生效；如要取消降級，請前往 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 訂閱管理。';
     }
     if (pendingDowngradeMatchesSelection) {
       return '這個降級已經排程，將於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效，今天不會再次扣款。';
     }
     if (isCurrentPlan) return '這是你目前正在使用的方案。';
     if (selected != null && subscription.tier == selected.tier) {
-      return '同方案更改月繳 / 季繳會由 App Store 確認，實際生效時間與費用以 Apple 畫面為準。';
+      if (isAndroidPlatform) {
+        final plan = selected.package == null
+            ? null
+            : SubscriptionPlanDefinition.fromPackageId(
+                selected.package!.identifier,
+              );
+        final decision = plan == null
+            ? null
+            : resolveAndroidReplacement(
+                target: plan,
+                activeStore: subscription.activeStore,
+                activeProductId: subscription.activeProductId,
+                activeBasePlanId: subscription.activeBasePlanId,
+                activeStateAuthoritative: subscription.sourceStateAuthoritative,
+                hasActivePaidState: subscription.isPremium,
+              );
+        return replacementConfirmationMessage(decision?.mode);
+      }
+      return '同方案更改月繳 / 季繳會由 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 確認，實際生效時間與費用以商店畫面為準。';
     }
     if (isDowngrade) {
       return '降級會在下次續訂時生效；在那之前你仍可使用目前額度，今天不會再次扣款。';
     }
-    return '升級會立即生效並立刻刷新額度，Apple 也會自動按比例調整本期費用。';
+    return '升級會立即生效並立刻刷新額度，${isAndroidPlatform ? 'Google Play' : 'Apple'} 會依規則計算本期費用。';
   }
 
   /// S9/B9：頁面區塊分隔線——卡片堆疊改分層後，區塊邊界用 hairline 表達。
@@ -536,12 +549,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     required bool isDowngrade,
     required bool isCurrentPlan,
   }) {
-    final price = option.priceString ?? '正在向 App Store 取得價格';
+    final price = option.priceString ??
+        '正在向 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 取得價格';
     final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每月自動續訂';
     final title = isCurrentPlan ? '目前方案' : '本次扣款金額';
     final note = isDowngrade
         ? '降級會在下次續訂時生效；今天不會再次扣款。'
-        : '付款會由 Apple ID 扣款，除非在到期前取消，否則會自動續訂。';
+        : '付款會由 ${isAndroidPlatform ? 'Google Play 商店帳號' : 'Apple ID'} 扣款，除非在到期前取消，否則會自動續訂。';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1035,7 +1049,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  option.isReady ? billingCycle : '請重新載入 App Store 價格',
+                  option.isReady
+                      ? billingCycle
+                      : '請重新載入 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 價格',
                   style: AppTypography.caption.copyWith(
                     color: AppColors.onBackgroundSecondary,
                   ),
@@ -1110,8 +1126,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
 
     final package = option.package;
-    final storeProduct = option.storeProduct;
-    if (package == null && storeProduct == null) {
+    if (package == null) {
       _showSnackBar('方案資訊仍在同步中，請稍後再試一次。');
       return;
     }
@@ -1119,11 +1134,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     setState(() => _isPurchasing = true);
     try {
       final notifier = ref.read(subscriptionProvider.notifier);
-      final result = package != null
-          ? await notifier.purchase(package).timeout(_purchaseTimeout)
-          : await notifier
-              .purchaseStoreProduct(storeProduct!)
-              .timeout(_purchaseTimeout);
+      final result = await notifier.purchase(package).timeout(_purchaseTimeout);
       if (!mounted || result.cancelled) return;
 
       if (!result.success) {
@@ -1178,7 +1189,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     } on TimeoutException catch (error) {
       debugPrint('Paywall purchase timeout: $error');
       AppHaptics.failure();
-      _showSnackBar('App Store 付款確認逾時，請稍後再試；如果已付款，可按「恢復購買」。');
+      _showSnackBar(
+        '${isAndroidPlatform ? 'Google Play' : 'App Store'} 付款確認逾時，請稍後再試；如果已付款，可按「恢復購買」。',
+      );
     } catch (error) {
       debugPrint('Paywall purchase error: $error');
       AppHaptics.failure();
@@ -1215,17 +1228,23 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       final refreshedOptions = _buildOptions(ref.read(subscriptionProvider));
       final hasReadyPlans = refreshedOptions.any((option) => option.isReady);
       _showSnackBar(
-        hasReadyPlans ? 'App Store 價格已更新。' : '仍未取得 App Store 價格，請確認網路後再試。',
+        hasReadyPlans
+            ? '${isAndroidPlatform ? 'Google Play' : 'App Store'} 價格已更新。'
+            : '仍未取得 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 價格，請確認網路後再試。',
         backgroundColor: hasReadyPlans ? AppColors.success : AppColors.warning,
       );
     } on TimeoutException catch (error) {
       debugPrint('Paywall plan refresh timeout: $error');
       if (!mounted) return;
-      _showSnackBar('App Store 價格同步逾時，請稍後再試。');
+      _showSnackBar(
+        '${isAndroidPlatform ? 'Google Play' : 'App Store'} 價格同步逾時，請稍後再試。',
+      );
     } catch (error) {
       debugPrint('Paywall plan refresh error: $error');
       if (!mounted) return;
-      _showSnackBar('無法重新載入 App Store 價格，請稍後再試。');
+      _showSnackBar(
+        '無法重新載入 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 價格，請稍後再試。',
+      );
     } finally {
       if (mounted) {
         setState(() => _isRefreshingPlans = false);
@@ -1241,12 +1260,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       case PurchasesErrorCode.purchaseCancelledError:
         return '已取消購買。';
       case PurchasesErrorCode.paymentPendingError:
-        return '付款仍在等待 App Store 確認。';
+        return '付款仍在等待 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 確認。';
       case PurchasesErrorCode.productNotAvailableForPurchaseError:
         return '此方案目前無法購買。';
       case PurchasesErrorCode.storeProblemError:
       case PurchasesErrorCode.networkError:
-        return '目前無法連線到 App Store，請稍後再試。';
+        return '目前無法連線到 ${isAndroidPlatform ? 'Google Play' : 'App Store'}，請稍後再試。';
       default:
         if (fallbackMessage != null && fallbackMessage.isNotEmpty) {
           return fallbackMessage;
@@ -1272,7 +1291,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               ),
             ),
             content: Text(
-              '如果這個 Apple ID 已經有訂閱，可以在這裡重新同步。',
+              '如果這個商店帳號已經有訂閱，可以在這裡重新同步。',
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.onBackgroundSecondary,
               ),
@@ -1319,11 +1338,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         );
         _leavePaywall(ref.read(subscriptionProvider).tier);
       } else {
-        _showSnackBar('這個 Apple ID 目前沒有可恢復的有效訂閱。');
+        _showSnackBar('這個商店帳號目前沒有可恢復的有效訂閱。');
       }
     } on TimeoutException catch (error) {
       debugPrint('Paywall restore timeout: $error');
-      _showSnackBar('App Store 恢復購買逾時，請稍後再試。');
+      _showSnackBar(
+        '${isAndroidPlatform ? 'Google Play' : 'App Store'} 恢復購買逾時，請稍後再試。',
+      );
     } catch (error) {
       debugPrint('Paywall restore error: $error');
       _showSnackBar('恢復購買失敗，請稍後再試。');
@@ -1401,7 +1422,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           backgroundColor: AppColors.success,
         );
       } else {
-        _showSnackBar('App Store 仍顯示降級排程，請確認取消後稍後再試。');
+        _showSnackBar(
+          '${isAndroidPlatform ? 'Google Play' : 'App Store'} 仍顯示降級排程，請確認取消後稍後再試。',
+        );
       }
     } on TimeoutException catch (error) {
       debugPrint('Paywall pending downgrade refresh timeout: $error');
@@ -1424,17 +1447,29 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   Future<void> _openManageSubscriptions() async {
-    final openedNative =
-        await RevenueCatService.showNativeManageSubscriptions();
+    final subscription = ref.read(subscriptionProvider);
+    final expectedStore = subscription.activeStore;
+    final openedNative = await RevenueCatService.showNativeManageSubscriptions(
+      expectedStore: expectedStore,
+    );
     if (openedNative) {
       return;
     }
 
-    final managementUrl =
-        await RevenueCatService.getManagementUrl() ?? _manageSubscriptionsUrl;
+    final managementUrl = await RevenueCatService.getManagementUrl(
+      expectedStore: expectedStore,
+    );
+    if (managementUrl == null) {
+      if (mounted) {
+        _showSnackBar('目前尚未確認訂閱來源，為避免導向錯誤商店，請先恢復／同步訂閱。');
+      }
+      return;
+    }
     final launched = await LinkLaunchService.open(managementUrl);
     if (!launched && mounted) {
-      _showSnackBar('目前無法開啟 App Store 訂閱管理。');
+      _showSnackBar(
+        '目前無法開啟 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 訂閱管理。',
+      );
     }
   }
 
@@ -1480,7 +1515,6 @@ class _PaywallOption {
     required this.badge,
     required this.discount,
     required this.package,
-    required this.storeProduct,
     required this.highlights,
   });
 
@@ -1491,10 +1525,9 @@ class _PaywallOption {
   final String badge;
   final String? discount;
   final Package? package;
-  final StoreProduct? storeProduct;
   final List<String> highlights;
 
-  StoreProduct? get purchasableProduct => package?.storeProduct ?? storeProduct;
+  StoreProduct? get purchasableProduct => package?.storeProduct;
   bool get isReady => purchasableProduct != null;
   bool get isQuarterly => id.contains('quarterly');
   String? get productId => purchasableProduct?.identifier;

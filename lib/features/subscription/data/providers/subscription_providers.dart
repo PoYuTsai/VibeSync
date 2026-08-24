@@ -11,39 +11,11 @@ import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
+import '../../../../core/utils/platform_info.dart';
 import '../../domain/services/subscription_tier_helper.dart';
+import '../../domain/services/subscription_product_contract.dart';
 
 const _subscriptionStateUnset = Object();
-const _starterMonthlyProductId = 'starter_monthly';
-const _starterQuarterlyProductId = 'starter_quarterly';
-const _essentialMonthlyProductId = 'essential_monthly';
-const _essentialQuarterlyProductId = 'essential_quarterly';
-const _starterMonthlyProductIds = [
-  _starterMonthlyProductId,
-  'vibesync_starter_monthly',
-  'vibesync_starter_monthly_v2',
-];
-const _starterQuarterlyProductIds = [
-  _starterQuarterlyProductId,
-  'vibesync_starter_quarterly',
-  'vibesync_starter_quarterly_v2',
-];
-const _essentialMonthlyProductIds = [
-  _essentialMonthlyProductId,
-  'vibesync_essential_monthly',
-  'vibesync_essential_monthly_v2',
-];
-const _essentialQuarterlyProductIds = [
-  _essentialQuarterlyProductId,
-  'vibesync_essential_quarterly',
-  'vibesync_essential_quarterly_v2',
-];
-const _subscriptionProductIds = [
-  ..._starterMonthlyProductIds,
-  ..._starterQuarterlyProductIds,
-  ..._essentialMonthlyProductIds,
-  ..._essentialQuarterlyProductIds,
-];
 
 String _highestSubscriptionTier(Iterable<String> tiers) {
   final normalized =
@@ -420,7 +392,6 @@ class SubscriptionState {
   final bool isLoading;
   final String? error;
   final Offerings? offerings;
-  final Map<String, StoreProduct> storeProducts;
   final String? pendingDowngradeToTier;
   final String? pendingDowngradeProductId;
   final DateTime? pendingDowngradeEffectiveAt;
@@ -442,7 +413,6 @@ class SubscriptionState {
     this.isLoading = false,
     this.error,
     this.offerings,
-    this.storeProducts = const {},
     this.pendingDowngradeToTier,
     this.pendingDowngradeProductId,
     this.pendingDowngradeEffectiveAt,
@@ -471,234 +441,40 @@ class SubscriptionState {
   bool get hasPendingDowngrade =>
       pendingDowngradeToTier != null && pendingDowngradeEffectiveAt != null;
 
-  Package? get starterPackage {
-    return starterMonthlyPackage ?? starterQuarterlyPackage;
-  }
-
-  Package? get essentialPackage {
-    return essentialMonthlyPackage ?? essentialQuarterlyPackage;
-  }
-
-  String _packageSearchText(Package package) {
-    return [
-      package.identifier,
-      package.storeProduct.identifier,
-      package.storeProduct.title,
-      package.storeProduct.description,
-      package.storeProduct.subscriptionPeriod,
-    ].whereType<String>().join(' ').toLowerCase();
-  }
-
-  bool _packageMatchesTier(Package package, String tierKeyword) {
-    return _packageSearchText(package).contains(tierKeyword);
-  }
-
-  bool _productIdMatchesAny(String productId, List<String> productIds) {
-    final normalized = productId.trim().toLowerCase();
-    return productIds.any((id) => id.toLowerCase() == normalized);
-  }
-
-  bool _packageProductMatchesAny(Package package, List<String> productIds) {
-    return _productIdMatchesAny(package.storeProduct.identifier, productIds);
-  }
-
-  String _normalizedPeriod(String? period) {
-    return period?.trim().toUpperCase() ?? '';
-  }
-
-  bool _containsMonthlyToken(String text) {
-    return text.contains('monthly') ||
-        text.contains('p1m') ||
-        text.contains('1 month') ||
-        text.contains('1-month') ||
-        text.contains('one month');
-  }
-
-  bool _containsQuarterlyToken(String text) {
-    return text.contains('quarter') ||
-        text.contains('quarterly') ||
-        text.contains('three_month') ||
-        text.contains('three month') ||
-        text.contains('3month') ||
-        text.contains('3 month') ||
-        text.contains('3-month') ||
-        text.contains('p3m');
-  }
-
-  bool _packageMatchesPeriod(Package package, String periodKeyword) {
-    final text = _packageSearchText(package);
-    final period = _normalizedPeriod(package.storeProduct.subscriptionPeriod);
-    if (periodKeyword == 'monthly') {
-      if (package.packageType == PackageType.threeMonth ||
-          period == 'P3M' ||
-          _containsQuarterlyToken(text)) {
-        return false;
-      }
-      return package.packageType == PackageType.monthly ||
-          period == 'P1M' ||
-          _containsMonthlyToken(text);
-    } else if (periodKeyword == 'quarterly') {
-      if (package.packageType == PackageType.monthly ||
-          period == 'P1M' ||
-          _containsMonthlyToken(text)) {
-        return false;
-      }
-      return package.packageType == PackageType.threeMonth ||
-          period == 'P3M' ||
-          _containsQuarterlyToken(text);
-    }
-    switch (periodKeyword) {
-      case 'monthly':
-        return package.packageType == PackageType.monthly ||
-            package.storeProduct.subscriptionPeriod == 'P1M' ||
-            text.contains('monthly') ||
-            text.contains('month') ||
-            text.contains('月');
-      case 'quarterly':
-        return package.packageType == PackageType.threeMonth ||
-            package.storeProduct.subscriptionPeriod == 'P3M' ||
-            text.contains('quarter') ||
-            text.contains('three_month') ||
-            text.contains('three month') ||
-            text.contains('3month') ||
-            text.contains('3 month') ||
-            text.contains('3-month') ||
-            text.contains('季');
-      default:
-        return text.contains(periodKeyword);
-    }
-  }
-
-  Package? _findPackage(
-    List<String> exactProductIds,
-    String tierKeyword,
-    String periodKeyword,
-  ) {
+  AndroidSubscriptionOfferingContract? get androidOfferingContract {
     final packages = offerings?.current?.availablePackages;
-    if (packages == null || packages.isEmpty) return null;
-
-    final exact = packages.cast<Package?>().firstWhere(
-          (p) => p != null && _packageProductMatchesAny(p, exactProductIds),
-          orElse: () => null,
-        );
-    if (exact != null) return exact;
-
-    return packages.cast<Package?>().firstWhere(
-      (p) {
-        if (p == null) return false;
-        return _packageMatchesTier(p, tierKeyword) &&
-            _packageMatchesPeriod(p, periodKeyword);
-      },
-      orElse: () => null,
-    );
+    if (packages == null) return null;
+    return AndroidSubscriptionOfferingContract.fromPackages(packages);
   }
 
-  Package? get starterMonthlyPackage => _findPackage(
-        _starterMonthlyProductIds,
-        'starter',
-        'monthly',
-      );
-  Package? get starterQuarterlyPackage => _findPackage(
-        _starterQuarterlyProductIds,
-        'starter',
-        'quarterly',
-      );
-  Package? get essentialMonthlyPackage => _findPackage(
-        _essentialMonthlyProductIds,
-        'essential',
-        'monthly',
-      );
-  Package? get essentialQuarterlyPackage =>
-      _findPackage(_essentialQuarterlyProductIds, 'essential', 'quarterly');
-
-  String _storeProductSearchText(StoreProduct product) {
-    return [
-      product.identifier,
-      product.title,
-      product.description,
-      product.subscriptionPeriod,
-    ].whereType<String>().join(' ').toLowerCase();
+  Package? _knownIosPackage(SubscriptionPlanDefinition plan) {
+    final packages = offerings?.current?.availablePackages;
+    if (packages == null) return null;
+    return findKnownIosPackage(packages, plan);
   }
 
-  bool _storeProductMatchesTier(StoreProduct product, String tierKeyword) {
-    return _storeProductSearchText(product).contains(tierKeyword);
-  }
-
-  bool _storeProductMatchesPeriod(
-    StoreProduct product,
-    String periodKeyword,
-  ) {
-    final text = _storeProductSearchText(product);
-    final period = _normalizedPeriod(product.subscriptionPeriod);
-    if (periodKeyword == 'monthly') {
-      if (period == 'P3M' || _containsQuarterlyToken(text)) return false;
-      return period == 'P1M' || _containsMonthlyToken(text);
-    } else if (periodKeyword == 'quarterly') {
-      if (period == 'P1M' || _containsMonthlyToken(text)) return false;
-      return period == 'P3M' || _containsQuarterlyToken(text);
+  Package? _packageFor(SubscriptionPlanDefinition plan) {
+    if (isAndroidPlatform) {
+      return androidOfferingContract?.packageFor(plan.packageId);
     }
-    switch (periodKeyword) {
-      case 'monthly':
-        return period == 'P1M' ||
-            text.contains('monthly') ||
-            text.contains('month') ||
-            text.contains('p1m');
-      case 'quarterly':
-        return period == 'P3M' ||
-            text.contains('quarter') ||
-            text.contains('three_month') ||
-            text.contains('three month') ||
-            text.contains('3month') ||
-            text.contains('3 month') ||
-            text.contains('3-month') ||
-            text.contains('p3m');
-      default:
-        return text.contains(periodKeyword);
-    }
+    return _knownIosPackage(plan);
   }
 
-  StoreProduct? _findStoreProduct(
-    List<String> exactProductIds,
-    String tierKeyword,
-    String periodKeyword,
-  ) {
-    for (final productId in exactProductIds) {
-      final exact = storeProducts[productId];
-      if (exact != null) return exact;
-    }
-
-    return storeProducts.values.cast<StoreProduct?>().firstWhere(
-      (product) {
-        if (product == null) return false;
-        if (_productIdMatchesAny(product.identifier, exactProductIds)) {
-          return true;
-        }
-        return _storeProductMatchesTier(product, tierKeyword) &&
-            _storeProductMatchesPeriod(product, periodKeyword);
-      },
-      orElse: () => null,
-    );
-  }
-
-  StoreProduct? get starterMonthlyStoreProduct => _findStoreProduct(
-        _starterMonthlyProductIds,
-        'starter',
-        'monthly',
+  Package? get starterPackage =>
+      starterMonthlyPackage ?? starterQuarterlyPackage;
+  Package? get essentialPackage =>
+      essentialMonthlyPackage ?? essentialQuarterlyPackage;
+  Package? get starterMonthlyPackage => _packageFor(
+        SubscriptionPlanDefinition.starterMonthly,
       );
-  StoreProduct? get starterQuarterlyStoreProduct => _findStoreProduct(
-        _starterQuarterlyProductIds,
-        'starter',
-        'quarterly',
+  Package? get starterQuarterlyPackage => _packageFor(
+        SubscriptionPlanDefinition.starterQuarterly,
       );
-  StoreProduct? get essentialMonthlyStoreProduct => _findStoreProduct(
-        _essentialMonthlyProductIds,
-        'essential',
-        'monthly',
+  Package? get essentialMonthlyPackage => _packageFor(
+        SubscriptionPlanDefinition.essentialMonthly,
       );
-  StoreProduct? get essentialQuarterlyStoreProduct => _findStoreProduct(
-        _essentialQuarterlyProductIds,
-        'essential',
-        'quarterly',
+  Package? get essentialQuarterlyPackage => _packageFor(
+        SubscriptionPlanDefinition.essentialQuarterly,
       );
 
   SubscriptionState copyWith({
@@ -710,7 +486,6 @@ class SubscriptionState {
     bool? isLoading,
     String? error,
     Offerings? offerings,
-    Map<String, StoreProduct>? storeProducts,
     Object? pendingDowngradeToTier = _subscriptionStateUnset,
     Object? pendingDowngradeProductId = _subscriptionStateUnset,
     Object? pendingDowngradeEffectiveAt = _subscriptionStateUnset,
@@ -732,7 +507,6 @@ class SubscriptionState {
       isLoading: isLoading ?? this.isLoading,
       error: error,
       offerings: offerings ?? this.offerings,
-      storeProducts: storeProducts ?? this.storeProducts,
       pendingDowngradeToTier: pendingDowngradeToTier == _subscriptionStateUnset
           ? this.pendingDowngradeToTier
           : pendingDowngradeToTier as String?,
@@ -966,13 +740,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   DateTime? _resolveDowngradeEffectiveAt({
     required CustomerInfo customerInfo,
     Package? package,
-    StoreProduct? storeProduct,
   }) {
     return RevenueCatService.getPremiumExpirationDate(customerInfo) ??
         state.renewsAt ??
         RevenueCatService.estimateRenewalDateFromPeriod(
-          package?.storeProduct.subscriptionPeriod ??
-              storeProduct?.subscriptionPeriod,
+          package?.storeProduct.subscriptionPeriod,
           from: DateTime.now(),
         );
   }
@@ -1382,7 +1154,6 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   Future<void> _initialize() async {
     await _loadSubscription();
     await _loadOfferings();
-    await _loadStoreProducts();
     await syncWithRevenueCat();
   }
 
@@ -1637,70 +1408,113 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
   }
 
-  Future<void> _loadStoreProducts() async {
-    try {
-      final products = await RevenueCatService.getSubscriptionProducts(
-          _subscriptionProductIds);
-      if (products.isEmpty) {
-        debugPrint('Store products loaded: 0 products');
-        return;
-      }
-
-      state = state.copyWith(
-        storeProducts: {
-          ...state.storeProducts,
-          for (final product in products) product.identifier: product,
-        },
-      );
-
-      debugPrint('Store products loaded: ${products.length} products');
-      for (final product in products) {
-        debugPrint(
-          'Store product: product=${product.identifier}, period=${product.subscriptionPeriod}, title=${product.title}, price=${product.priceString}',
-        );
-      }
-    } catch (e) {
-      debugPrint('Load store products error: $e');
-    }
-  }
-
   Future<void> refresh() async {
     state = _applyPendingDowngradeMetadata(
       state.copyWith(isLoading: true, error: null),
     );
     await _loadSubscription();
     await _loadOfferings();
-    await _loadStoreProducts();
   }
 
   Future<SubscriptionPurchaseResult> purchase(Package package) async {
-    return _purchaseProduct(package: package);
+    final plan = _definitionForPackage(package);
+    if (plan == null) {
+      return _failedPurchaseResult(
+        requestedTier: SubscriptionTierHelper.free,
+        previousTier: state.tier,
+        message: '方案未通過目前 Offering 的精確商品契約。',
+      );
+    }
+    return _purchaseProduct(package: package, plan: plan);
   }
 
-  Future<SubscriptionPurchaseResult> purchaseStoreProduct(
-    StoreProduct product,
-  ) async {
-    return _purchaseProduct(storeProduct: product);
+  SubscriptionPlanDefinition? _definitionForPackage(Package package) {
+    final packages = state.offerings?.current?.availablePackages;
+    if (packages == null || packages.isEmpty) return null;
+
+    if (isAndroidPlatform) {
+      final contract = state.androidOfferingContract;
+      if (contract == null) return null;
+      for (final plan in SubscriptionPlanDefinition.androidPlans) {
+        final resolved = contract.packageFor(plan.packageId);
+        if (resolved?.identifier == package.identifier &&
+            resolved?.storeProduct.identifier ==
+                package.storeProduct.identifier) {
+          return plan;
+        }
+      }
+      return null;
+    }
+
+    for (final plan in SubscriptionPlanDefinition.androidPlans) {
+      final resolved = findKnownIosPackage(packages, plan);
+      if (resolved?.identifier == package.identifier &&
+          resolved?.storeProduct.identifier ==
+              package.storeProduct.identifier) {
+        return plan;
+      }
+    }
+    return null;
+  }
+
+  SubscriptionPurchaseResult _failedPurchaseResult({
+    required String requestedTier,
+    required String previousTier,
+    required String message,
+  }) {
+    return SubscriptionPurchaseResult(
+      success: false,
+      cancelled: false,
+      isDeferredDowngrade: false,
+      requestedTier: requestedTier,
+      previousTier: previousTier,
+      activeTier: state.tier,
+      errorMessage: message,
+    );
   }
 
   Future<SubscriptionPurchaseResult> _purchaseProduct({
-    Package? package,
-    StoreProduct? storeProduct,
+    required Package package,
+    required SubscriptionPlanDefinition plan,
   }) async {
-    final product = package?.storeProduct ?? storeProduct;
-    if (product == null) {
-      throw ArgumentError('A package or store product is required.');
-    }
-
+    final product = package.storeProduct;
     final productId = product.identifier.trim();
-    final requestedTier = SubscriptionTierHelper.tierFromProductId(
-      productId,
-    );
+    final requestedTier = plan.tier;
     final previousTier = state.tier;
     final requestedDowngrade = SubscriptionTierHelper.isDowngrade(
       fromTier: previousTier,
       toTier: requestedTier,
     );
+
+    AndroidSubscriptionReplacementDecision? replacement;
+    GoogleProductChangeInfo? googleProductChangeInfo;
+    if (isAndroidPlatform) {
+      replacement = resolveAndroidReplacement(
+        target: plan,
+        activeStore: state.activeStore,
+        activeProductId: state.activeProductId,
+        activeBasePlanId: state.activeBasePlanId,
+        activeStateAuthoritative: state.sourceStateAuthoritative,
+        hasActivePaidState: previousTier != SubscriptionTierHelper.free ||
+            state.activeStore != null ||
+            state.activeProductId != null ||
+            state.activeBasePlanId != null,
+      );
+      if (!replacement.isAllowed) {
+        return _failedPurchaseResult(
+          requestedTier: requestedTier,
+          previousTier: previousTier,
+          message: '目前訂閱來源尚未完成驗證，為避免重複扣款已暫停換方案。',
+        );
+      }
+      final mode = googleProrationModeFor(replacement.mode);
+      if (mode != null && replacement.oldProductIdentifier != null) {
+        googleProductChangeInfo = GoogleProductChangeInfo(
+          replacement.oldProductIdentifier!,
+          prorationMode: mode,
+        );
+      }
+    }
 
     try {
       state = _applyPendingDowngradeMetadata(
@@ -1710,9 +1524,10 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       debugPrint('=== PURCHASE START ===');
       debugPrint('Product: ${product.identifier}');
 
-      final customerInfo = package != null
-          ? await RevenueCatService.purchase(package)
-          : await RevenueCatService.purchaseStoreProduct(product);
+      final customerInfo = await RevenueCatService.purchase(
+        package,
+        googleProductChangeInfo: googleProductChangeInfo,
+      );
 
       debugPrint('=== PURCHASE RESULT ===');
       debugPrint('Active Subscriptions: ${customerInfo.activeSubscriptions}');
@@ -1723,11 +1538,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         'Active Entitlements: ${customerInfo.entitlements.active.keys.toList()}',
       );
 
-      if (requestedDowngrade) {
+      final isDeferredDowngrade =
+          replacement?.mode == AndroidSubscriptionReplacementMode.deferred ||
+              (!isAndroidPlatform && requestedDowngrade);
+      if (isDeferredDowngrade) {
         final effectiveAt = _resolveDowngradeEffectiveAt(
           customerInfo: customerInfo,
           package: package,
-          storeProduct: product,
         );
         if (effectiveAt != null) {
           _storePendingDowngrade(
