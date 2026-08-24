@@ -17,6 +17,7 @@ import '../../domain/entities/practice_girl_rarity.dart';
 import '../../domain/entities/practice_hint.dart';
 import '../../domain/entities/practice_learning_mode.dart';
 import '../../domain/entities/practice_message.dart';
+import '../../domain/entities/practice_moment_post.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
 import '../repositories/practice_draw_draft_store.dart';
@@ -55,6 +56,14 @@ const Duration kPracticeSendMessageTimeout = Duration(seconds: 120);
 /// 一律 .timeout 的鐵則，bug-log 2026-07-04）。逾時走 catch-all 分支：
 /// requestId 不 rotate、重試沿用供 server replay 去重，不會雙扣。
 const Duration kPracticeDrawRequestTimeout = Duration(seconds: 45);
+
+/// 動態 feed 請求 timeout（2026-08-24 複審 P1）。
+/// server 端最壞是補生成的 8 秒總死線（`MOMENT_FILL_DEADLINE_MS`）加上網路來回，
+/// 14s 已有裕度而不會搶在 server 完成前放棄。
+/// 沒有它，TCP 停滯時動態頁會**永遠**停在載入中，而且載入態刻意沒有重試鈕，
+/// 使用者完全沒有出路（loading 下 await 網路一律 .timeout 的鐵則，見本檔上方）。
+/// 逾時走 AsyncError → 既有的錯誤／重試畫面。
+const Duration kPracticeMomentsRequestTimeout = Duration(seconds: 14);
 
 /// Hint prefetch 暫時性失敗（網路／timeout／503 retryable）延遲後用**同一
 /// requestId** 重試恰一次。server 端失敗會釋放 latch，同 id 重 claim 是設計
@@ -2848,6 +2857,53 @@ class PracticeCollectionNotifier extends AsyncNotifier<Set<String>> {
 final practiceCollectionProvider =
     AsyncNotifierProvider<PracticeCollectionNotifier, Set<String>>(
   PracticeCollectionNotifier.new,
+);
+
+/// 模擬社群動態 feed。與 [PracticeCollectionNotifier] 同一套帳號歸屬語義：
+/// 綁 [practiceCollectionOwnerProvider]，換帳號／登出時整份重抓、未登入回空。
+///
+/// **v1 不做離線快取（D7）**：不碰 Hive、不留本機副本，每次進畫面打 API。
+/// 少一組「帳號歸屬與刪帳號清除」的正確性負擔（高風險區），也與
+/// [practiceCollectionProvider] 一致（2026-08-13 ADR #40 刻意收掉本機副本）。
+class PracticeMomentsNotifier
+    extends AutoDisposeAsyncNotifier<List<PracticeMomentPost>> {
+  @override
+  Future<List<PracticeMomentPost>> build() => _load(read: false);
+
+  /// 下拉重整／錯誤重試。失敗時 state 轉 AsyncError，畫面顯示重試
+  /// （絕不吞成空 feed 假裝她們今天沒發文）。
+  Future<void> refresh() async {
+    state = const AsyncLoading<List<PracticeMomentPost>>().copyWithPrevious(
+      state,
+    );
+    state = await AsyncValue.guard(() => _load(read: true));
+  }
+
+  /// build 與 refresh 的唯一取資料路徑，兩邊都必然吃到 timeout——
+  /// 拆成兩份實作的話，補了一邊漏另一邊正是複審 P1 的形狀。
+  /// [read] 區分 watch／read：build 要 watch owner 才能在換帳號時重建。
+  Future<List<PracticeMomentPost>> _load({required bool read}) async {
+    final owner = read
+        ? await ref.read(practiceCollectionOwnerProvider.future)
+        : await ref.watch(practiceCollectionOwnerProvider.future);
+    // 未登入不抓、也不沿用上一個帳號的 feed。
+    if (owner == null || owner.trim().isEmpty) {
+      return const <PracticeMomentPost>[];
+    }
+    return ref
+        .read(practiceChatApiServiceProvider)
+        .fetchPracticeMoments()
+        .timeout(kPracticeMomentsRequestTimeout);
+  }
+}
+
+/// **autoDispose（2026-08-24 複審 P2）**：D7 說好「每次進畫面打 API」，
+/// 常駐 provider 會讓離頁再回來仍吃舊資料，只有手動下拉才更新——那不是
+/// 「不做快取」，是換了個地方做快取。autoDispose 讓最後一個監聽者離開時
+/// 丟棄狀態，下次進頁重新 build＝重新打一次 API。
+final practiceMomentsProvider = AsyncNotifierProvider.autoDispose<
+    PracticeMomentsNotifier, List<PracticeMomentPost>>(
+  PracticeMomentsNotifier.new,
 );
 
 /// 目前已知的解鎖集合；載入中／失敗時是空集合。畫格子用它，

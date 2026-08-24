@@ -556,6 +556,10 @@ class _PracticeCollectionScreenState
                       freeQuota: _currentFreeQuota(chatState),
                     ),
                   ),
+                  // 模擬社群動態入口（Threads 版面）：唯讀 feed，只顯示已抽到
+                  // 角色的貼文。放在標頭下方＝「認識了誰」之後自然接「她們最近
+                  // 在做什麼」。
+                  const SliverToBoxAdapter(child: _MomentsEntry()),
                   // SR 限定翻牌券（訂閱一次性權益，2026-08-08 拍板）三態：
                   // premium＋未用＝金券（點了直接券抽，儀式即慶祝）；free＝鎖定
                   // 灰券導 paywall；已用/載入中/讀取失敗＝不顯示（fail-quiet）。
@@ -1438,6 +1442,76 @@ class _CollectionLoadState extends StatelessWidget {
               child: const Text('重試'),
             ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// 動態 feed 入口。刻意是一條緊湊的列，不是又一張大卡——圖鑑本身已經很滿，
+/// 入口只要看得到、按得到就夠。
+class _MomentsEntry extends StatelessWidget {
+  const _MomentsEntry();
+
+  static const entryKey = ValueKey('collection-moments-entry');
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: PressableScale(
+        child: GestureDetector(
+          key: entryKey,
+          behavior: HitTestBehavior.opaque,
+          onTap: AppHaptics.onPress(() => context.push('/practice-moments')),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.brandSurface.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.forum_outlined,
+                    size: 20,
+                    color: AppColors.ctaStart.withValues(alpha: 0.9),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '她們的動態',
+                          style: AppTypography.titleMedium.copyWith(
+                            color: AppColors.onBackgroundPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '看看已經抽到的角色最近在做什麼',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.onBackgroundSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: AppColors.onBackgroundSecondary
+                        .withValues(alpha: 0.62),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
