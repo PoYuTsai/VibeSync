@@ -41,6 +41,9 @@ Deno.test("limits match Eric's decision per scope", () => {
   });
   // 新話題破冰腦力（2026-07-24 Eric 拍板）：3/min、30/day。
   assertEquals(MODEL_RATE_LIMITS.new_topic, { perMinute: 3, perDay: 30 });
+  // 練習室模擬社群動態（2026-08-24）：per-user 放大面 backstop。
+  // 全站上界另由 DB 的 attempts CHECK × Edge 角色 allowlist 保證。
+  assertEquals(MODEL_RATE_LIMITS.practice_moment, { perMinute: 6, perDay: 60 });
 });
 
 // ---------------------------------------------------------------------------
