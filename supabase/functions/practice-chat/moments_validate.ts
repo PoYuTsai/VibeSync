@@ -7,7 +7,7 @@
 //
 // imageId 的處理刻意與其他項不同：**降級成純文字，不是整則打回**。
 // 文字本身沒問題卻因為挑錯圖白燒一次 attempts 是不划算的；純文字貼文
-// 本來就是 85% 的常態（D5a）。
+// 本來就是八成的常態（IMAGE_PROBABILITY = 0.2，D5a/D5b）。
 
 import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 import { containsPromptLeak } from "../_shared/prompt_leak_guard.ts";
