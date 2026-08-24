@@ -25,6 +25,12 @@ const modelRateLimitMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const momentUsageUpgradeMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260824063344_practice_moment_reserve_usage_gate.sql",
+    import.meta.url,
+  ),
+);
 
 const PROFILE_ID = "practice_girl_007";
 const POST_DATE = "2026-08-22";
@@ -76,12 +82,91 @@ async function createDatabase(): Promise<PGlite> {
   `);
   await db.exec(modelRateLimitMigration);
   await db.exec(momentPostsMigration);
+  await db.exec(momentUsageUpgradeMigration);
   await db.query(
     `INSERT INTO auth.users(id) VALUES ($1), ($2)`,
     [USER_ID, CONTENDER_USER_ID],
   );
   return db;
 }
+
+Deno.test("PostgreSQL corrective migration replaces the applied 8-arg reserve overload", async () => {
+  const db = await createDatabase();
+  try {
+    // Production already recorded 20260822120000 while this was still the
+    // service-role callable signature. Recreate that exact catalog shape:
+    // old overload present, new atomic usage-gated overload absent.
+    await db.exec(`
+      DROP FUNCTION public.reserve_practice_moment_slot(
+        TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,
+        INTEGER, INTEGER
+      );
+      CREATE FUNCTION public.reserve_practice_moment_slot(
+        p_profile_id TEXT,
+        p_post_date DATE,
+        p_slot INTEGER,
+        p_day_part TEXT,
+        p_theme_id TEXT,
+        p_generation_token TEXT,
+        p_max_attempts INTEGER DEFAULT 3,
+        p_lease_seconds INTEGER DEFAULT 120
+      )
+      RETURNS TABLE(claimed BOOLEAN, token TEXT, attempt_count SMALLINT)
+      LANGUAGE SQL
+      SECURITY DEFINER
+      SET search_path = public
+      AS $$ SELECT TRUE, p_generation_token, 1::SMALLINT $$;
+      GRANT EXECUTE ON FUNCTION public.reserve_practice_moment_slot(
+        TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, INTEGER, INTEGER
+      ) TO service_role;
+    `);
+
+    const before = await db.query<{
+      legacy_signature: string | null;
+      gated_signature: string | null;
+    }>(`
+      SELECT
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,integer,integer)'
+        )::TEXT AS legacy_signature,
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,uuid,integer,integer,boolean,integer,integer)'
+        )::TEXT AS gated_signature
+    `);
+    assert(before.rows[0].legacy_signature !== null);
+    assertEquals(before.rows[0].gated_signature, null);
+
+    await db.exec(momentUsageUpgradeMigration);
+
+    const after = await db.query<{
+      legacy_signature: string | null;
+      gated_signature: string | null;
+    }>(`
+      SELECT
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,integer,integer)'
+        )::TEXT AS legacy_signature,
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,uuid,integer,integer,boolean,integer,integer)'
+        )::TEXT AS gated_signature
+    `);
+    assertEquals(
+      after.rows[0].legacy_signature,
+      null,
+      "production 的舊 8-arg overload 必須被移除，不能繞過 per-user 限流",
+    );
+    assert(after.rows[0].gated_signature !== null);
+
+    const claim = await reserve(db, "token-after-upgrade");
+    assertEquals(claim.claimed, true);
+    assertEquals(await readUsage(db, USER_ID), {
+      minute_count: 1,
+      day_count: 1,
+    });
+  } finally {
+    await db.close();
+  }
+});
 
 async function reserve(
   db: PGlite,
