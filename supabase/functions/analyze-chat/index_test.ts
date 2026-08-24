@@ -39,6 +39,7 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
     "./ocr_normalizer.ts",
     "./analysis_input_compiler.ts",
     "./ocr_recognition_prompt.ts",
+    "./analyze_image_prompt.ts",
     "./analyze_system_prompt.ts",
     "./optimize_message_prompt.ts",
     "./my_message_prompt.ts",

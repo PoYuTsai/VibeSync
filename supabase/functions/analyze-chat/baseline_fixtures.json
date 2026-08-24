@@ -109,13 +109,13 @@
       "sha256": "a1305072731fdc3449daf2f53070a89ac60167647996dc4db7f70900ff9b7125"
     },
     "buildImageAnalysisPrompt": {
-      "file": "analyze_system_prompt.ts",
+      "file": "analyze_image_prompt.ts",
       "start": "function buildImageAnalysisPrompt(",
       "end": "\n}",
       "sha256": "0c8c8820ab48f2b9e60eec7adb350abb2df46db2693c0bc1a464851bdd3f6e40"
     },
     "buildVisionContent": {
-      "file": "analyze_system_prompt.ts",
+      "file": "analyze_image_prompt.ts",
       "start": "function buildVisionContent(",
       "end": "\n}",
       "sha256": "a628722b761f0a51604a5d2a4f570269239e345a28492c53ce702eceb7b86846"
