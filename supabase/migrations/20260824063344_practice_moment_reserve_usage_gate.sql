@@ -6,6 +6,37 @@
 -- replayed after its checked-in SQL changes.  The old 8-argument overload has no
 -- per-user accounting and must not remain callable by service_role.
 
+-- Fail closed before touching either expected overload.  Production should have
+-- the legacy 8-argument shape; a freshly rebuilt database already has the new
+-- 12-argument shape.  Any third shape means catalog drift, and a signature-
+-- specific DROP would otherwise no-op while leaving an unmetered RPC callable.
+DO $$
+DECLARE
+  v_unexpected TEXT;
+BEGIN
+  SELECT string_agg(p.oid::regprocedure::TEXT, ', ' ORDER BY p.oid::regprocedure::TEXT)
+  INTO v_unexpected
+  FROM pg_proc AS p
+  JOIN pg_namespace AS n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.proname = 'reserve_practice_moment_slot'
+    AND p.oid NOT IN (
+      COALESCE(to_regprocedure(
+        'public.reserve_practice_moment_slot(text,date,integer,text,text,text,integer,integer)'
+      )::OID, 0::OID),
+      COALESCE(to_regprocedure(
+        'public.reserve_practice_moment_slot(text,date,integer,text,text,text,uuid,integer,integer,boolean,integer,integer)'
+      )::OID, 0::OID)
+    );
+
+  IF v_unexpected IS NOT NULL THEN
+    RAISE EXCEPTION
+      'reserve_practice_moment_slot: unexpected overload(s): %',
+      v_unexpected;
+  END IF;
+END;
+$$;
+
 DROP FUNCTION IF EXISTS public.reserve_practice_moment_slot(
   TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, INTEGER, INTEGER
 );
@@ -26,7 +57,10 @@ CREATE OR REPLACE FUNCTION public.reserve_practice_moment_slot(
 )
 RETURNS TABLE(claimed BOOLEAN, token TEXT, attempt_count SMALLINT)
 LANGUAGE plpgsql
-SECURITY DEFINER
+-- Safe for statement-by-statement migration runners: PUBLIC may receive the
+-- default EXECUTE privilege at CREATE time, so keep caller privileges until the
+-- REVOKE/GRANT block has completed.  The final ALTER below enables definer mode.
+SECURITY INVOKER
 SET search_path = public
 AS $$
 DECLARE
@@ -186,6 +220,10 @@ GRANT EXECUTE ON FUNCTION public.reserve_practice_moment_slot(
   TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,
   INTEGER, INTEGER
 ) TO service_role;
+ALTER FUNCTION public.reserve_practice_moment_slot(
+  TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,
+  INTEGER, INTEGER
+) SECURITY DEFINER;
 
 COMMENT ON FUNCTION public.reserve_practice_moment_slot(
   TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,

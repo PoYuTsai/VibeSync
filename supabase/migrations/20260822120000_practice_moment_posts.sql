@@ -93,7 +93,9 @@ CREATE OR REPLACE FUNCTION public.reserve_practice_moment_slot(
 )
 RETURNS TABLE(claimed BOOLEAN, token TEXT, attempt_count SMALLINT)
 LANGUAGE plpgsql
-SECURITY DEFINER
+-- CREATE defaults EXECUTE to PUBLIC.  Start caller-rights-only, then switch to
+-- SECURITY DEFINER after the service-role-only ACL block near the end.
+SECURITY INVOKER
 SET search_path = public
 AS $$
 DECLARE
@@ -475,6 +477,10 @@ GRANT EXECUTE ON FUNCTION public.reserve_practice_moment_slot(
   TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,
   INTEGER, INTEGER
 ) TO service_role;
+ALTER FUNCTION public.reserve_practice_moment_slot(
+  TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,
+  INTEGER, INTEGER
+) SECURITY DEFINER;
 
 REVOKE ALL ON FUNCTION public.commit_practice_moment_post(
   TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, TEXT

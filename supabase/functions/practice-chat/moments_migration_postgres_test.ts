@@ -157,12 +157,94 @@ Deno.test("PostgreSQL corrective migration replaces the applied 8-arg reserve ov
     );
     assert(after.rows[0].gated_signature !== null);
 
+    const security = await db.query<{
+      security_definer: boolean;
+      anon_execute: boolean;
+      authenticated_execute: boolean;
+      service_execute: boolean;
+    }>(`
+      SELECT
+        p.prosecdef AS security_definer,
+        has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_execute,
+        has_function_privilege('authenticated', p.oid, 'EXECUTE')
+          AS authenticated_execute,
+        has_function_privilege('service_role', p.oid, 'EXECUTE')
+          AS service_execute
+      FROM pg_proc AS p
+      WHERE p.oid = to_regprocedure(
+        'public.reserve_practice_moment_slot(text,date,integer,text,text,text,uuid,integer,integer,boolean,integer,integer)'
+      )
+    `);
+    assertEquals(security.rows[0], {
+      security_definer: true,
+      anon_execute: false,
+      authenticated_execute: false,
+      service_execute: true,
+    });
+
     const claim = await reserve(db, "token-after-upgrade");
     assertEquals(claim.claimed, true);
     assertEquals(await readUsage(db, USER_ID), {
       minute_count: 1,
       day_count: 1,
     });
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL corrective migration rejects an unknown overload before DROP", async () => {
+  const db = await createDatabase();
+  try {
+    await db.exec(`
+      DROP FUNCTION public.reserve_practice_moment_slot(
+        TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,
+        INTEGER, INTEGER
+      );
+      CREATE FUNCTION public.reserve_practice_moment_slot(
+        p_profile_id TEXT,
+        p_post_date DATE,
+        p_slot INTEGER,
+        p_day_part TEXT,
+        p_theme_id TEXT,
+        p_generation_token TEXT,
+        p_unexpected_flag BOOLEAN,
+        p_max_attempts INTEGER
+      )
+      RETURNS TABLE(claimed BOOLEAN, token TEXT, attempt_count SMALLINT)
+      LANGUAGE SQL
+      SECURITY DEFINER
+      SET search_path = public
+      AS $$ SELECT TRUE, p_generation_token, 1::SMALLINT $$;
+    `);
+
+    let denied = "";
+    try {
+      await db.exec(momentUsageUpgradeMigration);
+    } catch (error) {
+      denied = String(error);
+    }
+    assert(
+      denied.includes(
+        "reserve_practice_moment_slot: unexpected overload(s)",
+      ),
+      `未知 overload 應在任何 DROP 前 fail closed，實際：${denied}`,
+    );
+
+    const catalog = await db.query<{
+      unexpected_signature: string | null;
+      gated_signature: string | null;
+    }>(`
+      SELECT
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,boolean,integer)'
+        )::TEXT AS unexpected_signature,
+        to_regprocedure(
+          'public.reserve_practice_moment_slot(text,date,integer,text,text,text,uuid,integer,integer,boolean,integer,integer)'
+        )::TEXT AS gated_signature
+    `);
+    assert(catalog.rows[0].unexpected_signature !== null);
+    assertEquals(catalog.rows[0].gated_signature, null);
   } finally {
     await db.close();
   }

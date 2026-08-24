@@ -128,10 +128,20 @@ Deno.test("moment migration keeps every post global and free of user-derived col
   }
 });
 
-Deno.test("moment RPCs all carry the SECURITY DEFINER and grant template", () => {
+Deno.test("moment RPCs all end service-role-only and SECURITY DEFINER", () => {
   for (const name of RPC_NAMES) {
     const body = functionBody(name);
-    assert(body.includes("SECURITY DEFINER"), `${name} 必須是 SECURITY DEFINER`);
+    if (name === "reserve_practice_moment_slot") {
+      assert(
+        body.includes("SECURITY INVOKER"),
+        "reserve 建立當下不得先暴露 SECURITY DEFINER 給預設 PUBLIC EXECUTE",
+      );
+    } else {
+      assert(
+        body.includes("SECURITY DEFINER"),
+        `${name} 必須是 SECURITY DEFINER`,
+      );
+    }
     assert(
       body.includes("SET search_path = public"),
       `${name} 必須釘死 search_path`,
@@ -166,6 +176,24 @@ Deno.test("moment RPCs all carry the SECURITY DEFINER and grant template", () =>
     !/GRANT[\s\S]*?TO (anon|authenticated|PUBLIC)/.test(executable),
     "任何 RPC 都不得授權給 anon/authenticated/PUBLIC",
   );
+
+  const reserveGrant = executable.indexOf(
+    "GRANT EXECUTE ON FUNCTION public.reserve_practice_moment_slot",
+  );
+  const reserveDefiner = executable.indexOf(
+    "ALTER FUNCTION public.reserve_practice_moment_slot",
+    reserveGrant,
+  );
+  assert(reserveGrant >= 0 && reserveDefiner > reserveGrant);
+  assert(
+    executable.slice(reserveDefiner).startsWith(
+      "ALTER FUNCTION public.reserve_practice_moment_slot",
+    ),
+  );
+  assert(
+    executable.slice(reserveDefiner).includes(") SECURITY DEFINER;"),
+    "reserve 只能在 service-role ACL 完成後升成 SECURITY DEFINER",
+  );
 });
 
 Deno.test("moment migration reloads the PostgREST schema cache last", () => {
@@ -178,6 +206,14 @@ Deno.test("moment migration reloads the PostgREST schema cache last", () => {
 
 Deno.test("corrective migration upgrades the already-recorded production reserve signature", () => {
   const normalized = withoutComments(usageGateUpgrade).replace(/\s+/g, " ");
+  const guardIndex = normalized.indexOf("DO $$");
+  const dropIndex = normalized.indexOf(
+    "DROP FUNCTION IF EXISTS public.reserve_practice_moment_slot",
+  );
+  assert(
+    guardIndex >= 0 && dropIndex > guardIndex,
+    "catalog overload guard 必須在任何 DROP 前執行",
+  );
   const canonicalReserve = withoutComments(
     functionBody("reserve_practice_moment_slot"),
   ).replace(/\s+/g, " ").trim();
@@ -202,6 +238,12 @@ Deno.test("corrective migration upgrades the already-recorded production reserve
   );
   assert(
     normalized.includes(
+      "RAISE EXCEPTION 'reserve_practice_moment_slot: unexpected overload(s): %', v_unexpected;",
+    ),
+    "未知 production overload 必須在 DROP 前 fail closed",
+  );
+  assert(
+    normalized.includes(
       "PERFORM public.increment_model_usage( p_user_id, 'practice_moment', p_minute_limit, p_daily_limit );",
     ),
   );
@@ -214,6 +256,16 @@ Deno.test("corrective migration upgrades the already-recorded production reserve
     normalized.includes(
       "GRANT EXECUTE ON FUNCTION public.reserve_practice_moment_slot( TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN, INTEGER, INTEGER ) TO service_role;",
     ),
+  );
+  const grantIndex = normalized.indexOf(
+    "GRANT EXECUTE ON FUNCTION public.reserve_practice_moment_slot",
+  );
+  const definerIndex = normalized.indexOf(
+    "ALTER FUNCTION public.reserve_practice_moment_slot",
+  );
+  assert(
+    grantIndex >= 0 && definerIndex > grantIndex,
+    "必須先鎖 ACL，再切 SECURITY DEFINER",
   );
   assertEquals(
     normalized.trimEnd().endsWith("NOTIFY pgrst, 'reload schema';"),
