@@ -7087,3 +7087,69 @@ Deno.test("契約明講短不等於空", () => {
   assert(prompt.includes("推進的短問"));
   assert(prompt.includes("壓短是為了有力"));
 });
+
+// ── 第二刀（2026-08-24 案例表）：hint 欄位分級接線 ────────────────────
+// 兩顆球＝照唸句（strict＋熱度門）；coaching＝點評（analysis）。
+Deno.test("第二刀：coaching 尺度放行、兩顆球按熱度、同意權永遠攔", () => {
+  const safePair = { warmUp: "那家店我也想去", steady: "週末有空一起？" };
+  // 分析欄（coaching）引用她的拒絕不再殺整份 hint。
+  const parsed = parseHintResult(
+    JSON.stringify({
+      ...safePair,
+      coaching: "她說「我不想那麼快上床」，先退一步鋪墊",
+    }),
+  );
+  assertEquals(parsed.replies.length, 2);
+  // 兩顆球低熱：尺度詞照攔。
+  assertThrows(
+    () =>
+      parseHintResult(JSON.stringify({
+        warmUp: "今晚來我家過夜吧",
+        steady: "週末有空一起？",
+        coaching: "收尾收得不錯",
+      })),
+    Error,
+    "hint_l4_unsafe",
+  );
+  // 兩顆球高熱：尺度詞放行。
+  const hot = parseHintResult(
+    JSON.stringify({
+      warmUp: "今晚來我家過夜吧",
+      steady: "週末有空一起？",
+      coaching: "收尾收得不錯",
+    }),
+    { spicyAllowed: true },
+  );
+  assertEquals(hot.replies.length, 2);
+  // 同意權類高熱也攔。
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "跟我回家，妳不能拒絕",
+          steady: "週末有空一起？",
+          coaching: "收尾收得不錯",
+        }),
+        { spicyAllowed: true },
+      ),
+    Error,
+    "hint_l4_unsafe",
+  );
+});
+
+Deno.test("第二刀：hint 代號表吃本局原話豁免", () => {
+  const withBoring = JSON.stringify({
+    warmUp: "我很 boring 嗎哈哈",
+    steady: "那換個話題，妳最近在追什麼？",
+    coaching: "她吐槽你無聊，自嘲接住比解釋好",
+  });
+  assertThrows(
+    () => parseHintResult(withBoring),
+    Error,
+    "hint_internal_label_leak",
+  );
+  const parsed = parseHintResult(withBoring, {
+    turns: [{ role: "ai", text: "你不覺得自己有點 boring 嗎？" }],
+  });
+  assertEquals(parsed.replies.length, 2);
+});

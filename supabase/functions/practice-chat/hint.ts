@@ -150,6 +150,12 @@ interface HintParseOptions {
   /** Dead legacy fallback tests intentionally do not opt into this gate. */
   enforceGeneratedQuality?: boolean;
   /**
+   * 第二刀 B6（2026-08-24）：兩顆球（照唸句）的尺度類熱度門。呼叫端用本輪
+   * FSM spicyLevel === "L3" 計算；省略＝低熱（現行行為）。coaching 等分析
+   * 欄不受此旗標影響（分析欄尺度類本就放行）。
+   */
+  spicyAllowed?: boolean;
+  /**
    * 守門嚴重度分級（2026-08-06 Eric 拍板，同 debrief debrief_card.ts）：
    * 偏好門不否決，違規碼經此 callback 記 telemetry（事件
    * practice_chat_hint_quality_finding）。未注入＝finding 靜默丟棄
@@ -274,8 +280,10 @@ function inviteMaturityEvidence(maturity?: InviteMaturity | null): string {
   }\n邀約邊界: ${guidance}\n\n`;
 }
 
-function rejectInternalLabelLeak(value: string) {
-  rejectVisibleInternalLabelLeak(value, "hint_internal_label_leak");
+function rejectInternalLabelLeak(value: string, transcript?: string) {
+  rejectVisibleInternalLabelLeak(value, "hint_internal_label_leak", {
+    transcript,
+  });
 }
 
 function repairGameVisibleLabels(value: string): string {
@@ -1857,8 +1865,18 @@ function requiredString(
       () => rejectBossyPasteableHintReply(capped, field),
     );
   }
-  rejectInternalLabelLeak(capped);
-  rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe");
+  rejectInternalLabelLeak(
+    capped,
+    options.turns?.map((turn) => turn.text).join("\n"),
+  );
+  // 第二刀欄位分級：兩顆球是照唸句（strict＋熱度門）；coaching／
+  // noPasteableReason 是教練點評（analysis，尺度類只攔教唆形）。
+  rejectL4UnsafeVisibleText(capped, "hint_l4_unsafe", {
+    fieldClass: field === "coaching" || field === "noPasteableReason"
+      ? "analysis"
+      : "strict",
+    spicyAllowed: options.spicyAllowed === true,
+  });
   if (options.enforceGeneratedQuality === true) {
     rejectKnownCannedPracticeText(capped, "hint_canned_visible_text");
     if (field !== "coaching" && field !== "noPasteableReason") {

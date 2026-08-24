@@ -256,16 +256,35 @@ function generatedVisibleList(
     .filter((item) => item.length > 0);
 }
 
+/**
+ * 第二刀（2026-08-24）守門情境。沿用 degradeOverlongDuringParse 的
+ * module-scope 旗標模式：parse 全程同步、單執行緒，try/finally 成對進出。
+ */
+let guardSpicyAllowed = false;
+let guardTranscript = "";
+
 function rejectInternalLabelLeak(value: string) {
-  rejectVisibleInternalLabelLeak(value, "debrief_internal_label_leak");
+  rejectVisibleInternalLabelLeak(value, "debrief_internal_label_leak", {
+    transcript: guardTranscript,
+  });
 }
 
-function guardVisibleText(value: string): string {
+/**
+ * strict＝照唸句欄（suggestedLine/nextFirstLine）：同意權類永遠攔、尺度類
+ * 按熱度；analysis＝點評欄：尺度類只攔教唆形（案例表 B 組）。
+ */
+function guardVisibleText(
+  value: string,
+  fieldClass: "strict" | "analysis" = "strict",
+): string {
   rejectInternalLabelLeak(value);
   // 批3 P1：debrief prompt 注入 band 詞後，模型可能把溫度內部詞或 1.2 原詞
   // 抄進可見欄位；被拒→handler 重試→band-aware fallback 卡兜底。
   rejectVisibleTemperatureMechanismLeak(value, "debrief_temperature_leak");
-  rejectL4UnsafeVisibleText(value, "debrief_l4_unsafe");
+  rejectL4UnsafeVisibleText(value, "debrief_l4_unsafe", {
+    fieldClass,
+    spicyAllowed: guardSpicyAllowed,
+  });
   return value;
 }
 
@@ -348,6 +367,7 @@ function parseGameBreakdown(
         GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
         enforceGeneratedQuality,
       ),
+      "analysis",
     ),
     missedVariable: guardVisibleText(
       generatedVisibleString(
@@ -356,6 +376,7 @@ function parseGameBreakdown(
         GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
         enforceGeneratedQuality,
       ),
+      "analysis",
     ),
     failureState: guardVisibleText(
       generatedVisibleString(
@@ -364,6 +385,7 @@ function parseGameBreakdown(
         GENERATED_GAME_BREAKDOWN_MAX_LENGTH,
         enforceGeneratedQuality,
       ),
+      "analysis",
     ),
     nextFirstLine: guardVisibleText(
       generatedVisibleString(
@@ -1022,15 +1044,25 @@ export function parseDebriefCard(
      * 洩漏／罐頭）以外的 gate 一律讓路，包含捏造事實。前兩發完全不受影響。
      */
     salvagePass?: boolean;
+    /**
+     * 第二刀 B6：建議句欄的尺度類熱度門。呼叫端用本場 FSM 的
+     * spicyLevel === "L3" 計算；省略＝低熱（現行行為）。
+     */
+    spicyAllowed?: boolean;
   } = {},
 ): DebriefCard {
   if (opts.salvagePass === true) {
     degradeOverlongDuringParse = true;
   }
+  guardSpicyAllowed = opts.spicyAllowed === true;
+  // 第二刀 A 組原話豁免：代號詞出現在本局對話原文就可引用。
+  guardTranscript = (opts.turns ?? []).map((turn) => turn.text).join("\n");
   try {
     return parseDebriefCardInner(raw, opts);
   } finally {
     degradeOverlongDuringParse = false;
+    guardSpicyAllowed = false;
+    guardTranscript = "";
   }
 }
 
@@ -1063,6 +1095,7 @@ function parseDebriefCardInner(
       GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
       enforceGeneratedQuality,
     ),
+    "analysis",
   );
   const suggestedLine = guardVisibleText(
     generatedVisibleString(
@@ -1081,14 +1114,14 @@ function parseDebriefCardInner(
     40,
     GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH,
     enforceGeneratedQuality,
-  ).map((item) => guardVisibleText(item));
+  ).map((item) => guardVisibleText(item, "analysis"));
   const watchouts = generatedVisibleList(
     p.watchouts,
     2,
     40,
     GENERATED_DEBRIEF_LIST_ITEM_MAX_LENGTH,
     enforceGeneratedQuality,
-  ).map((item) => guardVisibleText(item));
+  ).map((item) => guardVisibleText(item, "analysis"));
   const vibeRaw = clampStr(p.vibe, 4);
   const vibe = VIBES.includes(vibeRaw) ? vibeRaw : "中性";
 
@@ -1102,6 +1135,7 @@ function parseDebriefCardInner(
       GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
       enforceGeneratedQuality,
     ),
+    "analysis",
   );
   const nextInviteMove = guardVisibleText(
     generatedVisibleString(

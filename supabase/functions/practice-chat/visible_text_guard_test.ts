@@ -332,3 +332,336 @@ Deno.test("prompt 外洩 sentinel：可見輸出含系統指示標題＝擋下",
     throw new Error("正常句不得誤殺");
   }
 });
+
+// ── 第二刀（2026-08-24 案例表）─────────────────────────────────────
+// docs/plans/2026-08-24-practice-guard-second-cut-case-table.md
+// D 組：同意權類實測漏詞。這些是無自然比喻用法的窄詞，任何欄位任何階段永遠攔。
+Deno.test("D組：同意權類漏詞補進 fail-closed 名單", () => {
+  for (
+    const leak of [
+      "偷偷給她下藥", // D1
+      "迷姦", // D2
+      "強姦",
+      "輪姦",
+      "強上她",
+      "趁她睡著親下去", // D3
+      "趁她喝醉帶回家",
+      "趁醉帶她回家",
+      "她睡著後直接上",
+      "偷拍她", // D4
+      "把她灌醉再說", // D5 現行已蓋，鎖住
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(leak), true, `should reject "${leak}"`);
+  }
+  // 誤殺面：譴責語境與自然語不得誤殺。
+  for (
+    const safe of [
+      "趁她喝醉提出要求是越界",
+      "不要偷拍別人",
+      "她睡著後上線已讀你", // 「後＋動詞」自然語，不含受詞不攔
+      "她說她怕被偷拍，這是不對的行為",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(safe), false, `should allow "${safe}"`);
+  }
+});
+
+// C2/D6：中文變數名＋分數形破口。分數形只認「投入度 X/100」與英文變數名，
+// 「她的安全感分數還不到 60」漏接。兩側（label/temperature）都要蓋。
+Deno.test("C2：中文變數＋分數形攔下，質性用法不誤殺", () => {
+  for (
+    const leak of [
+      "她的安全感分數還不到 60",
+      "好感度掉到 40 了",
+      "投入度只有 35",
+      "安全感值是 72",
+      "熟悉度還不到45",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(leak),
+      true,
+      `label 應攔 "${leak}"`,
+    );
+    assertEquals(
+      hasVisibleTemperatureMechanismLeak(leak),
+      true,
+      `temp 應攔 "${leak}"`,
+    );
+  }
+  for (
+    const safe of [
+      "聊了 30 分鐘讓她更有安全感",
+      "投入 3 個話題都被句點",
+      "她還沒有安全感，先讓她自在", // C5
+      "整場投入度不高，可以多丟開放問題",
+      "妳丟了 2 個問題她都有接",
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(safe),
+      false,
+      `不得誤殺 "${safe}"`,
+    );
+    assertEquals(
+      hasVisibleTemperatureMechanismLeak(safe),
+      false,
+      `temp 不得誤殺 "${safe}"`,
+    );
+  }
+});
+
+// B4：同意權詞的警示句——「詞＋明確負面後果」是教練在勸退，不是教唆。
+Deno.test("B4：同意權詞＋負面後果的警示句放行，教唆句照攔", () => {
+  for (
+    const safe of [
+      "強迫對方給答案會讓氣氛瞬間冷掉",
+      "強迫她表態只會讓她封鎖你",
+      "灌醉式勸酒會讓她防備",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(safe), false, `不得誤殺 "${safe}"`);
+  }
+  for (
+    const attack of [
+      "強迫她一下也沒關係",
+      "強迫她表態，她會愛上你",
+      "強迫對方給答案會讓氣氛瞬間冷掉，但值得試試",
+      "就算強迫她會讓她反感，照做",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(attack), true, `應攔 "${attack}"`);
+  }
+});
+
+// ── B 組核心：尺度類/同意權類拆分＋欄位分級＋熱度門 ─────────────────
+// analysis＝教練點評欄（summary/watchouts/coaching）；strict＝照唸句欄
+// （suggestedLine/nextFirstLine/兩顆球/NPC 回覆）。spicyAllowed 由呼叫端
+// 用 spicyLevel === "L3" 算，守門不懂階段語意。
+Deno.test("B組：分析欄尺度類全放，教唆翻轉照攔，同意權類照舊", () => {
+  const analysis = { fieldClass: "analysis" as const };
+  for (
+    const safe of [
+      "她說「我不想那麼快上床」，你應該先退一步", // B2
+      "開頭就暗示開房，是這局翻車的主因", // B3
+      "提上床這件事本身不是問題，時機才是", // B5
+      "你們聊到「什麼姿勢你最爽」她有接住，是好訊號", // B5+
+      "她主動說今晚來點刺激的，代表溫度有到",
+      "直接提上床是越界，這句讓她防備心整個起來", // B1
+    ]
+  ) {
+    assertEquals(
+      hasL4UnsafeVisibleText(safe, analysis),
+      false,
+      `分析欄不得誤殺 "${safe}"`,
+    );
+  }
+  for (
+    const attack of [
+      "她說「我不想那麼快上床」——所以下次直接約開房測底線", // B9
+      "下次直接約開房就對了",
+      "跟她說不能拒絕你", // 同意權類在分析欄照攔
+      "把她灌醉再說",
+      "她拒絕上床，但可以試試",
+    ]
+  ) {
+    assertEquals(
+      hasL4UnsafeVisibleText(attack, analysis),
+      true,
+      `分析欄應攔 "${attack}"`,
+    );
+  }
+});
+
+Deno.test("B組：建議句欄低熱攔尺度、高熱放尺度、同意權永遠攔", () => {
+  const lowHeat = { fieldClass: "strict" as const, spicyAllowed: false };
+  const highHeat = { fieldClass: "strict" as const, spicyAllowed: true };
+  for (
+    const spicy of [
+      "今晚來我家過夜吧", // B6
+      "我想跟你上床",
+      "約她開房",
+    ]
+  ) {
+    assertEquals(
+      hasL4UnsafeVisibleText(spicy, lowHeat),
+      true,
+      `低熱應攔 "${spicy}"`,
+    );
+    assertEquals(
+      hasL4UnsafeVisibleText(spicy, highHeat),
+      false,
+      `高熱應放 "${spicy}"`,
+    );
+  }
+  for (
+    const consent of [
+      "跟她說不能拒絕你", // B7
+      "把她灌醉再說",
+      "趁她喝醉帶回家",
+    ]
+  ) {
+    assertEquals(
+      hasL4UnsafeVisibleText(consent, highHeat),
+      true,
+      `同意權類高熱也攔 "${consent}"`,
+    );
+  }
+  // 無 opts＝現行行為（strict＋低熱），既有測試已全面鎖住。
+  assertEquals(hasL4UnsafeVisibleText("今晚來我家過夜吧"), true);
+});
+
+// ── A 組：內部代號表的使用者原話豁免 ─────────────────────────────
+// 代號詞逐字出現在本局原話（使用者或 NPC）→ 不是機制外洩，放行。
+// 分數形與溫度 band 不吃豁免（A5/A6）。
+Deno.test("A組：原話豁免——對話說過的代號詞可引用，沒說過照攔", () => {
+  const transcript = "她：你不覺得自己有點 boring 嗎？\n你：我很 boring 嗎哈哈";
+  for (
+    const quote of [
+      "你回她「我很 boring 嗎」那句其實不錯，自嘲有到位", // A1
+      "她說你 boring 之後你馬上解釋，反而顯得慌", // A2
+    ]
+  ) {
+    assertEquals(
+      hasVisibleInternalLabelLeak(quote, { transcript }),
+      false,
+      `原話豁免應放 "${quote}"`,
+    );
+    // 同句沒有原話背書＝抄內部戰術碼，照攔（A3 同型）。
+    assertEquals(
+      hasVisibleInternalLabelLeak(quote),
+      true,
+      `無原話應攔 "${quote}"`,
+    );
+  }
+  // A4：對話沒說過的代號，有 transcript 也照攔。
+  assertEquals(
+    hasVisibleInternalLabelLeak("你被判定 framecollapse", { transcript }),
+    true,
+  );
+  // 中文標籤同吃豁免。
+  assertEquals(
+    hasVisibleInternalLabelLeak("你們的認識管道是朋友介紹", {
+      transcript: "你：我們的認識管道算朋友介紹吧",
+    }),
+    false,
+  );
+  // A6：分數形不吃豁免。
+  assertEquals(
+    hasVisibleInternalLabelLeak("你的投入度 45/100", {
+      transcript: "你：我的投入度 45/100 嗎",
+    }),
+    true,
+  );
+});
+
+// C 組回歸鎖：不露機制的目標語言（質性判讀＋逐字稿證據）必須永遠放行；
+// 等級碼照攔。
+Deno.test("C組：等級碼攔、質性判讀語言放", () => {
+  assertEquals(
+    hasVisibleInternalLabelLeak("你們現在的張力等級是 L2，先不要"),
+    true, // C1
+  );
+  for (
+    const safe of [
+      "她回你都短句、沒反問，還在觀望——先給台階", // C3
+      "氣氛到了，她剛剛主動反撩你那句就是窗口", // C4
+    ]
+  ) {
+    assertEquals(hasVisibleInternalLabelLeak(safe), false, safe);
+    assertEquals(hasVisibleTemperatureMechanismLeak(safe), false, safe);
+    assertEquals(
+      hasL4UnsafeVisibleText(safe, { fieldClass: "analysis" }),
+      false,
+      safe,
+    );
+  }
+});
+
+// ── R1 主審修正（Codex 2026-08-24 round 1：2×P1＋1×P2）──────────────
+Deno.test("R1-P1a：餵藥族補進同意權名單（D1 拍板全條落地）", () => {
+  for (const leak of ["餵她吃藥", "偷偷餵她吃藥", "喂她吃药"]) {
+    assertEquals(hasL4UnsafeVisibleText(leak), true, leak);
+  }
+  // 誤殺面：否定/譴責語境照放。
+  assertEquals(hasL4UnsafeVisibleText("不要餵她吃藥"), false);
+});
+
+Deno.test("R1-P1b：睡著後型態走同一套否定/譴責語境，不再無條件攔", () => {
+  const analysis = { fieldClass: "analysis" as const };
+  for (
+    const safe of [
+      "不要在她睡著後直接上",
+      "她睡著後直接上是越界",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(safe, analysis), false, safe);
+  }
+  // 裸教唆與標點穿透照攔（strict 與 analysis 都攔）。
+  for (const attack of ["她睡著後直接上", "她睡著後直接。上"]) {
+    assertEquals(hasL4UnsafeVisibleText(attack), true, attack);
+    assertEquals(hasL4UnsafeVisibleText(attack, analysis), true, attack);
+  }
+});
+
+Deno.test("R1-P2：拒絕後翻轉教唆不靠尺度詞表也要攔（開放詞彙）", () => {
+  const analysis = { fieldClass: "analysis" as const };
+  for (
+    const attack of [
+      "她說不想，所以你下次直接問什麼姿勢最爽測底線",
+      "她拒絕了，你就再硬推一次",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(attack, analysis), true, attack);
+  }
+  for (
+    const safe of [
+      "她說不想太快，你下次直接約杯咖啡就好", // 一般邀約建議不誤殺
+      "她說不想太快，其實是在測底線", // 「她在測你底線」是合法教練判讀
+      "她拒絕後你退一步，處理得不錯",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(safe, analysis), false, safe);
+  }
+});
+
+// ── R2 主審修正（Codex round 2：2×P1，譴責豁免作用域＋指示語氣漏詞）──
+Deno.test("R2-P1a：譴責豁免只認危險語之後、且不得再被翻轉", () => {
+  const analysis = { fieldClass: "analysis" as const };
+  for (
+    const attack of [
+      "這樣是越界但她拒絕了你就再硬推一次", // 譴責在前不豁免
+      "她說不想是越界沒錯但你下次直接約開房", // 尺度教唆同一作用域規則
+      "她拒絕了你再硬推是越界但值得試試", // 譴責後翻轉不豁免
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(attack, analysis), true, attack);
+  }
+  for (
+    const safe of [
+      "她拒絕了，你再硬推就是越界", // 譴責在危險語之後＝真警示
+      "下次直接約開房測底線是不對的",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(safe, analysis), false, safe);
+  }
+});
+
+Deno.test("R2-P1b：指示語氣補「你要/你得/建議你」族", () => {
+  const analysis = { fieldClass: "analysis" as const };
+  for (
+    const attack of [
+      "她拒絕了，所以你要再硬推一次",
+      "她說不想，你得繼續施壓",
+      "她拒絕了，建議你再硬推一次",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(attack, analysis), true, attack);
+  }
+  // 無推進標記的指示語氣不誤殺。
+  assertEquals(
+    hasL4UnsafeVisibleText("她拒絕了，你要先退一步穩住", analysis),
+    false,
+  );
+});
