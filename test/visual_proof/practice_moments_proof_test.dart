@@ -23,8 +23,16 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_mo
 
 import 'proof_support.dart';
 
-/// 固定時鐘：相對時間標籤在截圖上要是穩定的，不能每次跑都變。
-final DateTime _now = DateTime(2026, 8, 24, 21, 40);
+/// 假資料的時間基準**必須跟畫面用的時鐘同一個**。
+///
+/// 這裡踩過一次坑：原本寫死 `DateTime(2026, 8, 24, 21, 40)`，但
+/// `PracticeMomentsScreen` 內部是 `DateTime.now()`，於是所有 postedAt 都
+/// 落在「未來」，全部命中 momentRelativeLabel 的時鐘偏差防護，截圖上每則
+/// 都顯示「剛剛」——版面看起來沒問題，時間標籤卻完全驗不到。
+///
+/// 真機 debug build 沒有這個問題（畫面把同一個 now 同時餵給 fixtures 與
+/// tile），純粹是截圖測試繞過了那條路徑才失真。用真實時鐘就對齊了。
+final DateTime _now = DateTime.now();
 
 List<PracticeMomentPost> _feed() {
   final feed = practiceMomentsDebugFeed(kMomentsDebugMixedFeed, _now);
