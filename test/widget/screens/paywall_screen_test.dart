@@ -179,6 +179,45 @@ void main() {
       expect(blocked(pendingDowngradeMatchesSelection: true), isFalse);
       expect(blocked(isCurrentPlan: true), isFalse);
     });
+
+    test('normalizes Android bare and combined product IDs with base plan', () {
+      expect(
+        isAndroidCurrentSubscriptionOption(
+          activeProductId: 'vibesync_starter',
+          activeBasePlanId: 'monthly',
+          selectedPackageId: 'starter_monthly',
+        ),
+        isTrue,
+      );
+      expect(
+        isAndroidCurrentSubscriptionOption(
+          activeProductId: 'vibesync_starter:monthly',
+          activeBasePlanId: 'monthly',
+          selectedPackageId: 'starter_monthly',
+        ),
+        isTrue,
+      );
+    });
+
+    test('rejects an Android product when base plan is wrong or incomplete',
+        () {
+      expect(
+        isAndroidCurrentSubscriptionOption(
+          activeProductId: 'vibesync_starter',
+          activeBasePlanId: 'quarterly',
+          selectedPackageId: 'starter_monthly',
+        ),
+        isFalse,
+      );
+      expect(
+        isAndroidCurrentSubscriptionOption(
+          activeProductId: 'vibesync_starter:monthly',
+          activeBasePlanId: null,
+          selectedPackageId: 'starter_monthly',
+        ),
+        isFalse,
+      );
+    });
   });
 
   Future<void> pumpPaywall(

@@ -56,6 +56,24 @@ String replacementDecisionFootnote({
   return replacementConfirmationMessage(replacementDecision?.mode);
 }
 
+bool isAndroidCurrentSubscriptionOption({
+  required String? activeProductId,
+  required String? activeBasePlanId,
+  required String? selectedPackageId,
+}) {
+  final selectedPlan = selectedPackageId == null
+      ? null
+      : SubscriptionPlanDefinition.fromPackageId(selectedPackageId);
+  if (selectedPlan == null) return false;
+
+  final activePlan =
+      SubscriptionPlanDefinition.fromAuthoritativePlayIdentifiers(
+    productId: activeProductId,
+    basePlanId: activeBasePlanId,
+  );
+  return activePlan?.packageId == selectedPlan.packageId;
+}
+
 /// Whether the replacement-blocked presentation is allowed to take over the
 /// paywall CTA. Existing management/current-plan states must remain the
 /// authoritative presentation when they already have a safe action or status.
@@ -233,7 +251,23 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
     final optionProductId = _productIdForOption(option);
     final activeProductId = subscription.activeProductId?.trim();
-    if (_sameProduct(activeProductId, optionProductId)) {
+    if (isAndroidPlatform) {
+      if (isAndroidCurrentSubscriptionOption(
+        activeProductId: activeProductId,
+        activeBasePlanId: subscription.activeBasePlanId,
+        selectedPackageId: option.package?.identifier,
+      )) {
+        return true;
+      }
+
+      // Preserve the exact combined-ID state written before base-plan
+      // metadata was available, but do not let a conflicting base plan pass.
+      final hasBasePlanId =
+          subscription.activeBasePlanId?.trim().isNotEmpty == true;
+      if (!hasBasePlanId && _sameProduct(activeProductId, optionProductId)) {
+        return true;
+      }
+    } else if (_sameProduct(activeProductId, optionProductId)) {
       return true;
     }
     if (activeProductId != null && activeProductId.isNotEmpty) {
