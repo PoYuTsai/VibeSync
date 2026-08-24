@@ -41,6 +41,8 @@ cat > "$work/adb" <<'FAKE'
 #                   模擬 Error／異常輸出；預設為成功送出標記
 #   FAKE_CALLBACK_STDERR — 額外寫到 stderr 的 callback 輸出（真 adb 的
 #                   Error／chooser 文字可能走 stderr 且 exit 0）
+#   FAKE_INSTALL_LOG — 將 install 參數追加寫入指定檔案，供模式契約驗證
+#   FAKE_INSTALL_STATUS — install 的非零 exit code（模擬真實安裝失敗）
 #   FAKE_LAUNCH_STATUS — launcher am start -W 的狀態：ok（預設）｜timeout
 #                   （重現 API 36 的 Status: timeout＋Activity 正確）｜其他
 #                   字串原樣進 Status: 行
@@ -52,6 +54,16 @@ case "$cmd $*" in
   *"${FAKE_HANG:-__none__}"*) exec sleep 300 ;;
 esac
 case "$cmd" in
+  install)
+    if [ -n "${FAKE_INSTALL_LOG:-}" ]; then
+      printf '%s\n' "$*" >> "$FAKE_INSTALL_LOG"
+    fi
+    install_status="${FAKE_INSTALL_STATUS:-0}"
+    if [ "$install_status" -ne 0 ]; then
+      echo "Failure [INSTALL_FAILED_FAKE]" >&2
+      exit "$install_status"
+    fi
+    ;;
   logcat)
     case "$*" in
       *-c*) ;;  # logcat -c 清空：無輸出
@@ -103,6 +115,8 @@ esac
 exit 0
 FAKE
 chmod +x "$work/adb"
+export FAKE_INSTALL_LOG="$work/install-args"
+: > "$FAKE_INSTALL_LOG"
 
 good_resolve="com.vibesync.app/$callback_activity"
 good_email_resolve="com.vibesync.app/.MainActivity"
@@ -150,6 +164,54 @@ if [ "$status" -ne 0 ]; then
   echo "::error::合法情境（resolver=$good_resolve）應通過，卻失敗（exit=$status）"
   exit 1
 fi
+first_install_args=$(sed -n '1p' "$FAKE_INSTALL_LOG")
+if [ "$first_install_args" != "--no-streaming -r $work/app.apk" ]; then
+  cat "$work/out"
+  echo "::error::install 必須使用 --no-streaming -r，實際參數：$first_install_args"
+  exit 1
+fi
+
+# --- 1a. install 真實非零失敗不可被吞掉 ---
+set +e
+FAKE_RESOLVE="$good_resolve" FAKE_TAIL_LOG=clean FAKE_INSTALL_STATUS=7 \
+  SMOKE_STARTUP_WAIT=0 PATH="$work:$PATH" bash "$smoke" "$work/app.apk" \
+  >"$work/out" 2>&1
+status=$?
+set -e
+if [ "$status" -ne 1 ]; then
+  cat "$work/out"
+  echo "::error::install 非零失敗應 fail closed（exit 1），卻回 exit=$status"
+  exit 1
+fi
+grep -qF "adb 失敗（stage：install，exit=7）" "$work/out" || {
+  cat "$work/out"
+  echo "::error::install 非零失敗未指出 install stage／exit code"
+  exit 1
+}
+
+# --- 1b. install 卡死必須由內層 timeout 有界 fail closed ---
+set +e
+FAKE_RESOLVE="$good_resolve" FAKE_TAIL_LOG=clean \
+  FAKE_HANG="install --no-streaming -r" SMOKE_STARTUP_WAIT=0 SMOKE_ADB_TIMEOUT=1 \
+  PATH="$work:$PATH" timeout 15 bash "$smoke" "$work/app.apk" \
+  >"$work/out" 2>&1
+status=$?
+set -e
+if [ "$status" -eq 124 ]; then
+  cat "$work/out"
+  echo "::error::install 卡死掛到外層 timeout（exit=124），smoke 未有界返回"
+  exit 1
+fi
+if [ "$status" -ne 1 ]; then
+  cat "$work/out"
+  echo "::error::install 卡死應由 smoke 以 exit 1 fail closed，卻回 exit=$status"
+  exit 1
+fi
+grep -qF "adb 卡住（stage：install）" "$work/out" || {
+  cat "$work/out"
+  echo "::error::install 卡死診斷未點名 install stage"
+  exit 1
+}
 
 # --- 1b. 完整 component 寫法仍是合法等價形式 → 必須通過 ---
 export FAKE_RESOLVE_EMAIL="$good_email_resolve_full"
@@ -376,4 +438,4 @@ status=$?
 set -e
 expect_fail "launch-status-not-ok" "啟動失敗"
 
-echo "install-smoke fake-adb 迴歸 OK：正向通過；wrong-owner／chooser／crash／ClassNotFound／post-launch adb 卡死（launcher-alive、callback-start、logcat 精確 stage）／SMOKE_ADB_TIMEOUT 非法值／launcher Status timeout 健康檢查（健康放行、無 PID／錯前景／crash／其他狀態 fail closed）全數符合預期"
+echo "install-smoke fake-adb 迴歸 OK：正向通過；--no-streaming install 參數／install 非零失敗與卡死／wrong-owner／chooser／crash／ClassNotFound／post-launch adb 卡死（launcher-alive、callback-start、logcat 精確 stage）／SMOKE_ADB_TIMEOUT 非法值／launcher Status timeout 健康檢查（健康放行、無 PID／錯前景／crash／其他狀態 fail closed）全數符合預期"

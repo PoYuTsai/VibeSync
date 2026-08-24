@@ -223,7 +223,10 @@ send_callback_intent() {
 }
 
 adb_call wait-for-device wait-for-device
-adb_call install install -r "$apk"
+# API 24's emulated package-manager path can wedge streamed APK installs while
+# API 36 accepts the same artifact. Keep the install bounded by adb_call, but
+# force the non-streaming path for deterministic old-emulator behavior.
+adb_call install install --no-streaming -r "$apk"
 assert_unique_callback_owner "$callback_uri" "$callback_activity" oauth
 assert_unique_callback_owner "$email_callback_uri" "$email_callback_activity" email
 
