@@ -52,6 +52,7 @@ interface Harness {
   rpcCalls: RpcCall[];
   modelCalls: { timeoutMs: number; system: string }[];
   selects: string[];
+  options: HarnessOptions;
 }
 
 function makeHarness(options: HarnessOptions): Harness {
@@ -131,24 +132,25 @@ function makeHarness(options: HarnessOptions): Harness {
     },
   };
 
-  return { supabase, rpcCalls, modelCalls, selects };
+  return { supabase, rpcCalls, modelCalls, selects, options };
 }
 
 let modelIndex = 0;
 
 function run(
   harness: Harness,
-  options: HarnessOptions & { now?: Date; fillDeadlineMs?: number },
+  overrides: { now?: Date; fillDeadlineMs?: number } = {},
 ) {
   modelIndex = 0;
+  const model = harness.options.model;
   return handlePracticeMoments({
     supabase: harness.supabase,
     userId: USER_ID,
-    now: options.now ?? NOON,
+    now: overrides.now ?? NOON,
     isTestAccount: false,
     deps: {
       apiKey: "test-key",
-      fillDeadlineMs: options.fillDeadlineMs ?? 400,
+      fillDeadlineMs: overrides.fillDeadlineMs ?? 400,
       randomToken: () => `token-${Math.random().toString(36).slice(2, 10)}`,
       callDeepSeek: async (args) => {
         const index = modelIndex++;
@@ -156,7 +158,7 @@ function run(
           timeoutMs: args.timeoutMs,
           system: args.messages[0]?.content ?? "",
         });
-        if (options.model) return await options.model(index);
+        if (model) return await model(index);
         return JSON.stringify({ text: VALID_BODY, imageId: null });
       },
     },
