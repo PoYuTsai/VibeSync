@@ -90,6 +90,7 @@ class _PracticeMomentsScreenState
           child: Column(
             children: [
               if (debugBar != null) debugBar,
+              const _MomentsAiDisclosure(),
               Expanded(
                 child: RefreshIndicator(
                   key: const ValueKey('moments-refresh'),
@@ -108,6 +109,52 @@ class _PracticeMomentsScreenState
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// AI 模擬內容揭露（2026-08-24 複審 P1）。
+///
+/// 這一頁長得像真的社群動態——頭像、相對時間、第一人稱口吻——**這正是它的
+/// 目的，也正是它需要揭露的理由**。少了這一行，使用者可能誤認成真人動態，
+/// 且是 App Review 的實際風險（模擬人類生成內容須明示）。
+///
+/// 刻意放在列表**外面**：跟著捲動的揭露等於捲一下就消失，形同沒有。
+/// 三種狀態（載入／空／錯誤）下都在場，因為誤認風險與有沒有貼文無關。
+class _MomentsAiDisclosure extends StatelessWidget {
+  const _MomentsAiDisclosure();
+
+  static const disclosureKey = ValueKey('moments-ai-disclosure');
+
+  /// 固定文案。不做成參數也不隨情境變化——揭露一旦可變就會有某條路徑漏掉。
+  static const text = 'AI 模擬練習內容，不是真人動態';
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      key: disclosureKey,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.auto_awesome_outlined,
+            size: 13,
+            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              textAlign: TextAlign.center,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
