@@ -31,8 +31,16 @@ export const MAX_MOMENT_SLOTS_PER_DAY = 2;
 /** 第二則的機率折扣：她偶爾一天發兩則，但不會天天。 */
 const SECOND_SLOT_FACTOR = 0.3;
 
-/** 配圖機率（題材允許配圖時才擲）。 */
-const IMAGE_PROBABILITY = 0.45;
+/**
+ * 配圖機率（題材允許配圖時才擲）。
+ *
+ * 0.45 → 0.15（Eric 2026-08-22，DECISIONS.md D5a）：v1 只有自拍一種圖
+ * （20 張場景圖的素材還不存在），45% 會讓 feed 變成自拍牆。15% 同時也是
+ * Threads 文字優先版面（D5b）的另一面——大約每 6-7 則才出現一張圖。
+ *
+ * 素材到位後這個理由就消失了，要不要調回較高的值由 Eric 另案拍板。
+ */
+const IMAGE_PROBABILITY = 0.15;
 
 /** 發文傾向下限／上限：再內向的人也偶爾發，再外向的人也不是天天。 */
 const MIN_PROPENSITY = 0.15;
