@@ -10,7 +10,7 @@ import {
   handleStreamAnalysisResume,
   type StreamAnalysisResumeSnapshot,
 } from "./stream_handler.ts";
-import { buildStreamSystemPrompt } from "./stream_prompt.ts";
+import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
 import { streamAnalyzeMaxTokensForStyleCount } from "./stream_budget.ts";
 import { streamReplyStylesForTier } from "./tier_sync_contract.ts";
 import {
@@ -25,7 +25,6 @@ import {
   checkAiOutput,
 } from "./guardrails.ts";
 import { postProcessAnalysisResult } from "./post_process.ts";
-import { SYSTEM_PROMPT } from "./analyze_prompt/system_prompt.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import {
@@ -392,10 +391,7 @@ export async function handleAnalyzeStream(
         {
           model: deps.selectedModel,
           max_tokens: streamMaxOutputTokens,
-          system: buildStreamSystemPrompt(
-            SYSTEM_PROMPT,
-            streamReplyStyles,
-          ),
+          system: buildAnalyzeStreamSystemPrompt(streamReplyStyles),
           messages: [{ role: "user", content: deps.userMessageContent }],
           thinking: streamThinkingDisabled ? { type: "disabled" } : undefined,
         },
