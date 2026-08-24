@@ -19,6 +19,10 @@
 --   → Edge 側 allowlist 與台北日的契約測試：
 --     supabase/functions/practice-chat/moments_edge_contract_test.ts（PR B 補齊）
 --
+-- per-user `practice_moment` 限流也在 reserve 的同一筆 transaction 內計數。
+-- 只有真正 claimed 的分支會同時增加 attempts 與 user usage；未取得 slot 不計，
+-- 超限 RAISE 會讓整筆 claim rollback，避免沒打模型卻先扣額度。
+--
 -- 契約測試：supabase/functions/practice-chat/moments_migration_postgres_test.ts
 --          （PGlite 真 Postgres，逐格驗 reserve 的六態轉移表）
 --          supabase/functions/practice-chat/moments_migration_source_test.ts
@@ -80,6 +84,10 @@ CREATE OR REPLACE FUNCTION public.reserve_practice_moment_slot(
   p_day_part         TEXT,
   p_theme_id         TEXT,
   p_generation_token TEXT,
+  p_user_id          UUID,
+  p_minute_limit     INTEGER,
+  p_daily_limit      INTEGER,
+  p_count_user_usage BOOLEAN,
   p_max_attempts     INTEGER DEFAULT 3,
   p_lease_seconds    INTEGER DEFAULT 120
 )
@@ -120,6 +128,18 @@ BEGIN
      OR char_length(p_generation_token) > 64 THEN
     RAISE EXCEPTION 'reserve_practice_moment_slot: invalid p_generation_token';
   END IF;
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'reserve_practice_moment_slot: p_user_id is required';
+  END IF;
+  IF p_minute_limit IS NULL OR p_minute_limit <= 0 THEN
+    RAISE EXCEPTION 'reserve_practice_moment_slot: invalid p_minute_limit';
+  END IF;
+  IF p_daily_limit IS NULL OR p_daily_limit <= 0 THEN
+    RAISE EXCEPTION 'reserve_practice_moment_slot: invalid p_daily_limit';
+  END IF;
+  IF p_count_user_usage IS NULL THEN
+    RAISE EXCEPTION 'reserve_practice_moment_slot: p_count_user_usage is required';
+  END IF;
   IF p_max_attempts IS NULL OR p_max_attempts <= 0 OR p_max_attempts > 3 THEN
     RAISE EXCEPTION 'reserve_practice_moment_slot: invalid p_max_attempts';
   END IF;
@@ -139,6 +159,13 @@ BEGIN
   GET DIAGNOSTICS v_inserted = ROW_COUNT;
 
   IF v_inserted = 1 THEN
+    -- slot 認領與使用者限流必須在同一筆交易：超限 RAISE 會連 INSERT／
+    -- attempts 一起 rollback，沒打模型就不會留下任何一種計數。
+    IF p_count_user_usage THEN
+      PERFORM public.increment_model_usage(
+        p_user_id, 'practice_moment', p_minute_limit, p_daily_limit
+      );
+    END IF;
     claimed := TRUE;
     token := p_generation_token;
     attempt_count := 1::SMALLINT;
@@ -200,6 +227,13 @@ BEGIN
   END IF;
 
   -- 第 5 格：接手，並把這一次算進成本。
+  -- 先在同一筆交易內拿到 per-user 額度；超限時整筆 rollback，既不換 token，
+  -- 也不增加 attempts。
+  IF p_count_user_usage THEN
+    PERFORM public.increment_model_usage(
+      p_user_id, 'practice_moment', p_minute_limit, p_daily_limit
+    );
+  END IF;
   UPDATE public.practice_moment_posts AS mp
   SET attempts = v_row.attempts + 1,
       generation_token = p_generation_token,
@@ -430,13 +464,16 @@ $$;
 -- 權限：一律 service_role only（client 永遠經 Edge）
 -- ---------------------------------------------------------------------------
 REVOKE ALL ON FUNCTION public.reserve_practice_moment_slot(
-  TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, INTEGER, INTEGER
+  TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,
+  INTEGER, INTEGER
 ) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.reserve_practice_moment_slot(
-  TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, INTEGER, INTEGER
+  TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,
+  INTEGER, INTEGER
 ) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.reserve_practice_moment_slot(
-  TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, INTEGER, INTEGER
+  TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN,
+  INTEGER, INTEGER
 ) TO service_role;
 
 REVOKE ALL ON FUNCTION public.commit_practice_moment_post(
@@ -465,8 +502,8 @@ GRANT EXECUTE ON FUNCTION public.list_practice_moment_posts(TEXT[], DATE) TO ser
 
 COMMENT ON TABLE public.practice_moment_posts
 IS 'Global practice moment feed posts: one row per (profile_id, post_date, slot). Never stores user-derived content; attempts caps model calls at 3 per (profile_id, post_date, slot), i.e. 6 per profile-day. The daily 600 ceiling also requires the Edge layer to keep profile_id inside the 100-profile allowlist and post_date on the correct Taipei day.';
-COMMENT ON FUNCTION public.reserve_practice_moment_slot(TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, INTEGER, INTEGER)
-IS 'Atomically leases one moment slot for generation. First claim writes attempts = 1; a NULL generation_token is an independent takeover branch so release is effective immediately.';
+COMMENT ON FUNCTION public.reserve_practice_moment_slot(TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN, INTEGER, INTEGER)
+IS 'Atomically leases one moment slot and, only for a successful claim, increments both attempts and per-user model usage in the same transaction. A rate-limit exception rolls the entire claim back.';
 COMMENT ON FUNCTION public.commit_practice_moment_post(TEXT, DATE, INTEGER, TEXT, TEXT, TEXT, TEXT)
 IS 'Token-fenced commit of a generated moment post; a stale token returns FALSE and never overwrites a stored body.';
 COMMENT ON FUNCTION public.release_practice_moment_slot(TEXT, DATE, INTEGER, TEXT, INTEGER)

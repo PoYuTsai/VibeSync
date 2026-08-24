@@ -110,6 +110,14 @@ function makeHarness(options: HarnessOptions): Harness {
         return Promise.resolve({ data: options.existing ?? [], error: null });
       }
       if (fn === "reserve_practice_moment_slot") {
+        // production 的 reserve RPC 會在同一筆 DB transaction 內呼叫
+        // increment_model_usage；測試用同一個錯誤入口模擬整筆 rollback。
+        if (options.rateLimitError) {
+          return Promise.resolve({
+            data: null,
+            error: { message: options.rateLimitError },
+          });
+        }
         const row = options.reserve
           ? options.reserve(params, reserveIndex++)
           : {
@@ -357,6 +365,11 @@ Deno.test("沒搶到 latch（別人正在跑）→ 不打模型、不 release", 
   assertEquals(result.status, 200);
   assertEquals(harness.modelCalls.length, 0);
   assertEquals(
+    rpcNames(harness).includes("increment_model_usage"),
+    false,
+    "沒有取得全域 slot 就沒有模型呼叫，不得先扣使用者限流額度",
+  );
+  assertEquals(
     rpcNames(harness).includes("release_practice_moment_slot"),
     false,
   );
@@ -582,11 +595,16 @@ Deno.test("限流命中 → 200，既有貼文不受影響，只是不補生成"
     "缺的那則要如實回報為 pending，不能假裝沒事",
   );
 
-  // 限流命中就不該打模型，也不該浪費 attempts。
+  // 限流命中就不該打模型；原子 reserve transaction 會連 attempts 一起 rollback。
   assertEquals(harness.modelCalls.length, 0);
   assertEquals(
     rpcNames(harness).includes("reserve_practice_moment_slot"),
+    true,
+  );
+  assertEquals(
+    rpcNames(harness).includes("increment_model_usage"),
     false,
+    "handler 不得在 reserve 之外先扣一次限流",
   );
 
   // 既然不再是 429，就更不該出現訂閱額度鍵誤導成升級 CTA。
@@ -597,7 +615,7 @@ Deno.test("限流命中 → 200，既有貼文不受影響，只是不補生成"
 // 2026-08-24 複審 BLOCK 2：6/min、60/day 必須對得起「模型呼叫次數」。
 // 舊實作在 handler 進入點只記 1 次，卻平行打最多 MOMENT_FILL_MAX_PER_REQUEST 次，
 // 實際上界被放大成 18/min、180/day。
-Deno.test("限流是每次模型呼叫記一次，不是每個 request 記一次", async () => {
+Deno.test("每次模型呼叫都只由一次原子 reserve gate 授權", async () => {
   const due = profilesDueAt(NOON);
   const unlocked = due.slice(0, MOMENT_FILL_MAX_PER_REQUEST).map((entry) => ({
     profileId: entry.profileId,
@@ -610,12 +628,18 @@ Deno.test("限流是每次模型呼叫記一次，不是每個 request 記一次
   const harness = makeHarness({ unlocked });
   await run(harness, {});
 
-  const usageCalls =
-    rpcNames(harness).filter((n) => n === "increment_model_usage").length;
+  const reserveCalls =
+    rpcNames(harness).filter((n) => n === "reserve_practice_moment_slot")
+      .length;
   assertEquals(
-    usageCalls,
+    reserveCalls,
     harness.modelCalls.length,
-    `限流記了 ${usageCalls} 次但打了 ${harness.modelCalls.length} 次模型`,
+    `原子 gate 放行 ${reserveCalls} 次但打了 ${harness.modelCalls.length} 次模型`,
+  );
+  assertEquals(
+    rpcNames(harness).includes("increment_model_usage"),
+    false,
+    "per-user usage 必須封裝在原子 reserve transaction，不能由 Edge 提前計數",
   );
   assert(harness.modelCalls.length > 1, "抽樣要真的有補到多於一則");
 });
@@ -639,18 +663,16 @@ Deno.test("死線已過 → 連 reserve 都不做，不浪費 attempts", async (
   assertEquals(body(result).generatedCount, 0);
 });
 
-Deno.test("限流的 RPC 一定排在第一個 reserve 之前", async () => {
+Deno.test("限流與 attempts 封裝在唯一的原子 reserve gate", async () => {
   const due = profilesDueAt(NOON);
   const harness = makeHarness({ unlocked: [{ profileId: due[0].profileId }] });
   await run(harness, {});
   const names = rpcNames(harness);
-  const limitAt = names.indexOf("increment_model_usage");
-  const reserveAt = names.indexOf("reserve_practice_moment_slot");
-  assert(limitAt >= 0 && reserveAt >= 0);
-  assert(limitAt < reserveAt, "限流必須在 reserve 之前");
+  assert(names.includes("reserve_practice_moment_slot"));
+  assertEquals(names.includes("increment_model_usage"), false);
 });
 
-Deno.test("限流 RPC infra 錯誤 → fail-open 放行，不擋 feed", async () => {
+Deno.test("原子 gate infra 錯誤 → fail-closed 不燒模型，feed 仍回 200", async () => {
   const due = profilesDueAt(NOON);
   const harness = makeHarness({
     unlocked: [{ profileId: due[0].profileId }],
@@ -658,7 +680,8 @@ Deno.test("限流 RPC infra 錯誤 → fail-open 放行，不擋 feed", async ()
   });
   const result = await run(harness, {});
   assertEquals(result.status, 200);
-  assertEquals(harness.modelCalls.length, 1);
+  assertEquals(harness.modelCalls.length, 0);
+  assertEquals(body(result).generatedCount, 0);
 });
 
 Deno.test("沒有到時間的缺口時，連限流都不打（純讀路徑零成本）", async () => {

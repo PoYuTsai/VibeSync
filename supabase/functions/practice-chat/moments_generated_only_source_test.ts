@@ -98,15 +98,16 @@ Deno.test("死線中止不得 release：那條分支必須在 release 之前 ret
   );
 });
 
-Deno.test("限流在第一個 reserve 之前", () => {
-  const limitAt = executableHandler.indexOf("enforceModelRateLimit({");
+Deno.test("限流與 slot 認領封裝在同一個原子 reserve transaction", () => {
   const reserveAt = executableHandler.indexOf('"reserve_practice_moment_slot"');
-  assert(limitAt > 0 && reserveAt > 0);
-  assert(limitAt < reserveAt, "限流必須在任何 reserve／模型呼叫之前");
-  assert(executableHandler.includes('scope: "practice_moment"'));
+  const modelAt = executableHandler.indexOf("await deps.callDeepSeek({");
+  assert(reserveAt > 0 && modelAt > reserveAt);
+  assertEquals(executableHandler.includes("enforceModelRateLimit({"), false);
+  assert(executableHandler.includes("p_user_id: userId"));
+  assert(executableHandler.includes("p_count_user_usage: !isTestAccount"));
   assert(
-    momentsHandler.includes('logWarn("model_rate_limit_check_failed"'),
-    "限流 RPC infra 錯誤必須記錄後放行（fail-open），不得靜默",
+    migration.includes("p_user_id, 'practice_moment', p_minute_limit"),
+    "reserve SQL 必須在同一 transaction 內計 per-user usage",
   );
 });
 

@@ -16,7 +16,10 @@
 // profile_id 只可能來自 getPracticeGirlProfile，post_date 只可能是
 // taipeiTimeContextFor(now).isoDate。契約測試在 moments_edge_contract_test.ts。
 
-import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
+import {
+  classifyModelRateLimitError,
+  MODEL_RATE_LIMITS,
+} from "../_shared/model_rate_limit.ts";
 import type { DeepSeekArgs } from "./deepseek.ts";
 import { DEEPSEEK_MODEL } from "./deepseek.ts";
 import { logInfo, logWarn, summarizeUser } from "./logger.ts";
@@ -396,31 +399,12 @@ async function fillOneSlot(opts: {
   const { supabase, userId, item, deps, deadlineAt, isTestAccount } = opts;
   const { girl, isoDate, plan, imageCandidates } = item;
 
-  // 複審 BLOCK 3：死線守門必須在 reserve 之前。reserve 會先把 attempts +1，
-  // 前置 DB 慢的時候可能一次模型都沒打就白白燒掉一次額度。
-  if (Date.now() >= deadlineAt) return null;
-
-  // 複審 BLOCK 2：一次模型呼叫算一次，不是一次 request 算一次。
-  // 命中就跳過這個 slot（回 null），由呼叫端維持 200 + 既有貼文。
-  const limit = await enforceModelRateLimit({
-    supabase,
-    userId,
-    scope: "practice_moment",
-    isTestAccount,
-  });
-  if (limit.kind === "limited") return null;
-  if (limit.kind === "failOpen") {
-    logWarn("model_rate_limit_check_failed", {
-      user: summarizeUser(userId),
-      scope: "practice_moment",
-      error: limit.errorMessage,
-    });
-  }
-
-  // 限流的 RPC 也要花時間，回來後再確認一次死線。
+  // 死線守門必須在原子 reserve gate 之前。gate 只在成功認領 slot 時，
+  // 同一筆交易內一起計入 attempts 與 per-user model usage。
   if (Date.now() >= deadlineAt) return null;
 
   const generationToken = (deps.randomToken ?? (() => crypto.randomUUID()))();
+  const rateLimits = MODEL_RATE_LIMITS.practice_moment;
   const slotParams = {
     p_profile_id: girl.profileId,
     p_post_date: isoDate,
@@ -434,12 +418,21 @@ async function fillOneSlot(opts: {
       p_day_part: plan.dayPart,
       p_theme_id: plan.themeId,
       p_generation_token: generationToken,
+      p_user_id: userId,
+      p_minute_limit: rateLimits.perMinute,
+      p_daily_limit: rateLimits.perDay,
+      p_count_user_usage: !isTestAccount,
       p_max_attempts: MAX_MOMENT_ATTEMPTS,
       p_lease_seconds: MOMENT_RESERVE_LEASE_MS / 1000,
     },
   );
   if (reserveError) {
+    if (classifyModelRateLimitError(reserveError.message)) {
+      // 背景補生成撞限流只跳過這格；呼叫端仍回 200 + 既有 feed。
+      return null;
+    }
     logWarn("practice_moments_reserve_error", {
+      user: summarizeUser(userId),
       profileId: girl.profileId,
       error: reserveError.message,
     });

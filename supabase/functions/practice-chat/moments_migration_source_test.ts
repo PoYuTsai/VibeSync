@@ -190,6 +190,36 @@ Deno.test("reserve anchors the two review-flagged pitfalls in SQL", () => {
   );
   assert(body.includes("IF v_row.attempts >= p_max_attempts THEN"));
   assert(body.includes("SET status = 'exhausted'"));
+
+  // 使用者限流與 slot attempts 必須是同一筆 transaction。只有兩個真正會
+  // claimed=true 的分支能計數；ready／exhausted／fresh lease 都不能先扣額度。
+  assertEquals(
+    [...body.matchAll(/PERFORM public\.increment_model_usage\(/g)].length,
+    2,
+  );
+  const firstClaimAt = body.indexOf("IF v_inserted = 1 THEN");
+  const firstUsageAt = body.indexOf(
+    "PERFORM public.increment_model_usage(",
+    firstClaimAt,
+  );
+  const firstReturnAt = body.indexOf("RETURN NEXT;", firstClaimAt);
+  assert(
+    firstClaimAt < firstUsageAt && firstUsageAt < firstReturnAt,
+    "首次 claimed 分支必須先在同一 transaction 計 usage 才能放行",
+  );
+  const takeoverAt = body.indexOf("-- 第 5 格：接手");
+  const takeoverUsageAt = body.indexOf(
+    "PERFORM public.increment_model_usage(",
+    takeoverAt,
+  );
+  const takeoverUpdateAt = body.indexOf(
+    "UPDATE public.practice_moment_posts AS mp",
+    takeoverAt,
+  );
+  assert(
+    takeoverAt < takeoverUsageAt && takeoverUsageAt < takeoverUpdateAt,
+    "接手分支必須把 usage 與 attempts 更新包在同一 transaction",
+  );
 });
 
 Deno.test("release never deletes a row, never writes a body, never refunds attempts", () => {
