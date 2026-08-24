@@ -1,5 +1,5 @@
 {
-  "description": "AnalyzeChat Edge 行為基準（源自 fc8bbe84）。promptSlices 鎖定 prompt/model/token 相關原始碼位元組的 SHA-256；純重構搬移時只允許改 file 欄位，只有已核准且另有行為測試的產品規格變更才可更新對應 sha256。",
+  "description": "AnalyzeChat Edge 行為基準（源自 fc8bbe84）。renderedPrompts 鎖定 active prompt 輸出；promptSlices 只鎖模型、token 與非 prompt helper 原始碼。只有已核准且另有行為測試的產品規格變更才可更新 baseline。",
   "baseline": {
     "behaviorBaselineCommit": "fc8bbe84",
     "capturedAtCommit": "dc504e72bad693c5b5e29c74e04ea9dd6ada1789"
@@ -28,6 +28,23 @@
       "code": "INVALID_RESPONSE_MODE",
       "message": "不支援的回應模式。本次不會扣額度。",
       "shouldChargeQuota": false
+    }
+  },
+  "renderedPrompts": {
+    "base": {
+      "charCount": 34496,
+      "lineCount": 1020,
+      "sha256": "ba63b43d6cf47e2c63051a8a41f458aabf13b631d0ea862f14081bdcf82b8738"
+    },
+    "paidFiveStyle": {
+      "charCount": 41256,
+      "lineCount": 1055,
+      "sha256": "c70209b344153b32e75a8d53120f2426d5f19d562afa2e150252e33801a0783d"
+    },
+    "singleExtendStyle": {
+      "charCount": 41172,
+      "lineCount": 1055,
+      "sha256": "a42683d499e4bb7f1092489edca25f0e2d8853ed01d8f4ae85e36e5c4861d656"
     }
   },
   "promptSlices": {
@@ -92,22 +109,16 @@
       "sha256": "a1305072731fdc3449daf2f53070a89ac60167647996dc4db7f70900ff9b7125"
     },
     "buildImageAnalysisPrompt": {
-      "file": "analyze_system_prompt.ts",
+      "file": "analyze_image_prompt.ts",
       "start": "function buildImageAnalysisPrompt(",
       "end": "\n}",
       "sha256": "0c8c8820ab48f2b9e60eec7adb350abb2df46db2693c0bc1a464851bdd3f6e40"
     },
     "buildVisionContent": {
-      "file": "analyze_system_prompt.ts",
+      "file": "analyze_image_prompt.ts",
       "start": "function buildVisionContent(",
       "end": "\n}",
       "sha256": "a628722b761f0a51604a5d2a4f570269239e345a28492c53ce702eceb7b86846"
-    },
-    "SYSTEM_PROMPT": {
-      "file": "analyze_system_prompt.ts",
-      "start": "const SYSTEM_PROMPT = `",
-      "end": "`;",
-      "sha256": "5245a2601e06d4f4eb67e2100509ece2e5db116dc17566feeb67a84b0b60181e"
     },
     "OPTIMIZE_MESSAGE_MAX_TOKENS": {
       "file": "optimize_message_prompt.ts",

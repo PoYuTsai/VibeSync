@@ -9,6 +9,7 @@ import {
   type AnalyzeStreamDeps,
   handleAnalyzeStream,
 } from "./analyze_stream_handler.ts";
+import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
 import { AiStreamingServiceError } from "./streaming_fallback.ts";
 
 function line(value: Record<string, unknown>): string {
@@ -42,6 +43,7 @@ function makeDeps(options: {
   effectiveTier?: string;
   allowedFeatures?: string[];
   capturedMaxTokens?: number[];
+  capturedSystems?: string[];
   // deno-lint-ignore no-explicit-any
   getRunResult?: any;
   modelChunks?: string[];
@@ -113,6 +115,7 @@ function makeDeps(options: {
     callModel: (request) => {
       calls.push("callModel");
       options.capturedMaxTokens?.push(request.max_tokens);
+      options.capturedSystems?.push(request.system);
       if (options.modelError) return Promise.reject(options.modelError);
       return Promise.resolve({
         model: "claude-sonnet-5",
@@ -203,24 +206,47 @@ Deno.test("stream fresh run：createPendingRun → callModel → chargeRun → m
 Deno.test("stream Free provider request uses 4500 output-token cap", async () => {
   const calls: string[] = [];
   const capturedMaxTokens: number[] = [];
+  const capturedSystems: string[] = [];
 
-  await runWithStubbedFetch(makeDeps({ calls, capturedMaxTokens }));
+  await runWithStubbedFetch(makeDeps({
+    calls,
+    capturedMaxTokens,
+    capturedSystems,
+  }));
 
   assertEquals(capturedMaxTokens, [4500]);
+  assertEquals(
+    capturedSystems,
+    [buildAnalyzeStreamSystemPrompt(["extend", "tease"])],
+  );
 });
 
 Deno.test("stream paid provider request keeps 6000 output-token cap", async () => {
   const calls: string[] = [];
   const capturedMaxTokens: number[] = [];
+  const capturedSystems: string[] = [];
 
   await runWithStubbedFetch(makeDeps({
     calls,
     capturedMaxTokens,
+    capturedSystems,
     effectiveTier: "essential",
     allowedFeatures: ["extend", "resonate", "tease", "humor", "coldRead"],
   }));
 
   assertEquals(capturedMaxTokens, [6000]);
+  assertEquals(
+    capturedSystems,
+    [
+      buildAnalyzeStreamSystemPrompt([
+        "extend",
+        "resonate",
+        "tease",
+        "humor",
+        "coldRead",
+      ]),
+    ],
+  );
 });
 
 Deno.test("stream provider 失敗：markFailed，絕不 chargeRun", async () => {

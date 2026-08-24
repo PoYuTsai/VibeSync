@@ -7,11 +7,19 @@ import {
 // stream 分支已抽到 analyze_stream_handler.ts；index.ts 留 dispatch 與
 // fail-closed gate。corpus 串接兩檔（index 在前）。
 async function readIndexSource(): Promise<string> {
-  const index = await Deno.readTextFile(new URL("./analyze_chat_handler.ts", import.meta.url));
+  const index = await Deno.readTextFile(
+    new URL("./analyze_chat_handler.ts", import.meta.url),
+  );
   const streamHandler = await Deno.readTextFile(
     new URL("./analyze_stream_handler.ts", import.meta.url),
   );
   return `${index}\n${streamHandler}`;
+}
+
+async function readStreamHandlerSource(): Promise<string> {
+  return await Deno.readTextFile(
+    new URL("./analyze_stream_handler.ts", import.meta.url),
+  );
 }
 
 async function readRetryLeaseMigration(): Promise<string> {
@@ -41,6 +49,7 @@ function streamFailClosedBranch(source: string): string {
 
 Deno.test("stream branch is gated and uses the stream ledger", async () => {
   const source = await readIndexSource();
+  const streamHandlerSource = await readStreamHandlerSource();
 
   assert(source.includes(
     'if (responseMode === "stream") {\n      return await handleAnalyzeStream({',
@@ -51,7 +60,12 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   assert(source.includes("deps.store.reserveRetry({"));
   assert(source.includes("handleStreamAnalysisRequest({"));
   assert(source.includes("(deps.callModel ?? callClaudeStreaming)("));
-  assert(source.includes("buildStreamSystemPrompt("));
+  assert(source.includes("buildAnalyzeStreamSystemPrompt("));
+  assertFalse(streamHandlerSource.includes('from "./stream_prompt.ts"'));
+  assertFalse(
+    streamHandlerSource.includes('from "./analyze_prompt/system_prompt.ts"'),
+  );
+  assertFalse(streamHandlerSource.includes("SYSTEM_PROMPT"));
   assert(source.includes("streamReplyStyles"));
   assert(source.includes("requiredReplyStyles: streamReplyStyles"));
   assert(source.includes("streamAnalyzeMaxTokensForStyleCount("));

@@ -1,15 +1,20 @@
 // AnalyzeChat Edge 行為基準鎖（源自 fc8bbe84）。
 //
-// 重構期間的安全網：prompt bytes、模型選擇、token/quota 常數的原始碼切片
-// SHA-256 必須與 baseline_fixtures.json 一致。純搬移程式碼時只能改 fixtures 的
-// file 欄位（指向新家）；只有已核准且另有行為測試的產品規格變更，才可更新
-// 對應 slice 的 sha256，避免把意外漂移誤當成新 baseline。
+// 重構期間的安全網：active prompt 鎖 rendered bytes；模型選擇、token/quota
+// 常數與其他非 prompt helper 才鎖原始碼切片。只有已核准且另有行為測試的
+// 產品規格變更，才可更新 baseline，避免把意外漂移誤當成新行為。
 
 import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
+import { SYSTEM_PROMPT } from "./analyze_prompt/system_prompt.ts";
 import { resolveRequestMode } from "./request_mode.ts";
+import { STREAM_STYLES } from "./stream_events.ts";
+
+const seamRequiresExplicitStyles: [] extends
+  Parameters<typeof buildAnalyzeStreamSystemPrompt> ? false : true = true;
 
 interface PromptSlice {
   file: string;
@@ -26,6 +31,11 @@ interface BaselineFixtures {
     shouldChargeQuota: boolean;
   }>;
   promptSlices: Record<string, PromptSlice>;
+  renderedPrompts: Record<string, {
+    charCount: number;
+    lineCount: number;
+    sha256: string;
+  }>;
 }
 
 const fixtures: BaselineFixtures = JSON.parse(
@@ -68,6 +78,30 @@ async function sha256Hex(text: string): Promise<string> {
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 }
+
+Deno.test("baseline：active Analyze rendered prompts 與穩定版完全相同", async () => {
+  const rendered: Record<string, string> = {
+    base: SYSTEM_PROMPT,
+    paidFiveStyle: buildAnalyzeStreamSystemPrompt(STREAM_STYLES),
+    singleExtendStyle: buildAnalyzeStreamSystemPrompt(["extend"]),
+  };
+
+  for (const [name, prompt] of Object.entries(rendered)) {
+    const expected = fixtures.renderedPrompts[name];
+    assert(expected, `${name}: rendered baseline fixture missing`);
+    assertEquals(prompt.length, expected.charCount, `${name}: char count`);
+    assertEquals(
+      prompt.split("\n").length,
+      expected.lineCount,
+      `${name}: lines`,
+    );
+    assertEquals(await sha256Hex(prompt), expected.sha256, `${name}: SHA-256`);
+  }
+});
+
+Deno.test("Analyze prompt seam requires an explicit style list", () => {
+  assert(seamRequiresExplicitStyles);
+});
 
 Deno.test("baseline：prompt/model/token 原始碼切片 hash 與核准 fixture 一致", async () => {
   for (const [name, slice] of Object.entries(fixtures.promptSlices)) {

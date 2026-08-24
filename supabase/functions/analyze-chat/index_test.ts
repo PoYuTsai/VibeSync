@@ -17,9 +17,11 @@ import {
 } from "./opener_image_validation.ts";
 import { callClaudeWithFallback, extractClaudeText } from "./fallback.ts";
 import { selectModel } from "./model_selection.ts";
+import { SYSTEM_PROMPT } from "./analyze_prompt/system_prompt.ts";
 
-// 重構後 index.ts 的 prompt／sanitize 內容分居多個模組；本 corpus 依固定順序
-// 串接，讓既有 source-scan 斷言不因搬家而失效（順序敏感的測試各自讀單檔）。
+// Source wiring 與實際 rendered Analyze prompt 分開收集。Prompt 內容測試透過
+// runtime export 觀察行為，不再依賴文字位於哪個檔案；其餘 wiring/sanitize
+// 斷言仍讀 source（順序敏感的測試各自讀單檔）。
 let scanCorpusCache: string | null = null;
 async function readAnalyzeChatScanCorpus(): Promise<string> {
   if (scanCorpusCache !== null) return scanCorpusCache;
@@ -37,7 +39,7 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
     "./ocr_normalizer.ts",
     "./analysis_input_compiler.ts",
     "./ocr_recognition_prompt.ts",
-    "./analyze_system_prompt.ts",
+    "./analyze_image_prompt.ts",
     "./optimize_message_prompt.ts",
     "./my_message_prompt.ts",
     "./opener_prompt.ts",
@@ -46,6 +48,7 @@ async function readAnalyzeChatScanCorpus(): Promise<string> {
   for (const file of files) {
     parts.push(await Deno.readTextFile(new URL(file, import.meta.url)));
   }
+  parts.push(SYSTEM_PROMPT);
   scanCorpusCache = parts.join("\n");
   return scanCorpusCache;
 }
@@ -1833,16 +1836,9 @@ Deno.test({
 
 // ─── 刀3 技巧詞彙表＋顯現規則＋Apple 三層線（2026-06-12 game-system design §6/§2）───
 
-// 範圍切片：只測 analyze-chat 的 SYSTEM_PROMPT 本體。
-// OPENER_PROMPT 的 Game 化是下一案，殘留行話不在本刀範圍。
-async function readAnalyzeSystemPrompt(): Promise<string> {
-  const source = await Deno.readTextFile(
-    new URL("./analyze_system_prompt.ts", import.meta.url),
-  );
-  const start = source.indexOf("const SYSTEM_PROMPT");
-  const end = source.indexOf("\nexport {", start);
-  assert(start >= 0 && end > start, "SYSTEM_PROMPT 邊界定位失敗");
-  return source.slice(start, end);
+// 只測 active Analyze rendered prompt；不測檔案位置或 composer implementation。
+function readAnalyzeSystemPrompt(): string {
+  return SYSTEM_PROMPT;
 }
 
 Deno.test({
