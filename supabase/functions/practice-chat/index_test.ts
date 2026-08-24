@@ -359,7 +359,10 @@ function makeFake(options: FakeOptions = {}) {
               : null,
           });
         },
-        upsert(values: Record<string, unknown>, _opts?: Record<string, unknown>) {
+        upsert(
+          values: Record<string, unknown>,
+          _opts?: Record<string, unknown>,
+        ) {
           state.upserts.push({ table, values });
           state.events.push(`upsert:${table}`);
           return Promise.resolve({
@@ -1131,6 +1134,35 @@ Deno.test("game chat allows SR profile and uses beginner-like learning state", a
   const update = learningUpdateCalls(state)[0].params;
   assert((update.p_temperature_delta as number) > 4);
   assert((update.p_familiarity_delta as number) > 5);
+});
+
+Deno.test("game neutral safe turn stays flat without positive evidence", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 30,
+        familiarity_score: 20,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: [
+        "AI reply",
+        CLASSIFIER_ALIGNED_NEUTRAL_MINOR,
+      ],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      temperatureScore: 30,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityScore, 20);
+  assertEquals(json.temperature.familiarityDelta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
 Deno.test("game chat reads and persists game state around learning updates", async () => {
@@ -8123,7 +8155,6 @@ Deno.test("Debrief 不讀朋友圈貼文", async () => {
   assertEquals(momentMemoryCalls(state).length, 0);
   await Promise.all(state.backgroundTasks);
 });
-
 
 Deno.test("貼文 RPC 卡住不回時，1:1 聊天仍然完成（不被選配查詢吊死）", async () => {
   // 2026-08-24 複審 BLOCK-2。沒有逾時的話這條測試會直接掛住不返回。

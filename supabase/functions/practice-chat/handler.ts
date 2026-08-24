@@ -1258,6 +1258,7 @@ async function judgeLearningState(opts: {
     currentTemperature: number,
     currentFamiliarity: number,
     partnerState: PartnerState | null | undefined,
+    protectedAppliedHint: boolean,
   ): LearningJudgement => {
     if (opts.request.practiceMode !== "game") return judgement;
     const snapshot = evaluateGameFsm({
@@ -1272,6 +1273,7 @@ async function judgeLearningState(opts: {
       currentTemperature,
       currentFamiliarity,
       snapshot,
+      protectedAppliedHint,
     });
   };
   const fallbackForSnapshot = (
@@ -1313,6 +1315,7 @@ async function judgeLearningState(opts: {
         currentTemperature,
         currentFamiliarity,
         currentPartnerState,
+        false,
       );
     }
     const base = fallbackLearningJudgement(
@@ -1320,13 +1323,14 @@ async function judgeLearningState(opts: {
       currentFamiliarity,
       currentPartnerState,
     );
+    const protectedHintType = isExactAppliedHint(opts.request)
+      ? opts.request.appliedHintType
+      : undefined;
     const protectedFallback = protectAppliedHintTemperature(
       base,
       currentTemperature,
       currentFamiliarity,
-      isExactAppliedHint(opts.request)
-        ? opts.request.appliedHintType
-        : undefined,
+      protectedHintType,
       opts.request.practiceMode,
     );
     const cooledFallback = offenseCooldown
@@ -1341,6 +1345,7 @@ async function judgeLearningState(opts: {
       currentTemperature,
       currentFamiliarity,
       currentPartnerState,
+      protectedHintType !== undefined,
     );
   };
   const protectedJudgementForSnapshot = (
@@ -1408,6 +1413,7 @@ async function judgeLearningState(opts: {
       currentTemperature,
       currentFamiliarity,
       currentPartnerState,
+      protectedHintType !== undefined,
     );
   };
   const fallback = fallbackForSnapshot(

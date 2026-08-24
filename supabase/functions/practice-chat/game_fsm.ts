@@ -1,6 +1,6 @@
 import {
-  type InviteStage,
   inviteMaturityFromLearningScores,
+  type InviteStage,
 } from "./invite_maturity.ts";
 import { looksLikeGameSoftInvite } from "./game_invite_classifier.ts";
 import {
@@ -1178,7 +1178,16 @@ export function applyGameLearningDelta(opts: {
   currentTemperature: number;
   currentFamiliarity: number;
   snapshot: GameFsmSnapshot;
+  protectedAppliedHint?: boolean;
 }): LearningJudgement {
+  const hasPositiveGameEvidence =
+    opts.judgement.classification.connection === "caught" ||
+    opts.judgement.classification.testHandling === "passed";
+  const hasStagnationFailure = opts.snapshot.failureStates.some((state) =>
+    state === "BORING" ||
+    state === "TOOL_GUY" ||
+    state === "ENGINE_STALL"
+  );
   const hasSafetyFailure = opts.snapshot.failureStates.some((state) =>
     state === "GREASY" ||
     state === "GHOST_RISK" ||
@@ -1197,16 +1206,22 @@ export function applyGameLearningDelta(opts: {
   const familiarityRaw = opts.judgement.familiarityDelta >= 0
     ? opts.judgement.familiarityDelta * positiveFamiliarityScale
     : opts.judgement.familiarityDelta * negativeScale;
-  const heatDelta = clampDelta(
+  let heatDelta = clampDelta(
     heatRaw,
     GAME_HEAT_DELTA_MIN,
     GAME_HEAT_DELTA_MAX,
   );
-  const familiarityDelta = clampDelta(
+  let familiarityDelta = clampDelta(
     familiarityRaw,
     GAME_FAMILIARITY_DELTA_MIN,
     GAME_FAMILIARITY_DELTA_MAX,
   );
+  const canEarnPositive = opts.protectedAppliedHint ||
+    (hasPositiveGameEvidence && !hasStagnationFailure);
+  if (!canEarnPositive) {
+    heatDelta = Math.min(heatDelta, 0);
+    familiarityDelta = Math.min(familiarityDelta, 0);
+  }
   const score = clampTemperature(opts.currentTemperature + heatDelta);
   const familiarityScore = clampTemperature(
     opts.currentFamiliarity + familiarityDelta,

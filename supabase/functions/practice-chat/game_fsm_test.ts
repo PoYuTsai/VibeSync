@@ -606,6 +606,259 @@ Deno.test("applyGameLearningDelta scales game deltas but clamps the amplitude", 
   assertEquals(gameNegative.familiarityDelta, -18);
 });
 
+Deno.test("applyGameLearningDelta rewards caught or passed evidence independently", () => {
+  for (
+    const [label, classification] of [
+      ["caught", {
+        connection: "caught",
+        impact: "minor",
+        testHandling: "none",
+        boundary: "safe",
+        hintAlignment: "none",
+        partnerMood: "amused",
+        moodConfidence: 0.9,
+        innerThought: "有接到前文。",
+      }],
+      ["passed", {
+        connection: "neutral",
+        impact: "minor",
+        testHandling: "passed",
+        boundary: "safe",
+        hintAlignment: "none",
+        partnerMood: "amused",
+        moodConfidence: 0.9,
+        innerThought: "小測試接得穩。",
+      }],
+    ] as const
+  ) {
+    const base = applyLearningClassification({
+      heatScore: 30,
+      familiarityScore: 12,
+    }, classification);
+    const snapshot = evaluateGameFsm({
+      turns: [{ role: "user", text: "這題有梗，我接到了。" }],
+      temperatureScore: 30,
+      familiarityScore: 12,
+      partnerMood: "amused",
+      classification,
+    });
+    const game = applyGameLearningDelta({
+      judgement: base,
+      currentTemperature: 30,
+      currentFamiliarity: 12,
+      snapshot,
+    });
+
+    assert(game.delta > 0, `${label} should unlock positive heat`);
+    assert(
+      game.familiarityDelta > 0,
+      `${label} should unlock positive familiarity`,
+    );
+  }
+});
+
+Deno.test("applyGameLearningDelta keeps low-impact neutral safe replies flat", () => {
+  const classification = {
+    connection: "neutral" as const,
+    impact: "minor" as const,
+    testHandling: "none" as const,
+    boundary: "safe" as const,
+    hintAlignment: "none" as const,
+    partnerMood: "neutral" as const,
+    moodConfidence: 0.8,
+    innerThought: "普通，但沒有不舒服。",
+  };
+  const base = applyLearningClassification({
+    heatScore: 30,
+    familiarityScore: 12,
+  }, classification);
+  const snapshot = evaluateGameFsm({
+    turns: [{ role: "user", text: "今天工作很多嗎" }],
+    temperatureScore: 30,
+    familiarityScore: 12,
+    partnerMood: "neutral",
+    classification,
+  });
+
+  const game = applyGameLearningDelta({
+    judgement: base,
+    currentTemperature: 30,
+    currentFamiliarity: 12,
+    snapshot,
+  });
+
+  assertEquals(base.delta, 1);
+  assertEquals(base.familiarityDelta, 1);
+  assertEquals(game.delta, 0);
+  assertEquals(game.familiarityDelta, 0);
+  assertEquals(game.score, 30);
+  assertEquals(game.familiarityScore, 12);
+});
+
+Deno.test("applyGameLearningDelta does not reward caught replies while BORING is active", () => {
+  const classification = {
+    connection: "caught" as const,
+    impact: "strong" as const,
+    testHandling: "none" as const,
+    boundary: "safe" as const,
+    hintAlignment: "none" as const,
+    partnerMood: "amused" as const,
+    moodConfidence: 0.9,
+    innerThought: "單句有接到，但整段對話仍像查戶口。",
+  };
+  const base = applyLearningClassification({
+    heatScore: 30,
+    familiarityScore: 12,
+  }, classification);
+  const snapshot = evaluateGameFsm({
+    turns: [
+      { role: "user", text: "你幾歲？住哪？做什麼？" },
+      { role: "ai", text: "你查戶口喔 XD" },
+      { role: "user", text: "那你下班都去哪？今天在哪？" },
+    ],
+    temperatureScore: 30,
+    familiarityScore: 12,
+    partnerMood: "amused",
+    classification,
+  });
+
+  const game = applyGameLearningDelta({
+    judgement: base,
+    currentTemperature: 30,
+    currentFamiliarity: 12,
+    snapshot,
+  });
+
+  assert(snapshot.failureStates.includes("BORING"));
+  assert(base.delta > 0);
+  assert(base.familiarityDelta > 0);
+  assertEquals(game.delta, 0);
+  assertEquals(game.familiarityDelta, 0);
+});
+
+Deno.test("applyGameLearningDelta lets a protected hint recover a BORING round", () => {
+  const classification = {
+    connection: "neutral" as const,
+    impact: "minor" as const,
+    testHandling: "none" as const,
+    boundary: "safe" as const,
+    hintAlignment: "none" as const,
+    partnerMood: "neutral" as const,
+    moodConfidence: 0.8,
+    innerThought: "照著提示換一個互動方向。",
+  };
+  const base = applyLearningClassification({
+    heatScore: 30,
+    familiarityScore: 12,
+  }, classification);
+  const protectedHint = {
+    ...base,
+    delta: 2,
+    familiarityDelta: 1,
+  };
+  const snapshot = evaluateGameFsm({
+    turns: [
+      { role: "user", text: "你幾歲？住哪？做什麼？" },
+      { role: "ai", text: "你查戶口喔 XD" },
+      { role: "user", text: "那你下班都去哪？今天在哪？" },
+    ],
+    temperatureScore: 30,
+    familiarityScore: 12,
+    partnerMood: "neutral",
+    classification,
+  });
+
+  const game = applyGameLearningDelta({
+    judgement: protectedHint,
+    currentTemperature: 30,
+    currentFamiliarity: 12,
+    snapshot,
+    protectedAppliedHint: true,
+  });
+
+  assert(snapshot.failureStates.includes("BORING"));
+  assertEquals(game.delta, 4);
+  assertEquals(game.familiarityDelta, 2);
+});
+
+Deno.test("applyGameLearningDelta does not reward caught replies while TOOL_GUY is active", () => {
+  const classification = {
+    connection: "caught" as const,
+    impact: "strong" as const,
+    testHandling: "none" as const,
+    boundary: "safe" as const,
+    hintAlignment: "none" as const,
+    partnerMood: "amused" as const,
+    moodConfidence: 0.9,
+    innerThought: "有接到話，但一直用幫忙換好感。",
+  };
+  const base = applyLearningClassification({
+    heatScore: 30,
+    familiarityScore: 12,
+  }, classification);
+  const snapshot = evaluateGameFsm({
+    turns: [
+      { role: "user", text: "我幫你處理，我載你回家。" },
+    ],
+    temperatureScore: 30,
+    familiarityScore: 12,
+    partnerMood: "amused",
+    classification,
+  });
+
+  const game = applyGameLearningDelta({
+    judgement: base,
+    currentTemperature: 30,
+    currentFamiliarity: 12,
+    snapshot,
+  });
+
+  assert(snapshot.failureStates.includes("TOOL_GUY"));
+  assertEquals(game.delta, 0);
+  assertEquals(game.familiarityDelta, 0);
+});
+
+Deno.test("applyGameLearningDelta does not reward caught replies while ENGINE_STALL is active", () => {
+  const classification = {
+    connection: "caught" as const,
+    impact: "strong" as const,
+    testHandling: "none" as const,
+    boundary: "safe" as const,
+    hintAlignment: "none" as const,
+    partnerMood: "amused" as const,
+    moodConfidence: 0.9,
+    innerThought: "單句有接到，但對話已經卡住。",
+  };
+  const base = applyLearningClassification({
+    heatScore: 30,
+    familiarityScore: 12,
+  }, classification);
+  const snapshot = evaluateGameFsm({
+    turns: [
+      { role: "user", text: "嗯" },
+      { role: "ai", text: "你今天很省字耶。" },
+      { role: "user", text: "哈哈" },
+      { role: "ai", text: "好，換你多講一點。" },
+      { role: "user", text: "好喔" },
+    ],
+    temperatureScore: 30,
+    familiarityScore: 12,
+    partnerMood: "amused",
+    classification,
+  });
+
+  const game = applyGameLearningDelta({
+    judgement: base,
+    currentTemperature: 30,
+    currentFamiliarity: 12,
+    snapshot,
+  });
+
+  assert(snapshot.failureStates.includes("ENGINE_STALL"));
+  assertEquals(game.delta, 0);
+  assertEquals(game.familiarityDelta, 0);
+});
+
 Deno.test("evaluateGameFsm marks fake familiarity and social proof as reality-anchor traps", () => {
   const snapshot = evaluateGameFsm({
     turns: [{
