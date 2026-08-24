@@ -30,6 +30,23 @@
       "shouldChargeQuota": false
     }
   },
+  "renderedPrompts": {
+    "base": {
+      "charCount": 34496,
+      "lineCount": 1020,
+      "sha256": "ba63b43d6cf47e2c63051a8a41f458aabf13b631d0ea862f14081bdcf82b8738"
+    },
+    "paidFiveStyle": {
+      "charCount": 41256,
+      "lineCount": 1055,
+      "sha256": "c70209b344153b32e75a8d53120f2426d5f19d562afa2e150252e33801a0783d"
+    },
+    "freeOneStyle": {
+      "charCount": 41172,
+      "lineCount": 1055,
+      "sha256": "a42683d499e4bb7f1092489edca25f0e2d8853ed01d8f4ae85e36e5c4861d656"
+    }
+  },
   "promptSlices": {
     "OPENER_TOKEN_BUDGET": {
       "file": "opener_prompt.ts",

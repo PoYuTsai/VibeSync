@@ -9,6 +9,8 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
+import { SYSTEM_PROMPT } from "./analyze_system_prompt.ts";
 import { resolveRequestMode } from "./request_mode.ts";
 
 interface PromptSlice {
@@ -26,6 +28,11 @@ interface BaselineFixtures {
     shouldChargeQuota: boolean;
   }>;
   promptSlices: Record<string, PromptSlice>;
+  renderedPrompts: Record<string, {
+    charCount: number;
+    lineCount: number;
+    sha256: string;
+  }>;
 }
 
 const fixtures: BaselineFixtures = JSON.parse(
@@ -68,6 +75,22 @@ async function sha256Hex(text: string): Promise<string> {
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 }
+
+Deno.test("baseline：active Analyze rendered prompts 與穩定版完全相同", async () => {
+  const rendered: Record<string, string> = {
+    base: SYSTEM_PROMPT,
+    paidFiveStyle: buildAnalyzeStreamSystemPrompt(),
+    freeOneStyle: buildAnalyzeStreamSystemPrompt(["extend"]),
+  };
+
+  for (const [name, prompt] of Object.entries(rendered)) {
+    const expected = fixtures.renderedPrompts[name];
+    assert(expected, `${name}: rendered baseline fixture missing`);
+    assertEquals(prompt.length, expected.charCount, `${name}: char count`);
+    assertEquals(prompt.split("\n").length, expected.lineCount, `${name}: lines`);
+    assertEquals(await sha256Hex(prompt), expected.sha256, `${name}: SHA-256`);
+  }
+});
 
 Deno.test("baseline：prompt/model/token 原始碼切片 hash 與核准 fixture 一致", async () => {
   for (const [name, slice] of Object.entries(fixtures.promptSlices)) {
