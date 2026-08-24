@@ -239,6 +239,26 @@ void main() {
     expect(message, contains('新價格'));
   });
 
+  test('replacement completion copy distinguishes every purchase outcome', () {
+    expect(
+      replacementCompletionMessage(
+        AndroidSubscriptionReplacementMode.immediateAndChargeProratedPrice,
+      ),
+      '升級已立即生效，Google Play 已按剩餘期間計算補差額。',
+    );
+    expect(
+      replacementCompletionMessage(AndroidSubscriptionReplacementMode.deferred),
+      '降級已排程，將於目前方案到期、下次續訂時生效。',
+    );
+    expect(
+      replacementCompletionMessage(
+        AndroidSubscriptionReplacementMode.immediateWithoutProration,
+      ),
+      '方案已立即切換，新價格會在下次續訂時扣款。',
+    );
+    expect(replacementCompletionMessage(null), '方案已更新。');
+  });
+
   test('iOS mapping remains an exact known product allowlist', () {
     final product = SubscriptionPlanDefinition.essentialMonthly;
     expect(

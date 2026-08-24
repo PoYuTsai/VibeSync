@@ -12,7 +12,7 @@
 |------|-----|
 | RevenueCat Project | VibeSync (`projd482586c`) |
 | iOS App | `app73a7f8a72d` |
-| iOS Public SDK Key | 由 `REVENUECAT_IOS_PUBLIC_SDK_KEY` 注入，不寫入 client fallback |
+| iOS Public SDK Key | 由 workflow 的已核對 `appl_...` build input 注入，不寫入 client fallback |
 | In-App Purchase Key | `SF836SBCKL`（P8 uploaded） |
 | App Store Connect API Key | 另建的 App Manager 權限 Key |
 | Issuer ID | `35ed1ede-ef4b-4b24-9dd1-47d777cb032b` |
@@ -22,9 +22,9 @@
 
 ### 平台 public SDK key contract（M4）
 
-| 平台 | Flutter dart-define / GitHub secret | 合法格式 | 缺值行為 |
+| 平台 | Flutter dart-define / build input | 合法格式 | 缺值行為 |
 |------|--------------------------------------|----------|----------|
-| iOS | `REVENUECAT_API_KEY`（workflow 由 `REVENUECAT_IOS_PUBLIC_SDK_KEY` 注入） | `appl_...` | 缺值／錯 prefix 時不 configure RevenueCat |
+| iOS | `REVENUECAT_API_KEY`（workflow 由已核對的 public `appl_...` build input 注入） | `appl_...` | 缺值／錯 prefix 時不 configure RevenueCat |
 | Android | `REVENUECAT_ANDROID_API_KEY` | `goog_...` | 不 configure RevenueCat，Paywall 維持不可購買 |
 
 Android 不得讀取 generic `REVENUECAT_PROD_KEY`、iOS `appl_` key、server secret 或
@@ -33,8 +33,9 @@ hardcoded fallback。`Build & Distribute`／`Release to App Stores` 只傳入明
 不建立或修改 GitHub Secret。
 
 `REVENUECAT_IOS_API_KEY` 是 Supabase／Edge Functions 使用的 server key，不能注入
-Flutter client。iOS app build 若尚未建立 `REVENUECAT_IOS_PUBLIC_SDK_KEY`，應維持
-RevenueCat 未 configure；不得以 server key 或 hardcoded key 代替。
+Flutter client。iOS workflow 使用既有、已核對的 public `appl_...` build input；AppConfig
+仍會在 runtime 對缺值／錯 prefix fail closed，不會以 server key、`REVENUECAT_PROD_KEY`
+或其他未知輸入代替。
 
 ---
 
@@ -58,7 +59,11 @@ RevenueCat 未 configure；不得以 server key 或 hardcoded key 代替。
 | Essential 月繳 | `essential_monthly` | `vibesync_essential_monthly`、`vibesync_essential_monthly_v2` |
 | Essential 季繳 | `essential_quarterly` | `vibesync_essential_quarterly`、`vibesync_essential_quarterly_v2` |
 
-真相源是 `lib/features/subscription/data/providers/subscription_providers.dart` 的 `_subscriptionProductIds`。改動 tier 判定或 paywall 對應時，四組清單要一起看——只比對 canonical ID 會讓持有舊 product ID 的付費用戶被判成 Free。
+Android M4 商品真相源是
+`lib/features/subscription/domain/services/subscription_product_contract.dart` 的
+`SubscriptionPlanDefinition.androidPlans`；iOS 舊 product ID allowlist 也在同一契約中。
+改動 tier 判定或 paywall 對應時，四組清單要一起看——只比對 canonical ID 會讓持有舊
+product ID 的付費用戶被判成 Free。
 
 ### 額度（2026-04-22 起）
 | Tier | 月訊息 | 日上限 | AI 模型 |
@@ -94,6 +99,19 @@ authoritative product + base-plan tuple 完整且相符時才可正規化。模�
 
 Offering 名稱 `default` 與 entitlement `premium` 仍是 dashboard 候選，不是 code 自行
 認定的外部事實；M4 只依 current Offering 的四列 exact contract。
+
+### 2026-08-24 RevenueCat read-only v1 Get Offerings check
+
+一次唯讀檢查顯示 iOS current offering `default` 回傳四個 exact packages：
+
+- `essential_quarterly` → `vibesync_essential_quarterly_v2`
+- `starter_quarterly` → `vibesync_starter_quarterly_v2`
+- `essential_monthly` → `vibesync_essential_monthly_v2`
+- `starter_monthly` → `vibesync_starter_monthly_v2`
+
+這是後台當時的唯讀觀測，不是 client 端自行認定的永久真相；付款 readiness 仍須通過
+M4 的 runtime contract 與後續 sandbox／真機 gate。舊的「2 packages 正確」只保留為
+歷史證據，已被本次四 packages 觀測 supersede。
 
 ---
 
@@ -131,7 +149,7 @@ Offering 名稱 `default` 與 entitlement `premium` 仍是 dashboard 候選，�
 
 - `恢復購買`：重新向原商店 / RevenueCat 同步既有訂閱，不會再次扣款
 - `管理訂閱`：使用 CustomerInfo 的 store-native `managementURL` 回原購買商店管理目前方案、續訂與取消；來源不明時不猜 URL
-- 若已排程降級：App 會顯示 pending downgrade；使用者去 App Store 取消後，回 App 可點「我已取消降級，更新狀態」重新驗證
+- 若已排程降級：App 會顯示 pending downgrade；使用者回到原購買商店（App Store 或 Google Play）取消後，回 App 可點「我已取消降級，更新狀態」重新驗證
 
 ---
 
@@ -186,7 +204,7 @@ Sandbox Tester 帳號只在極少數特殊情境需要（例如要測試未上�
 
 ### 驗證清單
 - [x] RC Configured（初始化成功）
-- [x] Offerings/Packages 載入（2 packages 正確）
+- [superseded] Offerings/Packages 載入（2 packages 正確；2026-03 歷史證據，已不代表目前配置）
 - [x] TestFlight Sandbox 購買成功
 - [x] Webhook 觸發 → Supabase tier 更新為 essential
 - [x] `premium` entitlement 建立並關聯產品

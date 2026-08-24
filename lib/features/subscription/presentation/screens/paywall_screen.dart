@@ -31,6 +31,52 @@ import '../../domain/services/subscription_tier_helper.dart';
 import '../subscription_diagnostics_gate.dart';
 import '../../../../core/services/app_haptics.dart';
 
+const _androidReplacementBlockedMessage =
+    '目前訂閱來源或方案資訊尚未完成驗證，請先恢復／同步訂閱，並到原購買商店管理原訂閱後再試。';
+
+bool canStartSubscriptionPurchase({
+  required bool isAndroid,
+  required AndroidSubscriptionReplacementDecision? replacementDecision,
+}) {
+  return !isAndroid ||
+      replacementDecision == null ||
+      replacementDecision.isAllowed;
+}
+
+String replacementDecisionFootnote({
+  required bool isAndroid,
+  required AndroidSubscriptionReplacementDecision? replacementDecision,
+}) {
+  if (!canStartSubscriptionPurchase(
+    isAndroid: isAndroid,
+    replacementDecision: replacementDecision,
+  )) {
+    return _androidReplacementBlockedMessage;
+  }
+  return replacementConfirmationMessage(replacementDecision?.mode);
+}
+
+/// Whether the replacement-blocked presentation is allowed to take over the
+/// paywall CTA. Existing management/current-plan states must remain the
+/// authoritative presentation when they already have a safe action or status.
+bool shouldShowAndroidReplacementBlockedState({
+  required bool isAndroid,
+  required AndroidSubscriptionReplacementDecision? replacementDecision,
+  required bool canManagePendingDowngrade,
+  required bool pendingDowngradeMatchesSelection,
+  required bool isCurrentPlan,
+}) {
+  if (canManagePendingDowngrade ||
+      pendingDowngradeMatchesSelection ||
+      isCurrentPlan) {
+    return false;
+  }
+  return !canStartSubscriptionPurchase(
+    isAndroid: isAndroid,
+    replacementDecision: replacementDecision,
+  );
+}
+
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key});
 
@@ -247,6 +293,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final pendingDowngradeMatchesSelection =
         _pendingDowngradeMatchesOption(subscription, selected);
     final canManagePendingDowngrade = hasPendingDowngrade && isCurrentPlan;
+    final androidReplacement =
+        _androidReplacementDecision(subscription, selected);
     final storeName = isAndroidPlatform ? 'Google Play' : 'Apple';
 
     VoidCallback? primaryAction;
@@ -259,6 +307,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     } else if (isCurrentPlan ||
         pendingDowngradeMatchesSelection ||
         selected == null) {
+      primaryAction = null;
+    } else if (shouldShowAndroidReplacementBlockedState(
+      isAndroid: isAndroidPlatform,
+      replacementDecision: androidReplacement,
+      canManagePendingDowngrade: canManagePendingDowngrade,
+      pendingDowngradeMatchesSelection: pendingDowngradeMatchesSelection,
+      isCurrentPlan: isCurrentPlan,
+    )) {
       primaryAction = null;
     } else if (!selected.isReady) {
       primaryAction = () {
@@ -368,6 +424,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     canManagePendingDowngrade,
                     pendingDowngradeMatchesSelection,
                     selectedProduct,
+                    androidReplacement,
                   ),
                   onPressed: primaryAction,
                   isLoading: _isPurchasing || _isRefreshingPlans,
@@ -381,6 +438,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     isDowngrade,
                     canManagePendingDowngrade,
                     pendingDowngradeMatchesSelection,
+                    androidReplacement,
                   ),
                   style: AppTypography.caption.copyWith(
                     color: AppColors.onBackgroundSecondary,
@@ -467,9 +525,19 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     bool canManagePendingDowngrade,
     bool pendingDowngradeMatchesSelection,
     StoreProduct? selectedProduct,
+    AndroidSubscriptionReplacementDecision? androidReplacement,
   ) {
     if (_isPurchasing) return '處理中…';
     if (_isRefreshingPlans) return '重新整理中…';
+    if (shouldShowAndroidReplacementBlockedState(
+      isAndroid: isAndroidPlatform,
+      replacementDecision: androidReplacement,
+      canManagePendingDowngrade: canManagePendingDowngrade,
+      pendingDowngradeMatchesSelection: pendingDowngradeMatchesSelection,
+      isCurrentPlan: isCurrentPlan,
+    )) {
+      return '先同步／管理原訂閱';
+    }
     if (canManagePendingDowngrade) return '取消降級 / 管理訂閱';
     if (pendingDowngradeMatchesSelection) {
       return '已排程降級到 ${_tierLabel(selectedTier)}';
@@ -499,6 +567,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     bool isDowngrade,
     bool canManagePendingDowngrade,
     bool pendingDowngradeMatchesSelection,
+    AndroidSubscriptionReplacementDecision? androidReplacement,
   ) {
     if (canManagePendingDowngrade) {
       return '${_tierLabel(subscription.pendingDowngradeToTier)} 的降級已排程於 '
@@ -509,24 +578,24 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return '這個降級已經排程，將於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效，今天不會再次扣款。';
     }
     if (isCurrentPlan) return '這是你目前正在使用的方案。';
+    if (shouldShowAndroidReplacementBlockedState(
+      isAndroid: isAndroidPlatform,
+      replacementDecision: androidReplacement,
+      canManagePendingDowngrade: canManagePendingDowngrade,
+      pendingDowngradeMatchesSelection: pendingDowngradeMatchesSelection,
+      isCurrentPlan: isCurrentPlan,
+    )) {
+      return replacementDecisionFootnote(
+        isAndroid: true,
+        replacementDecision: androidReplacement,
+      );
+    }
     if (selected != null && subscription.tier == selected.tier) {
       if (isAndroidPlatform) {
-        final plan = selected.package == null
-            ? null
-            : SubscriptionPlanDefinition.fromPackageId(
-                selected.package!.identifier,
-              );
-        final decision = plan == null
-            ? null
-            : resolveAndroidReplacement(
-                target: plan,
-                activeStore: subscription.activeStore,
-                activeProductId: subscription.activeProductId,
-                activeBasePlanId: subscription.activeBasePlanId,
-                activeStateAuthoritative: subscription.sourceStateAuthoritative,
-                hasActivePaidState: subscription.isPremium,
-              );
-        return replacementConfirmationMessage(decision?.mode);
+        return replacementDecisionFootnote(
+          isAndroid: true,
+          replacementDecision: androidReplacement,
+        );
       }
       return '同方案更改月繳 / 季繳會由 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 確認，實際生效時間與費用以商店畫面為準。';
     }
@@ -534,6 +603,27 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return '降級會在下次續訂時生效；在那之前你仍可使用目前額度，今天不會再次扣款。';
     }
     return '升級會立即生效並立刻刷新額度，${isAndroidPlatform ? 'Google Play' : 'Apple'} 會依規則計算本期費用。';
+  }
+
+  AndroidSubscriptionReplacementDecision? _androidReplacementDecision(
+    SubscriptionState subscription,
+    _PaywallOption? selected,
+  ) {
+    if (!isAndroidPlatform || selected?.package == null) return null;
+
+    final plan = SubscriptionPlanDefinition.fromPackageId(
+      selected!.package!.identifier,
+    );
+    if (plan == null) return null;
+
+    return resolveAndroidReplacement(
+      target: plan,
+      activeStore: subscription.activeStore,
+      activeProductId: subscription.activeProductId,
+      activeBasePlanId: subscription.activeBasePlanId,
+      activeStateAuthoritative: subscription.sourceStateAuthoritative,
+      hasActivePaidState: subscription.hasActivePaidState,
+    );
   }
 
   /// S9/B9：頁面區塊分隔線——卡片堆疊改分層後，區塊邊界用 hairline 表達。
@@ -1131,6 +1221,22 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return;
     }
 
+    final subscription = ref.read(subscriptionProvider);
+    final replacementDecision =
+        _androidReplacementDecision(subscription, option);
+    if (!canStartSubscriptionPurchase(
+      isAndroid: isAndroidPlatform,
+      replacementDecision: replacementDecision,
+    )) {
+      _showSnackBar(
+        replacementDecisionFootnote(
+          isAndroid: true,
+          replacementDecision: replacementDecision,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isPurchasing = true);
     try {
       final notifier = ref.read(subscriptionProvider.notifier);
@@ -1149,8 +1255,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       }
 
       if (result.isDeferredDowngrade) {
+        final completionMessage = result.replacementMode == null
+            ? '已排程於 ${_formatDate(result.effectiveAt)} 降級到 ${_tierLabel(result.requestedTier)}。'
+            : replacementCompletionMessage(result.replacementMode);
+        final dateSuffix =
+            result.replacementMode == null || result.effectiveAt == null
+                ? ''
+                : '（預計 ${_formatDate(result.effectiveAt)}）';
         _showSnackBar(
-          '已排程於 ${_formatDate(result.effectiveAt)} 降級到 ${_tierLabel(result.requestedTier)}。',
+          '$completionMessage$dateSuffix',
           backgroundColor: AppColors.success,
         );
         _leavePaywall(result.activeTier);
@@ -1174,7 +1287,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '方案已更新，目前方案：$purchasedTier。🎴 已解鎖 SR 限定翻牌 ×1。',
+            '${replacementCompletionMessage(result.replacementMode)}'
+            '目前方案：$purchasedTier。🎴 已解鎖 SR 限定翻牌 ×1。',
           ),
           backgroundColor: AppColors.success,
           duration: const Duration(seconds: 6),

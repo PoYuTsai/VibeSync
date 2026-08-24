@@ -351,3 +351,18 @@ String replacementConfirmationMessage(
       return '新訂閱會在 Google Play 訂閱頁確認。';
   }
 }
+
+String replacementCompletionMessage(
+  AndroidSubscriptionReplacementMode? mode,
+) {
+  switch (mode) {
+    case AndroidSubscriptionReplacementMode.immediateAndChargeProratedPrice:
+      return '升級已立即生效，Google Play 已按剩餘期間計算補差額。';
+    case AndroidSubscriptionReplacementMode.deferred:
+      return '降級已排程，將於目前方案到期、下次續訂時生效。';
+    case AndroidSubscriptionReplacementMode.immediateWithoutProration:
+      return '方案已立即切換，新價格會在下次續訂時扣款。';
+    case null:
+      return '方案已更新。';
+  }
+}

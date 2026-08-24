@@ -66,18 +66,37 @@ void main() {
       );
     });
 
-    test('build-ios 明確注入 iOS public key，不依賴 client fallback', () {
+    test('build-ios 明確注入已核對的 iOS public key，不讀 server secret', () {
       final job = workflowJob(distribute, 'build-ios');
       expect(
-        yamlScalars(job).any((scalar) =>
-            scalar.contains('REVENUECAT_IOS_PUBLIC_SDK_KEY') &&
-            scalar.contains('secrets.REVENUECAT_IOS_PUBLIC_SDK_KEY')),
+        yamlScalars(job),
+        contains('appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY'),
+      );
+      expect(
+        yamlScalars(job).any(
+          (scalar) =>
+              scalar.contains('REVENUECAT_IOS_API_KEY') ||
+              scalar.contains('REVENUECAT_IOS_PUBLIC_SDK_KEY') ||
+              scalar.contains('REVENUECAT_PROD_KEY'),
+        ),
+        isFalse,
+        reason: 'iOS client build 不得讀 server／未知 secret input',
+      );
+      expect(
+        yamlScalars(job).any(
+          (scalar) => scalar.contains('secrets.REVENUECAT_IOS_PUBLIC_SDK_KEY'),
+        ),
+        isFalse,
+        reason: '不存在的 iOS public key secret 不得成為 build prerequisite',
+      );
+      expect(
+        yamlScalars(job).any((scalar) => scalar == 'REVENUECAT_KEY'),
         isTrue,
       );
       final runs = jobSteps(distribute, 'build-ios').map(stepRun).toList();
       expect(
-        runs.any((run) => run.contains(
-            r'--dart-define=REVENUECAT_API_KEY="$REVENUECAT_IOS_PUBLIC_SDK_KEY"')),
+        runs.any((run) => run
+            .contains(r'--dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY"')),
         isTrue,
       );
     });
@@ -305,18 +324,37 @@ void main() {
       );
     });
 
-    test('release-ios 明確注入 iOS public key，不依賴 client fallback', () {
+    test('release-ios 明確注入已核對的 iOS public key，不讀 server secret', () {
       final job = workflowJob(release, 'release-ios');
       expect(
-        yamlScalars(job).any((scalar) =>
-            scalar.contains('REVENUECAT_IOS_PUBLIC_SDK_KEY') &&
-            scalar.contains('secrets.REVENUECAT_IOS_PUBLIC_SDK_KEY')),
+        yamlScalars(job),
+        contains('appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY'),
+      );
+      expect(
+        yamlScalars(job).any(
+          (scalar) =>
+              scalar.contains('REVENUECAT_IOS_API_KEY') ||
+              scalar.contains('REVENUECAT_IOS_PUBLIC_SDK_KEY') ||
+              scalar.contains('REVENUECAT_PROD_KEY'),
+        ),
+        isFalse,
+        reason: 'iOS client build 不得讀 server／未知 secret input',
+      );
+      expect(
+        yamlScalars(job).any(
+          (scalar) => scalar.contains('secrets.REVENUECAT_IOS_PUBLIC_SDK_KEY'),
+        ),
+        isFalse,
+        reason: '不存在的 iOS public key secret 不得成為 build prerequisite',
+      );
+      expect(
+        yamlScalars(job).any((scalar) => scalar == 'REVENUECAT_KEY'),
         isTrue,
       );
       final runs = jobSteps(release, 'release-ios').map(stepRun).toList();
       expect(
-        runs.any((run) => run.contains(
-            r'--dart-define=REVENUECAT_API_KEY="$REVENUECAT_IOS_PUBLIC_SDK_KEY"')),
+        runs.any((run) => run
+            .contains(r'--dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY"')),
         isTrue,
       );
 

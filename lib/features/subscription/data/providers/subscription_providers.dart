@@ -431,6 +431,17 @@ class SubscriptionState {
   bool get isEssential => tier == SubscriptionTierHelper.essential;
   bool get isPremium => isStarter || isEssential;
 
+  /// Whether an Android purchase must be treated as a replacement attempt.
+  ///
+  /// Keep source metadata in this check: a paid entitlement can temporarily
+  /// have a free tier snapshot while its authoritative store tuple is still
+  /// present. In that case starting a second subscription is not safe.
+  bool get hasActivePaidState =>
+      !isFreeUser ||
+      activeStore != null ||
+      activeProductId != null ||
+      activeBasePlanId != null;
+
   int get effectiveMonthlyLimit => monthlyLimit;
   int get effectiveDailyLimit => dailyLimit;
 
@@ -557,6 +568,7 @@ class SubscriptionPurchaseResult {
   final PurchasesErrorCode? errorCode;
   final String? errorMessage;
   final DateTime? effectiveAt;
+  final AndroidSubscriptionReplacementMode? replacementMode;
 
   const SubscriptionPurchaseResult({
     required this.success,
@@ -568,6 +580,7 @@ class SubscriptionPurchaseResult {
     this.errorCode,
     this.errorMessage,
     this.effectiveAt,
+    this.replacementMode,
   });
 }
 
@@ -1495,10 +1508,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         activeProductId: state.activeProductId,
         activeBasePlanId: state.activeBasePlanId,
         activeStateAuthoritative: state.sourceStateAuthoritative,
-        hasActivePaidState: previousTier != SubscriptionTierHelper.free ||
-            state.activeStore != null ||
-            state.activeProductId != null ||
-            state.activeBasePlanId != null,
+        hasActivePaidState: state.hasActivePaidState,
       );
       if (!replacement.isAllowed) {
         return _failedPurchaseResult(
@@ -1581,6 +1591,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           previousTier: previousTier,
           activeTier: previousTier,
           effectiveAt: effectiveAt,
+          replacementMode: replacement?.mode,
         );
       }
 
@@ -1640,6 +1651,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         requestedTier: requestedTier,
         previousTier: previousTier,
         activeTier: tier,
+        replacementMode: replacement?.mode,
       );
     } on PlatformException catch (error) {
       final errorCode = PurchasesErrorHelper.getErrorCode(error);

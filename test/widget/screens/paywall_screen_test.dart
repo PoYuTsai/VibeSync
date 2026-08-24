@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_product_contract.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 import 'package:vibesync/features/subscription/presentation/subscription_diagnostics_gate.dart';
@@ -63,6 +64,123 @@ class _StubSubscriptionNotifier extends SubscriptionNotifier {
 }
 
 void main() {
+  group('Android replacement purchase gate', () {
+    test(
+        'denied replacement cannot start purchase or show new-subscription copy',
+        () {
+      final decision = resolveAndroidReplacement(
+        target: SubscriptionPlanDefinition.essentialMonthly,
+        activeStore: 'play_store',
+        activeProductId: null,
+        activeBasePlanId: null,
+        activeStateAuthoritative: false,
+        hasActivePaidState: true,
+      );
+
+      expect(
+        canStartSubscriptionPurchase(
+          isAndroid: true,
+          replacementDecision: decision,
+        ),
+        isFalse,
+      );
+      final message = replacementDecisionFootnote(
+        isAndroid: true,
+        replacementDecision: decision,
+      );
+      expect(message, contains('同步'));
+      expect(message, contains('管理原訂閱'));
+      expect(message, isNot(contains('新訂閱')));
+    });
+
+    test('free Android user keeps new-subscription path', () {
+      final decision = resolveAndroidReplacement(
+        target: SubscriptionPlanDefinition.essentialMonthly,
+        activeStore: null,
+        activeProductId: null,
+        activeBasePlanId: null,
+        activeStateAuthoritative: false,
+        hasActivePaidState: false,
+      );
+
+      expect(
+        canStartSubscriptionPurchase(
+          isAndroid: true,
+          replacementDecision: decision,
+        ),
+        isTrue,
+      );
+      expect(
+        replacementDecisionFootnote(
+          isAndroid: true,
+          replacementDecision: decision,
+        ),
+        contains('新訂閱'),
+      );
+    });
+
+    test('cross-store active state stays blocked and names the original store',
+        () {
+      final decision = resolveAndroidReplacement(
+        target: SubscriptionPlanDefinition.essentialMonthly,
+        activeStore: 'app_store',
+        activeProductId: 'vibesync_starter:monthly',
+        activeBasePlanId: 'monthly',
+        activeStateAuthoritative: true,
+        hasActivePaidState: true,
+      );
+
+      expect(
+        canStartSubscriptionPurchase(
+          isAndroid: true,
+          replacementDecision: decision,
+        ),
+        isFalse,
+      );
+      expect(
+        replacementDecisionFootnote(
+          isAndroid: true,
+          replacementDecision: decision,
+        ),
+        allOf(
+          contains('原購買商店'),
+          isNot(contains('新訂閱')),
+        ),
+      );
+    });
+
+    test('existing pending/current states take precedence over denied copy',
+        () {
+      final denied = resolveAndroidReplacement(
+        target: SubscriptionPlanDefinition.essentialMonthly,
+        activeStore: 'play_store',
+        activeProductId: null,
+        activeBasePlanId: null,
+        activeStateAuthoritative: false,
+        hasActivePaidState: true,
+      );
+
+      bool blocked({
+        bool canManagePendingDowngrade = false,
+        bool pendingDowngradeMatchesSelection = false,
+        bool isCurrentPlan = false,
+      }) {
+        return shouldShowAndroidReplacementBlockedState(
+          isAndroid: true,
+          replacementDecision: denied,
+          canManagePendingDowngrade: canManagePendingDowngrade,
+          pendingDowngradeMatchesSelection: pendingDowngradeMatchesSelection,
+          isCurrentPlan: isCurrentPlan,
+        );
+      }
+
+      expect(blocked(), isTrue);
+      expect(blocked(canManagePendingDowngrade: true), isFalse);
+      expect(blocked(pendingDowngradeMatchesSelection: true), isFalse);
+      expect(blocked(isCurrentPlan: true), isFalse);
+    });
+  });
+
   Future<void> pumpPaywall(
     WidgetTester tester, {
     Future<void> Function()? refreshUsage,
