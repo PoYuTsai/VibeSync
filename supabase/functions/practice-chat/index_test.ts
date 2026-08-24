@@ -30,7 +30,15 @@ import { resolvePracticeProfile } from "./practice_persona.ts";
 const NOW = new Date("2026-06-28T04:00:00.000Z");
 const RESET_AT = "2026-06-28T00:00:00.000Z";
 
-type RpcResult = { data?: unknown; error?: string };
+type RpcResult = {
+  data?: unknown;
+  error?: string;
+  /**
+   * 永不 resolve 的 RPC，用來驗「選配查詢不得吊死核心路徑」。
+   * 呼叫端沒有逾時的話，用到這個的測試會直接掛住不返回。
+   */
+  neverResolves?: boolean;
+};
 
 interface FakeOptions {
   user?: { id: string; email?: string | null } | null;
@@ -635,6 +643,7 @@ function makeFake(options: FakeOptions = {}) {
         return { data: true };
       })();
       const result = options.rpc?.[fn]?.[index] ?? defaultResult;
+      if (result.neverResolves) return new Promise<never>(() => {});
       if (
         fn === "record_practice_debrief" &&
         options.rpc?.[fn]?.[index] === undefined &&
@@ -8034,16 +8043,18 @@ Deno.test("讀到的貼文真的進到 system prompt（不是讀完就丟）", a
   assert(prompt.includes("<her_own_posts>"), "缺少注入防禦信封");
 });
 
-Deno.test("沒有貼文時，system prompt 不出現朋友圈記憶區塊", async () => {
+Deno.test("沒有貼文時，證據信封不出現，但未知貼文規則仍然在場", async () => {
   const { state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),
     deepSeekReplies: ["AI reply"],
     rpc: { list_practice_moment_posts: [{ data: [] }] },
   });
 
+  // 2026-08-24 複審 BLOCK-1：規則常駐，只有證據清單是選配。
   const prompt = state.deepSeekCalls[0].messages[0].content;
-  assertEquals(prompt.includes("herRecentMoments"), false);
-  assertEquals(prompt.includes("her_own_posts"), false);
+  assertEquals(prompt.includes("<her_own_posts>"), false, "不該有空殼信封");
+  assert(prompt.includes("herRecentMoments"), "標題標籤應常駐");
+  assert(prompt.includes("不要否認"), "未知貼文規則應常駐");
 });
 
 Deno.test("時間還沒到的貼文不會被她記得（中午不知道自己深夜要發什麼）", async () => {
@@ -8067,7 +8078,8 @@ Deno.test("時間還沒到的貼文不會被她記得（中午不知道自己深
     false,
     "還沒發生的貼文變成她的記憶＝穿越",
   );
-  assertEquals(prompt.includes("herRecentMoments"), false);
+  assertEquals(prompt.includes("<her_own_posts>"), false);
+  assert(prompt.includes("不要否認"), "未知貼文規則應常駐");
 });
 
 Deno.test("貼文讀取失敗時聊天照常完成（fail-open，記憶是加值不是核心）", async () => {
@@ -8083,7 +8095,9 @@ Deno.test("貼文讀取失敗時聊天照常完成（fail-open，記憶是加值
   assertEquals(json.reply, "AI reply");
   assertEquals(state.deepSeekCalls.length, 1, "仍然要正常呼叫模型");
   const prompt = state.deepSeekCalls[0].messages[0].content;
-  assertEquals(prompt.includes("herRecentMoments"), false);
+  assertEquals(prompt.includes("<her_own_posts>"), false);
+  // fail-open 時規則更要在場：她一則都看不到，卻仍可能被問到貼文。
+  assert(prompt.includes("不要否認"), "fail-open 時未知貼文規則反而消失了");
 });
 
 Deno.test("Hint 不讀朋友圈貼文", async () => {
@@ -8108,4 +8122,21 @@ Deno.test("Debrief 不讀朋友圈貼文", async () => {
 
   assertEquals(momentMemoryCalls(state).length, 0);
   await Promise.all(state.backgroundTasks);
+});
+
+
+Deno.test("貼文 RPC 卡住不回時，1:1 聊天仍然完成（不被選配查詢吊死）", async () => {
+  // 2026-08-24 複審 BLOCK-2。沒有逾時的話這條測試會直接掛住不返回。
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: ["AI reply"],
+    rpc: { list_practice_moment_posts: [{ neverResolves: true }] },
+  });
+
+  assertEquals(response.status, 200, "選配的貼文查詢不該卡住核心聊天");
+  assertEquals(json.reply, "AI reply");
+  assertEquals(state.deepSeekCalls.length, 1);
+  const prompt = state.deepSeekCalls[0].messages[0].content;
+  assertEquals(prompt.includes("<her_own_posts>"), false);
+  assert(prompt.includes("不要否認"), "逾時 fail-open 後規則仍須在場");
 });
