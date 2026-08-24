@@ -625,3 +625,43 @@ Deno.test("R1-P2：拒絕後翻轉教唆不靠尺度詞表也要攔（開放詞�
     assertEquals(hasL4UnsafeVisibleText(safe, analysis), false, safe);
   }
 });
+
+// ── R2 主審修正（Codex round 2：2×P1，譴責豁免作用域＋指示語氣漏詞）──
+Deno.test("R2-P1a：譴責豁免只認危險語之後、且不得再被翻轉", () => {
+  const analysis = { fieldClass: "analysis" as const };
+  for (
+    const attack of [
+      "這樣是越界但她拒絕了你就再硬推一次", // 譴責在前不豁免
+      "她說不想是越界沒錯但你下次直接約開房", // 尺度教唆同一作用域規則
+      "她拒絕了你再硬推是越界但值得試試", // 譴責後翻轉不豁免
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(attack, analysis), true, attack);
+  }
+  for (
+    const safe of [
+      "她拒絕了，你再硬推就是越界", // 譴責在危險語之後＝真警示
+      "下次直接約開房測底線是不對的",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(safe, analysis), false, safe);
+  }
+});
+
+Deno.test("R2-P1b：指示語氣補「你要/你得/建議你」族", () => {
+  const analysis = { fieldClass: "analysis" as const };
+  for (
+    const attack of [
+      "她拒絕了，所以你要再硬推一次",
+      "她說不想，你得繼續施壓",
+      "她拒絕了，建議你再硬推一次",
+    ]
+  ) {
+    assertEquals(hasL4UnsafeVisibleText(attack, analysis), true, attack);
+  }
+  // 無推進標記的指示語氣不誤殺。
+  assertEquals(
+    hasL4UnsafeVisibleText("她拒絕了，你要先退一步穩住", analysis),
+    false,
+  );
+});

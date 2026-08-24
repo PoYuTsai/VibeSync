@@ -503,10 +503,24 @@ const ANALYSIS_REFUSAL_PATTERN =
   /(?:不想|不願|不愿|拒絕|拒绝|還沒準備好|还没准备好|別這樣|别这样)/u;
 const ANALYSIS_PUSH_MARKER_PATTERN =
   /(?:測|测)底(?:線|线)|硬(?:要|推|來|来)|施壓|施压|不管(?:她|他|對方|对方)(?:願不願|愿不愿)/u;
+// R2 主審 P1b：補「你要/你得/建議你」等高頻指示形。
 const ANALYSIS_USER_DIRECTED_PATTERN =
-  /(?:你|妳)(?:下次|直接|就|再|去|可以|應該|应该)|(?:下次|接下來|接下来)(?:直接|就)/u;
+  /(?:你|妳)(?:下次|直接|就|再|去|可以|應該|应该|要|得|該|该|必須|必须|不妨|試著|试着|繼續|继续)|(?:下次|接下來|接下来)(?:直接|就)|建(?:議|议)(?:你|妳)/u;
 const ANALYSIS_CLAUSE_CONDEMNATION_PATTERN =
   /(?:是|算是)(?:很)?(?:越界|不對|不对|錯|错|不可以|不應該|不应该|不可取|不尊重|有問題|有问题)|翻車|翻车|(?:只會|只会|會|会)(?:讓|让|使)?.{0,10}(?:冷掉|反感|嚇跑|吓跑|防備|防备|封鎖|封锁|扣分|句點|句点)/u;
+
+// R2 主審 P1a：譴責豁免必須在危險語**之後**（「你再硬推就是越界」是警示；
+// 「是越界但你就再硬推」是翻轉教唆），且譴責後不得再接翻轉連接詞。
+const ANALYSIS_CONDEMNATION_REVERSAL_PATTERN =
+  /(?:但|可是|不過|不过|然而|反而|照做|直接做|可以試試|可以试试|值得(?:一)?試(?:試)?|值得(?:一)?试(?:试)?)/u;
+
+function condemnationExemptsAfter(clause: string, index: number): boolean {
+  const tail = clause.slice(index);
+  const match = ANALYSIS_CLAUSE_CONDEMNATION_PATTERN.exec(tail);
+  if (!match) return false;
+  const afterCondemnation = tail.slice(match.index + match[0].length);
+  return !ANALYSIS_CONDEMNATION_REVERSAL_PATTERN.test(afterCondemnation);
+}
 
 export function hasL4UnsafeVisibleText(
   value: string,
@@ -586,25 +600,27 @@ export function hasL4UnsafeVisibleText(
       // R1 P2：拒絕後翻轉教唆不依賴尺度詞表（開放詞彙）。
       const refusalInScope = ANALYSIS_REFUSAL_PATTERN.test(clause) ||
         ANALYSIS_REFUSAL_PATTERN.test(clauses[index - 1] ?? "");
+      const pushMatch = refusalInScope
+        ? ANALYSIS_PUSH_MARKER_PATTERN.exec(clause)
+        : null;
       if (
-        refusalInScope &&
-        ANALYSIS_PUSH_MARKER_PATTERN.test(clause) &&
+        pushMatch &&
         ANALYSIS_USER_DIRECTED_PATTERN.test(clause) &&
-        !ANALYSIS_CLAUSE_CONDEMNATION_PATTERN.test(clause)
+        !condemnationExemptsAfter(clause, pushMatch.index)
       ) {
         return true;
       }
       // 分析欄尺度類：教唆形（無譴責、無否定）攔、下一子句翻轉攔，其餘全放。
       const spicyHits = unsafeOccurrences(clause, SPICY_VISIBLE_PATTERNS);
       if (spicyHits.length > 0) {
-        const hasUnprotectedHit = spicyHits.some((occurrence) =>
+        const unprotectedHit = spicyHits.find((occurrence) =>
           !hasDirectSafetyNegation(clause, occurrence) &&
           !hasExplicitSafetyWarning(clause, occurrence)
         );
         if (
-          hasUnprotectedHit &&
+          unprotectedHit &&
           ANALYSIS_SPICY_ADVOCACY_PATTERN.test(clause) &&
-          !ANALYSIS_CLAUSE_CONDEMNATION_PATTERN.test(clause)
+          !condemnationExemptsAfter(clause, unprotectedHit.index)
         ) {
           return true;
         }
