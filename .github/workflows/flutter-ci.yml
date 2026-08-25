@@ -62,6 +62,7 @@ jobs:
           supabase/functions/analyze-chat/stream_branch_test.ts
           supabase/functions/practice-chat/moments_schedule_test.ts
           supabase/functions/practice-chat/moments_migration_source_test.ts
+          supabase/functions/practice-chat/moments_images_migration_source_test.ts
           supabase/functions/practice-chat/moments_constants_test.ts
           supabase/functions/practice-chat/moments_image_gate_test.ts
           supabase/functions/practice-chat/moments_time_test.ts
@@ -91,6 +92,7 @@ jobs:
         run: >-
           deno test --allow-read
           supabase/functions/practice-chat/moments_migration_postgres_test.ts
+          supabase/functions/practice-chat/moments_images_migration_postgres_test.ts
 
   ios-keyboard-compile:
     name: iOS keyboard compile

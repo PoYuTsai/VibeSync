@@ -68,3 +68,28 @@ export const MOMENT_MODEL_MAX_TOKENS = 200;
 export const MOMENT_MODEL_TEMPERATURE = 0.95;
 /** 低於 chat 的 30s：背景補位不該拖住 feed。 */
 export const MOMENT_MODEL_TIMEOUT_MS = 20_000;
+
+// ── 生成配圖（與 20260825120000_practice_moment_images.sql 對齊，雙向比對）──
+//
+// 圖與文字的計數完全獨立：MAX_MOMENT_ATTEMPTS 管文字、這裡管圖。
+// 雙向契約在 moments_images_migration_source_test.ts（照 moments_constants_test.ts
+// 的做法讀 migration 原文剖數字）。
+
+/** 每個圖文 slot 最多幾次生圖呼叫。SQL: CHECK (image_attempts BETWEEN 0 AND 2)。 */
+export const MAX_MOMENT_IMAGE_ATTEMPTS = 2;
+
+/**
+ * 生圖 job 租約。SQL: p_lease_seconds INTEGER DEFAULT 180。
+ * 必須遠大於「fal 呼叫 30s＋下載＋上傳」的總預算，stale worker 與新 worker
+ * 同時上傳的競態才幾乎不可達（設計文件 §9）。
+ */
+export const MOMENT_IMAGE_RESERVE_LEASE_MS = 180_000;
+
+/** Storage 物件 key 的 DB 長度上界（縱深防禦）。SQL: char_length(image_path) ≤ 200。 */
+export const MOMENT_IMAGE_PATH_DB_MAX_CHARS = 200;
+
+/**
+ * 機會式清掃單次上限（Edge 端傳給 list_expired 的 p_limit）。
+ * 必須 ≤ SQL 側的 p_limit 硬上界 100；20 足以在一天內消化 ~11 張/天的積壓。
+ */
+export const MOMENT_IMAGE_SWEEP_LIMIT = 20;
