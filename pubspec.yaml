@@ -101,6 +101,7 @@ flutter:
     - assets/images/coach/
     - assets/images/practice/
     - assets/images/practice_girls/
+    - assets/images/practice_moments/
     - assets/articles/
     - assets/learning/ebooks/
     - assets/learning/quizzes/
