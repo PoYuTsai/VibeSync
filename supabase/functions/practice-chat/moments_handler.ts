@@ -462,6 +462,7 @@ async function fillOneSlot(opts: {
         brief: plan.brief,
         dayPart: plan.dayPart,
         isoDate,
+        slot: plan.slot,
         isWeekend: taipeiTimeContextFor(new Date(`${isoDate}T04:00:00.000Z`))
           .isWeekend,
         imageCandidates,
