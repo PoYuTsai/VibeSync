@@ -11,9 +11,38 @@
 /// 「用她自己的圖鑑照片」的哨兵 id，鏡像 Edge `SELF_PORTRAIT_IMAGE_ID`。
 const String kMomentSelfPortraitImageId = 'moment_self_portrait';
 
-/// 情境圖 id → bundled asset 路徑。**v1 刻意是空的**：素材未到位。
-/// 補素材時只要在這裡加 20 筆並在 `pubspec.yaml` 掛上目錄，UI 一行都不用改。
-const Map<String, String> _sceneImageAssets = <String, String>{};
+/// 情境圖 id → bundled asset 路徑。2026-08-25 素材到位（PR #30）補齊 20 筆。
+/// 與 Edge `AVAILABLE_MOMENT_IMAGE_IDS` 的場景 id 一一對應，由
+/// test/lint/moments_scene_asset_parity_test.dart 三方對帳（Edge、本表、檔案）。
+final Map<String, String> _sceneImageAssets = <String, String>{
+  for (final id in _sceneImageIds)
+    id: 'assets/images/practice_moments/$id.webp',
+};
+
+/// 20 個場景 id。檔名規則固定為 `<id>.webp`，所以只列 id、路徑用推導——
+/// 這裡若手打 20 條完整路徑，打錯一條就是那個題材永遠安靜地退回純文字。
+const List<String> _sceneImageIds = <String>[
+  'moment_coffee_cup',
+  'moment_cafe_corner',
+  'moment_dessert_plate',
+  'moment_home_cooking',
+  'moment_late_night_snack',
+  'moment_street_night',
+  'moment_sunset_sky',
+  'moment_sea_view',
+  'moment_mountain_trail',
+  'moment_gym_corner',
+  'moment_yoga_mat',
+  'moment_cat_nap',
+  'moment_dog_walk',
+  'moment_bookshelf',
+  'moment_desk_work',
+  'moment_exhibition_wall',
+  'moment_live_stage',
+  'moment_flower_bunch',
+  'moment_rainy_window',
+  'moment_train_window',
+];
 
 /// 一則貼文的配圖要畫什麼。
 sealed class MomentImageSource {

@@ -21,8 +21,24 @@ import {
   SELF_PORTRAIT_IMAGE_ID,
 } from "./moments_image_catalog.ts";
 
-Deno.test("v1 的可用素材只有自拍 sentinel", () => {
-  assertEquals([...AVAILABLE_MOMENT_IMAGE_IDS], [SELF_PORTRAIT_IMAGE_ID]);
+Deno.test("閘門全開：可用集合恰好是自拍＋20 張場景，無多無少", () => {
+  // 2026-08-25 素材到位（PR #30）後翻面。用宣告表對帳而不是寫死 21：
+  // 少一個＝有題材悄悄退回自拍牆；多一個＝開了不存在的素材。
+  assertEquals(
+    [...AVAILABLE_MOMENT_IMAGE_IDS].sort(),
+    MOMENT_IMAGES.map((entry) => entry.id).sort(),
+  );
+});
+
+Deno.test("每個開放的場景 id 都有對應素材檔案（防檔名打錯的安靜降級）", () => {
+  // 檔名對不上不會報錯，只會讓那個題材的圖文貼文永遠降級成純文字。
+  // CI 以 repo 根目錄執行且帶 --allow-read，直接逐檔 stat。
+  for (const id of AVAILABLE_MOMENT_IMAGE_IDS) {
+    if (id === SELF_PORTRAIT_IMAGE_ID) continue; // sentinel 用她本人的圖鑑照
+    const path = `assets/images/practice_moments/${id}.webp`;
+    const info = Deno.statSync(path);
+    assert(info.isFile && info.size > 0, `素材缺檔或為空：${path}`);
+  }
 });
 
 Deno.test("PR A 宣告的 20 張場景圖一張都沒被刪掉", () => {
@@ -32,21 +48,27 @@ Deno.test("PR A 宣告的 20 張場景圖一張都沒被刪掉", () => {
   assertEquals(MOMENT_IMAGES.length, 21);
 });
 
-Deno.test("候選含可用 id → 只回可用的那些，不做替換", () => {
+Deno.test("候選全部可用 → 原樣照候選順序回傳，不塞自拍也不重排", () => {
   const resolved = resolveAvailableMomentImages([
     "moment_coffee_cup",
     SELF_PORTRAIT_IMAGE_ID,
     "moment_cafe_corner",
   ]);
-  assertEquals([...resolved], [SELF_PORTRAIT_IMAGE_ID]);
+  assertEquals([...resolved], [
+    "moment_coffee_cup",
+    SELF_PORTRAIT_IMAGE_ID,
+    "moment_cafe_corner",
+  ]);
 });
 
-Deno.test("候選全不可用但非空 → 整批替換成自拍，不是變成空集合", () => {
+Deno.test("替換分支仍然活著：可用集合縮回只剩自拍時，整批替換不變空集合", () => {
+  // 閘門開了之後 runtime 走不到這個分支，但它是「日後撤下某張素材」的
+  // 安全網，必須用 override 參數持續證明它沒被改壞（D1 修正的語義）。
   const candidates = momentImagesForTags(["coffee", "cafe"]);
   assert(candidates.length > 0, "前提：這組標籤本來就有候選");
   assertEquals(candidates.includes(SELF_PORTRAIT_IMAGE_ID), false);
   assertEquals(
-    [...resolveAvailableMomentImages(candidates)],
+    [...resolveAvailableMomentImages(candidates, [SELF_PORTRAIT_IMAGE_ID])],
     [SELF_PORTRAIT_IMAGE_ID],
   );
 });

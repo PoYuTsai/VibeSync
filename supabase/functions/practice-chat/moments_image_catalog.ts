@@ -106,12 +106,40 @@ export function momentImagesForTags(
 // 只有 4 個帶 "self" 標籤，把候選過濾成只剩自拍的話 38/42 得到空候選 →
 // wantsImage 恆假 → v1 一則圖文貼文都不會有，真機驗收的兩種貼文型態就少一種。
 //
-// 素材到位那天只要把 20 個 id 加進 AVAILABLE_MOMENT_IMAGE_IDS，替換分支
+// 2026-08-25 素材到位（PR #30）後閘門已開，替換分支
 // 自然停止觸發，生成端與 UI 一行都不用改（D5c）。
 
-/** 目前真的有素材、可以送進 prompt 給模型挑的 id。 */
+/**
+ * 目前真的有素材、可以送進 prompt 給模型挑的 id。
+ *
+ * **刻意逐字列舉，不從 MOMENT_IMAGES 推導**：這個常數是閘門，不是宣告的鏡像。
+ * 若改成推導，未來宣告第 21 張場景時，素材檔案還不存在閘門就先開了——
+ * 正是這個閘門要防的事。每個場景 id 都必須有
+ * `assets/images/practice_moments/<id>.webp`，由 moments_image_gate_test.ts
+ * 逐檔 stat 機械保證。
+ */
 export const AVAILABLE_MOMENT_IMAGE_IDS: readonly string[] = [
   SELF_PORTRAIT_IMAGE_ID,
+  "moment_coffee_cup",
+  "moment_cafe_corner",
+  "moment_dessert_plate",
+  "moment_home_cooking",
+  "moment_late_night_snack",
+  "moment_street_night",
+  "moment_sunset_sky",
+  "moment_sea_view",
+  "moment_mountain_trail",
+  "moment_gym_corner",
+  "moment_yoga_mat",
+  "moment_cat_nap",
+  "moment_dog_walk",
+  "moment_bookshelf",
+  "moment_desk_work",
+  "moment_exhibition_wall",
+  "moment_live_stage",
+  "moment_flower_bunch",
+  "moment_rainy_window",
+  "moment_train_window",
 ];
 
 /**
