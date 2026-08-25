@@ -27,6 +27,7 @@ export const MODEL_RATE_LIMITS = {
   // allowlist（100 位角色）給——這個 scope 擋的是 per-user 放大面：
   // 一個人狂重整 feed 不該把全站當天的額度提前燒完。
   practice_moment: { perMinute: 6, perDay: 60 },
+  practice_moment_image: { perMinute: 3, perDay: 20 },
 } as const;
 
 export type ModelRateLimitScope = keyof typeof MODEL_RATE_LIMITS;

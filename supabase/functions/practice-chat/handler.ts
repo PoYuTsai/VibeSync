@@ -13,6 +13,7 @@ import {
   handlePracticeMoments,
   type MomentsSupabaseClient,
 } from "./moments_handler.ts";
+import { MOMENT_IMAGE_BUCKET } from "./moments_constants.ts";
 import {
   type AppliedHintDecision,
   type AppliedHintTurn,
@@ -1900,14 +1901,56 @@ export function createPracticeChatHandler(
     if (isPlainObject(rawBody) && rawBody.mode === "practice_moments") {
       // 模擬社群動態 feed：唯讀 + 有界補生成。與 chat/hint/debrief 完全隔離，
       // 生成輸入只有 server profile + 日期 + 題材（隱私鐵則）。
+      //
+      // 生成配圖（PR-3）的 kill switch 在這裡：MOMENT_IMAGE_GEN_ENABLED 非
+      // "true" 或缺 FAL_API_KEY 就不組 imageGen deps → wantsImage slot 走
+      // 現行 bundled 候選路徑，行為與導入前完全相同。storagePublicUrlBase
+      // 刻意獨立於開關：已生成的圖在開關關閉後仍要露出。
+      const momentsDeepSeekKey = deps.getEnv("DEEPSEEK_API_KEY") ?? "";
+      const falApiKey = deps.getEnv("FAL_API_KEY") ?? "";
+      const momentImageGenEnabled =
+        (deps.getEnv("MOMENT_IMAGE_GEN_ENABLED") ?? "") === "true";
+      const supabaseUrl = deps.getEnv("SUPABASE_URL") ?? "";
       const momentsResult = await handlePracticeMoments({
         supabase: supabase as unknown as MomentsSupabaseClient,
         userId: user.id,
         now: deps.now?.() ?? new Date(),
         isTestAccount: TEST_EMAILS.includes(user.email || ""),
         deps: {
-          apiKey: deps.getEnv("DEEPSEEK_API_KEY") ?? "",
+          apiKey: momentsDeepSeekKey,
           callDeepSeek: deps.callDeepSeek,
+          waitUntil: deps.waitUntil,
+          storagePublicUrlBase: supabaseUrl.length > 0
+            ? `${supabaseUrl}/storage/v1/object/public/${MOMENT_IMAGE_BUCKET}`
+            : undefined,
+          imageGen: momentImageGenEnabled && falApiKey.length > 0 &&
+              momentsDeepSeekKey.length > 0
+            ? {
+              falApiKey,
+              deepSeekApiKey: momentsDeepSeekKey,
+              callDeepSeek: deps.callDeepSeek,
+              uploadImage: async (path, bytes, contentType) => {
+                const storageClient = supabase as unknown as {
+                  storage: {
+                    from(bucket: string): {
+                      upload(
+                        path: string,
+                        body: Uint8Array,
+                        options: { contentType: string; upsert: boolean },
+                      ): Promise<{ error: { message: string } | null }>;
+                    };
+                  };
+                };
+                const { error } = await storageClient.storage
+                  .from(MOMENT_IMAGE_BUCKET)
+                  .upload(path, bytes, { contentType, upsert: true });
+                if (error) {
+                  // provider/基礎設施細節不進錯誤訊息（logger 端統一分類）。
+                  throw new Error("storage_upload_failed");
+                }
+              },
+            }
+            : undefined,
         },
       });
       return jsonResponse(momentsResult.body, momentsResult.status);

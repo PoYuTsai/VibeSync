@@ -74,7 +74,7 @@ Client 動態：貼文先以純文字出現；生圖 10 秒內完成，**下次�
 
 - **方向**：文字照現行 prompt 先生成（`moments_prompt.ts` 的 wantsImage 分支僅微調措辭：告知「會配一張你拍的照片」但**不再給 imageId 候選清單**，`imageId` 一律回 null）；圖從 committed body 長出來。撞圖截圖的違和感（三段不同文字共用同一張鍋子照）由構造消滅：她寫弄了碗麵，圖就是那碗麵。
 - **英文場景句**：一次便宜 DeepSeek 呼叫（~300 tokens）把「繁中 body＋themeId brief」轉成 1–2 句英文場景描述。輸出驗證：純 ASCII、長度上限、禁 person/face/text/logo 詞面。**該呼叫失敗退回題材級英文模板句**（42 個 themeId 各一句，純資料表）——內部 prompt 的模板退路不違反 no-canned（該鐵則管可見文字），但新模組命名避開 "fallback" 字面（`moments_generated_only_source_test.ts` 逐字串掃描），用 `themeSceneLine` 之類。
-- **完整 prompt** ＝ 場景句 ＋ STYLE 模板 ＋ NEGATIVE 模板（`negative_prompt` 參數），模板字面沿用 `2026-08-24-practice-moments-scene-image-prompts.md`（無人物含手與背影、無可讀文字/logo/品牌、台灣日常感、手機隨手拍、深色 UI 友善——已驗收過的措辭）。
+- **完整 prompt** ＝ STYLE 前綴 ＋ 場景句。fal 的 FLUX schnell **沒有 `negative_prompt` 參數**（guidance-distilled 模型），素材規格書 NEGATIVE 清單的語義改折進 STYLE 前綴（no people／no readable text 兩條硬規則明寫）與每條場景句的措辭；黑圖保險與試打驗收再兜底一層。模板精神沿用 `2026-08-24-practice-moments-scene-image-prompts.md`。
 - **隱私**：輸入鏈全程零使用者資料；新模組加 source test 禁 import 任何 turns/thread/memory 型別（比照 `moments_generated_only_source_test.ts`）。
 
 ---

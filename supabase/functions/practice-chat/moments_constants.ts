@@ -93,3 +93,29 @@ export const MOMENT_IMAGE_PATH_DB_MAX_CHARS = 200;
  * 必須 ≤ SQL 側的 p_limit 硬上界 100；20 足以在一天內消化 ~11 張/天的積壓。
  */
 export const MOMENT_IMAGE_SWEEP_LIMIT = 20;
+
+// ── 生圖呼叫參數（PR-3 Edge 端；與 DB 無對應，釘在 moments_image_gen_test）──
+
+/** 單一請求最多排幾個生圖背景 job（新 commit 與 pending 接手合計）。 */
+export const MOMENT_IMAGE_FILL_MAX_PER_REQUEST = 2;
+
+/** fal.ai 同步端點的 HTTP timeout。遠小於 180s 租約，競態才幾乎不可達。 */
+export const MOMENT_IMAGE_MODEL_TIMEOUT_MS = 30_000;
+
+/** 生成結果（provider CDN URL）的下載 timeout。 */
+export const MOMENT_IMAGE_DOWNLOAD_TIMEOUT_MS = 15_000;
+
+/** 場景句 DeepSeek 呼叫的 timeout；失敗退題材模板句，不重試。 */
+export const MOMENT_IMAGE_SCENE_TIMEOUT_MS = 10_000;
+
+/**
+ * 黑圖保險：fal 的 safety checker 對不安全內容回「全黑圖的成功回應」，
+ * 全黑 jpeg 遠小於正常場景圖。低於此值視為生成失敗（fal_image_too_small）。
+ */
+export const MOMENT_IMAGE_MIN_BYTES = 10_000;
+
+/** 異常大檔上界（正常 1024×768 jpeg 約 100-300KB）。 */
+export const MOMENT_IMAGE_MAX_BYTES = 4_000_000;
+
+/** Storage bucket 名，與 migration 的 storage.buckets 列一致。 */
+export const MOMENT_IMAGE_BUCKET = "practice-moment-images";

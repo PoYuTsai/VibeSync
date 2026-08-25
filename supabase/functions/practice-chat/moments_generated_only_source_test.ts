@@ -19,6 +19,7 @@ async function read(name: string): Promise<string> {
 
 const momentsHandler = await read("moments_handler.ts");
 const momentsPrompt = await read("moments_prompt.ts");
+const momentsImageGen = await read("moments_image_gen.ts");
 const momentsValidate = await read("moments_validate.ts");
 const practiceHandler = await read("handler.ts");
 const migration = await Deno.readTextFile(
@@ -41,6 +42,7 @@ function withoutComments(source: string): string {
 
 const executableHandler = withoutComments(momentsHandler);
 const executablePrompt = withoutComments(momentsPrompt);
+const executableImageGen = withoutComments(momentsImageGen);
 
 Deno.test("生成失敗一定走 release，而且 release 是真的 RPC 呼叫", () => {
   assert(executableHandler.includes('"release_practice_moment_slot"'));
@@ -132,6 +134,62 @@ Deno.test("隱私鐵則：moments_prompt 碰不到任何使用者衍生資料", 
       `moments_prompt.ts 不得出現使用者衍生資料的痕跡：${forbidden}`,
     );
   }
+});
+
+Deno.test("隱私鐵則：moments_image_gen 碰不到任何使用者衍生資料", () => {
+  // 生圖 prompt 的輸入只有 committed body、theme_id 與常數模板（PR-3）。
+  // userId 允許存在——它只進 claim RPC 的限流參數，這裡另擋「對話／記憶」
+  // 模組與欄位的 import 痕跡，防後人把聊天內容餵進場景描述。
+  for (
+    const forbidden of [
+      "relationship_thread",
+      "relationshipThread",
+      "memorySummary",
+      "./hint.ts",
+      "./debrief_card.ts",
+      "./moments_memory.ts",
+      "./prompt.ts",
+      "practice_chat_sessions",
+      "nickname",
+      "turns",
+    ]
+  ) {
+    assertEquals(
+      executableImageGen.includes(forbidden),
+      false,
+      `moments_image_gen.ts 不得出現使用者衍生資料的痕跡：${forbidden}`,
+    );
+  }
+  // userId 只允許以 claim 限流參數的形式出現。
+  assert(executableImageGen.includes("p_user_id: userId"));
+  const userIdUses = [...executableImageGen.matchAll(/userId/g)].length;
+  const declaredUses =
+    [...executableImageGen.matchAll(/userId: string|p_user_id: userId|userId, isTestAccount|, userId,/g)]
+      .length;
+  assert(
+    userIdUses <= declaredUses + 2,
+    "userId 在 moments_image_gen 出現太多次，疑似流進生圖 prompt",
+  );
+});
+
+Deno.test("no-canned 圖片版：image_gen 失敗只 release，絕不落替代圖", () => {
+  for (
+    const forbidden of [
+      "fallbackImage",
+      "placeholderImage",
+      "DEFAULT_IMAGE",
+      "canned",
+    ]
+  ) {
+    assertEquals(
+      executableImageGen.includes(forbidden),
+      false,
+      `moments_image_gen.ts 不得出現替代圖識別字：${forbidden}`,
+    );
+  }
+  assert(executableImageGen.includes('"release_practice_moment_image"'));
+  assert(executableImageGen.includes('"commit_practice_moment_image"'));
+  assert(executableImageGen.includes('"claim_practice_moment_image"'));
 });
 
 Deno.test("隱私鐵則：moments_handler 只把 userId 用在讀解鎖與限流，不進 prompt", () => {
