@@ -1,0 +1,229 @@
+# 練習室動態：配圖改為 fal.ai 即時生成（含過期自動刪除）設計
+
+2026-08-25。實作前設計文件。**本文件不含任何 runtime 變更**；實作依 §14 分期。
+
+**決策鏈**：撞圖研究（`2026-08-25-practice-moments-image-duplication.md`）確認 20 張 bundled 素材的撞圖是結構性必然 → Eric 提出改用生圖 API → 比較各家 CP 值後 **Eric 拍板供應商用 fal.ai（模型 FLUX.1 [schnell]）**。
+
+---
+
+## 1. 一句話架構
+
+**文字貼文照現有同步路徑一字不動落地；文字 commit 成功後由 `EdgeRuntime.waitUntil` 背景「以文生圖」（貼文文字＋題材 → 英文場景 prompt → fal.ai → 下載轉存 Supabase Storage public bucket），token-fenced 寫回同列的獨立 image 欄位組；feed handler 順路做有界的接手與過期清理（機會式，零新排程基礎設施）；env kill switch 關閉時退回現行 20 張 bundled 素材路徑。**
+
+```
+feed 請求（現行路徑不動，8 秒總死線不變）
+ └ fillOneSlot: reserve → DeepSeek 文字 → validate → commit（wantsImage 時標 image_status='pending'）
+ └ commit 成功後 waitUntil(生圖 job)          ← 新增，不佔 8 秒死線
+      claim_practice_moment_image（token + 180s 租約 + 同交易 per-user 限流）
+      → DeepSeek 一次便宜呼叫：body＋brief → 英文場景句（失敗退題材級模板句）
+      → fal.ai 同步端點（timeout 30s）→ 下載圖 → Storage upsert（決定論 key）
+      → commit_practice_moment_image（token-fenced → image_status='ready'）
+      失敗 → release_practice_moment_image（attempts 到頂轉 'failed'＝該則永久純文字）
+ └ waitUntil(過期清理 job)：刪 14 天窗外的 Storage 物件（LIMIT 有界）
+接手自癒：之後任何 feed 請求看到 pending 且租約逾時的列，取最多 2 則丟進 waitUntil
+```
+
+Client 動態：貼文先以純文字出現；生圖 10 秒內完成，**下次進頁**（D7：每次進畫面重抓）看到圖。不推播、不輪詢。
+
+---
+
+## 2. 與既有設計決策的關係（正式翻案清單）
+
+| 既有決策 | 本案處置 |
+| --- | --- |
+| 設計報告 §3 決策 D3「P1 不做 Storage/CDN」 | **反轉**：引入 Supabase Storage public bucket。反轉依據＝撞圖研究量化結論（一屏撞圖率最高 88%）＋bundled 池結構性撐不住 |
+| 設計報告決策 6「排程預熱不做（需 pg_net／新 CI 憑證）」 | **不重開**：本案不需要任何排程——生成掛在請求生命週期的 waitUntil，清理走機會式 |
+| 「零新憑證」 | **反轉**：新增 `FAL_API_KEY` 一把（Eric 手動 `supabase secrets set`，流程照 `DEEPSEEK_API_KEY` 前例、不進 preflight 必檢清單＝缺 key 降級不擋 deploy） |
+| D6「feed 14 天、DB 永久保留」 | **不變**：只刪 Storage 物件與標記欄位，**永不刪列**（release RPC 三鐵則之一照舊） |
+| no-canned 鐵則 | **不變且延伸**：生圖失敗絕不塞替代圖，終態＝純文字 |
+| 隱私鐵則（生成輸入零使用者資料） | **不變**：生圖 prompt 輸入＝committed body（本身由 server 事實生成）＋themeId＋常數模板 |
+| 撞圖研究 S1–S3 方案 | S3（bundled 變體素材）**作廢**；S1/S2 降為 fallback 路徑的可選小修；census 工具保留 |
+| `moments_memory.ts`（1:1 記憶注入） | **零影響**：記憶只用文字，已實測無 image 引用 |
+
+---
+
+## 3. 供應商定案：fal.ai / FLUX.1 [schnell]
+
+**已由 Eric 拍板（2026-08-25）。** 選型理由與規格：
+
+- **端點**：同步 `https://fal.run/fal-ai/flux/schnell`（另有 `queue.fal.run` 佇列制備用）。schnell 推理 1–4 步、約 1–2 秒，**同步 HTTP 即可**——在 waitUntil 背景裡直接一來一回，不需要 DashScope 那種 task_id 輪詢，整合程式碼最少。
+- **認證**：header `Authorization: Key ${FAL_API_KEY}`。
+- **關鍵參數**：`image_size: "landscape_4_3"`（**內建 preset 且是預設值**，與 tile 的 4:3 框天然對齊、零裁切）、`num_images: 1`、`output_format`（預設 jpeg）、`seed`（**傳入 fnv1a slot 種子**——重試時輸出接近可重現，延續排程層的種子哲學）、`enable_safety_checker: true`（預設開）。
+- **輸出**：JSON 內 `images[].url` 指向 fal 的 CDN（暫時 URL）→ **Edge 下載後轉存 Supabase Storage**，client 永遠只拿我們自己的 URL。
+- **價格**：$0.003/megapixel；landscape_4_3（1024×768 ≈ 0.79MP）≈ **$0.0024/張** → 實測量（~11 張/天、~370 張/月含重試）**月費 < $1**。價格以 fal.ai 官方定價頁為準。
+- **換模型的彈性**：fal.ai 同站託管 FLUX 全系與 Qwen-Image 等開源模型——質感不滿意時**只換 model id 字串**，金流、金鑰、client 模組全部不動。這是選託管平台而非單一模型官方 API 的核心理由。
+- **落選備註**：Qwen Image 3.0 Pro（阿里官方 ~$0.075/張、非同步任務制＋輪詢）為本清單最貴且整合最複雜；gpt-image-1-mini（$0.005 起）為大廠備選，質感與既有 20 張素材同門，若 schnell 試打不過驗收再啟用。
+
+**正式接線前的試打**（Eric 手動、不寫程式、花費 < $1）：在 fal.ai playground 用 `2026-08-24-practice-moments-scene-image-prompts.md` 的 STYLE/NEGATIVE 模板生 10–20 張，打同文件 §6 驗收清單。
+
+---
+
+## 4. 時序架構：為什麼是「背景兩段式」
+
+| 方案 | 判定 | 理由 |
+| --- | --- | --- |
+| **(a) waitUntil 背景生圖** | **採用** | 文字路徑（已上線）一行不動；`handler.ts:478-590` 已有 waitUntil 的可注入 dep 範式與測試 collector 可照抄；Edge wall clock（免費 150s／付費 400s）對「生圖 2s＋下載轉存 3s」綽綽有餘；零新基礎設施 |
+| (b) 每日預生成 | 否 | 需 pg_net 或新 CI 憑證（決策 6 否決過）；且 lazy 模型只為有人看的角色花錢，預生成為全名冊無條件燒 |
+| (c) 塞進 8 秒同步死線 | 否 | schnell 雖快，但死線是「最多 3 則文字補生成」共用的總預算，再塞「生圖＋下載＋上傳」等於把 feed 延遲耦合到兩個外部服務；背景化只差「下次進頁才看到圖」，產品上可接受 |
+
+**waitUntil 蒸發風險**（Edge 實例回收）由接手機制自癒：租約 180s 逾時後，任何觀看者的請求把 pending 列重新認領（單請求上限 2 則）。與現行文字補生成「租約逾時或下次請求接手」同一哲學。
+
+---
+
+## 5. 文圖一致性：文先圖後
+
+- **方向**：文字照現行 prompt 先生成（`moments_prompt.ts` 的 wantsImage 分支僅微調措辭：告知「會配一張你拍的照片」但**不再給 imageId 候選清單**，`imageId` 一律回 null）；圖從 committed body 長出來。撞圖截圖的違和感（三段不同文字共用同一張鍋子照）由構造消滅：她寫弄了碗麵，圖就是那碗麵。
+- **英文場景句**：一次便宜 DeepSeek 呼叫（~300 tokens）把「繁中 body＋themeId brief」轉成 1–2 句英文場景描述。輸出驗證：純 ASCII、長度上限、禁 person/face/text/logo 詞面。**該呼叫失敗退回題材級英文模板句**（42 個 themeId 各一句，純資料表）——內部 prompt 的模板退路不違反 no-canned（該鐵則管可見文字），但新模組命名避開 "fallback" 字面（`moments_generated_only_source_test.ts` 逐字串掃描），用 `themeSceneLine` 之類。
+- **完整 prompt** ＝ 場景句 ＋ STYLE 模板 ＋ NEGATIVE 模板（`negative_prompt` 參數），模板字面沿用 `2026-08-24-practice-moments-scene-image-prompts.md`（無人物含手與背影、無可讀文字/logo/品牌、台灣日常感、手機隨手拍、深色 UI 友善——已驗收過的措辭）。
+- **隱私**：輸入鏈全程零使用者資料；新模組加 source test 禁 import 任何 turns/thread/memory 型別（比照 `moments_generated_only_source_test.ts`）。
+
+---
+
+## 6. DB schema 變更草案
+
+基準：`supabase/migrations/20260822120000_practice_moment_posts.sql` 與 `20260824063344_practice_moment_reserve_usage_gate.sql`。**純加法**，一個 targeted migration：
+
+```sql
+ALTER TABLE practice_moment_posts
+  ADD COLUMN image_status      TEXT NOT NULL DEFAULT 'none'
+    CHECK (image_status IN ('none','pending','ready','failed','expired')),
+  ADD COLUMN image_path        TEXT,
+  ADD COLUMN image_attempts    SMALLINT NOT NULL DEFAULT 0 CHECK (image_attempts BETWEEN 0 AND 2),
+  ADD COLUMN image_token       TEXT,
+  ADD COLUMN image_reserved_at TIMESTAMPTZ,
+  ADD CONSTRAINT practice_moment_image_ready_has_path
+    CHECK (image_status <> 'ready' OR image_path IS NOT NULL);
+CREATE INDEX practice_moment_posts_image_expiry_idx
+  ON practice_moment_posts (post_date) WHERE image_status = 'ready';
+```
+
+**RPC 變更**：
+- `reserve_practice_moment_slot` **不動**。
+- `commit_practice_moment_post` 加 `p_wants_image BOOLEAN DEFAULT FALSE`（TRUE 時原子寫 `image_status='pending'`）。簽名變更沿用 `20260824063344` 的 overload 衛生範式（fail-closed 稽核 → DROP 舊版 → CREATE）；舊 Edge 以 named params 呼叫吃 DEFAULT，部署窗內雙向相容。
+- `list_practice_moment_posts` 回傳表加 `image_status, image_path`（DROP+CREATE；舊 Edge 只讀已知欄位，多欄無害）。
+- **新增三支 image RPC**，逐格鏡像 reserve/commit/release 的六態轉移表與 token fencing（含「attempts 明寫 +1 不靠 DEFAULT」「絕不 DELETE 列、絕不動 body、絕不回收 attempts」三鐵則）：
+  - `claim_practice_moment_image(...)`：僅 `status='ready' AND image_status='pending'` 且（token IS NULL 或租約逾時）可認領；認領即 `image_attempts+1` 並**同交易** `increment_model_usage(user,'practice_moment_image',...)`（超限 RAISE → 整筆 rollback）；回傳含 `body, theme_id` 免二次讀。max_attempts DEFAULT 2、lease DEFAULT 180s。
+  - `commit_practice_moment_image(..., p_image_path)`：fenced，寫 `image_status='ready'`。
+  - `release_practice_moment_image(...)`：attempts 到頂轉 `'failed'`（終態＝永久純文字），否則清 token 留 pending。
+- **清理兩小支**：`list_expired_practice_moment_images(p_before DATE, p_limit INT)`（回 ready＋出窗的 path）與 `mark_practice_moment_images_expired(p_paths TEXT[])`。
+- 權限照現行：REVOKE ALL → GRANT service_role only；檔尾 `NOTIFY pgrst, 'reload schema'`。
+
+**重試語義**：文字 `attempts`（≤3）與 `image_attempts`（≤2）完全獨立——文字重試不燒圖額度，圖失敗不碰文字。圖上限 2 次：失敗多為內容政策或供應商故障，重試邊際價值低。
+
+---
+
+## 7. 儲存與傳遞
+
+- **Bucket**：`practice-moment-images`，**public**。內容是無人物 AI 場景圖、全域共用、零使用者資料；signed URL 會讓 URL 每次變動打爆 client 磁碟快取、且過期時間要另外對齊 14 天窗，得不償失。bucket 與 `storage.objects` policy（anon 唯讀、寫入 service_role only）進同一支 migration（`INSERT INTO storage.buckets ... ON CONFLICT DO NOTHING`）。
+- **物件 key（決定論）**：`<post_date>/<profile_id>_<slot>.jpeg`。日期前綴讓清掃可按 prefix 對帳孤兒；重試 upsert 覆寫同 key（冪等、零累積孤兒）。
+- **Edge 不做影像處理**：fal 直出 jpeg（landscape_4_3），下載後原樣上傳。黑圖保險見 §9。
+- **API 回傳**：`MomentFeedPost` 加 `imageUrl: string | null`——僅 `image_status='ready'` 時由 `SUPABASE_URL`＋path 組出。`imageId` 欄位語義不變（自拍 sentinel 與 bundled fallback 續用）。
+- **向前相容（已驗證）**：`practice_moment_post.dart` 的 fromJson 只讀已知鍵，未知鍵直接忽略；生成圖貼文的 `imageId` 為 null → 舊 client 走「null＝純文字」主路徑。零風險。
+
+---
+
+## 8. 過期刪除：機會式清理（lazy purge）
+
+| 方案 | 判定 | 理由 |
+| --- | --- | --- |
+| pg_cron | 否 | 只能跑純 SQL；直接 DELETE `storage.objects` 會留 S3 實體孤兒；打 Storage API 需 pg_net（未啟用＝憑證面） |
+| GitHub Actions schedule | 否 | repo 零先例；且 CI 無 service-role key，得為每日 job 新開憑證 |
+| **feed handler 機會式** | **採用** | repo 已有同型先例（`20260703120000_opener_charge_idempotency.sql`「lazy purge：每次呼叫順手刪」）；量極小（~11 物件/天） |
+
+做法：feed 回應送出後 waitUntil 內——`list_expired_practice_moment_images(今天-14, LIMIT 20)` → `storage.remove(paths)` → `mark_practice_moment_images_expired(...)`。**先刪物件、後標記列**（順序反過來會製造掃不到的孤兒；標記失敗下輪重掃，Storage 刪除冪等）。列永不刪（D6），`image_path` 保留供審計與冪等重刪。穩態儲存 ≈ 14 天 × 11 張 × ~150KB ≈ **23MB**。零流量期的積壓有界，下次有人開 feed 分批消化。
+
+---
+
+## 9. 安全與品質邊界
+
+- **無人物／無文字／無品牌**：STYLE＋NEGATIVE 模板硬約束（沿用已驗收字面）＋fal `enable_safety_checker: true`。FLUX 無 Imagen 的 `person_generation` 硬參數——殘餘風險由 prompt 約束與試打驗收吸收。
+- **黑圖保險**：fal 的 safety checker 對不安全內容回**全黑圖（仍是成功回應）**。我們的 prompt 是無人物生活場景，觸發機率趨近零；仍加一道便宜檢查：下載後 **bytes < 10KB 視為生成失敗**（全黑 jpeg 遠小於正常場景圖），走 release 路徑。
+- **自拍貼文維持圖鑑照片，不生成**：人臉一致性做不到＋原設計 §7.4「不得生成像真實人物的新圖」（App Review 肖像風險）。候選收斂後只剩 `moment_self_portrait` 的 slot 不進生圖分支。
+- **Kill switch**：`MOMENT_IMAGE_GEN_ENABLED`（getEnv 閘門，照 `PRACTICE_HINT_PREFETCH_ENABLED` 範式，handler.ts:2142）。**關閉或缺 `FAL_API_KEY` 時退回現行 20 張 bundled 素材路徑**——bundled 路徑已上線已驗收，保住「兩種貼文型態」；因此 20 張素材長期保留，`test/lint/moments_scene_asset_parity_test.dart` 三方對帳一行不用改。
+- **timeout < lease**：fal 呼叫 30s＋下載 15s＋上傳 15s ≪ image lease 180s，把 stale worker 與新 worker 同時上傳的競態壓到幾乎不可達；殘餘競態因決定論 key＋同 seed 而良性。
+- **provenance**：`docs/licenses/` 補一條 runtime 生成聲明（模型 FLUX.1 [schnell]、prompt 來源文件、無人物無品牌約束、商用授權——schnell 為 Apache 2.0 開源權重，fal 託管條款允許商用）。
+
+---
+
+## 10. Client 變更
+
+- **套件**：`cached_network_image`（磁碟快取必要——D7 每次進頁重抓 feed，無快取＝每次重載全部圖）。
+- **entity**：`PracticeMomentPost` 加可選 `imageUrl`；`MomentImageSource` sealed class 加第三個 variant：
+
+```dart
+class MomentRemoteImage extends MomentImageSource {
+  const MomentRemoteImage(this.url);
+  final String url;
+}
+```
+
+  解析優先序：`imageUrl` 非空 → `MomentRemoteImage`；否則現行 `resolveMomentImage(imageId)`。防禦性檢查 URL host 必須是本 app 的 Supabase host。
+- **tile**：`_buildImage` switch 加 case——`CachedNetworkImage(fit: cover, placeholder: 4:3 圓角素色塊, errorWidget: SizedBox.shrink())`。占位只在 imageUrl 存在時保留 4:3 空間（防 layout shift）；API 只在 ready 時給 URL，**client 永遠不會等一張可能不來的圖**。errorWidget 降級純文字＝現行鐵則照抄。
+- 舊版 App（無此欄位解析）自動純文字，四象限（新舊 client × 新舊 Edge）全相容。
+
+---
+
+## 11. 成本模型與觀測
+
+- **量**：census 實測（`tools/moments-image-census/census.ts`）全名冊 100 位、配圖率 0.2 → **~11 張/天、~330 張/月**；含 10% 重試 ~370 張/月。與使用者數無關（貼文全域共用）。
+- **錢**：fal schnell landscape_4_3 ≈ $0.0024/張 → **~$0.9/月**。機械最壞上界（DB CHECK 強制）＝ 200 slot/天 × 0.2 × 2 attempts ＝ 80 張/天 ＝ **月上限 ~$5.8**。對 `IMAGE_PROBABILITY` 線性（調回 0.45 即 ×2.25）。另每張一次 DeepSeek 場景句（~300 tokens，可忽略）；Storage 穩態 23MB＋egress 按觀看數（client 磁碟快取壓低）。
+- **四層防護**：DB CHECK（image_attempts ≤2）× Edge 100 角色 allowlist × 新 per-user scope `practice_moment_image: { perMinute: 3, perDay: 20 }`（`_shared/model_rate_limit.ts` 加一行，claim RPC 同交易計數）× kill switch。結構與文字路徑「全站每日 ≤600 次」論證同構。
+- **觀測**（logInfo/logWarn）：`practice_moment_image_claimed / committed / released / failed`（帶 failureClass: provider_timeout / safety_black / upload / describe / http_${status}）、`practice_moment_image_expired_swept`（deleted/marked 數）；`practice_moments_filled` 加 `imageJobsScheduled`。健康線：`failed` 佔圖文 slot > 10% 告警（比照文字路徑 exhausted > 5% 慣例）。
+- **錯誤分類命名**：照 `deepseek.ts` 模板——`fal_image_http_${status}` / `fal_image_timeout` / `fal_image_empty` / `fal_image_download_failed` / `fal_image_too_small`（黑圖保險）；provider response body 不進錯誤訊息。
+
+---
+
+## 12. 分期交付（一 PR 一目的，全部可獨立測試回退）
+
+| PR | 內容 | migration | 回退面 |
+| --- | --- | --- | --- |
+| **PR-1** | 本設計文件 | 否 | — |
+| **PR-2** | migration：image 欄位組＋bucket＋5 支新 RPC＋commit/list 改簽名；PGlite 契約測試（照 `moments_migration_postgres_test.ts` 逐格驗轉移表）＋`moments_constants.ts` 新常數雙向比對 | **是**（targeted migration；**production 套用先於 PR-3 部署**；ledger 補登記——注意 0822/0824 兩支也尚未登記，順手補） | Edge 未寫 pending，行為零變化 |
+| **PR-3** | Edge 生成路徑（旗標預設關）：`moments_image_gen.ts`（fal client＋prompt 組裝＋場景句呼叫＋黑圖保險）、Storage 上傳、waitUntil 接線＋接手、rate-limit scope、kill switch、logs；deno 測試（mock fetch）＋新 source test（隱私 import 禁令） | 否 | 關旗標＝現行行為 |
+| **PR-4** | Edge 機會式過期清理＋測試 | 否 | 不做只是物件多留幾天 |
+| **PR-5** | Client：`cached_network_image`、`imageUrl` 解析、`MomentRemoteImage`、tile 渲染＋占位＋降級、widget 測試 | 否 | imageUrl 恆 null 時畫面零變化 |
+| **啟用** | Eric：fal.ai 開帳號綁卡 → `supabase secrets set FAL_API_KEY=...` → `MOMENT_IMAGE_GEN_ENABLED=true`（ops 動作，非 PR） | — | 隨時關回 |
+
+順序：PR-2 最先且 production migration 先行；PR-3/4/5 互不阻塞。`practice-chat` 部署照現行 push-triggered workflow，無 `--no-verify-jwt` 需求變化。
+
+---
+
+## 13. 風險清單
+
+1. **waitUntil 任務蒸發**（實例回收）→ pending 卡住。緩解：180s 租約接手自癒；觀測 pending 列齡。
+2. **fal 故障／safety 拒絕** → attempts 燒完轉 `'failed'` 純文字，無半成品落盤；failed 比例告警。
+3. **成本失控** → 四層防護（§11）；最壞上界月 ~$5.8 有 DB CHECK 背書。
+4. **上傳競態** → timeout ≪ lease＋決定論 key＋同 seed，殘餘競態良性（同輸入的另一張）。
+5. **孤兒物件** → 覆寫同 key 不累積；日期 prefix 可離線對帳兜底。
+6. **schnell 質感不過驗收** → fal 同站換 model id（FLUX dev / Qwen-Image）即可，架構不動；成本表重算。
+7. **隱私回歸** → source test 禁 import 使用者資料型別，防後人把聊天內容餵進場景句。
+8. **弱網** → remote 圖載不出走 errorWidget 純文字；kill switch 下 bundled 路徑離線可用。
+
+---
+
+## 14. 已定案與尚待拍板
+
+**已定案（Eric，2026-08-25）**：供應商 fal.ai、模型 FLUX.1 [schnell] 起步；架構照本文件。
+
+**尚待 Eric 拍板（實作前確認即可）**：
+1. 生圖徹底失敗（attempts 燒完）那則：純文字終態【本文件推薦】vs 退用 bundled 圖
+2. kill switch 退回 bundled（=20 張長期保留、0.9MB 不回收）【本文件推薦】的確認
+3. `IMAGE_PROBABILITY` 維持 0.2 或上調（成本線性）
+4. fal.ai 帳號開通與 `FAL_API_KEY` 設定時點（PR-3 合併前不需要）
+5. 試打驗收：playground 生 10–20 張打 2026-08-24 規格書 §6 清單，過了才開旗標
+
+## 15. 驗收方式
+
+- **PR-2**：PGlite 測試逐格驗 image RPC 六態轉移；constants 雙向比對綠。
+- **PR-3**：deno 測試 mock fal（成功／timeout／黑圖／下載失敗／fencing 打回）；關旗標時零行為變化的回歸測試。
+- **PR-5**：widget 測試三態（remote 成功／載入中占位／錯誤降級純文字）。
+- **端到端（Eric 真機）**：開旗標後進「她們的動態」→ 新圖文貼文首次純文字、重進頁面出圖；圖與文字內容相符；14 天前的舊貼文無圖；關旗標回 bundled 素材。
+
+## 16. 參考來源
+
+- fal.ai FLUX schnell API 文件（端點、`image_size: landscape_4_3`、safety checker、輸出格式）：https://fal.ai/models/fal-ai/flux/schnell/api
+- fal.ai 定價（$0.003/MP）：https://fal.ai/pricing 、聚合站交叉比對 https://pricepertoken.com/fal-ai-pricing
+- Supabase Edge 背景任務（waitUntil、wall clock 150s/400s）：https://supabase.com/docs/guides/functions/background-tasks
+- 供應商比較過程（gpt-image-1-mini $0.005、Imagen 4 Fast $0.02、Qwen 3.0 Pro ~$0.075）：本 session 網查，聚合站數字，正式採用前以官方頁為準
+- 既有素材規格書（STYLE/NEGATIVE 模板與驗收清單）：`docs/plans/2026-08-24-practice-moments-scene-image-prompts.md`
+- 撞圖研究（本案起點）：`docs/plans/2026-08-25-practice-moments-image-duplication.md`
