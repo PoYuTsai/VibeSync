@@ -47,7 +47,14 @@ const momentImageExpiryGuardMigration = await Deno.readTextFile(
 );
 
 const PROFILE_ID = "practice_girl_007";
-const POST_DATE = "2026-08-25";
+/** 台北「今天」。DB 端 expiry cutoff 用真實 now() 判定，日期必須相對今天。 */
+function taipeiToday(offsetDays = 0): string {
+  const taipei = new Date(Date.now() + 8 * 3600_000 + offsetDays * 86_400_000);
+  return taipei.toISOString().slice(0, 10);
+}
+const POST_DATE = taipeiToday();
+/** 已出窗的貼文日（窗起點是今天-13，取今天-20 穩在窗外）。 */
+const EXPIRED_POST_DATE = taipeiToday(-20);
 const SLOT = 0;
 const DAY_PART = "afternoon";
 const THEME_ID = "coffee_break";
@@ -134,25 +141,23 @@ async function claimImage(
     countUserUsage?: boolean;
     minuteLimit?: number;
     dailyLimit?: number;
-    /** 台北窗起點；預設一個讓 POST_DATE 在窗內的值。 */
-    expiryBefore?: string;
+    postDate?: string;
   } = {},
 ): Promise<ClaimRow> {
   const result = await db.query<ClaimRow>(
     `SELECT claimed, token, attempt_count, body, theme_id
      FROM public.claim_practice_moment_image(
-       $1, $2::DATE, $3, $4, $5::UUID, $6, $7, $8, $9::DATE
+       $1, $2::DATE, $3, $4, $5::UUID, $6, $7, $8
      )`,
     [
       PROFILE_ID,
-      POST_DATE,
+      options.postDate ?? POST_DATE,
       SLOT,
       token,
       options.userId ?? USER_ID,
       options.minuteLimit ?? 3,
       options.dailyLimit ?? 20,
       options.countUserUsage ?? true,
-      options.expiryBefore ?? "2026-08-12",
     ],
   );
   return result.rows[0];
@@ -162,13 +167,13 @@ async function commitImage(
   db: PGlite,
   token: string,
   path: string = IMAGE_PATH,
-  expiryBefore = "2026-08-12",
+  postDate: string = POST_DATE,
 ): Promise<boolean> {
   const result = await db.query<{ committed: boolean }>(
     `SELECT committed FROM public.commit_practice_moment_image(
-       $1, $2::DATE, $3, $4, $5, $6::DATE
+       $1, $2::DATE, $3, $4, $5
      )`,
-    [PROFILE_ID, POST_DATE, SLOT, token, path, expiryBefore],
+    [PROFILE_ID, postDate, SLOT, token, path],
   );
   return result.rows[0].committed;
 }
@@ -181,6 +186,22 @@ async function releaseImage(db: PGlite, token: string): Promise<boolean> {
     [PROFILE_ID, POST_DATE, SLOT, token],
   );
   return result.rows[0].released;
+}
+
+/**
+ * 模擬「時間流逝跨過台北午夜」的等價變換：把列的 post_date 往回撥。
+ * DB 端 cutoff 以真實 now() 計算不可注入；所有租約／token 都不看日期，
+ * 位移 post_date 與快轉時鐘對這張表等價。
+ */
+async function shiftRowPostDate(db: PGlite, days: number): Promise<string> {
+  const result = await db.query<{ post_date: string }>(
+    `UPDATE public.practice_moment_posts
+     SET post_date = post_date - $1::INT
+     WHERE profile_id = $2 AND post_date = $3::DATE AND slot = $4
+     RETURNING post_date::TEXT`,
+    [days, PROFILE_ID, POST_DATE, SLOT],
+  );
+  return result.rows[0].post_date;
 }
 
 /** 讓生圖租約逾時，不動 image_attempts／token，模擬 worker 中途死掉。 */
@@ -200,6 +221,17 @@ async function readRow(db: PGlite): Promise<ImageRow> {
      FROM public.practice_moment_posts
      WHERE profile_id = $1 AND post_date = $2::DATE AND slot = $3`,
     [PROFILE_ID, POST_DATE, SLOT],
+  );
+  return result.rows[0];
+}
+
+async function readRowAt(db: PGlite, postDate: string): Promise<ImageRow> {
+  const result = await db.query<ImageRow>(
+    `SELECT status, attempts, body, image_status, image_path,
+            image_attempts, image_token
+     FROM public.practice_moment_posts
+     WHERE profile_id = $1 AND post_date = $2::DATE AND slot = $3`,
+    [PROFILE_ID, postDate, SLOT],
   );
   return result.rows[0];
 }
@@ -589,7 +621,7 @@ Deno.test("PostgreSQL expiry sweep lists, marks, and never deletes", async () =>
     assertEquals(fresh.rows.length, 0, "post_date < p_before 才算出窗");
 
     // 出窗：列出 → 標記 → 再列為空；列與 path 都還在。
-    const dayAfter = "2026-08-26";
+    const dayAfter = taipeiToday(1);
     const expired = await db.query<{ image_path: string }>(
       `SELECT image_path
        FROM public.list_expired_practice_moment_images($1::DATE, 20)`,
@@ -659,8 +691,8 @@ Deno.test("PostgreSQL image RPCs are service_role only and definer mode", async 
     const signatures = [
       "public.commit_practice_moment_post(text,date,integer,text,text,text,text,boolean)",
       "public.list_practice_moment_posts(text[],date)",
-      "public.claim_practice_moment_image(text,date,integer,text,uuid,integer,integer,boolean,date,integer,integer)",
-      "public.commit_practice_moment_image(text,date,integer,text,text,date)",
+      "public.claim_practice_moment_image(text,date,integer,text,uuid,integer,integer,boolean,integer,integer)",
+      "public.commit_practice_moment_image(text,date,integer,text,text)",
       "public.release_practice_moment_image(text,date,integer,text,integer)",
       "public.list_expired_practice_moment_images(date,integer)",
       "public.mark_practice_moment_images_expired(date,text[])",
@@ -695,28 +727,13 @@ Deno.test("PostgreSQL image RPCs are service_role only and definer mode", async 
       );
     }
 
-    // 舊 7-arg commit 與舊 10-arg claim 必須已被移除（overload 衛生）。
-    const legacy = await db.query<{
-      legacy_commit: string | null;
-      legacy_claim: string | null;
-    }>(`
-      SELECT
-        to_regprocedure(
-          'public.commit_practice_moment_post(text,date,integer,text,text,text,text)'
-        )::TEXT AS legacy_commit,
-        to_regprocedure(
-          'public.claim_practice_moment_image(text,date,integer,text,uuid,integer,integer,boolean,integer,integer)'
-        )::TEXT AS legacy_claim,
-        to_regprocedure(
-          'public.commit_practice_moment_image(text,date,integer,text,text)'
-        )::TEXT AS legacy_commit_image
+    // 舊 7-arg commit_post 必須已被移除（overload 衛生）。
+    const legacy = await db.query<{ legacy_commit: string | null }>(`
+      SELECT to_regprocedure(
+        'public.commit_practice_moment_post(text,date,integer,text,text,text,text)'
+      )::TEXT AS legacy_commit
     `);
     assertEquals(legacy.rows[0].legacy_commit, null);
-    assertEquals(legacy.rows[0].legacy_claim, null);
-    assertEquals(
-      (legacy.rows[0] as Record<string, unknown>).legacy_commit_image,
-      null,
-    );
   } finally {
     await db.close();
   }
@@ -726,18 +743,20 @@ Deno.test("PostgreSQL image RPCs are service_role only and definer mode", async 
 // 清理競態圍籬（複審 blocking item 3）：出窗列在資料層凍結
 // ---------------------------------------------------------------------------
 
-Deno.test("PostgreSQL expired rows can never be claimed again", async () => {
+Deno.test("PostgreSQL expired rows can never be claimed again (production call chain)", async () => {
   const db = await createDatabase();
   try {
+    // 走正式鏈把一列做成 ready-with-image，再把 post_date 位移到窗外
+    // （等價於時間流逝）；cutoff 由 DB 以當下 now() 判定，呼叫端無從注入。
     await seedPost(db, { wantsImage: true });
     assertEquals((await claimImage(db, "t-x")).claimed, true);
     assertEquals(await commitImage(db, "t-x"), true);
+    const expiredDate = await shiftRowPostDate(db, 20);
 
-    // POST_DATE 已出窗（expiryBefore 在其後一天）→ ready 列拒絕認領。
-    const dayAfter = "2026-08-26";
-    const refused = await claimImage(db, "t-late", { expiryBefore: dayAfter });
+    const refused = await claimImage(db, "t-late", { postDate: expiredDate });
     assertEquals(refused.claimed, false);
-    assertEquals((await readRow(db)).image_status, "ready", "拒絕不得改動列");
+    const row = await readRowAt(db, expiredDate);
+    assertEquals(row.image_status, "ready", "拒絕不得改動 ready 列");
   } finally {
     await db.close();
   }
@@ -747,11 +766,10 @@ Deno.test("PostgreSQL expired pending rows are finalized as failed on claim", as
   const db = await createDatabase();
   try {
     await seedPost(db, { wantsImage: true });
-    const refused = await claimImage(db, "t-late", {
-      expiryBefore: "2026-08-26",
-    });
+    const expiredDate = await shiftRowPostDate(db, 20);
+    const refused = await claimImage(db, "t-late", { postDate: expiredDate });
     assertEquals(refused.claimed, false);
-    const row = await readRow(db);
+    const row = await readRowAt(db, expiredDate);
     assertEquals(
       row.image_status,
       "failed",
@@ -770,17 +788,27 @@ Deno.test("PostgreSQL sweep window: nothing can mutate an expired ready row exce
     await seedPost(db, { wantsImage: true });
     assertEquals((await claimImage(db, "t-s")).claimed, true);
     assertEquals(await commitImage(db, "t-s"), true);
-    const dayAfter = "2026-08-26";
+    const expiredDate = await shiftRowPostDate(db, 20);
+    const markBefore = taipeiToday(1);
 
     // 模擬 sweep 已 list、尚未 mark 的窗口：所有寫入嘗試都必須無效——
     // claim 被出窗守衛擋、commit/release 因 token 早已清空而 fenced。
     assertEquals(
-      (await claimImage(db, "t-race", { expiryBefore: dayAfter })).claimed,
+      (await claimImage(db, "t-race", { postDate: expiredDate })).claimed,
       false,
     );
-    assertEquals(await commitImage(db, "t-race", "hack/path.jpeg"), false);
-    assertEquals(await releaseImage(db, "t-race"), false);
-    const before = await readRow(db);
+    assertEquals(
+      await commitImage(db, "t-race", "hack/path.jpeg", expiredDate),
+      false,
+    );
+    const releaseRefused = await db.query<{ released: boolean }>(
+      `SELECT released FROM public.release_practice_moment_image(
+         $1, $2::DATE, $3, $4
+       )`,
+      [PROFILE_ID, expiredDate, SLOT, "t-race"],
+    );
+    assertEquals(releaseRefused.rows[0].released, false);
+    const before = await readRowAt(db, expiredDate);
     assertEquals(before.image_status, "ready");
     assertEquals(before.image_path, IMAGE_PATH, "path 不得被任何人改動");
 
@@ -788,52 +816,51 @@ Deno.test("PostgreSQL sweep window: nothing can mutate an expired ready row exce
     const marked = await db.query<{ marked_count: number }>(
       `SELECT marked_count
        FROM public.mark_practice_moment_images_expired($1::DATE, $2::TEXT[])`,
-      [dayAfter, [IMAGE_PATH]],
+      [markBefore, [IMAGE_PATH]],
     );
     assertEquals(marked.rows[0].marked_count, 1);
     assertEquals(
-      (await claimImage(db, "t-after", { expiryBefore: dayAfter })).claimed,
+      (await claimImage(db, "t-after", { postDate: expiredDate })).claimed,
       false,
     );
-    assertEquals((await readRow(db)).image_status, "expired");
+    assertEquals((await readRowAt(db, expiredDate)).image_status, "expired");
   } finally {
     await db.close();
   }
 });
 
-Deno.test("PostgreSQL full interleaving: claimed pending crosses cutoff, late commit is refused", async () => {
+Deno.test("PostgreSQL full interleaving: claimed pending crosses Taipei midnight, late commit refused and row finalized", async () => {
   const db = await createDatabase();
   try {
-    // 1. 窗內認領（worker 拿到有效 token 並已上傳到自己的 token 路徑）。
+    // 1. 窗內認領——完全走 production 呼叫鏈（reserve → commit(wants) →
+    //    claim），worker 拿到有效 token。
     await seedPost(db, { wantsImage: true });
     assertEquals((await claimImage(db, "t-slow")).claimed, true);
 
-    // 2. 跨過 cutoff（隔天，該列出窗）。晚到的 commit **即使 token 有效**
-    //    也必須被出窗守衛拒絕——舊 worker 連讓列變回 ready 的能力都沒有。
-    const dayAfter = "2026-08-26";
+    // 2. 時間流逝跨過台北午夜、該列出窗（post_date 位移等價變換；cutoff
+    //    由 DB 以當下 now() 判定，呼叫端沒有任何日期參數可撒謊）。
+    const expiredDate = await shiftRowPostDate(db, 20);
+
+    // 3. 晚到的 commit **即使 token 有效**也被拒，且列被就地收屍——
+    //    出窗列不會再被 feed 接手，不收就永遠掛在 pending。
     assertEquals(
-      await commitImage(db, "t-slow", IMAGE_PATH, dayAfter),
+      await commitImage(db, "t-slow", IMAGE_PATH, expiredDate),
       false,
       "晚到 commit 必須被出窗守衛擋下",
     );
-    const afterLate = await readRow(db);
-    assertEquals(afterLate.image_status, "pending", "列不得被晚到 commit 改動");
+    const afterLate = await readRowAt(db, expiredDate);
+    assertEquals(afterLate.image_status, "failed", "晚到 commit 被拒時列一併收屍");
     assertEquals(afterLate.image_path, null);
+    assertEquals(afterLate.image_token, null, "token 必須清空");
+    assertEquals(afterLate.status, "ready", "文字面不受影響");
 
-    // 3. 下一個觀看者的 claim（同樣出窗）把殘局收成 failed 終態。
-    assertEquals(
-      (await claimImage(db, "t-next", { expiryBefore: dayAfter })).claimed,
-      false,
-    );
-    assertEquals((await readRow(db)).image_status, "failed");
-
-    // 4. sweep 永遠看不到這一列（從未 ready、無物件），DB 面不產生孤兒；
-    //    worker 自己上傳的 token 路徑物件由 Edge 端自刪（moments_image_gen
-    //    的 commit-rejected 分支，單元測試覆蓋）。
+    // 4. sweep 永遠看不到這一列（從未 image-ready、無 DB 引用物件）；
+    //    worker 自己上傳的 token 路徑物件由 Edge 自刪＋出窗 prefix 孤兒
+    //    對帳兜底（moments_image_gen／moments_image_sweep 單元測試覆蓋）。
     const listed = await db.query<{ image_path: string }>(
       `SELECT image_path
        FROM public.list_expired_practice_moment_images($1::DATE, 20)`,
-      [dayAfter],
+      [taipeiToday(1)],
     );
     assertEquals(listed.rows.length, 0);
   } finally {

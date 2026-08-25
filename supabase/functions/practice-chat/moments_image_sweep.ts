@@ -16,13 +16,16 @@
 import { logInfo, logWarn } from "./logger.ts";
 import {
   FEED_WINDOW_DAYS,
+  MOMENT_IMAGE_ORPHAN_SWEEP_DAYS,
   MOMENT_IMAGE_SWEEP_LIMIT,
 } from "./moments_constants.ts";
 import type { MomentsImageRpcClient } from "./moments_image_gen.ts";
 
-/** Storage 批次刪除的注入點；真實作在 handler.ts 用 supabase-js。 */
+/** Storage 操作的注入點；真實作在 handler.ts 用 supabase-js。 */
 export interface MomentImageSweepDeps {
   removeImages: (paths: readonly string[]) => Promise<void>;
+  /** 列出某個日期 prefix 下的物件 key（完整 path）。 */
+  listImages: (prefix: string) => Promise<readonly string[]>;
 }
 
 /** shiftIsoDate 的極簡版（moments_handler 內的同名 helper 未 export）。 */
@@ -111,6 +114,43 @@ export async function sweepExpiredMomentImages(opts: {
     });
     return 0;
   }
+}
+
+/**
+ * Durable 孤兒對帳（第三輪複審 P2）：token 隔離路徑下，晚到上傳與失敗
+ * 路徑的自刪都是 best effort（Edge 實例可能先回收）。這裡把兜底做成
+ * 可重複執行的系統保證：每次清掃順手 list 剛出窗 K 天的日期 prefix，
+ * **殘留的任何物件一律刪除**——出窗日期的圖本來就不該露出；仍為 ready
+ * 的列（標記失敗的殘局）物件被刪後，下一輪主清掃會重列、冪等重刪並
+ * 完成標記，最終一致。失敗只記錄，下一個請求自然重試。
+ */
+export async function sweepOrphanMomentImages(opts: {
+  deps: MomentImageSweepDeps;
+  /** 台北今日（taipeiTimeContextFor(now).isoDate）。 */
+  isoDate: string;
+}): Promise<number> {
+  const { deps, isoDate } = opts;
+  const before = shiftIsoDate(isoDate, -(FEED_WINDOW_DAYS - 1));
+  let deleted = 0;
+  for (let offset = 1; offset <= MOMENT_IMAGE_ORPHAN_SWEEP_DAYS; offset++) {
+    const prefix = shiftIsoDate(before, -offset);
+    try {
+      const orphans = await deps.listImages(prefix);
+      if (orphans.length === 0) continue;
+      await deps.removeImages(orphans);
+      deleted += orphans.length;
+      logInfo("practice_moment_image_orphans_swept", {
+        prefix,
+        deleted: orphans.length,
+      });
+    } catch (e) {
+      logWarn("practice_moment_image_orphan_sweep_error", {
+        prefix,
+        error: e instanceof Error ? e.message : "unknown",
+      });
+    }
+  }
+  return deleted;
 }
 
 type Row = Record<string, unknown>;

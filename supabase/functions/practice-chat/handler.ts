@@ -1968,6 +1968,26 @@ export function createPracticeChatHandler(
             }
             : undefined,
           imageSweep: {
+            listImages: async (prefix) => {
+              const storageClient = supabase as unknown as {
+                storage: {
+                  from(bucket: string): {
+                    list(
+                      prefix: string,
+                      options: { limit: number },
+                    ): Promise<{
+                      data: { name: string }[] | null;
+                      error: { message: string } | null;
+                    }>;
+                  };
+                };
+              };
+              const { data, error } = await storageClient.storage
+                .from(MOMENT_IMAGE_BUCKET)
+                .list(prefix, { limit: 100 });
+              if (error) throw new Error("storage_list_failed");
+              return (data ?? []).map((entry) => `${prefix}/${entry.name}`);
+            },
             removeImages: async (paths) => {
               const storageClient = supabase as unknown as {
                 storage: {

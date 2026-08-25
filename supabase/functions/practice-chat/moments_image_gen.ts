@@ -560,10 +560,8 @@ export async function generateMomentImage(opts: {
   job: MomentImageJob;
   userId: string;
   isTestAccount: boolean;
-  /** 台北今日的 feed 窗起點（YYYY-MM-DD）；claim 的出窗守衛（清理競態圍籬）。 */
-  expiryBefore: string;
 }): Promise<void> {
-  const { supabase, deps, job, userId, isTestAccount, expiryBefore } = opts;
+  const { supabase, deps, job, userId, isTestAccount } = opts;
   const token = (deps.randomToken ?? (() => crypto.randomUUID()))();
   const limits = MODEL_RATE_LIMITS.practice_moment_image;
   const jobParams = {
@@ -582,7 +580,6 @@ export async function generateMomentImage(opts: {
       p_minute_limit: limits.perMinute,
       p_daily_limit: limits.perDay,
       p_count_user_usage: !isTestAccount,
-      p_expiry_before: expiryBefore,
       p_max_attempts: MAX_MOMENT_IMAGE_ATTEMPTS,
       p_lease_seconds: MOMENT_IMAGE_RESERVE_LEASE_MS / 1000,
     });
@@ -613,6 +610,7 @@ export async function generateMomentImage(opts: {
     return;
   }
 
+  let uploadedPath: string | null = null;
   try {
     const scene = (await describeScene({
       deps,
@@ -628,6 +626,7 @@ export async function generateMomentImage(opts: {
     const path = momentImagePath(job.isoDate, job.profileId, job.slot, token);
     try {
       await uploadWithTimeout(deps, path, bytes, "image/jpeg");
+      uploadedPath = path;
     } catch (e) {
       if (e instanceof Error && e.message === "fal_image_upload_timeout") throw e;
       throw new Error("fal_image_upload_failed");
@@ -635,12 +634,7 @@ export async function generateMomentImage(opts: {
 
     const { data, error } = await supabase.rpc(
       "commit_practice_moment_image",
-      {
-        ...jobParams,
-        p_image_token: token,
-        p_image_path: path,
-        p_expiry_before: expiryBefore,
-      },
+      { ...jobParams, p_image_token: token, p_image_path: path },
     );
     const row = Array.isArray(data) ? (data[0] as Row | undefined) : null;
     if (error || row?.committed !== true) {
@@ -660,6 +654,11 @@ export async function generateMomentImage(opts: {
       bytes: bytes.byteLength,
     });
   } catch (e) {
+    // 上傳成功後才失敗（含 commit RPC throw）：物件已在自己的 token 路徑上，
+    // 自刪收掉（best effort；durable 兜底是 sweep 的出窗 prefix 對帳）。
+    if (uploadedPath !== null) {
+      await deps.removeImage(uploadedPath).catch(() => {});
+    }
     await releaseImage(supabase, jobParams, token, job);
     logWarn("practice_moment_image_failed", {
       profileId: job.profileId,

@@ -8,6 +8,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  FEED_WINDOW_DAYS,
   MAX_MOMENT_IMAGE_ATTEMPTS,
   MOMENT_IMAGE_PATH_DB_MAX_CHARS,
   MOMENT_IMAGE_RESERVE_LEASE_MS,
@@ -288,45 +289,55 @@ Deno.test("guard migration：權限樣板、overload 稽核與 NOTIFY 齊全", (
       "REVOKE ALL ON FUNCTION public.claim_practice_moment_image(",
       "GRANT EXECUTE ON FUNCTION public.claim_practice_moment_image(",
       "ALTER FUNCTION public.claim_practice_moment_image(",
+      "REVOKE ALL ON FUNCTION public.commit_practice_moment_image(",
+      "ALTER FUNCTION public.commit_practice_moment_image(",
       "NOTIFY pgrst, 'reload schema';",
     ] as const
   ) {
     assert(executableGuard.includes(snippet), `guard migration 缺：${snippet}`);
   }
-  assert(
-    guardMigration.includes("claim_practice_moment_image: unexpected overload(s): %"),
-    "缺 fail-closed overload 稽核",
-  );
-  assert(
-    executableGuard.includes(
-      "DROP FUNCTION IF EXISTS public.claim_practice_moment_image(\n  TEXT, DATE, INTEGER, TEXT, UUID, INTEGER, INTEGER, BOOLEAN, INTEGER, INTEGER\n)".replace(/\\n/g, "\n"),
-    ),
-    "舊 10-arg claim 必須被移除",
-  );
+  for (
+    const name of [
+      "claim_practice_moment_image",
+      "commit_practice_moment_image",
+    ] as const
+  ) {
+    assert(
+      guardMigration.includes(`${name}: unexpected overload(s): %`),
+      `${name} 缺 fail-closed overload 稽核`,
+    );
+  }
   const definerAtCreate = [...executableGuard.matchAll(/SECURITY DEFINER/g)].length;
   const alterCount =
     [...executableGuard.matchAll(/ALTER FUNCTION public\.\w+\(/g)].length;
   assertEquals(definerAtCreate, alterCount, "CREATE 一律 INVOKER 起手");
 });
 
-Deno.test("guard migration：出窗守衛的關鍵寫入都在", () => {
+Deno.test("guard migration：DB 端 cutoff 的關鍵寫入都在（第三輪修訂）", () => {
+  // cutoff 由 DB 以當下 now() 計算（固定 +8 台北偏移），不吃呼叫端 snapshot；
+  // 13 = FEED_WINDOW_DAYS - 1，兩邊釘死。
+  const cutoffDecls = [...executableGuard.matchAll(
+    /AT TIME ZONE INTERVAL '8 hours'\)::date - (\d+)\)/g,
+  )];
+  assertEquals(cutoffDecls.length, 2, "claim 與 commit 都必須自算 cutoff");
+  for (const match of cutoffDecls) {
+    assertEquals(Number(match[1]), FEED_WINDOW_DAYS - 1);
+  }
+  const guardHits =
+    [...executableGuard.matchAll(/v_row\.post_date < v_expiry_cutoff/g)].length;
+  assertEquals(guardHits, 2, "claim 與 commit 都必須帶出窗判定");
   assert(
-    executableGuard.includes("p_expiry_before IS NULL"),
-    "p_expiry_before 必須是必填驗證",
+    !executableGuard.includes("p_expiry_before"),
+    "cutoff 不得由呼叫端傳入（跨台北午夜會吃到舊值）",
   );
-  assert(
-    executableGuard.includes("v_row.post_date < p_expiry_before"),
-    "出窗判定必須存在",
+  // 晚到 commit 被拒時必須收屍：commit 本體要有 pending→failed 的 UPDATE。
+  const commitStart = executableGuard.indexOf(
+    "CREATE OR REPLACE FUNCTION public.commit_practice_moment_image(",
   );
-  // claim 與 commit 兩支都要有守衛（第二輪複審 P2-4：晚到 commit 也要擋）。
-  const claimHits =
-    [...executableGuard.matchAll(/v_row\.post_date < p_expiry_before/g)].length;
-  assert(claimHits >= 2, `claim 與 commit 都必須帶出窗判定（實際 ${claimHits} 處）`);
+  const commitBody = executableGuard.slice(commitStart);
   assert(
-    executableGuard.includes(
-      "DROP FUNCTION IF EXISTS public.commit_practice_moment_image(",
-    ),
-    "舊 5-arg commit_image 必須被移除",
+    commitBody.includes("SET image_status = 'failed'"),
+    "晚到 commit 被拒時列必須收成 failed，不留永久 pending",
   );
   assert(!executableGuard.includes("DELETE FROM"), "guard migration 不得刪列");
   assert(!executableGuard.includes("DROP TABLE"));

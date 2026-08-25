@@ -7,10 +7,14 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { sweepExpiredMomentImages } from "./moments_image_sweep.ts";
+import {
+  sweepExpiredMomentImages,
+  sweepOrphanMomentImages,
+} from "./moments_image_sweep.ts";
 import type { MomentsImageRpcClient } from "./moments_image_gen.ts";
 import {
   FEED_WINDOW_DAYS,
+  MOMENT_IMAGE_ORPHAN_SWEEP_DAYS,
   MOMENT_IMAGE_SWEEP_LIMIT,
 } from "./moments_constants.ts";
 import {
@@ -33,7 +37,15 @@ function makeSweepHarness(options: {
   listError?: string;
   removeFails?: boolean;
   markError?: string;
-} = {}): SweepHarness & { deps: { removeImages: (p: readonly string[]) => Promise<void> } } {
+  orphans?: Record<string, string[]>;
+  listFails?: boolean;
+} = {}): SweepHarness & {
+  deps: {
+    removeImages: (p: readonly string[]) => Promise<void>;
+    listImages: (prefix: string) => Promise<readonly string[]>;
+  };
+  listedPrefixes: string[];
+} {
   const rpcCalls: SweepHarness["rpcCalls"] = [];
   const removed: string[][] = [];
   const events: string[] = [];
@@ -65,6 +77,7 @@ function makeSweepHarness(options: {
       return Promise.resolve({ data: null, error: null });
     },
   };
+  const listedPrefixes: string[] = [];
   const deps = {
     removeImages: (paths: readonly string[]) => {
       events.push("remove");
@@ -72,8 +85,13 @@ function makeSweepHarness(options: {
       removed.push([...paths]);
       return Promise.resolve();
     },
+    listImages: (prefix: string) => {
+      listedPrefixes.push(prefix);
+      if (options.listFails) return Promise.reject(new Error("list boom"));
+      return Promise.resolve(options.orphans?.[prefix] ?? []);
+    },
   };
-  return { supabase, rpcCalls, removed, events, deps };
+  return { supabase, rpcCalls, removed, events, deps, listedPrefixes };
 }
 
 Deno.test("成功路徑：list → 刪物件 → 標記，窗起點與上限正確", async () => {
@@ -149,6 +167,52 @@ Deno.test("標記失敗：回 0（物件已刪，冪等重刪後下輪重標）"
 });
 
 // ---------------------------------------------------------------------------
+// Durable 孤兒對帳（第三輪複審 P2）：出窗 prefix 的殘留物件一律刪除
+// ---------------------------------------------------------------------------
+
+Deno.test("orphan 對帳：掃剛出窗 K 天的 prefix，殘留物件全刪", async () => {
+  const windowStart = "2026-08-12"; // isoDate 2026-08-25、FEED_WINDOW_DAYS=14
+  const orphanPath = "2026-08-11/practice_girl_009_1_dead-token.jpeg";
+  const harness = makeSweepHarness({
+    orphans: { "2026-08-11": [orphanPath] },
+  });
+  const deleted = await sweepOrphanMomentImages({
+    deps: harness.deps,
+    isoDate: ISO_DATE,
+  });
+  assertEquals(deleted, 1);
+  // 掃描範圍：窗起點往前 K 天，每一天一個 prefix。
+  assertEquals(
+    harness.listedPrefixes.length,
+    MOMENT_IMAGE_ORPHAN_SWEEP_DAYS,
+  );
+  for (const prefix of harness.listedPrefixes) {
+    assert(prefix < windowStart, `只掃出窗日期，實際掃到 ${prefix}`);
+  }
+  assertEquals(harness.removed, [[orphanPath]]);
+});
+
+Deno.test("orphan 對帳：list 失敗只記錄，不影響其他 prefix 也不拋錯", async () => {
+  const harness = makeSweepHarness({ listFails: true });
+  const deleted = await sweepOrphanMomentImages({
+    deps: harness.deps,
+    isoDate: ISO_DATE,
+  });
+  assertEquals(deleted, 0);
+  assertEquals(harness.removed.length, 0);
+});
+
+Deno.test("orphan 對帳：零殘留時零刪除呼叫", async () => {
+  const harness = makeSweepHarness({});
+  const deleted = await sweepOrphanMomentImages({
+    deps: harness.deps,
+    isoDate: ISO_DATE,
+  });
+  assertEquals(deleted, 0);
+  assertEquals(harness.removed.length, 0);
+});
+
+// ---------------------------------------------------------------------------
 // handler 接線：每個 feed 請求排一次背景清掃；deps 缺席不排
 // ---------------------------------------------------------------------------
 
@@ -212,7 +276,10 @@ Deno.test("feed 請求（零解鎖之外的早退路）也會排背景清掃", a
       waitUntil: (task) => {
         scheduled.push(task);
       },
-      imageSweep: { removeImages: () => Promise.resolve() },
+      imageSweep: {
+        removeImages: () => Promise.resolve(),
+        listImages: () => Promise.resolve([]),
+      },
     },
   });
   await Promise.all(scheduled);

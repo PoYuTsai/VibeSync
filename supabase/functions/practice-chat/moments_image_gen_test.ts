@@ -150,6 +150,8 @@ function makeJobHarness(options: {
   claim?: Record<string, unknown> | null;
   claimError?: string;
   commitImage?: Record<string, unknown>;
+  /** commit RPC 直接拋錯（DB 連線炸掉之類）。 */
+  commitThrows?: boolean;
   falStatus?: number;
   falPayload?: unknown;
   imageBytes?: number;
@@ -209,6 +211,9 @@ function makeJobHarness(options: {
         return Promise.resolve({ data: [row], error: null });
       }
       if (fn === "commit_practice_moment_image") {
+        if (options.commitThrows) {
+          return Promise.reject(new Error("db connection lost"));
+        }
         return Promise.resolve({
           data: [options.commitImage ?? { committed: true }],
           error: null,
@@ -324,8 +329,6 @@ function makeJobHarness(options: {
   };
 }
 
-const EXPIRY_BEFORE = "2026-08-12";
-
 function runJob(
   harness: ReturnType<typeof makeJobHarness>,
 ): Promise<void> {
@@ -335,7 +338,6 @@ function runJob(
     job: JOB,
     userId: USER_ID,
     isTestAccount: false,
-    expiryBefore: EXPIRY_BEFORE,
   });
 }
 
@@ -356,7 +358,10 @@ Deno.test("成功路徑：claim → 場景句 → fal → 下載 → 上傳 → 
   assertEquals(claim.p_user_id, USER_ID);
   assertEquals(claim.p_count_user_usage, true);
   assertEquals(claim.p_max_attempts, MAX_MOMENT_IMAGE_ATTEMPTS);
-  assertEquals(claim.p_expiry_before, EXPIRY_BEFORE, "出窗守衛必須傳進 claim");
+  assert(
+    !("p_expiry_before" in claim),
+    "cutoff 由 DB 端以當下 now() 計算，呼叫端不得傳 snapshot",
+  );
   // 場景句呼叫的輸入只有 body 與題材 hint（隱私鐵則的行為面）。
   assertEquals(harness.sceneCalls.length, 1);
   assert(harness.sceneCalls[0].includes(BODY));
@@ -384,7 +389,7 @@ Deno.test("成功路徑：claim → 場景句 → fal → 下載 → 上傳 → 
   const commit = harness.rpcCalls[1].params;
   assertEquals(commit.p_image_path, TOKEN_PATH);
   assertEquals(commit.p_image_token, TOKEN);
-  assertEquals(commit.p_expiry_before, EXPIRY_BEFORE);
+  assert(!("p_expiry_before" in commit));
   assertEquals(harness.removals, [], "winner 不刪自己的物件");
 });
 
@@ -655,6 +660,21 @@ Deno.test("magic bytes 不是 JPEG：header 說謊也擋，release 收場", asyn
   assertEquals(harness.uploads.length, 0);
 });
 
+Deno.test("上傳成功後 commit RPC 拋錯：自刪物件並 release（第三輪 P2）", async () => {
+  const harness = makeJobHarness({ commitThrows: true });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "commit_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+  assertEquals(
+    harness.removals,
+    [TOKEN_PATH],
+    "commit 炸掉時已上傳的物件必須被收掉",
+  );
+});
+
 Deno.test("測試帳號：p_count_user_usage 為 false", async () => {
   const harness = makeJobHarness();
   await generateMomentImage({
@@ -663,7 +683,6 @@ Deno.test("測試帳號：p_count_user_usage 為 false", async () => {
     job: JOB,
     userId: USER_ID,
     isTestAccount: true,
-    expiryBefore: EXPIRY_BEFORE,
   });
   assertEquals(harness.rpcCalls[0].params.p_count_user_usage, false);
 });

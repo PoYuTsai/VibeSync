@@ -44,6 +44,7 @@ import {
 import {
   type MomentImageSweepDeps,
   sweepExpiredMomentImages,
+  sweepOrphanMomentImages,
 } from "./moments_image_sweep.ts";
 import { momentPostedAtFor } from "./moments_time.ts";
 import { buildMomentMessages } from "./moments_prompt.ts";
@@ -372,7 +373,6 @@ export async function handlePracticeMoments(args: {
       deps,
       userId,
       isTestAccount,
-      expiryBefore: since,
       jobs: pendingImageJobs,
     });
     scheduleImageSweep({ supabase, deps, isoDate: time.isoDate });
@@ -443,7 +443,6 @@ export async function handlePracticeMoments(args: {
     deps,
     userId,
     isTestAccount,
-    expiryBefore: since,
     jobs: [...committedImageJobs, ...pendingImageJobs],
   });
   scheduleImageSweep({ supabase, deps, isoDate: time.isoDate });
@@ -476,8 +475,6 @@ function scheduleMomentImageJobs(args: {
   deps: MomentsHandlerDeps;
   userId: string;
   isTestAccount: boolean;
-  /** 台北今日的 feed 窗起點；claim 的出窗守衛（清理競態圍籬）。 */
-  expiryBefore: string;
   jobs: readonly MomentImageJob[];
 }): number {
   const imageGen = args.deps.imageGen;
@@ -490,7 +487,6 @@ function scheduleMomentImageJobs(args: {
       job,
       userId: args.userId,
       isTestAccount: args.isTestAccount,
-      expiryBefore: args.expiryBefore,
     });
     try {
       if (args.deps.waitUntil) {
@@ -522,11 +518,15 @@ function scheduleImageSweep(args: {
 }): void {
   const sweep = args.deps.imageSweep;
   if (!sweep) return;
+  // 主清掃（DB 引用的出窗圖）後接孤兒對帳（出窗 prefix 的殘留物件），
+  // 同一個背景 task、同在 waitUntil 生命週期內。
   const task = sweepExpiredMomentImages({
     supabase: args.supabase,
     deps: sweep,
     isoDate: args.isoDate,
-  }).then(() => {});
+  }).then(() =>
+    sweepOrphanMomentImages({ deps: sweep, isoDate: args.isoDate })
+  ).then(() => {});
   try {
     if (args.deps.waitUntil) {
       args.deps.waitUntil(task);

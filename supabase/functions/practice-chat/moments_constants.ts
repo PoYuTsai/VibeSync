@@ -122,3 +122,10 @@ export const MOMENT_IMAGE_BUCKET = "practice-moment-images";
 
 /** Storage 上傳 timeout；與下載、fal 呼叫合計必須遠小於 180s 租約。 */
 export const MOMENT_IMAGE_UPLOAD_TIMEOUT_MS = 15_000;
+
+/**
+ * 孤兒對帳掃描的日期範圍：每次清掃順手 list 剛出窗 K 天的 Storage prefix，
+ * 殘留物件（晚到上傳自刪失敗、commit 失敗自刪失敗）一律刪除。出窗日期的
+ * 物件本來就不該露出，全刪安全；持續失敗的更舊孤兒由觀測告警接手。
+ */
+export const MOMENT_IMAGE_ORPHAN_SWEEP_DAYS = 3;

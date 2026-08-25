@@ -140,7 +140,7 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 
 - **無人物／無文字／無品牌**：STYLE＋NEGATIVE 模板硬約束（沿用已驗收字面）＋fal `enable_safety_checker: true`。FLUX 無 Imagen 的 `person_generation` 硬參數——殘餘風險由 prompt 約束與試打驗收吸收。
 - **NSFW fail-closed（2026-08-25 複審 blocking item 1）**：fal 回應的 `has_nsfw_concepts` 是第一道守門——只有明確回報 `false` 才繼續；命中、欄位缺席或形狀不對（供應商改 schema）一律**不下載、不上傳、不 commit**，直接 release。黑圖啟發式（bytes < 10KB）降為第二層保險。
-- **下載／上傳完整邊界（blocking item 2）**：結果 URL 必須是 https 且 host 屬 `fal.media`（來源驗證）；HTTP 狀態與 Content-Type（僅 image/jpeg、image/png）驗證；大小硬上限兩層——Content-Length 預檢＋流式讀取累計硬擋（header 可謊）；下載與上傳各有獨立 timeout。任何異常回應都不落入記憶體、不拖 Edge。
+- **下載／上傳完整邊界（blocking item 2；第三輪同步）**：結果 URL 必須是 https 且 host 屬 `fal.media`；兩個 fetch 均 `redirect: "error"`＋response.url 最終 host 縱深驗證；timeout 計時器涵蓋**完整 response body**（懸掛的 JSON 與圖片串流都會被 abort）；Content-Type **僅收 image/jpeg**（與寫入副檔名、contentType 一致）＋ JPEG magic bytes（FF D8 FF）驗證；大小硬上限兩層——Content-Length 預檢＋流式累計硬擋；上傳獨立 timeout（底層不可取消，安全性由 token 隔離路徑＋輸家自刪＋出窗 prefix 孤兒對帳保證）。任何異常回應都不落入記憶體、不拖 Edge。
 - **自拍貼文維持圖鑑照片，不生成**：人臉一致性做不到＋原設計 §7.4「不得生成像真實人物的新圖」（App Review 肖像風險）。候選收斂後只剩 `moment_self_portrait` 的 slot 不進生圖分支。
 - **Kill switch**：`MOMENT_IMAGE_GEN_ENABLED`（getEnv 閘門，照 `PRACTICE_HINT_PREFETCH_ENABLED` 範式，handler.ts:2142）。**關閉或缺 `FAL_API_KEY` 時退回現行 20 張 bundled 素材路徑**——bundled 路徑已上線已驗收，保住「兩種貼文型態」；因此 20 張素材長期保留，`test/lint/moments_scene_asset_parity_test.dart` 三方對帳一行不用改。
 - **timeout < lease**：fal 呼叫 30s＋下載 15s＋上傳 15s ≪ image lease 180s；上傳競態不再倚賴機率——token 隔離路徑讓「同時上傳」寫的是不同物件，晚到者自刪（§7）。
@@ -169,8 +169,13 @@ class MomentRemoteImage extends MomentImageSource {
 ## 11. 成本模型與觀測
 
 - **量**：census 實測（`tools/moments-image-census/census.ts`）全名冊 100 位、配圖率 0.2 → **~11 張/天、~330 張/月**；含 10% 重試 ~370 張/月。與使用者數無關（貼文全域共用）。
-- **錢**：fal schnell landscape_4_3 ≈ $0.0024/張 → **~$0.9/月**。機械最壞上界（DB CHECK 強制）＝ 200 slot/天 × 0.2 × 2 attempts ＝ 80 張/天 ＝ **月上限 ~$5.8**。對 `IMAGE_PROBABILITY` 線性（調回 0.45 即 ×2.25）。另每張一次 DeepSeek 場景句（~300 tokens，可忽略）；Storage 穩態 23MB＋egress 按觀看數（client 磁碟快取壓低）。
-- **四層防護**：DB CHECK（image_attempts ≤2）× Edge 100 角色 allowlist × per-user scope `practice_moment_image: { perMinute: 3, perDay: 20 }` × kill switch。**注意語義（2026-08-25 複審修正）：3/min、20/day 是「每位使用者」的放大面 backstop，不是全站上限、更不是月費上限**——全站絕對上界只來自 image_attempts CHECK × allowlist 的乘法（機械最壞 80 張/天），月費估算是流量推導不是硬保證。結構與文字路徑「全站每日 ≤600 次」論證同構。
+- **錢（第三輪複審修正：期望量、真硬上限、成長軸分開寫）**：
+  - **期望平均量（估算，非任何保證）**：`IMAGE_PROBABILITY = 0.2` 的機率擲骰下，排程模擬 ~11 張/天 → fal schnell ≈ $0.0024/張 ≈ **~$0.9/月**。機率值只是 scheduler 參數，**不是 DB constraint，不構成任何硬上限**。
+  - **系統真正強制的**：每個 (profile, date, slot) 的 `image_attempts ≤ 2`（DB CHECK）＋ per-user scope 3/min、20/day（單帳號放大面 backstop）。**沒有全站原子 daily cap**——全站量沒有系統保證的機械上限。
+  - **成長軸**：貼文與圖全域共用，全站量**不隨使用者數成長**；會放大的軸是角色 allowlist 大小（現 100）與 `IMAGE_PROBABILITY`（改動屬 Eric 拍板項）。
+  - **需要硬上限時**：加全站原子 daily cap RPC（新 migration），或在 fal.ai Dashboard 設 **spend cap** 當供應商側絕對托底——建議啟用時順手設。
+  - 另每張一次 DeepSeek 場景句（~300 tokens，可忽略）；Storage 穩態 ~23MB＋egress 按觀看數（client 磁碟快取壓低）。
+- **四層防護（皆為風險緩解，非全站配額）**：DB CHECK（image_attempts ≤2，per-slot）× Edge 100 角色 allowlist × per-user scope `practice_moment_image: { perMinute: 3, perDay: 20 }` × kill switch。與文字路徑不同的是：文字的「全站 ≤600 次/日」由 slot 數上限機械保證，**生圖側沒有等價的全站機械上限**（進 pending 的 slot 數取決於機率擲骰）——這是上面「需要硬上限時」選項存在的原因。
 - **觀測**（logInfo/logWarn）：`practice_moment_image_claimed / committed / released / failed`（帶 failureClass: provider_timeout / safety_black / upload / describe / http_${status}）、`practice_moment_image_expired_swept`（deleted/marked 數）；`practice_moments_filled` 加 `imageJobsScheduled`。健康線：`failed` 佔圖文 slot > 10% 告警（比照文字路徑 exhausted > 5% 慣例）。
 - **錯誤分類命名**：照 `deepseek.ts` 模板——`fal_image_http_${status}` / `fal_image_timeout` / `fal_image_empty` / `fal_image_download_failed` / `fal_image_too_small`（黑圖保險）；provider response body 不進錯誤訊息。
 
@@ -195,7 +200,7 @@ class MomentRemoteImage extends MomentImageSource {
 
 1. **waitUntil 任務蒸發**（實例回收）→ pending 卡住。緩解：180s 租約接手自癒；觀測 pending 列齡。
 2. **fal 故障／safety 拒絕** → attempts 燒完轉 `'failed'` 純文字，無半成品落盤；failed 比例告警。
-3. **成本失控** → 四層防護（§11）；最壞上界月 ~$5.8 有 DB CHECK 背書。
+3. **成本失控** → 四層緩解（§11）；**無全站機械上限**，絕對托底建議用 fal Dashboard spend cap。
 4. **上傳競態** → token 隔離路徑＋永不覆寫＋輸家自刪：晚到上傳構造上碰不到 winner 物件；自刪失敗的孤兒由日期 prefix 對帳兜底。
 5. **孤兒物件** → 覆寫同 key 不累積；日期 prefix 可離線對帳兜底。
 6. **schnell 質感不過驗收** → fal 同站換 model id（FLUX dev / Qwen-Image）即可，架構不動；成本表重算。
