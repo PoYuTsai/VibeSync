@@ -18,7 +18,7 @@
 // **永遠不可能**進到 `practice_moment_posts`。兩者互不重疊。
 //
 // ## 假資料的密度刻意貼近上線後的樣子
-// 20 則裡只有 3 則有圖（15%，對齊 `IMAGE_PROBABILITY = 0.15`）。假資料若每則都有圖，
+// 20 則裡只有 4 則有圖（20%，對齊 `IMAGE_PROBABILITY = 0.2`）。假資料若每則都有圖，
 // Eric 在手機上看到的密度感就不是上線後的樣子，會誤導版面判斷。
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -96,7 +96,7 @@ PracticeMomentPost _post({
   );
 }
 
-/// 20 則、多角色、時間跨到前天；其中 3 則有圖（15%），一則剛好卡在
+/// 20 則、多角色、時間跨到前天；其中 4 則有圖（20%），一則剛好卡在
 /// server 端 66 字的長度上界。
 List<PracticeMomentPost> _mixedFeed(DateTime now) {
   return <PracticeMomentPost>[
@@ -155,6 +155,7 @@ List<PracticeMomentPost> _mixedFeed(DateTime now) {
       minutesAgo: 388,
       body: '今天妝感難得滿意，決定在下班前先偷偷留一張紀念。',
       now: now,
+      imageId: kMomentSelfPortraitImageId,
     ),
     _post(
       profileId: 'practice_girl_010',
