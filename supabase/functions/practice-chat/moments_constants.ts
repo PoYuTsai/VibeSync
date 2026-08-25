@@ -119,3 +119,6 @@ export const MOMENT_IMAGE_MAX_BYTES = 4_000_000;
 
 /** Storage bucket 名，與 migration 的 storage.buckets 列一致。 */
 export const MOMENT_IMAGE_BUCKET = "practice-moment-images";
+
+/** Storage 上傳 timeout；與下載、fal 呼叫合計必須遠小於 180s 租約。 */
+export const MOMENT_IMAGE_UPLOAD_TIMEOUT_MS = 15_000;

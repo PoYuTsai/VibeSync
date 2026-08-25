@@ -136,6 +136,9 @@ function makeJobHarness(options: {
   imageBytes?: number;
   scene?: () => Promise<string>;
   uploadFails?: boolean;
+  uploadHangs?: boolean;
+  downloadContentType?: string;
+  downloadDeclaredLength?: number;
 } = {}): JobHarness & {
   deps: {
     falApiKey: string;
@@ -194,14 +197,23 @@ function makeJobHarness(options: {
           new Response("provider detail", { status: options.falStatus }),
         );
       }
-      const payload = options.falPayload ?? { images: [{ url: CDN_URL }] };
+      const payload = options.falPayload ?? {
+        images: [{ url: CDN_URL }],
+        has_nsfw_concepts: [false],
+      };
       return Promise.resolve(
         new Response(JSON.stringify(payload), { status: 200 }),
       );
     }
     // 圖片下載
+    const headers: Record<string, string> = {
+      "content-type": options.downloadContentType ?? "image/jpeg",
+    };
+    if (options.downloadDeclaredLength !== undefined) {
+      headers["content-length"] = String(options.downloadDeclaredLength);
+    }
     return Promise.resolve(
-      new Response(new Uint8Array(imageBytes), { status: 200 }),
+      new Response(new Uint8Array(imageBytes), { status: 200, headers }),
     );
   }) as typeof globalThis.fetch;
 
@@ -216,6 +228,7 @@ function makeJobHarness(options: {
       });
     },
     uploadImage: (path: string, bytes: Uint8Array, contentType: string) => {
+      if (options.uploadHangs) return new Promise<void>(() => {});
       if (options.uploadFails) return Promise.reject(new Error("boom"));
       uploads.push({ path, bytes: bytes.byteLength, contentType });
       return Promise.resolve();
@@ -227,6 +240,8 @@ function makeJobHarness(options: {
   return { supabase, rpcCalls, fetchCalls, uploads, sceneCalls, deps };
 }
 
+const EXPIRY_BEFORE = "2026-08-12";
+
 function runJob(
   harness: ReturnType<typeof makeJobHarness>,
 ): Promise<void> {
@@ -236,6 +251,7 @@ function runJob(
     job: JOB,
     userId: USER_ID,
     isTestAccount: false,
+    expiryBefore: EXPIRY_BEFORE,
   });
 }
 
@@ -256,6 +272,7 @@ Deno.test("成功路徑：claim → 場景句 → fal → 下載 → 上傳 → 
   assertEquals(claim.p_user_id, USER_ID);
   assertEquals(claim.p_count_user_usage, true);
   assertEquals(claim.p_max_attempts, MAX_MOMENT_IMAGE_ATTEMPTS);
+  assertEquals(claim.p_expiry_before, EXPIRY_BEFORE, "出窗守衛必須傳進 claim");
   // 場景句呼叫的輸入只有 body 與題材 hint（隱私鐵則的行為面）。
   assertEquals(harness.sceneCalls.length, 1);
   assert(harness.sceneCalls[0].includes(BODY));
@@ -368,6 +385,100 @@ Deno.test("commit 被 token fencing 打回：不 release（token 已非本 worke
   ]);
 });
 
+// ---------------------------------------------------------------------------
+// 複審 blocking items 1-2：NSFW fail-closed 與下載邊界
+// ---------------------------------------------------------------------------
+
+Deno.test("NSFW 命中：不下載、不上傳、不 commit，直接 release", async () => {
+  const harness = makeJobHarness({
+    falPayload: { images: [{ url: CDN_URL }], has_nsfw_concepts: [true] },
+  });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+  assertEquals(
+    harness.fetchCalls.filter((c) => c.url === CDN_URL).length,
+    0,
+    "NSFW 命中絕不下載",
+  );
+  assertEquals(harness.uploads.length, 0);
+});
+
+Deno.test("safety 欄位缺席或形狀錯：fail-closed，一樣 release", async () => {
+  for (
+    const payload of [
+      { images: [{ url: CDN_URL }] },
+      { images: [{ url: CDN_URL }], has_nsfw_concepts: "no" },
+      { images: [{ url: CDN_URL }], has_nsfw_concepts: [] },
+    ]
+  ) {
+    const harness = makeJobHarness({ falPayload: payload });
+    await runJob(harness);
+    assertEquals(
+      rpcNames(harness),
+      ["claim_practice_moment_image", "release_practice_moment_image"],
+      `payload ${JSON.stringify(payload)} 應 fail-closed`,
+    );
+    assertEquals(harness.uploads.length, 0);
+  }
+});
+
+Deno.test("非 fal.media 的結果 URL：拒絕下載並 release", async () => {
+  for (
+    const url of [
+      "https://evil.example.com/x.jpeg",
+      "http://fal.media/x.jpeg",
+      "https://notfal.media/x.jpeg",
+      "https://fal.media.evil.com/x.jpeg",
+    ]
+  ) {
+    const harness = makeJobHarness({
+      falPayload: { images: [{ url }], has_nsfw_concepts: [false] },
+    });
+    await runJob(harness);
+    assertEquals(
+      rpcNames(harness),
+      ["claim_practice_moment_image", "release_practice_moment_image"],
+      `URL ${url} 應被來源驗證擋下`,
+    );
+    assertEquals(harness.uploads.length, 0);
+  }
+});
+
+Deno.test("下載回應的 Content-Type 不是圖片：release", async () => {
+  const harness = makeJobHarness({ downloadContentType: "text/html" });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+  assertEquals(harness.uploads.length, 0);
+});
+
+Deno.test("Content-Length 宣告超限：不讀 body 直接 release", async () => {
+  const harness = makeJobHarness({ downloadDeclaredLength: 999_000_000 });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+});
+
+Deno.test("實際位元組超限（header 說謊）：流式硬擋並 release", async () => {
+  const harness = makeJobHarness({
+    imageBytes: 4_000_001,
+    downloadDeclaredLength: 20_000,
+  });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+  assertEquals(harness.uploads.length, 0);
+});
+
 Deno.test("測試帳號：p_count_user_usage 為 false", async () => {
   const harness = makeJobHarness();
   await generateMomentImage({
@@ -376,6 +487,7 @@ Deno.test("測試帳號：p_count_user_usage 為 false", async () => {
     job: JOB,
     userId: USER_ID,
     isTestAccount: true,
+    expiryBefore: EXPIRY_BEFORE,
   });
   assertEquals(harness.rpcCalls[0].params.p_count_user_usage, false);
 });

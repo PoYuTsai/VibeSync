@@ -111,12 +111,20 @@ function makeFlowHarness(options: {
       counters.fal++;
       return Promise.resolve(
         new Response(
-          JSON.stringify({ images: [{ url: "https://fal.media/x.jpeg" }] }),
+          JSON.stringify({
+            images: [{ url: "https://fal.media/x.jpeg" }],
+            has_nsfw_concepts: [false],
+          }),
           { status: 200 },
         ),
       );
     }
-    return Promise.resolve(new Response(new Uint8Array(20_000), { status: 200 }));
+    return Promise.resolve(
+      new Response(new Uint8Array(20_000), {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      }),
+    );
   }) as typeof globalThis.fetch;
 
   const imageGen: MomentImageGenDeps = {

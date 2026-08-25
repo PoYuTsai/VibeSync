@@ -21,6 +21,12 @@ const migration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const guardMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260825150000_practice_moment_image_claim_expiry_guard.sql",
+    import.meta.url,
+  ),
+);
 
 /** 本檔新建或改簽名的每一支 RPC。 */
 const RPC_NAMES = [
@@ -268,4 +274,50 @@ Deno.test("每個有 SQL 對應物的 TS 常數都能在 migration 內找到", (
       `${label} 在 migration 內找不到：${snippet}`,
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// 出窗守衛 migration（20260825150000）：樣板與圍籬字面
+// ---------------------------------------------------------------------------
+
+const executableGuard = withoutComments(guardMigration);
+
+Deno.test("guard migration：權限樣板、overload 稽核與 NOTIFY 齊全", () => {
+  for (
+    const snippet of [
+      "REVOKE ALL ON FUNCTION public.claim_practice_moment_image(",
+      "GRANT EXECUTE ON FUNCTION public.claim_practice_moment_image(",
+      "ALTER FUNCTION public.claim_practice_moment_image(",
+      "NOTIFY pgrst, 'reload schema';",
+    ] as const
+  ) {
+    assert(executableGuard.includes(snippet), `guard migration 缺：${snippet}`);
+  }
+  assert(
+    guardMigration.includes("claim_practice_moment_image: unexpected overload(s): %"),
+    "缺 fail-closed overload 稽核",
+  );
+  assert(
+    executableGuard.includes(
+      "DROP FUNCTION IF EXISTS public.claim_practice_moment_image(\n  TEXT, DATE, INTEGER, TEXT, UUID, INTEGER, INTEGER, BOOLEAN, INTEGER, INTEGER\n)".replace(/\\n/g, "\n"),
+    ),
+    "舊 10-arg claim 必須被移除",
+  );
+  const definerAtCreate = [...executableGuard.matchAll(/SECURITY DEFINER/g)].length;
+  const alterCount =
+    [...executableGuard.matchAll(/ALTER FUNCTION public\.\w+\(/g)].length;
+  assertEquals(definerAtCreate, alterCount, "CREATE 一律 INVOKER 起手");
+});
+
+Deno.test("guard migration：出窗守衛的關鍵寫入都在", () => {
+  assert(
+    executableGuard.includes("p_expiry_before IS NULL"),
+    "p_expiry_before 必須是必填驗證",
+  );
+  assert(
+    executableGuard.includes("v_row.post_date < p_expiry_before"),
+    "出窗判定必須存在",
+  );
+  assert(!executableGuard.includes("DELETE FROM"), "guard migration 不得刪列");
+  assert(!executableGuard.includes("DROP TABLE"));
 });

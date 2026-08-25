@@ -34,6 +34,7 @@ import {
   MOMENT_IMAGE_MODEL_TIMEOUT_MS,
   MOMENT_IMAGE_RESERVE_LEASE_MS,
   MOMENT_IMAGE_SCENE_TIMEOUT_MS,
+  MOMENT_IMAGE_UPLOAD_TIMEOUT_MS,
 } from "./moments_constants.ts";
 
 // ── 最小 RPC client 介面（與 moments_handler 的結構相容；獨立宣告避免循環）──
@@ -67,6 +68,22 @@ export interface MomentImageJob {
   profileId: string;
   isoDate: string;
   slot: number;
+}
+
+/** fal 生成結果 CDN 的 host allowlist：等於或屬於 fal.media 才准下載。 */
+const FAL_CDN_HOST = "fal.media";
+
+function isAllowedFalCdnUrl(raw: string): boolean {
+  const uri = (() => {
+    try {
+      return new URL(raw);
+    } catch {
+      return null;
+    }
+  })();
+  if (uri === null || uri.protocol !== "https:") return false;
+  return uri.hostname === FAL_CDN_HOST ||
+    uri.hostname.endsWith(`.${FAL_CDN_HOST}`);
 }
 
 const FAL_SCHNELL_ENDPOINT = "https://fal.run/fal-ai/flux/schnell";
@@ -327,15 +344,32 @@ async function callFalSchnell(opts: {
     await response.text().catch(() => {});
     throw new Error(`fal_image_http_${response.status}`);
   }
-  let payload: { images?: { url?: unknown }[] };
+  let payload: {
+    images?: { url?: unknown }[];
+    has_nsfw_concepts?: unknown;
+  };
   try {
     payload = await response.json();
   } catch {
     throw new Error("fal_image_bad_json");
   }
+  // safety checker 結果 fail-closed（複審 blocking item 1）：只有明確回報
+  // 「第一張不是 NSFW」才放行；命中、欄位缺席或形狀不對，一律不下載、
+  // 不上傳、不 commit。形狀錯用獨立錯誤碼，供應商改 schema 時觀測得出來。
+  const nsfw = payload.has_nsfw_concepts;
+  if (!Array.isArray(nsfw) || typeof nsfw[0] !== "boolean") {
+    throw new Error("fal_image_safety_unverified");
+  }
+  if (nsfw[0] !== false) {
+    throw new Error("fal_image_nsfw");
+  }
   const url = payload.images?.[0]?.url;
   if (typeof url !== "string" || url.length === 0) {
     throw new Error("fal_image_empty");
+  }
+  // 只信任 fal 自家 CDN 的 https URL（複審 blocking item 2：來源驗證）。
+  if (!isAllowedFalCdnUrl(url)) {
+    throw new Error("fal_image_untrusted_url");
   }
   return url;
 }
@@ -365,15 +399,76 @@ async function downloadImage(
     await response.text().catch(() => {});
     throw new Error("fal_image_download_failed");
   }
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  // 黑圖保險：safety checker 觸發時 fal 回全黑 jpeg 的「成功回應」。
+  // MIME 驗證：只收 jpeg/png（我們指定 output_format=jpeg；png 留容錯）。
+  const contentType = (response.headers.get("content-type") ?? "")
+    .split(";")[0].trim().toLowerCase();
+  if (contentType !== "image/jpeg" && contentType !== "image/png") {
+    await response.body?.cancel().catch(() => {});
+    throw new Error("fal_image_bad_content_type");
+  }
+  // 大小硬上限做兩層：Content-Length 預檢（省流量），再流式累計硬擋
+  // （header 可缺可謊，不能只信 header）。異常大回應不落入記憶體。
+  const declaredLength = Number(response.headers.get("content-length") ?? "");
+  if (Number.isFinite(declaredLength) && declaredLength > MOMENT_IMAGE_MAX_BYTES) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error("fal_image_too_large");
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("fal_image_download_failed");
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > MOMENT_IMAGE_MAX_BYTES) {
+        await reader.cancel().catch(() => {});
+        throw new Error("fal_image_too_large");
+      }
+      chunks.push(value);
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message === "fal_image_too_large") throw e;
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error("fal_image_download_timeout");
+    }
+    throw new Error("fal_image_download_failed");
+  }
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  // 黑圖保險：safety checker 之外的第二層——全黑 jpeg 遠小於正常場景圖。
   if (bytes.byteLength < MOMENT_IMAGE_MIN_BYTES) {
     throw new Error("fal_image_too_small");
   }
-  if (bytes.byteLength > MOMENT_IMAGE_MAX_BYTES) {
-    throw new Error("fal_image_too_large");
-  }
   return bytes;
+}
+
+/** 上傳 timeout：注入的 uploadImage 沒有自帶死線，這裡統一包。 */
+async function uploadWithTimeout(
+  deps: MomentImageGenDeps,
+  path: string,
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      deps.uploadImage(path, bytes, contentType),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("fal_image_upload_timeout")),
+          MOMENT_IMAGE_UPLOAD_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 // ── 主 job ────────────────────────────────────────────────────────────
@@ -391,8 +486,10 @@ export async function generateMomentImage(opts: {
   job: MomentImageJob;
   userId: string;
   isTestAccount: boolean;
+  /** 台北今日的 feed 窗起點（YYYY-MM-DD）；claim 的出窗守衛（清理競態圍籬）。 */
+  expiryBefore: string;
 }): Promise<void> {
-  const { supabase, deps, job, userId, isTestAccount } = opts;
+  const { supabase, deps, job, userId, isTestAccount, expiryBefore } = opts;
   const token = (deps.randomToken ?? (() => crypto.randomUUID()))();
   const limits = MODEL_RATE_LIMITS.practice_moment_image;
   const jobParams = {
@@ -411,6 +508,7 @@ export async function generateMomentImage(opts: {
       p_minute_limit: limits.perMinute,
       p_daily_limit: limits.perDay,
       p_count_user_usage: !isTestAccount,
+      p_expiry_before: expiryBefore,
       p_max_attempts: MAX_MOMENT_IMAGE_ATTEMPTS,
       p_lease_seconds: MOMENT_IMAGE_RESERVE_LEASE_MS / 1000,
     });
@@ -455,8 +553,9 @@ export async function generateMomentImage(opts: {
     const bytes = await downloadImage(deps, imageUrl);
     const path = momentImagePath(job.isoDate, job.profileId, job.slot);
     try {
-      await deps.uploadImage(path, bytes, "image/jpeg");
-    } catch {
+      await uploadWithTimeout(deps, path, bytes, "image/jpeg");
+    } catch (e) {
+      if (e instanceof Error && e.message === "fal_image_upload_timeout") throw e;
       throw new Error("fal_image_upload_failed");
     }
 

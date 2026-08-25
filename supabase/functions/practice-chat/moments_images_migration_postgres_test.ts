@@ -39,6 +39,12 @@ const momentImagesMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const momentImageExpiryGuardMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260825150000_practice_moment_image_claim_expiry_guard.sql",
+    import.meta.url,
+  ),
+);
 
 const PROFILE_ID = "practice_girl_007";
 const POST_DATE = "2026-08-25";
@@ -86,6 +92,7 @@ async function createDatabase(): Promise<PGlite> {
   await db.exec(momentPostsMigration);
   await db.exec(momentUsageUpgradeMigration);
   await db.exec(momentImagesMigration);
+  await db.exec(momentImageExpiryGuardMigration);
   await db.query(`INSERT INTO auth.users(id) VALUES ($1)`, [USER_ID]);
   return db;
 }
@@ -127,12 +134,14 @@ async function claimImage(
     countUserUsage?: boolean;
     minuteLimit?: number;
     dailyLimit?: number;
+    /** 台北窗起點；預設一個讓 POST_DATE 在窗內的值。 */
+    expiryBefore?: string;
   } = {},
 ): Promise<ClaimRow> {
   const result = await db.query<ClaimRow>(
     `SELECT claimed, token, attempt_count, body, theme_id
      FROM public.claim_practice_moment_image(
-       $1, $2::DATE, $3, $4, $5::UUID, $6, $7, $8
+       $1, $2::DATE, $3, $4, $5::UUID, $6, $7, $8, $9::DATE
      )`,
     [
       PROFILE_ID,
@@ -143,6 +152,7 @@ async function claimImage(
       options.minuteLimit ?? 3,
       options.dailyLimit ?? 20,
       options.countUserUsage ?? true,
+      options.expiryBefore ?? "2026-08-12",
     ],
   );
   return result.rows[0];
@@ -648,7 +658,7 @@ Deno.test("PostgreSQL image RPCs are service_role only and definer mode", async 
     const signatures = [
       "public.commit_practice_moment_post(text,date,integer,text,text,text,text,boolean)",
       "public.list_practice_moment_posts(text[],date)",
-      "public.claim_practice_moment_image(text,date,integer,text,uuid,integer,integer,boolean,integer,integer)",
+      "public.claim_practice_moment_image(text,date,integer,text,uuid,integer,integer,boolean,date,integer,integer)",
       "public.commit_practice_moment_image(text,date,integer,text,text)",
       "public.release_practice_moment_image(text,date,integer,text,integer)",
       "public.list_expired_practice_moment_images(date,integer)",
@@ -684,13 +694,100 @@ Deno.test("PostgreSQL image RPCs are service_role only and definer mode", async 
       );
     }
 
-    // 舊 7-arg commit 必須已被移除（overload 衛生）。
-    const legacy = await db.query<{ legacy: string | null }>(`
-      SELECT to_regprocedure(
-        'public.commit_practice_moment_post(text,date,integer,text,text,text,text)'
-      )::TEXT AS legacy
+    // 舊 7-arg commit 與舊 10-arg claim 必須已被移除（overload 衛生）。
+    const legacy = await db.query<{
+      legacy_commit: string | null;
+      legacy_claim: string | null;
+    }>(`
+      SELECT
+        to_regprocedure(
+          'public.commit_practice_moment_post(text,date,integer,text,text,text,text)'
+        )::TEXT AS legacy_commit,
+        to_regprocedure(
+          'public.claim_practice_moment_image(text,date,integer,text,uuid,integer,integer,boolean,integer,integer)'
+        )::TEXT AS legacy_claim
     `);
-    assertEquals(legacy.rows[0].legacy, null);
+    assertEquals(legacy.rows[0].legacy_commit, null);
+    assertEquals(legacy.rows[0].legacy_claim, null);
+  } finally {
+    await db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 清理競態圍籬（複審 blocking item 3）：出窗列在資料層凍結
+// ---------------------------------------------------------------------------
+
+Deno.test("PostgreSQL expired rows can never be claimed again", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    assertEquals((await claimImage(db, "t-x")).claimed, true);
+    assertEquals(await commitImage(db, "t-x"), true);
+
+    // POST_DATE 已出窗（expiryBefore 在其後一天）→ ready 列拒絕認領。
+    const dayAfter = "2026-08-26";
+    const refused = await claimImage(db, "t-late", { expiryBefore: dayAfter });
+    assertEquals(refused.claimed, false);
+    assertEquals((await readRow(db)).image_status, "ready", "拒絕不得改動列");
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL expired pending rows are finalized as failed on claim", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    const refused = await claimImage(db, "t-late", {
+      expiryBefore: "2026-08-26",
+    });
+    assertEquals(refused.claimed, false);
+    const row = await readRow(db);
+    assertEquals(
+      row.image_status,
+      "failed",
+      "出窗的 pending 永遠等不到生成，順手收成終態",
+    );
+    assertEquals(row.image_attempts, 0, "收屍不得消耗 attempts");
+    assertEquals(await readImageUsage(db), null, "收屍不得計 usage");
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL sweep window: nothing can mutate an expired ready row except mark", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    assertEquals((await claimImage(db, "t-s")).claimed, true);
+    assertEquals(await commitImage(db, "t-s"), true);
+    const dayAfter = "2026-08-26";
+
+    // 模擬 sweep 已 list、尚未 mark 的窗口：所有寫入嘗試都必須無效——
+    // claim 被出窗守衛擋、commit/release 因 token 早已清空而 fenced。
+    assertEquals(
+      (await claimImage(db, "t-race", { expiryBefore: dayAfter })).claimed,
+      false,
+    );
+    assertEquals(await commitImage(db, "t-race", "hack/path.jpeg"), false);
+    assertEquals(await releaseImage(db, "t-race"), false);
+    const before = await readRow(db);
+    assertEquals(before.image_status, "ready");
+    assertEquals(before.image_path, IMAGE_PATH, "path 不得被任何人改動");
+
+    // mark 是唯一的合法寫入者；之後同列永遠凍在 expired。
+    const marked = await db.query<{ marked_count: number }>(
+      `SELECT marked_count
+       FROM public.mark_practice_moment_images_expired($1::DATE, $2::TEXT[])`,
+      [dayAfter, [IMAGE_PATH]],
+    );
+    assertEquals(marked.rows[0].marked_count, 1);
+    assertEquals(
+      (await claimImage(db, "t-after", { expiryBefore: dayAfter })).claimed,
+      false,
+    );
+    assertEquals((await readRow(db)).image_status, "expired");
   } finally {
     await db.close();
   }

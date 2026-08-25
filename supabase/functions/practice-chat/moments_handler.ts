@@ -372,6 +372,7 @@ export async function handlePracticeMoments(args: {
       deps,
       userId,
       isTestAccount,
+      expiryBefore: since,
       jobs: pendingImageJobs,
     });
     scheduleImageSweep({ supabase, deps, isoDate: time.isoDate });
@@ -442,6 +443,7 @@ export async function handlePracticeMoments(args: {
     deps,
     userId,
     isTestAccount,
+    expiryBefore: since,
     jobs: [...committedImageJobs, ...pendingImageJobs],
   });
   scheduleImageSweep({ supabase, deps, isoDate: time.isoDate });
@@ -474,6 +476,8 @@ function scheduleMomentImageJobs(args: {
   deps: MomentsHandlerDeps;
   userId: string;
   isTestAccount: boolean;
+  /** 台北今日的 feed 窗起點；claim 的出窗守衛（清理競態圍籬）。 */
+  expiryBefore: string;
   jobs: readonly MomentImageJob[];
 }): number {
   const imageGen = args.deps.imageGen;
@@ -486,6 +490,7 @@ function scheduleMomentImageJobs(args: {
       job,
       userId: args.userId,
       isTestAccount: args.isTestAccount,
+      expiryBefore: args.expiryBefore,
     });
     try {
       if (args.deps.waitUntil) {

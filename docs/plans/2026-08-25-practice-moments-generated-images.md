@@ -132,12 +132,15 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 
 做法：feed 回應送出後 waitUntil 內——`list_expired_practice_moment_images(今天-14, LIMIT 20)` → `storage.remove(paths)` → `mark_practice_moment_images_expired(...)`。**先刪物件、後標記列**（順序反過來會製造掃不到的孤兒；標記失敗下輪重掃，Storage 刪除冪等）。列永不刪（D6），`image_path` 保留供審計與冪等重刪。穩態儲存 ≈ 14 天 × 11 張 × ~150KB ≈ **23MB**。零流量期的積壓有界，下次有人開 feed 分批消化。
 
+**清理競態圍籬（2026-08-25 複審 blocking item 3，migration `20260825150000`）**：claim 加必填參數 `p_expiry_before`——**出窗的列在資料層永遠不可再認領**（殘留的出窗 pending 順手收成 failed 終態）。於是「list → 刪物件 → mark」窗口內，出窗列的 image 欄位組只有 mark 自己能動（claim 被守衛擋、commit/release 需要的 token 已不存在），「列被新生成取代、清理誤刪新圖」在構造上不可達；競態測試在 `moments_images_migration_postgres_test.ts` 逐向驗證。
+
 ---
 
 ## 9. 安全與品質邊界
 
 - **無人物／無文字／無品牌**：STYLE＋NEGATIVE 模板硬約束（沿用已驗收字面）＋fal `enable_safety_checker: true`。FLUX 無 Imagen 的 `person_generation` 硬參數——殘餘風險由 prompt 約束與試打驗收吸收。
-- **黑圖保險**：fal 的 safety checker 對不安全內容回**全黑圖（仍是成功回應）**。我們的 prompt 是無人物生活場景，觸發機率趨近零；仍加一道便宜檢查：下載後 **bytes < 10KB 視為生成失敗**（全黑 jpeg 遠小於正常場景圖），走 release 路徑。
+- **NSFW fail-closed（2026-08-25 複審 blocking item 1）**：fal 回應的 `has_nsfw_concepts` 是第一道守門——只有明確回報 `false` 才繼續；命中、欄位缺席或形狀不對（供應商改 schema）一律**不下載、不上傳、不 commit**，直接 release。黑圖啟發式（bytes < 10KB）降為第二層保險。
+- **下載／上傳完整邊界（blocking item 2）**：結果 URL 必須是 https 且 host 屬 `fal.media`（來源驗證）；HTTP 狀態與 Content-Type（僅 image/jpeg、image/png）驗證；大小硬上限兩層——Content-Length 預檢＋流式讀取累計硬擋（header 可謊）；下載與上傳各有獨立 timeout。任何異常回應都不落入記憶體、不拖 Edge。
 - **自拍貼文維持圖鑑照片，不生成**：人臉一致性做不到＋原設計 §7.4「不得生成像真實人物的新圖」（App Review 肖像風險）。候選收斂後只剩 `moment_self_portrait` 的 slot 不進生圖分支。
 - **Kill switch**：`MOMENT_IMAGE_GEN_ENABLED`（getEnv 閘門，照 `PRACTICE_HINT_PREFETCH_ENABLED` 範式，handler.ts:2142）。**關閉或缺 `FAL_API_KEY` 時退回現行 20 張 bundled 素材路徑**——bundled 路徑已上線已驗收，保住「兩種貼文型態」；因此 20 張素材長期保留，`test/lint/moments_scene_asset_parity_test.dart` 三方對帳一行不用改。
 - **timeout < lease**：fal 呼叫 30s＋下載 15s＋上傳 15s ≪ image lease 180s，把 stale worker 與新 worker 同時上傳的競態壓到幾乎不可達；殘餘競態因決定論 key＋同 seed 而良性。
@@ -167,7 +170,7 @@ class MomentRemoteImage extends MomentImageSource {
 
 - **量**：census 實測（`tools/moments-image-census/census.ts`）全名冊 100 位、配圖率 0.2 → **~11 張/天、~330 張/月**；含 10% 重試 ~370 張/月。與使用者數無關（貼文全域共用）。
 - **錢**：fal schnell landscape_4_3 ≈ $0.0024/張 → **~$0.9/月**。機械最壞上界（DB CHECK 強制）＝ 200 slot/天 × 0.2 × 2 attempts ＝ 80 張/天 ＝ **月上限 ~$5.8**。對 `IMAGE_PROBABILITY` 線性（調回 0.45 即 ×2.25）。另每張一次 DeepSeek 場景句（~300 tokens，可忽略）；Storage 穩態 23MB＋egress 按觀看數（client 磁碟快取壓低）。
-- **四層防護**：DB CHECK（image_attempts ≤2）× Edge 100 角色 allowlist × 新 per-user scope `practice_moment_image: { perMinute: 3, perDay: 20 }`（`_shared/model_rate_limit.ts` 加一行，claim RPC 同交易計數）× kill switch。結構與文字路徑「全站每日 ≤600 次」論證同構。
+- **四層防護**：DB CHECK（image_attempts ≤2）× Edge 100 角色 allowlist × per-user scope `practice_moment_image: { perMinute: 3, perDay: 20 }` × kill switch。**注意語義（2026-08-25 複審修正）：3/min、20/day 是「每位使用者」的放大面 backstop，不是全站上限、更不是月費上限**——全站絕對上界只來自 image_attempts CHECK × allowlist 的乘法（機械最壞 80 張/天），月費估算是流量推導不是硬保證。結構與文字路徑「全站每日 ≤600 次」論證同構。
 - **觀測**（logInfo/logWarn）：`practice_moment_image_claimed / committed / released / failed`（帶 failureClass: provider_timeout / safety_black / upload / describe / http_${status}）、`practice_moment_image_expired_swept`（deleted/marked 數）；`practice_moments_filled` 加 `imageJobsScheduled`。健康線：`failed` 佔圖文 slot > 10% 告警（比照文字路徑 exhausted > 5% 慣例）。
 - **錯誤分類命名**：照 `deepseek.ts` 模板——`fal_image_http_${status}` / `fal_image_timeout` / `fal_image_empty` / `fal_image_download_failed` / `fal_image_too_small`（黑圖保險）；provider response body 不進錯誤訊息。
 
@@ -184,7 +187,7 @@ class MomentRemoteImage extends MomentImageSource {
 | **PR-5** | Client：`cached_network_image`、`imageUrl` 解析、`MomentRemoteImage`、tile 渲染＋占位＋降級、widget 測試 | 否 | imageUrl 恆 null 時畫面零變化 |
 | **啟用** | Eric：fal.ai 開帳號綁卡 → `supabase secrets set FAL_API_KEY=...` → `MOMENT_IMAGE_GEN_ENABLED=true`（ops 動作，非 PR） | — | 隨時關回 |
 
-順序：PR-2 最先且 production migration 先行；PR-3/4/5 互不阻塞。`practice-chat` 部署照現行 push-triggered workflow，無 `--no-verify-jwt` 需求變化。
+**Rollout 順序（Eric 2026-08-25 拍板：migration 先行）**：正式啟用的順序是——(1) 依 `docs/shared-agent-rules.md` 的 targeted migration 流程**先**精準套用並驗證 `20260825120000` 與 `20260825150000`（用分支上的檔案即可，不需等合併）→ (2) 再合併 PR 讓相依 Edge 進 main 自動部署 → (3) 最後設 `MOMENT_IMAGE_GEN_ENABLED=true`。Edge 端的部署窗相容（省略 `p_wants_image` 鍵）只是防呆保險，不是亂序的授權。`practice-chat` 部署照現行 push-triggered workflow，無 `--no-verify-jwt` 需求變化。
 
 ---
 
