@@ -8,6 +8,8 @@
 // 一律降級成純文字——不 crash、不顯示破圖。素材補齊那天只要在 [_sceneImageAssets]
 // 加對照（新增資料，不改邏輯）。
 
+import '../../../../core/config/environment.dart';
+
 /// 「用她自己的圖鑑照片」的哨兵 id，鏡像 Edge `SELF_PORTRAIT_IMAGE_ID`。
 const String kMomentSelfPortraitImageId = 'moment_self_portrait';
 
@@ -61,8 +63,29 @@ class MomentSceneImage extends MomentImageSource {
   final String assetPath;
 }
 
+/// 用 server 生成、存在 Supabase Storage 的遠端圖（PR-5）。
+class MomentRemoteImage extends MomentImageSource {
+  const MomentRemoteImage(this.url);
+
+  final String url;
+}
+
 /// [imageId] → 畫面要用的來源。null／空字串／**不認得的 id** 一律回 null
 /// （＝這則當純文字貼文處理）。
+/// 生成配圖 URL 的縱深防禦：只信任 https 且 host 等於本 app 的 Supabase
+/// host。server 給的值本就該合法；擋的是 API 回應被污染或未來 bug 把任意
+/// URL 塞進來的情況。不合法一律回 null（該則降級走 imageId／純文字）。
+String? resolveMomentImageUrl(String? imageUrl) {
+  final raw = imageUrl?.trim();
+  if (raw == null || raw.isEmpty) return null;
+  final uri = Uri.tryParse(raw);
+  if (uri == null || uri.scheme != 'https') return null;
+  final allowedHost = Uri.tryParse(AppConfig.supabaseUrl)?.host;
+  if (allowedHost == null || allowedHost.isEmpty) return null;
+  if (uri.host != allowedHost) return null;
+  return raw;
+}
+
 MomentImageSource? resolveMomentImage(String? imageId) {
   final id = imageId?.trim();
   if (id == null || id.isEmpty) return null;
