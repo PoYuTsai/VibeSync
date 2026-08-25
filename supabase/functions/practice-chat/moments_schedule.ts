@@ -499,7 +499,7 @@ const LIFESTYLE_PROPENSITY_STEP = 0.08;
 
 // ── 種子工具 ───────────────────────────────────────────────────────────
 
-function fnv1a(value: string): number {
+export function fnv1a(value: string): number {
   let hash = 0x811c9dc5;
   for (let index = 0; index < value.length; index++) {
     hash ^= value.charCodeAt(index);
