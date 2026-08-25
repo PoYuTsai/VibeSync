@@ -18,7 +18,7 @@
 // **永遠不可能**進到 `practice_moment_posts`。兩者互不重疊。
 //
 // ## 假資料的密度刻意貼近上線後的樣子
-// 20 則裡只有 3 則有圖（15%，對齊 `IMAGE_PROBABILITY = 0.15`）。假資料若每則都有圖，
+// 20 則裡只有 4 則有圖（20%，對齊 `IMAGE_PROBABILITY = 0.2`）。假資料若每則都有圖，
 // Eric 在手機上看到的密度感就不是上線後的樣子，會誤導版面判斷。
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -82,7 +82,7 @@ PracticeMomentPost _post({
   required int minutesAgo,
   required String body,
   required DateTime now,
-  bool withImage = false,
+  String? imageId,
 }) {
   final postedAt = now.subtract(Duration(minutes: minutesAgo));
   return PracticeMomentPost(
@@ -92,11 +92,11 @@ PracticeMomentPost _post({
     dayPart: 'afternoon',
     postedAt: postedAt.toUtc(),
     body: body,
-    imageId: withImage ? kMomentSelfPortraitImageId : null,
+    imageId: imageId,
   );
 }
 
-/// 20 則、多角色、時間跨到前天；其中 3 則有圖（15%），一則剛好卡在
+/// 20 則、多角色、時間跨到前天；其中 4 則有圖（20%），一則剛好卡在
 /// server 端 66 字的長度上界。
 List<PracticeMomentPost> _mixedFeed(DateTime now) {
   return <PracticeMomentPost>[
@@ -105,6 +105,7 @@ List<PracticeMomentPost> _mixedFeed(DateTime now) {
       minutesAgo: 0,
       body: '今天的第一杯咖啡比鬧鐘有用多了，終於覺得自己醒著。',
       now: now,
+      imageId: 'moment_coffee_cup',
     ),
     _post(
       profileId: 'practice_girl_007',
@@ -117,7 +118,7 @@ List<PracticeMomentPost> _mixedFeed(DateTime now) {
       minutesAgo: 41,
       body: '剪了瀏海，還在適應鏡子裡的自己，同事說看起來年輕三歲。',
       now: now,
-      withImage: true,
+      imageId: kMomentSelfPortraitImageId,
     ),
     _post(
       profileId: 'practice_girl_005',
@@ -154,7 +155,7 @@ List<PracticeMomentPost> _mixedFeed(DateTime now) {
       minutesAgo: 388,
       body: '今天妝感難得滿意，決定在下班前先偷偷留一張紀念。',
       now: now,
-      withImage: true,
+      imageId: kMomentSelfPortraitImageId,
     ),
     _post(
       profileId: 'practice_girl_010',
@@ -199,13 +200,13 @@ List<PracticeMomentPost> _mixedFeed(DateTime now) {
       minutesAgo: 2100,
       body: '新外套第一天上身，被風吹得有點狼狽但還是拍了一張。',
       now: now,
-      withImage: true,
     ),
     _post(
       profileId: 'practice_girl_016',
       minutesAgo: 2540,
       body: '剛剛下了一場很大的雨，窗戶上的水痕比我畫的還好看。',
       now: now,
+      imageId: 'moment_rainy_window',
     ),
     _post(
       profileId: 'practice_girl_017',

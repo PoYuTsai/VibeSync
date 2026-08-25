@@ -18,7 +18,10 @@ import { momentPostedAtFor } from "./moments_time.ts";
 import { momentPlanFor } from "./moments_schedule.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
 import { getPracticeGirlProfile, GIRL_PROFILES } from "./practice_persona.ts";
-import { SELF_PORTRAIT_IMAGE_ID } from "./moments_image_catalog.ts";
+import {
+  resolveAvailableMomentImages,
+  SELF_PORTRAIT_IMAGE_ID,
+} from "./moments_image_catalog.ts";
 
 type Row = Record<string, unknown>;
 
@@ -844,12 +847,16 @@ Deno.test("配圖貼文：候選只可能是可用素材，且原樣回給 clien
   const time = taipeiTimeContextFor(END_OF_DAY);
   const slot = momentPlanFor({ girl, time }).slots.find((s) => s.wantsImage);
   assert(slot, "前提：這位角色當天有想配圖的 slot");
+  // stub 回「該 slot 閘門後候選的第一個」而不是寫死某個 id：
+  // 閘門開關（AVAILABLE_MOMENT_IMAGE_IDS 的內容）不是本測試的受測物，
+  // 寫死 id 會讓這條測試隨閘門狀態翻紅（2026-08-25 開閘時抓到過一次）。
+  const usable = resolveAvailableMomentImages(slot.imageCandidates);
+  assert(usable.length > 0, "前提：閘門後仍有候選（替換語義保證非空）");
+  const chosen = usable[0];
   const harness = makeHarness({
     unlocked: [{ profileId: girl.profileId }],
     model: () =>
-      Promise.resolve(
-        JSON.stringify({ text: VALID_BODY, imageId: SELF_PORTRAIT_IMAGE_ID }),
-      ),
+      Promise.resolve(JSON.stringify({ text: VALID_BODY, imageId: chosen })),
   });
   const result = await run(harness, { now: END_OF_DAY });
   const commits = harness.rpcCalls.filter((call) =>
@@ -857,7 +864,11 @@ Deno.test("配圖貼文：候選只可能是可用素材，且原樣回給 clien
   );
   const withImage = commits.find((call) => call.params.p_image_id !== null);
   assert(withImage, "應該有一則帶圖的 commit");
-  assertEquals(withImage.params.p_image_id, SELF_PORTRAIT_IMAGE_ID);
+  assertEquals(withImage.params.p_image_id, chosen);
+  assert(
+    usable.includes(withImage.params.p_image_id as string),
+    "commit 的 imageId 必須在閘門後候選內",
+  );
   const posts = body(result).posts as { imageId: string | null }[];
-  assert(posts.some((post) => post.imageId === SELF_PORTRAIT_IMAGE_ID));
+  assert(posts.some((post) => post.imageId === chosen));
 });
