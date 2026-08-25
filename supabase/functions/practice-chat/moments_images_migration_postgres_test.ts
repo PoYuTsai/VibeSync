@@ -41,7 +41,7 @@ const momentImagesMigration = await Deno.readTextFile(
 );
 const momentImageExpiryGuardMigration = await Deno.readTextFile(
   new URL(
-    "../../migrations/20260825150000_practice_moment_image_claim_expiry_guard.sql",
+    "../../migrations/20260825150000_practice_moment_image_expiry_guards.sql",
     import.meta.url,
   ),
 );
@@ -53,7 +53,7 @@ const DAY_PART = "afternoon";
 const THEME_ID = "coffee_break";
 const USER_ID = "11111111-2222-3333-4444-555555555555";
 const BODY = "下午的咖啡撐住了整個會議。";
-const IMAGE_PATH = `${POST_DATE}/${PROFILE_ID}_${SLOT}.jpeg`;
+const IMAGE_PATH = `${POST_DATE}/${PROFILE_ID}_${SLOT}_t-x.jpeg`;
 
 interface ClaimRow {
   claimed: boolean;
@@ -162,12 +162,13 @@ async function commitImage(
   db: PGlite,
   token: string,
   path: string = IMAGE_PATH,
+  expiryBefore = "2026-08-12",
 ): Promise<boolean> {
   const result = await db.query<{ committed: boolean }>(
     `SELECT committed FROM public.commit_practice_moment_image(
-       $1, $2::DATE, $3, $4, $5
+       $1, $2::DATE, $3, $4, $5, $6::DATE
      )`,
-    [PROFILE_ID, POST_DATE, SLOT, token, path],
+    [PROFILE_ID, POST_DATE, SLOT, token, path, expiryBefore],
   );
   return result.rows[0].committed;
 }
@@ -659,7 +660,7 @@ Deno.test("PostgreSQL image RPCs are service_role only and definer mode", async 
       "public.commit_practice_moment_post(text,date,integer,text,text,text,text,boolean)",
       "public.list_practice_moment_posts(text[],date)",
       "public.claim_practice_moment_image(text,date,integer,text,uuid,integer,integer,boolean,date,integer,integer)",
-      "public.commit_practice_moment_image(text,date,integer,text,text)",
+      "public.commit_practice_moment_image(text,date,integer,text,text,date)",
       "public.release_practice_moment_image(text,date,integer,text,integer)",
       "public.list_expired_practice_moment_images(date,integer)",
       "public.mark_practice_moment_images_expired(date,text[])",
@@ -705,10 +706,17 @@ Deno.test("PostgreSQL image RPCs are service_role only and definer mode", async 
         )::TEXT AS legacy_commit,
         to_regprocedure(
           'public.claim_practice_moment_image(text,date,integer,text,uuid,integer,integer,boolean,integer,integer)'
-        )::TEXT AS legacy_claim
+        )::TEXT AS legacy_claim,
+        to_regprocedure(
+          'public.commit_practice_moment_image(text,date,integer,text,text)'
+        )::TEXT AS legacy_commit_image
     `);
     assertEquals(legacy.rows[0].legacy_commit, null);
     assertEquals(legacy.rows[0].legacy_claim, null);
+    assertEquals(
+      (legacy.rows[0] as Record<string, unknown>).legacy_commit_image,
+      null,
+    );
   } finally {
     await db.close();
   }
@@ -788,6 +796,46 @@ Deno.test("PostgreSQL sweep window: nothing can mutate an expired ready row exce
       false,
     );
     assertEquals((await readRow(db)).image_status, "expired");
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL full interleaving: claimed pending crosses cutoff, late commit is refused", async () => {
+  const db = await createDatabase();
+  try {
+    // 1. 窗內認領（worker 拿到有效 token 並已上傳到自己的 token 路徑）。
+    await seedPost(db, { wantsImage: true });
+    assertEquals((await claimImage(db, "t-slow")).claimed, true);
+
+    // 2. 跨過 cutoff（隔天，該列出窗）。晚到的 commit **即使 token 有效**
+    //    也必須被出窗守衛拒絕——舊 worker 連讓列變回 ready 的能力都沒有。
+    const dayAfter = "2026-08-26";
+    assertEquals(
+      await commitImage(db, "t-slow", IMAGE_PATH, dayAfter),
+      false,
+      "晚到 commit 必須被出窗守衛擋下",
+    );
+    const afterLate = await readRow(db);
+    assertEquals(afterLate.image_status, "pending", "列不得被晚到 commit 改動");
+    assertEquals(afterLate.image_path, null);
+
+    // 3. 下一個觀看者的 claim（同樣出窗）把殘局收成 failed 終態。
+    assertEquals(
+      (await claimImage(db, "t-next", { expiryBefore: dayAfter })).claimed,
+      false,
+    );
+    assertEquals((await readRow(db)).image_status, "failed");
+
+    // 4. sweep 永遠看不到這一列（從未 ready、無物件），DB 面不產生孤兒；
+    //    worker 自己上傳的 token 路徑物件由 Edge 端自刪（moments_image_gen
+    //    的 commit-rejected 分支，單元測試覆蓋）。
+    const listed = await db.query<{ image_path: string }>(
+      `SELECT image_path
+       FROM public.list_expired_practice_moment_images($1::DATE, 20)`,
+      [dayAfter],
+    );
+    assertEquals(listed.rows.length, 0);
   } finally {
     await db.close();
   }

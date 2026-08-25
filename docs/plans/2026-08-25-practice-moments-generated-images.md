@@ -16,7 +16,7 @@ feed 請求（現行路徑不動，8 秒總死線不變）
  └ commit 成功後 waitUntil(生圖 job)          ← 新增，不佔 8 秒死線
       claim_practice_moment_image（token + 180s 租約 + 同交易 per-user 限流）
       → DeepSeek 一次便宜呼叫：body＋brief → 英文場景句（失敗退題材級模板句）
-      → fal.ai 同步端點（timeout 30s）→ 下載圖 → Storage upsert（決定論 key）
+      → fal.ai 同步端點（timeout 涵蓋完整 body）→ 邊界驗證下載 → Storage 上傳（token 隔離 key、永不覆寫）
       → commit_practice_moment_image（token-fenced → image_status='ready'）
       失敗 → release_practice_moment_image（attempts 到頂轉 'failed'＝該則永久純文字）
  └ waitUntil(過期清理 job)：刪 14 天窗外的 Storage 物件（LIMIT 有界）
@@ -115,7 +115,7 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 ## 7. 儲存與傳遞
 
 - **Bucket**：`practice-moment-images`，**public**。內容是無人物 AI 場景圖、全域共用、零使用者資料；signed URL 會讓 URL 每次變動打爆 client 磁碟快取、且過期時間要另外對齊 14 天窗，得不償失。bucket 與 `storage.objects` policy（anon 唯讀、寫入 service_role only）進同一支 migration（`INSERT INTO storage.buckets ... ON CONFLICT DO NOTHING`）。
-- **物件 key（決定論）**：`<post_date>/<profile_id>_<slot>.jpeg`。日期前綴讓清掃可按 prefix 對帳孤兒；重試 upsert 覆寫同 key（冪等、零累積孤兒）。
+- **物件 key（token 隔離，2026-08-25 第二輪複審 P1-1）**：`<post_date>/<profile_id>_<slot>_<image_token>.jpeg`。每次認領寫**自己的**路徑、永不覆寫（upsert:false）——底層上傳收不到取消訊號，timeout 晚到的舊上傳在物理上碰不到 winner 的物件，也不可能在清理後重建 committed 物件；輸家（timeout 晚到完成、commit 被打回）**自刪**自己的物件（best effort），日期前綴對帳兜底。
 - **Edge 不做影像處理**：fal 直出 jpeg（landscape_4_3），下載後原樣上傳。黑圖保險見 §9。
 - **API 回傳**：`MomentFeedPost` 加 `imageUrl: string | null`——僅 `image_status='ready'` 時由 `SUPABASE_URL`＋path 組出。`imageId` 欄位語義不變（自拍 sentinel 與 bundled fallback 續用）。
 - **向前相容（已驗證）**：`practice_moment_post.dart` 的 fromJson 只讀已知鍵，未知鍵直接忽略；生成圖貼文的 `imageId` 為 null → 舊 client 走「null＝純文字」主路徑。零風險。
@@ -143,7 +143,7 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 - **下載／上傳完整邊界（blocking item 2）**：結果 URL 必須是 https 且 host 屬 `fal.media`（來源驗證）；HTTP 狀態與 Content-Type（僅 image/jpeg、image/png）驗證；大小硬上限兩層——Content-Length 預檢＋流式讀取累計硬擋（header 可謊）；下載與上傳各有獨立 timeout。任何異常回應都不落入記憶體、不拖 Edge。
 - **自拍貼文維持圖鑑照片，不生成**：人臉一致性做不到＋原設計 §7.4「不得生成像真實人物的新圖」（App Review 肖像風險）。候選收斂後只剩 `moment_self_portrait` 的 slot 不進生圖分支。
 - **Kill switch**：`MOMENT_IMAGE_GEN_ENABLED`（getEnv 閘門，照 `PRACTICE_HINT_PREFETCH_ENABLED` 範式，handler.ts:2142）。**關閉或缺 `FAL_API_KEY` 時退回現行 20 張 bundled 素材路徑**——bundled 路徑已上線已驗收，保住「兩種貼文型態」；因此 20 張素材長期保留，`test/lint/moments_scene_asset_parity_test.dart` 三方對帳一行不用改。
-- **timeout < lease**：fal 呼叫 30s＋下載 15s＋上傳 15s ≪ image lease 180s，把 stale worker 與新 worker 同時上傳的競態壓到幾乎不可達；殘餘競態因決定論 key＋同 seed 而良性。
+- **timeout < lease**：fal 呼叫 30s＋下載 15s＋上傳 15s ≪ image lease 180s；上傳競態不再倚賴機率——token 隔離路徑讓「同時上傳」寫的是不同物件，晚到者自刪（§7）。
 - **provenance**：`docs/licenses/` 補一條 runtime 生成聲明（模型 FLUX.1 [schnell]、prompt 來源文件、無人物無品牌約束、商用授權——schnell 為 Apache 2.0 開源權重，fal 託管條款允許商用）。
 
 ---
@@ -196,7 +196,7 @@ class MomentRemoteImage extends MomentImageSource {
 1. **waitUntil 任務蒸發**（實例回收）→ pending 卡住。緩解：180s 租約接手自癒；觀測 pending 列齡。
 2. **fal 故障／safety 拒絕** → attempts 燒完轉 `'failed'` 純文字，無半成品落盤；failed 比例告警。
 3. **成本失控** → 四層防護（§11）；最壞上界月 ~$5.8 有 DB CHECK 背書。
-4. **上傳競態** → timeout ≪ lease＋決定論 key＋同 seed，殘餘競態良性（同輸入的另一張）。
+4. **上傳競態** → token 隔離路徑＋永不覆寫＋輸家自刪：晚到上傳構造上碰不到 winner 物件；自刪失敗的孤兒由日期 prefix 對帳兜底。
 5. **孤兒物件** → 覆寫同 key 不累積；日期 prefix 可離線對帳兜底。
 6. **schnell 質感不過驗收** → fal 同站換 model id（FLUX dev / Qwen-Image）即可，架構不動；成本表重算。
 7. **隱私回歸** → source test 禁 import 使用者資料型別，防後人把聊天內容餵進場景句。

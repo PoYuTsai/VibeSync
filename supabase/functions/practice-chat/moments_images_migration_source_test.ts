@@ -23,7 +23,7 @@ const migration = await Deno.readTextFile(
 );
 const guardMigration = await Deno.readTextFile(
   new URL(
-    "../../migrations/20260825150000_practice_moment_image_claim_expiry_guard.sql",
+    "../../migrations/20260825150000_practice_moment_image_expiry_guards.sql",
     import.meta.url,
   ),
 );
@@ -317,6 +317,16 @@ Deno.test("guard migration：出窗守衛的關鍵寫入都在", () => {
   assert(
     executableGuard.includes("v_row.post_date < p_expiry_before"),
     "出窗判定必須存在",
+  );
+  // claim 與 commit 兩支都要有守衛（第二輪複審 P2-4：晚到 commit 也要擋）。
+  const claimHits =
+    [...executableGuard.matchAll(/v_row\.post_date < p_expiry_before/g)].length;
+  assert(claimHits >= 2, `claim 與 commit 都必須帶出窗判定（實際 ${claimHits} 處）`);
+  assert(
+    executableGuard.includes(
+      "DROP FUNCTION IF EXISTS public.commit_practice_moment_image(",
+    ),
+    "舊 5-arg commit_image 必須被移除",
   );
   assert(!executableGuard.includes("DELETE FROM"), "guard migration 不得刪列");
   assert(!executableGuard.includes("DROP TABLE"));

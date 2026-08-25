@@ -119,8 +119,12 @@ function makeFlowHarness(options: {
         ),
       );
     }
+    const jpeg = new Uint8Array(20_000);
+    jpeg[0] = 0xFF;
+    jpeg[1] = 0xD8;
+    jpeg[2] = 0xFF;
     return Promise.resolve(
-      new Response(new Uint8Array(20_000), {
+      new Response(jpeg, {
         status: 200,
         headers: { "content-type": "image/jpeg" },
       }),
@@ -140,6 +144,7 @@ function makeFlowHarness(options: {
       uploads.push(path);
       return Promise.resolve();
     },
+    removeImage: () => Promise.resolve(),
     fetch: fetchMock,
     randomToken: () => "img-token",
   };
@@ -233,7 +238,7 @@ Deno.test("開關開：候選清空、commit 標 pending、背景 job 生圖到 
   assert(rpcNames(harness).includes("claim_practice_moment_image"));
   assert(rpcNames(harness).includes("commit_practice_moment_image"));
   assertEquals(harness.falCalls, 1);
-  assertEquals(harness.uploads, [`${ISO_DATE}/${PROFILE_ID}_0.jpeg`]);
+  assertEquals(harness.uploads, [`${ISO_DATE}/${PROFILE_ID}_0_img-token.jpeg`]);
 
   // 本回應的貼文 imageUrl 為 null（圖在背景生成中）。
   const posts = (result.body as { posts: { imageUrl: string | null }[] }).posts;

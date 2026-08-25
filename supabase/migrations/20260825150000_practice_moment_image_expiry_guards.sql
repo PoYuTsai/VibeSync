@@ -4,10 +4,13 @@
 -- 若出窗的列還能被重新認領生成（claim → 上傳到同一個決定論 key → commit），
 -- 清理就可能刪掉或標記掉「新版」的圖。
 --
--- 圍籬做法：**出窗的列在資料層永遠不可再認領**。claim 加必填參數
--- p_expiry_before（呼叫端傳台北今日的 feed 窗起點）：
---   post_date < p_expiry_before 的列一律拒絕；若它還是 pending，順手轉
---   'failed' 終態（出窗的 pending 本來就永遠等不到生成，掛著只是積壓）。
+-- 圍籬做法（兩道，2026-08-25 第二輪複審 P2-4 補強）：
+-- 1. claim 加必填 p_expiry_before：post_date < p_expiry_before 的列一律
+--    拒絕認領；若它還是 pending，順手轉 'failed' 終態（出窗的 pending
+--    本來就永遠等不到生成，掛著只是積壓）。
+-- 2. commit_practice_moment_image 加同一道守衛：**已認領、跨過 cutoff 的
+--    晚到 commit 也被拒**——舊 worker 連讓出窗列變回 ready 的能力都沒有，
+--    Edge 端在被拒後自刪剛上傳的物件（token 隔離路徑，見 moments_image_gen）。
 --
 -- 有了這道守衛，清理期間出窗列的 image 欄位組**只有 mark 自己能動**
 -- （claim 拒絕、commit/release 需要 claim 發的 token、而 token 已不存在），
@@ -228,6 +231,131 @@ BEGIN
   RETURN NEXT;
 END;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- commit_practice_moment_image：加同一道出窗守衛（晚到 commit 拒絕）
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_unexpected TEXT;
+BEGIN
+  SELECT string_agg(p.oid::regprocedure::TEXT, ', ' ORDER BY p.oid::regprocedure::TEXT)
+  INTO v_unexpected
+  FROM pg_proc AS p
+  JOIN pg_namespace AS n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.proname = 'commit_practice_moment_image'
+    AND p.oid NOT IN (
+      COALESCE(to_regprocedure(
+        'public.commit_practice_moment_image(text,date,integer,text,text)'
+      )::OID, 0::OID),
+      COALESCE(to_regprocedure(
+        'public.commit_practice_moment_image(text,date,integer,text,text,date)'
+      )::OID, 0::OID)
+    );
+
+  IF v_unexpected IS NOT NULL THEN
+    RAISE EXCEPTION
+      'commit_practice_moment_image: unexpected overload(s): %',
+      v_unexpected;
+  END IF;
+END;
+$$;
+
+DROP FUNCTION IF EXISTS public.commit_practice_moment_image(
+  TEXT, DATE, INTEGER, TEXT, TEXT
+);
+
+CREATE OR REPLACE FUNCTION public.commit_practice_moment_image(
+  p_profile_id    TEXT,
+  p_post_date     DATE,
+  p_slot          INTEGER,
+  p_image_token   TEXT,
+  p_image_path    TEXT,
+  p_expiry_before DATE
+)
+RETURNS TABLE(committed BOOLEAN)
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.practice_moment_posts%ROWTYPE;
+BEGIN
+  IF p_profile_id IS NULL
+     OR char_length(p_profile_id) = 0
+     OR char_length(p_profile_id) > 64 THEN
+    RAISE EXCEPTION 'commit_practice_moment_image: invalid p_profile_id';
+  END IF;
+  IF p_post_date IS NULL THEN
+    RAISE EXCEPTION 'commit_practice_moment_image: p_post_date is required';
+  END IF;
+  IF p_slot IS NULL OR p_slot < 0 OR p_slot > 1 THEN
+    RAISE EXCEPTION 'commit_practice_moment_image: invalid p_slot';
+  END IF;
+  IF p_image_token IS NULL
+     OR char_length(p_image_token) = 0
+     OR char_length(p_image_token) > 64 THEN
+    RAISE EXCEPTION 'commit_practice_moment_image: invalid p_image_token';
+  END IF;
+  IF p_image_path IS NULL
+     OR char_length(p_image_path) = 0
+     OR char_length(p_image_path) > 200 THEN
+    RAISE EXCEPTION 'commit_practice_moment_image: invalid p_image_path';
+  END IF;
+  IF p_expiry_before IS NULL THEN
+    RAISE EXCEPTION 'commit_practice_moment_image: p_expiry_before is required';
+  END IF;
+
+  SELECT mp.* INTO v_row
+  FROM public.practice_moment_posts AS mp
+  WHERE mp.profile_id = p_profile_id
+    AND mp.post_date = p_post_date
+    AND mp.slot = p_slot::SMALLINT
+  FOR UPDATE;
+
+  -- token fencing ＋ 出窗守衛：被接手的舊 worker、遲到的重複回應、以及
+  -- 「認領後才跨過 cutoff 的晚到 commit」，一律回 FALSE 而不覆寫。
+  IF NOT FOUND
+     OR v_row.status <> 'ready'
+     OR v_row.image_status <> 'pending'
+     OR v_row.post_date < p_expiry_before
+     OR v_row.image_token IS NULL
+     OR v_row.image_token IS DISTINCT FROM p_image_token THEN
+    committed := FALSE;
+    RETURN NEXT;
+    RETURN;
+  END IF;
+
+  UPDATE public.practice_moment_posts AS mp
+  SET image_status = 'ready',
+      image_path = p_image_path,
+      image_token = NULL,
+      updated_at = now()
+  WHERE mp.profile_id = p_profile_id
+    AND mp.post_date = p_post_date
+    AND mp.slot = p_slot::SMALLINT;
+
+  committed := TRUE;
+  RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.commit_practice_moment_image(
+  TEXT, DATE, INTEGER, TEXT, TEXT, DATE
+) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.commit_practice_moment_image(
+  TEXT, DATE, INTEGER, TEXT, TEXT, DATE
+) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.commit_practice_moment_image(
+  TEXT, DATE, INTEGER, TEXT, TEXT, DATE
+) TO service_role;
+ALTER FUNCTION public.commit_practice_moment_image(
+  TEXT, DATE, INTEGER, TEXT, TEXT, DATE
+) SECURITY DEFINER;
+
+COMMENT ON FUNCTION public.commit_practice_moment_image(TEXT, DATE, INTEGER, TEXT, TEXT, DATE)
+IS 'Token-fenced commit of a stored generated image; a stale token, a replay, or a late commit that crossed the expiry cutoff returns FALSE and never overwrites.';
 
 REVOKE ALL ON FUNCTION public.claim_practice_moment_image(
   TEXT, DATE, INTEGER, TEXT, UUID, INTEGER, INTEGER, BOOLEAN, DATE, INTEGER, INTEGER

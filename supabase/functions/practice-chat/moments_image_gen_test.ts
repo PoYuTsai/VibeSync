@@ -28,6 +28,19 @@ const USER_ID = "11111111-2222-3333-4444-555555555555";
 const FAL_URL = "https://fal.run/fal-ai/flux/schnell";
 const CDN_URL = "https://fal.media/files/abc/result.jpeg";
 const BODY = "下班隨便弄了碗麵 吃完才發現醬料包過期一個月";
+const TOKEN = "img-token-1";
+const TOKEN_PATH = `${JOB.isoDate}/${JOB.profileId}_${JOB.slot}_${TOKEN}.jpeg`;
+
+/** 產生開頭是合法 JPEG magic（FF D8 FF）的假圖 bytes。 */
+function fakeJpeg(size: number): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(size);
+  if (size >= 3) {
+    bytes[0] = 0xFF;
+    bytes[1] = 0xD8;
+    bytes[2] = 0xFF;
+  }
+  return bytes;
+}
 
 // ---------------------------------------------------------------------------
 // 題材模板句：覆蓋所有排程會產出的 themeId
@@ -99,10 +112,15 @@ Deno.test("完整 prompt = STYLE 前綴 + 場景句，且 STYLE 自帶兩條硬�
   assert(MOMENT_IMAGE_STYLE_PREFIX.includes("No readable text anywhere"));
 });
 
-Deno.test("物件 key 與 seed 是決定論", () => {
+Deno.test("物件 key 以 token 隔離且 seed 是決定論", () => {
   assertEquals(
-    momentImagePath("2026-08-25", "practice_girl_007", 1),
-    "2026-08-25/practice_girl_007_1.jpeg",
+    momentImagePath("2026-08-25", "practice_girl_007", 1, "tok-a"),
+    "2026-08-25/practice_girl_007_1_tok-a.jpeg",
+  );
+  assert(
+    momentImagePath("2026-08-25", "practice_girl_007", 1, "tok-a") !==
+      momentImagePath("2026-08-25", "practice_girl_007", 1, "tok-b"),
+    "不同 token 必須寫不同物件（晚到上傳碰不到 winner）",
   );
   assertEquals(
     momentImageSeed("practice_girl_007", "2026-08-25", 0),
@@ -124,6 +142,7 @@ interface JobHarness {
   rpcCalls: { fn: string; params: Record<string, unknown> }[];
   fetchCalls: { url: string; body: Record<string, unknown> | null }[];
   uploads: { path: string; bytes: number; contentType: string }[];
+  removals: string[];
   sceneCalls: string[];
 }
 
@@ -136,9 +155,18 @@ function makeJobHarness(options: {
   imageBytes?: number;
   scene?: () => Promise<string>;
   uploadFails?: boolean;
+  /** 上傳懸掛；harness.releaseUpload() 使晚到的上傳完成。 */
   uploadHangs?: boolean;
   downloadContentType?: string;
   downloadDeclaredLength?: number;
+  /** fal JSON body 永不完結（測 hanging body timeout）。 */
+  falBodyHangs?: boolean;
+  /** 圖片串流永不完結（測 hanging stream timeout）。 */
+  imageStreamHangs?: boolean;
+  /** 圖片 URL 觸發轉址（redirect:"error" 下 reject）。 */
+  imageRedirects?: boolean;
+  /** 圖不帶 JPEG magic（測 magic bytes 驗證）。 */
+  badMagic?: boolean;
 } = {}): JobHarness & {
   deps: {
     falApiKey: string;
@@ -147,12 +175,19 @@ function makeJobHarness(options: {
     uploadImage: (p: string, b: Uint8Array, c: string) => Promise<void>;
     fetch: typeof globalThis.fetch;
     randomToken: () => string;
+    removeImage: (p: string) => Promise<void>;
+    falTimeoutMs: number;
+    downloadTimeoutMs: number;
+    uploadTimeoutMs: number;
   };
+  releaseUpload: () => void;
 } {
   const rpcCalls: JobHarness["rpcCalls"] = [];
   const fetchCalls: JobHarness["fetchCalls"] = [];
   const uploads: JobHarness["uploads"] = [];
+  const removals: string[] = [];
   const sceneCalls: string[] = [];
+  let releaseUpload: () => void = () => {};
 
   const supabase: MomentsImageRpcClient = {
     rpc(fn, params) {
@@ -187,11 +222,25 @@ function makeJobHarness(options: {
   };
 
   const imageBytes = options.imageBytes ?? 20_000;
+  /** signal abort 時 error 掉、否則永不完結的 body（模擬懸掛連線）。 */
+  const hangingBody = (signal: AbortSignal | null | undefined) =>
+    new ReadableStream<Uint8Array>({
+      start(ctrl) {
+        signal?.addEventListener("abort", () => {
+          ctrl.error(new DOMException("aborted", "AbortError"));
+        });
+      },
+    });
   const fetchMock = ((input: Request | URL | string, init?: RequestInit) => {
     const url = String(input);
     const requestBody = init?.body ? JSON.parse(String(init.body)) : null;
     fetchCalls.push({ url, body: requestBody });
     if (url === FAL_URL) {
+      if (options.falBodyHangs) {
+        return Promise.resolve(
+          new Response(hangingBody(init?.signal), { status: 200 }),
+        );
+      }
       if (options.falStatus && options.falStatus !== 200) {
         return Promise.resolve(
           new Response("provider detail", { status: options.falStatus }),
@@ -206,15 +255,25 @@ function makeJobHarness(options: {
       );
     }
     // 圖片下載
+    if (options.imageRedirects) {
+      // redirect:"error" 下，真 fetch 遇到轉址會 reject。
+      return Promise.reject(new TypeError("redirect not allowed"));
+    }
     const headers: Record<string, string> = {
       "content-type": options.downloadContentType ?? "image/jpeg",
     };
     if (options.downloadDeclaredLength !== undefined) {
       headers["content-length"] = String(options.downloadDeclaredLength);
     }
-    return Promise.resolve(
-      new Response(new Uint8Array(imageBytes), { status: 200, headers }),
-    );
+    if (options.imageStreamHangs) {
+      return Promise.resolve(
+        new Response(hangingBody(init?.signal), { status: 200, headers }),
+      );
+    }
+    const bytes = options.badMagic
+      ? new Uint8Array(imageBytes)
+      : fakeJpeg(imageBytes);
+    return Promise.resolve(new Response(bytes, { status: 200, headers }));
   }) as typeof globalThis.fetch;
 
   const deps = {
@@ -228,16 +287,41 @@ function makeJobHarness(options: {
       });
     },
     uploadImage: (path: string, bytes: Uint8Array, contentType: string) => {
-      if (options.uploadHangs) return new Promise<void>(() => {});
+      if (options.uploadHangs) {
+        // 懸掛直到測試呼叫 releaseUpload()——模擬「timeout 後晚到完成」。
+        return new Promise<void>((resolve) => {
+          releaseUpload = () => {
+            uploads.push({ path, bytes: bytes.byteLength, contentType });
+            resolve();
+          };
+        });
+      }
       if (options.uploadFails) return Promise.reject(new Error("boom"));
       uploads.push({ path, bytes: bytes.byteLength, contentType });
       return Promise.resolve();
     },
+    removeImage: (path: string) => {
+      removals.push(path);
+      return Promise.resolve();
+    },
     fetch: fetchMock,
-    randomToken: () => "img-token-1",
+    randomToken: () => TOKEN,
+    // 測試不等真時鐘：懸掛類測試用短 timeout。
+    falTimeoutMs: 150,
+    downloadTimeoutMs: 150,
+    uploadTimeoutMs: 150,
   };
 
-  return { supabase, rpcCalls, fetchCalls, uploads, sceneCalls, deps };
+  return {
+    supabase,
+    rpcCalls,
+    fetchCalls,
+    uploads,
+    removals,
+    sceneCalls,
+    deps,
+    releaseUpload: () => releaseUpload(),
+  };
 }
 
 const EXPIRY_BEFORE = "2026-08-12";
@@ -291,15 +375,17 @@ Deno.test("成功路徑：claim → 場景句 → fal → 下載 → 上傳 → 
   const prompt = String(falCall.body.prompt);
   assert(prompt.startsWith(MOMENT_IMAGE_STYLE_PREFIX));
   assert(prompt.includes("instant noodles"));
-  // 上傳到決定論 key，commit 帶同一個 path 與 token。
+  // 上傳到 token 隔離的 key，commit 帶同一個 path、token 與出窗守衛。
   assertEquals(harness.uploads, [{
-    path: "2026-08-25/practice_girl_007_0.jpeg",
+    path: TOKEN_PATH,
     bytes: 20_000,
     contentType: "image/jpeg",
   }]);
   const commit = harness.rpcCalls[1].params;
-  assertEquals(commit.p_image_path, "2026-08-25/practice_girl_007_0.jpeg");
-  assertEquals(commit.p_image_token, "img-token-1");
+  assertEquals(commit.p_image_path, TOKEN_PATH);
+  assertEquals(commit.p_image_token, TOKEN);
+  assertEquals(commit.p_expiry_before, EXPIRY_BEFORE);
+  assertEquals(harness.removals, [], "winner 不刪自己的物件");
 });
 
 Deno.test("claim 未成功：靜默結束，零 fal 呼叫、零上傳", async () => {
@@ -376,13 +462,18 @@ Deno.test("上傳失敗：release，絕不 commit", async () => {
   ]);
 });
 
-Deno.test("commit 被 token fencing 打回：不 release（token 已非本 worker 所有）", async () => {
+Deno.test("commit 被 fencing 或出窗守衛打回：自刪物件、不 release", async () => {
   const harness = makeJobHarness({ commitImage: { committed: false } });
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
     "commit_practice_moment_image",
   ]);
+  assertEquals(
+    harness.removals,
+    [TOKEN_PATH],
+    "被打回的 worker 必須收掉自己剛上傳的物件",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -471,6 +562,91 @@ Deno.test("實際位元組超限（header 說謊）：流式硬擋並 release", 
     imageBytes: 4_000_001,
     downloadDeclaredLength: 20_000,
   });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+  assertEquals(harness.uploads.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// 第二輪複審 P1-1／P1-2／P2-3：晚到上傳、懸掛 body、轉址、magic bytes
+// ---------------------------------------------------------------------------
+
+Deno.test("上傳 timeout 後晚到完成：自刪自己的物件，winner 不受影響", async () => {
+  const harness = makeJobHarness({ uploadHangs: true });
+  await runJob(harness);
+  // timeout → release（job 已放棄）。
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+  assertEquals(harness.removals, [], "上傳還沒完成，無物件可刪");
+  // 晚到的上傳此刻才完成 → 自刪必須跟上。
+  harness.releaseUpload();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assertEquals(harness.uploads.length, 1, "晚到的上傳確實落地過");
+  assertEquals(
+    harness.removals,
+    [TOKEN_PATH],
+    "晚到的上傳完成後必須自刪，不留 public 孤兒",
+  );
+});
+
+Deno.test("fal JSON body 懸掛：timeout 涵蓋完整 body，release 收場", async () => {
+  const harness = makeJobHarness({ falBodyHangs: true });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+  assertEquals(harness.uploads.length, 0);
+});
+
+Deno.test("圖片串流懸掛：timeout 涵蓋整段下載，release 收場", async () => {
+  const harness = makeJobHarness({ imageStreamHangs: true });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+  assertEquals(harness.uploads.length, 0);
+});
+
+Deno.test("圖片下載遇到轉址：redirect error 直接拒絕並 release", async () => {
+  const harness = makeJobHarness({ imageRedirects: true });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+  assertEquals(harness.uploads.length, 0);
+});
+
+Deno.test("兩個 fetch 都以 redirect:error 發出", async () => {
+  const harness = makeJobHarness({});
+  const seenRedirects: (string | undefined)[] = [];
+  const inner = harness.deps.fetch;
+  harness.deps.fetch = ((input: Request | URL | string, init?: RequestInit) => {
+    seenRedirects.push(init?.redirect);
+    return inner(input, init);
+  }) as typeof globalThis.fetch;
+  await runJob(harness);
+  assertEquals(seenRedirects, ["error", "error"]);
+});
+
+Deno.test("Content-Type 是 png：僅收 jpeg，拒絕並 release", async () => {
+  const harness = makeJobHarness({ downloadContentType: "image/png" });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+});
+
+Deno.test("magic bytes 不是 JPEG：header 說謊也擋，release 收場", async () => {
+  const harness = makeJobHarness({ badMagic: true });
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",

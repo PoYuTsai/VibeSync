@@ -52,16 +52,28 @@ export interface MomentImageGenDeps {
   falApiKey: string;
   deepSeekApiKey: string;
   callDeepSeek: (args: DeepSeekArgs) => Promise<string>;
-  /** Storage upsert；失敗以 throw 表達。真實作在 handler.ts 用 supabase-js。 */
+  /**
+   * Storage 上傳（**不 upsert**——路徑以 token 隔離，永不覆寫）；
+   * 失敗以 throw 表達。真實作在 handler.ts 用 supabase-js。
+   */
   uploadImage: (
     path: string,
     bytes: Uint8Array,
     contentType: string,
   ) => Promise<void>;
+  /**
+   * Storage 刪單一物件（best effort）。輸家自刪用：上傳晚到（timeout 後
+   * 才完成）或 commit 被打回時，把自己剛上傳的 token 路徑物件收掉。
+   */
+  removeImage: (path: string) => Promise<void>;
   /** 測試注入用；預設 globalThis.fetch。 */
   fetch?: typeof globalThis.fetch;
   /** 測試注入用；預設 crypto.randomUUID。 */
   randomToken?: () => string;
+  /** 測試注入用的 timeout 覆寫；production 一律走常數。 */
+  falTimeoutMs?: number;
+  downloadTimeoutMs?: number;
+  uploadTimeoutMs?: number;
 }
 
 export interface MomentImageJob {
@@ -284,13 +296,19 @@ export function buildImagePrompt(sceneLine: string): string {
 
 // ── 決定論 ────────────────────────────────────────────────────────────
 
-/** Storage 物件 key：日期前綴供過期清掃按 prefix 對帳孤兒；重試覆寫同 key。 */
+/**
+ * Storage 物件 key：**以 image_token 隔離**（2026-08-25 第二輪複審 P1-1）。
+ * 每次認領寫自己的路徑，晚到的舊上傳在物理上碰不到 winner 的物件；
+ * 輸家（timeout 晚到、commit 被打回）自刪自己的物件。日期前綴供過期
+ * 清掃按 prefix 對帳孤兒。
+ */
 export function momentImagePath(
   isoDate: string,
   profileId: string,
   slot: number,
+  imageToken: string,
 ): string {
-  return `${isoDate}/${profileId}_${slot}.jpeg`;
+  return `${isoDate}/${profileId}_${slot}_${imageToken}.jpeg`;
 }
 
 /** fal 的 seed：沿用排程層的種子哲學，重試時輸出接近可重現。 */
@@ -312,46 +330,58 @@ async function callFalSchnell(opts: {
   const { deps, prompt, seed } = opts;
   const doFetch = deps.fetch ?? globalThis.fetch;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), MOMENT_IMAGE_MODEL_TIMEOUT_MS);
-  let response: Response;
-  try {
-    response = await doFetch(FAL_SCHNELL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Authorization": `Key ${deps.falApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        prompt,
-        image_size: "landscape_4_3",
-        num_images: 1,
-        output_format: "jpeg",
-        enable_safety_checker: true,
-        seed,
-      }),
-      signal: controller.signal,
-    });
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") {
-      throw new Error("fal_image_timeout");
-    }
-    throw new Error("fal_image_network");
-  } finally {
-    clearTimeout(timer);
-  }
-  if (!response.ok) {
-    // 讀掉 body 避免連線懸置；內容絕不進錯誤訊息（可能含 provider 細節）。
-    await response.text().catch(() => {});
-    throw new Error(`fal_image_http_${response.status}`);
-  }
+  // timer 的生命週期必須涵蓋**完整 response body**（第二輪複審 P1-2）：
+  // headers 到了之後 json() 仍可能無限掛，太早 clear 等於沒有 timeout。
+  const timer = setTimeout(
+    () => controller.abort(),
+    deps.falTimeoutMs ?? MOMENT_IMAGE_MODEL_TIMEOUT_MS,
+  );
   let payload: {
     images?: { url?: unknown }[];
     has_nsfw_concepts?: unknown;
   };
   try {
-    payload = await response.json();
-  } catch {
-    throw new Error("fal_image_bad_json");
+    let response: Response;
+    try {
+      response = await doFetch(FAL_SCHNELL_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Authorization": `Key ${deps.falApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+          image_size: "landscape_4_3",
+          num_images: 1,
+          output_format: "jpeg",
+          enable_safety_checker: true,
+          seed,
+        }),
+        signal: controller.signal,
+        // API 端點不該轉址；有轉址一律當異常拒絕。
+        redirect: "error",
+      });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new Error("fal_image_timeout");
+      }
+      throw new Error("fal_image_network");
+    }
+    if (!response.ok) {
+      // 讀掉 body 避免連線懸置；內容絕不進錯誤訊息（可能含 provider 細節）。
+      await response.text().catch(() => {});
+      throw new Error(`fal_image_http_${response.status}`);
+    }
+    try {
+      payload = await response.json();
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new Error("fal_image_timeout");
+      }
+      throw new Error("fal_image_bad_json");
+    }
+  } finally {
+    clearTimeout(timer);
   }
   // safety checker 結果 fail-closed（複審 blocking item 1）：只有明確回報
   // 「第一張不是 NSFW」才放行；命中、欄位缺席或形狀不對，一律不下載、
@@ -380,75 +410,107 @@ async function downloadImage(
 ): Promise<Uint8Array> {
   const doFetch = deps.fetch ?? globalThis.fetch;
   const controller = new AbortController();
+  // timer 涵蓋 headers ＋ 完整串流（第二輪複審 P1-2）：reader.read() 可能
+  // 無限掛，clear 必須等 body 讀完才做。
   const timer = setTimeout(
     () => controller.abort(),
-    MOMENT_IMAGE_DOWNLOAD_TIMEOUT_MS,
+    deps.downloadTimeoutMs ?? MOMENT_IMAGE_DOWNLOAD_TIMEOUT_MS,
   );
-  let response: Response;
   try {
-    response = await doFetch(url, { signal: controller.signal });
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") {
-      throw new Error("fal_image_download_timeout");
+    let response: Response;
+    try {
+      // 轉址直接拒絕：allowlist 驗的是原始 URL，跟隨轉址等於讓 CDN 帶我們
+      // 離開 fal.media。fal 正常回應不轉址。
+      response = await doFetch(url, {
+        signal: controller.signal,
+        redirect: "error",
+      });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new Error("fal_image_download_timeout");
+      }
+      throw new Error("fal_image_download_failed");
     }
-    throw new Error("fal_image_download_failed");
+    // 縱深：runtime 若仍回報了最終 URL，驗它沒有離開 allowlist
+    // （redirect:"error" 是主防線；手造 Response 的 url 為空字串則略過）。
+    if (response.url && !isAllowedFalCdnUrl(response.url)) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error("fal_image_untrusted_url");
+    }
+    if (!response.ok) {
+      await response.text().catch(() => {});
+      throw new Error("fal_image_download_failed");
+    }
+    // MIME 驗證：**只收 image/jpeg**（第二輪複審 P2-3：我們指定
+    // output_format=jpeg，寫入的副檔名與 contentType 也是 jpeg，不收異類）。
+    const contentType = (response.headers.get("content-type") ?? "")
+      .split(";")[0].trim().toLowerCase();
+    if (contentType !== "image/jpeg") {
+      await response.body?.cancel().catch(() => {});
+      throw new Error("fal_image_bad_content_type");
+    }
+    // 大小硬上限做兩層：Content-Length 預檢（省流量），再流式累計硬擋
+    // （header 可缺可謊，不能只信 header）。異常大回應不落入記憶體。
+    const declaredLength = Number(response.headers.get("content-length") ?? "");
+    if (Number.isFinite(declaredLength) && declaredLength > MOMENT_IMAGE_MAX_BYTES) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error("fal_image_too_large");
+    }
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("fal_image_download_failed");
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.byteLength;
+        if (received > MOMENT_IMAGE_MAX_BYTES) {
+          await reader.cancel().catch(() => {});
+          throw new Error("fal_image_too_large");
+        }
+        chunks.push(value);
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message === "fal_image_too_large") throw e;
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new Error("fal_image_download_timeout");
+      }
+      throw new Error("fal_image_download_failed");
+    }
+    const bytes = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    // magic bytes：JPEG 必以 FF D8 FF 開頭——contentType header 可謊，
+    // 位元組不會。
+    if (
+      bytes.byteLength < 3 ||
+      bytes[0] !== 0xFF || bytes[1] !== 0xD8 || bytes[2] !== 0xFF
+    ) {
+      throw new Error("fal_image_bad_magic");
+    }
+    // 黑圖保險：safety checker 之外的第二層——全黑 jpeg 遠小於正常場景圖。
+    if (bytes.byteLength < MOMENT_IMAGE_MIN_BYTES) {
+      throw new Error("fal_image_too_small");
+    }
+    return bytes;
   } finally {
     clearTimeout(timer);
   }
-  if (!response.ok) {
-    await response.text().catch(() => {});
-    throw new Error("fal_image_download_failed");
-  }
-  // MIME 驗證：只收 jpeg/png（我們指定 output_format=jpeg；png 留容錯）。
-  const contentType = (response.headers.get("content-type") ?? "")
-    .split(";")[0].trim().toLowerCase();
-  if (contentType !== "image/jpeg" && contentType !== "image/png") {
-    await response.body?.cancel().catch(() => {});
-    throw new Error("fal_image_bad_content_type");
-  }
-  // 大小硬上限做兩層：Content-Length 預檢（省流量），再流式累計硬擋
-  // （header 可缺可謊，不能只信 header）。異常大回應不落入記憶體。
-  const declaredLength = Number(response.headers.get("content-length") ?? "");
-  if (Number.isFinite(declaredLength) && declaredLength > MOMENT_IMAGE_MAX_BYTES) {
-    await response.body?.cancel().catch(() => {});
-    throw new Error("fal_image_too_large");
-  }
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("fal_image_download_failed");
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      received += value.byteLength;
-      if (received > MOMENT_IMAGE_MAX_BYTES) {
-        await reader.cancel().catch(() => {});
-        throw new Error("fal_image_too_large");
-      }
-      chunks.push(value);
-    }
-  } catch (e) {
-    if (e instanceof Error && e.message === "fal_image_too_large") throw e;
-    if (e instanceof DOMException && e.name === "AbortError") {
-      throw new Error("fal_image_download_timeout");
-    }
-    throw new Error("fal_image_download_failed");
-  }
-  const bytes = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  // 黑圖保險：safety checker 之外的第二層——全黑 jpeg 遠小於正常場景圖。
-  if (bytes.byteLength < MOMENT_IMAGE_MIN_BYTES) {
-    throw new Error("fal_image_too_small");
-  }
-  return bytes;
 }
 
-/** 上傳 timeout：注入的 uploadImage 沒有自帶死線，這裡統一包。 */
+/**
+ * 上傳 timeout。底層 supabase-js 上傳收不到取消訊號，所以 timeout 是
+ * 「本 job 放棄等待」而不是「上傳被中止」——安全性由兩件事保證
+ * （第二輪複審 P1-1）：
+ * 1. 物件路徑以 token 隔離：晚到的上傳只會寫到**自己的**路徑，物理上
+ *    碰不到 winner 的物件，也不可能在清理後重建 committed 物件。
+ * 2. 晚到的上傳完成後**自刪**（best effort）：race 輸掉時在原 promise 上
+ *    掛 removeImage，孤兒不落地；失敗再由日期 prefix 對帳兜底。
+ */
 async function uploadWithTimeout(
   deps: MomentImageGenDeps,
   path: string,
@@ -456,16 +518,28 @@ async function uploadWithTimeout(
   contentType: string,
 ): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const upload = deps.uploadImage(path, bytes, contentType);
   try {
     await Promise.race([
-      deps.uploadImage(path, bytes, contentType),
+      upload,
       new Promise<never>((_, reject) => {
         timer = setTimeout(
           () => reject(new Error("fal_image_upload_timeout")),
-          MOMENT_IMAGE_UPLOAD_TIMEOUT_MS,
+          deps.uploadTimeoutMs ?? MOMENT_IMAGE_UPLOAD_TIMEOUT_MS,
         );
       }),
     ]);
+  } catch (e) {
+    if (e instanceof Error && e.message === "fal_image_upload_timeout") {
+      // 晚到的上傳完成後自刪；上傳本身失敗則無物件可刪，吞掉即可。
+      upload
+        .then(() => deps.removeImage(path))
+        .catch(() => {});
+    } else {
+      // 上傳自身失敗：確保 race 的 rejection 不外洩成 unhandled。
+      upload.catch(() => {});
+    }
+    throw e;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
@@ -551,7 +625,7 @@ export async function generateMomentImage(opts: {
       seed: momentImageSeed(job.profileId, job.isoDate, job.slot),
     });
     const bytes = await downloadImage(deps, imageUrl);
-    const path = momentImagePath(job.isoDate, job.profileId, job.slot);
+    const path = momentImagePath(job.isoDate, job.profileId, job.slot, token);
     try {
       await uploadWithTimeout(deps, path, bytes, "image/jpeg");
     } catch (e) {
@@ -561,12 +635,18 @@ export async function generateMomentImage(opts: {
 
     const { data, error } = await supabase.rpc(
       "commit_practice_moment_image",
-      { ...jobParams, p_image_token: token, p_image_path: path },
+      {
+        ...jobParams,
+        p_image_token: token,
+        p_image_path: path,
+        p_expiry_before: expiryBefore,
+      },
     );
     const row = Array.isArray(data) ? (data[0] as Row | undefined) : null;
     if (error || row?.committed !== true) {
-      // token fencing 打回（被接手）：物件已 upsert 到決定論 key，
-      // 成功者會覆寫同一 key，無孤兒；不 release（token 已不是我的）。
+      // token fencing 或出窗守衛打回：物件在自己的 token 路徑上，碰不到
+      // winner；自刪收掉（best effort），不 release（token 已不是我的）。
+      await deps.removeImage(path).catch(() => {});
       logWarn("practice_moment_image_commit_rejected", {
         profileId: job.profileId,
         slot: job.slot,

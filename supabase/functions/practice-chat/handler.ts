@@ -1941,13 +1941,29 @@ export function createPracticeChatHandler(
                     };
                   };
                 };
+                // upsert:false——路徑以 token 隔離、永不覆寫（複審 P1-1）。
                 const { error } = await storageClient.storage
                   .from(MOMENT_IMAGE_BUCKET)
-                  .upload(path, bytes, { contentType, upsert: true });
+                  .upload(path, bytes, { contentType, upsert: false });
                 if (error) {
                   // provider/基礎設施細節不進錯誤訊息（logger 端統一分類）。
                   throw new Error("storage_upload_failed");
                 }
+              },
+              removeImage: async (path) => {
+                const storageClient = supabase as unknown as {
+                  storage: {
+                    from(bucket: string): {
+                      remove(
+                        paths: readonly string[],
+                      ): Promise<{ error: { message: string } | null }>;
+                    };
+                  };
+                };
+                const { error } = await storageClient.storage
+                  .from(MOMENT_IMAGE_BUCKET)
+                  .remove([path]);
+                if (error) throw new Error("storage_remove_failed");
               },
             }
             : undefined,
