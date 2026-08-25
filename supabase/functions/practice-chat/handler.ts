@@ -1951,6 +1951,23 @@ export function createPracticeChatHandler(
               },
             }
             : undefined,
+          imageSweep: {
+            removeImages: async (paths) => {
+              const storageClient = supabase as unknown as {
+                storage: {
+                  from(bucket: string): {
+                    remove(
+                      paths: readonly string[],
+                    ): Promise<{ error: { message: string } | null }>;
+                  };
+                };
+              };
+              const { error } = await storageClient.storage
+                .from(MOMENT_IMAGE_BUCKET)
+                .remove(paths);
+              if (error) throw new Error("storage_remove_failed");
+            },
+          },
         },
       });
       return jsonResponse(momentsResult.body, momentsResult.status);

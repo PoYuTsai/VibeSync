@@ -41,6 +41,10 @@ import {
   type MomentImageGenDeps,
   type MomentImageJob,
 } from "./moments_image_gen.ts";
+import {
+  type MomentImageSweepDeps,
+  sweepExpiredMomentImages,
+} from "./moments_image_sweep.ts";
 import { momentPostedAtFor } from "./moments_time.ts";
 import { buildMomentMessages } from "./moments_prompt.ts";
 import { validateMomentDraft } from "./moments_validate.ts";
@@ -113,6 +117,11 @@ export interface MomentsHandlerDeps {
    * 獨立：已生成的圖在開關關閉後仍要露出。
    */
   storagePublicUrlBase?: string;
+  /**
+   * 過期清掃的注入點（PR-4）。與 imageGen 開關獨立：生成關掉之後，
+   * 既有的圖出窗一樣要刪。undefined＝不清掃（測試環境）。
+   */
+  imageSweep?: MomentImageSweepDeps;
 }
 
 export interface MomentsHandlerResult {
@@ -365,6 +374,7 @@ export async function handlePracticeMoments(args: {
       isTestAccount,
       jobs: pendingImageJobs,
     });
+    scheduleImageSweep({ supabase, deps, isoDate: time.isoDate });
     return {
       body: {
         posts: sortPosts(posts),
@@ -434,6 +444,7 @@ export async function handlePracticeMoments(args: {
     isTestAccount,
     jobs: [...committedImageJobs, ...pendingImageJobs],
   });
+  scheduleImageSweep({ supabase, deps, isoDate: time.isoDate });
 
   logInfo("practice_moments_filled", {
     user: summarizeUser(userId),
@@ -496,6 +507,37 @@ function scheduleMomentImageJobs(args: {
   }
   logInfo("practice_moment_image_jobs", { scheduled: batch.length });
   return batch.length;
+}
+
+/** 把過期清掃丟進背景；deps.imageSweep 缺席（測試）就不掃。 */
+function scheduleImageSweep(args: {
+  supabase: MomentsSupabaseClient;
+  deps: MomentsHandlerDeps;
+  isoDate: string;
+}): void {
+  const sweep = args.deps.imageSweep;
+  if (!sweep) return;
+  const task = sweepExpiredMomentImages({
+    supabase: args.supabase,
+    deps: sweep,
+    isoDate: args.isoDate,
+  }).then(() => {});
+  try {
+    if (args.deps.waitUntil) {
+      args.deps.waitUntil(task);
+      return;
+    }
+    const edgeRuntime = (globalThis as unknown as {
+      EdgeRuntime?: { waitUntil(task: Promise<void>): void };
+    }).EdgeRuntime;
+    if (edgeRuntime?.waitUntil) {
+      edgeRuntime.waitUntil(task);
+      return;
+    }
+  } catch {
+    // 排程器失敗不得影響 feed 回應。
+  }
+  void task;
 }
 
 function sortPosts(posts: MomentFeedPost[]): MomentFeedPost[] {

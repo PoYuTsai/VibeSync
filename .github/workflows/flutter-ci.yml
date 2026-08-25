@@ -74,6 +74,7 @@ jobs:
           supabase/functions/practice-chat/moments_dispatch_test.ts
           supabase/functions/practice-chat/moments_image_gen_test.ts
           supabase/functions/practice-chat/moments_image_flow_test.ts
+          supabase/functions/practice-chat/moments_image_sweep_test.ts
           supabase/functions/practice-chat/visible_text_guard_test.ts
           supabase/functions/practice-chat/moments_memory_test.ts
           supabase/functions/practice-chat/index_test.ts
