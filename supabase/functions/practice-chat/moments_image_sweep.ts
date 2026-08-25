@@ -20,19 +20,13 @@ import {
   MOMENT_IMAGE_SWEEP_LIMIT,
 } from "./moments_constants.ts";
 import type { MomentsImageRpcClient } from "./moments_image_gen.ts";
+import { shiftIsoDate } from "./moments_handler.ts";
 
 /** Storage 操作的注入點；真實作在 handler.ts 用 supabase-js。 */
 export interface MomentImageSweepDeps {
   removeImages: (paths: readonly string[]) => Promise<void>;
   /** 列出某個日期 prefix 下的物件 key（完整 path）。 */
   listImages: (prefix: string) => Promise<readonly string[]>;
-}
-
-/** shiftIsoDate 的極簡版（moments_handler 內的同名 helper 未 export）。 */
-function shiftIsoDate(isoDate: string, deltaDays: number): string {
-  const base = new Date(`${isoDate}T00:00:00.000Z`);
-  base.setUTCDate(base.getUTCDate() + deltaDays);
-  return base.toISOString().slice(0, 10);
 }
 
 /**
@@ -117,40 +111,47 @@ export async function sweepExpiredMomentImages(opts: {
 }
 
 /**
- * Durable 孤兒對帳（第三輪複審 P2）：token 隔離路徑下，晚到上傳與失敗
- * 路徑的自刪都是 best effort（Edge 實例可能先回收）。這裡把兜底做成
- * 可重複執行的系統保證：每次清掃順手 list 剛出窗 K 天的日期 prefix，
- * **殘留的任何物件一律刪除**——出窗日期的圖本來就不該露出；仍為 ready
- * 的列（標記失敗的殘局）物件被刪後，下一輪主清掃會重列、冪等重刪並
- * 完成標記，最終一致。失敗只記錄，下一個請求自然重試。
+ * 孤兒對帳兜底（第三輪複審 P2；作者側終審再校準）：token 隔離路徑下，
+ * 晚到上傳與失敗路徑的自刪都是 best effort（Edge 實例可能先回收）。
+ * 這裡把兜底做成**可重複執行**的對帳：list 剛出窗 K 天內的一個日期
+ * prefix，殘留的任何物件一律刪除——出窗日期的圖本來就不該露出；仍為
+ * ready 的列（標記失敗的殘局）物件被刪後，下一輪主清掃會重列、冪等
+ * 重刪並完成標記，最終一致。
+ *
+ * 每次請求只掃**一個** prefix（依 UTC 小時在 K 天帶內輪替）——~11 物件/天
+ * 的量不值得每請求打 K 次 Storage list。誠實的邊界：這是「有流量就終會
+ * 清掉」的最終一致兜底，**不是絕對保證**——feed 零流量超過 K 天的殘留
+ * 孤兒會滑出掃描帶，由 orphans_swept／orphan_sweep_error 觀測記錄與
+ * 手動 prefix 對帳接手（設計文件 §8）。
  */
 export async function sweepOrphanMomentImages(opts: {
   deps: MomentImageSweepDeps;
   /** 台北今日（taipeiTimeContextFor(now).isoDate）。 */
   isoDate: string;
+  /** 測試注入：固定輪替位移（1..K）。預設依 UTC 小時輪替。 */
+  prefixOffset?: number;
 }): Promise<number> {
   const { deps, isoDate } = opts;
   const before = shiftIsoDate(isoDate, -(FEED_WINDOW_DAYS - 1));
-  let deleted = 0;
-  for (let offset = 1; offset <= MOMENT_IMAGE_ORPHAN_SWEEP_DAYS; offset++) {
-    const prefix = shiftIsoDate(before, -offset);
-    try {
-      const orphans = await deps.listImages(prefix);
-      if (orphans.length === 0) continue;
-      await deps.removeImages(orphans);
-      deleted += orphans.length;
-      logInfo("practice_moment_image_orphans_swept", {
-        prefix,
-        deleted: orphans.length,
-      });
-    } catch (e) {
-      logWarn("practice_moment_image_orphan_sweep_error", {
-        prefix,
-        error: e instanceof Error ? e.message : "unknown",
-      });
-    }
+  const offset = opts.prefixOffset ??
+    (1 + (new Date().getUTCHours() % MOMENT_IMAGE_ORPHAN_SWEEP_DAYS));
+  const prefix = shiftIsoDate(before, -offset);
+  try {
+    const orphans = await deps.listImages(prefix);
+    if (orphans.length === 0) return 0;
+    await deps.removeImages(orphans);
+    logInfo("practice_moment_image_orphans_swept", {
+      prefix,
+      deleted: orphans.length,
+    });
+    return orphans.length;
+  } catch (e) {
+    logWarn("practice_moment_image_orphan_sweep_error", {
+      prefix,
+      error: e instanceof Error ? e.message : "unknown",
+    });
+    return 0;
   }
-  return deleted;
 }
 
 type Row = Record<string, unknown>;

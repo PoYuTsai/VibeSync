@@ -300,6 +300,7 @@ Deno.test("guard migration：權限樣板、overload 稽核與 NOTIFY 齊全", (
     const name of [
       "claim_practice_moment_image",
       "commit_practice_moment_image",
+      "release_practice_moment_image",
     ] as const
   ) {
     assert(
@@ -319,13 +320,13 @@ Deno.test("guard migration：DB 端 cutoff 的關鍵寫入都在（第三輪修�
   const cutoffDecls = [...executableGuard.matchAll(
     /AT TIME ZONE INTERVAL '8 hours'\)::date - (\d+)\)/g,
   )];
-  assertEquals(cutoffDecls.length, 2, "claim 與 commit 都必須自算 cutoff");
+  assertEquals(cutoffDecls.length, 3, "claim／commit／release 都必須自算 cutoff");
   for (const match of cutoffDecls) {
     assertEquals(Number(match[1]), FEED_WINDOW_DAYS - 1);
   }
   const guardHits =
     [...executableGuard.matchAll(/v_row\.post_date < v_expiry_cutoff/g)].length;
-  assertEquals(guardHits, 2, "claim 與 commit 都必須帶出窗判定");
+  assertEquals(guardHits, 3, "claim／commit／release 都必須帶出窗判定");
   assert(
     !executableGuard.includes("p_expiry_before"),
     "cutoff 不得由呼叫端傳入（跨台北午夜會吃到舊值）",

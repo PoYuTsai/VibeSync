@@ -868,6 +868,32 @@ Deno.test("PostgreSQL full interleaving: claimed pending crosses Taipei midnight
   }
 });
 
+Deno.test("PostgreSQL release after crossing the cutoff finalizes the row as failed", async () => {
+  const db = await createDatabase();
+  try {
+    // 窗內認領後時間流逝跨過午夜（post_date 位移等價變換），worker 的
+    // fal 呼叫失敗走 release——出窗列必須收成 failed，不得放回 pending
+    //（feed 不再列出窗列，pending 等於永久擱淺）。
+    await seedPost(db, { wantsImage: true });
+    assertEquals((await claimImage(db, "t-cross")).claimed, true);
+    const expiredDate = await shiftRowPostDate(db, 20);
+
+    const released = await db.query<{ released: boolean }>(
+      `SELECT released FROM public.release_practice_moment_image(
+         $1, $2::DATE, $3, $4
+       )`,
+      [PROFILE_ID, expiredDate, SLOT, "t-cross"],
+    );
+    assertEquals(released.rows[0].released, true);
+    const row = await readRowAt(db, expiredDate);
+    assertEquals(row.image_status, "failed", "出窗的 release 必須收成終態");
+    assertEquals(row.image_token, null);
+    assertEquals(row.image_attempts, 1, "release 絕不回收 attempts");
+  } finally {
+    await db.close();
+  }
+});
+
 Deno.test("PostgreSQL image lease default matches the TS constant", async () => {
   const db = await createDatabase();
   try {

@@ -123,13 +123,18 @@ Deno.test("物件 key 以 token 隔離且 seed 是決定論", () => {
     "不同 token 必須寫不同物件（晚到上傳碰不到 winner）",
   );
   assertEquals(
-    momentImageSeed("practice_girl_007", "2026-08-25", 0),
-    momentImageSeed("practice_girl_007", "2026-08-25", 0),
+    momentImageSeed("practice_girl_007", "2026-08-25", 0, 1),
+    momentImageSeed("practice_girl_007", "2026-08-25", 0, 1),
   );
   assert(
-    momentImageSeed("practice_girl_007", "2026-08-25", 0) !==
-      momentImageSeed("practice_girl_007", "2026-08-25", 1),
+    momentImageSeed("practice_girl_007", "2026-08-25", 0, 1) !==
+      momentImageSeed("practice_girl_007", "2026-08-25", 1, 1),
     "不同 slot 的 seed 必須不同",
+  );
+  assert(
+    momentImageSeed("practice_girl_007", "2026-08-25", 0, 1) !==
+      momentImageSeed("practice_girl_007", "2026-08-25", 0, 2),
+    "不同 attempt 的 seed 必須不同——內容相依的失敗重試才有意義",
   );
 });
 
@@ -375,7 +380,8 @@ Deno.test("成功路徑：claim → 場景句 → fal → 下載 → 上傳 → 
   assertEquals(falCall.body.enable_safety_checker, true);
   assertEquals(
     falCall.body.seed,
-    momentImageSeed(JOB.profileId, JOB.isoDate, JOB.slot),
+    momentImageSeed(JOB.profileId, JOB.isoDate, JOB.slot, 1),
+    "seed 必須混入 claim 回傳的 attempt（重試才不會生出同一張再失敗一次）",
   );
   const prompt = String(falCall.body.prompt);
   assert(prompt.startsWith(MOMENT_IMAGE_STYLE_PREFIX));
@@ -660,7 +666,9 @@ Deno.test("magic bytes 不是 JPEG：header 說謊也擋，release 收場", asyn
   assertEquals(harness.uploads.length, 0);
 });
 
-Deno.test("上傳成功後 commit RPC 拋錯：自刪物件並 release（第三輪 P2）", async () => {
+Deno.test("commit RPC 拋錯（結果不確定）：保留物件、release 收場", async () => {
+  // DB 可能其實已 commit（回應在路上丟了）；刪物件會讓 ready 列指向 404
+  // 一整個窗期（作者側終審修正）。孤兒情況由出窗 prefix 對帳兜底。
   const harness = makeJobHarness({ commitThrows: true });
   await runJob(harness);
   assertEquals(rpcNames(harness), [
@@ -670,8 +678,8 @@ Deno.test("上傳成功後 commit RPC 拋錯：自刪物件並 release（第三�
   ]);
   assertEquals(
     harness.removals,
-    [TOKEN_PATH],
-    "commit 炸掉時已上傳的物件必須被收掉",
+    [],
+    "結果不確定時絕不刪物件——它可能已被 DB 引用",
   );
 });
 

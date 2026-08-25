@@ -311,13 +311,18 @@ export function momentImagePath(
   return `${isoDate}/${profileId}_${slot}_${imageToken}.jpeg`;
 }
 
-/** fal 的 seed：沿用排程層的種子哲學，重試時輸出接近可重現。 */
+/**
+ * fal 的 seed：沿用排程層的種子哲學（同輸入可重現），但混入 attempt——
+ * 內容相依的失敗（NSFW 命中、黑圖）若用同 seed 重試，會生出同一張圖、
+ * 以同一種方式再失敗，第二次 attempt 等於白燒（作者側終審發現）。
+ */
 export function momentImageSeed(
   profileId: string,
   isoDate: string,
   slot: number,
+  attempt: number,
 ): number {
-  return fnv1a(`${profileId}|${isoDate}|${slot}|image_seed`);
+  return fnv1a(`${profileId}|${isoDate}|${slot}|image_seed|${attempt}`);
 }
 
 // ── fal.ai client（錯誤分類照 deepseek.ts 模板；provider body 不進錯誤訊息）──
@@ -572,6 +577,7 @@ export async function generateMomentImage(opts: {
 
   let claimedBody: string;
   let claimedThemeId: string;
+  let claimedAttempt: number;
   try {
     const { data, error } = await supabase.rpc("claim_practice_moment_image", {
       ...jobParams,
@@ -596,6 +602,7 @@ export async function generateMomentImage(opts: {
     if (!row || row.claimed !== true) return;
     claimedBody = typeof row.body === "string" ? row.body : "";
     claimedThemeId = typeof row.theme_id === "string" ? row.theme_id : "";
+    claimedAttempt = typeof row.attempt_count === "number" ? row.attempt_count : 1;
     if (claimedBody.length === 0) {
       // 理論上不可達（claim 只放行 status='ready'，ready 必有 body）。
       await releaseImage(supabase, jobParams, token, job);
@@ -620,7 +627,7 @@ export async function generateMomentImage(opts: {
     const imageUrl = await callFalSchnell({
       deps,
       prompt: buildImagePrompt(scene),
-      seed: momentImageSeed(job.profileId, job.isoDate, job.slot),
+      seed: momentImageSeed(job.profileId, job.isoDate, job.slot, claimedAttempt),
     });
     const bytes = await downloadImage(deps, imageUrl);
     const path = momentImagePath(job.isoDate, job.profileId, job.slot, token);
@@ -632,30 +639,53 @@ export async function generateMomentImage(opts: {
       throw new Error("fal_image_upload_failed");
     }
 
-    const { data, error } = await supabase.rpc(
-      "commit_practice_moment_image",
-      { ...jobParams, p_image_token: token, p_image_path: path },
-    );
-    const row = Array.isArray(data) ? (data[0] as Row | undefined) : null;
-    if (error || row?.committed !== true) {
-      // token fencing 或出窗守衛打回：物件在自己的 token 路徑上，碰不到
-      // winner；自刪收掉（best effort），不 release（token 已不是我的）。
+    // commit 的結果分三態（作者側終審修正）：
+    //   true  → 成功。
+    //   false → **確定**被 fencing／出窗守衛打回：物件在自己的 token 路徑，
+    //           自刪收掉；不 release（token 已不是我的）。
+    //   不確定（RPC error／throw）→ **絕不刪物件**：DB 可能其實已 commit
+    //           （回應在路上丟了），刪掉會讓 ready 列指向 404 一整個窗期。
+    //           若 commit 真的沒成，物件是 token 路徑孤兒，出窗 prefix 對帳
+    //           會清；release 有 fence 保護（已 commit 的列 token 已清空，
+    //           release 自然無效），怎麼走都安全。
+    let committed: boolean | null = null;
+    try {
+      const { data, error } = await supabase.rpc(
+        "commit_practice_moment_image",
+        { ...jobParams, p_image_token: token, p_image_path: path },
+      );
+      if (!error) {
+        const row = Array.isArray(data) ? (data[0] as Row | undefined) : null;
+        committed = row?.committed === true;
+      }
+    } catch {
+      committed = null;
+    }
+    if (committed === true) {
+      logInfo("practice_moment_image_committed", {
+        profileId: job.profileId,
+        slot: job.slot,
+        bytes: bytes.byteLength,
+      });
+      return;
+    }
+    if (committed === false) {
       await deps.removeImage(path).catch(() => {});
       logWarn("practice_moment_image_commit_rejected", {
         profileId: job.profileId,
         slot: job.slot,
-        error: error?.message ?? "not_committed",
+        error: "not_committed",
       });
       return;
     }
-    logInfo("practice_moment_image_committed", {
+    await releaseImage(supabase, jobParams, token, job);
+    logWarn("practice_moment_image_commit_indeterminate", {
       profileId: job.profileId,
       slot: job.slot,
-      bytes: bytes.byteLength,
     });
   } catch (e) {
-    // 上傳成功後才失敗（含 commit RPC throw）：物件已在自己的 token 路徑上，
-    // 自刪收掉（best effort；durable 兜底是 sweep 的出窗 prefix 對帳）。
+    // 上傳前或上傳本身失敗（commit 的三態已在上面自行收斂，不會 throw 到
+    // 這裡）；uploadedPath 非 null 只剩理論路徑，保守自刪。
     if (uploadedPath !== null) {
       await deps.removeImage(uploadedPath).catch(() => {});
     }

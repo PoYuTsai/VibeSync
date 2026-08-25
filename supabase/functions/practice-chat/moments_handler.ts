@@ -169,7 +169,7 @@ function isoDateOf(value: unknown): string | null {
 }
 
 /** 台北日往前推 N 天（feed 視窗的起點）。 */
-function shiftIsoDate(isoDate: string, days: number): string {
+export function shiftIsoDate(isoDate: string, days: number): string {
   const shifted = new Date(`${isoDate}T00:00:00.000Z`);
   shifted.setUTCDate(shifted.getUTCDate() + days);
   return shifted.toISOString().slice(0, 10);
@@ -481,55 +481,33 @@ function scheduleMomentImageJobs(args: {
   if (!imageGen || args.jobs.length === 0) return 0;
   const batch = args.jobs.slice(0, MOMENT_IMAGE_FILL_MAX_PER_REQUEST);
   for (const job of batch) {
-    const task = generateMomentImage({
-      supabase: args.supabase,
-      deps: imageGen,
-      job,
-      userId: args.userId,
-      isTestAccount: args.isTestAccount,
-    });
-    try {
-      if (args.deps.waitUntil) {
-        args.deps.waitUntil(task);
-        continue;
-      }
-      const edgeRuntime = (globalThis as unknown as {
-        EdgeRuntime?: { waitUntil(task: Promise<void>): void };
-      }).EdgeRuntime;
-      if (edgeRuntime?.waitUntil) {
-        edgeRuntime.waitUntil(task);
-        continue;
-      }
-    } catch {
-      // 排程器失敗不得影響 feed 回應。
-    }
-    // 本機測試沒有 EdgeRuntime；job 自吞錯誤，detach 不會 unhandled rejection。
-    void task;
+    scheduleBackground(
+      args.deps,
+      generateMomentImage({
+        supabase: args.supabase,
+        deps: imageGen,
+        job,
+        userId: args.userId,
+        isTestAccount: args.isTestAccount,
+      }),
+    );
   }
   logInfo("practice_moment_image_jobs", { scheduled: batch.length });
   return batch.length;
 }
 
-/** 把過期清掃丟進背景；deps.imageSweep 缺席（測試）就不掃。 */
-function scheduleImageSweep(args: {
-  supabase: MomentsSupabaseClient;
-  deps: MomentsHandlerDeps;
-  isoDate: string;
-}): void {
-  const sweep = args.deps.imageSweep;
-  if (!sweep) return;
-  // 主清掃（DB 引用的出窗圖）後接孤兒對帳（出窗 prefix 的殘留物件），
-  // 同一個背景 task、同在 waitUntil 生命週期內。
-  const task = sweepExpiredMomentImages({
-    supabase: args.supabase,
-    deps: sweep,
-    isoDate: args.isoDate,
-  }).then(() =>
-    sweepOrphanMomentImages({ deps: sweep, isoDate: args.isoDate })
-  ).then(() => {});
+/**
+ * 把背景 task 掛上 EdgeRuntime.waitUntil（範式同 handler.ts 的 telemetry；
+ * 生圖與清掃兩個排程點共用這一份，不再各自複製退路邏輯）。
+ * task 必須自吞錯誤；排程器失敗不得影響 feed 回應。
+ */
+function scheduleBackground(
+  deps: MomentsHandlerDeps,
+  task: Promise<void>,
+): void {
   try {
-    if (args.deps.waitUntil) {
-      args.deps.waitUntil(task);
+    if (deps.waitUntil) {
+      deps.waitUntil(task);
       return;
     }
     const edgeRuntime = (globalThis as unknown as {
@@ -542,7 +520,30 @@ function scheduleImageSweep(args: {
   } catch {
     // 排程器失敗不得影響 feed 回應。
   }
+  // 本機測試沒有 EdgeRuntime；task 自吞錯誤，detach 不會 unhandled rejection。
   void task;
+}
+
+/** 把過期清掃丟進背景；deps.imageSweep 缺席（測試）就不掃。 */
+function scheduleImageSweep(args: {
+  supabase: MomentsSupabaseClient;
+  deps: MomentsHandlerDeps;
+  isoDate: string;
+}): void {
+  const sweep = args.deps.imageSweep;
+  if (!sweep) return;
+  // 主清掃（DB 引用的出窗圖）後接孤兒對帳（出窗 prefix 的殘留物件），
+  // 同一個背景 task、同在 waitUntil 生命週期內。
+  scheduleBackground(
+    args.deps,
+    sweepExpiredMomentImages({
+      supabase: args.supabase,
+      deps: sweep,
+      isoDate: args.isoDate,
+    }).then(() =>
+      sweepOrphanMomentImages({ deps: sweep, isoDate: args.isoDate })
+    ).then(() => {}),
+  );
 }
 
 function sortPosts(posts: MomentFeedPost[]): MomentFeedPost[] {

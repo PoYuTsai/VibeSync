@@ -170,7 +170,7 @@ Deno.test("標記失敗：回 0（物件已刪，冪等重刪後下輪重標）"
 // Durable 孤兒對帳（第三輪複審 P2）：出窗 prefix 的殘留物件一律刪除
 // ---------------------------------------------------------------------------
 
-Deno.test("orphan 對帳：掃剛出窗 K 天的 prefix，殘留物件全刪", async () => {
+Deno.test("orphan 對帳：每次掃輪替帶內的一個出窗 prefix，殘留物件全刪", async () => {
   const windowStart = "2026-08-12"; // isoDate 2026-08-25、FEED_WINDOW_DAYS=14
   const orphanPath = "2026-08-11/practice_girl_009_1_dead-token.jpeg";
   const harness = makeSweepHarness({
@@ -179,24 +179,39 @@ Deno.test("orphan 對帳：掃剛出窗 K 天的 prefix，殘留物件全刪", a
   const deleted = await sweepOrphanMomentImages({
     deps: harness.deps,
     isoDate: ISO_DATE,
+    prefixOffset: 1,
   });
   assertEquals(deleted, 1);
-  // 掃描範圍：窗起點往前 K 天，每一天一個 prefix。
-  assertEquals(
-    harness.listedPrefixes.length,
-    MOMENT_IMAGE_ORPHAN_SWEEP_DAYS,
-  );
-  for (const prefix of harness.listedPrefixes) {
-    assert(prefix < windowStart, `只掃出窗日期，實際掃到 ${prefix}`);
-  }
+  // 每請求只掃一個 prefix（依小時在 K 天帶內輪替；此處注入 offset=1）。
+  assertEquals(harness.listedPrefixes, ["2026-08-11"]);
+  assert(harness.listedPrefixes[0] < windowStart, "只掃出窗日期");
   assertEquals(harness.removed, [[orphanPath]]);
 });
 
-Deno.test("orphan 對帳：list 失敗只記錄，不影響其他 prefix 也不拋錯", async () => {
+Deno.test("orphan 對帳：輪替位移落在 1..K 帶內", async () => {
+  for (let offset = 1; offset <= MOMENT_IMAGE_ORPHAN_SWEEP_DAYS; offset++) {
+    const harness = makeSweepHarness({});
+    await sweepOrphanMomentImages({
+      deps: harness.deps,
+      isoDate: ISO_DATE,
+      prefixOffset: offset,
+    });
+    assertEquals(harness.listedPrefixes.length, 1);
+    assert(harness.listedPrefixes[0] < "2026-08-12");
+  }
+  // 未注入時（production 路徑）也必須恰好掃一個帶內 prefix。
+  const live = makeSweepHarness({});
+  await sweepOrphanMomentImages({ deps: live.deps, isoDate: ISO_DATE });
+  assertEquals(live.listedPrefixes.length, 1);
+  assert(live.listedPrefixes[0] < "2026-08-12");
+});
+
+Deno.test("orphan 對帳：list 失敗只記錄、不拋錯", async () => {
   const harness = makeSweepHarness({ listFails: true });
   const deleted = await sweepOrphanMomentImages({
     deps: harness.deps,
     isoDate: ISO_DATE,
+    prefixOffset: 1,
   });
   assertEquals(deleted, 0);
   assertEquals(harness.removed.length, 0);
@@ -207,6 +222,7 @@ Deno.test("orphan 對帳：零殘留時零刪除呼叫", async () => {
   const deleted = await sweepOrphanMomentImages({
     deps: harness.deps,
     isoDate: ISO_DATE,
+    prefixOffset: 1,
   });
   assertEquals(deleted, 0);
   assertEquals(harness.removed.length, 0);

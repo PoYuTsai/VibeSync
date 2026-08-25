@@ -14,6 +14,9 @@
 -- 2. 慢 worker 跨過台北午夜後的晚到 commit 也被**當下的** cutoff 拒絕——
 --    request 開始時算的舊日期救不了它；被拒的同時列一併收屍
 --    （pending → 'failed'、清 token），不留永遠沒人認領的 pending。
+-- 3. release 同樣以當下 cutoff 判定：跨午夜後的失敗 release 直接收成
+--    'failed'（而不是放回 pending）——出窗列不會再被 feed 接手，放回
+--    pending 等於永久擱淺（作者側終審補上，與 claim/commit 對稱）。
 --
 -- 有了這兩道，清理期間出窗列的 image 欄位組只有 mark 自己能動，
 -- 「list 之後列被取代」在資料層構造上不可達；競態測試（含走正式呼叫鏈的
@@ -349,6 +352,122 @@ GRANT EXECUTE ON FUNCTION public.commit_practice_moment_image(
 ALTER FUNCTION public.commit_practice_moment_image(
   TEXT, DATE, INTEGER, TEXT, TEXT
 ) SECURITY DEFINER;
+
+-- ---------------------------------------------------------------------------
+-- release_practice_moment_image：出窗的失敗 release 直接收成 'failed'
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_unexpected TEXT;
+BEGIN
+  SELECT string_agg(p.oid::regprocedure::TEXT, ', ' ORDER BY p.oid::regprocedure::TEXT)
+  INTO v_unexpected
+  FROM pg_proc AS p
+  JOIN pg_namespace AS n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.proname = 'release_practice_moment_image'
+    AND p.oid NOT IN (
+      COALESCE(to_regprocedure(
+        'public.release_practice_moment_image(text,date,integer,text,integer)'
+      )::OID, 0::OID)
+    );
+
+  IF v_unexpected IS NOT NULL THEN
+    RAISE EXCEPTION
+      'release_practice_moment_image: unexpected overload(s): %',
+      v_unexpected;
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.release_practice_moment_image(
+  p_profile_id   TEXT,
+  p_post_date    DATE,
+  p_slot         INTEGER,
+  p_image_token  TEXT,
+  p_max_attempts INTEGER DEFAULT 2
+)
+RETURNS TABLE(released BOOLEAN)
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $$
+DECLARE
+  v_row           public.practice_moment_posts%ROWTYPE;
+  v_expiry_cutoff DATE := ((now() AT TIME ZONE INTERVAL '8 hours')::date - 13);
+BEGIN
+  IF p_profile_id IS NULL
+     OR char_length(p_profile_id) = 0
+     OR char_length(p_profile_id) > 64 THEN
+    RAISE EXCEPTION 'release_practice_moment_image: invalid p_profile_id';
+  END IF;
+  IF p_post_date IS NULL THEN
+    RAISE EXCEPTION 'release_practice_moment_image: p_post_date is required';
+  END IF;
+  IF p_slot IS NULL OR p_slot < 0 OR p_slot > 1 THEN
+    RAISE EXCEPTION 'release_practice_moment_image: invalid p_slot';
+  END IF;
+  IF p_image_token IS NULL
+     OR char_length(p_image_token) = 0
+     OR char_length(p_image_token) > 64 THEN
+    RAISE EXCEPTION 'release_practice_moment_image: invalid p_image_token';
+  END IF;
+  IF p_max_attempts IS NULL OR p_max_attempts <= 0 OR p_max_attempts > 2 THEN
+    RAISE EXCEPTION 'release_practice_moment_image: invalid p_max_attempts';
+  END IF;
+
+  SELECT mp.* INTO v_row
+  FROM public.practice_moment_posts AS mp
+  WHERE mp.profile_id = p_profile_id
+    AND mp.post_date = p_post_date
+    AND mp.slot = p_slot::SMALLINT
+  FOR UPDATE;
+
+  IF NOT FOUND
+     OR v_row.status <> 'ready'
+     OR v_row.image_status <> 'pending'
+     OR v_row.image_token IS NULL
+     OR v_row.image_token IS DISTINCT FROM p_image_token THEN
+    released := FALSE;
+    RETURN NEXT;
+    RETURN;
+  END IF;
+
+  -- 出窗的失敗 release 直接收成終態：出窗列不會再被 feed 接手，放回
+  -- pending 等於永久擱淺。三鐵則不變：絕不 DELETE 列、絕不動 body／
+  -- attempts／status、絕不回收 image_attempts。
+  UPDATE public.practice_moment_posts AS mp
+  SET image_status = CASE
+        WHEN v_row.post_date < v_expiry_cutoff THEN 'failed'
+        WHEN v_row.image_attempts >= p_max_attempts THEN 'failed'
+        ELSE 'pending'
+      END,
+      image_token = NULL,
+      updated_at = now()
+  WHERE mp.profile_id = p_profile_id
+    AND mp.post_date = p_post_date
+    AND mp.slot = p_slot::SMALLINT;
+
+  released := TRUE;
+  RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.release_practice_moment_image(
+  TEXT, DATE, INTEGER, TEXT, INTEGER
+) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.release_practice_moment_image(
+  TEXT, DATE, INTEGER, TEXT, INTEGER
+) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.release_practice_moment_image(
+  TEXT, DATE, INTEGER, TEXT, INTEGER
+) TO service_role;
+ALTER FUNCTION public.release_practice_moment_image(
+  TEXT, DATE, INTEGER, TEXT, INTEGER
+) SECURITY DEFINER;
+
+COMMENT ON FUNCTION public.release_practice_moment_image(TEXT, DATE, INTEGER, TEXT, INTEGER)
+IS 'Token-fenced release after a failed image generation. A row that crossed the Taipei expiry cutoff (judged against now() inside the function) is finalized as failed instead of returning to pending. Never deletes the row, never touches body or text attempts, never refunds image_attempts.';
 
 COMMENT ON FUNCTION public.commit_practice_moment_image(TEXT, DATE, INTEGER, TEXT, TEXT)
 IS 'Token-fenced commit of a stored generated image; a stale token or replay returns FALSE. A late commit that crossed the Taipei expiry cutoff (judged against now() inside the function) is refused and the row is finalized as failed so no orphan pending row survives.';

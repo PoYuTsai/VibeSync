@@ -568,6 +568,61 @@ async function persistGenerationTelemetryFailOpen(opts: {
   }
 }
 
+/**
+ * 動態生成配圖的 Storage 存取小轉接層：同一份型別宣告服務 upload／remove／
+ * list 四個注入點（provider／基礎設施細節不進錯誤訊息，logger 端統一分類）。
+ */
+function momentImageStorage(supabase: unknown): {
+  upload(
+    path: string,
+    bytes: Uint8Array,
+    contentType: string,
+  ): Promise<void>;
+  remove(paths: readonly string[]): Promise<void>;
+  list(prefix: string): Promise<readonly string[]>;
+} {
+  const client = supabase as {
+    storage: {
+      from(bucket: string): {
+        upload(
+          path: string,
+          body: Uint8Array,
+          options: { contentType: string; upsert: boolean },
+        ): Promise<{ error: { message: string } | null }>;
+        remove(
+          paths: readonly string[],
+        ): Promise<{ error: { message: string } | null }>;
+        list(
+          prefix: string,
+          options: { limit: number },
+        ): Promise<{
+          data: { name: string }[] | null;
+          error: { message: string } | null;
+        }>;
+      };
+    };
+  };
+  const bucket = () => client.storage.from(MOMENT_IMAGE_BUCKET);
+  return {
+    async upload(path, bytes, contentType) {
+      const { error } = await bucket().upload(path, bytes, {
+        contentType,
+        upsert: false,
+      });
+      if (error) throw new Error("storage_upload_failed");
+    },
+    async remove(paths) {
+      const { error } = await bucket().remove(paths);
+      if (error) throw new Error("storage_remove_failed");
+    },
+    async list(prefix) {
+      const { data, error } = await bucket().list(prefix, { limit: 100 });
+      if (error) throw new Error("storage_list_failed");
+      return (data ?? []).map((entry) => `${prefix}/${entry.name}`);
+    },
+  };
+}
+
 function scheduleGenerationTelemetry(
   deps: PracticeChatHandlerDeps,
   opts: Parameters<typeof persistGenerationTelemetryFailOpen>[0],
@@ -1929,80 +1984,16 @@ export function createPracticeChatHandler(
               falApiKey,
               deepSeekApiKey: momentsDeepSeekKey,
               callDeepSeek: deps.callDeepSeek,
-              uploadImage: async (path, bytes, contentType) => {
-                const storageClient = supabase as unknown as {
-                  storage: {
-                    from(bucket: string): {
-                      upload(
-                        path: string,
-                        body: Uint8Array,
-                        options: { contentType: string; upsert: boolean },
-                      ): Promise<{ error: { message: string } | null }>;
-                    };
-                  };
-                };
-                // upsert:false——路徑以 token 隔離、永不覆寫（複審 P1-1）。
-                const { error } = await storageClient.storage
-                  .from(MOMENT_IMAGE_BUCKET)
-                  .upload(path, bytes, { contentType, upsert: false });
-                if (error) {
-                  // provider/基礎設施細節不進錯誤訊息（logger 端統一分類）。
-                  throw new Error("storage_upload_failed");
-                }
-              },
-              removeImage: async (path) => {
-                const storageClient = supabase as unknown as {
-                  storage: {
-                    from(bucket: string): {
-                      remove(
-                        paths: readonly string[],
-                      ): Promise<{ error: { message: string } | null }>;
-                    };
-                  };
-                };
-                const { error } = await storageClient.storage
-                  .from(MOMENT_IMAGE_BUCKET)
-                  .remove([path]);
-                if (error) throw new Error("storage_remove_failed");
-              },
+              // upsert:false——路徑以 token 隔離、永不覆寫（複審 P1-1）。
+              uploadImage: (path, bytes, contentType) =>
+                momentImageStorage(supabase).upload(path, bytes, contentType),
+              removeImage: (path) =>
+                momentImageStorage(supabase).remove([path]),
             }
             : undefined,
           imageSweep: {
-            listImages: async (prefix) => {
-              const storageClient = supabase as unknown as {
-                storage: {
-                  from(bucket: string): {
-                    list(
-                      prefix: string,
-                      options: { limit: number },
-                    ): Promise<{
-                      data: { name: string }[] | null;
-                      error: { message: string } | null;
-                    }>;
-                  };
-                };
-              };
-              const { data, error } = await storageClient.storage
-                .from(MOMENT_IMAGE_BUCKET)
-                .list(prefix, { limit: 100 });
-              if (error) throw new Error("storage_list_failed");
-              return (data ?? []).map((entry) => `${prefix}/${entry.name}`);
-            },
-            removeImages: async (paths) => {
-              const storageClient = supabase as unknown as {
-                storage: {
-                  from(bucket: string): {
-                    remove(
-                      paths: readonly string[],
-                    ): Promise<{ error: { message: string } | null }>;
-                  };
-                };
-              };
-              const { error } = await storageClient.storage
-                .from(MOMENT_IMAGE_BUCKET)
-                .remove(paths);
-              if (error) throw new Error("storage_remove_failed");
-            },
+            listImages: (prefix) => momentImageStorage(supabase).list(prefix),
+            removeImages: (paths) => momentImageStorage(supabase).remove(paths),
           },
         },
       });
