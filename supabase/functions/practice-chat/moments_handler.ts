@@ -678,7 +678,12 @@ async function fillOneSlot(opts: {
       p_body: draft.body,
       p_image_id: draft.imageId,
       p_model: DEEPSEEK_MODEL,
-      p_wants_image: generatedImage,
+      // 部署窗相容：合併到 main 會先自動部署 Edge、migration 才手動套。
+      // 開關關時**省略**這個鍵（而不是傳 false），舊 DB 的 7-arg commit
+      // 才能繼續以 named args 匹配；傳了 false 會在 migration 套上前
+      // 讓所有文字補生成 PGRST202 全掛。開關開是 Eric 在 migration 套完
+      // 之後的手動動作，屆時 8-arg 已存在。
+      ...(generatedImage ? { p_wants_image: true } : {}),
     },
   );
   if (commitError || firstRow(commitData)?.committed !== true) {

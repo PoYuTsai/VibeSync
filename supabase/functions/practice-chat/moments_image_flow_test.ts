@@ -242,7 +242,10 @@ Deno.test("開關開但候選只剩自拍：照舊走 sentinel 路徑，不生�
     c.fn === "commit_practice_moment_post"
   );
   assert(commit);
-  assertEquals(commit.params.p_wants_image, false);
+  assert(
+    !("p_wants_image" in commit.params),
+    "非生成 slot 必須省略 p_wants_image 鍵（部署窗內舊 DB 只有 7-arg commit）",
+  );
   assert(
     harness.textModelPrompts[0].includes(SELF_PORTRAIT_IMAGE_ID),
     "自拍 slot 的 prompt 仍走現行 sentinel 指示",
@@ -263,7 +266,10 @@ Deno.test("開關關：wantsImage slot 走現行 bundled 候選路徑，零生�
     c.fn === "commit_practice_moment_post"
   );
   assert(commit);
-  assertEquals(commit.params.p_wants_image, false);
+  assert(
+    !("p_wants_image" in commit.params),
+    "開關關必須省略 p_wants_image 鍵，部署窗內舊 DB 才不會 PGRST202",
+  );
   assertEquals(harness.scheduled.length, 0);
   assertEquals(harness.falCalls, 0);
 });
