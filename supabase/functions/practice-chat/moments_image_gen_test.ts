@@ -18,24 +18,28 @@ import {
 import { MOMENT_THEME_IDS } from "./moments_schedule.ts";
 import {
   MAX_MOMENT_IMAGE_ATTEMPTS,
+  MOMENT_IMAGE_CONTENT_TYPE,
+  MOMENT_IMAGE_MAX_BYTES,
+  MOMENT_IMAGE_HEIGHT,
   MOMENT_IMAGE_MIN_BYTES,
+  MOMENT_IMAGE_WIDTH,
 } from "./moments_constants.ts";
 
 const JOB = { profileId: "practice_girl_007", isoDate: "2026-08-25", slot: 0 };
 const USER_ID = "11111111-2222-3333-4444-555555555555";
-const FAL_URL = "https://fal.run/fal-ai/flux/schnell";
-const CDN_URL = "https://fal.media/files/abc/result.jpeg";
+const FAL_URL =
+  "https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image";
+const CDN_URL = "https://fal.media/files/abc/result.png";
 const BODY = "下班隨便弄了碗麵 吃完才發現醬料包過期一個月";
 const TOKEN = "img-token-1";
-const TOKEN_PATH = `${JOB.isoDate}/${JOB.profileId}_${JOB.slot}_${TOKEN}.jpeg`;
+const TOKEN_PATH = `${JOB.isoDate}/${JOB.profileId}_${JOB.slot}_${TOKEN}.png`;
 
-/** 產生開頭是合法 JPEG magic（FF D8 FF）的假圖 bytes。 */
-function fakeJpeg(size: number): Uint8Array<ArrayBuffer> {
+/** 產生開頭是合法 PNG magic（89 50 4E 47 0D 0A 1A 0A）的假圖 bytes。 */
+const PNG_MAGIC = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+function fakePng(size: number): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(size);
-  if (size >= 3) {
-    bytes[0] = 0xFF;
-    bytes[1] = 0xD8;
-    bytes[2] = 0xFF;
+  for (let i = 0; i < PNG_MAGIC.length && i < size; i++) {
+    bytes[i] = PNG_MAGIC[i];
   }
   return bytes;
 }
@@ -101,7 +105,7 @@ Deno.test("完整 prompt = STYLE 前綴 + 場景句，且 STYLE 自帶兩條硬�
 Deno.test("物件 key 以 token 隔離且 seed 是決定論", () => {
   assertEquals(
     momentImagePath("2026-08-25", "practice_girl_007", 1, "tok-a"),
-    "2026-08-25/practice_girl_007_1_tok-a.jpeg",
+    "2026-08-25/practice_girl_007_1_tok-a.png",
   );
   assert(
     momentImagePath("2026-08-25", "practice_girl_007", 1, "tok-a") !==
@@ -264,7 +268,6 @@ function makeJobHarness(options: {
       }
       const payload = options.falPayload ?? {
         images: [{ url: CDN_URL }],
-        has_nsfw_concepts: [false],
       };
       return Promise.resolve(
         new Response(JSON.stringify(payload), { status: 200 }),
@@ -276,7 +279,7 @@ function makeJobHarness(options: {
       return Promise.reject(new TypeError("redirect not allowed"));
     }
     const headers: Record<string, string> = {
-      "content-type": options.downloadContentType ?? "image/jpeg",
+      "content-type": options.downloadContentType ?? "image/png",
     };
     if (options.downloadDeclaredLength !== undefined) {
       headers["content-length"] = String(options.downloadDeclaredLength);
@@ -288,7 +291,7 @@ function makeJobHarness(options: {
     }
     const bytes = options.badMagic
       ? new Uint8Array(imageBytes)
-      : fakeJpeg(imageBytes);
+      : fakePng(imageBytes);
     return Promise.resolve(new Response(bytes, { status: 200, headers }));
   }) as typeof globalThis.fetch;
 
@@ -377,12 +380,15 @@ Deno.test("成功路徑：claim → 場景句 → fal → 下載 → 上傳 → 
   assertEquals(harness.sceneCalls.length, 1);
   assert(harness.sceneCalls[0].includes(BODY));
   assert(harness.sceneCalls[0].includes("sceneHint:"));
-  // fal 請求：4:3、單張、jpeg、決定論 seed、prompt 含 STYLE 與場景句。
+  // fal 請求：最小合法 4:3、單張、決定論 seed、prompt 含 STYLE 與場景句。
   const falCall = harness.fetchCalls.find((c) => c.url === FAL_URL);
   assert(falCall && falCall.body);
-  assertEquals(falCall.body.image_size, "landscape_4_3");
+  assertEquals(falCall.body.image_size, {
+    width: MOMENT_IMAGE_WIDTH,
+    height: MOMENT_IMAGE_HEIGHT,
+  });
   assertEquals(falCall.body.num_images, 1);
-  assertEquals(falCall.body.output_format, "jpeg");
+  assertEquals(falCall.body.max_images, 1);
   assertEquals(falCall.body.enable_safety_checker, true);
   assertEquals(
     falCall.body.seed,
@@ -396,7 +402,7 @@ Deno.test("成功路徑：claim → 場景句 → fal → 下載 → 上傳 → 
   assertEquals(harness.uploads, [{
     path: TOKEN_PATH,
     bytes: 20_000,
-    contentType: "image/jpeg",
+    contentType: MOMENT_IMAGE_CONTENT_TYPE,
   }]);
   const commit = harness.rpcCalls[1].params;
   assertEquals(commit.p_image_path, TOKEN_PATH);
@@ -500,36 +506,29 @@ Deno.test("commit 被 fencing 或出窗守衛打回：自刪物件、不 release
 });
 
 // ---------------------------------------------------------------------------
-// 複審 blocking items 1-2：NSFW fail-closed 與下載邊界
+// Safety 契約（2026-08-26 換 Seedream 4.5）與下載邊界
 // ---------------------------------------------------------------------------
 
-Deno.test("NSFW 命中：不下載、不上傳、不 commit，直接 release", async () => {
-  const harness = makeJobHarness({
-    falPayload: { images: [{ url: CDN_URL }], has_nsfw_concepts: [true] },
-  });
-  await runJob(harness);
-  assertEquals(rpcNames(harness), [
-    "claim_practice_moment_image",
-    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
-    "clear_practice_moment_image_orphans",
-    "release_practice_moment_image",
-  ]);
-  assertEquals(
-    harness.fetchCalls.filter((c) => c.url === CDN_URL).length,
-    0,
-    "NSFW 命中絕不下載",
-  );
-  assertEquals(harness.uploads.length, 0);
-});
-
-Deno.test("safety 欄位缺席或形狀錯：fail-closed，一樣 release", async () => {
+Deno.test("安全鐵則：每一次請求都必須帶 enable_safety_checker: true", async () => {
+  // Seedream 4.5 的 output 沒有逐張 NSFW 判定，平台端的 safety checker 是
+  // 唯一的供應商側守門——這個旗標被靜默拿掉，等於整個防線消失。
   for (
-    const payload of [
-      { images: [{ url: CDN_URL }] },
-      { images: [{ url: CDN_URL }], has_nsfw_concepts: "no" },
-      { images: [{ url: CDN_URL }], has_nsfw_concepts: [] },
+    const options of [
+      {},
+      { scene: () => Promise.reject(new Error("down")) },
+      { imageBytes: 60_000 },
     ]
   ) {
+    const harness = makeJobHarness(options);
+    await runJob(harness);
+    const falCall = harness.fetchCalls.find((c) => c.url === FAL_URL);
+    assert(falCall && falCall.body);
+    assertEquals(falCall.body.enable_safety_checker, true);
+  }
+});
+
+Deno.test("回應沒有 images：視為生成失敗並 release", async () => {
+  for (const payload of [{}, { images: [] }, { images: [{}] }, { seed: 42 }]) {
     const harness = makeJobHarness({ falPayload: payload });
     await runJob(harness);
     assertEquals(
@@ -539,7 +538,7 @@ Deno.test("safety 欄位缺席或形狀錯：fail-closed，一樣 release", asyn
         "clear_practice_moment_image_orphans",
         "release_practice_moment_image",
       ],
-      `payload ${JSON.stringify(payload)} 應 fail-closed`,
+      `payload ${JSON.stringify(payload)} 應視為失敗`,
     );
     assertEquals(harness.uploads.length, 0);
   }
@@ -596,7 +595,7 @@ Deno.test("Content-Length 宣告超限：不讀 body 直接 release", async () =
 
 Deno.test("實際位元組超限（header 說謊）：流式硬擋並 release", async () => {
   const harness = makeJobHarness({
-    imageBytes: 4_000_001,
+    imageBytes: MOMENT_IMAGE_MAX_BYTES + 1,
     downloadDeclaredLength: 20_000,
   });
   await runJob(harness);
@@ -682,8 +681,8 @@ Deno.test("兩個 fetch 都以 redirect:error 發出", async () => {
   assertEquals(seenRedirects, ["error", "error"]);
 });
 
-Deno.test("Content-Type 是 png：僅收 jpeg，拒絕並 release", async () => {
-  const harness = makeJobHarness({ downloadContentType: "image/png" });
+Deno.test("Content-Type 不是 png（含舊的 jpeg）：拒絕並 release", async () => {
+  const harness = makeJobHarness({ downloadContentType: "image/jpeg" });
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
@@ -693,7 +692,7 @@ Deno.test("Content-Type 是 png：僅收 jpeg，拒絕並 release", async () => 
   ]);
 });
 
-Deno.test("magic bytes 不是 JPEG：header 說謊也擋，release 收場", async () => {
+Deno.test("magic bytes 不是 PNG：header 說謊也擋，release 收場", async () => {
   const harness = makeJobHarness({ badMagic: true });
   await runJob(harness);
   assertEquals(rpcNames(harness), [

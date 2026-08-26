@@ -28,6 +28,10 @@ import { logInfo, logWarn } from "./logger.ts";
 import { MODEL_RATE_LIMITS } from "../_shared/model_rate_limit.ts";
 import {
   MAX_MOMENT_IMAGE_ATTEMPTS,
+  MOMENT_IMAGE_CONTENT_TYPE,
+  MOMENT_IMAGE_EXTENSION,
+  MOMENT_IMAGE_HEIGHT,
+  MOMENT_IMAGE_WIDTH,
   MOMENT_IMAGE_DOWNLOAD_TIMEOUT_MS,
   MOMENT_IMAGE_MAX_BYTES,
   MOMENT_IMAGE_MIN_BYTES,
@@ -98,7 +102,11 @@ function isAllowedFalCdnUrl(raw: string): boolean {
     uri.hostname.endsWith(`.${FAL_CDN_HOST}`);
 }
 
-const FAL_SCHNELL_ENDPOINT = "https://fal.run/fal-ai/flux/schnell";
+const FAL_IMAGE_ENDPOINT =
+  "https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image";
+
+/** PNG 檔頭：89 50 4E 47 0D 0A 1A 0A。 */
+const PNG_MAGIC = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] as const;
 
 // ── prompt 素材（字面沿用 docs/plans/2026-08-24-practice-moments-scene-image-prompts.md §4）──
 
@@ -353,7 +361,7 @@ export function momentImagePath(
   slot: number,
   imageToken: string,
 ): string {
-  return `${isoDate}/${profileId}_${slot}_${imageToken}.jpeg`;
+  return `${isoDate}/${profileId}_${slot}_${imageToken}.${MOMENT_IMAGE_EXTENSION}`;
 }
 
 /**
@@ -372,7 +380,7 @@ export function momentImageSeed(
 
 // ── fal.ai client（錯誤分類照 deepseek.ts 模板；provider body 不進錯誤訊息）──
 
-async function callFalSchnell(opts: {
+async function callFalImageModel(opts: {
   deps: MomentImageGenDeps;
   prompt: string;
   seed: number;
@@ -388,12 +396,11 @@ async function callFalSchnell(opts: {
   );
   let payload: {
     images?: { url?: unknown }[];
-    has_nsfw_concepts?: unknown;
   };
   try {
     let response: Response;
     try {
-      response = await doFetch(FAL_SCHNELL_ENDPOINT, {
+      response = await doFetch(FAL_IMAGE_ENDPOINT, {
         method: "POST",
         headers: {
           "Authorization": `Key ${deps.falApiKey}`,
@@ -401,9 +408,17 @@ async function callFalSchnell(opts: {
         },
         body: JSON.stringify({
           prompt,
-          image_size: "landscape_4_3",
+          // 明確給數字而不是 landscape_4_3 enum：enum 對應的實際像素數
+          // 未公開，而 PNG 無損、尺寸直接決定檔案大小與手機流量。
+          image_size: {
+            width: MOMENT_IMAGE_WIDTH,
+            height: MOMENT_IMAGE_HEIGHT,
+          },
           num_images: 1,
-          output_format: "jpeg",
+          // 一次生成最多回幾張。固定 1，避免付了多張的錢又只用一張。
+          max_images: 1,
+          // **安全鐵則：這個旗標永遠是 true。**（見下方 safety 註解；
+          // moments_image_gen_test.ts 有測試釘住它。）
           enable_safety_checker: true,
           seed,
         }),
@@ -433,16 +448,26 @@ async function callFalSchnell(opts: {
   } finally {
     clearTimeout(timer);
   }
-  // safety checker 結果 fail-closed（複審 blocking item 1）：只有明確回報
-  // 「第一張不是 NSFW」才放行；命中、欄位缺席或形狀不對，一律不下載、
-  // 不上傳、不 commit。形狀錯用獨立錯誤碼，供應商改 schema 時觀測得出來。
-  const nsfw = payload.has_nsfw_concepts;
-  if (!Array.isArray(nsfw) || typeof nsfw[0] !== "boolean") {
-    throw new Error("fal_image_safety_unverified");
-  }
-  if (nsfw[0] !== false) {
-    throw new Error("fal_image_nsfw");
-  }
+  // ## Safety 契約（2026-08-26 換 Seedream 4.5 時的**明確降級**，請複審注意）
+  //
+  // FLUX schnell 的回應帶 `has_nsfw_concepts` 逐張布林，所以舊版能做到
+  // 「只有明確回報 false 才放行」的 fail-closed 判定。**Seedream 4.5 的
+  // output schema 只有 `images` 與 `seed`，沒有任何 NSFW 欄位**（fal 官方
+  // OpenAPI 查證），因此那道逐張判定在這個模型上不存在，硬留著只會 100%
+  // 擋掉所有圖。
+  //
+  // 取代它的是三層，全部仍然成立：
+  // 1. **平台端 safety checker**：請求固定帶 `enable_safety_checker: true`
+  //    （schema 預設即為 true，關掉還需要帳號授權）。它命中時是讓這次請求
+  //    失敗，而不是回一張不安全的圖——「不合格的圖不會到我們手上」這個
+  //    性質沒有變，變的是我們拿不到逐張判定。
+  // 2. **輸入端硬約束**：prompt 前綴明文禁人物、禁可讀文字、禁品牌，且
+  //    場景句本身經 validateSceneLine 過濾（禁詞、ASCII、長度）。
+  // 3. **黑圖保險**：min-bytes 仍在（見 downloadImage）。
+  //
+  // 代價要說清楚：我們少了一個「供應商自己說這張有問題」的訊號，也少了
+  // fal_image_nsfw / fal_image_safety_unverified 這兩個觀測點。若日後換回
+  // 有逐張判定的模型，把 fail-closed 那段加回來即是。
   const url = payload.images?.[0]?.url;
   if (typeof url !== "string" || url.length === 0) {
     throw new Error("fal_image_empty");
@@ -491,11 +516,12 @@ async function downloadImage(
       await response.text().catch(() => {});
       throw new Error("fal_image_download_failed");
     }
-    // MIME 驗證：**只收 image/jpeg**（第二輪複審 P2-3：我們指定
-    // output_format=jpeg，寫入的副檔名與 contentType 也是 jpeg，不收異類）。
+    // MIME 驗證：**只收 image/png**（第二輪複審 P2-3 的同一道守門；
+    // Seedream 4.5 沒有 output_format 參數、固定出 PNG，寫入的副檔名與
+    // contentType 也一起是 png，不收異類）。
     const contentType = (response.headers.get("content-type") ?? "")
       .split(";")[0].trim().toLowerCase();
-    if (contentType !== "image/jpeg") {
+    if (contentType !== MOMENT_IMAGE_CONTENT_TYPE) {
       await response.body?.cancel().catch(() => {});
       throw new Error("fal_image_bad_content_type");
     }
@@ -534,15 +560,16 @@ async function downloadImage(
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    // magic bytes：JPEG 必以 FF D8 FF 開頭——contentType header 可謊，
-    // 位元組不會。
+    // magic bytes：PNG 必以 89 50 4E 47 0D 0A 1A 0A 開頭——contentType
+    // header 可謊，位元組不會。
     if (
-      bytes.byteLength < 3 ||
-      bytes[0] !== 0xFF || bytes[1] !== 0xD8 || bytes[2] !== 0xFF
+      bytes.byteLength < PNG_MAGIC.length ||
+      PNG_MAGIC.some((byte, index) => bytes[index] !== byte)
     ) {
       throw new Error("fal_image_bad_magic");
     }
-    // 黑圖保險：safety checker 之外的第二層——全黑 jpeg 遠小於正常場景圖。
+    // 黑圖保險：平台端 safety checker 之外的第二層——近乎單色的圖無損
+    // 壓縮後遠小於正常場景圖。
     if (bytes.byteLength < MOMENT_IMAGE_MIN_BYTES) {
       throw new Error("fal_image_too_small");
     }
@@ -682,7 +709,7 @@ export async function generateMomentImage(opts: {
       body: claimedBody,
       themeId: claimedThemeId,
     })) ?? themeSceneLine(claimedThemeId);
-    const imageUrl = await callFalSchnell({
+    const imageUrl = await callFalImageModel({
       deps,
       prompt: buildImagePrompt(scene),
       seed: momentImageSeed(job.profileId, job.isoDate, job.slot, claimedAttempt),
@@ -690,7 +717,7 @@ export async function generateMomentImage(opts: {
     const bytes = await downloadImage(deps, imageUrl);
     try {
       uploadAttempted = true;
-      await uploadWithTimeout(deps, path, bytes, "image/jpeg");
+      await uploadWithTimeout(deps, path, bytes, MOMENT_IMAGE_CONTENT_TYPE);
       uploadedPath = path;
     } catch (e) {
       if (e instanceof Error && e.message === "fal_image_upload_timeout") throw e;

@@ -57,7 +57,9 @@ npx.cmd --yes supabase secrets list --project-ref fcmwrmwdoqiqdnbisdpg
 | `practice_moment_image_scene_degraded` | 場景句 DeepSeek 失敗、退用題材模板句（**不是**錯誤，圖照生） |
 | `practice_moment_image_expired_swept` / `practice_moment_image_orphan_ledger_swept` / `practice_moment_image_orphans_swept` | 三段清理各自的成果數 |
 
-常見 `failureClass`：`fal_image_http_<狀態碼>`（供應商回錯，402/403 多半是額度或 key）、`fal_image_nsfw`／`fal_image_safety_unverified`（安全檢查 fail-closed）、`fal_image_too_small`（黑圖保險）、`fal_image_download_failed`、`fal_image_upload_timeout`。
+常見 `failureClass`：`fal_image_http_<狀態碼>`（供應商回錯，402/403 多半是額度或 key；平台端 safety checker 命中通常也走這裡）、`fal_image_too_small`（黑圖保險）、`fal_image_too_large`（超過 12MB 上限）、`fal_image_bad_content_type`／`fal_image_bad_magic`（不是 PNG）、`fal_image_download_failed`、`fal_image_timeout`（fal 呼叫超過 60s）、`fal_image_upload_timeout`。
+
+> 2026-08-26 換 Seedream 4.5 之後，`fal_image_nsfw` 與 `fal_image_safety_unverified` **不會再出現**——該模型的 output 沒有逐張 NSFW 判定，守門改由請求端的 `enable_safety_checker: true` 在平台側完成（設計文件 §9）。
 
 ### 3.2 資料層（Supabase SQL Editor，唯讀查詢）
 
