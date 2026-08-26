@@ -1,4 +1,6 @@
 // lib/features/conversation/presentation/screens/new_conversation_screen.dart
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,6 +19,32 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/conversation_providers.dart';
 import '../../data/providers/conversation_write_controller.dart';
 import '../../domain/entities/session_context.dart';
+
+/// 手動輸入頁的版面契約。
+///
+/// 兩個輸入列合成「單一群組卡片」，Sydney 走底部出血；三個 key 分別對應
+/// 群組卡、裙襬裁切容器與角色圖本身。
+const String manualInputComposerGroupKey = 'manual_input_composer_group';
+const String manualInputSydneySkirtBleedKey = 'manual_input_sydney_skirt_bleed';
+const String manualInputSydneyArtKey = 'manual_input_sydney_art';
+
+/// 去背角色素材：只保留頭部、上半身與連續 A-line 百褶裙，素材本身已裁在
+/// 裙襬之上，因此任何可見範圍都不會露出裙襬底端、大腿或鞋子。
+const String _manualInputSydneyAsset =
+    'assets/images/coach/sydney_manual_input_full.png';
+
+/// 素材長寬比（468 / 1151）。等比縮放用，禁止拉伸。
+const double _manualInputSydneyAspectRatio = 468 / 1151;
+
+/// 角色可見高度下限；內容太長把 Sydney 擠到畫面外時仍保留這個高度。
+const double _manualInputSydneyMinVisibleHeight = 300;
+
+/// 出血倍率：實際繪製高度＝可見高度 × 此值，多出來的部分被 [ClipRect]
+/// 裁掉，所以素材自己的下緣永遠不會變成畫面中一條浮空的硬邊。
+const double _manualInputSydneyBleedFactor = 1.16;
+
+/// 兩個「＋」按鈕的最小點擊邊長（Apple HIG 44pt）。
+const double _manualInputAddButtonHitSize = 44;
 
 String newConversationHintText({
   required bool hasMessages,
@@ -388,21 +416,48 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     );
   }
 
-  Widget _buildAddButton(VoidCallback onPressed) {
-    return GestureDetector(
-      onTap: AppHaptics.onPress(onPressed),
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [AppColors.ctaStart, AppColors.ctaEnd],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+  /// 橘色圓形「＋」。視覺直徑 38，但整個 44×44 都吃得到點擊
+  /// （[HitTestBehavior.opaque]），符合 Apple HIG 最小觸控尺寸。
+  /// 觸覺回饋沿用 [AppHaptics.onPress]。
+  Widget _buildAddButton({
+    required VoidCallback onPressed,
+    required String semanticLabel,
+  }) {
+    final handlePress = AppHaptics.onPress(onPressed);
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      onTap: handlePress,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: handlePress,
+          child: const SizedBox(
+            width: _manualInputAddButtonHitSize,
+            height: _manualInputAddButtonHitSize,
+            child: Center(
+              child: SizedBox(
+                width: 38,
+                height: 38,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.add,
+                    size: 21,
+                    color: AppColors.onCta,
+                  ),
+                ),
+              ),
+            ),
           ),
-          shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.add, size: 20, color: Colors.white),
       ),
     );
   }
@@ -592,123 +647,247 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     );
   }
 
+  /// 「對話內容」區塊：白色區塊標題 → 單一群組卡 → 卡外的提示列。
+  ///
+  /// 正式版設計把「她說／我說」兩列收進同一張圓角深紫卡片（[ClipRect] 化的
+  /// [Container]，key = [manualInputComposerGroupKey]），中間只用一條低對比
+  /// 細分隔線，欄位本身不再各自帶邊框——卡片就是那個容器。已加入的訊息列表
+  /// 也放在同一張卡的最上方，維持「一個群組」的閱讀單位。
   List<Widget> _buildConversationContentInput() {
-    // 10px uniform inner rhythm (density proof) — the old 8/12 mix was part
-    // of the 間距不一致 problem.
     return [
       _settingLabel('對話內容'),
-      const SizedBox(height: 8),
-      if (_messages.isNotEmpty) ...[
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.brandInk.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 220),
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final msg = _messages[index];
-                final isFromMe = msg['isFromMe'] as bool;
-                return ListTile(
-                  dense: true,
-                  textColor: Colors.white,
-                  iconColor: AppColors.onBackgroundSecondary,
-                  leading: BubbleAvatar(
-                    label: isFromMe ? '我' : '她',
-                    isMe: isFromMe,
-                    size: 28,
-                  ),
-                  title: Text(
-                    msg['content'] as String,
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  trailing: IconButton(
-                    icon: Icon(
-                      Icons.close,
-                      size: 18,
-                      color: AppColors.onBackgroundSecondary
-                          .withValues(alpha: 0.70),
-                    ),
-                    onPressed:
-                        AppHaptics.onPress(() => _removeMessage(index)),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-      ],
-      Row(
+      const SizedBox(height: 10),
+      _conversationComposerGroup(),
+      const SizedBox(height: 10),
+      _composerHintRow(),
+    ];
+  }
+
+  Widget _conversationComposerGroup() {
+    return Container(
+      key: const ValueKey(manualInputComposerGroupKey),
+      decoration: BoxDecoration(
+        color: AppColors.brandSurface.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const BubbleAvatar(
-            label: '她',
+          if (_messages.isNotEmpty) ...[
+            _composerMessageList(),
+            _composerDivider(),
+          ],
+          _composerRow(
             isMe: false,
-            size: 32,
+            controller: _herMessageController,
+            hintText: '她說了什麼…',
+            onAdd: _addHerMessage,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _brandField(
-              controller: _herMessageController,
-              hintText: '她說了什麼…',
-              onSubmitted: (_) => _addHerMessage(),
-            ),
-          ),
-          _buildAddButton(_addHerMessage),
-        ],
-      ),
-      const SizedBox(height: 8),
-      Row(
-        children: [
-          const BubbleAvatar(
-            label: '我',
+          _composerDivider(),
+          _composerRow(
             isMe: true,
-            size: 32,
+            controller: _myMessageController,
+            hintText: '我說了什麼…',
+            onAdd: _addMyMessage,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _brandField(
-              controller: _myMessageController,
-              hintText: '我說了什麼…',
-              onSubmitted: (_) => _addMyMessage(),
-            ),
-          ),
-          _buildAddButton(_addMyMessage),
         ],
       ),
-      const SizedBox(height: 8),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.info_outline,
-              size: 18,
-              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                _conversationHint,
-                style: AppTypography.caption.copyWith(
+    );
+  }
+
+  /// 低對比細分隔線：只負責分開兩列，不製造第二層卡片邊框。
+  Widget _composerDivider() {
+    return Divider(
+      height: 1,
+      thickness: 1,
+      indent: 16,
+      endIndent: 16,
+      color: Colors.white.withValues(alpha: 0.07),
+    );
+  }
+
+  /// 單一輸入列：頭像 → 無邊框輸入框 → 橘色「＋」。
+  Widget _composerRow({
+    required bool isMe,
+    required TextEditingController controller,
+    required String hintText,
+    required VoidCallback onAdd,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 17, 14, 17),
+      child: Row(
+        children: [
+          BubbleAvatar(
+            label: isMe ? '我' : '她',
+            isMe: isMe,
+            size: 40,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              cursorColor: AppColors.ctaStart,
+              style: AppTypography.bodyMedium.copyWith(color: Colors.white),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => onAdd(),
+              decoration: InputDecoration(
+                hintText: hintText,
+                hintStyle: AppTypography.bodyMedium.copyWith(
                   color:
-                      AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.45),
                 ),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                isDense: true,
+                filled: false,
+                contentPadding: EdgeInsets.zero,
               ),
             ),
-          ],
+          ),
+          const SizedBox(width: 8),
+          _buildAddButton(
+            onPressed: onAdd,
+            semanticLabel: isMe ? '加入我說' : '加入她說',
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 已加入的訊息：留在群組卡內，維持一個閱讀單位。刪除鍵不變。
+  Widget _composerMessageList() {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 220),
+      child: ListView.builder(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: _messages.length,
+        itemBuilder: (context, index) {
+          final msg = _messages[index];
+          final isFromMe = msg['isFromMe'] as bool;
+          return ListTile(
+            dense: true,
+            textColor: Colors.white,
+            iconColor: AppColors.onBackgroundSecondary,
+            leading: BubbleAvatar(
+              label: isFromMe ? '我' : '她',
+              isMe: isFromMe,
+              size: 28,
+            ),
+            title: Text(
+              msg['content'] as String,
+              style: AppTypography.bodyMedium.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            trailing: IconButton(
+              icon: Icon(
+                Icons.close,
+                size: 18,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+              ),
+              onPressed: AppHaptics.onPress(() => _removeMessage(index)),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 卡片下方的提示列：info outline + 目前狀態文案。
+  Widget _composerHintRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 18,
+            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _conversationHint,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 頁面底部的 Sydney 陪伴視覺。
+  ///
+  /// 出血規則：素材等比繪製成 `可見高度 × [_manualInputSydneyBleedFactor]`，
+  /// 靠上對齊後由 [ClipRect] 把多出來的下緣裁掉，因此畫面上看到的永遠是
+  /// 「裙子被螢幕底部切掉」，不是素材自己的邊。素材本身已裁在裙襬之上，
+  /// 兩層保險加起來保證不會露出裙襬底端、大腿、膝蓋、小腿、腳踝或鞋子。
+  ///
+  /// [constraints] 來自 [SliverFillRemaining]：高度是捲動視窗剩下的空間，
+  /// 所以內容短時 Sydney 會自動長到螢幕底部，內容長時退回
+  /// [_manualInputSydneyMinVisibleHeight] 並跟著捲動。全程等比，不拉長身體
+  /// 比例。
+  Widget _buildSydneyCompanion(BoxConstraints constraints) {
+    final incomingHeight = constraints.hasBoundedHeight
+        ? constraints.maxHeight
+        : constraints.minHeight;
+    final availableHeight = math.max(
+      incomingHeight,
+      _manualInputSydneyMinVisibleHeight,
+    );
+    // 寬度保險：先算出等比縮放可用的最大高度，再反推可見裁切高度。
+    // 高窄螢幕上即使留有垂直空間，也不會為了填滿而左右裁圖；
+    // 影像區塊改為貼底對齊，仍保留固定比例的裙襬出血。
+    final maxHeightByWidth = constraints.maxWidth.isFinite
+        ? constraints.maxWidth / _manualInputSydneyAspectRatio
+        : double.infinity;
+    final artHeight = math.min(
+      availableHeight * _manualInputSydneyBleedFactor,
+      maxHeightByWidth,
+    );
+    final visibleHeight = math.min(
+      availableHeight,
+      artHeight / _manualInputSydneyBleedFactor,
+    );
+
+    return SizedBox(
+      height: availableHeight,
+      width: double.infinity,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: ClipRect(
+          key: const ValueKey(manualInputSydneySkirtBleedKey),
+          child: SizedBox(
+            height: visibleHeight,
+            width: double.infinity,
+            child: OverflowBox(
+              alignment: Alignment.topCenter,
+              minHeight: 0,
+              maxHeight: artHeight,
+              child: Image.asset(
+                _manualInputSydneyAsset,
+                key: const ValueKey(manualInputSydneyArtKey),
+                height: artHeight,
+                fit: BoxFit.contain,
+                alignment: Alignment.topCenter,
+                // 百褶裙的細直紋在縮放時最容易產生摩爾紋／水波感，
+                // 交給 mipmap 取樣而不是最近鄰。
+                filterQuality: FilterQuality.medium,
+              ),
+            ),
+          ),
         ),
       ),
-    ];
+    );
   }
 
   Widget _buildOpenerSeedNotice() {
@@ -803,67 +982,84 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             onPressed: () => context.pop(),
           ),
         ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+        body: CustomScrollView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          // Layout-density fold (Bruce/Eric 2026-06-10, proof:
-          // test/visual_proof/density_proof_test.dart): content capped at 340
-          // and centred; settings & composer each sit in a matching frosted
-          // tray (consistent width/rhythm → 一致, real mass → 不空). 16px
-          // section rhythm, 20px before the CTA. Collapsed-state whitespace
-          // below the content is expected — do not stuff it.
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 340),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_hasOpenerSeed) ...[
-                    _buildOpenerSeedNotice(),
-                    const SizedBox(height: 16),
-                  ],
-                  // 「對話對象」 input — only shown for legacy / orphan-conversation
-                  // entries (partnerId == null). When entered from PartnerDetail
-                  // (partnerId set) the Partner already owns the relationship
-                  // identity, so re-typing the name here is redundant double-input.
-                  // (Bruce TF feedback 2026-04-28.)
-                  if (widget.partnerId == null) ...[
-                    _settingLabel('對話對象'),
-                    const SizedBox(height: 8),
-                    _brandField(
-                      controller: _nameController,
-                      hintText: '例如：小安',
+          slivers: [
+            SliverPadding(
+              // 底部不留 padding：Sydney 是出血視覺，要一路接到螢幕底部。
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              sliver: SliverToBoxAdapter(
+                // Layout-density fold (Bruce/Eric 2026-06-10, proof:
+                // test/visual_proof/density_proof_test.dart): content capped
+                // at 340 and centred, so 欄位寬度／節奏一致。16px section
+                // rhythm, 20px before the CTA.
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 340),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_hasOpenerSeed) ...[
+                          _buildOpenerSeedNotice(),
+                          const SizedBox(height: 16),
+                        ],
+                        // 「對話對象」 input — only shown for legacy /
+                        // orphan-conversation entries (partnerId == null).
+                        // When entered from PartnerDetail (partnerId set) the
+                        // Partner already owns the relationship identity, so
+                        // re-typing the name here is redundant double-input.
+                        // (Bruce TF feedback 2026-04-28.)
+                        if (widget.partnerId == null) ...[
+                          _settingLabel('對話對象'),
+                          const SizedBox(height: 8),
+                          _brandField(
+                            controller: _nameController,
+                            hintText: '例如：小安',
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        // 對象卡進來的片段不再放「這次分析設定」（2026-08-14
+                        // Eric 拍板：卡建立時已填，這裡重複）；孤兒對話沒有卡
+                        // 可繼承，保留設定入口。
+                        if (widget.partnerId == null) ...[
+                          _frostTray(_buildAnalysisSettingsSection()),
+                          const SizedBox(height: 16),
+                        ],
+                        ..._buildConversationContentInput(),
+                        // CTA 排在 Sydney 之前：底部出血的角色不能壓在可操作
+                        // 元件上面，也不能把按鈕推到看不到的地方。
+                        if (_hasIncomingMessage) ...[
+                          const SizedBox(height: 20),
+                          BrandPrimaryButton(
+                            label: '建立對話',
+                            onPressed: _isLoading ? null : _createConversation,
+                            isLoading: _isLoading,
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                      ],
                     ),
-                    const SizedBox(height: 16),
-                  ],
-                  // 對象卡進來的片段不再放「這次分析設定」（2026-08-14
-                  // Eric 拍板：卡建立時已填，這裡重複）；孤兒對話沒有卡
-                  // 可繼承，保留設定入口。
-                  if (widget.partnerId == null) ...[
-                    _frostTray(_buildAnalysisSettingsSection()),
-                    const SizedBox(height: 16),
-                  ],
-                  _frostTray(_buildConversationContentInput()),
-                  // 夥伴示意稿（2026-08-14）：頁面下方放 Sydney 陪伴視覺，
-                  // 樣本圖去背後直接沿用。
-                  const SizedBox(height: 24),
-                  Image.asset(
-                    'assets/images/coach/sydney_manual_input.png',
-                    height: 300,
-                    fit: BoxFit.contain,
                   ),
-                  if (_hasIncomingMessage) ...[
-                    const SizedBox(height: 24),
-                    BrandPrimaryButton(
-                      label: '建立對話',
-                      onPressed: _isLoading ? null : _createConversation,
-                      isLoading: _isLoading,
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
-          ),
+            // 夥伴示意稿（2026-08-14 起，2026-08-26 換成去背正式素材）：
+            // Sydney 永遠排在提示文字之後，不覆蓋任何文字或輸入卡。
+            SliverFillRemaining(
+              hasScrollBody: false,
+              // SliverFillRemaining 會先問 child 的 intrinsic height，而
+              // LayoutBuilder 不支援 intrinsics；外面這層固定高度的 SizedBox
+              // 直接回報下限值，攔住那次詢問，再由 sliver 把它撐成
+              // max(剩餘視窗高度, 下限)，LayoutBuilder 才拿得到最終高度。
+              child: SizedBox(
+                height: _manualInputSydneyMinVisibleHeight,
+                child: LayoutBuilder(
+                  builder: (context, constraints) =>
+                      _buildSydneyCompanion(constraints),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
