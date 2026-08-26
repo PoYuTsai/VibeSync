@@ -842,11 +842,18 @@ Deno.test("posts 依 postedAt 遞減排序", async () => {
 });
 
 Deno.test("配圖貼文：候選只可能是可用素材，且原樣回給 client", async () => {
-  // practice_girl_019 在 2026-08-22 的 slot 1 是 wantsImage 的題材。
-  const girl = getPracticeGirlProfile("practice_girl_019")!;
   const time = taipeiTimeContextFor(END_OF_DAY);
-  const slot = momentPlanFor({ girl, time }).slots.find((s) => s.wantsImage);
-  assert(slot, "前提：這位角色當天有想配圖的 slot");
+  // 題材池擴充時，固定角色的雜湊落點可能改變；改從完整角色池找當天確實
+  // 想配圖的固定案例，讓測試守住圖片契約而不是綁死某一個題材落點。
+  const imageCase = GIRL_PROFILES.map((girl) => ({
+    girl,
+    slot: momentPlanFor({ girl, time }).slots.find((slot) =>
+      slot.wantsImage &&
+      resolveAvailableMomentImages(slot.imageCandidates).length > 0
+    ),
+  })).find((entry) => entry.slot !== undefined);
+  assert(imageCase?.slot, "前提：當天至少有一個閘門後仍有候選的配圖 slot");
+  const { girl, slot } = imageCase;
   // stub 回「該 slot 閘門後候選的第一個」而不是寫死某個 id：
   // 閘門開關（AVAILABLE_MOMENT_IMAGE_IDS 的內容）不是本測試的受測物，
   // 寫死 id 會讓這條測試隨閘門狀態翻紅（2026-08-25 開閘時抓到過一次）。

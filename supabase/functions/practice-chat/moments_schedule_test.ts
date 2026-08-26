@@ -6,6 +6,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   MAX_MOMENT_SLOTS_PER_DAY,
+  type MomentContentKind,
   momentPlanFor,
   momentPostPropensityFor,
   momentQuietDayPartsFor,
@@ -35,6 +36,15 @@ function planEveryGirlOver(days: number) {
   }
   return plans;
 }
+
+const CONTENT_KINDS: readonly MomentContentKind[] = [
+  "daily_life",
+  "social_observation",
+  "relationship_thought",
+  "personal_value",
+  "interest",
+  "pet_life",
+];
 
 Deno.test("momentPlanFor is deterministic for the same profile and date", () => {
   const time = taipeiDay("2026-09-03");
@@ -94,6 +104,67 @@ Deno.test("catalog-wide posting volume stays in the designed band", () => {
     perGirlPerDay > 0.45 && perGirlPerDay < 0.95,
     `expected ~0.7 posts per girl per day, got ${perGirlPerDay}`,
   );
+});
+
+Deno.test("題材分布不再被共用生活場景壟斷，六種內容都真的排得到", () => {
+  const plans = planEveryGirlOver(90);
+  const counts = new Map<MomentContentKind, number>(
+    CONTENT_KINDS.map((kind) => [kind, 0]),
+  );
+  let total = 0;
+  for (const plan of plans) {
+    for (const slot of plan.slots) {
+      total++;
+      counts.set(slot.contentKind, (counts.get(slot.contentKind) ?? 0) + 1);
+    }
+  }
+
+  for (const kind of CONTENT_KINDS) {
+    assert((counts.get(kind) ?? 0) > 0, `${kind} 在 90 天完全排不到`);
+  }
+
+  const share = (kind: MomentContentKind) => (counts.get(kind) ?? 0) / total;
+  assert(
+    share("daily_life") > 0.25 && share("daily_life") < 0.5,
+    `生活場景比例應保留但不得再過半，實際 ${share("daily_life")}`,
+  );
+  for (
+    const kind of [
+      "social_observation",
+      "relationship_thought",
+      "personal_value",
+      "interest",
+    ] as const
+  ) {
+    assert(
+      share(kind) >= 0.08 && share(kind) <= 0.28,
+      `${kind} 比例失衡：${share(kind)}`,
+    );
+  }
+  // 寵物題材只屬於有對應資料的少數角色，不能為了配額替其他人憑空養一隻。
+  assert(share("pet_life") < 0.05);
+});
+
+Deno.test("寵物生活只排給有寵物線索或相關職業的角色", () => {
+  for (const profile of GIRL_PROFILES) {
+    const profileSignals = [
+      ...profile.interestTags,
+      ...profile.lifestyleTags,
+    ].join("、");
+    const canTalkAboutPets = /寵物|毛孩|貓|狗/u.test(profileSignals) ||
+      profile.professionId === "pet_groomer";
+    for (let day = 1; day <= 90; day++) {
+      const time = taipeiTimeContextFor(new Date(Date.UTC(2026, 8, day, 4)));
+      for (const slot of momentPlanFor({ girl: profile, time }).slots) {
+        if (slot.contentKind === "pet_life") {
+          assert(
+            canTalkAboutPets,
+            `${profile.profileId} 沒有寵物線索卻排到 ${slot.themeId}`,
+          );
+        }
+      }
+    }
+  }
 });
 
 Deno.test("plans never exceed the daily slot cap and keep slots ordered", () => {
@@ -188,6 +259,22 @@ Deno.test("image candidates are allowlisted and only present when wanted", () =>
   assert(textOnly > 0, "text-only posts should exist");
 });
 
+Deno.test("新增觀點題材後仍維持文字優先，但不把圖文型態砍半", () => {
+  let posts = 0;
+  let withImage = 0;
+  for (const plan of planEveryGirlOver(365)) {
+    for (const slot of plan.slots) {
+      posts++;
+      if (slot.wantsImage) withImage++;
+    }
+  }
+  const share = withImage / posts;
+  assert(
+    share >= 0.14 && share <= 0.22,
+    `整體配圖率應維持約 17%，實際 ${share}`,
+  );
+});
+
 Deno.test("scene image budget stays at the agreed 20 assets", () => {
   // 超過就要重新評估 App 體積（設計報告決定 D）；改動時請同步更新報告。
   assertEquals(SCENE_IMAGE_COUNT, 20);
@@ -201,6 +288,7 @@ Deno.test("every profile keeps a usable theme pool and a real brief", () => {
       for (const slot of momentPlanFor({ girl: profile, time }).slots) {
         sawSlot = true;
         assert(slot.themeId.length > 0);
+        assert(CONTENT_KINDS.includes(slot.contentKind));
         assert(slot.brief.length > 0);
       }
     }

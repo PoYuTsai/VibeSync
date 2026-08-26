@@ -13,8 +13,10 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildMomentMessages,
+  MOMENT_CONTENT_GUIDANCE,
   MOMENT_INTERNAL_LABELS,
   MOMENT_PROMPT_SENTINELS,
+  momentCharacterLensFor,
 } from "./moments_prompt.ts";
 import { hasVisibleInternalLabelLeak } from "./visible_text_guard.ts";
 import { containsPromptLeak } from "../_shared/prompt_leak_guard.ts";
@@ -24,6 +26,7 @@ import {
 } from "./moments_constants.ts";
 import { SELF_PORTRAIT_IMAGE_ID } from "./moments_image_catalog.ts";
 import { GIRL_PROFILES } from "./practice_persona.ts";
+import type { MomentContentKind } from "./moments_schedule.ts";
 
 const girl = GIRL_PROFILES[6];
 
@@ -31,6 +34,7 @@ function build(imageCandidates: readonly string[] = []) {
   return buildMomentMessages({
     girl,
     themeId: "coffee_break",
+    contentKind: "daily_life",
     brief: "在常去的咖啡店坐一下，看窗外發呆",
     dayPart: "afternoon",
     isoDate: "2026-08-22",
@@ -60,9 +64,15 @@ Deno.test("system 段帶入 server profile 事實", () => {
   assert(text.includes(girl.city));
   assert(text.includes(girl.professionLabel));
   assert(text.includes(String(girl.age)));
-  // 2026-08-25 起個性不再用 personalityTags 列舉——那行「語氣要像：活潑、溫柔」
-  // 正是每個角色寫出同一種日記體的病根，已被 persona 語感層取代。
-  // 興趣與生活習慣仍是內容的土壤，必須在場。
+  assert(text.includes(girl.relationshipGoal));
+  assert(text.includes(momentCharacterLensFor(girl)));
+  // personalityTags 現在只當「觀點濾鏡」，不是舊版的「語氣要像」清單；
+  // persona 控制聲音，個人標籤控制她會注意什麼與如何下判斷。
+  assertEquals(text.includes("語氣要像"), false);
+  for (const tag of girl.personalityTags) {
+    assert(text.includes(tag), `個人底色 ${tag} 應該進 prompt`);
+  }
+  // 興趣與生活習慣仍是可選的內容素材，必須在場。
   for (const tag of [...girl.interestTags, ...girl.lifestyleTags]) {
     assert(text.includes(tag), `內容素材 ${tag} 應該進 prompt`);
   }
@@ -91,7 +101,11 @@ Deno.test("硬邊界清單明確包含禁 hashtag／廣告，且不再宣稱所�
   assert(
     text.includes("7. 不要用開頭問候語、不要加 hashtag、不要寫成廣告或文案。"),
   );
-  assert(text.includes("規則 1-4、7 與 10 是硬邊界，違反就作廢重寫"));
+  assert(
+    text.includes(
+      "規則 1-4、7、10，以及規則 11 裡的事實與安全限制是硬邊界，違反就作廢重寫",
+    ),
+  );
   assertEquals(text.includes("每一條都是硬約束"), false);
 });
 
@@ -161,6 +175,7 @@ Deno.test("整份角色名冊都建得出 prompt，且長度有界", () => {
     const messages = buildMomentMessages({
       girl: profile,
       themeId: "evening_walk",
+      contentKind: "daily_life",
       brief: "晚上出門走走",
       dayPart: "evening",
       isoDate: "2026-08-22",
@@ -174,11 +189,107 @@ Deno.test("整份角色名冊都建得出 prompt，且長度有界", () => {
   }
 });
 
+const CONTENT_KINDS: readonly MomentContentKind[] = [
+  "daily_life",
+  "social_observation",
+  "relationship_thought",
+  "personal_value",
+  "interest",
+  "pet_life",
+];
+
+Deno.test("六種內容類型都有不同寫法守門，且選中的那種真的進 prompt", () => {
+  assertEquals(
+    new Set(Object.values(MOMENT_CONTENT_GUIDANCE)).size,
+    CONTENT_KINDS.length,
+    "內容類型共用了同一段寫法，最後仍會全部長得一樣",
+  );
+  for (const contentKind of CONTENT_KINDS) {
+    const text = joined(buildMomentMessages({
+      girl,
+      themeId: `test_${contentKind}`,
+      contentKind,
+      brief: "測試用題材描述",
+      dayPart: "evening",
+      isoDate: "2026-08-22",
+      isWeekend: true,
+      slot: 0,
+      imageCandidates: [],
+    }));
+    assert(
+      text.includes(MOMENT_CONTENT_GUIDANCE[contentKind]),
+      `${contentKind} 的寫法守門沒有進 prompt`,
+    );
+  }
+});
+
+Deno.test("社會觀察只允許溫和立場，不讓沒有新聞檢索的模型捏造時事", () => {
+  const guidance = MOMENT_CONTENT_GUIDANCE.social_observation;
+  for (const boundary of ["溫和但清楚", "不得捏造", "人物", "數字", "政策"]) {
+    assert(guidance.includes(boundary), `社會觀察缺少安全邊界：${boundary}`);
+  }
+  const prompt = joined(buildMomentMessages({
+    girl,
+    themeId: "social_ai_everyday",
+    contentKind: "social_observation",
+    brief: "談一般現象，不捏造具體新聞",
+    dayPart: "evening",
+    isoDate: "2026-08-22",
+    isWeekend: true,
+    slot: 0,
+    imageCandidates: [],
+  }));
+  assert(
+    prompt.includes("規則 11 裡的事實與安全限制是硬邊界"),
+    "禁捏造時事不能只當寫作偏好，必須列入作廢重寫的硬邊界",
+  );
+});
+
+Deno.test("每位女孩的個人底色真正分流，同 persona 也不再共用一個人設", () => {
+  const lenses = new Set(GIRL_PROFILES.map(momentCharacterLensFor));
+  assert(
+    lenses.size >= 90,
+    `100 位女孩只產生 ${lenses.size} 種個人底色，差異仍不足`,
+  );
+  const samePersona = GIRL_PROFILES.filter((p) =>
+    p.personaId === "slow_worker"
+  );
+  assert(samePersona.length > 1);
+  assert(
+    new Set(samePersona.map(momentCharacterLensFor)).size > 1,
+    "同 persona 的女孩仍共用同一個觀點濾鏡",
+  );
+  for (const lens of lenses) {
+    assert(lens.includes("不要把標籤寫出來"));
+    assert(lens.includes("刻薄、極端或討好"));
+  }
+});
+
+Deno.test("自然口語守門：直接進念頭、避開小作文與萬用 AI 感悟詞", () => {
+  const sys = build()[0].content;
+  for (
+    const rule of [
+      "自然的台灣繁中口語",
+      "直接進那個細節或念頭",
+      "小作文",
+      "完整起承轉合",
+      "萬用感悟詞",
+      "不要硬補咖啡、天氣、下班或照片場景",
+    ]
+  ) {
+    assert(sys.includes(rule), `自然口語守門缺少：${rule}`);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // 語感層（2026-08-25，Eric：貼文乏味、角色不夠鮮明）
 // ---------------------------------------------------------------------------
 
-import { MOMENT_POST_SHAPES, momentShapeFor } from "./moments_prompt.ts";
+import {
+  MOMENT_OPINION_POST_SHAPES,
+  MOMENT_POST_SHAPES,
+  momentShapeFor,
+} from "./moments_prompt.ts";
 import { PERSONAS } from "./practice_persona.ts";
 
 Deno.test("每一種 persona 都有自己的語感，缺一種都編不過也測不過", () => {
@@ -190,6 +301,7 @@ Deno.test("每一種 persona 都有自己的語感，缺一種都編不過也測
     const sys = buildMomentMessages({
       girl: profile,
       themeId: "coffee_break",
+      contentKind: "daily_life",
       brief: "在常去的咖啡店坐一下",
       dayPart: "afternoon",
       isoDate: "2026-08-22",
@@ -228,10 +340,33 @@ Deno.test("切入形狀：同一 slot 決定性，跨角色跨日期會把六種
   );
 });
 
+Deno.test("觀點題材使用獨立形狀，不會被『今天的糗或慘』拉回生活日記", () => {
+  const seen = new Set<string>();
+  for (const profile of GIRL_PROFILES) {
+    for (const day of ["2026-08-22", "2026-08-23", "2026-08-24"]) {
+      for (
+        const kind of [
+          "social_observation",
+          "relationship_thought",
+          "personal_value",
+        ] as const
+      ) {
+        seen.add(momentShapeFor(profile.profileId, day, 0, kind));
+      }
+    }
+  }
+  assertEquals(seen.size, MOMENT_OPINION_POST_SHAPES.length);
+  for (const shape of seen) {
+    assertEquals(MOMENT_POST_SHAPES.includes(shape), false);
+    assertEquals(shape.includes("今天的糗、懶或慘"), false);
+  }
+});
+
 Deno.test("選中的形狀真的進了 prompt，且同角色兩個 slot 可以拿到不同形狀", () => {
   const sys = buildMomentMessages({
     girl,
     themeId: "coffee_break",
+    contentKind: "daily_life",
     brief: "在常去的咖啡店坐一下",
     dayPart: "afternoon",
     isoDate: "2026-08-22",
@@ -240,7 +375,7 @@ Deno.test("選中的形狀真的進了 prompt，且同角色兩個 slot 可以�
     imageCandidates: [],
   })[0].content;
   assert(
-    sys.includes(momentShapeFor(girl.profileId, "2026-08-22", 0)),
+    sys.includes(momentShapeFor(girl.profileId, "2026-08-22", 0, "daily_life")),
     "prompt 裡的形狀與種子選出的不一致",
   );
   // 至少存在一位角色某天兩個 slot 形狀不同（不是所有 slot 共用一種）。
@@ -257,7 +392,7 @@ Deno.test("反平淡三守則寫進 prompt：禁昇華結尾、標點自由、�
   assert(sys.includes("不准昇華"), "缺「不准昇華」");
   assert(sys.includes("標點自由"), "缺「標點自由」");
   assert(
-    sys.includes("像真人隨手打的」優先"),
+    sys.includes("像這個真人隨手打的」優先"),
     "缺自由度宣告（規則是邊界不是模板）",
   );
 });
@@ -271,6 +406,7 @@ Deno.test("語感與形狀的注入文字不含會直接踩 validator 的第二�
     const sys = buildMomentMessages({
       girl: profile,
       themeId: "coffee_break",
+      contentKind: "daily_life",
       brief: "在常去的咖啡店坐一下",
       dayPart: "afternoon",
       isoDate: "2026-08-22",
@@ -280,7 +416,7 @@ Deno.test("語感與形狀的注入文字不含會直接踩 validator 的第二�
     })[0].content;
     const voicePrefix = "5. 你打字的樣子（語感，比內容更重要）：";
     const voiceStart = sys.indexOf(voicePrefix);
-    const voiceEnd = sys.indexOf("\n6. 你平常在意的是", voiceStart);
+    const voiceEnd = sys.indexOf("\n6. 個人底色是", voiceStart);
     assert(voiceStart >= 0, `persona ${persona.id} 的語感起點不存在`);
     assert(voiceEnd > voiceStart, `persona ${persona.id} 的語感終點不存在`);
     const voiceText = sys.slice(voiceStart + voicePrefix.length, voiceEnd)
@@ -296,7 +432,7 @@ Deno.test("語感與形狀的注入文字不含會直接踩 validator 的第二�
       `persona ${persona.id} 的語感以問號收尾`,
     );
   }
-  for (const shape of MOMENT_POST_SHAPES) {
+  for (const shape of [...MOMENT_POST_SHAPES, ...MOMENT_OPINION_POST_SHAPES]) {
     assertEquals(/[你妳]/u.test(shape), false, `形狀含第二人稱：${shape}`);
     assertEquals(/[?？]$/u.test(shape), false, `形狀以問號收尾：${shape}`);
   }

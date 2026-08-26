@@ -145,6 +145,33 @@ const THEME_SCENE_LINES: Readonly<Record<string, string>> = {
     "A bowl of instant noodles with an egg on a small table at night, chopsticks resting on the rim, warm lamp light.",
   rainy_mood:
     "Raindrops running down a window pane with a blurred city behind, a mug silhouetted on the sill inside.",
+  // ── 社會觀察／感情／價值觀 ────────────────────────────────────────
+  social_ai_everyday:
+    "A closed silver laptop beside a plain notebook and a ceramic mug on a tidy desk, soft evening light.",
+  social_after_hours:
+    "A phone lying screen-side down beside a closed laptop on a dining table after dark, a small lamp glowing nearby.",
+  social_online_comparison:
+    "A phone resting screen-side down beside a small mirror and an unfinished cup of tea on a bedroom table.",
+  social_public_courtesy:
+    "A neat row of empty seats inside a quiet city train carriage, soft daylight through the windows.",
+  relationship_pace:
+    "Two ceramic cups cooling at different places on a small table, one chair slightly pulled back.",
+  relationship_reciprocity:
+    "Two matching mugs on opposite sides of a wooden table, both partly finished under warm light.",
+  relationship_own_life:
+    "A single reading chair by a window with a book, headphones, and a small plant nearby.",
+  relationship_disagreement:
+    "Two mugs set apart on a kitchen counter, a folded dish towel between them, quiet evening light.",
+  value_time:
+    "A simple analog clock beside keys and a half-finished cup of tea on a clear wooden shelf.",
+  value_reliability:
+    "A neatly folded umbrella drying beside a pair of shoes at an apartment doorway after rain.",
+  value_spending:
+    "A closed wallet beside a few coins and a plain paper receipt turned over on a table.",
+  value_unfilled_time:
+    "An empty balcony chair beside a small table with tea, late afternoon light and open sky beyond.",
+  interest_current_fixation:
+    "A small collection of hobby tools and everyday objects arranged loosely on a desk under warm light.",
   // ── 週末題材 ──────────────────────────────────────────────────────
   weekend_brunch:
     "A brunch plate with toast and eggs on a wooden table, a small glass of juice, relaxed cafe table setting.",
@@ -175,6 +202,12 @@ const THEME_SCENE_LINES: Readonly<Record<string, string>> = {
     "A subtropical mountain trail with stone steps rising through dense green ferns, mist between the trees.",
   pet_moment:
     "A cat curled asleep on a sofa cushion in warm afternoon shade, one paw over its nose.",
+  pet_house_rules:
+    "A pet bed occupying the center of a sofa, a folded blanket pushed to one side in warm indoor light.",
+  pet_care_detail:
+    "A pet food bowl beside a grooming brush and a folded towel on a clean floor mat.",
+  pet_owner_routine:
+    "A small pet bowl beside a water dish and a folded cleaning cloth in a lived-in kitchen corner.",
   food_find:
     "A steaming bowl of braised pork rice on a small metal table, chopsticks and a spoon resting beside it.",
   exhibition_visit:
@@ -183,6 +216,16 @@ const THEME_SCENE_LINES: Readonly<Record<string, string>> = {
     "A flat wooden tray with a watch, a ring, and a small bottle of lotion arranged loosely, soft window-less light.",
   night_walk:
     "A riverside path at night with evenly spaced lamps reflecting on the water, the far bank glowing softly.",
+  money_habit:
+    "A closed wallet, a small coin tray, and a ceramic cup arranged on a plain wooden desk.",
+  audio_note:
+    "A pair of headphones beside a small audio recorder and a warm desk lamp in a quiet room.",
+  making_things:
+    "A work table with clay, pencils, scissors, and a small unfinished craft piece under soft window light.",
+  tech_curiosity:
+    "A laptop with a softly blurred display beside a compact keyboard, notebook, and mug on a clean desk.",
+  city_detail:
+    "A quiet old brick arcade with patterned floor tiles, potted plants, and soft daylight at the far end.",
   // ── 職業題材 ──────────────────────────────────────────────────────
   shift_end:
     "A convenience-store bento and a warm drink on a small table under lamplight, chopsticks still in their wrapper.",
@@ -204,6 +247,8 @@ const THEME_SCENE_LINES: Readonly<Record<string, string>> = {
     "A quiet gym corner with a barbell resting on the rack, weight plates stacked, a towel over the bench.",
   flower_shop:
     "A wrapped bouquet of seasonal flowers lying on a wooden work table among scissors, twine and loose stems.",
+  grooming_day:
+    "A clean grooming table with a brush, comb, folded towel, and small spray bottle arranged nearby.",
 };
 
 /** 題材沒有對應句時的通用安全句（新題材上線而本表漏更新時的向前相容）。 */

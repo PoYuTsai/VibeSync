@@ -16,7 +16,7 @@
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import type { ChatMessage } from "./prompt.ts";
 import type { PersonaId, PracticeGirlProfile } from "./practice_persona.ts";
-import { fnv1a } from "./moments_schedule.ts";
+import { fnv1a, type MomentContentKind } from "./moments_schedule.ts";
 import type { TaipeiDayPart } from "./time_context.ts";
 import { SELF_PORTRAIT_IMAGE_ID } from "./moments_image_catalog.ts";
 import {
@@ -69,6 +69,49 @@ const PERSONA_VOICE: Readonly<Record<PersonaId, string>> = {
     "句子乾脆，說完就完，不解釋。",
 };
 
+const CONTENT_KIND_LABEL: Readonly<Record<MomentContentKind, string>> = {
+  daily_life: "生活片段",
+  social_observation: "社會觀察",
+  relationship_thought: "感情想法",
+  personal_value: "個人價值觀",
+  interest: "個人興趣",
+  pet_life: "寵物生活",
+};
+
+/**
+ * 題材類型的寫法守門。這一層決定內容，不覆蓋 persona 的聲音。
+ * 特別是社會觀察：模型沒有新聞檢索，只准談一般現象與自己的選擇，避免
+ * 「很像時事」卻帶著假人物、假數字或假政策的貼文。
+ */
+export const MOMENT_CONTENT_GUIDANCE: Readonly<
+  Record<MomentContentKind, string>
+> = {
+  daily_life: "抓一個真的看得到或感覺得到的小細節，不替平凡的一天硬找意義。",
+  social_observation:
+    "對最近常被討論的生活或社會現象，給一個溫和但清楚的立場。只談一般現象與自己的選擇；不得捏造新聞、人物、數字、政策、災害或未提供的事實，也不做政黨站隊。",
+  relationship_thought:
+    "分享自己的感情步調或相處偏好。只說自己在意什麼，不教別人談戀愛、不影射前任、不苦情，也不把所有人一概而論。",
+  personal_value:
+    "說一個自己真的會做的取捨，最好帶一個很短的理由或矛盾。不要寫成金句、雞湯或對別人的道德評分。",
+  interest:
+    "從自己的興趣講一個具體偏好、門道或最近在意的細節；不要只剩『喜歡、療癒、充電』這類空泛感受。",
+  pet_life:
+    "寫照顧、相處或遇到動物的具體細節。只有題材明確說家裡有養，才能自稱飼主；可愛可以，但不要把寵物寫成萬用療癒文。",
+};
+
+/**
+ * 100 位女孩其實有 93 組不同的 personalityTags；舊 prompt 沒使用，最後只剩
+ * 五種 persona 聲線。這裡把既有資料轉成「她怎麼看事情」的濾鏡，而不是要
+ * 模型把標籤逐字寫進貼文，避免人設用力過頭。
+ */
+export function momentCharacterLensFor(girl: PracticeGirlProfile): string {
+  return `個人底色是${
+    girl.personalityTags.join("、")
+  }，感情步調是「${girl.relationshipGoal}」。` +
+    `這些只決定會注意什麼、偏好什麼、怎麼下判斷；不要把標籤寫出來，` +
+    `不要自我介紹，也不要為了顯得有個性而變得刻薄、極端或討好。`;
+}
+
 /**
  * 貼文的切入形狀。每個 slot 用種子輪替一種，跨貼文的節奏才會散開——
  * 這是 opener「切入角度輪替」的同一招（該輪實測跨輪重複 65%→33%）。
@@ -83,14 +126,32 @@ export const MOMENT_POST_SHAPES: readonly string[] = [
   "沒頭沒尾地講到一半，不交代前因後果，像自言自語被聽到",
 ];
 
+/**
+ * 觀點類不能沿用「今天的糗、懶或慘」這種生活形狀，否則新增感情／價值題材
+ * 最後仍會被 prompt 拉回日記。這組只談立場的呈現方式，仍不提供可抄的例句。
+ */
+export const MOMENT_OPINION_POST_SHAPES: readonly string[] = [
+  "先把自己的偏好講出來，再補一個很短的理由，不交代完整背景",
+  "承認自己也有點矛盾，停在矛盾那裡，不急著得出答案",
+  "從一個很小的取捨帶出看法，講到剛好就停，不上升成大道理",
+  "說一個不一定討喜但不傷人的偏好，乾脆收尾，不替自己辯護",
+  "先像是同意常見說法，後半句補上自己的保留",
+  "只講自己會怎麼做，不替別人下結論，也不要求認同",
+];
+
 /** 種子選形狀：同一 slot 重生成拿到同一形狀（重試語義不變），跨 slot 散開。 */
 export function momentShapeFor(
   profileId: string,
   isoDate: string,
   slot: number,
+  contentKind: MomentContentKind = "daily_life",
 ): string {
-  const seed = `${profileId}|${isoDate}|moment|${slot}|shape`;
-  return MOMENT_POST_SHAPES[fnv1a(seed) % MOMENT_POST_SHAPES.length];
+  const isOpinion = contentKind === "social_observation" ||
+    contentKind === "relationship_thought" ||
+    contentKind === "personal_value";
+  const shapes = isOpinion ? MOMENT_OPINION_POST_SHAPES : MOMENT_POST_SHAPES;
+  const seed = `${profileId}|${isoDate}|moment|${slot}|shape|${contentKind}`;
+  return shapes[fnv1a(seed) % shapes.length];
 }
 
 const DAY_PART_LABEL: Readonly<Record<TaipeiDayPart, string>> = {
@@ -138,6 +199,7 @@ function imageDirective(
 export function buildMomentMessages(opts: {
   girl: PracticeGirlProfile;
   themeId: string;
+  contentKind: MomentContentKind;
   brief: string;
   dayPart: TaipeiDayPart;
   isoDate: string;
@@ -150,6 +212,7 @@ export function buildMomentMessages(opts: {
   const {
     girl,
     themeId,
+    contentKind,
     brief,
     dayPart,
     isoDate,
@@ -159,7 +222,9 @@ export function buildMomentMessages(opts: {
   } = opts;
   const generatedImage = opts.generatedImage ?? false;
   const voice = PERSONA_VOICE[girl.personaId];
-  const shape = momentShapeFor(girl.profileId, isoDate, slot);
+  const characterLens = momentCharacterLensFor(girl);
+  const contentGuidance = MOMENT_CONTENT_GUIDANCE[contentKind];
+  const shape = momentShapeFor(girl.profileId, isoDate, slot, contentKind);
 
   const system =
     `你是${girl.displayName}，${girl.age} 歲，在${girl.city}的${girl.professionLabel}。
@@ -173,16 +238,19 @@ ${girl.professionPrompt}
 3. 不可以提到任何特定的人、任何對話內容、任何跟誰約好的事。這則貼文只講你自己。
 4. 不可以出現真實品牌、真實店名、真實地址、真實帳號或真實網址。
 5. 你打字的樣子（語感，比內容更重要）：${voice}
-6. 你平常在意的是${girl.interestTags.join("、")}，生活習慣是${
+6. ${characterLens}你平常在意的是${girl.interestTags.join("、")}，生活習慣是${
       girl.lifestyleTags.join("、")
-    }——內容從這裡長出來，但不要像在自我介紹。
+    }。這些是素材庫，不是每一則都要塞進去。
 7. 不要用開頭問候語、不要加 hashtag、不要寫成廣告或文案。
 8. 結尾不准總結、不准昇華、不准硬轉正能量。真人發廢文不會幫自己的一天下註解。
 9. 不用把事情講完整，破碎一點反而真。標點自由：可以整句沒有句號，可以用空格斷句。
 ${imageDirective(imageCandidates, generatedImage)}
+11. 這則是「${CONTENT_KIND_LABEL[contentKind]}」：${contentGuidance}
+12. 用自然的台灣繁中口語，刪掉可以省略的鋪墊，直接進那個細節或念頭。不要寫成小作文、論說文或完整起承轉合；少用萬用感悟詞（突然覺得／原來／生活就是／儀式感／小確幸／被治癒／好好生活）。語氣詞與 emoji 只有真的符合這個人時才用，不要每則硬塞。
 
 這一則的切入形狀：${shape}。形狀是方向不是模板，貼著你的語感寫。
-規則 1-4、7 與 10 是硬邊界，違反就作廢重寫；其餘一律以「像真人隨手打的」優先——可以隨口、可以不完整、可以無厘頭，規則沒寫到的寫法都放行。
+題材決定這則要講生活、觀點、感情、興趣或寵物；不是生活片段時，不要硬補咖啡、天氣、下班或照片場景。
+規則 1-4、7、10，以及規則 11 裡的事實與安全限制是硬邊界，違反就作廢重寫；其餘一律以「像這個真人隨手打的」優先——可以隨口、可以不完整、可以有自己的立場，規則沒寫到的寫法都放行。
 
 輸出格式：只輸出一個 JSON 物件，不要有其他文字。
 {"text": "貼文內容", "imageId": null}${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
@@ -195,7 +263,7 @@ ${imageDirective(imageCandidates, generatedImage)}
 momentDayPart: ${DAY_PART_LABEL[dayPart]}（${isoDate}，${
     isWeekend ? "週末" : "平日"
   }）
-momentThemeBrief: ${themeId} — ${brief}
+momentThemeBrief: ${themeId}（${CONTENT_KIND_LABEL[contentKind]}）— ${brief}
 momentImageOptions: ${optionsLine}
 
 照上面的規則寫這一則貼文。`;
