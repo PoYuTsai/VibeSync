@@ -169,11 +169,14 @@ export function momentShapeFor(
  * 時留著它，等於同時要求「不要寫場景」與規則 10 的配圖寫法，兩套指令並存。
  * 有配圖時只保留咖啡／天氣／下班這幾個被寫爛的生活場景禁令，照片怎麼寫一律
  * 交還規則 10（已依 contentKind 分流）。
+ *
+ * 判準是「這一則到底有沒有圖」，不是「圖是不是生成的」（2026-08-26 Eric 複審
+ * P2-1）：生圖旗標關閉時走的是 catalog 圖，同樣會配圖，同樣不能再禁場景。
  */
-function themeScopeLine(generatedImage: boolean): string {
+function themeScopeLine(hasImage: boolean): string {
   const head = "題材決定這則要講生活、觀點、感情、興趣或寵物；" +
     "不是生活片段時，不要硬補咖啡、天氣、下班";
-  return generatedImage
+  return hasImage
     ? `${head}場景。配圖怎麼寫只看規則 10，這裡不另外要求場景。`
     : `${head}或照片場景。`;
 }
@@ -188,11 +191,20 @@ const DAY_PART_LABEL: Readonly<Record<TaipeiDayPart, string>> = {
   late_night: "深夜",
 };
 
+/**
+ * 配圖指示。**每一條有圖的路徑都要依 contentKind 分流**，不只生成配圖那條
+ * （2026-08-26 Eric 複審 P2-1）：生圖旗標關閉或缺 FAL_API_KEY 時走的是 catalog
+ * 圖，觀點題材照樣拿得到，舊版在那條路上仍會同時收到「把文字寫成配得上那張圖」
+ * 與「不是生活片段時不要硬補照片場景」兩套指令。
+ *
+ * 觀點類三條路徑講的是同一件事：**圖是搭配，不是題材**，文字照樣寫想法或取捨。
+ */
 function imageDirective(
   imageCandidates: readonly string[],
   generatedImage: boolean,
   contentKind: MomentContentKind,
 ): string {
+  const opinion = isMomentOpinionKind(contentKind);
   if (generatedImage) {
     // 生成配圖模式（PR-3）：圖會在文字落地後由生圖模型「以文生圖」。
     // 兩種題材要的「文」不一樣，所以這裡依 contentKind 分流
@@ -204,7 +216,7 @@ function imageDirective(
     // moments_image_gen.ts 的題材場景句本來就替每個觀點題材備好了靜物。
     // 兩條路都維持 imageId = null：生成圖走獨立的 image 欄位組，
     // 不走 catalog allowlist。
-    if (isMomentOpinionKind(contentKind)) {
+    if (opinion) {
       return `10. 這一則會配上一張你隨手拍的照片（拍眼前的東西或場景，不是自拍）。` +
         `照片只是此刻手邊剛好的畫面，不是這則要講的事——文字照樣寫你的想法或取捨，` +
         `不要為了配圖改寫成場景描述，也不要描述照片本身。imageId 必須是 null。`;
@@ -219,11 +231,24 @@ function imageDirective(
   const onlySelfPortrait = imageCandidates.length === 1 &&
     imageCandidates[0] === SELF_PORTRAIT_IMAGE_ID;
   if (onlySelfPortrait) {
+    // resolveAvailableMomentImages 的保底：候選全部不可用時整批換成自拍
+    // sentinel，所以任何題材都可能落到這裡，觀點題材也不例外。目前閘門全開
+    // 時實測 0 則，但這是資料狀態不是保證，兩種寫法都先定義好。
+    if (opinion) {
+      return `10. 這一則會配上你自己的照片（一張自拍）。照片只是此刻的你，` +
+        `不是這則要講的事——文字照樣寫你的想法或取捨，不要改成描述自己的樣子或所在的場景。` +
+        `imageId 必須填 "${SELF_PORTRAIT_IMAGE_ID}"。`;
+    }
     // 圖決定文，不是文決定圖：先讓模型知道會配自拍，文案才不會出現
     // 「宵夜」配大頭照那種違和。
     return `10. 這一則會配上你自己的照片（一張自拍）。把文字寫成配得上一張自拍的樣子——` +
       `講你此刻的狀態、心情或樣子，不要描述一個你人不在畫面裡的場景。` +
       `imageId 必須填 "${SELF_PORTRAIT_IMAGE_ID}"。`;
+  }
+  if (opinion) {
+    return `10. 這一則會配一張圖。從 momentImageOptions 裡挑一個最貼題材的 id 填進 imageId；` +
+      `那張圖只是搭配，不是這則要講的事——文字照樣寫你的想法或取捨，` +
+      `不要為了配圖改寫成場景描述，也不要描述照片本身。不要自己發明 id。`;
   }
   return `10. 這一則會配一張圖。從 momentImageOptions 裡挑一個最貼題材的 id 填進 imageId，` +
     `並把文字寫成配得上那張圖的樣子。不要自己發明 id。`;
@@ -285,7 +310,7 @@ ${imageDirective(imageCandidates, generatedImage, contentKind)}
 12. 用自然的台灣繁中口語，刪掉可以省略的鋪墊，直接進那個細節或念頭。不要寫成小作文、論說文或完整起承轉合；少用萬用感悟詞（突然覺得／原來／生活就是／儀式感／小確幸／被治癒／好好生活）。語氣詞與 emoji 只有真的符合這個人時才用，不要每則硬塞。
 
 這一則的切入形狀：${shape}。形狀是方向不是模板，貼著你的語感寫。
-${themeScopeLine(generatedImage)}
+${themeScopeLine(generatedImage || imageCandidates.length > 0)}
 規則 1-4、7、10，以及規則 11 裡的事實與安全限制是硬邊界，違反就作廢重寫；其餘一律以「像這個真人隨手打的」優先——可以隨口、可以不完整、可以有自己的立場，規則沒寫到的寫法都放行。
 
 輸出格式：只輸出一個 JSON 物件，不要有其他文字。

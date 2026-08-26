@@ -25,7 +25,10 @@ import {
   MOMENT_PROMPT_MAX_CHARS,
   MOMENT_PROMPT_MIN_CHARS,
 } from "./moments_constants.ts";
-import { SELF_PORTRAIT_IMAGE_ID } from "./moments_image_catalog.ts";
+import {
+  AVAILABLE_MOMENT_IMAGE_IDS,
+  SELF_PORTRAIT_IMAGE_ID,
+} from "./moments_image_catalog.ts";
 import { GIRL_PROFILES } from "./practice_persona.ts";
 import type { MomentContentKind } from "./moments_schedule.ts";
 
@@ -564,5 +567,104 @@ Deno.test("純文字模式不受影響：原本的禁照片場景句還在，也
     assert(sys.includes("不要硬補咖啡、天氣、下班或照片場景"));
     assertEquals(sys.includes("照片只是此刻手邊剛好的畫面"), false);
     assertEquals(sys.includes("配圖怎麼寫只看規則 10"), false);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// catalog 配圖 × 內容類型（2026-08-26 Eric 複審 P2-1）
+//
+// 生圖旗標關閉或缺 FAL_API_KEY 時，slot 仍會帶著 catalog 候選走
+// generatedImage=false 這條路——那是目前的正式 rollback 路徑，不是理論分支。
+// 舊版只在 generatedImage=true 時依 contentKind 分流，於是觀點貼文在 catalog
+// 路徑上同時收到「把文字寫成配得上那張圖」與「不要硬補照片場景」。
+// ---------------------------------------------------------------------------
+
+/** 閘門後真的配得出來的場景圖；不寫死 id，閘門調整時測試不該跟著紅。 */
+const SCENE_IMAGE_ID = AVAILABLE_MOMENT_IMAGE_IDS.find(
+  (id) => id !== SELF_PORTRAIT_IMAGE_ID,
+)!;
+
+function catalogSystem(
+  contentKind: MomentContentKind,
+  imageCandidates: readonly string[],
+): string {
+  return buildMomentMessages({
+    girl,
+    themeId: `test_${contentKind}`,
+    contentKind,
+    brief: "測試用題材描述",
+    dayPart: "evening",
+    isoDate: "2026-08-22",
+    isWeekend: true,
+    slot: 0,
+    imageCandidates,
+  })[0].content;
+}
+
+Deno.test("觀點題材配 catalog 圖：圖只是搭配，文字照樣寫想法", () => {
+  assert(SCENE_IMAGE_ID, "閘門裡至少要有一張場景圖，否則這組測試沒有受測物");
+  for (const contentKind of OPINION_KINDS) {
+    const sys = catalogSystem(contentKind, [SCENE_IMAGE_ID]);
+    assert(
+      sys.includes("那張圖只是搭配，不是這則要講的事"),
+      `${contentKind} 走 catalog 圖時沒拿到觀點專用指示`,
+    );
+    assert(sys.includes("文字照樣寫你的想法或取捨"));
+    assertEquals(
+      sys.includes("並把文字寫成配得上那張圖的樣子"),
+      false,
+      `${contentKind} 仍被要求把文字寫成配得上那張圖`,
+    );
+    // 挑 id 的契約不能因為分流而掉：模型仍要填 id，且不得自己發明。
+    assert(sys.includes("填進 imageId"));
+    assert(sys.includes("不要自己發明 id"));
+    assert(sys.includes(MOMENT_CONTENT_GUIDANCE[contentKind]));
+  }
+});
+
+Deno.test("觀點題材只剩自拍候選時也有明確寫法，不要求描述自己的樣子", () => {
+  for (const contentKind of OPINION_KINDS) {
+    const sys = catalogSystem(contentKind, [SELF_PORTRAIT_IMAGE_ID]);
+    assert(
+      sys.includes("照片只是此刻的你，不是這則要講的事"),
+      `${contentKind} 的自拍路徑沒有觀點專用指示`,
+    );
+    assertEquals(
+      sys.includes("講你此刻的狀態、心情或樣子"),
+      false,
+      `${contentKind} 仍被要求把文字寫成配得上一張自拍`,
+    );
+    assert(sys.includes(`imageId 必須填 "${SELF_PORTRAIT_IMAGE_ID}"`));
+  }
+});
+
+Deno.test("有圖就不再禁照片場景——catalog 與自拍路徑都一致", () => {
+  for (const contentKind of CONTENT_KINDS) {
+    for (const candidates of [[SCENE_IMAGE_ID], [SELF_PORTRAIT_IMAGE_ID]]) {
+      const sys = catalogSystem(contentKind, candidates);
+      assertEquals(
+        (sys.match(/\n10\. /g) ?? []).length,
+        1,
+        `${contentKind} 出現了不只一條規則 10`,
+      );
+      assertEquals(
+        sys.includes("不要硬補咖啡、天氣、下班或照片場景"),
+        false,
+        `${contentKind} 有配圖卻仍禁止照片場景——與規則 10 直接打架`,
+      );
+      assert(sys.includes("配圖怎麼寫只看規則 10"));
+    }
+  }
+});
+
+Deno.test("非觀點題材的 catalog 與自拍指示一字未動", () => {
+  for (const contentKind of ["daily_life", "interest", "pet_life"] as const) {
+    const catalog = catalogSystem(contentKind, [SCENE_IMAGE_ID]);
+    assert(catalog.includes("並把文字寫成配得上那張圖的樣子"));
+    assertEquals(catalog.includes("那張圖只是搭配"), false);
+
+    const selfie = catalogSystem(contentKind, [SELF_PORTRAIT_IMAGE_ID]);
+    assert(selfie.includes("講你此刻的狀態、心情或樣子"));
+    assertEquals(selfie.includes("照片只是此刻的你"), false);
   }
 });
