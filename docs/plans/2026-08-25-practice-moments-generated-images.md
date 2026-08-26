@@ -102,8 +102,8 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 - `commit_practice_moment_post` 加 `p_wants_image BOOLEAN DEFAULT FALSE`（TRUE 時原子寫 `image_status='pending'`）。簽名變更沿用 `20260824063344` 的 overload 衛生範式（fail-closed 稽核 → DROP 舊版 → CREATE）；舊 Edge 以 named params 呼叫吃 DEFAULT，部署窗內雙向相容。
 - `list_practice_moment_posts` 回傳表加 `image_status, image_path`（DROP+CREATE；舊 Edge 只讀已知欄位，多欄無害）。
 - **新增三支 image RPC**，逐格鏡像 reserve/commit/release 的六態轉移表與 token fencing（含「attempts 明寫 +1 不靠 DEFAULT」「絕不 DELETE 列、絕不動 body、絕不回收 attempts」三鐵則）：
-  - `claim_practice_moment_image(..., p_image_path)`：僅 `status='ready' AND image_status='pending'` 且（token IS NULL 或租約逾時）可認領；認領即 `image_attempts+1`、把即將寫入的 token 路徑**記進孤兒帳本**（`image_orphan_paths`），並**同交易** `increment_model_usage(user,'practice_moment_image',...)`（超限 RAISE → 整筆 rollback，帳本也一起回滾）；回傳含 `body, theme_id` 免二次讀。max_attempts DEFAULT 2、lease DEFAULT 180s。`p_image_path` 由 `20260826024500` 加入（第四輪複審 P2-2）。
-  - `commit_practice_moment_image(..., p_image_path)`：fenced，寫 `image_status='ready'`，**同交易**把該路徑從孤兒帳本抹掉（被引用的物件永不可能被清算刪到）。
+  - `claim_practice_moment_image(..., p_image_path)`：僅 `status='ready' AND image_status='pending'` 且（token IS NULL 或租約逾時）可認領；認領即 `image_attempts+1`、把即將寫入的 token 路徑**記進孤兒帳本**（`image_orphan_paths`），並**同交易** `increment_model_usage(user,'practice_moment_image',...)`（超限 RAISE → 整筆 rollback，帳本也一起回滾）；回傳含 `body, theme_id` 免二次讀。max_attempts DEFAULT 2、lease 固定 180s（`p_lease_seconds` 只接受這個值，見下方租約邊界）。`p_image_path` 由 `20260826024500` 加入（第四輪複審 P2-2）。
+  - `commit_practice_moment_image(..., p_image_path)`：token 與**租約**雙重 fenced，寫 `image_status='ready'`，**同交易**把該路徑從孤兒帳本抹掉（被引用的物件永不可能被清算刪到）。
   - `release_practice_moment_image(...)`：attempts 到頂轉 `'failed'`（終態＝永久純文字），否則清 token 留 pending。
 - **清理兩小支**：`list_expired_practice_moment_images(p_before DATE, p_limit INT)`（回 ready＋出窗的 path）與 `mark_practice_moment_images_expired(p_paths TEXT[])`。
 - **孤兒帳本兩小支（`20260826024500`）**：`list_practice_moment_image_orphans(p_limit INT, p_grace_seconds INT)`（回寬限期之外、且不被自己列引用的路徑）與 `clear_practice_moment_image_orphans(p_paths TEXT[])`（只清帳本、不動任何生命週期欄位）。欄位是純加法的 `image_orphan_paths TEXT[] NOT NULL DEFAULT '{}'`（CHECK cardinality ≤ 4）。
@@ -136,7 +136,7 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 | 段 | 清什麼 | 流程 |
 | --- | --- | --- |
 | 主清掃 | **被引用但出窗**的圖 | `list_expired_practice_moment_images(今天-13, LIMIT 20)` → `storage.remove` → `mark_practice_moment_images_expired` |
-| 帳本清算 | **寫過但沒人引用**的圖 | `list_practice_moment_image_orphans(LIMIT 20, 寬限 600s)` → `storage.remove` → `clear_practice_moment_image_orphans` |
+| 帳本清算 | **寫過但沒人引用**的圖 | `list_practice_moment_image_orphans(LIMIT 20, 寬限 600s；DB 端夾住下限 ≥180s)` → `storage.remove` → `clear_practice_moment_image_orphans` |
 | prefix 對帳 | 連帳本都沒有的殘留（帳本上線前的物件、人工上傳） | 找**最舊的出窗日期資料夾** → 分頁列出並刪除 |
 
 穩態儲存 ≈ 14 天 × 11 張 × ~150KB ≈ **23MB**。零流量期的積壓有界，下次有人開 feed 分批消化。
@@ -151,7 +151,9 @@ commit → image_orphan_paths -= <token 路徑>   （成功的同一交易）
 其餘一切結局（失敗、release、不確定態、實例被回收）→ 紀錄留著
 ```
 
-於是「有物件但沒人引用」是**可查詢的資料狀態**，不再依賴任何 Edge 實例活著；清算每次 feed 請求跑一批，直到清乾淨為止。兩道守門讓它永遠安全：寬限期（600s，遠大於一個 job 的最壞 wall clock 與 180s 租約）之內的紀錄不列，列自己 `image_path` 指著的物件不列。這條閉環同時讓 commit 的不確定態有了正確歸宿——**不刪物件**（DB 可能其實已 commit，刪了會讓 ready 列指向 404 一整個窗期），帳本會在確認沒人引用之後才清掉它。
+於是「有物件但沒人引用」是**可查詢的資料狀態**，不再依賴任何 Edge 實例活著；清算每次 feed 請求跑一批，直到清乾淨為止。兩道守門讓它永遠安全：寬限期（Edge 傳 600s）之內的紀錄不列，列自己 `image_path` 指著的物件不列。這條閉環同時讓 commit 的不確定態有了正確歸宿——**不刪物件**（DB 可能其實已 commit，刪了會讓 ready 列指向 404 一整個窗期），帳本會在確認沒人引用之後才清掉它。
+
+**租約與清算的邊界由資料層自己閉合（`807ebef`）**：只靠 Edge 常數「job 不可能活過 600s」是推論，不是保證。三個地方一起把它變成資料層不變式——claim 只接受 `p_lease_seconds = 180`（其他值一律 RAISE，不准有人偷偷延長租約）、commit 除了 token fencing 再加一道**租約 fencing**（`image_reserved_at <= now() - 180s` 一律回 FALSE，即使 token 還沒被輪替）、清算的寬限期以 `GREATEST(p_grace_seconds, 180)` 夾住下限。兩個邊界剛好互斥：**t = 180s 時 commit 已被拒、清算還沒開始列**（commit 用 `<=`、清算用 `<`），因此不存在「worker 仍可 commit、清算卻已可刪圖」的窗口，也就不可能出現 ready 列指向已被回收的物件。commit 內的順序也被釘住：**出窗收屍必須早於租約 RETURN**，否則同時出窗又逾期的列會提早返回、永遠留在 pending。
 
 **prefix 對帳兜底改成不遺漏（同上）**：舊版依 UTC 小時在固定 3 天帶內輪替一個 prefix，有兩個漏法——feed 零流量超過該帶，殘留就永遠滑出掃描範圍；單一 prefix 超過 Storage list 的 100 筆上限也永遠掃不完。現在改成**掃描目標由 bucket 自己說了算**：list 根目錄拿到還存在的日期資料夾，取其中最舊的出窗日期，分頁排空（每次請求上限 4 頁 × 100 筆，沒清完下次接著清；已刪的不會再出現在列表裡）。資料夾清空即從列表消失，所以停機一個月回來仍掃得到。窗內日期永不觸碰（`name < 窗起點` 才是候選），這是刪錯圖的最後一道守門。
 
@@ -164,7 +166,7 @@ commit → image_orphan_paths -= <token 路徑>   （成功的同一交易）
 - **下載／上傳完整邊界（blocking item 2；第三輪同步）**：結果 URL 必須是 https 且 host 屬 `fal.media`；兩個 fetch 均 `redirect: "error"`＋response.url 最終 host 縱深驗證；timeout 計時器涵蓋**完整 response body**（懸掛的 JSON 與圖片串流都會被 abort）；Content-Type **僅收 image/jpeg**（與寫入副檔名、contentType 一致）＋ JPEG magic bytes（FF D8 FF）驗證；大小硬上限兩層——Content-Length 預檢＋流式累計硬擋；上傳獨立 timeout（底層不可取消，安全性由 token 隔離路徑＋輸家自刪＋出窗 prefix 孤兒對帳保證）。任何異常回應都不落入記憶體、不拖 Edge。
 - **自拍貼文維持圖鑑照片，不生成**：人臉一致性做不到＋原設計 §7.4「不得生成像真實人物的新圖」（App Review 肖像風險）。候選收斂後只剩 `moment_self_portrait` 的 slot 不進生圖分支。
 - **Kill switch**：`MOMENT_IMAGE_GEN_ENABLED`（getEnv 閘門，照 `PRACTICE_HINT_PREFETCH_ENABLED` 範式，handler.ts:2142）。**關閉或缺 `FAL_API_KEY` 時退回現行 20 張 bundled 素材路徑**——bundled 路徑已上線已驗收，保住「兩種貼文型態」；因此 20 張素材長期保留，`test/lint/moments_scene_asset_parity_test.dart` 三方對帳一行不用改。
-- **timeout < lease**：fal 呼叫 30s＋下載 15s＋上傳 15s ≪ image lease 180s；上傳競態不再倚賴機率——token 隔離路徑讓「同時上傳」寫的是不同物件，晚到者自刪（§7）。
+- **timeout < lease**：fal 呼叫 30s＋下載 15s＋上傳 15s ≪ image lease 180s；而且這不只是「算得剛好」——超過 180s 的 commit 在資料層直接被拒（§8 租約邊界）。上傳競態不再倚賴機率——token 隔離路徑讓「同時上傳」寫的是不同物件，晚到者自刪（§7）。
 - **provenance**：`docs/licenses/` 補一條 runtime 生成聲明（模型 FLUX.1 [schnell]、prompt 來源文件、無人物無品牌約束、商用授權——schnell 為 Apache 2.0 開源權重，fal 託管條款允許商用）。
 
 ---
