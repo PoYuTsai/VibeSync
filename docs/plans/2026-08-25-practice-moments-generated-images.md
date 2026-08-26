@@ -194,8 +194,8 @@ class MomentRemoteImage extends MomentImageSource {
   - **期望平均量（估算，非任何保證）**：`IMAGE_PROBABILITY = 0.2` 的機率擲骰下，排程模擬 ~11 張/天 → fal schnell ≈ $0.0024/張 ≈ **~$0.9/月**。機率值只是 scheduler 參數，**不是 DB constraint，不構成任何硬上限**。
   - **系統真正強制的（第四輪複審修正：固定契約其實有上界）**：每個 post_date 的 provider attempts 上界是 **100 角色 × 每日 2 slots × 每 slot 2 attempts ＝ 400 次**（100 來自 Edge 角色 allowlist，2 slots 與 2 attempts 各由 SQL CHECK 保證）≈ **$0.96／post_date**。`IMAGE_PROBABILITY = 0.2` 只影響期望量，**不影響這個上界**。此外有 per-user scope 3/min、20/day（單帳號放大面 backstop）。
   - **wall-clock 的但書**：文字補生成只會補**今天**的 slot，所以「新產生的列」每個 wall-clock 日同樣受 400 次上界；但**先前 post_date 沒生成完的 pending 列，會在之後的請求被接手**（backlog 可能集中在某一天執行），因此單一 wall-clock 日的實際花費可以是數個 post_date 的殘量相加，最壞界是窗內 14 個 post_date 的剩餘 attempts 總和（≈ $13 量級的絕對天花板，非預期值）。
-  - **沒有全站原子 daily cap**：上面的 400 是「固定參數下的算術上界」，不是資料層的原子計數器；改動 allowlist 或 `IMAGE_PROBABILITY` 會改變它，而且沒有任何機制在達到它時停止呼叫。
-  - **成長軸**：貼文與圖全域共用，全站量**不隨使用者數成長**；會放大的軸是角色 allowlist 大小（現 100）與 `IMAGE_PROBABILITY`（改動屬 Eric 拍板項）。
+  - **沒有全站原子 daily cap**：上面的 400 是「固定參數下的算術上界」，不是資料層的原子計數器——沒有任何機制在達到它時停止呼叫。會改變這個上界的只有 allowlist 大小、每日 slots 與 attempts 上限三者；`IMAGE_PROBABILITY` 只影響平均產生幾張，**不動上界**。
+  - **成長軸**：貼文與圖全域共用，全站量**不隨使用者數成長**。放大**上界**的只有角色 allowlist 大小（現 100）；放大**期望量**的是 `IMAGE_PROBABILITY`（現 0.2）。兩者的改動都屬 Eric 拍板項。
   - **需要真正的「達標即停」時**：加全站原子 daily cap RPC（新 migration），或在 fal.ai Dashboard 設 **spend cap** 當供應商側絕對托底——**建議啟用時順手設**，它是唯一與程式錯誤、參數誤調都無關的托底。
   - 另每張一次 DeepSeek 場景句（~300 tokens，可忽略）；Storage 穩態 ~23MB＋egress 按觀看數（client 磁碟快取壓低）。
 - **四層防護（皆為風險緩解，非全站配額）**：DB CHECK（image_attempts ≤2，per-slot）× Edge 100 角色 allowlist × per-user scope `practice_moment_image: { perMinute: 3, perDay: 20 }` × kill switch。與文字路徑的差別在**種類而非有無**：文字的「全站 ≤600 次/日」與生圖的「每 post_date ≤400 次」都是同一種算術上界（allowlist × slots × attempts），兩者都不是資料層的原子每日配額；生圖側多一層機率擲骰，只讓期望值遠低於上界。真正的「達標即停」只有 fal Dashboard 的 spend cap。
@@ -240,7 +240,7 @@ class MomentRemoteImage extends MomentImageSource {
 **尚待 Eric 拍板（實作前確認即可）**：
 1. 生圖徹底失敗（attempts 燒完）那則：純文字終態【本文件推薦】vs 退用 bundled 圖
 2. kill switch 退回 bundled（=20 張長期保留、0.9MB 不回收）【本文件推薦】的確認
-3. `IMAGE_PROBABILITY` 維持 0.2 或上調（成本線性）
+3. `IMAGE_PROBABILITY` 維持 0.2 或上調（**期望**成本線性，算術上界不變）
 4. fal.ai 帳號開通與 `FAL_API_KEY` 設定時點（PR-3 合併前不需要）
 5. 試打驗收：playground 生 10–20 張打 2026-08-24 規格書 §6 清單，過了才開旗標
 
