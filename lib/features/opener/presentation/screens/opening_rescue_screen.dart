@@ -60,18 +60,19 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
         : OpeningRescueMode.opener;
   }
 
-  /// Builds the `/new` handoff URL used by the「她回覆了，開始分析對話」CTA.
-  /// Carries partnerId when the screen was entered from a partner-scoped flow
-  /// so the resulting conversation stays bound to the same partner.
+  /// Builds the handoff URL used by the「她回覆了，開始分析對話」CTA.
+  ///
+  /// 2026-08-26 產品調整：拿掉中間的「接續開場」頁，CTA 直接進「新增對象」。
+  /// 開場救星是先鋒，真正的後續分析要先有對象卡承接；建立後 AddPartnerScreen
+  /// 會 pushReplacement 到 `/partner/:id`，使用者在那裡貼上送出的開場與她的
+  /// 回覆。已綁定對象的入口（PartnerDetail → 分析新片段 → 開場救星）不該再
+  /// 開一張重複的卡，直接回到那張對象卡。
   static String handoffLocationFor({String? partnerId}) {
     final trimmed = partnerId?.trim();
     if (trimmed == null || trimmed.isEmpty) {
-      return '/new?source=opener';
+      return '/partner/new';
     }
-    return Uri(
-      path: '/new',
-      queryParameters: {'source': 'opener', 'partnerId': trimmed},
-    ).toString();
+    return '/partner/$trimmed';
   }
 
   static bool canStartGeneration({
@@ -300,9 +301,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   // screenshots just to save quota.
   int get _estimatedCost => 3;
 
-  bool get _hasBoundPartner =>
-      widget.partnerId != null && widget.partnerId!.trim().isNotEmpty;
-
   @override
   void initState() {
     super.initState();
@@ -449,19 +447,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     return result.visibleForAccess(isFreeUser: !subscription.isPremium);
   }
 
-  Future<void> _saveLatestForHandoff() async {
-    final result = _result;
-    if (result == null) return;
-    final handoffResult = _resultForCurrentAccess(result);
+  /// 只在草稿上蓋「已接續」章；開場白不再自動帶進下一頁（「接續開場」頁已移除），
+  /// 所以這裡不需要再寫 latest 槽位。
+  Future<void> _markDraftContinuedForHandoff() async {
+    if (_result == null) return;
+    final draftId = _currentDraftId;
+    if (draftId == null) return;
 
     try {
-      if (!_hasBoundPartner) {
-        await _resultCacheService.saveLatest(handoffResult);
-      }
-      final draftId = _currentDraftId;
-      if (draftId != null) {
-        await _resultCacheService.markDraftContinued(draftId);
-      }
+      await _resultCacheService.markDraftContinued(draftId);
     } catch (_) {
       // Starting a conversation should not fail because local metadata failed.
     }
@@ -1438,7 +1432,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '開場救星只是「先鋒」：先複製一則去送出，等她真的回覆後，再建立新對話分析後續。',
+            '開場救星只是「先鋒」：先複製一則去送出，等她真的回覆後，再幫她建一張對象卡分析後續。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary,
               height: 1.45,
@@ -1452,22 +1446,22 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ),
           const SizedBox(height: 8),
           _buildNextStepRow(
-            icon: Icons.chat_bubble_outline,
-            title: '2. 她回覆後，回來開新對話',
-            description: '把你送出的那句，加上她的回覆一起貼上。',
+            icon: Icons.person_add_alt_1_outlined,
+            title: '2. 她回覆後，回來建立對象',
+            description: '先幫她建一張對象卡，之後的對話都收在同一個人底下。',
           ),
           const SizedBox(height: 8),
           _buildNextStepRow(
             icon: Icons.psychology_alt_outlined,
-            title: '3. 分析後再問教練怎麼接',
-            description: '只有真實互動進入分析後，才會接上對象記憶。',
+            title: '3. 貼上對話，再問教練怎麼接',
+            description: '把你送出的那句加上她的回覆貼進對象卡；只有真實互動進入分析後，才會接上對象記憶。',
           ),
           const SizedBox(height: 16),
           BrandPrimaryButton(
             label: '她回覆了，開始分析對話',
             icon: Icons.add_comment_outlined,
             onPressed: () async {
-              await _saveLatestForHandoff();
+              await _markDraftContinuedForHandoff();
               if (!mounted) return;
               setState(_reloadDrafts);
               context.push(OpeningRescueScreen.handoffLocationFor(

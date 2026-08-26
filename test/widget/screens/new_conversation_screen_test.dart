@@ -200,24 +200,34 @@ void main() {
       expect(find.text('依序輸入對話，至少先加入一則訊息。'), findsOneWidget);
     });
 
-    test('opener handoff hint says to send opener then paste reply', () {
+    testWidgets('「接續開場」頁已移除：不再有帶入開場白的分支', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NewConversationScreen()),
+        ),
+      );
+
+      expect(find.text('接續開場'), findsNothing);
+      expect(find.text('已帶入剛剛的開場白'), findsNothing);
+      expect(find.text('不帶入'), findsNothing);
+    });
+
+    test('waiting-for-reply hint no longer branches on an opener seed', () {
       expect(
         newConversationHintText(
           hasMessages: true,
-          hasOpenerSeed: true,
           hasIncomingMessage: false,
           endsWithMyMessage: true,
         ),
-        '先把這句傳給對方；收到回覆後，貼到「她說」再建立對話分析。',
+        '目前還沒有她的回覆。等她回覆後貼到「她說」，再建立對話分析。',
       );
       expect(
         newConversationHintText(
           hasMessages: true,
-          hasOpenerSeed: true,
           hasIncomingMessage: false,
           endsWithMyMessage: true,
         ),
-        isNot(contains('已先帶入你準備送出的開場白')),
+        isNot(contains('先把這句傳給對方')),
       );
     });
   });

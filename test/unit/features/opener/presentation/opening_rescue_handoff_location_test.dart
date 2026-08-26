@@ -109,27 +109,26 @@ void main() {
     });
   });
 
-  test('handoff URL drops partnerId when entry was partner-less', () {
+  test('partner-less handoff goes straight to 新增對象', () {
     expect(
       OpeningRescueScreen.handoffLocationFor(),
-      '/new?source=opener',
+      '/partner/new',
     );
     expect(
       OpeningRescueScreen.handoffLocationFor(partnerId: ''),
-      '/new?source=opener',
+      '/partner/new',
     );
     expect(
       OpeningRescueScreen.handoffLocationFor(partnerId: '   '),
-      '/new?source=opener',
+      '/partner/new',
     );
   });
 
-  test('handoff URL carries partnerId when bound to a partner', () {
+  test('bound-partner handoff returns to that partner, not a new one', () {
     final location =
         OpeningRescueScreen.handoffLocationFor(partnerId: 'partner-123');
-    final uri = Uri.parse(location);
-    expect(uri.path, '/new');
-    expect(uri.queryParameters['source'], 'opener');
-    expect(uri.queryParameters['partnerId'], 'partner-123');
+
+    expect(location, '/partner/partner-123');
+    expect(location, isNot(contains('/partner/new')));
   });
 }
