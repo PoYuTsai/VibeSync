@@ -127,6 +127,17 @@ export const MOMENT_POST_SHAPES: readonly string[] = [
 ];
 
 /**
+ * 觀點類內容（社會觀察／感情想法／個人價值觀）：講的是立場，不是眼前的畫面。
+ * 切入形狀與配圖指示都要跟生活紀錄分流，所以判斷收在這一支——兩邊各寫一份
+ * 條件，日後新增內容類型時只會改到一半。
+ */
+export function isMomentOpinionKind(contentKind: MomentContentKind): boolean {
+  return contentKind === "social_observation" ||
+    contentKind === "relationship_thought" ||
+    contentKind === "personal_value";
+}
+
+/**
  * 觀點類不能沿用「今天的糗、懶或慘」這種生活形狀，否則新增感情／價值題材
  * 最後仍會被 prompt 拉回日記。這組只談立場的呈現方式，仍不提供可抄的例句。
  */
@@ -146,12 +157,25 @@ export function momentShapeFor(
   slot: number,
   contentKind: MomentContentKind = "daily_life",
 ): string {
-  const isOpinion = contentKind === "social_observation" ||
-    contentKind === "relationship_thought" ||
-    contentKind === "personal_value";
-  const shapes = isOpinion ? MOMENT_OPINION_POST_SHAPES : MOMENT_POST_SHAPES;
+  const shapes = isMomentOpinionKind(contentKind)
+    ? MOMENT_OPINION_POST_SHAPES
+    : MOMENT_POST_SHAPES;
   const seed = `${profileId}|${isoDate}|moment|${slot}|shape|${contentKind}`;
   return shapes[fnv1a(seed) % shapes.length];
+}
+
+/**
+ * 題材守門的收尾句。「不要硬補照片場景」是為純文字貼文寫的：這一則真的會配圖
+ * 時留著它，等於同時要求「不要寫場景」與規則 10 的配圖寫法，兩套指令並存。
+ * 有配圖時只保留咖啡／天氣／下班這幾個被寫爛的生活場景禁令，照片怎麼寫一律
+ * 交還規則 10（已依 contentKind 分流）。
+ */
+function themeScopeLine(generatedImage: boolean): string {
+  const head = "題材決定這則要講生活、觀點、感情、興趣或寵物；" +
+    "不是生活片段時，不要硬補咖啡、天氣、下班";
+  return generatedImage
+    ? `${head}場景。配圖怎麼寫只看規則 10，這裡不另外要求場景。`
+    : `${head}或照片場景。`;
 }
 
 const DAY_PART_LABEL: Readonly<Record<TaipeiDayPart, string>> = {
@@ -167,12 +191,24 @@ const DAY_PART_LABEL: Readonly<Record<TaipeiDayPart, string>> = {
 function imageDirective(
   imageCandidates: readonly string[],
   generatedImage: boolean,
+  contentKind: MomentContentKind,
 ): string {
   if (generatedImage) {
-    // 生成配圖模式（PR-3）：圖會在文字落地後由生圖模型「以文生圖」，所以
-    // 這裡反過來要求文字寫得像真的拍了眼前的東西——場景、食物、風景，
-    // 不是自拍。imageId 仍必須是 null：生成圖走獨立的 image 欄位組，
+    // 生成配圖模式（PR-3）：圖會在文字落地後由生圖模型「以文生圖」。
+    // 兩種題材要的「文」不一樣，所以這裡依 contentKind 分流
+    // （2026-08-26 Eric 複審 P2）：觀點題材同樣有 imageTags，會真的走到
+    // generatedImage=true，若沿用生活片段那句「寫得像拍下眼前的東西」，
+    // 模型會為了配圖把社會觀察／感情／價值觀又寫回咖啡與桌面，且與下面
+    // 「不是生活片段時不要硬補場景」互相打架——同一個情境兩套指令，
+    // 模型只會挑一套照做。觀點類的圖不靠文字描述場景也生得出來：
+    // moments_image_gen.ts 的題材場景句本來就替每個觀點題材備好了靜物。
+    // 兩條路都維持 imageId = null：生成圖走獨立的 image 欄位組，
     // 不走 catalog allowlist。
+    if (isMomentOpinionKind(contentKind)) {
+      return `10. 這一則會配上一張你隨手拍的照片（拍眼前的東西或場景，不是自拍）。` +
+        `照片只是此刻手邊剛好的畫面，不是這則要講的事——文字照樣寫你的想法或取捨，` +
+        `不要為了配圖改寫成場景描述，也不要描述照片本身。imageId 必須是 null。`;
+    }
     return `10. 這一則會配上一張你隨手拍的照片（拍眼前的東西或場景，不是自拍）。` +
       `把文字寫成你真的拍下了那個畫面的樣子——講具體看得到的東西，` +
       `不要描述照片本身。imageId 必須是 null。`;
@@ -244,12 +280,12 @@ ${girl.professionPrompt}
 7. 不要用開頭問候語、不要加 hashtag、不要寫成廣告或文案。
 8. 結尾不准總結、不准昇華、不准硬轉正能量。真人發廢文不會幫自己的一天下註解。
 9. 不用把事情講完整，破碎一點反而真。標點自由：可以整句沒有句號，可以用空格斷句。
-${imageDirective(imageCandidates, generatedImage)}
+${imageDirective(imageCandidates, generatedImage, contentKind)}
 11. 這則是「${CONTENT_KIND_LABEL[contentKind]}」：${contentGuidance}
 12. 用自然的台灣繁中口語，刪掉可以省略的鋪墊，直接進那個細節或念頭。不要寫成小作文、論說文或完整起承轉合；少用萬用感悟詞（突然覺得／原來／生活就是／儀式感／小確幸／被治癒／好好生活）。語氣詞與 emoji 只有真的符合這個人時才用，不要每則硬塞。
 
 這一則的切入形狀：${shape}。形狀是方向不是模板，貼著你的語感寫。
-題材決定這則要講生活、觀點、感情、興趣或寵物；不是生活片段時，不要硬補咖啡、天氣、下班或照片場景。
+${themeScopeLine(generatedImage)}
 規則 1-4、7、10，以及規則 11 裡的事實與安全限制是硬邊界，違反就作廢重寫；其餘一律以「像這個真人隨手打的」優先——可以隨口、可以不完整、可以有自己的立場，規則沒寫到的寫法都放行。
 
 輸出格式：只輸出一個 JSON 物件，不要有其他文字。

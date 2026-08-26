@@ -13,6 +13,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildMomentMessages,
+  isMomentOpinionKind,
   MOMENT_CONTENT_GUIDANCE,
   MOMENT_INTERNAL_LABELS,
   MOMENT_PROMPT_SENTINELS,
@@ -435,5 +436,133 @@ Deno.test("語感與形狀的注入文字不含會直接踩 validator 的第二�
   for (const shape of [...MOMENT_POST_SHAPES, ...MOMENT_OPINION_POST_SHAPES]) {
     assertEquals(/[你妳]/u.test(shape), false, `形狀含第二人稱：${shape}`);
     assertEquals(/[?？]$/u.test(shape), false, `形狀以問號收尾：${shape}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 生成配圖 × 內容類型（2026-08-26 Eric 複審 P2）
+//
+// 觀點題材同樣有 imageTags，會真的走到 generatedImage=true。舊版對所有題材
+// 發同一句「把文字寫成你真的拍下了那個畫面的樣子」，跟收尾句的「不是生活
+// 片段時不要硬補照片場景」是同一個情境的兩套指令——模型只會挑一套照做，
+// 而挑到前者就等於把新增的社會觀察／感情／價值題材又寫回咖啡與桌面。
+// 這一組測試鎖的就是「同一情境只留一套指令」。
+// ---------------------------------------------------------------------------
+
+const OPINION_KINDS: readonly MomentContentKind[] = [
+  "social_observation",
+  "relationship_thought",
+  "personal_value",
+];
+
+/** 生成配圖模式的 system 段：候選必為空，imageId 恆 null。 */
+function generatedImageSystem(contentKind: MomentContentKind): string {
+  return buildMomentMessages({
+    girl,
+    themeId: `test_${contentKind}`,
+    contentKind,
+    brief: "測試用題材描述",
+    dayPart: "evening",
+    isoDate: "2026-08-22",
+    isWeekend: true,
+    slot: 0,
+    imageCandidates: [],
+    generatedImage: true,
+  })[0].content;
+}
+
+Deno.test("形狀與配圖共用同一個觀點判斷，不會只改到一半", () => {
+  for (const contentKind of CONTENT_KINDS) {
+    assertEquals(
+      isMomentOpinionKind(contentKind),
+      OPINION_KINDS.includes(contentKind),
+      `${contentKind} 的觀點判斷跑掉了`,
+    );
+  }
+  for (const contentKind of OPINION_KINDS) {
+    assert(
+      MOMENT_OPINION_POST_SHAPES.includes(
+        momentShapeFor(girl.profileId, "2026-08-22", 0, contentKind),
+      ),
+      `${contentKind} 拿到觀點配圖規則，形狀卻還是生活那組`,
+    );
+  }
+});
+
+Deno.test("觀點題材配生成圖：文字照樣寫想法，不被要求改寫成場景描寫", () => {
+  for (const contentKind of OPINION_KINDS) {
+    const sys = generatedImageSystem(contentKind);
+    assert(
+      sys.includes("照片只是此刻手邊剛好的畫面"),
+      `${contentKind} 沒拿到觀點題材專用的配圖指示`,
+    );
+    assert(sys.includes("文字照樣寫你的想法或取捨"));
+    assertEquals(
+      sys.includes("把文字寫成你真的拍下了那個畫面的樣子"),
+      false,
+      `${contentKind} 仍拿到生活片段那套配圖指示`,
+    );
+    assertEquals(
+      sys.includes("講具體看得到的東西"),
+      false,
+      `${contentKind} 仍被要求為了配圖去寫具體看得到的東西`,
+    );
+    // 配圖指示不能把題材本身的寫法守門擠掉。
+    assert(sys.includes(MOMENT_CONTENT_GUIDANCE[contentKind]));
+    assert(sys.includes("imageId 必須是 null"));
+  }
+});
+
+Deno.test("生成配圖時只留一套指令：不同時要求寫場景又禁止照片場景", () => {
+  for (const contentKind of CONTENT_KINDS) {
+    const sys = generatedImageSystem(contentKind);
+    assertEquals(
+      (sys.match(/\n10\. /g) ?? []).length,
+      1,
+      `${contentKind} 出現了不只一條規則 10`,
+    );
+    assertEquals(
+      sys.includes("不要硬補咖啡、天氣、下班或照片場景"),
+      false,
+      `${contentKind} 有配圖卻仍禁止照片場景——與規則 10 直接打架`,
+    );
+    assert(
+      sys.includes("配圖怎麼寫只看規則 10"),
+      `${contentKind} 沒把配圖寫法收斂到規則 10`,
+    );
+    // 咖啡、天氣、下班這幾個被寫爛的生活場景仍要擋，只是不再連照片一起禁。
+    assert(sys.includes("不要硬補咖啡、天氣、下班場景"));
+  }
+});
+
+Deno.test("生活、興趣、寵物配生成圖時維持原本的『寫得像拍下眼前的東西』", () => {
+  for (const contentKind of ["daily_life", "interest", "pet_life"] as const) {
+    const sys = generatedImageSystem(contentKind);
+    assert(sys.includes("把文字寫成你真的拍下了那個畫面的樣子"));
+    assertEquals(
+      sys.includes("照片只是此刻手邊剛好的畫面"),
+      false,
+      `${contentKind} 誤用了觀點題材的配圖指示`,
+    );
+  }
+});
+
+Deno.test("純文字模式不受影響：原本的禁照片場景句還在，也不出現配圖分流用語", () => {
+  for (const contentKind of CONTENT_KINDS) {
+    const sys = buildMomentMessages({
+      girl,
+      themeId: `test_${contentKind}`,
+      contentKind,
+      brief: "測試用題材描述",
+      dayPart: "evening",
+      isoDate: "2026-08-22",
+      isWeekend: true,
+      slot: 0,
+      imageCandidates: [],
+    })[0].content;
+    assert(sys.includes("這一則沒有配圖"));
+    assert(sys.includes("不要硬補咖啡、天氣、下班或照片場景"));
+    assertEquals(sys.includes("照片只是此刻手邊剛好的畫面"), false);
+    assertEquals(sys.includes("配圖怎麼寫只看規則 10"), false);
   }
 });

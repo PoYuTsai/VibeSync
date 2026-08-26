@@ -275,6 +275,27 @@ Deno.test("新增觀點題材後仍維持文字優先，但不把圖文型態砍
   );
 });
 
+Deno.test("觀點題材真的會排到配圖 slot——prompt 的配圖分流不是理論情境", () => {
+  // moments_prompt.ts 依 contentKind 分流配圖指示的前提：觀點題材有 imageTags，
+  // 真的會被排成圖文貼文。這裡守著這個前提，日後若把觀點題材改回純文字，
+  // 這條會紅，提醒一起回收 prompt 那邊的分支。
+  const withImage = new Set<MomentContentKind>();
+  for (const plan of planEveryGirlOver(90)) {
+    for (const slot of plan.slots) {
+      if (slot.wantsImage) withImage.add(slot.contentKind);
+    }
+  }
+  for (
+    const kind of [
+      "social_observation",
+      "relationship_thought",
+      "personal_value",
+    ] as const
+  ) {
+    assert(withImage.has(kind), `${kind} 從來沒排到配圖，配圖分流無從驗證`);
+  }
+});
+
 Deno.test("scene image budget stays at the agreed 20 assets", () => {
   // 超過就要重新評估 App 體積（設計報告決定 D）；改動時請同步更新報告。
   assertEquals(SCENE_IMAGE_COUNT, 20);
