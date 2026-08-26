@@ -49,6 +49,8 @@ export interface MomentSlotPlan {
   slot: number;
   dayPart: TaipeiDayPart;
   themeId: string;
+  /** 題材的內容形狀；生成端用它區分生活紀錄、觀點與興趣，不再全寫成日記。 */
+  contentKind: MomentContentKind;
   /** 注入生成 prompt 的題材描述（server 事實，不是可見文字）。 */
   brief: string;
   wantsImage: boolean;
@@ -65,11 +67,25 @@ export interface MomentDayPlan {
 interface MomentTheme {
   id: string;
   brief: string;
+  /** 缺席＝一般生活片段；只在非日常題材明確標示。 */
+  contentKind?: MomentContentKind;
   /** 缺席＝除清晨外全時段可用。 */
   dayParts?: readonly TaipeiDayPart[];
   /** 空陣列＝這個題材只發純文字。 */
   imageTags: readonly MomentImageTag[];
 }
+
+/**
+ * 貼文的內容類型。聲音由 persona 決定，這一層只決定「她今天想講什麼」。
+ * 把兩者拆開，100 位角色才不會只剩五種口氣、卻全部都在寫咖啡與下班。
+ */
+export type MomentContentKind =
+  | "daily_life"
+  | "social_observation"
+  | "relationship_thought"
+  | "personal_value"
+  | "interest"
+  | "pet_life";
 
 // 清晨（05-07）全域排除：真人幾乎不在這個時段發朋友圈，留著只會讓貼文看起來像機器。
 const POSTABLE_DAY_PARTS: readonly TaipeiDayPart[] = [
@@ -142,6 +158,7 @@ const BASE_THEMES: readonly MomentTheme[] = [
   {
     id: "night_thoughts",
     brief: "睡前的一個小念頭或小結論，不說教、不勵志。",
+    contentKind: "personal_value",
     dayParts: ["evening", "late_night"],
     imageTags: [],
   },
@@ -155,6 +172,119 @@ const BASE_THEMES: readonly MomentTheme[] = [
     id: "rainy_mood",
     brief: "下雨天帶來的情緒或行程變化。",
     imageTags: ["rain"],
+  },
+];
+
+// ── 非場景題材 ───────────────────────────────────────────────────────
+//
+// 原始共用池 12 題裡有 11 題是吃飯、通勤、下班與天氣；90 天模擬有 76.9%
+// 的貼文落在那組共用生活場景。以下三池把「她對事情怎麼想」補回來。
+//
+// social_observation 刻意只碰可長期成立的公共生活議題，不注入具體新聞。
+// 模型沒有新聞檢索，讓它評論某天真實事件只會得到假日期、假數字與假人物。
+// 每條 brief 都再次要求只談一般現象與自己的選擇，prompt 層還有第二道守門。
+
+const SOCIAL_OBSERVATION_THEMES: readonly MomentTheme[] = [
+  {
+    id: "social_ai_everyday",
+    brief:
+      "最近常見把 AI 放進工作、讀書或創作的討論；只說自己會怎麼用、哪裡會保留，不杜撰新聞或功能。",
+    contentKind: "social_observation",
+    imageTags: ["desk"],
+  },
+  {
+    id: "social_after_hours",
+    brief:
+      "最近常見下班後要不要繼續回工作訊息的討論；分享自己的界線與代價，不批判別人的選擇。",
+    contentKind: "social_observation",
+    dayParts: ["early_evening", "evening", "late_night"],
+    imageTags: ["work"],
+  },
+  {
+    id: "social_online_comparison",
+    brief:
+      "社群常把生活剪成精華，容易讓人拿自己比較；講自己的矛盾或做法，不喊口號。",
+    contentKind: "social_observation",
+    imageTags: ["desk"],
+  },
+  {
+    id: "social_public_courtesy",
+    brief:
+      "通勤、排隊或共享空間裡的一種禮貌爭議；給一個溫和但明確的看法，不影射真實事件。",
+    contentKind: "social_observation",
+    imageTags: ["commute"],
+  },
+];
+
+const RELATIONSHIP_THEMES: readonly MomentTheme[] = [
+  {
+    id: "relationship_pace",
+    brief:
+      "對認識一個人的快慢有一個自己的偏好；從自身感受出發，不教別人談戀愛。",
+    contentKind: "relationship_thought",
+    dayParts: ["afternoon", "evening", "late_night"],
+    imageTags: ["coffee"],
+  },
+  {
+    id: "relationship_reciprocity",
+    brief:
+      "感情裡主動和回應要不要對等；說自己在意的互動感，不抱怨、不影射前任。",
+    contentKind: "relationship_thought",
+    dayParts: ["evening", "late_night"],
+    imageTags: ["coffee"],
+  },
+  {
+    id: "relationship_own_life",
+    brief: "喜歡一個人之後，仍然保留自己的朋友、興趣與獨處時間；講自己的取捨。",
+    contentKind: "relationship_thought",
+    imageTags: ["book"],
+  },
+  {
+    id: "relationship_disagreement",
+    brief: "比起完全不吵架，更在意不舒服時怎麼說；分享自己的相處原則，不說教。",
+    contentKind: "relationship_thought",
+    dayParts: ["evening", "late_night"],
+    imageTags: ["coffee"],
+  },
+];
+
+const PERSONAL_VALUE_THEMES: readonly MomentTheme[] = [
+  {
+    id: "value_time",
+    brief: "最近更願意把時間留給哪些人或事情；說一個真實取捨，不寫成勵志金句。",
+    contentKind: "personal_value",
+    imageTags: ["desk"],
+  },
+  {
+    id: "value_reliability",
+    brief:
+      "自己通常從哪些不起眼的小事判斷一個人靠不可靠；保持溫和，不替所有人評分。",
+    contentKind: "personal_value",
+    imageTags: ["rain"],
+  },
+  {
+    id: "value_spending",
+    brief:
+      "花錢買方便、買體驗或存下來之間，最近有一個自己的取捨；不要給理財建議。",
+    contentKind: "personal_value",
+    imageTags: ["desk"],
+  },
+  {
+    id: "value_unfilled_time",
+    brief: "不是每個空檔都要排滿；講自己為什麼想留白，允許有點矛盾但不昇華。",
+    contentKind: "personal_value",
+    imageTags: ["sky"],
+  },
+];
+
+/** 每位角色都有的興趣入口；細節從 profile interestTags 長，不共用罐頭內容。 */
+const PROFILE_INTEREST_THEMES: readonly MomentTheme[] = [
+  {
+    id: "interest_current_fixation",
+    brief:
+      "從自己的興趣裡挑一個，講最近特別在意的一個細節、偏好或小堅持，不要列興趣清單。",
+    contentKind: "interest",
+    imageTags: [],
   },
 ];
 
@@ -181,8 +311,56 @@ const WEEKEND_THEMES: readonly MomentTheme[] = [
 ];
 
 /** 興趣／生活標籤命中才進池；關鍵字比對沿用 life_schedule 的做法。 */
+/**
+ * 明確到不會被工作誤讀的飼主線索：家裡真的有一隻。
+ * 相關職業的角色也吃這一組。
+ */
+const EXPLICIT_PET_OWNER_CLUES: readonly string[] = [
+  "養貓",
+  "養狗",
+  "養寵物",
+  "家裡有貓",
+  "家裡有狗",
+  "家裡有毛孩",
+  "家裡那隻",
+];
+
+/**
+ * 一般角色可以接受的飼主線索。字面本身有歧義（「顧」也可能是幫別人顧），
+ * 所以工作會接觸動物的職業不吃這一組。
+ */
+const CASUAL_PET_OWNER_CLUES: readonly string[] = ["顧貓", "顧狗", "顧毛孩"];
+
+/**
+ * 工作會接觸動物的職業。**只代表工作碰得到，不代表本人有養**
+ * （2026-08-26 Eric 複審 P2-2）：寵物美容師沒有明確飼主線索時只能寫
+ * grooming_day 那種工作視角，不得排到飼主日常題材，否則貼文會出現
+ * 「我家毛孩」這種角色設定沒給過的事實。
+ */
+const ANIMAL_CONTACT_PROFESSIONS: ReadonlySet<string> = new Set([
+  "pet_groomer",
+]);
+
+/** 飼主題材的入場判斷；只吃 interest/lifestyle 標籤，不從職業推論擁有。 */
+export function hasPetOwnerClue(girl: PracticeGirlProfile): boolean {
+  const haystack = [...girl.interestTags, ...girl.lifestyleTags].join("、");
+  if (EXPLICIT_PET_OWNER_CLUES.some((clue) => haystack.includes(clue))) {
+    return true;
+  }
+  if (ANIMAL_CONTACT_PROFESSIONS.has(girl.professionId)) return false;
+  return CASUAL_PET_OWNER_CLUES.some((clue) => haystack.includes(clue));
+}
+
+/** 飼主題材的關鍵字＝飼主線索本身；是否真的放行由 requiresPetOwner 決定。 */
+const PET_OWNER_THEME_KEYWORDS: readonly string[] = [
+  ...EXPLICIT_PET_OWNER_CLUES,
+  ...CASUAL_PET_OWNER_CLUES,
+];
+
 const INTEREST_THEMES: readonly {
   keywords: readonly string[];
+  /** 只排給有明確飼主線索的角色；工作接觸動物不算。 */
+  requiresPetOwner?: true;
   theme: MomentTheme;
 }[] = [
   {
@@ -190,6 +368,7 @@ const INTEREST_THEMES: readonly {
     theme: {
       id: "cafe_hunt",
       brief: "踩到一間還不錯的咖啡店，或今天的手沖成果。",
+      contentKind: "interest",
       dayParts: ["morning", "noon", "afternoon"],
       imageTags: ["coffee", "cafe"],
     },
@@ -199,42 +378,47 @@ const INTEREST_THEMES: readonly {
     theme: {
       id: "home_kitchen",
       brief: "自己做的東西，成功或失敗都可以講。",
+      contentKind: "interest",
       dayParts: ["noon", "early_evening", "evening"],
       imageTags: ["cooking", "dessert"],
     },
   },
   {
-    keywords: ["看書"],
+    keywords: ["看書", "閱讀", "獨立書店", "獨立漫畫"],
     theme: {
       id: "book_note",
       brief: "最近在看的書，或看到一句停下來的話。",
+      contentKind: "interest",
       dayParts: ["afternoon", "evening", "late_night"],
       imageTags: ["book"],
     },
   },
   {
-    keywords: ["追劇", "電影"],
+    keywords: ["追劇", "電影", "獨立電影", "紀錄片", "喜劇"],
     theme: {
       id: "screen_night",
       brief: "在追的劇或剛看完的電影，講感覺不爆雷。",
+      contentKind: "interest",
       dayParts: ["evening", "late_night"],
       imageTags: ["calm"],
     },
   },
   {
-    keywords: ["音樂祭"],
+    keywords: ["音樂祭", "獨立音樂", "貝斯", "音樂"],
     theme: {
       id: "live_music",
       brief: "現場演出或最近單曲循環的歌。",
+      contentKind: "interest",
       dayParts: ["evening", "late_night"],
       imageTags: ["music", "night"],
     },
   },
   {
-    keywords: ["拍照"],
+    keywords: ["拍照", "攝影"],
     theme: {
       id: "photo_walk",
       brief: "隨手拍到的一個畫面，帶點自己的觀察。",
+      contentKind: "interest",
       imageTags: ["city", "sky", "walk"],
     },
   },
@@ -243,42 +427,70 @@ const INTEREST_THEMES: readonly {
     theme: {
       id: "travel_plan",
       brief: "在查下一趟要去哪，或想起上一趟的某個片段。",
+      contentKind: "interest",
       dayParts: ["afternoon", "evening", "late_night"],
       imageTags: ["travel", "commute"],
     },
   },
   {
-    keywords: ["潛水或海邊活動"],
+    keywords: ["潛水或海邊活動", "海邊", "衝浪", "沙灘", "看浪況"],
     theme: {
       id: "sea_day",
       brief: "海邊或水下的一天，人是放空的。",
+      contentKind: "interest",
       dayParts: ["noon", "afternoon", "early_evening"],
       imageTags: ["sea", "outdoor"],
     },
   },
   {
-    keywords: ["瑜珈", "健身"],
+    keywords: ["瑜珈", "健身", "重訓", "慢跑", "跳舞"],
     theme: {
       id: "workout_done",
       brief: "剛練完，累但心情不錯。",
+      contentKind: "interest",
       dayParts: ["morning", "early_evening", "evening"],
       imageTags: ["fitness", "self"],
     },
   },
   {
-    keywords: ["戶外爬山"],
+    keywords: ["戶外爬山", "爬山"],
     theme: {
       id: "trail_day",
       brief: "上山走一趟，講風景或講腿痠都行。",
+      contentKind: "interest",
       dayParts: ["morning", "noon", "afternoon"],
       imageTags: ["outdoor", "nature"],
     },
   },
   {
-    keywords: ["寵物"],
+    keywords: ["寵物", "毛孩", "貓", "狗"],
     theme: {
       id: "pet_moment",
-      brief: "家裡那隻今天做了什麼。",
+      brief:
+        "今天遇到或想到的貓狗；只有生活資料明確寫到照顧毛孩，才可以說成自己家裡有養。",
+      contentKind: "pet_life",
+      imageTags: ["pet"],
+    },
+  },
+  {
+    keywords: PET_OWNER_THEME_KEYWORDS,
+    requiresPetOwner: true,
+    theme: {
+      id: "pet_house_rules",
+      brief:
+        "養寵物後家裡多出的一條怪規矩，或生活被牠改掉的一個小地方；講麻煩也可以。",
+      contentKind: "pet_life",
+      imageTags: ["pet"],
+    },
+  },
+  {
+    keywords: PET_OWNER_THEME_KEYWORDS,
+    requiresPetOwner: true,
+    theme: {
+      id: "pet_care_detail",
+      brief:
+        "餵食、清潔、梳毛或陪伴中的一個具體細節，寫真實照顧感，不只寫可愛。",
+      contentKind: "pet_life",
       imageTags: ["pet"],
     },
   },
@@ -287,6 +499,7 @@ const INTEREST_THEMES: readonly {
     theme: {
       id: "food_find",
       brief: "吃到不錯的東西，講味道不講店名。",
+      contentKind: "interest",
       dayParts: ["noon", "early_evening", "evening"],
       imageTags: ["food"],
     },
@@ -296,6 +509,7 @@ const INTEREST_THEMES: readonly {
     theme: {
       id: "exhibition_visit",
       brief: "看展的一個片段或一個很有感的作品。",
+      contentKind: "interest",
       dayParts: ["afternoon", "early_evening"],
       imageTags: ["art"],
     },
@@ -305,6 +519,7 @@ const INTEREST_THEMES: readonly {
     theme: {
       id: "style_note",
       brief: "今天的搭配、指甲或剛入手的小東西。",
+      contentKind: "interest",
       dayParts: ["morning", "afternoon", "early_evening"],
       imageTags: ["self", "calm"],
     },
@@ -314,8 +529,71 @@ const INTEREST_THEMES: readonly {
     theme: {
       id: "night_walk",
       brief: "晚上出門走一段，城市安靜下來的感覺。",
+      contentKind: "interest",
       dayParts: ["evening", "late_night"],
       imageTags: ["night", "city", "walk"],
+    },
+  },
+  {
+    keywords: ["理財"],
+    theme: {
+      id: "money_habit",
+      brief: "最近一個花錢或存錢的小習慣，講自己的選擇與失手，不提供投資建議。",
+      contentKind: "personal_value",
+      imageTags: [],
+    },
+  },
+  {
+    keywords: ["Podcast"],
+    theme: {
+      id: "audio_note",
+      brief:
+        "最近聽節目時特別在意的一個觀點、聲音或剪輯細節；不提真實節目名稱。",
+      contentKind: "interest",
+      dayParts: ["afternoon", "evening", "late_night"],
+      imageTags: ["music", "calm"],
+    },
+  },
+  {
+    keywords: ["手作", "陶藝", "插畫", "花藝", "字體"],
+    theme: {
+      id: "making_things",
+      brief:
+        "做東西時才會注意到的一個手感、失誤或小堅持，講具體細節不講大道理。",
+      contentKind: "interest",
+      dayParts: ["afternoon", "evening", "late_night"],
+      imageTags: ["art", "desk"],
+    },
+  },
+  {
+    keywords: ["科技產品", "數據", "使用者研究", "解謎遊戲"],
+    theme: {
+      id: "tech_curiosity",
+      brief:
+        "最近對一個科技、數據、行為或解謎細節有自己的觀察；說偏好，不炫耀專業。",
+      contentKind: "interest",
+      dayParts: ["afternoon", "evening", "late_night"],
+      imageTags: ["desk", "work"],
+    },
+  },
+  {
+    keywords: ["建築", "空間設計", "老屋", "老街散步", "城市散步"],
+    theme: {
+      id: "city_detail",
+      brief: "走在城市裡注意到一個空間、老屋或街角細節，順手下個很個人的判斷。",
+      contentKind: "interest",
+      imageTags: ["city", "walk", "art"],
+    },
+  },
+  {
+    keywords: PET_OWNER_THEME_KEYWORDS,
+    requiresPetOwner: true,
+    theme: {
+      id: "pet_owner_routine",
+      brief:
+        "家裡毛孩今天的一個照顧細節、怪習慣或小麻煩；可愛可以，但不要寫成萬用療癒文。",
+      contentKind: "pet_life",
+      imageTags: ["pet"],
     },
   },
 ];
@@ -382,7 +660,31 @@ const PROFESSION_THEMES: Record<string, MomentTheme> = {
     dayParts: ["morning", "afternoon"],
     imageTags: ["nature", "calm"],
   },
+  pet_groomer: {
+    id: "grooming_day",
+    brief: "工作中照顧毛孩時遇到的一個普遍小狀況；不提客人、不假裝是自己養的。",
+    contentKind: "pet_life",
+    dayParts: ["early_evening", "evening"],
+    imageTags: ["pet"],
+  },
 };
+
+/**
+ * 所有排程可能產生的題材 id。生圖模板測試直接對這份 inventory 驗完整覆蓋，
+ * 不再用短天窗抽樣碰運氣；新增任何題材都必須同步補安全場景句。
+ */
+export const MOMENT_THEME_IDS: readonly string[] = [
+  ...new Set([
+    ...BASE_THEMES.map((theme) => theme.id),
+    ...SOCIAL_OBSERVATION_THEMES.map((theme) => theme.id),
+    ...RELATIONSHIP_THEMES.map((theme) => theme.id),
+    ...PERSONAL_VALUE_THEMES.map((theme) => theme.id),
+    ...PROFILE_INTEREST_THEMES.map((theme) => theme.id),
+    ...WEEKEND_THEMES.map((theme) => theme.id),
+    ...INTEREST_THEMES.map((entry) => entry.theme.id),
+    ...Object.values(PROFESSION_THEMES).map((theme) => theme.id),
+  ]),
+];
 
 /**
  * 她在上班／上課／帶課，不太可能發文的時段。
@@ -528,10 +830,15 @@ function interestThemesFor(girl: PracticeGirlProfile): MomentTheme[] {
     ...girl.interestTags,
     ...girl.lifestyleTags,
   ].join("、");
+  const petOwner = hasPetOwnerClue(girl);
   return INTEREST_THEMES
     .filter((entry) =>
       entry.keywords.some((keyword) => haystack.includes(keyword))
     )
+    // 飼主題材是唯一會讓貼文宣稱「我家有養」的入口，關鍵字命中還不夠：
+    // 標籤把 interest 與 lifestyle 混成一串比對，工作描述（例如幫毛孩洗剪）
+    // 很容易擦到寵物字面。這道閘門讓「有沒有養」是一個明確判斷而不是巧合。
+    .filter((entry) => entry.requiresPetOwner !== true || petOwner)
     .map((entry) => entry.theme);
 }
 
@@ -557,6 +864,10 @@ function themePoolFor(
   const professionTheme = PROFESSION_THEMES[girl.professionId];
   const pool = [
     ...BASE_THEMES,
+    ...SOCIAL_OBSERVATION_THEMES,
+    ...RELATIONSHIP_THEMES,
+    ...PERSONAL_VALUE_THEMES,
+    ...PROFILE_INTEREST_THEMES,
     ...(isWeekend ? WEEKEND_THEMES : []),
     ...interestThemesFor(girl),
     ...(professionTheme ? [professionTheme] : []),
@@ -676,6 +987,7 @@ export function momentPlanFor(opts: {
       slot,
       dayPart,
       themeId: theme.id,
+      contentKind: theme.contentKind ?? "daily_life",
       brief: theme.brief,
       wantsImage,
       imageCandidates: wantsImage ? candidates : [],

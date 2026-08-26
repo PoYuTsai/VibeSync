@@ -629,6 +629,7 @@ async function fillOneSlot(opts: {
       messages: buildMomentMessages({
         girl,
         themeId: plan.themeId,
+        contentKind: plan.contentKind,
         brief: plan.brief,
         dayPart: plan.dayPart,
         isoDate,

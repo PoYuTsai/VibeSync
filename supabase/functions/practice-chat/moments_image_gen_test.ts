@@ -15,9 +15,7 @@ import {
   themeSceneLine,
   validateSceneLine,
 } from "./moments_image_gen.ts";
-import { momentPlanFor } from "./moments_schedule.ts";
-import { GIRL_PROFILES } from "./practice_persona.ts";
-import { taipeiTimeContextFor } from "./time_context.ts";
+import { MOMENT_THEME_IDS } from "./moments_schedule.ts";
 import {
   MAX_MOMENT_IMAGE_ATTEMPTS,
   MOMENT_IMAGE_MIN_BYTES,
@@ -46,21 +44,9 @@ function fakeJpeg(size: number): Uint8Array<ArrayBuffer> {
 // 題材模板句：覆蓋所有排程會產出的 themeId
 // ---------------------------------------------------------------------------
 
-Deno.test("題材模板句涵蓋排程 30 天內出現的每一個 themeId", () => {
+Deno.test("題材模板句涵蓋排程 inventory 的每一個 themeId", () => {
   const covered = new Set(coveredThemeIds());
-  const seen = new Set<string>();
-  for (let day = 0; day < 30; day++) {
-    const time = taipeiTimeContextFor(
-      new Date(Date.UTC(2026, 7, 1 + day, 4)),
-    );
-    for (const girl of GIRL_PROFILES) {
-      for (const slot of momentPlanFor({ girl, time }).slots) {
-        seen.add(slot.themeId);
-      }
-    }
-  }
-  assert(seen.size >= 30, `掃出的題材太少（${seen.size}），掃法可能壞了`);
-  const missing = [...seen].filter((id) => !covered.has(id));
+  const missing = MOMENT_THEME_IDS.filter((id) => !covered.has(id));
   assertEquals(
     missing,
     [],
@@ -182,7 +168,9 @@ function makeJobHarness(options: {
   deps: {
     falApiKey: string;
     deepSeekApiKey: string;
-    callDeepSeek: (args: { messages: { content: string }[] }) => Promise<string>;
+    callDeepSeek: (
+      args: { messages: { content: string }[] },
+    ) => Promise<string>;
     uploadImage: (p: string, b: Uint8Array, c: string) => Promise<void>;
     fetch: typeof globalThis.fetch;
     randomToken: () => string;
@@ -210,13 +198,15 @@ function makeJobHarness(options: {
             error: { message: options.claimError },
           });
         }
-        const row = options.claim === null ? { claimed: false } : options.claim ?? {
-          claimed: true,
-          token: params.p_image_token,
-          attempt_count: 1,
-          body: BODY,
-          theme_id: "dinner_simple",
-        };
+        const row = options.claim === null
+          ? { claimed: false }
+          : options.claim ?? {
+            claimed: true,
+            token: params.p_image_token,
+            attempt_count: 1,
+            body: BODY,
+            theme_id: "dinner_simple",
+          };
         return Promise.resolve({ data: [row], error: null });
       }
       if (fn === "commit_practice_moment_image") {
