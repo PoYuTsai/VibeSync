@@ -20,7 +20,7 @@ import '../../data/providers/conversation_providers.dart';
 import '../../data/providers/conversation_write_controller.dart';
 import '../../domain/entities/session_context.dart';
 
-/// 手動輸入頁的版面契約（widget test 直接引用，避免測試寫死字串）。
+/// 手動輸入頁的版面契約。
 ///
 /// 兩個輸入列合成「單一群組卡片」，Sydney 走底部出血；三個 key 分別對應
 /// 群組卡、裙襬裁切容器與角色圖本身。
@@ -30,21 +30,21 @@ const String manualInputSydneyArtKey = 'manual_input_sydney_art';
 
 /// 去背角色素材：只保留頭部、上半身與連續 A-line 百褶裙，素材本身已裁在
 /// 裙襬之上，因此任何可見範圍都不會露出裙襬底端、大腿或鞋子。
-const String manualInputSydneyAsset =
+const String _manualInputSydneyAsset =
     'assets/images/coach/sydney_manual_input_full.png';
 
 /// 素材長寬比（468 / 1151）。等比縮放用，禁止拉伸。
-const double manualInputSydneyAspectRatio = 468 / 1151;
+const double _manualInputSydneyAspectRatio = 468 / 1151;
 
 /// 角色可見高度下限；內容太長把 Sydney 擠到畫面外時仍保留這個高度。
-const double manualInputSydneyMinVisibleHeight = 300;
+const double _manualInputSydneyMinVisibleHeight = 300;
 
 /// 出血倍率：實際繪製高度＝可見高度 × 此值，多出來的部分被 [ClipRect]
 /// 裁掉，所以素材自己的下緣永遠不會變成畫面中一條浮空的硬邊。
-const double manualInputSydneyBleedFactor = 1.16;
+const double _manualInputSydneyBleedFactor = 1.16;
 
 /// 兩個「＋」按鈕的最小點擊邊長（Apple HIG 44pt）。
-const double manualInputAddButtonHitSize = 44;
+const double _manualInputAddButtonHitSize = 44;
 
 String newConversationHintText({
   required bool hasMessages,
@@ -419,27 +419,42 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   /// 橘色圓形「＋」。視覺直徑 38，但整個 44×44 都吃得到點擊
   /// （[HitTestBehavior.opaque]），符合 Apple HIG 最小觸控尺寸。
   /// 觸覺回饋沿用 [AppHaptics.onPress]。
-  Widget _buildAddButton(VoidCallback onPressed) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: AppHaptics.onPress(onPressed),
-      child: const SizedBox(
-        width: manualInputAddButtonHitSize,
-        height: manualInputAddButtonHitSize,
-        child: Center(
-          child: SizedBox(
-            width: 38,
-            height: 38,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.ctaStart, AppColors.ctaEnd],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+  Widget _buildAddButton({
+    required VoidCallback onPressed,
+    required String semanticLabel,
+  }) {
+    final handlePress = AppHaptics.onPress(onPressed);
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      onTap: handlePress,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: handlePress,
+          child: const SizedBox(
+            width: _manualInputAddButtonHitSize,
+            height: _manualInputAddButtonHitSize,
+            child: Center(
+              child: SizedBox(
+                width: 38,
+                height: 38,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.add,
+                    size: 21,
+                    color: AppColors.onCta,
+                  ),
                 ),
-                shape: BoxShape.circle,
               ),
-              child: Icon(Icons.add, size: 21, color: Colors.white),
             ),
           ),
         ),
@@ -734,7 +749,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          _buildAddButton(onAdd),
+          _buildAddButton(
+            onPressed: onAdd,
+            semanticLabel: isMe ? '加入我說' : '加入她說',
+          ),
         ],
       ),
     );
@@ -809,50 +827,63 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   /// 頁面底部的 Sydney 陪伴視覺。
   ///
-  /// 出血規則：素材等比繪製成 `可見高度 × [manualInputSydneyBleedFactor]`，
+  /// 出血規則：素材等比繪製成 `可見高度 × [_manualInputSydneyBleedFactor]`，
   /// 靠上對齊後由 [ClipRect] 把多出來的下緣裁掉，因此畫面上看到的永遠是
   /// 「裙子被螢幕底部切掉」，不是素材自己的邊。素材本身已裁在裙襬之上，
   /// 兩層保險加起來保證不會露出裙襬底端、大腿、膝蓋、小腿、腳踝或鞋子。
   ///
   /// [constraints] 來自 [SliverFillRemaining]：高度是捲動視窗剩下的空間，
   /// 所以內容短時 Sydney 會自動長到螢幕底部，內容長時退回
-  /// [manualInputSydneyMinVisibleHeight] 並跟著捲動。全程等比，不拉長身體
+  /// [_manualInputSydneyMinVisibleHeight] 並跟著捲動。全程等比，不拉長身體
   /// 比例。
   Widget _buildSydneyCompanion(BoxConstraints constraints) {
     final incomingHeight = constraints.hasBoundedHeight
         ? constraints.maxHeight
         : constraints.minHeight;
-    final visibleHeight = math.max(
+    final availableHeight = math.max(
       incomingHeight,
-      manualInputSydneyMinVisibleHeight,
+      _manualInputSydneyMinVisibleHeight,
     );
-    // 寬度保險：窄螢幕上不讓等比放大的角色超出可視寬度而被左右切到裙襬。
+    // 寬度保險：先算出等比縮放可用的最大高度，再反推可見裁切高度。
+    // 高窄螢幕上即使留有垂直空間，也不會為了填滿而左右裁圖；
+    // 影像區塊改為貼底對齊，仍保留固定比例的裙襬出血。
     final maxHeightByWidth = constraints.maxWidth.isFinite
-        ? constraints.maxWidth / manualInputSydneyAspectRatio
+        ? constraints.maxWidth / _manualInputSydneyAspectRatio
         : double.infinity;
     final artHeight = math.min(
-      visibleHeight * manualInputSydneyBleedFactor,
-      math.max(maxHeightByWidth, visibleHeight),
+      availableHeight * _manualInputSydneyBleedFactor,
+      maxHeightByWidth,
+    );
+    final visibleHeight = math.min(
+      availableHeight,
+      artHeight / _manualInputSydneyBleedFactor,
     );
 
-    return ClipRect(
-      key: const ValueKey(manualInputSydneySkirtBleedKey),
-      child: SizedBox(
-        height: visibleHeight,
-        width: double.infinity,
-        child: OverflowBox(
-          alignment: Alignment.topCenter,
-          minHeight: 0,
-          maxHeight: artHeight,
-          child: Image.asset(
-            manualInputSydneyAsset,
-            key: const ValueKey(manualInputSydneyArtKey),
-            height: artHeight,
-            fit: BoxFit.contain,
-            alignment: Alignment.topCenter,
-            // 百褶裙的細直紋在縮放時最容易產生摩爾紋／水波感，
-            // 交給 mipmap 取樣而不是最近鄰。
-            filterQuality: FilterQuality.medium,
+    return SizedBox(
+      height: availableHeight,
+      width: double.infinity,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: ClipRect(
+          key: const ValueKey(manualInputSydneySkirtBleedKey),
+          child: SizedBox(
+            height: visibleHeight,
+            width: double.infinity,
+            child: OverflowBox(
+              alignment: Alignment.topCenter,
+              minHeight: 0,
+              maxHeight: artHeight,
+              child: Image.asset(
+                _manualInputSydneyAsset,
+                key: const ValueKey(manualInputSydneyArtKey),
+                height: artHeight,
+                fit: BoxFit.contain,
+                alignment: Alignment.topCenter,
+                // 百褶裙的細直紋在縮放時最容易產生摩爾紋／水波感，
+                // 交給 mipmap 取樣而不是最近鄰。
+                filterQuality: FilterQuality.medium,
+              ),
+            ),
           ),
         ),
       ),
@@ -1021,7 +1052,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
               // 直接回報下限值，攔住那次詢問，再由 sliver 把它撐成
               // max(剩餘視窗高度, 下限)，LayoutBuilder 才拿得到最終高度。
               child: SizedBox(
-                height: manualInputSydneyMinVisibleHeight,
+                height: _manualInputSydneyMinVisibleHeight,
                 child: LayoutBuilder(
                   builder: (context, constraints) =>
                       _buildSydneyCompanion(constraints),

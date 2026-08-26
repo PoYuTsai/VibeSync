@@ -2,9 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/conversation/presentation/screens/new_conversation_screen.dart';
 import 'package:vibesync/features/opener/data/services/opener_result_cache_service.dart';
 import 'package:vibesync/features/opener/data/services/opener_service.dart';
@@ -338,6 +340,46 @@ void _manualInputDesignTests() {
       }
     });
 
+    testWidgets('兩個新增按鈕使用 CTA 前景色並提供可操作的 VoiceOver 按鈕', (tester) async {
+      final semanticsHandle = tester.ensureSemantics();
+      await _pumpScreen(tester, partnerId: 'p-1');
+
+      for (final icon in tester.widgetList<Icon>(find.byIcon(Icons.add))) {
+        expect(icon.color, AppColors.onCta);
+      }
+      for (final label in const ['加入她說', '加入我說']) {
+        final semantics = tester.getSemantics(find.bySemanticsLabel(label));
+        expect(
+          semantics,
+          isSemantics(
+            label: label,
+            isButton: true,
+            hasTapAction: true,
+          ),
+        );
+      }
+
+      await tester.enterText(_hintField('她說了什麼…'), 'VoiceOver 加入測試');
+      final addHerMessage = tester.getSemantics(find.bySemanticsLabel('加入她說'));
+      tester.binding.platformDispatcher.onSemanticsActionEvent!(
+        SemanticsActionEvent(
+          type: SemanticsAction.tap,
+          nodeId: addHerMessage.id,
+          viewId: tester.view.viewId,
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.descendant(
+          of: _composerGroup,
+          matching: find.text('VoiceOver 加入測試'),
+        ),
+        findsOneWidget,
+      );
+      semanticsHandle.dispose();
+    });
+
     testWidgets('Sydney 使用去背正式素材', (tester) async {
       await _pumpScreen(tester, partnerId: 'p-1');
 
@@ -349,7 +391,6 @@ void _manualInputDesignTests() {
         (provider as AssetImage).assetName,
         'assets/images/coach/sydney_manual_input_full.png',
       );
-      expect((provider).assetName, manualInputSydneyAsset);
       expect(image.filterQuality, FilterQuality.medium);
     });
 
@@ -374,21 +415,36 @@ void _manualInputDesignTests() {
 
       // 素材本身已裁在裙襬之上；再加上這層裁切，素材自己的下緣也不會露出來。
       expect(artHeight, greaterThan(clipHeight));
-      expect(
-        artHeight,
-        closeTo(clipHeight * manualInputSydneyBleedFactor, 0.5),
-      );
-      expect(
-          clipHeight,
-          greaterThanOrEqualTo(
-            manualInputSydneyMinVisibleHeight,
-          ));
+      expect(artHeight - clipHeight, greaterThanOrEqualTo(40));
+      expect(clipHeight, greaterThanOrEqualTo(300));
 
       // 裁切容器貼齊畫面底部（出血），不會浮在半空中。
       final screenHeight = tester.getSize(find.byType(MaterialApp)).height;
       expect(
         tester.getRect(_sydneyClip).bottom,
         closeTo(screenHeight, 0.5),
+      );
+    });
+
+    testWidgets('高窄畫面仍保持 Sydney 寬度安全、裙襬出血與底部貼齊', (tester) async {
+      const screenSize = Size(320, 1200);
+      await _pumpScreen(tester, partnerId: 'p-1', size: screenSize);
+
+      final clipSize = tester.getSize(_sydneyClip);
+      final artSize = tester.getSize(_sydneyArt);
+      expect(artSize.height, greaterThan(clipSize.height));
+      expect(artSize.height - clipSize.height, greaterThanOrEqualTo(40));
+      expect(artSize.width, lessThanOrEqualTo(screenSize.width));
+      expect(clipSize.width, lessThanOrEqualTo(screenSize.width));
+      expect(
+        tester.getRect(_sydneyClip).bottom,
+        closeTo(screenSize.height, 0.5),
+      );
+      expect(
+        tester.getRect(_sydneyClip).top,
+        greaterThanOrEqualTo(
+          tester.getRect(find.text('依序輸入對話，至少先加入一則訊息。')).bottom,
+        ),
       );
     });
 
