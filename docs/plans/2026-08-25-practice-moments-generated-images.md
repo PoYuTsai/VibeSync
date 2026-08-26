@@ -48,7 +48,7 @@ Client 動態：貼文先以純文字出現；生圖 10 秒內完成，**下次�
 
 - **端點**：同步 `https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image`（另有 `queue.fal.run` 佇列制備用）。**同步 HTTP 即可**——生圖跑在 waitUntil 背景，使用者從不等它，所以模型變慢（schnell 的 1–2 秒 → Seedream 的十幾秒量級）對體感零影響，只需把 fal timeout 從 30s 放寬到 60s。
 - **認證**：header `Authorization: Key ${FAL_API_KEY}`。
-- **關鍵參數**：`image_size: {width: 1920, height: 1440}`（schema 允許的**最小合法 4:3**——限制是「兩軸落在 1920–4096」或「總像素 2560×1440 起跳」；不用 `landscape_4_3` enum 是因為它對應的實際像素數未公開，而 PNG 無損、尺寸直接決定檔案大小）、`num_images: 1`＋`max_images: 1`、`seed`（**傳入 fnv1a slot 種子**）、`enable_safety_checker: true`（**安全鐵則，見 §9**）。**沒有 `output_format` 參數：Seedream 4.5 固定出 PNG。**
+- **關鍵參數**：`image_size: "landscape_4_3"`（**官方 enum preset**）。custom size 的規則是「兩軸皆在 1920–4096」**或**「總像素落在 2560×1440 到 4096×4096」——第一版自訂的 1920×1440 兩條都不滿足（高度低於 1920、總像素 2.76MP 低於 3.69MP 下限），會被供應商打回，這是複審抓到的 P1。改用 enum 讓 fal 自己映射到合法尺寸，構造上不可能違規；代價是實際像素數未公開，檔案大小改由 12MB 上限與 production log 的實測值把關、`num_images: 1`＋`max_images: 1`、`seed`（**傳入 fnv1a slot 種子**）、`enable_safety_checker: true`（**安全鐵則，見 §9**）。**沒有 `output_format` 參數：Seedream 4.5 固定出 PNG。**
 - **輸出**：JSON 內 `images[].url` 指向 fal 的 CDN（暫時 URL）→ **Edge 下載後轉存 Supabase Storage**，client 永遠只拿我們自己的 URL。
 - **價格**：**$0.04/張**（fal 官方定價，與張數大小無關）→ 實測量（~11 張/天、~370 張/月含重試）約 **$13–15/月**。換模型前的 schnell 是 $0.0024/張、月費 < $1，也就是這次換模型讓成本上升約 16 倍——絕對金額仍小，但**算術上界**同步放大（見 §11）。
 - **換模型的彈性**：fal.ai 同站託管 FLUX 全系與 Qwen-Image 等開源模型——質感不滿意時**只換 model id 字串**，金流、金鑰、client 模組全部不動。這是選託管平台而非單一模型官方 API 的核心理由。
@@ -117,7 +117,7 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 
 - **Bucket**：`practice-moment-images`，**public**。內容是無人物 AI 場景圖、全域共用、零使用者資料；signed URL 會讓 URL 每次變動打爆 client 磁碟快取、且過期時間要另外對齊 14 天窗，得不償失。bucket 與 `storage.objects` policy（anon 唯讀、寫入 service_role only）進同一支 migration（`INSERT INTO storage.buckets ... ON CONFLICT DO NOTHING`）。
 - **物件 key（token 隔離，2026-08-25 第二輪複審 P1-1）**：`<post_date>/<profile_id>_<slot>_<image_token>.png`。每次認領寫**自己的**路徑、永不覆寫（upsert:false）——底層上傳收不到取消訊號，timeout 晚到的舊上傳在物理上碰不到 winner 的物件，也不可能在清理後重建 committed 物件；輸家（timeout 晚到完成、commit 被打回）**自刪**自己的物件——但自刪只是快路徑，**持久保證在孤兒帳本**（路徑在 claim 的同一筆交易就記下，見 §8），日期前綴對帳再兜一層。
-- **Edge 不做影像處理**：fal 直出 PNG（1920×1440），下載後原樣上傳。黑圖保險見 §9。**代價要說清楚**：PNG 是無損格式，一張 1920×1440 的實景圖落在 4–8MB（fal 官方範例的 `file_size` 就是 4.4MB），是 schnell 時期 jpeg 的 20–40 倍。這同時推高穩態儲存與手機端流量，見 §8 的儲存估算與 §11 的待辦。
+- **Edge 不做影像處理**：fal 直出 PNG（尺寸由 `landscape_4_3` preset 決定），下載後原樣上傳。黑圖保險見 §9。**代價要說清楚**：PNG 是無損格式，一張 1920×1440 的實景圖落在 4–8MB（fal 官方範例的 `file_size` 就是 4.4MB），是 schnell 時期 jpeg 的 20–40 倍。這同時推高穩態儲存與手機端流量，見 §8 的儲存估算與 §11 的待辦。
 - **API 回傳**：`MomentFeedPost` 加 `imageUrl: string | null`——僅 `image_status='ready'` 時由 `SUPABASE_URL`＋path 組出。`imageId` 欄位語義不變（自拍 sentinel 與 bundled fallback 續用）。
 - **向前相容（已驗證）**：`practice_moment_post.dart` 的 fromJson 只讀已知鍵，未知鍵直接忽略；生成圖貼文的 `imageId` 為 null → 舊 client 走「null＝純文字」主路徑。零風險。
 
@@ -164,8 +164,12 @@ commit → image_orphan_paths -= <token 路徑>   （成功的同一交易）
 ## 9. 安全與品質邊界
 
 - **無人物／無文字／無品牌**：STYLE＋NEGATIVE 模板硬約束（沿用已驗收字面）＋fal `enable_safety_checker: true`。FLUX 無 Imagen 的 `person_generation` 硬參數——殘餘風險由 prompt 約束與試打驗收吸收。
-- **NSFW fail-closed（2026-08-25 複審 blocking item 1）**：fal 回應的 `has_nsfw_concepts` 是第一道守門——只有明確回報 `false` 才繼續；命中、欄位缺席或形狀不對（供應商改 schema）一律**不下載、不上傳、不 commit**，直接 release。黑圖啟發式（bytes < 10KB）降為第二層保險。
-- **下載／上傳完整邊界（blocking item 2；第三輪同步）**：結果 URL 必須是 https 且 host 屬 `fal.media`；兩個 fetch 均 `redirect: "error"`＋response.url 最終 host 縱深驗證；timeout 計時器涵蓋**完整 response body**（懸掛的 JSON 與圖片串流都會被 abort）；Content-Type **僅收 image/png**（與寫入副檔名、contentType 一致）＋ PNG magic bytes（89 50 4E 47 0D 0A 1A 0A）驗證；大小硬上限兩層——Content-Length 預檢＋流式累計硬擋（上限 12MB，容納 PNG 無損）；上傳獨立 timeout（底層不可取消，安全性由 token 隔離路徑＋輸家自刪＋出窗 prefix 孤兒對帳保證）。任何異常回應都不落入記憶體、不拖 Edge。
+- **內容安全：2026-08-26 換 Seedream 4.5 時的明確降級**。舊版（FLUX schnell）回應帶 `has_nsfw_concepts` 逐張布林，做得到「只有明確回報 `false` 才繼續，其餘一律不下載、不上傳、不 commit」的 fail-closed。**Seedream 4.5 的 output schema 只有 `images` 與 `seed`，沒有任何 NSFW 欄位**（fal 官方 OpenAPI 查證），那道逐張判定在這個模型上不存在。現行三層是：
+  1. **平台端 safety checker**：請求固定帶 `enable_safety_checker: true`（schema 預設即 true，關閉需帳號授權）。**保證邊界要說清楚**：官方只保證這個檢查可以被啟用，**未規定命中時的回應形狀**（HTTP error／空 images／其他皆有可能），因此程式不依賴任何特定失敗形狀——各種回應分別由既有路徑收斂（`fal_image_http_*`／`fal_image_empty`／格式與大小守門）。**不可宣稱「不合格的圖絕不會到我們手上」。**
+  2. **輸入端硬約束**：STYLE 前綴明文禁人物／禁可讀文字／禁品牌，場景句另經 `validateSceneLine`（禁詞、ASCII、長度）。
+  3. **黑圖保險**：bytes < 10KB 視為失敗。
+  代價：少了逐張的供應商判定訊號，也少了 `fal_image_nsfw`／`fal_image_safety_unverified` 兩個觀測點，且剩下三層都不是逐張的內容判定。換回有逐張判定的模型時，把 fail-closed 那段加回來即可。
+- **下載／上傳完整邊界（blocking item 2；第三輪同步）**：結果 URL 必須是 https，且 host 屬 `fal.media`／其子網域，**或**精確等於 `storage.googleapis.com` 且路徑以 `/falserverless/` 開頭（fal 官方 output 範例就是後者；只放行「精確 host ＋ 該 bucket 路徑前綴」，不是任意 GCS 物件、更不是任意外部 URL）；兩個 fetch 均 `redirect: "error"`＋response.url 最終 host 縱深驗證；timeout 計時器涵蓋**完整 response body**（懸掛的 JSON 與圖片串流都會被 abort）；Content-Type **僅收 image/png**（與寫入副檔名、contentType 一致）＋ PNG magic bytes（89 50 4E 47 0D 0A 1A 0A）驗證；大小硬上限兩層——Content-Length 預檢＋流式累計硬擋（上限 12MB，容納 PNG 無損）；上傳獨立 timeout（底層不可取消，安全性由 token 隔離路徑＋輸家自刪＋出窗 prefix 孤兒對帳保證）。任何異常回應都不落入記憶體、不拖 Edge。
 - **自拍貼文維持圖鑑照片，不生成**：人臉一致性做不到＋原設計 §7.4「不得生成像真實人物的新圖」（App Review 肖像風險）。候選收斂後只剩 `moment_self_portrait` 的 slot 不進生圖分支。
 - **Kill switch**：`MOMENT_IMAGE_GEN_ENABLED`（getEnv 閘門，照 `PRACTICE_HINT_PREFETCH_ENABLED` 範式，handler.ts:2142）。**關閉或缺 `FAL_API_KEY` 時退回現行 20 張 bundled 素材路徑**——bundled 路徑已上線已驗收，保住「兩種貼文型態」；因此 20 張素材長期保留，`test/lint/moments_scene_asset_parity_test.dart` 三方對帳一行不用改。
 - **timeout < lease**：fal 呼叫 60s＋下載 15s＋上傳 15s＋場景句 10s ＝ 最壞 100s ≪ image lease 180s；而且這不只是「算得剛好」——超過 180s 的 commit 在資料層直接被拒（§8 租約邊界）。上傳競態不再倚賴機率——token 隔離路徑讓「同時上傳」寫的是不同物件，晚到者自刪（§7）。

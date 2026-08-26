@@ -9,6 +9,7 @@ import {
   coveredThemeIds,
   generateMomentImage,
   MOMENT_IMAGE_STYLE_PREFIX,
+  isLegalSeedreamImageSize,
   momentImagePath,
   momentImageSeed,
   type MomentsImageRpcClient,
@@ -20,9 +21,8 @@ import {
   MAX_MOMENT_IMAGE_ATTEMPTS,
   MOMENT_IMAGE_CONTENT_TYPE,
   MOMENT_IMAGE_MAX_BYTES,
-  MOMENT_IMAGE_HEIGHT,
   MOMENT_IMAGE_MIN_BYTES,
-  MOMENT_IMAGE_WIDTH,
+  MOMENT_IMAGE_SIZE_PRESET,
 } from "./moments_constants.ts";
 
 const JOB = { profileId: "practice_girl_007", isoDate: "2026-08-25", slot: 0 };
@@ -383,10 +383,7 @@ Deno.test("成功路徑：claim → 場景句 → fal → 下載 → 上傳 → 
   // fal 請求：最小合法 4:3、單張、決定論 seed、prompt 含 STYLE 與場景句。
   const falCall = harness.fetchCalls.find((c) => c.url === FAL_URL);
   assert(falCall && falCall.body);
-  assertEquals(falCall.body.image_size, {
-    width: MOMENT_IMAGE_WIDTH,
-    height: MOMENT_IMAGE_HEIGHT,
-  });
+  assertEquals(falCall.body.image_size, MOMENT_IMAGE_SIZE_PRESET);
   assertEquals(falCall.body.num_images, 1);
   assertEquals(falCall.body.max_images, 1);
   assertEquals(falCall.body.enable_safety_checker, true);
@@ -524,6 +521,88 @@ Deno.test("安全鐵則：每一次請求都必須帶 enable_safety_checker: tru
     const falCall = harness.fetchCalls.find((c) => c.url === FAL_URL);
     assert(falCall && falCall.body);
     assertEquals(falCall.body.enable_safety_checker, true);
+  }
+});
+
+Deno.test("image_size 必須是官方合法值（自訂數字要滿足 schema 規則）", async () => {
+  // 第一輪複審 P1-1：自訂的 1920×1440 兩條規則都不滿足（高度低於 1920、
+  // 總像素 2.76MP 低於 3.69MP 下限），供應商會打回。
+  assert(
+    !isLegalSeedreamImageSize({ width: 1920, height: 1440 }),
+    "1920×1440 不合法——這正是複審抓到的那組數字",
+  );
+  // 規則的兩條各驗一組合法與一組不合法。
+  assert(isLegalSeedreamImageSize({ width: 2560, height: 1920 }), "兩軸皆在範圍內");
+  assert(isLegalSeedreamImageSize({ width: 2218, height: 1663 }), "總像素達下限");
+  assert(!isLegalSeedreamImageSize({ width: 1024, height: 768 }), "兩條都不滿足");
+  assert(!isLegalSeedreamImageSize({ width: 5000, height: 5000 }), "超過上限");
+  assert(!isLegalSeedreamImageSize({ width: 2560.5, height: 1920 }), "非整數");
+
+  // production 送的是 enum preset；若日後改成自訂數字，必須通過上面的規則。
+  const harness = makeJobHarness();
+  await runJob(harness);
+  const falCall = harness.fetchCalls.find((c) => c.url === FAL_URL);
+  assert(falCall && falCall.body);
+  const size = falCall.body.image_size;
+  if (typeof size === "string") {
+    assertEquals(size, MOMENT_IMAGE_SIZE_PRESET);
+  } else {
+    assert(
+      isLegalSeedreamImageSize(size as { width: number; height: number }),
+      `自訂尺寸 ${JSON.stringify(size)} 不符合 Seedream 4.5 的 schema 規則`,
+    );
+  }
+});
+
+Deno.test("結果 URL allowlist：放行官方兩種 host，其餘一律拒絕", async () => {
+  // 第一輪複審 P1-2：官方 output 範例來自 storage.googleapis.com/falserverless/…，
+  // 只放行 fal.media 會把供應商成功生成的圖擋掉。
+  const allowed = [
+    "https://fal.media/files/abc/x.png",
+    "https://v3b.fal.media/files/b/0a84c771/x.png",
+    "https://storage.googleapis.com/falserverless/example_outputs/x.png",
+  ];
+  for (const url of allowed) {
+    const harness = makeJobHarness({ falPayload: { images: [{ url }] } });
+    await runJob(harness);
+    assert(
+      rpcNames(harness).includes("commit_practice_moment_image"),
+      `${url} 應被放行`,
+    );
+  }
+  const rejected = [
+    // 非 HTTPS
+    "http://fal.media/x.png",
+    "http://storage.googleapis.com/falserverless/x.png",
+    // lookalike host
+    "https://notfal.media/x.png",
+    "https://fal.media.evil.com/x.png",
+    "https://storage.googleapis.com.evil.com/falserverless/x.png",
+    "https://xstorage.googleapis.com/falserverless/x.png",
+    // 正確 host、但不是 fal 的 bucket 路徑
+    "https://storage.googleapis.com/other-bucket/x.png",
+    "https://storage.googleapis.com/falserverless-evil/x.png",
+    "https://storage.googleapis.com/x.png",
+    // 路徑跳脫（URL 正規化後不在前綴內）
+    "https://storage.googleapis.com/falserverless/../other/x.png",
+    // userinfo 偽裝
+    "https://storage.googleapis.com@evil.com/falserverless/x.png",
+    // 完全無關的外部 URL
+    "https://evil.example.com/storage.googleapis.com/falserverless/x.png",
+  ];
+  for (const url of rejected) {
+    const harness = makeJobHarness({ falPayload: { images: [{ url }] } });
+    await runJob(harness);
+    assertEquals(
+      rpcNames(harness),
+      [
+        "claim_practice_moment_image",
+        "clear_practice_moment_image_orphans",
+        "release_practice_moment_image",
+      ],
+      `${url} 應被來源驗證擋下`,
+    );
+    assertEquals(harness.uploads.length, 0, `${url} 不得上傳`);
   }
 });
 

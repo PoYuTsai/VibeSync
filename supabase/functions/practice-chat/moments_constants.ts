@@ -80,7 +80,7 @@ export const MAX_MOMENT_IMAGE_ATTEMPTS = 2;
 
 /**
  * 生圖 job 租約。SQL: p_lease_seconds INTEGER DEFAULT 180。
- * 必須遠大於「fal 呼叫 30s＋下載＋上傳」的總預算，stale worker 與新 worker
+ * 必須遠大於「fal 呼叫 60s＋下載＋上傳」的總預算，stale worker 與新 worker
  * 同時上傳的競態才幾乎不可達（設計文件 §9）。
  */
 export const MOMENT_IMAGE_RESERVE_LEASE_MS = 180_000;
@@ -130,16 +130,16 @@ export const MOMENT_IMAGE_MIN_BYTES = 10_000;
 export const MOMENT_IMAGE_MAX_BYTES = 12_000_000;
 
 /**
- * 生成尺寸：schema 允許的**最小合法 4:3**。
+ * 生成尺寸：官方 enum preset。
  *
- * Seedream 4.5 的 image_size 限制是「兩軸都落在 1920-4096」或「總像素落在
- * 2560×1440 到 4096×4096」。1920×1440 走第一條、正好 4:3，且是能拿到的
- * 最小尺寸——檔案越小，Storage 與手機流量越省（PNG 無損，尺寸直接決定
- * 檔案大小）。不用 landscape_4_3 這個 enum 是因為它對應的實際像素數
- * 未公開，明確給數字才可預測。
+ * Seedream 4.5 的 custom size 規則是「兩軸皆在 1920-4096」**或**「總像素
+ * 落在 2560×1440 到 4096×4096」。先前自訂的 1920×1440 兩條都不滿足
+ * （高度低於 1920、總像素 2.76MP 低於 3.69MP 下限），會被供應商打回
+ * ——這是第一輪複審抓到的 P1。改用 enum：由 fal 自己映射到該模型的合法
+ * 尺寸，構造上不可能違規；代價是實際像素數未公開，所以檔案大小要靠
+ * MOMENT_IMAGE_MAX_BYTES 與 production log 的實測值來把關。
  */
-export const MOMENT_IMAGE_WIDTH = 1920;
-export const MOMENT_IMAGE_HEIGHT = 1440;
+export const MOMENT_IMAGE_SIZE_PRESET = "landscape_4_3";
 
 /** 生成圖的格式：Seedream 4.5 只出 PNG，沒有 output_format 參數可選。 */
 export const MOMENT_IMAGE_CONTENT_TYPE = "image/png";
@@ -162,8 +162,8 @@ export const MOMENT_IMAGE_ORPHAN_LEDGER_LIMIT = 20;
  *
  * 帳本在 claim 的同一筆交易裡記下「這個 token 路徑可能會有物件」，commit
  * 成功的同一筆交易再把它抹掉。清算只處理**寬限期之外**的紀錄——寬限期
- * 必須遠大於一個 job 的最壞 wall clock（場景 10s＋fal 30s＋下載 15s＋
- * 上傳 15s，且租約只有 180s），在跑的 job 才不可能被自己的清算刪掉。
+ * 必須遠大於一個 job 的最壞 wall clock（場景 10s＋fal 60s＋下載 15s＋
+ * 上傳 15s ＝ 100s，且租約只有 180s），在跑的 job 才不可能被自己的清算刪掉。
  */
 export const MOMENT_IMAGE_ORPHAN_GRACE_SECONDS = 600;
 
