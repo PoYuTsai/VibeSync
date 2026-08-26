@@ -6,6 +6,7 @@
 //
 // 明確不做（PLAN §4.0 的「不要做什麼」清單）：九宮格、全寬大圖、
 // 把圖當視覺主角、BoxShadow 卡片。
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -177,13 +178,13 @@ class _MomentImage extends StatelessWidget {
             (width / kMomentImageAspectRatio).clamp(0.0, kMomentImageMaxHeight);
         return Align(
           alignment: Alignment.centerLeft,
-          child: _buildImage(width, height),
+          child: _buildImage(context, width, height),
         );
       },
     );
   }
 
-  Widget _buildImage(double width, double height) {
+  Widget _buildImage(BuildContext context, double width, double height) {
     final girl = profile;
     switch (source) {
       case MomentSelfPortraitImage():
@@ -208,6 +209,31 @@ class _MomentImage extends StatelessWidget {
             filterQuality: FilterQuality.medium,
             // 素材缺檔時降級成純文字，不顯示破圖。
             errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        );
+      case MomentRemoteImage(:final url):
+        // server 生成的配圖（PR-5）。磁碟快取是必要的：D7 每次進畫面重抓
+        // feed，沒有快取等於每次進頁重載全部圖。載入中用素色圓角塊佔住
+        // 4:3 空間（防 layout shift，比 shimmer 更貼 Threads 版面）；
+        // 載不出（弱網／物件已過期刪除）降級純文字＝現行鐵則。
+        final reduceMotion = MediaQuery.of(context).disableAnimations;
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: CachedNetworkImage(
+            imageUrl: url,
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            fadeInDuration: reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 200),
+            fadeOutDuration: Duration.zero,
+            placeholder: (_, __) => Container(
+              width: width,
+              height: height,
+              color: AppColors.glassBorder.withValues(alpha: 0.35),
+            ),
+            errorWidget: (_, __, ___) => const SizedBox.shrink(),
           ),
         );
     }

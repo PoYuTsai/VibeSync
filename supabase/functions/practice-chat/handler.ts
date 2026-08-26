@@ -13,6 +13,7 @@ import {
   handlePracticeMoments,
   type MomentsSupabaseClient,
 } from "./moments_handler.ts";
+import { MOMENT_IMAGE_BUCKET } from "./moments_constants.ts";
 import {
   type AppliedHintDecision,
   type AppliedHintTurn,
@@ -565,6 +566,82 @@ async function persistGenerationTelemetryFailOpen(opts: {
   } finally {
     if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
   }
+}
+
+/**
+ * 動態生成配圖的 Storage 存取小轉接層：同一份型別宣告服務 upload／remove／
+ * list 四個注入點（provider／基礎設施細節不進錯誤訊息，logger 端統一分類）。
+ */
+function momentImageStorage(supabase: unknown): {
+  upload(
+    path: string,
+    bytes: Uint8Array,
+    contentType: string,
+  ): Promise<void>;
+  remove(paths: readonly string[]): Promise<void>;
+  list(prefix: string, opts: { limit: number }): Promise<readonly string[]>;
+  listPrefixes(
+    opts: { limit: number; offset: number },
+  ): Promise<readonly string[]>;
+} {
+  const client = supabase as {
+    storage: {
+      from(bucket: string): {
+        upload(
+          path: string,
+          body: Uint8Array,
+          options: { contentType: string; upsert: boolean },
+        ): Promise<{ error: { message: string } | null }>;
+        remove(
+          paths: readonly string[],
+        ): Promise<{ error: { message: string } | null }>;
+        list(
+          prefix: string,
+          options: {
+            limit: number;
+            offset?: number;
+            sortBy?: { column: string; order: string };
+          },
+        ): Promise<{
+          data: { name: string }[] | null;
+          error: { message: string } | null;
+        }>;
+      };
+    };
+  };
+  const bucket = () => client.storage.from(MOMENT_IMAGE_BUCKET);
+  return {
+    async upload(path, bytes, contentType) {
+      const { error } = await bucket().upload(path, bytes, {
+        contentType,
+        upsert: false,
+      });
+      if (error) throw new Error("storage_upload_failed");
+    },
+    async remove(paths) {
+      const { error } = await bucket().remove(paths);
+      if (error) throw new Error("storage_remove_failed");
+    },
+    async list(prefix, opts) {
+      // 清掃端每翻一頁就把該頁刪掉，所以永遠從 offset 0 列起。
+      const { data, error } = await bucket().list(prefix, {
+        limit: opts.limit,
+        offset: 0,
+      });
+      if (error) throw new Error("storage_list_failed");
+      return (data ?? []).map((entry) => `${prefix}/${entry.name}`);
+    },
+    async listPrefixes(opts) {
+      // 根目錄列出來的是日期資料夾；名稱升冪＝日期由舊到新，出窗的排前面。
+      const { data, error } = await bucket().list("", {
+        limit: opts.limit,
+        offset: opts.offset,
+        sortBy: { column: "name", order: "asc" },
+      });
+      if (error) throw new Error("storage_list_failed");
+      return (data ?? []).map((entry) => entry.name);
+    },
+  };
 }
 
 function scheduleGenerationTelemetry(
@@ -1900,14 +1977,48 @@ export function createPracticeChatHandler(
     if (isPlainObject(rawBody) && rawBody.mode === "practice_moments") {
       // 模擬社群動態 feed：唯讀 + 有界補生成。與 chat/hint/debrief 完全隔離，
       // 生成輸入只有 server profile + 日期 + 題材（隱私鐵則）。
+      //
+      // 生成配圖（PR-3）的 kill switch 在這裡：MOMENT_IMAGE_GEN_ENABLED 非
+      // "true" 或缺 FAL_API_KEY 就不組 imageGen deps → wantsImage slot 走
+      // 現行 bundled 候選路徑，行為與導入前完全相同。storagePublicUrlBase
+      // 刻意獨立於開關：已生成的圖在開關關閉後仍要露出。
+      const momentsDeepSeekKey = deps.getEnv("DEEPSEEK_API_KEY") ?? "";
+      const falApiKey = deps.getEnv("FAL_API_KEY") ?? "";
+      const momentImageGenEnabled =
+        (deps.getEnv("MOMENT_IMAGE_GEN_ENABLED") ?? "") === "true";
+      const supabaseUrl = deps.getEnv("SUPABASE_URL") ?? "";
       const momentsResult = await handlePracticeMoments({
         supabase: supabase as unknown as MomentsSupabaseClient,
         userId: user.id,
         now: deps.now?.() ?? new Date(),
         isTestAccount: TEST_EMAILS.includes(user.email || ""),
         deps: {
-          apiKey: deps.getEnv("DEEPSEEK_API_KEY") ?? "",
+          apiKey: momentsDeepSeekKey,
           callDeepSeek: deps.callDeepSeek,
+          waitUntil: deps.waitUntil,
+          storagePublicUrlBase: supabaseUrl.length > 0
+            ? `${supabaseUrl}/storage/v1/object/public/${MOMENT_IMAGE_BUCKET}`
+            : undefined,
+          imageGen: momentImageGenEnabled && falApiKey.length > 0 &&
+              momentsDeepSeekKey.length > 0
+            ? {
+              falApiKey,
+              deepSeekApiKey: momentsDeepSeekKey,
+              callDeepSeek: deps.callDeepSeek,
+              // upsert:false——路徑以 token 隔離、永不覆寫（複審 P1-1）。
+              uploadImage: (path, bytes, contentType) =>
+                momentImageStorage(supabase).upload(path, bytes, contentType),
+              removeImage: (path) =>
+                momentImageStorage(supabase).remove([path]),
+            }
+            : undefined,
+          imageSweep: {
+            listImages: (prefix, opts) =>
+              momentImageStorage(supabase).list(prefix, opts),
+            listPrefixes: (opts) =>
+              momentImageStorage(supabase).listPrefixes(opts),
+            removeImages: (paths) => momentImageStorage(supabase).remove(paths),
+          },
         },
       });
       return jsonResponse(momentsResult.body, momentsResult.status);

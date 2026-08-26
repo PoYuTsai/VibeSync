@@ -30,6 +30,7 @@
 // （假共同朋友、假介紹人、假上次見面）。這裡沿用同一套語氣。
 
 import { compactCompleteSentenceEvidence } from "./prompt.ts";
+import { shiftIsoDate } from "./moments_date.ts";
 import { momentPostedAtFor } from "./moments_time.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
 import { MOMENT_PROFILE_ALLOWLIST_MAX } from "./moments_constants.ts";
@@ -92,13 +93,6 @@ function isoDateOf(value: unknown): string | null {
   }
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return null;
-}
-
-/** 台北日往前推 N 天。 */
-export function shiftIsoDate(isoDate: string, days: number): string {
-  const shifted = new Date(`${isoDate}T00:00:00.000Z`);
-  shifted.setUTCDate(shifted.getUTCDate() + days);
-  return shifted.toISOString().slice(0, 10);
 }
 
 /**

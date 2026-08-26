@@ -32,7 +32,22 @@ import {
   momentPlanFor,
   type MomentSlotPlan,
 } from "./moments_schedule.ts";
-import { resolveAvailableMomentImages } from "./moments_image_catalog.ts";
+import {
+  resolveAvailableMomentImages,
+  SELF_PORTRAIT_IMAGE_ID,
+} from "./moments_image_catalog.ts";
+import {
+  generateMomentImage,
+  type MomentImageGenDeps,
+  type MomentImageJob,
+} from "./moments_image_gen.ts";
+import {
+  type MomentImageSweepDeps,
+  sweepExpiredMomentImages,
+  sweepMomentImageOrphanLedger,
+  sweepOrphanMomentImages,
+} from "./moments_image_sweep.ts";
+import { shiftIsoDate } from "./moments_date.ts";
 import { momentPostedAtFor } from "./moments_time.ts";
 import { buildMomentMessages } from "./moments_prompt.ts";
 import { validateMomentDraft } from "./moments_validate.ts";
@@ -47,6 +62,7 @@ import {
   MOMENT_FILL_DEADLINE_MS,
   MOMENT_FILL_MAX_PER_REQUEST,
   MOMENT_MODEL_MAX_TOKENS,
+  MOMENT_IMAGE_FILL_MAX_PER_REQUEST,
   MOMENT_MODEL_TEMPERATURE,
   MOMENT_MODEL_TIMEOUT_MS,
   MOMENT_RESERVE_LEASE_MS,
@@ -92,6 +108,23 @@ export interface MomentsHandlerDeps {
     girl: PracticeGirlProfile;
     time: TaipeiTimeContext;
   }) => MomentDayPlan;
+  /**
+   * 生成配圖的注入點（PR-3）。undefined＝kill switch 關：wantsImage slot
+   * 走現行 bundled 候選路徑，行為與導入前完全相同。
+   */
+  imageGen?: MomentImageGenDeps;
+  /** 背景 job 排程；production 走 EdgeRuntime.waitUntil（handler.ts 注入）。 */
+  waitUntil?: (task: Promise<void>) => void;
+  /**
+   * Storage public URL 前綴（…/object/public/<bucket>）。與 imageGen 開關
+   * 獨立：已生成的圖在開關關閉後仍要露出。
+   */
+  storagePublicUrlBase?: string;
+  /**
+   * 過期清掃的注入點（PR-4）。與 imageGen 開關獨立：生成關掉之後，
+   * 既有的圖出窗一樣要刪。undefined＝不清掃（測試環境）。
+   */
+  imageSweep?: MomentImageSweepDeps;
 }
 
 export interface MomentsHandlerResult {
@@ -107,6 +140,8 @@ export interface MomentFeedPost {
   postedAt: string;
   body: string;
   imageId: string | null;
+  /** 生成配圖的 public URL；僅 image_status='ready' 時非 null。 */
+  imageUrl: string | null;
 }
 
 interface MissingSlot {
@@ -115,6 +150,8 @@ interface MissingSlot {
   plan: MomentSlotPlan;
   postedAt: Date;
   imageCandidates: readonly string[];
+  /** true＝走生成配圖（候選清空、commit 標 pending、背景 job 以文生圖）。 */
+  generatedImage: boolean;
   unlockedAt: number;
 }
 
@@ -131,13 +168,6 @@ function isoDateOf(value: unknown): string | null {
   if (typeof value === "string") return value.slice(0, 10);
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return null;
-}
-
-/** 台北日往前推 N 天（feed 視窗的起點）。 */
-function shiftIsoDate(isoDate: string, days: number): string {
-  const shifted = new Date(`${isoDate}T00:00:00.000Z`);
-  shifted.setUTCDate(shifted.getUTCDate() + days);
-  return shifted.toISOString().slice(0, 10);
 }
 
 function slotKey(profileId: string, isoDate: string, slot: number): string {
@@ -218,6 +248,9 @@ export async function handlePracticeMoments(args: {
 
   const posts: MomentFeedPost[] = [];
   const readySlots = new Set<string>();
+  // 機會式接手：list 裡 image_status='pending' 的列（租約與 attempts 由
+  // claim RPC 自行把關，這裡只負責把 job 丟進背景）。
+  const pendingImageJobs: MomentImageJob[] = [];
   for (const raw of Array.isArray(listData) ? listData : []) {
     if (typeof raw !== "object" || raw === null) continue;
     const row = raw as Row;
@@ -248,6 +281,15 @@ export async function handlePracticeMoments(args: {
     }
     // 未到時間的一律不露出（即使 DB 裡已經是 ready）。
     if (postedAt.getTime() > now.getTime()) continue;
+    const imageStatus = typeof row.image_status === "string"
+      ? row.image_status
+      : "none";
+    const imagePath = typeof row.image_path === "string"
+      ? row.image_path
+      : null;
+    if (imageStatus === "pending") {
+      pendingImageJobs.push({ profileId, isoDate: postDate, slot });
+    }
     posts.push({
       profileId,
       postDate,
@@ -256,6 +298,10 @@ export async function handlePracticeMoments(args: {
       postedAt: postedAt.toISOString(),
       body: bodyText,
       imageId: typeof row.image_id === "string" ? row.image_id : null,
+      imageUrl: imageStatus === "ready" && imagePath !== null &&
+          deps.storagePublicUrlBase
+        ? `${deps.storagePublicUrlBase}/${imagePath}`
+        : null,
     });
   }
 
@@ -286,20 +332,30 @@ export async function handlePracticeMoments(args: {
         dayPart: slotPlan.dayPart,
       });
       if (postedAt.getTime() > now.getTime()) continue;
+      const resolvedCandidates = slotPlan.wantsImage
+        ? resolveAvailableMomentImages(slotPlan.imageCandidates)
+        : [];
+      // 生成配圖判定（設計文件 §9）：開關開、slot 要圖，且候選不是「只剩
+      // 自拍 sentinel」——自拍照舊走圖鑑照片，不生成人臉。
+      const onlySelfPortrait = resolvedCandidates.length === 1 &&
+        resolvedCandidates[0] === SELF_PORTRAIT_IMAGE_ID;
+      const generatedImage = deps.imageGen !== undefined &&
+        slotPlan.wantsImage && resolvedCandidates.length > 0 &&
+        !onlySelfPortrait;
       missing.push({
         girl,
         isoDate: plan.isoDate,
         plan: slotPlan,
         postedAt,
-        imageCandidates: slotPlan.wantsImage
-          ? resolveAvailableMomentImages(slotPlan.imageCandidates)
-          : [],
+        imageCandidates: generatedImage ? [] : resolvedCandidates,
+        generatedImage,
         unlockedAt: unlockedAtByProfile.get(profileId) ?? 0,
       });
     }
   }
 
   // 5. 沒有缺口就直接回既有貼文——絕大多數請求走這條，零模型呼叫、零限流。
+  //    生圖接手照排：pending 列多半正是在這條路上被補完的。
   if (missing.length === 0 || deps.apiKey.length === 0) {
     if (missing.length > 0) {
       logWarn("practice_moments_config_missing", {
@@ -307,6 +363,14 @@ export async function handlePracticeMoments(args: {
         pending: missing.length,
       });
     }
+    scheduleMomentImageJobs({
+      supabase,
+      deps,
+      userId,
+      isTestAccount,
+      jobs: pendingImageJobs,
+    });
+    scheduleImageSweep({ supabase, deps, isoDate: time.isoDate });
     return {
       body: {
         posts: sortPosts(posts),
@@ -340,9 +404,19 @@ export async function handlePracticeMoments(args: {
 
   const deadlineAt = startedAt + deadlineMs;
   const filled: MomentFeedPost[] = [];
+  const committedImageJobs: MomentImageJob[] = [];
   const tasks = batch.map((item) =>
     fillOneSlot({ supabase, userId, item, deps, deadlineAt, isTestAccount }).then((post) => {
-      if (post) filled.push(post);
+      if (post) {
+        filled.push(post);
+        if (item.generatedImage) {
+          committedImageJobs.push({
+            profileId: item.girl.profileId,
+            isoDate: item.isoDate,
+            slot: item.plan.slot,
+          });
+        }
+      }
     })
   );
 
@@ -358,11 +432,22 @@ export async function handlePracticeMoments(args: {
     if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
   }
 
+  // 新 commit 的優先（她剛發文，最值得先有圖），剩餘配額給 pending 接手。
+  const imageJobsScheduled = scheduleMomentImageJobs({
+    supabase,
+    deps,
+    userId,
+    isTestAccount,
+    jobs: [...committedImageJobs, ...pendingImageJobs],
+  });
+  scheduleImageSweep({ supabase, deps, isoDate: time.isoDate });
+
   logInfo("practice_moments_filled", {
     user: summarizeUser(userId),
     missing: missing.length,
     attempted: batch.length,
     generated: filled.length,
+    imageJobsScheduled,
   });
 
   return {
@@ -373,6 +458,91 @@ export async function handlePracticeMoments(args: {
     },
     status: 200,
   };
+}
+
+/**
+ * 把生圖 job 丟進背景（EdgeRuntime.waitUntil 範式照 handler.ts 的 telemetry）。
+ * 回傳實際排入數。generateMomentImage 自己永不 throw；排程失敗只記錄，
+ * 絕不把 feed 回應變成 5xx。
+ */
+function scheduleMomentImageJobs(args: {
+  supabase: MomentsSupabaseClient;
+  deps: MomentsHandlerDeps;
+  userId: string;
+  isTestAccount: boolean;
+  jobs: readonly MomentImageJob[];
+}): number {
+  const imageGen = args.deps.imageGen;
+  if (!imageGen || args.jobs.length === 0) return 0;
+  const batch = args.jobs.slice(0, MOMENT_IMAGE_FILL_MAX_PER_REQUEST);
+  for (const job of batch) {
+    scheduleBackground(
+      args.deps,
+      generateMomentImage({
+        supabase: args.supabase,
+        deps: imageGen,
+        job,
+        userId: args.userId,
+        isTestAccount: args.isTestAccount,
+      }),
+    );
+  }
+  logInfo("practice_moment_image_jobs", { scheduled: batch.length });
+  return batch.length;
+}
+
+/**
+ * 把背景 task 掛上 EdgeRuntime.waitUntil（範式同 handler.ts 的 telemetry；
+ * 生圖與清掃兩個排程點共用這一份，不再各自複製退路邏輯）。
+ * task 必須自吞錯誤；排程器失敗不得影響 feed 回應。
+ */
+function scheduleBackground(
+  deps: MomentsHandlerDeps,
+  task: Promise<void>,
+): void {
+  try {
+    if (deps.waitUntil) {
+      deps.waitUntil(task);
+      return;
+    }
+    const edgeRuntime = (globalThis as unknown as {
+      EdgeRuntime?: { waitUntil(task: Promise<void>): void };
+    }).EdgeRuntime;
+    if (edgeRuntime?.waitUntil) {
+      edgeRuntime.waitUntil(task);
+      return;
+    }
+  } catch {
+    // 排程器失敗不得影響 feed 回應。
+  }
+  // 本機測試沒有 EdgeRuntime；task 自吞錯誤，detach 不會 unhandled rejection。
+  void task;
+}
+
+/** 把過期清掃丟進背景；deps.imageSweep 缺席（測試）就不掃。 */
+function scheduleImageSweep(args: {
+  supabase: MomentsSupabaseClient;
+  deps: MomentsHandlerDeps;
+  isoDate: string;
+}): void {
+  const sweep = args.deps.imageSweep;
+  if (!sweep) return;
+  // 三段串在同一個背景 task、同在 waitUntil 生命週期內：
+  // 主清掃（被引用但出窗）→ 帳本清算（寫過但沒人引用）→ prefix 對帳
+  // （連帳本都沒有的殘留）。每一段自己吞錯，前一段失敗不擋後一段。
+  scheduleBackground(
+    args.deps,
+    sweepExpiredMomentImages({
+      supabase: args.supabase,
+      deps: sweep,
+      isoDate: args.isoDate,
+    })
+      .then(() =>
+        sweepMomentImageOrphanLedger({ supabase: args.supabase, deps: sweep })
+      )
+      .then(() => sweepOrphanMomentImages({ deps: sweep, isoDate: args.isoDate }))
+      .then(() => {}),
+  );
 }
 
 function sortPosts(posts: MomentFeedPost[]): MomentFeedPost[] {
@@ -397,7 +567,7 @@ async function fillOneSlot(opts: {
   isTestAccount: boolean;
 }): Promise<MomentFeedPost | null> {
   const { supabase, userId, item, deps, deadlineAt, isTestAccount } = opts;
-  const { girl, isoDate, plan, imageCandidates } = item;
+  const { girl, isoDate, plan, imageCandidates, generatedImage } = item;
 
   // 死線守門必須在原子 reserve gate 之前。gate 只在成功認領 slot 時，
   // 同一筆交易內一起計入 attempts 與 per-user model usage。
@@ -466,6 +636,7 @@ async function fillOneSlot(opts: {
         isWeekend: taipeiTimeContextFor(new Date(`${isoDate}T04:00:00.000Z`))
           .isWeekend,
         imageCandidates,
+        generatedImage,
       }),
       maxTokens: MOMENT_MODEL_MAX_TOKENS,
       temperature: MOMENT_MODEL_TEMPERATURE,
@@ -512,6 +683,12 @@ async function fillOneSlot(opts: {
       p_body: draft.body,
       p_image_id: draft.imageId,
       p_model: DEEPSEEK_MODEL,
+      // 部署窗相容：合併到 main 會先自動部署 Edge、migration 才手動套。
+      // 開關關時**省略**這個鍵（而不是傳 false），舊 DB 的 7-arg commit
+      // 才能繼續以 named args 匹配；傳了 false 會在 migration 套上前
+      // 讓所有文字補生成 PGRST202 全掛。開關開是 Eric 在 migration 套完
+      // 之後的手動動作，屆時 8-arg 已存在。
+      ...(generatedImage ? { p_wants_image: true } : {}),
     },
   );
   if (commitError || firstRow(commitData)?.committed !== true) {
@@ -532,6 +709,8 @@ async function fillOneSlot(opts: {
     postedAt: item.postedAt.toISOString(),
     body: draft.body,
     imageId: draft.imageId,
+    // 圖在背景生成中，本回應永遠給 null；ready 後由下次 feed 讀出。
+    imageUrl: null,
   };
 }
 

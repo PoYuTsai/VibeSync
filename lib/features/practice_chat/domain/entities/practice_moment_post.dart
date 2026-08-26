@@ -14,6 +14,7 @@ class PracticeMomentPost {
     required this.postedAt,
     required this.body,
     this.imageId,
+    this.imageUrl,
   });
 
   /// 發文的角色（practice_girl_NNN），對照 client 內建 catalog。
@@ -38,8 +39,17 @@ class PracticeMomentPost {
   /// 見 [resolveMomentImage]（server 先開閘門、client 還沒更新時的向前相容）。
   final String? imageId;
 
-  /// 解析後的配圖來源；null＝純文字（含「id 不認得」的降級）。
-  MomentImageSource? get imageSource => resolveMomentImage(imageId);
+  /// server 生成配圖的 public URL；null＝沒有生成圖（多數貼文如此）。
+  /// 只在 Edge 端 image_status='ready' 時出現。
+  final String? imageUrl;
+
+  /// 解析後的配圖來源；null＝純文字（含「id 不認得／URL 不合法」的降級）。
+  /// 優先序：合法的生成圖 URL → catalog imageId → 純文字。
+  MomentImageSource? get imageSource {
+    final url = resolveMomentImageUrl(imageUrl);
+    if (url != null) return MomentRemoteImage(url);
+    return resolveMomentImage(imageId);
+  }
 
   /// server 回傳的一則 JSON → entity。任一必要欄位缺失或型別不符回 null
   /// （壞掉的一則不該讓整份 feed 消失）。
@@ -67,6 +77,7 @@ class PracticeMomentPost {
     final parsedPostedAt = DateTime.tryParse(postedAt);
     if (parsedPostedAt == null) return null;
     final imageId = raw['imageId'];
+    final imageUrl = raw['imageUrl'];
     return PracticeMomentPost(
       profileId: profileId,
       postDate: postDate,
@@ -75,6 +86,8 @@ class PracticeMomentPost {
       postedAt: parsedPostedAt.toUtc(),
       body: body,
       imageId: imageId is String && imageId.trim().isNotEmpty ? imageId : null,
+      imageUrl:
+          imageUrl is String && imageUrl.trim().isNotEmpty ? imageUrl : null,
     );
   }
 }

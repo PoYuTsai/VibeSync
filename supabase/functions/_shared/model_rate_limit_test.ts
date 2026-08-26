@@ -44,6 +44,12 @@ Deno.test("limits match Eric's decision per scope", () => {
   // 練習室模擬社群動態（2026-08-24）：per-user 放大面 backstop。
   // 全站上界另由 DB 的 attempts CHECK × Edge 角色 allowlist 保證。
   assertEquals(MODEL_RATE_LIMITS.practice_moment, { perMinute: 6, perDay: 60 });
+  // 動態生成配圖（2026-08-25 設計文件 §11）：生圖單價高於文字一個量級，
+  // backstop 更緊；全站上界另由 image_attempts CHECK × allowlist 保證。
+  assertEquals(MODEL_RATE_LIMITS.practice_moment_image, {
+    perMinute: 3,
+    perDay: 20,
+  });
 });
 
 // ---------------------------------------------------------------------------

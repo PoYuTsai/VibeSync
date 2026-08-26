@@ -103,7 +103,19 @@ const DAY_PART_LABEL: Readonly<Record<TaipeiDayPart, string>> = {
   late_night: "深夜",
 };
 
-function imageDirective(imageCandidates: readonly string[]): string {
+function imageDirective(
+  imageCandidates: readonly string[],
+  generatedImage: boolean,
+): string {
+  if (generatedImage) {
+    // 生成配圖模式（PR-3）：圖會在文字落地後由生圖模型「以文生圖」，所以
+    // 這裡反過來要求文字寫得像真的拍了眼前的東西——場景、食物、風景，
+    // 不是自拍。imageId 仍必須是 null：生成圖走獨立的 image 欄位組，
+    // 不走 catalog allowlist。
+    return `10. 這一則會配上一張你隨手拍的照片（拍眼前的東西或場景，不是自拍）。` +
+      `把文字寫成你真的拍下了那個畫面的樣子——講具體看得到的東西，` +
+      `不要描述照片本身。imageId 必須是 null。`;
+  }
   if (imageCandidates.length === 0) {
     return `10. 這一則沒有配圖，imageId 必須是 null。不要在文字裡描述照片。`;
   }
@@ -132,6 +144,8 @@ export function buildMomentMessages(opts: {
   isWeekend: boolean;
   slot: number;
   imageCandidates: readonly string[];
+  /** 生成配圖模式：候選必為空、imageId 恆 null，圖由背景 job 以文生圖。 */
+  generatedImage?: boolean;
 }): ChatMessage[] {
   const {
     girl,
@@ -143,6 +157,7 @@ export function buildMomentMessages(opts: {
     slot,
     imageCandidates,
   } = opts;
+  const generatedImage = opts.generatedImage ?? false;
   const voice = PERSONA_VOICE[girl.personaId];
   const shape = momentShapeFor(girl.profileId, isoDate, slot);
 
@@ -164,7 +179,7 @@ ${girl.professionPrompt}
 7. 不要用開頭問候語、不要加 hashtag、不要寫成廣告或文案。
 8. 結尾不准總結、不准昇華、不准硬轉正能量。真人發廢文不會幫自己的一天下註解。
 9. 不用把事情講完整，破碎一點反而真。標點自由：可以整句沒有句號，可以用空格斷句。
-${imageDirective(imageCandidates)}
+${imageDirective(imageCandidates, generatedImage)}
 
 這一則的切入形狀：${shape}。形狀是方向不是模板，貼著你的語感寫。
 規則 1-4、7 與 10 是硬邊界，違反就作廢重寫；其餘一律以「像真人隨手打的」優先——可以隨口、可以不完整、可以無厘頭，規則沒寫到的寫法都放行。
@@ -172,7 +187,7 @@ ${imageDirective(imageCandidates)}
 輸出格式：只輸出一個 JSON 物件，不要有其他文字。
 {"text": "貼文內容", "imageId": null}${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
-  const optionsLine = imageCandidates.length > 0
+  const optionsLine = !generatedImage && imageCandidates.length > 0
     ? imageCandidates.join(", ")
     : "（無，imageId 必須是 null）";
 
