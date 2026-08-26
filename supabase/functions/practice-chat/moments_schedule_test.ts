@@ -5,6 +5,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  hasPetOwnerClue,
   MAX_MOMENT_SLOTS_PER_DAY,
   type MomentContentKind,
   momentPlanFor,
@@ -344,4 +345,95 @@ Deno.test("planning never throws for any profile across a long window", () => {
       momentPlanFor({ girl: profile, time });
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// 飼主題材的入場資格（2026-08-26 Eric 複審 P2-2）
+//
+// 題材比對把 interestTags 與 lifestyleTags 併成一串做子字串比對，寵物相關職業
+// 的工作描述（例如「幫毛孩洗剪」）很容易擦到寵物字面。飼主題材是唯一會讓貼文
+// 宣稱「我家有養」的入口，所以它需要一個明確判斷，而不是關鍵字擦邊。
+// ---------------------------------------------------------------------------
+
+const PET_OWNER_THEME_IDS = [
+  "pet_house_rules",
+  "pet_care_detail",
+  "pet_owner_routine",
+] as const;
+
+Deno.test("寵物相關職業沒有明確飼主線索時，永遠排不到飼主題材", () => {
+  const groomers = GIRL_PROFILES.filter((p) =>
+    p.professionId === "pet_groomer"
+  );
+  assert(groomers.length > 0, "前提：名冊裡要有寵物相關職業的角色");
+  for (const groomer of groomers) {
+    assertEquals(
+      hasPetOwnerClue(groomer),
+      false,
+      `${groomer.profileId} 的標籤沒有明確飼主線索，不該被當成飼主`,
+    );
+    for (let day = 1; day <= 180; day++) {
+      const time = taipeiTimeContextFor(new Date(Date.UTC(2026, 8, day, 4)));
+      for (const slot of momentPlanFor({ girl: groomer, time }).slots) {
+        assertEquals(
+          (PET_OWNER_THEME_IDS as readonly string[]).includes(slot.themeId),
+          false,
+          `${groomer.profileId} 排到了飼主題材 ${slot.themeId}`,
+        );
+      }
+    }
+  }
+});
+
+Deno.test("「顧毛孩」這種有歧義的線索，只有非寵物職業才算飼主", () => {
+  const base = GIRL_PROFILES.find((p) => p.professionId === "pet_groomer");
+  assert(base, "前提：名冊裡要有寵物相關職業的角色");
+  // 同一組標籤、只差職業：證明擋下來的是「工作會碰到動物」而不是關鍵字本身。
+  assertEquals(
+    hasPetOwnerClue({
+      ...base,
+      lifestyleTags: [...base.lifestyleTags, "顧毛孩"],
+    }),
+    false,
+    "寵物職業＋有歧義的線索仍不該算飼主",
+  );
+  const civilian = GIRL_PROFILES.find((p) => p.professionId !== "pet_groomer");
+  assert(civilian);
+  assertEquals(
+    hasPetOwnerClue({ ...civilian, lifestyleTags: ["顧毛孩"] }),
+    true,
+    "一般角色的「顧毛孩」仍算飼主線索",
+  );
+  // 明確線索連寵物職業都認：她真的自己有養時不該被誤擋。
+  assertEquals(
+    hasPetOwnerClue({
+      ...base,
+      lifestyleTags: [...base.lifestyleTags, "養貓"],
+    }),
+    true,
+    "寵物職業有明確飼主線索時仍該算飼主",
+  );
+});
+
+Deno.test("有明確飼主線索的角色仍然排得到飼主題材", () => {
+  const owners = GIRL_PROFILES.filter(hasPetOwnerClue);
+  assert(owners.length > 0, "前提：名冊裡要有真的養寵物的角色");
+  const seen = new Set<string>();
+  for (const owner of owners) {
+    for (let day = 1; day <= 180; day++) {
+      const time = taipeiTimeContextFor(new Date(Date.UTC(2026, 8, day, 4)));
+      for (const slot of momentPlanFor({ girl: owner, time }).slots) {
+        if ((PET_OWNER_THEME_IDS as readonly string[]).includes(slot.themeId)) {
+          seen.add(slot.themeId);
+        }
+      }
+    }
+  }
+  assertEquals(
+    seen.size,
+    PET_OWNER_THEME_IDS.length,
+    `飼主題材有人排不到：${
+      PET_OWNER_THEME_IDS.filter((id) => !seen.has(id)).join("、")
+    }`,
+  );
 });

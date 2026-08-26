@@ -311,8 +311,56 @@ const WEEKEND_THEMES: readonly MomentTheme[] = [
 ];
 
 /** 興趣／生活標籤命中才進池；關鍵字比對沿用 life_schedule 的做法。 */
+/**
+ * 明確到不會被工作誤讀的飼主線索：家裡真的有一隻。
+ * 相關職業的角色也吃這一組。
+ */
+const EXPLICIT_PET_OWNER_CLUES: readonly string[] = [
+  "養貓",
+  "養狗",
+  "養寵物",
+  "家裡有貓",
+  "家裡有狗",
+  "家裡有毛孩",
+  "家裡那隻",
+];
+
+/**
+ * 一般角色可以接受的飼主線索。字面本身有歧義（「顧」也可能是幫別人顧），
+ * 所以工作會接觸動物的職業不吃這一組。
+ */
+const CASUAL_PET_OWNER_CLUES: readonly string[] = ["顧貓", "顧狗", "顧毛孩"];
+
+/**
+ * 工作會接觸動物的職業。**只代表工作碰得到，不代表本人有養**
+ * （2026-08-26 Eric 複審 P2-2）：寵物美容師沒有明確飼主線索時只能寫
+ * grooming_day 那種工作視角，不得排到飼主日常題材，否則貼文會出現
+ * 「我家毛孩」這種角色設定沒給過的事實。
+ */
+const ANIMAL_CONTACT_PROFESSIONS: ReadonlySet<string> = new Set([
+  "pet_groomer",
+]);
+
+/** 飼主題材的入場判斷；只吃 interest/lifestyle 標籤，不從職業推論擁有。 */
+export function hasPetOwnerClue(girl: PracticeGirlProfile): boolean {
+  const haystack = [...girl.interestTags, ...girl.lifestyleTags].join("、");
+  if (EXPLICIT_PET_OWNER_CLUES.some((clue) => haystack.includes(clue))) {
+    return true;
+  }
+  if (ANIMAL_CONTACT_PROFESSIONS.has(girl.professionId)) return false;
+  return CASUAL_PET_OWNER_CLUES.some((clue) => haystack.includes(clue));
+}
+
+/** 飼主題材的關鍵字＝飼主線索本身；是否真的放行由 requiresPetOwner 決定。 */
+const PET_OWNER_THEME_KEYWORDS: readonly string[] = [
+  ...EXPLICIT_PET_OWNER_CLUES,
+  ...CASUAL_PET_OWNER_CLUES,
+];
+
 const INTEREST_THEMES: readonly {
   keywords: readonly string[];
+  /** 只排給有明確飼主線索的角色；工作接觸動物不算。 */
+  requiresPetOwner?: true;
   theme: MomentTheme;
 }[] = [
   {
@@ -425,7 +473,8 @@ const INTEREST_THEMES: readonly {
     },
   },
   {
-    keywords: ["顧貓", "顧毛孩", "養貓", "養狗"],
+    keywords: PET_OWNER_THEME_KEYWORDS,
+    requiresPetOwner: true,
     theme: {
       id: "pet_house_rules",
       brief:
@@ -435,7 +484,8 @@ const INTEREST_THEMES: readonly {
     },
   },
   {
-    keywords: ["顧貓", "顧毛孩", "養貓", "養狗"],
+    keywords: PET_OWNER_THEME_KEYWORDS,
+    requiresPetOwner: true,
     theme: {
       id: "pet_care_detail",
       brief:
@@ -536,7 +586,8 @@ const INTEREST_THEMES: readonly {
     },
   },
   {
-    keywords: ["顧貓", "顧毛孩", "養貓", "養狗"],
+    keywords: PET_OWNER_THEME_KEYWORDS,
+    requiresPetOwner: true,
     theme: {
       id: "pet_owner_routine",
       brief:
@@ -779,10 +830,15 @@ function interestThemesFor(girl: PracticeGirlProfile): MomentTheme[] {
     ...girl.interestTags,
     ...girl.lifestyleTags,
   ].join("、");
+  const petOwner = hasPetOwnerClue(girl);
   return INTEREST_THEMES
     .filter((entry) =>
       entry.keywords.some((keyword) => haystack.includes(keyword))
     )
+    // 飼主題材是唯一會讓貼文宣稱「我家有養」的入口，關鍵字命中還不夠：
+    // 標籤把 interest 與 lifestyle 混成一串比對，工作描述（例如幫毛孩洗剪）
+    // 很容易擦到寵物字面。這道閘門讓「有沒有養」是一個明確判斷而不是巧合。
+    .filter((entry) => entry.requiresPetOwner !== true || petOwner)
     .map((entry) => entry.theme);
 }
 
