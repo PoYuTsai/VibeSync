@@ -19,7 +19,7 @@ feed 請求（現行路徑不動，8 秒總死線不變）
       → fal.ai 同步端點（timeout 涵蓋完整 body）→ 邊界驗證下載 → Storage 上傳（token 隔離 key、永不覆寫）
       → commit_practice_moment_image（token-fenced → image_status='ready'）
       失敗 → release_practice_moment_image（attempts 到頂轉 'failed'＝該則永久純文字）
- └ waitUntil(過期清理 job)：刪 14 天窗外的 Storage 物件（LIMIT 有界）
+ └ waitUntil(清理 job)：出窗圖 → 孤兒帳本清算 → 最舊出窗 prefix 對帳（三段都 LIMIT 有界）
 接手自癒：之後任何 feed 請求看到 pending 且租約逾時的列，取最多 2 則丟進 waitUntil
 ```
 
@@ -102,10 +102,11 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 - `commit_practice_moment_post` 加 `p_wants_image BOOLEAN DEFAULT FALSE`（TRUE 時原子寫 `image_status='pending'`）。簽名變更沿用 `20260824063344` 的 overload 衛生範式（fail-closed 稽核 → DROP 舊版 → CREATE）；舊 Edge 以 named params 呼叫吃 DEFAULT，部署窗內雙向相容。
 - `list_practice_moment_posts` 回傳表加 `image_status, image_path`（DROP+CREATE；舊 Edge 只讀已知欄位，多欄無害）。
 - **新增三支 image RPC**，逐格鏡像 reserve/commit/release 的六態轉移表與 token fencing（含「attempts 明寫 +1 不靠 DEFAULT」「絕不 DELETE 列、絕不動 body、絕不回收 attempts」三鐵則）：
-  - `claim_practice_moment_image(...)`：僅 `status='ready' AND image_status='pending'` 且（token IS NULL 或租約逾時）可認領；認領即 `image_attempts+1` 並**同交易** `increment_model_usage(user,'practice_moment_image',...)`（超限 RAISE → 整筆 rollback）；回傳含 `body, theme_id` 免二次讀。max_attempts DEFAULT 2、lease DEFAULT 180s。
-  - `commit_practice_moment_image(..., p_image_path)`：fenced，寫 `image_status='ready'`。
+  - `claim_practice_moment_image(..., p_image_path)`：僅 `status='ready' AND image_status='pending'` 且（token IS NULL 或租約逾時）可認領；認領即 `image_attempts+1`、把即將寫入的 token 路徑**記進孤兒帳本**（`image_orphan_paths`），並**同交易** `increment_model_usage(user,'practice_moment_image',...)`（超限 RAISE → 整筆 rollback，帳本也一起回滾）；回傳含 `body, theme_id` 免二次讀。max_attempts DEFAULT 2、lease DEFAULT 180s。`p_image_path` 由 `20260826024500` 加入（第四輪複審 P2-2）。
+  - `commit_practice_moment_image(..., p_image_path)`：fenced，寫 `image_status='ready'`，**同交易**把該路徑從孤兒帳本抹掉（被引用的物件永不可能被清算刪到）。
   - `release_practice_moment_image(...)`：attempts 到頂轉 `'failed'`（終態＝永久純文字），否則清 token 留 pending。
 - **清理兩小支**：`list_expired_practice_moment_images(p_before DATE, p_limit INT)`（回 ready＋出窗的 path）與 `mark_practice_moment_images_expired(p_paths TEXT[])`。
+- **孤兒帳本兩小支（`20260826024500`）**：`list_practice_moment_image_orphans(p_limit INT, p_grace_seconds INT)`（回寬限期之外、且不被自己列引用的路徑）與 `clear_practice_moment_image_orphans(p_paths TEXT[])`（只清帳本、不動任何生命週期欄位）。欄位是純加法的 `image_orphan_paths TEXT[] NOT NULL DEFAULT '{}'`（CHECK cardinality ≤ 4）。
 - 權限照現行：REVOKE ALL → GRANT service_role only；檔尾 `NOTIFY pgrst, 'reload schema'`。
 
 **重試語義**：文字 `attempts`（≤3）與 `image_attempts`（≤2）完全獨立——文字重試不燒圖額度，圖失敗不碰文字。圖上限 2 次：失敗多為內容政策或供應商故障，重試邊際價值低。
@@ -115,7 +116,7 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 ## 7. 儲存與傳遞
 
 - **Bucket**：`practice-moment-images`，**public**。內容是無人物 AI 場景圖、全域共用、零使用者資料；signed URL 會讓 URL 每次變動打爆 client 磁碟快取、且過期時間要另外對齊 14 天窗，得不償失。bucket 與 `storage.objects` policy（anon 唯讀、寫入 service_role only）進同一支 migration（`INSERT INTO storage.buckets ... ON CONFLICT DO NOTHING`）。
-- **物件 key（token 隔離，2026-08-25 第二輪複審 P1-1）**：`<post_date>/<profile_id>_<slot>_<image_token>.jpeg`。每次認領寫**自己的**路徑、永不覆寫（upsert:false）——底層上傳收不到取消訊號，timeout 晚到的舊上傳在物理上碰不到 winner 的物件，也不可能在清理後重建 committed 物件；輸家（timeout 晚到完成、commit 被打回）**自刪**自己的物件（best effort），日期前綴對帳兜底。
+- **物件 key（token 隔離，2026-08-25 第二輪複審 P1-1）**：`<post_date>/<profile_id>_<slot>_<image_token>.jpeg`。每次認領寫**自己的**路徑、永不覆寫（upsert:false）——底層上傳收不到取消訊號，timeout 晚到的舊上傳在物理上碰不到 winner 的物件，也不可能在清理後重建 committed 物件；輸家（timeout 晚到完成、commit 被打回）**自刪**自己的物件——但自刪只是快路徑，**持久保證在孤兒帳本**（路徑在 claim 的同一筆交易就記下，見 §8），日期前綴對帳再兜一層。
 - **Edge 不做影像處理**：fal 直出 jpeg（landscape_4_3），下載後原樣上傳。黑圖保險見 §9。
 - **API 回傳**：`MomentFeedPost` 加 `imageUrl: string | null`——僅 `image_status='ready'` 時由 `SUPABASE_URL`＋path 組出。`imageId` 欄位語義不變（自拍 sentinel 與 bundled fallback 續用）。
 - **向前相容（已驗證）**：`practice_moment_post.dart` 的 fromJson 只讀已知鍵，未知鍵直接忽略；生成圖貼文的 `imageId` 為 null → 舊 client 走「null＝純文字」主路徑。零風險。
@@ -130,9 +131,29 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 | GitHub Actions schedule | 否 | repo 零先例；且 CI 無 service-role key，得為每日 job 新開憑證 |
 | **feed handler 機會式** | **採用** | repo 已有同型先例（`20260703120000_opener_charge_idempotency.sql`「lazy purge：每次呼叫順手刪」）；量極小（~11 物件/天） |
 
-做法：feed 回應送出後 waitUntil 內——`list_expired_practice_moment_images(今天-14, LIMIT 20)` → `storage.remove(paths)` → `mark_practice_moment_images_expired(...)`。**先刪物件、後標記列**（順序反過來會製造掃不到的孤兒；標記失敗下輪重掃，Storage 刪除冪等）。列永不刪（D6），`image_path` 保留供審計與冪等重刪。穩態儲存 ≈ 14 天 × 11 張 × ~150KB ≈ **23MB**。零流量期的積壓有界，下次有人開 feed 分批消化。
+做法：feed 回應送出後 waitUntil 內串三段，各自負責一種「物件不該再存在」，**三段共用同一條順序鐵則：先刪物件、後改 DB**（反過來會製造「DB 已忘記、物件還在」的孤兒；改 DB 失敗下輪重掃，Storage 刪除冪等）。列永不刪（D6），`image_path` 保留供審計與冪等重刪。
 
-**清理競態圍籬（2026-08-25 複審 blocking item 3，migration `20260825150000`）**：claim 加必填參數 `p_expiry_before`——**出窗的列在資料層永遠不可再認領**（殘留的出窗 pending 順手收成 failed 終態）。於是「list → 刪物件 → mark」窗口內，出窗列的 image 欄位組只有 mark 自己能動（claim 被守衛擋、commit/release 需要的 token 已不存在），「列被新生成取代、清理誤刪新圖」在構造上不可達；競態測試在 `moments_images_migration_postgres_test.ts` 逐向驗證。
+| 段 | 清什麼 | 流程 |
+| --- | --- | --- |
+| 主清掃 | **被引用但出窗**的圖 | `list_expired_practice_moment_images(今天-13, LIMIT 20)` → `storage.remove` → `mark_practice_moment_images_expired` |
+| 帳本清算 | **寫過但沒人引用**的圖 | `list_practice_moment_image_orphans(LIMIT 20, 寬限 600s)` → `storage.remove` → `clear_practice_moment_image_orphans` |
+| prefix 對帳 | 連帳本都沒有的殘留（帳本上線前的物件、人工上傳） | 找**最舊的出窗日期資料夾** → 分頁列出並刪除 |
+
+穩態儲存 ≈ 14 天 × 11 張 × ~150KB ≈ **23MB**。零流量期的積壓有界，下次有人開 feed 分批消化。
+
+**清理競態圍籬（2026-08-25 複審 blocking item 3，migration `20260825150000`；第三輪修訂）**：出窗判定的 cutoff **由 DB 自己以當下 `now()` 計算**（`(now() AT TIME ZONE INTERVAL '8 hours')::date - 13`，13 = `FEED_WINDOW_DAYS - 1`），claim／commit／release 三支各自內建，**不吃呼叫端傳入的日期**——早期版本的 `p_expiry_before` 參數已移除，因為 request 開始時算的日期跨過台北午夜就失效。於是：出窗的列在資料層永遠不可再認領（殘留的出窗 pending 順手收成 failed 終態）；慢 worker 的晚到 commit 即使 token 有效也被拒並收屍；跨午夜的失敗 release 直接收成 failed 而不是放回 pending。「list → 刪物件 → mark」窗口內，出窗列的 image 欄位組只有 mark 自己能動，「列被新生成取代、清理誤刪新圖」在構造上不可達；競態測試在 `moments_images_migration_postgres_test.ts` 逐向驗證。
+
+**孤兒帳本：可持久重試的閉環（2026-08-26 第四輪複審 P2-2，migration `20260826024500`）**：上傳 timeout 的晚到自刪、commit 不確定態的保留物件，原本都只是 Edge 記憶體裡的 best effort——實例一被回收，那個 public 物件就沒有人記得它存在。現在把「我可能會寫這個物件」記進**同一筆 claim 交易**：
+
+```
+claim  → image_orphan_paths += <token 路徑>   （租約成立的同一交易）
+commit → image_orphan_paths -= <token 路徑>   （成功的同一交易）
+其餘一切結局（失敗、release、不確定態、實例被回收）→ 紀錄留著
+```
+
+於是「有物件但沒人引用」是**可查詢的資料狀態**，不再依賴任何 Edge 實例活著；清算每次 feed 請求跑一批，直到清乾淨為止。兩道守門讓它永遠安全：寬限期（600s，遠大於一個 job 的最壞 wall clock 與 180s 租約）之內的紀錄不列，列自己 `image_path` 指著的物件不列。這條閉環同時讓 commit 的不確定態有了正確歸宿——**不刪物件**（DB 可能其實已 commit，刪了會讓 ready 列指向 404 一整個窗期），帳本會在確認沒人引用之後才清掉它。
+
+**prefix 對帳兜底改成不遺漏（同上）**：舊版依 UTC 小時在固定 3 天帶內輪替一個 prefix，有兩個漏法——feed 零流量超過該帶，殘留就永遠滑出掃描範圍；單一 prefix 超過 Storage list 的 100 筆上限也永遠掃不完。現在改成**掃描目標由 bucket 自己說了算**：list 根目錄拿到還存在的日期資料夾，取其中最舊的出窗日期，分頁排空（每次請求上限 4 頁 × 100 筆，沒清完下次接著清；已刪的不會再出現在列表裡）。資料夾清空即從列表消失，所以停機一個月回來仍掃得到。窗內日期永不觸碰（`name < 窗起點` 才是候選），這是刪錯圖的最後一道守門。
 
 ---
 
@@ -171,11 +192,13 @@ class MomentRemoteImage extends MomentImageSource {
 - **量**：census 實測（`tools/moments-image-census/census.ts`）全名冊 100 位、配圖率 0.2 → **~11 張/天、~330 張/月**；含 10% 重試 ~370 張/月。與使用者數無關（貼文全域共用）。
 - **錢（第三輪複審修正：期望量、真硬上限、成長軸分開寫）**：
   - **期望平均量（估算，非任何保證）**：`IMAGE_PROBABILITY = 0.2` 的機率擲骰下，排程模擬 ~11 張/天 → fal schnell ≈ $0.0024/張 ≈ **~$0.9/月**。機率值只是 scheduler 參數，**不是 DB constraint，不構成任何硬上限**。
-  - **系統真正強制的**：每個 (profile, date, slot) 的 `image_attempts ≤ 2`（DB CHECK）＋ per-user scope 3/min、20/day（單帳號放大面 backstop）。**沒有全站原子 daily cap**——全站量沒有系統保證的機械上限。
+  - **系統真正強制的（第四輪複審修正：固定契約其實有上界）**：每個 post_date 的 provider attempts 上界是 **100 角色 × 每日 2 slots × 每 slot 2 attempts ＝ 400 次**（100 來自 Edge 角色 allowlist，2 slots 與 2 attempts 各由 SQL CHECK 保證）≈ **$0.96／post_date**。`IMAGE_PROBABILITY = 0.2` 只影響期望量，**不影響這個上界**。此外有 per-user scope 3/min、20/day（單帳號放大面 backstop）。
+  - **wall-clock 的但書**：文字補生成只會補**今天**的 slot，所以「新產生的列」每個 wall-clock 日同樣受 400 次上界；但**先前 post_date 沒生成完的 pending 列，會在之後的請求被接手**（backlog 可能集中在某一天執行），因此單一 wall-clock 日的實際花費可以是數個 post_date 的殘量相加，最壞界是窗內 14 個 post_date 的剩餘 attempts 總和（≈ $13 量級的絕對天花板，非預期值）。
+  - **沒有全站原子 daily cap**：上面的 400 是「固定參數下的算術上界」，不是資料層的原子計數器；改動 allowlist 或 `IMAGE_PROBABILITY` 會改變它，而且沒有任何機制在達到它時停止呼叫。
   - **成長軸**：貼文與圖全域共用，全站量**不隨使用者數成長**；會放大的軸是角色 allowlist 大小（現 100）與 `IMAGE_PROBABILITY`（改動屬 Eric 拍板項）。
-  - **需要硬上限時**：加全站原子 daily cap RPC（新 migration），或在 fal.ai Dashboard 設 **spend cap** 當供應商側絕對托底——建議啟用時順手設。
+  - **需要真正的「達標即停」時**：加全站原子 daily cap RPC（新 migration），或在 fal.ai Dashboard 設 **spend cap** 當供應商側絕對托底——**建議啟用時順手設**，它是唯一與程式錯誤、參數誤調都無關的托底。
   - 另每張一次 DeepSeek 場景句（~300 tokens，可忽略）；Storage 穩態 ~23MB＋egress 按觀看數（client 磁碟快取壓低）。
-- **四層防護（皆為風險緩解，非全站配額）**：DB CHECK（image_attempts ≤2，per-slot）× Edge 100 角色 allowlist × per-user scope `practice_moment_image: { perMinute: 3, perDay: 20 }` × kill switch。與文字路徑不同的是：文字的「全站 ≤600 次/日」由 slot 數上限機械保證，**生圖側沒有等價的全站機械上限**（進 pending 的 slot 數取決於機率擲骰）——這是上面「需要硬上限時」選項存在的原因。
+- **四層防護（皆為風險緩解，非全站配額）**：DB CHECK（image_attempts ≤2，per-slot）× Edge 100 角色 allowlist × per-user scope `practice_moment_image: { perMinute: 3, perDay: 20 }` × kill switch。與文字路徑的差別在**種類而非有無**：文字的「全站 ≤600 次/日」與生圖的「每 post_date ≤400 次」都是同一種算術上界（allowlist × slots × attempts），兩者都不是資料層的原子每日配額；生圖側多一層機率擲骰，只讓期望值遠低於上界。真正的「達標即停」只有 fal Dashboard 的 spend cap。
 - **觀測**（logInfo/logWarn）：`practice_moment_image_claimed / committed / released / failed`（帶 failureClass: provider_timeout / safety_black / upload / describe / http_${status}）、`practice_moment_image_expired_swept`（deleted/marked 數）；`practice_moments_filled` 加 `imageJobsScheduled`。健康線：`failed` 佔圖文 slot > 10% 告警（比照文字路徑 exhausted > 5% 慣例）。
 - **錯誤分類命名**：照 `deepseek.ts` 模板——`fal_image_http_${status}` / `fal_image_timeout` / `fal_image_empty` / `fal_image_download_failed` / `fal_image_too_small`（黑圖保險）；provider response body 不進錯誤訊息。
 
@@ -186,13 +209,14 @@ class MomentRemoteImage extends MomentImageSource {
 | PR | 內容 | migration | 回退面 |
 | --- | --- | --- | --- |
 | **PR-1** | 本設計文件 | 否 | — |
-| **PR-2** | migration：image 欄位組＋bucket＋5 支新 RPC＋commit/list 改簽名；PGlite 契約測試（照 `moments_migration_postgres_test.ts` 逐格驗轉移表）＋`moments_constants.ts` 新常數雙向比對 | **是**（targeted migration；**production 套用先於 PR-3 部署**；ledger 補登記——注意 0822/0824 兩支也尚未登記，順手補） | Edge 未寫 pending，行為零變化 |
+| **PR-2** | migration：image 欄位組＋bucket＋5 支新 RPC＋commit/list 改簽名；PGlite 契約測試（照 `moments_migration_postgres_test.ts` 逐格驗轉移表）＋`moments_constants.ts` 新常數雙向比對 | **是**（targeted migration；**production 套用先於 PR-3 部署**；套用後在 `docs/migrations-ledger.md` 只登記**本次**這幾支——不順修其他未登記條目，那屬另一個目的） | Edge 未寫 pending，行為零變化 |
 | **PR-3** | Edge 生成路徑（旗標預設關）：`moments_image_gen.ts`（fal client＋prompt 組裝＋場景句呼叫＋黑圖保險）、Storage 上傳、waitUntil 接線＋接手、rate-limit scope、kill switch、logs；deno 測試（mock fetch）＋新 source test（隱私 import 禁令） | 否 | 關旗標＝現行行為 |
 | **PR-4** | Edge 機會式過期清理＋測試 | 否 | 不做只是物件多留幾天 |
 | **PR-5** | Client：`cached_network_image`、`imageUrl` 解析、`MomentRemoteImage`、tile 渲染＋占位＋降級、widget 測試 | 否 | imageUrl 恆 null 時畫面零變化 |
+| **PR-6** | 第四輪複審修正：孤兒帳本 migration `20260826024500`（claim 改簽名記帳、commit 抹帳、清算兩支新 RPC）＋commit 三態收嚴（只在明確 `false` 才刪物件）＋清掃改三段、prefix 對帳改最舊資料夾分頁掃＋`shiftIsoDate` 抽成 `moments_date.ts` 解循環依賴 | **是**（**新增**的後續 migration；既有 0825 兩支一旦套用過即不可變，因此改簽名走新檔案的 DROP + CREATE 並前後各稽核一次 overload） | 旗標關閉時零行為變化；帳本欄位純加法 |
 | **啟用** | Eric：fal.ai 開帳號綁卡 → `supabase secrets set FAL_API_KEY=...` → `MOMENT_IMAGE_GEN_ENABLED=true`（ops 動作，非 PR） | — | 隨時關回 |
 
-**Rollout 順序（Eric 2026-08-25 拍板：migration 先行）**：正式啟用的順序是——(1) 依 `docs/shared-agent-rules.md` 的 targeted migration 流程**先**精準套用並驗證 `20260825120000` 與 `20260825150000`（用分支上的檔案即可，不需等合併）→ (2) 再合併 PR 讓相依 Edge 進 main 自動部署 → (3) 最後設 `MOMENT_IMAGE_GEN_ENABLED=true`。Edge 端的部署窗相容（省略 `p_wants_image` 鍵）只是防呆保險，不是亂序的授權。`practice-chat` 部署照現行 push-triggered workflow，無 `--no-verify-jwt` 需求變化。
+**Rollout 順序（Eric 2026-08-25 拍板：migration 先行）**：正式啟用的順序是——(1) 依 `docs/shared-agent-rules.md` 的 targeted migration 流程**先**依序精準套用並驗證 `20260825120000` → `20260825150000` → `20260826024500`（用分支上的檔案即可，不需等合併；三支有先後相依，最後一支會 DROP 掉舊的 10-arg claim 並建立 11-arg 版本）→ (2) 再合併 PR 讓相依 Edge 進 main 自動部署 → (3) 最後設 `MOMENT_IMAGE_GEN_ENABLED=true`。Edge 端的部署窗相容（省略 `p_wants_image` 鍵）只是防呆保險，不是亂序的授權。`practice-chat` 部署照現行 push-triggered workflow，無 `--no-verify-jwt` 需求變化。
 
 ---
 
@@ -200,9 +224,9 @@ class MomentRemoteImage extends MomentImageSource {
 
 1. **waitUntil 任務蒸發**（實例回收）→ pending 卡住。緩解：180s 租約接手自癒；觀測 pending 列齡。
 2. **fal 故障／safety 拒絕** → attempts 燒完轉 `'failed'` 純文字，無半成品落盤；failed 比例告警。
-3. **成本失控** → 四層緩解（§11）；**無全站機械上限**，絕對托底建議用 fal Dashboard spend cap。
-4. **上傳競態** → token 隔離路徑＋永不覆寫＋輸家自刪：晚到上傳構造上碰不到 winner 物件；自刪失敗的孤兒由日期 prefix 對帳兜底。
-5. **孤兒物件** → 覆寫同 key 不累積；日期 prefix 可離線對帳兜底。
+3. **成本失控** → 四層緩解（§11）；固定參數下每 post_date ≤400 次 provider attempts，但**沒有達標即停的機制**，絕對托底建議用 fal Dashboard spend cap。
+4. **上傳競態** → token 隔離路徑（`<post_date>/<profile>_<slot>_<token>.jpeg`）＋`upsert: false` **永不覆寫**＋輸家自刪：晚到上傳構造上碰不到 winner 物件。
+5. **孤兒物件** → 路徑在 claim 的同一筆交易記進帳本，清算是可持久重試的閉環（§8）；帳本之外的殘留由「最舊出窗資料夾分頁排空」兜底，兩者都不依賴任何 Edge 實例活著。
 6. **schnell 質感不過驗收** → fal 同站換 model id（FLUX dev / Qwen-Image）即可，架構不動；成本表重算。
 7. **隱私回歸** → source test 禁 import 使用者資料型別，防後人把聊天內容餵進場景句。
 8. **弱網** → remote 圖載不出走 errorWidget 純文字；kill switch 下 bundled 路徑離線可用。

@@ -579,7 +579,10 @@ function momentImageStorage(supabase: unknown): {
     contentType: string,
   ): Promise<void>;
   remove(paths: readonly string[]): Promise<void>;
-  list(prefix: string): Promise<readonly string[]>;
+  list(prefix: string, opts: { limit: number }): Promise<readonly string[]>;
+  listPrefixes(
+    opts: { limit: number; offset: number },
+  ): Promise<readonly string[]>;
 } {
   const client = supabase as {
     storage: {
@@ -594,7 +597,11 @@ function momentImageStorage(supabase: unknown): {
         ): Promise<{ error: { message: string } | null }>;
         list(
           prefix: string,
-          options: { limit: number },
+          options: {
+            limit: number;
+            offset?: number;
+            sortBy?: { column: string; order: string };
+          },
         ): Promise<{
           data: { name: string }[] | null;
           error: { message: string } | null;
@@ -615,10 +622,24 @@ function momentImageStorage(supabase: unknown): {
       const { error } = await bucket().remove(paths);
       if (error) throw new Error("storage_remove_failed");
     },
-    async list(prefix) {
-      const { data, error } = await bucket().list(prefix, { limit: 100 });
+    async list(prefix, opts) {
+      // 清掃端每翻一頁就把該頁刪掉，所以永遠從 offset 0 列起。
+      const { data, error } = await bucket().list(prefix, {
+        limit: opts.limit,
+        offset: 0,
+      });
       if (error) throw new Error("storage_list_failed");
       return (data ?? []).map((entry) => `${prefix}/${entry.name}`);
+    },
+    async listPrefixes(opts) {
+      // 根目錄列出來的是日期資料夾；名稱升冪＝日期由舊到新，出窗的排前面。
+      const { data, error } = await bucket().list("", {
+        limit: opts.limit,
+        offset: opts.offset,
+        sortBy: { column: "name", order: "asc" },
+      });
+      if (error) throw new Error("storage_list_failed");
+      return (data ?? []).map((entry) => entry.name);
     },
   };
 }
@@ -1992,7 +2013,10 @@ export function createPracticeChatHandler(
             }
             : undefined,
           imageSweep: {
-            listImages: (prefix) => momentImageStorage(supabase).list(prefix),
+            listImages: (prefix, opts) =>
+              momentImageStorage(supabase).list(prefix, opts),
+            listPrefixes: (opts) =>
+              momentImageStorage(supabase).listPrefixes(opts),
             removeImages: (paths) => momentImageStorage(supabase).remove(paths),
           },
         },

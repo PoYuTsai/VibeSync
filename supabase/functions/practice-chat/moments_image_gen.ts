@@ -536,7 +536,9 @@ async function uploadWithTimeout(
     ]);
   } catch (e) {
     if (e instanceof Error && e.message === "fal_image_upload_timeout") {
-      // 晚到的上傳完成後自刪；上傳本身失敗則無物件可刪，吞掉即可。
+      // 晚到的上傳完成後自刪。這是**快路徑**，不是保證：實例被回收時這個
+      // detached promise 就沒了。持久保證在孤兒帳本——路徑已在 claim 的同
+      // 一筆交易記下，物件不管幾點落地，清算都找得到它（第四輪複審 P2-2）。
       upload
         .then(() => deps.removeImage(path))
         .catch(() => {});
@@ -568,6 +570,10 @@ export async function generateMomentImage(opts: {
 }): Promise<void> {
   const { supabase, deps, job, userId, isTestAccount } = opts;
   const token = (deps.randomToken ?? (() => crypto.randomUUID()))();
+  // 物件路徑在 claim 之前就算得出來（token 由這裡產生），所以它可以跟著
+  // claim 進同一筆交易記進孤兒帳本——「我可能會寫這個物件」這件事在物件
+  // 存在之前就已經持久化了（第四輪複審 P2-2）。
+  const path = momentImagePath(job.isoDate, job.profileId, job.slot, token);
   const limits = MODEL_RATE_LIMITS.practice_moment_image;
   const jobParams = {
     p_profile_id: job.profileId,
@@ -582,6 +588,7 @@ export async function generateMomentImage(opts: {
     const { data, error } = await supabase.rpc("claim_practice_moment_image", {
       ...jobParams,
       p_image_token: token,
+      p_image_path: path,
       p_user_id: userId,
       p_minute_limit: limits.perMinute,
       p_daily_limit: limits.perDay,
@@ -605,6 +612,8 @@ export async function generateMomentImage(opts: {
     claimedAttempt = typeof row.attempt_count === "number" ? row.attempt_count : 1;
     if (claimedBody.length === 0) {
       // 理論上不可達（claim 只放行 status='ready'，ready 必有 body）。
+      // 連上傳都沒開始，帳本那一筆確定沒有物件，一併抹掉。
+      await clearOrphanLedger(supabase, path);
       await releaseImage(supabase, jobParams, token, job);
       return;
     }
@@ -618,6 +627,10 @@ export async function generateMomentImage(opts: {
   }
 
   let uploadedPath: string | null = null;
+  // 「上傳這件事有沒有發生過」與「上傳有沒有成功」是兩回事：上傳一旦發出，
+  // 就算最後回錯或 timeout，物件都可能已經在 Storage 上（回應在路上丟了也
+  // 算）。只有**完全沒發出**的失敗才能安全地抹掉帳本紀錄。
+  let uploadAttempted = false;
   try {
     const scene = (await describeScene({
       deps,
@@ -630,8 +643,8 @@ export async function generateMomentImage(opts: {
       seed: momentImageSeed(job.profileId, job.isoDate, job.slot, claimedAttempt),
     });
     const bytes = await downloadImage(deps, imageUrl);
-    const path = momentImagePath(job.isoDate, job.profileId, job.slot, token);
     try {
+      uploadAttempted = true;
       await uploadWithTimeout(deps, path, bytes, "image/jpeg");
       uploadedPath = path;
     } catch (e) {
@@ -639,15 +652,18 @@ export async function generateMomentImage(opts: {
       throw new Error("fal_image_upload_failed");
     }
 
-    // commit 的結果分三態（作者側終審修正）：
-    //   true  → 成功。
-    //   false → **確定**被 fencing／出窗守衛打回：物件在自己的 token 路徑，
-    //           自刪收掉；不 release（token 已不是我的）。
-    //   不確定（RPC error／throw）→ **絕不刪物件**：DB 可能其實已 commit
-    //           （回應在路上丟了），刪掉會讓 ready 列指向 404 一整個窗期。
-    //           若 commit 真的沒成，物件是 token 路徑孤兒，出窗 prefix 對帳
-    //           會清；release 有 fence 保護（已 commit 的列 token 已清空，
-    //           release 自然無效），怎麼走都安全。
+    // commit 的結果分三態（第四輪複審 P2-1 收嚴）：
+    //   明確 true  → 成功。
+    //   明確 false → **確定**被 fencing／出窗守衛打回：物件在自己的 token
+    //                路徑，自刪收掉；不 release（token 已不是我的）。
+    //   其餘一律不確定 → **絕不刪物件**：DB 可能其實已 commit（回應在路上
+    //                丟了），刪掉會讓 ready 列指向 404 一整個窗期。
+    //
+    // 「其餘」包含 RPC error／throw，也包含**回應形狀不完整**：data 為 null、
+    // 空陣列、缺 committed 欄位、欄位不是 boolean。這些都只證明「我不知道
+    // DB 做了什麼」，不證明沒 commit——壓成 false 會刪掉 DB 已引用的圖，
+    // 正是三態要避免的事。不確定態走 release（fence 保護：已 commit 的列
+    // token 已清空，release 自然無效），物件則交給 orphan 帳本清算。
     let committed: boolean | null = null;
     try {
       const { data, error } = await supabase.rpc(
@@ -656,7 +672,8 @@ export async function generateMomentImage(opts: {
       );
       if (!error) {
         const row = Array.isArray(data) ? (data[0] as Row | undefined) : null;
-        committed = row?.committed === true;
+        const flag = row?.committed;
+        if (typeof flag === "boolean") committed = flag;
       }
     } catch {
       committed = null;
@@ -688,6 +705,13 @@ export async function generateMomentImage(opts: {
     // 這裡）；uploadedPath 非 null 只剩理論路徑，保守自刪。
     if (uploadedPath !== null) {
       await deps.removeImage(uploadedPath).catch(() => {});
+    } else if (!uploadAttempted) {
+      // 連上傳都沒發出（場景／fal／下載失敗）→ 這個路徑確定沒有物件，
+      // 順手把帳本那一筆抹掉，清算不必再為它打一次 Storage remove。
+      // 上傳發出過就一律留著（timeout 還在飛、或回錯但其實已落地），
+      // 帳本是那個物件唯一的持久紀錄。
+      // 抹不掉也無妨——清算對不存在的物件本來就是 no-op（冪等）。
+      await clearOrphanLedger(supabase, path);
     }
     await releaseImage(supabase, jobParams, token, job);
     logWarn("practice_moment_image_failed", {
@@ -695,6 +719,25 @@ export async function generateMomentImage(opts: {
       slot: job.slot,
       failureClass: e instanceof Error ? e.message : "unknown",
     });
+  }
+}
+
+/**
+ * 抹掉孤兒帳本裡確定不會有物件的那一筆（best effort）。
+ *
+ * 只在「確定沒上傳」時呼叫。失敗完全無害：帳本留著只是讓清算多打一次
+ * 冪等的 Storage remove。
+ */
+async function clearOrphanLedger(
+  supabase: MomentsImageRpcClient,
+  path: string,
+): Promise<void> {
+  try {
+    await supabase.rpc("clear_practice_moment_image_orphans", {
+      p_paths: [path],
+    });
+  } catch {
+    // 清算會接手。
   }
 }
 

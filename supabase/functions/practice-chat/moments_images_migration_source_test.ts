@@ -10,6 +10,8 @@ import {
 import {
   FEED_WINDOW_DAYS,
   MAX_MOMENT_IMAGE_ATTEMPTS,
+  MOMENT_IMAGE_ORPHAN_GRACE_SECONDS,
+  MOMENT_IMAGE_ORPHAN_LEDGER_LIMIT,
   MOMENT_IMAGE_PATH_DB_MAX_CHARS,
   MOMENT_IMAGE_RESERVE_LEASE_MS,
   MOMENT_IMAGE_SWEEP_LIMIT,
@@ -25,6 +27,12 @@ const migration = await Deno.readTextFile(
 const guardMigration = await Deno.readTextFile(
   new URL(
     "../../migrations/20260825150000_practice_moment_image_expiry_guards.sql",
+    import.meta.url,
+  ),
+);
+const ledgerMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260826024500_practice_moment_image_orphan_ledger.sql",
     import.meta.url,
   ),
 );
@@ -342,4 +350,196 @@ Deno.test("guard migration：DB 端 cutoff 的關鍵寫入都在（第三輪修�
   );
   assert(!executableGuard.includes("DELETE FROM"), "guard migration 不得刪列");
   assert(!executableGuard.includes("DROP TABLE"));
+});
+
+// ---------------------------------------------------------------------------
+// 孤兒帳本 migration（第四輪複審 P2-2）
+// ---------------------------------------------------------------------------
+
+const executableLedger = withoutComments(ledgerMigration);
+
+/** 本檔新建或改簽名的 RPC。 */
+const LEDGER_RPC_SIGNATURES = [
+  [
+    "claim_practice_moment_image",
+    "TEXT, DATE, INTEGER, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN, INTEGER, INTEGER",
+  ],
+  ["commit_practice_moment_image", "TEXT, DATE, INTEGER, TEXT, TEXT"],
+  ["list_practice_moment_image_orphans", "INTEGER, INTEGER"],
+  ["clear_practice_moment_image_orphans", "TEXT[]"],
+] as const;
+
+Deno.test("ledger migration：權限樣板、overload 稽核與 NOTIFY 齊全", () => {
+  for (const [name, args] of LEDGER_RPC_SIGNATURES) {
+    const normalized = executableLedger.replace(/\s+/g, " ");
+    for (const template of [
+      `REVOKE ALL ON FUNCTION public.${name}( ${args} ) FROM PUBLIC;`,
+      `REVOKE ALL ON FUNCTION public.${name}( ${args} ) FROM anon, authenticated;`,
+      `GRANT EXECUTE ON FUNCTION public.${name}( ${args} ) TO service_role;`,
+      `ALTER FUNCTION public.${name}( ${args} ) SECURITY DEFINER;`,
+    ]) {
+      const compact = template.replace(/\( /g, "(").replace(/ \)/g, ")");
+      assert(
+        normalized.includes(template) || normalized.includes(compact),
+        `${name} 缺權限樣板：${template}`,
+      );
+    }
+  }
+  // claim 改簽名 → 前後各一次 fail-closed 稽核；commit 換本體 → 一次。
+  assert(
+    ledgerMigration.includes(
+      "claim_practice_moment_image: unexpected overload(s): %",
+    ),
+    "claim 缺替換前的 overload 稽核",
+  );
+  assert(
+    ledgerMigration.includes(
+      "claim_practice_moment_image: unexpected overload(s) after replace: %",
+    ),
+    "claim 缺替換後的 overload 稽核",
+  );
+  assert(
+    ledgerMigration.includes(
+      "claim_practice_moment_image: expected signature missing",
+    ),
+    "改簽名後必須確認新簽名真的存在（fail-closed）",
+  );
+  assert(
+    ledgerMigration.includes(
+      "commit_practice_moment_image: unexpected overload(s): %",
+    ),
+  );
+  assert(
+    executableLedger.includes("NOTIFY pgrst, 'reload schema';"),
+    "改了函式簽名一定要重載 schema cache",
+  );
+  const definerAtCreate =
+    [...executableLedger.matchAll(/SECURITY DEFINER/g)].length;
+  const alterCount =
+    [...executableLedger.matchAll(/ALTER FUNCTION public\.\w+\(/g)].length;
+  assertEquals(definerAtCreate, alterCount, "CREATE 一律 INVOKER 起手");
+});
+
+Deno.test("ledger migration：改簽名走 DROP + CREATE，且只丟舊的那一支", () => {
+  const normalized = executableLedger.replace(/\s+/g, " ");
+  assert(
+    normalized.includes(
+      "DROP FUNCTION IF EXISTS public.claim_practice_moment_image( TEXT, DATE, INTEGER, TEXT, UUID, INTEGER, INTEGER, BOOLEAN, INTEGER, INTEGER );",
+    ),
+    "必須明確丟掉舊的 10-arg 簽名（overload 衛生）",
+  );
+  const drops = [...executableLedger.matchAll(/DROP FUNCTION/g)].length;
+  assertEquals(drops, 1, "只准丟這一支；其他函式一律 CREATE OR REPLACE");
+  assert(!executableLedger.includes("DROP TABLE"));
+  assert(!executableLedger.includes("DELETE FROM"), "帳本清算不得刪列（D6）");
+  assert(
+    !executableLedger.includes("supabase db push"),
+    "production migration 一律走 targeted 流程",
+  );
+});
+
+Deno.test("ledger migration：記帳與抹帳都在對的那一筆交易裡", () => {
+  const claimStart = executableLedger.indexOf(
+    "CREATE OR REPLACE FUNCTION public.claim_practice_moment_image(",
+  );
+  const commitStart = executableLedger.indexOf(
+    "CREATE OR REPLACE FUNCTION public.commit_practice_moment_image(",
+  );
+  assert(claimStart >= 0 && commitStart > claimStart);
+  const claimBody = executableLedger.slice(claimStart, commitStart);
+  const commitBody = executableLedger.slice(
+    commitStart,
+    executableLedger.indexOf(
+      "CREATE OR REPLACE FUNCTION public.list_practice_moment_image_orphans(",
+    ),
+  );
+  // 認領（＝租約成立）的同一筆 UPDATE 記帳。
+  assert(
+    claimBody.includes("image_orphan_paths = array_append("),
+    "claim 必須在同一筆交易記帳",
+  );
+  assert(
+    claimBody.includes("image_token = p_image_token") &&
+      claimBody.includes("image_reserved_at = now()"),
+    "記帳必須與換 token／租約同一筆 UPDATE",
+  );
+  // commit 成功的同一筆 UPDATE 抹帳。
+  assert(
+    commitBody.includes(
+      "image_orphan_paths = array_remove(mp.image_orphan_paths, p_image_path)",
+    ),
+    "commit 成功必須在同一筆交易抹掉帳本紀錄",
+  );
+  assert(
+    commitBody.includes("image_status = 'ready'"),
+    "抹帳必須跟 ready 同一筆 UPDATE（否則會出現引用中的孤兒）",
+  );
+  // 兩支都還是自算 cutoff（第三輪的圍籬不得被這次改壞）。
+  const cutoffDecls = [...executableLedger.matchAll(
+    /AT TIME ZONE INTERVAL '8 hours'\)::date - (\d+)\)/g,
+  )];
+  assertEquals(cutoffDecls.length, 2, "claim／commit 都必須自算 cutoff");
+  for (const match of cutoffDecls) {
+    assertEquals(Number(match[1]), FEED_WINDOW_DAYS - 1);
+  }
+  assert(!executableLedger.includes("p_expiry_before"));
+});
+
+Deno.test("ledger migration：清算的兩道守門都在", () => {
+  const listStart = executableLedger.indexOf(
+    "CREATE OR REPLACE FUNCTION public.list_practice_moment_image_orphans(",
+  );
+  const listBody = executableLedger.slice(
+    listStart,
+    executableLedger.indexOf(
+      "CREATE OR REPLACE FUNCTION public.clear_practice_moment_image_orphans(",
+    ),
+  );
+  assert(
+    listBody.includes("make_interval(secs => p_grace_seconds)"),
+    "寬限期守門：在跑的 job 不得被自己的清算刪掉",
+  );
+  assert(
+    listBody.includes("t.path IS DISTINCT FROM mp.image_path"),
+    "引用守門：ready 列指著的物件永不列入清算",
+  );
+});
+
+Deno.test("SQL 的孤兒寬限秒數等於 MOMENT_IMAGE_ORPHAN_GRACE_SECONDS", () => {
+  const matches = [...ledgerMigration.matchAll(
+    /p_grace_seconds INTEGER DEFAULT (\d+)/g,
+  )];
+  assertEquals(matches.length, 1, "寬限期預設值只能有一處");
+  assertEquals(Number(matches[0][1]), MOMENT_IMAGE_ORPHAN_GRACE_SECONDS);
+});
+
+Deno.test("孤兒清算上限：Edge 常數 ≤ SQL 硬上界", () => {
+  const listStart = ledgerMigration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.list_practice_moment_image_orphans(",
+  );
+  const listBody = ledgerMigration.slice(listStart);
+  const cap = [...listBody.matchAll(/p_limit > (\d+)/g)];
+  assert(cap.length > 0, "list RPC 必須有 p_limit 硬上界");
+  assert(
+    MOMENT_IMAGE_ORPHAN_LEDGER_LIMIT <= Number(cap[0][1]),
+    "Edge 傳的清算上限不得超過 SQL 硬上界",
+  );
+  assert(MOMENT_IMAGE_ORPHAN_LEDGER_LIMIT > 0);
+});
+
+Deno.test("帳本路徑與 image_path 共用同一道長度守門", () => {
+  const claimStart = ledgerMigration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.claim_practice_moment_image(",
+  );
+  const claimBody = ledgerMigration.slice(
+    claimStart,
+    ledgerMigration.indexOf(
+      "CREATE OR REPLACE FUNCTION public.commit_practice_moment_image(",
+    ),
+  );
+  const matches = [...claimBody.matchAll(
+    /char_length\(p_image_path\) > (\d+)/g,
+  )];
+  assertEquals(matches.length, 1);
+  assertEquals(Number(matches[0][1]), MOMENT_IMAGE_PATH_DB_MAX_CHARS);
 });

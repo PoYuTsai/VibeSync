@@ -44,8 +44,10 @@ import {
 import {
   type MomentImageSweepDeps,
   sweepExpiredMomentImages,
+  sweepMomentImageOrphanLedger,
   sweepOrphanMomentImages,
 } from "./moments_image_sweep.ts";
+import { shiftIsoDate } from "./moments_date.ts";
 import { momentPostedAtFor } from "./moments_time.ts";
 import { buildMomentMessages } from "./moments_prompt.ts";
 import { validateMomentDraft } from "./moments_validate.ts";
@@ -166,13 +168,6 @@ function isoDateOf(value: unknown): string | null {
   if (typeof value === "string") return value.slice(0, 10);
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return null;
-}
-
-/** 台北日往前推 N 天（feed 視窗的起點）。 */
-export function shiftIsoDate(isoDate: string, days: number): string {
-  const shifted = new Date(`${isoDate}T00:00:00.000Z`);
-  shifted.setUTCDate(shifted.getUTCDate() + days);
-  return shifted.toISOString().slice(0, 10);
 }
 
 function slotKey(profileId: string, isoDate: string, slot: number): string {
@@ -532,17 +527,21 @@ function scheduleImageSweep(args: {
 }): void {
   const sweep = args.deps.imageSweep;
   if (!sweep) return;
-  // 主清掃（DB 引用的出窗圖）後接孤兒對帳（出窗 prefix 的殘留物件），
-  // 同一個背景 task、同在 waitUntil 生命週期內。
+  // 三段串在同一個背景 task、同在 waitUntil 生命週期內：
+  // 主清掃（被引用但出窗）→ 帳本清算（寫過但沒人引用）→ prefix 對帳
+  // （連帳本都沒有的殘留）。每一段自己吞錯，前一段失敗不擋後一段。
   scheduleBackground(
     args.deps,
     sweepExpiredMomentImages({
       supabase: args.supabase,
       deps: sweep,
       isoDate: args.isoDate,
-    }).then(() =>
-      sweepOrphanMomentImages({ deps: sweep, isoDate: args.isoDate })
-    ).then(() => {}),
+    })
+      .then(() =>
+        sweepMomentImageOrphanLedger({ supabase: args.supabase, deps: sweep })
+      )
+      .then(() => sweepOrphanMomentImages({ deps: sweep, isoDate: args.isoDate }))
+      .then(() => {}),
   );
 }
 

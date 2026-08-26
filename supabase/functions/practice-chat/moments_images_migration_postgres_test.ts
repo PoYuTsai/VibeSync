@@ -45,6 +45,12 @@ const momentImageExpiryGuardMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const momentImageOrphanLedgerMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260826024500_practice_moment_image_orphan_ledger.sql",
+    import.meta.url,
+  ),
+);
 
 const PROFILE_ID = "practice_girl_007";
 /** 台北「今天」。DB 端 expiry cutoff 用真實 now() 判定，日期必須相對今天。 */
@@ -100,6 +106,7 @@ async function createDatabase(): Promise<PGlite> {
   await db.exec(momentUsageUpgradeMigration);
   await db.exec(momentImagesMigration);
   await db.exec(momentImageExpiryGuardMigration);
+  await db.exec(momentImageOrphanLedgerMigration);
   await db.query(`INSERT INTO auth.users(id) VALUES ($1)`, [USER_ID]);
   return db;
 }
@@ -133,6 +140,11 @@ async function seedPost(
   assertEquals(committed.rows[0].committed, true);
 }
 
+/** Edge 端 momentImagePath 的同構：token 隔離、每次認領各一條路徑。 */
+function tokenPath(token: string, postDate: string = POST_DATE): string {
+  return `${postDate}/${PROFILE_ID}_${SLOT}_${token}.jpeg`;
+}
+
 async function claimImage(
   db: PGlite,
   token: string,
@@ -142,18 +154,21 @@ async function claimImage(
     minuteLimit?: number;
     dailyLimit?: number;
     postDate?: string;
+    imagePath?: string;
   } = {},
 ): Promise<ClaimRow> {
+  const postDate = options.postDate ?? POST_DATE;
   const result = await db.query<ClaimRow>(
     `SELECT claimed, token, attempt_count, body, theme_id
      FROM public.claim_practice_moment_image(
-       $1, $2::DATE, $3, $4, $5::UUID, $6, $7, $8
+       $1, $2::DATE, $3, $4, $5, $6::UUID, $7, $8, $9
      )`,
     [
       PROFILE_ID,
-      options.postDate ?? POST_DATE,
+      postDate,
       SLOT,
       token,
+      options.imagePath ?? tokenPath(token, postDate),
       options.userId ?? USER_ID,
       options.minuteLimit ?? 3,
       options.dailyLimit ?? 20,
@@ -161,6 +176,28 @@ async function claimImage(
     ],
   );
   return result.rows[0];
+}
+
+/** 讀帳本（清算的唯一持久紀錄）。 */
+async function orphanLedger(db: PGlite): Promise<string[]> {
+  const result = await db.query<{ image_orphan_paths: string[] }>(
+    `SELECT image_orphan_paths FROM public.practice_moment_posts
+      WHERE profile_id = $1 AND slot = $2`,
+    [PROFILE_ID, SLOT],
+  );
+  return result.rows[0].image_orphan_paths;
+}
+
+async function listOrphans(
+  db: PGlite,
+  graceSeconds = 0,
+  limit = 20,
+): Promise<string[]> {
+  const result = await db.query<{ orphan_path: string }>(
+    `SELECT orphan_path FROM public.list_practice_moment_image_orphans($1, $2)`,
+    [limit, graceSeconds],
+  );
+  return result.rows.map((row) => row.orphan_path);
 }
 
 async function commitImage(
@@ -691,11 +728,13 @@ Deno.test("PostgreSQL image RPCs are service_role only and definer mode", async 
     const signatures = [
       "public.commit_practice_moment_post(text,date,integer,text,text,text,text,boolean)",
       "public.list_practice_moment_posts(text[],date)",
-      "public.claim_practice_moment_image(text,date,integer,text,uuid,integer,integer,boolean,integer,integer)",
+      "public.claim_practice_moment_image(text,date,integer,text,text,uuid,integer,integer,boolean,integer,integer)",
       "public.commit_practice_moment_image(text,date,integer,text,text)",
       "public.release_practice_moment_image(text,date,integer,text,integer)",
       "public.list_expired_practice_moment_images(date,integer)",
       "public.mark_practice_moment_images_expired(date,text[])",
+      "public.list_practice_moment_image_orphans(integer,integer)",
+      "public.clear_practice_moment_image_orphans(text[])",
     ];
     for (const signature of signatures) {
       const security = await db.query<{
@@ -734,6 +773,21 @@ Deno.test("PostgreSQL image RPCs are service_role only and definer mode", async 
       )::TEXT AS legacy_commit
     `);
     assertEquals(legacy.rows[0].legacy_commit, null);
+
+    // 舊 10-arg claim（沒有帳本參數的那一支）同樣必須消失。
+    const legacyClaim = await db.query<{ legacy_claim: string | null }>(`
+      SELECT to_regprocedure(
+        'public.claim_practice_moment_image(text,date,integer,text,uuid,integer,integer,boolean,integer,integer)'
+      )::TEXT AS legacy_claim
+    `);
+    assertEquals(legacyClaim.rows[0].legacy_claim, null);
+    const claimOverloads = await db.query<{ count: number }>(`
+      SELECT count(*)::INT AS count
+      FROM pg_proc AS p
+      JOIN pg_namespace AS n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = 'claim_practice_moment_image'
+    `);
+    assertEquals(claimOverloads.rows[0].count, 1, "overload 衛生：只准留一支");
   } finally {
     await db.close();
   }
@@ -919,6 +973,214 @@ Deno.test("PostgreSQL image lease default matches the TS constant", async () => 
       [MOMENT_IMAGE_RESERVE_LEASE_MS / 1000 + 1, PROFILE_ID, POST_DATE, SLOT],
     );
     assertEquals((await claimImage(db, "t-on-time")).claimed, true);
+  } finally {
+    await db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 孤兒帳本（第四輪複審 P2-2）：可持久重試的閉環
+// ---------------------------------------------------------------------------
+
+Deno.test("PostgreSQL claim records the object key in the same transaction", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    assertEquals(await orphanLedger(db), [], "還沒認領就不該有紀錄");
+    const claim = await claimImage(db, "tok-1");
+    assertEquals(claim.claimed, true);
+    assertEquals(
+      await orphanLedger(db),
+      [tokenPath("tok-1")],
+      "租約成立的同一筆交易就要記下這個路徑",
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL successful commit clears exactly its own ledger entry", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    await claimImage(db, "tok-1");
+    assertEquals(await commitImage(db, "tok-1", tokenPath("tok-1")), true);
+    assertEquals(await orphanLedger(db), [], "被引用的物件不得留在帳本");
+    assertEquals(await listOrphans(db), []);
+    const row = await readRow(db);
+    assertEquals(row.image_status, "ready");
+    assertEquals(row.image_path, tokenPath("tok-1"));
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL retry keeps the failed attempt's key and only clears the committed one", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    // 第一次認領後失敗 release（物件可能已經上傳，路徑必須留在帳本）。
+    await claimImage(db, "tok-1");
+    assertEquals(await releaseImage(db, "tok-1"), true);
+    // 第二次認領：帳本累積兩條。
+    await claimImage(db, "tok-2");
+    assertEquals(await orphanLedger(db), [
+      tokenPath("tok-1"),
+      tokenPath("tok-2"),
+    ]);
+    assertEquals(await commitImage(db, "tok-2", tokenPath("tok-2")), true);
+    assertEquals(
+      await orphanLedger(db),
+      [tokenPath("tok-1")],
+      "第一次的孤兒不得被第二次的成功一起抹掉",
+    );
+    assertEquals(await listOrphans(db), [tokenPath("tok-1")]);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL orphan listing respects the grace period", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    await claimImage(db, "tok-1");
+    assertEquals(
+      await listOrphans(db, 600),
+      [],
+      "寬限期內的紀錄不得列出——那個 job 可能還在跑",
+    );
+    assertEquals(await listOrphans(db, 0), [tokenPath("tok-1")]);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL orphan listing never lists a referenced image_path", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    await claimImage(db, "tok-1");
+    await commitImage(db, "tok-1", tokenPath("tok-1"));
+    // 縱深防禦：就算有 bug 把已被引用的路徑塞回帳本，清算也不得列出它。
+    await db.query(
+      `UPDATE public.practice_moment_posts
+          SET image_orphan_paths = ARRAY[image_path]
+        WHERE profile_id = $1 AND slot = $2`,
+      [PROFILE_ID, SLOT],
+    );
+    assertEquals(await orphanLedger(db), [tokenPath("tok-1")]);
+    assertEquals(
+      await listOrphans(db, 0),
+      [],
+      "ready 列指著的物件永遠不得被清算刪掉",
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL clear removes only the given keys and no lifecycle column", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    await claimImage(db, "tok-1");
+    await releaseImage(db, "tok-1");
+    await claimImage(db, "tok-2");
+    const before = await readRow(db);
+    const cleared = await db.query<{ cleared_count: number }>(
+      `SELECT cleared_count FROM public.clear_practice_moment_image_orphans($1)`,
+      [[tokenPath("tok-1")]],
+    );
+    assertEquals(cleared.rows[0].cleared_count, 1);
+    assertEquals(await orphanLedger(db), [tokenPath("tok-2")]);
+    const after = await readRow(db);
+    assertEquals(after.image_status, before.image_status);
+    assertEquals(after.image_attempts, before.image_attempts);
+    assertEquals(after.image_token, before.image_token);
+    assertEquals(after.body, before.body);
+    assertEquals(after.status, before.status);
+    // 清不存在的路徑是 no-op（清算重試冪等）。
+    const again = await db.query<{ cleared_count: number }>(
+      `SELECT cleared_count FROM public.clear_practice_moment_image_orphans($1)`,
+      [[tokenPath("tok-1")]],
+    );
+    assertEquals(again.rows[0].cleared_count, 0);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL a rolled-back claim leaves no ledger entry", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    // 限流：整筆交易 rollback，帳本不得留下這一筆。
+    let raised = false;
+    try {
+      await claimImage(db, "tok-1", { minuteLimit: 0 });
+    } catch {
+      raised = true;
+    }
+    assert(raised, "limit 0 必須 RAISE");
+    assertEquals(await orphanLedger(db), []);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL a refused claim (out of window) records nothing", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    await shiftRowPostDate(db, 20);
+    const claim = await claimImage(db, "tok-1", {
+      postDate: EXPIRED_POST_DATE,
+      imagePath: tokenPath("tok-1", EXPIRED_POST_DATE),
+    });
+    assertEquals(claim.claimed, false);
+    assertEquals(await orphanLedger(db), [], "沒認領就不記帳");
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL ledger input guards", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    // claim 的路徑守門與 commit 同一道。
+    for (const bad of ["", "x".repeat(201)]) {
+      let raised = false;
+      try {
+        await claimImage(db, "tok-1", { imagePath: bad });
+      } catch {
+        raised = true;
+      }
+      assert(raised, `invalid p_image_path 必須 RAISE：${bad.length} 字`);
+    }
+    // clear 不接受空陣列（避免呼叫端傳錯掃到整表）。
+    let clearRaised = false;
+    try {
+      await db.query(
+        `SELECT cleared_count FROM public.clear_practice_moment_image_orphans($1)`,
+        [[]],
+      );
+    } catch {
+      clearRaised = true;
+    }
+    assert(clearRaised, "空 p_paths 必須 RAISE");
+    // list 的上限守門。
+    let listRaised = false;
+    try {
+      await db.query(
+        `SELECT orphan_path FROM public.list_practice_moment_image_orphans($1, $2)`,
+        [101, 0],
+      );
+    } catch {
+      listRaised = true;
+    }
+    assert(listRaised, "p_limit 超過硬上界必須 RAISE");
   } finally {
     await db.close();
   }

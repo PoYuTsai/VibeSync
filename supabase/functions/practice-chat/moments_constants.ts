@@ -124,8 +124,26 @@ export const MOMENT_IMAGE_BUCKET = "practice-moment-images";
 export const MOMENT_IMAGE_UPLOAD_TIMEOUT_MS = 15_000;
 
 /**
- * 孤兒對帳掃描的日期範圍：每次清掃順手 list 剛出窗 K 天的 Storage prefix，
- * 殘留物件（晚到上傳自刪失敗、commit 失敗自刪失敗）一律刪除。出窗日期的
- * 物件本來就不該露出，全刪安全；持續失敗的更舊孤兒由觀測告警接手。
+ * 孤兒帳本單次清算上限（Edge 端傳給 list_practice_moment_image_orphans）。
+ * 與主清掃同量級：~11 張/天的失敗殘留，一輪 20 筆綽綽有餘。
  */
-export const MOMENT_IMAGE_ORPHAN_SWEEP_DAYS = 3;
+export const MOMENT_IMAGE_ORPHAN_LEDGER_LIMIT = 20;
+
+/**
+ * 孤兒帳本的寬限秒數（SQL: p_grace_seconds DEFAULT 600）。
+ *
+ * 帳本在 claim 的同一筆交易裡記下「這個 token 路徑可能會有物件」，commit
+ * 成功的同一筆交易再把它抹掉。清算只處理**寬限期之外**的紀錄——寬限期
+ * 必須遠大於一個 job 的最壞 wall clock（場景 10s＋fal 30s＋下載 15s＋
+ * 上傳 15s，且租約只有 180s），在跑的 job 才不可能被自己的清算刪掉。
+ */
+export const MOMENT_IMAGE_ORPHAN_GRACE_SECONDS = 600;
+
+/** Storage list 單頁筆數（Supabase 端上限 100）。 */
+export const MOMENT_IMAGE_LIST_PAGE_SIZE = 100;
+
+/** 單次請求最多排掉幾頁孤兒物件（100 × 4 = 400 個／請求，足夠追上積壓）。 */
+export const MOMENT_IMAGE_ORPHAN_MAX_PAGES = 4;
+
+/** 單次請求最多翻幾頁 bucket 根目錄找最舊的出窗日期 prefix。 */
+export const MOMENT_IMAGE_PREFIX_MAX_PAGES = 2;

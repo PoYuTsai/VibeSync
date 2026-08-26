@@ -157,6 +157,10 @@ function makeJobHarness(options: {
   commitImage?: Record<string, unknown>;
   /** commit RPC 直接拋錯（DB 連線炸掉之類）。 */
   commitThrows?: boolean;
+  /** commit RPC 的原始回應（測 data 形狀不完整的三態收斂）。 */
+  commitRaw?: { data: unknown; error?: { message: string } | null };
+  /** 抹帳本的 RPC 拋錯（清算會接手，收場不得被影響）。 */
+  clearThrows?: boolean;
   falStatus?: number;
   falPayload?: unknown;
   imageBytes?: number;
@@ -219,6 +223,12 @@ function makeJobHarness(options: {
         if (options.commitThrows) {
           return Promise.reject(new Error("db connection lost"));
         }
+        if (options.commitRaw) {
+          return Promise.resolve({
+            data: options.commitRaw.data as never,
+            error: options.commitRaw.error ?? null,
+          });
+        }
         return Promise.resolve({
           data: [options.commitImage ?? { committed: true }],
           error: null,
@@ -226,6 +236,12 @@ function makeJobHarness(options: {
       }
       if (fn === "release_practice_moment_image") {
         return Promise.resolve({ data: [{ released: true }], error: null });
+      }
+      if (fn === "clear_practice_moment_image_orphans") {
+        if (options.clearThrows) {
+          return Promise.reject(new Error("db connection lost"));
+        }
+        return Promise.resolve({ data: [{ cleared_count: 1 }], error: null });
       }
       return Promise.resolve({ data: null, error: null });
     },
@@ -449,6 +465,8 @@ Deno.test("fal 回 5xx：release、零上傳", async () => {
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
+    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
+    "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
   assertEquals(harness.uploads.length, 0);
@@ -459,6 +477,8 @@ Deno.test("黑圖保險：小於下限的回應視為失敗並 release", async (
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
+    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
+    "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
   assertEquals(harness.uploads.length, 0);
@@ -467,6 +487,8 @@ Deno.test("黑圖保險：小於下限的回應視為失敗並 release", async (
 Deno.test("上傳失敗：release，絕不 commit", async () => {
   const harness = makeJobHarness({ uploadFails: true });
   await runJob(harness);
+  // 上傳**發出過**（只是回錯）→ 帳本刻意留著：回應可能在路上丟了而物件其實
+  // 已落地，那一筆是它唯一的持久紀錄（第四輪複審 P2-2）。
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
     "release_practice_moment_image",
@@ -498,6 +520,8 @@ Deno.test("NSFW 命中：不下載、不上傳、不 commit，直接 release", a
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
+    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
+    "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
   assertEquals(
@@ -520,7 +544,11 @@ Deno.test("safety 欄位缺席或形狀錯：fail-closed，一樣 release", asyn
     await runJob(harness);
     assertEquals(
       rpcNames(harness),
-      ["claim_practice_moment_image", "release_practice_moment_image"],
+      [
+        "claim_practice_moment_image",
+        "clear_practice_moment_image_orphans",
+        "release_practice_moment_image",
+      ],
       `payload ${JSON.stringify(payload)} 應 fail-closed`,
     );
     assertEquals(harness.uploads.length, 0);
@@ -542,7 +570,11 @@ Deno.test("非 fal.media 的結果 URL：拒絕下載並 release", async () => {
     await runJob(harness);
     assertEquals(
       rpcNames(harness),
-      ["claim_practice_moment_image", "release_practice_moment_image"],
+      [
+        "claim_practice_moment_image",
+        "clear_practice_moment_image_orphans",
+        "release_practice_moment_image",
+      ],
       `URL ${url} 應被來源驗證擋下`,
     );
     assertEquals(harness.uploads.length, 0);
@@ -554,6 +586,8 @@ Deno.test("下載回應的 Content-Type 不是圖片：release", async () => {
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
+    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
+    "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
   assertEquals(harness.uploads.length, 0);
@@ -564,6 +598,8 @@ Deno.test("Content-Length 宣告超限：不讀 body 直接 release", async () =
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
+    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
+    "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
 });
@@ -576,6 +612,8 @@ Deno.test("實際位元組超限（header 說謊）：流式硬擋並 release", 
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
+    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
+    "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
   assertEquals(harness.uploads.length, 0);
@@ -588,7 +626,8 @@ Deno.test("實際位元組超限（header 說謊）：流式硬擋並 release", 
 Deno.test("上傳 timeout 後晚到完成：自刪自己的物件，winner 不受影響", async () => {
   const harness = makeJobHarness({ uploadHangs: true });
   await runJob(harness);
-  // timeout → release（job 已放棄）。
+  // timeout → release（job 已放棄）。**帳本刻意不清**：上傳可能還在飛，
+  // 物件仍可能落地，那一筆是它唯一的持久紀錄（第四輪複審 P2-2）。
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
     "release_practice_moment_image",
@@ -610,6 +649,8 @@ Deno.test("fal JSON body 懸掛：timeout 涵蓋完整 body，release 收場", a
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
+    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
+    "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
   assertEquals(harness.uploads.length, 0);
@@ -620,6 +661,8 @@ Deno.test("圖片串流懸掛：timeout 涵蓋整段下載，release 收場", as
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
+    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
+    "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
   assertEquals(harness.uploads.length, 0);
@@ -630,6 +673,8 @@ Deno.test("圖片下載遇到轉址：redirect error 直接拒絕並 release", a
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
+    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
+    "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
   assertEquals(harness.uploads.length, 0);
@@ -652,6 +697,8 @@ Deno.test("Content-Type 是 png：僅收 jpeg，拒絕並 release", async () => 
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
+    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
+    "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
 });
@@ -661,6 +708,8 @@ Deno.test("magic bytes 不是 JPEG：header 說謊也擋，release 收場", asyn
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
+    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
+    "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
   assertEquals(harness.uploads.length, 0);
@@ -681,6 +730,121 @@ Deno.test("commit RPC 拋錯（結果不確定）：保留物件、release 收�
     [],
     "結果不確定時絕不刪物件——它可能已被 DB 引用",
   );
+});
+
+// ---------------------------------------------------------------------------
+// 第四輪複審 P2-1：commit 三態不得被壓成兩態
+// ---------------------------------------------------------------------------
+
+Deno.test("commit 回應形狀不完整：一律當不確定態，絕不刪物件", async () => {
+  // data 為 null／空陣列／缺欄位／型別不是 boolean——這些都只證明「我不知道
+  // DB 做了什麼」。壓成 false 去刪物件，會讓已 commit 的 ready 列指向 404。
+  const shapes: { label: string; data: unknown }[] = [
+    { label: "null", data: null },
+    { label: "空陣列", data: [] },
+    { label: "缺 committed 欄位", data: [{}] },
+    { label: "committed 不是 boolean", data: [{ committed: "true" }] },
+    { label: "committed 是 null", data: [{ committed: null }] },
+    { label: "data 不是陣列", data: { committed: true } },
+  ];
+  for (const shape of shapes) {
+    const harness = makeJobHarness({ commitRaw: { data: shape.data } });
+    await runJob(harness);
+    assertEquals(
+      rpcNames(harness),
+      [
+        "claim_practice_moment_image",
+        "commit_practice_moment_image",
+        "release_practice_moment_image",
+      ],
+      `${shape.label}：不確定態必須走 release`,
+    );
+    assertEquals(
+      harness.removals,
+      [],
+      `${shape.label}：不確定態絕不刪物件——它可能已被 DB 引用`,
+    );
+  }
+});
+
+Deno.test("commit RPC 回 error：不確定態，保留物件並 release", async () => {
+  const harness = makeJobHarness({
+    commitRaw: { data: null, error: { message: "statement timeout" } },
+  });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "commit_practice_moment_image",
+    "release_practice_moment_image",
+  ]);
+  assertEquals(harness.removals, []);
+});
+
+Deno.test("commit 明確回 true／false 才是確定態", async () => {
+  const ok = makeJobHarness({ commitRaw: { data: [{ committed: true }] } });
+  await runJob(ok);
+  assertEquals(rpcNames(ok), [
+    "claim_practice_moment_image",
+    "commit_practice_moment_image",
+  ], "明確 true：成功收場，不 release");
+  assertEquals(ok.removals, []);
+
+  const rejected = makeJobHarness({ commitRaw: { data: [{ committed: false }] } });
+  await runJob(rejected);
+  assertEquals(rpcNames(rejected), [
+    "claim_practice_moment_image",
+    "commit_practice_moment_image",
+  ], "明確 false：自刪收場，不 release");
+  assertEquals(
+    rejected.removals,
+    [TOKEN_PATH],
+    "只有明確 false 才刪物件",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 第四輪複審 P2-2：孤兒帳本在 claim 的同一筆交易記帳
+// ---------------------------------------------------------------------------
+
+Deno.test("claim 帶上物件路徑：帳本在物件存在之前就記好了", async () => {
+  const harness = makeJobHarness();
+  await runJob(harness);
+  const claim = harness.rpcCalls[0];
+  assertEquals(claim.fn, "claim_practice_moment_image");
+  assertEquals(
+    claim.params.p_image_path,
+    TOKEN_PATH,
+    "記帳路徑必須與之後真正上傳的 token 路徑同一個",
+  );
+  assertEquals(
+    claim.params.p_image_path,
+    momentImagePath(JOB.isoDate, JOB.profileId, JOB.slot, TOKEN),
+  );
+  // 上傳與 commit 都用同一個路徑，帳本才對得起來。
+  assertEquals(harness.uploads[0].path, TOKEN_PATH);
+  const commit = harness.rpcCalls.find((c) =>
+    c.fn === "commit_practice_moment_image"
+  );
+  assertEquals(commit?.params.p_image_path, TOKEN_PATH);
+});
+
+Deno.test("確定沒上傳的失敗：帳本那一筆順手抹掉", async () => {
+  const harness = makeJobHarness({ falStatus: 503 });
+  await runJob(harness);
+  const clear = harness.rpcCalls.find((c) =>
+    c.fn === "clear_practice_moment_image_orphans"
+  );
+  assertEquals(clear?.params.p_paths, [TOKEN_PATH]);
+});
+
+Deno.test("抹帳本失敗不影響收場：仍然 release", async () => {
+  const harness = makeJobHarness({ falStatus: 503, clearThrows: true });
+  await runJob(harness);
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "clear_practice_moment_image_orphans",
+    "release_practice_moment_image",
+  ]);
 });
 
 Deno.test("測試帳號：p_count_user_usage 為 false", async () => {
