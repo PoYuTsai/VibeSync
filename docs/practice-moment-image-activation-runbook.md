@@ -1,28 +1,31 @@
-# 練習室動態生成配圖：啟用 runbook（交 Eric-AI 執行）
+# 練習室動態生成配圖：啟用與回退 runbook
 
-一句話：**PR #34 已合併、三支 migration 已套用 production，功能的程式碼全部就位但仍在睡覺；這份 runbook 只做一件事——把 kill switch 打開，並確認它真的開始生圖。**
+一句話：**PR #34 已合併、三支 migration 已套用 production；2026-08-26 已由 Eric-AI 啟用 kill switch。這份 runbook 保存目前狀態、重新啟用／回退方式，以及生圖健康檢查。**
 
 - 對應設計文件：`docs/plans/2026-08-25-practice-moments-generated-images.md`
 - 合併 commit：`318ef43`（PR #34，2026-08-26）
-- 執行者：Eric-AI（Eric 指派）
+- 最近一次執行：Eric-AI（Eric 授權，2026-08-26）
 
 ---
 
-## 1. 前置條件（全部已完成，執行前只需確認、不需重做）
+## 1. Production 目前狀態（全部已完成，不需重做）
 
 | 項目 | 狀態 |
 | --- | --- |
 | PR #34 Squash Merge 進 `main` | ✅ `318ef43` |
 | 三支 migration 依序套用 production 並驗證 | ✅ `20260825120000` → `20260825150000` → `20260826024500`（Eric 於 2026-08-26 執行，remote ledger 與 schema/RPC 契約通過） |
 | `FAL_API_KEY` 已設於 Supabase Secret | ✅（**任何情況下都不得輸出這把 key 的值**到 log、PR、留言或終端） |
+| `DEEPSEEK_API_KEY` 已設於 Supabase Secret | ✅（只驗名稱存在，不輸出值） |
 | fal.ai Dashboard spend cap | ✅ Eric 於 2026-08-26 設定完成 |
-| `MOMENT_IMAGE_GEN_ENABLED` | ❌ **尚未開啟——這就是本 runbook 要做的事** |
+| `MOMENT_IMAGE_GEN_ENABLED` | ✅ 2026-08-26 已設為全小寫 `true`，三個必要 Secret 名稱均已確認存在 |
 
 ---
 
-## 2. 要執行的動作
+## 2. 首次啟用或回退後重新啟用
 
 Kill switch 是 `practice-chat` Edge Function 讀的環境變數。值**必須是全小寫字串 `true`**；`TRUE`／`1`／`yes` 一律視為關閉（程式是 `=== "true"` 嚴格比對，見 `supabase/functions/practice-chat/handler.ts`）。
+
+目前 production 已啟用；以下指令保留給日後回退後重新開啟，不需重複執行。
 
 ```
 npx.cmd --yes supabase secrets set MOMENT_IMAGE_GEN_ENABLED=true --project-ref fcmwrmwdoqiqdnbisdpg
@@ -102,7 +105,7 @@ npx.cmd --yes supabase secrets set MOMENT_IMAGE_GEN_ENABLED=false --project-ref 
 
 ---
 
-## 6. 回報格式（執行後回到 PR 留言）
+## 6. 啟用／回退後回報格式
 
 1. `secrets list` 是否看到三個必要名稱（**只回報名稱有無，不回報值**）
 2. 首次觀測到 `practice_moment_image_committed` 的時間；若尚未出現，說明是還沒到 slot 時間還是有 `failed`
@@ -114,7 +117,7 @@ npx.cmd --yes supabase secrets set MOMENT_IMAGE_GEN_ENABLED=false --project-ref 
 
 ## 7. 之後才輪到的事（不在本 runbook 範圍）
 
-真機驗收需要一個**含這次 client 變更的新 build**：解析 `imageUrl` 與渲染網路圖是 PR #34 的 Flutter 端改動，舊 TestFlight build 會忽略未知欄位、繼續顯示純文字。因此順序是：開旗標（server 端先開始生圖）→ Eric 手動送 TestFlight → 真機驗收：
+真機驗收需要一個**含 PR #34 client 變更的新 build**：解析 `imageUrl` 與渲染網路圖是 PR #34 的 Flutter 端改動，舊 TestFlight build 會忽略未知欄位、繼續顯示純文字。目前 Eric 已回報新 build 已出，可直接進行真機驗收：
 
 - 新的圖文貼文**首次進頁是純文字**，重進頁面才出圖（文先圖後是設計）
 - 圖與該則文字相符，且**無人臉、無文字、無品牌**
