@@ -496,12 +496,48 @@ Deno.test("ledger migration：清算的兩道守門都在", () => {
     ),
   );
   assert(
-    listBody.includes("make_interval(secs => p_grace_seconds)"),
+    listBody.includes("GREATEST(p_grace_seconds, 180)"),
     "寬限期守門：在跑的 job 不得被自己的清算刪掉",
   );
   assert(
     listBody.includes("t.path IS DISTINCT FROM mp.image_path"),
     "引用守門：ready 列指著的物件永不列入清算",
+  );
+});
+
+Deno.test("ledger migration：commit 與孤兒清算共用租約安全下限", () => {
+  const leaseSeconds = MOMENT_IMAGE_RESERVE_LEASE_MS / 1000;
+  const commitStart = executableLedger.indexOf(
+    "CREATE OR REPLACE FUNCTION public.commit_practice_moment_image(",
+  );
+  const listStart = executableLedger.indexOf(
+    "CREATE OR REPLACE FUNCTION public.list_practice_moment_image_orphans(",
+  );
+  const commitBody = executableLedger.slice(commitStart, listStart);
+  const listBody = executableLedger.slice(
+    listStart,
+    executableLedger.indexOf(
+      "CREATE OR REPLACE FUNCTION public.clear_practice_moment_image_orphans(",
+    ),
+  );
+  assert(
+    commitBody.includes(
+      `image_reserved_at <= now() - make_interval(secs => ${leaseSeconds})`,
+    ),
+    "過期租約即使 token 尚未輪替也不得 commit",
+  );
+  assert(
+    listBody.includes(`GREATEST(p_grace_seconds, ${leaseSeconds})`),
+    "孤兒清算寬限不得短於 commit 租約",
+  );
+  assert(
+    executableLedger.includes(`p_lease_seconds <> ${leaseSeconds}`),
+    "claim 的可接受租約必須與 commit／清算的資料層安全邊界一致",
+  );
+  assert(
+    commitBody.indexOf("v_row.post_date < v_expiry_cutoff") <
+      commitBody.indexOf("v_row.image_reserved_at IS NULL"),
+    "出窗收屍必須早於租約過期 RETURN，避免永久 pending",
   );
 });
 

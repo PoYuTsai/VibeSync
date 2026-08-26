@@ -188,6 +188,16 @@ async function orphanLedger(db: PGlite): Promise<string[]> {
   return result.rows[0].image_orphan_paths;
 }
 
+/** 把目前圖片租約往回撥，等價於快轉 DB 時鐘。 */
+async function ageImageLease(db: PGlite, seconds: number): Promise<void> {
+  await db.query(
+    `UPDATE public.practice_moment_posts
+        SET image_reserved_at = now() - make_interval(secs => $1)
+      WHERE profile_id = $2 AND slot = $3`,
+    [seconds, PROFILE_ID, SLOT],
+  );
+}
+
 async function listOrphans(
   db: PGlite,
   graceSeconds = 0,
@@ -1015,6 +1025,63 @@ Deno.test("PostgreSQL successful commit clears exactly its own ledger entry", as
   }
 });
 
+Deno.test("PostgreSQL late commit is rejected after the image lease expires", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    await claimImage(db, "tok-slow");
+    await ageImageLease(db, 181);
+
+    assertEquals(
+      await commitImage(db, "tok-slow", tokenPath("tok-slow")),
+      false,
+      "過期 worker 不得把已可能被清算刪除的路徑標成 ready",
+    );
+    const row = await readRow(db);
+    assertEquals(row.image_status, "pending");
+    assertEquals(row.image_path, null);
+    assertEquals(
+      await orphanLedger(db),
+      [tokenPath("tok-slow")],
+      "被拒的晚到 commit 必須保留帳本，交給清算冪等收掉",
+    );
+
+    const takeover = await claimImage(db, "tok-live");
+    assertEquals(takeover.claimed, true, "租約過期後新 worker 仍可正常接手");
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL out-of-window cleanup wins over expired lease fencing", async () => {
+  const db = await createDatabase();
+  try {
+    await seedPost(db, { wantsImage: true });
+    await claimImage(db, "tok-both-stale");
+    const expiredDate = await shiftRowPostDate(db, 20);
+    await ageImageLease(db, 181);
+
+    assertEquals(
+      await commitImage(
+        db,
+        "tok-both-stale",
+        tokenPath("tok-both-stale", expiredDate),
+        expiredDate,
+      ),
+      false,
+    );
+    const row = await readRowAt(db, expiredDate);
+    assertEquals(
+      row.image_status,
+      "failed",
+      "同時出窗與租約過期時，必須先執行 pending → failed 收屍",
+    );
+    assertEquals(row.image_token, null);
+  } finally {
+    await db.close();
+  }
+});
+
 Deno.test("PostgreSQL retry keeps the failed attempt's key and only clears the committed one", async () => {
   const db = await createDatabase();
   try {
@@ -1034,6 +1101,7 @@ Deno.test("PostgreSQL retry keeps the failed attempt's key and only clears the c
       [tokenPath("tok-1")],
       "第一次的孤兒不得被第二次的成功一起抹掉",
     );
+    await ageImageLease(db, 181);
     assertEquals(await listOrphans(db), [tokenPath("tok-1")]);
   } finally {
     await db.close();
@@ -1050,6 +1118,12 @@ Deno.test("PostgreSQL orphan listing respects the grace period", async () => {
       [],
       "寬限期內的紀錄不得列出——那個 job 可能還在跑",
     );
+    assertEquals(
+      await listOrphans(db, 0),
+      [],
+      "呼叫端傳 0 也必須套用至少一個租約長度的安全下限",
+    );
+    await ageImageLease(db, 181);
     assertEquals(await listOrphans(db, 0), [tokenPath("tok-1")]);
   } finally {
     await db.close();
@@ -1069,6 +1143,7 @@ Deno.test("PostgreSQL orphan listing never lists a referenced image_path", async
         WHERE profile_id = $1 AND slot = $2`,
       [PROFILE_ID, SLOT],
     );
+    await ageImageLease(db, 181);
     assertEquals(await orphanLedger(db), [tokenPath("tok-1")]);
     assertEquals(
       await listOrphans(db, 0),

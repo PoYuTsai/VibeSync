@@ -165,7 +165,9 @@ BEGIN
   IF p_max_attempts IS NULL OR p_max_attempts <= 0 OR p_max_attempts > 2 THEN
     RAISE EXCEPTION 'claim_practice_moment_image: invalid p_max_attempts';
   END IF;
-  IF p_lease_seconds IS NULL OR p_lease_seconds <= 0 THEN
+  -- commit 與孤兒清算都以 180s 作資料層安全邊界；claim 不得另傳一個較長
+  -- 租約，否則仍可能出現「worker 合法、清算卻已可刪圖」的矛盾窗口。
+  IF p_lease_seconds IS NULL OR p_lease_seconds <> 180 THEN
     RAISE EXCEPTION 'claim_practice_moment_image: invalid p_lease_seconds';
   END IF;
 
@@ -398,9 +400,8 @@ BEGIN
     AND mp.slot = p_slot::SMALLINT
   FOR UPDATE;
 
-  -- token fencing：被接手的舊 worker、遲到的重複回應，一律回 FALSE 而不覆寫。
-  -- 帳本刻意不動：那個物件可能真的存在，留著等清算（Edge 端也會自刪，
-  -- 兩邊都是冪等的）。
+  -- 第一道只做 token fencing；出窗收屍必須在租約判斷之前，否則同時「出窗
+  -- ＋租約過期」的列會提早 RETURN，永遠留在 pending。
   IF NOT FOUND
      OR v_row.status <> 'ready'
      OR v_row.image_status <> 'pending'
@@ -422,6 +423,16 @@ BEGIN
     WHERE mp.profile_id = p_profile_id
       AND mp.post_date = p_post_date
       AND mp.slot = p_slot::SMALLINT;
+    committed := FALSE;
+    RETURN NEXT;
+    RETURN;
+  END IF;
+
+  -- 第二道租約 fencing：即使 token 尚未輪替，超過 180 秒也不得 commit。
+  -- 孤兒清算在寬限期後可能已刪掉該路徑；若仍允許過期 worker commit，
+  -- 會留下 ready 指向 404。帳本刻意不動，留給 Edge 冪等清算。
+  IF v_row.image_reserved_at IS NULL
+     OR v_row.image_reserved_at <= now() - make_interval(secs => 180) THEN
     committed := FALSE;
     RETURN NEXT;
     RETURN;
@@ -479,8 +490,9 @@ BEGIN
   END IF;
 
   -- 兩道守門：
-  -- 1. 寬限期——image_reserved_at 是最後一次認領的時間；比寬限期舊就代表
-  --    那次認領的 worker 早已不存在（租約 180s、最壞 wall clock < 90s）。
+  -- 1. 寬限期——image_reserved_at 是最後一次認領的時間；有效寬限期永遠
+  --    不短於 180s 租約，避免呼叫端傳 0 時刪到仍可合法 commit 的物件。
+  --    production 傳 600s（最壞 wall clock < 90s），再多留一道緩衝。
   -- 2. 排除該列自己的 image_path——被 ready 列引用的物件永不列入清算，
   --    即使某個 bug 讓它留在帳本裡。
   RETURN QUERY
@@ -490,7 +502,9 @@ BEGIN
   WHERE cardinality(mp.image_orphan_paths) > 0
     AND (
       mp.image_reserved_at IS NULL
-      OR mp.image_reserved_at < now() - make_interval(secs => p_grace_seconds)
+      OR mp.image_reserved_at < now() - make_interval(
+        secs => GREATEST(p_grace_seconds, 180)
+      )
     )
     AND t.path IS DISTINCT FROM mp.image_path
   ORDER BY mp.image_reserved_at NULLS FIRST, t.path
@@ -548,8 +562,10 @@ COMMENT ON COLUMN public.practice_moment_posts.image_orphan_paths
 IS 'Durable ledger of storage object keys this row may have written. A key is appended in the same transaction as the image claim and removed in the same transaction as a successful commit; anything left behind is reconciled by list/clear_practice_moment_image_orphans.';
 COMMENT ON FUNCTION public.claim_practice_moment_image(TEXT, DATE, INTEGER, TEXT, TEXT, UUID, INTEGER, INTEGER, BOOLEAN, INTEGER, INTEGER)
 IS 'Atomically leases one pending image job, records the object key it may write in the same transaction, and increments both image_attempts and per-user practice_moment_image usage. A rate-limit exception rolls the entire claim back.';
+COMMENT ON FUNCTION public.commit_practice_moment_image(TEXT, DATE, INTEGER, TEXT, TEXT)
+IS 'Token- and lease-fenced commit of a stored generated image. A stale token or expired lease returns FALSE and never creates a ready row that may point at an already reconciled object.';
 COMMENT ON FUNCTION public.list_practice_moment_image_orphans(INTEGER, INTEGER)
-IS 'Lists storage object keys that were claimed but never committed, older than a grace period, so the Edge can delete the objects before clearing the ledger. Never lists a key referenced by its own row.';
+IS 'Lists storage object keys that were claimed but never committed, older than a grace period that is clamped to at least one image lease, so the Edge can delete the objects before clearing the ledger. Never lists a key referenced by its own row.';
 COMMENT ON FUNCTION public.clear_practice_moment_image_orphans(TEXT[])
 IS 'Clears reconciled keys from the orphan ledger after their storage objects were deleted. Touches no lifecycle column and never deletes rows.';
 
