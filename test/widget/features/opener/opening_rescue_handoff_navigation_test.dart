@@ -16,6 +16,7 @@ import 'package:hive_ce/hive_ce.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
 import 'package:vibesync/features/opener/data/services/opener_result_cache_service.dart';
 import 'package:vibesync/features/opener/data/services/opener_service.dart';
 import 'package:vibesync/features/opener/presentation/screens/opening_rescue_screen.dart';
@@ -99,6 +100,12 @@ Future<GoRouter> _pump(WidgetTester t) async {
           ),
         ),
         partnerListProvider.overrideWith((ref) => const []),
+        // 這兩個 family 背後是另外兩個 Hive box（對象卡、教練成果），本測試
+        // 只開 settingsBox：不覆寫的話，綁定入口在 initState 讀對象卡就會丟
+        // 「Box not found」，結果卡渲染時 outcome 晶片條也會丟同一個錯。
+        // 導航行為與這兩者無關，一律給空值即可。
+        partnerByIdProvider.overrideWith((ref, id) => null),
+        coachingOutcomeEventProvider.overrideWith((ref, id) => null),
         subscriptionScreenRefreshProvider.overrideWith((ref) => () async {}),
       ],
       child: MaterialApp.router(routerConfig: router),
@@ -132,6 +139,11 @@ Future<void> _tapHandoffCta(WidgetTester t) async {
   final cta = find.text('她回覆了，開始分析對話');
   await t.ensureVisible(cta);
   await t.tap(cta);
+  // CTA 會 unawaited 一筆 Hive 寫入（在草稿上蓋「已接續」章）。導航本身是同步
+  // 的，不等它；但要讓那筆真的磁碟寫入在 tearDown 刪 box 之前跑完。
+  await t.runAsync(() async {
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  });
   await _settle(t);
 }
 
