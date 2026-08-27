@@ -385,11 +385,11 @@ export async function handlePracticeMoments(args: {
   // 4b. Feed freshness 保底。
   //
   // 一位角色保留安靜日沒有問題，但使用者已抽到角色後，整面 feed 不能因為
-  // 「昨天早發、今天晚發」看起來死掉超過 24 小時。只有在：
-  // - 整個 feed 最新可見貼文已超過 SLA（或還沒有任何貼文），且
-  // - 今天沒有一般排程已到時間的缺口
-  // 才借用一個既有 0/1 slot；所以每請求最多多一格，DB 每日兩格與 attempts
-  // 上限完全不變，也不會把 100 位角色改成每天固定發文。
+  // 「昨天早發、今天晚發」看起來死掉超過 24 小時。Feed stale 時先準備
+  // 一組既有 0/1 slot 的替代候選；一般排程仍優先，只有沒有一般缺口，或
+  // 本請求優先處理的一般缺口全部未認領（ready／租約中／attempts 耗盡）
+  // 時才真的使用保底。所以 DB 每日兩格與 attempts 上限完全不變，也不會
+  // 把 100 位角色改成每天固定發文。
   const latestVisibleAt = posts.reduce<number | null>((latest, post) => {
     const postedAt = Date.parse(post.postedAt);
     return latest === null || postedAt > latest ? postedAt : latest;
@@ -397,8 +397,13 @@ export async function handlePracticeMoments(args: {
   const feedIsStale = latestVisibleAt === null ||
     now.getTime() - latestVisibleAt > MOMENT_FEED_FRESHNESS_MAX_AGE_MS;
 
+  const normalMissingKeys = new Set(
+    missing.map((item) =>
+      slotKey(item.girl.profileId, item.isoDate, item.plan.slot)
+    ),
+  );
   const freshnessCandidates: MissingSlot[] = [];
-  if (feedIsStale && missing.length === 0) {
+  if (feedIsStale) {
     const freshnessProfileIds = [...profileIds].sort((a, b) =>
       (unlockedAtByProfile.get(b) ?? 0) -
         (unlockedAtByProfile.get(a) ?? 0) ||
@@ -411,7 +416,10 @@ export async function handlePracticeMoments(args: {
       const girl = getPracticeGirlProfile(profileId);
       if (!girl) continue;
       for (let slot = 0; slot < MAX_MOMENT_SLOTS_PER_DAY; slot++) {
-        if (readySlots.has(slotKey(profileId, time.isoDate, slot))) continue;
+        const candidateKey = slotKey(profileId, time.isoDate, slot);
+        if (
+          readySlots.has(candidateKey) || normalMissingKeys.has(candidateKey)
+        ) continue;
         try {
           const slotPlan = momentFreshnessSlotFor({ girl, time, slot });
           const postedAt = momentPostedAtFor({
@@ -442,14 +450,6 @@ export async function handlePracticeMoments(args: {
           });
         }
       }
-    }
-    if (freshnessCandidates.length > 0) {
-      logInfo("practice_moments_freshness_fill", {
-        candidates: freshnessCandidates.length,
-        previousAgeMs: latestVisibleAt === null
-          ? null
-          : now.getTime() - latestVisibleAt,
-      });
     }
   }
 
@@ -511,18 +511,59 @@ export async function handlePracticeMoments(args: {
   const committedImageJobs: MomentImageJob[] = [];
   let attemptedCount = 0;
   const tasks: Promise<void>[] = [];
-  if (freshnessCandidates.length > 0) {
+  const recordFilled = (item: MissingSlot, result: FillOneSlotResult) => {
+    if (result.kind !== "filled") return;
+    filled.push(result.post);
+    if (item.generatedImage) {
+      committedImageJobs.push({
+        profileId: item.girl.profileId,
+        isoDate: item.isoDate,
+        slot: item.plan.slot,
+      });
+    }
+  };
+  const tryFreshnessCandidates = async (
+    excludedKeys: ReadonlySet<string> = new Set<string>(),
+  ) => {
+    const candidates = freshnessCandidates
+      .filter((item) =>
+        !excludedKeys.has(
+          slotKey(item.girl.profileId, item.isoDate, item.plan.slot),
+        )
+      )
+      .slice(0, MOMENT_FILL_MAX_PER_REQUEST);
+    if (candidates.length === 0) return;
+    logInfo("practice_moments_freshness_fill", {
+      candidates: candidates.length,
+      previousAgeMs: latestVisibleAt === null
+        ? null
+        : now.getTime() - latestVisibleAt,
+    });
     // 保底候選是同一個「補一則」目標的替代格，不可平行打模型。依序 reserve：
     // 只有前一格未認領（已 ready、租約中或 attempts 耗盡）才改試下一格；
-    // 一旦真的認領，不論生成成敗都停止，避免一次保底燒多通模型。
+    // 一旦真的認領，不論生成成敗都停止，避免單一請求燒多通模型。
+    for (const item of candidates) {
+      attemptedCount += 1;
+      const result = await fillOneSlot({
+        supabase,
+        userId,
+        item,
+        deps,
+        deadlineAt,
+        isTestAccount,
+      });
+      if (result.kind === "unclaimed") continue;
+      recordFilled(item, result);
+      break;
+    }
+  };
+
+  if (missing.length > 0) {
+    const batch = missing.slice(0, MOMENT_FILL_MAX_PER_REQUEST);
+    attemptedCount = batch.length;
     tasks.push((async () => {
-      for (
-        const item of freshnessCandidates.slice(
-          0,
-          MOMENT_FILL_MAX_PER_REQUEST,
-        )
-      ) {
-        attemptedCount += 1;
+      let allUnclaimed = batch.length > 0;
+      const results = await Promise.allSettled(batch.map(async (item) => {
         const result = await fillOneSlot({
           supabase,
           userId,
@@ -531,40 +572,24 @@ export async function handlePracticeMoments(args: {
           deadlineAt,
           isTestAccount,
         });
-        if (result.kind === "unclaimed") continue;
-        if (result.kind === "filled") {
-          filled.push(result.post);
-          if (item.generatedImage) {
-            committedImageJobs.push({
-              profileId: item.girl.profileId,
-              isoDate: item.isoDate,
-              slot: item.plan.slot,
-            });
-          }
-        }
-        break;
+        // 不等其他平行任務：成功一則就立刻納入回應，保留原本的死線語義。
+        recordFilled(item, result);
+        if (result.kind !== "unclaimed") allUnclaimed = false;
+        return result;
+      }));
+      if (results.some((outcome) => outcome.status === "rejected")) {
+        allUnclaimed = false;
       }
+      if (!feedIsStale || !allUnclaimed) return;
+      const attemptedKeys = new Set(
+        batch.map((item) =>
+          slotKey(item.girl.profileId, item.isoDate, item.plan.slot)
+        ),
+      );
+      await tryFreshnessCandidates(attemptedKeys);
     })());
-  } else {
-    const batch = missing.slice(0, MOMENT_FILL_MAX_PER_REQUEST);
-    attemptedCount = batch.length;
-    tasks.push(
-      ...batch.map((item) =>
-        fillOneSlot({ supabase, userId, item, deps, deadlineAt, isTestAccount })
-          .then((result) => {
-            if (result.kind === "filled") {
-              filled.push(result.post);
-              if (item.generatedImage) {
-                committedImageJobs.push({
-                  profileId: item.girl.profileId,
-                  isoDate: item.isoDate,
-                  slot: item.plan.slot,
-                });
-              }
-            }
-          })
-      ),
-    );
+  } else if (freshnessCandidates.length > 0) {
+    tasks.push(tryFreshnessCandidates());
   }
 
   // 8. 死線：到點就不等。未完成的列留著 token，由租約逾時或下次請求接手。

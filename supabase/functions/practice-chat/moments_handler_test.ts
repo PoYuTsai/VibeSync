@@ -422,6 +422,44 @@ Deno.test("24 小時保底第一格未認領 → 依序改試第二格且只打�
   assertEquals(body(result).generatedCount, 1);
 });
 
+Deno.test("一般 due slot 已耗盡且 feed stale → 改試另一格保底並只打一通模型", async () => {
+  const queenieId = "practice_girl_094";
+  const harness = makeHarness({
+    unlocked: [{ profileId: queenieId }],
+    existing: [{
+      profile_id: queenieId,
+      post_date: "2026-08-20",
+      slot: 0,
+      day_part: "morning",
+      theme_id: "coffee_start",
+      body: VALID_BODY,
+      image_id: null,
+      created_at: "2026-08-19T23:05:00.000Z",
+    }],
+    planFor: ({ girl, time }) => ({
+      profileId: girl.profileId,
+      isoDate: time.isoDate,
+      slots: [momentFreshnessSlotFor({ girl, time, slot: 0 })],
+    }),
+    reserve: (_params, index) =>
+      index === 0
+        ? { claimed: false, token: null, attempt_count: 3 }
+        : { claimed: true, token: "token-freshness", attempt_count: 1 },
+  });
+
+  const result = await run(harness, { now: END_OF_DAY });
+  const reserveCalls = harness.rpcCalls.filter((call) =>
+    call.fn === "reserve_practice_moment_slot"
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(reserveCalls.length, 2);
+  assertEquals(reserveCalls[0].params.p_slot, 0);
+  assertEquals(reserveCalls[1].params.p_slot, 1);
+  assertEquals(harness.modelCalls.length, 1);
+  assertEquals(body(result).generatedCount, 1);
+});
+
 Deno.test("24 小時保底已認領但生成失敗 → 不再改試下一格燒第二通模型", async () => {
   const queenieId = "practice_girl_094";
   const harness = makeHarness({
