@@ -25,7 +25,8 @@ const PROFILE_ID = "practice_girl_001";
 const LATE_NIGHT = new Date("2026-08-25T15:00:00.000Z");
 const ISO_DATE = taipeiTimeContextFor(LATE_NIGHT).isoDate;
 const VALID_BODY = "下班路上的天色好到讓人想多走一站再慢慢回家";
-const FAL_URL = "https://fal.run/fal-ai/flux/schnell";
+const FAL_URL =
+  "https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image";
 
 interface FlowHarness {
   supabase: MomentsSupabaseClient;
@@ -112,21 +113,18 @@ function makeFlowHarness(options: {
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            images: [{ url: "https://fal.media/x.jpeg" }],
-            has_nsfw_concepts: [false],
+            images: [{ url: "https://fal.media/x.png" }],
           }),
           { status: 200 },
         ),
       );
     }
-    const jpeg = new Uint8Array(20_000);
-    jpeg[0] = 0xFF;
-    jpeg[1] = 0xD8;
-    jpeg[2] = 0xFF;
+    const png = new Uint8Array(20_000);
+    png.set([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], 0);
     return Promise.resolve(
-      new Response(jpeg, {
+      new Response(png, {
         status: 200,
-        headers: { "content-type": "image/jpeg" },
+        headers: { "content-type": "image/png" },
       }),
     );
   }) as typeof globalThis.fetch;
@@ -238,7 +236,7 @@ Deno.test("開關開：候選清空、commit 標 pending、背景 job 生圖到 
   assert(rpcNames(harness).includes("claim_practice_moment_image"));
   assert(rpcNames(harness).includes("commit_practice_moment_image"));
   assertEquals(harness.falCalls, 1);
-  assertEquals(harness.uploads, [`${ISO_DATE}/${PROFILE_ID}_0_img-token.jpeg`]);
+  assertEquals(harness.uploads, [`${ISO_DATE}/${PROFILE_ID}_0_img-token.png`]);
 
   // 本回應的貼文 imageUrl 為 null（圖在背景生成中）。
   const posts = (result.body as { posts: { imageUrl: string | null }[] }).posts;
@@ -309,7 +307,7 @@ Deno.test("list 的 pending 列在零缺口請求上被接手", async () => {
 });
 
 Deno.test("ready 列組出 public imageUrl；其他狀態一律 null", async () => {
-  const path = `${ISO_DATE}/${PROFILE_ID}_0.jpeg`;
+  const path = `${ISO_DATE}/${PROFILE_ID}_0.png`;
   const harness = makeFlowHarness({
     slots: [],
     existing: [

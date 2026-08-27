@@ -80,7 +80,7 @@ export const MAX_MOMENT_IMAGE_ATTEMPTS = 2;
 
 /**
  * 生圖 job 租約。SQL: p_lease_seconds INTEGER DEFAULT 180。
- * 必須遠大於「fal 呼叫 30s＋下載＋上傳」的總預算，stale worker 與新 worker
+ * 必須遠大於「fal 呼叫 60s＋下載＋上傳」的總預算，stale worker 與新 worker
  * 同時上傳的競態才幾乎不可達（設計文件 §9）。
  */
 export const MOMENT_IMAGE_RESERVE_LEASE_MS = 180_000;
@@ -99,8 +99,15 @@ export const MOMENT_IMAGE_SWEEP_LIMIT = 20;
 /** 單一請求最多排幾個生圖背景 job（新 commit 與 pending 接手合計）。 */
 export const MOMENT_IMAGE_FILL_MAX_PER_REQUEST = 2;
 
-/** fal.ai 同步端點的 HTTP timeout。遠小於 180s 租約，競態才幾乎不可達。 */
-export const MOMENT_IMAGE_MODEL_TIMEOUT_MS = 30_000;
+/**
+ * fal.ai 同步端點的 HTTP timeout。
+ *
+ * Seedream 4.5 是完整模型（非 FLUX schnell 那種 4 步蒸餾），單張耗時是
+ * 十幾秒量級而不是一兩秒，30s 會偶爾誤判成 timeout 並燒掉一次 attempt。
+ * 60s 之下最壞預算鏈是 場景句 10s＋fal 60s＋下載 15s＋上傳 15s ＝ 100s，
+ * 仍遠低於 180s 租約與 DB 端在 180s 的 commit 硬擋。
+ */
+export const MOMENT_IMAGE_MODEL_TIMEOUT_MS = 60_000;
 
 /** 生成結果（provider CDN URL）的下載 timeout。 */
 export const MOMENT_IMAGE_DOWNLOAD_TIMEOUT_MS = 15_000;
@@ -109,13 +116,34 @@ export const MOMENT_IMAGE_DOWNLOAD_TIMEOUT_MS = 15_000;
 export const MOMENT_IMAGE_SCENE_TIMEOUT_MS = 10_000;
 
 /**
- * 黑圖保險：fal 的 safety checker 對不安全內容回「全黑圖的成功回應」，
- * 全黑 jpeg 遠小於正常場景圖。低於此值視為生成失敗（fal_image_too_small）。
+ * 黑圖保險：不安全或崩掉的生成常是一張近乎單色的圖，無損 PNG 壓縮後
+ * 遠小於正常場景圖。低於此值視為生成失敗（fal_image_too_small）。
  */
 export const MOMENT_IMAGE_MIN_BYTES = 10_000;
 
-/** 異常大檔上界（正常 1024×768 jpeg 約 100-300KB）。 */
-export const MOMENT_IMAGE_MAX_BYTES = 4_000_000;
+/**
+ * 異常大檔上界。Seedream 4.5 只出 **PNG（無損）**，官方範例的
+ * file_size 就是 4.4MB，1920×1440 的實景圖落在 4-8MB 很正常，
+ * 舊的 4MB 上限會把正常的圖當成異常擋掉。12MB 留足餘裕，同時仍能擋住
+ * 「回了一個完全不該是圖」的異常回應（整張都要進記憶體，不能無上限）。
+ */
+export const MOMENT_IMAGE_MAX_BYTES = 12_000_000;
+
+/**
+ * 生成尺寸：官方 enum preset。
+ *
+ * Seedream 4.5 的 custom size 規則是「兩軸皆在 1920-4096」**或**「總像素
+ * 落在 2560×1440 到 4096×4096」。先前自訂的 1920×1440 兩條都不滿足
+ * （高度低於 1920、總像素 2.76MP 低於 3.69MP 下限），會被供應商打回
+ * ——這是第一輪複審抓到的 P1。改用 enum：由 fal 自己映射到該模型的合法
+ * 尺寸，構造上不可能違規；代價是實際像素數未公開，所以檔案大小要靠
+ * MOMENT_IMAGE_MAX_BYTES 與 production log 的實測值來把關。
+ */
+export const MOMENT_IMAGE_SIZE_PRESET = "landscape_4_3";
+
+/** 生成圖的格式：Seedream 4.5 只出 PNG，沒有 output_format 參數可選。 */
+export const MOMENT_IMAGE_CONTENT_TYPE = "image/png";
+export const MOMENT_IMAGE_EXTENSION = "png";
 
 /** Storage bucket 名，與 migration 的 storage.buckets 列一致。 */
 export const MOMENT_IMAGE_BUCKET = "practice-moment-images";
@@ -134,8 +162,8 @@ export const MOMENT_IMAGE_ORPHAN_LEDGER_LIMIT = 20;
  *
  * 帳本在 claim 的同一筆交易裡記下「這個 token 路徑可能會有物件」，commit
  * 成功的同一筆交易再把它抹掉。清算只處理**寬限期之外**的紀錄——寬限期
- * 必須遠大於一個 job 的最壞 wall clock（場景 10s＋fal 30s＋下載 15s＋
- * 上傳 15s，且租約只有 180s），在跑的 job 才不可能被自己的清算刪掉。
+ * 必須遠大於一個 job 的最壞 wall clock（場景 10s＋fal 60s＋下載 15s＋
+ * 上傳 15s ＝ 100s，且租約只有 180s），在跑的 job 才不可能被自己的清算刪掉。
  */
 export const MOMENT_IMAGE_ORPHAN_GRACE_SECONDS = 600;
 

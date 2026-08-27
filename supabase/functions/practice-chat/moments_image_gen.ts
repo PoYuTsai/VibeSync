@@ -6,7 +6,8 @@
 //
 //   claim_practice_moment_image（token + 租約 + 同交易 per-user 限流）
 //   → 場景句（一次便宜 DeepSeek 呼叫；失敗退題材模板句）
-//   → fal.ai FLUX schnell（同步端點，1-4 步推理）
+//   → fal.ai Seedream 4.5（同步端點；2026-08-26 從 FLUX schnell 換過來，
+//     schnell 出的圖普遍是塑膠感／CG 感）
 //   → 下載 → 大小檢查（黑圖保險）→ Storage upsert（決定論 key）
 //   → commit_practice_moment_image（token fencing）
 //   任一步失敗 → release_practice_moment_image（attempts 燒完轉 'failed' 終態）
@@ -19,7 +20,7 @@
 // 純文字。場景句的「題材模板句」是**內部 prompt 的退路**，不是可見內容，
 // 不違反 no-canned（該鐵則管可見文字）。
 //
-// fal 的 FLUX schnell API **沒有 negative_prompt 參數**（guidance-distilled 模型）；
+// fal 的 Seedream 4.5 API **沒有 negative_prompt 參數**；
 // 素材規格書 NEGATIVE 清單的語義已折進 STYLE 前綴與每條場景句的措辭
 // （no people／no readable text／室內光），黑圖保險與試打驗收再兜底一層。
 import type { DeepSeekArgs } from "./deepseek.ts";
@@ -28,6 +29,9 @@ import { logInfo, logWarn } from "./logger.ts";
 import { MODEL_RATE_LIMITS } from "../_shared/model_rate_limit.ts";
 import {
   MAX_MOMENT_IMAGE_ATTEMPTS,
+  MOMENT_IMAGE_CONTENT_TYPE,
+  MOMENT_IMAGE_EXTENSION,
+  MOMENT_IMAGE_SIZE_PRESET,
   MOMENT_IMAGE_DOWNLOAD_TIMEOUT_MS,
   MOMENT_IMAGE_MAX_BYTES,
   MOMENT_IMAGE_MIN_BYTES,
@@ -94,11 +98,54 @@ function isAllowedFalCdnUrl(raw: string): boolean {
     }
   })();
   if (uri === null || uri.protocol !== "https:") return false;
-  return uri.hostname === FAL_CDN_HOST ||
-    uri.hostname.endsWith(`.${FAL_CDN_HOST}`);
+  // 1. fal 自家 CDN：fal.media 與其子網域（實際回應見過 v3b.fal.media）。
+  if (
+    uri.hostname === FAL_CDN_HOST ||
+    uri.hostname.endsWith(`.${FAL_CDN_HOST}`)
+  ) {
+    return true;
+  }
+  // 2. fal 的 GCS bucket：官方 output 範例是
+  //    https://storage.googleapis.com/falserverless/...（第一輪複審 P1-2：
+  //    只放行 fal.media 會把供應商成功生成的圖擋掉）。**精確 host ＋ 該
+  //    bucket 的路徑前綴**兩個條件同時成立才放行——不是「放寬成任意
+  //    GCS 物件」，更不是任意外部 URL。URL 解析會正規化路徑，所以
+  //    /falserverless/../other 這種跳脫會落在別的前綴而被拒。
+  return uri.hostname === FAL_GCS_HOST &&
+    uri.pathname.startsWith(FAL_GCS_PATH_PREFIX);
 }
 
-const FAL_SCHNELL_ENDPOINT = "https://fal.run/fal-ai/flux/schnell";
+/** fal 託管輸出的 GCS bucket（官方 output 範例的 host 與路徑前綴）。 */
+const FAL_GCS_HOST = "storage.googleapis.com";
+const FAL_GCS_PATH_PREFIX = "/falserverless/";
+
+const FAL_IMAGE_ENDPOINT =
+  "https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image";
+
+/**
+ * Seedream 4.5 的 custom image_size 合法性（官方 schema 原文）：
+ * 「Width and height must be between 1920 and 4096, or total number of
+ * pixels must be between 2560*1440 and 4096*4096.」
+ *
+ * production 送的是 enum preset，不會走到這裡；這支函式存在的目的是把
+ * 規則寫成可執行的斷言，讓測試守住「日後有人改成自訂數字」的邊界
+ * （第一輪複審 P1-1 就是自訂數字兩條都不滿足）。
+ */
+export function isLegalSeedreamImageSize(
+  size: { width: number; height: number },
+): boolean {
+  const { width, height } = size;
+  if (!Number.isInteger(width) || !Number.isInteger(height)) return false;
+  const bothAxesInRange = width >= 1920 && width <= 4096 &&
+    height >= 1920 && height <= 4096;
+  const totalPixels = width * height;
+  const totalInRange = totalPixels >= 2560 * 1440 &&
+    totalPixels <= 4096 * 4096;
+  return bothAxesInRange || totalInRange;
+}
+
+/** PNG 檔頭：89 50 4E 47 0D 0A 1A 0A。 */
+const PNG_MAGIC = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] as const;
 
 // ── prompt 素材（字面沿用 docs/plans/2026-08-24-practice-moments-scene-image-prompts.md §4）──
 
@@ -353,7 +400,7 @@ export function momentImagePath(
   slot: number,
   imageToken: string,
 ): string {
-  return `${isoDate}/${profileId}_${slot}_${imageToken}.jpeg`;
+  return `${isoDate}/${profileId}_${slot}_${imageToken}.${MOMENT_IMAGE_EXTENSION}`;
 }
 
 /**
@@ -372,7 +419,7 @@ export function momentImageSeed(
 
 // ── fal.ai client（錯誤分類照 deepseek.ts 模板；provider body 不進錯誤訊息）──
 
-async function callFalSchnell(opts: {
+async function callFalImageModel(opts: {
   deps: MomentImageGenDeps;
   prompt: string;
   seed: number;
@@ -388,12 +435,11 @@ async function callFalSchnell(opts: {
   );
   let payload: {
     images?: { url?: unknown }[];
-    has_nsfw_concepts?: unknown;
   };
   try {
     let response: Response;
     try {
-      response = await doFetch(FAL_SCHNELL_ENDPOINT, {
+      response = await doFetch(FAL_IMAGE_ENDPOINT, {
         method: "POST",
         headers: {
           "Authorization": `Key ${deps.falApiKey}`,
@@ -401,9 +447,20 @@ async function callFalSchnell(opts: {
         },
         body: JSON.stringify({
           prompt,
-          image_size: "landscape_4_3",
+          // **用官方 enum，不要自己算數字**（第一輪複審 P1-1）：Seedream 4.5
+          // 的 custom size 規則是「兩軸皆在 1920-4096」**或**「總像素落在
+          // 2560×1440 到 4096×4096」，先前自訂的 1920×1440 兩條都不滿足
+          // （高度 1440 低於 1920、總像素 2.76MP 低於 3.69MP 下限），
+          // production 會被供應商打回。enum 由 fal 自己映射到該模型的合法
+          // 尺寸，構造上不可能違規；代價只是實際像素數未公開。
+          // isLegalSeedreamImageSize 把上面那條規則寫成程式，測試用它守住
+          // 「日後有人改回自訂數字」的邊界。
+          image_size: MOMENT_IMAGE_SIZE_PRESET,
           num_images: 1,
-          output_format: "jpeg",
+          // 一次生成最多回幾張。固定 1，避免付了多張的錢又只用一張。
+          max_images: 1,
+          // **安全鐵則：這個旗標永遠是 true。**（見下方 safety 註解；
+          // moments_image_gen_test.ts 有測試釘住它。）
           enable_safety_checker: true,
           seed,
         }),
@@ -433,16 +490,31 @@ async function callFalSchnell(opts: {
   } finally {
     clearTimeout(timer);
   }
-  // safety checker 結果 fail-closed（複審 blocking item 1）：只有明確回報
-  // 「第一張不是 NSFW」才放行；命中、欄位缺席或形狀不對，一律不下載、
-  // 不上傳、不 commit。形狀錯用獨立錯誤碼，供應商改 schema 時觀測得出來。
-  const nsfw = payload.has_nsfw_concepts;
-  if (!Array.isArray(nsfw) || typeof nsfw[0] !== "boolean") {
-    throw new Error("fal_image_safety_unverified");
-  }
-  if (nsfw[0] !== false) {
-    throw new Error("fal_image_nsfw");
-  }
+  // ## Safety 契約（2026-08-26 換 Seedream 4.5 時的**明確降級**，請複審注意）
+  //
+  // 換模型前的 FLUX schnell 回應帶 `has_nsfw_concepts` 逐張布林，舊版能做到
+  // 「只有明確回報 false 才放行」的 fail-closed 判定。**Seedream 4.5 的
+  // output schema 只有 `images` 與 `seed`，沒有任何 NSFW 欄位**（fal 官方
+  // OpenAPI 查證），因此那道逐張判定在這個模型上不存在，硬留著只會 100%
+  // 擋掉所有圖。
+  //
+  // 取代它的是三層：
+  // 1. **平台端 safety checker**：請求固定帶 `enable_safety_checker: true`
+  //    （schema 預設即為 true，關掉還需要帳號授權）。**但要說清楚它保證
+  //    到哪裡**：官方 schema 只保證這個檢查可以被啟用，**沒有**規定命中時
+  //    的回應形狀（HTTP error？空 images？黑圖？）。所以我們不依賴任何
+  //    特定的失敗形狀——不論回來的是錯誤碼、沒有 images、還是一張擋不住
+  //    的圖，都由既有路徑各自收斂（HTTP 錯誤 → fal_image_http_*；沒有
+  //    images → fal_image_empty；不是 PNG／太小 → 對應的 failureClass）。
+  //    我們**不能**宣稱「不合格的圖絕不會到我們手上」。
+  // 2. **輸入端硬約束**：prompt 前綴明文禁人物、禁可讀文字、禁品牌，且
+  //    場景句本身經 validateSceneLine 過濾（禁詞、ASCII、長度）。
+  // 3. **黑圖保險**：min-bytes 仍在（見 downloadImage）。
+  //
+  // 代價要說清楚：我們少了一個「供應商自己說這張有問題」的訊號，也少了
+  // fal_image_nsfw / fal_image_safety_unverified 這兩個觀測點，而剩下的
+  // 三層都不是逐張的內容判定。若日後換回有逐張判定的模型，把 fail-closed
+  // 那段加回來即是。
   const url = payload.images?.[0]?.url;
   if (typeof url !== "string" || url.length === 0) {
     throw new Error("fal_image_empty");
@@ -491,11 +563,12 @@ async function downloadImage(
       await response.text().catch(() => {});
       throw new Error("fal_image_download_failed");
     }
-    // MIME 驗證：**只收 image/jpeg**（第二輪複審 P2-3：我們指定
-    // output_format=jpeg，寫入的副檔名與 contentType 也是 jpeg，不收異類）。
+    // MIME 驗證：**只收 image/png**（第二輪複審 P2-3 的同一道守門；
+    // Seedream 4.5 沒有 output_format 參數、固定出 PNG，寫入的副檔名與
+    // contentType 也一起是 png，不收異類）。
     const contentType = (response.headers.get("content-type") ?? "")
       .split(";")[0].trim().toLowerCase();
-    if (contentType !== "image/jpeg") {
+    if (contentType !== MOMENT_IMAGE_CONTENT_TYPE) {
       await response.body?.cancel().catch(() => {});
       throw new Error("fal_image_bad_content_type");
     }
@@ -534,15 +607,16 @@ async function downloadImage(
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    // magic bytes：JPEG 必以 FF D8 FF 開頭——contentType header 可謊，
-    // 位元組不會。
+    // magic bytes：PNG 必以 89 50 4E 47 0D 0A 1A 0A 開頭——contentType
+    // header 可謊，位元組不會。
     if (
-      bytes.byteLength < 3 ||
-      bytes[0] !== 0xFF || bytes[1] !== 0xD8 || bytes[2] !== 0xFF
+      bytes.byteLength < PNG_MAGIC.length ||
+      PNG_MAGIC.some((byte, index) => bytes[index] !== byte)
     ) {
       throw new Error("fal_image_bad_magic");
     }
-    // 黑圖保險：safety checker 之外的第二層——全黑 jpeg 遠小於正常場景圖。
+    // 黑圖保險：平台端 safety checker 之外的第二層——近乎單色的圖無損
+    // 壓縮後遠小於正常場景圖。
     if (bytes.byteLength < MOMENT_IMAGE_MIN_BYTES) {
       throw new Error("fal_image_too_small");
     }
@@ -682,7 +756,7 @@ export async function generateMomentImage(opts: {
       body: claimedBody,
       themeId: claimedThemeId,
     })) ?? themeSceneLine(claimedThemeId);
-    const imageUrl = await callFalSchnell({
+    const imageUrl = await callFalImageModel({
       deps,
       prompt: buildImagePrompt(scene),
       seed: momentImageSeed(job.profileId, job.isoDate, job.slot, claimedAttempt),
@@ -690,7 +764,7 @@ export async function generateMomentImage(opts: {
     const bytes = await downloadImage(deps, imageUrl);
     try {
       uploadAttempted = true;
-      await uploadWithTimeout(deps, path, bytes, "image/jpeg");
+      await uploadWithTimeout(deps, path, bytes, MOMENT_IMAGE_CONTENT_TYPE);
       uploadedPath = path;
     } catch (e) {
       if (e instanceof Error && e.message === "fal_image_upload_timeout") throw e;
