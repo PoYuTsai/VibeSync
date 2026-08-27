@@ -124,16 +124,17 @@ export const MOMENT_IMAGE_DOWNLOAD_TIMEOUT_MS = 15_000;
 export const MOMENT_IMAGE_SCENE_TIMEOUT_MS = 10_000;
 
 /**
- * 黑圖保險：不安全或崩掉的生成常是一張近乎單色的圖，無損 PNG 壓縮後
- * 遠小於正常場景圖。低於此值視為生成失敗（fal_image_too_small）。
+ * 黑圖保險：不安全或崩掉的生成常是一張近乎單色的圖，不論 JPEG 或 PNG，
+ * 壓縮後都遠小於正常場景圖。低於此值視為生成失敗（fal_image_too_small）。
  */
 export const MOMENT_IMAGE_MIN_BYTES = 10_000;
 
 /**
- * 異常大檔上界。Seedream 4.5 只出 **PNG（無損）**，官方範例的
- * file_size 就是 4.4MB，1920×1440 的實景圖落在 4-8MB 很正常，
- * 舊的 4MB 上限會把正常的圖當成異常擋掉。12MB 留足餘裕，同時仍能擋住
- * 「回了一個完全不該是圖」的異常回應（整張都要進記憶體，不能無上限）。
+ * 異常大檔上界。格式由供應商決定（該模型無 `output_format`），2026-08-27
+ * canary 實測單張 JPEG 為 2.1MB；若哪天回的是無損 PNG 會再大上數倍，舊的
+ * 4MB 上限兩種情況都可能把正常的圖當成異常擋掉。12MB 對實測值留約 5.7 倍
+ * 餘裕，同時仍能擋住「回了一個完全不該是圖」的異常回應（整張都要進記憶
+ * 體，不能無上限）。
  */
 export const MOMENT_IMAGE_MAX_BYTES = 12_000_000;
 
@@ -149,9 +150,38 @@ export const MOMENT_IMAGE_MAX_BYTES = 12_000_000;
  */
 export const MOMENT_IMAGE_SIZE_PRESET = "landscape_4_3";
 
-/** 生成圖的格式：Seedream 4.5 只出 PNG，沒有 output_format 參數可選。 */
-export const MOMENT_IMAGE_CONTENT_TYPE = "image/png";
-export const MOMENT_IMAGE_EXTENSION = "png";
+/**
+ * 可接受的生成圖格式表：content type → magic bytes。
+ *
+ * FLUX 時代我們送 `output_format: "jpeg"`，格式是**我們指定的**，單一格式
+ * 的守門因此是正確的。Seedream 4.5 沒有 output_format 參數——格式由供應商
+ * 決定，而官方 schema 只給了一張 `.png` 的 example。把 example 當契約寫死
+ * 是這裡踩過的坑：canary 實測回的是 `.jpg`（2026-08-27，v3b.fal.media，
+ * 2.1MB），只收 PNG 會讓每一張真圖都被自己的守門擋掉。
+ *
+ * 所以受理集合的定義是「我們能原樣存、client 能原樣解的格式」，而不是
+ * 「文件說會回的格式」——供應商換編碼器不該讓功能整個停擺。寫入 Storage
+ * 的 contentType 一律由 magic bytes 推導（見 sniffImageContentType）：
+ * header 可謊，位元組不會。
+ */
+export const MOMENT_IMAGE_ACCEPTED_FORMATS = [
+  { contentType: "image/jpeg", magic: [0xFF, 0xD8, 0xFF] },
+  {
+    contentType: "image/png",
+    magic: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+  },
+] as const;
+
+/**
+ * 物件 key 的副檔名：**刻意保持格式中性**。
+ *
+ * key 必須在 claim 的同一個交易就寫進 orphan 帳本（早於下載），所以副檔名
+ * 在「知道實際格式」之前就已經固定，物理上不可能跟著回應變。與其寫死
+ * `.png` 讓 JPEG 物件掛著騙人的副檔名，不如中性到底：格式的唯一真相放在
+ * Storage 的 content_type metadata，public URL 照它出 header，瀏覽器與
+ * cached_network_image 都以此解碼，不看副檔名。
+ */
+export const MOMENT_IMAGE_EXTENSION = "img";
 
 /** Storage bucket 名，與 migration 的 storage.buckets 列一致。 */
 export const MOMENT_IMAGE_BUCKET = "practice-moment-images";

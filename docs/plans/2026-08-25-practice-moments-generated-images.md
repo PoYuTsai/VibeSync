@@ -48,7 +48,7 @@ Client 動態：貼文先以純文字出現；生圖 10 秒內完成，**下次�
 
 - **端點**：同步 `https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image`（另有 `queue.fal.run` 佇列制備用）。**同步 HTTP 即可**——生圖跑在 waitUntil 背景，使用者從不等它，所以模型變慢（schnell 的 1–2 秒 → Seedream 的十幾秒量級）對體感零影響，只需把 fal timeout 從 30s 放寬到 60s。
 - **認證**：header `Authorization: Key ${FAL_API_KEY}`。
-- **關鍵參數**：`image_size: "landscape_4_3"`（**官方 enum preset**）。custom size 的規則是「兩軸皆在 1920–4096」**或**「總像素落在 2560×1440 到 4096×4096」——第一版自訂的 1920×1440 兩條都不滿足（高度低於 1920、總像素 2.76MP 低於 3.69MP 下限），會被供應商打回，這是複審抓到的 P1。改用 enum 讓 fal 自己映射到合法尺寸，構造上不可能違規；代價是實際像素數未公開，檔案大小改由 12MB 上限與 production log 的實測值把關、`num_images: 1`＋`max_images: 1`、`seed`（**傳入 fnv1a slot 種子**）、`enable_safety_checker: true`（**安全鐵則，見 §9**）。**沒有 `output_format` 參數：Seedream 4.5 固定出 PNG。**
+- **關鍵參數**：`image_size: "landscape_4_3"`（**官方 enum preset**）。custom size 的規則是「兩軸皆在 1920–4096」**或**「總像素落在 2560×1440 到 4096×4096」——第一版自訂的 1920×1440 兩條都不滿足（高度低於 1920、總像素 2.76MP 低於 3.69MP 下限），會被供應商打回，這是複審抓到的 P1。改用 enum 讓 fal 自己映射到合法尺寸，構造上不可能違規；代價是實際像素數未公開，檔案大小改由 12MB 上限與 production log 的實測值把關、`num_images: 1`＋`max_images: 1`、`seed`（**傳入 fnv1a slot 種子**）、`enable_safety_checker: true`（**安全鐵則，見 §9**）。**沒有 `output_format` 參數：輸出格式由供應商決定，我們指定不了。** 官方 schema 的 example 給的是 `.png`／`image/png`，但 2026-08-27 的 canary 實測回的是 **JPEG**（`v3b.fal.media/....jpg`，2.1MB）——**example 不是契約**，這是第二輪複審後的實測修正（見 §5、§7）。
 - **輸出**：JSON 內 `images[].url` 指向 fal 的 CDN（暫時 URL）→ **Edge 下載後轉存 Supabase Storage**，client 永遠只拿我們自己的 URL。
 - **價格**：**$0.04/張**（fal 官方定價，與張數大小無關）→ 實測量（~11 張/天、~370 張/月含重試）約 **$13–15/月**。換模型前的 schnell 是 $0.0024/張、月費 < $1，也就是這次換模型讓成本上升約 16 倍——絕對金額仍小，但**算術上界**同步放大（見 §11）。
 - **換模型的彈性**：fal.ai 同站託管 FLUX 全系與 Qwen-Image 等開源模型——質感不滿意時**只換 model id 字串**，金流、金鑰、client 模組全部不動。這是選託管平台而非單一模型官方 API 的核心理由。
@@ -116,8 +116,8 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 ## 7. 儲存與傳遞
 
 - **Bucket**：`practice-moment-images`，**public**。內容是無人物 AI 場景圖、全域共用、零使用者資料；signed URL 會讓 URL 每次變動打爆 client 磁碟快取、且過期時間要另外對齊 14 天窗，得不償失。bucket 與 `storage.objects` policy（anon 唯讀、寫入 service_role only）進同一支 migration（`INSERT INTO storage.buckets ... ON CONFLICT DO NOTHING`）。
-- **物件 key（token 隔離，2026-08-25 第二輪複審 P1-1）**：`<post_date>/<profile_id>_<slot>_<image_token>.png`。每次認領寫**自己的**路徑、永不覆寫（upsert:false）——底層上傳收不到取消訊號，timeout 晚到的舊上傳在物理上碰不到 winner 的物件，也不可能在清理後重建 committed 物件；輸家（timeout 晚到完成、commit 被打回）**自刪**自己的物件——但自刪只是快路徑，**持久保證在孤兒帳本**（路徑在 claim 的同一筆交易就記下，見 §8），日期前綴對帳再兜一層。
-- **Edge 不做影像處理**：fal 直出 PNG（尺寸由 `landscape_4_3` preset 決定），下載後原樣上傳。黑圖保險見 §9。**代價要說清楚**：PNG 是無損格式，一張 1920×1440 的實景圖落在 4–8MB（fal 官方範例的 `file_size` 就是 4.4MB），是 schnell 時期 jpeg 的 20–40 倍。這同時推高穩態儲存與手機端流量，見 §8 的儲存估算與 §11 的待辦。
+- **物件 key（token 隔離，2026-08-25 第二輪複審 P1-1）**：`<post_date>/<profile_id>_<slot>_<image_token>.img`（副檔名**格式中性**：key 必須在 claim 的同一筆交易寫進孤兒帳本，早於下載，拿不到實際格式；格式的唯一真相放在 Storage 的 `content_type` metadata，public URL 照它出 header，瀏覽器與 `cached_network_image` 都以此解碼、不看副檔名）。每次認領寫**自己的**路徑、永不覆寫（upsert:false）——底層上傳收不到取消訊號，timeout 晚到的舊上傳在物理上碰不到 winner 的物件，也不可能在清理後重建 committed 物件；輸家（timeout 晚到完成、commit 被打回）**自刪**自己的物件——但自刪只是快路徑，**持久保證在孤兒帳本**（路徑在 claim 的同一筆交易就記下，見 §8），日期前綴對帳再兜一層。
+- **Edge 不做影像處理**：fal 直出（尺寸由 `landscape_4_3` preset 決定），下載後**原格式**上傳。黑圖保險見 §9。**格式契約**：Seedream 4.5 沒有 `output_format`，格式是供應商的選擇而不是我們的參數，所以受理集合的定義是「我們能原樣存、client 能原樣解」而不是「文件 example 給的那一種」——**JPEG 與 PNG 皆收**，寫入 Storage 的 `contentType` 一律由 **magic bytes 推導**（header 是 CDN 說了算的字串，位元組才是我們真的存下去的東西；兩者不一致時以位元組為準，才能保證 public URL 出的 header 與物件內容相符）。2026-08-27 canary 實測：JPEG、2.1MB，比 schnell 時期的 jpeg 大但遠低於先前依 example 推估的 PNG 4–8MB。
 - **API 回傳**：`MomentFeedPost` 加 `imageUrl: string | null`——僅 `image_status='ready'` 時由 `SUPABASE_URL`＋path 組出。`imageId` 欄位語義不變（自拍 sentinel 與 bundled fallback 續用）。
 - **向前相容（已驗證）**：`practice_moment_post.dart` 的 fromJson 只讀已知鍵，未知鍵直接忽略；生成圖貼文的 `imageId` 為 null → 舊 client 走「null＝純文字」主路徑。零風險。
 
@@ -139,9 +139,9 @@ CREATE INDEX practice_moment_posts_image_expiry_idx
 | 帳本清算 | **寫過但沒人引用**的圖 | `list_practice_moment_image_orphans(LIMIT 20, 寬限 600s；DB 端夾住下限 ≥180s)` → `storage.remove` → `clear_practice_moment_image_orphans` |
 | prefix 對帳 | 連帳本都沒有的殘留（帳本上線前的物件、人工上傳） | 找**最舊的出窗日期資料夾** → 分頁列出並刪除 |
 
-穩態儲存 ≈ 14 天 × 11 張 × ~6MB ≈ **900MB**（換 Seedream 前是 ~23MB；差異全部來自 PNG 無損）。零流量期的積壓有界，下次有人開 feed 分批消化。
+穩態儲存 ≈ 14 天 × 11 張 × ~2.1MB ≈ **320MB**（依 2026-08-27 canary 實測的單張大小；換 Seedream 前的 schnell 時期是 ~23MB。先前依官方 example 推估的 ~900MB 是把 PNG example 當契約算出來的，實測後作廢）。零流量期的積壓有界，下次有人開 feed 分批消化。
 
-**待辦（換模型後新增）**：手機端逐張下載 4–8MB 的 PNG 不合理。建議之後改用 Supabase Storage 的影像轉換端點（`/storage/v1/render/image/public/...?width=&quality=`）出圖——只需改 `storagePublicUrlBase` 一個地方，client 不用動；但那是付費方案功能，啟用前要先確認方案支援，否則圖會 400 變成純文字降級。先看 production 的 `practice_moment_image_committed` log 裡的實際 `bytes` 再決定。
+**待辦（換模型後新增，實測後降級為「觀察」）**：單張 2.1MB 在手機端仍偏重（一屏數張就是十幾 MB），但已不是先前推估 4–8MB 那種必須立刻處理的量級。建議之後改用 Supabase Storage 的影像轉換端點（`/storage/v1/render/image/public/...?width=&quality=`）出圖——只需改 `storagePublicUrlBase` 一個地方，client 不用動；但那是付費方案功能，啟用前要先確認方案支援，否則圖會 400 變成純文字降級。先看 production 的 `practice_moment_image_committed` log 裡的實際 `bytes` 再決定。
 
 **清理競態圍籬（2026-08-25 複審 blocking item 3，migration `20260825150000`；第三輪修訂）**：出窗判定的 cutoff **由 DB 自己以當下 `now()` 計算**（`(now() AT TIME ZONE INTERVAL '8 hours')::date - 13`，13 = `FEED_WINDOW_DAYS - 1`），claim／commit／release 三支各自內建，**不吃呼叫端傳入的日期**——早期版本的 `p_expiry_before` 參數已移除，因為 request 開始時算的日期跨過台北午夜就失效。於是：出窗的列在資料層永遠不可再認領（殘留的出窗 pending 順手收成 failed 終態）；慢 worker 的晚到 commit 即使 token 有效也被拒並收屍；跨午夜的失敗 release 直接收成 failed 而不是放回 pending。「list → 刪物件 → mark」窗口內，出窗列的 image 欄位組只有 mark 自己能動，「列被新生成取代、清理誤刪新圖」在構造上不可達；競態測試在 `moments_images_migration_postgres_test.ts` 逐向驗證。
 
@@ -169,7 +169,7 @@ commit → image_orphan_paths -= <token 路徑>   （成功的同一交易）
   2. **輸入端硬約束**：STYLE 前綴明文禁人物／禁可讀文字／禁品牌，場景句另經 `validateSceneLine`（禁詞、ASCII、長度）。
   3. **黑圖保險**：bytes < 10KB 視為失敗。
   代價：少了逐張的供應商判定訊號，也少了 `fal_image_nsfw`／`fal_image_safety_unverified` 兩個觀測點，且剩下三層都不是逐張的內容判定。換回有逐張判定的模型時，把 fail-closed 那段加回來即可。
-- **下載／上傳完整邊界（blocking item 2；第三輪同步）**：結果 URL 必須是 https，且 host 屬 `fal.media`／其子網域，**或**精確等於 `storage.googleapis.com` 且路徑以 `/falserverless/` 開頭（fal 官方 output 範例就是後者；只放行「精確 host ＋ 該 bucket 路徑前綴」，不是任意 GCS 物件、更不是任意外部 URL）；兩個 fetch 均 `redirect: "error"`＋response.url 最終 host 縱深驗證；timeout 計時器涵蓋**完整 response body**（懸掛的 JSON 與圖片串流都會被 abort）；Content-Type **僅收 image/png**（與寫入副檔名、contentType 一致）＋ PNG magic bytes（89 50 4E 47 0D 0A 1A 0A）驗證；大小硬上限兩層——Content-Length 預檢＋流式累計硬擋（上限 12MB，容納 PNG 無損）；上傳獨立 timeout（底層不可取消，安全性由 token 隔離路徑＋輸家自刪＋出窗 prefix 孤兒對帳保證）。任何異常回應都不落入記憶體、不拖 Edge。
+- **下載／上傳完整邊界（blocking item 2；第三輪同步）**：結果 URL 必須是 https，且 host 屬 `fal.media`／其子網域，**或**精確等於 `storage.googleapis.com` 且路徑以 `/falserverless/` 開頭（fal 官方 output 範例就是後者；只放行「精確 host ＋ 該 bucket 路徑前綴」，不是任意 GCS 物件、更不是任意外部 URL）；兩個 fetch 均 `redirect: "error"`＋response.url 最終 host 縱深驗證；timeout 計時器涵蓋**完整 response body**（懸掛的 JSON 與圖片串流都會被 abort）；Content-Type 只視為可能標錯的 CDN metadata，**不得在讀取 bytes 前否決候選**；真正決定寫入格式的是 magic bytes（JPEG `FF D8 FF`／PNG `89 50 4E 47 0D 0A 1A 0A`），認不得的 HTML／JSON 等回應一律以 `fal_image_bad_magic` 拒收，認得就以位元組推導出來的型別作為上傳 `contentType`；大小硬上限兩層——Content-Length 預檢＋流式累計硬擋（上限 12MB，對實測 2.1MB 有 ~5.7 倍餘裕）；上傳獨立 timeout（底層不可取消，安全性由 token 隔離路徑＋輸家自刪＋出窗 prefix 孤兒對帳保證）。異常回應的讀取仍受 15s timeout 與 12MB 硬上限約束，不會無界拖住 Edge。
 - **自拍貼文維持圖鑑照片，不生成**：人臉一致性做不到＋原設計 §7.4「不得生成像真實人物的新圖」（App Review 肖像風險）。候選收斂後只剩 `moment_self_portrait` 的 slot 不進生圖分支。
 - **Kill switch**：`MOMENT_IMAGE_GEN_ENABLED`（getEnv 閘門，照 `PRACTICE_HINT_PREFETCH_ENABLED` 範式，handler.ts:2142）。**關閉或缺 `FAL_API_KEY` 時退回現行 20 張 bundled 素材路徑**——bundled 路徑已上線已驗收，保住「兩種貼文型態」；因此 20 張素材長期保留，`test/lint/moments_scene_asset_parity_test.dart` 三方對帳一行不用改。
 - **timeout < lease**：fal 呼叫 60s＋下載 15s＋上傳 15s＋場景句 10s ＝ 最壞 100s ≪ image lease 180s；而且這不只是「算得剛好」——超過 180s 的 commit 在資料層直接被拒（§8 租約邊界）。上傳競態不再倚賴機率——token 隔離路徑讓「同時上傳」寫的是不同物件，晚到者自刪（§7）。
@@ -205,7 +205,7 @@ class MomentRemoteImage extends MomentImageSource {
   - **沒有全站原子 daily cap**：上面的 400 是「固定參數下的算術上界」，不是資料層的原子計數器——沒有任何機制在達到它時停止呼叫。會改變這個上界的只有 allowlist 大小、每日 slots 與 attempts 上限三者；`IMAGE_PROBABILITY` 只影響平均產生幾張，**不動上界**。
   - **成長軸**：貼文與圖全域共用，全站量**不隨使用者數成長**。放大**上界**的只有角色 allowlist 大小（現 100）；放大**期望量**的是 `IMAGE_PROBABILITY`（現 0.2）。兩者的改動都屬 Eric 拍板項。
   - **需要真正的「達標即停」時**：加全站原子 daily cap RPC（新 migration），或在 fal.ai Dashboard 設 **spend cap** 當供應商側絕對托底——**建議啟用時順手設**，它是唯一與程式錯誤、參數誤調都無關的托底。
-  - 另每張一次 DeepSeek 場景句（~300 tokens，可忽略）；Storage 穩態 ~900MB（PNG 無損）＋egress 按觀看數（client 磁碟快取壓低；見 §8 的影像轉換待辦）。
+  - 另每張一次 DeepSeek 場景句（~300 tokens，可忽略）；Storage 穩態 ~320MB（實測單張 2.1MB）＋egress 按觀看數（client 磁碟快取壓低；見 §8 的影像轉換待辦）。
 - **四層防護（皆為風險緩解，非全站配額）**：DB CHECK（image_attempts ≤2，per-slot）× Edge 100 角色 allowlist × per-user scope `practice_moment_image: { perMinute: 3, perDay: 20 }` × kill switch。與文字路徑的差別在**種類而非有無**：文字的「全站 ≤600 次/日」與生圖的「每 post_date ≤400 次」都是同一種算術上界（allowlist × slots × attempts），兩者都不是資料層的原子每日配額；生圖側多一層機率擲骰，只讓期望值遠低於上界。真正的「達標即停」只有 fal Dashboard 的 spend cap。
 - **觀測**（logInfo/logWarn）：`practice_moment_image_claimed / committed / released / failed`（帶 failureClass: provider_timeout / safety_black / upload / describe / http_${status}）、`practice_moment_image_expired_swept`（deleted/marked 數）；`practice_moments_filled` 加 `imageJobsScheduled`。健康線：`failed` 佔圖文 slot > 10% 告警（比照文字路徑 exhausted > 5% 慣例）。
 - **錯誤分類命名**：照 `deepseek.ts` 模板——`fal_image_http_${status}` / `fal_image_timeout` / `fal_image_empty` / `fal_image_download_failed` / `fal_image_too_small`（黑圖保險）；provider response body 不進錯誤訊息。
@@ -233,7 +233,7 @@ class MomentRemoteImage extends MomentImageSource {
 1. **waitUntil 任務蒸發**（實例回收）→ pending 卡住。緩解：180s 租約接手自癒；觀測 pending 列齡。
 2. **fal 故障／safety 拒絕** → attempts 燒完轉 `'failed'` 純文字，無半成品落盤；failed 比例告警。
 3. **成本失控** → 四層緩解（§11）；固定參數下每 post_date ≤400 次 provider attempts，但**沒有達標即停的機制**，絕對托底建議用 fal Dashboard spend cap。
-4. **上傳競態** → token 隔離路徑（`<post_date>/<profile>_<slot>_<token>.png`）＋`upsert: false` **永不覆寫**＋輸家自刪：晚到上傳構造上碰不到 winner 物件。
+4. **上傳競態** → token 隔離路徑（`<post_date>/<profile>_<slot>_<token>.img`）＋`upsert: false` **永不覆寫**＋輸家自刪：晚到上傳構造上碰不到 winner 物件。
 5. **孤兒物件** → 路徑在 claim 的同一筆交易記進帳本，清算是可持久重試的閉環（§8）；帳本之外的殘留由「最舊出窗資料夾分頁排空」兜底，兩者都不依賴任何 Edge 實例活著。
 6. **質感不過驗收** → fal 同站換 model id 即可，架構不動（2026-08-26 已實際走過一次：schnell → Seedream 4.5）。但**不是只換一個字串**：safety 欄位、尺寸參數、輸出格式三個 schema 接點都要跟著改，漏一個的失敗樣態是「一張圖都生不出來」。成本表與儲存估算一併重算。
 7. **隱私回歸** → source test 禁 import 使用者資料型別，防後人把聊天內容餵進場景句。

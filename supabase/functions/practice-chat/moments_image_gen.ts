@@ -29,7 +29,7 @@ import { logInfo, logWarn } from "./logger.ts";
 import { MODEL_RATE_LIMITS } from "../_shared/model_rate_limit.ts";
 import {
   MAX_MOMENT_IMAGE_ATTEMPTS,
-  MOMENT_IMAGE_CONTENT_TYPE,
+  MOMENT_IMAGE_ACCEPTED_FORMATS,
   MOMENT_IMAGE_EXTENSION,
   MOMENT_IMAGE_SIZE_PRESET,
   MOMENT_IMAGE_DOWNLOAD_TIMEOUT_MS,
@@ -144,8 +144,24 @@ export function isLegalSeedreamImageSize(
   return bothAxesInRange || totalInRange;
 }
 
-/** PNG 檔頭：89 50 4E 47 0D 0A 1A 0A。 */
-const PNG_MAGIC = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] as const;
+/**
+ * 由 magic bytes 判定實際格式，回傳要寫進 Storage 的 contentType；認不得就
+ * 回 null（呼叫端據此拒收）。
+ *
+ * 存進去的 contentType 一律以**位元組**為準而不是回應 header：header 是
+ * 供應商 CDN 說了算的字串，位元組才是我們真的存下去的東西。兩者萬一不
+ * 一致，以位元組為準能保證 public URL 出的 header 與物件內容相符，
+ * client 永遠解得開。
+ */
+export function sniffImageContentType(bytes: Uint8Array): string | null {
+  for (const format of MOMENT_IMAGE_ACCEPTED_FORMATS) {
+    if (bytes.byteLength < format.magic.length) continue;
+    if (format.magic.every((byte, index) => bytes[index] === byte)) {
+      return format.contentType;
+    }
+  }
+  return null;
+}
 
 // ── prompt 素材（字面沿用 docs/plans/2026-08-24-practice-moments-scene-image-prompts.md §4）──
 
@@ -505,7 +521,8 @@ async function callFalImageModel(opts: {
   //    的回應形狀（HTTP error？空 images？黑圖？）。所以我們不依賴任何
   //    特定的失敗形狀——不論回來的是錯誤碼、沒有 images、還是一張擋不住
   //    的圖，都由既有路徑各自收斂（HTTP 錯誤 → fal_image_http_*；沒有
-  //    images → fal_image_empty；不是 PNG／太小 → 對應的 failureClass）。
+  //    images → fal_image_empty；不是受理格式／太小 → 對應的
+  //    failureClass）。
   //    我們**不能**宣稱「不合格的圖絕不會到我們手上」。
   // 2. **輸入端硬約束**：prompt 前綴明文禁人物、禁可讀文字、禁品牌，且
   //    場景句本身經 validateSceneLine 過濾（禁詞、ASCII、長度）。
@@ -529,7 +546,7 @@ async function callFalImageModel(opts: {
 async function downloadImage(
   deps: MomentImageGenDeps,
   url: string,
-): Promise<Uint8Array> {
+): Promise<{ bytes: Uint8Array; contentType: string }> {
   const doFetch = deps.fetch ?? globalThis.fetch;
   const controller = new AbortController();
   // timer 涵蓋 headers ＋ 完整串流（第二輪複審 P1-2）：reader.read() 可能
@@ -563,15 +580,9 @@ async function downloadImage(
       await response.text().catch(() => {});
       throw new Error("fal_image_download_failed");
     }
-    // MIME 驗證：**只收 image/png**（第二輪複審 P2-3 的同一道守門；
-    // Seedream 4.5 沒有 output_format 參數、固定出 PNG，寫入的副檔名與
-    // contentType 也一起是 png，不收異類）。
-    const contentType = (response.headers.get("content-type") ?? "")
-      .split(";")[0].trim().toLowerCase();
-    if (contentType !== MOMENT_IMAGE_CONTENT_TYPE) {
-      await response.body?.cancel().catch(() => {});
-      throw new Error("fal_image_bad_content_type");
-    }
+    // Content-Type 只是供應商 CDN 提供的 metadata，可能缺漏或標錯，不能在
+    // 讀取位元組前否決合法圖片。格式受理一律交給下方 magic bytes；錯誤頁與
+    // 錯誤 JSON 也會在同一道判定被拒，下載量則由 12MB 兩層上限硬擋。
     // 大小硬上限做兩層：Content-Length 預檢（省流量），再流式累計硬擋
     // （header 可缺可謊，不能只信 header）。異常大回應不落入記憶體。
     const declaredLength = Number(response.headers.get("content-length") ?? "");
@@ -607,20 +618,18 @@ async function downloadImage(
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    // magic bytes：PNG 必以 89 50 4E 47 0D 0A 1A 0A 開頭——contentType
-    // header 可謊，位元組不會。
-    if (
-      bytes.byteLength < PNG_MAGIC.length ||
-      PNG_MAGIC.some((byte, index) => bytes[index] !== byte)
-    ) {
+    // magic bytes：header 可謊，位元組不會。認不得檔頭就拒收；認得就以
+    // **位元組推導出來的**型別作為寫入 Storage 的 contentType。
+    const sniffed = sniffImageContentType(bytes);
+    if (!sniffed) {
       throw new Error("fal_image_bad_magic");
     }
-    // 黑圖保險：平台端 safety checker 之外的第二層——近乎單色的圖無損
-    // 壓縮後遠小於正常場景圖。
+    // 黑圖保險：平台端 safety checker 之外的第二層——近乎單色的圖不論
+    // JPEG 或 PNG，壓縮後都遠小於正常場景圖。
     if (bytes.byteLength < MOMENT_IMAGE_MIN_BYTES) {
       throw new Error("fal_image_too_small");
     }
-    return bytes;
+    return { bytes, contentType: sniffed };
   } finally {
     clearTimeout(timer);
   }
@@ -761,10 +770,10 @@ export async function generateMomentImage(opts: {
       prompt: buildImagePrompt(scene),
       seed: momentImageSeed(job.profileId, job.isoDate, job.slot, claimedAttempt),
     });
-    const bytes = await downloadImage(deps, imageUrl);
+    const { bytes, contentType } = await downloadImage(deps, imageUrl);
     try {
       uploadAttempted = true;
-      await uploadWithTimeout(deps, path, bytes, MOMENT_IMAGE_CONTENT_TYPE);
+      await uploadWithTimeout(deps, path, bytes, contentType);
       uploadedPath = path;
     } catch (e) {
       if (e instanceof Error && e.message === "fal_image_upload_timeout") throw e;
