@@ -87,3 +87,7 @@ Deno.test("slot-state RPC 最終只授權 service_role", () => {
     false,
   );
 });
+
+Deno.test("slot-state migration 最後要求 PostgREST 重載 schema cache", () => {
+  assert(executable.includes("NOTIFY pgrst, 'reload schema';"));
+});

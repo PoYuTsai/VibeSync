@@ -82,3 +82,5 @@ COMMENT ON FUNCTION public.list_practice_moment_slot_states(
   TEXT[], DATE, INTEGER, INTEGER
 ) IS
   'Service-role-only read hint for freshness fill. Atomic reserve remains authoritative.';
+
+NOTIFY pgrst, 'reload schema';
