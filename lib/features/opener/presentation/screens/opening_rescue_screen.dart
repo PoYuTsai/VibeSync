@@ -38,6 +38,15 @@ import '../../../../core/services/app_haptics.dart';
 /// `?mode=new_topic` 只決定初始 tab；頁內切換不改 route。
 enum OpeningRescueMode { opener, newTopic }
 
+/// 「她回覆了，開始分析對話」按下後對導航堆疊做的事。
+enum OpenerHandoffNavigation {
+  /// 回到堆疊下面那張既有的對象卡（開場救星退出堆疊，不新增任何頁）。
+  popToBoundPartner,
+
+  /// 用 handoff 目的地取代開場救星本身（開場救星不留在返回路徑上）。
+  replaceWithHandoff,
+}
+
 class OpeningRescueScreen extends ConsumerStatefulWidget {
   const OpeningRescueScreen({
     super.key,
@@ -73,6 +82,44 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
       return '/partner/new';
     }
     return '/partner/$trimmed';
+  }
+
+  /// CTA 的導航動作。目的地網址只講「去哪」，這裡講的是「堆疊要變成什麼」——
+  /// 兩個入口要的結果不同，用同一個 push 會留下錯的返回路徑（Eric-AI
+  /// 2026-08-26 複審 #39 退回項 1、2）。
+  ///
+  /// - 已綁定對象（PartnerDetail → 分析新片段 → 開場救星）：那張對象卡就在
+  ///   堆疊下面，pop 回去即可；再 push 一次會疊出第二張一模一樣的卡，按返回
+  ///   還會看到開場救星。深連結直開 `/opener?partnerId=` 時沒得 pop，退回
+  ///   pushReplacement。
+  /// - 未綁定對象：pushReplacement 讓開場救星退出堆疊。AddPartnerScreen 建立
+  ///   成功後自己 pushReplacement 到 `/partner/:id`，於是新對象卡下面是首頁，
+  ///   按返回回首頁而不是又回到開場救星。
+  static OpenerHandoffNavigation handoffNavigationFor({
+    required String? partnerId,
+    required bool canPop,
+  }) {
+    final trimmed = partnerId?.trim();
+    final isBound = trimmed != null && trimmed.isNotEmpty;
+    return isBound && canPop
+        ? OpenerHandoffNavigation.popToBoundPartner
+        : OpenerHandoffNavigation.replaceWithHandoff;
+  }
+
+  /// 執行 [handoffNavigationFor] 決定的導航。CTA 只呼叫這一個入口，
+  /// 導航語意才有單一測得到的來源。
+  static void navigateToHandoff(BuildContext context, {String? partnerId}) {
+    final router = GoRouter.of(context);
+    final navigation = handoffNavigationFor(
+      partnerId: partnerId,
+      canPop: router.canPop(),
+    );
+    switch (navigation) {
+      case OpenerHandoffNavigation.popToBoundPartner:
+        router.pop();
+      case OpenerHandoffNavigation.replaceWithHandoff:
+        router.pushReplacement(handoffLocationFor(partnerId: partnerId));
+    }
   }
 
   static bool canStartGeneration({
@@ -442,11 +489,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         _resultCacheService.loadDraftsForScope(partnerId: widget.partnerId);
   }
 
-  OpenerResult _resultForCurrentAccess(OpenerResult result) {
-    final subscription = ref.read(subscriptionProvider);
-    return result.visibleForAccess(isFreeUser: !subscription.isPremium);
-  }
-
   /// 只在草稿上蓋「已接續」章；開場白不再自動帶進下一頁（「接續開場」頁已移除），
   /// 所以這裡不需要再寫 latest 槽位。
   Future<void> _markDraftContinuedForHandoff() async {
@@ -461,17 +503,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     }
   }
 
-  Future<void> _openDraft(OpenerDraft draft) async {
-    try {
-      if ((draft.partnerId ?? '').trim().isEmpty) {
-        await _resultCacheService.saveLatest(
-          _resultForCurrentAccess(draft.result),
-        );
-      }
-    } catch (_) {
-      // Best effort only; the visible result is still useful.
-    }
-
+  /// 回看草稿。不再寫 latest 槽位——那個槽位只服務已移除的「接續開場」帶入，
+  /// 留著只是讓回看多做一次沒人讀的磁碟寫入。
+  void _openDraft(OpenerDraft draft) {
     _suppressInputClear = true;
     _nameController.clear();
     _bioController.clear();
@@ -1460,13 +1494,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           BrandPrimaryButton(
             label: '她回覆了，開始分析對話',
             icon: Icons.add_comment_outlined,
-            onPressed: () async {
-              await _markDraftContinuedForHandoff();
-              if (!mounted) return;
-              setState(_reloadDrafts);
-              context.push(OpeningRescueScreen.handoffLocationFor(
+            onPressed: () {
+              // 蓋「已接續」章是本機 bookkeeping，不擋導航：這一頁本來就會
+              // 離開堆疊（pop 或 replace），等一次磁碟寫入只是讓轉場變慢，
+              // 也讓導航行為變成無法在 widget test 裡驗證的非同步路徑。
+              unawaited(_markDraftContinuedForHandoff());
+              OpeningRescueScreen.navigateToHandoff(
+                context,
                 partnerId: widget.partnerId,
-              ));
+              );
             },
           ),
           const SizedBox(height: 8),
