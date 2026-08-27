@@ -22,6 +22,8 @@ import 'package:flutter_test/flutter_test.dart';
 const _screenPath =
     'lib/features/opener/presentation/screens/opening_rescue_screen.dart';
 const _ctaLabel = "label: '她回覆了，開始分析對話'";
+const _navSignature =
+    'static void navigateToHandoff(BuildContext context, {String? partnerId})';
 
 /// CTA 的 label 與 onPressed 相鄰；給足含註解的行距，但不到整個 build 方法。
 const _onPressedWindow = 900;
@@ -66,35 +68,52 @@ void main() {
     );
   });
 
-  test('沒有任何地方把 handoffLocationFor 的結果直接 push', () {
-    for (final banned in const [
-      'push(OpeningRescueScreen.handoffLocationFor',
-      'push(handoffLocationFor',
-    ]) {
-      expect(
-        source.contains(banned),
-        isFalse,
-        reason: '$banned 是複審退回的舊寫法：已綁定對象會疊出第二張相同的卡，'
-            '未綁定則把開場救星留在返回路徑上。目的地網址請交給 '
-            'navigateToHandoff 決定堆疊怎麼變。',
-      );
+  test('handoffLocationFor 只能由 navigateToHandoff 使用', () {
+    // 第一輪的錯寫法是 CTA 自己 `context.push(handoffLocationFor(...))`：
+    // 那等於讓「去哪」順便決定了「堆疊怎麼變」，而堆疊怎麼變要看入口是誰。
+    // 現在只有 navigateToHandoff 可以拿這個網址去導航。
+    final navStart = source.indexOf(_navSignature);
+    expect(navStart, isNonNegative);
+    final navEnd = source.indexOf('\n  static ', navStart + 1);
+    expect(
+      navEnd,
+      greaterThan(navStart),
+      reason: '找不到 navigateToHandoff 的結尾（下一個 static 成員）。'
+          '檔案結構變了請同步本守門。',
+    );
+
+    const call = 'handoffLocationFor(';
+    const declarationPrefix = 'static String ';
+    final offenders = <String>[];
+    for (var i = source.indexOf(call); i >= 0; i = source.indexOf(call, i + 1)) {
+      final isDeclaration = i >= declarationPrefix.length &&
+          source.substring(i - declarationPrefix.length, i) ==
+              declarationPrefix;
+      if (isDeclaration) continue;
+      if (i > navStart && i < navEnd) continue;
+      offenders.add(source.substring(i, (i + 60).clamp(0, source.length)));
     }
+
+    expect(
+      offenders,
+      isEmpty,
+      reason: 'handoffLocationFor 只回答「去哪」，堆疊怎麼變由 navigateToHandoff '
+          '決定（先收回首頁再推一頁）。在別處直接拿它導航，就會回到複審退回的'
+          '狀態：分析頁／封存頁入口落在錯的頁，文章頁留在返回路徑上。'
+          '違規處：$offenders',
+    );
   });
 
   test('navigateToHandoff 仍是 OpeningRescueScreen 的靜態入口', () {
     expect(
-      source.contains(
-        'static void navigateToHandoff(BuildContext context, {String? partnerId})',
-      ),
+      source.contains(_navSignature),
       isTrue,
       reason: '簽名變了就更新本守門與 handoff 導航測試，不要讓守門空轉。',
     );
   });
 
   test('導航規則是「收回首頁再推一頁」，不是看誰在下面', () {
-    final start = source.indexOf(
-      'static void navigateToHandoff(BuildContext context, {String? partnerId})',
-    );
+    final start = source.indexOf(_navSignature);
     expect(start, isNonNegative);
     final body = source.substring(
       start,
