@@ -192,10 +192,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
         iconTheme: const IconThemeData(
           color: AppColors.onBackgroundPrimary,
         ),
-        title: Text(
-          partner.name,
-          style: const TextStyle(color: AppColors.onBackgroundPrimary),
-        ),
+        title: Text(partner.name, style: AppTypography.appBarTitle),
         actions: [
           AnalysisRecordsEntryButton(
             key: const ValueKey('partner-analysis-records-entry'),
@@ -527,10 +524,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
           },
         ),
         iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
-        title: Text(
-          partner.name,
-          style: const TextStyle(color: AppColors.onBackgroundPrimary),
-        ),
+        title: Text(partner.name, style: AppTypography.appBarTitle),
         actions: [
           AnalysisRecordsEntryButton(
             key: const ValueKey('partner-analysis-records-entry'),
