@@ -10,6 +10,20 @@
 
 ## 2026-08
 
+### [2026-08-27] 「新增對象」標題字體與其他頁不一致
+
+**Symptom**: 真機（iPhone）上「新增對象」頁的 AppBar 標題，字體看起來比其他頁大、細，跟全 App 的標題語彙不同。
+
+**Root Cause**: 該頁 AppBar 自己寫 `title: Text('新增對象', style: TextStyle(color: ...))`。`Text` 的 style 預設 `inherit: true`，只蓋掉顏色，字級／字重／字體家族仍繼承 AppBar 的預設 `titleTextStyle`。專案 `ThemeData` 從未設定 `AppBarTheme.titleTextStyle`，於是落回 Flutter 預設 `textTheme.titleLarge`——iOS 平台是 `Typography.whiteCupertino` 的 `.SF UI Display` **22 / w400**，而其他頁標題走 `brandAppBar` 的 **19 / w800**，其餘內文則是 `.SF UI Text`。同一個坑另外命中：對象詳情（兩處）、合併對象選擇、鍵盤設定、階段資產預覽（debug）。
+
+**Fix**: 新增唯一字級檔 `AppTypography.appBarTitle`（19 / w800 / 白字，family 留 null 以吃平台預設）；`AppTheme.darkTheme` 綁 `appBarTheme.titleTextStyle`，讓任何沒自帶 style 的 AppBar 都不再落回 Flutter 預設；`brandAppBar` 改用同一顆並開放 `toolbarHeight`；新增對象頁改走 `brandAppBar`（保留 48 高度，維持「一頁裝完」），對象詳情兩處標題改用同一顆。
+
+**Prevention**: `test/lint/app_bar_title_font_guard_test.dart` 守門兩件事——`AppBarTheme.titleTextStyle` 必須綁 `AppTypography.appBarTitle`；`lib/` 內 AppBar 的 `title` 不准手寫 `TextStyle(`（只蓋顏色、繼續繼承錯字體）。新增對象頁另有 widget 測試斷言標題字級／字重／family。
+
+**相關檔案**: `lib/core/theme/app_typography.dart`、`lib/core/theme/app_theme.dart`、`lib/shared/widgets/brand/brand_kit.dart`、`lib/features/partner/presentation/screens/add_partner_screen.dart`、`lib/features/partner/presentation/screens/partner_detail_screen.dart`。
+
+---
+
 ### [2026-08-13] 完整分析後端已完成，App 卻顯示無法再重試
 
 **Symptom**: 真機已顯示部分串流分析，稍後卻出現「無法再重試，請重新分析」；同一筆 production run 實際已是 `done`、`final_result_json` 已儲存、Claude 成功且額度已扣。

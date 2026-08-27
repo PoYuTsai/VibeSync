@@ -151,17 +151,9 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        toolbarHeight: _kToolbarHeight,
-        centerTitle: true,
-        title: const Text(
-          '新增對象',
-          style: TextStyle(color: AppColors.onBackgroundPrimary),
-        ),
-        iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
-      ),
+      // 走共用 brandAppBar：標題字體／字級／字重跟其他頁同一顆
+      // （自己寫 TextStyle 會掉回 iOS 預設 .SF UI Display 22/w400）。
+      appBar: brandAppBar(title: '新增對象', toolbarHeight: _kToolbarHeight),
       body: Stack(
         children: [
           const Positioned.fill(
