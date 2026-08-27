@@ -16,6 +16,19 @@ class AppColors {
   static const hot = Color(0xFFE57373);
   static const veryHot = Color(0xFFFF6B9D);
 
+  // 投入度光球（HeatOrb）的三顆銜接色。
+  //
+  // 五段光球的兩端直接用上面的 cold/frozen 與下面的 brandBlush/brandFlame，
+  // 但紫不能一步跳到橘——中間需要調和色，否則換段會看到色相硬切。這三顆是
+  // 為了那個過渡而存在的，不是既有色的重複，刪掉會讓色帶斷開。
+  //
+  // heatOrbLift 是 primaryLight 的提亮版（第 2 段內核）；heatOrbBridge 是
+  // 紫→粉的橋（第 4 段外暈）；heatOrbEmber 是第 5 段外圈刻意保留的紫暈——
+  // 燒到最熱時外圈仍要有紫透出來，純橘的球會變成一張貼紙。
+  static const heatOrbLift = Color(0xFFB9A9FF);
+  static const heatOrbBridge = Color(0xFFB274E2);
+  static const heatOrbEmber = Color(0xFFB06EEB);
+
   // Neutral
   static const background = Color(0xFF121212);
   static const surface = Color(0xFF1E1E1E);

@@ -31,6 +31,7 @@ import 'package:vibesync/features/user_profile/data/repositories/partner_style_r
 import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 
+import '../../../helpers/motion_free_app.dart';
 import '_fakes/recording_conversation_write_controller.dart';
 import '_fakes/recording_partner_write_controller.dart';
 import '../../../helpers/memory_coach_chat_repository.dart';
@@ -225,7 +226,7 @@ void main() {
         ),
         partnerListProvider.overrideWith((_) => [_p()]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -273,7 +274,7 @@ void main() {
         partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
         conversationWriteControllerProvider.overrideWith(() => fake),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -309,7 +310,7 @@ void main() {
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -351,7 +352,7 @@ void main() {
         partnerListProvider.overrideWith((_) => [_p()]),
         partnerWriteControllerProvider.overrideWith(() => fake),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -397,7 +398,7 @@ void main() {
         partnerListProvider.overrideWith((_) => [_p()]),
         partnerWriteControllerProvider.overrideWith(() => fake),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -432,7 +433,7 @@ void main() {
         partnerListProvider.overrideWith((_) => [_p()]),
         partnerWriteControllerProvider.overrideWith(() => fake),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -474,7 +475,7 @@ void main() {
         partnerListProvider.overrideWith((_) => [_p()]),
         partnerWriteControllerProvider.overrideWith(() => fake),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -517,7 +518,7 @@ void main() {
           (_) => [_p(customNote: '慢熱、喜歡戶外')],
         ),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -543,7 +544,7 @@ void main() {
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p()]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -588,7 +589,7 @@ void main() {
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: motionFreeRouterApp(routerConfig: router),
     ));
     await t.pumpAndSettle();
 
@@ -635,7 +636,7 @@ void main() {
           conversationsByPartnerProvider('p1')
               .overrideWith((_) => const <Conversation>[]),
         ],
-        child: MaterialApp.router(routerConfig: router),
+        child: motionFreeRouterApp(routerConfig: router),
       ));
       await t.pumpAndSettle();
 
@@ -664,7 +665,7 @@ void main() {
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -711,7 +712,7 @@ void main() {
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -741,8 +742,8 @@ void main() {
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
       ],
-      child: const MaterialApp(
-        home: PartnerDetailScreen(
+      child: motionFreeApp(
+        home: const PartnerDetailScreen(
           partnerId: 'p1',
           focusCoachFollowUp: true,
         ),
@@ -783,7 +784,7 @@ void main() {
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
     expect(find.textContaining('還沒有分析片段'), findsOneWidget);
@@ -808,7 +809,7 @@ void main() {
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => [_conv('a'), _conv('b')]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
     expect(find.byType(PartnerConversationTile), findsNWidgets(2),
@@ -838,7 +839,7 @@ void main() {
             .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1').overrideWith((_) => [_conv('a')]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -879,7 +880,7 @@ void main() {
             .overrideWith((_) => [attachedConv]),
         partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -936,7 +937,7 @@ void main() {
         partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
         conversationWriteControllerProvider.overrideWith(() => fake),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -976,7 +977,7 @@ void main() {
         conversationsByPartnerProvider('ghost')
             .overrideWith((_) => const <Conversation>[]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'ghost')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'ghost')),
     ));
     await t.pumpAndSettle();
     expect(find.textContaining('找不到對象'), findsOneWidget);
@@ -1011,7 +1012,7 @@ void main() {
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p()]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -1039,7 +1040,7 @@ void main() {
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p()]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -1085,7 +1086,7 @@ void main() {
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p()]),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
@@ -1153,7 +1154,7 @@ void main() {
       await t.pumpWidget(scope(
         fakeController: fake,
         conversations: [convNamed('c1', 'May')],
-        child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+        child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
       ));
       await t.pumpAndSettle();
 
@@ -1178,7 +1179,7 @@ void main() {
       await t.pumpWidget(scope(
         fakeController: fake,
         conversations: [convNamed('c1', 'May')],
-        child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+        child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
       ));
       await t.pumpAndSettle();
 
@@ -1208,7 +1209,7 @@ void main() {
           convNamed('c2', 'Anna'),
           convNamed('c3', 'May'),
         ],
-        child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+        child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
       ));
       await t.pumpAndSettle();
 
@@ -1240,7 +1241,7 @@ void main() {
           convNamed('c2', 'Anna'),
           convNamed('c3', 'Anna'),
         ],
-        child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+        child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
       ));
       await t.pumpAndSettle();
 
@@ -1271,7 +1272,7 @@ void main() {
       await t.pumpWidget(scope(
         fakeController: fake,
         conversations: [convNamed('c1', 'Anna')],
-        child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+        child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
       ));
       await t.pumpAndSettle();
 

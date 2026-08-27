@@ -29,6 +29,7 @@ import 'package:vibesync/features/user_profile/data/providers/partner_style_prov
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 
+import '../../../helpers/motion_free_app.dart';
 import '../../../helpers/memory_coach_chat_repository.dart';
 import '../../../helpers/memory_coaching_outcome_repository.dart';
 
@@ -115,8 +116,8 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: _overrides(List.generate(8, (i) => _conv(i))),
-      child: const MaterialApp(
-        home: PartnerDetailScreen(
+      child: motionFreeApp(
+        home: const PartnerDetailScreen(
           partnerId: 'p1',
           focusCoachFollowUp: true,
         ),
@@ -168,7 +169,7 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: _overrides(conversations),
-      child: MaterialApp.router(routerConfig: router),
+      child: motionFreeRouterApp(routerConfig: router),
     ));
     await t.pumpAndSettle();
 

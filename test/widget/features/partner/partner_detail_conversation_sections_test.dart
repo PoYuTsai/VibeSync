@@ -29,6 +29,7 @@ import 'package:vibesync/features/user_profile/data/providers/partner_style_prov
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 
+import '../../../helpers/motion_free_app.dart';
 import '_fakes/recording_conversation_write_controller.dart';
 import '../../../helpers/memory_coach_chat_repository.dart';
 
@@ -188,7 +189,7 @@ Widget _host(
             () => writeController,
           ),
       ],
-      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
     );
 
 void main() {

@@ -28,6 +28,7 @@ import 'package:vibesync/features/partner/presentation/screens/partner_detail_sc
 import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 
+import '../../helpers/motion_free_app.dart';
 import '../../helpers/memory_coach_chat_repository.dart';
 import '../../helpers/home_screen_overrides.dart';
 
@@ -82,7 +83,7 @@ void main() {
             ],
           ),
         ],
-        child: MaterialApp.router(routerConfig: router),
+        child: motionFreeRouterApp(routerConfig: router),
       ));
       await t.pumpAndSettle();
 
@@ -158,7 +159,7 @@ void main() {
           coachChatRepositoryProvider
               .overrideWithValue(MemoryCoachChatRepository()),
         ],
-        child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+        child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
       ));
       await t.pumpAndSettle();
 

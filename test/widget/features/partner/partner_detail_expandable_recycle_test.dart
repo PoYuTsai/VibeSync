@@ -21,6 +21,7 @@ import 'package:vibesync/features/user_profile/data/providers/partner_style_prov
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 
+import '../../../helpers/motion_free_app.dart';
 import '../../../helpers/memory_coach_chat_repository.dart';
 
 Partner _p() => Partner(
@@ -91,7 +92,7 @@ Future<void> _pumpScreen(WidgetTester t) async {
           .overrideWith((_) => List.generate(8, (i) => _conv('c$i'))),
       partnerListProvider.overrideWith((_) => [_p()]),
     ],
-    child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
   ));
   await t.pumpAndSettle();
 }
