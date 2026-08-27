@@ -34,6 +34,17 @@ class AppTypography {
     color: AppColors.textPrimary,
   );
 
+  /// 頁面標題（AppBar）唯一字級檔：19 / w800 / 白字。
+  /// 沒有指定時 Flutter 會落回 `textTheme.titleLarge`——那在 iOS 上是
+  /// `.SF UI Display` 22/w400，字體家族、字級、字重全部跟 App 其他頁不同
+  /// （2026-08-27 Eric 真機回報「新增對象」標題字體不一樣）。所以
+  /// AppBarTheme 與 brandAppBar 都綁這一顆，不要各自寫 TextStyle。
+  static const appBarTitle = TextStyle(
+    fontSize: 19,
+    fontWeight: FontWeight.w800,
+    color: AppColors.onBackgroundPrimary,
+  );
+
   static const titleMedium = TextStyle(
     fontSize: 15,
     fontWeight: FontWeight.w600,

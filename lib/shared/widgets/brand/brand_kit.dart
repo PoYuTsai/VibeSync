@@ -108,26 +108,25 @@ class BrandPageBackground extends StatelessWidget {
 }
 
 /// 透明 AppBar，配深色品牌背景使用。標題 w800 白字、白色返回鍵。
+/// 標題一律走 [AppTypography.appBarTitle]，跟 AppBarTheme 同一顆，
+/// 頁面不要自己寫 TextStyle（會掉回 iOS 的 .SF UI Display，字體不一致）。
+/// [toolbarHeight] 留給需要壓高度換版面的頁（例：新增對象要一頁裝完）。
 PreferredSizeWidget brandAppBar({
   required String title,
   List<Widget>? actions,
   Widget? leading,
   bool centerTitle = true,
+  double? toolbarHeight,
 }) {
   return AppBar(
     backgroundColor: Colors.transparent,
     elevation: 0,
     centerTitle: centerTitle,
+    toolbarHeight: toolbarHeight,
     leading: leading,
     actions: actions,
     iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
-    title: Text(
-      title,
-      style: AppTypography.titleLarge.copyWith(
-        color: AppColors.onBackgroundPrimary,
-        fontWeight: FontWeight.w800,
-      ),
-    ),
+    title: Text(title, style: AppTypography.appBarTitle),
   );
 }
 

@@ -28,6 +28,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart';
 
+import 'package:vibesync/core/theme/app_typography.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
@@ -210,6 +211,31 @@ void main() {
       greaterThan(appBarBottom),
       reason: 'extendBodyBehindAppBar should only affect the background; '
           'the input must not sit underneath the transparent AppBar.',
+    );
+  });
+
+  // 2026-08-27 Eric 真機回報：這頁標題字體跟其他頁不一樣。原因是 AppBar
+  // 標題自己寫 TextStyle 只蓋掉顏色，字體家族／字級／字重仍落回 Flutter
+  // 預設 titleLarge（iOS = .SF UI Display 22/w400）。守門＝標題必須是共用
+  // 的 AppTypography.appBarTitle 檔（brandAppBar 提供）。
+  testWidgets('AppBar 標題走共用字級，不落回 Flutter 預設', (t) async {
+    await t.pumpWidget(harness());
+    await t.pumpAndSettle();
+
+    final title = t.widget<Text>(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.text('新增對象'),
+      ),
+    );
+
+    expect(title.style?.fontSize, AppTypography.appBarTitle.fontSize);
+    expect(title.style?.fontWeight, AppTypography.appBarTitle.fontWeight);
+    expect(title.style?.color, AppTypography.appBarTitle.color);
+    expect(
+      title.style?.fontFamily,
+      isNull,
+      reason: '字體家族要跟 App 其他文字一樣吃平台預設，不要指定 .SF UI Display',
     );
   });
 

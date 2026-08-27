@@ -1,6 +1,7 @@
 // lib/core/theme/app_theme.dart
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
+import 'app_typography.dart';
 
 class AppTheme {
   AppTheme._();
@@ -19,6 +20,11 @@ class AppTheme {
           backgroundColor: AppColors.background,
           elevation: 0,
           centerTitle: true,
+          // 沒有這行，任何沒自帶 style 的 AppBar 標題都會落回 Flutter 預設
+          // textTheme.titleLarge——iOS 上是 .SF UI Display 22/w400，跟全 App
+          // 其他文字的字體家族／字級／字重都不同（Eric 真機在「新增對象」
+          // 看到的就是這個）。統一綁 AppTypography.appBarTitle。
+          titleTextStyle: AppTypography.appBarTitle,
         ),
         cardTheme: CardThemeData(
           color: AppColors.surface,
