@@ -24,27 +24,27 @@ void main() {
       expect(heatOrbBandFor(null).name, 'distant');
     });
 
-    test('0–35 → distant（邊界 0 / 35）', () {
+    test('0–30 → distant（邊界 0 / 30）', () {
       expect(heatOrbBandFor(0).name, 'distant');
-      expect(heatOrbBandFor(18).name, 'distant');
-      expect(heatOrbBandFor(35).name, 'distant');
+      expect(heatOrbBandFor(15).name, 'distant');
+      expect(heatOrbBandFor(30).name, 'distant');
     });
 
-    test('36–50 → approaching（邊界 36 / 50）', () {
-      expect(heatOrbBandFor(36).name, 'approaching');
-      expect(heatOrbBandFor(43).name, 'approaching');
-      expect(heatOrbBandFor(50).name, 'approaching');
+    test('31–45 → approaching（邊界 31 / 45）', () {
+      expect(heatOrbBandFor(31).name, 'approaching');
+      expect(heatOrbBandFor(38).name, 'approaching');
+      expect(heatOrbBandFor(45).name, 'approaching');
     });
 
-    test('51–65 → responding（邊界 51 / 65）', () {
-      expect(heatOrbBandFor(51).name, 'responding');
-      expect(heatOrbBandFor(63).name, 'responding');
-      expect(heatOrbBandFor(65).name, 'responding');
+    test('46–60 → responding（邊界 46 / 60）', () {
+      expect(heatOrbBandFor(46).name, 'responding');
+      expect(heatOrbBandFor(53).name, 'responding');
+      expect(heatOrbBandFor(60).name, 'responding');
     });
 
-    test('66–80 → warm（邊界 66 / 80）', () {
-      expect(heatOrbBandFor(66).name, 'warm');
-      expect(heatOrbBandFor(75).name, 'warm');
+    test('61–80 → warm（邊界 61 / 80）', () {
+      expect(heatOrbBandFor(61).name, 'warm');
+      expect(heatOrbBandFor(70).name, 'warm');
       expect(heatOrbBandFor(80).name, 'warm');
     });
 
@@ -112,6 +112,28 @@ void main() {
         expect(band.flame, 0, reason: '${band.name} 不該有向上竄動');
       }
       expect(kHeatOrbBands.last.flame, greaterThan(0));
+    });
+
+    test('每一段都完整落在同一個文字標籤區間裡，不跨越標籤界線', () {
+      // 這是 2026-08-27 改界線的整個理由。初版用 35 / 50 / 65，31–35 分時
+      // 文字說「有在回應」而光球還在最冷段、61–65 分時文字說「投入明顯」而
+      // 光球才到中間——同一張卡自打嘴巴。任何一段只要橫跨下面任一條界線，
+      // 那個矛盾就回來了。
+      const labelBoundaries = [
+        AppConstants.coldMax, // 30：投入偏低 / 有在回應
+        AppConstants.warmMax, // 60：有在回應 / 投入明顯
+        AppConstants.hotMax, // 80：投入明顯 / 高度投入
+      ];
+      for (final band in kHeatOrbBands) {
+        for (final boundary in labelBoundaries) {
+          expect(
+            band.min <= boundary && band.max > boundary,
+            isFalse,
+            reason: '${band.name}（${band.min}–${band.max}）橫跨文字標籤界線 '
+                '$boundary，卡片會自相矛盾',
+          );
+        }
+      }
     });
 
     test('外暈永遠留有紫底透出來（紀律 3：純橘會變貼紙）', () {

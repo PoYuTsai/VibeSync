@@ -133,6 +133,13 @@ class HeatOrbBand {
 
 /// 五段升溫。分段界線與可見滿分是拍板規格，改動前先看 heat_orb_test.dart。
 ///
+/// **界線必須貼齊文字標籤的界線**（[AppConstants.coldMax] / [AppConstants
+/// .warmMax] / [AppConstants.hotMax]＝30 / 60 / 80）。初版用的是 35 / 50 /
+/// 65，結果 31–35 分時文字已經說「有在回應」、光球卻還停在最冷那段，61–65
+/// 分時文字說「投入明顯」、光球才走到中間——同一張卡自打嘴巴，使用者說不
+/// 出哪裡怪但感覺得到。2026-08-27 Eric review 後改為對齊。
+/// 五段結構與升溫節奏不變，只挪界線；有測試鎖著不准再跨越標籤界線。
+///
 /// 色帶刻意等於把 App 的色彩語言從「解讀」走到「行動」：
 /// cold/frozen → primaryLight（解讀紫）→ brandBlush（AI 推薦粉）→
 /// brandFlame（行動橘），剛好對應投入度從冷到燃。
@@ -143,7 +150,7 @@ const List<HeatOrbBand> kHeatOrbBands = [
   // 遠光 — 霧裡的一盞遠光。在，但還沒靠近你。
   HeatOrbBand(
     min: 0,
-    max: 35,
+    max: 30,
     name: 'distant',
     halo: AppColors.cold,
     haloAlpha: 0.30,
@@ -160,8 +167,8 @@ const List<HeatOrbBand> kHeatOrbBands = [
   ),
   // 靠近 — 它注意到你了。開始有穩定的呼吸。
   HeatOrbBand(
-    min: 36,
-    max: 50,
+    min: 31,
+    max: 45,
     name: 'approaching',
     halo: AppColors.primaryLight,
     haloAlpha: 0.34,
@@ -178,8 +185,8 @@ const List<HeatOrbBand> kHeatOrbBands = [
   ),
   // 回應 — 冷外暈裡浮出一顆暖核。裡面有事在發生。
   HeatOrbBand(
-    min: 51,
-    max: 65,
+    min: 46,
+    max: 60,
     name: 'responding',
     halo: AppColors.primaryLight,
     haloAlpha: 0.40,
@@ -196,7 +203,7 @@ const List<HeatOrbBand> kHeatOrbBands = [
   ),
   // 有溫度 — 顏色跨過了冷暖線。這時候是感覺得到熱的。
   HeatOrbBand(
-    min: 66,
+    min: 61,
     max: 80,
     name: 'warm',
     halo: AppColors.heatOrbBridge,
