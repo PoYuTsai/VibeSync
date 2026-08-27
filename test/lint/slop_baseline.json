@@ -18,7 +18,6 @@
     "lib/features/user_profile/presentation/widgets/profile_chip_section.dart": 6,
     "lib/shared/widgets/brand/brand_kit.dart": 3,
     "lib/shared/widgets/brand/liquid_motion_frame.dart": 4,
-    "lib/shared/widgets/brand/one_shot_comet_border.dart": 1,
     "lib/shared/widgets/bubble_avatar.dart": 1
   },
   "off_scale_radius": {

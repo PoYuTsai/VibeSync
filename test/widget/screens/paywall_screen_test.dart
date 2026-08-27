@@ -11,7 +11,6 @@ import 'package:vibesync/features/subscription/data/providers/subscription_provi
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 import 'package:vibesync/features/subscription/presentation/subscription_diagnostics_gate.dart';
-import 'package:vibesync/shared/widgets/brand/one_shot_comet_border.dart';
 
 class _StubSubscriptionNotifier extends SubscriptionNotifier {
   _StubSubscriptionNotifier({
@@ -258,34 +257,22 @@ void main() {
       expect(starterMonthlyRadio.groupValue, 'starter_monthly');
     });
 
-    testWidgets(
-        'comet plays only on user plan switch: no first-frame play, '
-        'one sweep that settles clean, no replay on same tap', (tester) async {
-      Finder cometPaint() => find.byWidgetPredicate(
-            (w) => w is CustomPaint && w.painter is OneShotCometBorderPainter,
-          );
-
+    testWidgets('選卡只剩 240ms 邊框漸變：沒有掃邊流星那種持續動態光', (tester) async {
       await pumpPaywall(tester);
-      // 首幀預選 essential_monthly：彗星不播（trigger 初值不觸發）。
+      // 首幀預選 essential_monthly：不排任何動畫幀。
       await tester.pump(const Duration(milliseconds: 300));
-      expect(cometPaint(), findsNothing);
-
-      // 使用者主動改選：只有選中那張卡播一圈。
-      await tester.tap(find.text('Starter 月繳'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(cometPaint(), findsOneWidget);
-
-      // 一次性收斂：pumpAndSettle 不 hang、播完零殘光零 ticker。
-      await tester.pumpAndSettle();
-      expect(cometPaint(), findsNothing);
       expect(tester.binding.transientCallbackCount, 0);
 
-      // 重複點已選中的同一張卡：不重播。
       await tester.tap(find.text('Starter 月繳'));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(cometPaint(), findsNothing);
+      // 選取狀態漸變（AppMotion.state = 240ms）跑完就該完全靜止；
+      // 掃邊流星（約 1s）若回來，這裡會還有進行中的 ticker。
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.binding.transientCallbackCount, 0);
+
+      // 收斂檢查：沒有殘留動畫、也沒有殘光層。
+      await tester.pumpAndSettle();
+      expect(tester.binding.transientCallbackCount, 0);
     });
 
     testWidgets('shows consistent legal and subscription management links',
