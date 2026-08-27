@@ -163,23 +163,6 @@ export function sniffImageContentType(bytes: Uint8Array): string | null {
   return null;
 }
 
-/**
- * 這個 content type 是否**肯定不是圖片**。
- *
- * 只用來做下載前的便宜早退：擋住供應商回 200、body 其實是錯誤頁或錯誤
- * JSON 的情況，省掉最多 12MB 流量。**刻意是黑名單而不是白名單**——header
- * 是供應商 CDN 說了算的字串，物件儲存服務對沒設 metadata 的物件常回
- * `application/octet-stream`，用白名單會讓一張完全合法的圖被 header 擋掉，
- * 那正是本次要修的「安靜的全面失效」那一類。header 對格式**沒有否決權**，
- * 認定一律交給 magic bytes（見 sniffImageContentType）。
- */
-function isNonImageContentType(contentType: string): boolean {
-  if (!contentType) return false;
-  return contentType.startsWith("text/") ||
-    contentType === "application/json" ||
-    contentType === "application/xml";
-}
-
 // ── prompt 素材（字面沿用 docs/plans/2026-08-24-practice-moments-scene-image-prompts.md §4）──
 
 /** 共用 STYLE 前綴：手機隨手拍、無人物、台北日常、深色 UI 友善。 */
@@ -597,17 +580,9 @@ async function downloadImage(
       await response.text().catch(() => {});
       throw new Error("fal_image_download_failed");
     }
-    // 下載前的便宜早退：**只擋「肯定不是圖」的回應**（HTML 錯誤頁、錯誤
-    // JSON），省掉最多 12MB 流量。這不是格式白名單——JPEG／PNG 的受理與
-    // 其他格式（GIF、WebP…）的拒收，一律由下面的 magic bytes 決定，header
-    // 對格式沒有否決權。少了這道限制，供應商把合法的圖標成
-    // application/octet-stream 時我們仍然收得下來。
-    const contentType = (response.headers.get("content-type") ?? "")
-      .split(";")[0].trim().toLowerCase();
-    if (isNonImageContentType(contentType)) {
-      await response.body?.cancel().catch(() => {});
-      throw new Error("fal_image_bad_content_type");
-    }
+    // Content-Type 只是供應商 CDN 提供的 metadata，可能缺漏或標錯，不能在
+    // 讀取位元組前否決合法圖片。格式受理一律交給下方 magic bytes；錯誤頁與
+    // 錯誤 JSON 也會在同一道判定被拒，下載量則由 12MB 兩層上限硬擋。
     // 大小硬上限做兩層：Content-Length 預檢（省流量），再流式累計硬擋
     // （header 可缺可謊，不能只信 header）。異常大回應不落入記憶體。
     const declaredLength = Number(response.headers.get("content-length") ?? "");

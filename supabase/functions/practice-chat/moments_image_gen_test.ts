@@ -688,16 +688,11 @@ Deno.test("非 fal.media 的結果 URL：拒絕下載並 release", async () => {
   }
 });
 
-Deno.test("下載回應肯定不是圖（text/html 錯誤頁）：讀 body 前就早退", async () => {
+Deno.test("合法 JPEG 即使 header 誤標 text/html：仍以 magic bytes 收下", async () => {
   const harness = makeJobHarness({ downloadContentType: "text/html" });
   await runJob(harness);
-  assertEquals(rpcNames(harness), [
-    "claim_practice_moment_image",
-    // 沒上傳過任何物件 → 順手抹掉帳本那一筆（清算不必再打一次 remove）。
-    "clear_practice_moment_image_orphans",
-    "release_practice_moment_image",
-  ]);
-  assertEquals(harness.uploads.length, 0);
+  assertEquals(harness.uploads.length, 1);
+  assertEquals(harness.uploads[0].contentType, "image/jpeg");
 });
 
 Deno.test("Content-Length 宣告超限：不讀 body 直接 release", async () => {
