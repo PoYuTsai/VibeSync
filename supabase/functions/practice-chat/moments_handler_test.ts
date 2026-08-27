@@ -8,6 +8,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   handlePracticeMoments,
+  type MomentsHandlerDeps,
   type MomentsSupabaseClient,
 } from "./moments_handler.ts";
 import {
@@ -15,7 +16,7 @@ import {
   MOMENT_FILL_MAX_PER_REQUEST,
 } from "./moments_constants.ts";
 import { momentPostedAtFor } from "./moments_time.ts";
-import { momentPlanFor } from "./moments_schedule.ts";
+import { momentFreshnessSlotFor, momentPlanFor } from "./moments_schedule.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
 import { getPracticeGirlProfile, GIRL_PROFILES } from "./practice_persona.ts";
 import { resolveAvailableMomentImages } from "./moments_image_catalog.ts";
@@ -50,6 +51,7 @@ interface HarnessOptions {
   release?: (params: Row) => Row;
   rateLimitError?: string;
   model?: (index: number, timeoutMs: number) => Promise<string>;
+  planFor?: MomentsHandlerDeps["planFor"];
 }
 
 interface Harness {
@@ -169,6 +171,7 @@ function run(
     deps: {
       apiKey: "test-key",
       fillDeadlineMs: overrides.fillDeadlineMs ?? 400,
+      planFor: harness.options.planFor,
       randomToken: () => `token-${Math.random().toString(36).slice(2, 10)}`,
       callDeepSeek: async (args) => {
         const index = modelIndex++;
@@ -317,6 +320,22 @@ Deno.test("未到時間的 slot 不生成也不回傳", async () => {
 
 Deno.test("整個 feed 超過 24 小時沒更新 → 補一則今天已到時間的保底貼文", async () => {
   const queenieId = "practice_girl_094";
+  const girl = getPracticeGirlProfile(queenieId);
+  assert(girl);
+  const time = taipeiTimeContextFor(QUEENIE_STALE_NOW);
+  const normalDue = momentPlanFor({ girl, time }).slots.filter((slotPlan) =>
+    momentPostedAtFor({
+      profileId: queenieId,
+      isoDate: time.isoDate,
+      slot: slotPlan.slot,
+      dayPart: slotPlan.dayPart,
+    }).getTime() <= QUEENIE_STALE_NOW.getTime()
+  );
+  assertEquals(
+    normalDue.length,
+    0,
+    "Queenie 重現案例必須沒有一般排程已到時間，否則測不到 24 小時保底",
+  );
   const harness = makeHarness({
     unlocked: [{ profileId: queenieId }],
     existing: [{
@@ -343,6 +362,13 @@ Deno.test("整個 feed 超過 24 小時沒更新 → 補一則今天已到時間
   assertEquals(reserveCalls.length, 1);
   assertEquals(reserveCalls[0].params.p_profile_id, queenieId);
   assertEquals(reserveCalls[0].params.p_post_date, "2026-08-27");
+  const freshnessPlan = momentFreshnessSlotFor({
+    girl,
+    time,
+    slot: Number(reserveCalls[0].params.p_slot),
+  });
+  assertEquals(reserveCalls[0].params.p_day_part, freshnessPlan.dayPart);
+  assertEquals(reserveCalls[0].params.p_theme_id, freshnessPlan.themeId);
   assert(
     Number(reserveCalls[0].params.p_slot) >= 0 &&
       Number(reserveCalls[0].params.p_slot) < 2,
@@ -356,6 +382,77 @@ Deno.test("整個 feed 超過 24 小時沒更新 → 補一則今天已到時間
     newestAgeMs <= 24 * 60 * 60 * 1000,
     `最新貼文仍超過 24 小時：${newestAgeMs}ms`,
   );
+});
+
+Deno.test("24 小時保底第一格未認領 → 依序改試第二格且只打一通模型", async () => {
+  const queenieId = "practice_girl_094";
+  const harness = makeHarness({
+    unlocked: [{ profileId: queenieId }],
+    existing: [{
+      profile_id: queenieId,
+      post_date: "2026-08-20",
+      slot: 0,
+      day_part: "morning",
+      theme_id: "coffee_start",
+      body: VALID_BODY,
+      image_id: null,
+      created_at: "2026-08-19T23:05:00.000Z",
+    }],
+    planFor: ({ girl, time }) => ({
+      profileId: girl.profileId,
+      isoDate: time.isoDate,
+      slots: [],
+    }),
+    reserve: (_params, index) =>
+      index === 0
+        ? { claimed: false, token: null, attempt_count: 3 }
+        : { claimed: true, token: "token-second", attempt_count: 1 },
+  });
+
+  const result = await run(harness, { now: END_OF_DAY });
+  const reserveCalls = harness.rpcCalls.filter((call) =>
+    call.fn === "reserve_practice_moment_slot"
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(reserveCalls.length, 2);
+  assertEquals(reserveCalls[0].params.p_slot, 0);
+  assertEquals(reserveCalls[1].params.p_slot, 1);
+  assertEquals(harness.modelCalls.length, 1);
+  assertEquals(body(result).generatedCount, 1);
+});
+
+Deno.test("24 小時保底已認領但生成失敗 → 不再改試下一格燒第二通模型", async () => {
+  const queenieId = "practice_girl_094";
+  const harness = makeHarness({
+    unlocked: [{ profileId: queenieId }],
+    existing: [{
+      profile_id: queenieId,
+      post_date: "2026-08-20",
+      slot: 0,
+      day_part: "morning",
+      theme_id: "coffee_start",
+      body: VALID_BODY,
+      image_id: null,
+      created_at: "2026-08-19T23:05:00.000Z",
+    }],
+    planFor: ({ girl, time }) => ({
+      profileId: girl.profileId,
+      isoDate: time.isoDate,
+      slots: [],
+    }),
+    model: () => Promise.reject(new Error("provider_down")),
+  });
+
+  const result = await run(harness, { now: END_OF_DAY });
+  const reserveCalls = harness.rpcCalls.filter((call) =>
+    call.fn === "reserve_practice_moment_slot"
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(reserveCalls.length, 1);
+  assertEquals(harness.modelCalls.length, 1);
+  assertEquals(body(result).generatedCount, 0);
 });
 
 Deno.test("最新貼文剛好 24 小時 → 不啟動保底、不多燒模型", async () => {

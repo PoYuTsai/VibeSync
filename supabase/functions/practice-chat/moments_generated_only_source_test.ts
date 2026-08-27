@@ -92,9 +92,12 @@ Deno.test("死線中止不得 release：那條分支必須在 release 之前 ret
     "await releaseSlot(",
     deadlineBranch,
   );
-  const returnNull = executableHandler.indexOf("return null;", deadlineBranch);
+  const returnStopped = executableHandler.indexOf(
+    'return { kind: "stopped" };',
+    deadlineBranch,
+  );
   assert(
-    returnNull > 0 && returnNull < releaseCall,
+    returnStopped > 0 && returnStopped < releaseCall,
     "死線分支必須先 return，否則死線中止會 release 掉 token，" +
       "下一個請求立刻接手並多燒一次 attempts",
   );
@@ -163,9 +166,10 @@ Deno.test("隱私鐵則：moments_image_gen 碰不到任何使用者衍生資料
   // userId 只允許以 claim 限流參數的形式出現。
   assert(executableImageGen.includes("p_user_id: userId"));
   const userIdUses = [...executableImageGen.matchAll(/userId/g)].length;
-  const declaredUses =
-    [...executableImageGen.matchAll(/userId: string|p_user_id: userId|userId, isTestAccount|, userId,/g)]
-      .length;
+  const declaredUses = [...executableImageGen.matchAll(
+    /userId: string|p_user_id: userId|userId, isTestAccount|, userId,/g,
+  )]
+    .length;
   assert(
     userIdUses <= declaredUses + 2,
     "userId 在 moments_image_gen 出現太多次，疑似流進生圖 prompt",

@@ -158,6 +158,11 @@ interface MissingSlot {
   unlockedAt: number;
 }
 
+type FillOneSlotResult =
+  | { kind: "filled"; post: MomentFeedPost }
+  | { kind: "unclaimed" }
+  | { kind: "stopped" };
+
 /** PostgREST 把 RETURNS TABLE 包成陣列；統一取第一列。 */
 function firstRow(data: unknown): Row | null {
   const row = Array.isArray(data) ? data[0] : data;
@@ -392,6 +397,7 @@ export async function handlePracticeMoments(args: {
   const feedIsStale = latestVisibleAt === null ||
     now.getTime() - latestVisibleAt > MOMENT_FEED_FRESHNESS_MAX_AGE_MS;
 
+  const freshnessCandidates: MissingSlot[] = [];
   if (feedIsStale && missing.length === 0) {
     const freshnessProfileIds = [...profileIds].sort((a, b) =>
       (unlockedAtByProfile.get(b) ?? 0) -
@@ -417,7 +423,7 @@ export async function handlePracticeMoments(args: {
           // 清晨或該角色今天第一個合法時段尚未到：寧可暫時保留舊 feed，
           // 也不能偽造未來時間或倒填昨天的 post_date。
           if (postedAt.getTime() > now.getTime()) continue;
-          missing.push(missingSlotFor({
+          freshnessCandidates.push(missingSlotFor({
             girl,
             isoDate: time.isoDate,
             plan: slotPlan,
@@ -425,13 +431,9 @@ export async function handlePracticeMoments(args: {
             unlockedAt: unlockedAtByProfile.get(profileId) ?? 0,
             deps,
           }));
-          logInfo("practice_moments_freshness_fill", {
-            profileId,
-            previousAgeMs: latestVisibleAt === null
-              ? null
-              : now.getTime() - latestVisibleAt,
-          });
-          break freshness;
+          if (freshnessCandidates.length >= MOMENT_FILL_MAX_PER_REQUEST) {
+            break freshness;
+          }
         } catch (e) {
           logWarn("practice_moments_freshness_plan_failed", {
             profileId,
@@ -441,15 +443,28 @@ export async function handlePracticeMoments(args: {
         }
       }
     }
+    if (freshnessCandidates.length > 0) {
+      logInfo("practice_moments_freshness_fill", {
+        candidates: freshnessCandidates.length,
+        previousAgeMs: latestVisibleAt === null
+          ? null
+          : now.getTime() - latestVisibleAt,
+      });
+    }
   }
 
   // 5. 沒有缺口就直接回既有貼文——絕大多數請求走這條，零模型呼叫、零限流。
   //    生圖接手照排：pending 列多半正是在這條路上被補完的。
-  if (missing.length === 0 || deps.apiKey.length === 0) {
-    if (missing.length > 0) {
+  const pendingTargetCount = missing.length > 0
+    ? missing.length
+    : freshnessCandidates.length > 0
+    ? 1
+    : 0;
+  if (pendingTargetCount === 0 || deps.apiKey.length === 0) {
+    if (pendingTargetCount > 0) {
       logWarn("practice_moments_config_missing", {
         user: summarizeUser(userId),
-        pending: missing.length,
+        pending: pendingTargetCount,
       });
     }
     scheduleMomentImageJobs({
@@ -464,7 +479,7 @@ export async function handlePracticeMoments(args: {
       body: {
         posts: sortPosts(posts),
         generatedCount: 0,
-        pendingCount: missing.length,
+        pendingCount: pendingTargetCount,
       },
       status: 200,
     };
@@ -480,8 +495,9 @@ export async function handlePracticeMoments(args: {
   //
   //    所以限流下放到 fillOneSlot，**每一次模型呼叫算一次**，語義才對得起數字。
 
-  // 7. 取前 K 則平行補。排序：最新解鎖優先（她剛被抽到，最值得先有貼文），
-  //    再用 profileId／slot 讓結果決定論。
+  // 7. 一般缺口取前 K 則平行補；feed 保底則把前 K 格當替代候選、依序補一則。
+  //    排序：最新解鎖優先（她剛被抽到，最值得先有貼文），再用
+  //    profileId／slot 讓結果決定論。
   //    刻意不用「最近聊過」當排序鍵：那要多讀一張對話表，而且會把使用者
   //    對話資料拉到生成路徑旁邊，隱私鐵則上得不償失。
   missing.sort((a, b) =>
@@ -489,16 +505,35 @@ export async function handlePracticeMoments(args: {
     a.girl.profileId.localeCompare(b.girl.profileId) ||
     a.plan.slot - b.plan.slot
   );
-  const batch = missing.slice(0, MOMENT_FILL_MAX_PER_REQUEST);
 
   const deadlineAt = startedAt + deadlineMs;
   const filled: MomentFeedPost[] = [];
   const committedImageJobs: MomentImageJob[] = [];
-  const tasks = batch.map((item) =>
-    fillOneSlot({ supabase, userId, item, deps, deadlineAt, isTestAccount })
-      .then((post) => {
-        if (post) {
-          filled.push(post);
+  let attemptedCount = 0;
+  const tasks: Promise<void>[] = [];
+  if (freshnessCandidates.length > 0) {
+    // 保底候選是同一個「補一則」目標的替代格，不可平行打模型。依序 reserve：
+    // 只有前一格未認領（已 ready、租約中或 attempts 耗盡）才改試下一格；
+    // 一旦真的認領，不論生成成敗都停止，避免一次保底燒多通模型。
+    tasks.push((async () => {
+      for (
+        const item of freshnessCandidates.slice(
+          0,
+          MOMENT_FILL_MAX_PER_REQUEST,
+        )
+      ) {
+        attemptedCount += 1;
+        const result = await fillOneSlot({
+          supabase,
+          userId,
+          item,
+          deps,
+          deadlineAt,
+          isTestAccount,
+        });
+        if (result.kind === "unclaimed") continue;
+        if (result.kind === "filled") {
+          filled.push(result.post);
           if (item.generatedImage) {
             committedImageJobs.push({
               profileId: item.girl.profileId,
@@ -507,8 +542,30 @@ export async function handlePracticeMoments(args: {
             });
           }
         }
-      })
-  );
+        break;
+      }
+    })());
+  } else {
+    const batch = missing.slice(0, MOMENT_FILL_MAX_PER_REQUEST);
+    attemptedCount = batch.length;
+    tasks.push(
+      ...batch.map((item) =>
+        fillOneSlot({ supabase, userId, item, deps, deadlineAt, isTestAccount })
+          .then((result) => {
+            if (result.kind === "filled") {
+              filled.push(result.post);
+              if (item.generatedImage) {
+                committedImageJobs.push({
+                  profileId: item.girl.profileId,
+                  isoDate: item.isoDate,
+                  slot: item.plan.slot,
+                });
+              }
+            }
+          })
+      ),
+    );
+  }
 
   // 8. 死線：到點就不等。未完成的列留著 token，由租約逾時或下次請求接手。
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
@@ -534,8 +591,8 @@ export async function handlePracticeMoments(args: {
 
   logInfo("practice_moments_filled", {
     user: summarizeUser(userId),
-    missing: missing.length,
-    attempted: batch.length,
+    missing: pendingTargetCount,
+    attempted: attemptedCount,
     generated: filled.length,
     imageJobsScheduled,
   });
@@ -544,7 +601,7 @@ export async function handlePracticeMoments(args: {
     body: {
       posts: sortPosts([...posts, ...filled]),
       generatedCount: filled.length,
-      pendingCount: missing.length - filled.length,
+      pendingCount: Math.max(0, pendingTargetCount - filled.length),
     },
     status: 200,
   };
@@ -648,7 +705,8 @@ function sortPosts(posts: MomentFeedPost[]): MomentFeedPost[] {
 /**
  * 補一則貼文：reserve → DeepSeek → validate → commit，失敗就 release。
  *
- * 回傳成功寫入的貼文；任何失敗一律回 null，**絕不回罐頭內容**。
+ * `unclaimed` 只代表這格沒有取得模型呼叫權，保底路徑可以安全改試下一格；
+ * 一旦認領或遇到 gate／死線錯誤都回 `stopped`，避免同次請求再燒模型。
  */
 async function fillOneSlot(opts: {
   supabase: MomentsSupabaseClient;
@@ -657,13 +715,13 @@ async function fillOneSlot(opts: {
   deps: MomentsHandlerDeps;
   deadlineAt: number;
   isTestAccount: boolean;
-}): Promise<MomentFeedPost | null> {
+}): Promise<FillOneSlotResult> {
   const { supabase, userId, item, deps, deadlineAt, isTestAccount } = opts;
   const { girl, isoDate, plan, imageCandidates, generatedImage } = item;
 
   // 死線守門必須在原子 reserve gate 之前。gate 只在成功認領 slot 時，
   // 同一筆交易內一起計入 attempts 與 per-user model usage。
-  if (Date.now() >= deadlineAt) return null;
+  if (Date.now() >= deadlineAt) return { kind: "stopped" };
 
   const generationToken = (deps.randomToken ?? (() => crypto.randomUUID()))();
   const rateLimits = MODEL_RATE_LIMITS.practice_moment;
@@ -691,19 +749,19 @@ async function fillOneSlot(opts: {
   if (reserveError) {
     if (classifyModelRateLimitError(reserveError.message)) {
       // 背景補生成撞限流只跳過這格；呼叫端仍回 200 + 既有 feed。
-      return null;
+      return { kind: "stopped" };
     }
     logWarn("practice_moments_reserve_error", {
       user: summarizeUser(userId),
       profileId: girl.profileId,
       error: reserveError.message,
     });
-    return null;
+    return { kind: "stopped" };
   }
   const reserved = firstRow(reserveData);
   if (!reserved || reserved.claimed !== true) {
     // 別人正在跑、已經 ready、或 attempts 用完轉 exhausted：不打模型。
-    return null;
+    return { kind: "unclaimed" };
   }
   const token = typeof reserved.token === "string"
     ? reserved.token
@@ -714,7 +772,7 @@ async function fillOneSlot(opts: {
     const remainingMs = deadlineAt - Date.now();
     if (remainingMs <= 0) {
       // 死線已過：不打模型，也不 release（token 留給租約）。
-      return null;
+      return { kind: "stopped" };
     }
     raw = await deps.callDeepSeek({
       apiKey: deps.apiKey,
@@ -745,7 +803,7 @@ async function fillOneSlot(opts: {
         profileId: girl.profileId,
         slot: plan.slot,
       });
-      return null;
+      return { kind: "stopped" };
     }
     await releaseSlot(supabase, slotParams, token, girl.profileId);
     logWarn("practice_moments_generation_failed", {
@@ -753,7 +811,7 @@ async function fillOneSlot(opts: {
       profileId: girl.profileId,
       failureClass: e instanceof Error ? e.message : "unknown",
     });
-    return null;
+    return { kind: "stopped" };
   }
 
   let draft;
@@ -765,7 +823,7 @@ async function fillOneSlot(opts: {
       profileId: girl.profileId,
       failureClass: e instanceof Error ? e.message : "unknown",
     });
-    return null;
+    return { kind: "stopped" };
   }
 
   const { data: commitData, error: commitError } = await supabase.rpc(
@@ -791,19 +849,22 @@ async function fillOneSlot(opts: {
       profileId: girl.profileId,
       error: commitError?.message ?? "not_committed",
     });
-    return null;
+    return { kind: "stopped" };
   }
 
   return {
-    profileId: girl.profileId,
-    postDate: isoDate,
-    slot: plan.slot,
-    dayPart: plan.dayPart,
-    postedAt: item.postedAt.toISOString(),
-    body: draft.body,
-    imageId: draft.imageId,
-    // 圖在背景生成中，本回應永遠給 null；ready 後由下次 feed 讀出。
-    imageUrl: null,
+    kind: "filled",
+    post: {
+      profileId: girl.profileId,
+      postDate: isoDate,
+      slot: plan.slot,
+      dayPart: plan.dayPart,
+      postedAt: item.postedAt.toISOString(),
+      body: draft.body,
+      imageId: draft.imageId,
+      // 圖在背景生成中，本回應永遠給 null；ready 後由下次 feed 讀出。
+      imageUrl: null,
+    },
   };
 }
 
