@@ -43,12 +43,6 @@ const double _emberCycleRatio = 1.7;
 /// 火星池大小。等於 [kHeatOrbBands] 裡最大的 embers 值。
 const int _emberPoolSize = 8;
 
-/// 三顆銜接色。冷段與暖段兩端都直接取自 [AppColors]，只有中間過渡需要調和
-/// 色——它們的存在就是為了讓紫不會一步跳到橘（紀律 3）。
-const Color _violetLift = Color(0xFFB9A9FF); // primaryLight 提亮，第 2 段核心
-const Color _violetMagenta = Color(0xFFB274E2); // 紫→粉的橋，第 4 段外暈
-const Color _emberViolet = Color(0xFFB06EEB); // 第 5 段外圈保留的紫暈
-
 /// 一段投入度對應的完整光球配方。
 ///
 /// 欄位全部可線性內插（[lerp]），換段才能溶接而不是硬切。[cores] 與 [embers]
@@ -173,7 +167,7 @@ const List<HeatOrbBand> kHeatOrbBands = [
     haloAlpha: 0.34,
     mid: AppColors.cold,
     midAlpha: 0.17,
-    core: _violetLift,
+    core: AppColors.heatOrbLift,
     coreAlpha: 0.26,
     cores: 2,
     churn: 0.018,
@@ -205,7 +199,7 @@ const List<HeatOrbBand> kHeatOrbBands = [
     min: 66,
     max: 80,
     name: 'warm',
-    halo: _violetMagenta,
+    halo: AppColors.heatOrbBridge,
     haloAlpha: 0.42,
     mid: AppColors.brandBlush,
     midAlpha: 0.28,
@@ -223,7 +217,7 @@ const List<HeatOrbBand> kHeatOrbBands = [
     min: 81,
     max: AppConstants.investmentVisibleMax,
     name: 'burning',
-    halo: _emberViolet, // 紀律 3：燒到這裡外圈仍留紫暈
+    halo: AppColors.heatOrbEmber, // 紀律 3：燒到這裡外圈仍留紫暈
     haloAlpha: 0.30,
     mid: AppColors.coachRecommendation,
     midAlpha: 0.34,
