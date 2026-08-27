@@ -38,15 +38,6 @@ import '../../../../core/services/app_haptics.dart';
 /// `?mode=new_topic` 只決定初始 tab；頁內切換不改 route。
 enum OpeningRescueMode { opener, newTopic }
 
-/// 「她回覆了，開始分析對話」按下後對導航堆疊做的事。
-enum OpenerHandoffNavigation {
-  /// 回到堆疊下面那張既有的對象卡（開場救星退出堆疊，不新增任何頁）。
-  popToBoundPartner,
-
-  /// 用 handoff 目的地取代開場救星本身（開場救星不留在返回路徑上）。
-  replaceWithHandoff,
-}
-
 class OpeningRescueScreen extends ConsumerStatefulWidget {
   const OpeningRescueScreen({
     super.key,
@@ -74,8 +65,8 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
   /// 2026-08-26 產品調整：拿掉中間的「接續開場」頁，CTA 直接進「新增對象」。
   /// 開場救星是先鋒，真正的後續分析要先有對象卡承接；建立後 AddPartnerScreen
   /// 會 pushReplacement 到 `/partner/:id`，使用者在那裡貼上送出的開場與她的
-  /// 回覆。已綁定對象的入口（PartnerDetail → 分析新片段 → 開場救星）不該再
-  /// 開一張重複的卡，直接回到那張對象卡。
+  /// 回覆。已綁定對象時目的地就是那張對象卡本身，不開重複的卡；堆疊怎麼變
+  /// 由 [navigateToHandoff] 決定，這裡只回答「去哪」。
   static String handoffLocationFor({String? partnerId}) {
     final trimmed = partnerId?.trim();
     if (trimmed == null || trimmed.isEmpty) {
@@ -84,42 +75,26 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
     return '/partner/$trimmed';
   }
 
-  /// CTA 的導航動作。目的地網址只講「去哪」，這裡講的是「堆疊要變成什麼」——
-  /// 兩個入口要的結果不同，用同一個 push 會留下錯的返回路徑（Eric-AI
-  /// 2026-08-26 複審 #39 退回項 1、2）。
+  /// 執行 CTA 的導航：先把堆疊收回首頁，再推 handoff 目的地。
   ///
-  /// - 已綁定對象（PartnerDetail → 分析新片段 → 開場救星）：那張對象卡就在
-  ///   堆疊下面，pop 回去即可；再 push 一次會疊出第二張一模一樣的卡，按返回
-  ///   還會看到開場救星。深連結直開 `/opener?partnerId=` 時沒得 pop，退回
-  ///   pushReplacement。
-  /// - 未綁定對象：pushReplacement 讓開場救星退出堆疊。AddPartnerScreen 建立
-  ///   成功後自己 pushReplacement 到 `/partner/:id`，於是新對象卡下面是首頁，
-  ///   按返回回首頁而不是又回到開場救星。
-  static OpenerHandoffNavigation handoffNavigationFor({
-    required String? partnerId,
-    required bool canPop,
-  }) {
-    final trimmed = partnerId?.trim();
-    final isBound = trimmed != null && trimmed.isNotEmpty;
-    return isBound && canPop
-        ? OpenerHandoffNavigation.popToBoundPartner
-        : OpenerHandoffNavigation.replaceWithHandoff;
-  }
-
-  /// 執行 [handoffNavigationFor] 決定的導航。CTA 只呼叫這一個入口，
-  /// 導航語意才有單一測得到的來源。
+  /// 為什麼不是「pop 回上一頁」或「pushReplacement 取代自己」——因為進到
+  /// 開場救星的入口不只一個，用「誰在下面」決定就會落在錯的頁
+  /// （Eric-AI 2026-08-27 複審 #39 第二輪）：
+  ///
+  /// - 帶 partnerId 的入口有三個：對象卡、分析頁（AnalysisScreen）、封存頁
+  ///   （PartnerAnalysisArchiveScreen）都會開 `NewConversationSheet(partnerId)`，
+  ///   而那張 sheet 會 push `/opener?partnerId=`。pop 一層會回到分析頁或
+  ///   封存頁，不是 ADR #44 要求的對象卡。
+  /// - 未綁定的入口有兩個：首頁與文章頁（ArticleDetailScreen）。只把開場
+  ///   救星 replace 掉的話，文章頁仍留在下面，從新對象卡按返回會回文章。
+  ///
+  /// 收回首頁再推一頁，五個入口與深連結都落在同一個結果：唯一一張對象卡
+  /// （未綁定則是新增對象頁，建立後由 AddPartnerScreen 自己 pushReplacement
+  /// 成對象卡），下面就是首頁，按返回回首頁。
   static void navigateToHandoff(BuildContext context, {String? partnerId}) {
     final router = GoRouter.of(context);
-    final navigation = handoffNavigationFor(
-      partnerId: partnerId,
-      canPop: router.canPop(),
-    );
-    switch (navigation) {
-      case OpenerHandoffNavigation.popToBoundPartner:
-        router.pop();
-      case OpenerHandoffNavigation.replaceWithHandoff:
-        router.pushReplacement(handoffLocationFor(partnerId: partnerId));
-    }
+    router.go('/');
+    router.push(handoffLocationFor(partnerId: partnerId));
   }
 
   static bool canStartGeneration({

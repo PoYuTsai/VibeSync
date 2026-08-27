@@ -131,39 +131,4 @@ void main() {
     expect(location, '/partner/partner-123');
     expect(location, isNot(contains('/partner/new')));
   });
-
-  group('handoffNavigationFor', () {
-    test('已綁定且 pop 得回去＝回到既有對象卡，不再 push 一張', () {
-      expect(
-        OpeningRescueScreen.handoffNavigationFor(
-          partnerId: 'partner-123',
-          canPop: true,
-        ),
-        OpenerHandoffNavigation.popToBoundPartner,
-      );
-    });
-
-    test('已綁定但沒得 pop（深連結直開）退回 replace', () {
-      expect(
-        OpeningRescueScreen.handoffNavigationFor(
-          partnerId: 'partner-123',
-          canPop: false,
-        ),
-        OpenerHandoffNavigation.replaceWithHandoff,
-      );
-    });
-
-    test('未綁定一律 replace——開場救星不留在返回路徑上', () {
-      for (final partnerId in <String?>[null, '', '   ']) {
-        expect(
-          OpeningRescueScreen.handoffNavigationFor(
-            partnerId: partnerId,
-            canPop: true,
-          ),
-          OpenerHandoffNavigation.replaceWithHandoff,
-          reason: 'partnerId=${partnerId ?? 'null'} 應視為未綁定',
-        );
-      }
-    });
-  });
 }

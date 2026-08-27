@@ -1062,13 +1062,16 @@
 **決定**（Eric 2026-08-26）:
 
 1. **未綁定對象**：CTA 直接進「新增對象」（`/partner/new`）。建立成功後 AddPartnerScreen 既有的 `pushReplacement('/partner/:id')` 把使用者送到新對象卡，對話從那裡的「+ 分析新片段」開始。
-2. **已綁定對象**（對象卡 →「+ 分析新片段」→ 開場救星）：回到堆疊下面那張既有的對象卡，不新增第二張一模一樣的卡。
-3. **返回路徑**：開場救星不留在返回路徑上——未綁定用 `pushReplacement` 取代自己，已綁定用 `pop`。從新／既有對象卡按返回一律回首頁，不會再撞見開場救星。
-4. **不再自動帶入開場白**：使用者自己把送出的那句與她的回覆一起貼進對象卡。開場白仍留在本機草稿（「最近開場草稿」可回看），CTA 只在草稿上蓋「已接續」章。
-5. **latest 槽位停止服務帶入**：`OpenerResultCacheService` 的 `saveLatest`／`loadLatestForScope` 只剩 `saveDraft` 在寫，UI 不再讀。API 保留（仍有單元測試覆蓋），但不得再拿它做「自動帶入下一頁」——要恢復帶入必須先回到本 ADR 重新決策。
+2. **已綁定對象**：一律落到那張對象卡，且堆疊上只有一張。
+3. **導航機制＝先把堆疊收回首頁（`go('/')`），再推 handoff 目的地一頁**。不得改用「pop 回上一頁」或「pushReplacement 取代自己」來決定——進到開場救星的入口不只一個，用「誰在下面」判斷就會落在錯的頁（Eric-AI 2026-08-27 第二輪複審退回）：
+   - 帶 `partnerId` 的入口有三個，都經由 `NewConversationSheet(partnerId)` push `/opener?partnerId=`：對象卡（FAB／空狀態）、分析頁 `AnalysisScreen`、封存頁 `PartnerAnalysisArchiveScreen`。pop 一層會回到分析頁或封存頁。
+   - 未綁定的入口有兩個：首頁 `HomeFeatureEntries`、文章頁 `ArticleDetailScreen`。只 replace 掉開場救星的話，文章頁仍留在下面。
+4. **返回路徑**：五個入口與深連結都落在同一個結果——對象卡（未綁定則是新增對象頁，建立後由 AddPartnerScreen 自己 `pushReplacement` 成對象卡）在上、首頁在下。按返回回首頁，不會再撞見開場救星、舊分析頁、封存頁或文章頁。
+5. **不再自動帶入開場白**：使用者自己把送出的那句與她的回覆一起貼進對象卡。開場白仍留在本機草稿（「最近開場草稿」可回看），CTA 只在草稿上蓋「已接續」章。
+6. **latest 槽位停止服務帶入**：`OpenerResultCacheService` 的 `saveLatest`／`loadLatestForScope` 只剩 `saveDraft` 在寫，UI 不再讀。API 保留（仍有單元測試覆蓋），但不得再拿它做「自動帶入下一頁」——要恢復帶入必須先回到本 ADR 重新決策。
 
-**取捨**: 使用者多了一次貼上的動作，換到的是每段互動從一開始就掛在對象卡底下、接得上對象記憶；也避免「開場草稿」這種沒有對象的孤兒對話持續產生。
+**取捨**: 使用者多了一次貼上的動作，換到的是每段互動從一開始就掛在對象卡底下、接得上對象記憶；也避免「開場草稿」這種沒有對象的孤兒對話持續產生。收回首頁會丟掉使用者原本的返回路徑（例如從分析頁或文章頁進來的那一段）——這是為了讓五個入口有同一個可預期的終點而付的代價；按下這顆 CTA 代表開場那一段已經結束，接下來的動線屬於對象卡。
 
-**守門**: `test/widget/features/opener/opening_rescue_handoff_navigation_test.dart`（真 GoRouter＋真路由形狀＋真的 `navigateToHandoff` 的返回堆疊測試：不疊重複對象卡、開場救星不留在返回路徑上、深連結退路）、`test/lint/opener_handoff_cta_wiring_guard_test.dart`（CTA 真的接到 `navigateToHandoff`，且沒有人再直接 push `handoffLocationFor`）、`test/unit/features/opener/presentation/opening_rescue_handoff_location_test.dart`（目的地與導航動作決策）、`test/widget/screens/new_conversation_screen_test.dart`（「接續開場」頁已移除的防迴歸）。
+**守門**: `test/widget/features/opener/opening_rescue_handoff_navigation_test.dart`（真 GoRouter＋真路由形狀＋真的 `navigateToHandoff`：上面列的五個入口與深連結**各一條**，逐條驗唯一一張對象卡、舊頁全清、返回回首頁）、`test/lint/opener_handoff_cta_wiring_guard_test.dart`（CTA 真的接到 `navigateToHandoff`，且沒有人再直接 push `handoffLocationFor`）、`test/unit/features/opener/presentation/opening_rescue_handoff_location_test.dart`（handoff 目的地網址）、`test/widget/screens/new_conversation_screen_test.dart`（「接續開場」頁已移除的防迴歸）。
 
 **測試邊界（誠實話）**: 返回堆疊測試的 `/opener` 掛的是 stub。真畫面要按到 CTA 得先種草稿、按「回看」，而 CTA 會觸發一筆 Hive 寫入；那筆真磁碟 I/O 在 testWidgets 的 fake-async zone 裡收不掉，實測會讓整支測試卡死到 10 分鐘 timeout（run 33027317044）。因此「按下去堆疊變成什麼」由 widget test 驗，「那顆按鈕真的接到 navigateToHandoff」由靜態守門驗，兩者合起來才涵蓋完整路徑。

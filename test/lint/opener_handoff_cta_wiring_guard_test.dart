@@ -90,4 +90,29 @@ void main() {
       reason: '簽名變了就更新本守門與 handoff 導航測試，不要讓守門空轉。',
     );
   });
+
+  test('導航規則是「收回首頁再推一頁」，不是看誰在下面', () {
+    final start = source.indexOf(
+      'static void navigateToHandoff(BuildContext context, {String? partnerId})',
+    );
+    expect(start, isNonNegative);
+    final body = source.substring(
+      start,
+      (start + 400).clamp(0, source.length),
+    );
+
+    expect(
+      body.contains("router.go('/')"),
+      isTrue,
+      reason: '必須先把堆疊收回首頁：帶 partnerId 的入口有三個（對象卡、'
+          '分析頁、封存頁），未綁定的有兩個（首頁、文章頁），'
+          '不收回首頁就會落在錯的頁。',
+    );
+    expect(
+      body.contains('canPop'),
+      isFalse,
+      reason: 'canPop 是第一輪選錯的依據——它只知道「有沒有上一頁」，'
+          '不知道那是不是對象卡。改回去會讓分析頁／封存頁入口再次退化。',
+    );
+  });
 }
