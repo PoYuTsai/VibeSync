@@ -232,6 +232,22 @@ const List<HeatOrbBand> kHeatOrbBands = [
   ),
 ];
 
+/// 第 [index] 顆內核在相位 [phase] 時的角度（弧度）。
+///
+/// 除數必須是**連續的** [cores]（小數），不可以是 `cores.ceil()`。用 ceil 的
+/// 話，顆數一從 2.0 跨到 2.001，排位分母立刻由 2 變 3，既有的第二顆內核會在
+/// 同一格從 180° 硬跳到 120°——淡入係數處理的是新內核的透明度，處理不了舊
+/// 內核的位置。兩者都連續，600ms 溶接才是真的溶接。
+///
+/// 用連續除數時，新長出來的那顆從 ~0°（疊在第一顆上）滑向它的終點角度，而
+/// 它此時透明度趨近 0，所以起點的重疊看不出來。
+double heatOrbCoreAngle({
+  required double phase,
+  required int index,
+  required double cores,
+}) =>
+    phase * 2 * math.pi + index * (2 * math.pi / cores);
+
 /// 分數 → 段。null（尚未分析）落在最冷那段：沒有訊號就是遠光。
 HeatOrbBand heatOrbBandFor(int? heat) {
   if (heat == null) return kHeatOrbBands.first;
@@ -482,7 +498,7 @@ class _HeatOrbPainter extends CustomPainter {
     for (var i = 0; i < coreCount; i++) {
       final fade = i < coreWhole ? 1.0 : b.cores - coreWhole;
       if (fade <= 0) break;
-      final ang = p * 2 * math.pi + i * (2 * math.pi / coreCount);
+      final ang = heatOrbCoreAngle(phase: p, index: i, cores: b.cores);
       var oy = math.sin(ang * 1.37) * s * b.churn;
       if (b.flame > 0) {
         // 火焰是一種行為不是形狀：內核被持續往上帶，不畫火舌輪廓。

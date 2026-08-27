@@ -8,6 +8,8 @@
 //      定義。任何一項被改成非單調就是把設計改掉了，測試要擋下來。
 //   3. Widget 行為——reduce motion 守門（同時也是 pumpAndSettle 能不能收斂
 //      的關鍵），以及各段都畫得出來不丟例外。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -140,6 +142,53 @@ void main() {
       expect(mid.cores, lessThan(b.cores));
       expect(mid.cycleSeconds, lessThan(a.cycleSeconds));
       expect(mid.cycleSeconds, greaterThan(b.cycleSeconds));
+    });
+  });
+
+  group('heatOrbCoreAngle 換段連續性', () {
+    // 迴歸鎖：這裡曾經用 cores.ceil() 當排位分母，導致顆數一從 2.0 跨到
+    // 2.001，既有第二顆內核就在同一格從 180° 跳到 120°。淡入係數只顧到新
+    // 內核的透明度，顧不到舊內核的位置——600ms 溶接因此名存實亡。
+    test('顆數剛跨過 2.0 的那一格，第二顆內核不跳位', () {
+      final before = heatOrbCoreAngle(phase: 0, index: 1, cores: 2.0);
+      final after = heatOrbCoreAngle(phase: 0, index: 1, cores: 2.001);
+      expect(before, closeTo(math.pi, 1e-9), reason: '2 顆時應該對開 180°');
+      // 舊寫法在這裡是 60°（1.047 rad）的硬跳；門檻取 0.01 rad（約 0.57°）
+      // 遠低於可見範圍，又不會誤殺正常的連續位移。
+      expect((before - after).abs(), lessThan(0.01),
+          reason: '跨過整數邊界不該產生可見跳動');
+    });
+
+    test('2 → 3 顆的整段轉場：角度單調收斂，且沒有任何一格跳超過 1°', () {
+      const steps = 200;
+      const oneDegree = math.pi / 180;
+      var prev = heatOrbCoreAngle(phase: 0, index: 1, cores: 2.0);
+      for (var s = 1; s <= steps; s++) {
+        final cores = 2.0 + s / steps;
+        final cur = heatOrbCoreAngle(phase: 0, index: 1, cores: cores);
+        expect(cur, lessThan(prev), reason: 'cores=$cores 角度應持續收斂');
+        expect((prev - cur).abs(), lessThan(oneDegree),
+            reason: 'cores=$cores 出現視覺可見的跳動');
+        prev = cur;
+      }
+      expect(prev, closeTo(2 * math.pi / 3, 1e-9),
+          reason: '3 顆時應該三等分 120°');
+    });
+
+    test('整數顆數仍是標準等分', () {
+      expect(heatOrbCoreAngle(phase: 0, index: 1, cores: 3),
+          closeTo(2 * math.pi / 3, 1e-9));
+      expect(heatOrbCoreAngle(phase: 0, index: 2, cores: 3),
+          closeTo(4 * math.pi / 3, 1e-9));
+      expect(heatOrbCoreAngle(phase: 0, index: 0, cores: 1), 0);
+    });
+
+    test('相位只是整體旋轉，不影響顆與顆之間的相對排位', () {
+      final gapAtZero = heatOrbCoreAngle(phase: 0, index: 1, cores: 2.5) -
+          heatOrbCoreAngle(phase: 0, index: 0, cores: 2.5);
+      final gapAtHalf = heatOrbCoreAngle(phase: 0.5, index: 1, cores: 2.5) -
+          heatOrbCoreAngle(phase: 0.5, index: 0, cores: 2.5);
+      expect(gapAtZero, closeTo(gapAtHalf, 1e-9));
     });
   });
 
