@@ -12,10 +12,8 @@ import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../analysis/domain/services/screenshot_session_context_defaults.dart';
-import '../../../opener/data/services/opener_result_cache_service.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
-import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/conversation_providers.dart';
 import '../../data/providers/conversation_write_controller.dart';
 import '../../domain/entities/session_context.dart';
@@ -48,16 +46,11 @@ const double _manualInputAddButtonHitSize = 44;
 
 String newConversationHintText({
   required bool hasMessages,
-  required bool hasOpenerSeed,
   required bool hasIncomingMessage,
   required bool endsWithMyMessage,
 }) {
   if (!hasMessages) {
     return '依序輸入對話，至少先加入一則訊息。';
-  }
-
-  if (hasOpenerSeed && !hasIncomingMessage) {
-    return '先把這句傳給對方；收到回覆後，貼到「她說」再建立對話分析。';
   }
 
   if (!hasIncomingMessage) {
@@ -73,12 +66,10 @@ String newConversationHintText({
 
 class NewConversationScreen extends ConsumerStatefulWidget {
   final String? partnerId;
-  final bool seedFromLatestOpener;
 
   const NewConversationScreen({
     super.key,
     this.partnerId,
-    this.seedFromLatestOpener = false,
   });
 
   @override
@@ -91,16 +82,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   final _herMessageController = TextEditingController();
   final _myMessageController = TextEditingController();
   final _analysisContextNoteController = TextEditingController();
-  final _openerResultCacheService = OpenerResultCacheService();
 
   final List<Map<String, dynamic>> _messages = [];
 
   bool _isLoading = false;
   bool _showAnalysisSettings = false;
-  bool _hasOpenerSeed = false;
-  String? _openerSeedText;
-  String? _openerSeedLabel;
-  String? _openerSeedReason;
 
   MeetingContext _meetingContext = MeetingContext.datingApp;
   AcquaintanceDuration _duration = AcquaintanceDuration.justMet;
@@ -115,7 +101,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   String get _conversationHint {
     return newConversationHintText(
       hasMessages: _messages.isNotEmpty,
-      hasOpenerSeed: _hasOpenerSeed,
       hasIncomingMessage: _hasIncomingMessage,
       endsWithMyMessage: _endsWithMyMessage,
     );
@@ -125,9 +110,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   void initState() {
     super.initState();
     _analysisContextNoteController.addListener(_refreshAnalysisSettingsSummary);
-    if (widget.seedFromLatestOpener) {
-      _seedFromLatestOpener();
-    }
   }
 
   @override
@@ -145,70 +127,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     if (mounted) {
       setState(() {});
     }
-  }
-
-  void _seedFromLatestOpener() {
-    try {
-      final result = _openerResultCacheService.loadLatestForScope(
-          partnerId: widget.partnerId);
-      if (result == null) return;
-      final subscription = ref.read(subscriptionProvider);
-      final visibleResult = result.visibleForAccess(
-        isFreeUser: !subscription.isPremium,
-      );
-      final openerType = visibleResult.bestOpenerType;
-      final openerText = visibleResult.bestOpenerText;
-      if (openerText == null) return;
-
-      _messages.add({
-        'isFromMe': true,
-        'content': openerText,
-      });
-      _hasOpenerSeed = true;
-      _openerSeedText = openerText;
-      _openerSeedLabel = _openerLabel(openerType);
-      _openerSeedReason = openerType == visibleResult.recommendedPick
-          ? visibleResult.recommendedReason?.trim()
-          : null;
-    } catch (_) {
-      _hasOpenerSeed = false;
-      _openerSeedText = null;
-      _openerSeedLabel = null;
-      _openerSeedReason = null;
-    }
-  }
-
-  String _openerLabel(String? type) {
-    switch (type) {
-      case 'extend':
-        return '延展';
-      case 'resonate':
-        return '共鳴';
-      case 'tease':
-        return '調情';
-      case 'humor':
-        return '幽默';
-      case 'coldRead':
-        return '冷讀';
-      default:
-        return 'AI 推薦';
-    }
-  }
-
-  void _clearOpenerSeed() {
-    final seed = _openerSeedText;
-    setState(() {
-      if (seed != null) {
-        _messages.removeWhere(
-          (message) =>
-              message['isFromMe'] == true && message['content'] == seed,
-        );
-      }
-      _hasOpenerSeed = false;
-      _openerSeedText = null;
-      _openerSeedLabel = null;
-      _openerSeedReason = null;
-    });
   }
 
   void _addHerMessage() {
@@ -239,14 +157,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   void _removeMessage(int index) {
     setState(() {
-      final removed = _messages.removeAt(index);
-      if (removed['isFromMe'] == true &&
-          removed['content'] == _openerSeedText) {
-        _hasOpenerSeed = false;
-        _openerSeedText = null;
-        _openerSeedLabel = null;
-        _openerSeedReason = null;
-      }
+      _messages.removeAt(index);
     });
   }
 
@@ -273,9 +184,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     // 截圖開始 path (`new_conversation_sheet.dart` → `name: '新對話'`).
     // (Bruce TF feedback 2026-04-28).
     final typedName = _nameController.text.trim();
-    final name = widget.partnerId != null
-        ? (typedName.isEmpty ? '新對話' : typedName)
-        : (typedName.isEmpty && _hasOpenerSeed ? '開場草稿' : typedName);
+    final name =
+        widget.partnerId != null && typedName.isEmpty ? '新對話' : typedName;
 
     if (widget.partnerId == null && name.isEmpty) {
       showBrandFeedbackSnackBar(
@@ -890,75 +800,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     );
   }
 
-  Widget _buildOpenerSeedNotice() {
-    final reason = _openerSeedReason;
-    return BrandSurfaceCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const BrandIconBadge(
-                icon: Icons.auto_awesome,
-                size: 30,
-                iconSize: 16,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '已帶入剛剛的開場白',
-                      style: AppTypography.bodyLarge.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '這則已放進「我說」。先傳給對方；等她回覆後回到這裡，把回覆貼進「她說」。',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.onBackgroundSecondary
-                            .withValues(alpha: 0.82),
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (reason != null && reason.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              'AI 選擇：${_openerSeedLabel ?? '推薦'}，$reason',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.66),
-                height: 1.35,
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: _clearOpenerSeed,
-              icon: const Icon(Icons.close, size: 16),
-              label: const Text('不帶入'),
-              style: TextButton.styleFrom(
-                foregroundColor:
-                    AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return BrandPageBackground(
@@ -971,7 +812,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             color: AppColors.onBackgroundPrimary,
           ),
           title: Text(
-            _hasOpenerSeed ? '接續開場' : '手動輸入',
+            '手動輸入',
             style: AppTypography.titleLarge.copyWith(
               color: AppColors.onBackgroundPrimary,
               fontWeight: FontWeight.w800,
@@ -999,10 +840,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (_hasOpenerSeed) ...[
-                          _buildOpenerSeedNotice(),
-                          const SizedBox(height: 16),
-                        ],
                         // 「對話對象」 input — only shown for legacy /
                         // orphan-conversation entries (partnerId == null).
                         // When entered from PartnerDetail (partnerId set) the

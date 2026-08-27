@@ -1,15 +1,9 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hive_ce/hive_ce.dart';
-import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/conversation/presentation/screens/new_conversation_screen.dart';
-import 'package:vibesync/features/opener/data/services/opener_result_cache_service.dart';
-import 'package:vibesync/features/opener/data/services/opener_service.dart';
 
 void main() {
   group('NewConversationScreen', () {
@@ -208,24 +202,34 @@ void main() {
       expect(find.text('依序輸入對話，至少先加入一則訊息。'), findsOneWidget);
     });
 
-    test('opener handoff hint says to send opener then paste reply', () {
+    testWidgets('「接續開場」頁已移除：不再有帶入開場白的分支', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NewConversationScreen()),
+        ),
+      );
+
+      expect(find.text('接續開場'), findsNothing);
+      expect(find.text('已帶入剛剛的開場白'), findsNothing);
+      expect(find.text('不帶入'), findsNothing);
+    });
+
+    test('waiting-for-reply hint no longer branches on an opener seed', () {
       expect(
         newConversationHintText(
           hasMessages: true,
-          hasOpenerSeed: true,
           hasIncomingMessage: false,
           endsWithMyMessage: true,
         ),
-        '先把這句傳給對方；收到回覆後，貼到「她說」再建立對話分析。',
+        '目前還沒有她的回覆。等她回覆後貼到「她說」，再建立對話分析。',
       );
       expect(
         newConversationHintText(
           hasMessages: true,
-          hasOpenerSeed: true,
           hasIncomingMessage: false,
           endsWithMyMessage: true,
         ),
-        isNot(contains('已先帶入你準備送出的開場白')),
+        isNot(contains('先把這句傳給對方')),
       );
     });
   });
@@ -252,7 +256,6 @@ Finder get _sydneyArt => find.byKey(const ValueKey(manualInputSydneyArtKey));
 Future<void> _pumpScreen(
   WidgetTester tester, {
   String? partnerId,
-  bool seedFromLatestOpener = false,
   Size size = const Size(393, 852),
   double textScale = 1.0,
 }) async {
@@ -266,10 +269,7 @@ Future<void> _pumpScreen(
             size: size,
             textScaler: TextScaler.linear(textScale),
           ),
-          child: NewConversationScreen(
-            partnerId: partnerId,
-            seedFromLatestOpener: seedFromLatestOpener,
-          ),
+          child: NewConversationScreen(partnerId: partnerId),
         ),
       ),
     ),
@@ -493,19 +493,6 @@ void _manualInputDesignTests() {
       expect(_sydneyArt, findsOneWidget);
     });
 
-    testWidgets('沒有開場草稿時 seedFromLatestOpener 安全退回一般手動輸入', (tester) async {
-      await _pumpScreen(
-        tester,
-        partnerId: 'p-1',
-        seedFromLatestOpener: true,
-      );
-
-      expect(find.text('手動輸入'), findsOneWidget);
-      expect(find.text('接續開場'), findsNothing);
-      expect(find.text('已帶入剛剛的開場白'), findsNothing);
-      expect(tester.takeException(), isNull);
-    });
-
     testWidgets('400px 窄螢幕 + 1.3 倍文字不 overflow', (tester) async {
       await _pumpScreen(
         tester,
@@ -532,74 +519,6 @@ void _manualInputDesignTests() {
 
       expect(tester.takeException(), isNull);
       expect(_composerGroup, findsOneWidget);
-    });
-  });
-
-  group('接續開場入口', () {
-    late Directory tempDir;
-
-    setUpAll(() async {
-      tempDir = Directory.systemTemp.createTempSync('manual_input_opener');
-      Hive.init(tempDir.path);
-      if (!Hive.isBoxOpen(AppConstants.settingsBox)) {
-        await Hive.openBox(AppConstants.settingsBox);
-      }
-      OpenerResultCacheService.debugDefaultOwnerIdOverride = () => 'u-test';
-    });
-
-    tearDownAll(() async {
-      OpenerResultCacheService.debugDefaultOwnerIdOverride = null;
-      await Hive.close();
-      tempDir.deleteSync(recursive: true);
-    });
-
-    setUp(() async {
-      await Hive.box(AppConstants.settingsBox).clear();
-    });
-
-    testWidgets('帶入開場白後標題改為「接續開場」，草稿進到群組卡', (tester) async {
-      // 'extend' 是 free 也看得到的型別，避免 visibleForAccess 過濾掉。
-      // Hive 寫入是真的磁碟 I/O：testWidgets 的 fake-async zone 不會讓它
-      // 完成，必須放進 runAsync。
-      await tester.runAsync(() async {
-        await OpenerResultCacheService(ownerIdResolver: () => 'u-test')
-            .saveDraft(
-          result: const OpenerResult(
-            openers: {'extend': '妳那張爬山的照片是在哪座山拍的？'},
-            recommendedPick: 'extend',
-            recommendedReason: '直接接她自己放的內容，不用另開話題。',
-          ),
-          partnerId: 'p-1',
-        );
-      });
-
-      await _pumpScreen(
-        tester,
-        partnerId: 'p-1',
-        seedFromLatestOpener: true,
-        size: const Size(393, 1200),
-      );
-
-      expect(find.text('接續開場'), findsOneWidget);
-      expect(find.text('已帶入剛剛的開場白'), findsOneWidget);
-      expect(
-        find.descendant(
-          of: _composerGroup,
-          matching: find.text('妳那張爬山的照片是在哪座山拍的？'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.text('先把這句傳給對方；收到回覆後，貼到「她說」再建立對話分析。'),
-        findsOneWidget,
-      );
-
-      // 「不帶入」把草稿收回去，標題也退回手動輸入。
-      await tester.tap(find.text('不帶入'));
-      await tester.pump();
-      expect(find.text('手動輸入'), findsOneWidget);
-      expect(find.text('妳那張爬山的照片是在哪座山拍的？'), findsNothing);
-      expect(find.text('依序輸入對話，至少先加入一則訊息。'), findsOneWidget);
     });
   });
 }
