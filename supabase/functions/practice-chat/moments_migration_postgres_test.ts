@@ -31,6 +31,12 @@ const momentUsageUpgradeMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const momentSlotStatesMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260827080000_practice_moment_slot_states.sql",
+    import.meta.url,
+  ),
+);
 
 const PROFILE_ID = "practice_girl_007";
 const POST_DATE = "2026-08-22";
@@ -83,6 +89,7 @@ async function createDatabase(): Promise<PGlite> {
   await db.exec(modelRateLimitMigration);
   await db.exec(momentPostsMigration);
   await db.exec(momentUsageUpgradeMigration);
+  await db.exec(momentSlotStatesMigration);
   await db.query(
     `INSERT INTO auth.users(id) VALUES ($1), ($2)`,
     [USER_ID, CONTENDER_USER_ID],
@@ -797,6 +804,87 @@ Deno.test("PostgreSQL list returns only ready posts inside the requested window"
       [[PROFILE_ID, "practice_girl_042"], "2026-08-08"],
     );
     assertEquals(both.rows.length, 2);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL slot-state 只把可安全重試的 reserved 格標成 claimable", async () => {
+  const db = await createDatabase();
+  try {
+    await db.exec(`
+      INSERT INTO public.practice_moment_posts (
+        profile_id, post_date, slot, day_part, theme_id, status, attempts,
+        body, generation_token, reserved_at
+      ) VALUES
+        ('practice_girl_007', '${POST_DATE}', 0, 'morning', 'coffee_start',
+         'exhausted', 3, NULL, NULL, now()),
+        ('practice_girl_042', '${POST_DATE}', 0, 'morning', 'coffee_start',
+         'ready', 1, '窗內的一則。', NULL, now()),
+        ('practice_girl_043', '${POST_DATE}', 0, 'morning', 'coffee_start',
+         'reserved', 1, NULL, 'live-token', now()),
+        ('practice_girl_044', '${POST_DATE}', 0, 'morning', 'coffee_start',
+         'reserved', 1, NULL, 'expired-token', now() - interval '121 seconds'),
+        ('practice_girl_045', '${POST_DATE}', 0, 'morning', 'coffee_start',
+         'reserved', 1, NULL, NULL, now());
+    `);
+
+    const states = await db.query<{
+      profile_id: string;
+      slot: number;
+      claimable: boolean;
+    }>(
+      `SELECT profile_id, slot, claimable
+       FROM public.list_practice_moment_slot_states($1, $2::DATE, 3, 120)`,
+      [[
+        "practice_girl_007",
+        "practice_girl_042",
+        "practice_girl_043",
+        "practice_girl_044",
+        "practice_girl_045",
+        "practice_girl_046",
+      ], POST_DATE],
+    );
+
+    assertEquals(states.rows, [
+      { profile_id: "practice_girl_007", slot: 0, claimable: false },
+      { profile_id: "practice_girl_042", slot: 0, claimable: false },
+      { profile_id: "practice_girl_043", slot: 0, claimable: false },
+      { profile_id: "practice_girl_044", slot: 0, claimable: true },
+      { profile_id: "practice_girl_045", slot: 0, claimable: true },
+    ]);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("PostgreSQL slot-state RPC 不開放 anon/authenticated", async () => {
+  const db = await createDatabase();
+  try {
+    const security = await db.query<{
+      security_definer: boolean;
+      anon_execute: boolean;
+      authenticated_execute: boolean;
+      service_execute: boolean;
+    }>(`
+      SELECT
+        p.prosecdef AS security_definer,
+        has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_execute,
+        has_function_privilege('authenticated', p.oid, 'EXECUTE')
+          AS authenticated_execute,
+        has_function_privilege('service_role', p.oid, 'EXECUTE')
+          AS service_execute
+      FROM pg_proc AS p
+      WHERE p.oid = to_regprocedure(
+        'public.list_practice_moment_slot_states(text[],date,integer,integer)'
+      )
+    `);
+    assertEquals(security.rows[0], {
+      security_definer: true,
+      anon_execute: false,
+      authenticated_execute: false,
+      service_execute: true,
+    });
   } finally {
     await db.close();
   }

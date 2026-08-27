@@ -92,12 +92,12 @@ Deno.test("死線中止不得 release：那條分支必須在 release 之前 ret
     "await releaseSlot(",
     deadlineBranch,
   );
-  const returnStopped = executableHandler.indexOf(
-    'return { kind: "stopped" };',
+  const returnDeadline = executableHandler.indexOf(
+    'return { kind: "deadline" };',
     deadlineBranch,
   );
   assert(
-    returnStopped > 0 && returnStopped < releaseCall,
+    returnDeadline > 0 && returnDeadline < releaseCall,
     "死線分支必須先 return，否則死線中止會 release 掉 token，" +
       "下一個請求立刻接手並多燒一次 attempts",
   );

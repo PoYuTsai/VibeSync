@@ -161,6 +161,7 @@ interface MissingSlot {
 type FillOneSlotResult =
   | { kind: "filled"; post: MomentFeedPost }
   | { kind: "unclaimed" }
+  | { kind: "deadline" }
   | { kind: "stopped" };
 
 /** PostgREST 把 RETURNS TABLE 包成陣列；統一取第一列。 */
@@ -345,6 +346,7 @@ export async function handlePracticeMoments(args: {
   // 3-4. 今天該有、但 DB 裡還沒有的 slot。
   const missing: MissingSlot[] = [];
   const plannedProfileIds = new Set<string>();
+  const plannedSlotKeys = new Set<string>();
   for (const profileId of profileIds) {
     const girl = getPracticeGirlProfile(profileId);
     if (!girl) continue;
@@ -361,6 +363,7 @@ export async function handlePracticeMoments(args: {
     }
     plannedProfileIds.add(profileId);
     for (const slotPlan of plan.slots) {
+      plannedSlotKeys.add(slotKey(profileId, plan.isoDate, slotPlan.slot));
       if (readySlots.has(slotKey(profileId, plan.isoDate, slotPlan.slot))) {
         continue;
       }
@@ -397,12 +400,7 @@ export async function handlePracticeMoments(args: {
   const feedIsStale = latestVisibleAt === null ||
     now.getTime() - latestVisibleAt > MOMENT_FEED_FRESHNESS_MAX_AGE_MS;
 
-  const normalMissingKeys = new Set(
-    missing.map((item) =>
-      slotKey(item.girl.profileId, item.isoDate, item.plan.slot)
-    ),
-  );
-  const freshnessCandidates: MissingSlot[] = [];
+  let freshnessCandidates: MissingSlot[] = [];
   if (feedIsStale) {
     const freshnessProfileIds = [...profileIds].sort((a, b) =>
       (unlockedAtByProfile.get(b) ?? 0) -
@@ -418,7 +416,7 @@ export async function handlePracticeMoments(args: {
       for (let slot = 0; slot < MAX_MOMENT_SLOTS_PER_DAY; slot++) {
         const candidateKey = slotKey(profileId, time.isoDate, slot);
         if (
-          readySlots.has(candidateKey) || normalMissingKeys.has(candidateKey)
+          readySlots.has(candidateKey) || plannedSlotKeys.has(candidateKey)
         ) continue;
         try {
           const slotPlan = momentFreshnessSlotFor({ girl, time, slot });
@@ -450,6 +448,49 @@ export async function handlePracticeMoments(args: {
           });
         }
       }
+    }
+  }
+
+  // stale feed 才做這次唯讀查詢：先略過已 ready／exhausted／有效租約中的
+  // 今日格子，避免使用者每次重開 feed 都讓 reserve 做無意義的 FOR UPDATE。
+  // 這只是效能與噪音守門；查詢失敗或狀態在查完後改變時，下面的原子 reserve
+  // 仍是唯一權威，所以部署窗與競態都不會繞過 attempts／per-user 限流。
+  if (freshnessCandidates.length > 0) {
+    const { data: stateData, error: stateError } = await supabase.rpc(
+      "list_practice_moment_slot_states",
+      {
+        p_profile_ids: profileIds,
+        p_post_date: time.isoDate,
+        p_max_attempts: MAX_MOMENT_ATTEMPTS,
+        p_lease_seconds: MOMENT_RESERVE_LEASE_MS / 1000,
+      },
+    );
+    if (stateError) {
+      // migration 部署窗或暫時性讀錯：保留舊的 reserve-authoritative 路徑，
+      // 不能因為一個唯讀最佳化失敗就讓整面 stale feed 永久不再補位。
+      logWarn("practice_moments_slot_states_error", {
+        error: stateError.message,
+      });
+    } else {
+      const blockedKeys = new Set<string>();
+      for (const raw of Array.isArray(stateData) ? stateData : []) {
+        if (typeof raw !== "object" || raw === null) continue;
+        const row = raw as Row;
+        const profileId = row.profile_id;
+        const slot = Number(row.slot);
+        if (
+          typeof profileId !== "string" ||
+          !unlockedAtByProfile.has(profileId) ||
+          !Number.isInteger(slot) || slot < 0 ||
+          slot >= MAX_MOMENT_SLOTS_PER_DAY || row.claimable !== false
+        ) continue;
+        blockedKeys.add(slotKey(profileId, time.isoDate, slot));
+      }
+      freshnessCandidates = freshnessCandidates.filter((item) =>
+        !blockedKeys.has(
+          slotKey(item.girl.profileId, item.isoDate, item.plan.slot),
+        )
+      );
     }
   }
 
@@ -533,17 +574,22 @@ export async function handlePracticeMoments(args: {
       )
       .slice(0, MOMENT_FILL_MAX_PER_REQUEST);
     if (candidates.length === 0) return;
-    logInfo("practice_moments_freshness_fill", {
-      candidates: candidates.length,
-      previousAgeMs: latestVisibleAt === null
-        ? null
-        : now.getTime() - latestVisibleAt,
-    });
+    let freshnessLogged = false;
+    const onReserveStart = () => {
+      attemptedCount += 1;
+      if (freshnessLogged) return;
+      freshnessLogged = true;
+      logInfo("practice_moments_freshness_fill", {
+        candidates: candidates.length,
+        previousAgeMs: latestVisibleAt === null
+          ? null
+          : now.getTime() - latestVisibleAt,
+      });
+    };
     // 保底候選是同一個「補一則」目標的替代格，不可平行打模型。依序 reserve：
     // 只有前一格未認領（已 ready、租約中或 attempts 耗盡）才改試下一格；
     // 一旦真的認領，不論生成成敗都停止，避免單一請求燒多通模型。
     for (const item of candidates) {
-      attemptedCount += 1;
       const result = await fillOneSlot({
         supabase,
         userId,
@@ -551,6 +597,7 @@ export async function handlePracticeMoments(args: {
         deps,
         deadlineAt,
         isTestAccount,
+        onReserveStart,
       });
       if (result.kind === "unclaimed") continue;
       recordFilled(item, result);
@@ -560,7 +607,6 @@ export async function handlePracticeMoments(args: {
 
   if (missing.length > 0) {
     const batch = missing.slice(0, MOMENT_FILL_MAX_PER_REQUEST);
-    attemptedCount = batch.length;
     tasks.push((async () => {
       let allUnclaimed = batch.length > 0;
       const results = await Promise.allSettled(batch.map(async (item) => {
@@ -571,6 +617,9 @@ export async function handlePracticeMoments(args: {
           deps,
           deadlineAt,
           isTestAccount,
+          onReserveStart: () => {
+            attemptedCount += 1;
+          },
         });
         // 不等其他平行任務：成功一則就立刻納入回應，保留原本的死線語義。
         recordFilled(item, result);
@@ -740,13 +789,22 @@ async function fillOneSlot(opts: {
   deps: MomentsHandlerDeps;
   deadlineAt: number;
   isTestAccount: boolean;
+  onReserveStart: () => void;
 }): Promise<FillOneSlotResult> {
-  const { supabase, userId, item, deps, deadlineAt, isTestAccount } = opts;
+  const {
+    supabase,
+    userId,
+    item,
+    deps,
+    deadlineAt,
+    isTestAccount,
+    onReserveStart,
+  } = opts;
   const { girl, isoDate, plan, imageCandidates, generatedImage } = item;
 
   // 死線守門必須在原子 reserve gate 之前。gate 只在成功認領 slot 時，
   // 同一筆交易內一起計入 attempts 與 per-user model usage。
-  if (Date.now() >= deadlineAt) return { kind: "stopped" };
+  if (Date.now() >= deadlineAt) return { kind: "deadline" };
 
   const generationToken = (deps.randomToken ?? (() => crypto.randomUUID()))();
   const rateLimits = MODEL_RATE_LIMITS.practice_moment;
@@ -756,6 +814,7 @@ async function fillOneSlot(opts: {
     p_slot: plan.slot,
   };
 
+  onReserveStart();
   const { data: reserveData, error: reserveError } = await supabase.rpc(
     "reserve_practice_moment_slot",
     {
@@ -797,7 +856,7 @@ async function fillOneSlot(opts: {
     const remainingMs = deadlineAt - Date.now();
     if (remainingMs <= 0) {
       // 死線已過：不打模型，也不 release（token 留給租約）。
-      return { kind: "stopped" };
+      return { kind: "deadline" };
     }
     raw = await deps.callDeepSeek({
       apiKey: deps.apiKey,
@@ -828,7 +887,7 @@ async function fillOneSlot(opts: {
         profileId: girl.profileId,
         slot: plan.slot,
       });
-      return { kind: "stopped" };
+      return { kind: "deadline" };
     }
     await releaseSlot(supabase, slotParams, token, girl.profileId);
     logWarn("practice_moments_generation_failed", {

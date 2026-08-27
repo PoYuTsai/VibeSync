@@ -46,6 +46,8 @@ interface HarnessOptions {
   drawError?: string;
   existing?: Row[];
   listError?: string;
+  slotStates?: Row[];
+  slotStateError?: string;
   reserve?: (params: Row, index: number) => Row | null;
   commit?: (params: Row) => Row;
   release?: (params: Row) => Row;
@@ -115,6 +117,14 @@ function makeHarness(options: HarnessOptions): Harness {
           });
         }
         return Promise.resolve({ data: options.existing ?? [], error: null });
+      }
+      if (fn === "list_practice_moment_slot_states") {
+        return Promise.resolve({
+          data: options.slotStates ?? [],
+          error: options.slotStateError
+            ? { message: options.slotStateError }
+            : null,
+        });
       }
       if (fn === "reserve_practice_moment_slot") {
         // production 的 reserve RPC 會在同一筆 DB transaction 內呼叫
@@ -323,7 +333,13 @@ Deno.test("整個 feed 超過 24 小時沒更新 → 補一則今天已到時間
   const girl = getPracticeGirlProfile(queenieId);
   assert(girl);
   const time = taipeiTimeContextFor(QUEENIE_STALE_NOW);
-  const normalDue = momentPlanFor({ girl, time }).slots.filter((slotPlan) =>
+  const normalPlan = momentPlanFor({ girl, time });
+  assertEquals(
+    normalPlan.slots.map((slotPlan) => slotPlan.slot),
+    [0],
+    "Queenie fixture 前提：今天只排 slot 0，保底才可驗證不借用未到期排程",
+  );
+  const normalDue = normalPlan.slots.filter((slotPlan) =>
     momentPostedAtFor({
       profileId: queenieId,
       isoDate: time.isoDate,
@@ -335,6 +351,17 @@ Deno.test("整個 feed 超過 24 小時沒更新 → 補一則今天已到時間
     normalDue.length,
     0,
     "Queenie 重現案例必須沒有一般排程已到時間，否則測不到 24 小時保底",
+  );
+  const fallbackPlan = momentFreshnessSlotFor({ girl, time, slot: 1 });
+  const fallbackPostedAt = momentPostedAtFor({
+    profileId: queenieId,
+    isoDate: time.isoDate,
+    slot: 1,
+    dayPart: fallbackPlan.dayPart,
+  });
+  assert(
+    fallbackPostedAt.getTime() <= QUEENIE_STALE_NOW.getTime(),
+    `Queenie fixture 前提：未排程的 slot 1 必須已到時間，實際 ${fallbackPostedAt.toISOString()}`,
   );
   const harness = makeHarness({
     unlocked: [{ profileId: queenieId }],
@@ -362,6 +389,11 @@ Deno.test("整個 feed 超過 24 小時沒更新 → 補一則今天已到時間
   assertEquals(reserveCalls.length, 1);
   assertEquals(reserveCalls[0].params.p_profile_id, queenieId);
   assertEquals(reserveCalls[0].params.p_post_date, "2026-08-27");
+  assertEquals(
+    reserveCalls[0].params.p_slot,
+    1,
+    "保底不得借用今天稍晚原本排定的 slot 0",
+  );
   const freshnessPlan = momentFreshnessSlotFor({
     girl,
     time,
@@ -418,6 +450,118 @@ Deno.test("24 小時保底第一格未認領 → 依序改試第二格且只打�
   assertEquals(reserveCalls.length, 2);
   assertEquals(reserveCalls[0].params.p_slot, 0);
   assertEquals(reserveCalls[1].params.p_slot, 1);
+  assertEquals(harness.modelCalls.length, 1);
+  assertEquals(body(result).generatedCount, 1);
+});
+
+Deno.test("24 小時保底兩格都不可認領 → 只讀狀態，不再重複鎖 reserve", async () => {
+  const queenieId = "practice_girl_094";
+  const harness = makeHarness({
+    unlocked: [{ profileId: queenieId }],
+    existing: [{
+      profile_id: queenieId,
+      post_date: "2026-08-20",
+      slot: 0,
+      day_part: "morning",
+      theme_id: "coffee_start",
+      body: VALID_BODY,
+      image_id: null,
+      created_at: "2026-08-19T23:05:00.000Z",
+    }],
+    planFor: ({ girl, time }) => ({
+      profileId: girl.profileId,
+      isoDate: time.isoDate,
+      slots: [],
+    }),
+    slotStates: [0, 1].map((slot) => ({
+      profile_id: queenieId,
+      slot,
+      claimable: false,
+    })),
+  });
+
+  const result = await run(harness, { now: END_OF_DAY });
+  const stateCalls = harness.rpcCalls.filter((call) =>
+    call.fn === "list_practice_moment_slot_states"
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(stateCalls.length, 1);
+  assertEquals(stateCalls[0].params.p_profile_ids, [queenieId]);
+  assertEquals(stateCalls[0].params.p_post_date, "2026-08-22");
+  assertEquals(
+    rpcNames(harness).includes("reserve_practice_moment_slot"),
+    false,
+    "已耗盡或有效租約中的格子不得每次開 feed 都再做 FOR UPDATE",
+  );
+  assertEquals(harness.modelCalls.length, 0);
+  assertEquals(body(result).generatedCount, 0);
+});
+
+Deno.test("24 小時保底只嘗試 slot-state 標成可認領的格子", async () => {
+  const queenieId = "practice_girl_094";
+  const harness = makeHarness({
+    unlocked: [{ profileId: queenieId }],
+    existing: [{
+      profile_id: queenieId,
+      post_date: "2026-08-20",
+      slot: 0,
+      day_part: "morning",
+      theme_id: "coffee_start",
+      body: VALID_BODY,
+      image_id: null,
+      created_at: "2026-08-19T23:05:00.000Z",
+    }],
+    planFor: ({ girl, time }) => ({
+      profileId: girl.profileId,
+      isoDate: time.isoDate,
+      slots: [],
+    }),
+    slotStates: [
+      { profile_id: queenieId, slot: 0, claimable: false },
+      { profile_id: queenieId, slot: 1, claimable: true },
+    ],
+  });
+
+  const result = await run(harness, { now: END_OF_DAY });
+  const reserveCalls = harness.rpcCalls.filter((call) =>
+    call.fn === "reserve_practice_moment_slot"
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(reserveCalls.length, 1);
+  assertEquals(reserveCalls[0].params.p_slot, 1);
+  assertEquals(harness.modelCalls.length, 1);
+  assertEquals(body(result).generatedCount, 1);
+});
+
+Deno.test("slot-state 唯讀 RPC 暫時不可用 → 保留原子 reserve 保底路徑", async () => {
+  const queenieId = "practice_girl_094";
+  const harness = makeHarness({
+    unlocked: [{ profileId: queenieId }],
+    existing: [{
+      profile_id: queenieId,
+      post_date: "2026-08-20",
+      slot: 0,
+      day_part: "morning",
+      theme_id: "coffee_start",
+      body: VALID_BODY,
+      image_id: null,
+      created_at: "2026-08-19T23:05:00.000Z",
+    }],
+    planFor: ({ girl, time }) => ({
+      profileId: girl.profileId,
+      isoDate: time.isoDate,
+      slots: [],
+    }),
+    slotStateError: "PGRST202 function not found",
+  });
+
+  const result = await run(harness, { now: END_OF_DAY });
+
+  assertEquals(result.status, 200);
+  assert(rpcNames(harness).includes("list_practice_moment_slot_states"));
+  assert(rpcNames(harness).includes("reserve_practice_moment_slot"));
   assertEquals(harness.modelCalls.length, 1);
   assertEquals(body(result).generatedCount, 1);
 });
@@ -872,6 +1016,66 @@ Deno.test("死線已過 → 連 reserve 都不做，不浪費 attempts", async (
     "死線已過還去 reserve，會白燒一次 attempts",
   );
   assertEquals(body(result).generatedCount, 0);
+});
+
+Deno.test("保底在死線前未開始 → telemetry 不記 freshness fill 或 reserve attempt", async () => {
+  const queenieId = "practice_girl_094";
+  const harness = makeHarness({
+    unlocked: [{ profileId: queenieId }],
+    existing: [{
+      profile_id: queenieId,
+      post_date: "2026-08-20",
+      slot: 0,
+      day_part: "morning",
+      theme_id: "coffee_start",
+      body: VALID_BODY,
+      image_id: null,
+      created_at: "2026-08-19T23:05:00.000Z",
+    }],
+    planFor: ({ girl, time }) => ({
+      profileId: girl.profileId,
+      isoDate: time.isoDate,
+      slots: [],
+    }),
+  });
+  const events: Record<string, unknown>[] = [];
+  const originalLog = console.log;
+  console.log = (message?: unknown) => {
+    if (typeof message !== "string") return;
+    try {
+      const parsed = JSON.parse(message);
+      if (typeof parsed === "object" && parsed !== null) {
+        events.push(parsed as Record<string, unknown>);
+      }
+    } catch {
+      // 只收結構化 logger 輸出。
+    }
+  };
+  try {
+    const result = await run(harness, {
+      now: END_OF_DAY,
+      fillDeadlineMs: 0,
+    });
+    await drain(20);
+    assertEquals(result.status, 200);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assertEquals(
+    events.some((event) => event.event === "practice_moments_freshness_fill"),
+    false,
+    "未開始 reserve 就不應宣稱已啟動 freshness fill",
+  );
+  const filledEvent = events.find((event) =>
+    event.event === "practice_moments_filled"
+  );
+  assert(filledEvent);
+  assertEquals(filledEvent.attempted, 0);
+  assertEquals(
+    rpcNames(harness).includes("reserve_practice_moment_slot"),
+    false,
+  );
 });
 
 Deno.test("限流與 attempts 封裝在唯一的原子 reserve gate", async () => {
