@@ -163,11 +163,21 @@ export function sniffImageContentType(bytes: Uint8Array): string | null {
   return null;
 }
 
-/** 回應 header 宣告的型別是否在受理集合內（下載前的便宜早退守門）。 */
-function isAcceptedImageContentType(contentType: string): boolean {
-  return MOMENT_IMAGE_ACCEPTED_FORMATS.some(
-    (format) => format.contentType === contentType,
-  );
+/**
+ * 這個 content type 是否**肯定不是圖片**。
+ *
+ * 只用來做下載前的便宜早退：擋住供應商回 200、body 其實是錯誤頁或錯誤
+ * JSON 的情況，省掉最多 12MB 流量。**刻意是黑名單而不是白名單**——header
+ * 是供應商 CDN 說了算的字串，物件儲存服務對沒設 metadata 的物件常回
+ * `application/octet-stream`，用白名單會讓一張完全合法的圖被 header 擋掉，
+ * 那正是本次要修的「安靜的全面失效」那一類。header 對格式**沒有否決權**，
+ * 認定一律交給 magic bytes（見 sniffImageContentType）。
+ */
+function isNonImageContentType(contentType: string): boolean {
+  if (!contentType) return false;
+  return contentType.startsWith("text/") ||
+    contentType === "application/json" ||
+    contentType === "application/xml";
 }
 
 // ── prompt 素材（字面沿用 docs/plans/2026-08-24-practice-moments-scene-image-prompts.md §4）──
@@ -528,7 +538,8 @@ async function callFalImageModel(opts: {
   //    的回應形狀（HTTP error？空 images？黑圖？）。所以我們不依賴任何
   //    特定的失敗形狀——不論回來的是錯誤碼、沒有 images、還是一張擋不住
   //    的圖，都由既有路徑各自收斂（HTTP 錯誤 → fal_image_http_*；沒有
-  //    images → fal_image_empty；不是 PNG／太小 → 對應的 failureClass）。
+  //    images → fal_image_empty；不是受理格式／太小 → 對應的
+  //    failureClass）。
   //    我們**不能**宣稱「不合格的圖絕不會到我們手上」。
   // 2. **輸入端硬約束**：prompt 前綴明文禁人物、禁可讀文字、禁品牌，且
   //    場景句本身經 validateSceneLine 過濾（禁詞、ASCII、長度）。
@@ -586,13 +597,14 @@ async function downloadImage(
       await response.text().catch(() => {});
       throw new Error("fal_image_download_failed");
     }
-    // MIME 驗證：只收受理集合內的格式（第二輪複審 P2-3 的同一道守門）。
-    // 這裡擋的是「根本不是圖」的回應（HTML 錯誤頁、JSON），在讀 body 之前
-    // 就早退，省掉最多 12MB 流量；真正決定寫入 contentType 的是下面的
-    // magic bytes，不是這個 header。
+    // 下載前的便宜早退：**只擋「肯定不是圖」的回應**（HTML 錯誤頁、錯誤
+    // JSON），省掉最多 12MB 流量。這不是格式白名單——JPEG／PNG 的受理與
+    // 其他格式（GIF、WebP…）的拒收，一律由下面的 magic bytes 決定，header
+    // 對格式沒有否決權。少了這道限制，供應商把合法的圖標成
+    // application/octet-stream 時我們仍然收得下來。
     const contentType = (response.headers.get("content-type") ?? "")
       .split(";")[0].trim().toLowerCase();
-    if (!isAcceptedImageContentType(contentType)) {
+    if (isNonImageContentType(contentType)) {
       await response.body?.cancel().catch(() => {});
       throw new Error("fal_image_bad_content_type");
     }

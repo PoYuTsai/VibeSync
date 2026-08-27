@@ -187,6 +187,8 @@ function makeJobHarness(options: {
   imageBytes?: number;
   /** 下載回來的實際位元組格式；預設 jpeg（canary 實測的生產實況）。 */
   downloadFormat?: "jpeg" | "png";
+  /** 直接指定 body 的檔頭位元組（驗非受理格式時用真實 magic）。 */
+  downloadMagic?: number[];
   scene?: () => Promise<string>;
   uploadFails?: boolean;
   /** 上傳懸掛；harness.releaseUpload() 使晚到的上傳完成。 */
@@ -326,6 +328,8 @@ function makeJobHarness(options: {
     }
     const bytes = options.badMagic
       ? new Uint8Array(imageBytes)
+      : options.downloadMagic
+      ? fakeImage(options.downloadMagic, imageBytes)
       : (downloadFormat === "png" ? fakePng : fakeJpeg)(imageBytes);
     return Promise.resolve(new Response(bytes, { status: 200, headers }));
   }) as typeof globalThis.fetch;
@@ -684,7 +688,7 @@ Deno.test("非 fal.media 的結果 URL：拒絕下載並 release", async () => {
   }
 });
 
-Deno.test("下載回應的 Content-Type 不是圖片：release", async () => {
+Deno.test("下載回應肯定不是圖（text/html 錯誤頁）：讀 body 前就早退", async () => {
   const harness = makeJobHarness({ downloadContentType: "text/html" });
   await runJob(harness);
   assertEquals(rpcNames(harness), [
@@ -819,8 +823,13 @@ Deno.test("header 與位元組不一致：contentType 以位元組為準", async
   assertEquals(harness.uploads[0].contentType, "image/jpeg");
 });
 
-Deno.test("Content-Type 是受理集合外的圖片格式（gif）：拒絕並 release", async () => {
-  const harness = makeJobHarness({ downloadContentType: "image/gif" });
+Deno.test("真的是 GIF：由 magic bytes 拒收（不是靠 header）", async () => {
+  // header 與 body 都誠實是 GIF。拒收這件事必須由位元組決定——header 對
+  // 格式沒有否決權，否則等於又把供應商說了算的字串變成硬守門。
+  const harness = makeJobHarness({
+    downloadContentType: "image/gif",
+    downloadMagic: [0x47, 0x49, 0x46, 0x38, 0x39, 0x61],
+  });
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
@@ -829,6 +838,24 @@ Deno.test("Content-Type 是受理集合外的圖片格式（gif）：拒絕並 r
     "release_practice_moment_image",
   ]);
   assertEquals(harness.uploads.length, 0);
+});
+
+Deno.test("合法 JPEG 被標成 application/octet-stream：仍然收下", async () => {
+  // 物件儲存服務對沒設 metadata 的物件常回 octet-stream。header 白名單會
+  // 讓這種完全合法的圖被擋掉——正是本 PR 要修的「安靜的全面失效」那一類。
+  const harness = makeJobHarness({
+    downloadContentType: "application/octet-stream",
+  });
+  await runJob(harness);
+  assertEquals(harness.uploads.length, 1);
+  assertEquals(harness.uploads[0].contentType, "image/jpeg");
+});
+
+Deno.test("完全沒有 Content-Type header：交給 magic bytes，照收", async () => {
+  const harness = makeJobHarness({ downloadContentType: "" });
+  await runJob(harness);
+  assertEquals(harness.uploads.length, 1);
+  assertEquals(harness.uploads[0].contentType, "image/jpeg");
 });
 
 Deno.test("magic bytes 認不得任何受理格式：header 說謊也擋，release 收場", async () => {

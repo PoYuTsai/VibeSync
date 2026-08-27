@@ -11,7 +11,7 @@
 | --- | --- |
 | 供應商 | fal.ai（`https://fal.run`，同步端點） |
 | 模型 | **ByteDance Seedream 4.5**（`fal-ai/bytedance/seedream/v4.5/text-to-image`）。2026-08-26 從 FLUX.1 [schnell] 換過來 |
-| 輸入 | 英文場景句（由 DeepSeek 依貼文內文與題材產生，失敗時退用 40 條題材模板句其一）＋ 常數 STYLE 前綴。**零使用者資料**（隱私鐵則，source test 強制） |
+| 輸入 | 英文場景句（由 DeepSeek 依貼文內文與題材產生，失敗時退用 62 條題材模板句其一）＋ 常數 STYLE 前綴。**零使用者資料**（隱私鐵則，source test 強制） |
 | 尺寸／格式 | `image_size: "landscape_4_3"` preset；該模型無 `output_format` 參數，輸出格式由供應商決定。2026-08-27 canary 實測為 JPEG（2.1MB）；管線同時受理 JPEG 與 PNG，實際格式以 magic bytes 判定後寫入 Storage metadata |
 | 內容約束 | prompt 明文禁人物（無臉、無手、無身體、無剪影）、禁可讀文字（無招牌／標籤／logo／UI）、禁品牌；請求固定帶 `enable_safety_checker: true` |
 | 儲存 | Supabase Storage public bucket，物件 key 以 image_token 隔離；出 14 天 feed 窗即刪除物件（DB 列保留供審計） |

@@ -124,16 +124,17 @@ export const MOMENT_IMAGE_DOWNLOAD_TIMEOUT_MS = 15_000;
 export const MOMENT_IMAGE_SCENE_TIMEOUT_MS = 10_000;
 
 /**
- * 黑圖保險：不安全或崩掉的生成常是一張近乎單色的圖，無損 PNG 壓縮後
- * 遠小於正常場景圖。低於此值視為生成失敗（fal_image_too_small）。
+ * 黑圖保險：不安全或崩掉的生成常是一張近乎單色的圖，不論 JPEG 或 PNG，
+ * 壓縮後都遠小於正常場景圖。低於此值視為生成失敗（fal_image_too_small）。
  */
 export const MOMENT_IMAGE_MIN_BYTES = 10_000;
 
 /**
- * 異常大檔上界。Seedream 4.5 只出 **PNG（無損）**，官方範例的
- * file_size 就是 4.4MB，1920×1440 的實景圖落在 4-8MB 很正常，
- * 舊的 4MB 上限會把正常的圖當成異常擋掉。12MB 留足餘裕，同時仍能擋住
- * 「回了一個完全不該是圖」的異常回應（整張都要進記憶體，不能無上限）。
+ * 異常大檔上界。格式由供應商決定（該模型無 `output_format`），2026-08-27
+ * canary 實測單張 JPEG 為 2.1MB；若哪天回的是無損 PNG 會再大上數倍，舊的
+ * 4MB 上限兩種情況都可能把正常的圖當成異常擋掉。12MB 對實測值留約 5.7 倍
+ * 餘裕，同時仍能擋住「回了一個完全不該是圖」的異常回應（整張都要進記憶
+ * 體，不能無上限）。
  */
 export const MOMENT_IMAGE_MAX_BYTES = 12_000_000;
 
