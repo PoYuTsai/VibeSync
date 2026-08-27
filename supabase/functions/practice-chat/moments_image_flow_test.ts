@@ -113,18 +113,19 @@ function makeFlowHarness(options: {
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            images: [{ url: "https://fal.media/x.png" }],
+            images: [{ url: "https://v3b.fal.media/files/b/x.jpg" }],
           }),
           { status: 200 },
         ),
       );
     }
-    const png = new Uint8Array(20_000);
-    png.set([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], 0);
+    // canary 實測：Seedream 4.5 回的是 JPEG（沒有 output_format 可指定）。
+    const jpeg = new Uint8Array(20_000);
+    jpeg.set([0xFF, 0xD8, 0xFF], 0);
     return Promise.resolve(
-      new Response(png, {
+      new Response(jpeg, {
         status: 200,
-        headers: { "content-type": "image/png" },
+        headers: { "content-type": "image/jpeg" },
       }),
     );
   }) as typeof globalThis.fetch;
@@ -236,7 +237,7 @@ Deno.test("開關開：候選清空、commit 標 pending、背景 job 生圖到 
   assert(rpcNames(harness).includes("claim_practice_moment_image"));
   assert(rpcNames(harness).includes("commit_practice_moment_image"));
   assertEquals(harness.falCalls, 1);
-  assertEquals(harness.uploads, [`${ISO_DATE}/${PROFILE_ID}_0_img-token.png`]);
+  assertEquals(harness.uploads, [`${ISO_DATE}/${PROFILE_ID}_0_img-token.img`]);
 
   // 本回應的貼文 imageUrl 為 null（圖在背景生成中）。
   const posts = (result.body as { posts: { imageUrl: string | null }[] }).posts;
@@ -307,6 +308,7 @@ Deno.test("list 的 pending 列在零缺口請求上被接手", async () => {
 });
 
 Deno.test("ready 列組出 public imageUrl；其他狀態一律 null", async () => {
+  // 舊副檔名：public URL 是純字串組裝，不解析副檔名，換格式不影響既有列。
   const path = `${ISO_DATE}/${PROFILE_ID}_0.png`;
   const harness = makeFlowHarness({
     slots: [],

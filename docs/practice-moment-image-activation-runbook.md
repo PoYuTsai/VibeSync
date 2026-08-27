@@ -57,7 +57,7 @@ npx.cmd --yes supabase secrets list --project-ref fcmwrmwdoqiqdnbisdpg
 | `practice_moment_image_scene_degraded` | 場景句 DeepSeek 失敗、退用題材模板句（**不是**錯誤，圖照生） |
 | `practice_moment_image_expired_swept` / `practice_moment_image_orphan_ledger_swept` / `practice_moment_image_orphans_swept` | 三段清理各自的成果數 |
 
-常見 `failureClass`：`fal_image_http_<狀態碼>`（供應商回錯，402/403 多半是額度或 key）、`fal_image_too_small`（黑圖保險）、`fal_image_too_large`（超過 12MB 上限）、`fal_image_bad_content_type`／`fal_image_bad_magic`（不是 PNG）、`fal_image_download_failed`、`fal_image_timeout`（fal 呼叫超過 60s）、`fal_image_upload_timeout`。
+常見 `failureClass`：`fal_image_http_<狀態碼>`（供應商回錯，402/403 多半是額度或 key）、`fal_image_too_small`（黑圖保險）、`fal_image_too_large`（超過 12MB 上限）、`fal_image_bad_content_type`／`fal_image_bad_magic`（回應不是受理格式；受理 JPEG 與 PNG）、`fal_image_download_failed`、`fal_image_timeout`（fal 呼叫超過 60s）、`fal_image_upload_timeout`。
 
 > 2026-08-26 換 Seedream 4.5 之後，`fal_image_nsfw` 與 `fal_image_safety_unverified` **不會再出現**——該模型的 output 沒有逐張 NSFW 判定，守門改由請求端的 `enable_safety_checker: true` 在平台側完成。官方**只保證這個檢查可以被啟用，未規定命中時的回應形狀**，所以命中時可能表現成 HTTP 錯誤、也可能是沒有 images 或其他形狀，分別落在 `fal_image_http_*`／`fal_image_empty`／格式與大小的 failureClass。詳見設計文件 §9。
 

@@ -12,6 +12,7 @@ import {
   isLegalSeedreamImageSize,
   momentImagePath,
   momentImageSeed,
+  sniffImageContentType,
   type MomentsImageRpcClient,
   themeSceneLine,
   validateSceneLine,
@@ -19,7 +20,6 @@ import {
 import { MOMENT_THEME_IDS } from "./moments_schedule.ts";
 import {
   MAX_MOMENT_IMAGE_ATTEMPTS,
-  MOMENT_IMAGE_CONTENT_TYPE,
   MOMENT_IMAGE_MAX_BYTES,
   MOMENT_IMAGE_MIN_BYTES,
   MOMENT_IMAGE_SIZE_PRESET,
@@ -29,20 +29,49 @@ const JOB = { profileId: "practice_girl_007", isoDate: "2026-08-25", slot: 0 };
 const USER_ID = "11111111-2222-3333-4444-555555555555";
 const FAL_URL =
   "https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image";
-const CDN_URL = "https://fal.media/files/abc/result.png";
+const CDN_URL = "https://v3b.fal.media/files/b/0aa80780/result.jpg";
 const BODY = "下班隨便弄了碗麵 吃完才發現醬料包過期一個月";
 const TOKEN = "img-token-1";
-const TOKEN_PATH = `${JOB.isoDate}/${JOB.profileId}_${JOB.slot}_${TOKEN}.png`;
+const TOKEN_PATH = `${JOB.isoDate}/${JOB.profileId}_${JOB.slot}_${TOKEN}.img`;
 
-/** 產生開頭是合法 PNG magic（89 50 4E 47 0D 0A 1A 0A）的假圖 bytes。 */
+/** 產生開頭是合法 magic bytes 的假圖。 */
+const JPEG_MAGIC = [0xFF, 0xD8, 0xFF];
 const PNG_MAGIC = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-function fakePng(size: number): Uint8Array<ArrayBuffer> {
+function fakeImage(magic: number[], size: number): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(size);
-  for (let i = 0; i < PNG_MAGIC.length && i < size; i++) {
-    bytes[i] = PNG_MAGIC[i];
-  }
+  for (let i = 0; i < magic.length && i < size; i++) bytes[i] = magic[i];
   return bytes;
 }
+const fakeJpeg = (size: number) => fakeImage(JPEG_MAGIC, size);
+const fakePng = (size: number) => fakeImage(PNG_MAGIC, size);
+
+// ---------------------------------------------------------------------------
+// sniffImageContentType：寫入 Storage 的 contentType 只由位元組決定
+// ---------------------------------------------------------------------------
+
+Deno.test("sniffImageContentType：受理 JPEG 與 PNG，其餘一律 null", () => {
+  assertEquals(sniffImageContentType(fakeJpeg(20_000)), "image/jpeg");
+  assertEquals(sniffImageContentType(fakePng(20_000)), "image/png");
+  // 認不得的檔頭：GIF87a、WebP(RIFF)、HTML、全零。
+  const cases: number[][] = [
+    [0x47, 0x49, 0x46, 0x38, 0x37, 0x61],
+    [0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00],
+    [0x3C, 0x21, 0x44, 0x4F, 0x43, 0x54, 0x59, 0x50],
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+  ];
+  for (const magic of cases) {
+    assertEquals(
+      sniffImageContentType(fakeImage(magic, 20_000)),
+      null,
+      `magic ${magic.join(",")} 不該被當成受理格式`,
+    );
+  }
+  // 位元組數少於檔頭長度不可以越界誤判成受理格式。
+  assertEquals(sniffImageContentType(new Uint8Array(0)), null);
+  assertEquals(sniffImageContentType(fakeJpeg(2)), null);
+  // JPEG 檔頭只有 3 bytes，剛好等長時仍要認得。
+  assertEquals(sniffImageContentType(fakeJpeg(3)), "image/jpeg");
+});
 
 // ---------------------------------------------------------------------------
 // 題材模板句：覆蓋所有排程會產出的 themeId
@@ -105,7 +134,9 @@ Deno.test("完整 prompt = STYLE 前綴 + 場景句，且 STYLE 自帶兩條硬�
 Deno.test("物件 key 以 token 隔離且 seed 是決定論", () => {
   assertEquals(
     momentImagePath("2026-08-25", "practice_girl_007", 1, "tok-a"),
-    "2026-08-25/practice_girl_007_1_tok-a.png",
+    // 副檔名格式中性：key 在 claim 交易就寫進 orphan 帳本（早於下載），
+    // 拿不到實際格式；格式的真相在 Storage 的 content_type metadata。
+    "2026-08-25/practice_girl_007_1_tok-a.img",
   );
   assert(
     momentImagePath("2026-08-25", "practice_girl_007", 1, "tok-a") !==
@@ -154,6 +185,8 @@ function makeJobHarness(options: {
   falStatus?: number;
   falPayload?: unknown;
   imageBytes?: number;
+  /** 下載回來的實際位元組格式；預設 jpeg（canary 實測的生產實況）。 */
+  downloadFormat?: "jpeg" | "png";
   scene?: () => Promise<string>;
   uploadFails?: boolean;
   /** 上傳懸掛；harness.releaseUpload() 使晚到的上傳完成。 */
@@ -278,8 +311,10 @@ function makeJobHarness(options: {
       // redirect:"error" 下，真 fetch 遇到轉址會 reject。
       return Promise.reject(new TypeError("redirect not allowed"));
     }
+    const downloadFormat = options.downloadFormat ?? "jpeg";
     const headers: Record<string, string> = {
-      "content-type": options.downloadContentType ?? "image/png",
+      "content-type": options.downloadContentType ??
+        (downloadFormat === "png" ? "image/png" : "image/jpeg"),
     };
     if (options.downloadDeclaredLength !== undefined) {
       headers["content-length"] = String(options.downloadDeclaredLength);
@@ -291,7 +326,7 @@ function makeJobHarness(options: {
     }
     const bytes = options.badMagic
       ? new Uint8Array(imageBytes)
-      : fakePng(imageBytes);
+      : (downloadFormat === "png" ? fakePng : fakeJpeg)(imageBytes);
     return Promise.resolve(new Response(bytes, { status: 200, headers }));
   }) as typeof globalThis.fetch;
 
@@ -399,7 +434,7 @@ Deno.test("成功路徑：claim → 場景句 → fal → 下載 → 上傳 → 
   assertEquals(harness.uploads, [{
     path: TOKEN_PATH,
     bytes: 20_000,
-    contentType: MOMENT_IMAGE_CONTENT_TYPE,
+    contentType: "image/jpeg",
   }]);
   const commit = harness.rpcCalls[1].params;
   assertEquals(commit.p_image_path, TOKEN_PATH);
@@ -760,8 +795,32 @@ Deno.test("兩個 fetch 都以 redirect:error 發出", async () => {
   assertEquals(seenRedirects, ["error", "error"]);
 });
 
-Deno.test("Content-Type 不是 png（含舊的 jpeg）：拒絕並 release", async () => {
-  const harness = makeJobHarness({ downloadContentType: "image/jpeg" });
+Deno.test("PNG 也在受理集合：以位元組推導的 contentType 寫入", async () => {
+  // Seedream 沒有 output_format 參數，格式是供應商決定的；受理集合的定義
+  // 是「我們能原樣存、client 能原樣解」，不是「文件 example 給的那一種」。
+  const harness = makeJobHarness({ downloadFormat: "png" });
+  await runJob(harness);
+  assertEquals(harness.uploads, [{
+    path: TOKEN_PATH,
+    bytes: 20_000,
+    contentType: "image/png",
+  }]);
+});
+
+Deno.test("header 與位元組不一致：contentType 以位元組為準", async () => {
+  // header 是供應商 CDN 說了算的字串，位元組才是我們真的存下去的東西。
+  // 以位元組為準，public URL 出的 header 才保證與物件內容相符。
+  const harness = makeJobHarness({
+    downloadFormat: "jpeg",
+    downloadContentType: "image/png",
+  });
+  await runJob(harness);
+  assertEquals(harness.uploads.length, 1);
+  assertEquals(harness.uploads[0].contentType, "image/jpeg");
+});
+
+Deno.test("Content-Type 是受理集合外的圖片格式（gif）：拒絕並 release", async () => {
+  const harness = makeJobHarness({ downloadContentType: "image/gif" });
   await runJob(harness);
   assertEquals(rpcNames(harness), [
     "claim_practice_moment_image",
@@ -769,9 +828,10 @@ Deno.test("Content-Type 不是 png（含舊的 jpeg）：拒絕並 release", asy
     "clear_practice_moment_image_orphans",
     "release_practice_moment_image",
   ]);
+  assertEquals(harness.uploads.length, 0);
 });
 
-Deno.test("magic bytes 不是 PNG：header 說謊也擋，release 收場", async () => {
+Deno.test("magic bytes 認不得任何受理格式：header 說謊也擋，release 收場", async () => {
   const harness = makeJobHarness({ badMagic: true });
   await runJob(harness);
   assertEquals(rpcNames(harness), [
