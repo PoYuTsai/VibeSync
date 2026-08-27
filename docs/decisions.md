@@ -1069,4 +1069,6 @@
 
 **取捨**: 使用者多了一次貼上的動作，換到的是每段互動從一開始就掛在對象卡底下、接得上對象記憶；也避免「開場草稿」這種沒有對象的孤兒對話持續產生。
 
-**守門**: `test/widget/features/opener/opening_rescue_handoff_navigation_test.dart`（真 GoRouter＋真畫面的返回堆疊測試：不疊重複對象卡、開場救星不留在返回路徑上）、`test/unit/features/opener/presentation/opening_rescue_handoff_location_test.dart`（目的地與導航動作決策）、`test/widget/screens/new_conversation_screen_test.dart`（「接續開場」頁已移除的防迴歸）。
+**守門**: `test/widget/features/opener/opening_rescue_handoff_navigation_test.dart`（真 GoRouter＋真路由形狀＋真的 `navigateToHandoff` 的返回堆疊測試：不疊重複對象卡、開場救星不留在返回路徑上、深連結退路）、`test/lint/opener_handoff_cta_wiring_guard_test.dart`（CTA 真的接到 `navigateToHandoff`，且沒有人再直接 push `handoffLocationFor`）、`test/unit/features/opener/presentation/opening_rescue_handoff_location_test.dart`（目的地與導航動作決策）、`test/widget/screens/new_conversation_screen_test.dart`（「接續開場」頁已移除的防迴歸）。
+
+**測試邊界（誠實話）**: 返回堆疊測試的 `/opener` 掛的是 stub。真畫面要按到 CTA 得先種草稿、按「回看」，而 CTA 會觸發一筆 Hive 寫入；那筆真磁碟 I/O 在 testWidgets 的 fake-async zone 裡收不掉，實測會讓整支測試卡死到 10 分鐘 timeout（run 33027317044）。因此「按下去堆疊變成什麼」由 widget test 驗，「那顆按鈕真的接到 navigateToHandoff」由靜態守門驗，兩者合起來才涵蓋完整路徑。
