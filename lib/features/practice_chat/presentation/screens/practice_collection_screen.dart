@@ -1504,6 +1504,9 @@ class _MomentsEntry extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // 標記墨跡左右都貼齊自身邊框，Expanded 會讓副標直接抵住它；
+                  // 補一段與左側圖示同寬的間距，放大字級時才不會黏在一起。
+                  const SizedBox(width: 12),
                   SvgPicture.asset(
                     'assets/images/vibesync_logo.svg',
                     width: 32,
