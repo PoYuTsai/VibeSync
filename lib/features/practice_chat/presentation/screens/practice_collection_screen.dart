@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/services/app_haptics.dart';
@@ -1471,7 +1472,9 @@ class _MomentsEntry extends StatelessWidget {
               border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+              // 右內距 18：品牌標記的墨跡貼齊自身邊框，不像 Icon 字面自帶留白，
+              // 補回留白才能維持原本 chevron 的視覺右間距。
+              padding: const EdgeInsets.fromLTRB(14, 12, 18, 12),
               child: Row(
                 children: [
                   Icon(
@@ -1501,11 +1504,14 @@ class _MomentsEntry extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Icon(
-                    Icons.chevron_right,
-                    size: 20,
-                    color: AppColors.onBackgroundSecondary
-                        .withValues(alpha: 0.62),
+                  SvgPicture.asset(
+                    'assets/images/vibesync_logo.svg',
+                    width: 32,
+                    height: 32,
+                    colorFilter: const ColorFilter.mode(
+                      AppColors.onBackgroundSecondary,
+                      BlendMode.srcIn,
+                    ),
                   ),
                 ],
               ),
