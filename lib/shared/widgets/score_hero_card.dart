@@ -4,7 +4,6 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../features/analysis/domain/entities/enthusiasm_level.dart';
-import 'brand/one_shot_glass_wipe.dart';
 import 'warm_theme_widgets.dart';
 
 class ScoreHeroCard extends StatelessWidget {
@@ -27,101 +26,97 @@ class ScoreHeroCard extends StatelessWidget {
     final delta =
         visiblePrevious != null ? visibleScore - visiblePrevious : null;
 
-    // 分數第一次揭示（State 掛載）時播一次玻璃反光橫掃；一般 rebuild 不重播。
-    // 圓角跟 GlassmorphicContainer 預設 12 對齊，光帶才會貼著卡緣裁切。
-    return OneShotGlassWipe(
-      borderRadius: 12,
-      child: GlassmorphicContainer(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            // Circular score ring
-            SizedBox(
-              width: 80,
-              height: 80,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  SizedBox(
-                    width: 80,
-                    height: 80,
-                    child: CircularProgressIndicator(
-                      // 可見滿分 90：server finalize × 0.9 後 90 就是滿圈。
-                      value: (visibleScore / AppConstants.investmentVisibleMax)
-                          .clamp(0.0, 1.0),
-                      strokeWidth: 6,
-                      backgroundColor: level.color.withValues(alpha: 0.15),
-                      valueColor: AlwaysStoppedAnimation(level.color),
-                      strokeCap: StrokeCap.round,
-                    ),
+    // 分數卡不做進場光效：展開詳細分析時直接呈現靜態卡片。
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          // Circular score ring
+          SizedBox(
+            width: 80,
+            height: 80,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 80,
+                  height: 80,
+                  child: CircularProgressIndicator(
+                    // 可見滿分 90：server finalize × 0.9 後 90 就是滿圈。
+                    value: (visibleScore / AppConstants.investmentVisibleMax)
+                        .clamp(0.0, 1.0),
+                    strokeWidth: 6,
+                    backgroundColor: level.color.withValues(alpha: 0.15),
+                    valueColor: AlwaysStoppedAnimation(level.color),
+                    strokeCap: StrokeCap.round,
                   ),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '$visibleScore',
-                        style: AppTypography.headlineLarge.copyWith(
-                          color: AppColors.glassTextPrimary,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          height: 1.1,
-                        ),
-                      ),
-                      Text(
-                        level.label,
-                        style: AppTypography.caption.copyWith(
-                          color: level.color,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 24),
-            // Right side: description
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '對方這次的投入度',
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.ctaStart,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _descriptionForLevel(level),
-                    style: AppTypography.titleMedium.copyWith(
-                      color: AppColors.glassTextPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '只反映這次互動中的文字訊號，不代表關係進度。',
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.glassTextSecondary,
-                      height: 1.3,
-                    ),
-                  ),
-                  if (delta != null) ...[
-                    const SizedBox(height: 4),
+                ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     Text(
-                      delta >= 0 ? '較上次 +$delta，只比較兩次互動' : '較上次 $delta，只比較兩次互動',
+                      '$visibleScore',
+                      style: AppTypography.headlineLarge.copyWith(
+                        color: AppColors.glassTextPrimary,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        height: 1.1,
+                      ),
+                    ),
+                    Text(
+                      level.label,
                       style: AppTypography.caption.copyWith(
-                        color: delta >= 0 ? AppColors.success : AppColors.error,
+                        color: level.color,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
                       ),
                     ),
                   ],
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 24),
+          // Right side: description
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '對方這次的投入度',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.ctaStart,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _descriptionForLevel(level),
+                  style: AppTypography.titleMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '只反映這次互動中的文字訊號，不代表關係進度。',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.glassTextSecondary,
+                    height: 1.3,
+                  ),
+                ),
+                if (delta != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    delta >= 0 ? '較上次 +$delta，只比較兩次互動' : '較上次 $delta，只比較兩次互動',
+                    style: AppTypography.caption.copyWith(
+                      color: delta >= 0 ? AppColors.success : AppColors.error,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
