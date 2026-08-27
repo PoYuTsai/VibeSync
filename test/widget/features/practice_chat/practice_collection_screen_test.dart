@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
@@ -250,6 +251,25 @@ void main() {
       expect(find.text(' / 100'), findsOneWidget);
       expect(find.byKey(const ValueKey('collection-progress-fill')),
           findsOneWidget);
+    });
+
+    // 尾端從 chevron 換成品牌標記（沿用 partner_conversation_tile_test 的
+    // trailing 換手 idiom）：擋掉素材被誤換或改動被還原。
+    testWidgets('動態入口尾端是品牌標記，不是 chevron', (tester) async {
+      await pumpCollection(tester);
+
+      final entry = find.byKey(const ValueKey('collection-moments-entry'));
+      expect(entry, findsOneWidget);
+      expect(find.text('她們的動態'), findsOneWidget);
+
+      expect(
+        find.descendant(of: entry, matching: find.byType(SvgPicture)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: entry, matching: find.byIcon(Icons.chevron_right)),
+        findsNothing,
+      );
     });
 
     testWidgets('catalog 之外的髒 profileId 不灌水完成度', (tester) async {
