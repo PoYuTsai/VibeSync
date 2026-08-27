@@ -16,6 +16,7 @@ import {
   MOMENT_BODY_DB_MAX_CHARS,
   MOMENT_BODY_MAX_CHARS,
   MOMENT_BODY_MIN_CHARS,
+  MOMENT_FEED_FRESHNESS_MAX_AGE_MS,
   MOMENT_FILL_DEADLINE_MS,
   MOMENT_FILL_MAX_PER_REQUEST,
   MOMENT_PROFILE_ALLOWLIST_MAX,
@@ -191,6 +192,7 @@ Deno.test("死線、租約與補生成上限的量級關係成立", () => {
   assertEquals(MOMENT_FILL_DEADLINE_MS, 8000);
   assertEquals(MOMENT_FILL_MAX_PER_REQUEST, 3);
   assertEquals(FEED_WINDOW_DAYS, 14);
+  assertEquals(MOMENT_FEED_FRESHNESS_MAX_AGE_MS, 24 * 60 * 60 * 1000);
   assert(
     MOMENT_FILL_DEADLINE_MS < MOMENT_RESERVE_LEASE_MS,
     "死線必須遠短於租約，否則死線中止的列會被下一個請求立刻搶走並多燒一次 attempts",

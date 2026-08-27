@@ -18,10 +18,7 @@ import { momentPostedAtFor } from "./moments_time.ts";
 import { momentPlanFor } from "./moments_schedule.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
 import { getPracticeGirlProfile, GIRL_PROFILES } from "./practice_persona.ts";
-import {
-  resolveAvailableMomentImages,
-  SELF_PORTRAIT_IMAGE_ID,
-} from "./moments_image_catalog.ts";
+import { resolveAvailableMomentImages } from "./moments_image_catalog.ts";
 
 type Row = Record<string, unknown>;
 
@@ -30,6 +27,11 @@ const USER_ID = "11111111-2222-3333-4444-555555555555";
 const NOON = new Date(Date.UTC(2026, 7, 22, 3, 0, 0));
 /** 同一天台北 23:59，讓當天所有時段都已到時間。 */
 const END_OF_DAY = new Date(Date.UTC(2026, 7, 22, 15, 59, 0));
+/**
+ * Queenie 的 production 重現：上一則是台北 8/26 07:05，8/27 10:52
+ * 仍只會排到晚上 19:12，兩則可見時間會相隔 36 小時 7 分。
+ */
+const QUEENIE_STALE_NOW = new Date("2026-08-27T02:52:00.000Z");
 
 const VALID_BODY = "今天的第一杯咖啡比鬧鐘有用多了，終於覺得自己醒著";
 
@@ -311,6 +313,77 @@ Deno.test("未到時間的 slot 不生成也不回傳", async () => {
       `回傳了未到時間的貼文：${post.postedAt}`,
     );
   }
+});
+
+Deno.test("整個 feed 超過 24 小時沒更新 → 補一則今天已到時間的保底貼文", async () => {
+  const queenieId = "practice_girl_094";
+  const harness = makeHarness({
+    unlocked: [{ profileId: queenieId }],
+    existing: [{
+      profile_id: queenieId,
+      post_date: "2026-08-26",
+      slot: 0,
+      day_part: "morning",
+      theme_id: "coffee_start",
+      body: VALID_BODY,
+      image_id: null,
+      created_at: "2026-08-25T23:05:00.000Z",
+    }],
+  });
+
+  const result = await run(harness, { now: QUEENIE_STALE_NOW });
+  const posts = body(result).posts as { postedAt: string }[];
+  const reserveCalls = harness.rpcCalls.filter((call) =>
+    call.fn === "reserve_practice_moment_slot"
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(body(result).generatedCount, 1);
+  assertEquals(harness.modelCalls.length, 1);
+  assertEquals(reserveCalls.length, 1);
+  assertEquals(reserveCalls[0].params.p_profile_id, queenieId);
+  assertEquals(reserveCalls[0].params.p_post_date, "2026-08-27");
+  assert(
+    Number(reserveCalls[0].params.p_slot) >= 0 &&
+      Number(reserveCalls[0].params.p_slot) < 2,
+    "保底仍必須使用既有每日兩格，不得偷偷擴充成本上限",
+  );
+  assert(posts.length >= 2, "舊貼文要保留，並新增一則保底貼文");
+  const newestAgeMs = QUEENIE_STALE_NOW.getTime() -
+    Math.max(...posts.map((post) => Date.parse(post.postedAt)));
+  assert(newestAgeMs >= 0, "保底貼文不得使用未來時間");
+  assert(
+    newestAgeMs <= 24 * 60 * 60 * 1000,
+    `最新貼文仍超過 24 小時：${newestAgeMs}ms`,
+  );
+});
+
+Deno.test("最新貼文剛好 24 小時 → 不啟動保底、不多燒模型", async () => {
+  const queenieId = "practice_girl_094";
+  const exactly24HoursLater = new Date("2026-08-26T23:05:00.000Z");
+  const harness = makeHarness({
+    unlocked: [{ profileId: queenieId }],
+    existing: [{
+      profile_id: queenieId,
+      post_date: "2026-08-26",
+      slot: 0,
+      day_part: "morning",
+      theme_id: "coffee_start",
+      body: VALID_BODY,
+      image_id: null,
+      created_at: "2026-08-25T23:05:00.000Z",
+    }],
+  });
+
+  const result = await run(harness, { now: exactly24HoursLater });
+
+  assertEquals(result.status, 200);
+  assertEquals(body(result).generatedCount, 0);
+  assertEquals(harness.modelCalls.length, 0);
+  assertEquals(
+    rpcNames(harness).includes("reserve_practice_moment_slot"),
+    false,
+  );
 });
 
 // ---------------------------------------------------------------------------

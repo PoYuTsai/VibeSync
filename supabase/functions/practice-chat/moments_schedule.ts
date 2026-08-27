@@ -996,3 +996,47 @@ export function momentPlanFor(opts: {
 
   return { profileId: girl.profileId, isoDate: time.isoDate, slots };
 }
+
+/**
+ * Feed 超過 freshness SLA 時使用的單格保底計畫。
+ *
+ * 它不新增 slot：呼叫端只能傳既有的 0/1 格，因此 DB 每日上限與 attempts
+ * 成本契約完全不變。排程挑「這位角色今天最早可發、且題材真的允許」的時段；
+ * 同一 profile/date/slot 永遠得到同一結果，lazy retry 不會換題材或時間。
+ * 呼叫端仍必須用 momentPostedAtFor 確認該時刻已到，不能提前露出。
+ */
+export function momentFreshnessSlotFor(opts: {
+  girl: PracticeGirlProfile;
+  time: TaipeiTimeContext;
+  slot: number;
+}): MomentSlotPlan {
+  const { girl, time, slot } = opts;
+  if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_MOMENT_SLOTS_PER_DAY) {
+    throw new Error(`moment_freshness_invalid_slot:${slot}`);
+  }
+
+  const seed = `${slotSeed(girl.profileId, time.isoDate, slot)}|freshness`;
+  const pool = themePoolFor(girl, time.isWeekend);
+
+  for (const dayPart of POSTABLE_DAY_PARTS) {
+    const eligible = pool.filter((entry) => entry.dayParts.includes(dayPart));
+    if (eligible.length === 0) continue;
+    const { theme } = pickFrom(eligible, `${seed}|theme|${dayPart}`);
+    const candidates = momentImagesForTags(theme.imageTags);
+    const wantsImage = candidates.length > 0 &&
+      rollUnit(`${seed}|image`) < IMAGE_PROBABILITY;
+    return {
+      slot,
+      dayPart,
+      themeId: theme.id,
+      contentKind: theme.contentKind ?? "daily_life",
+      brief: theme.brief,
+      wantsImage,
+      imageCandidates: wantsImage ? candidates : [],
+    };
+  }
+
+  // themePoolFor 正常情況已保證至少一個有效時段；保留明確錯誤避免未來
+  // 作息表被改壞後偷偷退回上班時段。
+  throw new Error(`moment_freshness_empty_theme_pool:${girl.professionId}`);
+}

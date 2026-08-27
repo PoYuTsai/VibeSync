@@ -60,6 +60,14 @@ export const MOMENT_FILL_MAX_PER_REQUEST = 3;
 /** feed 往回看幾天（D6：feed 14 天、DB 永久保留）。 */
 export const FEED_WINDOW_DAYS = 14;
 
+/**
+ * 已抽卡帳號的 feed 最新可見貼文最長可沉寂多久。
+ *
+ * 每位角色仍保留安靜日；這是整個 feed 的懶生成保底，不是把 100 位角色
+ * 全改成每天發文。保底仍走既有每日兩格、每格三次 attempts 與每請求 K 則上限。
+ */
+export const MOMENT_FEED_FRESHNESS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
 // ── DeepSeek 呼叫參數（設計報告 §5）─────────────────────────────────
 
 /** 貼文 20-60 字，比照 CHAT_MAX_TOKENS。 */

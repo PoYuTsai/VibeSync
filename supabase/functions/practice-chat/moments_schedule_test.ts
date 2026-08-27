@@ -8,6 +8,7 @@ import {
   hasPetOwnerClue,
   MAX_MOMENT_SLOTS_PER_DAY,
   type MomentContentKind,
+  momentFreshnessSlotFor,
   momentPlanFor,
   momentPostPropensityFor,
   momentQuietDayPartsFor,
@@ -64,6 +65,28 @@ Deno.test("momentPlanFor never depends on the caller's clock within a day", () =
     momentPlanFor({ girl, time: morning }),
     momentPlanFor({ girl, time: midnight }),
   );
+});
+
+Deno.test("freshness 保底同日同格決定論，且不會落在清晨或上班時段", () => {
+  for (const profile of GIRL_PROFILES) {
+    const quiet = momentQuietDayPartsFor(profile.professionId);
+    const time = taipeiDay("2026-08-27");
+    for (let slot = 0; slot < MAX_MOMENT_SLOTS_PER_DAY; slot++) {
+      const plan = momentFreshnessSlotFor({ girl: profile, time, slot });
+      assertEquals(
+        plan,
+        momentFreshnessSlotFor({ girl: profile, time, slot }),
+      );
+      assertEquals(plan.slot, slot);
+      assert(plan.dayPart !== "dawn");
+      assert(
+        !quiet.includes(plan.dayPart),
+        `${profile.profileId} freshness 落在上班時段 ${plan.dayPart}`,
+      );
+      assert(plan.themeId.length > 0);
+      assert(plan.brief.length > 0);
+    }
+  }
 });
 
 Deno.test("momentPlanFor produces both quiet days and posting days", () => {

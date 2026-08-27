@@ -28,7 +28,9 @@ import {
   type PracticeGirlProfile,
 } from "./practice_persona.ts";
 import {
+  MAX_MOMENT_SLOTS_PER_DAY,
   type MomentDayPlan,
+  momentFreshnessSlotFor,
   momentPlanFor,
   type MomentSlotPlan,
 } from "./moments_schedule.ts";
@@ -59,10 +61,11 @@ import {
 import {
   FEED_WINDOW_DAYS,
   MAX_MOMENT_ATTEMPTS,
+  MOMENT_FEED_FRESHNESS_MAX_AGE_MS,
   MOMENT_FILL_DEADLINE_MS,
   MOMENT_FILL_MAX_PER_REQUEST,
-  MOMENT_MODEL_MAX_TOKENS,
   MOMENT_IMAGE_FILL_MAX_PER_REQUEST,
+  MOMENT_MODEL_MAX_TOKENS,
   MOMENT_MODEL_TEMPERATURE,
   MOMENT_MODEL_TIMEOUT_MS,
   MOMENT_RESERVE_LEASE_MS,
@@ -172,6 +175,35 @@ function isoDateOf(value: unknown): string | null {
 
 function slotKey(profileId: string, isoDate: string, slot: number): string {
   return `${profileId}|${isoDate}|${slot}`;
+}
+
+function missingSlotFor(opts: {
+  girl: PracticeGirlProfile;
+  isoDate: string;
+  plan: MomentSlotPlan;
+  postedAt: Date;
+  unlockedAt: number;
+  deps: MomentsHandlerDeps;
+}): MissingSlot {
+  const { girl, isoDate, plan, postedAt, unlockedAt, deps } = opts;
+  const resolvedCandidates = plan.wantsImage
+    ? resolveAvailableMomentImages(plan.imageCandidates)
+    : [];
+  // 生成配圖判定（設計文件 §9）：開關開、slot 要圖，且候選不是「只剩
+  // 自拍 sentinel」——自拍照舊走圖鑑照片，不生成人臉。
+  const onlySelfPortrait = resolvedCandidates.length === 1 &&
+    resolvedCandidates[0] === SELF_PORTRAIT_IMAGE_ID;
+  const generatedImage = deps.imageGen !== undefined &&
+    plan.wantsImage && resolvedCandidates.length > 0 && !onlySelfPortrait;
+  return {
+    girl,
+    isoDate,
+    plan,
+    postedAt,
+    imageCandidates: generatedImage ? [] : resolvedCandidates,
+    generatedImage,
+    unlockedAt,
+  };
 }
 
 /**
@@ -307,6 +339,7 @@ export async function handlePracticeMoments(args: {
 
   // 3-4. 今天該有、但 DB 裡還沒有的 slot。
   const missing: MissingSlot[] = [];
+  const plannedProfileIds = new Set<string>();
   for (const profileId of profileIds) {
     const girl = getPracticeGirlProfile(profileId);
     if (!girl) continue;
@@ -321,6 +354,7 @@ export async function handlePracticeMoments(args: {
       });
       continue;
     }
+    plannedProfileIds.add(profileId);
     for (const slotPlan of plan.slots) {
       if (readySlots.has(slotKey(profileId, plan.isoDate, slotPlan.slot))) {
         continue;
@@ -332,25 +366,80 @@ export async function handlePracticeMoments(args: {
         dayPart: slotPlan.dayPart,
       });
       if (postedAt.getTime() > now.getTime()) continue;
-      const resolvedCandidates = slotPlan.wantsImage
-        ? resolveAvailableMomentImages(slotPlan.imageCandidates)
-        : [];
-      // 生成配圖判定（設計文件 §9）：開關開、slot 要圖，且候選不是「只剩
-      // 自拍 sentinel」——自拍照舊走圖鑑照片，不生成人臉。
-      const onlySelfPortrait = resolvedCandidates.length === 1 &&
-        resolvedCandidates[0] === SELF_PORTRAIT_IMAGE_ID;
-      const generatedImage = deps.imageGen !== undefined &&
-        slotPlan.wantsImage && resolvedCandidates.length > 0 &&
-        !onlySelfPortrait;
-      missing.push({
+      missing.push(missingSlotFor({
         girl,
         isoDate: plan.isoDate,
         plan: slotPlan,
         postedAt,
-        imageCandidates: generatedImage ? [] : resolvedCandidates,
-        generatedImage,
         unlockedAt: unlockedAtByProfile.get(profileId) ?? 0,
-      });
+        deps,
+      }));
+    }
+  }
+
+  // 4b. Feed freshness 保底。
+  //
+  // 一位角色保留安靜日沒有問題，但使用者已抽到角色後，整面 feed 不能因為
+  // 「昨天早發、今天晚發」看起來死掉超過 24 小時。只有在：
+  // - 整個 feed 最新可見貼文已超過 SLA（或還沒有任何貼文），且
+  // - 今天沒有一般排程已到時間的缺口
+  // 才借用一個既有 0/1 slot；所以每請求最多多一格，DB 每日兩格與 attempts
+  // 上限完全不變，也不會把 100 位角色改成每天固定發文。
+  const latestVisibleAt = posts.reduce<number | null>((latest, post) => {
+    const postedAt = Date.parse(post.postedAt);
+    return latest === null || postedAt > latest ? postedAt : latest;
+  }, null);
+  const feedIsStale = latestVisibleAt === null ||
+    now.getTime() - latestVisibleAt > MOMENT_FEED_FRESHNESS_MAX_AGE_MS;
+
+  if (feedIsStale && missing.length === 0) {
+    const freshnessProfileIds = [...profileIds].sort((a, b) =>
+      (unlockedAtByProfile.get(b) ?? 0) -
+        (unlockedAtByProfile.get(a) ?? 0) ||
+      a.localeCompare(b)
+    );
+
+    freshness:
+    for (const profileId of freshnessProfileIds) {
+      if (!plannedProfileIds.has(profileId)) continue;
+      const girl = getPracticeGirlProfile(profileId);
+      if (!girl) continue;
+      for (let slot = 0; slot < MAX_MOMENT_SLOTS_PER_DAY; slot++) {
+        if (readySlots.has(slotKey(profileId, time.isoDate, slot))) continue;
+        try {
+          const slotPlan = momentFreshnessSlotFor({ girl, time, slot });
+          const postedAt = momentPostedAtFor({
+            profileId,
+            isoDate: time.isoDate,
+            slot,
+            dayPart: slotPlan.dayPart,
+          });
+          // 清晨或該角色今天第一個合法時段尚未到：寧可暫時保留舊 feed，
+          // 也不能偽造未來時間或倒填昨天的 post_date。
+          if (postedAt.getTime() > now.getTime()) continue;
+          missing.push(missingSlotFor({
+            girl,
+            isoDate: time.isoDate,
+            plan: slotPlan,
+            postedAt,
+            unlockedAt: unlockedAtByProfile.get(profileId) ?? 0,
+            deps,
+          }));
+          logInfo("practice_moments_freshness_fill", {
+            profileId,
+            previousAgeMs: latestVisibleAt === null
+              ? null
+              : now.getTime() - latestVisibleAt,
+          });
+          break freshness;
+        } catch (e) {
+          logWarn("practice_moments_freshness_plan_failed", {
+            profileId,
+            slot,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
     }
   }
 
@@ -406,18 +495,19 @@ export async function handlePracticeMoments(args: {
   const filled: MomentFeedPost[] = [];
   const committedImageJobs: MomentImageJob[] = [];
   const tasks = batch.map((item) =>
-    fillOneSlot({ supabase, userId, item, deps, deadlineAt, isTestAccount }).then((post) => {
-      if (post) {
-        filled.push(post);
-        if (item.generatedImage) {
-          committedImageJobs.push({
-            profileId: item.girl.profileId,
-            isoDate: item.isoDate,
-            slot: item.plan.slot,
-          });
+    fillOneSlot({ supabase, userId, item, deps, deadlineAt, isTestAccount })
+      .then((post) => {
+        if (post) {
+          filled.push(post);
+          if (item.generatedImage) {
+            committedImageJobs.push({
+              profileId: item.girl.profileId,
+              isoDate: item.isoDate,
+              slot: item.plan.slot,
+            });
+          }
         }
-      }
-    })
+      })
   );
 
   // 8. 死線：到點就不等。未完成的列留著 token，由租約逾時或下次請求接手。
@@ -540,7 +630,9 @@ function scheduleImageSweep(args: {
       .then(() =>
         sweepMomentImageOrphanLedger({ supabase: args.supabase, deps: sweep })
       )
-      .then(() => sweepOrphanMomentImages({ deps: sweep, isoDate: args.isoDate }))
+      .then(() =>
+        sweepOrphanMomentImages({ deps: sweep, isoDate: args.isoDate })
+      )
       .then(() => {}),
   );
 }
