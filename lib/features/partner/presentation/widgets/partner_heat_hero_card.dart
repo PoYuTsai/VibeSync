@@ -9,8 +9,9 @@
 //  - Label/subtitle are deterministic — see `PartnerHeatMessaging`.
 //  - Null heat → "--" + 待分析 placeholder copy. Empty state must look
 //    intentional, not "broken".
-//  - Right-side orb is pure Flutter (RadialGradient + BoxShadow). NO image
-//    asset, NO DALL-E.
+//  - Right-side orb is pure Flutter (see `HeatOrb`). NO image asset, NO
+//    Lottie, NO DALL-E. 光球依 heat 分五段換色與換速，但那是純呈現層映射
+//    （`heatOrbBandFor`），不是第二個分數來源。null heat → 最冷那段。
 //  - 進頁時數字從 0 跑到 heat（GSAP `power2.out` + `snap: 1`）。這是純呈現，
 //    跑的是同一個 heat，沒有第二個數字來源。null heat 沒有東西可以跑，直接
 //    顯示 "--"。
@@ -18,6 +19,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/heat_orb.dart';
 import '../../../../shared/widgets/motion/count_up_text.dart';
 import '../../../analysis/domain/entities/enthusiasm_level.dart';
 
@@ -149,53 +151,7 @@ class PartnerHeatHeroCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          const _HeatOrb(),
-        ],
-      ),
-    );
-  }
-}
-
-/// Abstract decorative orb on the right side of the hero. Two stacked
-/// radial gradients (purple halo + warm pink core) — purely visual, no
-/// data binding. Kept const to avoid rebuild churn when heat updates.
-class _HeatOrb extends StatelessWidget {
-  const _HeatOrb();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 80,
-      height: 80,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  AppColors.primaryLight.withValues(alpha: 0.55),
-                  AppColors.primary.withValues(alpha: 0.0),
-                ],
-              ),
-            ),
-          ),
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  AppColors.bokehPink.withValues(alpha: 0.65),
-                  AppColors.bokehPink.withValues(alpha: 0.0),
-                ],
-              ),
-            ),
-          ),
+          HeatOrb(heat: visibleHeat),
         ],
       ),
     );

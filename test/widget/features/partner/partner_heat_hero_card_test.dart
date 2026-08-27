@@ -9,14 +9,19 @@
 //      × 2 strings (label + subtitle) + numberFor("--" / int.toString).
 //   2. Widget render — verifies the card surfaces the mapping outputs and
 //      handles the null-heat path without throwing on missing data.
-//      主數字現在是 0→heat 的跑動（CountUpText），所以 render 斷言一律先
-//      pumpAndSettle 再看終值；跑動本身另外鎖在第 3 組。
+//      主數字現在是 0→heat 的跑動（CountUpText），所以 render 斷言一律先把
+//      畫面帶到終態再看終值；跑動本身另外鎖在第 3 組。
+//      注意：卡片右側的 HeatOrb 是持續呼吸的光球，pumpAndSettle 永遠不會收斂。
+//      只看終態的組別用 motionFreeApp（等價於使用者開了「減少動態效果」），
+//      要驗證跑動過程的組別則用明確的 pump(duration)。
 //   3. Count-up — 開場從 0 起跑、收斂停在 heat；null 沒有東西可跑；
 //      animate:false（捲動回收後重建）不重播。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:vibesync/features/partner/presentation/widgets/partner_heat_hero_card.dart';
+
+import '../../../helpers/motion_free_app.dart';
 
 void main() {
   group('PartnerHeatMessaging.labelFor', () {
@@ -92,8 +97,8 @@ void main() {
 
   group('PartnerHeatHeroCard render', () {
     testWidgets('null heat → "--" + 待分析 + null subtitle', (t) async {
-      await t.pumpWidget(const MaterialApp(
-        home: Scaffold(
+      await t.pumpWidget(motionFreeApp(
+        home: const Scaffold(
           body: PartnerHeatHeroCard(heat: null),
         ),
       ));
@@ -114,8 +119,8 @@ void main() {
     });
 
     testWidgets('heat=75 → "75" + 投入明顯 + scoped subtitle', (t) async {
-      await t.pumpWidget(const MaterialApp(
-        home: Scaffold(
+      await t.pumpWidget(motionFreeApp(
+        home: const Scaffold(
           body: PartnerHeatHeroCard(heat: 75),
         ),
       ));
@@ -127,8 +132,8 @@ void main() {
     });
 
     testWidgets('legacy heat=95 → 可見滿分 "90" + 高度投入', (t) async {
-      await t.pumpWidget(const MaterialApp(
-        home: Scaffold(
+      await t.pumpWidget(motionFreeApp(
+        home: const Scaffold(
           body: PartnerHeatHeroCard(heat: 95),
         ),
       ));
@@ -155,7 +160,9 @@ void main() {
       expect(mid, greaterThan(0));
       expect(mid, lessThan(36));
 
-      await t.pumpAndSettle();
+      // 不能用 pumpAndSettle：這一組要讓動畫真的跑，而卡片右側的 HeatOrb 是
+      // 持續呼吸的光球，永遠不會收斂。改用明確時長把數字跑完。
+      await t.pump(const Duration(milliseconds: 1400));
       expect(find.text('36'), findsOneWidget);
     });
 
