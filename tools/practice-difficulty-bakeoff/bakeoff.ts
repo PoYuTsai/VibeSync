@@ -1,8 +1,9 @@
 // 練習室難度 bakeoff（上線 gate 工具）。
 //
-// 目的：難度(easy/normal/challenge) × 腳本(bad_interrogator/average/high_quality) ×
-// runs 全跑一輪，量測「同一難度設定在不同使用者輸入下」的 AI 回覆長度、句點/敷衍占比、
-// 溫度軌跡、debrief dateChance 分佈，作為難度重設計上線前的量化 gate。
+// 目的：難度(easy/normal/challenge) × 腳本(bad_interrogator/average/high_quality/
+// low_signal_polite) × runs 全跑一輪，量測「同一難度設定在不同使用者輸入下」的
+// AI 回覆長度、句點/敷衍占比、溫度軌跡、debrief dateChance 分佈，作為難度重設計
+// 上線前的量化 gate。
 //
 // 重要：直接 import practice-chat 的真管線模組（resolvePracticeProfile／buildChatMessages／
 // buildDebriefMessages／buildTurnClassifierMessages／parseTurnClassification／
@@ -18,10 +19,11 @@
 //   參考，不作 gate 依據。
 
 import {
-  difficultyTuningFor,
   DEFAULT_PROFILE_ID,
+  difficultyTuningFor,
   isPracticeDifficulty,
   type PracticeDifficulty,
+  type PracticeProfile,
   resolvePracticeProfile,
 } from "../../supabase/functions/practice-chat/practice_persona.ts";
 import {
@@ -31,10 +33,28 @@ import {
 } from "../../supabase/functions/practice-chat/prompt.ts";
 import {
   applyLearningClassification,
+  applyPartnerStateUpdate,
   buildTurnClassifierMessages,
   parseTurnClassification,
+  type PartnerState,
   type TurnClassification,
 } from "../../supabase/functions/practice-chat/temperature.ts";
+import {
+  type AcquaintanceOrigin,
+  buildAcquaintanceOrigin,
+} from "../../supabase/functions/practice-chat/acquaintance_origin.ts";
+import {
+  buildPracticeSceneContext,
+  type PracticeSceneContext,
+} from "../../supabase/functions/practice-chat/life_schedule.ts";
+import {
+  type TaipeiTimeContext,
+  taipeiTimeContextFor,
+} from "../../supabase/functions/practice-chat/time_context.ts";
+import {
+  herRecentMomentsPrompt,
+  type MomentMemoryPost,
+} from "../../supabase/functions/practice-chat/moments_memory.ts";
 import {
   type DebriefCard,
   parseDebriefCard,
@@ -44,7 +64,7 @@ import {
   DEEPSEEK_MODEL,
 } from "../../supabase/functions/practice-chat/deepseek.ts";
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
-import { isScriptId, SCRIPT_IDS, SCRIPTS, type ScriptId } from "./scripts.ts";
+import { isScriptId, SCRIPT_IDS, type ScriptId, SCRIPTS } from "./scripts.ts";
 
 // ── 模型呼叫常數（照 supabase/functions/practice-chat/handler.ts 現用值抄錄；
 //    handler.ts 未 export 這些 const，這裡只能複製同一組數值，改 handler 記得同步）──
@@ -206,8 +226,58 @@ function isPerfunctoryReply(text: string): boolean {
   return PERFUNCTORY_PATTERN.test(trimmed);
 }
 
+// ── 固定 full-context fixture（無個資；與 production 注入形狀一致）─────────
+//
+// production（handler.ts）在 buildChatMessages／buildDebriefMessages 之外
+// 還注入：認識管道、台北時間、生活情境、記憶摘要、朋友圈貼文。bakeoff 若
+// 少了這些，量不到「後加 prompt 蓋掉難度」（D3）。這裡用固定 seed／固定日期
+// 產生一份 deterministic fixture，三難度共用同一份，差異只剩難度本身。
+export const BAKEOFF_FIXED_NOW = new Date("2026-08-28T20:30:00+08:00");
+export const BAKEOFF_THREAD_ID = "bakeoff-fixed-thread";
+export const BAKEOFF_MEMORY_SUMMARY =
+  "上次聊到她剛換新工作、正在適應早起通勤；你們都喜歡巷口那間老咖啡店。";
+export const BAKEOFF_MOMENT_BODY =
+  "今天路過巷口那間老咖啡店，招牌拿鐵還是一樣好喝";
+
+export type ContextMode = "minimal" | "full";
+
+export interface BakeoffContextFixture {
+  timeContext: TaipeiTimeContext;
+  sceneContext: PracticeSceneContext;
+  acquaintanceOrigin: AcquaintanceOrigin;
+  memorySummary: string;
+  herRecentMomentsBlock: string;
+}
+
+export function buildBakeoffContextFixture(
+  profile: PracticeProfile,
+): BakeoffContextFixture {
+  const timeContext = taipeiTimeContextFor(BAKEOFF_FIXED_NOW);
+  const posts: MomentMemoryPost[] = [
+    {
+      postDate: timeContext.isoDate,
+      dayPart: timeContext.dayPart,
+      body: BAKEOFF_MOMENT_BODY,
+    },
+  ];
+  return {
+    timeContext,
+    sceneContext: buildPracticeSceneContext({
+      profile,
+      time: timeContext,
+      visiblePracticeThreadId: BAKEOFF_THREAD_ID,
+    }),
+    acquaintanceOrigin: buildAcquaintanceOrigin({
+      profile,
+      threadId: BAKEOFF_THREAD_ID,
+    }),
+    memorySummary: BAKEOFF_MEMORY_SUMMARY,
+    herRecentMomentsBlock: herRecentMomentsPrompt(posts),
+  };
+}
+
 // ── 單輪紀錄／單場紀錄 ────────────────────────────────────────────────────
-interface TurnRecord {
+export interface TurnRecord {
   roundIndex: number;
   userText: string;
   aiReply: string;
@@ -220,12 +290,17 @@ interface TurnRecord {
   familiarityAfter: number;
   heatDelta: number;
   familiarityDelta: number;
+  partnerMood: string;
+  promptChars: number;
+  // PR 2 的挑戰獎勵閘門接上後填 true/false；現在一律 null（尚無閘門）。
+  challengeGateApplied: boolean | null;
 }
 
-interface RunRecord {
+export interface RunRecord {
   difficulty: PracticeDifficulty;
   scriptId: ScriptId;
   runIndex: number;
+  contextMode: ContextMode;
   turns: TurnRecord[];
   debrief: DebriefCard | null;
   debriefError?: string;
@@ -234,12 +309,13 @@ interface RunRecord {
   sessionError?: string;
 }
 
-async function runOneSession(args: {
+export async function runOneSession(args: {
   callModel: ModelCaller;
   difficulty: PracticeDifficulty;
   scriptId: ScriptId;
   runIndex: number;
   profileId: string;
+  contextMode: ContextMode;
 }): Promise<RunRecord> {
   const profile = resolvePracticeProfile({
     difficulty: args.difficulty,
@@ -248,6 +324,28 @@ async function runOneSession(args: {
   const tuning = difficultyTuningFor(profile.difficulty);
   let temperature = tuning.startTemperature;
   let familiarity = 0;
+  let partnerState: PartnerState | null = null;
+  const fixture = args.contextMode === "full"
+    ? buildBakeoffContextFixture(profile)
+    : null;
+  // chat 與 debrief 的 production 注入形狀不同：debrief 不帶朋友圈貼文區塊。
+  const chatContext = fixture
+    ? {
+      sceneContext: fixture.sceneContext,
+      acquaintanceOrigin: fixture.acquaintanceOrigin,
+      memorySummary: fixture.memorySummary,
+      timeContext: fixture.timeContext,
+      herRecentMomentsBlock: fixture.herRecentMomentsBlock,
+    }
+    : {};
+  const debriefContext = fixture
+    ? {
+      sceneContext: fixture.sceneContext,
+      acquaintanceOrigin: fixture.acquaintanceOrigin,
+      memorySummary: fixture.memorySummary,
+      timeContext: fixture.timeContext,
+    }
+    : {};
   const turns: PracticeTurn[] = [];
   const turnRecords: TurnRecord[] = [];
   const userMessages = SCRIPTS[args.scriptId];
@@ -258,14 +356,22 @@ async function runOneSession(args: {
     const temperatureBefore = temperature;
     const familiarityBefore = familiarity;
 
+    const chatMessages = buildChatMessages(turns, profile, {
+      practiceMode: "beginner",
+      temperatureScore: temperature,
+      familiarityScore: familiarity,
+      partnerState,
+      ...chatContext,
+    });
+    const promptChars = chatMessages.reduce(
+      (sum, m) => sum + m.content.length,
+      0,
+    );
+
     const reply = await withRetry(
       () =>
         args.callModel({
-          messages: buildChatMessages(turns, profile, {
-            practiceMode: "beginner",
-            temperatureScore: temperature,
-            familiarityScore: familiarity,
-          }),
+          messages: chatMessages,
           maxTokens: CHAT_MAX_TOKENS,
           temperature: CHAT_TEMPERATURE,
           timeoutMs: MODEL_TIMEOUT_MS,
@@ -276,6 +382,8 @@ async function runOneSession(args: {
       } chat`,
     );
 
+    // 分類發生在取得回覆**之後**、且帶 assistantReply＝剛生成的女孩回覆——
+    // 對齊 handler.ts 的真實呼叫形狀（分類器看得到她這一輪說了什麼）。
     const classification = await withRetry(
       async () => {
         const raw = await args.callModel({
@@ -284,6 +392,7 @@ async function runOneSession(args: {
             profile,
             heatScore: temperature,
             familiarityScore: familiarity,
+            assistantReply: reply,
           }),
           maxTokens: TEMPERATURE_JUDGE_MAX_TOKENS,
           temperature: TEMPERATURE_JUDGE_TEMPERATURE,
@@ -303,6 +412,8 @@ async function runOneSession(args: {
       classification,
       tuning,
     );
+    // partner state 逐輪累積並回灌下一輪 prompt——對齊 handler.ts。
+    partnerState = applyPartnerStateUpdate(partnerState, classification);
 
     turns.push({ role: "ai", text: reply });
 
@@ -319,6 +430,9 @@ async function runOneSession(args: {
       familiarityAfter: judgement.familiarityScore,
       heatDelta: judgement.delta,
       familiarityDelta: judgement.familiarityDelta,
+      partnerMood: partnerState.mood,
+      promptChars,
+      challengeGateApplied: null,
     });
 
     temperature = judgement.score;
@@ -336,6 +450,8 @@ async function runOneSession(args: {
             practiceMode: "beginner",
             temperatureScore: temperature,
             familiarityScore: familiarity,
+            partnerState,
+            ...debriefContext,
           }),
           maxTokens: DEBRIEF_MAX_TOKENS,
           temperature: DEBRIEF_TEMPERATURE,
@@ -356,6 +472,7 @@ async function runOneSession(args: {
     difficulty: args.difficulty,
     scriptId: args.scriptId,
     runIndex: args.runIndex,
+    contextMode: args.contextMode,
     turns: turnRecords,
     debrief,
     debriefError,
@@ -377,9 +494,10 @@ interface CliOptions {
   difficulties: PracticeDifficulty[];
   outDir: string;
   profileId: string;
+  contextMode: ContextMode;
 }
 
-function parseArgs(argv: string[]): CliOptions {
+export function parseArgs(argv: string[]): CliOptions {
   const opts: CliOptions = {
     provider: "deepseek",
     runs: 2,
@@ -387,6 +505,10 @@ function parseArgs(argv: string[]): CliOptions {
     difficulties: ["easy", "normal", "challenge"],
     outDir: DEFAULT_OUT_DIR,
     profileId: DEFAULT_PROFILE_ID,
+    // 預設 full＝production 同款注入形狀。minimal 只排除五個 context 區塊
+    // （認識管道／時間／情境／記憶／貼文）作對照；分類時序、assistantReply、
+    // partner state 累積是保真修復，兩種模式都生效，minimal 不是舊版工具的行為。
+    contextMode: "full",
   };
 
   for (const arg of argv) {
@@ -411,7 +533,9 @@ function parseArgs(argv: string[]): CliOptions {
       case "runs": {
         const n = Number.parseInt(value, 10);
         if (!Number.isInteger(n) || n < 1) {
-          throw new Error(`bakeoff_invalid_runs: "${value}"（必須是 >=1 整數）`);
+          throw new Error(
+            `bakeoff_invalid_runs: "${value}"（必須是 >=1 整數）`,
+          );
         }
         opts.runs = n;
         break;
@@ -448,9 +572,18 @@ function parseArgs(argv: string[]): CliOptions {
       case "profileId":
         opts.profileId = value;
         break;
+      case "context": {
+        if (value !== "minimal" && value !== "full") {
+          throw new Error(
+            `bakeoff_invalid_context: "${value}"（合法值：full（預設，production 同款注入）、minimal（無 context 區塊對照））`,
+          );
+        }
+        opts.contextMode = value;
+        break;
+      }
       default:
         throw new Error(
-          `bakeoff_unknown_cli_flag: "--${key}"（支援：--provider、--runs、--scripts、--difficulties、--out、--profileId）`,
+          `bakeoff_unknown_cli_flag: "--${key}"（支援：--provider、--runs、--scripts、--difficulties、--out、--profileId、--context）`,
         );
     }
   }
@@ -539,11 +672,19 @@ function fmt(n: number | null, digits = 1): string {
 function renderReportMarkdown(
   groups: GroupStats[],
   provider: Provider,
+  contextMode: ContextMode,
 ): string {
   const lines: string[] = [];
   lines.push("# 練習室難度 bakeoff 報告");
   lines.push("");
   lines.push(`> 模型：${modelLabelFor(provider)}`);
+  lines.push(
+    `> context：${contextMode}${
+      contextMode === "minimal"
+        ? "（無 context 區塊對照；正式 gate 需 full）"
+        : "（production 同款注入）"
+    }`,
+  );
   if (provider === "claude") {
     lines.push(
       "> ⚠️ 本報告由 Claude 參考路徑產生，**不得**作為正式上線 gate 依據；gate 只認 DeepSeek（prod 同款）結果。",
@@ -590,17 +731,18 @@ function renderReportMarkdown(
 async function writeReports(
   outDir: string,
   provider: Provider,
+  contextMode: ContextMode,
   results: RunRecord[],
   groups: GroupStats[],
 ): Promise<void> {
   await Deno.mkdir(outDir, { recursive: true });
   await Deno.writeTextFile(
     `${outDir}/raw.json`,
-    JSON.stringify({ provider, results, groups }, null, 2),
+    JSON.stringify({ provider, contextMode, results, groups }, null, 2),
   );
   await Deno.writeTextFile(
     `${outDir}/report.md`,
-    renderReportMarkdown(groups, provider),
+    renderReportMarkdown(groups, provider, contextMode),
   );
 }
 
@@ -627,7 +769,7 @@ async function main(): Promise<void> {
       modelLabelFor(opts.provider)
     }）難度=${opts.difficulties.join(",")} 腳本=${
       opts.scripts.join(",")
-    } runs=${opts.runs} profileId=${opts.profileId} outDir=${opts.outDir}`,
+    } runs=${opts.runs} profileId=${opts.profileId} context=${opts.contextMode} outDir=${opts.outDir}`,
   );
 
   const results: RunRecord[] = [];
@@ -641,6 +783,7 @@ async function main(): Promise<void> {
             scriptId,
             runIndex,
             profileId: opts.profileId,
+            contextMode: opts.contextMode,
           });
           results.push(record);
           console.log(
@@ -658,6 +801,7 @@ async function main(): Promise<void> {
             difficulty,
             scriptId,
             runIndex,
+            contextMode: opts.contextMode,
             turns: [],
             debrief: null,
             finalTemperature: null,
@@ -670,7 +814,13 @@ async function main(): Promise<void> {
   }
 
   const groups = buildGroupStats(opts.difficulties, opts.scripts, results);
-  await writeReports(opts.outDir, opts.provider, results, groups);
+  await writeReports(
+    opts.outDir,
+    opts.provider,
+    opts.contextMode,
+    results,
+    groups,
+  );
   console.log(
     `[bakeoff] 全部完成，報告輸出於 ${opts.outDir}/report.md 與 ${opts.outDir}/raw.json`,
   );
