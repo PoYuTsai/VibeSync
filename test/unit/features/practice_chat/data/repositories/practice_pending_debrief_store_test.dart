@@ -498,12 +498,16 @@ void main() {
       }
     });
 
-    test('two un-awaited saves settle to the newer revision '
-        '(in-memory and Hive)', () async {
+    test('two un-awaited saves settle to the newer revision, and Hive keeps '
+        'it across close/reopen', () async {
       Hive.init('./.dart_tool/test_hive_applied_hint_concurrent');
       final ts = DateTime.now().microsecondsSinceEpoch;
-      final box = await Hive.openBox('applied_hint_concurrent_$ts');
-      addTearDown(box.deleteFromDisk);
+      final boxName = 'applied_hint_concurrent_$ts';
+      var box = await Hive.openBox(boxName);
+      addTearDown(() async {
+        if (!box.isOpen) box = await Hive.openBox(boxName);
+        await box.deleteFromDisk();
+      });
       final stores = <PracticeAppliedHintStore>[
         InMemoryPracticeAppliedHintStore(),
         HivePracticeAppliedHintStore(() => box),
@@ -524,8 +528,101 @@ void main() {
         await Future.wait([first, second]);
         expect(store.load('sess-hint')?.revision, 2);
         expect(store.load('sess-hint')?.turns.single['sentText'], '第二筆');
-        await store.clearForSession('sess-hint');
       }
+      // Hive：快取收斂到 revision 2 之外，磁碟也要是 revision 2。
+      await box.close();
+      box = await Hive.openBox(boxName);
+      final reopened = HivePracticeAppliedHintStore(() => box);
+      expect(reopened.load('sess-hint')?.revision, 2);
+      expect(reopened.load('sess-hint')?.turns.single['sentText'], '第二筆');
+    });
+
+    test('unconditional clear on an EMPTY store leaves a generation-1 '
+        'tombstone; guarded clear stays a no-op (in-memory and Hive)',
+        () async {
+      // Codex round-2 P2-1：空 store 不留 tombstone 的話，視角 0 的舊
+      // controller 事後仍能以 revision 1 寫進第一代血統。
+      Hive.init('./.dart_tool/test_hive_applied_hint_empty_clear');
+      final ts = DateTime.now().microsecondsSinceEpoch;
+      final box = await Hive.openBox('applied_hint_empty_clear_$ts');
+      addTearDown(box.deleteFromDisk);
+      final stores = <PracticeAppliedHintStore>[
+        InMemoryPracticeAppliedHintStore(),
+        HivePracticeAppliedHintStore(() => box),
+      ];
+      for (final store in stores) {
+        // 守衛清除（stale 路徑）在空 store 上不得產生任何寫入。
+        await store.clearForSession('sess-hint', ifRevisionAtMost: 5);
+        expect(store.load('sess-hint'), isNull);
+        // 無條件清除（場次收尾）要留世代 1 tombstone。
+        await store.clearForSession('sess-hint');
+        expect(store.load('sess-hint')?.revision, 1);
+        expect(clearedAppliedHintContext(store.load('sess-hint')), isTrue);
+        // 視角 0 的舊 controller 晚到寫入 revision 1 → 拒絕。
+        await expectLater(
+          store.save(PracticeAppliedHintContext(
+            sessionId: 'sess-hint',
+            turns: sample.turns,
+            revision: 1,
+          )),
+          throwsStateError,
+        );
+        expect(clearedAppliedHintContext(store.load('sess-hint')), isTrue);
+      }
+    });
+
+    test('Hive guard reads fail closed: a transient box error rejects the '
+        'write/clear instead of treating the store as empty', () async {
+      // Codex round-2 P2-3：load 吞錯回 null 會讓 CAS 與守衛清除 fail open。
+      Hive.init('./.dart_tool/test_hive_applied_hint_failclosed');
+      final ts = DateTime.now().microsecondsSinceEpoch;
+      final box = await Hive.openBox('applied_hint_failclosed_$ts');
+      addTearDown(box.deleteFromDisk);
+      var failNextOpen = false;
+      final store = HivePracticeAppliedHintStore(() {
+        if (failNextOpen) {
+          failNextOpen = false;
+          throw StateError('simulated transient box failure');
+        }
+        return box;
+      });
+      await store.save(PracticeAppliedHintContext(
+        sessionId: 'sess-hint',
+        turns: sample.turns,
+        revision: 10,
+      ));
+      // stale save 在讀取失敗時必須被拒（不是被當成空 store 而落值）。
+      failNextOpen = true;
+      await expectLater(
+        store.save(const PracticeAppliedHintContext(
+          sessionId: 'sess-hint',
+          turns: [],
+          revision: 1,
+        )),
+        throwsStateError,
+      );
+      expect(store.load('sess-hint')?.revision, 10);
+      expect(store.load('sess-hint')?.turns, isNotEmpty);
+      // 守衛清除在讀取失敗時也必須拋出，不得刪掉較新 context。
+      failNextOpen = true;
+      await expectLater(
+        store.clearForSession('sess-hint', ifRevisionAtMost: 2),
+        throwsStateError,
+      );
+      expect(store.load('sess-hint')?.revision, 10);
+    });
+
+    test('in-memory store trims sessionId consistently across save/load/clear',
+        () async {
+      final store = InMemoryPracticeAppliedHintStore();
+      await store.save(PracticeAppliedHintContext(
+        sessionId: ' sess-hint ',
+        turns: sample.turns,
+        revision: 1,
+      ));
+      expect(store.load('sess-hint')?.turns, isNotEmpty);
+      await store.clearForSession(' sess-hint '); // trim 後同一鍵
+      expect(clearedAppliedHintContext(store.load('sess-hint')), isTrue);
     });
   });
 }

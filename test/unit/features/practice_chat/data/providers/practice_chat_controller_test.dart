@@ -4100,15 +4100,19 @@ void main() {
       // 「寫入已可見、await 的是 flush」的時序；此測試補上，且 prior context
       // 非空（走還原 save 分支，不是 guarded clear 分支）。
       final store = _CommitThenBlockAppliedHintStore();
-      api.sendHandler = (_, {profile}) async => reply(
-            cost: 0,
-            temperature: const PracticeTemperature(
-              score: 30,
-              delta: 0,
-              band: 'cold',
-              reason: '維持',
-            ),
-          );
+      var sendCalls = 0;
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        return reply(
+          cost: 0,
+          temperature: const PracticeTemperature(
+            score: 30,
+            delta: 0,
+            band: 'cold',
+            reason: '維持',
+          ),
+        );
+      };
 
       final a = await makeRevealed(appliedHintStore: store);
       await a.setPracticeLearningMode(PracticeLearningMode.beginner);
@@ -4124,16 +4128,19 @@ void main() {
       // 第二輪：staging save 先落盤、Future 卡住 → dispose（失去所有權）。
       final gate = Completer<void>();
       store.gate = gate;
-      api.sendHandler = (_, {profile}) async => reply(
-            cost: 0,
-            aiTurnCount: 2,
-            temperature: const PracticeTemperature(
-              score: 31,
-              delta: 1,
-              band: 'cold',
-              reason: '延伸',
-            ),
-          );
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        return reply(
+          cost: 0,
+          aiTurnCount: 2,
+          temperature: const PracticeTemperature(
+            score: 31,
+            delta: 1,
+            band: 'cold',
+            reason: '延伸',
+          ),
+        );
+      };
       final staleSend = a.sendMessage(
         '第二句照抄',
         appliedHintType: PracticeHintReplyType.steady,
@@ -4147,16 +4154,19 @@ void main() {
         repo.getById(sessionId)!,
         appliedHintStore: store,
       );
-      api.sendHandler = (_, {profile}) async => reply(
-            cost: 0,
-            aiTurnCount: 3,
-            temperature: const PracticeTemperature(
-              score: 33,
-              delta: 2,
-              band: 'cold',
-              reason: '延伸',
-            ),
-          );
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        return reply(
+          cost: 0,
+          aiTurnCount: 3,
+          temperature: const PracticeTemperature(
+            score: 33,
+            delta: 2,
+            band: 'cold',
+            reason: '延伸',
+          ),
+        );
+      };
       await rebuilt.sendMessage(
         '新 controller 的一句',
         appliedHintType: PracticeHintReplyType.steady,
@@ -4180,6 +4190,82 @@ void main() {
         reason: '舊 controller 的還原寫入蓋掉了新 controller 的較新 context',
       );
       expect(surviving?.revision, greaterThanOrEqualTo(newerRevision));
+      // 失去所有權的舊 controller 不得對外發出計費請求：
+      // A 第一輪＋新 controller 一輪＝2 次；A 卡住的第二輪不得達到 API。
+      expect(sendCalls, 2);
+    });
+
+    test('另一個 controller 寫入「完全相同的內容」時，被拒的 controller 不得把它誤認成自己的成功',
+        () async {
+      // Codex round-2 P2-2：save 落值後拋錯的復原若只比內容，B 會把 A 的
+      // 相同寫入認作自己完成，重新取得 writer 權限（繞過 fencing）。
+      // 修法：復原必比 writerId。
+      final store = InMemoryPracticeAppliedHintStore();
+      var sendCalls = 0;
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        return reply(
+          cost: 0,
+          temperature: const PracticeTemperature(
+            score: 30,
+            delta: 0,
+            band: 'cold',
+            reason: '維持',
+          ),
+        );
+      };
+
+      final a = await makeRevealed(appliedHintStore: store);
+      await a.setPracticeLearningMode(PracticeLearningMode.beginner);
+      await a.sendMessage('hello');
+      final sessionId = a.currentState.sessionId;
+
+      // B 在 A 套用提示之前重建（視角＝A 寫入前），共用同一 store。
+      final b = makeControllerFrom(
+        repo.getById(sessionId)!,
+        appliedHintStore: store,
+      );
+
+      // A 先成功寫入。
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        return reply(
+          cost: 0,
+          aiTurnCount: 2,
+          temperature: const PracticeTemperature(
+            score: 31,
+            delta: 1,
+            band: 'cold',
+            reason: '延伸',
+          ),
+        );
+      };
+      await a.sendMessage(
+        '同一句照抄',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: '同一句照抄',
+      );
+      final afterA = store.load(sessionId);
+      expect(afterA?.turns, isNotEmpty);
+      final callsAfterA = sendCalls;
+
+      // B 對同一回合 staging「完全相同的內容」→ CAS 拒絕；不得誤認成自己
+      // 成功而放行計費呼叫，必須走 lineage-not-durable 回滾。
+      final priorMessages = b.currentState.messages;
+      await b.sendMessage(
+        '同一句照抄',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: '同一句照抄',
+      );
+      expect(sendCalls, callsAfterA, reason: 'B 的送出不得達到 API');
+      expect(b.currentState.messages, priorMessages);
+      expect(b.currentState.restoreText, '同一句照抄');
+      // A 的寫入原樣存活。
+      expect(
+        store.load(sessionId)?.turns.map((t) => t['sentText']),
+        contains('同一句照抄'),
+      );
+      expect(store.load(sessionId)?.revision, afterA?.revision);
     });
 
     test('同 controller：hint timeout 後對話推進（sendMessage 成功）→ 新回合 hint 鑄新 id',

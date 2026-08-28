@@ -319,6 +319,7 @@ class PracticeAppliedHintContext {
     required this.turns,
     this.latestHint,
     this.revision = 0,
+    this.writerId,
   });
 
   final String sessionId;
@@ -330,11 +331,17 @@ class PracticeAppliedHintContext {
   /// 舊格式沒有此欄位 → 0。
   final int revision;
 
+  /// 寫入者身分（controller instance 隨機 id）。「save 落值後才拋錯」的
+  /// 復原判斷需要它：內容全等不足以證明是自己寫的——另一個 controller
+  /// 寫入完全相同內容時不得被誤認成自己成功（會繞過 fencing）。
+  final String? writerId;
+
   Map<String, dynamic> toJson() => {
         'sessionId': sessionId,
         'turns': turns,
         if (latestHint != null) 'latestHint': latestHint!.toJson(),
         'revision': revision,
+        if (writerId != null) 'writerId': writerId,
       };
 
   static PracticeAppliedHintContext? fromJson(Map<String, dynamic> json) {
@@ -349,11 +356,15 @@ class PracticeAppliedHintContext {
         .take(5)
         .toList(growable: false);
     final rawRevision = json['revision'];
+    final rawWriterId = json['writerId'];
     return PracticeAppliedHintContext(
       sessionId: sessionId.trim(),
       turns: turns,
       latestHint: PracticeSuccessfulHintSnapshot.fromJson(json['latestHint']),
       revision: rawRevision is int && rawRevision > 0 ? rawRevision : 0,
+      writerId: rawWriterId is String && rawWriterId.trim().isNotEmpty
+          ? rawWriterId.trim()
+          : null,
     );
   }
 }
@@ -376,6 +387,9 @@ abstract class PracticeAppliedHintStore {
   /// revision +1）保留世代——物理刪除會讓 revision 歸零，清除後失去所有權的
   /// 舊寫入就能以較大 revision 復活已清掉的血統。load 會回傳這個空 context，
   /// 消費端把「turns 空且無 latestHint」視同已清除。
+  ///
+  /// Tombstone 每個 session 至多一筆小紀錄、與場次紀錄同量級（有界）；
+  /// 若未來場次量大到需要回收，再做批次清理。
   Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost});
 }
 
@@ -388,18 +402,31 @@ class InMemoryPracticeAppliedHintStore implements PracticeAppliedHintStore {
 
   @override
   Future<void> save(PracticeAppliedHintContext context) async {
-    final existing = _contexts[context.sessionId];
+    final key = context.sessionId.trim();
+    final existing = _contexts[key];
     if (existing != null && context.revision <= existing.revision) {
       throw StateError('practice_applied_hint_stale_write');
     }
-    _contexts[context.sessionId] = context;
+    _contexts[key] = context;
   }
 
   @override
   Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost}) async {
     final key = sessionId.trim();
     final existing = _contexts[key];
-    if (existing == null) return;
+    if (existing == null) {
+      // 空 store 也要留 tombstone（世代 1），否則失去所有權的舊 controller
+      // 事後仍能以 revision 1 寫進第一代血統。守衛清除（stale 路徑）除外——
+      // stale caller 不得產生任何寫入。
+      if (ifRevisionAtMost == null) {
+        _contexts[key] = PracticeAppliedHintContext(
+          sessionId: key,
+          turns: const [],
+          revision: 1,
+        );
+      }
+      return;
+    }
     if (ifRevisionAtMost != null && existing.revision > ifRevisionAtMost) {
       return;
     }
@@ -429,28 +456,35 @@ class HivePracticeAppliedHintStore implements PracticeAppliedHintStore {
   @override
   PracticeAppliedHintContext? load(String sessionId) {
     try {
-      final normalizedSessionId = sessionId.trim();
-      if (normalizedSessionId.isEmpty) return null;
-      final box = _openBox();
-      final current = _decodeContext(
-        box.get(storageKeyForSession(normalizedSessionId)),
-      );
-      if (current?.sessionId == normalizedSessionId) return current;
-
-      // Old builds wrote one global slot. Read it only when its identity
-      // matches; the next successful save migrates it to the per-session key.
-      final legacy = _decodeContext(box.get(storageKey));
-      return legacy?.sessionId == normalizedSessionId ? legacy : null;
+      return _loadStrict(sessionId);
     } catch (_) {
       return null;
     }
   }
 
+  /// 守衛判斷（save 的 CAS、clear 的 revision guard）專用讀取：讀取失敗
+  /// **必須拋出**。若沿用吞錯的 [load]，暫時性讀取錯誤會被當成「不存在」，
+  /// stale 寫入與守衛清除就 fail open。
+  PracticeAppliedHintContext? _loadStrict(String sessionId) {
+    final normalizedSessionId = sessionId.trim();
+    if (normalizedSessionId.isEmpty) return null;
+    final box = _openBox();
+    final current = _decodeContext(
+      box.get(storageKeyForSession(normalizedSessionId)),
+    );
+    if (current?.sessionId == normalizedSessionId) return current;
+
+    // Old builds wrote one global slot. Read it only when its identity
+    // matches; the next successful save migrates it to the per-session key.
+    final legacy = _decodeContext(box.get(storageKey));
+    return legacy?.sessionId == normalizedSessionId ? legacy : null;
+  }
+
   @override
   Future<void> save(PracticeAppliedHintContext context) async {
-    // load 是同步、box.put 同步更新快取：check 與 put 之間沒有 await，
-    // 同 isolate 內不會被別的寫入插隊。
-    final existing = load(context.sessionId);
+    // _loadStrict 是同步、box.put 同步更新快取：check 與 put 之間沒有 await，
+    // 同 isolate 內不會被別的寫入插隊；讀取失敗直接拋出（fail closed）。
+    final existing = _loadStrict(context.sessionId);
     if (existing != null && context.revision <= existing.revision) {
       throw StateError('practice_applied_hint_stale_write');
     }
@@ -469,14 +503,21 @@ class HivePracticeAppliedHintStore implements PracticeAppliedHintStore {
   Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost}) async {
     final normalizedSessionId = sessionId.trim();
     if (normalizedSessionId.isEmpty) return;
-    final existing = load(normalizedSessionId);
+    // 讀取失敗直接拋出（fail closed）：吞錯會讓守衛清除誤刪較新 context。
+    final existing = _loadStrict(normalizedSessionId);
     final box = _openBox();
     if (existing == null) {
-      // 沒有可讀 context：維持舊語意，把兩個槽的殘值清掉。
-      await box.delete(storageKeyForSession(normalizedSessionId));
-      final legacy = _decodeContext(box.get(storageKey));
-      if (legacy?.sessionId == normalizedSessionId) {
-        await box.delete(storageKey);
+      // 空 store：無條件清除也要留世代 1 的 tombstone（防止舊 controller
+      // 事後以 revision 1 寫進第一代血統）；守衛清除（stale 路徑）不得寫入。
+      if (ifRevisionAtMost == null) {
+        await box.put(
+          storageKeyForSession(normalizedSessionId),
+          jsonEncode(PracticeAppliedHintContext(
+            sessionId: normalizedSessionId,
+            turns: const [],
+            revision: 1,
+          ).toJson()),
+        );
       }
       return;
     }

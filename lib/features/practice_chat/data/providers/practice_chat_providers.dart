@@ -588,6 +588,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 舊 controller 寫不進去。
   int _appliedHintStoreRevision = 0;
 
+  /// 寫入者身分：save「落值後才拋錯」的復原只認自己的 writerId——內容
+  /// 全等不足以證明是自己寫的（另一個 controller 寫入相同內容時不得
+  /// 被誤認成自己成功而繞過 fencing）。
+  final String _appliedHintWriterId = const Uuid().v4();
+
   void _restoreAppliedHintTurnsForCurrentSession() {
     _appliedHintTurns.clear();
     _latestSuccessfulHint = null;
@@ -686,17 +691,21 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       turns: context.turns,
       latestHint: context.latestHint,
       revision: _appliedHintStoreRevision + 1,
+      writerId: _appliedHintWriterId,
     );
     try {
       await _appliedHintStore.save(attempted);
       _appliedHintStoreRevision = attempted.revision;
       return true;
     } catch (_) {
-      // Hive 可能已把值寫進快取才拋錯：store 內容若正是這次要寫的，視同成功；
-      // 否則活著的 controller 會被自己的殘留寫入永久擋在 CAS 之外。
+      // Hive 可能已把值寫進快取才拋錯：store 內容若正是「本 controller 這次
+      // 要寫的」（writerId＋內容全等），視同成功；否則活著的 controller 會被
+      // 自己的殘留寫入永久擋在 CAS 之外。writerId 必比——只比內容會把別的
+      // controller 的相同寫入誤認成自己，繞過 fencing。
       try {
         final stored = _appliedHintStore.load(attempted.sessionId);
         if (stored != null &&
+            stored.writerId == _appliedHintWriterId &&
             jsonEncode(stored.toJson()) == jsonEncode(attempted.toJson())) {
           _appliedHintStoreRevision = attempted.revision;
           return true;
@@ -768,15 +777,22 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _latestSuccessfulHintIsDurable = false;
     try {
       await _appliedHintStore.clearForSession(sessionId);
-      if (sessionId == state.sessionId) {
-        // 清除會寫入保留世代的 tombstone：同步視角，否則本 controller 的
-        // 下一次合法寫入會被 CAS 誤拒。
-        _appliedHintStoreRevision =
-            _appliedHintStore.load(sessionId)?.revision ?? 0;
-      }
     } catch (_) {
       // Best-effort side-channel; session identity filters stale context.
     }
+    if (sessionId != state.sessionId) return;
+    // 清除會寫入保留世代的 tombstone：不論 clear 的 Future 是否正常返回都
+    // 要重新同步視角——Hive 可能已把 tombstone 寫進快取才在 flush 拋錯，
+    // 只在成功路徑同步會讓本 controller 的下一次合法寫入被 CAS 永久誤拒。
+    try {
+      final stored = _appliedHintStore.load(sessionId);
+      if (stored == null) {
+        _appliedHintStoreRevision = 0;
+      } else if (stored.turns.isEmpty && stored.latestHint == null) {
+        _appliedHintStoreRevision = stored.revision;
+      }
+      // stored 仍有內容＝清除整個沒生效：維持原視角。
+    } catch (_) {}
   }
 
   /// 圖鑑樂觀 +1：**只有真的翻到牌才呼叫**。還原舊場／從圖鑑點進來都不算
