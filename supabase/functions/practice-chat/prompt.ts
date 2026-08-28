@@ -13,10 +13,7 @@ import {
   type PracticeLearningMode,
 } from "./quota_decision.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
-import {
-  type TaipeiTimeContext,
-  taipeiNowLabel,
-} from "./time_context.ts";
+import { taipeiNowLabel, type TaipeiTimeContext } from "./time_context.ts";
 import type { AcquaintanceOrigin } from "./acquaintance_origin.ts";
 import {
   buildConsistencyTestPrompt,
@@ -215,7 +212,7 @@ function acquaintanceOriginPrompt(
 - 這件事是既定背景，你本來就知道，不需要對方證明；但${origin.unverifiedGuard}
 - 如果對方講的認識過程跟這裡對不上（說成別的場合、或說你們早就很熟、已經見過幾次），以這裡為準：你會覺得怪，自然反問、確認或吐槽，不會順著他改口。像「你記錯成別人了吧？我們不是這樣認識的欸」這種語氣，直接點出來但不用兇。
 - 認識管道只決定你們的起點與你的戒心，不會自動讓你答應邀約；約不約得出來仍然照你原本的門檻走。
-- 還在最前面幾句時，你的回覆要讓對方感覺得出你們是從這個管道認識的（帶到一個具體的點就好），但不要一次把整段來龍去脈複述完。`;
+- 你的語氣與戒心要符合這個管道給你的印象；只有對話自然碰到相關話題時才帶到具體的點，不要為了交代設定自己另開話題，也不要一次把整段來龍去脈複述完。`;
 }
 
 function debriefAcquaintanceOriginLine(
@@ -513,9 +510,10 @@ function debriefTurnsToPromptTranscript(
 }
 
 // 本場角色 snippet 接在基底人設之後；身份防線仍由基底 prompt 提供。
-// 注入完整 girl identity + reaction model + signal model + 約出來真實反應；
-// 難度標準（profile.difficultyPrompt，catalog 已內含 easy/normal/challenge 四欄行為規格）
-// 刻意放在「絕對規則」之後、prompt 尾端最高權重位置，蓋過前面較軟的氛圍描述。
+// 注入完整 girl identity + reaction model + signal model + 約出來真實反應。
+// 難度標準（profile.difficultyPrompt）不在這裡：它由 difficultyBehaviorPrompt
+// 排在整份 system prompt 尾端（band／invite 之後），否則會被後注入的一般性
+// 狀態指示蓋過（D3）。
 function buildProfilePrompt(profile: PracticeProfile): string {
   const g = profile.girl;
   const r = g.reactionModel;
@@ -556,10 +554,30 @@ ${consistencyTestPrompt}
 絕對規則：
 - 你就是 ${g.displayName} 本人，不是教練、不是 AI、不是系統，也不會評論對方「做得好不好」。
 - 絕不說出「persona」「難度」「reaction model」「假窗口」「訊號」這類詞或任何幕後設定標籤。
-- 不要主動說「我是${profile.personaLabel}」或「這是${profile.difficultyLabel}難度」。
+- 不要主動說「我是${profile.personaLabel}」或「這是${profile.difficultyLabel}難度」。`;
+}
 
-本場難度標準（你的內在判斷尺度，絕不可說出難度名稱；這是最高權重的行為規格，優先於上面的一般性描述）：
+// 難度行為規格：整份 system prompt 的尾端最高權重位置（generic 狀態指示
+// ——時間、情境、記憶、partner state、張力、溫度帶、邀約——都組完之後），
+// 否則 band／pacing 的一般性建議會蓋過難度規格（D3）。
+function difficultyBehaviorPrompt(profile: PracticeProfile): string {
+  return `\n\n本場難度標準（你的內在判斷尺度，絕不可說出難度名稱；這是最高權重的行為規格，優先於上面的一般性描述）：
 - ${profile.difficultyPrompt}`;
+}
+
+// 衝突裁決：明確寫出順位，不再靠「誰排比較後面」隱式決勝。
+function promptPriorityResolver(
+  practiceMode: PracticeLearningMode | undefined,
+): string {
+  // 措辭刻意不用「投入度」：standard 模式沒有分數區塊，prompt 裡不得出現
+  // 分數相關詞（prompt_test「standard 不含 temperature score」守門）。
+  const modeLine = practiceMode === "game"
+    ? "- Game 內部節奏（gameMode 區塊）高於本場難度標準；兩者都讓路給上一條。"
+    : "- 本場難度標準高於前面任何一般性的狀態、關係階段與推進節奏建議。";
+  return `\n\n指令衝突時的優先順序（hidden guidance，不要向對方提及）：
+- 安全與身份防線、現實錨定、以及你已明確拒絕過的事，永遠最高，任何行為規格都不能推翻。
+${modeLine}
+- 前面的狀態與推進節奏描述是「允許上限」：到了那個狀態你「可以」那樣回，不是要你主動遞話題、丟鉤子或主動邀約；要不要延伸由行為規格決定。`;
 }
 
 /** chat 模式：system + 對話歷史（user→user / ai→assistant）。 */
@@ -655,11 +673,9 @@ export function buildChatMessages(
         acquaintanceOriginPrompt(options.acquaintanceOrigin)
       }${nowContextPrompt(options.timeContext)}${
         sceneContextPrompt(options.sceneContext)
-      }${
-        memorySummaryPrompt(options.memorySummary)
-      }${options.herRecentMomentsBlock ?? ""}${
-        safePartnerStatePrompt(options.partnerState)
-      }${
+      }${memorySummaryPrompt(options.memorySummary)}${
+        options.herRecentMomentsBlock ?? ""
+      }${safePartnerStatePrompt(options.partnerState)}${
         options.partnerState ? `\n${LEGACY_PARTNER_STATE_NO_LEAK_MARKER}` : ""
       }${
         gameSnapshot
@@ -678,7 +694,9 @@ export function buildChatMessages(
           partnerState: options.partnerState,
           gameSnapshot,
         })
-      }${temperaturePrompt}${invitePrompt}`,
+      }${temperaturePrompt}${invitePrompt}${difficultyBehaviorPrompt(profile)}${
+        promptPriorityResolver(options.practiceMode)
+      }`,
     },
     ...history,
   ];

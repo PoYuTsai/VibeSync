@@ -136,8 +136,10 @@ export function temperatureBandInstruction(score: number): string {
   const band = temperatureBandFor(clamped);
   const guidance: Record<TemperatureBand, string> = {
     frozen: "她目前很防備或興趣低，回覆要短、自然、低壓，先恢復安全感。",
-    cold:
-      "她目前偏冷，回覆要輕鬆接話、少施壓，用一個好接的小鉤子讓她願意多說。",
+    // 低壓「狀態描述」而非命令式救場指令：要不要延伸、反問、回多長由
+    // 難度行為規格決定（PR 3，修 D3——舊句「用一個好接的小鉤子讓她願意
+    // 多說」會叫 challenge 的她主動救場）。
+    cold: "她目前偏冷，投入度不高：回覆自然、少施壓，不用假裝熱絡。",
     neutral: "她目前普通投入，回覆要承接她的內容並加一點個人感，不要急著升級。",
     warm: "她目前有投入感，可以自然調情或提出低壓邀約，但仍要保留退路。",
     hot: "她目前很投入，可以更明確推進邀約或曖昧張力，但不要過度用力。",

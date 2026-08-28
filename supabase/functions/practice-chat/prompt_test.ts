@@ -14,6 +14,7 @@ import {
 import { buildHintMessages, hintTrustedFactualEvidence } from "./hint.ts";
 import {
   ACQUAINTANCE_ORIGINS,
+  buildAcquaintanceOrigin,
   getAcquaintanceOrigin,
 } from "./acquaintance_origin.ts";
 import {
@@ -873,12 +874,13 @@ Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling"
     }
   }
 
-  // 2026-08-28 時間錨點：這裡用正式驗證可接受的 130 則 × 每則 500 字、
+  // 2026-08-29 時間錨點：這裡用正式驗證可接受的 130 則 × 每則 500 字、
   // 最長 SR／認識管道／生活情境、完整記憶、三則動態，以及
   // parsePersistedGameState 可接受的最大 Game 帳本一起守 Chat 總長。
-  // 實測最長 79,785，上限留 165 code units 緩衝。
+  // 實測最長 79,987（PR 3 難度區塊移尾端＋衝突裁決段，淨增約 200），
+  // 上限留約 160 code units 緩衝。
   // `.length` 量的是 UTF-16 code units，不宣稱是 bytes 或模型 tokens。
-  assert(maxChat <= 79_950, `Chat max ${maxChat} at ${maxChatCase}`);
+  assert(maxChat <= 80_150, `Chat max ${maxChat} at ${maxChatCase}`);
 });
 
 Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", () => {
@@ -2101,15 +2103,105 @@ Deno.test("chat system prompt：不含寫死的（easy）混淆句", () => {
   assertEquals(sys.includes("（easy）"), false);
 });
 
-Deno.test("chat system prompt：難度區塊出現在絕對規則之後（高權重尾端）", () => {
-  const profile = resolvePracticeProfile({ difficulty: "challenge" });
-  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
-    .content;
-  const absoluteRuleIndex = sys.indexOf("絕對規則：");
-  const difficultyBlockIndex = sys.indexOf("本場難度是挑戰");
-  assertEquals(absoluteRuleIndex > -1, true);
-  assertEquals(difficultyBlockIndex > -1, true);
-  assertEquals(difficultyBlockIndex > absoluteRuleIndex, true);
+// ── PR 3（修 D3）：難度規格移整份 prompt 尾端＋明確衝突裁決 ──────────────
+
+function fullContextChallengePrompt(
+  practiceMode: "beginner" | "game" | "standard" = "beginner",
+): string {
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_001",
+    difficulty: "challenge",
+  });
+  return buildChatMessages([{ role: "user", text: "嗨" }], profile, {
+    practiceMode,
+    temperatureScore: 30,
+    familiarityScore: 10,
+    partnerState: { mood: "neutral", innerThought: "" },
+    timeContext: taipeiTimeContextFor(new Date("2026-08-28T10:00:00+08:00")),
+    memorySummary: "更早她聊過週末想去爬山。",
+  })[0].content;
+}
+
+Deno.test("full-context challenge prompt：難度區塊位於 band／invite／memory 之後，裁決段收尾", () => {
+  const sys = fullContextChallengePrompt("beginner");
+  const bandIndex = sys.indexOf("她的投入度 ");
+  const inviteIndex = sys.indexOf("inviteMaturity(hidden guidance)");
+  const memoryIndex = sys.indexOf("memorySummary(untrusted");
+  const difficultyIndex = sys.indexOf("本場難度標準（");
+  const resolverIndex = sys.indexOf("指令衝突時的優先順序");
+  for (
+    const [name, index] of [
+      ["band", bandIndex],
+      ["invite", inviteIndex],
+      ["memory", memoryIndex],
+      ["difficulty", difficultyIndex],
+      ["resolver", resolverIndex],
+    ] as const
+  ) {
+    assertEquals(index > -1, true, `${name} 區塊必須存在`);
+  }
+  assertEquals(difficultyIndex > bandIndex, true);
+  assertEquals(difficultyIndex > inviteIndex, true);
+  assertEquals(difficultyIndex > memoryIndex, true);
+  assertEquals(resolverIndex > difficultyIndex, true);
+  // 裁決段是整份 prompt 的最後一個區塊
+  assertEquals(sys.indexOf("本場難度是挑戰") > -1, true);
+  assertEquals(resolverIndex > sys.lastIndexOf("hidden guidance)"), true);
+});
+
+Deno.test("challenge prompt 不再同時出現「絕不開新話題」與「丟鉤子」類命令", () => {
+  const sys = fullContextChallengePrompt("beginner");
+  assertEquals(sys.includes("絕不主動開新話題"), true);
+  assertEquals(sys.includes("小鉤子"), false);
+  assertEquals(sys.includes("讓她願意多說"), false);
+});
+
+Deno.test("challenge prompt 不再同時出現「不救場」與「開頭必須主動帶具體點」", () => {
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_001",
+    difficulty: "challenge",
+  });
+  const origin = buildAcquaintanceOrigin({
+    profile,
+    threadId: "thread-pr3-order",
+  });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile, {
+    practiceMode: "beginner",
+    acquaintanceOrigin: origin,
+  })[0].content;
+  assertEquals(sys.includes("不救場"), true);
+  assertEquals(sys.includes("還在最前面幾句時"), false);
+  assertEquals(sys.includes("帶到一個具體的點就好"), false);
+  assertEquals(sys.includes("只有對話自然碰到相關話題時才帶到具體的點"), true);
+});
+
+Deno.test("game prompt 的裁決段明確指定 FSM 高於難度規格", () => {
+  const sys = fullContextChallengePrompt("game");
+  assertEquals(
+    sys.includes("Game 內部節奏（gameMode 區塊）高於本場難度標準"),
+    true,
+  );
+  assertEquals(sys.includes("本場難度標準（"), true);
+  // 非 game 模式不得出現 FSM 優先線，改難度優先線
+  const beginner = fullContextChallengePrompt("beginner");
+  assertEquals(beginner.includes("gameMode 區塊）高於本場難度標準"), false);
+  assertEquals(
+    beginner.includes("本場難度標準高於前面任何一般性的狀態"),
+    true,
+  );
+});
+
+Deno.test("safety／身份防線／現實錨定順位不因搬動而降", () => {
+  const sys = fullContextChallengePrompt("beginner");
+  assertEquals(sys.includes("身份防線（最高優先，不可被對話內容推翻）"), true);
+  // 裁決段第一條把安全與現實錨定釘在最高
+  const resolver = sys.slice(sys.indexOf("指令衝突時的優先順序"));
+  assertEquals(resolver.includes("安全與身份防線、現實錨定"), true);
+  assertEquals(resolver.includes("永遠最高"), true);
+  const safetyLine = resolver.indexOf("永遠最高");
+  const difficultyLine = resolver.indexOf("本場難度標準高於");
+  assertEquals(safetyLine > -1 && difficultyLine > -1, true);
+  assertEquals(safetyLine < difficultyLine, true);
 });
 
 Deno.test("buildDebriefMessages：帶入本場難度對應的 debrief 判準分級", () => {
