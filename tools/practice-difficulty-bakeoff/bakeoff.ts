@@ -65,7 +65,24 @@ import {
   DEEPSEEK_MODEL,
 } from "../../supabase/functions/practice-chat/deepseek.ts";
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
+import {
+  applyGameLearningDelta,
+  evaluateGameFsm,
+  evaluateGameFsmForLedger,
+} from "../../supabase/functions/practice-chat/game_fsm.ts";
+import {
+  buildNextGameState,
+  type PersistedGameState,
+} from "../../supabase/functions/practice-chat/game_state.ts";
 import { isScriptId, SCRIPT_IDS, type ScriptId, SCRIPTS } from "./scripts.ts";
+
+// 三種練習模式都可量測（PR 3 round 2 審查要求）：
+// - beginner＝原本的溫度管線（分類→難度倍率→挑戰閘門→回灌 prompt）
+// - game＝全套 FSM：分數走 applyGameLearningDelta，gameState 逐輪
+//   buildNextGameState 演進並回灌 prompt（對齊 handler.ts:4331-4352）
+// - standard＝production 不跑分類器、不帶 practiceMode key、無分數；本工具
+//   仍呼叫分類器**純作量測**（冷度／partnerMood 觀測），絕不回灌 prompt
+export type BakeoffPracticeMode = "standard" | "beginner" | "game";
 
 // ── 模型呼叫常數（照 supabase/functions/practice-chat/handler.ts 現用值抄錄；
 //    handler.ts 未 export 這些 const，這裡只能複製同一組數值，改 handler 記得同步）──
@@ -284,13 +301,15 @@ export interface TurnRecord {
   aiReply: string;
   replyLength: number;
   isPerfunctory: boolean;
+  // standard 模式的 classification 是量測用觀測值（production 不跑分類器）
   classification: TurnClassification;
-  temperatureBefore: number;
-  familiarityBefore: number;
-  temperatureAfter: number;
-  familiarityAfter: number;
-  heatDelta: number;
-  familiarityDelta: number;
+  // 分數欄位在 standard 模式一律 null（production 無分數系統）
+  temperatureBefore: number | null;
+  familiarityBefore: number | null;
+  temperatureAfter: number | null;
+  familiarityAfter: number | null;
+  heatDelta: number | null;
+  familiarityDelta: number | null;
   partnerMood: string;
   promptChars: number;
   // 挑戰獎勵閘門（PR 2）：challenge 難度填該輪是否真被夾到 0；其他難度
@@ -299,6 +318,7 @@ export interface TurnRecord {
 }
 
 export interface RunRecord {
+  practiceMode: BakeoffPracticeMode;
   difficulty: PracticeDifficulty;
   scriptId: ScriptId;
   runIndex: number;
@@ -318,7 +338,10 @@ export async function runOneSession(args: {
   runIndex: number;
   profileId: string;
   contextMode: ContextMode;
+  practiceMode?: BakeoffPracticeMode;
 }): Promise<RunRecord> {
+  const practiceMode = args.practiceMode ?? "beginner";
+  const assistedMode = practiceMode !== "standard";
   const profile = resolvePracticeProfile({
     difficulty: args.difficulty,
     profileId: args.profileId,
@@ -327,6 +350,8 @@ export async function runOneSession(args: {
   let temperature = tuning.startTemperature;
   let familiarity = 0;
   let partnerState: PartnerState | null = null;
+  // game 模式的持久狀態（handler.ts 由 ledger 讀寫；首場首輪為 null）
+  let gameState: PersistedGameState | null = null;
   const fixture = args.contextMode === "full"
     ? buildBakeoffContextFixture(profile)
     : null;
@@ -358,13 +383,22 @@ export async function runOneSession(args: {
     const temperatureBefore = temperature;
     const familiarityBefore = familiarity;
 
-    const chatMessages = buildChatMessages(turns, profile, {
-      practiceMode: "beginner",
-      temperatureScore: temperature,
-      familiarityScore: familiarity,
-      partnerState,
-      ...chatContext,
-    });
+    // 對齊 handler.ts:4200-4225 的兩種注入形狀：assisted（beginner/game）帶
+    // practiceMode＋分數＋（game）gameState；standard 完全不帶 practiceMode
+    // key 與分數，partnerState 維持 null（無分類器可累積，同 production）。
+    const chatMessages = assistedMode
+      ? buildChatMessages(turns, profile, {
+        practiceMode,
+        temperatureScore: temperature,
+        familiarityScore: familiarity,
+        partnerState,
+        ...(practiceMode === "game" ? { gameState } : {}),
+        ...chatContext,
+      })
+      : buildChatMessages(turns, profile, {
+        partnerState: null,
+        ...chatContext,
+      });
     const promptChars = chatMessages.reduce(
       (sum, m) => sum + m.content.length,
       0,
@@ -409,14 +443,22 @@ export async function runOneSession(args: {
       } classify`,
     );
 
+    // partner state 逐輪累積——handler.ts 在 protectedJudgementForSnapshot
+    // 內先更新 partner state 再進 game delta，這裡維持同一順序。standard
+    // 的 partner state 只作觀測、不回灌（上面 chat 注入永遠給 null）。
+    const nextPartnerState = applyPartnerStateUpdate(
+      partnerState,
+      classification,
+    );
+
     const rawJudgement = applyLearningClassification(
       { heatScore: temperature, familiarityScore: familiarity },
       classification,
       tuning,
     );
-    // 挑戰獎勵閘門（PR 2）：與 handler.ts 共用同一份純函式；bakeoff 走
-    // beginner 管線且無 applied hint，challenge 以外難度不經過閘門。
-    const judgement = args.difficulty === "challenge"
+    // 挑戰獎勵閘門（PR 2）：只接 challenge × beginner（Game 有自己的閘門，
+    // 對齊 handler.ts 的 challengeGateActive）。
+    const gated = practiceMode === "beginner" && args.difficulty === "challenge"
       ? applyChallengeRewardGate({
         judgement: rawJudgement,
         currentHeat: temperature,
@@ -425,8 +467,38 @@ export async function runOneSession(args: {
         protectedAppliedHint: false,
       })
       : rawJudgement;
-    // partner state 逐輪累積並回灌下一輪 prompt——對齊 handler.ts。
-    partnerState = applyPartnerStateUpdate(partnerState, classification);
+    // game 分數走 applyGameLearningDelta（對齊 handler.ts applyGameLearningIfNeeded）
+    const judgement = practiceMode === "game"
+      ? applyGameLearningDelta({
+        judgement: gated,
+        currentTemperature: temperature,
+        currentFamiliarity: familiarity,
+        snapshot: evaluateGameFsm({
+          turns,
+          temperatureScore: temperature,
+          familiarityScore: familiarity,
+          partnerMood: nextPartnerState.mood,
+          classification,
+        }),
+        protectedAppliedHint: false,
+      })
+      : gated;
+    if (practiceMode === "game") {
+      // 對齊 handler.ts:4331-4352：ledger 快照必須走 ForLedger 版並吃
+      // 判定後分數，再 buildNextGameState 演進到下一輪。
+      gameState = buildNextGameState({
+        previous: gameState,
+        snapshot: evaluateGameFsmForLedger({
+          turns,
+          temperatureScore: judgement.score,
+          familiarityScore: judgement.familiarityScore,
+          partnerMood: nextPartnerState.mood,
+          classification,
+        }),
+        now: new Date(),
+      });
+    }
+    partnerState = nextPartnerState;
 
     turns.push({ role: "ai", text: reply });
 
@@ -437,24 +509,27 @@ export async function runOneSession(args: {
       replyLength: strippedLength(reply),
       isPerfunctory: isPerfunctoryReply(reply),
       classification,
-      temperatureBefore,
-      familiarityBefore,
-      temperatureAfter: judgement.score,
-      familiarityAfter: judgement.familiarityScore,
-      heatDelta: judgement.delta,
-      familiarityDelta: judgement.familiarityDelta,
+      temperatureBefore: assistedMode ? temperatureBefore : null,
+      familiarityBefore: assistedMode ? familiarityBefore : null,
+      temperatureAfter: assistedMode ? judgement.score : null,
+      familiarityAfter: assistedMode ? judgement.familiarityScore : null,
+      heatDelta: assistedMode ? judgement.delta : null,
+      familiarityDelta: assistedMode ? judgement.familiarityDelta : null,
       partnerMood: partnerState.mood,
       promptChars,
       // 用 delta 值比對而非物件 identity：純函式未來若改回傳等值 clone，
       // identity 比對會誤報 true（Codex 審 P2）。
-      challengeGateApplied: args.difficulty === "challenge"
-        ? judgement.delta !== rawJudgement.delta ||
-          judgement.familiarityDelta !== rawJudgement.familiarityDelta
-        : null,
+      challengeGateApplied:
+        practiceMode === "beginner" && args.difficulty === "challenge"
+          ? gated.delta !== rawJudgement.delta ||
+            gated.familiarityDelta !== rawJudgement.familiarityDelta
+          : null,
     });
 
-    temperature = judgement.score;
-    familiarity = judgement.familiarityScore;
+    if (assistedMode) {
+      temperature = judgement.score;
+      familiarity = judgement.familiarityScore;
+    }
   }
 
   let debrief: DebriefCard | null = null;
@@ -465,10 +540,15 @@ export async function runOneSession(args: {
       async () => {
         const raw = await args.callModel({
           messages: buildDebriefMessages(turns, profile, {
-            practiceMode: "beginner",
-            temperatureScore: temperature,
-            familiarityScore: familiarity,
-            partnerState,
+            practiceMode,
+            ...(assistedMode
+              ? {
+                temperatureScore: temperature,
+                familiarityScore: familiarity,
+                partnerState,
+              }
+              : {}),
+            ...(practiceMode === "game" ? { gameState } : {}),
             ...debriefContext,
           }),
           maxTokens: DEBRIEF_MAX_TOKENS,
@@ -487,6 +567,7 @@ export async function runOneSession(args: {
   }
 
   return {
+    practiceMode,
     difficulty: args.difficulty,
     scriptId: args.scriptId,
     runIndex: args.runIndex,
@@ -494,8 +575,8 @@ export async function runOneSession(args: {
     turns: turnRecords,
     debrief,
     debriefError,
-    finalTemperature: temperature,
-    finalFamiliarity: familiarity,
+    finalTemperature: assistedMode ? temperature : null,
+    finalFamiliarity: assistedMode ? familiarity : null,
   };
 }
 
@@ -510,6 +591,7 @@ interface CliOptions {
   runs: number;
   scripts: ScriptId[];
   difficulties: PracticeDifficulty[];
+  modes: BakeoffPracticeMode[];
   outDir: string;
   profileId: string;
   contextMode: ContextMode;
@@ -521,6 +603,8 @@ export function parseArgs(argv: string[]): CliOptions {
     runs: 2,
     scripts: [...SCRIPT_IDS],
     difficulties: ["easy", "normal", "challenge"],
+    // 預設只跑 beginner（維持舊行為與舊報表可比性）；standard/game 顯式帶入
+    modes: ["beginner"],
     outDir: DEFAULT_OUT_DIR,
     profileId: DEFAULT_PROFILE_ID,
     // 預設 full＝production 同款注入形狀。minimal 只排除五個 context 區塊
@@ -599,9 +683,21 @@ export function parseArgs(argv: string[]): CliOptions {
         opts.contextMode = value;
         break;
       }
+      case "modes": {
+        const ids = value.split(",").map((s) => s.trim()).filter(Boolean);
+        for (const id of ids) {
+          if (id !== "standard" && id !== "beginner" && id !== "game") {
+            throw new Error(
+              `bakeoff_invalid_mode: "${id}"（合法值：standard, beginner, game）`,
+            );
+          }
+        }
+        opts.modes = ids as BakeoffPracticeMode[];
+        break;
+      }
       default:
         throw new Error(
-          `bakeoff_unknown_cli_flag: "--${key}"（支援：--provider、--runs、--scripts、--difficulties、--out、--profileId、--context）`,
+          `bakeoff_unknown_cli_flag: "--${key}"（支援：--provider、--runs、--scripts、--difficulties、--modes、--out、--profileId、--context）`,
         );
     }
   }
@@ -618,6 +714,7 @@ export function parseArgs(argv: string[]): CliOptions {
 
 // ── 報表輸出 ────────────────────────────────────────────────────────────
 interface GroupStats {
+  practiceMode: BakeoffPracticeMode;
   difficulty: PracticeDifficulty;
   scriptId: ScriptId;
   runsOk: number;
@@ -636,48 +733,57 @@ function average(values: number[]): number | null {
 }
 
 function buildGroupStats(
+  modes: BakeoffPracticeMode[],
   difficulties: PracticeDifficulty[],
   scripts: ScriptId[],
   results: RunRecord[],
 ): GroupStats[] {
   const groups: GroupStats[] = [];
-  for (const difficulty of difficulties) {
-    for (const scriptId of scripts) {
-      const runs = results.filter(
-        (r) => r.difficulty === difficulty && r.scriptId === scriptId,
-      );
-      const okRuns = runs.filter((r) => !r.sessionError);
-      const allTurns = okRuns.flatMap((r) => r.turns);
-      const replyLengths = allTurns.map((t) => t.replyLength);
-      const perfunctoryCount = allTurns.filter((t) => t.isPerfunctory).length;
-      const finalTemps = okRuns
-        .map((r) => r.finalTemperature)
-        .filter((v): v is number => v !== null);
-      const finalFams = okRuns
-        .map((r) => r.finalFamiliarity)
-        .filter((v): v is number => v !== null);
-      const dateChanceCounts: Record<string, number> = {};
-      for (const r of okRuns) {
-        const key = r.debrief?.dateChance ??
-          (r.debriefError ? "error" : "unknown");
-        dateChanceCounts[key] = (dateChanceCounts[key] ?? 0) + 1;
+  for (const practiceMode of modes) {
+    for (const difficulty of difficulties) {
+      for (const scriptId of scripts) {
+        const runs = results.filter(
+          (r) =>
+            r.practiceMode === practiceMode && r.difficulty === difficulty &&
+            r.scriptId === scriptId,
+        );
+        const okRuns = runs.filter((r) => !r.sessionError);
+        const allTurns = okRuns.flatMap((r) => r.turns);
+        const replyLengths = allTurns.map((t) => t.replyLength);
+        const perfunctoryCount = allTurns.filter((t) => t.isPerfunctory).length;
+        const finalTemps = okRuns
+          .map((r) => r.finalTemperature)
+          .filter((v): v is number => v !== null);
+        const finalFams = okRuns
+          .map((r) => r.finalFamiliarity)
+          .filter((v): v is number => v !== null);
+        const dateChanceCounts: Record<string, number> = {};
+        for (const r of okRuns) {
+          const key = r.debrief?.dateChance ??
+            (r.debriefError ? "error" : "unknown");
+          dateChanceCounts[key] = (dateChanceCounts[key] ?? 0) + 1;
+        }
+        groups.push({
+          practiceMode,
+          difficulty,
+          scriptId,
+          runsOk: okRuns.length,
+          runsFailed: runs.length - okRuns.length,
+          avgReplyLength: average(replyLengths),
+          perfunctoryRate: allTurns.length > 0
+            ? perfunctoryCount / allTurns.length
+            : null,
+          avgFinalTemperature: average(finalTemps),
+          avgFinalFamiliarity: average(finalFams),
+          // standard 模式無分數：軌跡為空陣列
+          temperatureTrajectories: okRuns.map((r) =>
+            r.turns
+              .map((t) => t.temperatureAfter)
+              .filter((v): v is number => v !== null)
+          ),
+          dateChanceCounts,
+        });
       }
-      groups.push({
-        difficulty,
-        scriptId,
-        runsOk: okRuns.length,
-        runsFailed: runs.length - okRuns.length,
-        avgReplyLength: average(replyLengths),
-        perfunctoryRate: allTurns.length > 0
-          ? perfunctoryCount / allTurns.length
-          : null,
-        avgFinalTemperature: average(finalTemps),
-        avgFinalFamiliarity: average(finalFams),
-        temperatureTrajectories: okRuns.map((r) =>
-          r.turns.map((t) => t.temperatureAfter)
-        ),
-        dateChanceCounts,
-      });
     }
   }
   return groups;
@@ -710,15 +816,15 @@ function renderReportMarkdown(
   }
   lines.push("");
   lines.push(
-    "| 難度 | 腳本 | 場次(成功/失敗) | 平均回覆長度(字) | 敷衍輪占比 | 平均終值溫度 | 平均終值熟悉度 | dateChance 分佈 |",
+    "| 模式 | 難度 | 腳本 | 場次(成功/失敗) | 平均回覆長度(字) | 敷衍輪占比 | 平均終值溫度 | 平均終值熟悉度 | dateChance 分佈 |",
   );
-  lines.push("|---|---|---|---|---|---|---|---|");
+  lines.push("|---|---|---|---|---|---|---|---|---|");
   for (const g of groups) {
     const dateChance = Object.entries(g.dateChanceCounts)
       .map(([k, v]) => `${k}:${v}`)
       .join(" / ") || "N/A";
     lines.push(
-      `| ${g.difficulty} | ${g.scriptId} | ${g.runsOk}/${g.runsFailed} | ${
+      `| ${g.practiceMode} | ${g.difficulty} | ${g.scriptId} | ${g.runsOk}/${g.runsFailed} | ${
         fmt(g.avgReplyLength)
       } | ${
         g.perfunctoryRate === null
@@ -733,7 +839,7 @@ function renderReportMarkdown(
   lines.push("## 溫度逐輪軌跡（每場一列，依 roundIndex 順序）");
   lines.push("");
   for (const g of groups) {
-    lines.push(`### ${g.difficulty} × ${g.scriptId}`);
+    lines.push(`### ${g.practiceMode}/${g.difficulty} × ${g.scriptId}`);
     if (g.temperatureTrajectories.length === 0) {
       lines.push("（無成功場次）");
     } else {
@@ -785,53 +891,62 @@ async function main(): Promise<void> {
   console.log(
     `[bakeoff] provider=${opts.provider}（${
       modelLabelFor(opts.provider)
-    }）難度=${opts.difficulties.join(",")} 腳本=${
+    }）模式=${opts.modes.join(",")} 難度=${opts.difficulties.join(",")} 腳本=${
       opts.scripts.join(",")
     } runs=${opts.runs} profileId=${opts.profileId} context=${opts.contextMode} outDir=${opts.outDir}`,
   );
 
   const results: RunRecord[] = [];
-  for (const difficulty of opts.difficulties) {
-    for (const scriptId of opts.scripts) {
-      for (let runIndex = 1; runIndex <= opts.runs; runIndex++) {
-        try {
-          const record = await runOneSession({
-            callModel,
-            difficulty,
-            scriptId,
-            runIndex,
-            profileId: opts.profileId,
-            contextMode: opts.contextMode,
-          });
-          results.push(record);
-          console.log(
-            `[bakeoff] 完成 ${difficulty} × ${scriptId} run ${runIndex}/${opts.runs}` +
-              `（終值溫度=${record.finalTemperature} 熟悉度=${record.finalFamiliarity} dateChance=${
-                record.debrief?.dateChance ?? "(debrief失敗)"
-              }）`,
-          );
-        } catch (e) {
-          const message = e instanceof Error ? e.message : String(e);
-          console.error(
-            `[bakeoff] 場次失敗 ${difficulty} × ${scriptId} run ${runIndex}：${message}`,
-          );
-          results.push({
-            difficulty,
-            scriptId,
-            runIndex,
-            contextMode: opts.contextMode,
-            turns: [],
-            debrief: null,
-            finalTemperature: null,
-            finalFamiliarity: null,
-            sessionError: message,
-          });
+  for (const practiceMode of opts.modes) {
+    for (const difficulty of opts.difficulties) {
+      for (const scriptId of opts.scripts) {
+        for (let runIndex = 1; runIndex <= opts.runs; runIndex++) {
+          try {
+            const record = await runOneSession({
+              callModel,
+              difficulty,
+              scriptId,
+              runIndex,
+              profileId: opts.profileId,
+              contextMode: opts.contextMode,
+              practiceMode,
+            });
+            results.push(record);
+            console.log(
+              `[bakeoff] 完成 ${practiceMode}/${difficulty} × ${scriptId} run ${runIndex}/${opts.runs}` +
+                `（終值溫度=${record.finalTemperature} 熟悉度=${record.finalFamiliarity} dateChance=${
+                  record.debrief?.dateChance ?? "(debrief失敗)"
+                }）`,
+            );
+          } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            console.error(
+              `[bakeoff] 場次失敗 ${practiceMode}/${difficulty} × ${scriptId} run ${runIndex}：${message}`,
+            );
+            results.push({
+              practiceMode,
+              difficulty,
+              scriptId,
+              runIndex,
+              contextMode: opts.contextMode,
+              turns: [],
+              debrief: null,
+              finalTemperature: null,
+              finalFamiliarity: null,
+              sessionError: message,
+            });
+          }
         }
       }
     }
   }
 
-  const groups = buildGroupStats(opts.difficulties, opts.scripts, results);
+  const groups = buildGroupStats(
+    opts.modes,
+    opts.difficulties,
+    opts.scripts,
+    results,
+  );
   await writeReports(
     opts.outDir,
     opts.provider,

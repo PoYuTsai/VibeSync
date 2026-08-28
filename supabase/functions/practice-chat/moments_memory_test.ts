@@ -108,29 +108,31 @@ export const CHAT_GOLDEN_CASES = [
 ] as const;
 
 /**
- * 接線前（origin/main@bbcc98a6）的 system prompt 雜湊。
+ * 現行 chat system prompt 雜湊（2026-08-29 PR 3 重凍：難度區塊移尾端＋
+ * 衝突裁決段＋cold band 去命令式＋認識管道開場句改寫）。
  *
- * 這一條紅掉代表 chat prompt 對既有呼叫端**產生了不同的輸出**——PR D 的
- * 前提就是不可以發生這件事。若日後有人刻意修改 chat prompt，請先確認
- * prompt_test.ts 也同步更新，再有意識地更新這裡的值；不要為了讓測試變綠
- * 而直接覆蓋。
+ * 這一條紅掉代表 chat prompt 對既有呼叫端**產生了不同的輸出**。若日後有人
+ * 刻意修改 chat prompt，請先確認 prompt_test.ts 也同步更新、語意測試與
+ * full-context bakeoff 都過關，再有意識地更新這裡的值；不要為了讓測試變綠
+ * 而直接覆蓋。本次重凍依據：prompt_test 107 綠＋2026-08-29 bakeoff 24 場
+ * （軌跡帶與 post-PR2 基準一致、零內部詞洩漏）。
  */
 const CHAT_PROMPT_GOLDEN_SHA256: ReadonlyArray<readonly [string, string]> = [
   [
     "standard-minimal",
-    "5979a73d95395bf5a203d9acd45a2051a54284c6b51be72a49d5d5408b88ac5b",
+    "9b6a55f5b4e2fa99e54fca3b66c262e5eb8f6d0cba8ac0afa925dae59d2a7832",
   ],
   [
     "standard-full",
-    "4415b7d5402d0ae41b4f7d4e36f5c84b6e80cabeb0d99ad18ad235f69467ded7",
+    "ca4128d9b27c7186b9dc0bf9954431f371fc3ca8d85a4d8783c9dcca37a9a70c",
   ],
   [
     "beginner-full",
-    "b901ce9882af072c398a4d4c13a3fb4942f824665391833b36625698be3e2778",
+    "65c57a3e6f3bb06efb31558462b6b4c2af2da11b828f90119e840e9d0ad1d8c9",
   ],
   [
     "game-full",
-    "0639e1cfa8b9568f604a9f0164dd55e054e3c8314bb1e9eca01fb76a0839fba2",
+    "b5ccc1536324b3c74608ba4add22c7d5ab9c843e9658b00f9338012b5a64dff6",
   ],
 ];
 

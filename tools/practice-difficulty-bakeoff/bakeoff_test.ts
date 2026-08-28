@@ -223,7 +223,7 @@ Deno.test("挑戰獎勵閘門接進 bakeoff：challenge neutral 輪夾 0 並記 
     classifyResponses: [{ ...DEFAULT_CLASSIFICATION, connection: "caught" }],
   });
   assertEquals(caught.record.turns[0].challengeGateApplied, false);
-  assert(caught.record.turns[0].heatDelta > 0);
+  assert((caught.record.turns[0].heatDelta ?? 0) > 0);
 
   // 非 challenge 難度不經過閘門，欄位維持 null、+1 照舊。
   const normal = await runFake("minimal", { difficulty: "normal" });
@@ -231,4 +231,66 @@ Deno.test("挑戰獎勵閘門接進 bakeoff：challenge neutral 輪夾 0 並記 
     assertEquals(turn.challengeGateApplied, null);
   }
   assertEquals(normal.record.turns[0].heatDelta, 1);
+});
+
+Deno.test("standard 模式：chat prompt 不帶分數區塊，分類僅作量測、不回灌 prompt", async () => {
+  const calls: RecordedCall[] = [];
+  const record = await runOneSession({
+    callModel: makeFakeCaller(calls, [
+      { ...DEFAULT_CLASSIFICATION, partnerMood: "guarded" },
+    ]),
+    difficulty: "normal",
+    scriptId: "low_signal_polite",
+    runIndex: 1,
+    profileId: "practice_girl_001",
+    contextMode: "minimal",
+    practiceMode: "standard",
+  });
+  for (const call of calls.filter((c) => c.kind === "chat")) {
+    // production standard 不帶 practiceMode／分數：不得出現溫度或分數區塊
+    assertEquals(call.promptText.includes("她的投入度"), false);
+    // standard 有自己的無分數 invite 區塊（production 同款）
+    assertEquals(
+      call.promptText.includes("relationshipScore: unavailable"),
+      true,
+    );
+    // 分類器輸出（partner state）不得回灌 standard prompt
+    assertEquals(call.promptText.includes("partnerState(hidden"), false);
+  }
+  // 分數欄位一律 null；classification 仍記錄（量測用）
+  for (const turn of record.turns) {
+    assertEquals(turn.temperatureAfter, null);
+    assertEquals(turn.heatDelta, null);
+    assertEquals(typeof turn.classification.connection, "string");
+  }
+  assertEquals(record.finalTemperature, null);
+});
+
+Deno.test("game 模式：chat prompt 帶 gameMode 區塊，gameState 逐輪演進、分數走 game delta", async () => {
+  const calls: RecordedCall[] = [];
+  const record = await runOneSession({
+    callModel: makeFakeCaller(calls),
+    difficulty: "normal",
+    scriptId: "low_signal_polite",
+    runIndex: 1,
+    profileId: "practice_girl_001",
+    contextMode: "minimal",
+    practiceMode: "game",
+  });
+  const chatCalls = calls.filter((c) => c.kind === "chat");
+  for (const call of chatCalls) {
+    assertEquals(call.promptText.includes("gameMode(hidden guidance)"), true);
+  }
+  // 第 2 輪起 prompt 帶上一輪演進出的 game ledger 證據（buildNextGameState 回灌）
+  assert(
+    chatCalls[1].promptText.includes("gameLedger") ||
+      chatCalls[1].promptText.includes("turnCount"),
+    "第 2 輪 chat prompt 未見 game ledger 演進證據",
+  );
+  // game 有分數（走 applyGameLearningDelta），欄位不為 null
+  assertEquals(typeof record.finalTemperature, "number");
+  for (const turn of record.turns) {
+    assertEquals(typeof turn.heatDelta, "number");
+    assertEquals(turn.challengeGateApplied, null);
+  }
 });
