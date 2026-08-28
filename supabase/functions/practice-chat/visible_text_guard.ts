@@ -92,6 +92,10 @@ const INTERNAL_VISIBLE_LABELS = [
   // 中文標籤表（INTERNAL_CHINESE_LABELS）不必新增。
   "herrecentmoments",
   "herownposts",
+  // 時間錨點注入標籤（chat 的 nowContextPrompt、hint 的 nowEvidence）；
+  // 鐵則＝注入內部詞必同步擴可見輸出守門。日期本身不進表：使用者本來就會
+  // 問今天幾號，她照著答是對的行為，會外洩的只有標籤本身。
+  "nowcontext",
 ];
 
 // ── 第二刀（2026-08-24 Eric 拍板）：L4 拆兩類 ─────────────────────────

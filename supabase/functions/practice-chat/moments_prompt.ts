@@ -17,7 +17,10 @@ import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import type { ChatMessage } from "./prompt.ts";
 import type { PersonaId, PracticeGirlProfile } from "./practice_persona.ts";
 import { fnv1a, type MomentContentKind } from "./moments_schedule.ts";
-import type { TaipeiDayPart } from "./time_context.ts";
+import {
+  TAIPEI_DAY_PART_LABEL as DAY_PART_LABEL,
+  type TaipeiDayPart,
+} from "./time_context.ts";
 import { SELF_PORTRAIT_IMAGE_ID } from "./moments_image_catalog.ts";
 import {
   MOMENT_PROMPT_MAX_CHARS,
@@ -180,16 +183,6 @@ function themeScopeLine(hasImage: boolean): string {
     ? `${head}場景。配圖怎麼寫只看規則 10，這裡不另外要求場景。`
     : `${head}或照片場景。`;
 }
-
-const DAY_PART_LABEL: Readonly<Record<TaipeiDayPart, string>> = {
-  dawn: "清晨",
-  morning: "早上",
-  noon: "中午",
-  afternoon: "下午",
-  early_evening: "傍晚",
-  evening: "晚上",
-  late_night: "深夜",
-};
 
 /**
  * 配圖指示。**每一條有圖的路徑都要依 contentKind 分流**，不只生成配圖那條

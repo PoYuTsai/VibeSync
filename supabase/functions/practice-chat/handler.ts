@@ -2058,9 +2058,13 @@ export function createPracticeChatHandler(
     const difficultyStartTemperature =
       difficultyTuningFor(request.profile.difficulty).startTemperature;
     const requestNow = deps.now?.() ?? new Date();
+    // 台北「現在」整趟請求只算一次：生活場景、貼文記憶窗、以及注入 chat/hint/
+    // debrief 的時間錨點都吃同一份，三條路徑才不會在跨分鐘或跨日的請求上
+    // 各報一個時間。
+    const nowContext = taipeiTimeContextFor(requestNow);
     const sceneContext = buildPracticeSceneContext({
       profile: request.profile,
-      time: taipeiTimeContextFor(requestNow),
+      time: nowContext,
       visiblePracticeThreadId: request.visiblePracticeThreadId ??
         request.sessionId,
     });
@@ -2931,6 +2935,7 @@ export function createPracticeChatHandler(
           sceneContext,
           acquaintanceOrigin,
           memorySummary: promptMemorySummary,
+          timeContext: nowContext,
           gameState: ledgerGameState,
         });
         const hintFactualEvidence = hintTrustedFactualEvidence({
@@ -3716,6 +3721,7 @@ export function createPracticeChatHandler(
               sceneContext,
               acquaintanceOrigin,
               memorySummary: promptMemorySummary,
+              timeContext: nowContext,
               gameState: ledgerGameState,
               appliedHintTurns: ledgerAppliedHintTurns,
             }
@@ -3725,6 +3731,7 @@ export function createPracticeChatHandler(
               sceneContext,
               acquaintanceOrigin,
               memorySummary: promptMemorySummary,
+              timeContext: nowContext,
             },
         );
         const debriefFactualEvidence = hintTrustedFactualEvidence({
@@ -4147,7 +4154,7 @@ export function createPracticeChatHandler(
     const herRecentMoments = await fetchHerRecentMoments({
       supabase,
       profileId: request.profile.girl.profileId,
-      isoDate: taipeiTimeContextFor(requestNow).isoDate,
+      isoDate: nowContext.isoDate,
       now: requestNow,
       onError: (message) =>
         logWarn("practice_moment_memory_read_failed", {
@@ -4177,6 +4184,7 @@ export function createPracticeChatHandler(
                   sceneContext,
                   acquaintanceOrigin,
                   memorySummary: promptMemorySummary,
+                  timeContext: nowContext,
                   herRecentMomentsBlock,
                   gameState: ledgerGameState,
                 }
@@ -4185,6 +4193,7 @@ export function createPracticeChatHandler(
                   sceneContext,
                   acquaintanceOrigin,
                   memorySummary: promptMemorySummary,
+                  timeContext: nowContext,
                   herRecentMomentsBlock,
                 },
             ),
