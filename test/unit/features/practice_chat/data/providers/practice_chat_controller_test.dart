@@ -317,6 +317,19 @@ class _CommitThenBlockAppliedHintStore
   }
 }
 
+class _FailNextLoadAppliedHintStore extends InMemoryPracticeAppliedHintStore {
+  bool failNextLoad = false;
+
+  @override
+  PracticeAppliedHintContext? load(String sessionId) {
+    if (failNextLoad) {
+      failNextLoad = false;
+      throw StateError('simulated transient read failure');
+    }
+    return super.load(sessionId);
+  }
+}
+
 class _FailOncePracticePendingHintStore
     extends InMemoryPracticePendingHintStore {
   bool failNextSave = false;
@@ -4266,6 +4279,42 @@ void main() {
         contains('同一句照抄'),
       );
       expect(store.load(sessionId)?.revision, afterA?.revision);
+    });
+
+    test('clear 後的視角同步碰上讀取失敗 → 之後的套用提示送出仍要成功（不得永久卡死）',
+        () async {
+      // Codex round-3：clear 已落 tombstone、緊接的 resync 讀取失敗時，
+      // 視角若被歸零，之後每次寫入都會用舊 revision 撞牆。修法＝視角只准
+      // 往上＋staging 入口對 tombstone 補同步。
+      final store = _FailNextLoadAppliedHintStore();
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+
+      final c = await makeRevealed(appliedHintStore: store);
+      // 模式切換觸發 clear（空 store → tombstone rev1）；緊接的視角同步
+      // 讀取失敗一次。
+      store.failNextLoad = true;
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      expect(store.load(c.currentState.sessionId)?.revision, 1);
+
+      // 恢復後：套用提示送出必須成功（staging 入口會補同步視角）。
+      await c.sendMessage(
+        '照抄提示',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: '照抄提示',
+      );
+      expect(c.currentState.aiReplyCount, 1);
+      expect(c.currentState.errorMessage, isNull);
+      final saved = store.load(c.currentState.sessionId);
+      expect(saved?.turns.map((t) => t['sentText']), contains('照抄提示'));
+      expect(saved?.revision, greaterThan(1));
     });
 
     test('同 controller：hint timeout 後對話推進（sendMessage 成功）→ 新回合 hint 鑄新 id',

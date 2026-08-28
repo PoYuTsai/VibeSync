@@ -407,12 +407,23 @@ class InMemoryPracticeAppliedHintStore implements PracticeAppliedHintStore {
     if (existing != null && context.revision <= existing.revision) {
       throw StateError('practice_applied_hint_stale_write');
     }
-    _contexts[key] = context;
+    // 存正規化過 sessionId 的副本：load 用 trimmed key 找得到之後，
+    // 回傳的 identity 也要對得上（controller restore 比對 sessionId）。
+    _contexts[key] = context.sessionId == key
+        ? context
+        : PracticeAppliedHintContext(
+            sessionId: key,
+            turns: context.turns,
+            latestHint: context.latestHint,
+            revision: context.revision,
+            writerId: context.writerId,
+          );
   }
 
   @override
   Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost}) async {
     final key = sessionId.trim();
+    if (key.isEmpty) return; // 與 Hive 對齊：空 sessionId 一律 no-op
     final existing = _contexts[key];
     if (existing == null) {
       // 空 store 也要留 tombstone（世代 1），否則失去所有權的舊 controller
@@ -465,14 +476,23 @@ class HivePracticeAppliedHintStore implements PracticeAppliedHintStore {
   /// 守衛判斷（save 的 CAS、clear 的 revision guard）專用讀取：讀取失敗
   /// **必須拋出**。若沿用吞錯的 [load]，暫時性讀取錯誤會被當成「不存在」，
   /// stale 寫入與守衛清除就 fail open。
+  ///
+  /// 「槽位有值但解不開」同樣拋出——損壞資料的世代未知，把它當成不存在
+  /// 就等於允許任意 revision 覆寫未知世代。代價是該 session 的血統寫入
+  /// 會持續失敗（不套提示的一般送出不受影響）；新場次用新 sessionId 不受牽連。
+  /// legacy 單槽的不可解資料無法歸屬 session，不擋（save 不覆寫 legacy 槽）。
   PracticeAppliedHintContext? _loadStrict(String sessionId) {
     final normalizedSessionId = sessionId.trim();
     if (normalizedSessionId.isEmpty) return null;
     final box = _openBox();
-    final current = _decodeContext(
-      box.get(storageKeyForSession(normalizedSessionId)),
-    );
-    if (current?.sessionId == normalizedSessionId) return current;
+    final rawCurrent = box.get(storageKeyForSession(normalizedSessionId));
+    if (rawCurrent != null) {
+      final current = _decodeContext(rawCurrent);
+      if (current == null || current.sessionId != normalizedSessionId) {
+        throw StateError('practice_applied_hint_unreadable_slot');
+      }
+      return current;
+    }
 
     // Old builds wrote one global slot. Read it only when its identity
     // matches; the next successful save migrates it to the per-session key.

@@ -621,8 +621,68 @@ void main() {
         revision: 1,
       ));
       expect(store.load('sess-hint')?.turns, isNotEmpty);
+      // 回傳的 identity 也要正規化——controller restore 比對 sessionId。
+      expect(store.load('sess-hint')?.sessionId, 'sess-hint');
       await store.clearForSession(' sess-hint '); // trim 後同一鍵
       expect(clearedAppliedHintContext(store.load('sess-hint')), isTrue);
+    });
+
+    test('a present-but-undecodable per-session slot fails closed: save and '
+        'clear reject instead of clobbering the unknown generation', () async {
+      // Codex round-3：損壞資料的世代未知，把它當成「不存在」等於允許
+      // 任意 revision 覆寫。
+      Hive.init('./.dart_tool/test_hive_applied_hint_corrupt');
+      final ts = DateTime.now().microsecondsSinceEpoch;
+      final box = await Hive.openBox('applied_hint_corrupt_$ts');
+      addTearDown(box.deleteFromDisk);
+      final slot = HivePracticeAppliedHintStore.storageKeyForSession('sess-hint');
+      await box.put(slot, '{broken');
+      final store = HivePracticeAppliedHintStore(() => box);
+      // 公開 load 維持容錯（restore 路徑把它當成沒有血統）。
+      expect(store.load('sess-hint'), isNull);
+      // 守衛路徑必須拋出，且不得動到原值。
+      await expectLater(
+        store.save(PracticeAppliedHintContext(
+          sessionId: 'sess-hint',
+          turns: sample.turns,
+          revision: 1,
+        )),
+        throwsStateError,
+      );
+      expect(box.get(slot), '{broken');
+      await expectLater(
+        store.clearForSession('sess-hint', ifRevisionAtMost: 5),
+        throwsStateError,
+      );
+      await expectLater(
+        store.clearForSession('sess-hint'),
+        throwsStateError,
+      );
+      expect(box.get(slot), '{broken');
+      // 其他 session 不受牽連。
+      await store.save(const PracticeAppliedHintContext(
+        sessionId: 'sess-other',
+        turns: [],
+        revision: 1,
+      ));
+      expect(store.load('sess-other'), isNotNull);
+    });
+
+    test('blank sessionId clear is a no-op in both implementations', () async {
+      Hive.init('./.dart_tool/test_hive_applied_hint_blank');
+      final ts = DateTime.now().microsecondsSinceEpoch;
+      final box = await Hive.openBox('applied_hint_blank_$ts');
+      addTearDown(box.deleteFromDisk);
+      final stores = <PracticeAppliedHintStore>[
+        InMemoryPracticeAppliedHintStore(),
+        HivePracticeAppliedHintStore(() => box),
+      ];
+      for (final store in stores) {
+        await store.clearForSession('   ');
+        expect(store.load(''), isNull);
+        expect(store.load('   '), isNull);
+      }
+      expect(box.isEmpty, isTrue);
     });
   });
 }
