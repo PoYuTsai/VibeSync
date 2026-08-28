@@ -3083,6 +3083,118 @@ Deno.test("easy beginner neutral reply on the same fixture still earns +1", asyn
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
 });
 
+// 順序鎖定（Codex 審 P1）：閘門豁免（caught＋protected Hint）不得擋下
+// crude-offense 確定性扣滿；cooldown 的正向夾 0 也不受閘門放行影響。
+Deno.test("challenge crude offense still deducts full -12 even with caught and a protected hint", async () => {
+  const crudeText = "想幹妳屁眼";
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 50,
+        familiarity_score: 40,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "這句話很冒犯，我不想聊了。",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      temperatureScore: 50,
+      familiarityScore: 40,
+      appliedHintType: "steady",
+      appliedHintText: crudeText,
+      turns: [{ role: "user", text: crudeText }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 38);
+  assertEquals(json.temperature.delta, -12);
+  assertEquals(json.temperature.familiarityDelta, -12);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+});
+
+Deno.test("challenge turn after crude offense keeps the cooldown clamp on caught replies", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 40,
+        familiarity_score: 30,
+      }),
+      deepSeekReplies: [
+        "嗯 看你接下來怎麼表現",
+        CLASSIFIER_CAUGHT_MEDIUM,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      temperatureScore: 40,
+      familiarityScore: 30,
+      turns: [
+        { role: "user", text: "幹妳娘" },
+        { role: "ai", text: "這句話讓我覺得被冒犯" },
+        { role: "user", text: "抱歉啦剛剛失言 妳今天過得好嗎" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 40);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityDelta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+});
+
+// 反「沿用首次 delta」假綠（Codex 審 P3）：caught 版 stale retry——重算必須
+// 從重載分數重新產生 judgement 再套閘門，而非把舊 delta rebase 上去。
+Deno.test("challenge stale retry with caught recomputes the positive from reloaded scores", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 10,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          {
+            data: {
+              updated: false,
+              temperature_score: 34,
+              familiarity_score: 20,
+            },
+          },
+        ],
+      },
+      deepSeekReplies: ["AI reply", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      temperatureScore: 30,
+      familiarityScore: 10,
+      turns: [{ role: "user", text: "妳說想放空，那我陪妳一起放空" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 37);
+  assertEquals(json.temperature.delta, 3);
+  assertEquals(json.temperature.familiarityDelta, 4);
+  assertEquals(learningUpdateCalls(state).length, 2);
+  assertEquals(
+    learningUpdateCalls(state)[1].params.p_expected_temperature_score,
+    34,
+  );
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 3);
+});
+
 Deno.test("game neutral reply keeps its own gate behavior, untouched by the challenge gate", async () => {
   const { response, json, state } = await run(
     {

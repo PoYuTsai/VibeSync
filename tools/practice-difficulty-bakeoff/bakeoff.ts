@@ -445,8 +445,11 @@ export async function runOneSession(args: {
       familiarityDelta: judgement.familiarityDelta,
       partnerMood: partnerState.mood,
       promptChars,
+      // 用 delta 值比對而非物件 identity：純函式未來若改回傳等值 clone，
+      // identity 比對會誤報 true（Codex 審 P2）。
       challengeGateApplied: args.difficulty === "challenge"
-        ? judgement !== rawJudgement
+        ? judgement.delta !== rawJudgement.delta ||
+          judgement.familiarityDelta !== rawJudgement.familiarityDelta
         : null,
     });
 

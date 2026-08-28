@@ -105,13 +105,14 @@ Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-pro
       protectedAppliedHint,
     });
 
-  // caught → 正向證據，正分保留（已吃 ×0.7）
+  // caught → 正向證據，正分保留（已吃 ×0.7：+4/+5 → +3/+4）
   const caught = applyLearningClassification(
     state,
     safeCaught,
     challengeTuning,
   );
-  assert(caught.delta > 0);
+  assertEquals(caught.delta, 3);
+  assertEquals(caught.familiarityDelta, 4);
   assertEquals(gate(caught, safeCaught), caught);
 
   // testHandling passed → 正向證據，正分保留
@@ -127,8 +128,27 @@ Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-pro
     passedClassification,
     challengeTuning,
   );
-  assert(passed.delta > 0);
+  // 硬編碼 ×0.7 後的值（Codex 審 P2）：(1+4)=5 → +4；(2+2)=4 → +3
+  assertEquals(passed.delta, 4);
+  assertEquals(passed.familiarityDelta, 3);
   assertEquals(gate(passed, passedClassification), passed);
+
+  // missed → 小負分照常放行（-2/-1 minor ×1.3 → -1/-1）
+  const missedClassification = {
+    connection: "missed",
+    impact: "minor",
+    testHandling: "none",
+    boundary: "safe",
+    hintAlignment: "none",
+  };
+  const missed = applyLearningClassification(
+    state,
+    missedClassification,
+    challengeTuning,
+  );
+  assertEquals(missed.delta, -1);
+  assertEquals(missed.familiarityDelta, -1);
+  assertEquals(gate(missed, missedClassification), missed);
 
   // missed／defensive → 負分照常放行（原 judgement 原樣返回）
   const defensiveClassification = {
