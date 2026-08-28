@@ -7191,8 +7191,9 @@ Deno.test("Hint prompt 依難度帶出 difficultyCoachingStandard；game 不帶�
     familiarityScore: 20,
   }).map((message) => message.content).join("\n");
   assert(!gameText.includes("difficultyCoachingStandard"));
-  // 正向斷言：Game 的 tactic／FSM 證據還在，不是整包 prompt 壞掉的假陰性。
-  assert(gameText.includes("phase:"));
+  // 正向斷言綁實際 FSM 值（phase 值一律 P 開頭），不是 schema 裡的欄位名：
+  // Game evidence 區塊若整段消失，這裡必須紅。
+  assert(gameText.includes("phase: P"));
   assert(gameText.includes("targetVariable:"));
 });
 
@@ -7241,18 +7242,22 @@ Deno.test("三難度同一組好句都過解析與守門：難度尺度不得靠
       turns: pr5Turns(2),
     });
     assertEquals(parsed.replies.length, 2);
-    const decision = buildHintDecision({
-      turns: pr5Turns(2),
-      profile: scaled,
-      practiceMode: "beginner",
-      temperatureScore: 40,
-      familiarityScore: 20,
-      replyType: "warm_up",
-      replyText: goodReplies.warmUp,
-      rationale: "接住她提到的店。",
-    });
-    assertEquals(decision.move, "build_connection");
-    assertEquals(decision.inviteRoute, "not_ready");
+    // 兩個解析後的可貼句都走完整決策路徑，任何難度都不得被守門拒絕。
+    for (const reply of parsed.replies) {
+      const decision = buildHintDecision({
+        turns: pr5Turns(2),
+        profile: scaled,
+        practiceMode: "beginner",
+        temperatureScore: 40,
+        familiarityScore: 20,
+        replyType: reply.type,
+        replyText: reply.text,
+        rationale: "接住她提到的店。",
+      });
+      assertEquals(decision.move, "build_connection");
+      assertEquals(decision.inviteRoute, "not_ready");
+      assertEquals(decision.phase, "building_familiarity");
+    }
   }
 });
 

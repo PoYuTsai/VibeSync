@@ -440,8 +440,8 @@ Deno.test("hintStandard 是教練視角，不重用 NPC 第一人稱規格原文
     assert(!config.hintStandard.includes("示範"));
     // 教練視角：「你」＝使用者，不是 NPC 的「本場難度是…」自述開頭。
     assert(!config.hintStandard.startsWith("本場難度是"));
-    // 逐行比對：NPC prompt 的任何一句實質內容（≥8 字）都不得整句出現在
-    // 教練尺度裡——擋「抄大段改一字」的重用。
+    // 逐行比對：NPC prompt 的任何一行實質內容（≥8 字）都不得逐字整句出現
+    // 在教練尺度裡。只擋逐字重用；近似改寫由審查肉眼把關，不做相似度比對。
     for (const rawLine of config.prompt.split("\n")) {
       const line = rawLine.replace(/^[-【].*?】?/, "").trim();
       if (line.length < 8) continue;
