@@ -4421,6 +4421,52 @@ void main() {
       expect(after?.revision, tombstoneRevision);
     });
 
+    test('staging 已落盤但 API 失敗 → 同一個 controller 重試必須能再到 API（回滾不得把自己鎖死）',
+        () async {
+      // Build & Distribute 抓到的回歸：回滾路徑的守衛清除若不帶 writerId，
+      // 無主 tombstone 讓同 controller 的重試採納不了、staging 永遠撞 CAS。
+      final store = InMemoryPracticeAppliedHintStore();
+      var sendCalls = 0;
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        if (sendCalls == 1) throw PracticeGenerationFailedException('boom');
+        return reply(
+          cost: 0,
+          temperature: const PracticeTemperature(
+            score: 30,
+            delta: 0,
+            band: 'cold',
+            reason: '維持',
+          ),
+        );
+      };
+      final c = await makeRevealed(appliedHintStore: store);
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+
+      // 第一次：staging 落盤成功、API 失敗 → 回滾。
+      await c.sendMessage(
+        '照抄提示',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: '照抄提示',
+      );
+      expect(sendCalls, 1);
+      expect(c.currentState.restoreText, '照抄提示');
+
+      // 重試：必須能重新 staging 並到達 API。
+      await c.sendMessage(
+        '照抄提示',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: '照抄提示',
+      );
+      expect(sendCalls, 2, reason: '回滾後的重試被 CAS 鎖死，到不了 API');
+      expect(c.currentState.errorMessage, isNull);
+      expect(c.currentState.aiReplyCount, 1);
+      expect(
+        store.load(c.currentState.sessionId)?.turns.map((t) => t['sentText']),
+        contains('照抄提示'),
+      );
+    });
+
     test('stale controller 走 owner 清除（endPractice）不得毀掉新 controller 的較新血統',
         () async {
       // Codex round-5 P2：owner clear 若無視角 guard，stale controller 可先

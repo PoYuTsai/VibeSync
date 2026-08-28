@@ -1810,9 +1810,15 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         // context 時（staging await 期間畫面重建），這裡必須 no-op。
         if (appliedHintTurnsBeforeSend.isEmpty &&
             latestSuccessfulHintBeforeSend == null) {
+          // 帶自己的 writerId：staging 已落盤、API 失敗的「活 owner 回滾」
+          // 也走這裡，tombstone 若無主（writerId null），同一 controller 的
+          // 重試會採納不了、視角卡在舊值、staging 永遠撞 CAS——重試就到不了
+          // API。stale 情境的安全性不變：視角落後時 ifRevisionAtMost 擋住
+          // 清除，根本輪不到 tombstone。
           await _appliedHintStore.clearForSession(
             priorState.sessionId,
             ifRevisionAtMost: _appliedHintStoreRevision,
+            writerId: _appliedHintWriterId,
           );
           return;
         }
