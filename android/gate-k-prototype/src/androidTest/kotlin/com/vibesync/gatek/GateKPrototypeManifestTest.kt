@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.inputmethodservice.InputMethodService
+import android.view.inputmethod.InputMethod
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -46,7 +47,7 @@ class GateKPrototypeManifestTest {
         assertTrue(InputMethodService::class.java.isAssignableFrom(serviceClass))
 
         val inputMethodServices = context.packageManager.queryIntentServices(
-            Intent(InputMethodService.SERVICE_INTERFACE),
+            Intent(InputMethod.SERVICE_INTERFACE),
             PackageManager.MATCH_ALL,
         )
         assertNotNull(inputMethodServices.firstOrNull { info ->
