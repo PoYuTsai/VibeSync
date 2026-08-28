@@ -68,6 +68,11 @@ object GateKEvidenceJson {
         append(",\"successRate\":").append(summary.successRate)
         append(",\"p50LatencyMs\":").append(summary.p50LatencyMs?.toString() ?: "null")
         append(",\"p95LatencyMs\":").append(summary.p95LatencyMs?.toString() ?: "null")
+        append(",\"emulatorApiTrialCounts\":{")
+        summary.emulatorApiTrialCounts.toSortedMap().entries.joinTo(this, separator = ",") { (api, count) ->
+            "${quote(api.toString())}:$count"
+        }
+        append('}')
         append(",\"minimumTrialsMet\":").append(summary.minimumTrialsMet)
         append(",\"successRateMet\":").append(summary.successRateMet)
         append(",\"latencyMet\":").append(summary.latencyMet)

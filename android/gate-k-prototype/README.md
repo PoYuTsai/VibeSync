@@ -57,8 +57,8 @@ release integration.
 The exact runner is
 `tools/android/run-gate-k-emulator-trials.sh`. It accepts `--api-level 34|35|36`,
 `--trials 1..40`, and `--output-dir`; the default is API 34 and 40 trials. For
-each trial it finds the uniquely labelled `Start Gate K attempt` button from a
-live `uiautomator` dump, taps its parsed bounds, then sends only
+each trial it waits for the uniquely labelled, enabled `Start Gate K attempt`
+button from a live `uiautomator` dump, taps its parsed bounds, then sends only
 `adb shell input keyevent 120` for the Android SystemUI screenshot action. It
 does not call `screencap`, insert MediaStore rows, or fabricate evidence. The
 runner waits for the app-private trial count to increase before starting the
@@ -67,17 +67,27 @@ exact Git SHA, and retains the artifact when validation fails. A per-API
 candidate threshold failure exits non-zero; this is evidence of an unmet
 threshold, not a Gate K pass.
 
-The workflow `.github/workflows/gate-k-prototype.yml` is `workflow_dispatch`
-only. It uses pinned checkout/Java 17/Flutter 3.47/emulator-runner/upload
-actions, runs the pure contracts and JVM tests first, then runs connected
-instrumentation plus the bounded runner on API 34, 35, and 36
-`google_apis` x86_64 emulators. It has `contents: read` only and does not use
-secrets, backend services, Firebase, RevenueCat, Play, or release jobs.
+The workflow `.github/workflows/gate-k-prototype.yml` has manual
+`workflow_dispatch` plus a `push` trigger restricted to the exact isolated
+branch `codex/android-m6-keyboard-gate-20260828`. GitHub cannot manually
+dispatch a workflow file that exists only on a non-default branch; before this
+workflow reaches the default branch, push that exact branch to start CI. After
+the workflow is present on the default branch, manual dispatch remains
+available for the isolated branch. It uses pinned checkout/Java 17/Flutter
+3.47/emulator-runner/upload actions, runs the pure contracts and JVM tests
+first, then runs connected instrumentation plus the bounded runner on API 34,
+35, and 36 `google_apis` x86_64 emulators. It has `contents: read` only and
+does not use secrets, backend services, Firebase, RevenueCat, Play, or release
+jobs.
 
-After the versioned WSL environment doctor passes and the ignored Gradle
-wrapper has been materialized by `run-gate-k-tests.sh` (or by the controlled
-Flutter wrapper step in the workflow), run the pure harness and real emulator
-runner from the repository root:
+After the versioned WSL environment doctor passes, the controlled setup must
+verify a non-empty `FLUTTER_ROOT`, write only
+`flutter.sdk=$FLUTTER_ROOT` to ignored `android/local.properties`, and verify
+both executable `android/gradlew` and
+`android/gradle/wrapper/gradle-wrapper.jar`. The ignored Gradle wrapper can be
+materialized by `run-gate-k-tests.sh` (or by the same controlled Flutter step
+in the workflow). Run the pure harness and real emulator runner from the
+repository root:
 
 ```bash
 python3 tools/android/test_gate_k_harness.py
@@ -88,7 +98,13 @@ GATE_K_OUTPUT_DIR="$PWD/.gate-k-artifacts-api34" \
 
 The runner itself builds and installs both debug APKs, grants
 `READ_MEDIA_IMAGES`, revokes `READ_MEDIA_VISUAL_USER_SELECTED`, enables and
-selects the Gate K IME, launches the host, and performs the 40 bounded trials.
+selects the Gate K IME, forces soft-IME display even when an emulator reports a
+hardware keyboard, launches the host, and performs the 40 bounded trials. The
+attempt button starts disabled and is enabled only after the exact active IME
+session has completed its bounded MediaStore baseline, observer registration,
+and race-closing delta query; session end or any observer/grant/query error
+disables it again. The runner does not use fixed coordinates or a fixed sleep
+as a readiness signal.
 On a manual run, the equivalent explicit setup is:
 
 ```bash

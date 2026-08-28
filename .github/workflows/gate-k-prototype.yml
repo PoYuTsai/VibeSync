@@ -1,12 +1,19 @@
-# Manual-only Gate K prototype validation. This workflow is deliberately
-# isolated from release, backend, billing, and production workflows.
+# Isolated Gate K prototype validation. This workflow is deliberately
+# separate from release, backend, billing, and production workflows.
 name: Gate K disposable emulator
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/android-m6-keyboard-gate-20260828
 
 permissions:
   contents: read
+
+concurrency:
+  group: gate-k-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   static-and-unit:
@@ -36,7 +43,12 @@ jobs:
       - name: Materialize ignored Gradle wrapper
         shell: bash
         run: |
-          if [[ ! -x android/gradlew ]]; then
+          if [[ -z "${FLUTTER_ROOT:-}" || ! -d "$FLUTTER_ROOT" ]]; then
+            echo "FLUTTER_ROOT is missing or is not a directory" >&2
+            exit 1
+          fi
+          printf 'flutter.sdk=%s\n' "$FLUTTER_ROOT" > android/local.properties
+          if [[ ! -x android/gradlew || ! -f android/gradle/wrapper/gradle-wrapper.jar ]]; then
             wrapper_tmp="$(mktemp -d "${RUNNER_TEMP:-/tmp}/gate-k-wrapper.XXXXXX")"
             trap 'rm -rf -- "$wrapper_tmp"' EXIT
             flutter create \
@@ -49,6 +61,10 @@ jobs:
             cp "$wrapper_tmp/android/gradle/wrapper/gradle-wrapper.jar" \
               android/gradle/wrapper/gradle-wrapper.jar
           fi
+          [[ -x android/gradlew && -f android/gradle/wrapper/gradle-wrapper.jar ]] || {
+            echo "Gradle wrapper is incomplete" >&2
+            exit 1
+          }
 
       - name: Run static and pure harness contracts
         run: |
@@ -113,7 +129,12 @@ jobs:
       - name: Materialize ignored Gradle wrapper
         shell: bash
         run: |
-          if [[ ! -x android/gradlew ]]; then
+          if [[ -z "${FLUTTER_ROOT:-}" || ! -d "$FLUTTER_ROOT" ]]; then
+            echo "FLUTTER_ROOT is missing or is not a directory" >&2
+            exit 1
+          fi
+          printf 'flutter.sdk=%s\n' "$FLUTTER_ROOT" > android/local.properties
+          if [[ ! -x android/gradlew || ! -f android/gradle/wrapper/gradle-wrapper.jar ]]; then
             wrapper_tmp="$(mktemp -d "${RUNNER_TEMP:-/tmp}/gate-k-wrapper.XXXXXX")"
             trap 'rm -rf -- "$wrapper_tmp"' EXIT
             flutter create \
@@ -126,6 +147,16 @@ jobs:
             cp "$wrapper_tmp/android/gradle/wrapper/gradle-wrapper.jar" \
               android/gradle/wrapper/gradle-wrapper.jar
           fi
+          [[ -x android/gradlew && -f android/gradle/wrapper/gradle-wrapper.jar ]] || {
+            echo "Gradle wrapper is incomplete" >&2
+            exit 1
+          }
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
       - name: Run connected instrumentation and bounded real trials
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
@@ -137,7 +168,6 @@ jobs:
           arch: x86_64
           force-avd-creation: true
           disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim
           script: |
             cd "$GITHUB_WORKSPACE"
             (cd android && ./gradlew --no-daemon :gate-k-prototype:connectedDebugAndroidTest)

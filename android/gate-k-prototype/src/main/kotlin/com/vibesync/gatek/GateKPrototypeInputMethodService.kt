@@ -36,6 +36,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     private val pipelineLock = Any()
     private val mediaStoreBaseline = GateKMediaStoreSessionBaseline()
     private val attemptCoordinator = GateKAttemptCoordinator()
+    private val attemptUiState = GateKAttemptUiState()
     private val rawDeviceDescriptor = GateKDeviceDescriptor.fromBuild()
     private val evidenceStore by lazy(LazyThreadSafetyMode.NONE) {
         GateKEvidenceStore(filesDir)
@@ -54,26 +55,34 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     private var activeSessionFloorEpochMs: Long? = null
     @Volatile
     private var contentObserver: ContentObserver? = null
+    @Volatile
+    private var startAttemptButton: Button? = null
 
-    override fun onCreateInputView(): View = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        addView(TextView(context).apply {
-            text = "Gate K screenshot prototype"
-            contentDescription = "Gate K screenshot prototype"
-        })
-        addView(Button(context).apply {
+    override fun onCreateInputView(): View {
+        val button = Button(this).apply {
             text = "Start Gate K attempt"
             contentDescription = "Start Gate K attempt"
+            isEnabled = false
             setOnClickListener { startAttemptFromUi() }
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-        ))
+        }
+        startAttemptButton = button
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(context).apply {
+                text = "Gate K screenshot prototype"
+                contentDescription = "Gate K screenshot prototype"
+            })
+            addView(button, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ))
+        }
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         finishActiveSession()
+        setStartAttemptButtonEnabled(false)
 
         val sessionId = UUID.randomUUID().toString()
         val result = synchronized(pipelineLock) {
@@ -88,6 +97,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             activeSessionId = sessionId
             activeSessionFloorEpochMs = result.window.floorEpochMs
             attemptCoordinator.onSessionShown(sessionId)
+            attemptUiState.onSessionShown(sessionId)
             registerMediaStoreObserverIfAllowed(sessionId, result.window.floorEpochMs)
         }
     }
@@ -105,11 +115,13 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     }
 
     private fun finishActiveSession() {
+        setStartAttemptButtonEnabled(false)
         val sessionId = activeSessionId ?: run {
             mediaStoreBaseline.endSession()
             unregisterMediaStoreObserver()
             return
         }
+        attemptUiState.onSessionHidden(sessionId)
         synchronized(pipelineLock) {
             pipeline.onImeHidden(
                 ImeSessionEnd(
@@ -128,6 +140,38 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         activeSessionFloorEpochMs = null
         mediaStoreBaseline.endSession()
         unregisterMediaStoreObserver()
+    }
+
+    private fun setStartAttemptButtonEnabled(enabled: Boolean) {
+        val update = {
+            startAttemptButton?.isEnabled = enabled
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            update()
+        } else {
+            mainHandler.post(update)
+        }
+    }
+
+    private fun markObserverNotReadyAndDisable(sessionId: String) {
+        attemptCoordinator.markObserverNotReady(sessionId)
+        attemptUiState.onObserverNotReady(sessionId)
+        setStartAttemptButtonEnabled(false)
+    }
+
+    private fun markObserverReadyAndEnable(sessionId: String): Boolean {
+        if (!attemptCoordinator.markObserverReady(sessionId)) return false
+        if (!attemptUiState.onObserverReady(sessionId)) {
+            markObserverNotReadyAndDisable(sessionId)
+            return false
+        }
+        mainHandler.post {
+            val ready = activeSessionId == sessionId
+                && attemptCoordinator.isObserverReady
+                && attemptUiState.isEnabled(sessionId)
+            startAttemptButton?.isEnabled = ready
+        }
+        return true
     }
 
     private fun registerMediaStoreObserverIfAllowed(sessionId: String, floorEpochMs: Long) {
@@ -162,7 +206,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             )
             if (baselineStart !is GateKMediaStoreBaselineStartResult.Started) {
                 val failure = (baselineStart as GateKMediaStoreBaselineStartResult.Rejected).failure
-                attemptCoordinator.markObserverNotReady(sessionId)
+                markObserverNotReadyAndDisable(sessionId)
                 recordFailure(
                     sessionId = sessionId,
                     failureReason = failure.name,
@@ -197,7 +241,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 contentObserver = observer
                 if (activeSessionId != sessionId) {
                     unregisterMediaStoreObserver()
-                    attemptCoordinator.markObserverNotReady(sessionId)
+                    markObserverNotReadyAndDisable(sessionId)
                     mediaStoreBaseline.endSession()
                     return@execute
                 }
@@ -205,11 +249,11 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 // the public attempt seam is unlocked.
                 if (!observeMediaStoreNotification(null, sessionId)) {
                     unregisterMediaStoreObserver()
-                    attemptCoordinator.markObserverNotReady(sessionId)
+                    markObserverNotReadyAndDisable(sessionId)
                     mediaStoreBaseline.endSession()
                     return@execute
                 }
-                if (!attemptCoordinator.markObserverReady(sessionId)) {
+                if (!markObserverReadyAndEnable(sessionId)) {
                     unregisterMediaStoreObserver()
                     mediaStoreBaseline.endSession()
                     return@execute
@@ -217,7 +261,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             } catch (_: SecurityException) {
                 // A missing/revoked grant is a fail-closed observation failure.
                 contentObserver = null
-                attemptCoordinator.markObserverNotReady(sessionId)
+                markObserverNotReadyAndDisable(sessionId)
                 recordFailure(
                     sessionId = sessionId,
                     failureReason = "MEDIASTORE_GRANT_REVOKED",
@@ -226,7 +270,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 mediaStoreBaseline.endSession()
             } catch (_: RuntimeException) {
                 contentObserver = null
-                attemptCoordinator.markObserverNotReady(sessionId)
+                markObserverNotReadyAndDisable(sessionId)
                 recordFailure(
                     sessionId = sessionId,
                     failureReason = "MEDIASTORE_OBSERVER_REGISTRATION_FAILED",
@@ -313,7 +357,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 failureReason = GateKMediaStoreBaselineFailure.GENERATION_OVERFLOW.name,
                 sessionOutcome = GateKSessionOutcome.NOT_EVALUATED,
             )
-            attemptCoordinator.markObserverNotReady(sessionId)
+            markObserverNotReadyAndDisable(sessionId)
             mediaStoreBaseline.endSession()
             return false
         }
@@ -324,7 +368,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 failureReason = query.failureReason,
                 sessionOutcome = GateKSessionOutcome.NOT_EVALUATED,
             )
-            attemptCoordinator.markObserverNotReady(sessionId)
+            markObserverNotReadyAndDisable(sessionId)
             mediaStoreBaseline.endSession()
             return false
         }
@@ -341,7 +385,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 failureReason = candidatesResult.failure.name,
                 sessionOutcome = GateKSessionOutcome.NOT_EVALUATED,
             )
-            attemptCoordinator.markObserverNotReady(sessionId)
+            markObserverNotReadyAndDisable(sessionId)
             mediaStoreBaseline.endSession()
             return false
         }

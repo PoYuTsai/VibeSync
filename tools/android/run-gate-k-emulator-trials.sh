@@ -8,6 +8,21 @@ set -Eeuo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/../.." && pwd)"
 android_root="$repo_root/android"
+GITHUB_SHA="${GITHUB_SHA:-}"
+expected_sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
+if [[ -z "$expected_sha" ]]; then
+    echo "unable to resolve the runner checkout HEAD" >&2
+    exit 2
+fi
+if [[ -n "$GITHUB_SHA" && "$GITHUB_SHA" != "$expected_sha" ]]; then
+    echo "runner checkout HEAD does not match GITHUB_SHA" >&2
+    exit 2
+fi
+checkout_status="$(git -C "$repo_root" status --porcelain --untracked-files=all)"
+if [[ -n "$checkout_status" ]]; then
+    echo "runner checkout has uncommitted or untracked files" >&2
+    exit 2
+fi
 prototype_package="com.vibesync.gatek"
 host_package="com.vibesync.gatekhost"
 ime_component="$prototype_package/.GateKPrototypeInputMethodService"
@@ -65,6 +80,22 @@ done
     exit 2
 }
 
+if ! command -v realpath >/dev/null 2>&1; then
+    echo "realpath is required for repository-private evidence output" >&2
+    exit 2
+fi
+if [[ "$output_dir" != /* ]]; then
+    output_dir="$repo_root/$output_dir"
+fi
+output_dir="$(realpath -m -- "$output_dir")"
+case "$output_dir" in
+    "$repo_root"|"$repo_root"/*) ;;
+    *)
+        echo "evidence output must stay inside the repository" >&2
+        exit 2
+        ;;
+esac
+
 mkdir -p -- "$output_dir"
 evidence_file="$output_dir/gate-k-evidence-api${api_level}.json"
 metadata_file="$output_dir/device-metadata-api${api_level}.txt"
@@ -107,9 +138,10 @@ export_evidence() {
 
 collect_device_metadata() {
     {
-        printf 'gitSha='
-        git -C "$repo_root" rev-parse HEAD 2>/dev/null || printf 'unavailable'
-        printf '\napiLevel=%s\n' "$api_level"
+        printf 'gitSha=%s\n' "$expected_sha"
+        printf 'gitRef=%s\n' "${GITHUB_REF:-unavailable}"
+        printf 'gitEvent=%s\n' "${GITHUB_EVENT_NAME:-unavailable}"
+        printf 'apiLevel=%s\n' "$api_level"
         for property in \
             ro.product.manufacturer \
             ro.product.brand \
@@ -178,16 +210,8 @@ build_root="$repo_root/build"
 
 prototype_apk="$build_root/gate-k-prototype/outputs/apk/debug/gate-k-prototype-debug.apk"
 host_apk="$build_root/gate-k-host/outputs/apk/debug/gate-k-host-debug.apk"
-if [[ ! -f "$prototype_apk" || ! -f "$host_apk" ]]; then
-    prototype_apk="$(find "$repo_root" "$repo_root/.." "$repo_root/../.." \
-        -type f -path '*/gate-k-prototype/outputs/apk/debug/gate-k-prototype-debug.apk' \
-        -print -quit)"
-    host_apk="$(find "$repo_root" "$repo_root/.." "$repo_root/../.." \
-        -type f -path '*/gate-k-host/outputs/apk/debug/gate-k-host-debug.apk' \
-        -print -quit)"
-fi
 [[ -f "$prototype_apk" && -f "$host_apk" ]] || {
-    echo "debug APK outputs were not found" >&2
+    echo "canonical debug APK outputs were not found" >&2
     exit 1
 }
 
@@ -200,6 +224,11 @@ adb shell pm revoke "$prototype_package" \
     android.permission.READ_MEDIA_VISUAL_USER_SELECTED >/dev/null 2>&1 || true
 adb shell ime enable "$ime_component"
 adb shell ime set "$ime_component"
+adb shell settings put secure show_ime_with_hard_keyboard 1
+[[ "$(adb shell settings get secure show_ime_with_hard_keyboard 2>/dev/null | tr -d '\r')" == "1" ]] || {
+    echo "the emulator did not enable the soft IME with a hardware keyboard" >&2
+    exit 1
+}
 adb shell am force-stop "$host_package"
 adb shell monkey -p "$host_package" 1 >/dev/null
 

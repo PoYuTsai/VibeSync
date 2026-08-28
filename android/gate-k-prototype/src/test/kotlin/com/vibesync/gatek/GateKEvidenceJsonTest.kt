@@ -52,6 +52,7 @@ class GateKEvidenceJsonTest {
                 "]," +
                 "\"summary\":{\"totalTrials\":2,\"successfulTrials\":1,\"failedTrials\":1," +
                 "\"successRate\":0.5,\"p50LatencyMs\":100,\"p95LatencyMs\":4000," +
+                "\"emulatorApiTrialCounts\":{\"34\":2}," +
                 "\"minimumTrialsMet\":false,\"successRateMet\":false,\"latencyMet\":false," +
                 "\"sessionContractMet\":true,\"dedupeContractMet\":true," +
                 "\"runtimeOriginMet\":false," +
