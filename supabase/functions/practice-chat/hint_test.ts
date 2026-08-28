@@ -7153,3 +7153,63 @@ Deno.test("第二刀：hint 代號表吃本局原話豁免", () => {
   });
   assertEquals(parsed.replies.length, 2);
 });
+
+// ── PR 5：Hint 注入教練視角的難度尺度 ─────────────────────────────────
+
+function pr5Turns(userTurnCount: number) {
+  const out: { role: "user" | "ai"; text: string }[] = [];
+  for (let i = 0; i < userTurnCount; i++) {
+    out.push({ role: "user", text: `使用者第${i}句` });
+    out.push({ role: "ai", text: `她第${i}句` });
+  }
+  return out;
+}
+
+Deno.test("Hint prompt 依難度帶出 difficultyCoachingStandard；game 不帶（FSM 優先）", () => {
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    const scaled = resolvePracticeProfile({
+      profileId: "practice_girl_004",
+      difficulty,
+    });
+    const text = buildHintMessages({
+      turns: pr5Turns(2),
+      profile: scaled,
+      practiceMode: "beginner",
+      temperatureScore: 40,
+    }).map((message) => message.content).join("\n");
+    assert(text.includes("difficultyCoachingStandard:"));
+    assert(text.includes(scaled.difficultyHintStandard));
+  }
+  const gameText = buildHintMessages({
+    turns: pr5Turns(2),
+    profile: resolvePracticeProfile({
+      profileId: "practice_girl_004",
+      difficulty: "challenge",
+    }),
+    practiceMode: "game",
+    temperatureScore: 40,
+    familiarityScore: 20,
+  }).map((message) => message.content).join("\n");
+  assert(!gameText.includes("difficultyCoachingStandard"));
+});
+
+Deno.test("challenge Hint 不因回合數建議邀約：第 12 顆球守門照擋", () => {
+  assertThrows(
+    () =>
+      buildHintDecision({
+        turns: pr5Turns(12),
+        profile: resolvePracticeProfile({
+          profileId: "practice_girl_004",
+          difficulty: "challenge",
+        }),
+        practiceMode: "beginner",
+        temperatureScore: 20,
+        familiarityScore: 10,
+        replyType: "warm_up",
+        replyText: "改天有空也可以一起去河邊走走。",
+        rationale: "她提到喜歡散步，把它變成低壓共同畫面。",
+      }),
+    Error,
+    "hint_quality_invalid_invite_route",
+  );
+});

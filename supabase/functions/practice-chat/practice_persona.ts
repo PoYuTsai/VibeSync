@@ -124,6 +124,7 @@ export interface PracticeProfile {
   difficultyLabel: string;
   difficultyPrompt: string;
   difficultyDebriefStandard: string;
+  difficultyHintStandard: string;
   girl: PracticeGirlProfile;
 }
 
@@ -141,6 +142,8 @@ interface DifficultyConfig {
   label: string;
   prompt: string;
   debriefStandard: string;
+  /** 教練視角的 Hint 尺度（「你」＝使用者）；不得重用 NPC 第一人稱原文。 */
+  hintStandard: string;
 }
 
 interface ProfessionConfig {
@@ -288,6 +291,8 @@ export const DIFFICULTIES: readonly DifficultyConfig[] = [
       "【邀約門檻】累積 1～2 個正向訊號（接得住話題、共同興趣或輕鬆玩笑其一）就可能答應低壓邀約。",
     debriefStandard:
       "本場為輕鬆難度：dateChance 判準本來就比一般／挑戰難度寬鬆，評分時不要套用一般或挑戰難度的標準來扣分。聊得舒服且正向訊號有延續（至少兩次接梗/延伸/輕鬆玩笑，或出現一次之後對話明顯升溫）就評 high，不需要具體場景鋪墊；普通無雷、或只出現一次正向訊號但沒有延續，評 medium；只有明顯尬聊、冒犯或查戶口感才評 low。",
+    hintStandard:
+      "本場是輕鬆難度：你的建議句自然、低壓就好，有真的回應到她就算合格；出現小尷尬可以用一句輕鬆的話修一次，不用急著加碼。",
   },
   {
     id: "normal",
@@ -306,6 +311,8 @@ export const DIFFICULTIES: readonly DifficultyConfig[] = [
       "- 對方連續查戶口 → 你：「你問好多喔哈哈」",
     debriefStandard:
       "本場為一般難度：dateChance 評 high 需要 2～3 個正向訊號（接梗、願意延伸、具體場景、或她釋出時間線索）；只有舒適感沒有鋪墊評 medium。",
+    hintStandard:
+      "本場是一般難度：你的建議句至少要接住她一個具體點，或分享一點你自己的事；避免只丟問題的純查戶口句。",
   },
   {
     id: "challenge",
@@ -328,6 +335,8 @@ export const DIFFICULTIES: readonly DifficultyConfig[] = [
       "- 對方長篇自我介紹但無趣 → 你：「嗯嗯」",
     debriefStandard:
       "本場為挑戰難度：dateChance 評 high 必須表現完整——接住她的興趣、自然調情不油、具體低壓場景、無壓迫感全部到位；只是聊得順但沒鋪邀約，最多 medium。不要因為她難聊就放寬標準。",
+    hintStandard:
+      "本場是挑戰難度：你的建議句必須接住她最新一句的具體內容、情緒或梗，一般禮貌句不算升溫；訊號不足時不要建議邀約，也不要用萬用反問救場。",
   },
 ] as const;
 
@@ -1039,6 +1048,7 @@ export function resolvePracticeProfile(args: {
     difficultyLabel: difficultyConfig.label,
     difficultyPrompt: difficultyConfig.prompt,
     difficultyDebriefStandard: difficultyConfig.debriefStandard,
+    difficultyHintStandard: difficultyConfig.hintStandard,
     girl,
   };
 }

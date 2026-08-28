@@ -1229,6 +1229,9 @@ function profileToEvidence(
   const gameStrategy = includeGameStrategy ? buildGameStrategy(profile) : null;
   return [
     ...identity,
+    // 教練視角的難度尺度（PR 5）：只進 hidden evidence，不是可見回覆的一部分；
+    // game 走 compact 分支拿不到，維持 Game tactic／FSM 優先。
+    `difficultyCoachingStandard: ${profile.difficultyHintStandard}`,
     `testStylePropensity: ${profile.consistencyTest.propensity}`,
     `testStyleShapes: ${
       formatConsistencyTestTypes(profile.consistencyTest.types)

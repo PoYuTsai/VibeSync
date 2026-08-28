@@ -410,6 +410,32 @@ Deno.test("resolvePracticeProfile：challenge 難度帶出對應 difficultyDebri
   assert(profile.difficultyDebriefStandard.includes("挑戰難度"));
 });
 
+// ── Hint 教練尺度（PR 5）：resolvePracticeProfile 帶出教練視角的難度標準 ──
+
+Deno.test("resolvePracticeProfile：三難度各帶出教練視角 hintStandard", () => {
+  const easy = resolvePracticeProfile({ difficulty: "easy" });
+  assert(easy.difficultyHintStandard.includes("低壓"));
+  assert(easy.difficultyHintStandard.includes("修一次"));
+  const normal = resolvePracticeProfile({ difficulty: "normal" });
+  assert(normal.difficultyHintStandard.includes("具體"));
+  assert(normal.difficultyHintStandard.includes("查戶口"));
+  const challenge = resolvePracticeProfile({ difficulty: "challenge" });
+  assert(challenge.difficultyHintStandard.includes("禮貌句"));
+  assert(challenge.difficultyHintStandard.includes("萬用反問"));
+  assert(challenge.difficultyHintStandard.includes("不要建議邀約"));
+});
+
+Deno.test("hintStandard 是教練視角，不重用 NPC 第一人稱規格原文", () => {
+  for (const config of DIFFICULTIES) {
+    assert(config.hintStandard !== config.prompt);
+    // NPC prompt 的段落標記與示範口吻不得出現在教練尺度裡。
+    assert(!config.hintStandard.includes("【"));
+    assert(!config.hintStandard.includes("示範"));
+    // 教練視角：「你」＝使用者，不是 NPC 的「本場難度是…」自述開頭。
+    assert(!config.hintStandard.startsWith("本場難度是"));
+  }
+});
+
 Deno.test("resolvePracticeProfile：每個 persona 帶出一致性小測試設定", () => {
   const teasing = resolvePracticeProfile({
     profileId: "practice_girl_004",
