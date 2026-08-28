@@ -61,7 +61,7 @@ class ImeSessionFloorTest {
         assertTrue(second is ImeSessionStartResult.Started)
         assertEquals(2_001L, (second as ImeSessionStartResult.Started).window.floorEpochMs)
         assertTrue(
-            floor.end(ImeSessionEnd("session-2", 1_999L))
+            floor.end(ImeSessionEnd("session-2", 2_000L))
                 is ImeSessionEndResult.Ended,
         )
         assertNull(floor.current)
@@ -69,5 +69,24 @@ class ImeSessionFloorTest {
             ImeSessionStartResult.RejectedNonMonotonicFloor,
             floor.start(ImeSessionStart("session-3", 1_999L)),
         )
+    }
+
+    @Test
+    fun `grossly out of order hidden event is rejected while one millisecond skew ends session`() {
+        val floor = ImeSessionFloor()
+        floor.start(ImeSessionStart("session-1", 2_000L))
+        floor.end(ImeSessionEnd("session-1", 2_000L))
+        floor.start(ImeSessionStart("session-2", 2_000L))
+
+        assertEquals(
+            ImeSessionEndResult.RejectedOutOfOrder,
+            floor.end(ImeSessionEnd("session-2", 1_998L)),
+        )
+        assertEquals("session-2", floor.current?.sessionId)
+        assertTrue(
+            floor.end(ImeSessionEnd("session-2", 2_000L))
+                is ImeSessionEndResult.Ended,
+        )
+        assertNull(floor.current)
     }
 }

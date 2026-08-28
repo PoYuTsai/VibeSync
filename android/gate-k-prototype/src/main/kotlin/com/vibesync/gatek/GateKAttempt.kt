@@ -125,6 +125,7 @@ class GateKAttemptCoordinator(
 
     private var activeSessionId: String? = null
     private var observerReady = false
+    private var sessionFailStopped = false
     private var activeAttempt: GateKActiveAttempt? = null
     private val terminalAttemptIds = LinkedHashSet<GateKAttemptId>()
 
@@ -144,7 +145,7 @@ class GateKAttemptCoordinator(
 
     @get:Synchronized
     val isObserverReady: Boolean
-        get() = observerReady && activeSessionId != null
+        get() = observerReady && !sessionFailStopped && activeSessionId != null
 
     /** True only for a row newer than the active attempt's MediaStore fence. */
     @Synchronized
@@ -158,12 +159,14 @@ class GateKAttemptCoordinator(
         if (sessionId.isBlank() || activeAttempt != null) return false
         activeSessionId = sessionId
         observerReady = false
+        sessionFailStopped = false
         return true
     }
 
     @Synchronized
     fun markObserverReady(sessionId: String): Boolean {
         if (sessionId.isBlank() || activeSessionId != sessionId) return false
+        if (sessionFailStopped) return false
         observerReady = true
         return true
     }
@@ -388,6 +391,7 @@ class GateKAttemptCoordinator(
         if (activeSessionId == sessionId) {
             activeSessionId = null
             observerReady = false
+            sessionFailStopped = false
         }
         return result
     }
@@ -412,6 +416,13 @@ class GateKAttemptCoordinator(
             failureReason = failureReason,
         )
         activeAttempt = null
+        if (state != GateKAttemptState.SUCCEEDED && activeSessionId == attempt.sessionId) {
+            // A failed/timeout terminal permanently closes this IME session.
+            // This prevents a late callback from shifting the denominator by
+            // silently starting a replacement attempt.
+            observerReady = false
+            sessionFailStopped = true
+        }
         terminalAttemptIds += attempt.attemptId
         while (terminalAttemptIds.size > MAX_RETAINED_TERMINAL_IDS) {
             terminalAttemptIds.remove(terminalAttemptIds.first())

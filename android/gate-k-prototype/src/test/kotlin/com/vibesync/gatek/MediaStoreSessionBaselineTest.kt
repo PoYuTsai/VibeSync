@@ -29,27 +29,6 @@ class MediaStoreSessionBaselineTest {
     }
 
     @Test
-    fun `pending rows skipped by the query still advance the initial high water mark`() {
-        val baseline = GateKMediaStoreSessionBaseline()
-
-        val result = baseline.beginSession(
-            floorEpochMs = 100_500L,
-            existingRecords = emptyList(),
-            initialHighWaterGeneration = 7L,
-            versionSnapshot = version(),
-        )
-
-        assertEquals(
-            GateKMediaStoreBaselineStartResult.Started(
-                highWaterGeneration = 7L,
-                mediaStoreVersion = "media-store-v1",
-            ),
-            result,
-        )
-        assertEquals(7L, baseline.currentHighWaterGeneration)
-    }
-
-    @Test
     fun `old generations do not return and a newer generation returns once`() {
         val baseline = GateKMediaStoreSessionBaseline()
         baseline.beginSession(
@@ -114,7 +93,7 @@ class MediaStoreSessionBaselineTest {
     }
 
     @Test
-    fun `pending delta high water prevents a later publish from becoming a candidate`() {
+    fun `bounded delta result advances high water and a resent generation is stale`() {
         val baseline = GateKMediaStoreSessionBaseline()
         baseline.beginSession(
             floorEpochMs = 10_000L,
@@ -122,21 +101,20 @@ class MediaStoreSessionBaselineTest {
             versionSnapshot = version(),
         )
 
-        val pendingDelta = baseline.queryNewRecords(
+        val boundedDelta = baseline.queryNewRecords(
             notificationUri = null,
-            queriedRecords = emptyList(),
-            queriedHighWaterGeneration = 4L,
+            queriedRecords = listOf(record(id = "first", generation = 4L, dateAddedSec = 11L)),
             versionSnapshot = version(),
         )
-        assertEquals(emptyList<MediaStoreCandidateRecord>(), pendingDelta.candidates)
+        assertEquals(listOf("first"), boundedDelta.candidates.map { it.mediaId })
         assertEquals(4L, baseline.currentHighWaterGeneration)
 
-        val published = baseline.queryNewRecords(
+        val staleGeneration = baseline.queryNewRecords(
             notificationUri = null,
-            queriedRecords = listOf(record(id = "published", generation = 4L, dateAddedSec = 11L)),
+            queriedRecords = listOf(record(id = "stale", generation = 4L, dateAddedSec = 11L)),
             versionSnapshot = version(),
         )
-        assertEquals(emptyList<MediaStoreCandidateRecord>(), published.candidates)
+        assertEquals(emptyList<MediaStoreCandidateRecord>(), staleGeneration.candidates)
     }
 
     @Test
@@ -346,6 +324,62 @@ class MediaStoreSessionBaselineTest {
         assertEquals(emptyList<MediaStoreCandidateRecord>(), result.candidates)
         assertEquals(null, result.failure)
         assertEquals(2L, baseline.currentHighWaterGeneration)
+    }
+
+    @Test
+    fun `pre-session pending row in the same source second is rejected but next second is accepted`() {
+        val baseline = GateKMediaStoreSessionBaseline()
+        baseline.beginSession(
+            floorEpochMs = 10_500L,
+            existingRecords = emptyList(),
+            versionSnapshot = version(),
+        )
+
+        val sameSecond = baseline.queryNewRecords(
+            notificationUri = null,
+            queriedRecords = listOf(
+                record(
+                    id = "published-after-session",
+                    generation = 2L,
+                    dateAddedSec = 10L,
+                    dateModifiedSec = 20L,
+                ),
+            ),
+            versionSnapshot = version(),
+        )
+        assertTrue(sameSecond.candidates.isEmpty())
+
+        val nextSecond = baseline.queryNewRecords(
+            notificationUri = null,
+            queriedRecords = listOf(
+                record(
+                    id = "next-second",
+                    generation = 3L,
+                    dateAddedSec = 11L,
+                ),
+            ),
+            versionSnapshot = version(),
+        )
+        assertEquals(listOf("next-second"), nextSecond.candidates.map { it.mediaId })
+    }
+
+    @Test
+    fun `post-drain fence is newer than the cached fence`() {
+        val baseline = GateKMediaStoreSessionBaseline()
+        baseline.beginSession(
+            floorEpochMs = 100_500L,
+            existingRecords = listOf(record(id = "old", generation = 7L)),
+            versionSnapshot = version(),
+        )
+        val cachedFence = baseline.currentAttemptFence()
+        baseline.queryNewRecords(
+            notificationUri = null,
+            queriedRecords = listOf(record(id = "drained", generation = 8L, dateAddedSec = 101L)),
+            versionSnapshot = version(),
+        )
+
+        assertEquals(GateKMediaStoreAttemptFence(7L), cachedFence)
+        assertEquals(GateKMediaStoreAttemptFence(8L), baseline.currentAttemptFence())
     }
 
     private fun record(

@@ -16,9 +16,9 @@ The public seams are:
    failure reasons.
 5. `GateKMediaStoreQueryContract` and `GateKMediaStoreSessionBaseline` —
    `GENERATION_ADDED` high-water filtering with a one-row initial query and a
-   bounded 128-row delta query; `IS_PENDING=0` is required. Pending rows still
-   advance the high-water fence, and pre-session `DATE_ADDED` rows are
-   quarantined even when `DATE_MODIFIED` is newer.
+   bounded 128-row delta query; `IS_PENDING=0` is required. Pending rows do
+   not enter the result or advance the fence; pre-session and equal-second
+   `DATE_ADDED` rows are quarantined even when `DATE_MODIFIED` is newer.
 6. `GateKPermissionContract` — exact manifest permission/service allowlist;
    API 34+ full/partial/denied state follows Android's grant precedence.
 7. `GateKDeviceDescriptor` / `GateKDeviceClassifier` — raw Build metadata is
@@ -108,14 +108,19 @@ selects the Gate K IME, forces soft-IME display even when an emulator reports a
 hardware keyboard, launches the host, and performs the 40 bounded trials. The
 attempt button starts disabled and is enabled only after the exact active IME
 session has completed its bounded MediaStore baseline, observer registration,
-and race-closing delta query; session end or any observer/grant/query error
+race-closing delta query, and the wall-clock source second has advanced
+strictly beyond the session floor; session end or any observer/grant/query error
 disables it again. The runner does not use fixed coordinates or a fixed sleep
 as a readiness signal.
 
-Before each explicit attempt is armed, the same MediaStore worker drains queued
-observer work and captures the current generation fence. A candidate must carry
-an identity newer than that fence; late rows from a timed-out attempt are
-quarantined before bytes are opened or hashed.
+Before each explicit attempt is armed, the same MediaStore worker performs a
+bounded delta query to drain queued observer work, updates the baseline, and
+only then captures the current generation fence and arms the attempt. A
+candidate must carry an identity newer than that fence; late rows from a
+timed-out attempt are quarantined before bytes are opened or hashed. Any
+non-success terminal (including timeout) fail-stops the rest of that IME
+session and disables the button; the runner aborts instead of continuing with
+shifted trials.
 
 `latencyMs` is the monotonic attempt-to-detect duration: its start is the
 explicit attempt arm after the worker-serialized MediaStore fence, and its end

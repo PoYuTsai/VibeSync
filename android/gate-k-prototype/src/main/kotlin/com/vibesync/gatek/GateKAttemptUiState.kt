@@ -4,18 +4,21 @@ package com.vibesync.gatek
 class GateKAttemptUiState {
     private var activeSessionId: String? = null
     private var observerReady = false
+    private var sessionFailStopped = false
 
     @Synchronized
     fun onSessionShown(sessionId: String): Boolean {
         if (sessionId.isBlank()) return false
         activeSessionId = sessionId
         observerReady = false
+        sessionFailStopped = false
         return true
     }
 
     @Synchronized
     fun onObserverReady(sessionId: String): Boolean {
         if (sessionId.isBlank() || activeSessionId != sessionId) return false
+        if (sessionFailStopped) return false
         observerReady = true
         return true
     }
@@ -27,15 +30,28 @@ class GateKAttemptUiState {
         return true
     }
 
+    /** Disables the attempt button for the rest of this IME session. */
+    @Synchronized
+    fun onAttemptFailed(sessionId: String): Boolean {
+        if (activeSessionId != sessionId) return false
+        observerReady = false
+        sessionFailStopped = true
+        return true
+    }
+
     @Synchronized
     fun onSessionHidden(sessionId: String): Boolean {
         if (activeSessionId != sessionId) return false
         activeSessionId = null
         observerReady = false
+        sessionFailStopped = false
         return true
     }
 
     @Synchronized
     fun isEnabled(sessionId: String): Boolean =
-        sessionId.isNotBlank() && activeSessionId == sessionId && observerReady
+        sessionId.isNotBlank()
+            && activeSessionId == sessionId
+            && observerReady
+            && !sessionFailStopped
 }

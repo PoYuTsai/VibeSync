@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Disposable Gate K observer prototype. It has no AI, network, quota, chat
@@ -124,11 +125,19 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             return
         }
         attemptUiState.onSessionHidden(sessionId)
+        // A normalized equal-millisecond floor can be ahead of wall time;
+        // clamp the service lifecycle event so normal cleanup still reaches
+        // the pipeline/dedupe, while the public floor seam rejects gross
+        // out-of-order events in isolation.
+        val hiddenAtEpochMs = maxOf(
+            System.currentTimeMillis(),
+            activeSessionFloorEpochMs ?: 0L,
+        )
         synchronized(pipelineLock) {
             pipeline.onImeHidden(
                 ImeSessionEnd(
                     sessionId = sessionId,
-                    imeHiddenAtEpochMs = System.currentTimeMillis(),
+                    imeHiddenAtEpochMs = hiddenAtEpochMs,
                 ),
             )
         }
@@ -162,6 +171,33 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     }
 
     private fun markObserverReadyAndEnable(sessionId: String): Boolean {
+        val floorEpochMs = activeSessionFloorEpochMs
+            ?: return false
+        val floorEpochSec = floorEpochMs / 1_000L
+        val nowEpochMs = System.currentTimeMillis()
+        if (nowEpochMs / 1_000L <= floorEpochSec) {
+            // DATE_ADDED is second-granular. Keep the public attempt seam
+            // locked until a source second strictly after the session floor,
+            // then retry readiness on the MediaStore worker.
+            val nextSecondEpochMs = if (floorEpochSec >= Long.MAX_VALUE / 1_000L) {
+                Long.MAX_VALUE
+            } else {
+                (floorEpochSec + 1L) * 1_000L
+            }
+            val delayMs = (nextSecondEpochMs - nowEpochMs).coerceAtLeast(1L)
+            mainHandler.postDelayed({
+                try {
+                    mediaStoreExecutor.execute {
+                        if (activeSessionId == sessionId) {
+                            markObserverReadyAndEnable(sessionId)
+                        }
+                    }
+                } catch (_: RuntimeException) {
+                    // The service is shutting down; readiness remains false.
+                }
+            }, delayMs)
+            return true
+        }
         if (!attemptCoordinator.markObserverReady(sessionId)) return false
         if (!attemptUiState.onObserverReady(sessionId)) {
             markObserverNotReadyAndDisable(sessionId)
@@ -319,39 +355,77 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         if (!attemptCoordinator.isObserverReady || !attemptUiState.isEnabled(sessionId)) {
             return GateKAttemptStartResult.RejectedObserverNotReady
         }
-        // ContentObserver callbacks are queued on this same worker. Waiting
-        // for a no-op fence means every callback already queued for attempt A
-        // has drained before attempt B captures its generation high-water mark.
-        val mediaStoreFence = try {
-            mediaStoreExecutor.submit<GateKMediaStoreAttemptFence?> {
-                if (activeSessionId != sessionId) {
-                    null
-                } else {
-                    mediaStoreBaseline.currentAttemptFence()
+        setStartAttemptButtonEnabled(false)
+        val armAllowed = AtomicBoolean(true)
+        val future = try {
+            mediaStoreExecutor.submit<GateKAttemptStartResult> {
+                if (!armAllowed.get()
+                    || activeSessionId != sessionId
+                    || !attemptCoordinator.isObserverReady
+                    || !attemptUiState.isEnabled(sessionId)
+                ) {
+                    return@submit GateKAttemptStartResult.RejectedObserverNotReady
                 }
-            }.get(1L, TimeUnit.SECONDS)
-        } catch (error: InterruptedException) {
-            Thread.currentThread().interrupt()
-            null
-        } catch (_: TimeoutException) {
-            null
-        } catch (_: java.util.concurrent.ExecutionException) {
-            null
+                if (attemptCoordinator.hasActiveAttempt) {
+                    return@submit GateKAttemptStartResult.RejectedActiveAttempt
+                }
+
+                // This is the same serial MediaStore worker that receives
+                // observer callbacks: drain a real bounded delta query first,
+                // update the baseline, then capture the post-drain fence and
+                // arm the attempt without any active attempt in between.
+                val mediaStoreFence = GateKAttemptArmFence(
+                    drainRaceClosingDelta = {
+                        armAllowed.get() && observeMediaStoreNotification(null, sessionId)
+                    },
+                    captureCurrentFence = {
+                        mediaStoreBaseline.currentAttemptFence()
+                    },
+                ).captureAfterDrain()
+                if (!armAllowed.get() || mediaStoreFence == null) {
+                    return@submit GateKAttemptStartResult.RejectedObserverNotReady
+                }
+                if (attemptCoordinator.hasActiveAttempt) {
+                    return@submit GateKAttemptStartResult.RejectedActiveAttempt
+                }
+
+                val result = attemptCoordinator.begin(
+                    attemptId = GateKAttemptId(attemptId),
+                    sessionId = sessionId,
+                    monotonicStart = SystemClock.elapsedRealtime(),
+                    mediaStoreFence = mediaStoreFence,
+                )
+                if (result is GateKAttemptStartResult.Started) {
+                    scheduleAttemptTimeout(result.attempt)
+                }
+                result
+            }
         } catch (_: java.util.concurrent.RejectedExecutionException) {
             null
         }
-        if (mediaStoreFence == null) {
+        val result = if (future == null) {
+            null
+        } else {
+            try {
+                future.get(1L, TimeUnit.SECONDS)
+            } catch (error: InterruptedException) {
+                Thread.currentThread().interrupt()
+                armAllowed.set(false)
+                future.cancel(true)
+                null
+            } catch (_: TimeoutException) {
+                armAllowed.set(false)
+                future.cancel(true)
+                null
+            } catch (_: java.util.concurrent.ExecutionException) {
+                armAllowed.set(false)
+                future.cancel(true)
+                null
+            }
+        }
+        if (result == null) {
             markObserverNotReadyAndDisable(sessionId)
             return GateKAttemptStartResult.RejectedObserverNotReady
-        }
-        val result = attemptCoordinator.begin(
-            attemptId = GateKAttemptId(attemptId),
-            sessionId = sessionId,
-            monotonicStart = SystemClock.elapsedRealtime(),
-            mediaStoreFence = mediaStoreFence,
-        )
-        if (result is GateKAttemptStartResult.Started) {
-            scheduleAttemptTimeout(result.attempt)
         }
         return result
     }
@@ -569,8 +643,11 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                             )
                         }
                         previousGeneration = generation
-                        highestGeneration = maxOf(highestGeneration, generation)
                         if (cursor.getIntOrZero(pendingIndex) != 0) continue
+                        // Only rows returned by the explicit IS_PENDING=0
+                        // query may advance the generation fence. A pending
+                        // provider row must not be treated as observed.
+                        highestGeneration = maxOf(highestGeneration, generation)
                         val mediaId = cursor.getLongOrZero(idIndex)
                         if (mediaId <= 0L) {
                             throw MediaStoreQueryContractException(
@@ -743,6 +820,19 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     private fun recordTerminalResult(result: GateKAttemptTerminalResult) {
         if (result is GateKAttemptTerminalResult.Recorded) {
             trialRecorder.recordTerminal(result.terminal)
+            if (result.terminal.state != GateKAttemptState.SUCCEEDED) {
+                // Coordinator and UI both fail-stop this IME session. A
+                // timeout must not be followed by a replacement attempt.
+                attemptUiState.onAttemptFailed(result.terminal.sessionId)
+                setStartAttemptButtonEnabled(false)
+            } else {
+                mainHandler.post {
+                    val ready = activeSessionId == result.terminal.sessionId
+                        && attemptCoordinator.isObserverReady
+                        && attemptUiState.isEnabled(result.terminal.sessionId)
+                    startAttemptButton?.isEnabled = ready
+                }
+            }
             try {
                 mediaStoreExecutor.execute {
                     try {

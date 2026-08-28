@@ -32,4 +32,17 @@ class GateKAttemptUiStateTest {
         assertFalse(state.isEnabled("session-1"))
         assertFalse(state.onObserverReady("session-1"))
     }
+
+    @Test
+    fun `non-success terminal fail stops readiness for the rest of the session`() {
+        val state = GateKAttemptUiState()
+
+        state.onSessionShown("session-1")
+        state.onObserverReady("session-1")
+        assertTrue(state.isEnabled("session-1"))
+
+        assertTrue(state.onAttemptFailed("session-1"))
+        assertFalse(state.isEnabled("session-1"))
+        assertFalse(state.onObserverReady("session-1"))
+    }
 }

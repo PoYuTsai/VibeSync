@@ -314,10 +314,12 @@ class GateKMediaStoreSessionBaseline {
             if (floorEpochMs == Long.MAX_VALUE) {
                 return@mapNotNull null
             }
-            if (record.dateAddedEpochSec < sessionFloorEpochSec) {
+            if (record.dateAddedEpochSec <= sessionFloorEpochSec) {
                 // A row created before the session may have been pending and
                 // only become visible after publication. Quarantine it even
-                // when its modified timestamp is newer.
+                // when its modified timestamp is newer. DATE_ADDED is only
+                // second-granular, so an equal source second is not provably
+                // after the session floor either.
                 return@mapNotNull null
             }
             val observedAtEpochMs = maxOf(
