@@ -11,7 +11,7 @@ class GateKAttemptCoordinatorTest {
         val controller = GateKAttemptCoordinator()
 
         assertEquals(
-            GateKAttemptStartResult.RejectedObserverNotReady,
+            GateKAttemptStartResult.RejectedNoActiveSession,
             controller.start(
                 GateKAttemptStart(
                     attemptId = GateKAttemptId("attempt-before-ready"),
@@ -22,6 +22,16 @@ class GateKAttemptCoordinatorTest {
         )
 
         controller.onSessionShown("session-1")
+        assertEquals(
+            GateKAttemptStartResult.RejectedObserverNotReady,
+            controller.start(
+                GateKAttemptStart(
+                    attemptId = GateKAttemptId("attempt-before-observer-ready"),
+                    sessionId = "session-1",
+                    triggeredAtElapsedRealtimeMs = 5_000L,
+                ),
+            ),
+        )
         controller.markObserverReady("session-1")
         val started = controller.begin(
             attemptId = GateKAttemptId("attempt-1"),
