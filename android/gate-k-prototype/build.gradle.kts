@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.vibesync.gatek"
-        minSdk = 24
+        minSdk = 34
         targetSdk = 36
         versionCode = 1
         versionName = "0.1"

@@ -65,12 +65,22 @@ class ImeSessionFloor {
         if (previousFloor != null && event.imeShownAtEpochMs < previousFloor) {
             return ImeSessionStartResult.RejectedNonMonotonicFloor
         }
+        if (previousFloor == Long.MAX_VALUE) {
+            return ImeSessionStartResult.RejectedNonMonotonicFloor
+        }
+        val floorEpochMs = when {
+            previousFloor == null -> event.imeShownAtEpochMs
+            event.imeShownAtEpochMs == previousFloor ->
+                previousFloor + 1L
+
+            else -> event.imeShownAtEpochMs
+        }
 
         val window = ImeSessionWindow(
             sessionId = event.sessionId,
-            floorEpochMs = event.imeShownAtEpochMs,
+            floorEpochMs = floorEpochMs,
         )
-        lastFloorEpochMs = event.imeShownAtEpochMs
+        lastFloorEpochMs = floorEpochMs
         activeWindow = window
         return ImeSessionStartResult.Started(window)
     }

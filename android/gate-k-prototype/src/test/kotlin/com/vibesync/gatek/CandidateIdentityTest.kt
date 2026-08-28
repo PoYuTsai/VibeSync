@@ -53,6 +53,24 @@ class CandidateIdentityTest {
         )
     }
 
+    @Test
+    fun `clear on hidden session permits an equal-millisecond new session`() {
+        val dedupe = ScreenshotCandidateDedupe()
+        val firstWindow = ImeSessionWindow(sessionId = "session-1", floorEpochMs = 2_000L)
+        val secondWindow = ImeSessionWindow(sessionId = "session-2", floorEpochMs = 2_000L)
+
+        assertTrue(
+            dedupe.observe(firstWindow, candidate("session-1", 2_001L))
+                is CandidateIdentityDecision.FirstSeen,
+        )
+        dedupe.clear()
+
+        assertTrue(
+            dedupe.observe(secondWindow, candidate("session-2", 2_001L))
+                is CandidateIdentityDecision.FirstSeen,
+        )
+    }
+
     private fun candidate(sessionId: String, observedAtEpochMs: Long) = ScreenshotCandidate(
         sessionId = sessionId,
         observedAtEpochMs = observedAtEpochMs,

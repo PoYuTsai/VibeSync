@@ -28,7 +28,10 @@ class GateKObservationPipeline(
 ) {
     fun onImeShown(event: ImeSessionStart): ImeSessionStartResult = sessionFloor.start(event)
 
-    fun onImeHidden(event: ImeSessionEnd): ImeSessionEndResult = sessionFloor.end(event)
+    fun onImeHidden(event: ImeSessionEnd): ImeSessionEndResult =
+        sessionFloor.end(event).also { result ->
+            if (result is ImeSessionEndResult.Ended) dedupe.clear()
+        }
 
     fun observe(candidate: ScreenshotCandidate): GateKObservationResult {
         val currentWindow = sessionFloor.current

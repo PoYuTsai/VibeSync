@@ -29,6 +29,7 @@ class GateKPrototypeManifestTest {
         assertTrue(permissionCheck.allowed)
         assertTrue(requested.contains(GateKPermissionContract.READ_MEDIA_IMAGES))
         assertTrue(requested.contains(GateKPermissionContract.READ_MEDIA_VISUAL_USER_SELECTED))
+        assertTrue(requested.none { it == "android.permission.READ_EXTERNAL_STORAGE" })
         assertTrue(requested.none { it.contains("ACCESSIBILITY", ignoreCase = true) })
         assertTrue(requested.none { it == GateKPermissionContract.MANAGE_EXTERNAL_STORAGE })
     }

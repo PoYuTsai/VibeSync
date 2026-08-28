@@ -28,7 +28,7 @@ class GateKEvidenceAggregatorTest {
     }
 
     @Test
-    fun `forty successful trials on each required emulator API produce only an emulator candidate`() {
+    fun `synthetic threshold fixtures remain inconclusive until runtime origin exists`() {
         val records = listOf(34, 35, 36).flatMap { apiLevel ->
             (1..40).map { index ->
                 GateKTrialRecord(
@@ -49,8 +49,9 @@ class GateKEvidenceAggregatorTest {
         assertTrue(summary.minimumTrialsMet)
         assertTrue(summary.successRateMet)
         assertTrue(summary.latencyMet)
-        assertTrue(summary.emulatorCandidate)
-        assertEquals(GateKDecision.EMULATOR_CANDIDATE, summary.decision)
+        assertFalse(summary.runtimeOriginMet)
+        assertFalse(summary.emulatorCandidate)
+        assertEquals(GateKDecision.INCONCLUSIVE, summary.decision)
     }
 
     @Test
@@ -107,6 +108,20 @@ class GateKEvidenceAggregatorTest {
 
         assertFalse(summary.dataIntegrityMet)
         assertEquals(4, summary.invalidRecordCount)
+        assertFalse(summary.emulatorCandidate)
+    }
+
+    @Test
+    fun `duplicate attempt ids fail closed even when trial ids differ`() {
+        val records = listOf(
+            trial(trialId = "trial-a", latencyMs = 100L, success = true),
+            trial(trialId = "trial-b", latencyMs = 100L, success = true),
+        ).map { it.copy(attemptId = "same-attempt") }
+
+        val summary = GateKEvidenceAggregator().build(records).summary
+
+        assertFalse(summary.dataIntegrityMet)
+        assertEquals(listOf("same-attempt"), summary.invalidAttemptIds)
         assertFalse(summary.emulatorCandidate)
     }
 

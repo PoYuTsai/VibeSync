@@ -20,6 +20,11 @@ enum class GateKDedupeOutcome {
     NOT_EVALUATED,
 }
 
+enum class GateKTrialOrigin {
+    RUNTIME,
+    SYNTHETIC,
+}
+
 data class GateKTrialRecord(
     val trialId: String,
     val deviceClass: GateKDeviceClass,
@@ -29,7 +34,13 @@ data class GateKTrialRecord(
     val latencyMs: Long,
     val sessionOutcome: GateKSessionOutcome,
     val dedupeOutcome: GateKDedupeOutcome,
-    val failureReason: String? = null,
+    val attemptId: String = trialId,
+    val sessionId: String = "session-$trialId",
+    val triggerElapsedRealtimeMs: Long = 0L,
+    val detectedElapsedRealtimeMs: Long? = latencyMs,
+    val deviceDescriptor: String = deviceModel,
+    val failureReason: GateKFailureReason = GateKFailureReason.NONE,
+    val origin: GateKTrialOrigin = GateKTrialOrigin.SYNTHETIC,
 )
 
 data class GateKThresholds(
@@ -67,10 +78,12 @@ data class GateKEvidenceSummary(
     val latencyMet: Boolean,
     val sessionContractMet: Boolean,
     val dedupeContractMet: Boolean,
+    val runtimeOriginMet: Boolean,
     val perEmulatorApiThresholdsMet: Boolean,
     val dataIntegrityMet: Boolean,
     val invalidRecordCount: Int,
     val invalidTrialIds: List<String>,
+    val invalidAttemptIds: List<String>,
     val inconsistentSuccessTrialIds: List<String>,
     val emulatorApiSummaries: Map<Int, GateKGroupSummary>,
     val emulatorCandidate: Boolean,
@@ -114,15 +127,29 @@ class GateKEvidenceAggregator(
             .eachCount()
             .filterValues { it > 1 }
             .keys
+        val duplicateAttemptIds = immutableRecords
+            .filter { it.attemptId.isNotBlank() }
+            .groupingBy { it.attemptId }
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
         val invalidRecords = immutableRecords.filter { record ->
             record.trialId.isBlank()
+                || record.attemptId.isBlank()
+                || record.sessionId.isBlank()
                 || record.deviceModel.isBlank()
+                || record.deviceDescriptor.isBlank()
                 || record.apiLevel <= 0
-                || record.latencyMs < 0L
+                || !timingIsConsistent(record)
                 || record.trialId in duplicateTrialIds
+                || record.attemptId in duplicateAttemptIds
         }
         val invalidTrialIds = invalidRecords
             .map { it.trialId.ifBlank { "<blank>" } }
+            .distinct()
+            .sorted()
+        val invalidAttemptIds = invalidRecords
+            .map { it.attemptId.ifBlank { "<blank>" } }
             .distinct()
             .sorted()
         val effectiveSuccess = immutableRecords.map { record ->
@@ -153,6 +180,8 @@ class GateKEvidenceAggregator(
             && immutableRecords.all { it.sessionOutcome != GateKSessionOutcome.NOT_EVALUATED }
         val dedupeContractMet = immutableRecords.isNotEmpty()
             && immutableRecords.all { it.dedupeOutcome != GateKDedupeOutcome.NOT_EVALUATED }
+        val runtimeOriginMet = immutableRecords.isNotEmpty()
+            && immutableRecords.all { it.origin == GateKTrialOrigin.RUNTIME }
         val emulatorApiSummaries = requiredEmulatorApis
             .associateWith { apiLevel -> summarizeGroup(immutableRecords.filter { record ->
                 record.deviceClass == GateKDeviceClass.EMULATOR && record.apiLevel == apiLevel
@@ -177,6 +206,7 @@ class GateKEvidenceAggregator(
             && latencyMet
             && sessionContractMet
             && dedupeContractMet
+            && runtimeOriginMet
             && perEmulatorApiThresholdsMet
             && dataIntegrityMet
 
@@ -193,10 +223,12 @@ class GateKEvidenceAggregator(
             latencyMet = latencyMet,
             sessionContractMet = sessionContractMet,
             dedupeContractMet = dedupeContractMet,
+            runtimeOriginMet = runtimeOriginMet,
             perEmulatorApiThresholdsMet = perEmulatorApiThresholdsMet,
             dataIntegrityMet = dataIntegrityMet,
             invalidRecordCount = invalidRecords.size,
             invalidTrialIds = invalidTrialIds,
+            invalidAttemptIds = invalidAttemptIds,
             inconsistentSuccessTrialIds = inconsistentSuccessTrialIds,
             emulatorApiSummaries = emulatorApiSummaries,
             emulatorCandidate = emulatorCandidate,
@@ -214,10 +246,22 @@ class GateKEvidenceAggregator(
     }
 
     private fun isVerifiableSuccess(record: GateKTrialRecord): Boolean =
-        record.success && outcomeIndicatesSuccess(record)
+        record.success
+            && record.attemptId.isNotBlank()
+            && record.sessionId.isNotBlank()
+            && timingIsConsistent(record)
+            && outcomeIndicatesSuccess(record)
+
+    private fun timingIsConsistent(record: GateKTrialRecord): Boolean {
+        val detectedAt = record.detectedElapsedRealtimeMs ?: return false
+        return record.triggerElapsedRealtimeMs >= 0L
+            && record.latencyMs >= 0L
+            && detectedAt >= record.triggerElapsedRealtimeMs
+            && detectedAt - record.triggerElapsedRealtimeMs == record.latencyMs
+    }
 
     private fun outcomeIndicatesSuccess(record: GateKTrialRecord): Boolean =
-        record.failureReason == null
+        record.failureReason == GateKFailureReason.NONE
             && record.sessionOutcome == GateKSessionOutcome.ACCEPTED
             && record.dedupeOutcome == GateKDedupeOutcome.FIRST_SEEN
             && record.latencyMs in 0L..thresholds.maxP95LatencyMs

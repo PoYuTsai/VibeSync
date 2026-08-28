@@ -13,6 +13,17 @@ data class GateKPermissionPolicy(
 )
 
 /**
+ * Permission state used by the API 34+ photo picker contract. FULL is only
+ * reported when READ_MEDIA_IMAGES itself is granted; selected photos alone
+ * are an explicit PARTIAL state.
+ */
+enum class MediaAccessState {
+    FULL,
+    PARTIAL,
+    DENIED,
+}
+
+/**
  * The prototype's complete Android permission and service contract. Keeping
  * the policy URL next to each allowed permission makes the evidence packet
  * auditable without treating a broad permission as an implementation detail.
@@ -21,14 +32,13 @@ object GateKPermissionContract {
     const val READ_MEDIA_IMAGES = "android.permission.READ_MEDIA_IMAGES"
     const val READ_MEDIA_VISUAL_USER_SELECTED =
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
-    const val READ_EXTERNAL_STORAGE = "android.permission.READ_EXTERNAL_STORAGE"
     const val MANAGE_EXTERNAL_STORAGE = "android.permission.MANAGE_EXTERNAL_STORAGE"
     const val BIND_INPUT_METHOD = "android.permission.BIND_INPUT_METHOD"
     const val BIND_ACCESSIBILITY_SERVICE = "android.permission.BIND_ACCESSIBILITY_SERVICE"
     const val INPUT_METHOD_ACTION = "android.view.InputMethod"
 
     private const val PHOTO_POLICY =
-        "https://support.google.com/googleplay/android-developer/answer/16558241?hl=en"
+        "https://support.google.com/googleplay/android-developer/answer/16935362?hl=en"
     const val MINIMUM_SCOPE_POLICY_URL =
         "https://support.google.com/googleplay/android-developer/answer/16935362?hl=en"
 
@@ -45,12 +55,6 @@ object GateKPermissionContract {
             purpose = "Detect selected-photos partial state; never use it as screenshot source",
             playPolicyUrl = PHOTO_POLICY,
         ),
-        GateKPermissionPolicy(
-            permission = READ_EXTERNAL_STORAGE,
-            maxSdk = 32,
-            purpose = "Legacy MediaStore screenshot observation on API 32 and below",
-            playPolicyUrl = PHOTO_POLICY,
-        ),
     )
 
     private val allowedPermissions = allowedPermissionPolicies.map { it.permission }.toSet()
@@ -65,22 +69,28 @@ object GateKPermissionContract {
         )
     }
 
-    /**
-     * Returns true only for the API-specific full-image grant used by the
-     * prototype. On API 34+, a granted visual-user-selected permission is the
-     * system's partial-selection state, so READ_MEDIA_IMAGES alone is not
-     * evidence of full MediaStore visibility.
-     */
+    fun mediaAccessState(
+        apiLevel: Int,
+        readMediaImagesGranted: Boolean,
+        readMediaVisualUserSelectedGranted: Boolean,
+    ): MediaAccessState = when {
+        // Android 14 precedence: the full image grant wins even if the
+        // selected-photos bit is also reported by the package manager.
+        apiLevel >= 34 && readMediaImagesGranted -> MediaAccessState.FULL
+        apiLevel >= 34 && readMediaVisualUserSelectedGranted -> MediaAccessState.PARTIAL
+        else -> MediaAccessState.DENIED
+    }
+
+    /** Returns true only for the full-image state used by Gate K. */
     fun hasFullMediaStoreImageGrant(
         apiLevel: Int,
         readMediaImagesGranted: Boolean,
         readMediaVisualUserSelectedGranted: Boolean,
-        readExternalStorageGranted: Boolean,
-    ): Boolean = when {
-        apiLevel >= 34 -> readMediaImagesGranted && !readMediaVisualUserSelectedGranted
-        apiLevel >= 33 -> readMediaImagesGranted
-        else -> readExternalStorageGranted
-    }
+    ): Boolean = mediaAccessState(
+        apiLevel = apiLevel,
+        readMediaImagesGranted = readMediaImagesGranted,
+        readMediaVisualUserSelectedGranted = readMediaVisualUserSelectedGranted,
+    ) == MediaAccessState.FULL
 
     fun checkServiceBinding(
         servicePermission: String?,

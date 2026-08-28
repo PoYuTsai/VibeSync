@@ -38,18 +38,26 @@ class GateKEvidenceJsonTest {
                 "{\"trialId\":\"trial-1\",\"deviceClass\":\"EMULATOR\",\"apiLevel\":34," +
                 "\"deviceModel\":\"pixel-api34\",\"reportedSuccess\":true,\"latencyMs\":100," +
                 "\"sessionOutcome\":\"ACCEPTED\",\"dedupeOutcome\":\"FIRST_SEEN\"," +
-                "\"failureReason\":null}," +
+                "\"attemptId\":\"trial-1\",\"sessionId\":\"session-trial-1\"," +
+                "\"triggerElapsedRealtimeMs\":0,\"detectedElapsedRealtimeMs\":100," +
+                "\"deviceDescriptor\":\"pixel-api34\",\"failureReason\":\"NONE\"," +
+                "\"origin\":\"SYNTHETIC\"}," +
                 "{\"trialId\":\"trial-2\",\"deviceClass\":\"EMULATOR\",\"apiLevel\":34," +
                 "\"deviceModel\":\"pixel\\\"-api34\",\"reportedSuccess\":false,\"latencyMs\":4000," +
                 "\"sessionOutcome\":\"ACCEPTED\",\"dedupeOutcome\":\"FIRST_SEEN\"," +
-                "\"failureReason\":null}" +
+                "\"attemptId\":\"trial-2\",\"sessionId\":\"session-trial-2\"," +
+                "\"triggerElapsedRealtimeMs\":0,\"detectedElapsedRealtimeMs\":4000," +
+                "\"deviceDescriptor\":\"pixel\\\"-api34\",\"failureReason\":\"NONE\"," +
+                "\"origin\":\"SYNTHETIC\"}" +
                 "]," +
                 "\"summary\":{\"totalTrials\":2,\"successfulTrials\":1,\"failedTrials\":1," +
                 "\"successRate\":0.5,\"p50LatencyMs\":100,\"p95LatencyMs\":4000," +
                 "\"minimumTrialsMet\":false,\"successRateMet\":false,\"latencyMet\":false," +
                 "\"sessionContractMet\":true,\"dedupeContractMet\":true," +
+                "\"runtimeOriginMet\":false," +
                 "\"perEmulatorApiThresholdsMet\":false,\"dataIntegrityMet\":true," +
-                "\"invalidRecordCount\":0,\"invalidTrialIds\":[],\"inconsistentSuccessTrialIds\":[]," +
+                "\"invalidRecordCount\":0,\"invalidTrialIds\":[],\"invalidAttemptIds\":[]," +
+                "\"inconsistentSuccessTrialIds\":[]," +
                 "\"emulatorApiSummaries\":{\"34\":{\"totalTrials\":2,\"successfulTrials\":1," +
                 "\"failedTrials\":1,\"successRate\":0.5,\"p50LatencyMs\":100,\"p95LatencyMs\":4000," +
                 "\"successRateMet\":false,\"latencyMet\":false}," +

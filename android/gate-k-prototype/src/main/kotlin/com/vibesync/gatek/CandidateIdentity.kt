@@ -43,9 +43,6 @@ class ScreenshotCandidateDedupe {
             return CandidateIdentityDecision.RejectedStaleSession
         }
         if (activeSessionId != window.sessionId) {
-            if (previousFloor != null && window.floorEpochMs == previousFloor) {
-                return CandidateIdentityDecision.RejectedStaleSession
-            }
             activeSessionId = window.sessionId
             activeFloorEpochMs = window.floorEpochMs
             seenHashes.clear()
@@ -57,6 +54,13 @@ class ScreenshotCandidateDedupe {
         } else {
             CandidateIdentityDecision.Duplicate(identity)
         }
+    }
+
+    /** Clears identities as soon as a visible IME session ends. */
+    fun clear() {
+        activeSessionId = null
+        activeFloorEpochMs = null
+        seenHashes.clear()
     }
 
     private fun sha256(content: ByteArray): String {

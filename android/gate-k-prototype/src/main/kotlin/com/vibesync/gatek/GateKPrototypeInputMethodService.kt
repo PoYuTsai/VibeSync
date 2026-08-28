@@ -1,15 +1,20 @@
 package com.vibesync.gatek
 
 import android.content.ContentUris
+import android.content.ContentResolver
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.inputmethodservice.InputMethodService
+import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -30,12 +35,19 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     private val pipeline = GateKObservationPipeline()
     private val pipelineLock = Any()
     private val mediaStoreBaseline = GateKMediaStoreSessionBaseline()
+    private val attemptCoordinator = GateKAttemptCoordinator()
+    private val rawDeviceDescriptor = GateKDeviceDescriptor.fromBuild()
+    private val evidenceStore by lazy(LazyThreadSafetyMode.NONE) {
+        GateKEvidenceStore(filesDir)
+    }
     private val trialRecorder = GateKTrialRecorder(
-        deviceClass = GateKDeviceClass.UNCLASSIFIED,
-        apiLevel = Build.VERSION.SDK_INT,
-        deviceModel = Build.MODEL.orEmpty(),
+        deviceClass = GateKDeviceClassifier.classify(rawDeviceDescriptor),
+        apiLevel = rawDeviceDescriptor.apiLevel,
+        deviceModel = rawDeviceDescriptor.model,
+        rawDeviceDescriptor = rawDeviceDescriptor,
     )
     private val mediaStoreExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile
     private var activeSessionId: String? = null
     @Volatile
@@ -43,9 +55,20 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     @Volatile
     private var contentObserver: ContentObserver? = null
 
-    override fun onCreateInputView(): View = TextView(this).apply {
-        text = "Gate K screenshot prototype"
-        contentDescription = "Gate K screenshot prototype"
+    override fun onCreateInputView(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(TextView(context).apply {
+            text = "Gate K screenshot prototype"
+            contentDescription = "Gate K screenshot prototype"
+        })
+        addView(Button(context).apply {
+            text = "Start Gate K attempt"
+            contentDescription = "Start Gate K attempt"
+            setOnClickListener { startAttemptFromUi() }
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ))
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
@@ -64,6 +87,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         if (result is ImeSessionStartResult.Started) {
             activeSessionId = sessionId
             activeSessionFloorEpochMs = result.window.floorEpochMs
+            attemptCoordinator.onSessionShown(sessionId)
             registerMediaStoreObserverIfAllowed(sessionId, result.window.floorEpochMs)
         }
     }
@@ -75,7 +99,8 @@ class GateKPrototypeInputMethodService : InputMethodService() {
 
     override fun onDestroy() {
         finishActiveSession()
-        mediaStoreExecutor.shutdownNow()
+        mainHandler.removeCallbacksAndMessages(null)
+        mediaStoreExecutor.shutdown()
         super.onDestroy()
     }
 
@@ -93,6 +118,12 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 ),
             )
         }
+        recordTerminalResult(
+            attemptCoordinator.onSessionHidden(
+                sessionId = sessionId,
+                nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+            ),
+        )
         activeSessionId = null
         activeSessionFloorEpochMs = null
         mediaStoreBaseline.endSession()
@@ -111,7 +142,9 @@ class GateKPrototypeInputMethodService : InputMethodService() {
 
         mediaStoreExecutor.execute {
             if (activeSessionId != sessionId) return@execute
-            val baselineQuery = queryMediaStoreRecords()
+            val baselineQuery = queryMediaStoreRecords(
+                GateKMediaStoreQueryContract.initialBaseline(),
+            )
             if (baselineQuery.failureReason != null) {
                 recordFailure(
                     sessionId = sessionId,
@@ -120,7 +153,19 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 )
                 return@execute
             }
-            mediaStoreBaseline.beginSession(floorEpochMs, baselineQuery.records)
+            if (activeSessionId != sessionId) return@execute
+            val baselineStart = mediaStoreBaseline.beginSession(floorEpochMs, baselineQuery.records)
+            if (baselineStart !is GateKMediaStoreBaselineStartResult.Started) {
+                val failure = (baselineStart as GateKMediaStoreBaselineStartResult.Rejected).failure
+                attemptCoordinator.markObserverNotReady(sessionId)
+                recordFailure(
+                    sessionId = sessionId,
+                    failureReason = failure.name,
+                    sessionOutcome = GateKSessionOutcome.NOT_EVALUATED,
+                )
+                mediaStoreBaseline.endSession()
+                return@execute
+            }
 
             val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
                 override fun onChange(selfChange: Boolean, uri: Uri?) {
@@ -147,27 +192,42 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 contentObserver = observer
                 if (activeSessionId != sessionId) {
                     unregisterMediaStoreObserver()
+                    attemptCoordinator.markObserverNotReady(sessionId)
                     mediaStoreBaseline.endSession()
                     return@execute
                 }
-                // Close the register/query race: a row inserted between the
-                // baseline query and observer registration is visible here.
-                observeMediaStoreNotification(null, sessionId)
+                // A bounded delta query closes the register/query race before
+                // the public attempt seam is unlocked.
+                if (!observeMediaStoreNotification(null, sessionId)) {
+                    unregisterMediaStoreObserver()
+                    attemptCoordinator.markObserverNotReady(sessionId)
+                    mediaStoreBaseline.endSession()
+                    return@execute
+                }
+                if (!attemptCoordinator.markObserverReady(sessionId)) {
+                    unregisterMediaStoreObserver()
+                    mediaStoreBaseline.endSession()
+                    return@execute
+                }
             } catch (_: SecurityException) {
                 // A missing/revoked grant is a fail-closed observation failure.
                 contentObserver = null
+                attemptCoordinator.markObserverNotReady(sessionId)
                 recordFailure(
                     sessionId = sessionId,
                     failureReason = "MEDIASTORE_GRANT_REVOKED",
                     sessionOutcome = GateKSessionOutcome.NOT_EVALUATED,
                 )
+                mediaStoreBaseline.endSession()
             } catch (_: RuntimeException) {
                 contentObserver = null
+                attemptCoordinator.markObserverNotReady(sessionId)
                 recordFailure(
                     sessionId = sessionId,
                     failureReason = "MEDIASTORE_OBSERVER_REGISTRATION_FAILED",
                     sessionOutcome = GateKSessionOutcome.NOT_EVALUATED,
                 )
+                mediaStoreBaseline.endSession()
             }
         }
     }
@@ -189,8 +249,6 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             readMediaVisualUserSelectedGranted = checkSelfPermission(
                 GateKPermissionContract.READ_MEDIA_VISUAL_USER_SELECTED,
             ) == granted,
-            readExternalStorageGranted =
-                checkSelfPermission(GateKPermissionContract.READ_EXTERNAL_STORAGE) == granted,
         )
     }
 
@@ -200,34 +258,97 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     /** Deterministic in-memory JSON; callers must persist it outside this prototype. */
     fun currentEvidenceJson(): String = trialRecorder.evidenceJson()
 
-    private fun observeMediaStoreNotification(notificationUri: Uri?, sessionId: String) {
-        if (activeSessionId != sessionId) return
-        val query = queryMediaStoreRecords()
+    /** App-private export filename used by the bounded runner. */
+    fun currentEvidenceFileName(): String = GateKEvidenceStore.FILE_NAME
+
+    /** Starts an explicit attempt only after the session's observer is ready. */
+    fun beginMeasurementAttempt(attemptId: String): GateKAttemptStartResult {
+        val sessionId = activeSessionId ?: return GateKAttemptStartResult.RejectedNoActiveSession
+        val result = attemptCoordinator.begin(
+            attemptId = GateKAttemptId(attemptId),
+            sessionId = sessionId,
+            monotonicStart = SystemClock.elapsedRealtime(),
+        )
+        if (result is GateKAttemptStartResult.Started) {
+            scheduleAttemptTimeout(result.attempt)
+        }
+        return result
+    }
+
+    private fun startAttemptFromUi() {
+        beginMeasurementAttempt(UUID.randomUUID().toString())
+    }
+
+    private fun scheduleAttemptTimeout(attempt: GateKActiveAttempt) {
+        val deadline = attempt.triggeredAtElapsedRealtimeMs
+            .plus(GateKAttemptCoordinator.DEFAULT_MAX_ATTEMPT_LATENCY_MS)
+        val delay = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1L)
+        mainHandler.postDelayed({
+            when (val result = attemptCoordinator.timeout(
+                attemptId = attempt.attemptId,
+                sessionId = attempt.sessionId,
+                nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+            )) {
+                GateKAttemptTerminalResult.WaitingForDeadline ->
+                    scheduleAttemptTimeout(attempt)
+
+                else -> recordTerminalResult(result)
+            }
+        }, delay)
+    }
+
+    private fun observeMediaStoreNotification(notificationUri: Uri?, sessionId: String): Boolean {
+        if (activeSessionId != sessionId) return false
+        val highWaterGeneration = mediaStoreBaseline.currentHighWaterGeneration ?: return false
+        val querySpec = try {
+            GateKMediaStoreQueryContract.observerDelta(highWaterGeneration)
+        } catch (_: IllegalArgumentException) {
+            recordFailure(
+                sessionId = sessionId,
+                failureReason = GateKMediaStoreBaselineFailure.GENERATION_OVERFLOW.name,
+                sessionOutcome = GateKSessionOutcome.NOT_EVALUATED,
+            )
+            attemptCoordinator.markObserverNotReady(sessionId)
+            mediaStoreBaseline.endSession()
+            return false
+        }
+        val query = queryMediaStoreRecords(querySpec)
         if (query.failureReason != null) {
             recordFailure(
                 sessionId = sessionId,
                 failureReason = query.failureReason,
                 sessionOutcome = GateKSessionOutcome.NOT_EVALUATED,
             )
-            return
+            attemptCoordinator.markObserverNotReady(sessionId)
+            mediaStoreBaseline.endSession()
+            return false
         }
-        if (activeSessionId != sessionId) return
-        val candidates = mediaStoreBaseline.onContentObserverNotification(
+        if (activeSessionId != sessionId) return false
+        val candidatesResult = mediaStoreBaseline.queryNewRecords(
             notificationUri = notificationUri?.toString(),
             queriedRecords = query.records,
         )
+        if (candidatesResult.failure != null) {
+            recordFailure(
+                sessionId = sessionId,
+                failureReason = candidatesResult.failure.name,
+                sessionOutcome = GateKSessionOutcome.NOT_EVALUATED,
+            )
+            attemptCoordinator.markObserverNotReady(sessionId)
+            mediaStoreBaseline.endSession()
+            return false
+        }
+        val candidates = candidatesResult.candidates
         candidates.forEach { record ->
             if (activeSessionId != sessionId) return@forEach
             val classification = MediaStoreScreenshotClassifier.classify(record.metadata)
             if (classification != MediaStoreScreenshotDecision.MediaStoreScreenshot) return@forEach
 
-            val observedAtEpochMs = System.currentTimeMillis()
             val content = openTransientContent(Uri.parse(record.metadata.uri))
             if (content == null) {
                 recordTrial(
                     sessionId = sessionId,
-                    success = false,
-                    latencyMs = latencyFromActiveSession(observedAtEpochMs),
+                    detectedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
                     sessionOutcome = GateKSessionOutcome.ACCEPTED,
                     dedupeOutcome = GateKDedupeOutcome.NOT_EVALUATED,
                     failureReason = "CONTENT_UNAVAILABLE",
@@ -250,8 +371,9 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                     ),
                 )
             }
-            recordPipelineResult(result, observedAtEpochMs, sessionId)
+            recordPipelineResult(result, SystemClock.elapsedRealtime(), sessionId)
         }
+        true
     }
 
     private data class MediaStoreQueryResult(
@@ -259,7 +381,11 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         val failureReason: String? = null,
     )
 
-    private fun queryMediaStoreRecords(): MediaStoreQueryResult {
+    private class MediaStoreQueryContractException(
+        val reason: GateKMediaStoreBaselineFailure,
+    ) : RuntimeException()
+
+    private fun queryMediaStoreRecords(spec: GateKMediaStoreQuerySpec): MediaStoreQueryResult {
         val projection = buildList {
             add(MediaStore.Images.Media._ID)
             add(MediaStore.Images.Media.RELATIVE_PATH)
@@ -277,9 +403,8 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             val cursor = contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 projection,
+                spec.toContentResolverQueryArgs(),
                 null,
-                null,
-                "${MediaStore.Images.Media.DATE_ADDED} ASC",
             ) ?: return MediaStoreQueryResult(failureReason = "MEDIASTORE_QUERY_FAILED")
             val records = cursor.use { cursor ->
                 val idIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID)
@@ -291,16 +416,53 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 val dateModifiedIndex = cursor.getColumnIndex(MediaStore.Images.Media.DATE_MODIFIED)
                 val pendingIndex = cursor.getColumnIndex(MediaStore.Images.Media.IS_PENDING)
                 val generationIndex = cursor.getColumnIndex(MediaStore.MediaColumns.GENERATION_ADDED)
-                if (idIndex < 0 || dateAddedIndex < 0) {
-                    throw IllegalStateException("MediaStore baseline columns are unavailable")
+                if (idIndex < 0 || dateAddedIndex < 0 || generationIndex < 0) {
+                    throw MediaStoreQueryContractException(
+                        GateKMediaStoreBaselineFailure.MISSING_GENERATION,
+                    )
                 }
                 buildList {
+                    var previousGeneration = 0L
+                    var rowsSeen = 0
                     while (cursor.moveToNext()) {
+                        rowsSeen += 1
+                        if (rowsSeen > spec.maxRows) {
+                            throw MediaStoreQueryContractException(
+                                if (spec.phase == GateKMediaStoreQueryPhase.INITIAL_BASELINE) {
+                                    GateKMediaStoreBaselineFailure.INITIAL_QUERY_OVERFLOW
+                                } else {
+                                    GateKMediaStoreBaselineFailure.DELTA_QUERY_OVERFLOW
+                                },
+                            )
+                        }
+                        val generation = cursor.getLongOrNull(generationIndex)
+                            ?: throw MediaStoreQueryContractException(
+                                GateKMediaStoreBaselineFailure.MISSING_GENERATION,
+                            )
+                        if (generation <= 0L) {
+                            throw MediaStoreQueryContractException(
+                                GateKMediaStoreBaselineFailure.INVALID_GENERATION,
+                            )
+                        }
+                        if (generation < previousGeneration) {
+                            throw MediaStoreQueryContractException(
+                                GateKMediaStoreBaselineFailure.OUT_OF_ORDER_GENERATION,
+                            )
+                        }
+                        previousGeneration = generation
                         if (pendingIndex >= 0 && cursor.getIntOrZero(pendingIndex) != 0) continue
                         val mediaId = cursor.getLongOrZero(idIndex)
-                        if (mediaId <= 0L) continue
+                        if (mediaId <= 0L) {
+                            throw MediaStoreQueryContractException(
+                                GateKMediaStoreBaselineFailure.INVALID_RECORD,
+                            )
+                        }
                         val dateAdded = cursor.getLongOrZero(dateAddedIndex)
-                        if (dateAdded <= 0L) continue
+                        if (dateAdded <= 0L) {
+                            throw MediaStoreQueryContractException(
+                                GateKMediaStoreBaselineFailure.INVALID_RECORD,
+                            )
+                        }
                         val itemUri = ContentUris.withAppendedId(
                             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                             mediaId,
@@ -308,7 +470,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                         add(
                             MediaStoreCandidateRecord(
                                 mediaId = mediaId.toString(),
-                                generation = cursor.getLongOrNull(generationIndex),
+                                generation = generation,
                                 dateAddedEpochSec = dateAdded,
                                 dateModifiedEpochSec = cursor.getLongOrZero(dateModifiedIndex),
                                 metadata = MediaStoreImageMetadata(
@@ -324,6 +486,8 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 }
             }
             MediaStoreQueryResult(records = records)
+        } catch (error: MediaStoreQueryContractException) {
+            MediaStoreQueryResult(failureReason = error.reason.name)
         } catch (_: SecurityException) {
             MediaStoreQueryResult(failureReason = "MEDIASTORE_GRANT_REVOKED")
         } catch (_: RuntimeException) {
@@ -333,54 +497,38 @@ class GateKPrototypeInputMethodService : InputMethodService() {
 
     private fun recordPipelineResult(
         result: GateKObservationResult,
-        observedAtEpochMs: Long,
+        observedAtElapsedRealtimeMs: Long,
         sessionId: String,
     ) {
         if (activeSessionId != sessionId) return
-        val latencyMs = latencyFromActiveSession(observedAtEpochMs)
-        when (result) {
-            is GateKObservationResult.Accepted -> recordTrial(
+        val terminalResult = when (result) {
+            is GateKObservationResult.Accepted -> detectActiveAttempt(
                 sessionId = sessionId,
-                success = latencyMs in 0L..GateKTrialRecorder.DEFAULT_MAX_OBSERVATION_LATENCY_MS,
-                latencyMs = latencyMs,
+                detectedAtElapsedRealtimeMs = observedAtElapsedRealtimeMs,
                 sessionOutcome = GateKSessionOutcome.ACCEPTED,
                 dedupeOutcome = GateKDedupeOutcome.FIRST_SEEN,
-                failureReason = if (
-                    latencyMs in 0L..GateKTrialRecorder.DEFAULT_MAX_OBSERVATION_LATENCY_MS
-                ) {
-                    null
-                } else {
-                    "OBSERVATION_LATENCY_INVALID_OR_OVER_3S"
-                },
             )
 
-            is GateKObservationResult.DuplicateSuppressed -> recordTrial(
+            is GateKObservationResult.DuplicateSuppressed -> detectActiveAttempt(
                 sessionId = sessionId,
-                success = false,
-                latencyMs = latencyMs,
+                detectedAtElapsedRealtimeMs = observedAtElapsedRealtimeMs,
                 sessionOutcome = GateKSessionOutcome.ACCEPTED,
                 dedupeOutcome = GateKDedupeOutcome.DUPLICATE_SUPPRESSED,
-                failureReason = "DUPLICATE_SUPPRESSED",
             )
 
-            is GateKObservationResult.Ignored -> recordTrial(
+            is GateKObservationResult.Ignored -> failActiveAttempt(
                 sessionId = sessionId,
-                success = false,
-                latencyMs = latencyMs,
-                sessionOutcome = GateKSessionOutcome.IGNORED,
-                dedupeOutcome = GateKDedupeOutcome.NOT_EVALUATED,
-                failureReason = "IGNORED_${result.reason.name}",
+                detectedAtElapsedRealtimeMs = observedAtElapsedRealtimeMs,
+                reason = GateKFailureReason.METADATA_REJECTED,
             )
 
-            is GateKObservationResult.Rejected -> recordTrial(
+            is GateKObservationResult.Rejected -> failActiveAttempt(
                 sessionId = sessionId,
-                success = false,
-                latencyMs = latencyMs,
-                sessionOutcome = GateKSessionOutcome.REJECTED,
-                dedupeOutcome = GateKDedupeOutcome.NOT_EVALUATED,
-                failureReason = "REJECTED_${result.reason.name}",
+                detectedAtElapsedRealtimeMs = observedAtElapsedRealtimeMs,
+                reason = GateKFailureReason.METADATA_REJECTED,
             )
         }
+        recordTerminalResult(terminalResult)
     }
 
     private fun recordFailure(
@@ -389,37 +537,88 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         sessionOutcome: GateKSessionOutcome,
     ) {
         if (activeSessionId != sessionId) return
-        val now = System.currentTimeMillis()
-        recordTrial(
+        val result = failActiveAttempt(
             sessionId = sessionId,
-            success = false,
-            latencyMs = latencyFromActiveSession(now),
-            sessionOutcome = sessionOutcome,
-            dedupeOutcome = GateKDedupeOutcome.NOT_EVALUATED,
-            failureReason = failureReason,
+            detectedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+            reason = GateKFailureReason.fromLegacy(failureReason),
         )
+        recordTerminalResult(result)
     }
 
     private fun recordTrial(
         sessionId: String,
-        success: Boolean,
-        latencyMs: Long,
+        detectedAtElapsedRealtimeMs: Long,
         sessionOutcome: GateKSessionOutcome,
         dedupeOutcome: GateKDedupeOutcome,
         failureReason: String?,
     ) {
-        if (activeSessionId != sessionId) return
-        trialRecorder.record(
-            success = success,
-            latencyMs = latencyMs,
+        val result = if (failureReason == null) {
+            detectActiveAttempt(
+                sessionId = sessionId,
+                detectedAtElapsedRealtimeMs = detectedAtElapsedRealtimeMs,
+                sessionOutcome = sessionOutcome,
+                dedupeOutcome = dedupeOutcome,
+            )
+        } else {
+            failActiveAttempt(
+                sessionId = sessionId,
+                detectedAtElapsedRealtimeMs = detectedAtElapsedRealtimeMs,
+                reason = GateKFailureReason.fromLegacy(failureReason),
+            )
+        }
+        recordTerminalResult(result)
+    }
+
+    private fun detectActiveAttempt(
+        sessionId: String,
+        detectedAtElapsedRealtimeMs: Long,
+        sessionOutcome: GateKSessionOutcome,
+        dedupeOutcome: GateKDedupeOutcome,
+    ): GateKAttemptTerminalResult {
+        val attempt = attemptCoordinator.currentAttempt
+            ?: return GateKAttemptTerminalResult.IgnoredNoActiveAttempt
+        return attemptCoordinator.detected(
+            attemptId = attempt.attemptId,
+            sessionId = sessionId,
+            detectedAtElapsedRealtimeMs = detectedAtElapsedRealtimeMs,
             sessionOutcome = sessionOutcome,
             dedupeOutcome = dedupeOutcome,
-            failureReason = failureReason,
         )
     }
 
-    private fun latencyFromActiveSession(observedAtEpochMs: Long): Long =
-        observedAtEpochMs - (activeSessionFloorEpochMs ?: observedAtEpochMs)
+    private fun failActiveAttempt(
+        sessionId: String,
+        detectedAtElapsedRealtimeMs: Long,
+        reason: GateKFailureReason,
+    ): GateKAttemptTerminalResult {
+        val attempt = attemptCoordinator.currentAttempt
+            ?: return GateKAttemptTerminalResult.IgnoredNoActiveAttempt
+        return attemptCoordinator.failed(
+            attemptId = attempt.attemptId,
+            sessionId = sessionId,
+            detectedAtElapsedRealtimeMs = detectedAtElapsedRealtimeMs,
+            reason = reason,
+        )
+    }
+
+    private fun recordTerminalResult(result: GateKAttemptTerminalResult) {
+        if (result is GateKAttemptTerminalResult.Recorded) {
+            trialRecorder.recordTerminal(result.terminal)
+            try {
+                mediaStoreExecutor.execute {
+                    try {
+                        evidenceStore.write(trialRecorder.evidencePacket())
+                    } catch (_: java.io.IOException) {
+                        // Evidence persistence is fail-closed; no exception
+                        // text or partial file is exposed as trial metadata.
+                    }
+                }
+            } catch (_: RuntimeException) {
+                // The service is shutting down; never create a synthetic trial
+                // merely because the worker cannot accept an export task.
+            }
+        }
+    }
 
     private fun openTransientContent(uri: Uri): ByteArray? {
         return try {
@@ -458,4 +657,22 @@ class GateKPrototypeInputMethodService : InputMethodService() {
 
     private fun android.database.Cursor.getLongOrNull(index: Int): Long? =
         if (index < 0 || isNull(index)) null else getLong(index)
+
+    private fun GateKMediaStoreQuerySpec.toContentResolverQueryArgs(): Bundle = Bundle().apply {
+        putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
+        putStringArray(
+            ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+            selectionArgs.toTypedArray(),
+        )
+        putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(sortColumn))
+        putInt(
+            ContentResolver.QUERY_ARG_SORT_DIRECTION,
+            if (sortAscending) {
+                ContentResolver.QUERY_SORT_DIRECTION_ASCENDING
+            } else {
+                ContentResolver.QUERY_SORT_DIRECTION_DESCENDING
+            },
+        )
+        putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
+    }
 }

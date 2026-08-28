@@ -10,20 +10,20 @@ class GateKPrivacyContractTest {
         val result = GateKPermissionContract.checkRequestedPermissions(
             listOf(
                 GateKPermissionContract.READ_MEDIA_IMAGES,
-                GateKPermissionContract.READ_EXTERNAL_STORAGE,
+                GateKPermissionContract.READ_MEDIA_VISUAL_USER_SELECTED,
             ),
         )
 
         assertTrue(result.allowed)
         assertEquals(emptyList<String>(), result.violations)
         assertEquals(
-            "https://support.google.com/googleplay/android-developer/answer/16558241?hl=en",
+            "https://support.google.com/googleplay/android-developer/answer/16935362?hl=en",
             GateKPermissionContract.allowedPermissionPolicies
                 .single { it.permission == GateKPermissionContract.READ_MEDIA_IMAGES }
                 .playPolicyUrl,
         )
         assertEquals(
-            "https://support.google.com/googleplay/android-developer/answer/16558241?hl=en",
+            "https://support.google.com/googleplay/android-developer/answer/16935362?hl=en",
             GateKPermissionContract.allowedPermissionPolicies
                 .single {
                     it.permission == GateKPermissionContract.READ_MEDIA_VISUAL_USER_SELECTED
@@ -82,49 +82,67 @@ class GateKPrivacyContractTest {
     }
 
     @Test
-    fun `partial selected photos state is never treated as a full image grant`() {
-        assertTrue(
-            !GateKPermissionContract.hasFullMediaStoreImageGrant(
+    fun `api 34 full image grant has precedence over selected photos`() {
+        assertEquals(
+            MediaAccessState.FULL,
+            GateKPermissionContract.mediaAccessState(
                 apiLevel = 34,
                 readMediaImagesGranted = true,
                 readMediaVisualUserSelectedGranted = true,
-                readExternalStorageGranted = false,
             ),
         )
         assertTrue(
             GateKPermissionContract.hasFullMediaStoreImageGrant(
                 apiLevel = 34,
                 readMediaImagesGranted = true,
-                readMediaVisualUserSelectedGranted = false,
-                readExternalStorageGranted = false,
+                readMediaVisualUserSelectedGranted = true,
             ),
         )
     }
 
     @Test
-    fun `legacy and modern full image grants use their API-specific permission`() {
-        assertTrue(
-            GateKPermissionContract.hasFullMediaStoreImageGrant(
-                apiLevel = 33,
-                readMediaImagesGranted = true,
-                readMediaVisualUserSelectedGranted = false,
-                readExternalStorageGranted = false,
-            ),
-        )
-        assertTrue(
-            GateKPermissionContract.hasFullMediaStoreImageGrant(
-                apiLevel = 32,
+    fun `api 34 selected photos without full grant is partial`() {
+        assertEquals(
+            MediaAccessState.PARTIAL,
+            GateKPermissionContract.mediaAccessState(
+                apiLevel = 34,
                 readMediaImagesGranted = false,
-                readMediaVisualUserSelectedGranted = false,
-                readExternalStorageGranted = true,
+                readMediaVisualUserSelectedGranted = true,
             ),
         )
         assertTrue(
             !GateKPermissionContract.hasFullMediaStoreImageGrant(
+                apiLevel = 34,
+                readMediaImagesGranted = false,
+                readMediaVisualUserSelectedGranted = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `modern denial is denied and the prototype matrix starts at API 34`() {
+        assertEquals(
+            MediaAccessState.DENIED,
+            GateKPermissionContract.mediaAccessState(
+                apiLevel = 34,
+                readMediaImagesGranted = false,
+                readMediaVisualUserSelectedGranted = false,
+            ),
+        )
+        assertEquals(
+            MediaAccessState.DENIED,
+            GateKPermissionContract.mediaAccessState(
+                apiLevel = 33,
+                readMediaImagesGranted = true,
+                readMediaVisualUserSelectedGranted = false,
+            ),
+        )
+        assertEquals(
+            MediaAccessState.DENIED,
+            GateKPermissionContract.mediaAccessState(
                 apiLevel = 32,
                 readMediaImagesGranted = false,
                 readMediaVisualUserSelectedGranted = false,
-                readExternalStorageGranted = false,
             ),
         )
     }

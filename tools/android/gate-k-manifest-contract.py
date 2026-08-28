@@ -17,7 +17,6 @@ ANDROID_EXPORTED = f"{{{ANDROID_NS}}}exported"
 EXPECTED_PERMISSIONS = {
     "android.permission.READ_MEDIA_IMAGES": None,
     "android.permission.READ_MEDIA_VISUAL_USER_SELECTED": None,
-    "android.permission.READ_EXTERNAL_STORAGE": "32",
 }
 
 

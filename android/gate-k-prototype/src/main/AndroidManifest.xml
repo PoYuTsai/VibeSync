@@ -2,13 +2,9 @@
     <!-- Gate K candidate A only: full MediaStore image access is measured as a
          policy-sensitive experiment, never silently downgraded to partial
          photo access. The selected-photos permission is declared solely to
-         detect and reject that partial state. The legacy permission is capped
-         at API 32. -->
+         detect and reject that partial state. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
 
     <application
         android:allowBackup="false"

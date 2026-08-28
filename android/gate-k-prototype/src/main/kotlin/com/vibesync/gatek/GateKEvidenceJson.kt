@@ -21,7 +21,13 @@ object GateKEvidenceJson {
                 { it.latencyMs },
                 { it.sessionOutcome.name },
                 { it.dedupeOutcome.name },
-                { it.failureReason.orEmpty() },
+                { it.attemptId },
+                { it.sessionId },
+                { it.triggerElapsedRealtimeMs },
+                { it.detectedElapsedRealtimeMs ?: Long.MIN_VALUE },
+                { it.deviceDescriptor },
+                { it.failureReason.name },
+                { it.origin.name },
             ),
         )
         return buildString {
@@ -43,8 +49,14 @@ object GateKEvidenceJson {
         append(",\"latencyMs\":").append(record.latencyMs)
         append(",\"sessionOutcome\":").append(quote(record.sessionOutcome.name))
         append(",\"dedupeOutcome\":").append(quote(record.dedupeOutcome.name))
-        append(",\"failureReason\":")
-            .append(record.failureReason?.let(::quote) ?: "null")
+        append(",\"attemptId\":").append(quote(record.attemptId))
+        append(",\"sessionId\":").append(quote(record.sessionId))
+        append(",\"triggerElapsedRealtimeMs\":").append(record.triggerElapsedRealtimeMs)
+        append(",\"detectedElapsedRealtimeMs\":")
+            .append(record.detectedElapsedRealtimeMs?.toString() ?: "null")
+        append(",\"deviceDescriptor\":").append(quote(record.deviceDescriptor))
+        append(",\"failureReason\":").append(quote(record.failureReason.name))
+        append(",\"origin\":").append(quote(record.origin.name))
         append('}')
     }
 
@@ -61,12 +73,15 @@ object GateKEvidenceJson {
         append(",\"latencyMet\":").append(summary.latencyMet)
         append(",\"sessionContractMet\":").append(summary.sessionContractMet)
         append(",\"dedupeContractMet\":").append(summary.dedupeContractMet)
+        append(",\"runtimeOriginMet\":").append(summary.runtimeOriginMet)
         append(",\"perEmulatorApiThresholdsMet\":")
             .append(summary.perEmulatorApiThresholdsMet)
         append(",\"dataIntegrityMet\":").append(summary.dataIntegrityMet)
         append(",\"invalidRecordCount\":").append(summary.invalidRecordCount)
         append(",\"invalidTrialIds\":")
         append(summary.invalidTrialIds.joinToString(prefix = "[", postfix = "]") { quote(it) })
+        append(",\"invalidAttemptIds\":")
+        append(summary.invalidAttemptIds.joinToString(prefix = "[", postfix = "]") { quote(it) })
         append(",\"inconsistentSuccessTrialIds\":")
         append(summary.inconsistentSuccessTrialIds.joinToString(prefix = "[", postfix = "]") { quote(it) })
         append(",\"emulatorApiSummaries\":{")

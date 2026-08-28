@@ -11,6 +11,14 @@ class GateKTrialRecorder(
     private val apiLevel: Int,
     private val deviceModel: String,
     private val thresholds: GateKThresholds = GateKThresholds(),
+    private val rawDeviceDescriptor: GateKDeviceDescriptor = GateKDeviceDescriptor(
+        manufacturer = "",
+        brand = "",
+        model = deviceModel,
+        product = "",
+        fingerprint = "",
+        apiLevel = apiLevel,
+    ),
 ) {
     companion object {
         const val DEFAULT_MAX_OBSERVATION_LATENCY_MS = 3_000L
@@ -31,8 +39,9 @@ class GateKTrialRecorder(
         dedupeOutcome: GateKDedupeOutcome,
         failureReason: String? = null,
     ): GateKTrialRecord {
+        val trialNumber = nextTrialNumber++
         val trial = GateKTrialRecord(
-            trialId = "trial-${nextTrialNumber++}",
+            trialId = "trial-$trialNumber",
             deviceClass = deviceClass,
             apiLevel = apiLevel,
             deviceModel = deviceModel,
@@ -40,7 +49,37 @@ class GateKTrialRecorder(
             latencyMs = latencyMs,
             sessionOutcome = sessionOutcome,
             dedupeOutcome = dedupeOutcome,
-            failureReason = failureReason,
+            attemptId = "trial-$trialNumber",
+            sessionId = "session-$trialNumber",
+            triggerElapsedRealtimeMs = 0L,
+            detectedElapsedRealtimeMs = latencyMs,
+            deviceDescriptor = rawDeviceDescriptor.canonical(),
+            failureReason = GateKFailureReason.fromLegacy(failureReason),
+            origin = GateKTrialOrigin.SYNTHETIC,
+        )
+        trialRecords += trial
+        return trial
+    }
+
+    /** Records a terminal produced by the runtime attempt coordinator. */
+    @Synchronized
+    fun recordTerminal(terminal: GateKAttemptTerminal): GateKTrialRecord {
+        val trial = GateKTrialRecord(
+            trialId = "trial-${nextTrialNumber++}",
+            deviceClass = deviceClass,
+            apiLevel = apiLevel,
+            deviceModel = deviceModel,
+            success = terminal.state == GateKAttemptState.SUCCEEDED,
+            latencyMs = terminal.latencyMs,
+            sessionOutcome = terminal.sessionOutcome,
+            dedupeOutcome = terminal.dedupeOutcome,
+            attemptId = terminal.attemptId.value,
+            sessionId = terminal.sessionId,
+            triggerElapsedRealtimeMs = terminal.triggeredAtElapsedRealtimeMs,
+            detectedElapsedRealtimeMs = terminal.detectedAtElapsedRealtimeMs,
+            deviceDescriptor = rawDeviceDescriptor.canonical(),
+            failureReason = terminal.failureReason,
+            origin = GateKTrialOrigin.RUNTIME,
         )
         trialRecords += trial
         return trial

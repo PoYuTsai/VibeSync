@@ -38,4 +38,36 @@ class GateKObservationPipelineTest {
             pipeline.observe(candidate.copy(observedAtEpochMs = 2_001L)),
         )
     }
+
+    @Test
+    fun `hiding clears dedupe so an equal-millisecond new session can accept again`() {
+        val pipeline = GateKObservationPipeline()
+        val candidate = ScreenshotCandidate(
+            sessionId = "session-1",
+            observedAtEpochMs = 2_001L,
+            source = ScreenshotCandidateSource.MEDIA_STORE_SCREENSHOT,
+            width = 1_080,
+            height = 1_920,
+            content = byteArrayOf(1, 2, 3),
+        )
+
+        assertTrue(
+            pipeline.onImeShown(ImeSessionStart("session-1", 2_000L))
+                is ImeSessionStartResult.Started,
+        )
+        assertTrue(pipeline.observe(candidate) is GateKObservationResult.Accepted)
+        assertTrue(
+            pipeline.onImeHidden(ImeSessionEnd("session-1", 2_000L))
+                is ImeSessionEndResult.Ended,
+        )
+        assertTrue(
+            pipeline.onImeShown(ImeSessionStart("session-2", 2_000L))
+                is ImeSessionStartResult.Started,
+        )
+
+        assertTrue(
+            pipeline.observe(candidate.copy(sessionId = "session-2", observedAtEpochMs = 2_002L))
+                is GateKObservationResult.Accepted,
+        )
+    }
 }
