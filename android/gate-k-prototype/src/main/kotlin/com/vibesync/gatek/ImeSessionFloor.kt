@@ -1,0 +1,93 @@
+package com.vibesync.gatek
+
+/**
+ * Public lifecycle event emitted when the prototype IME becomes visible.
+ *
+ * Epoch milliseconds are supplied by the host so the contract stays
+ * deterministic in tests and does not need a clock dependency.
+ */
+data class ImeSessionStart(
+    val sessionId: String,
+    val imeShownAtEpochMs: Long,
+)
+
+/** Public lifecycle event emitted when the prototype IME is hidden. */
+data class ImeSessionEnd(
+    val sessionId: String,
+    val imeHiddenAtEpochMs: Long,
+)
+
+/** The only session state exposed to candidate observers. */
+data class ImeSessionWindow(
+    val sessionId: String,
+    val floorEpochMs: Long,
+)
+
+sealed interface ImeSessionStartResult {
+    data class Started(val window: ImeSessionWindow) : ImeSessionStartResult
+
+    data object RejectedInvalidEvent : ImeSessionStartResult
+
+    data object RejectedActiveSession : ImeSessionStartResult
+
+    data object RejectedNonMonotonicFloor : ImeSessionStartResult
+}
+
+sealed interface ImeSessionEndResult {
+    data class Ended(val window: ImeSessionWindow) : ImeSessionEndResult
+
+    data object RejectedInvalidEvent : ImeSessionEndResult
+
+    data object RejectedUnknownSession : ImeSessionEndResult
+
+    data object RejectedOutOfOrder : ImeSessionEndResult
+}
+
+/**
+ * Tracks the currently visible IME session and its monotonic observation
+ * floor. The class keeps no screenshot or chat data.
+ */
+class ImeSessionFloor {
+    private var lastFloorEpochMs: Long? = null
+    private var activeWindow: ImeSessionWindow? = null
+
+    val current: ImeSessionWindow?
+        get() = activeWindow
+
+    fun start(event: ImeSessionStart): ImeSessionStartResult {
+        if (event.sessionId.isBlank() || event.imeShownAtEpochMs < 0L) {
+            return ImeSessionStartResult.RejectedInvalidEvent
+        }
+        if (activeWindow != null) {
+            return ImeSessionStartResult.RejectedActiveSession
+        }
+        val previousFloor = lastFloorEpochMs
+        if (previousFloor != null && event.imeShownAtEpochMs < previousFloor) {
+            return ImeSessionStartResult.RejectedNonMonotonicFloor
+        }
+
+        val window = ImeSessionWindow(
+            sessionId = event.sessionId,
+            floorEpochMs = event.imeShownAtEpochMs,
+        )
+        lastFloorEpochMs = event.imeShownAtEpochMs
+        activeWindow = window
+        return ImeSessionStartResult.Started(window)
+    }
+
+    fun end(event: ImeSessionEnd): ImeSessionEndResult {
+        if (event.sessionId.isBlank() || event.imeHiddenAtEpochMs < 0L) {
+            return ImeSessionEndResult.RejectedInvalidEvent
+        }
+        val window = activeWindow ?: return ImeSessionEndResult.RejectedUnknownSession
+        if (event.sessionId != window.sessionId) {
+            return ImeSessionEndResult.RejectedUnknownSession
+        }
+        if (event.imeHiddenAtEpochMs < window.floorEpochMs) {
+            return ImeSessionEndResult.RejectedOutOfOrder
+        }
+
+        activeWindow = null
+        return ImeSessionEndResult.Ended(window)
+    }
+}
