@@ -21,7 +21,6 @@ import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
-import '../../../../shared/widgets/brand/one_shot_comet_border.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/quarterly_savings.dart';
@@ -49,16 +48,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   bool _isPurchasing = false;
   bool _isRefreshingPlans = false;
 
-  // 金色彗星掃邊的播放訊號：只有「使用者主動改選」才 +1（首幀預選與
-  // _scheduleSelectedOptionFallback 的自動遞補都不播）。
-  int _cometTick = 0;
-
   void _selectOption(String id) {
     if (id == _selectedOptionId) return;
-    setState(() {
-      _selectedOptionId = id;
-      _cometTick++;
-    });
+    setState(() => _selectedOptionId = id);
   }
 
   @override
@@ -921,155 +913,150 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     return PressableScale(
       child: GestureDetector(
         onTap: onTap,
-        // 使用者改選到這張卡時，金色彗星沿邊框掃一圈後淡出（一次性、只畫
-        // 邊框 overlay，不碰卡片內容；reduced motion 時整段不出現）。
-        child: OneShotCometBorder(
-          trigger: isSelected ? _cometTick : null,
-          borderRadius: 24,
-          // 選取狀態切換走 240ms 漸變而不是瞬切（邊框、陰影）。
-          child: AnimatedContainer(
-            duration: AppMotion.state,
-            curve: AppMotion.easeOut,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.brandSurface2.withValues(alpha: 0.9),
-                  AppColors.brandSurface.withValues(alpha: 0.96),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: isSelected
-                    ? AppColors.ctaStart.withValues(alpha: 0.9)
-                    : Colors.white.withValues(alpha: 0.1),
-                width: isSelected ? 2.5 : 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: isSelected
-                      ? AppColors.ctaStart.withValues(alpha: 0.45)
-                      : Colors.black.withValues(alpha: 0.22),
-                  blurRadius: isSelected ? 28 : 22,
-                  offset: const Offset(0, 14),
-                ),
+        // 選取回饋只留 240ms 的邊框／陰影漸變（2026-08-27 拍板：拿掉沿著邊框
+        // 掃一圈的流星光暈，選卡不再出現掃動的動態光）。
+        child: AnimatedContainer(
+          duration: AppMotion.state,
+          curve: AppMotion.easeOut,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.brandSurface2.withValues(alpha: 0.9),
+                AppColors.brandSurface.withValues(alpha: 0.96),
               ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Text(
-                            '${option.name} ${option.period}',
-                            style: AppTypography.titleLarge.copyWith(
-                              color: AppColors.onBackgroundPrimary,
-                            ),
-                          ),
-                          _buildBadge(
-                            label: option.badge,
-                            background: isRecommended
-                                ? const LinearGradient(
-                                    colors: [
-                                      AppColors.ctaStart,
-                                      AppColors.ctaEnd,
-                                    ],
-                                  )
-                                : null,
-                            color: isRecommended
-                                ? Colors.white
-                                : AppColors.onBackgroundPrimary,
-                          ),
-                          if (option.discount != null)
-                            _buildBadge(
-                              label: option.discount!,
-                              background: LinearGradient(
-                                colors: [
-                                  AppColors.success.withValues(alpha: 0.88),
-                                  AppColors.success.withValues(alpha: 0.72),
-                                ],
-                              ),
-                              color: Colors.white,
-                            ),
-                          if (isCurrentPlan)
-                            _buildBadge(
-                              label: '目前',
-                              background: LinearGradient(
-                                colors: [
-                                  AppColors.success.withValues(alpha: 0.88),
-                                  AppColors.success.withValues(alpha: 0.72),
-                                ],
-                              ),
-                              color: Colors.white,
-                            ),
-                        ],
-                      ),
-                    ),
-                    Radio<String>(
-                      value: option.id,
-                      groupValue: _selectedOptionId,
-                      onChanged: (value) {
-                        if (value == null) return;
-                        _selectOption(value);
-                      },
-                      activeColor: AppColors.ctaStart,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  priceLabel,
-                  style: AppTypography.headlineMedium.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  option.isReady ? billingCycle : '請重新載入 App Store 價格',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ...option.highlights.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isSelected
+                  ? AppColors.ctaStart.withValues(alpha: 0.9)
+                  : Colors.white.withValues(alpha: 0.1),
+              width: isSelected ? 2.5 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isSelected
+                    ? AppColors.ctaStart.withValues(alpha: 0.45)
+                    : Colors.black.withValues(alpha: 0.22),
+                blurRadius: isSelected ? 28 : 22,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        const Padding(
-                          padding: EdgeInsets.only(top: 2),
-                          child: Icon(
-                            Icons.check_circle,
-                            size: 14,
-                            color: AppColors.success,
+                        Text(
+                          '${option.name} ${option.period}',
+                          style: AppTypography.titleLarge.copyWith(
+                            color: AppColors.onBackgroundPrimary,
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            item,
-                            style: AppTypography.bodyMedium.copyWith(
-                              color: AppColors.onBackgroundPrimary,
+                        _buildBadge(
+                          label: option.badge,
+                          background: isRecommended
+                              ? const LinearGradient(
+                                  colors: [
+                                    AppColors.ctaStart,
+                                    AppColors.ctaEnd,
+                                  ],
+                                )
+                              : null,
+                          color: isRecommended
+                              ? Colors.white
+                              : AppColors.onBackgroundPrimary,
+                        ),
+                        if (option.discount != null)
+                          _buildBadge(
+                            label: option.discount!,
+                            background: LinearGradient(
+                              colors: [
+                                AppColors.success.withValues(alpha: 0.88),
+                                AppColors.success.withValues(alpha: 0.72),
+                              ],
                             ),
+                            color: Colors.white,
                           ),
-                        ),
+                        if (isCurrentPlan)
+                          _buildBadge(
+                            label: '目前',
+                            background: LinearGradient(
+                              colors: [
+                                AppColors.success.withValues(alpha: 0.88),
+                                AppColors.success.withValues(alpha: 0.72),
+                              ],
+                            ),
+                            color: Colors.white,
+                          ),
                       ],
                     ),
                   ),
+                  Radio<String>(
+                    value: option.id,
+                    groupValue: _selectedOptionId,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      _selectOption(value);
+                    },
+                    activeColor: AppColors.ctaStart,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                priceLabel,
+                style: AppTypography.headlineMedium.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w800,
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                option.isReady ? billingCycle : '請重新載入 App Store 價格',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...option.highlights.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Icon(
+                          Icons.check_circle,
+                          size: 14,
+                          color: AppColors.success,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          item,
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.onBackgroundPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
