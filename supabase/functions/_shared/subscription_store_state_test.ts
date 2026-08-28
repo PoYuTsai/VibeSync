@@ -386,6 +386,25 @@ Deno.test("snapshot without store fails closed", () => {
   assertEquals(buildRevenueCatStoreEvents(subscriber, { now: at }), []);
 });
 
+Deno.test("ordinary empty or incomplete snapshots never synthesize an absence", () => {
+  assertEquals(
+    buildRevenueCatStoreEvents({ subscriptions: {} }, { now: at }),
+    [],
+  );
+  assertEquals(
+    buildRevenueCatStoreEvents({
+      subscriptions: {
+        "vibesync_starter_monthly": {
+          store: "PLAY_STORE",
+          expires_date: "2026-10-23T12:00:00.000Z",
+          // Missing product provenance and an authoritative event time.
+        },
+      },
+    }, { now: at }),
+    [],
+  );
+});
+
 Deno.test("snapshot without an authoritative timestamp is skipped", () => {
   const events = buildRevenueCatStoreEvents({
     subscriptions: {

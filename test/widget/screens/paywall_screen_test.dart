@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_product_contract.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_source_policy.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 import 'package:vibesync/features/subscription/presentation/subscription_diagnostics_gate.dart';
@@ -637,6 +638,47 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       await tester.pump(const Duration(seconds: 1));
     }
+
+    testWidgets(
+        'verified Google Play source appears in the headline and blocks App Store purchase',
+        (tester) async {
+      final now = DateTime.now().toUtc();
+      final source = SubscriptionSourceState(
+        store: 'play_store',
+        productId: 'vibesync_starter',
+        basePlanId: 'monthly',
+        tier: SubscriptionTierHelper.starter,
+        status: 'active',
+        expiresAt: now.add(const Duration(days: 30)),
+        eventAt: now.subtract(const Duration(days: 1)),
+        eventId: 'play-source-widget',
+        verificationSource: 'revenuecat_webhook',
+        verificationStatus: 'verified',
+        revenueCatEnvironment: 'sandbox',
+      );
+
+      await pumpPaywallWithStub(
+        tester,
+        seededState: SubscriptionState(
+          tier: SubscriptionTierHelper.starter,
+          sourceStates: [source],
+          sourceStateAuthoritative: true,
+        ),
+      );
+
+      expect(find.text('權益已啟用：Starter'), findsOneWidget);
+      expect(find.text('訂閱來源：Google Play：Starter'), findsOneWidget);
+      expect(
+        find.textContaining('你已有 Google Play 訂閱，請前往原購買商店管理。'),
+        findsAtLeastNWidgets(1),
+      );
+      expect(find.text('先管理原商店'), findsOneWidget);
+      final manageButton = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, '先管理原商店'),
+      );
+      expect(manageButton.onPressed, isNotNull);
+      expect(find.textContaining('新訂閱會在'), findsNothing);
+    });
 
     testWidgets('restore hang times out and dismisses the spinner',
         (tester) async {

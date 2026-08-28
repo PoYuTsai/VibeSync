@@ -11,6 +11,40 @@ export type WebhookStoreEventResult =
   | { readonly kind: "ignored"; readonly reason: "product_change_downgrade" }
   | { readonly kind: "invalid"; readonly reason: string };
 
+export type RevenueCatExpirationReason =
+  | "UNSUBSCRIBE"
+  | "BILLING_ERROR"
+  | "DEVELOPER_INITIATED"
+  | "PRICE_INCREASE"
+  | "CUSTOMER_SUPPORT"
+  | "UNKNOWN"
+  | "SUBSCRIPTION_PAUSED";
+
+const EXPIRATION_REASONS: ReadonlySet<RevenueCatExpirationReason> = new Set([
+  "UNSUBSCRIBE",
+  "BILLING_ERROR",
+  "DEVELOPER_INITIATED",
+  "PRICE_INCREASE",
+  "CUSTOMER_SUPPORT",
+  "UNKNOWN",
+  "SUBSCRIPTION_PAUSED",
+]);
+
+/**
+ * Normalizes a RevenueCat terminal reason for logging/idempotency metadata.
+ * The state row intentionally stores only the terminal EXPIRATION signal; no
+ * schema field is introduced for this forward-compatible reason string.
+ */
+export function normalizeRevenueCatExpirationReason(
+  value: unknown,
+): RevenueCatExpirationReason {
+  if (typeof value !== "string") return "UNKNOWN";
+  const normalized = value.trim().toUpperCase();
+  return EXPIRATION_REASONS.has(normalized as RevenueCatExpirationReason)
+    ? normalized as RevenueCatExpirationReason
+    : "UNKNOWN";
+}
+
 function text(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -46,7 +80,7 @@ function supportedType(type: string): boolean {
     type === "UNCANCELLATION" || type === "SUBSCRIPTION_EXTENDED" ||
     type === "PRODUCT_CHANGE" || type === "EXPIRATION" ||
     type === "BILLING_ISSUE" || type === "CANCELLATION" ||
-    type === "TRANSFER";
+    type === "TRANSFER" || type === "SUBSCRIPTION_PAUSED";
 }
 
 /**
@@ -80,6 +114,10 @@ export function buildRevenueCatWebhookStoreEvent(
     ? newProductId
     : text(event.product_id);
   if (productId == null) return { kind: "invalid", reason: "missing_product" };
+
+  const normalizedExpirationReason = type === "EXPIRATION"
+    ? normalizeRevenueCatExpirationReason(event.expiration_reason)
+    : null;
 
   const derivedTier = getTierFromProductId(productId);
   if (derivedTier == null) {
@@ -126,8 +164,35 @@ export function buildRevenueCatWebhookStoreEvent(
   );
   if (eventAt == null) return { kind: "invalid", reason: "missing_event_at" };
 
-  const expiresAt = dateFrom(event.expiration_at_ms) ??
+  const expirationAt = dateFrom(event.expiration_at_ms) ??
     dateFrom(event.expiration_at) ?? null;
+  const gracePeriodKey = type === "BILLING_ISSUE"
+    ? Object.hasOwn(event, "grace_period_expiration_at_ms")
+      ? "grace_period_expiration_at_ms"
+      : Object.hasOwn(event, "grace_period_expiration_at")
+      ? "grace_period_expiration_at"
+      : null
+    : null;
+  const gracePeriodRaw = gracePeriodKey == null ? null : event[gracePeriodKey];
+  const gracePeriodExpirationAt = gracePeriodRaw == null
+    ? null
+    : dateFrom(gracePeriodRaw);
+  if (
+    gracePeriodKey != null && gracePeriodRaw != null &&
+    gracePeriodExpirationAt == null
+  ) {
+    return { kind: "invalid", reason: "invalid_grace_period_expiration" };
+  }
+  const expiresAt = gracePeriodExpirationAt ?? expirationAt;
+  if (
+    (type === "BILLING_ISSUE" || type === "SUBSCRIPTION_PAUSED") &&
+    expiresAt == null
+  ) {
+    return {
+      kind: "invalid",
+      reason: "missing_authoritative_expiration",
+    };
+  }
   const explicitEventId = text(event.id);
   const eventId = explicitEventId ?? [
     text(event.transaction_id) ?? `${store}:${productId}`,
@@ -136,6 +201,7 @@ export function buildRevenueCatWebhookStoreEvent(
     status,
     eventAt.toISOString(),
     expiresAt?.toISOString() ?? "none",
+    normalizedExpirationReason ?? "none",
   ].join(":");
 
   return {

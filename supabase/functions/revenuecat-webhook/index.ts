@@ -387,7 +387,8 @@ Deno.serve(withOperationalErrorMonitoring("revenuecat-webhook", async (req) => {
       case "PRODUCT_CHANGE":
       case "EXPIRATION":
       case "BILLING_ISSUE":
-      case "CANCELLATION": {
+      case "CANCELLATION":
+      case "SUBSCRIPTION_PAUSED": {
         const built = buildRevenueCatWebhookStoreEvent(type, event);
         if (built.kind === "ignored") {
           console.log(`Ignored ${type}: ${built.reason}`);

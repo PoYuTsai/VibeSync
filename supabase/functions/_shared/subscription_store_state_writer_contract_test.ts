@@ -115,6 +115,18 @@ Deno.test("webhook requires authoritative event time before state persistence", 
   );
 });
 
+Deno.test("webhook routes subscription pause through the per-store state writer", async () => {
+  const source = await readWriter("../revenuecat-webhook/index.ts");
+  assert(
+    source.includes('case "SUBSCRIPTION_PAUSED":'),
+    "subscription pause must use the same per-store persistence path",
+  );
+  assert(
+    source.includes('type === "EXPIRATION"'),
+    "terminal expiration handling must remain explicit",
+  );
+});
+
 Deno.test("webhook state decisions cannot consult a cross-store legacy tier or expiry", async () => {
   const source = await readWriter("../revenuecat-webhook/index.ts");
   assert(

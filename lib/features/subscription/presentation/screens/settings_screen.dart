@@ -30,6 +30,7 @@ import '../../../learning/data/providers/ebook_providers.dart';
 import '../../../learning/presentation/widgets/ebook_access_gate.dart';
 import '../../../practice_chat/data/providers/practice_chat_providers.dart';
 import '../../data/providers/subscription_providers.dart';
+import '../../domain/services/subscription_source_policy.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 import '../subscription_diagnostics_gate.dart';
 
@@ -54,7 +55,6 @@ String formatSettingsRenewalDate(DateTime? dateTime, {DateTime? now}) {
 @visibleForTesting
 String subscriptionManagementStoreLabel({
   required String? authoritativeStore,
-  required bool isAndroid,
 }) {
   switch (authoritativeStore) {
     case 'play_store':
@@ -62,7 +62,7 @@ String subscriptionManagementStoreLabel({
     case 'app_store':
       return 'App Store';
     default:
-      return isAndroid ? 'Google Play' : 'App Store';
+      return '未知商店';
   }
 }
 
@@ -464,6 +464,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildUsageSummaryCard(SubscriptionState subscription) {
+    final sourceDetails = sourceAwareSourceDetails(subscription.sourceStates);
     return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -477,11 +478,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '目前方案：${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
+            sourceDetails.isNotEmpty
+                ? subscription.entitlementHeadline
+                : '目前方案：${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
             ),
           ),
+          if (sourceDetails.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              '訂閱來源：${sourceDetails.join('、')}',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Row(
             children: [
@@ -957,6 +969,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     WidgetRef ref,
   ) async {
     final controller = TextEditingController();
+    final deletionCopy = sourceAwareAccountDeletionCopy(
+      ref.read(subscriptionProvider).sourceStates,
+    );
     final confirmation = await showDialog<String>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -971,7 +986,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '這會刪除你的帳號與本機資料。如果你仍有 App Store 訂閱，請另外到 Apple 訂閱管理中取消自動續訂。',
+                deletionCopy,
                 style: TextStyle(
                   color: AppColors.onBackgroundPrimary,
                   height: 1.5,
@@ -1263,10 +1278,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _openManageSubscriptions() async {
     final subscription = ref.read(subscriptionProvider);
-    final expectedStore = subscription.activeStore;
+    final activeSources = subscription.activeSourceStates;
+    if (activeSources.length > 1) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              '目前同時有 App Store 與 Google Play 訂閱，請分別到原商店管理；這裡不會代為取消。',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    // Only a currently effective verified source may select the management
+    // destination. A legacy aggregate store would be an unsafe guess.
+    final expectedStore =
+        activeSources.length == 1 ? activeSources.single.store : null;
     final storeName = subscriptionManagementStoreLabel(
       authoritativeStore: expectedStore,
-      isAndroid: isAndroidPlatform,
     );
     final openedNative = await RevenueCatService.showNativeManageSubscriptions(
       expectedStore: expectedStore,
@@ -1302,9 +1332,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (_isRefreshingPendingDowngrade) return;
 
     final subscription = ref.read(subscriptionProvider);
+    final activeSources = subscription.activeSourceStates;
     final storeName = subscriptionManagementStoreLabel(
-      authoritativeStore: subscription.activeStore,
-      isAndroid: isAndroidPlatform,
+      authoritativeStore:
+          activeSources.length == 1 ? activeSources.single.store : null,
     );
     setState(() => _isRefreshingPendingDowngrade = true);
     try {

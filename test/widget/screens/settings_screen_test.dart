@@ -13,6 +13,8 @@ import 'package:vibesync/features/practice_chat/data/repositories/practice_sessi
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_source_policy.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/screens/settings_screen.dart';
 import 'package:vibesync/features/subscription/presentation/subscription_diagnostics_gate.dart';
 
@@ -313,32 +315,68 @@ void main() {
   });
 
   group('subscriptionManagementStoreLabel', () {
-    test('uses authoritative store and platform fallback', () {
+    test('uses only the authoritative store and never guesses from platform',
+        () {
       expect(
         subscriptionManagementStoreLabel(
           authoritativeStore: 'play_store',
-          isAndroid: false,
         ),
         'Google Play',
       );
       expect(
         subscriptionManagementStoreLabel(
           authoritativeStore: 'app_store',
-          isAndroid: true,
         ),
         'App Store',
       );
       expect(
         subscriptionManagementStoreLabel(
           authoritativeStore: null,
-          isAndroid: true,
         ),
-        'Google Play',
+        '未知商店',
       );
     });
   });
 
   group('SettingsScreen', () {
+    testWidgets(
+        'verified source projection appears in the authoritative headline and details',
+        (tester) async {
+      final now = DateTime.now().toUtc();
+      final stub = _StubSubscriptionNotifier();
+      await pumpSettings(
+        tester,
+        extraOverrides: [
+          subscriptionProvider.overrideWith((ref) => stub),
+        ],
+      );
+      stub.seedState(
+        SubscriptionState(
+          tier: SubscriptionTierHelper.essential,
+          sourceStates: [
+            SubscriptionSourceState(
+              store: 'app_store',
+              productId: 'essential_monthly',
+              basePlanId: null,
+              tier: SubscriptionTierHelper.essential,
+              status: 'active',
+              expiresAt: now.add(const Duration(days: 30)),
+              eventAt: now.subtract(const Duration(days: 1)),
+              eventId: 'app-source-settings-widget',
+              verificationSource: 'revenuecat_webhook',
+              verificationStatus: 'verified',
+              revenueCatEnvironment: 'sandbox',
+            ),
+          ],
+          sourceStateAuthoritative: true,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('權益已啟用：Essential'), findsOneWidget);
+      expect(find.text('訂閱來源：App Store：Essential'), findsOneWidget);
+    });
+
     testWidgets('refreshes subscription usage snapshot on entry',
         (tester) async {
       var refreshCalls = 0;
@@ -575,7 +613,9 @@ void main() {
       await tester.pump();
 
       expect(find.text('刪除帳號'), findsNWidgets(2));
-      expect(find.textContaining('Apple 訂閱管理'), findsOneWidget);
+      expect(find.textContaining('Apple 訂閱管理'), findsNothing);
+      expect(find.textContaining('Google Play'), findsNothing);
+      expect(find.textContaining('刪除帳號會永久刪除'), findsOneWidget);
       expect(find.text('輸入 DELETE 以確認'), findsOneWidget);
       expect(find.text('取消'), findsOneWidget);
       expect(find.text('刪除'), findsOneWidget);

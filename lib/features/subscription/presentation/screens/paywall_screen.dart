@@ -27,6 +27,7 @@ import '../../../../shared/widgets/pressable_scale.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/subscription_product_contract.dart';
 import '../../domain/services/quarterly_savings.dart';
+import '../../domain/services/subscription_source_policy.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 import '../subscription_diagnostics_gate.dart';
 import '../../../../core/services/app_haptics.dart';
@@ -329,6 +330,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final canManagePendingDowngrade = hasPendingDowngrade && isCurrentPlan;
     final androidReplacement =
         _androidReplacementDecision(subscription, selected);
+    final sourceEligibility = _sourceAwarePurchaseEligibility(
+      subscription,
+      selected,
+    );
+    final sourcePurchaseBlocked =
+        sourceEligibility != null && !sourceEligibility.canPurchase;
     final storeName = isAndroidPlatform ? 'Google Play' : 'Apple';
 
     VoidCallback? primaryAction;
@@ -342,6 +349,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         pendingDowngradeMatchesSelection ||
         selected == null) {
       primaryAction = null;
+    } else if (sourcePurchaseBlocked) {
+      // The guard still prevents a second purchase, while the CTA provides
+      // the safe path to the verified original store's management screen.
+      primaryAction = _openManageSubscriptions;
     } else if (shouldShowAndroidReplacementBlockedState(
       isAndroid: isAndroidPlatform,
       replacementDecision: androidReplacement,
@@ -384,7 +395,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '升級會立即生效，$storeName 會依方案規則計算本期費用。降級則會在下次續訂時生效，今天不會再次扣款。',
+                  sourcePurchaseBlocked
+                      ? sourceEligibility.message
+                      : '升級會立即生效，$storeName 會依方案規則計算本期費用。降級則會在下次續訂時生效，今天不會再次扣款。',
                   style: AppTypography.bodyLarge.copyWith(
                     color: AppColors.onBackgroundSecondary,
                   ),
@@ -446,6 +459,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     option: selected,
                     isDowngrade: isDowngrade,
                     isCurrentPlan: isCurrentPlan,
+                    sourceEligibility: sourceEligibility,
                   ),
                 ],
                 const SizedBox(height: 16),
@@ -459,6 +473,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     pendingDowngradeMatchesSelection,
                     selectedProduct,
                     androidReplacement,
+                    sourceEligibility,
                   ),
                   onPressed: primaryAction,
                   isLoading: _isPurchasing || _isRefreshingPlans,
@@ -473,6 +488,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     canManagePendingDowngrade,
                     pendingDowngradeMatchesSelection,
                     androidReplacement,
+                    sourceEligibility,
                   ),
                   style: AppTypography.caption.copyWith(
                     color: AppColors.onBackgroundSecondary,
@@ -560,9 +576,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     bool pendingDowngradeMatchesSelection,
     StoreProduct? selectedProduct,
     AndroidSubscriptionReplacementDecision? androidReplacement,
+    SourceAwarePurchaseEligibility? sourceEligibility,
   ) {
     if (_isPurchasing) return '處理中…';
     if (_isRefreshingPlans) return '重新整理中…';
+    if (sourceEligibility != null && !sourceEligibility.canPurchase) {
+      return '先管理原商店';
+    }
     if (shouldShowAndroidReplacementBlockedState(
       isAndroid: isAndroidPlatform,
       replacementDecision: androidReplacement,
@@ -602,6 +622,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     bool canManagePendingDowngrade,
     bool pendingDowngradeMatchesSelection,
     AndroidSubscriptionReplacementDecision? androidReplacement,
+    SourceAwarePurchaseEligibility? sourceEligibility,
   ) {
     if (canManagePendingDowngrade) {
       return '${_tierLabel(subscription.pendingDowngradeToTier)} 的降級已排程於 '
@@ -612,6 +633,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return '這個降級已經排程，將於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效，今天不會再次扣款。';
     }
     if (isCurrentPlan) return '這是你目前正在使用的方案。';
+    if (sourceEligibility != null && !sourceEligibility.canPurchase) {
+      return sourceEligibility.message;
+    }
     if (shouldShowAndroidReplacementBlockedState(
       isAndroid: isAndroidPlatform,
       replacementDecision: androidReplacement,
@@ -631,12 +655,23 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           replacementDecision: androidReplacement,
         );
       }
-      return '同方案更改月繳 / 季繳會由 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 確認，實際生效時間與費用以商店畫面為準。';
+      return '同方案更改月繳 / 季繳會由 ${_managementStoreLabel(subscription)} 確認，實際生效時間與費用以商店畫面為準。';
     }
     if (isDowngrade) {
       return '降級會在下次續訂時生效；在那之前你仍可使用目前額度，今天不會再次扣款。';
     }
     return '升級會立即生效並立刻刷新額度，${isAndroidPlatform ? 'Google Play' : 'Apple'} 會依規則計算本期費用。';
+  }
+
+  String _managementStoreLabel(SubscriptionState subscription) {
+    return sourceAwareManagementStoreLabel(
+      sources: subscription.sourceStates,
+      // A legacy aggregate store is not enough to identify the payer when
+      // the verified per-store projection is still pending.
+      fallbackStore: subscription.sourceStateAuthoritative
+          ? subscription.activeStore
+          : null,
+    );
   }
 
   AndroidSubscriptionReplacementDecision? _androidReplacementDecision(
@@ -660,6 +695,22 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     );
   }
 
+  SourceAwarePurchaseEligibility? _sourceAwarePurchaseEligibility(
+    SubscriptionState subscription,
+    _PaywallOption? selected,
+  ) {
+    if (selected == null) return null;
+    final plan = SubscriptionPlanDefinition.fromPackageId(selected.id);
+    if (plan == null) return null;
+    return resolveSourceAwarePurchaseEligibility(
+      targetStore: isAndroidPlatform ? 'play_store' : 'app_store',
+      targetPlan: plan,
+      sources: subscription.sourceStates,
+      sourceStateAuthoritative: subscription.sourceStateAuthoritative,
+      hasActivePaidState: subscription.hasActivePaidState,
+    );
+  }
+
   /// S9/B9：頁面區塊分隔線——卡片堆疊改分層後，區塊邊界用 hairline 表達。
   Widget _buildSectionDivider() {
     return Container(
@@ -672,14 +723,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     required _PaywallOption option,
     required bool isDowngrade,
     required bool isCurrentPlan,
+    SourceAwarePurchaseEligibility? sourceEligibility,
   }) {
     final price = option.priceString ??
         '正在向 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 取得價格';
     final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每月自動續訂';
     final title = isCurrentPlan ? '目前方案' : '本次扣款金額';
-    final note = isDowngrade
-        ? '降級會在下次續訂時生效；今天不會再次扣款。'
-        : '付款會由 ${isAndroidPlatform ? 'Google Play 商店帳號' : 'Apple ID'} 扣款，除非在到期前取消，否則會自動續訂。';
+    final note = sourceEligibility != null && !sourceEligibility.canPurchase
+        ? sourceEligibility.message
+        : isDowngrade
+            ? '降級會在下次續訂時生效；今天不會再次扣款。'
+            : '付款會由 ${isAndroidPlatform ? 'Google Play 商店帳號' : 'Apple ID'} 扣款，除非在到期前取消，否則會自動續訂。';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -866,6 +920,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   /// S9/B9：原本是 BrandSurfaceCard，卡片堆疊改分層——區塊靠字級與
   /// 分隔線分層，額度數字保留 pill 容器（資訊元件，非頁面結構卡）。
   Widget _buildQuotaSummarySection(SubscriptionState subscription) {
+    final sourceDetails = sourceAwareSourceDetails(subscription.sourceStates);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
@@ -879,11 +934,22 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '目前方案：${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
+            sourceDetails.isNotEmpty
+                ? subscription.entitlementHeadline
+                : '目前方案：${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
             ),
           ),
+          if (sourceDetails.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              '訂閱來源：${sourceDetails.join('、')}',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
           if (subscription.renewsAt != null) ...[
             const SizedBox(height: 4),
             Text(
@@ -1256,6 +1322,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
 
     final subscription = ref.read(subscriptionProvider);
+    final sourceEligibility = _sourceAwarePurchaseEligibility(
+      subscription,
+      option,
+    );
+    if (sourceEligibility != null && !sourceEligibility.canPurchase) {
+      _showSnackBar(sourceEligibility.message);
+      return;
+    }
     final replacementDecision =
         _androidReplacementDecision(subscription, option);
     if (!canStartSubscriptionPurchase(
@@ -1570,8 +1644,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           backgroundColor: AppColors.success,
         );
       } else {
+        final subscription = ref.read(subscriptionProvider);
         _showSnackBar(
-          '${isAndroidPlatform ? 'Google Play' : 'App Store'} 仍顯示降級排程，請確認取消後稍後再試。',
+          '${_managementStoreLabel(subscription)} 仍顯示降級排程，請確認取消後稍後再試。',
         );
       }
     } on TimeoutException catch (error) {
@@ -1596,7 +1671,19 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   Future<void> _openManageSubscriptions() async {
     final subscription = ref.read(subscriptionProvider);
-    final expectedStore = subscription.activeStore;
+    final activeSources = subscription.activeSourceStates;
+    if (activeSources.length > 1) {
+      if (mounted) {
+        _showSnackBar(
+          '目前同時有 App Store 與 Google Play 訂閱，請分別到原商店管理；這裡不會代為取消。',
+        );
+      }
+      return;
+    }
+    // Only a currently effective verified source may select the management
+    // destination. A legacy aggregate store would be an unsafe guess.
+    final expectedStore =
+        activeSources.length == 1 ? activeSources.single.store : null;
     final openedNative = await RevenueCatService.showNativeManageSubscriptions(
       expectedStore: expectedStore,
     );
@@ -1615,9 +1702,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
     final launched = await LinkLaunchService.open(managementUrl);
     if (!launched && mounted) {
-      _showSnackBar(
-        '目前無法開啟 ${isAndroidPlatform ? 'Google Play' : 'App Store'} 訂閱管理。',
-      );
+      _showSnackBar('目前無法開啟 ${subscriptionStoreLabel(expectedStore)} 訂閱管理。');
     }
   }
 

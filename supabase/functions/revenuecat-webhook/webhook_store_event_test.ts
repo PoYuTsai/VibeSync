@@ -2,7 +2,14 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { buildRevenueCatWebhookStoreEvent } from "./webhook_store_event.ts";
+import {
+  buildRevenueCatWebhookStoreEvent,
+  normalizeRevenueCatExpirationReason,
+} from "./webhook_store_event.ts";
+import {
+  reduceStoreSubscriptionEvent,
+  resolveEffectiveEntitlementAt,
+} from "../_shared/subscription_store_state.ts";
 
 const baseEvent = {
   id: "rc-event-1",
@@ -27,6 +34,146 @@ Deno.test("webhook event builder keeps event store and billing status isolated",
   assertEquals(result.event.status, "billing_issue");
   assertEquals(result.event.eventAt, "2026-08-23T12:05:00.000Z");
   assertEquals(result.event.eventId, "rc-event-1");
+});
+
+Deno.test("SUBSCRIPTION_PAUSED preserves access until the authoritative expiry", () => {
+  const result = buildRevenueCatWebhookStoreEvent("SUBSCRIPTION_PAUSED", {
+    ...baseEvent,
+    product_id: "vibesync_starter:monthly",
+    expiration_at_ms: Date.parse("2026-09-23T12:00:00.000Z"),
+    auto_resume_at_ms: Date.parse("2026-10-23T12:00:00.000Z"),
+  });
+
+  assertEquals(result.kind, "event");
+  if (result.kind !== "event") throw new Error("expected event");
+  assertEquals(result.event.store, "play_store");
+  assertEquals(result.event.productId, "vibesync_starter:monthly");
+  assertEquals(result.event.basePlanId, "monthly");
+  assertEquals(result.event.status, "active");
+  assertEquals(result.event.expiresAt, new Date("2026-09-23T12:00:00.000Z"));
+});
+
+Deno.test("BILLING_ISSUE keeps access through the authoritative grace deadline", () => {
+  const result = buildRevenueCatWebhookStoreEvent("BILLING_ISSUE", {
+    ...baseEvent,
+    billing_issues_detected_at_ms: Date.parse("2026-08-23T12:05:00.000Z"),
+    grace_period_expiration_at_ms: Date.parse("2026-09-30T12:00:00.000Z"),
+  });
+
+  assertEquals(result.kind, "event");
+  if (result.kind !== "event") throw new Error("expected event");
+  assertEquals(result.event.status, "billing_issue");
+  assertEquals(result.event.eventAt, "2026-08-23T12:05:00.000Z");
+  assertEquals(result.event.expiresAt, new Date("2026-09-30T12:00:00.000Z"));
+});
+
+Deno.test("BILLING_ISSUE fails closed for a malformed grace deadline", () => {
+  assertEquals(
+    buildRevenueCatWebhookStoreEvent("BILLING_ISSUE", {
+      ...baseEvent,
+      grace_period_expiration_at_ms: "not-a-timestamp",
+    }),
+    { kind: "invalid", reason: "invalid_grace_period_expiration" },
+  );
+});
+
+Deno.test("billing issue and pause fail closed without an authoritative expiry", () => {
+  assertEquals(
+    buildRevenueCatWebhookStoreEvent("BILLING_ISSUE", {
+      ...baseEvent,
+      expiration_at_ms: null,
+    }),
+    { kind: "invalid", reason: "missing_authoritative_expiration" },
+  );
+  assertEquals(
+    buildRevenueCatWebhookStoreEvent("SUBSCRIPTION_PAUSED", {
+      ...baseEvent,
+      expiration_at_ms: null,
+    }),
+    { kind: "invalid", reason: "missing_authoritative_expiration" },
+  );
+});
+
+Deno.test("EXPIRATION keeps terminal authority and normalizes unknown reasons", () => {
+  assertEquals(
+    normalizeRevenueCatExpirationReason("not_a_future_reason"),
+    "UNKNOWN",
+  );
+  assertEquals(
+    normalizeRevenueCatExpirationReason(" subscription_paused "),
+    "SUBSCRIPTION_PAUSED",
+  );
+
+  for (
+    const reason of [
+      "UNSUBSCRIBE",
+      "BILLING_ERROR",
+      "DEVELOPER_INITIATED",
+      "PRICE_INCREASE",
+      "CUSTOMER_SUPPORT",
+      "UNKNOWN",
+      "SUBSCRIPTION_PAUSED",
+    ]
+  ) {
+    const result = buildRevenueCatWebhookStoreEvent("EXPIRATION", {
+      ...baseEvent,
+      expiration_reason: reason,
+      event_timestamp_ms: Date.parse("2026-09-23T12:00:00.000Z"),
+    });
+    assertEquals(result.kind, "event");
+    if (result.kind !== "event") throw new Error("expected event");
+    assertEquals(result.event.status, "expired");
+    assertEquals(result.event.tier, "free");
+  }
+
+  const unknown = buildRevenueCatWebhookStoreEvent("EXPIRATION", {
+    ...baseEvent,
+    expiration_reason: "NOT_A_REAL_REASON",
+  });
+  assertEquals(unknown.kind, "event");
+  if (unknown.kind !== "event") throw new Error("expected event");
+  assertEquals(unknown.event.status, "expired");
+  assertEquals(unknown.event.tier, "free");
+});
+
+Deno.test("refund and revocation expiration fixtures cannot retain access", () => {
+  const fixtures = [
+    // RevenueCat can report a customer-support refund through terminal expiry.
+    {
+      expiration_reason: "CUSTOMER_SUPPORT",
+      refunded_at_ms: Date.parse("2026-08-23T11:59:00.000Z"),
+    },
+    // Developer-initiated revocation is also terminal even if the reason set
+    // grows later; EXPIRATION remains the authoritative signal.
+    {
+      expiration_reason: "DEVELOPER_INITIATED",
+      revoked_at_ms: Date.parse("2026-08-23T11:59:00.000Z"),
+    },
+  ];
+
+  for (const fixture of fixtures) {
+    const result = buildRevenueCatWebhookStoreEvent("EXPIRATION", {
+      ...baseEvent,
+      ...fixture,
+      expiration_at_ms: Date.parse("2026-08-23T12:00:00.000Z"),
+      event_timestamp_ms: Date.parse("2026-08-23T12:00:00.000Z"),
+    });
+    assertEquals(result.kind, "event");
+    if (result.kind !== "event") throw new Error("expected event");
+    assertEquals(result.event.status, "expired");
+    assertEquals(result.event.tier, "free");
+
+    const reduced = reduceStoreSubscriptionEvent(null, result.event);
+    assertEquals(reduced.kind, "accepted");
+    if (reduced.kind !== "accepted") throw new Error("expected state");
+    assertEquals(
+      resolveEffectiveEntitlementAt(
+        [reduced.state],
+        new Date("2026-08-28T12:00:00.000Z"),
+      ),
+      null,
+    );
+  }
 });
 
 Deno.test("PRODUCT_CHANGE derives tier from new product, never aggregate current tier", () => {

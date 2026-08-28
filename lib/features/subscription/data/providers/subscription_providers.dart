@@ -14,6 +14,7 @@ import '../../../../core/services/usage_service.dart';
 import '../../../../core/utils/platform_info.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 import '../../domain/services/subscription_product_contract.dart';
+import '../../domain/services/subscription_source_policy.dart';
 
 const _subscriptionStateUnset = Object();
 
@@ -402,6 +403,7 @@ class SubscriptionState {
   final String? activeVerificationSource;
   final String? activeRevenueCatEnvironment;
   final List<String> sourceStores;
+  final List<SubscriptionSourceState> sourceStates;
   final bool sourceStateAuthoritative;
 
   const SubscriptionState({
@@ -423,6 +425,7 @@ class SubscriptionState {
     this.activeVerificationSource,
     this.activeRevenueCatEnvironment,
     this.sourceStores = const [],
+    this.sourceStates = const [],
     this.sourceStateAuthoritative = false,
   });
 
@@ -431,6 +434,23 @@ class SubscriptionState {
   bool get isEssential => tier == SubscriptionTierHelper.essential;
   bool get isPremium => isStarter || isEssential;
 
+  SourceAwareSubscriptionProjection get sourceProjection =>
+      SourceAwareSubscriptionProjection(
+        sources: sourceStates,
+        authoritative: sourceStateAuthoritative,
+      );
+
+  List<SubscriptionSourceState> get activeSourceStates =>
+      sourceProjection.activeAt();
+
+  bool get hasMultipleActiveSources =>
+      sourceProjection.hasMultipleActiveSources();
+
+  String get entitlementHeadline => sourceAwareEntitlementHeadline(
+        tier: tier,
+        sources: sourceStates,
+      );
+
   /// Whether an Android purchase must be treated as a replacement attempt.
   ///
   /// Keep source metadata in this check: a paid entitlement can temporarily
@@ -438,6 +458,9 @@ class SubscriptionState {
   /// present. In that case starting a second subscription is not safe.
   bool get hasActivePaidState =>
       !isFreeUser ||
+      activeSourceStates.any(
+        (source) => source.tier != SubscriptionTierHelper.free,
+      ) ||
       activeStore != null ||
       activeProductId != null ||
       activeBasePlanId != null;
@@ -507,6 +530,7 @@ class SubscriptionState {
     Object? activeVerificationSource = _subscriptionStateUnset,
     Object? activeRevenueCatEnvironment = _subscriptionStateUnset,
     Object? sourceStores = _subscriptionStateUnset,
+    Object? sourceStates = _subscriptionStateUnset,
     bool? sourceStateAuthoritative,
   }) {
     return SubscriptionState(
@@ -552,6 +576,9 @@ class SubscriptionState {
       sourceStores: sourceStores == _subscriptionStateUnset
           ? this.sourceStores
           : List<String>.from(sourceStores as List),
+      sourceStates: sourceStates == _subscriptionStateUnset
+          ? this.sourceStates
+          : List<SubscriptionSourceState>.from(sourceStates as List),
       sourceStateAuthoritative:
           sourceStateAuthoritative ?? this.sourceStateAuthoritative,
     );
@@ -933,6 +960,12 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
                       .toSet()
                       .toList(growable: false)
                   : _subscriptionStateUnset,
+              sourceStates: sourceRead.error == null
+                  ? sourceRead.sources
+                      .map(SubscriptionSourceState.fromRow)
+                      .whereType<SubscriptionSourceState>()
+                      .toList(growable: false)
+                  : _subscriptionStateUnset,
               sourceStateAuthoritative: sourceAuthoritative,
               error: null,
             ));
@@ -1288,6 +1321,12 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
                 .toSet()
                 .toList(growable: false)
             : _subscriptionStateUnset,
+        sourceStates: sourceRead.error == null
+            ? sourceRead.sources
+                .map(SubscriptionSourceState.fromRow)
+                .whereType<SubscriptionSourceState>()
+                .toList(growable: false)
+            : _subscriptionStateUnset,
         sourceStateAuthoritative: sourceAuthoritative,
         isLoading: false,
         error: null,
@@ -1501,15 +1540,31 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
     AndroidSubscriptionReplacementDecision? replacement;
     GoogleProductChangeInfo? googleProductChangeInfo;
-    if (isAndroidPlatform) {
-      replacement = resolveAndroidReplacement(
-        target: plan,
-        activeStore: state.activeStore,
-        activeProductId: state.activeProductId,
-        activeBasePlanId: state.activeBasePlanId,
-        activeStateAuthoritative: state.sourceStateAuthoritative,
-        hasActivePaidState: state.hasActivePaidState,
+    final targetStore = isAndroidPlatform ? 'play_store' : 'app_store';
+    final sourceEligibility = resolveSourceAwarePurchaseEligibility(
+      targetStore: targetStore,
+      targetPlan: plan,
+      sources: state.sourceStates,
+      sourceStateAuthoritative: state.sourceStateAuthoritative,
+      hasActivePaidState: state.hasActivePaidState,
+    );
+    if (!sourceEligibility.canPurchase) {
+      return _failedPurchaseResult(
+        requestedTier: requestedTier,
+        previousTier: previousTier,
+        message: sourceEligibility.message,
       );
+    }
+    if (isAndroidPlatform) {
+      replacement = sourceEligibility.replacement ??
+          resolveAndroidReplacement(
+            target: plan,
+            activeStore: state.activeStore,
+            activeProductId: state.activeProductId,
+            activeBasePlanId: state.activeBasePlanId,
+            activeStateAuthoritative: state.sourceStateAuthoritative,
+            hasActivePaidState: state.hasActivePaidState,
+          );
       if (!replacement.isAllowed) {
         return _failedPurchaseResult(
           requestedTier: requestedTier,
