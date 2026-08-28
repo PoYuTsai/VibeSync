@@ -412,17 +412,24 @@ Deno.test("resolvePracticeProfile：challenge 難度帶出對應 difficultyDebri
 
 // ── Hint 教練尺度（PR 5）：resolvePracticeProfile 帶出教練視角的難度標準 ──
 
-Deno.test("resolvePracticeProfile：三難度各帶出教練視角 hintStandard", () => {
+Deno.test("resolvePracticeProfile：三難度各帶出教練視角 hintStandard（逐項語意）", () => {
   const easy = resolvePracticeProfile({ difficulty: "easy" });
-  assert(easy.difficultyHintStandard.includes("低壓"));
-  assert(easy.difficultyHintStandard.includes("修一次"));
+  assert(easy.hintStandard.includes("自然"));
+  assert(easy.hintStandard.includes("低壓"));
+  assert(easy.hintStandard.includes("回應"));
+  assert(easy.hintStandard.includes("修一次"));
   const normal = resolvePracticeProfile({ difficulty: "normal" });
-  assert(normal.difficultyHintStandard.includes("具體"));
-  assert(normal.difficultyHintStandard.includes("查戶口"));
+  assert(normal.hintStandard.includes("具體"));
+  assert(normal.hintStandard.includes("分享"));
+  assert(normal.hintStandard.includes("查戶口"));
   const challenge = resolvePracticeProfile({ difficulty: "challenge" });
-  assert(challenge.difficultyHintStandard.includes("禮貌句"));
-  assert(challenge.difficultyHintStandard.includes("萬用反問"));
-  assert(challenge.difficultyHintStandard.includes("不要建議邀約"));
+  assert(challenge.hintStandard.includes("最新一句"));
+  assert(challenge.hintStandard.includes("情緒"));
+  assert(challenge.hintStandard.includes("梗"));
+  assert(challenge.hintStandard.includes("禮貌句不算升溫"));
+  assert(challenge.hintStandard.includes("訊號不足"));
+  assert(challenge.hintStandard.includes("不要建議邀約"));
+  assert(challenge.hintStandard.includes("萬用反問"));
 });
 
 Deno.test("hintStandard 是教練視角，不重用 NPC 第一人稱規格原文", () => {
@@ -433,6 +440,16 @@ Deno.test("hintStandard 是教練視角，不重用 NPC 第一人稱規格原文
     assert(!config.hintStandard.includes("示範"));
     // 教練視角：「你」＝使用者，不是 NPC 的「本場難度是…」自述開頭。
     assert(!config.hintStandard.startsWith("本場難度是"));
+    // 逐行比對：NPC prompt 的任何一句實質內容（≥8 字）都不得整句出現在
+    // 教練尺度裡——擋「抄大段改一字」的重用。
+    for (const rawLine of config.prompt.split("\n")) {
+      const line = rawLine.replace(/^[-【].*?】?/, "").trim();
+      if (line.length < 8) continue;
+      assert(
+        !config.hintStandard.includes(line),
+        `NPC 原文整句重用於 ${config.id} hintStandard：${line}`,
+      );
+    }
   }
 });
 

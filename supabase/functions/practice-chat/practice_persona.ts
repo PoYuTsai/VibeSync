@@ -124,7 +124,8 @@ export interface PracticeProfile {
   difficultyLabel: string;
   difficultyPrompt: string;
   difficultyDebriefStandard: string;
-  difficultyHintStandard: string;
+  /** 教練視角的 Hint 尺度（定案計畫 §PR 5 的欄位名，與 DifficultyConfig 對齊）。 */
+  hintStandard: string;
   girl: PracticeGirlProfile;
 }
 
@@ -1048,7 +1049,7 @@ export function resolvePracticeProfile(args: {
     difficultyLabel: difficultyConfig.label,
     difficultyPrompt: difficultyConfig.prompt,
     difficultyDebriefStandard: difficultyConfig.debriefStandard,
-    difficultyHintStandard: difficultyConfig.hintStandard,
+    hintStandard: difficultyConfig.hintStandard,
     girl,
   };
 }
