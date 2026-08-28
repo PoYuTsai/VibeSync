@@ -45,4 +45,15 @@ class GateKAttemptUiStateTest {
         assertFalse(state.isEnabled("session-1"))
         assertFalse(state.onObserverReady("session-1"))
     }
+
+    @Test
+    fun `delayed readiness retry cannot revive after baseline or observer failure`() {
+        val state = GateKAttemptUiState()
+        state.onSessionShown("session-1")
+
+        assertTrue(state.canRetryObserverReady("session-1", true, true))
+        state.onObserverNotReady("session-1")
+        assertFalse(state.canRetryObserverReady("session-1", false, true))
+        assertFalse(state.canRetryObserverReady("session-1", true, false))
+    }
 }

@@ -219,6 +219,59 @@ class GateKAttemptCoordinatorTest {
         assertEquals(GateKAttemptTerminalResult.IgnoredNoActiveAttempt, lateCandidate)
     }
 
+    @Test
+    fun `arm cancellation after worker authorization rejects the later begin`() {
+        val controller = readyController()
+        val attemptId = GateKAttemptId("attempt-cancel-before-begin")
+
+        // The worker has already checked readiness, but has not committed the
+        // active attempt yet. Caller cancellation must win this interleaving.
+        assertEquals(
+            GateKAttemptTerminalResult.IgnoredNoActiveAttempt,
+            controller.cancelArm(attemptId, "session-1", 2_000L),
+        )
+        assertEquals(
+            GateKAttemptStartResult.RejectedArmCancelled,
+            controller.begin(
+                attemptId = attemptId,
+                sessionId = "session-1",
+                monotonicStart = 2_001L,
+            ),
+        )
+        assertFalse(controller.hasActiveAttempt)
+    }
+
+    @Test
+    fun `arm cancellation after begin terminalizes it before any success callback`() {
+        val controller = readyController()
+        val attemptId = GateKAttemptId("attempt-cancel-after-begin")
+        assertTrue(
+            controller.begin(
+                attemptId = attemptId,
+                sessionId = "session-1",
+                monotonicStart = 3_000L,
+            ) is GateKAttemptStartResult.Started,
+        )
+
+        val cancelled = controller.cancelArm(attemptId, "session-1", 3_001L)
+        assertTrue(cancelled is GateKAttemptTerminalResult.Recorded)
+        assertEquals(
+            GateKAttemptState.FAILED,
+            (cancelled as GateKAttemptTerminalResult.Recorded).terminal.state,
+        )
+        assertFalse(controller.hasActiveAttempt)
+        assertEquals(
+            GateKAttemptTerminalResult.IgnoredAlreadyTerminal,
+            controller.detected(
+                attemptId = attemptId,
+                sessionId = "session-1",
+                detectedAtElapsedRealtimeMs = 3_002L,
+                sessionOutcome = GateKSessionOutcome.ACCEPTED,
+                dedupeOutcome = GateKDedupeOutcome.FIRST_SEEN,
+            ),
+        )
+    }
+
     private fun readyController(): GateKAttemptCoordinator {
         val controller = GateKAttemptCoordinator()
         controller.onSessionShown("session-1")

@@ -39,6 +39,23 @@ class GateKAttemptUiState {
         return true
     }
 
+    /**
+     * Validates a delayed readiness retry against the still-live observer
+     * infrastructure. A stale handler must not revive a failed session.
+     */
+    @Synchronized
+    fun canRetryObserverReady(
+        sessionId: String,
+        baselineActive: Boolean,
+        observerRegistered: Boolean,
+    ): Boolean =
+        sessionId.isNotBlank()
+            && activeSessionId == sessionId
+            && !observerReady
+            && !sessionFailStopped
+            && baselineActive
+            && observerRegistered
+
     @Synchronized
     fun onSessionHidden(sessionId: String): Boolean {
         if (activeSessionId != sessionId) return false

@@ -188,7 +188,13 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             mainHandler.postDelayed({
                 try {
                     mediaStoreExecutor.execute {
-                        if (activeSessionId == sessionId) {
+                        if (activeSessionId == sessionId
+                            && attemptUiState.canRetryObserverReady(
+                                sessionId = sessionId,
+                                baselineActive = mediaStoreBaseline.isActive,
+                                observerRegistered = contentObserver != null,
+                            )
+                        ) {
                             markObserverReadyAndEnable(sessionId)
                         }
                     }
@@ -411,14 +417,22 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             } catch (error: InterruptedException) {
                 Thread.currentThread().interrupt()
                 armAllowed.set(false)
+                cancelMeasurementArm(attemptId, sessionId)
                 future.cancel(true)
                 null
             } catch (_: TimeoutException) {
                 armAllowed.set(false)
+                cancelMeasurementArm(attemptId, sessionId)
                 future.cancel(true)
                 null
             } catch (_: java.util.concurrent.ExecutionException) {
                 armAllowed.set(false)
+                cancelMeasurementArm(attemptId, sessionId)
+                future.cancel(true)
+                null
+            } catch (_: java.util.concurrent.CancellationException) {
+                armAllowed.set(false)
+                cancelMeasurementArm(attemptId, sessionId)
                 future.cancel(true)
                 null
             }
@@ -428,6 +442,16 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             return GateKAttemptStartResult.RejectedObserverNotReady
         }
         return result
+    }
+
+    private fun cancelMeasurementArm(attemptId: String, sessionId: String) {
+        recordTerminalResult(
+            attemptCoordinator.cancelArm(
+                attemptId = GateKAttemptId(attemptId),
+                sessionId = sessionId,
+                nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+            ),
+        )
     }
 
     private fun startAttemptFromUi() {

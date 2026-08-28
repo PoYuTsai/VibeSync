@@ -88,6 +88,8 @@ sealed interface GateKAttemptStartResult {
     data object RejectedActiveAttempt : GateKAttemptStartResult
 
     data object RejectedDuplicateAttemptId : GateKAttemptStartResult
+
+    data object RejectedArmCancelled : GateKAttemptStartResult
 }
 
 sealed interface GateKAttemptTerminalResult {
@@ -128,6 +130,7 @@ class GateKAttemptCoordinator(
     private var sessionFailStopped = false
     private var activeAttempt: GateKActiveAttempt? = null
     private val terminalAttemptIds = LinkedHashSet<GateKAttemptId>()
+    private val cancelledArmAttemptIds = LinkedHashSet<GateKAttemptId>()
 
     init {
         require(maxObservationLatencyMs > 0L) {
@@ -187,6 +190,9 @@ class GateKAttemptCoordinator(
         ) {
             return GateKAttemptStartResult.RejectedInvalidEvent
         }
+        if (event.attemptId in cancelledArmAttemptIds) {
+            return GateKAttemptStartResult.RejectedArmCancelled
+        }
         if (event.attemptId in terminalAttemptIds) {
             return GateKAttemptStartResult.RejectedDuplicateAttemptId
         }
@@ -220,6 +226,61 @@ class GateKAttemptCoordinator(
             mediaStoreFence = mediaStoreFence,
         ),
     )
+
+    /**
+     * Atomically cancels a worker arm request. If begin already won the same
+     * coordinator lock, it is terminalized as a bounded failure; otherwise
+     * the request ID is retained so a later begin cannot resurrect it.
+     */
+    @Synchronized
+    fun cancelArm(
+        attemptId: GateKAttemptId,
+        sessionId: String,
+        nowElapsedRealtimeMs: Long,
+    ): GateKAttemptTerminalResult {
+        if (attemptId.value.isBlank() || sessionId.isBlank() || nowElapsedRealtimeMs < 0L) {
+            return GateKAttemptTerminalResult.RejectedInvalidTiming
+        }
+        if (attemptId in terminalAttemptIds) {
+            return GateKAttemptTerminalResult.IgnoredAlreadyTerminal
+        }
+        val attempt = activeAttempt
+        if (attempt != null) {
+            if (attempt.attemptId != attemptId) {
+                if (activeSessionId == sessionId) {
+                    rememberCancelledArm(attemptId)
+                }
+                return GateKAttemptTerminalResult.IgnoredWrongAttempt
+            }
+            if (attempt.sessionId != sessionId) {
+                return GateKAttemptTerminalResult.IgnoredWrongSession
+            }
+            return terminal(
+                attempt = attempt,
+                state = GateKAttemptState.FAILED,
+                detectedAtElapsedRealtimeMs = maxOf(
+                    nowElapsedRealtimeMs,
+                    attempt.triggeredAtElapsedRealtimeMs,
+                ),
+                sessionOutcome = GateKSessionOutcome.NOT_EVALUATED,
+                dedupeOutcome = GateKDedupeOutcome.NOT_EVALUATED,
+                failureReason = GateKFailureReason.INVALID_EVENT,
+            )
+        }
+        if (activeSessionId != sessionId) {
+            return GateKAttemptTerminalResult.IgnoredWrongSession
+        }
+        rememberCancelledArm(attemptId)
+        return GateKAttemptTerminalResult.IgnoredNoActiveAttempt
+    }
+
+    @Synchronized
+    private fun rememberCancelledArm(attemptId: GateKAttemptId) {
+        cancelledArmAttemptIds += attemptId
+        while (cancelledArmAttemptIds.size > MAX_RETAINED_TERMINAL_IDS) {
+            cancelledArmAttemptIds.remove(cancelledArmAttemptIds.first())
+        }
+    }
 
     @Synchronized
     fun detected(
