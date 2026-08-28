@@ -399,7 +399,13 @@ void main() {
         authoritative: false,
         now: now,
       ),
-      isNot(contains('Google Play')),
+      allOf(
+        contains('刪除帳號不會自動取消商店訂閱'),
+        contains('原購買商店'),
+        contains('自動續訂'),
+        isNot(contains('App Store')),
+        isNot(contains('Google Play')),
+      ),
     );
   });
 }

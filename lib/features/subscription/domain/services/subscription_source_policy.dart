@@ -471,6 +471,10 @@ String sourceAwareAccountDeletionCopy(
   required bool authoritative,
   DateTime? now,
 }) {
+  if (!authoritative) {
+    return '刪除帳號會永久刪除你的帳號與本機資料；刪除帳號不會自動取消商店訂閱，若有訂閱請到原購買商店取消自動續訂。';
+  }
+
   final activeStores = <String>[];
   final projection = SourceAwareSubscriptionProjection(
     sources: List.unmodifiable(sources),

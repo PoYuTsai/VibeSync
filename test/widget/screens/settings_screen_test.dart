@@ -616,6 +616,11 @@ void main() {
       expect(find.textContaining('Apple 訂閱管理'), findsNothing);
       expect(find.textContaining('Google Play'), findsNothing);
       expect(find.textContaining('刪除帳號會永久刪除'), findsOneWidget);
+      expect(
+        find.textContaining('刪除帳號不會自動取消商店訂閱'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('原購買商店'), findsOneWidget);
       expect(find.text('輸入 DELETE 以確認'), findsOneWidget);
       expect(find.text('取消'), findsOneWidget);
       expect(find.text('刪除'), findsOneWidget);
