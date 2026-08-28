@@ -1195,6 +1195,35 @@ void main() {
       expect(api.lastFamiliarityScore, 0);
     });
 
+    test('污染 draft（殘留舊難度分數）還原後切難度 → 整組清成新難度開場值，draft 同步', () {
+      draftStore.save(draftFor(
+        'practice_girl_005',
+        difficulty: 'challenge',
+        learningMode: PracticeLearningMode.beginner,
+        temperatureScore: 42,
+        familiarityScore: 44,
+        relationshipStageLabel: '可以聊個人',
+      ));
+      final c = makeController();
+      expect(c.currentState.temperatureScore, 42); // 還原殘值（污染前提成立）
+
+      c.setDifficultyPreference(PracticeDifficultyPreference.easy);
+
+      final s = c.currentState;
+      expect(s.difficulty, 'easy');
+      expect(s.temperatureScore, 35);
+      expect(s.temperatureBand, isNull);
+      expect(s.familiarityScore, 0);
+      expect(s.relationshipStageLabel, '建立熟悉中');
+      expect(s.lastTemperatureDelta, isNull);
+      expect(s.temperatureReason, isNull);
+      final draft = draftStore.load()!;
+      expect(draft.difficulty, 'easy');
+      expect(draft.temperatureScore, 35);
+      expect(draft.familiarityScore, 0);
+      expect(draft.relationshipStageLabel, '建立熟悉中');
+    });
+
     test('已有 messages 時切難度 no-op：難度與分數皆不變', () async {
       final c = await makeRevealed();
       await c.setPracticeLearningMode(PracticeLearningMode.beginner);
