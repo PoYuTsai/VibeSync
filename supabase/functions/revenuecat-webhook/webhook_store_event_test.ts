@@ -9,6 +9,7 @@ import {
 import {
   reduceStoreSubscriptionEvent,
   resolveEffectiveEntitlementAt,
+  type SubscriptionStoreState,
 } from "../_shared/subscription_store_state.ts";
 
 const baseEvent = {
@@ -93,6 +94,172 @@ Deno.test("billing issue and pause fail closed without an authoritative expiry",
     { kind: "invalid", reason: "missing_authoritative_expiration" },
   );
 });
+
+Deno.test(
+  "billing-error cancellation is ignored so billing issue ordering is harmless",
+  () => {
+    const initial = buildRevenueCatWebhookStoreEvent("INITIAL_PURCHASE", {
+      ...baseEvent,
+      id: "rc-initial-ordering",
+      event_timestamp_ms: Date.parse("2026-08-23T12:00:00.000Z"),
+    });
+    const billing = buildRevenueCatWebhookStoreEvent("BILLING_ISSUE", {
+      ...baseEvent,
+      id: "rc-billing-ordering",
+      billing_issues_detected_at_ms: Date.parse(
+        "2026-08-23T12:05:00.000Z",
+      ),
+      grace_period_expiration_at_ms: Date.parse(
+        "2026-09-30T12:00:00.000Z",
+      ),
+    });
+    const billingCancellation = buildRevenueCatWebhookStoreEvent(
+      "CANCELLATION",
+      {
+        ...baseEvent,
+        id: "rc-billing-cancellation-ordering",
+        cancel_reason: "billing_error",
+        cancelled_at_ms: Date.parse("2026-08-23T12:06:00.000Z"),
+      },
+    );
+    const expiration = buildRevenueCatWebhookStoreEvent("EXPIRATION", {
+      ...baseEvent,
+      id: "rc-expiration-ordering",
+      event_timestamp_ms: Date.parse("2026-09-30T12:00:00.000Z"),
+      expiration_at_ms: Date.parse("2026-09-30T12:00:00.000Z"),
+    });
+    const renewal = buildRevenueCatWebhookStoreEvent("RENEWAL", {
+      ...baseEvent,
+      id: "rc-renewal-ordering",
+      event_timestamp_ms: Date.parse("2026-09-30T12:01:00.000Z"),
+      expiration_at_ms: Date.parse("2026-10-30T12:00:00.000Z"),
+    });
+
+    assertEquals(billingCancellation, {
+      kind: "ignored",
+      reason: "billing_error_cancellation",
+    });
+    assertEquals(initial.kind, "event");
+    assertEquals(billing.kind, "event");
+    assertEquals(expiration.kind, "event");
+    assertEquals(renewal.kind, "event");
+    if (
+      initial.kind !== "event" || billing.kind !== "event" ||
+      expiration.kind !== "event" || renewal.kind !== "event"
+    ) {
+      throw new Error("expected lifecycle events");
+    }
+
+    function apply(
+      events: readonly typeof initial[],
+    ) {
+      let current: SubscriptionStoreState | null = null;
+      for (const result of events) {
+        if (result.kind !== "event") continue;
+        const reduced = reduceStoreSubscriptionEvent(current, result.event);
+        assertEquals(reduced.kind, "accepted");
+        if (reduced.kind !== "accepted") throw new Error("expected state");
+        current = reduced.state;
+      }
+      return current;
+    }
+
+    const cancellationOnly = buildRevenueCatWebhookStoreEvent(
+      "CANCELLATION",
+      {
+        ...baseEvent,
+        id: "rc-billing-cancellation-ordering-2",
+        cancel_reason: "BILLING_ERROR",
+        cancelled_at_ms: Date.parse("2026-08-23T12:06:00.000Z"),
+      },
+    );
+    assertEquals(cancellationOnly.kind, "ignored");
+
+    for (
+      const ordered of [
+        [initial, billing, billingCancellation, expiration, renewal],
+        [initial, billingCancellation, billing, expiration, renewal],
+      ]
+    ) {
+      const afterBilling = apply(ordered.slice(0, 3));
+      assertEquals(afterBilling?.status, "billing_issue");
+      assertEquals(
+        resolveEffectiveEntitlementAt(
+          afterBilling == null ? [] : [afterBilling],
+          new Date("2026-09-01T00:00:00.000Z"),
+        )?.tier,
+        "starter",
+      );
+
+      const afterExpiration = apply(ordered.slice(0, 4));
+      assertEquals(
+        resolveEffectiveEntitlementAt(
+          afterExpiration == null ? [] : [afterExpiration],
+          new Date("2026-10-01T00:00:00.000Z"),
+        ),
+        null,
+      );
+
+      const afterRenewal = apply(ordered);
+      assertEquals(afterRenewal?.status, "active");
+      assertEquals(
+        resolveEffectiveEntitlementAt(
+          afterRenewal == null ? [] : [afterRenewal],
+          new Date("2026-10-01T00:00:00.000Z"),
+        )?.tier,
+        "starter",
+      );
+    }
+  },
+);
+
+Deno.test(
+  "paid lifecycle events require an authoritative expiry while expiration is terminal",
+  () => {
+    const lifecycleTypes = [
+      "INITIAL_PURCHASE",
+      "RENEWAL",
+      "UNCANCELLATION",
+      "SUBSCRIPTION_EXTENDED",
+      "PRODUCT_CHANGE",
+      "CANCELLATION",
+      "BILLING_ISSUE",
+      "TRANSFER",
+      "SUBSCRIPTION_PAUSED",
+    ];
+
+    for (const type of lifecycleTypes) {
+      const result = buildRevenueCatWebhookStoreEvent(type, {
+        ...baseEvent,
+        id: `missing-expiry-${type}`,
+        expiration_at_ms: null,
+        ...(type === "PRODUCT_CHANGE"
+          ? { new_product_id: "vibesync_essential_monthly" }
+          : {}),
+      });
+      assertEquals(
+        result,
+        { kind: "invalid", reason: "missing_authoritative_expiration" },
+        `${type} must not overwrite a paid row without an expiry`,
+      );
+    }
+
+    assertEquals(
+      buildRevenueCatWebhookStoreEvent("RENEWAL", {
+        ...baseEvent,
+        expiration_at_ms: "not-a-timestamp",
+      }),
+      { kind: "invalid", reason: "invalid_authoritative_expiration" },
+    );
+    assertEquals(
+      buildRevenueCatWebhookStoreEvent("EXPIRATION", {
+        ...baseEvent,
+        expiration_at_ms: null,
+      }).kind,
+      "event",
+    );
+  },
+);
 
 Deno.test("EXPIRATION keeps terminal authority and normalizes unknown reasons", () => {
   assertEquals(

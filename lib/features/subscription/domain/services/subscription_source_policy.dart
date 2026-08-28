@@ -40,7 +40,7 @@ class SubscriptionSourceState {
     final at = now.toUtc();
     if (eventAt.toUtc().isAfter(at)) return false;
     final expiry = expiresAt?.toUtc();
-    if (expiry == null) return status == 'active';
+    if (expiry == null) return false;
     return expiry.isAfter(at);
   }
 
@@ -103,6 +103,10 @@ class SubscriptionSourceState {
     final expiresAtRaw = row['expires_at'];
     final expiresAt = expiresAtRaw == null ? null : _parseDate(expiresAtRaw);
     if (expiresAtRaw != null && expiresAt == null) return null;
+    if (expiresAt == null &&
+        !(tier == SubscriptionTierHelper.free && status == 'expired')) {
+      return null;
+    }
     final environment = row['revenuecat_environment'];
     if (environment != null &&
         (environment is! String ||
@@ -177,14 +181,17 @@ int _compareSources(
 
 String sourceAwareManagementStoreLabel({
   required Iterable<SubscriptionSourceState> sources,
+  required bool authoritative,
   String? fallbackStore,
   DateTime? now,
 }) {
   final stores = <String>[];
-  for (final source in SourceAwareSubscriptionProjection(
+  final projection = SourceAwareSubscriptionProjection(
     sources: List.unmodifiable(sources),
-    authoritative: true,
-  ).activeAt(now)) {
+    authoritative: authoritative,
+  );
+  final visibleSources = authoritative ? projection.activeAt(now) : const [];
+  for (final source in visibleSources) {
     if (!stores.contains(source.store)) stores.add(source.store);
   }
   if (stores.length > 1) return 'App Store 與 Google Play';
@@ -208,6 +215,7 @@ class SourceAwareSubscriptionProjection {
   }
 
   SubscriptionSourceState? effectiveAt([DateTime? now]) {
+    if (!authoritative) return null;
     final candidates = activeAt(now).toList(growable: true);
     candidates.sort((left, right) {
       final tierDifference = SubscriptionTierHelper.rankOf(right.tier) -
@@ -248,6 +256,13 @@ class SourceAwarePurchaseEligibility {
   final String? originalStore;
 
   bool get canPurchase => blockReason == null;
+
+  /// A management CTA is safe only when one verified source is the sole
+  /// blocker. Multiple sources and unknown tuples must remain disabled rather
+  /// than pretending there is one destination.
+  bool get canManageOriginalStore =>
+      blockReason == SourceAwarePurchaseBlockReason.originalStore &&
+      activeSources.length == 1;
 
   String get message {
     switch (blockReason) {
@@ -393,13 +408,23 @@ SourceAwarePurchaseEligibility resolveSourceAwarePurchaseEligibility({
 String sourceAwareEntitlementHeadline({
   required String tier,
   required Iterable<SubscriptionSourceState> sources,
+  required bool authoritative,
   DateTime? now,
 }) {
   final projection = SourceAwareSubscriptionProjection(
     sources: List.unmodifiable(sources),
-    authoritative: true,
+    authoritative: authoritative,
   );
   final effective = projection.effectiveAt(now);
+  if (!authoritative) {
+    final normalized = SubscriptionTierHelper.normalizeTier(tier);
+    final label = normalized == SubscriptionTierHelper.essential
+        ? 'Essential'
+        : normalized == SubscriptionTierHelper.starter
+            ? 'Starter'
+            : null;
+    return label == null ? '目前沒有啟用中的訂閱權益' : '權益已啟用：$label';
+  }
   if (effective == null) {
     return SubscriptionTierHelper.normalizeTier(tier) ==
             SubscriptionTierHelper.free
@@ -419,9 +444,12 @@ String sourceAwareEntitlementHeadline({
 
 List<String> sourceAwareSourceDetails(
   Iterable<SubscriptionSourceState> sources, {
+  required bool authoritative,
   DateTime? now,
 }) {
-  final all = sources.toList(growable: false);
+  if (!authoritative) return const [];
+  final all =
+      sources.where((source) => source.isVerified).toList(growable: false);
   final at = (now ?? DateTime.now()).toUtc();
   final active = all.where((source) => source.isEffectiveAt(at)).toList()
     ..sort(_compareSources);
@@ -440,13 +468,16 @@ List<String> sourceAwareSourceDetails(
 
 String sourceAwareAccountDeletionCopy(
   Iterable<SubscriptionSourceState> sources, {
+  required bool authoritative,
   DateTime? now,
 }) {
   final activeStores = <String>[];
-  for (final source in SourceAwareSubscriptionProjection(
+  final projection = SourceAwareSubscriptionProjection(
     sources: List.unmodifiable(sources),
-    authoritative: true,
-  ).activeAt(now)) {
+    authoritative: authoritative,
+  );
+  final visibleSources = authoritative ? projection.activeAt(now) : const [];
+  for (final source in visibleSources) {
     if (!activeStores.contains(source.store)) activeStores.add(source.store);
   }
   activeStores.sort(

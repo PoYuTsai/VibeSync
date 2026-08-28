@@ -324,6 +324,40 @@ void main() {
     expect(merged['daily_messages_used'], 2);
   });
 
+  test('paid source rows without expiry are rejected instead of perpetual', () {
+    final row = <String, dynamic>{
+      'user_id': 'user-1',
+      'store': 'play_store',
+      'product_id': 'vibesync_starter',
+      'base_plan_id': 'monthly',
+      'tier': 'starter',
+      'status': 'active',
+      'expires_at': null,
+      'event_at': '2026-08-23T11:00:00Z',
+      'event_id': 'missing-expiry-client-row',
+      'verification_source': 'revenuecat_webhook',
+      'verification_status': 'verified',
+      'revenuecat_environment': 'production',
+    };
+
+    expect(
+      resolveEffectiveSubscriptionStoreState(
+        [row],
+        userId: 'user-1',
+        now: DateTime.utc(2026, 8, 23, 12),
+      ),
+      isNull,
+    );
+    expect(
+      filterVerifiedSubscriptionStoreStateRows(
+        [row],
+        userId: 'user-1',
+        now: DateTime.utc(2026, 8, 23, 12),
+      ),
+      isEmpty,
+    );
+  });
+
   test(
       'source-aware merge falls back to the legacy row when read is unavailable',
       () {

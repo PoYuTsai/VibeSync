@@ -313,9 +313,10 @@ function isEffectiveAt(
   if (!isValidDate(state.eventAt) || state.eventAt.getTime() > at.getTime()) {
     return false;
   }
-  // A cancelled or billing-issue row without an authoritative expiry cannot
-  // prove that access is still valid; only an active perpetual row qualifies.
-  if (state.expiresAt == null) return state.status === "active";
+  // A non-terminal row without an authoritative expiry cannot prove that
+  // access is still valid. Ingestion rejects such rows; keep the read-time
+  // projection fail closed as a second boundary.
+  if (state.expiresAt == null) return false;
   return isValidDate(state.expiresAt) &&
     state.expiresAt.getTime() > at.getTime();
 }
@@ -388,6 +389,17 @@ export function reduceStoreSubscriptionEvent(
     return { kind: "ignored", reason: "invalid" };
   }
   if (event.tier !== "free" && productId === null) {
+    return { kind: "ignored", reason: "invalid" };
+  }
+  // Every non-terminal lifecycle signal must carry a finite authoritative
+  // expiry. Without it, accepting the event could either revoke access
+  // immediately (cancel/billing) or create a perpetual grant (purchase/
+  // renewal). A free terminal expiry remains the explicit exception and may
+  // omit the value.
+  if (
+    expiresAt === null &&
+    !(event.tier === "free" && event.status === "expired")
+  ) {
     return { kind: "ignored", reason: "invalid" };
   }
   if (

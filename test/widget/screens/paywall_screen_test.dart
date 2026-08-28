@@ -680,6 +680,114 @@ void main() {
       expect(find.textContaining('新訂閱會在'), findsNothing);
     });
 
+    testWidgets(
+        'same-tier other-store source keeps the manage-original-store CTA actionable',
+        (tester) async {
+      final now = DateTime.now().toUtc();
+      await pumpPaywallWithStub(
+        tester,
+        seededState: SubscriptionState(
+          tier: SubscriptionTierHelper.essential,
+          sourceStates: [
+            SubscriptionSourceState(
+              store: 'play_store',
+              productId: 'vibesync_essential',
+              basePlanId: 'monthly',
+              tier: SubscriptionTierHelper.essential,
+              status: 'active',
+              expiresAt: now.add(const Duration(days: 30)),
+              eventAt: now.subtract(const Duration(days: 1)),
+              eventId: 'play-essential-same-tier-widget',
+              verificationSource: 'revenuecat_webhook',
+              verificationStatus: 'verified',
+              revenueCatEnvironment: 'sandbox',
+            ),
+          ],
+          sourceStateAuthoritative: true,
+        ),
+      );
+
+      final manageButton = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, '先管理原商店'),
+      );
+      expect(manageButton.onPressed, isNotNull);
+      expect(
+          find.textContaining('你已有 Google Play 訂閱'), findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('same-store same-plan CTA remains current-plan and disabled',
+        (tester) async {
+      final now = DateTime.now().toUtc();
+      await pumpPaywallWithStub(
+        tester,
+        seededState: SubscriptionState(
+          tier: SubscriptionTierHelper.essential,
+          sourceStates: [
+            SubscriptionSourceState(
+              store: 'app_store',
+              productId: 'essential_monthly',
+              basePlanId: null,
+              tier: SubscriptionTierHelper.essential,
+              status: 'active',
+              expiresAt: now.add(const Duration(days: 30)),
+              eventAt: now.subtract(const Duration(days: 1)),
+              eventId: 'app-essential-same-plan-widget',
+              verificationSource: 'revenuecat_webhook',
+              verificationStatus: 'verified',
+              revenueCatEnvironment: 'sandbox',
+            ),
+          ],
+          sourceStateAuthoritative: true,
+        ),
+      );
+
+      final currentButton = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, '目前方案'),
+      );
+      expect(currentButton.onPressed, isNull);
+      expect(find.text('這是你目前正在使用的方案。'), findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('multiple active sources keep the purchase CTA disabled',
+        (tester) async {
+      final now = DateTime.now().toUtc();
+      SubscriptionSourceState makeSource(String store, String eventId) {
+        return SubscriptionSourceState(
+          store: store,
+          productId:
+              store == 'app_store' ? 'essential_monthly' : 'vibesync_essential',
+          basePlanId: store == 'app_store' ? null : 'monthly',
+          tier: SubscriptionTierHelper.essential,
+          status: 'active',
+          expiresAt: now.add(const Duration(days: 30)),
+          eventAt: now.subtract(const Duration(days: 1)),
+          eventId: eventId,
+          verificationSource: 'revenuecat_webhook',
+          verificationStatus: 'verified',
+          revenueCatEnvironment: 'sandbox',
+        );
+      }
+
+      await pumpPaywallWithStub(
+        tester,
+        seededState: SubscriptionState(
+          tier: SubscriptionTierHelper.essential,
+          sourceStates: [
+            makeSource('app_store', 'app-essential-multiple-widget'),
+            makeSource('play_store', 'play-essential-multiple-widget'),
+          ],
+          sourceStateAuthoritative: true,
+        ),
+      );
+
+      final blockedButton = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, '暫停購買'),
+      );
+      expect(blockedButton.onPressed, isNull);
+      expect(find.textContaining('同時有 App Store 與 Google Play'),
+          findsAtLeastNWidgets(1));
+    });
+
     testWidgets('restore hang times out and dismisses the spinner',
         (tester) async {
       await pumpPaywallWithStub(

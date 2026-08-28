@@ -230,6 +230,27 @@ Deno.test("paid store events require a product provenance value", () => {
   assertEquals(result, { kind: "ignored", reason: "invalid" });
 });
 
+Deno.test("paid store events require an authoritative expiry before overwrite", () => {
+  const current = state({
+    eventAt: new Date("2026-08-23T11:00:00.000Z"),
+    eventId: "paid-before-missing-expiry",
+  });
+  const result = reduceStoreSubscriptionEvent(current, {
+    store: "app_store",
+    source: "revenuecat_webhook",
+    productId: "essential-monthly",
+    basePlanId: "essential-monthly",
+    tier: "essential",
+    status: "active",
+    expiresAt: null,
+    eventAt: new Date("2026-08-23T12:00:00.000Z"),
+    eventId: "missing-expiry-must-not-overwrite",
+    revenueCatEnvironment: "production",
+  });
+
+  assertEquals(result, { kind: "ignored", reason: "invalid" });
+});
+
 Deno.test("verification provenance outranks event ordering in the reducer", () => {
   const verifiedCurrent = state({
     eventAt: new Date("2026-08-23T11:00:00.000Z"),
@@ -886,7 +907,7 @@ Deno.test("subscription store persistence delegates to the atomic RPC and fails 
       basePlanId: null,
       tier: "starter",
       status: "active",
-      expiresAt: null,
+      expiresAt: new Date("2026-09-23T12:00:00.000Z"),
       eventAt: at,
       eventId: "api-event-2",
       revenueCatEnvironment: "production",
@@ -904,7 +925,7 @@ Deno.test("subscription store persistence delegates to the atomic RPC and fails 
       basePlanId: null,
       tier: "starter",
       status: "active",
-      expiresAt: null,
+      expiresAt: new Date("2026-09-23T12:00:00.000Z"),
       eventAt: at,
       eventId: "api-event-3",
       revenueCatEnvironment: "production",
@@ -928,7 +949,7 @@ Deno.test("subscription store persistence delegates to the atomic RPC and fails 
       basePlanId: null,
       tier: "starter",
       status: "active",
-      expiresAt: null,
+      expiresAt: new Date("2026-09-23T12:00:00.000Z"),
       eventAt: at,
       eventId: "api-event-unverified",
       verificationStatus: "unverified",

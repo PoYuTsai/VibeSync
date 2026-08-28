@@ -53,6 +53,7 @@ void main() {
         'verification_source': 'revenuecat_webhook',
         'event_id': 'good-source',
         'event_at': now.toIso8601String(),
+        'expires_at': now.add(const Duration(days: 30)).toIso8601String(),
       })?.store,
       'play_store',
     );
@@ -65,6 +66,20 @@ void main() {
         'verification_source': 'revenuecat_webhook',
         'event_id': 'missing-product',
         'event_at': now.toIso8601String(),
+      }),
+      isNull,
+    );
+    expect(
+      SubscriptionSourceState.fromRow({
+        'store': 'play_store',
+        'tier': 'starter',
+        'status': 'active',
+        'verification_status': 'verified',
+        'verification_source': 'revenuecat_webhook',
+        'product_id': 'vibesync_starter',
+        'event_id': 'missing-expiry',
+        'event_at': now.toIso8601String(),
+        'expires_at': null,
       }),
       isNull,
     );
@@ -96,6 +111,7 @@ void main() {
     expect(eligibility.canPurchase, isFalse);
     expect(
         eligibility.blockReason, SourceAwarePurchaseBlockReason.originalStore);
+    expect(eligibility.canManageOriginalStore, isTrue);
     expect(eligibility.originalStore, 'app_store');
     expect(eligibility.message, contains('App Store'));
     expect(eligibility.message, isNot(contains('Google Play 訂閱')));
@@ -117,6 +133,7 @@ void main() {
     expect(eligibility.canPurchase, isFalse);
     expect(
         eligibility.blockReason, SourceAwarePurchaseBlockReason.multipleStores);
+    expect(eligibility.canManageOriginalStore, isFalse);
     expect(eligibility.message, contains('App Store'));
     expect(eligibility.message, contains('Google Play'));
   });
@@ -173,6 +190,7 @@ void main() {
 
     expect(eligibility.canPurchase, isFalse);
     expect(eligibility.blockReason, SourceAwarePurchaseBlockReason.samePlan);
+    expect(eligibility.canManageOriginalStore, isFalse);
   });
 
   test('same App Store plan is not purchased again', () {
@@ -212,6 +230,24 @@ void main() {
       eligibility.blockReason,
       SourceAwarePurchaseBlockReason.unknownSource,
     );
+    expect(eligibility.canManageOriginalStore, isFalse);
+  });
+
+  test('different-store active source remains manageable even at same tier',
+      () {
+    final eligibility = resolveSourceAwarePurchaseEligibility(
+      targetStore: 'play_store',
+      targetPlan: SubscriptionPlanDefinition.essentialMonthly,
+      sources: [source(store: 'app_store', tier: 'essential')],
+      sourceStateAuthoritative: true,
+      hasActivePaidState: true,
+      now: now,
+    );
+
+    expect(eligibility.canPurchase, isFalse);
+    expect(
+        eligibility.blockReason, SourceAwarePurchaseBlockReason.originalStore);
+    expect(eligibility.canManageOriginalStore, isTrue);
   });
 
   test('missing source proof blocks a paid local tuple', () {
@@ -239,22 +275,49 @@ void main() {
       sourceAwareEntitlementHeadline(
         tier: 'starter',
         sources: [play],
+        authoritative: true,
         now: now,
       ),
       '權益已啟用：Starter',
     );
-    expect(sourceAwareSourceDetails([play], now: now), ['Google Play：Starter']);
-    expect(sourceAwareSourceDetails([app], now: now), ['App Store：Essential']);
     expect(
-      sourceAwareManagementStoreLabel(sources: [play], now: now),
+      sourceAwareSourceDetails(
+        [play],
+        authoritative: true,
+        now: now,
+      ),
+      ['Google Play：Starter'],
+    );
+    expect(
+      sourceAwareSourceDetails(
+        [app],
+        authoritative: true,
+        now: now,
+      ),
+      ['App Store：Essential'],
+    );
+    expect(
+      sourceAwareManagementStoreLabel(
+        sources: [play],
+        authoritative: true,
+        now: now,
+      ),
       'Google Play',
     );
     expect(
-      sourceAwareManagementStoreLabel(sources: [app, play], now: now),
+      sourceAwareManagementStoreLabel(
+        sources: [app, play],
+        authoritative: true,
+        now: now,
+      ),
       'App Store 與 Google Play',
     );
     expect(
-      sourceAwareSourceDetails([play, app], now: now),
+      sourceAwareSourceDetails(
+        [play, app],
+        authoritative: true,
+        now: now,
+      ),
       ['App Store：Essential', 'Google Play：Starter'],
     );
     expect(
@@ -268,27 +331,75 @@ void main() {
             expiresAt: now.subtract(const Duration(minutes: 1)),
           ),
         ],
+        authoritative: true,
         now: now,
       ),
       '目前沒有啟用中的訂閱權益',
     );
   });
 
+  test('non-authoritative sources cannot downgrade headline or source detail',
+      () {
+    final legacyEssential = source(store: 'app_store', tier: 'essential');
+    final verifiedPlayStarter = source(store: 'play_store', tier: 'starter');
+    final projection = SourceAwareSubscriptionProjection(
+      sources: [verifiedPlayStarter],
+      authoritative: false,
+    );
+
+    expect(projection.activeAt(now), hasLength(1));
+    expect(projection.effectiveAt(now), isNull);
+    expect(
+      sourceAwareEntitlementHeadline(
+        tier: 'essential',
+        sources: [verifiedPlayStarter],
+        authoritative: false,
+        now: now,
+      ),
+      '權益已啟用：Essential',
+    );
+    expect(
+      sourceAwareSourceDetails(
+        [legacyEssential, verifiedPlayStarter],
+        authoritative: false,
+        now: now,
+      ),
+      isEmpty,
+    );
+  });
+
   test('account deletion copy follows active source stores', () {
     expect(
-      sourceAwareAccountDeletionCopy([source(store: 'play_store')], now: now),
+      sourceAwareAccountDeletionCopy(
+        [source(store: 'play_store')],
+        authoritative: true,
+        now: now,
+      ),
       contains('Google Play'),
     );
     expect(
       sourceAwareAccountDeletionCopy(
         [source(store: 'play_store'), source(store: 'app_store')],
+        authoritative: true,
         now: now,
       ),
       allOf(contains('App Store'), contains('Google Play')),
     );
     expect(
-      sourceAwareAccountDeletionCopy(const [], now: now),
+      sourceAwareAccountDeletionCopy(
+        const [],
+        authoritative: true,
+        now: now,
+      ),
       isNot(contains('App Store')),
+    );
+    expect(
+      sourceAwareAccountDeletionCopy(
+        [source(store: 'play_store')],
+        authoritative: false,
+        now: now,
+      ),
+      isNot(contains('Google Play')),
     );
   });
 }

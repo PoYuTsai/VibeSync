@@ -8,7 +8,12 @@ import { getTierFromProductId } from "./tiers.ts";
 
 export type WebhookStoreEventResult =
   | { readonly kind: "event"; readonly event: StoreSubscriptionEventInput }
-  | { readonly kind: "ignored"; readonly reason: "product_change_downgrade" }
+  | {
+    readonly kind: "ignored";
+    readonly reason:
+      | "product_change_downgrade"
+      | "billing_error_cancellation";
+  }
   | { readonly kind: "invalid"; readonly reason: string };
 
 export type RevenueCatExpirationReason =
@@ -83,6 +88,14 @@ function supportedType(type: string): boolean {
     type === "TRANSFER" || type === "SUBSCRIPTION_PAUSED";
 }
 
+function isBillingErrorCancellation(
+  type: string,
+  event: Record<string, unknown>,
+): boolean {
+  return type === "CANCELLATION" &&
+    text(event.cancel_reason)?.toUpperCase() === "BILLING_ERROR";
+}
+
 /**
  * Builds exactly one per-store state event from one webhook payload. No legacy
  * aggregate tier/expiry is accepted as an input: ordering and replay safety
@@ -94,6 +107,13 @@ export function buildRevenueCatWebhookStoreEvent(
 ): WebhookStoreEventResult {
   if (!supportedType(type)) {
     return { kind: "invalid", reason: "unsupported_event_type" };
+  }
+
+  // RevenueCat emits BILLING_ISSUE and CANCELLATION(cancel_reason=BILLING_ERROR)
+  // for the same payment failure. Treat the cancellation as a duplicate
+  // signal so its delivery order cannot hide the authoritative grace window.
+  if (isBillingErrorCancellation(type, event)) {
+    return { kind: "ignored", reason: "billing_error_cancellation" };
   }
 
   const store = normalizeRevenueCatStore(event.store);
@@ -184,13 +204,20 @@ export function buildRevenueCatWebhookStoreEvent(
     return { kind: "invalid", reason: "invalid_grace_period_expiration" };
   }
   const expiresAt = gracePeriodExpirationAt ?? expirationAt;
-  if (
-    (type === "BILLING_ISSUE" || type === "SUBSCRIPTION_PAUSED") &&
-    expiresAt == null
-  ) {
+  const requiresAuthoritativeExpiration = type !== "EXPIRATION";
+  const hasMalformedExpiration = [
+    "expiration_at_ms",
+    "expiration_at",
+  ].some((key) =>
+    Object.hasOwn(event, key) && event[key] != null &&
+    dateFrom(event[key]) == null
+  );
+  if (requiresAuthoritativeExpiration && expiresAt == null) {
     return {
       kind: "invalid",
-      reason: "missing_authoritative_expiration",
+      reason: hasMalformedExpiration
+        ? "invalid_authoritative_expiration"
+        : "missing_authoritative_expiration",
     };
   }
   const explicitEventId = text(event.id);

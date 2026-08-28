@@ -345,14 +345,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       primaryAction = () {
         _openManageSubscriptions();
       };
+    } else if (sourcePurchaseBlocked) {
+      // A single verified subscription in the other store has one safe
+      // destination. Multiple/unknown sources stay disabled with the
+      // explanatory copy shown above.
+      primaryAction = sourceEligibility.canManageOriginalStore
+          ? _openManageSubscriptions
+          : null;
     } else if (isCurrentPlan ||
         pendingDowngradeMatchesSelection ||
         selected == null) {
       primaryAction = null;
-    } else if (sourcePurchaseBlocked) {
-      // The guard still prevents a second purchase, while the CTA provides
-      // the safe path to the verified original store's management screen.
-      primaryAction = _openManageSubscriptions;
     } else if (shouldShowAndroidReplacementBlockedState(
       isAndroid: isAndroidPlatform,
       replacementDecision: androidReplacement,
@@ -581,7 +584,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (_isPurchasing) return '處理中…';
     if (_isRefreshingPlans) return '重新整理中…';
     if (sourceEligibility != null && !sourceEligibility.canPurchase) {
-      return '先管理原商店';
+      return sourceEligibility.canManageOriginalStore
+          ? '先管理原商店'
+          : sourceEligibility.blockReason ==
+                  SourceAwarePurchaseBlockReason.samePlan
+              ? '目前方案'
+              : '暫停購買';
     }
     if (shouldShowAndroidReplacementBlockedState(
       isAndroid: isAndroidPlatform,
@@ -632,6 +640,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (pendingDowngradeMatchesSelection) {
       return '這個降級已經排程，將於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效，今天不會再次扣款。';
     }
+    if (sourceEligibility?.canManageOriginalStore == true) {
+      return sourceEligibility!.message;
+    }
     if (isCurrentPlan) return '這是你目前正在使用的方案。';
     if (sourceEligibility != null && !sourceEligibility.canPurchase) {
       return sourceEligibility.message;
@@ -666,6 +677,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   String _managementStoreLabel(SubscriptionState subscription) {
     return sourceAwareManagementStoreLabel(
       sources: subscription.sourceStates,
+      authoritative: subscription.sourceStateAuthoritative,
       // A legacy aggregate store is not enough to identify the payer when
       // the verified per-store projection is still pending.
       fallbackStore: subscription.sourceStateAuthoritative
@@ -920,7 +932,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   /// S9/B9：原本是 BrandSurfaceCard，卡片堆疊改分層——區塊靠字級與
   /// 分隔線分層，額度數字保留 pill 容器（資訊元件，非頁面結構卡）。
   Widget _buildQuotaSummarySection(SubscriptionState subscription) {
-    final sourceDetails = sourceAwareSourceDetails(subscription.sourceStates);
+    final sourceDetails = sourceAwareSourceDetails(
+      subscription.sourceStates,
+      authoritative: subscription.sourceStateAuthoritative,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(

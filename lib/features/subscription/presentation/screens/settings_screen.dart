@@ -464,7 +464,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildUsageSummaryCard(SubscriptionState subscription) {
-    final sourceDetails = sourceAwareSourceDetails(subscription.sourceStates);
+    final sourceDetails = sourceAwareSourceDetails(
+      subscription.sourceStates,
+      authoritative: subscription.sourceStateAuthoritative,
+    );
     return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -969,8 +972,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     WidgetRef ref,
   ) async {
     final controller = TextEditingController();
+    final subscription = ref.read(subscriptionProvider);
     final deletionCopy = sourceAwareAccountDeletionCopy(
-      ref.read(subscriptionProvider).sourceStates,
+      subscription.sourceStates,
+      authoritative: subscription.sourceStateAuthoritative,
     );
     final confirmation = await showDialog<String>(
       context: context,

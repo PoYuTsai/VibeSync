@@ -16,7 +16,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const DEPLOY_VERSION = "2026-05-26-rc-webhook-v5";
+const DEPLOY_VERSION = "2026-08-28-rc-webhook-v6";
 const REVENUE_EVENT_TYPES = new Set([
   "INITIAL_PURCHASE",
   "RENEWAL",

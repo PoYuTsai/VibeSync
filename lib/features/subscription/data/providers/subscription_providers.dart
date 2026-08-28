@@ -69,7 +69,7 @@ Map<String, dynamic>? resolveEffectiveSubscriptionStoreState(
     final expiresAt = _parseSubscriptionStateDate(row['expires_at']);
     if (status == 'expired') continue;
     if (expiresAt == null) {
-      if (status != 'active') continue;
+      continue;
     } else if (!expiresAt.isAfter(at)) {
       continue;
     }
@@ -129,6 +129,11 @@ bool _isParseableSubscriptionStoreStateRow(
   if (_parseSubscriptionStateDate(row['event_at']) == null) return false;
   if (row['expires_at'] != null &&
       _parseSubscriptionStateDate(row['expires_at']) == null) {
+    return false;
+  }
+  if (row['expires_at'] == null &&
+      !(row['tier'] == SubscriptionTierHelper.free &&
+          row['status'] == 'expired')) {
     return false;
   }
   for (final key in const ['product_id', 'base_plan_id']) {
@@ -449,6 +454,7 @@ class SubscriptionState {
   String get entitlementHeadline => sourceAwareEntitlementHeadline(
         tier: tier,
         sources: sourceStates,
+        authoritative: sourceStateAuthoritative,
       );
 
   /// Whether an Android purchase must be treated as a replacement attempt.
