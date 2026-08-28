@@ -1,0 +1,161 @@
+# Manual-only Gate K prototype validation. This workflow is deliberately
+# isolated from release, backend, billing, and production workflows.
+name: Gate K disposable emulator
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-and-unit:
+    name: Gate K static and JVM unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Java 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: 3.47.0
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Materialize ignored Gradle wrapper
+        shell: bash
+        run: |
+          if [[ ! -x android/gradlew ]]; then
+            wrapper_tmp="$(mktemp -d "${RUNNER_TEMP:-/tmp}/gate-k-wrapper.XXXXXX")"
+            trap 'rm -rf -- "$wrapper_tmp"' EXIT
+            flutter create \
+              --platforms=android \
+              --project-name gate_k_ci_wrapper \
+              --no-pub \
+              "$wrapper_tmp"
+            cp "$wrapper_tmp/android/gradlew" android/gradlew
+            cp "$wrapper_tmp/android/gradlew.bat" android/gradlew.bat
+            cp "$wrapper_tmp/android/gradle/wrapper/gradle-wrapper.jar" \
+              android/gradle/wrapper/gradle-wrapper.jar
+          fi
+
+      - name: Run static and pure harness contracts
+        run: |
+          python3 tools/android/gate-k-manifest-contract.py
+          python3 -m py_compile tools/android/gate_k_harness.py
+          python3 tools/android/test_gate_k_harness.py
+          bash -n tools/android/run-gate-k-tests.sh
+          bash -n tools/android/run-gate-k-emulator-trials.sh
+
+      - name: Run Gate K JVM unit tests
+        working-directory: android
+        run: ./gradlew --no-daemon :gate-k-prototype:test
+
+      - name: Upload JVM reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gate-k-jvm-reports
+          if-no-files-found: warn
+          path: |
+            build/**/test-results/**
+            build/**/reports/**
+            android/**/build/**/test-results/**
+            android/**/build/**/reports/**
+          retention-days: 14
+
+  emulator:
+    name: Gate K API ${{ matrix.api-level }} emulator
+    needs: static-and-unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api-level: 34
+            target: google_apis
+          - api-level: 35
+            target: google_apis
+          - api-level: 36
+            target: google_apis
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Java 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: 3.47.0
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Materialize ignored Gradle wrapper
+        shell: bash
+        run: |
+          if [[ ! -x android/gradlew ]]; then
+            wrapper_tmp="$(mktemp -d "${RUNNER_TEMP:-/tmp}/gate-k-wrapper.XXXXXX")"
+            trap 'rm -rf -- "$wrapper_tmp"' EXIT
+            flutter create \
+              --platforms=android \
+              --project-name gate_k_ci_wrapper \
+              --no-pub \
+              "$wrapper_tmp"
+            cp "$wrapper_tmp/android/gradlew" android/gradlew
+            cp "$wrapper_tmp/android/gradlew.bat" android/gradlew.bat
+            cp "$wrapper_tmp/android/gradle/wrapper/gradle-wrapper.jar" \
+              android/gradle/wrapper/gradle-wrapper.jar
+          fi
+
+      - name: Run connected instrumentation and bounded real trials
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          GATE_K_API_LEVEL: ${{ matrix.api-level }}
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          force-avd-creation: true
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim
+          script: |
+            cd "$GITHUB_WORKSPACE"
+            (cd android && ./gradlew --no-daemon :gate-k-prototype:connectedDebugAndroidTest)
+            GATE_K_OUTPUT_DIR="$GITHUB_WORKSPACE/gate-k-artifacts-api$GATE_K_API_LEVEL" \
+              bash tools/android/run-gate-k-emulator-trials.sh \
+              --api-level "$GATE_K_API_LEVEL" \
+              --trials 40
+
+      - name: Upload API evidence and reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gate-k-api-${{ matrix.api-level }}-evidence
+          if-no-files-found: warn
+          path: |
+            gate-k-artifacts-api${{ matrix.api-level }}/**
+            build/**/test-results/**
+            build/**/reports/**
+            android/**/build/**/test-results/**
+            android/**/build/**/reports/**
+          retention-days: 30

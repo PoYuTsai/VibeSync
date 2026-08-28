@@ -26,3 +26,4 @@ plugins {
 
 include(":app")
 include(":gate-k-prototype")
+include(":gate-k-host")
