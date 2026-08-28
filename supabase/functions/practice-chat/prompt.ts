@@ -6,6 +6,7 @@ import type { AppliedHintTurn, PracticeTurn } from "./validate.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import {
   difficultyTuningFor,
+  type PracticeDifficulty,
   type PracticeProfile,
 } from "./practice_persona.ts";
 import {
@@ -124,13 +125,18 @@ function standardInviteMaturityPrompt(opts: {
   partnerState?: PartnerState | null;
   memorySummary?: string | null;
   userTurnCount?: number;
+  difficulty?: PracticeDifficulty;
 }): string {
   const mood = opts.partnerState?.mood ?? "unknown";
   const moodGuard = mood === "guarded" || mood === "annoyed"
     ? "partnerMood is guarded/annoyed: cap escalation to no-invite or a very soft, optional invite."
     : "partnerMood is not guarded: still require current-turn receptiveness before direct invites.";
   return `\n\ninviteMaturity(hidden guidance; standard mode)\nrelationshipScore: unavailable\ninviteStage: infer only from the current transcript, profile, partnerState, and scene context; memorySummary alone never upgrades the invite stage\ndateChance: do not guarantee; explain uncertainty in debrief if needed\nguidance: Standard mode has no numeric heat/familiarity score. Use older memory only as background continuity. A fuzzy invite is appropriate only when the current transcript shows comfort or curiosity; a direct invite needs clear current interest. ${moodGuard} Acquaintance origin only sets her opening guard, not invite readiness — a low-guard origin like friend_intro never upgrades inviteStage by itself.${
-    standardPacingLine(opts.userTurnCount ?? 0, opts.partnerState?.mood ?? null)
+    standardPacingLine(
+      opts.userTurnCount ?? 0,
+      opts.partnerState?.mood ?? null,
+      opts.difficulty ?? "normal",
+    )
   }`;
 }
 
@@ -625,7 +631,7 @@ export function buildChatMessages(
   const beginnerMode = options.practiceMode === "beginner";
   const partnerMood = options.partnerState?.mood ?? null;
   const stageFloor = beginnerMode
-    ? practiceStageFloorFor(userTurnCount, partnerMood)
+    ? practiceStageFloorFor(userTurnCount, partnerMood, profile.difficulty)
     : null;
   const temperaturePrompt = assistedMode
     ? `\n\n${
@@ -647,7 +653,7 @@ export function buildChatMessages(
         familiarityScore: effectiveFamiliarity,
         partnerMood,
         stageFloor: beginnerMode
-          ? practiceInviteFloorFor(userTurnCount, partnerMood)
+          ? practiceInviteFloorFor(userTurnCount, partnerMood, profile.difficulty)
           : null,
       }),
     )
@@ -655,6 +661,7 @@ export function buildChatMessages(
       partnerState: options.partnerState,
       memorySummary: options.memorySummary,
       userTurnCount,
+      difficulty: profile.difficulty,
     });
   // Game 的 FSM 判定整包只算一次，gameMode 與 tensionLadder 共用同一份
   // snapshot——兩處各算會在越界輪端出兩個矛盾的 allowSpicyLevel。

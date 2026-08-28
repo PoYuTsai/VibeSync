@@ -989,13 +989,21 @@ export function buildHintDecision(
   const beginnerTurns = userTurnCountOf(opts.turns);
   const relationshipStage = applyStageFloor(
     relationshipStageFor(familiarityScore, temperatureScore),
-    practiceStageFloorFor(beginnerTurns, opts.partnerMood ?? null),
+    practiceStageFloorFor(
+      beginnerTurns,
+      opts.partnerMood ?? null,
+      opts.profile.difficulty,
+    ),
   );
   const maturity = inviteMaturityFromLearningScores({
     temperatureScore,
     familiarityScore,
     partnerMood: opts.partnerMood ?? null,
-    stageFloor: practiceInviteFloorFor(beginnerTurns, opts.partnerMood ?? null),
+    stageFloor: practiceInviteFloorFor(
+      beginnerTurns,
+      opts.partnerMood ?? null,
+      opts.profile.difficulty,
+    ),
   });
   const targetVariable = maturity?.stage === "not_ready" || !maturity
     ? "安全感與熟悉感"
@@ -1624,6 +1632,7 @@ export function buildHintMessages(opts: {
   const stageFloor = practiceStageFloorFor(
     floorTurns,
     opts.partnerMood ?? null,
+    opts.profile.difficulty,
   );
   const stage = applyStageFloor(
     relationshipStageFor(opts.familiarityScore ?? 0, score),
@@ -1634,7 +1643,11 @@ export function buildHintMessages(opts: {
     temperatureScore: score,
     familiarityScore: opts.familiarityScore ?? 0,
     partnerMood: opts.partnerMood ?? null,
-    stageFloor: practiceInviteFloorFor(floorTurns, opts.partnerMood ?? null),
+    stageFloor: practiceInviteFloorFor(
+      floorTurns,
+      opts.partnerMood ?? null,
+      opts.profile.difficulty,
+    ),
   });
   // 新手的推進上限：原本一律「只輕推情緒」，聊十輪也一樣，等於教人原地踏步。
   // 回合下限到位後跟著鬆一階；模糊邀約由 inviteMaturity 那段授權，這裡只負責
