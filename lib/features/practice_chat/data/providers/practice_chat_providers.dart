@@ -2537,14 +2537,27 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       return;
     }
     final resolved = _stateProfile().withDifficulty(preference);
+    // 換難度＝換開場條件：assisted（beginner／game）整組重設初始狀態，
+    // 比照 setPracticeLearningMode 的形狀，避免 draft 還原殘留舊難度的
+    // 分數欄位讓第一輪 seed 被污染；standard 維持全 null。
+    final assisted = state.isAssistedLearningMode;
     state = state.copyWith(
       difficultyPreference: preference,
       difficulty: resolved.difficulty,
       difficultyLabel: resolved.difficultyLabel,
+      temperatureScore: assisted
+          ? initialPracticeTemperatureScore(resolved.difficulty)
+          : null,
+      temperatureBand: null, // UI 回落分數鏡像
+      familiarityScore: assisted ? kInitialPracticeFamiliarityScore : null,
+      relationshipStageLabel:
+          assisted ? kInitialPracticeRelationshipStageLabel : null,
+      lastTemperatureDelta: null,
+      temperatureReason: null,
     );
     final nextReset = state.drawNextResetAt;
     if (nextReset != null) {
-      _saveDraftFromState(nextReset); // 草稿難度同步（pre-message）
+      _saveDraftFromState(nextReset); // 草稿難度＋開場分數同步（pre-message）
     }
   }
 
