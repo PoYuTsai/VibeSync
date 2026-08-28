@@ -133,7 +133,8 @@ Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-pro
   assertEquals(passed.familiarityDelta, 3);
   assertEquals(gate(passed, passedClassification), passed);
 
-  // missed → 小負分照常放行（-2/-1 minor ×1.3 → -1/-1）
+  // missed → 小負分照常放行：-2/-1 先吃 minor ×0.6（roundNonZero／round
+  // 取整成 -1/-1），再 ×1.3 = -1.3 四捨五入仍 -1/-1
   const missedClassification = {
     connection: "missed",
     impact: "minor",
