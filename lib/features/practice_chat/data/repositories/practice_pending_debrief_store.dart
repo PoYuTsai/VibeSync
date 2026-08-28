@@ -318,16 +318,23 @@ class PracticeAppliedHintContext {
     required this.sessionId,
     required this.turns,
     this.latestHint,
+    this.revision = 0,
   });
 
   final String sessionId;
   final List<Map<String, dynamic>> turns;
   final PracticeSuccessfulHintSnapshot? latestHint;
 
+  /// 同 session 的單調遞增寫入版本。store 的 save 拒絕不比現存新的 revision，
+  /// 讓失去所有權的舊 controller 晚到的寫入不可能蓋掉較新 context。
+  /// 舊格式沒有此欄位 → 0。
+  final int revision;
+
   Map<String, dynamic> toJson() => {
         'sessionId': sessionId,
         'turns': turns,
         if (latestHint != null) 'latestHint': latestHint!.toJson(),
+        'revision': revision,
       };
 
   static PracticeAppliedHintContext? fromJson(Map<String, dynamic> json) {
@@ -341,10 +348,12 @@ class PracticeAppliedHintContext {
         .map((turn) => Map<String, dynamic>.from(turn))
         .take(5)
         .toList(growable: false);
+    final rawRevision = json['revision'];
     return PracticeAppliedHintContext(
       sessionId: sessionId.trim(),
       turns: turns,
       latestHint: PracticeSuccessfulHintSnapshot.fromJson(json['latestHint']),
+      revision: rawRevision is int && rawRevision > 0 ? rawRevision : 0,
     );
   }
 }
@@ -354,11 +363,15 @@ abstract class PracticeAppliedHintStore {
 
   /// Save errors are observable so the controller can retain the exact
   /// pending Hint request id until the successful envelope is truly durable.
+  /// Rejects（throw）revision 不比現存新的寫入：staging await 期間失去所有權的
+  /// 舊 controller，其晚到的 save 不得蓋掉同 session 較新的 context。
   Future<void> save(PracticeAppliedHintContext context);
 
   /// Clears only when [sessionId] still owns the stored context. This prevents
   /// a late old-controller cleanup from deleting a newer session's metadata.
-  Future<void> clearForSession(String sessionId);
+  /// 帶 [ifRevisionAtMost] 時，現存 revision 比它新就不清（失去所有權後的
+  /// 還原清除專用；無條件清除留給場次收尾）。
+  Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost});
 }
 
 class InMemoryPracticeAppliedHintStore implements PracticeAppliedHintStore {
@@ -370,12 +383,23 @@ class InMemoryPracticeAppliedHintStore implements PracticeAppliedHintStore {
 
   @override
   Future<void> save(PracticeAppliedHintContext context) async {
+    final existing = _contexts[context.sessionId];
+    if (existing != null && context.revision <= existing.revision) {
+      throw StateError('practice_applied_hint_stale_write');
+    }
     _contexts[context.sessionId] = context;
   }
 
   @override
-  Future<void> clearForSession(String sessionId) async {
-    _contexts.remove(sessionId.trim());
+  Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost}) async {
+    final key = sessionId.trim();
+    final existing = _contexts[key];
+    if (existing != null &&
+        ifRevisionAtMost != null &&
+        existing.revision > ifRevisionAtMost) {
+      return;
+    }
+    _contexts.remove(key);
   }
 }
 
@@ -415,6 +439,12 @@ class HivePracticeAppliedHintStore implements PracticeAppliedHintStore {
 
   @override
   Future<void> save(PracticeAppliedHintContext context) async {
+    // load 是同步、box.put 同步更新快取：check 與 put 之間沒有 await，
+    // 同 isolate 內不會被別的寫入插隊。
+    final existing = load(context.sessionId);
+    if (existing != null && context.revision <= existing.revision) {
+      throw StateError('practice_applied_hint_stale_write');
+    }
     final box = _openBox();
     await box.put(
       storageKeyForSession(context.sessionId),
@@ -427,9 +457,13 @@ class HivePracticeAppliedHintStore implements PracticeAppliedHintStore {
   }
 
   @override
-  Future<void> clearForSession(String sessionId) async {
+  Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost}) async {
     final normalizedSessionId = sessionId.trim();
     if (normalizedSessionId.isEmpty) return;
+    if (ifRevisionAtMost != null) {
+      final existing = load(normalizedSessionId);
+      if (existing != null && existing.revision > ifRevisionAtMost) return;
+    }
     final box = _openBox();
     await box.delete(storageKeyForSession(normalizedSessionId));
     final legacy = _decodeContext(box.get(storageKey));

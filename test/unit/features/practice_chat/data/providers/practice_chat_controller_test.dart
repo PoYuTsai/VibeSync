@@ -260,12 +260,33 @@ class _FailOnceClearPracticeAppliedHintStore
   bool failNextClear = false;
 
   @override
-  Future<void> clearForSession(String sessionId) async {
+  Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost}) async {
     if (failNextClear) {
       failNextClear = false;
       throw StateError('simulated provisional-lineage cleanup failure');
     }
-    await super.clearForSession(sessionId);
+    await super.clearForSession(sessionId, ifRevisionAtMost: ifRevisionAtMost);
+  }
+}
+
+/// 可以卡住「下一次 save」的 applied-hint store：重現 staging await 期間
+/// 同 session 新 controller 已寫入較新 context 的交錯。
+class _BlockingPracticeAppliedHintStore
+    extends InMemoryPracticeAppliedHintStore {
+  Completer<void>? gate; // 設好後，下一次 save 會停在 gate 前
+  final saveStarted = Completer<void>();
+  final List<PracticeAppliedHintContext> saveOrder = [];
+
+  @override
+  Future<void> save(PracticeAppliedHintContext context) async {
+    final pending = gate;
+    if (pending != null) {
+      gate = null;
+      saveStarted.complete();
+      await pending.future;
+    }
+    saveOrder.add(context);
+    await super.save(context);
   }
 }
 
@@ -3970,6 +3991,79 @@ void main() {
 
       expect(api.lastHintRequestId, isNotNull);
       expect(api.lastHintRequestId, isNot(firstId));
+    });
+
+    test(
+        'staging 期間失去所有權的還原寫入，不得蓋掉同 session 重建 controller 的較新 context',
+        () async {
+      // 交錯：舊 controller 的 staging save 卡在 await → dispose（失去所有權）
+      // → 同 session 新 controller 已成功送出一輪套用提示（store 有較新 context）
+      // → 舊 controller 的 save 恢復、接著跑 restoreDurableAppliedHintsAfterFailedSend。
+      // 合約：較新的 context 必須存活；舊 controller 的還原不得倒退／清空它。
+      final store = _BlockingPracticeAppliedHintStore();
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+
+      final a = await makeRevealed(appliedHintStore: store);
+      await a.setPracticeLearningMode(PracticeLearningMode.beginner);
+      await a.sendMessage('hello');
+      final sessionId = a.currentState.sessionId;
+
+      // 舊 controller 的第二輪：套用提示送出 → staging save 卡在 gate。
+      final gate = Completer<void>();
+      store.gate = gate;
+      final staleSend = a.sendMessage(
+        '我也想聽你多講一點',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: '我也想聽你多講一點',
+      );
+      await store.saveStarted.future;
+      a.dispose(); // 畫面重建：舊 controller 失去所有權
+
+      // 新 controller 同場重建，成功送出一輪套用提示 → store 寫入較新 context。
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            aiTurnCount: 2,
+            temperature: const PracticeTemperature(
+              score: 32,
+              delta: 2,
+              band: 'cold',
+              reason: '延伸',
+            ),
+          );
+      final rebuilt = makeControllerFrom(
+        repo.getById(sessionId)!,
+        appliedHintStore: store,
+      );
+      await rebuilt.sendMessage(
+        '聽起來你今天過得很充實',
+        appliedHintType: PracticeHintReplyType.steady,
+        appliedHintText: '聽起來你今天過得很充實',
+      );
+      final newer = store.load(sessionId);
+      expect(newer, isNotNull, reason: '前置：新 controller 的 context 已落盤');
+      expect(
+        newer!.turns.map((t) => t['sentText']),
+        contains('聽起來你今天過得很充實'),
+      );
+
+      // 放行舊 controller 卡住的 staging save → 它會發現所有權已失去並執行還原。
+      gate.complete();
+      await staleSend;
+
+      final surviving = store.load(sessionId);
+      expect(
+        surviving?.turns.map((t) => t['sentText']),
+        contains('聽起來你今天過得很充實'),
+        reason: '舊 controller 失去所有權後的還原寫入，蓋掉了新 controller 的較新 context',
+      );
     });
 
     test('同 controller：hint timeout 後對話推進（sendMessage 成功）→ 新回合 hint 鑄新 id',

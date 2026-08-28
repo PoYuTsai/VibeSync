@@ -582,10 +582,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   PracticeSuccessfulHintSnapshot? _latestSuccessfulHint;
   bool _latestSuccessfulHintIsDurable = false;
 
+  /// 本 controller 對 applied-hint store 的 revision 視角（載入時同步、
+  /// 每次成功寫入 +1）。store 拒絕不比現存新的寫入，所以視角過期的
+  /// 舊 controller 寫不進去。
+  int _appliedHintStoreRevision = 0;
+
   void _restoreAppliedHintTurnsForCurrentSession() {
     _appliedHintTurns.clear();
     _latestSuccessfulHint = null;
     _latestSuccessfulHintIsDurable = false;
+    _appliedHintStoreRevision = 0;
     state = state.copyWith(hasRetiredHintForCurrentTurn: false);
     if (!state.isAssistedLearningMode) return;
     PracticeAppliedHintContext? context;
@@ -595,6 +601,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       return;
     }
     if (context == null || context.sessionId != state.sessionId) return;
+    _appliedHintStoreRevision = context.revision;
     for (final raw in context.turns) {
       final hint = PracticeAppliedHintTurnDto.fromJson(raw);
       if (hint == null || hint.turnIndex >= state.messages.length) continue;
@@ -673,8 +680,15 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   Future<bool> _saveAppliedHintContext(
     PracticeAppliedHintContext context,
   ) async {
+    final revision = _appliedHintStoreRevision + 1;
     try {
-      await _appliedHintStore.save(context);
+      await _appliedHintStore.save(PracticeAppliedHintContext(
+        sessionId: context.sessionId,
+        turns: context.turns,
+        latestHint: context.latestHint,
+        revision: revision,
+      ));
+      _appliedHintStoreRevision = revision;
       return true;
     } catch (_) {
       return false;
@@ -1735,12 +1749,17 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     Future<void> restoreDurableAppliedHintsAfterFailedSend() async {
       if (!appliedHintStagingAttempted) return;
       try {
+        // 還原走 revision 守衛：同 session 較新 controller 已寫入更新的
+        // context 時（staging await 期間畫面重建），這裡必須 no-op。
         if (appliedHintTurnsBeforeSend.isEmpty &&
             latestSuccessfulHintBeforeSend == null) {
-          await _appliedHintStore.clearForSession(priorState.sessionId);
+          await _appliedHintStore.clearForSession(
+            priorState.sessionId,
+            ifRevisionAtMost: _appliedHintStoreRevision,
+          );
           return;
         }
-        await _appliedHintStore.save(PracticeAppliedHintContext(
+        await _saveAppliedHintContext(PracticeAppliedHintContext(
           sessionId: priorState.sessionId,
           turns: appliedHintTurnsBeforeSend
               .map((hint) => hint.toJson())
