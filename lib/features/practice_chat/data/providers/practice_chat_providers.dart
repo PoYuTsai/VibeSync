@@ -718,18 +718,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   Future<void> _saveAppliedHintTurnsForCurrentSession() async {
     if (!state.isAssistedLearningMode || _appliedHintTurns.isEmpty) return;
     // Staging 是活 controller 的入口：若稍早 clear 後的視角同步剛好碰上
-    // 讀取失敗，這裡對「空 tombstone」補一次只往上的同步，讓恢復後的
-    // 重試能寫 tombstone+1 而不是反覆用舊視角去撞牆。只認 tombstone——
-    // 讀到別人的非空內容不推進視角（那是另一個 writer 的世代）。
-    try {
-      final stored = _appliedHintStore.load(state.sessionId);
-      if (stored != null &&
-          stored.turns.isEmpty &&
-          stored.latestHint == null &&
-          stored.revision > _appliedHintStoreRevision) {
-        _appliedHintStoreRevision = stored.revision;
-      }
-    } catch (_) {}
+    // 讀取失敗，這裡對「自己清出來的空 tombstone」補一次只往上的同步，
+    // 讓恢復後的重試能寫 tombstone+1 而不是反覆用舊視角去撞牆。
+    // 必比 writerId——不比的話，舊 controller 可以搭別人的 tombstone
+    // 重新取得寫入世代、繞過 fencing（中途只有自己的世代可採納；
+    // 別人的世代只在 controller 重建的 init restore 進入）。
+    _adoptOwnTombstoneRevision();
     final saved = await _saveAppliedHintContext(PracticeAppliedHintContext(
       sessionId: state.sessionId,
       turns: _serializedAppliedHintTurns(),
@@ -789,26 +783,35 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _latestSuccessfulHint = null;
     _latestSuccessfulHintIsDurable = false;
     try {
-      await _appliedHintStore.clearForSession(sessionId);
+      await _appliedHintStore.clearForSession(
+        sessionId,
+        writerId: _appliedHintWriterId,
+      );
     } catch (_) {
       // Best-effort side-channel; session identity filters stale context.
     }
     if (sessionId != state.sessionId) return;
-    // 清除會寫入保留世代的 tombstone：不論 clear 的 Future 是否正常返回都
-    // 要重新同步視角——Hive 可能已把 tombstone 寫進快取才在 flush 拋錯，
-    // 只在成功路徑同步會讓本 controller 的下一次合法寫入被 CAS 永久誤拒。
-    // 視角只准往上：讀到 null 可能是「讀取失敗被 load 吞掉」，歸零會讓
-    // 恢復後的每次寫入都用 revision 1 去撞較新的 tombstone、永久卡死；
-    // 讀不到就維持原視角，下一次 staging 入口還會再對 tombstone 補同步。
+    // 清除會寫入帶自己 writerId 的 tombstone：不論 clear 的 Future 是否正常
+    // 返回都要重新同步視角——Hive 可能已把 tombstone 寫進快取才在 flush
+    // 拋錯，只在成功路徑同步會讓本 controller 的下一次合法寫入被 CAS 永久
+    // 誤拒。視角只准往上、只認自己的 tombstone；讀不到就維持原視角，
+    // 下一次 staging 入口還會再補同步。
+    _adoptOwnTombstoneRevision();
+  }
+
+  /// 只採納「自己清出來的」空 tombstone 世代（writerId 相符、只往上）。
+  /// 別人的世代不得在 controller 中途採納——那是 stale writer 重新入場的
+  /// 通道；合法的跨 writer 世代同步只發生在 controller 重建的 init restore。
+  void _adoptOwnTombstoneRevision() {
     try {
-      final stored = _appliedHintStore.load(sessionId);
+      final stored = _appliedHintStore.load(state.sessionId);
       if (stored != null &&
           stored.turns.isEmpty &&
           stored.latestHint == null &&
+          stored.writerId == _appliedHintWriterId &&
           stored.revision > _appliedHintStoreRevision) {
         _appliedHintStoreRevision = stored.revision;
       }
-      // stored 仍有內容＝清除整個沒生效：維持原視角。
     } catch (_) {}
   }
 

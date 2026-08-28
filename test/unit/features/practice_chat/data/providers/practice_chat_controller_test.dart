@@ -265,12 +265,20 @@ class _FailOnceClearPracticeAppliedHintStore
   bool failNextClear = false;
 
   @override
-  Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost}) async {
+  Future<void> clearForSession(
+    String sessionId, {
+    int? ifRevisionAtMost,
+    String? writerId,
+  }) async {
     if (failNextClear) {
       failNextClear = false;
       throw StateError('simulated provisional-lineage cleanup failure');
     }
-    await super.clearForSession(sessionId, ifRevisionAtMost: ifRevisionAtMost);
+    await super.clearForSession(
+      sessionId,
+      ifRevisionAtMost: ifRevisionAtMost,
+      writerId: writerId,
+    );
   }
 }
 
@@ -325,6 +333,20 @@ class _FailNextLoadAppliedHintStore extends InMemoryPracticeAppliedHintStore {
     if (failNextLoad) {
       failNextLoad = false;
       throw StateError('simulated transient read failure');
+    }
+    return super.load(sessionId);
+  }
+}
+
+/// Hive 公開 load 吞錯回 null 的鏡像：一次性回 null 而不拋錯。
+class _NullNextLoadAppliedHintStore extends InMemoryPracticeAppliedHintStore {
+  bool nullNextLoad = false;
+
+  @override
+  PracticeAppliedHintContext? load(String sessionId) {
+    if (nullNextLoad) {
+      nullNextLoad = false;
+      return null;
     }
     return super.load(sessionId);
   }
@@ -4305,6 +4327,120 @@ void main() {
       expect(store.load(c.currentState.sessionId)?.revision, 1);
 
       // 恢復後：套用提示送出必須成功（staging 入口會補同步視角）。
+      await c.sendMessage(
+        '照抄提示',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: '照抄提示',
+      );
+      expect(c.currentState.aiReplyCount, 1);
+      expect(c.currentState.errorMessage, isNull);
+      final saved = store.load(c.currentState.sessionId);
+      expect(saved?.turns.map((t) => t['sentText']), contains('照抄提示'));
+      expect(saved?.revision, greaterThan(1));
+    });
+
+    test('別人的 tombstone 不得被中途採納：舊視角 controller 的套用提示送出必須被擋下',
+        () async {
+      // Codex round-4 P2：staging 入口若不比 writerId 就採納 tombstone，
+      // 舊 controller 可搭別人的世代重新入場。
+      final store = InMemoryPracticeAppliedHintStore();
+      var sendCalls = 0;
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        return reply(
+          cost: 0,
+          temperature: const PracticeTemperature(
+            score: 30,
+            delta: 0,
+            band: 'cold',
+            reason: '維持',
+          ),
+        );
+      };
+
+      final a = await makeRevealed(appliedHintStore: store);
+      await a.setPracticeLearningMode(PracticeLearningMode.beginner);
+      await a.sendMessage('hello');
+      final sessionId = a.currentState.sessionId;
+      // B 在此刻重建：init restore 只看得到 A 模式切換清出的世代（rev1）。
+      final b = makeControllerFrom(
+        repo.getById(sessionId)!,
+        appliedHintStore: store,
+      );
+
+      // A 推進世代：套用提示成功送出（staged rev2），再結束拆解（clear →
+      // tombstone rev3、A 的 writerId）。
+      api.sendHandler = (_, {profile}) async {
+        sendCalls++;
+        return reply(
+          cost: 0,
+          aiTurnCount: 2,
+          temperature: const PracticeTemperature(
+            score: 31,
+            delta: 1,
+            band: 'cold',
+            reason: '延伸',
+          ),
+        );
+      };
+      await a.sendMessage(
+        'A 的照抄',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: 'A 的照抄',
+      );
+      api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
+            summary: '整體不錯',
+            strengths: ['開場自然'],
+            watchouts: [],
+            suggestedLine: '下次直接約她',
+            vibe: '暖',
+            dateChance: 'medium',
+            dateChanceReason: '她有回應。',
+            nextInviteMove: '先丟一個模糊邀約。',
+            qualitySchemaVersion: kPracticeDebriefQualitySchemaVersion,
+          );
+      await a.endPractice();
+      final tombstone = store.load(sessionId);
+      expect(clearedAppliedHintContext(tombstone), isTrue);
+      final tombstoneRevision = tombstone!.revision;
+      final callsBeforeB = sendCalls;
+
+      // B（舊視角）套用提示送出：不得採納 A 的 tombstone、不得達到 API、
+      // 不得動到 tombstone。
+      final priorMessages = b.currentState.messages;
+      await b.sendMessage(
+        'B 的照抄',
+        appliedHintType: PracticeHintReplyType.steady,
+        appliedHintText: 'B 的照抄',
+      );
+      expect(sendCalls, callsBeforeB, reason: 'B 的送出不得達到 API');
+      expect(b.currentState.messages, priorMessages);
+      expect(b.currentState.restoreText, 'B 的照抄');
+      final after = store.load(sessionId);
+      expect(clearedAppliedHintContext(after), isTrue);
+      expect(after?.revision, tombstoneRevision);
+    });
+
+    test('clear 後的視角同步收到 null（吞錯鏡像）→ 視角不得歸零，之後送出仍成功',
+        () async {
+      // Codex round-4 P3-A：production 的 Hive load 是吞錯回 null，
+      // 前一個測試用 throw 沒鎖住 null 分支。
+      final store = _NullNextLoadAppliedHintStore();
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+
+      final c = await makeRevealed(appliedHintStore: store);
+      store.nullNextLoad = true; // 模式切換 clear 後的 resync 收到 null
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      expect(store.load(c.currentState.sessionId)?.revision, 1);
+
       await c.sendMessage(
         '照抄提示',
         appliedHintType: PracticeHintReplyType.warmUp,

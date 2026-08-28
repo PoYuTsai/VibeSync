@@ -668,6 +668,39 @@ void main() {
       expect(store.load('sess-other'), isNotNull);
     });
 
+    test('a decodable slot with a foreign sessionId also fails closed',
+        () async {
+      // Codex round-4 P3-B：'{broken' 只蓋到 decode 失敗，identity 不符
+      // 的分支也要鎖。
+      Hive.init('./.dart_tool/test_hive_applied_hint_foreign');
+      final ts = DateTime.now().microsecondsSinceEpoch;
+      final box = await Hive.openBox('applied_hint_foreign_$ts');
+      addTearDown(box.deleteFromDisk);
+      final slot = HivePracticeAppliedHintStore.storageKeyForSession('sess-hint');
+      final foreignRaw = jsonEncode(PracticeAppliedHintContext(
+        sessionId: 'sess-other',
+        turns: sample.turns,
+        revision: 7,
+      ).toJson());
+      await box.put(slot, foreignRaw);
+      final store = HivePracticeAppliedHintStore(() => box);
+      expect(store.load('sess-hint'), isNull); // 公開 load 容錯
+      await expectLater(
+        store.save(PracticeAppliedHintContext(
+          sessionId: 'sess-hint',
+          turns: sample.turns,
+          revision: 1,
+        )),
+        throwsStateError,
+      );
+      await expectLater(
+        store.clearForSession('sess-hint', ifRevisionAtMost: 5),
+        throwsStateError,
+      );
+      await expectLater(store.clearForSession('sess-hint'), throwsStateError);
+      expect(box.get(slot), foreignRaw);
+    });
+
     test('blank sessionId clear is a no-op in both implementations', () async {
       Hive.init('./.dart_tool/test_hive_applied_hint_blank');
       final ts = DateTime.now().microsecondsSinceEpoch;

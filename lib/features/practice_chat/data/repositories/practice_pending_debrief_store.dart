@@ -390,7 +390,15 @@ abstract class PracticeAppliedHintStore {
   ///
   /// Tombstone 每個 session 至多一筆小紀錄、與場次紀錄同量級（有界）；
   /// 若未來場次量大到需要回收，再做批次清理。
-  Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost});
+  ///
+  /// [writerId]（清除者身分）會記在 tombstone 上：controller 中途只准
+  /// 重新採納「自己清出來的」tombstone 世代——不比身分的話，舊 controller
+  /// 可以搭別人的 tombstone 重新取得寫入世代、繞過 fencing。
+  Future<void> clearForSession(
+    String sessionId, {
+    int? ifRevisionAtMost,
+    String? writerId,
+  });
 }
 
 class InMemoryPracticeAppliedHintStore implements PracticeAppliedHintStore {
@@ -421,7 +429,11 @@ class InMemoryPracticeAppliedHintStore implements PracticeAppliedHintStore {
   }
 
   @override
-  Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost}) async {
+  Future<void> clearForSession(
+    String sessionId, {
+    int? ifRevisionAtMost,
+    String? writerId,
+  }) async {
     final key = sessionId.trim();
     if (key.isEmpty) return; // 與 Hive 對齊：空 sessionId 一律 no-op
     final existing = _contexts[key];
@@ -434,6 +446,7 @@ class InMemoryPracticeAppliedHintStore implements PracticeAppliedHintStore {
           sessionId: key,
           turns: const [],
           revision: 1,
+          writerId: writerId,
         );
       }
       return;
@@ -446,6 +459,7 @@ class InMemoryPracticeAppliedHintStore implements PracticeAppliedHintStore {
       sessionId: key,
       turns: const [],
       revision: existing.revision + 1,
+      writerId: writerId,
     );
   }
 }
@@ -520,7 +534,11 @@ class HivePracticeAppliedHintStore implements PracticeAppliedHintStore {
   }
 
   @override
-  Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost}) async {
+  Future<void> clearForSession(
+    String sessionId, {
+    int? ifRevisionAtMost,
+    String? writerId,
+  }) async {
     final normalizedSessionId = sessionId.trim();
     if (normalizedSessionId.isEmpty) return;
     // 讀取失敗直接拋出（fail closed）：吞錯會讓守衛清除誤刪較新 context。
@@ -536,6 +554,7 @@ class HivePracticeAppliedHintStore implements PracticeAppliedHintStore {
             sessionId: normalizedSessionId,
             turns: const [],
             revision: 1,
+            writerId: writerId,
           ).toJson()),
         );
       }
@@ -549,6 +568,7 @@ class HivePracticeAppliedHintStore implements PracticeAppliedHintStore {
           sessionId: normalizedSessionId,
           turns: const [],
           revision: existing.revision + 1,
+          writerId: writerId,
         ).toJson()),
       );
     }
