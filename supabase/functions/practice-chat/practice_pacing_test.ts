@@ -1,6 +1,7 @@
 import {
   assert,
   assertEquals,
+  assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   applyStageFloor,
@@ -10,7 +11,7 @@ import {
   standardPacingLine,
 } from "./practice_pacing.ts";
 import { inviteMaturityFromLearningScores } from "./invite_maturity.ts";
-import { buildHintMessages } from "./hint.ts";
+import { buildHintDecision, buildHintMessages } from "./hint.ts";
 import { buildChatMessages } from "./prompt.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeTurn } from "./validate.ts";
@@ -137,4 +138,105 @@ Deno.test("標準模式聊開後在 NPC prompt 拿到 pacing 行；game 完全�
 
 Deno.test("practiceUserTurnCount 只算使用者出手數", () => {
   assertEquals(practiceUserTurnCount(turns(4)), 4);
+});
+
+// ── PR 4：推進下限吃難度 ─────────────────────────────────────────────
+
+const challengeProfile = resolvePracticeProfile({
+  profileId: "practice_girl_004",
+  difficulty: "challenge",
+});
+
+Deno.test("challenge 下限延後到 5／9，且沒有純回合數的邀約下限", () => {
+  assertEquals(practiceStageFloorFor(4, null, "challenge"), null);
+  assertEquals(practiceStageFloorFor(5, null, "challenge"), "personal_allowed");
+  assertEquals(practiceStageFloorFor(8, null, "challenge"), "personal_allowed");
+  assertEquals(practiceStageFloorFor(9, null, "challenge"), "flirt_allowed");
+  assertEquals(practiceInviteFloorFor(8, null, "challenge"), null);
+  assertEquals(practiceInviteFloorFor(30, null, "challenge"), null);
+});
+
+Deno.test("easy／normal 明寫難度仍是 3／6／8（含下界）", () => {
+  for (const difficulty of ["easy", "normal"] as const) {
+    assertEquals(practiceStageFloorFor(2, null, difficulty), null);
+    assertEquals(
+      practiceStageFloorFor(3, null, difficulty),
+      "personal_allowed",
+    );
+    assertEquals(
+      practiceStageFloorFor(5, null, difficulty),
+      "personal_allowed",
+    );
+    assertEquals(practiceStageFloorFor(6, null, difficulty), "flirt_allowed");
+    assertEquals(practiceInviteFloorFor(7, null, difficulty), null);
+    assertEquals(
+      practiceInviteFloorFor(8, null, difficulty),
+      "soft_invite_ready",
+    );
+  }
+});
+
+Deno.test("challenge 的 guarded／annoyed 一樣整組停用", () => {
+  assertEquals(practiceStageFloorFor(9, "guarded", "challenge"), null);
+  assertEquals(practiceStageFloorFor(9, "annoyed", "challenge"), null);
+  assertEquals(standardPacingLine(9, "guarded", "challenge"), "");
+});
+
+Deno.test("standard challenge 的 pacing 行更慢，且不因回合數放行模糊邀約", () => {
+  assertEquals(standardPacingLine(5, null, "challenge"), "");
+  assert(standardPacingLine(6, null, "challenge").includes("pacing:"));
+  assert(!standardPacingLine(12, null, "challenge").includes("模糊邀約"));
+});
+
+Deno.test("standard challenge 第 9 回合放行輕曖昧，但仍不含模糊邀約", () => {
+  // 第 8 回合還在中段行，第 9 回合才升到輕曖昧行（政策表 flirt: 9）。
+  assert(!standardPacingLine(8, null, "challenge").includes("曖昧"));
+  const flirtLine = standardPacingLine(9, null, "challenge");
+  assert(flirtLine.includes("曖昧"));
+  assert(!flirtLine.includes("模糊邀約"));
+  assert(!standardPacingLine(20, null, "challenge").includes("模糊邀約"));
+  // easy／normal 不受新行影響：第 6-7 回合仍是原本的中段行，第 8 回合原行不變。
+  assert(!standardPacingLine(6, null, "normal").includes("曖昧"));
+  assert(standardPacingLine(8, null, "normal").includes("模糊邀約"));
+});
+
+Deno.test("NPC prompt 與 Hint 守門同一份政策：challenge 第 8 顆球不放行模糊邀約", () => {
+  const lowScores = { temperatureScore: 20, familiarityScore: 10 };
+  const normalPrompt = buildChatMessages(turns(8), profile, {
+    practiceMode: "beginner",
+    ...lowScores,
+  }).map((message) => message.content).join("\n");
+  assert(normalPrompt.includes("inviteStage: soft_invite_ready"));
+
+  const challengePrompt = buildChatMessages(turns(8), challengeProfile, {
+    practiceMode: "beginner",
+    ...lowScores,
+  }).map((message) => message.content).join("\n");
+  assert(challengePrompt.includes("inviteStage: not_ready"));
+
+  const softInviteReply = {
+    replyType: "warm_up" as const,
+    replyText: "改天有空也可以一起去河邊走走。",
+    rationale: "她提到喜歡散步，把它變成低壓共同畫面。",
+  };
+  const normalDecision = buildHintDecision({
+    turns: turns(8),
+    profile,
+    practiceMode: "beginner",
+    ...lowScores,
+    ...softInviteReply,
+  });
+  assertEquals(normalDecision.inviteRoute, "soft_invite_ready");
+  assertThrows(
+    () =>
+      buildHintDecision({
+        turns: turns(8),
+        profile: challengeProfile,
+        practiceMode: "beginner",
+        ...lowScores,
+        ...softInviteReply,
+      }),
+    Error,
+    "hint_quality_invalid_invite_route",
+  );
 });
