@@ -156,10 +156,15 @@ Deno.test("challenge 下限延後到 5／9，且沒有純回合數的邀約下�
   assertEquals(practiceInviteFloorFor(30, null, "challenge"), null);
 });
 
-Deno.test("easy／normal 明寫難度仍是 3／6／8", () => {
+Deno.test("easy／normal 明寫難度仍是 3／6／8（含下界）", () => {
   for (const difficulty of ["easy", "normal"] as const) {
+    assertEquals(practiceStageFloorFor(2, null, difficulty), null);
     assertEquals(
       practiceStageFloorFor(3, null, difficulty),
+      "personal_allowed",
+    );
+    assertEquals(
+      practiceStageFloorFor(5, null, difficulty),
       "personal_allowed",
     );
     assertEquals(practiceStageFloorFor(6, null, difficulty), "flirt_allowed");
@@ -181,6 +186,18 @@ Deno.test("standard challenge 的 pacing 行更慢，且不因回合數放行模
   assertEquals(standardPacingLine(5, null, "challenge"), "");
   assert(standardPacingLine(6, null, "challenge").includes("pacing:"));
   assert(!standardPacingLine(12, null, "challenge").includes("模糊邀約"));
+});
+
+Deno.test("standard challenge 第 9 回合放行輕曖昧，但仍不含模糊邀約", () => {
+  // 第 8 回合還在中段行，第 9 回合才升到輕曖昧行（政策表 flirt: 9）。
+  assert(!standardPacingLine(8, null, "challenge").includes("曖昧"));
+  const flirtLine = standardPacingLine(9, null, "challenge");
+  assert(flirtLine.includes("曖昧"));
+  assert(!flirtLine.includes("模糊邀約"));
+  assert(!standardPacingLine(20, null, "challenge").includes("模糊邀約"));
+  // easy／normal 不受新行影響：第 6-7 回合仍是原本的中段行，第 8 回合原行不變。
+  assert(!standardPacingLine(6, null, "normal").includes("曖昧"));
+  assert(standardPacingLine(8, null, "normal").includes("模糊邀約"));
 });
 
 Deno.test("NPC prompt 與 Hint 守門同一份政策：challenge 第 8 顆球不放行模糊邀約", () => {

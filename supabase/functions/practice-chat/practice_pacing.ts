@@ -106,6 +106,12 @@ export function standardPacingLine(
   if (floors.invite !== null && userTurnCount >= floors.invite) {
     return `\npacing: 你們已經來回 ${userTurnCount} 次了。只要對方沒有讓你不舒服，這時候你會比開場放鬆——可以主動提一點自己的事、接輕鬆的玩笑，也可以順著話題丟出你有空的時段或想去的地方。對方提「改天一起…」這種模糊邀約是自然的，不用當成太快。`;
   }
+  // challenge 專用輕曖昧行（flirt: 9）：easy／normal 的第 8 回合行已涵蓋曖昧＋
+  // 模糊邀約，這條只在沒有邀約回合下限（invite: null）時出現，避免改動
+  // easy／normal 第 6-7 回合的既有行為。
+  if (floors.invite === null && userTurnCount >= floors.flirt) {
+    return `\npacing: 你們已經來回 ${userTurnCount} 次了。聊得順的話可以接一點輕鬆的玩笑、帶一點曖昧的張力，但先不急著提「改天一起…」這種邀約——她的興趣要真的被你聊起來才算數。`;
+  }
   // 中段行門檻沿用原本的 personal+1（3→4），challenge 順移成 6。
   if (userTurnCount >= floors.personal + 1) {
     return `\npacing: 你們已經來回 ${userTurnCount} 次了。聊得順的話就從生活資訊往感受、偏好、小故事走一點，不要每一輪都停在客套的問答。`;
