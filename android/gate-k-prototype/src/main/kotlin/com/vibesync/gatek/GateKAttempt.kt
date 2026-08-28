@@ -52,12 +52,14 @@ data class GateKAttemptStart(
     val attemptId: GateKAttemptId,
     val sessionId: String,
     val triggeredAtElapsedRealtimeMs: Long,
+    val mediaStoreFence: GateKMediaStoreAttemptFence? = null,
 )
 
 data class GateKActiveAttempt(
     val attemptId: GateKAttemptId,
     val sessionId: String,
     val triggeredAtElapsedRealtimeMs: Long,
+    val mediaStoreFence: GateKMediaStoreAttemptFence? = null,
 )
 
 data class GateKAttemptTerminal(
@@ -101,6 +103,10 @@ sealed interface GateKAttemptTerminalResult {
 
     data object IgnoredWrongSession : GateKAttemptTerminalResult
 
+    data object IgnoredStaleObservation : GateKAttemptTerminalResult
+
+    data object IgnoredUnfencedObservation : GateKAttemptTerminalResult
+
     data object RejectedInvalidTiming : GateKAttemptTerminalResult
 }
 
@@ -140,9 +146,16 @@ class GateKAttemptCoordinator(
     val isObserverReady: Boolean
         get() = observerReady && activeSessionId != null
 
+    /** True only for a row newer than the active attempt's MediaStore fence. */
+    @Synchronized
+    fun isCandidateEligible(candidateIdentity: GateKMediaStoreCandidateIdentity): Boolean {
+        val attempt = activeAttempt ?: return false
+        return observationFailure(attempt, candidateIdentity) == null
+    }
+
     @Synchronized
     fun onSessionShown(sessionId: String): Boolean {
-        if (sessionId.isBlank()) return false
+        if (sessionId.isBlank() || activeAttempt != null) return false
         activeSessionId = sessionId
         observerReady = false
         return true
@@ -167,6 +180,7 @@ class GateKAttemptCoordinator(
         if (event.attemptId.value.isBlank()
             || event.sessionId.isBlank()
             || event.triggeredAtElapsedRealtimeMs < 0L
+            || event.mediaStoreFence?.highWaterGeneration?.let { it < 0L } == true
         ) {
             return GateKAttemptStartResult.RejectedInvalidEvent
         }
@@ -182,6 +196,7 @@ class GateKAttemptCoordinator(
             attemptId = event.attemptId,
             sessionId = event.sessionId,
             triggeredAtElapsedRealtimeMs = event.triggeredAtElapsedRealtimeMs,
+            mediaStoreFence = event.mediaStoreFence,
         )
         activeAttempt = attempt
         return GateKAttemptStartResult.Started(attempt)
@@ -193,11 +208,13 @@ class GateKAttemptCoordinator(
         attemptId: GateKAttemptId,
         sessionId: String,
         monotonicStart: Long,
+        mediaStoreFence: GateKMediaStoreAttemptFence? = null,
     ): GateKAttemptStartResult = start(
         GateKAttemptStart(
             attemptId = attemptId,
             sessionId = sessionId,
             triggeredAtElapsedRealtimeMs = monotonicStart,
+            mediaStoreFence = mediaStoreFence,
         ),
     )
 
@@ -208,6 +225,7 @@ class GateKAttemptCoordinator(
         detectedAtElapsedRealtimeMs: Long,
         sessionOutcome: GateKSessionOutcome,
         dedupeOutcome: GateKDedupeOutcome,
+        candidateIdentity: GateKMediaStoreCandidateIdentity? = null,
     ): GateKAttemptTerminalResult {
         val attempt = activeAttempt ?: return if (attemptId in terminalAttemptIds) {
             GateKAttemptTerminalResult.IgnoredAlreadyTerminal
@@ -216,6 +234,7 @@ class GateKAttemptCoordinator(
         }
         if (attempt.attemptId != attemptId) return GateKAttemptTerminalResult.IgnoredWrongAttempt
         if (attempt.sessionId != sessionId) return GateKAttemptTerminalResult.IgnoredWrongSession
+        observationFailure(attempt, candidateIdentity)?.let { return it }
         if (detectedAtElapsedRealtimeMs < attempt.triggeredAtElapsedRealtimeMs) {
             return GateKAttemptTerminalResult.RejectedInvalidTiming
         }
@@ -253,6 +272,7 @@ class GateKAttemptCoordinator(
         sessionId: String,
         detectedAtElapsedRealtimeMs: Long,
         reason: GateKFailureReason,
+        candidateIdentity: GateKMediaStoreCandidateIdentity? = null,
     ): GateKAttemptTerminalResult {
         val attempt = activeAttempt ?: return if (attemptId in terminalAttemptIds) {
             GateKAttemptTerminalResult.IgnoredAlreadyTerminal
@@ -261,6 +281,7 @@ class GateKAttemptCoordinator(
         }
         if (attempt.attemptId != attemptId) return GateKAttemptTerminalResult.IgnoredWrongAttempt
         if (attempt.sessionId != sessionId) return GateKAttemptTerminalResult.IgnoredWrongSession
+        observationFailure(attempt, candidateIdentity)?.let { return it }
         if (detectedAtElapsedRealtimeMs < attempt.triggeredAtElapsedRealtimeMs) {
             return GateKAttemptTerminalResult.RejectedInvalidTiming
         }
@@ -287,6 +308,22 @@ class GateKAttemptCoordinator(
                 reason
             },
         )
+    }
+
+    private fun observationFailure(
+        attempt: GateKActiveAttempt,
+        candidateIdentity: GateKMediaStoreCandidateIdentity?,
+    ): GateKAttemptTerminalResult? {
+        val fence = attempt.mediaStoreFence ?: return null
+        if (candidateIdentity == null) {
+            return GateKAttemptTerminalResult.IgnoredUnfencedObservation
+        }
+        if (candidateIdentity.mediaId.isBlank()
+            || candidateIdentity.generation <= fence.highWaterGeneration
+        ) {
+            return GateKAttemptTerminalResult.IgnoredStaleObservation
+        }
+        return null
     }
 
     @Synchronized

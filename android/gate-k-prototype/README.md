@@ -12,10 +12,13 @@ The public seams are:
 3. `ScreenshotCandidateDedupe` — SHA-256 identity and session-scoped duplicate
    suppression; only hashes are retained.
 4. `GateKAttemptCoordinator` — explicit attempt IDs, one terminal outcome, a
-   monotonic 3-second timeout, and bounded failure reasons.
+   monotonic 3-second timeout, a MediaStore generation fence, and bounded
+   failure reasons.
 5. `GateKMediaStoreQueryContract` and `GateKMediaStoreSessionBaseline` —
    `GENERATION_ADDED` high-water filtering with a one-row initial query and a
-   bounded 128-row delta query; `IS_PENDING=0` is required.
+   bounded 128-row delta query; `IS_PENDING=0` is required. Pending rows still
+   advance the high-water fence, and pre-session `DATE_ADDED` rows are
+   quarantined even when `DATE_MODIFIED` is newer.
 6. `GateKPermissionContract` — exact manifest permission/service allowlist;
    API 34+ full/partial/denied state follows Android's grant precedence.
 7. `GateKDeviceDescriptor` / `GateKDeviceClassifier` — raw Build metadata is
@@ -57,9 +60,12 @@ release integration.
 The exact runner is
 `tools/android/run-gate-k-emulator-trials.sh`. It accepts `--api-level 34|35|36`,
 `--trials 1..40`, and `--output-dir`; the default is API 34 and 40 trials. For
-each trial it waits for the uniquely labelled, enabled `Start Gate K attempt`
-button from a live `uiautomator` dump, taps its parsed bounds, then sends only
-`adb shell input keyevent 120` for the Android SystemUI screenshot action. It
+each trial it starts the host with a fresh `gate-k-trial-N` nonce, verifies that
+the host displays exactly that nonce in the live `uiautomator` dump, then waits
+for the uniquely labelled, enabled `Start Gate K attempt` button, taps its
+parsed bounds, and sends only `adb shell input keyevent 120` for the Android
+SystemUI screenshot action. The nonce exists only in the host/runner process;
+it is not persisted, uploaded, or included in evidence. It
 does not call `screencap`, insert MediaStore rows, or fabricate evidence. The
 runner waits for the app-private trial count to increase before starting the
 next attempt, exports `gate-k-evidence-apiN.json`, device properties, and the
@@ -105,6 +111,17 @@ session has completed its bounded MediaStore baseline, observer registration,
 and race-closing delta query; session end or any observer/grant/query error
 disables it again. The runner does not use fixed coordinates or a fixed sleep
 as a readiness signal.
+
+Before each explicit attempt is armed, the same MediaStore worker drains queued
+observer work and captures the current generation fence. A candidate must carry
+an identity newer than that fence; late rows from a timed-out attempt are
+quarantined before bytes are opened or hashed.
+
+`latencyMs` is the monotonic attempt-to-detect duration: its start is the
+explicit attempt arm after the worker-serialized MediaStore fence, and its end
+is candidate detection or timeout. It includes runner trigger overhead (the
+button tap through the SystemUI screenshot keyevent and observation); it is not
+a MediaStore-only query latency.
 On a manual run, the equivalent explicit setup is:
 
 ```bash
@@ -188,9 +205,18 @@ adb shell ime enable com.vibesync.gatek/.GateKPrototypeInputMethodService
 adb shell ime set com.vibesync.gatek/.GateKPrototypeInputMethodService
 ```
 
-Focus a text field in another app. In the IME view tap `Start Gate K attempt`,
-then make a hardware screenshot within three seconds. Repeat at least 40
-times on each of API 34, 35, and 36. The observer query is bounded and only
+Focus a text field in another app. Before each manual trial, launch the host
+with a new nonce and confirm the live UI shows it (the bounded runner performs
+this check automatically):
+
+```bash
+adb shell am start -W -n com.vibesync.gatekhost/.MainActivity \
+  --es gate_k_nonce gate-k-trial-1
+```
+
+In the IME view tap `Start Gate K attempt`, then make a hardware screenshot
+within three seconds. Repeat with a new nonce for at least 40 times on each of
+API 34, 35, and 36. The observer query is bounded and only
 accepts `GENERATION_ADDED` rows after the session high-water mark; each bounded
 query samples a non-empty MediaStore version before and after I/O and fails
 closed if it changes; no album-wide metadata scan is performed.

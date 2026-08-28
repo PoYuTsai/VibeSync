@@ -8,6 +8,7 @@ from pathlib import Path
 
 from gate_k_harness import (
     HarnessContractError,
+    find_gate_k_nonce,
     find_gate_k_button_center,
     validate_evidence,
     validate_runner_contract,
@@ -124,6 +125,22 @@ class GateKHarnessTest(unittest.TestCase):
         with self.assertRaises(HarnessContractError):
             find_gate_k_button_center(VALID_UI.replace('enabled="true"', 'enabled="false"'))
 
+    def test_nonce_parser_requires_the_expected_unique_host_nonce(self) -> None:
+        xml = (
+            "<hierarchy>"
+            "<node text='Gate K screenshot nonce: trial-1' "
+            "content-desc='Gate K screenshot nonce: trial-1' />"
+            "</hierarchy>"
+        )
+        self.assertEqual("trial-1", find_gate_k_nonce(xml, "trial-1"))
+        with self.assertRaises(HarnessContractError):
+            find_gate_k_nonce(xml, "trial-2")
+        with self.assertRaises(HarnessContractError):
+            find_gate_k_nonce(
+                xml.replace("</hierarchy>", "<node text='Gate K screenshot nonce: trial-1' /></hierarchy>"),
+                "trial-1",
+            )
+
     def test_evidence_validator_accepts_runtime_metadata_timeout(self) -> None:
         validate_evidence(valid_evidence(), expected_trials=1, expected_api=34)
 
@@ -197,6 +214,10 @@ class GateKHarnessTest(unittest.TestCase):
         prototype_apk="$build_root/gate-k-prototype/outputs/apk/debug/gate-k-prototype-debug.apk"
         host_apk="$build_root/gate-k-host/outputs/apk/debug/gate-k-host-debug.apk"
         adb shell settings put secure show_ime_with_hard_keyboard 1
+        nonce="gate-k-trial-${trial}"
+        previous_nonce=""
+        adb shell am start -W -n "$host_package/.MainActivity" --es gate_k_nonce "$nonce"
+        find_trial_nonce "$nonce"
         output_dir="$(realpath -m -- "$output_dir")"
         case "$output_dir" in
           "$repo_root"|"$repo_root"/*) ;;

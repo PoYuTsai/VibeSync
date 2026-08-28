@@ -70,4 +70,39 @@ class GateKObservationPipelineTest {
                 is GateKObservationResult.Accepted,
         )
     }
+
+    @Test
+    fun `normalized floor does not prevent hide from clearing the pipeline`() {
+        val pipeline = GateKObservationPipeline()
+        assertTrue(
+            pipeline.onImeShown(ImeSessionStart("session-1", 2_000L))
+                is ImeSessionStartResult.Started,
+        )
+        assertTrue(
+            pipeline.onImeHidden(ImeSessionEnd("session-1", 2_000L))
+                is ImeSessionEndResult.Ended,
+        )
+        assertTrue(
+            pipeline.onImeShown(ImeSessionStart("session-2", 2_000L))
+                is ImeSessionStartResult.Started,
+        )
+
+        assertTrue(
+            pipeline.onImeHidden(ImeSessionEnd("session-2", 2_000L))
+                is ImeSessionEndResult.Ended,
+        )
+        assertEquals(
+            GateKObservationResult.Ignored(IgnoredCandidateReason.NO_ACTIVE_SESSION),
+            pipeline.observe(
+                ScreenshotCandidate(
+                    sessionId = "session-2",
+                    observedAtEpochMs = 2_002L,
+                    source = ScreenshotCandidateSource.MEDIA_STORE_SCREENSHOT,
+                    width = 1_080,
+                    height = 1_920,
+                    content = byteArrayOf(4, 5, 6),
+                ),
+            ),
+        )
+    }
 }

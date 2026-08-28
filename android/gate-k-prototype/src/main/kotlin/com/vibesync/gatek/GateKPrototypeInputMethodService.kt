@@ -21,6 +21,8 @@ import java.io.InputStream
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
  * Disposable Gate K observer prototype. It has no AI, network, quota, chat
@@ -201,6 +203,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             val baselineStart = mediaStoreBaseline.beginSession(
                 floorEpochMs = floorEpochMs,
                 existingRecords = baselineQuery.records,
+                initialHighWaterGeneration = baselineQuery.highWaterGeneration,
                 versionSnapshot = baselineQuery.versionSnapshot
                     ?: GateKMediaStoreVersionSnapshot("", ""),
             )
@@ -313,10 +316,39 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     /** Starts an explicit attempt only after the session's observer is ready. */
     fun beginMeasurementAttempt(attemptId: String): GateKAttemptStartResult {
         val sessionId = activeSessionId ?: return GateKAttemptStartResult.RejectedNoActiveSession
+        if (!attemptCoordinator.isObserverReady || !attemptUiState.isEnabled(sessionId)) {
+            return GateKAttemptStartResult.RejectedObserverNotReady
+        }
+        // ContentObserver callbacks are queued on this same worker. Waiting
+        // for a no-op fence means every callback already queued for attempt A
+        // has drained before attempt B captures its generation high-water mark.
+        val mediaStoreFence = try {
+            mediaStoreExecutor.submit<GateKMediaStoreAttemptFence?> {
+                if (activeSessionId != sessionId) {
+                    null
+                } else {
+                    mediaStoreBaseline.currentAttemptFence()
+                }
+            }.get(1L, TimeUnit.SECONDS)
+        } catch (error: InterruptedException) {
+            Thread.currentThread().interrupt()
+            null
+        } catch (_: TimeoutException) {
+            null
+        } catch (_: java.util.concurrent.ExecutionException) {
+            null
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            null
+        }
+        if (mediaStoreFence == null) {
+            markObserverNotReadyAndDisable(sessionId)
+            return GateKAttemptStartResult.RejectedObserverNotReady
+        }
         val result = attemptCoordinator.begin(
             attemptId = GateKAttemptId(attemptId),
             sessionId = sessionId,
             monotonicStart = SystemClock.elapsedRealtime(),
+            mediaStoreFence = mediaStoreFence,
         )
         if (result is GateKAttemptStartResult.Started) {
             scheduleAttemptTimeout(result.attempt)
@@ -378,6 +410,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             queriedRecords = query.records,
             versionSnapshot = query.versionSnapshot
                 ?: GateKMediaStoreVersionSnapshot("", ""),
+            queriedHighWaterGeneration = query.highWaterGeneration,
         )
         if (candidatesResult.failure != null) {
             recordFailure(
@@ -394,6 +427,17 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             if (activeSessionId != sessionId) return@forEach
             val classification = MediaStoreScreenshotClassifier.classify(record.metadata)
             if (classification != MediaStoreScreenshotDecision.MediaStoreScreenshot) return@forEach
+            val candidateIdentity = record.generation?.let { generation ->
+                GateKMediaStoreCandidateIdentity(
+                    mediaId = record.mediaId,
+                    generation = generation,
+                )
+            } ?: return@forEach
+            // A row is meaningful only while an explicit attempt is active.
+            // This prevents a late A callback from filling the pipeline hash
+            // set before B is armed, and quarantines rows at or below B's
+            // worker-serialized generation fence before opening any bytes.
+            if (!attemptCoordinator.isCandidateEligible(candidateIdentity)) return@forEach
 
             val content = openTransientContent(Uri.parse(record.metadata.uri))
             if (content == null) {
@@ -403,6 +447,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                     sessionOutcome = GateKSessionOutcome.ACCEPTED,
                     dedupeOutcome = GateKDedupeOutcome.NOT_EVALUATED,
                     failureReason = "CONTENT_UNAVAILABLE",
+                    candidateIdentity = candidateIdentity,
                 )
                 return@forEach
             }
@@ -422,7 +467,12 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                     ),
                 )
             }
-            recordPipelineResult(result, SystemClock.elapsedRealtime(), sessionId)
+            recordPipelineResult(
+                result = result,
+                observedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+                sessionId = sessionId,
+                candidateIdentity = candidateIdentity,
+            )
         }
         true
     }
@@ -431,6 +481,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         val records: List<MediaStoreCandidateRecord> = emptyList(),
         val failureReason: String? = null,
         val versionSnapshot: GateKMediaStoreVersionSnapshot? = null,
+        val highWaterGeneration: Long? = null,
     )
 
     private class MediaStoreQueryContractException(
@@ -463,6 +514,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             }
         }.toTypedArray()
         return try {
+            var highestGeneration = 0L
             val cursor = contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 projection,
@@ -479,9 +531,13 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 val dateModifiedIndex = cursor.getColumnIndex(MediaStore.Images.Media.DATE_MODIFIED)
                 val pendingIndex = cursor.getColumnIndex(MediaStore.Images.Media.IS_PENDING)
                 val generationIndex = cursor.getColumnIndex(MediaStore.MediaColumns.GENERATION_ADDED)
-                if (idIndex < 0 || dateAddedIndex < 0 || generationIndex < 0) {
+                if (idIndex < 0 || dateAddedIndex < 0 || generationIndex < 0 || pendingIndex < 0) {
                     throw MediaStoreQueryContractException(
-                        GateKMediaStoreBaselineFailure.MISSING_GENERATION,
+                        if (pendingIndex < 0) {
+                            GateKMediaStoreBaselineFailure.INVALID_RECORD
+                        } else {
+                            GateKMediaStoreBaselineFailure.MISSING_GENERATION
+                        },
                     )
                 }
                 buildList {
@@ -513,7 +569,8 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                             )
                         }
                         previousGeneration = generation
-                        if (pendingIndex >= 0 && cursor.getIntOrZero(pendingIndex) != 0) continue
+                        highestGeneration = maxOf(highestGeneration, generation)
+                        if (cursor.getIntOrZero(pendingIndex) != 0) continue
                         val mediaId = cursor.getLongOrZero(idIndex)
                         if (mediaId <= 0L) {
                             throw MediaStoreQueryContractException(
@@ -550,6 +607,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             }
             MediaStoreQueryResult(
                 records = records,
+                highWaterGeneration = highestGeneration.takeIf { it > 0L },
                 versionSnapshot = GateKMediaStoreVersionSnapshot(
                     mediaStoreVersionBefore = versionBefore,
                     mediaStoreVersionAfter = readMediaStoreVersion().orEmpty(),
@@ -568,6 +626,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         result: GateKObservationResult,
         observedAtElapsedRealtimeMs: Long,
         sessionId: String,
+        candidateIdentity: GateKMediaStoreCandidateIdentity,
     ) {
         if (activeSessionId != sessionId) return
         val terminalResult = when (result) {
@@ -576,6 +635,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 detectedAtElapsedRealtimeMs = observedAtElapsedRealtimeMs,
                 sessionOutcome = GateKSessionOutcome.ACCEPTED,
                 dedupeOutcome = GateKDedupeOutcome.FIRST_SEEN,
+                candidateIdentity = candidateIdentity,
             )
 
             is GateKObservationResult.DuplicateSuppressed -> detectActiveAttempt(
@@ -583,18 +643,21 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 detectedAtElapsedRealtimeMs = observedAtElapsedRealtimeMs,
                 sessionOutcome = GateKSessionOutcome.ACCEPTED,
                 dedupeOutcome = GateKDedupeOutcome.DUPLICATE_SUPPRESSED,
+                candidateIdentity = candidateIdentity,
             )
 
             is GateKObservationResult.Ignored -> failActiveAttempt(
                 sessionId = sessionId,
                 detectedAtElapsedRealtimeMs = observedAtElapsedRealtimeMs,
                 reason = GateKFailureReason.METADATA_REJECTED,
+                candidateIdentity = candidateIdentity,
             )
 
             is GateKObservationResult.Rejected -> failActiveAttempt(
                 sessionId = sessionId,
                 detectedAtElapsedRealtimeMs = observedAtElapsedRealtimeMs,
                 reason = GateKFailureReason.METADATA_REJECTED,
+                candidateIdentity = candidateIdentity,
             )
         }
         recordTerminalResult(terminalResult)
@@ -620,6 +683,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         sessionOutcome: GateKSessionOutcome,
         dedupeOutcome: GateKDedupeOutcome,
         failureReason: String?,
+        candidateIdentity: GateKMediaStoreCandidateIdentity? = null,
     ) {
         val result = if (failureReason == null) {
             detectActiveAttempt(
@@ -627,12 +691,14 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 detectedAtElapsedRealtimeMs = detectedAtElapsedRealtimeMs,
                 sessionOutcome = sessionOutcome,
                 dedupeOutcome = dedupeOutcome,
+                candidateIdentity = candidateIdentity,
             )
         } else {
             failActiveAttempt(
                 sessionId = sessionId,
                 detectedAtElapsedRealtimeMs = detectedAtElapsedRealtimeMs,
                 reason = GateKFailureReason.fromLegacy(failureReason),
+                candidateIdentity = candidateIdentity,
             )
         }
         recordTerminalResult(result)
@@ -643,6 +709,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         detectedAtElapsedRealtimeMs: Long,
         sessionOutcome: GateKSessionOutcome,
         dedupeOutcome: GateKDedupeOutcome,
+        candidateIdentity: GateKMediaStoreCandidateIdentity? = null,
     ): GateKAttemptTerminalResult {
         val attempt = attemptCoordinator.currentAttempt
             ?: return GateKAttemptTerminalResult.IgnoredNoActiveAttempt
@@ -652,6 +719,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             detectedAtElapsedRealtimeMs = detectedAtElapsedRealtimeMs,
             sessionOutcome = sessionOutcome,
             dedupeOutcome = dedupeOutcome,
+            candidateIdentity = candidateIdentity,
         )
     }
 
@@ -659,6 +727,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         sessionId: String,
         detectedAtElapsedRealtimeMs: Long,
         reason: GateKFailureReason,
+        candidateIdentity: GateKMediaStoreCandidateIdentity? = null,
     ): GateKAttemptTerminalResult {
         val attempt = attemptCoordinator.currentAttempt
             ?: return GateKAttemptTerminalResult.IgnoredNoActiveAttempt
@@ -667,6 +736,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             sessionId = sessionId,
             detectedAtElapsedRealtimeMs = detectedAtElapsedRealtimeMs,
             reason = reason,
+            candidateIdentity = candidateIdentity,
         )
     }
 

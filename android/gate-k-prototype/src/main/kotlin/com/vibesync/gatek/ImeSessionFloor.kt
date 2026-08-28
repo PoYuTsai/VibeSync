@@ -93,10 +93,9 @@ class ImeSessionFloor {
         if (event.sessionId != window.sessionId) {
             return ImeSessionEndResult.RejectedUnknownSession
         }
-        if (event.imeHiddenAtEpochMs < window.floorEpochMs) {
-            return ImeSessionEndResult.RejectedOutOfOrder
-        }
-
+        // A normalized same-millisecond floor can be one millisecond ahead
+        // of the real wall clock. Hiding the IME must still terminate the
+        // active window so the pipeline and session-scoped dedupe are cleared.
         activeWindow = null
         return ImeSessionEndResult.Ended(window)
     }

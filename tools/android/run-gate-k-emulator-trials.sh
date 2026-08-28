@@ -265,11 +265,30 @@ find_button_center() {
     python3 "$script_dir/gate_k_harness.py" ui --input "$ui_dump_file"
 }
 
+find_trial_nonce() {
+    python3 "$script_dir/gate_k_harness.py" nonce \
+        --input "$ui_dump_file" \
+        --expected "$1"
+}
+
 wait_for_button() {
     local center=""
     for _ in $(seq 1 120); do
         if dump_ui && center="$(find_button_center 2>/dev/null)"; then
             printf '%s\n' "$center"
+            return 0
+        fi
+        sleep 0.25
+    done
+    return 1
+}
+
+wait_for_nonce() {
+    local expected_nonce="$1"
+    local observed_nonce=""
+    for _ in $(seq 1 120); do
+        if dump_ui && observed_nonce="$(find_trial_nonce "$expected_nonce" 2>/dev/null)" \
+            && [[ "$observed_nonce" == "$expected_nonce" ]]; then
             return 0
         fi
         sleep 0.25
@@ -291,7 +310,19 @@ wait_for_trial_count() {
     return 1
 }
 
+previous_nonce=""
 for trial in $(seq 1 "$trial_count"); do
+    nonce="gate-k-trial-${trial}"
+    [[ "$nonce" != "$previous_nonce" ]] || {
+        echo "trial nonce was reused" >&2
+        exit 1
+    }
+    adb shell am start -W -n "$host_package/.MainActivity" \
+        --es gate_k_nonce "$nonce" >/dev/null
+    wait_for_nonce "$nonce" || {
+        echo "host nonce was not visible for trial $trial" >&2
+        exit 1
+    }
     center="$(wait_for_button)" || {
         echo "Gate K attempt button was not found for trial $trial" >&2
         exit 1
@@ -307,6 +338,7 @@ for trial in $(seq 1 "$trial_count"); do
     # MediaStore insertion is allowed in this runner.
     adb shell input keyevent 120
     wait_for_trial_count "$trial"
+    previous_nonce="$nonce"
 done
 
 echo "Gate K runner captured $trial_count runtime attempts for API $api_level"

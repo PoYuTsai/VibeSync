@@ -60,14 +60,11 @@ class ImeSessionFloorTest {
         val second = floor.start(ImeSessionStart("session-2", 2_000L))
         assertTrue(second is ImeSessionStartResult.Started)
         assertEquals(2_001L, (second as ImeSessionStartResult.Started).window.floorEpochMs)
-        assertEquals(
-            ImeSessionEndResult.RejectedOutOfOrder,
-            floor.end(ImeSessionEnd("session-2", 1_999L)),
-        )
         assertTrue(
-            floor.end(ImeSessionEnd("session-2", 2_001L))
+            floor.end(ImeSessionEnd("session-2", 1_999L))
                 is ImeSessionEndResult.Ended,
         )
+        assertNull(floor.current)
         assertEquals(
             ImeSessionStartResult.RejectedNonMonotonicFloor,
             floor.start(ImeSessionStart("session-3", 1_999L)),

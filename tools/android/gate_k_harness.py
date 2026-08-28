@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 
 BUTTON_LABEL = "Start Gate K attempt"
+NONCE_LABEL_PREFIX = "Gate K screenshot nonce: "
 _BOUNDS_RE = re.compile(r"^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$")
 _REQUIRED_RECORD_FIELDS = frozenset(
     {
@@ -149,6 +150,30 @@ def find_gate_k_button_center(xml_text: str) -> tuple[int, int]:
     return ((left + right) // 2, (top + bottom) // 2)
 
 
+def find_gate_k_nonce(xml_text: str, expected_nonce: str) -> str:
+    """Return the expected nonce only when exactly one host node displays it."""
+
+    if not expected_nonce or len(expected_nonce) > 64 or any(
+        character.isspace() or ord(character) < 0x20 for character in expected_nonce
+    ):
+        raise HarnessContractError("expected nonce is invalid")
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as error:
+        raise HarnessContractError("uiautomator XML is invalid") from error
+
+    expected_label = NONCE_LABEL_PREFIX + expected_nonce
+    matches = [
+        node
+        for node in root.iter("node")
+        if node.get("text") == expected_label
+        or node.get("content-desc") == expected_label
+    ]
+    if len(matches) != 1:
+        raise HarnessContractError("expected exactly one Gate K host nonce")
+    return expected_nonce
+
+
 def validate_workflow_contract(workflow_text: str, *, branch: str) -> None:
     """Check that the disposable workflow is reachable only on its task branch."""
 
@@ -226,6 +251,10 @@ def validate_runner_contract(runner_text: str) -> None:
         'gate-k-prototype/outputs/apk/debug/gate-k-prototype-debug.apk',
         'gate-k-host/outputs/apk/debug/gate-k-host-debug.apk',
         'adb shell settings put secure show_ime_with_hard_keyboard 1',
+        'nonce="gate-k-trial-${trial}"',
+        'previous_nonce=',
+        '--es gate_k_nonce "$nonce"',
+        'find_trial_nonce',
     )
     missing = [fragment for fragment in required_fragments if fragment not in runner_text]
     if missing:
@@ -572,6 +601,10 @@ def _main(argv: list[str]) -> int:
     ui_parser = subparsers.add_parser("ui")
     ui_parser.add_argument("--input", type=Path, required=True)
 
+    nonce_parser = subparsers.add_parser("nonce")
+    nonce_parser.add_argument("--input", type=Path, required=True)
+    nonce_parser.add_argument("--expected", required=True)
+
     evidence_parser = subparsers.add_parser("evidence")
     evidence_parser.add_argument("--input", type=Path, required=True)
     evidence_parser.add_argument("--expected-trials", type=int, required=True)
@@ -582,6 +615,8 @@ def _main(argv: list[str]) -> int:
     try:
         if args.command == "ui":
             print("{},{}".format(*find_gate_k_button_center(args.input.read_text(encoding="utf-8"))))
+        elif args.command == "nonce":
+            print(find_gate_k_nonce(args.input.read_text(encoding="utf-8"), args.expected))
         else:
             validate_evidence_file(
                 args.input,

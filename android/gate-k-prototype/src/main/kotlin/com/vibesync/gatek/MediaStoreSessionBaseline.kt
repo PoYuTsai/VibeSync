@@ -101,6 +101,17 @@ data class GateKMediaStoreVersionSnapshot(
     }
 }
 
+/** Generation fence captured immediately before arming one measurement attempt. */
+data class GateKMediaStoreAttemptFence(
+    val highWaterGeneration: Long,
+)
+
+/** Identity carried with one queried MediaStore row into the attempt seam. */
+data class GateKMediaStoreCandidateIdentity(
+    val mediaId: String,
+    val generation: Long,
+)
+
 sealed interface GateKMediaStoreBaselineStartResult {
     data class Started(
         val highWaterGeneration: Long,
@@ -141,9 +152,18 @@ class GateKMediaStoreSessionBaseline {
         get() = mediaStoreVersion
 
     @Synchronized
+    fun currentAttemptFence(): GateKMediaStoreAttemptFence? {
+        if (!isActive || blockedFailure != null) return null
+        return highWaterGeneration?.let { generation ->
+            GateKMediaStoreAttemptFence(generation)
+        }
+    }
+
+    @Synchronized
     fun beginSession(
         floorEpochMs: Long,
         existingRecords: List<MediaStoreCandidateRecord>,
+        initialHighWaterGeneration: Long? = null,
         versionSnapshot: GateKMediaStoreVersionSnapshot = GateKMediaStoreVersionSnapshot(
             mediaStoreVersionBefore = "",
             mediaStoreVersionAfter = "",
@@ -163,20 +183,38 @@ class GateKMediaStoreSessionBaseline {
             )
         }
         val initial = existingRecords.singleOrNull()
+        if (initialHighWaterGeneration != null
+            && initialHighWaterGeneration < 0L
+        ) {
+            return GateKMediaStoreBaselineStartResult.Rejected(
+                GateKMediaStoreBaselineFailure.INVALID_GENERATION,
+            )
+        }
         if (initial != null) {
             validateRecord(initial)?.let { failure ->
                 return GateKMediaStoreBaselineStartResult.Rejected(failure)
             }
         }
         val initialGeneration = initial?.generation ?: 0L
+        val highWaterGeneration = initialHighWaterGeneration ?: initialGeneration
+        if (highWaterGeneration < initialGeneration) {
+            return GateKMediaStoreBaselineStartResult.Rejected(
+                GateKMediaStoreBaselineFailure.INVALID_GENERATION,
+            )
+        }
+        if (highWaterGeneration == Long.MAX_VALUE) {
+            return GateKMediaStoreBaselineStartResult.Rejected(
+                GateKMediaStoreBaselineFailure.GENERATION_OVERFLOW,
+            )
+        }
         seenMediaIds.clear()
         initial?.let { seenMediaIds += it.mediaId }
         sessionFloorEpochMs = floorEpochMs
-        highWaterGeneration = initialGeneration
+        this.highWaterGeneration = highWaterGeneration
         mediaStoreVersion = versionSnapshot.mediaStoreVersionAfter
         blockedFailure = null
         return GateKMediaStoreBaselineStartResult.Started(
-            highWaterGeneration = initialGeneration,
+            highWaterGeneration = highWaterGeneration,
             mediaStoreVersion = versionSnapshot.mediaStoreVersionAfter,
         )
     }
@@ -218,6 +256,7 @@ class GateKMediaStoreSessionBaseline {
             mediaStoreVersionBefore = "",
             mediaStoreVersionAfter = "",
         ),
+        queriedHighWaterGeneration: Long? = null,
     ): GateKMediaStoreObservationResult {
         // URI is only a notification hint. Authority comes from queried row
         // metadata, not from a caller-provided URI or source enum.
@@ -234,9 +273,22 @@ class GateKMediaStoreSessionBaseline {
             return block(GateKMediaStoreBaselineFailure.DELTA_QUERY_OVERFLOW)
         }
         val floorEpochMs = sessionFloorEpochMs ?: return GateKMediaStoreObservationResult()
+        // DATE_ADDED is second-granularity. Compare in the same unit as the
+        // source instead of against a millisecond floor; DATE_MODIFIED is not
+        // an eligibility signal because an old image can be touched later.
+        val sessionFloorEpochSec = floorEpochMs / 1_000L
         val previousGeneration = highWaterGeneration ?: return block(
             GateKMediaStoreBaselineFailure.INVALID_INPUT,
         )
+        if (queriedHighWaterGeneration != null
+            && (queriedHighWaterGeneration < previousGeneration
+                || queriedHighWaterGeneration < 0L)
+        ) {
+            return block(GateKMediaStoreBaselineFailure.INVALID_GENERATION)
+        }
+        if (queriedHighWaterGeneration == Long.MAX_VALUE) {
+            return block(GateKMediaStoreBaselineFailure.GENERATION_OVERFLOW)
+        }
         var lastQueryGeneration = previousGeneration
         var previousReturnedGeneration = Long.MIN_VALUE
         queriedRecords.forEach { record ->
@@ -262,6 +314,12 @@ class GateKMediaStoreSessionBaseline {
             if (floorEpochMs == Long.MAX_VALUE) {
                 return@mapNotNull null
             }
+            if (record.dateAddedEpochSec < sessionFloorEpochSec) {
+                // A row created before the session may have been pending and
+                // only become visible after publication. Quarantine it even
+                // when its modified timestamp is newer.
+                return@mapNotNull null
+            }
             val observedAtEpochMs = maxOf(
                 record.metadata.observedAtEpochMs,
                 floorEpochMs + 1L,
@@ -270,7 +328,7 @@ class GateKMediaStoreSessionBaseline {
                 metadata = record.metadata.copy(observedAtEpochMs = observedAtEpochMs),
             )
         }
-        highWaterGeneration = lastQueryGeneration
+        highWaterGeneration = maxOf(lastQueryGeneration, queriedHighWaterGeneration ?: previousGeneration)
         return GateKMediaStoreObservationResult(candidates = candidates)
     }
 
@@ -279,6 +337,7 @@ class GateKMediaStoreSessionBaseline {
         notificationUri: String?,
         queriedRecords: List<MediaStoreCandidateRecord>,
         mediaStoreVersion: String,
+        queriedHighWaterGeneration: Long? = null,
     ): GateKMediaStoreObservationResult = queryNewRecords(
         notificationUri = notificationUri,
         queriedRecords = queriedRecords,
@@ -286,6 +345,7 @@ class GateKMediaStoreSessionBaseline {
             mediaStoreVersionBefore = mediaStoreVersion,
             mediaStoreVersionAfter = mediaStoreVersion,
         ),
+        queriedHighWaterGeneration = queriedHighWaterGeneration,
     )
 
     @Synchronized

@@ -163,6 +163,72 @@ class GateKAttemptCoordinatorTest {
         )
     }
 
+    @Test
+    fun `timed out attempt late candidate cannot terminate the next fenced attempt`() {
+        val controller = readyController()
+        val fence = GateKMediaStoreAttemptFence(highWaterGeneration = 10L)
+        controller.begin(
+            attemptId = GateKAttemptId("attempt-a"),
+            sessionId = "session-1",
+            monotonicStart = 1_000L,
+            mediaStoreFence = fence,
+        )
+
+        assertTrue(
+            controller.timeout(
+                attemptId = GateKAttemptId("attempt-a"),
+                sessionId = "session-1",
+                nowElapsedRealtimeMs = 4_001L,
+            ) is GateKAttemptTerminalResult.Recorded,
+        )
+        val started = controller.begin(
+            attemptId = GateKAttemptId("attempt-b"),
+            sessionId = "session-1",
+            monotonicStart = 4_010L,
+            mediaStoreFence = fence,
+        )
+        assertTrue(started is GateKAttemptStartResult.Started)
+
+        val lateCandidate = controller.detected(
+            attemptId = GateKAttemptId("attempt-b"),
+            sessionId = "session-1",
+            detectedAtElapsedRealtimeMs = 4_100L,
+            sessionOutcome = GateKSessionOutcome.ACCEPTED,
+            dedupeOutcome = GateKDedupeOutcome.FIRST_SEEN,
+            candidateIdentity = GateKMediaStoreCandidateIdentity(
+                mediaId = "a-row",
+                generation = 10L,
+            ),
+        )
+
+        assertFalse(
+            controller.isCandidateEligible(
+                GateKMediaStoreCandidateIdentity("a-row", generation = 10L),
+            ),
+        )
+        assertEquals(GateKAttemptTerminalResult.IgnoredStaleObservation, lateCandidate)
+        assertTrue(controller.hasActiveAttempt)
+
+        assertTrue(
+            controller.isCandidateEligible(
+                GateKMediaStoreCandidateIdentity("b-row", generation = 11L),
+            ),
+        )
+
+        val freshCandidate = controller.detected(
+            attemptId = GateKAttemptId("attempt-b"),
+            sessionId = "session-1",
+            detectedAtElapsedRealtimeMs = 4_100L,
+            sessionOutcome = GateKSessionOutcome.ACCEPTED,
+            dedupeOutcome = GateKDedupeOutcome.FIRST_SEEN,
+            candidateIdentity = GateKMediaStoreCandidateIdentity(
+                mediaId = "b-row",
+                generation = 11L,
+            ),
+        )
+        assertTrue(freshCandidate is GateKAttemptTerminalResult.Recorded)
+    }
+
     private fun readyController(): GateKAttemptCoordinator {
         val controller = GateKAttemptCoordinator()
         controller.onSessionShown("session-1")
