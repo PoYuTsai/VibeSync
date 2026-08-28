@@ -89,8 +89,9 @@ adb shell ime set com.vibesync.gatek/.GateKPrototypeInputMethodService
 Focus a text field in another app. In the IME view tap `Start Gate K attempt`,
 then make a hardware screenshot within three seconds. Repeat at least 40
 times on each of API 34, 35, and 36. The observer query is bounded and only
-accepts `GENERATION_ADDED` rows after the session high-water mark; no album-wide
-metadata scan is performed.
+accepts `GENERATION_ADDED` rows after the session high-water mark; each bounded
+query samples a non-empty MediaStore version before and after I/O and fails
+closed if it changes; no album-wide metadata scan is performed.
 
 Export the metadata-only artifact and capture its device descriptor and source
 revision for each trial set:

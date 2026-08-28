@@ -75,12 +75,31 @@ class GateKAttemptCoordinatorTest {
     }
 
     @Test
+    fun `detection at exactly three seconds is still a successful observation`() {
+        val controller = readyController()
+        controller.start(GateKAttemptStart(GateKAttemptId("attempt-deadline"), "session-1", 1_000L))
+
+        val terminal = controller.detected(
+            attemptId = GateKAttemptId("attempt-deadline"),
+            sessionId = "session-1",
+            detectedAtElapsedRealtimeMs = 4_000L,
+            sessionOutcome = GateKSessionOutcome.ACCEPTED,
+            dedupeOutcome = GateKDedupeOutcome.FIRST_SEEN,
+        ) as GateKAttemptTerminalResult.Recorded
+
+        assertEquals(3_000L, terminal.terminal.latencyMs)
+        assertEquals(GateKAttemptState.SUCCEEDED, terminal.terminal.state)
+        assertEquals(GateKFailureReason.NONE, terminal.terminal.failureReason)
+    }
+
+    @Test
     fun `late detection terminalizes as one timeout and records a bounded failure reason`() {
         val controller = readyController()
         controller.start(GateKAttemptStart(GateKAttemptId("attempt-1"), "session-1", 2_000L))
 
         val waiting = controller.timeout(GateKAttemptId("attempt-1"), "session-1", 4_999L)
-        val timedOut = controller.timeout(GateKAttemptId("attempt-1"), "session-1", 5_000L)
+        val atDeadline = controller.timeout(GateKAttemptId("attempt-1"), "session-1", 5_000L)
+        val timedOut = controller.timeout(GateKAttemptId("attempt-1"), "session-1", 5_001L)
         val lateCallback = controller.detected(
             attemptId = GateKAttemptId("attempt-1"),
             sessionId = "session-1",
@@ -90,6 +109,7 @@ class GateKAttemptCoordinatorTest {
         )
 
         assertEquals(GateKAttemptTerminalResult.WaitingForDeadline, waiting)
+        assertEquals(GateKAttemptTerminalResult.WaitingForDeadline, atDeadline)
         assertTrue(timedOut is GateKAttemptTerminalResult.Recorded)
         assertEquals(
             GateKAttemptState.TIMED_OUT,

@@ -37,6 +37,8 @@ enum class GateKFailureReason {
             value == "MEDIASTORE_GRANT_REVOKED" -> GRANT_UNAVAILABLE
             value == "MEDIASTORE_OBSERVER_REGISTRATION_FAILED" -> OBSERVER_ERROR
             value == "MEDIASTORE_QUERY_FAILED" -> QUERY_FAILED
+            value == "MEDIA_STORE_VERSION_UNAVAILABLE" -> OBSERVER_ERROR
+            value == "MEDIA_STORE_VERSION_CHANGED" -> OBSERVER_ERROR
             value == "CONTENT_UNAVAILABLE" -> CONTENT_UNAVAILABLE
             value == "DUPLICATE_SUPPRESSED" -> DUPLICATE_CALLBACK
             value == "OBSERVATION_LATENCY_INVALID_OR_OVER_3S" -> TIMEOUT
@@ -304,7 +306,9 @@ class GateKAttemptCoordinator(
             return GateKAttemptTerminalResult.RejectedInvalidTiming
         }
         val latencyMs = nowElapsedRealtimeMs - attempt.triggeredAtElapsedRealtimeMs
-        if (latencyMs < maxObservationLatencyMs) {
+        // A latency of exactly three seconds is still inside the contract;
+        // the handler retries one millisecond later before recording timeout.
+        if (latencyMs <= maxObservationLatencyMs) {
             return GateKAttemptTerminalResult.WaitingForDeadline
         }
         return terminal(

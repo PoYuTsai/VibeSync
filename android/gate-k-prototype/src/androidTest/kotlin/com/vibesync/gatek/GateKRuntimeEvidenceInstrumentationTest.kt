@@ -28,10 +28,16 @@ class GateKRuntimeEvidenceInstrumentationTest {
             monotonicStart = 20_000L,
         )
 
-        val timeout = coordinator.timeout(
+        val atDeadline = coordinator.timeout(
             attemptId = GateKAttemptId("instrumentation-attempt"),
             sessionId = "instrumentation-session",
             nowElapsedRealtimeMs = 23_000L,
+        )
+        assertEquals(GateKAttemptTerminalResult.WaitingForDeadline, atDeadline)
+        val timeout = coordinator.timeout(
+            attemptId = GateKAttemptId("instrumentation-attempt"),
+            sessionId = "instrumentation-session",
+            nowElapsedRealtimeMs = 23_001L,
         ) as GateKAttemptTerminalResult.Recorded
         assertEquals(
             GateKAttemptTerminalResult.IgnoredAlreadyTerminal,

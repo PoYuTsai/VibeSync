@@ -13,13 +13,18 @@ class MediaStoreSessionBaselineTest {
         val result = baseline.beginSession(
             floorEpochMs = 100_500L,
             existingRecords = listOf(record(id = "latest", generation = 7L)),
+            versionSnapshot = version(),
         )
 
         assertEquals(
-            GateKMediaStoreBaselineStartResult.Started(highWaterGeneration = 7L),
+            GateKMediaStoreBaselineStartResult.Started(
+                highWaterGeneration = 7L,
+                mediaStoreVersion = "media-store-v1",
+            ),
             result,
         )
         assertEquals(7L, baseline.currentHighWaterGeneration)
+        assertEquals("media-store-v1", baseline.currentMediaStoreVersion)
         assertTrue(baseline.isActive)
     }
 
@@ -29,6 +34,7 @@ class MediaStoreSessionBaselineTest {
         baseline.beginSession(
             floorEpochMs = 100_500L,
             existingRecords = listOf(record(id = "old", generation = 7L)),
+            versionSnapshot = version(),
         )
         val newScreenshot = record(
             id = "new",
@@ -43,6 +49,7 @@ class MediaStoreSessionBaselineTest {
                 record(id = "old", generation = 7L),
                 newScreenshot,
             ),
+            versionSnapshot = version(),
         )
 
         assertEquals(
@@ -60,6 +67,7 @@ class MediaStoreSessionBaselineTest {
             baseline.queryNewRecords(
                 notificationUri = "content://media/external/images/media",
                 queriedRecords = listOf(newScreenshot),
+                versionSnapshot = version(),
             ).candidates,
         )
     }
@@ -70,11 +78,18 @@ class MediaStoreSessionBaselineTest {
         baseline.beginSession(
             floorEpochMs = 10_000L,
             existingRecords = listOf(record(id = "old", generation = 2L)),
+            versionSnapshot = version(),
         )
         val newRow = record(id = "new", generation = 3L, dateAddedSec = 11L)
 
-        assertEquals(1, baseline.onContentObserverNotification(null, listOf(newRow)).size)
-        assertEquals(0, baseline.onContentObserverNotification(null, listOf(newRow)).size)
+        assertEquals(
+            1,
+            baseline.queryNewRecords(null, listOf(newRow), version()).candidates.size,
+        )
+        assertEquals(
+            0,
+            baseline.queryNewRecords(null, listOf(newRow), version()).candidates.size,
+        )
     }
 
     @Test
@@ -85,6 +100,7 @@ class MediaStoreSessionBaselineTest {
                 record(id = "a", generation = 1L),
                 record(id = "b", generation = 2L),
             ),
+            versionSnapshot = version(),
         )
         assertEquals(
             GateKMediaStoreBaselineStartResult.Rejected(
@@ -97,12 +113,14 @@ class MediaStoreSessionBaselineTest {
         baseline.beginSession(
             floorEpochMs = 1_000L,
             existingRecords = listOf(record(id = "old", generation = 1L)),
+            versionSnapshot = version(),
         )
         val overflow = baseline.queryNewRecords(
             notificationUri = null,
             queriedRecords = (2L..130L).map { generation ->
                 record(id = "id-$generation", generation = generation)
             },
+            versionSnapshot = version(),
         )
         assertEquals(GateKMediaStoreBaselineFailure.DELTA_QUERY_OVERFLOW, overflow.failure)
         assertTrue(overflow.candidates.isEmpty())
@@ -111,6 +129,7 @@ class MediaStoreSessionBaselineTest {
         val blocked = baseline.queryNewRecords(
             notificationUri = null,
             queriedRecords = listOf(record(id = "new", generation = 2L)),
+            versionSnapshot = version(),
         )
         assertEquals(GateKMediaStoreBaselineFailure.DELTA_QUERY_OVERFLOW, blocked.failure)
 
@@ -118,10 +137,12 @@ class MediaStoreSessionBaselineTest {
         missingGenerationBaseline.beginSession(
             floorEpochMs = 1_000L,
             existingRecords = listOf(record(id = "old", generation = 1L)),
+            versionSnapshot = version(),
         )
         val missing = missingGenerationBaseline.queryNewRecords(
             notificationUri = null,
             queriedRecords = listOf(record(id = "missing", generation = null)),
+            versionSnapshot = version(),
         )
         assertEquals(GateKMediaStoreBaselineFailure.MISSING_GENERATION, missing.failure)
         assertTrue(missing.candidates.isEmpty())
@@ -130,10 +151,12 @@ class MediaStoreSessionBaselineTest {
         invalidBaseline.beginSession(
             floorEpochMs = 1_000L,
             existingRecords = listOf(record(id = "old", generation = 1L)),
+            versionSnapshot = version(),
         )
         val invalid = invalidBaseline.queryNewRecords(
             notificationUri = null,
             queriedRecords = listOf(record(id = "", generation = 2L)),
+            versionSnapshot = version(),
         )
         assertEquals(GateKMediaStoreBaselineFailure.INVALID_RECORD, invalid.failure)
         assertFalse(invalidBaseline.currentHighWaterGeneration == 2L)
@@ -166,6 +189,7 @@ class MediaStoreSessionBaselineTest {
         baseline.beginSession(
             floorEpochMs = 1_000L,
             existingRecords = listOf(record(id = "old", generation = 1L)),
+            versionSnapshot = version(),
         )
 
         val result = baseline.queryNewRecords(
@@ -174,10 +198,80 @@ class MediaStoreSessionBaselineTest {
                 record(id = "new-3", generation = 3L),
                 record(id = "new-2", generation = 2L),
             ),
+            versionSnapshot = version(),
         )
 
         assertEquals(GateKMediaStoreBaselineFailure.OUT_OF_ORDER_GENERATION, result.failure)
         assertTrue(result.candidates.isEmpty())
+        assertEquals(1L, baseline.currentHighWaterGeneration)
+    }
+
+    @Test
+    fun `blank or changing initial MediaStore version rejects the session`() {
+        val blank = GateKMediaStoreSessionBaseline().beginSession(
+            floorEpochMs = 1_000L,
+            existingRecords = emptyList(),
+            versionSnapshot = version(before = "", after = ""),
+        )
+        assertEquals(
+            GateKMediaStoreBaselineStartResult.Rejected(
+                GateKMediaStoreBaselineFailure.MEDIA_STORE_VERSION_UNAVAILABLE,
+            ),
+            blank,
+        )
+
+        val changed = GateKMediaStoreSessionBaseline().beginSession(
+            floorEpochMs = 1_000L,
+            existingRecords = emptyList(),
+            versionSnapshot = version(before = "media-store-v1", after = "media-store-v2"),
+        )
+        assertEquals(
+            GateKMediaStoreBaselineStartResult.Rejected(
+                GateKMediaStoreBaselineFailure.MEDIA_STORE_VERSION_CHANGED,
+            ),
+            changed,
+        )
+    }
+
+    @Test
+    fun `delta version mismatch blocks without advancing high water and end clears session`() {
+        val baseline = GateKMediaStoreSessionBaseline()
+        baseline.beginSession(
+            floorEpochMs = 1_000L,
+            existingRecords = listOf(record(id = "old", generation = 1L)),
+            versionSnapshot = version(),
+        )
+
+        val result = baseline.queryNewRecords(
+            notificationUri = null,
+            queriedRecords = listOf(record(id = "new", generation = 2L)),
+            versionSnapshot = version(before = "media-store-v2", after = "media-store-v2"),
+        )
+
+        assertEquals(GateKMediaStoreBaselineFailure.MEDIA_STORE_VERSION_CHANGED, result.failure)
+        assertTrue(result.candidates.isEmpty())
+        assertEquals(1L, baseline.currentHighWaterGeneration)
+        baseline.endSession()
+        assertFalse(baseline.isActive)
+        assertEquals(null, baseline.currentMediaStoreVersion)
+    }
+
+    @Test
+    fun `delta pre-post version race fails closed`() {
+        val baseline = GateKMediaStoreSessionBaseline()
+        baseline.beginSession(
+            floorEpochMs = 1_000L,
+            existingRecords = listOf(record(id = "old", generation = 1L)),
+            versionSnapshot = version(),
+        )
+
+        val result = baseline.queryNewRecords(
+            notificationUri = null,
+            queriedRecords = listOf(record(id = "new", generation = 2L)),
+            versionSnapshot = version(before = "media-store-v1", after = "media-store-v2"),
+        )
+
+        assertEquals(GateKMediaStoreBaselineFailure.MEDIA_STORE_VERSION_CHANGED, result.failure)
         assertEquals(1L, baseline.currentHighWaterGeneration)
     }
 
@@ -196,5 +290,13 @@ class MediaStoreSessionBaselineTest {
             width = 1080,
             height = 1920,
         ),
+    )
+
+    private fun version(
+        before: String = "media-store-v1",
+        after: String = before,
+    ) = GateKMediaStoreVersionSnapshot(
+        mediaStoreVersionBefore = before,
+        mediaStoreVersionAfter = after,
     )
 }

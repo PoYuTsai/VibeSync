@@ -154,7 +154,12 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 return@execute
             }
             if (activeSessionId != sessionId) return@execute
-            val baselineStart = mediaStoreBaseline.beginSession(floorEpochMs, baselineQuery.records)
+            val baselineStart = mediaStoreBaseline.beginSession(
+                floorEpochMs = floorEpochMs,
+                existingRecords = baselineQuery.records,
+                versionSnapshot = baselineQuery.versionSnapshot
+                    ?: GateKMediaStoreVersionSnapshot("", ""),
+            )
             if (baselineStart !is GateKMediaStoreBaselineStartResult.Started) {
                 val failure = (baselineStart as GateKMediaStoreBaselineStartResult.Rejected).failure
                 attemptCoordinator.markObserverNotReady(sessionId)
@@ -327,6 +332,8 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         val candidatesResult = mediaStoreBaseline.queryNewRecords(
             notificationUri = notificationUri?.toString(),
             queriedRecords = query.records,
+            versionSnapshot = query.versionSnapshot
+                ?: GateKMediaStoreVersionSnapshot("", ""),
         )
         if (candidatesResult.failure != null) {
             recordFailure(
@@ -379,13 +386,25 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     private data class MediaStoreQueryResult(
         val records: List<MediaStoreCandidateRecord> = emptyList(),
         val failureReason: String? = null,
+        val versionSnapshot: GateKMediaStoreVersionSnapshot? = null,
     )
 
     private class MediaStoreQueryContractException(
         val reason: GateKMediaStoreBaselineFailure,
     ) : RuntimeException()
 
+    private fun readMediaStoreVersion(): String? = try {
+        MediaStore.getVersion(this@GateKPrototypeInputMethodService)
+            .takeIf { it.isNotBlank() }
+    } catch (_: RuntimeException) {
+        null
+    }
+
     private fun queryMediaStoreRecords(spec: GateKMediaStoreQuerySpec): MediaStoreQueryResult {
+        val versionBefore = readMediaStoreVersion()
+            ?: return MediaStoreQueryResult(
+                failureReason = GateKMediaStoreBaselineFailure.MEDIA_STORE_VERSION_UNAVAILABLE.name,
+            )
         val projection = buildList {
             add(MediaStore.Images.Media._ID)
             add(MediaStore.Images.Media.RELATIVE_PATH)
@@ -485,7 +504,13 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                     }
                 }
             }
-            MediaStoreQueryResult(records = records)
+            MediaStoreQueryResult(
+                records = records,
+                versionSnapshot = GateKMediaStoreVersionSnapshot(
+                    mediaStoreVersionBefore = versionBefore,
+                    mediaStoreVersionAfter = readMediaStoreVersion().orEmpty(),
+                ),
+            )
         } catch (error: MediaStoreQueryContractException) {
             MediaStoreQueryResult(failureReason = error.reason.name)
         } catch (_: SecurityException) {

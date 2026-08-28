@@ -67,6 +67,8 @@ data class MediaStoreCandidateRecord(
 
 enum class GateKMediaStoreBaselineFailure {
     INVALID_INPUT,
+    MEDIA_STORE_VERSION_UNAVAILABLE,
+    MEDIA_STORE_VERSION_CHANGED,
     INITIAL_QUERY_OVERFLOW,
     DELTA_QUERY_OVERFLOW,
     MISSING_GENERATION,
@@ -76,8 +78,34 @@ enum class GateKMediaStoreBaselineFailure {
     INVALID_RECORD,
 }
 
+/**
+ * Version sampled around one bounded MediaStore query. Android documents that
+ * GENERATION_ADDED values are only comparable while the provider version is
+ * unchanged, so a blank or changing version invalidates the observation.
+ */
+data class GateKMediaStoreVersionSnapshot(
+    val mediaStoreVersionBefore: String,
+    val mediaStoreVersionAfter: String,
+) {
+    fun failureAgainst(expectedVersion: String? = null): GateKMediaStoreBaselineFailure? = when {
+        mediaStoreVersionBefore.isBlank() || mediaStoreVersionAfter.isBlank() ->
+            GateKMediaStoreBaselineFailure.MEDIA_STORE_VERSION_UNAVAILABLE
+
+        mediaStoreVersionBefore != mediaStoreVersionAfter ->
+            GateKMediaStoreBaselineFailure.MEDIA_STORE_VERSION_CHANGED
+
+        expectedVersion != null && mediaStoreVersionAfter != expectedVersion ->
+            GateKMediaStoreBaselineFailure.MEDIA_STORE_VERSION_CHANGED
+
+        else -> null
+    }
+}
+
 sealed interface GateKMediaStoreBaselineStartResult {
-    data class Started(val highWaterGeneration: Long) : GateKMediaStoreBaselineStartResult
+    data class Started(
+        val highWaterGeneration: Long,
+        val mediaStoreVersion: String = "",
+    ) : GateKMediaStoreBaselineStartResult
 
     data class Rejected(val failure: GateKMediaStoreBaselineFailure) :
         GateKMediaStoreBaselineStartResult
@@ -98,6 +126,7 @@ class GateKMediaStoreSessionBaseline {
     private val seenMediaIds = mutableSetOf<String>()
     private var sessionFloorEpochMs: Long? = null
     private var highWaterGeneration: Long? = null
+    private var mediaStoreVersion: String? = null
     private var blockedFailure: GateKMediaStoreBaselineFailure? = null
 
     val isActive: Boolean
@@ -107,15 +136,26 @@ class GateKMediaStoreSessionBaseline {
     val currentHighWaterGeneration: Long?
         get() = highWaterGeneration
 
+    @get:Synchronized
+    val currentMediaStoreVersion: String?
+        get() = mediaStoreVersion
+
     @Synchronized
     fun beginSession(
         floorEpochMs: Long,
         existingRecords: List<MediaStoreCandidateRecord>,
+        versionSnapshot: GateKMediaStoreVersionSnapshot = GateKMediaStoreVersionSnapshot(
+            mediaStoreVersionBefore = "",
+            mediaStoreVersionAfter = "",
+        ),
     ): GateKMediaStoreBaselineStartResult {
         if (floorEpochMs < 0L) {
             return GateKMediaStoreBaselineStartResult.Rejected(
                 GateKMediaStoreBaselineFailure.INVALID_INPUT,
             )
+        }
+        versionSnapshot.failureAgainst()?.let { failure ->
+            return GateKMediaStoreBaselineStartResult.Rejected(failure)
         }
         if (existingRecords.size > GateKMediaStoreQueryContract.INITIAL_MAX_ROWS) {
             return GateKMediaStoreBaselineStartResult.Rejected(
@@ -133,9 +173,27 @@ class GateKMediaStoreSessionBaseline {
         initial?.let { seenMediaIds += it.mediaId }
         sessionFloorEpochMs = floorEpochMs
         highWaterGeneration = initialGeneration
+        mediaStoreVersion = versionSnapshot.mediaStoreVersionAfter
         blockedFailure = null
-        return GateKMediaStoreBaselineStartResult.Started(initialGeneration)
+        return GateKMediaStoreBaselineStartResult.Started(
+            highWaterGeneration = initialGeneration,
+            mediaStoreVersion = versionSnapshot.mediaStoreVersionAfter,
+        )
     }
+
+    /** Convenience overload for a provider version already sampled as stable. */
+    fun beginSession(
+        floorEpochMs: Long,
+        existingRecords: List<MediaStoreCandidateRecord>,
+        mediaStoreVersion: String,
+    ): GateKMediaStoreBaselineStartResult = beginSession(
+        floorEpochMs = floorEpochMs,
+        existingRecords = existingRecords,
+        versionSnapshot = GateKMediaStoreVersionSnapshot(
+            mediaStoreVersionBefore = mediaStoreVersion,
+            mediaStoreVersionAfter = mediaStoreVersion,
+        ),
+    )
 
     /**
      * Compatibility-shaped list API for callers that only need candidates.
@@ -156,6 +214,10 @@ class GateKMediaStoreSessionBaseline {
     fun queryNewRecords(
         notificationUri: String?,
         queriedRecords: List<MediaStoreCandidateRecord>,
+        versionSnapshot: GateKMediaStoreVersionSnapshot = GateKMediaStoreVersionSnapshot(
+            mediaStoreVersionBefore = "",
+            mediaStoreVersionAfter = "",
+        ),
     ): GateKMediaStoreObservationResult {
         // URI is only a notification hint. Authority comes from queried row
         // metadata, not from a caller-provided URI or source enum.
@@ -164,6 +226,9 @@ class GateKMediaStoreSessionBaseline {
         if (!isActive) return GateKMediaStoreObservationResult()
         blockedFailure?.let { failure ->
             return GateKMediaStoreObservationResult(failure = failure)
+        }
+        versionSnapshot.failureAgainst(expectedVersion = mediaStoreVersion)?.let { failure ->
+            return block(failure)
         }
         if (queriedRecords.size > GateKMediaStoreQueryContract.DELTA_MAX_ROWS) {
             return block(GateKMediaStoreBaselineFailure.DELTA_QUERY_OVERFLOW)
@@ -209,10 +274,25 @@ class GateKMediaStoreSessionBaseline {
         return GateKMediaStoreObservationResult(candidates = candidates)
     }
 
+    /** Convenience overload for a provider version already sampled as stable. */
+    fun queryNewRecords(
+        notificationUri: String?,
+        queriedRecords: List<MediaStoreCandidateRecord>,
+        mediaStoreVersion: String,
+    ): GateKMediaStoreObservationResult = queryNewRecords(
+        notificationUri = notificationUri,
+        queriedRecords = queriedRecords,
+        versionSnapshot = GateKMediaStoreVersionSnapshot(
+            mediaStoreVersionBefore = mediaStoreVersion,
+            mediaStoreVersionAfter = mediaStoreVersion,
+        ),
+    )
+
     @Synchronized
     fun endSession() {
         sessionFloorEpochMs = null
         highWaterGeneration = null
+        mediaStoreVersion = null
         blockedFailure = null
         seenMediaIds.clear()
     }
