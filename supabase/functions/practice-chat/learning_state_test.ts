@@ -47,24 +47,141 @@ Deno.test("applyLearningClassification rewards catching her latest emotion in th
   assert(result.reason.includes("接住"));
 });
 
-Deno.test("applyLearningClassification no longer zeroes low-pressure neutral replies", () => {
+// 挑戰獎勵閘門（PR 2，修 D2）：非 challenge 呼叫端不套閘門，低壓 neutral
+// 照舊 +1；challenge 呼叫端套閘門後無正向證據夾到 0。
+Deno.test("low-pressure neutral replies stay +1 ungated but the challenge gate zeroes them", () => {
   const applyLearningClassification = requireFn("applyLearningClassification");
+  const applyChallengeRewardGate = requireFn("applyChallengeRewardGate");
 
-  const result = applyLearningClassification(
+  const neutralMinor = {
+    connection: "neutral",
+    impact: "minor",
+    testHandling: "none",
+    boundary: "safe",
+    hintAlignment: "none",
+  };
+  const ungated = applyLearningClassification(
     { heatScore: 30, familiarityScore: 10 },
-    {
-      connection: "neutral",
-      impact: "minor",
-      testHandling: "none",
-      boundary: "safe",
-      hintAlignment: "none",
-    },
+    neutralMinor,
   );
 
-  assertEquals(result.score, 31);
-  assertEquals(result.delta, 1);
-  assertEquals(result.familiarityScore, 11);
-  assertEquals(result.familiarityDelta, 1);
+  assertEquals(ungated.score, 31);
+  assertEquals(ungated.delta, 1);
+  assertEquals(ungated.familiarityScore, 11);
+  assertEquals(ungated.familiarityDelta, 1);
+
+  const gated = applyChallengeRewardGate({
+    judgement: ungated,
+    currentHeat: 30,
+    currentFamiliarity: 10,
+    classification: neutralMinor,
+    protectedAppliedHint: false,
+  });
+
+  assertEquals(gated.score, 30);
+  assertEquals(gated.delta, 0);
+  assertEquals(gated.familiarityScore, 10);
+  assertEquals(gated.familiarityDelta, 0);
+});
+
+Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-protected positives", () => {
+  const applyLearningClassification = requireFn("applyLearningClassification");
+  const applyChallengeRewardGate = requireFn("applyChallengeRewardGate");
+  const challengeTuning = {
+    positiveDeltaMultiplier: 0.7,
+    negativeDeltaMultiplier: 1.3,
+  };
+  const state = { heatScore: 30, familiarityScore: 10 };
+  const gate = (
+    judgement: Record<string, unknown>,
+    classification: Record<string, unknown>,
+    protectedAppliedHint = false,
+  ) =>
+    applyChallengeRewardGate({
+      judgement,
+      currentHeat: 30,
+      currentFamiliarity: 10,
+      classification,
+      protectedAppliedHint,
+    });
+
+  // caught → 正向證據，正分保留（已吃 ×0.7：+4/+5 → +3/+4）
+  const caught = applyLearningClassification(
+    state,
+    safeCaught,
+    challengeTuning,
+  );
+  assertEquals(caught.delta, 3);
+  assertEquals(caught.familiarityDelta, 4);
+  assertEquals(gate(caught, safeCaught), caught);
+
+  // testHandling passed → 正向證據，正分保留
+  const passedClassification = {
+    connection: "neutral",
+    impact: "medium",
+    testHandling: "passed",
+    boundary: "safe",
+    hintAlignment: "none",
+  };
+  const passed = applyLearningClassification(
+    state,
+    passedClassification,
+    challengeTuning,
+  );
+  // 硬編碼 ×0.7 後的值（Codex 審 P2）：(1+4)=5 → +4；(2+2)=4 → +3
+  assertEquals(passed.delta, 4);
+  assertEquals(passed.familiarityDelta, 3);
+  assertEquals(gate(passed, passedClassification), passed);
+
+  // missed → 小負分照常放行：-2/-1 先吃 minor ×0.6（roundNonZero／round
+  // 取整成 -1/-1），再 ×1.3 = -1.3 四捨五入仍 -1/-1
+  const missedClassification = {
+    connection: "missed",
+    impact: "minor",
+    testHandling: "none",
+    boundary: "safe",
+    hintAlignment: "none",
+  };
+  const missed = applyLearningClassification(
+    state,
+    missedClassification,
+    challengeTuning,
+  );
+  assertEquals(missed.delta, -1);
+  assertEquals(missed.familiarityDelta, -1);
+  assertEquals(gate(missed, missedClassification), missed);
+
+  // missed／defensive → 負分照常放行（原 judgement 原樣返回）
+  const defensiveClassification = {
+    connection: "defensive",
+    impact: "medium",
+    testHandling: "failed",
+    boundary: "safe",
+    hintAlignment: "none",
+  };
+  const defensive = applyLearningClassification(
+    state,
+    defensiveClassification,
+    challengeTuning,
+  );
+  assert(defensive.delta < 0);
+  assertEquals(gate(defensive, defensiveClassification), defensive);
+
+  // 受保護 Hint → 豁免，neutral 也保留正分（Hint floor 不被夾掉）
+  const neutralMinor = {
+    connection: "neutral",
+    impact: "minor",
+    testHandling: "none",
+    boundary: "safe",
+    hintAlignment: "aligned",
+  };
+  const neutral = applyLearningClassification(
+    state,
+    neutralMinor,
+    challengeTuning,
+  );
+  assert(neutral.delta > 0);
+  assertEquals(gate(neutral, neutralMinor, true), neutral);
 });
 
 Deno.test("applyLearningClassification rewards passing a consistency test even before familiarity is ready", () => {

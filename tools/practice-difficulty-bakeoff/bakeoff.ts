@@ -32,6 +32,7 @@ import {
   type ChatMessage,
 } from "../../supabase/functions/practice-chat/prompt.ts";
 import {
+  applyChallengeRewardGate,
   applyLearningClassification,
   applyPartnerStateUpdate,
   buildTurnClassifierMessages,
@@ -292,7 +293,8 @@ export interface TurnRecord {
   familiarityDelta: number;
   partnerMood: string;
   promptChars: number;
-  // PR 2 的挑戰獎勵閘門接上後填 true/false；現在一律 null（尚無閘門）。
+  // 挑戰獎勵閘門（PR 2）：challenge 難度填該輪是否真被夾到 0；其他難度
+  // 不經過閘門，維持 null。
   challengeGateApplied: boolean | null;
 }
 
@@ -407,11 +409,22 @@ export async function runOneSession(args: {
       } classify`,
     );
 
-    const judgement = applyLearningClassification(
+    const rawJudgement = applyLearningClassification(
       { heatScore: temperature, familiarityScore: familiarity },
       classification,
       tuning,
     );
+    // 挑戰獎勵閘門（PR 2）：與 handler.ts 共用同一份純函式；bakeoff 走
+    // beginner 管線且無 applied hint，challenge 以外難度不經過閘門。
+    const judgement = args.difficulty === "challenge"
+      ? applyChallengeRewardGate({
+        judgement: rawJudgement,
+        currentHeat: temperature,
+        currentFamiliarity: familiarity,
+        classification,
+        protectedAppliedHint: false,
+      })
+      : rawJudgement;
     // partner state 逐輪累積並回灌下一輪 prompt——對齊 handler.ts。
     partnerState = applyPartnerStateUpdate(partnerState, classification);
 
@@ -432,7 +445,12 @@ export async function runOneSession(args: {
       familiarityDelta: judgement.familiarityDelta,
       partnerMood: partnerState.mood,
       promptChars,
-      challengeGateApplied: null,
+      // 用 delta 值比對而非物件 identity：純函式未來若改回傳等值 clone，
+      // identity 比對會誤報 true（Codex 審 P2）。
+      challengeGateApplied: args.difficulty === "challenge"
+        ? judgement.delta !== rawJudgement.delta ||
+          judgement.familiarityDelta !== rawJudgement.familiarityDelta
+        : null,
     });
 
     temperature = judgement.score;
