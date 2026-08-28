@@ -20,12 +20,27 @@ import {
   temperatureBandDebriefInstruction,
   temperatureBandInstruction,
 } from "./temperature.ts";
-import type { PracticeTurn } from "./validate.ts";
+import {
+  MAX_MEMORY_SUMMARY_LEN,
+  MAX_TEXT_LEN,
+  MAX_TURNS,
+  type PracticeTurn,
+  validateRequest,
+} from "./validate.ts";
 import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
 import { taipeiTimeContextFor } from "./time_context.ts";
-import { initialPersistedGameState } from "./game_state.ts";
+import {
+  initialPersistedGameState,
+  parsePersistedGameState,
+} from "./game_state.ts";
 import { gameTacticDirectiveFor } from "./game_fsm.ts";
+import { MAX_AI_REPLIES } from "./quota_decision.ts";
+import {
+  herRecentMomentsPrompt,
+  MOMENT_MEMORY_BODY_CHARS,
+  MOMENT_MEMORY_MAX_POSTS,
+} from "./moments_memory.ts";
 
 // 預設 profile（slow_worker + normal），供既有不指定角色難度的測試沿用。
 const defaultProfile = resolvePracticeProfile({});
@@ -35,6 +50,13 @@ const dinnerScene: PracticeSceneContext = {
   promptLine: "妳剛跟朋友吃完飯，在回家的路上，回覆可以比白天放鬆一點。",
   replyTempo: "normal",
 };
+const promptBudgetScene: PracticeSceneContext = {
+  id: "interest_body_class",
+  statusLine: "剛結束一堂運動課，有點累但心情不錯",
+  promptLine:
+    "妳剛結束一堂運動課，有點累但心情不錯，可以自然接身體放鬆或生活節奏。",
+  replyTempo: "normal",
+};
 
 // ── 時間錨點（nowContext）─────────────────────────────────────────────
 // 2026-08-28 Eric 真機：她說「今天是禮拜三啦 你是不是看錯了」，當天是
@@ -42,9 +64,23 @@ const dinnerScene: PracticeSceneContext = {
 // 裡唯一的絕對日期是她自己的貼文日期，模型就拿最近一則當今天。
 // 台北 2026-08-28 09:00 ＝ UTC 2026-08-28T01:00Z。
 const bugReportNow = taipeiTimeContextFor(new Date("2026-08-28T01:00:00.000Z"));
+const maxHerRecentMomentsBlock = herRecentMomentsPrompt(
+  Array.from({ length: MOMENT_MEMORY_MAX_POSTS }, (_, index) => ({
+    postDate: `2026-08-${String(28 - index).padStart(2, "0")}`,
+    dayPart: "morning" as const,
+    body: "貼".repeat(MOMENT_MEMORY_BODY_CHARS - 1) + "。",
+  })),
+);
 
 // prompt 預算測試用最長的認識管道當上界：新增更長的管道時測試會自己抓到，
 // 不需要人工重挑 worst case。
+const longestChatOrigin =
+  [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
+    (b.label.length + b.sharedFact.length + b.stancePrompt.length +
+      b.unverifiedGuard.length) -
+    (a.label.length + a.sharedFact.length + a.stancePrompt.length +
+      a.unverifiedGuard.length)
+  )[0];
 const longestHintOrigin =
   [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
     (b.label.length + b.sharedFact.length + b.hintFocus.length) -
@@ -741,6 +777,108 @@ Deno.test("Game Debrief prompt stays compact enough for its 12-second budget", (
   // 85 bytes），上限 4570→4655。
   assert(gameLength <= 4655, `Game Debrief prompt is too long: ${gameLength}`);
   assert(gameLength <= beginnerLength + 2400);
+});
+
+Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling", () => {
+  const srGirls = GIRL_PROFILES.filter((girl) => girl.rarity === "sr");
+  const maxMemorySummary = "記".repeat(MAX_MEMORY_SUMMARY_LEN);
+  const maxChatTurns: PracticeTurn[] = Array.from(
+    { length: MAX_TURNS },
+    (_, index) => ({
+      // 送出下一個 Chat prompt 前，server ledger 最多已有 19 則 AI 回覆；
+      // 其餘 user 訊息仍是 validateRequest 允許的合法 payload。
+      role: index < MAX_AI_REPLIES - 1 ? "ai" : "user",
+      text: "訊".repeat(MAX_TEXT_LEN),
+    }),
+  );
+  const maxParsedGameState = parsePersistedGameState({
+    phase: "P4_TENSION",
+    pv: 100,
+    fp: 100,
+    inv: 100,
+    safety: 100,
+    turnCount: 999,
+    failureCounts: {
+      BORING: 999,
+      TOOL_GUY: 999,
+      GREASY: 999,
+      FRAME_COLLAPSE: 999,
+      ENGINE_STALL: 999,
+      GHOST_RISK: 999,
+      FRAME_OVERREACH: 999,
+    },
+    realityFlagCounts: {
+      social_proof_attempt: 999,
+      fake_familiarity: 999,
+      OBVIOUS_TRAP: 999,
+      FRAME_OVERREACH: 999,
+    },
+    lastTargetVariable: "目".repeat(80),
+    lastSpeedInviteDirection: "邀".repeat(80),
+    lastSpicyLevel: "L3",
+  });
+  assertEquals(srGirls.length, 20);
+  assert(maxParsedGameState);
+  let maxChat = 0;
+  let maxChatCase = "";
+
+  for (const girl of srGirls) {
+    const request = validateRequest({
+      mode: "chat",
+      practiceMode: "game",
+      sessionId: "prompt-budget-chat",
+      turns: maxChatTurns,
+      profileId: girl.profileId,
+      difficulty: "challenge",
+      temperatureScore: 30,
+      familiarityScore: 20,
+      memorySummary: maxMemorySummary,
+      continuationPartnerState: {
+        mood: "neutral",
+        // validateRequest 接受 160，正式下游只保留正規化後的 80 字。
+        innerThought: "念".repeat(160),
+      },
+    });
+    assertEquals(request.turns.length, MAX_TURNS);
+    assert(request.turns.every((turn) => turn.text.length === MAX_TEXT_LEN));
+    assertEquals(request.memorySummary?.length, MAX_MEMORY_SUMMARY_LEN);
+    assertEquals(request.continuationPartnerState?.innerThought.length, 80);
+
+    const chatOptions = {
+      practiceMode: request.practiceMode,
+      temperatureScore: request.temperatureScore,
+      familiarityScore: request.familiarityScore,
+      partnerState: request.continuationPartnerState,
+      sceneContext: promptBudgetScene,
+      acquaintanceOrigin: longestChatOrigin,
+      memorySummary: request.memorySummary,
+      herRecentMomentsBlock: maxHerRecentMomentsBlock,
+      gameState: maxParsedGameState,
+    } as const;
+    const chatLengthWithoutTime = buildChatMessages(
+      request.turns,
+      request.profile,
+      chatOptions,
+    ).reduce((total, message) => total + message.content.length, 0);
+    const chatLength = buildChatMessages(request.turns, request.profile, {
+      ...chatOptions,
+      timeContext: bugReportNow,
+    }).reduce((total, message) => total + message.content.length, 0);
+
+    // nowContext 是兩次組裝的唯一差異；日期、星期、時刻與時段皆為定寬。
+    assertEquals(chatLength - chatLengthWithoutTime, 406);
+    if (chatLength > maxChat) {
+      maxChat = chatLength;
+      maxChatCase = girl.profileId;
+    }
+  }
+
+  // 2026-08-28 時間錨點：這裡用正式驗證可接受的 130 則 × 每則 500 字、
+  // 最長 SR／認識管道／生活情境、完整記憶、三則動態，以及
+  // parsePersistedGameState 可接受的最大 Game 帳本一起守 Chat 總長。
+  // 實測最長 79,785，上限留 165 code units 緩衝。
+  // `.length` 量的是 UTF-16 code units，不宣稱是 bytes 或模型 tokens。
+  assert(maxChat <= 79_950, `Chat max ${maxChat} at ${maxChatCase}`);
 });
 
 Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", () => {
