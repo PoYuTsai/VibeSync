@@ -1,8 +1,9 @@
 // 練習室難度 bakeoff（上線 gate 工具）。
 //
-// 目的：難度(easy/normal/challenge) × 腳本(bad_interrogator/average/high_quality) ×
-// runs 全跑一輪，量測「同一難度設定在不同使用者輸入下」的 AI 回覆長度、句點/敷衍占比、
-// 溫度軌跡、debrief dateChance 分佈，作為難度重設計上線前的量化 gate。
+// 目的：難度(easy/normal/challenge) × 腳本(bad_interrogator/average/high_quality/
+// low_signal_polite) × runs 全跑一輪，量測「同一難度設定在不同使用者輸入下」的
+// AI 回覆長度、句點/敷衍占比、溫度軌跡、debrief dateChance 分佈，作為難度重設計
+// 上線前的量化 gate。
 //
 // 重要：直接 import practice-chat 的真管線模組（resolvePracticeProfile／buildChatMessages／
 // buildDebriefMessages／buildTurnClassifierMessages／parseTurnClassification／
@@ -504,7 +505,9 @@ export function parseArgs(argv: string[]): CliOptions {
     difficulties: ["easy", "normal", "challenge"],
     outDir: DEFAULT_OUT_DIR,
     profileId: DEFAULT_PROFILE_ID,
-    // 預設 full＝production 同款注入形狀；minimal 保留舊形狀作對照。
+    // 預設 full＝production 同款注入形狀。minimal 只排除五個 context 區塊
+    // （認識管道／時間／情境／記憶／貼文）作對照；分類時序、assistantReply、
+    // partner state 累積是保真修復，兩種模式都生效，minimal 不是舊版工具的行為。
     contextMode: "full",
   };
 
@@ -572,7 +575,7 @@ export function parseArgs(argv: string[]): CliOptions {
       case "context": {
         if (value !== "minimal" && value !== "full") {
           throw new Error(
-            `bakeoff_invalid_context: "${value}"（合法值：full（預設，production 同款注入）、minimal（舊形狀對照））`,
+            `bakeoff_invalid_context: "${value}"（合法值：full（預設，production 同款注入）、minimal（無 context 區塊對照））`,
           );
         }
         opts.contextMode = value;
@@ -678,7 +681,7 @@ function renderReportMarkdown(
   lines.push(
     `> context：${contextMode}${
       contextMode === "minimal"
-        ? "（舊形狀對照；正式 gate 需 full）"
+        ? "（無 context 區塊對照；正式 gate 需 full）"
         : "（production 同款注入）"
     }`,
   );

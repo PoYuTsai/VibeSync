@@ -6,8 +6,8 @@
 ／`buildChatMessages`／`buildDebriefMessages`／`buildTurnClassifierMessages`／
 `parseTurnClassification`／`applyLearningClassification`／`difficultyTuningFor`／
 `parseDebriefCard`／`callDeepSeek`），跑「難度(easy/normal/challenge) × 腳本
-(bad_interrogator/average/high_quality) × runs」全組合，量測 AI
-回覆長度、句點/敷衍 占比、溫度軌跡、debrief `dateChance`
+(bad_interrogator/average/high_quality/low_signal_polite) × runs」全組合，量測
+AI 回覆長度、句點/敷衍 占比、溫度軌跡、debrief `dateChance`
 分佈，讓難度調參／prompt 改動有數字可對比， 不用每次靠肉眼聊天判斷。
 
 ## 模型供應商（Eric 2026-07-06 拍板）
@@ -30,19 +30,19 @@ DEEPSEEK_API_KEY=... deno run \
   tools/practice-difficulty-bakeoff/bakeoff.ts
 ```
 
-預設跑滿三難度 × 三腳本 × 2 runs（共 18 場、每場 6 輪 + 1 次 debrief）。
+預設跑滿三難度 × 四腳本 × 2 runs（共 24 場、每場 6 輪 + 1 次 debrief）。
 
 ### CLI flags（縮小規模用，例如 smoke test）
 
-| flag                   | 預設                                        | 說明                                                                                                                                                  |
-| ---------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--provider=P`         | `deepseek`                                  | `deepseek`（prod 同款，正式 gate）或 `claude`（參考用，讀 `CLAUDE_API_KEY`）                                                                          |
-| `--runs=N`             | `2`                                         | 每個(難度×腳本)組合跑幾場                                                                                                                             |
-| `--scripts=a,b,c`      | 四組全跑                                    | 合法值：`bad_interrogator`、`average`、`high_quality`、`low_signal_polite`                                                                            |
-| `--difficulties=a,b,c` | 三難度全跑                                  | 合法值：`easy`、`normal`、`challenge`（`random` 不進 bakeoff）                                                                                        |
-| `--out=DIR`            | 腳本目錄下的 `out/`                         | 輸出目錄。預設落在 `tools/practice-difficulty-bakeoff/out/`，與 cwd 無關；顯式帶 `--out=DIR` 時才相對執行時的 cwd 解析                                |
-| `--profileId=ID`       | `practice_girl_001`（`DEFAULT_PROFILE_ID`） | 固定 persona，排除人設差異干擾                                                                                                                        |
-| `--context=M`          | `full`                                      | `full`＝production 同款注入（固定 fixture：認識管道、台北時間、生活情境、記憶摘要、朋友圈貼文）；`minimal`＝舊形狀對照（只帶 practiceMode＋兩個分數） |
+| flag                   | 預設                                        | 說明                                                                                                                                                                                                                    |
+| ---------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--provider=P`         | `deepseek`                                  | `deepseek`（prod 同款，正式 gate）或 `claude`（參考用，讀 `CLAUDE_API_KEY`）                                                                                                                                            |
+| `--runs=N`             | `2`                                         | 每個(難度×腳本)組合跑幾場                                                                                                                                                                                               |
+| `--scripts=a,b,c`      | 四組全跑                                    | 合法值：`bad_interrogator`、`average`、`high_quality`、`low_signal_polite`                                                                                                                                              |
+| `--difficulties=a,b,c` | 三難度全跑                                  | 合法值：`easy`、`normal`、`challenge`（`random` 不進 bakeoff）                                                                                                                                                          |
+| `--out=DIR`            | 腳本目錄下的 `out/`                         | 輸出目錄。預設落在 `tools/practice-difficulty-bakeoff/out/`，與 cwd 無關；顯式帶 `--out=DIR` 時才相對執行時的 cwd 解析                                                                                                  |
+| `--profileId=ID`       | `practice_girl_001`（`DEFAULT_PROFILE_ID`） | 固定 persona，排除人設差異干擾                                                                                                                                                                                          |
+| `--context=M`          | `full`                                      | `full`＝production 同款注入（固定 fixture：認識管道、台北時間、生活情境、記憶摘要、朋友圈貼文）；`minimal`＝只排除這五個 context 區塊的對照（分類時序、`assistantReply`、partner state 累積為保真修復，兩種模式都生效） |
 
 Smoke test（只跑 1 場、6 輪 + debrief）：
 
@@ -118,7 +118,8 @@ deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" `
 - 每輪紀錄補：`partnerMood`、`promptChars`、`challengeGateApplied`（PR 2 的挑戰
   獎勵閘門接上後填值，現為 `null`）。
 - 工具自測：`deno test --allow-read --allow-env tools/practice-difficulty-bakeoff/bakeoff_test.ts`
-  （零網路，用 fake ModelCaller 驗呼叫形狀與順序）。
+  （零外部 API 呼叫，用 fake ModelCaller 驗呼叫形狀與順序；deno.land std assert
+  依賴首次解析仍需模組快取或網路）。
 
 ## 已知限制
 
@@ -126,8 +127,8 @@ deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" `
   在記憶體內累加，**不** 寫 Supabase `update_practice_learning_state` RPC，因為
   bakeoff 目的是量測 prompt/ 溫度管線的行為，不是驗證 DB 併發語意（DB
   併發語意已有 `learning_state_test.ts` 等 既有 deno test 覆蓋）。
-- 三組腳本固定寫死在 `scripts.ts`，不隨機生成——bakeoff
-  的目的是「同一組輸入下比較 難度設定差異」，不是模擬使用者分佈。
+- 腳本固定寫死在 `scripts.ts`，不隨機生成——bakeoff 的目的是「同一組輸入下比較
+  難度設定差異」，不是模擬使用者分佈。
 - persona 固定用同一個 `profileId`（預設
   `practice_girl_001`），排除人設差異干擾。
 - 任一輪 chat 生成或分類器呼叫失敗，會讓整場（run）標記 `sessionError`
