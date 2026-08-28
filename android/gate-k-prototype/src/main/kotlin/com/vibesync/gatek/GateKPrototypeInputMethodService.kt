@@ -105,9 +105,9 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         }
     }
 
-    override fun onFinishInputView(info: EditorInfo?, finishingInput: Boolean) {
+    override fun onFinishInputView(finishingInput: Boolean) {
         finishActiveSession()
-        super.onFinishInputView(info, finishingInput)
+        super.onFinishInputView(finishingInput)
     }
 
     override fun onDestroy() {
@@ -572,7 +572,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 candidateIdentity = candidateIdentity,
             )
         }
-        true
+        return true
     }
 
     private data class MediaStoreQueryResult(
