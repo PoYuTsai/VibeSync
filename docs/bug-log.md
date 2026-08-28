@@ -10,6 +10,28 @@
 
 ## 2026-08
 
+### [2026-08-28] AI 實戰練習室的她把星期五說成禮拜三，還「特別去看了手機」
+
+**Symptom**: 真機（iPhone，2026-08-28 星期五 09:00）練習中，使用者問「你不是8月28號星期五嗎」，她回「等等 你比我還清楚喔／我剛剛還特別去看了手機／今天是禮拜三啦／你是不是看錯了」。使用者講的是對的，反而被她糾正；同一場稍早她還順著「禮拜五」接過話，前後自相矛盾。
+
+**Root Cause**: practice-chat 的 chat system prompt **從來沒有告訴模型今天是哪一天**。`time_context.ts` 算得出台北 `isoDate / hour / minute / weekday / isWeekend / dayPart`，但 handler 只拿 `dayPart` 與 `isWeekend` 去挑生活場景（`life_schedule.ts`），日期、星期、時刻一個都沒進 prompt。於是三件事疊在一起：
+
+1. 模型沒有時鐘，被問到就只能編。
+2. 唯一進得了 prompt 的絕對日期，是朋友圈記憶注入的貼文日期（`herRecentMoments` 的 `- 2026-08-26 早上：…`）。沒有「今天」當錨點時，最近一則貼文的日期就是模型能抓到的最新日期——貼文永遠在今天或今天之前，所以錯的方向是**系統性往前偏**（8/26 是禮拜三）。
+3. `sceneContext` 還明講「如果對方問『在幹嘛』或聊到時間/行程，就照這個生活狀態自然回答」，而生活狀態只有「剛下班」這種模糊句，等於叫模型拿模糊素材去答硬事實。
+
+沒有規則擋「捏造查證動作」，所以它補了一句「我剛剛還特別去看了手機」替錯答案背書；也沒有規則說「使用者講對時不准糾正」。hint 與 debrief 走同一條路：兩顆球與建議句都可能叫使用者去約一個已經過掉的日子。
+
+**Fix**: server 是唯一時間真相源。`time_context.ts` 新增 `taipeiNowLabel()`，把台北「現在」攤成 `2026-08-28（星期五・平日）09:00 早上` 一行；handler 每趟請求只算一次 `taipeiTimeContextFor(requestNow)`，同一份餵給生活場景、貼文記憶窗與三條模型路徑。chat 注入 `nowContext` 區塊（唯一正確的現在／不准拿貼文或逐字稿裡的日期當今天／使用者講對時不准糾正／不准捏造「我剛剛看了手機」去撐不同答案／相對時間要跟錨點算得起來／沒人問就不主動報時），hint 與 debrief 注入同一個錨點的精簡版。`nowContext` 標籤同步進 `visible_text_guard` 的 `INTERNAL_VISIBLE_LABELS`（鐵則＝注入內部詞必同步擴可見輸出守門）；日期本身刻意不進表，她照實回答日期是對的行為。
+
+**Prevention**: 模型答得出來的每一個「硬事實」都必須有 server 注入的來源；prompt 裡出現絕對日期（貼文記憶）卻沒有「今天」錨點，等於主動邀請模型拿它當今天。錨點放在 `sceneContext` **之前**：硬事實先落地，模糊的生活狀態才在它上面演。新增固定注入時，三個 prompt 預算上限要跟著加實測 bytes（chat +406、hint +126、debrief +85），不要讓預算測試悄悄不再涵蓋正式路徑。
+
+**Validation**: `prompt_test.ts` 新增五條（chat 錨點欄位齊全、三種真機失敗模式的規則都在、錨點排在 sceneContext 前、省略 `timeContext` 時逐字不變、hint／debrief 各自吃到同一個錨點）；`time_context_test.ts` 新增 `taipeiNowLabel` 定寬／跨日／七時段七星期覆蓋；`visible_text_guard_test.ts` 新增標籤攔截與「她照實講日期不算外洩」不誤殺。`moments_memory_test.ts` 的 chat prompt 黃金雜湊維持不變（新欄位為 optional，缺席時逐字相同）。`time_context_test.ts` 併入 flutter-ci 的 Edge contract 測試名單。
+
+**相關檔案**: `supabase/functions/practice-chat/time_context.ts`、`prompt.ts`、`hint.ts`、`handler.ts`、`visible_text_guard.ts`、`moments_memory.ts`、`moments_prompt.ts`、`.github/workflows/flutter-ci.yml`。
+
+---
+
 ### [2026-08-27] 「新增對象」標題字體與其他頁不一致
 
 **Symptom**: 真機（iPhone）上「新增對象」頁的 AppBar 標題，字體看起來比其他頁大、細，跟全 App 的標題語彙不同。

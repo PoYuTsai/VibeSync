@@ -32,9 +32,12 @@
 import { compactCompleteSentenceEvidence } from "./prompt.ts";
 import { shiftIsoDate } from "./moments_date.ts";
 import { momentPostedAtFor } from "./moments_time.ts";
-import { taipeiTimeContextFor } from "./time_context.ts";
+import {
+  TAIPEI_DAY_PART_LABEL as DAY_PART_LABEL,
+  type TaipeiDayPart,
+  taipeiTimeContextFor,
+} from "./time_context.ts";
 import { MOMENT_PROFILE_ALLOWLIST_MAX } from "./moments_constants.ts";
-import type { TaipeiDayPart } from "./time_context.ts";
 
 /** 她在 1:1 聊天裡看得到的天數。與 feed 的 14 天刻意不同，見檔頭。 */
 export const MOMENT_MEMORY_WINDOW_DAYS = 7;
@@ -59,16 +62,6 @@ export interface MomentMemoryPost {
   dayPart: TaipeiDayPart;
   body: string;
 }
-
-const DAY_PART_LABEL: Readonly<Record<TaipeiDayPart, string>> = {
-  dawn: "清晨",
-  morning: "早上",
-  noon: "中午",
-  afternoon: "下午",
-  early_evening: "傍晚",
-  evening: "晚上",
-  late_night: "深夜",
-};
 
 /**
  * 封住信封，讓貼文內容不可能從 <her_own_posts> 裡面跳出來。

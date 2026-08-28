@@ -14,6 +14,10 @@ import {
   inviteMaturityFromLearningScores,
 } from "./invite_maturity.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
+import {
+  type TaipeiTimeContext,
+  taipeiNowLabel,
+} from "./time_context.ts";
 import type { AcquaintanceOrigin } from "./acquaintance_origin.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import {
@@ -1606,6 +1610,8 @@ export function buildHintMessages(opts: {
   sceneContext?: PracticeSceneContext | null;
   acquaintanceOrigin?: AcquaintanceOrigin | null;
   memorySummary?: string | null;
+  /** server 算出的台北「現在」。省略＝不注入時間錨點。 */
+  timeContext?: TaipeiTimeContext | null;
   gameState?: PersistedGameState | null;
   /** 還剩幾顆 hint（含這一顆）。Game 專用，用於最後一發的收尾鋪墊。 */
   hintsRemaining?: number;
@@ -1652,6 +1658,13 @@ export function buildHintMessages(opts: {
   });
   const sceneEvidence = opts.sceneContext
     ? `sceneStatus: ${opts.sceneContext.statusLine}\nscenePrompt: ${opts.sceneContext.promptLine}\nreplyTempo: ${opts.sceneContext.replyTempo}\n\n`
+    : "";
+  // 兩顆球是「使用者直接送出去」的句子：不知道今天禮拜幾就會出現「約禮拜五」
+  // 而今天正是禮拜五這種句子。錨點與 chat 同源（handler 只算一次台北時間）。
+  const nowEvidence = opts.timeContext
+    ? `nowContext: 台北時間 ${
+      taipeiNowLabel(opts.timeContext)
+    }\n這是唯一正確的「現在」；warmUp/steady/coaching 提到今天、明天、這禮拜、週末或時段時要跟它算得起來，也不要叫使用者去約一個已經過掉的時間。\n\n`
     : "";
   // 認識管道＝server 既定共同背景（可安全引用），originFocus 是這個管道下最容易
   // 加分的方向；標籤同步進 visible_text_guard 的內部詞表，避免被抄進可見回覆。
@@ -1719,6 +1732,7 @@ export function buildHintMessages(opts: {
           : `升溫回覆不是永遠更曖昧；請選目前階段最容易加分的方向。\n`) +
         `目前最容易加分：${stageGuidance}\n\n` +
         originEvidence +
+        nowEvidence +
         sceneEvidence +
         memoryEvidence +
         inviteEvidence +

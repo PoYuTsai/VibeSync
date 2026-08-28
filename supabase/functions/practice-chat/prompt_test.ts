@@ -20,11 +20,27 @@ import {
   temperatureBandDebriefInstruction,
   temperatureBandInstruction,
 } from "./temperature.ts";
-import type { PracticeTurn } from "./validate.ts";
+import {
+  MAX_MEMORY_SUMMARY_LEN,
+  MAX_TEXT_LEN,
+  MAX_TURNS,
+  type PracticeTurn,
+  validateRequest,
+} from "./validate.ts";
 import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
-import { initialPersistedGameState } from "./game_state.ts";
+import { taipeiTimeContextFor } from "./time_context.ts";
+import {
+  initialPersistedGameState,
+  parsePersistedGameState,
+} from "./game_state.ts";
 import { gameTacticDirectiveFor } from "./game_fsm.ts";
+import { MAX_AI_REPLIES } from "./quota_decision.ts";
+import {
+  herRecentMomentsPrompt,
+  MOMENT_MEMORY_BODY_CHARS,
+  MOMENT_MEMORY_MAX_POSTS,
+} from "./moments_memory.ts";
 
 // 預設 profile（slow_worker + normal），供既有不指定角色難度的測試沿用。
 const defaultProfile = resolvePracticeProfile({});
@@ -34,9 +50,37 @@ const dinnerScene: PracticeSceneContext = {
   promptLine: "妳剛跟朋友吃完飯，在回家的路上，回覆可以比白天放鬆一點。",
   replyTempo: "normal",
 };
+const promptBudgetScene: PracticeSceneContext = {
+  id: "interest_body_class",
+  statusLine: "剛結束一堂運動課，有點累但心情不錯",
+  promptLine:
+    "妳剛結束一堂運動課，有點累但心情不錯，可以自然接身體放鬆或生活節奏。",
+  replyTempo: "normal",
+};
+
+// ── 時間錨點（nowContext）─────────────────────────────────────────────
+// 2026-08-28 Eric 真機：她說「今天是禮拜三啦 你是不是看錯了」，當天是
+// 8/28 星期五。根因是 chat prompt 從來沒告訴模型今天幾號——system prompt
+// 裡唯一的絕對日期是她自己的貼文日期，模型就拿最近一則當今天。
+// 台北 2026-08-28 09:00 ＝ UTC 2026-08-28T01:00Z。
+const bugReportNow = taipeiTimeContextFor(new Date("2026-08-28T01:00:00.000Z"));
+const maxHerRecentMomentsBlock = herRecentMomentsPrompt(
+  Array.from({ length: MOMENT_MEMORY_MAX_POSTS }, (_, index) => ({
+    postDate: `2026-08-${String(28 - index).padStart(2, "0")}`,
+    dayPart: "morning" as const,
+    body: "貼".repeat(MOMENT_MEMORY_BODY_CHARS - 1) + "。",
+  })),
+);
 
 // prompt 預算測試用最長的認識管道當上界：新增更長的管道時測試會自己抓到，
 // 不需要人工重挑 worst case。
+const longestChatOrigin =
+  [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
+    (b.label.length + b.sharedFact.length + b.stancePrompt.length +
+      b.unverifiedGuard.length) -
+    (a.label.length + a.sharedFact.length + a.stancePrompt.length +
+      a.unverifiedGuard.length)
+  )[0];
 const longestHintOrigin =
   [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
     (b.label.length + b.sharedFact.length + b.hintFocus.length) -
@@ -716,6 +760,7 @@ Deno.test("Game Debrief prompt stays compact enough for its 12-second budget", (
     familiarityScore: 50,
     partnerState: { mood: "amused", innerThought: "" },
     acquaintanceOrigin: longestDebriefOrigin,
+    timeContext: bugReportNow,
   }).reduce((total, message) => total + message.content.length, 0);
   const beginnerLength = buildDebriefMessages(turns, profile, {
     practiceMode: "beginner",
@@ -723,12 +768,117 @@ Deno.test("Game Debrief prompt stays compact enough for its 12-second budget", (
     familiarityScore: 50,
     partnerState: { mood: "amused", innerThought: "" },
     acquaintanceOrigin: longestDebriefOrigin,
+    timeContext: bugReportNow,
   }).reduce((total, message) => total + message.content.length, 0);
 
   // 2026-08-04：每場注入認識管道評分尺度一行（最長管道 ≤70 bytes），
   // 上限 4500→4570。
-  assert(gameLength <= 4570, `Game Debrief prompt is too long: ${gameLength}`);
+  // 2026-08-28 時間錨點：每場多一行「本場練習時間」（日期時刻定寬，固定
+  // 85 bytes），上限 4570→4655。
+  assert(gameLength <= 4655, `Game Debrief prompt is too long: ${gameLength}`);
   assert(gameLength <= beginnerLength + 2400);
+});
+
+Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling", () => {
+  const srGirls = GIRL_PROFILES.filter((girl) => girl.rarity === "sr");
+  const maxMemorySummary = "記".repeat(MAX_MEMORY_SUMMARY_LEN);
+  const maxChatTurns: PracticeTurn[] = Array.from(
+    { length: MAX_TURNS },
+    (_, index) => ({
+      // 送出下一個 Chat prompt 前，server ledger 最多已有 19 則 AI 回覆；
+      // 其餘 user 訊息仍是 validateRequest 允許的合法 payload。
+      role: index < MAX_AI_REPLIES - 1 ? "ai" : "user",
+      text: "訊".repeat(MAX_TEXT_LEN),
+    }),
+  );
+  const maxParsedGameState = parsePersistedGameState({
+    phase: "P4_TENSION",
+    pv: 100,
+    fp: 100,
+    inv: 100,
+    safety: 100,
+    turnCount: 999,
+    failureCounts: {
+      BORING: 999,
+      TOOL_GUY: 999,
+      GREASY: 999,
+      FRAME_COLLAPSE: 999,
+      ENGINE_STALL: 999,
+      GHOST_RISK: 999,
+      FRAME_OVERREACH: 999,
+    },
+    realityFlagCounts: {
+      social_proof_attempt: 999,
+      fake_familiarity: 999,
+      OBVIOUS_TRAP: 999,
+      FRAME_OVERREACH: 999,
+    },
+    lastTargetVariable: "目".repeat(80),
+    lastSpeedInviteDirection: "邀".repeat(80),
+    lastSpicyLevel: "L3",
+  });
+  assertEquals(srGirls.length, 20);
+  assert(maxParsedGameState);
+  let maxChat = 0;
+  let maxChatCase = "";
+
+  for (const girl of srGirls) {
+    const request = validateRequest({
+      mode: "chat",
+      practiceMode: "game",
+      sessionId: "prompt-budget-chat",
+      turns: maxChatTurns,
+      profileId: girl.profileId,
+      difficulty: "challenge",
+      temperatureScore: 30,
+      familiarityScore: 20,
+      memorySummary: maxMemorySummary,
+      continuationPartnerState: {
+        mood: "neutral",
+        // validateRequest 接受 160，正式下游只保留正規化後的 80 字。
+        innerThought: "念".repeat(160),
+      },
+    });
+    assertEquals(request.turns.length, MAX_TURNS);
+    assert(request.turns.every((turn) => turn.text.length === MAX_TEXT_LEN));
+    assertEquals(request.memorySummary?.length, MAX_MEMORY_SUMMARY_LEN);
+    assertEquals(request.continuationPartnerState?.innerThought.length, 80);
+
+    const chatOptions = {
+      practiceMode: request.practiceMode,
+      temperatureScore: request.temperatureScore,
+      familiarityScore: request.familiarityScore,
+      partnerState: request.continuationPartnerState,
+      sceneContext: promptBudgetScene,
+      acquaintanceOrigin: longestChatOrigin,
+      memorySummary: request.memorySummary,
+      herRecentMomentsBlock: maxHerRecentMomentsBlock,
+      gameState: maxParsedGameState,
+    } as const;
+    const chatLengthWithoutTime = buildChatMessages(
+      request.turns,
+      request.profile,
+      chatOptions,
+    ).reduce((total, message) => total + message.content.length, 0);
+    const chatLength = buildChatMessages(request.turns, request.profile, {
+      ...chatOptions,
+      timeContext: bugReportNow,
+    }).reduce((total, message) => total + message.content.length, 0);
+
+    // nowContext 是兩次組裝的唯一差異；日期、星期、時刻與時段皆為定寬。
+    assertEquals(chatLength - chatLengthWithoutTime, 406);
+    if (chatLength > maxChat) {
+      maxChat = chatLength;
+      maxChatCase = girl.profileId;
+    }
+  }
+
+  // 2026-08-28 時間錨點：這裡用正式驗證可接受的 130 則 × 每則 500 字、
+  // 最長 SR／認識管道／生活情境、完整記憶、三則動態，以及
+  // parsePersistedGameState 可接受的最大 Game 帳本一起守 Chat 總長。
+  // 實測最長 79,785，上限留 165 code units 緩衝。
+  // `.length` 量的是 UTF-16 code units，不宣稱是 bytes 或模型 tokens。
+  assert(maxChat <= 79_950, `Chat max ${maxChat} at ${maxChatCase}`);
 });
 
 Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", () => {
@@ -799,6 +949,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
         partnerMood: "neutral",
         memorySummary: maxMemorySummary,
         acquaintanceOrigin: longestHintOrigin,
+        timeContext: bugReportNow,
       }).reduce((total, message) => total + message.content.length, 0);
       const debriefLength = buildDebriefMessages(turns, profile, {
         practiceMode: "game",
@@ -807,6 +958,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
         partnerState: { mood: "neutral", innerThought: "" },
         memorySummary: maxMemorySummary,
         acquaintanceOrigin: longestDebriefOrigin,
+        timeContext: bugReportNow,
       }).reduce((total, message) => total + message.content.length, 0);
       const debriefWithHintMessages = buildDebriefMessages(turns, profile, {
         practiceMode: "game",
@@ -815,6 +967,7 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
         partnerState: { mood: "neutral", innerThought: "" },
         memorySummary: maxMemorySummary,
         acquaintanceOrigin: longestDebriefOrigin,
+        timeContext: bugReportNow,
         appliedHintTurns,
       });
       const debriefWithHintLength = debriefWithHintMessages.reduce(
@@ -900,10 +1053,15 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 實測最長 8207，上限 8050→8350。
   // 同日補反技巧中毒、測試是機會、雙向篩選、平聊埋種子、對話非無限五條，
   // 實測最長 8768，上限 8350→9000。
-  if (maxHint > 9000) {
+  // 2026-08-28 時間錨點：Hint 每場多一段 nowContext 證據（日期時刻定寬，
+  // 固定 126 bytes），上限 9000→9130。兩顆球是使用者直接送出去的句子，
+  // 不知道今天禮拜幾就會出現「約禮拜五」而今天正是禮拜五。
+  if (maxHint > 9130) {
     failures.push(`Hint max ${maxHint} at ${maxHintCase}`);
   }
-  if (maxDebrief > 4570) {
+  // 2026-08-28 時間錨點：Debrief 多一行「本場練習時間」（固定 85 bytes），
+  // 上限 4570→4655。
+  if (maxDebrief > 4655) {
     failures.push(`Debrief max ${maxDebrief} at ${maxDebriefCase}`);
   }
   // Applied-Hint Debrief intentionally carries the exact Hint plus its
@@ -926,7 +1084,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 2026-08-19 反 prompt 外洩：debrief 與 hint system 各掛
   // PROMPT_LEAK_DEFENSE_DIRECTIVE（固定 bytes），實測 6658，上限 6450→6700；
   // 同日 R2 主審 MINOR-3 修正 fallback 句保 JSON 契約，實測 6712，→6750。
-  if (maxDebriefWithHint > 6750) {
+  // 2026-08-28 時間錨點：同上一行「本場練習時間」（固定 85 bytes），
+  // 上限 6750→6835。
+  if (maxDebriefWithHint > 6835) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );
@@ -2151,4 +2311,106 @@ Deno.test("NPC 看到台語諧音字要先唸出來，不准當成打錯字", ()
       `台語對照表缺「${word}」`,
     );
   }
+});
+
+Deno.test("chat prompt 注入台北時間錨點：日期、星期、時刻、平日/週末都在", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "你不是8月28號星期五嗎" }],
+    defaultProfile,
+    { timeContext: bugReportNow },
+  )[0].content;
+
+  assertEquals(sys.includes("nowContext"), true);
+  assertEquals(sys.includes("2026-08-28"), true);
+  assertEquals(sys.includes("星期五"), true);
+  assertEquals(sys.includes("平日"), true);
+  assertEquals(sys.includes("09:00"), true);
+  assertEquals(sys.includes("早上"), true);
+});
+
+Deno.test("時間錨點擋住真機那三種失敗：自己推算、糾正講對的人、捏造查證動作", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "今天禮拜幾" }],
+    defaultProfile,
+    { timeContext: bugReportNow },
+  )[0].content;
+
+  // 別拿貼文日期或逐字稿裡的日期當今天
+  assertEquals(
+    sys.includes("不要拿對話裡或你自己貼文裡出現過的其他日期當今天"),
+    true,
+  );
+  // 使用者講對了不准反過來糾正
+  assertEquals(sys.includes("不可以說他看錯、記錯或反過來糾正他"), true);
+  // 「我剛剛還特別去看了手機」這種替錯答案背書的查證動作
+  assertEquals(sys.includes("我剛剛看了手機"), true);
+  // 沒寫的就說不確定，不要編
+  assertEquals(sys.includes("就說不確定，不要編"), true);
+});
+
+Deno.test("時間錨點排在 sceneContext 之前：硬事實先落地，生活狀態在它上面演", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "在幹嘛" }],
+    defaultProfile,
+    { timeContext: bugReportNow, sceneContext: dinnerScene },
+  )[0].content;
+
+  const nowIndex = sys.indexOf("nowContext");
+  const sceneIndex = sys.indexOf("sceneContext（hidden guidance");
+  assert(nowIndex >= 0);
+  assert(sceneIndex > nowIndex);
+});
+
+Deno.test("省略 timeContext 時 chat prompt 完全不提時間錨點（舊呼叫端不受影響）", () => {
+  const sys =
+    buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile, {})[0]
+      .content;
+
+  assertEquals(sys.includes("nowContext"), false);
+  assertEquals(sys.includes("這是唯一正確的「現在」"), false);
+});
+
+Deno.test("hint 兩顆球也吃同一個時間錨點，避免約到已經過掉的日子", () => {
+  const user = buildHintMessages({
+    turns: [{ role: "user", text: "嗨" }, { role: "ai", text: "嗨嗨" }],
+    profile: defaultProfile,
+    practiceMode: "beginner",
+    temperatureScore: 40,
+    timeContext: bugReportNow,
+  })[1].content;
+
+  assertEquals(
+    user.includes("nowContext: 台北時間 2026-08-28（星期五・平日）"),
+    true,
+  );
+  assertEquals(user.includes("這是唯一正確的「現在」"), true);
+
+  const omitted = buildHintMessages({
+    turns: [{ role: "user", text: "嗨" }, { role: "ai", text: "嗨嗨" }],
+    profile: defaultProfile,
+    practiceMode: "beginner",
+    temperatureScore: 40,
+  })[1].content;
+  assertEquals(omitted.includes("nowContext"), false);
+});
+
+Deno.test("debrief 也拿得到今天是哪天，建議句才不會約到矛盾的時間", () => {
+  const user = buildDebriefMessages(
+    [{ role: "user", text: "禮拜五有空嗎" }, { role: "ai", text: "再說囉" }],
+    defaultProfile,
+    { timeContext: bugReportNow },
+  )[1].content;
+
+  assertEquals(
+    user.includes("本場練習時間：台北時間 2026-08-28（星期五・平日）"),
+    true,
+  );
+  assertEquals(user.includes("建議句提到時間時不可以跟它矛盾"), true);
+
+  const omitted = buildDebriefMessages(
+    [{ role: "user", text: "禮拜五有空嗎" }, { role: "ai", text: "再說囉" }],
+    defaultProfile,
+    {},
+  )[1].content;
+  assertEquals(omitted.includes("本場練習時間"), false);
 });

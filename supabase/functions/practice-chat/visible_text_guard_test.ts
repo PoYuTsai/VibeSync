@@ -665,3 +665,15 @@ Deno.test("R2-P1b：指示語氣補「你要/你得/建議你」族", () => {
     false,
   );
 });
+
+Deno.test("時間錨點標籤被當成內部詞攔下，但她照實回答日期不算外洩", () => {
+  // 鐵則：注入內部詞必同步擴可見輸出守門。nowContext 是注入標籤，不是她的話。
+  assertEquals(
+    hasVisibleInternalLabelLeak("nowContext: 台北時間 2026-08-28"),
+    true,
+  );
+  assertEquals(hasVisibleInternalLabelLeak("now context 我等等回你"), true);
+  // 日期／星期本身不進內部詞表——使用者本來就會問今天幾號，她答得出來才是對的。
+  assertEquals(hasVisibleInternalLabelLeak("今天禮拜五啊 你記錯了喔"), false);
+  assertEquals(hasVisibleInternalLabelLeak("2026-08-28 欸 我剛看手機"), false);
+});

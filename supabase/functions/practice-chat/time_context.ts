@@ -19,6 +19,31 @@ export interface TaipeiTimeContext {
   dayPart: TaipeiDayPart;
 }
 
+/**
+ * 時段的中文說法。放在這裡是因為「時段怎麼稱呼」跟 dayPartFor 的切點是同一份
+ * 契約：改了切點卻沒改稱呼，貼文與聊天就會各講各的。
+ */
+export const TAIPEI_DAY_PART_LABEL: Readonly<Record<TaipeiDayPart, string>> = {
+  dawn: "清晨",
+  morning: "早上",
+  noon: "中午",
+  afternoon: "下午",
+  early_evening: "傍晚",
+  evening: "晚上",
+  late_night: "深夜",
+};
+
+/** getUTCDay() 的 0-6 對應；weekday 已經是台北日的星期。 */
+const TAIPEI_WEEKDAY_LABEL = [
+  "星期日",
+  "星期一",
+  "星期二",
+  "星期三",
+  "星期四",
+  "星期五",
+  "星期六",
+] as const;
+
 const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 function pad2(value: number): string {
@@ -51,4 +76,22 @@ export function taipeiTimeContextFor(now: Date): TaipeiTimeContext {
     isWeekend: weekday === 0 || weekday === 6,
     dayPart: dayPartFor(hour),
   };
+}
+
+/**
+ * 把台北時間情境攤成一行人看得懂的話，例如
+ * `2026-08-28（星期五・平日）09:03 早上`。
+ *
+ * 模型的 prompt 只吃得到我們餵的字，不會自己去看時鐘：日期、星期、時刻
+ * 只要有一項沒寫進去，它就會用最近一個看得到的日期（例如她自己的貼文日期）
+ * 去推「今天」，於是端出一個錯的禮拜幾還講得很有把握。這一行就是那個唯一
+ * 的錨點，chat / hint / debrief 三條路徑共用同一份寫法，免得三邊各報一個時間。
+ */
+export function taipeiNowLabel(time: TaipeiTimeContext): string {
+  const weekday = TAIPEI_WEEKDAY_LABEL[time.weekday];
+  const dayType = time.isWeekend ? "週末" : "平日";
+  const clock = `${pad2(time.hour)}:${pad2(time.minute)}`;
+  return `${time.isoDate}（${weekday}・${dayType}）${clock} ${
+    TAIPEI_DAY_PART_LABEL[time.dayPart]
+  }`;
 }

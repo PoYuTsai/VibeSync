@@ -13,6 +13,10 @@ import {
   type PracticeLearningMode,
 } from "./quota_decision.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
+import {
+  type TaipeiTimeContext,
+  taipeiNowLabel,
+} from "./time_context.ts";
 import type { AcquaintanceOrigin } from "./acquaintance_origin.ts";
 import {
   buildConsistencyTestPrompt,
@@ -221,6 +225,35 @@ function debriefAcquaintanceOriginLine(
   // 具體既定事實走 hintTrustedFactualEvidence 的 shared 證據，這裡只留評分尺度，
   // 免得 Game debrief 的 12 秒預算被重複敘述吃掉。
   return `本場認識管道：${origin.label}。${origin.debriefStandard}\n\n`;
+}
+
+// 現在幾號、禮拜幾、幾點：server 是唯一真相源，模型自己沒有時鐘。
+//
+// 這段不存在的時候，system prompt 裡唯一出現的絕對日期是她自己的貼文日期
+// （herRecentMoments 的 `- 2026-08-26 早上：…`），模型就會拿最近一則貼文的
+// 日期當今天——貼文永遠在今天或今天之前，所以錯的方向是系統性往前偏，而且
+// 它還會補一句「我剛剛看了手機」來替那個錯的禮拜幾背書。給了錨點才有東西
+// 可以照，也才擋得住「使用者講對了反而被她糾正」。
+//
+// 刻意放在 sceneContext 前面：sceneContext 只給模糊的生活狀態，卻叫她
+// 「聊到時間/行程就照這個回答」；硬事實要先落地，生活狀態才是在它上面演。
+function nowContextPrompt(time?: TaipeiTimeContext | null): string {
+  if (!time) return "";
+  return `\n\nnowContext（hidden guidance，不要說出 nowContext 這個詞，也不要把這串原樣念出來）：
+現在是台北時間 ${taipeiNowLabel(time)}。
+- 這是唯一正確的「現在」，等同於你手機上顯示的日期、星期與時刻。不要自己推算，也不要拿對話裡或你自己貼文裡出現過的其他日期當今天。
+- 對方問今天幾號、禮拜幾、現在幾點，就照這裡回答，用口語講（禮拜五、早上九點多）。這裡沒寫的（節日、天氣、農曆、幾週後的事）就說不確定，不要編。
+- 對方講的日期或星期跟這裡一致時，不可以說他看錯、記錯或反過來糾正他；只有真的對不上才自然點出來，而且不要編造「我剛剛看了手機」「我查了行事曆」這種查證動作去撐一個跟這裡不同的答案。
+- 講到「等一下」「今晚」「明天」「這禮拜」「週末」時要跟上面的日期時刻算得起來，不要排出跟今天矛盾的行程。
+- 不用主動報時間，沒人問就不要提。`;
+}
+
+/** debrief 版：教練也要知道「今天」，建議句才不會約到一個矛盾的日子。 */
+function debriefNowContextLine(time?: TaipeiTimeContext | null): string {
+  if (!time) return "";
+  return `本場練習時間：台北時間 ${
+    taipeiNowLabel(time)
+  }。逐字稿裡的「今天」「明天」「這禮拜」「週末」都以此為準；建議句提到時間時不可以跟它矛盾。\n\n`;
 }
 
 function sceneContextPrompt(
@@ -541,6 +574,8 @@ export function buildChatMessages(
     sceneContext?: PracticeSceneContext | null;
     acquaintanceOrigin?: AcquaintanceOrigin | null;
     memorySummary?: string | null;
+    /** server 算出的台北「現在」。省略＝不注入時間錨點（見 nowContextPrompt）。 */
+    timeContext?: TaipeiTimeContext | null;
     /**
      * 已渲染好的朋友圈記憶區塊（moments_memory.ts 的 herRecentMomentsPrompt）。
      *
@@ -618,7 +653,9 @@ export function buildChatMessages(
       role: "system",
       content: `${CHAT_SYSTEM_PROMPT}${buildProfilePrompt(profile)}${
         acquaintanceOriginPrompt(options.acquaintanceOrigin)
-      }${sceneContextPrompt(options.sceneContext)}${
+      }${nowContextPrompt(options.timeContext)}${
+        sceneContextPrompt(options.sceneContext)
+      }${
         memorySummaryPrompt(options.memorySummary)
       }${options.herRecentMomentsBlock ?? ""}${
         safePartnerStatePrompt(options.partnerState)
@@ -872,6 +909,8 @@ export function buildDebriefMessages(
     sceneContext?: PracticeSceneContext | null;
     acquaintanceOrigin?: AcquaintanceOrigin | null;
     memorySummary?: string | null;
+    /** server 算出的台北「現在」。省略＝不注入時間錨點。 */
+    timeContext?: TaipeiTimeContext | null;
     gameState?: PersistedGameState | null;
     appliedHintTurns?: AppliedHintTurn[];
   } = {},
@@ -939,6 +978,7 @@ export function buildDebriefMessages(
         `本場難度：${profile.difficultyLabel}\n` +
         `${profile.difficultyDebriefStandard}\n\n` +
         debriefAcquaintanceOriginLine(options.acquaintanceOrigin) +
+        debriefNowContextLine(options.timeContext) +
         debriefSceneContextLine(options.sceneContext) +
         debriefMemorySummaryPrompt(options.memorySummary) +
         "\n\n" +
