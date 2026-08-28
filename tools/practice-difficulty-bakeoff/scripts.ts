@@ -1,13 +1,19 @@
-// 練習室難度 bakeoff：三組固定 user 腳本（純資料，零依賴）。
-// 每組固定 6 則 user 訊息，跑法見 bakeoff.ts；三組涵蓋「爛開場查戶口型」「普通型」
-// 「高品質型」三種使用者行為，用來量測同一難度設定在不同輸入下的 AI 回覆品質分佈。
+// 練習室難度 bakeoff：固定 user 腳本（純資料，零依賴）。
+// 每組固定 6 則 user 訊息，跑法見 bakeoff.ts；涵蓋「爛開場查戶口型」「普通型」
+// 「高品質型」「禮貌不接內容型」四種使用者行為，用來量測同一難度設定在
+// 不同輸入下的 AI 回覆品質分佈。
 
-export type ScriptId = "bad_interrogator" | "average" | "high_quality";
+export type ScriptId =
+  | "bad_interrogator"
+  | "average"
+  | "high_quality"
+  | "low_signal_polite";
 
 export const SCRIPT_IDS: readonly ScriptId[] = [
   "bad_interrogator",
   "average",
   "high_quality",
+  "low_signal_polite",
 ];
 
 export const SCRIPTS: Readonly<Record<ScriptId, readonly string[]>> = {
@@ -37,6 +43,16 @@ export const SCRIPTS: Readonly<Record<ScriptId, readonly string[]>> = {
     "妳講話蠻直接的耶 我還蠻喜歡這種感覺",
     "附近剛好有間新開的咖啡展覽 妳有興趣的話這週六要不要一起去晃晃",
     "不用勉強啦 剛好想找人一起而已 妳方便的時間我都可以配合",
+  ],
+  // 禮貌不接內容型：全程客氣出席，但不接她的具體內容、不分享自己、不推進——
+  // 專測「純出席能否被動升溫」（挑戰模式應該不行）。
+  low_signal_polite: [
+    "嗨嗨 妳好",
+    "今天天氣不錯欸",
+    "嗯嗯 了解",
+    "哈哈 是喔",
+    "原來如此 不錯欸",
+    "好喔 妳忙 掰掰",
   ],
 } as const;
 
