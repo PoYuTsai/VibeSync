@@ -154,9 +154,12 @@ Deno.test("full context 逐區塊注入 chat prompt；minimal 全數不注入", 
   );
 });
 
-Deno.test("debrief prompt：full 帶記憶／情境／管道／時間，但不帶朋友圈（對齊 handler）", async () => {
+Deno.test("debrief prompt：full 帶記憶／情境／管道／時間，但不帶朋友圈；minimal 全數排除", async () => {
   const full = await runFake("full");
+  const minimal = await runFake("minimal");
   const debriefPrompt = full.calls.find((c) => c.kind === "debrief")!
+    .promptText;
+  const minimalDebrief = minimal.calls.find((c) => c.kind === "debrief")!
     .promptText;
   const fixture = buildBakeoffContextFixture(
     resolvePracticeProfile({
@@ -164,12 +167,20 @@ Deno.test("debrief prompt：full 帶記憶／情境／管道／時間，但不�
       profileId: "practice_girl_001",
     }),
   );
-  assert(debriefPrompt.includes(BAKEOFF_MEMORY_SUMMARY), "debrief 缺記憶摘要");
-  assert(
-    debriefPrompt.includes(fixture.acquaintanceOrigin.sharedFact) ||
-      debriefPrompt.includes(fixture.acquaintanceOrigin.debriefStandard),
-    "debrief 缺認識管道",
-  );
+  const blocks: [string, string][] = [
+    ["記憶摘要", BAKEOFF_MEMORY_SUMMARY],
+    ["生活情境", fixture.sceneContext.statusLine],
+    ["台北時間", taipeiNowLabel(fixture.timeContext)],
+  ];
+  for (const [name, text] of blocks) {
+    assert(debriefPrompt.includes(text), `full debrief 缺${name}`);
+    assert(!minimalDebrief.includes(text), `minimal debrief 不該有${name}`);
+  }
+  const hasOrigin = (prompt: string) =>
+    prompt.includes(fixture.acquaintanceOrigin.sharedFact) ||
+    prompt.includes(fixture.acquaintanceOrigin.debriefStandard);
+  assert(hasOrigin(debriefPrompt), "full debrief 缺認識管道");
+  assert(!hasOrigin(minimalDebrief), "minimal debrief 不該有認識管道");
   assert(
     !debriefPrompt.includes(BAKEOFF_MOMENT_BODY),
     "debrief 不該帶朋友圈貼文（production 形狀）",
