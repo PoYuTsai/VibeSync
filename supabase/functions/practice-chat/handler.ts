@@ -113,6 +113,7 @@ import {
   threadIdForPracticeRequest,
 } from "./relationship_thread.ts";
 import {
+  applyChallengeRewardGate,
   applyLearningClassification,
   applyPartnerStateUpdate,
   buildTurnClassifierMessages,
@@ -1330,6 +1331,11 @@ async function judgeLearningState(opts: {
   );
   const offenseCooldown = !crudeOffense &&
     inCrudeOffenseCooldown(opts.request.turns);
+  // 挑戰獎勵閘門（PR 2，修 D2）只接 challenge × beginner：Game 有自己的
+  // 閘門（applyGameLearningDelta 的 canEarnPositive），standard 無分數，
+  // easy／normal 完全不經過閘門、行為與改前一致。
+  const challengeGateActive = opts.request.practiceMode === "beginner" &&
+    opts.request.profile.difficulty === "challenge";
   const applyGameLearningIfNeeded = (
     judgement: LearningJudgement,
     currentTemperature: number,
@@ -1410,13 +1416,22 @@ async function judgeLearningState(opts: {
       protectedHintType,
       opts.request.practiceMode,
     );
+    const gatedFallback = challengeGateActive
+      ? applyChallengeRewardGate({
+        judgement: protectedFallback,
+        currentHeat: currentTemperature,
+        currentFamiliarity: currentFamiliarity,
+        classification: protectedFallback.classification,
+        protectedAppliedHint: protectedHintType !== undefined,
+      })
+      : protectedFallback;
     const cooledFallback = offenseCooldown
       ? withNonPositiveLearningDeltas(
-        protectedFallback,
+        gatedFallback,
         currentTemperature,
         currentFamiliarity,
       )
-      : protectedFallback;
+      : gatedFallback;
     return applyGameLearningIfNeeded(
       cooledFallback,
       currentTemperature,
@@ -1463,21 +1478,32 @@ async function judgeLearningState(opts: {
       protectedHintType,
       opts.request.practiceMode,
     );
+    // 閘門在 applied-hint 保護之後（豁免在閘門內判斷）、crude-offense 確定
+    // 性扣滿之前——閘門只夾正向，扣滿與 cooldown 行為不受影響。
+    const gatedJudgement = challengeGateActive
+      ? applyChallengeRewardGate({
+        judgement: protectedJudgement,
+        currentHeat: currentTemperature,
+        currentFamiliarity: currentFamiliarity,
+        classification,
+        protectedAppliedHint: protectedHintType !== undefined,
+      })
+      : protectedJudgement;
     // 放在 applied-hint 保護之後：使用者把 hint 改寫成粗俗冒犯句時，保護
     // 不得替它擋下扣分。
     const enforcedJudgement = crudeOffense
       ? withMaxNegativeLearningDeltas(
-        protectedJudgement,
+        gatedJudgement,
         currentTemperature,
         currentFamiliarity,
       )
       : offenseCooldown
       ? withNonPositiveLearningDeltas(
-        protectedJudgement,
+        gatedJudgement,
         currentTemperature,
         currentFamiliarity,
       )
-      : protectedJudgement;
+      : gatedJudgement;
     const withPartnerState = {
       ...enforcedJudgement,
       partnerState: applyPartnerStateUpdate(

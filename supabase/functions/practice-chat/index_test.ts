@@ -2937,6 +2937,227 @@ Deno.test("normal low-impact beginner chat now gets small visible progress", asy
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
 });
 
+// ── 挑戰獎勵閘門（PR 2，修 D2）：challenge × beginner 下沒有正向證據
+// （caught／passed）的回合不得被動加分；負向照常 ×1.3；easy／normal／Game
+// 行為與改前一致。
+Deno.test("challenge beginner neutral reply earns zero instead of a passive +1", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 10,
+      }),
+      deepSeekReplies: ["AI reply", CLASSIFIER_NEUTRAL_MINOR],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      temperatureScore: 30,
+      familiarityScore: 10,
+      turns: [{ role: "user", text: "今天工作很多嗎" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityDelta, 0);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
+});
+
+Deno.test("challenge beginner defensive failed-test reply keeps its full negative deltas", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 10,
+      }),
+      deepSeekReplies: ["AI reply", CLASSIFIER_DEFENSIVE_FAILED],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      temperatureScore: 30,
+      familiarityScore: 10,
+      turns: [{ role: "user", text: "妳為什麼一直問這個" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  // defensive+failed 淨 -9 吃 challenge ×1.3 → heat -12（夾下限）、familiarity -6
+  assertEquals(json.temperature.score, 18);
+  assertEquals(json.temperature.delta, -12);
+  assertEquals(json.temperature.familiarityDelta, -6);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -6);
+});
+
+Deno.test("challenge beginner caught reply still earns its 0.7-scaled positive", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 10,
+      }),
+      deepSeekReplies: ["AI reply", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      temperatureScore: 30,
+      familiarityScore: 10,
+      turns: [{ role: "user", text: "妳說想放空，那我陪妳一起放空" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  // caught +4/+5 吃 ×0.7 → +3/+4，正向證據不被閘門夾掉
+  assertEquals(json.temperature.score, 33);
+  assertEquals(json.temperature.delta, 3);
+  assertEquals(json.temperature.familiarityDelta, 4);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 3);
+});
+
+Deno.test("challenge beginner protected exact hint keeps its floor through the gate", async () => {
+  const exactHint = "你剛剛說今天很累，是工作很多嗎？";
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 10,
+        hint_count: 1,
+      }),
+      deepSeekReplies: ["AI reply", CLASSIFIER_ALIGNED_NEUTRAL_MINOR],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      temperatureScore: 30,
+      familiarityScore: 10,
+      appliedHintType: "steady",
+      appliedHintText: exactHint,
+      turns: [{ role: "user", text: exactHint }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 31);
+  assertEquals(json.temperature.delta, 1);
+  assertEquals(json.temperature.familiarityDelta, 1);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+});
+
+Deno.test("easy beginner neutral reply on the same fixture still earns +1", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 10,
+      }),
+      deepSeekReplies: ["AI reply", CLASSIFIER_NEUTRAL_MINOR],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "easy",
+      temperatureScore: 30,
+      familiarityScore: 10,
+      turns: [{ role: "user", text: "今天工作很多嗎" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 31);
+  assertEquals(json.temperature.delta, 1);
+  assertEquals(json.temperature.familiarityDelta, 1);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+});
+
+Deno.test("game neutral reply keeps its own gate behavior, untouched by the challenge gate", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: gameStartedLedger({
+        temperature_score: 30,
+        familiarity_score: 10,
+      }),
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      deepSeekReplies: ["AI reply", CLASSIFIER_NEUTRAL_MINOR],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      temperatureScore: 30,
+      familiarityScore: 10,
+      roundIndex: 2,
+      turns: [
+        { role: "user", text: "hi" },
+        { role: "ai", text: "嗨" },
+        { role: "user", text: "今天工作很多嗎" },
+      ],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  // Game 自己的 canEarnPositive 閘門（game_fsm.ts）：neutral 無正向 Game
+  // 證據夾到 0——與改前完全相同，challenge 閘門不碰 game 模式。
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+});
+
+Deno.test("challenge stale retry recomputes the reward gate on the reloaded scores", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 10,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          {
+            data: {
+              updated: false,
+              temperature_score: 34,
+              familiarity_score: 20,
+            },
+          },
+        ],
+      },
+      deepSeekReplies: ["AI reply", CLASSIFIER_NEUTRAL_MINOR],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      temperatureScore: 30,
+      familiarityScore: 10,
+      turns: [{ role: "user", text: "今天工作很多嗎" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 34);
+  assertEquals(json.temperature.delta, 0);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state).length, 2);
+  assertEquals(
+    learningUpdateCalls(state)[1].params.p_expected_temperature_score,
+    34,
+  );
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, 0);
+});
+
 Deno.test("low-information reply after a contextual question can cool both learning axes", async () => {
   const { response, json, state } = await run(
     {

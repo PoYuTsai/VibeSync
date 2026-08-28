@@ -392,7 +392,10 @@ export function withNonPositiveLearningDeltas(
 ): LearningJudgement {
   const heatDelta = Math.min(0, judgement.delta);
   const familiarityDelta = Math.min(0, judgement.familiarityDelta);
-  if (heatDelta === judgement.delta && familiarityDelta === judgement.familiarityDelta) {
+  if (
+    heatDelta === judgement.delta &&
+    familiarityDelta === judgement.familiarityDelta
+  ) {
     return judgement;
   }
   const score = clampTemperature(clampTemperature(currentHeat) + heatDelta);
@@ -410,6 +413,32 @@ export function withNonPositiveLearningDeltas(
     stage: stage.stage,
     stageLabel: stage.label,
   };
+}
+
+/**
+ * 挑戰難度獎勵閘門（修 D2）：challenge 下沒有正向證據的回合不得被動加分
+ * ——neutral 淨 +1 吃 ×0.7 後被 roundNonZero 補回 +1，玩家躺著也升溫。
+ * 正向證據＝connection caught 或 testHandling passed；受保護的 exact／
+ * small-edit Hint 豁免（鏡像 game_fsm.ts canEarnPositive 的寫法，豁免放在
+ * 閘門內、不靠套用順序）。負向照常放行。難度／模式適用性由呼叫端決定，
+ * 閘門本身只執行證據規則，bakeoff 與 handler 共用同一份。
+ */
+export function applyChallengeRewardGate(opts: {
+  judgement: LearningJudgement;
+  currentHeat: number;
+  currentFamiliarity: number;
+  classification: TurnClassification;
+  protectedAppliedHint: boolean;
+}): LearningJudgement {
+  const canEarnPositive = opts.protectedAppliedHint ||
+    opts.classification.connection === "caught" ||
+    opts.classification.testHandling === "passed";
+  if (canEarnPositive) return opts.judgement;
+  return withNonPositiveLearningDeltas(
+    opts.judgement,
+    opts.currentHeat,
+    opts.currentFamiliarity,
+  );
 }
 
 function lastUserTurn(turns: PracticeTurn[]): PracticeTurn | null {

@@ -207,3 +207,28 @@ Deno.test("debrief 失敗 fail-open：整場保留、記 debriefError", async ()
   assertNotEquals(record.debriefError, undefined);
   assertEquals(record.turns.length, SCRIPTS.low_signal_polite.length);
 });
+
+Deno.test("挑戰獎勵閘門接進 bakeoff：challenge neutral 輪夾 0 並記 challengeGateApplied", async () => {
+  // 預設分類全是 neutral（無 caught／passed 證據）→ challenge 每輪都該被夾。
+  const challenge = await runFake("minimal");
+  assert(challenge.record.turns.length > 0);
+  for (const turn of challenge.record.turns) {
+    assertEquals(turn.challengeGateApplied, true);
+    assertEquals(turn.heatDelta, 0);
+    assertEquals(turn.familiarityDelta, 0);
+  }
+
+  // 有正向證據（caught）的輪不夾：challengeGateApplied false、正分保留。
+  const caught = await runFake("minimal", {
+    classifyResponses: [{ ...DEFAULT_CLASSIFICATION, connection: "caught" }],
+  });
+  assertEquals(caught.record.turns[0].challengeGateApplied, false);
+  assert(caught.record.turns[0].heatDelta > 0);
+
+  // 非 challenge 難度不經過閘門，欄位維持 null、+1 照舊。
+  const normal = await runFake("minimal", { difficulty: "normal" });
+  for (const turn of normal.record.turns) {
+    assertEquals(turn.challengeGateApplied, null);
+  }
+  assertEquals(normal.record.turns[0].heatDelta, 1);
+});
