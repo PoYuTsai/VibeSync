@@ -439,9 +439,9 @@ class InMemoryPracticeAppliedHintStore implements PracticeAppliedHintStore {
     final existing = _contexts[key];
     if (existing == null) {
       // 空 store 也要留 tombstone（世代 1），否則失去所有權的舊 controller
-      // 事後仍能以 revision 1 寫進第一代血統。守衛清除（stale 路徑）除外——
-      // stale caller 不得產生任何寫入。
-      if (ifRevisionAtMost == null) {
+      // 事後仍能以 revision 1 寫進第一代血統。只有具名（帶 writerId）的
+      // owner 清除會建立它；匿名的 stale 還原清除不得產生任何寫入。
+      if (writerId != null) {
         _contexts[key] = PracticeAppliedHintContext(
           sessionId: key,
           turns: const [],
@@ -545,9 +545,10 @@ class HivePracticeAppliedHintStore implements PracticeAppliedHintStore {
     final existing = _loadStrict(normalizedSessionId);
     final box = _openBox();
     if (existing == null) {
-      // 空 store：無條件清除也要留世代 1 的 tombstone（防止舊 controller
-      // 事後以 revision 1 寫進第一代血統）；守衛清除（stale 路徑）不得寫入。
-      if (ifRevisionAtMost == null) {
+      // 空 store：具名（帶 writerId）的 owner 清除留世代 1 tombstone（防止
+      // 舊 controller 事後以 revision 1 寫進第一代血統）；匿名的 stale
+      // 還原清除不得寫入。
+      if (writerId != null) {
         await box.put(
           storageKeyForSession(normalizedSessionId),
           jsonEncode(PracticeAppliedHintContext(

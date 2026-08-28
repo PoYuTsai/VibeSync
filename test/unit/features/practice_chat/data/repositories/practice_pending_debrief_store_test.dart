@@ -455,6 +455,38 @@ void main() {
       }
     });
 
+    test('a stale owner clear (view behind, writerId given) must not destroy '
+        'a newer context nor mint an adoptable tombstone', () async {
+      // Codex round-5 P2：owner clear 若無視角 guard，stale controller 可
+      // 先毀掉新內容、再自製自己 writerId 的 tombstone 重新入場。
+      Hive.init('./.dart_tool/test_hive_applied_hint_stale_owner');
+      final ts = DateTime.now().microsecondsSinceEpoch;
+      final box = await Hive.openBox('applied_hint_stale_owner_$ts');
+      addTearDown(box.deleteFromDisk);
+      final stores = <PracticeAppliedHintStore>[
+        InMemoryPracticeAppliedHintStore(),
+        HivePracticeAppliedHintStore(() => box),
+      ];
+      for (final store in stores) {
+        await store.save(PracticeAppliedHintContext(
+          sessionId: 'sess-hint',
+          turns: sample.turns,
+          revision: 5,
+          writerId: 'writer-b',
+        ));
+        // stale owner（視角 2）的具名清除 → 現存較新，必須 no-op。
+        await store.clearForSession(
+          'sess-hint',
+          ifRevisionAtMost: 2,
+          writerId: 'writer-a',
+        );
+        final surviving = store.load('sess-hint');
+        expect(surviving?.revision, 5);
+        expect(surviving?.turns, isNotEmpty);
+        expect(surviving?.writerId, 'writer-b');
+      }
+    });
+
     test('a stale write cannot resurrect lineage after an unconditional clear '
         '(in-memory and Hive)', () async {
       // Codex round-1 review 的反證序列：clear 若物理刪除會讓 revision 歸零，
@@ -551,12 +583,20 @@ void main() {
         HivePracticeAppliedHintStore(() => box),
       ];
       for (final store in stores) {
-        // 守衛清除（stale 路徑）在空 store 上不得產生任何寫入。
+        // 匿名守衛清除（stale 還原路徑）在空 store 上不得產生任何寫入。
         await store.clearForSession('sess-hint', ifRevisionAtMost: 5);
         expect(store.load('sess-hint'), isNull);
-        // 無條件清除（場次收尾）要留世代 1 tombstone。
+        // 不帶 writerId 的清除也不建立 tombstone（只有具名 owner 清除會）。
         await store.clearForSession('sess-hint');
+        expect(store.load('sess-hint'), isNull);
+        // 具名 owner 清除（帶 writerId＋視角 guard）→ 世代 1 tombstone。
+        await store.clearForSession(
+          'sess-hint',
+          ifRevisionAtMost: 0,
+          writerId: 'writer-a',
+        );
         expect(store.load('sess-hint')?.revision, 1);
+        expect(store.load('sess-hint')?.writerId, 'writer-a');
         expect(clearedAppliedHintContext(store.load('sess-hint')), isTrue);
         // 視角 0 的舊 controller 晚到寫入 revision 1 → 拒絕。
         await expectLater(

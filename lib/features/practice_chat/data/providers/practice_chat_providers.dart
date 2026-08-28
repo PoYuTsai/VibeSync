@@ -783,8 +783,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _latestSuccessfulHint = null;
     _latestSuccessfulHintIsDurable = false;
     try {
+      // Owner 清除也帶視角 guard：視角落後（store 有更新的世代）代表本
+      // controller 已 stale，這時的清除不得毀掉較新內容、更不得自製可採納
+      // 的 tombstone 重新入場——只有視角追上現存世代的 controller 能清。
       await _appliedHintStore.clearForSession(
         sessionId,
+        ifRevisionAtMost: _appliedHintStoreRevision,
         writerId: _appliedHintWriterId,
       );
     } catch (_) {

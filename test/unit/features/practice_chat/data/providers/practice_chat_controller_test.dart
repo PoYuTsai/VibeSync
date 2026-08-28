@@ -4421,6 +4421,128 @@ void main() {
       expect(after?.revision, tombstoneRevision);
     });
 
+    test('stale controller 走 owner 清除（endPractice）不得毀掉新 controller 的較新血統',
+        () async {
+      // Codex round-5 P2：owner clear 若無視角 guard，stale controller 可先
+      // 無條件清掉較新內容、再自製自己 writerId 的 tombstone 重新入場。
+      final store = InMemoryPracticeAppliedHintStore();
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      final a = await makeRevealed(appliedHintStore: store);
+      await a.setPracticeLearningMode(PracticeLearningMode.beginner);
+      await a.sendMessage('hello');
+      final sessionId = a.currentState.sessionId;
+
+      // B 重建並寫入較新血統（staged rev 較高）。
+      final b = makeControllerFrom(
+        repo.getById(sessionId)!,
+        appliedHintStore: store,
+      );
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            aiTurnCount: 2,
+            temperature: const PracticeTemperature(
+              score: 31,
+              delta: 1,
+              band: 'cold',
+              reason: '延伸',
+            ),
+          );
+      await b.sendMessage(
+        'B 的照抄',
+        appliedHintType: PracticeHintReplyType.steady,
+        appliedHintText: 'B 的照抄',
+      );
+      final newer = store.load(sessionId);
+      expect(newer?.turns.map((t) => t['sentText']), contains('B 的照抄'));
+      final newerRevision = newer!.revision;
+
+      // stale A 走 endPractice（owner 清除路徑）→ 視角落後，清除必須 no-op。
+      api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
+            summary: '整體不錯',
+            strengths: ['開場自然'],
+            watchouts: [],
+            suggestedLine: '下次直接約她',
+            vibe: '暖',
+            dateChance: 'medium',
+            dateChanceReason: '她有回應。',
+            nextInviteMove: '先丟一個模糊邀約。',
+            qualitySchemaVersion: kPracticeDebriefQualitySchemaVersion,
+          );
+      await a.endPractice();
+
+      final surviving = store.load(sessionId);
+      expect(
+        surviving?.turns.map((t) => t['sentText']),
+        contains('B 的照抄'),
+        reason: 'stale controller 的 owner 清除毀掉了較新血統',
+      );
+      expect(surviving?.revision, newerRevision);
+    });
+
+    test('視角非零時 staging 入口讀到 null → 視角不得歸零（mutation-sensitive）',
+        () async {
+      // Codex round-5 P3-A：前一個 null 測試視角本來就是 0，錯誤的「歸零」
+      // 也測不出來。此測試視角 7、store 非空——歸零會讓 CAS 直接失敗。
+      final store = _NullNextLoadAppliedHintStore();
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      final a = await makeRevealed(appliedHintStore: store);
+      await a.setPracticeLearningMode(PracticeLearningMode.beginner);
+      await a.sendMessage('hello');
+      final sessionId = a.currentState.sessionId;
+      a.dispose();
+
+      // store 直接推進到 revision 7（非空、不可還原的殘turns）。
+      await store.save(PracticeAppliedHintContext(
+        sessionId: sessionId,
+        turns: const [
+          {'turnIndex': 9, 'type': 'steady', 'originalHintText': '殘', 'sentText': '殘', 'exact': true},
+        ],
+        revision: 7,
+      ));
+
+      // 重建 controller：init restore 同步視角 7。
+      final rebuilt = makeControllerFrom(
+        repo.getById(sessionId)!,
+        appliedHintStore: store,
+      );
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            aiTurnCount: 2,
+            temperature: const PracticeTemperature(
+              score: 31,
+              delta: 1,
+              band: 'cold',
+              reason: '延伸',
+            ),
+          );
+      store.nullNextLoad = true; // staging 入口的採納讀取收到 null
+      await rebuilt.sendMessage(
+        '照抄提示',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: '照抄提示',
+      );
+      expect(rebuilt.currentState.errorMessage, isNull);
+      final saved = store.load(sessionId);
+      expect(saved?.revision, 8, reason: '視角若被歸零，這裡會是 CAS 失敗而非 rev8');
+      expect(saved?.turns.map((t) => t['sentText']), contains('照抄提示'));
+    });
+
     test('clear 後的視角同步收到 null（吞錯鏡像）→ 視角不得歸零，之後送出仍成功',
         () async {
       // Codex round-4 P3-A：production 的 Hive load 是吞錯回 null，
