@@ -1115,6 +1115,111 @@ void main() {
     });
   });
 
+  // ── 切難度重設開場狀態 ───────────────────────────────────────────────────
+  group('切難度重設開場狀態', () {
+    test('beginner：normal→challenge 28→20、challenge→easy 20→35，整組重設',
+        () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      expect(c.currentState.temperatureScore, 28);
+
+      c.setDifficultyPreference(PracticeDifficultyPreference.challenge);
+      var s = c.currentState;
+      expect(s.temperatureScore, 20);
+      expect(s.temperatureBand, isNull);
+      expect(s.familiarityScore, 0);
+      expect(s.relationshipStageLabel, '建立熟悉中');
+      expect(s.lastTemperatureDelta, isNull);
+      expect(s.temperatureReason, isNull);
+
+      c.setDifficultyPreference(PracticeDifficultyPreference.easy);
+      s = c.currentState;
+      expect(s.temperatureScore, 35);
+    });
+
+    test('game：切難度同樣隨難度更新起始分數', () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_004');
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.game);
+      expect(c.currentState.temperatureScore, 28);
+
+      c.setDifficultyPreference(PracticeDifficultyPreference.challenge);
+
+      expect(c.currentState.temperatureScore, 20);
+      expect(c.currentState.familiarityScore, 0);
+    });
+
+    test('standard：切難度後 temperatureScore 仍為 null', () async {
+      final c = await makeRevealed();
+      expect(c.currentState.learningMode, PracticeLearningMode.standard);
+
+      c.setDifficultyPreference(PracticeDifficultyPreference.challenge);
+
+      expect(c.currentState.temperatureScore, isNull);
+      expect(c.currentState.familiarityScore, isNull);
+      expect(c.currentState.relationshipStageLabel, isNull);
+    });
+
+    test('random 偏好：分數等於本次實際解析出的難度起始值', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+
+      c.setDifficultyPreference(PracticeDifficultyPreference.random);
+
+      final s = c.currentState;
+      expect(s.temperatureScore,
+          initialPracticeTemperatureScore(s.difficulty));
+    });
+
+    test('draft：切難度後 temperatureScore 與難度一起寫入 draft', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+
+      c.setDifficultyPreference(PracticeDifficultyPreference.challenge);
+
+      final draft = draftStore.load()!;
+      expect(draft.difficulty, 'challenge');
+      expect(draft.temperatureScore, 20);
+    });
+
+    test('第一則 API request 的 seed 等於畫面選中難度的起始值', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      c.setDifficultyPreference(PracticeDifficultyPreference.challenge);
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+
+      await c.sendMessage('hello');
+
+      expect(api.lastTemperatureScore, 20);
+      expect(api.lastFamiliarityScore, 0);
+    });
+
+    test('已有 messages 時切難度 no-op：難度與分數皆不變', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 38,
+              delta: 10,
+              band: 'cold',
+              reason: '有具體延伸話題',
+              familiarityScore: 10,
+              familiarityDelta: 10,
+              stageLabel: '建立熟悉中',
+            ),
+          );
+      await c.sendMessage('hello');
+      expect(c.currentState.temperatureScore, 38);
+
+      c.setDifficultyPreference(PracticeDifficultyPreference.easy);
+
+      expect(c.currentState.difficulty, 'normal');
+      expect(c.currentState.temperatureScore, 38);
+    });
+  });
+
   // ── sendMessage gating ─────────────────────────────────────────────────
   group('sendMessage 需要先翻牌', () {
     test('locked 時送訊息 → 擋下、提示先翻牌、不打 API、無泡泡', () async {
