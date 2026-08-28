@@ -371,6 +371,11 @@ abstract class PracticeAppliedHintStore {
   /// a late old-controller cleanup from deleting a newer session's metadata.
   /// 帶 [ifRevisionAtMost] 時，現存 revision 比它新就不清（失去所有權後的
   /// 還原清除專用；無條件清除留給場次收尾）。
+  ///
+  /// 清除不物理刪除，而是寫入「空 tombstone」（turns 空、latestHint null、
+  /// revision +1）保留世代——物理刪除會讓 revision 歸零，清除後失去所有權的
+  /// 舊寫入就能以較大 revision 復活已清掉的血統。load 會回傳這個空 context，
+  /// 消費端把「turns 空且無 latestHint」視同已清除。
   Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost});
 }
 
@@ -394,12 +399,16 @@ class InMemoryPracticeAppliedHintStore implements PracticeAppliedHintStore {
   Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost}) async {
     final key = sessionId.trim();
     final existing = _contexts[key];
-    if (existing != null &&
-        ifRevisionAtMost != null &&
-        existing.revision > ifRevisionAtMost) {
+    if (existing == null) return;
+    if (ifRevisionAtMost != null && existing.revision > ifRevisionAtMost) {
       return;
     }
-    _contexts.remove(key);
+    if (existing.turns.isEmpty && existing.latestHint == null) return; // 已清
+    _contexts[key] = PracticeAppliedHintContext(
+      sessionId: key,
+      turns: const [],
+      revision: existing.revision + 1,
+    );
   }
 }
 
@@ -460,12 +469,28 @@ class HivePracticeAppliedHintStore implements PracticeAppliedHintStore {
   Future<void> clearForSession(String sessionId, {int? ifRevisionAtMost}) async {
     final normalizedSessionId = sessionId.trim();
     if (normalizedSessionId.isEmpty) return;
-    if (ifRevisionAtMost != null) {
-      final existing = load(normalizedSessionId);
-      if (existing != null && existing.revision > ifRevisionAtMost) return;
-    }
+    final existing = load(normalizedSessionId);
     final box = _openBox();
-    await box.delete(storageKeyForSession(normalizedSessionId));
+    if (existing == null) {
+      // 沒有可讀 context：維持舊語意，把兩個槽的殘值清掉。
+      await box.delete(storageKeyForSession(normalizedSessionId));
+      final legacy = _decodeContext(box.get(storageKey));
+      if (legacy?.sessionId == normalizedSessionId) {
+        await box.delete(storageKey);
+      }
+      return;
+    }
+    if (ifRevisionAtMost != null && existing.revision > ifRevisionAtMost) return;
+    if (existing.turns.isNotEmpty || existing.latestHint != null) {
+      await box.put(
+        storageKeyForSession(normalizedSessionId),
+        jsonEncode(PracticeAppliedHintContext(
+          sessionId: normalizedSessionId,
+          turns: const [],
+          revision: existing.revision + 1,
+        ).toJson()),
+      );
+    }
     final legacy = _decodeContext(box.get(storageKey));
     if (legacy?.sessionId == normalizedSessionId) {
       await box.delete(storageKey);

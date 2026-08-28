@@ -6,9 +6,10 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_message
 import 'package:vibesync/features/practice_chat/domain/entities/practice_profile.dart';
 
 /// 練習室動作閘門「行為保證書」：把今天四個 getter（canSend / canRequestHint /
-/// canDebrief / canChangeLearningMode）在產品可達狀態下的正確答案拍照存證，
-/// 之後任何狀態管理重構都必須原樣通過這張表。
+/// canDebrief / canChangeLearningMode）的正確答案拍照存證，之後任何狀態管理
+/// 重構都必須原樣通過這張表。
 ///
+/// 這是產品可達狀態的**代表性**合約表（人工挑選的列），不是全狀態空間枚舉；
 /// 期望值全部手寫，不得從 getter 導出（否則檢查恆真）；斷言的是行為，
 /// 不鏡像 getter 的實作條件。
 void main() {
@@ -54,6 +55,20 @@ void main() {
         difficulty: 'normal',
         difficultyLabel: '普通',
         drawStatus: PracticeDrawStatus.locked,
+      ),
+      false, false, false, false,
+    ),
+    (
+      '翻牌動畫中（drawing、無對象）：四個動作全部關閉',
+      PracticeChatState(
+        sessionId: 'sess-gate',
+        createdAt: DateTime(2026, 8, 28, 12),
+        girl: null,
+        personaId: 'p',
+        personaLabel: 'P',
+        difficulty: 'normal',
+        difficultyLabel: '普通',
+        drawStatus: PracticeDrawStatus.drawing,
       ),
       false, false, false, false,
     ),

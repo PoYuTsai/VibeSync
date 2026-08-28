@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -680,17 +681,27 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   Future<bool> _saveAppliedHintContext(
     PracticeAppliedHintContext context,
   ) async {
-    final revision = _appliedHintStoreRevision + 1;
+    final attempted = PracticeAppliedHintContext(
+      sessionId: context.sessionId,
+      turns: context.turns,
+      latestHint: context.latestHint,
+      revision: _appliedHintStoreRevision + 1,
+    );
     try {
-      await _appliedHintStore.save(PracticeAppliedHintContext(
-        sessionId: context.sessionId,
-        turns: context.turns,
-        latestHint: context.latestHint,
-        revision: revision,
-      ));
-      _appliedHintStoreRevision = revision;
+      await _appliedHintStore.save(attempted);
+      _appliedHintStoreRevision = attempted.revision;
       return true;
     } catch (_) {
+      // Hive 可能已把值寫進快取才拋錯：store 內容若正是這次要寫的，視同成功；
+      // 否則活著的 controller 會被自己的殘留寫入永久擋在 CAS 之外。
+      try {
+        final stored = _appliedHintStore.load(attempted.sessionId);
+        if (stored != null &&
+            jsonEncode(stored.toJson()) == jsonEncode(attempted.toJson())) {
+          _appliedHintStoreRevision = attempted.revision;
+          return true;
+        }
+      } catch (_) {}
       return false;
     }
   }
@@ -757,6 +768,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _latestSuccessfulHintIsDurable = false;
     try {
       await _appliedHintStore.clearForSession(sessionId);
+      if (sessionId == state.sessionId) {
+        // 清除會寫入保留世代的 tombstone：同步視角，否則本 controller 的
+        // 下一次合法寫入會被 CAS 誤拒。
+        _appliedHintStoreRevision =
+            _appliedHintStore.load(sessionId)?.revision ?? 0;
+      }
     } catch (_) {
       // Best-effort side-channel; session identity filters stale context.
     }

@@ -23,6 +23,11 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_tempera
 
 import '../../../../../helpers/memory_analysis_history_repository.dart';
 
+/// 清除後的合約：保留世代的空 tombstone（見 store 的 clearForSession 文件）。
+/// 「已清除」＝null 或空 context。
+bool clearedAppliedHintContext(PracticeAppliedHintContext? context) =>
+    context == null || (context.turns.isEmpty && context.latestHint == null);
+
 class _FakeApi extends PracticeChatApiService {
   Future<PracticeChatReply> Function(
     List<PracticeTurnDto> turns, {
@@ -286,6 +291,28 @@ class _BlockingPracticeAppliedHintStore
       await pending.future;
     }
     saveOrder.add(context);
+    await super.save(context);
+  }
+}
+
+/// 對應 Hive 的真實時序：`box.put` 同步更新快取（寫入立即可見），await 的是
+/// 之後的 flush——所以「先 commit、再阻塞回傳」。與 [_BlockingPracticeAppliedHintStore]
+/// （commit 前阻塞）互補，兩種交錯都要蓋到。
+class _CommitThenBlockAppliedHintStore
+    extends InMemoryPracticeAppliedHintStore {
+  Completer<void>? gate; // 設好後，下一次 save 先落盤、再停在 gate 前
+  final saveCommitted = Completer<void>();
+
+  @override
+  Future<void> save(PracticeAppliedHintContext context) async {
+    final pending = gate;
+    if (pending != null) {
+      gate = null;
+      await super.save(context); // 已可見
+      saveCommitted.complete();
+      await pending.future; // Future 尚未返回
+      return;
+    }
     await super.save(context);
   }
 }
@@ -2525,7 +2552,7 @@ void main() {
       expect(restored.hintRequestId, 'hint-ledger-restart-1');
       expect(restored.decision?.phase, '價值交換');
       expect(restored.decision?.move, '自我揭露後把球交回去');
-      expect(appliedStore.load(saved.id), isNull);
+      expect(clearedAppliedHintContext(appliedStore.load(saved.id)), isTrue);
     });
 
     test(
@@ -2587,7 +2614,7 @@ void main() {
       expect(first.currentState.aiReplyCount, prior.aiReplyCount);
       expect(first.currentState.restoreText, copied);
       expect(repo.getById(prior.id)?.messages, prior.messages);
-      expect(appliedStore.load(prior.id), isNull);
+      expect(clearedAppliedHintContext(appliedStore.load(prior.id)), isTrue);
 
       first.dispose();
       final rebuilt = makeControllerFrom(
@@ -3282,7 +3309,7 @@ void main() {
       final sessionId = c.currentState.sessionId;
       expect(firstId, isNotNull);
       expect(c.currentState.hintReplies, hasLength(2));
-      expect(appliedStore.load(sessionId), isNull);
+      expect(clearedAppliedHintContext(appliedStore.load(sessionId)), isTrue);
       expect(pendingStore.load()?.requestId, firstId);
 
       final firstSavedSession = repo.getById(sessionId)!;
@@ -3431,7 +3458,7 @@ void main() {
         api.lastDebriefAppliedHintTurns?.single.decision?.isComplete,
         true,
       );
-      expect(appliedStore.load(sessionA.id), isNull);
+      expect(clearedAppliedHintContext(appliedStore.load(sessionA.id)), isTrue);
     });
 
     test(
@@ -4064,6 +4091,95 @@ void main() {
         contains('聽起來你今天過得很充實'),
         reason: '舊 controller 失去所有權後的還原寫入，蓋掉了新 controller 的較新 context',
       );
+    });
+
+    test(
+        'staging 已落盤但 Future 未返回（Hive 真實時序）：舊 controller 的還原不得動到新 controller 的較新 context',
+        () async {
+      // Codex round-1 review 指出前一個測試在 commit 前阻塞，沒蓋到 Hive
+      // 「寫入已可見、await 的是 flush」的時序；此測試補上，且 prior context
+      // 非空（走還原 save 分支，不是 guarded clear 分支）。
+      final store = _CommitThenBlockAppliedHintStore();
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+
+      final a = await makeRevealed(appliedHintStore: store);
+      await a.setPracticeLearningMode(PracticeLearningMode.beginner);
+      // 第一輪套用提示成功送出 → durable context 非空（prior lineage）。
+      await a.sendMessage(
+        '第一句照抄',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: '第一句照抄',
+      );
+      final sessionId = a.currentState.sessionId;
+      expect(store.load(sessionId)?.turns, isNotEmpty);
+
+      // 第二輪：staging save 先落盤、Future 卡住 → dispose（失去所有權）。
+      final gate = Completer<void>();
+      store.gate = gate;
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            aiTurnCount: 2,
+            temperature: const PracticeTemperature(
+              score: 31,
+              delta: 1,
+              band: 'cold',
+              reason: '延伸',
+            ),
+          );
+      final staleSend = a.sendMessage(
+        '第二句照抄',
+        appliedHintType: PracticeHintReplyType.steady,
+        appliedHintText: '第二句照抄',
+      );
+      await store.saveCommitted.future;
+      a.dispose();
+
+      // 新 controller 同場重建：載入已可見的較新 revision，再成功寫入一輪。
+      final rebuilt = makeControllerFrom(
+        repo.getById(sessionId)!,
+        appliedHintStore: store,
+      );
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            aiTurnCount: 3,
+            temperature: const PracticeTemperature(
+              score: 33,
+              delta: 2,
+              band: 'cold',
+              reason: '延伸',
+            ),
+          );
+      await rebuilt.sendMessage(
+        '新 controller 的一句',
+        appliedHintType: PracticeHintReplyType.steady,
+        appliedHintText: '新 controller 的一句',
+      );
+      final newer = store.load(sessionId);
+      expect(
+        newer!.turns.map((t) => t['sentText']),
+        contains('新 controller 的一句'),
+      );
+      final newerRevision = newer.revision;
+
+      // 放行舊 controller：它會發現失去所有權並嘗試還原非空 prior lineage。
+      gate.complete();
+      await staleSend;
+
+      final surviving = store.load(sessionId);
+      expect(
+        surviving?.turns.map((t) => t['sentText']),
+        contains('新 controller 的一句'),
+        reason: '舊 controller 的還原寫入蓋掉了新 controller 的較新 context',
+      );
+      expect(surviving?.revision, greaterThanOrEqualTo(newerRevision));
     });
 
     test('同 controller：hint timeout 後對話推進（sendMessage 成功）→ 新回合 hint 鑄新 id',

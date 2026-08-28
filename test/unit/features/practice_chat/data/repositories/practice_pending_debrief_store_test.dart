@@ -16,6 +16,11 @@ PracticePendingDebrief samplePending() => const PracticePendingDebrief(
       requestId: 'req-abc',
     );
 
+/// 清除後的合約：不是物理刪除，而是保留世代的空 tombstone（防止清除後
+/// 舊寫入以較大 revision 復活血統）。「已清除」＝null 或空 context。
+bool clearedAppliedHintContext(PracticeAppliedHintContext? context) =>
+    context == null || (context.turns.isEmpty && context.latestHint == null);
+
 void main() {
   group('PracticePendingDebrief JSON', () {
     test('toJson / fromJson round-trip keeps only ids and SHA-256 digest', () {
@@ -299,7 +304,7 @@ void main() {
       expect(store.load('sess-hint')?.latestHint?.aiCount, 3);
       expect(store.load('sess-b')?.sessionId, 'sess-b');
       await store.clearForSession('sess-hint');
-      expect(store.load('sess-hint'), isNull);
+      expect(clearedAppliedHintContext(store.load('sess-hint')), isTrue);
       expect(store.load('sess-b'), isNotNull);
     });
 
@@ -326,9 +331,9 @@ void main() {
       );
       expect(store.load('sess-b'), isNotNull);
       await store.clearForSession('another-session');
-      expect(store.load('sess-hint'), isNotNull);
+      expect(store.load('sess-hint')?.turns, isNotEmpty);
       await store.clearForSession('sess-hint');
-      expect(store.load('sess-hint'), isNull);
+      expect(clearedAppliedHintContext(store.load('sess-hint')), isTrue);
       expect(store.load('sess-b'), isNotNull);
     });
 
@@ -420,6 +425,7 @@ void main() {
     });
 
     test('clearForSession with ifRevisionAtMost keeps a newer context '
+        'and effective clears leave a generation-preserving tombstone '
         '(in-memory and Hive)', () async {
       Hive.init('./.dart_tool/test_hive_applied_hint_clear');
       final ts = DateTime.now().microsecondsSinceEpoch;
@@ -437,18 +443,88 @@ void main() {
         ));
         // 舊 controller 視角（revision 2）的守衛清除 → 現存較新，no-op。
         await store.clearForSession('sess-hint', ifRevisionAtMost: 2);
-        expect(store.load('sess-hint'), isNotNull);
-        // 視角一致（revision 3）→ 清除生效。
+        expect(store.load('sess-hint')?.turns, isNotEmpty);
+        // 視角一致（revision 3）→ 清除生效：空 tombstone、revision 前進。
         await store.clearForSession('sess-hint', ifRevisionAtMost: 3);
-        expect(store.load('sess-hint'), isNull);
-        // 無條件清除（場次收尾）維持原語意。
-        await store.save(const PracticeAppliedHintContext(
-          sessionId: 'sess-hint',
-          turns: [],
-          revision: 9,
-        ));
+        final tombstone = store.load('sess-hint');
+        expect(clearedAppliedHintContext(tombstone), isTrue);
+        expect(tombstone?.revision, 4);
+        // 重複清除冪等，不再灌 revision。
         await store.clearForSession('sess-hint');
-        expect(store.load('sess-hint'), isNull);
+        expect(store.load('sess-hint')?.revision, 4);
+      }
+    });
+
+    test('a stale write cannot resurrect lineage after an unconditional clear '
+        '(in-memory and Hive)', () async {
+      // Codex round-1 review 的反證序列：clear 若物理刪除會讓 revision 歸零，
+      // 舊 controller 之後能以較大 revision 復活已清掉的血統。
+      Hive.init('./.dart_tool/test_hive_applied_hint_resurrect');
+      final ts = DateTime.now().microsecondsSinceEpoch;
+      final box = await Hive.openBox('applied_hint_resurrect_$ts');
+      addTearDown(box.deleteFromDisk);
+      final stores = <PracticeAppliedHintStore>[
+        InMemoryPracticeAppliedHintStore(),
+        HivePracticeAppliedHintStore(() => box),
+      ];
+      for (final store in stores) {
+        await store.save(PracticeAppliedHintContext(
+          sessionId: 'sess-hint',
+          turns: sample.turns,
+          revision: 10,
+        ));
+        await store.clearForSession('sess-hint'); // 場次收尾（無條件）
+        expect(store.load('sess-hint')?.revision, 11);
+        // 舊 controller（清除前視角 10）的晚到還原寫入 → 必須被拒。
+        await expectLater(
+          store.save(PracticeAppliedHintContext(
+            sessionId: 'sess-hint',
+            turns: sample.turns,
+            revision: 11,
+          )),
+          throwsStateError,
+        );
+        expect(clearedAppliedHintContext(store.load('sess-hint')), isTrue);
+        // 走正常協定的新 writer（先 load 再 +1）照常寫入。
+        final view = store.load('sess-hint')!.revision;
+        await store.save(PracticeAppliedHintContext(
+          sessionId: 'sess-hint',
+          turns: const [
+            {'turnIndex': 0, 'type': 'steady', 'originalHintText': '新的一輪', 'sentText': '新的一輪', 'exact': true},
+          ],
+          revision: view + 1,
+        ));
+        expect(store.load('sess-hint')?.turns, hasLength(1));
+      }
+    });
+
+    test('two un-awaited saves settle to the newer revision '
+        '(in-memory and Hive)', () async {
+      Hive.init('./.dart_tool/test_hive_applied_hint_concurrent');
+      final ts = DateTime.now().microsecondsSinceEpoch;
+      final box = await Hive.openBox('applied_hint_concurrent_$ts');
+      addTearDown(box.deleteFromDisk);
+      final stores = <PracticeAppliedHintStore>[
+        InMemoryPracticeAppliedHintStore(),
+        HivePracticeAppliedHintStore(() => box),
+      ];
+      for (final store in stores) {
+        final first = store.save(PracticeAppliedHintContext(
+          sessionId: 'sess-hint',
+          turns: sample.turns,
+          revision: 1,
+        ));
+        final second = store.save(const PracticeAppliedHintContext(
+          sessionId: 'sess-hint',
+          turns: [
+            {'turnIndex': 1, 'type': 'warmUp', 'originalHintText': '第二筆', 'sentText': '第二筆', 'exact': true},
+          ],
+          revision: 2,
+        ));
+        await Future.wait([first, second]);
+        expect(store.load('sess-hint')?.revision, 2);
+        expect(store.load('sess-hint')?.turns.single['sentText'], '第二筆');
+        await store.clearForSession('sess-hint');
       }
     });
   });
