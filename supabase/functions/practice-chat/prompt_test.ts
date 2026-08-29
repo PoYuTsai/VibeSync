@@ -1088,7 +1088,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 同日 R2 主審 MINOR-3 修正 fallback 句保 JSON 契約，實測 6712，→6750。
   // 2026-08-28 時間錨點：同上一行「本場練習時間」（固定 85 bytes），
   // 上限 6750→6835。
-  if (maxDebriefWithHint > 6835) {
+  // 2026-08-29 PR 6：最終 dateChance 判準段（含 challenge／game 附加行，
+  // 固定 bytes），實測 6965，上限 6835→7000。
+  if (maxDebriefWithHint > 7000) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );
@@ -2635,4 +2637,57 @@ Deno.test("debrief 也拿得到今天是哪天，建議句才不會約到矛盾�
     {},
   )[1].content;
   assertEquals(omitted.includes("本場練習時間"), false);
+});
+
+// ── PR 6：debrief 最終 dateChance 判準移到所有狀態證據之後 ──────────────
+
+Deno.test("debrief：最終 dateChance 判準位於 band／invite 證據之後", () => {
+  const turns = [
+    { role: "user" as const, text: "嗨，妳週末都做什麼？" },
+    { role: "ai" as const, text: "會去河邊走走，你呢？" },
+  ];
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    const scaled = resolvePracticeProfile({
+      profileId: "practice_girl_004",
+      difficulty,
+    });
+    // 只看 user message：system prompt 未來若出現同字樣不得造成假通過。
+    const text = buildDebriefMessages(turns, scaled, {
+      practiceMode: "beginner",
+      temperatureScore: 40,
+      familiarityScore: 10,
+    })[1].content;
+    const finalRuleAt = text.indexOf("最終 dateChance 判準");
+    assert(finalRuleAt >= 0);
+    // 完整順序鏈：band < stage < invite < 最終判準。
+    const bandAt = text.indexOf("本場收尾時");
+    const stageAt = text.indexOf("本場抽象關係階段");
+    const inviteAt = text.indexOf("inviteMaturity");
+    assert(bandAt >= 0 && stageAt >= 0 && inviteAt >= 0);
+    assert(bandAt < stageAt);
+    assert(stageAt < inviteAt);
+    assert(inviteAt < finalRuleAt);
+    // 難度標準跟著最終判準走，不再放在開頭。
+    assert(text.indexOf(scaled.difficultyDebriefStandard) > finalRuleAt);
+    // 明寫：狀態證據不是自動給 high 的命令。
+    assert(text.includes("不是自動給 high 的命令"));
+    if (difficulty === "challenge") {
+      assert(text.includes("缺高品質訊號"));
+    }
+  }
+  // game：Game contract 證據在前、最終判準在後，且明寫 dateChance 不得繞過
+  // 難度與安全邊界。
+  const gameText = buildDebriefMessages(
+    turns,
+    resolvePracticeProfile({
+      profileId: "practice_girl_004",
+      difficulty: "challenge",
+    }),
+    { practiceMode: "game", temperatureScore: 40, familiarityScore: 10 },
+  )[1].content;
+  const gameFinalAt = gameText.indexOf("最終 dateChance 判準");
+  const gameEvidenceAt = gameText.indexOf("gameDebrief(hidden guidance)");
+  assert(gameEvidenceAt >= 0 && gameFinalAt >= 0);
+  assert(gameEvidenceAt < gameFinalAt);
+  assert(gameText.includes("不得繞過"));
 });

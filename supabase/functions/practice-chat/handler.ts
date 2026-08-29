@@ -45,6 +45,7 @@ import {
   buildChatMessages,
   buildDebriefMessages,
   type ChatMessage,
+  PRACTICE_PROMPT_POLICY_VERSION,
 } from "./prompt.ts";
 import { difficultyTuningFor } from "./practice_persona.ts";
 import {
@@ -106,6 +107,7 @@ import {
   type PersistedGameState,
 } from "./game_state.ts";
 import { inviteMaturityFromLearningScores } from "./invite_maturity.ts";
+import { resolveLearningSeed } from "./learning_seed.ts";
 import {
   buildRelationshipThreadRpcParams,
   parseRelationshipThreadRow,
@@ -4136,19 +4138,22 @@ export function createPracticeChatHandler(
     const assistedMode = isAssistedPracticeMode(request.practiceMode);
     // 續聊保溫：只在 ledger 尚未建檔的新場首回合允許以 client 攜帶值 seed；
     // ledger 已建檔一律以 ledger 為準（欄位 null 的舊列 fallback 難度起始值，
-    // 不吃 client 值——以建檔與否切分，堵舊列吃 seed 的洞）。
-    const currentTemperature = assistedMode
-      ? ledger.exists
-        ? ledger.temperatureScore ?? difficultyStartTemperature
-        : relationshipThreadState?.temperatureScore ??
-          request.temperatureScore ?? difficultyStartTemperature
-      : null;
-    const currentFamiliarity = assistedMode
-      ? ledger.exists
-        ? ledger.familiarityScore ?? 0
-        : relationshipThreadState?.familiarityScore ??
-          request.familiarityScore ?? 0
-      : null;
+    // 不吃 client 值——以建檔與否切分，堵舊列吃 seed 的洞）。優先序與 source
+    // 標籤都在 resolveLearningSeed（PR 6）。
+    const learningSeed = resolveLearningSeed({
+      assistedMode,
+      ledger: {
+        exists: ledger.exists,
+        temperatureScore: ledger.temperatureScore,
+        familiarityScore: ledger.familiarityScore,
+      },
+      threadState: relationshipThreadState,
+      clientTemperatureScore: request.temperatureScore,
+      clientFamiliarityScore: request.familiarityScore,
+      difficultyStartTemperature,
+    });
+    const currentTemperature = learningSeed.temperatureScore;
+    const currentFamiliarity = learningSeed.familiarityScore;
     const trustedPartnerState = partnerStateFromLedger(ledger) ??
       relationshipThreadState?.partnerState ?? null;
     const promptPartnerState = promptPartnerStateForRequest(
@@ -4386,6 +4391,44 @@ export function createPracticeChatHandler(
       // 認識管道只記 id（allowlisted 常數，無使用者內容），供分佈與一致性觀測。
       acquaintanceOriginId: acquaintanceOrigin.id,
       costDeducted: deducted,
+      // ── PR 6 無逐字稿觀測：只有 enums／數字／布林，不記 user 文字、
+      // 女孩回覆或完整 prompt（innerThought 是生成文字，刻意不記）。──
+      practiceMode: request.practiceMode ?? "standard",
+      roundIndex: newAiCount,
+      // sessionId 是 client 自由字串 → 照 user id 慣例截斷後才進 log，
+      // 供「同一場」跨輪關聯（同 session 首回合＝ledgerExisted:false 那筆）。
+      session: summarizeUser(request.sessionId),
+      // seedSource／familiaritySeedSource＝本回合兩個分數各自的實際讀取層
+      // （thread 承接的新場：首回合 relationship_thread、之後 ledger 是
+      // 正常型態；偏離此型態才算「同一場 seed source 不穩定」）。
+      seedSource: learningSeed.source,
+      familiaritySeedSource: learningSeed.familiaritySource,
+      ledgerExisted: ledger.exists,
+      temperatureBefore: currentTemperature,
+      temperatureAfter: temperature?.score ?? null,
+      temperatureDelta: temperature?.delta ?? null,
+      familiarityBefore: currentFamiliarity,
+      familiarityAfter: temperature?.familiarityScore ?? null,
+      familiarityDelta: temperature?.familiarityDelta ?? null,
+      classification: temperature
+        ? {
+          connection: temperature.classification.connection,
+          impact: temperature.classification.impact,
+          testHandling: temperature.classification.testHandling,
+          boundary: temperature.classification.boundary,
+          hintAlignment: temperature.classification.hintAlignment,
+          partnerMood: temperature.classification.partnerMood,
+        }
+        : null,
+      // 與計分管線同一判準（challenge × beginner 才有獎勵閘門）。
+      challengeGateActive: request.practiceMode === "beginner" &&
+        request.profile.difficulty === "challenge",
+      // 本回合是否真的從上一場 thread 取到分數（thread 存在但欄位全無效
+      // 而落到 client/預設時＝false）；「整場是否 continuation」看同 session
+      // 首回合（ledgerExisted:false）那筆。
+      continuation: learningSeed.source === "relationship_thread" ||
+        learningSeed.familiaritySource === "relationship_thread",
+      promptPolicyVersion: PRACTICE_PROMPT_POLICY_VERSION,
     });
 
     const body: Record<string, unknown> = {
