@@ -45,6 +45,7 @@ import {
   buildChatMessages,
   buildDebriefMessages,
   type ChatMessage,
+  PRACTICE_PROMPT_POLICY_VERSION,
 } from "./prompt.ts";
 import { difficultyTuningFor } from "./practice_persona.ts";
 import {
@@ -106,6 +107,7 @@ import {
   type PersistedGameState,
 } from "./game_state.ts";
 import { inviteMaturityFromLearningScores } from "./invite_maturity.ts";
+import { resolveLearningSeed } from "./learning_seed.ts";
 import {
   buildRelationshipThreadRpcParams,
   parseRelationshipThreadRow,
@@ -4136,19 +4138,22 @@ export function createPracticeChatHandler(
     const assistedMode = isAssistedPracticeMode(request.practiceMode);
     // 續聊保溫：只在 ledger 尚未建檔的新場首回合允許以 client 攜帶值 seed；
     // ledger 已建檔一律以 ledger 為準（欄位 null 的舊列 fallback 難度起始值，
-    // 不吃 client 值——以建檔與否切分，堵舊列吃 seed 的洞）。
-    const currentTemperature = assistedMode
-      ? ledger.exists
-        ? ledger.temperatureScore ?? difficultyStartTemperature
-        : relationshipThreadState?.temperatureScore ??
-          request.temperatureScore ?? difficultyStartTemperature
-      : null;
-    const currentFamiliarity = assistedMode
-      ? ledger.exists
-        ? ledger.familiarityScore ?? 0
-        : relationshipThreadState?.familiarityScore ??
-          request.familiarityScore ?? 0
-      : null;
+    // 不吃 client 值——以建檔與否切分，堵舊列吃 seed 的洞）。優先序與 source
+    // 標籤都在 resolveLearningSeed（PR 6）。
+    const learningSeed = resolveLearningSeed({
+      assistedMode,
+      ledger: {
+        exists: ledger.exists,
+        temperatureScore: ledger.temperatureScore,
+        familiarityScore: ledger.familiarityScore,
+      },
+      threadState: relationshipThreadState,
+      clientTemperatureScore: request.temperatureScore,
+      clientFamiliarityScore: request.familiarityScore,
+      difficultyStartTemperature,
+    });
+    const currentTemperature = learningSeed.temperatureScore;
+    const currentFamiliarity = learningSeed.familiarityScore;
     const trustedPartnerState = partnerStateFromLedger(ledger) ??
       relationshipThreadState?.partnerState ?? null;
     const promptPartnerState = promptPartnerStateForRequest(
@@ -4386,6 +4391,33 @@ export function createPracticeChatHandler(
       // 認識管道只記 id（allowlisted 常數，無使用者內容），供分佈與一致性觀測。
       acquaintanceOriginId: acquaintanceOrigin.id,
       costDeducted: deducted,
+      // ── PR 6 無逐字稿觀測：只有 enums／數字／布林，不記 user 文字、
+      // 女孩回覆或完整 prompt（innerThought 是生成文字，刻意不記）。──
+      practiceMode: request.practiceMode ?? "standard",
+      roundIndex: newAiCount,
+      seedSource: learningSeed.source,
+      temperatureBefore: currentTemperature,
+      temperatureAfter: temperature?.score ?? null,
+      temperatureDelta: temperature?.delta ?? null,
+      familiarityBefore: currentFamiliarity,
+      familiarityAfter: temperature?.familiarityScore ?? null,
+      familiarityDelta: temperature?.familiarityDelta ?? null,
+      classification: temperature
+        ? {
+          connection: temperature.classification.connection,
+          impact: temperature.classification.impact,
+          testHandling: temperature.classification.testHandling,
+          boundary: temperature.classification.boundary,
+          hintAlignment: temperature.classification.hintAlignment,
+          partnerMood: temperature.classification.partnerMood,
+        }
+        : null,
+      // 與計分管線同一判準（challenge × beginner 才有獎勵閘門）。
+      challengeGateActive: request.practiceMode === "beginner" &&
+        request.profile.difficulty === "challenge",
+      // 本回合 seed 是否接續上一場 thread（ledger 建檔後即為 false）。
+      continuation: !ledger.exists && relationshipThreadState != null,
+      promptPolicyVersion: PRACTICE_PROMPT_POLICY_VERSION,
     });
 
     const body: Record<string, unknown> = {

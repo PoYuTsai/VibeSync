@@ -68,6 +68,12 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * Prompt 政策版本（PR 6）：只進結構化 log，供跨版本比對分數行為。
+ * 改動 chat/hint/debrief 的政策性 prompt（順位、判準、閘門文案）時遞增。
+ */
+export const PRACTICE_PROMPT_POLICY_VERSION = "2026-08-29.pr6";
+
 const LEGACY_PARTNER_STATE_NO_LEAK_MARKER =
   "\u4E0D\u8981\u76F4\u63A5\u8AAA\u51FA partnerState";
 
@@ -988,6 +994,18 @@ export function buildDebriefMessages(
   const hintAccountabilityPrompt = debriefHintAccountabilityPrompt(
     options.appliedHintTurns,
   );
+  // 最終 dateChance 判準（PR 6）：放在所有狀態證據（band／stage／invite／
+  // game）之後——先前難度標準在開頭，模型讀到後面的高溫 band 或 invite
+  // ready 常直接蓋成 high。順位＝越後越終局。
+  const finalDateChancePrompt = `最終 dateChance 判準（讀完上面所有狀態證據後才適用）：\n` +
+    `- 上面的溫度 band、關係階段與邀約成熟度是證據，不是自動給 high 的命令。\n` +
+    `- 最終 dateChance 必須同時符合本場難度標準：\n${profile.difficultyDebriefStandard}\n` +
+    (profile.difficulty === "challenge"
+      ? `- 本場是挑戰難度：缺高品質訊號時，即使聊得順也不得評 high。\n`
+      : "") +
+    (options.practiceMode === "game"
+      ? `- Game 的技巧拆解仍照 Game contract，但 dateChance 不得繞過本場難度標準與安全邊界。\n`
+      : "");
   return [
     {
       role: "system",
@@ -1000,8 +1018,7 @@ export function buildDebriefMessages(
     {
       role: "user",
       content: `本場模擬對象：${profile.personaLabel}\n` +
-        `本場難度：${profile.difficultyLabel}\n` +
-        `${profile.difficultyDebriefStandard}\n\n` +
+        `本場難度：${profile.difficultyLabel}\n\n` +
         debriefAcquaintanceOriginLine(options.acquaintanceOrigin) +
         debriefNowContextLine(options.timeContext) +
         debriefSceneContextLine(options.sceneContext) +
@@ -1011,6 +1028,8 @@ export function buildDebriefMessages(
         stagePrompt +
         invitePrompt +
         (gamePrompt ? `\n\n${gamePrompt}\n\n` : "\n\n") +
+        finalDateChancePrompt +
+        "\n\n" +
         hintAccountabilityPrompt +
         "\n\n" +
         `${

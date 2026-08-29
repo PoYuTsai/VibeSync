@@ -1088,7 +1088,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 同日 R2 主審 MINOR-3 修正 fallback 句保 JSON 契約，實測 6712，→6750。
   // 2026-08-28 時間錨點：同上一行「本場練習時間」（固定 85 bytes），
   // 上限 6750→6835。
-  if (maxDebriefWithHint > 6835) {
+  // 2026-08-29 PR 6：最終 dateChance 判準段（含 challenge／game 附加行，
+  // 固定 bytes），實測 6965，上限 6835→7000。
+  if (maxDebriefWithHint > 7000) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );
@@ -2635,4 +2637,50 @@ Deno.test("debrief 也拿得到今天是哪天，建議句才不會約到矛盾�
     {},
   )[1].content;
   assertEquals(omitted.includes("本場練習時間"), false);
+});
+
+// ── PR 6：debrief 最終 dateChance 判準移到所有狀態證據之後 ──────────────
+
+Deno.test("debrief：最終 dateChance 判準位於 band／invite 證據之後", () => {
+  const turns = [
+    { role: "user" as const, text: "嗨，妳週末都做什麼？" },
+    { role: "ai" as const, text: "會去河邊走走，你呢？" },
+  ];
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    const scaled = resolvePracticeProfile({
+      profileId: "practice_girl_004",
+      difficulty,
+    });
+    const text = buildDebriefMessages(turns, scaled, {
+      practiceMode: "beginner",
+      temperatureScore: 40,
+      familiarityScore: 10,
+    }).map((message) => message.content).join("\n");
+    const finalRuleAt = text.indexOf("最終 dateChance 判準");
+    assert(finalRuleAt >= 0);
+    // band 證據（temperatureBandDebriefInstruction 的「本場收尾時…」）在前。
+    const bandAt = text.indexOf("本場收尾時");
+    assert(bandAt >= 0 && bandAt < finalRuleAt);
+    // invite 證據（inviteMaturity 結論行）在前。
+    const inviteAt = text.indexOf("inviteMaturity");
+    assert(inviteAt >= 0 && inviteAt < finalRuleAt);
+    // 難度標準跟著最終判準走，不再放在開頭。
+    assert(text.indexOf(scaled.difficultyDebriefStandard) > finalRuleAt);
+    // 明寫：狀態證據不是自動給 high 的命令。
+    assert(text.includes("不是自動給 high 的命令"));
+    if (difficulty === "challenge") {
+      assert(text.includes("缺高品質訊號"));
+    }
+  }
+  // game：技巧拆解照 Game contract，但 dateChance 不得繞過難度與安全邊界。
+  const gameText = buildDebriefMessages(
+    turns,
+    resolvePracticeProfile({
+      profileId: "practice_girl_004",
+      difficulty: "challenge",
+    }),
+    { practiceMode: "game", temperatureScore: 40, familiarityScore: 10 },
+  ).map((message) => message.content).join("\n");
+  assert(gameText.includes("最終 dateChance 判準"));
+  assert(gameText.includes("不得繞過"));
 });
