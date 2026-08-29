@@ -27,6 +27,33 @@ import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
+ * Reads an exact-one-row cursor without moving away from the first row before
+ * its immutable snapshot has been captured. Some Cursor implementations move
+ * to after-last when [moveToNext] returns false, so the snapshot must happen
+ * first. A second row remains a fail-closed result.
+ */
+internal sealed interface GateKSingleRowCursorResult<out T> {
+    data object NotFound : GateKSingleRowCursorResult<Nothing>
+
+    data object MultipleRows : GateKSingleRowCursorResult<Nothing>
+
+    data class Ready<T>(val value: T) : GateKSingleRowCursorResult<T>
+}
+
+internal object GateKSingleRowCursorPolicy {
+    fun <T> readExactlyOne(
+        moveToFirst: () -> Boolean,
+        snapshot: () -> T,
+        moveToNext: () -> Boolean,
+    ): GateKSingleRowCursorResult<T> {
+        if (!moveToFirst()) return GateKSingleRowCursorResult.NotFound
+        val firstRow = snapshot()
+        if (moveToNext()) return GateKSingleRowCursorResult.MultipleRows
+        return GateKSingleRowCursorResult.Ready(firstRow)
+    }
+}
+
+/**
  * Disposable Gate K observer prototype. It has no AI, network, quota, chat
  * text, or persistent image path; screenshot bytes exist only while hashing
  * one ContentResolver result inside the active IME session.
@@ -990,16 +1017,12 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 )
             }
             val record = cursor.use {
-                queryDebugStage = QueryDebugStage.CURSOR_MOVE_FIRST
-                val hasFirstRow = cursor.moveToFirst()
-                val rowResult = if (!hasFirstRow) {
-                    MediaStoreCandidateRowResult.NotFound
-                } else {
-                    queryDebugStage = QueryDebugStage.CURSOR_MOVE_NEXT
-                    val hasSecondRow = cursor.moveToNext()
-                    if (hasSecondRow) {
-                        MediaStoreCandidateRowResult.Invalid
-                    } else {
+                val cursorResult = GateKSingleRowCursorPolicy.readExactlyOne(
+                    moveToFirst = {
+                        queryDebugStage = QueryDebugStage.CURSOR_MOVE_FIRST
+                        cursor.moveToFirst()
+                    },
+                    snapshot = {
                         queryDebugStage = QueryDebugStage.COLUMN_LOOKUP_READ
                         run {
                             val idIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID)
@@ -1060,10 +1083,23 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                                 }
                             }
                         }
-                    }
-                }
+                    },
+                    moveToNext = {
+                        queryDebugStage = QueryDebugStage.CURSOR_MOVE_NEXT
+                        cursor.moveToNext()
+                    },
+                )
                 queryDebugStage = QueryDebugStage.CURSOR_CLOSE
-                rowResult
+                when (cursorResult) {
+                    GateKSingleRowCursorResult.NotFound ->
+                        MediaStoreCandidateRowResult.NotFound
+
+                    GateKSingleRowCursorResult.MultipleRows ->
+                        MediaStoreCandidateRowResult.Invalid
+
+                    is GateKSingleRowCursorResult.Ready ->
+                        cursorResult.value
+                }
             }
             val afterVersionResult = GateKCandidateReadinessPolicy.classifyExpectedMediaStoreVersion(
                 expectedVersion = expectedMediaStoreVersion,
