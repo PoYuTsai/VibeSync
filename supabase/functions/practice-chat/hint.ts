@@ -1216,6 +1216,7 @@ function profileToEvidence(
   profile: PracticeProfile,
   compactForGame = false,
   includeGameStrategy = false,
+  includeCoachingStandard = false,
 ): string {
   const girl = profile.girl;
   const identity = [
@@ -1229,6 +1230,12 @@ function profileToEvidence(
   const gameStrategy = includeGameStrategy ? buildGameStrategy(profile) : null;
   return [
     ...identity,
+    // 教練視角的難度尺度（PR 5）：只進 hint prompt 的 hidden evidence；
+    // fact ledger 的 partner evidence 不帶（教練指令不是伴侶事實），
+    // game 走 compact 分支拿不到，維持 Game tactic／FSM 優先。
+    ...(includeCoachingStandard
+      ? [`difficultyCoachingStandard: ${profile.hintStandard}`]
+      : []),
     `testStylePropensity: ${profile.consistencyTest.propensity}`,
     `testStyleShapes: ${
       formatConsistencyTestTypes(profile.consistencyTest.types)
@@ -1758,7 +1765,12 @@ export function buildHintMessages(opts: {
           : partnerBubbleRhythmPrompt(opts.turns) +
             stanceOptionPrompt(opts.turns)) +
         `profile evidence:\n${
-          profileToEvidence(opts.profile, opts.practiceMode === "game")
+          profileToEvidence(
+            opts.profile,
+            opts.practiceMode === "game",
+            false,
+            true,
+          )
         }\n\n` +
         `transcript evidence:\n${hintTurnsToPromptTranscript(opts.turns)}\n\n` +
         "請產生兩個可貼回覆與一段心法。warmUp、steady、coaching 各自重用 assistant 最新一句的具體詞、狀態或梗；不能只有 coaching 具體、回覆卻萬用。目標是接她最新一句，不是分析 user 前一句。只回繁中 JSON。",

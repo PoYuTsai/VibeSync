@@ -7153,3 +7153,131 @@ Deno.test("第二刀：hint 代號表吃本局原話豁免", () => {
   });
   assertEquals(parsed.replies.length, 2);
 });
+
+// ── PR 5：Hint 注入教練視角的難度尺度 ─────────────────────────────────
+
+function pr5Turns(userTurnCount: number) {
+  const out: { role: "user" | "ai"; text: string }[] = [];
+  for (let i = 0; i < userTurnCount; i++) {
+    out.push({ role: "user", text: `使用者第${i}句` });
+    out.push({ role: "ai", text: `她第${i}句` });
+  }
+  return out;
+}
+
+Deno.test("Hint prompt 依難度帶出 difficultyCoachingStandard；game 不帶且 FSM 證據仍在", () => {
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    const scaled = resolvePracticeProfile({
+      profileId: "practice_girl_004",
+      difficulty,
+    });
+    const text = buildHintMessages({
+      turns: pr5Turns(2),
+      profile: scaled,
+      practiceMode: "beginner",
+      temperatureScore: 40,
+    }).map((message) => message.content).join("\n");
+    assert(text.includes("difficultyCoachingStandard:"));
+    assert(text.includes(scaled.hintStandard));
+  }
+  const gameText = buildHintMessages({
+    turns: pr5Turns(2),
+    profile: resolvePracticeProfile({
+      profileId: "practice_girl_004",
+      difficulty: "challenge",
+    }),
+    practiceMode: "game",
+    temperatureScore: 40,
+    familiarityScore: 20,
+  }).map((message) => message.content).join("\n");
+  assert(!gameText.includes("difficultyCoachingStandard"));
+  // 正向斷言綁實際 FSM 值（phase 值一律 P 開頭），不是 schema 裡的欄位名：
+  // Game evidence 區塊若整段消失，這裡必須紅。
+  assert(gameText.includes("phase: P"));
+  assert(gameText.includes("targetVariable:"));
+});
+
+Deno.test("fact ledger 的 partner evidence 不帶教練尺度（教練指令不是伴侶事實）", () => {
+  const evidence = hintTrustedFactualEvidence({
+    profile: resolvePracticeProfile({
+      profileId: "practice_girl_004",
+      difficulty: "challenge",
+    }),
+    practiceMode: "beginner",
+  });
+  const partnerText = evidence.partner.join("\n");
+  assert(!partnerText.includes("difficultyCoachingStandard"));
+  // profile evidence 本體還在，不是整段被拔掉。
+  assert(partnerText.includes("testStylePropensity:"));
+});
+
+Deno.test("difficultyCoachingStandard 標籤外洩到可見回覆會被守門擋下", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          warmUp: "妳說的那間店我也想去看看。",
+          steady: "聽起來妳今天過得不錯。",
+          coaching: "依 difficultyCoachingStandard 來說這句要接住她的具體點。",
+        }),
+        { turns: pr5Turns(2) },
+      ),
+    Error,
+    "hint_internal_label_leak",
+  );
+});
+
+Deno.test("三難度同一組好句都過解析與守門：難度尺度不得靠產生差句實作", () => {
+  const goodReplies = {
+    warmUp: "妳說的那間咖啡店聽起來很有妳的風格。",
+    steady: "我也喜歡安靜一點的店，妳都點什麼？",
+    coaching: "接住她提到的店，再分享一點你自己的偏好。",
+  };
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    const scaled = resolvePracticeProfile({
+      profileId: "practice_girl_004",
+      difficulty,
+    });
+    const parsed = parseHintResult(JSON.stringify(goodReplies), {
+      turns: pr5Turns(2),
+    });
+    assertEquals(parsed.replies.length, 2);
+    // 兩個解析後的可貼句都走完整決策路徑，任何難度都不得被守門拒絕。
+    for (const reply of parsed.replies) {
+      const decision = buildHintDecision({
+        turns: pr5Turns(2),
+        profile: scaled,
+        practiceMode: "beginner",
+        temperatureScore: 40,
+        familiarityScore: 20,
+        replyType: reply.type,
+        replyText: reply.text,
+        rationale: "接住她提到的店。",
+      });
+      assertEquals(decision.move, "build_connection");
+      assertEquals(decision.inviteRoute, "not_ready");
+      assertEquals(decision.phase, "building_familiarity");
+    }
+  }
+});
+
+Deno.test("challenge Hint 不因回合數建議邀約：第 12 顆球守門照擋", () => {
+  assertThrows(
+    () =>
+      buildHintDecision({
+        turns: pr5Turns(12),
+        profile: resolvePracticeProfile({
+          profileId: "practice_girl_004",
+          difficulty: "challenge",
+        }),
+        practiceMode: "beginner",
+        temperatureScore: 20,
+        familiarityScore: 10,
+        replyType: "warm_up",
+        replyText: "改天有空也可以一起去河邊走走。",
+        rationale: "她提到喜歡散步，把它變成低壓共同畫面。",
+      }),
+    Error,
+    "hint_quality_invalid_invite_route",
+  );
+});
