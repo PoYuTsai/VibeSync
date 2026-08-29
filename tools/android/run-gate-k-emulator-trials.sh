@@ -421,6 +421,65 @@ wait_for_host_foreground() {
     return 1
 }
 
+input_method_is_selected_and_hidden() {
+    local input_method_dump="$1"
+    local current_ime_matches=1
+    local hidden_state=1
+    local input_method_line=""
+    local window_vis_value=""
+    local window_vis_hex=""
+    if printf '%s\n' "$input_method_dump" | awk -v expected="$ime_component" '$0 ~ /(^|[[:space:]])mCurMethodId[=:]/ || $0 ~ /(^|[[:space:]])mCurImeId[=:]/ { value = $0; sub(/^.*(mCurMethodId|mCurImeId)[=:][[:space:]]*/, "", value); sub(/[[:space:]].*$/, "", value); if (value == expected) found = 1 } END { exit(found ? 0 : 1) }'; then
+        current_ime_matches=0
+    fi
+    if printf '%s\n' "$input_method_dump" | grep -E \
+        '(^|[[:space:]])(mInputShown|mIsInputViewShown)=true([[:space:]]|$)' >/dev/null; then
+        return 1
+    fi
+    if printf '%s\n' "$input_method_dump" | grep -E \
+        '(^|[[:space:]])(mInputShown|mIsInputViewShown)=false([[:space:]]|$)' >/dev/null; then
+        hidden_state=0
+    fi
+    while IFS= read -r input_method_line; do
+        case "$input_method_line" in
+            *mImeWindowVis=*)
+                window_vis_value="${input_method_line#*mImeWindowVis=}"
+                window_vis_value="${window_vis_value%%[[:space:]]*}"
+                if [[ "$window_vis_value" =~ ^0[xX][0-9a-fA-F]+$ ]]; then
+                    window_vis_hex="${window_vis_value:2}"
+                    hidden_state=0
+                    if (( (16#$window_vis_hex & 2) != 0 )); then
+                        return 1
+                    fi
+                elif [[ "$window_vis_value" =~ ^[0-9]+$ ]]; then
+                    hidden_state=0
+                    if (( (10#$window_vis_value & 2) != 0 )); then
+                        return 1
+                    fi
+                else
+                    return 1
+                fi
+                ;;
+        esac
+    done <<<"$input_method_dump"
+    (( current_ime_matches == 0 && hidden_state == 0 ))
+}
+
+wait_for_host_foreground_and_ime_hidden() {
+    local activity_dump=""
+    local input_method_dump=""
+    for _ in $(seq 1 60); do
+        activity_dump="$(adb shell dumpsys activity activities 2>/dev/null | tr -d '\r')"
+        input_method_dump="$(adb shell dumpsys input_method 2>/dev/null | tr -d '\r')"
+        if activity_package_is_foreground "$activity_dump" "$host_package" &&
+            ! activity_package_is_foreground "$activity_dump" "$prototype_package" &&
+            input_method_is_selected_and_hidden "$input_method_dump"; then
+            return 0
+        fi
+        sleep 0.25
+    done
+    return 1
+}
+
 wait_for_host_foreground || {
     echo "host activity did not become the resumed foreground package" >&2
     exit 1
@@ -450,6 +509,14 @@ dump_ui() {
         [[ -s "$ui_dump_file" ]]
 }
 
+dump_ui_standard() {
+    rm -f -- "$ui_dump_file" &&
+        adb shell rm -f /sdcard/gate-k-ui.xml >/dev/null 2>&1 &&
+        adb shell uiautomator dump /sdcard/gate-k-ui.xml >/dev/null 2>&1 &&
+        adb exec-out cat /sdcard/gate-k-ui.xml >"$ui_dump_file" &&
+        [[ -s "$ui_dump_file" ]]
+}
+
 find_button_center() {
     python3 "$script_dir/gate_k_harness.py" ui --input "$ui_dump_file"
 }
@@ -458,6 +525,41 @@ find_trial_nonce() {
     python3 "$script_dir/gate_k_harness.py" nonce \
         --input "$ui_dump_file" \
         --expected "$1"
+}
+
+find_host_field_center() {
+    local dump_path="$1"
+    python3 - "$dump_path" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+try:
+    root = ET.parse(sys.argv[1]).getroot()
+except (OSError, ET.ParseError, IndexError):
+    raise SystemExit(1)
+
+matches = [
+    node
+    for node in root.iter("node")
+    if node.get("class") == "android.widget.EditText"
+    and node.get("content-desc") == "Gate K host text field"
+    and node.get("enabled") == "true"
+]
+if len(matches) != 1:
+    raise SystemExit(1)
+
+bounds = re.fullmatch(
+    r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]",
+    matches[0].get("bounds", ""),
+)
+if bounds is None:
+    raise SystemExit(1)
+left, top, right, bottom = (int(value) for value in bounds.groups())
+if right <= left or bottom <= top:
+    raise SystemExit(1)
+print(f"{(left + right) // 2},{(top + bottom) // 2}")
+PY
 }
 
 wait_for_button() {
@@ -472,12 +574,16 @@ wait_for_button() {
     return 1
 }
 
-wait_for_nonce() {
+wait_for_host_nonce_and_field() {
     local expected_nonce="$1"
     local observed_nonce=""
+    local host_field_center=""
     for _ in $(seq 1 120); do
-        if dump_ui && observed_nonce="$(find_trial_nonce "$expected_nonce" 2>/dev/null)" \
-            && [[ "$observed_nonce" == "$expected_nonce" ]]; then
+        if dump_ui_standard &&
+            observed_nonce="$(find_trial_nonce "$expected_nonce" 2>/dev/null)" &&
+            [[ "$observed_nonce" == "$expected_nonce" ]] &&
+            host_field_center="$(find_host_field_center "$ui_dump_file" 2>/dev/null)"; then
+            printf '%s\n' "$host_field_center"
             return 0
         fi
         sleep 0.25
@@ -511,10 +617,30 @@ for trial in $(seq 1 "$trial_count"); do
         echo "host activity did not become the resumed foreground package for trial $trial" >&2
         exit 1
     }
-    wait_for_nonce "$nonce" || {
-        echo "host nonce was not visible for trial $trial" >&2
+    if ! adb shell input keyevent 4 >/dev/null 2>&1; then
+        echo "failed to send BACK before standard host verification for trial $trial" >&2
+        exit 1
+    fi
+    wait_for_host_foreground_and_ime_hidden || {
+        echo "Gate K IME did not become hidden while host remained foreground for trial $trial" >&2
         exit 1
     }
+    host_field_center="$(wait_for_host_nonce_and_field "$nonce")" || {
+        echo "host nonce or dynamic text field was not visible for trial $trial" >&2
+        exit 1
+    }
+    [[ "$host_field_center" =~ ^[0-9]+,[0-9]+$ ]] || {
+        echo "UI parser returned invalid host text field center" >&2
+        exit 1
+    }
+    IFS=, read -r host_field_x host_field_y <<<"$host_field_center"
+    adb shell input tap "$host_field_x" "$host_field_y"
+    wait_for_host_foreground || {
+        echo "host activity lost foreground after reopening the IME for trial $trial" >&2
+        exit 1
+    }
+    verify_selected_ime
+    verify_live_ime_visible
     center="$(wait_for_button)" || {
         echo "Gate K attempt button was not found for trial $trial" >&2
         exit 1
