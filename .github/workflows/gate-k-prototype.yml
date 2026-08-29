@@ -171,13 +171,7 @@ jobs:
             cd "$GITHUB_WORKSPACE"
             (cd android && ./gradlew --no-daemon :gate-k-prototype:connectedDebugAndroidTest)
             # TEMP DIAGNOSTIC WRAPPER — remove after the query stage is known.
-            gate_k_diagnostic_api_level=34
-            gate_k_diagnostic_trials=12
-            [ "$GATE_K_API_LEVEL" = "$gate_k_diagnostic_api_level" ]
-            GATE_K_OUTPUT_DIR="$GITHUB_WORKSPACE/gate-k-artifacts-api$gate_k_diagnostic_api_level" \
-              bash tools/android/run-gate-k-emulator-trials.sh \
-              --api-level "$gate_k_diagnostic_api_level" \
-              --trials "$gate_k_diagnostic_trials"
+            [ "$GATE_K_API_LEVEL" = "34" ] && GATE_K_OUTPUT_DIR="$GITHUB_WORKSPACE/gate-k-artifacts-api34" bash tools/android/run-gate-k-emulator-trials.sh --api-level 34 --trials 12
 
       - name: Upload API evidence and reports
         if: always()

@@ -1034,18 +1034,26 @@ class GateKHarnessTest(unittest.TestCase):
         workflow = (
             REPO_ROOT / ".github/workflows/gate-k-prototype.yml"
         ).read_text(encoding="utf-8")
+        diagnostic_command = (
+            '[ "$GATE_K_API_LEVEL" = "34" ] && '
+            'GATE_K_OUTPUT_DIR="$GITHUB_WORKSPACE/gate-k-artifacts-api34" '
+            "bash tools/android/run-gate-k-emulator-trials.sh --api-level 34 --trials 12"
+        )
         self.assertIn("TEMP DIAGNOSTIC WRAPPER", workflow)
-        self.assertIn("gate_k_diagnostic_api_level=34", workflow)
-        self.assertIn("gate_k_diagnostic_trials=12", workflow)
-        self.assertIn('--trials "$gate_k_diagnostic_trials"', workflow)
+        self.assertIn(diagnostic_command, workflow)
         self.assertIn("name: Gate K TEMP query-stage diagnostic API", workflow)
         diagnostic_start = workflow.index("# TEMP DIAGNOSTIC WRAPPER —")
-        diagnostic_end = workflow.index("GATE_K_OUTPUT_DIR=", diagnostic_start)
+        diagnostic_end = workflow.index("\n\n", diagnostic_start)
         diagnostic_block = workflow[diagnostic_start:diagnostic_end]
-        self.assertIn(
-            '[ "$GATE_K_API_LEVEL" = "$gate_k_diagnostic_api_level" ]',
-            diagnostic_block,
+        self.assertEqual(
+            [diagnostic_command],
+            [
+                line.strip()
+                for line in diagnostic_block.splitlines()
+                if line.strip() and not line.strip().startswith("#")
+            ],
         )
+        self.assertNotIn("gate_k_diagnostic_", diagnostic_block)
         self.assertNotIn("[[", diagnostic_block)
         self.assertNotIn("api-level: 35", workflow)
         self.assertNotIn("api-level: 36", workflow)
