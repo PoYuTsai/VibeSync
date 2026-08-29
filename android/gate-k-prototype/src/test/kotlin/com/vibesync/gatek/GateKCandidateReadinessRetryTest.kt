@@ -1,6 +1,8 @@
 package com.vibesync.gatek
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -58,7 +60,122 @@ class GateKCandidateReadinessRetryTest {
         assertTrue(
             GateKCandidateReadinessPolicy.classify(
                 GateKObservationResult.Ignored(IgnoredCandidateReason.NO_ACTIVE_SESSION),
-            ) is GateKCandidateReadinessProbeResult.Failed,
+        ) is GateKCandidateReadinessProbeResult.Failed,
+        )
+    }
+
+    @Test
+    fun `provider failures map to bounded terminal or retryable outcomes`() {
+        assertEquals(
+            GateKCandidateReadinessProbeResult.Retryable(
+                GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
+            ),
+            GateKCandidateReadinessPolicy.classifyProviderFailure(
+                GateKCandidateReadinessProviderFailure.ROW_NOT_FOUND,
+            ),
+        )
+        assertEquals(
+            GateKCandidateReadinessProbeResult.Failed(
+                GateKCandidateReadinessFailure.GRANT_UNAVAILABLE,
+            ),
+            GateKCandidateReadinessPolicy.classifyProviderFailure(
+                GateKCandidateReadinessProviderFailure.SECURITY_EXCEPTION,
+            ),
+        )
+        listOf(
+            GateKCandidateReadinessProviderFailure.NULL_CURSOR,
+            GateKCandidateReadinessProviderFailure.QUERY_EXCEPTION,
+        ).forEach { failure ->
+            assertEquals(
+                GateKCandidateReadinessProbeResult.Failed(
+                    GateKCandidateReadinessFailure.QUERY_FAILED,
+                ),
+                GateKCandidateReadinessPolicy.classifyProviderFailure(failure),
+            )
+        }
+        listOf(
+            GateKCandidateReadinessProviderFailure.EXPECTED_VERSION_MISSING,
+            GateKCandidateReadinessProviderFailure.EXPECTED_VERSION_CHANGED,
+        ).forEach { failure ->
+            assertEquals(
+                GateKCandidateReadinessProbeResult.Failed(
+                    GateKCandidateReadinessFailure.OBSERVER_ERROR,
+                ),
+                GateKCandidateReadinessPolicy.classifyProviderFailure(failure),
+            )
+        }
+        listOf(
+            GateKCandidateReadinessProviderFailure.IDENTITY_MISMATCH,
+            GateKCandidateReadinessProviderFailure.METADATA_MISMATCH,
+        ).forEach { failure ->
+            assertEquals(
+                GateKCandidateReadinessProbeResult.Failed(
+                    GateKCandidateReadinessFailure.METADATA_REJECTED,
+                ),
+                GateKCandidateReadinessPolicy.classifyProviderFailure(failure),
+            )
+        }
+    }
+
+    @Test
+    fun `retry rejects a version changed before the exact query`() {
+        assertEquals(
+            GateKCandidateReadinessProbeResult.Failed(
+                GateKCandidateReadinessFailure.OBSERVER_ERROR,
+            ),
+            GateKCandidateReadinessPolicy.classifyExpectedMediaStoreVersion(
+                expectedVersion = "baseline-v1",
+                observedVersion = "baseline-v2",
+            ),
+        )
+    }
+
+    @Test
+    fun `retry rejects a version changed during query before pipeline`() {
+        assertEquals(
+            GateKCandidateReadinessProbeResult.Failed(
+                GateKCandidateReadinessFailure.OBSERVER_ERROR,
+            ),
+            GateKCandidateReadinessPolicy.classifyExpectedMediaStoreVersion(
+                expectedVersion = "baseline-v1",
+                observedVersion = "baseline-v3",
+            ),
+        )
+        assertNull(
+            GateKCandidateReadinessPolicy.classifyExpectedMediaStoreVersion(
+                expectedVersion = "baseline-v1",
+                observedVersion = "baseline-v1",
+            ),
+        )
+    }
+
+    @Test
+    fun `query open and hash gates stop at the three second deadline`() {
+        val start = 10_000L
+        assertFalse(
+            GateKCandidateReadinessPolicy.isDeadlineReached(
+                triggeredAtElapsedRealtimeMs = start,
+                nowElapsedRealtimeMs = start + 2_999L,
+            ),
+        )
+        assertFalse(
+            GateKCandidateReadinessPolicy.isDeadlineReached(
+                triggeredAtElapsedRealtimeMs = start,
+                nowElapsedRealtimeMs = start + 3_000L,
+            ),
+        )
+        assertTrue(
+            GateKCandidateReadinessPolicy.isDeadlineReached(
+                triggeredAtElapsedRealtimeMs = start,
+                nowElapsedRealtimeMs = start + 3_001L,
+            ),
+        )
+        assertEquals(
+            GateKCandidateReadinessResult.DeadlineReached,
+            GateKCandidateReadinessRetry(
+                maxRetries = 8,
+                retryDelayMs = 0L,
+            ).resolve { GateKCandidateReadinessProbeResult.DeadlineReached },
         )
     }
 

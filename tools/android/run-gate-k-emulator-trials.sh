@@ -29,6 +29,10 @@ ime_component="$prototype_package/.GateKPrototypeInputMethodService"
 api_level=34
 trial_count=40
 output_dir="${GATE_K_OUTPUT_DIR:-$repo_root/.gate-k-artifacts-api34}"
+# Give the IME/compositor a bounded settle window after the UI tap. This is
+# still well inside the 3-second Gate K attempt SLA and avoids racing the
+# MediaStore screenshot producer on slower emulators.
+trial_trigger_settle_seconds=0.50
 
 usage() {
     cat <<'EOF'
@@ -550,7 +554,7 @@ for trial in $(seq 1 "$trial_count"); do
     }
     IFS=, read -r center_x center_y <<<"$center"
     adb shell input tap "$center_x" "$center_y"
-    sleep 0.10
+    sleep "$trial_trigger_settle_seconds"
     # This keyevent is the only screenshot trigger; no screencap or synthetic
     # MediaStore insertion is allowed in this runner.
     adb shell input keyevent 120

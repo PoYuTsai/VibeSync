@@ -9,6 +9,27 @@ package com.vibesync.gatek
 enum class GateKCandidateReadinessFailure {
     CONTENT_UNAVAILABLE,
     METADATA_REJECTED,
+    GRANT_UNAVAILABLE,
+    QUERY_FAILED,
+    OBSERVER_ERROR,
+}
+
+/**
+ * Bounded provider failures used by the Android seam.  These names are
+ * intentionally narrower than exception text so the evidence vocabulary
+ * cannot grow with provider implementation details.
+ */
+enum class GateKCandidateReadinessProviderFailure {
+    ROW_NOT_FOUND,
+    SECURITY_EXCEPTION,
+    NULL_CURSOR,
+    QUERY_EXCEPTION,
+    CONTENT_IO_EXCEPTION,
+    CONTENT_STREAM_UNAVAILABLE,
+    EXPECTED_VERSION_MISSING,
+    EXPECTED_VERSION_CHANGED,
+    IDENTITY_MISMATCH,
+    METADATA_MISMATCH,
 }
 
 sealed interface GateKCandidateReadinessProbeResult {
@@ -20,6 +41,9 @@ sealed interface GateKCandidateReadinessProbeResult {
     data class Failed(val failure: GateKCandidateReadinessFailure) :
         GateKCandidateReadinessProbeResult
 
+    /** The attempt deadline was reached before a new read/hash could begin. */
+    data object DeadlineReached : GateKCandidateReadinessProbeResult
+
     data object SessionEnded : GateKCandidateReadinessProbeResult
 }
 
@@ -27,6 +51,8 @@ sealed interface GateKCandidateReadinessResult {
     data class Observed(val result: GateKObservationResult) : GateKCandidateReadinessResult
 
     data class Failed(val failure: GateKCandidateReadinessFailure) : GateKCandidateReadinessResult
+
+    data object DeadlineReached : GateKCandidateReadinessResult
 
     data object SessionEnded : GateKCandidateReadinessResult
 }
@@ -60,6 +86,100 @@ object GateKCandidateReadinessPolicy {
                     GateKCandidateReadinessFailure.METADATA_REJECTED,
                 )
         }
+
+    /** Maps provider seams without retrying failures that cannot become ready. */
+    fun classifyProviderFailure(
+        failure: GateKCandidateReadinessProviderFailure,
+    ): GateKCandidateReadinessProbeResult = when (failure) {
+        GateKCandidateReadinessProviderFailure.ROW_NOT_FOUND ->
+            GateKCandidateReadinessProbeResult.Retryable(
+                GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
+            )
+
+        GateKCandidateReadinessProviderFailure.SECURITY_EXCEPTION ->
+            GateKCandidateReadinessProbeResult.Failed(
+                GateKCandidateReadinessFailure.GRANT_UNAVAILABLE,
+            )
+
+        GateKCandidateReadinessProviderFailure.NULL_CURSOR,
+        GateKCandidateReadinessProviderFailure.QUERY_EXCEPTION ->
+            GateKCandidateReadinessProbeResult.Failed(
+                GateKCandidateReadinessFailure.QUERY_FAILED,
+            )
+
+        GateKCandidateReadinessProviderFailure.CONTENT_IO_EXCEPTION,
+        GateKCandidateReadinessProviderFailure.CONTENT_STREAM_UNAVAILABLE ->
+            GateKCandidateReadinessProbeResult.Retryable(
+                GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
+            )
+
+        GateKCandidateReadinessProviderFailure.EXPECTED_VERSION_MISSING,
+        GateKCandidateReadinessProviderFailure.EXPECTED_VERSION_CHANGED ->
+            GateKCandidateReadinessProbeResult.Failed(
+                GateKCandidateReadinessFailure.OBSERVER_ERROR,
+            )
+
+        GateKCandidateReadinessProviderFailure.IDENTITY_MISMATCH,
+        GateKCandidateReadinessProviderFailure.METADATA_MISMATCH ->
+            GateKCandidateReadinessProbeResult.Failed(
+                GateKCandidateReadinessFailure.METADATA_REJECTED,
+            )
+    }
+
+    /**
+     * Validates a retry against the version captured by the session baseline.
+     * Both a missing version and a changed version invalidate the observation;
+     * a query-local before/after equality is not sufficient.
+     */
+    fun classifyExpectedMediaStoreVersion(
+        expectedVersion: String?,
+        observedVersion: String?,
+    ): GateKCandidateReadinessProbeResult? {
+        val failure = when {
+            expectedVersion.isNullOrBlank() || observedVersion.isNullOrBlank() ->
+                GateKCandidateReadinessProviderFailure.EXPECTED_VERSION_MISSING
+
+            expectedVersion != observedVersion ->
+                GateKCandidateReadinessProviderFailure.EXPECTED_VERSION_CHANGED
+
+            else -> null
+        }
+        return failure?.let { classifyProviderFailure(it) }
+    }
+
+    /** True after the deadline, preventing a late open/hash. */
+    fun isDeadlineReached(
+        triggeredAtElapsedRealtimeMs: Long,
+        nowElapsedRealtimeMs: Long,
+        deadlineMs: Long = GateKAttemptCoordinator.DEFAULT_MAX_ATTEMPT_LATENCY_MS,
+    ): Boolean {
+        require(triggeredAtElapsedRealtimeMs >= 0L) {
+            "attempt start must not be negative"
+        }
+        require(nowElapsedRealtimeMs >= 0L) {
+            "current elapsed time must not be negative"
+        }
+        require(deadlineMs > 0L) { "attempt deadline must be positive" }
+        return nowElapsedRealtimeMs >= triggeredAtElapsedRealtimeMs
+            && nowElapsedRealtimeMs - triggeredAtElapsedRealtimeMs > deadlineMs
+    }
+
+    fun GateKCandidateReadinessFailure.toGateKFailureReason(): GateKFailureReason = when (this) {
+        GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE ->
+            GateKFailureReason.CONTENT_UNAVAILABLE
+
+        GateKCandidateReadinessFailure.METADATA_REJECTED ->
+            GateKFailureReason.METADATA_REJECTED
+
+        GateKCandidateReadinessFailure.GRANT_UNAVAILABLE ->
+            GateKFailureReason.GRANT_UNAVAILABLE
+
+        GateKCandidateReadinessFailure.QUERY_FAILED ->
+            GateKFailureReason.QUERY_FAILED
+
+        GateKCandidateReadinessFailure.OBSERVER_ERROR ->
+            GateKFailureReason.OBSERVER_ERROR
+    }
 }
 
 /**
@@ -94,6 +214,9 @@ class GateKCandidateReadinessRetry(
 
                 GateKCandidateReadinessProbeResult.SessionEnded ->
                     return GateKCandidateReadinessResult.SessionEnded
+
+                GateKCandidateReadinessProbeResult.DeadlineReached ->
+                    return GateKCandidateReadinessResult.DeadlineReached
 
                 is GateKCandidateReadinessProbeResult.Retryable -> {
                     if (retries >= maxRetries) {

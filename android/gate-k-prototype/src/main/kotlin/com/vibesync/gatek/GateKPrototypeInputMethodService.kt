@@ -463,15 +463,25 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             .plus(GateKAttemptCoordinator.DEFAULT_MAX_ATTEMPT_LATENCY_MS)
         val delay = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1L)
         mainHandler.postDelayed({
-            when (val result = attemptCoordinator.timeout(
-                attemptId = attempt.attemptId,
-                sessionId = attempt.sessionId,
-                nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
-            )) {
-                GateKAttemptTerminalResult.WaitingForDeadline ->
-                    scheduleAttemptTimeout(attempt)
+            // Timeout must run behind any in-flight query/open/hash on the
+            // same worker. This makes the deadline a privacy boundary instead
+            // of allowing the main thread to terminalize a live read midway.
+            try {
+                mediaStoreExecutor.execute {
+                    when (val result = attemptCoordinator.timeout(
+                        attemptId = attempt.attemptId,
+                        sessionId = attempt.sessionId,
+                        nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+                    )) {
+                        GateKAttemptTerminalResult.WaitingForDeadline ->
+                            scheduleAttemptTimeout(attempt)
 
-                else -> recordTerminalResult(result)
+                        else -> recordTerminalResult(result)
+                    }
+                }
+            } catch (_: java.util.concurrent.RejectedExecutionException) {
+                // Shutdown is a lifecycle boundary; do not manufacture a
+                // timeout record after the worker has been rejected.
             }
         }, delay)
     }
@@ -549,22 +559,19 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 )
 
                 is GateKCandidateReadinessResult.Failed -> {
-                    val failureReason = when (readiness.failure) {
-                        GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE ->
-                            GateKFailureReason.CONTENT_UNAVAILABLE
-
-                        GateKCandidateReadinessFailure.METADATA_REJECTED ->
-                            GateKFailureReason.METADATA_REJECTED
-                    }
                     recordTerminalResult(
                         failActiveAttempt(
                             sessionId = sessionId,
                             detectedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
-                            reason = failureReason,
+                            reason = with(GateKCandidateReadinessPolicy) {
+                                readiness.failure.toGateKFailureReason()
+                            },
                             candidateIdentity = candidateIdentity,
                         ),
                     )
                 }
+
+                GateKCandidateReadinessResult.DeadlineReached -> Unit
 
                 GateKCandidateReadinessResult.SessionEnded -> Unit
             }
@@ -578,11 +585,41 @@ class GateKPrototypeInputMethodService : InputMethodService() {
      * serialized MediaStore worker and never relaxes the public candidate
      * filter. A session/attempt ending during the wait simply aborts.
      */
+    private fun deadlineReadinessProbe(
+        sessionId: String,
+        candidateIdentity: GateKMediaStoreCandidateIdentity,
+    ): GateKCandidateReadinessProbeResult? {
+        if (activeSessionId != sessionId
+            || !attemptCoordinator.hasActiveAttempt
+            || !attemptCoordinator.isCandidateEligible(candidateIdentity)
+        ) {
+            return GateKCandidateReadinessProbeResult.SessionEnded
+        }
+        val attempt = attemptCoordinator.currentAttempt
+            ?: return GateKCandidateReadinessProbeResult.SessionEnded
+        if (attempt.sessionId != sessionId) {
+            return GateKCandidateReadinessProbeResult.SessionEnded
+        }
+        return if (GateKCandidateReadinessPolicy.isDeadlineReached(
+                triggeredAtElapsedRealtimeMs = attempt.triggeredAtElapsedRealtimeMs,
+                nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+            )
+        ) {
+            GateKCandidateReadinessProbeResult.DeadlineReached
+        } else {
+            null
+        }
+    }
+
     private fun observeCandidateWithReadinessRetry(
         sessionId: String,
         initialRecord: MediaStoreCandidateRecord,
         candidateIdentity: GateKMediaStoreCandidateIdentity,
     ): GateKCandidateReadinessResult {
+        val expectedMediaStoreVersion = mediaStoreBaseline.currentMediaStoreVersion
+            ?: return GateKCandidateReadinessResult.Failed(
+                GateKCandidateReadinessFailure.OBSERVER_ERROR,
+            )
         var currentRecord = initialRecord
         var firstProbe = true
         val retry = GateKCandidateReadinessRetry()
@@ -595,21 +632,23 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             }
 
             if (!firstProbe) {
-                when (val queryResult = queryMediaStoreCandidate(initialRecord)) {
+                deadlineReadinessProbe(
+                    sessionId = sessionId,
+                    candidateIdentity = candidateIdentity,
+                )?.let { return@resolve it }
+                when (val queryResult = queryMediaStoreCandidate(
+                    initialRecord = initialRecord,
+                    expectedMediaStoreVersion = expectedMediaStoreVersion,
+                )) {
                     is MediaStoreCandidateQueryResult.Ready -> currentRecord = queryResult.record
-                    MediaStoreCandidateQueryResult.RetryableUnavailable ->
+                    is MediaStoreCandidateQueryResult.Retryable ->
                         return@resolve GateKCandidateReadinessProbeResult.Retryable(
-                            GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
+                            queryResult.failure,
                         )
 
-                    MediaStoreCandidateQueryResult.TerminalContentUnavailable ->
+                    is MediaStoreCandidateQueryResult.Failed ->
                         return@resolve GateKCandidateReadinessProbeResult.Failed(
-                            GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
-                        )
-
-                    MediaStoreCandidateQueryResult.TerminalMetadataRejected ->
-                        return@resolve GateKCandidateReadinessProbeResult.Failed(
-                            GateKCandidateReadinessFailure.METADATA_REJECTED,
+                            queryResult.failure,
                         )
                 }
                 if (currentRecord.mediaId != candidateIdentity.mediaId
@@ -621,6 +660,18 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 }
             }
             firstProbe = false
+
+            deadlineReadinessProbe(
+                sessionId = sessionId,
+                candidateIdentity = candidateIdentity,
+            )?.let { return@resolve it }
+            val versionResult = GateKCandidateReadinessPolicy.classifyExpectedMediaStoreVersion(
+                expectedVersion = expectedMediaStoreVersion,
+                observedVersion = readMediaStoreVersion(),
+            )
+            if (versionResult != null) {
+                return@resolve versionResult
+            }
 
             if (MediaStoreScreenshotClassifier.classify(currentRecord.metadata)
                 != MediaStoreScreenshotDecision.MediaStoreScreenshot
@@ -640,10 +691,40 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 )
             }
 
-            val content = openTransientContent(Uri.parse(currentRecord.metadata.uri))
-                ?: return@resolve GateKCandidateReadinessProbeResult.Retryable(
-                    GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
+            deadlineReadinessProbe(
+                sessionId = sessionId,
+                candidateIdentity = candidateIdentity,
+            )?.let { return@resolve it }
+            val content = when (val contentResult = openTransientContent(
+                Uri.parse(currentRecord.metadata.uri),
+            )) {
+                is TransientContentResult.Ready -> contentResult.bytes
+                TransientContentResult.RetryableUnavailable ->
+                    return@resolve GateKCandidateReadinessProbeResult.Retryable(
+                        GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
+                    )
+
+                is TransientContentResult.Failed ->
+                    return@resolve GateKCandidateReadinessProbeResult.Failed(
+                        contentResult.failure,
+                    )
+            }
+
+            // Opening is synchronous. If it crossed the deadline, do not hand
+            // the bytes to the hashing/dedupe pipeline; the queued timeout
+            // operation will own terminalization on this same worker.
+            deadlineReadinessProbe(
+                sessionId = sessionId,
+                candidateIdentity = candidateIdentity,
+            )?.let { return@resolve it }
+            val postOpenVersionResult =
+                GateKCandidateReadinessPolicy.classifyExpectedMediaStoreVersion(
+                    expectedVersion = expectedMediaStoreVersion,
+                    observedVersion = readMediaStoreVersion(),
                 )
+            if (postOpenVersionResult != null) {
+                return@resolve postOpenVersionResult
+            }
 
             // The pipeline returns an identity/decision and never exposes
             // bytes outside this stack. The local byte array is unreachable
@@ -819,14 +900,15 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     private sealed interface MediaStoreCandidateQueryResult {
         data class Ready(val record: MediaStoreCandidateRecord) : MediaStoreCandidateQueryResult
 
-        /** The provider may not have made the row readable on this sample. */
-        data object RetryableUnavailable : MediaStoreCandidateQueryResult
+        /** The provider may not have made this exact row readable yet. */
+        data class Retryable(
+            val failure: GateKCandidateReadinessFailure,
+        ) : MediaStoreCandidateQueryResult
 
-        /** A stable contract/identity failure must not be retried as readiness. */
-        data object TerminalMetadataRejected : MediaStoreCandidateQueryResult
-
-        /** Access was revoked or the provider cannot serve content at all. */
-        data object TerminalContentUnavailable : MediaStoreCandidateQueryResult
+        /** A provider/observer/identity failure must not be retried as readiness. */
+        data class Failed(
+            val failure: GateKCandidateReadinessFailure,
+        ) : MediaStoreCandidateQueryResult
     }
 
     private sealed interface MediaStoreCandidateRowResult {
@@ -847,28 +929,38 @@ class GateKPrototypeInputMethodService : InputMethodService() {
      */
     private fun queryMediaStoreCandidate(
         initialRecord: MediaStoreCandidateRecord,
+        expectedMediaStoreVersion: String,
     ): MediaStoreCandidateQueryResult {
-        val versionBefore = readMediaStoreVersion()
-            ?: return MediaStoreCandidateQueryResult.TerminalMetadataRejected
-        val queryArgs = Bundle().apply {
-            putString(
-                ContentResolver.QUERY_ARG_SQL_SELECTION,
-                "${MediaStore.Images.Media._ID} = ? AND " +
-                    "${MediaStore.Images.Media.IS_PENDING} = ?",
+        val mediaId = initialRecord.mediaId.toLongOrNull()
+            ?.takeIf { it > 0L }
+            ?: return MediaStoreCandidateQueryResult.Failed(
+                GateKCandidateReadinessFailure.METADATA_REJECTED,
             )
-            putStringArray(
-                ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
-                arrayOf(initialRecord.mediaId, "0"),
-            )
-            putInt(ContentResolver.QUERY_ARG_LIMIT, 1)
+        val beforeVersionResult = GateKCandidateReadinessPolicy.classifyExpectedMediaStoreVersion(
+            expectedVersion = expectedMediaStoreVersion,
+            observedVersion = readMediaStoreVersion(),
+        )
+        if (beforeVersionResult != null) {
+            val failure = (beforeVersionResult as? GateKCandidateReadinessProbeResult.Failed)
+                ?.failure ?: GateKCandidateReadinessFailure.OBSERVER_ERROR
+            return MediaStoreCandidateQueryResult.Failed(failure)
         }
+        // Query the identified item URI directly. Collection SQL selection,
+        // LIMIT, and provider-specific query-arg combinations are not needed
+        // for one immutable ID and were rejected by some MediaStore providers.
+        val itemUri = ContentUris.withAppendedId(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            mediaId,
+        )
         return try {
             val cursor = contentResolver.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                itemUri,
                 mediaStoreProjection(),
-                queryArgs,
                 null,
-            ) ?: return MediaStoreCandidateQueryResult.RetryableUnavailable
+                null,
+            ) ?: return MediaStoreCandidateQueryResult.Failed(
+                GateKCandidateReadinessFailure.QUERY_FAILED,
+            )
             val record = cursor.use { cursor ->
                 if (!cursor.moveToFirst()) return@use MediaStoreCandidateRowResult.NotFound
                 if (cursor.moveToNext()) return@use MediaStoreCandidateRowResult.Invalid
@@ -899,10 +991,6 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 ) {
                     return@use MediaStoreCandidateRowResult.Invalid
                 }
-                val itemUri = ContentUris.withAppendedId(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    mediaId,
-                )
                 MediaStoreCandidateRowResult.Ready(
                     MediaStoreCandidateRecord(
                         mediaId = mediaId.toString(),
@@ -920,25 +1008,37 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                     ),
                 )
             }
-            when {
-                record is MediaStoreCandidateRowResult.NotFound ->
-                    MediaStoreCandidateQueryResult.RetryableUnavailable
+            val afterVersionResult = GateKCandidateReadinessPolicy.classifyExpectedMediaStoreVersion(
+                expectedVersion = expectedMediaStoreVersion,
+                observedVersion = readMediaStoreVersion(),
+            )
+            if (afterVersionResult != null) {
+                val failure = (afterVersionResult as? GateKCandidateReadinessProbeResult.Failed)
+                    ?.failure ?: GateKCandidateReadinessFailure.OBSERVER_ERROR
+                return MediaStoreCandidateQueryResult.Failed(failure)
+            }
+            when (record) {
+                MediaStoreCandidateRowResult.NotFound ->
+                    MediaStoreCandidateQueryResult.Retryable(
+                        GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
+                    )
 
-                record is MediaStoreCandidateRowResult.Invalid ->
-                    MediaStoreCandidateQueryResult.TerminalMetadataRejected
+                MediaStoreCandidateRowResult.Invalid ->
+                    MediaStoreCandidateQueryResult.Failed(
+                        GateKCandidateReadinessFailure.METADATA_REJECTED,
+                    )
 
-                readMediaStoreVersion() != versionBefore ->
-                    MediaStoreCandidateQueryResult.TerminalMetadataRejected
-
-                record is MediaStoreCandidateRowResult.Ready ->
+                is MediaStoreCandidateRowResult.Ready ->
                     MediaStoreCandidateQueryResult.Ready(record.record)
-
-                else -> MediaStoreCandidateQueryResult.TerminalMetadataRejected
             }
         } catch (_: SecurityException) {
-            MediaStoreCandidateQueryResult.TerminalContentUnavailable
+            MediaStoreCandidateQueryResult.Failed(
+                GateKCandidateReadinessFailure.GRANT_UNAVAILABLE,
+            )
         } catch (_: RuntimeException) {
-            MediaStoreCandidateQueryResult.RetryableUnavailable
+            MediaStoreCandidateQueryResult.Failed(
+                GateKCandidateReadinessFailure.QUERY_FAILED,
+            )
         }
     }
 
@@ -1092,15 +1192,31 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         }
     }
 
-    private fun openTransientContent(uri: Uri): ByteArray? {
+    private sealed interface TransientContentResult {
+        data class Ready(val bytes: ByteArray) : TransientContentResult
+
+        data object RetryableUnavailable : TransientContentResult
+
+        data class Failed(val failure: GateKCandidateReadinessFailure) : TransientContentResult
+    }
+
+    private fun openTransientContent(uri: Uri): TransientContentResult {
         return try {
-            contentResolver.openInputStream(uri)?.use { input -> input.readBounded() }
+            val input = contentResolver.openInputStream(uri)
+                ?: return TransientContentResult.RetryableUnavailable
+            val bytes = input.use { it.readBounded() }
+                ?: return TransientContentResult.RetryableUnavailable
+            TransientContentResult.Ready(bytes)
         } catch (_: SecurityException) {
-            null
+            TransientContentResult.Failed(
+                GateKCandidateReadinessFailure.GRANT_UNAVAILABLE,
+            )
         } catch (_: java.io.IOException) {
-            null
+            TransientContentResult.RetryableUnavailable
         } catch (_: RuntimeException) {
-            null
+            TransientContentResult.Failed(
+                GateKCandidateReadinessFailure.QUERY_FAILED,
+            )
         }
     }
 

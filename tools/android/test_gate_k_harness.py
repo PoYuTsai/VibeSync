@@ -721,6 +721,9 @@ class GateKHarnessTest(unittest.TestCase):
         self.assertLess(visible, standard)
         self.assertLess(standard, button)
         self.assertLess(button, trigger)
+        self.assertIn("trial_trigger_settle_seconds=0.50", runner)
+        self.assertIn('sleep "$trial_trigger_settle_seconds"', runner)
+        self.assertNotIn("sleep 0.10", runner)
         self.assertNotIn('adb shell ime set "$ime_component"', runner[trial_loop:])
         self.assertNotRegex(runner, r"adb shell input tap [0-9]+ [0-9]+")
 
