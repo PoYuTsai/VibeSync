@@ -1805,6 +1805,12 @@ void main() {
       ),
     );
 
+    // 首屏只有「開始和她聊」CTA；先進對話框才有輸入框。第二拍要推過
+    // AppHaptics.strong() 的計時器，免得留下 pending Timer。
+    await tester.tap(find.byKey(const ValueKey('practice-start-chat-cta')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+
     await tester.enterText(find.byType(TextField), 'huhu');
     // 送出鈕現在跟輸入內容連動（空字串灰階），打完字要先讓它重建成可送狀態。
     await tester.pump();

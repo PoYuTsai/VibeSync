@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibesync/core/services/app_haptics.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
+import 'package:vibesync/core/theme/app_icons.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
@@ -13,6 +16,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_session
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 
 class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
 
@@ -62,11 +66,14 @@ class _SeededPracticeChatController extends PracticeChatController {
   }
 }
 
+const startCtaKey = ValueKey('practice-start-chat-cta');
+
 void main() {
   late PracticeSessionRepository repo;
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    AppHaptics.enabled = true;
     repo = _MemoryPracticeSessionRepository();
   });
 
@@ -120,26 +127,133 @@ void main() {
     );
   }
 
-  testWidgets('開場前聚焦輸入框 → 出現收起鍵盤與看她的資料，點收起鍵盤即退出輸入狀態',
+  /// 首屏只有 CTA；要碰輸入框的測試都得先按下它進對話框。
+  Future<void> startChat(WidgetTester tester) async {
+    await tester.tap(find.byKey(startCtaKey));
+    // 一幀掛上輸入框（focus node reparent 時補領焦點），再推過 AppHaptics.strong()
+    // 第二下重震的計時器，否則測試結束時會留 pending Timer。
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+  }
+
+  testWidgets('首屏沒有輸入框，只有「開始和她聊」CTA', (tester) async {
+    await pumpScreen(tester, preChatSeed());
+
+    expect(find.byKey(startCtaKey), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('practice-chat-origin-intro')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('CTA 沿用生成開場白的橘底黑字造型，句尾走 Tabler icon 不用 emoji',
       (tester) async {
     await pumpScreen(tester, preChatSeed());
 
-    // 未聚焦：不顯示鍵盤操作列。
+    final cta = tester.widget<BrandPrimaryButton>(find.byKey(startCtaKey));
+    expect(cta.label, '開始和她聊');
+    // 🤓 換成 Tabler icon（2026-08-17 Eric 拍板），而且留在文案「後面」。
+    expect(cta.trailingIcon, TablerIcons.mood_nerd);
+    expect(cta.icon, isNull);
+
+    // 橘底：跟「生成開場白」同一顆 BrandPrimaryButton 的 ctaStart→ctaEnd 漸層。
+    final decoration = tester
+        .widget<AnimatedContainer>(
+          find.descendant(
+            of: find.byKey(startCtaKey),
+            matching: find.byType(AnimatedContainer),
+          ),
+        )
+        .decoration! as BoxDecoration;
+    expect(decoration.gradient, isA<LinearGradient>());
     expect(
-      find.byKey(const ValueKey('practice-dismiss-keyboard')),
+      (decoration.gradient! as LinearGradient).colors,
+      [AppColors.ctaStart, AppColors.ctaEnd],
+    );
+    // 黑字（品牌墨色）。
+    final style = tester
+        .widget<ElevatedButton>(
+          find.descendant(
+            of: find.byKey(startCtaKey),
+            matching: find.byType(ElevatedButton),
+          ),
+        )
+        .style!;
+    expect(
+      style.foregroundColor!.resolve(const <WidgetState>{}),
+      AppColors.onCta,
+    );
+  });
+
+  testWidgets('點 CTA 直接進對話框：資料卡收起、掛上認識場合、輸入框自動聚焦',
+      (tester) async {
+    await pumpScreen(tester, preChatSeed());
+    await startChat(tester);
+
+    expect(find.byKey(startCtaKey), findsNothing);
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('practice-chat-origin-intro')),
+      findsOneWidget,
+    );
+    expect(find.byType(TextField), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).focusNode?.hasFocus,
+      true,
+    );
+  });
+
+  testWidgets('點 CTA 給強烈觸覺回饋（heavyImpact）', (tester) async {
+    final vibrates = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') {
+        // Material 的 Feedback.forTap 也會打這條（arguments 是 null），
+        // 直接 cast 會炸；只收得出強度的那幾發。
+        final type = call.arguments as String?;
+        if (type != null) vibrates.add(type);
+      }
+      return null;
+    });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await pumpScreen(tester, preChatSeed());
+    await startChat(tester);
+
+    // 按下瞬間的 mediumImpact 之外，必須再吃到 AppHaptics.strong() 的重震×2。
+    expect(
+      vibrates.where((v) => v == 'HapticFeedbackType.heavyImpact').length,
+      2,
+    );
+  });
+
+  testWidgets('送出第一則之後，認識場合說明就從對話框消失', (tester) async {
+    await pumpScreen(tester, inChatSeed());
+
+    expect(
+      find.byKey(const ValueKey('practice-chat-origin-intro')),
       findsNothing,
     );
+  });
 
-    await tester.tap(find.byType(TextField));
-    await tester.pump();
+  testWidgets('進對話框後聚焦輸入框 → 出現收起鍵盤，點它即退出輸入狀態',
+      (tester) async {
+    await pumpScreen(tester, preChatSeed());
+    await startChat(tester);
 
     expect(
       find.byKey(const ValueKey('practice-dismiss-keyboard')),
       findsOneWidget,
     );
+    // 資料入口一律在 header 的 compact identity 列，輸入列不重複。
     expect(
       find.byKey(const ValueKey('practice-view-profile-action')),
-      findsOneWidget,
+      findsNothing,
     );
 
     await tester.tap(find.byKey(const ValueKey('practice-dismiss-keyboard')));
@@ -171,30 +285,9 @@ void main() {
     );
   });
 
-  testWidgets('拖動開場資訊卡會收鍵盤', (tester) async {
-    await pumpScreen(tester, preChatSeed());
-
-    await tester.tap(find.byType(TextField));
-    await tester.pump();
-    expect(
-      find.byKey(const ValueKey('practice-dismiss-keyboard')),
-      findsOneWidget,
-    );
-
-    await tester.drag(
-      find.byKey(const ValueKey('practice-profile-hero')),
-      const Offset(0, -60),
-    );
-    await tester.pump();
-
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).focusNode?.hasFocus,
-      false,
-    );
-  });
-
   testWidgets('送出鈕：空字串灰階不可送，打字後亮橘', (tester) async {
     await pumpScreen(tester, preChatSeed());
+    await startChat(tester);
 
     Container sendContainer() => tester.widget<Container>(
           find.descendant(
@@ -213,6 +306,7 @@ void main() {
 
   testWidgets('hint 文案：開場前是開場白引導', (tester) async {
     await pumpScreen(tester, preChatSeed());
+    await startChat(tester);
     expect(
       tester.widget<TextField>(find.byType(TextField)).decoration?.hintText,
       '傳出你的第一句開場白…',
@@ -247,6 +341,7 @@ void main() {
 
   testWidgets('聚焦態輸入框描邊上品牌橘', (tester) async {
     await pumpScreen(tester, preChatSeed());
+    await startChat(tester);
 
     final decoration =
         tester.widget<TextField>(find.byType(TextField)).decoration!;

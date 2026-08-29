@@ -414,6 +414,7 @@ class BrandPrimaryButton extends StatelessWidget {
     required this.onPressed,
     this.isLoading = false,
     this.icon,
+    this.trailingIcon,
     this.verticalPadding = 15,
   });
 
@@ -421,6 +422,10 @@ class BrandPrimaryButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool isLoading;
   final IconData? icon;
+
+  /// 放在文案「後面」的圖示。emoji 位在句尾的文案（如「開始和她聊 🤓」）
+  /// 改用 Tabler icon 時走這個位置，不要為了遷就 [icon] 把它挪到句首。
+  final IconData? trailingIcon;
   final double verticalPadding;
 
   @override
@@ -487,6 +492,10 @@ class BrandPrimaryButton extends StatelessWidget {
                       label,
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
+                    if (trailingIcon != null) ...[
+                      const SizedBox(width: 8),
+                      Icon(trailingIcon, size: 18),
+                    ],
                   ],
                 ),
         ),

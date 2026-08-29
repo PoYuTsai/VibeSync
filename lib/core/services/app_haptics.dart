@@ -48,6 +48,16 @@ abstract final class AppHaptics {
     if (enabled) HapticFeedback.heavyImpact();
   }
 
+  /// 強烈單發：一次性的「踏出去」轉場（開始和她聊）。原生沒有比 heavyImpact
+  /// 更重的單發，用極短間隔的重×2 疊成一記強震——比 medium() 明顯重，又不像
+  /// failure() 那樣讀起來是負面回饋。太重就把第二下拿掉。
+  static Future<void> strong() async {
+    if (!enabled) return;
+    HapticFeedback.heavyImpact();
+    await Future<void>.delayed(const Duration(milliseconds: 55));
+    if (enabled) HapticFeedback.heavyImpact();
+  }
+
   /// 答對：兩下往上跳（中→重）。間隔是體感參數，實機調。
   static Future<void> success() async {
     if (!enabled) return;
