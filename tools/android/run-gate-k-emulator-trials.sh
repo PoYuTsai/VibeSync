@@ -109,12 +109,20 @@ cleanup() {
 }
 
 verify_selected_ime() {
+    local max_polls="${1:-20}"
     local selected_ime
-    selected_ime="$(adb shell settings get secure default_input_method 2>/dev/null | tr -d '\r')"
-    [[ "$selected_ime" == "$ime_component" ]] || {
-        echo "Gate K prototype is not the selected default IME (selected=$selected_ime)" >&2
-        return 1
-    }
+    [[ "$max_polls" =~ ^[1-9][0-9]*$ ]] || return 1
+    for poll in $(seq 1 "$max_polls"); do
+        selected_ime="$(adb shell settings get secure default_input_method 2>/dev/null | tr -d '\r')"
+        if [[ "$selected_ime" == "$ime_component" ]]; then
+            return 0
+        fi
+        if (( poll < max_polls )); then
+            sleep 0.25
+        fi
+    done
+    echo "Gate K prototype is not the selected default IME (selected=$selected_ime)" >&2
+    return 1
 }
 
 verify_live_ime_visible() {
@@ -398,22 +406,32 @@ activity_package_is_foreground() {
         grep -F "$expected_package/" >/dev/null
 }
 
-for _ in $(seq 1 60); do
-    activity_dump="$(adb shell dumpsys activity activities 2>/dev/null | tr -d '\r')"
-    if activity_package_is_foreground "$activity_dump" "$host_package"; then
-        break
-    fi
-    sleep 0.25
-done
-activity_dump="$(adb shell dumpsys activity activities 2>/dev/null | tr -d '\r')"
-activity_package_is_foreground "$activity_dump" "$host_package" || {
+wait_for_host_foreground() {
+    local activity_dump=""
+    for _ in $(seq 1 60); do
+        activity_dump="$(adb shell dumpsys activity activities 2>/dev/null | tr -d '\r')"
+        if activity_package_is_foreground "$activity_dump" "$host_package"; then
+            if activity_package_is_foreground "$activity_dump" "$prototype_package"; then
+                return 1
+            fi
+            return 0
+        fi
+        sleep 0.25
+    done
+    return 1
+}
+
+wait_for_host_foreground || {
     echo "host activity did not become the resumed foreground package" >&2
     exit 1
 }
-if activity_package_is_foreground "$activity_dump" "$prototype_package"; then
-    echo "Gate K IME package incorrectly became the resumed host activity" >&2
-    exit 1
-fi
+
+start_trial_host() {
+    local nonce="$1"
+    adb shell am force-stop "$host_package" >/dev/null
+    adb shell am start -W -n "$host_package/.MainActivity" \
+        --es gate_k_nonce "$nonce" >/dev/null
+}
 
 adb shell ime set "$ime_component" >/dev/null
 verify_live_ime_visible
@@ -488,8 +506,11 @@ for trial in $(seq 1 "$trial_count"); do
         echo "trial nonce was reused" >&2
         exit 1
     }
-    adb shell am start -W -n "$host_package/.MainActivity" \
-        --es gate_k_nonce "$nonce" >/dev/null
+    start_trial_host "$nonce"
+    wait_for_host_foreground || {
+        echo "host activity did not become the resumed foreground package for trial $trial" >&2
+        exit 1
+    }
     wait_for_nonce "$nonce" || {
         echo "host nonce was not visible for trial $trial" >&2
         exit 1

@@ -170,7 +170,53 @@ printf "%s\\n" "${GATE_K_FAKE_IME:-}"
         command = (
             f'{shell}\n'
             'ime_component="com.vibesync.gatek/.GateKPrototypeInputMethodService"\n'
-            "verify_selected_ime\n"
+            "verify_selected_ime 1\n"
+        )
+        process = subprocess.run(
+            ["bash", "-c", command],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return process.returncode
+
+
+def run_runner_ime_selection_sequence(fake_imes: tuple[str, ...], max_polls: int) -> int:
+    with tempfile.TemporaryDirectory(prefix="gate-k-ime-sequence-test-") as temp_name:
+        temp_dir = Path(temp_name)
+        fake_adb = temp_dir / "adb"
+        fake_adb.write_text(
+            """#!/usr/bin/env bash
+if [[ "$#" -ne 5 || "$1" != "shell" || "$2" != "settings" ||
+      "$3" != "get" || "$4" != "secure" || "$5" != "default_input_method" ]]; then
+    echo 'unexpected IME verification command' >&2
+    exit 97
+fi
+count=0
+if [[ -f "$GATE_K_IME_COUNTER" ]]; then
+    count="$(cat "$GATE_K_IME_COUNTER")"
+fi
+count=$((count + 1))
+printf '%s' "$count" > "$GATE_K_IME_COUNTER"
+value="$(printf '%s\\n' "$GATE_K_FAKE_IME_SEQUENCE" | sed -n "${count}p")"
+if [[ -z "$value" ]]; then
+    value="$(printf '%s\\n' "$GATE_K_FAKE_IME_SEQUENCE" | tail -n 1)"
+fi
+printf '%s\\n' "$value"
+""",
+            encoding="utf-8",
+        )
+        fake_adb.chmod(0o755)
+        environment = os.environ.copy()
+        environment["PATH"] = f"{temp_dir}{os.pathsep}{environment['PATH']}"
+        environment["GATE_K_IME_COUNTER"] = str(temp_dir / "ime-counter")
+        environment["GATE_K_FAKE_IME_SEQUENCE"] = "\n".join(fake_imes)
+        shell = runner_shell_function("verify_selected_ime")
+        command = (
+            f'{shell}\n'
+            'ime_component="com.vibesync.gatek/.GateKPrototypeInputMethodService"\n'
+            f"verify_selected_ime {max_polls}\n"
         )
         process = subprocess.run(
             ["bash", "-c", command],
@@ -389,14 +435,39 @@ class GateKHarnessTest(unittest.TestCase):
                     "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
                 ),
             )
+        with self.subTest(selected="settles after ime set"):
+            self.assertEqual(
+                0,
+                run_runner_ime_selection_sequence(
+                    (
+                        "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
+                        "com.vibesync.gatek/.GateKPrototypeInputMethodService",
+                    ),
+                    2,
+                ),
+            )
+
+    def test_runner_restarts_host_and_rechecks_foreground_before_each_nonce(self) -> None:
+        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn("start_trial_host", runner)
+        self.assertIn('adb shell am force-stop "$host_package"', runner)
+        self.assertIn('adb shell am start -W -n "$host_package/.MainActivity"', runner)
+        loop = runner.index('for trial in $(seq 1 "$trial_count");')
+        start = runner.index('start_trial_host "$nonce"', loop)
+        foreground = runner.index("wait_for_host_foreground", start)
+        nonce = runner.index('wait_for_nonce "$nonce"', foreground)
+        self.assertLess(loop, start)
+        self.assertLess(start, foreground)
+        self.assertLess(foreground, nonce)
+        self.assertIn('wait_for_host_foreground || {', runner)
 
     def test_runner_requires_live_visible_gate_k_ime_before_trials(self) -> None:
         runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
             encoding="utf-8",
         )
-        host_check = runner.index(
-            'activity_package_is_foreground "$activity_dump" "$host_package" ||',
-        )
+        host_check = runner.index("wait_for_host_foreground || {")
         reselection = runner.index(
             'adb shell ime set "$ime_component"',
             host_check,
