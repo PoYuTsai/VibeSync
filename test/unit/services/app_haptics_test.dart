@@ -26,6 +26,7 @@ void main() {
     AppHaptics.tap();
     AppHaptics.light();
     AppHaptics.medium();
+    await AppHaptics.strong();
     await AppHaptics.success();
     await AppHaptics.failure();
     expect(vibrates, isEmpty);
@@ -38,6 +39,14 @@ void main() {
     expect(vibrates, [
       'HapticFeedbackType.lightImpact',
       'HapticFeedbackType.mediumImpact',
+      'HapticFeedbackType.heavyImpact',
+    ]);
+  });
+
+  test('strong 是重×2：比 medium 明顯重，給「開始和她聊」這種一次性轉場', () async {
+    await AppHaptics.strong();
+    expect(vibrates, [
+      'HapticFeedbackType.heavyImpact',
       'HapticFeedbackType.heavyImpact',
     ]);
   });

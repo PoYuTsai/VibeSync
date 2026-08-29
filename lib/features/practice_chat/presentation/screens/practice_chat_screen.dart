@@ -71,6 +71,10 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   // 先佔位，避免 listener 與 post-frame 兩條觸發路徑重入雙彈。
   bool _gameIntroChecked = false;
 
+  /// 已按「開始和她聊」進到對話框的場次 id。存 sessionId 而不是 bool：翻新一位、
+  /// 續玩開新場、還原別場都會換 id，畫面自動退回資料卡首屏，不必再補 reset。
+  String? _chatOpenedSessionId;
+
   @override
   void initState() {
     super.initState();
@@ -143,6 +147,15 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
     _inputFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// 首屏 CTA：一記強震（Eric 指定強烈觸覺）後直接進對話框——訊息還是空的，
+  /// 白底對話框先掛「你們怎麼認識的」，並把游標送進輸入列，讓使用者不必再點
+  /// 一次就能打第一句。
+  void _openChat(String sessionId) {
+    unawaited(AppHaptics.strong());
+    setState(() => _chatOpenedSessionId = sessionId);
+    _inputFocusNode.requestFocus();
   }
 
   Future<void> _send() async {
@@ -255,6 +268,11 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       }
     });
 
+    // 首屏＝資料卡：還沒按「開始和她聊」而且一則訊息都還沒送出。按下 CTA 後
+    // 即使 messages 仍是空的也算已開聊，畫面換成 compact header ＋ 對話框。
+    final showOpeningProfile =
+        state.messages.isEmpty && _chatOpenedSessionId != state.sessionId;
+
     // 尚未翻牌（locked / drawing / error）：不顯示任何對象，只給翻牌入口。
     final Widget content;
     final shouldShowLockedEntry = !state.isRevealed && state.girl == null;
@@ -292,7 +310,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
               // 開場前：難度控制（深色 scaffold 底，沿用原樣式；換一位入口
               // 已收斂角色圖鑑）。
               // 開聊後：compact identity header（小圓照片＋名字/職業/難度）。
-              if (state.messages.isEmpty)
+              if (showOpeningProfile)
                 _PracticeOpeningControls(
                   state: state,
                   onGameInfoTap: _openGameIntroSheet,
@@ -301,8 +319,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                 _PracticeProfileBar(state: state),
               Expanded(
                 child: _PracticeChatWorkspaceFrame(
-                  opening: state.messages.isEmpty,
-                  child: state.messages.isEmpty
+                  opening: showOpeningProfile,
+                  child: showOpeningProfile
                       ? _PracticeProfileHero(state: state)
                       : ListView(
                           controller: _scrollController,
@@ -310,6 +328,10 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                               ScrollViewKeyboardDismissBehavior.onDrag,
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
                           children: [
+                            // 空白對話框的場景說明：送出第一則後整塊消失，
+                            // 對話框回到純訊息流。
+                            if (state.messages.isEmpty)
+                              _PracticeChatOriginIntro(state: state),
                             // Game 局固定頂部教練泡泡：UI-only，不進
                             // state.messages／API payload／Hive。
                             if (state.learningMode == PracticeLearningMode.game)
@@ -369,6 +391,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                 inputController: _controller,
                 inputFocusNode: _inputFocusNode,
                 isDebriefing: state.isDebriefing,
+                showStartCta: showOpeningProfile,
+                onStartChat: () => _openChat(state.sessionId),
                 onSend: _send,
                 onEndPractice: () => ref
                     .read(practiceChatControllerProvider.notifier)
@@ -1138,138 +1162,200 @@ class _PracticeProfileHero extends StatelessWidget {
         visiblePracticeThreadId: state.visiblePracticeThreadId,
       ),
     );
-    // 鍵盤開啟時資訊卡被壓縮：拖動卡片（即使內容未超出可視高度）也要收鍵盤，
-    // 讓使用者能立刻回看完整資料。
-    return NotificationListener<ScrollStartNotification>(
-      onNotification: (notification) {
-        if (notification.dragDetails != null) {
-          FocusManager.instance.primaryFocus?.unfocus();
-        }
-        return false;
-      },
-      child: SingleChildScrollView(
-        key: const ValueKey('practice-profile-hero'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            GestureDetector(
-              key: const ValueKey('practice-profile-hero-photo'),
-              onTap: () => showPracticeGirlFullPhoto(context, girl),
-              child: Stack(
-                children: [
-                  PracticeGirlPhoto(
-                    profile: girl,
-                    width: double.infinity,
-                    height: 320,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  const Positioned(
-                    right: 10,
-                    bottom: 10,
-                    child: PracticeGirlPhotoExpandHint(),
-                  ),
-                ],
-              ),
+    // 首屏底部是「開始和她聊」CTA、沒有輸入框，鍵盤不可能壓在這張卡上面，
+    // 所以這裡不再需要拖動收鍵盤的保護。
+    return SingleChildScrollView(
+      key: const ValueKey('practice-profile-hero'),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            key: const ValueKey('practice-profile-hero-photo'),
+            onTap: () => showPracticeGirlFullPhoto(context, girl),
+            child: Stack(
+              children: [
+                PracticeGirlPhoto(
+                  profile: girl,
+                  width: double.infinity,
+                  height: 320,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                const Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: PracticeGirlPhotoExpandHint(),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              '${girl.displayName}，${girl.age}',
-              style: AppTypography.titleLarge.copyWith(
-                color: AppColors.onBackgroundPrimary,
-                fontWeight: FontWeight.w800,
-              ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '${girl.displayName}，${girl.age}',
+            style: AppTypography.titleLarge.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              fontWeight: FontWeight.w800,
             ),
-            const SizedBox(height: 4),
-            Text(
-              '${girl.professionLabel} · ${girl.city}',
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.onBackgroundSecondary,
-              ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${girl.professionLabel} · ${girl.city}',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.onBackgroundSecondary,
             ),
-            const SizedBox(height: 8),
-            // 夥伴稿：人格／興趣是一行點分隔文字，只有人格標籤用橘色，
-            // 不再是四顆橘框 chip 跟照片搶視覺。
-            Text.rich(
-              TextSpan(
-                children: [
-                  for (var i = 0; i < tags.length; i++) ...[
-                    if (i > 0)
-                      TextSpan(
-                        text: '  ·  ',
-                        style: TextStyle(
-                          color: AppColors.onBackgroundSecondary.withValues(
-                            alpha: 0.5,
-                          ),
+          ),
+          const SizedBox(height: 8),
+          // 夥伴稿：人格／興趣是一行點分隔文字，只有人格標籤用橘色，
+          // 不再是四顆橘框 chip 跟照片搶視覺。
+          Text.rich(
+            TextSpan(
+              children: [
+                for (var i = 0; i < tags.length; i++) ...[
+                  if (i > 0)
+                    TextSpan(
+                      text: '  ·  ',
+                      style: TextStyle(
+                        color: AppColors.onBackgroundSecondary.withValues(
+                          alpha: 0.5,
                         ),
                       ),
-                    TextSpan(
-                      text: tags[i],
-                      style: TextStyle(
-                        color: i == 0
-                            ? AppColors.ctaStart
-                            : AppColors.onBackgroundSecondary,
-                      ),
                     ),
-                  ],
+                  TextSpan(
+                    text: tags[i],
+                    style: TextStyle(
+                      color: i == 0
+                          ? AppColors.ctaStart
+                          : AppColors.onBackgroundSecondary,
+                    ),
+                  ),
                 ],
-              ),
-              style: AppTypography.bodyMedium.copyWith(height: 1.5),
+              ],
             ),
-            const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            style: AppTypography.bodyMedium.copyWith(height: 1.5),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.route_outlined,
+                size: 16,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  origin.sharedFact,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            girl.selfIntro,
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            state.learningMode == PracticeLearningMode.game
+                ? '這局是 Game：照五階段推進——開場、展示、測試、張力、收尾。\n'
+                    '第 1 步「開場」：用「狀態＋感受」丟一顆有情緒的球，'
+                    '留一半讓她想追問。別用「在幹嘛」查戶口開局。'
+                : '對方是個有自己個性的陪練女孩，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
+            key: const ValueKey('practice-hero-guidance'),
+            style: AppTypography.caption.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '首次 AI 回覆成功才扣 1 則；進來或送出失敗不扣。\n扣完這 1 則，本場最多可聊 20 則 AI 回覆，教練拆解不另扣。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.72),
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 空白對話框的開場說明：把「你們是怎麼認識的」直接寫在對話框裡。
+///
+/// 為什麼要在這裡再寫一次（資料卡上已經有一份）——按下「開始和她聊」之後資料卡
+/// 就收起來了，而認識場合正是決定第一句語氣的那個資訊（街頭搭訕跟 IG 冷私訊
+/// 的破冰方式完全不同）。送出第一則訊息後由呼叫端（messages.isEmpty）整塊撤掉，
+/// 不留在歷史訊息裡佔位。
+///
+/// 算法與 _PracticeProfileHero／practice_profile_sheet.dart 共用同一顆
+/// practiceAcquaintanceOriginFor，threadId 組法也一致，保證三個地方看到的是
+/// 同一個管道。
+class _PracticeChatOriginIntro extends StatelessWidget {
+  const _PracticeChatOriginIntro({required this.state});
+
+  final PracticeChatState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final girl = state.girl!;
+    final origin = practiceAcquaintanceOriginFor(
+      profileId: girl.profileId,
+      professionId: girl.professionId,
+      threadId: practiceThreadIdFor(
+        sessionId: state.sessionId,
+        visiblePracticeThreadId: state.visiblePracticeThreadId,
+      ),
+    );
+    return Padding(
+      key: const ValueKey('practice-chat-origin-intro'),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.ctaStart.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.route_outlined,
-                  size: 16,
-                  color:
-                      AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
+                const Icon(
+                  TablerIcons.route,
+                  size: 14,
+                  color: AppColors.ctaEnd,
                 ),
                 const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    origin.sharedFact,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.onBackgroundSecondary,
-                      height: 1.4,
-                    ),
+                Text(
+                  origin.label,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.ctaEnd,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              girl.selfIntro,
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.onBackgroundSecondary,
-                height: 1.5,
-              ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            origin.sharedFact,
+            textAlign: TextAlign.center,
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.5,
             ),
-            const SizedBox(height: 18),
-            Text(
-              state.learningMode == PracticeLearningMode.game
-                  ? '這局是 Game：照五階段推進——開場、展示、測試、張力、收尾。\n'
-                      '第 1 步「開場」：用「狀態＋感受」丟一顆有情緒的球，'
-                      '留一半讓她想追問。別用「在幹嘛」查戶口開局。'
-                  : '對方是個有自己個性的陪練女孩，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
-              key: const ValueKey('practice-hero-guidance'),
-              style: AppTypography.caption.copyWith(
-                color: AppColors.onBackgroundSecondary,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '首次 AI 回覆成功才扣 1 則；進來或送出失敗不扣。\n扣完這 1 則，本場最多可聊 20 則 AI 回覆，教練拆解不另扣。',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.72),
-                height: 1.45,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1529,6 +1615,8 @@ class _BottomBar extends StatelessWidget {
     required this.inputController,
     required this.inputFocusNode,
     required this.isDebriefing,
+    required this.showStartCta,
+    required this.onStartChat,
     required this.onSend,
     required this.onEndPractice,
     required this.onRequestHint,
@@ -1542,6 +1630,10 @@ class _BottomBar extends StatelessWidget {
   final TextEditingController inputController;
   final FocusNode inputFocusNode;
   final bool isDebriefing;
+
+  /// 首屏（資料卡）狀態：不給輸入框，只給「開始和她聊」CTA。
+  final bool showStartCta;
+  final VoidCallback onStartChat;
   final VoidCallback onSend;
   final VoidCallback onEndPractice;
   final VoidCallback onRequestHint;
@@ -1620,6 +1712,38 @@ class _BottomBar extends StatelessWidget {
     final quotaLabel = state.aiReplyCount == 0
         ? '首次 AI 回覆成功才扣 1 則'
         : '本場已扣 1 則，還能聊 ${state.remainingReplies} 則';
+    // 首屏：輸入框換成一顆 CTA。第一句的門檻不是「有沒有輸入框」，是「要不要
+    // 開始」——先把資料卡看完，按下去才進對話框（見 _openChat）。
+    if (showStartCta) {
+      return _BarContainer(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (state.isAssistedLearningMode) ...[
+              _TemperatureMeter(state: state),
+              const SizedBox(height: 12),
+            ],
+            Text(
+              quotaLabel,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            BrandPrimaryButton(
+              key: const ValueKey('practice-start-chat-cta'),
+              label: '開始和她聊',
+              // 句尾的 🤓 走 Tabler icon（2026-08-17 Eric 拍板：不用 iOS emoji），
+              // 位置維持在文案後面。
+              trailingIcon: TablerIcons.mood_nerd,
+              onPressed: canSend ? onStartChat : null,
+            ),
+          ],
+        ),
+      );
+    }
+
     void useHintReply(PracticeHintReply reply) {
       inputController.text = reply.text;
       inputController.selection = TextSelection.collapsed(
@@ -1647,8 +1771,8 @@ class _BottomBar extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ],
-          // iPhone 鍵盤沒有收起鍵：聚焦時給明確退出動作；開場前另給「看她的資料」
-          // （收鍵盤即回到完整資訊卡），開聊後資料入口已在 header 不重複。
+          // iPhone 鍵盤沒有收起鍵：聚焦時給明確退出動作。資料入口一律在 header
+          // 的 compact identity 列（點開 profile sheet），這裡不重複。
           ListenableBuilder(
             listenable: inputFocusNode,
             builder: (context, _) {
@@ -1656,20 +1780,8 @@ class _BottomBar extends StatelessWidget {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 2),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (state.messages.isEmpty)
-                      TextButton.icon(
-                        key: const ValueKey('practice-view-profile-action'),
-                        onPressed: () => inputFocusNode.unfocus(),
-                        icon: const Icon(Icons.badge_outlined, size: 15),
-                        label: const Text('看她的資料'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.onBackgroundSecondary,
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                        ),
-                      ),
-                    const Spacer(),
                     TextButton.icon(
                       key: const ValueKey('practice-dismiss-keyboard'),
                       onPressed: () => inputFocusNode.unfocus(),
