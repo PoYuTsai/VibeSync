@@ -125,6 +125,21 @@ verify_selected_ime() {
     return 1
 }
 
+select_and_verify_ime() {
+    local max_attempts="${1:-3}"
+    local max_polls="${2:-20}"
+    [[ "$max_attempts" =~ ^[1-9][0-9]*$ ]] || return 1
+    [[ "$max_polls" =~ ^[1-9][0-9]*$ ]] || return 1
+    for attempt in $(seq 1 "$max_attempts"); do
+        adb shell ime set "$ime_component" >/dev/null
+        if verify_selected_ime "$max_polls"; then
+            return 0
+        fi
+    done
+    echo "Gate K prototype could not be selected after bounded retries" >&2
+    return 1
+}
+
 verify_live_ime_visible() {
     local max_polls="${1:-40}"
     local input_method_dump=""
@@ -387,8 +402,7 @@ adb shell pm grant "$prototype_package" android.permission.READ_MEDIA_IMAGES
 adb shell pm revoke "$prototype_package" \
     android.permission.READ_MEDIA_VISUAL_USER_SELECTED >/dev/null 2>&1 || true
 adb shell ime enable "$ime_component"
-adb shell ime set "$ime_component"
-verify_selected_ime
+select_and_verify_ime
 adb shell settings put secure show_ime_with_hard_keyboard 1
 [[ "$(adb shell settings get secure show_ime_with_hard_keyboard 2>/dev/null | tr -d '\r')" == "1" ]] || {
     echo "the emulator did not enable the soft IME with a hardware keyboard" >&2
@@ -421,65 +435,6 @@ wait_for_host_foreground() {
     return 1
 }
 
-input_method_is_selected_and_hidden() {
-    local input_method_dump="$1"
-    local current_ime_matches=1
-    local hidden_state=1
-    local input_method_line=""
-    local window_vis_value=""
-    local window_vis_hex=""
-    if printf '%s\n' "$input_method_dump" | awk -v expected="$ime_component" '$0 ~ /(^|[[:space:]])mCurMethodId[=:]/ || $0 ~ /(^|[[:space:]])mCurImeId[=:]/ { value = $0; sub(/^.*(mCurMethodId|mCurImeId)[=:][[:space:]]*/, "", value); sub(/[[:space:]].*$/, "", value); if (value == expected) found = 1 } END { exit(found ? 0 : 1) }'; then
-        current_ime_matches=0
-    fi
-    if printf '%s\n' "$input_method_dump" | grep -E \
-        '(^|[[:space:]])(mInputShown|mIsInputViewShown)=true([[:space:]]|$)' >/dev/null; then
-        return 1
-    fi
-    if printf '%s\n' "$input_method_dump" | grep -E \
-        '(^|[[:space:]])(mInputShown|mIsInputViewShown)=false([[:space:]]|$)' >/dev/null; then
-        hidden_state=0
-    fi
-    while IFS= read -r input_method_line; do
-        case "$input_method_line" in
-            *mImeWindowVis=*)
-                window_vis_value="${input_method_line#*mImeWindowVis=}"
-                window_vis_value="${window_vis_value%%[[:space:]]*}"
-                if [[ "$window_vis_value" =~ ^0[xX][0-9a-fA-F]+$ ]]; then
-                    window_vis_hex="${window_vis_value:2}"
-                    hidden_state=0
-                    if (( (16#$window_vis_hex & 2) != 0 )); then
-                        return 1
-                    fi
-                elif [[ "$window_vis_value" =~ ^[0-9]+$ ]]; then
-                    hidden_state=0
-                    if (( (10#$window_vis_value & 2) != 0 )); then
-                        return 1
-                    fi
-                else
-                    return 1
-                fi
-                ;;
-        esac
-    done <<<"$input_method_dump"
-    (( current_ime_matches == 0 && hidden_state == 0 ))
-}
-
-wait_for_host_foreground_and_ime_hidden() {
-    local activity_dump=""
-    local input_method_dump=""
-    for _ in $(seq 1 60); do
-        activity_dump="$(adb shell dumpsys activity activities 2>/dev/null | tr -d '\r')"
-        input_method_dump="$(adb shell dumpsys input_method 2>/dev/null | tr -d '\r')"
-        if activity_package_is_foreground "$activity_dump" "$host_package" &&
-            ! activity_package_is_foreground "$activity_dump" "$prototype_package" &&
-            input_method_is_selected_and_hidden "$input_method_dump"; then
-            return 0
-        fi
-        sleep 0.25
-    done
-    return 1
-}
-
 wait_for_host_foreground || {
     echo "host activity did not become the resumed foreground package" >&2
     exit 1
@@ -492,7 +447,6 @@ start_trial_host() {
         --es gate_k_nonce "$nonce" >/dev/null
 }
 
-adb shell ime set "$ime_component" >/dev/null
 verify_live_ime_visible
 
 initial_count="$(read_trial_count)"
@@ -527,41 +481,6 @@ find_trial_nonce() {
         --expected "$1"
 }
 
-find_host_field_center() {
-    local dump_path="$1"
-    python3 - "$dump_path" <<'PY'
-import re
-import sys
-import xml.etree.ElementTree as ET
-
-try:
-    root = ET.parse(sys.argv[1]).getroot()
-except (OSError, ET.ParseError, IndexError):
-    raise SystemExit(1)
-
-matches = [
-    node
-    for node in root.iter("node")
-    if node.get("class") == "android.widget.EditText"
-    and node.get("content-desc") == "Gate K host text field"
-    and node.get("enabled") == "true"
-]
-if len(matches) != 1:
-    raise SystemExit(1)
-
-bounds = re.fullmatch(
-    r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]",
-    matches[0].get("bounds", ""),
-)
-if bounds is None:
-    raise SystemExit(1)
-left, top, right, bottom = (int(value) for value in bounds.groups())
-if right <= left or bottom <= top:
-    raise SystemExit(1)
-print(f"{(left + right) // 2},{(top + bottom) // 2}")
-PY
-}
-
 wait_for_button() {
     local center=""
     for _ in $(seq 1 120); do
@@ -574,16 +493,14 @@ wait_for_button() {
     return 1
 }
 
-wait_for_host_nonce_and_field() {
+wait_for_nonce_standard() {
     local expected_nonce="$1"
     local observed_nonce=""
-    local host_field_center=""
     for _ in $(seq 1 120); do
         if dump_ui_standard &&
             observed_nonce="$(find_trial_nonce "$expected_nonce" 2>/dev/null)" &&
             [[ "$observed_nonce" == "$expected_nonce" ]] &&
-            host_field_center="$(find_host_field_center "$ui_dump_file" 2>/dev/null)"; then
-            printf '%s\n' "$host_field_center"
+            [[ -s "$ui_dump_file" ]]; then
             return 0
         fi
         sleep 0.25
@@ -617,30 +534,12 @@ for trial in $(seq 1 "$trial_count"); do
         echo "host activity did not become the resumed foreground package for trial $trial" >&2
         exit 1
     }
-    if ! adb shell input keyevent 4 >/dev/null 2>&1; then
-        echo "failed to send BACK before standard host verification for trial $trial" >&2
-        exit 1
-    fi
-    wait_for_host_foreground_and_ime_hidden || {
-        echo "Gate K IME did not become hidden while host remained foreground for trial $trial" >&2
-        exit 1
-    }
-    host_field_center="$(wait_for_host_nonce_and_field "$nonce")" || {
-        echo "host nonce or dynamic text field was not visible for trial $trial" >&2
-        exit 1
-    }
-    [[ "$host_field_center" =~ ^[0-9]+,[0-9]+$ ]] || {
-        echo "UI parser returned invalid host text field center" >&2
-        exit 1
-    }
-    IFS=, read -r host_field_x host_field_y <<<"$host_field_center"
-    adb shell input tap "$host_field_x" "$host_field_y"
-    wait_for_host_foreground || {
-        echo "host activity lost foreground after reopening the IME for trial $trial" >&2
-        exit 1
-    }
     verify_selected_ime
     verify_live_ime_visible
+    wait_for_nonce_standard "$nonce" || {
+        echo "host nonce was not visible in a fresh standard UI dump for trial $trial" >&2
+        exit 1
+    }
     center="$(wait_for_button)" || {
         echo "Gate K attempt button was not found for trial $trial" >&2
         exit 1

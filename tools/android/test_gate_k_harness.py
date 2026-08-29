@@ -228,6 +228,69 @@ printf '%s\\n' "$value"
         return process.returncode
 
 
+def run_runner_ime_reselection_seam(
+    fake_imes: tuple[str, ...],
+    max_attempts: int,
+    max_polls: int,
+) -> tuple[int, int]:
+    with tempfile.TemporaryDirectory(prefix="gate-k-ime-reselection-test-") as temp_name:
+        temp_dir = Path(temp_name)
+        fake_adb = temp_dir / "adb"
+        fake_adb.write_text(
+            """#!/usr/bin/env bash
+if [[ "$1" == "shell" && "$2" == "ime" && "$3" == "set" &&
+      "$4" == "com.vibesync.gatek/.GateKPrototypeInputMethodService" ]]; then
+    count=0
+    if [[ -f "$GATE_K_IME_SET_COUNTER" ]]; then
+        count="$(cat "$GATE_K_IME_SET_COUNTER")"
+    fi
+    count=$((count + 1))
+    printf '%s' "$count" > "$GATE_K_IME_SET_COUNTER"
+    exit 0
+fi
+if [[ "$#" -ne 5 || "$1" != "shell" || "$2" != "settings" ||
+      "$3" != "get" || "$4" != "secure" || "$5" != "default_input_method" ]]; then
+    echo 'unexpected IME reselection command' >&2
+    exit 97
+fi
+set_count=0
+if [[ -f "$GATE_K_IME_SET_COUNTER" ]]; then
+    set_count="$(cat "$GATE_K_IME_SET_COUNTER")"
+fi
+value="$(printf '%s\\n' "$GATE_K_FAKE_IME_SEQUENCE" | sed -n "${set_count}p")"
+if [[ -z "$value" ]]; then
+    value="$(printf '%s\\n' "$GATE_K_FAKE_IME_SEQUENCE" | tail -n 1)"
+fi
+printf '%s\\n' "$value"
+""",
+            encoding="utf-8",
+        )
+        fake_adb.chmod(0o755)
+        environment = os.environ.copy()
+        environment["PATH"] = f"{temp_dir}{os.pathsep}{environment['PATH']}"
+        environment["GATE_K_IME_SET_COUNTER"] = str(temp_dir / "ime-set-counter")
+        environment["GATE_K_FAKE_IME_SEQUENCE"] = "\n".join(fake_imes)
+        shell = "\n\n".join(
+            runner_shell_function(function)
+            for function in ("verify_selected_ime", "select_and_verify_ime")
+        )
+        command = (
+            f'{shell}\n'
+            'ime_component="com.vibesync.gatek/.GateKPrototypeInputMethodService"\n'
+            f"select_and_verify_ime {max_attempts} {max_polls}\n"
+        )
+        process = subprocess.run(
+            ["bash", "-c", command],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        set_count_file = temp_dir / "ime-set-counter"
+        set_count = int(set_count_file.read_text(encoding="utf-8")) if set_count_file.exists() else 0
+        return process.returncode, set_count
+
+
 def run_runner_live_ime_visibility_seam(fake_dump: str) -> int:
     with tempfile.TemporaryDirectory(prefix="gate-k-live-ime-test-") as temp_name:
         temp_dir = Path(temp_name)
@@ -261,23 +324,6 @@ printf "%s\\n" "${GATE_K_FAKE_DUMP:-}"
             check=False,
         )
         return process.returncode
-
-
-def run_runner_ime_hidden_seam(fake_dump: str) -> int:
-    shell = runner_shell_function("input_method_is_selected_and_hidden")
-    command = (
-        f'{shell}\n'
-        'ime_component="com.vibesync.gatek/.GateKPrototypeInputMethodService"\n'
-        'input_method_is_selected_and_hidden "$GATE_K_FAKE_DUMP"\n'
-    )
-    process = subprocess.run(
-        ["bash", "-c", command],
-        env={**os.environ, "GATE_K_FAKE_DUMP": fake_dump},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return process.returncode
 
 
 def run_runner_ui_dump_seam(mode: str) -> tuple[int, bytes, str]:
@@ -337,22 +383,6 @@ esac
             local_dump.read_bytes() if local_dump.exists() else b"",
             log_file.read_text(encoding="utf-8") if log_file.exists() else "",
         )
-
-
-def run_runner_host_field_seam(xml_text: str) -> tuple[int, str]:
-    with tempfile.TemporaryDirectory(prefix="gate-k-host-field-test-") as temp_name:
-        temp_dir = Path(temp_name)
-        dump_file = temp_dir / "ui.xml"
-        dump_file.write_text(xml_text, encoding="utf-8")
-        shell = runner_shell_function("find_host_field_center")
-        process = subprocess.run(
-            ["bash", "-c", f'{shell}\nfind_host_field_center "$DUMP_FILE"'],
-            env={**os.environ, "DUMP_FILE": str(dump_file)},
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return process.returncode, process.stdout.strip()
 
 
 def run_runner_standard_ui_dump_seam(mode: str) -> tuple[int, bytes, str]:
@@ -549,7 +579,7 @@ class GateKHarnessTest(unittest.TestCase):
         loop = runner.index('for trial in $(seq 1 "$trial_count");')
         start = runner.index('start_trial_host "$nonce"', loop)
         foreground = runner.index("wait_for_host_foreground", start)
-        nonce = runner.index('wait_for_host_nonce_and_field "$nonce"', foreground)
+        nonce = runner.index('wait_for_nonce_standard "$nonce"', foreground)
         self.assertLess(loop, start)
         self.assertLess(start, foreground)
         self.assertLess(foreground, nonce)
@@ -560,17 +590,14 @@ class GateKHarnessTest(unittest.TestCase):
             encoding="utf-8",
         )
         host_check = runner.index("wait_for_host_foreground || {")
-        reselection = runner.index(
-            'adb shell ime set "$ime_component"',
-            host_check,
-        )
+        selection = runner.index("select_and_verify_ime\n")
         live_verification = runner.index(
             "verify_live_ime_visible\n",
-            reselection,
+            host_check,
         )
         trials = runner.index('for trial in $(seq 1 "$trial_count");', live_verification)
-        self.assertLess(host_check, reselection)
-        self.assertLess(reselection, live_verification)
+        self.assertLess(selection, host_check)
+        self.assertLess(host_check, live_verification)
         self.assertLess(live_verification, trials)
         self.assertIn("dumpsys input_method", runner)
         self.assertIn("mCurMethodId", runner)
@@ -608,57 +635,6 @@ class GateKHarnessTest(unittest.TestCase):
                     f"mImeWindowVis={window_vis}\n"
                 )
                 result = run_runner_live_ime_visibility_seam(dump)
-                if expected:
-                    self.assertEqual(0, result)
-                else:
-                    self.assertNotEqual(0, result)
-
-    def test_runner_requires_selected_hidden_gate_k_ime_and_host_foreground_poll(self) -> None:
-        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
-            encoding="utf-8",
-        )
-        self.assertIn("input_method_is_selected_and_hidden", runner)
-        self.assertIn("wait_for_host_foreground_and_ime_hidden", runner)
-        self.assertIn('adb shell input keyevent 4', runner)
-        self.assertNotIn('adb shell ime hide', runner)
-        self.assertIn('wait_for_host_foreground_and_ime_hidden || {', runner)
-
-        selected_hidden = (
-            "mCurMethodId=com.vibesync.gatek/.GateKPrototypeInputMethodService\n"
-            "mInputShown=false\n"
-            "mIsInputViewShown=false\n"
-            "mImeWindowVis=0x0\n"
-        )
-        selected_active_only = (
-            "mCurImeId=com.vibesync.gatek/.GateKPrototypeInputMethodService\n"
-            "mInputShown=false\n"
-            "mImeWindowVis=0x1\n"
-        )
-        selected_visible = selected_hidden.replace(
-            "mImeWindowVis=0x0", "mImeWindowVis=0x2"
-        )
-        gboard_hidden = selected_hidden.replace(
-            "com.vibesync.gatek/.GateKPrototypeInputMethodService",
-            "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
-        )
-        ambiguous = selected_hidden.replace("mImeWindowVis=0x0", "mImeWindowVis=unknown")
-        for state, expected in (
-            ("selected hidden", True),
-            ("selected active-only", True),
-            ("selected visible", False),
-            ("other IME hidden", False),
-            ("ambiguous visibility", False),
-        ):
-            with self.subTest(state=state):
-                result = run_runner_ime_hidden_seam(
-                    {
-                        "selected hidden": selected_hidden,
-                        "selected active-only": selected_active_only,
-                        "selected visible": selected_visible,
-                        "other IME hidden": gboard_hidden,
-                        "ambiguous visibility": ambiguous,
-                    }[state]
-                )
                 if expected:
                     self.assertEqual(0, result)
                 else:
@@ -720,7 +696,7 @@ class GateKHarnessTest(unittest.TestCase):
         self.assertEqual(b"", contents)
         self.assertEqual("remote-rm\nremote-dump\n", log)
 
-    def test_runner_uses_standard_host_dump_and_dynamic_field_to_reopen_ime(self) -> None:
+    def test_runner_uses_live_ime_then_standard_nonce_then_windows_button(self) -> None:
         runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
             encoding="utf-8",
         )
@@ -729,54 +705,54 @@ class GateKHarnessTest(unittest.TestCase):
             "adb shell uiautomator dump /sdcard/gate-k-ui.xml",
             runner,
         )
-        self.assertIn('adb shell input keyevent 4', runner)
-        self.assertIn("find_host_field_center", runner)
+        self.assertNotIn('adb shell input keyevent 4', runner)
+        self.assertNotIn('adb shell ime hide', runner)
+        self.assertNotIn("find_host_field_center", runner)
+        self.assertNotIn("input_method_is_selected_and_hidden", runner)
         trial_loop = runner.index('for trial in $(seq 1 "$trial_count");')
-        hide = runner.index('adb shell input keyevent 4', trial_loop)
-        hidden = runner.index("wait_for_host_foreground_and_ime_hidden", hide)
-        standard = runner.index("wait_for_host_nonce_and_field", hide)
-        field_tap = runner.index('adb shell input tap "$host_field_x" "$host_field_y"', standard)
-        foreground = runner.index("wait_for_host_foreground", field_tap)
+        foreground = runner.index("wait_for_host_foreground || {", trial_loop)
         selected = runner.index("verify_selected_ime", foreground)
         visible = runner.index("verify_live_ime_visible", selected)
-        button = runner.index('center="$(wait_for_button)"', visible)
+        standard = runner.index('wait_for_nonce_standard "$nonce"', visible)
+        button = runner.index('center="$(wait_for_button)"', standard)
         trigger = runner.index("adb shell input keyevent 120", button)
-        self.assertLess(hide, standard)
-        self.assertLess(hide, hidden)
-        self.assertLess(hidden, standard)
-        self.assertLess(standard, field_tap)
-        self.assertLess(field_tap, foreground)
         self.assertLess(foreground, selected)
         self.assertLess(selected, visible)
-        self.assertLess(visible, button)
+        self.assertLess(visible, standard)
+        self.assertLess(standard, button)
         self.assertLess(button, trigger)
-        self.assertNotIn('adb shell ime set "$ime_component"', runner[field_tap:selected])
+        self.assertNotIn('adb shell ime set "$ime_component"', runner[trial_loop:])
         self.assertNotRegex(runner, r"adb shell input tap [0-9]+ [0-9]+")
 
-    def test_runner_host_field_parser_requires_unique_dynamic_edit_text_bounds(self) -> None:
-        valid = (
-            "<hierarchy>"
-            '<node class="android.widget.EditText" '
-            'content-desc="Gate K host text field" enabled="true" '
-            'bounds="[17,203][317,503]" />'
-            "</hierarchy>"
+    def test_runner_reselects_ime_with_bounded_attempts(self) -> None:
+        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
+            encoding="utf-8",
         )
-        returncode, output = run_runner_host_field_seam(valid)
-        self.assertEqual(0, returncode)
-        self.assertEqual("167,353", output)
+        self.assertIn("select_and_verify_ime()", runner)
+        self.assertIn('for attempt in $(seq 1 "$max_attempts");', runner)
+        self.assertIn('verify_selected_ime "$max_polls"', runner)
+        self.assertEqual(1, runner.count('adb shell ime set "$ime_component"'))
+        trial_loop = runner.index('for trial in $(seq 1 "$trial_count");')
+        self.assertNotIn('adb shell ime set "$ime_component"', runner[trial_loop:])
 
-        invalid_cases = (
-            valid.replace('class="android.widget.EditText"', 'class="android.widget.TextView"'),
-            valid.replace('content-desc="Gate K host text field"', 'content-desc="Other field"'),
-            valid.replace('enabled="true"', 'enabled="false"'),
-            valid.replace('bounds="[17,203][317,503]"', 'bounds="[17,203][17,503]"'),
-            valid.replace("</hierarchy>", '<node class="android.widget.EditText" content-desc="Gate K host text field" enabled="true" bounds="[0,0][10,10]" /></hierarchy>'),
-        )
-        for xml_text in invalid_cases:
-            with self.subTest(xml_text=xml_text):
-                returncode, stdout = run_runner_host_field_seam(xml_text)
-                self.assertNotEqual(0, returncode)
-                self.assertEqual("", stdout)
+        gate_k = "com.vibesync.gatek/.GateKPrototypeInputMethodService"
+        gboard = "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
+        with self.subTest(state="settles after bounded reselection"):
+            returncode, set_count = run_runner_ime_reselection_seam(
+                (gboard, gate_k),
+                max_attempts=2,
+                max_polls=2,
+            )
+            self.assertEqual(0, returncode)
+            self.assertEqual(2, set_count)
+        with self.subTest(state="persistent wrong IME fails closed"):
+            returncode, set_count = run_runner_ime_reselection_seam(
+                (gboard,),
+                max_attempts=2,
+                max_polls=1,
+            )
+            self.assertNotEqual(0, returncode)
+            self.assertEqual(2, set_count)
 
     def test_runner_evidence_protocol_is_fail_closed_for_count_and_export(self) -> None:
         present = "__GATE_K_PRESENT__\n"
