@@ -115,7 +115,7 @@ cleanup() {
 ime_component_is_registered() {
     local ime_list
     local registered_ime
-    ime_list="$(adb shell ime list -s 2>/dev/null | tr -d '\r')" || return 1
+    ime_list="$(adb shell ime list -a -s 2>/dev/null | tr -d '\r')" || return 1
     while IFS= read -r registered_ime; do
         if [[ "$registered_ime" == "$ime_component" ]]; then
             return 0

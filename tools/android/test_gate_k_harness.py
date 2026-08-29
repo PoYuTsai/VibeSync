@@ -378,8 +378,8 @@ def run_runner_ime_registration_seam(
         fake_adb = temp_dir / "adb"
         fake_adb.write_text(
             """#!/usr/bin/env bash
-if [[ "$#" -eq 4 && "$1" == "shell" && "$2" == "ime" &&
-      "$3" == "list" && "$4" == "-s" ]]; then
+if [[ "$#" -eq 5 && "$1" == "shell" && "$2" == "ime" &&
+      "$3" == "list" && "$4" == "-a" && "$5" == "-s" ]]; then
     count=0
     if [[ -f "$GATE_K_IME_LIST_COUNTER" ]]; then
         count="$(cat "$GATE_K_IME_LIST_COUNTER")"
@@ -896,7 +896,7 @@ class GateKHarnessTest(unittest.TestCase):
         self.assertIn("dumpsys input_method", runner)
         self.assertIn("mCurMethodId", runner)
         self.assertIn("mCurImeId", runner)
-        self.assertIn("ime list -s", runner)
+        self.assertIn("ime list -a -s", runner)
 
         visible = (
             "mCurMethodId=com.vibesync.gatek/.GateKPrototypeInputMethodService\n"
@@ -940,7 +940,7 @@ class GateKHarnessTest(unittest.TestCase):
         )
         self.assertIn("ime_component_is_registered()", runner)
         self.assertIn("wait_for_ime_registration()", runner)
-        self.assertIn("adb shell ime list -s", runner)
+        self.assertIn("adb shell ime list -a -s", runner)
         enable_function = runner_shell_function("enable_gate_k_ime")
         self.assertLess(
             enable_function.index("wait_for_ime_registration"),
