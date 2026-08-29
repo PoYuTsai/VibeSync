@@ -984,6 +984,65 @@ class GateKHarnessTest(unittest.TestCase):
             (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(encoding="utf-8"),
         )
 
+    def test_query_debug_diagnostics_are_tag_scoped_and_privacy_safe(self) -> None:
+        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
+            encoding="utf-8",
+        )
+        service = (
+            REPO_ROOT
+            / "android/gate-k-prototype/src/main/kotlin/com/vibesync/gatek/"
+            "GateKPrototypeInputMethodService.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn('query_debug_tag="GateKQuery"', runner)
+        self.assertIn(r"\[DEBUG-GATEK-QUERY-V1\]", runner)
+        self.assertIn("adb logcat -c", runner)
+        self.assertIn(
+            'adb logcat -d -s "${query_debug_tag}:W" "*:S"',
+            runner,
+        )
+        self.assertIn("gate-k-query-debug-api${api_level}.log", runner)
+        self.assertIn("collect_query_debug_log", runner)
+        self.assertIn(
+            "stage=(query-call|query-null-cursor|cursor-move-first|"
+            "cursor-move-next|column-lookup-read|cursor-close)",
+            runner,
+        )
+        for line in runner.splitlines():
+            if "adb logcat -d" in line:
+                self.assertIn(" -s ", line)
+        self.assertNotIn("adb logcat -v", runner)
+        self.assertNotIn("error.message", service)
+        self.assertNotIn("Log.getStackTraceString", service)
+        self.assertIn("[DEBUG-GATEK-QUERY-V1]", service)
+        for stage in (
+            "query-call",
+            "query-null-cursor",
+            "cursor-move-first",
+            "cursor-move-next",
+            "column-lookup-read",
+            "cursor-close",
+        ):
+            self.assertIn(f'"{stage}"', service)
+        finalize = runner.index("finalize() {\n")
+        finalize_body = runner[finalize:]
+        self.assertLess(
+            finalize_body.index("collect_query_debug_log"),
+            finalize_body.index("collect_device_metadata"),
+        )
+
+    def test_workflow_uses_temporary_api34_stage_diagnostic_wrapper(self) -> None:
+        workflow = (
+            REPO_ROOT / ".github/workflows/gate-k-prototype.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("TEMP DIAGNOSTIC WRAPPER", workflow)
+        self.assertIn("gate_k_diagnostic_api_level=34", workflow)
+        self.assertIn("gate_k_diagnostic_trials=12", workflow)
+        self.assertIn('--trials "$gate_k_diagnostic_trials"', workflow)
+        self.assertIn("name: Gate K TEMP query-stage diagnostic API", workflow)
+        self.assertNotIn("api-level: 35", workflow)
+        self.assertNotIn("api-level: 36", workflow)
+        self.assertNotIn("--trials 40", workflow)
+
     def test_evidence_validator_recomputes_candidate_from_records(self) -> None:
         evidence = valid_evidence()
         group = evidence["summary"]["emulatorApiSummaries"]["34"]

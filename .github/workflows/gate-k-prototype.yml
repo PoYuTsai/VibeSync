@@ -92,19 +92,18 @@ jobs:
           retention-days: 14
 
   emulator:
-    name: Gate K API ${{ matrix.api-level }} emulator
+    name: Gate K TEMP query-stage diagnostic API ${{ matrix.api-level }}
     needs: static-and-unit
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
+      # TEMP DIAGNOSTIC WRAPPER: API 34 x 12 only to identify the query failure stage.
+      # Remove this restriction after one run reports the fixed stage, then restore
+      # the formal API 34/35/36 x 40 Gate K validation.
       matrix:
         include:
           - api-level: 34
-            target: google_apis
-          - api-level: 35
-            target: google_apis
-          - api-level: 36
             target: google_apis
     steps:
       - name: Checkout
@@ -171,7 +170,14 @@ jobs:
           script: |
             cd "$GITHUB_WORKSPACE"
             (cd android && ./gradlew --no-daemon :gate-k-prototype:connectedDebugAndroidTest)
-            GATE_K_OUTPUT_DIR="$GITHUB_WORKSPACE/gate-k-artifacts-api$GATE_K_API_LEVEL" bash tools/android/run-gate-k-emulator-trials.sh --api-level "$GATE_K_API_LEVEL" --trials 40
+            # TEMP DIAGNOSTIC WRAPPER — remove after the query stage is known.
+            gate_k_diagnostic_api_level=34
+            gate_k_diagnostic_trials=12
+            [[ "$GATE_K_API_LEVEL" == "$gate_k_diagnostic_api_level" ]]
+            GATE_K_OUTPUT_DIR="$GITHUB_WORKSPACE/gate-k-artifacts-api$gate_k_diagnostic_api_level" \
+              bash tools/android/run-gate-k-emulator-trials.sh \
+              --api-level "$gate_k_diagnostic_api_level" \
+              --trials "$gate_k_diagnostic_trials"
 
       - name: Upload API evidence and reports
         if: always()

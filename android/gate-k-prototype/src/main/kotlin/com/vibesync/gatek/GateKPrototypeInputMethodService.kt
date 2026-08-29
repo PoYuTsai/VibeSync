@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.util.Log
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.inputmethodservice.InputMethodService
@@ -33,6 +34,29 @@ import java.util.concurrent.atomic.AtomicBoolean
 class GateKPrototypeInputMethodService : InputMethodService() {
     private companion object {
         const val MAX_TRANSIENT_IMAGE_BYTES = 8 * 1024 * 1024
+        const val QUERY_DEBUG_TAG = "GateKQuery"
+        const val QUERY_DEBUG_MARKER = "[DEBUG-GATEK-QUERY-V1]"
+    }
+
+    private enum class QueryDebugStage(val wireName: String) {
+        QUERY_CALL("query-call"),
+        QUERY_NULL_CURSOR("query-null-cursor"),
+        CURSOR_MOVE_FIRST("cursor-move-first"),
+        CURSOR_MOVE_NEXT("cursor-move-next"),
+        COLUMN_LOOKUP_READ("column-lookup-read"),
+        CURSOR_CLOSE("cursor-close"),
+    }
+
+    /** Fixed, privacy-safe diagnostics: stage and exception class only. */
+    private fun logQueryDebug(stage: QueryDebugStage, exceptionClassName: String) {
+        Log.w(
+            QUERY_DEBUG_TAG,
+            "$QUERY_DEBUG_MARKER stage=${stage.wireName} exception=$exceptionClassName",
+        )
+    }
+
+    private fun logQueryDebug(stage: QueryDebugStage, error: RuntimeException) {
+        logQueryDebug(stage, error.javaClass.name)
     }
 
     private val pipeline = GateKObservationPipeline()
@@ -952,61 +976,94 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             mediaId,
         )
+        var queryDebugStage = QueryDebugStage.QUERY_CALL
         return try {
             val cursor = contentResolver.query(
                 itemUri,
                 mediaStoreProjection(),
                 null,
                 null,
-            ) ?: return MediaStoreCandidateQueryResult.Failed(
-                GateKCandidateReadinessFailure.QUERY_FAILED,
-            )
-            val record = cursor.use { cursor ->
-                if (!cursor.moveToFirst()) return@use MediaStoreCandidateRowResult.NotFound
-                if (cursor.moveToNext()) return@use MediaStoreCandidateRowResult.Invalid
-                val idIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID)
-                val relativePathIndex = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
-                val mimeTypeIndex = cursor.getColumnIndex(MediaStore.Images.Media.MIME_TYPE)
-                val widthIndex = cursor.getColumnIndex(MediaStore.Images.Media.WIDTH)
-                val heightIndex = cursor.getColumnIndex(MediaStore.Images.Media.HEIGHT)
-                val dateAddedIndex = cursor.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)
-                val dateModifiedIndex = cursor.getColumnIndex(MediaStore.Images.Media.DATE_MODIFIED)
-                val pendingIndex = cursor.getColumnIndex(MediaStore.Images.Media.IS_PENDING)
-                val generationIndex = cursor.getColumnIndex(MediaStore.MediaColumns.GENERATION_ADDED)
-                if (idIndex < 0 || dateAddedIndex < 0 || pendingIndex < 0 || generationIndex < 0) {
-                    return@use MediaStoreCandidateRowResult.Invalid
-                }
-                if (cursor.getIntOrZero(pendingIndex) != 0) {
-                    return@use MediaStoreCandidateRowResult.Invalid
-                }
-                val mediaId = cursor.getLongOrZero(idIndex)
-                val generation = cursor.getLongOrNull(generationIndex)
-                val dateAdded = cursor.getLongOrZero(dateAddedIndex)
-                if (mediaId <= 0L
-                    || mediaId.toString() != initialRecord.mediaId
-                    || generation == null
-                    || generation <= 0L
-                    || generation != initialRecord.generation
-                    || dateAdded <= 0L
-                ) {
-                    return@use MediaStoreCandidateRowResult.Invalid
-                }
-                MediaStoreCandidateRowResult.Ready(
-                    MediaStoreCandidateRecord(
-                        mediaId = mediaId.toString(),
-                        generation = generation,
-                        dateAddedEpochSec = dateAdded,
-                        dateModifiedEpochSec = cursor.getLongOrZero(dateModifiedIndex),
-                        metadata = MediaStoreImageMetadata(
-                            uri = itemUri.toString(),
-                            relativePath = cursor.getStringOrNull(relativePathIndex),
-                            mimeType = cursor.getStringOrNull(mimeTypeIndex),
-                            width = cursor.getIntOrZero(widthIndex),
-                            height = cursor.getIntOrZero(heightIndex),
-                            observedAtEpochMs = initialRecord.metadata.observedAtEpochMs,
-                        ),
-                    ),
+            ) ?: run {
+                logQueryDebug(QueryDebugStage.QUERY_NULL_CURSOR, "NullCursor")
+                return MediaStoreCandidateQueryResult.Failed(
+                    GateKCandidateReadinessFailure.QUERY_FAILED,
                 )
+            }
+            val record = cursor.use {
+                queryDebugStage = QueryDebugStage.CURSOR_MOVE_FIRST
+                val hasFirstRow = cursor.moveToFirst()
+                val rowResult = if (!hasFirstRow) {
+                    MediaStoreCandidateRowResult.NotFound
+                } else {
+                    queryDebugStage = QueryDebugStage.CURSOR_MOVE_NEXT
+                    val hasSecondRow = cursor.moveToNext()
+                    if (hasSecondRow) {
+                        MediaStoreCandidateRowResult.Invalid
+                    } else {
+                        queryDebugStage = QueryDebugStage.COLUMN_LOOKUP_READ
+                        run {
+                            val idIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID)
+                            val relativePathIndex =
+                                cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
+                            val mimeTypeIndex =
+                                cursor.getColumnIndex(MediaStore.Images.Media.MIME_TYPE)
+                            val widthIndex = cursor.getColumnIndex(MediaStore.Images.Media.WIDTH)
+                            val heightIndex = cursor.getColumnIndex(MediaStore.Images.Media.HEIGHT)
+                            val dateAddedIndex =
+                                cursor.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)
+                            val dateModifiedIndex =
+                                cursor.getColumnIndex(MediaStore.Images.Media.DATE_MODIFIED)
+                            val pendingIndex =
+                                cursor.getColumnIndex(MediaStore.Images.Media.IS_PENDING)
+                            val generationIndex =
+                                cursor.getColumnIndex(MediaStore.MediaColumns.GENERATION_ADDED)
+                            if (idIndex < 0
+                                || dateAddedIndex < 0
+                                || pendingIndex < 0
+                                || generationIndex < 0
+                            ) {
+                                MediaStoreCandidateRowResult.Invalid
+                            } else if (cursor.getIntOrZero(pendingIndex) != 0) {
+                                MediaStoreCandidateRowResult.Invalid
+                            } else {
+                                val rowMediaId = cursor.getLongOrZero(idIndex)
+                                val generation = cursor.getLongOrNull(generationIndex)
+                                val dateAdded = cursor.getLongOrZero(dateAddedIndex)
+                                if (rowMediaId <= 0L
+                                    || rowMediaId.toString() != initialRecord.mediaId
+                                    || generation == null
+                                    || generation <= 0L
+                                    || generation != initialRecord.generation
+                                    || dateAdded <= 0L
+                                ) {
+                                    MediaStoreCandidateRowResult.Invalid
+                                } else {
+                                    MediaStoreCandidateRowResult.Ready(
+                                        MediaStoreCandidateRecord(
+                                            mediaId = rowMediaId.toString(),
+                                            generation = generation,
+                                            dateAddedEpochSec = dateAdded,
+                                            dateModifiedEpochSec =
+                                                cursor.getLongOrZero(dateModifiedIndex),
+                                            metadata = MediaStoreImageMetadata(
+                                                uri = itemUri.toString(),
+                                                relativePath =
+                                                    cursor.getStringOrNull(relativePathIndex),
+                                                mimeType = cursor.getStringOrNull(mimeTypeIndex),
+                                                width = cursor.getIntOrZero(widthIndex),
+                                                height = cursor.getIntOrZero(heightIndex),
+                                                observedAtEpochMs =
+                                                    initialRecord.metadata.observedAtEpochMs,
+                                            ),
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                queryDebugStage = QueryDebugStage.CURSOR_CLOSE
+                rowResult
             }
             val afterVersionResult = GateKCandidateReadinessPolicy.classifyExpectedMediaStoreVersion(
                 expectedVersion = expectedMediaStoreVersion,
@@ -1031,11 +1088,13 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 is MediaStoreCandidateRowResult.Ready ->
                     MediaStoreCandidateQueryResult.Ready(record.record)
             }
-        } catch (_: SecurityException) {
+        } catch (error: SecurityException) {
+            logQueryDebug(queryDebugStage, error)
             MediaStoreCandidateQueryResult.Failed(
                 GateKCandidateReadinessFailure.GRANT_UNAVAILABLE,
             )
-        } catch (_: RuntimeException) {
+        } catch (error: RuntimeException) {
+            logQueryDebug(queryDebugStage, error)
             MediaStoreCandidateQueryResult.Failed(
                 GateKCandidateReadinessFailure.QUERY_FAILED,
             )

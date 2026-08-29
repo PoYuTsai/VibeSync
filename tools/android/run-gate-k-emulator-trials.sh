@@ -29,6 +29,7 @@ ime_component="$prototype_package/.GateKPrototypeInputMethodService"
 api_level=34
 trial_count=40
 output_dir="${GATE_K_OUTPUT_DIR:-$repo_root/.gate-k-artifacts-api34}"
+query_debug_tag="GateKQuery"
 # Give the IME/compositor a bounded settle window after the UI tap. This is
 # still well inside the 3-second Gate K attempt SLA and avoids racing the
 # MediaStore screenshot producer on slower emulators.
@@ -103,7 +104,9 @@ esac
 mkdir -p -- "$output_dir"
 evidence_file="$output_dir/gate-k-evidence-api${api_level}.json"
 metadata_file="$output_dir/device-metadata-api${api_level}.txt"
+query_debug_file="$output_dir/gate-k-query-debug-api${api_level}.log"
 rm -f -- "$evidence_file"
+rm -f -- "$query_debug_file"
 temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/gate-k-emulator.XXXXXX")"
 ui_dump_file="$temp_dir/ui.xml"
 current_evidence_file="$temp_dir/current-evidence.json"
@@ -335,11 +338,27 @@ collect_device_metadata() {
     } >"$metadata_file"
 }
 
+collect_query_debug_log() {
+    local debug_temp_file="$temp_dir/query-debug.log"
+    rm -f -- "$debug_temp_file" "$query_debug_file"
+    : >"$query_debug_file"
+    if ! command -v adb >/dev/null 2>&1; then
+        return 0
+    fi
+    adb logcat -d -s "${query_debug_tag}:W" "*:S" 2>/dev/null |
+        sed -nE 's/.*\[DEBUG-GATEK-QUERY-V1\] stage=(query-call|query-null-cursor|cursor-move-first|cursor-move-next|column-lookup-read|cursor-close) exception=([A-Za-z0-9_.$]+).*/[DEBUG-GATEK-QUERY-V1] stage=\1 exception=\2/p' \
+        >"$debug_temp_file" || true
+    mv -- "$debug_temp_file" "$query_debug_file" 2>/dev/null || {
+        rm -f -- "$debug_temp_file"
+    }
+}
+
 finalize() {
     local exit_code=$?
     trap - EXIT
     set +e
     export_evidence
+    collect_query_debug_log
     collect_device_metadata
     if [[ -s "$evidence_file" ]]; then
         if (( exit_code == 0 )); then
@@ -396,6 +415,10 @@ host_apk="$build_root/gate-k-host/outputs/apk/debug/gate-k-host-debug.apk"
 }
 
 timeout 60s adb wait-for-device >/dev/null
+adb logcat -c >/dev/null 2>&1 || {
+    echo "failed to clear Gate K query diagnostics" >&2
+    exit 1
+}
 adb install -r "$prototype_apk"
 adb install -r "$host_apk"
 if ! adb shell pm clear "$prototype_package" >/dev/null 2>&1; then
