@@ -714,6 +714,34 @@ class GateKHarnessTest(unittest.TestCase):
             observe.index("CandidateIdentity(sha256(candidate.content))"),
         )
 
+    def test_transient_read_zeroizes_every_exit_buffer(self) -> None:
+        service = (
+            REPO_ROOT
+            / "android/gate-k-prototype/src/main/kotlin/com/vibesync/gatek/"
+            / "GateKPrototypeInputMethodService.kt"
+        ).read_text(encoding="utf-8")
+        reader = (
+            REPO_ROOT
+            / "android/gate-k-prototype/src/main/kotlin/com/vibesync/gatek/"
+            / "GateKTransientContentReader.kt"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("import java.io.ByteArrayOutputStream", service)
+        self.assertNotIn("ByteArrayOutputStream()", service)
+        self.assertIn("GateKTransientContentReader.readBounded(", service)
+        self.assertIn("readBuffer.fill(0)", reader)
+        self.assertIn("output.wipe()", reader)
+        self.assertIn("oldBuffer.fill(0)", reader)
+
+        open_start = service.index("private fun openTransientContent(")
+        open_end = service.index("\n    private fun android.database.Cursor", open_start)
+        open_content = service[open_start:open_end]
+        self.assertIn("var returnedBytes: ByteArray? = null", open_content)
+        self.assertIn("returnedBytes = openedInput.readBounded()", open_content)
+        cleanup_start = open_content.index("        } finally {")
+        cleanup = open_content[cleanup_start:]
+        self.assertIn("returnedBytes?.fill(0)", cleanup)
+
     def test_runner_requires_selected_gate_k_ime_and_all_interactive_windows(self) -> None:
         runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
             encoding="utf-8",

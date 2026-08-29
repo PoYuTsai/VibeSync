@@ -18,7 +18,6 @@ import android.inputmethodservice.InputMethodService
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.UUID
 import java.util.concurrent.ExecutorService
@@ -1369,6 +1368,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         var input: InputStream? = null
         var lease: GateKActiveReadLease? = null
         var handedOff = false
+        var returnedBytes: ByteArray? = null
 
         fun closePublishedResources() {
             val resources = synchronized(resourceLock) {
@@ -1439,11 +1439,12 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 return TransientContentResult.Cancelled
             }
 
-            val bytes = openedInput.readBounded()
+            returnedBytes = openedInput.readBounded()
                 ?: return TransientContentResult.RetryableUnavailable
             if (lease?.isCancelled == true) {
                 return TransientContentResult.Cancelled
             }
+            val bytes = returnedBytes ?: return TransientContentResult.RetryableUnavailable
             handedOff = true
             TransientContentResult.Ready(bytes, lease!!)
         } catch (_: SecurityException) {
@@ -1470,6 +1471,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             }
         } finally {
             if (!handedOff) {
+                returnedBytes?.fill(0)
                 lease?.let { activeReadLifecycle.releaseRead(it) }
                 if (lease == null) {
                     try {
@@ -1489,17 +1491,15 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     }
 
     private fun InputStream.readBounded(): ByteArray? {
-        val output = ByteArrayOutputStream()
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        var total = 0
-        while (true) {
-            val read = read(buffer)
-            if (read < 0) break
-            total += read
-            if (total > MAX_TRANSIENT_IMAGE_BYTES) return null
-            output.write(buffer, 0, read)
-        }
-        return output.toByteArray()
+        return GateKTransientContentReader.readBounded(
+            input = this,
+            maxBytes = MAX_TRANSIENT_IMAGE_BYTES,
+            readBuffer = ByteArray(DEFAULT_BUFFER_SIZE),
+            output = GateKZeroizingByteArrayOutputStream(
+                maxBytes = MAX_TRANSIENT_IMAGE_BYTES,
+                initialCapacity = DEFAULT_BUFFER_SIZE,
+            ),
+        )
     }
 
     private fun android.database.Cursor.getStringOrNull(index: Int): String? =

@@ -187,13 +187,18 @@ class GateKActiveReadLifecycleTest {
         assertNull(result.get())
         assertEquals(0, pipelineCommits.get())
         assertTrue(bytes.all { it == 0.toByte() })
-        assertEquals(
-            GateKObservationResult.Accepted(
-                CandidateIdentity("039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"),
-            ),
-            pipeline.observe(
-                candidate.copy(content = ByteArray(4 * 1024) { 0x5a }),
-            ),
+        val postCancellationObservation = pipeline.observe(
+            candidate.copy(content = ByteArray(4 * 1024) { 0x5a }),
+        )
+        assertTrue(
+            "cancelled processing must not consume the candidate identity",
+            postCancellationObservation is GateKObservationResult.Accepted,
+        )
+        val duplicateAfterCancellation = pipeline.observe(
+            candidate.copy(content = ByteArray(4 * 1024) { 0x5a }),
+        )
+        assertTrue(
+            duplicateAfterCancellation is GateKObservationResult.DuplicateSuppressed,
         )
     }
 
