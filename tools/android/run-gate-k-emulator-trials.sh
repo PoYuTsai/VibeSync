@@ -108,6 +108,84 @@ cleanup() {
     rm -rf -- "$temp_dir"
 }
 
+verify_selected_ime() {
+    local selected_ime
+    selected_ime="$(adb shell settings get secure default_input_method 2>/dev/null | tr -d '\r')"
+    [[ "$selected_ime" == "$ime_component" ]] || {
+        echo "Gate K prototype is not the selected default IME (selected=$selected_ime)" >&2
+        return 1
+    }
+}
+
+verify_live_ime_visible() {
+    local max_polls="${1:-40}"
+    local input_method_dump=""
+    local current_ime_matches
+    local ime_visible
+    local input_method_line
+    local window_vis_seen
+    local window_vis_invalid
+    local window_vis_visible
+    local window_vis_value
+    local window_vis_hex
+    [[ "$max_polls" =~ ^[1-9][0-9]*$ ]] || return 1
+    for _ in $(seq 1 "$max_polls"); do
+        input_method_dump="$(adb shell dumpsys input_method 2>/dev/null | tr -d '\r')"
+        current_ime_matches=1
+        if printf '%s\n' "$input_method_dump" | awk -v expected="$ime_component" '
+            /(^|[[:space:]])mCurMethodId[=:]/ ||
+            /(^|[[:space:]])mCurImeId[=:]/ {
+                value = $0
+                sub(/^.*(mCurMethodId|mCurImeId)[=:][[:space:]]*/, "", value)
+                sub(/[[:space:]].*$/, "", value)
+                if (value == expected) found = 1
+            }
+            END { exit(found ? 0 : 1) }
+        '; then
+            current_ime_matches=0
+        fi
+        ime_visible=1
+        if printf '%s\n' "$input_method_dump" | grep -E \
+            '(^|[[:space:]])(mInputShown|mIsInputViewShown)=true([[:space:]]|$)' >/dev/null; then
+            ime_visible=0
+        fi
+        window_vis_seen=0
+        window_vis_invalid=0
+        window_vis_visible=1
+        while IFS= read -r input_method_line; do
+            case "$input_method_line" in
+                *mImeWindowVis=*)
+                    window_vis_seen=$((window_vis_seen + 1))
+                    window_vis_value="${input_method_line#*mImeWindowVis=}"
+                    window_vis_value="${window_vis_value%%[[:space:]]*}"
+                    if [[ "$window_vis_value" =~ ^0[xX][0-9a-fA-F]+$ ]]; then
+                        window_vis_hex="${window_vis_value:2}"
+                        if (( (16#$window_vis_hex & 2) != 0 )); then
+                            window_vis_visible=0
+                        fi
+                    elif [[ "$window_vis_value" =~ ^[0-9]+$ ]]; then
+                        if (( (10#$window_vis_value & 2) != 0 )); then
+                            window_vis_visible=0
+                        fi
+                    else
+                        window_vis_invalid=1
+                    fi
+                    ;;
+            esac
+        done <<<"$input_method_dump"
+        if (( ime_visible != 0 && window_vis_seen == 1 &&
+            window_vis_invalid == 0 && window_vis_visible == 0 )); then
+            ime_visible=0
+        fi
+        if (( current_ime_matches == 0 && ime_visible == 0 )); then
+            return 0
+        fi
+        sleep 0.25
+    done
+    echo "Gate K live IME is not the selected visible input method" >&2
+    return 1
+}
+
 fetch_evidence() {
     local destination="$1"
     local protocol_file="$temp_dir/evidence-protocol.txt"
@@ -302,6 +380,7 @@ adb shell pm revoke "$prototype_package" \
     android.permission.READ_MEDIA_VISUAL_USER_SELECTED >/dev/null 2>&1 || true
 adb shell ime enable "$ime_component"
 adb shell ime set "$ime_component"
+verify_selected_ime
 adb shell settings put secure show_ime_with_hard_keyboard 1
 [[ "$(adb shell settings get secure show_ime_with_hard_keyboard 2>/dev/null | tr -d '\r')" == "1" ]] || {
     echo "the emulator did not enable the soft IME with a hardware keyboard" >&2
@@ -336,6 +415,9 @@ if activity_package_is_foreground "$activity_dump" "$prototype_package"; then
     exit 1
 fi
 
+adb shell ime set "$ime_component" >/dev/null
+verify_live_ime_visible
+
 initial_count="$(read_trial_count)"
 [[ "$initial_count" == "0" ]] || {
     echo "evidence was not empty after app-private reset" >&2
@@ -343,8 +425,11 @@ initial_count="$(read_trial_count)"
 }
 
 dump_ui() {
-    adb shell uiautomator dump /sdcard/gate-k-ui.xml >/dev/null 2>&1
-    adb exec-out cat /sdcard/gate-k-ui.xml >"$ui_dump_file"
+    rm -f -- "$ui_dump_file" &&
+        adb shell rm -f /sdcard/gate-k-ui.xml >/dev/null 2>&1 &&
+        adb shell uiautomator dump --windows /sdcard/gate-k-ui.xml >/dev/null 2>&1 &&
+        adb exec-out cat /sdcard/gate-k-ui.xml >"$ui_dump_file" &&
+        [[ -s "$ui_dump_file" ]]
 }
 
 find_button_center() {

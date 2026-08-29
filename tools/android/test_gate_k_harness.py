@@ -147,6 +147,135 @@ printf "%s" "${GATE_K_FAKE_OUTPUT:-}"
         )
 
 
+def run_runner_ime_selection_seam(fake_ime: str) -> int:
+    with tempfile.TemporaryDirectory(prefix="gate-k-ime-test-") as temp_name:
+        temp_dir = Path(temp_name)
+        fake_adb = temp_dir / "adb"
+        fake_adb.write_text(
+            """#!/usr/bin/env bash
+if [[ "$#" -ne 5 || "$1" != "shell" || "$2" != "settings" ||
+      "$3" != "get" || "$4" != "secure" || "$5" != "default_input_method" ]]; then
+    echo 'unexpected IME verification command' >&2
+    exit 97
+fi
+printf "%s\\n" "${GATE_K_FAKE_IME:-}"
+""",
+            encoding="utf-8",
+        )
+        fake_adb.chmod(0o755)
+        environment = os.environ.copy()
+        environment["PATH"] = f"{temp_dir}{os.pathsep}{environment['PATH']}"
+        environment["GATE_K_FAKE_IME"] = fake_ime
+        shell = runner_shell_function("verify_selected_ime")
+        command = (
+            f'{shell}\n'
+            'ime_component="com.vibesync.gatek/.GateKPrototypeInputMethodService"\n'
+            "verify_selected_ime\n"
+        )
+        process = subprocess.run(
+            ["bash", "-c", command],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return process.returncode
+
+
+def run_runner_live_ime_visibility_seam(fake_dump: str) -> int:
+    with tempfile.TemporaryDirectory(prefix="gate-k-live-ime-test-") as temp_name:
+        temp_dir = Path(temp_name)
+        fake_adb = temp_dir / "adb"
+        fake_adb.write_text(
+            """#!/usr/bin/env bash
+if [[ "$#" -ne 3 || "$1" != "shell" || "$2" != "dumpsys" ||
+      "$3" != "input_method" ]]; then
+    echo 'unexpected live IME inspection command' >&2
+    exit 97
+fi
+printf "%s\\n" "${GATE_K_FAKE_DUMP:-}"
+""",
+            encoding="utf-8",
+        )
+        fake_adb.chmod(0o755)
+        environment = os.environ.copy()
+        environment["PATH"] = f"{temp_dir}{os.pathsep}{environment['PATH']}"
+        environment["GATE_K_FAKE_DUMP"] = fake_dump
+        shell = runner_shell_function("verify_live_ime_visible")
+        command = (
+            f'{shell}\n'
+            'ime_component="com.vibesync.gatek/.GateKPrototypeInputMethodService"\n'
+            "verify_live_ime_visible 1\n"
+        )
+        process = subprocess.run(
+            ["bash", "-c", command],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return process.returncode
+
+
+def run_runner_ui_dump_seam(mode: str) -> tuple[int, bytes, str]:
+    with tempfile.TemporaryDirectory(prefix="gate-k-ui-dump-test-") as temp_name:
+        temp_dir = Path(temp_name)
+        fake_adb = temp_dir / "adb"
+        fake_adb.write_text(
+            """#!/usr/bin/env bash
+case "$*" in
+  "shell rm -f /sdcard/gate-k-ui.xml")
+    printf 'remote-rm\\n' >> "$GATE_K_UI_LOG"
+    if [[ "$GATE_K_UI_MODE" == "rm-fails" ]]; then exit 1; fi
+    exit 0
+    ;;
+  "shell uiautomator dump --windows /sdcard/gate-k-ui.xml")
+    printf 'remote-dump\\n' >> "$GATE_K_UI_LOG"
+    if [[ "$GATE_K_UI_MODE" == "dump-fails" ]]; then exit 1; fi
+    exit 0
+    ;;
+  "exec-out cat /sdcard/gate-k-ui.xml")
+    printf 'remote-cat\\n' >> "$GATE_K_UI_LOG"
+    if [[ "$GATE_K_UI_MODE" == "missing" ]]; then exit 0; fi
+    printf '%s' "${GATE_K_UI_PAYLOAD:-}"
+    ;;
+  *)
+    echo 'unexpected UI dump command' >&2
+    exit 97
+    ;;
+esac
+""",
+            encoding="utf-8",
+        )
+        fake_adb.chmod(0o755)
+        local_dump = temp_dir / "ui.xml"
+        local_dump.write_text("<hierarchy>old</hierarchy>", encoding="utf-8")
+        command = (
+            f'{runner_shell_function("dump_ui")}\n'
+            f'ui_dump_file="$GATE_K_UI_DUMP"\n'
+            "dump_ui\n"
+        )
+        environment = os.environ.copy()
+        environment["PATH"] = f"{temp_dir}{os.pathsep}{environment['PATH']}"
+        environment["GATE_K_UI_MODE"] = mode
+        environment["GATE_K_UI_LOG"] = str(temp_dir / "adb.log")
+        environment["GATE_K_UI_DUMP"] = str(local_dump)
+        environment["GATE_K_UI_PAYLOAD"] = "<hierarchy><node /></hierarchy>"
+        process = subprocess.run(
+            ["bash", "-c", command],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        log_file = temp_dir / "adb.log"
+        return (
+            process.returncode,
+            local_dump.read_bytes() if local_dump.exists() else b"",
+            log_file.read_text(encoding="utf-8") if log_file.exists() else "",
+        )
+
+
 def valid_evidence() -> dict:
     record = {
         "trialId": "trial-1",
@@ -230,6 +359,124 @@ def valid_evidence() -> dict:
 
 
 class GateKHarnessTest(unittest.TestCase):
+    def test_runner_requires_selected_gate_k_ime_and_all_interactive_windows(self) -> None:
+        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn('adb shell ime set "$ime_component"', runner)
+        self.assertIn("settings get secure default_input_method", runner)
+        self.assertIn("verify_selected_ime", runner)
+        self.assertIn(
+            "adb shell uiautomator dump --windows /sdcard/gate-k-ui.xml",
+            runner,
+        )
+        self.assertIn(
+            "adb shell uiautomator dump --windows /sdcard/gate-k-ui.xml >/dev/null 2>&1 &&",
+            runner,
+        )
+
+        with self.subTest(selected="Gate K prototype"):
+            self.assertEqual(
+                0,
+                run_runner_ime_selection_seam(
+                    "com.vibesync.gatek/.GateKPrototypeInputMethodService",
+                ),
+            )
+        with self.subTest(selected="Gboard"):
+            self.assertNotEqual(
+                0,
+                run_runner_ime_selection_seam(
+                    "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
+                ),
+            )
+
+    def test_runner_requires_live_visible_gate_k_ime_before_trials(self) -> None:
+        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
+            encoding="utf-8",
+        )
+        host_check = runner.index(
+            'activity_package_is_foreground "$activity_dump" "$host_package" ||',
+        )
+        reselection = runner.index(
+            'adb shell ime set "$ime_component"',
+            host_check,
+        )
+        live_verification = runner.index(
+            "verify_live_ime_visible\n",
+            reselection,
+        )
+        trials = runner.index('for trial in $(seq 1 "$trial_count");', live_verification)
+        self.assertLess(host_check, reselection)
+        self.assertLess(reselection, live_verification)
+        self.assertLess(live_verification, trials)
+        self.assertIn("dumpsys input_method", runner)
+        self.assertIn("mCurMethodId", runner)
+        self.assertIn("mCurImeId", runner)
+        self.assertNotIn("ime list", runner)
+
+        visible = (
+            "mCurMethodId=com.vibesync.gatek/.GateKPrototypeInputMethodService\n"
+            "mInputShown=true\n"
+        )
+        gboard = (
+            "mCurMethodId=com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME\n"
+            "mInputShown=true\n"
+        )
+        invisible = (
+            "mCurImeId=com.vibesync.gatek/.GateKPrototypeInputMethodService\n"
+            "mInputShown=false\n"
+        )
+        with self.subTest(state="Gate K visible"):
+            self.assertEqual(0, run_runner_live_ime_visibility_seam(visible))
+        with self.subTest(state="Gboard visible"):
+            self.assertNotEqual(0, run_runner_live_ime_visibility_seam(gboard))
+        with self.subTest(state="Gate K invisible"):
+            self.assertNotEqual(0, run_runner_live_ime_visibility_seam(invisible))
+        for window_vis, expected in (
+            ("0x1", False),
+            ("0x3", True),
+            ("0x4", False),
+            ("0x8", False),
+            ("2", True),
+        ):
+            with self.subTest(state=f"Gate K mImeWindowVis={window_vis}"):
+                dump = (
+                    "mCurMethodId=com.vibesync.gatek/.GateKPrototypeInputMethodService\n"
+                    f"mImeWindowVis={window_vis}\n"
+                )
+                result = run_runner_live_ime_visibility_seam(dump)
+                if expected:
+                    self.assertEqual(0, result)
+                else:
+                    self.assertNotEqual(0, result)
+
+    def test_runner_dump_ui_clears_stale_files_and_requires_fresh_output(self) -> None:
+        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn('rm -f -- "$ui_dump_file"', runner)
+        self.assertIn("adb shell rm -f /sdcard/gate-k-ui.xml", runner)
+        self.assertIn(
+            "adb shell uiautomator dump --windows /sdcard/gate-k-ui.xml",
+            runner,
+        )
+        self.assertIn('[[ -s "$ui_dump_file" ]]', runner)
+
+        returncode, contents, log = run_runner_ui_dump_seam("present")
+        self.assertEqual(0, returncode)
+        self.assertTrue(contents)
+        self.assertEqual("remote-rm\nremote-dump\nremote-cat\n", log)
+
+        returncode, contents, log = run_runner_ui_dump_seam("missing")
+        self.assertNotEqual(0, returncode)
+        self.assertEqual(b"", contents)
+        self.assertEqual("remote-rm\nremote-dump\nremote-cat\n", log)
+
+        returncode, contents, log = run_runner_ui_dump_seam("dump-fails")
+        self.assertNotEqual(0, returncode)
+        self.assertEqual(b"", contents)
+        self.assertEqual("remote-rm\nremote-dump\n", log)
+
     def test_runner_evidence_protocol_is_fail_closed_for_count_and_export(self) -> None:
         present = "__GATE_K_PRESENT__\n"
         count_cases = (
