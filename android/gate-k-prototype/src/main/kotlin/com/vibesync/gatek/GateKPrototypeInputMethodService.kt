@@ -10,7 +10,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.MediaStore
-import android.util.Log
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.inputmethodservice.InputMethodService
@@ -61,29 +60,6 @@ internal object GateKSingleRowCursorPolicy {
 class GateKPrototypeInputMethodService : InputMethodService() {
     private companion object {
         const val MAX_TRANSIENT_IMAGE_BYTES = 8 * 1024 * 1024
-        const val QUERY_DEBUG_TAG = "GateKQuery"
-        const val QUERY_DEBUG_MARKER = "[DEBUG-GATEK-QUERY-V1]"
-    }
-
-    private enum class QueryDebugStage(val wireName: String) {
-        QUERY_CALL("query-call"),
-        QUERY_NULL_CURSOR("query-null-cursor"),
-        CURSOR_MOVE_FIRST("cursor-move-first"),
-        CURSOR_MOVE_NEXT("cursor-move-next"),
-        COLUMN_LOOKUP_READ("column-lookup-read"),
-        CURSOR_CLOSE("cursor-close"),
-    }
-
-    /** Fixed, privacy-safe diagnostics: stage and exception class only. */
-    private fun logQueryDebug(stage: QueryDebugStage, exceptionClassName: String) {
-        Log.w(
-            QUERY_DEBUG_TAG,
-            "$QUERY_DEBUG_MARKER stage=${stage.wireName} exception=$exceptionClassName",
-        )
-    }
-
-    private fun logQueryDebug(stage: QueryDebugStage, error: RuntimeException) {
-        logQueryDebug(stage, error.javaClass.name)
     }
 
     private val pipeline = GateKObservationPipeline()
@@ -1003,7 +979,6 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             mediaId,
         )
-        var queryDebugStage = QueryDebugStage.QUERY_CALL
         return try {
             val cursor = contentResolver.query(
                 itemUri,
@@ -1011,7 +986,6 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 null,
                 null,
             ) ?: run {
-                logQueryDebug(QueryDebugStage.QUERY_NULL_CURSOR, "NullCursor")
                 return MediaStoreCandidateQueryResult.Failed(
                     GateKCandidateReadinessFailure.QUERY_FAILED,
                 )
@@ -1019,11 +993,9 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             val record = cursor.use {
                 val cursorResult = GateKSingleRowCursorPolicy.readExactlyOne(
                     moveToFirst = {
-                        queryDebugStage = QueryDebugStage.CURSOR_MOVE_FIRST
                         cursor.moveToFirst()
                     },
                     snapshot = {
-                        queryDebugStage = QueryDebugStage.COLUMN_LOOKUP_READ
                         run {
                             val idIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID)
                             val relativePathIndex =
@@ -1085,11 +1057,9 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                         }
                     },
                     moveToNext = {
-                        queryDebugStage = QueryDebugStage.CURSOR_MOVE_NEXT
                         cursor.moveToNext()
                     },
                 )
-                queryDebugStage = QueryDebugStage.CURSOR_CLOSE
                 when (cursorResult) {
                     GateKSingleRowCursorResult.NotFound ->
                         MediaStoreCandidateRowResult.NotFound
@@ -1124,13 +1094,11 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 is MediaStoreCandidateRowResult.Ready ->
                     MediaStoreCandidateQueryResult.Ready(record.record)
             }
-        } catch (error: SecurityException) {
-            logQueryDebug(queryDebugStage, error)
+        } catch (_: SecurityException) {
             MediaStoreCandidateQueryResult.Failed(
                 GateKCandidateReadinessFailure.GRANT_UNAVAILABLE,
             )
-        } catch (error: RuntimeException) {
-            logQueryDebug(queryDebugStage, error)
+        } catch (_: RuntimeException) {
             MediaStoreCandidateQueryResult.Failed(
                 GateKCandidateReadinessFailure.QUERY_FAILED,
             )

@@ -29,7 +29,6 @@ ime_component="$prototype_package/.GateKPrototypeInputMethodService"
 api_level=34
 trial_count=40
 output_dir="${GATE_K_OUTPUT_DIR:-$repo_root/.gate-k-artifacts-api34}"
-query_debug_tag="GateKQuery"
 # Give the IME/compositor a bounded settle window after the UI tap. This is
 # still well inside the 3-second Gate K attempt SLA and avoids racing the
 # MediaStore screenshot producer on slower emulators.
@@ -104,11 +103,7 @@ esac
 mkdir -p -- "$output_dir"
 evidence_file="$output_dir/gate-k-evidence-api${api_level}.json"
 metadata_file="$output_dir/device-metadata-api${api_level}.txt"
-query_debug_file="$output_dir/gate-k-query-debug-api${api_level}.log"
-ime_debug_file="$output_dir/gate-k-ime-debug-api${api_level}.log"
 rm -f -- "$evidence_file"
-rm -f -- "$query_debug_file"
-rm -f -- "$ime_debug_file"
 temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/gate-k-emulator.XXXXXX")"
 ui_dump_file="$temp_dir/ui.xml"
 current_evidence_file="$temp_dir/current-evidence.json"
@@ -149,40 +144,9 @@ select_and_verify_ime() {
     return 1
 }
 
-write_ime_debug() {
-    local default_selected_match="$1"
-    local mcur_method_seen="$2"
-    local mcur_ime_seen="$3"
-    local mcur_id_seen="$4"
-    local current_expected_match="$5"
-    local input_shown_seen="$6"
-    local input_shown_true="$7"
-    local is_input_view_shown_seen="$8"
-    local is_input_view_shown_true="$9"
-    local window_vis_count="${10}"
-    local window_vis_invalid="${11}"
-    local window_vis_visible_bit="${12}"
-
-    [[ -n "${ime_debug_file:-}" ]] || return 0
-    printf '[DEBUG-GATEK-IME-V1] default-selected-match=%s mCurMethodId-seen=%s mCurImeId-seen=%s mCurId-seen=%s current-expected-match=%s mInputShown-seen=%s mInputShown-true=%s mIsInputViewShown-seen=%s mIsInputViewShown-true=%s mImeWindowVis-count=%s mImeWindowVis-invalid=%s mImeWindowVis-visible-bit=%s\n' \
-        "$default_selected_match" \
-        "$mcur_method_seen" \
-        "$mcur_ime_seen" \
-        "$mcur_id_seen" \
-        "$current_expected_match" \
-        "$input_shown_seen" \
-        "$input_shown_true" \
-        "$is_input_view_shown_seen" \
-        "$is_input_view_shown_true" \
-        "$window_vis_count" \
-        "$window_vis_invalid" \
-        "$window_vis_visible_bit" >"$ime_debug_file"
-}
-
 verify_live_ime_visible() {
     local max_polls="${1:-40}"
     local input_method_dump=""
-    local selected_ime=""
     local current_ime_matches
     local ime_visible
     local input_method_line
@@ -191,46 +155,10 @@ verify_live_ime_visible() {
     local window_vis_visible
     local window_vis_value
     local window_vis_hex
-    local ime_debug_default_selected_match=0
-    local ime_debug_mcur_method_seen=0
-    local ime_debug_mcur_ime_seen=0
-    local ime_debug_mcur_id_seen=0
-    local ime_debug_current_expected_match=0
-    local ime_debug_input_shown_seen=0
-    local ime_debug_input_shown_true=0
-    local ime_debug_is_input_view_shown_seen=0
-    local ime_debug_is_input_view_shown_true=0
-    local ime_debug_window_vis_count=0
-    local ime_debug_window_vis_invalid=0
-    local ime_debug_window_vis_visible_bit=0
-    if [[ ! "$max_polls" =~ ^[1-9][0-9]*$ ]]; then
-        write_ime_debug 0 0 0 0 0 0 0 0 0 0 0 0
-        return 1
-    fi
+    [[ "$max_polls" =~ ^[1-9][0-9]*$ ]] || return 1
     for _ in $(seq 1 "$max_polls"); do
-        selected_ime="$(adb shell settings get secure default_input_method 2>/dev/null | tr -d '\r')"
-        ime_debug_default_selected_match=0
-        if [[ "$selected_ime" == "$ime_component" ]]; then
-            ime_debug_default_selected_match=1
-        fi
         input_method_dump="$(adb shell dumpsys input_method 2>/dev/null | tr -d '\r')"
-        ime_debug_mcur_method_seen=0
-        if printf '%s\n' "$input_method_dump" | grep -E \
-            '(^|[[:space:]])mCurMethodId[=:]' >/dev/null; then
-            ime_debug_mcur_method_seen=1
-        fi
-        ime_debug_mcur_ime_seen=0
-        if printf '%s\n' "$input_method_dump" | grep -E \
-            '(^|[[:space:]])mCurImeId[=:]' >/dev/null; then
-            ime_debug_mcur_ime_seen=1
-        fi
-        ime_debug_mcur_id_seen=0
-        if printf '%s\n' "$input_method_dump" | grep -E \
-            '(^|[[:space:]])mCurId[=:]' >/dev/null; then
-            ime_debug_mcur_id_seen=1
-        fi
         current_ime_matches=1
-        ime_debug_current_expected_match=0
         if printf '%s\n' "$input_method_dump" | awk -v expected="$ime_component" '
             /(^|[[:space:]])mCurMethodId[=:]/ ||
             /(^|[[:space:]])mCurImeId[=:]/ {
@@ -242,29 +170,8 @@ verify_live_ime_visible() {
             END { exit(found ? 0 : 1) }
         '; then
             current_ime_matches=0
-            ime_debug_current_expected_match=1
         fi
         ime_visible=1
-        ime_debug_input_shown_seen=0
-        if printf '%s\n' "$input_method_dump" | grep -E \
-            '(^|[[:space:]])mInputShown[=:]' >/dev/null; then
-            ime_debug_input_shown_seen=1
-        fi
-        ime_debug_input_shown_true=0
-        if printf '%s\n' "$input_method_dump" | grep -E \
-            '(^|[[:space:]])mInputShown=true([[:space:]]|$)' >/dev/null; then
-            ime_debug_input_shown_true=1
-        fi
-        ime_debug_is_input_view_shown_seen=0
-        if printf '%s\n' "$input_method_dump" | grep -E \
-            '(^|[[:space:]])mIsInputViewShown[=:]' >/dev/null; then
-            ime_debug_is_input_view_shown_seen=1
-        fi
-        ime_debug_is_input_view_shown_true=0
-        if printf '%s\n' "$input_method_dump" | grep -E \
-            '(^|[[:space:]])mIsInputViewShown=true([[:space:]]|$)' >/dev/null; then
-            ime_debug_is_input_view_shown_true=1
-        fi
         if printf '%s\n' "$input_method_dump" | grep -E \
             '(^|[[:space:]])(mInputShown|mIsInputViewShown)=true([[:space:]]|$)' >/dev/null; then
             ime_visible=0
@@ -272,7 +179,6 @@ verify_live_ime_visible() {
         window_vis_seen=0
         window_vis_invalid=0
         window_vis_visible=1
-        ime_debug_window_vis_visible_bit=0
         while IFS= read -r input_method_line; do
             case "$input_method_line" in
                 *mImeWindowVis=*)
@@ -283,12 +189,10 @@ verify_live_ime_visible() {
                         window_vis_hex="${window_vis_value:2}"
                         if (( (16#$window_vis_hex & 2) != 0 )); then
                             window_vis_visible=0
-                            ime_debug_window_vis_visible_bit=1
                         fi
                     elif [[ "$window_vis_value" =~ ^[0-9]+$ ]]; then
                         if (( (10#$window_vis_value & 2) != 0 )); then
                             window_vis_visible=0
-                            ime_debug_window_vis_visible_bit=1
                         fi
                     else
                         window_vis_invalid=1
@@ -296,8 +200,6 @@ verify_live_ime_visible() {
                     ;;
             esac
         done <<<"$input_method_dump"
-        ime_debug_window_vis_count="$window_vis_seen"
-        ime_debug_window_vis_invalid="$window_vis_invalid"
         if (( ime_visible != 0 && window_vis_seen == 1 &&
             window_vis_invalid == 0 && window_vis_visible == 0 )); then
             ime_visible=0
@@ -308,19 +210,6 @@ verify_live_ime_visible() {
         sleep 0.25
     done
     echo "Gate K live IME is not the selected visible input method" >&2
-    write_ime_debug \
-        "$ime_debug_default_selected_match" \
-        "$ime_debug_mcur_method_seen" \
-        "$ime_debug_mcur_ime_seen" \
-        "$ime_debug_mcur_id_seen" \
-        "$ime_debug_current_expected_match" \
-        "$ime_debug_input_shown_seen" \
-        "$ime_debug_input_shown_true" \
-        "$ime_debug_is_input_view_shown_seen" \
-        "$ime_debug_is_input_view_shown_true" \
-        "$ime_debug_window_vis_count" \
-        "$ime_debug_window_vis_invalid" \
-        "$ime_debug_window_vis_visible_bit"
     return 1
 }
 
@@ -446,27 +335,11 @@ collect_device_metadata() {
     } >"$metadata_file"
 }
 
-collect_query_debug_log() {
-    local debug_temp_file="$temp_dir/query-debug.log"
-    rm -f -- "$debug_temp_file" "$query_debug_file"
-    : >"$query_debug_file"
-    if ! command -v adb >/dev/null 2>&1; then
-        return 0
-    fi
-    adb logcat -d -s "${query_debug_tag}:W" "*:S" 2>/dev/null |
-        sed -nE 's/.*\[DEBUG-GATEK-QUERY-V1\] stage=(query-call|query-null-cursor|cursor-move-first|cursor-move-next|column-lookup-read|cursor-close) exception=([A-Za-z0-9_.$]+).*/[DEBUG-GATEK-QUERY-V1] stage=\1 exception=\2/p' \
-        >"$debug_temp_file" || true
-    mv -- "$debug_temp_file" "$query_debug_file" 2>/dev/null || {
-        rm -f -- "$debug_temp_file"
-    }
-}
-
 finalize() {
     local exit_code=$?
     trap - EXIT
     set +e
     export_evidence
-    collect_query_debug_log
     collect_device_metadata
     if [[ -s "$evidence_file" ]]; then
         if (( exit_code == 0 )); then
@@ -523,10 +396,6 @@ host_apk="$build_root/gate-k-host/outputs/apk/debug/gate-k-host-debug.apk"
 }
 
 timeout 60s adb wait-for-device >/dev/null
-adb logcat -c >/dev/null 2>&1 || {
-    echo "failed to clear Gate K query diagnostics" >&2
-    exit 1
-}
 adb install -r "$prototype_apk"
 adb install -r "$host_apk"
 if ! adb shell pm clear "$prototype_package" >/dev/null 2>&1; then

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 import tempfile
 import unittest
@@ -408,57 +407,6 @@ exit 97
             check=False,
         )
         return process.returncode
-
-
-def run_runner_ime_visibility_debug_seam(
-    fake_dump: str,
-    fake_selected_ime: str = "com.vibesync.gatek/.GateKPrototypeInputMethodService",
-) -> tuple[int, str]:
-    with tempfile.TemporaryDirectory(prefix="gate-k-ime-debug-test-") as temp_name:
-        temp_dir = Path(temp_name)
-        fake_adb = temp_dir / "adb"
-        fake_adb.write_text(
-            """#!/usr/bin/env bash
-if [[ "$#" -eq 3 && "$1" == "shell" && "$2" == "dumpsys" &&
-      "$3" == "input_method" ]]; then
-    printf "%s\\n" "${GATE_K_FAKE_DUMP:-}"
-    exit 0
-fi
-if [[ "$#" -eq 5 && "$1" == "shell" && "$2" == "settings" &&
-      "$3" == "get" && "$4" == "secure" && "$5" == "default_input_method" ]]; then
-    printf "%s\\n" "${GATE_K_FAKE_SELECTED_IME:-}"
-    exit 0
-fi
-echo 'unexpected live IME inspection command' >&2
-exit 97
-""",
-            encoding="utf-8",
-        )
-        fake_adb.chmod(0o755)
-        environment = os.environ.copy()
-        environment["PATH"] = f"{temp_dir}{os.pathsep}{environment['PATH']}"
-        environment["GATE_K_FAKE_DUMP"] = fake_dump
-        environment["GATE_K_FAKE_SELECTED_IME"] = fake_selected_ime
-        environment["GATE_K_TEMP_DIR"] = str(temp_dir)
-        shell = "\n\n".join(
-            runner_shell_function(function)
-            for function in ("write_ime_debug", "verify_live_ime_visible")
-        )
-        command = (
-            f'{shell}\n'
-            'ime_component="com.vibesync.gatek/.GateKPrototypeInputMethodService"\n'
-            'ime_debug_file="$GATE_K_TEMP_DIR/ime-debug.log"\n'
-            "verify_live_ime_visible 1\n"
-        )
-        process = subprocess.run(
-            ["bash", "-c", command],
-            env=environment,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        debug_file = temp_dir / "ime-debug.log"
-        return process.returncode, debug_file.read_text(encoding="utf-8") if debug_file.exists() else ""
 
 
 def run_runner_ui_dump_seam(mode: str) -> tuple[int, bytes, str]:
@@ -1152,153 +1100,26 @@ class GateKHarnessTest(unittest.TestCase):
             (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(encoding="utf-8"),
         )
 
-    def test_query_debug_diagnostics_are_tag_scoped_and_privacy_safe(self) -> None:
-        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
-            encoding="utf-8",
-        )
-        service = (
-            REPO_ROOT
-            / "android/gate-k-prototype/src/main/kotlin/com/vibesync/gatek/"
-            "GateKPrototypeInputMethodService.kt"
-        ).read_text(encoding="utf-8")
-        self.assertIn('query_debug_tag="GateKQuery"', runner)
-        self.assertIn(r"\[DEBUG-GATEK-QUERY-V1\]", runner)
-        self.assertIn("adb logcat -c", runner)
-        self.assertIn(
-            'adb logcat -d -s "${query_debug_tag}:W" "*:S"',
-            runner,
-        )
-        self.assertIn("gate-k-query-debug-api${api_level}.log", runner)
-        self.assertIn("collect_query_debug_log", runner)
-        self.assertIn(
-            "stage=(query-call|query-null-cursor|cursor-move-first|"
-            "cursor-move-next|column-lookup-read|cursor-close)",
-            runner,
-        )
-        for line in runner.splitlines():
-            if "adb logcat -d" in line:
-                self.assertIn(" -s ", line)
-        self.assertNotIn("adb logcat -v", runner)
-        self.assertNotIn("error.message", service)
-        self.assertNotIn("Log.getStackTraceString", service)
-        self.assertIn("[DEBUG-GATEK-QUERY-V1]", service)
-        for stage in (
-            "query-call",
-            "query-null-cursor",
-            "cursor-move-first",
-            "cursor-move-next",
-            "column-lookup-read",
-            "cursor-close",
-        ):
-            self.assertIn(f'"{stage}"', service)
-        finalize = runner.index("finalize() {\n")
-        finalize_body = runner[finalize:]
-        self.assertLess(
-            finalize_body.index("collect_query_debug_log"),
-            finalize_body.index("collect_device_metadata"),
-        )
-
-    def test_ime_visibility_failure_writes_safe_debug_signals(self) -> None:
-        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
-            encoding="utf-8",
-        )
-        writer = runner_shell_function("write_ime_debug")
-        self.assertIn('ime_debug_file="$output_dir/gate-k-ime-debug-api${api_level}.log"', runner)
-        self.assertIn('rm -f -- "$ime_debug_file"', runner)
-        self.assertIn(
-            'selected_ime="$(adb shell settings get secure default_input_method 2>/dev/null | tr -d \'\\r\')"',
-            runner,
-        )
-        self.assertIn("[DEBUG-GATEK-IME-V1]", writer)
-        for forbidden in (
-            "input_method_dump",
-            "input_method_line",
-            "ime_component",
-            "dumpsys",
-            "exception",
-            "message",
-            "uri",
-            "path",
-        ):
-            self.assertNotIn(forbidden, writer)
-
-        safe_line = re.compile(
-            r"^\[DEBUG-GATEK-IME-V1\] "
-            r"default-selected-match=[01] "
-            r"mCurMethodId-seen=[01] mCurImeId-seen=[01] mCurId-seen=[01] "
-            r"current-expected-match=[01] "
-            r"mInputShown-seen=[01] mInputShown-true=[01] "
-            r"mIsInputViewShown-seen=[01] mIsInputViewShown-true=[01] "
-            r"mImeWindowVis-count=[0-9]+ mImeWindowVis-invalid=[01] "
-            r"mImeWindowVis-visible-bit=[01]$"
-        )
-
-        missing_current = "mInputShown=true\n"
-        result, debug = run_runner_ime_visibility_debug_seam(missing_current)
-        self.assertNotEqual(0, result)
-        self.assertRegex(debug.strip(), safe_line)
-        self.assertIn("mCurMethodId-seen=0", debug)
-        self.assertIn("mCurImeId-seen=0", debug)
-        self.assertIn("current-expected-match=0", debug)
-
-        matching_but_hidden = (
-            "mCurMethodId=com.vibesync.gatek/.GateKPrototypeInputMethodService\n"
-            "mInputShown=false\n"
-        )
-        result, debug = run_runner_ime_visibility_debug_seam(
-            matching_but_hidden,
-            "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
-        )
-        self.assertNotEqual(0, result)
-        self.assertRegex(debug.strip(), safe_line)
-        self.assertIn("default-selected-match=0", debug)
-        self.assertIn("mCurMethodId-seen=1", debug)
-        self.assertIn("current-expected-match=1", debug)
-        self.assertIn("mInputShown-seen=1", debug)
-        self.assertIn("mInputShown-true=0", debug)
-
-        multiple_window_vis = (
-            "mCurImeId=com.vibesync.gatek/.GateKPrototypeInputMethodService\n"
-            "mImeWindowVis=0x3\n"
-            "mImeWindowVis=0x1\n"
-        )
-        result, debug = run_runner_ime_visibility_debug_seam(multiple_window_vis)
-        self.assertNotEqual(0, result)
-        self.assertRegex(debug.strip(), safe_line)
-        self.assertIn("mCurImeId-seen=1", debug)
-        self.assertIn("current-expected-match=1", debug)
-        self.assertIn("mImeWindowVis-count=2", debug)
-        self.assertIn("mImeWindowVis-invalid=0", debug)
-        self.assertIn("mImeWindowVis-visible-bit=1", debug)
-
-    def test_workflow_uses_temporary_api34_stage_diagnostic_wrapper(self) -> None:
+    def test_workflow_runs_formal_gate_k_matrix_and_trial_count(self) -> None:
         workflow = (
             REPO_ROOT / ".github/workflows/gate-k-prototype.yml"
         ).read_text(encoding="utf-8")
-        diagnostic_command = (
-            '[ "$GATE_K_API_LEVEL" = "34" ] && '
-            'GATE_K_OUTPUT_DIR="$GITHUB_WORKSPACE/gate-k-artifacts-api34" '
-            "bash tools/android/run-gate-k-emulator-trials.sh --api-level 34 --trials 12"
+        formal_command = (
+            'GATE_K_OUTPUT_DIR="$GITHUB_WORKSPACE/gate-k-artifacts-api${GATE_K_API_LEVEL}" '
+            'bash tools/android/run-gate-k-emulator-trials.sh '
+            '--api-level "$GATE_K_API_LEVEL" --trials 40'
         )
-        self.assertIn("TEMP DIAGNOSTIC WRAPPER", workflow)
-        self.assertIn(diagnostic_command, workflow)
-        self.assertIn("name: Gate K TEMP query-stage diagnostic API", workflow)
-        diagnostic_start = workflow.index("# TEMP DIAGNOSTIC WRAPPER —")
-        diagnostic_end = workflow.index("\n\n", diagnostic_start)
-        diagnostic_block = workflow[diagnostic_start:diagnostic_end]
-        self.assertEqual(
-            [diagnostic_command],
-            [
-                line.strip()
-                for line in diagnostic_block.splitlines()
-                if line.strip() and not line.strip().startswith("#")
-            ],
-        )
-        self.assertNotIn("gate_k_diagnostic_", diagnostic_block)
-        self.assertNotIn("[[", diagnostic_block)
-        self.assertNotIn("api-level: 35", workflow)
-        self.assertNotIn("api-level: 36", workflow)
-        self.assertNotIn("--trials 40", workflow)
+        self.assertIn("name: Gate K emulator API ${{ matrix.api-level }}", workflow)
+        for api_level in (34, 35, 36):
+            self.assertIn(f"- api-level: {api_level}", workflow)
+        self.assertIn(formal_command, workflow)
+        self.assertNotIn("TEMP DIAGNOSTIC", workflow)
+        self.assertNotIn("TEMP query-stage", workflow)
+        self.assertNotIn("DEBUG-" + "GATEK", workflow)
+        self.assertNotIn("gate_k_diagnostic_", workflow)
+        self.assertNotIn("--trials 12", workflow)
+        self.assertEqual(1, workflow.count("--trials 40"))
+        self.assertIn("gate-k-artifacts-api${{ matrix.api-level }}/**", workflow)
 
     def test_evidence_validator_recomputes_candidate_from_records(self) -> None:
         evidence = valid_evidence()
