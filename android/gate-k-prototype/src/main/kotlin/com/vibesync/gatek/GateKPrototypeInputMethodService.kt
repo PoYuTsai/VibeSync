@@ -536,19 +536,114 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             // set before B is armed, and quarantines rows at or below B's
             // worker-serialized generation fence before opening any bytes.
             if (!attemptCoordinator.isCandidateEligible(candidateIdentity)) return@forEach
-
-            val content = openTransientContent(Uri.parse(record.metadata.uri))
-            if (content == null) {
-                recordTrial(
+            when (val readiness = observeCandidateWithReadinessRetry(
+                sessionId = sessionId,
+                initialRecord = record,
+                candidateIdentity = candidateIdentity,
+            )) {
+                is GateKCandidateReadinessResult.Observed -> recordPipelineResult(
+                    result = readiness.result,
+                    observedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
                     sessionId = sessionId,
-                    detectedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
-                    sessionOutcome = GateKSessionOutcome.ACCEPTED,
-                    dedupeOutcome = GateKDedupeOutcome.NOT_EVALUATED,
-                    failureReason = "CONTENT_UNAVAILABLE",
                     candidateIdentity = candidateIdentity,
                 )
-                return@forEach
+
+                is GateKCandidateReadinessResult.Failed -> {
+                    val failureReason = when (readiness.failure) {
+                        GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE ->
+                            GateKFailureReason.CONTENT_UNAVAILABLE
+
+                        GateKCandidateReadinessFailure.METADATA_REJECTED ->
+                            GateKFailureReason.METADATA_REJECTED
+                    }
+                    recordTerminalResult(
+                        failActiveAttempt(
+                            sessionId = sessionId,
+                            detectedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+                            reason = failureReason,
+                            candidateIdentity = candidateIdentity,
+                        ),
+                    )
+                }
+
+                GateKCandidateReadinessResult.SessionEnded -> Unit
             }
+        }
+        return true
+    }
+
+    /**
+     * Rechecks one exact MediaStore row when the insert notification exposed
+     * it before dimensions or readable bytes were ready. The retry runs on the
+     * serialized MediaStore worker and never relaxes the public candidate
+     * filter. A session/attempt ending during the wait simply aborts.
+     */
+    private fun observeCandidateWithReadinessRetry(
+        sessionId: String,
+        initialRecord: MediaStoreCandidateRecord,
+        candidateIdentity: GateKMediaStoreCandidateIdentity,
+    ): GateKCandidateReadinessResult {
+        var currentRecord = initialRecord
+        var firstProbe = true
+        val retry = GateKCandidateReadinessRetry()
+        return retry.resolve {
+            if (activeSessionId != sessionId
+                || !attemptCoordinator.hasActiveAttempt
+                || !attemptCoordinator.isCandidateEligible(candidateIdentity)
+            ) {
+                return@resolve GateKCandidateReadinessProbeResult.SessionEnded
+            }
+
+            if (!firstProbe) {
+                when (val queryResult = queryMediaStoreCandidate(initialRecord)) {
+                    is MediaStoreCandidateQueryResult.Ready -> currentRecord = queryResult.record
+                    MediaStoreCandidateQueryResult.RetryableUnavailable ->
+                        return@resolve GateKCandidateReadinessProbeResult.Retryable(
+                            GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
+                        )
+
+                    MediaStoreCandidateQueryResult.TerminalContentUnavailable ->
+                        return@resolve GateKCandidateReadinessProbeResult.Failed(
+                            GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
+                        )
+
+                    MediaStoreCandidateQueryResult.TerminalMetadataRejected ->
+                        return@resolve GateKCandidateReadinessProbeResult.Failed(
+                            GateKCandidateReadinessFailure.METADATA_REJECTED,
+                        )
+                }
+                if (currentRecord.mediaId != candidateIdentity.mediaId
+                    || currentRecord.generation != candidateIdentity.generation
+                ) {
+                    return@resolve GateKCandidateReadinessProbeResult.Failed(
+                        GateKCandidateReadinessFailure.METADATA_REJECTED,
+                    )
+                }
+            }
+            firstProbe = false
+
+            if (MediaStoreScreenshotClassifier.classify(currentRecord.metadata)
+                != MediaStoreScreenshotDecision.MediaStoreScreenshot
+            ) {
+                return@resolve GateKCandidateReadinessProbeResult.Failed(
+                    GateKCandidateReadinessFailure.METADATA_REJECTED,
+                )
+            }
+
+            // WIDTH/HEIGHT are provider metadata and can briefly be zero at
+            // GENERATION_ADDED time. Requery those fields before opening any
+            // bytes; this preserves the strict public filter and avoids a
+            // needless full-content read on every retry.
+            if (currentRecord.metadata.width <= 0 || currentRecord.metadata.height <= 0) {
+                return@resolve GateKCandidateReadinessProbeResult.Retryable(
+                    GateKCandidateReadinessFailure.METADATA_REJECTED,
+                )
+            }
+
+            val content = openTransientContent(Uri.parse(currentRecord.metadata.uri))
+                ?: return@resolve GateKCandidateReadinessProbeResult.Retryable(
+                    GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
+                )
 
             // The pipeline returns an identity/decision and never exposes
             // bytes outside this stack. The local byte array is unreachable
@@ -557,22 +652,19 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 pipeline.observe(
                     ScreenshotCandidate(
                         sessionId = sessionId,
-                        observedAtEpochMs = record.metadata.observedAtEpochMs,
+                        observedAtEpochMs = maxOf(
+                            currentRecord.metadata.observedAtEpochMs,
+                            initialRecord.metadata.observedAtEpochMs,
+                        ),
                         source = ScreenshotCandidateSource.MEDIA_STORE_SCREENSHOT,
-                        width = record.metadata.width,
-                        height = record.metadata.height,
+                        width = currentRecord.metadata.width,
+                        height = currentRecord.metadata.height,
                         content = content,
                     ),
                 )
             }
-            recordPipelineResult(
-                result = result,
-                observedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
-                sessionId = sessionId,
-                candidateIdentity = candidateIdentity,
-            )
+            return@resolve GateKCandidateReadinessPolicy.classify(result)
         }
-        return true
     }
 
     private data class MediaStoreQueryResult(
@@ -593,29 +685,30 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         null
     }
 
+    private fun mediaStoreProjection(): Array<String> = buildList {
+        add(MediaStore.Images.Media._ID)
+        add(MediaStore.Images.Media.RELATIVE_PATH)
+        add(MediaStore.Images.Media.MIME_TYPE)
+        add(MediaStore.Images.Media.WIDTH)
+        add(MediaStore.Images.Media.HEIGHT)
+        add(MediaStore.Images.Media.DATE_ADDED)
+        add(MediaStore.Images.Media.DATE_MODIFIED)
+        add(MediaStore.Images.Media.IS_PENDING)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            add(MediaStore.MediaColumns.GENERATION_ADDED)
+        }
+    }.toTypedArray()
+
     private fun queryMediaStoreRecords(spec: GateKMediaStoreQuerySpec): MediaStoreQueryResult {
         val versionBefore = readMediaStoreVersion()
             ?: return MediaStoreQueryResult(
                 failureReason = GateKMediaStoreBaselineFailure.MEDIA_STORE_VERSION_UNAVAILABLE.name,
             )
-        val projection = buildList {
-            add(MediaStore.Images.Media._ID)
-            add(MediaStore.Images.Media.RELATIVE_PATH)
-            add(MediaStore.Images.Media.MIME_TYPE)
-            add(MediaStore.Images.Media.WIDTH)
-            add(MediaStore.Images.Media.HEIGHT)
-            add(MediaStore.Images.Media.DATE_ADDED)
-            add(MediaStore.Images.Media.DATE_MODIFIED)
-            add(MediaStore.Images.Media.IS_PENDING)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                add(MediaStore.MediaColumns.GENERATION_ADDED)
-            }
-        }.toTypedArray()
         return try {
             var highestGeneration = 0L
             val cursor = contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                projection,
+                mediaStoreProjection(),
                 spec.toContentResolverQueryArgs(),
                 null,
             ) ?: return MediaStoreQueryResult(failureReason = "MEDIASTORE_QUERY_FAILED")
@@ -720,6 +813,132 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             MediaStoreQueryResult(failureReason = "MEDIASTORE_GRANT_REVOKED")
         } catch (_: RuntimeException) {
             MediaStoreQueryResult(failureReason = "MEDIASTORE_QUERY_FAILED")
+        }
+    }
+
+    private sealed interface MediaStoreCandidateQueryResult {
+        data class Ready(val record: MediaStoreCandidateRecord) : MediaStoreCandidateQueryResult
+
+        /** The provider may not have made the row readable on this sample. */
+        data object RetryableUnavailable : MediaStoreCandidateQueryResult
+
+        /** A stable contract/identity failure must not be retried as readiness. */
+        data object TerminalMetadataRejected : MediaStoreCandidateQueryResult
+
+        /** Access was revoked or the provider cannot serve content at all. */
+        data object TerminalContentUnavailable : MediaStoreCandidateQueryResult
+    }
+
+    private sealed interface MediaStoreCandidateRowResult {
+        data class Ready(val record: MediaStoreCandidateRecord) : MediaStoreCandidateRowResult
+
+        data object NotFound : MediaStoreCandidateRowResult
+
+        /** The provider returned a row that cannot be bound to the original identity. */
+        data object Invalid : MediaStoreCandidateRowResult
+    }
+
+    /**
+     * Requeries a single already-identified row without applying the session
+     * generation high-water filter. A screenshot provider may publish the row
+     * before WIDTH/HEIGHT or readable bytes are complete; the caller retries
+     * this exact ID while the same attempt is active. The row identity and
+     * MediaStore version still have to remain stable.
+     */
+    private fun queryMediaStoreCandidate(
+        initialRecord: MediaStoreCandidateRecord,
+    ): MediaStoreCandidateQueryResult {
+        val versionBefore = readMediaStoreVersion()
+            ?: return MediaStoreCandidateQueryResult.TerminalMetadataRejected
+        val queryArgs = Bundle().apply {
+            putString(
+                ContentResolver.QUERY_ARG_SQL_SELECTION,
+                "${MediaStore.Images.Media._ID} = ? AND " +
+                    "${MediaStore.Images.Media.IS_PENDING} = ?",
+            )
+            putStringArray(
+                ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                arrayOf(initialRecord.mediaId, "0"),
+            )
+            putInt(ContentResolver.QUERY_ARG_LIMIT, 1)
+        }
+        return try {
+            val cursor = contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                mediaStoreProjection(),
+                queryArgs,
+                null,
+            ) ?: return MediaStoreCandidateQueryResult.RetryableUnavailable
+            val record = cursor.use { cursor ->
+                if (!cursor.moveToFirst()) return@use MediaStoreCandidateRowResult.NotFound
+                if (cursor.moveToNext()) return@use MediaStoreCandidateRowResult.Invalid
+                val idIndex = cursor.getColumnIndex(MediaStore.Images.Media._ID)
+                val relativePathIndex = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
+                val mimeTypeIndex = cursor.getColumnIndex(MediaStore.Images.Media.MIME_TYPE)
+                val widthIndex = cursor.getColumnIndex(MediaStore.Images.Media.WIDTH)
+                val heightIndex = cursor.getColumnIndex(MediaStore.Images.Media.HEIGHT)
+                val dateAddedIndex = cursor.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)
+                val dateModifiedIndex = cursor.getColumnIndex(MediaStore.Images.Media.DATE_MODIFIED)
+                val pendingIndex = cursor.getColumnIndex(MediaStore.Images.Media.IS_PENDING)
+                val generationIndex = cursor.getColumnIndex(MediaStore.MediaColumns.GENERATION_ADDED)
+                if (idIndex < 0 || dateAddedIndex < 0 || pendingIndex < 0 || generationIndex < 0) {
+                    return@use MediaStoreCandidateRowResult.Invalid
+                }
+                if (cursor.getIntOrZero(pendingIndex) != 0) {
+                    return@use MediaStoreCandidateRowResult.Invalid
+                }
+                val mediaId = cursor.getLongOrZero(idIndex)
+                val generation = cursor.getLongOrNull(generationIndex)
+                val dateAdded = cursor.getLongOrZero(dateAddedIndex)
+                if (mediaId <= 0L
+                    || mediaId.toString() != initialRecord.mediaId
+                    || generation == null
+                    || generation <= 0L
+                    || generation != initialRecord.generation
+                    || dateAdded <= 0L
+                ) {
+                    return@use MediaStoreCandidateRowResult.Invalid
+                }
+                val itemUri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    mediaId,
+                )
+                MediaStoreCandidateRowResult.Ready(
+                    MediaStoreCandidateRecord(
+                        mediaId = mediaId.toString(),
+                        generation = generation,
+                        dateAddedEpochSec = dateAdded,
+                        dateModifiedEpochSec = cursor.getLongOrZero(dateModifiedIndex),
+                        metadata = MediaStoreImageMetadata(
+                            uri = itemUri.toString(),
+                            relativePath = cursor.getStringOrNull(relativePathIndex),
+                            mimeType = cursor.getStringOrNull(mimeTypeIndex),
+                            width = cursor.getIntOrZero(widthIndex),
+                            height = cursor.getIntOrZero(heightIndex),
+                            observedAtEpochMs = initialRecord.metadata.observedAtEpochMs,
+                        ),
+                    ),
+                )
+            }
+            when {
+                record is MediaStoreCandidateRowResult.NotFound ->
+                    MediaStoreCandidateQueryResult.RetryableUnavailable
+
+                record is MediaStoreCandidateRowResult.Invalid ->
+                    MediaStoreCandidateQueryResult.TerminalMetadataRejected
+
+                readMediaStoreVersion() != versionBefore ->
+                    MediaStoreCandidateQueryResult.TerminalMetadataRejected
+
+                record is MediaStoreCandidateRowResult.Ready ->
+                    MediaStoreCandidateQueryResult.Ready(record.record)
+
+                else -> MediaStoreCandidateQueryResult.TerminalMetadataRejected
+            }
+        } catch (_: SecurityException) {
+            MediaStoreCandidateQueryResult.TerminalContentUnavailable
+        } catch (_: RuntimeException) {
+            MediaStoreCandidateQueryResult.RetryableUnavailable
         }
     }
 
