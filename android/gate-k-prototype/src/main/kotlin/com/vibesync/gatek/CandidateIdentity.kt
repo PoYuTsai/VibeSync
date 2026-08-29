@@ -31,6 +31,54 @@ class ScreenshotCandidateDedupe {
         window: ImeSessionWindow,
         candidate: ScreenshotCandidate,
     ): CandidateIdentityDecision {
+        // Keep the compatibility path fail-closed before touching content:
+        // rejected session/content candidates must never be hashed.
+        if (candidate.sessionId != window.sessionId) {
+            return CandidateIdentityDecision.RejectedWrongSession
+        }
+        if (candidate.content.isEmpty()) {
+            return CandidateIdentityDecision.RejectedEmptyContent
+        }
+        val previousFloor = activeFloorEpochMs
+        if (previousFloor != null && window.floorEpochMs < previousFloor) {
+            return CandidateIdentityDecision.RejectedStaleSession
+        }
+        return observePrepared(
+            window = window,
+            candidate = candidate,
+            identity = CandidateIdentity(sha256(candidate.content)),
+        )
+    }
+
+    /**
+     * Computes the identity without touching session or dedupe state. The
+     * digest is chunked so a lifecycle cancellation can stop preparation
+     * between chunks before any identity is committed.
+     */
+    internal fun prepareIdentity(
+        content: ByteArray,
+        shouldContinue: () -> Boolean,
+    ): CandidateIdentity? {
+        if (content.isEmpty() || !shouldContinue()) return null
+        val digest = MessageDigest.getInstance("SHA-256")
+        val chunkSize = 64 * 1024
+        var offset = 0
+        while (offset < content.size) {
+            if (!shouldContinue()) return null
+            val length = minOf(chunkSize, content.size - offset)
+            digest.update(content, offset, length)
+            offset += length
+        }
+        if (!shouldContinue()) return null
+        return CandidateIdentity(formatDigest(digest.digest()))
+    }
+
+    /** Commits a previously prepared identity while the caller owns a gate. */
+    internal fun observePrepared(
+        window: ImeSessionWindow,
+        candidate: ScreenshotCandidate,
+        identity: CandidateIdentity,
+    ): CandidateIdentityDecision {
         if (candidate.sessionId != window.sessionId) {
             return CandidateIdentityDecision.RejectedWrongSession
         }
@@ -48,7 +96,6 @@ class ScreenshotCandidateDedupe {
             seenHashes.clear()
         }
 
-        val identity = CandidateIdentity(sha256(candidate.content))
         return if (seenHashes.add(identity.sha256)) {
             CandidateIdentityDecision.FirstSeen(identity)
         } else {
@@ -64,7 +111,10 @@ class ScreenshotCandidateDedupe {
     }
 
     private fun sha256(content: ByteArray): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(content)
+        return formatDigest(MessageDigest.getInstance("SHA-256").digest(content))
+    }
+
+    private fun formatDigest(digest: ByteArray): String {
         val hex = "0123456789abcdef"
         return buildString(digest.size * 2) {
             digest.forEach { byte ->

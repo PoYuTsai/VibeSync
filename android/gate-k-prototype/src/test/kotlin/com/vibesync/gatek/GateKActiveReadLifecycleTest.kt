@@ -111,6 +111,165 @@ class GateKActiveReadLifecycleTest {
     }
 
     @Test
+    fun `cancellation during processing prevents pipeline commit and clears bytes`() {
+        val lifecycle = GateKActiveReadLifecycle()
+        val bytes = ByteArray(4 * 1024) { 0x5a }
+        val pipeline = GateKObservationPipeline()
+        assertTrue(
+            pipeline.onImeShown(ImeSessionStart("session-1", 1_000L))
+                is ImeSessionStartResult.Started,
+        )
+        val candidate = ScreenshotCandidate(
+            sessionId = "session-1",
+            observedAtEpochMs = 1_001L,
+            source = ScreenshotCandidateSource.MEDIA_STORE_SCREENSHOT,
+            width = 1_080,
+            height = 1_920,
+            content = bytes,
+        )
+        val lease = lifecycle.beginRead("session-1", "attempt-1") {}
+        assertNotNull(lease)
+        val processingStarted = CountDownLatch(1)
+        val allowPipelineCommit = CountDownLatch(1)
+        val pipelineCommits = AtomicInteger()
+        val result = AtomicReference<GateKObservationResult?>(null)
+        val worker = Thread {
+            try {
+                result.set(
+                    lease!!.runCancellable(
+                        prepare = { shouldContinue ->
+                            processingStarted.countDown()
+                            allowPipelineCommit.await(5, TimeUnit.SECONDS)
+                            if (!shouldContinue()) {
+                                null
+                            } else {
+                                when (val observation = pipeline.prepareObservation(candidate)) {
+                                    is GateKObservationPreparation.Terminal ->
+                                        GateKPreparedObservation.Terminal(observation.result)
+
+                                    is GateKObservationPreparation.Accepted ->
+                                        pipeline.prepareAcceptedObservation(
+                                            observation,
+                                            shouldContinue,
+                                        )?.let { identity ->
+                                            GateKPreparedObservation.Ready(
+                                                observation = observation,
+                                                identity = identity,
+                                            )
+                                        }
+                                }
+                            }
+                        },
+                        commit = { prepared ->
+                            pipelineCommits.incrementAndGet()
+                            pipeline.commitPreparedObservation(prepared)
+                        },
+                    ),
+                )
+            } finally {
+                bytes.fill(0)
+                lifecycle.releaseRead(lease!!)
+            }
+        }
+        worker.start()
+        assertTrue(processingStarted.await(1, TimeUnit.SECONDS))
+
+        val cancelStartedAt = System.nanoTime()
+        lifecycle.onSessionHidden("session-1")
+        val cancelDurationMs = TimeUnit.NANOSECONDS.toMillis(
+            System.nanoTime() - cancelStartedAt,
+        )
+        assertTrue("cancellation waited for processing", cancelDurationMs < 500L)
+
+        allowPipelineCommit.countDown()
+        worker.join(1_000L)
+        assertFalse(worker.isAlive)
+        assertNull(result.get())
+        assertEquals(0, pipelineCommits.get())
+        assertTrue(bytes.all { it == 0.toByte() })
+        assertEquals(
+            GateKObservationResult.Accepted(
+                CandidateIdentity("039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"),
+            ),
+            pipeline.observe(
+                candidate.copy(content = ByteArray(4 * 1024) { 0x5a }),
+            ),
+        )
+    }
+
+    @Test
+    fun `cancellation after preparation still wins the final commit gate`() {
+        val lifecycle = GateKActiveReadLifecycle()
+        val pipeline = GateKObservationPipeline()
+        assertTrue(
+            pipeline.onImeShown(ImeSessionStart("session-1", 2_000L))
+                is ImeSessionStartResult.Started,
+        )
+        val bytes = ByteArray(1_024) { 0x2a }
+        val candidate = ScreenshotCandidate(
+            sessionId = "session-1",
+            observedAtEpochMs = 2_001L,
+            source = ScreenshotCandidateSource.MEDIA_STORE_SCREENSHOT,
+            width = 1_080,
+            height = 1_920,
+            content = bytes,
+        )
+        val lease = lifecycle.beginRead("session-1", "attempt-1") {}
+        assertNotNull(lease)
+        val prepared = AtomicReference<GateKPreparedObservation?>(null)
+        val preparedReady = CountDownLatch(1)
+        val allowReturn = CountDownLatch(1)
+        val commitCount = AtomicInteger()
+        val result = AtomicReference<GateKObservationResult?>(null)
+        val worker = Thread {
+            try {
+                result.set(
+                    lease!!.runCancellable(
+                        prepare = { shouldContinue ->
+                            val observation = pipeline.prepareObservation(candidate)
+                            val ready = when (observation) {
+                                is GateKObservationPreparation.Terminal ->
+                                    GateKPreparedObservation.Terminal(observation.result)
+
+                                is GateKObservationPreparation.Accepted ->
+                                    pipeline.prepareAcceptedObservation(
+                                        observation,
+                                        shouldContinue,
+                                    )?.let { identity ->
+                                        GateKPreparedObservation.Ready(observation, identity)
+                                    }
+                            }
+                            prepared.set(ready)
+                            preparedReady.countDown()
+                            allowReturn.await(5, TimeUnit.SECONDS)
+                            ready
+                        },
+                        commit = { value ->
+                            commitCount.incrementAndGet()
+                            pipeline.commitPreparedObservation(value)
+                        },
+                    ),
+                )
+            } finally {
+                bytes.fill(0)
+                lifecycle.releaseRead(lease!!)
+            }
+        }
+        worker.start()
+        assertTrue(preparedReady.await(1, TimeUnit.SECONDS))
+        assertNotNull(prepared.get())
+
+        lifecycle.onAttemptDeadline("session-1", "attempt-1")
+        allowReturn.countDown()
+        worker.join(1_000L)
+
+        assertFalse(worker.isAlive)
+        assertNull(result.get())
+        assertEquals(0, commitCount.get())
+        assertTrue(bytes.all { it == 0.toByte() })
+    }
+
+    @Test
     fun `old attempt cleanup cannot close a replacement read`() {
         val lifecycle = GateKActiveReadLifecycle()
         val oldCloseCount = AtomicInteger()

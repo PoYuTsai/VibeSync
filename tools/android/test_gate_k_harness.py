@@ -663,6 +663,57 @@ class GateKHarnessTest(unittest.TestCase):
             cleanup.index("if (!handedOff)"),
         )
 
+    def test_service_uses_cancellable_prepare_commit_and_zeroes_content(self) -> None:
+        service = (
+            REPO_ROOT
+            / "android/gate-k-prototype/src/main/kotlin/com/vibesync/gatek/"
+            / "GateKPrototypeInputMethodService.kt"
+        ).read_text(encoding="utf-8")
+        lifecycle = (
+            REPO_ROOT
+            / "android/gate-k-prototype/src/main/kotlin/com/vibesync/gatek/"
+            / "GateKActiveReadLifecycle.kt"
+        ).read_text(encoding="utf-8")
+
+        run_start = service.index("val result = readLease.runCancellable(")
+        run_end = service.index("\n            } finally {", run_start)
+        cancellable_path = service[run_start:run_end]
+        self.assertIn("pipeline.prepareObservation(candidate)", cancellable_path)
+        self.assertIn("pipeline.prepareAcceptedObservation(", cancellable_path)
+        self.assertIn("pipeline.commitPreparedObservation(prepared)", cancellable_path)
+        self.assertNotIn("pipeline.observe(", cancellable_path)
+
+        cleanup_start = service.index("            } finally {", run_start)
+        cleanup_end = service.index("\n            }\n        }", cleanup_start)
+        cleanup = service[cleanup_start:cleanup_end]
+        self.assertIn("content.fill(0)", cleanup)
+        self.assertLess(
+            cleanup.index("content.fill(0)"),
+            cleanup.index("activeReadLifecycle.releaseRead(readLease)"),
+        )
+
+        self.assertIn("private val commitLock = Any()", lifecycle)
+        self.assertIn("synchronized(commitLock)", lifecycle)
+        self.assertIn("state.get() != GateKActiveReadState.PROCESSING", lifecycle)
+
+    def test_identity_preparation_is_chunked_and_compatibility_path_rejects_early(self) -> None:
+        identity = (
+            REPO_ROOT
+            / "android/gate-k-prototype/src/main/kotlin/com/vibesync/gatek/"
+            / "CandidateIdentity.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("internal fun prepareIdentity(", identity)
+        self.assertIn("val chunkSize = 64 * 1024", identity)
+        self.assertGreaterEqual(identity.count("shouldContinue()"), 3)
+
+        observe_start = identity.index("fun observe(")
+        observe_end = identity.index("    /**", observe_start)
+        observe = identity[observe_start:observe_end]
+        self.assertLess(
+            observe.index("candidate.content.isEmpty()"),
+            observe.index("CandidateIdentity(sha256(candidate.content))"),
+        )
+
     def test_runner_requires_selected_gate_k_ime_and_all_interactive_windows(self) -> None:
         runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
             encoding="utf-8",

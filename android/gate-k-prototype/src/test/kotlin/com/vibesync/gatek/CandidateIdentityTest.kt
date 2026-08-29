@@ -1,6 +1,7 @@
 package com.vibesync.gatek
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -68,6 +69,28 @@ class CandidateIdentityTest {
         assertTrue(
             dedupe.observe(secondWindow, candidate("session-2", 2_001L))
                 is CandidateIdentityDecision.FirstSeen,
+        )
+    }
+
+    @Test
+    fun `cancelled chunked identity preparation does not mutate dedupe`() {
+        val dedupe = ScreenshotCandidateDedupe()
+        val window = ImeSessionWindow(sessionId = "session-1", floorEpochMs = 3_000L)
+        val content = ByteArray(128 * 1024) { (it and 0x7f).toByte() }
+        var predicateChecks = 0
+
+        val prepared = dedupe.prepareIdentity(content) {
+            predicateChecks += 1
+            predicateChecks < 3
+        }
+
+        assertNull(prepared)
+        assertTrue("cancellation did not reach a later chunk", predicateChecks >= 3)
+        assertTrue(
+            dedupe.observe(
+                window,
+                candidate("session-1", 3_001L).copy(content = content),
+            ) is CandidateIdentityDecision.FirstSeen,
         )
     }
 

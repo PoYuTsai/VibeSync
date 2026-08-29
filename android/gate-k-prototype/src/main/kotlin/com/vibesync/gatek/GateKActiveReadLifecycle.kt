@@ -169,6 +169,8 @@ internal class GateKActiveReadLease internal constructor(
 ) {
     private val closed = AtomicBoolean(false)
     private val state = AtomicReference(GateKActiveReadState.ACTIVE)
+    /** Serializes only the short final commit with cancellation. */
+    private val commitLock = Any()
     @Volatile
     private var cancellation: GateKActiveReadCancellation? = null
 
@@ -179,18 +181,20 @@ internal class GateKActiveReadLease internal constructor(
         get() = cancellation
 
     fun cancel(reason: GateKActiveReadCancellation): Boolean {
-        val newlyCancelled = if (state.compareAndSet(
-                GateKActiveReadState.ACTIVE,
-                GateKActiveReadState.CANCELLED,
-            ) || state.compareAndSet(
-                GateKActiveReadState.PROCESSING,
-                GateKActiveReadState.CANCELLED,
-            )
-        ) {
-            cancellation = reason
-            true
-        } else {
-            false
+        val newlyCancelled = synchronized(commitLock) {
+            if (state.compareAndSet(
+                    GateKActiveReadState.ACTIVE,
+                    GateKActiveReadState.CANCELLED,
+                ) || state.compareAndSet(
+                    GateKActiveReadState.PROCESSING,
+                    GateKActiveReadState.CANCELLED,
+                )
+            ) {
+                cancellation = reason
+                true
+            } else {
+                false
+            }
         }
         close()
         return newlyCancelled
@@ -237,6 +241,44 @@ internal class GateKActiveReadLease internal constructor(
                 GateKActiveReadState.COMPLETED,
             )
             throw error
+        }
+    }
+
+    /**
+     * Runs cancellable preparation outside the commit lock, then performs one
+     * short linearizable commit. Cancellation can therefore stop a long hash
+     * promptly, while the final mutable operation cannot race a cancellation:
+     * whichever acquires [commitLock] first owns the boundary.
+     */
+    fun <P, T> runCancellable(
+        prepare: (shouldContinue: () -> Boolean) -> P?,
+        commit: (P) -> T,
+    ): T? {
+        if (!state.compareAndSet(
+                GateKActiveReadState.ACTIVE,
+                GateKActiveReadState.PROCESSING,
+            )
+        ) {
+            return null
+        }
+        return try {
+            val prepared = prepare { state.get() == GateKActiveReadState.PROCESSING }
+                ?: return null
+            synchronized(commitLock) {
+                if (state.get() != GateKActiveReadState.PROCESSING) {
+                    return@synchronized null
+                }
+                val result = commit(prepared)
+                state.set(GateKActiveReadState.COMPLETED)
+                result
+            }
+        } finally {
+            // A cancelled preparation must not leave the lease in PROCESSING;
+            // cancellation remains authoritative if it won the final gate.
+            state.compareAndSet(
+                GateKActiveReadState.PROCESSING,
+                GateKActiveReadState.COMPLETED,
+            )
         }
     }
 }

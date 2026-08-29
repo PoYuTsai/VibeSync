@@ -795,6 +795,17 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             }
             val readLease = readyContent.lease
             val content = readyContent.bytes
+            val candidate = ScreenshotCandidate(
+                sessionId = sessionId,
+                observedAtEpochMs = maxOf(
+                    currentRecord.metadata.observedAtEpochMs,
+                    initialRecord.metadata.observedAtEpochMs,
+                ),
+                source = ScreenshotCandidateSource.MEDIA_STORE_SCREENSHOT,
+                width = currentRecord.metadata.width,
+                height = currentRecord.metadata.height,
+                content = content,
+            )
 
             // Opening is synchronous. If it crossed the deadline, do not hand
             // the bytes to the hashing/dedupe pipeline; the queued timeout
@@ -813,28 +824,42 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                     return@resolve postOpenVersionResult
                 }
 
-                // The lease gates the handoff into hashing/dedupe against a
-                // concurrent hide/deadline/destroy cancellation. If cancel
-                // wins, the pipeline is never invoked.
-                val result = readLease.runIfNotCancelled {
-                    synchronized(pipelineLock) {
-                        pipeline.observe(
-                            ScreenshotCandidate(
-                                sessionId = sessionId,
-                                observedAtEpochMs = maxOf(
-                                    currentRecord.metadata.observedAtEpochMs,
-                                    initialRecord.metadata.observedAtEpochMs,
-                                ),
-                                source = ScreenshotCandidateSource.MEDIA_STORE_SCREENSHOT,
-                                width = currentRecord.metadata.width,
-                                height = currentRecord.metadata.height,
-                                content = content,
-                            ),
-                        )
-                    }
-                } ?: return@resolve GateKCandidateReadinessProbeResult.SessionEnded
+                // Hash preparation runs outside pipelineLock and checks the
+                // lease between chunks. Only the short mutable filter/dedupe
+                // commit enters the lease's linearizable final gate.
+                val result = readLease.runCancellable(
+                    prepare = { shouldContinue ->
+                        when (
+                            val preparation = synchronized(pipelineLock) {
+                                pipeline.prepareObservation(candidate)
+                            }
+                        ) {
+                            is GateKObservationPreparation.Terminal ->
+                                GateKPreparedObservation.Terminal(preparation.result)
+
+                            is GateKObservationPreparation.Accepted ->
+                                pipeline.prepareAcceptedObservation(
+                                    preparation,
+                                    shouldContinue,
+                                )?.let { identity ->
+                                    GateKPreparedObservation.Ready(
+                                        observation = preparation,
+                                        identity = identity,
+                                    )
+                                }
+                        }
+                    },
+                    commit = { prepared ->
+                        synchronized(pipelineLock) {
+                            pipeline.commitPreparedObservation(prepared)
+                        }
+                    },
+                ) ?: return@resolve GateKCandidateReadinessProbeResult.SessionEnded
                 return@resolve GateKCandidateReadinessPolicy.classify(result)
             } finally {
+                // The pipeline retains only the SHA-256 identity. Do not let
+                // transient screenshot bytes survive a cancelled/failed read.
+                content.fill(0)
                 activeReadLifecycle.releaseRead(readLease)
             }
         }
