@@ -2651,19 +2651,22 @@ Deno.test("debrief：最終 dateChance 判準位於 band／invite 證據之後",
       profileId: "practice_girl_004",
       difficulty,
     });
+    // 只看 user message：system prompt 未來若出現同字樣不得造成假通過。
     const text = buildDebriefMessages(turns, scaled, {
       practiceMode: "beginner",
       temperatureScore: 40,
       familiarityScore: 10,
-    }).map((message) => message.content).join("\n");
+    })[1].content;
     const finalRuleAt = text.indexOf("最終 dateChance 判準");
     assert(finalRuleAt >= 0);
-    // band 證據（temperatureBandDebriefInstruction 的「本場收尾時…」）在前。
+    // 完整順序鏈：band < stage < invite < 最終判準。
     const bandAt = text.indexOf("本場收尾時");
-    assert(bandAt >= 0 && bandAt < finalRuleAt);
-    // invite 證據（inviteMaturity 結論行）在前。
+    const stageAt = text.indexOf("本場抽象關係階段");
     const inviteAt = text.indexOf("inviteMaturity");
-    assert(inviteAt >= 0 && inviteAt < finalRuleAt);
+    assert(bandAt >= 0 && stageAt >= 0 && inviteAt >= 0);
+    assert(bandAt < stageAt);
+    assert(stageAt < inviteAt);
+    assert(inviteAt < finalRuleAt);
     // 難度標準跟著最終判準走，不再放在開頭。
     assert(text.indexOf(scaled.difficultyDebriefStandard) > finalRuleAt);
     // 明寫：狀態證據不是自動給 high 的命令。
@@ -2672,7 +2675,8 @@ Deno.test("debrief：最終 dateChance 判準位於 band／invite 證據之後",
       assert(text.includes("缺高品質訊號"));
     }
   }
-  // game：技巧拆解照 Game contract，但 dateChance 不得繞過難度與安全邊界。
+  // game：Game contract 證據在前、最終判準在後，且明寫 dateChance 不得繞過
+  // 難度與安全邊界。
   const gameText = buildDebriefMessages(
     turns,
     resolvePracticeProfile({
@@ -2680,7 +2684,10 @@ Deno.test("debrief：最終 dateChance 判準位於 band／invite 證據之後",
       difficulty: "challenge",
     }),
     { practiceMode: "game", temperatureScore: 40, familiarityScore: 10 },
-  ).map((message) => message.content).join("\n");
-  assert(gameText.includes("最終 dateChance 判準"));
+  )[1].content;
+  const gameFinalAt = gameText.indexOf("最終 dateChance 判準");
+  const gameEvidenceAt = gameText.indexOf("gameDebrief(hidden guidance)");
+  assert(gameEvidenceAt >= 0 && gameFinalAt >= 0);
+  assert(gameEvidenceAt < gameFinalAt);
   assert(gameText.includes("不得繞過"));
 });

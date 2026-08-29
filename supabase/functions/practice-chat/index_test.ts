@@ -8504,3 +8504,52 @@ Deno.test("貼文 RPC 卡住不回時，1:1 聊天仍然完成（不被選配查
   assertEquals(prompt.includes("<her_own_posts>"), false);
   assert(prompt.includes("不要否認"), "逾時 fail-open 後規則仍須在場");
 });
+
+Deno.test("continuation 從上一場 thread 分數起算：第一輪只動本輪 delta、不吃 client 也無隱藏重置", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      thread: {
+        profile_id: "practice_girl_004",
+        temperature_score: 62,
+        familiarity_score: 41,
+      },
+      deepSeekReplies: ["AI reply", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      profileId: "practice_girl_004",
+      visiblePracticeThreadId: "thread-visible-1",
+      // client 帶不同分數，必須輸給 thread 分數。
+      temperatureScore: 80,
+      familiarityScore: 60,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  // 從 62/41 起算：caught/medium → heat +4、familiarity +5；只套一次 delta。
+  assertEquals(json.temperature.score, 66);
+  assertEquals(json.temperature.delta, 4);
+  assertEquals(json.temperature.familiarityScore, 46);
+  assertEquals(json.temperature.familiarityDelta, 5);
+
+  assert(
+    state.deepSeekCalls[0].messages[0].content.includes("62/100"),
+    "chat system prompt should start from thread temperature 62, not client 80",
+  );
+  // 持久化也從 thread 分數起算（無隱藏重置回難度預設或 client seed）。
+  const commit = state.rpcCalls.find((call) =>
+    call.fn === "commit_practice_chat_turn"
+  );
+  assert(commit);
+  assertEquals(commit.params.p_temperature_score, 62);
+  assertEquals(commit.params.p_familiarity_score, 41);
+  assertEquals(
+    learningUpdateCalls(state)[0].params.p_expected_temperature_score,
+    62,
+  );
+  assertEquals(
+    learningUpdateCalls(state)[0].params.p_expected_familiarity_score,
+    41,
+  );
+});

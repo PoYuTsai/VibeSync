@@ -99,3 +99,46 @@ Deno.test("thread 資料無效（分數欄 null）不得誤用：逐欄位落到
     { temperatureScore: 80, familiarityScore: 60, source: "client" },
   );
 });
+
+Deno.test("溫度與熟悉度逐欄位獨立 fallback；source 以溫度為準", () => {
+  // thread 只有溫度 → 熟悉度落到 client；source 仍是 relationship_thread。
+  assertEquals(
+    resolveLearningSeed({
+      assistedMode: true,
+      ledger: emptyLedger,
+      threadState: { temperatureScore: 62, familiarityScore: null },
+      clientTemperatureScore: 80,
+      clientFamiliarityScore: 60,
+      difficultyStartTemperature: 32,
+    }),
+    {
+      temperatureScore: 62,
+      familiarityScore: 60,
+      source: "relationship_thread",
+    },
+  );
+  // thread 只有熟悉度 → 溫度落到 client；source 跟著溫度標 client。
+  assertEquals(
+    resolveLearningSeed({
+      assistedMode: true,
+      ledger: emptyLedger,
+      threadState: { temperatureScore: null, familiarityScore: 41 },
+      clientTemperatureScore: 80,
+      clientFamiliarityScore: 60,
+      difficultyStartTemperature: 32,
+    }),
+    { temperatureScore: 80, familiarityScore: 41, source: "client" },
+  );
+  // ledger 只有溫度 → 熟悉度 fallback 0，不吃 thread/client。
+  assertEquals(
+    resolveLearningSeed({
+      assistedMode: true,
+      ledger: { exists: true, temperatureScore: 55, familiarityScore: null },
+      threadState: { temperatureScore: 70, familiarityScore: 50 },
+      clientTemperatureScore: 80,
+      clientFamiliarityScore: 60,
+      difficultyStartTemperature: 32,
+    }),
+    { temperatureScore: 55, familiarityScore: 0, source: "ledger" },
+  );
+});
