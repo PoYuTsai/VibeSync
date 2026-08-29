@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -58,6 +59,92 @@ def runner_foreground_predicate(
         check=False,
     )
     return process.returncode == 0
+
+
+def runner_shell_function(name: str) -> str:
+    runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
+        encoding="utf-8",
+    )
+    marker = f"{name}() {{"
+    start = runner.find(marker)
+    if start < 0:
+        raise AssertionError(f"runner {name} evidence seam is missing")
+    end = runner.find("\n}", start)
+    if end < 0:
+        raise AssertionError(f"runner {name} evidence seam is not closed")
+    return runner[start : end + 2]
+
+
+def run_runner_evidence_seam(
+    mode: str,
+    fake_output: str,
+    fake_exit: int = 0,
+) -> tuple[int, str, bool, bytes]:
+    with tempfile.TemporaryDirectory(prefix="gate-k-evidence-test-") as temp_name:
+        temp_dir = Path(temp_name)
+        fake_adb = temp_dir / "adb"
+        fake_adb.write_text(
+            """#!/usr/bin/env bash
+if [[ "$#" -ne 2 || "$1" != "exec-out" ]]; then
+    echo 'adb command was not one exec-out remote command' >&2
+    exit 97
+fi
+remote_command="$2"
+remote_prefix="run-as com.vibesync.gatek sh -c '"
+remote_suffix="'"
+if [[ "$remote_command" != "$remote_prefix"* || "$remote_command" != *"$remote_suffix" ]]; then
+    echo 'remote command did not preserve sh -c quoting' >&2
+    exit 98
+fi
+remote_script="${remote_command#"$remote_prefix"}"
+remote_script="${remote_script%"$remote_suffix"}"
+if [[ "$remote_script" != *"if [ -f files/gate-k-evidence.json ]"* ||
+      "$remote_script" != *"__GATE_K_PRESENT__"* ||
+      "$remote_script" != *"__GATE_K_ABSENT__"* ]]; then
+    echo 'remote sentinel script was incomplete' >&2
+    exit 99
+fi
+if [[ "${GATE_K_FAKE_EXIT:-0}" != "0" ]]; then
+    exit "${GATE_K_FAKE_EXIT}"
+fi
+printf "%s" "${GATE_K_FAKE_OUTPUT:-}"
+""",
+            encoding="utf-8",
+        )
+        fake_adb.chmod(0o755)
+
+        environment = os.environ.copy()
+        environment["PATH"] = f"{temp_dir}{os.pathsep}{environment['PATH']}"
+        environment["GATE_K_FAKE_OUTPUT"] = fake_output
+        environment["GATE_K_FAKE_EXIT"] = str(fake_exit)
+        environment["GATE_K_TEMP_DIR"] = str(temp_dir)
+        shell = "\n\n".join(
+            runner_shell_function(function)
+            for function in ("fetch_evidence", "read_trial_count", "export_evidence")
+        )
+        command = (
+            f'{shell}\n'
+            'prototype_package="com.vibesync.gatek"\n'
+            'temp_dir="$GATE_K_TEMP_DIR"\n'
+            'current_evidence_file="$temp_dir/current.json"\n'
+            'evidence_file="$temp_dir/export.json"\n'
+            f'if [[ "{mode}" == "count" ]]; then read_trial_count; '
+            'else export_evidence; fi\n'
+        )
+        process = subprocess.run(
+            ["bash", "-c", command],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        exported = temp_dir / "export.json"
+        return (
+            process.returncode,
+            process.stdout,
+            exported.exists(),
+            exported.read_bytes() if exported.exists() else b"",
+        )
 
 
 def valid_evidence() -> dict:
@@ -143,6 +230,67 @@ def valid_evidence() -> dict:
 
 
 class GateKHarnessTest(unittest.TestCase):
+    def test_runner_evidence_protocol_is_fail_closed_for_count_and_export(self) -> None:
+        present = "__GATE_K_PRESENT__\n"
+        count_cases = (
+            ("explicit absence", "__GATE_K_ABSENT__\n", 0),
+            ("valid empty", present + '{"trialRecords":[]}', 0),
+            (
+                "valid one record",
+                present + '{"trialRecords":[{"trialId":"one"}]}',
+                1,
+            ),
+        )
+        for label, payload, expected_count in count_cases:
+            with self.subTest(mode="count", label=label):
+                returncode, stdout, _, _ = run_runner_evidence_seam(
+                    "count",
+                    payload,
+                )
+                self.assertEqual(0, returncode)
+                self.assertEqual(str(expected_count), stdout.strip())
+
+        invalid_cases = (
+            ("raw missing-file diagnostic", "cat: files/gate-k-evidence.json: No such file or directory", 0),
+            ("malformed JSON", present + "{", 0),
+            ("unexpected schema", present + '{"other":[]}', 0),
+            ("present marker with diagnostic", present + "cat: permission denied", 0),
+            ("transport failure", "", 1),
+        )
+        for label, payload, fake_exit in invalid_cases:
+            with self.subTest(mode="count", label=label):
+                returncode, stdout, _, _ = run_runner_evidence_seam(
+                    "count",
+                    payload,
+                    fake_exit=fake_exit,
+                )
+                self.assertNotEqual(0, returncode)
+                self.assertEqual("", stdout)
+
+        for payload in (
+            present + '{"trialRecords":[]}',
+            present + '{"trialRecords":[{"trialId":"one"}]}',
+        ):
+            with self.subTest(mode="export", payload=payload):
+                returncode, _, exported, contents = run_runner_evidence_seam(
+                    "export",
+                    payload,
+                )
+                self.assertEqual(0, returncode)
+                self.assertTrue(exported)
+                self.assertEqual(payload.split("\n", 1)[1].encode(), contents)
+
+        for label, payload, fake_exit in invalid_cases:
+            with self.subTest(mode="export", label=label):
+                returncode, _, exported, contents = run_runner_evidence_seam(
+                    "export",
+                    payload,
+                    fake_exit=fake_exit,
+                )
+                self.assertNotEqual(0, returncode)
+                self.assertFalse(exported)
+                self.assertEqual(b"", contents)
+
     def test_foreground_predicate_accepts_current_and_legacy_resumed_fields(self) -> None:
         accepted_dumps = (
             "  ResumedActivity: ActivityRecord{u0 com.vibesync.gatekhost/.MainActivity}",

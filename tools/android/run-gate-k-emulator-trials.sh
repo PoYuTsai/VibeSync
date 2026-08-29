@@ -108,32 +108,107 @@ cleanup() {
     rm -rf -- "$temp_dir"
 }
 
+fetch_evidence() {
+    local destination="$1"
+    local protocol_file="$temp_dir/evidence-protocol.txt"
+    local marker=""
+    local remote_command="run-as ${prototype_package} sh -c 'set -e; if [ -f files/gate-k-evidence.json ]; then printf \"__GATE_K_PRESENT__\\n\"; cat files/gate-k-evidence.json; else printf \"__GATE_K_ABSENT__\\n\"; fi'"
+
+    rm -f -- "$destination" "$protocol_file"
+    if ! adb exec-out "$remote_command" >"$protocol_file" 2>/dev/null; then
+        return 1
+    fi
+    if ! IFS= read -r marker <"$protocol_file"; then
+        return 1
+    fi
+    tail -n +2 "$protocol_file" >"$destination" || {
+        rm -f -- "$destination"
+        return 1
+    }
+    case "$marker" in
+        __GATE_K_PRESENT__)
+            [[ -s "$destination" ]] || {
+                rm -f -- "$destination"
+                return 1
+            }
+            return 0
+            ;;
+        __GATE_K_ABSENT__)
+            [[ ! -s "$destination" ]] || {
+                rm -f -- "$destination"
+                return 1
+            }
+            rm -f -- "$destination"
+            return 3
+            ;;
+        *)
+            rm -f -- "$destination"
+            return 1
+            ;;
+    esac
+}
+
 read_trial_count() {
-    if ! adb exec-out run-as "$prototype_package" cat files/gate-k-evidence.json \
-        >"$current_evidence_file" 2>/dev/null; then
-        echo 0
-        return 0
+    local fetch_status
+    if fetch_evidence "$current_evidence_file"; then
+        :
+    else
+        fetch_status=$?
+        if (( fetch_status == 3 )); then
+            printf '0\n'
+            return 0
+        fi
+        return 1
     fi
     python3 - "$current_evidence_file" <<'PY'
 import json
 import sys
 
 try:
-    payload = json.load(open(sys.argv[1], encoding="utf-8"))
+    with open(sys.argv[1], encoding="utf-8") as evidence_file:
+        payload = json.load(evidence_file)
+    if not isinstance(payload, dict):
+        raise ValueError("evidence root must be an object")
     records = payload.get("trialRecords")
-    print(len(records) if isinstance(records, list) else -1)
+    if not isinstance(records, list):
+        raise ValueError("trialRecords must be a list")
+    print(len(records))
 except (OSError, ValueError, TypeError):
-    print(-1)
+    sys.exit(1)
 PY
 }
 
 export_evidence() {
-    if adb exec-out run-as "$prototype_package" cat files/gate-k-evidence.json \
-        >"$evidence_file" 2>/dev/null; then
-        return 0
+    local export_temp_file="$temp_dir/export-evidence.json"
+    rm -f -- "$export_temp_file" "$evidence_file"
+    if ! fetch_evidence "$export_temp_file"; then
+        rm -f -- "$export_temp_file" "$evidence_file"
+        return 1
     fi
-    rm -f -- "$evidence_file"
-    return 1
+    if ! python3 - "$export_temp_file" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as evidence_file:
+        payload = json.load(evidence_file)
+    if not isinstance(payload, dict):
+        raise ValueError("evidence root must be an object")
+    records = payload.get("trialRecords")
+    if not isinstance(records, list):
+        raise ValueError("trialRecords must be a list")
+except (OSError, ValueError, TypeError):
+    sys.exit(1)
+PY
+    then
+        rm -f -- "$export_temp_file" "$evidence_file"
+        return 1
+    fi
+    if ! mv -- "$export_temp_file" "$evidence_file"; then
+        rm -f -- "$export_temp_file" "$evidence_file"
+        return 1
+    fi
+    return 0
 }
 
 collect_device_metadata() {
@@ -218,7 +293,10 @@ host_apk="$build_root/gate-k-host/outputs/apk/debug/gate-k-host-debug.apk"
 timeout 60s adb wait-for-device >/dev/null
 adb install -r "$prototype_apk"
 adb install -r "$host_apk"
-adb shell pm clear "$prototype_package" >/dev/null 2>&1 || true
+if ! adb shell pm clear "$prototype_package" >/dev/null 2>&1; then
+    echo "failed to clear the prototype app-private evidence" >&2
+    exit 1
+fi
 adb shell pm grant "$prototype_package" android.permission.READ_MEDIA_IMAGES
 adb shell pm revoke "$prototype_package" \
     android.permission.READ_MEDIA_VISUAL_USER_SELECTED >/dev/null 2>&1 || true
