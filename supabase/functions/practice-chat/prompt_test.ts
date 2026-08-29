@@ -2674,6 +2674,11 @@ Deno.test("debrief：最終 dateChance 判準位於 band／invite 證據之後",
     if (difficulty === "challenge") {
       assert(text.includes("缺高品質訊號"));
     }
+    // 2026-08-29：easy 對稱釘子——符合輕鬆標準就給 high，medium 不是安全預設。
+    assertEquals(
+      text.includes("medium 不是安全預設"),
+      difficulty === "easy",
+    );
   }
   // game：Game contract 證據在前、最終判準在後，且明寫 dateChance 不得繞過
   // 難度與安全邊界。

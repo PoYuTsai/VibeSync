@@ -1003,6 +1003,11 @@ export function buildDebriefMessages(
     (profile.difficulty === "challenge"
       ? `- 本場是挑戰難度：缺高品質訊號時，即使聊得順也不得評 high。\n`
       : "") +
+    // 2026-08-29 黑箱觀察：判準移到尾端後 easy 的 high 也被收緊（48 場僅 3 個
+    // high），與「輕鬆給甜頭」的設計相反——對稱補一根 easy 釘子。
+    (profile.difficulty === "easy"
+      ? `- 本場是輕鬆難度：符合上面輕鬆標準的 high 條件就直接評 high，不要拿一般或挑戰的保守標準壓成 medium；medium 不是安全預設。\n`
+      : "") +
     (options.practiceMode === "game"
       ? `- Game 的技巧拆解仍照 Game contract，但 dateChance 不得繞過本場難度標準與安全邊界。\n`
       : "");
