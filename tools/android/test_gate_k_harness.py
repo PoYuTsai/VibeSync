@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -291,18 +292,27 @@ printf '%s\\n' "$value"
         return process.returncode, set_count
 
 
-def run_runner_live_ime_visibility_seam(fake_dump: str) -> int:
+def run_runner_live_ime_visibility_seam(
+    fake_dump: str,
+    fake_selected_ime: str = "com.vibesync.gatek/.GateKPrototypeInputMethodService",
+) -> int:
     with tempfile.TemporaryDirectory(prefix="gate-k-live-ime-test-") as temp_name:
         temp_dir = Path(temp_name)
         fake_adb = temp_dir / "adb"
         fake_adb.write_text(
             """#!/usr/bin/env bash
-if [[ "$#" -ne 3 || "$1" != "shell" || "$2" != "dumpsys" ||
-      "$3" != "input_method" ]]; then
-    echo 'unexpected live IME inspection command' >&2
-    exit 97
+if [[ "$#" -eq 3 && "$1" == "shell" && "$2" == "dumpsys" &&
+      "$3" == "input_method" ]]; then
+    printf "%s\\n" "${GATE_K_FAKE_DUMP:-}"
+    exit 0
 fi
-printf "%s\\n" "${GATE_K_FAKE_DUMP:-}"
+if [[ "$#" -eq 5 && "$1" == "shell" && "$2" == "settings" &&
+      "$3" == "get" && "$4" == "secure" && "$5" == "default_input_method" ]]; then
+    printf "%s\\n" "${GATE_K_FAKE_SELECTED_IME:-}"
+    exit 0
+fi
+echo 'unexpected live IME inspection command' >&2
+exit 97
 """,
             encoding="utf-8",
         )
@@ -310,6 +320,7 @@ printf "%s\\n" "${GATE_K_FAKE_DUMP:-}"
         environment = os.environ.copy()
         environment["PATH"] = f"{temp_dir}{os.pathsep}{environment['PATH']}"
         environment["GATE_K_FAKE_DUMP"] = fake_dump
+        environment["GATE_K_FAKE_SELECTED_IME"] = fake_selected_ime
         shell = runner_shell_function("verify_live_ime_visible")
         command = (
             f'{shell}\n'
@@ -324,6 +335,57 @@ printf "%s\\n" "${GATE_K_FAKE_DUMP:-}"
             check=False,
         )
         return process.returncode
+
+
+def run_runner_ime_visibility_debug_seam(
+    fake_dump: str,
+    fake_selected_ime: str = "com.vibesync.gatek/.GateKPrototypeInputMethodService",
+) -> tuple[int, str]:
+    with tempfile.TemporaryDirectory(prefix="gate-k-ime-debug-test-") as temp_name:
+        temp_dir = Path(temp_name)
+        fake_adb = temp_dir / "adb"
+        fake_adb.write_text(
+            """#!/usr/bin/env bash
+if [[ "$#" -eq 3 && "$1" == "shell" && "$2" == "dumpsys" &&
+      "$3" == "input_method" ]]; then
+    printf "%s\\n" "${GATE_K_FAKE_DUMP:-}"
+    exit 0
+fi
+if [[ "$#" -eq 5 && "$1" == "shell" && "$2" == "settings" &&
+      "$3" == "get" && "$4" == "secure" && "$5" == "default_input_method" ]]; then
+    printf "%s\\n" "${GATE_K_FAKE_SELECTED_IME:-}"
+    exit 0
+fi
+echo 'unexpected live IME inspection command' >&2
+exit 97
+""",
+            encoding="utf-8",
+        )
+        fake_adb.chmod(0o755)
+        environment = os.environ.copy()
+        environment["PATH"] = f"{temp_dir}{os.pathsep}{environment['PATH']}"
+        environment["GATE_K_FAKE_DUMP"] = fake_dump
+        environment["GATE_K_FAKE_SELECTED_IME"] = fake_selected_ime
+        environment["GATE_K_TEMP_DIR"] = str(temp_dir)
+        shell = "\n\n".join(
+            runner_shell_function(function)
+            for function in ("write_ime_debug", "verify_live_ime_visible")
+        )
+        command = (
+            f'{shell}\n'
+            'ime_component="com.vibesync.gatek/.GateKPrototypeInputMethodService"\n'
+            'ime_debug_file="$GATE_K_TEMP_DIR/ime-debug.log"\n'
+            "verify_live_ime_visible 1\n"
+        )
+        process = subprocess.run(
+            ["bash", "-c", command],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        debug_file = temp_dir / "ime-debug.log"
+        return process.returncode, debug_file.read_text(encoding="utf-8") if debug_file.exists() else ""
 
 
 def run_runner_ui_dump_seam(mode: str) -> tuple[int, bytes, str]:
@@ -1029,6 +1091,79 @@ class GateKHarnessTest(unittest.TestCase):
             finalize_body.index("collect_query_debug_log"),
             finalize_body.index("collect_device_metadata"),
         )
+
+    def test_ime_visibility_failure_writes_safe_debug_signals(self) -> None:
+        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
+            encoding="utf-8",
+        )
+        writer = runner_shell_function("write_ime_debug")
+        self.assertIn('ime_debug_file="$output_dir/gate-k-ime-debug-api${api_level}.log"', runner)
+        self.assertIn('rm -f -- "$ime_debug_file"', runner)
+        self.assertIn(
+            'selected_ime="$(adb shell settings get secure default_input_method 2>/dev/null | tr -d \'\\r\')"',
+            runner,
+        )
+        self.assertIn("[DEBUG-GATEK-IME-V1]", writer)
+        for forbidden in (
+            "input_method_dump",
+            "input_method_line",
+            "ime_component",
+            "dumpsys",
+            "exception",
+            "message",
+            "uri",
+            "path",
+        ):
+            self.assertNotIn(forbidden, writer)
+
+        safe_line = re.compile(
+            r"^\[DEBUG-GATEK-IME-V1\] "
+            r"default-selected-match=[01] "
+            r"mCurMethodId-seen=[01] mCurImeId-seen=[01] mCurId-seen=[01] "
+            r"current-expected-match=[01] "
+            r"mInputShown-seen=[01] mInputShown-true=[01] "
+            r"mIsInputViewShown-seen=[01] mIsInputViewShown-true=[01] "
+            r"mImeWindowVis-count=[0-9]+ mImeWindowVis-invalid=[01] "
+            r"mImeWindowVis-visible-bit=[01]$"
+        )
+
+        missing_current = "mInputShown=true\n"
+        result, debug = run_runner_ime_visibility_debug_seam(missing_current)
+        self.assertNotEqual(0, result)
+        self.assertRegex(debug.strip(), safe_line)
+        self.assertIn("mCurMethodId-seen=0", debug)
+        self.assertIn("mCurImeId-seen=0", debug)
+        self.assertIn("current-expected-match=0", debug)
+
+        matching_but_hidden = (
+            "mCurMethodId=com.vibesync.gatek/.GateKPrototypeInputMethodService\n"
+            "mInputShown=false\n"
+        )
+        result, debug = run_runner_ime_visibility_debug_seam(
+            matching_but_hidden,
+            "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
+        )
+        self.assertNotEqual(0, result)
+        self.assertRegex(debug.strip(), safe_line)
+        self.assertIn("default-selected-match=0", debug)
+        self.assertIn("mCurMethodId-seen=1", debug)
+        self.assertIn("current-expected-match=1", debug)
+        self.assertIn("mInputShown-seen=1", debug)
+        self.assertIn("mInputShown-true=0", debug)
+
+        multiple_window_vis = (
+            "mCurImeId=com.vibesync.gatek/.GateKPrototypeInputMethodService\n"
+            "mImeWindowVis=0x3\n"
+            "mImeWindowVis=0x1\n"
+        )
+        result, debug = run_runner_ime_visibility_debug_seam(multiple_window_vis)
+        self.assertNotEqual(0, result)
+        self.assertRegex(debug.strip(), safe_line)
+        self.assertIn("mCurImeId-seen=1", debug)
+        self.assertIn("current-expected-match=1", debug)
+        self.assertIn("mImeWindowVis-count=2", debug)
+        self.assertIn("mImeWindowVis-invalid=0", debug)
+        self.assertIn("mImeWindowVis-visible-bit=1", debug)
 
     def test_workflow_uses_temporary_api34_stage_diagnostic_wrapper(self) -> None:
         workflow = (
