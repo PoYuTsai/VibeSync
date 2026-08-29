@@ -610,6 +610,59 @@ def valid_evidence() -> dict:
 
 
 class GateKHarnessTest(unittest.TestCase):
+    def test_service_cancels_active_read_from_each_lifecycle_boundary(self) -> None:
+        service = (
+            REPO_ROOT
+            / "android/gate-k-prototype/src/main/kotlin/com/vibesync/gatek/"
+            / "GateKPrototypeInputMethodService.kt"
+        ).read_text(encoding="utf-8")
+
+        destroy_start = service.index("override fun onDestroy()")
+        destroy_end = service.index("\n    }", destroy_start)
+        destroy = service[destroy_start:destroy_end]
+        self.assertIn("activeReadLifecycle.onServiceDestroyed()", destroy)
+        self.assertLess(
+            destroy.index("activeReadLifecycle.onServiceDestroyed()"),
+            destroy.index("finishActiveSession()"),
+        )
+
+        finish_start = service.index("private fun finishActiveSession()")
+        finish_end = service.index("\n    }", finish_start)
+        finish = service[finish_start:finish_end]
+        self.assertIn("activeReadLifecycle.onSessionHidden(sessionId)", finish)
+        self.assertLess(
+            finish.index("activeReadLifecycle.onSessionHidden(sessionId)"),
+            finish.index("attemptCoordinator.onSessionHidden("),
+        )
+
+        timeout_start = service.index("private fun scheduleAttemptTimeout(")
+        timeout_end = service.index("\n    }", timeout_start)
+        timeout = service[timeout_start:timeout_end]
+        self.assertIn("activeReadLifecycle.onAttemptDeadline(", timeout)
+        self.assertLess(
+            timeout.index("GateKCandidateReadinessPolicy.isDeadlineReached("),
+            timeout.index("activeReadLifecycle.onAttemptDeadline("),
+        )
+
+    def test_service_rechecks_late_published_read_resources_after_cancel(self) -> None:
+        service = (
+            REPO_ROOT
+            / "android/gate-k-prototype/src/main/kotlin/com/vibesync/gatek/"
+            / "GateKPrototypeInputMethodService.kt"
+        ).read_text(encoding="utf-8")
+
+        open_start = service.index("private fun openTransientContent(")
+        finally_start = service.index("        } finally {", open_start)
+        finally_end = service.index("\n        }\n    }", finally_start)
+        cleanup = service[finally_start:finally_end]
+
+        self.assertIn("if (!handedOff)", cleanup)
+        self.assertIn("closePublishedResources()", cleanup)
+        self.assertGreater(
+            cleanup.rfind("closePublishedResources()"),
+            cleanup.index("if (!handedOff)"),
+        )
+
     def test_runner_requires_selected_gate_k_ime_and_all_interactive_windows(self) -> None:
         runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
             encoding="utf-8",

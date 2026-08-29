@@ -2,10 +2,12 @@ package com.vibesync.gatek
 
 import android.content.ContentUris
 import android.content.ContentResolver
+import android.content.res.AssetFileDescriptor
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -77,6 +79,7 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         deviceModel = rawDeviceDescriptor.model,
         rawDeviceDescriptor = rawDeviceDescriptor,
     )
+    private val activeReadLifecycle = GateKActiveReadLifecycle()
     private val mediaStoreExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile
@@ -138,6 +141,9 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        // A stream read can occupy the sole MediaStore worker. Cancel it from
+        // the lifecycle thread before shutting down that worker.
+        activeReadLifecycle.onServiceDestroyed()
         finishActiveSession()
         mainHandler.removeCallbacksAndMessages(null)
         mediaStoreExecutor.shutdown()
@@ -147,10 +153,14 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     private fun finishActiveSession() {
         setStartAttemptButtonEnabled(false)
         val sessionId = activeSessionId ?: run {
+            activeReadLifecycle.cancelAllActiveRead()
             mediaStoreBaseline.endSession()
             unregisterMediaStoreObserver()
             return
         }
+        // This must happen before the session/coordinator cleanup below: a
+        // blocked InputStream must be closed outside the sole worker.
+        activeReadLifecycle.onSessionHidden(sessionId)
         attemptUiState.onSessionHidden(sessionId)
         // A normalized equal-millisecond floor can be ahead of wall time;
         // clamp the service lifecycle event so normal cleanup still reaches
@@ -490,6 +500,24 @@ class GateKPrototypeInputMethodService : InputMethodService() {
             .plus(GateKAttemptCoordinator.DEFAULT_MAX_ATTEMPT_LATENCY_MS)
         val delay = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1L)
         mainHandler.postDelayed({
+            val nowElapsedRealtimeMs = SystemClock.elapsedRealtime()
+            if (!GateKCandidateReadinessPolicy.isDeadlineReached(
+                    triggeredAtElapsedRealtimeMs = attempt.triggeredAtElapsedRealtimeMs,
+                    nowElapsedRealtimeMs = nowElapsedRealtimeMs,
+                )
+            ) {
+                // Handler scheduling can fire a little early. Do not mark the
+                // attempt cancelled until the same monotonic policy says it is
+                // actually past the three-second boundary.
+                scheduleAttemptTimeout(attempt)
+                return@postDelayed
+            }
+            // Do not queue cancellation behind the potentially blocked read.
+            // The coordinator timeout itself remains serialized on the worker.
+            activeReadLifecycle.onAttemptDeadline(
+                sessionId = attempt.sessionId,
+                attemptId = attempt.attemptId.value,
+            )
             // Timeout must run behind any in-flight query/open/hash on the
             // same worker. This makes the deadline a privacy boundary instead
             // of allowing the main thread to terminalize a live read midway.
@@ -627,6 +655,17 @@ class GateKPrototypeInputMethodService : InputMethodService() {
         if (attempt.sessionId != sessionId) {
             return GateKCandidateReadinessProbeResult.SessionEnded
         }
+        when (activeReadLifecycle.cancellationFor(sessionId, attempt.attemptId.value)) {
+            GateKActiveReadCancellation.ATTEMPT_DEADLINE ->
+                return GateKCandidateReadinessProbeResult.DeadlineReached
+
+            GateKActiveReadCancellation.SESSION_HIDDEN,
+            GateKActiveReadCancellation.SERVICE_DESTROYED,
+            GateKActiveReadCancellation.REPLACED ->
+                return GateKCandidateReadinessProbeResult.SessionEnded
+
+            null -> Unit
+        }
         return if (GateKCandidateReadinessPolicy.isDeadlineReached(
                 triggeredAtElapsedRealtimeMs = attempt.triggeredAtElapsedRealtimeMs,
                 nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
@@ -722,56 +761,82 @@ class GateKPrototypeInputMethodService : InputMethodService() {
                 sessionId = sessionId,
                 candidateIdentity = candidateIdentity,
             )?.let { return@resolve it }
-            val content = when (val contentResult = openTransientContent(
-                Uri.parse(currentRecord.metadata.uri),
-            )) {
-                is TransientContentResult.Ready -> contentResult.bytes
+            val attemptId = attemptCoordinator.currentAttempt
+                ?.takeIf { it.sessionId == sessionId }
+                ?.attemptId
+                ?.value
+                ?: return@resolve GateKCandidateReadinessProbeResult.SessionEnded
+            val contentResult = openTransientContent(
+                sessionId = sessionId,
+                attemptId = attemptId,
+                uri = Uri.parse(currentRecord.metadata.uri),
+            )
+            val readyContent = when (contentResult) {
+                is TransientContentResult.Ready -> contentResult
                 TransientContentResult.RetryableUnavailable ->
                     return@resolve GateKCandidateReadinessProbeResult.Retryable(
                         GateKCandidateReadinessFailure.CONTENT_UNAVAILABLE,
                     )
+
+                TransientContentResult.Cancelled ->
+                    return@resolve when (
+                        activeReadLifecycle.cancellationFor(sessionId, attemptId)
+                    ) {
+                        GateKActiveReadCancellation.ATTEMPT_DEADLINE ->
+                            GateKCandidateReadinessProbeResult.DeadlineReached
+
+                        else -> GateKCandidateReadinessProbeResult.SessionEnded
+                    }
 
                 is TransientContentResult.Failed ->
                     return@resolve GateKCandidateReadinessProbeResult.Failed(
                         contentResult.failure,
                     )
             }
+            val readLease = readyContent.lease
+            val content = readyContent.bytes
 
             // Opening is synchronous. If it crossed the deadline, do not hand
             // the bytes to the hashing/dedupe pipeline; the queued timeout
             // operation will own terminalization on this same worker.
-            deadlineReadinessProbe(
-                sessionId = sessionId,
-                candidateIdentity = candidateIdentity,
-            )?.let { return@resolve it }
-            val postOpenVersionResult =
-                GateKCandidateReadinessPolicy.classifyExpectedMediaStoreVersion(
-                    expectedVersion = expectedMediaStoreVersion,
-                    observedVersion = readMediaStoreVersion(),
-                )
-            if (postOpenVersionResult != null) {
-                return@resolve postOpenVersionResult
-            }
+            try {
+                deadlineReadinessProbe(
+                    sessionId = sessionId,
+                    candidateIdentity = candidateIdentity,
+                )?.let { return@resolve it }
+                val postOpenVersionResult =
+                    GateKCandidateReadinessPolicy.classifyExpectedMediaStoreVersion(
+                        expectedVersion = expectedMediaStoreVersion,
+                        observedVersion = readMediaStoreVersion(),
+                    )
+                if (postOpenVersionResult != null) {
+                    return@resolve postOpenVersionResult
+                }
 
-            // The pipeline returns an identity/decision and never exposes
-            // bytes outside this stack. The local byte array is unreachable
-            // after this call; no file, log, network, or database write occurs.
-            val result = synchronized(pipelineLock) {
-                pipeline.observe(
-                    ScreenshotCandidate(
-                        sessionId = sessionId,
-                        observedAtEpochMs = maxOf(
-                            currentRecord.metadata.observedAtEpochMs,
-                            initialRecord.metadata.observedAtEpochMs,
-                        ),
-                        source = ScreenshotCandidateSource.MEDIA_STORE_SCREENSHOT,
-                        width = currentRecord.metadata.width,
-                        height = currentRecord.metadata.height,
-                        content = content,
-                    ),
-                )
+                // The lease gates the handoff into hashing/dedupe against a
+                // concurrent hide/deadline/destroy cancellation. If cancel
+                // wins, the pipeline is never invoked.
+                val result = readLease.runIfNotCancelled {
+                    synchronized(pipelineLock) {
+                        pipeline.observe(
+                            ScreenshotCandidate(
+                                sessionId = sessionId,
+                                observedAtEpochMs = maxOf(
+                                    currentRecord.metadata.observedAtEpochMs,
+                                    initialRecord.metadata.observedAtEpochMs,
+                                ),
+                                source = ScreenshotCandidateSource.MEDIA_STORE_SCREENSHOT,
+                                width = currentRecord.metadata.width,
+                                height = currentRecord.metadata.height,
+                                content = content,
+                            ),
+                        )
+                    }
+                } ?: return@resolve GateKCandidateReadinessProbeResult.SessionEnded
+                return@resolve GateKCandidateReadinessPolicy.classify(result)
+            } finally {
+                activeReadLifecycle.releaseRead(readLease)
             }
-            return@resolve GateKCandidateReadinessPolicy.classify(result)
         }
     }
 
@@ -1256,30 +1321,145 @@ class GateKPrototypeInputMethodService : InputMethodService() {
     }
 
     private sealed interface TransientContentResult {
-        data class Ready(val bytes: ByteArray) : TransientContentResult
+        data class Ready(
+            val bytes: ByteArray,
+            val lease: GateKActiveReadLease,
+        ) : TransientContentResult
 
         data object RetryableUnavailable : TransientContentResult
+
+        data object Cancelled : TransientContentResult
 
         data class Failed(val failure: GateKCandidateReadinessFailure) : TransientContentResult
     }
 
-    private fun openTransientContent(uri: Uri): TransientContentResult {
+    private fun openTransientContent(
+        sessionId: String,
+        attemptId: String,
+        uri: Uri,
+    ): TransientContentResult {
+        val cancellationSignal = CancellationSignal()
+        val resourceLock = Any()
+        var descriptor: AssetFileDescriptor? = null
+        var input: InputStream? = null
+        var lease: GateKActiveReadLease? = null
+        var handedOff = false
+
+        fun closePublishedResources() {
+            val resources = synchronized(resourceLock) {
+                val currentInput = input
+                val currentDescriptor = descriptor
+                input = null
+                descriptor = null
+                currentInput to currentDescriptor
+            }
+            try {
+                resources.first?.close()
+            } catch (_: java.io.IOException) {
+                // The read has already been cancelled or completed; close
+                // errors must not become a public query/read failure.
+            }
+            try {
+                resources.second?.close()
+            } catch (_: java.io.IOException) {
+                // See the input stream close above.
+            }
+        }
+
         return try {
-            val input = contentResolver.openInputStream(uri)
+            lease = activeReadLifecycle.beginRead(
+                sessionId = sessionId,
+                attemptId = attemptId,
+                closeAction = {
+                    try {
+                        cancellationSignal.cancel()
+                    } catch (_: RuntimeException) {
+                        // The lifecycle cancellation flag is authoritative;
+                        // a provider signal failure cannot revive the read.
+                    }
+                    closePublishedResources()
+                },
+            ) ?: return TransientContentResult.Cancelled
+            if (lease?.isCancelled == true) {
+                return TransientContentResult.Cancelled
+            }
+
+            val openedDescriptor = contentResolver.openAssetFileDescriptor(
+                uri,
+                "r",
+                cancellationSignal,
+            ) ?: return TransientContentResult.RetryableUnavailable
+            synchronized(resourceLock) {
+                descriptor = openedDescriptor
+            }
+            if (lease?.isCancelled == true) {
+                return TransientContentResult.Cancelled
+            }
+
+            val openedInput = openedDescriptor.createInputStream()
+            val published = synchronized(resourceLock) {
+                if (lease?.isCancelled == true) {
+                    false
+                } else {
+                    input = openedInput
+                    true
+                }
+            }
+            if (!published) {
+                try {
+                    openedInput.close()
+                } catch (_: java.io.IOException) {
+                    // Cancellation owns the result and close semantics.
+                }
+                return TransientContentResult.Cancelled
+            }
+
+            val bytes = openedInput.readBounded()
                 ?: return TransientContentResult.RetryableUnavailable
-            val bytes = input.use { it.readBounded() }
-                ?: return TransientContentResult.RetryableUnavailable
-            TransientContentResult.Ready(bytes)
+            if (lease?.isCancelled == true) {
+                return TransientContentResult.Cancelled
+            }
+            handedOff = true
+            TransientContentResult.Ready(bytes, lease!!)
         } catch (_: SecurityException) {
-            TransientContentResult.Failed(
-                GateKCandidateReadinessFailure.GRANT_UNAVAILABLE,
-            )
+            if (lease?.isCancelled == true) {
+                TransientContentResult.Cancelled
+            } else {
+                TransientContentResult.Failed(
+                    GateKCandidateReadinessFailure.GRANT_UNAVAILABLE,
+                )
+            }
         } catch (_: java.io.IOException) {
-            TransientContentResult.RetryableUnavailable
+            if (lease?.isCancelled == true) {
+                TransientContentResult.Cancelled
+            } else {
+                TransientContentResult.RetryableUnavailable
+            }
         } catch (_: RuntimeException) {
-            TransientContentResult.Failed(
-                GateKCandidateReadinessFailure.QUERY_FAILED,
-            )
+            if (lease?.isCancelled == true) {
+                TransientContentResult.Cancelled
+            } else {
+                TransientContentResult.Failed(
+                    GateKCandidateReadinessFailure.QUERY_FAILED,
+                )
+            }
+        } finally {
+            if (!handedOff) {
+                lease?.let { activeReadLifecycle.releaseRead(it) }
+                if (lease == null) {
+                    try {
+                        cancellationSignal.cancel()
+                    } catch (_: RuntimeException) {
+                        // No lease was published; cleanup remains best effort.
+                    }
+                }
+            }
+            // A provider may return a descriptor just after cancellation has
+            // already closed the lease. Re-check the holder unconditionally
+            // so late-published resources cannot leak; on Ready this closes
+            // the stream after the bounded read while the lease remains the
+            // cancellation gate for the downstream handoff.
+            closePublishedResources()
         }
     }
 
