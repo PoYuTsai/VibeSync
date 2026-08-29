@@ -112,6 +112,39 @@ cleanup() {
     rm -rf -- "$temp_dir"
 }
 
+ime_component_is_registered() {
+    local ime_list
+    local registered_ime
+    ime_list="$(adb shell ime list -s 2>/dev/null | tr -d '\r')" || return 1
+    while IFS= read -r registered_ime; do
+        if [[ "$registered_ime" == "$ime_component" ]]; then
+            return 0
+        fi
+    done <<< "$ime_list"
+    return 1
+}
+
+wait_for_ime_registration() {
+    local max_polls="${1:-40}"
+    [[ "$max_polls" =~ ^[1-9][0-9]*$ ]] || return 1
+    for poll in $(seq 1 "$max_polls"); do
+        if ime_component_is_registered; then
+            return 0
+        fi
+        if (( poll < max_polls )); then
+            sleep 0.25
+        fi
+    done
+    echo "Gate K input method did not appear in the system IME list" >&2
+    return 1
+}
+
+enable_gate_k_ime() {
+    local max_polls="${1:-40}"
+    wait_for_ime_registration "$max_polls" || return 1
+    adb shell ime enable "$ime_component"
+}
+
 verify_selected_ime() {
     local max_polls="${1:-20}"
     local selected_ime
@@ -405,7 +438,10 @@ fi
 adb shell pm grant "$prototype_package" android.permission.READ_MEDIA_IMAGES
 adb shell pm revoke "$prototype_package" \
     android.permission.READ_MEDIA_VISUAL_USER_SELECTED >/dev/null 2>&1 || true
-adb shell ime enable "$ime_component"
+enable_gate_k_ime || {
+    echo "Gate K input method was not registered after install" >&2
+    exit 1
+}
 select_and_verify_ime
 adb shell settings put secure show_ime_with_hard_keyboard 1
 [[ "$(adb shell settings get secure show_ime_with_hard_keyboard 2>/dev/null | tr -d '\r')" == "1" ]] || {

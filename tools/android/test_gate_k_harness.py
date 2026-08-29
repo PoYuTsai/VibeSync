@@ -364,6 +364,85 @@ printf '%s\\n' "$value"
         return process.returncode, set_count, process.stderr
 
 
+def run_runner_ime_registration_seam(
+    fake_ime_lists: tuple[str, ...],
+    max_polls: int,
+) -> tuple[int, int, str]:
+    with tempfile.TemporaryDirectory(prefix="gate-k-ime-registration-test-") as temp_name:
+        temp_dir = Path(temp_name)
+        ime_lists = temp_dir / "ime-lists"
+        ime_lists.mkdir()
+        for index, value in enumerate(fake_ime_lists, start=1):
+            (ime_lists / f"list-{index}").write_text(value, encoding="utf-8")
+        (ime_lists / "list-last").write_text(fake_ime_lists[-1], encoding="utf-8")
+        fake_adb = temp_dir / "adb"
+        fake_adb.write_text(
+            """#!/usr/bin/env bash
+if [[ "$#" -eq 4 && "$1" == "shell" && "$2" == "ime" &&
+      "$3" == "list" && "$4" == "-s" ]]; then
+    count=0
+    if [[ -f "$GATE_K_IME_LIST_COUNTER" ]]; then
+        count="$(cat "$GATE_K_IME_LIST_COUNTER")"
+    fi
+    count=$((count + 1))
+    printf '%s' "$count" > "$GATE_K_IME_LIST_COUNTER"
+    list_file="$GATE_K_IME_LIST_DIR/list-$count"
+    if [[ ! -f "$list_file" ]]; then
+        list_file="$GATE_K_IME_LIST_DIR/list-last"
+    fi
+    cat "$list_file"
+    exit 0
+fi
+if [[ "$#" -eq 4 && "$1" == "shell" && "$2" == "ime" &&
+      "$3" == "enable" &&
+      "$4" == "com.vibesync.gatek/.GateKPrototypeInputMethodService" ]]; then
+    count=0
+    if [[ -f "$GATE_K_IME_ENABLE_COUNTER" ]]; then
+        count="$(cat "$GATE_K_IME_ENABLE_COUNTER")"
+    fi
+    printf '%s' "$((count + 1))" > "$GATE_K_IME_ENABLE_COUNTER"
+    exit 0
+fi
+echo 'unexpected IME registration command' >&2
+exit 97
+""",
+            encoding="utf-8",
+        )
+        fake_adb.chmod(0o755)
+        environment = os.environ.copy()
+        environment["PATH"] = f"{temp_dir}{os.pathsep}{environment['PATH']}"
+        environment["GATE_K_IME_LIST_DIR"] = str(ime_lists)
+        environment["GATE_K_IME_LIST_COUNTER"] = str(temp_dir / "ime-list-counter")
+        environment["GATE_K_IME_ENABLE_COUNTER"] = str(temp_dir / "ime-enable-counter")
+        shell = "\n\n".join(
+            runner_shell_function(function)
+            for function in (
+                "ime_component_is_registered",
+                "wait_for_ime_registration",
+                "enable_gate_k_ime",
+            )
+        )
+        command = (
+            f"{shell}\n"
+            'ime_component="com.vibesync.gatek/.GateKPrototypeInputMethodService"\n'
+            f"enable_gate_k_ime {max_polls}\n"
+        )
+        process = subprocess.run(
+            ["bash", "-c", command],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        enable_count_file = temp_dir / "ime-enable-counter"
+        enable_count = (
+            int(enable_count_file.read_text(encoding="utf-8"))
+            if enable_count_file.exists()
+            else 0
+        )
+        return process.returncode, enable_count, process.stderr
+
+
 def run_runner_live_ime_visibility_seam(
     fake_dump: str,
     fake_selected_ime: str = "com.vibesync.gatek/.GateKPrototypeInputMethodService",
@@ -817,7 +896,7 @@ class GateKHarnessTest(unittest.TestCase):
         self.assertIn("dumpsys input_method", runner)
         self.assertIn("mCurMethodId", runner)
         self.assertIn("mCurImeId", runner)
-        self.assertNotIn("ime list", runner)
+        self.assertIn("ime list -s", runner)
 
         visible = (
             "mCurMethodId=com.vibesync.gatek/.GateKPrototypeInputMethodService\n"
@@ -854,6 +933,42 @@ class GateKHarnessTest(unittest.TestCase):
                     self.assertEqual(0, result)
                 else:
                     self.assertNotEqual(0, result)
+
+    def test_runner_waits_for_registered_ime_before_enable(self) -> None:
+        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn("ime_component_is_registered()", runner)
+        self.assertIn("wait_for_ime_registration()", runner)
+        self.assertIn("adb shell ime list -s", runner)
+        enable_function = runner_shell_function("enable_gate_k_ime")
+        self.assertLess(
+            enable_function.index("wait_for_ime_registration"),
+            enable_function.index('adb shell ime enable "$ime_component"'),
+        )
+        self.assertLess(
+            runner.index('adb shell pm grant "$prototype_package"'),
+            runner.index("enable_gate_k_ime || {"),
+        )
+
+        gate_k = "com.vibesync.gatek/.GateKPrototypeInputMethodService"
+        gboard = "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
+        with self.subTest(state="registration settles"):
+            returncode, enable_count, stderr = run_runner_ime_registration_seam(
+                (f"{gboard}\r\n", f"{gate_k}\r\n"),
+                2,
+            )
+            self.assertEqual(0, returncode)
+            self.assertEqual(1, enable_count)
+            self.assertEqual("", stderr)
+        with self.subTest(state="registration never appears"):
+            returncode, enable_count, stderr = run_runner_ime_registration_seam(
+                (f"{gboard}\r\n", f"{gboard}\r\n"),
+                2,
+            )
+            self.assertNotEqual(0, returncode)
+            self.assertEqual(0, enable_count)
+            self.assertIn("did not appear", stderr)
 
     def test_runner_dump_ui_clears_stale_files_and_requires_fresh_output(self) -> None:
         runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
