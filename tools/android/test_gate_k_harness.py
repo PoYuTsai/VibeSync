@@ -292,6 +292,79 @@ printf '%s\\n' "$value"
         return process.returncode, set_count
 
 
+def run_runner_ime_selection_drift_seam(
+    initial_ime: str,
+    reselection_imes: tuple[str, ...],
+    max_attempts: int,
+    max_polls: int,
+) -> tuple[int, int, str]:
+    with tempfile.TemporaryDirectory(prefix="gate-k-ime-selection-guard-test-") as temp_name:
+        temp_dir = Path(temp_name)
+        fake_adb = temp_dir / "adb"
+        fake_adb.write_text(
+            """#!/usr/bin/env bash
+if [[ "$1" == "shell" && "$2" == "ime" && "$3" == "set" &&
+      "$4" == "com.vibesync.gatek/.GateKPrototypeInputMethodService" ]]; then
+    count=0
+    if [[ -f "$GATE_K_IME_SET_COUNTER" ]]; then
+        count="$(cat "$GATE_K_IME_SET_COUNTER")"
+    fi
+    count=$((count + 1))
+    printf '%s' "$count" > "$GATE_K_IME_SET_COUNTER"
+    exit 0
+fi
+if [[ "$#" -ne 5 || "$1" != "shell" || "$2" != "settings" ||
+      "$3" != "get" || "$4" != "secure" || "$5" != "default_input_method" ]]; then
+    echo 'unexpected IME selection guard command' >&2
+    exit 97
+fi
+set_count=0
+if [[ -f "$GATE_K_IME_SET_COUNTER" ]]; then
+    set_count="$(cat "$GATE_K_IME_SET_COUNTER")"
+fi
+if (( set_count == 0 )); then
+    value="$GATE_K_INITIAL_IME"
+else
+    value="$(printf '%s\\n' "$GATE_K_RESELECTION_IME_SEQUENCE" | sed -n "${set_count}p")"
+    if [[ -z "$value" ]]; then
+        value="$(printf '%s\\n' "$GATE_K_RESELECTION_IME_SEQUENCE" | tail -n 1)"
+    fi
+fi
+printf '%s\\n' "$value"
+""",
+            encoding="utf-8",
+        )
+        fake_adb.chmod(0o755)
+        environment = os.environ.copy()
+        environment["PATH"] = f"{temp_dir}{os.pathsep}{environment['PATH']}"
+        environment["GATE_K_IME_SET_COUNTER"] = str(temp_dir / "ime-set-counter")
+        environment["GATE_K_INITIAL_IME"] = initial_ime
+        environment["GATE_K_RESELECTION_IME_SEQUENCE"] = "\n".join(reselection_imes)
+        shell = "\n\n".join(
+            runner_shell_function(function)
+            for function in (
+                "verify_selected_ime",
+                "select_and_verify_ime",
+                "ensure_gate_k_ime_selected",
+            )
+        )
+        command = (
+            f'{shell}\n'
+            'ime_component="com.vibesync.gatek/.GateKPrototypeInputMethodService"\n'
+            f"ensure_gate_k_ime_selected {max_attempts} {max_polls}\n"
+        )
+        process = subprocess.run(
+            ["bash", "-c", command],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        set_count_file = temp_dir / "ime-set-counter"
+        set_count = int(set_count_file.read_text(encoding="utf-8")) if set_count_file.exists() else 0
+        return process.returncode, set_count, process.stderr
+
+
 def run_runner_live_ime_visibility_seam(
     fake_dump: str,
     fake_selected_ime: str = "com.vibesync.gatek/.GateKPrototypeInputMethodService",
@@ -773,7 +846,7 @@ class GateKHarnessTest(unittest.TestCase):
         self.assertNotIn("input_method_is_selected_and_hidden", runner)
         trial_loop = runner.index('for trial in $(seq 1 "$trial_count");')
         foreground = runner.index("wait_for_host_foreground || {", trial_loop)
-        selected = runner.index("verify_selected_ime", foreground)
+        selected = runner.index("ensure_gate_k_ime_selected", foreground)
         visible = runner.index("verify_live_ime_visible", selected)
         standard = runner.index('wait_for_nonce_standard "$nonce"', visible)
         button = runner.index('center="$(wait_for_button)"', standard)
@@ -794,6 +867,9 @@ class GateKHarnessTest(unittest.TestCase):
             encoding="utf-8",
         )
         self.assertIn("select_and_verify_ime()", runner)
+        self.assertIn("ensure_gate_k_ime_selected()", runner)
+        self.assertIn('selected_ime="$(adb shell settings get secure default_input_method', runner)
+        self.assertIn('if [[ "$selected_ime" == "$ime_component" ]]; then', runner)
         self.assertIn('for attempt in $(seq 1 "$max_attempts");', runner)
         self.assertIn('verify_selected_ime "$max_polls"', runner)
         self.assertEqual(1, runner.count('adb shell ime set "$ime_component"'))
@@ -812,6 +888,36 @@ class GateKHarnessTest(unittest.TestCase):
             self.assertEqual(2, set_count)
         with self.subTest(state="persistent wrong IME fails closed"):
             returncode, set_count = run_runner_ime_reselection_seam(
+                (gboard,),
+                max_attempts=2,
+                max_polls=1,
+            )
+            self.assertNotEqual(0, returncode)
+            self.assertEqual(2, set_count)
+        with self.subTest(state="already selected skips ime set"):
+            returncode, set_count, _ = run_runner_ime_selection_drift_seam(
+                gate_k,
+                (gate_k,),
+                max_attempts=2,
+                max_polls=1,
+            )
+            self.assertEqual(0, returncode)
+            self.assertEqual(0, set_count)
+        with self.subTest(state="selection drift is repaired once"):
+            returncode, set_count, stderr = run_runner_ime_selection_drift_seam(
+                gboard,
+                (gate_k,),
+                max_attempts=2,
+                max_polls=1,
+            )
+            self.assertEqual(0, returncode)
+            self.assertEqual(1, set_count)
+            self.assertEqual("", stderr)
+            self.assertNotIn(gboard, stderr)
+            self.assertNotIn("not the selected default IME", stderr)
+        with self.subTest(state="selection drift remains wrong and fails closed"):
+            returncode, set_count, _ = run_runner_ime_selection_drift_seam(
+                gboard,
                 (gboard,),
                 max_attempts=2,
                 max_polls=1,

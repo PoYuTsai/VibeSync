@@ -582,6 +582,18 @@ start_trial_host() {
         --es gate_k_nonce "$nonce" >/dev/null
 }
 
+ensure_gate_k_ime_selected() {
+    local max_attempts="${1:-3}"
+    local max_polls="${2:-20}"
+    local selected_ime=""
+    selected_ime="$(adb shell settings get secure default_input_method 2>/dev/null | tr -d '\r')"
+    if [[ "$selected_ime" == "$ime_component" ]]; then
+        return 0
+    fi
+    select_and_verify_ime "$max_attempts" "$max_polls"
+}
+
+ensure_gate_k_ime_selected
 verify_live_ime_visible
 
 initial_count="$(read_trial_count)"
@@ -669,7 +681,7 @@ for trial in $(seq 1 "$trial_count"); do
         echo "host activity did not become the resumed foreground package for trial $trial" >&2
         exit 1
     }
-    verify_selected_ime
+    ensure_gate_k_ime_selected
     verify_live_ime_visible
     wait_for_nonce_standard "$nonce" || {
         echo "host nonce was not visible in a fresh standard UI dump for trial $trial" >&2
