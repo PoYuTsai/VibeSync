@@ -16,11 +16,13 @@ export type LearningSeedSource =
 export interface LearningSeed {
   temperatureScore: number | null;
   familiarityScore: number | null;
-  /**
-   * temperatureScore 的來源（familiarity 逐欄位獨立 fallback，可能來自
-   * 下一層；觀測以主分數溫度為準）。standard 無分數系統 → null。
-   */
+  /** temperatureScore 的來源。standard 無分數系統 → null。 */
   source: LearningSeedSource | null;
+  /**
+   * familiarityScore 的來源（逐欄位獨立 fallback，混合列時與 source 不同）。
+   * 注意熟悉度沒有難度預設值：末層 fallback 是 0，仍標 difficulty_default。
+   */
+  familiaritySource: LearningSeedSource | null;
 }
 
 export function resolveLearningSeed(opts: {
@@ -38,7 +40,12 @@ export function resolveLearningSeed(opts: {
   difficultyStartTemperature: number;
 }): LearningSeed {
   if (!opts.assistedMode) {
-    return { temperatureScore: null, familiarityScore: null, source: null };
+    return {
+      temperatureScore: null,
+      familiarityScore: null,
+      source: null,
+      familiaritySource: null,
+    };
   }
   if (opts.ledger.exists) {
     return {
@@ -46,6 +53,9 @@ export function resolveLearningSeed(opts: {
         opts.difficultyStartTemperature,
       familiarityScore: opts.ledger.familiarityScore ?? 0,
       source: opts.ledger.temperatureScore != null
+        ? "ledger"
+        : "difficulty_default",
+      familiaritySource: opts.ledger.familiarityScore != null
         ? "ledger"
         : "difficulty_default",
     };
@@ -58,6 +68,11 @@ export function resolveLearningSeed(opts: {
     source: opts.threadState?.temperatureScore != null
       ? "relationship_thread"
       : opts.clientTemperatureScore != null
+      ? "client"
+      : "difficulty_default",
+    familiaritySource: opts.threadState?.familiarityScore != null
+      ? "relationship_thread"
+      : opts.clientFamiliarityScore != null
       ? "client"
       : "difficulty_default",
   };

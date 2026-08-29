@@ -4395,10 +4395,14 @@ export function createPracticeChatHandler(
       // 女孩回覆或完整 prompt（innerThought 是生成文字，刻意不記）。──
       practiceMode: request.practiceMode ?? "standard",
       roundIndex: newAiCount,
-      // seedSource＝本回合實際讀取層（thread 承接的新場：首回合
-      // relationship_thread、之後 ledger 是正常型態）。整場的初始來源
-      // 取同 session 首回合那筆；ledgerExisted 讓查詢能直接切首回合。
+      // sessionId 是 client 自由字串 → 照 user id 慣例截斷後才進 log，
+      // 供「同一場」跨輪關聯（同 session 首回合＝ledgerExisted:false 那筆）。
+      session: summarizeUser(request.sessionId),
+      // seedSource／familiaritySeedSource＝本回合兩個分數各自的實際讀取層
+      // （thread 承接的新場：首回合 relationship_thread、之後 ledger 是
+      // 正常型態；偏離此型態才算「同一場 seed source 不穩定」）。
       seedSource: learningSeed.source,
+      familiaritySeedSource: learningSeed.familiaritySource,
       ledgerExisted: ledger.exists,
       temperatureBefore: currentTemperature,
       temperatureAfter: temperature?.score ?? null,
@@ -4419,9 +4423,11 @@ export function createPracticeChatHandler(
       // 與計分管線同一判準（challenge × beginner 才有獎勵閘門）。
       challengeGateActive: request.practiceMode === "beginner" &&
         request.profile.difficulty === "challenge",
-      // 本回合 seed 是否接續上一場 thread（ledger 建檔後即為 false）；
-      // 「整場是否 continuation」看同 session 首回合（ledgerExisted=false）那筆。
-      continuation: !ledger.exists && relationshipThreadState != null,
+      // 本回合是否真的從上一場 thread 取到分數（thread 存在但欄位全無效
+      // 而落到 client/預設時＝false）；「整場是否 continuation」看同 session
+      // 首回合（ledgerExisted:false）那筆。
+      continuation: learningSeed.source === "relationship_thread" ||
+        learningSeed.familiaritySource === "relationship_thread",
       promptPolicyVersion: PRACTICE_PROMPT_POLICY_VERSION,
     });
 
