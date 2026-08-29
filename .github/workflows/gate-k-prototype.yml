@@ -171,7 +171,7 @@ jobs:
           script: |
             cd "$GITHUB_WORKSPACE"
             (cd android && ./gradlew --no-daemon :gate-k-prototype:connectedDebugAndroidTest)
-            bash -c 'set +e; GATE_K_OUTPUT_DIR="$GITHUB_WORKSPACE/gate-k-artifacts-api$GATE_K_API_LEVEL" bash tools/android/run-gate-k-emulator-trials.sh --api-level "$GATE_K_API_LEVEL" --trials 40; trial_rc=$?; if [ "$trial_rc" -ne 0 ]; then diag_dir="$GITHUB_WORKSPACE/gate-k-artifacts-api$GATE_K_API_LEVEL"; mkdir -p "$diag_dir" >/dev/null 2>&1 || true; { adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER com.vibesync.gatekhost; adb shell am start -W -n com.vibesync.gatekhost/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER; adb shell dumpsys activity activities; adb shell dumpsys activity top; adb shell dumpsys window windows; adb shell dumpsys input_method; adb shell pidof com.vibesync.gatekhost; adb shell dumpsys activity exit-info com.vibesync.gatekhost; } >"$diag_dir/host-start-diagnostics.txt" 2>&1 || true; adb logcat -d -b crash -t 200 >"$diag_dir/host-crash.log" 2>&1 || true; fi; exit "$trial_rc"'
+            GATE_K_OUTPUT_DIR="$GITHUB_WORKSPACE/gate-k-artifacts-api$GATE_K_API_LEVEL" bash tools/android/run-gate-k-emulator-trials.sh --api-level "$GATE_K_API_LEVEL" --trials 40
 
       - name: Upload API evidence and reports
         if: always()

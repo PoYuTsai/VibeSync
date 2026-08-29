@@ -232,20 +232,28 @@ adb shell settings put secure show_ime_with_hard_keyboard 1
 adb shell am force-stop "$host_package"
 adb shell monkey -p "$host_package" 1 >/dev/null
 
+activity_package_is_foreground() {
+    local activity_dump="$1"
+    local expected_package="$2"
+    [[ -n "$expected_package" ]] || return 1
+    printf '%s\n' "$activity_dump" |
+        grep -E '(^|[[:space:]])(ResumedActivity:|topResumedActivity=|mResumedActivity:)' |
+        grep -F "$expected_package/" >/dev/null
+}
+
 for _ in $(seq 1 60); do
-    if adb shell dumpsys activity activities 2>/dev/null | tr -d '\r' | \
-        grep 'mResumedActivity:.*com.vibesync.gatekhost/' >/dev/null; then
+    activity_dump="$(adb shell dumpsys activity activities 2>/dev/null | tr -d '\r')"
+    if activity_package_is_foreground "$activity_dump" "$host_package"; then
         break
     fi
     sleep 0.25
 done
-adb shell dumpsys activity activities 2>/dev/null | tr -d '\r' | \
-    grep 'mResumedActivity:.*com.vibesync.gatekhost/' >/dev/null || {
+activity_dump="$(adb shell dumpsys activity activities 2>/dev/null | tr -d '\r')"
+activity_package_is_foreground "$activity_dump" "$host_package" || {
     echo "host activity did not become the resumed foreground package" >&2
     exit 1
 }
-if adb shell dumpsys activity activities 2>/dev/null | tr -d '\r' | \
-    grep 'mResumedActivity:.*com.vibesync.gatek/' >/dev/null; then
+if activity_package_is_foreground "$activity_dump" "$prototype_package"; then
     echo "Gate K IME package incorrectly became the resumed host activity" >&2
     exit 1
 fi

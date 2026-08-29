@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -24,6 +26,38 @@ VALID_UI = """
 """
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def runner_foreground_predicate(
+    activity_dump: str,
+    expected_package: str = "com.vibesync.gatekhost",
+) -> bool:
+    runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
+        encoding="utf-8",
+    )
+    marker = "activity_package_is_foreground() {"
+    start = runner.find(marker)
+    if start < 0:
+        raise AssertionError("runner foreground predicate seam is missing")
+    end = runner.find("\n}", start)
+    if end < 0:
+        raise AssertionError("runner foreground predicate is not closed")
+    function = runner[start : end + 2]
+    environment = os.environ.copy()
+    environment["ACTIVITY_DUMP"] = activity_dump
+    environment["EXPECTED_PACKAGE"] = expected_package
+    process = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'{function}\nactivity_package_is_foreground "$ACTIVITY_DUMP" "$EXPECTED_PACKAGE"',
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return process.returncode == 0
 
 
 def valid_evidence() -> dict:
@@ -109,6 +143,42 @@ def valid_evidence() -> dict:
 
 
 class GateKHarnessTest(unittest.TestCase):
+    def test_foreground_predicate_accepts_current_and_legacy_resumed_fields(self) -> None:
+        accepted_dumps = (
+            "  ResumedActivity: ActivityRecord{u0 com.vibesync.gatekhost/.MainActivity}",
+            "  topResumedActivity=ActivityRecord{u0 com.vibesync.gatekhost/.MainActivity}",
+            "  mResumedActivity: ActivityRecord{u0 com.vibesync.gatekhost/.MainActivity}",
+        )
+        rejected_dumps = (
+            "  ResumedActivity: ActivityRecord{u0 com.android.launcher3/.Launcher}\n"
+            "  Task{com.vibesync.gatekhost/.MainActivity}",
+            "  topResumedActivity=ActivityRecord{u0 com.vibesync.gatekhost2/.MainActivity}",
+            "  ActivityRecord{u0 com.vibesync.gatekhost/.MainActivity}",
+        )
+
+        for activity_dump in accepted_dumps:
+            with self.subTest(activity_dump=activity_dump):
+                self.assertTrue(runner_foreground_predicate(activity_dump))
+        for activity_dump in rejected_dumps:
+            with self.subTest(activity_dump=activity_dump):
+                self.assertFalse(runner_foreground_predicate(activity_dump))
+
+    def test_foreground_predicate_supports_prototype_package_reverse_guard(self) -> None:
+        runner = (REPO_ROOT / "tools/android/run-gate-k-emulator-trials.sh").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn(
+            'activity_package_is_foreground "$activity_dump" "$prototype_package"',
+            runner,
+        )
+        for activity_dump in (
+            "  ResumedActivity: ActivityRecord{u0 com.vibesync.gatek/.GateKPrototypeInputMethodService}",
+            "  topResumedActivity=ActivityRecord{u0 com.vibesync.gatek/.GateKPrototypeInputMethodService}",
+            "  mResumedActivity: ActivityRecord{u0 com.vibesync.gatek/.GateKPrototypeInputMethodService}",
+        ):
+            with self.subTest(activity_dump=activity_dump):
+                self.assertTrue(runner_foreground_predicate(activity_dump, "com.vibesync.gatek"))
+
     def test_button_parser_returns_center_without_coordinates_in_runner(self) -> None:
         self.assertEqual((110, 60), find_gate_k_button_center(VALID_UI))
 
