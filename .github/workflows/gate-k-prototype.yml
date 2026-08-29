@@ -173,7 +173,7 @@ jobs:
             # TEMP DIAGNOSTIC WRAPPER — remove after the query stage is known.
             gate_k_diagnostic_api_level=34
             gate_k_diagnostic_trials=12
-            [[ "$GATE_K_API_LEVEL" == "$gate_k_diagnostic_api_level" ]]
+            [ "$GATE_K_API_LEVEL" = "$gate_k_diagnostic_api_level" ]
             GATE_K_OUTPUT_DIR="$GITHUB_WORKSPACE/gate-k-artifacts-api$gate_k_diagnostic_api_level" \
               bash tools/android/run-gate-k-emulator-trials.sh \
               --api-level "$gate_k_diagnostic_api_level" \
