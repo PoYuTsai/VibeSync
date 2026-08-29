@@ -1060,7 +1060,7 @@ Deno.test("buildHintMessages teaches Game hints safe advanced qualification narr
   //     對齊不變量，有測試釘死，還原保留）
   //  ・「被她質問嗆聲＝她在測你」整段 → 併進橫向鐵則「她丟測試是機會不是危機」
   //  ・「Give-first」→ 併進「平聊不是原地踏步」
-  assert(gameText.includes("safeAdvancedGameHintContract"));
+  assert(gameText.includes("安全高階規則（內部指引，不得輸出）"));
   assert(gameText.includes("順勢收尾"));
   assert(gameText.includes("10-15 句內"));
   assert(gameText.includes("可貼回覆必須先接住她最新狀態"));
@@ -1092,7 +1092,7 @@ Deno.test("buildHintMessages teaches Game hints safe advanced qualification narr
     partnerMood: "comfortable",
   }).map((m) => m.content).join("\n");
 
-  assertEquals(beginnerText.includes("safeAdvancedGameHintContract"), false);
+  assertEquals(beginnerText.includes("安全高階規則（內部指引，不得輸出）"), false);
   assertEquals(beginnerText.includes("資格篩選"), false);
   assertEquals(beginnerText.includes("順勢收尾"), false);
   assertEquals(beginnerText.includes("10-15 句內"), false);
@@ -1701,7 +1701,7 @@ Deno.test("buildHintMessages keeps Game Hint prompt compact enough for reliable 
   // Game 比新手多帶整套五階段戰術＋教材契約，差距本來就大；這條只防「無限膨脹」。
   // 2026-08-11 承瑋／Wen 對標後 game 5353 / beginner 2088，差 3265。
   assert(gameText.length <= beginnerText.length + 5600);
-  assert(gameText.includes("safeAdvancedGameHintContract"));
+  assert(gameText.includes("安全高階規則（內部指引，不得輸出）"));
   assert(gameText.includes("visibleGameHintContract"));
   assert(gameText.includes("禁編店/路名/地址/地標/共同經歷"));
 });

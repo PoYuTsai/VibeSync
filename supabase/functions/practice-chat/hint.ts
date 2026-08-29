@@ -1399,7 +1399,10 @@ ${replyVoiceContract()}
 }
 
 function safeAdvancedGameHintContract(): string {
-  return `safeAdvancedGameHintContract:
+  // 2026-08-29：標題原為 camelCase「safeAdvancedGameHintContract:」，真機出現
+  // 模型把裸字「safe」抄進可貼句（「早safe」）；prompt 內標題一律中文，
+  // 不給可抄的英文 token。
+  return `安全高階規則（內部指引，不得輸出）：
 - 技巧拉滿但安全尊重：條件到位時 10-15 句內低壓見面。
 - 骨架：P1 開場/資訊交換 → P2 展示價值 → P3 篩選/賦格 → P4 推拉張力 → P5 鎖定/收尾。
 - 順勢收尾只用真窗口收成短咖啡、順路散步、小展、宵夜。
