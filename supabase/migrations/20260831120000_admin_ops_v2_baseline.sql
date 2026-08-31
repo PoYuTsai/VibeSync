@@ -39,19 +39,25 @@ CREATE TABLE IF NOT EXISTS public.admin_ops_decision_cards (
 );
 
 -- 不擴大存取權限：RLS 開啟且不建任何 policy（deny by default），
--- 並收回 Supabase 對 public schema 的預設 grant；只有 service role 可讀寫。
+-- 收回 PUBLIC 與 Supabase 對 public schema 的預設 grant，再只補 service_role 必要權限。
 ALTER TABLE public.admin_ops_source_checkpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_ops_incidents          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_ops_decision_cards     ENABLE ROW LEVEL SECURITY;
 
-REVOKE ALL ON public.admin_ops_source_checkpoints FROM anon, authenticated;
-REVOKE ALL ON public.admin_ops_incidents          FROM anon, authenticated;
-REVOKE ALL ON public.admin_ops_decision_cards     FROM anon, authenticated;
+REVOKE ALL ON public.admin_ops_source_checkpoints FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.admin_ops_incidents          FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.admin_ops_decision_cards     FROM PUBLIC, anon, authenticated;
 
+GRANT SELECT, INSERT, UPDATE ON public.admin_ops_source_checkpoints TO service_role;
+GRANT SELECT, INSERT, UPDATE ON public.admin_ops_incidents          TO service_role;
+GRANT SELECT, INSERT, UPDATE ON public.admin_ops_decision_cards     TO service_role;
+
+-- 不用 OR REPLACE：baseline 只能新建；同名 view 已存在代表環境漂移，應直接報錯。
 -- security_invoker：view 用呼叫者權限跑，不繞過基表 RLS。
-CREATE OR REPLACE VIEW public.admin_ops_source_freshness
+CREATE VIEW public.admin_ops_source_freshness
   WITH (security_invoker = true) AS
 SELECT source, last_seen_at, updated_at
 FROM public.admin_ops_source_checkpoints;
 
-REVOKE ALL ON public.admin_ops_source_freshness FROM anon, authenticated;
+REVOKE ALL ON public.admin_ops_source_freshness FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.admin_ops_source_freshness TO service_role;

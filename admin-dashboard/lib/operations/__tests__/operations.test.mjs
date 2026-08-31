@@ -39,6 +39,8 @@ test("health：缺資料必為 unknown，不冒充 healthy 或 0", () => {
     resolveHealth(undefined, now, MINUTE),
     resolveHealth({ observedAt: null, isDegraded: false }, now, MINUTE),
     resolveHealth({ observedAt: "garbage", isDegraded: false }, now, MINUTE),
+    // 未型檢呼叫端漏傳 isDegraded：undefined 是 falsy，不得因此冒充 healthy。
+    resolveHealth({ observedAt: "2026-08-30T23:59:30Z" }, now, MINUTE),
   ]) {
     assert.equal(missing, "unknown");
     assert.notEqual(missing, "healthy");
@@ -88,7 +90,7 @@ test("旗標關閉：只跑 legacy、輸出原封不動、完全不碰新讀取"
   assert.equal(nextCalls, 0);
 });
 
-test("旗標開啟：可見輸出仍是 legacy，差異只有路徑與型別、不含任何值", async () => {
+test("旗標開啟：可見輸出仍是 legacy，差異只有匿名路徑與型別、不含值也不含 key", async () => {
   const legacyValue = {
     total: 5,
     contact: "alice@example.com",
@@ -102,16 +104,27 @@ test("旗標開啟：可見輸出仍是 legacy，差異只有路徑與型別、�
   assert.equal(result.value, legacyValue);
   assert.equal(result.shadow.equal, false);
   assert.deepEqual(result.shadow.mismatches.sort(), [
-    "$.contact: string vs missing",
-    "$.rows[].extra: missing vs boolean",
-    "$.rows[].userId: value-mismatch",
-    "$.total: number vs string",
+    "$.{}: number vs string",
+    "$.{}: string vs missing",
+    "$.{}[].{}: missing vs boolean",
+    "$.{}[].{}: value-mismatch",
   ]);
   const serialized = JSON.stringify(result.shadow);
   assert.ok(!serialized.includes("@"));
   assert.ok(!serialized.includes("alice"));
   assert.ok(!serialized.includes("user-1234"));
   assert.ok(!serialized.includes("user-9999"));
+  // 動態 key（可能是 email/user id）不得出現在差異報告。
+  for (const key of ["total", "contact", "rows", "userId", "score", "extra"]) {
+    assert.ok(!serialized.includes(key), `key 洩漏: ${key}`);
+  }
+});
+
+test("陣列長度不同：只記 array-length-mismatch，不洩漏實際長度", () => {
+  const diff = structuralDiff({ items: [1, 2, 3] }, { items: [1] });
+  assert.equal(diff.equal, false);
+  assert.deepEqual(diff.mismatches, ["$.{}: array-length-mismatch"]);
+  assert.ok(!/\d/.test(JSON.stringify(diff.mismatches)));
 });
 
 test("結構相同時 shadow 回報 equal，仍不影響輸出", async () => {
@@ -149,12 +162,39 @@ test("回滾＝關旗標：同一段程式立即停用 shadow", async () => {
   assert.equal(nextCalls, 1);
 });
 
-test("structuralDiff 深度與數量有上限，不會被巨大 payload 拖垮", () => {
+test("structuralDiff 截斷（深度／節點預算／上限）絕不宣稱 equal", () => {
+  // 超過深度上限：沒看完就不能說相同。
   const deep = (depth) => (depth === 0 ? "leaf" : { child: deep(depth - 1) });
-  const diff = structuralDiff(deep(30), deep(30));
-  assert.equal(diff.equal, true);
+  const deepDiff = structuralDiff(deep(30), deep(30));
+  assert.equal(deepDiff.equal, false);
+  assert.deepEqual(deepDiff.mismatches, ["$: diff-truncated"]);
+  // 超過節點預算：即使目前為止全相同也一樣。
+  const wide = (n, v) => ({ rows: Array.from({ length: n }, () => ({ v })) });
+  const nodeDiff = structuralDiff(wide(3000, 1), wide(3000, 1));
+  assert.equal(nodeDiff.equal, false);
+  assert.deepEqual(nodeDiff.mismatches, ["$: diff-truncated"]);
+  // mismatch 數量上限：最多 20 筆，不被巨大差異拖垮。
   const wideA = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`k${i}`, 1]));
   const wideB = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`k${i}`, 2]));
   const capped = structuralDiff(wideA, wideB);
+  assert.equal(capped.equal, false);
   assert.equal(capped.mismatches.length, 20);
+});
+
+test("nextRead 超時：可見輸出仍是 legacy，遲到的失敗也不會爆", async () => {
+  const legacyValue = { ok: true };
+  let rejectLater;
+  const result = await shadowRead(
+    () => legacyValue,
+    () => new Promise((_, reject) => {
+      rejectLater = reject;
+    }),
+    { ADMIN_V2: "1" },
+    { nextReadTimeoutMs: 5 },
+  );
+  assert.equal(result.value, legacyValue);
+  assert.deepEqual(result.shadow, { equal: false, mismatches: ["$: next-read-timeout"] });
+  // 超時之後才 reject：不得變成 unhandled rejection。
+  rejectLater(new Error("late failure"));
+  await new Promise((resolve) => setTimeout(resolve, 20));
 });

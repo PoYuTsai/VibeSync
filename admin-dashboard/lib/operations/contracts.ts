@@ -64,7 +64,7 @@ export interface HealthSample {
 }
 
 /**
- * 缺 sample 或時間無法判讀 → unknown。
+ * 缺 sample、缺 isDegraded 或時間無法判讀 → unknown。
  * stale 的壞消息仍算 degraded；stale 的好消息不得宣稱 healthy → unknown。
  */
 export function resolveHealth(
@@ -72,7 +72,8 @@ export function resolveHealth(
   now: Date,
   staleAfterMs: number,
 ): HealthStatus {
-  if (!sample) return "unknown";
+  // 執行期守門：未型檢的呼叫端漏掉 isDegraded 時，不得因 undefined 為 falsy 而冒充 healthy。
+  if (!sample || typeof sample.isDegraded !== "boolean") return "unknown";
   const freshness = resolveFreshness(sample.observedAt, now, staleAfterMs);
   if (freshness === "unknown") return "unknown";
   if (sample.isDegraded) return "degraded";
