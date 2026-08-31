@@ -224,6 +224,20 @@ export const RequestSchema = z.object({
       message: "context_provenance_scope_mismatch",
     });
   }
+  // B3（R1 主審 P2）：legacy 形狀（無 scope 物件）用 global:me 合成 id 也
+  // 是全域串——同樣拒收非空 inviteHistory，不留繞道。
+  if (
+    payload.scope == null &&
+    payload.conversationId === "global:me" &&
+    payload.inviteHistory != null &&
+    payload.inviteHistory.length > 0
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["inviteHistory"],
+      message: "invite_history_global_forbidden",
+    });
+  }
   // B3：inviteHistory 綁定單一對象的邀約歷史；global 的 unbound 事件混
   // 不同真實對象，「兩次未承接」語意不成立，一律拒收。
   if (

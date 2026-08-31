@@ -252,6 +252,17 @@ Deno.test("validateRequest rejects non-empty inviteHistory on global scope (B3)"
     Error,
     "scope_global_shape_mismatch",
   );
+  // R1 主審 P2：legacy 形狀（無 scope）走 global:me 合成 id 也不得繞道。
+  assertThrows(
+    () =>
+      validateRequest({
+        ...baseRequest,
+        conversationId: "global:me",
+        inviteHistory: [{ summary: "週六要不要吃飯？", outcome: "noReply" }],
+      }),
+    Error,
+    "invite_history_global_forbidden",
+  );
 });
 
 Deno.test("validateRequest rejects contextProvenance with unknown keys", () => {
