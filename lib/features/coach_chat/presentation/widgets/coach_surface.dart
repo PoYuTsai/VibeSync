@@ -168,10 +168,13 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
         : null;
     // 乾淨版：進場自動載入的舊結果與「想問別的」還原的舊答案都不顯示，
     // 只留這次 session 產生的問答（loading→data 才進白名單）。
-    final timeline = _mergeCoachHistory(
+    final mergedHistory = _mergeCoachHistory(
       history: history,
       current: state.valueOrNull,
-    ).where((result) => _sessionResultIds.contains(result.id)).toList();
+    );
+    final timeline = mergedHistory
+        .where((result) => _sessionResultIds.contains(result.id))
+        .toList();
     final memorySources = _coachMemorySources(
       ref: ref,
       conversation: conversation,
@@ -184,6 +187,15 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     final latest = timeline.isEmpty ? null : timeline.first;
     final isClarifying =
         !activeError && (latest?.isClarifyingQuestion ?? false);
+    // 序數用未過濾的合併歷史算（同 sessionId 的釐清卡數），中途離開 app
+    // 回來白名單重置也不會少算。
+    final clarificationOrdinal =
+        latest != null && latest.isClarifyingQuestion && latest.sessionId != null
+            ? mergedHistory
+                .where((r) =>
+                    r.isClarifyingQuestion && r.sessionId == latest.sessionId)
+                .length
+            : null;
 
     ref.listen<AsyncValue<UnifiedCoachResult?>>(provider, (previous, next) {
       // 只有這次進來後問出去的結果（loading→data）進顯示白名單；
@@ -261,6 +273,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
                             onFollowUp: _focusInputForFollowUp,
                             onAskDifferent: _startNewQuestion,
                             onForceAnswer: _forceAnswer,
+                            clarificationOrdinal: clarificationOrdinal,
                           ),
                       ],
                     ),
@@ -560,6 +573,7 @@ class _CoachChatThreadView extends StatelessWidget {
   final VoidCallback onFollowUp;
   final VoidCallback onAskDifferent;
   final VoidCallback onForceAnswer;
+  final int? clarificationOrdinal;
 
   const _CoachChatThreadView({
     required this.results,
@@ -567,6 +581,7 @@ class _CoachChatThreadView extends StatelessWidget {
     required this.onFollowUp,
     required this.onAskDifferent,
     required this.onForceAnswer,
+    this.clarificationOrdinal,
   });
 
   @override
@@ -586,6 +601,7 @@ class _CoachChatThreadView extends StatelessWidget {
           onFollowUp: onFollowUp,
           onAskDifferent: onAskDifferent,
           onForceAnswer: onForceAnswer,
+          clarificationOrdinal: clarificationOrdinal,
         ),
         if (latest.earlierSummary?.trim().isNotEmpty == true) ...[
           const SizedBox(height: 8),
@@ -814,6 +830,11 @@ class CoachChatResultView extends ConsumerWidget {
   final VoidCallback onAskDifferent;
   final VoidCallback onForceAnswer;
 
+  /// 本張釐清卡是本 session 的第幾次免費釐清（1 起算）。null＝不顯示序數
+  /// （歷史卡、跨 session 檢視）。釐清是教練看情況才問的，所以文案用
+  /// 「第 N 次」陳述事實，不用「剩 N 次可用」暗示配額（2026-08-31 Eric）。
+  final int? clarificationOrdinal;
+
   const CoachChatResultView({
     super.key,
     required this.result,
@@ -822,6 +843,7 @@ class CoachChatResultView extends ConsumerWidget {
     required this.onAskDifferent,
     required this.onForceAnswer,
     this.question,
+    this.clarificationOrdinal,
   });
 
   @override
@@ -881,6 +903,7 @@ class CoachChatResultView extends ConsumerWidget {
             costDeducted: result.costDeducted,
             dailyRemaining: dailyRemaining,
             isClarifying: isClarifying,
+            clarificationOrdinal: clarificationOrdinal,
           ),
           const SizedBox(height: 8),
           if (isClarifying) ...[
@@ -1266,11 +1289,13 @@ class _CostStatusChip extends StatelessWidget {
   final int costDeducted;
   final int dailyRemaining;
   final bool isClarifying;
+  final int? clarificationOrdinal;
 
   const _CostStatusChip({
     required this.costDeducted,
     required this.dailyRemaining,
     required this.isClarifying,
+    this.clarificationOrdinal,
   });
 
   @override
@@ -1278,11 +1303,15 @@ class _CostStatusChip extends StatelessWidget {
     final color = isClarifying || costDeducted == 0
         ? AppColors.success
         : AppColors.warning;
-    final label = isClarifying || costDeducted == 0
-        ? '幫教練釐清（最多 3 次）'
-        : dailyRemaining >= 0
-            ? '已扣 $costDeducted 則 · 今日剩 $dailyRemaining 則'
-            : '已扣 $costDeducted 則';
+    final label = isClarifying
+        ? _clarifyingLabel()
+        : costDeducted == 0
+            // 免費保守建議（模型重試耗盡的 fallback 答案）不是釐清，
+            // 不能再誤標「幫教練釐清」。
+            ? '保守建議 · 本次不扣額度'
+            : dailyRemaining >= 0
+                ? '已扣 $costDeducted 則 · 今日剩 $dailyRemaining 則'
+                : '已扣 $costDeducted 則';
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -1301,6 +1330,15 @@ class _CostStatusChip extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _clarifyingLabel() {
+    final ordinal = clarificationOrdinal;
+    if (ordinal == null || ordinal < 1) return '幫教練釐清 · 免費（最多 3 次）';
+    if (ordinal >= CoachChatController.maxNoChargeClarificationTurns) {
+      return '免費釐清 第 $ordinal 次 · 下一則就是正式建議';
+    }
+    return '免費釐清 第 $ordinal 次（最多 3 次）';
   }
 }
 

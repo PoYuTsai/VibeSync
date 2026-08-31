@@ -57,7 +57,7 @@ CoachChatResult _clarifyingResult() {
   );
 }
 
-Widget _wrap(CoachChatResult result) {
+Widget _wrap(CoachChatResult result, {int? clarificationOrdinal}) {
   return ProviderScope(
     overrides: [
       coachingOutcomeRepositoryProvider.overrideWithValue(
@@ -75,6 +75,7 @@ Widget _wrap(CoachChatResult result) {
             onFollowUp: () {},
             onAskDifferent: () {},
             onForceAnswer: () {},
+            clarificationOrdinal: clarificationOrdinal,
           ),
         ),
       ),
@@ -129,7 +130,7 @@ void main() {
 
     expect(find.text('先確認你的目標'), findsOneWidget);
     // 「免費釐清」改名「幫教練釐清」（2026-08-16 Eric 拍板，扣費行為不變）。
-    expect(find.text('幫教練釐清（最多 3 次）'), findsOneWidget);
+    expect(find.text('幫教練釐清 · 免費（最多 3 次）'), findsOneWidget);
     expect(find.text('教練想先問清楚（幫教練釐清）'), findsOneWidget);
     expect(find.text('你此刻比較想靠近，還是先觀察？'), findsOneWidget);
     expect(
@@ -181,5 +182,14 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('回饋暫時沒有送出，稍後可以再試一次。'), findsOneWidget);
+  });
+
+  testWidgets('釐清卡帶序數：第 1 次與第 3 次的文案（看情況框架，不是配額）', (tester) async {
+    await tester.pumpWidget(_wrap(_clarifyingResult(), clarificationOrdinal: 1));
+    expect(find.text('免費釐清 第 1 次（最多 3 次）'), findsOneWidget);
+
+    await tester.pumpWidget(_wrap(_clarifyingResult(), clarificationOrdinal: 3));
+    await tester.pumpAndSettle();
+    expect(find.text('免費釐清 第 3 次 · 下一則就是正式建議'), findsOneWidget);
   });
 }
