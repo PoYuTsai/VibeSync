@@ -8,8 +8,10 @@ import {
   ADMIN_SESSION_ABSOLUTE_MS,
   ADMIN_SESSION_IDLE_MS,
   ADMIN_REAUTH_FRESH_MS,
+  AUDIT_ACTIONS,
   AUDIT_TARGET_REF_PATTERN,
   AUDIT_REASON_CODES,
+  AUDIT_REQUEST_ID_PATTERN,
   PUBLIC_AUTH_ERROR,
   capabilitiesForRole,
   hasCapability,
@@ -354,7 +356,7 @@ test("reauth freshness：敏感操作要 owner＋新鮮 reauth，缺一不可", 
   });
 });
 
-test("audit allowlist：target_ref 只收 <kind>:sha256:<hex64>、reason 只收 reason code", () => {
+test("audit allowlist：action/reason 只收固定 enum、target_ref/request_id 只收不透明格式", () => {
   const actor = "11111111-2222-3333-4444-555555555555";
   const hex64 = "0123456789abcdef".repeat(4);
   const ok = buildAuditEvent({
@@ -363,14 +365,17 @@ test("audit allowlist：target_ref 只收 <kind>:sha256:<hex64>、reason 只收 
     result: "success",
     targetRef: `admin_account:sha256:${hex64}`,
     reason: "incident_response",
-    requestId: "req-123",
+    requestId: `request:sha256:${hex64}`,
   });
   assert.equal(ok.ok, true);
   assert.equal(ok.event.approverUserId, null);
-  // 每個 reason code 都要真的過得了驗證（enum 與驗證邏輯同源）。
+  // 每個 action／reason code 都要真的過得了驗證（enum 與驗證邏輯同源）。
+  for (const action of AUDIT_ACTIONS) {
+    assert.equal(buildAuditEvent({ actorUserId: actor, action, result: "success" }).ok, true, action);
+  }
   for (const code of AUDIT_REASON_CODES) {
     assert.equal(
-      buildAuditEvent({ actorUserId: actor, action: "a.b", result: "success", reason: code }).ok,
+      buildAuditEvent({ actorUserId: actor, action: "admin.login", result: "success", reason: code }).ok,
       true,
       code,
     );
@@ -378,38 +383,61 @@ test("audit allowlist：target_ref 只收 <kind>:sha256:<hex64>、reason 只收 
 
   const rejected = [
     // 未知鍵（原文／payload 想混進來的路徑）。
-    { actorUserId: actor, action: "a.b", result: "success", payload: "{}" },
+    { actorUserId: actor, action: "admin.login", result: "success", payload: "{}" },
     // reason 是 prose／含空白（舊版收得進來，現在必拒）。
-    { actorUserId: actor, action: "a.b", result: "success", reason: "operator disabled account" },
+    { actorUserId: actor, action: "admin.login", result: "success", reason: "operator disabled account" },
     // reason 帶 email。
-    { actorUserId: actor, action: "a.b", result: "success", reason: "user alice@example.com" },
+    { actorUserId: actor, action: "admin.login", result: "success", reason: "user alice@example.com" },
     // reason 塞聊天原文／prompt。
-    { actorUserId: actor, action: "a.b", result: "success", reason: "她說：今晚有空嗎？回覆建議如下" },
+    { actorUserId: actor, action: "admin.login", result: "success", reason: "她說：今晚有空嗎？回覆建議如下" },
     // reason 不在 enum（單字也不行）。
-    { actorUserId: actor, action: "a.b", result: "success", reason: "misc" },
+    { actorUserId: actor, action: "admin.login", result: "success", reason: "misc" },
     // target_ref 是舊式自由標籤（沒有 sha256）。
-    { actorUserId: actor, action: "a.b", result: "success", targetRef: "admin_accounts_v2:redacted" },
+    { actorUserId: actor, action: "admin.login", result: "success", targetRef: "admin_accounts_v2:redacted" },
     // target_ref 是電話樣式。
-    { actorUserId: actor, action: "a.b", result: "success", targetRef: "0912345678" },
-    { actorUserId: actor, action: "a.b", result: "success", targetRef: "+886-912-345-678" },
+    { actorUserId: actor, action: "admin.login", result: "success", targetRef: "0912345678" },
+    { actorUserId: actor, action: "admin.login", result: "success", targetRef: "+886-912-345-678" },
     // target_ref 是 API key／非 JWT secret 樣式。
-    { actorUserId: actor, action: "a.b", result: "success", targetRef: "sk-ant-api03-AAAAAAAA" },
+    { actorUserId: actor, action: "admin.login", result: "success", targetRef: "sk-ant-api03-AAAAAAAA" },
     // target_ref 是 JWT 樣式。
-    { actorUserId: actor, action: "a.b", result: "success", targetRef: "eyJhbGciOiJIUzI1NiJ9" },
+    { actorUserId: actor, action: "admin.login", result: "success", targetRef: "eyJhbGciOiJIUzI1NiJ9" },
     // target_ref 含空白／prose。
-    { actorUserId: actor, action: "a.b", result: "success", targetRef: `user record ${hex64}` },
+    { actorUserId: actor, action: "admin.login", result: "success", targetRef: `user record ${hex64}` },
     // hex 不足 64、大寫 hex、kind 大寫都不行。
-    { actorUserId: actor, action: "a.b", result: "success", targetRef: `user:sha256:${hex64.slice(1)}` },
-    { actorUserId: actor, action: "a.b", result: "success", targetRef: `user:sha256:${hex64.toUpperCase()}` },
-    { actorUserId: actor, action: "a.b", result: "success", targetRef: `User:sha256:${hex64}` },
-    // action 不符格式（大寫、空白、prose）。
+    { actorUserId: actor, action: "admin.login", result: "success", targetRef: `user:sha256:${hex64.slice(1)}` },
+    { actorUserId: actor, action: "admin.login", result: "success", targetRef: `user:sha256:${hex64.toUpperCase()}` },
+    { actorUserId: actor, action: "admin.login", result: "success", targetRef: `User:sha256:${hex64}` },
+    // action 不在 enum：舊式合法 pattern、prose、電話、email、key/JWT 樣式全拒。
+    { actorUserId: actor, action: "a.b", result: "success" },
+    { actorUserId: actor, action: "admin.session.revoke.extra", result: "success" },
     { actorUserId: actor, action: "Delete All Users", result: "success" },
+    { actorUserId: actor, action: "0912345678", result: "success" },
+    { actorUserId: actor, action: "alice@example.com", result: "success" },
+    { actorUserId: actor, action: "sk-ant-api03-AAAAAAAA", result: "success" },
+    { actorUserId: actor, action: "eyJhbGciOiJIUzI1NiJ9", result: "success" },
+    // request_id 不透明格式以外全拒：舊式自由字串、raw UUID、電話、email、key/JWT、
+    // prose、大寫 hex、hex 不足 64。
+    { actorUserId: actor, action: "admin.login", result: "success", requestId: "req-123" },
+    { actorUserId: actor, action: "admin.login", result: "success", requestId: actor },
+    { actorUserId: actor, action: "admin.login", result: "success", requestId: "0912345678" },
+    { actorUserId: actor, action: "admin.login", result: "success", requestId: "alice@example.com" },
+    { actorUserId: actor, action: "admin.login", result: "success", requestId: "sk-ant-api03-AAAAAAAA" },
+    { actorUserId: actor, action: "admin.login", result: "success", requestId: "eyJhbGciOiJIUzI1NiJ9" },
+    { actorUserId: actor, action: "admin.login", result: "success", requestId: `she said hi ${hex64}` },
+    { actorUserId: actor, action: "admin.login", result: "success", requestId: `request:sha256:${hex64.toUpperCase()}` },
+    { actorUserId: actor, action: "admin.login", result: "success", requestId: `request:sha256:${hex64.slice(1)}` },
     // result 不在 enum。
-    { actorUserId: actor, action: "a.b", result: "maybe" },
+    { actorUserId: actor, action: "admin.login", result: "maybe" },
     // actor 不是 UUID。
-    { actorUserId: "eric", action: "a.b", result: "success" },
-    // approver 不是 UUID。
-    { actorUserId: actor, action: "a.b", result: "success", approverUserId: "bruce" },
+    { actorUserId: "eric", action: "admin.login", result: "success" },
+    // approver：B1 沒有 approval workflow，連合法 UUID 都是假核准，一律拒絕。
+    { actorUserId: actor, action: "admin.login", result: "success", approverUserId: "bruce" },
+    {
+      actorUserId: actor,
+      action: "admin.login",
+      result: "success",
+      approverUserId: "99999999-8888-7777-6666-555555555555",
+    },
   ];
   for (const input of rejected) {
     const result = buildAuditEvent(input);
@@ -617,7 +645,7 @@ test("B1 migration 靜態守則：additive、deny-by-default、definer 固定 se
   assert.ok(!/jsonb/iu.test(auditBlock), "audit 表不得有自由 payload 欄位");
 });
 
-test("B1 migration 靜態守則：audit RPC 是 trusted server-only 寫入口", () => {
+test("B1 migration 靜態守則：無 generic audit 寫入口，provenance 由表上守門 trigger 強制", () => {
   const sql = readFileSync(
     new URL(
       "../../../../supabase/migrations/20260831150000_admin_identity_v2_baseline.sql",
@@ -625,30 +653,38 @@ test("B1 migration 靜態守則：audit RPC 是 trusted server-only 寫入口", 
     ),
     "utf8",
   );
-  // authenticated／anon 不得執行 append_audit；只開給 service_role，且 grant 在 revoke 之後。
+  // 不得存在任何接受呼叫者自稱 actor/result/approver 的 generic append RPC。
+  assert.ok(!/append_audit/iu.test(sql), "不得保留 generic append RPC");
+  // 沒有任何函式 EXECUTE 開給 service_role：audit 寫入只能走 B2–B8 的
+  // operation-specific 受控函式（屆時同批建立、同批審查）。
   assert.ok(
-    !/GRANT[^;]*admin_v2_append_audit[^;]*TO[^;]*\b(authenticated|anon|PUBLIC)\b/iu.test(sql),
-    "append_audit 不得開給 authenticated/anon/PUBLIC",
+    !/^\s*GRANT[^;]*ON FUNCTION[^;]*service_role/imu.test(sql),
+    "不得把任何函式 EXECUTE 開給 service_role",
   );
-  const appendRevokeAt = sql.search(/REVOKE ALL ON FUNCTION public\.admin_v2_append_audit\(/u);
-  const appendGrantAt = sql.search(
-    /GRANT EXECUTE ON FUNCTION public\.admin_v2_append_audit\([^)]*\) TO service_role;/u,
-  );
-  assert.ok(appendRevokeAt >= 0, "append_audit 要先 revoke all");
-  assert.ok(appendGrantAt > appendRevokeAt, "append_audit 只在 revoke 後開給 service_role");
-  // audit 表對 service_role 只有 SELECT：唯一寫入路徑是 definer 函式。
+  // audit 表對 service_role 只有 SELECT：B1 沒有任何角色拿得到 INSERT。
   const auditGrant = sql.match(/GRANT ([^;]*) ON TABLE public\.admin_audit_events_v2\s+TO service_role;/u);
   assert.equal(auditGrant?.[1].trim(), "SELECT", "audit 表只留最小 SELECT，不得直接 INSERT");
-  // 出處驗證：actor 用參數（非 auth.uid）、須存在；approver 須是另一位啟用中的管理員。
-  const fnBody = sql.slice(
-    sql.indexOf("CREATE FUNCTION public.admin_v2_append_audit"),
-    sql.indexOf("-- 不擴大存取權限"),
+  assert.ok(
+    !/GRANT[^;]*\bINSERT\b[^;]*admin_audit_events_v2/iu.test(sql),
+    "audit 表不得對任何角色開 INSERT",
   );
-  assert.ok(fnBody.includes("p_actor"), "actor 由受信呼叫端明確傳入");
-  assert.ok(!fnBody.includes("auth.uid()"), "append_audit 不得依賴呼叫者 JWT 身分");
-  assert.ok(fnBody.includes("a.user_id = p_actor"), "actor 必須驗證為真實管理員帳號");
-  assert.ok(fnBody.includes("p_approver = p_actor"), "approver 不得等於 actor");
-  assert.ok(/p_approver AND a\.is_active/u.test(fnBody), "approver 必須是啟用中的管理員");
+  // provenance 守門 trigger 綁在表上：任何未來寫入路徑都逃不掉。
+  assert.match(sql, /BEFORE INSERT ON public\.admin_audit_events_v2/u);
+  const guardBody = sql.slice(
+    sql.indexOf("CREATE FUNCTION public.admin_audit_events_v2_provenance_guard"),
+    sql.indexOf("CREATE TRIGGER admin_audit_events_v2_provenance"),
+  );
+  assert.ok(
+    /a\.user_id = NEW\.actor_user_id AND a\.is_active/u.test(guardBody),
+    "actor 必須是啟用中的管理員（存在但停用也要拒）",
+  );
+  assert.ok(
+    /IF NEW\.approver_user_id IS NOT NULL THEN\s+RAISE EXCEPTION/u.test(guardBody),
+    "B1 沒有 approval workflow：非空 approver 一律拒絕",
+  );
+  // 守門函式本身收光權限、不 grant 給任何角色。
+  assert.match(sql, /REVOKE ALL ON FUNCTION public\.admin_audit_events_v2_provenance_guard\(\)/u);
+  assert.ok(!/GRANT[^;]*provenance_guard/iu.test(sql), "守門函式不得 grant");
 });
 
 test("B1 migration 靜態守則：audit 隱私規則與 TS 逐字同源", () => {
@@ -669,6 +705,17 @@ test("B1 migration 靜態守則：audit 隱私規則與 TS 逐字同源", () => 
   assert.ok(reasonIn, "reason 必須是固定 IN enum CHECK");
   const sqlCodes = reasonIn[1].split(",").map((s) => s.trim().replace(/^'|'$/gu, ""));
   assert.deepEqual(sqlCodes, [...AUDIT_REASON_CODES], "SQL reason enum 必須與 TS 同源");
+  // action CHECK 的 enum 與 AUDIT_ACTIONS 完全一致（含順序），不得是自由 pattern。
+  const actionIn = sql.match(/action IN \(([^)]*)\)/u);
+  assert.ok(actionIn, "action 必須是固定 IN enum CHECK");
+  const sqlActions = actionIn[1].split(",").map((s) => s.trim().replace(/^'|'$/gu, ""));
+  assert.deepEqual(sqlActions, [...AUDIT_ACTIONS], "SQL action enum 必須與 TS 同源");
+  assert.ok(!/action ~/u.test(sql), "action 不得用自由 pattern CHECK");
+  // request_id CHECK 與 AUDIT_REQUEST_ID_PATTERN 逐字相同。
+  assert.ok(
+    sql.includes(`request_id ~ '${AUDIT_REQUEST_ID_PATTERN}'`),
+    "SQL request_id CHECK 必須與 TS pattern 同一份字串",
+  );
 });
 
 test("B1 migration 靜態守則：首次 session 無競態且他人佔用 fail closed", () => {

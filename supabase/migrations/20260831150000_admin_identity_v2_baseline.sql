@@ -35,19 +35,21 @@ CREATE TABLE public.admin_sessions_v2 (
 CREATE INDEX admin_sessions_v2_user_id_idx ON public.admin_sessions_v2 (user_id);
 
 -- Append-only audit 基線：欄位即 allowlist，只有 actor/action/target_ref/reason/
--- result/approver/request/time。target_ref 只收「不透明結構化參照」
--- <kind>:sha256:<64 位小寫 hex>；reason 只收固定 reason code enum，不收任何自由文字。
--- 這兩條規則與 admin-gate.ts 的 AUDIT_TARGET_REF_PATTERN／AUDIT_REASON_CODES 逐字同源，
--- 原文、PII、電話、prompt、secret 在 schema 層就進不來。
+-- result/approver/request/time。action 只收固定 action enum；target_ref 只收
+-- 「不透明結構化參照」<kind>:sha256:<64 位小寫 hex>；reason 只收固定 reason code
+-- enum；request_id 只收不透明格式 request:sha256:<64 位小寫 hex>——raw UUID、電話、
+-- email、API key、JWT、prompt、對話原文在 schema 層就進不來。這些規則與
+-- admin-gate.ts 的 AUDIT_ACTIONS／AUDIT_TARGET_REF_PATTERN／AUDIT_REASON_CODES／
+-- AUDIT_REQUEST_ID_PATTERN 逐字同源。
 CREATE TABLE public.admin_audit_events_v2 (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   actor_user_id    UUID NOT NULL,
-  action           TEXT NOT NULL CHECK (action ~ '^[a-z0-9][a-z0-9_.:-]{0,99}$'),
+  action           TEXT NOT NULL CHECK (action IN ('admin.login', 'admin.logout', 'admin.session.revoke', 'admin.account.activate', 'admin.account.deactivate')),
   target_ref       TEXT CHECK (target_ref ~ '^[a-z][a-z0-9_]{0,31}:sha256:[0-9a-f]{64}$'),
   reason           TEXT CHECK (reason IN ('incident_response', 'support_request', 'billing_review', 'security_review', 'scheduled_maintenance', 'data_correction', 'legal_request', 'dual_control_approval')),
   result           TEXT NOT NULL CHECK (result IN ('success', 'denied', 'failure')),
   approver_user_id UUID,
-  request_id       TEXT CHECK (request_id ~ '^[A-Za-z0-9._:-]{1,100}$'),
+  request_id       TEXT CHECK (request_id ~ '^request:sha256:[0-9a-f]{64}$'),
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -72,6 +74,34 @@ CREATE TRIGGER admin_audit_events_v2_append_only
 CREATE TRIGGER admin_audit_events_v2_no_truncate
   BEFORE TRUNCATE ON public.admin_audit_events_v2
   FOR EACH STATEMENT EXECUTE FUNCTION public.admin_audit_events_v2_block_mutation();
+
+-- Provenance 守門：綁在表上，所有現在與未來的寫入路徑都逃不掉。
+-- actor 必須是「啟用中」的管理員；B1 沒有 approval workflow，任何非空 approver
+-- 都是無法驗證的假核准，一律拒絕（B2+ 建立可驗證的 server-side 核准證據後才放寬）。
+-- SECURITY DEFINER＋空 search_path：守門查詢不受呼叫者 RLS／權限影響。
+CREATE FUNCTION public.admin_audit_events_v2_provenance_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.admin_accounts_v2 a
+    WHERE a.user_id = NEW.actor_user_id AND a.is_active
+  ) THEN
+    RAISE EXCEPTION 'audit actor must be an active admin';
+  END IF;
+  IF NEW.approver_user_id IS NOT NULL THEN
+    RAISE EXCEPTION 'audit approver requires a verifiable approval workflow (none in B1)';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER admin_audit_events_v2_provenance
+  BEFORE INSERT ON public.admin_audit_events_v2
+  FOR EACH ROW EXECUTE FUNCTION public.admin_audit_events_v2_provenance_guard();
 
 -- 讀取＋觸碰 session：呼叫者只能看到／碰到自己的帳號與當前 session。
 -- 非管理員回 0 列（不 raise，避免用錯誤訊息洩漏身分判斷）；停用帳號不建新 session 列。
@@ -152,48 +182,12 @@ AS $$
       AND s.session_id = NULLIF(auth.jwt() ->> 'session_id', '')::uuid;
 $$;
 
--- Audit 寫入口：trusted server-only。authenticated／anon 不可直接執行——
--- AAL1、逾時、撤銷的瀏覽器 session 因此完全寫不進 audit；只有 trusted backend
--- （service_role，B2–B8 路由先過 AAL2/session/capability 閘門後才呼叫）能 EXECUTE。
--- 受信路徑上驗證出處：actor 必須是真實管理員帳號；approver 必須是「另一位」
--- 啟用中的管理員（不得自我核可），呼叫端無法偽造 approval/result 出處。
--- INSERT 由 definer（表擁有者）執行，service_role 對 audit 表本身沒有 INSERT 權。
-CREATE FUNCTION public.admin_v2_append_audit(
-  p_actor      UUID,
-  p_action     TEXT,
-  p_result     TEXT,
-  p_target_ref TEXT DEFAULT NULL,
-  p_reason     TEXT DEFAULT NULL,
-  p_approver   UUID DEFAULT NULL,
-  p_request_id TEXT DEFAULT NULL
-)
-RETURNS UUID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-  v_id UUID;
-BEGIN
-  IF p_actor IS NULL OR NOT EXISTS (
-    SELECT 1 FROM public.admin_accounts_v2 a WHERE a.user_id = p_actor
-  ) THEN
-    RAISE EXCEPTION 'invalid audit actor';
-  END IF;
-  IF p_approver IS NOT NULL AND (
-    p_approver = p_actor OR NOT EXISTS (
-      SELECT 1 FROM public.admin_accounts_v2 a WHERE a.user_id = p_approver AND a.is_active
-    )
-  ) THEN
-    RAISE EXCEPTION 'invalid audit approver';
-  END IF;
-  INSERT INTO public.admin_audit_events_v2
-      (actor_user_id, action, target_ref, reason, result, approver_user_id, request_id)
-    VALUES (p_actor, p_action, p_target_ref, p_reason, p_result, p_approver, p_request_id)
-    RETURNING id INTO v_id;
-  RETURN v_id;
-END;
-$$;
+-- Audit 寫入口：B1 刻意「不暴露」任何 generic append RPC。一個接受呼叫者自稱
+-- actor/result/approver 的通用寫入口，本質上就是可偽造的 provenance——與其驗不完，
+-- 不如不存在。audit 的 result 只能由 operation-specific 的受控 SECURITY DEFINER
+-- 函式在「同一交易」內依實際操作結果寫入（B2–B8 逐一建立）；每一筆寫入都會再過
+-- 上方的 provenance 守門 trigger（actor 必須啟用中、B1 拒絕任何 approver）。
+-- 沒有任何角色（含 service_role）拿得到 audit 表的 INSERT 權或任何寫入函式。
 
 -- 不擴大存取權限：RLS 開啟且不建任何 policy（deny by default）。
 ALTER TABLE public.admin_accounts_v2     ENABLE ROW LEVEL SECURITY;
@@ -206,21 +200,18 @@ REVOKE ALL PRIVILEGES ON TABLE public.admin_sessions_v2     FROM PUBLIC, anon, a
 REVOKE ALL PRIVILEGES ON TABLE public.admin_audit_events_v2 FROM PUBLIC, anon, authenticated, service_role;
 
 -- 再補最小權限：帳號管理與 session 撤銷之後由受控營運流程走 service_role；
--- audit 表對 service_role 只開 SELECT（最小讀取）——寫入唯一路徑是
--- admin_v2_append_audit（definer INSERT），沒有任何角色能直接 INSERT。
--- 任何 GRANT 不得含 DELETE/TRUNCATE。
+-- audit 表對 service_role 只開 SELECT（最小讀取）——B1 沒有任何寫入路徑，
+-- 沒有任何角色能 INSERT。任何 GRANT 不得含 DELETE/TRUNCATE。
 GRANT SELECT, INSERT, UPDATE ON TABLE public.admin_accounts_v2 TO service_role;
 GRANT SELECT, UPDATE ON TABLE public.admin_sessions_v2 TO service_role;
 GRANT SELECT ON TABLE public.admin_audit_events_v2 TO service_role;
 
 -- 函式權限：先收光（CREATE FUNCTION 預設 grant EXECUTE 給 PUBLIC），再補最小執行權。
--- self-scoped 的 touch/revoke 開給 authenticated；append_audit 只開給 service_role
--- （trusted backend），authenticated 不得直接執行。trigger 函式不開給任何角色。
-REVOKE ALL ON FUNCTION public.admin_audit_events_v2_block_mutation() FROM PUBLIC, anon, authenticated, service_role;
+-- self-scoped 的 touch/revoke 開給 authenticated；trigger 函式不開給任何角色。
+REVOKE ALL ON FUNCTION public.admin_audit_events_v2_block_mutation()    FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.admin_audit_events_v2_provenance_guard() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.admin_v2_touch_session()     FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.admin_v2_revoke_my_session() FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.admin_v2_append_audit(UUID, TEXT, TEXT, TEXT, TEXT, UUID, TEXT) FROM PUBLIC, anon, authenticated, service_role;
 
 GRANT EXECUTE ON FUNCTION public.admin_v2_touch_session()     TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_v2_revoke_my_session() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_v2_append_audit(UUID, TEXT, TEXT, TEXT, TEXT, UUID, TEXT) TO service_role;

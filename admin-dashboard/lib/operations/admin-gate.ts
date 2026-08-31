@@ -167,19 +167,34 @@ export function canPerformSensitiveOp(
 }
 
 // --- Audit allowlist 契約 ---
-// 欄位固定，值先在這裡驗過才進 RPC；schema CHECK 是第二道防線（規則逐字同源）。
-// target_ref 只收不透明結構化參照 <kind>:sha256:<64 位小寫 hex>；
-// reason 只收固定 reason code enum。自由文字、空白、電話、prompt 原文、
-// email、API key／JWT 之類的 secret 在結構上就進不來。
+// 欄位固定，值先在這裡驗過才進資料層；schema CHECK 是第二道防線（規則逐字同源）。
+// action 只收固定 action enum；target_ref 只收不透明結構化參照
+// <kind>:sha256:<64 位小寫 hex>；reason 只收固定 reason code enum；request_id
+// 只收不透明格式 request:sha256:<64 位小寫 hex>。自由文字、空白、電話、raw UUID、
+// prompt 原文、email、API key／JWT 之類的 secret 在結構上就進不來。
+// B1 沒有 approval workflow：任何非空 approver 都是無法驗證的假核准，一律拒絕。
 
 const AUDIT_RESULTS = ["success", "denied", "failure"] as const;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-const ACTION_RE = /^[a-z0-9][a-z0-9_.:-]{0,99}$/u;
-const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,100}$/u;
+
+/** 與 migration 的 action CHECK 共用同一份 enum（測試逐字比對，含順序）。 */
+export const AUDIT_ACTIONS = [
+  "admin.login",
+  "admin.logout",
+  "admin.session.revoke",
+  "admin.account.activate",
+  "admin.account.deactivate",
+] as const;
+
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 /** 與 migration 的 target_ref CHECK 共用同一份 pattern 字串（測試逐字比對）。 */
 export const AUDIT_TARGET_REF_PATTERN = "^[a-z][a-z0-9_]{0,31}:sha256:[0-9a-f]{64}$";
 const AUDIT_TARGET_REF_RE = new RegExp(AUDIT_TARGET_REF_PATTERN, "u");
+
+/** 與 migration 的 request_id CHECK 共用同一份 pattern 字串（測試逐字比對）。 */
+export const AUDIT_REQUEST_ID_PATTERN = "^request:sha256:[0-9a-f]{64}$";
+const AUDIT_REQUEST_ID_RE = new RegExp(AUDIT_REQUEST_ID_PATTERN, "u");
 
 /** 與 migration 的 reason CHECK 共用同一份 enum（測試逐字比對）。 */
 export const AUDIT_REASON_CODES = [
@@ -197,11 +212,12 @@ export type AuditReasonCode = (typeof AUDIT_REASON_CODES)[number];
 
 export interface AuditEventV2 {
   actorUserId: string;
-  action: string;
+  action: AuditAction;
   result: (typeof AUDIT_RESULTS)[number];
   targetRef: string | null;
   reason: AuditReasonCode | null;
-  approverUserId: string | null;
+  /** B1 恆為 null：沒有 approval workflow 就沒有合法的 approver。 */
+  approverUserId: null;
   requestId: string | null;
 }
 
@@ -225,7 +241,7 @@ export function buildAuditEvent(
   if (typeof actorUserId !== "string" || !UUID_RE.test(actorUserId)) {
     return { ok: false, error: "audit-invalid-actor" };
   }
-  if (typeof action !== "string" || !ACTION_RE.test(action)) {
+  if (typeof action !== "string" || !(AUDIT_ACTIONS as readonly string[]).includes(action)) {
     return { ok: false, error: "audit-invalid-action" };
   }
   if (typeof result !== "string" || !(AUDIT_RESULTS as readonly string[]).includes(result)) {
@@ -240,21 +256,21 @@ export function buildAuditEvent(
   ) {
     return { ok: false, error: "audit-invalid-reason" };
   }
-  if (approverUserId != null && (typeof approverUserId !== "string" || !UUID_RE.test(approverUserId))) {
-    return { ok: false, error: "audit-invalid-approver" };
+  if (approverUserId != null) {
+    return { ok: false, error: "audit-approver-not-supported" };
   }
-  if (requestId != null && (typeof requestId !== "string" || !REQUEST_ID_RE.test(requestId))) {
+  if (requestId != null && (typeof requestId !== "string" || !AUDIT_REQUEST_ID_RE.test(requestId))) {
     return { ok: false, error: "audit-invalid-request-id" };
   }
   return {
     ok: true,
     event: {
       actorUserId,
-      action,
+      action: action as AuditAction,
       result: result as AuditEventV2["result"],
       targetRef: (targetRef as string | undefined) ?? null,
       reason: (reason as AuditReasonCode | undefined) ?? null,
-      approverUserId: (approverUserId as string | undefined) ?? null,
+      approverUserId: null,
       requestId: (requestId as string | undefined) ?? null,
     },
   };
