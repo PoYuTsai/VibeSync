@@ -277,9 +277,11 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
     );
   }
 
-  /// Batch B1「教練本次參考」：partner scope 下教練會自動帶入該對象最近
-  /// 一段有效對話——這行讓使用者知道教練看了什麼。來源與送出 wire 同一個
-  /// provider（同源不漂移）；沒有有效對話時不渲染（教練會先釐清）。
+  /// Batch B1「教練會參考」：partner scope 下教練會自動帶入該對象最近
+  /// 一段有效對話。刻意用未來式——這行與 controller 下一次 ask 讀同一個
+  /// provider，描述的是「接下來提問會用的來源」；過去某次回答用了哪段，
+  /// 不在這行的語意裡（R1 主審 P2：live watch 不得宣稱歷史請求的來源）。
+  /// 沒有有效對話時不渲染（教練會先釐清）。
   Widget _buildPartnerContextReference() {
     if (!_scope.isPartner) return const SizedBox.shrink();
     final source =
@@ -290,7 +292,7 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
     return Padding(
       padding: const EdgeInsets.only(left: 54, bottom: 10),
       child: Text(
-        '教練本次參考：你們 $when 的對話紀錄',
+        '教練會參考：你們 $when 的對話紀錄',
         key: const Key('coach_partner_context_reference'),
         style: AppTypography.caption.copyWith(
           color: AppColors.glassTextSecondary,

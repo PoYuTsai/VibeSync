@@ -568,7 +568,12 @@ Deno.test("buildCoachChatPrompt renders provenance freshness for partner scope (
   };
   const now = new Date("2026-08-31T12:00:00.000Z");
 
-  // 缺席＝現行為：prompt byte-for-byte 不變（同 outcome 段的回歸鎖寫法）。
+  // 缺席＝現行為的 byte-for-byte 鎖：explicit null 與整欄缺席必須輸出
+  // 完整字串相等（R1 主審 P2：只驗標題沒出現不算 byte-for-byte）。
+  assertEquals(
+    buildCoachChatPrompt({ ...base, contextProvenance: null }, now),
+    buildCoachChatPrompt(base, now),
+  );
   assertEquals(
     buildCoachChatPrompt(base, now).includes("本次參考來源"),
     false,

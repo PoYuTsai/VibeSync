@@ -214,7 +214,7 @@ void main() {
     expect(find.text('想聊Alice的什麼？卡住的地方直接丟給我。'), findsOneWidget);
   });
 
-  testWidgets('partner scope 顯示「教練本次參考」；無有效對話不渲染（Batch B1）',
+  testWidgets('partner scope 顯示「教練會參考」；無有效對話不渲染（Batch B1）',
       (tester) async {
     await _pump(
       tester,
@@ -249,7 +249,7 @@ void main() {
     await tester.tap(find.byKey(const Key('coach_scope_partner_p1')));
     await tester.pumpAndSettle();
 
-    expect(find.text('教練本次參考：你們 8/30 的對話紀錄'), findsOneWidget);
+    expect(find.text('教練會參考：你們 8/30 的對話紀錄'), findsOneWidget);
   });
 
   testWidgets('點情境 chip → 預填情境問句＋種入 lifecyclePhase，不自動送出',
