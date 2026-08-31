@@ -68,7 +68,7 @@ Deno.test("mustClarifyFirstRound gates only contextless global first rounds", ()
     mustClarifyFirstRound({ ...gated, recentMessages: [{}] }),
     false,
   );
-  // 非 global scope 不受閘門影響。
+  // conversation scope 不受閘門影響。
   assertEquals(
     mustClarifyFirstRound({
       ...gated,
@@ -77,4 +77,37 @@ Deno.test("mustClarifyFirstRound gates only contextless global first rounds", ()
     false,
   );
   assertEquals(mustClarifyFirstRound({ ...gated, scope: null }), false);
+});
+
+Deno.test("mustClarifyFirstRound gates evidence-less partner first rounds (Batch A)", () => {
+  const gated = {
+    forceAnswer: false,
+    scope: { type: "partner" },
+    activeSessionTurns: [],
+    recentMessages: [],
+    conversationSummary: null,
+    analysisSnapshot: null,
+  };
+  assertEquals(mustClarifyFirstRound(gated), true);
+  // 逃生門與各種「已有個案證據」都放行。
+  assertEquals(mustClarifyFirstRound({ ...gated, forceAnswer: true }), false);
+  assertEquals(
+    mustClarifyFirstRound({ ...gated, recentMessages: [{}] }),
+    false,
+  );
+  assertEquals(
+    mustClarifyFirstRound({
+      ...gated,
+      activeSessionTurns: [{ role: "coach", kind: "clarification" }],
+    }),
+    false,
+  );
+  assertEquals(
+    mustClarifyFirstRound({ ...gated, conversationSummary: "上次聊到爬山" }),
+    false,
+  );
+  assertEquals(
+    mustClarifyFirstRound({ ...gated, analysisSnapshot: { stage: "曖昧" } }),
+    false,
+  );
 });

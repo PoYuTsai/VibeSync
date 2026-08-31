@@ -9,6 +9,7 @@ import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 export function buildCoachChatPrompt(input: CoachChatRequest): string {
   const context = [
     section("全域教練模式", formatGlobalFraming(input)),
+    section("對象教練模式", formatPartnerFraming(input)),
     section("教練情境", formatLifecycleFraming(input.lifecyclePhase)),
     section("使用者問題", input.userQuestion),
     section("使用者原本想怎麼回", input.rawReplyDraft),
@@ -168,6 +169,19 @@ function formatGlobalFraming(input: CoachChatRequest): string | null {
   if (!mustClarifyFirstRound(input)) return base;
   return `${base}
 本回合是全域首輪且沒有任何對話脈絡：必須輸出 responseType="clarifyingQuestion"，不可輸出 coachAnswer。只問一個問題，方向固定三選一：這是全新對象、聊到一半斷掉想重新接上、還是正在聊但沒話題？`;
+}
+
+// Batch A（2026-08-31）：partner scope 首輪零個案證據時的強制釐清指引。
+// client 現況在 partner scope 不送逐字對話——模型只憑 traits 腦補個案戰術
+// 正是空鉤子與查戶口句的來源。其他 partner 情境回 null（prompt 不變）。
+function formatPartnerFraming(input: CoachChatRequest): string | null {
+  if (input.scope?.type !== "partner") return null;
+  if (!mustClarifyFirstRound(input)) return null;
+  return "本回合綁定了對象，但你看不到任何和她的實際對話內容：必須輸出 " +
+    'responseType="clarifyingQuestion"，不可輸出 coachAnswer，更不可假裝看過' +
+    "對話或她的資料細節。只問一個問題，引導使用者三選一：切到與她的對話視窗" +
+    "再問（教練能帶入完整上下文）、把她最近的三到五則原話貼進來、或先聽不綁" +
+    "個案的通用原則。";
 }
 
 function formatLifecycleFraming(

@@ -421,13 +421,15 @@ Deno.test("buildCoachChatPrompt keeps conversation/partner output byte-identical
     buildCoachChatPrompt(conversationBase),
   );
 
+  // Batch A：partner 首輪零證據會注入強制釐清框架，所以 no-op 鎖改鎖
+  // 「有證據的 partner 情境」——這型 prompt 仍必須 byte-for-byte 不變。
   const partnerBase = {
     conversationId: "partner:p1",
     partnerId: "p1",
     userQuestion: "約她之前我該注意什麼？",
     activeSessionTurns: [],
     forceAnswer: false,
-    recentMessages: [],
+    recentMessages: [{ sender: "partner" as const, text: "週末要去爬山" }],
     dataQualityFlagged: false,
     partnerHint: { name: "Mia", traits: ["活潑"] },
   };
@@ -522,4 +524,31 @@ Deno.test("buildCoachChatPrompt forced global framing drops the clarify-first cl
   assertStringIncludes(forced, "使用者已選擇直接看正式建議：直接給可執行的建議");
   assertEquals(forced.includes("先用一個免費釐清問清處境"), false);
   assertEquals(forced.includes("本回合是全域首輪"), false);
+});
+
+Deno.test("buildCoachChatPrompt injects partner first-round clarify framing only when evidence-less (Batch A)", () => {
+  const base = {
+    conversationId: "partner:p1",
+    partnerId: "p1",
+    userQuestion: "對方回得很短，我該怎麼判斷？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+    partnerHint: { name: "Sydney" },
+    scope: { type: "partner" as const, partnerId: "p1" },
+  };
+  const gatedPrompt = buildCoachChatPrompt(base);
+  assertStringIncludes(gatedPrompt, "對象教練模式");
+  assertStringIncludes(gatedPrompt, "看不到任何和她的實際對話");
+  assertStringIncludes(gatedPrompt, '必須輸出 responseType="clarifyingQuestion"');
+
+  // 有任何個案證據（或 forceAnswer）就不注入。
+  const withEvidence = buildCoachChatPrompt({
+    ...base,
+    recentMessages: [{ sender: "partner" as const, text: "週末要去爬山" }],
+  });
+  assertEquals(withEvidence.includes("對象教練模式"), false);
+  const forced = buildCoachChatPrompt({ ...base, forceAnswer: true });
+  assertEquals(forced.includes("對象教練模式"), false);
 });

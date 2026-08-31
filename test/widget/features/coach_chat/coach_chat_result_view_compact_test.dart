@@ -192,4 +192,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('免費釐清 第 3 次 · 下一則就是正式建議'), findsOneWidget);
   });
+
+  testWidgets('do_not_send 且無建議句時顯示「這輪先別傳」，不出複製鈕（Batch A）', (tester) async {
+    final holdResult = CoachChatResult(
+      id: 'hold-result',
+      conversationId: 'conversation-1',
+      partnerId: 'partner-1',
+      question: '要不要再約她一次？',
+      mode: 'stopSignal',
+      headline: '這輪先收手',
+      answer: '她連續兩次沒有承接邀約，再推只會讓你的投入超過她給的互惠。',
+      userState: '你想推進，但對方目前沒有給窗口',
+      nextStep: '等她主動帶新材料，沒有就先把注意力移開',
+      suggestedLine: null,
+      boundaryReminder: '除非她主動延伸或給時間，否則先不再提出邀約',
+      needsReflection: false,
+      generatedAt: DateTime.utc(2026, 8, 31, 8),
+      provider: 'claude',
+      modelUsed: 'claude-sonnet-5',
+      rewriteDecision: 'do_not_send',
+      rewriteReason: '兩次邀約未被承接，先停一輪',
+      frictionType: 'stopLoss',
+    );
+    await tester.pumpWidget(_wrap(holdResult));
+    expect(find.text('這輪先別傳'), findsOneWidget);
+    expect(find.text('兩次邀約未被承接，先停一輪'), findsOneWidget);
+    expect(find.text('複製這句'), findsNothing);
+  });
 }

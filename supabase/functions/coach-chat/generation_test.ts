@@ -648,11 +648,12 @@ Deno.test("runCoachChat does not deduct when grounding fails every attempt", asy
   assertEquals(result.status, 200);
   assertEquals(calls, 3);
   assertEquals(harness.deductCalls, 0);
-  assertEquals(
-    (result.body.card as Record<string, unknown>).costDeducted,
-    0,
-  );
-  assertEquals(harness.events.includes("coach_chat_fallback_used"), true);
+  const strippedCard = result.body.card as Record<string, unknown>;
+  assertEquals(strippedCard.costDeducted, 0);
+  // Batch A：守門三連敗改剝句不砍卡——模型答案保留、建議句收掉。
+  assertEquals(strippedCard.suggestedLine, null);
+  assertEquals(strippedCard.rewriteDecision, "do_not_send");
+  assertEquals(harness.events.includes("coach_chat_line_stripped"), true);
 });
 
 Deno.test("runCoachChat falls back to a free clarification when all card attempts are malformed", async () => {
@@ -1522,7 +1523,7 @@ Deno.test("runCoachChat allows an English suggestedLine when user explicitly ask
     callClaude: () => {
       calls++;
       return Promise.resolve(validClaudeCard({
-        suggestedLine: "Hey, how was your day? Anything fun?",
+        suggestedLine: "Hey, how was your day?",
         answer: "開場先輕鬆問候就好，不用急著寫長句，先讓她好接話。",
       }));
     },
@@ -1571,6 +1572,7 @@ Deno.test("runCoachChat falls back without deducting when English persists every
   assertEquals(result.status, 200);
   assertEquals(calls, 3);
   assertEquals(harness.deductCalls, 0);
+  // language_drift 可能污染任何可見欄位，剝句治不了——維持整卡 fallback。
   assertEquals(
     (result.body.card as Record<string, unknown>).costDeducted,
     0,
@@ -1639,7 +1641,7 @@ Deno.test("runCoachChat forces clarification on a contextless global first round
   assertEquals(card.responseType, "clarifyingQuestion");
   assertEquals(card.costDeducted, 0);
   assertEquals(prompts[0].includes("必須輸出 responseType=\"clarifyingQuestion\""), true);
-  assertEquals(prompts[1].includes("上一次輸出違反全域首輪規則"), true);
+  assertEquals(prompts[1].includes("上一次輸出違反首輪規則"), true);
 });
 
 Deno.test("runCoachChat accepts a first-attempt clarification on gated first round", async () => {
@@ -1889,4 +1891,395 @@ Deno.test("runCoachChat guards rewriteReason through the full pipeline", async (
   assertEquals(result.status, 200);
   assertEquals(calls, 2);
   assertEquals(harness.deductCalls, 1);
+});
+
+// ── Batch A golden regression（2026-08-31 截圖病灶）────────────────────
+// 對應 docs/plans/2026-08-31-coach-knowledge-integration-verified-plan.md
+// 的 12 案：驗 invariants（守門行為），不驗 exact sentence。
+
+const partnerFirstRoundRequest: CoachChatRequest = {
+  conversationId: "partner:p1",
+  partnerId: "p1",
+  userQuestion: "對方回得很短，我該怎麼判斷？",
+  activeSessionTurns: [],
+  forceAnswer: false,
+  recentMessages: [],
+  dataQualityFlagged: false,
+  partnerHint: { name: "Sydney", traits: ["活潑"] },
+  scope: { type: "partner", partnerId: "p1" },
+};
+
+function partnerFirstRoundClarificationCard() {
+  return validClaudeCard({
+    responseType: "clarifyingQuestion",
+    mode: "clarifyIntent",
+    headline: "先讓我看到你們的對話",
+    answer: "我現在看不到你和她的實際對話，先幫我補上內容。",
+    userTruth: null,
+    userState: "你想要個案建議，但教練還沒看到任何實際對話。",
+    nextStep: "切到對話視窗，或貼上她最近幾則原話。",
+    suggestedLine: null,
+    rewriteDecision: null,
+    rewriteReason: null,
+    boundaryReminder: "補充釐清不扣額度；正式建議才扣 1 則。",
+    needsReflection: true,
+    reflectionQuestion: "要切到對話視窗、貼她最近三五則原話，還是先聽通用原則？",
+    costDeducted: 0,
+  });
+}
+
+Deno.test("Batch A G-01: partner 首輪零證據強制免費釐清", async () => {
+  let calls = 0;
+  const prompts: string[] = [];
+  const harness = deps({
+    callClaude: (args) => {
+      calls++;
+      prompts.push(args.prompt);
+      return Promise.resolve(
+        calls === 1 ? validClaudeCard() : partnerFirstRoundClarificationCard(),
+      );
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: partnerFirstRoundRequest,
+      tier: "free",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 0);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.responseType, "clarifyingQuestion");
+  assertEquals(card.costDeducted, 0);
+  assertEquals(prompts[0].includes("看不到任何和她的實際對話"), true);
+});
+
+Deno.test("Batch A G-01b: partner 首輪 forceAnswer 逃生門保留", async () => {
+  const harness = deps({});
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...partnerFirstRoundRequest, forceAnswer: true },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).responseType,
+    "coachAnswer",
+  );
+});
+
+Deno.test("Batch A G-01c: partner 首輪全滅時 fallback 是引導補證據的免費釐清卡", async () => {
+  const harness = deps({ callClaude: () => Promise.resolve(malformedClaudeCard()) });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: partnerFirstRoundRequest,
+      tier: "free",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(harness.deductCalls, 0);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.responseType, "clarifyingQuestion");
+  assertEquals(card.costDeducted, 0);
+  assertEquals(
+    String(card.reflectionQuestion).includes("對話視窗"),
+    true,
+  );
+});
+
+Deno.test("Batch A G-04/G-05: placeholder 建議句擋下並在重試後修好", async () => {
+  let calls = 0;
+  const prompts: string[] = [];
+  const harness = deps({
+    callClaude: (args) => {
+      calls++;
+      prompts.push(args.prompt);
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: calls === 1
+          ? "欸我週末想去吃你之前提到的（店名），要不要一起？"
+          : "被妳發現了，我會在飲料櫃前思考人生。",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(prompts[1].includes("模板佔位符"), true);
+});
+
+Deno.test("Batch A G-04b: placeholder 三連敗改剝句、答案保留、不扣費", async () => {
+  const variants = [
+    "你這張照片背景看起來像在＿＿，那是你自己找的嗎？",
+    "看你這張照片是在ＯＯ拍的嗎？",
+    "週六去 [地點] 走走？",
+  ];
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      const line = variants[calls] ?? variants[0];
+      calls++;
+      return Promise.resolve(validClaudeCard({ suggestedLine: line }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(calls, 3);
+  assertEquals(harness.deductCalls, 0);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.suggestedLine, null);
+  assertEquals(card.rewriteDecision, "do_not_send");
+  assertEquals(card.costDeducted, 0);
+  assertEquals(card.headline, "承認一半再反問");
+  assertEquals(harness.events.includes("coach_chat_line_stripped"), true);
+});
+
+Deno.test("Batch A G-02: 自貶求接住（可憐）擋下重試", async () => {
+  let calls = 0;
+  const prompts: string[] = [];
+  const harness = deps({
+    callClaude: (args) => {
+      calls++;
+      prompts.push(args.prompt);
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: calls === 1
+          ? "改天真的要約一下，不然我自己去吃會很可憐哈哈"
+          : "那家我也想吃很久了，這禮拜六下午一起去？",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(prompts[1].includes("自貶求接住"), true);
+});
+
+Deno.test("Batch A G-07a: 無限配合（時間我可以配合你）擋下", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: calls === 1
+          ? "欸我週末想去吃那家，時間我可以配合你"
+          : "我週六下午有空，妳要不要一起去吃那家？",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("Batch A: 來源出現過的詞不算 Beta（都可以有來源支持）", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(validClaudeCard({
+        suggestedLine: "妳說週六週日都可以，那我們約週六下午吧",
+      })),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        recentMessages: [{ sender: "partner", text: "我週六週日都可以喔" }],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).suggestedLine,
+    "妳說週六週日都可以，那我們約週六下午吧",
+  );
+});
+
+Deno.test("Batch A G-07b: 邊界說先別約、句子仍在邀＝同卡矛盾擋下", async () => {
+  let calls = 0;
+  const prompts: string[] = [];
+  const harness = deps({
+    callClaude: (args) => {
+      calls++;
+      prompts.push(args.prompt);
+      return Promise.resolve(validClaudeCard(
+        calls === 1
+          ? {
+            suggestedLine: "欸那你到底要不要吃這家，我們就約這禮拜六？",
+            boundaryReminder: "先別再約了，降低投入觀察她的下一步。",
+          }
+          : {
+            suggestedLine: null,
+            rewriteDecision: "do_not_send",
+            rewriteReason: "她還沒接住前兩次邀約，先停一輪。",
+            boundaryReminder: "先別再約了，降低投入觀察她的下一步。",
+          },
+      ));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(prompts[1].includes("自相矛盾"), true);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.suggestedLine, null);
+});
+
+Deno.test("Batch A: 條件式邊界提醒（如果她…）不算矛盾", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(validClaudeCard({
+        suggestedLine: "這禮拜六下午一起去吃那家？",
+        boundaryReminder: "如果她給模糊回應或不給替代時間，先別追問，降低投入。",
+      })),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("Batch A: 建議句超過一個問號擋下", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: calls === 1
+          ? "看你這張照片是在哪拍的？自己去的還是跟朋友？"
+          : "看你這張照片的地方感覺很不錯，是自己找到的嗎？",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("Batch A: fallback 不再產罐頭救場句", async () => {
+  const harness = deps({ callClaude: () => Promise.resolve(malformedClaudeCard()) });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...request, forceAnswer: true },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.responseType, "coachAnswer");
+  assertEquals(card.suggestedLine, null);
+  assertEquals(card.rewriteDecision, "do_not_send");
+  assertEquals(card.costDeducted, 0);
+  assertEquals(String(card.answer).includes("小問題"), false);
+});
+
+Deno.test("Batch A: fallback 保留使用者自己的短草稿", async () => {
+  const harness = deps({ callClaude: () => Promise.resolve(malformedClaudeCard()) });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        forceAnswer: true,
+        rawReplyDraft: "哈哈好啊，那就週六",
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.suggestedLine, "哈哈好啊，那就週六");
+  assertEquals(card.rewriteDecision, "light_edit");
+  assertEquals(card.costDeducted, 0);
 });

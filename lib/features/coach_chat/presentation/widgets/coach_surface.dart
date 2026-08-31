@@ -771,6 +771,9 @@ class _CoachChatHistoryTile extends StatelessWidget {
                 ),
               ),
             ],
+            if (result.suggestedLine == null &&
+                result.rewriteDecision == 'do_not_send')
+              const _InfoLine(label: '教練判斷', value: '這輪先別傳'),
             const SizedBox(height: 8),
             _InfoLine(label: '這次先做', value: result.nextStep),
             _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
@@ -959,6 +962,16 @@ class CoachChatResultView extends ConsumerWidget {
                   visualDensity: VisualDensity.compact,
                 ),
               ),
+            ),
+          ] else if (!isClarifying &&
+              result.rewriteDecision == 'do_not_send') ...[
+            // Batch A：「這輪先別傳」是正式判斷結果，不是缺漏——教練判斷
+            // 不值得出手（或建議句沒過安全檢查）時，明確告訴使用者先停。
+            const SizedBox(height: 8),
+            _CoachNotice(
+              icon: Icons.front_hand_outlined,
+              title: '這輪先別傳',
+              body: result.rewriteReason ?? '教練判斷這輪先不出手比較好。',
             ),
           ],
           const SizedBox(height: 8),

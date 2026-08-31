@@ -109,6 +109,40 @@ const UNSOURCED_NEGATIVE_MOTIVE_TERMS = [
   "吊胃口",
   "不想理我",
 ] as const;
+// Batch A（2026-08-31）：建議句模板佔位符硬擋。`（店名）`/`OO`/`___` 曾
+// 直接外洩到可複製句（golden G-04/G-05）。全形〇/Ｏ、方括號、角括號一併擋。
+const SUGGESTED_LINE_PLACEHOLDER_RE =
+  /[_＿]{2,}|\bOO+\b|[ＯO〇]{2,}|[（(][^（）()]{0,6}(?:店名|地點|時間|活動|名字)[^（）()]{0,6}[）)]|\[[^\]]{1,20}\]|<[^>]{1,20}>/u;
+// Batch A：自貶求接住／無限配合（Beta 模式）詞群。只有「來源沒出現」才擋
+// ——對方或使用者自己講過的詞不受影響（同 temporal_drift 的來源支持制）。
+const UNSOURCED_BETA_TERMS = [
+  "可憐",
+  "都可以",
+  "我都行",
+  "都行",
+  "配合你",
+  "配合妳",
+  "看你方便",
+  "看妳方便",
+  "隨時都可以",
+  "隨時有空",
+] as const;
+// Batch A：建議句與邊界提醒同卡矛盾（邊界說先別約、句子仍在邀）。
+// 邊界提醒裡「如果/若/要是」開頭的條件句不算當下指令，先剝掉再比對。
+const BOUNDARY_ANTI_INVITE_RE =
+  /(?:先別|不要|別再|先收|不再|先停)[^。；;，,]{0,8}(?:邀|約)|先收手/;
+const LINE_INVITE_RE = /約|要不要一起|一起(?:去|吃|看|喝)|見(?:個)?面/;
+// 最終回合守門仍不過時：這些錯誤類別只剝掉建議句、保留模型答案，
+// 不退罐頭 fallback（守門是否決那一句，不是否決整張卡）。
+const SUGGESTED_LINE_STRIP_ERRORS = new Set([
+  "placeholder_leak",
+  "beta_pattern",
+  "invite_contradiction",
+  "multi_question",
+  "temporal_drift",
+  "motive_drift",
+  "explicit_no_question",
+]);
 
 export async function runCoachChat(
   input: GenerationInput,
@@ -185,9 +219,11 @@ export async function runCoachChat(
       attempt,
       maxAttempts: MAX_CARD_GENERATION_ATTEMPTS,
     });
+    let candidate: CoachChatResponseCard | null = null;
     try {
-      const candidate = parseAndValidateCard(claudeData, request);
+      candidate = parseAndValidateCard(claudeData, request);
       assertSuggestedLineGrounded(candidate, request);
+      assertSuggestedLineDeliverable(candidate, request);
       assertExplicitNoQuestionConstraint(candidate, request);
       assertVisibleTextLanguage(candidate, request);
       assertClarificationRequired(candidate, request);
@@ -215,6 +251,14 @@ export async function runCoachChat(
         ? "clarification_forbidden"
         : message === "clarification_required"
         ? "clarification_required"
+        : message === "placeholder_leak"
+        ? "placeholder_leak"
+        : message === "beta_pattern"
+        ? "beta_pattern"
+        : message === "invite_contradiction"
+        ? "invite_contradiction"
+        : message === "multi_question"
+        ? "multi_question"
         : message === "max_tokens"
         ? "max_tokens"
         : message === "refusal"
@@ -240,6 +284,33 @@ export async function runCoachChat(
         return { status: 500, body: { error: lastValidationError } };
       }
       if (attempt === MAX_CARD_GENERATION_ATTEMPTS) {
+        // Batch A：建議句層級的守門在最終回合仍不過時，只剝掉那一句、
+        // 保留模型的判斷與策略（守門降級成對句子的否決，不是對整卡的
+        // 否決）；其餘錯誤照舊退保守 fallback。
+        if (
+          candidate != null &&
+          SUGGESTED_LINE_STRIP_ERRORS.has(lastValidationError)
+        ) {
+          deps.logger.warn("coach_chat_line_stripped", {
+            tier: input.tier,
+            errorClass: lastValidationError,
+            attempts: attempt,
+          });
+          card = {
+            ...candidate,
+            suggestedLine: null,
+            rewriteDecision: candidate.responseType === "coachAnswer"
+              ? "do_not_send"
+              : candidate.rewriteDecision,
+            rewriteReason: candidate.responseType === "coachAnswer"
+              ? "建議句沒通過安全檢查，這輪先不給可貼句。"
+              : candidate.rewriteReason,
+            // 剝句卡不扣費：扣 1 ⇔ AI 真生成完整過驗卡（同 fallback/repair
+            // 的既有計費不變量）。
+            costDeducted: FALLBACK_NO_CHARGE,
+          };
+          break;
+        }
         deps.logger.warn("coach_chat_fallback_used", {
           tier: input.tier,
           errorClass: lastValidationError,
@@ -450,10 +521,45 @@ function buildAttemptPrompt(
   if (lastValidationError === "clarification_required") {
     return `${basePrompt}
 
-上一次輸出違反全域首輪規則：本回合完全沒有任何對話脈絡，必須先免費釐清，不可直接給 coachAnswer。
+上一次輸出違反首輪規則：本回合完全沒有任何個案對話脈絡，必須先免費釐清，不可直接給 coachAnswer。
 請重新輸出 responseType="clarifyingQuestion" 的 JSON：
-- 只問一個問題，方向固定三選一：全新對象／聊到一半斷掉想重新接上／正在聊但沒話題。
+- 只問一個問題。全域模式方向固定三選一：全新對象／聊到一半斷掉想重新接上／正在聊但沒話題。對象模式引導三選一：切到與她的對話視窗再問／貼上她最近三到五則原話／先聽通用原則。
 - costDeducted 必須是 0；suggestedLine、rewriteDecision、rewriteReason 用 null；needsReflection=true，reflectionQuestion 必填。
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
+  }
+  if (lastValidationError === "placeholder_leak") {
+    return `${basePrompt}
+
+上一次 suggestedLine 含有模板佔位符（例如 OO、＿＿、（店名）、[地點]），這不是可以直接傳出去的句子。
+請重新輸出完整 JSON：
+- 只能用上下文裡真實出現過的店名、地點、活動；沒有就不要編，把句子改寫成不需要那個細節，或 suggestedLine 用 null。
+- 絕不可輸出任何佔位符或要使用者自行填空的句型。
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
+  }
+  if (lastValidationError === "beta_pattern") {
+    return `${basePrompt}
+
+上一次 suggestedLine 出現自貶求接住或無限配合的句型（例如「我自己去會很可憐」「時間我都可以配合你」），會讓使用者掉價。
+請重新輸出完整 JSON：
+- 邀約要有自己的時間與選擇，給對方清楚可拒絕的空間，但不乞求、不自貶、不把節奏全讓出去。
+- 不確定怎麼寫就把 suggestedLine 用 null，把策略講清楚即可。
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
+  }
+  if (lastValidationError === "invite_contradiction") {
+    return `${basePrompt}
+
+上一次輸出自相矛盾：boundaryReminder 說先別邀約，suggestedLine 卻還在邀。
+請重新輸出完整 JSON，二選一收斂：
+- 若判斷值得邀：邊界提醒改成邀約後的守則，不要寫「先別約」。
+- 若判斷該收手：suggestedLine 用 null 或改成不帶邀約的低壓句，rewriteDecision 用 do_not_send。
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
+  }
+  if (lastValidationError === "multi_question") {
+    return `${basePrompt}
+
+上一次 suggestedLine 有超過一個問句，像在盤問。
+請重新輸出完整 JSON：
+- suggestedLine 最多一個問號；先給內容或立場，再留一個自然回口。
 - 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
   }
   if (lastValidationError === "language_drift") {
@@ -513,6 +619,50 @@ function assertSuggestedLineGrounded(
     if (suggestedLine.includes(term) && !source.includes(term)) {
       throw new Error("motive_drift");
     }
+  }
+}
+
+// Batch A 建議句可交付守門（2026-08-31）：擋 placeholder 外洩、無來源的
+// 自貶／全面配合詞、同卡「邊界說先別約、句子仍在邀」矛盾、問號超過一個。
+// 詞群類走來源支持制（同 temporal_drift）：對方或使用者講過的詞不擋。
+function assertSuggestedLineDeliverable(
+  card: CoachChatResponseCard,
+  request: CoachChatRequest,
+): void {
+  const suggestedLine = card.suggestedLine?.trim();
+  if (!suggestedLine) return;
+
+  if (SUGGESTED_LINE_PLACEHOLDER_RE.test(suggestedLine)) {
+    throw new Error("placeholder_leak");
+  }
+
+  if (((suggestedLine.match(/[?？]/g) ?? []).length) > 1) {
+    throw new Error("multi_question");
+  }
+
+  const source = [
+    request.userQuestion,
+    request.rawReplyDraft,
+    ...request.recentMessages.map((message) => message.text),
+    ...request.activeSessionTurns
+      .filter((turn) => turn.role === "user")
+      .map((turn) => turn.content),
+  ].filter((value): value is string => typeof value === "string").join("\n");
+  for (const term of UNSOURCED_BETA_TERMS) {
+    if (suggestedLine.includes(term) && !source.includes(term)) {
+      throw new Error("beta_pattern");
+    }
+  }
+
+  // 邊界提醒的條件句（如果/若/要是…）是「事後怎麼辦」，不算當下指令；
+  // 只拿第一個條件詞之前的文字比對反邀約指令。
+  const boundary = card.boundaryReminder ?? "";
+  const unconditional = boundary.split(/如果|若|要是|萬一/)[0];
+  if (
+    BOUNDARY_ANTI_INVITE_RE.test(unconditional) &&
+    LINE_INVITE_RE.test(suggestedLine)
+  ) {
+    throw new Error("invite_contradiction");
   }
 }
 
@@ -636,25 +786,31 @@ function buildFallbackCoachAnswerShape(
   const hasPriorClarification = request.activeSessionTurns.some((turn) =>
     turn.role === "coach" && turn.kind === "clarification"
   );
+  // Batch A：fallback 不再產罐頭救場句（「丟一個好回答的小問題」正是
+  // conversation-rescue 病灶）。使用者自己的草稿可以保留；沒有就不給句。
   const baseLine = request.rawReplyDraft?.trim();
+  const keepDraft = baseLine != null && baseLine.length > 0 &&
+    baseLine.length <= 80;
   return {
     responseType: "coachAnswer",
     mode: inferFallbackAnswerMode(request),
     headline: "先給你保守版",
     answer: hasPriorAnswer
-      ? "我先沿用前一輪判斷補一個保守方向：不要重複解釋，也不要急著推進。先用一句低壓訊息接住她的狀態，再把球丟回一個好回答的小問題。這版是系統保守建議，本次不扣額度。"
+      ? "我先沿用前一輪判斷補一個保守方向：不要重複解釋，也不要急著推進。這輪值不值得回、由誰先投入，比句子本身重要；她沒有給新東西時，不回也是一個正確選項。這版是系統保守建議，本次不扣額度。"
       : hasPriorClarification
-      ? "你已經補充了，我先不再追問同一題。保守做法是先回得短一點、不要自證太多，把重點放在接住她的情緒或狀態，再留一個她容易回的小球。本次保守版不扣額度。"
-      : "我先給你保守方向：不要把訊息寫得太滿，也不要急著證明自己。先接住她話裡最明確的情緒或線索，再順手丟一個輕、好回的小問題。本次保守版不扣額度。",
+      ? "你已經補充了，我先不再追問同一題。保守做法是先回得短一點、不要自證太多，把重點放在接住她的情緒或狀態；她投入少你就跟著少，不用替對話續命。本次保守版不扣額度。"
+      : "我先給你保守方向：不要把訊息寫得太滿，也不要急著證明自己。先看她這輪實際給了什麼——有接球才值得延伸，沒接球就降低投入等下一輪。本次保守版不扣額度。",
     userTruth: null,
     userState: "你現在需要先拿到可執行方向，而不是再被追問同一題。",
     frictionType: "unclearIntent",
-    nextStep: "先送短版低壓回覆；如果她有接，再依她回的球延伸。",
-    suggestedLine: baseLine && baseLine.length <= 80
-      ? baseLine
-      : "感覺你今天真的有點累，我先不鬧你。那你比較想被放空，還是被轉移注意力一下？",
-    rewriteDecision: baseLine ? "light_edit" : "rewrite",
-    rewriteReason: "這是低信心保守版，先給可用方向，不當成正式生成扣額度。",
+    nextStep: keepDraft
+      ? "先用你自己的原句送出短版；她有接再延伸。"
+      : "先判斷這輪值不值得回；要回就短而低壓，不確定就等她的下一則。",
+    suggestedLine: keepDraft ? baseLine : null,
+    rewriteDecision: keepDraft ? "light_edit" : "do_not_send",
+    rewriteReason: keepDraft
+      ? "這是低信心保守版：你的原句已可用，先不多加工。"
+      : "系統這輪生不出夠可靠的句子，先不給可貼句，避免給你錯的話術。",
     boundaryReminder: "如果她明顯冷或累，先降壓，不要追問或逼她立刻表態。",
     needsReflection: false,
     reflectionQuestion: null,
@@ -676,25 +832,33 @@ function inferFallbackAnswerMode(request: CoachChatRequest): string {
 function buildFallbackClarificationShape(
   request: CoachChatRequest,
 ): Record<string, string | number | boolean | null | undefined> {
-  // 全域首輪閘門下的 fallback 不能問「你聽到她這句話後…」——根本還沒有
-  // 對話。固定問三分法處境題。
+  // 首輪閘門下的 fallback 不能問「你聽到她這句話後…」——根本還沒有
+  // 對話。global 問三分法處境題；partner（Batch A）引導補個案證據。
   if (mustClarifyFirstRound(request)) {
+    const isPartnerScope = request.scope?.type === "partner";
     return {
       responseType: "clarifyingQuestion",
       mode: "clarifyIntent",
-      headline: "先弄清楚你的處境",
-      answer:
-        "這題可以給方向，但我需要先知道你現在的局面，建議才不會空泛。先幫我選一個最接近的狀況。",
+      headline: isPartnerScope ? "先讓我看到你們的對話" : "先弄清楚你的處境",
+      answer: isPartnerScope
+        ? "這題我可以判斷，但我現在看不到你和她的實際對話，硬給建議只會是空話。先幫我補上實際內容。"
+        : "這題可以給方向，但我需要先知道你現在的局面，建議才不會空泛。先幫我選一個最接近的狀況。",
       userTruth: null,
-      userState: "你想要可執行的方向，但還沒說目前是哪種局面。",
+      userState: isPartnerScope
+        ? "你想要個案建議，但教練還沒看到任何實際對話。"
+        : "你想要可執行的方向，但還沒說目前是哪種局面。",
       frictionType: "unclearIntent",
-      nextStep: "先選一個最接近的狀況。",
+      nextStep: isPartnerScope
+        ? "切到與她的對話視窗再問，或把她最近幾則原話貼進來。"
+        : "先選一個最接近的狀況。",
       suggestedLine: null,
       rewriteDecision: null,
       rewriteReason: null,
       boundaryReminder: "免費釐清最多 3 次；正式建議才扣 1 則。",
       needsReflection: true,
-      reflectionQuestion: "這是全新對象、聊到一半斷掉想重新接上，還是正在聊但沒話題？",
+      reflectionQuestion: isPartnerScope
+        ? "你要切到與她的對話視窗再問、貼上她最近三到五則原話，還是先聽不綁個案的通用原則？"
+        : "這是全新對象、聊到一半斷掉想重新接上，還是正在聊但沒話題？",
     };
   }
   const question = request.userQuestion.toLowerCase();
