@@ -17,6 +17,7 @@ import { buildFunnelRow } from "./funnel_utils.ts";
 import {
   buildFeedbackV2RpcParams,
   isAdminV2FeedbackEnabled,
+  normalizeClientRequestKey,
 } from "./feedback_v2.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -223,8 +224,6 @@ serve(withOperationalErrorMonitoring("submit-feedback", async (req) => {
 
     const rawRating = body.rating;
     const rawCategory = body.category;
-    const rawAiResponse = body.aiResponse;
-
     if (
       typeof rawRating !== "string" ||
       !["positive", "negative"].includes(rawRating)
@@ -242,6 +241,36 @@ serve(withOperationalErrorMonitoring("submit-feedback", async (req) => {
 
     const rating = rawRating;
     const category = typeof rawCategory === "string" ? rawCategory : undefined;
+
+    // B2：ADMIN_V2 開啟時只接受固定 metadata 與 client 明確產生的 opaque
+    // idempotency key。留言、對話片段、AI 回應及其他自由文字不讀取、不雜湊、
+    // 不寫入 inbox/outbox，也不呼叫 Discord。
+    // 旗標關閉時本分支不會執行，legacy 行為與輸出一比一不變。
+    if (isAdminV2FeedbackEnabled(Deno.env.get("ADMIN_V2"))) {
+      const clientRequestKey = normalizeClientRequestKey(body?.clientRequestId);
+      if (!clientRequestKey) {
+        return jsonResponse({ error: "Invalid client request id" }, 400);
+      }
+      const rpcParams = await buildFeedbackV2RpcParams({
+        userId: user.id,
+        clientRequestKey,
+        rating,
+        category,
+        userTier: body?.userTier,
+        modelUsed: body?.modelUsed,
+      });
+      const { error: rpcError } = await supabase.rpc(
+        "admin_v2_submit_feedback",
+        rpcParams,
+      );
+      if (rpcError) {
+        console.error("Feedback v2 rpc error:", rpcError);
+        return jsonResponse({ error: "Failed to save feedback" }, 500);
+      }
+      return jsonResponse({ success: true });
+    }
+
+    const rawAiResponse = body.aiResponse;
     const comment = truncateOptionalStringToMax(
       body?.comment,
       COMMENT_MAX_LENGTH,
@@ -258,34 +287,6 @@ serve(withOperationalErrorMonitoring("submit-feedback", async (req) => {
       body?.modelUsed,
       MODEL_MAX_LENGTH,
     );
-
-    // B2：ADMIN_V2 開啟時走 metadata-only V2 分流——傳入的 conversationSnippet
-    // 與 aiResponse 只餵進 request_ref 的不可逆雜湊（區分不同回饋、讓重試冪等），
-    // 不儲存；只保存 category、短描述、request ref 與 safe metadata（inbox＋
-    // outbox 由 RPC 同一交易寫入），不呼叫 Discord。
-    // 旗標關閉時本分支不會執行，legacy 行為與輸出一比一不變。
-    if (isAdminV2FeedbackEnabled(Deno.env.get("ADMIN_V2"))) {
-      const rpcParams = await buildFeedbackV2RpcParams({
-        userId: user.id,
-        rating,
-        category,
-        comment: body?.comment,
-        conversationSnippet: body?.conversationSnippet,
-        aiResponse: rawAiResponse,
-        userTier: body?.userTier,
-        modelUsed: body?.modelUsed,
-      });
-      const { error: rpcError } = await supabase.rpc(
-        "admin_v2_submit_feedback",
-        rpcParams,
-      );
-      if (rpcError) {
-        console.error("Feedback v2 rpc error:", rpcError);
-        return jsonResponse({ error: "Failed to save feedback" }, 500);
-      }
-      return jsonResponse({ success: true });
-    }
-
     let aiResponse = sanitizeFeedbackAiResponse(rawAiResponse);
 
     if (

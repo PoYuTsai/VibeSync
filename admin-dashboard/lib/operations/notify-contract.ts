@@ -1,5 +1,5 @@
 // B2 通知與 break-glass 共用契約。
-// 固定 red／yellow template、欄位 allowlist、dedupe/idempotency 鍵格式與
+// 固定 red／yellow template、欄位 allowlist、外部事件/idempotency 參照格式與
 // break-glass 數值上限全部只在這裡定義；SQL（20260831180000 migration）的
 // enum／pattern／interval 與本檔逐字或同值同源（測試比對）。本批不實作
 // B4 worker／cron：升級門檻（15 分鐘持續／3 次重複）只是契約常數。
@@ -42,18 +42,18 @@ export const NOTIFY_CHANNELS = ["discord", "email_fallback"] as const;
 
 /** 與 migration 的欄位 CHECK 共用同一份 pattern 字串（測試逐字比對）。 */
 export const NOTIFY_USER_REF_PATTERN = "^user:sha256:[0-9a-f]{64}$";
-export const NOTIFY_DEDUPE_KEY_PATTERN = "^[a-z][a-z0-9_.]{0,63}:sha256:[0-9a-f]{64}$";
+export const NOTIFY_EXTERNAL_EVENT_REF_PATTERN = "^[a-z][a-z0-9_.]{0,63}:sha256:[0-9a-f]{64}$";
 export const FEEDBACK_REQUEST_REF_PATTERN = "^request:sha256:[0-9a-f]{64}$";
 
 const USER_REF_RE = new RegExp(NOTIFY_USER_REF_PATTERN, "u");
-const DEDUPE_KEY_RE = new RegExp(NOTIFY_DEDUPE_KEY_PATTERN, "u");
+const EXTERNAL_EVENT_REF_RE = new RegExp(NOTIFY_EXTERNAL_EVENT_REF_PATTERN, "u");
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 export interface NotificationEventV2 {
   template: NotifyTemplate;
   deliveryClass: NotifyDeliveryClass;
   reasonCode: NotifyReasonCode;
-  dedupeKey: string;
+  externalEventRef: string;
   incidentId: string | null;
   userRef: string | null;
 }
@@ -61,14 +61,14 @@ export interface NotificationEventV2 {
 const NOTIFY_ALLOWED_KEYS = new Set([
   "template",
   "reasonCode",
-  "dedupeKey",
+  "externalEventRef",
   "incidentId",
   "userRef",
 ]);
 
 /**
  * 通知欄位 allowlist 驗證：只有 incident id、不可逆 user ref、severity
- * template、safe reason code 與 dedupe 鍵；任何未知鍵或自由文字 payload
+ * template、safe reason code 與外部事件身分；任何未知鍵或自由文字 payload
  * 一律拒絕。deliveryClass 由 template 導出，呼叫端不能自帶。
  */
 export function buildNotificationEvent(
@@ -77,7 +77,7 @@ export function buildNotificationEvent(
   for (const key of Object.keys(input)) {
     if (!NOTIFY_ALLOWED_KEYS.has(key)) return { ok: false, error: "notify-field-not-allowed" };
   }
-  const { template, reasonCode, dedupeKey, incidentId, userRef } = input;
+  const { template, reasonCode, externalEventRef, incidentId, userRef } = input;
   if (typeof template !== "string" || !(NOTIFY_TEMPLATES as readonly string[]).includes(template)) {
     return { ok: false, error: "notify-invalid-template" };
   }
@@ -87,8 +87,11 @@ export function buildNotificationEvent(
   ) {
     return { ok: false, error: "notify-invalid-reason-code" };
   }
-  if (typeof dedupeKey !== "string" || !DEDUPE_KEY_RE.test(dedupeKey)) {
-    return { ok: false, error: "notify-invalid-dedupe-key" };
+  if (
+    typeof externalEventRef !== "string" ||
+    !EXTERNAL_EVENT_REF_RE.test(externalEventRef)
+  ) {
+    return { ok: false, error: "notify-invalid-external-event-ref" };
   }
   if (incidentId != null && (typeof incidentId !== "string" || !UUID_RE.test(incidentId))) {
     return { ok: false, error: "notify-invalid-incident-id" };
@@ -102,7 +105,7 @@ export function buildNotificationEvent(
       template: template as NotifyTemplate,
       deliveryClass: TEMPLATE_DELIVERY_CLASS[template as NotifyTemplate],
       reasonCode: reasonCode as NotifyReasonCode,
-      dedupeKey,
+      externalEventRef,
       incidentId: (incidentId as string | undefined) ?? null,
       userRef: (userRef as string | undefined) ?? null,
     },

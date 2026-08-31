@@ -1,20 +1,12 @@
 import { NextResponse } from "next/server";
+import {
+  mapAiErrorRow,
+  resolveAiErrorsSource,
+  type AiErrorRowInput,
+} from "@/lib/operations/ai-logs-read";
 import { getAdminSession } from "@/lib/server/admin-supabase";
 
 export const dynamic = "force-dynamic";
-
-interface AiErrorRow {
-  id: string;
-  created_at: string;
-  error_code: string | null;
-  error_message: string | null;
-  request_type: string | null;
-  user_id: string | null;
-}
-
-function errorType(row: AiErrorRow): string {
-  return row.error_code?.trim() || row.request_type?.trim() || "UNKNOWN";
-}
 
 export async function GET() {
   const admin = await getAdminSession();
@@ -22,9 +14,10 @@ export async function GET() {
     return NextResponse.json({ error: admin.error }, { status: admin.status });
   }
 
+  const source = resolveAiErrorsSource();
   const { data, error } = await admin.session.supabase
-    .from("ai_logs")
-    .select("id, created_at, error_code, error_message, request_type, user_id")
+    .from(source.table)
+    .select(source.select)
     .eq("status", "failed")
     .order("created_at", { ascending: false })
     .limit(200);
@@ -33,14 +26,10 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const errors = ((data ?? []) as AiErrorRow[]).map((row) => ({
-    id: row.id,
-    created_at: row.created_at,
-    error_type: errorType(row),
-    error_message: row.error_message ?? "",
-    user_id: row.user_id ?? "",
-    request_id: row.id,
-  }));
+  const rows = (data ?? []) as unknown as AiErrorRowInput[];
+  const errors = rows.map((row) =>
+    mapAiErrorRow(row, source.mode)
+  );
 
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
