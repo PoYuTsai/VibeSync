@@ -6,6 +6,7 @@ import {
 } from "./clarification_policy.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import { shouldSuppressInviteLine } from "./invite_policy.ts";
+import { renderSelectedSocialKnowledge } from "../_shared/social/knowledge_selector.ts";
 
 export function buildCoachChatPrompt(
   input: CoachChatRequest,
@@ -16,6 +17,13 @@ export function buildCoachChatPrompt(
     section("對象教練模式", formatPartnerFraming(input)),
     section("邀約守門", formatInviteSuppression(input)),
     section("教練情境", formatLifecycleFraming(input.lifecyclePhase)),
+    section(
+      "共享社交判斷核心",
+      renderSelectedSocialKnowledge({
+        ...input,
+        inviteSuppressed: shouldSuppressInviteLine(input.inviteHistory),
+      }),
+    ),
     section("使用者問題", input.userQuestion),
     section("使用者原本想怎麼回", input.rawReplyDraft),
     section("本輪教練狀態", formatSessionState(input)),
