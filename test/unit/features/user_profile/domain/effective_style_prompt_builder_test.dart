@@ -158,7 +158,7 @@ void main() {
       // topics 仍不進 Coach 1:1（只有 stuckPoints/goals/notes 三段）。
       expect(context, isNot(contains('爵士酒吧')));
       expect(context, contains('這段 notes 現在批3 拍板要送給 Spec 5'));
-      expect(context, contains('教練語氣與任務 framing'));
+      expect(context, contains('教練語氣與任務框架'));
     });
 
     test('practice goals alone still resolve without interaction style', () {

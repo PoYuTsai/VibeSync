@@ -57,28 +57,30 @@ class EffectiveStylePromptBuilder {
     );
     final lines = <String>[];
 
+    // 2026-08-31 語言守門案：標籤全中文——英文標籤（Stuck points／Boundary…）
+    // 會被模型當成「這裡可以夾英文」的示範抄進可貼句（同 08-29「早safe」）。
     if (effective.stuckPoints.isNotEmpty) {
       lines.add(
-        '- Stuck points: ${effective.stuckPoints.map(_stuckPointLabel).join('、')}；'
-        '這是使用者現在卡住的處境，回答時要接住這個情境，不要給通用建議。',
+        '- 卡住的處境：${effective.stuckPoints.map(_stuckPointLabel).join('、')}；'
+        '回答時要接住這個情境，不要給通用建議。',
       );
     }
 
     if (effective.practiceGoals.isNotEmpty) {
       lines.add(
-        '- Practice focus: ${effective.practiceGoals.map(_goalLabel).join('、')}；'
+        '- 練習重點：${effective.practiceGoals.map(_goalLabel).join('、')}；'
         '${effective.practiceGoals.map(_goalPrompt).join(' ')}',
       );
     }
 
     final notes = effective.notes?.trim();
     if (notes != null && notes.isNotEmpty) {
-      lines.add('- Boundary: $notes；這是使用者的邊界，任何建議都不能違反。');
+      lines.add('- 使用者邊界：$notes；任何建議都不能違反。');
     }
 
     if (lines.isEmpty) return null;
     lines.add(
-      '- Contract: 僅用來調整教練語氣與任務 framing；不要拿來推斷對方或寫長期人格。',
+      '- 使用範圍：僅用來調整教練語氣與任務框架；不要拿來推斷對方或寫長期人格。',
     );
     return _truncate(lines.join('\n'), coachFollowUpMaxChars);
   }
