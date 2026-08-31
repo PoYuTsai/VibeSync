@@ -92,14 +92,41 @@ function walk(a: unknown, b: unknown, path: string, depth: number, state: DiffSt
     const objB = b as Record<string, unknown>;
     // 匿名化：key 一律寫成 {}；key 本身可能是 email/user id 等動態值，永不進報告。
     const anonPath = `${path}.{}`;
-    for (const key of new Set([...Object.keys(objA), ...Object.keys(objB)])) {
+    // 不先 Object.keys、不配置全寬 Set：逐 key 迭代並對每個 key 收節點預算，
+    // 超寬物件在預算內就截斷，寬度與工作量真正受 MAX_NODES 硬上限控制。
+    // 第一趟走 A 的 key（共有 key 在此比對，A 多出的記 missing）。
+    for (const key in objA) {
+      if (!Object.hasOwn(objA, key)) continue;
       if (state.truncated || state.mismatches.length >= MAX_MISMATCHES) {
         state.truncated = true;
         return;
       }
-      if (!(key in objA)) state.mismatches.push(`${anonPath}: missing vs ${typeTag(objB[key])}`);
-      else if (!(key in objB)) state.mismatches.push(`${anonPath}: ${typeTag(objA[key])} vs missing`);
-      else walk(objA[key], objB[key], anonPath, depth + 1, state);
+      if (!Object.hasOwn(objB, key)) {
+        state.nodes += 1;
+        if (state.nodes > MAX_NODES) {
+          state.truncated = true;
+          return;
+        }
+        state.mismatches.push(`${anonPath}: ${typeTag(objA[key])} vs missing`);
+      } else {
+        walk(objA[key], objB[key], anonPath, depth + 1, state);
+        if (state.truncated) return;
+      }
+    }
+    // 第二趟只找 B 多出的 key；共有 key 已在第一趟收過預算，此處跳過的數量
+    // 因此也被第一趟的預算間接限制住，不會變成無上限掃描。
+    for (const key in objB) {
+      if (!Object.hasOwn(objB, key) || Object.hasOwn(objA, key)) continue;
+      if (state.truncated || state.mismatches.length >= MAX_MISMATCHES) {
+        state.truncated = true;
+        return;
+      }
+      state.nodes += 1;
+      if (state.nodes > MAX_NODES) {
+        state.truncated = true;
+        return;
+      }
+      state.mismatches.push(`${anonPath}: missing vs ${typeTag(objB[key])}`);
     }
     return;
   }
@@ -119,10 +146,21 @@ export function structuralDiff(legacy: unknown, next: unknown): ShadowDiff {
 
 const NEXT_READ_TIMED_OUT = Symbol("next-read-timed-out");
 
+// 超時只接受有限正數，且不得高於 NEXT_READ_TIMEOUT_MS 上限；其餘壞值一律退回預設。
+function clampNextReadTimeout(raw: unknown): number {
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0
+    ? Math.min(raw, NEXT_READ_TIMEOUT_MS)
+    : NEXT_READ_TIMEOUT_MS;
+}
+
 /**
  * 旗標關閉：只跑 legacy，完全不碰 nextRead。
  * 旗標開啟：仍回傳 legacy 結果，新讀取只用來產生匿名結構差異；
  * 新讀取失敗或超時絕不影響可見輸出，legacy value 永遠先保住。
+ *
+ * 呼叫契約：Promise race 只能保護「非同步等待」，無法中止已在跑的同步 CPU；
+ * nextRead 不得包進不受信任的同步重運算，同步部分必須自行保持 O(1) 起手、
+ * 把真正的工作放在 await 之後。
  */
 export async function shadowRead<T>(
   legacyRead: () => Promise<T> | T,
@@ -134,7 +172,7 @@ export async function shadowRead<T>(
   if (!isAdminV2Enabled(env)) return { value, shadow: null };
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const timeoutMs = options.nextReadTimeoutMs ?? NEXT_READ_TIMEOUT_MS;
+    const timeoutMs = clampNextReadTimeout(options.nextReadTimeoutMs);
     const nextPromise = Promise.resolve().then(nextRead);
     // 超時後才失敗的新讀取不得變成 unhandled rejection。
     nextPromise.catch(() => {});
