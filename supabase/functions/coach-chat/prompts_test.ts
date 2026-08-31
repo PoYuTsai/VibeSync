@@ -448,3 +448,27 @@ Deno.test("buildCoachChatPrompt keeps conversation/partner output byte-identical
     false,
   );
 });
+
+// ── 語言鐵則（2026-08-31「欸你today過得怎樣」案）────────────────────────
+
+Deno.test("buildCoachChatPrompt states the language iron rule and strips copyable English tokens", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    userQuestion: "她到底什麼意思？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+  });
+  assertStringIncludes(prompt, "語言鐵則");
+  assertStringIncludes(prompt, "不得混入簡體字");
+  assertStringIncludes(
+    prompt,
+    "today、busy、weekend、mood、vibe 這類詞一律寫成自然中文",
+  );
+  assertStringIncludes(prompt, "沒有來源支持的英文詞不要出現");
+  // 08-29「早safe」修法的延伸：中文敘述句裡的裸英文示範詞要清乾淨。
+  assertEquals(prompt.includes("logistics"), false);
+  assertEquals(prompt.includes("checklist"), false);
+  assertEquals(prompt.includes("不要 markdown"), false);
+});

@@ -73,7 +73,7 @@ function truncateVisibleText(value: string, cap: number): string {
   return `${head.slice(0, Math.max(0, cap - 1)).trimEnd()}…`;
 }
 
-const VISIBLE_FIELDS = [
+export const VISIBLE_FIELDS = [
   "headline",
   "answer",
   "userTruth",

@@ -1356,3 +1356,224 @@ Deno.test("runCoachChat keeps legacy deduct path when settleResult absent", asyn
   assertEquals(harness.deductCalls, 1);
   assertEquals((result.body.card as Record<string, unknown>).costDeducted, 1);
 });
+
+// ── 語言守門（2026-08-31「欸你today過得怎樣」案）────────────────────────
+
+Deno.test("runCoachChat retries a suggestedLine with unsourced English", async () => {
+  let calls = 0;
+  const prompts: string[] = [];
+  const harness = deps({
+    callClaude: (args) => {
+      calls++;
+      prompts.push(args.prompt);
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: calls === 1
+          ? "欸妳today過得怎樣，有沒有什麼好笑的事？"
+          : "欸妳今天過得怎樣，有沒有什麼好笑的事？",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...request, forceAnswer: true },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).suggestedLine,
+    "欸妳今天過得怎樣，有沒有什麼好笑的事？",
+  );
+  assertEquals(prompts[1].includes("沒有來源支持的英文詞"), true);
+});
+
+Deno.test("runCoachChat rejects unsourced English in explanation fields too", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        answer: calls === 1
+          ? "她的 vibe 還不錯，接住她的話題就好，不用急著證明自己。"
+          : "她的氛圍還不錯，接住她的話題就好，不用急著證明自己。",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...request, forceAnswer: true },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("runCoachChat accepts whitelisted brand names without retry", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: "要不要改用 LINE 聊？打字比較方便。",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...request, forceAnswer: true },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("runCoachChat accepts English words present in user-authored source", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: "F1 看完要不要順便去吃點東西？",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        forceAnswer: true,
+        recentMessages: [{ sender: "partner", text: "我週日要看 F1 決賽" }],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("runCoachChat does not treat prior coach output as English source", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: calls === 1
+          ? "欸妳today過得怎樣？"
+          : "欸妳今天過得怎樣？",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        forceAnswer: true,
+        activeSessionTurns: [
+          {
+            role: "coach",
+            kind: "answer",
+            content: "當時建議這樣說：欸妳today過得怎樣？",
+          },
+        ],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("runCoachChat allows an English suggestedLine when user explicitly asks", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: "Hey, how was your day? Anything fun?",
+        answer: "用 Hey 自然開場就好，不用急著寫長句，先讓她好接話。",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        userQuestion: "幫我用英文回她，輕鬆一點",
+        forceAnswer: true,
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("runCoachChat falls back without deducting when English persists every attempt", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: "欸妳today過得怎樣？",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...request, forceAnswer: true },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 3);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).costDeducted,
+    0,
+  );
+  assertEquals(harness.events.includes("coach_chat_fallback_used"), true);
+});

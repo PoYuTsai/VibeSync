@@ -4,9 +4,14 @@ import {
   assertCardSafe,
   truncateCard,
   validateResponseCard,
+  VISIBLE_FIELDS,
 } from "./validate.ts";
 import { shouldForceCoachAnswerAfterClarifications } from "./clarification_policy.ts";
 import { quotaExceededMessage } from "../_shared/quota.ts";
+import {
+  findUnsupportedLatinTokens,
+  isExplicitEnglishRequest,
+} from "../_shared/zh_tw_visible_text_guard.ts";
 
 export interface GenerationLogger {
   info: (event: string, data?: Record<string, unknown>) => void;
@@ -181,6 +186,7 @@ export async function runCoachChat(
       const candidate = parseAndValidateCard(claudeData, request);
       assertSuggestedLineGrounded(candidate, request);
       assertExplicitNoQuestionConstraint(candidate, request);
+      assertVisibleTextLanguage(candidate, request);
       card = assertClarificationAllowed(candidate, request);
       if (attempt > 1) {
         deps.logger.info("coach_chat_retry_succeeded", {
@@ -199,6 +205,8 @@ export async function runCoachChat(
         ? "motive_drift"
         : message === "explicit_no_question"
         ? "explicit_no_question"
+        : message === "language_drift"
+        ? "language_drift"
         : message === "clarification_forbidden"
         ? "clarification_forbidden"
         : message === "max_tokens"
@@ -399,7 +407,7 @@ function buildAttemptPrompt(
 
 上一次輸出違反釐清上限：免費釐清已達上限，本輪禁止再輸出 clarifyingQuestion。
 請重新輸出 responseType="coachAnswer" 的正式建議 JSON：
-- 只輸出 JSON，不要 markdown，不要前後解釋。
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。
 - 所有 schema 欄位都要存在；rewriteDecision 必填。
 - 資訊不足可以低信心，但仍要給一個最小安全下一步。
 - 避免輸出被禁止的可見詞彙。`;
@@ -411,7 +419,7 @@ function buildAttemptPrompt(
 請重新輸出完整 JSON，並逐字核對 suggestedLine：
 - 時間詞只能照來源原詞保留或直接省略。
 - 不得把「這週」改成「這陣子／這幾週」，也不得新增來源沒有的時間經歷。
-- 只輸出 JSON，不要 markdown，不要前後解釋。`;
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
   }
   if (lastValidationError === "motive_drift") {
     return `${basePrompt}
@@ -420,7 +428,16 @@ function buildAttemptPrompt(
 請重新輸出完整 JSON：
 - 資訊不足時輕接或留白，不得腦補對方在裝、敷衍、冷淡或故意吊胃口。
 - 不要逼對方解釋或安撫使用者。
-- 只輸出 JSON，不要 markdown，不要前後解釋。`;
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
+  }
+  if (lastValidationError === "language_drift") {
+    return `${basePrompt}
+
+上一次輸出的可見欄位混入了沒有來源支持的英文詞，未通過語言檢查。
+請保持原意重新輸出完整 JSON，可見文字改成自然台灣繁體中文：
+- 除非英文詞已出現在使用者或對方的原文、或是常見品牌服務名（LINE、IG、Netflix），否則一律改用自然中文說法（例如 today 要寫成「今天」）。
+- JSON 的欄位名（key）維持英文不變。
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
   }
   if (lastValidationError === "explicit_no_question") {
     return `${basePrompt}
@@ -429,13 +446,13 @@ function buildAttemptPrompt(
 請重新輸出完整 JSON：
 - suggestedLine 不得出現問句或問號；輕接後收住即可。
 - 不要換句話繼續索取解釋或安撫。
-- 只輸出 JSON，不要 markdown，不要前後解釋。`;
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
   }
   return `${basePrompt}
 
 上一次輸出未通過後端驗證：${lastValidationError}
 請重新輸出一個完整且合法的 JSON 物件：
-- 只輸出 JSON，不要 markdown，不要前後解釋。
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。
 - 所有 schema 欄位都要存在；不確定可用 null，但必填欄位不可省略。
 - responseType="clarifyingQuestion" 時：rewriteDecision、rewriteReason、suggestedLine 用 null，needsReflection=true，reflectionQuestion 必填。
 - responseType="coachAnswer" 時：rewriteDecision 必填。
@@ -469,6 +486,42 @@ function assertSuggestedLineGrounded(
   for (const term of UNSOURCED_NEGATIVE_MOTIVE_TERMS) {
     if (suggestedLine.includes(term) && !source.includes(term)) {
       throw new Error("motive_drift");
+    }
+  }
+}
+
+// 語言守門（2026-08-31）：可見欄位裡的英文詞必須有「使用者親手寫的來源」
+// 或在小白名單，否則 language_drift → 扣費前重試。來源刻意不含教練舊輸出、
+// 跨天摘要、分析快照與風格設定——教練自己漏出的英文不能替下一次背書，
+// 風格設定裡也有殘存英文標籤。使用者明確要英文時建議句放行，解釋欄位
+// 仍守繁中（可引用建議句裡的英文詞）。
+function assertVisibleTextLanguage(
+  card: CoachChatResponseCard,
+  request: CoachChatRequest,
+): void {
+  const source = [
+    request.userQuestion,
+    request.rawReplyDraft,
+    ...request.recentMessages.map((message) => message.text),
+    ...request.activeSessionTurns
+      .filter((turn) => turn.role === "user")
+      .map((turn) => turn.content),
+    request.partnerHint?.name,
+    request.partnerHint?.note,
+    ...(request.partnerHint?.traits ?? []),
+  ].filter((value): value is string => typeof value === "string").join("\n");
+
+  const englishRequested = isExplicitEnglishRequest(request.userQuestion);
+  const explanationSource = englishRequested
+    ? `${source}\n${card.suggestedLine ?? ""}`
+    : source;
+
+  for (const field of VISIBLE_FIELDS) {
+    const value = card[field];
+    if (typeof value !== "string") continue;
+    if (englishRequested && field === "suggestedLine") continue;
+    if (findUnsupportedLatinTokens(value, explanationSource).length > 0) {
+      throw new Error("language_drift");
     }
   }
 }
@@ -572,8 +625,7 @@ function buildFallbackCoachAnswerShape(
       ? baseLine
       : "感覺你今天真的有點累，我先不鬧你。那你比較想被放空，還是被轉移注意力一下？",
     rewriteDecision: baseLine ? "light_edit" : "rewrite",
-    rewriteReason:
-      "這是低信心 fallback，先給保守可用版本，不當成正式生成扣額度。",
+    rewriteReason: "這是低信心保守版，先給可用方向，不當成正式生成扣額度。",
     boundaryReminder: "如果她明顯冷或累，先降壓，不要追問或逼她立刻表態。",
     needsReflection: false,
     reflectionQuestion: null,

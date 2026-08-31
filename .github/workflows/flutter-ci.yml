@@ -54,6 +54,11 @@ jobs:
           deno test --allow-env --allow-read
           supabase/functions/keyboard-reply
           supabase/functions/_shared/model_rate_limit_test.ts
+          supabase/functions/_shared/zh_tw_visible_text_guard_test.ts
+          supabase/functions/coach-chat/prompts_test.ts
+          supabase/functions/coach-chat/generation_test.ts
+          supabase/functions/coach-chat/validate_test.ts
+          supabase/functions/coach-chat/clarification_policy_test.ts
           supabase/functions/_shared/operational_error_monitor_test.ts
           supabase/functions/_shared/quota_test.ts
           supabase/functions/analyze-chat/logger_test.ts
