@@ -502,6 +502,13 @@ void main() {
       expect(result?.costDeducted, 0);
       expect(repo.putCalls, 1);
       expect(syncCalls, 0);
+      // UI 序數與後端 3 次上限同源：釐清落卡後追問串應記到 1 次。
+      expect(
+        c
+            .read(coachChatControllerProvider(_conversationScope).notifier)
+            .noChargeClarificationsUsed,
+        1,
+      );
     });
 
     test('supplement after clarification sends previous coach turn', () async {

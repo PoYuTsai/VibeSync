@@ -187,15 +187,16 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     final latest = timeline.isEmpty ? null : timeline.first;
     final isClarifying =
         !activeError && (latest?.isClarifyingQuestion ?? false);
-    // 序數用未過濾的合併歷史算（同 sessionId 的釐清卡數），中途離開 app
-    // 回來白名單重置也不會少算。
-    final clarificationOrdinal =
-        latest != null && latest.isClarifyingQuestion && latest.sessionId != null
-            ? mergedHistory
-                .where((r) =>
-                    r.isClarifyingQuestion && r.sessionId == latest.sessionId)
-                .length
-            : null;
+    // 序數必須跟後端 3 次上限同源：取 controller 當前追問串的釐清 turns 數。
+    // 不能數歷史卡（同 sessionId 會跨追問串灌水，曾標到「第 5 次」）。
+    // app 重啟後 turns 尚未回種時取不到數字，就退回無序數的通用文案。
+    final controllerClarificationsUsed =
+        ref.read(provider.notifier).noChargeClarificationsUsed;
+    final clarificationOrdinal = latest != null &&
+            latest.isClarifyingQuestion &&
+            controllerClarificationsUsed > 0
+        ? controllerClarificationsUsed
+        : null;
 
     ref.listen<AsyncValue<UnifiedCoachResult?>>(provider, (previous, next) {
       // 只有這次進來後問出去的結果（loading→data）進顯示白名單；

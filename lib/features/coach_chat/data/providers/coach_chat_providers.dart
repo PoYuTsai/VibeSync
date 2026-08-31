@@ -124,6 +124,12 @@ class CoachChatController
         .length;
   }
 
+  /// 目前追問串已用的免費釐清數——與送給後端的 activeSessionTurns 同源，
+  /// 也就是 3 次上限實際依據的數字。UI 序數必須用這個：歷史卡按 sessionId
+  /// 數會跨追問串灌水（app 重啟後 _seedTurns 只回種最後一組問答，預算實質
+  /// 重算），曾出現「第 5 次」的假標（2026-08-31 Bruce 截圖）。
+  int get noChargeClarificationsUsed => countClarificationTurns(_activeTurns);
+
   static bool shouldForceAnswerAfterClarifications({
     required List<CoachChatSessionTurn> turns,
     required bool forceAnswer,
