@@ -3,6 +3,8 @@ import type { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { ADMIN_ACCESS_COOKIE } from "@/lib/auth";
 import { checkAdminAccess } from "@/lib/admin-check";
+import { isAdminV2Enabled } from "@/lib/operations/admin-v2";
+import { resolveAdminAccess } from "@/lib/operations/admin-gate";
 
 const PUBLIC_PATHS = ["/login", "/403", "/auth/callback"];
 
@@ -51,13 +53,20 @@ export async function middleware(request: NextRequest) {
     error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user?.email) {
+  // legacy 路徑靠 email 白名單，缺 email 直接退回登入；
+  // ADMIN_V2 開啟時真相是 user_id，不要求 email、也不得退回 email 白名單。
+  if (authError || !user || (!isAdminV2Enabled() && !user.email)) {
     const response = NextResponse.redirect(new URL("/login", request.url));
     clearAdminCookie(response);
     return response;
   }
 
-  const adminAccess = await checkAdminAccess(supabase, user.email);
+  const adminAccess = await resolveAdminAccess({
+    accessToken,
+    legacyCheck: () => checkAdminAccess(supabase, user.email ?? ""),
+    touchSession: () => supabase.rpc("admin_v2_touch_session"),
+    revokeSession: () => supabase.rpc("admin_v2_revoke_my_session"),
+  });
 
   if (!adminAccess.allowed) {
     const response = NextResponse.redirect(new URL("/403", request.url));

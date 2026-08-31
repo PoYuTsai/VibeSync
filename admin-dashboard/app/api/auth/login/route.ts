@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { ADMIN_ACCESS_COOKIE, ADMIN_ACCESS_COOKIE_MAX_AGE } from "@/lib/auth";
+import {
+  ADMIN_ACCESS_COOKIE,
+  ADMIN_ACCESS_COOKIE_MAX_AGE,
+  ADMIN_ACCESS_COOKIE_MAX_AGE_V2,
+} from "@/lib/auth";
 import { checkAdminAccess } from "@/lib/admin-check";
+import { isAdminV2Enabled } from "@/lib/operations/admin-v2";
+import { resolveAdminAccess } from "@/lib/operations/admin-gate";
 
 interface LoginBody {
   email?: string;
@@ -41,7 +47,8 @@ export async function POST(request: Request) {
   });
 
   if (error || !data.session || !data.user) {
-    return jsonError(error?.message || "Login failed", 401);
+    // generic：不轉發 Supabase 錯誤細節給瀏覽器。
+    return jsonError("Login failed", 401);
   }
 
   const adminCheckClient = createClient(supabaseUrl, supabaseKey, {
@@ -52,10 +59,13 @@ export async function POST(request: Request) {
     },
   });
 
-  const adminAccess = await checkAdminAccess(
-    adminCheckClient,
-    data.user.email ?? email
-  );
+  const adminAccess = await resolveAdminAccess({
+    accessToken: data.session.access_token,
+    legacyCheck: () =>
+      checkAdminAccess(adminCheckClient, data.user.email ?? email),
+    touchSession: () => adminCheckClient.rpc("admin_v2_touch_session"),
+    revokeSession: () => adminCheckClient.rpc("admin_v2_revoke_my_session"),
+  });
 
   if (!adminAccess.allowed) {
     await supabase.auth.signOut();
@@ -70,7 +80,9 @@ export async function POST(request: Request) {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: ADMIN_ACCESS_COOKIE_MAX_AGE,
+    maxAge: isAdminV2Enabled()
+      ? ADMIN_ACCESS_COOKIE_MAX_AGE_V2
+      : ADMIN_ACCESS_COOKIE_MAX_AGE,
   });
 
   return response;

@@ -2,11 +2,21 @@ import { cookies } from "next/headers";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { ADMIN_ACCESS_COOKIE } from "@/lib/auth";
 import { checkAdminAccess } from "@/lib/admin-check";
+import { isAdminV2Enabled } from "@/lib/operations/admin-v2";
+import {
+  resolveAdminAccess,
+  type AdminCapability,
+  type AdminRole,
+} from "@/lib/operations/admin-gate";
 
 export interface AdminSession {
   supabase: SupabaseClient;
   user: User;
   adminId: string;
+  /** 只有 ADMIN_V2 開啟時才有值；legacy 路徑維持原輸出。 */
+  role?: AdminRole;
+  capabilities?: readonly AdminCapability[];
+  lastReauthAt?: string | null;
 }
 
 export async function getAdminSession(): Promise<
@@ -40,14 +50,19 @@ export async function getAdminSession(): Promise<
     error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user?.email) {
+  if (authError || !user || (!isAdminV2Enabled() && !user.email)) {
     return { ok: false, status: 401, error: "Unauthorized" };
   }
 
-  const adminAccess = await checkAdminAccess(supabase, user.email);
+  const adminAccess = await resolveAdminAccess({
+    accessToken,
+    legacyCheck: () => checkAdminAccess(supabase, user.email ?? ""),
+    touchSession: () => supabase.rpc("admin_v2_touch_session"),
+    revokeSession: () => supabase.rpc("admin_v2_revoke_my_session"),
+  });
 
   if (!adminAccess.allowed) {
-    return { ok: false, status: 403, error: "Forbidden" };
+    return { ok: false, status: adminAccess.status, error: adminAccess.publicError };
   }
 
   return {
@@ -56,6 +71,13 @@ export async function getAdminSession(): Promise<
       supabase,
       user,
       adminId: user.id,
+      ...(adminAccess.mode === "v2"
+        ? {
+            role: adminAccess.role,
+            capabilities: adminAccess.capabilities,
+            lastReauthAt: adminAccess.lastReauthAt,
+          }
+        : {}),
     },
   };
 }

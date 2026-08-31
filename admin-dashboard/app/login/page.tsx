@@ -28,7 +28,8 @@ export default function LoginPage() {
     });
 
     if (oauthError) {
-      setError(oauthError.message);
+      // generic：不回顯 Supabase 原始錯誤。
+      setError("無法前往 Google 登入，請稍後再試。");
       setLoading(false);
     }
   };

@@ -21,8 +21,9 @@ function AuthCallbackContent() {
           : new URLSearchParams(window.location.hash.replace(/^#/, ""));
 
       if (error) {
+        // generic：不回顯 URL 帶進來的原始錯誤內容（可能被反射或含內部細節）。
         setFailed(true);
-        setMessage(error);
+        setMessage("Google 登入失敗，請回登入頁重試。");
         return;
       }
 
@@ -34,7 +35,7 @@ function AuthCallbackContent() {
 
         if (exchangeError || !data.session?.access_token) {
           setFailed(true);
-          setMessage(exchangeError?.message || "Unable to complete Google login");
+          setMessage("無法完成 Google 登入，請重試。");
           return;
         }
 

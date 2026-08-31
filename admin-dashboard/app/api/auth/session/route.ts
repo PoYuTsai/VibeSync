@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { ADMIN_ACCESS_COOKIE, ADMIN_ACCESS_COOKIE_MAX_AGE } from "@/lib/auth";
+import {
+  ADMIN_ACCESS_COOKIE,
+  ADMIN_ACCESS_COOKIE_MAX_AGE,
+  ADMIN_ACCESS_COOKIE_MAX_AGE_V2,
+} from "@/lib/auth";
 import { checkAdminAccess } from "@/lib/admin-check";
+import { isAdminV2Enabled } from "@/lib/operations/admin-v2";
+import { resolveAdminAccess } from "@/lib/operations/admin-gate";
 
 interface SessionBody {
   accessToken?: string;
@@ -43,21 +49,20 @@ export async function POST(request: Request) {
     error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user?.email) {
+  if (authError || !user || (!isAdminV2Enabled() && !user.email)) {
     return jsonError("Unauthorized", 401);
   }
 
-  const adminAccess = await checkAdminAccess(supabase, user.email);
+  const adminAccess = await resolveAdminAccess({
+    accessToken: body.accessToken,
+    legacyCheck: () => checkAdminAccess(supabase, user.email ?? ""),
+    touchSession: () => supabase.rpc("admin_v2_touch_session"),
+    revokeSession: () => supabase.rpc("admin_v2_revoke_my_session"),
+  });
 
   if (!adminAccess.allowed) {
-    return NextResponse.json(
-      {
-        error: "Forbidden",
-        email: user.email,
-        detail: adminAccess.error,
-      },
-      { status: 403 }
-    );
+    // 只回 generic 錯誤：不得帶 email、reason 細節或底層 RPC 錯誤。
+    return jsonError(adminAccess.publicError, adminAccess.status);
   }
 
   const response = NextResponse.json({ success: true });
@@ -68,7 +73,9 @@ export async function POST(request: Request) {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: ADMIN_ACCESS_COOKIE_MAX_AGE,
+    maxAge: isAdminV2Enabled()
+      ? ADMIN_ACCESS_COOKIE_MAX_AGE_V2
+      : ADMIN_ACCESS_COOKIE_MAX_AGE,
   });
 
   return response;
