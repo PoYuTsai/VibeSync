@@ -996,47 +996,47 @@ class CoachChatResultView extends ConsumerWidget {
               label: '看完整教練分析',
               collapseLabel: '收起完整分析',
               children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            result.answer,
-                            style: AppTypography.bodyMedium.copyWith(
-                              color: AppColors.glassTextPrimary,
-                              height: 1.45,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (result.userTruth != null)
-                            _InfoLine(
-                              label: '我理解你的真實想法',
-                              value: result.userTruth!,
-                            ),
-                          _InfoLine(
-                            label: '這輪卡點',
-                            value: _frictionTypeLabel(result.frictionType),
-                          ),
-                          _InfoLine(
-                            label: '你現在卡在',
-                            value: result.userState,
-                          ),
-                          if (result.rewriteDecision != null)
-                            _InfoLine(
-                              label: '教練判斷',
-                              value:
-                                  '${_rewriteDecisionLabel(result.rewriteDecision!)}${result.rewriteReason == null ? '' : '：${result.rewriteReason}'}',
-                            ),
-                          if (result.needsReflection &&
-                              result.reflectionQuestion != null)
-                            _InfoLine(
-                              label: '教練追問',
-                              value: result.reflectionQuestion!,
-                            ),
-                        ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        result.answer,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.glassTextPrimary,
+                          height: 1.45,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 8),
+                      if (result.userTruth != null)
+                        _InfoLine(
+                          label: '我理解你的真實想法',
+                          value: result.userTruth!,
+                        ),
+                      _InfoLine(
+                        label: '這輪卡點',
+                        value: _frictionTypeLabel(result.frictionType),
+                      ),
+                      _InfoLine(
+                        label: '你現在卡在',
+                        value: result.userState,
+                      ),
+                      if (result.rewriteDecision != null)
+                        _InfoLine(
+                          label: '教練判斷',
+                          value:
+                              '${_rewriteDecisionLabel(result.rewriteDecision!)}${result.rewriteReason == null ? '' : '：${result.rewriteReason}'}',
+                        ),
+                      if (result.needsReflection &&
+                          result.reflectionQuestion != null)
+                        _InfoLine(
+                          label: '教練追問',
+                          value: result.reflectionQuestion!,
+                        ),
+                    ],
+                  ),
+                ),
               ],
             ),
           const SizedBox(height: 12),
@@ -1132,7 +1132,8 @@ class CoachChatResultView extends ConsumerWidget {
             child: const Text('先補充想法'),
           ),
           FilledButton(
-            onPressed: AppHaptics.onPress(() => Navigator.of(dialogContext).pop(true)),
+            onPressed:
+                AppHaptics.onPress(() => Navigator.of(dialogContext).pop(true)),
             child: const Text('扣 1 則並生成'),
           ),
         ],
@@ -1476,13 +1477,18 @@ class _CoachAdviceFeedbackRowState
   bool _submitted = false;
 
   /// 👎 後展開的分類選擇（2026-08-18：之前不帶 category，後台全掛「其他」）。
-  /// 選項與分析頁回饋表單同一套，值都在 submit-feedback Edge 白名單內，
-  /// 零後端改動。
+  /// Batch E：Coach 額外收斂成可直接對應 golden/critic 病灶的分類；分析頁
+  /// 舊分類仍由 submit-feedback 保留相容。
   bool _pickingCategory = false;
 
   static const _negativeCategories = <(String, String)>[
-    ('too_direct', '太直接'),
-    ('unnatural', '不自然'),
+    ('should_not_send', '這句不該傳'),
+    ('too_beta', '太討好／掉價'),
+    ('too_generic', '太空泛'),
+    ('invented_detail', '加了不存在的細節'),
+    ('wrong_judgment', '判斷不準'),
+    ('too_many_questions', '太像盤問'),
+    ('missed_context', '沒接住脈絡'),
     ('too_long', '回覆太長'),
     ('wrong_style', '不符合我的風格'),
     ('other', '其他'),
@@ -1582,8 +1588,7 @@ class _CoachAdviceFeedbackRowState
               ActionChip(
                 key: const ValueKey('coach-feedback-category-skip'),
                 label: const Text('跳過'),
-                onPressed:
-                    _submitting ? null : () => _submit('negative'),
+                onPressed: _submitting ? null : () => _submit('negative'),
               ),
             ],
           ),

@@ -33,6 +33,7 @@ void main() {
     expect(digest.hasEnoughSignal, isFalse);
     expect(digest.engagementRate, 0);
     expect(digest.dominantOutcome, isNull);
+    expect(digest.investmentTrend, isNull);
     expect(digest.localInsightLines, isEmpty);
   });
 
@@ -164,6 +165,70 @@ void main() {
     expect(
       stalled.localInsightLines,
       contains('近期回應偏卡，之後建議先調整節奏或降低推進感。'),
+    );
+  });
+
+  test(
+      'tracks rising, steady, and falling investment after three resolved rounds',
+      () {
+    CoachingOutcomeDigest digestFor(List<CoachingOutcomeSignal> chronological) {
+      return CoachingOutcomeDigest.fromEvents(
+        partnerId: 'p-1',
+        events: [
+          for (var i = 0; i < chronological.length; i++)
+            _event(
+              'trend-$i',
+              outcome: chronological[i],
+              createdAt: DateTime.utc(2026, 8, i + 1),
+            ),
+        ],
+      );
+    }
+
+    final rising = digestFor([
+      CoachingOutcomeSignal.noReply,
+      CoachingOutcomeSignal.cold,
+      CoachingOutcomeSignal.engaged,
+    ]);
+    final steady = digestFor([
+      CoachingOutcomeSignal.cold,
+      CoachingOutcomeSignal.engaged,
+      CoachingOutcomeSignal.cold,
+    ]);
+    final falling = digestFor([
+      CoachingOutcomeSignal.engaged,
+      CoachingOutcomeSignal.cold,
+      CoachingOutcomeSignal.noReply,
+    ]);
+
+    expect(rising.investmentTrend, CoachingInvestmentTrend.rising);
+    expect(steady.investmentTrend, CoachingInvestmentTrend.steady);
+    expect(falling.investmentTrend, CoachingInvestmentTrend.falling);
+    expect(
+      rising.statisticalInsightLines,
+      contains('最近三輪對方投入有回升；可以小幅順勢，但仍看下一輪是否持續。'),
+    );
+    expect(
+      falling.statisticalInsightLines,
+      contains('最近三輪對方投入往下；先降投入，不要用更用力的訊息補位。'),
+    );
+  });
+
+  test('pending/unknown rounds do not fabricate a three-round trend', () {
+    final digest = CoachingOutcomeDigest.fromEvents(
+      partnerId: 'p-1',
+      events: [
+        _event('e-1', outcome: CoachingOutcomeSignal.engaged),
+        _event('e-2', outcome: CoachingOutcomeSignal.pending),
+        _event('e-3', outcome: CoachingOutcomeSignal.unknown),
+        _event('e-4', outcome: CoachingOutcomeSignal.cold),
+      ],
+    );
+
+    expect(digest.investmentTrend, isNull);
+    expect(
+      digest.statisticalInsightLines.any((line) => line.contains('最近三輪')),
+      isFalse,
     );
   });
 

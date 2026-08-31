@@ -6,6 +6,22 @@ const DISCORD_MESSAGE_MAX_LENGTH = 1900;
 
 export const AI_RESPONSE_MAX_LENGTH = 12000;
 
+export const VALID_FEEDBACK_CATEGORIES: ReadonlySet<string> = new Set([
+  "too_direct",
+  "too_long",
+  "unnatural",
+  "wrong_style",
+  "other",
+  // Batch E：Coach 1:1 專用可行動分類。舊分析頁分類完整保留。
+  "too_beta",
+  "should_not_send",
+  "too_generic",
+  "invented_detail",
+  "wrong_judgment",
+  "too_many_questions",
+  "missed_context",
+]);
+
 export function normalizeOptionalString(
   value: unknown,
   maxLength: number,
@@ -137,6 +153,13 @@ export function buildDiscordNotificationContent(
     too_long: "Too long",
     unnatural: "Unnatural",
     wrong_style: "Wrong style",
+    too_beta: "Too beta / approval-seeking",
+    should_not_send: "Should not send",
+    too_generic: "Too generic",
+    invented_detail: "Invented detail",
+    wrong_judgment: "Wrong judgment",
+    too_many_questions: "Too many questions",
+    missed_context: "Missed context",
     other: "Other",
   };
 

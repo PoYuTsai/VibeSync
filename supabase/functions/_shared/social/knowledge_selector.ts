@@ -46,13 +46,19 @@ const SIGNAL_PATTERNS: readonly [SocialKnowledgeSignal, RegExp][] = [
     "alternative_time",
     /改天(?:可以|有空)|下(?:週|次).*可以|換(?:個|一個)?時間|另約|主動.*時間/u,
   ],
-  ["boundary", /界線|邊界|施壓|逼迫|控制|騷擾|不舒服|停止|強迫/u],
+  [
+    "boundary",
+    /界線|邊界|施壓|逼迫|控制|騷擾|不舒服|停止|強迫|權力|主管|下屬|師生|客戶|金錢|服務關係/u,
+  ],
   ["intimacy", /親密|性愛|性行為|約砲|炮友|口交|前戲|旅館|開房|接吻|床上/u],
   ["health", /疼痛|痛|出血|保險套|避孕|性病|篩檢|懷孕|潤滑/u],
   ["offline", /見面|約會|酒吧|夜店|KTV|餐廳|旅館|散步|叫車|轉場/u],
   ["anxiety", /焦慮|緊張|暈船|患得患失|自卑|丟臉|不甘心|嫉妒|委屈/u],
   ["repair", /道歉|修復|補救|說錯|做錯|傷到|冒犯|挽回/u],
-  ["compatibility", /適合|合不合|聊得來|價值觀|篩選|對的人|相容/u],
+  [
+    "compatibility",
+    /適合|合不合|聊得來|價值觀|篩選|對的人|相容|人格標籤|只因.*標籤|標籤.*淘汰/u,
+  ],
   ["humor", /幽默|好笑|玩笑|逗她|逗他|接梗|有趣/u],
   ["partnered", /男友|女友|伴侶|已婚|婚姻|第三者|出軌|劈腿/u],
   ["impaired", /喝醉|醉到|不清醒|斷片|昏迷|酒精影響/u],
@@ -133,7 +139,9 @@ export function selectSocialKnowledge(
       return {
         knowledge,
         matchedSignals,
-        score: knowledge.priority + Math.max(0, matchedSignals.length - 1) * 3,
+        // 同時命中兩個情境訊號的專用知識，必須能越過一般 reply/always
+        // 規則；否則 12 條上限會把 humor、低投入等精準規則擠掉。
+        score: knowledge.priority + Math.max(0, matchedSignals.length - 1) * 12,
       };
     })
     .filter((candidate) => candidate.matchedSignals.length > 0)

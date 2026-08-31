@@ -2,11 +2,12 @@ import 'package:flutter/foundation.dart';
 
 import 'coaching_outcome_event.dart';
 
+enum CoachingInvestmentTrend { rising, steady, falling }
+
 /// Small, local-only summary of recent coaching outcomes for one partner.
 ///
 /// This is intentionally derived data. It is not written back to Hive and it is
-/// not injected into prompts yet. Later phases can decide which fields are safe
-/// enough to become long-term strategy memory.
+/// injected into prompts only through de-identified [statisticalInsightLines].
 @immutable
 class CoachingOutcomeDigest {
   static const defaultMaxEvents = 20;
@@ -27,6 +28,7 @@ class CoachingOutcomeDigest {
   final int unknownActionCount;
   final DateTime? latestAt;
   final List<String> recentMoveSummaries;
+  final CoachingInvestmentTrend? investmentTrend;
 
   const CoachingOutcomeDigest({
     required this.partnerId,
@@ -44,6 +46,7 @@ class CoachingOutcomeDigest {
     required this.unknownActionCount,
     required this.latestAt,
     required this.recentMoveSummaries,
+    required this.investmentTrend,
   });
 
   factory CoachingOutcomeDigest.empty({String? partnerId}) {
@@ -63,6 +66,7 @@ class CoachingOutcomeDigest {
       unknownActionCount: 0,
       latestAt: null,
       recentMoveSummaries: const [],
+      investmentTrend: null,
     );
   }
 
@@ -131,6 +135,12 @@ class CoachingOutcomeDigest {
       if (recentMoves.length >= maxRecentMoves) break;
     }
 
+    final recentResolved = scoped
+        .map((event) => event.outcome)
+        .where(_isResolvedOutcome)
+        .take(3)
+        .toList(growable: false);
+
     return CoachingOutcomeDigest(
       partnerId: CoachingOutcomeEvent.normalizeScope(partnerId),
       totalEvents: scoped.length,
@@ -147,6 +157,7 @@ class CoachingOutcomeDigest {
       unknownActionCount: unknownAction,
       latestAt: scoped.first.createdAt,
       recentMoveSummaries: List.unmodifiable(recentMoves),
+      investmentTrend: _investmentTrend(recentResolved),
     );
   }
 
@@ -223,6 +234,17 @@ class CoachingOutcomeDigest {
       lines.add('近期回應偏卡，之後建議先調整節奏或降低推進感。');
     }
 
+    switch (investmentTrend) {
+      case CoachingInvestmentTrend.rising:
+        lines.add('最近三輪對方投入有回升；可以小幅順勢，但仍看下一輪是否持續。');
+      case CoachingInvestmentTrend.steady:
+        lines.add('最近三輪對方投入大致持平；維持節奏，不因單次反應突然加碼。');
+      case CoachingInvestmentTrend.falling:
+        lines.add('最近三輪對方投入往下；先降投入，不要用更用力的訊息補位。');
+      case null:
+        break;
+    }
+
     return List.unmodifiable(lines);
   }
 
@@ -255,4 +277,31 @@ class CoachingOutcomeDigest {
     if (tie) return null;
     return bestKey;
   }
+
+  static bool _isResolvedOutcome(CoachingOutcomeSignal outcome) =>
+      outcome == CoachingOutcomeSignal.engaged ||
+      outcome == CoachingOutcomeSignal.cold ||
+      outcome == CoachingOutcomeSignal.noReply ||
+      outcome == CoachingOutcomeSignal.negative;
+
+  /// [outcomes] 由新到舊；三筆才判趨勢。只看類別分數，不保存或回注原文。
+  static CoachingInvestmentTrend? _investmentTrend(
+    List<CoachingOutcomeSignal> outcomes,
+  ) {
+    if (outcomes.length < 3) return null;
+    final delta =
+        _investmentScore(outcomes.first) - _investmentScore(outcomes[2]);
+    if (delta > 0) return CoachingInvestmentTrend.rising;
+    if (delta < 0) return CoachingInvestmentTrend.falling;
+    return CoachingInvestmentTrend.steady;
+  }
+
+  static int _investmentScore(CoachingOutcomeSignal outcome) =>
+      switch (outcome) {
+        CoachingOutcomeSignal.engaged => 2,
+        CoachingOutcomeSignal.cold => 0,
+        CoachingOutcomeSignal.noReply => -1,
+        CoachingOutcomeSignal.negative => -2,
+        CoachingOutcomeSignal.pending || CoachingOutcomeSignal.unknown => 0,
+      };
 }

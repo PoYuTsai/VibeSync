@@ -10,6 +10,7 @@ import {
   sanitizeFeedbackAiResponse,
   stripBearer,
   truncateOptionalStringToMax,
+  VALID_FEEDBACK_CATEGORIES,
 } from "./feedback_utils.ts";
 import { buildOutcomeRow } from "./outcome_utils.ts";
 import { buildFunnelRow } from "./funnel_utils.ts";
@@ -26,14 +27,6 @@ const DISCORD_BOT_TOKEN = Deno.env.get("DISCORD_BOT_TOKEN")?.replace(
 const DISCORD_FEEDBACK_CHANNEL_ID =
   Deno.env.get("DISCORD_FEEDBACK_CHANNEL_ID") ??
     Deno.env.get("DISCORD_CHANNEL_ID");
-
-const VALID_CATEGORIES = new Set([
-  "too_direct",
-  "too_long",
-  "unnatural",
-  "wrong_style",
-  "other",
-]);
 
 const COMMENT_MAX_LENGTH = 2000;
 const SNIPPET_MAX_LENGTH = 4000;
@@ -237,7 +230,8 @@ serve(withOperationalErrorMonitoring("submit-feedback", async (req) => {
 
     if (
       rawCategory != null &&
-      (typeof rawCategory !== "string" || !VALID_CATEGORIES.has(rawCategory))
+      (typeof rawCategory !== "string" ||
+        !VALID_FEEDBACK_CATEGORIES.has(rawCategory))
     ) {
       return jsonResponse({ error: "Invalid category" }, 400);
     }

@@ -151,10 +151,11 @@ void main() {
     expect(find.text('照著發了'), findsNothing);
   });
 
-  testWidgets('👎 先問哪裡不好：展開五分類＋跳過，點分類才送出', (tester) async {
+  testWidgets('👎 先問哪裡不好：展開 Coach 可行動分類＋跳過，點分類才送出', (tester) async {
     await tester.pumpWidget(_wrap(_formalResult()));
 
-    await tester.ensureVisible(find.byKey(const ValueKey('coach-feedback-down')));
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('coach-feedback-down')));
     await tester.tap(find.byKey(const ValueKey('coach-feedback-down')));
     await tester.pump();
 
@@ -162,8 +163,13 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
     expect(find.text('哪裡不好？幫我們改進（選一個就好）'), findsOneWidget);
     for (final key in const [
-      'coach-feedback-category-too_direct',
-      'coach-feedback-category-unnatural',
+      'coach-feedback-category-should_not_send',
+      'coach-feedback-category-too_beta',
+      'coach-feedback-category-too_generic',
+      'coach-feedback-category-invented_detail',
+      'coach-feedback-category-wrong_judgment',
+      'coach-feedback-category-too_many_questions',
+      'coach-feedback-category-missed_context',
       'coach-feedback-category-too_long',
       'coach-feedback-category-wrong_style',
       'coach-feedback-category-other',
@@ -185,10 +191,12 @@ void main() {
   });
 
   testWidgets('釐清卡帶序數：第 1 次與第 3 次的文案（看情況框架，不是配額）', (tester) async {
-    await tester.pumpWidget(_wrap(_clarifyingResult(), clarificationOrdinal: 1));
+    await tester
+        .pumpWidget(_wrap(_clarifyingResult(), clarificationOrdinal: 1));
     expect(find.text('免費釐清 第 1 次（最多 3 次）'), findsOneWidget);
 
-    await tester.pumpWidget(_wrap(_clarifyingResult(), clarificationOrdinal: 3));
+    await tester
+        .pumpWidget(_wrap(_clarifyingResult(), clarificationOrdinal: 3));
     await tester.pumpAndSettle();
     expect(find.text('免費釐清 第 3 次 · 下一則就是正式建議'), findsOneWidget);
   });

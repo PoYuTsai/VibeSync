@@ -5,7 +5,25 @@ import {
   resolveDiscordNotificationTarget,
   sanitizeFeedbackAiResponse,
   truncateOptionalStringToMax,
+  VALID_FEEDBACK_CATEGORIES,
 } from "./feedback_utils.ts";
+
+Deno.test("feedback category whitelist includes Batch E coach failure modes", () => {
+  for (
+    const category of [
+      "too_beta",
+      "should_not_send",
+      "too_generic",
+      "invented_detail",
+      "wrong_judgment",
+      "too_many_questions",
+      "missed_context",
+    ]
+  ) {
+    assertEquals(VALID_FEEDBACK_CATEGORIES.has(category), true);
+  }
+  assertEquals(VALID_FEEDBACK_CATEGORIES.has("arbitrary"), false);
+});
 
 Deno.test("maskEmailForNotification masks normal emails", () => {
   assertEquals(
@@ -205,4 +223,25 @@ Deno.test("buildDiscordNotificationContent formats positive coach feedback", () 
       "Time: 2026-08-16T08:00:00.000Z",
     ].join("\n"),
   );
+});
+
+Deno.test("buildDiscordNotificationContent labels Batch E coach category", () => {
+  const content = buildDiscordNotificationContent(
+    {
+      userEmail: "vibesync.test@gmail.com",
+      userTier: "starter",
+      rating: "negative",
+      category: "should_not_send",
+      aiResponse: {
+        finalRecommendation: {
+          pick: "coach_chat",
+          content: "再問她一次週末有沒有空。",
+        },
+      },
+      modelUsed: "claude-sonnet-5",
+    },
+    { timestamp: "2026-09-01T00:00:00.000Z" },
+  );
+  assertEquals(content.includes("Category: Should not send"), true);
+  assertEquals(content.startsWith("👎 沒幫助回饋 — 問教練"), true);
 });

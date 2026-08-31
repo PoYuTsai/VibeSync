@@ -74,6 +74,23 @@ Deno.test("boundary and intimacy query selects fail-safe knowledge", () => {
   assert(ids.has("boundary.alcohol"));
 });
 
+Deno.test("selector keeps specialized knowledge inside the 12-atom cap", () => {
+  const humor = selectSocialKnowledge({
+    userQuestion: "我想幽默回她但不要油。",
+  });
+  assert(humor.some((atom) => atom.id === "humor.not_oily"));
+
+  const powerBoundary = detectSocialKnowledgeSignals({
+    userQuestion: "這是主管和下屬的權力關係，我該怎麼推進？",
+  });
+  assert(powerBoundary.has("boundary"));
+
+  const compatibility = detectSocialKnowledgeSignals({
+    userQuestion: "我不想只因一個人格標籤就淘汰她。",
+  });
+  assert(compatibility.has("compatibility"));
+});
+
 Deno.test("renderer respects whole-atom character budget", () => {
   const rendered = renderSelectedSocialKnowledge(
     { userQuestion: "她已讀沒回，我要怎麼重啟對話？" },
