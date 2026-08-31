@@ -868,11 +868,12 @@ class CoachChatResultView extends ConsumerWidget {
           ),
           if (question != null && question!.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(
-              '你剛剛問：$question',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextSecondary,
-              ),
+            // 重用 _CoachNotice 面板：原本灰色小字在深色卡上不明顯
+            // （2026-08-31 Eric 反饋），改與「教練想先問清楚」同級的白底引用塊。
+            _CoachNotice(
+              icon: Icons.format_quote_rounded,
+              title: '你剛剛問',
+              body: question!.trim(),
             ),
           ],
           const SizedBox(height: 8),
