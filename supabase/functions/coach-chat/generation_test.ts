@@ -1577,3 +1577,184 @@ Deno.test("runCoachChat falls back without deducting when English persists every
   );
   assertEquals(harness.events.includes("coach_chat_fallback_used"), true);
 });
+
+// ── 全域首輪固定決策閘門（2026-08-31 決策分岔案）──────────────────────
+
+const globalFirstRoundRequest: CoachChatRequest = {
+  conversationId: "global:me",
+  userQuestion: "不知道怎麼開啟話題，給我一點方向？",
+  activeSessionTurns: [],
+  forceAnswer: false,
+  recentMessages: [],
+  dataQualityFlagged: false,
+  scope: { type: "global" },
+};
+
+function firstRoundClarificationCard() {
+  return validClaudeCard({
+    responseType: "clarifyingQuestion",
+    mode: "clarifyIntent",
+    headline: "先弄清楚你的處境",
+    answer: "我先接住你：先知道你現在的局面，建議才不會空泛。",
+    userTruth: null,
+    userState: "你想要方向，但還沒說目前是哪種局面。",
+    nextStep: "先選一個最接近的狀況。",
+    suggestedLine: null,
+    rewriteDecision: null,
+    rewriteReason: null,
+    boundaryReminder: "補充釐清不扣額度；正式建議才扣 1 則。",
+    needsReflection: true,
+    reflectionQuestion: "這是全新對象、斷掉想重接，還是正在聊但沒話題？",
+    costDeducted: 0,
+  });
+}
+
+Deno.test("runCoachChat forces clarification on a contextless global first round", async () => {
+  let calls = 0;
+  const prompts: string[] = [];
+  const harness = deps({
+    callClaude: (args) => {
+      calls++;
+      prompts.push(args.prompt);
+      return Promise.resolve(
+        calls === 1 ? validClaudeCard() : firstRoundClarificationCard(),
+      );
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: globalFirstRoundRequest,
+      tier: "free",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 0);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.responseType, "clarifyingQuestion");
+  assertEquals(card.costDeducted, 0);
+  assertEquals(prompts[0].includes("必須輸出 responseType=\"clarifyingQuestion\""), true);
+  assertEquals(prompts[1].includes("上一次輸出違反全域首輪規則"), true);
+});
+
+Deno.test("runCoachChat accepts a first-attempt clarification on gated first round", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(firstRoundClarificationCard());
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: globalFirstRoundRequest,
+      tier: "free",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 0);
+});
+
+Deno.test("runCoachChat forceAnswer bypasses the first-round gate", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard());
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...globalFirstRoundRequest, forceAnswer: true },
+      tier: "free",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).responseType,
+    "coachAnswer",
+  );
+});
+
+Deno.test("runCoachChat allows a direct answer once the global session has context", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard());
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...globalFirstRoundRequest,
+        activeSessionTurns: [
+          {
+            role: "coach",
+            kind: "clarification",
+            content: "這是全新對象、斷掉想重接，還是正在聊但沒話題？",
+          },
+          { role: "user", kind: "supplement", content: "全新對象，還沒開過口" },
+        ],
+      },
+      tier: "free",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("runCoachChat falls back to a free situation question when gate rejects every attempt", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard());
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: globalFirstRoundRequest,
+      tier: "free",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 3);
+  assertEquals(harness.deductCalls, 0);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.responseType, "clarifyingQuestion");
+  assertEquals(card.costDeducted, 0);
+  assertEquals(
+    card.reflectionQuestion,
+    "這是全新對象、聊到一半斷掉想重新接上，還是正在聊但沒話題？",
+  );
+});

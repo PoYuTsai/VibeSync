@@ -472,3 +472,38 @@ Deno.test("buildCoachChatPrompt states the language iron rule and strips copyabl
   assertEquals(prompt.includes("checklist"), false);
   assertEquals(prompt.includes("不要 markdown"), false);
 });
+
+// ── 全域首輪固定決策閘門（2026-08-31 決策分岔案）────────────────────────
+
+Deno.test("buildCoachChatPrompt injects the first-round clarify directive only when contextless", () => {
+  const gatedBase = {
+    conversationId: "global:me",
+    userQuestion: "不知道怎麼開啟話題，給我一點方向？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+    scope: { type: "global" as const },
+  };
+
+  const gated = buildCoachChatPrompt(gatedBase);
+  assertStringIncludes(gated, "本回合是全域首輪且沒有任何對話脈絡");
+  assertStringIncludes(gated, '必須輸出 responseType="clarifyingQuestion"');
+  assertStringIncludes(
+    gated,
+    "這是全新對象、聊到一半斷掉想重新接上、還是正在聊但沒話題？",
+  );
+  // 無條件「直接給可執行的建議」已改成有脈絡才直接給。
+  assertStringIncludes(gated, "已有脈絡（本輪對話、使用者補充）時直接給可執行的建議");
+
+  const withContext = buildCoachChatPrompt({
+    ...gatedBase,
+    activeSessionTurns: [
+      { role: "user" as const, kind: "supplement" as const, content: "全新對象" },
+    ],
+  });
+  assertEquals(withContext.includes("本回合是全域首輪"), false);
+
+  const forced = buildCoachChatPrompt({ ...gatedBase, forceAnswer: true });
+  assertEquals(forced.includes("本回合是全域首輪"), false);
+});

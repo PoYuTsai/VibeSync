@@ -6,7 +6,10 @@ import {
   validateResponseCard,
   VISIBLE_FIELDS,
 } from "./validate.ts";
-import { shouldForceCoachAnswerAfterClarifications } from "./clarification_policy.ts";
+import {
+  mustClarifyFirstRound,
+  shouldForceCoachAnswerAfterClarifications,
+} from "./clarification_policy.ts";
 import { quotaExceededMessage } from "../_shared/quota.ts";
 import {
   findUnsupportedLatinTokens,
@@ -187,6 +190,7 @@ export async function runCoachChat(
       assertSuggestedLineGrounded(candidate, request);
       assertExplicitNoQuestionConstraint(candidate, request);
       assertVisibleTextLanguage(candidate, request);
+      assertClarificationRequired(candidate, request);
       card = assertClarificationAllowed(candidate, request);
       if (attempt > 1) {
         deps.logger.info("coach_chat_retry_succeeded", {
@@ -209,6 +213,8 @@ export async function runCoachChat(
         ? "language_drift"
         : message === "clarification_forbidden"
         ? "clarification_forbidden"
+        : message === "clarification_required"
+        ? "clarification_required"
         : message === "max_tokens"
         ? "max_tokens"
         : message === "refusal"
@@ -396,6 +402,17 @@ function assertClarificationAllowed(
   return card;
 }
 
+// assertClarificationAllowed 的鏡像（2026-08-31 決策分岔案）：全域首輪
+// 缺脈絡時模型不得直接給 coachAnswer——首輪決策與扣費都變成確定的。
+function assertClarificationRequired(
+  card: CoachChatResponseCard,
+  request: CoachChatRequest,
+): void {
+  if (card.responseType === "coachAnswer" && mustClarifyFirstRound(request)) {
+    throw new Error("clarification_required");
+  }
+}
+
 function buildAttemptPrompt(
   basePrompt: string,
   attempt: number,
@@ -428,6 +445,15 @@ function buildAttemptPrompt(
 請重新輸出完整 JSON：
 - 資訊不足時輕接或留白，不得腦補對方在裝、敷衍、冷淡或故意吊胃口。
 - 不要逼對方解釋或安撫使用者。
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
+  }
+  if (lastValidationError === "clarification_required") {
+    return `${basePrompt}
+
+上一次輸出違反全域首輪規則：本回合完全沒有任何對話脈絡，必須先免費釐清，不可直接給 coachAnswer。
+請重新輸出 responseType="clarifyingQuestion" 的 JSON：
+- 只問一個問題，方向固定三選一：全新對象／聊到一半斷掉想重新接上／正在聊但沒話題。
+- costDeducted 必須是 0；suggestedLine、rewriteDecision、rewriteReason 用 null；needsReflection=true，reflectionQuestion 必填。
 - 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
   }
   if (lastValidationError === "language_drift") {
@@ -647,6 +673,27 @@ function inferFallbackAnswerMode(request: CoachChatRequest): string {
 function buildFallbackClarificationShape(
   request: CoachChatRequest,
 ): Record<string, string | number | boolean | null | undefined> {
+  // 全域首輪閘門下的 fallback 不能問「你聽到她這句話後…」——根本還沒有
+  // 對話。固定問三分法處境題。
+  if (mustClarifyFirstRound(request)) {
+    return {
+      responseType: "clarifyingQuestion",
+      mode: "clarifyIntent",
+      headline: "先弄清楚你的處境",
+      answer:
+        "這題可以給方向，但我需要先知道你現在的局面，建議才不會空泛。先幫我選一個最接近的狀況。",
+      userTruth: null,
+      userState: "你想要可執行的方向，但還沒說目前是哪種局面。",
+      frictionType: "unclearIntent",
+      nextStep: "先選一個最接近的狀況。",
+      suggestedLine: null,
+      rewriteDecision: null,
+      rewriteReason: null,
+      boundaryReminder: "免費釐清最多 3 次；正式建議才扣 1 則。",
+      needsReflection: true,
+      reflectionQuestion: "這是全新對象、聊到一半斷掉想重新接上，還是正在聊但沒話題？",
+    };
+  }
   const question = request.userQuestion.toLowerCase();
   const isMoveForward = /推進|約|邀|升溫|收尾|關門|轉場/.test(question);
   const primaryReflection = isMoveForward

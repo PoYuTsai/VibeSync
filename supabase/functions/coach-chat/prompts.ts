@@ -2,12 +2,13 @@ import type { CoachChatRequest, LifecyclePhase } from "./schemas.ts";
 import {
   countCoachClarifications,
   MAX_NO_CHARGE_CLARIFICATION_TURNS,
+  mustClarifyFirstRound,
 } from "./clarification_policy.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 
 export function buildCoachChatPrompt(input: CoachChatRequest): string {
   const context = [
-    section("全域教練模式", formatGlobalFraming(input.scope)),
+    section("全域教練模式", formatGlobalFraming(input)),
     section("教練情境", formatLifecycleFraming(input.lifecyclePhase)),
     section("使用者問題", input.userQuestion),
     section("使用者原本想怎麼回", input.rawReplyDraft),
@@ -150,13 +151,19 @@ const LIFECYCLE_FRAMING: Record<LifecyclePhase, string> = {
 
 // 批 A：global scope（不綁對象）的全域指引段。conversation/partner scope
 // 一律回 null——既有兩型 prompt 輸出 byte-for-byte 不變（prompts_test 回歸鎖）。
-function formatGlobalFraming(
-  scope: CoachChatRequest["scope"],
-): string | null {
-  if (scope?.type !== "global") return null;
-  return "本次是全域教練對話：使用者沒有綁定特定對象，問題偏通用（開場、判讀、推進、心態）。" +
-    "直接給可執行的建議。若使用者明確在問某個特定對象的具體對話，" +
+// 2026-08-31 決策分岔案：拿掉無條件「直接給可執行的建議」（跟教練追問規則
+// 打架，讓首輪決策變成擲骰）；首輪缺脈絡時注入硬指令，由
+// assertClarificationRequired 在後端把關。
+function formatGlobalFraming(input: CoachChatRequest): string | null {
+  if (input.scope?.type !== "global") return null;
+  const base =
+    "本次是全域教練對話：使用者沒有綁定特定對象，問題偏通用（開場、判讀、推進、心態）。" +
+    "已有脈絡（本輪對話、使用者補充）時直接給可執行的建議；首輪完全沒有脈絡時，先用一個免費釐清問清處境。" +
+    "若使用者明確在問某個特定對象的具體對話，" +
     "提醒他切換視窗上方「問誰」的對象選項，那樣你能帶入該對象的完整上下文。";
+  if (!mustClarifyFirstRound(input)) return base;
+  return `${base}
+本回合是全域首輪且沒有任何對話脈絡：必須輸出 responseType="clarifyingQuestion"，不可輸出 coachAnswer。只問一個問題，方向固定三選一：這是全新對象、聊到一半斷掉想重新接上、還是正在聊但沒話題？`;
 }
 
 function formatLifecycleFraming(
