@@ -82,3 +82,59 @@ Deno.test("coach migration ledger result is envelope + card whitelist only", () 
   const occurrences = migrationSource.split(cardWhitelist).length - 1;
   assert(occurrences >= 2);
 });
+
+// ── Batch B2（CoachAnswerV2）widening migration ─────────────────────────
+
+const v2MigrationSource = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260831180000_coach_answer_v2_card_fields.sql",
+    import.meta.url,
+  ),
+);
+
+Deno.test("coach V2 migration widens card whitelist with optional enum checks", () => {
+  // 同名 constraint 先 drop 再 add（不留兩份）。
+  assert(
+    v2MigrationSource.includes(
+      "DROP CONSTRAINT coach_requests_result_state_consistency",
+    ),
+  );
+  assert(
+    v2MigrationSource.includes(
+      "ADD CONSTRAINT coach_requests_result_state_consistency",
+    ),
+  );
+  // 兩鍵進白名單，表 CHECK 與 settle 驗證同組各一次。
+  const widened = "- 'messageDecision' - 'evidenceQuality'";
+  assert(v2MigrationSource.split(widened).length - 1 >= 2);
+  // 選填 enum：缺席放行、有值鎖三態；同樣兩處。
+  assert(
+    v2MigrationSource.split("IN ('send', 'hold_off', 'no_message_needed')")
+      .length - 1 >= 2,
+  );
+  assert(
+    v2MigrationSource.split("IN ('none', 'stale_or_partial', 'fresh')")
+      .length - 1 >= 2,
+  );
+  assert(v2MigrationSource.split("->> 'messageDecision') IS NULL").length - 1 >= 2);
+  assert(v2MigrationSource.split("->> 'evidenceQuality') IS NULL").length - 1 >= 2);
+  // settle 只重建、權限收回照舊。
+  assert(
+    v2MigrationSource.includes(
+      "CREATE OR REPLACE FUNCTION public.settle_coach_request",
+    ),
+  );
+  assert(v2MigrationSource.includes("SECURITY DEFINER"));
+  assert(v2MigrationSource.includes("SET search_path = public"));
+  assert(v2MigrationSource.includes(") FROM anon, authenticated;"));
+  assert(v2MigrationSource.includes(") TO service_role;"));
+  // 舊卡相容：計費與 replay 關鍵片段仍在（envelope/所有舊鍵/increment）。
+  assert(
+    v2MigrationSource.includes(
+      "?& ARRAY['card','sessionId','provider','model','generatedAt']",
+    ),
+  );
+  assert(v2MigrationSource.includes("COACH_REQUEST_REPLAY_MISMATCH"));
+  assert(v2MigrationSource.includes("COACH_REQUEST_OWNER_MISMATCH"));
+  assert(v2MigrationSource.includes("increment_usage"));
+});

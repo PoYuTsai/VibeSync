@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
 
 class _Recorded {
@@ -735,6 +736,41 @@ void main() {
       expect(result.provider, 'claude');
       expect(result.modelUsed, 'claude-sonnet-4-20250514');
       expect(result.generatedAt, DateTime.parse('2026-05-07T12:00:00.000Z'));
+      // B2 欄位缺席（舊 Edge）→ null，不炸。
+      expect(result.messageDecision, isNull);
+      expect(result.evidenceQuality, isNull);
+    });
+
+    test('parses B2 messageDecision/evidenceQuality；未知值當缺席', () async {
+      Future<CoachChatResult> parse(Map<String, dynamic> extra) {
+        final base = _validResponse();
+        final card = Map<String, dynamic>.from(base['card'] as Map)
+          ..addAll(extra);
+        final service =
+            CoachChatApiService(invoker: _stub(_ok(_validResponse(card: card))));
+        return service.ask(
+          conversationId: 'c-1',
+          partnerId: 'p-1',
+          question: '她是什麼意思？',
+          recentMessages: const [],
+          dataQualityFlagged: false,
+        );
+      }
+
+      final known = await parse({
+        'messageDecision': 'hold_off',
+        'evidenceQuality': 'stale_or_partial',
+      });
+      expect(known.messageDecision, 'hold_off');
+      expect(known.evidenceQuality, 'stale_or_partial');
+
+      // 未知 enum 值（未來 server 擴充）→ 當缺席，UI 退回 null 態推導。
+      final unknown = await parse({
+        'messageDecision': 'maybe_later',
+        'evidenceQuality': 'excellent',
+      });
+      expect(unknown.messageDecision, isNull);
+      expect(unknown.evidenceQuality, isNull);
     });
 
     test('parses clarification response without cost deduction', () async {

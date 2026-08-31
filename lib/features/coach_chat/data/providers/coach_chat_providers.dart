@@ -449,6 +449,8 @@ class CoachChatController
       scopeType: scope.isGlobal ? CoachScopeType.global : CoachScopeType.partner,
       scopeId: scope.id,
       lifecyclePhase: lifecyclePhase,
+      messageDecision: result.messageDecision,
+      evidenceQuality: result.evidenceQuality,
     );
   }
 

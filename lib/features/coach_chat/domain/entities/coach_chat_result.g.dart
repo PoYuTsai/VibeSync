@@ -42,13 +42,15 @@ class CoachChatResultAdapter extends TypeAdapter<CoachChatResult> {
       frictionType: fields[22] == null ? 'unclearIntent' : fields[22] as String,
       earlierSummary: fields[23] as String?,
       earlierResultCount: fields[24] == null ? 0 : (fields[24] as num).toInt(),
+      messageDecision: fields[25] as String?,
+      evidenceQuality: fields[26] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, CoachChatResult obj) {
     writer
-      ..writeByte(25)
+      ..writeByte(27)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -98,7 +100,11 @@ class CoachChatResultAdapter extends TypeAdapter<CoachChatResult> {
       ..writeByte(23)
       ..write(obj.earlierSummary)
       ..writeByte(24)
-      ..write(obj.earlierResultCount);
+      ..write(obj.earlierResultCount)
+      ..writeByte(25)
+      ..write(obj.messageDecision)
+      ..writeByte(26)
+      ..write(obj.evidenceQuality);
   }
 
   @override

@@ -771,9 +771,12 @@ class _CoachChatHistoryTile extends StatelessWidget {
                 ),
               ),
             ],
-            if (result.suggestedLine == null &&
-                result.rewriteDecision == 'do_not_send')
-              const _InfoLine(label: '教練判斷', value: '這輪先別傳'),
+            // B2 三態：正式 messageDecision 優先（缺席退回 null 態推導，
+            // 見 effectiveMessageDecision）。
+            if (result.effectiveMessageDecision == 'hold_off')
+              const _InfoLine(label: '教練判斷', value: '這輪先別傳')
+            else if (result.effectiveMessageDecision == 'no_message_needed')
+              const _InfoLine(label: '教練判斷', value: '這題不用回訊息'),
             const SizedBox(height: 8),
             _InfoLine(label: '這次先做', value: result.nextStep),
             _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
@@ -964,14 +967,25 @@ class CoachChatResultView extends ConsumerWidget {
               ),
             ),
           ] else if (!isClarifying &&
-              result.rewriteDecision == 'do_not_send') ...[
+              result.effectiveMessageDecision == 'hold_off') ...[
             // Batch A：「這輪先別傳」是正式判斷結果，不是缺漏——教練判斷
             // 不值得出手（或建議句沒過安全檢查）時，明確告訴使用者先停。
+            // B2：改讀正式 messageDecision（缺席退回 null 態推導）。
             const SizedBox(height: 8),
             _CoachNotice(
               icon: Icons.front_hand_outlined,
               title: '這輪先別傳',
               body: result.rewriteReason ?? '教練判斷這輪先不出手比較好。',
+            ),
+          ] else if (!isClarifying &&
+              result.effectiveMessageDecision == 'no_message_needed') ...[
+            // B2 第三態：不是「先停」的警示，而是這題本來就不用傳訊息
+            // （心態/判讀/線下情境題）——中性告知，別讓使用者以為缺句。
+            const SizedBox(height: 8),
+            _CoachNotice(
+              icon: Icons.self_improvement_outlined,
+              title: '這題不用回訊息',
+              body: result.rewriteReason ?? '照上面的下一步做就好，不用傳什麼。',
             ),
           ],
           const SizedBox(height: 8),

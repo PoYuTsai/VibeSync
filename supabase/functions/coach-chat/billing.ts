@@ -122,6 +122,21 @@ const COACH_CARD_ALLOWED_KEYS = new Set([
   "needsReflection",
   "reflectionQuestion",
   "costDeducted",
+  // Batch B2（CoachAnswerV2）：兩鍵選填——24h 內舊 replay rows 沒有它們，
+  // 驗證必須放行缺席；有值時鎖 enum（與 migration 的 CHECK 同組）。
+  "messageDecision",
+  "evidenceQuality",
+]);
+
+const COACH_MESSAGE_DECISIONS = new Set([
+  "send",
+  "hold_off",
+  "no_message_needed",
+]);
+const COACH_EVIDENCE_QUALITIES = new Set([
+  "none",
+  "stale_or_partial",
+  "fresh",
 ]);
 
 export type CoachLedgerResult = {
@@ -163,6 +178,14 @@ export function isValidCoachLedgerResult(
   if (cardRecord.costDeducted !== 0 && cardRecord.costDeducted !== 1) {
     return false;
   }
+  if (
+    cardRecord.messageDecision != null &&
+    !COACH_MESSAGE_DECISIONS.has(cardRecord.messageDecision as string)
+  ) return false;
+  if (
+    cardRecord.evidenceQuality != null &&
+    !COACH_EVIDENCE_QUALITIES.has(cardRecord.evidenceQuality as string)
+  ) return false;
   return true;
 }
 

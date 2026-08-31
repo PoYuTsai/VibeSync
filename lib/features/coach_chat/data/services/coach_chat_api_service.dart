@@ -697,7 +697,22 @@ class CoachChatApiService {
       responseType: responseType,
       sessionId: _stringOrNull(data['sessionId']),
       costDeducted: costDeducted is int ? costDeducted : 1,
+      // B2：只收已知 enum 值，未知值當缺席（UI 退回 null 態推導）——
+      // 防未來 server 值域擴充讓舊 build 顯示錯卡。
+      messageDecision: _enumOrNull(
+        cardMap['messageDecision'],
+        const {'send', 'hold_off', 'no_message_needed'},
+      ),
+      evidenceQuality: _enumOrNull(
+        cardMap['evidenceQuality'],
+        const {'none', 'stale_or_partial', 'fresh'},
+      ),
     );
+  }
+
+  String? _enumOrNull(dynamic value, Set<String> allowed) {
+    if (value is! String) return null;
+    return allowed.contains(value) ? value : null;
   }
 
   String? _stringOrNull(dynamic value) {

@@ -51,6 +51,22 @@ export const RewriteDecisionEnum = z.enum([
   "rewrite",
   "do_not_send",
 ]);
+// Batch B2（CoachAnswerV2）：「這一輪要不要傳訊息」的正式三態。伺服器端
+// deterministic 推導（見 deriveMessageDecision），模型契約不含此欄——
+// 模型不擲骰、不會漂移，UI 不再從 suggestedLine null 態反推。
+export const MessageDecisionEnum = z.enum([
+  "send",
+  "hold_off",
+  "no_message_needed",
+]);
+// Batch B2：本卡背後的個案證據量。同樣伺服器端 deterministic（依 request
+// context 推導，見 generation.ts deriveEvidenceQuality），非模型自評。
+export const EvidenceQualityEnum = z.enum([
+  "none",
+  "stale_or_partial",
+  "fresh",
+]);
+
 export const FrictionTypeEnum = z.enum([
   "fearOfMistake",
   "overPolishing",
@@ -221,6 +237,10 @@ export const ResponseCardSchema = z.object({
   needsReflection: z.boolean(),
   reflectionQuestion: z.string().max(90).nullable().optional(),
   costDeducted: z.number().int().min(0).max(1).nullable().optional(),
+  // Batch B2：兩欄輸入端選填（24h 內舊 replay rows 沒有這兩鍵，重放驗證
+  // 不得炸）；messageDecision 由 transform 一律覆寫成 deterministic 值。
+  messageDecision: MessageDecisionEnum.nullable().optional(),
+  evidenceQuality: EvidenceQualityEnum.nullable().optional(),
 }).strict().superRefine((card, ctx) => {
   if (
     card.needsReflection &&
@@ -253,7 +273,25 @@ export const ResponseCardSchema = z.object({
 }).transform((card) => ({
   ...card,
   costDeducted: card.responseType === "clarifyingQuestion" ? 0 : 1,
+  messageDecision: deriveMessageDecision(card),
 }));
+
+/// Batch B2：messageDecision 的唯一真相源（costDeducted 同款 transform
+/// 覆寫模式）。釐清卡 null；有句＝send；無句且 do_not_send＝hold_off
+/// （這輪先別傳）；無句其餘＝no_message_needed（本來就不是傳訊息的題）。
+/// generation.ts 的剝句路徑繞過 schema 重建卡，必須同用此函式。
+export function deriveMessageDecision(card: {
+  responseType?: string | null;
+  suggestedLine?: string | null;
+  rewriteDecision?: string | null;
+}): z.infer<typeof MessageDecisionEnum> | null {
+  if (card.responseType === "clarifyingQuestion") return null;
+  if (card.suggestedLine != null && card.suggestedLine.trim() !== "") {
+    return "send";
+  }
+  if (card.rewriteDecision === "do_not_send") return "hold_off";
+  return "no_message_needed";
+}
 
 export const ResponseSchema = z.object({
   card: ResponseCardSchema,

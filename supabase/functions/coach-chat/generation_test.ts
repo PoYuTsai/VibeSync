@@ -3,6 +3,7 @@ import {
   callClaudeAPI,
   type ClaudeCallArgs,
   CoachChatQuotaExceededError,
+  deriveEvidenceQuality,
   runCoachChat,
 } from "./generation.ts";
 import type { CoachChatRequest } from "./schemas.ts";
@@ -2068,6 +2069,9 @@ Deno.test("Batch A G-04b: placeholder 三連敗改剝句、答案保留、不扣
   assertEquals(card.rewriteDecision, "do_not_send");
   assertEquals(card.costDeducted, 0);
   assertEquals(card.headline, "承認一半再反問");
+  // B2：剝句路徑繞過 schema transform，messageDecision 必須被重推成
+  // hold_off（不得殘留剝句前的 send）。
+  assertEquals(card.messageDecision, "hold_off");
   assertEquals(harness.events.includes("coach_chat_line_stripped"), true);
 });
 
@@ -2392,4 +2396,77 @@ Deno.test("Batch A R2修正: fallback 草稿含多個問句也不得進複製卡
   assertEquals(card.suggestedLine, null);
   assertEquals(card.rewriteDecision, "do_not_send");
   assertEquals(card.costDeducted, 0);
+});
+
+// ── Batch B2（CoachAnswerV2）───────────────────────────────────────────────
+
+Deno.test("B2: deriveEvidenceQuality 三態（deterministic，非模型自評）", () => {
+  const nowMs = Date.parse("2026-08-31T12:00:00.000Z");
+  // 零證據＝none（session turns 刻意不算證據）。
+  assertEquals(
+    deriveEvidenceQuality({
+      ...request,
+      recentMessages: [],
+      activeSessionTurns: [
+        { role: "user", kind: "question", content: "怎麼辦" },
+      ],
+    }, nowMs),
+    "none",
+  );
+  // 只有二手材料（摘要/快照）＝stale_or_partial。
+  assertEquals(
+    deriveEvidenceQuality(
+      { ...request, recentMessages: [], conversationSummary: "聊過爬山" },
+      nowMs,
+    ),
+    "stale_or_partial",
+  );
+  // conversation scope 有逐字訊息＝fresh。
+  assertEquals(deriveEvidenceQuality(request, nowMs), "fresh");
+  // partner scope：7 天窗內 fresh、窗外或缺時間戳保守 stale。
+  const partnerBase: typeof request = {
+    ...request,
+    scope: { type: "partner", partnerId: "p1" },
+  };
+  assertEquals(
+    deriveEvidenceQuality({
+      ...partnerBase,
+      contextProvenance: {
+        sourceConversationId: "c1",
+        lastMessageAt: "2026-08-30T12:00:00.000Z",
+      },
+    }, nowMs),
+    "fresh",
+  );
+  assertEquals(
+    deriveEvidenceQuality({
+      ...partnerBase,
+      contextProvenance: {
+        sourceConversationId: "c1",
+        lastMessageAt: "2026-08-10T12:00:00.000Z",
+      },
+    }, nowMs),
+    "stale_or_partial",
+  );
+  assertEquals(deriveEvidenceQuality(partnerBase, nowMs), "stale_or_partial");
+});
+
+Deno.test("B2: 成功卡帶 deterministic messageDecision 與 evidenceQuality", async () => {
+  const harness = deps({
+    callClaude: () => Promise.resolve(validClaudeCard()),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.messageDecision, "send");
+  assertEquals(card.evidenceQuality, "fresh");
 });

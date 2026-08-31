@@ -1,4 +1,5 @@
 import { buildCoachChatPrompt } from "./prompts.ts";
+import { deriveMessageDecision } from "./schemas.ts";
 import type { CoachChatRequest, CoachChatResponseCard } from "./schemas.ts";
 import {
   assertCardSafe,
@@ -312,6 +313,9 @@ export async function runCoachChat(
             // 的既有計費不變量）。
             costDeducted: FALLBACK_NO_CHARGE,
           };
+          // 剝句繞過 schema transform 重建卡：messageDecision 必須重推，
+          // 否則會殘留剝句前的 "send"（B2）。
+          card = { ...card, messageDecision: deriveMessageDecision(card) };
           break;
         }
         deps.logger.warn("coach_chat_fallback_used", {
@@ -333,6 +337,10 @@ export async function runCoachChat(
   if (!card) {
     return { status: 500, body: { error: lastValidationError } };
   }
+
+  // B2：本卡證據量由 request context deterministic 推導（非模型自評），
+  // 在唯一收斂點蓋上——settle 與非帳本兩條回應路徑都從這裡展開 card。
+  card = { ...card, evidenceQuality: deriveEvidenceQuality(request, now()) };
 
   const shouldDeduct = card.responseType === "coachAnswer" &&
     card.costDeducted !== FALLBACK_NO_CHARGE;
@@ -449,6 +457,31 @@ export async function runCoachChat(
       generatedAt: new Date(now()).toISOString(),
     },
   };
+}
+
+// B2：evidenceQuality 的唯一真相源。只認「對方證據」——recentMessages 逐字
+// 訊息與 summary/snapshot 二手材料；activeSessionTurns 是教練室對話，刻意
+// 不算證據（使用者轉述≠對方原話）。partner scope 的逐字訊息是 B1 從來源
+// 對話補的，新鮮度看 contextProvenance.lastMessageAt（7 天窗；缺時間戳
+// 保守判 stale）。
+const EVIDENCE_FRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function deriveEvidenceQuality(
+  request: CoachChatRequest,
+  nowMs: number,
+): "none" | "stale_or_partial" | "fresh" {
+  const hasMessages = request.recentMessages.length > 0;
+  const hasSecondary = request.conversationSummary != null ||
+    request.analysisSnapshot != null;
+  if (!hasMessages) return hasSecondary ? "stale_or_partial" : "none";
+  if (request.scope?.type === "partner") {
+    const raw = request.contextProvenance?.lastMessageAt;
+    const at = raw == null ? NaN : Date.parse(raw);
+    if (!Number.isFinite(at) || nowMs - at > EVIDENCE_FRESH_WINDOW_MS) {
+      return "stale_or_partial";
+    }
+  }
+  return "fresh";
 }
 
 function emitProgress(

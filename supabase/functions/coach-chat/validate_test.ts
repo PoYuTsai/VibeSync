@@ -349,6 +349,96 @@ Deno.test("validateResponseCard normalizes omitted coach answer cost to one", ()
   assertEquals(parsed.costDeducted, 1);
 });
 
+// ── Batch B2：messageDecision deterministic 推導（transform 覆寫）─────────
+
+Deno.test("validateResponseCard derives messageDecision deterministically (B2)", () => {
+  const base = {
+    responseType: "coachAnswer",
+    mode: "moveForward",
+    headline: "先做一個小推進",
+    answer: "這題可以推，但不要一次推太滿。先用低壓邀約測她願不願意給時間。",
+    userTruth: null,
+    userState: "你把推進想成一次成敗考試。",
+    frictionType: "hesitatesToMoveForward",
+    nextStep: "今天只丟一個可退可進的輕邀約。",
+    suggestedLine: "那下次你想放空時，我帶你去一間安靜的甜點店。",
+    rewriteDecision: "rewrite",
+    rewriteReason: "把目的感改成低壓邀約。",
+    boundaryReminder: "邀約是給選擇，不是給壓力。",
+    needsReflection: false,
+    reflectionQuestion: null,
+  };
+
+  // 有句＝send；模型硬塞的值會被 transform 覆寫（deterministic 真相源）。
+  assertEquals(validateResponseCard(base).messageDecision, "send");
+  assertEquals(
+    validateResponseCard({ ...base, messageDecision: "hold_off" })
+      .messageDecision,
+    "send",
+  );
+
+  // 無句＋do_not_send＝hold_off（這輪先別傳）。
+  assertEquals(
+    validateResponseCard({
+      ...base,
+      suggestedLine: null,
+      rewriteDecision: "do_not_send",
+      rewriteReason: "現在傳只會加壓。",
+    }).messageDecision,
+    "hold_off",
+  );
+
+  // 無句＋其餘決策＝no_message_needed（不是傳訊息的題）。
+  assertEquals(
+    validateResponseCard({
+      ...base,
+      suggestedLine: null,
+      rewriteDecision: "keep_original",
+      rewriteReason: "這題重點在心態，不用改句。",
+    }).messageDecision,
+    "no_message_needed",
+  );
+
+  // 釐清卡固定 null（同 costDeducted=0 的既有 transform 規範）。
+  assertEquals(
+    validateResponseCard({
+      responseType: "clarifyingQuestion",
+      mode: "clarifyIntent",
+      headline: "先問清楚你的真實想法",
+      answer: "你還沒說清楚自己想推到哪一步。",
+      userTruth: null,
+      userState: "你可能想往前，但還沒釐清目的。",
+      nextStep: "先補一句你心裡真正想推進到哪裡。",
+      suggestedLine: null,
+      rewriteDecision: null,
+      rewriteReason: null,
+      boundaryReminder: "釐清不扣額度；正式建議才扣 1 則。",
+      needsReflection: true,
+      reflectionQuestion: "你說推進，是想邀約、升溫，還是確認對方意願？",
+    }).messageDecision,
+    null,
+  );
+});
+
+Deno.test("validateResponseCard rejects unknown B2 enum values", () => {
+  assertThrows(() =>
+    validateResponseCard({
+      responseType: "coachAnswer",
+      mode: "moveForward",
+      headline: "先做一個小推進",
+      answer: "先用低壓邀約測窗口。",
+      userState: "你把邀約想成考試。",
+      nextStep: "丟一個輕邀約。",
+      suggestedLine: "要不要下次一起去喝咖啡？",
+      rewriteDecision: "rewrite",
+      rewriteReason: "降壓。",
+      boundaryReminder: "給選擇不給壓力。",
+      needsReflection: false,
+      evidenceQuality: "excellent",
+    })
+  );
+});
+
 Deno.test("validateResponseCard defaults frictionType for backwards compatibility", () => {
   const parsed = validateResponseCard({
     responseType: "coachAnswer",

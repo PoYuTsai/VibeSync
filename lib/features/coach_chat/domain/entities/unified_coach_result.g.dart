@@ -45,13 +45,15 @@ class UnifiedCoachResultAdapter extends TypeAdapter<UnifiedCoachResult> {
       scopeType: fields[25] as String,
       scopeId: fields[26] as String,
       lifecyclePhase: fields[27] as String?,
+      messageDecision: fields[28] as String?,
+      evidenceQuality: fields[29] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, UnifiedCoachResult obj) {
     writer
-      ..writeByte(28)
+      ..writeByte(30)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -107,7 +109,11 @@ class UnifiedCoachResultAdapter extends TypeAdapter<UnifiedCoachResult> {
       ..writeByte(26)
       ..write(obj.scopeId)
       ..writeByte(27)
-      ..write(obj.lifecyclePhase);
+      ..write(obj.lifecyclePhase)
+      ..writeByte(28)
+      ..write(obj.messageDecision)
+      ..writeByte(29)
+      ..write(obj.evidenceQuality);
   }
 
   @override

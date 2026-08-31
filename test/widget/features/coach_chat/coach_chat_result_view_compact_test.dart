@@ -219,4 +219,33 @@ void main() {
     expect(find.text('兩次邀約未被承接，先停一輪'), findsOneWidget);
     expect(find.text('複製這句'), findsNothing);
   });
+
+  testWidgets('messageDecision=no_message_needed 顯示第三態卡（B2）', (tester) async {
+    final noMessageResult = CoachChatResult(
+      id: 'no-message-result',
+      conversationId: 'conversation-1',
+      partnerId: 'partner-1',
+      question: '我約會時該怎麼穩住心態？',
+      mode: 'stateCalibration',
+      headline: '把注意力放回自己',
+      answer: '這題的關鍵在你怎麼看待這場約會，不在傳什麼訊息。',
+      userState: '你把成敗都押在對方反應上',
+      nextStep: '出門前寫下你自己想確認的一件事',
+      suggestedLine: null,
+      boundaryReminder: '不要為了安全感要求對方保證',
+      needsReflection: false,
+      generatedAt: DateTime.utc(2026, 8, 31, 9),
+      provider: 'claude',
+      modelUsed: 'claude-sonnet-5',
+      rewriteDecision: 'keep_original',
+      rewriteReason: null,
+      frictionType: 'fearOfMistake',
+      messageDecision: 'no_message_needed',
+    );
+    await tester.pumpWidget(_wrap(noMessageResult));
+    expect(find.text('這題不用回訊息'), findsOneWidget);
+    // 不是警示卡：不得出現「先別傳」。
+    expect(find.text('這輪先別傳'), findsNothing);
+    expect(find.text('複製這句'), findsNothing);
+  });
 }

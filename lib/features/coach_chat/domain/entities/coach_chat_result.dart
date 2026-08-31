@@ -84,6 +84,16 @@ class CoachChatResult {
   @HiveField(24)
   final int earlierResultCount;
 
+  /// Batch B2（CoachAnswerV2）：伺服器 deterministic 三態
+  /// send/hold_off/no_message_needed；舊 Edge/舊資料為 null（UI 退回
+  /// suggestedLine null 態推導）。
+  @HiveField(25)
+  final String? messageDecision;
+
+  /// Batch B2：本卡背後個案證據量 none/stale_or_partial/fresh；同上選填。
+  @HiveField(26)
+  final String? evidenceQuality;
+
   const CoachChatResult({
     required this.id,
     required this.conversationId,
@@ -110,6 +120,8 @@ class CoachChatResult {
     this.frictionType = 'unclearIntent',
     this.earlierSummary,
     this.earlierResultCount = 0,
+    this.messageDecision,
+    this.evidenceQuality,
   });
 
   bool get isClarifyingQuestion => responseType == 'clarifyingQuestion';
@@ -146,6 +158,8 @@ class CoachChatResult {
       frictionType: frictionType,
       earlierSummary: earlierSummary ?? this.earlierSummary,
       earlierResultCount: earlierResultCount ?? this.earlierResultCount,
+      messageDecision: messageDecision,
+      evidenceQuality: evidenceQuality,
     );
   }
 }

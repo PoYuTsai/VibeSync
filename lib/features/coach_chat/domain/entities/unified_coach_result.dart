@@ -116,6 +116,14 @@ class UnifiedCoachResult {
   @HiveField(27)
   final String? lifecyclePhase;
 
+  /// Batch B2（CoachAnswerV2）：伺服器 deterministic 三態；舊資料 null。
+  @HiveField(28)
+  final String? messageDecision;
+
+  /// Batch B2：本卡個案證據量；舊資料 null。
+  @HiveField(29)
+  final String? evidenceQuality;
+
   const UnifiedCoachResult({
     required this.id,
     this.conversationId,
@@ -145,6 +153,8 @@ class UnifiedCoachResult {
     required this.scopeType,
     required this.scopeId,
     this.lifecyclePhase,
+    this.messageDecision,
+    this.evidenceQuality,
   });
 
   /// Maps a legacy typeId 17 [CoachChatResult] (conversation scope) 1:1.
@@ -185,6 +195,8 @@ class UnifiedCoachResult {
       scopeType: CoachScopeType.conversation,
       scopeId: r.conversationId,
       lifecyclePhase: lifecyclePhase,
+      messageDecision: r.messageDecision,
+      evidenceQuality: r.evidenceQuality,
     );
   }
 
@@ -224,6 +236,17 @@ class UnifiedCoachResult {
 
   bool get isCoachAnswer => responseType == 'coachAnswer';
 
+  /// Batch B2 三態：正式欄位優先；缺席（舊 Edge/舊資料）退回 Batch A 的
+  /// suggestedLine null 態推導。舊資料無法區分 no_message_needed，維持
+  /// null（UI 沿用現行安靜態），不腦補第三態。
+  String? get effectiveMessageDecision {
+    if (isClarifyingQuestion) return null;
+    if (messageDecision != null) return messageDecision;
+    if (suggestedLine != null) return 'send';
+    if (rewriteDecision == 'do_not_send') return 'hold_off';
+    return null;
+  }
+
   UnifiedCoachResult copyWith({
     String? earlierSummary,
     int? earlierResultCount,
@@ -257,6 +280,8 @@ class UnifiedCoachResult {
       scopeType: scopeType,
       scopeId: scopeId,
       lifecyclePhase: lifecyclePhase,
+      messageDecision: messageDecision,
+      evidenceQuality: evidenceQuality,
     );
   }
 }

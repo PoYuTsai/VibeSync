@@ -244,6 +244,35 @@ Deno.test("coach ledger accepts only envelope + card whitelist shape", () => {
   assertFalse(isValidCoachLedgerResult({ ...result, provider: "deepseek" }));
 });
 
+Deno.test("coach ledger accepts B2 optional keys and locks their enums", () => {
+  // 新鍵有值：合法 enum 過驗。
+  assert(
+    isValidCoachLedgerResult({
+      ...result,
+      card: {
+        ...result.card,
+        messageDecision: "hold_off",
+        evidenceQuality: "stale_or_partial",
+      },
+    }),
+  );
+  // 缺席（舊 replay row）照樣合法——`result` 本身即無兩鍵的舊卡。
+  assert(isValidCoachLedgerResult(result));
+  // 非法值即拒。
+  assertFalse(
+    isValidCoachLedgerResult({
+      ...result,
+      card: { ...result.card, messageDecision: "maybe" },
+    }),
+  );
+  assertFalse(
+    isValidCoachLedgerResult({
+      ...result,
+      card: { ...result.card, evidenceQuality: "excellent" },
+    }),
+  );
+});
+
 Deno.test("coach replay preflight distinguishes done, pending, and stale lease", () => {
   const now = new Date("2026-07-21T12:00:00.000Z");
   assertEquals(

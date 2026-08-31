@@ -39,6 +39,8 @@ UnifiedCoachResult _fullResult() {
     scopeType: 'conversation',
     scopeId: 'c-1',
     lifecyclePhase: 'warming',
+    messageDecision: 'hold_off',
+    evidenceQuality: 'fresh',
   );
 }
 
@@ -99,6 +101,8 @@ void main() {
       expect(read.scopeType, 'conversation');
       expect(read.scopeId, 'c-1');
       expect(read.lifecyclePhase, 'warming');
+      expect(read.messageDecision, 'hold_off');
+      expect(read.evidenceQuality, 'fresh');
     });
 
     test('writes and reads back nullable fields as null (partner scope)',
@@ -140,6 +144,78 @@ void main() {
       expect(read.costDeducted, 1);
       expect(read.frictionType, 'unclearIntent');
       expect(read.earlierResultCount, 0);
+      // B2 欄位缺席（舊資料）讀回 null。
+      expect(read.messageDecision, isNull);
+      expect(read.evidenceQuality, isNull);
+    });
+  });
+
+  group('effectiveMessageDecision（B2 三態，缺席退回 null 態推導）', () {
+    UnifiedCoachResult answer({
+      String? messageDecision,
+      String? suggestedLine,
+      String? rewriteDecision,
+      String responseType = 'coachAnswer',
+    }) {
+      return UnifiedCoachResult(
+        id: 'u-d',
+        question: 'q',
+        mode: 'replyCraft',
+        headline: 'h',
+        answer: 'a',
+        userState: 's',
+        nextStep: 'n',
+        boundaryReminder: 'b',
+        needsReflection: false,
+        generatedAt: DateTime(2026, 8, 31),
+        provider: 'claude',
+        modelUsed: 'm',
+        responseType: responseType,
+        suggestedLine: suggestedLine,
+        rewriteDecision: rewriteDecision,
+        messageDecision: messageDecision,
+        scopeType: 'conversation',
+        scopeId: 'c-1',
+      );
+    }
+
+    test('正式欄位優先於推導', () {
+      expect(
+        answer(messageDecision: 'no_message_needed', suggestedLine: null)
+            .effectiveMessageDecision,
+        'no_message_needed',
+      );
+      expect(
+        answer(messageDecision: 'hold_off', suggestedLine: '有句也聽正式欄位')
+            .effectiveMessageDecision,
+        'hold_off',
+      );
+    });
+
+    test('缺席時退回 Batch A 推導：有句 send、無句+do_not_send hold_off', () {
+      expect(answer(suggestedLine: '一句話').effectiveMessageDecision, 'send');
+      expect(
+        answer(suggestedLine: null, rewriteDecision: 'do_not_send')
+            .effectiveMessageDecision,
+        'hold_off',
+      );
+      // 舊資料無句且非 do_not_send：無法區分第三態，維持 null 不腦補。
+      expect(
+        answer(suggestedLine: null, rewriteDecision: 'keep_original')
+            .effectiveMessageDecision,
+        isNull,
+      );
+    });
+
+    test('釐清卡一律 null（連正式欄位都不理）', () {
+      expect(
+        answer(
+          responseType: 'clarifyingQuestion',
+          messageDecision: 'send',
+          suggestedLine: null,
+        ).effectiveMessageDecision,
+        isNull,
+      );
     });
   });
 
