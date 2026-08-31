@@ -47,9 +47,9 @@
 | A5 | 證據制釐清：partner scope 首輪且 `recentMessages` 空＋無 activeSessionTurns → 比照 global 強制免費釐清（釐清卡引導使用者選對話或貼對方原句）；`mustClarifyFirstRound` 從 scope-based 改 evidence-based | `clarification_policy.ts`、`prompts.ts`（partner 版首輪指引）、`generation.ts` |
 | A6 | Fallback 去 conversation-rescue：罐頭建議句改為 `suggestedLine=null`＋保守策略文字；保留免扣費語意 | `generation.ts:630-737` |
 | A7 | UI：`suggestedLine=null`＋`rewriteDecision=do_not_send` 時顯示「這輪先別傳」判斷卡（用現有欄位，不改 wire） | `coach_surface.dart` |
-| A8 | Golden regression：把 12 張截圖（原 7＋2026-08-31 新 5）寫成 `generation_test.ts` invariants 案例（驗 action/placeholder/矛盾/自貶，不驗 exact sentence） | `generation_test.ts` |
+| A8 | Golden regression：截圖病灶中「確定性守門可鎖」的案型寫成 `generation_test.ts` invariants（G-01 零證據、G-02 自貶、G-04/G-05 placeholder、G-07 無限配合/矛盾；不驗 exact sentence）。G-03 空鉤子與 G-06 實體無來源**不屬 Batch A 確定性守門範圍**，只有 prompt 層規則，留待 Batch B/D | `generation_test.ts` |
 
-驗收門檻（沿用規格 §13.3）：placeholder 外洩 0%、建議/提醒矛盾 0%、12 案 invariants 全過、既有 prompts_test/generation_test 回歸綠。
+驗收門檻（沿用規格 §13.3，範圍限確定性守門可及者）：placeholder 外洩 0%（含 fallback 草稿路徑）、建議/提醒矛盾 0%、golden invariants 全過、既有 prompts_test/generation_test 回歸綠。
 
 ### Batch B — 資料與決策統一（動 schema/client/wire）
 

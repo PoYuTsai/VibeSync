@@ -1894,8 +1894,12 @@ Deno.test("runCoachChat guards rewriteReason through the full pipeline", async (
 });
 
 // ── Batch A golden regression（2026-08-31 截圖病灶）────────────────────
-// 對應 docs/plans/2026-08-31-coach-knowledge-integration-verified-plan.md
-// 的 12 案：驗 invariants（守門行為），不驗 exact sentence。
+// 對應 docs/plans/2026-08-31-coach-knowledge-integration-verified-plan.md：
+// 驗 invariants（守門行為），不驗 exact sentence。確定性守門可鎖的病灶＝
+// G-01（partner 零證據）、G-02（自貶）、G-04/G-05（placeholder）、
+// G-07（無限配合／同卡矛盾）；G-03（空鉤子）與 G-06（實體無來源）不是
+// Batch A 確定性守門的範圍，只有 prompt 層規則，留給 Batch B/D
+//（semantic critic 與 evidence grounding）——不在此宣稱已擋。
 
 const partnerFirstRoundRequest: CoachChatRequest = {
   conversationId: "partner:p1",
@@ -2282,4 +2286,87 @@ Deno.test("Batch A: fallback 保留使用者自己的短草稿", async () => {
   assertEquals(card.suggestedLine, "哈哈好啊，那就週六");
   assertEquals(card.rewriteDecision, "light_edit");
   assertEquals(card.costDeducted, 0);
+});
+
+Deno.test("Batch A R2修正: fallback 草稿含 placeholder/多問句不得進複製卡", async () => {
+  const harness = deps({ callClaude: () => Promise.resolve(malformedClaudeCard()) });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        forceAnswer: true,
+        rawReplyDraft: "週六去（店名）吃？",
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.suggestedLine, null);
+  assertEquals(card.rewriteDecision, "do_not_send");
+  assertEquals(card.costDeducted, 0);
+});
+
+Deno.test("Batch A R2修正: 無「約」字邀約句型（週六要不要吃飯）也算矛盾", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard(
+        calls === 1
+          ? {
+            suggestedLine: "那週六要不要吃飯？",
+            boundaryReminder: "先別再約了，降低投入觀察她的下一步。",
+          }
+          : {
+            suggestedLine: null,
+            rewriteDecision: "do_not_send",
+            rewriteReason: "先停一輪。",
+            boundaryReminder: "先別再約了，降低投入觀察她的下一步。",
+          },
+      ));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+});
+
+Deno.test("Batch A R2修正: 英文 COOL/BOOK 的 OO 不是 placeholder", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(validClaudeCard({
+        suggestedLine: "妳說的那本 BOOK 我也覺得超 COOL，改天借我看",
+      })),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        recentMessages: [
+          { sender: "partner", text: "我最近在看一本 BOOK 超 COOL" },
+        ],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(harness.deductCalls, 1);
 });

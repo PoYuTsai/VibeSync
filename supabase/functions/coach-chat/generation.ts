@@ -112,7 +112,7 @@ const UNSOURCED_NEGATIVE_MOTIVE_TERMS = [
 // Batch A（2026-08-31）：建議句模板佔位符硬擋。`（店名）`/`OO`/`___` 曾
 // 直接外洩到可複製句（golden G-04/G-05）。全形〇/Ｏ、方括號、角括號一併擋。
 const SUGGESTED_LINE_PLACEHOLDER_RE =
-  /[_＿]{2,}|\bOO+\b|[ＯO〇]{2,}|[（(][^（）()]{0,6}(?:店名|地點|時間|活動|名字)[^（）()]{0,6}[）)]|\[[^\]]{1,20}\]|<[^>]{1,20}>/u;
+  /[_＿]{2,}|(?<![A-Za-z])[OＯ〇]{2,}(?![A-Za-z])|[（(][^（）()]{0,6}(?:店名|地點|時間|活動|名字)[^（）()]{0,6}[）)]|\[[^\]]{1,20}\]|<[^>]{1,20}>/u;
 // Batch A：自貶求接住／無限配合（Beta 模式）詞群。只有「來源沒出現」才擋
 // ——對方或使用者自己講過的詞不受影響（同 temporal_drift 的來源支持制）。
 const UNSOURCED_BETA_TERMS = [
@@ -131,7 +131,10 @@ const UNSOURCED_BETA_TERMS = [
 // 邊界提醒裡「如果/若/要是」開頭的條件句不算當下指令，先剝掉再比對。
 const BOUNDARY_ANTI_INVITE_RE =
   /(?:先別|不要|別再|先收|不再|先停)[^。；;，,]{0,8}(?:邀|約)|先收手/;
-const LINE_INVITE_RE = /約|要不要一起|一起(?:去|吃|看|喝)|見(?:個)?面/;
+// R2 主審 P1-2：補「週六要不要吃飯？」「想不想喝咖啡」這類沒有「約」字
+// 的常見邀約句型；只在 boundary 已是反邀約指令時比對，寬一點可接受。
+const LINE_INVITE_RE =
+  /約|(?:要不要|想不想)[^？?。]{0,8}(?:吃|喝|見|出來|去|碰面|一起)|一起(?:去|吃|看|喝)|見(?:個)?面|出來(?:走走|坐坐|聊聊)/;
 // 最終回合守門仍不過時：這些錯誤類別只剝掉建議句、保留模型答案，
 // 不退罐頭 fallback（守門是否決那一句，不是否決整張卡）。
 const SUGGESTED_LINE_STRIP_ERRORS = new Set([
@@ -788,9 +791,14 @@ function buildFallbackCoachAnswerShape(
   );
   // Batch A：fallback 不再產罐頭救場句（「丟一個好回答的小問題」正是
   // conversation-rescue 病灶）。使用者自己的草稿可以保留；沒有就不給句。
+  // R2 主審 P1-1：草稿也要過建議句守門（placeholder／多問句）——fallback
+  // 路徑不跑 assert 群，這裡是它進複製卡前的最後一道。Beta 詞群免查：
+  // 草稿本身就是來源。
   const baseLine = request.rawReplyDraft?.trim();
   const keepDraft = baseLine != null && baseLine.length > 0 &&
-    baseLine.length <= 80;
+    baseLine.length <= 80 &&
+    !SUGGESTED_LINE_PLACEHOLDER_RE.test(baseLine) &&
+    ((baseLine.match(/[?？]/g) ?? []).length) <= 1;
   return {
     responseType: "coachAnswer",
     mode: inferFallbackAnswerMode(request),
