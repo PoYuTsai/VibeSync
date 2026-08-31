@@ -92,11 +92,36 @@ Deno.test("selector keeps specialized knowledge inside the 12-atom cap", () => {
 });
 
 Deno.test("renderer respects whole-atom character budget", () => {
+  const input = { userQuestion: "她已讀沒回，我要怎麼重啟對話？" };
   const rendered = renderSelectedSocialKnowledge(
-    { userQuestion: "她已讀沒回，我要怎麼重啟對話？" },
+    input,
     { maxAtoms: 20, maxChars: 300 },
   );
   assert(rendered.length <= 300);
   assert(rendered.split("\n").every((line) => line.startsWith("- ")));
   assert(!rendered.endsWith("…"));
+
+  const defaultRendered = renderSelectedSocialKnowledge(input);
+  assert(defaultRendered.length <= 1_400);
+});
+
+Deno.test("renderer counts newline separators inside the exact character budget", () => {
+  const input = { userQuestion: "她已讀沒回，我要怎麼重啟對話？" };
+  const firstTwo = selectSocialKnowledge(input, {
+    maxAtoms: 2,
+    maxChars: 4_000,
+  });
+  assertEquals(firstTwo.length, 2);
+
+  // 這個上限刻意只等於兩個 bullet 本身，不含兩者之間的換行；舊實作會
+  // 選進兩條後渲染成 budget + 1。
+  const withoutJoiner = firstTwo.reduce(
+    (sum, atom) => sum + atom.guidance.length + 2,
+    0,
+  );
+  const rendered = renderSelectedSocialKnowledge(input, {
+    maxAtoms: 2,
+    maxChars: withoutJoiner,
+  });
+  assert(rendered.length <= withoutJoiner);
 });

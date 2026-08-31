@@ -6,7 +6,19 @@ import {
 } from "./clarification_policy.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import { shouldSuppressInviteLine } from "./invite_policy.ts";
-import { renderSelectedSocialKnowledge } from "../_shared/social/knowledge_selector.ts";
+import {
+  renderSelectedSocialKnowledge,
+  type SocialKnowledgeSelectionInput,
+} from "../_shared/social/knowledge_selector.ts";
+
+export function buildCoachSocialKnowledgeSelectionInput(
+  input: CoachChatRequest,
+): SocialKnowledgeSelectionInput {
+  return {
+    ...input,
+    inviteSuppressed: shouldSuppressInviteLine(input.inviteHistory),
+  };
+}
 
 export function buildCoachChatPrompt(
   input: CoachChatRequest,
@@ -19,10 +31,9 @@ export function buildCoachChatPrompt(
     section("教練情境", formatLifecycleFraming(input.lifecyclePhase)),
     section(
       "共享社交判斷核心",
-      renderSelectedSocialKnowledge({
-        ...input,
-        inviteSuppressed: shouldSuppressInviteLine(input.inviteHistory),
-      }),
+      renderSelectedSocialKnowledge(
+        buildCoachSocialKnowledgeSelectionInput(input),
+      ),
     ),
     section("使用者問題", input.userQuestion),
     section("使用者原本想怎麼回", input.rawReplyDraft),

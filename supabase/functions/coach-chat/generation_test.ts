@@ -237,6 +237,7 @@ Deno.test("runCoachChat reports truthful retry stages without model content", as
 });
 
 Deno.test("runCoachChat returns clarification without deducting credit", async () => {
+  let criticCalls = 0;
   const harness = deps({
     callClaude: () =>
       Promise.resolve(validClaudeCard({
@@ -255,6 +256,10 @@ Deno.test("runCoachChat returns clarification without deducting credit", async (
         reflectionQuestion: "你聽到她這句話後，心裡第一個想回的是什麼？",
         costDeducted: 0,
       })),
+    callSemanticCritic: () => {
+      criticCalls++;
+      throw new Error("clarification_must_skip_critic");
+    },
   });
   const result = await runCoachChat(
     {
@@ -273,6 +278,7 @@ Deno.test("runCoachChat returns clarification without deducting credit", async (
     "clarifyingQuestion",
   );
   assertEquals((result.body.card as Record<string, unknown>).costDeducted, 0);
+  assertEquals(criticCalls, 0);
 });
 
 function insistentClarificationCard() {
@@ -998,10 +1004,15 @@ Deno.test("runCoachChat repairs forced empty-answer card into no-charge conserva
   // answer 為空的 coachAnswer——repair 直接落保守 no-charge 答案，不再釐清、
   // 不重試、絕不扣費（扣 1 則 ⇔ AI 真生成）。
   let calls = 0;
+  let criticCalls = 0;
   const harness = deps({
     callClaude: () => {
       calls++;
       return Promise.resolve(partialClaudeAnswer({ answer: "" }));
+    },
+    callSemanticCritic: () => {
+      criticCalls++;
+      throw new Error("no_charge_repair_must_skip_critic");
     },
   });
   const result = await runCoachChat(
@@ -1023,6 +1034,7 @@ Deno.test("runCoachChat repairs forced empty-answer card into no-charge conserva
   assertEquals(card.costDeducted, 0);
   assertEquals(harness.deductCalls, 0);
   assertEquals(calls, 1);
+  assertEquals(criticCalls, 0);
 });
 
 Deno.test("runCoachChat reads JSON from a visible text block after Sonnet 5 thinking", async () => {
@@ -2614,6 +2626,32 @@ Deno.test("B3: 未觸發守門（最近一次邀約 engaged）→ 邀約句照�
 });
 
 // ── Batch D：第二層 semantic critic ────────────────────────────────────────
+
+Deno.test("D: model supplied cost 0 cannot bypass critic on a coach answer", async () => {
+  let criticCalls = 0;
+  const harness = deps({
+    callClaude: () => Promise.resolve(validClaudeCard({ costDeducted: 0 })),
+    callSemanticCritic: () => {
+      criticCalls++;
+      return Promise.resolve(semanticCriticVerdict());
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(result.status, 200);
+  assertEquals(criticCalls, 1);
+  assertEquals(card.costDeducted, 1);
+  assertEquals(harness.deductCalls, 1);
+});
 
 Deno.test("D: semantic critic 拒兩次後通過，最多兩次 rewrite 且只扣一次", async () => {
   let generationCalls = 0;

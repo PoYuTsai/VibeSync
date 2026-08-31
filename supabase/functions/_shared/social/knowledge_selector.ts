@@ -158,7 +158,10 @@ export function selectSocialKnowledge(
   let renderedChars = 0;
   for (const candidate of ranked) {
     if (selected.length >= maxAtoms) break;
-    const lineChars = candidate.knowledge.guidance.length + 2;
+    // renderSelectedSocialKnowledge 會用換行串起每個 bullet；除了第一條，
+    // 每條都要把 join("\n") 的 1 字元算進硬上限。
+    const lineChars = candidate.knowledge.guidance.length + 2 +
+      (selected.length === 0 ? 0 : 1);
     if (renderedChars + lineChars > maxChars) continue;
     selected.push(candidate.knowledge);
     renderedChars += lineChars;

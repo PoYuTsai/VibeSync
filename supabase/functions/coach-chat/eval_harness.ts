@@ -3,7 +3,10 @@ import {
   selectSocialKnowledge,
 } from "../_shared/social/knowledge_selector.ts";
 import type { SocialKnowledgeSignal } from "../_shared/social/knowledge_registry.ts";
-import { buildCoachChatPrompt } from "./prompts.ts";
+import {
+  buildCoachChatPrompt,
+  buildCoachSocialKnowledgeSelectionInput,
+} from "./prompts.ts";
 import type { CoachChatRequest } from "./schemas.ts";
 
 export interface CoachEvalCase {
@@ -148,7 +151,6 @@ export const COACH_EVAL_CASES: readonly CoachEvalCase[] = Object.freeze([
       "要怎麼低壓約她見面？",
       "這個熱度能不能約出來？",
       "我該直接邀她看電影嗎？",
-      "想約他碰面，下一步是什麼？",
     ],
     ["invite"],
     ["invite.window_first"],
@@ -156,6 +158,22 @@ export const COACH_EVAL_CASES: readonly CoachEvalCase[] = Object.freeze([
       lifecyclePhase: "prepareInvite",
     },
   ),
+  {
+    id: "invite-06",
+    family: "invite",
+    request: request("前兩次都沒承接，我還要再約他碰面嗎？", {
+      lifecyclePhase: "prepareInvite",
+      inviteHistory: [
+        { summary: "要不要一起喝咖啡？", outcome: "cold" },
+        { summary: "週末一起去看電影？", outcome: "noReply" },
+      ],
+    }),
+    expectedSignals: ["invite", "repeated_non_uptake"],
+    requiredAtomIds: [
+      "invite.window_first",
+      "invite.repeated_non_uptake",
+    ],
+  },
   ...family(
     "stalled",
     [
@@ -270,8 +288,13 @@ export const COACH_EVAL_CASES: readonly CoachEvalCase[] = Object.freeze([
 ]);
 
 export function evaluateCoachCase(evalCase: CoachEvalCase): CoachEvalResult {
-  const signals = detectSocialKnowledgeSignals(evalCase.request);
-  const selected = selectSocialKnowledge(evalCase.request);
+  // 與 buildCoachChatPrompt 共用 production 輸入組裝，避免 eval 漏掉
+  // inviteHistory -> inviteSuppressed 的 deterministic B3 路徑。
+  const selectionInput = buildCoachSocialKnowledgeSelectionInput(
+    evalCase.request,
+  );
+  const signals = detectSocialKnowledgeSignals(selectionInput);
+  const selected = selectSocialKnowledge(selectionInput);
   const selectedAtomIds = selected.map((atom) => atom.id);
   const missingSignals = evalCase.expectedSignals.filter((signal) =>
     !signals.has(signal)
