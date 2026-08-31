@@ -458,6 +458,66 @@ void main() {
       );
     });
 
+    test('inviteHistory 上 wire：由舊到新取後 10 筆；global scope 一律不送（B3）',
+        () async {
+      final calls = <_Recorded>[];
+      final service =
+          CoachChatApiService(invoker: _stub(_ok(), recorder: calls));
+      final history = List.generate(
+        12,
+        (i) => CoachChatSentAdviceOutcome(
+          summary: '建議 $i',
+          outcome: i.isEven ? 'noReply' : 'engaged',
+          createdAt: DateTime(2026, 8, 1 + i),
+        ),
+      );
+
+      await service.ask(
+        conversationId: 'ignored-when-scoped',
+        partnerId: null,
+        question: '要再約嗎？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        scope: const CoachScope.partner('p1'),
+        inviteHistory: history,
+      );
+      final wired = calls.single.body['inviteHistory'] as List;
+      expect(wired.length, 10);
+      // 由舊到新：丟掉最舊兩筆，保留 2..11。
+      expect((wired.first as Map)['summary'], '建議 2');
+      expect((wired.last as Map)['summary'], '建議 11');
+      expect((wired.last as Map)['outcome'], 'engaged');
+      expect(
+        (wired.last as Map)['createdAt'],
+        DateTime(2026, 8, 12).toIso8601String(),
+      );
+
+      // global scope：帶了也不上 wire（server schema 拒收非空）。
+      calls.clear();
+      await service.ask(
+        conversationId: 'global:me',
+        partnerId: null,
+        question: '怎麼開場？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        scope: const CoachScope.global(),
+        inviteHistory: history,
+      );
+      expect(calls.single.body.containsKey('inviteHistory'), isFalse);
+
+      // 空清單不上 wire。
+      calls.clear();
+      await service.ask(
+        conversationId: 'c1',
+        partnerId: 'p-1',
+        question: '她這樣回是好事嗎？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        scope: const CoachScope.conversation('c1'),
+      );
+      expect(calls.single.body.containsKey('inviteHistory'), isFalse);
+    });
+
     test('requestId and lifecyclePhase pass through verbatim', () async {
       final calls = <_Recorded>[];
       final service =

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/storage_service.dart';
 import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
+import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../partner/domain/services/partner_memory_tag_catalog.dart';
@@ -307,6 +308,12 @@ class CoachChatController
                 lastMessageAt: lastNonEmptyMessageAt(conversation),
               )
             : null,
+        // B3：對象綁定的「已送出建議＋對方反應」歷史（由舊到新，≤10）。
+        // 邀約分類與兩次未承接禁再邀都在 server（詞群單一真相源）；
+        // global scope 不送（unbound 事件混不同對象，schema 也拒收）。
+        inviteHistory: partnerId == null
+            ? const []
+            : _sentAdviceHistory(partnerId),
         onProgress: (update) {
           ref.read(coachChatProgressProvider(scope).notifier).state = update;
         },
@@ -526,6 +533,27 @@ class CoachChatController
   List<CoachChatSessionTurn> _capTurns(List<CoachChatSessionTurn> turns) {
     if (turns.length <= 12) return List.unmodifiable(turns);
     return List.unmodifiable(turns.sublist(turns.length - 12));
+  }
+
+  /// B3：把對象的結構化 outcome 事件壓成 wire 形狀。只取「已送出」
+  /// （sentAsIs/editedAndSent）的建議事件；repo 給新到舊，wire 契約是
+  /// 由舊到新、最多 10 筆。summary 只含教練自家產出文字（entity 既有
+  /// 邊界），不帶 outcomeTextPreview/userNote。
+  List<CoachChatSentAdviceOutcome> _sentAdviceHistory(String partnerId) {
+    final events = ref.read(coachingOutcomesByPartnerProvider(partnerId));
+    return events
+        .where((event) =>
+            event.userAction == CoachingUserAction.sentAsIs ||
+            event.userAction == CoachingUserAction.editedAndSent)
+        .take(10)
+        .map((event) => CoachChatSentAdviceOutcome(
+              summary: event.suggestedMoveSummary,
+              outcome: event.outcome.name,
+              createdAt: event.createdAt,
+            ))
+        .toList(growable: false)
+        .reversed
+        .toList(growable: false);
   }
 
   List<CoachChatMessage> _recentMessages(Conversation conversation) {

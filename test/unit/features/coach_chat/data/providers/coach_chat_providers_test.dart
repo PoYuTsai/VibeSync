@@ -1021,6 +1021,62 @@ void main() {
     });
   });
 
+  group('inviteHistory 組裝（Batch B3）', () {
+    test('只取已送出事件、由舊到新上 wire；global 不送', () async {
+      final calls = <_RecordedCall>[];
+      // repo 契約：新到舊。
+      final events = [
+        _outcomeEvent(
+          id: 'e-new',
+          suggestedMoveSummary: '想不想去喝咖啡',
+          userAction: CoachingUserAction.sentAsIs,
+          outcome: CoachingOutcomeSignal.cold,
+        ),
+        _outcomeEvent(
+          id: 'e-skip',
+          suggestedMoveSummary: '沒送出的草稿',
+          userAction: CoachingUserAction.didNotSend,
+          outcome: CoachingOutcomeSignal.unknown,
+        ),
+        _outcomeEvent(
+          id: 'e-old',
+          suggestedMoveSummary: '週六要不要一起吃飯？',
+          userAction: CoachingUserAction.editedAndSent,
+          outcome: CoachingOutcomeSignal.noReply,
+        ),
+      ];
+      final c = _container(
+        repo: _FakeRepo(),
+        invoker: _invoker(calls: calls),
+        partner: _partner(),
+        outcomeEvents: events,
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_partnerScope).future);
+      await c
+          .read(coachChatControllerProvider(_partnerScope).notifier)
+          .ask(question: '要再約她嗎？');
+
+      final wired = calls.single.body['inviteHistory'] as List;
+      // 未送出的事件被濾掉；由舊到新。
+      expect(wired.length, 2);
+      expect((wired.first as Map)['summary'], '週六要不要一起吃飯？');
+      expect((wired.first as Map)['outcome'], 'noReply');
+      expect((wired.last as Map)['summary'], '想不想去喝咖啡');
+      expect((wired.last as Map)['outcome'], 'cold');
+
+      // global scope：不送。
+      calls.clear();
+      const globalScope = CoachScope.global();
+      await c.read(coachChatControllerProvider(globalScope).future);
+      await c
+          .read(coachChatControllerProvider(globalScope).notifier)
+          .ask(question: '怎麼開場？');
+      expect(calls.single.body.containsKey('inviteHistory'), isFalse);
+    });
+  });
+
   group('coachPartnerSourceConversationProvider（Batch B1）', () {
     test('挑最後一則非空白訊息最新的對話；全空白/無訊息回 null', () {
       final valid = _conversation(

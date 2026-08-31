@@ -11,6 +11,7 @@ import {
   mustClarifyFirstRound,
   shouldForceCoachAnswerAfterClarifications,
 } from "./clarification_policy.ts";
+import { LINE_INVITE_RE, shouldSuppressInviteLine } from "./invite_policy.ts";
 import { quotaExceededMessage } from "../_shared/quota.ts";
 import {
   findUnsupportedLatinTokens,
@@ -132,10 +133,7 @@ const UNSOURCED_BETA_TERMS = [
 // 邊界提醒裡「如果/若/要是」開頭的條件句不算當下指令，先剝掉再比對。
 const BOUNDARY_ANTI_INVITE_RE =
   /(?:先別|不要|別再|先收|不再|先停)[^。；;，,]{0,8}(?:邀|約)|先收手/;
-// R2 主審 P1-2：補「週六要不要吃飯？」「想不想喝咖啡」這類沒有「約」字
-// 的常見邀約句型；只在 boundary 已是反邀約指令時比對，寬一點可接受。
-const LINE_INVITE_RE =
-  /約|(?:要不要|想不想)[^？?。]{0,8}(?:吃|喝|見|出來|去|碰面|一起)|一起(?:去|吃|看|喝)|見(?:個)?面|出來(?:走走|坐坐|聊聊)/;
+// B3：邀約句型 regex 移到 invite_policy.ts（prompts 也要用，單一真相源）。
 // 最終回合守門仍不過時：這些錯誤類別只剝掉建議句、保留模型答案，
 // 不退罐頭 fallback（守門是否決那一句，不是否決整張卡）。
 const SUGGESTED_LINE_STRIP_ERRORS = new Set([
@@ -146,6 +144,8 @@ const SUGGESTED_LINE_STRIP_ERRORS = new Set([
   "temporal_drift",
   "motive_drift",
   "explicit_no_question",
+  // B3：兩次未承接禁再邀——同樣是對句子的否決，不是對整卡的否決。
+  "invite_suppressed",
 ]);
 
 export async function runCoachChat(
@@ -229,6 +229,7 @@ export async function runCoachChat(
       assertSuggestedLineGrounded(candidate, request);
       assertSuggestedLineDeliverable(candidate, request);
       assertExplicitNoQuestionConstraint(candidate, request);
+      assertInviteSuppressionRespected(candidate, request);
       assertVisibleTextLanguage(candidate, request);
       assertClarificationRequired(candidate, request);
       card = assertClarificationAllowed(candidate, request);
@@ -261,6 +262,8 @@ export async function runCoachChat(
         ? "beta_pattern"
         : message === "invite_contradiction"
         ? "invite_contradiction"
+        : message === "invite_suppressed"
+        ? "invite_suppressed"
         : message === "multi_question"
         ? "multi_question"
         : message === "max_tokens"
@@ -590,6 +593,15 @@ function buildAttemptPrompt(
 - 若判斷該收手：suggestedLine 用 null 或改成不帶邀約的低壓句，rewriteDecision 用 do_not_send。
 - 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
   }
+  if (lastValidationError === "invite_suppressed") {
+    return `${basePrompt}
+
+上一次 suggestedLine 又提出邀約，但邀約歷史顯示對方最近兩次邀約都沒有承接：本輪禁止再邀。
+請重新輸出完整 JSON：
+- suggestedLine 改成不帶邀約的低壓句（接話、留白、給價值），或用 null＋rewriteDecision="do_not_send"。
+- 策略面向「等對方主動帶新材料或給窗口」，不要教使用者換句話再約。
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
+  }
   if (lastValidationError === "multi_question") {
     return `${basePrompt}
 
@@ -699,6 +711,22 @@ function assertSuggestedLineDeliverable(
     LINE_INVITE_RE.test(suggestedLine)
   ) {
     throw new Error("invite_contradiction");
+  }
+}
+
+// B3：兩次未承接 deterministic 禁再邀。gate 由 invite_policy 判（client 送
+// 的 inviteHistory 由舊到新，最近兩筆邀約都未承接即啟動）；prompt 第一回合
+// 已注入「邀約守門」段，這裡是硬保底——retry-first、耗盡剝句不砍卡。
+function assertInviteSuppressionRespected(
+  card: CoachChatResponseCard,
+  request: CoachChatRequest,
+): void {
+  if (card.responseType !== "coachAnswer") return;
+  const suggestedLine = card.suggestedLine?.trim() ?? "";
+  if (suggestedLine === "") return;
+  if (!shouldSuppressInviteLine(request.inviteHistory)) return;
+  if (LINE_INVITE_RE.test(suggestedLine)) {
+    throw new Error("invite_suppressed");
   }
 }
 

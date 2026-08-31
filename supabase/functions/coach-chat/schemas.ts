@@ -118,6 +118,23 @@ export const ContextProvenanceSchema = z.object({
   lastMessageAt: z.string().max(40).nullable().optional(),
 }).strict();
 
+// Batch B3：近期「已送出的建議與對方反應」（client 的結構化 outcome 事件，
+// 由舊到新）。邀約分類刻意留在 server（LINE_INVITE_RE 同源，不跨語言複製
+// 詞群）；summary 是教練自家產出文字（nextStep/suggestedLine），絕不含
+// 對方原文或使用者筆記。選填、缺席＝現行為；不入 computeCoachInputHash。
+export const SentAdviceOutcomeSchema = z.object({
+  summary: z.string().min(1).max(160),
+  outcome: z.enum([
+    "engaged",
+    "cold",
+    "noReply",
+    "negative",
+    "pending",
+    "unknown",
+  ]),
+  createdAt: z.string().max(40).nullable().optional(),
+}).strict();
+
 export const RequestSchema = z.object({
   conversationId: z.string().min(1).max(100),
   partnerId: z.string().max(100).nullable().optional(),
@@ -147,6 +164,8 @@ export const RequestSchema = z.object({
   scope: CoachScopeSchema.nullable().optional(),
   // Batch B1：partner scope 來源對話標記（見 ContextProvenanceSchema 註解）。
   contextProvenance: ContextProvenanceSchema.nullable().optional(),
+  // Batch B3：邀約歷史來源資料（見 SentAdviceOutcomeSchema 註解）。
+  inviteHistory: z.array(SentAdviceOutcomeSchema).max(10).optional(),
 }).strict().superRefine((payload, ctx) => {
   if (
     payload.dataQualityFlagged &&
@@ -205,13 +224,16 @@ export const RequestSchema = z.object({
       message: "context_provenance_scope_mismatch",
     });
   }
+  // B3：inviteHistory 綁定單一對象的邀約歷史；global 的 unbound 事件混
+  // 不同真實對象，「兩次未承接」語意不成立，一律拒收。
   if (
     payload.scope?.type === "global" &&
     (payload.conversationId !== "global:me" ||
       payload.partnerId != null ||
       payload.partnerHint != null ||
       payload.conversationSummary != null ||
-      payload.analysisSnapshot != null)
+      payload.analysisSnapshot != null ||
+      (payload.inviteHistory != null && payload.inviteHistory.length > 0))
   ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

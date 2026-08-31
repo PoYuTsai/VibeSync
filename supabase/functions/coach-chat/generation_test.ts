@@ -2470,3 +2470,108 @@ Deno.test("B2: 成功卡帶 deterministic messageDecision 與 evidenceQuality", 
   assertEquals(card.messageDecision, "send");
   assertEquals(card.evidenceQuality, "fresh");
 });
+
+// ── Batch B3：兩次未承接 deterministic 禁再邀 ─────────────────────────────
+
+const suppressedRequest: CoachChatRequest = {
+  ...request,
+  inviteHistory: [
+    { summary: "週六要不要一起吃飯？", outcome: "noReply" },
+    { summary: "想不想去喝咖啡", outcome: "cold" },
+  ],
+};
+
+Deno.test("B3: 守門下模型再邀 → retry 改低壓句成功、照常扣費", async () => {
+  let calls = 0;
+  const prompts: string[] = [];
+  const harness = deps({
+    callClaude: (args) => {
+      calls++;
+      prompts.push(args.prompt);
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: calls === 1
+          ? "那週日要不要一起去看展？"
+          : "妳先忙，忙完丟個貼圖給我就好。",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: suppressedRequest,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  // 第一回合 prompt 就有守門段（不是 retry 才學乖）；retry prompt 帶專屬指令。
+  assertEquals(prompts[0].includes("邀約守門"), true);
+  assertEquals(prompts[1].includes("本輪禁止再邀"), true);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.suggestedLine, "妳先忙，忙完丟個貼圖給我就好。");
+  assertEquals(card.costDeducted, 1);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("B3: 守門三連敗 → 剝句不砍卡、messageDecision=hold_off、不扣費", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: "改天要不要一起去吃那家新開的？",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: suppressedRequest,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(calls, 3);
+  assertEquals(harness.deductCalls, 0);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.suggestedLine, null);
+  assertEquals(card.rewriteDecision, "do_not_send");
+  assertEquals(card.messageDecision, "hold_off");
+  assertEquals(card.costDeducted, 0);
+  assertEquals(harness.events.includes("coach_chat_line_stripped"), true);
+});
+
+Deno.test("B3: 未觸發守門（最近一次邀約 engaged）→ 邀約句照常放行", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(validClaudeCard({
+        suggestedLine: "那週六下午一起去？",
+      })),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        inviteHistory: [
+          { summary: "週六要不要一起吃飯？", outcome: "noReply" },
+          { summary: "想不想去喝咖啡", outcome: "engaged" },
+        ],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.suggestedLine, "那週六下午一起去？");
+  assertEquals(card.costDeducted, 1);
+});

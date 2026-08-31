@@ -51,6 +51,24 @@ class CoachChatContextProvenance {
   });
 }
 
+/// Batch B3：近期「已送出的建議與對方反應」（由舊到新）。summary 是教練
+/// 自家產出文字（suggestedMoveSummary），絕不含對方原文或使用者筆記；
+/// 邀約分類在 server 端（詞群單一真相源）。
+class CoachChatSentAdviceOutcome {
+  final String summary;
+
+  /// CoachingOutcomeSignal.name 原樣（engaged/cold/noReply/negative/
+  /// pending/unknown）；server schema 是同組 enum。
+  final String outcome;
+  final DateTime? createdAt;
+
+  const CoachChatSentAdviceOutcome({
+    required this.summary,
+    required this.outcome,
+    this.createdAt,
+  });
+}
+
 class CoachChatPartnerHint {
   final String? name;
   final List<String> traits;
@@ -244,6 +262,7 @@ class CoachChatApiService {
     CoachScope? scope,
     String? lifecyclePhase,
     CoachChatContextProvenance? contextProvenance,
+    List<CoachChatSentAdviceOutcome> inviteHistory = const [],
   }) async {
     // scope 為真相源：partner scope 頂層 partnerId 一律覆寫成 scope.id，
     // 呼叫端沒傳也要補齊 superRefine 一致性。global scope 的 id 是哨兵值
@@ -293,6 +312,18 @@ class CoachChatApiService {
             'lastMessageAt':
                 contextProvenance.lastMessageAt!.toIso8601String(),
         },
+      // B3：global scope 拒收非空 inviteHistory（unbound 事件混不同對象），
+      // 這裡跟著擋，不信呼叫端。取最後 10 筆（由舊到新）。
+      if (inviteHistory.isNotEmpty && !(scope?.isGlobal ?? false))
+        'inviteHistory': inviteHistory
+            .skip(inviteHistory.length > 10 ? inviteHistory.length - 10 : 0)
+            .map((entry) => <String, dynamic>{
+                  'summary': _clampForWire(entry.summary.trim(), 160),
+                  'outcome': entry.outcome,
+                  if (entry.createdAt != null)
+                    'createdAt': entry.createdAt!.toIso8601String(),
+                })
+            .toList(),
       'dataQualityFlagged': dataQualityFlagged,
     };
 

@@ -553,6 +553,70 @@ Deno.test("buildCoachChatPrompt injects partner first-round clarify framing only
   assertEquals(forced.includes("對象教練模式"), false);
 });
 
+// ── 邀約守門與 priorAdvice（Batch B3）────────────────────────────────────
+
+Deno.test("buildCoachChatPrompt injects invite suppression only when two invites went unanswered (B3)", () => {
+  const base = {
+    conversationId: "c1",
+    userQuestion: "要不要再約她一次？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [{ sender: "partner" as const, text: "最近超忙" }],
+    dataQualityFlagged: false,
+  };
+  const unanswered = [
+    { summary: "週六要不要一起吃飯？", outcome: "noReply" as const },
+    { summary: "想不想去喝咖啡", outcome: "cold" as const },
+  ];
+
+  const gated = buildCoachChatPrompt({ ...base, inviteHistory: unanswered });
+  assertStringIncludes(gated, "邀約守門");
+  assertStringIncludes(gated, "最近兩次邀約對方都沒有承接");
+  assertStringIncludes(gated, "本輪 suggestedLine 禁止再提出任何邀約");
+
+  // 缺席＝byte-for-byte 不變；未觸發（一次未承接）也不渲染。
+  assertEquals(
+    buildCoachChatPrompt({ ...base, inviteHistory: [] }),
+    buildCoachChatPrompt(base),
+  );
+  assertEquals(
+    buildCoachChatPrompt({ ...base, inviteHistory: [unanswered[0]] })
+      .includes("邀約守門"),
+    false,
+  );
+});
+
+Deno.test("buildCoachChatPrompt marks coach turns as priorAdvice, user-only turns unmarked (B3)", () => {
+  const base = {
+    conversationId: "c1",
+    userQuestion: "然後呢？",
+    forceAnswer: false,
+    recentMessages: [{ sender: "partner" as const, text: "最近超忙" }],
+    dataQualityFlagged: false,
+  };
+  const withCoachTurn = buildCoachChatPrompt({
+    ...base,
+    activeSessionTurns: [
+      { role: "user" as const, kind: "question" as const, content: "怎麼接？" },
+      {
+        role: "coach" as const,
+        kind: "answer" as const,
+        content: "先輕接她的忙，不要追問。",
+      },
+    ],
+  });
+  assertStringIncludes(withCoachTurn, "priorAdvice");
+  assertStringIncludes(withCoachTurn, "不得當成對方的反應");
+
+  const userOnly = buildCoachChatPrompt({
+    ...base,
+    activeSessionTurns: [
+      { role: "user" as const, kind: "question" as const, content: "怎麼接？" },
+    ],
+  });
+  assertEquals(userOnly.includes("priorAdvice"), false);
+});
+
 // ── partner scope 來源標記（Batch B1）────────────────────────────────────
 
 Deno.test("buildCoachChatPrompt renders provenance freshness for partner scope (Batch B1)", () => {

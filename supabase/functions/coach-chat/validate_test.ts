@@ -200,6 +200,60 @@ Deno.test("validateRequest rejects contextProvenance outside partner scope", () 
   }
 });
 
+Deno.test("validateRequest accepts inviteHistory on partner/conversation, caps at 10 (B3)", () => {
+  const entry = {
+    summary: "週六要不要一起吃飯？",
+    outcome: "noReply",
+    createdAt: "2026-08-30T12:00:00.000Z",
+  };
+  const parsed = validateRequest({
+    ...baseRequest,
+    partnerId: "p1",
+    scope: { type: "partner", partnerId: "p1" },
+    inviteHistory: [entry, { summary: "輕接話題", outcome: "engaged" }],
+  });
+  assertEquals(parsed.inviteHistory?.length, 2);
+
+  // conversation scope（無 scope 物件的 legacy 形狀）也收。
+  const legacy = validateRequest({ ...baseRequest, inviteHistory: [entry] });
+  assertEquals(legacy.inviteHistory?.length, 1);
+
+  // 超過 10 筆整包拒。
+  assertThrows(() =>
+    validateRequest({
+      ...baseRequest,
+      inviteHistory: Array.from({ length: 11 }, () => entry),
+    })
+  );
+  // 未知鍵/未知 outcome 拒。
+  assertThrows(() =>
+    validateRequest({
+      ...baseRequest,
+      inviteHistory: [{ ...entry, extra: 1 }],
+    })
+  );
+  assertThrows(() =>
+    validateRequest({
+      ...baseRequest,
+      inviteHistory: [{ summary: "約嗎", outcome: "maybe" }],
+    })
+  );
+});
+
+Deno.test("validateRequest rejects non-empty inviteHistory on global scope (B3)", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...baseRequest,
+        conversationId: "global:me",
+        scope: { type: "global" },
+        inviteHistory: [{ summary: "週六要不要吃飯？", outcome: "noReply" }],
+      }),
+    Error,
+    "scope_global_shape_mismatch",
+  );
+});
+
 Deno.test("validateRequest rejects contextProvenance with unknown keys", () => {
   assertThrows(() =>
     validateRequest({

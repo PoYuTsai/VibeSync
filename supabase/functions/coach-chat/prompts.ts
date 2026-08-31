@@ -5,6 +5,7 @@ import {
   mustClarifyFirstRound,
 } from "./clarification_policy.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
+import { shouldSuppressInviteLine } from "./invite_policy.ts";
 
 export function buildCoachChatPrompt(
   input: CoachChatRequest,
@@ -13,6 +14,7 @@ export function buildCoachChatPrompt(
   const context = [
     section("全域教練模式", formatGlobalFraming(input)),
     section("對象教練模式", formatPartnerFraming(input)),
+    section("邀約守門", formatInviteSuppression(input)),
     section("教練情境", formatLifecycleFraming(input.lifecyclePhase)),
     section("使用者問題", input.userQuestion),
     section("使用者原本想怎麼回", input.rawReplyDraft),
@@ -216,6 +218,17 @@ function formatContextProvenance(
   return lines.join("\n");
 }
 
+// Batch B3：兩次未承接 deterministic 禁再邀——第一回合就告訴模型，不靠
+// retry 才學乖。gate 與後端硬保底（assertInviteSuppressionRespected）同源
+// （invite_policy.ts）；缺席或未觸發＝不渲染，prompt byte-for-byte 不變。
+function formatInviteSuppression(input: CoachChatRequest): string | null {
+  if (!shouldSuppressInviteLine(input.inviteHistory)) return null;
+  return "邀約歷史顯示：最近兩次邀約對方都沒有承接。本輪 suggestedLine 禁止再提出任何邀約" +
+    "（含「要不要／想不想＋活動」句型）；改低壓接話、留白或給價值，或用 null＋" +
+    'rewriteDecision="do_not_send"。策略請面向「等對方主動帶新材料或給窗口」，' +
+    "並誠實告訴使用者為什麼這輪先不約。";
+}
+
 function formatLifecycleFraming(
   phase: LifecyclePhase | null | undefined,
 ): string | null {
@@ -245,13 +258,21 @@ function formatSessionTurns(
   turns: CoachChatRequest["activeSessionTurns"],
 ): string | null {
   if (!turns.length) return null;
-  return turns
+  const lines = turns
     .slice(-12)
     .map((turn) => {
       const role = turn.role === "user" ? "使用者" : "教練";
       return `${role}(${turn.kind})：${turn.content}`;
-    })
-    .join("\n");
+    });
+  // Batch B3（priorAdvice）：教練舊建議會回種進 turns，模型曾把自己說過的
+  // 話當成「對方有反應」的證據自我強化（規格 3.7）。規則跟著資料走。
+  const hasCoachTurns = turns.slice(-12).some((turn) => turn.role === "coach");
+  if (hasCoachTurns) {
+    lines.push(
+      "（教練發言是你先前給的建議 priorAdvice——只是你說過的話，不得當成對方的反應、進展或新事實證據；對方的實際反應只看「最近對話」。）",
+    );
+  }
+  return lines.join("\n");
 }
 
 function formatClarificationBudget(input: CoachChatRequest): string {
