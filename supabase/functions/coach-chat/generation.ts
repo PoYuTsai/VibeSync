@@ -17,6 +17,10 @@ import {
   findUnsupportedLatinTokens,
   isExplicitEnglishRequest,
 } from "../_shared/zh_tw_visible_text_guard.ts";
+import {
+  runSemanticCritic,
+  type SemanticCriticCallArgs,
+} from "./semantic_critic.ts";
 
 export interface GenerationLogger {
   info: (event: string, data?: Record<string, unknown>) => void;
@@ -33,6 +37,7 @@ export interface ClaudeCallArgs {
 
 export interface GenerationDeps {
   callClaude: (args: ClaudeCallArgs) => Promise<unknown>;
+  callSemanticCritic: (args: SemanticCriticCallArgs) => Promise<unknown>;
   deductCredit: (input: { userId: string }) => Promise<void>;
   // Phase C 帳本結算縫：注入時取代 deductCredit（settle 交易內扣費＋存卡）。
   // 未注入＝舊路徑零改動。回傳的 body 是 DB ledger 權威結果——stale lease
@@ -89,6 +94,7 @@ const MAX_CARD_GENERATION_ATTEMPTS = 3;
 const FALLBACK_NO_CHARGE = 0;
 const COACH_GENERATION_BUDGET_MS = 75_000;
 const COACH_CLAUDE_ATTEMPT_TIMEOUT_MS = 60_000;
+const COACH_SEMANTIC_CRITIC_TIMEOUT_MS = 12_000;
 const UNSOURCED_TIME_RANGE_TERMS = [
   "這陣子",
   "最近這陣子",
@@ -232,7 +238,50 @@ export async function runCoachChat(
       assertInviteSuppressionRespected(candidate, request);
       assertVisibleTextLanguage(candidate, request);
       assertClarificationRequired(candidate, request);
-      card = assertClarificationAllowed(candidate, request);
+      candidate = assertClarificationAllowed(candidate, request);
+      if (
+        candidate.responseType === "coachAnswer" &&
+        candidate.costDeducted !== FALLBACK_NO_CHARGE
+      ) {
+        const remainingCriticMs = generationDeadlineAt - now();
+        if (remainingCriticMs <= 0) {
+          throw new Error("semantic_critic_unavailable");
+        }
+        let critic;
+        try {
+          critic = await runSemanticCritic({
+            request,
+            card: candidate,
+            model,
+            apiKey: input.apiKey,
+            timeoutMs: Math.max(
+              1,
+              Math.min(COACH_SEMANTIC_CRITIC_TIMEOUT_MS, remainingCriticMs),
+            ),
+            callCritic: deps.callSemanticCritic,
+          });
+        } catch (error) {
+          deps.logger.warn("coach_chat_semantic_critic_failed", {
+            tier: input.tier,
+            errorClass: getErrorMessage(error).slice(0, 80),
+            attempt,
+          });
+          throw new Error("semantic_critic_unavailable");
+        }
+        if (critic.verdict === "rewrite") {
+          deps.logger.warn("coach_chat_semantic_critic_rejected", {
+            tier: input.tier,
+            violations: critic.violations.join(","),
+            attempt,
+          });
+          throw new Error(`semantic_critic:${critic.violations.join(",")}`);
+        }
+        deps.logger.info("coach_chat_semantic_critic_passed", {
+          tier: input.tier,
+          attempt,
+        });
+      }
+      card = candidate;
       if (attempt > 1) {
         deps.logger.info("coach_chat_retry_succeeded", {
           tier: input.tier,
@@ -242,7 +291,11 @@ export async function runCoachChat(
       break;
     } catch (e) {
       const message = getErrorMessage(e);
-      lastValidationError = message.startsWith("banned_token")
+      lastValidationError = message.startsWith("semantic_critic:")
+        ? message.slice(0, 200)
+        : message === "semantic_critic_unavailable"
+        ? "semantic_critic_unavailable"
+        : message.startsWith("banned_token")
         ? "banned_token"
         : message === "temporal_drift"
         ? "temporal_drift"
@@ -529,6 +582,24 @@ function buildAttemptPrompt(
   lastValidationError: string,
 ): string {
   if (attempt === 1) return basePrompt;
+  if (lastValidationError.startsWith("semantic_critic:")) {
+    const violations = lastValidationError.slice("semantic_critic:".length);
+    return `${basePrompt}
+
+上一次內容通過 schema 與安全守門，但第二層語意審核要求重寫：${violations}
+請重新輸出完整 JSON，只修正這些 rubric 病灶：
+- 直接回答使用者本題；所有事實只能來自上下文。
+- suggestedLine 必須接住現有內容，不可用空泛鉤子或查戶口補材料。
+- 遵守使用者風格設定裡的主／副風格、句長與問句密度。
+- 投入對等、策略與界線一致，並收斂成一個可立刻執行的最小下一步。
+- 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
+  }
+  if (lastValidationError === "semantic_critic_unavailable") {
+    return `${basePrompt}
+
+上一次第二層語意審核未能完成。本輪仍須輸出一份全新完整 JSON，並自行逐項核對：
+直接回答本題、不得新增來源外事實、不得用空泛鉤子、遵守風格與問句密度、投入對等、界線一致、只有一個最小下一步。`;
+  }
   if (lastValidationError === "clarification_forbidden") {
     return `${basePrompt}
 

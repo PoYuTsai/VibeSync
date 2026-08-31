@@ -51,6 +51,17 @@ function malformedClaudeCard() {
   };
 }
 
+function semanticCriticVerdict(
+  verdict: "pass" | "rewrite" = "pass",
+  violations: string[] = [],
+) {
+  return {
+    content: [{
+      text: JSON.stringify({ verdict, violations }),
+    }],
+  };
+}
+
 function partialClaudeAnswer(overrides: Record<string, unknown> = {}) {
   return {
     content: [{
@@ -71,6 +82,7 @@ function partialClaudeAnswer(overrides: Record<string, unknown> = {}) {
 
 function deps(opts: {
   callClaude?: (args: ClaudeCallArgs) => Promise<unknown>;
+  callSemanticCritic?: (args: ClaudeCallArgs) => Promise<unknown>;
   deductCredit?: () => Promise<void>;
   settleResult?: (args: {
     body: Record<string, unknown>;
@@ -95,6 +107,8 @@ function deps(opts: {
     },
     deps: {
       callClaude: opts.callClaude ?? (() => Promise.resolve(validClaudeCard())),
+      callSemanticCritic: opts.callSemanticCritic ??
+        (() => Promise.resolve(semanticCriticVerdict())),
       deductCredit: async () => {
         deductCalls++;
         if (opts.deductCredit) await opts.deductCredit();
@@ -1641,7 +1655,10 @@ Deno.test("runCoachChat forces clarification on a contextless global first round
   const card = result.body.card as Record<string, unknown>;
   assertEquals(card.responseType, "clarifyingQuestion");
   assertEquals(card.costDeducted, 0);
-  assertEquals(prompts[0].includes("必須輸出 responseType=\"clarifyingQuestion\""), true);
+  assertEquals(
+    prompts[0].includes('必須輸出 responseType="clarifyingQuestion"'),
+    true,
+  );
   assertEquals(prompts[1].includes("上一次輸出違反首輪規則"), true);
 });
 
@@ -1805,7 +1822,9 @@ Deno.test("runCoachChat does not treat AI-derived partner traits as English sour
     callClaude: () => {
       calls++;
       return Promise.resolve(validClaudeCard({
-        suggestedLine: calls === 1 ? "妳這麼 chill，週末要不要出來？" : "妳這麼隨性，週末要不要出來？",
+        suggestedLine: calls === 1
+          ? "妳這麼 chill，週末要不要出來？"
+          : "妳這麼隨性，週末要不要出來？",
       }));
     },
   });
@@ -1847,7 +1866,11 @@ Deno.test("runCoachChat keeps an English request alive across clarification turn
         ...request,
         userQuestion: "全新對象，還沒開過口",
         activeSessionTurns: [
-          { role: "user", kind: "question", content: "幫我用英文回她，輕鬆一點" },
+          {
+            role: "user",
+            kind: "question",
+            content: "幫我用英文回她，輕鬆一點",
+          },
           {
             role: "coach",
             kind: "clarification",
@@ -1874,7 +1897,9 @@ Deno.test("runCoachChat guards rewriteReason through the full pipeline", async (
     callClaude: () => {
       calls++;
       return Promise.resolve(validClaudeCard({
-        rewriteReason: calls === 1 ? "保留你的 tone，只收穩語氣。" : "保留你的語氣，只收穩節奏。",
+        rewriteReason: calls === 1
+          ? "保留你的 tone，只收穩語氣。"
+          : "保留你的語氣，只收穩節奏。",
       }));
     },
   });
@@ -1928,7 +1953,8 @@ function partnerFirstRoundClarificationCard() {
     rewriteReason: null,
     boundaryReminder: "補充釐清不扣額度；正式建議才扣 1 則。",
     needsReflection: true,
-    reflectionQuestion: "要切到對話視窗、貼她最近三五則原話，還是先聽通用原則？",
+    reflectionQuestion:
+      "要切到對話視窗、貼她最近三五則原話，還是先聽通用原則？",
     costDeducted: 0,
   });
 }
@@ -1985,7 +2011,9 @@ Deno.test("Batch A G-01b: partner 首輪 forceAnswer 逃生門保留", async () 
 });
 
 Deno.test("Batch A G-01c: partner 首輪全滅時 fallback 是引導補證據的免費釐清卡", async () => {
-  const harness = deps({ callClaude: () => Promise.resolve(malformedClaudeCard()) });
+  const harness = deps({
+    callClaude: () => Promise.resolve(malformedClaudeCard()),
+  });
   const result = await runCoachChat(
     {
       userId: "u1",
@@ -2204,7 +2232,8 @@ Deno.test("Batch A: 條件式邊界提醒（如果她…）不算矛盾", async 
     callClaude: () =>
       Promise.resolve(validClaudeCard({
         suggestedLine: "這禮拜六下午一起去吃那家？",
-        boundaryReminder: "如果她給模糊回應或不給替代時間，先別追問，降低投入。",
+        boundaryReminder:
+          "如果她給模糊回應或不給替代時間，先別追問，降低投入。",
       })),
   });
   const result = await runCoachChat(
@@ -2249,7 +2278,9 @@ Deno.test("Batch A: 建議句超過一個問號擋下", async () => {
 });
 
 Deno.test("Batch A: fallback 不再產罐頭救場句", async () => {
-  const harness = deps({ callClaude: () => Promise.resolve(malformedClaudeCard()) });
+  const harness = deps({
+    callClaude: () => Promise.resolve(malformedClaudeCard()),
+  });
   const result = await runCoachChat(
     {
       userId: "u1",
@@ -2270,7 +2301,9 @@ Deno.test("Batch A: fallback 不再產罐頭救場句", async () => {
 });
 
 Deno.test("Batch A: fallback 保留使用者自己的短草稿", async () => {
-  const harness = deps({ callClaude: () => Promise.resolve(malformedClaudeCard()) });
+  const harness = deps({
+    callClaude: () => Promise.resolve(malformedClaudeCard()),
+  });
   const result = await runCoachChat(
     {
       userId: "u1",
@@ -2293,7 +2326,9 @@ Deno.test("Batch A: fallback 保留使用者自己的短草稿", async () => {
 });
 
 Deno.test("Batch A R2修正: fallback 草稿含 placeholder/多問句不得進複製卡", async () => {
-  const harness = deps({ callClaude: () => Promise.resolve(malformedClaudeCard()) });
+  const harness = deps({
+    callClaude: () => Promise.resolve(malformedClaudeCard()),
+  });
   const result = await runCoachChat(
     {
       userId: "u1",
@@ -2376,7 +2411,9 @@ Deno.test("Batch A R2修正: 英文 COOL/BOOK 的 OO 不是 placeholder", async 
 });
 
 Deno.test("Batch A R2修正: fallback 草稿含多個問句也不得進複製卡", async () => {
-  const harness = deps({ callClaude: () => Promise.resolve(malformedClaudeCard()) });
+  const harness = deps({
+    callClaude: () => Promise.resolve(malformedClaudeCard()),
+  });
   const result = await runCoachChat(
     {
       userId: "u1",
@@ -2574,4 +2611,85 @@ Deno.test("B3: 未觸發守門（最近一次邀約 engaged）→ 邀約句照�
   const card = result.body.card as Record<string, unknown>;
   assertEquals(card.suggestedLine, "那週六下午一起去？");
   assertEquals(card.costDeducted, 1);
+});
+
+// ── Batch D：第二層 semantic critic ────────────────────────────────────────
+
+Deno.test("D: semantic critic 拒兩次後通過，最多兩次 rewrite 且只扣一次", async () => {
+  let generationCalls = 0;
+  let criticCalls = 0;
+  const generationPrompts: string[] = [];
+  const harness = deps({
+    callClaude: (args) => {
+      generationCalls++;
+      generationPrompts.push(args.prompt);
+      return Promise.resolve(validClaudeCard());
+    },
+    callSemanticCritic: () => {
+      criticCalls++;
+      return Promise.resolve(
+        criticCalls < 3
+          ? semanticCriticVerdict("rewrite", ["generic_hook"])
+          : semanticCriticVerdict(),
+      );
+    },
+  });
+
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(generationCalls, 3);
+  assertEquals(criticCalls, 3);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(
+    generationPrompts.slice(1).every((prompt) =>
+      prompt.includes("第二層語意審核要求重寫：generic_hook")
+    ),
+    true,
+  );
+});
+
+Deno.test("D: semantic critic 三次拒絕時 fail closed，回 fallback 且不扣費", async () => {
+  let generationCalls = 0;
+  let criticCalls = 0;
+  const harness = deps({
+    callClaude: () => {
+      generationCalls++;
+      return Promise.resolve(validClaudeCard());
+    },
+    callSemanticCritic: () => {
+      criticCalls++;
+      return Promise.resolve(
+        semanticCriticVerdict("rewrite", ["unsupported_fact"]),
+      );
+    },
+  });
+
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(result.status, 200);
+  assertEquals(generationCalls, 3);
+  assertEquals(criticCalls, 3);
+  assertEquals(card.costDeducted, 0);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals(harness.events.includes("coach_chat_fallback_used"), true);
 });

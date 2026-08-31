@@ -6,7 +6,8 @@ import 'package:vibesync/features/user_profile/domain/services/effective_style_p
 // 2026-08-04 拍板：關於我只用來增加 Coach 1:1 對使用者的了解，不再影響
 // analyze-chat 五風格回覆／開場白／新話題的實際輸出內容。互動風格／舒適區
 // （延伸標記）概念一併移除。buildForAnalysis/buildForOpener/buildForNewTopic
-// 因此恆定回傳 null；只有 buildForCoachFollowUp 仍讀取關於我。
+// 因此恆定回傳 null；只有 buildForCoachFollowUp 仍讀取關於我，Batch D
+// 會明確帶入主／副風格、句長與問句密度。
 void main() {
   const builder = EffectiveStylePromptBuilder();
   final now = DateTime(2026, 5, 5);
@@ -137,11 +138,13 @@ void main() {
       expect(context, contains('不要太快邀約'));
     });
 
-    test('uses practice goals + notes, but not interaction style or topics',
+    test(
+        'uses style pair, output shape, practice goals + notes, but not topics',
         () {
       final context = builder.buildForCoachFollowUp(
         global: profile(
           style: InteractionStyle.playful,
+          secondaryStyle: InteractionStyle.humorous,
           goals: const [PracticeGoal.humorousReply],
           seeds: const [TopicSeed.travel],
           customTopics: '爵士酒吧',
@@ -152,9 +155,10 @@ void main() {
       )!;
 
       expect(context, contains('想讓對話更幽默、有來有往'));
-      // 互動風格／舒適區已整條移除，不再出現在 Coach 1:1 prompt 裡。
-      expect(context, isNot(contains('舒適區')));
-      expect(context, isNot(contains('有玩心')));
+      expect(context, contains('主要互動風格：有玩心'));
+      expect(context, contains('次要互動風格：幽默'));
+      expect(context, contains('建議句長度：短到中短'));
+      expect(context, contains('問句密度：低，每則最多 1 個問句'));
       // topics 仍不進 Coach 1:1（只有 stuckPoints/goals/notes 三段）。
       expect(context, isNot(contains('爵士酒吧')));
       expect(context, contains('這段 notes 現在批3 拍板要送給 Spec 5'));
@@ -170,6 +174,22 @@ void main() {
 
       expect(context, contains('想約得出來'));
       expect(context, isNot(contains('舒適區')));
+      expect(context, isNot(contains('問句密度')));
+    });
+
+    test('findCompatiblePartner keeps bidirectional filtering balance', () {
+      final context = builder.buildForCoachFollowUp(
+        global: profile(
+          goals: const [PracticeGoal.findCompatiblePartner],
+        ),
+        partner: null,
+        includePartnerOverride: false,
+      )!;
+
+      expect(context, contains('雙向篩選'));
+      expect(context, contains('持續投入、尊重界線、生活節奏適配'));
+      expect(context, contains('不要為了不設限而忽略不適合訊號'));
+      expect(context, contains('不要因單一標籤太早淘汰'));
     });
 
     test('partner override notes win when trusted, ignored when flagged', () {

@@ -683,6 +683,7 @@ export async function handleRequest(
       },
       {
         callClaude: callClaudeAPI,
+        callSemanticCritic: callClaudeAPI,
         deductCredit: async ({ userId }) => {
           let latestSub = await fetchSubscription(supabase, userId);
           if (!latestSub) throw new Error("No subscription found");
