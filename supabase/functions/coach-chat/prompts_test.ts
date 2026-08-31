@@ -552,3 +552,54 @@ Deno.test("buildCoachChatPrompt injects partner first-round clarify framing only
   const forced = buildCoachChatPrompt({ ...base, forceAnswer: true });
   assertEquals(forced.includes("對象教練模式"), false);
 });
+
+// ── partner scope 來源標記（Batch B1）────────────────────────────────────
+
+Deno.test("buildCoachChatPrompt renders provenance freshness for partner scope (Batch B1)", () => {
+  const base = {
+    conversationId: "partner:p1",
+    partnerId: "p1",
+    userQuestion: "對方回得很短，我該怎麼判斷？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [{ sender: "partner" as const, text: "週末要去爬山" }],
+    dataQualityFlagged: false,
+    scope: { type: "partner" as const, partnerId: "p1" },
+  };
+  const now = new Date("2026-08-31T12:00:00.000Z");
+
+  // 缺席＝現行為：prompt byte-for-byte 不變（同 outcome 段的回歸鎖寫法）。
+  assertEquals(
+    buildCoachChatPrompt(base, now).includes("本次參考來源"),
+    false,
+  );
+
+  const fresh = buildCoachChatPrompt({
+    ...base,
+    contextProvenance: {
+      sourceConversationId: "c1",
+      lastMessageAt: "2026-08-31T02:00:00.000Z",
+    },
+  }, now);
+  assertStringIncludes(fresh, "本次參考來源");
+  assertStringIncludes(fresh, "取自使用者與她最近的一段對話紀錄");
+  assertStringIncludes(fresh, "最後訊息在一天內");
+
+  const stale = buildCoachChatPrompt({
+    ...base,
+    contextProvenance: {
+      sourceConversationId: "c1",
+      lastMessageAt: "2026-08-17T12:00:00.000Z",
+    },
+  }, now);
+  assertStringIncludes(stale, "最後訊息約在 14 天前");
+  assertStringIncludes(stale, "不要把當時的熱度與節奏直接當成現在的狀態");
+
+  // lastMessageAt 缺席/壞值：只標來源、不算天數，不炸。
+  const noTime = buildCoachChatPrompt({
+    ...base,
+    contextProvenance: { sourceConversationId: "c1" },
+  }, now);
+  assertStringIncludes(noTime, "取自使用者與她最近的一段對話紀錄");
+  assertEquals(noTime.includes("最後訊息"), false);
+});

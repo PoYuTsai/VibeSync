@@ -167,6 +167,50 @@ Deno.test("validateRequest rejects partner scope mismatching top-level partnerId
   );
 });
 
+Deno.test("validateRequest accepts contextProvenance on partner scope (Batch B1)", () => {
+  const parsed = validateRequest({
+    ...baseRequest,
+    partnerId: "p1",
+    scope: { type: "partner", partnerId: "p1" },
+    contextProvenance: {
+      sourceConversationId: "c1",
+      lastMessageAt: "2026-08-30T12:00:00.000Z",
+    },
+  });
+  assertEquals(parsed.contextProvenance?.sourceConversationId, "c1");
+});
+
+Deno.test("validateRequest rejects contextProvenance outside partner scope", () => {
+  for (
+    const scope of [
+      undefined,
+      { type: "conversation", conversationId: "c1" },
+    ]
+  ) {
+    assertThrows(
+      () =>
+        validateRequest({
+          ...baseRequest,
+          ...(scope ? { scope } : {}),
+          contextProvenance: { sourceConversationId: "c1" },
+        }),
+      Error,
+      "context_provenance_scope_mismatch",
+    );
+  }
+});
+
+Deno.test("validateRequest rejects contextProvenance with unknown keys", () => {
+  assertThrows(() =>
+    validateRequest({
+      ...baseRequest,
+      partnerId: "p1",
+      scope: { type: "partner", partnerId: "p1" },
+      contextProvenance: { sourceConversationId: "c1", extra: 1 },
+    })
+  );
+});
+
 Deno.test("validateRequest rejects scope with unknown keys", () => {
   assertThrows(() =>
     validateRequest({

@@ -21,6 +21,8 @@ import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
 import 'package:vibesync/features/coach_chat/presentation/screens/global_coach_screen.dart';
 import 'package:vibesync/features/coach_chat/presentation/widgets/coach_surface.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
+import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/learning/domain/dating_knowledge_links.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
@@ -73,7 +75,11 @@ CoachChatInvoker _recordingInvoker(
 
 /// 對象相關 provider 全 override 成記憶體空資料：視窗在 partner scope 會
 /// 讀 aggregate／conversations（開場泡泡素材），測試不落 Hive。
-List<Override> _partnerOverrides(List<Partner> partners) => [
+List<Override> _partnerOverrides(
+  List<Partner> partners,
+  Map<String, List<Conversation>> partnerConversations,
+) =>
+    [
       partnerListProvider.overrideWithValue(partners),
       for (final partner in partners) ...[
         dataQualityFlagProvider(partner.id)
@@ -81,7 +87,8 @@ List<Override> _partnerOverrides(List<Partner> partners) => [
         partnerByIdProvider(partner.id).overrideWithValue(partner),
         partnerAggregateProvider(partner.id)
             .overrideWithValue(PartnerAggregateView.empty()),
-        conversationsByPartnerProvider(partner.id).overrideWithValue(const []),
+        conversationsByPartnerProvider(partner.id)
+            .overrideWithValue(partnerConversations[partner.id] ?? const []),
       ],
     ];
 
@@ -90,6 +97,7 @@ Future<List<Map<String, dynamic>>> _pump(
   List<Partner> partners = const [],
   String? lockedPartnerId,
   int invokerStatus = 429,
+  Map<String, List<Conversation>> partnerConversations = const {},
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -108,7 +116,7 @@ Future<List<Map<String, dynamic>>> _pump(
         coachingOutcomeRepositoryProvider
             .overrideWithValue(MemoryCoachingOutcomeRepository()),
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        ..._partnerOverrides(partners),
+        ..._partnerOverrides(partners, partnerConversations),
         // 鎖定的 id 不在對象清單（已刪除）→ 顯式回 null，不落 Hive。
         if (lockedPartnerId != null &&
             partners.every((partner) => partner.id != lockedPartnerId))
@@ -204,6 +212,44 @@ void main() {
     }
     // 無任何記憶素材 → 開場 fallback 帶對象名。
     expect(find.text('想聊Alice的什麼？卡住的地方直接丟給我。'), findsOneWidget);
+  });
+
+  testWidgets('partner scope 顯示「教練本次參考」；無有效對話不渲染（Batch B1）',
+      (tester) async {
+    await _pump(
+      tester,
+      partners: [_partner('p1', 'Alice')],
+      partnerConversations: {
+        'p1': [
+          Conversation(
+            id: 'c-1',
+            name: 'Alice',
+            messages: [
+              Message(
+                id: 'm-1',
+                content: '週末要去爬山',
+                isFromMe: false,
+                timestamp: DateTime(2026, 8, 30, 21),
+              ),
+            ],
+            createdAt: DateTime(2026, 8, 1),
+            updatedAt: DateTime(2026, 8, 30),
+            partnerId: 'p1',
+          ),
+        ],
+      },
+    );
+
+    // global scope 不渲染。
+    expect(
+      find.byKey(const Key('coach_partner_context_reference')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const Key('coach_scope_partner_p1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('教練本次參考：你們 8/30 的對話紀錄'), findsOneWidget);
   });
 
   testWidgets('點情境 chip → 預填情境問句＋種入 lifecyclePhase，不自動送出',
@@ -380,7 +426,7 @@ void main() {
           coachingOutcomeRepositoryProvider
               .overrideWithValue(MemoryCoachingOutcomeRepository()),
           partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-          ..._partnerOverrides([_partner('p1', 'Alice')]),
+          ..._partnerOverrides([_partner('p1', 'Alice')], const {}),
         ],
         child: const MaterialApp(home: GlobalCoachScreen()),
       ),

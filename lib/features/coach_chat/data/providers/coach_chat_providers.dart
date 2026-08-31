@@ -88,6 +88,35 @@ final coachChatStyleContextResolverProvider =
   };
 });
 
+/// Batch B1：partner scope 的「最近一段有效對話」——教練本次參考的來源。
+/// 有效＝至少一則非空白訊息；取最後一則非空白訊息時間最新者。controller
+/// 送 wire 與畫面顯示「教練本次參考」都讀這裡，同源不漂移。沒有有效對話
+/// 時回 null＝維持現行為（首輪證據制釐清會接手）。
+final coachPartnerSourceConversationProvider =
+    Provider.family<Conversation?, String>((ref, partnerId) {
+  final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
+  Conversation? latest;
+  DateTime? latestAt;
+  for (final conversation in conversations) {
+    final at = lastNonEmptyMessageAt(conversation);
+    if (at == null) continue;
+    if (latestAt == null || at.isAfter(latestAt)) {
+      latest = conversation;
+      latestAt = at;
+    }
+  }
+  return latest;
+});
+
+/// 最後一則非空白訊息的時間；wire 的 lastMessageAt 與「教練本次參考」
+/// 顯示共用（同源）。
+DateTime? lastNonEmptyMessageAt(Conversation conversation) {
+  for (final message in conversation.messages.reversed) {
+    if (message.content.trim().isNotEmpty) return message.timestamp;
+  }
+  return null;
+}
+
 /// Phase E：scope-keyed 歷史（unified rows，含 read-bridge 合併的 legacy）。
 final coachChatHistoryProvider =
     Provider.family<List<UnifiedCoachResult>, CoachScope>((ref, scope) {
@@ -200,8 +229,12 @@ class CoachChatController
         // global scope：不綁對象，scope.id 是哨兵值 'me' 不是 partnerId。
         partnerId = null;
       } else {
-        // partner scope：對象即 scope 本體，不依賴任何 conversation 資料。
+        // partner scope：對象即 scope 本體。Batch B1：補「最近一段有效對話」
+        // 當個案證據（recentMessages/conversationSummary 走既有通道），
+        // 沒有有效對話時維持現行為（Edge 首輪證據制釐清接手）。
         partnerId = scope.id;
+        conversation =
+            ref.read(coachPartnerSourceConversationProvider(scope.id));
       }
       final dataQualityFlag = partnerId == null
           ? null
@@ -266,6 +299,14 @@ class CoachChatController
         requestId: requestId,
         scope: scope,
         lifecyclePhase: lifecyclePhase,
+        // Batch B1：只有 partner scope 標來源（server schema 對其他 scope
+        // 拒收；api service 另有同規則守門）。
+        contextProvenance: scope.isPartner && conversation != null
+            ? CoachChatContextProvenance(
+                sourceConversationId: conversation.id,
+                lastMessageAt: lastNonEmptyMessageAt(conversation),
+              )
+            : null,
         onProgress: (update) {
           ref.read(coachChatProgressProvider(scope).notifier).state = update;
         },

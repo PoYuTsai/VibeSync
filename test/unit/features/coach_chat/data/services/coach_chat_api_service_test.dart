@@ -402,6 +402,61 @@ void main() {
       expect(body['partnerId'], 'p-1');
     });
 
+    test('contextProvenance 只在 partner scope 上 wire（Batch B1）', () async {
+      final calls = <_Recorded>[];
+      final service =
+          CoachChatApiService(invoker: _stub(_ok(), recorder: calls));
+      final provenance = CoachChatContextProvenance(
+        sourceConversationId: 'c-new',
+        lastMessageAt: DateTime(2026, 5, 7, 21, 30),
+      );
+
+      await service.ask(
+        conversationId: 'ignored-when-scoped',
+        partnerId: null,
+        question: '下一步該怎麼跟進？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        scope: const CoachScope.partner('p1'),
+        contextProvenance: provenance,
+      );
+      expect(calls.single.body['contextProvenance'], {
+        'sourceConversationId': 'c-new',
+        'lastMessageAt': DateTime(2026, 5, 7, 21, 30).toIso8601String(),
+      });
+
+      // 非 partner scope 帶了也不上 wire（server schema 會整包 400）。
+      calls.clear();
+      await service.ask(
+        conversationId: 'c1',
+        partnerId: 'p-1',
+        question: '她這樣回是好事嗎？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        scope: const CoachScope.conversation('c1'),
+        contextProvenance: provenance,
+      );
+      expect(calls.single.body.containsKey('contextProvenance'), isFalse);
+
+      // lastMessageAt 缺席就不送該鍵（schema nullable optional）。
+      calls.clear();
+      await service.ask(
+        conversationId: 'ignored-when-scoped',
+        partnerId: null,
+        question: '下一步該怎麼跟進？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        scope: const CoachScope.partner('p1'),
+        contextProvenance: const CoachChatContextProvenance(
+          sourceConversationId: 'c-new',
+        ),
+      );
+      expect(
+        calls.single.body['contextProvenance'],
+        {'sourceConversationId': 'c-new'},
+      );
+    });
+
     test('requestId and lifecyclePhase pass through verbatim', () async {
       final calls = <_Recorded>[];
       final service =

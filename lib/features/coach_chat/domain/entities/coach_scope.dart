@@ -26,6 +26,8 @@ class CoachScope {
 
   bool get isGlobal => type == CoachScopeType.global;
 
+  bool get isPartner => type == CoachScopeType.partner;
+
   /// 本機索引/family key 用的複合鍵，如 `conversation:c1`／`partner:p1`。
   String get key => '$type:$id';
 

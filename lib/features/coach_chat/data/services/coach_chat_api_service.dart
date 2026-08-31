@@ -39,6 +39,18 @@ class CoachChatAnalysisSnapshot {
   });
 }
 
+/// Batch B1：partner scope 補送來源對話標記（server 端只在 partner scope
+/// 收；缺席＝現行為）。
+class CoachChatContextProvenance {
+  final String sourceConversationId;
+  final DateTime? lastMessageAt;
+
+  const CoachChatContextProvenance({
+    required this.sourceConversationId,
+    this.lastMessageAt,
+  });
+}
+
 class CoachChatPartnerHint {
   final String? name;
   final List<String> traits;
@@ -231,6 +243,7 @@ class CoachChatApiService {
     String? requestId,
     CoachScope? scope,
     String? lifecyclePhase,
+    CoachChatContextProvenance? contextProvenance,
   }) async {
     // scope 為真相源：partner scope 頂層 partnerId 一律覆寫成 scope.id，
     // 呼叫端沒傳也要補齊 superRefine 一致性。global scope 的 id 是哨兵值
@@ -271,6 +284,15 @@ class CoachChatApiService {
         ),
       if (outcomeInsightLines.isNotEmpty)
         'outcomeInsightLines': _outcomeInsightLinesToWire(outcomeInsightLines),
+      // Batch B1：server 只在 partner scope 收 contextProvenance，其他 scope
+      // 帶了會整包 400——這裡跟著 scope 守門，不信呼叫端。
+      if (contextProvenance != null && scope != null && scope.isPartner)
+        'contextProvenance': <String, dynamic>{
+          'sourceConversationId': contextProvenance.sourceConversationId,
+          if (contextProvenance.lastMessageAt != null)
+            'lastMessageAt':
+                contextProvenance.lastMessageAt!.toIso8601String(),
+        },
       'dataQualityFlagged': dataQualityFlagged,
     };
 

@@ -277,6 +277,29 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
     );
   }
 
+  /// Batch B1「教練本次參考」：partner scope 下教練會自動帶入該對象最近
+  /// 一段有效對話——這行讓使用者知道教練看了什麼。來源與送出 wire 同一個
+  /// provider（同源不漂移）；沒有有效對話時不渲染（教練會先釐清）。
+  Widget _buildPartnerContextReference() {
+    if (!_scope.isPartner) return const SizedBox.shrink();
+    final source =
+        ref.watch(coachPartnerSourceConversationProvider(_scope.id));
+    if (source == null) return const SizedBox.shrink();
+    final at = lastNonEmptyMessageAt(source);
+    final when = at == null ? '最近' : '${at.month}/${at.day}';
+    return Padding(
+      padding: const EdgeInsets.only(left: 54, bottom: 10),
+      child: Text(
+        '教練本次參考：你們 $when 的對話紀錄',
+        key: const Key('coach_partner_context_reference'),
+        style: AppTypography.caption.copyWith(
+          color: AppColors.glassTextSecondary,
+          height: 1.35,
+        ),
+      ),
+    );
+  }
+
   /// 引導問句泡泡：跟著 scope 走——一般＝「怎麼做」問句；對象／分析段＝
   /// 情境 chips（種入 lifecyclePhase）。點擊只預填，可改再送。
   Widget _buildGuideBubbles() {
@@ -414,6 +437,7 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
                 children: [
                   _buildOpeningBubble(contextPartner),
                   const SizedBox(height: 16),
+                  _buildPartnerContextReference(),
                   _buildGuideBubbles(),
                   if (!_scope.isGlobal) _buildKnowledgeLink(),
                   const SizedBox(height: 8),

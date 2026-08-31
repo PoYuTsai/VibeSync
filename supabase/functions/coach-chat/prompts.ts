@@ -6,7 +6,10 @@ import {
 } from "./clarification_policy.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 
-export function buildCoachChatPrompt(input: CoachChatRequest): string {
+export function buildCoachChatPrompt(
+  input: CoachChatRequest,
+  now = new Date(),
+): string {
   const context = [
     section("全域教練模式", formatGlobalFraming(input)),
     section("對象教練模式", formatPartnerFraming(input)),
@@ -16,6 +19,7 @@ export function buildCoachChatPrompt(input: CoachChatRequest): string {
     section("本輪教練狀態", formatSessionState(input)),
     section("釐清次數規則", formatClarificationBudget(input)),
     section("本次教練室對話", formatSessionTurns(input.activeSessionTurns)),
+    section("本次參考來源", formatContextProvenance(input, now)),
     section("最近對話", formatMessages(input.recentMessages)),
     section("舊對話摘要", input.conversationSummary),
     section("最新分析快照", formatAnalysis(input.analysisSnapshot)),
@@ -182,6 +186,34 @@ function formatPartnerFraming(input: CoachChatRequest): string | null {
     "對話或她的資料細節。只問一個問題，引導使用者三選一：切到與她的對話視窗" +
     "再問（教練能帶入完整上下文）、把她最近的三到五則原話貼進來、或先聽不綁" +
     "個案的通用原則。";
+}
+
+// Batch B1：partner scope 帶來源對話標記時，告訴模型「最近對話」是從哪段
+// 對話補來的、有多新鮮。天數在 server 端算死（模型不知道現在幾點）；缺席
+// ＝現行為（不渲染，prompt byte-for-byte 不變）。
+function formatContextProvenance(
+  input: CoachChatRequest,
+  now: Date,
+): string | null {
+  if (input.scope?.type !== "partner") return null;
+  const provenance = input.contextProvenance;
+  if (!provenance) return null;
+  const lines = ["「最近對話／舊對話摘要」取自使用者與她最近的一段對話紀錄。"];
+  const lastMessageAt = provenance.lastMessageAt == null
+    ? NaN
+    : Date.parse(provenance.lastMessageAt);
+  if (Number.isFinite(lastMessageAt)) {
+    const days = Math.max(
+      0,
+      Math.floor((now.getTime() - lastMessageAt) / 86_400_000),
+    );
+    lines.push(
+      days <= 1
+        ? "最後訊息在一天內，脈絡是新的。"
+        : `最後訊息約在 ${days} 天前：把時間差納入判斷，不要把當時的熱度與節奏直接當成現在的狀態；建議推進動作前，可先用低壓方式確認近況。`,
+    );
+  }
+  return lines.join("\n");
 }
 
 function formatLifecycleFraming(

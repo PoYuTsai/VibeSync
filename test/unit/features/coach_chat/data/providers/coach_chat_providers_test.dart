@@ -325,8 +325,11 @@ ProviderContainer _container({
   Future<void> Function()? usageSync,
   List<CoachingOutcomeEvent> outcomeEvents = const [],
   CoachChatStyleContextResolver? styleContextResolver,
+  List<Conversation> partnerConversations = const [],
 }) {
   return ProviderContainer(overrides: [
+    conversationsByPartnerProvider('p-1')
+        .overrideWithValue(partnerConversations),
     coachChatRepositoryProvider.overrideWithValue(repo),
     coachingOutcomeRepositoryProvider
         .overrideWithValue(_FakeOutcomeRepo(outcomeEvents)),
@@ -935,8 +938,10 @@ void main() {
       expect(body['scope'], {'type': 'partner', 'partnerId': 'p-1'});
       expect(body['lifecyclePhase'], 'prepareInvite');
       expect(body.containsKey('analysisSnapshot'), isFalse);
+      // 沒有任何有效對話：維持現行為（Edge 首輪證據制釐清接手）。
       expect(body['recentMessages'], isEmpty);
       expect(body.containsKey('conversationSummary'), isFalse);
+      expect(body.containsKey('contextProvenance'), isFalse);
       // partnerId-only 組裝（styleContext/partnerHint）在 partner scope 照送。
       expect(body['partnerHint'], {
         'name': 'Mia',
@@ -962,6 +967,96 @@ void main() {
         c.read(coachChatHistoryProvider(_partnerScope)).single.scopeId,
         'p-1',
       );
+    });
+
+    test('ask 補送最近有效對話的 recentMessages/summary＋contextProvenance（Batch B1）',
+        () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final lastAt = DateTime(2026, 5, 7, 21, 30);
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(calls: calls),
+        partner: _partner(),
+        partnerConversations: [
+          _conversation(
+            id: 'c-old',
+            messages: [_msg('第一段舊訊息', at: DateTime(2026, 5, 1, 10))],
+          ),
+          _conversation(
+            id: 'c-new',
+            messages: [
+              _msg('嗨', fromMe: true, at: DateTime(2026, 5, 7, 21)),
+              _msg('週末要去爬山', at: lastAt),
+            ],
+            summaries: [_summary('聊到週末計畫')],
+          ),
+          // 只有空白訊息＝無效對話，不能被選成來源。
+          _conversation(
+            id: 'c-blank',
+            messages: [_msg('   ', at: DateTime(2026, 5, 8, 9))],
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_partnerScope).future);
+      await c.read(coachChatControllerProvider(_partnerScope).notifier).ask(
+            question: '約她之前我該注意什麼？',
+          );
+
+      final body = calls.single.body;
+      expect(body['scope'], {'type': 'partner', 'partnerId': 'p-1'});
+      expect(
+        (body['recentMessages'] as List).map((m) => (m as Map)['text']),
+        containsAll(['嗨', '週末要去爬山']),
+      );
+      expect(body['conversationSummary'], '聊到週末計畫');
+      expect(body['contextProvenance'], {
+        'sourceConversationId': 'c-new',
+        'lastMessageAt': lastAt.toIso8601String(),
+      });
+      // analysisSnapshot 仍限 conversation scope（B1 刻意不帶，見 plan）。
+      expect(body.containsKey('analysisSnapshot'), isFalse);
+    });
+  });
+
+  group('coachPartnerSourceConversationProvider（Batch B1）', () {
+    test('挑最後一則非空白訊息最新的對話；全空白/無訊息回 null', () {
+      final valid = _conversation(
+        id: 'c-new',
+        messages: [_msg('哈囉', at: DateTime(2026, 5, 7, 21))],
+      );
+      final c = _container(
+        repo: _FakeRepo(),
+        invoker: _invoker(),
+        partnerConversations: [
+          _conversation(
+            id: 'c-old',
+            messages: [_msg('舊的', at: DateTime(2026, 5, 1))],
+          ),
+          valid,
+          _conversation(id: 'c-empty'),
+          // 空白訊息時間最新，但不是有效訊息——不能靠它勝出。
+          _conversation(
+            id: 'c-blank',
+            messages: [_msg(' ', at: DateTime(2026, 5, 9))],
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      expect(
+        c.read(coachPartnerSourceConversationProvider('p-1'))?.id,
+        'c-new',
+      );
+
+      final empty = _container(
+        repo: _FakeRepo(),
+        invoker: _invoker(),
+      );
+      addTearDown(empty.dispose);
+      expect(empty.read(coachPartnerSourceConversationProvider('p-1')), isNull);
     });
   });
 

@@ -92,6 +92,16 @@ export const PartnerHintSchema = z.object({
   note: z.string().max(300).nullable().optional(),
 }).strict();
 
+// Batch B1（2026-08-31）：partner scope 補送「最近一段有效對話」時的來源
+// 標記（client 本地 conversation id＋最後訊息時間）。選填、缺席＝現行為；
+// 只有 partner scope 可帶（superRefine 強制）——conversation scope 的來源
+// 就是對話本身，global 不綁對象。不入 computeCoachInputHash（context 欄位
+// 不入 hash 的既有先例）。
+export const ContextProvenanceSchema = z.object({
+  sourceConversationId: z.string().min(1).max(100),
+  lastMessageAt: z.string().max(40).nullable().optional(),
+}).strict();
+
 export const RequestSchema = z.object({
   conversationId: z.string().min(1).max(100),
   partnerId: z.string().max(100).nullable().optional(),
@@ -119,6 +129,8 @@ export const RequestSchema = z.object({
   ),
   // 教練統一案 Phase B：Phase C scopeKey 前置（選填）。缺席＝現行為。
   scope: CoachScopeSchema.nullable().optional(),
+  // Batch B1：partner scope 來源對話標記（見 ContextProvenanceSchema 註解）。
+  contextProvenance: ContextProvenanceSchema.nullable().optional(),
 }).strict().superRefine((payload, ctx) => {
   if (
     payload.dataQualityFlagged &&
@@ -168,6 +180,15 @@ export const RequestSchema = z.object({
   // analysisSnapshot）都必須缺席，否則對象隱私會混進「不綁對象」串、prompt
   // 也會同時出現全域框架與對象上下文（review Grok Imp-3／GLM P2-1）。
   // 形狀不符一律拒收，不得靜默當 partner。
+  // Batch B1：contextProvenance 只有 partner scope 可帶。legacy 無 scope、
+  // conversation、global 一律拒收——形狀不符不靜默吞。
+  if (payload.contextProvenance != null && payload.scope?.type !== "partner") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["contextProvenance"],
+      message: "context_provenance_scope_mismatch",
+    });
+  }
   if (
     payload.scope?.type === "global" &&
     (payload.conversationId !== "global:me" ||
