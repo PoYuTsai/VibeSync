@@ -1825,3 +1825,68 @@ Deno.test("runCoachChat does not treat AI-derived partner traits as English sour
   assertEquals(calls, 2);
   assertEquals(harness.deductCalls, 1);
 });
+
+Deno.test("runCoachChat keeps an English request alive across clarification turns", async () => {
+  // R2 審查：首輪英文要求被釐清閘門攔下後，補充回合不得遺失該要求。
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: "Hey, how was your day?",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        userQuestion: "全新對象，還沒開過口",
+        activeSessionTurns: [
+          { role: "user", kind: "question", content: "幫我用英文回她，輕鬆一點" },
+          {
+            role: "coach",
+            kind: "clarification",
+            content: "這是全新對象、斷掉想重接，還是正在聊但沒話題？",
+          },
+        ],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 1);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("runCoachChat guards rewriteReason through the full pipeline", async () => {
+  // R2 審查：證明 VISIBLE_FIELDS 迭代真的蓋到非核心欄位。
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        rewriteReason: calls === 1 ? "保留你的 tone，只收穩語氣。" : "保留你的語氣，只收穩節奏。",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...request, forceAnswer: true },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+});

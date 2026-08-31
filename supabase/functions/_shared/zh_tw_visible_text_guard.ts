@@ -44,12 +44,16 @@ const IGNORED_SEGMENT_PATTERN =
 const LATIN_TOKEN_PATTERN = /[A-Za-z]+(?:['’][A-Za-z]+)*/g;
 
 // 使用者明確要英文時，建議句放行（教練解釋欄位仍守繁中）。
-// 否定句（「不要用英文回」「不是要你用英文寫」）不算要求——否則一句普通
-// 否定就整段解除守門（R1 審查 P1-4）。
+// 判準刻意收窄成祈使形（用英文回／寫／傳／聊、幫我寫英文、英文版、全英文）：
+// 「她傳英文訊息給我」這類提及不算要求（R2 審查 Critical——提及誤開逃生門
+// 會整句解除守門）。否定句（「不要用英文回」）也不算。誤判方向一律往安全
+// 邊倒：漏判只是走重試→免費 fallback，不會錯扣費或漏守門。
+// ponytail: 關鍵字判意圖有天花板（中英混合指令、英文語句的要求會漏判）；
+// 若要根治要走 languageMode 明確資料欄（原報告 PR 3 範圍）。
 const EXPLICIT_ENGLISH_REQUEST_PATTERN =
-  /用英[文語]|英文回|英文訊息|英文寫|全英文|in english/i;
+  /用英[文語](?:回|寫|傳|聊)|幫我寫英文|英文版|全英文/;
 const NEGATED_ENGLISH_REQUEST_PATTERN =
-  /(?:不要|不用|不必|不想|不是|別|沒有)[^，。！？]{0,4}(?:用英[文語]|英文回|英文訊息|英文寫)/;
+  /(?:不要|不用|不必|不想|不是|別|沒有)[^，。！？]{0,4}用英[文語]/;
 
 export function isExplicitEnglishRequest(userQuestion: string): boolean {
   return EXPLICIT_ENGLISH_REQUEST_PATTERN.test(userQuestion) &&
@@ -67,11 +71,15 @@ export function findUnsupportedLatinTokens(
   text: string,
   sourceText: string,
 ): string[] {
-  const cleaned = text.replace(IGNORED_SEGMENT_PATTERN, " ");
+  // NFKC：全形拉丁（ｔｏｄａｙ）正規化後照樣被偵測（R2 審查 Minor）。
+  // 來源同樣先摘掉網址／Email／@／#——https://today.example 不能替 today
+  // 背書（R2 審查：白名單片段洗來源）。
+  const cleaned = text.normalize("NFKC").replace(IGNORED_SEGMENT_PATTERN, " ");
   const sourceTokens = new Set(
-    [...sourceText.matchAll(LATIN_TOKEN_PATTERN)].map((m) =>
-      m[0].toLowerCase()
-    ),
+    [
+      ...sourceText.normalize("NFKC").replace(IGNORED_SEGMENT_PATTERN, " ")
+        .matchAll(LATIN_TOKEN_PATTERN),
+    ].map((m) => m[0].toLowerCase()),
   );
   const seen = new Set<string>();
   const offenders: string[] = [];

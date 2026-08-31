@@ -536,7 +536,14 @@ function assertVisibleTextLanguage(
     request.partnerHint?.note,
   ].filter((value): value is string => typeof value === "string").join("\n");
 
-  const englishRequested = isExplicitEnglishRequest(request.userQuestion);
+  // 英文要求看整輪：首輪要求被釐清閘門攔下後，補充回合的 userQuestion
+  // 只剩「全新對象」之類，原始要求在 user turns 裡（R2 審查：要求遺失）。
+  const englishRequested = [
+    request.userQuestion,
+    ...request.activeSessionTurns
+      .filter((turn) => turn.role === "user")
+      .map((turn) => turn.content),
+  ].some(isExplicitEnglishRequest);
 
   for (const field of VISIBLE_FIELDS) {
     const value = card[field];

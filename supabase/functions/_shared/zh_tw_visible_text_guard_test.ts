@@ -67,7 +67,12 @@ Deno.test("教練舊輸出不算來源（呼叫端只餵使用者文字即成立
 
 Deno.test("明確要英文的請求判定", () => {
   assertEquals(isExplicitEnglishRequest("幫我用英文回她"), true);
-  assertEquals(isExplicitEnglishRequest("這句英文訊息怎麼回比較好"), true);
+  // 提及英文 ≠ 要求英文（R2 審查：提及誤開逃生門會整句解除守門）。
+  assertEquals(isExplicitEnglishRequest("這句英文訊息怎麼回比較好"), false);
+  assertEquals(
+    isExplicitEnglishRequest("她傳英文訊息給我，但我要用中文回她"),
+    false,
+  );
   assertEquals(isExplicitEnglishRequest("她今天過得怎樣"), false);
 });
 
@@ -98,4 +103,23 @@ Deno.test("守門涵蓋所有可見欄位（rewriteReason 注入也擋）", () =
     findUnsupportedLatinTokens("保留你的 tone，只收穩語氣。", ""),
     ["tone"],
   );
+});
+
+// ── R2 審查修正的回歸鎖 ─────────────────────────────────────────────
+
+Deno.test("白名單片段不能替一般文字洗來源（R2）", () => {
+  assertEquals(
+    findUnsupportedLatinTokens("妳today過得怎樣", "看 https://today.example"),
+    ["today"],
+  );
+  assertEquals(
+    findUnsupportedLatinTokens("妳busy嗎", "標了 #busy 的貼文"),
+    ["busy"],
+  );
+});
+
+Deno.test("全形拉丁字母照樣被偵測（R2）", () => {
+  assertEquals(findUnsupportedLatinTokens("欸妳ｔｏｄａｙ過得怎樣", ""), [
+    "today",
+  ]);
 });
