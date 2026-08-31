@@ -15,12 +15,14 @@ export async function GET() {
   }
 
   const source = resolveAiErrorsSource();
-  const { data, error } = await admin.session.supabase
-    .from(source.table)
-    .select(source.select)
-    .eq("status", "failed")
-    .order("created_at", { ascending: false })
-    .limit(200);
+  const { data, error } = source.mode === "v2"
+    ? await admin.session.supabase.rpc(source.rpc)
+    : await admin.session.supabase
+      .from(source.table)
+      .select(source.select)
+      .eq("status", "failed")
+      .order("created_at", { ascending: false })
+      .limit(200);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

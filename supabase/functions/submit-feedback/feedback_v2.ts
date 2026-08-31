@@ -105,6 +105,10 @@ export async function sha256Hex(value: string): Promise<string> {
 /**
  * 組 admin_v2_submit_feedback 的 allowlist RPC 參數。兩個參照皆不可逆，且
  * request_ref 只由 client idempotency key 決定，沒有任何自由文字來源。
+ *
+ * user_ref 也刻意綁定同一 clientRequestKey：同一重試會回到同一個 opaque ref，
+ * 不同提交則不能用它跨 feedback 關聯同一位使用者。只保留 128-bit（32 hex）
+ * digest，足以防碰撞但不形成永久穩定識別子。
  */
 export async function buildFeedbackV2RpcParams(input: {
   userId: string;
@@ -115,11 +119,11 @@ export async function buildFeedbackV2RpcParams(input: {
   modelUsed?: unknown;
 }): Promise<FeedbackV2RpcParams> {
   const [userHex, requestHex] = await Promise.all([
-    sha256Hex(`feedback-v2-user:${input.userId}`),
+    sha256Hex(`feedback-v2-user-ref:${input.userId}:${input.clientRequestKey}`),
     sha256Hex(buildFeedbackRequestKey(input)),
   ]);
   return {
-    p_user_ref: `user:sha256:${userHex}`,
+    p_user_ref: `feedback-user:v1:${userHex.slice(0, 32)}`,
     p_request_ref: `request:sha256:${requestHex}`,
     p_rating: input.rating,
     p_category: input.category ?? null,

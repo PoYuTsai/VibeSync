@@ -14,6 +14,8 @@ import {
   buildNotificationEvent,
 } from "../notify-contract.ts";
 import {
+  AI_ERRORS_CUTOVER_SEQUENCE,
+  AI_ERRORS_V2_RPC,
   mapAiErrorRow,
   resolveAiErrorsSource,
 } from "../ai-logs-read.ts";
@@ -97,6 +99,8 @@ test("outbox 只暴露 operation-specific RPC；generic service-role enqueue 不
   const serviceRoleGrants = fnGrants.filter((grant) => grant.includes("TO service_role"));
   assert.deepEqual(serviceRoleGrants, [
     "GRANT EXECUTE ON FUNCTION public.admin_v2_submit_feedback(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO service_role;",
+    "GRANT EXECUTE ON FUNCTION public.admin_v2_record_breakglass_runtime_occurrence(TEXT, UUID, TEXT) TO service_role;",
+    "GRANT EXECUTE ON FUNCTION public.admin_v2_breakglass_capture_trusted_runtime_request(UUID, TEXT, TEXT, TEXT, TEXT, TEXT) TO service_role;",
   ]);
   assert.ok(!MIGRATION.includes("admin_v2_enqueue_notification"));
 
@@ -145,8 +149,10 @@ test("V2 feedback 要求 UUID client key；同 key 重試去重、不同 key 允
   });
 
   assert.equal(first.p_request_ref, retryWithChangedMetadata.p_request_ref);
+  assert.equal(first.p_user_ref, retryWithChangedMetadata.p_user_ref);
   assert.notEqual(first.p_request_ref, distinctSubmission.p_request_ref);
-  assert.match(first.p_user_ref, /^user:sha256:[0-9a-f]{64}$/u);
+  assert.notEqual(first.p_user_ref, distinctSubmission.p_user_ref);
+  assert.match(first.p_user_ref, /^feedback-user:v1:[0-9a-f]{32}$/u);
   assert.match(first.p_request_ref, /^request:sha256:[0-9a-f]{64}$/u);
   assert.ok(!first.p_user_ref.includes(base.userId));
   assert.deepEqual(Object.keys(first).sort(), [
@@ -217,9 +223,12 @@ test("V2 feedback schema與RPC 不含自由文字或弱 summary 欄位", () => {
       `model_used  TEXT CHECK (model_used IN (${quotedList(FEEDBACK_MODEL_FAMILIES)}))`,
     ),
   );
+  assert.ok(feedbackTable.includes("'^feedback-user:v1:[0-9a-f]{32}$'"));
+  assert.ok(!feedbackTable.includes("'^user:sha256:[0-9a-f]{64}$'"));
+  assert.ok(submit.includes("feedback 的 request-bound user_ref 只留在 inbox"));
 });
 
-test("errors route 在旗標 off/on 都選正確資料邊界，V2 永不帶 raw error message", () => {
+test("errors route 在旗標 off/on 都選正確資料邊界，V2 只走 metadata RPC 且永不帶 raw error message", () => {
   const legacy = resolveAiErrorsSource({ ADMIN_V2: "false" });
   const v2 = resolveAiErrorsSource({ ADMIN_V2: "true" });
   assert.deepEqual(legacy, {
@@ -228,8 +237,8 @@ test("errors route 在旗標 off/on 都選正確資料邊界，V2 永不帶 raw 
     select: "id, created_at, error_code, error_message, request_type, user_id",
   });
   assert.equal(v2.mode, "v2");
-  assert.equal(v2.table, "admin_ai_logs_meta_v2");
-  assert.ok(!v2.select.includes("error_message"));
+  assert.equal(v2.rpc, AI_ERRORS_V2_RPC);
+  assert.equal(v2.rpc, "admin_v2_list_error_metadata");
 
   const row = {
     id: "err-1",
@@ -242,13 +251,15 @@ test("errors route 在旗標 off/on 都選正確資料邊界，V2 永不帶 raw 
   assert.equal(mapAiErrorRow(row, "legacy").error_message, row.error_message);
   assert.equal(mapAiErrorRow(row, "v2").error_message, "");
   assert.ok(ERRORS_ROUTE.includes("resolveAiErrorsSource()"));
+  assert.ok(ERRORS_ROUTE.includes("source.mode === \"v2\""));
+  assert.ok(ERRORS_ROUTE.includes(".rpc(source.rpc)"));
   assert.ok(ERRORS_ROUTE.includes(".from(source.table)"));
   assert.ok(ERRORS_ROUTE.includes(".select(source.select)"));
   assert.ok(!ERRORS_ROUTE.includes('from("ai_logs")'));
   assert.ok(!ERRORS_ROUTE.includes('select("id, created_at, error_code, error_message'));
 });
 
-test("DB cutover 預設關閉；打開後才封鎖 active V2 raw ai_logs，view 可供 authenticated JWT 使用", () => {
+test("DB cutover 預設關閉；V2 errors 僅限完整 session-gated RPC，且切換順序固定", () => {
   assert.ok(MIGRATION.includes("CREATE TABLE public.admin_v2_settings"));
   assert.ok(MIGRATION.includes("ai_logs_cutover_enabled    BOOLEAN NOT NULL DEFAULT false"));
   assert.ok(MIGRATION.includes("VALUES (true, false)"));
@@ -260,22 +271,29 @@ test("DB cutover 預設關閉；打開後才封鎖 active V2 raw ai_logs，view 
   assert.ok(policy.includes("public.admin_v2_ai_logs_cutover_enabled()"));
   assert.ok(policy.includes("AND public.admin_v2_is_active_admin()"));
 
-  const viewStart = MIGRATION.indexOf("CREATE VIEW public.admin_ai_logs_meta_v2");
-  const viewEnd = MIGRATION.indexOf(";", viewStart);
-  const view = MIGRATION.slice(viewStart, viewEnd);
+  const metadata = sqlBlock("admin_v2_list_error_metadata");
+  assert.ok(metadata.includes("admin_v2_authenticated_session_gate(false)"));
   for (const rawColumn of ["request_body", "response_body", "error_message"]) {
-    assert.ok(!view.includes(rawColumn), `view 不得含 ${rawColumn}`);
+    assert.ok(!metadata.includes(rawColumn), `metadata RPC 不得含 ${rawColumn}`);
   }
-  assert.ok(MIGRATION.includes("GRANT SELECT ON TABLE public.admin_ai_logs_meta_v2            TO authenticated;"));
+  assert.ok(metadata.includes("SELECT l.id, l.created_at, l.error_code, l.request_type, l.user_id"));
+  assert.ok(!MIGRATION.includes("CREATE VIEW public.admin_ai_logs_meta_v2"));
+  assert.ok(!MIGRATION.includes("GRANT SELECT ON TABLE public.admin_ai_logs_meta_v2"));
   assert.ok(
     MIGRATION.includes(
-      "GRANT EXECUTE ON FUNCTION public.admin_v2_ai_logs_cutover_enabled() TO authenticated;",
+      "GRANT EXECUTE ON FUNCTION public.admin_v2_list_error_metadata() TO authenticated;",
     ),
   );
+  assert.deepEqual(AI_ERRORS_CUTOVER_SEQUENCE, [
+    "deploy-v2-metadata-route-and-rpc",
+    "enable-db-ai-logs-cutover",
+    "disable-db-ai-logs-cutover",
+    "disable-admin-v2-route",
+  ]);
 });
 
-test("所有外部 break-glass entry point 都經同一完整 B1 session gate；activate/extend 要 fresh reauth", () => {
-  const gate = sqlBlock("admin_v2_breakglass_session_gate");
+test("所有 authenticated V2 operation 都經完整 B1 session gate；AAL1、撤銷、version 與 timeout fail closed", () => {
+  const gate = sqlBlock("admin_v2_authenticated_session_gate");
   for (const required of [
     "auth.uid()",
     "auth.jwt() ->> 'aal'",
@@ -287,13 +305,25 @@ test("所有外部 break-glass entry point 都經同一完整 B1 session gate；
     "INTERVAL '12 hours'",
     "INTERVAL '30 minutes'",
     "INTERVAL '10 minutes'",
+    "auth.jwt() -> 'amr'",
+    "v_amr #>> '{0,method}'",
+    "v_amr #>> '{0,timestamp}'",
+    "v_amr_method NOT IN ('totp', 'phone', 'webauthn', 'mfa')",
+    "to_timestamp(v_amr_timestamp::double precision)",
   ]) {
     assert.ok(gate.includes(required), `session gate 缺 ${required}`);
   }
+  assert.ok(!gate.includes("last_reauth_at"), "fresh reauth 不得信任 session insert timestamp");
+  assert.ok(gate.includes("COALESCE(auth.jwt() ->> 'aal', '') <> 'aal2'"), "AAL1 必須拒絕");
+  assert.ok(gate.includes("v_session.revoked_at IS NOT NULL"), "revoked 必須拒絕");
+  assert.ok(gate.includes("v_session.session_version <> v_account.session_version"), "version mismatch 必須拒絕");
+  assert.ok(gate.includes("now() - v_session.created_at > INTERVAL '12 hours'"), "absolute timeout 必須拒絕");
+  assert.ok(gate.includes("now() - v_session.last_seen_at > INTERVAL '30 minutes'"), "idle timeout 必須拒絕");
+  assert.ok(gate.includes("token_refresh 不能把舊 MFA 變成 fresh"));
 
   const expected = {
+    admin_v2_list_error_metadata: false,
     admin_v2_breakglass_activate: true,
-    admin_v2_breakglass_record_capture: false,
     admin_v2_breakglass_view: false,
     admin_v2_breakglass_export: false,
     admin_v2_breakglass_extend: true,
@@ -303,31 +333,56 @@ test("所有外部 break-glass entry point 都經同一完整 B1 session gate；
   for (const [name, requiresReauth] of Object.entries(expected)) {
     const block = sqlBlock(name);
     assert.ok(
-      block.includes(`admin_v2_breakglass_session_gate(${requiresReauth})`),
+      block.includes(`admin_v2_authenticated_session_gate(${requiresReauth})`),
       `${name} 必須使用 shared gate`,
     );
   }
   const grants = MIGRATION.match(/^GRANT EXECUTE ON FUNCTION [^;]*;/gmu) ?? [];
   assert.ok(!grants.some((grant) => grant.includes("content_gate")));
   assert.ok(!grants.some((grant) => grant.includes("session_gate")));
+  assert.ok(!grants.some((grant) => grant.includes("trusted_runtime_request") && grant.includes("TO authenticated")));
+  assert.ok(!grants.some((grant) => grant.includes("runtime_occurrence") && grant.includes("TO authenticated")));
 });
 
-test("capture contract 靜態收斂 scope、retry、三次 cap 與 key/nonce uniqueness", () => {
-  const capture = sqlBlock("admin_v2_breakglass_record_capture");
+test("trusted runtime capture contract 收斂 provenance、future request、retry、三次 cap 與 key/nonce uniqueness", () => {
+  const occurrence = sqlBlock("admin_v2_record_breakglass_runtime_occurrence");
+  const capture = sqlBlock("admin_v2_breakglass_capture_trusted_runtime_request");
   assert.ok(MIGRATION.includes("UNIQUE (grant_id, request_ref)"));
   assert.ok(MIGRATION.includes("UNIQUE (key_ref, nonce_hex)"));
   assert.ok(!MIGRATION.includes("plaintext_sha256"));
-  assert.ok(capture.includes("p_scope_user_id"));
-  assert.ok(capture.includes("p_scope_function"));
-  assert.ok(capture.includes("g.scope_user_id = p_scope_user_id"));
-  assert.ok(capture.includes("g.scope_function = p_scope_function"));
-  assert.ok(capture.includes("g.activated_at <= now()"));
-  assert.ok(capture.includes("g.captures_used < g.captures_max"));
+  assert.ok(!MIGRATION.includes("admin_v2_breakglass_record_capture"));
+  assert.ok(MIGRATION.includes("CREATE TABLE public.admin_breakglass_request_occurrences_v2"));
+  assert.ok(MIGRATION.includes("occurred_at     TIMESTAMPTZ NOT NULL DEFAULT now()"));
+  assert.ok(!occurrence.includes("p_occurred_at"));
+  assert.ok(occurrence.includes("auth.role() <> 'service_role'"));
+  assert.ok(capture.includes("auth.role() <> 'service_role'"));
+  assert.ok(!capture.includes("p_scope_user_id"));
+  assert.ok(!capture.includes("p_scope_function"));
+  assert.ok(capture.includes("v_occurrence.scope_user_id IS DISTINCT FROM v_grant.scope_user_id"));
+  assert.ok(capture.includes("v_occurrence.scope_function IS DISTINCT FROM v_grant.scope_function"));
+  assert.ok(capture.includes("v_occurrence.occurred_at < v_grant.activated_at"));
+  assert.ok(capture.includes("v_occurrence.occurred_at >= v_grant.expires_at"));
+  assert.ok(capture.includes("FOR UPDATE"));
+  assert.ok(capture.includes("v_grant.captures_used >= v_grant.captures_max"));
   assert.ok(capture.includes("ON CONFLICT (grant_id, request_ref) DO NOTHING"));
   assert.ok(capture.includes("RETURN v_id;"));
   assert.ok(MIGRATION.includes("captures_max            INTEGER NOT NULL DEFAULT 3 CHECK (captures_max = 3)"));
   assert.ok(MIGRATION.includes("nonce_hex      TEXT NOT NULL"));
   assert.ok(MIGRATION.includes("SET ciphertext_b64 = NULL, purged_at = now()"));
+  assert.ok(capture.includes("'breakglass.capture'"));
+  assert.ok(capture.includes("INSERT INTO public.admin_audit_events_v2"));
+});
+
+test("activate 同 scope 只保留一個 open grant；過期未 close grant 先安全收斂", () => {
+  const activate = sqlBlock("admin_v2_breakglass_activate");
+  assert.ok(MIGRATION.includes("admin_breakglass_grants_v2_one_open_scope_idx"));
+  assert.ok(MIGRATION.includes("WHERE closed_at IS NULL"));
+  assert.ok(activate.includes("AND g.expires_at <= now()"));
+  assert.ok(activate.includes("SET closed_at = now(), closed_by = v_actor.actor_user_id"));
+  assert.ok(activate.includes("AND g.expires_at > now()"));
+  assert.ok(activate.includes("FOR UPDATE"));
+  assert.ok(activate.includes("ON CONFLICT (scope_user_id, scope_function) WHERE closed_at IS NULL DO NOTHING"));
+  assert.ok(activate.includes("breakglass grant already active for scope"));
 });
 
 test("migration 全部 SECURITY DEFINER 均固定 search_path，且 break-glass audit 仍存在", () => {
@@ -342,6 +397,7 @@ test("migration 全部 SECURITY DEFINER 均固定 search_path，且 break-glass 
 
   for (const [functionName, auditAction] of Object.entries({
     admin_v2_breakglass_activate: "breakglass.activate",
+    admin_v2_breakglass_capture_trusted_runtime_request: "breakglass.capture",
     admin_v2_breakglass_view: "breakglass.view",
     admin_v2_breakglass_export: "breakglass.export",
     admin_v2_breakglass_extend: "breakglass.extend",

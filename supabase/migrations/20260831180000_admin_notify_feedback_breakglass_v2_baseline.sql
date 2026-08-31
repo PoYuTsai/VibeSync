@@ -46,7 +46,8 @@ CREATE TABLE public.admin_notification_deliveries_v2 (
 -- opaque idempotency key；不接受 summary、留言、對話或 AI 內容。
 CREATE TABLE public.admin_feedback_inbox_v2 (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_ref    TEXT NOT NULL CHECK (user_ref ~ '^user:sha256:[0-9a-f]{64}$'),
+  -- request-bound opaque ref：同一 retry 穩定、不同 client key 不可跨提交關聯。
+  user_ref    TEXT NOT NULL CHECK (user_ref ~ '^feedback-user:v1:[0-9a-f]{32}$'),
   request_ref TEXT NOT NULL UNIQUE CHECK (request_ref ~ '^request:sha256:[0-9a-f]{64}$'),
   rating      TEXT NOT NULL CHECK (rating IN ('positive', 'negative')),
   category    TEXT CHECK (category IN ('too_direct', 'too_long', 'unnatural', 'wrong_style', 'other', 'too_beta', 'should_not_send', 'too_generic', 'invented_detail', 'wrong_judgment', 'too_many_questions', 'missed_context')),
@@ -72,6 +73,25 @@ CREATE TABLE public.admin_breakglass_grants_v2 (
   created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (captures_used >= 0 AND captures_used <= captures_max),
   CHECK (expires_at > activated_at AND expires_at <= activated_at + INTERVAL '30 minutes')
+);
+
+-- 一個 scope 同時間只能有一個 open grant。activate 會先在同交易關閉已過期
+-- 的 open grant；這個 partial unique index 再處理兩個 owner 同時啟用的競態。
+CREATE UNIQUE INDEX admin_breakglass_grants_v2_one_open_scope_idx
+  ON public.admin_breakglass_grants_v2 (scope_user_id, scope_function)
+  WHERE closed_at IS NULL;
+
+-- 由 Edge runtime（service_role）在實際請求發生時寫入的 immutable receipt。
+-- 管理端 JWT 沒有此表的表權限或 RPC execute，因此不能自稱 request_ref、scope
+-- 或 occurred_at。occurred_at 永遠由資料庫 now() 產生，不能由 caller 傳入。
+CREATE TABLE public.admin_breakglass_request_occurrences_v2 (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_ref     TEXT NOT NULL UNIQUE CHECK (request_ref ~ '^request:sha256:[0-9a-f]{64}$'),
+  scope_user_id   UUID NOT NULL,
+  scope_function  TEXT NOT NULL CHECK (scope_function IN ('analyze-chat', 'coach-chat', 'coach-follow-up', 'keyboard-assist', 'keyboard-reply', 'practice-chat', 'submit-feedback', 'sync-subscription', 'delete-account', 'revenuecat-webhook')),
+  occurred_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  provenance      TEXT NOT NULL DEFAULT 'edge_runtime' CHECK (provenance = 'edge_runtime'),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Capture 只存 authenticated-encryption envelope。nonce 是每一 key 的唯一值，
@@ -137,14 +157,10 @@ AS $$
   ), false);
 $$;
 
--- 此 view 是 admin dashboard（anon key + 使用者 JWT）唯一的 V2 errors 來源。
--- security-definer view 可讀 underlying ai_logs，但 SELECT allowlist 永不含 raw。
-CREATE VIEW public.admin_ai_logs_meta_v2
-  WITH (security_barrier = true) AS
-SELECT id, user_id, model, request_type, input_tokens, output_tokens, cost_usd,
-       latency_ms, status, error_code, fallback_used, retry_count, created_at
-FROM public.ai_logs
-WHERE public.admin_v2_is_active_admin();
+-- V2 errors 不建立可由 authenticated 直接 SELECT 的 view/table。metadata-only
+-- RPC 定義在下方完整 B1 session gate 後，且只回 dashboard 需要的 allowlist 欄位。
+-- Cutover 固定順序：先部署此 RPC 與 ADMIN_V2 route，再開 DB raw-log cutover；
+-- 回退時先關 DB cutover，最後才關 ADMIN_V2 route，兩個開關不能任意交錯。
 
 -- ============================================================
 -- V2 feedback：唯一對 service_role 開放的 feedback operation RPC。inbox 與
@@ -176,7 +192,8 @@ BEGIN
     INSERT INTO public.admin_notification_outbox_v2
       (template, delivery_class, reason_code, incident_id, external_event_ref, user_ref)
     VALUES
-      ('yellow', 'daily_brief', 'feedback_received', NULL, v_external_event_ref, p_user_ref)
+      -- feedback 的 request-bound user_ref 只留在 inbox，不進 notification outbox。
+      ('yellow', 'daily_brief', 'feedback_received', NULL, v_external_event_ref, NULL)
     ON CONFLICT (external_event_ref) DO UPDATE
       SET occurrence_count = public.admin_notification_outbox_v2.occurrence_count + 1,
           last_seen_at = now();
@@ -185,10 +202,11 @@ END;
 $$;
 
 -- ============================================================
--- 所有 authenticated break-glass RPC 的共同完整 session gate。它與 B1
--- admin-gate.ts 同步驗證 AAL2、active account/role、JWT session id、撤銷、
--- version、12h absolute/30m idle；activate/extend 再加 10m fresh reauth。
-CREATE FUNCTION public.admin_v2_breakglass_session_gate(
+-- 所有 authenticated V2 operation RPC 的共同完整 B1 session gate。它驗證
+-- AAL2、active account/role、JWT session id、撤銷、version、12h absolute/30m
+-- idle；activate/extend 再以 Supabase 已驗簽 JWT 的最新 AMR MFA timestamp
+-- 加 10m fresh reauth。普通 token_refresh 與 client timestamp 都不能更新它。
+CREATE FUNCTION public.admin_v2_authenticated_session_gate(
   p_require_reauth BOOLEAN DEFAULT false
 )
 RETURNS TABLE (
@@ -205,6 +223,10 @@ DECLARE
   v_sid      UUID;
   v_account  public.admin_accounts_v2;
   v_session  public.admin_sessions_v2;
+  v_amr      JSONB := COALESCE(auth.jwt() -> 'amr', '[]'::jsonb);
+  v_amr_method TEXT;
+  v_amr_timestamp TEXT;
+  v_mfa_at   TIMESTAMPTZ;
 BEGIN
   IF v_uid IS NULL
      OR COALESCE(auth.jwt() ->> 'aal', '') <> 'aal2'
@@ -233,18 +255,58 @@ BEGIN
      OR v_session.created_at > now()
      OR v_session.last_seen_at > now()
      OR now() - v_session.created_at > INTERVAL '12 hours'
-     OR now() - v_session.last_seen_at > INTERVAL '30 minutes'
-     OR (
-       p_require_reauth
-       AND (
-         v_session.last_reauth_at > now()
-         OR now() - v_session.last_reauth_at > INTERVAL '10 minutes'
-       )
-     ) THEN
+     OR now() - v_session.last_seen_at > INTERVAL '30 minutes' THEN
     RAISE EXCEPTION 'breakglass denied';
   END IF;
 
+  IF p_require_reauth THEN
+    -- Supabase AMR 最新驗證方法在 index 0，timestamp 是受簽章保護的 Unix
+    -- seconds。只接受第二因子方法；token_refresh 不能把舊 MFA 變成 fresh。
+    IF jsonb_typeof(v_amr) <> 'array'
+       OR jsonb_array_length(v_amr) = 0
+       OR jsonb_typeof(v_amr -> 0) <> 'object' THEN
+      RAISE EXCEPTION 'breakglass denied';
+    END IF;
+    v_amr_method := lower(COALESCE(v_amr #>> '{0,method}', ''));
+    v_amr_timestamp := v_amr #>> '{0,timestamp}';
+    IF v_amr_method NOT IN ('totp', 'phone', 'webauthn', 'mfa')
+       OR v_amr_timestamp IS NULL
+       OR v_amr_timestamp !~ '^[0-9]{10}(\.[0-9]{1,6})?$' THEN
+      RAISE EXCEPTION 'breakglass denied';
+    END IF;
+    v_mfa_at := to_timestamp(v_amr_timestamp::double precision);
+    IF v_mfa_at > now()
+       OR now() - v_mfa_at > INTERVAL '10 minutes' THEN
+      RAISE EXCEPTION 'breakglass denied';
+    END IF;
+  END IF;
+
   RETURN QUERY SELECT v_uid, v_account.role;
+END;
+$$;
+
+-- V2 errors 唯一讀取入口：完整 B1 session gate 成功後才讀 ai_logs，且回傳欄位
+-- 是 route 的最小 allowlist。沒有 authenticated SELECT grant 到任何 metadata view。
+CREATE FUNCTION public.admin_v2_list_error_metadata()
+RETURNS TABLE (
+  id           UUID,
+  created_at   TIMESTAMPTZ,
+  error_code   TEXT,
+  request_type TEXT,
+  user_id      UUID
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  PERFORM 1 FROM public.admin_v2_authenticated_session_gate(false);
+  RETURN QUERY
+  SELECT l.id, l.created_at, l.error_code, l.request_type, l.user_id
+  FROM public.ai_logs l
+  WHERE l.status = 'failed'
+  ORDER BY l.created_at DESC
+  LIMIT 200;
 END;
 $$;
 
@@ -265,7 +327,7 @@ DECLARE
   v_id UUID;
 BEGIN
   SELECT * INTO v_actor
-  FROM public.admin_v2_breakglass_session_gate(true);
+  FROM public.admin_v2_authenticated_session_gate(true);
   IF v_actor.actor_role <> 'owner' THEN
     RAISE EXCEPTION 'breakglass denied';
   END IF;
@@ -278,6 +340,27 @@ BEGIN
     RAISE EXCEPTION 'breakglass assigned viewer must be an active admin';
   END IF;
 
+  -- 同 scope 的已過期 open grant 先在本交易安全收斂，避免 partial unique
+  -- index 永久卡住下一次合法啟用。未過期的 open grant 必須明確拒絕，不能累加
+  -- 出 3N captures；index 再處理兩個 owner 同時執行 activate 的競態。
+  UPDATE public.admin_breakglass_grants_v2 g
+  SET closed_at = now(), closed_by = v_actor.actor_user_id
+  WHERE g.scope_user_id = p_scope_user_id
+    AND g.scope_function = p_scope_function
+    AND g.closed_at IS NULL
+    AND g.expires_at <= now();
+
+  PERFORM 1
+  FROM public.admin_breakglass_grants_v2 g
+  WHERE g.scope_user_id = p_scope_user_id
+    AND g.scope_function = p_scope_function
+    AND g.closed_at IS NULL
+    AND g.expires_at > now()
+  FOR UPDATE;
+  IF FOUND THEN
+    RAISE EXCEPTION 'breakglass grant already active for scope';
+  END IF;
+
   INSERT INTO public.admin_breakglass_grants_v2
     (activated_by, scope_user_id, scope_function, reason, assigned_viewer_user_id, expires_at)
   VALUES (
@@ -288,7 +371,11 @@ BEGIN
     p_assigned_viewer_user_id,
     now() + INTERVAL '30 minutes'
   )
+  ON CONFLICT (scope_user_id, scope_function) WHERE closed_at IS NULL DO NOTHING
   RETURNING id INTO v_id;
+  IF v_id IS NULL THEN
+    RAISE EXCEPTION 'breakglass grant already active for scope';
+  END IF;
 
   INSERT INTO public.admin_audit_events_v2 (actor_user_id, action, target_ref, reason, result)
   VALUES (
@@ -302,43 +389,76 @@ BEGIN
 END;
 $$;
 
--- Capture：caller 必須是已驗證 owner。先確認 exact scope，重試同
--- (grant_id,request_ref) 直接回既有 receipt；後續原子 UPDATE 才消耗三次 cap。
-CREATE FUNCTION public.admin_v2_breakglass_record_capture(
-  p_grant_id       UUID,
+-- 實際 Edge runtime request 的 immutable occurrence。僅 service_role 可執行，
+-- 管理端 JWT 沒有此 entry point；時點由 DB 寫入而非 caller 自稱。相同
+-- request_ref 的 retry 只能回到相同 scope receipt，不能改寫 provenance。
+CREATE FUNCTION public.admin_v2_record_breakglass_runtime_occurrence(
+  p_request_ref    TEXT,
   p_scope_user_id  UUID,
-  p_scope_function TEXT,
+  p_scope_function TEXT
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_id       UUID;
+  v_existing public.admin_breakglass_request_occurrences_v2;
+BEGIN
+  IF auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'breakglass runtime denied';
+  END IF;
+
+  INSERT INTO public.admin_breakglass_request_occurrences_v2
+    (request_ref, scope_user_id, scope_function)
+  VALUES (p_request_ref, p_scope_user_id, p_scope_function)
+  ON CONFLICT (request_ref) DO NOTHING
+  RETURNING id INTO v_id;
+  IF v_id IS NOT NULL THEN
+    RETURN v_id;
+  END IF;
+
+  SELECT * INTO v_existing
+  FROM public.admin_breakglass_request_occurrences_v2 o
+  WHERE o.request_ref = p_request_ref;
+  IF NOT FOUND
+     OR v_existing.scope_user_id IS DISTINCT FROM p_scope_user_id
+     OR v_existing.scope_function IS DISTINCT FROM p_scope_function
+     OR v_existing.provenance <> 'edge_runtime' THEN
+    RAISE EXCEPTION 'breakglass runtime occurrence denied';
+  END IF;
+  RETURN v_existing.id;
+END;
+$$;
+
+-- Capture 只能消耗已存在、由 service-role runtime 寫入的 occurrence。函式不收
+-- caller 宣稱的 scope 或 occurred_at；grant/occurrence exact match、啟用後 future
+-- occurrence、同 request retry、row lock 下三次 cap 與 key/nonce uniqueness 都在
+-- 這個 transaction 內完成。authenticated 不具 execute，dashboard 不能自行 capture。
+CREATE FUNCTION public.admin_v2_breakglass_capture_trusted_runtime_request(
+  p_grant_id       UUID,
   p_request_ref    TEXT,
   p_cipher         TEXT,
   p_key_ref        TEXT,
   p_nonce_hex      TEXT,
   p_ciphertext_b64 TEXT
 )
-RETURNS uuid
+RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
-  v_actor RECORD;
-  v_gid   UUID;
-  v_id    UUID;
+  v_grant public.admin_breakglass_grants_v2;
+  v_occurrence public.admin_breakglass_request_occurrences_v2;
+  v_id UUID;
 BEGIN
-  SELECT * INTO v_actor
-  FROM public.admin_v2_breakglass_session_gate(false);
-  IF v_actor.actor_role <> 'owner' THEN
-    RAISE EXCEPTION 'breakglass denied';
+  IF auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'breakglass runtime denied';
   END IF;
 
-  SELECT g.id INTO v_gid
-  FROM public.admin_breakglass_grants_v2 g
-  WHERE g.id = p_grant_id
-    AND g.scope_user_id = p_scope_user_id
-    AND g.scope_function = p_scope_function;
-  IF v_gid IS NULL THEN
-    RAISE EXCEPTION 'breakglass scope denied';
-  END IF;
-
+  -- 完全相同 pair 的 retry 不消耗 cap，也不重複寫 audit。
   SELECT c.id INTO v_id
   FROM public.admin_breakglass_captures_v2 c
   WHERE c.grant_id = p_grant_id
@@ -347,26 +467,45 @@ BEGIN
     RETURN v_id;
   END IF;
 
-  UPDATE public.admin_breakglass_grants_v2 g
-  SET captures_used = g.captures_used + 1
+  SELECT * INTO v_grant
+  FROM public.admin_breakglass_grants_v2 g
   WHERE g.id = p_grant_id
-    AND g.scope_user_id = p_scope_user_id
-    AND g.scope_function = p_scope_function
-    AND g.closed_at IS NULL
-    AND g.activated_at <= now()
-    AND now() < g.expires_at
-    AND g.captures_used < g.captures_max
-  RETURNING g.id INTO v_gid;
-  IF v_gid IS NULL THEN
-    SELECT c.id INTO v_id
-    FROM public.admin_breakglass_captures_v2 c
-    WHERE c.grant_id = p_grant_id
-      AND c.request_ref = p_request_ref;
-    IF v_id IS NOT NULL THEN
-      RETURN v_id;
-    END IF;
+  FOR UPDATE;
+  IF NOT FOUND
+     OR v_grant.closed_at IS NOT NULL
+     OR now() >= v_grant.expires_at THEN
     RAISE EXCEPTION 'breakglass grant not capturable';
   END IF;
+
+  SELECT * INTO v_occurrence
+  FROM public.admin_breakglass_request_occurrences_v2 o
+  WHERE o.request_ref = p_request_ref;
+  IF NOT FOUND
+     OR v_occurrence.provenance <> 'edge_runtime'
+     OR v_occurrence.scope_user_id IS DISTINCT FROM v_grant.scope_user_id
+     OR v_occurrence.scope_function IS DISTINCT FROM v_grant.scope_function
+     OR v_occurrence.occurred_at < v_grant.activated_at
+     OR v_occurrence.occurred_at >= v_grant.expires_at
+     OR v_occurrence.occurred_at > now() THEN
+    RAISE EXCEPTION 'breakglass runtime occurrence denied';
+  END IF;
+
+  -- 等待 grant row lock 的同 request 競態，在這個第二次讀取會回既有 capture。
+  SELECT c.id INTO v_id
+  FROM public.admin_breakglass_captures_v2 c
+  WHERE c.grant_id = p_grant_id
+    AND c.request_ref = p_request_ref;
+  IF v_id IS NOT NULL THEN
+    RETURN v_id;
+  END IF;
+  IF v_grant.captures_used >= v_grant.captures_max THEN
+    RAISE EXCEPTION 'breakglass capture cap reached';
+  END IF;
+
+  UPDATE public.admin_breakglass_grants_v2 g
+  SET captures_used = g.captures_used + 1
+  WHERE g.id = v_grant.id
+    AND g.captures_used < g.captures_max;
 
   INSERT INTO public.admin_breakglass_captures_v2
     (grant_id, request_ref, cipher, key_ref, nonce_hex, ciphertext_b64, expires_at)
@@ -381,12 +520,7 @@ BEGIN
   )
   ON CONFLICT (grant_id, request_ref) DO NOTHING
   RETURNING id INTO v_id;
-
   IF v_id IS NULL THEN
-    UPDATE public.admin_breakglass_grants_v2
-    SET captures_used = captures_used - 1
-    WHERE id = v_gid
-      AND captures_used > 0;
     SELECT c.id INTO v_id
     FROM public.admin_breakglass_captures_v2 c
     WHERE c.grant_id = p_grant_id
@@ -396,6 +530,14 @@ BEGIN
     END IF;
     RAISE EXCEPTION 'breakglass capture conflict';
   END IF;
+
+  INSERT INTO public.admin_audit_events_v2 (actor_user_id, action, target_ref, result)
+  VALUES (
+    v_grant.activated_by,
+    'breakglass.capture',
+    'breakglass_capture:sha256:' || encode(sha256(convert_to(v_id::text, 'UTF8')), 'hex'),
+    'success'
+  );
   RETURN v_id;
 END;
 $$;
@@ -458,7 +600,7 @@ DECLARE
   v_cap public.admin_breakglass_captures_v2;
 BEGIN
   SELECT * INTO v_actor
-  FROM public.admin_v2_breakglass_session_gate(false);
+  FROM public.admin_v2_authenticated_session_gate(false);
   v_cap := public.admin_v2_breakglass_content_gate(
     p_capture_id,
     v_actor.actor_user_id,
@@ -496,7 +638,7 @@ DECLARE
   v_cap public.admin_breakglass_captures_v2;
 BEGIN
   SELECT * INTO v_actor
-  FROM public.admin_v2_breakglass_session_gate(false);
+  FROM public.admin_v2_authenticated_session_gate(false);
   v_cap := public.admin_v2_breakglass_content_gate(
     p_capture_id,
     v_actor.actor_user_id,
@@ -529,7 +671,7 @@ DECLARE
   v_external_event_ref TEXT;
 BEGIN
   SELECT * INTO v_actor
-  FROM public.admin_v2_breakglass_session_gate(true);
+  FROM public.admin_v2_authenticated_session_gate(true);
   IF v_actor.actor_role <> 'owner' THEN
     RAISE EXCEPTION 'breakglass denied';
   END IF;
@@ -591,7 +733,7 @@ DECLARE
   v_id UUID;
 BEGIN
   SELECT * INTO v_actor
-  FROM public.admin_v2_breakglass_session_gate(false);
+  FROM public.admin_v2_authenticated_session_gate(false);
   IF v_actor.actor_role <> 'owner' THEN
     RAISE EXCEPTION 'breakglass denied';
   END IF;
@@ -625,7 +767,7 @@ DECLARE
   v_n     INTEGER := 0;
 BEGIN
   SELECT * INTO v_actor
-  FROM public.admin_v2_breakglass_session_gate(false);
+  FROM public.admin_v2_authenticated_session_gate(false);
   IF v_actor.actor_role <> 'owner' THEN
     RAISE EXCEPTION 'breakglass denied';
   END IF;
@@ -656,10 +798,12 @@ $$;
 -- audit allowlist 的唯一既有物件變更。
 ALTER TABLE public.admin_audit_events_v2 DROP CONSTRAINT admin_audit_events_v2_action_check;
 ALTER TABLE public.admin_audit_events_v2 ADD CONSTRAINT admin_audit_events_v2_action_check
-  CHECK (action IN ('admin.login', 'admin.logout', 'admin.session.revoke', 'admin.account.activate', 'admin.account.deactivate', 'breakglass.activate', 'breakglass.view', 'breakglass.export', 'breakglass.extend', 'breakglass.close', 'breakglass.purge'));
+  CHECK (action IN ('admin.login', 'admin.logout', 'admin.session.revoke', 'admin.account.activate', 'admin.account.deactivate', 'breakglass.activate', 'breakglass.capture', 'breakglass.view', 'breakglass.export', 'breakglass.extend', 'breakglass.close', 'breakglass.purge'));
 
 -- 顯式 cutover 關閉時，active B1/V2 admin 的 raw ai_logs access 不受影響。
--- 切換開啟後，active V2 admin 只能透過上方 metadata-only view 讀取 errors。
+-- 切換開啟後，active V2 admin 只能透過上方 metadata-only RPC 讀取 errors。
+-- 操作順序固定：先部署 route/RPC → 再開 DB cutover；回退先關 DB cutover →
+-- 最後關 ADMIN_V2 route，不能把兩個 flag 當成可任意切換的獨立開關。
 CREATE POLICY admin_ai_logs_block_raw_for_v2_admins ON public.ai_logs
   AS RESTRICTIVE
   FOR SELECT
@@ -677,6 +821,7 @@ ALTER TABLE public.admin_notification_outbox_v2     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_notification_deliveries_v2 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_feedback_inbox_v2          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_breakglass_grants_v2       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_breakglass_request_occurrences_v2 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_breakglass_captures_v2     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_v2_settings                ENABLE ROW LEVEL SECURITY;
 
@@ -684,9 +829,9 @@ REVOKE ALL PRIVILEGES ON TABLE public.admin_notification_outbox_v2     FROM PUBL
 REVOKE ALL PRIVILEGES ON TABLE public.admin_notification_deliveries_v2 FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL PRIVILEGES ON TABLE public.admin_feedback_inbox_v2          FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL PRIVILEGES ON TABLE public.admin_breakglass_grants_v2       FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL PRIVILEGES ON TABLE public.admin_breakglass_request_occurrences_v2 FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL PRIVILEGES ON TABLE public.admin_breakglass_captures_v2     FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL PRIVILEGES ON TABLE public.admin_v2_settings                FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL PRIVILEGES ON TABLE public.admin_ai_logs_meta_v2            FROM PUBLIC, anon, authenticated, service_role;
 
 -- 內容表與 setting 沒有常駐 grant。service_role 只能讀 worker 所需 outbox/
 -- inbox metadata，不能執行任意 enqueue 或讀 break-glass envelope。
@@ -694,15 +839,16 @@ GRANT SELECT ON TABLE public.admin_notification_outbox_v2     TO service_role;
 GRANT SELECT ON TABLE public.admin_notification_deliveries_v2 TO service_role;
 GRANT SELECT ON TABLE public.admin_feedback_inbox_v2          TO service_role;
 GRANT SELECT ON TABLE public.admin_breakglass_grants_v2       TO service_role;
-GRANT SELECT ON TABLE public.admin_ai_logs_meta_v2            TO authenticated;
 
 -- 所有函式先移除預設 PUBLIC execute；只有固定 operation RPC 可從外部呼叫。
 REVOKE ALL ON FUNCTION public.admin_v2_is_active_admin() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.admin_v2_ai_logs_cutover_enabled() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.admin_v2_list_error_metadata() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.admin_v2_submit_feedback(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.admin_v2_breakglass_session_gate(BOOLEAN) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.admin_v2_authenticated_session_gate(BOOLEAN) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.admin_v2_breakglass_activate(UUID, TEXT, TEXT, UUID) FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.admin_v2_breakglass_record_capture(UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.admin_v2_record_breakglass_runtime_occurrence(TEXT, UUID, TEXT) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.admin_v2_breakglass_capture_trusted_runtime_request(UUID, TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.admin_v2_breakglass_content_gate(UUID, UUID, TEXT, BOOLEAN) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.admin_v2_breakglass_view(UUID) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.admin_v2_breakglass_export(UUID) FROM PUBLIC, anon, authenticated, service_role;
@@ -712,9 +858,11 @@ REVOKE ALL ON FUNCTION public.admin_v2_breakglass_purge_expired() FROM PUBLIC, a
 
 GRANT EXECUTE ON FUNCTION public.admin_v2_is_active_admin() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_v2_ai_logs_cutover_enabled() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_v2_list_error_metadata() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_v2_submit_feedback(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO service_role;
 GRANT EXECUTE ON FUNCTION public.admin_v2_breakglass_activate(UUID, TEXT, TEXT, UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_v2_breakglass_record_capture(UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_v2_record_breakglass_runtime_occurrence(TEXT, UUID, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_v2_breakglass_capture_trusted_runtime_request(UUID, TEXT, TEXT, TEXT, TEXT, TEXT) TO service_role;
 GRANT EXECUTE ON FUNCTION public.admin_v2_breakglass_view(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_v2_breakglass_export(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_v2_breakglass_extend(UUID) TO authenticated;

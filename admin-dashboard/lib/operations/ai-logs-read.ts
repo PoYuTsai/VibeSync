@@ -1,15 +1,27 @@
 // B2：admin errors route 的 ai_logs 讀取契約。
 // 旗標關閉＝legacy 一比一：直接讀 ai_logs（含 error_message），輸出不變。
-// 旗標開啟＝V2：只讀 metadata-only view（admin_ai_logs_meta_v2，欄位清單裡
-// 根本沒有 error_message／request_body／response_body），route 在任何情況下
-// 都不 SELECT raw 欄位；view 的授權走 anon key＋使用者 JWT（authenticated
-// 角色）＋view 自帶的 admin_v2_is_active_admin() 守門。
+// 旗標開啟＝V2：只呼叫 metadata-only operation RPC，RPC 內部重跑完整 B1
+// session gate；欄位清單裡根本沒有 error_message／request_body／response_body。
+// route 在任何情況下都不 SELECT raw 欄位，也不把 authenticated JWT 直接授權到
+// metadata view/table。
 // route.ts 只負責接線；來源選擇與列映射都在這裡，供測試直接執行驗證。
 
 import { isAdminV2Enabled } from "./admin-v2.ts";
 
 export const AI_ERRORS_LEGACY_TABLE = "ai_logs";
-export const AI_ERRORS_V2_TABLE = "admin_ai_logs_meta_v2";
+export const AI_ERRORS_V2_RPC = "admin_v2_list_error_metadata";
+
+/**
+ * DB cutover 與 route flag 不能任意交錯：先部署可用的 V2 route/RPC，再開 DB
+ * raw-log cutover；回退時先關 DB cutover，最後才關 ADMIN_V2 route。這是部署
+ * 順序契約，避免 active admin 在兩個開關不同步時失去唯一可讀的 metadata 路徑。
+ */
+export const AI_ERRORS_CUTOVER_SEQUENCE = [
+  "deploy-v2-metadata-route-and-rpc",
+  "enable-db-ai-logs-cutover",
+  "disable-db-ai-logs-cutover",
+  "disable-admin-v2-route",
+] as const;
 
 export const AI_ERRORS_LEGACY_COLUMNS = [
   "id",
@@ -20,7 +32,7 @@ export const AI_ERRORS_LEGACY_COLUMNS = [
   "user_id",
 ] as const;
 
-/** V2 欄位是 legacy 減去 error_message：raw 錯誤內文永不出現在 V2 查詢。 */
+/** V2 RPC 回傳 allowlist 是 legacy 減去 error_message；不作為直接 SELECT 欄位。 */
 export const AI_ERRORS_V2_COLUMNS = [
   "id",
   "created_at",
@@ -31,12 +43,20 @@ export const AI_ERRORS_V2_COLUMNS = [
 
 export type AiErrorsReadMode = "legacy" | "v2";
 
-export interface AiErrorsSource {
-  mode: AiErrorsReadMode;
+export interface LegacyAiErrorsSource {
+  mode: "legacy";
   table: string;
   /** 直接餵給 supabase .select() 的欄位字串。 */
   select: string;
 }
+
+export interface V2AiErrorsSource {
+  mode: "v2";
+  /** 僅透過完整 session gate 的 metadata-only RPC。 */
+  rpc: typeof AI_ERRORS_V2_RPC;
+}
+
+export type AiErrorsSource = LegacyAiErrorsSource | V2AiErrorsSource;
 
 export function resolveAiErrorsSource(
   env: Record<string, string | undefined> = process.env,
@@ -44,8 +64,7 @@ export function resolveAiErrorsSource(
   if (isAdminV2Enabled(env)) {
     return {
       mode: "v2",
-      table: AI_ERRORS_V2_TABLE,
-      select: AI_ERRORS_V2_COLUMNS.join(", "),
+      rpc: AI_ERRORS_V2_RPC,
     };
   }
   return {
