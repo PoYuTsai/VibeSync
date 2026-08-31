@@ -8,6 +8,8 @@ import {
   ADMIN_SESSION_ABSOLUTE_MS,
   ADMIN_SESSION_IDLE_MS,
   ADMIN_REAUTH_FRESH_MS,
+  AUDIT_TARGET_REF_PATTERN,
+  AUDIT_REASON_CODES,
   PUBLIC_AUTH_ERROR,
   capabilitiesForRole,
   hasCapability,
@@ -18,6 +20,13 @@ import {
   buildAuditEvent,
   resolveAdminAccess,
 } from "../admin-gate.ts";
+import {
+  loginFailedMessage,
+  sessionDenyResponse,
+  oauthStartErrorMessage,
+  callbackUrlErrorMessage,
+  callbackExchangeErrorMessage,
+} from "../admin-legacy-visible.ts";
 
 const NOW = new Date("2026-08-31T12:00:00Z");
 const MINUTE = 60_000;
@@ -87,11 +96,18 @@ test("旗標關閉：只走 legacy 檢查，完全不碰 v2 RPC，輸出相容",
 
   const denied = await resolveAdminAccess({
     accessToken: AAL1_TOKEN,
-    legacyCheck: async () => ({ allowed: false }),
+    legacyCheck: async () => ({ allowed: false, error: "row lookup failed" }),
     touchSession: async () => ({ data: [], error: null }),
     env: { ADMIN_V2: "0" },
   });
-  assert.deepEqual(denied, { allowed: false, status: 403, publicError: "Forbidden" });
+  // legacy deny 帶回 legacyError：session route 靠它一比一重現 pre-B1 detail 欄位。
+  assert.deepEqual(denied, {
+    allowed: false,
+    mode: "legacy",
+    status: 403,
+    publicError: "Forbidden",
+    legacyError: "row lookup failed",
+  });
 });
 
 test("旗標開啟：禁止 email fallback——RPC 失敗也絕不改走 legacy 檢查", async () => {
@@ -140,7 +156,12 @@ test("旗標開啟：user_id 綁定的啟用管理員＋AAL2＋活 session 才�
     env: { ADMIN_V2: "1" },
     now: NOW,
   });
-  assert.deepEqual(notAdmin, { allowed: false, status: 403, publicError: "Forbidden" });
+  assert.deepEqual(notAdmin, {
+    allowed: false,
+    mode: "v2",
+    status: 403,
+    publicError: "Forbidden",
+  });
 });
 
 test("role/capability 單一真相：owner 有敏感執行權，founder_admin 沒有", () => {
@@ -306,7 +327,12 @@ test("逾時／版本失效會 best-effort 撤銷 session，不因觸碰復活",
     env: { ADMIN_V2: "1" },
     now: NOW,
   });
-  assert.deepEqual(revokeBroken, { allowed: false, status: 403, publicError: "Forbidden" });
+  assert.deepEqual(revokeBroken, {
+    allowed: false,
+    mode: "v2",
+    status: 403,
+    publicError: "Forbidden",
+  });
 });
 
 test("reauth freshness：敏感操作要 owner＋新鮮 reauth，缺一不可", () => {
@@ -328,30 +354,54 @@ test("reauth freshness：敏感操作要 owner＋新鮮 reauth，缺一不可", 
   });
 });
 
-test("audit allowlist：只收固定欄位，email／token 樣式／超長／未知鍵全拒", () => {
+test("audit allowlist：target_ref 只收 <kind>:sha256:<hex64>、reason 只收 reason code", () => {
   const actor = "11111111-2222-3333-4444-555555555555";
+  const hex64 = "0123456789abcdef".repeat(4);
   const ok = buildAuditEvent({
     actorUserId: actor,
     action: "admin.session.revoke",
     result: "success",
-    targetRef: "admin_accounts_v2:redacted",
-    reason: "operator disabled account",
+    targetRef: `admin_account:sha256:${hex64}`,
+    reason: "incident_response",
     requestId: "req-123",
   });
   assert.equal(ok.ok, true);
   assert.equal(ok.event.approverUserId, null);
+  // 每個 reason code 都要真的過得了驗證（enum 與驗證邏輯同源）。
+  for (const code of AUDIT_REASON_CODES) {
+    assert.equal(
+      buildAuditEvent({ actorUserId: actor, action: "a.b", result: "success", reason: code }).ok,
+      true,
+      code,
+    );
+  }
 
   const rejected = [
     // 未知鍵（原文／payload 想混進來的路徑）。
     { actorUserId: actor, action: "a.b", result: "success", payload: "{}" },
-    // email。
+    // reason 是 prose／含空白（舊版收得進來，現在必拒）。
+    { actorUserId: actor, action: "a.b", result: "success", reason: "operator disabled account" },
+    // reason 帶 email。
     { actorUserId: actor, action: "a.b", result: "success", reason: "user alice@example.com" },
-    // JWT/secret 樣式。
+    // reason 塞聊天原文／prompt。
+    { actorUserId: actor, action: "a.b", result: "success", reason: "她說：今晚有空嗎？回覆建議如下" },
+    // reason 不在 enum（單字也不行）。
+    { actorUserId: actor, action: "a.b", result: "success", reason: "misc" },
+    // target_ref 是舊式自由標籤（沒有 sha256）。
+    { actorUserId: actor, action: "a.b", result: "success", targetRef: "admin_accounts_v2:redacted" },
+    // target_ref 是電話樣式。
+    { actorUserId: actor, action: "a.b", result: "success", targetRef: "0912345678" },
+    { actorUserId: actor, action: "a.b", result: "success", targetRef: "+886-912-345-678" },
+    // target_ref 是 API key／非 JWT secret 樣式。
+    { actorUserId: actor, action: "a.b", result: "success", targetRef: "sk-ant-api03-AAAAAAAA" },
+    // target_ref 是 JWT 樣式。
     { actorUserId: actor, action: "a.b", result: "success", targetRef: "eyJhbGciOiJIUzI1NiJ9" },
-    // 換行（塞原文用）。
-    { actorUserId: actor, action: "a.b", result: "success", reason: "line1\nline2" },
-    // 超長。
-    { actorUserId: actor, action: "a.b", result: "success", reason: "x".repeat(501) },
+    // target_ref 含空白／prose。
+    { actorUserId: actor, action: "a.b", result: "success", targetRef: `user record ${hex64}` },
+    // hex 不足 64、大寫 hex、kind 大寫都不行。
+    { actorUserId: actor, action: "a.b", result: "success", targetRef: `user:sha256:${hex64.slice(1)}` },
+    { actorUserId: actor, action: "a.b", result: "success", targetRef: `user:sha256:${hex64.toUpperCase()}` },
+    { actorUserId: actor, action: "a.b", result: "success", targetRef: `User:sha256:${hex64}` },
     // action 不符格式（大寫、空白、prose）。
     { actorUserId: actor, action: "Delete All Users", result: "success" },
     // result 不在 enum。
@@ -395,7 +445,51 @@ test("generic error：deny 結果與公開錯誤字串不含 email、token、rea
   }
 });
 
-test("auth route 原始碼守門：不再把 email 或底層錯誤訊息塞進 response", () => {
+test("旗標關閉可見行為：一比一重現 pre-B1 錯誤輸出；開啟才 generic", () => {
+  // login route 401：pre-B1 是 `error?.message || "Login failed"`。
+  assert.equal(loginFailedMessage(false, "Invalid login credentials"), "Invalid login credentials");
+  assert.equal(loginFailedMessage(false, undefined), "Login failed");
+  assert.equal(loginFailedMessage(false, ""), "Login failed");
+  assert.equal(loginFailedMessage(true, "Invalid login credentials"), "Login failed");
+
+  // session route 403 body：pre-B1 是 { error, email, detail }。
+  const legacyDeny = {
+    allowed: false,
+    mode: "legacy",
+    status: 403,
+    publicError: "Forbidden",
+    legacyError: "row lookup failed",
+  };
+  assert.deepEqual(sessionDenyResponse(legacyDeny, "eric@example.com"), {
+    status: 403,
+    body: { error: "Forbidden", email: "eric@example.com", detail: "row lookup failed" },
+  });
+  // v2 deny：只有 generic error，永不帶 email／detail 鍵。
+  const v2Deny = sessionDenyResponse(
+    { allowed: false, mode: "v2", status: 403, publicError: "Forbidden" },
+    "eric@example.com",
+  );
+  assert.deepEqual(v2Deny, { status: 403, body: { error: "Forbidden" } });
+  assert.ok(!("email" in v2Deny.body) && !("detail" in v2Deny.body));
+  const v2Unauthorized = sessionDenyResponse(
+    { allowed: false, mode: "v2", status: 401, publicError: "Unauthorized" },
+    "eric@example.com",
+  );
+  assert.deepEqual(v2Unauthorized, { status: 401, body: { error: "Unauthorized" } });
+
+  // login page OAuth 失敗：pre-B1 直接顯示 oauthError.message。
+  assert.equal(oauthStartErrorMessage(false, "popup blocked"), "popup blocked");
+  assert.equal(oauthStartErrorMessage(true, "popup blocked"), "無法前往 Google 登入，請稍後再試。");
+
+  // callback：pre-B1 直接回顯 URL error／exchangeError.message（含 fallback 字串）。
+  assert.equal(callbackUrlErrorMessage(false, "access_denied detail"), "access_denied detail");
+  assert.equal(callbackUrlErrorMessage(true, "access_denied detail"), "Google 登入失敗，請回登入頁重試。");
+  assert.equal(callbackExchangeErrorMessage(false, "invalid code"), "invalid code");
+  assert.equal(callbackExchangeErrorMessage(false, undefined), "Unable to complete Google login");
+  assert.equal(callbackExchangeErrorMessage(true, "invalid code"), "無法完成 Google 登入，請重試。");
+});
+
+test("auth route 原始碼守門：raw 錯誤與 deny body 只能經 legacy-visible 旗標分流", () => {
   const sessionRoute = readFileSync(
     new URL("../../../app/api/auth/session/route.ts", import.meta.url),
     "utf8",
@@ -404,10 +498,40 @@ test("auth route 原始碼守門：不再把 email 或底層錯誤訊息塞進 r
     new URL("../../../app/api/auth/login/route.ts", import.meta.url),
     "utf8",
   );
-  assert.ok(!sessionRoute.includes("email: user"), "session route 不得回傳 email");
-  assert.ok(!sessionRoute.includes("detail:"), "session route 不得回傳 RPC 錯誤細節");
-  assert.ok(!loginRoute.includes("error?.message"), "login route 不得轉發 Supabase 錯誤");
-  assert.ok(!loginRoute.includes("error.message"), "login route 不得轉發 Supabase 錯誤");
+  // session route 的 deny body 只能由 sessionDenyResponse 產生（v2 才保證 generic）。
+  assert.ok(sessionRoute.includes("sessionDenyResponse(adminAccess, user.email)"));
+  assert.ok(!sessionRoute.includes("email: user"), "deny body 組裝不得散落在 route");
+  assert.ok(!sessionRoute.includes("detail:"), "deny body 組裝不得散落在 route");
+  // login route 的 Supabase 錯誤只能作為 loginFailedMessage 的參數出現一次。
+  assert.match(loginRoute, /loginFailedMessage\(isAdminV2Enabled\(\), error\?\.message\)/u);
+  assert.equal((loginRoute.match(/error\??\.message/gu) ?? []).length, 1);
+});
+
+test("client 頁面旗標：server page 於 request 時下發決策，client 不讀私有 env", () => {
+  const pages = ["../../../app/login/page.tsx", "../../../app/auth/callback/page.tsx"].map(
+    (p) => readFileSync(new URL(p, import.meta.url), "utf8"),
+  );
+  for (const src of pages) {
+    assert.ok(!src.includes('"use client"'), "旗標決策頁必須是 server component");
+    assert.ok(src.includes("isAdminV2Enabled()"), "旗標決策必須在 server 端做");
+    assert.ok(src.includes('dynamic = "force-dynamic"'), "旗標必須是 request 時的 runtime 決策");
+  }
+  const loginClient = readFileSync(
+    new URL("../../../app/login/login-client.tsx", import.meta.url),
+    "utf8",
+  );
+  const callbackClient = readFileSync(
+    new URL("../../../app/auth/callback/callback-client.tsx", import.meta.url),
+    "utf8",
+  );
+  for (const src of [loginClient, callbackClient]) {
+    assert.ok(src.includes('"use client"'));
+    assert.ok(!src.includes("ADMIN_V2"), "client 不得直接讀私有旗標 env");
+    assert.ok(!src.includes("process.env"), "client 不得讀任何 env");
+  }
+  assert.ok(loginClient.includes("oauthStartErrorMessage(adminV2"));
+  assert.ok(callbackClient.includes("callbackUrlErrorMessage(adminV2"));
+  assert.ok(callbackClient.includes("callbackExchangeErrorMessage(adminV2"));
 });
 
 test("B1 migration 靜態守則：additive、deny-by-default、definer 固定 search_path", () => {
@@ -491,4 +615,82 @@ test("B1 migration 靜態守則：additive、deny-by-default、definer 固定 se
   // audit 欄位即 allowlist：不得有 jsonb/自由 payload 欄位。
   const auditBlock = raw.slice(raw.indexOf("admin_audit_events_v2 ("), raw.indexOf("admin_audit_events_v2_actor"));
   assert.ok(!/jsonb/iu.test(auditBlock), "audit 表不得有自由 payload 欄位");
+});
+
+test("B1 migration 靜態守則：audit RPC 是 trusted server-only 寫入口", () => {
+  const sql = readFileSync(
+    new URL(
+      "../../../../supabase/migrations/20260831150000_admin_identity_v2_baseline.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  // authenticated／anon 不得執行 append_audit；只開給 service_role，且 grant 在 revoke 之後。
+  assert.ok(
+    !/GRANT[^;]*admin_v2_append_audit[^;]*TO[^;]*\b(authenticated|anon|PUBLIC)\b/iu.test(sql),
+    "append_audit 不得開給 authenticated/anon/PUBLIC",
+  );
+  const appendRevokeAt = sql.search(/REVOKE ALL ON FUNCTION public\.admin_v2_append_audit\(/u);
+  const appendGrantAt = sql.search(
+    /GRANT EXECUTE ON FUNCTION public\.admin_v2_append_audit\([^)]*\) TO service_role;/u,
+  );
+  assert.ok(appendRevokeAt >= 0, "append_audit 要先 revoke all");
+  assert.ok(appendGrantAt > appendRevokeAt, "append_audit 只在 revoke 後開給 service_role");
+  // audit 表對 service_role 只有 SELECT：唯一寫入路徑是 definer 函式。
+  const auditGrant = sql.match(/GRANT ([^;]*) ON TABLE public\.admin_audit_events_v2\s+TO service_role;/u);
+  assert.equal(auditGrant?.[1].trim(), "SELECT", "audit 表只留最小 SELECT，不得直接 INSERT");
+  // 出處驗證：actor 用參數（非 auth.uid）、須存在；approver 須是另一位啟用中的管理員。
+  const fnBody = sql.slice(
+    sql.indexOf("CREATE FUNCTION public.admin_v2_append_audit"),
+    sql.indexOf("-- 不擴大存取權限"),
+  );
+  assert.ok(fnBody.includes("p_actor"), "actor 由受信呼叫端明確傳入");
+  assert.ok(!fnBody.includes("auth.uid()"), "append_audit 不得依賴呼叫者 JWT 身分");
+  assert.ok(fnBody.includes("a.user_id = p_actor"), "actor 必須驗證為真實管理員帳號");
+  assert.ok(fnBody.includes("p_approver = p_actor"), "approver 不得等於 actor");
+  assert.ok(/p_approver AND a\.is_active/u.test(fnBody), "approver 必須是啟用中的管理員");
+});
+
+test("B1 migration 靜態守則：audit 隱私規則與 TS 逐字同源", () => {
+  const sql = readFileSync(
+    new URL(
+      "../../../../supabase/migrations/20260831150000_admin_identity_v2_baseline.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  // target_ref CHECK 與 AUDIT_TARGET_REF_PATTERN 逐字相同。
+  assert.ok(
+    sql.includes(`target_ref ~ '${AUDIT_TARGET_REF_PATTERN}'`),
+    "SQL target_ref CHECK 必須與 TS pattern 同一份字串",
+  );
+  // reason CHECK 的 enum 與 AUDIT_REASON_CODES 完全一致（含順序）。
+  const reasonIn = sql.match(/reason IN \(([^)]*)\)/u);
+  assert.ok(reasonIn, "reason 必須是固定 IN enum CHECK");
+  const sqlCodes = reasonIn[1].split(",").map((s) => s.trim().replace(/^'|'$/gu, ""));
+  assert.deepEqual(sqlCodes, [...AUDIT_REASON_CODES], "SQL reason enum 必須與 TS 同源");
+});
+
+test("B1 migration 靜態守則：首次 session 無競態且他人佔用 fail closed", () => {
+  const sql = readFileSync(
+    new URL(
+      "../../../../supabase/migrations/20260831150000_admin_identity_v2_baseline.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const touchBody = sql.slice(
+    sql.indexOf("CREATE FUNCTION public.admin_v2_touch_session"),
+    sql.indexOf("CREATE FUNCTION public.admin_v2_revoke_my_session"),
+  );
+  // 建列不用 SELECT-then-INSERT：ON CONFLICT DO NOTHING 讓併發輸家安靜落地。
+  assert.ok(touchBody.includes("ON CONFLICT (session_id) DO NOTHING"));
+  assert.ok(!/INSERT INTO[^;]*RETURNING/u.test(touchBody), "不得沿用 INSERT ... RETURNING 競態寫法");
+  // 重查與所有讀寫都必須同時綁 session_id＋user_id：他人佔用的 session_id 查不到 → 0 列 deny。
+  const dualKeyReads = touchBody.match(/s\.session_id = v_sid AND s\.user_id = v_uid/gu) ?? [];
+  assert.ok(dualKeyReads.length >= 2, "首查與 INSERT 後重查都要 session_id＋user_id 雙鍵");
+  assert.ok(
+    /last_seen_at = now\(\)\s+WHERE s\.session_id = v_sid AND s\.user_id = v_uid/u.test(touchBody),
+    "touch 更新也只能碰自己的列",
+  );
 });

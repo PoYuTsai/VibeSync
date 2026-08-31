@@ -8,6 +8,7 @@ import {
 import { checkAdminAccess } from "@/lib/admin-check";
 import { isAdminV2Enabled } from "@/lib/operations/admin-v2";
 import { resolveAdminAccess } from "@/lib/operations/admin-gate";
+import { sessionDenyResponse } from "@/lib/operations/admin-legacy-visible";
 
 interface SessionBody {
   accessToken?: string;
@@ -61,8 +62,10 @@ export async function POST(request: Request) {
   });
 
   if (!adminAccess.allowed) {
-    // 只回 generic 錯誤：不得帶 email、reason 細節或底層 RPC 錯誤。
-    return jsonError(adminAccess.publicError, adminAccess.status);
+    // 旗標關閉一比一重現 pre-B1 deny body（error/email/detail）；
+    // 開啟只回 generic，不帶 email、reason 細節或底層 RPC 錯誤。
+    const deny = sessionDenyResponse(adminAccess, user.email);
+    return NextResponse.json(deny.body, { status: deny.status });
   }
 
   const response = NextResponse.json({ success: true });

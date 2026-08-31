@@ -8,6 +8,7 @@ import {
 import { checkAdminAccess } from "@/lib/admin-check";
 import { isAdminV2Enabled } from "@/lib/operations/admin-v2";
 import { resolveAdminAccess } from "@/lib/operations/admin-gate";
+import { loginFailedMessage } from "@/lib/operations/admin-legacy-visible";
 
 interface LoginBody {
   email?: string;
@@ -47,8 +48,8 @@ export async function POST(request: Request) {
   });
 
   if (error || !data.session || !data.user) {
-    // generic：不轉發 Supabase 錯誤細節給瀏覽器。
-    return jsonError("Login failed", 401);
+    // 旗標關閉一比一重現 pre-B1（轉發 Supabase 錯誤訊息）；開啟一律 generic。
+    return jsonError(loginFailedMessage(isAdminV2Enabled(), error?.message), 401);
   }
 
   const adminCheckClient = createClient(supabaseUrl, supabaseKey, {

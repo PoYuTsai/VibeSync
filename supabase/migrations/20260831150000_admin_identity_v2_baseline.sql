@@ -35,14 +35,16 @@ CREATE TABLE public.admin_sessions_v2 (
 CREATE INDEX admin_sessions_v2_user_id_idx ON public.admin_sessions_v2 (user_id);
 
 -- Append-only audit 基線：欄位即 allowlist，只有 actor/action/target_ref/reason/
--- result/approver/request/time。CHECK 直接拒絕 email（@）、JWT 樣式（eyJ）與超長字串，
--- 原文、PII、secret、完整 payload 在 schema 層就進不來。
+-- result/approver/request/time。target_ref 只收「不透明結構化參照」
+-- <kind>:sha256:<64 位小寫 hex>；reason 只收固定 reason code enum，不收任何自由文字。
+-- 這兩條規則與 admin-gate.ts 的 AUDIT_TARGET_REF_PATTERN／AUDIT_REASON_CODES 逐字同源，
+-- 原文、PII、電話、prompt、secret 在 schema 層就進不來。
 CREATE TABLE public.admin_audit_events_v2 (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   actor_user_id    UUID NOT NULL,
   action           TEXT NOT NULL CHECK (action ~ '^[a-z0-9][a-z0-9_.:-]{0,99}$'),
-  target_ref       TEXT CHECK (char_length(target_ref) <= 200 AND target_ref !~ '[@\n]' AND position('eyJ' in target_ref) = 0),
-  reason           TEXT CHECK (char_length(reason) <= 500 AND reason !~ '[@\n]' AND position('eyJ' in reason) = 0),
+  target_ref       TEXT CHECK (target_ref ~ '^[a-z][a-z0-9_]{0,31}:sha256:[0-9a-f]{64}$'),
+  reason           TEXT CHECK (reason IN ('incident_response', 'support_request', 'billing_review', 'security_review', 'scheduled_maintenance', 'data_correction', 'legal_request', 'dual_control_approval')),
   result           TEXT NOT NULL CHECK (result IN ('success', 'denied', 'failure')),
   approver_user_id UUID,
   request_id       TEXT CHECK (request_id ~ '^[A-Za-z0-9._:-]{1,100}$'),
@@ -116,14 +118,24 @@ BEGIN
         NULL::timestamptz, NULL::timestamptz, NULL::timestamptz, NULL::integer, NULL::timestamptz;
       RETURN;
     END IF;
+    -- 首次 session 建列不做 SELECT-then-INSERT：併發首次請求用 ON CONFLICT DO NOTHING
+    -- 讓輸家安靜落地，再以 session_id＋user_id 雙鍵重查。若 session_id 已被
+    -- 「其他 user」佔用，重查必為空 → 回 0 列 fail closed，絕不改寫或沿用他人的列。
     INSERT INTO public.admin_sessions_v2 (session_id, user_id, session_version)
       VALUES (v_sid, v_uid, v_account.session_version)
-      RETURNING * INTO v_session;
+      ON CONFLICT (session_id) DO NOTHING;
+    SELECT * INTO v_session
+      FROM public.admin_sessions_v2 s
+      WHERE s.session_id = v_sid AND s.user_id = v_uid;
+    IF NOT FOUND THEN
+      RETURN;
+    END IF;
   END IF;
   RETURN QUERY SELECT v_account.role, v_account.is_active, v_account.session_version,
     v_session.created_at, v_session.last_seen_at, v_session.last_reauth_at,
     v_session.session_version, v_session.revoked_at;
-  UPDATE public.admin_sessions_v2 s SET last_seen_at = now() WHERE s.session_id = v_sid;
+  UPDATE public.admin_sessions_v2 s SET last_seen_at = now()
+    WHERE s.session_id = v_sid AND s.user_id = v_uid;
 END;
 $$;
 
@@ -140,8 +152,14 @@ AS $$
       AND s.session_id = NULLIF(auth.jwt() ->> 'session_id', '')::uuid;
 $$;
 
--- Audit 寫入口：只有啟用中的管理員能寫，欄位固定、CHECK 把關內容；不可更新、不可刪除。
+-- Audit 寫入口：trusted server-only。authenticated／anon 不可直接執行——
+-- AAL1、逾時、撤銷的瀏覽器 session 因此完全寫不進 audit；只有 trusted backend
+-- （service_role，B2–B8 路由先過 AAL2/session/capability 閘門後才呼叫）能 EXECUTE。
+-- 受信路徑上驗證出處：actor 必須是真實管理員帳號；approver 必須是「另一位」
+-- 啟用中的管理員（不得自我核可），呼叫端無法偽造 approval/result 出處。
+-- INSERT 由 definer（表擁有者）執行，service_role 對 audit 表本身沒有 INSERT 權。
 CREATE FUNCTION public.admin_v2_append_audit(
+  p_actor      UUID,
   p_action     TEXT,
   p_result     TEXT,
   p_target_ref TEXT DEFAULT NULL,
@@ -155,20 +173,23 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
-  v_uid UUID := auth.uid();
-  v_id  UUID;
+  v_id UUID;
 BEGIN
-  IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'not authorized';
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM public.admin_accounts_v2 a WHERE a.user_id = v_uid AND a.is_active
+  IF p_actor IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.admin_accounts_v2 a WHERE a.user_id = p_actor
   ) THEN
-    RAISE EXCEPTION 'not authorized';
+    RAISE EXCEPTION 'invalid audit actor';
+  END IF;
+  IF p_approver IS NOT NULL AND (
+    p_approver = p_actor OR NOT EXISTS (
+      SELECT 1 FROM public.admin_accounts_v2 a WHERE a.user_id = p_approver AND a.is_active
+    )
+  ) THEN
+    RAISE EXCEPTION 'invalid audit approver';
   END IF;
   INSERT INTO public.admin_audit_events_v2
       (actor_user_id, action, target_ref, reason, result, approver_user_id, request_id)
-    VALUES (v_uid, p_action, p_target_ref, p_reason, p_result, p_approver, p_request_id)
+    VALUES (p_actor, p_action, p_target_ref, p_reason, p_result, p_approver, p_request_id)
     RETURNING id INTO v_id;
   RETURN v_id;
 END;
@@ -185,18 +206,21 @@ REVOKE ALL PRIVILEGES ON TABLE public.admin_sessions_v2     FROM PUBLIC, anon, a
 REVOKE ALL PRIVILEGES ON TABLE public.admin_audit_events_v2 FROM PUBLIC, anon, authenticated, service_role;
 
 -- 再補最小權限：帳號管理與 session 撤銷之後由受控營運流程走 service_role；
--- audit 即使是 service_role 也只有 SELECT, INSERT（append-only）。任何 GRANT 不得含 DELETE/TRUNCATE。
+-- audit 表對 service_role 只開 SELECT（最小讀取）——寫入唯一路徑是
+-- admin_v2_append_audit（definer INSERT），沒有任何角色能直接 INSERT。
+-- 任何 GRANT 不得含 DELETE/TRUNCATE。
 GRANT SELECT, INSERT, UPDATE ON TABLE public.admin_accounts_v2 TO service_role;
 GRANT SELECT, UPDATE ON TABLE public.admin_sessions_v2 TO service_role;
-GRANT SELECT, INSERT ON TABLE public.admin_audit_events_v2 TO service_role;
+GRANT SELECT ON TABLE public.admin_audit_events_v2 TO service_role;
 
--- 函式權限：先收光（CREATE FUNCTION 預設 grant EXECUTE 給 PUBLIC），再只開給 authenticated。
--- trigger 函式不開給任何角色（由表的 trigger 以擁有者身分執行）。
+-- 函式權限：先收光（CREATE FUNCTION 預設 grant EXECUTE 給 PUBLIC），再補最小執行權。
+-- self-scoped 的 touch/revoke 開給 authenticated；append_audit 只開給 service_role
+-- （trusted backend），authenticated 不得直接執行。trigger 函式不開給任何角色。
 REVOKE ALL ON FUNCTION public.admin_audit_events_v2_block_mutation() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.admin_v2_touch_session()     FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.admin_v2_revoke_my_session() FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.admin_v2_append_audit(TEXT, TEXT, TEXT, TEXT, UUID, TEXT) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.admin_v2_append_audit(UUID, TEXT, TEXT, TEXT, TEXT, UUID, TEXT) FROM PUBLIC, anon, authenticated, service_role;
 
 GRANT EXECUTE ON FUNCTION public.admin_v2_touch_session()     TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_v2_revoke_my_session() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_v2_append_audit(TEXT, TEXT, TEXT, TEXT, UUID, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_v2_append_audit(UUID, TEXT, TEXT, TEXT, TEXT, UUID, TEXT) TO service_role;

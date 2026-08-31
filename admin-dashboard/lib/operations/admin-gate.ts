@@ -167,20 +167,40 @@ export function canPerformSensitiveOp(
 }
 
 // --- Audit allowlist 契約 ---
-// 欄位固定，值先在這裡驗過才進 RPC；schema CHECK 是第二道防線。
-// 永不接受原文、email（@）、JWT/secret 樣式（eyJ）、換行或超長字串。
+// 欄位固定，值先在這裡驗過才進 RPC；schema CHECK 是第二道防線（規則逐字同源）。
+// target_ref 只收不透明結構化參照 <kind>:sha256:<64 位小寫 hex>；
+// reason 只收固定 reason code enum。自由文字、空白、電話、prompt 原文、
+// email、API key／JWT 之類的 secret 在結構上就進不來。
 
 const AUDIT_RESULTS = ["success", "denied", "failure"] as const;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const ACTION_RE = /^[a-z0-9][a-z0-9_.:-]{0,99}$/u;
 const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,100}$/u;
 
+/** 與 migration 的 target_ref CHECK 共用同一份 pattern 字串（測試逐字比對）。 */
+export const AUDIT_TARGET_REF_PATTERN = "^[a-z][a-z0-9_]{0,31}:sha256:[0-9a-f]{64}$";
+const AUDIT_TARGET_REF_RE = new RegExp(AUDIT_TARGET_REF_PATTERN, "u");
+
+/** 與 migration 的 reason CHECK 共用同一份 enum（測試逐字比對）。 */
+export const AUDIT_REASON_CODES = [
+  "incident_response",
+  "support_request",
+  "billing_review",
+  "security_review",
+  "scheduled_maintenance",
+  "data_correction",
+  "legal_request",
+  "dual_control_approval",
+] as const;
+
+export type AuditReasonCode = (typeof AUDIT_REASON_CODES)[number];
+
 export interface AuditEventV2 {
   actorUserId: string;
   action: string;
   result: (typeof AUDIT_RESULTS)[number];
   targetRef: string | null;
-  reason: string | null;
+  reason: AuditReasonCode | null;
   approverUserId: string | null;
   requestId: string | null;
 }
@@ -194,16 +214,6 @@ const AUDIT_ALLOWED_KEYS = new Set([
   "approverUserId",
   "requestId",
 ]);
-
-function isCleanText(value: string, maxLength: number): boolean {
-  return (
-    value.length > 0 &&
-    value.length <= maxLength &&
-    !value.includes("@") &&
-    !value.includes("eyJ") &&
-    !/[\n\r]/u.test(value)
-  );
-}
 
 export function buildAuditEvent(
   input: Record<string, unknown>,
@@ -221,10 +231,13 @@ export function buildAuditEvent(
   if (typeof result !== "string" || !(AUDIT_RESULTS as readonly string[]).includes(result)) {
     return { ok: false, error: "audit-invalid-result" };
   }
-  if (targetRef != null && (typeof targetRef !== "string" || !isCleanText(targetRef, 200))) {
+  if (targetRef != null && (typeof targetRef !== "string" || !AUDIT_TARGET_REF_RE.test(targetRef))) {
     return { ok: false, error: "audit-invalid-target-ref" };
   }
-  if (reason != null && (typeof reason !== "string" || !isCleanText(reason, 500))) {
+  if (
+    reason != null &&
+    (typeof reason !== "string" || !(AUDIT_REASON_CODES as readonly string[]).includes(reason))
+  ) {
     return { ok: false, error: "audit-invalid-reason" };
   }
   if (approverUserId != null && (typeof approverUserId !== "string" || !UUID_RE.test(approverUserId))) {
@@ -240,7 +253,7 @@ export function buildAuditEvent(
       action,
       result: result as AuditEventV2["result"],
       targetRef: (targetRef as string | undefined) ?? null,
-      reason: (reason as string | undefined) ?? null,
+      reason: (reason as AuditReasonCode | undefined) ?? null,
       approverUserId: (approverUserId as string | undefined) ?? null,
       requestId: (requestId as string | undefined) ?? null,
     },
@@ -264,7 +277,7 @@ interface TouchSessionRow {
 export interface ResolveAdminAccessInput {
   accessToken: string | null | undefined;
   /** 旗標關閉時的 legacy 檢查；旗標開啟時永遠不會被呼叫（禁止 email fallback）。 */
-  legacyCheck: () => PromiseLike<{ allowed: boolean }>;
+  legacyCheck: () => PromiseLike<{ allowed: boolean; error?: string }>;
   /** supabase.rpc("admin_v2_touch_session") 的包裝（PostgREST builder 是 thenable）。 */
   touchSession: () => PromiseLike<{ data: unknown; error: unknown }>;
   /** best-effort：逾時／版本失效時把 session 標記撤銷，避免觸碰復活。 */
@@ -282,7 +295,10 @@ export type ResolveAdminAccessResult =
       capabilities: readonly AdminCapability[];
       lastReauthAt: string | null;
     }
-  | { allowed: false; status: 401 | 403; publicError: string };
+  // legacy deny 帶回 legacyError：旗標關閉的消費端要它一比一重現 pre-B1 可見輸出
+  // （session route 的 detail 欄位）。v2 deny 永遠只有 generic publicError。
+  | { allowed: false; mode: "legacy"; status: 403; publicError: string; legacyError?: string }
+  | { allowed: false; mode: "v2"; status: 401 | 403; publicError: string };
 
 const REVOKE_ON_DENY: ReadonlySet<AdminDenyReason> = new Set([
   "absolute-timeout",
@@ -297,7 +313,13 @@ export async function resolveAdminAccess(
   if (!isAdminV2Enabled(env)) {
     const legacy = await input.legacyCheck();
     if (!legacy.allowed) {
-      return { allowed: false, status: 403, publicError: PUBLIC_AUTH_ERROR.forbidden };
+      return {
+        allowed: false,
+        mode: "legacy",
+        status: 403,
+        publicError: PUBLIC_AUTH_ERROR.forbidden,
+        legacyError: legacy.error,
+      };
     }
     return { allowed: true, mode: "legacy" };
   }
@@ -308,11 +330,11 @@ export async function resolveAdminAccess(
   try {
     const { data, error } = await input.touchSession();
     if (error != null || !Array.isArray(data)) {
-      return { allowed: false, status: 401, publicError: PUBLIC_AUTH_ERROR.unauthorized };
+      return { allowed: false, mode: "v2", status: 401, publicError: PUBLIC_AUTH_ERROR.unauthorized };
     }
     row = (data[0] as TouchSessionRow | undefined) ?? null;
   } catch {
-    return { allowed: false, status: 401, publicError: PUBLIC_AUTH_ERROR.unauthorized };
+    return { allowed: false, mode: "v2", status: 401, publicError: PUBLIC_AUTH_ERROR.unauthorized };
   }
 
   const evaluation = evaluateAdminSessionV2({
@@ -346,7 +368,7 @@ export async function resolveAdminAccess(
         // best-effort：撤銷失敗不改變本次 deny 結果。
       }
     }
-    return { allowed: false, status: 403, publicError: PUBLIC_AUTH_ERROR.forbidden };
+    return { allowed: false, mode: "v2", status: 403, publicError: PUBLIC_AUTH_ERROR.forbidden };
   }
 
   return {
