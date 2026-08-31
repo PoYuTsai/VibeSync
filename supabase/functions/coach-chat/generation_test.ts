@@ -2370,3 +2370,26 @@ Deno.test("Batch A R2修正: 英文 COOL/BOOK 的 OO 不是 placeholder", async 
   assertEquals(result.status, 200);
   assertEquals(harness.deductCalls, 1);
 });
+
+Deno.test("Batch A R2修正: fallback 草稿含多個問句也不得進複製卡", async () => {
+  const harness = deps({ callClaude: () => Promise.resolve(malformedClaudeCard()) });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        forceAnswer: true,
+        rawReplyDraft: "週六有空嗎？還是週日？",
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.suggestedLine, null);
+  assertEquals(card.rewriteDecision, "do_not_send");
+  assertEquals(card.costDeducted, 0);
+});
