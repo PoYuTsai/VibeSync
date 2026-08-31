@@ -518,9 +518,9 @@ function assertSuggestedLineGrounded(
 
 // 語言守門（2026-08-31）：可見欄位裡的英文詞必須有「使用者親手寫的來源」
 // 或在小白名單，否則 language_drift → 扣費前重試。來源刻意不含教練舊輸出、
-// 跨天摘要、分析快照與風格設定——教練自己漏出的英文不能替下一次背書，
-// 風格設定裡也有殘存英文標籤。使用者明確要英文時建議句放行，解釋欄位
-// 仍守繁中（可引用建議句裡的英文詞）。
+// 跨天摘要、分析快照、風格設定與對象特質標籤（traits 來自 AI 分析快照）——
+// AI 自己產出的英文不能替下一次背書。使用者明確要英文時只放行建議句，
+// 解釋欄位仍守繁中（R1 審查 P1-3：建議句不得替解釋欄位背書）。
 function assertVisibleTextLanguage(
   card: CoachChatResponseCard,
   request: CoachChatRequest,
@@ -534,19 +534,15 @@ function assertVisibleTextLanguage(
       .map((turn) => turn.content),
     request.partnerHint?.name,
     request.partnerHint?.note,
-    ...(request.partnerHint?.traits ?? []),
   ].filter((value): value is string => typeof value === "string").join("\n");
 
   const englishRequested = isExplicitEnglishRequest(request.userQuestion);
-  const explanationSource = englishRequested
-    ? `${source}\n${card.suggestedLine ?? ""}`
-    : source;
 
   for (const field of VISIBLE_FIELDS) {
     const value = card[field];
     if (typeof value !== "string") continue;
     if (englishRequested && field === "suggestedLine") continue;
-    if (findUnsupportedLatinTokens(value, explanationSource).length > 0) {
+    if (findUnsupportedLatinTokens(value, source).length > 0) {
       throw new Error("language_drift");
     }
   }

@@ -44,15 +44,23 @@ const IGNORED_SEGMENT_PATTERN =
 const LATIN_TOKEN_PATTERN = /[A-Za-z]+(?:['’][A-Za-z]+)*/g;
 
 // 使用者明確要英文時，建議句放行（教練解釋欄位仍守繁中）。
-const EXPLICIT_ENGLISH_REQUEST_PATTERN = /用英文|英文回|英文訊息|英文寫|english/i;
+// 否定句（「不要用英文回」「不是要你用英文寫」）不算要求——否則一句普通
+// 否定就整段解除守門（R1 審查 P1-4）。
+const EXPLICIT_ENGLISH_REQUEST_PATTERN =
+  /用英[文語]|英文回|英文訊息|英文寫|全英文|in english/i;
+const NEGATED_ENGLISH_REQUEST_PATTERN =
+  /(?:不要|不用|不必|不想|不是|別|沒有)[^，。！？]{0,4}(?:用英[文語]|英文回|英文訊息|英文寫)/;
 
 export function isExplicitEnglishRequest(userQuestion: string): boolean {
-  return EXPLICIT_ENGLISH_REQUEST_PATTERN.test(userQuestion);
+  return EXPLICIT_ENGLISH_REQUEST_PATTERN.test(userQuestion) &&
+    !NEGATED_ENGLISH_REQUEST_PATTERN.test(userQuestion);
 }
 
 /**
  * 回傳 text 裡「沒有來源支持、也不在白名單」的英文詞（去重、保留原大小寫）。
  * source 只能餵使用者親手寫的文字；空陣列＝全部合法。
+ * 來源比對用整詞集合，不用子字串——來源寫 busywork 不能替 busy 背書
+ * （R1 審查 P2-6）。
  * 單一字母 token（A咖、B型、P.S.）放行——中文語境常見且無混語觀感。
  */
 export function findUnsupportedLatinTokens(
@@ -60,7 +68,11 @@ export function findUnsupportedLatinTokens(
   sourceText: string,
 ): string[] {
   const cleaned = text.replace(IGNORED_SEGMENT_PATTERN, " ");
-  const sourceLower = sourceText.toLowerCase();
+  const sourceTokens = new Set(
+    [...sourceText.matchAll(LATIN_TOKEN_PATTERN)].map((m) =>
+      m[0].toLowerCase()
+    ),
+  );
   const seen = new Set<string>();
   const offenders: string[] = [];
   for (const match of cleaned.matchAll(LATIN_TOKEN_PATTERN)) {
@@ -70,7 +82,7 @@ export function findUnsupportedLatinTokens(
     if (seen.has(lower)) continue;
     seen.add(lower);
     if (ALLOWED_LATIN_TOKENS.has(lower)) continue;
-    if (sourceLower.includes(lower)) continue;
+    if (sourceTokens.has(lower)) continue;
     offenders.push(token);
   }
   return offenders;

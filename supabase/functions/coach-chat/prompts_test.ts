@@ -507,3 +507,19 @@ Deno.test("buildCoachChatPrompt injects the first-round clarify directive only w
   const forced = buildCoachChatPrompt({ ...gatedBase, forceAnswer: true });
   assertEquals(forced.includes("本回合是全域首輪"), false);
 });
+
+Deno.test("buildCoachChatPrompt forced global framing drops the clarify-first clause", () => {
+  // R1 審查 P1-1：forceAnswer 時全域段不得殘留任何「先釐清」指引。
+  const forced = buildCoachChatPrompt({
+    conversationId: "global:me",
+    userQuestion: "不知道怎麼開啟話題，給我一點方向？",
+    activeSessionTurns: [],
+    forceAnswer: true,
+    recentMessages: [],
+    dataQualityFlagged: false,
+    scope: { type: "global" as const },
+  });
+  assertStringIncludes(forced, "使用者已選擇直接看正式建議：直接給可執行的建議");
+  assertEquals(forced.includes("先用一個免費釐清問清處境"), false);
+  assertEquals(forced.includes("本回合是全域首輪"), false);
+});

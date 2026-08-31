@@ -70,3 +70,32 @@ Deno.test("明確要英文的請求判定", () => {
   assertEquals(isExplicitEnglishRequest("這句英文訊息怎麼回比較好"), true);
   assertEquals(isExplicitEnglishRequest("她今天過得怎樣"), false);
 });
+
+// ── R1 審查修正的回歸鎖（2026-08-31 Codex 獨立審查）────────────────────
+
+Deno.test("否定句與引用不算明確要英文（P1-4）", () => {
+  assertEquals(isExplicitEnglishRequest("不要用英文回她"), false);
+  assertEquals(isExplicitEnglishRequest("這不是要你用英文寫"), false);
+  assertEquals(isExplicitEnglishRequest("別再用英文訊息了"), false);
+  assertEquals(isExplicitEnglishRequest("她問我英文好不好，要怎麼回？"), false);
+  assertEquals(isExplicitEnglishRequest("幫我用英語寫一句"), true);
+  assertEquals(isExplicitEnglishRequest("給我全英文版本"), true);
+});
+
+Deno.test("來源比對是整詞不是子字串（P2-6）", () => {
+  assertEquals(
+    findUnsupportedLatinTokens("她今天busy嗎", "最近都是 busywork"),
+    ["busy"],
+  );
+  assertEquals(
+    findUnsupportedLatinTokens("她今天busy嗎", "她說她很 busy"),
+    [],
+  );
+});
+
+Deno.test("守門涵蓋所有可見欄位（rewriteReason 注入也擋）", () => {
+  assertEquals(
+    findUnsupportedLatinTokens("保留你的 tone，只收穩語氣。", ""),
+    ["tone"],
+  );
+});

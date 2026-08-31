@@ -1523,7 +1523,7 @@ Deno.test("runCoachChat allows an English suggestedLine when user explicitly ask
       calls++;
       return Promise.resolve(validClaudeCard({
         suggestedLine: "Hey, how was your day? Anything fun?",
-        answer: "用 Hey 自然開場就好，不用急著寫長句，先讓她好接話。",
+        answer: "開場先輕鬆問候就好，不用急著寫長句，先讓她好接話。",
       }));
     },
   });
@@ -1757,4 +1757,71 @@ Deno.test("runCoachChat falls back to a free situation question when gate reject
     card.reflectionQuestion,
     "這是全新對象、聊到一半斷掉想重新接上，還是正在聊但沒話題？",
   );
+});
+
+// ── R1 審查修正的回歸鎖（2026-08-31 Codex 獨立審查）────────────────────
+
+Deno.test("runCoachChat keeps explanation fields Chinese even in English mode", async () => {
+  // P1-3：英文建議句不得替解釋欄位背書——answer 整句英文必須重試。
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: "Hey, how was your day?",
+        answer: calls === 1
+          ? "Just say hey, how was your day, and keep it light."
+          : "開場先輕鬆問候就好，不用急著寫長句。",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        userQuestion: "幫我用英文回她，輕鬆一點",
+        forceAnswer: true,
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("runCoachChat does not treat AI-derived partner traits as English source", async () => {
+  // traits 來自 AI 分析快照，不是使用者親手寫的——不得背書。
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(validClaudeCard({
+        suggestedLine: calls === 1 ? "妳這麼 chill，週末要不要出來？" : "妳這麼隨性，週末要不要出來？",
+      }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        forceAnswer: true,
+        partnerHint: { name: "小美", traits: ["chill", "愛旅行"] },
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(calls, 2);
+  assertEquals(harness.deductCalls, 1);
 });
