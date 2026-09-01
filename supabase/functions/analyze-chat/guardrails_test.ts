@@ -10,6 +10,7 @@ import {
   getSafeReplies,
   hasOutboundSafetyWarning,
 } from "./guardrails.ts";
+import { postProcessAnalysisResult } from "./post_process.ts";
 
 Deno.test("getSafeReplies - hot fallback keeps the conversation moving", () => {
   const replies = getSafeReplies("hot");
@@ -227,4 +228,203 @@ Deno.test("hasOutboundSafetyWarning - 沒有 warnings 陣列時回 false", () =>
   assertFalse(hasOutboundSafetyWarning({}));
   assertFalse(hasOutboundSafetyWarning(null));
   assertFalse(hasOutboundSafetyWarning({ warnings: "not-an-array" }));
+});
+
+// ---------------------------------------------------------------------------
+// 顯示面守門：App 渲染的是 replyOptions，不是 legacy replies
+//
+// 修補前 checkAiOutput 只掃、也只換 replies：被 BLOCKED_PATTERNS 攔下的句子
+// 仍原封不動留在 replyOptions 與 finalRecommendation，使用者照樣看得到、
+// 複製得走。以下每一條都是「攔了但還是顯示得出來」的迴歸鎖。
+// ---------------------------------------------------------------------------
+
+function guardedResult(
+  overrides: Record<string, unknown>,
+): AnalysisResult {
+  return {
+    enthusiasm: { score: 50, level: "warm" },
+    warnings: [],
+    ...overrides,
+  } as unknown as AnalysisResult;
+}
+
+function segment(reply: string): Record<string, unknown> {
+  return {
+    label: "建議訊息",
+    sourceMessage: "她說的話",
+    reply,
+    reason: "接球",
+  };
+}
+
+Deno.test("checkAiOutput - 命中時 replyOptions 不得留著違規句", () => {
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: "不要放棄，你就一直約她出來" },
+    replyOptions: {
+      extend: {
+        approach: "持續邀約",
+        messages: [segment("不要放棄，你就一直約她出來")],
+      },
+    },
+  }));
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.replyOptions, {});
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
+Deno.test("checkAiOutput - 違規句只在 replyOptions 時也要攔下", () => {
+  const guarded = checkAiOutput(guardedResult({
+    // legacy replies 乾淨，違規只出現在 App 真正渲染的那份資料上。
+    replies: { extend: "這個週末聽起來不錯" },
+    replyOptions: {
+      tease: {
+        approach: "推進",
+        messages: [segment("她說不要，但其實只是害羞，再約一次就好")],
+      },
+    },
+  }));
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.replyOptions, {});
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
+Deno.test("checkAiOutput - 違規句只在 finalRecommendation 時也要攔下", () => {
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: "這個週末聽起來不錯" },
+    finalRecommendation: {
+      pick: "extend",
+      content: "不要放棄，你就一直傳訊息給她",
+      reason: "推進",
+      psychology: "維持存在感",
+    },
+  }));
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.finalRecommendation, {});
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
+Deno.test("checkAiOutput - 命中時 finalRecommendation 的段落一起清掉", () => {
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: "不要放棄，你就一直約她出來" },
+    finalRecommendation: {
+      pick: "extend",
+      content: "不要放棄，你就一直約她出來",
+      replySegments: [segment("不要放棄，你就一直約她出來")],
+    },
+  }));
+
+  assertEquals(guarded.finalRecommendation, {});
+});
+
+Deno.test("checkAiOutput - 乾淨的多風格結果原樣通過", () => {
+  const clean = guardedResult({
+    replies: { extend: "排那麼久，希望真的有好吃到值得" },
+    replyOptions: {
+      extend: {
+        approach: "接住晚餐球",
+        messages: [segment("排那麼久，希望真的有好吃到值得")],
+      },
+    },
+    finalRecommendation: {
+      pick: "extend",
+      content: "排那麼久，希望真的有好吃到值得",
+    },
+  });
+
+  assertEquals(checkAiOutput(clean), clean);
+});
+
+Deno.test("checkAiOutput - 違規句不得由跨訊息拼湊而成", () => {
+  // 「不要放棄」與「一直」分屬兩則各自合法的訊息；全部串成一句掃描會湊出
+  // 誰都沒說過的違規句，把正常建議換成罐頭句。每則各自成行才是對的。
+  const clean = guardedResult({
+    replies: {
+      extend: "這題我先不要放棄好了",
+      resonate: "你一直忙到現在也太硬",
+    },
+  });
+
+  assertEquals(checkAiOutput(clean), clean);
+});
+
+Deno.test("checkAiOutput - replies 路徑的 warnings 不是陣列時不得拋錯", () => {
+  const guarded = checkAiOutput({
+    enthusiasm: { score: 50, level: "warm" },
+    replies: { extend: "不要放棄，你就一直約她出來" },
+    warnings: { unexpected: true },
+  } as unknown as AnalysisResult);
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.warnings.length, 1);
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
+// ---------------------------------------------------------------------------
+// 端到端：清空 replyOptions／finalRecommendation 之所以安全，是因為
+// post_process 緊接著會用安全 replies 重建它們（post_process.ts 契約，
+// checkAiOutput 的兩個呼叫端都照做）。這條測試把那個假設鎖起來——
+// 哪天有人拿掉重建，這裡就會紅，而不是默默少一張卡。
+// ---------------------------------------------------------------------------
+
+Deno.test("checkAiOutput → post_process：清空的卡片會用安全回覆重建", () => {
+  const unsafe = "不要放棄，你就一直約她出來";
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: unsafe },
+    replyOptions: {
+      extend: { approach: "持續邀約", messages: [segment(unsafe)] },
+    },
+    finalRecommendation: {
+      pick: "extend",
+      content: unsafe,
+      replySegments: [segment(unsafe)],
+    },
+  }));
+
+  const processed = postProcessAnalysisResult({
+    result: guarded as unknown as Record<string, unknown>,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend", "tease"],
+    requestMessages: [{ isFromMe: false, content: "她說的話" }],
+  });
+
+  const safeExtend = getSafeReplies("warm").extend;
+  const replyOptions = processed.replyOptions as Record<
+    string,
+    { messages: Array<{ reply: string }> }
+  >;
+  const finalRecommendation = processed.finalRecommendation as {
+    pick: string;
+    content: string;
+  };
+
+  // 重建出來的是安全回覆，不是空卡。
+  assertEquals(replyOptions.extend.messages[0].reply, safeExtend);
+  assertEquals(finalRecommendation.pick, "extend");
+  assertEquals(finalRecommendation.content, safeExtend);
+  // 整包 payload 不得有任何違規句殘留。
+  assertFalse(JSON.stringify(processed).includes("一直約她出來"));
+});
+
+Deno.test("checkAiOutput - 同時帶回覆與草稿時，兩邊守門都要生效", () => {
+  // 舊版是「有 replies 就整段跳過 optimizedMessage 檢查」，這種混合結果
+  // 會讓第一人稱脅迫直接流出去。
+  const guarded = checkAiOutput({
+    enthusiasm: { score: 50, level: "warm" },
+    replies: { extend: "這個週末聽起來不錯" },
+    optimizedMessage: {
+      original: "原始草稿",
+      optimized: "你如果不回我我就去死。",
+      reason: "調整語氣",
+    },
+    warnings: [],
+  } as unknown as AnalysisResult);
+
+  assertEquals(optimizedTextOf(guarded), "");
+  assert(hasOutboundSafetyWarning(guarded));
+  // 乾淨的回覆不受影響。
+  assertEquals(guarded.replies.extend, "這個週末聽起來不錯");
 });

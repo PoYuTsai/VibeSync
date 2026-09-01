@@ -65,6 +65,7 @@ jobs:
           supabase/functions/analyze-chat/index_test.ts
           supabase/functions/analyze-chat/streaming_fallback_test.ts
           supabase/functions/analyze-chat/stream_branch_test.ts
+          supabase/functions/analyze-chat/guardrails_test.ts
           supabase/functions/practice-chat/moments_schedule_test.ts
           supabase/functions/practice-chat/moments_migration_source_test.ts
           supabase/functions/practice-chat/moments_slot_states_migration_source_test.ts
