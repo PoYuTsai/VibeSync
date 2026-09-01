@@ -1,15 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
 const TOKEN_COSTS: Record<string, { input: number; output: number }> = {
-  // Sonnet 5 launch pricing through 2026-08-31 (USD per 1K tokens).
+  // Sonnet 5 standard pricing (USD per 1K tokens).
   "claude-sonnet-5": { input: 0.002, output: 0.010 },
   "claude-sonnet-4-6": { input: 0.003, output: 0.015 },
   // 舊版 Sonnet 4 保留：歷史 log / 在途請求計價用（2026-06-12 升級 4.6）
   "claude-sonnet-4-20250514": { input: 0.003, output: 0.015 },
   "claude-haiku-4-5-20251001": { input: 0.0008, output: 0.004 },
 };
-
-export const SONNET_5_LAUNCH_PRICE_VALID_THROUGH = "2026-08-31T23:59:59.999Z";
 
 const MAX_STORED_TEXT_LENGTH = 500;
 const MAX_STORED_OBJECT_KEYS = 32;
