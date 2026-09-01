@@ -25,6 +25,10 @@ import {
   checkAiOutput,
 } from "./guardrails.ts";
 import { postProcessAnalysisResult } from "./post_process.ts";
+import {
+  formatAnalysisBaseline,
+  summarizeAnalysisBaseline,
+} from "./analysis_baseline_telemetry.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import {
@@ -444,6 +448,23 @@ export async function handleAnalyzeStream(
         allowedFeatures: deps.allowedFeatures,
         requestMessages: deps.messages,
       });
+      // 第一階段觀測：量最終 payload（使用者真的看到的那份）的基線指標。
+      // 整段包 try/catch——telemetry 不論怎麼壞，都不得讓一次已扣費的分析
+      // 失敗；模組本身雖然是 total function，這層保險也擋住日後的改動。
+      try {
+        // 帶 run id 才能把這行跟同一次請求的 [ball_coverage] 對起來；
+        // 併發下沒有 id 的 log 無法歸戶，聚合出來的基線會是假的。
+        console.log(
+          `${
+            formatAnalysisBaseline(summarizeAnalysisBaseline(postProcessed))
+          } run=${streamRun.id}`,
+        );
+      } catch (error) {
+        console.warn(
+          `[analysis_baseline] summary failed: ${getErrorMessage(error)}`,
+        );
+      }
+
       const latencyMs = Date.now() - streamStartTime;
       const finalPayload = {
         ...postProcessed,
