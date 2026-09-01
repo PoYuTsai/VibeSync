@@ -4,6 +4,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildPhase0ObservabilityTelemetry,
+  calibratePhase0EvidenceLinkage,
   emitPhase0Observability,
 } from "./phase0_observability.ts";
 
@@ -341,5 +342,106 @@ Deno.test("Phase 0 observability: incomplete source-message evidence never claim
     sourceMessageEvidence: "absent",
     divergentStyles: [],
     allMatch: "unknown",
+  });
+});
+
+Deno.test("Phase 0 observability: a cropped delivered sequence drops raw per-variant claims", () => {
+  const finalResult = calibratePhase0EvidenceLinkage({
+    analysisInventory: {
+      balls: [
+        { id: "b_1", sourceIndex: 1 },
+        { id: "b_2", sourceIndex: 2 },
+      ],
+    },
+    analysisEvidenceLinkage: {
+      schemaVersion: 1,
+      selectedStyle: "extend",
+      variants: {
+        extend: {
+          sourceIndices: [1, 2],
+          sourceBallIds: ["b_1", "b_2"],
+          action: "connect",
+          selectedBallIds: ["b_1", "b_2"],
+          newTopicCount: 1,
+          semanticDistance: 0.8,
+          solutionMode: true,
+        },
+      },
+    },
+    finalRecommendation: {
+      pick: "extend",
+      content: "first delivered segment",
+      replySegments: [{
+        sourceIndex: 1,
+        sourceMessage: "source one",
+        reply: "first delivered segment",
+      }],
+    },
+  });
+
+  assertEquals(finalResult.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    selectedStyle: "extend",
+    variants: {
+      extend: {
+        sourceIndices: [1],
+        sourceBallIds: ["b_1"],
+        questionCount: 0,
+      },
+    },
+  });
+});
+
+Deno.test("Phase 0 observability: a reordered delivered sequence drops raw per-variant claims", () => {
+  const finalResult = calibratePhase0EvidenceLinkage({
+    analysisInventory: {
+      balls: [
+        { id: "b_1", sourceIndex: 1 },
+        { id: "b_2", sourceIndex: 2 },
+      ],
+    },
+    analysisEvidenceLinkage: {
+      schemaVersion: 1,
+      selectedStyle: "extend",
+      variants: {
+        extend: {
+          sourceIndices: [1, 2],
+          sourceBallIds: ["b_1", "b_2"],
+          action: "connect",
+          selectedBallIds: ["b_1", "b_2"],
+          newTopicCount: 1,
+          semanticDistance: 0.8,
+          solutionMode: true,
+        },
+      },
+    },
+    finalRecommendation: {
+      pick: "extend",
+      content: "second then first",
+      replySegments: [
+        {
+          sourceIndex: 2,
+          sourceMessage: "source two",
+          reply: "second",
+        },
+        {
+          sourceIndex: 1,
+          sourceMessage: "source one",
+          reply: "then first",
+        },
+      ],
+    },
+  });
+
+  assertEquals(finalResult.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    selectedStyle: "extend",
+    variants: {
+      extend: {
+        sourceIndices: [2, 1],
+        sourceBallIds: ["b_2", "b_1"],
+        questionCount: 0,
+      },
+    },
   });
 });

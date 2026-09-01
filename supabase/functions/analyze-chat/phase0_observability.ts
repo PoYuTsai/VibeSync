@@ -166,12 +166,18 @@ function sameStringSet(left: string[], right: string[]): boolean {
     right.every((value) => left.includes(value));
 }
 
-function sameStringOrder(left: string[], right: string[]): boolean {
+function sameStringOrder(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
   return left.length === right.length &&
     left.every((value, index) => value === right[index]);
 }
 
-function sameNumberOrder(left: number[], right: number[]): boolean {
+function sameNumberOrder(
+  left: readonly number[],
+  right: readonly number[],
+): boolean {
   return left.length === right.length &&
     left.every((value, index) => value === right[index]);
 }
@@ -222,7 +228,7 @@ function replySegmentsForStyle(
   });
 }
 
-function sourceIndicesFromDeliveredSegments(
+function sourceIndexSequenceFromDeliveredSegments(
   segments: readonly Record<string, unknown>[] | null,
 ): number[] | null {
   if (!segments || segments.length === 0) return null;
@@ -231,9 +237,16 @@ function sourceIndicesFromDeliveredSegments(
     const sourceIndex = positiveIndices([segment.sourceIndex])?.[0];
     // An incomplete source sequence must not be reported as partial coverage.
     if (!sourceIndex) return null;
-    if (!indices.includes(sourceIndex)) indices.push(sourceIndex);
+    indices.push(sourceIndex);
   }
   return indices.length > 0 ? indices : null;
+}
+
+function sourceIndicesFromDeliveredSegments(
+  segments: readonly Record<string, unknown>[] | null,
+): number[] | null {
+  const sequence = sourceIndexSequenceFromDeliveredSegments(segments);
+  return sequence ? [...new Set(sequence)] : null;
 }
 
 function sourceBallIdsFromDeliveredIndices(
@@ -300,16 +313,49 @@ function hasSafetyReplacement(finalResult: Record<string, unknown>): boolean {
     );
 }
 
+function rawVariantMatchesDeliveredSequence(
+  rawVariant: Record<string, unknown> | null,
+  deliveredSourceIndexSequence: readonly number[] | null,
+  deliveredSourceBallIds: readonly string[] | null,
+): boolean {
+  if (!rawVariant || !deliveredSourceIndexSequence) return false;
+  const rawSourceIndices = positiveIndices(rawVariant.sourceIndices);
+  if (
+    !rawSourceIndices || !sameNumberOrder(
+      rawSourceIndices,
+      deliveredSourceIndexSequence,
+    )
+  ) {
+    return false;
+  }
+
+  const rawSourceBallIds = stringArray(rawVariant.sourceBallIds);
+  return rawSourceBallIds === null ||
+    (deliveredSourceBallIds !== null && sameStringOrder(
+      rawSourceBallIds,
+      deliveredSourceBallIds,
+    ));
+}
+
 function invariantVariantFields(
   rawVariant: Record<string, unknown> | null,
   safetyReplacement: boolean,
+  deliveredSourceSequenceMatchesRaw: boolean,
+  deliveredSourceBallIds: readonly string[] | null,
 ): Record<string, unknown> {
-  // A safety replacement severs the raw option's action/ball linkage. Do not
-  // attribute those model fields to a server-generated fallback reply.
-  if (!rawVariant || safetyReplacement) return {};
+  // A safety replacement, crop, merge, or reorder severs raw option metadata
+  // from the output that is actually delivered. Preserve it only when every
+  // delivered source position still proves the same raw variant.
+  if (!rawVariant || safetyReplacement || !deliveredSourceSequenceMatchesRaw) {
+    return {};
+  }
 
   const action = enumValue(rawVariant.action, ACTIONS);
-  const selectedBallIds = stringArray(rawVariant.selectedBallIds);
+  const rawSelectedBallIds = stringArray(rawVariant.selectedBallIds);
+  const selectedBallIds = rawSelectedBallIds && deliveredSourceBallIds &&
+      sameStringSet(rawSelectedBallIds, [...deliveredSourceBallIds])
+    ? [...deliveredSourceBallIds]
+    : null;
   const newTopicCount = nonNegativeNumber(rawVariant.newTopicCount);
   const semanticDistance = nonNegativeNumber(rawVariant.semanticDistance);
   const solutionMode = typeof rawVariant.solutionMode === "boolean"
@@ -363,12 +409,25 @@ export function calibratePhase0EvidenceLinkage(
     );
     if (!text) continue;
 
+    const sourceIndexSequence = sourceIndexSequenceFromDeliveredSegments(
+      segments,
+    );
     const sourceIndices = sourceIndicesFromDeliveredSegments(segments);
     const sourceBallIds = sourceIndices
       ? sourceBallIdsFromDeliveredIndices(finalResult, sourceIndices)
       : null;
+    const rawVariant = record(rawVariants[style]);
     variants[style] = {
-      ...invariantVariantFields(record(rawVariants[style]), safetyReplacement),
+      ...invariantVariantFields(
+        rawVariant,
+        safetyReplacement,
+        rawVariantMatchesDeliveredSequence(
+          rawVariant,
+          sourceIndexSequence,
+          sourceBallIds,
+        ),
+        sourceBallIds,
+      ),
       ...(sourceIndices ? { sourceIndices } : {}),
       ...(sourceBallIds ? { sourceBallIds } : {}),
       questionCount: text.match(/[?？]/g)?.length ?? 0,

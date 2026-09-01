@@ -616,15 +616,11 @@ Deno.test("Phase 0 handler calibrates linkage to source-repaired delivered segme
       extend: {
         sourceIndices: [1],
         sourceBallIds: ["b_1"],
-        action: "connect",
-        selectedBallIds: ["b_1"],
         questionCount: 1,
       },
       tease: {
         sourceIndices: [1],
         sourceBallIds: ["b_1"],
-        action: "connect",
-        selectedBallIds: ["b_1"],
         questionCount: 0,
       },
     },
