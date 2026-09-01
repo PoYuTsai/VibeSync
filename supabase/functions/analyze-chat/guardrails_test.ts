@@ -10,6 +10,7 @@ import {
   getSafeReplies,
   hasOutboundSafetyWarning,
 } from "./guardrails.ts";
+import { postProcessAnalysisResult } from "./post_process.ts";
 
 Deno.test("getSafeReplies - hot fallback keeps the conversation moving", () => {
   const replies = getSafeReplies("hot");
@@ -60,6 +61,16 @@ Deno.test("checkAiOutput - replies 路徑仍照舊換成安全回覆", () => {
   assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
   assertEquals(guarded.warnings[0].type, "safety_filter");
   assertFalse(hasOutboundSafetyWarning(guarded));
+});
+
+Deno.test("checkAiOutput - enthusiasm score 0 要選 cold 安全回覆", () => {
+  const guarded = checkAiOutput({
+    enthusiasm: { score: 0, level: "cold" },
+    replies: { extend: "不要放棄，你就一直約她出來" },
+    warnings: [],
+  } as unknown as AnalysisResult);
+
+  assertEquals(guarded.replies.extend, getSafeReplies("cold").extend);
 });
 
 // ---------------------------------------------------------------------------
@@ -227,4 +238,414 @@ Deno.test("hasOutboundSafetyWarning - 沒有 warnings 陣列時回 false", () =>
   assertFalse(hasOutboundSafetyWarning({}));
   assertFalse(hasOutboundSafetyWarning(null));
   assertFalse(hasOutboundSafetyWarning({ warnings: "not-an-array" }));
+});
+
+// ---------------------------------------------------------------------------
+// 顯示面守門：App 渲染的是 replyOptions，不是 legacy replies
+//
+// 修補前 checkAiOutput 只掃、也只換 replies：被 BLOCKED_PATTERNS 攔下的句子
+// 仍原封不動留在 replyOptions 與 finalRecommendation，使用者照樣看得到、
+// 複製得走。以下每一條都是「攔了但還是顯示得出來」的迴歸鎖。
+// ---------------------------------------------------------------------------
+
+function guardedResult(
+  overrides: Record<string, unknown>,
+): AnalysisResult {
+  return {
+    enthusiasm: { score: 50, level: "warm" },
+    warnings: [],
+    ...overrides,
+  } as unknown as AnalysisResult;
+}
+
+function segment(reply: string): Record<string, unknown> {
+  return {
+    label: "建議訊息",
+    sourceMessage: "她說的話",
+    reply,
+    reason: "接球",
+  };
+}
+
+Deno.test("checkAiOutput - 命中時 replyOptions 不得留著違規句", () => {
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: "不要放棄，你就一直約她出來" },
+    replyOptions: {
+      extend: {
+        approach: "持續邀約",
+        messages: [segment("不要放棄，你就一直約她出來")],
+      },
+    },
+  }));
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.replyOptions, {});
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
+Deno.test("checkAiOutput - 違規句只在 replyOptions 時也要攔下", () => {
+  const guarded = checkAiOutput(guardedResult({
+    // legacy replies 乾淨，違規只出現在 App 真正渲染的那份資料上。
+    replies: { extend: "這個週末聽起來不錯" },
+    replyOptions: {
+      tease: {
+        approach: "推進",
+        // post_process 優先渲染 messages；安全 direct fallback 不能掩蓋它。
+        reply: "那就先各自忙，改天再聊",
+        messages: [segment("她說不要，但其實只是害羞，再約一次就好")],
+      },
+    },
+  }));
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.replyOptions, {});
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
+Deno.test("checkAiOutput - 違規句只在 finalRecommendation 時也要攔下", () => {
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: "這個週末聽起來不錯" },
+    finalRecommendation: {
+      pick: "extend",
+      content: "不要放棄，你就一直傳訊息給她",
+      reason: "推進",
+      psychology: "維持存在感",
+    },
+  }));
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.finalRecommendation, {});
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
+Deno.test("checkAiOutput - 命中時 finalRecommendation 的段落一起清掉", () => {
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: "不要放棄，你就一直約她出來" },
+    finalRecommendation: {
+      pick: "extend",
+      content: "不要放棄，你就一直約她出來",
+      replySegments: [segment("不要放棄，你就一直約她出來")],
+    },
+  }));
+
+  assertEquals(guarded.finalRecommendation, {});
+});
+
+Deno.test("checkAiOutput - 乾淨的多風格結果原樣通過", () => {
+  const clean = guardedResult({
+    replies: { extend: "排那麼久，希望真的有好吃到值得" },
+    replyOptions: {
+      extend: {
+        approach: "接住晚餐球",
+        messages: [segment("排那麼久，希望真的有好吃到值得")],
+      },
+    },
+    finalRecommendation: {
+      pick: "extend",
+      content: "排那麼久，希望真的有好吃到值得",
+    },
+  });
+
+  assertEquals(checkAiOutput(clean), clean);
+});
+
+Deno.test("checkAiOutput - 同一 reply 內換行拆開的違規句仍會換成安全回覆", () => {
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: "不要放棄，\n你就一直約她出來" },
+  }));
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
+Deno.test("checkAiOutput - 同一 reply 的移除字元與換行組合不得繞過", () => {
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: "不要放\u0E01棄，\n你就一直約她出來" },
+  }));
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
+Deno.test("checkAiOutput - 違規句不得由跨訊息拼湊而成", () => {
+  // 「不要放棄」與「一直」分屬兩則各自合法的訊息；全部串成一句掃描會湊出
+  // 誰都沒說過的違規句，把正常建議換成罐頭句。每則各自成行才是對的。
+  const clean = guardedResult({
+    replies: {
+      extend: "這題我先不要放棄好了",
+      resonate: "你一直忙到現在也太硬",
+    },
+  });
+
+  assertEquals(checkAiOutput(clean), clean);
+});
+
+Deno.test("checkAiOutput - replies 路徑的 warnings 不是陣列時不得拋錯", () => {
+  const guarded = checkAiOutput({
+    enthusiasm: { score: 50, level: "warm" },
+    replies: { extend: "不要放棄，你就一直約她出來" },
+    warnings: { unexpected: true },
+  } as unknown as AnalysisResult);
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.warnings.length, 1);
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
+// ---------------------------------------------------------------------------
+// 端到端：清空 replyOptions／finalRecommendation 之所以安全，是因為
+// post_process 緊接著會用安全 replies 重建它們（post_process.ts 契約，
+// checkAiOutput 的兩個呼叫端都照做）。這條測試把那個假設鎖起來——
+// 哪天有人拿掉重建，這裡就會紅，而不是默默少一張卡。
+// ---------------------------------------------------------------------------
+
+Deno.test("checkAiOutput → post_process：清空的卡片會用安全回覆重建", () => {
+  const unsafe = "不要放棄，你就一直約她出來";
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: unsafe },
+    replyOptions: {
+      extend: { approach: "持續邀約", messages: [segment(unsafe)] },
+    },
+    finalRecommendation: {
+      pick: "extend",
+      content: unsafe,
+      replySegments: [segment(unsafe)],
+    },
+  }));
+
+  const processed = postProcessAnalysisResult({
+    result: guarded as unknown as Record<string, unknown>,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend", "tease"],
+    requestMessages: [{ isFromMe: false, content: "她說的話" }],
+  });
+
+  const safeExtend = getSafeReplies("warm").extend;
+  const replyOptions = processed.replyOptions as Record<
+    string,
+    { messages: Array<{ reply: string }> }
+  >;
+  const finalRecommendation = processed.finalRecommendation as {
+    pick: string;
+    content: string;
+  };
+
+  // 重建出來的是安全回覆，不是空卡。
+  assertEquals(replyOptions.extend.messages[0].reply, safeExtend);
+  assertEquals(finalRecommendation.pick, "extend");
+  assertEquals(finalRecommendation.content, safeExtend);
+  // 整包 payload 不得有任何違規句殘留。
+  assertFalse(JSON.stringify(processed).includes("一直約她出來"));
+});
+
+Deno.test("checkAiOutput → post_process：legacy replies 物件不可繞過守門", () => {
+  const unsafe = "不要放棄，你就一直約她出來";
+  const guarded = checkAiOutput(guardedResult({
+    // sanitizeReplies 會把這個物件的 reply 轉成 App 可顯示文字；舊 collector
+    // 只收字串，所以會直接放行，必須由這條端到端測試鎖住。
+    replies: { extend: { reply: unsafe } },
+  }));
+
+  const processed = postProcessAnalysisResult({
+    result: guarded as unknown as Record<string, unknown>,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend", "tease"],
+    requestMessages: [{ isFromMe: false, content: "她說的話" }],
+  });
+
+  const safeExtend = getSafeReplies("warm").extend;
+  const replyOptions = processed.replyOptions as Record<
+    string,
+    { messages: Array<{ reply: string }> }
+  >;
+  const finalRecommendation = processed.finalRecommendation as {
+    content: string;
+  };
+
+  assertEquals(replyOptions.extend.messages[0].reply, safeExtend);
+  assertEquals(finalRecommendation.content, safeExtend);
+  assertFalse(JSON.stringify(processed).includes(unsafe));
+});
+
+Deno.test("checkAiOutput → post_process：第六個 segment 不可遮蔽 direct fallback", () => {
+  const unsafe = "不要放棄，你就一直約她出來";
+  const ignoredSegments = Array.from({ length: 5 }, () => ({
+    label: "沒有可顯示回覆",
+    sourceMessage: "她說的話",
+  }));
+  const guarded = checkAiOutput(guardedResult({
+    replyOptions: {
+      extend: {
+        // sanitizeReplySegments 只取前五段；前五段沒有 reply 時，App 會顯示
+        // 這個 fallback，而不能讓第六段的安全 reply 把它從 collector 藏起來。
+        reply: unsafe,
+        messages: [
+          ...ignoredSegments,
+          segment("這週不方便也沒關係，改天再聊"),
+        ],
+      },
+    },
+  }));
+
+  const processed = postProcessAnalysisResult({
+    result: guarded as unknown as Record<string, unknown>,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend", "tease"],
+    requestMessages: [{ isFromMe: false, content: "她說的話" }],
+  });
+
+  const safeExtend = getSafeReplies("warm").extend;
+  const replyOptions = processed.replyOptions as Record<
+    string,
+    { messages: Array<{ reply: string }> }
+  >;
+
+  assertEquals(replyOptions.extend.messages[0].reply, safeExtend);
+  assertFalse(JSON.stringify(processed).includes(unsafe));
+});
+
+Deno.test("checkAiOutput → post_process：replyOptions 的 nested direct object 不可繞過", () => {
+  const unsafe = "不要放棄，你就一直約她出來";
+  const guarded = checkAiOutput(guardedResult({
+    replyOptions: {
+      extend: {
+        // sanitizeReplyOption 會把這個值交給 normalizeReplyTextValue；它不是
+        // 字串，也仍可轉成 App 顯示的 reply，collector 必須遞迴掃到。
+        reply: { reply: unsafe },
+        messages: [],
+      },
+    },
+  }));
+
+  const processed = postProcessAnalysisResult({
+    result: guarded as unknown as Record<string, unknown>,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend", "tease"],
+    requestMessages: [{ isFromMe: false, content: "她說的話" }],
+  });
+
+  const safeExtend = getSafeReplies("warm").extend;
+  const replyOptions = processed.replyOptions as Record<
+    string,
+    { messages: Array<{ reply: string }> }
+  >;
+
+  assertEquals(replyOptions.extend.messages[0].reply, safeExtend);
+  assertFalse(JSON.stringify(processed).includes(unsafe));
+});
+
+Deno.test("checkAiOutput → post_process：legacy direct 正規化為空時仍掃 fallback segments", () => {
+  const unsafe = "不要放棄，你就一直約她出來";
+  const guarded = checkAiOutput(guardedResult({
+    replies: {
+      extend: {
+        // normalizeAiText 會移除零寬字元，接著 sanitizeReplies 會改顯示
+        // fallback messages；collector 不可因 raw 非空就跳過它。
+        reply: "\u200B",
+        messages: [segment(unsafe)],
+      },
+    },
+  }));
+
+  const processed = postProcessAnalysisResult({
+    result: guarded as unknown as Record<string, unknown>,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend", "tease"],
+    requestMessages: [{ isFromMe: false, content: "她說的話" }],
+  });
+
+  const safeExtend = getSafeReplies("warm").extend;
+  const replyOptions = processed.replyOptions as Record<
+    string,
+    { messages: Array<{ reply: string }> }
+  >;
+
+  assertEquals(replyOptions.extend.messages[0].reply, safeExtend);
+  assertFalse(JSON.stringify(processed).includes(unsafe));
+});
+
+Deno.test("checkAiOutput → post_process：空化 segment 不可遮蔽 replyOptions direct fallback", () => {
+  const unsafe = "不要放棄，你就一直約她出來";
+  const guarded = checkAiOutput(guardedResult({
+    replyOptions: {
+      extend: {
+        reply: unsafe,
+        // sanitizeReplySegments 會丟掉這段，然後顯示上面的 direct fallback。
+        messages: [segment("\u200B")],
+      },
+    },
+  }));
+
+  const processed = postProcessAnalysisResult({
+    result: guarded as unknown as Record<string, unknown>,
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend", "tease"],
+    requestMessages: [{ isFromMe: false, content: "她說的話" }],
+  });
+
+  const safeExtend = getSafeReplies("warm").extend;
+  const replyOptions = processed.replyOptions as Record<
+    string,
+    { messages: Array<{ reply: string }> }
+  >;
+
+  assertEquals(replyOptions.extend.messages[0].reply, safeExtend);
+  assertFalse(JSON.stringify(processed).includes(unsafe));
+});
+
+Deno.test("checkAiOutput → post_process：正規化重接的危險片語不可繞過", () => {
+  const rawUnsafeReplies = [
+    // normalizeAiText 移除零寬字元後，會重新命中「不要放棄.*一直」。
+    "不要放\u200B棄，你就一直約她出來",
+    // stripForeignScriptChars 整段 fallback 會移除泰文字元並把兩側接起來。
+    "不要放\u0E01棄你就一直約她出來",
+  ];
+  const safeExtend = getSafeReplies("warm").extend;
+
+  for (const rawUnsafe of rawUnsafeReplies) {
+    const guarded = checkAiOutput(guardedResult({
+      replies: { extend: rawUnsafe },
+    }));
+    const processed = postProcessAnalysisResult({
+      result: guarded as unknown as Record<string, unknown>,
+      recognizeOnly: false,
+      isMyMessageMode: false,
+      allowedFeatures: ["extend", "tease"],
+      requestMessages: [{ isFromMe: false, content: "她說的話" }],
+    });
+    const replyOptions = processed.replyOptions as Record<
+      string,
+      { messages: Array<{ reply: string }> }
+    >;
+
+    assertEquals(guarded.replies.extend, safeExtend);
+    assertEquals(replyOptions.extend.messages[0].reply, safeExtend);
+    assertFalse(JSON.stringify(processed).includes(rawUnsafe));
+  }
+});
+
+Deno.test("checkAiOutput - 同時帶回覆與草稿時，兩邊守門都要生效", () => {
+  // 舊版是「有 replies 就整段跳過 optimizedMessage 檢查」，這種混合結果
+  // 會讓第一人稱脅迫直接流出去。
+  const guarded = checkAiOutput({
+    enthusiasm: { score: 50, level: "warm" },
+    replies: { extend: "這個週末聽起來不錯" },
+    optimizedMessage: {
+      original: "原始草稿",
+      optimized: "你如果不回我我就去死。",
+      reason: "調整語氣",
+    },
+    warnings: [],
+  } as unknown as AnalysisResult);
+
+  assertEquals(optimizedTextOf(guarded), "");
+  assert(hasOutboundSafetyWarning(guarded));
+  // 乾淨的回覆不受影響。
+  assertEquals(guarded.replies.extend, "這個週末聽起來不錯");
 });

@@ -191,32 +191,188 @@ function checkOptimizedMessage(result: AnalysisResult): AnalysisResult {
   return result;
 }
 
-// 檢查 AI 輸出是否安全
-export function checkAiOutput(result: AnalysisResult): AnalysisResult {
-  if (!result?.replies) {
-    return result ? checkOptimizedMessage(result) : result;
+// 這不是顯示用 normalizer。post_process 會移除這些字元，可能把原本被拆開
+// 的危險片語重新接起來；守門額外掃一次移除後的版本，寧可保守攔截。
+const ONE_WAY_SAFETY_RESCAN_REMOVALS =
+  /[\u200B\u0370-\u03FF\u0400-\u052F\u0590-\u05FF\u0600-\u06FF\u0900-\u097F\u0E00-\u0E7F\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]/g;
+
+// BLOCKED_PATTERNS 的 `.*` 不會跨換行。每個顯示單位各自把所有 ECMAScript
+// whitespace（含換行與常見的 Unicode 空白）壓成一個半形空白後再掃一次，避免
+// 模型只靠斷行繞過；不能等 collectDisplayedReplyText 串接後才正規化，否則會把
+// 不同訊息拼成一則不存在的違規句。
+function pushWhitespaceNormalizedSafetyScan(
+  bucket: string[],
+  value: string,
+): void {
+  const normalized = value.replace(/\s+/gu, " ");
+  if (normalized !== value) bucket.push(normalized);
+}
+
+function pushDisplayedText(bucket: string[], value: unknown): void {
+  if (typeof value !== "string" || value.trim().length === 0) return;
+
+  bucket.push(value);
+  pushWhitespaceNormalizedSafetyScan(bucket, value);
+
+  const safetyRescan = value.replace(ONE_WAY_SAFETY_RESCAN_REMOVALS, "");
+  if (safetyRescan !== value && safetyRescan.trim().length > 0) {
+    bucket.push(safetyRescan);
+    pushWhitespaceNormalizedSafetyScan(bucket, safetyRescan);
+  }
+}
+
+const DISPLAYED_REPLY_DIRECT_FIELDS = [
+  "reply",
+  "content",
+  "text",
+  "suggestion",
+] as const;
+
+function pushDisplayedSegments(bucket: string[], segments: unknown): void {
+  if (!Array.isArray(segments)) return;
+  // 必須和 post_process.sanitizeReplySegments 的 cap 一致。第 6 段以後會被
+  // 丟棄，不能因為它有 reply 而阻止真正會顯示的 direct fallback 被掃描。
+  for (const segment of segments.slice(0, 5)) {
+    if (!segment || typeof segment !== "object") continue;
+    const record = segment as Record<string, unknown>;
+    // post_process 目前會把 segment 正規化為 reply；這裡保守掃同一組
+    // 回覆欄位，避免模型以相容形狀帶入可顯示文字時漏過安全守門。
+    for (const field of DISPLAYED_REPLY_DIRECT_FIELDS) {
+      pushDisplayedText(bucket, record[field]);
+    }
+  }
+}
+
+/**
+ * 對齊 post_process 的 normalizeReplyTextValue：legacy replies 的 value 可以是
+ * 字串，也可以是帶 direct reply 欄位或 fallback segments 的物件。不能直接
+ * import 那個 private normalizer，因為 post_process 已經反向 import guardrails。
+ */
+function pushDisplayedReplyValue(bucket: string[], value: unknown): void {
+  if (typeof value === "string") {
+    pushDisplayedText(bucket, value);
+    return;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+
+  const record = value as Record<string, unknown>;
+  const direct = record.reply ?? record.content ?? record.text ??
+    record.suggestion;
+  // 不用 raw 非空值決定是否停止：post_process 的正規化可能把 direct 清成空，
+  // 這時同一物件的 fallback segments 就會變成實際顯示文字。
+  pushDisplayedText(bucket, direct);
+
+  pushDisplayedSegments(
+    bucket,
+    record.messages ?? record.messageGroup ?? record.replySegments,
+  );
+}
+
+/**
+ * 不用 raw 值猜 sanitizeReplyOption 會選哪一邊：messages 或 direct 任一邊都
+ * 可能在 post_process 正規化另一邊後成為顯示文字，因此兩者都保守掃描。
+ */
+function pushDisplayedReplyOption(bucket: string[], value: unknown): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+
+  const record = value as Record<string, unknown>;
+  pushDisplayedSegments(
+    bucket,
+    record.messages ?? record.messageGroup ?? record.replySegments,
+  );
+
+  // sanitizeReplyOption 的 top-level selection 沒有 suggestion；suggestion 只會
+  // 在已選到的 nested value 進 normalizeReplyTextValue 時才有機會顯示。
+  pushDisplayedReplyValue(
+    bucket,
+    record.reply ?? record.content ?? record.text,
+  );
+}
+
+/**
+ * 使用者實際看得到、複製得走的回覆文字。
+ *
+ * App 的回覆卡渲染的是 `replyOptions[].messages`（reply_zone_section.dart），
+ * legacy `replies` 只是舊版備援。checkAiOutput 原本只掃 `replies`，於是
+ * 「只出現在 replyOptions／finalRecommendation 的違規句」從來沒被掃到。
+ *
+ * 刻意不掃分析散文（reason／psychology／strategy）：BLOCKED_PATTERNS 擋的是
+ * 「教練叫你這樣做」的句子，拿去掃描述性文字會誤傷正確的說明（例如
+ * 「一直傳訊息追問是常見的錯誤」）——與 OUTBOUND_COERCION_PATTERNS 要跟
+ * BLOCKED_PATTERNS 分開的理由相同。命中時整個 finalRecommendation 會被清掉
+ * 重建，所以那些欄位不會殘留違規內容。
+ *
+ * 每個顯示單位各自成行（不是全部串成一句）：一次分析裡同一句話會同時出現在
+ * replies 與 replyOptions，全部用空白串起來會讓 `.*` 跨訊息湊出誰都沒說過的
+ * 違規句，把五句完全正常的建議換成罐頭句。
+ */
+export function collectDisplayedReplyText(result: AnalysisResult): string {
+  const bucket: string[] = [];
+
+  if (result.replies && typeof result.replies === "object") {
+    for (const value of Object.values(result.replies)) {
+      pushDisplayedReplyValue(bucket, value);
+    }
   }
 
-  const allReplies = Object.values(result.replies).join(" ");
+  if (result.replyOptions && typeof result.replyOptions === "object") {
+    const options = result.replyOptions as Record<string, unknown>;
+    for (const option of Object.values(options)) {
+      if (!option || typeof option !== "object") continue;
+      pushDisplayedReplyOption(bucket, option);
+    }
+  }
+
+  if (
+    result.finalRecommendation && typeof result.finalRecommendation === "object"
+  ) {
+    const record = result.finalRecommendation as Record<string, unknown>;
+    pushDisplayedText(bucket, record.content);
+    pushDisplayedSegments(bucket, record.replySegments);
+  }
+
+  return bucket.join("\n");
+}
+
+// 檢查 AI 輸出是否安全
+export function checkAiOutput(result: AnalysisResult): AnalysisResult {
+  if (!result) return result;
+
+  const displayedReplyText = collectDisplayedReplyText(result);
+  if (displayedReplyText.length === 0) {
+    return checkOptimizedMessage(result);
+  }
 
   for (const pattern of BLOCKED_PATTERNS) {
-    if (pattern.test(allReplies)) {
-      const level = getEnthusiasmLevel(result.enthusiasm?.score || 50);
-      return {
+    if (pattern.test(displayedReplyText)) {
+      const level = getEnthusiasmLevel(result.enthusiasm?.score ?? 50);
+      return checkOptimizedMessage({
         ...result,
         replies: getSafeReplies(level),
+        // 清空而不是逐風格改寫：post_process 會拿上面的安全 replies 重建
+        // replyOptions 與 finalRecommendation（見 post_process.ts 契約，
+        // checkAiOutput 的兩個呼叫端都緊接著跑它），App 端
+        // _normalizeReplyOptionsMap 也會用 replies 回填缺項。把原內容留著
+        // 才是漏洞；清掉是 fail-closed，最壞情況是少一張卡，不是外流違規句。
+        replyOptions: {},
+        finalRecommendation: {},
         warnings: [
-          ...(result.warnings || []),
+          // 模型可能把 warnings 回成物件而不是陣列，直接展開會丟 TypeError
+          // 把整個請求變成 500。optimize 路徑早就守住了，這條路徑沒有。
+          ...(Array.isArray(result.warnings) ? result.warnings : []),
           {
             type: "safety_filter",
             message: "部分建議因安全考量已調整",
           },
         ],
-      };
+      });
     }
   }
 
-  return result;
+  // 沒命中也要回頭跑 outbound 守門：舊版是「有 replies 就整段跳過」，
+  // 於是同時帶 optimizedMessage 與回覆欄位的結果會漏掉第一人稱脅迫檢查。
+  // optimizedMessage 不存在時這裡是 no-op。
+  return checkOptimizedMessage(result);
 }
 
 // 檢查輸入是否包含敏感內容
