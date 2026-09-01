@@ -1,6 +1,7 @@
 import {
   assertEquals,
   assertFalse,
+  assertStrictEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildPhase0ObservabilityTelemetry,
@@ -444,4 +445,167 @@ Deno.test("Phase 0 observability: a reordered delivered sequence drops raw per-v
       },
     },
   });
+});
+
+Deno.test("Phase 0 observability: an intact repeated-source sequence keeps typed evidence", () => {
+  const finalResult = calibratePhase0EvidenceLinkage({
+    analysisInventory: {
+      balls: [{ id: "b_1", sourceIndex: 1 }],
+    },
+    analysisEvidenceLinkage: {
+      schemaVersion: 1,
+      selectedStyle: "extend",
+      variants: {
+        extend: {
+          // Coverage remains unique, while the additive sequence distinguishes
+          // two segments sourced from the same ball.
+          sourceIndices: [1],
+          sourceIndexSequence: [1, 1],
+          sourceBallIds: ["b_1"],
+          action: "connect",
+          selectedBallIds: ["b_1"],
+          newTopicCount: 1,
+          semanticDistance: 0.8,
+          solutionMode: true,
+        },
+      },
+    },
+    finalRecommendation: {
+      pick: "extend",
+      content: "first then second",
+      replySegments: [
+        {
+          sourceIndex: 1,
+          sourceMessage: "source one",
+          reply: "first",
+        },
+        {
+          sourceIndex: 1,
+          sourceMessage: "source one",
+          reply: "then second",
+        },
+      ],
+    },
+  });
+
+  assertEquals(finalResult.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    selectedStyle: "extend",
+    variants: {
+      extend: {
+        sourceIndices: [1],
+        sourceBallIds: ["b_1"],
+        action: "connect",
+        selectedBallIds: ["b_1"],
+        newTopicCount: 1,
+        semanticDistance: 0.8,
+        solutionMode: true,
+        questionCount: 0,
+      },
+    },
+  });
+});
+
+Deno.test("Phase 0 observability: a cropped repeated-source sequence drops typed evidence", () => {
+  const finalResult = calibratePhase0EvidenceLinkage({
+    analysisInventory: {
+      balls: [{ id: "b_1", sourceIndex: 1 }],
+    },
+    analysisEvidenceLinkage: {
+      schemaVersion: 1,
+      selectedStyle: "extend",
+      variants: {
+        extend: {
+          sourceIndices: [1],
+          sourceIndexSequence: [1, 1],
+          sourceBallIds: ["b_1"],
+          action: "connect",
+          selectedBallIds: ["b_1"],
+          newTopicCount: 1,
+          semanticDistance: 0.8,
+          solutionMode: true,
+        },
+      },
+    },
+    finalRecommendation: {
+      pick: "extend",
+      content: "first only",
+      replySegments: [{
+        sourceIndex: 1,
+        sourceMessage: "source one",
+        reply: "first only",
+      }],
+    },
+  });
+
+  assertEquals(finalResult.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    selectedStyle: "extend",
+    variants: {
+      extend: {
+        sourceIndices: [1],
+        sourceBallIds: ["b_1"],
+        questionCount: 0,
+      },
+    },
+  });
+});
+
+Deno.test("Phase 0 observability: calibration exceptions return the original result", () => {
+  const throwingReplyOptions = new Proxy({}, {
+    ownKeys() {
+      throw new Error("deterministic calibration failure");
+    },
+  });
+  const finalResult = {
+    analysisEvidenceLinkage: { schemaVersion: 1 },
+    replyOptions: throwingReplyOptions,
+  };
+
+  assertStrictEquals(
+    calibratePhase0EvidenceLinkage(finalResult),
+    finalResult,
+  );
+});
+
+Deno.test("Phase 0 observability: no-send conflict falls back from empty replies to delivered variants or options", () => {
+  const telemetryFromVariants = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-1",
+    finalResult: {
+      analysisDecisionV2: {
+        schemaVersion: 2,
+        messageDecision: "do_not_send",
+        replyMode: "none",
+      },
+      replies: {},
+      replyOptions: {
+        extend: { messages: [{ reply: "delivered candidate" }] },
+      },
+      analysisEvidenceLinkage: {
+        schemaVersion: 1,
+        variants: { extend: { questionCount: 0 } },
+      },
+    },
+  });
+
+  assertEquals(telemetryFromVariants.noSendConflict, true);
+
+  const telemetryFromOptions = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-1",
+    finalResult: {
+      analysisDecisionV2: {
+        schemaVersion: 2,
+        messageDecision: "do_not_send",
+        replyMode: "none",
+      },
+      replies: {},
+      replyOptions: {
+        extend: { messages: [{ reply: "delivered candidate" }] },
+      },
+    },
+  });
+
+  assertEquals(telemetryFromOptions.noSendConflict, true);
 });

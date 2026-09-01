@@ -2617,7 +2617,7 @@ Deno.test("inventory: never charges or leaks legacy raw keys, while Phase 0 reta
   }
 });
 
-Deno.test("phase 0: preserves a schema v2 decision and inventory at charge, then completes index-only evidence linkage", async () => {
+Deno.test("phase 0: preserves a schema v2 decision and inventory at charge, then completes linkage evidence", async () => {
   const events: StreamOutputEvent[] = [];
   let charged: StreamRecommendationForCharge | undefined;
   const inventory = {
@@ -2678,12 +2678,20 @@ Deno.test("phase 0: preserves a schema v2 decision and inventory at charge, then
     selectedBallIds: ["b_1"],
     sourceBallIds: ["b_1"],
     questionCount: 1,
-    segments: [{
-      sourceIndex: 1,
-      sourceMessage: "分享第一件事",
-      reply: "先接住這一球。",
-      reason: "接住主球。",
-    }],
+    segments: [
+      {
+        sourceIndex: 1,
+        sourceMessage: "分享第一件事",
+        reply: "先接住這一球。",
+        reason: "接住主球。",
+      },
+      {
+        sourceIndex: 1,
+        sourceMessage: "分享第一件事",
+        reply: "再順著補一句。",
+        reason: "同一顆球的第二段。",
+      },
+    ],
   }));
   reframer.pushText(line({
     type: "analysis.reply_option",
@@ -2734,6 +2742,7 @@ Deno.test("phase 0: preserves a schema v2 decision and inventory at charge, then
     variants: {
       extend: {
         sourceIndices: [1],
+        sourceIndexSequence: [1, 1],
         sourceBallIds: ["b_1"],
         action: "connect",
         selectedBallIds: ["b_1"],
@@ -2741,6 +2750,7 @@ Deno.test("phase 0: preserves a schema v2 decision and inventory at charge, then
       },
       tease: {
         sourceIndices: [1],
+        sourceIndexSequence: [1],
         sourceBallIds: ["b_1"],
         action: "connect",
         selectedBallIds: ["b_1"],

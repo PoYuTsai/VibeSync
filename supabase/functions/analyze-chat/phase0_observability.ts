@@ -319,7 +319,8 @@ function rawVariantMatchesDeliveredSequence(
   deliveredSourceBallIds: readonly string[] | null,
 ): boolean {
   if (!rawVariant || !deliveredSourceIndexSequence) return false;
-  const rawSourceIndices = positiveIndices(rawVariant.sourceIndices);
+  const rawSourceIndices = positiveIndices(rawVariant.sourceIndexSequence) ??
+    positiveIndices(rawVariant.sourceIndices);
   if (
     !rawSourceIndices || !sameNumberOrder(
       rawSourceIndices,
@@ -377,6 +378,18 @@ function invariantVariantFields(
  * untouched.
  */
 export function calibratePhase0EvidenceLinkage(
+  finalResult: Record<string, unknown>,
+): Record<string, unknown> {
+  try {
+    return calibratePhase0EvidenceLinkageUnsafe(finalResult);
+  } catch {
+    // Phase 0 is shadow-only. A malformed optional snapshot must never block
+    // post-charge completion, persistence, or the stream response.
+    return finalResult;
+  }
+}
+
+function calibratePhase0EvidenceLinkageUnsafe(
   finalResult: Record<string, unknown>,
 ): Record<string, unknown> {
   const linkage = record(finalResult.analysisEvidenceLinkage);
@@ -500,14 +513,27 @@ function candidateCount(
   variants: Record<string, Variant> | null,
 ): number | null {
   const replies = record(finalResult.replies);
-  if (replies) {
-    return Object.entries(replies)
+  const replyCount = replies
+    ? Object.entries(replies)
       .filter(([style, reply]) =>
         isStreamStyle(style) && typeof reply === "string"
       )
-      .length;
-  }
-  return variants ? Object.keys(variants).length : null;
+      .length
+    : 0;
+  if (replyCount > 0) return replyCount;
+
+  const variantCount = variants ? Object.keys(variants).length : 0;
+  if (variantCount > 0) return variantCount;
+
+  const replyOptions = record(finalResult.replyOptions);
+  const optionCount = replyOptions
+    ? Object.entries(replyOptions)
+      .filter(([style, option]) => isStreamStyle(style) && record(option))
+      .length
+    : 0;
+  if (optionCount > 0) return optionCount;
+
+  return replies ? 0 : null;
 }
 
 function questionCounts(

@@ -47,6 +47,9 @@ export interface StreamRecommendationForCharge {
 
 export interface AnalysisEvidenceVariant {
   sourceIndices?: number[];
+  // Exact source order is additive Phase 0 evidence. sourceIndices remains a
+  // unique coverage set for existing consumers and telemetry.
+  sourceIndexSequence?: number[];
   sourceBallIds?: string[];
   action?: string;
   selectedBallIds?: string[];
@@ -159,19 +162,24 @@ function nonNegativeNumberFrom(value: unknown): number | undefined {
     : undefined;
 }
 
+function sourceIndexSequenceFromSegments(
+  segments: readonly Record<string, unknown>[],
+): number[] | undefined {
+  const indices = segments.flatMap((segment) => {
+    const sourceIndex = segment.sourceIndex;
+    return typeof sourceIndex === "number" &&
+        Number.isInteger(sourceIndex) && sourceIndex > 0
+      ? [sourceIndex]
+      : [];
+  });
+  return indices.length > 0 ? indices : undefined;
+}
+
 function sourceIndicesFromSegments(
   segments: readonly Record<string, unknown>[],
 ): number[] | undefined {
-  const indices = [
-    ...new Set(segments.flatMap((segment) => {
-      const sourceIndex = segment.sourceIndex;
-      return typeof sourceIndex === "number" &&
-          Number.isInteger(sourceIndex) && sourceIndex > 0
-        ? [sourceIndex]
-        : [];
-    })),
-  ];
-  return indices.length > 0 ? indices : undefined;
+  const sequence = sourceIndexSequenceFromSegments(segments);
+  return sequence ? [...new Set(sequence)] : undefined;
 }
 
 function sourceIndicesFromInventory(
@@ -196,6 +204,7 @@ function evidenceVariantFrom(
   segments: readonly Record<string, unknown>[],
 ): AnalysisEvidenceVariant {
   const action = stringField(event.action);
+  const sourceIndexSequence = sourceIndexSequenceFromSegments(segments);
   const sourceIndices = sourceIndicesFromSegments(segments);
   const sourceBallIds = stringArrayFrom(event.sourceBallIds);
   const selectedBallIds = stringArrayFrom(event.selectedBallIds);
@@ -208,6 +217,7 @@ function evidenceVariantFrom(
 
   return {
     ...(sourceIndices ? { sourceIndices } : {}),
+    ...(sourceIndexSequence ? { sourceIndexSequence } : {}),
     ...(sourceBallIds ? { sourceBallIds } : {}),
     ...(ANALYSIS_ACTIONS.has(action) ? { action } : {}),
     ...(selectedBallIds ? { selectedBallIds } : {}),
