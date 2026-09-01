@@ -1263,7 +1263,7 @@ Deno.test("done merge coerces string gameStage/psychology into client-parseable 
   assertEquals(enthusiasm.score, 72);
 });
 
-Deno.test("done merge drops non-record values for record-only client keys", async () => {
+Deno.test("done merge drops non-record values for record-only client and Phase 0 keys", async () => {
   // replies/replyOptions/finalRecommendation/usage/targetProfile 在 client
   // 也是硬 cast Map——模型亂寫字串時保留 assembler 既有值，不得 clobber。
   const events: StreamOutputEvent[] = [];
@@ -1291,6 +1291,9 @@ Deno.test("done merge drops non-record values for record-only client keys", asyn
       finalRecommendation: "use humor",
       usage: "n/a",
       targetProfile: "unknown",
+      analysisDecisionV2: "not-a-v2-record",
+      analysisInventory: 42,
+      analysisEvidenceLinkage: ["not-a-record"],
     },
   }));
 
@@ -1315,6 +1318,74 @@ Deno.test("done merge drops non-record values for record-only client keys", asyn
     !("targetProfile" in finalResult) ||
       typeof finalResult.targetProfile === "object",
   );
+  assertEquals("analysisDecisionV2" in finalResult, false);
+  assertEquals("analysisInventory" in finalResult, false);
+  assertEquals(finalResult.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    selectedStyle: "humor",
+  });
+});
+
+Deno.test("Phase 0 snapshots cannot be established by a record-shaped done payload", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  // This stream deliberately has no v2 decision, inventory, or reply_option
+  // event. A model-supplied done payload must not manufacture their snapshots.
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      analysisDecisionV2: {
+        schemaVersion: 2,
+        decisionId: "ad_done_injected",
+        action: "invite",
+      },
+      analysisInventory: {
+        type: "analysis.inventory",
+        balls: [{
+          id: "injected-ball",
+          sourceIndex: 1,
+          sourceMessage: "INJECTED_SOURCE",
+          disposition: "接",
+        }],
+      },
+      analysisEvidenceLinkage: {
+        schemaVersion: 1,
+        decisionId: "ad_done_injected",
+        selectedStyle: "extend",
+        variants: { extend: { sourceIndices: [1] } },
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+
+  assertEquals("analysisDecisionV2" in finalResult, false);
+  assertEquals("analysisInventory" in finalResult, false);
+  // A server-derived minimal linkage is still allowed from the selected
+  // recommendation, but none of the injected linkage can appear.
+  assertEquals(finalResult.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    selectedStyle: "humor",
+  });
 });
 
 Deno.test("report_section string payload for client-shaped sections coerces instead of clobbering", async () => {
@@ -2263,7 +2334,7 @@ Deno.test("inventory: leading inventory is forwarded after charge, never blocks 
   ]);
 });
 
-Deno.test("inventory: never charges, never pollutes finalResult, never touches segments", async () => {
+Deno.test("inventory: never charges or leaks legacy raw keys, while Phase 0 retains analysisInventory", async () => {
   const events: StreamOutputEvent[] = [];
   let chargeCalls = 0;
   const reframer = createStreamReframer({
@@ -2324,9 +2395,11 @@ Deno.test("inventory: never charges, never pollutes finalResult, never touches s
   assert(done, "expected analysis.done");
   const finalResult = done.finalResult as Record<string, unknown>;
 
-  // 不污染 finalResult：盤點不外溢成頂層欄位。
+  // 舊 client 看不到裸 balls/inventory key；Phase 0 僅以 additive
+  // analysisInventory 保存原始盤點，讓未知欄位的舊 client 可忽略。
   assertEquals("balls" in finalResult, false);
   assertEquals("inventory" in finalResult, false);
+  assertEquals(typeof finalResult.analysisInventory, "object");
 
   // 不碰丟段路徑：盤點的球（帶 sourceMessage、無 reply）絕不變成 replySegments。
   const finalRecommendation = finalResult.finalRecommendation as Record<
@@ -2341,6 +2414,139 @@ Deno.test("inventory: never charges, never pollutes finalResult, never touches s
       assertEquals("disposition" in (seg as Record<string, unknown>), false);
     }
   }
+});
+
+Deno.test("phase 0: preserves a schema v2 decision and inventory at charge, then completes index-only evidence linkage", async () => {
+  const events: StreamOutputEvent[] = [];
+  let charged: StreamRecommendationForCharge | undefined;
+  const inventory = {
+    type: "analysis.inventory",
+    balls: [
+      {
+        id: "b_1",
+        sourceIndex: 1,
+        sourceMessage: "分享第一件事",
+        disposition: "接",
+        reason: "可接球",
+      },
+      {
+        id: "b_2",
+        sourceIndex: 2,
+        sourceMessage: "補充背景",
+        disposition: "併",
+        reason: "併入第一球",
+      },
+    ],
+  };
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation(recommendation) {
+      charged = recommendation;
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line(inventory));
+  reframer.pushText(line({
+    type: "analysis.decision",
+    schemaVersion: 2,
+    decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    selectedStyle: "extend",
+    action: "connect",
+    messageDecision: "send",
+    replyMode: "variants",
+    selectedBallIds: ["b_1"],
+    betaRiskFlags: ["question_only"],
+    solutionModeAllowed: false,
+    nextStepBody: "接住分享後再自然延伸。",
+    doThis: "先回應她的內容。",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "先接住這一球。",
+    reason: "保持自然互動。",
+    quotedContext: "分享第一件事",
+  }));
+  reframer.pushText(line({
+    type: "analysis.reply_option",
+    style: "extend",
+    action: "connect",
+    selectedBallIds: ["b_1"],
+    sourceBallIds: ["b_1"],
+    questionCount: 1,
+    segments: [{
+      sourceIndex: 1,
+      sourceMessage: "分享第一件事",
+      reply: "先接住這一球。",
+      reason: "接住主球。",
+    }],
+  }));
+  reframer.pushText(line({
+    type: "analysis.reply_option",
+    style: "tease",
+    action: "connect",
+    selectedBallIds: ["b_1"],
+    sourceBallIds: ["b_1"],
+    questionCount: 0,
+    segments: [{
+      sourceIndex: 1,
+      sourceMessage: "分享第一件事",
+      reply: "這球聽起來有點意思。",
+      reason: "同一個主球。",
+    }],
+  }));
+  reframer.pushText(line({ type: "analysis.done", finalResult: {} }));
+
+  await reframer.flush();
+
+  assert(charged, "decision must still be the charge anchor");
+  assertEquals(
+    charged.analysisDecisionV2?.decisionId,
+    "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  );
+  assertEquals(charged.analysisInventory, inventory);
+  assertEquals(charged.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    selectedStyle: "extend",
+    selectedBallIds: ["b_1"],
+    inventorySourceIndices: [1, 2],
+  });
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  assertEquals(
+    (finalResult.analysisDecisionV2 as Record<string, unknown>).decisionId,
+    "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  );
+  assertEquals(finalResult.analysisInventory, inventory);
+  assertEquals(finalResult.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    selectedStyle: "extend",
+    selectedBallIds: ["b_1"],
+    inventorySourceIndices: [1, 2],
+    variants: {
+      extend: {
+        sourceIndices: [1],
+        sourceBallIds: ["b_1"],
+        action: "connect",
+        selectedBallIds: ["b_1"],
+        questionCount: 1,
+      },
+      tease: {
+        sourceIndices: [1],
+        sourceBallIds: ["b_1"],
+        action: "connect",
+        selectedBallIds: ["b_1"],
+        questionCount: 0,
+      },
+    },
+  });
 });
 
 // ── 球數案硬版：inventory disposition gate（INV-H1..H6 / failure matrix） ──

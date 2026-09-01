@@ -14,10 +14,12 @@ import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
 import { streamAnalyzeMaxTokensForStyleCount } from "./stream_budget.ts";
 import { streamReplyStylesForTier } from "./tier_sync_contract.ts";
 import {
+  type AnalysisEvidenceLinkage,
   isThinRecommendationEvent,
   type StreamRecommendationForCharge,
 } from "./reframer.ts";
 import { isStreamStyle } from "./stream_events.ts";
+import { emitPhase0Observability } from "./phase0_observability.ts";
 import { callClaudeStreaming } from "./streaming_fallback.ts";
 import { hashConversation } from "./conversation_hash.ts";
 import {
@@ -155,6 +157,23 @@ function mapStreamChargeFailure(error: unknown): {
   };
 }
 
+function optionalRecordFrom(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  return isPlainObject(value) && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function optionalEvidenceLinkageFrom(
+  value: unknown,
+): AnalysisEvidenceLinkage | undefined {
+  const record = optionalRecordFrom(value);
+  return record?.schemaVersion === 1
+    ? record as unknown as AnalysisEvidenceLinkage
+    : undefined;
+}
+
 function streamRecommendationFromRun(
   run: AnalysisStreamRun,
 ): StreamRecommendationForCharge | null {
@@ -175,6 +194,14 @@ function streamRecommendationFromRun(
     .map((warning) => warning.trim())
     .filter(Boolean);
   const raw = isPlainObject(stored.raw) ? stored.raw : stored;
+  const storedDecision = optionalRecordFrom(stored.analysisDecisionV2);
+  const storedInventory = optionalRecordFrom(stored.analysisInventory);
+  const analysisEvidenceLinkage = optionalEvidenceLinkageFrom(
+    stored.analysisEvidenceLinkage,
+  );
+  const analysisDecisionV2 = storedDecision?.schemaVersion === 2
+    ? storedDecision
+    : undefined;
 
   // Codex r1 P2：瘦卡 fallback 扣費（message 空、raw 是合法瘦卡形狀）的
   // 已扣費 run 必須可 resume——reframer init 會重掛 pendingThin，由 replay
@@ -196,6 +223,9 @@ function streamRecommendationFromRun(
     quotedContext,
     warnings,
     raw,
+    ...(analysisDecisionV2 ? { analysisDecisionV2 } : {}),
+    ...(storedInventory ? { analysisInventory: storedInventory } : {}),
+    ...(analysisEvidenceLinkage ? { analysisEvidenceLinkage } : {}),
   };
 }
 
@@ -467,6 +497,13 @@ export async function handleAnalyzeStream(
         userId: deps.userId,
         conversationHash: conversationHashValue,
         finalResult: finalPayload,
+      });
+
+      emitPhase0Observability({
+        finalResult: finalPayload,
+        user: summarizeUser(deps.userId),
+        analysisRunId: streamRun.id,
+        emit: logInfo,
       });
 
       await logAiCall(deps.supabaseUrl, deps.supabaseServiceKey, {
