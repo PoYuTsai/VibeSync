@@ -679,3 +679,103 @@ Deno.test("handler: retry of a charged no-send run resumes from the ledger witho
     "do_not_send",
   );
 });
+
+Deno.test("handler: a v1 request cannot retry or resume a v2 no-send run (capability gate covers the ledger)", async () => {
+  const validated = validateNoSendDecisionEvent(NO_SEND);
+  assert(validated.ok);
+  const noSendRun = (status: string, extra: Record<string, unknown> = {}) =>
+    makeRun({
+      status,
+      charged_at: new Date().toISOString(),
+      decision_kind: "do_not_send",
+      recommendation_json: {
+        decisionKind: "do_not_send",
+        action: "pause",
+        reason: NO_SEND.reason,
+        stopCondition: NO_SEND.stopCondition,
+        raw: NO_SEND,
+        analysisDecisionV2: validated.payload.analysisDecisionV2,
+      },
+      ...extra,
+    });
+
+  for (
+    const run of [
+      noSendRun("failed"),
+      noSendRun("done", {
+        final_result_json: {
+          replies: {},
+          analysisDecisionV2: validated.payload.analysisDecisionV2,
+        },
+      }),
+      noSendRun("charged"),
+    ]
+  ) {
+    const calls: string[] = [];
+    const text = await runHandler(makeDeps({
+      calls,
+      chargeInputs: [],
+      doneResults: [],
+      systems: [],
+      analysisRunId: "run-1",
+      retryRun: run,
+      modelChunks: [METRICS, DONE_WITH_DEBRIS],
+    }));
+    assertEquals(calls, ["getRun"], run.status);
+    assert(text.includes("STREAM_RUN_RETRY_UNAVAILABLE"), run.status);
+    assertFalse(text.includes("messageDecision"), run.status);
+    assertFalse(text.includes("do_not_send"), run.status);
+  }
+
+  // A v1 send run is untouched by the gate: retry still works for v1.
+  const calls: string[] = [];
+  const text = await runHandler(makeDeps({
+    calls,
+    chargeInputs: [],
+    doneResults: [],
+    systems: [],
+    analysisRunId: "run-1",
+    retryRun: makeRun({
+      status: "failed",
+      charged_at: new Date().toISOString(),
+      selected_style: "extend",
+      recommendation_json: {
+        selectedStyle: "extend",
+        message: "m",
+        reason: "r",
+        quotedContext: "q",
+        warnings: [],
+        raw: {
+          type: "analysis.decision",
+          selectedStyle: "extend",
+          nextStepBody: "m",
+          doThis: "r",
+        },
+      },
+    }),
+    modelChunks: [
+      {
+        type: "analysis.decision",
+        selectedStyle: "extend",
+        nextStepBody: "m",
+        doThis: "r",
+      },
+      {
+        type: "analysis.reply_option",
+        style: "extend",
+        message: "m",
+        reason: "r",
+      },
+      {
+        type: "analysis.reply_option",
+        style: "tease",
+        message: "t",
+        reason: "r",
+      },
+      { type: "analysis.done", finalResult: {} },
+    ],
+  }));
+  assert(calls.includes("reserveRetry"));
+  assert(calls.includes("markDone"));
+  assertFalse(text.includes("STREAM_RUN_RETRY_UNAVAILABLE"));
+});

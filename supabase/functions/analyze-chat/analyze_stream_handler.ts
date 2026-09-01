@@ -19,7 +19,10 @@ import {
   type StreamChargePayload,
   type StreamRecommendationForCharge,
 } from "./reframer.ts";
-import { noSendChargePayloadFromStored } from "./no_send_decision.ts";
+import {
+  isNoSendDecisionKind,
+  noSendChargePayloadFromStored,
+} from "./no_send_decision.ts";
 import { isStreamStyle } from "./stream_events.ts";
 import {
   calibratePhase0EvidenceLinkage,
@@ -242,6 +245,13 @@ function streamRecommendationFromRun(
   };
 }
 
+function isNoSendStreamRun(run: AnalysisStreamRun): boolean {
+  if (isNoSendDecisionKind(run.decision_kind)) return true;
+  const stored = run.recommendation_json;
+  return isPlainObject(stored) &&
+    noSendChargePayloadFromStored(stored) !== null;
+}
+
 function streamResumeSnapshotFromRun(
   run: AnalysisStreamRun,
 ): StreamAnalysisResumeSnapshot {
@@ -280,6 +290,12 @@ export async function handleAnalyzeStream(
       });
       if (Date.parse(streamRun.expires_at) <= Date.now()) {
         throw new Error("STREAM_RUN_EXPIRED");
+      }
+      // Capability gate also covers resume/retry: a request without
+      // analysisContractVersion 2 never receives a no-send shape, not even by
+      // attaching to a run a v2 client created.
+      if (!deps.noSendDecisions && isNoSendStreamRun(streamRun)) {
+        throw new Error("STREAM_RUN_NOT_RETRYABLE");
       }
       if (
         streamRun.status === "done" &&

@@ -197,17 +197,41 @@ Deno.test("stream prompt: gate text only appears when the capability is on", () 
   // Under the gate every style / recommendation / reply_option rule is
   // explicitly scoped to send; stripping the gate and those scope markers
   // gives back the v1 text byte for byte.
-  assertEquals(
-    v2.replace(
-      /\n1a\. Message decision gate[\s\S]*?Example no-send line: \{[^\n]*\}/,
-      "",
-    ).replaceAll("[send decisions only] ", ""),
-    v1,
+  const v2Stripped = v2.replace(
+    /\n1a\. Message decision gate[\s\S]*?Example no-send line: \{[^\n]*\}/,
+    "",
+  ).replaceAll("[send decisions only] ", "");
+  // Only step 1 differs after stripping the gate and the scope markers.
+  const diff = v2Stripped.split("\n").filter((line, index) =>
+    line !== v1.split("\n")[index]
   );
+  assertEquals(diff.length, 1);
+  assert(diff[0].startsWith("1. `analysis.decision`"));
+  assertEquals(v2Stripped.split("\n").length, v1.split("\n").length);
   assert(v2.includes("[send decisions only] 2. `analysis.recommendation`"));
   assert(v2.includes("[send decisions only] 3. Emit exactly 2"));
   assert(v2.includes("[send decisions only] Server-enforced floor"));
   assert(v2.includes("those events are forbidden, not optional"));
+  // Under the gate, no line outside the gate itself may talk about
+  // selectedStyle / recommendation / reply_option without being scoped to
+  // send, except step 1 which now names messageDecision.
+  const gateStart = v2.indexOf("1a. Message decision gate");
+  const gateEnd = v2.indexOf("Example no-send line:");
+  const offenders = v2.split("\n").filter((line, index, lines) => {
+    const at = lines.slice(0, index).join("\n").length;
+    if (at >= gateStart - 1 && at <= gateEnd) return false;
+    if (!/selectedStyle|analysis\.recommendation|reply_option/.test(line)) {
+      return false;
+    }
+    return !line.startsWith("[send decisions only] ") &&
+      !line.includes("messageDecision");
+  });
+  assertEquals(offenders, []);
+  assert(
+    v2.includes(
+      "Include `messageDecision` (see 1a) and, only when it is `send`, `selectedStyle`",
+    ),
+  );
 });
 
 Deno.test("post-process never backfills canned replies onto a no-send result", () => {
