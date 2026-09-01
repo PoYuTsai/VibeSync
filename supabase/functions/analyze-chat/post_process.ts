@@ -28,6 +28,7 @@
 //   I6. returned enthusiasm.score is the calibrated 0–90 client score
 
 import { getSafeReplies } from "./guardrails.ts";
+import { noSendDecisionFromResult } from "./no_send_decision.ts";
 import { normalizeStretchLevels } from "./opener_payload.ts";
 
 // ---------------------------------------------------------------------------
@@ -912,7 +913,9 @@ export function ensureNonEmptyAnalysisOutput({
   allowedFeatures: string[];
   ballList?: string[];
 }) {
-  if (recognizeOnly || isMyMessageMode) {
+  // Phase 1b: a no-send decision legitimately has zero reply cards. Never
+  // backfill SAFE_REPLIES or fabricate a finalRecommendation for it.
+  if (recognizeOnly || isMyMessageMode || noSendDecisionFromResult(result)) {
     return result;
   }
 

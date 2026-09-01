@@ -2,9 +2,9 @@ import { type NdjsonEmit, ndjsonStreamResponse } from "./ndjson_response.ts";
 import {
   createStreamReframer,
   isThinRecommendationEvent,
+  type StreamChargePayload,
   type StreamChargeResult,
   type StreamOutputEvent,
-  type StreamRecommendationForCharge,
   toRecommendationEvent,
 } from "./reframer.ts";
 import type { StreamStyle } from "./stream_events.ts";
@@ -24,10 +24,12 @@ export interface StreamAnalysisHandlerOptions {
   heartbeatIntervalMs?: number;
   callClaude: () => Promise<ClaudeTextStreamResult>;
   chargeRun: (
-    recommendation: StreamRecommendationForCharge,
+    recommendation: StreamChargePayload,
   ) => Promise<StreamChargeResult> | StreamChargeResult;
-  prechargedRecommendation?: StreamRecommendationForCharge;
+  prechargedRecommendation?: StreamChargePayload;
   requiredReplyStyles?: readonly StreamStyle[];
+  /// Phase 1b: accept no-send decisions (analysisContractVersion >= 2).
+  noSendDecisions?: boolean;
   markDone: (
     finalResult: Record<string, unknown>,
   ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
@@ -322,6 +324,7 @@ export function handleStreamAnalysisRequest(
       onRecommendation: options.chargeRun,
       prechargedRecommendation: options.prechargedRecommendation,
       requiredReplyStyles: options.requiredReplyStyles,
+      noSendDecisions: options.noSendDecisions,
     });
 
     try {

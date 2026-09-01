@@ -16,8 +16,10 @@ import { streamReplyStylesForTier } from "./tier_sync_contract.ts";
 import {
   type AnalysisEvidenceLinkage,
   isThinRecommendationEvent,
+  type StreamChargePayload,
   type StreamRecommendationForCharge,
 } from "./reframer.ts";
+import { noSendChargePayloadFromStored } from "./no_send_decision.ts";
 import { isStreamStyle } from "./stream_events.ts";
 import {
   calibratePhase0EvidenceLinkage,
@@ -70,7 +72,7 @@ export interface AnalyzeStreamRunPort {
     runId: string;
     userId: string;
     conversationHash: string;
-    recommendation: StreamRecommendationForCharge;
+    recommendation: StreamChargePayload;
     chargeQuota: boolean;
     messageCount: number;
   }): Promise<unknown>;
@@ -98,6 +100,9 @@ export interface AnalyzeStreamDeps {
   effectiveTier: string;
   accountIsTest: boolean;
   allowedFeatures: string[];
+  /// Phase 1b: client declared analysisContractVersion >= 2, so the model may
+  /// answer with a no-send decision (zero reply cards) instead of options.
+  noSendDecisions?: boolean;
   quotaUsage: {
     shouldChargeQuota: boolean;
     quotaReason: string;
@@ -179,9 +184,14 @@ function optionalEvidenceLinkageFrom(
 
 function streamRecommendationFromRun(
   run: AnalysisStreamRun,
-): StreamRecommendationForCharge | null {
+): StreamChargePayload | null {
   const stored = run.recommendation_json;
   if (!isPlainObject(stored)) return null;
+
+  // Phase 1b: a charged no-send run resumes from its persisted decision; it
+  // never had (and never needs) a selected style.
+  const noSend = noSendChargePayloadFromStored(stored);
+  if (noSend) return noSend;
 
   const selectedStyle = stored.selectedStyle;
   const message = typeof stored.message === "string"
@@ -260,7 +270,7 @@ export async function handleAnalyzeStream(
     !(analysisRunId !== null);
 
   let streamRun: AnalysisStreamRun;
-  let prechargedRecommendation: StreamRecommendationForCharge | undefined;
+  let prechargedRecommendation: StreamChargePayload | undefined;
   try {
     if (analysisRunId) {
       streamRun = await deps.store.getRun({
@@ -424,7 +434,9 @@ export async function handleAnalyzeStream(
         {
           model: deps.selectedModel,
           max_tokens: streamMaxOutputTokens,
-          system: buildAnalyzeStreamSystemPrompt(streamReplyStyles),
+          system: buildAnalyzeStreamSystemPrompt(streamReplyStyles, {
+            noSendDecisions: deps.noSendDecisions === true,
+          }),
           messages: [{ role: "user", content: deps.userMessageContent }],
           thinking: streamThinkingDisabled ? { type: "disabled" } : undefined,
         },
@@ -466,6 +478,7 @@ export async function handleAnalyzeStream(
     },
     prechargedRecommendation,
     requiredReplyStyles: streamReplyStyles,
+    noSendDecisions: deps.noSendDecisions === true,
     markDone: async (finalResult) => {
       const guarded = checkAiOutput(
         finalResult as GuardrailAnalysisResult,

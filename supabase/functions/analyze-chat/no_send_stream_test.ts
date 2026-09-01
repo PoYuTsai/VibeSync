@@ -1,0 +1,538 @@
+// Phase 1b: the no-send decision path through the reframer and the stream
+// handler. Every test here also pins the capability gate: with the flag off a
+// style-less decision is still the v1 STREAM_MALFORMED_RECOMMENDATION.
+import {
+  assert,
+  assertEquals,
+  assertFalse,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  createStreamReframer,
+  type StreamChargePayload,
+  type StreamOutputEvent,
+} from "./reframer.ts";
+import {
+  type AnalyzeStreamDeps,
+  handleAnalyzeStream,
+} from "./analyze_stream_handler.ts";
+import {
+  isNoSendChargePayload,
+  validateNoSendDecisionEvent,
+} from "./no_send_decision.ts";
+import type { AnalysisStreamRun } from "./stream_run_store.ts";
+
+function line(value: Record<string, unknown>): string {
+  return `${JSON.stringify(value)}\n`;
+}
+
+const INVENTORY = {
+  type: "analysis.inventory",
+  balls: [{
+    sourceIndex: 1,
+    sourceMessage: "哈哈",
+    disposition: "略",
+    reason: "語氣詞",
+  }],
+};
+const NO_SEND = {
+  type: "analysis.decision",
+  messageDecision: "do_not_send",
+  action: "pause",
+  reason: "她只回哈哈，沒有新內容",
+  stopCondition: "等她主動給新話題",
+  leaked: "RAW_MODEL_FIELD",
+};
+const METRICS = {
+  type: "analysis.metrics",
+  gameStage: { current: "premise", status: "shouldRetreat" },
+  enthusiasm: { score: 18, level: "cold" },
+};
+const REPLY_OPTION = {
+  type: "analysis.reply_option",
+  style: "extend",
+  reason: "r",
+  stretchLevel: "within",
+  segments: [{
+    sourceIndex: 1,
+    sourceMessage: "哈哈",
+    reply: "SHOULD_BE_DROPPED",
+    reason: "x",
+  }],
+};
+const RECOMMENDATION = {
+  type: "analysis.recommendation",
+  selectedStyle: "extend",
+  reason: "SHOULD_BE_DROPPED",
+  expectedReaction: "x",
+};
+const DONE_WITH_DEBRIS = {
+  type: "analysis.done",
+  finalResult: {
+    replies: { extend: "DEBRIS", tease: "DEBRIS" },
+    replyOptions: { extend: { messages: ["DEBRIS"] } },
+    finalRecommendation: { pick: "extend", content: "DEBRIS" },
+    strategy: "先停一下",
+  },
+};
+
+function run(
+  chunks: Record<string, unknown>[],
+  options: {
+    noSendDecisions?: boolean;
+    charge?: () => { charged: boolean; code?: string; message?: string };
+    precharged?: StreamChargePayload;
+    requiredReplyStyles?:
+      readonly ("extend" | "tease" | "resonate" | "humor" | "coldRead")[];
+  } = {},
+) {
+  const events: StreamOutputEvent[] = [];
+  const charges: StreamChargePayload[] = [];
+  const reframer = createStreamReframer({
+    emit: (event) => {
+      events.push(event);
+    },
+    onRecommendation: (recommendation) => {
+      charges.push(recommendation);
+      return options.charge?.() ?? { charged: true };
+    },
+    prechargedRecommendation: options.precharged,
+    requiredReplyStyles: options.requiredReplyStyles ??
+      ["extend", "resonate", "tease", "humor", "coldRead"],
+    noSendDecisions: options.noSendDecisions,
+  });
+  for (const chunk of chunks) reframer.pushText(line(chunk));
+  return reframer.flush().then(() => ({ events, charges }));
+}
+
+function doneOf(events: StreamOutputEvent[]): Record<string, unknown> {
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, `no done in ${events.map((e) => e.type).join(",")}`);
+  return done.finalResult as Record<string, unknown>;
+}
+
+Deno.test("no-send: charges the decision, drops reply events, finishes with zero cards", async () => {
+  const { events, charges } = await run(
+    [
+      INVENTORY,
+      NO_SEND,
+      RECOMMENDATION,
+      REPLY_OPTION,
+      METRICS,
+      DONE_WITH_DEBRIS,
+    ],
+    { noSendDecisions: true },
+  );
+
+  assertEquals(charges.length, 1);
+  const charge = charges[0];
+  assert(isNoSendChargePayload(charge));
+  assertEquals(charge.decisionKind, "do_not_send");
+  assertEquals(charge.selectedStyle, null);
+  assertEquals(charge.analysisDecisionV2?.replyMode, "none");
+  // Charge-time inventory snapshot rides along for Phase 0 telemetry.
+  assertEquals(charge.analysisInventory, INVENTORY);
+
+  assertEquals(
+    events.map((event) => event.type),
+    [
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.metrics",
+      "analysis.done",
+    ],
+  );
+  const decision = events[1];
+  assertEquals(decision.messageDecision, "do_not_send");
+  assertEquals(decision.replyMode, "none");
+  assertFalse("leaked" in decision);
+  assertFalse(events.some((event) => event.type === "analysis.error"));
+
+  const finalResult = doneOf(events);
+  assertEquals(finalResult.replies, {});
+  assertEquals(finalResult.replyOptions, {});
+  assertFalse("finalRecommendation" in finalResult);
+  assertEquals(finalResult.strategy, "先停一下");
+  assertEquals(
+    (finalResult.analysisDecisionV2 as Record<string, unknown>).messageDecision,
+    "do_not_send",
+  );
+  assertEquals(finalResult.enthusiasm, METRICS.enthusiasm);
+  assertFalse(JSON.stringify(finalResult).includes("DEBRIS"));
+  assertFalse(JSON.stringify(finalResult).includes("SHOULD_BE_DROPPED"));
+});
+
+Deno.test("no-send: the flag off keeps v1 behaviour (style-less decision is malformed, nothing charged)", async () => {
+  const { events, charges } = await run([
+    INVENTORY,
+    NO_SEND,
+    METRICS,
+    DONE_WITH_DEBRIS,
+  ]);
+  assertEquals(charges.length, 0);
+  const error = events.find((event) => event.type === "analysis.error");
+  assert(error);
+  assertEquals(error.code, "STREAM_MALFORMED_RECOMMENDATION");
+  assertFalse(events.some((event) => event.type === "analysis.done"));
+});
+
+Deno.test("no-send: a send decision under the flag still takes the v1 charge path", async () => {
+  const { events, charges } = await run([
+    {
+      ...NO_SEND,
+      messageDecision: "send",
+      selectedStyle: "extend",
+      nextStepBody: "接住",
+      doThis: "先回",
+    },
+    {
+      type: "analysis.recommendation",
+      selectedStyle: "extend",
+      message: "m",
+      reason: "r",
+      quotedContext: "q",
+    },
+    {
+      type: "analysis.reply_option",
+      style: "extend",
+      message: "m",
+      reason: "r",
+    },
+    {
+      type: "analysis.reply_option",
+      style: "tease",
+      message: "t",
+      reason: "r",
+    },
+    { type: "analysis.done", finalResult: {} },
+  ], { noSendDecisions: true, requiredReplyStyles: ["extend", "tease"] });
+  assertEquals(charges.length, 1);
+  assertFalse(isNoSendChargePayload(charges[0]));
+  assertEquals(charges[0].selectedStyle, "extend");
+  assertEquals(
+    Object.keys(doneOf(events).replies as Record<string, unknown>).sort(),
+    ["extend", "tease"],
+  );
+});
+
+Deno.test("no-send: an empty-shell decision never charges and closes the stream", async () => {
+  const { events, charges } = await run(
+    [{ ...NO_SEND, stopCondition: "" }, METRICS, DONE_WITH_DEBRIS],
+    { noSendDecisions: true },
+  );
+  assertEquals(charges.length, 0);
+  const error = events.find((event) => event.type === "analysis.error");
+  assert(error);
+  assertEquals(error.code, "STREAM_MALFORMED_RECOMMENDATION");
+  assertFalse(events.some((event) => event.type === "analysis.done"));
+});
+
+Deno.test("no-send: a failed charge surfaces the error and emits no decision or done", async () => {
+  const { events } = await run([NO_SEND, METRICS, DONE_WITH_DEBRIS], {
+    noSendDecisions: true,
+    charge: () => ({
+      charged: false,
+      code: "STREAM_QUOTA_EXHAUSTED",
+      message: "no quota",
+    }),
+  });
+  assertEquals(events.map((event) => event.type), ["analysis.error"]);
+  assertEquals(events[0].code, "STREAM_QUOTA_EXHAUSTED");
+});
+
+Deno.test("no-send: acknowledge_and_stop is replyMode single with its closing line", async () => {
+  const { events, charges } = await run([
+    {
+      ...NO_SEND,
+      messageDecision: "acknowledge_and_stop",
+      action: "stop",
+      closingMessage: "好，那先這樣。",
+    },
+    { type: "analysis.done", finalResult: {} },
+  ], { noSendDecisions: true });
+  assert(isNoSendChargePayload(charges[0]));
+  assertEquals(charges[0].closingMessage, "好，那先這樣。");
+  const decision = events.find((event) => event.type === "analysis.decision");
+  assert(decision);
+  assertEquals(decision.replyMode, "single");
+  assertEquals(decision.closingMessage, "好，那先這樣。");
+  const finalResult = doneOf(events);
+  assertEquals(finalResult.replies, {});
+  assertEquals(
+    (finalResult.analysisDecisionV2 as Record<string, unknown>).closingMessage,
+    "好，那先這樣。",
+  );
+});
+
+Deno.test("no-send: resume from a charged no-send anchor never re-charges and freezes the decision", async () => {
+  const validated = validateNoSendDecisionEvent(NO_SEND);
+  assert(validated.ok);
+  const { events, charges } = await run([
+    INVENTORY,
+    // Replayed model output tries to retarget the decision and add cards.
+    {
+      ...NO_SEND,
+      messageDecision: "send",
+      selectedStyle: "tease",
+      nextStepBody: "x",
+      doThis: "y",
+    },
+    { ...NO_SEND, messageDecision: "need_context", reason: "DIFFERENT" },
+    RECOMMENDATION,
+    REPLY_OPTION,
+    METRICS,
+    DONE_WITH_DEBRIS,
+  ], { noSendDecisions: true, precharged: validated.payload });
+
+  assertEquals(charges.length, 0);
+  assertFalse(events.some((event) => event.type === "analysis.error"));
+  assertFalse(events.some((event) => event.type === "analysis.reply_option"));
+  assertFalse(events.some((event) => event.type === "analysis.recommendation"));
+  const finalResult = doneOf(events);
+  const decision = finalResult.analysisDecisionV2 as Record<string, unknown>;
+  assertEquals(decision.messageDecision, "do_not_send");
+  assertEquals(decision.reason, NO_SEND.reason);
+  assertEquals(finalResult.replies, {});
+  assertFalse(JSON.stringify(finalResult).includes("DEBRIS"));
+});
+
+// ---------------------------------------------------------------------------
+// Handler level: capability flag, persistence, resume.
+
+async function* chunks(values: string[]): AsyncIterable<string> {
+  for (const value of values) yield value;
+}
+
+function makeRun(overrides: Record<string, unknown> = {}): AnalysisStreamRun {
+  return {
+    id: "run-1",
+    user_id: "00000000-0000-4000-8000-000000000001",
+    conversation_hash: "h",
+    status: "pending",
+    retry_count: 0,
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+    final_result_json: null,
+    recommendation_json: null,
+    last_error_code: null,
+    charged_at: null,
+    selected_style: null,
+    decision_kind: null,
+    request_context: null,
+    created_at: new Date().toISOString(),
+    ...overrides,
+  } as AnalysisStreamRun;
+}
+
+function makeDeps(options: {
+  calls: string[];
+  chargeInputs: StreamChargePayload[];
+  doneResults: Record<string, unknown>[];
+  systems: string[];
+  modelChunks: Record<string, unknown>[];
+  noSendDecisions?: boolean;
+  analysisRunId?: string;
+  retryRun?: AnalysisStreamRun;
+}): AnalyzeStreamDeps {
+  return {
+    store: {
+      getRun: () => {
+        options.calls.push("getRun");
+        return Promise.resolve(options.retryRun ?? makeRun());
+      },
+      reserveRetry: () => {
+        options.calls.push("reserveRetry");
+        return Promise.resolve(options.retryRun ?? makeRun());
+      },
+      createPendingRun: () => {
+        options.calls.push("createPendingRun");
+        return Promise.resolve(makeRun());
+      },
+      chargeRun: (args) => {
+        options.calls.push("chargeRun");
+        options.chargeInputs.push(args.recommendation);
+        return Promise.resolve();
+      },
+      markDone: (args) => {
+        options.calls.push("markDone");
+        options.doneResults.push(args.finalResult);
+        return Promise.resolve();
+      },
+      markFailed: () => {
+        options.calls.push("markFailed");
+        return Promise.resolve(makeRun({ status: "failed" }));
+      },
+    },
+    userId: "00000000-0000-4000-8000-000000000001",
+    analysisRunId: options.analysisRunId ?? null,
+    requestType: "analyze",
+    analyzeMode: "normal",
+    expectedTier: "free",
+    effectiveTier: "free",
+    accountIsTest: false,
+    allowedFeatures: ["extend", "tease"],
+    noSendDecisions: options.noSendDecisions,
+    quotaUsage: {
+      shouldChargeQuota: true,
+      quotaReason: "analyze_message_based",
+      quotaUnit: "messages",
+      chargedMessageCount: 1,
+      estimatedMessageCount: 1,
+    },
+    monthlyLimit: 30,
+    dailyLimit: 15,
+    subMonthlyUsed: 0,
+    subDailyUsed: 0,
+    selectedModel: "claude-sonnet-5",
+    userMessageContent: "分析這段對話",
+    requestObservability: {},
+    messages: [{ isFromMe: false, content: "哈哈" }],
+    hashInput: {
+      messages: [{ isFromMe: false, content: "哈哈" }],
+      userDraft: undefined,
+      partnerSummary: undefined,
+      sessionContext: undefined,
+      conversationSummary: undefined,
+      effectiveStyleContext: undefined,
+      knownContactName: undefined,
+    },
+    claudeApiKey: "fake-key",
+    supabaseUrl: "http://localhost:54321",
+    supabaseServiceKey: "fake-service-key",
+    callModel: (request) => {
+      options.calls.push("callModel");
+      options.systems.push(request.system as string);
+      return Promise.resolve({
+        model: "claude-sonnet-5",
+        usage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+        },
+        textStream: chunks(options.modelChunks.map(line)),
+        // deno-lint-ignore no-explicit-any
+      } as any);
+    },
+  };
+}
+
+async function runHandler(deps: AnalyzeStreamDeps): Promise<string> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  try {
+    const response = await handleAnalyzeStream(deps);
+    return await response.text();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+Deno.test("handler: a v2 client gets a charged, persisted no-send result with zero reply cards", async () => {
+  const calls: string[] = [];
+  const chargeInputs: StreamChargePayload[] = [];
+  const doneResults: Record<string, unknown>[] = [];
+  const systems: string[] = [];
+  const text = await runHandler(makeDeps({
+    calls,
+    chargeInputs,
+    doneResults,
+    systems,
+    noSendDecisions: true,
+    modelChunks: [INVENTORY, NO_SEND, REPLY_OPTION, METRICS, DONE_WITH_DEBRIS],
+  }));
+
+  assert(systems[0].includes("1a. Message decision gate"));
+  assertEquals(calls.filter((call) => call === "chargeRun").length, 1);
+  assert(isNoSendChargePayload(chargeInputs[0]));
+  assertEquals(chargeInputs[0].decisionKind, "do_not_send");
+  assert(calls.indexOf("markDone") > calls.indexOf("chargeRun"));
+  assertFalse(calls.includes("markFailed"));
+
+  const stored = doneResults[0];
+  assertEquals(stored.replies, {});
+  assertEquals(stored.replyOptions, {});
+  assertFalse("finalRecommendation" in stored);
+  assertEquals(
+    (stored.analysisDecisionV2 as Record<string, unknown>).messageDecision,
+    "do_not_send",
+  );
+  // Neither post-processing nor the safety guard re-populated canned replies.
+  assertFalse(JSON.stringify(stored).includes("可以聊聊"));
+  assertFalse(JSON.stringify(stored).includes("DEBRIS"));
+  assert(text.includes('"messageDecision":"do_not_send"'));
+  assertFalse(text.includes("STREAM_INCOMPLETE_REPLY_OPTIONS"));
+});
+
+Deno.test("handler: a v1 client never receives the gate and a style-less decision fails as before", async () => {
+  const calls: string[] = [];
+  const systems: string[] = [];
+  const text = await runHandler(makeDeps({
+    calls,
+    chargeInputs: [],
+    doneResults: [],
+    systems,
+    modelChunks: [INVENTORY, NO_SEND, METRICS, DONE_WITH_DEBRIS],
+  }));
+  assertFalse(systems[0].includes("Message decision gate"));
+  assertFalse(calls.includes("chargeRun"));
+  assert(text.includes("STREAM_MALFORMED_RECOMMENDATION"));
+});
+
+Deno.test("handler: retry of a charged no-send run resumes from the ledger without re-charging", async () => {
+  const validated = validateNoSendDecisionEvent(NO_SEND);
+  assert(validated.ok);
+  const calls: string[] = [];
+  const chargeInputs: StreamChargePayload[] = [];
+  const doneResults: Record<string, unknown>[] = [];
+  const text = await runHandler(makeDeps({
+    calls,
+    chargeInputs,
+    doneResults,
+    systems: [],
+    noSendDecisions: true,
+    analysisRunId: "run-1",
+    retryRun: makeRun({
+      status: "failed",
+      charged_at: new Date().toISOString(),
+      decision_kind: "do_not_send",
+      recommendation_json: {
+        decisionKind: "do_not_send",
+        action: "pause",
+        reason: NO_SEND.reason,
+        stopCondition: NO_SEND.stopCondition,
+        raw: NO_SEND,
+        analysisDecisionV2: validated.payload.analysisDecisionV2,
+      },
+    }),
+    modelChunks: [
+      {
+        ...NO_SEND,
+        messageDecision: "send",
+        selectedStyle: "extend",
+        nextStepBody: "x",
+        doThis: "y",
+      },
+      REPLY_OPTION,
+      METRICS,
+      DONE_WITH_DEBRIS,
+    ],
+  }));
+
+  assertEquals(calls[0], "getRun");
+  assertEquals(calls[1], "reserveRetry");
+  assertFalse(calls.includes("chargeRun"));
+  assert(calls.includes("markDone"));
+  assertFalse(text.includes("STREAM_RUN_NOT_RETRYABLE"));
+  assert(text.includes('"messageDecision":"do_not_send"'));
+  assertEquals(doneResults[0].replies, {});
+  assertEquals(
+    (doneResults[0].analysisDecisionV2 as Record<string, unknown>)
+      .messageDecision,
+    "do_not_send",
+  );
+});

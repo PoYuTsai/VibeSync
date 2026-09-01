@@ -2644,7 +2644,7 @@ Deno.test("phase 0: preserves a schema v2 decision and inventory at charge, then
       events.push(event);
     },
     onRecommendation(recommendation) {
-      charged = recommendation;
+      charged = recommendation as StreamRecommendationForCharge;
       return { charged: true };
     },
   });

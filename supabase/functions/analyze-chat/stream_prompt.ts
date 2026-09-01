@@ -10,9 +10,27 @@ import {
   type StreamStyle,
 } from "./stream_events.ts";
 
+export interface StreamPromptOptions {
+  /// analysisContractVersion >= 2: the model may answer with a no-send
+  /// decision instead of reply options. Off by default so the v1 prompt stays
+  /// byte-identical (baseline_contract_test hash lock).
+  noSendDecisions?: boolean;
+}
+
+// Phase 1b message decision gate. Appended right after step 1 so the model
+// decides before it writes a single reply; v1 wording above and below is
+// untouched.
+const NO_SEND_DECISION_GATE = [
+  "1a. Message decision gate (this request supports it): every `analysis.decision` must include `messageDecision`, one of `send`, `do_not_send`, `acknowledge_and_stop`, `need_context`. Decide this before any reply wording.",
+  "Use `send` when there is a reasonable, low-risk next message; then follow steps 1-3 exactly as written. Use `do_not_send` when her latest fragment is low-effort, repeats non-uptake, or adds no new content, so replying would only keep the conversation alive for her. Use `need_context` when you cannot tell who said what or the fragment is incomplete. Use `acknowledge_and_stop` when she set a boundary, cancelled, or the polite move is one neutral closing line.",
+  "For the three non-send decisions: omit `selectedStyle`; include `action` (`stop`/`connect`/`extend`/`filter`/`invite`/`pause`), `reason` (why not now, grounded in her actual messages), and `stopCondition` (what she must do before you reconsider); for `acknowledge_and_stop` also include `closingMessage` (one short neutral line, Traditional Chinese). Then skip steps 2 and 3 entirely: emit no `analysis.recommendation` and no `analysis.reply_option`, continue from step 4, and put no replies in `finalResult`. A non-send decision is a complete, successful analysis, not a failure, and it is never a way to avoid a hard reply.",
+  'Example no-send line: {"type":"analysis.decision","messageDecision":"do_not_send","action":"pause","reason":"她只回「哈哈」，沒有新內容也沒有問句","stopCondition":"等她主動提到新的話題或問你問題"}',
+];
+
 export function buildStreamSystemPrompt(
   basePrompt: string,
   requestedReplyStyles: readonly string[] = STREAM_STYLES,
+  options: StreamPromptOptions = {},
 ): string {
   const replyStyles = normalizeReplyStyles(requestedReplyStyles);
   const styleList = replyStyles.map((style) => `\`${style}\``).join(", ");
@@ -31,6 +49,7 @@ export function buildStreamSystemPrompt(
     "Disposition rule: do not mark every textual line `接` just because it has a hook. Group by conversational move first. A personal callback or inside joke can be `接` or `併`; play along or tease back, and never mark it `略` only because you lack the backstory.",
     'Example inventory line: {"type":"analysis.inventory","balls":[{"sourceIndex":1,"sourceMessage":"剛來吃晚餐","disposition":"接","reason":"晚餐生活球"},{"sourceIndex":2,"sourceMessage":"這家排超久","disposition":"併","reason":"同一晚餐球的背景"},{"sourceIndex":3,"sourceMessage":"等等去樂華夜市","disposition":"接","reason":"另一個可延伸行程"},{"sourceIndex":4,"sourceMessage":"哈哈","disposition":"略","reason":"收尾語氣，不需獨立回"}]}',
     "1. `analysis.decision`, as soon as you know the next move. Do not wait for the full report. Include `selectedStyle`, `nextStepTitle`, `nextStepBody`, `doThis`, `avoidThis`, and `confidence`. Your `selectedStyle`'s segment sources must be balls marked `接`; their wording may incorporate related `併` context.",
+    ...(options.noSendDecisions ? NO_SEND_DECISION_GATE : []),
     "2. `analysis.recommendation` once, thin: only `selectedStyle`, `reason`, and `expectedReaction` (one short line on how she will likely react). `analysis.recommendation` is REQUIRED even though it repeats the decision's selectedStyle; the recommendation card cannot render without it. Do not repeat the reply text here; the selected style's `analysis.reply_option` is the single source of the reply wording.",
     'Example recommendation line: {"type":"analysis.recommendation","selectedStyle":"extend","reason":"兩顆球都接住才有互動感","expectedReaction":"她大概會分享夜市買了什麼"}',
     `3. Emit exactly ${replyStyles.length} \`analysis.reply_option\` events: one for each allowed reply style (${styleList}). Emit the selected style first, then the other allowed styles.`,
