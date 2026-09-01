@@ -38,7 +38,40 @@ export interface StreamRecommendationForCharge {
   quotedContext: string;
   warnings: string[];
   raw: StreamEvent | Record<string, unknown>;
+  // Phase 0 only: additive snapshots. These never participate in charge
+  // validation, stream ordering, or retry eligibility.
+  analysisDecisionV2?: Record<string, unknown>;
+  analysisInventory?: Record<string, unknown>;
+  analysisEvidenceLinkage?: AnalysisEvidenceLinkage;
 }
+
+export interface AnalysisEvidenceVariant {
+  sourceIndices?: number[];
+  // Exact source order is additive Phase 0 evidence. sourceIndices remains a
+  // unique coverage set for existing consumers and telemetry.
+  sourceIndexSequence?: number[];
+  sourceBallIds?: string[];
+  action?: string;
+  selectedBallIds?: string[];
+  questionCount?: number;
+  newTopicCount?: number;
+  semanticDistance?: number;
+  solutionMode?: boolean;
+}
+
+export interface AnalysisEvidenceLinkage {
+  schemaVersion: 1;
+  decisionId?: string;
+  selectedStyle?: StreamStyle;
+  selectedBallIds?: string[];
+  inventorySourceIndices?: number[];
+  variants?: Record<string, AnalysisEvidenceVariant>;
+}
+
+type Phase0ObservabilitySnapshot = Pick<
+  StreamRecommendationForCharge,
+  "analysisDecisionV2" | "analysisInventory" | "analysisEvidenceLinkage"
+>;
 
 export interface StreamChargeResult {
   charged: boolean;
@@ -65,6 +98,184 @@ export interface StreamReframer {
 const DEFAULT_CHARGE_FAILURE_MESSAGE =
   "Streaming analysis could not continue. Please retry.";
 
+const ANALYSIS_ACTIONS = new Set([
+  "stop",
+  "connect",
+  "extend",
+  "filter",
+  "invite",
+  "pause",
+]);
+
+function cloneRecord(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  try {
+    const clone = JSON.parse(JSON.stringify(value)) as unknown;
+    return isRecord(clone) ? clone : null;
+  } catch {
+    return null;
+  }
+}
+
+function cloneDecisionV2(value: unknown): Record<string, unknown> | null {
+  const clone = cloneRecord(value);
+  return clone?.schemaVersion === 2 ? clone : null;
+}
+
+function cloneEvidenceLinkage(
+  value: unknown,
+): AnalysisEvidenceLinkage | null {
+  const clone = cloneRecord(value);
+  return clone?.schemaVersion === 1
+    ? clone as unknown as AnalysisEvidenceLinkage
+    : null;
+}
+
+function decisionV2SnapshotFrom(
+  event: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const nested = cloneDecisionV2(event.analysisDecisionV2);
+  if (nested) return nested;
+  if (event.schemaVersion !== 2) return null;
+
+  const { type: _type, ...decision } = event;
+  return cloneDecisionV2(decision);
+}
+
+function inventorySnapshotFrom(
+  event: StreamEvent,
+): Record<string, unknown> | null {
+  return Array.isArray(event.balls) ? cloneRecord(event) : null;
+}
+
+function stringArrayFrom(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    return undefined;
+  }
+  const values = value.map((item) => item.trim());
+  return values.every(Boolean) ? values : undefined;
+}
+
+function nonNegativeNumberFrom(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function sourceIndexSequenceFromSegments(
+  segments: readonly Record<string, unknown>[],
+): number[] | undefined {
+  const indices = segments.flatMap((segment) => {
+    const sourceIndex = segment.sourceIndex;
+    return typeof sourceIndex === "number" &&
+        Number.isInteger(sourceIndex) && sourceIndex > 0
+      ? [sourceIndex]
+      : [];
+  });
+  return indices.length > 0 ? indices : undefined;
+}
+
+function sourceIndicesFromSegments(
+  segments: readonly Record<string, unknown>[],
+): number[] | undefined {
+  const sequence = sourceIndexSequenceFromSegments(segments);
+  return sequence ? [...new Set(sequence)] : undefined;
+}
+
+function sourceIndicesFromInventory(
+  inventory: Record<string, unknown> | null,
+): number[] | undefined {
+  if (!inventory || !Array.isArray(inventory.balls)) return undefined;
+  const indices = [
+    ...new Set(inventory.balls.flatMap((ball) => {
+      if (!isRecord(ball)) return [];
+      const sourceIndex = ball.sourceIndex;
+      return typeof sourceIndex === "number" &&
+          Number.isInteger(sourceIndex) && sourceIndex > 0
+        ? [sourceIndex]
+        : [];
+    })),
+  ].sort((left, right) => left - right);
+  return indices.length > 0 ? indices : undefined;
+}
+
+function evidenceVariantFrom(
+  event: StreamEvent,
+  segments: readonly Record<string, unknown>[],
+): AnalysisEvidenceVariant {
+  const action = stringField(event.action);
+  const sourceIndexSequence = sourceIndexSequenceFromSegments(segments);
+  const sourceIndices = sourceIndicesFromSegments(segments);
+  const sourceBallIds = stringArrayFrom(event.sourceBallIds);
+  const selectedBallIds = stringArrayFrom(event.selectedBallIds);
+  const questionCount = nonNegativeNumberFrom(event.questionCount);
+  const newTopicCount = nonNegativeNumberFrom(event.newTopicCount);
+  const semanticDistance = nonNegativeNumberFrom(event.semanticDistance);
+  const solutionMode = typeof event.solutionMode === "boolean"
+    ? event.solutionMode
+    : undefined;
+
+  return {
+    ...(sourceIndices ? { sourceIndices } : {}),
+    ...(sourceIndexSequence ? { sourceIndexSequence } : {}),
+    ...(sourceBallIds ? { sourceBallIds } : {}),
+    ...(ANALYSIS_ACTIONS.has(action) ? { action } : {}),
+    ...(selectedBallIds ? { selectedBallIds } : {}),
+    ...(questionCount !== undefined ? { questionCount } : {}),
+    ...(newTopicCount !== undefined ? { newTopicCount } : {}),
+    ...(semanticDistance !== undefined ? { semanticDistance } : {}),
+    ...(solutionMode !== undefined ? { solutionMode } : {}),
+  };
+}
+
+function buildEvidenceLinkage({
+  decision,
+  inventory,
+  selectedStyle,
+  variants,
+}: {
+  decision: Record<string, unknown> | null;
+  inventory: Record<string, unknown> | null;
+  selectedStyle: StreamStyle | null;
+  variants?: ReadonlyMap<StreamStyle, AnalysisEvidenceVariant>;
+}): AnalysisEvidenceLinkage | null {
+  const decisionId = decision ? stringField(decision.decisionId) : "";
+  const selectedBallIds = decision
+    ? stringArrayFrom(decision.selectedBallIds)
+    : undefined;
+  const inventorySourceIndices = sourceIndicesFromInventory(inventory);
+  const linkage: AnalysisEvidenceLinkage = {
+    schemaVersion: 1,
+    ...(decisionId ? { decisionId } : {}),
+    ...(selectedStyle ? { selectedStyle } : {}),
+    ...(selectedBallIds ? { selectedBallIds } : {}),
+    ...(inventorySourceIndices ? { inventorySourceIndices } : {}),
+  };
+
+  if (variants && variants.size > 0) {
+    const entries = [...variants.entries()]
+      .filter(([, variant]) => Object.keys(variant).length > 0)
+      .map(([style, variant]) => [style, { ...variant }] as const);
+    if (entries.length > 0) linkage.variants = Object.fromEntries(entries);
+  }
+
+  return Object.keys(linkage).length > 1 ? linkage : null;
+}
+
+function mergeEvidenceLinkageSnapshot(
+  persisted: AnalysisEvidenceLinkage | null,
+  derived: AnalysisEvidenceLinkage | null,
+): AnalysisEvidenceLinkage | null {
+  if (!persisted) return derived;
+  if (!derived) return persisted;
+  const variants = derived.variants ?? persisted.variants;
+  return {
+    ...persisted,
+    ...derived,
+    ...(variants ? { variants } : {}),
+  } as AnalysisEvidenceLinkage;
+}
+
 export function createStreamReframer(options: ReframerOptions): StreamReframer {
   const assembler = createLegacyAnalysisAssembler();
   let buffer = "";
@@ -73,6 +284,16 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   let sawValidEvent = false;
   let doneEmitted = false;
   const isResume = options.prechargedRecommendation != null;
+  // A retry is causally anchored to the decision that was already charged.
+  // Replayed provider events may differ, but must not relabel that anchor in
+  // a Phase 0 snapshot. Older anchors can still recover a v2 snapshot from
+  // their stored raw decision without affecting stream behavior.
+  const frozenResumeDecision = options.prechargedRecommendation
+    ? cloneDecisionV2(options.prechargedRecommendation.analysisDecisionV2) ??
+      (options.prechargedRecommendation.raw.type === "analysis.decision"
+        ? decisionV2SnapshotFrom(options.prechargedRecommendation.raw)
+        : null)
+    : null;
   let chargeCompleted = isResume;
   let resumeDecisionReplayPending = options.prechargedRecommendation?.raw
     ?.type === "analysis.decision";
@@ -95,14 +316,48 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   // reply_option 到貨時驗「段⊆接/併」＋「段數達下限」。缺席/全略＝null＝退回
   // soft 不驗證（INV-H4 fallback，絕不誤殺）。
   let inventory: BallInventory | null = null;
+  // Phase 0 observability is strictly additive. A legacy decision remains on
+  // its existing streamingDecision path unless it explicitly declares v2.
+  let analysisDecisionV2: Record<string, unknown> | null = frozenResumeDecision;
+  let analysisInventory: Record<string, unknown> | null = null;
+  let analysisEvidenceLinkage: AnalysisEvidenceLinkage | null = null;
+  let observedSelectedStyle: StreamStyle | null =
+    options.prechargedRecommendation?.selectedStyle ?? null;
+  const evidenceVariants = new Map<StreamStyle, AnalysisEvidenceVariant>();
   const preChargeEvents: StreamEvent[] = [];
   const requiredReplyStyles = normalizeRequiredReplyStyles(
     options.requiredReplyStyles,
   );
   const requiredReplyStyleSet = new Set(requiredReplyStyles);
 
+  const phase0Snapshot = (
+    selectedStyle: StreamStyle | null,
+    includeVariants: boolean,
+  ): Phase0ObservabilitySnapshot => {
+    const snapshot: Phase0ObservabilitySnapshot = {};
+    const decision = cloneRecord(analysisDecisionV2);
+    const inventory = cloneRecord(analysisInventory);
+    if (decision) snapshot.analysisDecisionV2 = decision;
+    if (inventory) snapshot.analysisInventory = inventory;
+
+    const linkage = mergeEvidenceLinkageSnapshot(
+      cloneEvidenceLinkage(analysisEvidenceLinkage),
+      buildEvidenceLinkage({
+        decision: analysisDecisionV2,
+        inventory: analysisInventory,
+        selectedStyle,
+        variants: includeVariants ? evidenceVariants : undefined,
+      }),
+    );
+    if (linkage) snapshot.analysisEvidenceLinkage = linkage;
+    return snapshot;
+  };
+
   if (options.prechargedRecommendation) {
     const raw = options.prechargedRecommendation.raw;
+    // Every resume path, including a thin-card anchor, keeps the charged
+    // style as the causal baseline. A replayed decision cannot retarget it.
+    decisionSelectedStyle = options.prechargedRecommendation.selectedStyle;
     if (isThinRecommendationEvent(raw)) {
       // resume 自 v2 瘦卡扣費：重掛 pending，由 replay 的 selected
       // reply_option 重新綁卡回填；瘦卡本身不可直接外流。revalidation
@@ -114,13 +369,22 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
         pendingThinRecommendation = revalidated;
       }
     } else {
-      // resume 錨點風格一律照記（decision 與 legacy 全卡皆是）：telemetry 的
-      // selected 判定才不會在 legacy 全卡 resume 整條標 unknown（Codex 雙審
-      // P2）。legacy 全卡 officialRecommendationEmitted 已為 true，tryLateBind
+      // legacy 全卡 officialRecommendationEmitted 已為 true，tryLateBind
       // 不會因此合成第二張卡，行為不變。
-      decisionSelectedStyle = options.prechargedRecommendation.selectedStyle;
       assembler.absorb(toRecommendationEvent(options.prechargedRecommendation));
     }
+
+    // A retry may start from a previously persisted charge anchor. Snapshot
+    // fields are optional and must never become a retry requirement.
+    analysisDecisionV2 = cloneDecisionV2(
+      options.prechargedRecommendation.analysisDecisionV2,
+    ) ?? analysisDecisionV2;
+    analysisInventory = cloneRecord(
+      options.prechargedRecommendation.analysisInventory,
+    ) ?? analysisInventory;
+    analysisEvidenceLinkage = cloneEvidenceLinkage(
+      options.prechargedRecommendation.analysisEvidenceLinkage,
+    ) ?? analysisEvidenceLinkage;
   }
 
   const emitError = (
@@ -155,7 +419,10 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       closed = true;
       return;
     }
-    const finalResult = assembler.build();
+    const finalResult = {
+      ...assembler.build(),
+      ...phase0Snapshot(observedSelectedStyle, true),
+    };
     const missingStyles = findMissingRequiredReplyStyles(
       finalResult,
       requiredReplyStyles,
@@ -234,6 +501,12 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     );
     const compat = withReplyOptionCompatFields(event, segments);
     const style = replyStyleFrom(compat);
+    if (style) {
+      const variant = evidenceVariantFrom(compat, segments);
+      if (Object.keys(variant).length > 0) {
+        evidenceVariants.set(style, variant);
+      }
+    }
     // 球數案閘 — 2026-06-13 改 fail-soft（log-only）。
     // 原硬擋（不達下限/取略球→丟 option→終局 INCOMPLETE）在 dogfood 造成真實
     // 分析失敗（「請重新分析」）＝guard 非 generator，模型不服從時倒楣的是用戶。
@@ -355,9 +628,14 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   const chargeFromValidation = async (
     validation: Extract<RecommendationValidation, { ok: true }>,
   ): Promise<boolean> => {
-    const chargeResult = await options.onRecommendation(
-      toChargePayload(validation),
-    );
+    observedSelectedStyle = validation.selectedStyle;
+    const chargeResult = await options.onRecommendation({
+      ...toChargePayload(validation),
+      // The charge anchor is immutable after this call. Later reply options
+      // intentionally stay out of recommendation_json and appear only in the
+      // completed finalResult snapshot.
+      ...phase0Snapshot(validation.selectedStyle, false),
+    });
     if (!chargeResult.charged) {
       emitError(
         chargeResult.code ?? "STREAM_CHARGE_FAILED",
@@ -379,8 +657,9 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       return;
     }
 
-    if (isStreamStyle(event.selectedStyle)) {
+    if (!isResume && isStreamStyle(event.selectedStyle)) {
       decisionSelectedStyle = event.selectedStyle;
+      observedSelectedStyle = event.selectedStyle;
     }
 
     if (chargeCompleted) {
@@ -491,6 +770,18 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       // 不 return，讓事件照舊落到下方 buffer/emit）。
       const parsed = parseBallInventory(event);
       if (parsed) inventory = parsed;
+      // Retries still parse replayed inventory for this stream's existing
+      // fail-soft validation, but Phase 0 must retain only the charge-time
+      // snapshot (or remain unknown when none was stored).
+      if (!isResume) {
+        const snapshot = inventorySnapshotFrom(event);
+        if (snapshot) analysisInventory = snapshot;
+      }
+    }
+
+    if (event.type === "analysis.decision" && !isResume) {
+      const snapshot = decisionV2SnapshotFrom(event);
+      if (snapshot) analysisDecisionV2 = snapshot;
     }
 
     if (event.type === "analysis.recommendation") {
@@ -904,6 +1195,7 @@ function createLegacyAnalysisAssembler() {
   function absorbReportSection(event: Record<string, unknown>) {
     const section = stringField(event.section);
     if (!section) return;
+    if (SERVER_DERIVED_PHASE0_FINAL_RESULT_KEYS.has(section)) return;
 
     const payload = event.payload ?? event.content;
     if (section === "strategy") {
@@ -928,6 +1220,7 @@ function createLegacyAnalysisAssembler() {
 
   function mergeFinalResult(finalResult: Record<string, unknown>) {
     for (const [key, value] of Object.entries(finalResult)) {
+      if (SERVER_DERIVED_PHASE0_FINAL_RESULT_KEYS.has(key)) continue;
       // 廢除雙軌：finalRecommendation 一律以 selected reply_option 回填
       // 的版本為準，模型 done 殘骸不得覆蓋。
       if (key === "finalRecommendation" && finalRecommendationAuthoritative) {
@@ -964,6 +1257,20 @@ const RECORD_ONLY_FINAL_RESULT_KEYS = new Set([
   "coachActionHint",
   "dimensions",
   "dogfoodComparison",
+  // Phase 0 additive fields are records. Scalar/array model output must not
+  // clobber a valid snapshot or reach a client that assumes object shape.
+  "analysisDecisionV2",
+  "analysisInventory",
+  "analysisEvidenceLinkage",
+]);
+
+// Phase 0 snapshots are captured only from their typed stream events (or a
+// persisted charge anchor on retry). A model's generic finalResult/report
+// payload must never manufacture or replace that server-derived evidence.
+const SERVER_DERIVED_PHASE0_FINAL_RESULT_KEYS = new Set([
+  "analysisDecisionV2",
+  "analysisInventory",
+  "analysisEvidenceLinkage",
 ]);
 
 // client 是 List<String>.from(json[key])，字串/物件 clobber 都會 throw。

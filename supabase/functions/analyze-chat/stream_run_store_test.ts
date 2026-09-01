@@ -405,6 +405,62 @@ Deno.test("chargeRun serializes recommendation into the atomic charge RPC payloa
   }]);
 });
 
+Deno.test("chargeRun preserves optional Phase 0 decision, inventory, and charge-time linkage", async () => {
+  const h = makeDriver();
+  const store = new AnalysisStreamRunStore(h.driver);
+  const pending = await store.createPendingRun({
+    userId: USER,
+    conversationHash: HASH,
+  });
+  const recommendation: StreamRecommendationForCharge = {
+    ...RECOMMENDATION,
+    analysisDecisionV2: {
+      schemaVersion: 2,
+      decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      messageDecision: "send",
+      action: "connect",
+    },
+    analysisInventory: {
+      type: "analysis.inventory",
+      balls: [{ sourceIndex: 1, disposition: "接" }],
+    },
+    analysisEvidenceLinkage: {
+      schemaVersion: 1,
+      decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      selectedStyle: "resonate",
+      selectedBallIds: ["b_1"],
+      inventorySourceIndices: [1],
+    },
+  };
+
+  const charged = await store.chargeRun({
+    runId: pending.id,
+    userId: USER,
+    conversationHash: HASH,
+    recommendation,
+    chargeQuota: true,
+    messageCount: 1,
+  });
+
+  assertEquals(charged.recommendation_json?.analysisDecisionV2, {
+    schemaVersion: 2,
+    decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    messageDecision: "send",
+    action: "connect",
+  });
+  assertEquals(charged.recommendation_json?.analysisInventory, {
+    type: "analysis.inventory",
+    balls: [{ sourceIndex: 1, disposition: "接" }],
+  });
+  assertEquals(charged.recommendation_json?.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    selectedStyle: "resonate",
+    selectedBallIds: ["b_1"],
+    inventorySourceIndices: [1],
+  });
+});
+
 Deno.test("chargeRun rejects non-positive messageCount when chargeQuota=true", async () => {
   const h = makeDriver();
   const store = new AnalysisStreamRunStore(h.driver);

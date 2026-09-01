@@ -753,7 +753,7 @@ function repliesFromReplyOptions(
 // Coach action hint sanitization
 // ---------------------------------------------------------------------------
 
-const COACH_ACTION_HINT_ACTION_TYPES = new Set([
+export const COACH_ACTION_HINT_ACTION_TYPES = new Set([
   "softInvite",
   "lowerPressureReply",
   "extendTopicStoryFrame",

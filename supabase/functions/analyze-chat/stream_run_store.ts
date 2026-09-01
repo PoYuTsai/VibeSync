@@ -165,6 +165,11 @@ function requireNonEmpty(value: string, name: string): string {
 function serializeRecommendation(
   recommendation: StreamRecommendationForCharge,
 ): Record<string, unknown> {
+  const analysisDecisionV2 = asRecord(recommendation.analysisDecisionV2);
+  const analysisInventory = asRecord(recommendation.analysisInventory);
+  const analysisEvidenceLinkage = asRecord(
+    recommendation.analysisEvidenceLinkage,
+  );
   return {
     selectedStyle: recommendation.selectedStyle,
     message: recommendation.message,
@@ -172,7 +177,16 @@ function serializeRecommendation(
     quotedContext: recommendation.quotedContext,
     warnings: recommendation.warnings,
     raw: recommendation.raw,
+    ...(analysisDecisionV2 ? { analysisDecisionV2 } : {}),
+    ...(analysisInventory ? { analysisInventory } : {}),
+    ...(analysisEvidenceLinkage ? { analysisEvidenceLinkage } : {}),
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 interface DbResult<T> {
