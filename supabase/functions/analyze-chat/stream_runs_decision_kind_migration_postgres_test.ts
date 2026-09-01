@@ -368,16 +368,46 @@ Deno.test("v2 charge RPC charges a no-send decision exactly once", async () => {
     assertEquals(first.rows[0].recommendation_json, NO_SEND_RECOMMENDATION);
     assertEquals(await usageCalls(db), 1);
 
-    // 重送（甚至改口成 send）只回放，不再扣費、不改狀態。
-    const replay = await chargeV2(db, {
-      runId,
-      recommendation: SEND_RECOMMENDATION,
-      decisionKind: "send",
-      selectedStyle: "extend",
-    });
-    assertEquals(replay.rows[0].decision_kind, "do_not_send");
-    assertEquals(replay.rows[0].selected_style, null);
-    assertEquals(await usageCalls(db), 1);
+    // 重送只回放，不再扣費、不改狀態——不管第二次送的是改口成 send、
+    // 空殼 no-send、非法 decision kind 還是 message_count 0。
+    for (
+      const replayArgs of [
+        {
+          recommendation: SEND_RECOMMENDATION,
+          decisionKind: "send",
+          selectedStyle: "extend",
+        },
+        {
+          recommendation: { decisionKind: "do_not_send" },
+          decisionKind: "do_not_send",
+        },
+        { recommendation: NO_SEND_RECOMMENDATION, decisionKind: "bogus" },
+        { recommendation: NO_SEND_RECOMMENDATION, decisionKind: null },
+        {
+          recommendation: NO_SEND_RECOMMENDATION,
+          decisionKind: "do_not_send",
+          messageCount: 0,
+        },
+      ]
+    ) {
+      const replay = await chargeV2(db, { runId, ...replayArgs });
+      assertEquals(replay.rows[0].decision_kind, "do_not_send");
+      assertEquals(replay.rows[0].selected_style, null);
+      assertEquals(replay.rows[0].recommendation_json, NO_SEND_RECOMMENDATION);
+      assertEquals(await usageCalls(db), 1);
+    }
+    // 但 owner／conversation 不符仍然擋，不會把別人的 run 回放出去。
+    await assertRejects(
+      () =>
+        chargeV2(db, {
+          runId,
+          recommendation: NO_SEND_RECOMMENDATION,
+          decisionKind: "do_not_send",
+          userId: OTHER_USER_ID,
+        }),
+      Error,
+      "STREAM_RUN_OWNER_MISMATCH",
+    );
 
     // send 走 v2 也會記下 decision_kind。
     const sendRun = await createPendingRun(db);

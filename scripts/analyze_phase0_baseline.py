@@ -76,7 +76,7 @@ def fetch_messages(ref: str, days: int) -> list[str]:
             sys.exit(f"logs query failed for {cursor:%Y-%m-%dT%H:%M}Z: {payload['error']}")
         rows = payload.get("result") or []
         if len(rows) >= 1000:
-            print(f"warning: slice {cursor:%Y-%m-%dT%H:%M}Z hit the 1000 row cap", file=sys.stderr)
+            sys.exit(f"slice {cursor:%Y-%m-%dT%H:%M}Z hit the 1000 row cap; shrink SLICE before trusting this baseline")
         messages.extend(row["event_message"] for row in rows)
         cursor = upper
     return messages

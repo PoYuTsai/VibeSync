@@ -97,6 +97,33 @@ BEGIN
     RAISE EXCEPTION 'charge_stream_analysis_run_v2: p_conversation_hash is required';
   END IF;
 
+  SELECT *
+    INTO stream_run
+    FROM public.analysis_stream_runs
+   WHERE id = p_run_id
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'STREAM_RUN_NOT_FOUND';
+  END IF;
+
+  IF stream_run.user_id <> p_user_id THEN
+    RAISE EXCEPTION 'STREAM_RUN_OWNER_MISMATCH';
+  END IF;
+
+  IF stream_run.conversation_hash <> p_conversation_hash THEN
+    RAISE EXCEPTION 'RUN_CONVERSATION_MISMATCH';
+  END IF;
+
+  -- Exactly-once: a charged run replays its durable state, whatever the caller
+  -- sends the second time.
+  IF stream_run.charged_at IS NOT NULL THEN
+    RETURN stream_run;
+  END IF;
+
+  -- Payload validation runs only for an uncharged run, after the replay
+  -- branch above, so a retried request can never be rejected for a payload
+  -- that no longer matters (round-1 review P1).
   IF p_recommendation_json IS NULL
      OR p_recommendation_json = 'null'::jsonb
      OR jsonb_typeof(p_recommendation_json) <> 'object' THEN
@@ -135,30 +162,6 @@ BEGIN
 
   IF should_charge AND (p_message_count IS NULL OR p_message_count <= 0) THEN
     RAISE EXCEPTION 'charge_stream_analysis_run_v2: p_message_count must be positive when charging';
-  END IF;
-
-  SELECT *
-    INTO stream_run
-    FROM public.analysis_stream_runs
-   WHERE id = p_run_id
-   FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'STREAM_RUN_NOT_FOUND';
-  END IF;
-
-  IF stream_run.user_id <> p_user_id THEN
-    RAISE EXCEPTION 'STREAM_RUN_OWNER_MISMATCH';
-  END IF;
-
-  IF stream_run.conversation_hash <> p_conversation_hash THEN
-    RAISE EXCEPTION 'RUN_CONVERSATION_MISMATCH';
-  END IF;
-
-  -- Exactly-once: a charged run replays its durable state, whatever the caller
-  -- sends the second time.
-  IF stream_run.charged_at IS NOT NULL THEN
-    RETURN stream_run;
   END IF;
 
   IF stream_run.status <> 'pending' THEN
