@@ -191,21 +191,87 @@ function checkOptimizedMessage(result: AnalysisResult): AnalysisResult {
   return result;
 }
 
+// 這不是顯示用 normalizer。post_process 會移除這些字元，可能把原本被拆開
+// 的危險片語重新接起來；守門額外掃一次移除後的版本，寧可保守攔截。
+const ONE_WAY_SAFETY_RESCAN_REMOVALS =
+  /[\u200B\u0370-\u03FF\u0400-\u052F\u0590-\u05FF\u0600-\u06FF\u0900-\u097F\u0E00-\u0E7F\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]/g;
+
 function pushDisplayedText(bucket: string[], value: unknown): void {
-  if (typeof value === "string" && value.trim().length > 0) {
-    bucket.push(value);
+  if (typeof value !== "string" || value.trim().length === 0) return;
+
+  bucket.push(value);
+  const safetyRescan = value.replace(ONE_WAY_SAFETY_RESCAN_REMOVALS, "");
+  if (safetyRescan !== value && safetyRescan.trim().length > 0) {
+    bucket.push(safetyRescan);
   }
 }
 
+const DISPLAYED_REPLY_DIRECT_FIELDS = [
+  "reply",
+  "content",
+  "text",
+  "suggestion",
+] as const;
+
 function pushDisplayedSegments(bucket: string[], segments: unknown): void {
   if (!Array.isArray(segments)) return;
-  for (const segment of segments) {
+  // 必須和 post_process.sanitizeReplySegments 的 cap 一致。第 6 段以後會被
+  // 丟棄，不能因為它有 reply 而阻止真正會顯示的 direct fallback 被掃描。
+  for (const segment of segments.slice(0, 5)) {
     if (!segment || typeof segment !== "object") continue;
     const record = segment as Record<string, unknown>;
-    pushDisplayedText(bucket, record.reply);
-    pushDisplayedText(bucket, record.content);
-    pushDisplayedText(bucket, record.text);
+    // post_process 目前會把 segment 正規化為 reply；這裡保守掃同一組
+    // 回覆欄位，避免模型以相容形狀帶入可顯示文字時漏過安全守門。
+    for (const field of DISPLAYED_REPLY_DIRECT_FIELDS) {
+      pushDisplayedText(bucket, record[field]);
+    }
   }
+}
+
+/**
+ * 對齊 post_process 的 normalizeReplyTextValue：legacy replies 的 value 可以是
+ * 字串，也可以是帶 direct reply 欄位或 fallback segments 的物件。不能直接
+ * import 那個 private normalizer，因為 post_process 已經反向 import guardrails。
+ */
+function pushDisplayedReplyValue(bucket: string[], value: unknown): void {
+  if (typeof value === "string") {
+    pushDisplayedText(bucket, value);
+    return;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+
+  const record = value as Record<string, unknown>;
+  const direct = record.reply ?? record.content ?? record.text ??
+    record.suggestion;
+  // 不用 raw 非空值決定是否停止：post_process 的正規化可能把 direct 清成空，
+  // 這時同一物件的 fallback segments 就會變成實際顯示文字。
+  pushDisplayedText(bucket, direct);
+
+  pushDisplayedSegments(
+    bucket,
+    record.messages ?? record.messageGroup ?? record.replySegments,
+  );
+}
+
+/**
+ * 不用 raw 值猜 sanitizeReplyOption 會選哪一邊：messages 或 direct 任一邊都
+ * 可能在 post_process 正規化另一邊後成為顯示文字，因此兩者都保守掃描。
+ */
+function pushDisplayedReplyOption(bucket: string[], value: unknown): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+
+  const record = value as Record<string, unknown>;
+  pushDisplayedSegments(
+    bucket,
+    record.messages ?? record.messageGroup ?? record.replySegments,
+  );
+
+  // sanitizeReplyOption 的 top-level selection 沒有 suggestion；suggestion 只會
+  // 在已選到的 nested value 進 normalizeReplyTextValue 時才有機會顯示。
+  pushDisplayedReplyValue(
+    bucket,
+    record.reply ?? record.content ?? record.text,
+  );
 }
 
 /**
@@ -230,7 +296,7 @@ export function collectDisplayedReplyText(result: AnalysisResult): string {
 
   if (result.replies && typeof result.replies === "object") {
     for (const value of Object.values(result.replies)) {
-      pushDisplayedText(bucket, value);
+      pushDisplayedReplyValue(bucket, value);
     }
   }
 
@@ -238,14 +304,7 @@ export function collectDisplayedReplyText(result: AnalysisResult): string {
     const options = result.replyOptions as Record<string, unknown>;
     for (const option of Object.values(options)) {
       if (!option || typeof option !== "object") continue;
-      const record = option as Record<string, unknown>;
-      pushDisplayedText(bucket, record.reply);
-      pushDisplayedText(bucket, record.content);
-      pushDisplayedText(bucket, record.text);
-      pushDisplayedSegments(
-        bucket,
-        record.messages ?? record.messageGroup ?? record.replySegments,
-      );
+      pushDisplayedReplyOption(bucket, option);
     }
   }
 
@@ -271,7 +330,7 @@ export function checkAiOutput(result: AnalysisResult): AnalysisResult {
 
   for (const pattern of BLOCKED_PATTERNS) {
     if (pattern.test(displayedReplyText)) {
-      const level = getEnthusiasmLevel(result.enthusiasm?.score || 50);
+      const level = getEnthusiasmLevel(result.enthusiasm?.score ?? 50);
       return checkOptimizedMessage({
         ...result,
         replies: getSafeReplies(level),
