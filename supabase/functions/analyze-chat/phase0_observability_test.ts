@@ -149,6 +149,91 @@ Deno.test("Phase 0 observability: ball mismatch remains observed without action 
   assertEquals(telemetry.ballMismatch, true);
 });
 
+Deno.test("Phase 0 observability: source-less variants retain action, ball, and question evidence", () => {
+  const telemetry = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-1",
+    finalResult: {
+      analysisDecisionV2: {
+        schemaVersion: 2,
+        action: "connect",
+        selectedBallIds: ["b_1"],
+      },
+      analysisEvidenceLinkage: {
+        schemaVersion: 1,
+        variants: {
+          extend: {
+            action: "connect",
+            selectedBallIds: ["b_1"],
+            questionCount: 2,
+          },
+          tease: {
+            action: "invite",
+            selectedBallIds: ["b_2"],
+            questionCount: 0,
+          },
+        },
+      },
+    },
+  });
+
+  assertEquals(telemetry.actionMismatch, true);
+  assertEquals(telemetry.ballMismatch, true);
+  assertEquals(telemetry.questionCounts, {
+    status: "observed",
+    byStyle: { extend: 2, tease: 0 },
+    maxQuestionCount: 2,
+  });
+  assertEquals(telemetry.meaningfulBallCoverage, { status: "unknown" });
+  assertEquals(telemetry.fiveCardSourceDivergence, { status: "unknown" });
+  assertEquals(telemetry.semanticDistance, { status: "unknown" });
+});
+
+Deno.test("Phase 0 observability: semantic distance uses only explicit typed evidence", () => {
+  const telemetry = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-1",
+    finalResult: {
+      analysisEvidenceLinkage: {
+        schemaVersion: 1,
+        variants: {
+          extend: { semanticDistance: 0.25 },
+          tease: { semanticDistance: 0.75 },
+        },
+      },
+    },
+  });
+
+  assertEquals(telemetry.semanticDistance, {
+    status: "observed",
+    byStyle: { extend: 0.25, tease: 0.75 },
+  });
+});
+
+Deno.test("Phase 0 observability: beta risk flags never substitute for topic or Solution evidence", () => {
+  const telemetry = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-1",
+    finalResult: {
+      analysisDecisionV2: {
+        schemaVersion: 2,
+        betaRiskFlags: ["topic_spray", "solution_mode"],
+      },
+      analysisEvidenceLinkage: {
+        schemaVersion: 1,
+        variants: {
+          extend: { sourceIndices: [1] },
+          tease: { sourceIndices: [1] },
+        },
+      },
+    },
+  });
+
+  assertEquals(telemetry.betaRiskFlags, ["topic_spray", "solution_mode"]);
+  assertEquals(telemetry.topicJump, { status: "unknown" });
+  assertEquals(telemetry.solutionMode, { status: "unknown" });
+});
+
 Deno.test("Phase 0 observability: legacy decisions are not relabeled and logging is fail-open", () => {
   const telemetry = buildPhase0ObservabilityTelemetry({
     user: "user-summary",

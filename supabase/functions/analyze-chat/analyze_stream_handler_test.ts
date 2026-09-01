@@ -11,6 +11,7 @@ import {
   handleAnalyzeStream,
 } from "./analyze_stream_handler.ts";
 import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
+import { buildPhase0ObservabilityTelemetry } from "./phase0_observability.ts";
 import { AiStreamingServiceError } from "./streaming_fallback.ts";
 
 function line(value: Record<string, unknown>): string {
@@ -331,8 +332,10 @@ Deno.test("Phase 0 handler emits content-free decision-to-reply telemetry", asyn
     baselineStyle: "extend",
     sourceBallIdEvidence: "complete",
     sourceMessageEvidence: "complete",
-    divergentStyles: [],
-    allMatch: true,
+    // The recommended card's source is repaired against the delivered
+    // conversation, while the non-selected style card retains its own source.
+    divergentStyles: ["tease"],
+    allMatch: false,
   });
 
   const logged = JSON.stringify(metadata);
@@ -399,6 +402,12 @@ Deno.test("Phase 0 handler ignores record-shaped done snapshot injection for per
   assertEquals(persistedFinalResult.analysisEvidenceLinkage, {
     schemaVersion: 1,
     selectedStyle: "tease",
+    variants: {
+      tease: {
+        sourceIndices: [1],
+        questionCount: 0,
+      },
+    },
   });
 
   const phase0 = logs.find((entry) =>
@@ -411,6 +420,233 @@ Deno.test("Phase 0 handler ignores record-shaped done snapshot injection for per
   const logged = JSON.stringify(metadata);
   assertFalse(logged.includes("ad_done_injected"));
   assertFalse(logged.includes("DONE_INJECTED_SOURCE_SECRET"));
+});
+
+Deno.test("Phase 0 handler calibrates linkage after a safety fallback replaces delivered replies", async () => {
+  const calls: string[] = [];
+  let persistedFinalResult: Record<string, unknown> | undefined;
+  const deps = makeDeps({
+    calls,
+    modelChunks: [
+      line({
+        type: "analysis.inventory",
+        balls: [{
+          id: "b_1",
+          sourceIndex: 1,
+          sourceMessage: "原始球",
+          disposition: "接",
+        }],
+      }),
+      line({
+        type: "analysis.decision",
+        schemaVersion: 2,
+        decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        selectedStyle: "extend",
+        action: "connect",
+        messageDecision: "send",
+        replyMode: "variants",
+        selectedBallIds: ["b_1"],
+        nextStepBody: "先順著聊。",
+        doThis: "接住原本的話題。",
+      }),
+      line({
+        type: "analysis.recommendation",
+        selectedStyle: "extend",
+        message: "你今天過得怎麼樣？",
+        reason: "先接住近況。",
+        quotedContext: "原始球",
+      }),
+      line({
+        type: "analysis.reply_option",
+        style: "extend",
+        action: "connect",
+        selectedBallIds: ["b_1"],
+        sourceBallIds: ["b_1"],
+        questionCount: 99,
+        segments: [{
+          sourceIndex: 1,
+          sourceMessage: "原始球",
+          reply: "不要放棄一直跟著她。",
+        }],
+      }),
+      line({
+        type: "analysis.reply_option",
+        style: "tease",
+        action: "connect",
+        selectedBallIds: ["b_1"],
+        sourceBallIds: ["b_1"],
+        questionCount: 99,
+        segments: [{
+          sourceIndex: 1,
+          sourceMessage: "原始球",
+          reply: "先輕鬆回一句。",
+        }],
+      }),
+      line({ type: "analysis.done", finalResult: {} }),
+    ],
+  });
+  const originalMarkDone = deps.store.markDone;
+  deps.store.markDone = (args) => {
+    persistedFinalResult = args.finalResult;
+    return originalMarkDone(args);
+  };
+
+  await runWithStubbedFetch(deps);
+
+  assert(persistedFinalResult, "expected a persisted final result");
+  assertEquals(persistedFinalResult.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    selectedStyle: "extend",
+    selectedBallIds: ["b_1"],
+    inventorySourceIndices: [1],
+    variants: {
+      extend: { questionCount: 1 },
+      tease: { questionCount: 0 },
+    },
+  });
+  const telemetry = buildPhase0ObservabilityTelemetry({
+    finalResult: persistedFinalResult,
+    user: "user-summary",
+    analysisRunId: "run-1",
+  });
+  assertEquals(telemetry.questionCounts, {
+    status: "observed",
+    byStyle: { extend: 1, tease: 0 },
+    maxQuestionCount: 1,
+  });
+  assertEquals(telemetry.meaningfulBallCoverage, { status: "unknown" });
+  assertEquals(telemetry.actionMismatch, "unknown");
+  assertEquals(telemetry.ballMismatch, "unknown");
+});
+
+Deno.test("Phase 0 handler calibrates linkage to source-repaired delivered segments", async () => {
+  const calls: string[] = [];
+  let persistedFinalResult: Record<string, unknown> | undefined;
+  const deps = makeDeps({
+    calls,
+    modelChunks: [
+      line({
+        type: "analysis.inventory",
+        balls: [{
+          id: "b_1",
+          sourceIndex: 1,
+          sourceMessage: "可以修正的來源球",
+          disposition: "接",
+        }],
+      }),
+      line({
+        type: "analysis.decision",
+        schemaVersion: 2,
+        decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        selectedStyle: "extend",
+        action: "connect",
+        messageDecision: "send",
+        replyMode: "variants",
+        selectedBallIds: ["b_1"],
+        nextStepBody: "先順著聊。",
+        doThis: "接住原本的話題。",
+      }),
+      line({
+        type: "analysis.recommendation",
+        selectedStyle: "extend",
+        message: "你今天過得怎麼樣？",
+        reason: "先接住近況。",
+        quotedContext: "可以修正的來源球",
+      }),
+      line({
+        type: "analysis.reply_option",
+        style: "extend",
+        action: "connect",
+        selectedBallIds: ["b_1"],
+        sourceBallIds: ["raw_wrong_id"],
+        questionCount: 99,
+        segments: [{
+          sourceIndex: 99,
+          sourceMessage: "可以修正的來源球",
+          reply: "這句聽起來很有畫面？",
+        }],
+      }),
+      line({
+        type: "analysis.reply_option",
+        style: "tease",
+        action: "connect",
+        selectedBallIds: ["b_1"],
+        sourceBallIds: ["raw_wrong_id"],
+        questionCount: 99,
+        segments: [{
+          sourceIndex: 1,
+          sourceMessage: "可以修正的來源球",
+          reply: "先輕輕回一句。",
+        }],
+      }),
+      line({ type: "analysis.done", finalResult: {} }),
+    ],
+  });
+  deps.messages = [{ isFromMe: false, content: "可以修正的來源球" }];
+  deps.hashInput.messages = [{ isFromMe: false, content: "可以修正的來源球" }];
+  const originalMarkDone = deps.store.markDone;
+  deps.store.markDone = (args) => {
+    persistedFinalResult = args.finalResult;
+    return originalMarkDone(args);
+  };
+
+  await runWithStubbedFetch(deps);
+
+  assert(persistedFinalResult, "expected a persisted final result");
+  const finalRecommendation = persistedFinalResult
+    .finalRecommendation as Record<
+      string,
+      unknown
+    >;
+  assertEquals(finalRecommendation.replySegments, [{
+    label: "",
+    sourceIndex: 1,
+    sourceMessage: "可以修正的來源球",
+    reply: "這句聽起來很有畫面？",
+    reason: "",
+  }]);
+  assertEquals(persistedFinalResult.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    selectedStyle: "extend",
+    selectedBallIds: ["b_1"],
+    inventorySourceIndices: [1],
+    variants: {
+      extend: {
+        sourceIndices: [1],
+        sourceBallIds: ["b_1"],
+        action: "connect",
+        selectedBallIds: ["b_1"],
+        questionCount: 1,
+      },
+      tease: {
+        sourceIndices: [1],
+        sourceBallIds: ["b_1"],
+        action: "connect",
+        selectedBallIds: ["b_1"],
+        questionCount: 0,
+      },
+    },
+  });
+  const telemetry = buildPhase0ObservabilityTelemetry({
+    finalResult: persistedFinalResult,
+    user: "user-summary",
+    analysisRunId: "run-1",
+  });
+  assertEquals(telemetry.fiveCardSourceDivergence, {
+    status: "observed",
+    baselineStyle: "extend",
+    sourceBallIdEvidence: "complete",
+    sourceMessageEvidence: "complete",
+    divergentStyles: [],
+    allMatch: true,
+  });
+  const serialized = JSON.stringify(telemetry);
+  assertFalse(serialized.includes("可以修正的來源球"));
+  assertFalse(serialized.includes("這句聽起來很有畫面？"));
+  assertFalse(serialized.includes("raw_wrong_id"));
+  assertFalse(serialized.includes("b_1"));
 });
 
 Deno.test("stream Free provider request uses 4500 output-token cap", async () => {
@@ -543,6 +779,10 @@ Deno.test("stream retry：getRun → reserveRetry，沿用 precharged recommenda
     selectedStyle: "tease",
     selectedBallIds: ["b_1"],
     inventorySourceIndices: [1],
+    variants: {
+      extend: { questionCount: 0 },
+      tease: { questionCount: 0 },
+    },
   });
 });
 

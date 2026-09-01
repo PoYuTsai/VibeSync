@@ -19,7 +19,10 @@ import {
   type StreamRecommendationForCharge,
 } from "./reframer.ts";
 import { isStreamStyle } from "./stream_events.ts";
-import { emitPhase0Observability } from "./phase0_observability.ts";
+import {
+  calibratePhase0EvidenceLinkage,
+  emitPhase0Observability,
+} from "./phase0_observability.ts";
 import { callClaudeStreaming } from "./streaming_fallback.ts";
 import { hashConversation } from "./conversation_hash.ts";
 import {
@@ -476,7 +479,7 @@ export async function handleAnalyzeStream(
       });
       const latencyMs = Date.now() - streamStartTime;
       const finalPayload = {
-        ...postProcessed,
+        ...calibratePhase0EvidenceLinkage(postProcessed),
         usage: { ...streamUsage, model: streamModel },
         telemetry: {
           requestType: deps.requestType,

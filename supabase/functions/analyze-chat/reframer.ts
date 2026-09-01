@@ -129,7 +129,7 @@ function cloneEvidenceLinkage(
 }
 
 function decisionV2SnapshotFrom(
-  event: StreamEvent,
+  event: Record<string, unknown>,
 ): Record<string, unknown> | null {
   const nested = cloneDecisionV2(event.analysisDecisionV2);
   if (nested) return nested;
@@ -274,6 +274,16 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   let sawValidEvent = false;
   let doneEmitted = false;
   const isResume = options.prechargedRecommendation != null;
+  // A retry is causally anchored to the decision that was already charged.
+  // Replayed provider events may differ, but must not relabel that anchor in
+  // a Phase 0 snapshot. Older anchors can still recover a v2 snapshot from
+  // their stored raw decision without affecting stream behavior.
+  const frozenResumeDecision = options.prechargedRecommendation
+    ? cloneDecisionV2(options.prechargedRecommendation.analysisDecisionV2) ??
+      (options.prechargedRecommendation.raw.type === "analysis.decision"
+        ? decisionV2SnapshotFrom(options.prechargedRecommendation.raw)
+        : null)
+    : null;
   let chargeCompleted = isResume;
   let resumeDecisionReplayPending = options.prechargedRecommendation?.raw
     ?.type === "analysis.decision";
@@ -298,7 +308,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   let inventory: BallInventory | null = null;
   // Phase 0 observability is strictly additive. A legacy decision remains on
   // its existing streamingDecision path unless it explicitly declares v2.
-  let analysisDecisionV2: Record<string, unknown> | null = null;
+  let analysisDecisionV2: Record<string, unknown> | null = frozenResumeDecision;
   let analysisInventory: Record<string, unknown> | null = null;
   let analysisEvidenceLinkage: AnalysisEvidenceLinkage | null = null;
   let observedSelectedStyle: StreamStyle | null =
@@ -335,6 +345,9 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
 
   if (options.prechargedRecommendation) {
     const raw = options.prechargedRecommendation.raw;
+    // Every resume path, including a thin-card anchor, keeps the charged
+    // style as the causal baseline. A replayed decision cannot retarget it.
+    decisionSelectedStyle = options.prechargedRecommendation.selectedStyle;
     if (isThinRecommendationEvent(raw)) {
       // resume 自 v2 瘦卡扣費：重掛 pending，由 replay 的 selected
       // reply_option 重新綁卡回填；瘦卡本身不可直接外流。revalidation
@@ -346,11 +359,8 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
         pendingThinRecommendation = revalidated;
       }
     } else {
-      // resume 錨點風格一律照記（decision 與 legacy 全卡皆是）：telemetry 的
-      // selected 判定才不會在 legacy 全卡 resume 整條標 unknown（Codex 雙審
-      // P2）。legacy 全卡 officialRecommendationEmitted 已為 true，tryLateBind
+      // legacy 全卡 officialRecommendationEmitted 已為 true，tryLateBind
       // 不會因此合成第二張卡，行為不變。
-      decisionSelectedStyle = options.prechargedRecommendation.selectedStyle;
       assembler.absorb(toRecommendationEvent(options.prechargedRecommendation));
     }
 
@@ -637,7 +647,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       return;
     }
 
-    if (isStreamStyle(event.selectedStyle)) {
+    if (!isResume && isStreamStyle(event.selectedStyle)) {
       decisionSelectedStyle = event.selectedStyle;
       observedSelectedStyle = event.selectedStyle;
     }
@@ -750,11 +760,16 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       // 不 return，讓事件照舊落到下方 buffer/emit）。
       const parsed = parseBallInventory(event);
       if (parsed) inventory = parsed;
-      const snapshot = inventorySnapshotFrom(event);
-      if (snapshot) analysisInventory = snapshot;
+      // Retries still parse replayed inventory for this stream's existing
+      // fail-soft validation, but Phase 0 must retain only the charge-time
+      // snapshot (or remain unknown when none was stored).
+      if (!isResume) {
+        const snapshot = inventorySnapshotFrom(event);
+        if (snapshot) analysisInventory = snapshot;
+      }
     }
 
-    if (event.type === "analysis.decision") {
+    if (event.type === "analysis.decision" && !isResume) {
       const snapshot = decisionV2SnapshotFrom(event);
       if (snapshot) analysisDecisionV2 = snapshot;
     }

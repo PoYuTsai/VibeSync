@@ -45,12 +45,13 @@ const BETA_FLAGS = new Set([
 ]);
 
 type Variant = {
-  sourceIndices: number[];
+  sourceIndices?: number[];
   sourceBallIds?: string[];
   action?: string;
   selectedBallIds?: string[];
   questionCount?: number;
   newTopicCount?: number;
+  semanticDistance?: number;
   solutionMode?: boolean;
 };
 
@@ -115,24 +116,26 @@ function variantsFrom(
   for (const [style, value] of Object.entries(raw)) {
     if (!isStreamStyle(style)) return null;
     const candidate = record(value);
-    const sourceIndices = candidate && positiveIndices(candidate.sourceIndices);
-    if (!sourceIndices) return null;
+    if (!candidate) return null;
+    const sourceIndices = positiveIndices(candidate.sourceIndices);
 
     const action = enumValue(candidate.action, ACTIONS);
     const sourceBallIds = stringArray(candidate.sourceBallIds);
     const selectedBallIds = stringArray(candidate.selectedBallIds);
     const questionCount = nonNegativeNumber(candidate.questionCount);
     const newTopicCount = nonNegativeNumber(candidate.newTopicCount);
+    const semanticDistance = nonNegativeNumber(candidate.semanticDistance);
     const solutionMode = typeof candidate.solutionMode === "boolean"
       ? candidate.solutionMode
       : undefined;
     variants[style] = {
-      sourceIndices,
+      ...(sourceIndices ? { sourceIndices } : {}),
       ...(sourceBallIds ? { sourceBallIds } : {}),
       ...(action ? { action } : {}),
       ...(selectedBallIds ? { selectedBallIds } : {}),
       ...(questionCount !== null ? { questionCount } : {}),
       ...(newTopicCount !== null ? { newTopicCount } : {}),
+      ...(semanticDistance !== null ? { semanticDistance } : {}),
       ...(solutionMode !== undefined ? { solutionMode } : {}),
     };
   }
@@ -173,14 +176,237 @@ function sameNumberOrder(left: number[], right: number[]): boolean {
     left.every((value, index) => value === right[index]);
 }
 
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function replyTextFromSegments(
+  segments: readonly Record<string, unknown>[],
+): string {
+  return segments
+    .map((segment) =>
+      nonEmptyString(
+        segment.reply ?? segment.content ?? segment.text,
+      )
+    )
+    .filter((text): text is string => text !== null)
+    .join("\n");
+}
+
+function replySegmentsForStyle(
+  finalResult: Record<string, unknown>,
+  style: string,
+  selectedStyle: string | null,
+): Record<string, unknown>[] | null {
+  const finalRecommendation = record(finalResult.finalRecommendation);
+  if (
+    style === selectedStyle &&
+    isStreamStyle(finalRecommendation?.pick) &&
+    finalRecommendation.pick === style &&
+    Array.isArray(finalRecommendation.replySegments)
+  ) {
+    return finalRecommendation.replySegments.flatMap((segment) => {
+      const candidate = record(segment);
+      return candidate ? [candidate] : [];
+    });
+  }
+
+  const replyOptions = record(finalResult.replyOptions);
+  const option = record(replyOptions?.[style]);
+  const rawSegments = option?.messages ?? option?.messageGroup ??
+    option?.replySegments;
+  if (!Array.isArray(rawSegments)) return null;
+  return rawSegments.flatMap((segment) => {
+    const candidate = record(segment);
+    return candidate ? [candidate] : [];
+  });
+}
+
+function sourceIndicesFromDeliveredSegments(
+  segments: readonly Record<string, unknown>[] | null,
+): number[] | null {
+  if (!segments || segments.length === 0) return null;
+  const indices: number[] = [];
+  for (const segment of segments) {
+    const sourceIndex = positiveIndices([segment.sourceIndex])?.[0];
+    // An incomplete source sequence must not be reported as partial coverage.
+    if (!sourceIndex) return null;
+    if (!indices.includes(sourceIndex)) indices.push(sourceIndex);
+  }
+  return indices.length > 0 ? indices : null;
+}
+
+function sourceBallIdsFromDeliveredIndices(
+  finalResult: Record<string, unknown>,
+  sourceIndices: readonly number[],
+): string[] | null {
+  const inventory = record(finalResult.analysisInventory);
+  if (!inventory || !Array.isArray(inventory.balls)) return null;
+
+  const idsByIndex = new Map<number, string | null>();
+  for (const ball of inventory.balls) {
+    const item = record(ball);
+    const sourceIndex = item && positiveIndices([item.sourceIndex])?.[0];
+    const id = item && nonEmptyString(item.id)?.trim();
+    if (!sourceIndex || !id) continue;
+    idsByIndex.set(
+      sourceIndex,
+      idsByIndex.has(sourceIndex) ? null : id,
+    );
+  }
+
+  const sourceBallIds = sourceIndices.map((sourceIndex) =>
+    idsByIndex.get(sourceIndex)
+  );
+  return sourceBallIds.every((id): id is string => typeof id === "string")
+    ? sourceBallIds
+    : null;
+}
+
+function deliveredReplyText(
+  finalResult: Record<string, unknown>,
+  style: string,
+  selectedStyle: string | null,
+  segments: readonly Record<string, unknown>[] | null,
+): string | null {
+  const finalRecommendation = record(finalResult.finalRecommendation);
+  if (
+    style === selectedStyle && finalRecommendation?.pick === style &&
+    nonEmptyString(finalRecommendation.content)
+  ) {
+    return finalRecommendation.content as string;
+  }
+
+  const segmentText = segments ? replyTextFromSegments(segments) : "";
+  if (segmentText.length > 0) return segmentText;
+
+  const replies = record(finalResult.replies);
+  return nonEmptyString(replies?.[style]);
+}
+
+function selectedDeliveredStyle(
+  finalResult: Record<string, unknown>,
+  linkage: Record<string, unknown>,
+): string | null {
+  const finalRecommendation = record(finalResult.finalRecommendation);
+  if (isStreamStyle(finalRecommendation?.pick)) return finalRecommendation.pick;
+  return isStreamStyle(linkage.selectedStyle) ? linkage.selectedStyle : null;
+}
+
+function hasSafetyReplacement(finalResult: Record<string, unknown>): boolean {
+  return Array.isArray(finalResult.warnings) &&
+    finalResult.warnings.some((warning) =>
+      record(warning)?.type === "safety_filter"
+    );
+}
+
+function invariantVariantFields(
+  rawVariant: Record<string, unknown> | null,
+  safetyReplacement: boolean,
+): Record<string, unknown> {
+  // A safety replacement severs the raw option's action/ball linkage. Do not
+  // attribute those model fields to a server-generated fallback reply.
+  if (!rawVariant || safetyReplacement) return {};
+
+  const action = enumValue(rawVariant.action, ACTIONS);
+  const selectedBallIds = stringArray(rawVariant.selectedBallIds);
+  const newTopicCount = nonNegativeNumber(rawVariant.newTopicCount);
+  const semanticDistance = nonNegativeNumber(rawVariant.semanticDistance);
+  const solutionMode = typeof rawVariant.solutionMode === "boolean"
+    ? rawVariant.solutionMode
+    : undefined;
+  return {
+    ...(action ? { action } : {}),
+    ...(selectedBallIds ? { selectedBallIds } : {}),
+    ...(newTopicCount !== null ? { newTopicCount } : {}),
+    ...(semanticDistance !== null ? { semanticDistance } : {}),
+    ...(solutionMode !== undefined ? { solutionMode } : {}),
+  };
+}
+
+/**
+ * Rebuilds Phase 0 per-style evidence from the post-guardrail result that the
+ * client actually receives. It intentionally changes only the optional
+ * linkage snapshot; user-visible replies and existing safety behavior stay
+ * untouched.
+ */
+export function calibratePhase0EvidenceLinkage(
+  finalResult: Record<string, unknown>,
+): Record<string, unknown> {
+  const linkage = record(finalResult.analysisEvidenceLinkage);
+  if (linkage?.schemaVersion !== 1) return finalResult;
+
+  const selectedStyle = selectedDeliveredStyle(finalResult, linkage);
+  const rawVariants = record(linkage.variants) ?? {};
+  const styles = new Set<string>();
+  const replies = record(finalResult.replies);
+  const replyOptions = record(finalResult.replyOptions);
+  for (
+    const style of [
+      ...Object.keys(replies ?? {}),
+      ...Object.keys(replyOptions ?? {}),
+    ]
+  ) {
+    if (isStreamStyle(style)) styles.add(style);
+  }
+  if (selectedStyle) styles.add(selectedStyle);
+
+  const safetyReplacement = hasSafetyReplacement(finalResult);
+  const variants: Record<string, Record<string, unknown>> = {};
+  for (const style of styles) {
+    const segments = replySegmentsForStyle(finalResult, style, selectedStyle);
+    const text = deliveredReplyText(
+      finalResult,
+      style,
+      selectedStyle,
+      segments,
+    );
+    if (!text) continue;
+
+    const sourceIndices = sourceIndicesFromDeliveredSegments(segments);
+    const sourceBallIds = sourceIndices
+      ? sourceBallIdsFromDeliveredIndices(finalResult, sourceIndices)
+      : null;
+    variants[style] = {
+      ...invariantVariantFields(record(rawVariants[style]), safetyReplacement),
+      ...(sourceIndices ? { sourceIndices } : {}),
+      ...(sourceBallIds ? { sourceBallIds } : {}),
+      questionCount: text.match(/[?？]/g)?.length ?? 0,
+    };
+  }
+
+  const calibratedLinkage: Record<string, unknown> = {
+    ...linkage,
+    ...(selectedStyle ? { selectedStyle } : {}),
+  };
+  if (Object.keys(variants).length > 0) {
+    calibratedLinkage.variants = variants;
+  } else {
+    delete calibratedLinkage.variants;
+  }
+
+  return {
+    ...finalResult,
+    analysisEvidenceLinkage: calibratedLinkage,
+  };
+}
+
 function sourceMessageSequence(
   finalResult: Record<string, unknown>,
   style: string,
+  selectedStyle: string,
 ): SourceMessageSegment[] | null {
+  const finalRecommendation = record(finalResult.finalRecommendation);
   const replyOptions = record(finalResult.replyOptions);
   const option = record(replyOptions?.[style]);
-  const messages = option?.messages ?? option?.messageGroup ??
-    option?.replySegments;
+  // The recommended card renders finalRecommendation.replySegments, whose
+  // sources may have been repaired after stream assembly. Other style cards
+  // render their replyOptions messages. Read the same final paths here.
+  const messages = style === selectedStyle &&
+      finalRecommendation?.pick === style &&
+      Array.isArray(finalRecommendation.replySegments)
+    ? finalRecommendation.replySegments
+    : option?.messages ?? option?.messageGroup ?? option?.replySegments;
   if (!Array.isArray(messages) || messages.length === 0) return null;
 
   const sequence: SourceMessageSegment[] = [];
@@ -283,9 +509,15 @@ function sourceDivergence(
       : entries.some(([, variant]) => (variant.sourceBallIds?.length ?? 0) > 0)
       ? "partial"
       : "absent";
+  const sourceIndexEvidence =
+    entries.every(([, variant]) => (variant.sourceIndices?.length ?? 0) > 0)
+      ? "complete"
+      : entries.some(([, variant]) => (variant.sourceIndices?.length ?? 0) > 0)
+      ? "partial"
+      : "absent";
   const sourceMessagesByStyle = Object.fromEntries(
     entries.flatMap(([style]) => {
-      const sequence = sourceMessageSequence(finalResult, style);
+      const sequence = sourceMessageSequence(finalResult, style, selectedStyle);
       return sequence ? [[style, sequence]] : [];
     }),
   ) as Record<string, SourceMessageSegment[]>;
@@ -295,10 +527,19 @@ function sourceDivergence(
       : Object.keys(sourceMessagesByStyle).length > 0
       ? "partial"
       : "absent";
+  if (
+    sourceIndexEvidence === "absent" &&
+    sourceBallIdEvidence === "absent" &&
+    sourceMessageEvidence === "absent"
+  ) {
+    return { status: "unknown" };
+  }
   const baseline = variants[baselineStyle];
   const baselineMessages = sourceMessagesByStyle[baselineStyle];
   const differs = (variant: Variant) =>
-    !sameNumberOrder(variant.sourceIndices, baseline.sourceIndices) ||
+    (baseline.sourceIndices !== undefined &&
+      variant.sourceIndices !== undefined &&
+      !sameNumberOrder(variant.sourceIndices, baseline.sourceIndices)) ||
     (baseline.sourceBallIds !== undefined &&
       variant.sourceBallIds !== undefined &&
       !sameStringOrder(variant.sourceBallIds, baseline.sourceBallIds));
@@ -364,23 +605,28 @@ export function buildPhase0ObservabilityTelemetry({
     : "unknown";
 
   const meaningfulSourceIndices = meaningfulInventoryIndices(inventory);
-  const coverage = meaningfulSourceIndices && variants
-    ? {
-      status: "observed",
-      meaningfulSourceIndices,
-      coveredSourceIndicesByStyle: Object.fromEntries(
-        Object.entries(variants).map(([style, variant]) => [
-          style,
-          variant.sourceIndices,
-        ]),
-      ),
-      allVariantsCoverMeaningful: Object.values(variants).every((variant) =>
-        meaningfulSourceIndices.every((index) =>
-          variant.sourceIndices.includes(index)
-        )
-      ),
-    }
-    : { status: "unknown" };
+  const hasCompleteSourceIndices = variants &&
+    Object.values(variants).every((variant) =>
+      variant.sourceIndices !== undefined
+    );
+  const coverage =
+    meaningfulSourceIndices && variants && hasCompleteSourceIndices
+      ? {
+        status: "observed",
+        meaningfulSourceIndices,
+        coveredSourceIndicesByStyle: Object.fromEntries(
+          Object.entries(variants).map(([style, variant]) => [
+            style,
+            variant.sourceIndices!,
+          ]),
+        ),
+        allVariantsCoverMeaningful: Object.values(variants).every((variant) =>
+          meaningfulSourceIndices.every((index) =>
+            variant.sourceIndices!.includes(index)
+          )
+        ),
+      }
+      : { status: "unknown" };
 
   const variantValues = variants ? Object.values(variants) : null;
   const actionMismatch = action && variantValues &&
@@ -417,6 +663,22 @@ export function buildPhase0ObservabilityTelemetry({
       ),
       exceedsBudget: Object.values(variants!).some((variant) =>
         (variant.newTopicCount ?? 0) > newTopicBudget
+      ),
+    }
+    : { status: "unknown" };
+
+  const hasSemanticDistances = variants &&
+    Object.values(variants).every((variant) =>
+      variant.semanticDistance !== undefined
+    );
+  const semanticDistance = hasSemanticDistances
+    ? {
+      status: "observed",
+      byStyle: Object.fromEntries(
+        Object.entries(variants!).map(([style, variant]) => [
+          style,
+          variant.semanticDistance,
+        ]),
       ),
     }
     : { status: "unknown" };
@@ -464,6 +726,7 @@ export function buildPhase0ObservabilityTelemetry({
     meaningfulBallCoverage: coverage,
     questionCounts: questionCounts(finalResult, variants),
     topicJump,
+    semanticDistance,
     solutionMode,
     fiveCardSourceDivergence: sourceDivergence(
       selectedStyle,

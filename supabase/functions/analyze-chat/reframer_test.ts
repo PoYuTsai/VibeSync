@@ -287,6 +287,207 @@ Deno.test("reframer skips duplicated resume decision after precharged decision",
   ]);
 });
 
+Deno.test("reframer resume freezes the charged v2 decision despite a replayed decision", async () => {
+  const events: StreamOutputEvent[] = [];
+  const originalDecision = {
+    schemaVersion: 2,
+    decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    selectedStyle: "extend",
+    action: "connect",
+    messageDecision: "send",
+    replyMode: "variants",
+    selectedBallIds: ["b_original"],
+  };
+  const reframer = createStreamReframer({
+    prechargedRecommendation: {
+      selectedStyle: "extend",
+      message: "Keep the exchange easy.",
+      reason: "Match the original charge anchor.",
+      quotedContext: "analysis.decision",
+      warnings: [],
+      raw: {
+        type: "analysis.decision",
+        ...originalDecision,
+        nextStepBody: "Keep the exchange easy.",
+        doThis: "Match the original charge anchor.",
+      },
+      analysisDecisionV2: originalDecision,
+      analysisEvidenceLinkage: {
+        schemaVersion: 1,
+        decisionId: originalDecision.decisionId,
+        selectedStyle: "extend",
+        selectedBallIds: ["b_original"],
+      },
+    },
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  // A provider replay may carry a fresh, conflicting decision. It is not a
+  // second charge anchor and must not become the persisted Phase 0 baseline.
+  reframer.pushText(line({
+    type: "analysis.decision",
+    schemaVersion: 2,
+    decisionId: "ad_01BX5ZZKBKACTAV9WEVGEMMVRZ",
+    selectedStyle: "tease",
+    action: "invite",
+    messageDecision: "do_not_send",
+    replyMode: "none",
+    selectedBallIds: ["b_replayed"],
+    nextStepBody: "Do not send a message.",
+    doThis: "Wait for another opening.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "Keep the exchange easy.",
+    reason: "Match the original charge anchor.",
+    quotedContext: "hello",
+  }));
+  reframer.pushText(line({ type: "analysis.done" }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  assertEquals(finalResult.analysisDecisionV2, originalDecision);
+  assertEquals(finalResult.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    decisionId: originalDecision.decisionId,
+    selectedStyle: "extend",
+    selectedBallIds: ["b_original"],
+  });
+});
+
+Deno.test("reframer resume freezes charged Phase 0 inventory despite a replayed inventory", async () => {
+  const events: StreamOutputEvent[] = [];
+  const originalInventory = {
+    type: "analysis.inventory",
+    balls: [{
+      id: "b_original",
+      sourceIndex: 1,
+      sourceMessage: "original inventory A",
+      disposition: "接",
+    }],
+  };
+  const reframer = createStreamReframer({
+    prechargedRecommendation: {
+      selectedStyle: "extend",
+      message: "Keep the exchange easy.",
+      reason: "Match the original charge anchor.",
+      quotedContext: "analysis.decision",
+      warnings: [],
+      raw: {
+        type: "analysis.decision",
+        schemaVersion: 2,
+        decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        selectedStyle: "extend",
+        action: "connect",
+        messageDecision: "send",
+        replyMode: "variants",
+        selectedBallIds: ["b_original"],
+        nextStepBody: "Keep the exchange easy.",
+        doThis: "Match the original charge anchor.",
+      },
+      analysisInventory: originalInventory,
+      analysisEvidenceLinkage: {
+        schemaVersion: 1,
+        selectedStyle: "extend",
+        inventorySourceIndices: [1],
+      },
+    },
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  // This replayed inventory remains available to the runtime validation path,
+  // but cannot relabel the charge-time Phase 0 snapshot.
+  reframer.pushText(line({
+    type: "analysis.inventory",
+    balls: [{
+      id: "b_replayed",
+      sourceIndex: 2,
+      sourceMessage: "replayed inventory B",
+      disposition: "接",
+    }],
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "Keep the exchange easy.",
+    reason: "Match the original charge anchor.",
+    quotedContext: "hello",
+  }));
+  reframer.pushText(line({ type: "analysis.done" }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  assertEquals(finalResult.analysisInventory, originalInventory);
+  assertEquals(finalResult.analysisEvidenceLinkage, {
+    schemaVersion: 1,
+    decisionId: "ad_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    selectedStyle: "extend",
+    selectedBallIds: ["b_original"],
+    inventorySourceIndices: [1],
+  });
+});
+
+Deno.test("reframer resume leaves a missing Phase 0 inventory unknown despite replayed inventory", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    prechargedRecommendation: {
+      selectedStyle: "extend",
+      message: "Keep the exchange easy.",
+      reason: "Match the original charge anchor.",
+      quotedContext: "hello",
+      warnings: [],
+      raw: {
+        type: "analysis.recommendation",
+        selectedStyle: "extend",
+        message: "Keep the exchange easy.",
+        reason: "Match the original charge anchor.",
+        quotedContext: "hello",
+      },
+    },
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.inventory",
+    balls: [{
+      id: "b_replayed",
+      sourceIndex: 2,
+      sourceMessage: "replayed inventory B",
+      disposition: "接",
+    }],
+  }));
+  reframer.pushText(line({ type: "analysis.done" }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  assertEquals("analysisInventory" in finalResult, false);
+});
+
 Deno.test("reframer rejects malformed recommendation before charge", async () => {
   let chargeCalls = 0;
   const events: StreamOutputEvent[] = [];
