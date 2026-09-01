@@ -609,3 +609,57 @@ Deno.test("Phase 0 observability: no-send conflict falls back from empty replies
 
   assertEquals(telemetryFromOptions.noSendConflict, true);
 });
+
+Deno.test("Phase 0 observability: legacy give-up banner conflict is measured from v1 fields only", () => {
+  const cold = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-legacy",
+    finalResult: {
+      enthusiasm: { level: "cold", score: 12 },
+      warnings: ["對方已讀不回，建議放棄這段對話", { note: "other" }],
+      replies: { extend: "REPLY_SECRET", tease: "REPLY_SECRET_2" },
+      coachActionHint: {
+        actionType: "lowerPressureReply",
+        read: "HINT_SECRET",
+      },
+    },
+  });
+  assertStrictEquals(cold.legacyGiveUpBanner, true);
+  assertStrictEquals(cold.legacyGiveUpConflict, true);
+  assertStrictEquals(cold.candidateCount, 2);
+  assertStrictEquals(cold.coachActionType, "lowerPressureReply");
+  const serialized = JSON.stringify(cold);
+  assertFalse(serialized.includes("建議放棄"));
+  assertFalse(serialized.includes("SECRET"));
+
+  const warm = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-warm",
+    finalResult: {
+      enthusiasm: { level: "warm" },
+      warnings: ["建議放棄"],
+      replies: { extend: "x" },
+      coachActionHint: { actionType: "not-an-action" },
+    },
+  });
+  assertStrictEquals(warm.legacyGiveUpBanner, false);
+  assertStrictEquals(warm.legacyGiveUpConflict, false);
+  assertStrictEquals(warm.coachActionType, "unknown");
+
+  // 冷但沒有放棄字樣：與 App 一樣不顯示橫幅。
+  const coldNoWarning = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-cold-quiet",
+    finalResult: { enthusiasm: { level: "cold" }, replies: { extend: "x" } },
+  });
+  assertStrictEquals(coldNoWarning.legacyGiveUpBanner, false);
+
+  const missing = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-missing",
+    finalResult: { replies: { extend: "x" } },
+  });
+  assertEquals(missing.legacyGiveUpBanner, "unknown");
+  assertEquals(missing.legacyGiveUpConflict, "unknown");
+  assertEquals(missing.coachActionType, "unknown");
+});

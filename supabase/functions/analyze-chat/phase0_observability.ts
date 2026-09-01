@@ -3,6 +3,7 @@
 
 import { isPlainObject } from "../_shared/quota.ts";
 import { isStreamStyle } from "./stream_events.ts";
+import { COACH_ACTION_HINT_ACTION_TYPES } from "./post_process.ts";
 
 const ACTIONS = new Set([
   "stop",
@@ -508,6 +509,27 @@ function sameSourceMessageOrder(
     );
 }
 
+// Mirror of the Flutter give-up banner rule in analysis_models.dart
+// (`shouldGiveUp`): enthusiasm.level is "cold" and a warning mentions
+// 建議放棄 or 開新對話. The v1 model never emits a typed decision, so this is
+// the only observable "stop" signal today; only the boolean leaves this
+// function, never the warning text.
+function legacyGiveUpBanner(
+  finalResult: Record<string, unknown>,
+): boolean | null {
+  const level = record(finalResult.enthusiasm)?.level;
+  if (typeof level !== "string") return null;
+  const warnings = Array.isArray(finalResult.warnings)
+    ? finalResult.warnings
+    : [];
+  return level === "cold" && warnings.some((warning) => {
+    const text = typeof warning === "string"
+      ? warning
+      : JSON.stringify(warning) ?? "";
+    return text.includes("建議放棄") || text.includes("開新對話");
+  });
+}
+
 function candidateCount(
   finalResult: Record<string, unknown>,
   variants: Record<string, Variant> | null,
@@ -728,6 +750,15 @@ export function buildPhase0ObservabilityTelemetry({
   const noSendExpected = messageDecision === "do_not_send" ||
     messageDecision === "need_context" || replyMode === "none";
   const observedCandidateCount = candidateCount(finalResult, variants);
+  const giveUpBanner = legacyGiveUpBanner(finalResult);
+  const legacyGiveUpConflict =
+    giveUpBanner === null || observedCandidateCount === null
+      ? "unknown"
+      : giveUpBanner && observedCandidateCount > 0;
+  const coachActionType = enumValue(
+    record(finalResult.coachActionHint)?.actionType,
+    COACH_ACTION_HINT_ACTION_TYPES,
+  );
   const noSendConflict = noSendExpected
     ? observedCandidateCount === null ? "unknown" : observedCandidateCount > 0
     : "unknown";
@@ -808,6 +839,10 @@ export function buildPhase0ObservabilityTelemetry({
     actionMismatch,
     ballMismatch,
     noSendConflict,
+    candidateCount: observedCandidateCount ?? "unknown",
+    legacyGiveUpBanner: giveUpBanner ?? "unknown",
+    legacyGiveUpConflict,
+    coachActionType: coachActionType ?? "unknown",
     meaningfulBallCoverage: coverage,
     questionCounts: questionCounts(finalResult, variants),
     topicJump,
