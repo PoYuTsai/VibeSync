@@ -23,6 +23,7 @@ export interface StreamPromptOptions {
 const NO_SEND_DECISION_GATE = [
   "1a. Message decision gate (this request supports it): every `analysis.decision` must include `messageDecision`, one of `send`, `do_not_send`, `acknowledge_and_stop`, `need_context`. Decide this before any reply wording.",
   "Use `send` when there is a reasonable, low-risk next message; then follow steps 1-3 exactly as written. Use `do_not_send` when her latest fragment is low-effort, repeats non-uptake, or adds no new content, so replying would only keep the conversation alive for her. Use `need_context` when you cannot tell who said what or the fragment is incomplete. Use `acknowledge_and_stop` when she set a boundary, cancelled, or the polite move is one neutral closing line.",
+  "Every instruction below that is marked `[send decisions only]` applies only when `messageDecision` is `send`; for the three non-send decisions those events are forbidden, not optional.",
   "For the three non-send decisions: omit `selectedStyle`; include `action` (`stop`/`connect`/`extend`/`filter`/`invite`/`pause`), `reason` (why not now, grounded in her actual messages), and `stopCondition` (what she must do before you reconsider); for `acknowledge_and_stop` also include `closingMessage` (one short neutral line, Traditional Chinese). Then skip steps 2 and 3 entirely: emit no `analysis.recommendation` and no `analysis.reply_option`, continue from step 4, and put no replies in `finalResult`. A non-send decision is a complete, successful analysis, not a failure, and it is never a way to avoid a hard reply.",
   'Example no-send line: {"type":"analysis.decision","messageDecision":"do_not_send","action":"pause","reason":"她只回「哈哈」，沒有新內容也沒有問句","stopCondition":"等她主動提到新的話題或問你問題"}',
 ];
@@ -34,6 +35,10 @@ export function buildStreamSystemPrompt(
 ): string {
   const replyStyles = normalizeReplyStyles(requestedReplyStyles);
   const styleList = replyStyles.map((style) => `\`${style}\``).join(", ");
+  // Under the decision gate every style / recommendation / reply_option rule
+  // is scoped to `send`; the v1 text is returned untouched when the gate is off.
+  const sendOnly = (text: string) =>
+    options.noSendDecisions ? `[send decisions only] ${text}` : text;
 
   return [
     basePrompt.trim(),
@@ -50,11 +55,17 @@ export function buildStreamSystemPrompt(
     'Example inventory line: {"type":"analysis.inventory","balls":[{"sourceIndex":1,"sourceMessage":"剛來吃晚餐","disposition":"接","reason":"晚餐生活球"},{"sourceIndex":2,"sourceMessage":"這家排超久","disposition":"併","reason":"同一晚餐球的背景"},{"sourceIndex":3,"sourceMessage":"等等去樂華夜市","disposition":"接","reason":"另一個可延伸行程"},{"sourceIndex":4,"sourceMessage":"哈哈","disposition":"略","reason":"收尾語氣，不需獨立回"}]}',
     "1. `analysis.decision`, as soon as you know the next move. Do not wait for the full report. Include `selectedStyle`, `nextStepTitle`, `nextStepBody`, `doThis`, `avoidThis`, and `confidence`. Your `selectedStyle`'s segment sources must be balls marked `接`; their wording may incorporate related `併` context.",
     ...(options.noSendDecisions ? NO_SEND_DECISION_GATE : []),
-    "2. `analysis.recommendation` once, thin: only `selectedStyle`, `reason`, and `expectedReaction` (one short line on how she will likely react). `analysis.recommendation` is REQUIRED even though it repeats the decision's selectedStyle; the recommendation card cannot render without it. Do not repeat the reply text here; the selected style's `analysis.reply_option` is the single source of the reply wording.",
+    sendOnly(
+      "2. `analysis.recommendation` once, thin: only `selectedStyle`, `reason`, and `expectedReaction` (one short line on how she will likely react). `analysis.recommendation` is REQUIRED even though it repeats the decision's selectedStyle; the recommendation card cannot render without it. Do not repeat the reply text here; the selected style's `analysis.reply_option` is the single source of the reply wording.",
+    ),
     'Example recommendation line: {"type":"analysis.recommendation","selectedStyle":"extend","reason":"兩顆球都接住才有互動感","expectedReaction":"她大概會分享夜市買了什麼"}',
-    `3. Emit exactly ${replyStyles.length} \`analysis.reply_option\` events: one for each allowed reply style (${styleList}). Emit the selected style first, then the other allowed styles.`,
+    sendOnly(
+      `3. Emit exactly ${replyStyles.length} \`analysis.reply_option\` events: one for each allowed reply style (${styleList}). Emit the selected style first, then the other allowed styles.`,
+    ),
     "Low-investment rule for every option: no pressure, guilt, or bids for reassurance.",
-    "Complete all required `analysis.reply_option` events before any metrics, report sections, or done event.",
+    sendOnly(
+      "Complete all required `analysis.reply_option` events before any metrics, report sections, or done event.",
+    ),
     'Each `analysis.reply_option` must include `style`, `reason`, `segments`, and `stretchLevel`: one segment per independent ball marked `接` (up to 5). Fold `併` context naturally into its related `接` segment; never create a segment just to acknowledge a `併` or `略` line. Use stated/established facts only; never invent. Keep time exact: "next month" is not "first day promoted". Each segment needs non-empty `sourceIndex` (the primary `接` ball\'s 1-based position), `sourceMessage` (her original text), `reply`, and `reason`. Do not write a flat `message` field; the server joins `segments` into legacy fields.',
     "`stretchLevel` (`within`/`stretch`/`far`): his current level, one step bolder but doable, or too big a jump. At least one style must be `stretch`; no comfort-zone info → `within` for all.",
     // ⚠️ 字面已非真實（2026-06-13 fail-soft，f417bd8）：server 不再 reject／retry，
@@ -67,7 +78,9 @@ export function buildStreamSystemPrompt(
     //    同日追修：首筆真機 telemetry（selected 4/4、其他全 3/4）顯示模型只把
     //    reject 威嚇當 floor=3 合規線——威嚇句必須把「漏接選中已覆蓋的接球」
     //    也列為違規，same-set 才有服從壓力。
-    "Server-enforced floor: EVERY `analysis.reply_option` — not only the selected style — must contain at least min(3, number of independent balls marked 接) segments, each sourced from a different `接` ball. The floor is the minimum, not the target: keep one segment per `接` ball (up to 5) in every option, so all options cover the same set of `接` balls as the selected style. The server rejects and forces a retry if any option misses that floor, pulls from a `略` ball, or drops a `接` ball the selected style covers, so satisfy it without inventing extra balls. A `併` line enriches a related segment but does not raise the floor.",
+    sendOnly(
+      "Server-enforced floor: EVERY `analysis.reply_option` — not only the selected style — must contain at least min(3, number of independent balls marked 接) segments, each sourced from a different `接` ball. The floor is the minimum, not the target: keep one segment per `接` ball (up to 5) in every option, so all options cover the same set of `接` balls as the selected style. The server rejects and forces a retry if any option misses that floor, pulls from a `略` ball, or drops a `接` ball the selected style covers, so satisfy it without inventing extra balls. A `併` line enriches a related segment but does not raise the floor.",
+    ),
     "The selected style is sent; write every option with equal effort: equal effort means equal ball coverage, not equal word count. An option does not need to match the longest alternative; precision beats padding.",
     'Example reply_option line: {"type":"analysis.reply_option","style":"extend","reason":"把排隊併進晚餐球，再接夜市行程","stretchLevel":"stretch","segments":[{"sourceIndex":1,"sourceMessage":"剛來吃晚餐","reply":"排那麼久，希望真的有好吃到值得","reason":"接晚餐並合併排隊背景"},{"sourceIndex":3,"sourceMessage":"等等去樂華夜市","reply":"夜市幫我吃份地瓜球","reason":"接另一個獨立行程球"}]}',
     "4. `analysis.metrics`: gameStage.current=opening/premise/qualification/narrative/close; status=normal/stuckFriend/canAdvance/shouldRetreat. Score only her messages after Latest Analysis Fragment; history/previous score only disambiguate, never add points. Stage = latest task, not relationship level; current evidence beats Stage Continuity (weak prior, never floor). Priority: close scheduling > qualification fit/boundary > narrative story/emotion > premise mutual romantic/playful tension > opening. Stage may skip/retreat. `opening` only for true first contact or explicit reconnect after material silence/conflict—not missing data, a greeting, or one short reply; `narrative` is never a default; `close` needs current reciprocal invite/scheduling, never a partner label/goal. 認識場景/Partner Context only tunes advice; never changes score/stage or excuses low investment. Topic Depth limits reply escalation, not stage.",
@@ -77,11 +90,15 @@ export function buildStreamSystemPrompt(
     "Do not spend finalResult tokens duplicating the full five-style replyOptions or reply segments; the stream assembler copies emitted `analysis.reply_option` events into `replies`, `replyOptions`, and the final recommendation.",
     "`analysis.progress` is optional after `analysis.decision` only. It must contain status/waiting copy only. Do not include advice, reply text, selected style, doThis, avoidThis, or conversation-specific coaching in progress events.",
     "",
-    `Use only these style values for this request: ${styleList}.`,
+    sendOnly(`Use only these style values for this request: ${styleList}.`),
     "Do not emit reply styles outside this request list.",
-    "The `analysis.recommendation.selectedStyle` must match the final recommendation direction in `analysis.done.finalResult`.",
-    "The selected style must be one of the request style values.",
-    "If output is getting long, shorten optional report sections before you omit any required `analysis.reply_option` event or any of its `segments`.",
+    sendOnly(
+      "The `analysis.recommendation.selectedStyle` must match the final recommendation direction in `analysis.done.finalResult`.",
+    ),
+    sendOnly("The selected style must be one of the request style values."),
+    sendOnly(
+      "If output is getting long, shorten optional report sections before you omit any required `analysis.reply_option` event or any of its `segments`.",
+    ),
     "Traditional Chinese (Taiwan) only; never Simplified.",
   ].join("\n");
 }

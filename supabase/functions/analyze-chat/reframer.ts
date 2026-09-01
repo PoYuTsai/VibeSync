@@ -442,7 +442,17 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
         replies: {},
         replyOptions: {},
       };
-      delete finalResult.finalRecommendation;
+      // Other client-shape records that can carry reply text are not part
+      // of a no-send result either.
+      for (
+        const key of [
+          "finalRecommendation",
+          "optimizedMessage",
+          "myMessageAnalysis",
+        ]
+      ) {
+        delete finalResult[key];
+      }
       options.emit({ type: "analysis.done", finalResult });
       doneEmitted = true;
       closed = true;
@@ -521,6 +531,15 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   const flushPreChargeEvents = () => {
     for (const bufferedEvent of preChargeEvents) {
       if (closed) break;
+      // No-send mode: an out-of-order reply_option / recommendation that
+      // arrived before the decision must not leak through the buffer either.
+      if (
+        noSendDecision &&
+        (bufferedEvent.type === "analysis.reply_option" ||
+          bufferedEvent.type === "analysis.recommendation")
+      ) {
+        continue;
+      }
       // pre-charge buffer 裡的 reply_option 也要過 bind（模型亂序時
       // selected option 可能先於瘦卡到貨）。
       if (bufferedEvent.type === "analysis.reply_option") {
@@ -702,6 +721,16 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     }
 
     if (noSendDecision) return;
+
+    // First anchor wins: once a send anchor (decision or thin card) has been
+    // charged, a late no-send decision can neither retarget the charge nor
+    // reach the client next to reply cards. Drop it.
+    if (
+      options.noSendDecisions && chargeCompleted &&
+      isNoSendDecisionKind(event.messageDecision)
+    ) {
+      return;
+    }
 
     if (
       options.noSendDecisions && !chargeCompleted &&

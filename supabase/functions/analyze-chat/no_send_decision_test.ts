@@ -140,10 +140,16 @@ Deno.test("no-send charge payload round-trips through recommendation_json for re
     noSendChargePayloadFromStored({ selectedStyle: "extend", message: "x" }),
     null,
   );
-  assertEquals(
-    noSendChargePayloadFromStored({ ...stored, closingMessage: undefined }),
-    null,
-  );
+  // The DB RPC does not enforce closingMessage, so a charged row without it
+  // still resumes (as replyMode single without a closing line) instead of
+  // stranding a charged run.
+  const withoutClosing = noSendChargePayloadFromStored({
+    ...stored,
+    closingMessage: undefined,
+  });
+  assert(withoutClosing);
+  assertEquals(withoutClosing.closingMessage, undefined);
+  assertEquals(withoutClosing.analysisDecisionV2.replyMode, "single");
   assertEquals(
     noSendChargePayloadFromStored({ ...stored, stopCondition: "" }),
     null,
@@ -188,13 +194,20 @@ Deno.test("stream prompt: gate text only appears when the capability is on", () 
   const gateAt = v2.indexOf("1a. Message decision gate");
   assert(v2.indexOf("1. `analysis.decision`") < gateAt);
   assert(gateAt < v2.indexOf("2. `analysis.recommendation`"));
+  // Under the gate every style / recommendation / reply_option rule is
+  // explicitly scoped to send; stripping the gate and those scope markers
+  // gives back the v1 text byte for byte.
   assertEquals(
     v2.replace(
       /\n1a\. Message decision gate[\s\S]*?Example no-send line: \{[^\n]*\}/,
       "",
-    ),
+    ).replaceAll("[send decisions only] ", ""),
     v1,
   );
+  assert(v2.includes("[send decisions only] 2. `analysis.recommendation`"));
+  assert(v2.includes("[send decisions only] 3. Emit exactly 2"));
+  assert(v2.includes("[send decisions only] Server-enforced floor"));
+  assert(v2.includes("those events are forbidden, not optional"));
 });
 
 Deno.test("post-process never backfills canned replies onto a no-send result", () => {

@@ -194,9 +194,9 @@ export function noSendChargePayloadFromStored(
   const stopCondition = textField(stored.stopCondition);
   const closingMessage = textField(stored.closingMessage);
   if (!action || !reason || !stopCondition) return null;
-  if (stored.decisionKind === "acknowledge_and_stop" && !closingMessage) {
-    return null;
-  }
+  // closingMessage is required at charge time (validateNoSendDecisionEvent)
+  // but the DB RPC only enforces the four fields above, so a charged row
+  // without it must still resume rather than strand a charged run.
   const raw = typeof stored.raw === "object" && stored.raw !== null &&
       !Array.isArray(stored.raw)
     ? stored.raw as Record<string, unknown>

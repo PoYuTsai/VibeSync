@@ -295,6 +295,149 @@ Deno.test("no-send: resume from a charged no-send anchor never re-charges and fr
   assertFalse(JSON.stringify(finalResult).includes("DEBRIS"));
 });
 
+Deno.test("no-send: a reply_option that arrives before the decision never leaks through the pre-charge buffer", async () => {
+  const { events, charges } = await run(
+    [
+      INVENTORY,
+      REPLY_OPTION,
+      NO_SEND,
+      RECOMMENDATION,
+      METRICS,
+      DONE_WITH_DEBRIS,
+    ],
+    { noSendDecisions: true },
+  );
+  assertEquals(charges.length, 1);
+  assertEquals(
+    events.map((event) => event.type),
+    [
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.metrics",
+      "analysis.done",
+    ],
+  );
+  assertFalse(JSON.stringify(events).includes("SHOULD_BE_DROPPED"));
+  assertEquals(doneOf(events).replies, {});
+});
+
+Deno.test("no-send: a late no-send decision after a charged send anchor is dropped, cards stay intact", async () => {
+  const { events, charges } = await run([
+    {
+      ...NO_SEND,
+      messageDecision: "send",
+      selectedStyle: "extend",
+      nextStepBody: "接住",
+      doThis: "先回",
+    },
+    {
+      type: "analysis.recommendation",
+      selectedStyle: "extend",
+      message: "m",
+      reason: "r",
+      quotedContext: "q",
+    },
+    {
+      type: "analysis.reply_option",
+      style: "extend",
+      message: "m",
+      reason: "r",
+    },
+    // Model changes its mind after the charge: the first anchor wins.
+    NO_SEND,
+    {
+      type: "analysis.reply_option",
+      style: "tease",
+      message: "t",
+      reason: "r",
+    },
+    { type: "analysis.done", finalResult: {} },
+  ], { noSendDecisions: true, requiredReplyStyles: ["extend", "tease"] });
+  assertEquals(charges.length, 1);
+  assertFalse(isNoSendChargePayload(charges[0]));
+  assertEquals(
+    events.filter((event) => event.type === "analysis.decision").length,
+    1,
+  );
+  assertFalse(events.some((event) => event.messageDecision === "do_not_send"));
+  assertFalse(events.some((event) => event.type === "analysis.error"));
+  const finalResult = doneOf(events);
+  assertEquals(
+    Object.keys(finalResult.replies as Record<string, unknown>).sort(),
+    ["extend", "tease"],
+  );
+  assertFalse(
+    JSON.stringify(finalResult.analysisDecisionV2 ?? {}).includes(
+      "do_not_send",
+    ),
+  );
+});
+
+Deno.test("no-send: a thin recommendation charged first makes a later no-send decision a no-op", async () => {
+  const { events, charges } = await run([
+    {
+      type: "analysis.recommendation",
+      selectedStyle: "extend",
+      reason: "r",
+      expectedReaction: "x",
+    },
+    NO_SEND,
+    {
+      type: "analysis.reply_option",
+      style: "extend",
+      message: "m",
+      reason: "r",
+    },
+    {
+      type: "analysis.reply_option",
+      style: "tease",
+      message: "t",
+      reason: "r",
+    },
+    { type: "analysis.done", finalResult: {} },
+  ], { noSendDecisions: true, requiredReplyStyles: ["extend", "tease"] });
+  assertEquals(charges.length, 1);
+  assertEquals(charges[0].selectedStyle, "extend");
+  assertFalse(events.some((event) => event.type === "analysis.error"));
+  assertFalse(events.some((event) => event.messageDecision === "do_not_send"));
+  assertEquals(
+    Object.keys(doneOf(events).replies as Record<string, unknown>).sort(),
+    ["extend", "tease"],
+  );
+});
+
+Deno.test("no-send: reply-bearing client records in done debris are stripped too", async () => {
+  const { events } = await run([
+    NO_SEND,
+    {
+      type: "analysis.done",
+      finalResult: {
+        optimizedMessage: { original: "o", optimized: "DEBRIS", reason: "r" },
+        myMessageAnalysis: {
+          sentMessage: "DEBRIS",
+          backupTopics: ["DEBRIS"],
+          warnings: [],
+        },
+        finalRecommendation: { pick: "extend", content: "DEBRIS" },
+        coachActionHint: {
+          actionType: "lowerPressureReply",
+          microMove: "先不要回",
+        },
+      },
+    },
+  ], { noSendDecisions: true });
+  const finalResult = doneOf(events);
+  assertFalse("optimizedMessage" in finalResult);
+  assertFalse("myMessageAnalysis" in finalResult);
+  assertFalse("finalRecommendation" in finalResult);
+  assertFalse(JSON.stringify(finalResult).includes("DEBRIS"));
+  // Coaching metadata is not a reply card and stays.
+  assertEquals(
+    (finalResult.coachActionHint as Record<string, unknown>).actionType,
+    "lowerPressureReply",
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Handler level: capability flag, persistence, resume.
 
