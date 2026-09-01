@@ -6,6 +6,7 @@ import {
 } from "./stream_events.ts";
 import {
   type BallInventory,
+  collectInventorySnapshot,
   coveredIndependentBalls,
   parseBallInventory,
   segmentFloor,
@@ -765,6 +766,12 @@ function createLegacyAnalysisAssembler() {
 
   return {
     absorb(event: StreamOutputEvent) {
+      if (event.type === "analysis.inventory") {
+        const snapshot = collectInventorySnapshot(event);
+        if (snapshot) result.ballInventory = snapshot;
+        return;
+      }
+
       if (event.type === "analysis.recommendation") {
         const style = streamStyleFrom(event.selectedStyle ?? event.style);
         const message = stringField(event.message);
@@ -933,6 +940,10 @@ function createLegacyAnalysisAssembler() {
       if (key === "finalRecommendation" && finalRecommendationAuthoritative) {
         continue;
       }
+      // 盤點的唯一合法來源是 analysis.inventory 事件。done finalResult 的
+      // 同名欄位一律不收——不是「權威值優先」而是 provenance 定義：這份觀測
+      // 資料要能回答「模型當下盤了什麼」，混進 done 殘骸就失去意義。
+      if (key === "ballInventory") continue;
       let coerced = coerceClientShapeValue(result, key, value);
       if (key === "gameStage") {
         coerced = guardAuthoritativeGameStage(coerced);

@@ -66,6 +66,86 @@ export function parseBallInventory(
   return { dispositions, catchableCount, independentCount };
 }
 
+/// 觀測用的盤點快照（Phase 0）：把模型實際列出的球連同原句與理由留在結果裡，
+/// 讓「這一次為什麼這樣接」事後追得回來。目前只寫入 finalResult，不影響任何
+/// 生成或守門行為。
+///
+/// 與 parseBallInventory 是刻意分開的兩件事，不可合併：
+///   - parseBallInventory 產的是「驗證用」disposition map，全略／全壞時回 null
+///     退回 soft、不驗證（INV-H4 絕不誤殺）。
+///   - 這裡產的是「觀測用」原樣紀錄：全略正是最值得被看見的訊號（冷局），
+///     不能跟著消失；個別欄位壞掉只略過該欄，不整份丟掉。
+export const INVENTORY_BALL_LIMIT = 40;
+const INVENTORY_TEXT_LIMIT = 120;
+
+export interface InventoryBall {
+  sourceIndex?: number;
+  sourceMessage?: string;
+  disposition?: BallDisposition;
+  reason?: string;
+}
+
+export interface InventorySnapshot {
+  balls: InventoryBall[];
+  /// 只有真的因為上限而丟掉後續球時才標記——觀測資料被截斷卻不說，
+  /// 事後分析會把它誤讀成「模型只列了這幾顆」。
+  truncated?: boolean;
+}
+
+export function collectInventorySnapshot(
+  event: StreamEvent | Record<string, unknown>,
+): InventorySnapshot | null {
+  if (!event || event.type !== "analysis.inventory") return null;
+
+  const balls = (event as Record<string, unknown>).balls;
+  if (!Array.isArray(balls) || balls.length === 0) return null;
+
+  const collected: InventoryBall[] = [];
+  let truncated = false;
+  for (const ball of balls) {
+    if (collected.length >= INVENTORY_BALL_LIMIT) {
+      truncated = true;
+      break;
+    }
+    if (!ball || typeof ball !== "object") continue;
+    const record = ball as Record<string, unknown>;
+
+    const snapshot: InventoryBall = {};
+    const sourceIndex = record.sourceIndex;
+    if (typeof sourceIndex === "number" && Number.isFinite(sourceIndex)) {
+      snapshot.sourceIndex = sourceIndex;
+    }
+    const sourceMessage = inventoryText(record.sourceMessage);
+    if (sourceMessage) snapshot.sourceMessage = sourceMessage;
+
+    const disposition = record.disposition;
+    if (
+      typeof disposition === "string" && BALL_DISPOSITIONS.has(disposition)
+    ) {
+      snapshot.disposition = disposition as BallDisposition;
+    }
+    const reason = inventoryText(record.reason);
+    if (reason) snapshot.reason = reason;
+
+    // 四個欄位全壞的項目留著只是雜訊，沒有任何可追溯價值。
+    if (Object.keys(snapshot).length === 0) continue;
+    collected.push(snapshot);
+  }
+
+  if (collected.length === 0) return null;
+  return truncated
+    ? { balls: collected, truncated: true }
+    : { balls: collected };
+}
+
+function inventoryText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return trimmed.length > INVENTORY_TEXT_LIMIT
+    ? trimmed.slice(0, INVENTORY_TEXT_LIMIT)
+    : trimmed;
+}
+
 export function isCatchable(disposition: BallDisposition): boolean {
   return CATCHABLE_DISPOSITIONS.has(disposition);
 }
@@ -122,7 +202,8 @@ export function validateSelectedSegments(
   if (covered.size < floor) {
     return {
       ok: false,
-      reason: `風格實際接到 ${covered.size} 顆不同的獨立接球，未達下限 ${floor}`,
+      reason:
+        `風格實際接到 ${covered.size} 顆不同的獨立接球，未達下限 ${floor}`,
     };
   }
 

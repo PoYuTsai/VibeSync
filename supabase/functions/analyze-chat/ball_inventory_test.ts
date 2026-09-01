@@ -4,7 +4,9 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   type BallInventory,
+  collectInventorySnapshot,
   coveredIndependentBalls,
+  INVENTORY_BALL_LIMIT,
   parseBallInventory,
   validateSelectedSegments,
 } from "./ball_inventory.ts";
@@ -270,4 +272,139 @@ Deno.test("coveredIndependentBalls ignores segments without a numeric sourceInde
     {},
   ]);
   assertEquals(covered.size, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Phase 0 觀測用快照：與驗證用的 disposition map 是兩套語意，不可互相拖累。
+// ---------------------------------------------------------------------------
+
+Deno.test("collectInventorySnapshot 保留原句與理由", () => {
+  const snapshot = collectInventorySnapshot({
+    type: "analysis.inventory",
+    balls: [
+      {
+        sourceIndex: 1,
+        sourceMessage: "剛來吃晚餐",
+        disposition: "接",
+        reason: "晚餐生活球",
+      },
+      {
+        sourceIndex: 2,
+        sourceMessage: "這家排超久",
+        disposition: "併",
+        reason: "同一晚餐球的背景",
+      },
+    ],
+  });
+
+  assertEquals(snapshot, {
+    balls: [
+      {
+        sourceIndex: 1,
+        sourceMessage: "剛來吃晚餐",
+        disposition: "接",
+        reason: "晚餐生活球",
+      },
+      {
+        sourceIndex: 2,
+        sourceMessage: "這家排超久",
+        disposition: "併",
+        reason: "同一晚餐球的背景",
+      },
+    ],
+  });
+});
+
+Deno.test("collectInventorySnapshot 全略時仍要留下紀錄", () => {
+  const event = {
+    type: "analysis.inventory",
+    balls: [
+      {
+        sourceIndex: 1,
+        sourceMessage: "哈哈",
+        disposition: "略",
+        reason: "語氣",
+      },
+    ],
+  };
+
+  // 驗證用的 map 對全略退回 null（不驗證、不誤殺）……
+  assertEquals(parseBallInventory(event), null);
+  // ……但觀測用的快照必須留著：全略正是冷局最值得看見的訊號。
+  assertEquals(collectInventorySnapshot(event), {
+    balls: [
+      {
+        sourceIndex: 1,
+        sourceMessage: "哈哈",
+        disposition: "略",
+        reason: "語氣",
+      },
+    ],
+  });
+});
+
+Deno.test("collectInventorySnapshot 只略過壞欄位，不丟整顆球", () => {
+  const snapshot = collectInventorySnapshot({
+    type: "analysis.inventory",
+    balls: [
+      {
+        sourceIndex: "1",
+        sourceMessage: "缺 index 但有原句",
+        disposition: "接",
+      },
+      {
+        sourceIndex: 2,
+        disposition: "亂寫",
+        reason: "缺原句與合法 disposition",
+      },
+      { nothing: "useful" },
+      "not-an-object",
+    ],
+  });
+
+  assertEquals(snapshot, {
+    balls: [
+      { sourceMessage: "缺 index 但有原句", disposition: "接" },
+      { sourceIndex: 2, reason: "缺原句與合法 disposition" },
+    ],
+  });
+});
+
+Deno.test("collectInventorySnapshot 截斷時必須標記", () => {
+  const balls = Array.from(
+    { length: INVENTORY_BALL_LIMIT + 3 },
+    (_, index) => ({
+      sourceIndex: index + 1,
+      sourceMessage: `第 ${index + 1} 句`,
+      disposition: "接",
+    }),
+  );
+
+  const snapshot = collectInventorySnapshot({
+    type: "analysis.inventory",
+    balls,
+  })!;
+
+  assertEquals(snapshot.balls.length, INVENTORY_BALL_LIMIT);
+  assertEquals(snapshot.truncated, true);
+
+  // 剛好等於上限時沒有東西被丟掉，不得謊報截斷。
+  const exact = collectInventorySnapshot({
+    type: "analysis.inventory",
+    balls: balls.slice(0, INVENTORY_BALL_LIMIT),
+  })!;
+  assertEquals(exact.balls.length, INVENTORY_BALL_LIMIT);
+  assertEquals(exact.truncated, undefined);
+});
+
+Deno.test("collectInventorySnapshot 對缺席與空盤點回 null", () => {
+  assertEquals(collectInventorySnapshot({ type: "analysis.decision" }), null);
+  assertEquals(
+    collectInventorySnapshot({ type: "analysis.inventory", balls: [] }),
+    null,
+  );
+  assertEquals(
+    collectInventorySnapshot({ type: "analysis.inventory", balls: "nope" }),
+    null,
+  );
 });

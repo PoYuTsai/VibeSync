@@ -3006,3 +3006,144 @@ Deno.test("stream without any gameStage emits no stage claim (not opening)", asy
     .gameStage as Record<string, unknown>;
   assertEquals(gameStage2.current, "premise");
 });
+
+// ---------------------------------------------------------------------------
+// Phase 0 觀測：盤點原本只在串流過程中路過，沒有進 finalResult——使用者看不到
+// 「AI 為什麼這樣接」，事後也無法回答「哪個判斷導致哪句回覆」。
+// ---------------------------------------------------------------------------
+
+function doneResultOf(events: StreamOutputEvent[]): Record<string, unknown> {
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  return (done as unknown as { finalResult: Record<string, unknown> })
+    .finalResult;
+}
+
+Deno.test("reframer 把盤點寫進 finalResult", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  // 盤點先於扣費錨點到貨，會先進 pre-charge buffer，flush 後才被 assembler 吸收。
+  reframer.pushText(line({
+    type: "analysis.inventory",
+    balls: [
+      {
+        sourceIndex: 1,
+        sourceMessage: "剛健身完",
+        disposition: "接",
+        reason: "可延伸的活動球",
+      },
+      {
+        sourceIndex: 2,
+        sourceMessage: "累死了",
+        disposition: "併",
+        reason: "同一段健身的情緒",
+      },
+    ],
+  }));
+  reframer.pushText(line({
+    type: "analysis.decision",
+    selectedStyle: "extend",
+    nextStepBody: "接住健身。",
+    doThis: "先接內容。",
+  }));
+  reframer.pushText(line({
+    type: "analysis.reply_option",
+    style: "extend",
+    reason: "接健身",
+    segments: [
+      {
+        sourceIndex: 1,
+        sourceMessage: "剛健身完",
+        reply: "練完那種腿不是自己的",
+        reason: "接活動球",
+      },
+    ],
+  }));
+
+  await reframer.flush();
+
+  assertEquals(doneResultOf(events).ballInventory, {
+    balls: [
+      {
+        sourceIndex: 1,
+        sourceMessage: "剛健身完",
+        disposition: "接",
+        reason: "可延伸的活動球",
+      },
+      {
+        sourceIndex: 2,
+        sourceMessage: "累死了",
+        disposition: "併",
+        reason: "同一段健身的情緒",
+      },
+    ],
+  });
+  // 串流事件本身照舊轉發給 App，行為不變。
+  assert(events.some((event) => event.type === "analysis.inventory"));
+});
+
+Deno.test("reframer 不讓 done 殘骸覆蓋盤點", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.inventory",
+    balls: [{ sourceIndex: 1, sourceMessage: "真的盤點", disposition: "接" }],
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "接住她這句。",
+    reason: "有內容可接",
+    quotedContext: "真的盤點",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: { ballInventory: { balls: [{ sourceMessage: "殘骸" }] } },
+  }));
+
+  await reframer.flush();
+
+  assertEquals(doneResultOf(events).ballInventory, {
+    balls: [{ sourceIndex: 1, sourceMessage: "真的盤點", disposition: "接" }],
+  });
+});
+
+Deno.test("reframer 沒有盤點時不憑空生出欄位", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "接住她這句。",
+    reason: "有內容可接",
+    quotedContext: "原句",
+  }));
+
+  await reframer.flush();
+
+  assertEquals("ballInventory" in doneResultOf(events), false);
+});
