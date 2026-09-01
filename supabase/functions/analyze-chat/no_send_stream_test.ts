@@ -474,12 +474,20 @@ function makeDeps(options: {
   noSendDecisions?: boolean;
   analysisRunId?: string;
   retryRun?: AnalysisStreamRun;
+  /// Successive getRun results (first attach, then each poll); falls back to retryRun.
+  getRunSequence?: AnalysisStreamRun[];
 }): AnalyzeStreamDeps {
   return {
     store: {
       getRun: () => {
         options.calls.push("getRun");
-        return Promise.resolve(options.retryRun ?? makeRun());
+        const next = options.getRunSequence?.shift();
+        if (next) return Promise.resolve(next);
+        return Promise.resolve(
+          options.getRunSequence?.length === 0 && options.retryRun
+            ? options.retryRun
+            : options.retryRun ?? makeRun(),
+        );
       },
       reserveRetry: () => {
         options.calls.push("reserveRetry");
@@ -778,4 +786,63 @@ Deno.test("handler: a v1 request cannot retry or resume a v2 no-send run (capabi
   assert(calls.includes("reserveRetry"));
   assert(calls.includes("markDone"));
   assertFalse(text.includes("STREAM_RUN_RETRY_UNAVAILABLE"));
+});
+
+Deno.test("handler: a v1 client that attached to a pending run is still gated when it settles as no-send", async () => {
+  const validated = validateNoSendDecisionEvent(NO_SEND);
+  assert(validated.ok);
+  const doneNoSend = makeRun({
+    status: "done",
+    charged_at: new Date().toISOString(),
+    decision_kind: "do_not_send",
+    recommendation_json: {
+      decisionKind: "do_not_send",
+      action: "pause",
+      reason: NO_SEND.reason,
+      stopCondition: NO_SEND.stopCondition,
+      raw: NO_SEND,
+      analysisDecisionV2: validated.payload.analysisDecisionV2,
+    },
+    final_result_json: {
+      replies: {},
+      replyOptions: {},
+      analysisDecisionV2: validated.payload.analysisDecisionV2,
+    },
+  });
+
+  // v1: attach while pending, next poll sees the settled no-send run.
+  const v1Calls: string[] = [];
+  const v1Text = await runHandler(makeDeps({
+    calls: v1Calls,
+    chargeInputs: [],
+    doneResults: [],
+    systems: [],
+    analysisRunId: "run-1",
+    getRunSequence: [makeRun({ status: "pending" }), doneNoSend],
+    retryRun: doneNoSend,
+    modelChunks: [],
+  }));
+  assertFalse(v1Calls.includes("callModel"));
+  assert(v1Text.includes("STREAM_RUN_RETRY_UNAVAILABLE"));
+  assert(v1Text.includes('"upstreamCode":"STREAM_RUN_NOT_RETRYABLE"'));
+  assertFalse(v1Text.includes("messageDecision"));
+  assertFalse(v1Text.includes("do_not_send"));
+
+  // v2: the same sequence replays the settled no-send result.
+  const v2Calls: string[] = [];
+  const v2Text = await runHandler(makeDeps({
+    calls: v2Calls,
+    chargeInputs: [],
+    doneResults: [],
+    systems: [],
+    noSendDecisions: true,
+    analysisRunId: "run-1",
+    getRunSequence: [makeRun({ status: "pending" }), doneNoSend],
+    retryRun: doneNoSend,
+    modelChunks: [],
+  }));
+  assertFalse(v2Calls.includes("callModel"));
+  assert(v2Text.includes('"recovered":true'));
+  assert(v2Text.includes('"messageDecision":"do_not_send"'));
+  assertFalse(v2Text.includes("STREAM_RUN_RETRY_UNAVAILABLE"));
 });

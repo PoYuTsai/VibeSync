@@ -254,7 +254,21 @@ function isNoSendStreamRun(run: AnalysisStreamRun): boolean {
 
 function streamResumeSnapshotFromRun(
   run: AnalysisStreamRun,
+  options: { noSendDecisions: boolean },
 ): StreamAnalysisResumeSnapshot {
+  // The capability gate is re-applied on every resume poll: a v1 client that
+  // attached while the run was still pending must not receive a no-send
+  // result that a v2 request settles later. Surface it as a non-retryable
+  // failure instead of a replay.
+  if (!options.noSendDecisions && isNoSendStreamRun(run)) {
+    return {
+      status: "failed",
+      finalResult: null,
+      lastErrorCode: "STREAM_RUN_NOT_RETRYABLE",
+      retriesRemaining: 0,
+      wasCharged: run.charged_at !== null,
+    };
+  }
   return {
     status: run.status,
     finalResult: run.final_result_json,
@@ -319,14 +333,18 @@ export async function handleAnalyzeStream(
           runId: streamRun.id,
           conversationHash: conversationHashValue,
           headers: corsHeaders,
-          initialRun: streamResumeSnapshotFromRun(streamRun),
+          initialRun: streamResumeSnapshotFromRun(streamRun, {
+            noSendDecisions: deps.noSendDecisions === true,
+          }),
           loadRun: async () => {
             const currentRun = await deps.store.getRun({
               runId: analysisRunId,
               userId: deps.userId,
               conversationHash: conversationHashValue,
             });
-            return streamResumeSnapshotFromRun(currentRun);
+            return streamResumeSnapshotFromRun(currentRun, {
+              noSendDecisions: deps.noSendDecisions === true,
+            });
           },
           onOutcome: (outcome, details) => {
             logInfo("stream_run_resume_outcome", {
