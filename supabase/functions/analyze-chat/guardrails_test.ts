@@ -349,6 +349,24 @@ Deno.test("checkAiOutput - 乾淨的多風格結果原樣通過", () => {
   assertEquals(checkAiOutput(clean), clean);
 });
 
+Deno.test("checkAiOutput - 同一 reply 內換行拆開的違規句仍會換成安全回覆", () => {
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: "不要放棄，\n你就一直約她出來" },
+  }));
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
+Deno.test("checkAiOutput - 同一 reply 的移除字元與換行組合不得繞過", () => {
+  const guarded = checkAiOutput(guardedResult({
+    replies: { extend: "不要放\u0E01棄，\n你就一直約她出來" },
+  }));
+
+  assertEquals(guarded.replies.extend, getSafeReplies("warm").extend);
+  assertEquals(guarded.warnings[0].type, "safety_filter");
+});
+
 Deno.test("checkAiOutput - 違規句不得由跨訊息拼湊而成", () => {
   // 「不要放棄」與「一直」分屬兩則各自合法的訊息；全部串成一句掃描會湊出
   // 誰都沒說過的違規句，把正常建議換成罐頭句。每則各自成行才是對的。

@@ -196,13 +196,28 @@ function checkOptimizedMessage(result: AnalysisResult): AnalysisResult {
 const ONE_WAY_SAFETY_RESCAN_REMOVALS =
   /[\u200B\u0370-\u03FF\u0400-\u052F\u0590-\u05FF\u0600-\u06FF\u0900-\u097F\u0E00-\u0E7F\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]/g;
 
+// BLOCKED_PATTERNS 的 `.*` 不會跨換行。每個顯示單位各自把所有 ECMAScript
+// whitespace（含換行與常見的 Unicode 空白）壓成一個半形空白後再掃一次，避免
+// 模型只靠斷行繞過；不能等 collectDisplayedReplyText 串接後才正規化，否則會把
+// 不同訊息拼成一則不存在的違規句。
+function pushWhitespaceNormalizedSafetyScan(
+  bucket: string[],
+  value: string,
+): void {
+  const normalized = value.replace(/\s+/gu, " ");
+  if (normalized !== value) bucket.push(normalized);
+}
+
 function pushDisplayedText(bucket: string[], value: unknown): void {
   if (typeof value !== "string" || value.trim().length === 0) return;
 
   bucket.push(value);
+  pushWhitespaceNormalizedSafetyScan(bucket, value);
+
   const safetyRescan = value.replace(ONE_WAY_SAFETY_RESCAN_REMOVALS, "");
   if (safetyRescan !== value && safetyRescan.trim().length > 0) {
     bucket.push(safetyRescan);
+    pushWhitespaceNormalizedSafetyScan(bucket, safetyRescan);
   }
 }
 
