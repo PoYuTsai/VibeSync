@@ -664,3 +664,18 @@ export function rejectL4UnsafeVisibleText(
     throw new Error(errorCode);
   }
 }
+
+// ── 括號旁白（stage direction）────────────────────────────────────────
+// 「（冷淡）」「（已讀）」「（表情冷下來）不好意思…」：prompt 明令不要旁白動作描述，
+// 但 DeepSeek 在界線／查戶口輪偶爾用括號演情緒（reply-style run3–run5 量到
+// 1–5%）；加規則無效，機械擋＋重試。只擋「一則開頭」的短括號；句中的
+// 「杯具（悲劇）」這種註解不算。
+const STAGE_DIRECTION_RE = /^\s*[（(][^）)\n]{1,14}[）)]/u;
+
+export function hasStageDirection(value: string): boolean {
+  return value.split("\n").some((line) => STAGE_DIRECTION_RE.test(line));
+}
+
+export function rejectStageDirection(value: string, errorCode: string) {
+  if (hasStageDirection(value)) throw new Error(errorCode);
+}

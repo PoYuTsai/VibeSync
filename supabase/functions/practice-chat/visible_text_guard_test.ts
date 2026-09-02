@@ -7,6 +7,7 @@ import {
   hasVisibleInternalLabelLeak,
   hasVisibleTemperatureMechanismLeak,
 } from "./visible_text_guard.ts";
+import { hasStageDirection } from "./visible_text_guard.ts";
 
 // 9fd3b8a5 去列字後，temperature.ts 隱藏層標頭改為「投入度 X/100」——全中文、
 // 無英文 band 字，原本兩張表（Latin 標籤＋中文機制詞）都攔不到。模型照抄
@@ -676,4 +677,16 @@ Deno.test("時間錨點標籤被當成內部詞攔下，但她照實回答日期
   // 日期／星期本身不進內部詞表——使用者本來就會問今天幾號，她答得出來才是對的。
   assertEquals(hasVisibleInternalLabelLeak("今天禮拜五啊 你記錯了喔"), false);
   assertEquals(hasVisibleInternalLabelLeak("2026-08-28 欸 我剛看手機"), false);
+});
+
+Deno.test("括號旁白：一則開頭的短括號算旁白，句中註解不算", () => {
+  assertEquals(hasStageDirection("（冷淡）沒在健身。"), true);
+  assertEquals(hasStageDirection("你哪位\n（已讀）\n嗯？"), true);
+  assertEquals(hasStageDirection("(sigh) 好啦"), true);
+  assertEquals(
+    hasStageDirection("因為會杯具（悲劇）啊……你哪來的冷笑話"),
+    false,
+  );
+  assertEquals(hasStageDirection("哈哈 這什麼諧音梗啦"), false);
+  assertEquals(hasStageDirection(""), false);
 });

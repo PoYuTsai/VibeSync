@@ -263,7 +263,12 @@ const DISCLOSURE_LINE: Record<TurnResponsePlan["disclosureDepth"], string> = {
   emotion: "可以坦白一點自己的情緒",
 };
 
-/** 每回合注入的精簡計畫（hidden guidance）。 */
+/**
+ * 每回合注入的精簡計畫（hidden guidance）。
+ * 括號旁白（「（冷淡）」「（已讀）」）不在這裡用規則壓：run4 加「不寫括號」無效
+ * （4/420），run5 加「語氣」行反而把模型推進劇本模式（14/264）。交給
+ * visible_text_guard 的 rejectStageDirection 機械擋＋重試。
+ */
 export function renderTurnPlan(plan: TurnResponsePlan): string {
   const acts = [
     ACT_LINE[plan.primaryAct],

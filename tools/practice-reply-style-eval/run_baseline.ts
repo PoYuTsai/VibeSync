@@ -34,6 +34,7 @@ import type { PracticeTurn } from "../../supabase/functions/practice-chat/valida
 import { normalizeLiteralNewlines } from "../../supabase/functions/practice-chat/prompt_sanitizer.ts";
 import {
   rejectL4UnsafeVisibleText,
+  rejectStageDirection,
   rejectVisibleInternalLabelLeak,
 } from "../../supabase/functions/practice-chat/visible_text_guard.ts";
 import { toTraditionalChinese } from "../../supabase/functions/_shared/traditional_chinese.ts";
@@ -198,6 +199,10 @@ export async function runScenario(args: {
           fieldClass: "strict",
           spicyAllowed: false,
         });
+        // 括號旁白守門：handler 端於 PR-2 接旗標時一起接（見 visible_text_guard）。
+        if (args.style) {
+          rejectStageDirection(candidate, "chat_stage_direction");
+        }
         reply = candidate;
         break;
       } catch (e) {
