@@ -413,7 +413,11 @@ export function renderMarkdown(summary: EvalSummary): string {
     "",
     `- 重心距離：角色之間 ${num(s.betweenProfiles)}、同角色分半（雜訊帶）${
       num(s.withinProfile)
-    }、比值 **${num(s.ratio)}**（≈1 代表分不出來）`,
+    }、比值 **${num(s.ratio)}**${
+      s.ratioCi95
+        ? `（bootstrap 95% ${num(s.ratioCi95[0])}–${num(s.ratioCi95[1])}）`
+        : ""
+    }（≈1 代表分不出來）`,
     `- 探針回覆 bigram Jaccard：跨角色 ${
       num(s.probeJaccard.cross, 3)
     }、同角色 ${num(s.probeJaccard.within, 3)}（兩者接近＝換人跟沒換一樣）`,
