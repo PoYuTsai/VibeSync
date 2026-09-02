@@ -94,3 +94,8 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   34%（28–38%）的區間邊緣重疊。誠實解讀：每拿掉一個硬判（cautious 過濾、候選 act 限制），
   差異化就掉一些；表面距離仍約 baseline 的 2.4 倍，但 LLM 四選一已接近雜訊。真人感與
   可辨識度要靠 PR-2 dogfood 人工盲測，不再追這個數字。
+- `2026-09-03-run13-style100-x2.json`（bb9d8768，PR-3：100 位全數 mapping，`--style=1 --repeat=2
+  --concurrency=6`）：2400 場零失敗、7000 則、守門退回 4、旁白修補 0、p50 918ms／p95
+  1434ms、最長 prompt 8930。整體比值（新定義）**2.19**，五個 persona 內（各 20 位）
+  1.53（cool_rational）～1.90（clear_boundaries）——20 位時的 run12 為 2.02（1.90–2.17）；
+  沒有跑 baseline100 與 judge（judge.ts 要每 persona 恰 4 位）。artifact sha256 a6264dba…。
