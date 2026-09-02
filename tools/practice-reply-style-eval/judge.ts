@@ -38,6 +38,7 @@ interface Turn {
 }
 interface Session {
   readonly profileId: string;
+  readonly personaId?: string;
   readonly scenarioId: string;
   readonly repeat: number;
   readonly turns: readonly Turn[];
@@ -66,6 +67,7 @@ export function letterAssignment(
 
 export interface Trial {
   readonly index: number;
+  readonly personaId: string;
   readonly scenarioId: string;
   readonly repeat: number;
   readonly truthProfileId: string;
@@ -75,53 +77,69 @@ export interface Trial {
 
 export function buildTrials(sessions: readonly Session[]): Trial[] {
   const ok = sessions.filter((s) => !s.error && s.turns.length > 0);
-  const profileIds = [...new Set(ok.map((s) => s.profileId))].sort();
-  if (profileIds.length !== 4) {
-    throw new Error(`judge_needs_four_profiles: got ${profileIds.length}`);
+  // 同 legacy persona 內四選一（規格 §10.5）：>4 位時依 personaId 分組，每組恰 4 位。
+  const groups = new Map<string, string[]>();
+  for (const s of ok) {
+    const key = s.personaId ?? "all";
+    const list = groups.get(key) ?? [];
+    if (!list.includes(s.profileId)) list.push(s.profileId);
+    groups.set(key, list);
   }
-  const calibration = (pid: string) =>
-    CALIBRATION_SCENARIOS.map((sid) =>
-      ok.find((s) =>
-        s.profileId === pid && s.scenarioId === sid && s.repeat === 1
-      )
-    )
-      .filter((s): s is Session => s !== undefined)
-      .map((s) => renderTranscript(s.turns)).join("\n---\n");
   const trials: Trial[] = [];
-  const heldOut = ok.filter((s) =>
-    (HELD_OUT_SCENARIOS as readonly string[]).includes(s.scenarioId)
-  )
-    .sort((a, b) =>
-      a.scenarioId.localeCompare(b.scenarioId) ||
-      a.profileId.localeCompare(b.profileId) || a.repeat - b.repeat
-    );
-  heldOut.forEach((s, index) => {
-    const assignment = letterAssignment(profileIds, index);
-    const calibrationBlock = assignment.map((pid, i) =>
-      `【${LETTERS[i]}】\n${calibration(pid)}`
-    ).join("\n\n");
-    const prompt = [
-      "以下是四位不同的女生（A、B、C、D）在交友 App 上跟同一個男生的私訊樣本。男生的訊息四位都一樣，只有她們的回覆不同。",
-      "",
-      calibrationBlock,
-      "",
-      "====",
-      "下面是一段新的對話，出自 A、B、C、D 其中一位：",
-      "",
-      renderTranscript(s.turns),
-      "",
-      "請只根據她的「說話方式」判斷是誰：句子長短、一次回幾則、語氣詞、標點習慣、笑法、會不會反問、直接還是委婉、怎麼接受或婉拒。不要依賴她提到的職業、地點、年齡、行程等事實。",
-      '只回 JSON：{"answer":"A|B|C|D","confidence":0到1,"cue":"一句話說明你靠什麼線索"}',
-    ].join("\n");
-    trials.push({
-      index,
-      scenarioId: s.scenarioId,
-      repeat: s.repeat,
-      truthProfileId: s.profileId,
-      assignment,
-      prompt,
-    });
-  });
+  let index = 0;
+  for (const [personaId, ids] of [...groups.entries()].sort()) {
+    const profileIds = [...ids].sort();
+    if (profileIds.length !== 4) {
+      throw new Error(
+        `judge_group_needs_four_profiles: ${personaId} has ${profileIds.length}`,
+      );
+    }
+    const inGroup = ok.filter((s) => profileIds.includes(s.profileId));
+    const calibration = (pid: string) =>
+      CALIBRATION_SCENARIOS.map((sid) =>
+        inGroup.find((s) =>
+          s.profileId === pid && s.scenarioId === sid && s.repeat === 1
+        )
+      )
+        .filter((s): s is Session => s !== undefined)
+        .map((s) => renderTranscript(s.turns)).join("\n---\n");
+    const heldOut = inGroup.filter((s) =>
+      (HELD_OUT_SCENARIOS as readonly string[]).includes(s.scenarioId)
+    )
+      .sort((a, b) =>
+        a.scenarioId.localeCompare(b.scenarioId) ||
+        a.profileId.localeCompare(b.profileId) || a.repeat - b.repeat
+      );
+    for (const s of heldOut) {
+      const assignment = letterAssignment(profileIds, index);
+      const calibrationBlock = assignment.map((pid, i) =>
+        `【${LETTERS[i]}】\n${calibration(pid)}`
+      ).join("\n\n");
+      const prompt = [
+        "以下是四位不同的女生（A、B、C、D）在交友 App 上跟同一個男生的私訊樣本。男生的訊息四位都一樣，只有她們的回覆不同。",
+        "",
+        calibrationBlock,
+        "",
+        "====",
+        "下面是一段新的對話，出自 A、B、C、D 其中一位：",
+        "",
+        renderTranscript(s.turns),
+        "",
+        "請只根據她的「說話方式」判斷是誰：句子長短、一次回幾則、語氣詞、標點習慣、笑法、會不會反問、直接還是委婉、怎麼接受或婉拒。不要依賴她提到的職業、地點、年齡、行程等事實。",
+        '只回 JSON：{"answer":"A|B|C|D","confidence":0到1,"cue":"一句話說明你靠什麼線索"}',
+      ].join("\n");
+      trials.push({
+        index,
+        personaId,
+        scenarioId: s.scenarioId,
+        repeat: s.repeat,
+        truthProfileId: s.profileId,
+        assignment,
+        prompt,
+      });
+      index++;
+    }
+  }
   return trials;
 }
 
@@ -139,6 +157,7 @@ export function summarize(results: readonly TrialResult[]) {
   const acc = (rs: readonly TrialResult[]) =>
     rs.length ? rs.filter((r) => r.correct).length / rs.length : 0;
   const byProfile: Record<string, number> = {};
+  const byPersona: Record<string, number> = {};
   const byScenario: Record<string, number> = {};
   const confusion: Record<string, Record<string, number>> = {};
   for (const pid of new Set(valid.map((r) => r.truthProfileId))) {
@@ -147,6 +166,9 @@ export function summarize(results: readonly TrialResult[]) {
   }
   for (const sid of new Set(valid.map((r) => r.scenarioId))) {
     byScenario[sid] = acc(valid.filter((r) => r.scenarioId === sid));
+  }
+  for (const pid of new Set(valid.map((r) => r.personaId))) {
+    byPersona[pid] = acc(valid.filter((r) => r.personaId === pid));
   }
   for (const r of valid) {
     if (r.answerProfileId) {
@@ -159,6 +181,7 @@ export function summarize(results: readonly TrialResult[]) {
     valid: valid.length,
     accuracy: acc(valid),
     chance: 0.25,
+    byPersona,
     byProfile,
     byScenario,
     confusion,
@@ -237,7 +260,9 @@ async function main(): Promise<void> {
         };
       }
       console.error(
-        `[judge] ${i + 1}/${trials.length} ${t.scenarioId}#${t.repeat} ${
+        `[judge] ${
+          i + 1
+        }/${trials.length} ${t.personaId}/${t.scenarioId}#${t.repeat} ${
           results[i].correct ? "✓" : "✗"
         }${results[i].error ? " " + results[i].error : ""}`,
       );

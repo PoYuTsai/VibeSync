@@ -56,12 +56,33 @@ const CHAT_TEMPERATURE = 0.9;
 const CHAT_GENERATION_ATTEMPTS = 2;
 const MODEL_TIMEOUT_MS = 30000;
 
-// 規格 §16：先挑 4 位同為 slow_worker、不同稀有度／城市／職業／年齡的角色。
+// 規格 §4.3：20 位代表角色，五個 persona 各 4 位、稀有度混搭；preset 與 persona 正交。
 export const DEFAULT_PROFILE_IDS = [
-  "practice_girl_001", // Alice 27 台北 空服 n
-  "practice_girl_008", // Nina 25 桃園 牙助 sr
-  "practice_girl_064", // Lumi 24 新北 研究生 r
-  "practice_girl_077", // Bonnie 31 台南 公務員 n
+  // slow_worker
+  "practice_girl_001",
+  "practice_girl_008",
+  "practice_girl_064",
+  "practice_girl_077",
+  // playful_extrovert
+  "practice_girl_007",
+  "practice_girl_011",
+  "practice_girl_002",
+  "practice_girl_083",
+  // cool_rational
+  "practice_girl_009",
+  "practice_girl_012",
+  "practice_girl_020",
+  "practice_girl_084",
+  // teasing_humor
+  "practice_girl_004",
+  "practice_girl_013",
+  "practice_girl_061",
+  "practice_girl_089",
+  // clear_boundaries
+  "practice_girl_006",
+  "practice_girl_018",
+  "practice_girl_003",
+  "practice_girl_091",
 ] as const;
 
 export interface TurnResult {

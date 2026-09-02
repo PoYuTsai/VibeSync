@@ -58,7 +58,7 @@ export const SCENARIOS: readonly Scenario[] = [
   },
   {
     id: "light_joke",
-    userTurns: ["哈囉", "妳自介說妳慢熱 那我是不是要先預約排隊"],
+    userTurns: ["哈囉", "妳看起來很難約的樣子 那我是不是要先預約排隊"],
   },
   {
     id: "failed_joke",

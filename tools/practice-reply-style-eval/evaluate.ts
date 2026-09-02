@@ -99,6 +99,7 @@ interface ArtifactTurn {
 }
 interface ArtifactSession {
   readonly profileId: string;
+  readonly personaId?: string;
   readonly scenarioId: string;
   readonly repeat: number;
   readonly turns: readonly ArtifactTurn[];
@@ -163,6 +164,15 @@ export interface EvalSummary {
   readonly promptCharsMax: number;
   readonly perProfile: Record<string, ProfileStats>;
   readonly perScenario: Record<string, ScenarioStats>;
+  /** 同 persona 內的 between／within 比值（跨 persona 的差異本來就大，這個才誠實）。 */
+  readonly perPersona: Record<
+    string,
+    {
+      profiles: number;
+      ratio: number;
+      probeJaccard: { cross: number; within: number };
+    }
+  >;
   readonly separation: {
     /** 角色重心兩兩距離均值（z 分數空間）。 */
     readonly betweenProfiles: number;
@@ -298,6 +308,22 @@ export function evaluate(artifact: Artifact): EvalSummary {
     };
   }
 
+  const perPersona: EvalSummary["perPersona"] = {};
+  const personaIds = [...new Set(sessions.map((s) => s.personaId ?? ""))]
+    .filter(Boolean).sort();
+  if (personaIds.length > 1) {
+    for (const personaId of personaIds) {
+      const sub = evaluate({
+        results: sessions.filter((s) => s.personaId === personaId),
+      });
+      perPersona[personaId] = {
+        profiles: Object.keys(sub.perProfile).length,
+        ratio: sub.separation.ratio,
+        probeJaccard: sub.separation.probeJaccard,
+      };
+    }
+  }
+
   return {
     sessions: sessions.length,
     failed: sessions.length - ok.length,
@@ -310,6 +336,7 @@ export function evaluate(artifact: Artifact): EvalSummary {
     promptCharsMax,
     perProfile,
     perScenario,
+    perPersona,
     separation: {
       betweenProfiles,
       withinProfile,
@@ -358,6 +385,17 @@ export function renderMarkdown(summary: EvalSummary): string {
     `- 探針回覆 bigram Jaccard：跨角色 ${
       num(s.probeJaccard.cross, 3)
     }、同角色 ${num(s.probeJaccard.within, 3)}（兩者接近＝換人跟沒換一樣）`,
+  );
+  for (const [pid, p] of Object.entries(summary.perPersona)) {
+    lines.push(
+      `- 同 persona ${pid}（${p.profiles} 位）：比值 ${
+        num(p.ratio)
+      }、探針 Jaccard 跨 ${num(p.probeJaccard.cross, 3)}／同 ${
+        num(p.probeJaccard.within, 3)
+      }`,
+    );
+  }
+  lines.push(
     "",
     "## 每個情境的罐頭程度（探針回覆）",
     "",
