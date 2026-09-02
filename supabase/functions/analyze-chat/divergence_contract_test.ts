@@ -2,7 +2,10 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { parseDivergencePlanV1 } from "./divergence_contract.ts";
+import {
+  parseDivergencePlanV1,
+  stripClientHiddenFinalResult,
+} from "./divergence_contract.ts";
 
 export const VALID_PLAN = {
   type: "analysis.divergence_plan",
@@ -77,10 +80,21 @@ Deno.test("divergence plan parser rejects any malformed field instead of repairi
     { ...VALID_PLAN, styleBranchIds: { bold: "br_1" } },
     {
       ...VALID_PLAN,
-      branchPool: Array.from({ length: 13 }, (_, index) => ({
+      branchPool: Array.from({ length: 9 }, (_, index) => ({
         ...VALID_PLAN.branchPool[0],
         id: `br_${index}`,
       })),
+    },
+    // prompt 說 2-8 枝；parser 同源，1 枝也拒。
+    { ...VALID_PLAN, branchPool: [VALID_PLAN.branchPool[0]] },
+    // 未知欄位不接受：模型多塞的欄位可能是內部推理或訊息原文。
+    { ...VALID_PLAN, reasoning: "leak" },
+    {
+      ...VALID_PLAN,
+      branchPool: [
+        { ...VALID_PLAN.branchPool[0], sourceMessage: "leak" },
+        VALID_PLAN.branchPool[1],
+      ],
     },
   ];
   for (const [index, candidate] of cases.entries()) {
@@ -88,4 +102,21 @@ Deno.test("divergence plan parser rejects any malformed field instead of repairi
   }
   assertEquals(parseDivergencePlanV1(null), null);
   assertEquals(parseDivergencePlanV1("plan"), null);
+});
+
+Deno.test("stripClientHiddenFinalResult removes only the divergence plan and leaves other values untouched", () => {
+  const input = {
+    replies: { extend: "x" },
+    analysisDivergencePlan: VALID_PLAN,
+  };
+  const stripped = stripClientHiddenFinalResult(input) as Record<
+    string,
+    unknown
+  >;
+  assertEquals(Object.keys(stripped), ["replies"]);
+  // 原物件不被改動；沒有隱藏 key 時原樣回傳。
+  assert("analysisDivergencePlan" in input);
+  const plain = { replies: {} };
+  assert(stripClientHiddenFinalResult(plain) === plain);
+  assertEquals(stripClientHiddenFinalResult(null), null);
 });

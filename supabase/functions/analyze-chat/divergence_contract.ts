@@ -14,9 +14,55 @@ export const DIVERGENCE_METHODS = [
 ] as const;
 export type DivergenceMethod = typeof DIVERGENCE_METHODS[number];
 
-export const MAX_DIVERGENCE_BRANCHES = 12;
+/// 與 prompt 步驟 1b 的「2-8 branches」同源；parser 不得比 prompt 寬。
+export const MIN_DIVERGENCE_BRANCHES = 2;
+export const MAX_DIVERGENCE_BRANCHES = 8;
 const MAX_TEXT_LENGTH = 200;
 const MAX_PATH_NODES = 8;
+
+const PLAN_KEYS = new Set([
+  "type",
+  "schemaVersion",
+  "threadFrame",
+  "anchorSourceIndex",
+  "supportSourceIndices",
+  "mergeContextSourceIndices",
+  "semanticDistanceCap",
+  "newTopicBudget",
+  "questionBudget",
+  "branchPool",
+  "styleBranchIds",
+]);
+const BRANCH_KEYS = new Set([
+  "id",
+  "sourceIndex",
+  "method",
+  "idea",
+  "associationPath",
+  "semanticDistance",
+]);
+
+/// finalResult 裡持久化但絕不送 client 的 key：計畫含從她訊息推出的
+/// threadFrame／idea／associationPath，只給 DB 與 telemetry 用。
+export const CLIENT_HIDDEN_FINAL_RESULT_KEYS = [
+  "analysisDivergencePlan",
+] as const;
+
+export function stripClientHiddenFinalResult<T>(finalResult: T): T {
+  if (
+    typeof finalResult !== "object" || finalResult === null ||
+    Array.isArray(finalResult)
+  ) {
+    return finalResult;
+  }
+  const record = finalResult as Record<string, unknown>;
+  if (!CLIENT_HIDDEN_FINAL_RESULT_KEYS.some((key) => key in record)) {
+    return finalResult;
+  }
+  const copy = { ...record };
+  for (const key of CLIENT_HIDDEN_FINAL_RESULT_KEYS) delete copy[key];
+  return copy as T;
+}
 
 export interface DivergenceBranchV1 {
   readonly id: string;
@@ -45,6 +91,7 @@ export function parseDivergencePlanV1(
   value: unknown,
 ): DivergencePlanV1 | null {
   if (!isRecord(value)) return null;
+  if (Object.keys(value).some((key) => !PLAN_KEYS.has(key))) return null;
   if (value.schemaVersion !== 1) return null;
   const threadFrame = shortText(value.threadFrame);
   const anchorSourceIndex = positiveInt(value.anchorSourceIndex);
@@ -63,10 +110,13 @@ export function parseDivergencePlanV1(
   ) {
     return null;
   }
-  if (!Array.isArray(value.branchPool) || value.branchPool.length === 0) {
+  if (
+    !Array.isArray(value.branchPool) ||
+    value.branchPool.length < MIN_DIVERGENCE_BRANCHES ||
+    value.branchPool.length > MAX_DIVERGENCE_BRANCHES
+  ) {
     return null;
   }
-  if (value.branchPool.length > MAX_DIVERGENCE_BRANCHES) return null;
   const branchPool: DivergenceBranchV1[] = [];
   const ids = new Set<string>();
   for (const raw of value.branchPool) {
@@ -102,6 +152,7 @@ export function parseDivergencePlanV1(
 
 function parseBranch(value: unknown): DivergenceBranchV1 | null {
   if (!isRecord(value)) return null;
+  if (Object.keys(value).some((key) => !BRANCH_KEYS.has(key))) return null;
   const id = shortText(value.id);
   const sourceIndex = positiveInt(value.sourceIndex);
   const idea = shortText(value.idea);

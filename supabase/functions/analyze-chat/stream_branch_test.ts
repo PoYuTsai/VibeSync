@@ -139,7 +139,12 @@ Deno.test("stream reconnect replays done runs before reserving a retry", async (
   assert(branch.includes('streamRun.status === "pending"'));
   assert(branch.includes('streamRun.status === "charged"'));
   assert(branch.includes("streamRun.final_result_json ||"));
-  assert(source.includes("finalResult: run.final_result_json"));
+  // Phase 2a：回放給 client 前剝掉 server-only 快照（發散計畫）。
+  assert(
+    source.includes(
+      "finalResult: stripClientHiddenFinalResult(run.final_result_json)",
+    ),
+  );
 });
 
 Deno.test("stream retry reservation becomes an in-flight lease", async () => {

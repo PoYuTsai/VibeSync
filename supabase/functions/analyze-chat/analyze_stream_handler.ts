@@ -15,6 +15,7 @@ import {
   detectAnalyzeSocialKnowledgeSignals,
   selectAnalyzeSocialKnowledge,
 } from "./knowledge_adapter.ts";
+import { stripClientHiddenFinalResult } from "./divergence_contract.ts";
 import { streamAnalyzeMaxTokensForStyleCount } from "./stream_budget.ts";
 import { streamReplyStylesForTier } from "./tier_sync_contract.ts";
 import {
@@ -275,7 +276,9 @@ function streamResumeSnapshotFromRun(
   }
   return {
     status: run.status,
-    finalResult: run.final_result_json,
+    // 持久化的 finalResult 可含 server-only 快照（發散計畫）；回放給 client
+    // 前剝掉，與 fresh 路徑的 markDone 回傳值同一條邊界。
+    finalResult: stripClientHiddenFinalResult(run.final_result_json),
     lastErrorCode: run.last_error_code,
     retriesRemaining: Math.max(0, MAX_STREAM_RETRIES - run.retry_count),
     wasCharged: run.charged_at !== null,
@@ -618,7 +621,8 @@ export async function handleAnalyzeStream(
         latencyMs,
       });
 
-      return finalPayload;
+      // DB 與 telemetry 拿完整 payload；client 只拿剝掉 server-only 快照的版本。
+      return stripClientHiddenFinalResult(finalPayload);
     },
     markFailed: async (code, details) => {
       const failedRun = await deps.store.markFailed({

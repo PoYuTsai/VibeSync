@@ -847,7 +847,7 @@ Deno.test("handler: a v1 client that attached to a pending run is still gated wh
   assertFalse(v2Text.includes("STREAM_RUN_RETRY_UNAVAILABLE"));
 });
 
-// Phase 2a shadow：divergence_plan 事件只進 record-only 快照。
+// Phase 2a shadow：divergence_plan 只在 v2、且在已扣費的 send 決策之後，進 record-only 快照。
 import { VALID_PLAN } from "./divergence_contract_test.ts";
 
 const SEND_DECISION = {
@@ -868,8 +868,12 @@ const SEND_TAIL = [
   { type: "analysis.reply_option", style: "extend", message: "m", reason: "r" },
   { type: "analysis.reply_option", style: "tease", message: "t", reason: "r" },
 ];
+const V2_TWO_STYLES = {
+  noSendDecisions: true,
+  requiredReplyStyles: ["extend", "tease"] as const,
+};
 
-Deno.test("divergence plan: a send decision keeps the first valid plan as a record-only snapshot, never forwarded", async () => {
+Deno.test("divergence plan: after a charged send decision the first valid plan becomes the server snapshot", async () => {
   const { events, charges } = await run([
     SEND_DECISION,
     VALID_PLAN,
@@ -881,40 +885,24 @@ Deno.test("divergence plan: a send decision keeps the first valid plan as a reco
         analysisDivergencePlan: { schemaVersion: 1, threadFrame: "INJECTED" },
       },
     },
-  ], { noSendDecisions: true, requiredReplyStyles: ["extend", "tease"] });
+  ], V2_TWO_STYLES);
   assertEquals(charges.length, 1);
   // 扣費錨點在 decision，計畫在它之後才到，所以不進 recommendation_json。
   assertEquals("analysisDivergencePlan" in charges[0], false);
   assertFalse(
     events.some((event) => event.type === "analysis.divergence_plan"),
   );
+  // reframer 的 finalResult 是 server 端的完整結果；client 剝除在 handler
+  // markDone／resume 邊界（見 analyze_stream_handler_test）。
   const plan = doneOf(events).analysisDivergencePlan as Record<string, unknown>;
   assertEquals(plan.threadFrame, VALID_PLAN.threadFrame);
   assertEquals("type" in plan, false);
   assertEquals((plan.branchPool as unknown[]).length, 2);
 });
 
-Deno.test("divergence plan: malformed plans and no-send decisions leave no snapshot", async () => {
-  const malformed = await run([
-    SEND_DECISION,
-    { ...VALID_PLAN, branchPool: [] },
-    ...SEND_TAIL,
-    { type: "analysis.done", finalResult: {} },
-  ], { noSendDecisions: true, requiredReplyStyles: ["extend", "tease"] });
-  assertEquals("analysisDivergencePlan" in doneOf(malformed.events), false);
-
-  const noSend = await run(
-    [INVENTORY, NO_SEND, VALID_PLAN, METRICS, DONE_WITH_DEBRIS],
-    { noSendDecisions: true },
-  );
-  assertEquals("analysisDivergencePlan" in doneOf(noSend.events), false);
-  assertFalse(
-    noSend.events.some((event) => event.type === "analysis.divergence_plan"),
-  );
-});
-
-Deno.test("divergence plan: a v1 stream (flag off) still parses the event but the v1 prompt never asks for it", async () => {
+Deno.test("divergence plan: flag off treats the event as the unknown line it used to be", async () => {
   const { events } = await run([
+    VALID_PLAN,
     {
       type: "analysis.recommendation",
       selectedStyle: "extend",
@@ -940,5 +928,41 @@ Deno.test("divergence plan: a v1 stream (flag off) still parses the event but th
   assertFalse(
     events.some((event) => event.type === "analysis.divergence_plan"),
   );
-  assert(doneOf(events).analysisDivergencePlan);
+  assertEquals("analysisDivergencePlan" in doneOf(events), false);
+});
+
+Deno.test("divergence plan: a plan before the decision, a plan under no-send, and a malformed plan all leave no snapshot", async () => {
+  // plan → send decision：decision 前到達的計畫不採用（也不進 pre-charge buffer）。
+  const early = await run([
+    VALID_PLAN,
+    SEND_DECISION,
+    ...SEND_TAIL,
+    { type: "analysis.done", finalResult: {} },
+  ], V2_TWO_STYLES);
+  assertEquals("analysisDivergencePlan" in early.charges[0], false);
+  assertEquals("analysisDivergencePlan" in doneOf(early.events), false);
+  assertFalse(
+    early.events.some((event) => event.type === "analysis.divergence_plan"),
+  );
+
+  // plan → no-send decision：no-send 的扣費快照與 finalResult 都不能帶計畫。
+  const planThenNoSend = await run(
+    [INVENTORY, VALID_PLAN, NO_SEND, VALID_PLAN, METRICS, DONE_WITH_DEBRIS],
+    { noSendDecisions: true },
+  );
+  assertEquals(planThenNoSend.charges.length, 1);
+  assertEquals("analysisDivergencePlan" in planThenNoSend.charges[0], false);
+  assertEquals(
+    "analysisDivergencePlan" in doneOf(planThenNoSend.events),
+    false,
+  );
+
+  // 壞掉的計畫整份不採用。
+  const malformed = await run([
+    SEND_DECISION,
+    { ...VALID_PLAN, branchPool: [] },
+    ...SEND_TAIL,
+    { type: "analysis.done", finalResult: {} },
+  ], V2_TWO_STYLES);
+  assertEquals("analysisDivergencePlan" in doneOf(malformed.events), false);
 });

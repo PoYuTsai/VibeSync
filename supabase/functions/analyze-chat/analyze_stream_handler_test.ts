@@ -12,6 +12,7 @@ import {
 } from "./analyze_stream_handler.ts";
 import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
 import { DIVERGENCE_PLAN_EXTRA_TOKENS } from "./stream_budget.ts";
+import { VALID_PLAN } from "./divergence_contract_test.ts";
 import { buildPhase0ObservabilityTelemetry } from "./phase0_observability.ts";
 import { AiStreamingServiceError } from "./streaming_fallback.ts";
 
@@ -830,4 +831,119 @@ Deno.test("stream v2 request reserves divergence-plan tokens and asks for the pl
   });
   assertEquals(capturedMaxTokens, [4500 + DIVERGENCE_PLAN_EXTRA_TOKENS]);
   assert(capturedSystems[0].includes("`analysis.divergence_plan`"));
+});
+
+Deno.test("stream_knowledge_selected is logged only for v2 and carries ids/signals, never message text", async () => {
+  const v2Logs = await withCapturedConsoleLog(async () => {
+    await runWithStubbedFetch({
+      ...makeDeps({ calls: [] }),
+      noSendDecisions: true,
+      messages: [{ isFromMe: false, content: "MESSAGE_SECRET 這週沒空耶" }],
+    });
+  });
+  const selected = v2Logs.find((entry) =>
+    entry[0] === "[analyze-chat] stream_knowledge_selected"
+  );
+  assert(selected, "expected stream_knowledge_selected log for v2");
+  const metadata = selected[1] as Record<string, unknown>;
+  assertEquals(
+    Object.keys(metadata).sort(),
+    ["analysisRunId", "knowledgeAtomIds", "knowledgeSignals", "user"],
+  );
+  assert((metadata.knowledgeAtomIds as string[]).length > 0);
+  assert((metadata.knowledgeSignals as string[]).includes("rejection"));
+  assertFalse(JSON.stringify(metadata).includes("MESSAGE_SECRET"));
+
+  const v1Logs = await withCapturedConsoleLog(async () => {
+    await runWithStubbedFetch(makeDeps({ calls: [] }));
+  });
+  assertFalse(
+    v1Logs.some((entry) =>
+      entry[0] === "[analyze-chat] stream_knowledge_selected"
+    ),
+  );
+});
+
+Deno.test("divergence plan is persisted and measured but never reaches the client, fresh or resumed", async () => {
+  let persistedFinalResult: Record<string, unknown> | undefined;
+  const deps = {
+    ...makeDeps({
+      calls: [],
+      modelChunks: [
+        line({
+          type: "analysis.decision",
+          messageDecision: "send",
+          selectedStyle: "tease",
+          nextStepBody: "接住",
+          doThis: "先回",
+        }),
+        line(VALID_PLAN),
+        line({
+          type: "analysis.recommendation",
+          selectedStyle: "tease",
+          message: "先回她這句試試看。",
+          reason: "接住話題再輕輕推進。",
+          quotedContext: "嗨",
+        }),
+        line({
+          type: "analysis.reply_option",
+          style: "tease",
+          message: "先回她這句試試看。",
+          reason: "r",
+        }),
+        line({
+          type: "analysis.reply_option",
+          style: "extend",
+          message: "延伸一下。",
+          reason: "r",
+        }),
+        line({ type: "analysis.done", finalResult: {} }),
+      ],
+    }),
+    noSendDecisions: true,
+  };
+  const originalMarkDone = deps.store.markDone;
+  deps.store.markDone = (args) => {
+    persistedFinalResult = args.finalResult;
+    return originalMarkDone(args);
+  };
+  const logs = await withCapturedConsoleLog(async () => {
+    const { text } = await runWithStubbedFetch(deps);
+    assert(text.includes('"type":"analysis.done"'));
+    assertFalse(text.includes("analysisDivergencePlan"));
+    assertFalse(text.includes(VALID_PLAN.threadFrame));
+  });
+  assert(persistedFinalResult, "expected a persisted final result");
+  const persistedPlan = persistedFinalResult
+    .analysisDivergencePlan as Record<string, unknown>;
+  assertEquals(persistedPlan.threadFrame, VALID_PLAN.threadFrame);
+  const phase0 = logs.find((entry) =>
+    entry[0] === "[analyze-chat] stream_phase0_observability"
+  );
+  assert(phase0, "expected Phase 0 telemetry log");
+  const divergence = (phase0[1] as Record<string, unknown>)
+    .divergencePlan as Record<string, unknown>;
+  assertEquals(divergence.status, "observed");
+  assertEquals(divergence.branchCount, 2);
+  assertFalse(JSON.stringify(phase0[1]).includes(VALID_PLAN.threadFrame));
+
+  // resume：DB 裡的 finalResult 帶計畫，回放給 client 前一樣剝掉。
+  const doneRun = makeRun({
+    status: "done",
+    final_result_json: {
+      finalRecommendation: { content: "回放結果" },
+      analysisDivergencePlan: VALID_PLAN,
+    },
+  });
+  const { text: resumed } = await runWithStubbedFetch({
+    ...makeDeps({
+      calls: [],
+      analysisRunId: "00000000-0000-4000-8000-000000000123",
+      getRunResult: doneRun,
+    }),
+    noSendDecisions: true,
+  });
+  assert(resumed.includes("回放結果"));
+  assertFalse(resumed.includes("analysisDivergencePlan"));
+  assertFalse(resumed.includes(VALID_PLAN.threadFrame));
 });
