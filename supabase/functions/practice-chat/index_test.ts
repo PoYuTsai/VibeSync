@@ -8682,9 +8682,6 @@ async function runCapturingLogs(
 
 const REPLY_STYLE_ON = { PRACTICE_REPLY_STYLE_ENABLED: "true" };
 const USER_TEXT_SENTINEL = "哨兵使用者文字 zq7x";
-const UNMAPPED_PROFILE_ID =
-  GIRL_PROFILES.find((g) => replyStyleFor(g.profileId) === null)!.profileId;
-
 Deno.test("reply-style 旗標關閉：prompt 無 style 段、旁白不剝、回應與 telemetry 逐字不變", async () => {
   // 預設角色 practice_girl_001 有 mapping；旗標關閉時必須完全看不到。
   const { json, state, succeeded } = await runCapturingLogs(
@@ -8699,31 +8696,6 @@ Deno.test("reply-style 旗標關閉：prompt 無 style 段、旁白不剝、回�
   assert(!system.includes("你平常的說話習慣"));
   assertEquals(json.reply, "（冷淡）好啊");
   assertEquals(succeeded?.replyStyle, null);
-});
-
-Deno.test("reply-style 旗標開啟但角色沒有 mapping：與旗標關閉位元組相同", async () => {
-  const body = chatBody({
-    practiceMode: "beginner",
-    profileId: UNMAPPED_PROFILE_ID,
-    temperatureScore: 40,
-    familiarityScore: 10,
-  });
-  const options = {
-    ledger: null,
-    deepSeekReplies: ["（皺眉）你平常的說話習慣是？", CLASSIFIER_CAUGHT_MEDIUM],
-  };
-  const off = await runCapturingLogs(options, body);
-  const on = await runCapturingLogs({ ...options, env: REPLY_STYLE_ON }, body);
-  assertEquals(off.response.status, 200);
-  assertEquals(
-    JSON.stringify(on.state.deepSeekCalls.map((c) => c.messages)),
-    JSON.stringify(off.state.deepSeekCalls.map((c) => c.messages)),
-  );
-  assertEquals(JSON.stringify(on.json), JSON.stringify(off.json));
-  assertEquals(on.succeeded?.replyStyle, null);
-  // 旗標關／無 mapping：hidden heading 不在守門清單、旁白不剝，一發就過。
-  assertEquals(on.state.deepSeekCalls.length, 2);
-  assertEquals(on.json.reply, "（皺眉）你平常的說話習慣是？");
 });
 
 Deno.test("reply-style 旗標開啟＋有 mapping：注入 style 段、旁白修補、telemetry 記結構化欄位", async () => {
@@ -8852,8 +8824,10 @@ async function goldenDigest(
   };
 }
 
-const GOLDEN_UNMAPPED_PROFILE_ID = "practice_girl_005";
-const GOLDEN_FLAG_ON = { PRACTICE_REPLY_STYLE_ENABLED: "true" };
+// 100 位全部有 mapping（PR-3）後，「旗標開但不生效」的情境＝旗標 test＋一般帳號。
+// 這兩案的 golden 在 fee76b87 產生時 env 值無作用，所以常數與旗標值無關。
+const GOLDEN_OTHER_PROFILE_ID = "practice_girl_005";
+const GOLDEN_FLAG_TEST_ONLY = { PRACTICE_REPLY_STYLE_ENABLED: "test" };
 
 function goldenCases(): {
   name: string;
@@ -8895,10 +8869,10 @@ function goldenCases(): {
       }),
     },
     {
-      name: "beginner／無 mapping（005）／旗標開",
+      name: "beginner／有 mapping（005）／旗標 test 一般帳號",
       options: {
         ledger: null,
-        env: GOLDEN_FLAG_ON,
+        env: GOLDEN_FLAG_TEST_ONLY,
         deepSeekReplies: [
           "（皺眉）你平常的說話習慣是？",
           CLASSIFIER_CAUGHT_MEDIUM,
@@ -8906,21 +8880,21 @@ function goldenCases(): {
       },
       body: chatBody({
         practiceMode: "beginner",
-        profileId: GOLDEN_UNMAPPED_PROFILE_ID,
+        profileId: GOLDEN_OTHER_PROFILE_ID,
         temperatureScore: 40,
         familiarityScore: 10,
       }),
     },
     {
-      name: "standard／無 mapping（005）／旗標開",
+      name: "standard／有 mapping（005）／旗標 test 一般帳號",
       options: {
         ledger: ledger({ practice_mode: "standard" }),
-        env: GOLDEN_FLAG_ON,
+        env: GOLDEN_FLAG_TEST_ONLY,
         deepSeekReplies: ["（冷淡）好啊"],
       },
       body: chatBody({
         practiceMode: "standard",
-        profileId: GOLDEN_UNMAPPED_PROFILE_ID,
+        profileId: GOLDEN_OTHER_PROFILE_ID,
       }),
     },
   ];
@@ -8952,14 +8926,14 @@ const FLAG_OFF_GOLDEN = new Map<
       "f72c1445643454be89d73a15d6283687972fd999b11a4c9d8e6080e893333ee9",
     calls: 2,
   }],
-  ["beginner／無 mapping（005）／旗標開", {
+  ["beginner／有 mapping（005）／旗標 test 一般帳號", {
     messages:
       "fef0aa6a6a36a4e26f5b4296ea5047784f512707308f01e59bd627bf1f7e6673",
     response:
       "f38f5c6b27382a64a6ceba3cbe0091e7c63fe33b91bea4ed907595ec59430bc6",
     calls: 2,
   }],
-  ["standard／無 mapping（005）／旗標開", {
+  ["standard／有 mapping（005）／旗標 test 一般帳號", {
     messages:
       "1b90dd1928a5c575b9a00528e79cede366883ca9368f3e2bfbca2dc8b32947ac",
     response:
@@ -8968,8 +8942,8 @@ const FLAG_OFF_GOLDEN = new Map<
   }],
 ]);
 
-Deno.test("reply-style 旗標關／無 mapping：DeepSeek messages 與 Response bytes 逐位元組等於 fee76b87 golden", async () => {
-  assertEquals(replyStyleFor(GOLDEN_UNMAPPED_PROFILE_ID), null);
+Deno.test("reply-style 旗標關／旗標 test 一般帳號：DeepSeek messages 與 Response bytes 逐位元組等於 fee76b87 golden", async () => {
+  assert(replyStyleFor(GOLDEN_OTHER_PROFILE_ID), "005 應有 mapping");
   const cases = goldenCases();
   assertEquals(new Set(cases.map((c) => c.name)).size, cases.length);
   assertEquals(

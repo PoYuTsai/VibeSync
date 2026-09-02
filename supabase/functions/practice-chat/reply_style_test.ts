@@ -13,7 +13,7 @@ import {
 import { GIRL_PROFILES } from "./practice_persona.ts";
 import { hasVisibleInternalLabelLeak } from "./visible_text_guard.ts";
 
-Deno.test("mapping 只指向真實存在的 profile；五個 persona 各 4 位；沒有 mapping 的角色回 null", () => {
+Deno.test("100 位全部有 mapping、只指向真實存在的 profile；五個 persona 各 20 位；未知 id 回 null", () => {
   const byId = new Map(GIRL_PROFILES.map((g) => [g.profileId, g]));
   const perPersona = new Map<string, number>();
   for (const id of Object.keys(STYLE_BY_PROFILE_ID)) {
@@ -21,8 +21,32 @@ Deno.test("mapping 只指向真實存在的 profile；五個 persona 各 4 位�
     assert(girl, id);
     perPersona.set(girl.personaId, (perPersona.get(girl.personaId) ?? 0) + 1);
   }
-  assertEquals([...perPersona.values()], [4, 4, 4, 4, 4]);
+  assertEquals(Object.keys(STYLE_BY_PROFILE_ID).length, GIRL_PROFILES.length);
+  for (const g of GIRL_PROFILES) {
+    assert(replyStyleFor(g.profileId), g.profileId);
+  }
+  assertEquals([...perPersona.values()], [20, 20, 20, 20, 20]);
   assertEquals(replyStyleFor("practice_girl_999"), null);
+});
+
+Deno.test("preset 不過度集中：每個 preset 最多 12 位、最少 3 位；每個 persona 至少用到 5 種 preset", () => {
+  const byId = new Map(GIRL_PROFILES.map((g) => [g.profileId, g]));
+  const perPreset = new Map<string, number>();
+  const presetsPerPersona = new Map<string, Set<string>>();
+  for (const [id, s] of Object.entries(STYLE_BY_PROFILE_ID)) {
+    perPreset.set(s.presetId, (perPreset.get(s.presetId) ?? 0) + 1);
+    const persona = byId.get(id)!.personaId;
+    presetsPerPersona.set(
+      persona,
+      (presetsPerPersona.get(persona) ?? new Set()).add(s.presetId),
+    );
+  }
+  for (const [preset, n] of perPreset) {
+    assert(n >= 3 && n <= 12, `${preset}=${n}`);
+  }
+  for (const [persona, presets] of presetsPerPersona) {
+    assert(presets.size >= 5, `${persona}=${presets.size}`);
+  }
 });
 
 Deno.test("結構 fingerprint（不含 preset 名與 habits 文字）兩兩不同；每個 persona 覆蓋多個 preset", () => {
