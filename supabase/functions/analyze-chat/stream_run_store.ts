@@ -194,6 +194,9 @@ function serializeRecommendation(
   const analysisEvidenceLinkage = asRecord(
     recommendation.analysisEvidenceLinkage,
   );
+  const analysisDivergencePlan = asRecord(
+    recommendation.analysisDivergencePlan,
+  );
   return {
     selectedStyle: recommendation.selectedStyle,
     message: recommendation.message,
@@ -204,6 +207,7 @@ function serializeRecommendation(
     ...(analysisDecisionV2 ? { analysisDecisionV2 } : {}),
     ...(analysisInventory ? { analysisInventory } : {}),
     ...(analysisEvidenceLinkage ? { analysisEvidenceLinkage } : {}),
+    ...(analysisDivergencePlan ? { analysisDivergencePlan } : {}),
   };
 }
 

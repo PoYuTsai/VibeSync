@@ -291,6 +291,7 @@ export async function handleAnalyzeStream(
   );
   const streamMaxOutputTokens = streamAnalyzeMaxTokensForStyleCount(
     streamReplyStyles.length,
+    { divergencePlan: deps.noSendDecisions === true },
   );
   const conversationHashValue = await hashConversation(deps.hashInput);
   const shouldCharge = deps.quotaUsage.shouldChargeQuota &&
@@ -496,6 +497,7 @@ export async function handleAnalyzeStream(
           system: buildAnalyzeStreamSystemPrompt(streamReplyStyles, {
             noSendDecisions: deps.noSendDecisions === true,
             situationKnowledge,
+            divergencePlan: deps.noSendDecisions === true,
           }),
           messages: [{ role: "user", content: deps.userMessageContent }],
           thinking: streamThinkingDisabled ? { type: "disabled" } : undefined,

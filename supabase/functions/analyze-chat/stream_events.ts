@@ -20,6 +20,9 @@ export const STREAM_EVENT_TYPES = [
   // 不驗證、不碰丟段路徑；App default:break 可忽略不渲染。
   "analysis.inventory",
   "analysis.decision",
+  // Phase 2a shadow：send 決策後模型先吐發散計畫（DivergencePlanV1）。server
+  // 只驗 shape、存快照、記 telemetry，不拿它改回覆；App default:break 忽略。
+  "analysis.divergence_plan",
   "analysis.recommendation",
   "analysis.reply_option",
   "analysis.metrics",

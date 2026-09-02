@@ -424,3 +424,37 @@ Deno.test("situation knowledge section is v2-only and sits between base prompt a
   );
   assert(withKnowledge.includes("1a. Message decision gate"));
 });
+
+Deno.test("divergence plan step is v2-only and sits between the decision gate and the recommendation", () => {
+  const base = "Base full reasoning prompt.";
+  const v1 = buildStreamSystemPrompt(base, ["extend"]);
+  assert(!v1.includes("analysis.divergence_plan"));
+  assertEquals(
+    buildStreamSystemPrompt(base, ["extend"], { divergencePlan: false }),
+    v1,
+  );
+
+  const v2 = buildStreamSystemPrompt(base, ["extend"], {
+    noSendDecisions: true,
+    divergencePlan: true,
+  });
+  assert(v2.includes("1b. [send decisions only] `analysis.divergence_plan`"));
+  assert(
+    v2.includes(
+      "`semantic_decomposition`/`abstract_up`/`lateral`/`drill_down`/`association`/`affect_evaluation`",
+    ),
+  );
+  assert(
+    v2.includes(
+      'Example divergence_plan line: {"type":"analysis.divergence_plan"',
+    ),
+  );
+  assert(
+    v2.indexOf("1a. Message decision gate") <
+      v2.indexOf("1b. [send decisions only]"),
+  );
+  assert(
+    v2.indexOf("1b. [send decisions only]") <
+      v2.indexOf("[send decisions only] 2. `analysis.recommendation`"),
+  );
+});

@@ -32,6 +32,7 @@ Deno.test("STREAM_EVENT_TYPES includes the streaming contract events", () => {
     "analysis.progress",
     "analysis.inventory",
     "analysis.decision",
+    "analysis.divergence_plan",
     "analysis.recommendation",
     "analysis.reply_option",
     "analysis.metrics",

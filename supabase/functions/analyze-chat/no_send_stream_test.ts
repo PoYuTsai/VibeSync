@@ -846,3 +846,99 @@ Deno.test("handler: a v1 client that attached to a pending run is still gated wh
   assert(v2Text.includes('"messageDecision":"do_not_send"'));
   assertFalse(v2Text.includes("STREAM_RUN_RETRY_UNAVAILABLE"));
 });
+
+// Phase 2a shadow：divergence_plan 事件只進 record-only 快照。
+import { VALID_PLAN } from "./divergence_contract_test.ts";
+
+const SEND_DECISION = {
+  ...NO_SEND,
+  messageDecision: "send",
+  selectedStyle: "extend",
+  nextStepBody: "接住",
+  doThis: "先回",
+};
+const SEND_TAIL = [
+  {
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "m",
+    reason: "r",
+    quotedContext: "q",
+  },
+  { type: "analysis.reply_option", style: "extend", message: "m", reason: "r" },
+  { type: "analysis.reply_option", style: "tease", message: "t", reason: "r" },
+];
+
+Deno.test("divergence plan: a send decision keeps the first valid plan as a record-only snapshot, never forwarded", async () => {
+  const { events, charges } = await run([
+    SEND_DECISION,
+    VALID_PLAN,
+    { ...VALID_PLAN, threadFrame: "SECOND_PLAN_MUST_LOSE" },
+    ...SEND_TAIL,
+    {
+      type: "analysis.done",
+      finalResult: {
+        analysisDivergencePlan: { schemaVersion: 1, threadFrame: "INJECTED" },
+      },
+    },
+  ], { noSendDecisions: true, requiredReplyStyles: ["extend", "tease"] });
+  assertEquals(charges.length, 1);
+  // 扣費錨點在 decision，計畫在它之後才到，所以不進 recommendation_json。
+  assertEquals("analysisDivergencePlan" in charges[0], false);
+  assertFalse(
+    events.some((event) => event.type === "analysis.divergence_plan"),
+  );
+  const plan = doneOf(events).analysisDivergencePlan as Record<string, unknown>;
+  assertEquals(plan.threadFrame, VALID_PLAN.threadFrame);
+  assertEquals("type" in plan, false);
+  assertEquals((plan.branchPool as unknown[]).length, 2);
+});
+
+Deno.test("divergence plan: malformed plans and no-send decisions leave no snapshot", async () => {
+  const malformed = await run([
+    SEND_DECISION,
+    { ...VALID_PLAN, branchPool: [] },
+    ...SEND_TAIL,
+    { type: "analysis.done", finalResult: {} },
+  ], { noSendDecisions: true, requiredReplyStyles: ["extend", "tease"] });
+  assertEquals("analysisDivergencePlan" in doneOf(malformed.events), false);
+
+  const noSend = await run(
+    [INVENTORY, NO_SEND, VALID_PLAN, METRICS, DONE_WITH_DEBRIS],
+    { noSendDecisions: true },
+  );
+  assertEquals("analysisDivergencePlan" in doneOf(noSend.events), false);
+  assertFalse(
+    noSend.events.some((event) => event.type === "analysis.divergence_plan"),
+  );
+});
+
+Deno.test("divergence plan: a v1 stream (flag off) still parses the event but the v1 prompt never asks for it", async () => {
+  const { events } = await run([
+    {
+      type: "analysis.recommendation",
+      selectedStyle: "extend",
+      message: "m",
+      reason: "r",
+      quotedContext: "q",
+    },
+    VALID_PLAN,
+    {
+      type: "analysis.reply_option",
+      style: "extend",
+      message: "m",
+      reason: "r",
+    },
+    {
+      type: "analysis.reply_option",
+      style: "tease",
+      message: "t",
+      reason: "r",
+    },
+    { type: "analysis.done", finalResult: {} },
+  ], { requiredReplyStyles: ["extend", "tease"] });
+  assertFalse(
+    events.some((event) => event.type === "analysis.divergence_plan"),
+  );
+  assert(doneOf(events).analysisDivergencePlan);
+});

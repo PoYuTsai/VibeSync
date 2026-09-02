@@ -26,6 +26,10 @@ import {
   validateNoSendDecisionEvent,
 } from "./no_send_decision.ts";
 import { STRETCH_LEVELS, type StretchLevel } from "./opener_payload.ts";
+import {
+  type DivergencePlanV1,
+  parseDivergencePlanV1,
+} from "./divergence_contract.ts";
 
 function normalizeStretchLevel(value: unknown): StretchLevel {
   return typeof value === "string" &&
@@ -50,6 +54,8 @@ export interface StreamRecommendationForCharge {
   analysisDecisionV2?: Record<string, unknown>;
   analysisInventory?: Record<string, unknown>;
   analysisEvidenceLinkage?: AnalysisEvidenceLinkage;
+  // Phase 2a shadow: the model's divergence plan, shape-validated only.
+  analysisDivergencePlan?: DivergencePlanV1;
 }
 
 /// Charge anchor union: a v1 send recommendation or a Phase 1b no-send
@@ -83,7 +89,10 @@ export interface AnalysisEvidenceLinkage {
 
 type Phase0ObservabilitySnapshot = Pick<
   StreamRecommendationForCharge,
-  "analysisDecisionV2" | "analysisInventory" | "analysisEvidenceLinkage"
+  | "analysisDecisionV2"
+  | "analysisInventory"
+  | "analysisEvidenceLinkage"
+  | "analysisDivergencePlan"
 >;
 
 export interface StreamChargeResult {
@@ -345,6 +354,8 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   let analysisDecisionV2: Record<string, unknown> | null = frozenResumeDecision;
   let analysisInventory: Record<string, unknown> | null = null;
   let analysisEvidenceLinkage: AnalysisEvidenceLinkage | null = null;
+  // Phase 2a shadow：第一個合法計畫勝出；後到的不覆蓋。
+  let analysisDivergencePlan: DivergencePlanV1 | null = null;
   let observedSelectedStyle: StreamStyle | null =
     options.prechargedRecommendation?.selectedStyle ?? null;
   const evidenceVariants = new Map<StreamStyle, AnalysisEvidenceVariant>();
@@ -374,6 +385,9 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       }),
     );
     if (linkage) snapshot.analysisEvidenceLinkage = linkage;
+    if (analysisDivergencePlan) {
+      snapshot.analysisDivergencePlan = analysisDivergencePlan;
+    }
     return snapshot;
   };
 
@@ -876,8 +890,17 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     if (
       noSendDecision &&
       (event.type === "analysis.reply_option" ||
-        event.type === "analysis.recommendation")
+        event.type === "analysis.recommendation" ||
+        event.type === "analysis.divergence_plan")
     ) {
+      return;
+    }
+
+    if (event.type === "analysis.divergence_plan") {
+      // Phase 2a shadow：只收快照，不轉發給 client，也不影響任何回覆規則。
+      if (!analysisDivergencePlan) {
+        analysisDivergencePlan = parseDivergencePlanV1(event);
+      }
       return;
     }
 
@@ -1381,6 +1404,7 @@ const RECORD_ONLY_FINAL_RESULT_KEYS = new Set([
   "analysisDecisionV2",
   "analysisInventory",
   "analysisEvidenceLinkage",
+  "analysisDivergencePlan",
 ]);
 
 // Phase 0 snapshots are captured only from their typed stream events (or a
@@ -1390,6 +1414,7 @@ const SERVER_DERIVED_PHASE0_FINAL_RESULT_KEYS = new Set([
   "analysisDecisionV2",
   "analysisInventory",
   "analysisEvidenceLinkage",
+  "analysisDivergencePlan",
 ]);
 
 // client 是 List<String>.from(json[key])，字串/物件 clobber 都會 throw。

@@ -11,6 +11,7 @@ import {
   handleAnalyzeStream,
 } from "./analyze_stream_handler.ts";
 import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
+import { DIVERGENCE_PLAN_EXTRA_TOKENS } from "./stream_budget.ts";
 import { buildPhase0ObservabilityTelemetry } from "./phase0_observability.ts";
 import { AiStreamingServiceError } from "./streaming_fallback.ts";
 
@@ -818,4 +819,15 @@ Deno.test("stream v2 request injects selected situation knowledge; v1 stays unto
   assertEquals(v1Systems, [
     buildAnalyzeStreamSystemPrompt(["extend", "tease"]),
   ]);
+});
+
+Deno.test("stream v2 request reserves divergence-plan tokens and asks for the plan; v1 budget unchanged", async () => {
+  const capturedMaxTokens: number[] = [];
+  const capturedSystems: string[] = [];
+  await runWithStubbedFetch({
+    ...makeDeps({ calls: [], capturedMaxTokens, capturedSystems }),
+    noSendDecisions: true,
+  });
+  assertEquals(capturedMaxTokens, [4500 + DIVERGENCE_PLAN_EXTRA_TOKENS]);
+  assert(capturedSystems[0].includes("`analysis.divergence_plan`"));
 });

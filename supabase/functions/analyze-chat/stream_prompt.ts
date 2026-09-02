@@ -19,7 +19,15 @@ export interface StreamPromptOptions {
   /// this request. Rendered only when non-empty, so the v1 prompt stays
   /// byte-identical.
   situationKnowledge?: readonly string[];
+  /// Phase 2a shadow (§5.12): ask for one `analysis.divergence_plan` after a
+  /// send decision. Recorded only; every reply rule below stays as written.
+  divergencePlan?: boolean;
 }
+
+const DIVERGENCE_PLAN_STEP = [
+  "1b. [send decisions only] `analysis.divergence_plan` once, right after `analysis.decision` and before `analysis.recommendation`. It records how you will branch; it changes none of the rules below (same `接` coverage, one segment per `接` ball, no invented facts). Fields: `schemaVersion` 1; `threadFrame` (one line: the single thread the whole reply set follows); `anchorSourceIndex` (the `接` ball with the most interaction value: it alone may carry the forward hook, the new picture, or the single question); `supportSourceIndices` (other `接` balls: catch them with a statement, feeling, or short stance, never each with its own question); `mergeContextSourceIndices` (the `併` balls); `semanticDistanceCap` 0-3, `newTopicBudget` 0-1, `questionBudget` 0-1 (red/falling or low investment: all 0; green/rising: cap 2, budgets 1; scheduling: cap 1, new topic 0); `branchPool` (2-8 branches: `id`, `sourceIndex`, `method` one of `semantic_decomposition`/`abstract_up`/`lateral`/`drill_down`/`association`/`affect_evaluation`, `idea`, `associationPath` (the visible chain from her words to the idea; a branch without a grounded path is not allowed), `semanticDistance` 0=her exact ball, 1=same scene or direct detail, 2=grounded detour or callback, 3=far leap, forbidden); optional `styleBranchIds` mapping each reply style to the branch it will use.",
+  'Example divergence_plan line: {"type":"analysis.divergence_plan","schemaVersion":1,"threadFrame":"接住她健身後的累，再玩去吃火鍋的反差","anchorSourceIndex":1,"supportSourceIndices":[3],"mergeContextSourceIndices":[2],"semanticDistanceCap":1,"newTopicBudget":0,"questionBudget":1,"branchPool":[{"id":"br_1","sourceIndex":1,"method":"affect_evaluation","idea":"練完後身體像下班","associationPath":["健身完","累","身體下班"],"semanticDistance":1},{"id":"br_2","sourceIndex":3,"method":"association","idea":"健身與火鍋是熱量進出帳","associationPath":["健身","消耗","火鍋","補回"],"semanticDistance":1}],"styleBranchIds":{"extend":"br_1","humor":"br_2"}}',
+];
 
 // §11.3 衝突順序：高層可禁止生成，低層 voice 不得覆蓋高層。
 const SITUATION_KNOWLEDGE_HEADER = [
@@ -85,6 +93,7 @@ export function buildStreamSystemPrompt(
       ? "1. `analysis.decision`, as soon as you know the next move. Do not wait for the full report. Include `messageDecision` (see 1a) and, only when it is `send`, `selectedStyle`, `nextStepTitle`, `nextStepBody`, `doThis`, `avoidThis`, and `confidence`. A send decision's `selectedStyle` segment sources must be balls marked `接`; their wording may incorporate related `併` context."
       : "1. `analysis.decision`, as soon as you know the next move. Do not wait for the full report. Include `selectedStyle`, `nextStepTitle`, `nextStepBody`, `doThis`, `avoidThis`, and `confidence`. Your `selectedStyle`'s segment sources must be balls marked `接`; their wording may incorporate related `併` context.",
     ...(options.noSendDecisions ? NO_SEND_DECISION_GATE : []),
+    ...(options.divergencePlan ? DIVERGENCE_PLAN_STEP : []),
     sendOnly(
       "2. `analysis.recommendation` once, thin: only `selectedStyle`, `reason`, and `expectedReaction` (one short line on how she will likely react). `analysis.recommendation` is REQUIRED even though it repeats the decision's selectedStyle; the recommendation card cannot render without it. Do not repeat the reply text here; the selected style's `analysis.reply_option` is the single source of the reply wording.",
     ),

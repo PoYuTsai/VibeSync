@@ -4,6 +4,7 @@
 import { isPlainObject } from "../_shared/quota.ts";
 import { isStreamStyle } from "./stream_events.ts";
 import { COACH_ACTION_HINT_ACTION_TYPES } from "./post_process.ts";
+import { parseDivergencePlanV1 } from "./divergence_contract.ts";
 
 const ACTIONS = new Set([
   "stop",
@@ -853,6 +854,60 @@ export function buildPhase0ObservabilityTelemetry({
       variants,
       finalResult,
     ),
+    divergencePlan: divergencePlanTelemetry(finalResult, variants),
+  };
+}
+
+/// Phase 2a shadow：只出數字與 enum，threadFrame／idea／associationPath 這些
+/// 從她的訊息推出的文字一律不進 telemetry。
+function divergencePlanTelemetry(
+  finalResult: Record<string, unknown>,
+  variants: Record<string, Variant> | null,
+): Record<string, unknown> {
+  const plan = parseDivergencePlanV1(finalResult.analysisDivergencePlan);
+  if (!plan) return { status: "unknown" };
+  const methods: Record<string, number> = {};
+  for (const branch of plan.branchPool) {
+    methods[branch.method] = (methods[branch.method] ?? 0) + 1;
+  }
+  const maxBranchDistance = Math.max(
+    ...plan.branchPool.map((branch) => branch.semanticDistance),
+  );
+  const variantValues = variants ? Object.values(variants) : null;
+  const anchorCoveredByAllStyles = variantValues && variantValues.length > 0 &&
+      variantValues.every((variant) => variant.sourceIndices !== undefined)
+    ? variantValues.every((variant) =>
+      variant.sourceIndices!.includes(plan.anchorSourceIndex)
+    )
+    : "unknown";
+  const questionBudgetExceeded = variantValues && variantValues.length > 0 &&
+      variantValues.every((variant) => variant.questionCount !== undefined)
+    ? variantValues.some((variant) =>
+      (variant.questionCount ?? 0) > plan.questionBudget
+    )
+    : "unknown";
+  const newTopicBudgetExceeded = variantValues && variantValues.length > 0 &&
+      variantValues.every((variant) => variant.newTopicCount !== undefined)
+    ? variantValues.some((variant) =>
+      (variant.newTopicCount ?? 0) > plan.newTopicBudget
+    )
+    : "unknown";
+  return {
+    status: "observed",
+    anchorSourceIndex: plan.anchorSourceIndex,
+    supportCount: plan.supportSourceIndices.length,
+    mergeContextCount: plan.mergeContextSourceIndices.length,
+    branchCount: plan.branchPool.length,
+    methods,
+    semanticDistanceCap: plan.semanticDistanceCap,
+    maxBranchDistance,
+    branchExceedsCap: maxBranchDistance > plan.semanticDistanceCap,
+    questionBudget: plan.questionBudget,
+    questionBudgetExceeded,
+    newTopicBudget: plan.newTopicBudget,
+    newTopicBudgetExceeded,
+    anchorCoveredByAllStyles,
+    styleBranchAssigned: Object.keys(plan.styleBranchIds ?? {}).length,
   };
 }
 

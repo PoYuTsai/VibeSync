@@ -663,3 +663,76 @@ Deno.test("Phase 0 observability: legacy give-up banner conflict is measured fro
   assertEquals(missing.legacyGiveUpConflict, "unknown");
   assertEquals(missing.coachActionType, "unknown");
 });
+
+Deno.test("Phase 2a observability: divergence plan telemetry is numbers and enums only", () => {
+  const plan = {
+    schemaVersion: 1,
+    threadFrame: "PLAN_SECRET",
+    anchorSourceIndex: 1,
+    supportSourceIndices: [3],
+    mergeContextSourceIndices: [2],
+    semanticDistanceCap: 1,
+    newTopicBudget: 0,
+    questionBudget: 1,
+    branchPool: [
+      {
+        id: "br_1",
+        sourceIndex: 1,
+        method: "affect_evaluation",
+        idea: "IDEA_SECRET",
+        associationPath: ["PATH_SECRET"],
+        semanticDistance: 1,
+      },
+      {
+        id: "br_2",
+        sourceIndex: 3,
+        method: "association",
+        idea: "IDEA_SECRET_2",
+        associationPath: [],
+        semanticDistance: 2,
+      },
+    ],
+    styleBranchIds: { extend: "br_1" },
+  };
+  const telemetry = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-1",
+    finalResult: {
+      analysisDivergencePlan: plan,
+      analysisEvidenceLinkage: {
+        schemaVersion: 1,
+        selectedStyle: "extend",
+        variants: {
+          extend: { sourceIndices: [1, 3], questionCount: 1, newTopicCount: 0 },
+          tease: { sourceIndices: [3], questionCount: 2, newTopicCount: 1 },
+        },
+      },
+    },
+  });
+  assertEquals(telemetry.divergencePlan, {
+    status: "observed",
+    anchorSourceIndex: 1,
+    supportCount: 1,
+    mergeContextCount: 1,
+    branchCount: 2,
+    methods: { affect_evaluation: 1, association: 1 },
+    semanticDistanceCap: 1,
+    maxBranchDistance: 2,
+    branchExceedsCap: true,
+    questionBudget: 1,
+    questionBudgetExceeded: true,
+    newTopicBudget: 0,
+    newTopicBudgetExceeded: true,
+    anchorCoveredByAllStyles: false,
+    styleBranchAssigned: 1,
+  });
+  const serialized = JSON.stringify(telemetry);
+  assertFalse(serialized.includes("SECRET"));
+
+  const absent = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-2",
+    finalResult: { analysisDivergencePlan: { schemaVersion: 1 } },
+  });
+  assertEquals(absent.divergencePlan, { status: "unknown" });
+});
