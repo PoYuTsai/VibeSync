@@ -74,6 +74,28 @@ void main() {
       expect(sendNone.hidesReplyZone, isFalse);
     });
 
+    test('closingMessage 只屬於 acknowledge_and_stop，其他決策一律丟棄', () {
+      final held = AnalysisDecisionV2.fromJson({
+        ...noSend,
+        'closingMessage': '不該出現的句子',
+      })!;
+      expect(held.closingMessage, isNull);
+      expect(held.sendableClosingMessage, isNull);
+      final needContext = AnalysisDecisionV2.fromJson({
+        ...noSend,
+        'messageDecision': 'need_context',
+        'closingMessage': '不該出現的句子',
+      })!;
+      expect(needContext.closingMessage, isNull);
+      // 即使直接建構帶了句子，也只有 acknowledge_and_stop 可傳。
+      const constructed = AnalysisDecisionV2(
+        messageDecision: 'do_not_send',
+        replyMode: 'none',
+        closingMessage: '不該出現的句子',
+      );
+      expect(constructed.sendableClosingMessage, isNull);
+    });
+
     test('缺 schemaVersion 2、未知決策、非物件一律 null（退回 v1）', () {
       expect(AnalysisDecisionV2.fromJson(null), isNull);
       expect(AnalysisDecisionV2.fromJson('do_not_send'), isNull);

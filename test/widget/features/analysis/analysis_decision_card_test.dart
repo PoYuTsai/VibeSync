@@ -32,6 +32,26 @@ void main() {
     expect(find.text('複製收尾句'), findsNothing);
   });
 
+  testWidgets('do_not_send 帶 closingMessage：不顯示句子也不給複製', (tester) async {
+    var copied = 0;
+    await _pump(
+      tester,
+      AnalysisDecisionCard(
+        decision: const AnalysisDecisionV2(
+          messageDecision: 'do_not_send',
+          replyMode: 'none',
+          reason: '她只回哈哈',
+          stopCondition: '等她提新話題',
+          closingMessage: '不該出現的句子',
+        ),
+        onCopyClosingMessage: () => copied++,
+      ),
+    );
+    expect(find.text('不該出現的句子'), findsNothing);
+    expect(find.text('複製收尾句'), findsNothing);
+    expect(copied, 0);
+  });
+
   testWidgets('need_context：補截圖文案', (tester) async {
     await _pump(
       tester,

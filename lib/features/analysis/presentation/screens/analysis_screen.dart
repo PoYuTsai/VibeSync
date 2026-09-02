@@ -4024,10 +4024,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               AnalysisDecisionCard(
                                 decision: _decision!,
                                 onCopyClosingMessage:
-                                    _decision!.closingMessage == null
+                                    _decision!.sendableClosingMessage == null
                                         ? null
                                         : () => copyRecommendationText(
-                                              _decision!.closingMessage!,
+                                              _decision!
+                                                  .sendableClosingMessage!,
                                               '已複製收尾句',
                                             ),
                               ),

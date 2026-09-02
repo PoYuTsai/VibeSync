@@ -129,7 +129,7 @@ class AnalysisDecisionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final closingMessage = decision.closingMessage;
+    final closingMessage = decision.sendableClosingMessage;
     final isNeedContext = decision.messageDecision == 'need_context';
     final accent = isNeedContext ? AppColors.textSecondary : AppColors.error;
     return Container(

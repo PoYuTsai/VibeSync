@@ -676,6 +676,7 @@ void main() {
           'schemaVersion': 2,
           'messageDecision': 'do_not_send',
           'replyMode': 'variants',
+          'closingMessage': '殘留收尾句',
           'action': 'pause',
           'reason': '她只回哈哈，沒有新內容',
           'stopCondition': '等她主動給新話題',
@@ -699,6 +700,7 @@ void main() {
     );
     expect(find.textContaining('接法建議', skipOffstage: false), findsNothing);
     expect(find.textContaining('殘留', skipOffstage: false), findsNothing);
+    expect(find.text('複製收尾句', skipOffstage: false), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

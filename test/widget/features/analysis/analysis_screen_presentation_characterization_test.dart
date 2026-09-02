@@ -334,6 +334,8 @@ void main() {
       };
       (json['analysisDecisionV2'] as Map<String, dynamic>)['replyMode'] =
           'variants';
+      (json['analysisDecisionV2'] as Map<String, dynamic>)['closingMessage'] =
+          '殘留收尾句';
       await _pumpScreen(
         tester,
         seed: _doneSeed(AnalysisResult.fromJson(json)),
@@ -343,6 +345,7 @@ void main() {
       expect(find.text('AI 推薦回覆'), findsNothing);
       expect(find.byType(ReplyStyleCard), findsNothing);
       expect(find.textContaining('殘留'), findsNothing);
+      expect(find.text('複製收尾句'), findsNothing);
       expect(find.textContaining('升級解鎖'), findsNothing);
       expect(find.byType(GiveUpAdviceBanner), findsNothing);
     });

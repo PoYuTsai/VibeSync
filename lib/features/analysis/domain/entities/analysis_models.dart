@@ -891,6 +891,10 @@ class AnalysisDecisionV2 {
 
   bool get isSend => messageDecision == 'send';
 
+  /// 只有 acknowledge_and_stop 有一句可傳送的收尾句。
+  String? get sendableClosingMessage =>
+      messageDecision == 'acknowledge_and_stop' ? closingMessage : null;
+
   /// messageDecision 是唯一權威：非 send 一律不顯示回覆輪播、不推銷升級，
   /// 即使後端同時送了矛盾的 replyMode。
   bool get hidesReplyZone => !isSend;
@@ -917,7 +921,11 @@ class AnalysisDecisionV2 {
         ? rawReplyMode
         : impliedReplyMode;
     String text(Object? value) => value is String ? value.trim() : '';
-    final closingMessage = text(json['closingMessage']);
+    // 收尾句只屬於 acknowledge_and_stop；do_not_send／need_context 是零回覆，
+    // 後端夾帶的 closingMessage 一律丟棄。
+    final closingMessage = messageDecision == 'acknowledge_and_stop'
+        ? text(json['closingMessage'])
+        : '';
     return AnalysisDecisionV2(
       messageDecision: messageDecision,
       replyMode: replyMode,
