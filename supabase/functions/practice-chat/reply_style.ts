@@ -2461,7 +2461,7 @@ const BASELINE_AUDIENCE_LINE = {
   hint:
     "回覆則數跟著她的基準走：她一則不等於她冷，她比平常多講才是投入的訊號。",
   classifier:
-    "partnerMood 不得只因為她短句、沒反問或句號收尾就判 guarded／annoyed；要看她相對自己的基準有沒有變。",
+    "partnerMood 不得只因為她短句、沒反問或句號收尾就判 guarded／annoyed；要看她相對自己的基準有沒有變。boundary、越界與安全的判定不受基準影響。",
   debrief:
     "對外拆解可以說她本來就偏短句或少反問，真正變冷要指出她沒接話、開始收尾；不得提到基準數字、設定或內部分數。",
 } as const;
