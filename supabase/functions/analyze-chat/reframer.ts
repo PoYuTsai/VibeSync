@@ -29,6 +29,9 @@ import { STRETCH_LEVELS, type StretchLevel } from "./opener_payload.ts";
 import {
   type DivergencePlanV1,
   parseDivergencePlanEvent,
+  resolveStyleBranch,
+  type RhetoricalMove,
+  type StyleBranchSource,
 } from "./divergence_contract.ts";
 
 function normalizeStretchLevel(value: unknown): StretchLevel {
@@ -76,6 +79,13 @@ export interface AnalysisEvidenceVariant {
   newTopicCount?: number;
   semanticDistance?: number;
   solutionMode?: boolean;
+  // Phase 2b：這張卡跟計畫哪一枝、怎麼來的（option 自帶／計畫指定／缺省補
+  // anchor）、修辭手法與強度。只在 v2 且有合法計畫時出現。
+  branchId?: string;
+  branchSource?: StyleBranchSource;
+  rhetoricalMove?: RhetoricalMove;
+  styleIntensity?: number;
+  branchAttributionInvalid?: boolean;
 }
 
 export interface AnalysisEvidenceLinkage {
@@ -85,6 +95,9 @@ export interface AnalysisEvidenceLinkage {
   selectedBallIds?: string[];
   inventorySourceIndices?: number[];
   variants?: Record<string, AnalysisEvidenceVariant>;
+  // Phase 2b：計畫解析時做過的 repair-first 修補（`<branchId>:method:<move>-><method>`
+  // 或 `<branchId>:sourceIndex<N>`），純 enum／id，給 telemetry 看漂移。
+  divergencePlanRepairs?: string[];
 }
 
 type Phase0ObservabilitySnapshot = Pick<
@@ -258,11 +271,13 @@ function buildEvidenceLinkage({
   inventory,
   selectedStyle,
   variants,
+  divergencePlanRepairs,
 }: {
   decision: Record<string, unknown> | null;
   inventory: Record<string, unknown> | null;
   selectedStyle: StreamStyle | null;
   variants?: ReadonlyMap<StreamStyle, AnalysisEvidenceVariant>;
+  divergencePlanRepairs?: readonly string[];
 }): AnalysisEvidenceLinkage | null {
   const decisionId = decision ? stringField(decision.decisionId) : "";
   const selectedBallIds = decision
@@ -282,6 +297,9 @@ function buildEvidenceLinkage({
       .filter(([, variant]) => Object.keys(variant).length > 0)
       .map(([style, variant]) => [style, { ...variant }] as const);
     if (entries.length > 0) linkage.variants = Object.fromEntries(entries);
+  }
+  if (divergencePlanRepairs && divergencePlanRepairs.length > 0) {
+    linkage.divergencePlanRepairs = [...divergencePlanRepairs];
   }
 
   return Object.keys(linkage).length > 1 ? linkage : null;
@@ -356,6 +374,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   let analysisEvidenceLinkage: AnalysisEvidenceLinkage | null = null;
   // Phase 2a shadow：第一個合法計畫勝出；後到的不覆蓋。
   let analysisDivergencePlan: DivergencePlanV1 | null = null;
+  const divergencePlanRepairs: string[] = [];
   let observedSelectedStyle: StreamStyle | null =
     options.prechargedRecommendation?.selectedStyle ?? null;
   const evidenceVariants = new Map<StreamStyle, AnalysisEvidenceVariant>();
@@ -382,6 +401,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
         inventory: analysisInventory,
         selectedStyle,
         variants: includeVariants ? evidenceVariants : undefined,
+        divergencePlanRepairs,
       }),
     );
     if (linkage) snapshot.analysisEvidenceLinkage = linkage;
@@ -579,7 +599,30 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     const compat = withReplyOptionCompatFields(event, segments);
     const style = replyStyleFrom(compat);
     if (style) {
-      const variant = evidenceVariantFrom(compat, segments);
+      const variant: AnalysisEvidenceVariant = evidenceVariantFrom(
+        compat,
+        segments,
+      );
+      if (analysisDivergencePlan) {
+        const resolved = resolveStyleBranch(
+          analysisDivergencePlan,
+          style,
+          compat,
+        );
+        variant.branchId = resolved.branchId;
+        variant.branchSource = resolved.source;
+        if (resolved.rhetoricalMove) {
+          variant.rhetoricalMove = resolved.rhetoricalMove;
+        }
+        if (resolved.styleIntensity !== undefined) {
+          variant.styleIntensity = resolved.styleIntensity;
+        }
+        if (resolved.invalid) variant.branchAttributionInvalid = true;
+        console.log(
+          `[divergence_attribution] style=${style} branch=${resolved.branchId} ` +
+            `source=${resolved.source} invalid=${resolved.invalid}`,
+        );
+      }
       if (Object.keys(variant).length > 0) {
         evidenceVariants.set(style, variant);
       }
@@ -892,10 +935,17 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       // 或壞掉的計畫一律丟掉且不算 valid event，所以 no-send 扣費快照永遠
       // 不會帶到計畫，空串流的錯誤／重試判定也不受影響。
       if (chargeCompleted && !noSendDecision && !analysisDivergencePlan) {
-        const plan = parseDivergencePlanEvent(event);
+        const repairs: string[] = [];
+        const plan = parseDivergencePlanEvent(event, repairs);
         if (plan) {
           analysisDivergencePlan = plan;
           sawValidEvent = true;
+          if (repairs.length > 0) {
+            divergencePlanRepairs.push(...repairs);
+            console.log(
+              `[divergence_plan] repaired branches: ${repairs.join(",")}`,
+            );
+          }
         }
       }
       return;

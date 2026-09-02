@@ -3,8 +3,16 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  anchorBranchOf,
+  BRANCH_METHOD_REPAIRS,
+  DIVERGENCE_METHODS,
+  MAX_STYLE_INTENSITY,
   parseDivergencePlanEvent,
   parseDivergencePlanV1,
+  parseReplyOptionBranchFields,
+  REPLY_OPTION_BRANCH_FIELDS,
+  resolveStyleBranch,
+  RHETORICAL_MOVES,
   stripClientHiddenFinalResult,
 } from "./divergence_contract.ts";
 
@@ -133,4 +141,195 @@ Deno.test("stripClientHiddenFinalResult removes only the divergence plan and lea
   const plain = { replies: {} };
   assert(stripClientHiddenFinalResult(plain) === plain);
   assertEquals(stripClientHiddenFinalResult(null), null);
+});
+
+// ---- Phase 2b：reply_option 歸因 ----
+
+const PLAN = parseDivergencePlanEvent(VALID_PLAN)!;
+
+Deno.test("rhetorical moves are unique and disjoint from the branch methods; attribution fields are the three documented keys", () => {
+  for (const method of DIVERGENCE_METHODS) {
+    assert(!(RHETORICAL_MOVES as readonly string[]).includes(method), method);
+  }
+  assertEquals(new Set(RHETORICAL_MOVES).size, RHETORICAL_MOVES.length);
+  assertEquals(REPLY_OPTION_BRANCH_FIELDS, [
+    "branchId",
+    "rhetoricalMove",
+    "styleIntensity",
+  ]);
+  assertEquals(MAX_STYLE_INTENSITY, 3);
+});
+
+Deno.test("anchor branch is the first pool branch on the anchor ball, else the first branch", () => {
+  assertEquals(anchorBranchOf(PLAN).id, "br_1");
+  const noAnchorBranch = parseDivergencePlanV1({
+    ...snapshotOf(VALID_PLAN),
+    anchorSourceIndex: 4,
+  })!;
+  assertEquals(anchorBranchOf(noAnchorBranch).id, "br_1");
+  const anchorSecond = parseDivergencePlanV1({
+    ...snapshotOf(VALID_PLAN),
+    anchorSourceIndex: 3,
+  })!;
+  assertEquals(anchorBranchOf(anchorSecond).id, "br_2");
+});
+
+Deno.test("reply option attribution parses only a complete valid triple; anything else is absent", () => {
+  const good = {
+    branchId: "br_2",
+    rhetoricalMove: "playful_contrast",
+    styleIntensity: 2,
+  };
+  assertEquals(parseReplyOptionBranchFields(good, PLAN), good);
+  const bad: unknown[] = [
+    { ...good, branchId: "br_9" },
+    { ...good, rhetoricalMove: "sarcasm" },
+    { ...good, rhetoricalMove: "drill_down" }, // 分枝法不是手法
+    { ...good, styleIntensity: MAX_STYLE_INTENSITY + 1 },
+    { ...good, styleIntensity: -1 },
+    { ...good, styleIntensity: 1.5 },
+    { branchId: "br_2", rhetoricalMove: "playful_contrast" },
+    { branchId: "br_2" },
+    {},
+    null,
+    "br_2",
+  ];
+  for (const value of bad) {
+    assertEquals(
+      parseReplyOptionBranchFields(value, PLAN),
+      null,
+      JSON.stringify(value),
+    );
+  }
+});
+
+Deno.test("style branch resolution: option wins, then the plan's styleBranchIds, then the anchor; invalid option fields are flagged", () => {
+  // option 自帶合法 → option。
+  assertEquals(
+    resolveStyleBranch(PLAN, "extend", {
+      branchId: "br_2",
+      rhetoricalMove: "new_angle",
+      styleIntensity: 1,
+    }),
+    {
+      branchId: "br_2",
+      rhetoricalMove: "new_angle",
+      styleIntensity: 1,
+      source: "option",
+      invalid: false,
+    },
+  );
+  // 缺 → 計畫指定（extend→br_1）。
+  assertEquals(resolveStyleBranch(PLAN, "extend", { style: "extend" }), {
+    branchId: "br_1",
+    source: "plan",
+    invalid: false,
+  });
+  // 缺且計畫沒指定 → anchor（br_1）。
+  assertEquals(resolveStyleBranch(PLAN, "tease", { style: "tease" }), {
+    branchId: "br_1",
+    source: "anchor",
+    invalid: false,
+  });
+  // 帶了但不合法 → 退回下一層並標 invalid。
+  assertEquals(
+    resolveStyleBranch(PLAN, "humor", { branchId: "br_9" }),
+    { branchId: "br_2", source: "plan", invalid: true },
+  );
+  assertEquals(
+    resolveStyleBranch(PLAN, "coldRead", {
+      branchId: "br_1",
+      styleIntensity: 0,
+    }),
+    { branchId: "br_1", source: "anchor", invalid: true },
+  );
+});
+
+function snapshotOf(event: typeof VALID_PLAN): Record<string, unknown> {
+  const { type: _type, ...snapshot } = event;
+  return snapshot;
+}
+
+Deno.test("branch sourceIndex<N> glitch is repaired only when N and the value equal sourceIndex; anything else still voids the plan", () => {
+  const glitched = {
+    ...VALID_PLAN,
+    branchPool: [
+      VALID_PLAN.branchPool[0],
+      { ...VALID_PLAN.branchPool[1], sourceIndex3: 3 },
+    ],
+  };
+  const repairs: string[] = [];
+  const plan = parseDivergencePlanEvent(glitched, repairs);
+  assert(plan);
+  assertEquals(plan.branchPool[1].sourceIndex, 3);
+  assertEquals("sourceIndex3" in plan.branchPool[1], false);
+  assertEquals(repairs, ["br_2:sourceIndex3"]);
+  // 沒傳 repairs 也一樣修得回來。
+  assert(parseDivergencePlanEvent(glitched));
+  // 取代型：沒有 sourceIndex，只有 sourceIndex3: 3 → 補回 sourceIndex 3。
+  const { sourceIndex: _dropped, ...withoutSourceIndex } =
+    VALID_PLAN.branchPool[1];
+  const replaced: string[] = [];
+  const replacedPlan = parseDivergencePlanEvent({
+    ...VALID_PLAN,
+    branchPool: [
+      VALID_PLAN.branchPool[0],
+      { ...withoutSourceIndex, sourceIndex3: 3 },
+    ],
+  }, replaced);
+  assert(replacedPlan);
+  assertEquals(replacedPlan.branchPool[1].sourceIndex, 3);
+  assertEquals(replaced, ["br_2:sourceIndex3"]);
+
+  for (
+    const bad of [
+      { ...VALID_PLAN.branchPool[1], sourceIndex1: 3 }, // N ≠ sourceIndex
+      { ...VALID_PLAN.branchPool[1], sourceIndex3: 1 }, // 值 ≠ sourceIndex
+      { ...VALID_PLAN.branchPool[1], sourceIndex3: "3" }, // 不是數字
+      { ...VALID_PLAN.branchPool[1], sourceIndexes: 3 }, // 不是這個形態
+      { ...withoutSourceIndex, sourceIndex3: 1 }, // 取代型但值≠N
+      { ...withoutSourceIndex, sourceIndex3: 3, sourceIndex1: 1 }, // 兩個矛盾
+    ]
+  ) {
+    assertEquals(
+      parseDivergencePlanEvent({
+        ...VALID_PLAN,
+        branchPool: [VALID_PLAN.branchPool[0], bad],
+      }),
+      null,
+      JSON.stringify(bad),
+    );
+  }
+});
+
+Deno.test("a rhetorical move written as a branch method is repaired to its mapped divergence method and recorded; unknown words still void the plan", () => {
+  for (const move of RHETORICAL_MOVES) {
+    assert(
+      (DIVERGENCE_METHODS as readonly string[]).includes(
+        BRANCH_METHOD_REPAIRS[move],
+      ),
+      move,
+    );
+  }
+  const repairs: string[] = [];
+  const plan = parseDivergencePlanEvent({
+    ...VALID_PLAN,
+    branchPool: [
+      VALID_PLAN.branchPool[0],
+      { ...VALID_PLAN.branchPool[1], method: "exaggeration" },
+    ],
+  }, repairs);
+  assert(plan);
+  assertEquals(plan.branchPool[1].method, "association");
+  assertEquals(repairs, ["br_2:method:exaggeration->association"]);
+  assertEquals(
+    parseDivergencePlanEvent({
+      ...VALID_PLAN,
+      branchPool: [
+        VALID_PLAN.branchPool[0],
+        { ...VALID_PLAN.branchPool[1], method: "sarcasm" },
+      ],
+    }),
+    null,
+  );
 });

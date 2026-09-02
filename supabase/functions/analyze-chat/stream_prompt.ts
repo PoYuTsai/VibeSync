@@ -20,7 +20,10 @@ import {
   MAX_QUESTION_BUDGET,
   MAX_SEMANTIC_DISTANCE,
   MAX_SEMANTIC_DISTANCE_CAP,
+  MAX_STYLE_INTENSITY,
   MIN_DIVERGENCE_BRANCHES,
+  REPLY_OPTION_BRANCH_FIELDS,
+  RHETORICAL_MOVES,
 } from "./divergence_contract.ts";
 import { normalizeStagePrior } from "./stage_prior.ts";
 
@@ -57,8 +60,20 @@ const DIVERGENCE_BRANCH_FIELD_LIST = DIVERGENCE_BRANCH_FIELDS.map((field) =>
 ).join(", ");
 const DIVERGENCE_PLAN_STEP = [
   `1b. [send decisions only] \`${DIVERGENCE_PLAN_EVENT_TYPE}\` once, right after \`analysis.decision\` and before \`analysis.recommendation\`. It records how you will branch; it changes none of the rules below (same \`接\` coverage, one segment per \`接\` ball, no invented facts). The event object holds exactly these required keys: ${DIVERGENCE_PLAN_FIELD_LIST}; it may add only the optional key ${DIVERGENCE_PLAN_OPTIONAL_LIST}; nothing else. Each branch holds exactly: ${DIVERGENCE_BRANCH_FIELD_LIST}. Any extra key, missing required key, unknown method, or out-of-range number makes the whole plan invalid and it is discarded.`,
-  `Meaning: \`schemaVersion\` 1; \`threadFrame\` (one line: the single thread the whole reply set follows); \`anchorSourceIndex\` (the \`接\` ball with the most interaction value: it alone may carry the forward hook, the new picture, or the single question); \`supportSourceIndices\` (other \`接\` balls: catch them with a statement, feeling, or short stance, never each with its own question); \`mergeContextSourceIndices\` (the \`併\` balls); \`semanticDistanceCap\` 0-${MAX_SEMANTIC_DISTANCE_CAP}, \`newTopicBudget\` 0-${MAX_NEW_TOPIC_BUDGET}, \`questionBudget\` 0-${MAX_QUESTION_BUDGET} (red/falling or low investment: all 0; green/rising: cap ${MAX_SEMANTIC_DISTANCE_CAP}, budgets ${MAX_QUESTION_BUDGET}; scheduling: cap 1, new topic 0); \`branchPool\` (${MIN_DIVERGENCE_BRANCHES}-${MAX_DIVERGENCE_BRANCHES} branches: \`id\`, \`sourceIndex\`, \`method\` one of ${DIVERGENCE_METHOD_LIST}, \`idea\`, \`associationPath\` (the visible chain from her words to the idea; a branch without a grounded path is not allowed), \`semanticDistance\` 0-${MAX_SEMANTIC_DISTANCE}: 0=her exact ball, 1=same scene or direct detail, 2=grounded detour or callback, ${MAX_SEMANTIC_DISTANCE}=far leap, which is always above the cap, so list it only to show a path you rejected); \`styleBranchIds\` (optional) mapping each reply style to the branch id it will use.`,
+  `Meaning: \`schemaVersion\` 1; \`threadFrame\` (one line: the single thread the whole reply set follows); \`anchorSourceIndex\` (the \`接\` ball with the most interaction value: it alone may carry the forward hook, the new picture, or the single question); \`supportSourceIndices\` (other \`接\` balls: catch them with a statement, feeling, or short stance, never each with its own question); \`mergeContextSourceIndices\` (the \`併\` balls); \`semanticDistanceCap\` 0-${MAX_SEMANTIC_DISTANCE_CAP}, \`newTopicBudget\` 0-${MAX_NEW_TOPIC_BUDGET}, \`questionBudget\` 0-${MAX_QUESTION_BUDGET} (red/falling or low investment: all 0; green/rising: cap ${MAX_SEMANTIC_DISTANCE_CAP}, budgets ${MAX_QUESTION_BUDGET}; scheduling: cap 1, new topic 0); \`branchPool\` (${MIN_DIVERGENCE_BRANCHES}-${MAX_DIVERGENCE_BRANCHES} branches: \`id\`, \`sourceIndex\` (exactly one, never a numbered variant like \`sourceIndex1\`), \`method\` one of ${DIVERGENCE_METHOD_LIST} (how you branched; only these six, so a humor branch built by exaggeration is still \`association\` or \`affect_evaluation\` here), \`idea\`, \`associationPath\` (the visible chain from her words to the idea; a branch without a grounded path is not allowed), \`semanticDistance\` 0-${MAX_SEMANTIC_DISTANCE}: 0=her exact ball, 1=same scene or direct detail, 2=grounded detour or callback, ${MAX_SEMANTIC_DISTANCE}=far leap, which is always above the cap, so list it only to show a path you rejected); \`styleBranchIds\` (optional) mapping each reply style to the branch id it will use.`,
   'Example divergence_plan line: {"type":"analysis.divergence_plan","schemaVersion":1,"threadFrame":"接住她健身後的累，再玩去吃火鍋的反差","anchorSourceIndex":1,"supportSourceIndices":[3],"mergeContextSourceIndices":[2],"semanticDistanceCap":1,"newTopicBudget":0,"questionBudget":1,"branchPool":[{"id":"br_1","sourceIndex":1,"method":"affect_evaluation","idea":"練完後身體像下班","associationPath":["健身完","累","身體下班"],"semanticDistance":1},{"id":"br_2","sourceIndex":3,"method":"association","idea":"健身與火鍋是熱量進出帳","associationPath":["健身","消耗","火鍋","補回"],"semanticDistance":1}],"styleBranchIds":{"extend":"br_1","humor":"br_2"}}',
+];
+
+// Phase 2b：五風格從同一 branch pool 各選修辭手法（§5.11 步驟 6、§6.3、
+// §14.1）。欄位名、手法值域、強度上限全從 divergence_contract 生成。
+const REPLY_OPTION_BRANCH_FIELD_LIST = REPLY_OPTION_BRANCH_FIELDS.map((
+  field,
+) => `\`${field}\``).join(", ");
+const RHETORICAL_MOVE_LIST = RHETORICAL_MOVES.map((move) => `\`${move}\``)
+  .join("/");
+const DIVERGENCE_REPLY_OPTION_RULE = [
+  `Branch attribution: when you emitted \`${DIVERGENCE_PLAN_EVENT_TYPE}\`, every \`analysis.reply_option\` also carries exactly ${REPLY_OPTION_BRANCH_FIELD_LIST}: \`branchId\` is the \`branchPool\` id this style actually follows (its own \`styleBranchIds\` entry when you gave one; the anchor's branch otherwise), \`rhetoricalMove\` is how this style phrases the branch, one of ${RHETORICAL_MOVE_LIST} (a separate vocabulary from the plan's branch \`method\`, which is how you branched: never write a phrasing move such as \`exaggeration\` as a branch \`method\`, and never write a branch method as a \`rhetoricalMove\`), \`styleIntensity\` is 0-${MAX_STYLE_INTENSITY} (lower it when the style does not suit the moment; never change the action instead). Give different styles different branches or different moves: five options that share one opening, or differ only by synonyms and punctuation, are a failure. The branch changes only the angle inside the anchor segment; every option still covers the same \`接\` balls, keeps the shared action, and stays inside \`questionBudget\` and \`semanticDistanceCap\`. Missing or unknown attribution makes the server assign the anchor branch to that option. If you emitted no plan, omit these keys and write the options as before.`,
+  'Example attributed reply_option line: {"type":"analysis.reply_option","style":"humor","branchId":"br_2","rhetoricalMove":"exaggeration","styleIntensity":2,"reason":"把火鍋當熱量進出帳來玩","stretchLevel":"stretch","segments":[{"sourceIndex":1,"sourceMessage":"剛健身完","reply":"肌肉剛下班，妳本人還沒","reason":"接健身球"},{"sourceIndex":3,"sourceMessage":"等等要去吃火鍋","reply":"等等火鍋再把今天消耗的熱量全部請回公司","reason":"接火鍋球"}]}',
 ];
 
 // §11.3 衝突順序：高層可禁止生成，低層 voice 不得覆蓋高層。
@@ -147,6 +162,9 @@ export function buildStreamSystemPrompt(
     sendOnly(
       "`stretchLevel` (`within`/`stretch`/`far`): his current level, one step bolder but doable, or too big a jump. At least one style must be `stretch`; no comfort-zone info → `within` for all.",
     ),
+    ...(options.divergencePlan
+      ? DIVERGENCE_REPLY_OPTION_RULE.map((line) => sendOnly(line))
+      : []),
     // ⚠️ 字面已非真實（2026-06-13 fail-soft，f417bd8）：server 不再 reject／retry，
     //    floor 現為 prompt-only 準則，違反只記 log（見 reframer.ts ball_inventory canary）。
     //    這句「server rejects」措辭刻意保留——它是模型乖乖達標的 compliance 壓力來源，

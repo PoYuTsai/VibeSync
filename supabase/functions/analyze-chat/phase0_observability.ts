@@ -4,7 +4,12 @@
 import { isPlainObject } from "../_shared/quota.ts";
 import { isStreamStyle } from "./stream_events.ts";
 import { COACH_ACTION_HINT_ACTION_TYPES } from "./post_process.ts";
-import { parseDivergencePlanV1 } from "./divergence_contract.ts";
+import {
+  MAX_STYLE_INTENSITY,
+  parseDivergencePlanV1,
+  RHETORICAL_MOVES,
+  STYLE_BRANCH_SOURCES,
+} from "./divergence_contract.ts";
 
 const ACTIONS = new Set([
   "stop",
@@ -14,6 +19,8 @@ const ACTIONS = new Set([
   "invite",
   "pause",
 ]);
+const BRANCH_SOURCES = new Set<string>(STYLE_BRANCH_SOURCES);
+const MOVES = new Set<string>(RHETORICAL_MOVES);
 const MESSAGE_DECISIONS = new Set([
   "send",
   "do_not_send",
@@ -55,6 +62,11 @@ type Variant = {
   newTopicCount?: number;
   semanticDistance?: number;
   solutionMode?: boolean;
+  branchId?: string;
+  branchSource?: string;
+  rhetoricalMove?: string;
+  styleIntensity?: number;
+  branchAttributionInvalid?: boolean;
 };
 
 type SourceMessageSegment = {
@@ -130,7 +142,27 @@ function variantsFrom(
     const solutionMode = typeof candidate.solutionMode === "boolean"
       ? candidate.solutionMode
       : undefined;
+    const branchId = typeof candidate.branchId === "string" &&
+        candidate.branchId !== ""
+      ? candidate.branchId
+      : undefined;
+    const branchSource = enumValue(candidate.branchSource, BRANCH_SOURCES);
+    const rhetoricalMove = enumValue(candidate.rhetoricalMove, MOVES);
+    const styleIntensity = nonNegativeNumber(candidate.styleIntensity);
+    const branchAttributionInvalid =
+      typeof candidate.branchAttributionInvalid === "boolean"
+        ? candidate.branchAttributionInvalid
+        : undefined;
     variants[style] = {
+      ...(branchId ? { branchId } : {}),
+      ...(branchSource ? { branchSource } : {}),
+      ...(rhetoricalMove ? { rhetoricalMove } : {}),
+      ...(styleIntensity !== null && styleIntensity <= MAX_STYLE_INTENSITY
+        ? { styleIntensity }
+        : {}),
+      ...(branchAttributionInvalid !== undefined
+        ? { branchAttributionInvalid }
+        : {}),
       ...(sourceIndices ? { sourceIndices } : {}),
       ...(sourceBallIds ? { sourceBallIds } : {}),
       ...(action ? { action } : {}),
@@ -364,12 +396,33 @@ function invariantVariantFields(
   const solutionMode = typeof rawVariant.solutionMode === "boolean"
     ? rawVariant.solutionMode
     : undefined;
+  // Phase 2b 歸因跟 action 一樣是 raw option 的 metadata：送出的內容還證明
+  // 是同一個 raw variant 才保留。
+  const branchId = typeof rawVariant.branchId === "string" &&
+      rawVariant.branchId !== ""
+    ? rawVariant.branchId
+    : undefined;
+  const branchSource = enumValue(rawVariant.branchSource, BRANCH_SOURCES);
+  const rhetoricalMove = enumValue(rawVariant.rhetoricalMove, MOVES);
+  const styleIntensity = nonNegativeNumber(rawVariant.styleIntensity);
+  const branchAttributionInvalid =
+    typeof rawVariant.branchAttributionInvalid === "boolean"
+      ? rawVariant.branchAttributionInvalid
+      : undefined;
   return {
     ...(action ? { action } : {}),
     ...(selectedBallIds ? { selectedBallIds } : {}),
     ...(newTopicCount !== null ? { newTopicCount } : {}),
     ...(semanticDistance !== null ? { semanticDistance } : {}),
     ...(solutionMode !== undefined ? { solutionMode } : {}),
+    ...(branchId && branchSource ? { branchId, branchSource } : {}),
+    ...(rhetoricalMove ? { rhetoricalMove } : {}),
+    ...(styleIntensity !== null && styleIntensity <= MAX_STYLE_INTENSITY
+      ? { styleIntensity }
+      : {}),
+    ...(branchAttributionInvalid !== undefined
+      ? { branchAttributionInvalid }
+      : {}),
   };
 }
 
@@ -925,6 +978,67 @@ function divergencePlanTelemetry(
     newTopicBudgetExceeded,
     anchorCoveredByAllStyles,
     styleBranchAssigned: Object.keys(plan.styleBranchIds ?? {}).length,
+    repairs: repairTelemetry(record(finalResult.analysisEvidenceLinkage)),
+    attribution: attributionTelemetry(variantValues),
+  };
+}
+
+/// Phase 2b repair-first：計畫解析時修了幾處（method 手法→六法、
+/// sourceIndex<N> 多餘 key）。只數形狀合法的紀錄。
+const PLAN_REPAIR_ENTRY =
+  /^[^:]{1,64}:(method:[a-z_]+->[a-z_]+|sourceIndex\d+)$/;
+function repairTelemetry(
+  linkage: Record<string, unknown> | null,
+): { method: number; sourceIndexKey: number } {
+  const counts = { method: 0, sourceIndexKey: 0 };
+  const raw = linkage?.divergencePlanRepairs;
+  if (!Array.isArray(raw)) return counts;
+  for (const entry of raw) {
+    if (typeof entry !== "string" || !PLAN_REPAIR_ENTRY.test(entry)) continue;
+    if (entry.includes(":method:")) counts.method += 1;
+    else counts.sourceIndexKey += 1;
+  }
+  return counts;
+}
+
+/// Phase 2b：五張卡實際跟了哪一枝、怎麼來的。純數字，不帶文字。
+/// variants 缺席（舊快照／無 reply_option）→ unknown。
+function attributionTelemetry(
+  variants: Variant[] | null,
+): Record<string, unknown> {
+  if (!variants || variants.length === 0) return { status: "unknown" };
+  const attributed = variants.filter((variant) =>
+    variant.branchId !== undefined && variant.branchSource !== undefined
+  );
+  if (attributed.length === 0) return { status: "unknown" };
+  const bySource: Record<string, number> = {};
+  for (const source of STYLE_BRANCH_SOURCES) bySource[source] = 0;
+  const rhetoricalMoves: Record<string, number> = {};
+  const styleIntensity: Record<string, number> = {};
+  const branches = new Set<string>();
+  let invalidCount = 0;
+  for (const variant of attributed) {
+    bySource[variant.branchSource!] += 1;
+    branches.add(variant.branchId!);
+    if (variant.rhetoricalMove) {
+      rhetoricalMoves[variant.rhetoricalMove] =
+        (rhetoricalMoves[variant.rhetoricalMove] ?? 0) + 1;
+    }
+    if (variant.styleIntensity !== undefined) {
+      const key = String(variant.styleIntensity);
+      styleIntensity[key] = (styleIntensity[key] ?? 0) + 1;
+    }
+    if (variant.branchAttributionInvalid) invalidCount += 1;
+  }
+  return {
+    status: "observed",
+    styleCount: variants.length,
+    attributedCount: attributed.length,
+    bySource,
+    distinctBranchCount: branches.size,
+    rhetoricalMoves,
+    styleIntensity,
+    invalidCount,
   };
 }
 

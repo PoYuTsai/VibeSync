@@ -115,3 +115,22 @@ Deno.test("parseEventLine keeps analysis.divergence_plan unknown unless the v2 o
     "analysis.inventory",
   );
 });
+
+Deno.test('parseEventLine repairs only the v2 divergence_plan `"sourceIndex=N"` glitch; any other broken JSON stays unknown', () => {
+  const glitched =
+    '{"type":"analysis.divergence_plan","schemaVersion":1,"branchPool":[{"id":"br_3","sourceIndex=1","method":"drill_down"}]}';
+  assertEquals(parseEventLine(glitched, { divergencePlan: false }), null);
+  const parsed = parseEventLine(glitched, { divergencePlan: true });
+  assertEquals(parsed?.type, "analysis.divergence_plan");
+  const branch = (parsed?.branchPool as Record<string, unknown>[])[0];
+  assertEquals(branch.sourceIndex, 1);
+  assertEquals("sourceIndex=1" in branch, false);
+
+  // 同樣的手誤出現在別的事件行不修；計畫行的其他 JSON 錯誤也不修。
+  const otherEvent =
+    '{"type":"analysis.reply_option","style":"extend","segments":[{"sourceIndex=1","reply":"x"}]}';
+  assertEquals(parseEventLine(otherEvent, { divergencePlan: true }), null);
+  const otherBreak =
+    '{"type":"analysis.divergence_plan","schemaVersion":1,"branchPool":[{"id":"br_3","sourceIndex":1,"method":"drill_down"}';
+  assertEquals(parseEventLine(otherBreak, { divergencePlan: true }), null);
+});

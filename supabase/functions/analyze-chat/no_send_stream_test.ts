@@ -979,3 +979,123 @@ Deno.test("divergence plan: a rejected plan is not a valid event, so an otherwis
   assertEquals(malformedOnly.charges.length, 0);
   assertEquals(earlyOnly.charges.length, 0);
 });
+
+// Phase 2b：五風格歸因——option 自帶 > 計畫指定 > anchor；client 事件永遠剝掉
+// 歸因欄位；v1 連歸因都不做。
+const ATTRIBUTED_TAIL = [
+  {
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "m",
+    reason: "r",
+    quotedContext: "q",
+  },
+  {
+    type: "analysis.reply_option",
+    style: "extend",
+    message: "m",
+    reason: "r",
+    branchId: "br_2",
+    rhetoricalMove: "new_angle",
+    styleIntensity: 1,
+  },
+  { type: "analysis.reply_option", style: "tease", message: "t", reason: "r" },
+  {
+    type: "analysis.reply_option",
+    style: "humor",
+    message: "h",
+    reason: "r",
+    branchId: "br_9",
+    rhetoricalMove: "exaggeration",
+    styleIntensity: 2,
+  },
+];
+const V2_THREE_STYLES = {
+  noSendDecisions: true,
+  requiredReplyStyles: ["extend", "tease", "humor"] as const,
+};
+
+Deno.test("divergence attribution: every option resolves to a branch (option > plan > anchor), invalid fields are flagged, and attribution lives in the evidence linkage", async () => {
+  const { events } = await run([
+    SEND_DECISION,
+    VALID_PLAN,
+    ...ATTRIBUTED_TAIL,
+    { type: "analysis.done", finalResult: {} },
+  ], V2_THREE_STYLES);
+  const options = events.filter((event) =>
+    event.type === "analysis.reply_option"
+  );
+  assertEquals(options.length, 3);
+  const done = doneOf(events);
+  const linkage = done.analysisEvidenceLinkage as Record<string, unknown>;
+  const variants = linkage.variants as Record<string, Record<string, unknown>>;
+  assertEquals(variants.extend, {
+    branchId: "br_2",
+    branchSource: "option",
+    rhetoricalMove: "new_angle",
+    styleIntensity: 1,
+  });
+  // tease：沒帶、計畫也沒指定 → anchor（br_1）。
+  assertEquals(variants.tease, { branchId: "br_1", branchSource: "anchor" });
+  // humor：帶了未知枝 → 退回計畫指定（br_2）並標 invalid。
+  assertEquals(variants.humor, {
+    branchId: "br_2",
+    branchSource: "plan",
+    branchAttributionInvalid: true,
+  });
+  // 組裝進 replyOptions 的只有 approach／messages；歸因留在 linkage。
+  assertEquals(
+    JSON.stringify(done.replyOptions).includes("branchId"),
+    false,
+  );
+});
+
+Deno.test("divergence attribution: without a plan (or on v1) no variant is attributed", async () => {
+  const noPlan = await run([
+    SEND_DECISION,
+    ...ATTRIBUTED_TAIL,
+    { type: "analysis.done", finalResult: {} },
+  ], V2_THREE_STYLES);
+  const noPlanVariants = (doneOf(noPlan.events)
+    .analysisEvidenceLinkage as Record<string, unknown> | undefined)
+    ?.variants as Record<string, Record<string, unknown>> | undefined;
+  assertEquals(noPlanVariants?.extend?.branchId, undefined);
+  assertEquals(noPlanVariants?.tease?.branchSource, undefined);
+
+  const v1 = await run([
+    { ...SEND_DECISION, messageDecision: undefined },
+    VALID_PLAN,
+    ...ATTRIBUTED_TAIL,
+    { type: "analysis.done", finalResult: {} },
+  ], { requiredReplyStyles: ["extend", "tease", "humor"] as const });
+  const v1Variants = (doneOf(v1.events)
+    .analysisEvidenceLinkage as Record<string, unknown> | undefined)
+    ?.variants as Record<string, Record<string, unknown>> | undefined;
+  assertEquals(v1Variants?.extend?.branchId, undefined);
+});
+
+Deno.test("divergence attribution: plan repairs are recorded in the evidence linkage as enum-only entries", async () => {
+  const { events } = await run([
+    SEND_DECISION,
+    {
+      ...VALID_PLAN,
+      branchPool: [
+        { ...VALID_PLAN.branchPool[0], sourceIndex1: 1 },
+        { ...VALID_PLAN.branchPool[1], method: "exaggeration" },
+      ],
+    },
+    ...ATTRIBUTED_TAIL,
+    { type: "analysis.done", finalResult: {} },
+  ], V2_THREE_STYLES);
+  const done = doneOf(events);
+  const linkage = done.analysisEvidenceLinkage as Record<string, unknown>;
+  assertEquals(linkage.divergencePlanRepairs, [
+    "br_1:sourceIndex1",
+    "br_2:method:exaggeration->association",
+  ]);
+  const plan = done.analysisDivergencePlan as Record<string, unknown>;
+  assertEquals(
+    (plan.branchPool as Record<string, unknown>[])[1].method,
+    "association",
+  );
+});

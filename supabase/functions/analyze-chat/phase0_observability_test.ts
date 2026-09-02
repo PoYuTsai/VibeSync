@@ -732,6 +732,8 @@ Deno.test("Phase 2a observability: divergence plan telemetry is numbers and enum
     newTopicBudgetExceeded: true,
     anchorCoveredByAllStyles: false,
     styleBranchAssigned: 1,
+    repairs: { method: 0, sourceIndexKey: 0 },
+    attribution: { status: "unknown" },
   });
   const serialized = JSON.stringify(telemetry);
   assertFalse(serialized.includes("SECRET"));
@@ -792,4 +794,92 @@ Deno.test("Phase 2a observability: divergence plan telemetry is numbers and enum
     finalResult: { replies: { extend: "x" } },
   });
   assertEquals(v2MissingNoSchema.divergencePlan, { status: "unknown" });
+});
+
+Deno.test("Phase 2b observability: branch attribution telemetry counts sources, branches, moves, intensity, and invalid marks; never text", () => {
+  const plan = {
+    schemaVersion: 1,
+    threadFrame: "PLAN_SECRET",
+    anchorSourceIndex: 1,
+    supportSourceIndices: [],
+    mergeContextSourceIndices: [],
+    semanticDistanceCap: 1,
+    newTopicBudget: 0,
+    questionBudget: 1,
+    branchPool: [
+      {
+        id: "br_1",
+        sourceIndex: 1,
+        method: "drill_down",
+        idea: "IDEA_SECRET",
+        associationPath: [],
+        semanticDistance: 0,
+      },
+      {
+        id: "br_2",
+        sourceIndex: 1,
+        method: "association",
+        idea: "IDEA_SECRET_2",
+        associationPath: [],
+        semanticDistance: 1,
+      },
+    ],
+  };
+  const telemetry = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-1",
+    contractVersion2: true,
+    finalResult: {
+      analysisDecisionV2: {
+        schemaVersion: 2,
+        decisionId: OPAQUE_DECISION_ID,
+        messageDecision: "send",
+      },
+      analysisDivergencePlan: plan,
+      analysisEvidenceLinkage: {
+        schemaVersion: 1,
+        selectedStyle: "extend",
+        divergencePlanRepairs: [
+          "br_2:method:exaggeration->association",
+          "br_3:sourceIndex1",
+          "TEXT_SECRET not a repair entry",
+        ],
+        variants: {
+          extend: {
+            sourceIndices: [1],
+            branchId: "br_2",
+            branchSource: "option",
+            rhetoricalMove: "new_angle",
+            styleIntensity: 2,
+          },
+          tease: {
+            sourceIndices: [1],
+            branchId: "br_1",
+            branchSource: "anchor",
+            branchAttributionInvalid: true,
+          },
+          humor: {
+            sourceIndices: [1],
+            branchId: "br_2",
+            branchSource: "plan",
+            rhetoricalMove: "not_a_move",
+            styleIntensity: 9,
+          },
+        },
+      },
+    },
+  });
+  const divergence = telemetry.divergencePlan as Record<string, unknown>;
+  assertEquals(divergence.repairs, { method: 1, sourceIndexKey: 1 });
+  assertEquals(divergence.attribution, {
+    status: "observed",
+    styleCount: 3,
+    attributedCount: 3,
+    bySource: { option: 1, plan: 1, anchor: 1 },
+    distinctBranchCount: 2,
+    rhetoricalMoves: { new_angle: 1 },
+    styleIntensity: { "2": 1 },
+    invalidCount: 1,
+  });
+  assertEquals(JSON.stringify(telemetry).includes("SECRET"), false);
 });

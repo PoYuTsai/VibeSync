@@ -13,8 +13,12 @@ import {
   MAX_QUESTION_BUDGET,
   MAX_SEMANTIC_DISTANCE,
   MAX_SEMANTIC_DISTANCE_CAP,
+  MAX_STYLE_INTENSITY,
   MIN_DIVERGENCE_BRANCHES,
   parseDivergencePlanEvent,
+  parseReplyOptionBranchFields,
+  REPLY_OPTION_BRANCH_FIELDS,
+  RHETORICAL_MOVES,
 } from "./divergence_contract.ts";
 import {
   buildSituationKnowledgeSection,
@@ -550,4 +554,55 @@ Deno.test("divergence plan step is v2-only, sits between the decision gate and t
       `rejected case ${index}`,
     );
   }
+});
+
+Deno.test("Phase 2b branch attribution rule is emitted only with the divergence plan, sits inside step 3, and is generated from the contract constants", () => {
+  const base = "Base full reasoning prompt.";
+  const tick = (value: string) => `\`${value}\``;
+  const v1 = buildStreamSystemPrompt(base, ["extend"]);
+  assert(!v1.includes("Branch attribution:"));
+  const v2NoPlan = buildStreamSystemPrompt(base, ["extend"], {
+    noSendDecisions: true,
+    divergencePlan: false,
+  });
+  assert(!v2NoPlan.includes("Branch attribution:"));
+
+  const v2 = buildStreamSystemPrompt(base, ["extend", "humor"], {
+    noSendDecisions: true,
+    divergencePlan: true,
+  });
+  const rule = "[send decisions only] Branch attribution:";
+  assert(v2.includes(rule));
+  // 在步驟 3 之後、步驟 4 之前。
+  assert(v2.indexOf("3. Emit exactly") < v2.indexOf(rule));
+  assert(v2.indexOf(rule) < v2.indexOf("4. "));
+  assert(
+    v2.includes(
+      `also carries exactly ${REPLY_OPTION_BRANCH_FIELDS.map(tick).join(", ")}`,
+    ),
+  );
+  assert(v2.includes(RHETORICAL_MOVES.map(tick).join("/")));
+  assert(v2.includes(`${tick("styleIntensity")} is 0-${MAX_STYLE_INTENSITY}`));
+  assert(v2.includes("If you emitted no plan, omit these keys"));
+
+  // 範例行要能過自己的 parser：先過事件層，再過歸因 parser（枝 id 要在
+  // 1b 範例計畫的 pool 裡）。
+  const examplePrefix = "Example attributed reply_option line: ";
+  const exampleLine = v2.split("\n").find((line) =>
+    line.startsWith(`[send decisions only] ${examplePrefix}`)
+  );
+  assert(exampleLine, "attributed reply_option example missing");
+  const example = JSON.parse(
+    exampleLine.slice(`[send decisions only] ${examplePrefix}`.length),
+  );
+  const planLine = v2.split("\n").find((line) =>
+    line.includes("Example divergence_plan line: ")
+  )!;
+  const plan = parseDivergencePlanEvent(
+    JSON.parse(planLine.slice(planLine.indexOf("{"))),
+  );
+  assert(plan);
+  const fields = parseReplyOptionBranchFields(example, plan);
+  assert(fields, "example attribution must satisfy the parser");
+  assertEquals(fields.branchId, example.branchId);
 });

@@ -87,6 +87,132 @@ export function stripClientHiddenFinalResult<T>(finalResult: T): T {
   return copy as T;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2b：planner 接管五風格生成（規格 §5.11 步驟 6、§6.3、§14.1）。
+// 每個 v2 reply_option 可帶三個歸因欄位，指出它跟哪一枝、用哪個修辭手法、
+// 強度多少。它們跟 action／questionCount 一樣是 option 的證據 metadata：
+// 進 analysisEvidenceLinkage.variants 與 telemetry；計畫本文（threadFrame／
+// idea／associationPath）仍只留 server。server 只做「歸因＋缺省補 anchor」
+// 的軟守門，不擋 option：
+// Eric 2026-09-02 定案——缺的風格跟 anchor 主線；模型沒吐計畫就走原路。
+// 值域全在這裡：prompt 與 parser 都從這幾張表生成，不得各寫一份。
+
+/// 修辭手法（§6.1 五風格核心機制）。規格 §6.3 原寫「值域＝DivergenceMethod
+/// ＋風格專屬 move」，實作刻意讓它與 DIVERGENCE_METHODS **不相交**：2026-09-02
+/// 黑箱實測，兩套詞彙一重疊，模型就把 `exaggeration` 這類手法填進分枝的
+/// `method`，整份計畫因 unknown method 作廢（12 份丟 3 份）。分枝用六法
+/// （怎麼分枝），卡片用手法（怎麼措辭），各自一張表。
+export const RHETORICAL_MOVES = [
+  "new_angle",
+  "concrete_detail",
+  "low_friction_entry",
+  "reflect_feeling",
+  "shared_experience",
+  "playful_contrast",
+  "playful_challenge",
+  "exaggeration",
+  "metaphor",
+  "callback",
+  "tentative_observation",
+] as const;
+export type RhetoricalMove = typeof RHETORICAL_MOVES[number];
+/// repair-first（規格 §26）：模型把手法填進分枝 `method` 時（三輪黑箱 humor
+/// 枝三次寫 `exaggeration`，prompt 明講也不聽），按這張表映射回六法並記
+/// repair，不再整份作廢。對照依 §5.7 四法定義；telemetry 看得到修了幾次。
+export const BRANCH_METHOD_REPAIRS: Readonly<
+  Record<RhetoricalMove, DivergenceMethod>
+> = {
+  new_angle: "lateral",
+  concrete_detail: "drill_down",
+  low_friction_entry: "drill_down",
+  reflect_feeling: "affect_evaluation",
+  shared_experience: "association",
+  playful_contrast: "association",
+  playful_challenge: "affect_evaluation",
+  exaggeration: "association",
+  metaphor: "association",
+  callback: "association",
+  tentative_observation: "abstract_up",
+};
+/// styleIntensity 0–3（§6.3：風格不適合高強度時降強度，不得改 action）。
+export const MAX_STYLE_INTENSITY = 3;
+/// reply_option 上的歸因欄位；三個一起出現才算有效，缺一個整組視為缺席。
+export const REPLY_OPTION_BRANCH_FIELDS = [
+  "branchId",
+  "rhetoricalMove",
+  "styleIntensity",
+] as const;
+export const STYLE_BRANCH_SOURCES = ["option", "plan", "anchor"] as const;
+export type StyleBranchSource = typeof STYLE_BRANCH_SOURCES[number];
+
+export interface ReplyOptionBranchFields {
+  readonly branchId: string;
+  readonly rhetoricalMove: RhetoricalMove;
+  readonly styleIntensity: number;
+}
+
+export interface StyleBranchResolution {
+  readonly branchId: string;
+  /// option＝option 自帶且合法；plan＝計畫 styleBranchIds 指定；anchor＝缺省補。
+  readonly source: StyleBranchSource;
+  readonly rhetoricalMove?: RhetoricalMove;
+  readonly styleIntensity?: number;
+  /// option 帶了歸因欄位但不合法（未知枝、未知手法、強度越界或缺欄位）。
+  readonly invalid: boolean;
+}
+
+/// anchor 主線的那一枝：branchPool 裡第一枝 sourceIndex＝anchorSourceIndex；
+/// 模型沒替 anchor 球建枝時退回 pool 第一枝（pool 至少 2 枝，永遠有值）。
+export function anchorBranchOf(plan: DivergencePlanV1): DivergenceBranchV1 {
+  return plan.branchPool.find((branch) =>
+    branch.sourceIndex === plan.anchorSourceIndex
+  ) ?? plan.branchPool[0];
+}
+
+/// 嚴格解析 reply_option 上的三個歸因欄位；三個都缺回 null（缺席），
+/// 任一存在但不合法也回 null（呼叫端用 hasReplyOptionBranchFields 分辨）。
+export function parseReplyOptionBranchFields(
+  value: unknown,
+  plan: DivergencePlanV1,
+): ReplyOptionBranchFields | null {
+  if (!isRecord(value)) return null;
+  const branchId = shortText(value.branchId);
+  if (
+    branchId === null ||
+    !plan.branchPool.some((branch) => branch.id === branchId)
+  ) {
+    return null;
+  }
+  const rhetoricalMove = typeof value.rhetoricalMove === "string" &&
+      (RHETORICAL_MOVES as readonly string[]).includes(value.rhetoricalMove)
+    ? value.rhetoricalMove as RhetoricalMove
+    : null;
+  const styleIntensity = boundedInt(value.styleIntensity, MAX_STYLE_INTENSITY);
+  if (rhetoricalMove === null || styleIntensity === null) return null;
+  return { branchId, rhetoricalMove, styleIntensity };
+}
+
+export function hasReplyOptionBranchFields(value: unknown): boolean {
+  return isRecord(value) &&
+    REPLY_OPTION_BRANCH_FIELDS.some((field) => value[field] !== undefined);
+}
+
+/// 歸因優先序：option 自帶合法 > 計畫 styleBranchIds > anchor 主線。
+export function resolveStyleBranch(
+  plan: DivergencePlanV1,
+  style: StreamStyle,
+  option: unknown,
+): StyleBranchResolution {
+  const fields = parseReplyOptionBranchFields(option, plan);
+  if (fields) return { ...fields, source: "option", invalid: false };
+  const invalid = hasReplyOptionBranchFields(option);
+  const planned = plan.styleBranchIds?.[style];
+  if (planned !== undefined) {
+    return { branchId: planned, source: "plan", invalid };
+  }
+  return { branchId: anchorBranchOf(plan).id, source: "anchor", invalid };
+}
+
 export interface DivergenceBranchV1 {
   readonly id: string;
   readonly sourceIndex: number;
@@ -114,15 +240,24 @@ export interface DivergencePlanV1 {
 /// 部分修補，shadow 資料寧缺勿錯。
 export function parseDivergencePlanEvent(
   value: unknown,
+  repairs?: string[],
 ): DivergencePlanV1 | null {
   if (!isRecord(value)) return null;
   if (value.type !== DIVERGENCE_PLAN_EVENT_TYPE) return null;
   const { type: _type, ...snapshot } = value;
-  return parseDivergencePlanV1(snapshot);
+  return parseDivergencePlanV1(snapshot, repairs);
 }
+
+/// 容許的修補之一：Sonnet 5 實測（2026-09-02 黑箱）會在某一枝把 `sourceIndex`
+/// 寫成 `sourceIndex<N>`——有時多一個 key（`"sourceIndex1": 1, "sourceIndex": 1`），
+/// 有時直接取代（只有 `"sourceIndex2": 2`）。N 與值必須相等（有正常 key 時也要
+/// 等於它）才視為手誤：丟掉多餘 key、補回 `sourceIndex`，並記進 repairs；
+/// 值不同、不是數字、或兩個以上 glitch key 互相矛盾，仍整份作廢。
+const BRANCH_SOURCE_INDEX_GLITCH = /^sourceIndex(\d+)$/;
 
 export function parseDivergencePlanV1(
   value: unknown,
+  repairs?: string[],
 ): DivergencePlanV1 | null {
   if (!isRecord(value)) return null;
   if (Object.keys(value).some((key) => !SNAPSHOT_KEYS.has(key))) return null;
@@ -157,7 +292,7 @@ export function parseDivergencePlanV1(
   const branchPool: DivergenceBranchV1[] = [];
   const ids = new Set<string>();
   for (const raw of value.branchPool) {
-    const branch = parseBranch(raw);
+    const branch = parseBranch(raw, repairs);
     if (!branch || ids.has(branch.id)) return null;
     ids.add(branch.id);
     branchPool.push(branch);
@@ -187,8 +322,13 @@ export function parseDivergencePlanV1(
   };
 }
 
-function parseBranch(value: unknown): DivergenceBranchV1 | null {
-  if (!isRecord(value)) return null;
+function parseBranch(
+  raw: unknown,
+  repairs?: string[],
+): DivergenceBranchV1 | null {
+  if (!isRecord(raw)) return null;
+  const value = repairBranchSourceIndexGlitch(raw, repairs);
+  if (value === null) return null;
   if (Object.keys(value).some((key) => !BRANCH_KEYS.has(key))) return null;
   const id = shortText(value.id);
   const sourceIndex = positiveInt(value.sourceIndex);
@@ -197,10 +337,7 @@ function parseBranch(value: unknown): DivergenceBranchV1 | null {
     value.semanticDistance,
     MAX_SEMANTIC_DISTANCE,
   );
-  const method = typeof value.method === "string" &&
-      (DIVERGENCE_METHODS as readonly string[]).includes(value.method)
-    ? value.method as DivergenceMethod
-    : null;
+  const method = repairBranchMethod(value.method, id, repairs);
   if (
     id === null || sourceIndex === null || idea === null || method === null ||
     semanticDistance === null
@@ -216,6 +353,52 @@ function parseBranch(value: unknown): DivergenceBranchV1 | null {
     associationPath.push(text);
   }
   return { id, sourceIndex, method, idea, associationPath, semanticDistance };
+}
+
+function repairBranchMethod(
+  value: unknown,
+  id: string | null,
+  repairs?: string[],
+): DivergenceMethod | null {
+  if (typeof value !== "string") return null;
+  if ((DIVERGENCE_METHODS as readonly string[]).includes(value)) {
+    return value as DivergenceMethod;
+  }
+  if ((RHETORICAL_MOVES as readonly string[]).includes(value)) {
+    const repaired = BRANCH_METHOD_REPAIRS[value as RhetoricalMove];
+    repairs?.push(`${id ?? "?"}:method:${value}->${repaired}`);
+    return repaired;
+  }
+  return null;
+}
+
+function repairBranchSourceIndexGlitch(
+  value: Record<string, unknown>,
+  repairs?: string[],
+): Record<string, unknown> | null {
+  const glitchKeys = Object.keys(value).filter((key) =>
+    BRANCH_SOURCE_INDEX_GLITCH.test(key)
+  );
+  if (glitchKeys.length === 0) return value;
+  const declared = value.sourceIndex === undefined
+    ? null
+    : positiveInt(value.sourceIndex);
+  if (value.sourceIndex !== undefined && declared === null) return null;
+  let sourceIndex = declared;
+  for (const key of glitchKeys) {
+    const suffix = Number(BRANCH_SOURCE_INDEX_GLITCH.exec(key)![1]);
+    if (value[key] !== suffix) return null;
+    if (sourceIndex === null) sourceIndex = suffix;
+    else if (suffix !== sourceIndex) return null;
+  }
+  const copy: Record<string, unknown> = { ...value, sourceIndex };
+  for (const key of glitchKeys) delete copy[key];
+  repairs?.push(...glitchKeys.map((key) => `${stringId(value.id)}:${key}`));
+  return copy;
+}
+
+function stringId(value: unknown): string {
+  return typeof value === "string" ? value : "?";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

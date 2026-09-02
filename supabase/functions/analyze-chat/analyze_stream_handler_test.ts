@@ -888,14 +888,34 @@ Deno.test("divergence plan is persisted and measured but never reaches the clien
         line({
           type: "analysis.reply_option",
           style: "tease",
-          message: "先回她這句試試看。",
           reason: "r",
+          // 走 production 的 segments 形狀：calibrate 只在送出的段落來源
+          // 序列對得上 raw option 時才保留 metadata（含 Phase 2b 歸因）。
+          segments: [
+            {
+              sourceIndex: 1,
+              sourceMessage: "嗨",
+              reply: "先回她這句試試看。",
+              reason: "r",
+            },
+          ],
+          // Phase 2b：option 自帶合法歸因。
+          branchId: "br_2",
+          rhetoricalMove: "playful_contrast",
+          styleIntensity: 2,
         }),
         line({
           type: "analysis.reply_option",
           style: "extend",
-          message: "延伸一下。",
           reason: "r",
+          segments: [
+            {
+              sourceIndex: 1,
+              sourceMessage: "嗨",
+              reply: "延伸一下。",
+              reason: "r",
+            },
+          ],
         }),
         line({ type: "analysis.done", finalResult: {} }),
       ],
@@ -912,6 +932,8 @@ Deno.test("divergence plan is persisted and measured but never reaches the clien
     assert(text.includes('"type":"analysis.done"'));
     assertFalse(text.includes("analysisDivergencePlan"));
     assertFalse(text.includes(VALID_PLAN.threadFrame));
+    // 歸因 id／enum 跟其他 option 證據一樣可到 client；計畫本文不行。
+    assertFalse(text.includes(VALID_PLAN.branchPool[0].idea));
   });
   assert(persistedFinalResult, "expected a persisted final result");
   const persistedPlan = persistedFinalResult
@@ -926,6 +948,18 @@ Deno.test("divergence plan is persisted and measured but never reaches the clien
   assertEquals(divergence.status, "observed");
   assertEquals(divergence.branchCount, 2);
   assertFalse(JSON.stringify(phase0[1]).includes(VALID_PLAN.threadFrame));
+  // Phase 2b：歸因要活過 markDone 的 calibrate（用送出的回覆重建 variants）。
+  // tease 自帶 br_2；extend 沒帶 → 計畫 styleBranchIds 指定的 br_1。
+  assertEquals(divergence.attribution, {
+    status: "observed",
+    styleCount: 2,
+    attributedCount: 2,
+    bySource: { option: 1, plan: 1, anchor: 0 },
+    distinctBranchCount: 2,
+    rhetoricalMoves: { playful_contrast: 1 },
+    styleIntensity: { "2": 1 },
+    invalidCount: 0,
+  });
 
   // resume：DB 裡的 finalResult 帶計畫，回放給 client 前一樣剝掉。
   const doneRun = makeRun({
