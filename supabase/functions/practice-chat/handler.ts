@@ -42,9 +42,8 @@ import {
   handlePracticeCollection,
 } from "./draw_handler.ts";
 import {
-  buildChatMessages,
+  buildChatPromptBundle,
   buildDebriefMessages,
-  type ChatMessage,
   PRACTICE_PROMPT_POLICY_VERSION,
 } from "./prompt.ts";
 import { difficultyTuningFor } from "./practice_persona.ts";
@@ -92,8 +91,11 @@ import { buildPracticeSceneContext } from "./life_schedule.ts";
 import { buildAcquaintanceOrigin } from "./acquaintance_origin.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import {
+  hasStageDirection,
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
+  REPLY_STYLE_HIDDEN_HEADINGS,
+  stripStageDirections,
 } from "./visible_text_guard.ts";
 import {
   applyGameLearningDelta,
@@ -4195,6 +4197,44 @@ export function createPracticeChatHandler(
     });
     const herRecentMomentsBlock = herRecentMomentsPrompt(herRecentMoments);
 
+    // reply-style-v1（PR-2）：server-only 旗標；關閉或角色沒有 mapping 時
+    // prompt／守門／回應逐字與舊版相同（index_test 有 flag-off 位元組比對）。
+    // bundle 只算一次：兩次 attempt 共用同一份 plan，不會第二發換形狀。
+    const replyStyleEnabled =
+      deps.getEnv("PRACTICE_REPLY_STYLE_ENABLED") === "true";
+    const chatPromptBundle = buildChatPromptBundle(
+      request.turns,
+      request.profile,
+      assistedMode
+        ? {
+          replyStyle: replyStyleEnabled,
+          visiblePracticeThreadId: visibleThreadId,
+          practiceMode: request.practiceMode,
+          temperatureScore: currentTemperature ??
+            difficultyStartTemperature,
+          familiarityScore: currentFamiliarity ?? 0,
+          partnerState: promptPartnerState,
+          sceneContext,
+          acquaintanceOrigin,
+          memorySummary: promptMemorySummary,
+          timeContext: nowContext,
+          herRecentMomentsBlock,
+          gameState: ledgerGameState,
+        }
+        : {
+          replyStyle: replyStyleEnabled,
+          visiblePracticeThreadId: visibleThreadId,
+          partnerState: promptPartnerState,
+          sceneContext,
+          acquaintanceOrigin,
+          memorySummary: promptMemorySummary,
+          timeContext: nowContext,
+          herRecentMomentsBlock,
+        },
+    );
+    const responsePlan = chatPromptBundle.responsePlan;
+    let stageDirectionRepairs = 0;
+
     let reply: string | null = null;
     try {
       let lastError: unknown;
@@ -4202,32 +4242,7 @@ export function createPracticeChatHandler(
         try {
           reply = await deps.callDeepSeek({
             apiKey,
-            messages: buildChatMessages(
-              request.turns,
-              request.profile,
-              assistedMode
-                ? {
-                  practiceMode: request.practiceMode,
-                  temperatureScore: currentTemperature ??
-                    difficultyStartTemperature,
-                  familiarityScore: currentFamiliarity ?? 0,
-                  partnerState: promptPartnerState,
-                  sceneContext,
-                  acquaintanceOrigin,
-                  memorySummary: promptMemorySummary,
-                  timeContext: nowContext,
-                  herRecentMomentsBlock,
-                  gameState: ledgerGameState,
-                }
-                : {
-                  partnerState: promptPartnerState,
-                  sceneContext,
-                  acquaintanceOrigin,
-                  memorySummary: promptMemorySummary,
-                  timeContext: nowContext,
-                  herRecentMomentsBlock,
-                },
-            ),
+            messages: chatPromptBundle.messages,
             maxTokens: CHAT_MAX_TOKENS,
             temperature: CHAT_TEMPERATURE,
             timeoutMs: DEEPSEEK_TIMEOUT_MS,
@@ -4238,6 +4253,10 @@ export function createPracticeChatHandler(
           rejectVisibleInternalLabelLeak(reply, "chat_internal_label_leak", {
             // 第二刀 A 組：NPC 引用對話裡出現過的詞不是機制外洩。
             transcript: request.turns.map((turn) => turn.text).join("\n"),
+            // 只有 style 層真的注入時才多攔兩個 hidden heading（旗標關閉零改動）。
+            ...(responsePlan
+              ? { extraChineseLabels: REPLY_STYLE_HIDDEN_HEADINGS }
+              : {}),
           });
           // 第二刀（Eric 2026-08-24 拍板）：NPC 可以反撩——尺度類按本輪熱度
           // （與 prompt 的 allowSpicyLevel 同源），同意權類永遠攔。
@@ -4252,6 +4271,12 @@ export function createPracticeChatHandler(
                   partnerMood: promptPartnerState?.mood ?? null,
                 }).spicyLevel === "L3",
           });
+          // 括號旁白：style 層才會出現（run3–run5 量到 1–5%）；修補優先，
+          // 整段剝到空才丟 chat_stage_direction 重試。
+          if (responsePlan && hasStageDirection(reply)) {
+            stageDirectionRepairs++;
+            reply = stripStageDirections(reply, "chat_stage_direction");
+          }
           break;
         } catch (e) {
           lastError = e;
@@ -4429,6 +4454,19 @@ export function createPracticeChatHandler(
       continuation: learningSeed.source === "relationship_thread" ||
         learningSeed.familiaritySource === "relationship_thread",
       promptPolicyVersion: PRACTICE_PROMPT_POLICY_VERSION,
+      // reply-style-v1：只記結構化代碼與數量（規格 §5.5），不記 style prompt 全文。
+      replyStyle: responsePlan
+        ? {
+          styleVersion: responsePlan.styleVersion,
+          presetId: responsePlan.presetId,
+          policyStance: responsePlan.policyStance,
+          situation: responsePlan.situation,
+          primaryAct: responsePlan.primaryAct,
+          bubbleCount: responsePlan.bubbleCount,
+          questionBudget: responsePlan.questionBudget,
+          stageDirectionRepairs,
+        }
+        : null,
     });
 
     const body: Record<string, unknown> = {

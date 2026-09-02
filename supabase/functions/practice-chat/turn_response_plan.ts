@@ -154,6 +154,8 @@ export function detectTurnSignals(
 
 export interface TurnResponsePlan {
   readonly styleVersion: typeof REPLY_STYLE_VERSION;
+  /** handler telemetry 用：只記 preset 代碼，不記 Style Profile 全文。 */
+  readonly presetId: string;
   readonly policyStance: PolicyStance;
   readonly situation: ResponseSituation | "question" | "neutral";
   readonly primaryAct: ReplyAct;
@@ -405,6 +407,7 @@ export function planTurnResponse(args: {
 
   return {
     styleVersion: REPLY_STYLE_VERSION,
+    presetId: style.presetId,
     policyStance,
     situation,
     primaryAct,

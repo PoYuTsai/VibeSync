@@ -208,7 +208,7 @@ export async function runScenario(args: {
           spicyAllowed: false,
         });
         // 括號旁白：修補優先（剝掉開頭括號），整段空才重試；記次數。
-        // handler 端於 PR-2 接旗標時一起接（見 visible_text_guard）。
+        // handler.ts chat 迴圈同序（PR-2 已接）。
         if (args.style && hasStageDirection(candidate)) {
           stageDirectionRepairs++;
           candidate = stripStageDirections(candidate, "chat_stage_direction");

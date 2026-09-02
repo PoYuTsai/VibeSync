@@ -25,7 +25,8 @@ import {
   buildAcquaintanceOrigin,
   eligibleAcquaintanceOrigins,
 } from "./acquaintance_origin.ts";
-import { resolvePracticeProfile } from "./practice_persona.ts";
+import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
+import { replyStyleFor } from "./reply_style.ts";
 
 const NOW = new Date("2026-06-28T04:00:00.000Z");
 const RESET_AT = "2026-06-28T00:00:00.000Z";
@@ -8647,4 +8648,129 @@ Deno.test("practice_chat_succeeded 觀測欄位：承接／新場／無效 threa
   );
   assertEquals(invalid.seedSource, "client");
   assertEquals(invalid.continuation, false);
+});
+
+// ── reply-style-v1（PR-2）：旗標接線 ─────────────────────────────────────
+
+async function runCapturingLogs(
+  options: Parameters<typeof run>[0],
+  body: Parameters<typeof run>[1],
+) {
+  const logs: Record<string, unknown>[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    if (typeof args[0] === "string" && args[0].startsWith("{")) {
+      try {
+        logs.push(JSON.parse(args[0]));
+      } catch {
+        // 非 JSON 行照舊忽略。
+      }
+    }
+  };
+  try {
+    const result = await run(options, body);
+    const succeeded = logs.find((line) =>
+      line.event === "practice_chat_succeeded" && line.mode === "chat"
+    );
+    return { ...result, succeeded };
+  } finally {
+    console.log = originalLog;
+  }
+}
+
+const REPLY_STYLE_ON = { PRACTICE_REPLY_STYLE_ENABLED: "true" };
+const UNMAPPED_PROFILE_ID =
+  GIRL_PROFILES.find((g) => replyStyleFor(g.profileId) === null)!.profileId;
+
+Deno.test("reply-style 旗標關閉：prompt 無 style 段、旁白不剝、回應與 telemetry 逐字不變", async () => {
+  // 預設角色 practice_girl_001 有 mapping；旗標關閉時必須完全看不到。
+  const { json, state, succeeded } = await runCapturingLogs(
+    {
+      ledger: ledger({ practice_mode: "standard" }),
+      deepSeekReplies: ["（冷淡）好啊"],
+    },
+    chatBody({ practiceMode: "standard" }),
+  );
+  const system = state.deepSeekCalls[0].messages[0].content;
+  assert(!system.includes("本輪回應方式"));
+  assert(!system.includes("你平常的說話習慣"));
+  assertEquals(json.reply, "（冷淡）好啊");
+  assertEquals(succeeded?.replyStyle, null);
+});
+
+Deno.test("reply-style 旗標開啟但角色沒有 mapping：與旗標關閉位元組相同", async () => {
+  const body = chatBody({
+    practiceMode: "beginner",
+    profileId: UNMAPPED_PROFILE_ID,
+    temperatureScore: 40,
+    familiarityScore: 10,
+  });
+  const options = {
+    ledger: null,
+    deepSeekReplies: ["（皺眉）你平常的說話習慣是？", CLASSIFIER_CAUGHT_MEDIUM],
+  };
+  const off = await runCapturingLogs(options, body);
+  const on = await runCapturingLogs({ ...options, env: REPLY_STYLE_ON }, body);
+  assertEquals(off.response.status, 200);
+  assertEquals(
+    JSON.stringify(on.state.deepSeekCalls.map((c) => c.messages)),
+    JSON.stringify(off.state.deepSeekCalls.map((c) => c.messages)),
+  );
+  assertEquals(JSON.stringify(on.json), JSON.stringify(off.json));
+  assertEquals(on.succeeded?.replyStyle, null);
+  // 旗標關／無 mapping：hidden heading 不在守門清單、旁白不剝，一發就過。
+  assertEquals(on.state.deepSeekCalls.length, 2);
+  assertEquals(on.json.reply, "（皺眉）你平常的說話習慣是？");
+});
+
+Deno.test("reply-style 旗標開啟＋有 mapping：注入 style 段、旁白修補、telemetry 記結構化欄位", async () => {
+  const { json, state, succeeded } = await runCapturingLogs(
+    {
+      ledger: null,
+      env: REPLY_STYLE_ON,
+      deepSeekReplies: ["（冷淡）好啊\n（停頓）你呢", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      profileId: "practice_girl_001",
+      temperatureScore: 40,
+      familiarityScore: 10,
+    }),
+  );
+  const system = state.deepSeekCalls[0].messages[0].content;
+  assert(system.includes("本輪回應方式"));
+  assert(system.includes("你平常的說話習慣"));
+  assertEquals(json.reply, "好啊\n你呢");
+  const style = succeeded?.replyStyle as Record<string, unknown>;
+  assertEquals(style.styleVersion, "reply-style-v1");
+  assertEquals(style.presetId, "concise_observer");
+  assertEquals(style.stageDirectionRepairs, 1);
+  assert(typeof style.policyStance === "string");
+  assert(typeof style.primaryAct === "string");
+  assert([1, 2, 3].includes(style.bubbleCount as number));
+  assert([0, 1].includes(style.questionBudget as number));
+  // 不記 style prompt 全文：telemetry 只有代碼與數字。
+  assert(!JSON.stringify(succeeded).includes("本輪回應方式"));
+});
+
+Deno.test("reply-style 旗標開啟：hidden heading 外洩會重試，且兩發共用同一份 prompt／plan", async () => {
+  const { json, state } = await run(
+    {
+      ledger: ledger({ practice_mode: "standard" }),
+      env: REPLY_STYLE_ON,
+      deepSeekReplies: ["你平常的說話習慣是什麼", "好啊"],
+    },
+    chatBody({
+      practiceMode: "standard",
+      profileId: "practice_girl_004",
+      visiblePracticeThreadId: "thread-visible-1",
+    }),
+  );
+  assertEquals(json.reply, "好啊");
+  assertEquals(state.deepSeekCalls.length, 2);
+  assertEquals(
+    JSON.stringify(state.deepSeekCalls[0].messages),
+    JSON.stringify(state.deepSeekCalls[1].messages),
+  );
+  assertEquals(commitCalls(state).length, 1);
 });
