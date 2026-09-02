@@ -113,15 +113,15 @@ const BOUNDARY_CONTEXT_PATTERN =
 const SOFT_PUSH_MESSAGE_PATTERN =
   /\bask\s+(one\s+more\s+time|again)\b|\btry\s+again\b|\bmessage\s+again\b|\btext\s+again\b/i;
 
-function textField(value: unknown): string {
+export function textField(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function hasPromptInjection(text: string): boolean {
+export function hasPromptInjection(text: string): boolean {
   return PROMPT_INJECTION_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-function hasUnsafeRecommendation(text: string): boolean {
+export function hasUnsafeRecommendation(text: string): boolean {
   return UNSAFE_RECOMMENDATION_PATTERNS.some((pattern) => pattern.test(text));
 }
 

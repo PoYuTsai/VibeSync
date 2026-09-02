@@ -71,6 +71,10 @@ import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
 import { handleOpenerRequest } from "./opener_handler.ts";
 import { handleAnalyzeStream } from "./analyze_stream_handler.ts";
+import {
+  ANALYSIS_CONTRACT_VERSION_V2,
+  parseAnalysisContractVersion,
+} from "./no_send_decision.ts";
 import { selectModel, VALID_FORCE_MODELS } from "./model_selection.ts";
 import {
   enforceMyMessageEssentialGate,
@@ -324,6 +328,7 @@ async function handleAnalyzeChat(
       revenueCatAppUserId: rawRevenueCatAppUserId,
       responseMode: rawResponseMode,
       analysisRunId: rawAnalysisRunId,
+      analysisContractVersion: rawAnalysisContractVersion,
     } = requestBody;
 
     const shapeResolution = classifyAnalyzeChatRequest({
@@ -418,6 +423,16 @@ async function handleAnalyzeChat(
     if (!confirmedParse.ok) {
       return jsonResponse({ error: "Invalid confirmedOvercharge" }, 400);
     }
+    // Phase 1b capability: only a client that declares contract 2 may receive
+    // a no-send decision; absent = v1 contract, junk = 400 like the others.
+    const contractParse = parseAnalysisContractVersion(
+      rawAnalysisContractVersion,
+    );
+    if (!contractParse.ok) {
+      return jsonResponse({ error: "Invalid analysisContractVersion" }, 400);
+    }
+    const noSendDecisions = contractParse.value >=
+      ANALYSIS_CONTRACT_VERSION_V2;
     const confirmedOvercharge = confirmedParse.value;
     const isOpenerMode = requestShape.kind === "opener";
     // 新話題 mode（2026-07-24）：自帶 sanitize／claim／fixed-cost-3 gate，
@@ -1595,6 +1610,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         effectiveTier,
         accountIsTest,
         allowedFeatures,
+        noSendDecisions,
         quotaUsage,
         monthlyLimit,
         dailyLimit,

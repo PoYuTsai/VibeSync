@@ -398,7 +398,7 @@ Deno.test("chargeRun serializes recommendation into the atomic charge RPC payloa
     runId: pending.id,
     userId: USER,
     conversationHash: HASH,
-    recommendationJson: charged.recommendation_json,
+    recommendationJson: charged.recommendation_json!,
     selectedStyle: "resonate",
     chargeQuota: true,
     messageCount: 1,

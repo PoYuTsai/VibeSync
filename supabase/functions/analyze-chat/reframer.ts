@@ -18,6 +18,13 @@ import {
   validateRecommendationEvent,
   validateThinRecommendationEvent,
 } from "./stream_recommendation_guardrail.ts";
+import {
+  isNoSendChargePayload,
+  isNoSendDecisionKind,
+  noSendDecisionEvent,
+  type StreamNoSendRecommendationForCharge,
+  validateNoSendDecisionEvent,
+} from "./no_send_decision.ts";
 import { STRETCH_LEVELS, type StretchLevel } from "./opener_payload.ts";
 
 function normalizeStretchLevel(value: unknown): StretchLevel {
@@ -44,6 +51,12 @@ export interface StreamRecommendationForCharge {
   analysisInventory?: Record<string, unknown>;
   analysisEvidenceLinkage?: AnalysisEvidenceLinkage;
 }
+
+/// Charge anchor union: a v1 send recommendation or a Phase 1b no-send
+/// decision. Discriminate with isNoSendChargePayload.
+export type StreamChargePayload =
+  | StreamRecommendationForCharge
+  | StreamNoSendRecommendationForCharge;
 
 export interface AnalysisEvidenceVariant {
   sourceIndices?: number[];
@@ -83,10 +96,13 @@ export interface StreamChargeResult {
 export interface ReframerOptions {
   emit: (event: StreamOutputEvent) => void;
   onRecommendation: (
-    recommendation: StreamRecommendationForCharge,
+    recommendation: StreamChargePayload,
   ) => Promise<StreamChargeResult> | StreamChargeResult;
-  prechargedRecommendation?: StreamRecommendationForCharge;
+  prechargedRecommendation?: StreamChargePayload;
   requiredReplyStyles?: readonly StreamStyle[];
+  /// Phase 1b: accept a no-send analysis.decision as the charge anchor.
+  /// Off => v1 behaviour byte-for-byte (a style-less decision is malformed).
+  noSendDecisions?: boolean;
 }
 
 export interface StreamReframer {
@@ -312,6 +328,14 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     { compat: StreamEvent; segments: Record<string, unknown>[] }
   >();
   let decisionSelectedStyle: StreamStyle | null = null;
+  // Phase 1b: once a no-send decision is charged (or resumed) the stream is in
+  // no-send mode: reply options and recommendations are dropped, later
+  // decisions cannot retarget it, and done skips style completeness.
+  let noSendDecision: StreamNoSendRecommendationForCharge | null =
+    options.prechargedRecommendation &&
+      isNoSendChargePayload(options.prechargedRecommendation)
+      ? options.prechargedRecommendation
+      : null;
   // 球數案硬版：保留模型最先 emit 的盤點 disposition map，等選中風格的
   // reply_option 到貨時驗「段⊆接/併」＋「段數達下限」。缺席/全略＝null＝退回
   // soft 不驗證（INV-H4 fallback，絕不誤殺）。
@@ -358,7 +382,12 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     // Every resume path, including a thin-card anchor, keeps the charged
     // style as the causal baseline. A replayed decision cannot retarget it.
     decisionSelectedStyle = options.prechargedRecommendation.selectedStyle;
-    if (isThinRecommendationEvent(raw)) {
+    if (isNoSendChargePayload(options.prechargedRecommendation)) {
+      // The charged decision is the completion anchor; the client already
+      // received it from stream_handler's precharged replay.
+      officialRecommendationEmitted = true;
+      assembler.absorb(noSendDecisionEvent(options.prechargedRecommendation));
+    } else if (isThinRecommendationEvent(raw)) {
       // resume 自 v2 瘦卡扣費：重掛 pending，由 replay 的 selected
       // reply_option 重新綁卡回填；瘦卡本身不可直接外流。revalidation
       // 失敗（ledger 損壞）也不得讓 officialRecommendationEmitted 卡成
@@ -404,6 +433,31 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
 
   const emitDone = () => {
     if (doneEmitted || closed) return;
+    if (noSendDecision) {
+      // Zero reply cards by contract: whatever the model stuffed into
+      // finalResult, the client must never see a reply next to a no-send.
+      const finalResult: Record<string, unknown> = {
+        ...assembler.build(),
+        ...phase0Snapshot(null, false),
+        replies: {},
+        replyOptions: {},
+      };
+      // Other client-shape records that can carry reply text are not part
+      // of a no-send result either.
+      for (
+        const key of [
+          "finalRecommendation",
+          "optimizedMessage",
+          "myMessageAnalysis",
+        ]
+      ) {
+        delete finalResult[key];
+      }
+      options.emit({ type: "analysis.done", finalResult });
+      doneEmitted = true;
+      closed = true;
+      return;
+    }
     tryLateBind();
     if (closed) return; // late-bind 的 safety 檢查可能擋下並關閉 stream。
     if (pendingThinRecommendation) {
@@ -477,6 +531,15 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   const flushPreChargeEvents = () => {
     for (const bufferedEvent of preChargeEvents) {
       if (closed) break;
+      // No-send mode: an out-of-order reply_option / recommendation that
+      // arrived before the decision must not leak through the buffer either.
+      if (
+        noSendDecision &&
+        (bufferedEvent.type === "analysis.reply_option" ||
+          bufferedEvent.type === "analysis.recommendation")
+      ) {
+        continue;
+      }
       // pre-charge buffer 裡的 reply_option 也要過 bind（模型亂序時
       // selected option 可能先於瘦卡到貨）。
       if (bufferedEvent.type === "analysis.reply_option") {
@@ -657,6 +720,51 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       return;
     }
 
+    if (noSendDecision) return;
+
+    // First anchor wins: once a send anchor (decision or thin card) has been
+    // charged, a late no-send decision can neither retarget the charge nor
+    // reach the client next to reply cards. Drop it.
+    if (
+      options.noSendDecisions && chargeCompleted &&
+      isNoSendDecisionKind(event.messageDecision)
+    ) {
+      return;
+    }
+
+    if (
+      options.noSendDecisions && !chargeCompleted &&
+      isNoSendDecisionKind(event.messageDecision)
+    ) {
+      const validation = validateNoSendDecisionEvent(event);
+      if (!validation.ok) {
+        emitError(validation.code, validation.reason);
+        closed = true;
+        return;
+      }
+      analysisDecisionV2 = cloneRecord(validation.payload.analysisDecisionV2);
+      const payload: StreamNoSendRecommendationForCharge = {
+        ...validation.payload,
+        ...phase0Snapshot(null, false),
+      };
+      const chargeResult = await options.onRecommendation(payload);
+      if (!chargeResult.charged) {
+        emitError(
+          chargeResult.code ?? "STREAM_CHARGE_FAILED",
+          chargeResult.message ?? DEFAULT_CHARGE_FAILURE_MESSAGE,
+          chargeResult.recoverable ?? true,
+        );
+        closed = true;
+        return;
+      }
+      noSendDecision = payload;
+      chargeCompleted = true;
+      officialRecommendationEmitted = true;
+      flushPreChargeEvents();
+      absorbAndEmit(noSendDecisionEvent(validation.payload));
+      return;
+    }
+
     if (!isResume && isStreamStyle(event.selectedStyle)) {
       decisionSelectedStyle = event.selectedStyle;
       observedSelectedStyle = event.selectedStyle;
@@ -765,6 +873,14 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     if (closed) return;
     sawValidEvent = true;
 
+    if (
+      noSendDecision &&
+      (event.type === "analysis.reply_option" ||
+        event.type === "analysis.recommendation")
+    ) {
+      return;
+    }
+
     if (event.type === "analysis.inventory") {
       // 硬版：保留 disposition map（軟版的純放行/buffer/emit 行為不變——
       // 不 return，讓事件照舊落到下方 buffer/emit）。
@@ -779,7 +895,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       }
     }
 
-    if (event.type === "analysis.decision" && !isResume) {
+    if (event.type === "analysis.decision" && !isResume && !noSendDecision) {
       const snapshot = decisionV2SnapshotFrom(event);
       if (snapshot) analysisDecisionV2 = snapshot;
     }
@@ -952,8 +1068,11 @@ function toChargePayload(
 }
 
 export function toRecommendationEvent(
-  recommendation: StreamRecommendationForCharge,
+  recommendation: StreamChargePayload,
 ): StreamOutputEvent {
+  if (isNoSendChargePayload(recommendation)) {
+    return noSendDecisionEvent(recommendation);
+  }
   if (recommendation.raw.type === "analysis.decision") {
     return {
       ...recommendation.raw,

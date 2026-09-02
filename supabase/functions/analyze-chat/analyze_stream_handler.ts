@@ -16,8 +16,13 @@ import { streamReplyStylesForTier } from "./tier_sync_contract.ts";
 import {
   type AnalysisEvidenceLinkage,
   isThinRecommendationEvent,
+  type StreamChargePayload,
   type StreamRecommendationForCharge,
 } from "./reframer.ts";
+import {
+  isNoSendDecisionKind,
+  noSendChargePayloadFromStored,
+} from "./no_send_decision.ts";
 import { isStreamStyle } from "./stream_events.ts";
 import {
   calibratePhase0EvidenceLinkage,
@@ -70,7 +75,7 @@ export interface AnalyzeStreamRunPort {
     runId: string;
     userId: string;
     conversationHash: string;
-    recommendation: StreamRecommendationForCharge;
+    recommendation: StreamChargePayload;
     chargeQuota: boolean;
     messageCount: number;
   }): Promise<unknown>;
@@ -98,6 +103,9 @@ export interface AnalyzeStreamDeps {
   effectiveTier: string;
   accountIsTest: boolean;
   allowedFeatures: string[];
+  /// Phase 1b: client declared analysisContractVersion >= 2, so the model may
+  /// answer with a no-send decision (zero reply cards) instead of options.
+  noSendDecisions?: boolean;
   quotaUsage: {
     shouldChargeQuota: boolean;
     quotaReason: string;
@@ -179,9 +187,14 @@ function optionalEvidenceLinkageFrom(
 
 function streamRecommendationFromRun(
   run: AnalysisStreamRun,
-): StreamRecommendationForCharge | null {
+): StreamChargePayload | null {
   const stored = run.recommendation_json;
   if (!isPlainObject(stored)) return null;
+
+  // Phase 1b: a charged no-send run resumes from its persisted decision; it
+  // never had (and never needs) a selected style.
+  const noSend = noSendChargePayloadFromStored(stored);
+  if (noSend) return noSend;
 
   const selectedStyle = stored.selectedStyle;
   const message = typeof stored.message === "string"
@@ -232,9 +245,30 @@ function streamRecommendationFromRun(
   };
 }
 
+function isNoSendStreamRun(run: AnalysisStreamRun): boolean {
+  if (isNoSendDecisionKind(run.decision_kind)) return true;
+  const stored = run.recommendation_json;
+  return isPlainObject(stored) &&
+    noSendChargePayloadFromStored(stored) !== null;
+}
+
 function streamResumeSnapshotFromRun(
   run: AnalysisStreamRun,
+  options: { noSendDecisions: boolean },
 ): StreamAnalysisResumeSnapshot {
+  // The capability gate is re-applied on every resume poll: a v1 client that
+  // attached while the run was still pending must not receive a no-send
+  // result that a v2 request settles later. Surface it as a non-retryable
+  // failure instead of a replay.
+  if (!options.noSendDecisions && isNoSendStreamRun(run)) {
+    return {
+      status: "failed",
+      finalResult: null,
+      lastErrorCode: "STREAM_RUN_NOT_RETRYABLE",
+      retriesRemaining: 0,
+      wasCharged: run.charged_at !== null,
+    };
+  }
   return {
     status: run.status,
     finalResult: run.final_result_json,
@@ -260,7 +294,7 @@ export async function handleAnalyzeStream(
     !(analysisRunId !== null);
 
   let streamRun: AnalysisStreamRun;
-  let prechargedRecommendation: StreamRecommendationForCharge | undefined;
+  let prechargedRecommendation: StreamChargePayload | undefined;
   try {
     if (analysisRunId) {
       streamRun = await deps.store.getRun({
@@ -270,6 +304,12 @@ export async function handleAnalyzeStream(
       });
       if (Date.parse(streamRun.expires_at) <= Date.now()) {
         throw new Error("STREAM_RUN_EXPIRED");
+      }
+      // Capability gate also covers resume/retry: a request without
+      // analysisContractVersion 2 never receives a no-send shape, not even by
+      // attaching to a run a v2 client created.
+      if (!deps.noSendDecisions && isNoSendStreamRun(streamRun)) {
+        throw new Error("STREAM_RUN_NOT_RETRYABLE");
       }
       if (
         streamRun.status === "done" &&
@@ -293,14 +333,18 @@ export async function handleAnalyzeStream(
           runId: streamRun.id,
           conversationHash: conversationHashValue,
           headers: corsHeaders,
-          initialRun: streamResumeSnapshotFromRun(streamRun),
+          initialRun: streamResumeSnapshotFromRun(streamRun, {
+            noSendDecisions: deps.noSendDecisions === true,
+          }),
           loadRun: async () => {
             const currentRun = await deps.store.getRun({
               runId: analysisRunId,
               userId: deps.userId,
               conversationHash: conversationHashValue,
             });
-            return streamResumeSnapshotFromRun(currentRun);
+            return streamResumeSnapshotFromRun(currentRun, {
+              noSendDecisions: deps.noSendDecisions === true,
+            });
           },
           onOutcome: (outcome, details) => {
             logInfo("stream_run_resume_outcome", {
@@ -424,7 +468,9 @@ export async function handleAnalyzeStream(
         {
           model: deps.selectedModel,
           max_tokens: streamMaxOutputTokens,
-          system: buildAnalyzeStreamSystemPrompt(streamReplyStyles),
+          system: buildAnalyzeStreamSystemPrompt(streamReplyStyles, {
+            noSendDecisions: deps.noSendDecisions === true,
+          }),
           messages: [{ role: "user", content: deps.userMessageContent }],
           thinking: streamThinkingDisabled ? { type: "disabled" } : undefined,
         },
@@ -466,6 +512,7 @@ export async function handleAnalyzeStream(
     },
     prechargedRecommendation,
     requiredReplyStyles: streamReplyStyles,
+    noSendDecisions: deps.noSendDecisions === true,
     markDone: async (finalResult) => {
       const guarded = checkAiOutput(
         finalResult as GuardrailAnalysisResult,

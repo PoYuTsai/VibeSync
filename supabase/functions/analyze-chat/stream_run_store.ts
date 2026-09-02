@@ -2,7 +2,15 @@
 // The `analysis_stream_runs` ledger is the sole live AnalyzeChat charge/resume
 // lifecycle and keeps persistence details out of the request handler.
 
-import type { StreamRecommendationForCharge } from "./reframer.ts";
+import type {
+  StreamChargePayload,
+  StreamRecommendationForCharge,
+} from "./reframer.ts";
+import {
+  isNoSendChargePayload,
+  type NoSendDecisionKind,
+  serializeNoSendRecommendation,
+} from "./no_send_decision.ts";
 import type { StreamStyle } from "./stream_events.ts";
 
 export type AnalysisStreamRunStatus = "pending" | "charged" | "done" | "failed";
@@ -13,6 +21,8 @@ export interface AnalysisStreamRun {
   conversation_hash: string;
   status: AnalysisStreamRunStatus;
   selected_style: StreamStyle | null;
+  // Phase 1a column; absent on rows returned by older driver mocks.
+  decision_kind?: string | null;
   recommendation_json: Record<string, unknown> | null;
   final_result_json: Record<string, unknown> | null;
   charged_at: string | null;
@@ -33,7 +43,7 @@ export interface ChargeStreamRunInput {
   runId: string;
   userId: string;
   conversationHash: string;
-  recommendation: StreamRecommendationForCharge;
+  recommendation: StreamChargePayload;
   chargeQuota: boolean;
   messageCount: number;
 }
@@ -70,7 +80,8 @@ export interface ChargeStreamRunDriverInput {
   userId: string;
   conversationHash: string;
   recommendationJson: Record<string, unknown>;
-  selectedStyle: StreamStyle;
+  selectedStyle: StreamStyle | null;
+  decisionKind?: NoSendDecisionKind;
   chargeQuota: boolean;
   messageCount: number;
 }
@@ -126,6 +137,19 @@ export class AnalysisStreamRunStore {
       throw new Error(
         "chargeRun: messageCount must be a positive integer when chargeQuota=true",
       );
+    }
+
+    if (isNoSendChargePayload(input.recommendation)) {
+      return this.driver.chargeRun({
+        runId: input.runId,
+        userId: input.userId,
+        conversationHash: input.conversationHash,
+        recommendationJson: serializeNoSendRecommendation(input.recommendation),
+        selectedStyle: null,
+        decisionKind: input.recommendation.decisionKind,
+        chargeQuota: input.chargeQuota,
+        messageCount: input.messageCount,
+      });
     }
 
     return this.driver.chargeRun({
@@ -297,9 +321,20 @@ export function createSupabaseAnalysisStreamRunDriver(
     async chargeRun(
       input: ChargeStreamRunDriverInput,
     ): Promise<AnalysisStreamRun> {
-      const { data, error } = await supabase.rpc(
-        "charge_stream_analysis_run",
-        {
+      // v1 send runs keep calling the untouched v1 RPC; only a no-send
+      // decision uses charge_stream_analysis_run_v2 (migration 20260902120000).
+      const { data, error } = input.decisionKind
+        ? await supabase.rpc("charge_stream_analysis_run_v2", {
+          p_run_id: input.runId,
+          p_user_id: input.userId,
+          p_conversation_hash: input.conversationHash,
+          p_recommendation_json: input.recommendationJson,
+          p_decision_kind: input.decisionKind,
+          p_selected_style: null,
+          p_message_count: input.messageCount,
+          p_charge_quota: input.chargeQuota,
+        })
+        : await supabase.rpc("charge_stream_analysis_run", {
           p_run_id: input.runId,
           p_user_id: input.userId,
           p_conversation_hash: input.conversationHash,
@@ -307,13 +342,14 @@ export function createSupabaseAnalysisStreamRunDriver(
           p_selected_style: input.selectedStyle,
           p_message_count: input.messageCount,
           p_charge_quota: input.chargeQuota,
-        },
-      );
+        });
       if (error || !data) {
         throw new Error(
-          `charge_stream_analysis_run failed: ${
-            error ? JSON.stringify(error) : "no row returned"
-          }`,
+          `${
+            input.decisionKind
+              ? "charge_stream_analysis_run_v2"
+              : "charge_stream_analysis_run"
+          } failed: ${error ? JSON.stringify(error) : "no row returned"}`,
         );
       }
       return data;

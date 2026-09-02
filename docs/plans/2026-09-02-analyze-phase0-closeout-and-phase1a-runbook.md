@@ -49,6 +49,19 @@ python3 scripts/analyze_phase0_baseline.py --project-ref fcmwrmwdoqiqdnbisdpg --
 2. 驗三件：ledger 版本＝檔名、`pg_proc` 有 `charge_stream_analysis_run_v2` 且 anon／authenticated 無 EXECUTE、既有 run 仍可 `reserve_stream_analysis_retry`。
 3. 之後 Phase 1b 的 Edge v2 code 才可推 `main`。Edge v1 全程不呼叫 v2 RPC，rollback 只需不開 v2 capability，migration 可留存。
 
-## 3. 基線紀錄
+## 3. Phase 1b 後端（決策權威，capability gated）
+
+請求多一個欄位 `analysisContractVersion`（整數；缺省＝1；2＝支援不回決策；其他值 400）。只有送 2 的 client 會拿到下面的行為，v1 client 的 prompt、事件、扣費一字不變（`baseline_contract_test` hash 鎖仍綠）。
+
+- **Prompt**：v1 之後插入「1a. Message decision gate」，要求每個 `analysis.decision` 帶 `messageDecision`（`send`／`do_not_send`／`acknowledge_and_stop`／`need_context`）。三種不回：不帶 `selectedStyle`，帶 `action`／`reason`／`stopCondition`（`acknowledge_and_stop` 另帶 `closingMessage`），跳過 recommendation 與 reply_option，直接接 metrics／report／done。
+- **扣費錨點**：不回決策經 `validateNoSendDecisionEvent` 驗證（空殼不扣費、安全掃描）後，走 `charge_stream_analysis_run_v2`，`decision_kind` 落 DB、`selected_style` NULL；`send` 仍走 v1 RPC。
+- **串流**：不回模式下 reply_option／recommendation 事件一律丟棄、後續 decision 不能改判；done 跳過五風格完整性檢查；`finalResult.replies`／`replyOptions` 強制空、無 `finalRecommendation`、帶 `analysisDecisionV2`（`schemaVersion 2`、`messageDecision`、`replyMode` none／single、`action`、`reason`、`stopCondition`、`closingMessage?`）。
+- **後處理**：`ensureNonEmptyAnalysisOutput` 對不回結果不補罐頭句。
+- **重試／續看**：`recommendation_json.decisionKind` 存在即還原不回錨點，不再回 `STREAM_RUN_NOT_RETRYABLE`；重試不重扣、決策凍結。
+- **App 端（Phase 1c，未做）**：收到 `messageDecision` 非 send 時零回覆卡、零升級推銷；`shouldGiveUp` 降為離線備援。在 1c 上線前，App 不送 `analysisContractVersion: 2`，此路徑在 production 為休眠。
+
+測試：`no_send_decision_test.ts`（驗證矩陣、round-trip、prompt 閘、後處理、store RPC 分流）＋`no_send_stream_test.ts`（reframer 七案例＋handler 三案例），皆已進 CI 契約清單。
+
+## 4. 基線紀錄
 
 （待 dogfood 流量；填入統計期間與腳本輸出）
