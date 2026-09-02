@@ -81,3 +81,9 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
 | run10 style 20 位（R1 修正後） | 2.81 | **2.29**（2.13–2.54） |
 
 結論不變：baseline 的角色之間比自己跟自己還像；style 開後拉開約 3 倍，範圍不重疊。
+- `2026-09-03-run11-style20-r2fix-x3.json`（12b2d9ce，Codex R2 五項 P1 修正後，最終快照、
+  worktree clean）：720 場零失敗、修補 23/2100、守門退回 1。比值 **2.18（2.06–2.35）**，
+  persona 內 1.05（clear_boundaries）～2.76（teasing_humor）；遮罩 judge **43%（40–50%）**。
+  注意 clear_boundaries 這組掉到 1.05：越界改強制 direct_boundary、cautious 濾掉 tease／
+  self_disclose 之後，這四位在界線與防備情境的表達更一致——安全優先於差異，符合規格
+  §5.1 順位，但代表這組的個人差異要靠非界線情境撐。
