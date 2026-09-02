@@ -16,6 +16,12 @@ import '../../data/services/analyze_stream_client.dart'
         AnalysisStreamContentKind,
         AnalysisStreamDisplayMapper;
 
+const _noSendDecisions = <String>{
+  'do_not_send',
+  'acknowledge_and_stop',
+  'need_context',
+};
+
 class AnalysisStreamContentDisplayMapper
     implements AnalysisStreamDisplayMapper {
   const AnalysisStreamContentDisplayMapper();
@@ -26,7 +32,10 @@ class AnalysisStreamContentDisplayMapper
     switch (type) {
       case 'analysis.decision':
         final messageDecision = _stringField(event['messageDecision']);
-        if (messageDecision != null && messageDecision != 'send') {
+        // 只認三個合法 no-send 值；未知／拼錯值走 v1 對映，與正式結果解析
+        // （AnalysisDecisionV2.fromJson 拒絕未知值退回 v1）保持一致。
+        if (messageDecision != null &&
+            _noSendDecisions.contains(messageDecision)) {
           // Phase 1c：不回決策沒有 nextStep 欄位，串流中先秀判斷與原因。
           return AnalysisStreamContent(
             kind: AnalysisStreamContentKind.decision,

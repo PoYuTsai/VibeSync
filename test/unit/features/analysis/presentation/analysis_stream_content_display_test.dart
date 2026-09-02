@@ -34,6 +34,27 @@ void main() {
     expect(content.body, contains('等到：等她提新話題'));
   });
 
+  test('未知或畸形 messageDecision 走 v1 對映，不勸使用者不要回', () {
+    for (final junk in ['hold', 'DO_NOT_SEND', '', 42, null]) {
+      final content = mapper.contentFromEvent({
+        'type': 'analysis.decision',
+        'messageDecision': junk,
+        'nextStepTitle': '接球',
+        'nextStepBody': '回火鍋',
+        'reason': '不該被當成不回的理由',
+      });
+      expect(content?.title, '接球', reason: 'messageDecision=$junk');
+      expect(content?.body, isNot(contains('不該被當成不回的理由')));
+    }
+    // 沒有 v1 欄位也沒有合法決策：空內容，由呼叫端丟棄。
+    final empty = mapper.contentFromEvent({
+      'type': 'analysis.decision',
+      'messageDecision': 'hold',
+      'reason': 'x',
+    });
+    expect(empty?.body.trim(), isEmpty);
+  });
+
   test('need_context／acknowledge_and_stop 各有標題；send 走 v1 對映', () {
     expect(
       mapper.contentFromEvent({
