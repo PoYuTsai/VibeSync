@@ -29,6 +29,7 @@ const standard = (over: Partial<PolicyEvidence> = {}): PolicyEvidence => ({
   gameRealityFlagCount: 0,
   gameInviteDirection: null,
   gameGreasy: false,
+  hasMemorySummary: false,
   priorDecline: false,
   ...over,
 });
@@ -459,14 +460,99 @@ Deno.test("Codex R2/R3：越界只抓無語境也成立的句型；共同記憶�
   // 相近但矛盾的記憶（淡水 vs 高雄、我們 vs 她和朋友）：planner 不判真假，一律 cautious＋clarify，
   // 由模型對照 memorySummary 決定接或問（規格 §4.5）。
   const turns = [u("嗨"), a("嗨"), u("你還記得我們一起去淡水看夕陽嗎")];
-  const plan = planTurnResponse({
+  const noMemory = planTurnResponse({
     turns,
     style: styles[0],
     evidence: standard(),
     seedKey: "s",
   });
-  assertEquals(plan.policyStance, "cautious");
-  assertEquals(plan.situation, "memory_mismatch");
-  assertEquals(plan.primaryAct, "clarify");
-  assert(renderTurnPlan(plan).includes("有就自然接，沒有或對不上就直接問清楚"));
+  assertEquals(noMemory.policyStance, "cautious");
+  assertEquals(noMemory.situation, "memory_mismatch");
+  assertEquals(noMemory.primaryAct, "clarify");
+  // 有記憶摘要可對照：不強制澄清（Codex R4 P2 過度澄清），先接住、澄清可選，真假交給模型。
+  const withMemory = planTurnResponse({
+    turns,
+    style: styles[0],
+    evidence: standard({ hasMemorySummary: true }),
+    seedKey: "s",
+  });
+  assertEquals(withMemory.policyStance, "cautious");
+  assertEquals(withMemory.primaryAct, "acknowledge");
+  assertEquals(withMemory.optionalAct, "clarify");
+  assert(renderTurnPlan(withMemory).includes("有就自然接、不必特別澄清"));
+});
+
+Deno.test("Codex R4：三模式 × stance 矩陣——非 open 邀約無接受型；cautious／boundary 無 tease；decline／hold 可保留 tease", () => {
+  const cases: { label: string; evidence: PolicyEvidence; expect: string }[] = [
+    { label: "standard hold", evidence: standard(), expect: "hold" },
+    {
+      label: "beginner hold",
+      evidence: standard({
+        practiceMode: "beginner",
+        inviteStage: "not_ready",
+      }),
+      expect: "hold",
+    },
+    {
+      label: "game hold",
+      evidence: standard({
+        practiceMode: "game",
+        inviteStage: "direct_invite_ready",
+        gameInviteDirection: "no_invite_build_investment",
+      }),
+      expect: "hold",
+    },
+    {
+      label: "game cautious",
+      evidence: standard({
+        practiceMode: "game",
+        inviteStage: "direct_invite_ready",
+        gameInviteDirection: "direct_invite_low_pressure",
+        gameRealityFlagCount: 1,
+      }),
+      expect: "cautious",
+    },
+    {
+      label: "beginner decline",
+      evidence: standard({
+        practiceMode: "beginner",
+        inviteStage: "direct_invite_ready",
+        priorDecline: true,
+      }),
+      expect: "decline",
+    },
+    {
+      label: "game boundary",
+      evidence: standard({ practiceMode: "game", gameGreasy: true }),
+      expect: "boundary",
+    },
+  ];
+  for (const c of cases) {
+    for (const style of styles) {
+      const plan = planTurnResponse({
+        turns: invite,
+        style,
+        evidence: c.evidence,
+        seedKey: "s",
+      });
+      assertEquals(plan.policyStance, c.expect, `${c.label} ${style.presetId}`);
+      const acts = [
+        plan.primaryAct,
+        plan.optionalAct,
+        ...plan.conditionalActs.map((x) => x.act),
+      ].filter(Boolean) as string[];
+      for (const act of acts) {
+        assert(
+          !ACCEPTING_ACTS.includes(act as never),
+          `${c.label} ${style.presetId} ${act}`,
+        );
+        if (c.expect === "cautious" || c.expect === "boundary") {
+          assert(
+            act !== "tease" && act !== "self_disclose",
+            `${c.label} ${style.presetId} ${act}`,
+          );
+        }
+      }
+    }
+  }
 });

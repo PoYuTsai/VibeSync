@@ -51,6 +51,8 @@ export interface PolicyEvidence {
   readonly gameInviteDirection: string | null;
   /** Game FSM failureStates 含 GREASY（越界／油）＝結構化越界證據。 */
   readonly gameGreasy: boolean;
+  /** 是否有可信記憶摘要可供模型對照（只看有沒有，不看內容）。 */
+  readonly hasMemorySummary: boolean;
   /**
    * 她已明確拒絕過同一件事（結構化決策；production 目前沒有這個狀態，PR-2 接持久化
    * 決策前呼叫端一律傳 false）。不用文字 regex 推斷——Codex R3：正反例都太多。
@@ -279,12 +281,24 @@ export function planTurnResponse(args: {
     // 直接度只影響 renderer 的措辭，不能降成一般帶開。
     biases = ["direct_boundary"];
   } else if (situation === "early_invite") {
-    // 結果已定（hold／decline）：把接受型 act 濾掉；濾光了就照她的直接度給
-    // 一個非接受型的預設說法。
-    const filtered = biases.filter((act) => !ACCEPTING_ACTS.includes(act));
+    // 結果已定（hold／decline／cautious）：把接受型 act 濾掉；cautious 再濾掉玩笑
+    // （Codex R4：else-if 順序讓 cautious 邀約輪漏掉「不玩」）。hold／decline 保留
+    // tease——規格 §6「你進度條拉太快了吧」就是合法的 hold 說法。濾光了就照她的
+    // 直接度給一個非接受型的預設說法。
+    const filtered = biases.filter((act) =>
+      !ACCEPTING_ACTS.includes(act) &&
+      (policyStance !== "cautious" ||
+        (act !== "tease" && act !== "self_disclose"))
+    );
     biases = filtered.length > 0 ? filtered : [
       style.behavior.directness[1] >= 3 ? "direct_boundary" : "soft_deflect",
     ];
+  } else if (situation === "memory_mismatch") {
+    // 共同記憶聲稱：有記憶摘要可對照時不強制澄清（合法記憶會被過度澄清，Codex R4
+    // P2），先接住、澄清當可選；完全沒有記憶摘要＝一定查無此事，才直接澄清。
+    biases = args.evidence.hasMemorySummary
+      ? ["acknowledge", "clarify"]
+      : ["clarify"];
   } else if (policyStance === "cautious") {
     // 她在防備（guarded／annoyed／Game 修復優先／未證實記憶）：不玩、不多揭露。
     const filtered = biases.filter((act) =>
@@ -421,7 +435,7 @@ const STANCE_LINE: Partial<Record<PolicyStance, string>> = {
     "這輪不答應、不給時間；答不答應由上面的邀約判斷決定，這裡只決定你怎麼說。如果你前面已經明確拒絕過同一件事，就照你之前的立場。",
   decline: "這輪不答應；只決定你怎麼說。",
   cautious:
-    "你現在有點防備：不玩、不多講自己的事；對方提到的共同經歷，只有記憶摘要或前文真的有的才算數——有就自然接，沒有或對不上就直接問清楚，不要配合補記憶或補細節。",
+    "你現在有點防備：不玩、不多講自己的事；對方提到的共同經歷，只有記憶摘要或前文真的有的才算數——有就自然接、不必特別澄清，沒有或對不上就直接問清楚，不要配合補記憶或補細節。",
 };
 
 const DISCLOSURE_LINE: Record<TurnResponsePlan["disclosureDepth"], string> = {

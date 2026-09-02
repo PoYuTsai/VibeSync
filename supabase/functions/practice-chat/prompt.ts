@@ -759,6 +759,7 @@ export function buildChatPromptBundle(
         gameRealityFlagCount: gameSnapshot?.realityFlags.length ?? 0,
         gameInviteDirection: gameSnapshot?.speedInviteDirection ?? null,
         gameGreasy: gameSnapshot?.failureStates.includes("GREASY") ?? false,
+        hasMemorySummary: Boolean(options.memorySummary?.trim()),
         // production 目前沒有「她已明確拒絕過」的持久化決策；PR-2 接上前一律 false。
         priorDecline: false,
       },
