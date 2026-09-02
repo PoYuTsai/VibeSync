@@ -758,7 +758,9 @@ export function buildChatPromptBundle(
         gameRepairPriority: gameSnapshot?.repairPriority ?? false,
         gameRealityFlagCount: gameSnapshot?.realityFlags.length ?? 0,
         gameInviteDirection: gameSnapshot?.speedInviteDirection ?? null,
-        memorySummary: options.memorySummary ?? null,
+        gameGreasy: gameSnapshot?.failureStates.includes("GREASY") ?? false,
+        // production 目前沒有「她已明確拒絕過」的持久化決策；PR-2 接上前一律 false。
+        priorDecline: false,
       },
       replyTempo: options.sceneContext?.replyTempo ?? null,
       seedKey: `${profile.girl.profileId}|${

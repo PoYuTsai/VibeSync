@@ -28,7 +28,8 @@ const standard = (over: Partial<PolicyEvidence> = {}): PolicyEvidence => ({
   gameRepairPriority: false,
   gameRealityFlagCount: 0,
   gameInviteDirection: null,
-  memorySummary: null,
+  gameGreasy: false,
+  priorDecline: false,
   ...over,
 });
 const invite = [
@@ -211,7 +212,8 @@ Deno.test("訊號語料：false positive／negative 對照（Codex R1 反例）"
   assertEquals(sig("你吃飽了沒").userIsQuestion, true);
   assertEquals(sig("妳假日通常都在幹嘛").userIsQuestion, true);
   assertEquals(sig("要不要去你家附近那間咖啡店").boundaryLike, false);
-  assertEquals(sig("要不要去你家").boundaryLike, true);
+  // 「要不要去你家」單句有歧義：規格 §4.5 不確定就不判（R3 收緊後改為不硬判）。
+  assertEquals(sig("要不要去你家").boundaryLike, false);
   assertEquals(sig("哈哈哈你真的懂我").maybeJoke, false);
   assertEquals(sig("我跟你講一個冷笑話").maybeJoke, true);
   assertEquals(sig("老實說有點焦慮").maybeVulnerable, true);
@@ -326,30 +328,44 @@ Deno.test("renderTurnPlan 不含可見內部標籤（去掉 heading 後），且
   }
 });
 
-Deno.test("Codex R2 反例：decline 可達（她自己婉拒過）、Game 邀約方向、cautious 不玩不多揭露", () => {
-  const refusedThenInvited = [
-    u("嗨嗨"),
-    a("嗨"),
-    u("週末要不要出來喝個咖啡"),
-    a("先不用耶 我們再多認識一點"),
-    u("好啦"),
-    a("嗯"),
-    u("那下週一起去吃個飯好嗎"),
-  ];
+Deno.test("Codex R2/R3：decline 只來自結構化證據；Game 邀約方向；GREASY＝越界；cautious 不玩不多揭露", () => {
   for (const style of styles) {
     const plan = planTurnResponse({
-      turns: refusedThenInvited,
+      turns: invite,
       style,
       evidence: standard({
         practiceMode: "beginner",
         inviteStage: "direct_invite_ready",
+        priorDecline: true,
       }),
       seedKey: "s",
     });
     assertEquals(plan.policyStance, "decline");
     assertEquals(plan.situation, "early_invite");
     assert(!ACCEPTING_ACTS.includes(plan.primaryAct));
+    assert(
+      plan.optionalAct === null || !ACCEPTING_ACTS.includes(plan.optionalAct),
+    );
   }
+  // 她婉拒過但沒有結構化證據：不猜 decline，維持既有結果（standard 未到下限＝hold）。
+  const refusedThenInvited = [
+    u("嗨嗨"),
+    a("嗨"),
+    u("週末要不要出來喝個咖啡"),
+    a("先不用耶"),
+    u("好啦"),
+    a("嗯"),
+    u("那下週一起去吃個飯好嗎"),
+  ];
+  assertEquals(
+    planTurnResponse({
+      turns: refusedThenInvited,
+      style: styles[0],
+      evidence: standard(),
+      seedKey: "s",
+    }).policyStance,
+    "hold",
+  );
   const s = detectTurnSignals(invite);
   assertEquals(
     policyStanceFor(
@@ -373,7 +389,13 @@ Deno.test("Codex R2 反例：decline 可達（她自己婉拒過）、Game 邀�
     ),
     "open",
   );
-  // Game 修復優先 × 稱讚：cautious，不 tease、不 self_disclose，且 render 帶約束。
+  assertEquals(
+    policyStanceFor(
+      detectTurnSignals([u("妳今天過得如何")]),
+      standard({ practiceMode: "game", gameGreasy: true }),
+    ),
+    "boundary",
+  );
   const compliment = [u("嗨"), a("嗨"), u("妳笑起來很好看欸")];
   for (const style of styles) {
     const plan = planTurnResponse({
@@ -408,30 +430,43 @@ Deno.test("Codex R2 反例：hold 邀約輪的候選 act 也不給接受型；�
   }
 });
 
-Deno.test("Codex R2 反例：越界與記憶 regex 的對立語料；memorySummary 已有的共同記憶不算 mismatch", () => {
+Deno.test("Codex R2/R3：越界只抓無語境也成立的句型；共同記憶一律 cautious 交給模型對照", () => {
   const sig = (text: string) => detectTurnSignals([u(text)]);
-  assertEquals(sig("我今天真的好累 想睡一下").boundaryLike, false);
-  assertEquals(sig("要不要跟我睡一下").boundaryLike, true);
-  assertEquals(sig("我最近在考慮裸辭").boundaryLike, false);
-  assertEquals(sig("有裸照嗎").boundaryLike, true);
-  // 「我去開房門」被 production L4 守門本身判為越界（既有行為，非本案）；不列。
-  assertEquals(sig("我們去開房間吧").boundaryLike, true);
+  for (
+    const text of [
+      "我今天真的好累 想睡一下",
+      "我最近在考慮裸辭",
+      "我去開房門",
+      "可以陪我睡前聊聊天嗎",
+      "妳累的話要不要先睡一下",
+      "要不要去你家附近那間咖啡店",
+    ]
+  ) {
+    assertEquals(sig(text).boundaryLike, false, text);
+  }
+  for (
+    const text of [
+      "要不要跟我睡",
+      "有裸照嗎",
+      "我們去開房間吧",
+      "那妳穿泳裝一定很好看 有照片嗎",
+    ]
+  ) {
+    assertEquals(sig(text).boundaryLike, true, text);
+  }
   assertEquals(sig("以前你有養過狗嗎").memoryClaim, false);
   assertEquals(sig("你不是說過你在學衝浪嗎").memoryClaim, true);
-  const memory = "上次聊到我們一起去淡水看夕陽，她說老街的阿給很好吃。";
+  // 相近但矛盾的記憶（淡水 vs 高雄、我們 vs 她和朋友）：planner 不判真假，一律 cautious＋clarify，
+  // 由模型對照 memorySummary 決定接或問（規格 §4.5）。
   const turns = [u("嗨"), a("嗨"), u("你還記得我們一起去淡水看夕陽嗎")];
-  const supported = planTurnResponse({
+  const plan = planTurnResponse({
     turns,
     style: styles[0],
-    evidence: standard({ memorySummary: memory }),
+    evidence: standard(),
     seedKey: "s",
   });
-  assertNotEquals(supported.situation, "memory_mismatch");
-  const unsupported = planTurnResponse({
-    turns,
-    style: styles[0],
-    evidence: standard({ memorySummary: "上次聊到她剛換新工作。" }),
-    seedKey: "s",
-  });
-  assertEquals(unsupported.situation, "memory_mismatch");
+  assertEquals(plan.policyStance, "cautious");
+  assertEquals(plan.situation, "memory_mismatch");
+  assertEquals(plan.primaryAct, "clarify");
+  assert(renderTurnPlan(plan).includes("有就自然接，沒有或對不上就直接問清楚"));
 });
