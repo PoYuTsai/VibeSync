@@ -369,21 +369,43 @@ Deno.test("critic shadow runner: invalid output, transport failure and emitter f
   assertEquals(skipped.aiCalls.length, 0);
 });
 
-Deno.test("critic shadow scheduling: prefers the injected waitUntil and never lets a task rejection escape", async () => {
+Deno.test("critic shadow scheduling: runs only when a background scheduler exists", async () => {
   const scheduled: Promise<void>[] = [];
   const task = Promise.resolve();
-  scheduleAnalyzeCriticShadow((t) => scheduled.push(t), task);
+  let starts = 0;
+  const start = () => {
+    starts += 1;
+    return task;
+  };
+  assertEquals(
+    scheduleAnalyzeCriticShadow((t) => scheduled.push(t), start),
+    true,
+  );
   assertStrictEquals(scheduled[0], task);
-  // 沒有排程器（本機測試）：task 直接 detach，不炸。
-  scheduleAnalyzeCriticShadow(undefined, Promise.resolve());
+  assertEquals(starts, 1);
+  // 沒有 waitUntil 也沒有 EdgeRuntime（本機測試）：連 task 都不建，不會偷打 API。
+  assertEquals(scheduleAnalyzeCriticShadow(undefined, start), false);
+  assertEquals(starts, 1);
+  // production：globalThis.EdgeRuntime.waitUntil。
+  const runtime = globalThis as unknown as {
+    EdgeRuntime?: { waitUntil(task: Promise<void>): void };
+  };
+  runtime.EdgeRuntime = { waitUntil: (t) => scheduled.push(t) };
+  try {
+    assertEquals(scheduleAnalyzeCriticShadow(undefined, start), true);
+    assertEquals(starts, 2);
+    assertEquals(scheduled.length, 2);
+  } finally {
+    delete runtime.EdgeRuntime;
+  }
   await Promise.all(scheduled);
 });
 
-Deno.test("critic shadow config: production default is off, risk-triggered, on Sonnet 5", () => {
+Deno.test("critic shadow config: production runs the shadow on every send with Sonnet 5 (Eric 2026-09-03)", () => {
   assertEquals(ANALYZE_CRITIC_SHADOW, {
-    enabled: false,
+    enabled: true,
     model: "claude-sonnet-5",
     timeoutMs: 12_000,
-    trigger: "risk",
+    trigger: "always",
   });
 });

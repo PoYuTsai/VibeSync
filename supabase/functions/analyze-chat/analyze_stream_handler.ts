@@ -616,34 +616,45 @@ export async function handleAnalyzeStream(
       if (criticTrigger) {
         const guardViolations = phase0Record(phase0?.candidateGuard)
           ?.violations;
-        scheduleAnalyzeCriticShadow(
+        const started = scheduleAnalyzeCriticShadow(
           deps.waitUntil,
-          runAnalyzeCriticShadow({
-            finalResult: finalPayload,
-            messages: deps.messages,
-            guardViolations: Array.isArray(guardViolations)
-              ? guardViolations.flatMap((violation) => {
-                const code = phase0Record(violation)?.code;
-                return typeof code === "string" ? [code] : [];
-              })
-              : [],
-            trigger: criticTrigger,
-            config: criticConfig,
-            apiKey: deps.claudeApiKey,
-            callCritic: deps.callCritic ?? callClaudeJson,
-            emit: (event, metadata) =>
-              logInfo(event, {
-                user: summarizeUser(deps.userId),
-                analysisRunId: streamRun.id,
-                ...metadata,
-              }),
-            recordAiCall: (entry) =>
-              logAiCall(deps.supabaseUrl, deps.supabaseServiceKey, {
-                userId: deps.userId,
-                ...entry,
-              }),
-          }),
+          () =>
+            runAnalyzeCriticShadow({
+              finalResult: finalPayload,
+              messages: deps.messages,
+              guardViolations: Array.isArray(guardViolations)
+                ? guardViolations.flatMap((violation) => {
+                  const code = phase0Record(violation)?.code;
+                  return typeof code === "string" ? [code] : [];
+                })
+                : [],
+              trigger: criticTrigger,
+              config: criticConfig,
+              apiKey: deps.claudeApiKey,
+              callCritic: deps.callCritic ?? callClaudeJson,
+              emit: (event, metadata) =>
+                logInfo(event, {
+                  user: summarizeUser(deps.userId),
+                  analysisRunId: streamRun.id,
+                  ...metadata,
+                }),
+              recordAiCall: (entry) =>
+                logAiCall(deps.supabaseUrl, deps.supabaseServiceKey, {
+                  userId: deps.userId,
+                  ...entry,
+                }),
+            }),
         );
+        if (!started) {
+          logInfo("stream_semantic_critic", {
+            user: summarizeUser(deps.userId),
+            analysisRunId: streamRun.id,
+            model: criticConfig.model,
+            trigger: criticTrigger,
+            status: "skipped",
+            reason: "no_scheduler",
+          });
+        }
       }
 
       await logAiCall(deps.supabaseUrl, deps.supabaseServiceKey, {

@@ -32,13 +32,14 @@ export interface AnalyzeCriticShadowConfig {
   readonly trigger: "always" | "risk";
 }
 
-/// 模型＝Sonnet 5（Eric 2026-09-03 定案）；觸發條件與成本上限定案前預設關閉，
-/// 開關是一行 commit。
+/// Eric 2026-09-03 定案：Sonnet 5、always（每個 send 的選中卡都審，先建一週影子
+/// 基線；離線評測 guard 違規只覆蓋 critic 發現的 1/5，risk 會漏大半）。每次約
+/// 0.5 美分。關掉是一行 commit。
 export const ANALYZE_CRITIC_SHADOW: AnalyzeCriticShadowConfig = {
-  enabled: false,
+  enabled: true,
   model: "claude-sonnet-5",
   timeoutMs: 12_000,
-  trigger: "risk",
+  trigger: "always",
 };
 
 export const ANALYZE_CRITIC_REQUEST_TYPE = "analyze_semantic_critic";
@@ -370,28 +371,29 @@ export async function runAnalyzeCriticShadow(
   }
 }
 
-/// 把影子 task 掛上 EdgeRuntime.waitUntil（範式同 practice-chat moments_handler）。
+/// 把影子掛上 EdgeRuntime.waitUntil（範式同 practice-chat moments_handler）。
+/// 沒有排程器（本機測試、非 Edge runtime）就不啟動：背景工作沒人養就不做，
+/// 也不會在測試裡偷偷打 API；回 false 讓呼叫端記 skipped。
 export function scheduleAnalyzeCriticShadow(
   waitUntil: ((task: Promise<void>) => void) | undefined,
-  task: Promise<void>,
-): void {
+  start: () => Promise<void>,
+): boolean {
   try {
     if (waitUntil) {
-      waitUntil(task);
-      return;
+      waitUntil(start());
+      return true;
     }
     const edgeRuntime = (globalThis as unknown as {
       EdgeRuntime?: { waitUntil(task: Promise<void>): void };
     }).EdgeRuntime;
     if (edgeRuntime?.waitUntil) {
-      edgeRuntime.waitUntil(task);
-      return;
+      edgeRuntime.waitUntil(start());
+      return true;
     }
   } catch {
-    // 排程器失敗不得影響回應。
+    // 排程器失敗不得影響回應（task 永不 reject，detach 也安全）。
   }
-  // 本機測試沒有 EdgeRuntime：task 自吞錯誤，detach 不會 unhandled rejection。
-  void task.catch(() => {});
+  return false;
 }
 
 /// 預設 transport：非串流 messages 呼叫（與 coach-chat callClaudeAPI 同款；

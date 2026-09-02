@@ -1154,13 +1154,42 @@ Deno.test("Phase 3d critic shadow：done 之後排進背景，只審選中卡，
   assert(!serialized.includes("SECRET"));
 });
 
-Deno.test("Phase 3d critic shadow：預設關閉時不排程也不呼叫", async () => {
-  const scheduled: Promise<void>[] = [];
+Deno.test("Phase 3d critic shadow：沒有背景排程器（本機／非 Edge runtime）就不啟動，只記 skipped", async () => {
   let criticCalls = 0;
-  await withCapturedConsoleLog(async () => {
+  const logs = await withCapturedConsoleLog(async () => {
     await runWithStubbedFetch(makeDeps({
       calls: [],
       modelChunks: v2SendChunks(),
+      callCritic: () => {
+        criticCalls += 1;
+        return Promise.resolve({});
+      },
+    }));
+  });
+  assertEquals(criticCalls, 0);
+  const critic = logs.find((entry) =>
+    entry[0] === "[analyze-chat] stream_semantic_critic"
+  );
+  assert(critic, "expected a skipped critic log");
+  const metadata = critic[1] as Record<string, unknown>;
+  assertEquals(metadata.status, "skipped");
+  assertEquals(metadata.reason, "no_scheduler");
+  assertEquals(metadata.trigger, ["always"]);
+});
+
+Deno.test("Phase 3d critic shadow：關閉時不排程、不呼叫、不記", async () => {
+  const scheduled: Promise<void>[] = [];
+  let criticCalls = 0;
+  const logs = await withCapturedConsoleLog(async () => {
+    await runWithStubbedFetch(makeDeps({
+      calls: [],
+      modelChunks: v2SendChunks(),
+      criticShadow: {
+        enabled: false,
+        model: "critic-model",
+        timeoutMs: 500,
+        trigger: "always",
+      },
       waitUntil: (task) => {
         scheduled.push(task);
       },
@@ -1172,4 +1201,8 @@ Deno.test("Phase 3d critic shadow：預設關閉時不排程也不呼叫", async
   });
   assertEquals(scheduled.length, 0);
   assertEquals(criticCalls, 0);
+  assertEquals(
+    logs.some((entry) => entry[0] === "[analyze-chat] stream_semantic_critic"),
+    false,
+  );
 });
