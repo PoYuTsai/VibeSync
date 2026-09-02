@@ -58,8 +58,10 @@ import {
   type GameFsmSnapshot,
   gameStrategyPrompt,
   gameTacticDirectiveFor,
+  looksOverEscalated,
   spicyLevelFor,
 } from "./game_fsm.ts";
+import type { ReplyStyleState } from "./reply_style_state.ts";
 import {
   compactGameLedgerPrompt,
   effectiveGameFsmSnapshot,
@@ -674,6 +676,8 @@ export function buildChatPromptBundle(
      */
     herRecentMomentsBlock?: string | null;
     gameState?: PersistedGameState | null;
+    /** reply-style-v1 跨回合狀態（thread recent_facts）；旗標關閉時不讀。 */
+    styleState?: ReplyStyleState | null;
   } = {},
 ): ChatPromptBundle {
   const style = options.replyStyle
@@ -760,8 +764,11 @@ export function buildChatPromptBundle(
         gameInviteDirection: gameSnapshot?.speedInviteDirection ?? null,
         gameGreasy: gameSnapshot?.failureStates.includes("GREASY") ?? false,
         hasMemorySummary: Boolean(options.memorySummary?.trim()),
-        // production 目前沒有「她已明確拒絕過」的持久化決策；PR-2 接上前一律 false。
-        priorDecline: false,
+        priorDecline: options.styleState?.priorDecline ?? false,
+        userOverEscalated: looksOverEscalated(
+          turns.filter((t) => t.role === "user").at(-1)?.text ?? "",
+        ),
+        recentActs: options.styleState?.recentActs ?? [],
       },
       replyTempo: options.sceneContext?.replyTempo ?? null,
       seedKey: `${profile.girl.profileId}|${

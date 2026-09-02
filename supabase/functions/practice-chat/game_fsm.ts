@@ -420,7 +420,8 @@ export function containsCrudeSexualOffense(text: string): boolean {
   return includesAny(normalized(text), CRUDE_SEXUAL_OFFENSE_TERMS);
 }
 
-function looksOverEscalated(text: string): boolean {
+/** 既有 production 越界判定（GREASY 同源）；reply-style planner 拿它當越界的權威證據。 */
+export function looksOverEscalated(text: string): boolean {
   const compact = normalized(text);
   return includesAny(compact, [
     "開房",

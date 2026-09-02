@@ -54,10 +54,15 @@ export interface PolicyEvidence {
   /** 是否有可信記憶摘要可供模型對照（只看有沒有，不看內容）。 */
   readonly hasMemorySummary: boolean;
   /**
-   * 她已明確拒絕過同一件事（結構化決策；production 目前沒有這個狀態，PR-2 接持久化
-   * 決策前呼叫端一律傳 false）。不用文字 regex 推斷——Codex R3：正反例都太多。
+   * 她已明確拒絕過同一件事：來自 relationship thread 持久化的 ReplyStyleState
+   * （她自己前幾輪的 plan：邀約輪 direct_boundary 或 stance decline）。不用文字 regex
+   * 推斷——Codex R3：正反例都太多。standard 模式沒有 thread 寫入＝一律 false。
    */
   readonly priorDecline: boolean;
+  /** 既有 production 越界判定（game_fsm looksOverEscalated，GREASY 同源）套在玩家最新一則。 */
+  readonly userOverEscalated: boolean;
+  /** 她最近幾輪的 primaryAct（持久化，最多 3 筆）；同一個 act 連兩輪就換偏好順序第二個。 */
+  readonly recentActs: readonly ReplyAct[];
 }
 
 export interface TurnSignals {
@@ -186,7 +191,9 @@ export function policyStanceFor(
   signals: TurnSignals,
   evidence: PolicyEvidence,
 ): PolicyStance {
-  if (signals.boundaryLike || evidence.gameGreasy) return "boundary";
+  if (
+    signals.boundaryLike || evidence.gameGreasy || evidence.userOverEscalated
+  ) return "boundary";
   const moodGuarded = evidence.partnerMood === "guarded" ||
     evidence.partnerMood === "annoyed";
   // 共同記憶聲稱：可信與否由模型對照記憶摘要（prompt 的 Reality Anchoring 段），
@@ -307,6 +314,14 @@ export function planTurnResponse(args: {
       act !== "tease" && act !== "self_disclose"
     );
     biases = filtered.length > 0 ? filtered : ["acknowledge"];
+  }
+  // 同一個 act 連兩輪（持久化的 recentActs）就換偏好順序第二個；界線輪不換。
+  const recent = args.evidence.recentActs;
+  if (
+    situation !== "boundary" && biases.length > 1 && recent.length >= 2 &&
+    recent.at(-1) === biases[0] && recent.at(-2) === biases[0]
+  ) {
+    biases = [biases[1], biases[0], ...biases.slice(2)];
   }
   const primaryAct = biases[0];
   let optionalAct: ReplyAct | null = biases[1] ?? null;

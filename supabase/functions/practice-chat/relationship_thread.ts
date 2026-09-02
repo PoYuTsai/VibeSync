@@ -2,6 +2,11 @@ import type { InviteStage } from "./invite_maturity.ts";
 import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import type { PracticeLearningMode } from "./quota_decision.ts";
 import type { PartnerMood, PartnerState } from "./temperature.ts";
+import {
+  parseReplyStyleState,
+  REPLY_STYLE_STATE_KEY,
+  type ReplyStyleState,
+} from "./reply_style_state.ts";
 
 const PARTNER_MOODS: readonly PartnerMood[] = [
   "neutral",
@@ -34,6 +39,8 @@ export interface PracticeRelationshipThreadState {
   profileId?: string | null;
   practiceMode?: PracticeLearningMode | null;
   inviteStage?: InviteStage | null;
+  /** reply-style-v1 跨回合狀態（recent_facts.replyStyle）；沒有＝null。 */
+  styleState?: ReplyStyleState | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -86,6 +93,7 @@ export function parseRelationshipThreadRow(
     profileId: str(row.profile_id, 80),
     practiceMode: mode(row.practice_mode),
     inviteStage: inviteStage(row.invite_stage),
+    styleState: parseReplyStyleState(row.recent_facts),
   };
 }
 
@@ -108,6 +116,8 @@ export function buildRelationshipThreadRpcParams(opts: {
   inviteStage: InviteStage;
   memorySummary?: string | null;
   aiTurnCount: number;
+  /** reply-style-v1：只有 style 層真的跑了才帶；省略＝recent_facts 與舊版逐字相同。 */
+  replyStyleState?: ReplyStyleState | null;
 }) {
   const memorySummary = str(opts.memorySummary, 1000);
   return {
@@ -129,6 +139,9 @@ export function buildRelationshipThreadRpcParams(opts: {
       source: "practice_chat",
       aiTurnCount: opts.aiTurnCount,
       inviteStage: opts.inviteStage,
+      ...(opts.replyStyleState
+        ? { [REPLY_STYLE_STATE_KEY]: opts.replyStyleState }
+        : {}),
     },
   };
 }

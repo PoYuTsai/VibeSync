@@ -8997,3 +8997,74 @@ Deno.test("reply-style 旗標 test：只有測試帳號啟用，一般帳號與�
   assert(state.deepSeekCalls[0].messages[0].content.includes("本輪回應方式"));
   assertEquals(json.reply, "好啊");
 });
+
+Deno.test("reply-style 跨回合狀態：旗標開時 thread upsert 的 recent_facts 多 replyStyle；旗標關逐字不變；讀回 priorDecline 讓邀約輪走 decline", async () => {
+  const body = chatBody({
+    practiceMode: "beginner",
+    profileId: "practice_girl_001",
+    visiblePracticeThreadId: "thread-visible-1",
+    temperatureScore: 40,
+    familiarityScore: 10,
+    turns: [
+      { role: "user", text: "嗨嗨 妳好" },
+      { role: "ai", text: "嗨" },
+      { role: "user", text: "週末要不要出來喝個咖啡" },
+    ],
+  });
+  const thread = {
+    profile_id: "practice_girl_001",
+    temperature_score: 40,
+    familiarity_score: 10,
+    recent_facts: {
+      source: "practice_chat",
+      replyStyle: { version: 1, priorDecline: true, recentActs: ["answer"] },
+    },
+  };
+  const upsertOf = (state: ReturnType<typeof makeFake>["state"]) =>
+    state.rpcCalls.find((c) => c.fn === "upsert_practice_relationship_thread")
+      ?.params as Record<string, unknown> | undefined;
+
+  const off = await run(
+    {
+      ledger: null,
+      thread,
+      deepSeekReplies: ["好啊", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    body,
+  );
+  assertEquals(off.response.status, 200);
+  const offUpsert = upsertOf(off.state);
+  assert(offUpsert, "assisted chat 應 upsert thread");
+  assertEquals(
+    Object.keys(offUpsert.p_recent_facts as Record<string, unknown>).sort(),
+    ["aiTurnCount", "inviteStage", "source"],
+  );
+  assert(
+    !off.state.deepSeekCalls[0].messages[0].content.includes("這輪不答應"),
+  );
+
+  const on = await run(
+    {
+      ledger: null,
+      thread,
+      env: REPLY_STYLE_ON,
+      deepSeekReplies: ["好啊", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    body,
+  );
+  assertEquals(on.response.status, 200);
+  const onUpsert = upsertOf(on.state);
+  assert(onUpsert);
+  const facts = onUpsert.p_recent_facts as Record<string, unknown>;
+  assertEquals(
+    Object.keys(facts).sort(),
+    ["aiTurnCount", "inviteStage", "replyStyle", "source"],
+  );
+  const styleState = facts.replyStyle as Record<string, unknown>;
+  assertEquals(styleState.version, 1);
+  assertEquals(styleState.priorDecline, true);
+  assertEquals((styleState.recentActs as string[]).length, 2);
+  assertEquals((styleState.recentActs as string[])[0], "answer");
+  // 讀回的 priorDecline → 邀約輪 stance decline（prompt 裡的 decline 說法）
+  assert(on.state.deepSeekCalls[0].messages[0].content.includes("這輪不答應"));
+});

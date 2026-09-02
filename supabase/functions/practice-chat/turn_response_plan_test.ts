@@ -31,6 +31,8 @@ const standard = (over: Partial<PolicyEvidence> = {}): PolicyEvidence => ({
   gameGreasy: false,
   hasMemorySummary: false,
   priorDecline: false,
+  userOverEscalated: false,
+  recentActs: [],
   ...over,
 });
 const invite = [
@@ -555,4 +557,58 @@ Deno.test("Codex R4：三模式 × stance 矩陣——非 open 邀約無接受�
       }
     }
   }
+});
+
+const NINA = STYLE_BY_PROFILE_ID.practice_girl_008;
+
+Deno.test("越界權威證據：既有 game_fsm 越界判定（userOverEscalated）＝boundary，不管句型 regex 有沒有抓到", () => {
+  const turns = [u("嗨"), a("嗨"), u("今晚直接來我家好了")];
+  const plan = planTurnResponse({
+    turns,
+    style: NINA,
+    evidence: standard({ userOverEscalated: true }),
+    seedKey: "t",
+  });
+  assertEquals(plan.policyStance, "boundary");
+  assertEquals(plan.situation, "boundary");
+  assertEquals(plan.primaryAct, "direct_boundary");
+});
+
+Deno.test("act 輪替：同一個 primaryAct 連兩輪（持久化 recentActs）就換偏好順序第二個；只有一個偏好或界線輪不換", () => {
+  const turns = [u("嗨"), a("嗨"), u("妳的照片看起來很有氣質")];
+  const base = planTurnResponse({
+    turns,
+    style: NINA,
+    evidence: standard(),
+    seedKey: "t",
+  });
+  const first = NINA.responseBiases.compliment![0];
+  const second = NINA.responseBiases.compliment![1];
+  assertEquals(base.primaryAct, first);
+  const rotated = planTurnResponse({
+    turns,
+    style: NINA,
+    evidence: standard({ recentActs: ["answer", first, first] }),
+    seedKey: "t",
+  });
+  assertEquals(rotated.primaryAct, second);
+  assertEquals(rotated.optionalAct, first);
+  // 只連一輪不換
+  const once = planTurnResponse({
+    turns,
+    style: NINA,
+    evidence: standard({ recentActs: [first] }),
+    seedKey: "t",
+  });
+  assertEquals(once.primaryAct, first);
+  // 界線輪永遠 direct_boundary
+  const boundary = planTurnResponse({
+    turns: [u("嗨"), a("嗨"), u("傳一張泳裝照來看看")],
+    style: NINA,
+    evidence: standard({
+      recentActs: ["direct_boundary", "direct_boundary"],
+    }),
+    seedKey: "t",
+  });
+  assertEquals(boundary.primaryAct, "direct_boundary");
 });

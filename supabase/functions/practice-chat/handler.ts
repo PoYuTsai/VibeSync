@@ -47,6 +47,7 @@ import {
   PRACTICE_PROMPT_POLICY_VERSION,
 } from "./prompt.ts";
 import type { TurnResponsePlan } from "./turn_response_plan.ts";
+import { nextReplyStyleState } from "./reply_style_state.ts";
 import { difficultyTuningFor } from "./practice_persona.ts";
 import {
   decideChatGate,
@@ -1021,7 +1022,7 @@ async function fetchRelationshipThreadState(opts: {
   const { data, error } = await opts.supabase
     .from("practice_relationship_threads")
     .select(
-      "memory_summary, partner_mood, partner_inner_thought, temperature_score, familiarity_score, profile_id, practice_mode, invite_stage",
+      "memory_summary, partner_mood, partner_inner_thought, temperature_score, familiarity_score, profile_id, practice_mode, invite_stage, recent_facts",
     )
     .eq("user_id", opts.userId)
     .eq("visible_thread_id", opts.visibleThreadId)
@@ -4228,6 +4229,7 @@ export function createPracticeChatHandler(
             timeContext: nowContext,
             herRecentMomentsBlock,
             gameState: ledgerGameState,
+            styleState: relationshipThreadState?.styleState ?? null,
           }
           : {
             replyStyle: replyStyleEnabled,
@@ -4238,6 +4240,7 @@ export function createPracticeChatHandler(
             memorySummary: promptMemorySummary,
             timeContext: nowContext,
             herRecentMomentsBlock,
+            styleState: relationshipThreadState?.styleState ?? null,
           },
       );
       responsePlan = chatPromptBundle.responsePlan;
@@ -4406,6 +4409,13 @@ export function createPracticeChatHandler(
             inviteStage: inviteMaturity.stage,
             memorySummary: null,
             aiTurnCount: newAiCount,
+            // reply-style-v1：她這輪的 act 與「明確拒絕過」進 recent_facts；旗標關＝不帶。
+            replyStyleState: responsePlan
+              ? nextReplyStyleState(
+                relationshipThreadState?.styleState ?? null,
+                responsePlan,
+              )
+              : undefined,
           }),
         });
       }

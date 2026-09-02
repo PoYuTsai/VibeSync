@@ -834,3 +834,13 @@ LLM judge 可加速標註，但必須記錄模型版本、rubric、溫度與評�
 - Liu, S., & Sun, R. (2020). [Personality Traits and Emoji／Sticker Use](https://doi.org/10.3389/fpsyg.2020.01076).
 - Hopwood, C. J., et al. (2020). [Interpersonal Dynamics in Personality and Personality Disorders](https://doi.org/10.1177/1073191118798916).
 
+
+---
+
+## 附錄：實作修訂（2026-09-03，Eric 拍板）
+
+- **§4.2 frozen interface 縮 scope**：`ReplyStyleProfile.behavior` 只保留 planner 真正消費的 `disclosure`／`directness`；規格原列的 warmth／agency／humor／accommodation 等欄位在實作中沒有任何消費者（Codex R1 P2「不留 dead data」），正式移出第一版契約。要加回去時必須同時帶消費者與測試。
+- **§4.4 priorDecline 來源**：不做 migration。改存在 `practice_relationship_threads.recent_facts.replyStyle`（`{version:1, priorDecline, recentActs}`），只在既有 assisted 模式的 thread upsert 一併寫入；standard 模式沒有 thread 寫入，`priorDecline` 一律 false（與上線前相同）。「明確拒絕過」只認結構化來源：stance 已是 decline，或邀約輪她自己的 plan 用了 `direct_boundary`。
+- **§4.5 越界權威證據**：planner 的 boundary 除了無語境句型，改同時消費既有 production 越界判定 `game_fsm.looksOverEscalated`（GREASY 同源），不再另寫一套。
+- **§4.4 不重複 act**：她最近 3 輪的 `primaryAct` 持久化在同一個 `recentActs`；同一 act 連兩輪就換偏好順序第二個，界線輪不換。
+- **驗收方式**：Eric 2026-09-03 決定跳過人工 dogfood，以黑箱（production 模型、100 位、對照組）與 telemetry 驗收；真機問題另開 session 處理。
