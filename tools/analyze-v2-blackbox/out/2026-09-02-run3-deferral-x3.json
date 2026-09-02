@@ -1,0 +1,2035 @@
+[
+  {
+    "name": "soft_reject_after_invite#1",
+    "status": 200,
+    "elapsedMs": 22816,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.progress",
+      "analysis.report_section",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "acknowledge_and_stop",
+      "replyMode": "single",
+      "reason": "她婉拒了這週的邀約，並用「下次再看看」帶過，沒有提出替代時間或明確窗口，屬於延後/模糊拒絕；追問或換句話再約會顯得施壓"
+    },
+    "replyOptions": [],
+    "doneKeys": [
+      "analysisDecisionV2",
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "pause",
+        "reason": "她婉拒了這週的邀約，並用「下次再看看」帶過，沒有提出替代時間或明確窗口，屬於延後/模糊拒絕；追問或換句話再約會顯得施壓",
+        "stopCondition": "等她主動提到有空的時間，或重新開啟見面相關話題",
+        "closingMessage": "了解，妳先忙，有空再說吧"
+      }
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-soft_reject_after_invite#1",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "invite.window_first",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "invite.own_availability",
+          "interpret.interest_signals"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "invite",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-soft_reject_after_invite#1",
+        "decisionSchema": "v2",
+        "decisionId": "unknown",
+        "action": "pause",
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "selectedStyle": "unknown",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 0,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "pausePursuit",
+        "meaningfulBallCoverage": {
+          "status": "unknown"
+        },
+        "questionCounts": {
+          "status": "unknown"
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 167,
+        "output_tokens": 1738
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "soft_reject_after_invite#2",
+    "status": 200,
+    "elapsedMs": 16901,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.report_section",
+      "analysis.progress",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "acknowledge_and_stop",
+      "replyMode": "single",
+      "reason": "她用『這週有點忙』加『下次再看看』婉拒了邀約，沒有給出替代時間或反邀，這是延遲/模糊拒絕，不是邀約失敗要再試"
+    },
+    "replyOptions": [],
+    "doneKeys": [
+      "analysisDecisionV2",
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "closingMessage",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "gameStage",
+      "messageDecision",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "stop",
+        "reason": "她用『這週有點忙』加『下次再看看』婉拒了邀約，沒有給出替代時間或反邀，這是延遲/模糊拒絕，不是邀約失敗要再試",
+        "stopCondition": "等她主動提到有空的時間，或重新開啟約會相關話題",
+        "closingMessage": "了解，那就下次有空再約～"
+      }
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-soft_reject_after_invite#2",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "invite.window_first",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "invite.own_availability",
+          "interpret.interest_signals"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "invite",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-soft_reject_after_invite#2",
+        "decisionSchema": "v2",
+        "decisionId": "unknown",
+        "action": "stop",
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "selectedStyle": "unknown",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 0,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "pausePursuit",
+        "meaningfulBallCoverage": {
+          "status": "unknown"
+        },
+        "questionCounts": {
+          "status": "unknown"
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 167,
+        "output_tokens": 1358
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "soft_reject_after_invite#3",
+    "status": 200,
+    "elapsedMs": 15402,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.progress",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "acknowledge_and_stop",
+      "replyMode": "single",
+      "reason": "她婉拒了邀約且沒有提出替代時間，這是延後訊號不是明確拒絕，但也不是可以順勢推進的窗口。追問或換句話再約會顯得施壓"
+    },
+    "replyOptions": [],
+    "doneKeys": [
+      "analysisDecisionV2",
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "closingMessage",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "gameStage",
+      "messageDecision",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "pause",
+        "reason": "她婉拒了邀約且沒有提出替代時間，這是延後訊號不是明確拒絕，但也不是可以順勢推進的窗口。追問或換句話再約會顯得施壓",
+        "stopCondition": "等她之後主動提到有空、提到那家餐廳，或她自己重開邀約話題",
+        "closingMessage": "沒事，忙完再說吧"
+      }
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-soft_reject_after_invite#3",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "invite.window_first",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "invite.own_availability",
+          "interpret.interest_signals"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "invite",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-soft_reject_after_invite#3",
+        "decisionSchema": "v2",
+        "decisionId": "unknown",
+        "action": "pause",
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "selectedStyle": "unknown",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 0,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "pausePursuit",
+        "meaningfulBallCoverage": {
+          "status": "unknown"
+        },
+        "questionCounts": {
+          "status": "unknown"
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 167,
+        "output_tokens": 1174
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "defer_vague_busy#1",
+    "status": 200,
+    "elapsedMs": 21203,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.report_section",
+      "analysis.report_section",
+      "analysis.progress",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "acknowledge_and_stop",
+      "replyMode": "single",
+      "reason": "她連續兩句都在婉拒或延後，沒有提出替代時間或反邀約，這是延後型的軟拒絕，不是模糊邀約"
+    },
+    "replyOptions": [],
+    "doneKeys": [
+      "analysisDecisionV2",
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "pause",
+        "reason": "她連續兩句都在婉拒或延後，沒有提出替代時間或反邀約，這是延後型的軟拒絕，不是模糊邀約",
+        "stopCondition": "等她主動提到有空、或主動問起見面的事再重新開口",
+        "closingMessage": "了解，那不勉強，妳忙完再說。"
+      }
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-defer_vague_busy#1",
+        "knowledgeAtomIds": [
+          "evidence.no_motive_invention",
+          "interpret.low_investment",
+          "reply.balance",
+          "reply.hold_is_valid",
+          "core.one_judgment",
+          "core.mutuality",
+          "core.authenticity",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "invite.own_availability"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "invite",
+          "low_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-defer_vague_busy#1",
+        "decisionSchema": "v2",
+        "decisionId": "unknown",
+        "action": "pause",
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "selectedStyle": "unknown",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 0,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "pausePursuit",
+        "meaningfulBallCoverage": {
+          "status": "unknown"
+        },
+        "questionCounts": {
+          "status": "unknown"
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 107,
+        "output_tokens": 1700
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "defer_vague_busy#2",
+    "status": 200,
+    "elapsedMs": 20123,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.progress",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "acknowledge_and_stop",
+      "replyMode": "single",
+      "reason": "她用『最近有點忙』加『再說吧』婉拒了邀約，沒有給出替代時間或反邀，這是明確的延後/軟拒絕信號，不是模糊邀約"
+    },
+    "replyOptions": [],
+    "doneKeys": [
+      "analysisDecisionV2",
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "pause",
+        "reason": "她用『最近有點忙』加『再說吧』婉拒了邀約，沒有給出替代時間或反邀，這是明確的延後/軟拒絕信號，不是模糊邀約",
+        "stopCondition": "等她主動提到有空、或主動重新約",
+        "closingMessage": "了解，那就等妳忙完，別太累了"
+      }
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-defer_vague_busy#2",
+        "knowledgeAtomIds": [
+          "evidence.no_motive_invention",
+          "interpret.low_investment",
+          "reply.balance",
+          "reply.hold_is_valid",
+          "core.one_judgment",
+          "core.mutuality",
+          "core.authenticity",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "invite.own_availability"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "invite",
+          "low_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-defer_vague_busy#2",
+        "decisionSchema": "v2",
+        "decisionId": "unknown",
+        "action": "pause",
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "selectedStyle": "unknown",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 0,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "pausePursuit",
+        "meaningfulBallCoverage": {
+          "status": "unknown"
+        },
+        "questionCounts": {
+          "status": "unknown"
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 107,
+        "output_tokens": 1448
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "defer_vague_busy#3",
+    "status": 200,
+    "elapsedMs": 30368,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.metrics",
+      "analysis.progress",
+      "analysis.coach_hint",
+      "analysis.report_section",
+      "analysis.progress",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "acknowledge_and_stop",
+      "replyMode": "single",
+      "reason": "她連續兩句都是婉拒訊號：先說忙、再說「再說吧」，沒有給出任何替代時間或明確意願。這是模糊拒絕，不是邀請你繼續問或再約一次"
+    },
+    "replyOptions": [],
+    "doneKeys": [
+      "analysisDecisionV2",
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "stop",
+        "reason": "她連續兩句都是婉拒訊號：先說忙、再說「再說吧」，沒有給出任何替代時間或明確意願。這是模糊拒絕，不是邀請你繼續問或再約一次",
+        "stopCondition": "等她主動提到有空、或主動重新提起見面這件事，再考慮下一步",
+        "closingMessage": "好啊，那等妳比較有空再說，不急。"
+      }
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-defer_vague_busy#3",
+        "knowledgeAtomIds": [
+          "evidence.no_motive_invention",
+          "interpret.low_investment",
+          "reply.balance",
+          "reply.hold_is_valid",
+          "core.one_judgment",
+          "core.mutuality",
+          "core.authenticity",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "invite.own_availability"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "invite",
+          "low_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-defer_vague_busy#3",
+        "decisionSchema": "v2",
+        "decisionId": "unknown",
+        "action": "stop",
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "selectedStyle": "unknown",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 0,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "pausePursuit",
+        "meaningfulBallCoverage": {
+          "status": "unknown"
+        },
+        "questionCounts": {
+          "status": "unknown"
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 107,
+        "output_tokens": 1887
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "defer_with_alternative#1",
+    "status": 200,
+    "elapsedMs": 32233,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.recommendation",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.progress",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.progress",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "send",
+      "selectedStyle": "extend"
+    },
+    "replyOptions": [
+      {
+        "style": "extend",
+        "message": "禮拜天可以，那晚上七點左右？"
+      },
+      {
+        "style": "resonate",
+        "message": "加班辛苦了，禮拜天正好可以放鬆一下，那就約禮拜天晚上"
+      },
+      {
+        "style": "tease",
+        "message": "看來我得跟妳的加班競爭時間，禮拜天可以，別再被工作搶走了"
+      },
+      {
+        "style": "humor",
+        "message": "好啊，禮拜五的名額直接轉禮拜天，退款免手續費"
+      },
+      {
+        "style": "coldRead",
+        "message": "看來妳平日都被工作綁住，禮拜天就約起來吧"
+      }
+    ],
+    "doneKeys": [
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "finalRecommendation",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": true,
+      "plan": {
+        "schemaVersion": 1,
+        "threadFrame": "接住她改期的提議，直接把禮拜天定下來",
+        "anchorSourceIndex": 2,
+        "supportSourceIndices": [],
+        "mergeContextSourceIndices": [
+          1
+        ],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 2,
+            "method": "drill_down",
+            "idea": "直接確認禮拜天+提時段",
+            "associationPath": [
+              "禮拜天可以嗎",
+              "答應",
+              "約時間地點"
+            ],
+            "semanticDistance": 0
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 1,
+            "method": "affect_evaluation",
+            "idea": "加班的辛苦感，順勢帶到禮拜天可以放鬆",
+            "associationPath": [
+              "加班",
+              "累",
+              "禮拜天補償"
+            ],
+            "semanticDistance": 1
+          },
+          {
+            "id": "br_3",
+            "sourceIndex": 2,
+            "method": "lateral",
+            "idea": "用輕鬆玩笑帶出改期也沒差",
+            "associationPath": [
+              "禮拜五不行",
+              "禮拜天",
+              "照樣約"
+            ],
+            "semanticDistance": 1
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_1",
+          "resonate": "br_2",
+          "tease": "br_3",
+          "humor": "br_3",
+          "coldRead": "br_1"
+        }
+      },
+      "decisionV2": null
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-defer_with_alternative#1",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "core.mutuality",
+          "invite.window_first",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "stalled.no_rescue_interview",
+          "invite.own_availability",
+          "evidence.prior_advice_not_outcome"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "invite",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-defer_with_alternative#1",
+        "decisionSchema": "unknown",
+        "decisionId": "unknown",
+        "action": "unknown",
+        "messageDecision": "unknown",
+        "replyMode": "unknown",
+        "selectedStyle": "extend",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 5,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "softInvite",
+        "meaningfulBallCoverage": {
+          "status": "observed",
+          "meaningfulSourceIndices": [
+            2
+          ],
+          "coveredSourceIndicesByStyle": {
+            "extend": [
+              2
+            ],
+            "resonate": [
+              2
+            ],
+            "tease": [
+              2
+            ],
+            "humor": [
+              2
+            ],
+            "coldRead": [
+              2
+            ]
+          },
+          "allVariantsCoverMeaningful": true
+        },
+        "questionCounts": {
+          "status": "observed",
+          "byStyle": {
+            "extend": 1,
+            "resonate": 0,
+            "tease": 0,
+            "humor": 0,
+            "coldRead": 0
+          },
+          "maxQuestionCount": 1
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "observed",
+          "baselineStyle": "extend",
+          "sourceBallIdEvidence": "absent",
+          "sourceMessageEvidence": "complete",
+          "divergentStyles": [],
+          "allMatch": true
+        },
+        "divergencePlan": {
+          "status": "observed",
+          "anchorSourceIndex": 2,
+          "supportCount": 0,
+          "mergeContextCount": 1,
+          "branchCount": 3,
+          "methods": {
+            "drill_down": 1,
+            "affect_evaluation": 1,
+            "lateral": 1
+          },
+          "semanticDistanceCap": 1,
+          "maxBranchDistance": 1,
+          "branchExceedsCap": false,
+          "questionBudget": 1,
+          "questionBudgetExceeded": false,
+          "newTopicBudget": 0,
+          "newTopicBudgetExceeded": "unknown",
+          "anchorCoveredByAllStyles": true,
+          "styleBranchAssigned": 5
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 115,
+        "output_tokens": 3046
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[ball_coverage] style=extend selected=true covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=resonate selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=tease selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=humor selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=coldRead selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "defer_with_alternative#2",
+    "status": 200,
+    "elapsedMs": 27663,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.recommendation",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.progress",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "send",
+      "selectedStyle": "extend"
+    },
+    "replyOptions": [
+      {
+        "style": "extend",
+        "message": "禮拜天可以啊，那就約禮拜天，晚上七點方便嗎？"
+      },
+      {
+        "style": "resonate",
+        "message": "加班辛苦了，禮拜天剛好可以放鬆一下，那就約禮拜天晚上吧"
+      },
+      {
+        "style": "tease",
+        "message": "加班就加班，反正妳都主動約禮拜天了，我沒理由不答應"
+      },
+      {
+        "style": "humor",
+        "message": "禮拜五被加班搶走沒關係，禮拜天我先預約妳了"
+      },
+      {
+        "style": "coldRead",
+        "message": "我猜妳是那種寧願自己主動改期，也不想錯過約會的人"
+      }
+    ],
+    "doneKeys": [
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "finalRecommendation",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": true,
+      "plan": {
+        "schemaVersion": 1,
+        "threadFrame": "接住她主動改期的提議，直接把禮拜天定下來",
+        "anchorSourceIndex": 2,
+        "supportSourceIndices": [],
+        "mergeContextSourceIndices": [
+          1
+        ],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 2,
+            "method": "drill_down",
+            "idea": "直接敲禮拜天的時段",
+            "associationPath": [
+              "禮拜天可以嗎",
+              "順勢確認時間"
+            ],
+            "semanticDistance": 0
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 1,
+            "method": "affect_evaluation",
+            "idea": "加班辛苦，順勢帶到禮拜天更值得放鬆",
+            "associationPath": [
+              "加班",
+              "累",
+              "禮拜天補回來"
+            ],
+            "semanticDistance": 1
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_1",
+          "resonate": "br_2"
+        }
+      },
+      "decisionV2": null
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-defer_with_alternative#2",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "core.mutuality",
+          "invite.window_first",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "stalled.no_rescue_interview",
+          "invite.own_availability",
+          "evidence.prior_advice_not_outcome"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "invite",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-defer_with_alternative#2",
+        "decisionSchema": "unknown",
+        "decisionId": "unknown",
+        "action": "unknown",
+        "messageDecision": "unknown",
+        "replyMode": "unknown",
+        "selectedStyle": "extend",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 5,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "softInvite",
+        "meaningfulBallCoverage": {
+          "status": "observed",
+          "meaningfulSourceIndices": [
+            2
+          ],
+          "coveredSourceIndicesByStyle": {
+            "extend": [
+              2
+            ],
+            "resonate": [
+              2
+            ],
+            "tease": [
+              2
+            ],
+            "humor": [
+              2
+            ],
+            "coldRead": [
+              2
+            ]
+          },
+          "allVariantsCoverMeaningful": true
+        },
+        "questionCounts": {
+          "status": "observed",
+          "byStyle": {
+            "extend": 1,
+            "resonate": 0,
+            "tease": 0,
+            "humor": 0,
+            "coldRead": 0
+          },
+          "maxQuestionCount": 1
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "observed",
+          "baselineStyle": "extend",
+          "sourceBallIdEvidence": "absent",
+          "sourceMessageEvidence": "complete",
+          "divergentStyles": [],
+          "allMatch": true
+        },
+        "divergencePlan": {
+          "status": "observed",
+          "anchorSourceIndex": 2,
+          "supportCount": 0,
+          "mergeContextCount": 1,
+          "branchCount": 2,
+          "methods": {
+            "drill_down": 1,
+            "affect_evaluation": 1
+          },
+          "semanticDistanceCap": 1,
+          "maxBranchDistance": 1,
+          "branchExceedsCap": false,
+          "questionBudget": 1,
+          "questionBudgetExceeded": false,
+          "newTopicBudget": 0,
+          "newTopicBudgetExceeded": "unknown",
+          "anchorCoveredByAllStyles": true,
+          "styleBranchAssigned": 2
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 115,
+        "output_tokens": 2525
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[ball_coverage] style=extend selected=true covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=resonate selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=tease selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=humor selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=coldRead selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "defer_with_alternative#3",
+    "status": 200,
+    "elapsedMs": 28925,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.recommendation",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.progress",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "send",
+      "selectedStyle": "extend"
+    },
+    "replyOptions": [
+      {
+        "style": "extend",
+        "message": "禮拜天可以，那天中午還是晚上妳比較方便？"
+      },
+      {
+        "style": "resonate",
+        "message": "加班辛苦，禮拜天剛好可以放鬆吃飯，那天中午還是晚上妳方便？"
+      },
+      {
+        "style": "tease",
+        "message": "看妳這麼忙，禮拜天這頓飯妳可得補償我一下，中午還是晚上？"
+      },
+      {
+        "style": "humor",
+        "message": "好啊,反正我這禮拜五本來也只是想找藉口見妳,禮拜天中午還是晚上？"
+      },
+      {
+        "style": "coldRead",
+        "message": "我猜妳加班完應該累到只想吃點好的犒賞自己,禮拜天中午還是晚上？"
+      }
+    ],
+    "doneKeys": [
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "finalRecommendation",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": true,
+      "plan": {
+        "schemaVersion": 1,
+        "threadFrame": "順她主動提的禮拜天，直接往敲定細節推進",
+        "anchorSourceIndex": 2,
+        "supportSourceIndices": [],
+        "mergeContextSourceIndices": [
+          1
+        ],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 2,
+            "method": "drill_down",
+            "idea": "直接確認禮拜天可以，順勢問中午或晚上",
+            "associationPath": [
+              "禮拜天可以嗎",
+              "確認",
+              "問時段"
+            ],
+            "semanticDistance": 0
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 1,
+            "method": "affect_evaluation",
+            "idea": "加班辛苦，順勢說禮拜天正好可以放鬆吃飯",
+            "associationPath": [
+              "加班",
+              "辛苦",
+              "禮拜天放鬆"
+            ],
+            "semanticDistance": 1
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_1",
+          "resonate": "br_2"
+        }
+      },
+      "decisionV2": null
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-defer_with_alternative#3",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "core.mutuality",
+          "invite.window_first",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "stalled.no_rescue_interview",
+          "invite.own_availability",
+          "evidence.prior_advice_not_outcome"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "invite",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-defer_with_alternative#3",
+        "decisionSchema": "unknown",
+        "decisionId": "unknown",
+        "action": "unknown",
+        "messageDecision": "unknown",
+        "replyMode": "unknown",
+        "selectedStyle": "extend",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 5,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "softInvite",
+        "meaningfulBallCoverage": {
+          "status": "observed",
+          "meaningfulSourceIndices": [
+            2
+          ],
+          "coveredSourceIndicesByStyle": {
+            "extend": [
+              2
+            ],
+            "resonate": [
+              2
+            ],
+            "tease": [
+              2
+            ],
+            "humor": [
+              2
+            ],
+            "coldRead": [
+              2
+            ]
+          },
+          "allVariantsCoverMeaningful": true
+        },
+        "questionCounts": {
+          "status": "observed",
+          "byStyle": {
+            "extend": 1,
+            "resonate": 1,
+            "tease": 1,
+            "humor": 1,
+            "coldRead": 1
+          },
+          "maxQuestionCount": 1
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "observed",
+          "baselineStyle": "extend",
+          "sourceBallIdEvidence": "absent",
+          "sourceMessageEvidence": "complete",
+          "divergentStyles": [],
+          "allMatch": true
+        },
+        "divergencePlan": {
+          "status": "observed",
+          "anchorSourceIndex": 2,
+          "supportCount": 0,
+          "mergeContextCount": 1,
+          "branchCount": 2,
+          "methods": {
+            "drill_down": 1,
+            "affect_evaluation": 1
+          },
+          "semanticDistanceCap": 1,
+          "maxBranchDistance": 1,
+          "branchExceedsCap": false,
+          "questionBudget": 1,
+          "questionBudgetExceeded": false,
+          "newTopicBudget": 0,
+          "newTopicBudgetExceeded": "unknown",
+          "anchorCoveredByAllStyles": true,
+          "styleBranchAssigned": 2
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 115,
+        "output_tokens": 2581
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[ball_coverage] style=extend selected=true covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=resonate selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=tease selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=humor selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=coldRead selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "defer_polite_reason#1",
+    "status": 200,
+    "elapsedMs": 18271,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.report_section",
+      "analysis.progress",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "acknowledge_and_stop",
+      "replyMode": "single",
+      "reason": "她已有安排且用『之後再看看』婉拒具體邀約，沒有給出替代時間或明確意願，這是禮貌性延後，不是反轉信號"
+    },
+    "replyOptions": [],
+    "doneKeys": [
+      "analysisDecisionV2",
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "closingMessage",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "gameStage",
+      "messageDecision",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "pause",
+        "reason": "她已有安排且用『之後再看看』婉拒具體邀約，沒有給出替代時間或明確意願，這是禮貌性延後，不是反轉信號",
+        "stopCondition": "等她之後主動提起展覽、或提出新的時間再回應；不要現在追問確切日期",
+        "closingMessage": "好啊，之後有機會再約～"
+      }
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-defer_polite_reason#1",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "interpret.interest_signals",
+          "reply.one_question",
+          "humor.not_oily"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-defer_polite_reason#1",
+        "decisionSchema": "v2",
+        "decisionId": "unknown",
+        "action": "pause",
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "selectedStyle": "unknown",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 0,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "pausePursuit",
+        "meaningfulBallCoverage": {
+          "status": "unknown"
+        },
+        "questionCounts": {
+          "status": "unknown"
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 112,
+        "output_tokens": 1443
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "defer_polite_reason#2",
+    "status": 200,
+    "elapsedMs": 19138,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.progress",
+      "analysis.report_section",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "acknowledge_and_stop",
+      "replyMode": "single",
+      "reason": "她婉拒了這次邀約且用『之後再看看』模糊帶過，沒有主動提出替代時間，這是委婉的延後訊號，不是真邀約窗口"
+    },
+    "replyOptions": [],
+    "doneKeys": [
+      "analysisDecisionV2",
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "closingMessage",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "gameStage",
+      "messageDecision",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "stop",
+        "reason": "她婉拒了這次邀約且用『之後再看看』模糊帶過，沒有主動提出替代時間，這是委婉的延後訊號，不是真邀約窗口",
+        "stopCondition": "等她之後主動提到展覽或提出新的時間，再重新推進，不要現在追問或再約一次",
+        "closingMessage": "好啊不勉強，妳跟朋友玩開心點"
+      }
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-defer_polite_reason#2",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "interpret.interest_signals",
+          "reply.one_question",
+          "humor.not_oily"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-defer_polite_reason#2",
+        "decisionSchema": "v2",
+        "decisionId": "unknown",
+        "action": "stop",
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "selectedStyle": "unknown",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 0,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "pausePursuit",
+        "meaningfulBallCoverage": {
+          "status": "unknown"
+        },
+        "questionCounts": {
+          "status": "unknown"
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 112,
+        "output_tokens": 1619
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "defer_polite_reason#3",
+    "status": 200,
+    "elapsedMs": 18538,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.progress",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "acknowledge_and_stop",
+      "replyMode": "single",
+      "reason": "她婉拒了這週末的邀約，只說『之後再看看』，沒有給出具體替代時間或明確意願，這是延後型婉拒不是邀約窗口，追問或再約會顯得需求感過重"
+    },
+    "replyOptions": [],
+    "doneKeys": [
+      "analysisDecisionV2",
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "pause",
+        "reason": "她婉拒了這週末的邀約，只說『之後再看看』，沒有給出具體替代時間或明確意願，這是延後型婉拒不是邀約窗口，追問或再約會顯得需求感過重",
+        "stopCondition": "等她主動提到新的空檔、重新問起展覽，或釋出下一次見面的具體訊號再重新評估",
+        "closingMessage": "好啊不急，妳週末跟朋友玩開心點～"
+      }
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-defer_polite_reason#3",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "interpret.interest_signals",
+          "reply.one_question",
+          "humor.not_oily"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-defer_polite_reason#3",
+        "decisionSchema": "v2",
+        "decisionId": "unknown",
+        "action": "pause",
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "selectedStyle": "unknown",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 0,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "pausePursuit",
+        "meaningfulBallCoverage": {
+          "status": "unknown"
+        },
+        "questionCounts": {
+          "status": "unknown"
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 112,
+        "output_tokens": 1255
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  }
+]

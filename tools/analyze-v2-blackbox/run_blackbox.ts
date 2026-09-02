@@ -3,8 +3,14 @@
 // 全是 production 程式碼），只 stub DB store 與 supabase telemetry。
 const ROOT =
   new URL("../../supabase/functions/analyze-chat", import.meta.url).pathname;
-const OUT = Deno.args[0] ??
+const positional = Deno.args.filter((a) => !a.startsWith("--"));
+const flag = (name: string) =>
+  Deno.args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const OUT = positional[0] ??
   new URL("./out/latest.json", import.meta.url).pathname;
+// --only=a,b 只跑指定案；--repeat=N 每案跑 N 次（看邊界案穩不穩）。
+const ONLY = flag("only")?.split(",").filter(Boolean) ?? null;
+const REPEAT = Number(flag("repeat") ?? "1");
 
 const realFetch = globalThis.fetch;
 // 非 Anthropic 的 fetch（logAiCall 寫 supabase）只記 body，不外送。
@@ -62,6 +68,21 @@ const CASES: Record<string, Msg[]> = {
     { isFromMe: true, content: "那這週六要不要一起去吃那家新開的義大利麵" },
     { isFromMe: false, content: "這週有點忙耶" },
     { isFromMe: false, content: "下次再看看" },
+  ],
+  defer_vague_busy: [
+    { isFromMe: true, content: "禮拜五晚上有空嗎 想約妳吃飯" },
+    { isFromMe: false, content: "最近有點忙欸" },
+    { isFromMe: false, content: "再說吧" },
+  ],
+  defer_with_alternative: [
+    { isFromMe: true, content: "禮拜五晚上有空嗎 想約妳吃飯" },
+    { isFromMe: false, content: "禮拜五要加班耶" },
+    { isFromMe: false, content: "禮拜天可以嗎" },
+  ],
+  defer_polite_reason: [
+    { isFromMe: true, content: "這週末要不要一起去看那個展" },
+    { isFromMe: false, content: "好像不錯" },
+    { isFromMe: false, content: "不過我這週末已經約了朋友 之後再看看好了" },
   ],
   cold_one_word_replies: [
     { isFromMe: true, content: "今天天氣超好 有出門嗎" },
@@ -351,8 +372,13 @@ async function runCase(name: string, messages: Msg[]) {
 
 const results = [];
 for (const [name, messages] of Object.entries(CASES)) {
-  results.push(await runCase(name, messages));
-  console.error(`done ${name}`);
+  if (ONLY && !ONLY.includes(name)) continue;
+  for (let i = 0; i < REPEAT; i++) {
+    results.push(
+      await runCase(REPEAT > 1 ? `${name}#${i + 1}` : name, messages),
+    );
+    console.error(`done ${name} ${i + 1}/${REPEAT}`);
+  }
 }
 await Deno.writeTextFile(OUT, JSON.stringify(results, null, 2));
 console.error(`wrote ${OUT}`);
