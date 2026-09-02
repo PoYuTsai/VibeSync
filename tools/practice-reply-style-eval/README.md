@@ -130,3 +130,7 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
 - `2026-09-03-run17-style20-state-x2.json`（9a3b2e51，`--style=1 --state=1`＝跨輪狀態模擬，非
   production 路徑，只看拒絕記憶／act 輪替）：480 場零失敗、守門退回 1、p50 972ms、比值 **2.17**
   （同設定的 run15 為 2.39，兩者差在雜訊帶內）。
+- `2026-09-03-run16-style100-standard-x2.json`（9a3b2e51，100 位 `--style=1`，真 standard 路徑、不帶
+  跨輪狀態）：2400 場零失敗、守門退回 3、p50 936ms、最長 prompt 8894。整體比值 **2.14**（PR-3 時的
+  run13 2.19、對照組 run14 0.99），persona 內 1.44（playful_extrovert）～2.04（slow_worker）。
+  artifact sha256 01361858…。
