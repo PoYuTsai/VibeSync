@@ -8679,6 +8679,7 @@ async function runCapturingLogs(
 }
 
 const REPLY_STYLE_ON = { PRACTICE_REPLY_STYLE_ENABLED: "true" };
+const USER_TEXT_SENTINEL = "哨兵使用者文字 zq7x";
 const UNMAPPED_PROFILE_ID =
   GIRL_PROFILES.find((g) => replyStyleFor(g.profileId) === null)!.profileId;
 
@@ -8735,6 +8736,7 @@ Deno.test("reply-style 旗標開啟＋有 mapping：注入 style 段、旁白修
       profileId: "practice_girl_001",
       temperatureScore: 40,
       familiarityScore: 10,
+      turns: [{ role: "user", text: USER_TEXT_SENTINEL }],
     }),
   );
   const system = state.deepSeekCalls[0].messages[0].content;
@@ -8742,15 +8744,42 @@ Deno.test("reply-style 旗標開啟＋有 mapping：注入 style 段、旁白修
   assert(system.includes("你平常的說話習慣"));
   assertEquals(json.reply, "好啊\n你呢");
   const style = succeeded?.replyStyle as Record<string, unknown>;
+  // 精確 key 集合：多一個欄位就是 telemetry 契約改動。
+  assertEquals(Object.keys(style).sort(), [
+    "bubbleCount",
+    "policyStance",
+    "presetId",
+    "primaryAct",
+    "questionBudget",
+    "situation",
+    "stageDirectionRepairs",
+    "styleVersion",
+  ]);
   assertEquals(style.styleVersion, "reply-style-v1");
   assertEquals(style.presetId, "concise_observer");
   assertEquals(style.stageDirectionRepairs, 1);
-  assert(typeof style.policyStance === "string");
-  assert(typeof style.primaryAct === "string");
+  assert(
+    ["open", "cautious", "hold", "decline", "boundary"].includes(
+      style.policyStance as string,
+    ),
+    `policyStance=${style.policyStance}`,
+  );
+  assert(
+    /^[a-z_]+$/.test(style.primaryAct as string),
+    `primaryAct=${style.primaryAct}`,
+  );
+  assert(
+    /^[a-z_]+$/.test(style.situation as string),
+    `situation=${style.situation}`,
+  );
   assert([1, 2, 3].includes(style.bubbleCount as number));
   assert([0, 1].includes(style.questionBudget as number));
-  // 不記 style prompt 全文：telemetry 只有代碼與數字。
-  assert(!JSON.stringify(succeeded).includes("本輪回應方式"));
+  // 不記 style prompt 全文、也不記使用者文字：整筆 event 序列化都不得含哨兵。
+  const serialized = JSON.stringify(succeeded);
+  assert(!serialized.includes("本輪回應方式"));
+  assert(!serialized.includes("你平常的說話習慣"));
+  assert(!serialized.includes(USER_TEXT_SENTINEL));
+  assert(!serialized.includes("好啊"));
 });
 
 Deno.test("reply-style 旗標開啟：hidden heading 外洩會重試，且兩發共用同一份 prompt／plan", async () => {
@@ -8773,4 +8802,175 @@ Deno.test("reply-style 旗標開啟：hidden heading 外洩會重試，且兩發
     JSON.stringify(state.deepSeekCalls[1].messages),
   );
   assertEquals(commitCalls(state).length, 1);
+});
+
+// ── reply-style-v1：flag-off golden bytes ─────────────────────────────────
+// 固定 request 在 fee76b87（handler 接旗標前）產生的 DeepSeek messages 與原始
+// Response bytes 雜湊。旗標關閉、或旗標開但角色沒有 mapping，兩者都必須逐位元組
+// 與這份 golden 相同；任何改動這些值的 diff 都是 production 行為改動。
+
+async function sha256HexOf(text: string | Uint8Array): Promise<string> {
+  const bytes = typeof text === "string"
+    ? new TextEncoder().encode(text)
+    : text;
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer,
+  );
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function goldenDigest(
+  options: FakeOptions,
+  body: unknown,
+): Promise<{ messages: string; response: string; calls: number }> {
+  const fake = makeFake(options);
+  const response = await fake.handler(makeRequest(body));
+  const headers = [...response.headers.entries()].sort().map(([k, v]) =>
+    `${k}:${v}`
+  ).join("\n");
+  const bodyBytes = new Uint8Array(await response.arrayBuffer());
+  const head = new TextEncoder().encode(`${response.status}\n${headers}\n\n`);
+  const raw = new Uint8Array(head.length + bodyBytes.length);
+  raw.set(head, 0);
+  raw.set(bodyBytes, head.length);
+  return {
+    messages: await sha256HexOf(
+      JSON.stringify(fake.state.deepSeekCalls.map((c) => c.messages)),
+    ),
+    response: await sha256HexOf(raw),
+    calls: fake.state.deepSeekCalls.length,
+  };
+}
+
+const GOLDEN_UNMAPPED_PROFILE_ID = "practice_girl_005";
+const GOLDEN_FLAG_ON = { PRACTICE_REPLY_STYLE_ENABLED: "true" };
+
+function goldenCases(): {
+  name: string;
+  options: FakeOptions;
+  body: unknown;
+}[] {
+  return [
+    {
+      name: "standard／有 mapping（001）／旗標關",
+      options: {
+        ledger: ledger({ practice_mode: "standard" }),
+        deepSeekReplies: ["（冷淡）好啊"],
+      },
+      body: chatBody({ practiceMode: "standard" }),
+    },
+    {
+      name: "beginner／有 mapping（001）／client seed／旗標關",
+      options: {
+        ledger: null,
+        deepSeekReplies: ["（冷淡）好啊\n你呢", CLASSIFIER_CAUGHT_MEDIUM],
+      },
+      body: chatBody({
+        practiceMode: "beginner",
+        temperatureScore: 40,
+        familiarityScore: 10,
+      }),
+    },
+    {
+      name: "game／有 mapping（004）／thread／旗標關",
+      options: {
+        ledger: null,
+        drawEvents: [{ profile_id: "practice_girl_004" }],
+        deepSeekReplies: ["你平常的說話習慣是什麼", CLASSIFIER_CAUGHT_MEDIUM],
+      },
+      body: chatBody({
+        practiceMode: "game",
+        profileId: "practice_girl_004",
+        visiblePracticeThreadId: "thread-visible-1",
+      }),
+    },
+    {
+      name: "beginner／無 mapping（005）／旗標開",
+      options: {
+        ledger: null,
+        env: GOLDEN_FLAG_ON,
+        deepSeekReplies: [
+          "（皺眉）你平常的說話習慣是？",
+          CLASSIFIER_CAUGHT_MEDIUM,
+        ],
+      },
+      body: chatBody({
+        practiceMode: "beginner",
+        profileId: GOLDEN_UNMAPPED_PROFILE_ID,
+        temperatureScore: 40,
+        familiarityScore: 10,
+      }),
+    },
+    {
+      name: "standard／無 mapping（005）／旗標開",
+      options: {
+        ledger: ledger({ practice_mode: "standard" }),
+        env: GOLDEN_FLAG_ON,
+        deepSeekReplies: ["（冷淡）好啊"],
+      },
+      body: chatBody({
+        practiceMode: "standard",
+        profileId: GOLDEN_UNMAPPED_PROFILE_ID,
+      }),
+    },
+  ];
+}
+
+// 由 fee76b87 的同一組 goldenCases 產生（拋棄式 worktree 跑 goldenDigest 印出）。
+const FLAG_OFF_GOLDEN = new Map<
+  string,
+  { messages: string; response: string; calls: number }
+>([
+  ["standard／有 mapping（001）／旗標關", {
+    messages:
+      "c86f2e76b9ead67322f466a2311c836bf117a64e3ada03c694245533f8806157",
+    response:
+      "89b8cbf201db1169a951dbf52ab54b34efbe75ed27145ba85540413f406b1151",
+    calls: 1,
+  }],
+  ["beginner／有 mapping（001）／client seed／旗標關", {
+    messages:
+      "06ee8ec57c3eb11e06d813d8afed27d11163fbd68fb054ac58cb2d334e5657c0",
+    response:
+      "e12cdac4f1868123521d2c56f8a46073709fa7e2384d02eb95ab77fbfc992f24",
+    calls: 2,
+  }],
+  ["game／有 mapping（004）／thread／旗標關", {
+    messages:
+      "813c067a9398b053da1f05bb0ce684c266635bae6bc63055866575572f84d009",
+    response:
+      "f72c1445643454be89d73a15d6283687972fd999b11a4c9d8e6080e893333ee9",
+    calls: 2,
+  }],
+  ["beginner／無 mapping（005）／旗標開", {
+    messages:
+      "fef0aa6a6a36a4e26f5b4296ea5047784f512707308f01e59bd627bf1f7e6673",
+    response:
+      "f38f5c6b27382a64a6ceba3cbe0091e7c63fe33b91bea4ed907595ec59430bc6",
+    calls: 2,
+  }],
+  ["standard／無 mapping（005）／旗標開", {
+    messages:
+      "1b90dd1928a5c575b9a00528e79cede366883ca9368f3e2bfbca2dc8b32947ac",
+    response:
+      "89b8cbf201db1169a951dbf52ab54b34efbe75ed27145ba85540413f406b1151",
+    calls: 1,
+  }],
+]);
+
+Deno.test("reply-style 旗標關／無 mapping：DeepSeek messages 與 Response bytes 逐位元組等於 fee76b87 golden", async () => {
+  assertEquals(replyStyleFor(GOLDEN_UNMAPPED_PROFILE_ID), null);
+  const cases = goldenCases();
+  assertEquals(cases.length, FLAG_OFF_GOLDEN.size);
+  for (const c of cases) {
+    const expected = FLAG_OFF_GOLDEN.get(c.name);
+    assert(expected, `golden 缺少案例：${c.name}`);
+    const actual = await goldenDigest(c.options, c.body);
+    assertEquals(actual, expected, c.name);
+  }
 });
