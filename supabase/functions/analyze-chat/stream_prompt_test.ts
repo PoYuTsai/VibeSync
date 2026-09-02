@@ -594,6 +594,12 @@ Deno.test("Phase 2b branch attribution rule is emitted only with the divergence 
   assert(v2.includes("opaque `br_1`, `br_2`, … only; never words"));
   assert(v2.includes(`${tick("styleIntensity")} is 0-${MAX_STYLE_INTENSITY}`));
   assert(v2.includes("If you emitted no plan, omit these keys"));
+  // Phase 3b：整卡問句預算只在 v2 有計畫時出現。
+  assert(
+    v2.includes("questionBudget counts every question in the whole option"),
+  );
+  assert(!v1.includes("questionBudget counts every question"));
+  assert(!v2NoPlan.includes("questionBudget counts every question"));
 
   // 範例行要能過自己的 parser：先過事件層，再過歸因 parser（枝 id 要在
   // 1b 範例計畫的 pool 裡）。
