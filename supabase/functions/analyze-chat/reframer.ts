@@ -1,6 +1,7 @@
 import {
   isStreamStyle,
   parseEventLine,
+  repairDivergencePlanLineGlitch,
   type StreamEvent,
   type StreamStyle,
 } from "./stream_events.ts";
@@ -81,7 +82,7 @@ export interface AnalysisEvidenceVariant {
   solutionMode?: boolean;
   // Phase 2b：這張卡跟計畫哪一枝、怎麼來的（option 自帶／計畫指定／缺省補
   // anchor）、修辭手法與強度。只在 v2 且有合法計畫時出現。
-  branchId?: string;
+  selectedBranchIds?: string[];
   branchSource?: StyleBranchSource;
   rhetoricalMove?: RhetoricalMove;
   styleIntensity?: number;
@@ -95,8 +96,8 @@ export interface AnalysisEvidenceLinkage {
   selectedBallIds?: string[];
   inventorySourceIndices?: number[];
   variants?: Record<string, AnalysisEvidenceVariant>;
-  // Phase 2b：計畫解析時做過的 repair-first 修補（`<branchId>:method:<move>-><method>`
-  // 或 `<branchId>:sourceIndex<N>`），純 enum／id，給 telemetry 看漂移。
+  // Phase 2b：計畫解析時做過的 repair-first 修補（`<branchId>:method:<move>-><method>`、
+  // `<branchId>:sourceIndex<N>`、`line:sourceIndex=`），純 enum／id，給 telemetry 看漂移。
   divergencePlanRepairs?: string[];
 }
 
@@ -589,6 +590,40 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   const selectedStyleNow = (): StreamStyle | null =>
     pendingThinRecommendation?.selectedStyle ?? decisionSelectedStyle;
 
+  // Phase 2b：把這張卡跟計畫的歸因寫進 evidence variant（純 id／enum）。
+  const attributeVariant = (
+    variant: AnalysisEvidenceVariant,
+    style: StreamStyle,
+    option: StreamEvent,
+    plan: DivergencePlanV1,
+  ) => {
+    const resolved = resolveStyleBranch(plan, style, option);
+    variant.selectedBranchIds = [...resolved.selectedBranchIds];
+    variant.branchSource = resolved.source;
+    if (resolved.rhetoricalMove) {
+      variant.rhetoricalMove = resolved.rhetoricalMove;
+    }
+    if (resolved.styleIntensity !== undefined) {
+      variant.styleIntensity = resolved.styleIntensity;
+    }
+    if (resolved.invalid) variant.branchAttributionInvalid = true;
+    console.log(
+      `[divergence_attribution] style=${style} branches=${
+        resolved.selectedBranchIds.join("+")
+      } source=${resolved.source} invalid=${resolved.invalid}`,
+    );
+  };
+  // 計畫晚於 option 到貨（模型亂序）：回填已轉發 option 的歸因。
+  const backfillAttribution = (plan: DivergencePlanV1) => {
+    for (const [style, stored] of seenReplyOptions) {
+      const variant = evidenceVariants.get(style) ??
+        ({} as AnalysisEvidenceVariant);
+      if (variant.branchSource !== undefined) continue;
+      attributeVariant(variant, style, stored.compat, plan);
+      evidenceVariants.set(style, variant);
+    }
+  };
+
   // 件4 D4：reply_option 轉發前由 server 合成 flat message / quotedContext
   // 相容欄位（segments join），App 收到的形狀與今天相同。
   const forwardReplyOption = (event: StreamEvent) => {
@@ -604,24 +639,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
         segments,
       );
       if (analysisDivergencePlan) {
-        const resolved = resolveStyleBranch(
-          analysisDivergencePlan,
-          style,
-          compat,
-        );
-        variant.branchId = resolved.branchId;
-        variant.branchSource = resolved.source;
-        if (resolved.rhetoricalMove) {
-          variant.rhetoricalMove = resolved.rhetoricalMove;
-        }
-        if (resolved.styleIntensity !== undefined) {
-          variant.styleIntensity = resolved.styleIntensity;
-        }
-        if (resolved.invalid) variant.branchAttributionInvalid = true;
-        console.log(
-          `[divergence_attribution] style=${style} branch=${resolved.branchId} ` +
-            `source=${resolved.source} invalid=${resolved.invalid}`,
-        );
+        attributeVariant(variant, style, compat, analysisDivergencePlan);
       }
       if (Object.keys(variant).length > 0) {
         evidenceVariants.set(style, variant);
@@ -946,6 +964,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
               `[divergence_plan] repaired branches: ${repairs.join(",")}`,
             );
           }
+          backfillAttribution(plan);
         }
       }
       return;
@@ -1043,9 +1062,21 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     if (!trimmed) return;
     pending = pending.then(async () => {
       if (closed) return;
-      const event = parseEventLine(trimmed, {
+      const parseOptions = {
         divergencePlan: options.noSendDecisions === true,
-      });
+      };
+      let event = parseEventLine(trimmed, parseOptions);
+      if (!event && parseOptions.divergencePlan) {
+        // Phase 2b repair-first：v2 計畫行的 `"sourceIndex=N"` 手誤修一次再解析。
+        const repairedLine = repairDivergencePlanLineGlitch(trimmed);
+        event = repairedLine
+          ? parseEventLine(repairedLine, parseOptions)
+          : null;
+        if (event) {
+          divergencePlanRepairs.push("line:sourceIndex=");
+          console.log("[divergence_plan] repaired line glitch: sourceIndex=");
+        }
+      }
       if (!event) return;
       await handleEvent(event);
     }).catch((error) => {

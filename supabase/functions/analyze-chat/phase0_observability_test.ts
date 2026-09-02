@@ -732,7 +732,9 @@ Deno.test("Phase 2a observability: divergence plan telemetry is numbers and enum
     newTopicBudgetExceeded: true,
     anchorCoveredByAllStyles: false,
     styleBranchAssigned: 1,
-    repairs: { method: 0, sourceIndexKey: 0 },
+    styleBranchMissing: 1,
+    sameOpeningCount: "unknown",
+    repairs: { method: 0, sourceIndexKey: 0, line: 0 },
     attribution: { status: "unknown" },
   });
   const serialized = JSON.stringify(telemetry);
@@ -842,44 +844,105 @@ Deno.test("Phase 2b observability: branch attribution telemetry counts sources, 
         divergencePlanRepairs: [
           "br_2:method:exaggeration->association",
           "br_3:sourceIndex1",
+          "line:sourceIndex=",
           "TEXT_SECRET not a repair entry",
+          "她的話:sourceIndex1",
         ],
         variants: {
           extend: {
             sourceIndices: [1],
-            branchId: "br_2",
+            selectedBranchIds: ["br_2", "br_1"],
             branchSource: "option",
             rhetoricalMove: "new_angle",
             styleIntensity: 2,
           },
           tease: {
             sourceIndices: [1],
-            branchId: "br_1",
+            selectedBranchIds: ["br_1"],
             branchSource: "anchor",
             branchAttributionInvalid: true,
           },
           humor: {
             sourceIndices: [1],
-            branchId: "br_2",
+            selectedBranchIds: ["br_2"],
             branchSource: "plan",
             rhetoricalMove: "not_a_move",
             styleIntensity: 9,
+          },
+          coldRead: {
+            sourceIndices: [1],
+            selectedBranchIds: [],
+            branchSource: "unresolved",
           },
         },
       },
     },
   });
   const divergence = telemetry.divergencePlan as Record<string, unknown>;
-  assertEquals(divergence.repairs, { method: 1, sourceIndexKey: 1 });
+  assertEquals(divergence.repairs, { method: 1, sourceIndexKey: 1, line: 1 });
+  assertEquals(divergence.styleBranchMissing, 4);
   assertEquals(divergence.attribution, {
     status: "observed",
-    styleCount: 3,
-    attributedCount: 3,
-    bySource: { option: 1, plan: 1, anchor: 1 },
+    styleCount: 4,
+    attributedCount: 4,
+    bySource: { option: 1, plan: 1, anchor: 1, unresolved: 1 },
     distinctBranchCount: 2,
     rhetoricalMoves: { new_angle: 1 },
     styleIntensity: { "2": 1 },
     invalidCount: 1,
   });
   assertEquals(JSON.stringify(telemetry).includes("SECRET"), false);
+});
+
+Deno.test("Phase 2b observability: sameOpeningCount counts cards whose normalized first four characters repeat", () => {
+  const telemetry = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-1",
+    contractVersion2: true,
+    finalResult: {
+      analysisDecisionV2: {
+        schemaVersion: 2,
+        decisionId: OPAQUE_DECISION_ID,
+        messageDecision: "send",
+      },
+      analysisDivergencePlan: {
+        schemaVersion: 1,
+        threadFrame: "t",
+        anchorSourceIndex: 1,
+        supportSourceIndices: [],
+        mergeContextSourceIndices: [],
+        semanticDistanceCap: 1,
+        newTopicBudget: 0,
+        questionBudget: 1,
+        branchPool: [
+          {
+            id: "br_1",
+            sourceIndex: 1,
+            method: "drill_down",
+            idea: "i",
+            associationPath: [],
+            semanticDistance: 0,
+          },
+          {
+            id: "br_2",
+            sourceIndex: 1,
+            method: "lateral",
+            idea: "i",
+            associationPath: [],
+            semanticDistance: 1,
+          },
+        ],
+      },
+      replies: {
+        extend: "當然有興趣，週五我可以",
+        resonate: "當然有興趣，這票算我一個",
+        tease: "當然，有興趣！這人情怎麼還",
+        humor: "有興趣到想清空行程",
+        coldRead: "我猜妳早就想到我",
+      },
+    },
+  });
+  const divergence = telemetry.divergencePlan as Record<string, unknown>;
+  // 三張正規化後都是「當然有興」。
+  assertEquals(divergence.sameOpeningCount, 3);
 });

@@ -56,14 +56,16 @@ export interface ParseEventLineOptions {
   readonly divergencePlan?: boolean;
 }
 
-/// Sonnet 5 在計畫第三枝偶發把 `"sourceIndex":1` 寫成 `"sourceIndex=1"`
-/// （2026-09-02 黑箱，約 1/6 份計畫），整行 JSON 壞掉。只對 v2 的
-/// divergence_plan 行、只對這個精確形態修一次；其他 JSON 錯誤照舊當 unknown line。
-const DIVERGENCE_PLAN_LINE_PREFIX = '{"type":"analysis.divergence_plan"';
+/// Sonnet 5 在計畫某一枝偶發把 `"sourceIndex":1` 寫成 `"sourceIndex=1"`
+/// （2026-09-02 黑箱，約 1/6 份計畫），整行 JSON 壞掉。只對帶
+/// `"type":"analysis.divergence_plan"` 的行、只對這個精確形態修一次；其他
+/// JSON 錯誤照舊當 unknown line。由 reframer 在 v2 且解析失敗時呼叫並記 repair。
+const DIVERGENCE_PLAN_TYPE_MARK = /"type"\s*:\s*"analysis\.divergence_plan"/;
 const SOURCE_INDEX_EQUALS_GLITCH = /"sourceIndex=(\d+)"/g;
 
-function repairDivergencePlanLineGlitch(line: string): string | null {
-  if (!line.startsWith(DIVERGENCE_PLAN_LINE_PREFIX)) return null;
+export function repairDivergencePlanLineGlitch(line: string): string | null {
+  if (!DIVERGENCE_PLAN_TYPE_MARK.test(line)) return null;
+  SOURCE_INDEX_EQUALS_GLITCH.lastIndex = 0;
   if (!SOURCE_INDEX_EQUALS_GLITCH.test(line)) return null;
   SOURCE_INDEX_EQUALS_GLITCH.lastIndex = 0;
   return line.replace(SOURCE_INDEX_EQUALS_GLITCH, '"sourceIndex":$1');
@@ -80,16 +82,7 @@ export function parseEventLine(
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    const repaired = options.divergencePlan
-      ? repairDivergencePlanLineGlitch(trimmed)
-      : null;
-    if (repaired === null) return null;
-    try {
-      parsed = JSON.parse(repaired);
-    } catch {
-      return null;
-    }
-    console.log("[divergence_plan] repaired line glitch: sourceIndex=");
+    return null;
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {

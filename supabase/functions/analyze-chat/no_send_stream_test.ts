@@ -980,8 +980,8 @@ Deno.test("divergence plan: a rejected plan is not a valid event, so an otherwis
   assertEquals(earlyOnly.charges.length, 0);
 });
 
-// Phase 2b：五風格歸因——option 自帶 > 計畫指定 > anchor；client 事件永遠剝掉
-// 歸因欄位；v1 連歸因都不做。
+// Phase 2b：五風格歸因——option 自帶 > 計畫指定 > anchor > unresolved；歸因
+// 跟 action／questionCount 一樣進 evidence linkage；v1 連歸因都不做。
 const ATTRIBUTED_TAIL = [
   {
     type: "analysis.recommendation",
@@ -995,7 +995,7 @@ const ATTRIBUTED_TAIL = [
     style: "extend",
     message: "m",
     reason: "r",
-    branchId: "br_2",
+    selectedBranchIds: ["br_2", "br_1"],
     rhetoricalMove: "new_angle",
     styleIntensity: 1,
   },
@@ -1005,7 +1005,7 @@ const ATTRIBUTED_TAIL = [
     style: "humor",
     message: "h",
     reason: "r",
-    branchId: "br_9",
+    selectedBranchIds: ["br_9"],
     rhetoricalMove: "exaggeration",
     styleIntensity: 2,
   },
@@ -1014,40 +1014,77 @@ const V2_THREE_STYLES = {
   noSendDecisions: true,
   requiredReplyStyles: ["extend", "tease", "humor"] as const,
 };
+function variantsOf(
+  events: StreamOutputEvent[],
+): Record<string, Record<string, unknown>> | undefined {
+  return (doneOf(events).analysisEvidenceLinkage as
+    | Record<string, unknown>
+    | undefined)?.variants as
+      | Record<string, Record<string, unknown>>
+      | undefined;
+}
 
-Deno.test("divergence attribution: every option resolves to a branch (option > plan > anchor), invalid fields are flagged, and attribution lives in the evidence linkage", async () => {
+Deno.test("divergence attribution: every option resolves (option > plan > anchor), invalid fields are flagged, and attribution lives in the evidence linkage", async () => {
   const { events } = await run([
     SEND_DECISION,
     VALID_PLAN,
     ...ATTRIBUTED_TAIL,
     { type: "analysis.done", finalResult: {} },
   ], V2_THREE_STYLES);
-  const options = events.filter((event) =>
-    event.type === "analysis.reply_option"
-  );
-  assertEquals(options.length, 3);
   const done = doneOf(events);
-  const linkage = done.analysisEvidenceLinkage as Record<string, unknown>;
-  const variants = linkage.variants as Record<string, Record<string, unknown>>;
+  const variants = variantsOf(events)!;
   assertEquals(variants.extend, {
-    branchId: "br_2",
+    selectedBranchIds: ["br_2", "br_1"],
     branchSource: "option",
     rhetoricalMove: "new_angle",
     styleIntensity: 1,
   });
   // tease：沒帶、計畫也沒指定 → anchor（br_1）。
-  assertEquals(variants.tease, { branchId: "br_1", branchSource: "anchor" });
+  assertEquals(variants.tease, {
+    selectedBranchIds: ["br_1"],
+    branchSource: "anchor",
+  });
   // humor：帶了未知枝 → 退回計畫指定（br_2）並標 invalid。
   assertEquals(variants.humor, {
-    branchId: "br_2",
+    selectedBranchIds: ["br_2"],
     branchSource: "plan",
     branchAttributionInvalid: true,
   });
   // 組裝進 replyOptions 的只有 approach／messages；歸因留在 linkage。
   assertEquals(
-    JSON.stringify(done.replyOptions).includes("branchId"),
+    JSON.stringify(done.replyOptions).includes("selectedBranchIds"),
     false,
   );
+});
+
+Deno.test("divergence attribution: anchor ball without a branch and no style mapping is unresolved, never another ball's branch", async () => {
+  const { events } = await run([
+    SEND_DECISION,
+    { ...VALID_PLAN, anchorSourceIndex: 4, styleBranchIds: { extend: "br_1" } },
+    ...ATTRIBUTED_TAIL,
+    { type: "analysis.done", finalResult: {} },
+  ], V2_THREE_STYLES);
+  const variants = variantsOf(events)!;
+  assertEquals(variants.tease, {
+    selectedBranchIds: [],
+    branchSource: "unresolved",
+  });
+});
+
+Deno.test("divergence attribution: a plan that arrives after the options backfills their attribution", async () => {
+  const { events } = await run([
+    SEND_DECISION,
+    ...ATTRIBUTED_TAIL,
+    VALID_PLAN,
+    { type: "analysis.done", finalResult: {} },
+  ], V2_THREE_STYLES);
+  const variants = variantsOf(events)!;
+  assertEquals(variants.extend?.branchSource, "option");
+  assertEquals(variants.tease, {
+    selectedBranchIds: ["br_1"],
+    branchSource: "anchor",
+  });
+  assertEquals(variants.humor?.branchSource, "plan");
 });
 
 Deno.test("divergence attribution: without a plan (or on v1) no variant is attributed", async () => {
@@ -1056,10 +1093,8 @@ Deno.test("divergence attribution: without a plan (or on v1) no variant is attri
     ...ATTRIBUTED_TAIL,
     { type: "analysis.done", finalResult: {} },
   ], V2_THREE_STYLES);
-  const noPlanVariants = (doneOf(noPlan.events)
-    .analysisEvidenceLinkage as Record<string, unknown> | undefined)
-    ?.variants as Record<string, Record<string, unknown>> | undefined;
-  assertEquals(noPlanVariants?.extend?.branchId, undefined);
+  const noPlanVariants = variantsOf(noPlan.events);
+  assertEquals(noPlanVariants?.extend?.branchSource, undefined);
   assertEquals(noPlanVariants?.tease?.branchSource, undefined);
 
   const v1 = await run([
@@ -1068,13 +1103,10 @@ Deno.test("divergence attribution: without a plan (or on v1) no variant is attri
     ...ATTRIBUTED_TAIL,
     { type: "analysis.done", finalResult: {} },
   ], { requiredReplyStyles: ["extend", "tease", "humor"] as const });
-  const v1Variants = (doneOf(v1.events)
-    .analysisEvidenceLinkage as Record<string, unknown> | undefined)
-    ?.variants as Record<string, Record<string, unknown>> | undefined;
-  assertEquals(v1Variants?.extend?.branchId, undefined);
+  assertEquals(variantsOf(v1.events)?.extend?.branchSource, undefined);
 });
 
-Deno.test("divergence attribution: plan repairs are recorded in the evidence linkage as enum-only entries", async () => {
+Deno.test("divergence attribution: plan repairs (branch key, method, broken line) are recorded in the evidence linkage as enum-only entries", async () => {
   const { events } = await run([
     SEND_DECISION,
     {
@@ -1098,4 +1130,47 @@ Deno.test("divergence attribution: plan repairs are recorded in the evidence lin
     (plan.branchPool as Record<string, unknown>[])[1].method,
     "association",
   );
+
+  // 整行 JSON 壞掉（"sourceIndex=3"）：v2 修一次並記 line repair；v1 不修。
+  const glitchedLine = line(VALID_PLAN).replace(
+    '"sourceIndex":3',
+    '"sourceIndex=3"',
+  );
+  assert(glitchedLine !== line(VALID_PLAN));
+  const runRaw = (
+    chunks: string[],
+    opts: NonNullable<Parameters<typeof run>[1]>,
+  ) => {
+    const events: StreamOutputEvent[] = [];
+    const reframer = createStreamReframer({
+      emit: (event) => {
+        events.push(event);
+      },
+      onRecommendation: () => ({ charged: true }),
+      requiredReplyStyles: opts.requiredReplyStyles ??
+        ["extend", "resonate", "tease", "humor", "coldRead"],
+      noSendDecisions: opts.noSendDecisions,
+    });
+    for (const chunk of chunks) reframer.pushText(chunk);
+    return reframer.flush().then(() => events);
+  };
+  const v2 = await runRaw([
+    line(SEND_DECISION),
+    glitchedLine,
+    ...ATTRIBUTED_TAIL.map(line),
+    line({ type: "analysis.done", finalResult: {} }),
+  ], V2_THREE_STYLES);
+  const v2Linkage = doneOf(v2).analysisEvidenceLinkage as Record<
+    string,
+    unknown
+  >;
+  assertEquals(v2Linkage.divergencePlanRepairs, ["line:sourceIndex="]);
+  assert(doneOf(v2).analysisDivergencePlan);
+  const v1 = await runRaw([
+    line({ ...SEND_DECISION, messageDecision: undefined }),
+    glitchedLine,
+    ...ATTRIBUTED_TAIL.map(line),
+    line({ type: "analysis.done", finalResult: {} }),
+  ], { requiredReplyStyles: ["extend", "tease", "humor"] as const });
+  assertEquals("analysisDivergencePlan" in doneOf(v1), false);
 });

@@ -5,6 +5,7 @@ import {
 import {
   anchorBranchOf,
   BRANCH_METHOD_REPAIRS,
+  DIVERGENCE_BRANCH_ID_PATTERN,
   DIVERGENCE_METHODS,
   MAX_STYLE_INTENSITY,
   parseDivergencePlanEvent,
@@ -13,7 +14,9 @@ import {
   REPLY_OPTION_BRANCH_FIELDS,
   resolveStyleBranch,
   RHETORICAL_MOVES,
+  rhetoricalMovesForStyle,
   stripClientHiddenFinalResult,
+  STYLE_RHETORICAL_MOVES,
 } from "./divergence_contract.ts";
 
 export const VALID_PLAN = {
@@ -147,72 +150,110 @@ Deno.test("stripClientHiddenFinalResult removes only the divergence plan and lea
 
 const PLAN = parseDivergencePlanEvent(VALID_PLAN)!;
 
-Deno.test("rhetorical moves are unique and disjoint from the branch methods; attribution fields are the three documented keys", () => {
+Deno.test("rhetorical moves are the six methods plus each style's own moves (§6.3 union), unique, and attribution fields are the three documented keys", () => {
   for (const method of DIVERGENCE_METHODS) {
-    assert(!(RHETORICAL_MOVES as readonly string[]).includes(method), method);
+    assert((RHETORICAL_MOVES as readonly string[]).includes(method));
   }
   assertEquals(new Set(RHETORICAL_MOVES).size, RHETORICAL_MOVES.length);
+  for (const [style, moves] of Object.entries(STYLE_RHETORICAL_MOVES)) {
+    const allowed = rhetoricalMovesForStyle(style as "extend");
+    for (const move of moves) {
+      assert(allowed.includes(move), `${style}:${move}`);
+    }
+    for (const method of DIVERGENCE_METHODS) assert(allowed.includes(method));
+  }
+  // 別的風格的專屬手法不在自己的值域裡。
+  assert(!rhetoricalMovesForStyle("extend").includes("exaggeration"));
   assertEquals(REPLY_OPTION_BRANCH_FIELDS, [
-    "branchId",
+    "selectedBranchIds",
     "rhetoricalMove",
     "styleIntensity",
   ]);
   assertEquals(MAX_STYLE_INTENSITY, 3);
 });
 
-Deno.test("anchor branch is the first pool branch on the anchor ball, else the first branch", () => {
-  assertEquals(anchorBranchOf(PLAN).id, "br_1");
+Deno.test("branch ids must be opaque br_N; free text in id voids the plan", () => {
+  assert(DIVERGENCE_BRANCH_ID_PATTERN.test("br_1"));
+  assert(DIVERGENCE_BRANCH_ID_PATTERN.test("br_12"));
+  for (const bad of ["br_", "br_123", "她說的那句", "branch-1", "BR_1", ""]) {
+    assert(!DIVERGENCE_BRANCH_ID_PATTERN.test(bad), bad);
+  }
+  assertEquals(
+    parseDivergencePlanEvent({
+      ...VALID_PLAN,
+      branchPool: [
+        VALID_PLAN.branchPool[0],
+        { ...VALID_PLAN.branchPool[1], id: "她的原話" },
+      ],
+      styleBranchIds: { extend: "br_1" },
+    }),
+    null,
+  );
+});
+
+Deno.test("anchor branch is the first pool branch on the anchor ball; none means null, never another ball's branch", () => {
+  assertEquals(anchorBranchOf(PLAN)?.id, "br_1");
   const noAnchorBranch = parseDivergencePlanV1({
     ...snapshotOf(VALID_PLAN),
     anchorSourceIndex: 4,
   })!;
-  assertEquals(anchorBranchOf(noAnchorBranch).id, "br_1");
+  assertEquals(anchorBranchOf(noAnchorBranch), null);
   const anchorSecond = parseDivergencePlanV1({
     ...snapshotOf(VALID_PLAN),
     anchorSourceIndex: 3,
   })!;
-  assertEquals(anchorBranchOf(anchorSecond).id, "br_2");
+  assertEquals(anchorBranchOf(anchorSecond)?.id, "br_2");
 });
 
-Deno.test("reply option attribution parses only a complete valid triple; anything else is absent", () => {
+Deno.test("reply option attribution parses only a complete valid triple for that style; anything else is absent", () => {
   const good = {
-    branchId: "br_2",
+    selectedBranchIds: ["br_2", "br_1"],
     rhetoricalMove: "playful_contrast",
     styleIntensity: 2,
-  };
-  assertEquals(parseReplyOptionBranchFields(good, PLAN), good);
+  } as const;
+  assertEquals(parseReplyOptionBranchFields(good, PLAN, "tease"), good);
+  // 六法對任何風格都合法。
+  assert(
+    parseReplyOptionBranchFields(
+      { ...good, rhetoricalMove: "drill_down" },
+      PLAN,
+      "tease",
+    ),
+  );
   const bad: unknown[] = [
-    { ...good, branchId: "br_9" },
+    { ...good, selectedBranchIds: ["br_9"] },
+    { ...good, selectedBranchIds: [] },
+    { ...good, selectedBranchIds: ["br_1", "br_1"] },
+    { ...good, selectedBranchIds: "br_1" },
     { ...good, rhetoricalMove: "sarcasm" },
-    { ...good, rhetoricalMove: "drill_down" }, // 分枝法不是手法
+    { ...good, rhetoricalMove: "exaggeration" }, // humor 的手法，tease 不收
     { ...good, styleIntensity: MAX_STYLE_INTENSITY + 1 },
     { ...good, styleIntensity: -1 },
     { ...good, styleIntensity: 1.5 },
-    { branchId: "br_2", rhetoricalMove: "playful_contrast" },
-    { branchId: "br_2" },
+    { selectedBranchIds: ["br_2"], rhetoricalMove: "playful_contrast" },
+    { selectedBranchIds: ["br_2"] },
     {},
     null,
     "br_2",
   ];
   for (const value of bad) {
     assertEquals(
-      parseReplyOptionBranchFields(value, PLAN),
+      parseReplyOptionBranchFields(value, PLAN, "tease"),
       null,
       JSON.stringify(value),
     );
   }
 });
 
-Deno.test("style branch resolution: option wins, then the plan's styleBranchIds, then the anchor; invalid option fields are flagged", () => {
-  // option 自帶合法 → option。
+Deno.test("style branch resolution: option wins, then the plan's styleBranchIds, then the anchor, else unresolved; invalid option fields are flagged", () => {
   assertEquals(
     resolveStyleBranch(PLAN, "extend", {
-      branchId: "br_2",
+      selectedBranchIds: ["br_2"],
       rhetoricalMove: "new_angle",
       styleIntensity: 1,
     }),
     {
-      branchId: "br_2",
+      selectedBranchIds: ["br_2"],
       rhetoricalMove: "new_angle",
       styleIntensity: 1,
       source: "option",
@@ -221,34 +262,39 @@ Deno.test("style branch resolution: option wins, then the plan's styleBranchIds,
   );
   // 缺 → 計畫指定（extend→br_1）。
   assertEquals(resolveStyleBranch(PLAN, "extend", { style: "extend" }), {
-    branchId: "br_1",
+    selectedBranchIds: ["br_1"],
     source: "plan",
     invalid: false,
   });
   // 缺且計畫沒指定 → anchor（br_1）。
   assertEquals(resolveStyleBranch(PLAN, "tease", { style: "tease" }), {
-    branchId: "br_1",
+    selectedBranchIds: ["br_1"],
     source: "anchor",
     invalid: false,
   });
   // 帶了但不合法 → 退回下一層並標 invalid。
   assertEquals(
-    resolveStyleBranch(PLAN, "humor", { branchId: "br_9" }),
-    { branchId: "br_2", source: "plan", invalid: true },
+    resolveStyleBranch(PLAN, "humor", { selectedBranchIds: ["br_9"] }),
+    { selectedBranchIds: ["br_2"], source: "plan", invalid: true },
   );
   assertEquals(
     resolveStyleBranch(PLAN, "coldRead", {
-      branchId: "br_1",
+      selectedBranchIds: ["br_1"],
       styleIntensity: 0,
     }),
-    { branchId: "br_1", source: "anchor", invalid: true },
+    { selectedBranchIds: ["br_1"], source: "anchor", invalid: true },
   );
+  // anchor 球沒有枝、計畫也沒指定 → unresolved，不拿別球的枝冒充。
+  const noAnchor = parseDivergencePlanV1({
+    ...snapshotOf(VALID_PLAN),
+    anchorSourceIndex: 4,
+  })!;
+  assertEquals(resolveStyleBranch(noAnchor, "tease", {}), {
+    selectedBranchIds: [],
+    source: "unresolved",
+    invalid: false,
+  });
 });
-
-function snapshotOf(event: typeof VALID_PLAN): Record<string, unknown> {
-  const { type: _type, ...snapshot } = event;
-  return snapshot;
-}
 
 Deno.test("branch sourceIndex<N> glitch is repaired only when N and the value equal sourceIndex; anything else still voids the plan", () => {
   const glitched = {
@@ -303,13 +349,9 @@ Deno.test("branch sourceIndex<N> glitch is repaired only when N and the value eq
 });
 
 Deno.test("a rhetorical move written as a branch method is repaired to its mapped divergence method and recorded; unknown words still void the plan", () => {
-  for (const move of RHETORICAL_MOVES) {
-    assert(
-      (DIVERGENCE_METHODS as readonly string[]).includes(
-        BRANCH_METHOD_REPAIRS[move],
-      ),
-      move,
-    );
+  for (const [move, method] of Object.entries(BRANCH_METHOD_REPAIRS)) {
+    assert((DIVERGENCE_METHODS as readonly string[]).includes(method), move);
+    assert((RHETORICAL_MOVES as readonly string[]).includes(move), move);
   }
   const repairs: string[] = [];
   const plan = parseDivergencePlanEvent({
@@ -333,3 +375,8 @@ Deno.test("a rhetorical move written as a branch method is repaired to its mappe
     null,
   );
 });
+
+function snapshotOf(event: typeof VALID_PLAN): Record<string, unknown> {
+  const { type: _type, ...snapshot } = event;
+  return snapshot;
+}

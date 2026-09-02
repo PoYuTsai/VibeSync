@@ -89,38 +89,44 @@ export function stripClientHiddenFinalResult<T>(finalResult: T): T {
 
 // ---------------------------------------------------------------------------
 // Phase 2b：planner 接管五風格生成（規格 §5.11 步驟 6、§6.3、§14.1）。
-// 每個 v2 reply_option 可帶三個歸因欄位，指出它跟哪一枝、用哪個修辭手法、
-// 強度多少。它們跟 action／questionCount 一樣是 option 的證據 metadata：
-// 進 analysisEvidenceLinkage.variants 與 telemetry；計畫本文（threadFrame／
-// idea／associationPath）仍只留 server。server 只做「歸因＋缺省補 anchor」
-// 的軟守門，不擋 option：
-// Eric 2026-09-02 定案——缺的風格跟 anchor 主線；模型沒吐計畫就走原路。
-// 值域全在這裡：prompt 與 parser 都從這幾張表生成，不得各寫一份。
+// 每個 v2 reply_option 可帶三個歸因欄位：跟計畫哪幾枝（selectedBranchIds）、
+// 用哪個修辭手法、強度多少。它們跟 action／questionCount 一樣是 option 的
+// 證據 metadata：進 analysisEvidenceLinkage.variants 與 telemetry；計畫本文
+// （threadFrame／idea／associationPath）仍只留 server。server 只做「歸因＋缺省
+// 補 anchor」的軟守門，不擋 option：Eric 2026-09-02 定案——缺的風格跟 anchor
+// 主線；模型沒吐計畫就走原路。值域全在這裡：prompt 與 parser 都從這幾張表
+// 生成，不得各寫一份。
 
-/// 修辭手法（§6.1 五風格核心機制）。規格 §6.3 原寫「值域＝DivergenceMethod
-/// ＋風格專屬 move」，實作刻意讓它與 DIVERGENCE_METHODS **不相交**：2026-09-02
-/// 黑箱實測，兩套詞彙一重疊，模型就把 `exaggeration` 這類手法填進分枝的
-/// `method`，整份計畫因 unknown method 作廢（12 份丟 3 份）。分枝用六法
-/// （怎麼分枝），卡片用手法（怎麼措辭），各自一張表。
+/// 風格專屬修辭手法（§6.1 五風格核心機制）；每風格的 rhetoricalMove 值域
+/// ＝六法＋自己這一列（§6.3「值域＝DivergenceMethod＋風格專屬 move」）。
+export const STYLE_RHETORICAL_MOVES = {
+  extend: ["new_angle", "concrete_detail", "low_friction_entry"],
+  resonate: ["reflect_feeling", "shared_experience"],
+  tease: ["playful_contrast", "playful_challenge"],
+  humor: ["exaggeration", "metaphor", "callback"],
+  coldRead: ["tentative_observation"],
+} as const satisfies Record<StreamStyle, readonly string[]>;
+export type StyleRhetoricalMove =
+  typeof STYLE_RHETORICAL_MOVES[StreamStyle][number];
+const ALL_STYLE_MOVES = Object.values(STYLE_RHETORICAL_MOVES)
+  .flat() as readonly StyleRhetoricalMove[];
 export const RHETORICAL_MOVES = [
-  "new_angle",
-  "concrete_detail",
-  "low_friction_entry",
-  "reflect_feeling",
-  "shared_experience",
-  "playful_contrast",
-  "playful_challenge",
-  "exaggeration",
-  "metaphor",
-  "callback",
-  "tentative_observation",
+  ...DIVERGENCE_METHODS,
+  ...ALL_STYLE_MOVES,
 ] as const;
 export type RhetoricalMove = typeof RHETORICAL_MOVES[number];
-/// repair-first（規格 §26）：模型把手法填進分枝 `method` 時（三輪黑箱 humor
+
+export function rhetoricalMovesForStyle(
+  style: StreamStyle,
+): readonly RhetoricalMove[] {
+  return [...DIVERGENCE_METHODS, ...STYLE_RHETORICAL_MOVES[style]];
+}
+
+/// repair-first（規格 §26）：模型把風格手法填進分枝 `method` 時（黑箱 humor
 /// 枝三次寫 `exaggeration`，prompt 明講也不聽），按這張表映射回六法並記
 /// repair，不再整份作廢。對照依 §5.7 四法定義；telemetry 看得到修了幾次。
 export const BRANCH_METHOD_REPAIRS: Readonly<
-  Record<RhetoricalMove, DivergenceMethod>
+  Record<StyleRhetoricalMove, DivergenceMethod>
 > = {
   new_angle: "lateral",
   concrete_detail: "drill_down",
@@ -136,37 +142,49 @@ export const BRANCH_METHOD_REPAIRS: Readonly<
 };
 /// styleIntensity 0–3（§6.3：風格不適合高強度時降強度，不得改 action）。
 export const MAX_STYLE_INTENSITY = 3;
-/// reply_option 上的歸因欄位；三個一起出現才算有效，缺一個整組視為缺席。
+/// reply_option 上的歸因欄位（§14.1）；三個一起出現才算有效，缺一個整組
+/// 視為缺席。selectedBranchIds 是 branchPool id 的非空陣列。
 export const REPLY_OPTION_BRANCH_FIELDS = [
-  "branchId",
+  "selectedBranchIds",
   "rhetoricalMove",
   "styleIntensity",
 ] as const;
-export const STYLE_BRANCH_SOURCES = ["option", "plan", "anchor"] as const;
+/// 分枝 id 是 opaque 代號（prompt 範例 br_1…），不得是任何自由文字：它會進
+/// log、linkage 與 telemetry。
+export const DIVERGENCE_BRANCH_ID_PATTERN = /^br_[0-9]{1,2}$/;
+/// option＝option 自帶且合法；plan＝計畫 styleBranchIds 指定；anchor＝缺省補
+/// anchor 主線那一枝；unresolved＝連 anchor 球都沒有枝，不亂掛。
+export const STYLE_BRANCH_SOURCES = [
+  "option",
+  "plan",
+  "anchor",
+  "unresolved",
+] as const;
 export type StyleBranchSource = typeof STYLE_BRANCH_SOURCES[number];
 
 export interface ReplyOptionBranchFields {
-  readonly branchId: string;
+  readonly selectedBranchIds: readonly string[];
   readonly rhetoricalMove: RhetoricalMove;
   readonly styleIntensity: number;
 }
 
 export interface StyleBranchResolution {
-  readonly branchId: string;
-  /// option＝option 自帶且合法；plan＝計畫 styleBranchIds 指定；anchor＝缺省補。
+  readonly selectedBranchIds: readonly string[];
   readonly source: StyleBranchSource;
   readonly rhetoricalMove?: RhetoricalMove;
   readonly styleIntensity?: number;
-  /// option 帶了歸因欄位但不合法（未知枝、未知手法、強度越界或缺欄位）。
+  /// option 帶了歸因欄位但不合法（未知枝、手法不在該風格值域、強度越界或缺欄位）。
   readonly invalid: boolean;
 }
 
 /// anchor 主線的那一枝：branchPool 裡第一枝 sourceIndex＝anchorSourceIndex；
-/// 模型沒替 anchor 球建枝時退回 pool 第一枝（pool 至少 2 枝，永遠有值）。
-export function anchorBranchOf(plan: DivergencePlanV1): DivergenceBranchV1 {
+/// 模型沒替 anchor 球建枝時回 null（不拿別球的枝冒充 anchor）。
+export function anchorBranchOf(
+  plan: DivergencePlanV1,
+): DivergenceBranchV1 | null {
   return plan.branchPool.find((branch) =>
     branch.sourceIndex === plan.anchorSourceIndex
-  ) ?? plan.branchPool[0];
+  ) ?? null;
 }
 
 /// 嚴格解析 reply_option 上的三個歸因欄位；三個都缺回 null（缺席），
@@ -174,22 +192,35 @@ export function anchorBranchOf(plan: DivergencePlanV1): DivergenceBranchV1 {
 export function parseReplyOptionBranchFields(
   value: unknown,
   plan: DivergencePlanV1,
+  style: StreamStyle,
 ): ReplyOptionBranchFields | null {
   if (!isRecord(value)) return null;
-  const branchId = shortText(value.branchId);
+  if (!Array.isArray(value.selectedBranchIds)) return null;
   if (
-    branchId === null ||
-    !plan.branchPool.some((branch) => branch.id === branchId)
+    value.selectedBranchIds.length === 0 ||
+    value.selectedBranchIds.length > plan.branchPool.length
   ) {
     return null;
   }
+  const selectedBranchIds: string[] = [];
+  for (const id of value.selectedBranchIds) {
+    if (
+      typeof id !== "string" || selectedBranchIds.includes(id) ||
+      !plan.branchPool.some((branch) => branch.id === id)
+    ) {
+      return null;
+    }
+    selectedBranchIds.push(id);
+  }
   const rhetoricalMove = typeof value.rhetoricalMove === "string" &&
-      (RHETORICAL_MOVES as readonly string[]).includes(value.rhetoricalMove)
+      (rhetoricalMovesForStyle(style) as readonly string[]).includes(
+        value.rhetoricalMove,
+      )
     ? value.rhetoricalMove as RhetoricalMove
     : null;
   const styleIntensity = boundedInt(value.styleIntensity, MAX_STYLE_INTENSITY);
   if (rhetoricalMove === null || styleIntensity === null) return null;
-  return { branchId, rhetoricalMove, styleIntensity };
+  return { selectedBranchIds, rhetoricalMove, styleIntensity };
 }
 
 export function hasReplyOptionBranchFields(value: unknown): boolean {
@@ -197,20 +228,24 @@ export function hasReplyOptionBranchFields(value: unknown): boolean {
     REPLY_OPTION_BRANCH_FIELDS.some((field) => value[field] !== undefined);
 }
 
-/// 歸因優先序：option 自帶合法 > 計畫 styleBranchIds > anchor 主線。
+/// 歸因優先序：option 自帶合法 > 計畫 styleBranchIds > anchor 主線 > unresolved。
 export function resolveStyleBranch(
   plan: DivergencePlanV1,
   style: StreamStyle,
   option: unknown,
 ): StyleBranchResolution {
-  const fields = parseReplyOptionBranchFields(option, plan);
+  const fields = parseReplyOptionBranchFields(option, plan, style);
   if (fields) return { ...fields, source: "option", invalid: false };
   const invalid = hasReplyOptionBranchFields(option);
   const planned = plan.styleBranchIds?.[style];
   if (planned !== undefined) {
-    return { branchId: planned, source: "plan", invalid };
+    return { selectedBranchIds: [planned], source: "plan", invalid };
   }
-  return { branchId: anchorBranchOf(plan).id, source: "anchor", invalid };
+  const anchor = anchorBranchOf(plan);
+  if (anchor) {
+    return { selectedBranchIds: [anchor.id], source: "anchor", invalid };
+  }
+  return { selectedBranchIds: [], source: "unresolved", invalid };
 }
 
 export interface DivergenceBranchV1 {
@@ -330,7 +365,10 @@ function parseBranch(
   const value = repairBranchSourceIndexGlitch(raw, repairs);
   if (value === null) return null;
   if (Object.keys(value).some((key) => !BRANCH_KEYS.has(key))) return null;
-  const id = shortText(value.id);
+  const id = typeof value.id === "string" &&
+      DIVERGENCE_BRANCH_ID_PATTERN.test(value.id)
+    ? value.id
+    : null;
   const sourceIndex = positiveInt(value.sourceIndex);
   const idea = shortText(value.idea);
   const semanticDistance = boundedInt(
@@ -364,8 +402,8 @@ function repairBranchMethod(
   if ((DIVERGENCE_METHODS as readonly string[]).includes(value)) {
     return value as DivergenceMethod;
   }
-  if ((RHETORICAL_MOVES as readonly string[]).includes(value)) {
-    const repaired = BRANCH_METHOD_REPAIRS[value as RhetoricalMove];
+  if ((ALL_STYLE_MOVES as readonly string[]).includes(value)) {
+    const repaired = BRANCH_METHOD_REPAIRS[value as StyleRhetoricalMove];
     repairs?.push(`${id ?? "?"}:method:${value}->${repaired}`);
     return repaired;
   }

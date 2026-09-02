@@ -9,6 +9,7 @@ import {
 import {
   isStreamStyle,
   parseEventLine,
+  repairDivergencePlanLineGlitch,
   STREAM_EVENT_TYPES,
   STREAM_STYLES,
 } from "./stream_events.ts";
@@ -116,21 +117,33 @@ Deno.test("parseEventLine keeps analysis.divergence_plan unknown unless the v2 o
   );
 });
 
-Deno.test('parseEventLine repairs only the v2 divergence_plan `"sourceIndex=N"` glitch; any other broken JSON stays unknown', () => {
+Deno.test('repairDivergencePlanLineGlitch fixes only `"sourceIndex=N"` on a divergence_plan line, regardless of field order; parseEventLine itself stays strict', () => {
   const glitched =
     '{"type":"analysis.divergence_plan","schemaVersion":1,"branchPool":[{"id":"br_3","sourceIndex=1","method":"drill_down"}]}';
-  assertEquals(parseEventLine(glitched, { divergencePlan: false }), null);
-  const parsed = parseEventLine(glitched, { divergencePlan: true });
+  assertEquals(parseEventLine(glitched, { divergencePlan: true }), null);
+  const repaired = repairDivergencePlanLineGlitch(glitched)!;
+  const parsed = parseEventLine(repaired, { divergencePlan: true });
   assertEquals(parsed?.type, "analysis.divergence_plan");
   const branch = (parsed?.branchPool as Record<string, unknown>[])[0];
   assertEquals(branch.sourceIndex, 1);
   assertEquals("sourceIndex=1" in branch, false);
-
+  // 欄位順序與空白不影響辨識。
+  assert(
+    repairDivergencePlanLineGlitch(
+      '{"schemaVersion":1, "type" : "analysis.divergence_plan","branchPool":[{"id":"br_3","sourceIndex=2","method":"lateral"}]}',
+    ),
+  );
   // 同樣的手誤出現在別的事件行不修；計畫行的其他 JSON 錯誤也不修。
-  const otherEvent =
-    '{"type":"analysis.reply_option","style":"extend","segments":[{"sourceIndex=1","reply":"x"}]}';
-  assertEquals(parseEventLine(otherEvent, { divergencePlan: true }), null);
-  const otherBreak =
-    '{"type":"analysis.divergence_plan","schemaVersion":1,"branchPool":[{"id":"br_3","sourceIndex":1,"method":"drill_down"}';
-  assertEquals(parseEventLine(otherBreak, { divergencePlan: true }), null);
+  assertEquals(
+    repairDivergencePlanLineGlitch(
+      '{"type":"analysis.reply_option","style":"extend","segments":[{"sourceIndex=1","reply":"x"}]}',
+    ),
+    null,
+  );
+  assertEquals(
+    repairDivergencePlanLineGlitch(
+      '{"type":"analysis.divergence_plan","schemaVersion":1,"branchPool":[{"id":"br_3","sourceIndex":1}',
+    ),
+    null,
+  );
 });

@@ -18,7 +18,7 @@ import {
   parseDivergencePlanEvent,
   parseReplyOptionBranchFields,
   REPLY_OPTION_BRANCH_FIELDS,
-  RHETORICAL_MOVES,
+  STYLE_RHETORICAL_MOVES,
 } from "./divergence_contract.ts";
 import {
   buildSituationKnowledgeSection,
@@ -581,7 +581,17 @@ Deno.test("Phase 2b branch attribution rule is emitted only with the divergence 
       `also carries exactly ${REPLY_OPTION_BRANCH_FIELDS.map(tick).join(", ")}`,
     ),
   );
-  assert(v2.includes(RHETORICAL_MOVES.map(tick).join("/")));
+  // 每風格手法清單與六法都從契約生成；缺省語意要跟 resolver 一致。
+  assert(v2.includes(DIVERGENCE_METHODS.map(tick).join("/")));
+  for (const [style, moves] of Object.entries(STYLE_RHETORICAL_MOVES)) {
+    assert(v2.includes(`${style}: ${moves.map(tick).join("/")}`), style);
+  }
+  assert(
+    v2.includes(
+      "the server uses your `styleBranchIds` entry for that style, else the anchor's branch",
+    ),
+  );
+  assert(v2.includes("opaque `br_1`, `br_2`, … only; never words"));
   assert(v2.includes(`${tick("styleIntensity")} is 0-${MAX_STYLE_INTENSITY}`));
   assert(v2.includes("If you emitted no plan, omit these keys"));
 
@@ -602,7 +612,7 @@ Deno.test("Phase 2b branch attribution rule is emitted only with the divergence 
     JSON.parse(planLine.slice(planLine.indexOf("{"))),
   );
   assert(plan);
-  const fields = parseReplyOptionBranchFields(example, plan);
+  const fields = parseReplyOptionBranchFields(example, plan, example.style);
   assert(fields, "example attribution must satisfy the parser");
-  assertEquals(fields.branchId, example.branchId);
+  assertEquals(fields.selectedBranchIds, example.selectedBranchIds);
 });
