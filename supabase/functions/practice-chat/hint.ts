@@ -1,5 +1,9 @@
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import { type ChatMessage, compactCompleteSentenceEvidence } from "./prompt.ts";
+import {
+  renderPersonalBaselinePrompt,
+  type ReplyStyleProfile,
+} from "./reply_style.ts";
 import { PRACTICE_COACHING_RUBRIC } from "./coaching_rubric.ts";
 import {
   assertPracticeTextGroundedInTurns,
@@ -14,10 +18,7 @@ import {
   inviteMaturityFromLearningScores,
 } from "./invite_maturity.ts";
 import type { PracticeSceneContext } from "./life_schedule.ts";
-import {
-  type TaipeiTimeContext,
-  taipeiNowLabel,
-} from "./time_context.ts";
+import { taipeiNowLabel, type TaipeiTimeContext } from "./time_context.ts";
 import type { AcquaintanceOrigin } from "./acquaintance_origin.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import {
@@ -1633,6 +1634,8 @@ export function buildHintMessages(opts: {
   gameState?: PersistedGameState | null;
   /** 還剩幾顆 hint（含這一顆）。Game 專用，用於最後一發的收尾鋪墊。 */
   hintsRemaining?: number;
+  /** reply-style-v1（PR-4）：她的個人基準；旗標關或無 mapping 時省略＝prompt 逐字不變。 */
+  replyStyle?: ReplyStyleProfile | null;
 }): ChatMessage[] {
   const score = clampTemperature(opts.temperatureScore);
   // 回合下限只給新手：game 有自己更快的 FSM 下限，傳 0 顆球等於不套。
@@ -1760,6 +1763,10 @@ export function buildHintMessages(opts: {
         memoryEvidence +
         inviteEvidence +
         gameEvidence +
+        // reply-style-v1：先講她的基準，再講這則球數；短本身不等於冷（規格 §7.1）。
+        (opts.replyStyle
+          ? renderPersonalBaselinePrompt(opts.replyStyle, "hint")
+          : "") +
         // 分則要跟著她的球數走，不然新手會固定回 2-3 則、她爆量時跟著熱。
         // 立場不猜也一樣給新手（Eric 2026-08-12）：hint 是可直接送出的代打，
         // 猜錯喜好不是「這輪沒加分」，是他下一句就露餡。

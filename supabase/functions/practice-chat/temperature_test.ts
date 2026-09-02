@@ -7,6 +7,7 @@ import {
   applyLearningClassification,
   applyTemperatureDelta,
   buildTemperatureJudgeMessages,
+  buildTurnClassifierMessages,
   clampTemperature,
   parseTemperatureJudgement,
   temperatureBandDebriefInstruction,
@@ -276,4 +277,31 @@ Deno.test("有壓迫感的一句一律扣分，不准被 connection 的加分蓋
     },
   );
   assert(caughtSafe.delta > 0);
+});
+
+Deno.test("reply-style（PR-4）：省略或 null 的 replyStyle 讓分類器 prompt 逐字不變；有基準時 user 內容尾端多一行、system 不變", async () => {
+  const { STYLE_BY_PROFILE_ID } = await import("./reply_style.ts");
+  const base = {
+    turns: [
+      { role: "user" as const, text: "今天忙嗎" },
+      { role: "ai" as const, text: "還好" },
+      { role: "user" as const, text: "那晚點聊" },
+    ],
+    profile: resolvePracticeProfile({ profileId: "practice_girl_001" }),
+    heatScore: 40,
+    familiarityScore: 10,
+    assistantReply: "好",
+  };
+  const omitted = buildTurnClassifierMessages(base);
+  const nulled = buildTurnClassifierMessages({ ...base, replyStyle: null });
+  assertEquals(JSON.stringify(nulled), JSON.stringify(omitted));
+  assert(!omitted[1].content.includes("她的平常基準"));
+  const styled = buildTurnClassifierMessages({
+    ...base,
+    replyStyle: STYLE_BY_PROFILE_ID.practice_girl_001,
+  });
+  assertEquals(styled[0].content, omitted[0].content);
+  assert(styled[1].content.startsWith(omitted[1].content));
+  assert(styled[1].content.includes("她的平常基準"));
+  assert(styled[1].content.includes("partnerMood 不得只因為她短句"));
 });

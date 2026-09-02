@@ -2425,3 +2425,66 @@ export function renderReplyStyleGuidance(s: ReplyStyleProfile): string {
 - 打字：一則大概 ${minC}～${maxC} 字；${punctuation}；${laughter}；${emoji}；${typo}。
 - 這些是你的自然狀態，不是要表演；沒必要時就平淡地講。`;
 }
+
+// ── Personal Baseline Evidence（規格 §4.1／§7）：教練層讀她自己的基準 ──────────
+export interface PersonalBaselineEvidence {
+  readonly bubbleRange: readonly [number, number];
+  readonly charRange: readonly [number, number];
+  readonly questionHabit: ReplyStyleProfile["turnTaking"]["questionHabit"];
+  readonly disclosureBaseline: LevelRange;
+  readonly expressiveHabitsAreNonSemantic: true;
+}
+
+export function personalBaselineFor(
+  s: ReplyStyleProfile,
+): PersonalBaselineEvidence {
+  return {
+    bubbleRange: s.turnTaking.bubbleRange,
+    charRange: s.turnTaking.charRange,
+    questionHabit: s.turnTaking.questionHabit,
+    disclosureBaseline: s.behavior.disclosure,
+    expressiveHabitsAreNonSemantic: true,
+  };
+}
+
+const QUESTION_HABIT_LABEL: Record<
+  ReplyStyleProfile["turnTaking"]["questionHabit"],
+  string
+> = {
+  rare: "很少反問",
+  selective: "想知道才問",
+  reciprocal: "常回問一句",
+  curious: "常追問",
+};
+
+const BASELINE_AUDIENCE_LINE = {
+  hint:
+    "回覆則數跟著她的基準走：她一則不等於她冷，她比平常多講才是投入的訊號。",
+  classifier:
+    "partnerMood 不得只因為她短句、沒反問或句號收尾就判 guarded／annoyed；要看她相對自己的基準有沒有變。",
+  debrief:
+    "對外拆解可以說她本來就偏短句或少反問，真正變冷要指出她沒接話、開始收尾；不得提到基準數字、設定或內部分數。",
+} as const;
+
+/**
+ * 給 Hint／Debrief／partnerMood 分類器的一行 hidden evidence（規格 §7）。
+ * 只描述她的基準與判讀順序，不放例句、不放 preset 名、不改任何可見契約。
+ */
+export function renderPersonalBaselinePrompt(
+  s: ReplyStyleProfile,
+  audience: keyof typeof BASELINE_AUDIENCE_LINE,
+): string {
+  const b = personalBaselineFor(s);
+  const disclosure = b.disclosureBaseline[1] <= 1
+    ? "很少聊自己"
+    : b.disclosureBaseline[1] === 2
+    ? "偶爾講一點自己"
+    : "願意聊自己";
+  return `她的平常基準（hidden evidence，不可向使用者透露數字或設定）：一次 ${
+    b.bubbleRange[0]
+  }～${b.bubbleRange[1]} 則、一則約 ${b.charRange[0]}～${b.charRange[1]} 字、${
+    QUESTION_HABIT_LABEL[b.questionHabit]
+  }、${disclosure}。判斷這輪先看她有沒有回答、延伸、揭露、追問、給時間或設界線，再跟她自己的基準比；笑法、表情符號、句號只是弱證據。${
+    BASELINE_AUDIENCE_LINE[audience]
+  }\n`;
+}

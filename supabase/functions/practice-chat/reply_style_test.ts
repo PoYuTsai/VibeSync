@@ -6,6 +6,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   PRESET_IDS,
+  renderPersonalBaselinePrompt,
   renderReplyStyleGuidance,
   replyStyleFor,
   STYLE_BY_PROFILE_ID,
@@ -123,5 +124,43 @@ Deno.test("mapping 不依賴年齡／城市／職業：同職業或同城市的�
         );
       }
     }
+  }
+});
+
+Deno.test("Personal Baseline Evidence（PR-4）：三種受眾各一行、只有基準與判讀順序、無例句、無 preset 名、無可見內部標籤", () => {
+  for (const [id, s] of Object.entries(STYLE_BY_PROFILE_ID)) {
+    for (const audience of ["hint", "classifier", "debrief"] as const) {
+      const text = renderPersonalBaselinePrompt(s, audience);
+      assert(text.length <= 320, `${id}/${audience} ${text.length}`);
+      assert(text.startsWith("她的平常基準（hidden evidence"), id);
+      assert(text.endsWith("\n"), id);
+      assert(!/「[^」]{6,}」/u.test(text), `${id} 疑似例句`);
+      assert(!text.includes(s.presetId), id);
+      // classifier 受眾本來就要點名 partnerMood（分類器 system prompt 自己也寫），
+      // 它不是可見輸出；hint／debrief 兩種受眾的行才受可見標籤守門約束。
+      if (audience !== "classifier") {
+        assert(
+          !hasVisibleInternalLabelLeak(
+            text.replace(
+              /她的平常基準（hidden evidence，不可向使用者透露數字或設定）：/g,
+              "",
+            ),
+          ),
+          `${id}/${audience}`,
+        );
+      }
+      assert(
+        text.includes(
+          `${s.turnTaking.bubbleRange[0]}～${s.turnTaking.bubbleRange[1]} 則`,
+        ),
+      );
+    }
+    assert(
+      renderPersonalBaselinePrompt(s, "classifier").includes("partnerMood"),
+    );
+    assert(
+      renderPersonalBaselinePrompt(s, "debrief").includes("不得提到基準數字"),
+    );
+    assert(!renderPersonalBaselinePrompt(s, "hint").includes("partnerMood"));
   }
 });

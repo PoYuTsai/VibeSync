@@ -1092,7 +1092,10 @@ Deno.test("buildHintMessages teaches Game hints safe advanced qualification narr
     partnerMood: "comfortable",
   }).map((m) => m.content).join("\n");
 
-  assertEquals(beginnerText.includes("安全高階規則（內部指引，不得輸出）"), false);
+  assertEquals(
+    beginnerText.includes("安全高階規則（內部指引，不得輸出）"),
+    false,
+  );
   assertEquals(beginnerText.includes("資格篩選"), false);
   assertEquals(beginnerText.includes("順勢收尾"), false);
   assertEquals(beginnerText.includes("10-15 句內"), false);
@@ -7280,4 +7283,35 @@ Deno.test("challenge Hint 不因回合數建議邀約：第 12 顆球守門照�
     Error,
     "hint_quality_invalid_invite_route",
   );
+});
+
+Deno.test("reply-style（PR-4）：省略或 null 的 replyStyle 讓 hint prompt 逐字不變；有基準時多一行 hidden evidence 放在球數行之前", async () => {
+  const { STYLE_BY_PROFILE_ID } = await import("./reply_style.ts");
+  const base = {
+    turns: [
+      { role: "user" as const, text: "今天精神怎樣" },
+      { role: "ai" as const, text: "還行" },
+    ],
+    profile: resolvePracticeProfile({
+      personaId: "slow_worker",
+      difficulty: "normal",
+      profileId: "practice_girl_001",
+    }),
+    practiceMode: "beginner" as const,
+    temperatureScore: 40,
+  };
+  const omitted = buildHintMessages(base);
+  const nulled = buildHintMessages({ ...base, replyStyle: null });
+  assertEquals(JSON.stringify(nulled), JSON.stringify(omitted));
+  assert(!omitted[1].content.includes("她的平常基準"));
+  const styled = buildHintMessages({
+    ...base,
+    replyStyle: STYLE_BY_PROFILE_ID.practice_girl_001,
+  });
+  const content = styled[1].content;
+  assert(content.includes("她的平常基準"));
+  assert(
+    content.indexOf("她的平常基準") < content.indexOf("partnerBubbleRhythm"),
+  );
+  assertEquals(styled[0].content, omitted[0].content);
 });

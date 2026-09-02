@@ -4,7 +4,12 @@
 
 import type { AppliedHintTurn, PracticeTurn } from "./validate.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
-import { renderReplyStyleGuidance, replyStyleFor } from "./reply_style.ts";
+import {
+  renderPersonalBaselinePrompt,
+  renderReplyStyleGuidance,
+  replyStyleFor,
+  type ReplyStyleProfile,
+} from "./reply_style.ts";
 import {
   planTurnResponse,
   renderTurnPlan,
@@ -1049,6 +1054,8 @@ export function buildDebriefMessages(
     timeContext?: TaipeiTimeContext | null;
     gameState?: PersistedGameState | null;
     appliedHintTurns?: AppliedHintTurn[];
+    /** reply-style-v1（PR-4）：她的個人基準；省略＝prompt 逐字不變。 */
+    replyStyle?: ReplyStyleProfile | null;
   } = {},
 ): ChatMessage[] {
   const transcript = debriefTurnsToPromptTranscript(
@@ -1134,6 +1141,9 @@ export function buildDebriefMessages(
         debriefNowContextLine(options.timeContext) +
         debriefSceneContextLine(options.sceneContext) +
         debriefMemorySummaryPrompt(options.memorySummary) +
+        (options.replyStyle
+          ? `\n${renderPersonalBaselinePrompt(options.replyStyle, "debrief")}`
+          : "") +
         "\n\n" +
         temperaturePrompt +
         stagePrompt +

@@ -9068,3 +9068,55 @@ Deno.test("reply-style 跨回合狀態：旗標開時 thread upsert 的 recent_f
   // 讀回的 priorDecline → 邀約輪 stance decline（prompt 裡的 decline 說法）
   assert(on.state.deepSeekCalls[0].messages[0].content.includes("這輪不答應"));
 });
+
+Deno.test("reply-style（PR-4）：旗標開時 hint／debrief／partnerMood 分類器都收到她的基準；旗標關一個字都沒有", async () => {
+  const has = (calls: { messages: { content: string }[] }[]) =>
+    calls.map((c) =>
+      c.messages.some((m) => m.content.includes("她的平常基準"))
+    );
+
+  for (const env of [undefined, REPLY_STYLE_ON]) {
+    const on = env !== undefined;
+    const hint = await run(
+      {
+        ledger: beginnerStartedLedger(),
+        env,
+        claudeReplies: [validHintJson()],
+      },
+      hintBody({ practiceMode: "beginner", requestId: `hint-baseline-${on}` }),
+    );
+    assertEquals(hint.response.status, 200, `hint ${on}`);
+    assertEquals(has(hint.state.claudeCalls), [on], `hint ${on}`);
+
+    const chat = await run(
+      {
+        ledger: null,
+        env,
+        deepSeekReplies: ["好啊", CLASSIFIER_CAUGHT_MEDIUM],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        temperatureScore: 40,
+        familiarityScore: 10,
+      }),
+    );
+    assertEquals(chat.response.status, 200, `chat ${on}`);
+    // deepSeekCalls[0]＝她的回覆（style 段在 system）、[1]＝分類器（基準在 user）。
+    assertEquals(
+      chat.state.deepSeekCalls[1].messages[1].content.includes("她的平常基準"),
+      on,
+      `classifier ${on}`,
+    );
+
+    const debrief = await run(
+      {
+        ledger: ledger({ ai_count: 1, charged: true }),
+        env,
+        claudeReplies: [validDebriefJson()],
+      },
+      debriefBody({ requestId: `debrief-baseline-${on}` }),
+    );
+    assertEquals(debrief.response.status, 200, `debrief ${on}`);
+    assertEquals(has(debrief.state.claudeCalls), [on], `debrief ${on}`);
+  }
+});

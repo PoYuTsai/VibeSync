@@ -6,6 +6,10 @@ import {
 } from "./prompt_sanitizer.ts";
 import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
+import {
+  renderPersonalBaselinePrompt,
+  type ReplyStyleProfile,
+} from "./reply_style.ts";
 
 export type TemperatureBand = "frozen" | "cold" | "neutral" | "warm" | "hot";
 export type RelationshipStage =
@@ -643,8 +647,13 @@ export function buildTurnClassifierMessages(opts: {
   appliedHintType?: string;
   appliedHintText?: string;
   assistantReply?: string;
+  /** reply-style-v1（PR-4）：她的個人基準，只修正 surface 解讀；省略＝prompt 逐字不變。 */
+  replyStyle?: ReplyStyleProfile | null;
 }): ChatMessage[] {
   const latest = scrubRawImageFilenames(lastUserTurn(opts.turns)?.text ?? "");
+  const baselineContext = opts.replyStyle
+    ? `\n\n${renderPersonalBaselinePrompt(opts.replyStyle, "classifier")}`
+    : "";
   const recentContext = turnsToClassifierContext(opts.turns);
   const stage = relationshipStageFor(opts.familiarityScore, opts.heatScore);
   const assistantReply = scrubRawImageFilenames(opts.assistantReply ?? "");
@@ -677,7 +686,7 @@ export function buildTurnClassifierMessages(opts: {
         `latestUserText:\n${latest}\n\n` +
         `assistantReplyAfterUser:\n${
           assistantReply || "(not available)"
-        }${hintContext}`,
+        }${hintContext}${baselineContext}`,
     },
   ];
 }

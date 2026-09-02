@@ -48,6 +48,7 @@ import {
 } from "./prompt.ts";
 import type { TurnResponsePlan } from "./turn_response_plan.ts";
 import { nextReplyStyleState } from "./reply_style_state.ts";
+import { replyStyleFor, type ReplyStyleProfile } from "./reply_style.ts";
 import { difficultyTuningFor } from "./practice_persona.ts";
 import {
   decideChatGate,
@@ -1327,6 +1328,8 @@ async function judgeLearningState(opts: {
   currentPartnerState?: PartnerState | null;
   request: ReturnType<typeof validateRequest>;
   reply: string;
+  /** reply-style-v1（PR-4）：她的個人基準給 partnerMood 分類器；null＝逐字不變。 */
+  replyStyle?: ReplyStyleProfile | null;
 }): Promise<LearningJudgement> {
   // 難度接線（槓桿 A）：正負 delta 倍率只在 beginner 溫度管線生效，作用域內解析一次。
   const tuning = difficultyTuningFor(opts.request.profile.difficulty);
@@ -1541,6 +1544,7 @@ async function judgeLearningState(opts: {
         appliedHintType: opts.request.appliedHintType,
         appliedHintText: opts.request.appliedHintText,
         assistantReply: opts.reply,
+        replyStyle: opts.replyStyle,
       }),
       maxTokens: TEMPERATURE_JUDGE_MAX_TOKENS,
       temperature: TEMPERATURE_JUDGE_TEMPERATURE,
@@ -2159,6 +2163,15 @@ export function createPracticeChatHandler(
     }
 
     const accountIsTest = TEST_EMAILS.includes(user.email || "");
+    // reply-style-v1：server-only 旗標。"true"＝全部使用者；"test"＝只有 TEST_EMAILS
+    // 帳號（dogfood）；其他＝關。關閉或角色沒有 mapping 時，chat／hint／debrief／
+    // partnerMood 分類器的 prompt 都與旗標接線前逐字相同。
+    const replyStyleFlag = deps.getEnv("PRACTICE_REPLY_STYLE_ENABLED");
+    const replyStyleEnabled = replyStyleFlag === "true" ||
+      (replyStyleFlag === "test" && accountIsTest);
+    const replyStyleProfile = replyStyleEnabled
+      ? replyStyleFor(request.profile.girl.profileId)
+      : null;
     const limits = resolveLimits(sub.tier);
     const responsePayloadWithCurrentUsage = (
       snapshot: Record<string, unknown>,
@@ -2969,6 +2982,7 @@ export function createPracticeChatHandler(
           memorySummary: promptMemorySummary,
           timeContext: nowContext,
           gameState: ledgerGameState,
+          replyStyle: replyStyleProfile,
         });
         const hintFactualEvidence = hintTrustedFactualEvidence({
           profile: request.profile,
@@ -3756,6 +3770,7 @@ export function createPracticeChatHandler(
               timeContext: nowContext,
               gameState: ledgerGameState,
               appliedHintTurns: ledgerAppliedHintTurns,
+              replyStyle: replyStyleProfile,
             }
             : {
               partnerState: partnerStateFromLedger(ledger) ??
@@ -3764,6 +3779,7 @@ export function createPracticeChatHandler(
               acquaintanceOrigin,
               memorySummary: promptMemorySummary,
               timeContext: nowContext,
+              replyStyle: replyStyleProfile,
             },
         );
         const debriefFactualEvidence = hintTrustedFactualEvidence({
@@ -4207,10 +4223,6 @@ export function createPracticeChatHandler(
       // prompt／守門／回應逐字與舊版相同（index_test 對 fee76b87 golden bytes 比對）。
       // bundle 只算一次：兩次 attempt 共用同一份 plan，不會第二發換形狀；
       // 純函式建構若丟錯，走與舊版相同的 practice_generation_failed 邊界（不重試）。
-      // "true"＝全部使用者；"test"＝只有 TEST_EMAILS 帳號（dogfood）；其他＝關。
-      const replyStyleFlag = deps.getEnv("PRACTICE_REPLY_STYLE_ENABLED");
-      const replyStyleEnabled = replyStyleFlag === "true" ||
-        (replyStyleFlag === "test" && accountIsTest);
       const chatPromptBundle = buildChatPromptBundle(
         request.turns,
         request.profile,
@@ -4354,6 +4366,7 @@ export function createPracticeChatHandler(
           currentPartnerState: trustedPartnerState,
           request,
           reply,
+          replyStyle: replyStyleProfile,
         });
       } catch (e) {
         const mapped = mapLedgerError(getErrorMessage(e));

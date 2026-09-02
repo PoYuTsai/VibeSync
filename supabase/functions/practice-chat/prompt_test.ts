@@ -2751,3 +2751,31 @@ Deno.test("debrief：最終 dateChance 判準位於 band／invite 證據之後",
   assert(gameEvidenceAt < gameFinalAt);
   assert(gameText.includes("不得繞過"));
 });
+
+Deno.test("reply-style（PR-4）：省略或 null 的 replyStyle 讓 debrief prompt 逐字不變；有基準時多一行 hidden evidence", () => {
+  const turns = [
+    { role: "user" as const, text: "今天忙到剛下班" },
+    { role: "ai" as const, text: "我也剛下班" },
+  ];
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_001" });
+  const omitted = buildDebriefMessages(turns, profile, {
+    practiceMode: "beginner",
+    temperatureScore: 40,
+  });
+  const nulled = buildDebriefMessages(turns, profile, {
+    practiceMode: "beginner",
+    temperatureScore: 40,
+    replyStyle: null,
+  });
+  assertEquals(JSON.stringify(nulled), JSON.stringify(omitted));
+  assert(!omitted[1].content.includes("她的平常基準"));
+  const styled = buildDebriefMessages(turns, profile, {
+    practiceMode: "beginner",
+    temperatureScore: 40,
+    replyStyle: STYLE_BY_PROFILE_ID.practice_girl_001,
+  });
+  assertEquals(styled[0].content, omitted[0].content);
+  assert(styled[1].content.includes("她的平常基準"));
+  assert(styled[1].content.includes("不得提到基準數字"));
+  assert(styled[1].content.length > omitted[1].content.length);
+});
