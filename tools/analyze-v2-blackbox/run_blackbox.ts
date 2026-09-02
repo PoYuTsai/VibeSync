@@ -208,10 +208,41 @@ async function runCase(name: string, messages: Msg[]) {
   const startedAt = new Date().toISOString();
   let text = "";
   let status = 0;
+  const eventTimes: { type: string; style?: string; atMs: number }[] = [];
   try {
     const response = await handleAnalyzeStream(deps as never);
     status = response.status;
-    text = await response.text();
+    // 逐行讀 client NDJSON 並記到達時間：量「第一張卡／選中卡／全部完成」各在第幾秒。
+    const reader = response.body?.getReader();
+    if (reader) {
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newline: number;
+        while ((newline = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, newline);
+          buffer = buffer.slice(newline + 1);
+          text += line + "\n";
+          if (!line.trim()) continue;
+          try {
+            const parsed = JSON.parse(line);
+            eventTimes.push({
+              type: String(parsed.type ?? "?"),
+              ...(typeof parsed.style === "string"
+                ? { style: parsed.style }
+                : {}),
+              atMs: Date.now() - started,
+            });
+          } catch { /* unparseable line：不計時 */ }
+        }
+      }
+      text += buffer;
+    } else {
+      text = await response.text();
+    }
   } finally {
     console.log = origLog;
   }
@@ -233,7 +264,78 @@ async function runCase(name: string, messages: Msg[]) {
     divergencePlan: true,
   });
   const completed = find("stream_completed") ?? find("stream_done") ?? {};
+  const selectedStyle = typeof decision?.selectedStyle === "string"
+    ? decision.selectedStyle
+    : null;
+  const at = (pred: (e: { type: string; style?: string }) => boolean) =>
+    eventTimes.find(pred)?.atMs ?? null;
+  const optionTimes = eventTimes.filter((e) =>
+    e.type === "analysis.reply_option"
+  );
+  const milestonesMs = {
+    started: at((e) => e.type === "analysis.started"),
+    inventory: at((e) => e.type === "analysis.inventory"),
+    decision: at((e) => e.type === "analysis.decision"),
+    recommendation: at((e) => e.type === "analysis.recommendation"),
+    firstCard: optionTimes[0]?.atMs ?? null,
+    selectedCard: selectedStyle
+      ? at((e) =>
+        e.type === "analysis.reply_option" && e.style === selectedStyle
+      )
+      : null,
+    allCards: optionTimes.length > 0 ? optionTimes.at(-1)!.atMs : null,
+    done: at((e) => e.type === "analysis.done"),
+  };
+  // 模型原始輸出的字元去向：按事件 type，再看 reply_option 內欄位（不存內容）。
+  const rawTypeChars: Record<string, number> = {};
+  const rawOptionFieldChars: Record<string, number> = {};
+  // 模型 done.finalResult 各欄位大小（不存內容）：看它重寫了什麼、伺服器用不用。
+  const rawDoneFieldChars: Record<string, number> = {};
+  for (const l of rawText.split("\n")) {
+    if (!l.trim()) continue;
+    let parsed: Record<string, unknown> | null = null;
+    try {
+      parsed = JSON.parse(l);
+    } catch {
+      rawTypeChars["UNPARSEABLE"] = (rawTypeChars["UNPARSEABLE"] ?? 0) +
+        l.length;
+      continue;
+    }
+    const t = String(parsed?.type ?? "?");
+    rawTypeChars[t] = (rawTypeChars[t] ?? 0) + l.length;
+    if (t === "analysis.done" && parsed) {
+      const fr = parsed.finalResult;
+      if (fr && typeof fr === "object") {
+        for (const [k, v] of Object.entries(fr as Record<string, unknown>)) {
+          rawDoneFieldChars[k] = (rawDoneFieldChars[k] ?? 0) +
+            JSON.stringify(v).length;
+        }
+      }
+    }
+    if (t === "analysis.reply_option" && parsed) {
+      for (const [k, v] of Object.entries(parsed)) {
+        if (k === "segments" && Array.isArray(v)) {
+          for (const seg of v) {
+            for (const [sk, sv] of Object.entries(seg ?? {})) {
+              const key = `segment.${sk}`;
+              rawOptionFieldChars[key] = (rawOptionFieldChars[key] ?? 0) +
+                JSON.stringify(sv).length;
+            }
+          }
+        } else {
+          rawOptionFieldChars[k] = (rawOptionFieldChars[k] ?? 0) +
+            JSON.stringify(v).length;
+        }
+      }
+    }
+  }
   return {
+    milestonesMs,
+    eventTimes,
+    rawChars: rawText.length,
+    rawTypeChars,
+    rawOptionFieldChars,
+    rawDoneFieldChars,
     name,
     startedAt,
     sentRequests: sentRequests.splice(0),
