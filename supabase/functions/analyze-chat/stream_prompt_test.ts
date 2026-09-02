@@ -5,9 +5,12 @@ import {
 import {
   DIVERGENCE_BRANCH_FIELDS,
   DIVERGENCE_METHODS,
-  DIVERGENCE_PLAN_FIELDS,
+  DIVERGENCE_PLAN_EVENT_KEYS,
   MAX_DIVERGENCE_BRANCHES,
+  MAX_NEW_TOPIC_BUDGET,
+  MAX_QUESTION_BUDGET,
   MAX_SEMANTIC_DISTANCE,
+  MAX_SEMANTIC_DISTANCE_CAP,
   MIN_DIVERGENCE_BRANCHES,
   parseDivergencePlanV1,
 } from "./divergence_contract.ts";
@@ -456,48 +459,84 @@ Deno.test("divergence plan step is v2-only, sits between the decision gate and t
     v2.indexOf("1b. [send decisions only]") <
       v2.indexOf("[send decisions only] 2. `analysis.recommendation`"),
   );
-  assert(
-    v2.includes(
-      'Example divergence_plan line: {"type":"analysis.divergence_plan"',
-    ),
-  );
+  const examplePrefix = "Example divergence_plan line: ";
+  assert(v2.includes(`${examplePrefix}{"type":"analysis.divergence_plan"`));
 
-  // 同源：枝數、方法、欄位全來自 divergence_contract；改常數這裡就會變。
+  // 同源：枝數、方法、欄位、預算上限全來自 divergence_contract；改常數這裡就會變。
+  const tick = (value: string) => `\`${value}\``;
   assert(
     v2.includes(
       `${MIN_DIVERGENCE_BRANCHES}-${MAX_DIVERGENCE_BRANCHES} branches`,
     ),
   );
-  assert(v2.includes(`\`semanticDistanceCap\` 0-${MAX_SEMANTIC_DISTANCE}`));
-  assert(
-    v2.includes(DIVERGENCE_METHODS.map((method) => `\`${method}\``).join("/")),
-  );
   assert(
     v2.includes(
-      `exactly these fields and nothing else: ${
-        DIVERGENCE_PLAN_FIELDS.map((field) => `\`${field}\``).join(", ")
+      `${tick("semanticDistanceCap")} 0-${MAX_SEMANTIC_DISTANCE_CAP}`,
+    ),
+  );
+  assert(v2.includes(`${tick("newTopicBudget")} 0-${MAX_NEW_TOPIC_BUDGET}`));
+  assert(v2.includes(`${tick("questionBudget")} 0-${MAX_QUESTION_BUDGET}`));
+  assert(
+    v2.includes(`${tick("semanticDistance")} 0-${MAX_SEMANTIC_DISTANCE}:`),
+  );
+  assert(v2.includes(DIVERGENCE_METHODS.map(tick).join("/")));
+  assert(
+    v2.includes(
+      `exactly these keys and nothing else: ${
+        DIVERGENCE_PLAN_EVENT_KEYS.map(tick).join(", ")
       }`,
     ),
   );
   assert(
     v2.includes(
       `each branch holds exactly: ${
-        DIVERGENCE_BRANCH_FIELDS.map((field) => `\`${field}\``).join(", ")
+        DIVERGENCE_BRANCH_FIELDS.map(tick).join(", ")
       }`,
     ),
   );
   assert(
     v2.includes(
-      "Any extra field, unknown method, or out-of-range number makes the whole plan invalid",
+      "Any extra key, unknown method, or out-of-range number makes the whole plan invalid",
     ),
   );
-  // 範例本身必須通過 parser：prompt 教的形狀就是 parser 收的形狀。
+
+  // prompt 宣告的 key 集合＝parser 收的 key 集合：範例正好用完宣告的 key 並通過
+  // parser；多一個 key／多一個 branch 欄位／未知 method／超過任一上限常數都整份作廢。
   const exampleLine = v2.split("\n").find((line) =>
-    line.startsWith("Example divergence_plan line: ")
+    line.startsWith(examplePrefix)
   );
   assert(exampleLine);
-  const example = JSON.parse(
-    exampleLine.slice("Example divergence_plan line: ".length),
-  );
+  const example = JSON.parse(exampleLine.slice(examplePrefix.length));
   assert(parseDivergencePlanV1(example));
+  assertEquals(
+    Object.keys(example).sort(),
+    [...DIVERGENCE_PLAN_EVENT_KEYS].sort(),
+  );
+  assertEquals(
+    Object.keys(example.branchPool[0]).sort(),
+    [...DIVERGENCE_BRANCH_FIELDS].sort(),
+  );
+  const [first, ...rest] = example.branchPool;
+  const rejected: Record<string, unknown>[] = [
+    { ...example, reasoning: "x" },
+    { ...example, branchPool: [{ ...first, note: "x" }, ...rest] },
+    { ...example, branchPool: [{ ...first, method: "mind_reading" }, ...rest] },
+    { ...example, semanticDistanceCap: MAX_SEMANTIC_DISTANCE_CAP + 1 },
+    { ...example, questionBudget: MAX_QUESTION_BUDGET + 1 },
+    { ...example, newTopicBudget: MAX_NEW_TOPIC_BUDGET + 1 },
+    {
+      ...example,
+      branchPool: [
+        { ...first, semanticDistance: MAX_SEMANTIC_DISTANCE + 1 },
+        ...rest,
+      ],
+    },
+  ];
+  for (const [index, candidate] of rejected.entries()) {
+    assertEquals(
+      parseDivergencePlanV1(candidate),
+      null,
+      `rejected case ${index}`,
+    );
+  }
 });

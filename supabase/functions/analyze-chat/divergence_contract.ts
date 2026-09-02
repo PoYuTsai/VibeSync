@@ -20,8 +20,10 @@ export const MAX_DIVERGENCE_BRANCHES = 8;
 const MAX_TEXT_LENGTH = 200;
 const MAX_PATH_NODES = 8;
 
-/// 模型可輸出的欄位；prompt 步驟 1b 與 parser 都從這兩張表生成，不得各自
-/// 另寫一份。`type` 只屬事件外殼。
+/// 模型可輸出的欄位；prompt 步驟 1b 與 parser 都從這幾張表與常數生成，
+/// 不得各自另寫一份。事件行＝`type` 加 DIVERGENCE_PLAN_FIELDS；server 快照
+/// 沒有 `type`。
+export const DIVERGENCE_PLAN_EVENT_TYPE = "analysis.divergence_plan";
 export const DIVERGENCE_PLAN_FIELDS = [
   "schemaVersion",
   "threadFrame",
@@ -42,8 +44,16 @@ export const DIVERGENCE_BRANCH_FIELDS = [
   "associationPath",
   "semanticDistance",
 ] as const;
+/// 分支距離 0–3；3＝遠距聯想，cap 最多 2，所以 3 永遠被 cap 排除（§5.10）。
 export const MAX_SEMANTIC_DISTANCE = 3;
-const PLAN_KEYS = new Set<string>(["type", ...DIVERGENCE_PLAN_FIELDS]);
+export const MAX_SEMANTIC_DISTANCE_CAP = 2;
+export const MAX_NEW_TOPIC_BUDGET = 1;
+export const MAX_QUESTION_BUDGET = 1;
+export const DIVERGENCE_PLAN_EVENT_KEYS = [
+  "type",
+  ...DIVERGENCE_PLAN_FIELDS,
+] as const;
+const PLAN_KEYS = new Set<string>(DIVERGENCE_PLAN_EVENT_KEYS);
 const BRANCH_KEYS = new Set<string>(DIVERGENCE_BRANCH_FIELDS);
 
 /// finalResult 裡持久化但絕不送 client 的 key：計畫含從她訊息推出的
@@ -96,7 +106,7 @@ export function parseDivergencePlanV1(
 ): DivergencePlanV1 | null {
   if (!isRecord(value)) return null;
   if (Object.keys(value).some((key) => !PLAN_KEYS.has(key))) return null;
-  if (value.type !== undefined && value.type !== "analysis.divergence_plan") {
+  if (value.type !== undefined && value.type !== DIVERGENCE_PLAN_EVENT_TYPE) {
     return null;
   }
   if (value.schemaVersion !== 1) return null;
@@ -108,10 +118,10 @@ export function parseDivergencePlanV1(
   );
   const semanticDistanceCap = boundedInt(
     value.semanticDistanceCap,
-    MAX_SEMANTIC_DISTANCE,
+    MAX_SEMANTIC_DISTANCE_CAP,
   );
-  const newTopicBudget = boundedInt(value.newTopicBudget, 1);
-  const questionBudget = boundedInt(value.questionBudget, 1);
+  const newTopicBudget = boundedInt(value.newTopicBudget, MAX_NEW_TOPIC_BUDGET);
+  const questionBudget = boundedInt(value.questionBudget, MAX_QUESTION_BUDGET);
   if (
     threadFrame === null || anchorSourceIndex === null ||
     supportSourceIndices === null || mergeContextSourceIndices === null ||

@@ -59,7 +59,7 @@ Deno.test("divergence plan parser rejects any malformed field instead of repairi
     { ...VALID_PLAN, threadFrame: "   " },
     { ...VALID_PLAN, anchorSourceIndex: 0 },
     { ...VALID_PLAN, supportSourceIndices: [3, 3] },
-    { ...VALID_PLAN, semanticDistanceCap: 4 },
+    { ...VALID_PLAN, semanticDistanceCap: 3 },
     { ...VALID_PLAN, questionBudget: 2 },
     { ...VALID_PLAN, branchPool: [] },
     {
