@@ -1,6 +1,6 @@
 # Launch Readiness Checklist
 
-最後更新：2026-08-15
+最後更新：2026-09-03
 目前目標：iOS / TestFlight / App Review 上線前最後收尾
 
 送審主控台、App Review Notes 草稿、Privacy Label 對照見：
@@ -34,7 +34,7 @@
 - [ ] Essential 購買與 tier 刷新正確
 - [ ] Restore Purchases 正常
 - [ ] 同 Apple ID / 不同 Apple ID 邊界情境已驗證
-- [ ] recognize-only 不扣額度
+- [x] recognize-only 不扣額度（2026-09-03 程式端驗 `quota_usage.ts` recognize_only_free＋`quota_usage_test`；獨立 OCR 免費計數）
 
 ### OCR / Analysis
 
@@ -52,13 +52,13 @@
 - [x] Live contract 回 `keyboard-reply-exactly-once-v1`
 - [x] Production 測試帳號 fresh／replay／mismatch、DB pending／settlement／rollback、RLS／grant／cron 通過且 smoke rows 清為 0
 - [ ] Fresh request、lost-response replay、pending、mismatch、quota、model-rate 行為正確且不重複扣額
-- [ ] Signed Archive / IPA 包含 `VibeSyncKeyboard.appex`
+- [x] Signed Archive / IPA 包含 `VibeSyncKeyboard.appex`（2026-09-03 由 Build & Distribute run 33648963212 的 IPA 驗證）
 - [ ] LINE、Instagram、Messages 在 Full Access 開／關時都能正確成功或安全失敗
 
 ## 2. 法務與對外資訊
 
-- [ ] [https://vibesyncai.app/privacy](https://vibesyncai.app/privacy) 內容與目前資料流一致
-- [ ] [https://vibesyncai.app/terms](https://vibesyncai.app/terms) 內容與目前方案一致
+- [x] [https://vibesyncai.app/privacy](https://vibesyncai.app/privacy) 內容與目前資料流一致（2026-09-03 驗：我幫你修 7 天重播、AI 鍵盤 HMAC／24 小時／Keychain 23 小時、4.3 保留期限 30 天、資料類別與不追蹤聲明齊全；最後更新 2026-09-02）
+- [x] [https://vibesyncai.app/terms](https://vibesyncai.app/terms) 內容與目前方案一致（2026-09-03 驗 Free／Starter／Essential 與自動續約條款；價格以商店頁為準）
 - [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面：[https://vibesyncai.app/support](https://vibesyncai.app/support)
 - [ ] `vibesyncaiapp@gmail.com` 可收信
 - [ ] App Store Connect privacy disclosure 已完成
@@ -68,17 +68,17 @@
 ## 3. 後端與部署
 
 - [x] 最新 Edge Function deploy 綠燈（2026-08-15 `dd0825d8` Deploy Edge Function success）
-- [ ] 最新 iOS release workflow 綠燈
+- [x] 最新 iOS release workflow 綠燈（2026-08-31 run 33428088300）
 - [x] 精準套用 `20260717120000_keyboard_reply_exactly_once.sql` 並核對 migration history
 - [x] 依 DB → `KEYBOARD_REPLAY_HMAC_KEY` → JWT-verified `keyboard-reply` v5 順序部署
-- [ ] RevenueCat webhook 正常同步 tier
-- [ ] `sync-subscription` 不再使用 hard-coded fallback key
-- [ ] `revenuecat-webhook` 只保留最小必要 webhook log payload
-- [ ] `analyze-chat` 暫時維持 `--no-verify-jwt`，直到未來專案單獨調查完成
+- [x] RevenueCat webhook 正常同步 tier（2026-09-03 production `webhook_logs` 聚合：近 60 天 RENEWAL／PRODUCT_CHANGE／EXPIRATION／CANCELLATION／BILLING_ISSUE 皆處理出 tier，最近一筆 2026-09-01；全為 SANDBOX，正式購買事件待上線）
+- [x] `sync-subscription` 不再使用 hard-coded fallback key（2026-09-03 驗 `index.ts:15` 只讀 env、缺鍵 500 fail-closed）
+- [x] `revenuecat-webhook` 只保留最小必要 webhook log payload（2026-09-03 驗 `buildWebhookLogPayload` 白名單，無原始 body／headers）
+- [x] `analyze-chat` 暫時維持 `--no-verify-jwt`，直到未來專案單獨調查完成（2026-09-03 驗 `deploy-edge-function.yml`）
 
 ## 4. 觀測與營運
 
-- [ ] `ai_logs` 能看成功 / 失敗 / timeout / latency 分布
+- [x] `ai_logs` 能看成功 / 失敗 / timeout / latency 分布（2026-09-03 production 聚合：近 7 天 analyze 15 筆全成功 p50 27s／p95 49s、recognize_only 5 筆 p50 15s、practice 18 筆，失敗 0）
 - [ ] restore / transfer 問題有文件可查
 - [ ] support 流程可接住帳號、支付、OCR 失敗問題
 

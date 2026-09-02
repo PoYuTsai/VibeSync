@@ -1,6 +1,6 @@
 # App Review Final Checklist
 
-最後更新：2026-07-17
+最後更新：2026-09-03（程式端／黑箱可驗項目由 Claude 逐項補證據；真機與 App Store Connect 項目仍待 Eric）
 
 這份清單是送審前最後核對用，不是功能願望清單。
 
@@ -47,41 +47,41 @@ Repo 端目前證據：發布硬化 PR #17 已建立；`flutter analyze` PASS、
 - [ ] 多張截圖 overlap 情境可成功
 - [ ] 名字小字、錯字、模糊邊界案例已抽測
 - [ ] 圖片 / 貼圖 / 影片 bubble 不會把 speaker 判斷帶歪
-- [ ] OCR 失敗時不顯示 raw internal error 給使用者
+- [x] OCR 失敗時不顯示 raw internal error 給使用者（2026-09-03 程式端驗：`mapAnalysisHttpError` 只放行繁中 server 訊息；模型英文摘要改由 `recognitionFailureMessage` 換固定文案）
 
 ## 4. 送審與對外資訊
 
-- [ ] `https://vibesyncai.app/privacy` 可正常開啟，但仍須發佈 AI 鍵盤 24 小時 server replay、共享 Keychain request identity 與不保存原始複製文字的揭露
-- [ ] `https://vibesyncai.app/terms` 可正常開啟
-- [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面：`https://vibesyncai.app/support`，不使用 `mailto:`
+- [x] `https://vibesyncai.app/privacy` 可正常開啟（2026-09-03 HTTP 200，最後更新 2026-09-02；已含 AI 鍵盤 24 小時 server replay、輸入 HMAC、共享 Keychain 約 23 小時、不保存原文，與 4.3 保留期限 30 天）
+- [x] `https://vibesyncai.app/terms` 可正常開啟（2026-09-03 HTTP 200，最後更新 2026-09-02，Free／Starter／Essential 與自動續約條款在列）
+- [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面：`https://vibesyncai.app/support`，不使用 `mailto:`（2026-09-03 頁面 HTTP 200 已驗；ASC 欄位仍需人工核對）
 - [ ] `vibesyncaiapp@gmail.com` 可收信
 - [ ] App Store Connect 的 privacy disclosure 已依目前資料流填寫
 - [ ] Privacy Label 已揭露 Email / User ID / Purchase History / User Content / Photos / Usage Data / Diagnostics
-- [ ] App 內 AI 隱私頁、線上 Privacy Policy 與 App Store Connect 已揭露「我幫你修」暫存 AI 生成潤飾句／理由、生成文字可能反映輸入、不另存原始草稿／完整對話輸入（重播 7 天、每小時清除逾期 live row，備份依 Supabase 週期）
-- [ ] App 內 AI 隱私頁、線上 Privacy Policy 與 App Store Connect 已揭露 AI 鍵盤 request identity／input HMAC、只保存 AI 回覆與風格、24 小時 server replay／每小時清理，以及共享 Keychain 最多約 23 小時的 retry identity
+- [ ] App 內 AI 隱私頁、線上 Privacy Policy 與 App Store Connect 已揭露「我幫你修」暫存 AI 生成潤飾句／理由、生成文字可能反映輸入、不另存原始草稿／完整對話輸入（重播 7 天、每小時清除逾期 live row，備份依 Supabase 週期）（2026-09-03 App 內頁與線上頁已驗齊全；ASC 待人工）
+- [ ] App 內 AI 隱私頁、線上 Privacy Policy 與 App Store Connect 已揭露 AI 鍵盤 request identity／input HMAC、只保存 AI 回覆與風格、24 小時 server replay／每小時清理，以及共享 Keychain 最多約 23 小時的 retry identity（2026-09-03 線上頁已齊；App 內頁補上 HMAC 與「只保存回覆與風格」字句；ASC 待人工）
 - [ ] Privacy Label 未勾 tracking、location、contacts 等未使用資料類型
 - [ ] App Review 說明文已更新成目前實際功能與資料流
 - [ ] App Review Information 已填測試帳號、測試步驟、IAP/AI/OCR 說明
 - [ ] App Store metadata 不使用「把妹、操控、約砲、保證成功」等高風險定位
-- [ ] iOS `NSPhotoLibraryUsageDescription` 已存在，且說明只用於聊天截圖 OCR/分析
+- [x] iOS `NSPhotoLibraryUsageDescription` 已存在，且說明只用於聊天截圖 OCR/分析（2026-09-03 驗 `ios/Runner/Info.plist`：選取聊天截圖＋鍵盤「最近截圖」輔助，可隨時撤回）
 
 ## 4.5 AI / 內容安全
 
-- [ ] AI 不鼓勵騷擾、跟蹤、威脅、操控或違反同意的行為
+- [ ] AI 不鼓勵騷擾、跟蹤、威脅、操控或違反同意的行為（2026-09-03 程式端：`SAFETY_RULES`＋`BLOCKED_PATTERNS`＋外送脅迫句型守門；黑箱 42 案 150 張回覆卡與決策文字守門掃描 0 命中，含邊界／婉拒案全部判不傳；成人曖昧情境尚無黑箱）
 - [ ] 成人/曖昧情境能成熟回覆，但包含尊重、界線、安全提醒
-- [ ] AI 失敗、額度不足、OCR 失敗時都不顯示 raw internal error
-- [ ] Free 用戶可在額度內完成核心分析體驗，用完才導 Paywall
+- [x] AI 失敗、額度不足、OCR 失敗時都不顯示 raw internal error（2026-09-03 全路徑掃描：分析／開場／新話題／教練／鍵盤／額度 429 皆固定繁中；唯一漏洞＝付費失敗 SnackBar 會露原始例外文字，已修 `purchaseErrorMessageFor`）
+- [x] Free 用戶可在額度內完成核心分析體驗，用完才導 Paywall（2026-09-03 程式端驗：`used >= limit` 才 429 且先刷新 RevenueCat；模型／OCR 限流 429 刻意不帶額度欄位不會誤導 Paywall；鎖定測試 `analysis_service_model_rate_limit_test`、`index_test` I4）
 
 ## 5. Release / Workflow
 
-- [ ] 最新 iOS release workflow 綠燈
+- [x] 最新 iOS release workflow 綠燈（2026-08-31 run 33428088300 success；Build & Distribute 2026-09-02 run 33648963212 success）
 - [x] 最新 Edge Function deploy workflow 綠燈（`cdafa244`，run `29450067262`）
 - [ ] TestFlight build 可在 App Store Connect / TestFlight 看到
 - [x] `analyze-chat` 目前維持 `--no-verify-jwt`，未被誤改（v274）
 - [x] Production 已精準套用 `20260717120000_keyboard_reply_exactly_once.sql`，且 migration 帳本 version 對齊
 - [x] Supabase 已設定 `KEYBOARD_REPLAY_HMAC_KEY`，再部署 JWT-verified `keyboard-reply` v5
 - [x] Live keyboard health 回 `keyboard-reply-exactly-once-v1`
-- [ ] Signed Archive / IPA 包含 `VibeSyncKeyboard.appex`
+- [x] Signed Archive / IPA 包含 `VibeSyncKeyboard.appex`（2026-09-03 下載 Build & Distribute run 33648963212 的 ios-ipa：`Payload/Runner.app/PlugIns/VibeSyncKeyboard.appex/` 含 embedded.mobileprovision、keyboard-service extension point）
 - [ ] 真機 fresh / lost-response replay / pending / mismatch / quota / model-rate 與 LINE／Instagram／Messages Full Access 全過
 
 ## 6. Release Gate
