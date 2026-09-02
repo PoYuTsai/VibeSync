@@ -5,6 +5,8 @@ import { CORPUS, type CorpusCase, type MessageDecision } from "./corpus.ts";
 
 export const MAX_LATENCY_MS = 60_000;
 export const MAX_OUTPUT_TOKENS = 6_500;
+/// §6.3 字面：「不得 4–5 句同開頭」——同開頭卡數達到這個值才算違規。
+export const SAME_OPENING_FAIL_AT = 4;
 const PLAN_BODY_MARKERS = [
   "threadFrame",
   "branchPool",
@@ -31,6 +33,41 @@ export interface EvalSummary {
 
 // deno-lint-ignore no-explicit-any
 type Artifact = { meta?: Record<string, unknown>; results: any[] };
+
+// deno-lint-ignore no-explicit-any
+function usedBranchExceedsCap(r: any): boolean {
+  const plan = r.server?.plan;
+  if (!plan || !Array.isArray(plan.branchPool)) return false;
+  const distance = new Map<string, number>(
+    plan.branchPool.map((b: { id: string; semanticDistance: number }) => [
+      b.id,
+      b.semanticDistance,
+    ]),
+  );
+  const used = new Set<string>();
+  const variants = r.server?.linkage?.variants;
+  if (variants && typeof variants === "object") {
+    for (
+      const v of Object.values(variants) as { selectedBranchIds?: string[] }[]
+    ) {
+      for (const id of v.selectedBranchIds ?? []) used.add(id);
+    }
+  } else {
+    // 舊 artifact 沒存 linkage：退回原始 option 的 selectedBranchIds／計畫指派。
+    for (const l of r.rawLines ?? []) {
+      if (l?.type === "analysis.reply_option") {
+        for (const id of l.selectedBranchIds ?? []) used.add(id);
+      }
+    }
+    for (const id of Object.values(plan.styleBranchIds ?? {})) {
+      used.add(id as string);
+    }
+  }
+  const cap = typeof plan.semanticDistanceCap === "number"
+    ? plan.semanticDistanceCap
+    : Infinity;
+  return [...used].some((id) => (distance.get(id) ?? 0) > cap);
+}
 
 export function evaluateArtifact(
   artifact: Artifact,
@@ -76,13 +113,18 @@ export function evaluateArtifact(
       planSends += 1;
       if (plan?.status === "observed") {
         planObservedCount += 1;
-        if (plan.sameOpeningCount !== "unknown" && plan.sameOpeningCount > 0) {
-          fail("no_same_opening");
+        if (
+          plan.sameOpeningCount !== "unknown" &&
+          plan.sameOpeningCount >= SAME_OPENING_FAIL_AT
+        ) {
+          fail("no_four_same_opening");
         }
         if (plan.questionBudgetExceeded === true) fail("question_budget");
         if (plan.newTopicBudgetExceeded === true) fail("new_topic_budget");
-        if (plan.branchExceedsCap === true) fail("semantic_distance_cap");
-        if ((attribution?.invalidCount ?? 0) > 0) fail("attribution_valid");
+        // 距離 cap 只看風格實際用到的枝；pool 裡刻意列出的被否決路徑不算。
+        if (usedBranchExceedsCap(r)) fail("used_branch_within_cap");
+        // invalid（缺欄／跨風格手法）依 Eric best-effort 定案只是度量；gate 只看
+        // 有沒有解析到枝。
         if ((attribution?.unresolvedCount ?? 0) > 0) {
           fail("attribution_resolved");
         }

@@ -51,15 +51,45 @@ Deno.test("evaluate: each gate trips on its own signal", () => {
   const cases = [
     ["decision_in_expected_set", send("boundary_friend_hint")],
     [
-      "no_same_opening",
+      "no_four_same_opening",
       send("warm_question_back", {
         telemetry: {
           usage: {},
           phase0: {
             divergencePlan: {
               status: "observed",
-              sameOpeningCount: 3,
+              sameOpeningCount: 4,
               attribution: {},
+            },
+          },
+        },
+      }),
+    ],
+    [
+      "used_branch_within_cap",
+      send("warm_question_back", {
+        server: {
+          plan: {
+            semanticDistanceCap: 1,
+            branchPool: [
+              { id: "br_1", semanticDistance: 1 },
+              { id: "br_2", semanticDistance: 2 },
+            ],
+            styleBranchIds: { humor: "br_2" },
+          },
+        },
+      }),
+    ],
+    [
+      "attribution_resolved",
+      send("warm_question_back", {
+        telemetry: {
+          usage: {},
+          phase0: {
+            divergencePlan: {
+              status: "observed",
+              sameOpeningCount: 0,
+              attribution: { unresolvedCount: 1 },
             },
           },
         },
@@ -91,4 +121,31 @@ Deno.test("evaluate: each gate trips on its own signal", () => {
     assert(summary.results[0].failures.includes(gate), gate);
   }
   assert(CORPUS.length >= 21);
+  // 三張同開頭、pool 裡未被用到的超 cap 枝、缺欄 invalid：都只是度量，不擋。
+  const lenient = evaluateArtifact({
+    results: [send("warm_question_back", {
+      telemetry: {
+        usage: {},
+        phase0: {
+          divergencePlan: {
+            status: "observed",
+            sameOpeningCount: 3,
+            branchExceedsCap: true,
+            attribution: { invalidCount: 2, unresolvedCount: 0 },
+          },
+        },
+      },
+      server: {
+        plan: {
+          semanticDistanceCap: 1,
+          branchPool: [
+            { id: "br_1", semanticDistance: 1 },
+            { id: "br_9", semanticDistance: 3 },
+          ],
+          styleBranchIds: { extend: "br_1" },
+        },
+      },
+    })],
+  });
+  assertEquals(lenient.passed, 1);
 });

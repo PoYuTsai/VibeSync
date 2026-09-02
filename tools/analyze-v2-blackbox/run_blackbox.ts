@@ -263,6 +263,7 @@ async function runCase(name: string, messages: Msg[]) {
     server: {
       markDoneHasPlan: !!markDoneFinal?.analysisDivergencePlan,
       plan: markDoneFinal?.analysisDivergencePlan ?? null,
+      linkage: markDoneFinal?.analysisEvidenceLinkage ?? null,
       decisionV2: markDoneFinal?.analysisDecisionV2 ?? null,
     },
     telemetry: {

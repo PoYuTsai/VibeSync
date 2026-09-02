@@ -33,7 +33,9 @@ deno run --allow-read tools/analyze-v2-blackbox/evaluate.ts <artifact.json> [--j
 ```
 
 語料在 `corpus.ts`（每案帶可確定性判定的期望值）。評測器不打網路，對照 §19.3 可
-確定性判定的 gates 打分：決策在期望集合、no-send 零卡、send 五 key 唯一、同開頭、
-問句／新話題／距離預算、歸因 invalid／unresolved、client 無計畫本文、延遲 ≤60s、
-輸出 ≤6500 token；任一 gate 失敗 exit 1。run12 基線：15/21（同開頭 3、問句 1、
-距離 1、延遲 1）。
+確定性判定的 gates 打分：決策在期望集合、no-send 零卡、send 五 key 唯一、同開頭
+≥4 張（§6.3 字面）、問句／新話題預算、風格實際用到的枝不得超 cap、歸因 unresolved、
+client 無計畫本文、延遲 ≤60s、輸出 ≤6500 token；任一 gate 失敗 exit 1。同開頭 1–3 張、
+pool 裡未用到的超 cap 枝、缺欄 invalid 只是度量。基線：run12 17/21、run13 18/21
+（剩：用到超 cap 枝 1–2、四張同開頭 1、問句 1、延遲 1）。3b 實驗：加「開頭規則」對
+同開頭無效（4 vs 3 案）已撤。
