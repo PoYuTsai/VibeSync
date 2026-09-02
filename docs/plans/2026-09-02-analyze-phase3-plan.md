@@ -40,6 +40,11 @@ Phase 2b 已上 main（`03b8f585`，Eric 接受 APPROVED_WITH_RISK）。Codex �
   `analyze_semantic_critic`）。離線評測 `tools/analyze-v2-blackbox/run_critic.ts`。
 - Eric 2026-09-03 定案：模型用 Sonnet 5（約每次 1 美分，主分析約 +10–15%）；先跑離線
   評測再開影子。
+- 離線評測首輪（2026-09-03，Sonnet 5，共 30 案、實花約 0.13 美元）：rewrite 9（36%／25%）、
+  invalid 0、延遲 1.2–4.4s。抓對的：編造照片地點（unsupported_fact）、直接問題沒回答
+  （goal／ball_mismatch ×2 案 ×2 輪）、連續兩問、答案沒放前面；誤判 1（零問句標
+  question_density）；漏抓 1（run12 同樣的編造地點放行）。guard 違規只覆蓋 critic 發現的
+  1/5，`risk` 觸發會漏掉大半 → 影子建議開 `always`（每個 send 約 0.5 美分）。
 - 待 Eric 決定（開關是一行 commit：`ANALYZE_CRITIC_SHADOW`）：
   1. ~~模型~~（已定 Sonnet 5）。
   2. 觸發：`risk`（3c guard 違規、決策 beta flags、四張同開頭才審）或 `always`

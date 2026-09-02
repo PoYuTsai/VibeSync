@@ -1,0 +1,530 @@
+{
+  "meta": {
+    "artifact": "tools/analyze-v2-blackbox/out/2026-09-02-run13-3b-opening-rule.json",
+    "artifactCommit": "fc53f295c449fbcb8f1bbf0e02fbbd188f69f36b",
+    "model": "claude-sonnet-5",
+    "generatedAt": "2026-09-02T16:09:26.098Z",
+    "cases": 16,
+    "rewrite": 4,
+    "invalid": 0,
+    "violations": {
+      "unsupported_fact": 1,
+      "investment_mismatch": 1,
+      "judgment_sprawl": 2,
+      "topic_spray": 1,
+      "goal_mismatch": 1,
+      "ball_mismatch": 1
+    },
+    "inputTokens": 32259,
+    "outputTokens": 357
+  },
+  "results": [
+    {
+      "id": "thin_opening",
+      "name": "thin_opening",
+      "style": "extend",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 1936,
+        "outputTokens": 18
+      },
+      "latencyMs": 3567,
+      "candidate": {
+        "style": "extend",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "哈囉",
+            "reply": "哈囉，剛滑到妳，想說先來打個招呼"
+          },
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "哈囉",
+            "reply": "妳今天過得如何？"
+          }
+        ],
+        "questionCount": 1
+      },
+      "rawText": null
+    },
+    {
+      "id": "first_message_after_match",
+      "name": "first_message_after_match",
+      "style": "extend",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "rewrite",
+      "violations": [
+        "unsupported_fact"
+      ],
+      "usage": {
+        "inputTokens": 1922,
+        "outputTokens": 28
+      },
+      "latencyMs": 1485,
+      "candidate": {
+        "style": "extend",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "嗨 你的照片是在哪拍的呀 好美",
+            "reply": "那是在九份拍的，那天剛好下著小雨，整條老街都在冒煙一樣的霧氣"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "warm_question_back",
+      "name": "warm_question_back",
+      "style": "extend",
+      "guardViolations": [
+        "card_source_mismatch",
+        "card_source_mismatch",
+        "semantic_distance_cap"
+      ],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 2059,
+        "outputTokens": 18
+      },
+      "latencyMs": 1443,
+      "candidate": {
+        "style": "extend",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "你平常都看這種的嗎？還是有別的推薦",
+            "reply": "恐怖片算我的舒適圈啦，片荒的話我推薦你找「宿怨」來看，比我們剛看那部還狠"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "defer_with_alternative",
+      "name": "defer_with_alternative",
+      "style": "extend",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 1997,
+        "outputTokens": 18
+      },
+      "latencyMs": 3336,
+      "candidate": {
+        "style": "extend",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "禮拜五要加班耶",
+            "reply": "加班辛苦了"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "禮拜天可以嗎",
+            "reply": "禮拜天可以，那天約晚上六點怎麼樣？"
+          }
+        ],
+        "questionCount": 1
+      },
+      "rawText": null
+    },
+    {
+      "id": "cold_one_word_replies",
+      "name": "cold_one_word_replies",
+      "style": "humor",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "rewrite",
+      "violations": [
+        "investment_mismatch",
+        "judgment_sprawl",
+        "topic_spray"
+      ],
+      "usage": {
+        "inputTokens": 2080,
+        "outputTokens": 43
+      },
+      "latencyMs": 1383,
+      "candidate": {
+        "style": "humor",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "還好",
+            "reply": "還好到連興趣都懶得講，這耍廢功力我服氣"
+          },
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "還好",
+            "reply": "看來今天是全面關機模式"
+          },
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "還好",
+            "reply": "那我也不打擾妳關機了"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "she_invites_first",
+      "name": "she_invites_first",
+      "style": "extend",
+      "guardViolations": [
+        "card_source_mismatch"
+      ],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 2033,
+        "outputTokens": 18
+      },
+      "latencyMs": 3809,
+      "candidate": {
+        "style": "extend",
+        "segments": [
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "是那個你之前說喜歡的樂團",
+            "reply": "妳還記得我說過喜歡他們喔，這個記憶力我要頒獎"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有興趣嗎",
+            "reply": "當然有興趣，週五算我一個"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "after_meetup_followup",
+      "name": "after_meetup_followup",
+      "style": "extend",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 1799,
+        "outputTokens": 18
+      },
+      "latencyMs": 3826,
+      "candidate": {
+        "style": "extend",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "到了 今天謝謝你",
+            "reply": "到家就好，今天吃得開心就值得"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "那家店真的很好吃 下次換我請",
+            "reply": "這句我先記下來了，那下次妳選地方"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "she_shares_bad_day",
+      "name": "she_shares_bad_day",
+      "style": "resonate",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 2013,
+        "outputTokens": 18
+      },
+      "latencyMs": 3730,
+      "candidate": {
+        "style": "resonate",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "今天被主管當眾罵 超級丟臉",
+            "reply": "當眾被罵真的很難堪，尤其還不是妳的錯，會委屈很正常"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "覺得好累",
+            "reply": "辛苦了，這種累不只是身體累"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "she_asks_personal_question",
+      "name": "she_asks_personal_question",
+      "style": "extend",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 2021,
+        "outputTokens": 18
+      },
+      "latencyMs": 1694,
+      "candidate": {
+        "style": "extend",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "對了 你是做什麼工作的啊",
+            "reply": "我做軟體的，大部分時間都在盯螢幕"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "感覺你很常出差",
+            "reply": "出差倒是還好，妳怎麼會這樣猜？"
+          }
+        ],
+        "questionCount": 1
+      },
+      "rawText": null
+    },
+    {
+      "id": "long_conversation_35",
+      "name": "long_conversation_35",
+      "style": "extend",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 2172,
+        "outputTokens": 18
+      },
+      "latencyMs": 1347,
+      "candidate": {
+        "style": "extend",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你上次說的那家咖啡廳在哪",
+            "reply": "在民生社區那邊，找一下「小徑」應該就找得到"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "我這週末想去",
+            "reply": "妳想去的話，不如約同一天，我剛好也想再去一次"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "she_double_texts",
+      "name": "she_double_texts",
+      "style": "extend",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 2088,
+        "outputTokens": 18
+      },
+      "latencyMs": 1343,
+      "candidate": {
+        "style": "extend",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "欸 我剛想到 你上次說的那家拉麵我今天去吃了",
+            "reply": "妳這麼有行動力我都驚訝，說了就真的去吃"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "真的超好吃 你品味不錯欸",
+            "reply": "品味不錯這句我就收下了，我口袋還有一家更狠的，之後帶妳踩雷"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "logistics_confirm",
+      "name": "logistics_confirm",
+      "style": "extend",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 2010,
+        "outputTokens": 18
+      },
+      "latencyMs": 1464,
+      "candidate": {
+        "style": "extend",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "好啊",
+            "reply": "好，那就這樣說定了"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "我可能會晚十分鐘 要先去拿東西",
+            "reply": "晚十分鐘沒問題，我會在那邊晃著等妳"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "she_teases_him",
+      "name": "she_teases_him",
+      "style": "humor",
+      "guardViolations": [
+        "card_source_mismatch"
+      ],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 1974,
+        "outputTokens": 18
+      },
+      "latencyMs": 3058,
+      "candidate": {
+        "style": "humor",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "該不會是跑去便利商店然後回來吧 哈哈",
+            "reply": "被妳看穿了，路線有精心設計成繞去買茶葉蛋"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "she_returns_after_silence",
+      "name": "she_returns_after_silence",
+      "style": "resonate",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "rewrite",
+      "violations": [
+        "goal_mismatch"
+      ],
+      "usage": {
+        "inputTokens": 2037,
+        "outputTokens": 28
+      },
+      "latencyMs": 1368,
+      "candidate": {
+        "style": "resonate",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "這陣子在趕案子 現在終於結束了",
+            "reply": "辛苦了，案子結束那瞬間應該整個人都鬆掉了吧"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "你最近怎樣",
+            "reply": "我最近還算平穩，工作照常忙但沒到妳這種程度"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "she_asks_his_opinion",
+      "name": "she_asks_his_opinion",
+      "style": "resonate",
+      "guardViolations": [
+        "semantic_distance_cap"
+      ],
+      "status": "ok",
+      "verdict": "pass",
+      "violations": [],
+      "usage": {
+        "inputTokens": 2039,
+        "outputTokens": 18
+      },
+      "latencyMs": 1519,
+      "candidate": {
+        "style": "resonate",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "新的薪水高很多 但要搬去新竹",
+            "reply": "薪水跟生活圈本來就是兩種秤，很難直接比"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "你覺得呢",
+            "reply": "我覺得沒有標準答案，比較想知道妳心裡比較偏哪邊"
+          }
+        ],
+        "questionCount": 0
+      },
+      "rawText": null
+    },
+    {
+      "id": "hobby_common_ground",
+      "name": "hobby_common_ground",
+      "style": "extend",
+      "guardViolations": [],
+      "status": "ok",
+      "verdict": "rewrite",
+      "violations": [
+        "ball_mismatch",
+        "judgment_sprawl"
+      ],
+      "usage": {
+        "inputTokens": 2079,
+        "outputTokens": 42
+      },
+      "latencyMs": 3013,
+      "candidate": {
+        "style": "extend",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "我最近在學底片 沖出來都糊掉哈哈",
+            "reply": "糊掉的底片感其實蠻有味道的，別太苛責自己"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有推薦的入門機嗎",
+            "reply": "機型我真的不懂，妳想拍的風格是什麼？我幫妳一起查"
+          }
+        ],
+        "questionCount": 1
+      },
+      "rawText": null
+    }
+  ]
+}

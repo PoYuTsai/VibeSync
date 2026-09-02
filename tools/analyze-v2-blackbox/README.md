@@ -64,3 +64,15 @@ deno run --allow-env --allow-read --allow-write=tools/analyze-v2-blackbox/out \
 回覆卡語境＋Analyze 十三碼＋繁中句型＋Alpha Guard 判準）。輸出每案 verdict／violations／
 token／延遲與 tally；不重跑主分析、不動 runtime。每案一次真呼叫，跑前要 Eric 明確授權。
 production 影子（`analyze-chat/critic_shadow.ts`）預設關閉，觸發條件／模型待 Eric 定。
+
+首輪結果（2026-09-03，Sonnet 5，`out/2026-09-03-critic-sonnet5-run12.json`／`-run13.json`）：
+run12 14 案 5 rewrite、run13 16 案 4 rewrite，invalid 0，延遲 1.2–4.4s，每案約 2k 輸入 token
+（約 0.5 美分）。對得上的：thin_opening 連續兩問（與 guard question_budget 同案）、
+first_message_after_match 編造照片地點（run13 抓到「九份」，run12 的「陽明山」漏掉）、
+hobby_common_ground 兩輪都沒回答她的直接問題（goal／ball_mismatch）、
+she_asks_personal_question 先問貓再答工作（答案該在前）。有爭議：warm_question_back
+non_actionable（只說「可以丟妳一部」沒真的給）、cold_one_word_replies 三段對一字回覆
+（investment_mismatch 對，topic_spray 勉強）、she_returns_after_silence goal_mismatch
+（她給了空窗，卡片只平淡回答）。明顯誤判：she_returns_after_silence 零問句卻標
+question_density（1 次）。guard 有違規的案只覆蓋 critic 找到的 1/5，所以影子要開
+`always` 才量得到。
