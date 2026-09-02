@@ -2,7 +2,7 @@
 
 > 唯一權威是 remote：`supabase migration list --linked`（Windows 端 `supabase.exe` 已登入可直跑）。本檔是人讀的對照摘要，新 migration 上 production 後在此補一行；懷疑漂移時以 remote 為準重新對帳，不要憑本檔判定。
 
-**最近一次全量對帳：2026-09-02** —— 本地 repo ↔ remote 一比一全對齊，無 pending。最新一支 `20260902150000`。
+**最近一次全量對帳：2026-09-03** —— 本地 repo ↔ remote 一比一全對齊，無 pending。最新一支 `20260902160000`（2026-09-03 以 `supabase.exe migration up --linked` 目標式套用，cron job `cleanup-expired-analysis-stream-runs`／`cleanup-old-ai-logs` 已驗證 active）。
 
 ## 2026-08-22 → 2026-09-02（13 支）
 
