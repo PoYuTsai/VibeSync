@@ -62,6 +62,14 @@ python3 scripts/analyze_phase0_baseline.py --project-ref fcmwrmwdoqiqdnbisdpg --
 
 測試：`no_send_decision_test.ts`（驗證矩陣、round-trip、prompt 閘、後處理、store RPC 分流）＋`no_send_stream_test.ts`（reframer 七案例＋handler 三案例），皆已進 CI 契約清單。
 
-## 4. 基線紀錄
+## 4. Phase 1c App（三態畫面）
+
+- 請求送 `analysisContractVersion: 2`（`AnalyzeStreamClient.analysisContractVersion`），**這一步一上線，dogfood 使用者就會真的收到不回決策**。
+- `AnalysisDecisionV2`（domain，`analysis_models.dart`）從 `finalResult.analysisDecisionV2` 解析；只認 schemaVersion 2＋合法 messageDecision，其餘 null 退回 v1。`shouldGiveUp` 在決策存在時以決策為準（do_not_send＝true，其餘 false），本地 cold＋警語只當 v1 備援；歷史快照走 rawResponse round-trip，不需 migration。
+- 畫面：`AnalysisDecisionCard`（sections）在 messageDecision 非 send 時是唯一主卡（不回／資料不夠／先收尾三種文案；acknowledge_and_stop 顯示收尾句＋複製）；`ReplyZoneSection` 與升級推銷在 replyMode none／single 隱藏；`GiveUpAdviceBanner`／`CoachActionPolicy` 只在 v1 或 send 出現。歷史紀錄詳情同樣顯示決策卡。串流中 `analysis.decision` 的不回事件由 display mapper 轉成「本輪判斷」內容卡。
+- 測試：`analysis_decision_v2_test`、`analysis_stream_content_display_test`、`analysis_decision_card_test`、characterization 三案例、records UI 一案例、body test 合約版本斷言。
+- 未做：詳細分析區的發散地圖（Phase 2）；決策型回饋分類（規格 §18）。
+
+## 5. 基線紀錄
 
 （待 dogfood 流量；填入統計期間與腳本輸出）

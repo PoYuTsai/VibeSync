@@ -861,6 +861,82 @@ class OptimizedMessage {
 }
 
 /// Complete analysis result from AI
+/// Analyze V2 一級決策（Phase 1c）：後端在 `finalResult.analysisDecisionV2`
+/// 給的「這一輪該不該回」。只有 schemaVersion 2 且 messageDecision 合法才成立，
+/// 其餘一律 null，畫面退回 v1 的本地判斷（shouldGiveUp／CoachActionPolicy）。
+class AnalysisDecisionV2 {
+  static const messageDecisions = <String>{
+    'send',
+    'do_not_send',
+    'acknowledge_and_stop',
+    'need_context',
+  };
+  static const replyModes = <String>{'variants', 'single', 'none'};
+
+  final String messageDecision;
+  final String replyMode;
+  final String action;
+  final String reason;
+  final String stopCondition;
+  final String? closingMessage;
+
+  const AnalysisDecisionV2({
+    required this.messageDecision,
+    required this.replyMode,
+    this.action = '',
+    this.reason = '',
+    this.stopCondition = '',
+    this.closingMessage,
+  });
+
+  bool get isSend => messageDecision == 'send';
+
+  /// 只有 acknowledge_and_stop 有一句可傳送的收尾句。
+  String? get sendableClosingMessage =>
+      messageDecision == 'acknowledge_and_stop' ? closingMessage : null;
+
+  /// messageDecision 是唯一權威：非 send 一律不顯示回覆輪播、不推銷升級，
+  /// 即使後端同時送了矛盾的 replyMode。
+  bool get hidesReplyZone => !isSend;
+
+  static AnalysisDecisionV2? fromJson(Object? json) {
+    if (json is! Map) return null;
+    if (json['schemaVersion'] != 2) return null;
+    final messageDecision = json['messageDecision'];
+    if (messageDecision is! String ||
+        !messageDecisions.contains(messageDecision)) {
+      return null;
+    }
+    // replyMode 由 messageDecision 推導；後端送來的值只在 send 時採用，
+    // 矛盾（例如 do_not_send＋variants）以決策為準。
+    final impliedReplyMode = switch (messageDecision) {
+      'send' => 'variants',
+      'acknowledge_and_stop' => 'single',
+      _ => 'none',
+    };
+    final rawReplyMode = json['replyMode'];
+    final replyMode = messageDecision == 'send' &&
+            rawReplyMode is String &&
+            replyModes.contains(rawReplyMode)
+        ? rawReplyMode
+        : impliedReplyMode;
+    String text(Object? value) => value is String ? value.trim() : '';
+    // 收尾句只屬於 acknowledge_and_stop；do_not_send／need_context 是零回覆，
+    // 後端夾帶的 closingMessage 一律丟棄。
+    final closingMessage = messageDecision == 'acknowledge_and_stop'
+        ? text(json['closingMessage'])
+        : '';
+    return AnalysisDecisionV2(
+      messageDecision: messageDecision,
+      replyMode: replyMode,
+      action: text(json['action']),
+      reason: text(json['reason']),
+      stopCondition: text(json['stopCondition']),
+      closingMessage: closingMessage.isEmpty ? null : closingMessage,
+    );
+  }
+}
+
 class AnalysisResult {
   final int enthusiasmScore;
   final String strategy;
@@ -886,6 +962,7 @@ class AnalysisResult {
   final Map<String, int>? dimensionScores; // 五維度分數
   final Map<String, dynamic>? targetProfile; // 對方個人檔案
   final CoachActionHint? coachActionHint; // 可接球點教練卡
+  final AnalysisDecisionV2? decision; // V2 一級決策；null＝v1 結果
   final FinalRecommendation? dogfoodRawFullRecommendation;
   final FinalRecommendation? dogfoodOfficialFullRecommendation;
   final bool dogfoodEntitlementAdjusted;
@@ -912,6 +989,7 @@ class AnalysisResult {
     this.dimensionScores,
     this.targetProfile,
     this.coachActionHint,
+    this.decision,
     this.dogfoodRawFullRecommendation,
     this.dogfoodOfficialFullRecommendation,
     this.dogfoodEntitlementAdjusted = false,
@@ -945,8 +1023,13 @@ class AnalysisResult {
     final rawWarnings = json['warnings'] as List? ?? [];
     final warnings =
         rawWarnings.map((w) => w is String ? w : w.toString()).toList();
-    final shouldGiveUp = enthusiasmLevel == 'cold' &&
-        (warnings.any((w) => w.contains('建議放棄') || w.contains('開新對話')));
+    // Phase 1c：後端 V2 決策存在時是唯一真相，本地 cold＋警語 heuristic 只當
+    // v1 結果的備援（規格 §16「移除雙重決策」）。
+    final decision = AnalysisDecisionV2.fromJson(json['analysisDecisionV2']);
+    final shouldGiveUp = decision != null
+        ? decision.messageDecision == 'do_not_send'
+        : enthusiasmLevel == 'cold' &&
+            (warnings.any((w) => w.contains('建議放棄') || w.contains('開新對話')));
 
     // Parse optimizedMessage if present (when user provided draft)
     OptimizedMessage? optimizedMessage;
@@ -1019,6 +1102,7 @@ class AnalysisResult {
       dimensionScores: _parseDimensions(json['dimensions']),
       targetProfile: json['targetProfile'] as Map<String, dynamic>?,
       coachActionHint: CoachActionHint.fromJson(coachActionHintJson),
+      decision: decision,
       dogfoodRawFullRecommendation: dogfoodRawFullRecommendation,
       dogfoodOfficialFullRecommendation: dogfoodOfficialFullRecommendation,
       dogfoodEntitlementAdjusted:

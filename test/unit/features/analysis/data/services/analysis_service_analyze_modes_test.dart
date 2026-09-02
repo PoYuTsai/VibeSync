@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
 import 'package:vibesync/features/analysis/data/services/analyze_stream_client.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
@@ -483,6 +484,72 @@ void main() {
   });
 
   group('AnalyzeStreamClient.stream', () {
+    test('Phase 1c：no-send 決策走正式 NDJSON 路徑，done 結果帶決策且藏回覆區', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(
+            [
+              jsonEncode({'type': 'analysis.started', 'runId': 'stream_ns'}),
+              jsonEncode({
+                'type': 'analysis.decision',
+                'messageDecision': 'do_not_send',
+                'replyMode': 'none',
+                'action': 'pause',
+                'reason': '她只回哈哈',
+                'stopCondition': '等她提新話題',
+              }),
+              jsonEncode({
+                'type': 'analysis.done',
+                'finalResult': {
+                  ..._fullSuccessBody,
+                  // 伺服器契約會清空，但 client 也不得依賴這一點。
+                  'replies': {'extend': '殘留延展句'},
+                  'analysisDecisionV2': {
+                    'schemaVersion': 2,
+                    'messageDecision': 'do_not_send',
+                    'replyMode': 'variants',
+                    'action': 'pause',
+                    'reason': '她只回哈哈',
+                    'stopCondition': '等她提新話題',
+                  },
+                },
+              }),
+            ].join('\n'),
+          ),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalyzeStreamClient(
+        displayMapper: const AnalysisStreamContentDisplayMapper(),
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      final updates = await service
+          .stream(AnalyzeStreamRequest(messages: [_msg('哈哈')]))
+          .toList();
+
+      expect(updates.map((u) => u.kind).toList(), [
+        AnalysisStreamUpdateKind.started,
+        AnalysisStreamUpdateKind.content,
+        AnalysisStreamUpdateKind.done,
+      ]);
+      expect(updates[1].content?.title, '本輪判斷：先不要回');
+      expect(updates[1].content?.body, contains('她只回哈哈'));
+      final result = updates[2].result!;
+      expect(result.decision?.messageDecision, 'do_not_send');
+      expect(result.decision?.replyMode, 'none');
+      expect(result.decision?.hidesReplyZone, isTrue);
+      expect(result.shouldGiveUp, isTrue);
+      // 歷史快照 round-trip 後決策仍在。
+      expect(
+        AnalysisResult.fromJson(result.rawResponse!).decision?.stopCondition,
+        '等她提新話題',
+      );
+    });
+
     test('POSTs responseMode:stream and parses NDJSON updates', () async {
       late http.Request capturedRequest;
       final mockClient = MockClient((request) async {

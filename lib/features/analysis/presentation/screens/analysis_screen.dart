@@ -194,6 +194,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // ignore: prefer_final_fields
   bool _shouldGiveUp = false;
 
+  // Analyze V2 一級決策（Phase 1c）；null＝v1 結果，走本地備援。
+  AnalysisDecisionV2? _decision;
+
   // 反饋相關
   bool _feedbackSubmitted = false;
   bool _showFeedbackForm = false;
@@ -928,6 +931,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _coachActionHint = result.coachActionHint;
           _reminder = result.reminder;
           _shouldGiveUp = result.shouldGiveUp;
+          _decision = result.decision;
           _lastAiResponse = result.rawResponse;
         });
         // Idempotent: only persist + sync usage when the live listener clearly
@@ -1043,6 +1047,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _coachActionHint = null;
     _reminder = null;
     _shouldGiveUp = false;
+    _decision = null;
     _lastAiResponse = null;
     _showDetailedAnalysis = false;
     _resetFeedbackState();
@@ -1481,6 +1486,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _coachActionHint = result.coachActionHint;
     _reminder = result.reminder;
     _shouldGiveUp = result.shouldGiveUp;
+    _decision = result.decision;
     _lastAiResponse = result.rawResponse;
     _showDetailedAnalysis = false;
 
@@ -2801,6 +2807,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _coachActionHint = result.coachActionHint;
           _reminder = result.reminder;
           _shouldGiveUp = result.shouldGiveUp;
+          _decision = result.decision;
           _lastAiResponse = result.rawResponse;
           _resetFeedbackState();
         });
@@ -3434,6 +3441,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   ReplyZoneNoticeKind? _replyZoneNoticeKind(SubscriptionState subscription) {
     final replies = _replies;
     if (replies == null || replies.isEmpty) return null;
+    // 不回／收尾決策下零推銷（規格 §16）。
+    if (_decision?.hidesReplyZone ?? false) return null;
     if (subscription.isFreeUser) return ReplyZoneNoticeKind.freeUpgrade;
     if (_analysisNeedsReplyRefresh(subscription)) {
       return ReplyZoneNoticeKind.refreshStale;
@@ -4009,7 +4018,22 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
 
                           if (_enthusiasmScore != null) ...[
-                            if (_shouldGiveUp) ...[
+                            // Phase 1c：後端 V2 決策說不回時，決策卡是唯一
+                            // 主卡；放棄橫幅／教練行動卡只服務 v1 或 send。
+                            if (_decision != null && !_decision!.isSend) ...[
+                              AnalysisDecisionCard(
+                                decision: _decision!,
+                                onCopyClosingMessage:
+                                    _decision!.sendableClosingMessage == null
+                                        ? null
+                                        : () => copyRecommendationText(
+                                              _decision!
+                                                  .sendableClosingMessage!,
+                                              '已複製收尾句',
+                                            ),
+                              ),
+                              const SizedBox(height: 16),
+                            ] else if (_shouldGiveUp) ...[
                               const GiveUpAdviceBanner(),
                               const SizedBox(height: 16),
                             ] else if (_gameStage != null &&
@@ -4074,7 +4098,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // 回覆區合併（Bruce dogfood 2026-08-08 拍板）：
                           // AI 推薦回覆是橫滑卡組第一張，右滑接其他風格；
                           // 回覆不再藏在詳細分析折疊裡。
-                          if (replyZoneCards.hasContent)
+                          if (replyZoneCards.hasContent &&
+                              !(_decision?.hidesReplyZone ?? false))
                             ReplyZoneSection(
                               cards: replyZoneCards,
                               entrance: _replyZoneEntrance,

@@ -16,6 +16,7 @@ import 'package:vibesync/features/analysis/domain/entities/analysis_recommendati
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
+import 'package:vibesync/features/analysis/presentation/sections/analysis_banners_section.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/reply_style_card.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/swipe_hint_nudge.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_usage_summary_line.dart';
@@ -282,6 +283,96 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  group('Analyze V2 決策卡（Phase 1c）：與回覆區、放棄橫幅結構互斥', () {
+    Map<String, dynamic> noSendJson(String kind, {String? closingMessage}) => {
+          'enthusiasm': {'score': 18, 'level': 'cold'},
+          'warnings': ['對方已讀不回，建議放棄'],
+          'strategy': '先停一下',
+          'replies': <String, dynamic>{},
+          'replyOptions': <String, dynamic>{},
+          'gameStage': {'current': 'premise', 'status': 'shouldRetreat'},
+          'analysisDecisionV2': {
+            'schemaVersion': 2,
+            'messageDecision': kind,
+            'action': 'pause',
+            'reason': '她只回哈哈，沒有新內容',
+            'stopCondition': '等她主動給新話題',
+            if (closingMessage != null) 'closingMessage': closingMessage,
+          },
+        };
+
+    testWidgets('do_not_send：只有決策卡，零回覆卡、零放棄橫幅、零升級推銷', (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(AnalysisResult.fromJson(noSendJson('do_not_send'))),
+      );
+      expect(
+          find.byKey(const ValueKey('analysis-decision-card')), findsOneWidget);
+      expect(find.text('這輪先不要回'), findsOneWidget);
+      expect(find.text('等到這時候再回：等她主動給新話題'), findsOneWidget);
+      expect(find.byType(GiveUpAdviceBanner), findsNothing);
+      expect(find.text('AI 推薦回覆'), findsNothing);
+      expect(find.byType(ReplyStyleCard), findsNothing);
+      expect(find.textContaining('升級解鎖'), findsNothing);
+    });
+
+    testWidgets('do_not_send 帶殘留回覆與矛盾 replyMode：仍零回覆卡、零推銷', (tester) async {
+      final json = noSendJson('do_not_send');
+      json['replies'] = {
+        'extend': '殘留延展句',
+        'tease': '殘留調情句',
+      };
+      json['replyOptions'] = {
+        'extend': {
+          'messages': ['殘留延展句']
+        },
+      };
+      json['finalRecommendation'] = {
+        'pick': 'extend',
+        'content': '殘留延展句',
+        'reason': '殘留理由',
+      };
+      (json['analysisDecisionV2'] as Map<String, dynamic>)['replyMode'] =
+          'variants';
+      (json['analysisDecisionV2'] as Map<String, dynamic>)['closingMessage'] =
+          '殘留收尾句';
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(AnalysisResult.fromJson(json)),
+      );
+      expect(
+          find.byKey(const ValueKey('analysis-decision-card')), findsOneWidget);
+      expect(find.text('AI 推薦回覆'), findsNothing);
+      expect(find.byType(ReplyStyleCard), findsNothing);
+      expect(find.textContaining('殘留'), findsNothing);
+      expect(find.text('複製收尾句'), findsNothing);
+      expect(find.textContaining('升級解鎖'), findsNothing);
+      expect(find.byType(GiveUpAdviceBanner), findsNothing);
+    });
+
+    testWidgets('acknowledge_and_stop：一句收尾可複製，仍無輪播', (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(AnalysisResult.fromJson(
+          noSendJson('acknowledge_and_stop', closingMessage: '好，那先這樣。'),
+        )),
+      );
+      expect(find.text('這輪先收尾'), findsOneWidget);
+      expect(find.text('好，那先這樣。'), findsOneWidget);
+      expect(find.text('複製收尾句'), findsOneWidget);
+      expect(find.byType(ReplyStyleCard), findsNothing);
+      expect(find.byType(GiveUpAdviceBanner), findsNothing);
+    });
+
+    testWidgets('v1 結果（無決策）：cold＋警語仍走本地放棄橫幅', (tester) async {
+      final json = noSendJson('do_not_send')..remove('analysisDecisionV2');
+      await _pumpScreen(tester, seed: _doneSeed(AnalysisResult.fromJson(json)));
+      expect(find.byType(GiveUpAdviceBanner), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('analysis-decision-card')), findsNothing);
+    });
+  });
+
   group('回覆區卡組：張數／順序／對映（canonical）', () {
     testWidgets('付費完整結果 pick=tease → 推薦卡在首位＋4 張風格卡（tease 併入推薦卡）',
         (tester) async {
@@ -320,8 +411,7 @@ void main() {
       for (final card in tester.widgetList<ReplyStyleCard>(
         find.byType(ReplyStyleCard),
       )) {
-        expect(card.isRecommended, isFalse,
-            reason: '推薦型別已併入推薦卡，其餘風格卡不得標記推薦');
+        expect(card.isRecommended, isFalse, reason: '推薦型別已併入推薦卡，其餘風格卡不得標記推薦');
       }
 
       // 多於一張卡 → 顯示橫滑提示。
@@ -334,8 +424,7 @@ void main() {
       expect(find.text('推薦心理判斷'), findsOneWidget);
     });
 
-    testWidgets('免費結果（extend+tease，pick=extend）→ 推薦卡＋1 張風格卡',
-        (tester) async {
+    testWidgets('免費結果（extend+tease，pick=extend）→ 推薦卡＋1 張風格卡', (tester) async {
       final result = _paidResult(
         replies: const {
           'extend': '免費延展回覆',
@@ -434,8 +523,7 @@ void main() {
       await _pumpScreen(tester, seed: _doneSeed(_paidResult()));
 
       Finder toggleSemantics(String label) => find.byWidgetPredicate(
-            (widget) =>
-                widget is Semantics && widget.properties.label == label,
+            (widget) => widget is Semantics && widget.properties.label == label,
           );
 
       expect(find.text('詳細分析'), findsOneWidget);
@@ -565,7 +653,8 @@ void main() {
         find.text('AI 會分析對方投入度、讀懂語意，教你最適合的回覆方式'),
         findsOneWidget,
       );
-      expect(find.byKey(const ValueKey('analysis-source-pill')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('analysis-source-pill')), findsOneWidget);
     });
   });
 }
