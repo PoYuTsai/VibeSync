@@ -127,3 +127,6 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   （2 次 JSON 解析失敗）、開 19/20（1 次 L4 守門退回，production 有第二發）。基準數字（「1～2 則」
   形狀）與設定字眼（hidden evidence／preset／基準）外洩：style 開的 60 則全部 0；關的 hint 有 1 則
   regex 誤中「回 2-3 則」既有措辭。
+- `2026-09-03-run17-style20-state-x2.json`（9a3b2e51，`--style=1 --state=1`＝跨輪狀態模擬，非
+  production 路徑，只看拒絕記憶／act 輪替）：480 場零失敗、守門退回 1、p50 972ms、比值 **2.17**
+  （同設定的 run15 為 2.39，兩者差在雜訊帶內）。
