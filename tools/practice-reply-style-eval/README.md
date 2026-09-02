@@ -103,3 +103,7 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   2400 場零失敗、守門退回 1、p50 907ms。整體比值 **0.99**，persona 內 0.69（clear_boundaries）
   ～1.08（teasing_humor）；對照 run13 style 開 2.19／1.53–1.90——100 位的差異確實來自 style
   層，不是既有人設 prompt。artifact sha256 f5aaad76…。
+- `2026-09-03-run15-style20-state-x2.json`（7d0d862b PR-2b：拒絕記憶／act 歷史持久化、越界吃
+  looksOverEscalated、同 act 連兩輪輪替；工具改在同情境多輪之間帶 styleState）：20 位 × 12 × 2
+  ＝480 場零失敗、守門退回 0、p50 1175ms。整體比值 **2.39**（run12 同 20 位 2.02），persona 內
+  1.22（playful_extrovert）～3.03（slow_worker）。
