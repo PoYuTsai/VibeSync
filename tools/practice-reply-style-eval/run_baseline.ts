@@ -353,7 +353,7 @@ export function parseArgs(argv: string[]): CliOptions {
   return opts;
 }
 
-async function readDeepSeekKey(): Promise<string> {
+export async function readDeepSeekKey(): Promise<string> {
   const fromEnv = Deno.env.get("DEEPSEEK_API_KEY");
   if (fromEnv) return fromEnv;
   // 同 practice-behavior-smoke：退回 supabase/.env（repo 內、已 gitignore）。
