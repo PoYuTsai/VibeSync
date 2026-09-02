@@ -4,7 +4,7 @@
 
 **最近一次全量對帳：2026-09-02** —— 本地 repo ↔ remote 一比一全對齊，無 pending。最新一支 `20260902150000`。
 
-## 2026-08-22 → 2026-09-02（12 支）
+## 2026-08-22 → 2026-09-02（13 支）
 
 | Migration | 用途 |
 |---|---|
@@ -20,6 +20,7 @@
 | `20260902130000_admin_ops_v2_baseline.sql` | 後台 B0：admin_ops 契約表（原 20260831120000 改版號，2026-09-02 上線） |
 | `20260902140000_admin_identity_v2_baseline.sql` | 後台 B1：管理員身分、session、append-only audit（原 20260831150000 改版號） |
 | `20260902150000_admin_notify_feedback_breakglass_v2_baseline.sql` | 後台 B2：通知 outbox、metadata-only feedback、break-glass（原 20260831180000 改版號） |
+| `20260902160000_retention_cleanup_schedules.sql` | 保留期限排程：已扣費分析 run 30 天、ai_logs 30 天，pg_cron 排程＋收回 anon／authenticated 執行權（隱私政策 4.3 對齊） |
 
 ## 2026-07-07 → 2026-08-13（build 311→473 窗口，31 支）
 

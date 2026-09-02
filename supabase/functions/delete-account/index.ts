@@ -1,9 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { withOperationalErrorMonitoring } from "../_shared/operational_error_monitor.ts";
+import { buildCleanupFailureAlert, deliverCleanupAlert } from "./cleanup_alert.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// 清理失敗告警走回饋同一條 Discord 管道（沒設定就只留 console）。訊息只帶表名、
+// 錯誤碼與 user id 的 SHA-256 前 12 碼，不帶 Email 或任何內容——隱私政策 6.1 承諾
+// 「仍會完成刪帳並記錄該錯誤」，這裡就是那個紀錄要讓人看得到的地方。
+const DISCORD_ALERT_WEBHOOK_URL = Deno.env.get("DISCORD_FEEDBACK_WEBHOOK_URL") ??
+  Deno.env.get("DISCORD_WEBHOOK_URL") ?? "";
+
+async function userRefFor(userId: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(userId));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -91,6 +102,7 @@ serve(withOperationalErrorMonitoring("delete-account", async (req) => {
       return jsonResponse({ error: "Invalid token" }, 401);
     }
 
+    const failedCleanups: { table: string; errorCode: string | null }[] = [];
     // Keep this explicit list in sync with user-scoped tables that may block auth deletion.
     const cleanupTargets: CleanupTarget[] = [
       { table: "revenue_events", column: "user_id", value: user.id, required: true },
@@ -125,6 +137,7 @@ serve(withOperationalErrorMonitoring("delete-account", async (req) => {
             `Non-blocking cleanup failed for ${target.table}:`,
             error.message,
           );
+          failedCleanups.push({ table: target.table, errorCode: error.code ?? null });
           continue;
         }
 
@@ -143,6 +156,18 @@ serve(withOperationalErrorMonitoring("delete-account", async (req) => {
         error: "Delete account failed",
         detail: deleteError.message,
       }, 500);
+    }
+
+    // 帳號已真的刪掉，才告警「非阻塞清理失敗」；投遞有 3 秒上限、任何失敗都只留 console
+    if (failedCleanups.length > 0) {
+      const userRef = await userRefFor(user.id);
+      for (const failure of failedCleanups) {
+        const delivered = await deliverCleanupAlert({
+          webhookUrl: DISCORD_ALERT_WEBHOOK_URL,
+          content: buildCleanupFailureAlert({ ...failure, userRef }),
+        });
+        if (!delivered) console.warn(`Cleanup failure alert not delivered for ${failure.table}`);
+      }
     }
 
     return jsonResponse({

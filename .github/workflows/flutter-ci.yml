@@ -88,6 +88,7 @@ jobs:
           supabase/functions/practice-chat/moments_memory_test.ts
           supabase/functions/practice-chat/time_context_test.ts
           supabase/functions/practice-chat/index_test.ts
+          supabase/functions/delete-account/cleanup_alert_test.ts
           supabase/functions/practice-chat/prompt_test.ts
 
       # PGlite（WASM Postgres）獨立成一步：它是唯一會拉 npm 套件的測試（約 8 秒），
@@ -107,6 +108,7 @@ jobs:
           supabase/functions/practice-chat/moments_migration_postgres_test.ts
           supabase/functions/practice-chat/moments_images_migration_postgres_test.ts
           supabase/functions/analyze-chat/stream_runs_decision_kind_migration_postgres_test.ts
+          supabase/functions/analyze-chat/retention_cleanup_migration_postgres_test.ts
 
   ios-keyboard-compile:
     name: iOS keyboard compile
