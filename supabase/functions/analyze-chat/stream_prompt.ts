@@ -22,6 +22,9 @@ import {
   MAX_SEMANTIC_DISTANCE_CAP,
   MIN_DIVERGENCE_BRANCHES,
 } from "./divergence_contract.ts";
+import { normalizeStagePrior } from "./stage_prior.ts";
+
+export { normalizeStagePrior };
 
 export interface StreamPromptOptions {
   /// analysisContractVersion >= 2: the model may answer with a no-send
@@ -183,22 +186,6 @@ export function buildStreamSystemPrompt(
     ),
     "Traditional Chinese (Taiwan) only; never Simplified.",
   ].join("\n");
-}
-
-const LEGAL_GAME_STAGES = [
-  "opening",
-  "premise",
-  "qualification",
-  "narrative",
-  "close",
-] as const;
-
-export function normalizeStagePrior(previousStage: unknown): string | null {
-  if (typeof previousStage !== "string") return null;
-  const trimmed = previousStage.trim();
-  return (LEGAL_GAME_STAGES as readonly string[]).includes(trimmed)
-    ? trimmed
-    : null;
 }
 
 /// 上次有效階段（partner-scoped 弱先驗）→ user prompt 的 Stage Continuity

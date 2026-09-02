@@ -6,7 +6,7 @@
 // 6–10 條、每 domain 有上限的預算挑 atoms。只用在 v2 prompt；v1 byte-lock 不動。
 
 import type { AnalyzeMessage } from "./analysis_input_compiler.ts";
-import { normalizeStagePrior } from "./stream_prompt.ts";
+import { normalizeStagePrior } from "./stage_prior.ts";
 import type {
   SocialKnowledgeAtom,
   SocialKnowledgeSignal,
