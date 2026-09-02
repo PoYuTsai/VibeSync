@@ -310,6 +310,10 @@ const PRESETS = {
 >;
 
 export type PresetId = keyof typeof PRESETS;
+/** 完整 preset 清單（測試用：連零使用量的 preset 也要進集中度檢查）。 */
+export const PRESET_IDS: readonly PresetId[] = Object.keys(
+  PRESETS,
+) as PresetId[];
 
 function style(
   presetId: PresetId,

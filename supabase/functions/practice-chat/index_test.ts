@@ -8974,6 +8974,16 @@ Deno.test("reply-style 旗標 test：只有測試帳號啟用，一般帳號與�
     body,
   );
   assertEquals(testModeNormalUser, off);
+  // telemetry 也不得標成已套用 style（Codex PR-3 P3）。
+  const normalUserLog = await runCapturingLogs(
+    {
+      ledger: ledger({ practice_mode: "standard" }),
+      env: { PRACTICE_REPLY_STYLE_ENABLED: "test" },
+      deepSeekReplies: replies,
+    },
+    body,
+  );
+  assertEquals(normalUserLog.succeeded?.replyStyle, null);
 
   const { json, state } = await run(
     {

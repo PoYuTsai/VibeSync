@@ -5,6 +5,7 @@ import {
   assertNotEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  PRESET_IDS,
   renderReplyStyleGuidance,
   replyStyleFor,
   STYLE_BY_PROFILE_ID,
@@ -41,8 +42,13 @@ Deno.test("preset 不過度集中：每個 preset 最多 12 位、最少 3 位�
       (presetsPerPersona.get(persona) ?? new Set()).add(s.presetId),
     );
   }
-  for (const [preset, n] of perPreset) {
+  // 以完整 preset 清單為基準：零使用量的 preset 也要被抓到；mapping 不得指向未知 preset。
+  for (const preset of PRESET_IDS) {
+    const n = perPreset.get(preset) ?? 0;
     assert(n >= 3 && n <= 12, `${preset}=${n}`);
+  }
+  for (const preset of perPreset.keys()) {
+    assert((PRESET_IDS as readonly string[]).includes(preset), preset);
   }
   for (const [persona, presets] of presetsPerPersona) {
     assert(presets.size >= 5, `${persona}=${presets.size}`);
