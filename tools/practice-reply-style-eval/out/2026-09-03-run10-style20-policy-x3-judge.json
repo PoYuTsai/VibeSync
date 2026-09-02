@@ -1,10 +1,10 @@
 {
   "meta": {
-    "sourceArtifact": "/home/eric1/work/VibeSync-practice-reply-style/tools/practice-reply-style-eval/out/2026-09-02-run6-baseline20-x3.json",
-    "sourceCommit": "32ace74423ea58cb23fa9e78ffe53721b5f861dd",
+    "sourceArtifact": "/home/eric1/work/VibeSync-practice-reply-style/tools/practice-reply-style-eval/out/2026-09-03-run10-style20-policy-x3.json",
+    "sourceCommit": "dc3be879b188f8e110fe9b2d5bcd1863bf9ffa3f",
     "judgeModel": "deepseek-v4-flash",
     "temperature": 0,
-    "generatedAt": "2026-09-02T16:03:03.968Z",
+    "generatedAt": "2026-09-02T16:10:11.804Z",
     "calibration": [
       "opening",
       "daily_share",
@@ -23,141 +23,151 @@
   "summary": {
     "trials": 300,
     "valid": 300,
-    "accuracy": 0.33666666666666667,
+    "accuracy": 0.41333333333333333,
     "accuracyCi95": [
-      0.2833333333333333,
-      0.38333333333333336
+      0.3566666666666667,
+      0.48333333333333334
     ],
     "chance": 0.25,
     "byPersona": {
-      "clear_boundaries": 0.23333333333333334,
-      "cool_rational": 0.35,
-      "playful_extrovert": 0.4166666666666667,
-      "slow_worker": 0.36666666666666664,
-      "teasing_humor": 0.31666666666666665
+      "clear_boundaries": 0.43333333333333335,
+      "cool_rational": 0.43333333333333335,
+      "playful_extrovert": 0.3333333333333333,
+      "slow_worker": 0.45,
+      "teasing_humor": 0.4166666666666667
     },
     "byProfile": {
-      "practice_girl_003": 0.8,
-      "practice_girl_006": 0,
-      "practice_girl_018": 0,
-      "practice_girl_091": 0.13333333333333333,
-      "practice_girl_009": 1,
-      "practice_girl_012": 0.26666666666666666,
-      "practice_girl_020": 0,
-      "practice_girl_084": 0.13333333333333333,
-      "practice_girl_002": 0.4,
-      "practice_girl_007": 0.4,
-      "practice_girl_011": 0.4,
-      "practice_girl_083": 0.4666666666666667,
-      "practice_girl_001": 0.8,
-      "practice_girl_008": 0.06666666666666667,
-      "practice_girl_064": 0.13333333333333333,
-      "practice_girl_077": 0.4666666666666667,
-      "practice_girl_004": 0.9333333333333333,
-      "practice_girl_013": 0.13333333333333333,
+      "practice_girl_003": 1,
+      "practice_girl_006": 0.4,
+      "practice_girl_018": 0.06666666666666667,
+      "practice_girl_091": 0.26666666666666666,
+      "practice_girl_009": 0.6,
+      "practice_girl_012": 0.6,
+      "practice_girl_020": 0.3333333333333333,
+      "practice_girl_084": 0.2,
+      "practice_girl_002": 0.6,
+      "practice_girl_007": 0.13333333333333333,
+      "practice_girl_011": 0.26666666666666666,
+      "practice_girl_083": 0.3333333333333333,
+      "practice_girl_001": 0.7333333333333333,
+      "practice_girl_008": 0.4666666666666667,
+      "practice_girl_064": 0.4666666666666667,
+      "practice_girl_077": 0.13333333333333333,
+      "practice_girl_004": 0.6666666666666666,
+      "practice_girl_013": 0.6,
       "practice_girl_061": 0,
-      "practice_girl_089": 0.2
+      "practice_girl_089": 0.4
     },
     "byScenario": {
-      "boundary": 0.23333333333333334,
-      "failed_joke": 0.3,
-      "mature_invite": 0.4666666666666667,
-      "memory_mismatch": 0.31666666666666665,
-      "vulnerability": 0.36666666666666664
+      "boundary": 0.43333333333333335,
+      "failed_joke": 0.4166666666666667,
+      "mature_invite": 0.5166666666666667,
+      "memory_mismatch": 0.3,
+      "vulnerability": 0.4
     },
     "confusion": {
       "practice_girl_003": {
-        "practice_girl_018": 2,
-        "practice_girl_003": 12,
-        "practice_girl_091": 1
+        "practice_girl_003": 15
       },
       "practice_girl_006": {
-        "practice_girl_003": 12,
-        "practice_girl_091": 3
-      },
-      "practice_girl_018": {
-        "practice_girl_003": 14,
+        "practice_girl_003": 8,
+        "practice_girl_006": 6,
         "practice_girl_091": 1
       },
-      "practice_girl_091": {
+      "practice_girl_018": {
         "practice_girl_003": 12,
+        "practice_girl_091": 1,
         "practice_girl_018": 1,
-        "practice_girl_091": 2
+        "practice_girl_006": 1
+      },
+      "practice_girl_091": {
+        "practice_girl_003": 11,
+        "practice_girl_091": 4
       },
       "practice_girl_009": {
-        "practice_girl_009": 15
+        "practice_girl_009": 9,
+        "practice_girl_012": 1,
+        "practice_girl_020": 1,
+        "practice_girl_084": 4
       },
       "practice_girl_012": {
-        "practice_girl_009": 10,
-        "practice_girl_020": 1,
-        "practice_girl_012": 4
+        "practice_girl_012": 9,
+        "practice_girl_009": 3,
+        "practice_girl_084": 3
       },
       "practice_girl_020": {
-        "practice_girl_009": 13,
+        "practice_girl_020": 5,
+        "practice_girl_009": 6,
+        "practice_girl_012": 2,
         "practice_girl_084": 2
       },
       "practice_girl_084": {
-        "practice_girl_020": 1,
-        "practice_girl_009": 12,
-        "practice_girl_084": 2
+        "practice_girl_009": 3,
+        "practice_girl_012": 2,
+        "practice_girl_020": 7,
+        "practice_girl_084": 3
       },
       "practice_girl_002": {
-        "practice_girl_083": 5,
-        "practice_girl_007": 4,
-        "practice_girl_002": 6
+        "practice_girl_002": 9,
+        "practice_girl_083": 3,
+        "practice_girl_007": 3
       },
       "practice_girl_007": {
-        "practice_girl_007": 6,
-        "practice_girl_083": 7,
-        "practice_girl_002": 2
+        "practice_girl_002": 12,
+        "practice_girl_007": 2,
+        "practice_girl_083": 1
       },
       "practice_girl_011": {
-        "practice_girl_083": 6,
-        "practice_girl_011": 6,
-        "practice_girl_007": 3
+        "practice_girl_002": 7,
+        "practice_girl_007": 1,
+        "practice_girl_011": 4,
+        "practice_girl_083": 3
       },
       "practice_girl_083": {
-        "practice_girl_002": 5,
-        "practice_girl_083": 7,
-        "practice_girl_007": 3
+        "practice_girl_002": 8,
+        "practice_girl_083": 5,
+        "practice_girl_007": 2
       },
       "practice_girl_001": {
-        "practice_girl_001": 12,
-        "practice_girl_008": 1,
-        "practice_girl_064": 2
+        "practice_girl_064": 2,
+        "practice_girl_001": 11,
+        "practice_girl_077": 1,
+        "practice_girl_008": 1
       },
       "practice_girl_008": {
-        "practice_girl_064": 4,
-        "practice_girl_001": 9,
-        "practice_girl_008": 1,
-        "practice_girl_077": 1
+        "practice_girl_064": 1,
+        "practice_girl_008": 7,
+        "practice_girl_001": 4,
+        "practice_girl_077": 3
       },
       "practice_girl_064": {
-        "practice_girl_001": 13,
-        "practice_girl_064": 2
+        "practice_girl_008": 3,
+        "practice_girl_001": 5,
+        "practice_girl_064": 7
       },
       "practice_girl_077": {
-        "practice_girl_008": 1,
-        "practice_girl_001": 5,
-        "practice_girl_064": 2,
-        "practice_girl_077": 7
+        "practice_girl_064": 3,
+        "practice_girl_001": 4,
+        "practice_girl_008": 6,
+        "practice_girl_077": 2
       },
       "practice_girl_004": {
-        "practice_girl_004": 14,
-        "practice_girl_089": 1
-      },
-      "practice_girl_013": {
-        "practice_girl_004": 12,
-        "practice_girl_089": 1,
+        "practice_girl_004": 10,
+        "practice_girl_061": 3,
         "practice_girl_013": 2
       },
+      "practice_girl_013": {
+        "practice_girl_013": 9,
+        "practice_girl_004": 5,
+        "practice_girl_061": 1
+      },
       "practice_girl_061": {
-        "practice_girl_004": 12,
-        "practice_girl_089": 3
+        "practice_girl_004": 7,
+        "practice_girl_013": 8
       },
       "practice_girl_089": {
-        "practice_girl_004": 11,
-        "practice_girl_089": 3,
+        "practice_girl_004": 8,
+        "practice_girl_089": 6,
         "practice_girl_061": 1
       }
     }
@@ -175,11 +185,11 @@
         "practice_girl_003",
         "practice_girl_018"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_018",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會用『～』和『哈哈』，且對邀約與身材話題的回應較委婉、帶有壓力感，與D的語氣和婉拒方式相似。"
+      "cue": "她使用'剛下班嗎'開頭，與C的'剛下護理班'呼應，且回覆簡短、直接，符合C的風格。"
     },
     {
       "index": 1,
@@ -197,7 +207,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方（如'剛下班嗎？'），且對邀約或敏感話題回應較直接但帶點保留（'你這樣問我會嚇到欸'），與D的互動模式相似。"
+      "cue": "她直接指出對方越線，語氣直接且帶有防衛，與D樣本中直接回應『我們好像還不太熟耶』的風格相似。"
     },
     {
       "index": 2,
@@ -211,11 +221,11 @@
         "practice_girl_018",
         "practice_girl_003"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_018",
-      "correct": false,
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問『你怎麼會突然密我』，且回覆較簡短、直接，符合C的風格。"
+      "cue": "她會反問對方『你怎麼會突然密我』，且直接拒絕『我們好像沒熟到可以聊這個吧』，符合D的直率與反問風格。"
     },
     {
       "index": 3,
@@ -233,7 +243,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方（如'你常被唸嗎'、'那你都往哪跑'），且回應較直接、帶點幽默（如'一杯不夠就兩杯'），符合D的風格。"
+      "cue": "她回覆簡短，使用'～'和'哈哈'，會反問，婉拒時直接說明理由，符合D的風格。"
     },
     {
       "index": 4,
@@ -247,11 +257,11 @@
         "practice_girl_006",
         "practice_girl_003"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_003",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_006",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方（如'你常被唸嗎'），且回應較直接、帶有個人特色（如'一杯不夠就兩杯'），婉拒時也較直接（'我還要想想欸'）。"
+      "cue": "她使用『🙂』表情符號，且回覆簡短、直接，婉拒時語氣禮貌但明確，符合C的風格。"
     },
     {
       "index": 5,
@@ -265,11 +275,11 @@
         "practice_girl_018",
         "practice_girl_003"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_003",
-      "correct": false,
+      "answer": "A",
+      "answerProfileId": "practice_girl_006",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方（如『你常被唸嗎』、『你怎麼ㄌ』），且回覆簡短直接，帶有『哈哈』和『ㄌ』等語氣詞，符合D的風格。"
+      "cue": "她使用『🙂』表情符號，且回覆簡短直接，婉拒時語氣禮貌但明確，符合A的風格。"
     },
     {
       "index": 6,
@@ -287,7 +297,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方（如'你常被唸嗎'），用'哈哈'開頭且句子簡短，婉拒時說'我還要想想欸'，符合D的風格。"
+      "cue": "她直接拒絕且語氣較直，與D在對話中較直接、簡短的回應方式相符。"
     },
     {
       "index": 7,
@@ -305,7 +315,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方（如'你常被唸嗎'），用'蛤？'表達直接質疑，且回覆簡短、口語化，符合D的風格。"
+      "cue": "她回覆簡短直接，使用『欸』和『哈哈』，且婉拒時以『這種話題我不太接喔』明確表達界線，符合D的風格。"
     },
     {
       "index": 8,
@@ -323,7 +333,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用'你也在喔'、'你怎麼ㄌ'等口語化且帶有好奇心的回應，並在拒絕時說'我還要想想欸'，語氣較直接且帶有個人特色，與D的風格相符。"
+      "cue": "她會反問對方近況（今天好嗎），直接拒絕越界問題，語氣直接且簡短，符合D的風格。"
     },
     {
       "index": 9,
@@ -341,7 +351,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問『你常被唸嗎』、『你怎麼ㄌ』，且回應簡短直接，符合D的風格。"
+      "cue": "她會反問對方問題（如'你怎麼突然這樣問'），且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 10,
@@ -355,11 +365,11 @@
         "practice_girl_091",
         "practice_girl_003"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_018",
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『你怎麼會突然密我』、『哈哈』、『你這樣說我壓力很大欸』等語氣，與B樣本中多次出現的『你怎麼會突然密我』、『哈哈』、『壓力很大』相符，且回覆節奏與B一致。"
+      "cue": "她直接指出問題越界，語氣直接且帶有防衛，與D在對話中較直接、坦率的風格相符。"
     },
     {
       "index": 11,
@@ -373,11 +383,11 @@
         "practice_girl_091",
         "practice_girl_003"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_091",
-      "correct": true,
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
       "confidence": 0.9,
-      "cue": "她使用『～』和『哈哈』，且委婉拒絕並引導話題，符合C的風格。"
+      "cue": "直接表達不悅，語氣直接，句子簡短，符合D的直率風格。"
     },
     {
       "index": 12,
@@ -394,8 +404,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_003",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她會反問『你常被唸嗎』、『你怎麼ㄌ』，且回應簡短直接，使用『哈哈』和『ㄌ』等語氣詞，符合D的風格。"
+      "confidence": 0.85,
+      "cue": "她會反問對方（如'蛤 什麼梗😂'），且回覆簡短、常用語氣詞，與D樣本中主動提問和簡潔風格一致。"
     },
     {
       "index": 13,
@@ -412,8 +422,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_003",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她會反問對方（如'你常被唸嗎'），且回應簡短直接，帶有幽默感（'一杯不夠就兩杯'），符合D的風格。"
+      "confidence": 0.9,
+      "cue": "她會反問對方（如'蛤 什麼意思'），並提及自己剛路過買了飲料，與D樣本中主動分享自身情況和反問的風格一致。"
     },
     {
       "index": 14,
@@ -427,11 +437,11 @@
         "practice_girl_091",
         "practice_girl_003"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_091",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她一次回多則訊息，且會反問細節（如『被唸什麼事啊』），語氣詞『～』和『哈哈』的使用方式與C一致。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她提到剛從那間店買了拿鐵，呼應D先前說『我也剛路過常去那家店買了杯拿鐵』，且語氣直接、會反問，符合D的風格。"
     },
     {
       "index": 15,
@@ -445,11 +455,11 @@
         "practice_girl_006",
         "practice_girl_003"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_003",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_006",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問『蛤 什麼意思』，且笑法『哈哈哈哈』較長，符合D的風格。"
+      "cue": "她使用『哈哈』和『🙂』表情符號，且回覆簡短，符合C的風格。"
     },
     {
       "index": 16,
@@ -463,11 +473,11 @@
         "practice_girl_091",
         "practice_girl_003"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_091",
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，回覆較長且包含同理心，婉拒時說明理由並建議先聊天，符合C的風格。"
+      "cue": "她會反問並分享自身經驗，如提到路過咖啡店，且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 17,
@@ -485,7 +495,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問『你哪來這種梗啦』，且回覆簡短、直接，符合D的風格。"
+      "cue": "她會反問對方（如'剛下班嗎'），且回應簡短直接，符合D的風格。"
     },
     {
       "index": 18,
@@ -503,7 +513,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問並延續話題，如『蛤 這什麼梗』和『哈哈哈哈 好冷喔你』，與D的互動風格相似。"
+      "cue": "她會反問並接續話題，如『你是想問那個笑話？』，且語氣直接帶幽默，符合D的互動風格。"
     },
     {
       "index": 19,
@@ -517,11 +527,11 @@
         "practice_girl_091",
         "practice_girl_003"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_003",
+      "answer": "C",
+      "answerProfileId": "practice_girl_091",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方（如'蛤 什麼意思'），且回應簡短直接，笑法用'哈哈哈哈'，與D的風格一致。"
+      "cue": "她會反問對方問題（如'蛤？這什麼題目啦'），且回覆常分多則，語氣活潑，與C的互動模式相似。"
     },
     {
       "index": 20,
@@ -535,11 +545,11 @@
         "practice_girl_091",
         "practice_girl_003"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_091",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_018",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，回覆較長且包含反問，語氣親切但保持距離，婉拒時說明理由。"
+      "cue": "她使用簡短問候與句號，回應直接但禮貌，笑法為『哈哈』，且會反問對方假日去處，符合B的風格。"
     },
     {
       "index": 21,
@@ -557,7 +567,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方（你哪來這麼多＊梗啦），且回覆簡短直接，符合D的風格。"
+      "cue": "她會反問對方問題，且回覆簡短直接，語氣自然，符合D的風格。"
     },
     {
       "index": 22,
@@ -574,8 +584,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_003",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問『你常被唸嗎』、『你怎麼ㄌ』，且回應較口語、直接，如『哈哈哈哈 這什麼爛梗』，與D的風格相符。"
+      "confidence": 0.9,
+      "cue": "她會反問對方近況（如'你還在台南嗎'），並在回應中帶入自己的具體行程（如'剛路過那間老＊店'），與D樣本中主動提及自身狀態和反問的風格一致。"
     },
     {
       "index": 23,
@@ -593,7 +603,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問『你常被唸嗎』、『你怎麼ㄌ』，且回應較口語、帶有『哈哈』和『蛤』，符合D的互動風格。"
+      "cue": "她會反問並分享自身經驗，如『因為會「駕馭」不住吧哈哈』，且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 24,
@@ -610,8 +620,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_003",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她使用'累ㄟ'、'你勒'等口語化語氣詞，且回覆簡短直接，與D的風格相符。"
+      "confidence": 0.85,
+      "cue": "她提到輪班、下班累、想補眠，且回覆簡短直接，符合D的護理師背景與說話方式。"
     },
     {
       "index": 25,
@@ -629,7 +639,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方（如'你呢'、'是哪裡的小巷弄啊'），且回覆簡短、使用'ㄌ'、'哈哈'等語氣詞，與D的風格一致。"
+      "cue": "她提到剛下班、累、班排滿，且回覆簡短直接，符合D的護理工作與疲憊語氣。"
     },
     {
       "index": 26,
@@ -647,7 +657,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她使用短句和口語化語氣詞（如'喔'、'哈'），會反問對方（'你也會這樣喔'、'那你都去哪充電'），且婉拒時以疲累為由（'先讓我補個眠再說'），與D的風格一致。"
+      "cue": "她會反問對方（你咧、你也是...嗎），句子短，用表情符號，婉拒時直接說排班滿了，與D的風格一致。"
     },
     {
       "index": 27,
@@ -661,11 +671,11 @@
         "practice_girl_018",
         "practice_girl_003"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_091",
-      "correct": false,
+      "answer": "A",
+      "answerProfileId": "practice_girl_006",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，回覆較長且包含反問，婉拒時說明理由並建議先聊天，符合B的風格。"
+      "cue": "她回覆簡短，常分兩則，用「哈哈」笑，婉拒時說「改天吧」，與A的風格一致。"
     },
     {
       "index": 28,
@@ -679,11 +689,11 @@
         "practice_girl_006",
         "practice_girl_003"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_003",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_006",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方（如'你也喜歡跑小巷子喔'），且回覆較口語、帶有'喔'、'哈哈'等語氣詞，並在婉拒時說明原因（課滿、想休息），與D的互動模式相似。"
+      "cue": "她使用'哈哈'、'🙂'等表情符號，句子簡短，婉拒時說'改天吧'，與C的風格相符。"
     },
     {
       "index": 29,
@@ -697,11 +707,11 @@
         "practice_girl_018",
         "practice_girl_003"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_003",
-      "correct": false,
+      "answer": "A",
+      "answerProfileId": "practice_girl_006",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方（如'哦？什麼樣的店啊'），句子簡短，用'哈哈'和'懂耶'，婉拒時說'我還要想想欸'，與D的風格一致。"
+      "cue": "句子短、分段多、使用🙂表情、婉拒時說改天再看看"
     },
     {
       "index": 30,
@@ -719,7 +729,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'哪一帶的巷弄'），且回覆簡短、直接，婉拒時說'看看行程再跟你說'，與D的風格一致。"
+      "cue": "她提到剛回到家、拿鐵、趕稿等具體生活細節，且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 31,
@@ -737,7 +747,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方（如'你呢'、'該不會是＊廳吧'），且回覆較簡短、直接，並在婉拒時說'我還要想想'，與D的風格一致。"
+      "cue": "她提到剛回到家、買拿鐵、工作累、趕稿等具體行程，且回覆較長、會反問對方，婉拒時直接說明原因，符合D的風格。"
     },
     {
       "index": 32,
@@ -751,11 +761,11 @@
         "practice_girl_091",
         "practice_girl_003"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_003",
+      "answer": "A",
+      "answerProfileId": "practice_girl_006",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『哈哈』、『懂』等簡短回應，並以『看情況欸』、『改天再看看？』等帶有保留的語氣，與D的隨性、簡短且帶有輪班疲憊感的說話方式相符。"
+      "cue": "婉拒方式與A一致，使用『改天吧』且回覆簡短，少反問，語氣詞少。"
     },
     {
       "index": 33,
@@ -769,11 +779,11 @@
         "practice_girl_018",
         "practice_girl_003"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_003",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用『哈哈』、『喔喔』、『看心情欸』等口語化語氣詞，句子簡短，且會反問對方（如『什麼樣的店啊』），婉拒時說『這禮拜有點忙欸』，與D的風格一致。"
+      "answer": "B",
+      "answerProfileId": "practice_girl_091",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她會反問對方、句子長短適中、語氣自然，且婉拒時用『慢慢來』，與B的風格一致。"
     },
     {
       "index": 34,
@@ -787,11 +797,11 @@
         "practice_girl_018",
         "practice_girl_003"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_091",
-      "correct": true,
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她使用斜線分隔多個訊息，語氣委婉，婉拒時說明理由並建議先聊天，符合A的風格。"
+      "cue": "她提到剛跟朋友吃完飯、回家路上，與D在假日話題中提及剛下課/下班類似；回覆簡短、直接，使用『喔』、『哈哈』，且會反問『你呢』，符合D的風格。"
     },
     {
       "index": 35,
@@ -805,11 +815,11 @@
         "practice_girl_006",
         "practice_girl_003"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_003",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_091",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如哪一區、去哪裡充電），且回覆簡短直接，婉拒時說『改天再看看』，與D的風格相符。"
+      "cue": "她會反問對方近況、分享自己行程，且婉拒邀約時語氣委婉並提出替代方案，符合B的互動模式。"
     },
     {
       "index": 36,
@@ -827,7 +837,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問『你常被唸嗎』、『你怎麼ㄌ』，用『哈哈』和『哦是喔』回應，且直接說『你記錯了吧』，符合D的直率與反問風格。"
+      "cue": "她會反問對方（你是不是記錯人了哈哈），且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 37,
@@ -845,7 +855,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方『你常被唸嗎』、『你怎麼ㄌ』，且用『哈哈』開頭、句子簡短，符合D的說話方式。"
+      "cue": "她提到剛下班、累，且直接否認學衝浪，語氣直接，符合D的說話方式。"
     },
     {
       "index": 38,
@@ -863,7 +873,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方近況，且回覆簡短自然，帶有『哈哈』和『有點偷懶』等口語，符合D的風格。"
+      "cue": "她會反問對方近況，且直接否認學過衝浪，語氣自然，符合D的直率風格。"
     },
     {
       "index": 39,
@@ -881,7 +891,7 @@
       "answerProfileId": "practice_girl_091",
       "correct": false,
       "confidence": 0.8,
-      "cue": "使用『～』和『哈哈』，回覆較完整且委婉，婉拒時說明理由並建議先聊天。"
+      "cue": "她會反問對方近況、主動分享行程細節，並在對方誤記時委婉澄清，語氣自然且帶有互動感，符合C的風格。"
     },
     {
       "index": 40,
@@ -899,7 +909,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方（如'你常被唸嗎'、'你怎麼ㄌ'），且用語較口語（'ㄌ'），回覆簡短直接，符合D的風格。"
+      "cue": "她會反問對方近況，且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 41,
@@ -917,7 +927,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問『你是不是記錯人了哈哈』，且回覆簡短、直接，與D的風格相符。"
+      "cue": "她會反問對方是否記錯人，且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 42,
@@ -935,7 +945,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問『你常被唸嗎』、『你怎麼ㄌ』，且用『哈哈』和簡短句子，符合D的直率與反問風格。"
+      "cue": "她會反問對方，且回覆簡短直接，與D的風格相符。"
     },
     {
       "index": 43,
@@ -953,7 +963,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方『你該不會把我跟別人搞混了吧』，且語氣直接、帶有質疑，符合D的說話方式。"
+      "cue": "她直接否認且語氣直率，符合D的說話方式，且她提到剛下班，與D的護理工作背景一致。"
     },
     {
       "index": 44,
@@ -971,7 +981,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方近況，且用『哈哈哈』笑法，句子簡短直接，符合D的風格。"
+      "cue": "她會反問對方是否記錯人，且語氣直接，符合D的風格；D在對話中常直接回應並帶有生活細節，如提到剛下班或補眠。"
     },
     {
       "index": 45,
@@ -989,7 +999,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問『你是不是記錯人了』，且回覆簡短直接，符合D的風格。"
+      "cue": "她會反問對方近況，且回覆簡短直接，與D的風格相符。"
     },
     {
       "index": 46,
@@ -1007,7 +1017,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "使用語氣詞『ㄌ』、『喔』，句子簡短，直接回應並反問，符合D的說話方式。"
+      "cue": "她會反問對方（如'你是不是記錯人了'），且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 47,
@@ -1025,7 +1035,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方『你常被唸嗎』、『你怎麼ㄌ』，且用『哈哈』和『哦是喔』回應，語氣直接且帶有好奇，符合D的風格。"
+      "cue": "她會反問對方近況，且回覆簡短直接，與D的風格相符。"
     },
     {
       "index": 48,
@@ -1042,8 +1052,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_003",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她會反問對方細節（如'你也睡不好喔'），且回覆簡短直接，符合D的風格。"
+      "confidence": 0.85,
+      "cue": "她提到輪班和睡眠亂掉，與D的護理工作背景一致，且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 49,
@@ -1061,7 +1071,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": true,
       "confidence": 0.9,
-      "cue": "她使用簡短口語、反問句（如'怎麼會睡不好'、'怎麼又卡住ㄌ'），且一次回兩則訊息，與D的風格相符。"
+      "cue": "她提到剛下班、買拿鐵、輪班累，且回覆簡短直接，符合D的說話方式。"
     },
     {
       "index": 50,
@@ -1079,7 +1089,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她使用'累ㄟ'、'喔'等口語詞，且會反問對方，句子簡短直接，符合D的風格。"
+      "cue": "她提到輪班和下班累，與D的護理工作背景一致，且回覆簡短直接，使用『累累的』等口語，符合D的說話風格。"
     },
     {
       "index": 51,
@@ -1097,7 +1107,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方（如『壓力大嗎』），且回覆簡短、口語，使用『ㄌ』等語氣詞，與D的風格一致。"
+      "cue": "她會反問對方近況、分享自身經驗（睡前伸展），且回覆節奏自然、帶有生活感，符合D的互動模式。"
     },
     {
       "index": 52,
@@ -1114,8 +1124,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_003",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問對方細節（如『你是壓力大還是怎樣』、『現在是卡在哪裡』），且回覆簡短直接，符合D的風格。"
+      "confidence": 0.85,
+      "cue": "她會反問對方近況，句子長短混合，使用『你咧』等口語，且回覆節奏自然，符合D的互動模式。"
     },
     {
       "index": 53,
@@ -1133,7 +1143,7 @@
       "answerProfileId": "practice_girl_003",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如『你常被唸嗎』、『你是壓力大還是怎樣』），且回覆簡短、帶有口語（如『哈哈』、『ㄌ』），與D的風格最接近。"
+      "cue": "她會反問對方近況（如'剛下班嗎'），並分享自身細節（如'睡前伸展'），且回應較直接、帶有生活感，符合D的風格。"
     },
     {
       "index": 54,
@@ -1150,8 +1160,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_003",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問對方近況並主動提議見面，語氣直接且帶有互動感，符合D的風格。"
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如'怎麼了？壓力大嗎？'），且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 55,
@@ -1168,8 +1178,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_003",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問對方（你壓力大嗎、你也在等消息喔），且回覆簡短、直接，與D的風格一致。"
+      "confidence": 0.85,
+      "cue": "她會反問對方近況，句子簡短，使用『阿雜』等口語，且會主動分享自己剛買飲料，符合D的互動模式。"
     },
     {
       "index": 56,
@@ -1186,8 +1196,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_003",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用簡短口語化回覆，如『還可以啊』、『你還在煩惱要不要換嗎』，並帶有『啊』、『嗎』等語氣詞，與D的風格相符。"
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'你是壓力大還是怎樣'），並提及自己剛下班、買拿鐵等具體生活情境，符合D的風格。"
     },
     {
       "index": 57,
@@ -1201,11 +1211,11 @@
         "practice_girl_091",
         "practice_girl_003"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_003",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問對方細節（如'怎麼了'、'壓力大嗎'），並用'是喔'承接話題，且回覆簡短直接，符合D的風格。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_091",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她一次回多則訊息，句子長短適中，會反問對方，語氣自然帶有同理心，符合C的風格。"
     },
     {
       "index": 58,
@@ -1219,11 +1229,11 @@
         "practice_girl_006",
         "practice_girl_003"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_003",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問對方（如'你也太會記了吧'），且回覆較口語、直接，與D的風格相符。"
+      "answer": "B",
+      "answerProfileId": "practice_girl_091",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方近況、分享自身經驗並接續話題，且回覆分段自然，語氣溫和帶有同理心，符合B的風格。"
     },
     {
       "index": 59,
@@ -1240,8 +1250,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_003",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（你怎麼也睡不好），並用『你上次不是說想換嗎』延續話題，符合D的互動風格。"
+      "confidence": 0.8,
+      "cue": "她會反問對方近況，且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 60,
@@ -1259,7 +1269,7 @@
       "answerProfileId": "practice_girl_009",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方（如『你哪位啊』），直接拒絕且語氣較嗆，符合D的直率風格。"
+      "cue": "她直接表達不舒服，語氣直接且帶有防衛性，與D的直率風格相符。"
     },
     {
       "index": 61,
@@ -1277,7 +1287,7 @@
       "answerProfileId": "practice_girl_009",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會直接表達不舒服，且回覆簡短，符合D的直率風格。"
+      "cue": "她直接拒絕提供照片，且語氣直接，與D的風格相符。"
     },
     {
       "index": 62,
@@ -1291,11 +1301,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": true,
-      "confidence": 0.9,
-      "cue": "她會反問對方、直接表達不滿，且回覆較簡短直接，符合D的風格。"
+      "answer": "A",
+      "answerProfileId": "practice_girl_012",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用簡短回應、句號分隔、直接拒絕，且會反問對方，符合A的風格。"
     },
     {
       "index": 63,
@@ -1309,11 +1319,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_012",
+      "correct": true,
       "confidence": 0.9,
-      "cue": "她會反問對方問題（如'你是看到哪個部分覺得有意思'），且對不當話題直接拒絕（'我們認識的地方好像不是聊這個的欸'），符合D的風格。"
+      "cue": "她使用句號而非波浪號，回覆簡短且直接，婉拒時提及論文進度，符合C的說話方式。"
     },
     {
       "index": 64,
@@ -1327,11 +1337,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方（如'你怎麼突然密我'），且對邀約或要求會直接表達界線（如'我們好像沒熟到可以看泳裝照欸'），符合D的風格。"
+      "answer": "A",
+      "answerProfileId": "practice_girl_012",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用簡短句、句號分隔，且會反問對方，語氣直接但禮貌，符合A的風格。"
     },
     {
       "index": 65,
@@ -1345,11 +1355,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方（如'你怎麼有空密我'），且對直接要求照片的回應較直接，符合D的風格。"
+      "answer": "A",
+      "answerProfileId": "practice_girl_012",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用簡短回應、句號分隔、直接拒絕不感興趣話題，與A的風格一致。"
     },
     {
       "index": 66,
@@ -1363,11 +1373,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方問題（如'你是在說笑話嗎'），且對直接要求照片的回應較直接，符合D的風格。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_020",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方問題、使用語氣詞『哈』、句子簡短且直接，符合C的風格。"
     },
     {
       "index": 67,
@@ -1385,7 +1395,7 @@
       "answerProfileId": "practice_girl_009",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方動機，且對直接要求回應較直接，符合D的風格。"
+      "cue": "她直接表達不舒服，語氣直接且帶有防衛性，與D的直率風格相符。"
     },
     {
       "index": 68,
@@ -1399,11 +1409,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "A",
+      "answerProfileId": "practice_girl_012",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題（如'剛吃飽嗎'），且對邀約或試探會直接回應但帶有保留（如'你問這個有點太快了吧哈哈'），符合D的互動風格。"
+      "cue": "她使用斜線分隔多個訊息，且語氣直接、帶有防衛性，與A的風格相符。"
     },
     {
       "index": 69,
@@ -1417,11 +1427,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_020",
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『／』分隔多則訊息，語氣委婉，婉拒邀約時說『先聊一陣子再說吧』，與A的風格一致。"
+      "cue": "她直接說『我們不是才剛認識嗎』來拒絕，語氣直接且帶有防衛，與D的直率風格相符。"
     },
     {
       "index": 70,
@@ -1438,8 +1448,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_009",
       "correct": false,
-      "confidence": 0.85,
-      "cue": "她會反問對方（如'你是看到哪個部分覺得有意思'），且直接拒絕不禮貌話題，語氣直接但帶有禮貌，符合D的風格。"
+      "confidence": 0.9,
+      "cue": "她直接質疑對方身分（'我們認識嗎？'），且對不當問題直接表達不滿（'沒禮貌'），語氣直接、防衛性強，符合D的風格。"
     },
     {
       "index": 71,
@@ -1453,11 +1463,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "A",
+      "answerProfileId": "practice_girl_012",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方、直接表達不舒服，且用『嗯？』和『我們認識嗎』來質疑，符合D的風格。"
+      "confidence": 0.8,
+      "cue": "句子較短且直接，使用句號而非波浪號，婉拒時明確說明原因，如'這種話題我不太想聊'，與A的風格一致。"
     },
     {
       "index": 72,
@@ -1475,7 +1485,7 @@
       "answerProfileId": "practice_girl_009",
       "correct": true,
       "confidence": 0.9,
-      "cue": "她會反問對方（如'你是看到哪個部分覺得有意思'），且回應中帶有具體提問（如'你喝無糖的嗎？'），並在笑話後連結自身經歷（'我剛好今天路過那間老＊店'），符合D的互動風格。"
+      "cue": "她開頭就問『你哪位』，語氣直接且帶有距離感，與D樣本中『你哪位啊』的風格一致；後續回應『你很會』簡短且帶點不耐，符合D的說話方式。"
     },
     {
       "index": 73,
@@ -1492,8 +1502,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_009",
       "correct": true,
-      "confidence": 0.9,
-      "cue": "她會反問『你是？』、『這什麼梗』，且回應中帶有具體提問（如『你喝無糖的嗎？』），符合D的互動風格。"
+      "confidence": 0.8,
+      "cue": "她回覆簡短，使用『蛤』、『⋯⋯』等語氣詞，且對笑話反應直接冷淡，符合D的風格。"
     },
     {
       "index": 74,
@@ -1510,8 +1520,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_009",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她會反問『你是？』和『蛤？什麼意思』，且笑法『哈哈哈哈』並接續話題，符合D的互動風格。"
+      "confidence": 0.9,
+      "cue": "她使用『蛤』、『哈哈』等口語詞，且回覆簡短直接，與D的風格相符。"
     },
     {
       "index": 75,
@@ -1529,7 +1539,7 @@
       "answerProfileId": "practice_girl_009",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她回覆簡短直接，使用『蛤』、『無聊欸你哈哈哈』等口語，且會反問，符合D的風格。"
+      "cue": "她回覆簡短，使用『……』和直接批評『冷笑話欸你』，語氣直接且帶有距離感，符合D的風格。"
     },
     {
       "index": 76,
@@ -1543,11 +1553,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_020",
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她的回覆常以短句分則，使用『哈哈』、『哈』等笑聲，且會反問對方（如『你主管很兇喔』），語氣直接但帶點俏皮，與A的風格最接近。"
+      "cue": "她回覆簡短，使用『……你很會講欸。』帶有吐槽語氣，且句子短、少反問，符合D的風格。"
     },
     {
       "index": 77,
@@ -1561,11 +1571,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問『你怎麼突然密我』，且對笑話回應『蛤 這什麼問題』，與D的互動風格（反問、直接）一致。"
+      "answer": "A",
+      "answerProfileId": "practice_girl_012",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用簡短問候、句號分隔、直接回應但保持距離，且會反問細節，符合A的風格。"
     },
     {
       "index": 78,
@@ -1582,8 +1592,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_009",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問問題（如'蛤 這什麼爛問題哈哈'），且回覆簡短直接，與D的風格相符。"
+      "confidence": 0.8,
+      "cue": "她會用（誤）和哈哈，且回覆簡短直接，與D的風格相符。"
     },
     {
       "index": 79,
@@ -1597,11 +1607,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "A",
+      "answerProfileId": "practice_girl_012",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方問題（如'你是在哪學的'），且回覆較長、有互動感，與D的風格一致。"
+      "confidence": 0.8,
+      "cue": "她使用句號分隔短句，回覆簡短且直接，會反問但語氣較為正式，婉拒時說明理由。"
     },
     {
       "index": 80,
@@ -1618,8 +1628,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_009",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方問題（如'你怎麼稱呼'），且對笑話有直接回應並延伸話題，符合D的互動風格。"
+      "confidence": 0.8,
+      "cue": "她使用簡短回覆、語氣詞『哈』，且會反問對方，符合D的說話方式。"
     },
     {
       "index": 81,
@@ -1633,11 +1643,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_084",
-      "correct": true,
+      "answer": "B",
+      "answerProfileId": "practice_girl_020",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "使用注音文『ㄌ』、『哈哈哈哈』笑法、『先聊聊再說啊』直接回應邀約，符合C的語氣與用字習慣。"
+      "cue": "她會接續話題並反問細節，語氣輕鬆，使用『哈』和『／』分隔多個回應，符合B的風格。"
     },
     {
       "index": 82,
@@ -1651,11 +1661,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "C",
+      "answerProfileId": "practice_girl_020",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問並追問細節（如'你是說＊因那個＊喔'），且用'蛤？'和'哈哈哈哈'回應，符合D的互動風格。"
+      "confidence": 0.8,
+      "cue": "她會接續笑話並回應『哈哈，這笑話有中我的點』，語氣輕鬆且會反饋，符合C的互動風格。"
     },
     {
       "index": 83,
@@ -1669,11 +1679,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "C",
+      "answerProfileId": "practice_girl_012",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問並延伸話題，如『怎麼啦』、『你冷笑話系？』，且笑法用『哈哈』並加註解，符合D的互動風格。"
+      "confidence": 0.8,
+      "cue": "她使用句號結尾、簡短回應，且會反問細節，與C的風格一致。"
     },
     {
       "index": 84,
@@ -1690,8 +1700,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_009",
       "correct": true,
-      "confidence": 0.9,
-      "cue": "她會反問細節（在哪一帶）、用語氣詞ㄟ、笑法哈哈、直接回應邀約並給具體時間，符合D的互動風格。"
+      "confidence": 0.8,
+      "cue": "她使用'／'分隔短句，語氣直接，會反問'你哪位啊'，婉拒時說'改天再看看'，與D的風格一致。"
     },
     {
       "index": 85,
@@ -1708,8 +1718,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_009",
       "correct": true,
-      "confidence": 0.9,
-      "cue": "她會反問對方、使用『哦？』、『哈哈』笑法、句子較短且直接，並在邀約時提出具體質疑，符合D的風格。"
+      "confidence": 0.8,
+      "cue": "她回覆簡短，使用『哦？』、『嗯』等語氣詞，婉拒時說『改天再說吧』，與D的風格一致。"
     },
     {
       "index": 86,
@@ -1726,8 +1736,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_009",
       "correct": true,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（如哪一帶的店）、分享自身狀態（站整天）、用『哈哈』和表情符號、婉拒時保留彈性（我看看吧），符合D的互動模式。"
+      "confidence": 0.8,
+      "cue": "她使用簡短回覆、語氣詞少、直接婉拒，且提到'改天再說吧'，與D的風格相似。"
     },
     {
       "index": 87,
@@ -1744,8 +1754,8 @@
       "answer": "C",
       "answerProfileId": "practice_girl_012",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她提到論文、meeting，且回覆節奏與C相似，多用短句和語氣詞，婉拒時說明原因。"
+      "confidence": 0.9,
+      "cue": "她提到論文，且回覆簡短、直接，使用句號，語氣較為正式，符合C的風格。"
     },
     {
       "index": 88,
@@ -1763,7 +1773,7 @@
       "answerProfileId": "practice_girl_012",
       "correct": true,
       "confidence": 0.9,
-      "cue": "她提到論文、實驗室，且回覆節奏與C一致，句子短、有分段，婉拒時用『可能不太行』，符合C的語氣。"
+      "cue": "提到論文進度、實驗室，且回覆簡短直接，符合C的說話方式。"
     },
     {
       "index": 89,
@@ -1777,11 +1787,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_012",
-      "correct": true,
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她提到論文、實驗室，且回覆較簡短、少反問，婉拒邀約時說要再看看時間，符合A的風格。"
+      "cue": "她會反問『你哪位啊』、用『哈』回應、婉拒時說『改天再說吧』，符合D的直率與保留態度。"
     },
     {
       "index": 90,
@@ -1795,11 +1805,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_020",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方問題（如'哪種店'、'所以那間店到底是賣什麼的'），且回覆較長、有具體細節，符合D的風格。"
+      "cue": "她使用短句、分段回覆，並有反問與回應對方話題，如'你也會這樣喔'，符合B的風格。"
     },
     {
       "index": 91,
@@ -1813,11 +1823,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_084",
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『哈哈』、『ㄌ』等語氣詞，句子簡短，回覆直接且帶有幽默感，與C的風格相符。"
+      "cue": "她使用『喔？』、『看狀況欸』、『你也是喔』等口語化語氣詞，且回覆簡短直接，與D的風格相符。"
     },
     {
       "index": 92,
@@ -1835,7 +1845,7 @@
       "answerProfileId": "practice_girl_009",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題、使用表情符號、回覆較長且帶有具體細節，與D的互動模式相似。"
+      "cue": "她會反問對方是否覺得自己難聊，且回覆簡短直接，語氣詞少，符合D的風格。"
     },
     {
       "index": 93,
@@ -1849,11 +1859,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_084",
-      "correct": true,
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『哈哈』、『欸』等語氣詞，句子簡短，會反問，婉拒時用『看看吧』，與B的風格一致。"
+      "cue": "她使用『喔？哪一帶啊』、『你也是需要自己充電的類型喔？』等口語化提問，且回覆簡短直接，並在邀約時回應『你倒是挺直接的』，符合D的直率風格。"
     },
     {
       "index": 94,
@@ -1867,11 +1877,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "C",
+      "answerProfileId": "practice_girl_020",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問細節（哪一帶、哪間店），且婉拒時用『還沒確定行程』並追問具體店名，符合D的互動模式。"
+      "cue": "她會反問對方細節（如哪一帶的巷弄），並分享自己的近況（剛跟朋友吃完飯），語氣自然且帶有語氣詞（哦？），符合C的互動風格。"
     },
     {
       "index": 95,
@@ -1885,11 +1895,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "B",
+      "answerProfileId": "practice_girl_020",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問細節（如'你是看到哪個部分'、'你喝無糖的嗎'），且回覆常帶具體提問，符合D的互動風格。"
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如珍珠軟硬），且回覆簡短、使用語氣詞「哈」，婉拒時說「行程有點滿」，符合B的風格。"
     },
     {
       "index": 96,
@@ -1903,11 +1913,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": true,
-      "confidence": 0.9,
-      "cue": "她直接反問『你記錯人了吧哈哈』，與D樣本中直接質疑『你是在說笑話嗎』的風格一致，且句子簡短、使用哈哈笑法。"
+      "answer": "A",
+      "answerProfileId": "practice_girl_020",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "回覆簡短，使用『哈』、『嘿』等語氣詞，會反問對方，婉拒時用『行程有點滿』，符合A的風格。"
     },
     {
       "index": 97,
@@ -1921,11 +1931,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": true,
-      "confidence": 0.8,
-      "cue": "她會反問並指出對方記錯，且語氣直接帶笑，符合D的風格。"
+      "answer": "B",
+      "answerProfileId": "practice_girl_084",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她直接否認學過衝浪，並質疑對方記錯人，與B在對話中多次直接指出對方認錯人或關係不熟的特質一致。"
     },
     {
       "index": 98,
@@ -1939,11 +1949,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": true,
+      "answer": "B",
+      "answerProfileId": "practice_girl_084",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題，且回覆簡短直接，符合D的風格。"
+      "cue": "她先說『嗨 真的有陣子了』呼應B的開場，且『你是不是認錯人了』與B在初次回應時懷疑對方認錯人的語氣一致。"
     },
     {
       "index": 99,
@@ -1957,11 +1967,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "B",
+      "answerProfileId": "practice_girl_084",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問對方記錯人，且用『哈哈』和『ㄟ』，語氣直接，符合D的風格。"
+      "confidence": 0.9,
+      "cue": "她直接指出對方記錯人，且語氣直接，符合B的風格。"
     },
     {
       "index": 100,
@@ -1975,11 +1985,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "C",
+      "answerProfileId": "practice_girl_084",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問對方細節（如'你記錯人了吧'），且回覆常帶具體提問，與D樣本中主動追問'你是看到哪個部分'的風格一致。"
+      "confidence": 0.85,
+      "cue": "她直接否認對方記錯人，且語氣直接但禮貌，符合C的風格；C在對話中常直接指出事實（如'我應該沒有放自介吧'），且回覆簡短、少用語氣詞。"
     },
     {
       "index": 101,
@@ -1993,11 +2003,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "C",
+      "answerProfileId": "practice_girl_084",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問對方問題（如'你最近還好嗎'），且對對方提到的內容直接質疑（'蛤 我哪有在衝浪'），符合D的互動風格。"
+      "confidence": 0.9,
+      "cue": "她直接指出對方可能記錯人，且回覆中常使用分隔線與反問，符合C的風格。"
     },
     {
       "index": 102,
@@ -2011,11 +2021,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "B",
+      "answerProfileId": "practice_girl_084",
       "correct": false,
       "confidence": 0.9,
-      "cue": "她會反問細節（如『你是看到哪個部分』、『你喝無糖的嗎』），且直接指出對方記錯（『你記錯人了吧』），符合D的互動風格。"
+      "cue": "她直接指出對方可能認錯人，且語氣直接，符合B的風格。"
     },
     {
       "index": 103,
@@ -2033,7 +2043,7 @@
       "answerProfileId": "practice_girl_009",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'你是看到哪個部分'），且回覆簡短直接，使用'哈哈'而非'哈哈哈哈'，並在婉拒時用'還沒想那麼遠'等模糊說法。"
+      "cue": "她直接質疑對方記錯人，且語氣直接，符合D的風格。"
     },
     {
       "index": 104,
@@ -2047,11 +2057,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "C",
+      "answerProfileId": "practice_girl_084",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問並指出對方記錯，語氣直接且帶有笑聲，符合D的風格。"
+      "confidence": 0.8,
+      "cue": "她會先肯定對方再提出疑問，且會反問細節，語氣委婉但直接，符合C的風格。"
     },
     {
       "index": 105,
@@ -2065,11 +2075,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_084",
+      "correct": true,
       "confidence": 0.9,
-      "cue": "她會反問對方（如'你是不是記錯人ㄌ'），且用'ㄌ'取代'了'，符合D的語氣與反問習慣。"
+      "cue": "她直接指出對方記錯人，且語氣直接，符合B的風格；B在對話中常直接點出事實，如'我應該沒有放自介吧'、'我們好像是工作上認識的吧'。"
     },
     {
       "index": 106,
@@ -2083,11 +2093,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_084",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'你是看到哪個部分'），且回覆較長、有互動感，與D的風格一致。"
+      "cue": "她會先肯定對方（辛苦了），再反問細節（比較好奇你被唸什麼），且會主動分享自己生活（買了杯＊），符合C的互動模式。"
     },
     {
       "index": 107,
@@ -2101,11 +2111,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_084",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方問題（如'你是看到哪個部分覺得有意思'），且回覆簡短直接，符合D的風格。"
+      "cue": "她先說『嗨，確實有點久』呼應B的開場，且反問『你記錯人了吧』與B在自介和照片話題中直接質疑對方認錯人的風格一致。"
     },
     {
       "index": 108,
@@ -2119,11 +2129,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": true,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（如'怎麼了'、'壓力大嗎'），並直接給出建議（'想換就換啊'），符合D的互動風格。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_084",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'壓力很大嗎'），並在回應中帶入自身狀態（'剛到家沒多久'），語氣自然且帶有同理心，符合C的互動模式。"
     },
     {
       "index": 109,
@@ -2141,7 +2151,7 @@
       "answerProfileId": "practice_girl_009",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'壓力大喔？'），且回覆簡短直接，符合D的風格。"
+      "cue": "她會反問『你哪位啊』、用『哈』笑、句子短、直接，且會提到具體地點（巷口那間老＊店），與D的說話方式最像。"
     },
     {
       "index": 110,
@@ -2155,11 +2165,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": true,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（如『你都幾點睡啊』、『你有跟誰聊過了嗎』），且回覆常分多則、帶有同理心並延伸話題，符合D的互動模式。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_084",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會用『／』分隔多個訊息，且會反問對方細節，語氣直接但帶有禮貌，與C的風格相符。"
     },
     {
       "index": 111,
@@ -2173,11 +2183,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（如'怎麼了 壓力大喔'），並追問具體內容（'換工作？我記得你之前不是說要適應早起通勤'），且回覆常帶有具體提問，符合D的互動風格。"
+      "answer": "A",
+      "answerProfileId": "practice_girl_012",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到論文、實驗室，且回覆簡短、直接，符合A的風格。"
     },
     {
       "index": 112,
@@ -2191,11 +2201,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
+      "answer": "A",
+      "answerProfileId": "practice_girl_012",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'怎麼了'、'壓力大喔'），且回覆簡短直接，符合D的風格。"
+      "cue": "她提到論文、實驗室，且回覆簡短、直接，較少反問，符合A的風格。"
     },
     {
       "index": 113,
@@ -2213,7 +2223,7 @@
       "answerProfileId": "practice_girl_012",
       "correct": true,
       "confidence": 0.8,
-      "cue": "句子短，常用分隔號，語氣溫和，少反問，婉拒時說再看看時間。"
+      "cue": "她使用簡短句、句號分隔，且會反問對方細節，語氣較直接但保持禮貌。"
     },
     {
       "index": 114,
@@ -2227,11 +2237,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
+      "answer": "A",
+      "answerProfileId": "practice_girl_020",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'怎麼會睡不好'），且回覆簡短直接，符合D的風格。"
+      "cue": "她回覆簡短，常以『哈』開頭，會反問對方細節，且婉拒邀約時語氣保留。"
     },
     {
       "index": 115,
@@ -2245,11 +2255,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問細節（如'怎麼會睡不好'），並追問對方先前說法（'你之前不是說新的還不錯？'），符合D的互動風格。"
+      "answer": "A",
+      "answerProfileId": "practice_girl_020",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用「／」分隔多個訊息，且會反問對方細節（如「那你有試著早點躺平嗎」），語氣直接但帶有好奇，符合A的風格。"
     },
     {
       "index": 116,
@@ -2263,11 +2273,11 @@
         "practice_girl_012",
         "practice_girl_009"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_084",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "使用語氣詞『ㄌ』、『啊』，句子簡短，直接回應並反問，符合B的風格。"
+      "answer": "A",
+      "answerProfileId": "practice_girl_020",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用簡短問句、反問對方，且回覆節奏短促，符合A的風格。"
     },
     {
       "index": 117,
@@ -2281,11 +2291,11 @@
         "practice_girl_020",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "C",
+      "answerProfileId": "practice_girl_020",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'壓力大喔？'），且回覆節奏短促、直接，與D樣本中反問'你是看到哪個部分覺得有意思'的風格一致。"
+      "cue": "她會反問對方細節（如'你是壓力大還是單純睡不著？'），並分享自身類似經驗，語氣自然帶有語氣詞（'還行'），符合C的互動風格。"
     },
     {
       "index": 118,
@@ -2299,11 +2309,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "B",
+      "answerProfileId": "practice_girl_020",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（如'壓力大嗎'、'現在是要跳去哪'），且一次回多則訊息，語氣直接帶點好奇，符合D的風格。"
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'主管唸什麼事啊'），並用'哈'回應，且婉拒時會說'行程有點滿'，符合B的風格。"
     },
     {
       "index": 119,
@@ -2317,11 +2327,11 @@
         "practice_girl_084",
         "practice_girl_009"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_009",
+      "answer": "B",
+      "answerProfileId": "practice_girl_020",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（如'你是看到哪個部分'、'你喝無糖的嗎'），且回覆常帶具體提問，符合D的互動風格。"
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如『怎麼了 壓力大？』），並分享自身經驗（『我剛換工作那陣子也這樣』），語氣自然帶有語氣詞（『還行啊』），句子長短適中，符合B的風格。"
     },
     {
       "index": 120,
@@ -2335,11 +2345,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，語氣活潑，回應中帶有反問和幽默，與B的風格相似。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她反問『你是那天在路上跟我搭話的那個人嗎』，與D樣本中『你是那天路上跟我搭話的那位嗎』的說話方式一致，且回應直接、帶有俏皮語氣。"
     },
     {
       "index": 121,
@@ -2353,11 +2363,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用波浪號和『哈哈』，語氣親切，回應較長且包含反問，與B的風格一致。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "開頭用『嗨～』加『你哪位呀』，與D的『嗨～你哪位啊』相似；面對直球稱讚會直接表達不適並要求先聊天，符合D的直率風格。"
     },
     {
       "index": 122,
@@ -2371,11 +2381,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_007",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用大量『哈哈』、『／』分隔短句，語氣輕鬆且會反問，婉拒邀約時說『這也太突然了吧哈哈』，與A的風格一致。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "開頭直接問『你哪位啊』，與D的『嗨～你哪位啊』相同；面對稱讚與邀約時以『哈哈』帶過並委婉拒絕，符合D的說話風格。"
     },
     {
       "index": 123,
@@ -2389,11 +2399,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_007",
-      "correct": true,
-      "confidence": 0.8,
-      "cue": "她使用『哈哈』開頭、句子簡短、直接回應邀約但婉拒，與C的風格相符。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她直接指出問題越線並表達不滿，語氣直接且帶有挑戰性，符合D的直率風格。"
     },
     {
       "index": 124,
@@ -2407,11 +2417,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_083",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用波浪號和語氣詞，回覆較長且帶有委婉拒絕，與C的風格一致。"
+      "confidence": 0.9,
+      "cue": "她直接反問『你誰呀』，且對不當話題直接表達不滿，語氣直接，符合D的風格。"
     },
     {
       "index": 125,
@@ -2425,11 +2435,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_083",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用波浪號和語氣詞，回覆較長且帶有同理心，婉拒時用幽默方式。"
+      "confidence": 0.9,
+      "cue": "她會反問『你哪位呀』，且對直接稱讚感到害羞並委婉拒絕，符合D的說話方式。"
     },
     {
       "index": 126,
@@ -2443,11 +2453,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_083",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用波浪號和語氣詞，回覆較長且帶有同理心，婉拒時用幽默方式。"
+      "confidence": 0.9,
+      "cue": "她會反問對方問題（如'你也有在練嗎？'），且直接表達不舒服，語氣直接，符合D的風格。"
     },
     {
       "index": 127,
@@ -2461,11 +2471,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_011",
-      "correct": true,
-      "confidence": 0.8,
-      "cue": "開頭說『剛下課』，與C的『剛下課』一致；回應直接且簡短，使用『哈哈』和『內』，與C的語氣相符。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方、用語氣詞和表情符號，且直接拒絕時帶點嗆聲，符合D的風格。"
     },
     {
       "index": 128,
@@ -2479,11 +2489,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_011",
-      "correct": true,
-      "confidence": 0.8,
-      "cue": "開頭用『剛下課』呼應C的『剛下課』，且回覆簡短、直接，婉拒時用『先聊聊天吧』與C的『我們認識沒多久吧』語氣相近。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方問題（如'你也有在練？'），用'幹嘛突然要照片啦😂'直接但帶表情符號，符合D的互動風格。"
     },
     {
       "index": 129,
@@ -2501,7 +2511,7 @@
       "answerProfileId": "practice_girl_002",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問『你哪位呀』、『你怎麼知道我身材好』，且直接說『太快了吧』，與D樣本中『你是那天路上那個？』、『我們才剛認識吧』的質疑與直接風格相符。"
+      "cue": "她直接表達不舒服，語氣直接且帶有質疑，與D的直率風格相符。"
     },
     {
       "index": 130,
@@ -2518,8 +2528,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問確認對方身份（如'你是那天路上那個？'），且回覆簡短直接，婉拒時說'先聊聊再說囉'，符合D的風格。"
+      "confidence": 0.9,
+      "cue": "她直接質問對方身分、對不當言論強硬回應，語氣直接且帶防衛性，符合D的直率風格。"
     },
     {
       "index": 131,
@@ -2536,8 +2546,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她開頭就問『你哪位啊』，與D樣本中『嗨 你哪位啊』一致，且對直接邀約回應『你會不會太直接了 ／ 我跟你還沒那麼熟吧』，與D的直白風格相符。"
+      "confidence": 0.8,
+      "cue": "她會反問對方問題（如'你會不會太直接了'），且回覆簡短直接，語氣帶有挑戰性，符合D的風格。"
     },
     {
       "index": 132,
@@ -2554,8 +2564,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_002",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她會反問『你是？』，且用『蛤』和『😂』，與D的對話中也有『你是哪位啊』和『蛤』的用法。"
+      "confidence": 0.9,
+      "cue": "她使用『蛤』、『也太雖了吧』等口語，且會反問對方行程，笑法用『😂』，與D的風格相符。"
     },
     {
       "index": 133,
@@ -2569,11 +2579,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_007",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用大量斜線分隔短句，笑聲為『哈哈哈哈』，語氣直接且帶有自嘲，與A的風格相符。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "開頭問『你誰啊』、『怎麼會有我賴』，以及『你該不會是那天路上跟我搭話的那個吧』，與D樣本中『你哪位啊』、『你是那天路上跟我搭話的那位嗎』的用語和反問風格一致；笑法『哈哈超冷』也符合D的『哈哈』開頭。"
     },
     {
       "index": 134,
@@ -2587,11 +2597,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_007",
+      "answer": "B",
+      "answerProfileId": "practice_girl_083",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用'哈哈哈哈'、'你蠻會掰的耶'等口語化回應，且一次回多則訊息，與C的風格相符。"
+      "cue": "她使用『嗨～你好呀』開頭，並以『哈哈』回應笑話，且會反問『你很有梗喔』，符合B的語氣與互動模式。"
     },
     {
       "index": 135,
@@ -2609,7 +2619,7 @@
       "answerProfileId": "practice_girl_007",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她使用大量斷句與表情符號，回覆節奏短促，且以『哈哈哈哈』開頭的笑法與A一致。"
+      "cue": "使用波浪號和表情符號，句子短且分段，語氣輕鬆，會反問和自嘲，婉拒時用'哈哈'和'內'。"
     },
     {
       "index": 136,
@@ -2623,11 +2633,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_007",
-      "correct": true,
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
       "confidence": 0.9,
-      "cue": "她使用『哈哈哈哈』笑法、句子短、一次回多則、語氣直接且帶有幽默感，與C的風格一致。"
+      "cue": "她開頭用『你哪位呀』，與D的『你哪位啊』語氣相近；且對話中她主動反問、用表情符號，與D的互動風格一致。"
     },
     {
       "index": 137,
@@ -2644,8 +2654,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她會用『蛤』回應，且會反問『你怎麼走的那麼快』，與D樣本中『蛤 什麼梗』和『你是那天路上那個？』的語氣及反問習慣相符。"
+      "confidence": 0.9,
+      "cue": "她會反問『你哪位呀』，且對諧音梗回應『哈哈哈哈這什麼諧音爛梗』，與D的直率、愛反問風格相符。"
     },
     {
       "index": 138,
@@ -2659,11 +2669,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_011",
-      "correct": true,
+      "answer": "C",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "開頭『嗨～剛下課有點累』與A的『嗨 剛下課』相似，且回覆簡短、使用『哈哈』和『／』分隔多則訊息，符合A的風格。"
+      "cue": "她使用『～』和『😂』，且會反問『你很會接欸』，與C的語氣和互動方式相符。"
     },
     {
       "index": 139,
@@ -2677,11 +2687,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_007",
-      "correct": false,
+      "answer": "A",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她使用『蛤』、『哈哈』、『你很有事內』等口語化語氣詞，且回覆簡短、帶有玩笑性質，與C的風格相符。"
+      "cue": "句子短、常用斜線分隔、直接回應且少反問，語氣較簡潔，與A的風格一致。"
     },
     {
       "index": 140,
@@ -2695,11 +2705,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，語氣活潑，會反問並以幽默回應，符合B的風格。"
+      "cue": "她會反問『你哪位啊』、用『蛤』和『笑死』等口語詞，且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 141,
@@ -2713,11 +2723,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
-      "correct": true,
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，語氣親切，回覆較長且包含多個訊息，與B的風格一致。"
+      "cue": "她會反問對方問題（如'蛤 這是什麼梗😂'），且用'蛤'開頭，語氣直接，與D的風格相符。"
     },
     {
       "index": 142,
@@ -2734,8 +2744,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問『你是誰啊』，且回覆中帶有『蛤』、『哈哈哈哈』等語氣詞，與D的風格相似。"
+      "confidence": 0.9,
+      "cue": "她會反問並延伸話題，如問咖啡笑話的意圖，且用『哈哈』和『被針對』等口語化回應，與D的互動風格相似。"
     },
     {
       "index": 143,
@@ -2752,8 +2762,8 @@
       "answer": "C",
       "answerProfileId": "practice_girl_083",
       "correct": true,
-      "confidence": 0.9,
-      "cue": "開頭用『嗨～你好啊』，句子短、分段回覆，笑聲用『哈哈』，對爛梗回應『這諧音爛到我喜歡』，與C的語氣和分段習慣一致。"
+      "confidence": 0.8,
+      "cue": "她使用'嗨 你好呀'開頭，句子較長且包含反問，語氣溫和委婉，符合C的風格。"
     },
     {
       "index": 144,
@@ -2770,8 +2780,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_002",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她會反問對方細節（哪一區的店、咖啡好喝嗎），並在邀約時要求先看照片，與D樣本中多次確認對方身份、對邀約持保留態度的風格一致。"
+      "confidence": 0.9,
+      "cue": "她會反問細節、用哈哈開頭、句子短、語氣直接且帶點俏皮，婉拒時會先說有事再補理由，與D的風格一致。"
     },
     {
       "index": 145,
@@ -2785,11 +2795,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_007",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用大量笑聲（哈哈）和口語化語氣（餒、欸），句子短且常一次回多則，會反問對方，婉拒時用理由並轉移話題，與C的風格最接近。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如'該不會是巷口那間老咖啡店吧'），用'哈哈'笑法，且婉拒時直接說'突然單獨去會不會太怪'，與D的風格相符。"
     },
     {
       "index": 146,
@@ -2803,11 +2813,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，語氣親切，回覆多則且帶有反問，婉拒時用『哈哈』緩和，符合B的風格。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方、用『哈哈』開頭、句子短且口語化，婉拒時會說『想一下』，與D的風格一致。"
     },
     {
       "index": 147,
@@ -2825,7 +2835,7 @@
       "answerProfileId": "practice_girl_007",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她一次回多則訊息，使用『／』分隔，語氣詞『哈哈』、『內』，會反問對方，婉拒邀約時說『這也太突然了吧哈哈』，與A的風格一致。"
+      "cue": "她使用大量斷句和語氣詞，如『哈哈』、『內』、『耶』，且婉拒時會解釋並反問，符合A的風格。"
     },
     {
       "index": 148,
@@ -2839,11 +2849,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_083",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用大量語氣詞（喔、耶、哈哈），句子短且分段多，會反問對方，婉拒邀約時先說自己狀況再問時間，與C的風格一致。"
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如店在哪、推薦喝什麼），且用『嘿～』開頭、『真的齁～』等語氣詞，與D的互動風格最像。"
     },
     {
       "index": 149,
@@ -2857,11 +2867,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_083",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用大量語氣詞（喔、耶、哈哈），句子短且分段多，會反問對方（你都會躲去哪充電），婉拒時用『這禮拜喔』保留彈性，與C的風格最接近。"
+      "confidence": 0.9,
+      "cue": "她會反問對方、用哈哈開頭、句子短、語氣直接，且會主動分享生活細節，與D的風格一致。"
     },
     {
       "index": 150,
@@ -2875,11 +2885,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_011",
-      "correct": true,
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她提到剛下課，且回覆簡短，使用哈哈，與C的風格相符。"
+      "cue": "她會反問對方細節（如'你也跑巷子裡找店喔'），用'哈哈'笑法，且婉拒時說'改天再約看看'，與D的風格一致。"
     },
     {
       "index": 151,
@@ -2893,11 +2903,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_007",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用大量斷句與表情符號，回覆節奏輕快，且會反問對方，與A的風格最接近。"
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'你咧'、'該不會是咖啡店吧'），且提到自己晚上去老咖啡店買拿鐵，與D的對話中多次提及咖啡店和反問習慣相符。"
     },
     {
       "index": 152,
@@ -2911,11 +2921,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，語氣親切，回覆多則且帶有反問，婉拒時用『哈哈』緩和，符合B的風格。"
+      "cue": "她提到剛下課、累爆了，與C的職業（老師）和說話方式（直接、簡短、帶有疲憊感）相符；且她對邀約的回覆直接說這週忙，與C的婉拒方式類似。"
     },
     {
       "index": 153,
@@ -2933,7 +2943,7 @@
       "answerProfileId": "practice_girl_083",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，語氣親切，會反問對方，且回應較長，符合B的風格。"
+      "cue": "她使用'呀'、'哈哈'等語氣詞，句子長短適中，會反問對方，婉拒時說明理由並提出先聊得來，符合B的風格。"
     },
     {
       "index": 154,
@@ -2947,11 +2957,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
-      "correct": true,
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，語氣友善且主動反問，回覆較長且包含多個訊息，符合B的風格。"
+      "cue": "她會反問對方細節（如'你點什麼'），語氣直接帶點俏皮（'哈哈'），婉拒時用'行程有點滿'但保留彈性，與D的風格相符。"
     },
     {
       "index": 155,
@@ -2969,7 +2979,7 @@
       "answerProfileId": "practice_girl_007",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用大量斷句和表情符號，回覆節奏輕快，且會反問對方，與A的風格一致。"
+      "cue": "她使用大量斜線分隔短句，語氣詞如「哈」「欸」頻繁，回覆帶有俏皮感，婉拒時用「可能有點滿耶」並提出替代方案，符合A的風格。"
     },
     {
       "index": 156,
@@ -2983,11 +2993,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_002",
-      "correct": true,
+      "answer": "A",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她對男生的訊息內容有記憶落差，會反問『蛤 我哪有說我要衝浪』，且回覆簡短直接，符合D的風格。"
+      "cue": "她使用大量斜線分隔短句，語氣詞如'哈哈'、'內'，且會反問對方，婉拒時較直接但帶有解釋。"
     },
     {
       "index": 157,
@@ -3004,8 +3014,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_002",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她多次誤認對方身份並反問，如'你是那天路上那個？'、'你是不是記錯人了'，與D樣本中反覆確認對方是否認錯人的模式一致。"
+      "confidence": 0.9,
+      "cue": "她直接反問『你哪位啊』、用『蛤』和『也太雖了吧』等口語，且會主動追問細節，符合D的直率風格。"
     },
     {
       "index": 158,
@@ -3019,11 +3029,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_002",
-      "correct": true,
+      "answer": "B",
+      "answerProfileId": "practice_girl_083",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問『蛤』並直接質疑對方記錯，語氣直接且帶有疑惑，符合D的說話方式。"
+      "cue": "她使用『嗨～』、『哈哈』等語氣詞，句子較長且常反問，回覆內容較為隨和且帶有同理心，符合B的說話風格。"
     },
     {
       "index": 159,
@@ -3037,11 +3047,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
       "confidence": 0.8,
-      "cue": "使用波浪號和語氣詞，回覆較長且包含多個訊息，語氣友善並主動反問對方近況。"
+      "cue": "她直接質疑對方認錯人，語氣直接且帶有反問，符合D的直率風格。"
     },
     {
       "index": 160,
@@ -3059,7 +3069,7 @@
       "answerProfileId": "practice_girl_002",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她直接反駁對方說法，語氣直接且帶有疑惑，符合D的直率風格。"
+      "cue": "她直接反問『你是不是認錯人啦』，語氣直接且帶有質疑，符合D的直率風格；且她會用『蛤』開頭，與D的『蛤 也太雖了吧』相似。"
     },
     {
       "index": 161,
@@ -3073,11 +3083,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_083",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，語氣活潑，回覆多則且帶有反問，符合C的風格。"
+      "confidence": 0.9,
+      "cue": "她會反問對方是否認錯人，且語氣直接帶有質疑，符合D的風格；D在對話中常反問或質疑對方，如『你是那天路上跟我搭話的那位嗎』、『你哪位啊』。"
     },
     {
       "index": 162,
@@ -3091,11 +3101,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_007",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她使用大量斷句與表情符號，回覆簡短且帶有『哈哈』、『啦』等語氣詞，符合A的風格。"
+      "cue": "她提到剛下課、帶課、運動等，且回覆簡短直接，較少反問，婉拒時直接說忙，符合B的風格。"
     },
     {
       "index": 163,
@@ -3113,7 +3123,7 @@
       "answerProfileId": "practice_girl_083",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用波浪號和重複的問候語，如「嗨～你好啊」，且回覆較長、包含多個句子，語氣友善且直接，符合B的風格。"
+      "cue": "她使用『嘿』開頭、句子短、語氣詞多、會反問對方近況，且回覆節奏與B的風格相近。"
     },
     {
       "index": 164,
@@ -3127,11 +3137,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用波浪號和分段回覆，語氣親切且會反問，與B的風格一致。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她提到帶課和練，與C的職業相關；回覆簡短直接，使用『哈哈』和『還行』，符合C的語氣。"
     },
     {
       "index": 165,
@@ -3145,11 +3155,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_007",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用大量分隔線和口語化語氣詞，如『哈哈』、『／』，且回覆簡短直接，符合A的風格。"
+      "cue": "她會反問對方記錯人，且語氣直接，與D樣本中直接質疑『你哪位啊』的風格相似。"
     },
     {
       "index": 166,
@@ -3163,11 +3173,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_083",
-      "correct": true,
+      "answer": "A",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "開頭用『嗨～』加波浪號，回覆常分多則且語氣詞多，與C的風格一致。"
+      "cue": "她使用大量斷句和語氣詞（如『哈哈』、『內』），回覆較長且帶有反問，婉拒時較委婉，符合A的風格。"
     },
     {
       "index": 167,
@@ -3185,7 +3195,7 @@
       "answerProfileId": "practice_girl_083",
       "correct": true,
       "confidence": 0.8,
-      "cue": "開頭用『嗨～』加波浪號，回覆常帶『哈哈』、『內』等語氣詞，且會反問對方，語氣活潑直接。"
+      "cue": "她使用『嗨～你好呀』、『哈哈』等語氣詞，句子較長且常反問，回應方式直接但帶有禮貌，符合B的風格。"
     },
     {
       "index": 168,
@@ -3199,11 +3209,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_002",
-      "correct": true,
+      "answer": "C",
+      "answerProfileId": "practice_girl_083",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（幾點睡、新工作變數），且語氣直接、帶點懷疑，符合D的風格。"
+      "cue": "她會用『哈哈』開頭、句子較長且常帶語氣詞，並會反問對方近況，語氣溫和且帶同理心，符合C的風格。"
     },
     {
       "index": 169,
@@ -3217,11 +3227,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
+      "answer": "A",
+      "answerProfileId": "practice_girl_007",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'新工作是要通勤早起那個嗎'），且回覆常分段、語氣詞多（'還行啊'、'你勒'），與B的互動模式相符。"
+      "cue": "她使用大量斜線分隔短句，語氣詞如'啊雜'、'哈哈'，且會反問對方並提供自身經驗，符合A的風格。"
     },
     {
       "index": 170,
@@ -3235,11 +3245,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_083",
+      "answer": "A",
+      "answerProfileId": "practice_girl_007",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用波浪號和語氣詞，回覆較長且帶有同理心，與C的風格一致。"
+      "cue": "她使用大量斜線分隔短句，語氣詞如'哈哈'、'內'，且會反問對方，婉拒時較委婉並解釋原因。"
     },
     {
       "index": 171,
@@ -3253,11 +3263,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_007",
-      "correct": true,
-      "confidence": 0.9,
-      "cue": "她提到常去的咖啡店和拿鐵，呼應A在對話中提及的咖啡店和拿鐵；且回覆節奏短句多、使用表情符號，與A的風格一致。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_083",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用『你咧』、『我也是欸』等口語，且會反問對方並分享自身經驗，語氣溫和且帶有同理心，符合C的風格。"
     },
     {
       "index": 172,
@@ -3271,11 +3281,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_007",
-      "correct": true,
-      "confidence": 0.8,
-      "cue": "她使用大量斜線分隔短句，並以『哈哈』開頭，與A的風格一致。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'你也在等消息喔？'），且回覆常帶有生活化具體描述（如'剛路過常去那間咖啡店買了杯拿鐵'），與D的風格相符。"
     },
     {
       "index": 173,
@@ -3289,11 +3299,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.85,
-      "cue": "她使用『～』和『呀』等語氣詞，句子較短且分段，會反問對方，回應方式與B的風格一致。"
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'你投哪方面的啊'），且回覆常帶具體情境（如巷口咖啡店、熬夜追劇），語氣直接且帶有好奇，符合D的風格。"
     },
     {
       "index": 174,
@@ -3307,11 +3317,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_011",
-      "correct": true,
+      "answer": "B",
+      "answerProfileId": "practice_girl_083",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她提到剛下課，且回覆簡短，使用『哈哈』和『／』分隔，與C的風格一致。"
+      "cue": "她使用『哎』、『都嘛』等口語詞，句子長短適中，會反問對方感受，語氣溫和且帶有同理心，符合B的說話風格。"
     },
     {
       "index": 175,
@@ -3325,11 +3335,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_083",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，語氣活潑，會反問對方，且回應較長，符合B的風格。"
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如'你之前不是說新工作適應得還行嗎'），且回覆常帶具體生活描述（如'巷口那家老咖啡店的拿鐵'），與D的風格相符。"
     },
     {
       "index": 176,
@@ -3343,11 +3353,11 @@
         "practice_girl_083",
         "practice_girl_002"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_011",
-      "correct": true,
-      "confidence": 0.85,
-      "cue": "她使用『剛下課』、『你呢』等簡短回覆，且會反問對方，符合B的說話方式。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_083",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用『哈哈』、『耶』等語氣詞，句子長短適中，會反問對方，且婉拒時會先肯定對方再說明原因，與C的風格一致。"
     },
     {
       "index": 177,
@@ -3361,11 +3371,11 @@
         "practice_girl_007",
         "practice_girl_002"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_002",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_083",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問『你也太會記了吧』，呼應D在對話中常反問對方是否記錯人或場合，且句子短、直接，帶有『哈哈』笑法。"
+      "cue": "她使用'還行啊'、'你勒'等口語，且回覆多則訊息，語氣溫和並帶有同理心，符合B的風格。"
     },
     {
       "index": 178,
@@ -3383,7 +3393,7 @@
       "answerProfileId": "practice_girl_083",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，語氣親切，會反問對方，且回覆較長，符合B的風格。"
+      "cue": "她使用『還行啊』、『我懂那種感覺』等口語化且帶有同理心的回覆，句子長度適中，常以『／』分隔多個短句，並會反問對方，符合B的說話風格。"
     },
     {
       "index": 179,
@@ -3397,11 +3407,11 @@
         "practice_girl_011",
         "practice_girl_002"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_007",
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用『／』分隔多個短句，語氣詞『喔』、『啦』，笑聲『哈哈』，且會反問對方，符合A的說話方式。"
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如'怎麼了'、'你之前不是說想換工作'），且回覆常帶有生活化抱怨與自我揭露，語氣直接帶點俏皮，符合D的風格。"
     },
     {
       "index": 180,
@@ -3415,11 +3425,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": true,
+      "answer": "C",
+      "answerProfileId": "practice_girl_064",
+      "correct": false,
       "confidence": 0.9,
-      "cue": "她提到剛飛完回來、時差、酒吧認識等行程細節，且回覆常帶具體情境，與D的對話風格一致。"
+      "cue": "她使用逗號和句號，語氣直接且帶有質疑，婉拒時明確表達界線，與C的風格一致。"
     },
     {
       "index": 181,
@@ -3433,11 +3443,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_008",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她回覆簡短，常以單句回應，且對邀約直接拒絕，符合A的風格。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "開頭『嗨 剛下飛機沒多久』與D的『嗨 剛下飛機沒多久』一致，且回應簡短直接，婉拒時用『先這樣吧』，符合D的說話風格。"
     },
     {
       "index": 182,
@@ -3455,7 +3465,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方『你怎麼會突然密我啊』，且回應直接、帶有『哈哈』和『／』分隔多則訊息，與D樣本中主動追問細節、直接回應的風格一致。"
+      "cue": "她提到剛下飛機、時差，與D的職業背景一致；回覆簡短直接，婉拒時說『先讓我休息一下吧』，符合D的說話方式。"
     },
     {
       "index": 183,
@@ -3473,7 +3483,7 @@
       "answerProfileId": "practice_girl_064",
       "correct": false,
       "confidence": 0.8,
-      "cue": "使用'哈哈'、'欸'等语气词，句子简短，直接表达不适并委婉拒绝，与A的说话风格相似。"
+      "cue": "她使用「痾」和「有點怪」等委婉表達，且一次回多則訊息，與A的風格相符。"
     },
     {
       "index": 184,
@@ -3487,11 +3497,11 @@
         "practice_girl_008",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她使用'= ='表情符號，且直接反問對方，語氣直接，符合D的風格。"
+      "cue": "她會反問對方『你這樣講讓我壓力很大欸』，與C在『妳看起來很難約』時的回應方式相似，且語氣直接但帶委婉拒絕，符合C的說話風格。"
     },
     {
       "index": 185,
@@ -3509,7 +3519,7 @@
       "answerProfileId": "practice_girl_008",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會直接反問『你是？』，且對邀約回應直接（『也太突然了吧』），與C樣本中『你是？』和『才聊兩句就要約喔』的風格一致。"
+      "cue": "她會反問對方『哪邊有意思啊』，且回覆常帶『哈哈』、『耶』等語氣詞，並會解釋自己立場（如『上班站整天』），與C的風格相符。"
     },
     {
       "index": 186,
@@ -3523,11 +3533,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
+      "answer": "A",
+      "answerProfileId": "practice_girl_008",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方、直接表達不適，且語氣較直接，符合D的風格。"
+      "cue": "她使用斜線分隔多個短句，語氣詞如『哈囉～』、『哈哈』，且會反問對方，婉拒時用『怕生』等委婉說法。"
     },
     {
       "index": 187,
@@ -3544,8 +3554,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_001",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方問題、直接表達界線，且語氣較直接，符合D的風格。"
+      "confidence": 0.8,
+      "cue": "她會主動接話並提及自己的行程（如剛下班），且對不舒服的話題直接表達拒絕，語氣較直接。"
     },
     {
       "index": 188,
@@ -3559,11 +3569,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問對方問題，且回應中帶有具體細節（如剛飛回來），語氣直接但委婉拒絕，符合D的風格。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她使用逗號和句號，語氣較正式，會反問對方問題，婉拒時直接但禮貌，與C的風格一致。"
     },
     {
       "index": 189,
@@ -3577,11 +3587,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_008",
+      "answer": "C",
+      "answerProfileId": "practice_girl_064",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她回覆簡短，使用『哈哈』和『喔 是喔』，直接拒絕邀約，符合A的風格。"
+      "confidence": 0.9,
+      "cue": "她會反問對方問題、語氣較直接且帶有界線感，婉拒時明確表達不適，符合C的說話風格。"
     },
     {
       "index": 190,
@@ -3599,7 +3609,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題，且回應中帶有具體生活細節（如騎車上班），語氣直接但帶有幽默感，與D的風格相似。"
+      "cue": "她提到騎車上班、飛來飛去等行程，且回覆簡短直接，符合D的說話方式。"
     },
     {
       "index": 191,
@@ -3613,11 +3623,11 @@
         "practice_girl_008",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題，且回應中帶有具體生活細節（如騎車上下班），與D樣本中主動提問和分享個人行程的風格一致。"
+      "cue": "她使用大量語氣詞和分段回覆，且對稱讚和邀約表現出害羞與委婉拒絕，符合C的風格。"
     },
     {
       "index": 192,
@@ -3631,11 +3641,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_064",
-      "correct": false,
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她使用'蛤'、'哈哈哈哈'、'好爛的笑話'等口語化回應，且一次回多則訊息，與C的風格相符。"
+      "cue": "她回覆簡短，使用『蛤』和『哈哈哈哈』，與D的簡潔和直接風格相符。"
     },
     {
       "index": 193,
@@ -3649,11 +3659,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_064",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她使用'哈哈'、'蛤'、'咩'等語氣詞，句子較短且常一次回多則，會反問對方，笑法直接，符合C的風格。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短，使用『蛤』、『喔』等語氣詞，且對笑話回應直接，符合D的簡潔風格。"
     },
     {
       "index": 194,
@@ -3671,7 +3681,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": true,
       "confidence": 0.9,
-      "cue": "她提到剛下飛機，且回覆中會反問對方、使用『蛤』等語氣詞，與D的說話方式相符。"
+      "cue": "她提到剛下飛機、時差，與D的職業背景一致；且回覆簡短、直接，使用『哈哈』和『（笑）』，符合D的說話風格。"
     },
     {
       "index": 195,
@@ -3685,11 +3695,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_064",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問『你呢』、用『咩』和『哈哈』，且回應長度與C相似。"
+      "answer": "A",
+      "answerProfileId": "practice_girl_008",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用大量斜線分隔短句，語氣詞如'蛤'，笑法用emoji，且對笑話反應直接，符合A的風格。"
     },
     {
       "index": 196,
@@ -3703,11 +3713,11 @@
         "practice_girl_008",
         "practice_girl_001"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_064",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她使用簡短回應、笑聲『哈哈』、並以『蛤 什麼梗』反問，符合A的語氣與回應模式。"
+      "cue": "她會反問、使用語氣詞和表情符號，且回覆較長，符合C的風格。"
     },
     {
       "index": 197,
@@ -3721,11 +3731,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_077",
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，回覆較長且包含細節，婉拒邀約時語氣委婉。"
+      "cue": "她提到剛在喝拿鐵，呼應D之前提到路過老店買拿鐵；且回覆簡短、直接，符合D的風格。"
     },
     {
       "index": 198,
@@ -3739,11 +3749,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問並延續話題，且提到剛飛回來等行程細節，與D的說話方式相符。"
+      "cue": "她使用逗號和句號，句子較完整，會反問並帶有理性分析，笑法為『哈哈』，與C的風格一致。"
     },
     {
       "index": 199,
@@ -3757,11 +3767,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_064",
-      "correct": true,
-      "confidence": 0.8,
-      "cue": "她使用'哈哈'、'咩'等語氣詞，句子較短且帶有俏皮感，與C的風格相符。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她提到『剛飛完回來』、『時差』，且回應簡短直接，與D的說話方式一致。"
     },
     {
       "index": 200,
@@ -3779,7 +3789,7 @@
       "answerProfileId": "practice_girl_064",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她使用波浪號和笑聲，回覆簡短且帶有反問，與B的風格相符。"
+      "cue": "她會反問對方問題（如'主管唸的內容有道理嗎？'），且回應較為理性、直接，與B的風格相符。"
     },
     {
       "index": 201,
@@ -3793,11 +3803,11 @@
         "practice_girl_008",
         "practice_girl_001"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_064",
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用'蛤？什麼意思'、'哈哈哈哈'、'這什麼諧音爛梗'、'你哪想來的啦'等口語化、活潑的回應，與A的風格相符，且一次回多則訊息。"
+      "cue": "她使用多段短句回覆，且會反問對方，語氣直接但帶有委婉拒絕，符合C的風格。"
     },
     {
       "index": 202,
@@ -3811,11 +3821,11 @@
         "practice_girl_008",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題，且回應簡短直接，符合D的風格。"
+      "cue": "她使用大量語氣詞和分段短句，如『蛤 什麼意思』、『哈哈哈 這個好笑欸😄』，與C的風格一致，且會用表情符號和反問。"
     },
     {
       "index": 203,
@@ -3829,11 +3839,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_064",
+      "answer": "A",
+      "answerProfileId": "practice_girl_008",
       "correct": false,
       "confidence": 0.8,
-      "cue": "使用『哈哈』、『😂』等表情符號，句子簡短且帶有俏皮語氣，與C的風格相符。"
+      "cue": "她使用『蛤？』、『哈哈』、『好啦』等口語詞，且一次回多則訊息，與A的風格相符。"
     },
     {
       "index": 204,
@@ -3851,7 +3861,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": true,
       "confidence": 0.9,
-      "cue": "她提到剛飛回來、調時差，與D的對話中多次提及飛行和時差；且回覆節奏短促、常反問，符合D的風格。"
+      "cue": "她提到剛下飛機、調時差，與D的職業背景一致；且回覆簡短、直接，婉拒時用時差理由，符合D的說話風格。"
     },
     {
       "index": 205,
@@ -3869,7 +3879,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": true,
       "confidence": 0.9,
-      "cue": "她提到剛下飛機、時差、班表，且回覆中常帶有具體行程細節，與D的對話風格一致。"
+      "cue": "多次提到剛下飛機、時差，且回覆簡短直接，與D的說話方式一致。"
     },
     {
       "index": 206,
@@ -3887,7 +3897,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": true,
       "confidence": 0.9,
-      "cue": "她提到剛下飛機、調時差，與D的對話中多次提及飛行相關內容；且回覆節奏與D相似，會反問對方細節。"
+      "cue": "她提到剛落地、調時差，且回覆簡短、直接，與D的說話方式一致。"
     },
     {
       "index": 207,
@@ -3905,7 +3915,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'哪種店啊'），且回覆中提及剛下班、行程未定等個人狀態，與D樣本中主動追問、分享自身近況的風格一致。"
+      "cue": "她提到剛下班、病人少、買飲料、站一整天，與D的職業和日常習慣相符；且回覆簡短、直接，少用語氣詞，符合D的風格。"
     },
     {
       "index": 208,
@@ -3919,11 +3929,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
+      "answer": "C",
+      "answerProfileId": "practice_girl_077",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'什麼樣的店'），且回覆中提及具體行程（'站了一整天'），與D樣本中提及工作與行程的習慣相符。"
+      "cue": "她使用『哈哈』、『喔？』等語氣詞，句子短且分段多，會反問對方，婉拒時用『改天再看看』，與C的風格一致。"
     },
     {
       "index": 209,
@@ -3937,11 +3947,11 @@
         "practice_girl_008",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問細節（哪一區），且婉拒時提到行程（這週有點忙）並說下次再看看，符合D的風格。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她提到上班站了一整天、下班後喜歡安靜、婉拒邀約時說明原因並說怕生，與C的說話方式（分享細節、解釋理由、委婉拒絕）相符。"
     },
     {
       "index": 210,
@@ -3959,7 +3969,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'你常去那間店坐嗎？'），且回覆常帶有具體生活情境（如'剛到家'、'上班已經夠吵了'），與D樣本中主動追問和分享個人狀態的風格一致。"
+      "cue": "她提到『飛完回來』、『時差』等與職業相關的內容，且回覆簡短、直接，與D的風格一致。"
     },
     {
       "index": 211,
@@ -3977,7 +3987,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'在哪一帶'、'是喝＊的嗎'），且回覆常帶有具體生活狀態（如'剛到家'、'下班就想躲起來'），與D樣本中主動追問、提及自身行程的風格一致。"
+      "cue": "她提到巷口老店和拿鐵，與D的回覆中提及的細節一致，且語氣直接、簡短，符合D的風格。"
     },
     {
       "index": 212,
@@ -3995,7 +4005,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'你今天是去＊廳嗎？'），且回覆常帶有具體生活狀態（如'我禮拜六早上要去實驗室'），與D樣本中提及工作忙碌、行程具體的風格一致。"
+      "cue": "她提到論文初稿，與D的忙碌特質相符，且回覆簡短直接，使用『哈哈』和『真的』等口語，符合D的風格。"
     },
     {
       "index": 213,
@@ -4009,11 +4019,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_077",
-      "correct": true,
+      "answer": "A",
+      "answerProfileId": "practice_girl_008",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她會分段回覆、使用語氣詞（欸、ㄇ），並在婉拒時說明理由，與B的風格一致。"
+      "cue": "她一次回多則訊息，使用『／』分隔，語氣詞『欸』，婉拒時說『下次有機會再看看』，與A的風格一致。"
     },
     {
       "index": 214,
@@ -4027,11 +4037,11 @@
         "practice_girl_008",
         "practice_girl_001"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_077",
-      "correct": true,
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她提到剛跟朋友吃完飯、現在在走回家，與B的訊息中『我剛也才跟朋友吃完飯／現在在走回家』一致；且回覆方式自然、有來有往，婉拒約會時語氣委婉，符合B的風格。"
+      "cue": "她提到剛跟朋友吃完飯、常跑巷口老店、假日去市場買菜，這些細節與D的對話中提及的行程和地點習慣相似，且回覆簡短直接，語氣自然。"
     },
     {
       "index": 215,
@@ -4049,7 +4059,7 @@
       "answerProfileId": "practice_girl_077",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會分享自己的行程（剛跟朋友吃完飯、在回家路上），並用『哈哈』回應，且婉拒邀約時會說明原因並提議先聊天認識，符合C的風格。"
+      "cue": "她使用大量語氣詞如'哈哈'、'喔'、'欸'，句子短且常分段，會反問對方，婉拒時用'等之後有空再說好了'，與C的風格最接近。"
     },
     {
       "index": 216,
@@ -4063,11 +4073,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": true,
-      "confidence": 0.9,
-      "cue": "她會反問對方記錯人，且語氣直接，符合D的風格。"
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "句子短、常用『哈哈』、會反問對方、婉拒時用『剛好有點事要忙』，與B的風格一致。"
     },
     {
       "index": 217,
@@ -4081,11 +4091,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": true,
+      "answer": "B",
+      "answerProfileId": "practice_girl_064",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題，且回覆中提及具體行程細節，與D的互動模式相似。"
+      "cue": "她直接否認對方記錯，語氣直接且帶有質疑，符合B的風格；且句子長短與回覆方式與B一致。"
     },
     {
       "index": 218,
@@ -4099,11 +4109,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": true,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（如『你記錯人了吧』），且回覆常帶具體行程（如『剛飛回來』），與D樣本中主動追問、提及自身行程的風格一致。"
+      "answer": "A",
+      "answerProfileId": "practice_girl_008",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用簡短句子、常以「／」分隔多則訊息，語氣詞「喔」和「啦」出現，且對邀約委婉拒絕並解釋原因，符合A的說話風格。"
     },
     {
       "index": 219,
@@ -4117,11 +4127,11 @@
         "practice_girl_008",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她直接反駁對方說法，語氣直接且簡短，符合D的說話方式。"
+      "cue": "她使用大量語氣詞（哈哈、欸），句子短且分段多，會反問對方（你怎麼會記得這個），與B的風格一致。"
     },
     {
       "index": 220,
@@ -4135,11 +4145,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_064",
+      "answer": "C",
+      "answerProfileId": "practice_girl_077",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用波浪號和表情符號，回覆較長且包含反問，語氣活潑，與B的風格一致。"
+      "cue": "句子短、常用語氣詞（喔、啦、哈哈），回覆節奏輕快，會反問對方行程，婉拒時帶理由但語氣輕鬆。"
     },
     {
       "index": 221,
@@ -4157,7 +4167,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如『你是不是記錯人了哈哈』），且回覆常帶具體情境（如『剛飛回來』），與D樣本中主動追問、提及自身行程的風格一致。"
+      "cue": "她直接否認對方說法，語氣簡短直接，符合D的說話方式。"
     },
     {
       "index": 222,
@@ -4171,11 +4181,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如『你記錯人了吧』），且回覆常帶具體行程（如『剛飛回來』），與D的風格一致。"
+      "cue": "她使用完整句子、有禮貌且帶點距離感，會反問對方，婉拒時說明理由，符合B的風格。"
     },
     {
       "index": 223,
@@ -4189,11 +4199,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如『你記錯人了吧』），且回覆常帶具體行程（如『剛飛回來』），與D的風格一致。"
+      "cue": "她會反問對方問題（如'你最近忙嗎'），且直接指出對方記錯人，語氣較直接，符合B的風格。"
     },
     {
       "index": 224,
@@ -4207,11 +4217,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如『你哪個自介看到的啊』、『主管唸什麼啊』），且回覆常帶具體生活情境（如『剛飛回來』），與D樣本中主動追問、分享自身行程的風格一致。"
+      "cue": "她使用'蛤？'表達疑惑，且直接指出對方記錯，語氣直接但禮貌，符合B的風格。"
     },
     {
       "index": 225,
@@ -4225,11 +4235,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
+      "answer": "C",
+      "answerProfileId": "practice_girl_064",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'你記錯人了吧'），且回覆常帶有具體行程或狀態（如'我連海邊都很少去'），與D樣本中多次提及自身行程和反問的風格一致。"
+      "cue": "她會反問對方問題、語氣較直接且帶有質疑，如『你記錯人了吧』，與C樣本中『我們有聊到很熟嗎？』的風格相似。"
     },
     {
       "index": 226,
@@ -4246,8 +4256,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_001",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（如'你記錯人了吧'），且回覆常帶具體行程（如'我都在上班跟騎車通勤而已'），與D樣本中反問和提及自身行程的風格一致。"
+      "confidence": 0.8,
+      "cue": "她使用『哈』、『蛤』等語氣詞，句子簡短，且直接反問『你是不是認錯人了』，與D的直率風格相符。"
     },
     {
       "index": 227,
@@ -4261,11 +4271,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_077",
-      "correct": true,
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『ㄟ』、『ㄇ』等注音文，且回覆常分多則，語氣自然帶點俏皮，與C的風格一致。"
+      "cue": "她提到剛飛完回來、時差，與D的職業背景相符，且說話簡短直接，符合D的風格。"
     },
     {
       "index": 228,
@@ -4283,7 +4293,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": true,
       "confidence": 0.9,
-      "cue": "她提到剛下飛機、調時差，且會反問對方細節，符合D的說話方式。"
+      "cue": "她提到剛下飛機、時差，且回覆簡短直接，符合D的說話方式。"
     },
     {
       "index": 229,
@@ -4301,7 +4311,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": true,
       "confidence": 0.9,
-      "cue": "她提到剛下飛機、時差，且回覆中帶有具體細節與反問，與D的風格一致。"
+      "cue": "她提到剛下飛機、時差，與D的職業背景一致；且回覆簡短、直接，符合D的說話風格。"
     },
     {
       "index": 230,
@@ -4319,7 +4329,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": true,
       "confidence": 0.9,
-      "cue": "她提到剛下飛機、飛長班，且回覆中常帶有具體行程細節，與D的對話風格一致。"
+      "cue": "她提到剛下飛機、時差，與D的職業背景一致；且回覆簡短、直接，符合D的說話風格。"
     },
     {
       "index": 231,
@@ -4333,11 +4343,11 @@
         "practice_girl_008",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問對方細節（如'怎麼會睡不好'），且回覆簡短直接，符合D的風格。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她一次回多則訊息，使用語氣詞『啊』『耶』，會反問對方細節，並分享自身類似經驗，符合C的風格。"
     },
     {
       "index": 232,
@@ -4355,7 +4365,7 @@
       "answerProfileId": "practice_girl_001",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如『你ㄋ』、『壓力大喔』、『你有去看ㄌ嗎』），且回覆常分多則，語氣直接帶口語，符合D的風格。"
+      "cue": "她提到飛來飛去、時差等空服員相關事實，且回覆簡短直接，符合D的風格。"
     },
     {
       "index": 233,
@@ -4369,11 +4379,11 @@
         "practice_girl_008",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
+      "correct": true,
       "confidence": 0.85,
-      "cue": "她會反問對方細節（如'怎麼會睡不好'），且回覆常帶有具體生活情境（如'剛下班回到家'），與D樣本中主動追問和提及自身行程的風格一致。"
+      "cue": "她使用'站了一整天'、'換新工作'等細節呼應，且回覆多則、語氣詞多、會反問，與C的風格一致。"
     },
     {
       "index": 234,
@@ -4387,11 +4397,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
+      "answer": "A",
+      "answerProfileId": "practice_girl_008",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（如'你睡不好喔'），且回覆常帶有具體生活情境（如'剛到家'、'常熬夜'），與D樣本中主動追問和分享個人狀態的風格一致。"
+      "confidence": 0.8,
+      "cue": "她使用大量斜線分隔短句，語氣詞多（哈囉、哈哈、喔），會反問（哪邊有意思啊），婉拒時解釋理由（怕生、壓力大），符合A的說話風格。"
     },
     {
       "index": 235,
@@ -4405,11 +4415,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如『你怎麼會睡不好』），並主動分享自己的狀態（如『我也蠻晚才睡著』），且回覆常分多則，語氣直接帶點生活感。"
+      "cue": "她會反問對方感受（如'睡不好很折磨人……'），且用省略號和委婉語氣，符合B的風格。"
     },
     {
       "index": 236,
@@ -4423,11 +4433,11 @@
         "practice_girl_008",
         "practice_girl_001"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_001",
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
       "correct": false,
-      "confidence": 0.85,
-      "cue": "她會反問對方細節（如'怎麼會睡不好'），且回覆常帶有具體生活情境（如'上班下班'），與D樣本中主動追問和提及自身行程的風格一致。"
+      "confidence": 0.8,
+      "cue": "她使用大量語氣詞與口語化表達，如『還行』、『撐過去了』、『翻來翻去』，且會反問對方並分享自身類似經驗，符合C的風格。"
     },
     {
       "index": 237,
@@ -4441,11 +4451,11 @@
         "practice_girl_064",
         "practice_girl_001"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_077",
-      "correct": true,
-      "confidence": 0.8,
-      "cue": "她會用『辛苦了欸』、『哈哈』、『那杯有撫慰到ㄇ』等口語化且帶關心的語氣，並在回覆中自然分享自己的行程，符合B的風格。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_064",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如睡不好的原因），語氣較直接且帶有理性分析，與C樣本中反問主管唸的內容、質疑約會太快等風格一致。"
     },
     {
       "index": 238,
@@ -4463,7 +4473,7 @@
       "answerProfileId": "practice_girl_077",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會用『辛苦了欸』、『有撫慰到ㄇ』等語氣詞與關懷，且回覆分段自然，符合B的風格。"
+      "cue": "她會反問對方近況，句子簡短，使用『是哦』、『你咧』等口語，且會分享自身類似經驗，符合B的互動風格。"
     },
     {
       "index": 239,
@@ -4477,11 +4487,11 @@
         "practice_girl_077",
         "practice_girl_001"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_077",
-      "correct": true,
+      "answer": "A",
+      "answerProfileId": "practice_girl_008",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她提到剛跟朋友吃完飯、在回家路上，與C的對話中提及剛跟朋友吃完飯；且回覆節奏自然，會關心對方（辛苦了），符合C的風格。"
+      "cue": "她使用短句和斜線分隔多則訊息，語氣詞如'啦'，並以反問和分享自身情況回應，符合A的風格。"
     },
     {
       "index": 240,
@@ -4498,8 +4508,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_004",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她會反問對方問題，且用『哈哈』開頭回應稱讚，並委婉拒絕過快邀約，符合D的風格。"
+      "confidence": 0.9,
+      "cue": "她直接反問『你是那天跟我搭話的那個嗎』，與D樣本中多次確認對方身份（『你是那天路邊跟我搭話的那個？』）的說話方式一致，且回應簡短直接，拒絕時也較為直接。"
     },
     {
       "index": 241,
@@ -4517,7 +4527,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方問題，且語氣直接帶點俏皮，如『那家好喝嗎』、『是你還沒排到號碼而已』，與D的互動模式相似。"
+      "cue": "直接問『你哪位』、對稱讚身材感到不熟、直接拒絕泳裝照要求，語氣直接且簡短，符合D的風格。"
     },
     {
       "index": 242,
@@ -4535,7 +4545,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": true,
       "confidence": 0.9,
-      "cue": "她使用表情符號😅，且對直接要求照片的回應較直接但帶有委婉拒絕，與D的風格相符。"
+      "cue": "開頭『你是那天路上搭話的那位吧』與D的『你是那天路邊跟我搭話的那個？』相似，且直接批評『油度有點高』、『太超過了』，符合D直接、帶刺的說話風格。"
     },
     {
       "index": 243,
@@ -4549,11 +4559,11 @@
         "practice_girl_013",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她會用（笑）（挑眉）等表情符號，且回覆簡短、直接，與D的風格相符。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用『哈哈』、『😂』等語氣詞，句子較長且帶有反問，婉拒時用『我們才剛認識吧』，與C的風格一致。"
     },
     {
       "index": 244,
@@ -4567,11 +4577,11 @@
         "practice_girl_013",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她使用『蛤？』、『欸』等口語詞，且直接拒絕並表達不適，與D的直率風格相符。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "使用表情符號、語氣詞（欸、喔、哈哈），句子長短適中，會反問並委婉拒絕，與C的風格相符。"
     },
     {
       "index": 245,
@@ -4585,11 +4595,11 @@
         "practice_girl_013",
         "practice_girl_004"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_089",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "開頭直接問『你是誰』，回覆簡短直接，婉拒約會時說已有約，符合B的風格。"
+      "cue": "她使用表情符號和語氣詞，回覆較長且帶有反問，婉拒時用笑聲緩和，符合C的風格。"
     },
     {
       "index": 246,
@@ -4607,7 +4617,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方怎麼突然傳訊息，且婉拒時說『先聊點別的吧』，與D的互動模式相近。"
+      "cue": "她直接質問對方身分，語氣直接且帶有防衛性，與D樣本中『你是哪位』、『你是那天路邊跟我搭話的那個？』的風格一致。"
     },
     {
       "index": 247,
@@ -4621,11 +4631,11 @@
         "practice_girl_089",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她使用『哈哈』、『欸』等語氣詞，且回覆常分多則，並會反問對方，如『你今天話有點直接欸』，與D的風格相符。"
+      "confidence": 0.8,
+      "cue": "她使用『／』分隔短句，語氣詞『哈哈』、『喔』，反問『你哪隻眼睛看到的啊』，婉拒時說『我們好像還沒熟到能聊吧』，與A的風格一致。"
     },
     {
       "index": 248,
@@ -4643,7 +4653,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『哈哈』和『／』分隔訊息，且對隱私話題直接表達不適，與D的風格相符。"
+      "cue": "她直接問對方是誰，且對不當話題直接拒絕，語氣直接，符合D的風格。"
     },
     {
       "index": 249,
@@ -4660,8 +4670,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_004",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "開頭用『嗨～你哪位啊』與D的『嗨～你是哪位啊😅』相似，且面對冒犯直接表達不滿，語氣詞『痾』、『哈哈』的使用與D的風格一致。"
+      "confidence": 0.8,
+      "cue": "開頭直接問『你哪位』，且回應簡短直接，與D的風格相符。"
     },
     {
       "index": 250,
@@ -4675,11 +4685,11 @@
         "practice_girl_061",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_089",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會用『哈哈』開頭、反問對方、直接點出『太油了吧』，且回覆簡短、帶有防衛感，與D的風格最像。"
+      "cue": "她開頭問『你是誰介紹的那個？』與B樣本中多次詢問『你是誰介紹的嗎』一致，且對健身話題直接回應『不知怎麼接』，轉向音樂，符合B的直白與轉移話題風格。"
     },
     {
       "index": 251,
@@ -4697,7 +4707,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.9,
-      "cue": "她使用『痾』、『內』等口語詞，且回覆常分多則，語氣直接但帶點俏皮，與D的風格相符。"
+      "cue": "開頭直接問『你是哪位』，且回應簡短直接，與D的風格一致。"
     },
     {
       "index": 252,
@@ -4715,7 +4725,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會用『蛤』、『哈哈哈哈』、『你這個也太冷』等口語化回應，且會反問『你怎麼知道』，符合D的說話風格。"
+      "cue": "開頭直接問『你哪位啊』，與D樣本中『你是哪位』的直白風格一致；回應笑話時簡短直接『笑死 好爛』，符合D的簡潔與直接語氣。"
     },
     {
       "index": 253,
@@ -4729,11 +4739,11 @@
         "practice_girl_013",
         "practice_girl_004"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_089",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她會反問『你哪位啊』，且回應較直接，如『你自己腦補喔』，符合B的風格。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她開頭說『你是那天路上那個吧』，與D樣本中『你是那天路邊跟我搭話的那個？』的說話方式一致，且回應簡短直接，使用『笑死』等口語。"
     },
     {
       "index": 254,
@@ -4747,11 +4757,11 @@
         "practice_girl_061",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": true,
+      "answer": "C",
+      "answerProfileId": "practice_girl_061",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她會用『蛤』、『哈哈』、『XD』等語氣詞，且會反問對方，回覆簡短直接，符合D的風格。"
+      "cue": "她會反問並帶有幽默感，如『看到什麼覺得有意思的』，且回覆較長，使用『～』和『啊』等語氣詞，婉拒時也較委婉。"
     },
     {
       "index": 255,
@@ -4765,11 +4775,11 @@
         "practice_girl_013",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問『怎麼突然想找我』，且笑法『哈哈哈哈』、句子短、用『蛤』，與D的風格一致。"
+      "cue": "她使用『蛤 什麼啦』、『這什麼怪問題😂』、『哈哈哈哈這什麼諧音爛梗』等口語化語氣詞和表情符號，且一次回覆多則訊息，與C的風格相符。"
     },
     {
       "index": 256,
@@ -4786,8 +4796,8 @@
       "answer": "A",
       "answerProfileId": "practice_girl_013",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她使用『ㄚ』、『ㄉ』等注音文，且回覆簡短，符合A的說話風格。"
+      "confidence": 0.9,
+      "cue": "她使用『蛤』、『哈哈哈哈』、『這什麼爛笑話』等口語化語氣詞，且回覆簡短、常分多則，與A的風格一致。"
     },
     {
       "index": 257,
@@ -4805,7 +4815,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『蛤』、『哈哈』、『XD』等語氣詞，且回覆簡短、帶有反問，與D的風格相符。"
+      "cue": "她使用『蛤』、『🤣』、『哈哈哈哈』等口語化笑法，且回覆簡短直接，與D的風格相符。"
     },
     {
       "index": 258,
@@ -4823,7 +4833,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『😂』表情符號，且回覆中帶有『哈哈』、『哈哈哈哈』等笑聲，並有反問句『你諧音梗玩上癮了吧』，符合D的風格。"
+      "cue": "她會用『蛤』、『齁』等口語詞，且回覆簡短直接，與D的風格相符。"
     },
     {
       "index": 259,
@@ -4837,11 +4847,11 @@
         "practice_girl_013",
         "practice_girl_004"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_089",
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問『你是誰啊』、用『哈哈哈』笑、直接說『你自己腦補喔』，且婉拒約會時說已有約，符合B的直白與幽默風格。"
+      "cue": "她回覆簡短直接，用『蛤？』和『爛死了』等口語，且會反問，與D的風格相近。"
     },
     {
       "index": 260,
@@ -4855,11 +4865,11 @@
         "practice_girl_089",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問並使用表情符號，且回覆節奏較快，與D的風格相符。"
+      "cue": "她使用『蛤，什麼梗』和『很冷耶你』，語氣直接且帶有吐槽，與A的『哈哈 你很會講話欸』和『你這樣講好像我多廢一樣』的風格相近，且句子短、常用語氣詞。"
     },
     {
       "index": 261,
@@ -4877,7 +4887,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會用『蛤』、『哈哈哈哈』、『你哪找ㄉ』等口語，且回覆簡短、常反問，與D的風格相符。"
+      "cue": "她回覆簡短直接，使用『蛤』、『哈哈 好爛』等口語，且對笑話反應直接，符合D的風格。"
     },
     {
       "index": 262,
@@ -4895,7 +4905,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題（如'那家好喝嗎'），且用'蛤'、'😂'等語氣詞，與D的風格相符。"
+      "cue": "她開頭直接問『你哪位啊』，與D的『你是哪位』類似；回應『蛤』簡短直接，且『你很無聊欸』帶有直率感，符合D的說話風格。"
     },
     {
       "index": 263,
@@ -4913,7 +4923,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會用『蛤』、『XDD』、『哈哈哈哈』等語氣詞和笑法，且會反問對方，符合D的風格。"
+      "cue": "她開頭用『你是？』且回應簡短直接，與D的『你是哪位』風格相近；笑法『你很會講欸』與D的『你很會講欸』一致。"
     },
     {
       "index": 264,
@@ -4931,7 +4941,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方問題，且用『哈哈』和『XD』，回覆較短，直接質疑約會太突然。"
+      "cue": "她回覆簡短直接，使用『還行啊』、『看情況欸』等口語，且婉拒時說『改天吧』，與D的簡潔風格相符。"
     },
     {
       "index": 265,
@@ -4945,11 +4955,11 @@
         "practice_girl_089",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": true,
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題（如'什麼店啊'），且回覆簡短，使用'哈哈'和'XD'，婉拒時說'我先想想看行程'，與D的風格一致。"
+      "cue": "她使用『／』分隔短句，語氣詞『喔』『欸』，笑法『哈哈』，反問『該不會是巷口那間老＊店吧』，婉拒時說『我看看時間再跟你說』，符合A的風格。"
     },
     {
       "index": 266,
@@ -4963,11 +4973,11 @@
         "practice_girl_061",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": true,
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『哈哈』、『喔』、『欸』等語氣詞，且會反問對方，回覆較簡短，婉拒時帶有保留語氣，符合D的風格。"
+      "cue": "她使用『哈哈』、『😂』等語氣詞，句子短且分段，會反問對方，婉拒時帶幽默，符合A的風格。"
     },
     {
       "index": 267,
@@ -4981,11 +4991,11 @@
         "practice_girl_013",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": false,
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方問題、使用表情符號、語氣輕鬆帶點俏皮，且婉拒邀約時會說『這麼突然喔』，與D的風格相符。"
+      "cue": "她使用『哈哈』、『😂』等表情符號，句子較長且常分段，語氣輕鬆帶點自嘲，婉拒時會先肯定對方再說明理由，符合C的風格。"
     },
     {
       "index": 268,
@@ -4999,11 +5009,11 @@
         "practice_girl_061",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方問題（如'哦？哪一帶啊'），且回覆常分多則，語氣自然帶有好奇與俏皮，與D的風格一致。"
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用『哈哈』、『😂』、『／』分隔短句，並會反問對方，語氣輕鬆帶點俏皮，符合A的風格。"
     },
     {
       "index": 269,
@@ -5021,7 +5031,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題（如'你咧'、'該不會又是...吧'），且回覆常分多則，語氣自然帶點俏皮，婉拒時會說'我看看行程再跟你說'，與D的互動模式最像。"
+      "cue": "她使用大量口語化短句與直接回應，如『還行啊』、『你咧』，且會反問對方，符合D的直率風格。"
     },
     {
       "index": 270,
@@ -5035,11 +5045,11 @@
         "practice_girl_089",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題、使用表情符號、句子較短且口語化，且婉拒時會說『我們好像還沒聊到幾句欸XD』，與D的風格一致。"
+      "cue": "她使用『／』分隔短句、『哈哈』笑聲、反問句（『你這樣講好像我多廢一樣』、『是心臟很大顆，還是覺得我會很好說話啊？』），且婉拒約會時會先鋪陳（『這週五才剛開始而已，假日行程還沒底』），符合A的風格。"
     },
     {
       "index": 271,
@@ -5053,11 +5063,11 @@
         "practice_girl_061",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她使用『哈哈』、『捏』、『欸』等語氣詞，且回覆常分多則，婉拒時帶有保留與幽默，與D的風格一致。"
+      "confidence": 0.8,
+      "cue": "她使用『／』分隔多段訊息，語氣輕鬆帶點自嘲（如『你這樣講我會害羞的啦』），婉拒時說『先記著吧，有機會再說』，與A的風格相符。"
     },
     {
       "index": 272,
@@ -5071,11 +5081,11 @@
         "practice_girl_089",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題（如'你還沒說那間店是幹嘛的'），且回覆常分多則，語氣輕鬆帶有好奇，與D的互動模式相似。"
+      "cue": "她使用『哈哈』、『XD』、『／』分隔短句，語氣輕鬆帶點俏皮，會反問對方，婉拒時帶玩笑，符合A的風格。"
     },
     {
       "index": 273,
@@ -5092,8 +5102,8 @@
       "answer": "B",
       "answerProfileId": "practice_girl_089",
       "correct": true,
-      "confidence": 0.85,
-      "cue": "她會直接反問『你自己腦補喔』，且回覆簡短、帶『哈哈』，婉拒時直接說已有約，符合B的直率風格。"
+      "confidence": 0.8,
+      "cue": "她提到練團和寫歌，與B的假日活動一致；且回覆簡短、直接，使用『／』分隔，符合B的風格。"
     },
     {
       "index": 274,
@@ -5111,7 +5121,7 @@
       "answerProfileId": "practice_girl_089",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方、用哈哈開頭、直接回應邀約但婉拒，且提到練團，與B的說話方式相近。"
+      "cue": "她使用簡短句子、常以斜線分隔多個訊息，語氣直接，婉拒時說『下次吧』，與B的風格一致。"
     },
     {
       "index": 275,
@@ -5128,8 +5138,8 @@
       "answer": "C",
       "answerProfileId": "practice_girl_089",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她使用'哈哈'笑法、句子短、常反問，且婉拒時直接說有約，符合C的風格。"
+      "confidence": 0.85,
+      "cue": "她提到練團和寫歌，且回覆簡短直接，使用『／』分隔，語氣自然，婉拒時說『改天再說吧』，符合C的風格。"
     },
     {
       "index": 276,
@@ -5146,8 +5156,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_004",
       "correct": true,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（如'那家好喝嗎'），且用'蛤'、'XD'等語氣詞，婉拒時直接但帶俏皮，符合D的風格。"
+      "confidence": 0.8,
+      "cue": "她直接說『你記錯人了吧』，語氣直接、不委婉，且句子簡短，符合D的說話方式。"
     },
     {
       "index": 277,
@@ -5164,8 +5174,8 @@
       "answer": "D",
       "answerProfileId": "practice_girl_004",
       "correct": true,
-      "confidence": 0.8,
-      "cue": "她會反問對方記錯人，且語氣直接帶點俏皮，與D的風格相近。"
+      "confidence": 0.9,
+      "cue": "她誤認對方為路上搭話的人，且回覆簡短直接，符合D的說話方式。"
     },
     {
       "index": 278,
@@ -5183,7 +5193,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問『你記錯人了吧哈哈』，且用『哈哈』和『XD』，語氣直接帶點俏皮，符合D的風格。"
+      "cue": "她直接說『蛤 我沒學過衝浪欸』，語氣直接且帶有疑惑，與D的直白風格相符；且她一次回兩則訊息，符合D的簡短回覆習慣。"
     },
     {
       "index": 279,
@@ -5197,11 +5207,11 @@
         "practice_girl_061",
         "practice_girl_004"
       ],
-      "answer": "A",
-      "answerProfileId": "practice_girl_013",
-      "correct": true,
-      "confidence": 0.9,
-      "cue": "使用『ㄚ』、『ㄉ』等注音文，句子短且常分段，語氣輕鬆，會反問對方近況，符合A的說話習慣。"
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用『嗨～』、『哈哈』等口語，句子簡短，且直接反問『你是不是認錯人了』，與D的直率風格相符。"
     },
     {
       "index": 280,
@@ -5215,11 +5225,11 @@
         "practice_girl_061",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": false,
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她使用『哈哈』和『／』分隔多個短句，且會反問對方近況，符合D的風格。"
+      "cue": "她使用『哈哈』、『／』分隔短句、語氣輕鬆帶自嘲，且會反問對方近況，符合A的風格。"
     },
     {
       "index": 281,
@@ -5237,7 +5247,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『蛤？』和『哈哈』，且會反問對方，語氣直接但帶有玩笑，符合D的風格。"
+      "cue": "她直接說『你記錯人了吧』，語氣直接且帶有質疑，與D的直白風格相符；且她一次回兩則訊息，符合D的簡短回應習慣。"
     },
     {
       "index": 282,
@@ -5255,7 +5265,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方問題（如'你最近還常去那間老＊店嗎'），且用'蛤'表示疑惑，與D的對話風格相符。"
+      "cue": "她直接質疑對方記錯人，且語氣直接、不委婉，符合D的說話方式。"
     },
     {
       "index": 283,
@@ -5273,7 +5283,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『ㄌ』、『哈哈』、反問句，且回覆簡短直接，符合D的語氣與標點習慣。"
+      "cue": "她直接否認對方記錯，語氣直接且帶有反問，符合D的直率風格。"
     },
     {
       "index": 284,
@@ -5287,11 +5297,11 @@
         "practice_girl_089",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『ㄌ』、『八』等注音文，且回覆常分多則，語氣較直接，與D的風格相符。"
+      "cue": "她使用『／』分隔短句，語氣詞『嘿』、『耶』，反問『最近在忙什麼啊？』，並以『倒是你記性不錯』回應，符合A的風格。"
     },
     {
       "index": 285,
@@ -5305,11 +5315,11 @@
         "practice_girl_089",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": false,
-      "confidence": 0.8,
-      "cue": "她使用『蛤』、『XD』、『哈哈』等語氣詞，且回覆簡短、直接，與D的風格相符。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_089",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她提到練團，且回覆簡短、直接，符合C的說話方式。"
     },
     {
       "index": 286,
@@ -5327,7 +5337,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'被唸什麼事啊'、'那家好喝嗎'），且用'蛤'、'XD'等語氣詞，符合D的風格。"
+      "cue": "她直接說『你記錯人了吧』，語氣直接、不委婉，且句子簡短，符合D的說話方式。"
     },
     {
       "index": 287,
@@ -5345,7 +5355,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用『ㄌ』、『哈』等語氣詞，且回覆簡短，與D的風格相符。"
+      "cue": "她直接質疑對方認錯人，語氣直接且帶有防衛性，與D樣本中多次直接反問或質疑的風格一致。"
     },
     {
       "index": 288,
@@ -5359,11 +5369,11 @@
         "practice_girl_061",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": true,
-      "confidence": 0.9,
-      "cue": "她使用『ㄌ』、『ㄟ』等注音文，且回覆常分多則，語氣自然帶點俏皮，與D的風格一致。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_061",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問並延伸話題，語氣自然帶點幽默，句子長度適中，使用波浪號和表情符號，婉拒時直接但帶點俏皮。"
     },
     {
       "index": 289,
@@ -5377,11 +5387,11 @@
         "practice_girl_089",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": true,
+      "answer": "B",
+      "answerProfileId": "practice_girl_061",
+      "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'被唸什麼事啊'、'那家好喝嗎'），且回覆常分多則，語氣自然帶有好奇與互動，符合D的風格。"
+      "cue": "她會反問對方細節（如'看到什麼覺得有意思的'），用完整句子回應，語氣直接但帶點幽默，且會主動關心對方（'辛苦了'），符合B的風格。"
     },
     {
       "index": 290,
@@ -5399,7 +5409,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": true,
       "confidence": 0.8,
-      "cue": "她使用『蛤』、『XD』等語氣詞，且回覆簡短、直接，與D的風格相符。"
+      "cue": "她會用『齁』、『喔』等語氣詞，句子簡短直接，且會反問確認對方身份，符合D的說話方式。"
     },
     {
       "index": 291,
@@ -5413,11 +5423,11 @@
         "practice_girl_013",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": false,
-      "confidence": 0.9,
-      "cue": "她會反問對方細節（如'被唸什麼事啊'、'那家好喝嗎'），且回覆常分多則，語氣自然帶點俏皮（如'是你還沒排到號碼而已'），與D的風格最吻合。"
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如『怎麼了 他唸你什麼』），語氣詞『哈哈』、『ㄌ』、『欸』使用頻繁，句子長短適中，且會用表情符號『😂』，與C的風格最接近。"
     },
     {
       "index": 292,
@@ -5431,11 +5441,11 @@
         "practice_girl_061",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
+      "answer": "C",
+      "answerProfileId": "practice_girl_061",
       "correct": false,
-      "confidence": 0.8,
-      "cue": "她會用『哈哈』開頭、分段回覆、反問對方細節，且婉拒邀約時語氣保留，符合D的風格。"
+      "confidence": 0.9,
+      "cue": "她會反問並延伸話題，語氣自然帶點幽默，句子長度適中，且會主動給建議，符合C的風格。"
     },
     {
       "index": 293,
@@ -5453,7 +5463,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用表情符號、分段回覆、反問對方，且婉拒邀約時語氣自然帶保留。"
+      "cue": "她會直接反問『怎麼了』，且提到『弄設計圖』等具體細節，語氣直接，符合D的說話方式。"
     },
     {
       "index": 294,
@@ -5471,7 +5481,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如'怎麼會睡不好'），並提及之前聊過的內容（'你之前有講過'），語氣自然帶有表情符號，符合D的互動風格。"
+      "cue": "她使用短句、直接回應，且帶有反問和幽默，如'你是壓力大還是怎樣'，與D的簡潔直接風格相符。"
     },
     {
       "index": 295,
@@ -5485,11 +5495,11 @@
         "practice_girl_061",
         "practice_girl_004"
       ],
-      "answer": "B",
-      "answerProfileId": "practice_girl_089",
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
       "correct": false,
-      "confidence": 0.85,
-      "cue": "她會反問對方、用『哈哈』開頭、句子短、直接回應邀約且婉拒時明確說已有約，符合B的風格。"
+      "confidence": 0.8,
+      "cue": "她使用「／」分隔短句，語氣詞「哈哈」和「喔」，會反問對方，婉拒時帶幽默，符合A的風格。"
     },
     {
       "index": 296,
@@ -5503,11 +5513,11 @@
         "practice_girl_089",
         "practice_girl_004"
       ],
-      "answer": "C",
-      "answerProfileId": "practice_girl_089",
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
       "correct": false,
-      "confidence": 0.9,
-      "cue": "她回應『你也太會挑話題了吧』，與C在抱怨話題時的回應風格一致，且語氣直接帶點調侃。"
+      "confidence": 0.8,
+      "cue": "她使用『／』分隔多段訊息，語氣詞『哈』、『哈哈』，會反問對方，且提到『巷口老＊店』的拿鐵，與A的對話風格和細節相符。"
     },
     {
       "index": 297,
@@ -5525,7 +5535,7 @@
       "answerProfileId": "practice_girl_004",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她會分段回覆、使用語氣詞『ㄚ』、笑法『哈哈』，且會反問對方細節，與D的風格相近。"
+      "cue": "她回覆簡短直接，使用口語化語氣詞如'齁'，且會反問對方，符合D的說話風格。"
     },
     {
       "index": 298,
@@ -5539,11 +5549,11 @@
         "practice_girl_013",
         "practice_girl_004"
       ],
-      "answer": "D",
-      "answerProfileId": "practice_girl_004",
-      "correct": false,
+      "answer": "B",
+      "answerProfileId": "practice_girl_089",
+      "correct": true,
       "confidence": 0.8,
-      "cue": "她會反問對方細節（如『怎麼會睡不好』），且回覆節奏短促、使用表情符號，與D的風格相符。"
+      "cue": "她使用斜線分隔多個短句，且回覆簡短直接，如「還行啊 ／ 剛從外面回來」，並提及寫歌，符合B的說話風格。"
     },
     {
       "index": 299,
@@ -5561,7 +5571,7 @@
       "answerProfileId": "practice_girl_061",
       "correct": false,
       "confidence": 0.8,
-      "cue": "她使用'蛤'、'哈哈'等語氣詞，句子長短適中，會反問對方，且回覆中帶有'你咧'等口語，與C的風格一致。"
+      "cue": "她會反問並延伸話題，語氣自然帶點幽默，句子長度適中，使用波浪號和表情符號，婉拒時直接但帶點俏皮。"
     }
   ]
 }

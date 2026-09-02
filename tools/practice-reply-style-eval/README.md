@@ -60,3 +60,10 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   **2.49**，persona 內 1.32（playful_extrovert）～4.03（teasing_humor）；judge **47%**
   （五個 persona 全部 41–52%）。守門擋 16/2093，但 6 場兩次都被擋而整場失敗
   （0.8%）→ 改成修補優先（`stripStageDirections`），run9 驗證。
+- `2026-09-03-run10-style20-policy-x3.json`（dc3be879：Codex R1 修正後——policyStance
+  承接既有結果、脆弱／玩笑改候選 act、修補優先守門）：720 場零失敗、修補 9/2100。
+  整體比值 **2.81**（見 evaluate 輸出的 bootstrap 95% 區間），persona 內 1.89–3.67。
+  judge 改成**遮罩事實**（名字／城市／職業／興趣／年齡→＊）＋bootstrap 95%：
+  baseline20 **34%（28–38%）** → style **41%（36–48%）**，chance 25%。差異方向一致但
+  仍遠低於規格 70% 門檻；這些數字只能證明「有拉開」，真人感與達標要靠人工盲測。
+  延遲 p50 1656ms 高於前幾輪（同 prompt 長度），視為 API 當時負載，非本案造成。
