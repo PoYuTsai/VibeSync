@@ -185,7 +185,7 @@ export interface EvalSummary {
     readonly probeJaccard: { cross: number; within: number };
     /**
      * 比值在不同「分半」下的範圍：repeat 兩兩配對各算一次同角色距離（雜訊帶），
-     * 取 between / max(within) 與 between / min(within)。點估計用 odd/even。
+     * 取 between / max(within) 與 between / min(within)。點估計＝between / mean(within)。
      * 場次 bootstrap 對這個統計量有偏（重複場次會扭曲分半），不用。
      */
     readonly ratioRange: readonly [number, number] | null;
@@ -284,7 +284,10 @@ export function evaluate(artifact: Artifact): EvalSummary {
     }
   }
   const betweenProfiles = mean(betweenPairs);
-  const withinProfile = mean(withinPairs);
+  // 點估計：repeat≥3 時用兩兩單次分半的平均（對稱、每半一次），否則 odd/even。
+  const withinProfile = splitWithins.length >= 2
+    ? mean(splitWithins)
+    : mean(withinPairs);
 
   // 探針回覆的文字相似度：跨角色 vs 同角色。
   const perScenario: Record<string, ScenarioStats> = {};
