@@ -42,6 +42,31 @@ const { streamAnalyzeMaxTokensForStyleCount } = await import(
   `${ROOT}/stream_budget.ts`
 );
 const { callClaudeStreaming } = await import(`${ROOT}/streaming_fallback.ts`);
+const { buildAnalyzeStreamSystemPrompt } = await import(
+  `${ROOT}/analyze_prompt.ts`
+);
+// 結果檔綁定：repo commit、v2 五風格 system prompt 雜湊、模型、時間，讓 artifact
+// 自己就能證明對應哪個快照（審查 P2）。
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+async function gitHead(): Promise<string> {
+  try {
+    const out = await new Deno.Command("git", {
+      args: ["rev-parse", "HEAD"],
+      cwd: new URL("../..", import.meta.url).pathname,
+      stdout: "piped",
+    }).output();
+    return new TextDecoder().decode(out.stdout).trim();
+  } catch {
+    return "unknown";
+  }
+}
 // --raw=1：把模型原始 JSONL 存進結果（看 parser 為什麼丟掉某行）。
 const RAW = flag("raw") === "1";
 
@@ -322,6 +347,7 @@ async function runCase(name: string, messages: Msg[]) {
   };
   sideBodies = [];
   const started = Date.now();
+  const startedAt = new Date().toISOString();
   let text = "";
   let status = 0;
   try {
@@ -351,6 +377,7 @@ async function runCase(name: string, messages: Msg[]) {
   const completed = find("stream_completed") ?? find("stream_done") ?? {};
   return {
     name,
+    startedAt,
     status,
     elapsedMs: Date.now() - started,
     charged,
@@ -387,6 +414,8 @@ async function runCase(name: string, messages: Msg[]) {
       maxTokens,
     },
     logNames: [...new Set(logs.map((e) => String(e[0])))],
+    // 完整 client NDJSON：外洩判定要能被獨立複核。
+    clientText: text,
     ...(RAW
       ? {
         rawLines: rawText.split("\n").filter((l) => l.trim()).map((l) => {
@@ -406,6 +435,20 @@ async function runCase(name: string, messages: Msg[]) {
   };
 }
 
+const STYLES_FOR_HASH = [...STREAM_STYLES];
+const meta = {
+  commit: await gitHead(),
+  model: "claude-sonnet-5",
+  v2SystemPromptSha256: await sha256Hex(
+    buildAnalyzeStreamSystemPrompt(STYLES_FOR_HASH, {
+      noSendDecisions: true,
+      situationKnowledge: [],
+      divergencePlan: true,
+    }),
+  ),
+  generatedAt: new Date().toISOString(),
+  args: Deno.args,
+};
 const results = [];
 for (const [name, messages] of Object.entries(CASES)) {
   if (ONLY && !ONLY.includes(name)) continue;
@@ -416,5 +459,8 @@ for (const [name, messages] of Object.entries(CASES)) {
     console.error(`done ${name} ${i + 1}/${REPEAT}`);
   }
 }
-await Deno.writeTextFile(OUT, JSON.stringify(results, null, 2));
+await Deno.writeTextFile(
+  OUT,
+  JSON.stringify({ meta, results }, null, 2),
+);
 console.error(`wrote ${OUT}`);

@@ -15,6 +15,9 @@ deno run --allow-env --allow-read --allow-write=tools/analyze-v2-blackbox/out \
 旗標：`--only=a,b` 只跑指定案；`--repeat=N` 每案跑 N 次（看邊界案穩不穩）；
 `--raw=1` 把模型原始 JSONL 存進結果（看 parser 為什麼丟掉某行）。
 
+結果檔形狀：`{ meta, results }`，`meta` 綁定 repo commit、v2 五風格 system prompt
+SHA-256、模型與時間；每案另存完整 client NDJSON（`clientText`）供外洩判定獨立複核。
+
 輸出每案：事件序列、決策、五風格回覆、client 是否漏計畫、server 快照是否有
 `analysisDivergencePlan`、`stream_knowledge_selected` 與 `stream_phase0_observability`
 （含 2a 計畫統計、2b `attribution`／`repairs`）、token 用量。
