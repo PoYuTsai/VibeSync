@@ -50,7 +50,16 @@ export function isStreamEventType(value: unknown): value is StreamEventType {
   return typeof value === "string" && STREAM_EVENT_TYPE_SET.has(value);
 }
 
-export function parseEventLine(line: string): StreamEvent | null {
+export interface ParseEventLineOptions {
+  /// Phase 2a：只有 v2 請求認得 `analysis.divergence_plan`。v1 在解析層就
+  /// 把它當成過去的 unknown line（回 null），不產生任何已辨識事件。
+  readonly divergencePlan?: boolean;
+}
+
+export function parseEventLine(
+  line: string,
+  options: ParseEventLineOptions = {},
+): StreamEvent | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
 
@@ -67,6 +76,9 @@ export function parseEventLine(line: string): StreamEvent | null {
 
   const record = parsed as Record<string, unknown>;
   if (!isStreamEventType(record.type)) {
+    return null;
+  }
+  if (record.type === "analysis.divergence_plan" && !options.divergencePlan) {
     return null;
   }
 

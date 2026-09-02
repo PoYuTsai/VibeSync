@@ -947,3 +947,56 @@ Deno.test("divergence plan is persisted and measured but never reaches the clien
   assertFalse(resumed.includes("analysisDivergencePlan"));
   assertFalse(resumed.includes(VALID_PLAN.threadFrame));
 });
+
+Deno.test("an injected analysisDivergencePlan never survives when the server captured no plan", async () => {
+  let persistedFinalResult: Record<string, unknown> | undefined;
+  const deps = {
+    ...makeDeps({
+      calls: [],
+      modelChunks: [
+        line({
+          type: "analysis.decision",
+          messageDecision: "send",
+          selectedStyle: "tease",
+          nextStepBody: "接住",
+          doThis: "先回",
+        }),
+        line({ ...VALID_PLAN, branchPool: [] }),
+        line({
+          type: "analysis.recommendation",
+          selectedStyle: "tease",
+          message: "先回她這句試試看。",
+          reason: "接住話題再輕輕推進。",
+          quotedContext: "嗨",
+        }),
+        line({
+          type: "analysis.reply_option",
+          style: "tease",
+          message: "先回她這句試試看。",
+          reason: "r",
+        }),
+        line({
+          type: "analysis.reply_option",
+          style: "extend",
+          message: "延伸一下。",
+          reason: "r",
+        }),
+        line({
+          type: "analysis.done",
+          finalResult: { analysisDivergencePlan: VALID_PLAN },
+        }),
+      ],
+    }),
+    noSendDecisions: true,
+  };
+  const originalMarkDone = deps.store.markDone;
+  deps.store.markDone = (args) => {
+    persistedFinalResult = args.finalResult;
+    return originalMarkDone(args);
+  };
+  const { text } = await runWithStubbedFetch(deps);
+  assert(text.includes('"type":"analysis.done"'));
+  assertFalse(text.includes("analysisDivergencePlan"));
+  assert(persistedFinalResult, "expected a persisted final result");
+  assertEquals("analysisDivergencePlan" in persistedFinalResult, false);
+});

@@ -49,6 +49,8 @@ Deno.test("divergence plan parser accepts the §5.12 shape and strips the event 
   // 沒有 styleBranchIds 也合法。
   const { styleBranchIds: _ignored, ...withoutStyles } = VALID_PLAN;
   assert(parseDivergencePlanV1(withoutStyles));
+  const { type: _type, ...withoutType } = VALID_PLAN;
+  assert(parseDivergencePlanV1(withoutType));
 });
 
 Deno.test("divergence plan parser rejects any malformed field instead of repairing it", () => {
@@ -87,6 +89,8 @@ Deno.test("divergence plan parser rejects any malformed field instead of repairi
     },
     // prompt 說 2-8 枝；parser 同源，1 枝也拒。
     { ...VALID_PLAN, branchPool: [VALID_PLAN.branchPool[0]] },
+    // type 出現時必須就是 divergence_plan；沒有 type 的 server 快照仍合法。
+    { ...VALID_PLAN, type: "analysis.done" },
     // 未知欄位不接受：模型多塞的欄位可能是內部推理或訊息原文。
     { ...VALID_PLAN, reasoning: "leak" },
     {

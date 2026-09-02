@@ -92,6 +92,9 @@ export function parseDivergencePlanV1(
 ): DivergencePlanV1 | null {
   if (!isRecord(value)) return null;
   if (Object.keys(value).some((key) => !PLAN_KEYS.has(key))) return null;
+  if (value.type !== undefined && value.type !== "analysis.divergence_plan") {
+    return null;
+  }
   if (value.schemaVersion !== 1) return null;
   const threadFrame = shortText(value.threadFrame);
   const anchorSourceIndex = positiveInt(value.anchorSourceIndex);

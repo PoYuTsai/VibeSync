@@ -966,3 +966,16 @@ Deno.test("divergence plan: a plan before the decision, a plan under no-send, an
   ], V2_TWO_STYLES);
   assertEquals("analysisDivergencePlan" in doneOf(malformed.events), false);
 });
+
+Deno.test("divergence plan: a rejected plan is not a valid event, so an otherwise empty v2 stream fails exactly like an empty one", async () => {
+  const empty = await run([], V2_TWO_STYLES);
+  const malformedOnly = await run(
+    [{ ...VALID_PLAN, branchPool: [] }],
+    V2_TWO_STYLES,
+  );
+  const earlyOnly = await run([VALID_PLAN], V2_TWO_STYLES);
+  assertEquals(malformedOnly.events, empty.events);
+  assertEquals(earlyOnly.events, empty.events);
+  assertEquals(malformedOnly.charges.length, 0);
+  assertEquals(earlyOnly.charges.length, 0);
+});

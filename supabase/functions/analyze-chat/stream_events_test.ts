@@ -97,3 +97,21 @@ Deno.test("parseEventLine keeps escaped newlines inside a single JSONL record", 
     message: "line one\nline two",
   });
 });
+
+Deno.test("parseEventLine keeps analysis.divergence_plan unknown unless the v2 option is on", () => {
+  const raw = JSON.stringify({
+    type: "analysis.divergence_plan",
+    schemaVersion: 1,
+  });
+  // v1：跟以前一樣是 unknown line → null，不產生任何已辨識事件。
+  assertEquals(parseEventLine(raw), null);
+  assertEquals(parseEventLine(raw, {}), null);
+  assertEquals(parseEventLine(raw, { divergencePlan: false }), null);
+  const parsed = parseEventLine(raw, { divergencePlan: true });
+  assertEquals(parsed?.type, "analysis.divergence_plan");
+  // 其他事件不受選項影響。
+  assertEquals(
+    parseEventLine(JSON.stringify({ type: "analysis.inventory" }), {})?.type,
+    "analysis.inventory",
+  );
+});

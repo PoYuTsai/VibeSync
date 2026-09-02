@@ -736,6 +736,11 @@ export function buildPhase0ObservabilityTelemetry({
       }
       : { status: "unknown" };
 
+  // Phase 2a：v1 run 沒有這個欄位，母數只算 v2 send。
+  const divergence = divergencePlanTelemetry(finalResult, variants, {
+    expected: decision !== null && messageDecision === "send",
+  });
+
   const variantValues = variants ? Object.values(variants) : null;
   const actionMismatch = action && variantValues &&
       variantValues.every((variant) => variant.action !== undefined)
@@ -854,7 +859,7 @@ export function buildPhase0ObservabilityTelemetry({
       variants,
       finalResult,
     ),
-    divergencePlan: divergencePlanTelemetry(finalResult, variants),
+    ...(divergence ? { divergencePlan: divergence } : {}),
   };
 }
 
@@ -863,9 +868,10 @@ export function buildPhase0ObservabilityTelemetry({
 function divergencePlanTelemetry(
   finalResult: Record<string, unknown>,
   variants: Record<string, Variant> | null,
-): Record<string, unknown> {
+  options: { expected: boolean },
+): Record<string, unknown> | null {
   const plan = parseDivergencePlanV1(finalResult.analysisDivergencePlan);
-  if (!plan) return { status: "unknown" };
+  if (!plan) return options.expected ? { status: "unknown" } : null;
   const methods: Record<string, number> = {};
   for (const branch of plan.branchPool) {
     methods[branch.method] = (methods[branch.method] ?? 0) + 1;

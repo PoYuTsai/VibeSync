@@ -887,14 +887,16 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     if (closed) return;
 
     if (event.type === "analysis.divergence_plan") {
-      // Phase 2a shadow。v1 從沒被要求吐這個事件：旗標關閉時把它當成過去
-      // 的 unknown line——不算 valid event、不 buffer、不轉發。v2 只在「已
-      // 扣費的 send 決策之後」收第一份合法計畫；decision 前或 no-send 一律
-      // 丟掉，所以 no-send 的扣費快照永遠不會帶到計畫。
-      if (!options.noSendDecisions) return;
-      sawValidEvent = true;
+      // Phase 2a shadow（v1 在 parseEventLine 就回 null，不會走到這裡）。
+      // 只在「已扣費的 send 決策之後」收第一份合法計畫；decision 前、no-send
+      // 或壞掉的計畫一律丟掉且不算 valid event，所以 no-send 扣費快照永遠
+      // 不會帶到計畫，空串流的錯誤／重試判定也不受影響。
       if (chargeCompleted && !noSendDecision && !analysisDivergencePlan) {
-        analysisDivergencePlan = parseDivergencePlanV1(event);
+        const plan = parseDivergencePlanV1(event);
+        if (plan) {
+          analysisDivergencePlan = plan;
+          sawValidEvent = true;
+        }
       }
       return;
     }
@@ -991,7 +993,9 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     if (!trimmed) return;
     pending = pending.then(async () => {
       if (closed) return;
-      const event = parseEventLine(trimmed);
+      const event = parseEventLine(trimmed, {
+        divergencePlan: options.noSendDecisions === true,
+      });
       if (!event) return;
       await handleEvent(event);
     }).catch((error) => {

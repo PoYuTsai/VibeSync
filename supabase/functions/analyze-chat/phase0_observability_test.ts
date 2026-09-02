@@ -729,10 +729,36 @@ Deno.test("Phase 2a observability: divergence plan telemetry is numbers and enum
   const serialized = JSON.stringify(telemetry);
   assertFalse(serialized.includes("SECRET"));
 
-  const absent = buildPhase0ObservabilityTelemetry({
+  // v1 run（沒有 v2 decision）不帶這個欄位，母數不被污染；壞快照同樣不算。
+  const v1 = buildPhase0ObservabilityTelemetry({
     user: "user-summary",
     analysisRunId: "run-2",
     finalResult: { analysisDivergencePlan: { schemaVersion: 1 } },
   });
-  assertEquals(absent.divergencePlan, { status: "unknown" });
+  assertEquals("divergencePlan" in v1, false);
+  // v2 send 卻沒有合法計畫 → unknown（這才是要量的缺席）。
+  const v2Missing = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-3",
+    finalResult: {
+      analysisDecisionV2: {
+        schemaVersion: 2,
+        decisionId: OPAQUE_DECISION_ID,
+        messageDecision: "send",
+      },
+    },
+  });
+  assertEquals(v2Missing.divergencePlan, { status: "unknown" });
+  const v2NoSend = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-4",
+    finalResult: {
+      analysisDecisionV2: {
+        schemaVersion: 2,
+        decisionId: OPAQUE_DECISION_ID,
+        messageDecision: "do_not_send",
+      },
+    },
+  });
+  assertEquals("divergencePlan" in v2NoSend, false);
 });
