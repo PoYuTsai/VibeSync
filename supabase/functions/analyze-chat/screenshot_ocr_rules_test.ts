@@ -227,3 +227,25 @@ Deno.test("isReadReceiptSideDecisive：message/缺省 blockType 維持觸發（�
     true,
   );
 });
+
+Deno.test("quoted-reply rules 描述 LINE 暗色主題的兩種引用樣式（表頭列／↳ 貼圖回覆），baseline 與 meta 都有", () => {
+  for (
+    const rules of [
+      SCREENSHOT_OCR_ACCURACY_RULES,
+      SCREENSHOT_OCR_ACCURACY_RULES_WITH_META_ANCHORS,
+    ]
+  ) {
+    assert(
+      rules.includes("Dark theme: the quote has NO colored border"),
+      "缺暗色主題引用卡描述",
+    );
+    assert(
+      rules.includes("header strip at the TOP of the bubble"),
+      "缺表頭列樣式描述",
+    );
+    assert(
+      rules.includes("reply arrow"),
+      "缺 ↳ 貼圖／照片回覆樣式描述",
+    );
+  }
+});
