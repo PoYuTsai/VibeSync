@@ -47,6 +47,33 @@ void main() {
       expect(decision.hidesReplyZone, isFalse);
     });
 
+    test('矛盾的 replyMode 以 messageDecision 為準，非 send 永遠藏回覆區', () {
+      final contradictory = AnalysisDecisionV2.fromJson({
+        ...noSend,
+        'replyMode': 'variants',
+      })!;
+      expect(contradictory.replyMode, 'none');
+      expect(contradictory.hidesReplyZone, isTrue);
+
+      final ackVariants = AnalysisDecisionV2.fromJson({
+        ...noSend,
+        'messageDecision': 'acknowledge_and_stop',
+        'replyMode': 'variants',
+        'closingMessage': '先這樣。',
+      })!;
+      expect(ackVariants.replyMode, 'single');
+      expect(ackVariants.hidesReplyZone, isTrue);
+
+      // send 帶 none 也不會把回覆區藏起來（send 才有卡可顯示）。
+      final sendNone = AnalysisDecisionV2.fromJson({
+        'schemaVersion': 2,
+        'messageDecision': 'send',
+        'replyMode': 'none',
+      })!;
+      expect(sendNone.replyMode, 'none');
+      expect(sendNone.hidesReplyZone, isFalse);
+    });
+
     test('缺 schemaVersion 2、未知決策、非物件一律 null（退回 v1）', () {
       expect(AnalysisDecisionV2.fromJson(null), isNull);
       expect(AnalysisDecisionV2.fromJson('do_not_send'), isNull);

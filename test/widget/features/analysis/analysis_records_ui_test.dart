@@ -669,11 +669,13 @@ void main() {
         'enthusiasm': {'score': 18, 'level': 'cold'},
         'warnings': ['建議放棄：目前投入明顯不對等'],
         'strategy': '先停一下。',
-        'replies': <String, dynamic>{},
+        // 殘留回覆與矛盾 replyMode：決策是唯一權威，不得顯示接法建議。
+        'replies': {'extend': '殘留延展句', 'tease': '殘留調情句'},
+        'finalRecommendation': {'pick': 'extend', 'content': '殘留延展句'},
         'analysisDecisionV2': {
           'schemaVersion': 2,
           'messageDecision': 'do_not_send',
-          'replyMode': 'none',
+          'replyMode': 'variants',
           'action': 'pause',
           'reason': '她只回哈哈，沒有新內容',
           'stopCondition': '等她主動給新話題',
@@ -695,6 +697,8 @@ void main() {
       find.byKey(const ValueKey('analysis-record-give-up-warning')),
       findsNothing,
     );
+    expect(find.textContaining('接法建議', skipOffstage: false), findsNothing);
+    expect(find.textContaining('殘留', skipOffstage: false), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

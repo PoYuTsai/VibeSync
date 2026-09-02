@@ -891,8 +891,9 @@ class AnalysisDecisionV2 {
 
   bool get isSend => messageDecision == 'send';
 
-  /// none／single 都不顯示回覆輪播，也不推銷升級。
-  bool get hidesReplyZone => replyMode != 'variants';
+  /// messageDecision 是唯一權威：非 send 一律不顯示回覆輪播、不推銷升級，
+  /// 即使後端同時送了矛盾的 replyMode。
+  bool get hidesReplyZone => !isSend;
 
   static AnalysisDecisionV2? fromJson(Object? json) {
     if (json is! Map) return null;
@@ -902,15 +903,19 @@ class AnalysisDecisionV2 {
         !messageDecisions.contains(messageDecision)) {
       return null;
     }
+    // replyMode 由 messageDecision 推導；後端送來的值只在 send 時採用，
+    // 矛盾（例如 do_not_send＋variants）以決策為準。
+    final impliedReplyMode = switch (messageDecision) {
+      'send' => 'variants',
+      'acknowledge_and_stop' => 'single',
+      _ => 'none',
+    };
     final rawReplyMode = json['replyMode'];
-    final replyMode =
-        rawReplyMode is String && replyModes.contains(rawReplyMode)
-            ? rawReplyMode
-            : switch (messageDecision) {
-                'send' => 'variants',
-                'acknowledge_and_stop' => 'single',
-                _ => 'none',
-              };
+    final replyMode = messageDecision == 'send' &&
+            rawReplyMode is String &&
+            replyModes.contains(rawReplyMode)
+        ? rawReplyMode
+        : impliedReplyMode;
     String text(Object? value) => value is String ? value.trim() : '';
     final closingMessage = text(json['closingMessage']);
     return AnalysisDecisionV2(

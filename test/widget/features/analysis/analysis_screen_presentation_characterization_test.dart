@@ -316,6 +316,37 @@ void main() {
       expect(find.textContaining('升級解鎖'), findsNothing);
     });
 
+    testWidgets('do_not_send 帶殘留回覆與矛盾 replyMode：仍零回覆卡、零推銷', (tester) async {
+      final json = noSendJson('do_not_send');
+      json['replies'] = {
+        'extend': '殘留延展句',
+        'tease': '殘留調情句',
+      };
+      json['replyOptions'] = {
+        'extend': {
+          'messages': ['殘留延展句']
+        },
+      };
+      json['finalRecommendation'] = {
+        'pick': 'extend',
+        'content': '殘留延展句',
+        'reason': '殘留理由',
+      };
+      (json['analysisDecisionV2'] as Map<String, dynamic>)['replyMode'] =
+          'variants';
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(AnalysisResult.fromJson(json)),
+      );
+      expect(
+          find.byKey(const ValueKey('analysis-decision-card')), findsOneWidget);
+      expect(find.text('AI 推薦回覆'), findsNothing);
+      expect(find.byType(ReplyStyleCard), findsNothing);
+      expect(find.textContaining('殘留'), findsNothing);
+      expect(find.textContaining('升級解鎖'), findsNothing);
+      expect(find.byType(GiveUpAdviceBanner), findsNothing);
+    });
+
     testWidgets('acknowledge_and_stop：一句收尾可複製，仍無輪播', (tester) async {
       await _pumpScreen(
         tester,

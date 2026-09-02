@@ -598,7 +598,11 @@ class _SavedAnalysisCard extends StatelessWidget {
     final reminder = result.reminder?.trim() ?? '';
     final dimensions = result.dimensionScores;
     final healthCheck = result.healthCheck;
-    final replyTypes = _availableReplyTypes;
+    // Phase 1c：非 send 決策的紀錄不顯示任何回覆或推薦，決策卡是唯一主卡。
+    final decision = result.decision;
+    final showsDecisionCard = decision != null && !decision.isSend;
+    final replyTypes =
+        showsDecisionCard ? const <String>[] : _availableReplyTypes;
     final rawGameStage = result.rawResponse?['gameStage'];
     final rawTopicDepth = result.rawResponse?['topicDepth'];
     // 閉環驗收 7：只有合法五階段值才渲染互動重點；未知字串不得畫成破冰。
@@ -615,9 +619,10 @@ class _SavedAnalysisCard extends StatelessWidget {
     final hasHealthCheck = healthCheck != null &&
         (healthCheck.issues.isNotEmpty || healthCheck.suggestions.isNotEmpty);
     final hasReplies = replyTypes.isNotEmpty;
-    final hasRecommendation = recommendation.isNotEmpty ||
-        reason.isNotEmpty ||
-        explanation.isNotEmpty;
+    final hasRecommendation = !showsDecisionCard &&
+        (recommendation.isNotEmpty ||
+            reason.isNotEmpty ||
+            explanation.isNotEmpty);
     final hasReminder = reminder.isNotEmpty;
     final hasContentAfterWarning = dimensions != null ||
         hasGameStage ||
@@ -628,8 +633,6 @@ class _SavedAnalysisCard extends StatelessWidget {
         hasReplies ||
         hasRecommendation ||
         hasReminder;
-    final decision = result.decision;
-    final showsDecisionCard = decision != null && !decision.isSend;
     final hasAnyContent = result.shouldGiveUp ||
         showsDecisionCard ||
         dimensions != null ||
