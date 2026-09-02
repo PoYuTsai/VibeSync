@@ -183,15 +183,16 @@ export interface EvalSummary {
     readonly ratio: number;
     /** 所有探針回覆兩兩比對：跨角色 vs 同角色的 bigram Jaccard。 */
     readonly probeJaccard: { cross: number; within: number };
-    /** 以場次為抽樣單位的 bootstrap 95% 區間（200 次）；只在頂層算，不遞迴。 */
-    readonly ratioCi95: readonly [number, number] | null;
+    /**
+     * 比值在不同「分半」下的範圍：repeat 兩兩配對各算一次同角色距離（雜訊帶），
+     * 取 between / max(within) 與 between / min(within)。點估計用 odd/even。
+     * 場次 bootstrap 對這個統計量有偏（重複場次會扭曲分半），不用。
+     */
+    readonly ratioRange: readonly [number, number] | null;
   };
 }
 
-export function evaluate(
-  artifact: Artifact,
-  opts: { bootstrap?: number } = {},
-): EvalSummary {
+export function evaluate(artifact: Artifact): EvalSummary {
   const sessions = artifact.results;
   const ok = sessions.filter((s) => !s.error);
   const all: {
@@ -261,12 +262,27 @@ export function evaluate(
       betweenPairs.push(euclid(centroids[i], centroids[j]));
     }
   }
-  const withinPairs = profileIds.map((pid) => {
-    const rs = all.filter((r) => r.profileId === pid);
-    const odd = rs.filter((r) => r.repeat % 2 === 1);
-    const even = rs.filter((r) => r.repeat % 2 === 0);
-    return odd.length && even.length ? euclid(vec(odd), vec(even)) : NaN;
-  }).filter((x) => !Number.isNaN(x));
+  const withinFor = (
+    isA: (r: number) => boolean,
+    isB: (r: number) => boolean,
+  ) =>
+    profileIds.map((pid) => {
+      const rs = all.filter((r) => r.profileId === pid);
+      const a = rs.filter((r) => isA(r.repeat));
+      const b = rs.filter((r) => isB(r.repeat));
+      return a.length && b.length ? euclid(vec(a), vec(b)) : NaN;
+    }).filter((x) => !Number.isNaN(x));
+  const withinPairs = withinFor((r) => r % 2 === 1, (r) => r % 2 === 0);
+  const repeats = [...new Set(all.map((r) => r.repeat))].sort();
+  const splitWithins: number[] = [];
+  for (let i = 0; i < repeats.length; i++) {
+    for (let j = i + 1; j < repeats.length; j++) {
+      const w = mean(
+        withinFor((r) => r === repeats[i], (r) => r === repeats[j]),
+      );
+      if (w > 0) splitWithins.push(w);
+    }
+  }
   const betweenProfiles = mean(betweenPairs);
   const withinProfile = mean(withinPairs);
 
@@ -348,34 +364,14 @@ export function evaluate(
       withinProfile,
       ratio: withinProfile > 0 ? betweenProfiles / withinProfile : Infinity,
       probeJaccard: { cross: mean(crossAll), within: mean(withinAll) },
-      ratioCi95: (opts.bootstrap ?? 0) > 0
-        ? bootstrapRatioCi(sessions, opts.bootstrap!)
+      ratioRange: splitWithins.length >= 2
+        ? [
+          betweenProfiles / Math.max(...splitWithins),
+          betweenProfiles / Math.min(...splitWithins),
+        ]
         : null,
     },
   };
-}
-
-// 確定性 LCG，讓同一份 artifact 的區間可重現。
-function bootstrapRatioCi(
-  sessions: readonly ArtifactSession[],
-  n: number,
-): [number, number] {
-  let seed = 20260902;
-  const rand = () =>
-    (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
-  const ratios: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const sample = Array.from(
-      { length: sessions.length },
-      () => sessions[Math.floor(rand() * sessions.length)],
-    );
-    ratios.push(evaluate({ results: sample }).separation.ratio);
-  }
-  ratios.sort((a, b) => a - b);
-  return [
-    ratios[Math.floor(n * 0.025)],
-    ratios[Math.min(n - 1, Math.floor(n * 0.975))],
-  ];
 }
 
 export function renderMarkdown(summary: EvalSummary): string {
@@ -414,8 +410,8 @@ export function renderMarkdown(summary: EvalSummary): string {
     `- 重心距離：角色之間 ${num(s.betweenProfiles)}、同角色分半（雜訊帶）${
       num(s.withinProfile)
     }、比值 **${num(s.ratio)}**${
-      s.ratioCi95
-        ? `（bootstrap 95% ${num(s.ratioCi95[0])}–${num(s.ratioCi95[1])}）`
+      s.ratioRange
+        ? `（三種分半 ${num(s.ratioRange[0])}–${num(s.ratioRange[1])}）`
         : ""
     }（≈1 代表分不出來）`,
     `- 探針回覆 bigram Jaccard：跨角色 ${
@@ -457,7 +453,7 @@ if (import.meta.main) {
     Deno.exit(2);
   }
   const artifact = JSON.parse(await Deno.readTextFile(path)) as Artifact;
-  const summary = evaluate(artifact, { bootstrap: 200 });
+  const summary = evaluate(artifact);
   console.log(
     Deno.args.includes("--json")
       ? JSON.stringify(summary, null, 2)
