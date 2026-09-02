@@ -800,3 +800,22 @@ Deno.test("stream resume：done run 直接回放 stored result，不重打模型
   assert(!calls.includes("chargeRun"), "resume 不重複扣費");
   assert(text.includes("回放結果"));
 });
+
+Deno.test("stream v2 request injects selected situation knowledge; v1 stays untouched", async () => {
+  const v2Systems: string[] = [];
+  await runWithStubbedFetch({
+    ...makeDeps({ calls: [], capturedSystems: v2Systems }),
+    noSendDecisions: true,
+  });
+  assertEquals(v2Systems.length, 1);
+  assert(v2Systems[0].includes("## Situation Knowledge"));
+  assert(v2Systems[0].includes("1a. Message decision gate"));
+
+  const v1Systems: string[] = [];
+  await runWithStubbedFetch(
+    makeDeps({ calls: [], capturedSystems: v1Systems }),
+  );
+  assertEquals(v1Systems, [
+    buildAnalyzeStreamSystemPrompt(["extend", "tease"]),
+  ]);
+});

@@ -5,6 +5,7 @@ import {
 import { SOCIAL_KNOWLEDGE_REGISTRY } from "./knowledge_registry.ts";
 import {
   detectSocialKnowledgeSignals,
+  domainCap,
   renderSelectedSocialKnowledge,
   selectSocialKnowledge,
 } from "./knowledge_selector.ts";
@@ -124,4 +125,44 @@ Deno.test("renderer counts newline separators inside the exact character budget"
     maxChars: withoutJoiner,
   });
   assert(rendered.length <= withoutJoiner);
+});
+
+Deno.test("typed signals union with regex detection and domain caps bound each bucket", () => {
+  const base = {
+    userQuestion: "",
+    recentMessages: [
+      { sender: "partner" as const, text: "剛健身完累死了" },
+      { sender: "me" as const, text: "練完那種腿不是自己的感覺很真實" },
+    ],
+  };
+  const withoutTyped = detectSocialKnowledgeSignals(base);
+  assert(!withoutTyped.has("invite"));
+  const withTyped = detectSocialKnowledgeSignals({
+    ...base,
+    typedSignals: ["invite", "interpretation"],
+  });
+  assert(withTyped.has("invite"));
+  assert(withTyped.has("interpretation"));
+  // 只加不減：regex 偵測到的 reply 仍在。
+  assert(withTyped.has("reply"));
+
+  const capped = selectSocialKnowledge(
+    { ...base, typedSignals: ["invite", "interpretation"] },
+    {
+      maxAtoms: 10,
+      caps: [
+        domainCap("decision", 2),
+        domainCap("evidence", 1),
+        domainCap("voice", 0),
+      ],
+    },
+  );
+  const count = (domain: string) =>
+    capped.filter((atom) => atom.domain === domain).length;
+  assert(capped.length <= 10);
+  assert(count("decision") <= 2);
+  assert(count("evidence") <= 1);
+  assertEquals(count("voice"), 0);
+  // 被 cap 擠掉的桶不會讓整體停下：其他 domain 仍照排名補進來。
+  assert(count("action") >= 1);
 });

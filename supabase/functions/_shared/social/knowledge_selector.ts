@@ -1,6 +1,7 @@
 import {
   SOCIAL_KNOWLEDGE_REGISTRY,
   type SocialKnowledgeAtom,
+  type SocialKnowledgeDomain,
   type SocialKnowledgeSignal,
 } from "./knowledge_registry.ts";
 
@@ -22,11 +23,34 @@ export interface SocialKnowledgeSelectionInput {
     readonly nextStep?: string | null;
     readonly keySignals?: readonly string[];
   } | null;
+  /// Structured signals the caller already knows (Analyze adapter, §11.1).
+  /// They are unioned with regex detection; they never remove a signal.
+  readonly typedSignals?: readonly SocialKnowledgeSignal[];
 }
 
 export interface SocialKnowledgeSelectionOptions {
   readonly maxAtoms?: number;
   readonly maxChars?: number;
+  /// Bucket caps (§11.2 budget): an atom is skipped once every bucket it
+  /// belongs to is full. Atoms outside all buckets are bounded only by
+  /// maxAtoms / maxChars.
+  readonly caps?: readonly SocialKnowledgeCap[];
+}
+
+export interface SocialKnowledgeCap {
+  readonly match: (atom: SocialKnowledgeAtom) => boolean;
+  readonly cap: number;
+}
+
+export function domainCap(
+  domain: SocialKnowledgeDomain,
+  cap: number,
+): SocialKnowledgeCap {
+  return { match: (atom) => atom.domain === domain, cap };
+}
+
+export function idPrefixCap(prefix: string, cap: number): SocialKnowledgeCap {
+  return { match: (atom) => atom.id.startsWith(prefix), cap };
 }
 
 const DEFAULT_MAX_ATOMS = 12;
@@ -70,6 +94,7 @@ export function detectSocialKnowledgeSignals(
   input: SocialKnowledgeSelectionInput,
 ): ReadonlySet<SocialKnowledgeSignal> {
   const signals = new Set<SocialKnowledgeSignal>(["always"]);
+  for (const signal of input.typedSignals ?? []) signals.add(signal);
   const messages = input.recentMessages ?? [];
   const evidenceText = [
     input.conversationSummary,
@@ -155,15 +180,24 @@ export function selectSocialKnowledge(
     });
 
   const selected: SocialKnowledgeAtom[] = [];
+  const caps = options.caps ?? [];
+  const bucketCounts = caps.map(() => 0);
   let renderedChars = 0;
   for (const candidate of ranked) {
     if (selected.length >= maxAtoms) break;
+    const buckets = caps.flatMap((cap, index) =>
+      cap.match(candidate.knowledge) ? [index] : []
+    );
+    if (buckets.some((index) => bucketCounts[index] >= caps[index].cap)) {
+      continue;
+    }
     // renderSelectedSocialKnowledge 會用換行串起每個 bullet；除了第一條，
     // 每條都要把 join("\n") 的 1 字元算進硬上限。
     const lineChars = candidate.knowledge.guidance.length + 2 +
       (selected.length === 0 ? 0 : 1);
     if (renderedChars + lineChars > maxChars) continue;
     selected.push(candidate.knowledge);
+    for (const index of buckets) bucketCounts[index] += 1;
     renderedChars += lineChars;
   }
   return Object.freeze(selected);

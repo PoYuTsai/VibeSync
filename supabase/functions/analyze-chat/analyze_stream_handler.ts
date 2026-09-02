@@ -11,6 +11,10 @@ import {
   type StreamAnalysisResumeSnapshot,
 } from "./stream_handler.ts";
 import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
+import {
+  detectAnalyzeSocialKnowledgeSignals,
+  selectAnalyzeSocialKnowledge,
+} from "./knowledge_adapter.ts";
 import { streamAnalyzeMaxTokensForStyleCount } from "./stream_budget.ts";
 import { streamReplyStylesForTier } from "./tier_sync_contract.ts";
 import {
@@ -444,6 +448,27 @@ export async function handleAnalyzeStream(
     quotaUnit: deps.quotaUsage.quotaUnit,
   };
 
+  // Phase 2 (§11)：v2 才挑情境 atoms；v1 prompt 一字不動。deterministic，
+  // callClaude 重試時重算結果相同，所以只算一次。
+  let situationKnowledge: readonly string[] = [];
+  if (deps.noSendDecisions === true) {
+    const knowledgeInput = {
+      messages: deps.messages,
+      previousStage: deps.hashInput.previousStage,
+      userDraft: deps.hashInput.userDraft,
+      conversationSummary: deps.hashInput.conversationSummary,
+      effectiveStyleContext: deps.hashInput.effectiveStyleContext,
+    };
+    const atoms = selectAnalyzeSocialKnowledge(knowledgeInput);
+    situationKnowledge = atoms.map((atom) => atom.guidance);
+    logInfo("stream_knowledge_selected", {
+      user: summarizeUser(deps.userId),
+      analysisRunId: streamRun.id,
+      knowledgeAtomIds: atoms.map((atom) => atom.id),
+      knowledgeSignals: detectAnalyzeSocialKnowledgeSignals(knowledgeInput),
+    });
+  }
+
   logInfo("stream_request_started", {
     user: summarizeUser(deps.userId),
     analysisRunId: streamRun.id,
@@ -470,6 +495,7 @@ export async function handleAnalyzeStream(
           max_tokens: streamMaxOutputTokens,
           system: buildAnalyzeStreamSystemPrompt(streamReplyStyles, {
             noSendDecisions: deps.noSendDecisions === true,
+            situationKnowledge,
           }),
           messages: [{ role: "user", content: deps.userMessageContent }],
           thinking: streamThinkingDisabled ? { type: "disabled" } : undefined,

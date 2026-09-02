@@ -3,6 +3,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  buildSituationKnowledgeSection,
   buildStagePriorSection,
   buildStreamSystemPrompt,
   LATEST_ANALYSIS_FRAGMENT_MARKER,
@@ -390,4 +391,36 @@ Deno.test("metrics step carries the five-stage criteria and the opening guard", 
   );
   assert(prompt.includes("Stage may skip/retreat"));
   assert(prompt.includes("Topic Depth limits reply escalation, not stage"));
+});
+
+Deno.test("situation knowledge section is v2-only and sits between base prompt and output contract", () => {
+  const base = "Base full reasoning prompt.";
+  const plain = buildStreamSystemPrompt(base, ["extend"]);
+  const emptyList = buildStreamSystemPrompt(base, ["extend"], {
+    situationKnowledge: [],
+  });
+  const blankOnly = buildStreamSystemPrompt(base, ["extend"], {
+    situationKnowledge: ["   ", ""],
+  });
+  assertEquals(emptyList, plain);
+  assertEquals(blankOnly, plain);
+  assert(!plain.includes("## Situation Knowledge"));
+
+  const withKnowledge = buildStreamSystemPrompt(base, ["extend"], {
+    noSendDecisions: true,
+    situationKnowledge: ["一次只下一個判斷。", "先接內容，再問問題。"],
+  });
+  const section = buildSituationKnowledgeSection([
+    "一次只下一個判斷。",
+    "先接內容，再問問題。",
+  ]);
+  assert(section.startsWith("## Situation Knowledge"));
+  assert(section.includes("- 一次只下一個判斷。\n- 先接內容，再問問題。"));
+  assert(withKnowledge.includes(section));
+  assert(withKnowledge.indexOf(base) < withKnowledge.indexOf(section));
+  assert(
+    withKnowledge.indexOf(section) <
+      withKnowledge.indexOf("## Streaming Output Contract"),
+  );
+  assert(withKnowledge.includes("1a. Message decision gate"));
 });

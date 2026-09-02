@@ -15,6 +15,29 @@ export interface StreamPromptOptions {
   /// decision instead of reply options. Off by default so the v1 prompt stays
   /// byte-identical (baseline_contract_test hash lock).
   noSendDecisions?: boolean;
+  /// Phase 2 (§11): guidance lines of the social-knowledge atoms selected for
+  /// this request. Rendered only when non-empty, so the v1 prompt stays
+  /// byte-identical.
+  situationKnowledge?: readonly string[];
+}
+
+// §11.3 衝突順序：高層可禁止生成，低層 voice 不得覆蓋高層。
+const SITUATION_KNOWLEDGE_HEADER = [
+  "## Situation Knowledge (selected for this request)",
+  "Apply these rules before composing; they narrow the reasoning above and never loosen it. When two rules conflict, the earlier layer wins: boundary/rejection → evidence sufficiency → investment/mutuality → stage/action → ball selection → reply construction → voice.",
+];
+
+export function buildSituationKnowledgeSection(
+  guidance: readonly string[],
+): string {
+  const lines = guidance.map((line) => line.trim()).filter((line) =>
+    line !== ""
+  );
+  if (lines.length === 0) return "";
+  return [
+    ...SITUATION_KNOWLEDGE_HEADER,
+    ...lines.map((line) => `- ${line}`),
+  ].join("\n");
 }
 
 // Phase 1b message decision gate. Appended right after step 1 so the model
@@ -40,8 +63,13 @@ export function buildStreamSystemPrompt(
   const sendOnly = (text: string) =>
     options.noSendDecisions ? `[send decisions only] ${text}` : text;
 
+  const situationKnowledge = buildSituationKnowledgeSection(
+    options.situationKnowledge ?? [],
+  );
+
   return [
     basePrompt.trim(),
+    ...(situationKnowledge === "" ? [] : ["", situationKnowledge]),
     "",
     "## Streaming Output Contract",
     "Return JSONL only: one complete minified JSON object per line.",
