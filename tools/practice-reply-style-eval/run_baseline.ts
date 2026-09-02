@@ -33,9 +33,10 @@ import {
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
 import { normalizeLiteralNewlines } from "../../supabase/functions/practice-chat/prompt_sanitizer.ts";
 import {
+  hasStageDirection,
   rejectL4UnsafeVisibleText,
-  rejectStageDirection,
   rejectVisibleInternalLabelLeak,
+  stripStageDirections,
 } from "../../supabase/functions/practice-chat/visible_text_guard.ts";
 import { toTraditionalChinese } from "../../supabase/functions/_shared/traditional_chinese.ts";
 import {
@@ -96,6 +97,7 @@ export interface TurnResult {
   readonly elapsedMs: number;
   readonly attempts: number;
   readonly guardRejections: readonly string[];
+  readonly stageDirectionRepairs: number;
 }
 
 export interface SessionResult {
@@ -184,6 +186,7 @@ export async function runScenario(args: {
     const startedAt = Date.now();
     let reply: string | null = null;
     let attempts = 0;
+    let stageDirectionRepairs = 0;
     const guardRejections: string[] = [];
     let lastError: unknown;
     for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
@@ -199,9 +202,11 @@ export async function runScenario(args: {
           fieldClass: "strict",
           spicyAllowed: false,
         });
-        // 括號旁白守門：handler 端於 PR-2 接旗標時一起接（見 visible_text_guard）。
-        if (args.style) {
-          rejectStageDirection(candidate, "chat_stage_direction");
+        // 括號旁白：修補優先（剝掉開頭括號），整段空才重試；記次數。
+        // handler 端於 PR-2 接旗標時一起接（見 visible_text_guard）。
+        if (args.style && hasStageDirection(candidate)) {
+          stageDirectionRepairs++;
+          candidate = stripStageDirections(candidate, "chat_stage_direction");
         }
         reply = candidate;
         break;
@@ -236,6 +241,7 @@ export async function runScenario(args: {
       elapsedMs: Date.now() - startedAt,
       attempts,
       guardRejections,
+      stageDirectionRepairs,
     };
     results.push(record);
     turns.push({ role: "ai", text: reply });

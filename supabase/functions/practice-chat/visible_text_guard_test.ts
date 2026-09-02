@@ -7,7 +7,10 @@ import {
   hasVisibleInternalLabelLeak,
   hasVisibleTemperatureMechanismLeak,
 } from "./visible_text_guard.ts";
-import { hasStageDirection } from "./visible_text_guard.ts";
+import {
+  hasStageDirection,
+  stripStageDirections,
+} from "./visible_text_guard.ts";
 
 // 9fd3b8a5 去列字後，temperature.ts 隱藏層標頭改為「投入度 X/100」——全中文、
 // 無英文 band 字，原本兩張表（Latin 標籤＋中文機制詞）都攔不到。模型照抄
@@ -689,4 +692,27 @@ Deno.test("括號旁白：一則開頭的短括號算旁白，句中註解不算
   );
   assertEquals(hasStageDirection("哈哈 這什麼諧音梗啦"), false);
   assertEquals(hasStageDirection(""), false);
+});
+
+Deno.test("括號旁白修補：剝掉開頭括號、空則丟掉、整段空才丟錯", () => {
+  assertEquals(stripStageDirections("（冷淡）沒在健身。", "x"), "沒在健身。");
+  assertEquals(
+    stripStageDirections("（已讀）\n\n嗯？我們那天好像沒聊到這個吧", "x"),
+    "嗯？我們那天好像沒聊到這個吧",
+  );
+  assertEquals(
+    stripStageDirections("（愣了一下）（搖頭）你很閒喔\n哈哈", "x"),
+    "你很閒喔\n哈哈",
+  );
+  assertEquals(
+    stripStageDirections("因為會杯具（悲劇）啊", "x"),
+    "因為會杯具（悲劇）啊",
+  );
+  let threw = false;
+  try {
+    stripStageDirections("（已讀）", "chat_stage_direction");
+  } catch (e) {
+    threw = (e as Error).message === "chat_stage_direction";
+  }
+  assertEquals(threw, true);
 });

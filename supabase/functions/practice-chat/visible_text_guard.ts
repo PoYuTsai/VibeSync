@@ -676,6 +676,20 @@ export function hasStageDirection(value: string): boolean {
   return value.split("\n").some((line) => STAGE_DIRECTION_RE.test(line));
 }
 
-export function rejectStageDirection(value: string, errorCode: string) {
-  if (hasStageDirection(value)) throw new Error(errorCode);
+/**
+ * 修補優先：剝掉每則開頭的括號旁白，剝完空的則丟掉。整段剝到空才丟 errorCode
+ * 讓呼叫端重試——直接退回重試在 run8 量到 0.8% 場次兩次都中而整場失敗。
+ */
+export function stripStageDirections(value: string, errorCode: string): string {
+  const lines = value.split("\n").map((line) =>
+    line.replace(STAGE_DIRECTION_STRIP_RE, "").trimEnd()
+  );
+  const kept = lines.filter((line, index) =>
+    line.trim().length > 0 || (index > 0 && index < lines.length - 1)
+  );
+  const result = kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (result.length === 0) throw new Error(errorCode);
+  return result;
 }
+
+const STAGE_DIRECTION_STRIP_RE = /^\s*(?:[（(][^）)\n]{1,14}[）)]\s*)+/u;

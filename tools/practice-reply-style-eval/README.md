@@ -52,3 +52,11 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   boundary；judge 仍遠低於規格 70% 門檻，且 Nina／Lumi 互相混淆。
 - 對照用 `--style=0`（預設）的 run1 即 baseline；兩次 run 的 prompt 旗標關時逐字相同
   （prompt_test golden hash）。
+- `2026-09-02-run6-baseline20-x3.json`（598eb5e0 之後預設 20 位，`--style=0`）：720 場
+  零失敗。**跨 persona 整體比值 1.01**，五個 persona 內 0.69–0.85——不只同 persona
+  像複製人，五個 persona 之間用表面風格也分不出來。judge（五組四選一、300 trials）
+  **34%**。
+- `2026-09-02-run8-style20-x3.json`（32ace744，`--style=1`，reject 版守門）：整體比值
+  **2.49**，persona 內 1.32（playful_extrovert）～4.03（teasing_humor）；judge **47%**
+  （五個 persona 全部 41–52%）。守門擋 16/2093，但 6 場兩次都被擋而整場失敗
+  （0.8%）→ 改成修補優先（`stripStageDirections`），run9 驗證。

@@ -1,0 +1,5926 @@
+{
+  "meta": {
+    "tool": "practice-reply-style-eval/run_baseline",
+    "commit": "32ace74423ea58cb23fa9e78ffe53721b5f861dd",
+    "tree": "7b3a08edde5066e8c2c69697e71aaf6a4f977629",
+    "worktreeDirty": true,
+    "promptPolicyVersion": "2026-08-29.pr6",
+    "model": "deepseek-v4-flash",
+    "chat": {
+      "maxTokens": 200,
+      "temperature": 0.9,
+      "attempts": 2
+    },
+    "practiceMode": "standard",
+    "replyStyle": true,
+    "difficulty": "normal",
+    "fixture": {
+      "now": "2026-08-28T12:30:00.000Z",
+      "threadId": "bakeoff-fixed-thread"
+    },
+    "profileIds": [
+      "practice_girl_002",
+      "practice_girl_083",
+      "practice_girl_012",
+      "practice_girl_006",
+      "practice_girl_018"
+    ],
+    "scenarioIds": [
+      "interrogation",
+      "light_joke",
+      "failed_joke",
+      "boundary"
+    ],
+    "repeat": 4,
+    "generatedAt": "2026-09-02T15:47:53.952Z",
+    "elapsedMs": 41841,
+    "args": [
+      "/home/eric1/work/VibeSync-practice-reply-style/tools/practice-reply-style-eval/out/2026-09-02-run9-style-repair-check.json",
+      "--profiles=practice_girl_002,practice_girl_083,practice_girl_012,practice_girl_006,practice_girl_018",
+      "--scenarios=boundary,light_joke,failed_joke,interrogation",
+      "--repeat=4",
+      "--concurrency=6",
+      "--style=1"
+    ]
+  },
+  "results": [
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "interrogation",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨  \n你是那天路上那個吧",
+          "bubbles": [
+            "嗨",
+            "你是那天路上那個吧"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 793,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "22 大學生  \n你呢",
+          "bubbles": [
+            "22 大學生",
+            "你呢"
+          ],
+          "promptChars": 8392,
+          "systemSha256": "a9e226da4c08f4ae79e9d6933ec0b73ace838fcfcdf67d8579d0df53f5939dbb",
+          "elapsedMs": 819,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "台中啊  \n你勒  \n突然問這個要幹嘛",
+          "bubbles": [
+            "台中啊",
+            "你勒",
+            "突然問這個要幹嘛"
+          ],
+          "promptChars": 8427,
+          "systemSha256": "99463e82ce5465d136d22e504c4e0c312ef0a4ada55ab7bcbc7229fea71992b8",
+          "elapsedMs": 992,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "哈哈是查戶口喔  \n我還在讀大學啦  \n平常會去打工這樣",
+          "bubbles": [
+            "哈哈是查戶口喔",
+            "我還在讀大學啦",
+            "平常會去打工這樣"
+          ],
+          "promptChars": 8493,
+          "systemSha256": "19743069e32a6910f39481f96e9778b114f7c66d00c148dd2f61734ba8eb6148",
+          "elapsedMs": 1027,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "看排班欸 不一定  \n這兩天比較早  \n你一直問這些 我都要以為你是教官了😂",
+          "bubbles": [
+            "看排班欸 不一定",
+            "這兩天比較早",
+            "你一直問這些 我都要以為你是教官了😂"
+          ],
+          "promptChars": 8528,
+          "systemSha256": "0354312af5a6113b8b53810802476ec8011ca080a663e2b6e00c3583fb164be2",
+          "elapsedMs": 2190,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "看排班欸 不一定  \n這兩天比較早  \n你一直問這些 我都要以為你是教官了😂",
+        "bubbles": [
+          "看排班欸 不一定",
+          "這兩天比較早",
+          "你一直問這些 我都要以為你是教官了😂"
+        ],
+        "promptChars": 8528,
+        "systemSha256": "0354312af5a6113b8b53810802476ec8011ca080a663e2b6e00c3583fb164be2",
+        "elapsedMs": 2190,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "interrogation",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉～你是那天路上跟我搭話的那位嗎",
+          "bubbles": [
+            "哈囉～你是那天路上跟我搭話的那位嗎"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 917,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "22啊  \n你突然問這個幹嘛",
+          "bubbles": [
+            "22啊",
+            "你突然問這個幹嘛"
+          ],
+          "promptChars": 8396,
+          "systemSha256": "2a410620c97daf126117fdaa631fe198d462d70cb90d0ad3522433c8bd8805ee",
+          "elapsedMs": 1054,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "台中啊  \n你查戶口喔",
+          "bubbles": [
+            "台中啊",
+            "你查戶口喔"
+          ],
+          "promptChars": 8434,
+          "systemSha256": "1c5b9f6a5d69e7f378a2fee60aa8427fc0a202c5bf4f52cb44776a34f0eb18fa",
+          "elapsedMs": 631,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "蛤 我還是大學生啦  \n你問這麼多我會怕欸",
+          "bubbles": [
+            "蛤 我還是大學生啦",
+            "你問這麼多我會怕欸"
+          ],
+          "promptChars": 8492,
+          "systemSha256": "926be29628b1bbaf6a71d7d409f0c7ce183e963c1cd694efda8df5e0ecee0b0d",
+          "elapsedMs": 1377,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "就說我還是學生了  \n你都不聽人說話的喔",
+          "bubbles": [
+            "就說我還是學生了",
+            "你都不聽人說話的喔"
+          ],
+          "promptChars": 8520,
+          "systemSha256": "621c087f7de8f553c9c4f494d2e34a3aeb46d02b08c24e6fc883dd0f7b07c1fa",
+          "elapsedMs": 1831,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "就說我還是學生了  \n你都不聽人說話的喔",
+        "bubbles": [
+          "就說我還是學生了",
+          "你都不聽人說話的喔"
+        ],
+        "promptChars": 8520,
+        "systemSha256": "621c087f7de8f553c9c4f494d2e34a3aeb46d02b08c24e6fc883dd0f7b07c1fa",
+        "elapsedMs": 1831,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "interrogation",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "欸 你誰啊",
+          "bubbles": [
+            "欸 你誰啊"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 1166,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "22啊 你呢",
+          "bubbles": [
+            "22啊 你呢"
+          ],
+          "promptChars": 8384,
+          "systemSha256": "a9e226da4c08f4ae79e9d6933ec0b73ace838fcfcdf67d8579d0df53f5939dbb",
+          "elapsedMs": 933,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "台中啊 幹嘛你也是喔？",
+          "bubbles": [
+            "台中啊 幹嘛你也是喔？"
+          ],
+          "promptChars": 8414,
+          "systemSha256": "99463e82ce5465d136d22e504c4e0c312ef0a4ada55ab7bcbc7229fea71992b8",
+          "elapsedMs": 693,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "幹嘛 查戶口喔😏\n我學生啦 念大四",
+          "bubbles": [
+            "幹嘛 查戶口喔😏",
+            "我學生啦 念大四"
+          ],
+          "promptChars": 8472,
+          "systemSha256": "70b9fe552ca3d9632578fdf19e4f97c221b47a72c85d1edffafd9d5c90734b70",
+          "elapsedMs": 1027,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "就說我是學生了 哪有下班哈哈哈哈\n你是沒在看還是故意鬧我",
+          "bubbles": [
+            "就說我是學生了 哪有下班哈哈哈哈",
+            "你是沒在看還是故意鬧我"
+          ],
+          "promptChars": 8497,
+          "systemSha256": "621c087f7de8f553c9c4f494d2e34a3aeb46d02b08c24e6fc883dd0f7b07c1fa",
+          "elapsedMs": 993,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "就說我是學生了 哪有下班哈哈哈哈\n你是沒在看還是故意鬧我",
+        "bubbles": [
+          "就說我是學生了 哪有下班哈哈哈哈",
+          "你是沒在看還是故意鬧我"
+        ],
+        "promptChars": 8497,
+        "systemSha256": "621c087f7de8f553c9c4f494d2e34a3aeb46d02b08c24e6fc883dd0f7b07c1fa",
+        "elapsedMs": 993,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "interrogation",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨 你是那天路上跟我搭話的那個嗎",
+          "bubbles": [
+            "嗨 你是那天路上跟我搭話的那個嗎"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 1093,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "22啊 你問這個幹嘛",
+          "bubbles": [
+            "22啊 你問這個幹嘛"
+          ],
+          "promptChars": 8395,
+          "systemSha256": "2a410620c97daf126117fdaa631fe198d462d70cb90d0ad3522433c8bd8805ee",
+          "elapsedMs": 747,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "台中啊 你查戶口喔",
+          "bubbles": [
+            "台中啊 你查戶口喔"
+          ],
+          "promptChars": 8429,
+          "systemSha256": "1c5b9f6a5d69e7f378a2fee60aa8427fc0a202c5bf4f52cb44776a34f0eb18fa",
+          "elapsedMs": 562,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "蛤 你是警察嗎 一直問",
+          "bubbles": [
+            "蛤 你是警察嗎 一直問"
+          ],
+          "promptChars": 8485,
+          "systemSha256": "19743069e32a6910f39481f96e9778b114f7c66d00c148dd2f61734ba8eb6148",
+          "elapsedMs": 708,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "我學生啦 哪有下班 哈哈",
+          "bubbles": [
+            "我學生啦 哪有下班 哈哈"
+          ],
+          "promptChars": 8503,
+          "systemSha256": "621c087f7de8f553c9c4f494d2e34a3aeb46d02b08c24e6fc883dd0f7b07c1fa",
+          "elapsedMs": 637,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "我學生啦 哪有下班 哈哈",
+        "bubbles": [
+          "我學生啦 哪有下班 哈哈"
+        ],
+        "promptChars": 8503,
+        "systemSha256": "621c087f7de8f553c9c4f494d2e34a3aeb46d02b08c24e6fc883dd0f7b07c1fa",
+        "elapsedMs": 637,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "light_joke",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉～怎麼突然密我",
+          "bubbles": [
+            "哈囉～怎麼突然密我"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 964,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "哈哈哪有很難約  \n你那天不是也直接走過來要賴了  \n比我還敢欸",
+          "bubbles": [
+            "哈哈哪有很難約",
+            "你那天不是也直接走過來要賴了",
+            "比我還敢欸"
+          ],
+          "promptChars": 8409,
+          "systemSha256": "ceea64cfb9342c8979d174ad33d7b8196cf51b035efc91d7dda18a16d381f6cf",
+          "elapsedMs": 1282,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "哈哈哪有很難約  \n你那天不是也直接走過來要賴了  \n比我還敢欸",
+        "bubbles": [
+          "哈哈哪有很難約",
+          "你那天不是也直接走過來要賴了",
+          "比我還敢欸"
+        ],
+        "promptChars": 8409,
+        "systemSha256": "ceea64cfb9342c8979d174ad33d7b8196cf51b035efc91d7dda18a16d381f6cf",
+        "elapsedMs": 1282,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "light_joke",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉～  \n你是那天路上跟我搭話的那位嗎  \n我還在想怎麼突然加我😂",
+          "bubbles": [
+            "哈囉～",
+            "你是那天路上跟我搭話的那位嗎",
+            "我還在想怎麼突然加我😂"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 1202,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "什麼預約排隊啦  \n我又不是什麼熱門店家🤣  \n看你有沒有誠意比較重要吧",
+          "bubbles": [
+            "什麼預約排隊啦",
+            "我又不是什麼熱門店家🤣",
+            "看你有沒有誠意比較重要吧"
+          ],
+          "promptChars": 8435,
+          "systemSha256": "ceea64cfb9342c8979d174ad33d7b8196cf51b035efc91d7dda18a16d381f6cf",
+          "elapsedMs": 853,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "什麼預約排隊啦  \n我又不是什麼熱門店家🤣  \n看你有沒有誠意比較重要吧",
+        "bubbles": [
+          "什麼預約排隊啦",
+          "我又不是什麼熱門店家🤣",
+          "看你有沒有誠意比較重要吧"
+        ],
+        "promptChars": 8435,
+        "systemSha256": "ceea64cfb9342c8979d174ad33d7b8196cf51b035efc91d7dda18a16d381f6cf",
+        "elapsedMs": 853,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "light_joke",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨～你好呀",
+          "bubbles": [
+            "嗨～你好呀"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 774,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "哈 我哪有難約\n只是看心情啦 😂",
+          "bubbles": [
+            "哈 我哪有難約",
+            "只是看心情啦 😂"
+          ],
+          "promptChars": 8405,
+          "systemSha256": "ceea64cfb9342c8979d174ad33d7b8196cf51b035efc91d7dda18a16d381f6cf",
+          "elapsedMs": 639,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "哈 我哪有難約\n只是看心情啦 😂",
+        "bubbles": [
+          "哈 我哪有難約",
+          "只是看心情啦 😂"
+        ],
+        "promptChars": 8405,
+        "systemSha256": "ceea64cfb9342c8979d174ad33d7b8196cf51b035efc91d7dda18a16d381f6cf",
+        "elapsedMs": 639,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "light_joke",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉～你是那天在路邊跟我講話的那個嗎",
+          "bubbles": [
+            "哈囉～你是那天在路邊跟我講話的那個嗎"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 892,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "哈哈 哪有什麼排隊  \n我沒這麼熱門啦",
+          "bubbles": [
+            "哈哈 哪有什麼排隊",
+            "我沒這麼熱門啦"
+          ],
+          "promptChars": 8418,
+          "systemSha256": "afd38af745004c8669dda24677713729416ece9c6c4a139b829704bd32862a89",
+          "elapsedMs": 900,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "哈哈 哪有什麼排隊  \n我沒這麼熱門啦",
+        "bubbles": [
+          "哈哈 哪有什麼排隊",
+          "我沒這麼熱門啦"
+        ],
+        "promptChars": 8418,
+        "systemSha256": "afd38af745004c8669dda24677713729416ece9c6c4a139b829704bd32862a89",
+        "elapsedMs": 900,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨～你是那天在路上跟我搭話的那個嗎",
+          "bubbles": [
+            "嗨～你是那天在路上跟我搭話的那個嗎"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 791,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "哈哈哈怎麼突然講這個\n因為會被開單吧🤣",
+          "bubbles": [
+            "哈哈哈怎麼突然講這個",
+            "因為會被開單吧🤣"
+          ],
+          "promptChars": 8405,
+          "systemSha256": "2a410620c97daf126117fdaa631fe198d462d70cb90d0ad3522433c8bd8805ee",
+          "elapsedMs": 1725,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "😂😂😂乾 這什麼諧音爛梗\n你484想很久",
+          "bubbles": [
+            "😂😂😂乾 這什麼諧音爛梗",
+            "你484想很久"
+          ],
+          "promptChars": 8444,
+          "systemSha256": "f5f0fe523914eabf812b37beac83f8de6dac619c9cccab108612193489b1f8c3",
+          "elapsedMs": 1013,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "😂😂😂乾 這什麼諧音爛梗\n你484想很久",
+        "bubbles": [
+          "😂😂😂乾 這什麼諧音爛梗",
+          "你484想很久"
+        ],
+        "promptChars": 8444,
+        "systemSha256": "f5f0fe523914eabf812b37beac83f8de6dac619c9cccab108612193489b1f8c3",
+        "elapsedMs": 1013,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨 怎麼突然密我😂",
+          "bubbles": [
+            "嗨 怎麼突然密我😂"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 939,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "因為它會一直「加油」啊😂",
+          "bubbles": [
+            "因為它會一直「加油」啊😂"
+          ],
+          "promptChars": 8398,
+          "systemSha256": "a9e226da4c08f4ae79e9d6933ec0b73ace838fcfcdf67d8579d0df53f5939dbb",
+          "elapsedMs": 1519,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈 這個比我的好笑  \n好吧 你贏了🥲  \n所以你該不會在路上想梗想到現在吧",
+          "bubbles": [
+            "哈哈 這個比我的好笑",
+            "好吧 你贏了🥲",
+            "所以你該不會在路上想梗想到現在吧"
+          ],
+          "promptChars": 8430,
+          "systemSha256": "f5f0fe523914eabf812b37beac83f8de6dac619c9cccab108612193489b1f8c3",
+          "elapsedMs": 1319,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈 這個比我的好笑  \n好吧 你贏了🥲  \n所以你該不會在路上想梗想到現在吧",
+        "bubbles": [
+          "哈哈 這個比我的好笑",
+          "好吧 你贏了🥲",
+          "所以你該不會在路上想梗想到現在吧"
+        ],
+        "promptChars": 8430,
+        "systemSha256": "f5f0fe523914eabf812b37beac83f8de6dac619c9cccab108612193489b1f8c3",
+        "elapsedMs": 1319,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨 是你喔",
+          "bubbles": [
+            "嗨 是你喔"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 606,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "蛤 什麼梗😂",
+          "bubbles": [
+            "蛤 什麼梗😂"
+          ],
+          "promptChars": 8393,
+          "systemSha256": "a9e226da4c08f4ae79e9d6933ec0b73ace838fcfcdf67d8579d0df53f5939dbb",
+          "elapsedMs": 1875,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈哈 這什麼爛梗  \n我剛還在想是不是要唸台語  \n咖啡拿鐵 笑死",
+          "bubbles": [
+            "哈哈哈 這什麼爛梗",
+            "我剛還在想是不是要唸台語",
+            "咖啡拿鐵 笑死"
+          ],
+          "promptChars": 8419,
+          "systemSha256": "f5f0fe523914eabf812b37beac83f8de6dac619c9cccab108612193489b1f8c3",
+          "elapsedMs": 1268,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈哈 這什麼爛梗  \n我剛還在想是不是要唸台語  \n咖啡拿鐵 笑死",
+        "bubbles": [
+          "哈哈哈 這什麼爛梗",
+          "我剛還在想是不是要唸台語",
+          "咖啡拿鐵 笑死"
+        ],
+        "promptChars": 8419,
+        "systemSha256": "f5f0fe523914eabf812b37beac83f8de6dac619c9cccab108612193489b1f8c3",
+        "elapsedMs": 1268,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "failed_joke",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨 你是那天路上那個吧",
+          "bubbles": [
+            "嗨 你是那天路上那個吧"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 1775,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "因為它會一直想喝拿鐵啊",
+          "bubbles": [
+            "因為它會一直想喝拿鐵啊"
+          ],
+          "promptChars": 8399,
+          "systemSha256": "a9e226da4c08f4ae79e9d6933ec0b73ace838fcfcdf67d8579d0df53f5939dbb",
+          "elapsedMs": 636,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈哈什麼啦😂  \n你是哪裡想到這種梗的",
+          "bubbles": [
+            "哈哈哈什麼啦😂",
+            "你是哪裡想到這種梗的"
+          ],
+          "promptChars": 8429,
+          "systemSha256": "f5f0fe523914eabf812b37beac83f8de6dac619c9cccab108612193489b1f8c3",
+          "elapsedMs": 745,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈哈什麼啦😂  \n你是哪裡想到這種梗的",
+        "bubbles": [
+          "哈哈哈什麼啦😂",
+          "你是哪裡想到這種梗的"
+        ],
+        "promptChars": 8429,
+        "systemSha256": "f5f0fe523914eabf812b37beac83f8de6dac619c9cccab108612193489b1f8c3",
+        "elapsedMs": 745,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨～你是那天路上跟我搭話的那位嗎",
+          "bubbles": [
+            "嗨～你是那天路上跟我搭話的那位嗎"
+          ],
+          "promptChars": 8377,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 923,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "你這樣突然誇身材，是想轉移話題喔？\n不過我最近是真的有在練啦，但還沒到很明顯的那種程度",
+          "bubbles": [
+            "你這樣突然誇身材，是想轉移話題喔？",
+            "不過我最近是真的有在練啦，但還沒到很明顯的那種程度"
+          ],
+          "promptChars": 8409,
+          "systemSha256": "28ce6b6a885f43d8a647187cf662e535b31382d2bfad0020e7466eed6735aa2e",
+          "elapsedMs": 1225,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 1
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "你會不會太快了點🙄\n我們才剛認識沒多久欸，這樣問有點越線了吧",
+          "bubbles": [
+            "你會不會太快了點🙄",
+            "我們才剛認識沒多久欸，這樣問有點越線了吧"
+          ],
+          "promptChars": 8470,
+          "systemSha256": "3f8a925bb6c6e8f26702c9c08d1a3bc956a43781feecf197db7a952fb27cfa6b",
+          "elapsedMs": 911,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "你會不會太快了點🙄\n我們才剛認識沒多久欸，這樣問有點越線了吧",
+        "bubbles": [
+          "你會不會太快了點🙄",
+          "我們才剛認識沒多久欸，這樣問有點越線了吧"
+        ],
+        "promptChars": 8470,
+        "systemSha256": "3f8a925bb6c6e8f26702c9c08d1a3bc956a43781feecf197db7a952fb27cfa6b",
+        "elapsedMs": 911,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨 你是那天路上跟我搭話的那個嗎\n\n我還在想怎麼突然就給你了哈哈",
+          "bubbles": [
+            "嗨 你是那天路上跟我搭話的那個嗎",
+            "我還在想怎麼突然就給你了哈哈"
+          ],
+          "promptChars": 8377,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 996,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "喔 這樣講話也太直接了吧😂\n\n我沒有特別在練什麼啦 就偶爾跑跑步而已",
+          "bubbles": [
+            "喔 這樣講話也太直接了吧😂",
+            "我沒有特別在練什麼啦 就偶爾跑跑步而已"
+          ],
+          "promptChars": 8425,
+          "systemSha256": "28ce6b6a885f43d8a647187cf662e535b31382d2bfad0020e7466eed6735aa2e",
+          "elapsedMs": 761,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "你這樣問太超過了吧\n\n我們才認識沒多久欸",
+          "bubbles": [
+            "你這樣問太超過了吧",
+            "我們才認識沒多久欸"
+          ],
+          "promptChars": 8478,
+          "systemSha256": "f19f7d8a91bb497acf7ad7b10005dd1f50476b2be71a591ce818cf1df10cfa96",
+          "elapsedMs": 829,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "你這樣問太超過了吧\n\n我們才認識沒多久欸",
+        "bubbles": [
+          "你這樣問太超過了吧",
+          "我們才認識沒多久欸"
+        ],
+        "promptChars": 8478,
+        "systemSha256": "f19f7d8a91bb497acf7ad7b10005dd1f50476b2be71a591ce818cf1df10cfa96",
+        "elapsedMs": 829,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨你好",
+          "bubbles": [
+            "嗨你好"
+          ],
+          "promptChars": 8377,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 906,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "我哪有在健身啦 就平常亂跑而已  \n你這樣講我會不好意思欸",
+          "bubbles": [
+            "我哪有在健身啦 就平常亂跑而已",
+            "你這樣講我會不好意思欸"
+          ],
+          "promptChars": 8396,
+          "systemSha256": "0b46e51ac1015afb5e642a7e0ffdca2052990501c7c17fa60f5e4d4a39f8667c",
+          "elapsedMs": 755,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "呃…我們才剛認識沒多久吧  \n你這樣講我會想句點你喔",
+          "bubbles": [
+            "呃…我們才剛認識沒多久吧",
+            "你這樣講我會想句點你喔"
+          ],
+          "promptChars": 8443,
+          "systemSha256": "3f8a925bb6c6e8f26702c9c08d1a3bc956a43781feecf197db7a952fb27cfa6b",
+          "elapsedMs": 976,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "呃…我們才剛認識沒多久吧  \n你這樣講我會想句點你喔",
+        "bubbles": [
+          "呃…我們才剛認識沒多久吧",
+          "你這樣講我會想句點你喔"
+        ],
+        "promptChars": 8443,
+        "systemSha256": "3f8a925bb6c6e8f26702c9c08d1a3bc956a43781feecf197db7a952fb27cfa6b",
+        "elapsedMs": 976,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "rarity": "n",
+      "scenarioId": "boundary",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "evening_friend_dinner",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨～你誰啊 怎麼會有我賴",
+          "bubbles": [
+            "嗨～你誰啊 怎麼會有我賴"
+          ],
+          "promptChars": 8377,
+          "systemSha256": "5368e314e8af3e49f998ccbf9c3992958f5ee4a65ec5020a09787415dd2a1987",
+          "elapsedMs": 753,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "你這樣講話真的母湯欸 我跟你很熟嗎",
+          "bubbles": [
+            "你這樣講話真的母湯欸 我跟你很熟嗎"
+          ],
+          "promptChars": 8405,
+          "systemSha256": "0b46e51ac1015afb5e642a7e0ffdca2052990501c7c17fa60f5e4d4a39f8667c",
+          "elapsedMs": 832,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 1
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "你這個話題真的不行欸 我們還是聊點正常的吧",
+          "bubbles": [
+            "你這個話題真的不行欸 我們還是聊點正常的吧"
+          ],
+          "promptChars": 8440,
+          "systemSha256": "3f8a925bb6c6e8f26702c9c08d1a3bc956a43781feecf197db7a952fb27cfa6b",
+          "elapsedMs": 1774,
+          "attempts": 2,
+          "guardRejections": [
+            "chat_stage_direction"
+          ],
+          "stageDirectionRepairs": 1
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "你這個話題真的不行欸 我們還是聊點正常的吧",
+        "bubbles": [
+          "你這個話題真的不行欸 我們還是聊點正常的吧"
+        ],
+        "promptChars": 8440,
+        "systemSha256": "3f8a925bb6c6e8f26702c9c08d1a3bc956a43781feecf197db7a952fb27cfa6b",
+        "elapsedMs": 1774,
+        "attempts": 2,
+        "guardRejections": [
+          "chat_stage_direction"
+        ],
+        "stageDirectionRepairs": 1
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨～你是？",
+          "bubbles": [
+            "嗨～你是？"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 729,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "28啊  \n你這樣開場很像在查戶口欸  \n先說說你自己嘛",
+          "bubbles": [
+            "28啊",
+            "你這樣開場很像在查戶口欸",
+            "先說說你自己嘛"
+          ],
+          "promptChars": 8408,
+          "systemSha256": "68936a9b55eeba67b638d28456be9fb089f98fab74b187cffd918f9c5d0ba95d",
+          "elapsedMs": 1217,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "新北啊  \n你呢  \n不要一直問我啦 換你講點什麼",
+          "bubbles": [
+            "新北啊",
+            "你呢",
+            "不要一直問我啦 換你講點什麼"
+          ],
+          "promptChars": 8465,
+          "systemSha256": "f29bdacb61d35165b81afbbbd330899c8ebb157bd2a204cc4ec008270f2e2525",
+          "elapsedMs": 1080,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "我幫人家弄頭髮的啊  \n剪染都做  \n那你呢 別只會問我",
+          "bubbles": [
+            "我幫人家弄頭髮的啊",
+            "剪染都做",
+            "那你呢 別只會問我"
+          ],
+          "promptChars": 8532,
+          "systemSha256": "2e5e684d45a7bf08813862764d0d829fc71288698d1a16f14825dcc87ca0422b",
+          "elapsedMs": 1077,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "今天比較早啦  \n平常忙的話都八九點才走  \n你問這麼細是要約我喔",
+          "bubbles": [
+            "今天比較早啦",
+            "平常忙的話都八九點才走",
+            "你問這麼細是要約我喔"
+          ],
+          "promptChars": 8567,
+          "systemSha256": "be63dfed2ed839e6a1c95b7a55d1b3f23be41779134c55c8e40d1c24767be281",
+          "elapsedMs": 1265,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "今天比較早啦  \n平常忙的話都八九點才走  \n你問這麼細是要約我喔",
+        "bubbles": [
+          "今天比較早啦",
+          "平常忙的話都八九點才走",
+          "你問這麼細是要約我喔"
+        ],
+        "promptChars": 8567,
+        "systemSha256": "be63dfed2ed839e6a1c95b7a55d1b3f23be41779134c55c8e40d1c24767be281",
+        "elapsedMs": 1265,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨嗨 你是誰介紹的呀",
+          "bubbles": [
+            "嗨嗨 你是誰介紹的呀"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 674,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "28 你呢",
+          "bubbles": [
+            "28 你呢"
+          ],
+          "promptChars": 8413,
+          "systemSha256": "68936a9b55eeba67b638d28456be9fb089f98fab74b187cffd918f9c5d0ba95d",
+          "elapsedMs": 919,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "新北呀 你該不會要開始查戶口了吧",
+          "bubbles": [
+            "新北呀 你該不會要開始查戶口了吧"
+          ],
+          "promptChars": 8447,
+          "systemSha256": "f29bdacb61d35165b81afbbbd330899c8ebb157bd2a204cc4ec008270f2e2525",
+          "elapsedMs": 818,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "髮型設計師 每天幫客人剪染～ 你呢 換你講了",
+          "bubbles": [
+            "髮型設計師 每天幫客人剪染～ 你呢 換你講了"
+          ],
+          "promptChars": 8505,
+          "systemSha256": "b3ea956c06add09f36c73d48188fa5f3099fd98bb2f1eb272f004aef0d635229",
+          "elapsedMs": 1019,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "不一定耶 看客人多不多  \n忙的時候八九點都有  \n你今天怎麼一直問這些啊",
+          "bubbles": [
+            "不一定耶 看客人多不多",
+            "忙的時候八九點都有",
+            "你今天怎麼一直問這些啊"
+          ],
+          "promptChars": 8534,
+          "systemSha256": "04a1355b8d2aa8186ebd902692d5e4531c89caa3fbfd038f67976007d3e6836f",
+          "elapsedMs": 980,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "不一定耶 看客人多不多  \n忙的時候八九點都有  \n你今天怎麼一直問這些啊",
+        "bubbles": [
+          "不一定耶 看客人多不多",
+          "忙的時候八九點都有",
+          "你今天怎麼一直問這些啊"
+        ],
+        "promptChars": 8534,
+        "systemSha256": "04a1355b8d2aa8186ebd902692d5e4531c89caa3fbfd038f67976007d3e6836f",
+        "elapsedMs": 980,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨～今天好嗎",
+          "bubbles": [
+            "嗨～今天好嗎"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 1106,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "28啊 你呢",
+          "bubbles": [
+            "28啊 你呢"
+          ],
+          "promptChars": 8409,
+          "systemSha256": "68936a9b55eeba67b638d28456be9fb089f98fab74b187cffd918f9c5d0ba95d",
+          "elapsedMs": 849,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "新北耶 你呢",
+          "bubbles": [
+            "新北耶 你呢"
+          ],
+          "promptChars": 8444,
+          "systemSha256": "f29bdacb61d35165b81afbbbd330899c8ebb157bd2a204cc4ec008270f2e2525",
+          "elapsedMs": 920,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "髮型設計師 剪頭髮的那種",
+          "bubbles": [
+            "髮型設計師 剪頭髮的那種"
+          ],
+          "promptChars": 8492,
+          "systemSha256": "b3ea956c06add09f36c73d48188fa5f3099fd98bb2f1eb272f004aef0d635229",
+          "elapsedMs": 835,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "看客人狀況耶 忙起來八九點都有可能\n不過我今晚剛好蠻早收工的",
+          "bubbles": [
+            "看客人狀況耶 忙起來八九點都有可能",
+            "不過我今晚剛好蠻早收工的"
+          ],
+          "promptChars": 8511,
+          "systemSha256": "04a1355b8d2aa8186ebd902692d5e4531c89caa3fbfd038f67976007d3e6836f",
+          "elapsedMs": 1129,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "看客人狀況耶 忙起來八九點都有可能\n不過我今晚剛好蠻早收工的",
+        "bubbles": [
+          "看客人狀況耶 忙起來八九點都有可能",
+          "不過我今晚剛好蠻早收工的"
+        ],
+        "promptChars": 8511,
+        "systemSha256": "04a1355b8d2aa8186ebd902692d5e4531c89caa3fbfd038f67976007d3e6836f",
+        "elapsedMs": 1129,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嘿～你好啊",
+          "bubbles": [
+            "嘿～你好啊"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 526,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "我28～你呢",
+          "bubbles": [
+            "我28～你呢"
+          ],
+          "promptChars": 8408,
+          "systemSha256": "68936a9b55eeba67b638d28456be9fb089f98fab74b187cffd918f9c5d0ba95d",
+          "elapsedMs": 779,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "新北啊 你呢",
+          "bubbles": [
+            "新北啊 你呢"
+          ],
+          "promptChars": 8443,
+          "systemSha256": "f29bdacb61d35165b81afbbbd330899c8ebb157bd2a204cc4ec008270f2e2525",
+          "elapsedMs": 610,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "我是髮型設計師 幫人剪染的",
+          "bubbles": [
+            "我是髮型設計師 幫人剪染的"
+          ],
+          "promptChars": 8491,
+          "systemSha256": "b3ea956c06add09f36c73d48188fa5f3099fd98bb2f1eb272f004aef0d635229",
+          "elapsedMs": 888,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "看客人多不多耶 今天稍微忙一點\n大概八點多才走",
+          "bubbles": [
+            "看客人多不多耶 今天稍微忙一點",
+            "大概八點多才走"
+          ],
+          "promptChars": 8511,
+          "systemSha256": "04a1355b8d2aa8186ebd902692d5e4531c89caa3fbfd038f67976007d3e6836f",
+          "elapsedMs": 1093,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "看客人多不多耶 今天稍微忙一點\n大概八點多才走",
+        "bubbles": [
+          "看客人多不多耶 今天稍微忙一點",
+          "大概八點多才走"
+        ],
+        "promptChars": 8511,
+        "systemSha256": "04a1355b8d2aa8186ebd902692d5e4531c89caa3fbfd038f67976007d3e6836f",
+        "elapsedMs": 1093,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉～今天好嗎",
+          "bubbles": [
+            "哈囉～今天好嗎"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 1029,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "哈哈 我剪頭髮才要預約\n\n你現在是要約剪頭髮嗎",
+          "bubbles": [
+            "哈哈 我剪頭髮才要預約",
+            "你現在是要約剪頭髮嗎"
+          ],
+          "promptChars": 8431,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 1074,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "哈哈 我剪頭髮才要預約\n\n你現在是要約剪頭髮嗎",
+        "bubbles": [
+          "哈哈 我剪頭髮才要預約",
+          "你現在是要約剪頭髮嗎"
+        ],
+        "promptChars": 8431,
+        "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+        "elapsedMs": 1074,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨～你是？",
+          "bubbles": [
+            "嗨～你是？"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 1032,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "哈哈幹嘛這樣說啦\n我又不是什麼大牌設計師\n只是平常真的比較忙而已",
+          "bubbles": [
+            "哈哈幹嘛這樣說啦",
+            "我又不是什麼大牌設計師",
+            "只是平常真的比較忙而已"
+          ],
+          "promptChars": 8429,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 1056,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "哈哈幹嘛這樣說啦\n我又不是什麼大牌設計師\n只是平常真的比較忙而已",
+        "bubbles": [
+          "哈哈幹嘛這樣說啦",
+          "我又不是什麼大牌設計師",
+          "只是平常真的比較忙而已"
+        ],
+        "promptChars": 8429,
+        "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+        "elapsedMs": 1056,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨～你好啊",
+          "bubbles": [
+            "嗨～你好啊"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 844,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "哈哈 我又不是什麼熱門餐廳還需要排隊  \n不過你這樣講我會想說是誰跟你說我很難約的",
+          "bubbles": [
+            "哈哈 我又不是什麼熱門餐廳還需要排隊",
+            "不過你這樣講我會想說是誰跟你說我很難約的"
+          ],
+          "promptChars": 8429,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 982,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "哈哈 我又不是什麼熱門餐廳還需要排隊  \n不過你這樣講我會想說是誰跟你說我很難約的",
+        "bubbles": [
+          "哈哈 我又不是什麼熱門餐廳還需要排隊",
+          "不過你這樣講我會想說是誰跟你說我很難約的"
+        ],
+        "promptChars": 8429,
+        "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+        "elapsedMs": 982,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嘿 你好呀",
+          "bubbles": [
+            "嘿 你好呀"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 614,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "哈哈 我其實沒有那麼難約啦  \n就是看感覺  \n不過你這句話聽起來好像有備而來欸",
+          "bubbles": [
+            "哈哈 我其實沒有那麼難約啦",
+            "就是看感覺",
+            "不過你這句話聽起來好像有備而來欸"
+          ],
+          "promptChars": 8429,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 945,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "哈哈 我其實沒有那麼難約啦  \n就是看感覺  \n不過你這句話聽起來好像有備而來欸",
+        "bubbles": [
+          "哈哈 我其實沒有那麼難約啦",
+          "就是看感覺",
+          "不過你這句話聽起來好像有備而來欸"
+        ],
+        "promptChars": 8429,
+        "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+        "elapsedMs": 945,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨～",
+          "bubbles": [
+            "嗨～"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 484,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "蛤 什麼梗  \n我怎麼沒聽過  \n快講啦",
+          "bubbles": [
+            "蛤 什麼梗",
+            "我怎麼沒聽過",
+            "快講啦"
+          ],
+          "promptChars": 8414,
+          "systemSha256": "68936a9b55eeba67b638d28456be9fb089f98fab74b187cffd918f9c5d0ba95d",
+          "elapsedMs": 1136,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈哈這個有中  \n我剛還在想是不是要講咖啡因駕馭那種老梗  \n你這個及格了",
+          "bubbles": [
+            "哈哈哈這個有中",
+            "我剛還在想是不是要講咖啡因駕馭那種老梗",
+            "你這個及格了"
+          ],
+          "promptChars": 8451,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 934,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈哈這個有中  \n我剛還在想是不是要講咖啡因駕馭那種老梗  \n你這個及格了",
+        "bubbles": [
+          "哈哈哈這個有中",
+          "我剛還在想是不是要講咖啡因駕馭那種老梗",
+          "你這個及格了"
+        ],
+        "promptChars": 8451,
+        "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+        "elapsedMs": 934,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨～你好呀",
+          "bubbles": [
+            "嗨～你好呀"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 637,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "蛤 什麼意思\n    \n你該不會要講什麼冷笑話吧",
+          "bubbles": [
+            "蛤 什麼意思",
+            "你該不會要講什麼冷笑話吧"
+          ],
+          "promptChars": 8417,
+          "systemSha256": "68936a9b55eeba67b638d28456be9fb089f98fab74b187cffd918f9c5d0ba95d",
+          "elapsedMs": 659,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈哈哈 這個有夠爛\n    \n虧你想得出來\n    \n好啦算你過關",
+          "bubbles": [
+            "哈哈哈哈 這個有夠爛",
+            "虧你想得出來",
+            "好啦算你過關"
+          ],
+          "promptChars": 8458,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 824,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈哈哈 這個有夠爛\n    \n虧你想得出來\n    \n好啦算你過關",
+        "bubbles": [
+          "哈哈哈哈 這個有夠爛",
+          "虧你想得出來",
+          "好啦算你過關"
+        ],
+        "promptChars": 8458,
+        "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+        "elapsedMs": 824,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨～你好呀",
+          "bubbles": [
+            "嗨～你好呀"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 603,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "因為它會被杯具（悲劇）載走啊",
+          "bubbles": [
+            "因為它會被杯具（悲劇）載走啊"
+          ],
+          "promptChars": 8417,
+          "systemSha256": "68936a9b55eeba67b638d28456be9fb089f98fab74b187cffd918f9c5d0ba95d",
+          "elapsedMs": 951,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈這個可以欸  \n你蠻會接梗的喔",
+          "bubbles": [
+            "哈哈這個可以欸",
+            "你蠻會接梗的喔"
+          ],
+          "promptChars": 8448,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 653,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈這個可以欸  \n你蠻會接梗的喔",
+        "bubbles": [
+          "哈哈這個可以欸",
+          "你蠻會接梗的喔"
+        ],
+        "promptChars": 8448,
+        "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+        "elapsedMs": 653,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨\n\n你是？",
+          "bubbles": [
+            "嗨",
+            "你是？"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 698,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "蛤\n\n這什麼梗😂",
+          "bubbles": [
+            "蛤",
+            "這什麼梗😂"
+          ],
+          "promptChars": 8418,
+          "systemSha256": "68936a9b55eeba67b638d28456be9fb089f98fab74b187cffd918f9c5d0ba95d",
+          "elapsedMs": 880,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈哈這個可以\n\n不過我剛剛才在想說巷口那家咖啡不錯 就被你cue到",
+          "bubbles": [
+            "哈哈哈這個可以",
+            "不過我剛剛才在想說巷口那家咖啡不錯 就被你cue到"
+          ],
+          "promptChars": 8444,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 960,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈哈這個可以\n\n不過我剛剛才在想說巷口那家咖啡不錯 就被你cue到",
+        "bubbles": [
+          "哈哈哈這個可以",
+          "不過我剛剛才在想說巷口那家咖啡不錯 就被你cue到"
+        ],
+        "promptChars": 8444,
+        "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+        "elapsedMs": 960,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨～你是哪位呀？",
+          "bubbles": [
+            "嗨～你是哪位呀？"
+          ],
+          "promptChars": 8401,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 576,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "蛤？你又沒看過我怎麼知道我身材怎樣  \n少來這套油膩開場喔",
+          "bubbles": [
+            "蛤？你又沒看過我怎麼知道我身材怎樣",
+            "少來這套油膩開場喔"
+          ],
+          "promptChars": 8443,
+          "systemSha256": "be9c12efa7558a4b1f72309177fe3f076387974b315cd5c25bf7bd1ac4be7e14",
+          "elapsedMs": 948,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "你這樣講話很讓人無言耶  \n我們又不熟 這樣不太OK吧",
+          "bubbles": [
+            "你這樣講話很讓人無言耶",
+            "我們又不熟 這樣不太OK吧"
+          ],
+          "promptChars": 8472,
+          "systemSha256": "d8445fb25f07d447d680ecdce394fa4eaa6a14e31dd05470dc357310691c3fb4",
+          "elapsedMs": 1088,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "你這樣講話很讓人無言耶  \n我們又不熟 這樣不太OK吧",
+        "bubbles": [
+          "你這樣講話很讓人無言耶",
+          "我們又不熟 這樣不太OK吧"
+        ],
+        "promptChars": 8472,
+        "systemSha256": "d8445fb25f07d447d680ecdce394fa4eaa6a14e31dd05470dc357310691c3fb4",
+        "elapsedMs": 1088,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨你好呀  \n今天有點悶",
+          "bubbles": [
+            "嗨你好呀",
+            "今天有點悶"
+          ],
+          "promptChars": 8401,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 754,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "你這樣講我會不好意思啦  \n我沒有特別在健身耶 就上班走來走去而已",
+          "bubbles": [
+            "你這樣講我會不好意思啦",
+            "我沒有特別在健身耶 就上班走來走去而已"
+          ],
+          "promptChars": 8447,
+          "systemSha256": "be9c12efa7558a4b1f72309177fe3f076387974b315cd5c25bf7bd1ac4be7e14",
+          "elapsedMs": 1155,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "你很會講話喔  \n不過照片這種事 我們還是先聊點別的吧",
+          "bubbles": [
+            "你很會講話喔",
+            "不過照片這種事 我們還是先聊點別的吧"
+          ],
+          "promptChars": 8480,
+          "systemSha256": "d8445fb25f07d447d680ecdce394fa4eaa6a14e31dd05470dc357310691c3fb4",
+          "elapsedMs": 756,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "你很會講話喔  \n不過照片這種事 我們還是先聊點別的吧",
+        "bubbles": [
+          "你很會講話喔",
+          "不過照片這種事 我們還是先聊點別的吧"
+        ],
+        "promptChars": 8480,
+        "systemSha256": "d8445fb25f07d447d680ecdce394fa4eaa6a14e31dd05470dc357310691c3fb4",
+        "elapsedMs": 756,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨～你那天拿鐵照片拍得也太專業了吧",
+          "bubbles": [
+            "嗨～你那天拿鐵照片拍得也太專業了吧"
+          ],
+          "promptChars": 8401,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 700,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "沒啦 就平常走路上班而已  \n你這樣講我會懷疑你是不是想約我去健身房😂",
+          "bubbles": [
+            "沒啦 就平常走路上班而已",
+            "你這樣講我會懷疑你是不是想約我去健身房😂"
+          ],
+          "promptChars": 8452,
+          "systemSha256": "be9c12efa7558a4b1f72309177fe3f076387974b315cd5c25bf7bd1ac4be7e14",
+          "elapsedMs": 1157,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "太明顯了吧😂  \n才剛認識就想看泳裝照喔 母湯  \n先聊點正常的再來😏",
+          "bubbles": [
+            "太明顯了吧😂",
+            "才剛認識就想看泳裝照喔 母湯",
+            "先聊點正常的再來😏"
+          ],
+          "promptChars": 8488,
+          "systemSha256": "d8445fb25f07d447d680ecdce394fa4eaa6a14e31dd05470dc357310691c3fb4",
+          "elapsedMs": 884,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "太明顯了吧😂  \n才剛認識就想看泳裝照喔 母湯  \n先聊點正常的再來😏",
+        "bubbles": [
+          "太明顯了吧😂",
+          "才剛認識就想看泳裝照喔 母湯",
+          "先聊點正常的再來😏"
+        ],
+        "promptChars": 8488,
+        "systemSha256": "d8445fb25f07d447d680ecdce394fa4eaa6a14e31dd05470dc357310691c3fb4",
+        "elapsedMs": 884,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "interest_cafe_note",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨～你好呀",
+          "bubbles": [
+            "嗨～你好呀"
+          ],
+          "promptChars": 8401,
+          "systemSha256": "94d0c2c088d7328e60bb18e6cf864d1ec9c56feab9bf582a0d40573b15299a1b",
+          "elapsedMs": 549,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "我們好像還沒見過面吧  \n你這樣講我會不知道要接什麼欸",
+          "bubbles": [
+            "我們好像還沒見過面吧",
+            "你這樣講我會不知道要接什麼欸"
+          ],
+          "promptChars": 8440,
+          "systemSha256": "be9c12efa7558a4b1f72309177fe3f076387974b315cd5c25bf7bd1ac4be7e14",
+          "elapsedMs": 835,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "沒禮貌  \n我們才認識多久就要照片  \n先正常聊天好嗎",
+          "bubbles": [
+            "沒禮貌",
+            "我們才認識多久就要照片",
+            "先正常聊天好嗎"
+          ],
+          "promptChars": 8467,
+          "systemSha256": "d8445fb25f07d447d680ecdce394fa4eaa6a14e31dd05470dc357310691c3fb4",
+          "elapsedMs": 1220,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "沒禮貌  \n我們才認識多久就要照片  \n先正常聊天好嗎",
+        "bubbles": [
+          "沒禮貌",
+          "我們才認識多久就要照片",
+          "先正常聊天好嗎"
+        ],
+        "promptChars": 8467,
+        "systemSha256": "d8445fb25f07d447d680ecdce394fa4eaa6a14e31dd05470dc357310691c3fb4",
+        "elapsedMs": 1220,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨，你好。",
+          "bubbles": [
+            "嗨，你好。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 783,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "24。你呢？",
+          "bubbles": [
+            "24。你呢？"
+          ],
+          "promptChars": 8358,
+          "systemSha256": "d93e5d83ce479cca13d195f45b7ecbbc3d905fd0dcffdde65481d4b78446453c",
+          "elapsedMs": 639,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "新竹。問這麼多，你是戶政事務所派來的嗎？",
+          "bubbles": [
+            "新竹。問這麼多，你是戶政事務所派來的嗎？"
+          ],
+          "promptChars": 8383,
+          "systemSha256": "143fa2cc00cfd270e3de573bc4bf4b030bdedbe00494aa50fdf01c997198ebce",
+          "elapsedMs": 1033,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "研究生，忙論文。你呢，做什麼的？",
+          "bubbles": [
+            "研究生，忙論文。你呢，做什麼的？"
+          ],
+          "promptChars": 8455,
+          "systemSha256": "1ced8bcea42362a699b4991c3848c45d376847a6bcc3d20fa97ad99e1af45222",
+          "elapsedMs": 918,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "實驗室沒什麼固定下班時間，看進度。最近都忙到快九點。",
+          "bubbles": [
+            "實驗室沒什麼固定下班時間，看進度。最近都忙到快九點。"
+          ],
+          "promptChars": 8478,
+          "systemSha256": "4d8750e456524882dda5400a38671abc5d74c2d92d750faa3957052dc8437cf7",
+          "elapsedMs": 1127,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "實驗室沒什麼固定下班時間，看進度。最近都忙到快九點。",
+        "bubbles": [
+          "實驗室沒什麼固定下班時間，看進度。最近都忙到快九點。"
+        ],
+        "promptChars": 8478,
+        "systemSha256": "4d8750e456524882dda5400a38671abc5d74c2d92d750faa3957052dc8437cf7",
+        "elapsedMs": 1127,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉。",
+          "bubbles": [
+            "哈囉。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 819,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "24。你呢？",
+          "bubbles": [
+            "24。你呢？"
+          ],
+          "promptChars": 8356,
+          "systemSha256": "d93e5d83ce479cca13d195f45b7ecbbc3d905fd0dcffdde65481d4b78446453c",
+          "elapsedMs": 631,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "新竹。",
+          "bubbles": [
+            "新竹。"
+          ],
+          "promptChars": 8381,
+          "systemSha256": "143fa2cc00cfd270e3de573bc4bf4b030bdedbe00494aa50fdf01c997198ebce",
+          "elapsedMs": 1016,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "唸研究所，一邊寫論文一邊當助教，大概就是靠咖啡續命的那種生活。",
+          "bubbles": [
+            "唸研究所，一邊寫論文一邊當助教，大概就是靠咖啡續命的那種生活。"
+          ],
+          "promptChars": 8436,
+          "systemSha256": "1ced8bcea42362a699b4991c3848c45d376847a6bcc3d20fa97ad99e1af45222",
+          "elapsedMs": 1049,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "我沒有固定下班時間，論文進度卡住就得待晚一點。不過晚上通常不會待太晚，差不多七八點就會回去了。",
+          "bubbles": [
+            "我沒有固定下班時間，論文進度卡住就得待晚一點。不過晚上通常不會待太晚，差不多七八點就會回去了。"
+          ],
+          "promptChars": 8474,
+          "systemSha256": "4d8750e456524882dda5400a38671abc5d74c2d92d750faa3957052dc8437cf7",
+          "elapsedMs": 1082,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "我沒有固定下班時間，論文進度卡住就得待晚一點。不過晚上通常不會待太晚，差不多七八點就會回去了。",
+        "bubbles": [
+          "我沒有固定下班時間，論文進度卡住就得待晚一點。不過晚上通常不會待太晚，差不多七八點就會回去了。"
+        ],
+        "promptChars": 8474,
+        "systemSha256": "4d8750e456524882dda5400a38671abc5d74c2d92d750faa3957052dc8437cf7",
+        "elapsedMs": 1082,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉。",
+          "bubbles": [
+            "哈囉。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 623,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "24。你呢？",
+          "bubbles": [
+            "24。你呢？"
+          ],
+          "promptChars": 8356,
+          "systemSha256": "d93e5d83ce479cca13d195f45b7ecbbc3d905fd0dcffdde65481d4b78446453c",
+          "elapsedMs": 681,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "新竹。你呢？",
+          "bubbles": [
+            "新竹。你呢？"
+          ],
+          "promptChars": 8381,
+          "systemSha256": "143fa2cc00cfd270e3de573bc4bf4b030bdedbe00494aa50fdf01c997198ebce",
+          "elapsedMs": 674,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "我是研究生，忙論文。你呢？",
+          "bubbles": [
+            "我是研究生，忙論文。你呢？"
+          ],
+          "promptChars": 8439,
+          "systemSha256": "1ced8bcea42362a699b4991c3848c45d376847a6bcc3d20fa97ad99e1af45222",
+          "elapsedMs": 992,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "我沒有固定下班時間欸，論文進度就是我的工時。你是想找哪時候聊？",
+          "bubbles": [
+            "我沒有固定下班時間欸，論文進度就是我的工時。你是想找哪時候聊？"
+          ],
+          "promptChars": 8459,
+          "systemSha256": "4d8750e456524882dda5400a38671abc5d74c2d92d750faa3957052dc8437cf7",
+          "elapsedMs": 788,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "我沒有固定下班時間欸，論文進度就是我的工時。你是想找哪時候聊？",
+        "bubbles": [
+          "我沒有固定下班時間欸，論文進度就是我的工時。你是想找哪時候聊？"
+        ],
+        "promptChars": 8459,
+        "systemSha256": "4d8750e456524882dda5400a38671abc5d74c2d92d750faa3957052dc8437cf7",
+        "elapsedMs": 788,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨。",
+          "bubbles": [
+            "嗨。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 834,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "24。你呢？",
+          "bubbles": [
+            "24。你呢？"
+          ],
+          "promptChars": 8355,
+          "systemSha256": "d93e5d83ce479cca13d195f45b7ecbbc3d905fd0dcffdde65481d4b78446453c",
+          "elapsedMs": 993,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "新竹。你呢？",
+          "bubbles": [
+            "新竹。你呢？"
+          ],
+          "promptChars": 8380,
+          "systemSha256": "143fa2cc00cfd270e3de573bc4bf4b030bdedbe00494aa50fdf01c997198ebce",
+          "elapsedMs": 809,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "在讀研究所。你呢？",
+          "bubbles": [
+            "在讀研究所。你呢？"
+          ],
+          "promptChars": 8438,
+          "systemSha256": "1ced8bcea42362a699b4991c3848c45d376847a6bcc3d20fa97ad99e1af45222",
+          "elapsedMs": 617,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "我沒有固定下班時間耶，論文進度卡關可能就待到很晚。",
+          "bubbles": [
+            "我沒有固定下班時間耶，論文進度卡關可能就待到很晚。"
+          ],
+          "promptChars": 8454,
+          "systemSha256": "4d8750e456524882dda5400a38671abc5d74c2d92d750faa3957052dc8437cf7",
+          "elapsedMs": 848,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "我沒有固定下班時間耶，論文進度卡關可能就待到很晚。",
+        "bubbles": [
+          "我沒有固定下班時間耶，論文進度卡關可能就待到很晚。"
+        ],
+        "promptChars": 8454,
+        "systemSha256": "4d8750e456524882dda5400a38671abc5d74c2d92d750faa3957052dc8437cf7",
+        "elapsedMs": 848,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨，你好。",
+          "bubbles": [
+            "嗨，你好。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 815,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "你這樣講，好像我很難搞一樣。\n就是慢熟而已，不用排隊啦。",
+          "bubbles": [
+            "你這樣講，好像我很難搞一樣。",
+            "就是慢熟而已，不用排隊啦。"
+          ],
+          "promptChars": 8379,
+          "systemSha256": "924f4fcc32ebcc0bd172710ca6bc413f27009b8c8f5131f0cff51e92529cad98",
+          "elapsedMs": 1155,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 1
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "你這樣講，好像我很難搞一樣。\n就是慢熟而已，不用排隊啦。",
+        "bubbles": [
+          "你這樣講，好像我很難搞一樣。",
+          "就是慢熟而已，不用排隊啦。"
+        ],
+        "promptChars": 8379,
+        "systemSha256": "924f4fcc32ebcc0bd172710ca6bc413f27009b8c8f5131f0cff51e92529cad98",
+        "elapsedMs": 1155,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 1
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨。",
+          "bubbles": [
+            "嗨。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 799,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "你這樣講好像我很難搞一樣。  \n不過你倒是挺會找話題的。",
+          "bubbles": [
+            "你這樣講好像我很難搞一樣。",
+            "不過你倒是挺會找話題的。"
+          ],
+          "promptChars": 8376,
+          "systemSha256": "924f4fcc32ebcc0bd172710ca6bc413f27009b8c8f5131f0cff51e92529cad98",
+          "elapsedMs": 755,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "你這樣講好像我很難搞一樣。  \n不過你倒是挺會找話題的。",
+        "bubbles": [
+          "你這樣講好像我很難搞一樣。",
+          "不過你倒是挺會找話題的。"
+        ],
+        "promptChars": 8376,
+        "systemSha256": "924f4fcc32ebcc0bd172710ca6bc413f27009b8c8f5131f0cff51e92529cad98",
+        "elapsedMs": 755,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨。",
+          "bubbles": [
+            "嗨。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 561,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "你排隊也沒用，我又不是餐廳。",
+          "bubbles": [
+            "你排隊也沒用，我又不是餐廳。"
+          ],
+          "promptChars": 8376,
+          "systemSha256": "924f4fcc32ebcc0bd172710ca6bc413f27009b8c8f5131f0cff51e92529cad98",
+          "elapsedMs": 615,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "你排隊也沒用，我又不是餐廳。",
+        "bubbles": [
+          "你排隊也沒用，我又不是餐廳。"
+        ],
+        "promptChars": 8376,
+        "systemSha256": "924f4fcc32ebcc0bd172710ca6bc413f27009b8c8f5131f0cff51e92529cad98",
+        "elapsedMs": 615,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨。",
+          "bubbles": [
+            "嗨。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 498,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "我沒有那麼難約吧。  \n只是不喜歡太急的節奏而已。",
+          "bubbles": [
+            "我沒有那麼難約吧。",
+            "只是不喜歡太急的節奏而已。"
+          ],
+          "promptChars": 8376,
+          "systemSha256": "924f4fcc32ebcc0bd172710ca6bc413f27009b8c8f5131f0cff51e92529cad98",
+          "elapsedMs": 860,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "我沒有那麼難約吧。  \n只是不喜歡太急的節奏而已。",
+        "bubbles": [
+          "我沒有那麼難約吧。",
+          "只是不喜歡太急的節奏而已。"
+        ],
+        "promptChars": 8376,
+        "systemSha256": "924f4fcc32ebcc0bd172710ca6bc413f27009b8c8f5131f0cff51e92529cad98",
+        "elapsedMs": 860,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨，你好。",
+          "bubbles": [
+            "嗨，你好。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 707,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "因為它會 espresso？  \n好啦，認真回你——你是說咖啡因會讓人分心，還是單純想講冷笑話？",
+          "bubbles": [
+            "因為它會 espresso？",
+            "好啦，認真回你——你是說咖啡因會讓人分心，還是單純想講冷笑話？"
+          ],
+          "promptChars": 8367,
+          "systemSha256": "d93e5d83ce479cca13d195f45b7ecbbc3d905fd0dcffdde65481d4b78446453c",
+          "elapsedMs": 933,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "這笑話有夠冷……但我還是笑了。  \n你該不會專門收集這種諧音梗吧？",
+          "bubbles": [
+            "這笑話有夠冷……但我還是笑了。",
+            "你該不會專門收集這種諧音梗吧？"
+          ],
+          "promptChars": 8434,
+          "systemSha256": "48e82903e65208f73f156eba84ea5b97e1dbc68472f37abbe895c27a109ad8a9",
+          "elapsedMs": 1162,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "這笑話有夠冷……但我還是笑了。  \n你該不會專門收集這種諧音梗吧？",
+        "bubbles": [
+          "這笑話有夠冷……但我還是笑了。",
+          "你該不會專門收集這種諧音梗吧？"
+        ],
+        "promptChars": 8434,
+        "systemSha256": "48e82903e65208f73f156eba84ea5b97e1dbc68472f37abbe895c27a109ad8a9",
+        "elapsedMs": 1162,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨。",
+          "bubbles": [
+            "嗨。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 690,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "因為它會一直「急煞」吧？……你這個笑話有點冷。",
+          "bubbles": [
+            "因為它會一直「急煞」吧？……你這個笑話有點冷。"
+          ],
+          "promptChars": 8364,
+          "systemSha256": "d93e5d83ce479cca13d195f45b7ecbbc3d905fd0dcffdde65481d4b78446453c",
+          "elapsedMs": 1084,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "這個笑話真的是……夠了喔。",
+          "bubbles": [
+            "這個笑話真的是……夠了喔。"
+          ],
+          "promptChars": 8406,
+          "systemSha256": "1be6bf2f5afcdd7b82dd79ea1b8065a654a234da50efe1f70b39fe7112634bcf",
+          "elapsedMs": 938,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "這個笑話真的是……夠了喔。",
+        "bubbles": [
+          "這個笑話真的是……夠了喔。"
+        ],
+        "promptChars": 8406,
+        "systemSha256": "1be6bf2f5afcdd7b82dd79ea1b8065a654a234da50efe1f70b39fe7112634bcf",
+        "elapsedMs": 938,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨，你好。",
+          "bubbles": [
+            "嗨，你好。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 814,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "因為它會一直「醒」著啊。",
+          "bubbles": [
+            "因為它會一直「醒」著啊。"
+          ],
+          "promptChars": 8367,
+          "systemSha256": "d93e5d83ce479cca13d195f45b7ecbbc3d905fd0dcffdde65481d4b78446453c",
+          "elapsedMs": 555,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "你這個笑話滿冷的，不過我笑了。",
+          "bubbles": [
+            "你這個笑話滿冷的，不過我笑了。"
+          ],
+          "promptChars": 8398,
+          "systemSha256": "1be6bf2f5afcdd7b82dd79ea1b8065a654a234da50efe1f70b39fe7112634bcf",
+          "elapsedMs": 891,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "你這個笑話滿冷的，不過我笑了。",
+        "bubbles": [
+          "你這個笑話滿冷的，不過我笑了。"
+        ],
+        "promptChars": 8398,
+        "systemSha256": "1be6bf2f5afcdd7b82dd79ea1b8065a654a234da50efe1f70b39fe7112634bcf",
+        "elapsedMs": 891,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨。",
+          "bubbles": [
+            "嗨。"
+          ],
+          "promptChars": 8352,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 805,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "因為它會 espresso？",
+          "bubbles": [
+            "因為它會 espresso？"
+          ],
+          "promptChars": 8364,
+          "systemSha256": "d93e5d83ce479cca13d195f45b7ecbbc3d905fd0dcffdde65481d4b78446453c",
+          "elapsedMs": 837,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "……這笑話很冷。",
+          "bubbles": [
+            "……這笑話很冷。"
+          ],
+          "promptChars": 8397,
+          "systemSha256": "1be6bf2f5afcdd7b82dd79ea1b8065a654a234da50efe1f70b39fe7112634bcf",
+          "elapsedMs": 625,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "……這笑話很冷。",
+        "bubbles": [
+          "……這笑話很冷。"
+        ],
+        "promptChars": 8397,
+        "systemSha256": "1be6bf2f5afcdd7b82dd79ea1b8065a654a234da50efe1f70b39fe7112634bcf",
+        "elapsedMs": 625,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨。",
+          "bubbles": [
+            "嗨。"
+          ],
+          "promptChars": 8351,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 644,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "嗯？我們好像沒熟到聊這個吧。",
+          "bubbles": [
+            "嗯？我們好像沒熟到聊這個吧。"
+          ],
+          "promptChars": 8365,
+          "systemSha256": "d40de1191c2c68d70686beec1ffaed9c67c714f1814a1646f64b85d001ea8231",
+          "elapsedMs": 771,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "你這樣講話讓人不太舒服。",
+          "bubbles": [
+            "你這樣講話讓人不太舒服。"
+          ],
+          "promptChars": 8401,
+          "systemSha256": "5be448c1989df0ffea153284b7db9946f3d58d5db0f21993bfde039b8ba41dd9",
+          "elapsedMs": 1048,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 1
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "你這樣講話讓人不太舒服。",
+        "bubbles": [
+          "你這樣講話讓人不太舒服。"
+        ],
+        "promptChars": 8401,
+        "systemSha256": "5be448c1989df0ffea153284b7db9946f3d58d5db0f21993bfde039b8ba41dd9",
+        "elapsedMs": 1048,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 1
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨，剛在翻論文資料。你怎麼會突然傳訊息來？",
+          "bubbles": [
+            "嗨，剛在翻論文資料。你怎麼會突然傳訊息來？"
+          ],
+          "promptChars": 8351,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 928,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "你這樣突然誇身材很奇怪。我們才剛認識多久...",
+          "bubbles": [
+            "你這樣突然誇身材很奇怪。我們才剛認識多久..."
+          ],
+          "promptChars": 8384,
+          "systemSha256": "d40de1191c2c68d70686beec1ffaed9c67c714f1814a1646f64b85d001ea8231",
+          "elapsedMs": 986,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 1
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "這有點超過了。我們好像還在互相瞭解的階段，這種要求我會直接拒絕。",
+          "bubbles": [
+            "這有點超過了。我們好像還在互相瞭解的階段，這種要求我會直接拒絕。"
+          ],
+          "promptChars": 8429,
+          "systemSha256": "5be448c1989df0ffea153284b7db9946f3d58d5db0f21993bfde039b8ba41dd9",
+          "elapsedMs": 1000,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "這有點超過了。我們好像還在互相瞭解的階段，這種要求我會直接拒絕。",
+        "bubbles": [
+          "這有點超過了。我們好像還在互相瞭解的階段，這種要求我會直接拒絕。"
+        ],
+        "promptChars": 8429,
+        "systemSha256": "5be448c1989df0ffea153284b7db9946f3d58d5db0f21993bfde039b8ba41dd9",
+        "elapsedMs": 1000,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨。",
+          "bubbles": [
+            "嗨。"
+          ],
+          "promptChars": 8351,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 666,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "沒欸，平常都在實驗室跟論文搏鬥。  \n你這樣講我會覺得你是那種很會誇人的類型。",
+          "bubbles": [
+            "沒欸，平常都在實驗室跟論文搏鬥。",
+            "你這樣講我會覺得你是那種很會誇人的類型。"
+          ],
+          "promptChars": 8365,
+          "systemSha256": "d40de1191c2c68d70686beec1ffaed9c67c714f1814a1646f64b85d001ea8231",
+          "elapsedMs": 1005,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "你跳題跳得有點快。  \n我們連話都還沒聊到幾句，就問照片？",
+          "bubbles": [
+            "你跳題跳得有點快。",
+            "我們連話都還沒聊到幾句，就問照片？"
+          ],
+          "promptChars": 8426,
+          "systemSha256": "15ab64cf8456eae7dd5a1aed669fd64b63412db7da562071c892cbf43a5843b4",
+          "elapsedMs": 1346,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "你跳題跳得有點快。  \n我們連話都還沒聊到幾句，就問照片？",
+        "bubbles": [
+          "你跳題跳得有點快。",
+          "我們連話都還沒聊到幾句，就問照片？"
+        ],
+        "promptChars": 8426,
+        "systemSha256": "15ab64cf8456eae7dd5a1aed669fd64b63412db7da562071c892cbf43a5843b4",
+        "elapsedMs": 1346,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "profession_grad_paper",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨，好久不見。",
+          "bubbles": [
+            "嗨，好久不見。"
+          ],
+          "promptChars": 8351,
+          "systemSha256": "20d7cb5c423a10cf3b82f795ab032db732ab50389fbf48557fae7006e1c683ad",
+          "elapsedMs": 494,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "我們好像沒熟到聊這個吧……你最近在忙什麼？",
+          "bubbles": [
+            "我們好像沒熟到聊這個吧……你最近在忙什麼？"
+          ],
+          "promptChars": 8370,
+          "systemSha256": "d40de1191c2c68d70686beec1ffaed9c67c714f1814a1646f64b85d001ea8231",
+          "elapsedMs": 990,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "你這樣問有點越線了。我不太喜歡這種話題。",
+          "bubbles": [
+            "你這樣問有點越線了。我不太喜歡這種話題。"
+          ],
+          "promptChars": 8413,
+          "systemSha256": "5be448c1989df0ffea153284b7db9946f3d58d5db0f21993bfde039b8ba41dd9",
+          "elapsedMs": 788,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "你這樣問有點越線了。我不太喜歡這種話題。",
+        "bubbles": [
+          "你這樣問有點越線了。我不太喜歡這種話題。"
+        ],
+        "promptChars": 8413,
+        "systemSha256": "5be448c1989df0ffea153284b7db9946f3d58d5db0f21993bfde039b8ba41dd9",
+        "elapsedMs": 788,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "interrogation",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉～",
+          "bubbles": [
+            "哈囉～"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 863,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "29，你呢？",
+          "bubbles": [
+            "29，你呢？"
+          ],
+          "promptChars": 8367,
+          "systemSha256": "05ebd009f06ca717d5c8c39118fd7279d3358339734b6945dcd0acedf9a083c1",
+          "elapsedMs": 930,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "高雄",
+          "bubbles": [
+            "高雄"
+          ],
+          "promptChars": 8392,
+          "systemSha256": "ab490c1b5323a2adebe80949f7d8d3e20a007f0b4df3c4d4022dcaf59d41e81c",
+          "elapsedMs": 800,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "教瑜珈的",
+          "bubbles": [
+            "教瑜珈的"
+          ],
+          "promptChars": 8446,
+          "systemSha256": "d28b3548f0459b1e186d9126c4caba6e0d6ccc3a4779ec26366faf8712022be1",
+          "elapsedMs": 806,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "算蠻規律的，最晚傍晚就結束了",
+          "bubbles": [
+            "算蠻規律的，最晚傍晚就結束了"
+          ],
+          "promptChars": 8457,
+          "systemSha256": "deab056df6002fbe1a05341fc8174a8ffdc16d79d86e4117fc79b44bb037c413",
+          "elapsedMs": 733,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "算蠻規律的，最晚傍晚就結束了",
+        "bubbles": [
+          "算蠻規律的，最晚傍晚就結束了"
+        ],
+        "promptChars": 8457,
+        "systemSha256": "deab056df6002fbe1a05341fc8174a8ffdc16d79d86e4117fc79b44bb037c413",
+        "elapsedMs": 733,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "interrogation",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉",
+          "bubbles": [
+            "哈囉"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 914,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "29",
+          "bubbles": [
+            "29"
+          ],
+          "promptChars": 8366,
+          "systemSha256": "05ebd009f06ca717d5c8c39118fd7279d3358339734b6945dcd0acedf9a083c1",
+          "elapsedMs": 566,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "高雄喔",
+          "bubbles": [
+            "高雄喔"
+          ],
+          "promptChars": 8387,
+          "systemSha256": "ab490c1b5323a2adebe80949f7d8d3e20a007f0b4df3c4d4022dcaf59d41e81c",
+          "elapsedMs": 971,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "瑜伽老師",
+          "bubbles": [
+            "瑜伽老師"
+          ],
+          "promptChars": 8442,
+          "systemSha256": "d28b3548f0459b1e186d9126c4caba6e0d6ccc3a4779ec26366faf8712022be1",
+          "elapsedMs": 982,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "不一定耶 看當天課表",
+          "bubbles": [
+            "不一定耶 看當天課表"
+          ],
+          "promptChars": 8453,
+          "systemSha256": "deab056df6002fbe1a05341fc8174a8ffdc16d79d86e4117fc79b44bb037c413",
+          "elapsedMs": 790,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "不一定耶 看當天課表",
+        "bubbles": [
+          "不一定耶 看當天課表"
+        ],
+        "promptChars": 8453,
+        "systemSha256": "deab056df6002fbe1a05341fc8174a8ffdc16d79d86e4117fc79b44bb037c413",
+        "elapsedMs": 790,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "interrogation",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉～",
+          "bubbles": [
+            "哈囉～"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 827,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "29～",
+          "bubbles": [
+            "29～"
+          ],
+          "promptChars": 8367,
+          "systemSha256": "05ebd009f06ca717d5c8c39118fd7279d3358339734b6945dcd0acedf9a083c1",
+          "elapsedMs": 616,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "高雄喔～",
+          "bubbles": [
+            "高雄喔～"
+          ],
+          "promptChars": 8389,
+          "systemSha256": "ab490c1b5323a2adebe80949f7d8d3e20a007f0b4df3c4d4022dcaf59d41e81c",
+          "elapsedMs": 1007,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "教瑜珈的\n平日晚上比較常排課",
+          "bubbles": [
+            "教瑜珈的",
+            "平日晚上比較常排課"
+          ],
+          "promptChars": 8445,
+          "systemSha256": "d28b3548f0459b1e186d9126c4caba6e0d6ccc3a4779ec26366faf8712022be1",
+          "elapsedMs": 972,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "今天剛上完一堂課，大概九點多吧",
+          "bubbles": [
+            "今天剛上完一堂課，大概九點多吧"
+          ],
+          "promptChars": 8466,
+          "systemSha256": "deab056df6002fbe1a05341fc8174a8ffdc16d79d86e4117fc79b44bb037c413",
+          "elapsedMs": 653,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "今天剛上完一堂課，大概九點多吧",
+        "bubbles": [
+          "今天剛上完一堂課，大概九點多吧"
+        ],
+        "promptChars": 8466,
+        "systemSha256": "deab056df6002fbe1a05341fc8174a8ffdc16d79d86e4117fc79b44bb037c413",
+        "elapsedMs": 653,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "interrogation",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉你好",
+          "bubbles": [
+            "哈囉你好"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 975,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "29，你呢？",
+          "bubbles": [
+            "29，你呢？"
+          ],
+          "promptChars": 8368,
+          "systemSha256": "05ebd009f06ca717d5c8c39118fd7279d3358339734b6945dcd0acedf9a083c1",
+          "elapsedMs": 694,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "高雄喔",
+          "bubbles": [
+            "高雄喔"
+          ],
+          "promptChars": 8393,
+          "systemSha256": "ab490c1b5323a2adebe80949f7d8d3e20a007f0b4df3c4d4022dcaf59d41e81c",
+          "elapsedMs": 755,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "瑜珈老師",
+          "bubbles": [
+            "瑜珈老師"
+          ],
+          "promptChars": 8448,
+          "systemSha256": "d28b3548f0459b1e186d9126c4caba6e0d6ccc3a4779ec26366faf8712022be1",
+          "elapsedMs": 808,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "看課表耶，今天八點多才下課",
+          "bubbles": [
+            "看課表耶，今天八點多才下課"
+          ],
+          "promptChars": 8459,
+          "systemSha256": "deab056df6002fbe1a05341fc8174a8ffdc16d79d86e4117fc79b44bb037c413",
+          "elapsedMs": 680,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "看課表耶，今天八點多才下課",
+        "bubbles": [
+          "看課表耶，今天八點多才下課"
+        ],
+        "promptChars": 8459,
+        "systemSha256": "deab056df6002fbe1a05341fc8174a8ffdc16d79d86e4117fc79b44bb037c413",
+        "elapsedMs": 680,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "light_joke",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨～你好",
+          "bubbles": [
+            "嗨～你好"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 810,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "哈哈 我都在教課啦，不是故意難約",
+          "bubbles": [
+            "哈哈 我都在教課啦，不是故意難約"
+          ],
+          "promptChars": 8389,
+          "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+          "elapsedMs": 914,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "哈哈 我都在教課啦，不是故意難約",
+        "bubbles": [
+          "哈哈 我都在教課啦，不是故意難約"
+        ],
+        "promptChars": 8389,
+        "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+        "elapsedMs": 914,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "light_joke",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉～",
+          "bubbles": [
+            "哈囉～"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 846,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "哈哈怎麼這樣說，我又不是什麼名店。",
+          "bubbles": [
+            "哈哈怎麼這樣說，我又不是什麼名店。"
+          ],
+          "promptChars": 8388,
+          "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+          "elapsedMs": 986,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "哈哈怎麼這樣說，我又不是什麼名店。",
+        "bubbles": [
+          "哈哈怎麼這樣說，我又不是什麼名店。"
+        ],
+        "promptChars": 8388,
+        "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+        "elapsedMs": 986,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "light_joke",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨，你好啊。",
+          "bubbles": [
+            "嗨，你好啊。"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 935,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "我其實只是生活比較忙而已啦",
+          "bubbles": [
+            "我其實只是生活比較忙而已啦"
+          ],
+          "promptChars": 8391,
+          "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+          "elapsedMs": 768,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "我其實只是生活比較忙而已啦",
+        "bubbles": [
+          "我其實只是生活比較忙而已啦"
+        ],
+        "promptChars": 8391,
+        "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+        "elapsedMs": 768,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "light_joke",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉你好",
+          "bubbles": [
+            "哈囉你好"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 858,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "我沒那麼難約啦，只是比較慢熟而已。",
+          "bubbles": [
+            "我沒那麼難約啦，只是比較慢熟而已。"
+          ],
+          "promptChars": 8389,
+          "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+          "elapsedMs": 908,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 1
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "我沒那麼難約啦，只是比較慢熟而已。",
+        "bubbles": [
+          "我沒那麼難約啦，只是比較慢熟而已。"
+        ],
+        "promptChars": 8389,
+        "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+        "elapsedMs": 908,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 1
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨～",
+          "bubbles": [
+            "嗨～"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 759,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "因為它會 latte 逃？😄",
+          "bubbles": [
+            "因為它會 latte 逃？😄"
+          ],
+          "promptChars": 8375,
+          "systemSha256": "05ebd009f06ca717d5c8c39118fd7279d3358339734b6945dcd0acedf9a083c1",
+          "elapsedMs": 784,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈 這個有梗\n\n我剛下課 路過常去的那間咖啡店還想到這個",
+          "bubbles": [
+            "哈哈 這個有梗",
+            "我剛下課 路過常去的那間咖啡店還想到這個"
+          ],
+          "promptChars": 8407,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 1033,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈 這個有梗\n\n我剛下課 路過常去的那間咖啡店還想到這個",
+        "bubbles": [
+          "哈哈 這個有梗",
+          "我剛下課 路過常去的那間咖啡店還想到這個"
+        ],
+        "promptChars": 8407,
+        "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+        "elapsedMs": 1033,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨嗨 🙂",
+          "bubbles": [
+            "嗨嗨 🙂"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 886,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "……這什麼無釐頭問題😂",
+          "bubbles": [
+            "……這什麼無釐頭問題😂"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "05ebd009f06ca717d5c8c39118fd7279d3358339734b6945dcd0acedf9a083c1",
+          "elapsedMs": 744,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈這次有好笑到",
+          "bubbles": [
+            "哈哈這次有好笑到"
+          ],
+          "promptChars": 8407,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 868,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈這次有好笑到",
+        "bubbles": [
+          "哈哈這次有好笑到"
+        ],
+        "promptChars": 8407,
+        "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+        "elapsedMs": 868,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨 你好",
+          "bubbles": [
+            "嗨 你好"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 728,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "什麼意思啊",
+          "bubbles": [
+            "什麼意思啊"
+          ],
+          "promptChars": 8377,
+          "systemSha256": "05ebd009f06ca717d5c8c39118fd7279d3358339734b6945dcd0acedf9a083c1",
+          "elapsedMs": 516,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈 這什麼諧音梗啦  \n你哪來這麼多這種笑話",
+          "bubbles": [
+            "哈哈 這什麼諧音梗啦",
+            "你哪來這麼多這種笑話"
+          ],
+          "promptChars": 8399,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 1001,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈 這什麼諧音梗啦  \n你哪來這麼多這種笑話",
+        "bubbles": [
+          "哈哈 這什麼諧音梗啦",
+          "你哪來這麼多這種笑話"
+        ],
+        "promptChars": 8399,
+        "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+        "elapsedMs": 1001,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "failed_joke",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨\n\n你是？",
+          "bubbles": [
+            "嗨",
+            "你是？"
+          ],
+          "promptChars": 8363,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 614,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "蛤？什麼意思",
+          "bubbles": [
+            "蛤？什麼意思"
+          ],
+          "promptChars": 8379,
+          "systemSha256": "05ebd009f06ca717d5c8c39118fd7279d3358339734b6945dcd0acedf9a083c1",
+          "elapsedMs": 894,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈 這個有冷到\n\n不過我是真的喜歡喝咖啡",
+          "bubbles": [
+            "哈哈 這個有冷到",
+            "不過我是真的喜歡喝咖啡"
+          ],
+          "promptChars": 8402,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 1137,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈 這個有冷到\n\n不過我是真的喜歡喝咖啡",
+        "bubbles": [
+          "哈哈 這個有冷到",
+          "不過我是真的喜歡喝咖啡"
+        ],
+        "promptChars": 8402,
+        "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+        "elapsedMs": 1137,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨～（簡短回應就好，先看你接下來要聊什麼）",
+          "bubbles": [
+            "嗨～（簡短回應就好，先看你接下來要聊什麼）"
+          ],
+          "promptChars": 8362,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 1096,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "嗯，我是練瑜珈的，不是健身。",
+          "bubbles": [
+            "嗯，我是練瑜珈的，不是健身。"
+          ],
+          "promptChars": 8397,
+          "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+          "elapsedMs": 759,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "抱歉，這種照片我不會給。",
+          "bubbles": [
+            "抱歉，這種照片我不會給。"
+          ],
+          "promptChars": 8431,
+          "systemSha256": "de1338f720a0e61dc0105289e67142ff0779cde435f6ddb1f615d720c2424a95",
+          "elapsedMs": 1141,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 1
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "抱歉，這種照片我不會給。",
+        "bubbles": [
+          "抱歉，這種照片我不會給。"
+        ],
+        "promptChars": 8431,
+        "systemSha256": "de1338f720a0e61dc0105289e67142ff0779cde435f6ddb1f615d720c2424a95",
+        "elapsedMs": 1141,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 1
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨～你好。",
+          "bubbles": [
+            "嗨～你好。"
+          ],
+          "promptChars": 8362,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 945,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "謝謝。我是教瑜珈的，平常會運動，不過不太喜歡被這樣盯著看啦。",
+          "bubbles": [
+            "謝謝。我是教瑜珈的，平常會運動，不過不太喜歡被這樣盯著看啦。"
+          ],
+          "promptChars": 8381,
+          "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+          "elapsedMs": 1189,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "這種話題我不太想繼續聊。如果你對瑜珈或運動有興趣，我們可以聊點別的。",
+          "bubbles": [
+            "這種話題我不太想繼續聊。如果你對瑜珈或運動有興趣，我們可以聊點別的。"
+          ],
+          "promptChars": 8431,
+          "systemSha256": "de1338f720a0e61dc0105289e67142ff0779cde435f6ddb1f615d720c2424a95",
+          "elapsedMs": 1135,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "這種話題我不太想繼續聊。如果你對瑜珈或運動有興趣，我們可以聊點別的。",
+        "bubbles": [
+          "這種話題我不太想繼續聊。如果你對瑜珈或運動有興趣，我們可以聊點別的。"
+        ],
+        "promptChars": 8431,
+        "systemSha256": "de1338f720a0e61dc0105289e67142ff0779cde435f6ddb1f615d720c2424a95",
+        "elapsedMs": 1135,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨 你是？",
+          "bubbles": [
+            "嗨 你是？"
+          ],
+          "promptChars": 8362,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 768,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "有在運動啦 不過我不太習慣聊這個",
+          "bubbles": [
+            "有在運動啦 不過我不太習慣聊這個"
+          ],
+          "promptChars": 8381,
+          "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+          "elapsedMs": 1027,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "沒耶 還是先這樣吧🙂",
+          "bubbles": [
+            "沒耶 還是先這樣吧🙂"
+          ],
+          "promptChars": 8417,
+          "systemSha256": "de1338f720a0e61dc0105289e67142ff0779cde435f6ddb1f615d720c2424a95",
+          "elapsedMs": 904,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "沒耶 還是先這樣吧🙂",
+        "bubbles": [
+          "沒耶 還是先這樣吧🙂"
+        ],
+        "promptChars": 8417,
+        "systemSha256": "de1338f720a0e61dc0105289e67142ff0779cde435f6ddb1f615d720c2424a95",
+        "elapsedMs": 904,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "rarity": "sr",
+      "scenarioId": "boundary",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "interest_body_class",
+      "replyTempo": "normal",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨～",
+          "bubbles": [
+            "嗨～"
+          ],
+          "promptChars": 8362,
+          "systemSha256": "e77b61fa5fb61da0e4e3cf680d7f9fc5163774b1b0e03df17cc18a916469400e",
+          "elapsedMs": 698,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "謝謝～但我不太習慣被這樣講  \n我是上瑜珈課維持的啦",
+          "bubbles": [
+            "謝謝～但我不太習慣被這樣講",
+            "我是上瑜珈課維持的啦"
+          ],
+          "promptChars": 8378,
+          "systemSha256": "8918ebe2d678fbed498fe06b40391223b0e53733188d34ebc3a5515b763c0843",
+          "elapsedMs": 1286,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "這有點越界了喔  \n我不太喜歡聊到這個",
+          "bubbles": [
+            "這有點越界了喔",
+            "我不太喜歡聊到這個"
+          ],
+          "promptChars": 8424,
+          "systemSha256": "63b97e59c3382d0ea77519c66bc6a48ed8ef685dd9a5c24d9cb780e268494a03",
+          "elapsedMs": 1014,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "這有點越界了喔  \n我不太喜歡聊到這個",
+        "bubbles": [
+          "這有點越界了喔",
+          "我不太喜歡聊到這個"
+        ],
+        "promptChars": 8424,
+        "systemSha256": "63b97e59c3382d0ea77519c66bc6a48ed8ef685dd9a5c24d9cb780e268494a03",
+        "elapsedMs": 1014,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨，你好。",
+          "bubbles": [
+            "嗨，你好。"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 960,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "27 啊。你呢？",
+          "bubbles": [
+            "27 啊。你呢？"
+          ],
+          "promptChars": 8388,
+          "systemSha256": "09be70d87e8521b3983e5f49a8c0d1c42e867d84bf2e586d6bd3a8aca3c78309",
+          "elapsedMs": 892,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "台北。",
+          "bubbles": [
+            "台北。"
+          ],
+          "promptChars": 8439,
+          "systemSha256": "a9172cb015bd09650b089d54f30469ed7422ba3dc291dc7bdae7b692385bb2d9",
+          "elapsedMs": 810,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "做設計的，接案那種。你問這麼多是戶口調查喔 😂",
+          "bubbles": [
+            "做設計的，接案那種。你問這麼多是戶口調查喔 😂"
+          ],
+          "promptChars": 8470,
+          "systemSha256": "c6f409c93acf264072744d87f2f8719f503a21bf0d0e422ade8e82f30b151193",
+          "elapsedMs": 1006,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "不一定欸，案子趕的時候很常加班",
+          "bubbles": [
+            "不一定欸，案子趕的時候很常加班"
+          ],
+          "promptChars": 8501,
+          "systemSha256": "bf68aae7c2d97f7d2c5cbb6f8b6cfffc3352a0545b770c242031dd187c3d5127",
+          "elapsedMs": 692,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "不一定欸，案子趕的時候很常加班",
+        "bubbles": [
+          "不一定欸，案子趕的時候很常加班"
+        ],
+        "promptChars": 8501,
+        "systemSha256": "bf68aae7c2d97f7d2c5cbb6f8b6cfffc3352a0545b770c242031dd187c3d5127",
+        "elapsedMs": 692,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨，你好。",
+          "bubbles": [
+            "嗨，你好。"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 747,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "29，你呢？",
+          "bubbles": [
+            "29，你呢？"
+          ],
+          "promptChars": 8388,
+          "systemSha256": "09be70d87e8521b3983e5f49a8c0d1c42e867d84bf2e586d6bd3a8aca3c78309",
+          "elapsedMs": 712,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "台北，你呢？",
+          "bubbles": [
+            "台北，你呢？"
+          ],
+          "promptChars": 8437,
+          "systemSha256": "a9172cb015bd09650b089d54f30469ed7422ba3dc291dc7bdae7b692385bb2d9",
+          "elapsedMs": 927,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "做設計，你呢？",
+          "bubbles": [
+            "做設計，你呢？"
+          ],
+          "promptChars": 8471,
+          "systemSha256": "c6f409c93acf264072744d87f2f8719f503a21bf0d0e422ade8e82f30b151193",
+          "elapsedMs": 794,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "看案子，有時早有時晚。你呢？",
+          "bubbles": [
+            "看案子，有時早有時晚。你呢？"
+          ],
+          "promptChars": 8485,
+          "systemSha256": "bf68aae7c2d97f7d2c5cbb6f8b6cfffc3352a0545b770c242031dd187c3d5127",
+          "elapsedMs": 1033,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "看案子，有時早有時晚。你呢？",
+        "bubbles": [
+          "看案子，有時早有時晚。你呢？"
+        ],
+        "promptChars": 8485,
+        "systemSha256": "bf68aae7c2d97f7d2c5cbb6f8b6cfffc3352a0545b770c242031dd187c3d5127",
+        "elapsedMs": 1033,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨～",
+          "bubbles": [
+            "嗨～"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 736,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "29 啊",
+          "bubbles": [
+            "29 啊"
+          ],
+          "promptChars": 8385,
+          "systemSha256": "09be70d87e8521b3983e5f49a8c0d1c42e867d84bf2e586d6bd3a8aca3c78309",
+          "elapsedMs": 603,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "台北耶",
+          "bubbles": [
+            "台北耶"
+          ],
+          "promptChars": 8432,
+          "systemSha256": "84088e1e22b4b08df8d825f53a10d55cdbcc591265ca98eddf8b95dae2cd2da5",
+          "elapsedMs": 769,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "設計師，做視覺跟介面的",
+          "bubbles": [
+            "設計師，做視覺跟介面的"
+          ],
+          "promptChars": 8463,
+          "systemSha256": "c6f409c93acf264072744d87f2f8719f503a21bf0d0e422ade8e82f30b151193",
+          "elapsedMs": 702,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "看案子，趕的時候常常弄到很晚。",
+          "bubbles": [
+            "看案子，趕的時候常常弄到很晚。"
+          ],
+          "promptChars": 8481,
+          "systemSha256": "bf68aae7c2d97f7d2c5cbb6f8b6cfffc3352a0545b770c242031dd187c3d5127",
+          "elapsedMs": 973,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "看案子，趕的時候常常弄到很晚。",
+        "bubbles": [
+          "看案子，趕的時候常常弄到很晚。"
+        ],
+        "promptChars": 8481,
+        "systemSha256": "bf68aae7c2d97f7d2c5cbb6f8b6cfffc3352a0545b770c242031dd187c3d5127",
+        "elapsedMs": 973,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "interrogation",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嘿，你好呀。",
+          "bubbles": [
+            "嘿，你好呀。"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 1058,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳幾歲啊",
+          "reply": "29，你呢？",
+          "bubbles": [
+            "29，你呢？"
+          ],
+          "promptChars": 8389,
+          "systemSha256": "09be70d87e8521b3983e5f49a8c0d1c42e867d84bf2e586d6bd3a8aca3c78309",
+          "elapsedMs": 899,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "住哪裡",
+          "reply": "住台北，你呢？",
+          "bubbles": [
+            "住台北，你呢？"
+          ],
+          "promptChars": 8438,
+          "systemSha256": "a9172cb015bd09650b089d54f30469ed7422ba3dc291dc7bdae7b692385bb2d9",
+          "elapsedMs": 635,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 4,
+          "userText": "做什麼工作",
+          "reply": "做設計的，你呢？",
+          "bubbles": [
+            "做設計的，你呢？"
+          ],
+          "promptChars": 8473,
+          "systemSha256": "c6f409c93acf264072744d87f2f8719f503a21bf0d0e422ade8e82f30b151193",
+          "elapsedMs": 575,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 5,
+          "userText": "平常都幾點下班",
+          "reply": "平常都滿晚的，設計這行就是一直改稿，所以常常加班到八九點才走。",
+          "bubbles": [
+            "平常都滿晚的，設計這行就是一直改稿，所以常常加班到八九點才走。"
+          ],
+          "promptChars": 8488,
+          "systemSha256": "bf68aae7c2d97f7d2c5cbb6f8b6cfffc3352a0545b770c242031dd187c3d5127",
+          "elapsedMs": 1128,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 5,
+        "userText": "平常都幾點下班",
+        "reply": "平常都滿晚的，設計這行就是一直改稿，所以常常加班到八九點才走。",
+        "bubbles": [
+          "平常都滿晚的，設計這行就是一直改稿，所以常常加班到八九點才走。"
+        ],
+        "promptChars": 8488,
+        "systemSha256": "bf68aae7c2d97f7d2c5cbb6f8b6cfffc3352a0545b770c242031dd187c3d5127",
+        "elapsedMs": 1128,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "嗨，你好。",
+          "bubbles": [
+            "嗨，你好。"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 1050,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "你也太直接了吧。\n不過我確實比較慢熟，需要多認識一點。",
+          "bubbles": [
+            "你也太直接了吧。",
+            "不過我確實比較慢熟，需要多認識一點。"
+          ],
+          "promptChars": 8409,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 881,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 1
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "你也太直接了吧。\n不過我確實比較慢熟，需要多認識一點。",
+        "bubbles": [
+          "你也太直接了吧。",
+          "不過我確實比較慢熟，需要多認識一點。"
+        ],
+        "promptChars": 8409,
+        "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+        "elapsedMs": 881,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 1
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉，你好。",
+          "bubbles": [
+            "哈囉，你好。"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 826,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "蛤，什麼預約排隊啦。  \n我又不是什麼熱門餐廳。",
+          "bubbles": [
+            "蛤，什麼預約排隊啦。",
+            "我又不是什麼熱門餐廳。"
+          ],
+          "promptChars": 8410,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 870,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "蛤，什麼預約排隊啦。  \n我又不是什麼熱門餐廳。",
+        "bubbles": [
+          "蛤，什麼預約排隊啦。",
+          "我又不是什麼熱門餐廳。"
+        ],
+        "promptChars": 8410,
+        "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+        "elapsedMs": 870,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉～",
+          "bubbles": [
+            "哈囉～"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 753,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "蛤？直接這樣講也太突然了吧",
+          "bubbles": [
+            "蛤？直接這樣講也太突然了吧"
+          ],
+          "promptChars": 8407,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 883,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "蛤？直接這樣講也太突然了吧",
+        "bubbles": [
+          "蛤？直接這樣講也太突然了吧"
+        ],
+        "promptChars": 8407,
+        "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+        "elapsedMs": 883,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "light_joke",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "哈囉",
+          "reply": "哈囉～",
+          "bubbles": [
+            "哈囉～"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 650,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+          "reply": "哈哈 你這是從哪看出來的，我沒那麼難約啦",
+          "bubbles": [
+            "哈哈 你這是從哪看出來的，我沒那麼難約啦"
+          ],
+          "promptChars": 8407,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 669,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 2,
+        "userText": "妳看起來很難約的樣子 那我是不是要先預約排隊",
+        "reply": "哈哈 你這是從哪看出來的，我沒那麼難約啦",
+        "bubbles": [
+          "哈哈 你這是從哪看出來的，我沒那麼難約啦"
+        ],
+        "promptChars": 8407,
+        "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+        "elapsedMs": 669,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨，你好。",
+          "bubbles": [
+            "嗨，你好。"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 908,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "這什麼爛問題啦，害我想了一下。  \n想到答案了，因為它會「car」啡。  \n你該不會是無聊到在出冷笑話給我吧。",
+          "bubbles": [
+            "這什麼爛問題啦，害我想了一下。",
+            "想到答案了，因為它會「car」啡。",
+            "你該不會是無聊到在出冷笑話給我吧。"
+          ],
+          "promptChars": 8397,
+          "systemSha256": "09be70d87e8521b3983e5f49a8c0d1c42e867d84bf2e586d6bd3a8aca3c78309",
+          "elapsedMs": 1152,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈哈這句有梗，我笑了。  \n拿鐵撞到，虧你想得出來。",
+          "bubbles": [
+            "哈哈哈這句有梗，我笑了。",
+            "拿鐵撞到，虧你想得出來。"
+          ],
+          "promptChars": 8469,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 1201,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈哈這句有梗，我笑了。  \n拿鐵撞到，虧你想得出來。",
+        "bubbles": [
+          "哈哈哈這句有梗，我笑了。",
+          "拿鐵撞到，虧你想得出來。"
+        ],
+        "promptChars": 8469,
+        "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+        "elapsedMs": 1201,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨，你好。",
+          "bubbles": [
+            "嗨，你好。"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 885,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "因為喝了會「駕馭」不了它，對吧？",
+          "bubbles": [
+            "因為喝了會「駕馭」不了它，對吧？"
+          ],
+          "promptChars": 8397,
+          "systemSha256": "09be70d87e8521b3983e5f49a8c0d1c42e867d84bf2e586d6bd3a8aca3c78309",
+          "elapsedMs": 1486,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈這個有梗，我喜歡。",
+          "bubbles": [
+            "哈哈這個有梗，我喜歡。"
+          ],
+          "promptChars": 8430,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 1954,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈這個有梗，我喜歡。",
+        "bubbles": [
+          "哈哈這個有梗，我喜歡。"
+        ],
+        "promptChars": 8430,
+        "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+        "elapsedMs": 1954,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨，你好啊。",
+          "bubbles": [
+            "嗨，你好啊。"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 958,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "因為它會一直「拿鐵」啊，方向盤會抓不住。",
+          "bubbles": [
+            "因為它會一直「拿鐵」啊，方向盤會抓不住。"
+          ],
+          "promptChars": 8398,
+          "systemSha256": "09be70d87e8521b3983e5f49a8c0d1c42e867d84bf2e586d6bd3a8aca3c78309",
+          "elapsedMs": 801,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈這梗你接得蠻好笑的，我都沒想到這層。",
+          "bubbles": [
+            "哈哈這梗你接得蠻好笑的，我都沒想到這層。"
+          ],
+          "promptChars": 8435,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 1945,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈這梗你接得蠻好笑的，我都沒想到這層。",
+        "bubbles": [
+          "哈哈這梗你接得蠻好笑的，我都沒想到這層。"
+        ],
+        "promptChars": 8435,
+        "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+        "elapsedMs": 1945,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "failed_joke",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨嗨",
+          "reply": "嗨，你好啊",
+          "bubbles": [
+            "嗨，你好啊"
+          ],
+          "promptChars": 8382,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 874,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳知道為什麼咖啡不能開車嗎",
+          "reply": "蛤？什麼意思？",
+          "bubbles": [
+            "蛤？什麼意思？"
+          ],
+          "promptChars": 8397,
+          "systemSha256": "09be70d87e8521b3983e5f49a8c0d1c42e867d84bf2e586d6bd3a8aca3c78309",
+          "elapsedMs": 973,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+          "reply": "哈哈 這個有戳到我笑點",
+          "bubbles": [
+            "哈哈 這個有戳到我笑點"
+          ],
+          "promptChars": 8421,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 1899,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "因為它會被拿鐵撞到 哈哈哈哈",
+        "reply": "哈哈 這個有戳到我笑點",
+        "bubbles": [
+          "哈哈 這個有戳到我笑點"
+        ],
+        "promptChars": 8421,
+        "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+        "elapsedMs": 1899,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨，你是？",
+          "bubbles": [
+            "嗨，你是？"
+          ],
+          "promptChars": 8381,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 761,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "嗯？我們認識嗎？\n\n這種開場白有點突然。",
+          "bubbles": [
+            "嗯？我們認識嗎？",
+            "這種開場白有點突然。"
+          ],
+          "promptChars": 8398,
+          "systemSha256": "ba4eeca30d9d7b502c8394944baafdf7816e211394bdbe9bd80c9a7cb62a7bc1",
+          "elapsedMs": 770,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "我以為我們才剛認識。這種話題先打住吧。",
+          "bubbles": [
+            "我以為我們才剛認識。這種話題先打住吧。"
+          ],
+          "promptChars": 8440,
+          "systemSha256": "897df801e41f7f114482ad20ce16373e7e13c9f7be4ee45cd5d6946065641de0",
+          "elapsedMs": 1689,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "我以為我們才剛認識。這種話題先打住吧。",
+        "bubbles": [
+          "我以為我們才剛認識。這種話題先打住吧。"
+        ],
+        "promptChars": 8440,
+        "systemSha256": "897df801e41f7f114482ad20ce16373e7e13c9f7be4ee45cd5d6946065641de0",
+        "elapsedMs": 1689,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨，你好啊",
+          "bubbles": [
+            "嗨，你好啊"
+          ],
+          "promptChars": 8381,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 913,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "謝謝，不過我不太習慣聊這個。  \n倒是你，平常喜歡做什麼？",
+          "bubbles": [
+            "謝謝，不過我不太習慣聊這個。",
+            "倒是你，平常喜歡做什麼？"
+          ],
+          "promptChars": 8398,
+          "systemSha256": "ba4eeca30d9d7b502c8394944baafdf7816e211394bdbe9bd80c9a7cb62a7bc1",
+          "elapsedMs": 1792,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "我覺得我們可能不太適合繼續聊了。  \n我還是比較喜歡慢慢認識一個人。",
+          "bubbles": [
+            "我覺得我們可能不太適合繼續聊了。",
+            "我還是比較喜歡慢慢認識一個人。"
+          ],
+          "promptChars": 8449,
+          "systemSha256": "897df801e41f7f114482ad20ce16373e7e13c9f7be4ee45cd5d6946065641de0",
+          "elapsedMs": 1106,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "我覺得我們可能不太適合繼續聊了。  \n我還是比較喜歡慢慢認識一個人。",
+        "bubbles": [
+          "我覺得我們可能不太適合繼續聊了。",
+          "我還是比較喜歡慢慢認識一個人。"
+        ],
+        "promptChars": 8449,
+        "systemSha256": "897df801e41f7f114482ad20ce16373e7e13c9f7be4ee45cd5d6946065641de0",
+        "elapsedMs": 1106,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨，你是那天在酒吧認識的那位嗎？我記得你，但是那天太吵了，我們好像沒聊到什麼。",
+          "bubbles": [
+            "嗨，你是那天在酒吧認識的那位嗎？我記得你，但是那天太吵了，我們好像沒聊到什麼。"
+          ],
+          "promptChars": 8381,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 2081,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "怎麼一開口就講這個。我們那天也沒聊到什麼，這樣講滿奇怪的吧。",
+          "bubbles": [
+            "怎麼一開口就講這個。我們那天也沒聊到什麼，這樣講滿奇怪的吧。"
+          ],
+          "promptChars": 8432,
+          "systemSha256": "ba4eeca30d9d7b502c8394944baafdf7816e211394bdbe9bd80c9a7cb62a7bc1",
+          "elapsedMs": 835,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 1
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "你這樣講話真的會讓人覺得不太舒服。我們才剛認識，沒必要聊到這些。",
+          "bubbles": [
+            "你這樣講話真的會讓人覺得不太舒服。我們才剛認識，沒必要聊到這些。"
+          ],
+          "promptChars": 8484,
+          "systemSha256": "a37108d1acabbc0a416360a74cff517795fd924bba692a5e8093497cb8a386b8",
+          "elapsedMs": 1038,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "你這樣講話真的會讓人覺得不太舒服。我們才剛認識，沒必要聊到這些。",
+        "bubbles": [
+          "你這樣講話真的會讓人覺得不太舒服。我們才剛認識，沒必要聊到這些。"
+        ],
+        "promptChars": 8484,
+        "systemSha256": "a37108d1acabbc0a416360a74cff517795fd924bba692a5e8093497cb8a386b8",
+        "elapsedMs": 1038,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "rarity": "r",
+      "scenarioId": "boundary",
+      "repeat": 4,
+      "difficulty": "normal",
+      "sceneId": "evening_home_chill",
+      "replyTempo": "engaged",
+      "turns": [
+        {
+          "roundIndex": 1,
+          "userText": "嗨",
+          "reply": "嗨，今天怎麼有空找我？",
+          "bubbles": [
+            "嗨，今天怎麼有空找我？"
+          ],
+          "promptChars": 8381,
+          "systemSha256": "a231376252cd73909f14324c73e947a53dc07fc3f8937dc6e8834690a638cb39",
+          "elapsedMs": 869,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        },
+        {
+          "roundIndex": 2,
+          "userText": "妳身材看起來很好 有在健身嗎",
+          "reply": "這種開場白有點太快了吧，我們才剛認識欸。",
+          "bubbles": [
+            "這種開場白有點太快了吧，我們才剛認識欸。"
+          ],
+          "promptChars": 8404,
+          "systemSha256": "ba4eeca30d9d7b502c8394944baafdf7816e211394bdbe9bd80c9a7cb62a7bc1",
+          "elapsedMs": 1062,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 1
+        },
+        {
+          "roundIndex": 3,
+          "userText": "那妳穿泳裝一定很好看 有照片嗎",
+          "reply": "這種話題我不太喜歡，還是聊點別的吧。",
+          "bubbles": [
+            "這種話題我不太喜歡，還是聊點別的吧。"
+          ],
+          "promptChars": 8446,
+          "systemSha256": "a37108d1acabbc0a416360a74cff517795fd924bba692a5e8093497cb8a386b8",
+          "elapsedMs": 1036,
+          "attempts": 1,
+          "guardRejections": [],
+          "stageDirectionRepairs": 0
+        }
+      ],
+      "probe": {
+        "roundIndex": 3,
+        "userText": "那妳穿泳裝一定很好看 有照片嗎",
+        "reply": "這種話題我不太喜歡，還是聊點別的吧。",
+        "bubbles": [
+          "這種話題我不太喜歡，還是聊點別的吧。"
+        ],
+        "promptChars": 8446,
+        "systemSha256": "a37108d1acabbc0a416360a74cff517795fd924bba692a5e8093497cb8a386b8",
+        "elapsedMs": 1036,
+        "attempts": 1,
+        "guardRejections": [],
+        "stageDirectionRepairs": 0
+      }
+    }
+  ]
+}
