@@ -585,6 +585,7 @@ export async function handleAnalyzeStream(
         user: summarizeUser(deps.userId),
         analysisRunId: streamRun.id,
         emit: logInfo,
+        contractVersion2: deps.noSendDecisions === true,
       });
 
       await logAiCall(deps.supabaseUrl, deps.supabaseServiceKey, {

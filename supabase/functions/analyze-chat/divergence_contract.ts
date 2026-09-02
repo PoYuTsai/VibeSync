@@ -49,9 +49,18 @@ export const MAX_SEMANTIC_DISTANCE = 3;
 export const MAX_SEMANTIC_DISTANCE_CAP = 2;
 export const MAX_NEW_TOPIC_BUDGET = 1;
 export const MAX_QUESTION_BUDGET = 1;
-export const DIVERGENCE_PLAN_EVENT_KEYS = [
+/// 事件行的 key：必填＝type＋除 styleBranchIds 外的欄位；optional 只有
+/// styleBranchIds。prompt 與 parser 都從這兩張表生成。
+export const DIVERGENCE_PLAN_OPTIONAL_EVENT_KEYS = ["styleBranchIds"] as const;
+export const DIVERGENCE_PLAN_REQUIRED_EVENT_KEYS = [
   "type",
-  ...DIVERGENCE_PLAN_FIELDS,
+  ...DIVERGENCE_PLAN_FIELDS.filter((field) =>
+    !(DIVERGENCE_PLAN_OPTIONAL_EVENT_KEYS as readonly string[]).includes(field)
+  ),
+] as const;
+export const DIVERGENCE_PLAN_EVENT_KEYS = [
+  ...DIVERGENCE_PLAN_REQUIRED_EVENT_KEYS,
+  ...DIVERGENCE_PLAN_OPTIONAL_EVENT_KEYS,
 ] as const;
 const PLAN_KEYS = new Set<string>(DIVERGENCE_PLAN_EVENT_KEYS);
 const BRANCH_KEYS = new Set<string>(DIVERGENCE_BRANCH_FIELDS);

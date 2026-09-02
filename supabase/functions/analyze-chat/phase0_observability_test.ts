@@ -694,10 +694,17 @@ Deno.test("Phase 2a observability: divergence plan telemetry is numbers and enum
     ],
     styleBranchIds: { extend: "br_1" },
   };
+  const sendDecision = {
+    schemaVersion: 2,
+    decisionId: OPAQUE_DECISION_ID,
+    messageDecision: "send",
+  };
   const telemetry = buildPhase0ObservabilityTelemetry({
     user: "user-summary",
     analysisRunId: "run-1",
+    contractVersion2: true,
     finalResult: {
+      analysisDecisionV2: sendDecision,
       analysisDivergencePlan: plan,
       analysisEvidenceLinkage: {
         schemaVersion: 1,
@@ -729,36 +736,49 @@ Deno.test("Phase 2a observability: divergence plan telemetry is numbers and enum
   const serialized = JSON.stringify(telemetry);
   assertFalse(serialized.includes("SECRET"));
 
-  // v1 run（沒有 v2 decision）不帶這個欄位，母數不被污染；壞快照同樣不算。
+  // 不是 v2 request 的 run 連 key 都沒有，就算帶著一份合法計畫也一樣（母數只算 v2 send）。
   const v1 = buildPhase0ObservabilityTelemetry({
     user: "user-summary",
     analysisRunId: "run-2",
-    finalResult: { analysisDivergencePlan: { schemaVersion: 1 } },
+    finalResult: {
+      analysisDecisionV2: sendDecision,
+      analysisDivergencePlan: plan,
+    },
   });
   assertEquals("divergencePlan" in v1, false);
-  // v2 send 卻沒有合法計畫 → unknown（這才是要量的缺席）。
+  // v2 但 no-send（含 acknowledge_and_stop）：帶著合法計畫也不算。
+  for (
+    const messageDecision of [
+      "do_not_send",
+      "need_context",
+      "acknowledge_and_stop",
+    ]
+  ) {
+    const noSendWithPlan = buildPhase0ObservabilityTelemetry({
+      user: "user-summary",
+      analysisRunId: "run-2b",
+      contractVersion2: true,
+      finalResult: {
+        analysisDecisionV2: { ...sendDecision, messageDecision },
+        analysisDivergencePlan: plan,
+      },
+    });
+    assertEquals("divergencePlan" in noSendWithPlan, false, messageDecision);
+  }
+  // v2 send 卻沒有合法計畫 → unknown（這才是要量的缺席）；send decision 沒宣告
+  // schemaVersion 2 也一樣算（模型不一定帶）。
   const v2Missing = buildPhase0ObservabilityTelemetry({
     user: "user-summary",
     analysisRunId: "run-3",
-    finalResult: {
-      analysisDecisionV2: {
-        schemaVersion: 2,
-        decisionId: OPAQUE_DECISION_ID,
-        messageDecision: "send",
-      },
-    },
+    contractVersion2: true,
+    finalResult: { analysisDecisionV2: sendDecision },
   });
   assertEquals(v2Missing.divergencePlan, { status: "unknown" });
-  const v2NoSend = buildPhase0ObservabilityTelemetry({
+  const v2MissingNoSchema = buildPhase0ObservabilityTelemetry({
     user: "user-summary",
-    analysisRunId: "run-4",
-    finalResult: {
-      analysisDecisionV2: {
-        schemaVersion: 2,
-        decisionId: OPAQUE_DECISION_ID,
-        messageDecision: "do_not_send",
-      },
-    },
+    analysisRunId: "run-3b",
+    contractVersion2: true,
+    finalResult: { replies: { extend: "x" } },
   });
-  assertEquals("divergencePlan" in v2NoSend, false);
+  assertEquals(v2MissingNoSchema.divergencePlan, { status: "unknown" });
 });

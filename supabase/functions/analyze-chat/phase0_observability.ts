@@ -682,10 +682,14 @@ export function buildPhase0ObservabilityTelemetry({
   finalResult,
   user,
   analysisRunId,
+  contractVersion2 = false,
 }: {
   finalResult: Record<string, unknown>;
   user: string;
   analysisRunId: string;
+  /// Phase 2a：request 走 analysisContractVersion 2（noSendDecisions）。
+  /// divergencePlan 母數只算 v2 且非 no-send 的 run。
+  contractVersion2?: boolean;
 }): Record<string, unknown> {
   const decisionRecord = record(finalResult.analysisDecisionV2);
   const decision = decisionRecord?.schemaVersion === 2 ? decisionRecord : null;
@@ -737,9 +741,6 @@ export function buildPhase0ObservabilityTelemetry({
       : { status: "unknown" };
 
   // Phase 2a：v1 run 沒有這個欄位，母數只算 v2 send。
-  const divergence = divergencePlanTelemetry(finalResult, variants, {
-    expected: decision !== null && messageDecision === "send",
-  });
 
   const variantValues = variants ? Object.values(variants) : null;
   const actionMismatch = action && variantValues &&
@@ -755,6 +756,13 @@ export function buildPhase0ObservabilityTelemetry({
 
   const noSendExpected = messageDecision === "do_not_send" ||
     messageDecision === "need_context" || replyMode === "none";
+
+  // v2 send decision 未必宣告 schemaVersion 2（模型不一定帶），所以用 request
+  // 的 contract version 加「不是 no-send」判斷，而不是只看 decision 快照。
+  const divergence = divergencePlanTelemetry(finalResult, variants, {
+    expected: contractVersion2 && !noSendExpected &&
+      messageDecision !== "acknowledge_and_stop",
+  });
   const observedCandidateCount = candidateCount(finalResult, variants);
   const giveUpBanner = legacyGiveUpBanner(finalResult);
   const legacyGiveUpConflict =
@@ -870,8 +878,11 @@ function divergencePlanTelemetry(
   variants: Record<string, Variant> | null,
   options: { expected: boolean },
 ): Record<string, unknown> | null {
+  // 母數只算 v2 send：不是 v2 send 的 run 連 key 都不出，就算 finalResult
+  // 裡有一份看起來合法的計畫也一樣（那不該存在，更不該進統計）。
+  if (!options.expected) return null;
   const plan = parseDivergencePlanV1(finalResult.analysisDivergencePlan);
-  if (!plan) return options.expected ? { status: "unknown" } : null;
+  if (!plan) return { status: "unknown" };
   const methods: Record<string, number> = {};
   for (const branch of plan.branchPool) {
     methods[branch.method] = (methods[branch.method] ?? 0) + 1;
@@ -922,11 +933,13 @@ export function emitPhase0Observability({
   user,
   analysisRunId,
   emit,
+  contractVersion2 = false,
 }: {
   finalResult: Record<string, unknown>;
   user: string;
   analysisRunId: string;
   emit: TelemetryEmitter;
+  contractVersion2?: boolean;
 }): void {
   try {
     emit(
@@ -935,6 +948,7 @@ export function emitPhase0Observability({
         finalResult,
         user,
         analysisRunId,
+        contractVersion2,
       }),
     );
   } catch {

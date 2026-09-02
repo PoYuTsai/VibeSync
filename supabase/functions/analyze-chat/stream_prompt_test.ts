@@ -6,6 +6,8 @@ import {
   DIVERGENCE_BRANCH_FIELDS,
   DIVERGENCE_METHODS,
   DIVERGENCE_PLAN_EVENT_KEYS,
+  DIVERGENCE_PLAN_OPTIONAL_EVENT_KEYS,
+  DIVERGENCE_PLAN_REQUIRED_EVENT_KEYS,
   MAX_DIVERGENCE_BRANCHES,
   MAX_NEW_TOPIC_BUDGET,
   MAX_QUESTION_BUDGET,
@@ -482,21 +484,23 @@ Deno.test("divergence plan step is v2-only, sits between the decision gate and t
   assert(v2.includes(DIVERGENCE_METHODS.map(tick).join("/")));
   assert(
     v2.includes(
-      `exactly these keys and nothing else: ${
-        DIVERGENCE_PLAN_EVENT_KEYS.map(tick).join(", ")
-      }`,
+      `exactly these required keys: ${
+        DIVERGENCE_PLAN_REQUIRED_EVENT_KEYS.map(tick).join(", ")
+      }; it may add only the optional key ${
+        DIVERGENCE_PLAN_OPTIONAL_EVENT_KEYS.map(tick).join(", ")
+      }; nothing else.`,
     ),
   );
   assert(
     v2.includes(
-      `each branch holds exactly: ${
+      `Each branch holds exactly: ${
         DIVERGENCE_BRANCH_FIELDS.map(tick).join(", ")
       }`,
     ),
   );
   assert(
     v2.includes(
-      "Any extra key, unknown method, or out-of-range number makes the whole plan invalid",
+      "Any extra key, missing required key, unknown method, or out-of-range number makes the whole plan invalid",
     ),
   );
 
@@ -516,6 +520,14 @@ Deno.test("divergence plan step is v2-only, sits between the decision gate and t
     Object.keys(example.branchPool[0]).sort(),
     [...DIVERGENCE_BRANCH_FIELDS].sort(),
   );
+  // optional key 可省；required key 缺一個就整份作廢。
+  const { styleBranchIds: _optional, ...withoutOptional } = example;
+  assert(parseDivergencePlanV1(withoutOptional));
+  for (const key of DIVERGENCE_PLAN_REQUIRED_EVENT_KEYS) {
+    if (key === "type") continue; // server 快照沒有 type，parser 允許缺
+    const { [key]: _removed, ...missing } = example;
+    assertEquals(parseDivergencePlanV1(missing), null, `missing ${key}`);
+  }
   const [first, ...rest] = example.branchPool;
   const rejected: Record<string, unknown>[] = [
     { ...example, reasoning: "x" },
