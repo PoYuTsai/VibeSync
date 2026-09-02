@@ -230,7 +230,7 @@ test("nextReadTimeoutMs 超過 2000ms 會被 clamp，壞值退回預設", async 
 test("migration 靜態守則：不得條件式建立/取代，先 revoke all 再最小 grant", () => {
   const raw = readFileSync(
     new URL(
-      "../../../../supabase/migrations/20260831120000_admin_ops_v2_baseline.sql",
+      "../../../../supabase/migrations/20260902130000_admin_ops_v2_baseline.sql",
       import.meta.url,
     ),
     "utf8",

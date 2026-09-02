@@ -1,6 +1,6 @@
 // B2 通知與 break-glass 共用契約。
 // 固定 red／yellow template、欄位 allowlist、外部事件/idempotency 參照格式與
-// break-glass 數值上限全部只在這裡定義；SQL（20260831180000 migration）的
+// break-glass 數值上限全部只在這裡定義；SQL（20260902150000 migration）的
 // enum／pattern／interval 與本檔逐字或同值同源（測試比對）。本批不實作
 // B4 worker／cron：升級門檻（15 分鐘持續／3 次重複）只是契約常數。
 

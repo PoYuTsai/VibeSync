@@ -36,7 +36,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..
 const MIGRATION = readFileSync(
   join(
     ROOT,
-    "supabase/migrations/20260831180000_admin_notify_feedback_breakglass_v2_baseline.sql",
+    "supabase/migrations/20260902150000_admin_notify_feedback_breakglass_v2_baseline.sql",
   ),
   "utf8",
 );

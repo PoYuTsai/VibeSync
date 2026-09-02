@@ -565,7 +565,7 @@ test("client 頁面旗標：server page 於 request 時下發決策，client 不
 test("B1 migration 靜態守則：additive、deny-by-default、definer 固定 search_path", () => {
   const raw = readFileSync(
     new URL(
-      "../../../../supabase/migrations/20260831150000_admin_identity_v2_baseline.sql",
+      "../../../../supabase/migrations/20260902140000_admin_identity_v2_baseline.sql",
       import.meta.url,
     ),
     "utf8",
@@ -648,7 +648,7 @@ test("B1 migration 靜態守則：additive、deny-by-default、definer 固定 se
 test("B1 migration 靜態守則：無 generic audit 寫入口，provenance 由表上守門 trigger 強制", () => {
   const sql = readFileSync(
     new URL(
-      "../../../../supabase/migrations/20260831150000_admin_identity_v2_baseline.sql",
+      "../../../../supabase/migrations/20260902140000_admin_identity_v2_baseline.sql",
       import.meta.url,
     ),
     "utf8",
@@ -690,7 +690,7 @@ test("B1 migration 靜態守則：無 generic audit 寫入口，provenance 由�
 test("B1 migration 靜態守則：audit 隱私規則與 TS 逐字同源", () => {
   const sql = readFileSync(
     new URL(
-      "../../../../supabase/migrations/20260831150000_admin_identity_v2_baseline.sql",
+      "../../../../supabase/migrations/20260902140000_admin_identity_v2_baseline.sql",
       import.meta.url,
     ),
     "utf8",
@@ -721,7 +721,7 @@ test("B1 migration 靜態守則：audit 隱私規則與 TS 逐字同源", () => 
 test("B1 migration 靜態守則：首次 session 無競態且他人佔用 fail closed", () => {
   const sql = readFileSync(
     new URL(
-      "../../../../supabase/migrations/20260831150000_admin_identity_v2_baseline.sql",
+      "../../../../supabase/migrations/20260902140000_admin_identity_v2_baseline.sql",
       import.meta.url,
     ),
     "utf8",
