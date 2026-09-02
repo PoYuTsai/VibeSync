@@ -118,3 +118,12 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   prompt 一句前後）baseline 自己就有 ±2 個百分點的雜訊（短句型 3.1% vs 1.6%），所以只有
   邀約情境與整體那兩個差異算超過雜訊帶；沒有人工標記，這裡量的是「解讀有沒有往基準靠」，
   不是準確度。
+
+### Hint／Debrief／Moments 煙霧測試（PR-4／PR-5，`coach_smoke.ts`）
+
+- `2026-09-03-coach-smoke-1d273ae9.json`：20 位代表角色各取 run15 的 daily_share 對話，style 關／開
+  各打一次 Hint、Debrief、Moments（DeepSeek；Hint／Debrief 在 production 主打 Claude，這裡量的是
+  production parser 的格式契約與洩漏）。Debrief 20/20、20/20；Moments 20/20、20/20；Hint 關 18/20
+  （2 次 JSON 解析失敗）、開 19/20（1 次 L4 守門退回，production 有第二發）。基準數字（「1～2 則」
+  形狀）與設定字眼（hidden evidence／preset／基準）外洩：style 開的 60 則全部 0；關的 hint 有 1 則
+  regex 誤中「回 2-3 則」既有措辭。

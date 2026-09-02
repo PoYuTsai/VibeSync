@@ -1,0 +1,1254 @@
+{
+  "source": "tools/practice-reply-style-eval/out/2026-09-03-run15-style20-state-x2.json",
+  "sessions": 20,
+  "summary": {
+    "hint/off": {
+      "n": 20,
+      "ok": 18,
+      "baselineLeak": 1,
+      "settingLeak": 0,
+      "errors": {
+        "hint_json_parse_failed": 2
+      }
+    },
+    "hint/on": {
+      "n": 20,
+      "ok": 19,
+      "baselineLeak": 0,
+      "settingLeak": 0,
+      "errors": {
+        "hint_l4_unsafe": 1
+      }
+    },
+    "debrief/off": {
+      "n": 20,
+      "ok": 20,
+      "baselineLeak": 0,
+      "settingLeak": 0,
+      "errors": {}
+    },
+    "debrief/on": {
+      "n": 20,
+      "ok": 20,
+      "baselineLeak": 0,
+      "settingLeak": 0,
+      "errors": {}
+    },
+    "moments/off": {
+      "n": 20,
+      "ok": 20,
+      "baselineLeak": 0,
+      "settingLeak": 0,
+      "errors": {}
+    },
+    "moments/on": {
+      "n": 20,
+      "ok": 20,
+      "baselineLeak": 0,
+      "settingLeak": 0,
+      "errors": {}
+    }
+  },
+  "rows": [
+    {
+      "profileId": "practice_girl_001",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 377
+    },
+    {
+      "profileId": "practice_girl_001",
+      "surface": "hint",
+      "variant": "off",
+      "ok": false,
+      "error": "hint_json_parse_failed",
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 258
+    },
+    {
+      "profileId": "practice_girl_001",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 304
+    },
+    {
+      "profileId": "practice_girl_001",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 50
+    },
+    {
+      "profileId": "practice_girl_001",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 53
+    },
+    {
+      "profileId": "practice_girl_001",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 389
+    },
+    {
+      "profileId": "practice_girl_008",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 219
+    },
+    {
+      "profileId": "practice_girl_008",
+      "surface": "hint",
+      "variant": "on",
+      "ok": false,
+      "error": "hint_l4_unsafe",
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 268
+    },
+    {
+      "profileId": "practice_girl_008",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 377
+    },
+    {
+      "profileId": "practice_girl_008",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 55
+    },
+    {
+      "profileId": "practice_girl_008",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 62
+    },
+    {
+      "profileId": "practice_girl_008",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 397
+    },
+    {
+      "profileId": "practice_girl_064",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 276
+    },
+    {
+      "profileId": "practice_girl_064",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 260
+    },
+    {
+      "profileId": "practice_girl_064",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 394
+    },
+    {
+      "profileId": "practice_girl_064",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 61
+    },
+    {
+      "profileId": "practice_girl_064",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 64
+    },
+    {
+      "profileId": "practice_girl_064",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 389
+    },
+    {
+      "profileId": "practice_girl_077",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 271
+    },
+    {
+      "profileId": "practice_girl_077",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 257
+    },
+    {
+      "profileId": "practice_girl_077",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 61
+    },
+    {
+      "profileId": "practice_girl_077",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 424
+    },
+    {
+      "profileId": "practice_girl_077",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 67
+    },
+    {
+      "profileId": "practice_girl_077",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 391
+    },
+    {
+      "profileId": "practice_girl_007",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 278
+    },
+    {
+      "profileId": "practice_girl_007",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 269
+    },
+    {
+      "profileId": "practice_girl_007",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 403
+    },
+    {
+      "profileId": "practice_girl_007",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 370
+    },
+    {
+      "profileId": "practice_girl_007",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 63
+    },
+    {
+      "profileId": "practice_girl_007",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 76
+    },
+    {
+      "profileId": "practice_girl_011",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 342
+    },
+    {
+      "profileId": "practice_girl_011",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 259
+    },
+    {
+      "profileId": "practice_girl_011",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 399
+    },
+    {
+      "profileId": "practice_girl_011",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 67
+    },
+    {
+      "profileId": "practice_girl_011",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 67
+    },
+    {
+      "profileId": "practice_girl_011",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 378
+    },
+    {
+      "profileId": "practice_girl_002",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 228
+    },
+    {
+      "profileId": "practice_girl_002",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 408
+    },
+    {
+      "profileId": "practice_girl_002",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 273
+    },
+    {
+      "profileId": "practice_girl_002",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 63
+    },
+    {
+      "profileId": "practice_girl_002",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 65
+    },
+    {
+      "profileId": "practice_girl_002",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 398
+    },
+    {
+      "profileId": "practice_girl_083",
+      "surface": "hint",
+      "variant": "off",
+      "ok": false,
+      "error": "hint_json_parse_failed",
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 118
+    },
+    {
+      "profileId": "practice_girl_083",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 235
+    },
+    {
+      "profileId": "practice_girl_083",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 432
+    },
+    {
+      "profileId": "practice_girl_083",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 76
+    },
+    {
+      "profileId": "practice_girl_083",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 371
+    },
+    {
+      "profileId": "practice_girl_083",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 84
+    },
+    {
+      "profileId": "practice_girl_009",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 246
+    },
+    {
+      "profileId": "practice_girl_009",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": true,
+      "settingLeak": false,
+      "outputChars": 240
+    },
+    {
+      "profileId": "practice_girl_009",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 402
+    },
+    {
+      "profileId": "practice_girl_009",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 55
+    },
+    {
+      "profileId": "practice_girl_009",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 68
+    },
+    {
+      "profileId": "practice_girl_009",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 402
+    },
+    {
+      "profileId": "practice_girl_012",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 227
+    },
+    {
+      "profileId": "practice_girl_012",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 185
+    },
+    {
+      "profileId": "practice_girl_012",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 69
+    },
+    {
+      "profileId": "practice_girl_012",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 374
+    },
+    {
+      "profileId": "practice_girl_012",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 391
+    },
+    {
+      "profileId": "practice_girl_012",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 72
+    },
+    {
+      "profileId": "practice_girl_020",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 210
+    },
+    {
+      "profileId": "practice_girl_020",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 190
+    },
+    {
+      "profileId": "practice_girl_020",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 73
+    },
+    {
+      "profileId": "practice_girl_020",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 442
+    },
+    {
+      "profileId": "practice_girl_020",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 399
+    },
+    {
+      "profileId": "practice_girl_020",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 93
+    },
+    {
+      "profileId": "practice_girl_084",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 284
+    },
+    {
+      "profileId": "practice_girl_084",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 238
+    },
+    {
+      "profileId": "practice_girl_084",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 413
+    },
+    {
+      "profileId": "practice_girl_084",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 79
+    },
+    {
+      "profileId": "practice_girl_084",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 60
+    },
+    {
+      "profileId": "practice_girl_084",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 386
+    },
+    {
+      "profileId": "practice_girl_004",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 211
+    },
+    {
+      "profileId": "practice_girl_004",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 222
+    },
+    {
+      "profileId": "practice_girl_004",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 404
+    },
+    {
+      "profileId": "practice_girl_004",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 77
+    },
+    {
+      "profileId": "practice_girl_004",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 94
+    },
+    {
+      "profileId": "practice_girl_004",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 401
+    },
+    {
+      "profileId": "practice_girl_013",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 192
+    },
+    {
+      "profileId": "practice_girl_013",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 226
+    },
+    {
+      "profileId": "practice_girl_013",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 410
+    },
+    {
+      "profileId": "practice_girl_013",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 72
+    },
+    {
+      "profileId": "practice_girl_013",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 414
+    },
+    {
+      "profileId": "practice_girl_013",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 81
+    },
+    {
+      "profileId": "practice_girl_061",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 290
+    },
+    {
+      "profileId": "practice_girl_061",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 280
+    },
+    {
+      "profileId": "practice_girl_061",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 393
+    },
+    {
+      "profileId": "practice_girl_061",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 78
+    },
+    {
+      "profileId": "practice_girl_061",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 398
+    },
+    {
+      "profileId": "practice_girl_061",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 76
+    },
+    {
+      "profileId": "practice_girl_089",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 234
+    },
+    {
+      "profileId": "practice_girl_089",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 191
+    },
+    {
+      "profileId": "practice_girl_089",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 387
+    },
+    {
+      "profileId": "practice_girl_089",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 69
+    },
+    {
+      "profileId": "practice_girl_089",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 382
+    },
+    {
+      "profileId": "practice_girl_089",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 73
+    },
+    {
+      "profileId": "practice_girl_006",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 207
+    },
+    {
+      "profileId": "practice_girl_006",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 207
+    },
+    {
+      "profileId": "practice_girl_006",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 387
+    },
+    {
+      "profileId": "practice_girl_006",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 59
+    },
+    {
+      "profileId": "practice_girl_006",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 80
+    },
+    {
+      "profileId": "practice_girl_006",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 432
+    },
+    {
+      "profileId": "practice_girl_018",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 205
+    },
+    {
+      "profileId": "practice_girl_018",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 177
+    },
+    {
+      "profileId": "practice_girl_018",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 393
+    },
+    {
+      "profileId": "practice_girl_018",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 66
+    },
+    {
+      "profileId": "practice_girl_018",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 67
+    },
+    {
+      "profileId": "practice_girl_018",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 434
+    },
+    {
+      "profileId": "practice_girl_003",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 239
+    },
+    {
+      "profileId": "practice_girl_003",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 225
+    },
+    {
+      "profileId": "practice_girl_003",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 365
+    },
+    {
+      "profileId": "practice_girl_003",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 83
+    },
+    {
+      "profileId": "practice_girl_003",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 77
+    },
+    {
+      "profileId": "practice_girl_003",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 398
+    },
+    {
+      "profileId": "practice_girl_091",
+      "surface": "hint",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 222
+    },
+    {
+      "profileId": "practice_girl_091",
+      "surface": "hint",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 195
+    },
+    {
+      "profileId": "practice_girl_091",
+      "surface": "debrief",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 407
+    },
+    {
+      "profileId": "practice_girl_091",
+      "surface": "moments",
+      "variant": "off",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 67
+    },
+    {
+      "profileId": "practice_girl_091",
+      "surface": "debrief",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 362
+    },
+    {
+      "profileId": "practice_girl_091",
+      "surface": "moments",
+      "variant": "on",
+      "ok": true,
+      "error": null,
+      "baselineLeak": false,
+      "settingLeak": false,
+      "outputChars": 80
+    }
+  ]
+}
