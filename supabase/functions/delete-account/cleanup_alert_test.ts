@@ -1,10 +1,10 @@
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { buildCleanupFailureAlert, deliverCleanupAlert } from "./cleanup_alert.ts";
 
-Deno.test("告警文字只帶表名、錯誤碼與雜湊參照，且不在刪帳前宣稱已刪", () => {
-  const msg = buildCleanupFailureAlert({ table: "ai_logs", errorCode: "42501", userRef: "abc123def456" });
+Deno.test("告警把所有失敗合併成一則，只帶表名、錯誤碼與雜湊參照", () => {
+  const msg = buildCleanupFailureAlert({ failures: [{ table: "ai_logs", errorCode: "42501" }, { table: "feedback", errorCode: null }], userRef: "abc123def456" });
   assertEquals(msg.split("\n").length, 4);
-  assert(msg.includes("Table: ai_logs") && msg.includes("Error: 42501") && msg.includes("User ref: abc123def456"));
+  assert(msg.includes("- ai_logs: 42501") && msg.includes("- feedback: unknown") && msg.includes("User ref: abc123def456"));
   assert(!msg.includes("@"), "不得含 Email");
 });
 

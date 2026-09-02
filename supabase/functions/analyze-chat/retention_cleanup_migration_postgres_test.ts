@@ -38,7 +38,7 @@ async function createDatabase(): Promise<PGlite> {
     CREATE OR REPLACE FUNCTION cleanup_old_ai_logs()
     RETURNS void AS $$ BEGIN DELETE FROM ai_logs WHERE created_at < NOW() - INTERVAL '30 days'; END; $$ LANGUAGE plpgsql;
   `);
-  await db.exec("SET app.allow_missing_pg_cron = on");
+  await db.exec("SET app.allow_missing_pg_cron = 'pglite-contract-test'");
   for (const sql of migrationSql) await db.exec(sql);
   return db;
 }

@@ -158,16 +158,14 @@ serve(withOperationalErrorMonitoring("delete-account", async (req) => {
       }, 500);
     }
 
-    // 帳號已真的刪掉，才告警「非阻塞清理失敗」；投遞有 3 秒上限、任何失敗都只留 console
+    // 帳號已真的刪掉，才告警「非阻塞清理失敗」；所有失敗合併成一則、只送一次，
+    // 投遞有 3 秒上限（App 端整個請求預算 60 秒），任何失敗都只留 console
     if (failedCleanups.length > 0) {
-      const userRef = await userRefFor(user.id);
-      for (const failure of failedCleanups) {
-        const delivered = await deliverCleanupAlert({
-          webhookUrl: DISCORD_ALERT_WEBHOOK_URL,
-          content: buildCleanupFailureAlert({ ...failure, userRef }),
-        });
-        if (!delivered) console.warn(`Cleanup failure alert not delivered for ${failure.table}`);
-      }
+      const delivered = await deliverCleanupAlert({
+        webhookUrl: DISCORD_ALERT_WEBHOOK_URL,
+        content: buildCleanupFailureAlert({ failures: failedCleanups, userRef: await userRefFor(user.id) }),
+      });
+      if (!delivered) console.warn("Cleanup failure alert not delivered:", failedCleanups.map((f) => f.table).join(","));
     }
 
     return jsonResponse({

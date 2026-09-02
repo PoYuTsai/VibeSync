@@ -1,14 +1,12 @@
 // 刪帳非阻塞清理失敗的告警：純函式組訊息＋有逾時、不拋例外的投遞。
 // 訊息只帶表名、錯誤碼與 user id 的 SHA-256 前 12 碼，不含 Email 或任何內容。
 export function buildCleanupFailureAlert(input: {
-  table: string;
-  errorCode: string | null;
+  failures: { table: string; errorCode: string | null }[];
   userRef: string;
 }): string {
   return [
-    "⚠️ delete-account：帳號已刪除，但一項非必要資料清理失敗，殘留資料需人工確認",
-    `Table: ${input.table}`,
-    `Error: ${input.errorCode ?? "unknown"}`,
+    "⚠️ delete-account：帳號已刪除，但以下非必要資料清理失敗，殘留資料需人工確認",
+    ...input.failures.map((f) => `- ${f.table}: ${f.errorCode ?? "unknown"}`),
     `User ref: ${input.userRef}`,
   ].join("\n");
 }

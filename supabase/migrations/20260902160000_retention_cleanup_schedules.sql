@@ -69,7 +69,7 @@ DECLARE
   v_job_id BIGINT;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron') THEN
-    IF current_setting('app.allow_missing_pg_cron', true) = 'on' THEN
+    IF current_setting('app.allow_missing_pg_cron', true) = 'pglite-contract-test' THEN
       RAISE NOTICE 'pg_cron not available; retention jobs skipped (test mode)';
       RETURN;
     END IF;
