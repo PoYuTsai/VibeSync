@@ -4,7 +4,7 @@
 // 說話骨架卻一樣」到底有多嚴重。difficulty bakeoff 固定一位角色排除人設差異，
 // 所以量不到這件事；這支工具反過來固定情境、換角色。
 //
-// 保真：prompt 走 production 的 buildChatMessages（含 bakeoff 同一份固定 context
+// 保真：prompt 走 production 的 buildChatPromptBundle（含 bakeoff 同一份固定 context
 // fixture），模型走 production 的 callDeepSeek（deepseek-v4-flash、200 tokens、0.9），
 // 回覆後處理照 handler.ts 同序（繁體轉換→內部標籤守門→L4 守門，失敗重試一次）。
 // 不自造 prompt。standard 模式（production 不跑分類器、partnerState 為 null）。
@@ -23,9 +23,13 @@ import {
   resolvePracticeProfile,
 } from "../../supabase/functions/practice-chat/practice_persona.ts";
 import {
-  buildChatMessages,
+  buildChatPromptBundle,
   PRACTICE_PROMPT_POLICY_VERSION,
 } from "../../supabase/functions/practice-chat/prompt.ts";
+import {
+  nextReplyStyleState,
+  type ReplyStyleState,
+} from "../../supabase/functions/practice-chat/reply_style_state.ts";
 import {
   callDeepSeek,
   DEEPSEEK_MODEL,
@@ -160,6 +164,7 @@ export async function runScenario(args: {
   const interest = profile.girl.interestTags[0] ?? "咖啡";
   const turns: PracticeTurn[] = [];
   const results: TurnResult[] = [];
+  let styleState: ReplyStyleState | null = null;
   const base = {
     profileId: args.profileId,
     personaId: profile.personaId,
@@ -175,12 +180,19 @@ export async function runScenario(args: {
     const userText = renderUserTurn(args.scenario.userTurns[i], interest);
     turns.push({ role: "user", text: userText });
     // handler.ts:4223-4229 standard 分支：不帶 practiceMode／分數，partnerState null。
-    const messages = buildChatMessages(turns, profile, {
+    // 同一情境多輪之間帶 reply-style 狀態（模擬 assisted 模式的 thread recent_facts
+    // 持久化：拒絕記憶、act 輪替）；旗標關時 bundle 不讀它。
+    const bundle = buildChatPromptBundle(turns, profile, {
       partnerState: null,
       replyStyle: args.style ?? false,
+      styleState,
       visiblePracticeThreadId: BAKEOFF_THREAD_ID,
       ...chatContext,
     });
+    const messages = bundle.messages;
+    if (bundle.responsePlan) {
+      styleState = nextReplyStyleState(styleState, bundle.responsePlan);
+    }
     const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
     const systemSha256 = await sha256Hex(messages[0].content);
 
@@ -266,7 +278,7 @@ interface CliOptions {
   repeat: number;
   difficulty: PracticeDifficulty;
   concurrency: number;
-  /** reply-style-v1 對照組：傳 buildChatMessages 的 replyStyle 旗標。 */
+  /** reply-style-v1 對照組：傳 buildChatPromptBundle 的 replyStyle 旗標。 */
   style: boolean;
 }
 
