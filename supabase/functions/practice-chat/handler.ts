@@ -4206,8 +4206,10 @@ export function createPracticeChatHandler(
       // prompt／守門／回應逐字與舊版相同（index_test 對 fee76b87 golden bytes 比對）。
       // bundle 只算一次：兩次 attempt 共用同一份 plan，不會第二發換形狀；
       // 純函式建構若丟錯，走與舊版相同的 practice_generation_failed 邊界（不重試）。
-      const replyStyleEnabled =
-        deps.getEnv("PRACTICE_REPLY_STYLE_ENABLED") === "true";
+      // "true"＝全部使用者；"test"＝只有 TEST_EMAILS 帳號（dogfood）；其他＝關。
+      const replyStyleFlag = deps.getEnv("PRACTICE_REPLY_STYLE_ENABLED");
+      const replyStyleEnabled = replyStyleFlag === "true" ||
+        (replyStyleFlag === "test" && accountIsTest);
       const chatPromptBundle = buildChatPromptBundle(
         request.turns,
         request.profile,

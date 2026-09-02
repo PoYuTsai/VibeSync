@@ -8983,3 +8983,33 @@ Deno.test("reply-style 旗標關／無 mapping：DeepSeek messages 與 Response 
     assertEquals(actual, expected, c.name);
   }
 });
+
+Deno.test("reply-style 旗標 test：只有測試帳號啟用，一般帳號與旗標關閉位元組相同", async () => {
+  const body = chatBody({ practiceMode: "standard" });
+  const replies = ["（冷淡）好啊"];
+  const off = await goldenDigest(
+    { ledger: ledger({ practice_mode: "standard" }), deepSeekReplies: replies },
+    body,
+  );
+  const testModeNormalUser = await goldenDigest(
+    {
+      ledger: ledger({ practice_mode: "standard" }),
+      env: { PRACTICE_REPLY_STYLE_ENABLED: "test" },
+      deepSeekReplies: replies,
+    },
+    body,
+  );
+  assertEquals(testModeNormalUser, off);
+
+  const { json, state } = await run(
+    {
+      ledger: ledger({ practice_mode: "standard" }),
+      env: { PRACTICE_REPLY_STYLE_ENABLED: "test" },
+      user: { id: "user-1", email: "vibesync.test@gmail.com" },
+      deepSeekReplies: replies,
+    },
+    body,
+  );
+  assert(state.deepSeekCalls[0].messages[0].content.includes("本輪回應方式"));
+  assertEquals(json.reply, "好啊");
+});
