@@ -3,6 +3,15 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  DIVERGENCE_BRANCH_FIELDS,
+  DIVERGENCE_METHODS,
+  DIVERGENCE_PLAN_FIELDS,
+  MAX_DIVERGENCE_BRANCHES,
+  MAX_SEMANTIC_DISTANCE,
+  MIN_DIVERGENCE_BRANCHES,
+  parseDivergencePlanV1,
+} from "./divergence_contract.ts";
+import {
   buildSituationKnowledgeSection,
   buildStagePriorSection,
   buildStreamSystemPrompt,
@@ -425,7 +434,7 @@ Deno.test("situation knowledge section is v2-only and sits between base prompt a
   assert(withKnowledge.includes("1a. Message decision gate"));
 });
 
-Deno.test("divergence plan step is v2-only and sits between the decision gate and the recommendation", () => {
+Deno.test("divergence plan step is v2-only, sits between the decision gate and the recommendation, and is generated from the contract constants", () => {
   const base = "Base full reasoning prompt.";
   const v1 = buildStreamSystemPrompt(base, ["extend"]);
   assert(!v1.includes("analysis.divergence_plan"));
@@ -440,16 +449,6 @@ Deno.test("divergence plan step is v2-only and sits between the decision gate an
   });
   assert(v2.includes("1b. [send decisions only] `analysis.divergence_plan`"));
   assert(
-    v2.includes(
-      "`semantic_decomposition`/`abstract_up`/`lateral`/`drill_down`/`association`/`affect_evaluation`",
-    ),
-  );
-  assert(
-    v2.includes(
-      'Example divergence_plan line: {"type":"analysis.divergence_plan"',
-    ),
-  );
-  assert(
     v2.indexOf("1a. Message decision gate") <
       v2.indexOf("1b. [send decisions only]"),
   );
@@ -457,4 +456,48 @@ Deno.test("divergence plan step is v2-only and sits between the decision gate an
     v2.indexOf("1b. [send decisions only]") <
       v2.indexOf("[send decisions only] 2. `analysis.recommendation`"),
   );
+  assert(
+    v2.includes(
+      'Example divergence_plan line: {"type":"analysis.divergence_plan"',
+    ),
+  );
+
+  // 同源：枝數、方法、欄位全來自 divergence_contract；改常數這裡就會變。
+  assert(
+    v2.includes(
+      `${MIN_DIVERGENCE_BRANCHES}-${MAX_DIVERGENCE_BRANCHES} branches`,
+    ),
+  );
+  assert(v2.includes(`\`semanticDistanceCap\` 0-${MAX_SEMANTIC_DISTANCE}`));
+  assert(
+    v2.includes(DIVERGENCE_METHODS.map((method) => `\`${method}\``).join("/")),
+  );
+  assert(
+    v2.includes(
+      `exactly these fields and nothing else: ${
+        DIVERGENCE_PLAN_FIELDS.map((field) => `\`${field}\``).join(", ")
+      }`,
+    ),
+  );
+  assert(
+    v2.includes(
+      `each branch holds exactly: ${
+        DIVERGENCE_BRANCH_FIELDS.map((field) => `\`${field}\``).join(", ")
+      }`,
+    ),
+  );
+  assert(
+    v2.includes(
+      "Any extra field, unknown method, or out-of-range number makes the whole plan invalid",
+    ),
+  );
+  // 範例本身必須通過 parser：prompt 教的形狀就是 parser 收的形狀。
+  const exampleLine = v2.split("\n").find((line) =>
+    line.startsWith("Example divergence_plan line: ")
+  );
+  assert(exampleLine);
+  const example = JSON.parse(
+    exampleLine.slice("Example divergence_plan line: ".length),
+  );
+  assert(parseDivergencePlanV1(example));
 });

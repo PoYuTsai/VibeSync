@@ -20,8 +20,9 @@ export const MAX_DIVERGENCE_BRANCHES = 8;
 const MAX_TEXT_LENGTH = 200;
 const MAX_PATH_NODES = 8;
 
-const PLAN_KEYS = new Set([
-  "type",
+/// 模型可輸出的欄位；prompt 步驟 1b 與 parser 都從這兩張表生成，不得各自
+/// 另寫一份。`type` 只屬事件外殼。
+export const DIVERGENCE_PLAN_FIELDS = [
   "schemaVersion",
   "threadFrame",
   "anchorSourceIndex",
@@ -32,15 +33,18 @@ const PLAN_KEYS = new Set([
   "questionBudget",
   "branchPool",
   "styleBranchIds",
-]);
-const BRANCH_KEYS = new Set([
+] as const;
+export const DIVERGENCE_BRANCH_FIELDS = [
   "id",
   "sourceIndex",
   "method",
   "idea",
   "associationPath",
   "semanticDistance",
-]);
+] as const;
+export const MAX_SEMANTIC_DISTANCE = 3;
+const PLAN_KEYS = new Set<string>(["type", ...DIVERGENCE_PLAN_FIELDS]);
+const BRANCH_KEYS = new Set<string>(DIVERGENCE_BRANCH_FIELDS);
 
 /// finalResult 裡持久化但絕不送 client 的 key：計畫含從她訊息推出的
 /// threadFrame／idea／associationPath，只給 DB 與 telemetry 用。
@@ -102,7 +106,10 @@ export function parseDivergencePlanV1(
   const mergeContextSourceIndices = positiveIntList(
     value.mergeContextSourceIndices,
   );
-  const semanticDistanceCap = boundedInt(value.semanticDistanceCap, 3);
+  const semanticDistanceCap = boundedInt(
+    value.semanticDistanceCap,
+    MAX_SEMANTIC_DISTANCE,
+  );
   const newTopicBudget = boundedInt(value.newTopicBudget, 1);
   const questionBudget = boundedInt(value.questionBudget, 1);
   if (
@@ -159,7 +166,10 @@ function parseBranch(value: unknown): DivergenceBranchV1 | null {
   const id = shortText(value.id);
   const sourceIndex = positiveInt(value.sourceIndex);
   const idea = shortText(value.idea);
-  const semanticDistance = boundedInt(value.semanticDistance, 3);
+  const semanticDistance = boundedInt(
+    value.semanticDistance,
+    MAX_SEMANTIC_DISTANCE,
+  );
   const method = typeof value.method === "string" &&
       (DIVERGENCE_METHODS as readonly string[]).includes(value.method)
     ? value.method as DivergenceMethod

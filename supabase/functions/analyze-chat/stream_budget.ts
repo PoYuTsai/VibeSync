@@ -15,6 +15,7 @@ export function streamAnalyzeMaxTokensForStyleCount(
   return base + (options.divergencePlan ? DIVERGENCE_PLAN_EXTRA_TOKENS : 0);
 }
 
-/// Phase 2a：v2 多吐一個 analysis.divergence_plan（最多 12 枝、每枝含
-/// associationPath），不加預算會擠掉 report sections 或最後一張 reply_option。
+/// Phase 2a：v2 多吐一個 analysis.divergence_plan（枝數上限見 divergence_contract
+/// 的 MAX_DIVERGENCE_BRANCHES、每枝含 associationPath），不加預算會擠掉 report
+/// sections 或最後一張 reply_option。
 export const DIVERGENCE_PLAN_EXTRA_TOKENS = 500;
