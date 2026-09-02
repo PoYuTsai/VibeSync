@@ -22,6 +22,8 @@ export interface ReplyFeatures {
   readonly particlesPer10: number;
   readonly punctPer10: number;
   readonly periodEnd: 0 | 1;
+  /** 括號旁白動作描述（「（語氣冷掉）」）：prompt 明令禁止，出現即品質退步。 */
+  readonly narration: 0 | 1;
 }
 
 export const FEATURE_KEYS = [
@@ -44,6 +46,7 @@ const EMOJI_RE = /\p{Extended_Pictographic}/u;
 const ZHUYIN_RE = /[ㄅ-ㄩ]/;
 const PARTICLE_RE = /(欸|誒|啦|耶|齁|喔|哦|嘛|捏|欸)(?=[\s。，,!！?？~～]|$)/g;
 const PUNCT_RE = /[。！!？?，,~～…]/g;
+const NARRATION_RE = /[（(][^）)]{2,14}[）)]/u;
 
 export function replyFeatures(bubbles: readonly string[]): ReplyFeatures {
   const text = bubbles.join("\n");
@@ -61,6 +64,7 @@ export function replyFeatures(bubbles: readonly string[]): ReplyFeatures {
     particlesPer10: (text.match(PARTICLE_RE)?.length ?? 0) / chars * 10,
     punctPer10: (text.match(PUNCT_RE)?.length ?? 0) / chars * 10,
     periodEnd: /。$/.test(last.trim()) ? 1 : 0,
+    narration: NARRATION_RE.test(text) ? 1 : 0,
   };
 }
 
@@ -132,6 +136,7 @@ export interface ProfileStats {
     readonly emoji: number;
     readonly zhuyin: number;
     readonly periodEnd: number;
+    readonly narration: number;
   };
   readonly bubbleDist: Record<string, number>;
 }
@@ -221,6 +226,7 @@ export function evaluate(artifact: Artifact): EvalSummary {
         emoji: mean(rs.map((r) => r.f.emoji)),
         zhuyin: mean(rs.map((r) => r.f.zhuyin)),
         periodEnd: mean(rs.map((r) => r.f.periodEnd)),
+        narration: mean(rs.map((r) => r.f.narration)),
       },
       bubbleDist,
     };
@@ -322,8 +328,8 @@ export function renderMarkdown(summary: EvalSummary): string {
     "",
     "## 每位角色的表面風格",
     "",
-    "| profile | n | 則數 | 字數 | 1則 | 2則 | 3則+ | 問句率 | 你呢 | 笑 | emoji | 注音 | 語尾/10字 | 標點/10字 | 句號收尾 |",
-    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    "| profile | n | 則數 | 字數 | 1則 | 2則 | 3則+ | 問句率 | 你呢 | 笑 | emoji | 注音 | 語尾/10字 | 標點/10字 | 句號收尾 | 旁白 |",
+    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
   );
   for (const [pid, p] of Object.entries(summary.perProfile)) {
     const b = p.bubbleDist;
@@ -336,7 +342,9 @@ export function renderMarkdown(summary: EvalSummary): string {
         pct(p.rates.laughter)
       } | ${pct(p.rates.emoji)} | ${pct(p.rates.zhuyin)} | ${
         num(p.means.particlesPer10)
-      } | ${num(p.means.punctPer10)} | ${pct(p.rates.periodEnd)} |`,
+      } | ${num(p.means.punctPer10)} | ${pct(p.rates.periodEnd)} | ${
+        pct(p.rates.narration)
+      } |`,
     );
   }
   const s = summary.separation;

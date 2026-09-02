@@ -43,3 +43,12 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   0.80**（角色之間比自己跟自己還像）；探針 Jaccard 跨角色 0.095 vs 同角色
   0.135。同開頭佔比 100% 的情境：daily_share、failed_joke、light_joke。 judge
   四選一 **40%**（Alice 60% 靠空服事實外洩；Bonnie 20% 低於機率）。
+- `2026-09-02-run3-style4-x3.json`（c56f6d19，`--style=1`：4 位的 Reply Style
+  Profile＋Turn Response Plan，全域表面規則與【示範口吻】拿掉）：144 場零失敗、
+  p50 944ms、最長 prompt 8863。**重心距離比值 3.14**（0.80→3.14）；judge 四選一
+  **53%**（40%→53%；Alice 87%、Bonnie 53%、Nina 40%、Lumi 33%）。每人表面分佈明顯
+  分開（Alice 64% 單則／問句 10%；Lumi 47% 句號收尾、標點 1.35/10 字；Nina／Bonnie
+  四成三則）。退步訊號：括號旁白 4/420（baseline 1/420），主要在 failed_joke 與
+  boundary；judge 仍遠低於規格 70% 門檻，且 Nina／Lumi 互相混淆。
+- 對照用 `--style=0`（預設）的 run1 即 baseline；兩次 run 的 prompt 旗標關時逐字相同
+  （prompt_test golden hash）。
