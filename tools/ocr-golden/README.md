@@ -57,6 +57,16 @@ deno run --allow-net --allow-read --allow-write --allow-env run_benchmark.ts \
 ./compare_runs.sh results/<runA>.json results/<runB>.json
 ```
 
+## 2026-09-03 送審前跑分（Sonnet 5、production）
+
+65 單元三輪：修前側邊 98.9%／召回 93.5%／鬼訊息 4（2 張暗色 LINE 引用卡圖 Sonnet 5 不標
+`quoted_preview`，`--force-model claude-sonnet-4-6` 會標）；補暗色主題引用卡描述
+（`screenshot_ocr_rules.ts`，commit `2c81345a`）後全套：側邊 99.4%、召回 93.7%、逐字 98.6%、
+鬼訊息 0，引用卡預覽 63.6%(22)。殘餘：S__5480452 單側長圖側邊 3/6（模型判 mixed）。
+同一張圖單次結果會抖（dark_bruce_3 三跑一跑壞），比較請看多跑或整體。
+
+`--force-model <model>`：只對測試帳號生效（server `VALID_FORCE_MODELS`），模型對照用。
+
 ## 其他參數
 
 - `--only <unit-id>`：只跑單一 unit（debug 用）

@@ -41,9 +41,9 @@
 - [x] 單張截圖識別正常（2026-08-15 前持續 dogfood 覆蓋）
 - [x] 截圖匯入後分析正常（2026-08-15 前持續 dogfood 覆蓋）
 - [ ] iOS 首次選取聊天截圖時，Photo Library 權限彈窗文案正常
-- [ ] LINE 引用回覆、長圖、多圖 overlap 已驗證
-- [ ] media bubble / sticker / video bubble 不會破壞 speaker 判斷
-- [ ] 同一批真實截圖抽測仍維持穩定
+- [ ] LINE 引用回覆、長圖、多圖 overlap 已驗證（2026-09-03 黑箱 65 張：側邊 99.4%、鬼訊息 0；暗色引用卡 prompt 已修 `2c81345a`；殘餘單側長圖 1 張側邊 3/6，真機抽測時留意）
+- [ ] media bubble / sticker / video bubble 不會破壞 speaker 判斷（2026-09-03 黑箱 sticker_media 20 張側邊 98.2%）
+- [x] 同一批真實截圖抽測仍維持穩定（2026-09-03 黑箱 62 張真實圖對 7 月基線持平：側邊 99.4%、召回 93.7%、逐字 98.6%；結果 `tools/ocr-golden/results/2026-09-02-17-44-31-prod.json`）
 
 ### AI 鍵盤
 
