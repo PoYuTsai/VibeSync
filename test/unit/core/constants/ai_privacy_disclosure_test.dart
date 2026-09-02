@@ -44,8 +44,10 @@ void main() {
 
     test('onboarding 維持精簡版，不列廠商也不展開重播細節', () {
       // 廠商名刻意不在 onboarding 出現（避免誤解練習室女孩＝DeepSeek）。
-      expect(AiPrivacyDisclosure.onboardingDescription, isNot(contains('DeepSeek')));
-      expect(AiPrivacyDisclosure.onboardingDescription, isNot(contains('保留 7 天')));
+      expect(AiPrivacyDisclosure.onboardingDescription,
+          isNot(contains('DeepSeek')));
+      expect(
+          AiPrivacyDisclosure.onboardingDescription, isNot(contains('保留 7 天')));
     });
   });
 }

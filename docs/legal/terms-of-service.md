@@ -3,7 +3,7 @@
 > 本檔是線上頁 `https://vibesyncai.app/terms` 的 markdown 鏡像；發布真相源在 `vibesync-web` repo 的 `terms/index.html`。改條款請先改網站版並部署，再同步本檔，兩邊日期要一致。
 
 生效日期：2026-03-16
-最後更新：2026-08-19
+最後更新：2026-09-02
 
 ## 1. 接受條款
 
