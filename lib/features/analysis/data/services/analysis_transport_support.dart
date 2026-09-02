@@ -95,6 +95,15 @@ bool isReadableAnalysisUserMessage(String message) {
   return message.contains(RegExp(r'[\u4e00-\u9fff]'));
 }
 
+/// OCR 沒辨識到對話時給使用者看的訊息。`summary` 是模型生成的文字，
+/// 只有讀得懂的繁中才直接用；英文或空白一律換成固定文案。
+String recognitionFailureMessage(String? summary) {
+  final trimmed = summary?.trim() ?? '';
+  return trimmed.isNotEmpty && isReadableAnalysisUserMessage(trimmed)
+      ? trimmed
+      : '無法辨識截圖中的對話';
+}
+
 Map<String, dynamic> decodeAnalysisResponseBody(http.Response response) {
   final body = response.body.trim();
   if (body.isEmpty) {

@@ -27,6 +27,7 @@ import '../../domain/services/quarterly_savings.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 import '../subscription_diagnostics_gate.dart';
 import '../../../../core/services/app_haptics.dart';
+import 'purchase_error_message.dart';
 
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key});
@@ -1223,24 +1224,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   String _messageForPurchaseError(
     PurchasesErrorCode? errorCode, {
     String? fallbackMessage,
-  }) {
-    switch (errorCode) {
-      case PurchasesErrorCode.purchaseCancelledError:
-        return '已取消購買。';
-      case PurchasesErrorCode.paymentPendingError:
-        return '付款仍在等待 App Store 確認。';
-      case PurchasesErrorCode.productNotAvailableForPurchaseError:
-        return '此方案目前無法購買。';
-      case PurchasesErrorCode.storeProblemError:
-      case PurchasesErrorCode.networkError:
-        return '目前無法連線到 App Store，請稍後再試。';
-      default:
-        if (fallbackMessage != null && fallbackMessage.isNotEmpty) {
-          return fallbackMessage;
-        }
-        return '訂閱處理失敗，請稍後再試。';
-    }
-  }
+  }) =>
+      purchaseErrorMessageFor(errorCode, fallbackMessage: fallbackMessage);
 
   Future<void> _syncPurchasedPlan() async {
     if (kIsWeb) {

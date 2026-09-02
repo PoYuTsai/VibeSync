@@ -99,6 +99,7 @@ import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
 import '../../../../core/services/app_haptics.dart';
+import '../../data/services/analysis_transport_support.dart';
 
 /// Keeps user intent separate from programmatic live-follow movement without
 /// indenting the analysis screen's large child tree.
@@ -2502,7 +2503,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       setState(() {
         _isRecognizing = false;
         _applyErrorState(
-          message: result.recognizedConversation?.summary ?? '無法辨識截圖中的對話',
+          message: recognitionFailureMessage(
+            result.recognizedConversation?.summary,
+          ),
           action: AnalysisErrorAction.rescreenshot,
           origin: _AnalysisErrorOrigin.recognition,
         );
