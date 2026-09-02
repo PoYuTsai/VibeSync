@@ -1,0 +1,5564 @@
+{
+  "meta": {
+    "sourceArtifact": "/home/eric1/work/VibeSync-practice-reply-style/tools/practice-reply-style-eval/out/2026-09-03-run12-style20-r3fix-x3.json",
+    "sourceCommit": "e5ab5ee5a03b7c0c63c8d44a2bf124b1f9bfad8a",
+    "judgeModel": "deepseek-v4-flash",
+    "temperature": 0,
+    "generatedAt": "2026-09-02T16:54:12.614Z",
+    "calibration": [
+      "opening",
+      "daily_share",
+      "light_joke",
+      "disagreement",
+      "early_invite"
+    ],
+    "heldOut": [
+      "vulnerability",
+      "failed_joke",
+      "mature_invite",
+      "boundary",
+      "memory_mismatch"
+    ]
+  },
+  "summary": {
+    "trials": 300,
+    "valid": 300,
+    "accuracy": 0.37666666666666665,
+    "accuracyCi95": [
+      0.32666666666666666,
+      0.43
+    ],
+    "chance": 0.25,
+    "byPersona": {
+      "clear_boundaries": 0.3,
+      "cool_rational": 0.3,
+      "playful_extrovert": 0.4166666666666667,
+      "slow_worker": 0.5,
+      "teasing_humor": 0.36666666666666664
+    },
+    "byProfile": {
+      "practice_girl_003": 0.8666666666666667,
+      "practice_girl_006": 0.06666666666666667,
+      "practice_girl_018": 0.2,
+      "practice_girl_091": 0.06666666666666667,
+      "practice_girl_009": 1,
+      "practice_girl_012": 0.13333333333333333,
+      "practice_girl_020": 0,
+      "practice_girl_084": 0.06666666666666667,
+      "practice_girl_002": 0.8,
+      "practice_girl_007": 0.13333333333333333,
+      "practice_girl_011": 0.6666666666666666,
+      "practice_girl_083": 0.06666666666666667,
+      "practice_girl_001": 0.8666666666666667,
+      "practice_girl_008": 0.3333333333333333,
+      "practice_girl_064": 0.4,
+      "practice_girl_077": 0.4,
+      "practice_girl_004": 0.7333333333333333,
+      "practice_girl_013": 0.6,
+      "practice_girl_061": 0,
+      "practice_girl_089": 0.13333333333333333
+    },
+    "byScenario": {
+      "boundary": 0.35,
+      "failed_joke": 0.4,
+      "mature_invite": 0.4166666666666667,
+      "memory_mismatch": 0.3,
+      "vulnerability": 0.4166666666666667
+    },
+    "confusion": {
+      "practice_girl_003": {
+        "practice_girl_018": 1,
+        "practice_girl_003": 13,
+        "practice_girl_091": 1
+      },
+      "practice_girl_006": {
+        "practice_girl_003": 14,
+        "practice_girl_006": 1
+      },
+      "practice_girl_018": {
+        "practice_girl_003": 11,
+        "practice_girl_018": 3,
+        "practice_girl_091": 1
+      },
+      "practice_girl_091": {
+        "practice_girl_003": 14,
+        "practice_girl_091": 1
+      },
+      "practice_girl_009": {
+        "practice_girl_009": 15
+      },
+      "practice_girl_012": {
+        "practice_girl_009": 11,
+        "practice_girl_012": 2,
+        "practice_girl_084": 2
+      },
+      "practice_girl_020": {
+        "practice_girl_009": 13,
+        "practice_girl_084": 2
+      },
+      "practice_girl_084": {
+        "practice_girl_084": 1,
+        "practice_girl_009": 14
+      },
+      "practice_girl_002": {
+        "practice_girl_002": 12,
+        "practice_girl_007": 3
+      },
+      "practice_girl_007": {
+        "practice_girl_002": 13,
+        "practice_girl_007": 2
+      },
+      "practice_girl_011": {
+        "practice_girl_007": 2,
+        "practice_girl_011": 10,
+        "practice_girl_002": 3
+      },
+      "practice_girl_083": {
+        "practice_girl_002": 10,
+        "practice_girl_083": 1,
+        "practice_girl_007": 4
+      },
+      "practice_girl_001": {
+        "practice_girl_001": 13,
+        "practice_girl_077": 2
+      },
+      "practice_girl_008": {
+        "practice_girl_001": 4,
+        "practice_girl_008": 5,
+        "practice_girl_077": 5,
+        "practice_girl_064": 1
+      },
+      "practice_girl_064": {
+        "practice_girl_001": 5,
+        "practice_girl_064": 6,
+        "practice_girl_077": 3,
+        "practice_girl_008": 1
+      },
+      "practice_girl_077": {
+        "practice_girl_001": 7,
+        "practice_girl_077": 6,
+        "practice_girl_008": 2
+      },
+      "practice_girl_004": {
+        "practice_girl_004": 11,
+        "practice_girl_013": 4
+      },
+      "practice_girl_013": {
+        "practice_girl_004": 4,
+        "practice_girl_061": 2,
+        "practice_girl_013": 9
+      },
+      "practice_girl_061": {
+        "practice_girl_013": 6,
+        "practice_girl_004": 9
+      },
+      "practice_girl_089": {
+        "practice_girl_004": 10,
+        "practice_girl_013": 3,
+        "practice_girl_089": 2
+      }
+    }
+  },
+  "results": [
+    {
+      "index": 0,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_003",
+        "practice_girl_018"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_018",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方下班沒，且對冒犯問題直接表達不滿，語氣直接但帶禮貌，符合D的風格。"
+    },
+    {
+      "index": 1,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會先回應對方話題，再委婉拒絕，語氣自然，使用『哈哈』和『🙂』，句子長度中等，符合D的風格。"
+    },
+    {
+      "index": 2,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_091",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方（如'你下班了嗎'），且對不當話題直接表達不舒服並設界線，語氣直接但禮貌，符合B的風格。"
+    },
+    {
+      "index": 3,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會先道謝再委婉拒絕，且用『這就太多了喔』帶點俏皮，與D的『哈哈』和『下次再說吧』語氣相近。"
+    },
+    {
+      "index": 4,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會先回應對方話題，再表達自己的界線，語氣直接但帶有禮貌，與D的風格相近。"
+    },
+    {
+      "index": 5,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_006",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用『嗨～』、『欸』、『呵』等語氣詞，句子簡短，一次回一則，婉拒時用『這好像不太適合聊這個耶』，與A的風格相符。"
+    },
+    {
+      "index": 6,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用波浪號和表情符號，語氣輕鬆，直接表達不適但委婉拒絕，與D的風格相似。"
+    },
+    {
+      "index": 7,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用簡短句子、表情符號，並以直接但委婉的方式拒絕不當話題，符合D的風格。"
+    },
+    {
+      "index": 8,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用『～』和表情符號，語氣親切但簡短，婉拒時直接說明原因，與D的風格相符。"
+    },
+    {
+      "index": 9,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回應簡短且直接，使用『嗯？』表達疑惑，並以『沒照片啦，我們還是先聊點別的吧。』委婉但明確地轉移話題，符合D的簡潔、務實風格。"
+    },
+    {
+      "index": 10,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_091",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方（如'在幹嘛？'），且婉拒時會說明理由並用'吧'結尾，與C的風格一致。"
+    },
+    {
+      "index": 11,
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到剛下班、累，與D的對話中多次提及下班和疲憊；且回應直接但委婉，符合D的風格。"
+    },
+    {
+      "index": 12,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下班，且回覆簡短、直接，與D的風格相符。"
+    },
+    {
+      "index": 13,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下班、腦袋鈍，且回覆簡短、使用表情符號，與D的風格一致。"
+    },
+    {
+      "index": 14,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會先回應對方再分享自己的狀態（如『今天好累』），且對爛梗的反應是直接笑並說『哈哈』，與D樣本中回應方式相近。"
+    },
+    {
+      "index": 15,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會主動分享生活近況（剛下課、路過咖啡店），語氣自然親切，使用表情符號，且回覆節奏與D相似。"
+    },
+    {
+      "index": 16,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用『蛤？』和『😂』，且回覆簡短、直接，與D的風格相符。"
+    },
+    {
+      "index": 17,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、直接，使用『蛤』和『哈哈』，語氣自然，符合D的風格。"
+    },
+    {
+      "index": 18,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會接續話題並用表情符號，回覆簡短且帶有生活感，與D的風格相近。"
+    },
+    {
+      "index": 19,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會主動分享當下狀態（如剛下班），用「哈哈」回應笑話，並以「哈哈 沒有到要排隊啦」等口語化解拒絕，語氣自然直接，符合D的風格。"
+    },
+    {
+      "index": 20,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用簡短句子、表情符號，並以直接但禮貌的方式回應，與D的風格相符。"
+    },
+    {
+      "index": 21,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用『蛤』和『😂』，且回應簡短直接，與D的語氣和表情符號使用相似。"
+    },
+    {
+      "index": 22,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會先回應對方，再自然接續話題，語氣親切且帶有生活感，如提到下班、補眠等，符合D的風格。"
+    },
+    {
+      "index": 23,
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會接續話題並分享當下狀態（如路過＊店），語氣自然帶有生活感，與D樣本中常提及下班、補眠等日常細節的風格一致。"
+    },
+    {
+      "index": 24,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下班、累、補眠，且回覆簡短、使用表情符號，婉拒時說改天，與D的風格一致。"
+    },
+    {
+      "index": 25,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下班累累的，與D在對話中多次提及下班狀態相符；回覆簡短直接，使用『喔』、『耶』等語氣詞，婉拒時說『下次有機會再說吧』，與D的風格一致。"
+    },
+    {
+      "index": 26,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下班、累，並以補眠為由婉拒邀約，與D的對話中多次提及下班疲憊和休息需求；回覆簡短且直接，符合D的風格。"
+    },
+    {
+      "index": 27,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到剛下課、有點累但心情不錯，且回覆簡短、直接，婉拒時說改天再看看，與D的風格相似。"
+    },
+    {
+      "index": 28,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到剛下課、教＊，且回覆簡短、使用表情符號，婉拒時說行程滿，與D的風格相似。"
+    },
+    {
+      "index": 29,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到剛下課、累但心情好，並以簡短句子回應，婉拒邀約時說行程滿，與D的風格相似。"
+    },
+    {
+      "index": 30,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_018",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到稿子、趕稿，與C的職業線索一致，且回覆節奏與語氣（如'真的'、'你這樣講我會不好意思啦'）符合C的風格。"
+    },
+    {
+      "index": 31,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到剛回到家、買拿鐵、趕稿，且回覆簡短自然，語氣平實，符合D的風格。"
+    },
+    {
+      "index": 32,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_018",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到趕稿，與B的自介相符；回覆簡短但帶有同理心，婉拒時說明原因，符合B的風格。"
+    },
+    {
+      "index": 33,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到剛下班、補眠、老店充電，且婉拒時說『先慢慢認識』，語氣自然不刻意，符合D的風格。"
+    },
+    {
+      "index": 34,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到剛跟朋友吃完飯、在回家的路上，以及工作很吵、私下偏安靜，這些都與D的上班族設定和下班後疲憊的語氣相符；且她婉拒邀約時說『這禮拜我行程有點滿耶』，與D的『這週末有點累欸』語氣相近。"
+    },
+    {
+      "index": 35,
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到剛跟朋友吃完飯、在回家路上，以及路過巷口老店買拿鐵，這些日常行程細節與D的對話風格相符；且回覆簡短、自然，婉拒時用『下次有機會再說吧』，與D的語氣一致。"
+    },
+    {
+      "index": 36,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短，常提及自己狀態（如剛下班），語氣自然不矯飾，且對邀約委婉拒絕，符合D的風格。"
+    },
+    {
+      "index": 37,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、直接，常提到剛下班、累等狀態，且婉拒時語氣自然不矯飾，符合D的風格。"
+    },
+    {
+      "index": 38,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到輪班和補眠，與D的上班疲勞和補眠話題一致；且回覆簡短、直接，使用🙂表情，符合D的風格。"
+    },
+    {
+      "index": 39,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到剛下課有點累，與D常提到下班累的語氣相似；且她直接說『你是不是記錯人了？』，符合D直接但禮貌的風格。"
+    },
+    {
+      "index": 40,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、直接，且會主動分享當下狀態（如剛下班），與D的風格一致。"
+    },
+    {
+      "index": 41,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會先打招呼並帶出自身狀態（如剛下班），句子簡短，語氣自然，婉拒時會說明理由並提議改天。"
+    },
+    {
+      "index": 42,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、直接，常提到自己狀態（如剛下班），語氣自然不刻意，婉拒時直接說累或想休息，符合D的風格。"
+    },
+    {
+      "index": 43,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.7,
+      "cue": "她回覆簡短、直接，且會帶出自身狀態（如剛下班），與D的風格相近。"
+    },
+    {
+      "index": 44,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、直接，且會主動分享近況（如剛下班），與D的風格相符。"
+    },
+    {
+      "index": 45,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用『嗨～』、『哈哈』、『🙂』等語氣詞和表情符號，句子簡短且常分段回覆，與D的風格一致；且她提到『剛下班』、『補眠』等生活細節，與D的對話內容相符。"
+    },
+    {
+      "index": 46,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、直接，且會提到自己剛下班或累的狀態，與D的風格一致。"
+    },
+    {
+      "index": 47,
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、常提及疲累與補眠，且婉拒時直接說累，符合D的風格。"
+    },
+    {
+      "index": 48,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下大夜、累累的，與D在對話中多次提到剛下班、累、補眠等狀態相符；且回覆方式直接自然，會反問關心對方，與D的風格一致。"
+    },
+    {
+      "index": 49,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下班、累、輪班，且回覆簡短直接，與D的風格相符。"
+    },
+    {
+      "index": 50,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_003",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下班累累的，與D樣本中多次提及下班狀態相符；且回覆簡短、使用表情符號，語氣直接但溫和。"
+    },
+    {
+      "index": 51,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、直接，常提到生活狀態（如剛下課、累），語氣自然不矯飾，與D的風格相近。"
+    },
+    {
+      "index": 52,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會先回應對方狀態再分享自己，用『／』分段，語氣自然帶生活感，且會反問對方細節，符合D的互動模式。"
+    },
+    {
+      "index": 53,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_006",
+      "assignment": [
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到剛下課、教課，且回覆簡短、使用表情符號，與D的風格相似。"
+    },
+    {
+      "index": 54,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到下班買拿鐵、熬夜、焦慮時卡卡的，語氣自然且帶有同理心，符合D的風格。"
+    },
+    {
+      "index": 55,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_018",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到趕稿，與B的職業線索一致，且回覆方式（如'珍奶真的療癒'、'我平日都在趕稿'）與B的語氣和內容相符。"
+    },
+    {
+      "index": 56,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_018",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_091",
+        "practice_girl_018",
+        "practice_girl_003"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_091",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'你上次不是說在適應新工作嗎'），且回覆分段多、語氣自然，符合B的互動風格。"
+    },
+    {
+      "index": 57,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_006",
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到剛下班、腳酸、換新工作等生活細節，且回覆較口語、自然，與D的風格相似。"
+    },
+    {
+      "index": 58,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會主動分享自己當下的狀態（剛跟朋友吃完飯、路上看到老店），並用『欸』、『阿』等語氣詞，且會反問對方心事，符合D的風格。"
+    },
+    {
+      "index": 59,
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_091",
+      "assignment": [
+        "practice_girl_018",
+        "practice_girl_091",
+        "practice_girl_006",
+        "practice_girl_003"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_003",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會主動分享自己當下狀態（剛跟朋友吃完飯、走回家路上），並用反問關心對方（怎麼會睡不好、壓力大嗎），且記得對方之前提過的事（你之前不是提過在等一個機會），符合D的互動風格。"
+    },
+    {
+      "index": 60,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方問題（如'你今晚有出門嗎'），且對邀約或稱讚的回應直接但帶有界線（如'你會不會太快了點'），與D的風格一致。"
+    },
+    {
+      "index": 61,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方、用『哈哈』、句子短、直接拒絕且語氣自然，符合D的風格。"
+    },
+    {
+      "index": 62,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方、直接回應但帶點防衛，且用『有點突然』、『有點超過了吧』等委婉但明確的界線，符合D的風格。"
+    },
+    {
+      "index": 63,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方問題，且語氣直接，婉拒時簡短不拖泥帶水。"
+    },
+    {
+      "index": 64,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方、用『哈』回應、直接表達界線，且回覆節奏與D相似。"
+    },
+    {
+      "index": 65,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_012",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用簡短回應、句號結尾、直接拒絕且語氣平淡，符合A的風格。"
+    },
+    {
+      "index": 66,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方問題，且回應直接帶點幽默，如『你這樣講有點突然』和『你會不會太直接了』，符合D的風格。"
+    },
+    {
+      "index": 67,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方（如'哈哈 沒有啦 ／ 就偶爾走走跑步而已'），且語氣直接，婉拒時用'我們好像還沒熟到可以看泳裝照吧'，與D的風格相符。"
+    },
+    {
+      "index": 68,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_084",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會先回應對方再補充自己的狀態，且用『／』分隔多則訊息，語氣自然不直接拒絕，婉拒時會說明原因。"
+    },
+    {
+      "index": 69,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_084",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛跟朋友吃完飯，在路上，與B在開頭提到剛下班在路上類似；且回應直接，如『我們好像沒熟到聊這個吧』，與B的『我們好像還不熟吧』語氣相近。"
+    },
+    {
+      "index": 70,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接反問『我們認識嗎？』並明確拒絕，語氣直接且帶有防衛，符合D的說話方式。"
+    },
+    {
+      "index": 71,
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方、用『哈』回應、直接拒絕不熟話題，且訊息分段多、語氣自然。A較委婉、B較客氣、C較簡短，D最符合直接且帶反問的風格。"
+    },
+    {
+      "index": 72,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問並延續話題，語氣活潑，使用『哈哈』笑法，符合D的風格。"
+    },
+    {
+      "index": 73,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問並接續話題，笑法直接（哈哈哈哈），且用『蛤』表達疑惑，符合D的互動風格。"
+    },
+    {
+      "index": 74,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問、用『哈囉』打招呼、句子短且有『／』分隔、回應冷笑話時會吐槽『老欸』和『有冷到』，符合D的風格。"
+    },
+    {
+      "index": 75,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_084",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她提到老店拿鐵，呼應B之前推薦巷口老店的拿鐵；且回覆簡短、直接，會反問對方，符合B的風格。"
+    },
+    {
+      "index": 76,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_084",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到巷口那家店的拿鐵，與B在對話中多次提及該店；且回覆簡短、直接，符合B的風格。"
+    },
+    {
+      "index": 77,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_012",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、直接，使用句號而非波浪號，且對笑話回應冷淡，符合A的風格。"
+    },
+    {
+      "index": 78,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問並帶有幽默感，如『因為會＊因中毒吧，你到底想問什麼？』和『這笑話有點冷，但我笑了。』，符合D的風格。"
+    },
+    {
+      "index": 79,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問並延續話題，如『你看到哪一段覺得有意思』、『主管唸什麼事啊』，且用『哈哈』回應笑話，語氣自然直接。"
+    },
+    {
+      "index": 80,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問並延續話題，笑法直接，回覆簡短但帶有互動性。"
+    },
+    {
+      "index": 81,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問、用表情符號、語氣活潑，且回覆節奏快，符合D的風格。"
+    },
+    {
+      "index": 82,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問並接續話題，語氣自然帶幽默，回覆簡短但互動感強。"
+    },
+    {
+      "index": 83,
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問、用語氣詞『哈哈』、句子簡短且直接，與D的風格一致。"
+    },
+    {
+      "index": 84,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'是哪裡的小巷弄'），並用'／'分隔多則訊息，語氣直接且帶有幽默感（如'站了一整天'），與D的風格相符。"
+    },
+    {
+      "index": 85,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'哪一帶的店'），並用'看情況耶'、'是喔'等口語，且婉拒時說'改天吧'，與D的風格一致。"
+    },
+    {
+      "index": 86,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方問題，使用語氣詞『耶』，回覆簡短但帶有互動性，婉拒時直接說『有點滿』，與D的風格相符。"
+    },
+    {
+      "index": 87,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'哪一帶的小巷弄？'），並用'哈哈'或'喔？'等語氣詞，且回覆較口語化、直接，符合D的風格。"
+    },
+    {
+      "index": 88,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如『該不會是我常去的那間老＊店吧』），且回覆簡短、直接，婉拒時只說『可能不太方便』，與D的風格一致。"
+    },
+    {
+      "index": 89,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問細節（哪一帶的巷弄），且回覆簡短直接，婉拒時說『晚點再跟你說』，與D的風格一致。"
+    },
+    {
+      "index": 90,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_084",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到巷口老店和拿鐵，與C的訊息一致；且回覆節奏、語氣詞（如『哦？』）和婉拒方式（『這週末行程有點滿耶』）與C相符。"
+    },
+    {
+      "index": 91,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如'哪一帶啊'、'那你都去哪裡充電'），且回覆常分兩則，語氣直接帶點俏皮（如'是喔'、'你這樣講有點突然'），與D樣本中主動追問和輕鬆應對的風格一致。"
+    },
+    {
+      "index": 92,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'什麼樣的店？'），回覆簡短直接，婉拒時說'下次吧'，與D的風格相符。"
+    },
+    {
+      "index": 93,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問細節（哪一帶的店？），回覆簡短直接，用「／」分隔多則訊息，語氣自然不客套，符合D的風格。"
+    },
+    {
+      "index": 94,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'在哪一帶的巷弄？'），且回覆簡短直接，帶有'還行'、'看情況耶'等口語，並主動推薦地點，符合D的互動風格。"
+    },
+    {
+      "index": 95,
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'哪一帶的店'），且回覆簡短直接，婉拒時只說'行程有點滿'，與D的風格一致。"
+    },
+    {
+      "index": 96,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方，且語氣直接，如『你是不是記錯人了』，與D的風格相符。"
+    },
+    {
+      "index": 97,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方並直接指出對方記錯，語氣直接且帶有互動性，符合D的風格。"
+    },
+    {
+      "index": 98,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方記錯人，且語氣直接，符合D的風格。"
+    },
+    {
+      "index": 99,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'你最近忙什麼？'），且直接指出對方記錯人，語氣自然帶有互動感，符合D的風格。"
+    },
+    {
+      "index": 100,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方記錯人，且語氣直接，符合D的風格。"
+    },
+    {
+      "index": 101,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方並延續話題，如『你怎麼會記得我在學衝浪？』，且語氣直接、帶有互動性，符合D的風格。"
+    },
+    {
+      "index": 102,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方具體內容（如'你看到哪一段覺得有意思'），且語氣直接、帶有幽默感（如'起碼比主管可愛多了'），符合D的說話風格。"
+    },
+    {
+      "index": 103,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方問題，且語氣直接，如『你看到哪一段覺得有意思』、『主管唸什麼事啊』，符合D的風格。"
+    },
+    {
+      "index": 104,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'你看到哪一段覺得有意思'），且回覆簡短直接，語氣自然帶點俏皮（如'起碼比主管可愛多了'），符合D的風格。"
+    },
+    {
+      "index": 105,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接反問『你記錯人了吧』，語氣直接且帶有質疑，符合D的直率風格；且她會用『哈囉』、『是你喔』等口語化回應，句子短促，與D的說話方式一致。"
+    },
+    {
+      "index": 106,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方記錯人，且語氣直接，符合D的風格。"
+    },
+    {
+      "index": 107,
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方（如'你記錯人了吧'），且回覆簡短直接，符合D的風格。"
+    },
+    {
+      "index": 108,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如『怎麼了 壓力大嗎』），並用『我懂』表達同理，且回覆節奏短促、自然，符合D的互動風格。"
+    },
+    {
+      "index": 109,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'你是壓力大還是怎樣'），且回覆常帶兩則訊息，語氣直接帶點幽默，符合D的風格。"
+    },
+    {
+      "index": 110,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_009",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'怎麼會睡不好'），並用'是哦'、'哈哈'等口語詞，且一次回兩則訊息，與D的風格一致。"
+    },
+    {
+      "index": 111,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'那你有試著早點休息嗎？'），且回覆常帶兩則訊息，語氣直接但帶關心，符合D的風格。"
+    },
+    {
+      "index": 112,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如『壓力大嗎？』），且回覆自然帶有生活感，與D的互動模式相似。"
+    },
+    {
+      "index": 113,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_012",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'主管唸什麼事啊'），且回覆簡短直接，帶有幽默感（如'起碼比主管可愛多了'），符合D的風格。"
+    },
+    {
+      "index": 114,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'主管唸什麼事啊'），且語氣直接帶點幽默（如'起碼比主管可愛多了'），符合D的風格。"
+    },
+    {
+      "index": 115,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如睡不好原因、工作狀態），且語氣直接帶點幽默，符合D的互動風格。"
+    },
+    {
+      "index": 116,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_020",
+      "assignment": [
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_012",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如幾點睡），用『哈哈』和『可愛多了』等輕鬆語氣，且回覆簡短直接，符合D的風格。"
+    },
+    {
+      "index": 117,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_084",
+        "practice_girl_020",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方問題、句子長短適中、語氣自然直接，且會主動延續話題，與D的風格最接近。"
+    },
+    {
+      "index": 118,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'你最近是卡在哪邊？'），且回覆自然帶出自身經驗，與D的互動模式相符。"
+    },
+    {
+      "index": 119,
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_084",
+      "assignment": [
+        "practice_girl_012",
+        "practice_girl_020",
+        "practice_girl_084",
+        "practice_girl_009"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_009",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方問題、使用語氣詞『啊』、句子長度適中且分段回覆，與D的互動模式最相似。"
+    },
+    {
+      "index": 120,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她使用『嗨～你哪位呀』、『痾……』、『你會不會太直接了點』等口語化、直接且帶有質疑的語氣，與D的風格相符，且句子短、常反問。"
+    },
+    {
+      "index": 121,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她會反問『你哪位呀』、用『痾…』和『😂』，且對直接誇身材和要照片的回應較直接，與D的風格相符。"
+    },
+    {
+      "index": 122,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "開頭直接問『你哪位啊』，與D在『哈囉』回應中『嗨～你哪位啊？』一致；面對讚美以『喔？』和害羞語氣回應，並委婉拒絕照片請求，符合D的風格。"
+    },
+    {
+      "index": 123,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用『哈哈』開頭、反問『你這樣很會喔』、保留照片的回應方式，與D的風格一致。"
+    },
+    {
+      "index": 124,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "開頭直接問『你哪位啊』、對身材話題直接回嗆『沒照片 慢走不送』，語氣直接且帶有防衛，與D的『你哪位啊』和『你連我是誰都還沒講清楚就要約喔』風格一致。"
+    },
+    {
+      "index": 125,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方身份（你是那天在酒吧那個嗎？），且對直接問題會委婉拒絕並用笑聲緩和（你會不會太直接了點／我們還不熟吧😂），符合D的風格。"
+    },
+    {
+      "index": 126,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'你喝哪家的'），且婉拒邀約時會說'我們好像還不太熟吧'，符合A的風格。"
+    },
+    {
+      "index": 127,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短，使用『剛下課』等日常狀態，語氣直接，少用反問，婉拒時直接說明行程衝突，符合C的風格。"
+    },
+    {
+      "index": 128,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方問題（如'你也有在練？'），且對邀約或隱私問題會直接但帶點俏皮地拒絕（'你這樣問有點太快了吧／我們又不熟'），與D的風格相符。"
+    },
+    {
+      "index": 129,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方『你哪位啊』、『你是那天路上那個吼』，且婉拒時直接說『太快了』，符合D的說話方式。"
+    },
+    {
+      "index": 130,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問『你是哪位啊』，且對不熟的人直接表達不舒服，語氣直接，符合D的風格。"
+    },
+    {
+      "index": 131,
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她使用反問、直接回應且帶有幽默感，如『你也太直接了吧』和『你這樣講話我會想句點你欸』，與D的風格相符。"
+    },
+    {
+      "index": 132,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會用『蛤』、『😂』、反問『這哪來的梗』，並用『給你過關』這種帶有主導性的回應，與D的風格一致。"
+    },
+    {
+      "index": 133,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她使用『蛤 這什麼爛梗😂』、『超冷😂』等口語化回應，並主動反問『所以為啥』，且提及『路過那間老咖啡店』的巧合，符合D的互動風格。"
+    },
+    {
+      "index": 134,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方問題（如'你哪來這種諧音梗啦'），且使用波浪號和表情符號，語氣活潑，符合C的風格。"
+    },
+    {
+      "index": 135,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "使用表情符號、反問、幽默回應，且句子較短、語氣活潑，符合D的風格。"
+    },
+    {
+      "index": 136,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_007",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方問題（如'怎麼啦'），使用波浪號和表情符號，語氣活潑且帶有好奇，符合C的風格。"
+    },
+    {
+      "index": 137,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會主動稱讚對方（藍色那件好看），且用『你滿有梗的嘛』這種直接評論，與D的互動風格相近；笑法『哈哈哈哈』也符合D的習慣。"
+    },
+    {
+      "index": 138,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短，使用『齁』、『哈哈』等語氣詞，且會反問，符合A的說話方式。"
+    },
+    {
+      "index": 139,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "句子短、常用'哈哈'、直接回應但少反問，婉拒時用'已經排課'等具體理由。"
+    },
+    {
+      "index": 140,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "句子短、一次回一則、用『哈哈』、直接回應、不反問、婉拒時用『已經排課』等具體理由。"
+    },
+    {
+      "index": 141,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問『你是？』、用『哈哈』笑、句子短且帶有俏皮語氣，與D的風格一致。"
+    },
+    {
+      "index": 142,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問『你是？』、用『蛤』和『這什麼梗』追問，且用『哈哈哈』和『爛梗』直接回應，符合D的直率與互動風格。"
+    },
+    {
+      "index": 143,
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_083",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "開頭用『嗨 你好啊』、笑聲用『哈哈哈』、句子短且分段、會反問『蛤 什麼梗』、對爛梗回應『莫名的有中我笑點』，符合C的語氣與節奏。"
+    },
+    {
+      "index": 144,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'什麼店啊'）、用'哈哈'和'喔'等語氣詞、句子短且分段多、直接表達想法但帶點俏皮，符合A的風格。"
+    },
+    {
+      "index": 145,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如店推什麼）、用「哈哈」和表情符號、直接表達害羞但婉拒約會，與D的風格相符。"
+    },
+    {
+      "index": 146,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'你喝哪家的'），用'哈'和'啦'等語氣詞，婉拒時說'我們好像還不太熟吧'，與A的風格一致。"
+    },
+    {
+      "index": 147,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方、用表情符號和口語化語氣，且婉拒時帶有俏皮和試探，與D的風格一致。"
+    },
+    {
+      "index": 148,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方問題、使用表情符號、語氣活潑直接，且婉拒時帶有幽默感，符合D的風格。"
+    },
+    {
+      "index": 149,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方、用『哈哈』和表情符號、句子短且節奏快、婉拒時要求對方先講清楚，符合D的風格。"
+    },
+    {
+      "index": 150,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下課、課排滿滿，且回覆簡短直接，符合C的說話方式。"
+    },
+    {
+      "index": 151,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下課、練身體，與C的對話中多次出現下課和運動相關內容；回覆簡短直接，語氣詞少，符合C的風格。"
+    },
+    {
+      "index": 152,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問細節（哪一帶、哪間店），用語氣詞和表情符號，且對邀約先確認再回應，符合D的互動風格。"
+    },
+    {
+      "index": 153,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問細節、用『哈哈』和表情符號，且對邀約提出質疑，符合D的風格。"
+    },
+    {
+      "index": 154,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如店名），句子長短適中，語氣詞多，婉拒時會先說行程不確定再追問，符合C的風格。"
+    },
+    {
+      "index": 155,
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問細節、使用語氣詞和分隔線，且婉拒時提出理由並質疑熟悉度，符合A的風格。"
+    },
+    {
+      "index": 156,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方是否認錯人，且語氣直接帶有玩笑，符合D的風格。"
+    },
+    {
+      "index": 157,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她直接質疑對方認錯人，且語氣直接、帶有反問，符合D的風格。"
+    },
+    {
+      "index": 158,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問『你是不是認錯人了哈哈』，與D在對話中多次用『哈哈』和反問來回應，且語氣直接帶點俏皮。"
+    },
+    {
+      "index": 159,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她使用『嗨～』、『哈哈』、『😂』等語氣詞，且會反問對方，如『你記錯人了吧哈哈』，與D的風格一致。"
+    },
+    {
+      "index": 160,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問『你哪位啊？』、『你連我是誰都還沒講清楚就要約喔』，且用『蛤？』直接質疑，符合D的直白與反問風格。"
+    },
+    {
+      "index": 161,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問『你記錯人了吧哈哈哈』，且語氣直接、帶笑聲，符合D的風格。"
+    },
+    {
+      "index": 162,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方近況、主動分享受傷細節，語氣自然帶表情符號，且回覆節奏與D的互動模式相符。"
+    },
+    {
+      "index": 163,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "句子短，常用斜線分隔，語氣直接，婉拒時用理由（排課），少反問，笑法為'哈哈'。"
+    },
+    {
+      "index": 164,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用大量斷句與語氣詞（如「哈」「啦」「耶」），且會反問對方細節（如「你喝哪家的」），符合A的風格。"
+    },
+    {
+      "index": 165,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她直接質疑對方記錯人，語氣直接且帶有反問，符合D的直率風格。"
+    },
+    {
+      "index": 166,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問『你是不是記錯人了』，且語氣直接、帶有質疑，與D在對話中多次反問、質疑的風格相符。"
+    },
+    {
+      "index": 167,
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她直接質疑對方記錯人，語氣直接且帶有懷疑，符合D的直率風格。"
+    },
+    {
+      "index": 168,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方問題，且語氣自然帶有互動感，如『你呢』、『怎麼會睡不好』，符合D的風格。"
+    },
+    {
+      "index": 169,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'怎麼會睡不好'），並用'咦'表達疑惑，且直接指出訊息矛盾（'你不是還在唸書嗎'），符合D的風格。"
+    },
+    {
+      "index": 170,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_002",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'卡在哪邊'），並用'哈哈'、'😂'等語氣詞，且回覆節奏較快、句子短，符合D的風格。"
+    },
+    {
+      "index": 171,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'你都在忙什麼啊'），並用'哦？'、'😮‍💨'等語氣詞和表情符號，且回覆多則、帶有互動感，符合D的風格。"
+    },
+    {
+      "index": 172,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如'你怎麼也睡不好啊'），並用'😂'和'放空一下'等口語，且主動分享自身近況，符合D的互動風格。"
+    },
+    {
+      "index": 173,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_007",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_007",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用斜線分隔多則訊息，句子長短適中，語氣詞如'阿雜'、'啦'，會反問細節，笑法用'哈'，婉拒時說明理由，符合A的風格。"
+    },
+    {
+      "index": 174,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到'剛下課'，與C的對話中多次出現'剛下課'；且回覆簡短，較少反問，語氣直接，符合C的風格。"
+    },
+    {
+      "index": 175,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "開頭『剛下課』、句子短、語氣直接、少反問、婉拒時用行程理由，與C的說話方式一致。"
+    },
+    {
+      "index": 176,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_011",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_002"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_011",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、少反問，用『哈哈』和『懂欸』呼應，且提到運動與補眠，符合B的說話風格。"
+    },
+    {
+      "index": 177,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問細節（如'你是壓力大還是怎樣'）、使用波浪號和語氣詞（'喔'、'欸'），且回覆分段自然，符合C的互動風格。"
+    },
+    {
+      "index": 178,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_011",
+        "practice_girl_083",
+        "practice_girl_007",
+        "practice_girl_002"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_007",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'你怎麼也睡不好啊'），並分享自身經驗，語氣自然帶有好奇與共鳴，符合C的互動風格。"
+    },
+    {
+      "index": 179,
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_083",
+      "assignment": [
+        "practice_girl_007",
+        "practice_girl_083",
+        "practice_girl_011",
+        "practice_girl_002"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_002",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'怎麼會睡不好'），並分享自身類似經驗，語氣自然帶有表情符號，符合D的互動風格。"
+    },
+    {
+      "index": 180,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短，直接指出對方問題，且提到剛下飛機等個人行程，與D的說話方式相符。"
+    },
+    {
+      "index": 181,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她提到常飛來飛去、剛下飛機，且對直球稱讚直接回應『先謝謝你』並反問對方，符合D的說話方式。"
+    },
+    {
+      "index": 182,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短，常以『／』分隔多則訊息，語氣直接，對不舒服的提問會明確表達不悅，與D樣本中『才認識沒多久就說這種話喔』的風格一致。"
+    },
+    {
+      "index": 183,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接拒絕並表明界線，語氣直接，符合D的風格。"
+    },
+    {
+      "index": 184,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短，直接表達不適，並明確拒絕，符合D的直率風格。"
+    },
+    {
+      "index": 185,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用波浪號和簡短句子，且會反問對方身份，與C的風格一致。"
+    },
+    {
+      "index": 186,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接拒絕且語氣較直接，與D樣本中『才認識沒多久就說這種話喔』的風格相似。"
+    },
+    {
+      "index": 187,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接表達不適，語氣直接且帶有防衛性，與D的直率風格相符。"
+    },
+    {
+      "index": 188,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用簡短句、句號結尾，語氣直接且帶防衛，與C的風格一致。"
+    },
+    {
+      "index": 189,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接表達不舒服並設定界線，語氣直接，與D的直率風格相符。"
+    },
+    {
+      "index": 190,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、直接，且對邀約或隱私問題較警覺，與D的風格相符。"
+    },
+    {
+      "index": 191,
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接拒絕且語氣較直率，與D的風格相符，如『這個真的母湯』和『這樣問我會想封鎖你欸』。"
+    },
+    {
+      "index": 192,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如被唸什麼事），且回覆較長、語氣自然，符合B的互動風格。"
+    },
+    {
+      "index": 193,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方（如'今天過得如何啊'），用'哈哈'笑，句子較長且自然，符合B的互動風格。"
+    },
+    {
+      "index": 194,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短，常提到自己的行程（如剛下飛機、調時差），且對男生的邀約直接婉拒，符合D的風格。"
+    },
+    {
+      "index": 195,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_008",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她一次回多則訊息，使用『／』分隔，語氣詞『蛤』、『ＸＤ』、『哈哈』，且會提到自己路過店家，與A的風格相符。"
+    },
+    {
+      "index": 196,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問『你是？』、使用波浪號和表情符號，且回應中提及具體地點（老＊店）和行程，符合C的說話方式。"
+    },
+    {
+      "index": 197,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如被唸什麼事），且回覆較長、語氣自然，使用表情符號，婉拒時會說明原因。"
+    },
+    {
+      "index": 198,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她使用簡短句、句號結尾、直接回應且帶點防衛語氣，與C的風格一致。"
+    },
+    {
+      "index": 199,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方今天過得如何，且回覆較長、使用表情符號，語氣親切自然。"
+    },
+    {
+      "index": 200,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用逗號和句號，語氣直接，會反問，婉拒時明確說明原因。"
+    },
+    {
+      "index": 201,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短直接，使用『蛤』、『白痴欸你』等口語，且一次回一則訊息，符合D的風格。"
+    },
+    {
+      "index": 202,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會用『蛤』、『哈哈哈哈』、『這笑話有夠冷』等口語化回應，且句子簡短，符合D的說話風格。"
+    },
+    {
+      "index": 203,
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'今天過得如何'），回覆較長且包含多個訊息，使用'哈哈'笑法，語氣親切且主動延伸話題。"
+    },
+    {
+      "index": 204,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她提到剛下飛機、調時差，且回覆簡短、直接，婉拒方式與D一致。"
+    },
+    {
+      "index": 205,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她提到剛下飛機、恍神、班表，且回覆簡短直接，符合D的說話方式。"
+    },
+    {
+      "index": 206,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下飛機、累，與D的對話中多次提及飛行和時差；回覆簡短，使用『喔』、『對啊』等語氣詞，婉拒時說『下禮拜再看看』，符合D的風格。"
+    },
+    {
+      "index": 207,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方喜歡什麼、主動分享自己常去的店，且婉拒時會說『改天吧』，與C的對話模式相似。"
+    },
+    {
+      "index": 208,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到診所排班，與D的職業背景相符，且回覆簡短直接，婉拒時未提供替代方案。"
+    },
+    {
+      "index": 209,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她使用波浪號、分段回覆、提及老店和拿鐵，與C的風格一致。"
+    },
+    {
+      "index": 210,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用簡短句、句號結尾，語氣直接但禮貌，婉拒時明確說明原因，與B的風格一致。"
+    },
+    {
+      "index": 211,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如'那間店在哪一帶啊'）、使用語氣詞（'噢真的嗎？'）、句子長短適中且一次回多則，並以委婉方式婉拒（'改天再看看好了'），符合B的互動風格。"
+    },
+    {
+      "index": 212,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到老店和招牌拿鐵，與C的對話中多次提及老店和拿鐵；且回覆方式較為簡短、直接，符合C的風格。"
+    },
+    {
+      "index": 213,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_008",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "回覆常以短句分段，使用『／』分隔，語氣溫和且帶有日常分享，婉拒時用『改天吧』，符合A的風格。"
+    },
+    {
+      "index": 214,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_008",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她提到老店和招牌拿鐵，與C的對話中多次提及老店和拿鐵；且回覆節奏、語氣詞（耶、啦）及婉拒方式（改天再看看）與C相似。"
+    },
+    {
+      "index": 215,
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_077",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她一次回多則訊息，使用『哈哈』、『拍謝』等語氣詞，並會反問對方問題，與C的風格一致。"
+    },
+    {
+      "index": 216,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短直接，且對男生的邀約或提問常以自身狀況（如剛下飛機、調時差）回應，較少延伸話題或反問，符合D的風格。"
+    },
+    {
+      "index": 217,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短，常提到自己的行程（如班表），且直接說『沒欸』，符合D的直白風格。"
+    },
+    {
+      "index": 218,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她直接反問『蛤 我什麼時候說要學衝浪了』，語氣直接且帶質疑，符合D的直率風格；且她訊息簡短，一次一則，與D的簡短回應模式一致。"
+    },
+    {
+      "index": 219,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用大量語氣詞和表情符號，回覆較長且分段，會反問對方細節，語氣親切自然。"
+    },
+    {
+      "index": 220,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接說『你是不是認錯人了』，語氣直接且帶有質疑，符合D的直白風格；且她回覆簡短，不像A、C會多回幾則或加語氣詞。"
+    },
+    {
+      "index": 221,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用大量語氣詞和表情符號，回覆較長且分段，會反問對方近況，婉拒時較委婉並解釋原因。"
+    },
+    {
+      "index": 222,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接否認對方記錯，語氣直接且簡短，符合D的說話方式。"
+    },
+    {
+      "index": 223,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接反駁對方記錯，語氣直接且不委婉，符合D的說話方式。"
+    },
+    {
+      "index": 224,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接說『你是不是記錯人了？』，語氣直接且帶質疑，符合D的直白風格；且她提到『剛到家』呼應D常提到自己忙或累的狀態。"
+    },
+    {
+      "index": 225,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接說『你是不是記錯人啦』，與D樣本中直接回應『才認識沒多久就說這種話喔』的風格一致，且句子簡短、少用語氣詞。"
+    },
+    {
+      "index": 226,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方近況、追問細節，語氣親切且使用表情符號，符合B的互動風格。"
+    },
+    {
+      "index": 227,
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接否認對方記錯人，語氣直接且簡短，符合D的說話風格。"
+    },
+    {
+      "index": 228,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她提到剛下飛機，與D的對話中多次提及飛行和時差；且回覆簡短直接，符合D的風格。"
+    },
+    {
+      "index": 229,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她提到剛下飛機、時差，且回覆簡短直接，符合D的說話方式。"
+    },
+    {
+      "index": 230,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_001",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_001",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她提到剛落地、換工作、早起，且回覆簡短、直接，符合D的說話方式。"
+    },
+    {
+      "index": 231,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如『你是有壓力還是怎樣？』），且一次回多則訊息，語氣詞『耶』的使用與B的風格一致。"
+    },
+    {
+      "index": 232,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_077",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她使用波浪號和表情符號，句子較長且分段，會反問對方細節，語氣親切自然。"
+    },
+    {
+      "index": 233,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_008",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_064",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "句子短、使用斜線分隔、語氣平淡、少用表情符號、婉拒時直接說有安排。"
+    },
+    {
+      "index": 234,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用簡短句子、直接回應，且會反問對方，語氣較直接，符合B的風格。"
+    },
+    {
+      "index": 235,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_077",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'你是有壓力還是單純睡不著？'），且回覆常分多則、語氣自然帶表情符號，符合C的互動風格。"
+    },
+    {
+      "index": 236,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_064",
+      "assignment": [
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_008",
+        "practice_girl_001"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_064",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "句子短，使用分隔號，語氣直接，婉拒時明確說有安排，與A的風格一致。"
+    },
+    {
+      "index": 237,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方問題、分享自身細節、使用表情符號，且回覆較長、分段多，符合B的風格。"
+    },
+    {
+      "index": 238,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_077",
+        "practice_girl_064",
+        "practice_girl_001"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_077",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如'被唸什麼事情啊'），且回覆較長、分段多，語氣自然帶表情符號，符合B的風格。"
+    },
+    {
+      "index": 239,
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_077",
+      "assignment": [
+        "practice_girl_008",
+        "practice_girl_064",
+        "practice_girl_077",
+        "practice_girl_001"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_077",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她會反問對方細節（如幾點睡），且回覆常分多則、語氣自然帶表情符號，符合C的互動風格。"
+    },
+    {
+      "index": 240,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她直接批評對方說話不禮貌，且回覆簡短直接，符合D的風格。"
+    },
+    {
+      "index": 241,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "直接表達被冒犯，語氣直接且帶有防衛性，與D的直率風格相符。"
+    },
+    {
+      "index": 242,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.9,
+      "cue": "她提到『路上跟我搭話』，與D在先前對話中『你是路上跟我搭話的那個？』的用語一致，且回應直接、帶有質疑語氣。"
+    },
+    {
+      "index": 243,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接表達不舒服，語氣直接且帶有質問，與D的直率風格相符。"
+    },
+    {
+      "index": 244,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_061",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用「XD」和「哈哈」等語氣詞，且會反問對方細節，如「你這樣講好像我整個週末都宅在家一樣」，與A的對話風格相似。"
+    },
+    {
+      "index": 245,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "開頭用『嗨～你哪位啊』與C的『嗨～你好啊』語氣相近，且反問『你是看到哪張照片啦哈哈』呼應C的『你是看到哪個部分覺得有意思啊』，並用『哈哈』笑聲與『哇 你會不會太直接了』的委婉拒絕，符合C的風格。"
+    },
+    {
+      "index": 246,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用斜線分隔多個短句，語氣活潑且帶有反問，如『先自我介紹一下吧～我連你是誰都還不知道呢』，與A的風格相符。"
+    },
+    {
+      "index": 247,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她直接嗆對方『你這樣講話我會直接封鎖你喔』，語氣直接且帶有攻擊性，與D的直白嗆聲風格一致。"
+    },
+    {
+      "index": 248,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接拒絕不喜歡的話題，語氣直接，與D的風格相符。"
+    },
+    {
+      "index": 249,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "直接質問對方身分與意圖，語氣直接且帶有防衛性，與D的簡短、直接、帶刺風格相符。"
+    },
+    {
+      "index": 250,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接反問『你是哪位』，且對不熟的人直接拒絕『我們有熟到可以聊這個嗎？』，語氣直接、不委婉，符合D的說話方式。"
+    },
+    {
+      "index": 251,
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她直接回嗆『你這樣問很常被句點吧』，且對邀約照片直接拒絕，語氣直接、帶刺，符合D的風格。"
+    },
+    {
+      "index": 252,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她直接問『你哪位』，回應簡短且帶有嗆聲語氣，與D的直白風格相符。"
+    },
+    {
+      "index": 253,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問並延續話題，語氣活潑，使用『笑死』和『你很會喔』，與C的互動風格相似。"
+    },
+    {
+      "index": 254,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.9,
+      "cue": "她一次回多則訊息，使用分隔線和表情符號，語氣活潑且會反問，符合A的風格。"
+    },
+    {
+      "index": 255,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問並延續話題，使用語氣詞和表情符號，笑法自然，句子長短適中，符合C的風格。"
+    },
+    {
+      "index": 256,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她使用斜線分隔多則訊息，語氣活潑且會反問對方，如『你該不會要跟我講冷笑話吧😂』，與A的風格相符。"
+    },
+    {
+      "index": 257,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問並延續話題，使用語氣詞和表情符號，回覆較長且自然，符合C的風格。"
+    },
+    {
+      "index": 258,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回應簡短直接，帶有吐槽語氣，如『哈哈這笑話可以，但有點爛到我笑不出來』，與D的風格一致。"
+    },
+    {
+      "index": 259,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問並延續話題，語氣詞多，笑法用哈哈，句子長短適中，一次回多則，與C的風格相符。"
+    },
+    {
+      "index": 260,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她直接吐槽冷笑話，且回覆簡短、帶有熟悉感，符合D的直率風格。"
+    },
+    {
+      "index": 261,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短直接，使用『蛤』、『……你很會』等口語，且對男生的玩笑反應平淡，符合D的風格。"
+    },
+    {
+      "index": 262,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方問題、使用語氣詞和表情符號，且回應較長、帶有互動性。"
+    },
+    {
+      "index": 263,
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問並延續話題，語氣活潑，使用表情符號，且一次回多則訊息。"
+    },
+    {
+      "index": 264,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短直接，使用『還行啊』、『看情況欸』等口語，且婉拒時直接說『這週已經排蠻滿的了』，符合D的風格。"
+    },
+    {
+      "index": 265,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短直接，使用『哦？』、『是喔』等語氣詞，且對邀約回應『這週喔 我還沒確定行程欸』，與D的簡潔、帶點嗆的回應風格相符。"
+    },
+    {
+      "index": 266,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她直接說『你這樣講好像我們很熟一樣』、『我們不是才在路上認識的嗎』，並質疑對方常這樣說話，婉拒時說『下次吧』，語氣直接且帶點防備，符合D的風格。"
+    },
+    {
+      "index": 267,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她會反問對方問題、使用語氣詞和表情符號，且回覆較長，符合C的風格。"
+    },
+    {
+      "index": 268,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短直接，使用『喔』、『哈哈』等語氣詞，且婉拒邀約時直接說『下次吧』，與D的風格相符。"
+    },
+    {
+      "index": 269,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如去哪一帶）、分享自己狀態、用哈哈和表情符號、婉拒時解釋行程滿。"
+    },
+    {
+      "index": 270,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短直接，帶有調侃語氣（如『你這樣講好像你很懂我欸』），且婉拒邀約時直接說『這週喔...我還要再看看』，符合D的風格。"
+    },
+    {
+      "index": 271,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她使用直接且帶點嗆的回覆，如『你這樣講我會想說你是不是對每個人都這樣說』和『你就要帶我去踩雷喔？』，與D的直率、帶刺語氣相符。"
+    },
+    {
+      "index": 272,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方問題、使用表情符號和分隔線，語氣輕鬆帶點俏皮，符合A的風格。"
+    },
+    {
+      "index": 273,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她回覆簡短直接，帶有嗆聲語氣（如『那你標準還真低』），婉拒時直接說『改天再說吧』，符合D的風格。"
+    },
+    {
+      "index": 274,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "B",
+      "answerProfileId": "practice_girl_089",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短，使用『欸』、『哈』等語氣詞，婉拒時直接說明已有安排，符合B的風格。"
+    },
+    {
+      "index": 275,
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_089",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短、直接，使用『喔？』、『是喔』等語氣詞，婉拒時說『這週不太行』，與C的風格一致。"
+    },
+    {
+      "index": 276,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她直接否認對方說的話，語氣直接且帶有質疑，符合D的說話方式。"
+    },
+    {
+      "index": 277,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她直接否認對方記錯人，語氣直接且帶有質疑，符合D的直率風格。"
+    },
+    {
+      "index": 278,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她直接說『我沒在學衝浪欸』，語氣直接且帶有『欸』，與D樣本中直接回應、少反問、用『欸』的風格一致。"
+    },
+    {
+      "index": 279,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接反駁對方記錯，語氣直接且帶點嗆，符合D的說話方式。"
+    },
+    {
+      "index": 280,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她使用斜線分隔多個訊息，語氣輕鬆帶有反問和表情符號，與A的風格一致。"
+    },
+    {
+      "index": 281,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接說『你記錯人了吧』，語氣直接且帶點嗆，符合D的直白風格；且她回覆簡短，不主動延伸話題。"
+    },
+    {
+      "index": 282,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接質疑對方記錯，語氣直接且帶點嗆，符合D的說話方式。"
+    },
+    {
+      "index": 283,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接反駁對方記錯，語氣直接且帶點嗆，符合D的說話方式。"
+    },
+    {
+      "index": 284,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接質疑對方記錯人，語氣直接且帶有挑戰性，符合D的說話風格。"
+    },
+    {
+      "index": 285,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接說『你記錯人了吧』，語氣直接且帶點嗆，符合D的風格；且她回覆簡短，不主動延伸話題。"
+    },
+    {
+      "index": 286,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接說『你記錯人了吧』，語氣直接且帶點嗆，符合D的說話方式；且她回覆簡短，沒有像A、C那樣多問句或延伸話題。"
+    },
+    {
+      "index": 287,
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接說『你記錯人了吧』，語氣直接且帶點嗆，符合D的直白風格；且D在對話中常直接反駁或質疑對方，如『主管唸你是日常吧』、『才聊沒兩句就約，你也太急了吧』。"
+    },
+    {
+      "index": 288,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她回覆簡短直接，使用『你怎麼也睡不好』反問，且語氣帶有熟悉感，符合D的風格。"
+    },
+    {
+      "index": 289,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.85,
+      "cue": "她一次回多則訊息，使用「／」分隔，語氣輕鬆帶反問，如「早班還要早起 睡眠不好真的會很厭世」呼應A的關懷式反問與多段回覆習慣。"
+    },
+    {
+      "index": 290,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_004",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方問題、使用分隔線分次回覆、語氣輕鬆帶有表情符號，且會追問細節，符合A的風格。"
+    },
+    {
+      "index": 291,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.8,
+      "cue": "她會反問對方近況、使用語氣詞和表情符號，且回覆較長、分段多，符合C的風格。"
+    },
+    {
+      "index": 292,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_061",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問細節（如'你有固定時間睡嗎'）、用XD和表情符號、句子長短適中且分段回覆，與C的風格相符。"
+    },
+    {
+      "index": 293,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_013",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": true,
+      "confidence": 0.85,
+      "cue": "她會反問對方細節（如幾點睡、工作狀況），且回覆常分多則、帶語氣詞（喔、哈），與C樣本中主動追問和輕鬆語氣一致。"
+    },
+    {
+      "index": 294,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'你怎麼也失眠了'），並分享自身狀態，語氣自然帶有互動感，符合C的風格。"
+    },
+    {
+      "index": 295,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她使用斜線分隔多個訊息，語氣輕鬆帶有反問和互動，如『怎麼了 壓力大喔』，符合A的風格。"
+    },
+    {
+      "index": 296,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_061",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "A",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'你今天有去哪裡走走嗎？'），並分享自身經驗（'我上個月也剛換工作'），語氣自然帶有同理心，符合A的互動風格。"
+    },
+    {
+      "index": 297,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 1,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方並帶有調侃語氣，如『你怎麼也睡不好』，且回覆簡短直接，符合D的風格。"
+    },
+    {
+      "index": 298,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 2,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_061",
+        "practice_girl_089",
+        "practice_girl_013",
+        "practice_girl_004"
+      ],
+      "answer": "C",
+      "answerProfileId": "practice_girl_013",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她會反問對方細節（如'你最近是壓力太大喔'），並用'啦'、'喔'等語氣詞，且一次回多則訊息，符合C的風格。"
+    },
+    {
+      "index": 299,
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "repeat": 3,
+      "truthProfileId": "practice_girl_089",
+      "assignment": [
+        "practice_girl_013",
+        "practice_girl_089",
+        "practice_girl_061",
+        "practice_girl_004"
+      ],
+      "answer": "D",
+      "answerProfileId": "practice_girl_004",
+      "correct": false,
+      "confidence": 0.8,
+      "cue": "她直接反問『你壓力很大喔』，且用『＊店』、『夜行性動物』等口語化、帶點隨性的語氣，與D的直率風格相符。"
+    }
+  ]
+}

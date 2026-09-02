@@ -87,3 +87,10 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   注意 clear_boundaries 這組掉到 1.05：越界改強制 direct_boundary、cautious 濾掉 tease／
   self_disclose 之後，這四位在界線與防備情境的表達更一致——安全優先於差異，符合規格
   §5.1 順位，但代表這組的個人差異要靠非界線情境撐。
+- `2026-09-03-run12-style20-r3fix-x3.json`（e5ab5ee5，Codex R3 三項 P1 修正後：拿掉所有
+  啟發式硬判，記憶／拒絕／越界改結構化證據或交給模型；worktree clean）：720 場零失敗、
+  修補 18/2100、守門退回 0。比值 **2.02（1.90–2.17）**，persona 內 1.15（clear_boundaries）
+  ～2.22（slow_worker）；遮罩 judge **38%（33–43%）**，比 run11 的 43% 低、與 baseline
+  34%（28–38%）的區間邊緣重疊。誠實解讀：每拿掉一個硬判（cautious 過濾、候選 act 限制），
+  差異化就掉一些；表面距離仍約 baseline 的 2.4 倍，但 LLM 四選一已接近雜訊。真人感與
+  可辨識度要靠 PR-2 dogfood 人工盲測，不再追這個數字。
