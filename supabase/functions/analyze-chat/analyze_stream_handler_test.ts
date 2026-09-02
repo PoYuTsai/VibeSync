@@ -954,6 +954,7 @@ Deno.test("divergence plan is persisted and measured but never reaches the clien
     status: "observed",
     styleCount: 2,
     attributedCount: 2,
+    unresolvedCount: 0,
     bySource: { option: 1, plan: 1, anchor: 0, unresolved: 0 },
     distinctBranchCount: 2,
     rhetoricalMoves: { playful_contrast: 1 },

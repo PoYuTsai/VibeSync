@@ -151,7 +151,7 @@ export const REPLY_OPTION_BRANCH_FIELDS = [
 ] as const;
 /// 分枝 id 是 opaque 代號（prompt 範例 br_1…），不得是任何自由文字：它會進
 /// log、linkage 與 telemetry。
-export const DIVERGENCE_BRANCH_ID_PATTERN = /^br_[0-9]{1,2}$/;
+export const DIVERGENCE_BRANCH_ID_PATTERN = /^br_[1-9][0-9]?$/;
 /// option＝option 自帶且合法；plan＝計畫 styleBranchIds 指定；anchor＝缺省補
 /// anchor 主線那一枝；unresolved＝連 anchor 球都沒有枝，不亂掛。
 export const STYLE_BRANCH_SOURCES = [
@@ -187,40 +187,69 @@ export function anchorBranchOf(
   ) ?? null;
 }
 
-/// 嚴格解析 reply_option 上的三個歸因欄位；三個都缺回 null（缺席），
-/// 任一存在但不合法也回 null（呼叫端用 hasReplyOptionBranchFields 分辨）。
+/// 嚴格解析 reply_option 上的三個歸因欄位；三個都合法才算 option 自帶。
+/// 分枝缺席或不合法時，仍各自保留合法的手法／強度（parseReplyOptionMoveFields），
+/// 讓補 anchor 的卡也量得到「填了什麼手法」（round 2 P2）。
 export function parseReplyOptionBranchFields(
   value: unknown,
   plan: DivergencePlanV1,
   style: StreamStyle,
 ): ReplyOptionBranchFields | null {
   if (!isRecord(value)) return null;
-  if (!Array.isArray(value.selectedBranchIds)) return null;
+  const selectedBranchIds = parseSelectedBranchIds(
+    value.selectedBranchIds,
+    plan,
+  );
+  const moves = parseReplyOptionMoveFields(value, style);
   if (
-    value.selectedBranchIds.length === 0 ||
-    value.selectedBranchIds.length > plan.branchPool.length
+    selectedBranchIds === null || moves.rhetoricalMove === undefined ||
+    moves.styleIntensity === undefined
   ) {
     return null;
   }
-  const selectedBranchIds: string[] = [];
-  for (const id of value.selectedBranchIds) {
+  return {
+    selectedBranchIds,
+    rhetoricalMove: moves.rhetoricalMove,
+    styleIntensity: moves.styleIntensity,
+  };
+}
+
+function parseSelectedBranchIds(
+  value: unknown,
+  plan: DivergencePlanV1,
+): string[] | null {
+  if (!Array.isArray(value)) return null;
+  if (value.length === 0 || value.length > plan.branchPool.length) return null;
+  const ids: string[] = [];
+  for (const id of value) {
     if (
-      typeof id !== "string" || selectedBranchIds.includes(id) ||
+      typeof id !== "string" || ids.includes(id) ||
       !plan.branchPool.some((branch) => branch.id === id)
     ) {
       return null;
     }
-    selectedBranchIds.push(id);
+    ids.push(id);
   }
+  return ids;
+}
+
+/// 手法／強度各自獨立驗證：合法的留下，不合法的略過（不互相牽連）。
+export function parseReplyOptionMoveFields(
+  value: unknown,
+  style: StreamStyle,
+): { rhetoricalMove?: RhetoricalMove; styleIntensity?: number } {
+  if (!isRecord(value)) return {};
   const rhetoricalMove = typeof value.rhetoricalMove === "string" &&
       (rhetoricalMovesForStyle(style) as readonly string[]).includes(
         value.rhetoricalMove,
       )
     ? value.rhetoricalMove as RhetoricalMove
-    : null;
+    : undefined;
   const styleIntensity = boundedInt(value.styleIntensity, MAX_STYLE_INTENSITY);
-  if (rhetoricalMove === null || styleIntensity === null) return null;
-  return { selectedBranchIds, rhetoricalMove, styleIntensity };
+  return {
+    ...(rhetoricalMove !== undefined ? { rhetoricalMove } : {}),
+    ...(styleIntensity !== null ? { styleIntensity } : {}),
+  };
 }
 
 export function hasReplyOptionBranchFields(value: unknown): boolean {
@@ -237,15 +266,21 @@ export function resolveStyleBranch(
   const fields = parseReplyOptionBranchFields(option, plan, style);
   if (fields) return { ...fields, source: "option", invalid: false };
   const invalid = hasReplyOptionBranchFields(option);
+  const moves = parseReplyOptionMoveFields(option, style);
   const planned = plan.styleBranchIds?.[style];
   if (planned !== undefined) {
-    return { selectedBranchIds: [planned], source: "plan", invalid };
+    return { selectedBranchIds: [planned], source: "plan", invalid, ...moves };
   }
   const anchor = anchorBranchOf(plan);
   if (anchor) {
-    return { selectedBranchIds: [anchor.id], source: "anchor", invalid };
+    return {
+      selectedBranchIds: [anchor.id],
+      source: "anchor",
+      invalid,
+      ...moves,
+    };
   }
-  return { selectedBranchIds: [], source: "unresolved", invalid };
+  return { selectedBranchIds: [], source: "unresolved", invalid, ...moves };
 }
 
 export interface DivergenceBranchV1 {

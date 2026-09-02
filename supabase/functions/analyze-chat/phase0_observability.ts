@@ -1044,17 +1044,21 @@ function attributionTelemetry(
   variants: Variant[] | null,
 ): Record<string, unknown> {
   if (!variants || variants.length === 0) return { status: "unknown" };
-  const attributed = variants.filter((variant) =>
+  // observed＝有 branchSource 的卡；attributed＝真的掛到枝的卡（unresolved 不算）。
+  const observed = variants.filter((variant) =>
     variant.branchSource !== undefined
   );
-  if (attributed.length === 0) return { status: "unknown" };
+  if (observed.length === 0) return { status: "unknown" };
+  const attributed = observed.filter((variant) =>
+    variant.branchSource !== "unresolved"
+  );
   const bySource: Record<string, number> = {};
   for (const source of STYLE_BRANCH_SOURCES) bySource[source] = 0;
   const rhetoricalMoves: Record<string, number> = {};
   const styleIntensity: Record<string, number> = {};
   const branches = new Set<string>();
   let invalidCount = 0;
-  for (const variant of attributed) {
+  for (const variant of observed) {
     bySource[variant.branchSource!] += 1;
     for (const id of variant.selectedBranchIds ?? []) branches.add(id);
     if (variant.rhetoricalMove) {
@@ -1071,6 +1075,7 @@ function attributionTelemetry(
     status: "observed",
     styleCount: variants.length,
     attributedCount: attributed.length,
+    unresolvedCount: observed.length - attributed.length,
     bySource,
     distinctBranchCount: branches.size,
     rhetoricalMoves,

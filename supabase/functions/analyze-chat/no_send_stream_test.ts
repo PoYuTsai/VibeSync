@@ -1049,6 +1049,8 @@ Deno.test("divergence attribution: every option resolves (option > plan > anchor
     selectedBranchIds: ["br_2"],
     branchSource: "plan",
     branchAttributionInvalid: true,
+    rhetoricalMove: "exaggeration",
+    styleIntensity: 2,
   });
   // 組裝進 replyOptions 的只有 approach／messages；歸因留在 linkage。
   assertEquals(
@@ -1166,6 +1168,49 @@ Deno.test("divergence attribution: plan repairs (branch key, method, broken line
   >;
   assertEquals(v2Linkage.divergencePlanRepairs, ["line:sourceIndex="]);
   assert(doneOf(v2).analysisDivergencePlan);
+  // 修補只綁被接受的計畫：乾淨計畫先到、可修補的第二份後到 → 不記；
+  // 修補後契約仍不合法（idea 空）→ 不記；charge 前的可修補計畫 → 不記。
+  const second = await runRaw([
+    line(SEND_DECISION),
+    line(VALID_PLAN),
+    glitchedLine,
+    ...ATTRIBUTED_TAIL.map(line),
+    line({ type: "analysis.done", finalResult: {} }),
+  ], V2_THREE_STYLES);
+  const secondLinkage = doneOf(second).analysisEvidenceLinkage as Record<
+    string,
+    unknown
+  >;
+  assertEquals("divergencePlanRepairs" in secondLinkage, false);
+  const brokenBody = glitchedLine.replace(
+    '"idea":"健身與火鍋是熱量進出帳"',
+    '"idea":""',
+  );
+  assert(brokenBody !== glitchedLine);
+  const invalid = await runRaw([
+    line(SEND_DECISION),
+    brokenBody,
+    line(VALID_PLAN),
+    ...ATTRIBUTED_TAIL.map(line),
+    line({ type: "analysis.done", finalResult: {} }),
+  ], V2_THREE_STYLES);
+  const invalidLinkage = doneOf(invalid).analysisEvidenceLinkage as Record<
+    string,
+    unknown
+  >;
+  assertEquals("divergencePlanRepairs" in invalidLinkage, false);
+  const preCharge = await runRaw([
+    glitchedLine,
+    line(SEND_DECISION),
+    line(VALID_PLAN),
+    ...ATTRIBUTED_TAIL.map(line),
+    line({ type: "analysis.done", finalResult: {} }),
+  ], V2_THREE_STYLES);
+  const preChargeLinkage = doneOf(preCharge).analysisEvidenceLinkage as Record<
+    string,
+    unknown
+  >;
+  assertEquals("divergencePlanRepairs" in preChargeLinkage, false);
   const v1 = await runRaw([
     line({ ...SEND_DECISION, messageDecision: undefined }),
     glitchedLine,

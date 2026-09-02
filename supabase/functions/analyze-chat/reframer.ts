@@ -944,7 +944,10 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     absorbAndEmit(enriched);
   };
 
-  const handleEvent = async (event: StreamEvent) => {
+  const handleEvent = async (
+    event: StreamEvent,
+    lineRepairs: readonly string[] = [],
+  ) => {
     if (closed) return;
 
     if (event.type === "analysis.divergence_plan") {
@@ -958,10 +961,13 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
         if (plan) {
           analysisDivergencePlan = plan;
           sawValidEvent = true;
-          if (repairs.length > 0) {
-            divergencePlanRepairs.push(...repairs);
+          // repair 只綁「實際被接受的第一份合法計畫」：charge 前、契約不合法、
+          // 或第二份計畫的修補都不記（round 2 P2）。
+          const accepted = [...lineRepairs, ...repairs];
+          if (accepted.length > 0) {
+            divergencePlanRepairs.push(...accepted);
             console.log(
-              `[divergence_plan] repaired branches: ${repairs.join(",")}`,
+              `[divergence_plan] repaired: ${accepted.join(",")}`,
             );
           }
           backfillAttribution(plan);
@@ -1066,19 +1072,18 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
         divergencePlan: options.noSendDecisions === true,
       };
       let event = parseEventLine(trimmed, parseOptions);
+      const lineRepairs: string[] = [];
       if (!event && parseOptions.divergencePlan) {
-        // Phase 2b repair-first：v2 計畫行的 `"sourceIndex=N"` 手誤修一次再解析。
+        // Phase 2b repair-first：v2 計畫行的 `"sourceIndex=N"` 手誤修一次再解析；
+        // 修補紀錄先跟著這個 event 走，計畫被接受時才落地。
         const repairedLine = repairDivergencePlanLineGlitch(trimmed);
         event = repairedLine
           ? parseEventLine(repairedLine, parseOptions)
           : null;
-        if (event) {
-          divergencePlanRepairs.push("line:sourceIndex=");
-          console.log("[divergence_plan] repaired line glitch: sourceIndex=");
-        }
+        if (event) lineRepairs.push("line:sourceIndex=");
       }
       if (!event) return;
-      await handleEvent(event);
+      await handleEvent(event, lineRepairs);
     }).catch((error) => {
       if (closed) return;
       emitError(

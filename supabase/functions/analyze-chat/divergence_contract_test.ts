@@ -175,7 +175,18 @@ Deno.test("rhetorical moves are the six methods plus each style's own moves (§6
 Deno.test("branch ids must be opaque br_N; free text in id voids the plan", () => {
   assert(DIVERGENCE_BRANCH_ID_PATTERN.test("br_1"));
   assert(DIVERGENCE_BRANCH_ID_PATTERN.test("br_12"));
-  for (const bad of ["br_", "br_123", "她說的那句", "branch-1", "BR_1", ""]) {
+  for (
+    const bad of [
+      "br_",
+      "br_123",
+      "br_0",
+      "br_01",
+      "她說的那句",
+      "branch-1",
+      "BR_1",
+      "",
+    ]
+  ) {
     assert(!DIVERGENCE_BRANCH_ID_PATTERN.test(bad), bad);
   }
   assertEquals(
@@ -281,6 +292,32 @@ Deno.test("style branch resolution: option wins, then the plan's styleBranchIds,
     resolveStyleBranch(PLAN, "coldRead", {
       selectedBranchIds: ["br_1"],
       styleIntensity: 0,
+    }),
+    {
+      selectedBranchIds: ["br_1"],
+      source: "anchor",
+      invalid: true,
+      styleIntensity: 0,
+    },
+  );
+  // 缺枝但手法／強度合法 → 補 anchor、標 invalid、手法與強度保留；跨風格手法不留。
+  assertEquals(
+    resolveStyleBranch(PLAN, "tease", {
+      rhetoricalMove: "playful_challenge",
+      styleIntensity: 1,
+    }),
+    {
+      selectedBranchIds: ["br_1"],
+      source: "anchor",
+      invalid: true,
+      rhetoricalMove: "playful_challenge",
+      styleIntensity: 1,
+    },
+  );
+  assertEquals(
+    resolveStyleBranch(PLAN, "tease", {
+      rhetoricalMove: "exaggeration",
+      styleIntensity: 9,
     }),
     { selectedBranchIds: ["br_1"], source: "anchor", invalid: true },
   );
