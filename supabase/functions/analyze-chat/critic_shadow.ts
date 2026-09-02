@@ -32,10 +32,11 @@ export interface AnalyzeCriticShadowConfig {
   readonly trigger: "always" | "risk";
 }
 
-/// 待 Eric 定案（觸發條件、模型、成本上限）前預設關閉；開關是一行 commit。
+/// 模型＝Sonnet 5（Eric 2026-09-03 定案）；觸發條件與成本上限定案前預設關閉，
+/// 開關是一行 commit。
 export const ANALYZE_CRITIC_SHADOW: AnalyzeCriticShadowConfig = {
   enabled: false,
-  model: "claude-haiku-4-5-20251001",
+  model: "claude-sonnet-5",
   timeoutMs: 12_000,
   trigger: "risk",
 };

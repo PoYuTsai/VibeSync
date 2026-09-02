@@ -379,10 +379,10 @@ Deno.test("critic shadow scheduling: prefers the injected waitUntil and never le
   await Promise.all(scheduled);
 });
 
-Deno.test("critic shadow config: production default is off, risk-triggered, on the cheap model", () => {
+Deno.test("critic shadow config: production default is off, risk-triggered, on Sonnet 5", () => {
   assertEquals(ANALYZE_CRITIC_SHADOW, {
     enabled: false,
-    model: "claude-haiku-4-5-20251001",
+    model: "claude-sonnet-5",
     timeoutMs: 12_000,
     trigger: "risk",
   });

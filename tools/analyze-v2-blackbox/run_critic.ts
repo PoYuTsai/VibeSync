@@ -3,7 +3,8 @@
 // runtime。每案一次真呼叫會產生費用，跑前要 Eric 明確授權。
 //   deno run --allow-env --allow-read --allow-write=tools/analyze-v2-blackbox/out \
 //     --allow-net=api.anthropic.com tools/analyze-v2-blackbox/run_critic.ts \
-//     <artifact.json> <out.json> [--model=claude-haiku-4-5-20251001] [--only=a,b]
+//     <artifact.json> <out.json> [--model=claude-sonnet-5] [--only=a,b] [--dry-run]
+// --dry-run：只組 prompt、列案數與字數、估成本，不呼叫 API（列參數給 Eric 看）。
 import { CORPUS, type CorpusCase } from "./corpus.ts";
 import { artifactCaseFinalResult } from "./evaluate.ts";
 import {
@@ -60,22 +61,61 @@ if (import.meta.main) {
     Deno.exit(2);
   }
   const [artifactPath, outPath] = positional;
-  const model = flag("model") ?? "claude-haiku-4-5-20251001";
+  const model = flag("model") ?? "claude-sonnet-5";
   const only = flag("only")?.split(",").filter(Boolean);
-  const apiKey = (await Deno.readTextFile(
-    `${Deno.env.get("HOME")}/.config/anthropic/key`,
-  )).trim();
+  const dryRun = Deno.args.includes("--dry-run");
   const artifact = JSON.parse(await Deno.readTextFile(artifactPath)) as {
     meta?: Record<string, unknown>;
     // deno-lint-ignore no-explicit-any
     results: any[];
   };
   const corpusById = new Map(CORPUS.map((c) => [c.id, c]));
+  const built = artifact.results
+    .map((r) => ({ r, built: criticCaseFromArtifact(r, corpusById) }))
+    .filter((
+      x,
+    ): x is { r: (typeof artifact.results)[number]; built: CriticCase } =>
+      x.built !== null && (!only || only.includes(x.built.id))
+    );
+  if (dryRun) {
+    // 粗估：CJK 約 1 token/字，英文 JSON key 約 0.3 token/字；用 0.8 當上界。
+    const promptChars = built.map(({ built: b }) =>
+      buildAnalyzeCriticPrompt(b.evidence, b.candidate).length
+    );
+    const inputTokens = Math.round(
+      promptChars.reduce((a, b) => a + b, 0) * 0.8,
+    );
+    const outputTokens = built.length * SEMANTIC_CRITIC_MAX_TOKENS;
+    const price = model === "claude-sonnet-5"
+      ? { input: 2, output: 10 }
+      : { input: 0.8, output: 4 };
+    for (const [i, { built: b }] of built.entries()) {
+      console.error(
+        `${b.id.padEnd(28)} ${b.candidate.style.padEnd(9)} guard=[${
+          b.evidence.guardViolations.join(",")
+        }] promptChars=${promptChars[i]}`,
+      );
+    }
+    console.error(JSON.stringify({
+      dryRun: true,
+      model,
+      cases: built.length,
+      promptCharsTotal: promptChars.reduce((a, b) => a + b, 0),
+      estInputTokens: inputTokens,
+      maxOutputTokens: outputTokens,
+      estCostUsdUpperBound: Number(
+        ((inputTokens * price.input + outputTokens * price.output) / 1e6)
+          .toFixed(3),
+      ),
+    }));
+    Deno.exit(0);
+  }
+  const apiKey = (await Deno.readTextFile(
+    `${Deno.env.get("HOME")}/.config/anthropic/key`,
+  )).trim();
   const results = [];
-  for (const r of artifact.results) {
-    const built = criticCaseFromArtifact(r, corpusById);
-    if (!built || (only && !only.includes(built.id))) continue;
-    const prompt = buildAnalyzeCriticPrompt(built.evidence, built.candidate);
+  for (const { r, built: b } of built) {
+    const prompt = buildAnalyzeCriticPrompt(b.evidence, b.candidate);
     const started = Date.now();
     let raw: unknown = null;
     let status = "ok";
@@ -103,10 +143,10 @@ if (import.meta.main) {
       }
     }
     const entry = {
-      id: built.id,
+      id: b.id,
       name: r.name,
-      style: built.candidate.style,
-      guardViolations: built.evidence.guardViolations,
+      style: b.candidate.style,
+      guardViolations: b.evidence.guardViolations,
       status,
       ...(error ? { error } : {}),
       verdict: verdict?.verdict ?? null,
@@ -114,7 +154,7 @@ if (import.meta.main) {
       usage: parseSemanticCriticUsage(raw),
       latencyMs,
       // 讓人工複核看得到 critic 看到的東西（本機檔，不進 telemetry）。
-      candidate: built.candidate,
+      candidate: b.candidate,
       rawText: status === "ok"
         ? null
         : JSON.stringify(raw)?.slice(0, 400) ?? null,

@@ -38,8 +38,10 @@ Phase 2b 已上 main（`03b8f585`，Eric 接受 APPROVED_WITH_RISK）。Codex �
   `EdgeRuntime.waitUntil` 背景，永不改結果、永不 throw；出 `stream_semantic_critic`
   （verdict／violations／token／延遲／trigger）＋ `ai_logs` 成本列（requestType
   `analyze_semantic_critic`）。離線評測 `tools/analyze-v2-blackbox/run_critic.ts`。
+- Eric 2026-09-03 定案：模型用 Sonnet 5（約每次 1 美分，主分析約 +10–15%）；先跑離線
+  評測再開影子。
 - 待 Eric 決定（開關是一行 commit：`ANALYZE_CRITIC_SHADOW`）：
-  1. 模型：Haiku 4.5（約每次 0.3 美分）或 Sonnet 5（約 1 美分，主分析約 +10–15%）。
+  1. ~~模型~~（已定 Sonnet 5）。
   2. 觸發：`risk`（3c guard 違規、決策 beta flags、四張同開頭才審）或 `always`
      （每個 send 的選中卡都審，先建影子基線）。
   3. 先跑離線評測（run12／run13 共約 30 案，Haiku 幾分錢、Sonnet 約 0.3 美元）看
