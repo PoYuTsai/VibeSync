@@ -11,6 +11,58 @@ void main() {
   final release = loadWorkflow('.github/workflows/release.yml');
 
   group('CI-01 distribute workflow 結構契約', () {
+    test('Android build-only 只留下簽名 AAB，不建 APK、不跑 smoke、不派發', () {
+      // YAML 1.1 會把裸鍵 on 解析成 true，兩種都接。
+      final trigger = (distribute['on'] ?? distribute[true]) as YamlMap;
+      final dispatch = trigger['workflow_dispatch'] as YamlMap;
+      final inputs = dispatch['inputs'] as YamlMap;
+      final delivery = inputs['android_delivery'] as YamlMap;
+      expect(delivery['required'], isTrue);
+      expect(delivery['default'], 'firebase',
+          reason: '既有手動 Android build 預設仍須走原本 Firebase 路徑');
+      expect(
+        (delivery['options'] as YamlList).map((value) => value.toString()),
+        ['firebase', 'build-only'],
+      );
+
+      final steps = jobSteps(distribute, 'build-android');
+      YamlMap stepNamed(String name) =>
+          steps.singleWhere((step) => step['name'].toString() == name);
+
+      for (final name in [
+        'Build APK (Production backend)',
+        'Verify release APK signing (AND-02 gate)',
+        'Upload APK as artifact',
+      ]) {
+        expect(
+          (stepNamed(name)['if'] ?? '').toString(),
+          contains("inputs.android_delivery != 'build-only'"),
+          reason: '$name 必須在 build-only 明確跳過',
+        );
+      }
+      for (final name in [
+        'Build AAB (Production backend)',
+        'Verify release AAB signing (AND-02 gate)',
+        'Upload AAB as artifact',
+      ]) {
+        expect(
+          (stepNamed(name)['if'] ?? '').toString(),
+          isEmpty,
+          reason: '$name 不得被 build-only 關掉',
+        );
+      }
+
+      expect(
+        (workflowJob(distribute, 'android-install-smoke')['if'] ?? '')
+            .toString(),
+        contains("inputs.android_delivery != 'build-only'"),
+      );
+      expect(
+        (workflowJob(distribute, 'firebase-distribute')['if'] ?? '').toString(),
+        contains("inputs.android_delivery == 'firebase'"),
+      );
+    });
+
     test('build-android 只依賴 flutter-gate，且只接明確 Android key', () {
       final job = workflowJob(distribute, 'build-android');
       expect(jobNeeds(job), ['flutter-gate']);

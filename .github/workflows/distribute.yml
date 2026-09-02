@@ -18,6 +18,14 @@ on:
           - ios
           - android
           - both
+      android_delivery:
+        description: Android output after a successful build
+        required: true
+        default: firebase
+        type: choice
+        options:
+          - firebase
+          - build-only
 
 # Only the newest automatic build for a branch is useful. Keep manual runs in a
 # separate group so a push cannot cancel a deliberately selected release check.
@@ -160,6 +168,7 @@ jobs:
       # BILL-02：Android 只接明確的 Android public SDK key。此 secret 尚未
       # 建立時傳入空值，App 會 fail closed；不得改用 iOS 或 generic key。
       - name: Build APK (Production backend)
+        if: ${{ inputs.android_delivery != 'build-only' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
@@ -180,6 +189,7 @@ jobs:
         run: ./tools/preflight/check-android-signing-parser-test.sh
 
       - name: Verify release APK signing (AND-02 gate)
+        if: ${{ inputs.android_delivery != 'build-only' }}
         env:
           ANDROID_KEYSTORE_SHA256: ${{ steps.keystore-gate.outputs.keystore_sha256 }}
         run: ./tools/preflight/check-android-signing.sh artifact build/app/outputs/flutter-apk/app-release.apk
@@ -251,6 +261,7 @@ jobs:
           retention-days: 30
 
       - name: Upload APK as artifact
+        if: ${{ inputs.android_delivery != 'build-only' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android-apk
@@ -269,6 +280,7 @@ jobs:
   # API 24＝minSdk 下限、API 36＝現行目標世代。
   android-install-smoke:
     name: Android install smoke (API ${{ matrix.api-level }})
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.android_delivery != 'build-only' }}
     needs: build-android
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -308,6 +320,7 @@ jobs:
   # 冷啟動 crash 或 ClassNotFound 的 build 絕不派發給測試者。
   firebase-distribute:
     name: Firebase App Distribution
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.android_delivery == 'firebase' }}
     needs: android-install-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 15
