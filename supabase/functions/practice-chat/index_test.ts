@@ -9120,3 +9120,37 @@ Deno.test("reply-style（PR-4）：旗標開時 hint／debrief／partnerMood 分
     assertEquals(has(debrief.state.claudeCalls), [on], `debrief ${on}`);
   }
 });
+
+Deno.test("reply-style 跨回合狀態：standard 模式不讀 assisted 留下的 priorDecline（規格附錄：standard 一律 false）", async () => {
+  const { response, state } = await run(
+    {
+      ledger: ledger({ practice_mode: "standard" }),
+      thread: {
+        profile_id: "practice_girl_001",
+        recent_facts: {
+          replyStyle: {
+            version: 1,
+            priorDecline: true,
+            recentActs: ["answer"],
+          },
+        },
+      },
+      env: REPLY_STYLE_ON,
+      deepSeekReplies: ["好啊"],
+    },
+    chatBody({
+      practiceMode: "standard",
+      profileId: "practice_girl_001",
+      visiblePracticeThreadId: "thread-visible-1",
+      turns: [
+        { role: "user", text: "嗨嗨 妳好" },
+        { role: "ai", text: "嗨" },
+        { role: "user", text: "週末要不要出來喝個咖啡" },
+      ],
+    }),
+  );
+  assertEquals(response.status, 200);
+  const system = state.deepSeekCalls[0].messages[0].content;
+  assert(system.includes("本輪回應方式"));
+  assert(!system.includes("這輪不答應；只決定你怎麼說"));
+});

@@ -160,7 +160,15 @@ async function main() {
     nonBoundaryOtherStyle: summarize((r) =>
       !r.shortStyle && NON_BOUNDARY.has(r.scenarioId)
     ),
-    boundaryScenarios: summarize((r) => !NON_BOUNDARY.has(r.scenarioId)),
+    // 邀約／越界／記憶類（不是全是安全越界；逐情境看下面 byScenario）
+    inviteOrBoundaryScenarios: summarize((r) =>
+      !NON_BOUNDARY.has(r.scenarioId)
+    ),
+    byScenario: Object.fromEntries(
+      [...new Set(rows.map((r) => r.scenarioId))].sort().map((
+        sc,
+      ) => [sc, summarize((r) => r.scenarioId === sc)]),
+    ),
   };
   await Deno.writeTextFile(
     outPath,

@@ -21,23 +21,47 @@ const plan = (over: Partial<TurnResponsePlan> = {}): TurnResponsePlan => ({
   ...over,
 });
 
-Deno.test("parseReplyStyleState：缺、壞、版本不對都回 null；壞 act 被濾掉、最多留 3 筆", () => {
+Deno.test("parseReplyStyleState：缺 key 回 null；任何欄位缺、型別錯、未知 act 都整份 null；合法才收，最多留 3 筆", () => {
   assertEquals(parseReplyStyleState(null), null);
   assertEquals(parseReplyStyleState({}), null);
   assertEquals(parseReplyStyleState({ replyStyle: "x" }), null);
+  assertEquals(parseReplyStyleState({ replyStyle: [] }), null);
   assertEquals(parseReplyStyleState({ replyStyle: { version: 2 } }), null);
+  const ok = {
+    version: 1 as const,
+    priorDecline: true,
+    recentActs: ["answer" as const],
+  };
+  assertEquals(parseReplyStyleState({ replyStyle: ok }), ok);
+  for (
+    const bad of [
+      { ...ok, priorDecline: "yes" },
+      { ...ok, priorDecline: undefined },
+      { ...ok, recentActs: undefined },
+      { ...ok, recentActs: "answer" },
+      { ...ok, recentActs: ["answer", 3] },
+      { ...ok, recentActs: ["answer", "not_an_act"] },
+      { ...ok, recentActs: ["raw_user_text"] },
+    ]
+  ) {
+    assertEquals(
+      parseReplyStyleState({ replyStyle: bad }),
+      null,
+      JSON.stringify(bad),
+    );
+  }
   assertEquals(
     parseReplyStyleState({
       replyStyle: {
         version: 1,
-        priorDecline: "yes",
-        recentActs: ["answer", 3, "not a code!", "tease", "clarify", "answer"],
+        priorDecline: false,
+        recentActs: ["answer", "tease", "clarify", "acknowledge"],
       },
     }),
     {
       version: 1,
       priorDecline: false,
-      recentActs: ["tease", "clarify", "answer"],
+      recentActs: ["tease", "clarify", "acknowledge"],
     },
   );
 });

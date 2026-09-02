@@ -4255,7 +4255,8 @@ export function createPracticeChatHandler(
             memorySummary: promptMemorySummary,
             timeContext: nowContext,
             herRecentMomentsBlock,
-            styleState: relationshipThreadState?.styleState ?? null,
+            // standard 沒有 thread 寫入，也不讀 assisted 留下的狀態（規格附錄：
+            // standard 的 priorDecline 一律 false）。
           },
       );
       responsePlan = chatPromptBundle.responsePlan;

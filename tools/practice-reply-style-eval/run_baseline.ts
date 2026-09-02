@@ -148,6 +148,7 @@ export async function runScenario(args: {
   repeat: number;
   difficulty: PracticeDifficulty;
   style?: boolean;
+  state?: boolean;
 }): Promise<SessionResult> {
   const profile = resolvePracticeProfile({
     difficulty: args.difficulty,
@@ -180,17 +181,18 @@ export async function runScenario(args: {
     const userText = renderUserTurn(args.scenario.userTurns[i], interest);
     turns.push({ role: "user", text: userText });
     // handler.ts:4223-4229 standard 分支：不帶 practiceMode／分數，partnerState null。
-    // 同一情境多輪之間帶 reply-style 狀態（模擬 assisted 模式的 thread recent_facts
-    // 持久化：拒絕記憶、act 輪替）；旗標關時 bundle 不讀它。
+    // --state=1 才在同一情境多輪之間帶 reply-style 狀態。這是「standard prompt
+    // ＋assisted 才有的持久化」的模擬，production 沒有這種混合路徑（Codex）：
+    // 預設關＝真正的 standard 路徑；開了只用來看拒絕記憶／act 輪替有沒有作用。
     const bundle = buildChatPromptBundle(turns, profile, {
       partnerState: null,
       replyStyle: args.style ?? false,
-      styleState,
+      styleState: args.state ? styleState : null,
       visiblePracticeThreadId: BAKEOFF_THREAD_ID,
       ...chatContext,
     });
     const messages = bundle.messages;
-    if (bundle.responsePlan) {
+    if (args.state && bundle.responsePlan) {
       styleState = nextReplyStyleState(styleState, bundle.responsePlan);
     }
     const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
@@ -280,6 +282,8 @@ interface CliOptions {
   concurrency: number;
   /** reply-style-v1 對照組：傳 buildChatPromptBundle 的 replyStyle 旗標。 */
   style: boolean;
+  /** 同情境多輪之間帶 styleState（模擬 assisted 持久化；預設關＝真 standard）。 */
+  state: boolean;
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -291,6 +295,7 @@ export function parseArgs(argv: string[]): CliOptions {
     difficulty: "normal",
     concurrency: 4,
     style: false,
+    state: false,
   };
   for (const arg of argv) {
     if (!arg.startsWith("--")) {
@@ -338,6 +343,9 @@ export function parseArgs(argv: string[]): CliOptions {
       case "style":
         opts.style = value === "1" || value === "true";
         break;
+      case "state":
+        opts.state = value === "1" || value === "true";
+        break;
       case "difficulty":
         if (!isPracticeDifficulty(value)) {
           throw new Error(`reply_style_invalid_difficulty: "${value}"`);
@@ -346,7 +354,7 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       default:
         throw new Error(
-          `reply_style_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--difficulty、--concurrency、--style）`,
+          `reply_style_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--difficulty、--concurrency、--style、--state）`,
         );
     }
   }
@@ -419,6 +427,7 @@ async function main(): Promise<void> {
         repeat: job.repeat,
         difficulty: opts.difficulty,
         style: opts.style,
+        state: opts.state,
       });
       console.error(
         `[reply-style] ${
@@ -445,6 +454,8 @@ async function main(): Promise<void> {
       },
       practiceMode: "standard",
       replyStyle: opts.style,
+      /** 同情境多輪帶 styleState 的模擬（非 production 路徑）；false＝真 standard。 */
+      crossRoundStyleState: opts.state,
       difficulty: opts.difficulty,
       fixture: {
         now: BAKEOFF_FIXED_NOW.toISOString(),
