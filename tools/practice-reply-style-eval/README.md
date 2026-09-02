@@ -99,3 +99,7 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   1434ms、最長 prompt 8930。整體比值（新定義）**2.19**，五個 persona 內（各 20 位）
   1.53（cool_rational）～1.90（clear_boundaries）——20 位時的 run12 為 2.02（1.90–2.17）；
   沒有跑 baseline100 與 judge（judge.ts 要每 persona 恰 4 位）。artifact sha256 a6264dba…。
+- `2026-09-03-run14-baseline100-x2.json`（bb9d8768 同母體對照組，`--style=0 --repeat=2`）：
+  2400 場零失敗、守門退回 1、p50 907ms。整體比值 **0.99**，persona 內 0.69（clear_boundaries）
+  ～1.08（teasing_humor）；對照 run13 style 開 2.19／1.53–1.90——100 位的差異確實來自 style
+  層，不是既有人設 prompt。artifact sha256 f5aaad76…。
