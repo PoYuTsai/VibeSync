@@ -23,7 +23,7 @@ val missingSigningKeys =
     releaseSigningKeys.filter { keystoreProperties.getProperty(it).isNullOrBlank() }
 
 android {
-    namespace = "com.vibesync.app"
+    namespace = "com.poyutsai.vibesync"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -38,8 +38,8 @@ android {
     }
 
     defaultConfig {
-        // DEC-03 凍結：applicationId 固定 com.vibesync.app，不得改。
-        applicationId = "com.vibesync.app"
+        // ADR 2026-09-02：正式 Android shipping package。
+        applicationId = "com.poyutsai.vibesync"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

@@ -1,4 +1,4 @@
-package com.vibesync.app
+package com.poyutsai.vibesync
 
 import io.flutter.embedding.android.FlutterActivity
 

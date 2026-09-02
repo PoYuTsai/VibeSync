@@ -27,9 +27,9 @@ trap 'rm -rf "$work"' EXIT
 good="$work/good.xml"
 cat > "$good" <<XML
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.vibesync.app">
+    package="com.poyutsai.vibesync">
   <application>
-    <activity android:name="com.vibesync.app.MainActivity" android:exported="true">
+    <activity android:name="com.poyutsai.vibesync.MainActivity" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
@@ -70,36 +70,36 @@ expect_gate_fail() {
 }
 
 # 1) activity-alias 也持有 OAuth URI → 擁有者不再唯一，必須擋
-sed "s|</application>|<activity-alias android:name=\"com.vibesync.app.HijackAlias\" android:targetActivity=\"com.vibesync.app.MainActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\" android:host=\"$host\"/></intent-filter></activity-alias></application>|" \
+sed "s|</application>|<activity-alias android:name=\"com.poyutsai.vibesync.HijackAlias\" android:targetActivity=\"com.poyutsai.vibesync.MainActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\" android:host=\"$host\"/></intent-filter></activity-alias></application>|" \
   "$good" > "$work/alias-owner.xml"
 expect_gate_fail "activity-alias 持有凍結 scheme" "$work/alias-owner.xml"
 
 # 1b) 第二個 activity 只宣告 OAuth scheme → Android 會匹配任意 host，必須擋
-sed "s|</application>|<activity android:name=\"com.vibesync.app.SchemeOnlyOAuthActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\"/></intent-filter></activity></application>|" \
+sed "s|</application>|<activity android:name=\"com.poyutsai.vibesync.SchemeOnlyOAuthActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\"/></intent-filter></activity></application>|" \
   "$good" > "$work/oauth-scheme-only.xml"
 expect_gate_fail "OAuth scheme-only activity 搶走 callback" "$work/oauth-scheme-only.xml"
 
 # 1c) 分拆 data 的 scheme／host 仍會被 Android 合併，必須擋
-sed "s|</application>|<activity android:name=\"com.vibesync.app.SplitOAuthActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\"/><data android:host=\"$host\"/></intent-filter></activity></application>|" \
+sed "s|</application>|<activity android:name=\"com.poyutsai.vibesync.SplitOAuthActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\"/><data android:host=\"$host\"/></intent-filter></activity></application>|" \
   "$good" > "$work/oauth-split-data.xml"
 expect_gate_fail "OAuth split scheme/host activity 搶走 callback" "$work/oauth-split-data.xml"
 
 # 1d) Android leading-* hosts are broad matches, including bare * and suffix
 # patterns. Any competitor that can claim the frozen OAuth host must fail.
 for wildcard_host in '*' '*callback'; do
-  sed "s|</application>|<activity android:name=\"com.vibesync.app.WildcardOAuth${wildcard_host//\*/Any}Activity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\" android:host=\"$wildcard_host\"/></intent-filter></activity></application>|" \
+  sed "s|</application>|<activity android:name=\"com.poyutsai.vibesync.WildcardOAuth${wildcard_host//\*/Any}Activity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\" android:host=\"$wildcard_host\"/></intent-filter></activity></application>|" \
     "$good" > "$work/oauth-wildcard-${wildcard_host//\*/star}.xml"
   expect_gate_fail "OAuth wildcard host $wildcard_host 搶走 callback" \
     "$work/oauth-wildcard-${wildcard_host//\*/star}.xml"
 done
 
 # 2) 自訂 dispatcher activity 搶走凍結 OAuth URI → 偏離凍結契約，必須擋
-sed "s|</application>|<activity android:name=\"com.vibesync.app.AuthCallbackDispatcherActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\" android:host=\"$host\"/></intent-filter></activity></application>|" \
+sed "s|</application>|<activity android:name=\"com.poyutsai.vibesync.AuthCallbackDispatcherActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$scheme\" android:host=\"$host\"/></intent-filter></activity></application>|" \
   "$good" > "$work/custom-dispatcher.xml"
 expect_gate_fail "自訂 dispatcher 搶走凍結 scheme" "$work/custom-dispatcher.xml"
 
 # 3) activity-alias 持有 MAIN/LAUNCHER → launcher 不再唯一是 MainActivity
-sed "s|</application>|<activity-alias android:name=\"com.vibesync.app.LauncherAlias\" android:targetActivity=\"com.vibesync.app.MainActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.MAIN\"/><category android:name=\"android.intent.category.LAUNCHER\"/></intent-filter></activity-alias></application>|" \
+sed "s|</application>|<activity-alias android:name=\"com.poyutsai.vibesync.LauncherAlias\" android:targetActivity=\"com.poyutsai.vibesync.MainActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.MAIN\"/><category android:name=\"android.intent.category.LAUNCHER\"/></intent-filter></activity-alias></application>|" \
   "$good" > "$work/alias-launcher.xml"
 expect_gate_fail "activity-alias 持有 MAIN/LAUNCHER" "$work/alias-launcher.xml"
 
@@ -117,24 +117,24 @@ for attr in \
 done
 
 # 5) Email URI 被第二個 activity 搶走 → MainActivity 不再是唯一 owner
-sed "s|</application>|<activity android:name=\"com.vibesync.app.EmailHijackActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\" android:host=\"$email_host\"/></intent-filter></activity></application>|" \
+sed "s|</application>|<activity android:name=\"com.poyutsai.vibesync.EmailHijackActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\" android:host=\"$email_host\"/></intent-filter></activity></application>|" \
   "$good" > "$work/email-owner.xml"
 expect_gate_fail "Email callback 被第二個 activity 搶走" "$work/email-owner.xml"
 
 # 5b) Email scheme-only activity 也可能匹配任意 Email host，必須擋
-sed "s|</application>|<activity android:name=\"com.vibesync.app.SchemeOnlyEmailActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\"/></intent-filter></activity></application>|" \
+sed "s|</application>|<activity android:name=\"com.poyutsai.vibesync.SchemeOnlyEmailActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\"/></intent-filter></activity></application>|" \
   "$good" > "$work/email-scheme-only.xml"
 expect_gate_fail "Email scheme-only activity 搶走 callback" "$work/email-scheme-only.xml"
 
 # 5c) Email split scheme/host data 也會被 Android 合併，必須擋
-sed "s|</application>|<activity android:name=\"com.vibesync.app.SplitEmailActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\"/><data android:host=\"$email_host\"/></intent-filter></activity></application>|" \
+sed "s|</application>|<activity android:name=\"com.poyutsai.vibesync.SplitEmailActivity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\"/><data android:host=\"$email_host\"/></intent-filter></activity></application>|" \
   "$good" > "$work/email-split-data.xml"
 expect_gate_fail "Email split scheme/host activity 搶走 callback" "$work/email-split-data.xml"
 
 # 5d) Wildcard Email hosts are also competitors; do not allow a chooser or
 # ambiguous ownership for the independent MainActivity callback.
 for wildcard_host in '*' '*callback'; do
-  sed "s|</application>|<activity android:name=\"com.vibesync.app.WildcardEmail${wildcard_host//\*/Any}Activity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\" android:host=\"$wildcard_host\"/></intent-filter></activity></application>|" \
+  sed "s|</application>|<activity android:name=\"com.poyutsai.vibesync.WildcardEmail${wildcard_host//\*/Any}Activity\" android:exported=\"true\"><intent-filter><action android:name=\"android.intent.action.VIEW\"/><category android:name=\"android.intent.category.DEFAULT\"/><category android:name=\"android.intent.category.BROWSABLE\"/><data android:scheme=\"$email_scheme\" android:host=\"$wildcard_host\"/></intent-filter></activity></application>|" \
     "$good" > "$work/email-wildcard-${wildcard_host//\*/star}.xml"
   expect_gate_fail "Email wildcard host $wildcard_host 搶走 callback" \
     "$work/email-wildcard-${wildcard_host//\*/star}.xml"

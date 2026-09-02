@@ -48,7 +48,7 @@ assert c["supabaseRedirectAllowlistEntries"][0] == (
 )
 ' "$email_contract")
 
-package="com.vibesync.app"
+package="com.poyutsai.vibesync"
 component="$package/.MainActivity"
 # OAuth 深連結用非機密 dummy query（token 不進 log）
 callback_uri="$scheme://$host?smoke=1"

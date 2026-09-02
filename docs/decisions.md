@@ -13,6 +13,23 @@
 
 **Owner**: Eric（2026-08-18 拍板）。
 
+## ADR #44 — [2026-09-02] Android shipping package cutover
+**Status**: Active（supersedes the Android package portion of DEC-03）
+
+**Decision**: 正式 Android shipping namespace/applicationId 與 MainActivity FQCN 統一為
+`com.poyutsai.vibesync`／`com.poyutsai.vibesync.MainActivity`。OAuth 與 Email callback URI
+identity 維持 `com.poyutsai.vibesync://login-callback` 與
+`com.poyutsai.vibesync://email-callback`；Gate K prototype packages
+`com.vibesync.gatek` 與 `com.vibesync.gatekhost` 不變。
+
+**External gate resolved（2026-09-03）**: Eric 已在既有 Firebase 專案
+`vibesync-ed432` 註冊 `com.poyutsai.vibesync`，並下載官方產生的
+`android/app/google-services.json`。設定檔已核對 project ID 與新 Android package；
+既有 `com.vibesync.app` Android client 與其他 Firebase app 註冊均保留，未刪除或
+覆寫任何既有後台 app identity。
+
+歷史計畫與 roundtable 原文保留，不因本 ADR 改寫。
+
 ---
 
 ## ADR #18 - [2026-06-07] Analyze quick/full compatibility retention

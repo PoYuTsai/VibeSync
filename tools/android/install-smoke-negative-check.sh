@@ -71,12 +71,12 @@ case "$cmd" in
         case "${FAKE_TAIL_LOG:-clean}" in
           crash)
             echo "08-22 00:00:01.000  1234  1234 E AndroidRuntime: FATAL EXCEPTION: main"
-            echo "08-22 00:00:01.001  1234  1234 E AndroidRuntime: Process: com.vibesync.app, PID: 1234"
+            echo "08-22 00:00:01.001  1234  1234 E AndroidRuntime: Process: com.poyutsai.vibesync, PID: 1234"
             ;;
           cnf)
             # 命中行在前；之後 2 萬行「有 ClassNotFoundException、無 package」
             # 的行，讓舊寫法第一層 grep 在 grep -q 早退後必吃 SIGPIPE
-            echo "08-22 00:00:01.000  1234  1234 E art: java.lang.ClassNotFoundException: com.vibesync.app.Boom"
+            echo "08-22 00:00:01.000  1234  1234 E art: java.lang.ClassNotFoundException: com.poyutsai.vibesync.Boom"
             yes "08-22 00:00:01.001  1234  1234 E art: java.lang.ClassNotFoundException: com.other.junk" \
               | head -n 20000
             ;;
@@ -89,7 +89,7 @@ case "$cmd" in
       *resolve-activity*) echo "$FAKE_RESOLVE" ;;
       *pidof*) pid_out="${FAKE_PIDOF-1234}"; [ -n "$pid_out" ] && echo "$pid_out" ;;
       *"dumpsys activity"*)
-        echo "${FAKE_RESUMED:-    mResumedActivity: ActivityRecord{f00 u0 com.vibesync.app/.MainActivity t7}}" ;;
+        echo "${FAKE_RESUMED:-    mResumedActivity: ActivityRecord{f00 u0 com.poyutsai.vibesync/.MainActivity t7}}" ;;
       *"am start"*)
         # -W（launcher 冷啟動）回等待式輸出；無 -W（callback）回非等待輸出
         case "$*" in
@@ -97,9 +97,9 @@ case "$cmd" in
             case "${FAKE_LAUNCH_STATUS:-ok}" in
               ok) echo "Status: ok" ;;
               timeout)
-                echo "Starting: Intent { cmp=com.vibesync.app/.MainActivity }"
+                echo "Starting: Intent { cmp=com.poyutsai.vibesync/.MainActivity }"
                 echo "Status: timeout"
-                echo "Activity: com.vibesync.app/.MainActivity"
+                echo "Activity: com.poyutsai.vibesync/.MainActivity"
                 echo "WaitTime: 10666"
                 ;;
               *) echo "Status: ${FAKE_LAUNCH_STATUS}" ;;
@@ -118,9 +118,9 @@ chmod +x "$work/adb"
 export FAKE_INSTALL_LOG="$work/install-args"
 : > "$FAKE_INSTALL_LOG"
 
-good_resolve="com.vibesync.app/$callback_activity"
-good_email_resolve="com.vibesync.app/.MainActivity"
-good_email_resolve_full="com.vibesync.app/$email_callback_activity"
+good_resolve="com.poyutsai.vibesync/$callback_activity"
+good_email_resolve="com.poyutsai.vibesync/.MainActivity"
+good_email_resolve_full="com.poyutsai.vibesync/$email_callback_activity"
 resolver_metadata='priority=0 preferredOrder=0 match=0x108000'
 good_resolve_with_metadata="$resolver_metadata"$'\n'"$good_resolve"
 good_email_resolve_with_metadata="$resolver_metadata"$'\n'"$good_email_resolve"
@@ -224,7 +224,7 @@ fi
 export FAKE_RESOLVE_EMAIL="$good_email_resolve"
 
 # --- 1c. expected component 與另一個 component 同時出現 → 必須 fail closed ---
-wrong_oauth_component="com.vibesync.app/com.linusu.flutter_web_auth_2.OtherActivity"
+wrong_oauth_component="com.poyutsai.vibesync/com.linusu.flutter_web_auth_2.OtherActivity"
 for resolver_output in \
   "$good_resolve"$'\n'"$wrong_oauth_component" \
   "$wrong_oauth_component"$'\n'"$good_resolve"; do
@@ -235,21 +235,21 @@ done
 # --- 1d. Email shorthand 只接受 exact owner/class → 其餘必須 fail closed ---
 for fake_email_owner in \
   "com.vibesync.application/.MainActivity" \
-  "com.vibesync.app/.XMainActivity" \
-  "com.vibesync.app/.MainActivityExtra"; do
+  "com.poyutsai.vibesync/.XMainActivity" \
+  "com.poyutsai.vibesync/.MainActivityExtra"; do
   run_smoke_email "$fake_email_owner" clean
   expect_fail "email-component-fake-$fake_email_owner" "唯一擁有者契約被打破"
 done
 
 # --- 2. resolver 解析到錯的 owner ---
-run_smoke "com.vibesync.app/.MainActivity" clean
+run_smoke "com.poyutsai.vibesync/.MainActivity" clean
 expect_fail "wrong-owner" "唯一擁有者契約被打破"
 
 # --- 2b. component package/class 前後綴假命中也必須 fail closed ---
 for fake_owner in \
   "com.vibesync.application/com.linusu.flutter_web_auth_2.CallbackActivity" \
-  "com.vibesync.app/com.linusu.flutter_web_auth_2.CallbackActivityExtra" \
-  "com.vibesync.app/com.linusu.flutter_web_auth_2.XCallbackActivity"; do
+  "com.poyutsai.vibesync/com.linusu.flutter_web_auth_2.CallbackActivityExtra" \
+  "com.poyutsai.vibesync/com.linusu.flutter_web_auth_2.XCallbackActivity"; do
   run_smoke "$fake_owner" clean
   expect_fail "component-fake-$fake_owner" "唯一擁有者契約被打破"
 done
@@ -419,7 +419,7 @@ FAKE_RESUMED="    mResumedActivity: ActivityRecord{f00 u0 com.android.launcher3/
   run_smoke_timeout
 expect_fail "timeout-wrong-foreground" "前景 resumed activity 不是"
 expect_diag "timeout-wrong-foreground"
-grep -qF "AndroidRuntime: Process: com.vibesync.app" "$work/out" || {
+grep -qF "AndroidRuntime: Process: com.poyutsai.vibesync" "$work/out" || {
   cat "$work/out"
   echo "::error::timeout-wrong-foreground 診斷未包含 package logcat 內容"
   exit 1

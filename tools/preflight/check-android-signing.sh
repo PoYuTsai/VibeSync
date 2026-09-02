@@ -7,7 +7,7 @@
 #     只印效期與 SHA-256 fingerprint。alias 是 GitHub secret、Owner 含
 #     識別資訊，一律不得輸出。
 #   artifact 模式：驗證 release APK/AAB 已簽名、非 debug 憑證，並對帳
-#     package 為 com.vibesync.app。AAB 用 jarsigner -verify 驗簽名項完整性、
+#     package 為 com.poyutsai.vibesync。AAB 用 jarsigner -verify 驗簽名項完整性、
 #     官方釘版 bundletool 做語意層 package 抽取；負向驗證見
 #     tools/android/signing-gate-negative-check.sh。
 #
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 # ANDROID_EXPECTED_PACKAGE 只供負向驗證腳本注入錯誤期望值，正常路徑用預設
-EXPECTED_PACKAGE="${ANDROID_EXPECTED_PACKAGE:-com.vibesync.app}"
+EXPECTED_PACKAGE="${ANDROID_EXPECTED_PACKAGE:-com.poyutsai.vibesync}"
 
 BUNDLETOOL_VERSION="1.18.3"
 BUNDLETOOL_SHA256="a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29"

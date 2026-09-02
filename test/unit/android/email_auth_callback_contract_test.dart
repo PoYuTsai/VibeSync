@@ -15,7 +15,7 @@ void main() {
     test('machine-readable contract freezes the independent callback', () {
       expect(contract.scheme, oauth.scheme);
       expect(contract.host, 'email-callback');
-      expect(contract.callbackActivity, 'com.vibesync.app.MainActivity');
+      expect(contract.callbackActivity, 'com.poyutsai.vibesync.MainActivity');
       expect(contract.uri, 'com.poyutsai.vibesync://email-callback');
       expect(
         contract.flowPaths,

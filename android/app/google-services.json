@@ -7,6 +7,25 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:72365969168:android:9d24d67948a1492d9b5f95",
+        "android_client_info": {
+          "package_name": "com.poyutsai.vibesync"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBvfqy7R3v-K2Hr_sTacGbW_X3KBryxbe8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:72365969168:android:609218cfdc24783a9b5f95",
         "android_client_info": {
           "package_name": "com.vibesync.app"

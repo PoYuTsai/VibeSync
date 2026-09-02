@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xml/xml.dart';
 import 'package:yaml/yaml.dart';
 
-const kAndroidPackage = 'com.vibesync.app';
+const kAndroidPackage = 'com.poyutsai.vibesync';
 
 /// AND-03 凍結契約唯一真相源
 class _CallbackContractBase {
