@@ -479,6 +479,10 @@ class AnalyzeStreamClient {
 
   /// Wire payload builder（公開 seam）：情境接線測試據此驗證
   /// `sessionContext.meetingContext` 等欄位實際送出的值。
+  /// 與 supabase/functions/analyze-chat/no_send_decision.ts 的
+  /// ANALYSIS_CONTRACT_VERSION_V2 對齊。
+  static const analysisContractVersion = 2;
+
   static Map<String, dynamic> buildStreamBody(
     AnalyzeStreamRequest request,
     AnalysisEntitlementContext entitlementContext,
@@ -521,6 +525,9 @@ class AnalyzeStreamClient {
         'previousAnalyzedCount': previousAnalyzedCount,
       // ADR #19 定案 #6 capability contract：所有 analyze 請求必送。
       'billingProtocolVersion': MessageCalculator.billingProtocolVersion,
+      // Analyze V2（Phase 1c）：宣告能處理不回決策（messageDecision）。
+      // 後端只對送 2 的 client 開閘；缺省＝v1 五風格合約。
+      'analysisContractVersion': AnalyzeStreamClient.analysisContractVersion,
       if (previousAnalyzedCharCount != null && previousAnalyzedCharCount > 0)
         'previousAnalyzedCharCount': previousAnalyzedCharCount,
       if (request.confirmedOvercharge != null)

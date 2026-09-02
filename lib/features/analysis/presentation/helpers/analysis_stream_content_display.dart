@@ -25,6 +25,23 @@ class AnalysisStreamContentDisplayMapper
     final type = _stringField(event['type']);
     switch (type) {
       case 'analysis.decision':
+        final messageDecision = _stringField(event['messageDecision']);
+        if (messageDecision != null && messageDecision != 'send') {
+          // Phase 1c：不回決策沒有 nextStep 欄位，串流中先秀判斷與原因。
+          return AnalysisStreamContent(
+            kind: AnalysisStreamContentKind.decision,
+            title: switch (messageDecision) {
+              'need_context' => '本輪判斷：資料不夠',
+              'acknowledge_and_stop' => '本輪判斷：先收尾',
+              _ => '本輪判斷：先不要回',
+            },
+            body: _joinNonEmpty([
+              _stringField(event['reason']),
+              _prefix('等到', _stringField(event['stopCondition'])),
+            ]),
+            rawEvent: event,
+          );
+        }
         return AnalysisStreamContent(
           kind: AnalysisStreamContentKind.decision,
           title: _stringField(event['nextStepTitle']) ?? '下一步策略',

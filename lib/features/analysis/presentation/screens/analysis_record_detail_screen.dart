@@ -12,6 +12,7 @@ import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../domain/entities/analysis_models.dart';
+import '../sections/analysis_banners_section.dart';
 import '../../domain/entities/analysis_record.dart';
 import '../../domain/entities/enthusiasm_level.dart';
 import '../../domain/entities/game_stage.dart';
@@ -627,7 +628,10 @@ class _SavedAnalysisCard extends StatelessWidget {
         hasReplies ||
         hasRecommendation ||
         hasReminder;
+    final decision = result.decision;
+    final showsDecisionCard = decision != null && !decision.isSend;
     final hasAnyContent = result.shouldGiveUp ||
+        showsDecisionCard ||
         dimensions != null ||
         hasGameStage ||
         hasPsychology ||
@@ -641,7 +645,11 @@ class _SavedAnalysisCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (result.shouldGiveUp) ...[
+        // Phase 1c：V2 不回／收尾決策的歷史紀錄用決策卡，取代本地放棄警示。
+        if (showsDecisionCard) ...[
+          AnalysisDecisionCard(decision: decision),
+          const SizedBox(height: 16),
+        ] else if (result.shouldGiveUp) ...[
           Container(
             key: const ValueKey('analysis-record-give-up-warning'),
             padding: const EdgeInsets.all(12),

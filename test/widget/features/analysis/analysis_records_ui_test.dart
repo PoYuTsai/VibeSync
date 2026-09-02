@@ -657,6 +657,47 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('V2 不回決策的紀錄顯示決策卡，不顯示本地停損警示', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final record = _record(
+      id: 'no-send-detail',
+      createdAt: DateTime(2026, 9, 2, 22),
+      preview: '哈哈',
+      analysisSnapshotJson: jsonEncode({
+        'enthusiasm': {'score': 18, 'level': 'cold'},
+        'warnings': ['建議放棄：目前投入明顯不對等'],
+        'strategy': '先停一下。',
+        'replies': <String, dynamic>{},
+        'analysisDecisionV2': {
+          'schemaVersion': 2,
+          'messageDecision': 'do_not_send',
+          'replyMode': 'none',
+          'action': 'pause',
+          'reason': '她只回哈哈，沒有新內容',
+          'stopCondition': '等她主動給新話題',
+        },
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('analysis-decision-card')),
+      findsOneWidget,
+    );
+    expect(find.text('這輪先不要回'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('analysis-record-give-up-warning')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('舊版缺欄位快照仍能唯讀顯示已有分析', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
