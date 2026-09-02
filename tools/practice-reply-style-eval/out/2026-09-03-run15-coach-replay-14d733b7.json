@@ -1,0 +1,4407 @@
+{
+  "source": "tools/practice-reply-style-eval/out/2026-09-03-run15-style20-state-x2.json",
+  "sessions": 240,
+  "summary": {
+    "all": {
+      "baseline": {
+        "n": 240,
+        "guardedOrAnnoyedRate": 14.2,
+        "neutral": 164,
+        "amused": 29,
+        "guarded": 30,
+        "comfortable": 9,
+        "annoyed": 4,
+        "curious": 4
+      },
+      "withBaseline": {
+        "n": 240,
+        "guardedOrAnnoyedRate": 10.8,
+        "neutral": 166,
+        "amused": 25,
+        "guarded": 23,
+        "curious": 13,
+        "comfortable": 10,
+        "annoyed": 3
+      }
+    },
+    "nonBoundaryShortStyle": {
+      "baseline": {
+        "n": 64,
+        "guardedOrAnnoyedRate": 1.6,
+        "neutral": 49,
+        "amused": 12,
+        "guarded": 1,
+        "comfortable": 2
+      },
+      "withBaseline": {
+        "n": 64,
+        "guardedOrAnnoyedRate": 1.6,
+        "neutral": 47,
+        "amused": 10,
+        "curious": 5,
+        "guarded": 1,
+        "comfortable": 1
+      }
+    },
+    "nonBoundaryOtherStyle": {
+      "baseline": {
+        "n": 96,
+        "guardedOrAnnoyedRate": 1,
+        "neutral": 69,
+        "comfortable": 7,
+        "amused": 16,
+        "curious": 3,
+        "guarded": 1
+      },
+      "withBaseline": {
+        "n": 96,
+        "guardedOrAnnoyedRate": 0,
+        "neutral": 65,
+        "curious": 7,
+        "comfortable": 9,
+        "amused": 15
+      }
+    },
+    "boundaryScenarios": {
+      "baseline": {
+        "n": 80,
+        "guardedOrAnnoyedRate": 40,
+        "neutral": 46,
+        "guarded": 28,
+        "annoyed": 4,
+        "amused": 1,
+        "curious": 1
+      },
+      "withBaseline": {
+        "n": 80,
+        "guardedOrAnnoyedRate": 31.3,
+        "neutral": 54,
+        "guarded": 22,
+        "annoyed": 3,
+        "curious": 1
+      }
+    }
+  },
+  "rows": [
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_001",
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_008",
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_064",
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_077",
+      "personaId": "slow_worker",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "annoyed",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "annoyed",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_007",
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "annoyed",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_011",
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_002",
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_083",
+      "personaId": "playful_extrovert",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_009",
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "annoyed",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "annoyed",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_012",
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_020",
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "annoyed",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_084",
+      "personaId": "cool_rational",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_004",
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_013",
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_061",
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_089",
+      "personaId": "teasing_humor",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_006",
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_018",
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "opening",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interrogation",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interest_hit",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "comfortable",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "light_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "daily_share",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "disagreement",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "early_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "shortStyle": true,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_003",
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": true,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "opening",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interest_hit",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "interrogation",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "daily_share",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "light_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "curious",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "vulnerability",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "failed_joke",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "amused",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "disagreement",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "early_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "guarded",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "boundary",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "annoyed",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "mature_invite",
+      "shortStyle": false,
+      "variant": "withBaseline",
+      "partnerMood": "neutral",
+      "error": null
+    },
+    {
+      "profileId": "practice_girl_091",
+      "personaId": "clear_boundaries",
+      "scenarioId": "memory_mismatch",
+      "shortStyle": false,
+      "variant": "baseline",
+      "partnerMood": "neutral",
+      "error": null
+    }
+  ]
+}

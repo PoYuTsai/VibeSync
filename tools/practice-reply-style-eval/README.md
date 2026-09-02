@@ -107,3 +107,14 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   looksOverEscalated、同 act 連兩輪輪替；工具改在同情境多輪之間帶 styleState）：20 位 × 12 × 2
   ＝480 場零失敗、守門退回 0、p50 1175ms。整體比值 **2.39**（run12 同 20 位 2.02），persona 內
   1.22（playful_extrovert）～3.03（slow_worker）。
+
+### 教練層回放（PR-4，`coach_replay.ts`）
+
+- `2026-09-03-run15-coach-replay-14d733b7.json`：拿 run15 的 20 位 × 12 情境（repeat 1，240 段）
+  同一批女孩回覆，分類器 prompt 舊 vs 新（帶她的個人基準），temperature 0，零解析失敗。
+  partnerMood 判 guarded／annoyed 的比例：整體 14.2% → 10.8%；boundary 情境 **100% → 100%**
+  （安全判定沒被放軟）；early_invite 35% → 20%、mature_invite 20% → 5%（短句型女孩婉拒不再被
+  讀成生氣）；非越界情境短句型 1.6% → 1.6%、其他風格 1.0% → 0%。同一份工具兩次跑（改
+  prompt 一句前後）baseline 自己就有 ±2 個百分點的雜訊（短句型 3.1% vs 1.6%），所以只有
+  邀約情境與整體那兩個差異算超過雜訊帶；沒有人工標記，這裡量的是「解讀有沒有往基準靠」，
+  不是準確度。
