@@ -4426,13 +4426,16 @@ export function createPracticeChatHandler(
             inviteStage: inviteMaturity.stage,
             memorySummary: null,
             aiTurnCount: newAiCount,
-            // reply-style-v1：她這輪的 act 與「明確拒絕過」進 recent_facts；旗標關＝不帶。
+            // reply-style-v1：她這輪的 act 與「明確拒絕過」進 recent_facts。
+            // 旗標關（或角色沒 mapping）＝不算新狀態，但既有狀態原樣帶回——
+            // RPC 是整包覆寫 recent_facts，省略就等於「關旗標即清空」（Codex R2）。
+            // 從沒開過旗標的 thread 沒有狀態＝payload 與接線前逐字相同。
             replyStyleState: responsePlan
               ? nextReplyStyleState(
                 relationshipThreadState?.styleState ?? null,
                 responsePlan,
               )
-              : undefined,
+              : relationshipThreadState?.styleState ?? undefined,
           }),
         });
       }

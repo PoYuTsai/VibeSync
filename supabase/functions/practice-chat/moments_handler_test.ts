@@ -2,6 +2,8 @@
 //
 // 這支測試守的是整個功能最貴的三件事：**不會重複生成、不會超支、不會寫
 // 假內容**。所有 DeepSeek 都是 stub，一次真的模型呼叫都不會發生。
+import { renderMomentStyleAdapter } from "./moments_prompt.ts";
+import { replyStyleFor } from "./reply_style.ts";
 import {
   assert,
   assertEquals,
@@ -1329,8 +1331,10 @@ Deno.test("reply-style（PR-5）：deps.replyStyleEnabled 才把她的打字習�
   assertEquals(off.modelCalls.length, 1);
   assertEquals(on.modelCalls.length, 1);
   assert(!off.modelCalls[0].system.includes("你個人的打字習慣"));
-  assert(on.modelCalls[0].system.includes("你個人的打字習慣"));
-  assert(
-    on.modelCalls[0].system.startsWith(off.modelCalls[0].system.slice(0, 200)),
+  const adapter = renderMomentStyleAdapter(replyStyleFor(queenieId)!);
+  assert(on.modelCalls[0].system.includes(adapter));
+  assertEquals(
+    on.modelCalls[0].system.replace(adapter, ""),
+    off.modelCalls[0].system,
   );
 });

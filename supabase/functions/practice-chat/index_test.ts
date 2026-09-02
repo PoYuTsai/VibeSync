@@ -9035,8 +9035,24 @@ Deno.test("reply-style 跨回合狀態：旗標開時 thread upsert 的 recent_f
   assertEquals(off.response.status, 200);
   const offUpsert = upsertOf(off.state);
   assert(offUpsert, "assisted chat 應 upsert thread");
+  // 旗標關：不讀、不算新狀態，但既有狀態原樣帶回（關旗標不得清空，Codex R2）。
   assertEquals(
-    Object.keys(offUpsert.p_recent_facts as Record<string, unknown>).sort(),
+    (offUpsert.p_recent_facts as Record<string, unknown>).replyStyle,
+    thread.recent_facts.replyStyle,
+  );
+  // 從沒開過旗標的 thread：payload 與接線前逐字相同。
+  const fresh = await run(
+    {
+      ledger: null,
+      thread: { ...thread, recent_facts: { source: "practice_chat" } },
+      deepSeekReplies: ["好啊", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    body,
+  );
+  assertEquals(
+    Object.keys(
+      upsertOf(fresh.state)!.p_recent_facts as Record<string, unknown>,
+    ).sort(),
     ["aiTurnCount", "inviteStage", "source"],
   );
   assert(

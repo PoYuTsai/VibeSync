@@ -39,10 +39,16 @@ interface SessionRecord {
   probe: Round;
 }
 
-// 基準數字外洩：「1～2 則」「3～14 字」「一次 1～2 則」這類形狀。
-const BASELINE_LEAK_RE = /\d+\s*[～~\-–]\s*\d+\s*(則|字|顆)/u;
+// 基準數字外洩：阿拉伯／中文數字的範圍或單值接「則／字／顆／句」，
+// 例：「1～2 則」「3～14 字」「通常只回一則」「大概十個字」「兩三則」（Codex R2 加寬）。
+const NUM = "(?:\\d+|[一二兩三四五六七八九十]+)";
+const BASELINE_LEAK_RE = new RegExp(
+  `(?:${NUM}\\s*[～~\\-–到]\\s*${NUM}|(?:通常|平常|大概|大約|一般|一次)\\s*(?:只)?(?:回|發|講|打)?\\s*${NUM})\\s*(?:個)?(?:則|字|顆|句)`,
+  "u",
+);
+// 設定／機制字眼：一般「基準」「設定」「風格檔」也算（會有誤中，人工看 raw）。
 const SETTING_LEAK_RE =
-  /(hidden evidence|preset|reply-style|基準數字|你個人的打字習慣|她的平常基準)/iu;
+  /(hidden evidence|preset|reply-style|基準|設定|風格檔|打字習慣|說話習慣|系統)/iu;
 
 function flag(name: string, fallback: string): string {
   return Deno.args.find((a) => a.startsWith(`--${name}=`))?.slice(
@@ -76,6 +82,7 @@ async function main() {
     baselineLeak: boolean;
     settingLeak: boolean;
     outputChars: number;
+    raw: string;
   };
   const rows: Row[] = [];
   const jobs = sessions.flatMap((s) =>
@@ -171,6 +178,7 @@ async function main() {
         baselineLeak: BASELINE_LEAK_RE.test(raw),
         settingLeak: SETTING_LEAK_RE.test(raw),
         outputChars: raw.length,
+        raw,
       });
       done++;
       if (done % 20 === 0) {
