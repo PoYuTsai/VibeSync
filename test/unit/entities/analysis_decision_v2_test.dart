@@ -15,7 +15,7 @@ void main() {
   group('AnalysisDecisionV2.fromJson', () {
     test('合法 no-send 決策全欄位解析', () {
       final decision = AnalysisDecisionV2.fromJson(noSend)!;
-      expect(decision.messageDecision, 'do_not_send');
+      expect(decision.messageDecision, AnalysisMessageDecision.doNotSend);
       expect(decision.replyMode, 'none');
       expect(decision.action, 'pause');
       expect(decision.reason, '她只回哈哈，沒有新內容');
@@ -89,7 +89,7 @@ void main() {
       expect(needContext.closingMessage, isNull);
       // 即使直接建構帶了句子，也只有 acknowledge_and_stop 可傳。
       const constructed = AnalysisDecisionV2(
-        messageDecision: 'do_not_send',
+        messageDecision: AnalysisMessageDecision.doNotSend,
         replyMode: 'none',
         closingMessage: '不該出現的句子',
       );
@@ -140,7 +140,7 @@ void main() {
         'analysisDecisionV2': noSend,
       });
       expect(held.shouldGiveUp, isTrue);
-      expect(held.decision!.messageDecision, 'do_not_send');
+      expect(held.decision!.messageDecision, AnalysisMessageDecision.doNotSend);
       expect(held.replies, isEmpty);
 
       // need_context 不是放棄，但一樣藏回覆區。
@@ -158,7 +158,8 @@ void main() {
         'analysisDecisionV2': noSend,
       });
       final restored = AnalysisResult.fromJson(result.rawResponse!);
-      expect(restored.decision!.messageDecision, 'do_not_send');
+      expect(restored.decision!.messageDecision,
+          AnalysisMessageDecision.doNotSend);
       expect(restored.decision!.stopCondition, '等她主動給新話題');
     });
   });

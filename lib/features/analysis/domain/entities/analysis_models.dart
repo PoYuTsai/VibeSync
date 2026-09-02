@@ -864,16 +864,29 @@ class OptimizedMessage {
 /// Analyze V2 一級決策（Phase 1c）：後端在 `finalResult.analysisDecisionV2`
 /// 給的「這一輪該不該回」。只有 schemaVersion 2 且 messageDecision 合法才成立，
 /// 其餘一律 null，畫面退回 v1 的本地判斷（shouldGiveUp／CoachActionPolicy）。
+enum AnalysisMessageDecision {
+  send('send'),
+  doNotSend('do_not_send'),
+  acknowledgeAndStop('acknowledge_and_stop'),
+  needContext('need_context');
+
+  const AnalysisMessageDecision(this.wire);
+
+  /// 後端 wire 字串；未知／非字串回 null，呼叫端退回 v1。
+  final String wire;
+
+  static AnalysisMessageDecision? fromWire(Object? value) {
+    for (final decision in values) {
+      if (decision.wire == value) return decision;
+    }
+    return null;
+  }
+}
+
 class AnalysisDecisionV2 {
-  static const messageDecisions = <String>{
-    'send',
-    'do_not_send',
-    'acknowledge_and_stop',
-    'need_context',
-  };
   static const replyModes = <String>{'variants', 'single', 'none'};
 
-  final String messageDecision;
+  final AnalysisMessageDecision messageDecision;
   final String replyMode;
   final String action;
   final String reason;
@@ -889,11 +902,13 @@ class AnalysisDecisionV2 {
     this.closingMessage,
   });
 
-  bool get isSend => messageDecision == 'send';
+  bool get isSend => messageDecision == AnalysisMessageDecision.send;
 
   /// 只有 acknowledge_and_stop 有一句可傳送的收尾句。
   String? get sendableClosingMessage =>
-      messageDecision == 'acknowledge_and_stop' ? closingMessage : null;
+      messageDecision == AnalysisMessageDecision.acknowledgeAndStop
+          ? closingMessage
+          : null;
 
   /// messageDecision 是唯一權威：非 send 一律不顯示回覆輪播、不推銷升級，
   /// 即使後端同時送了矛盾的 replyMode。
@@ -902,20 +917,19 @@ class AnalysisDecisionV2 {
   static AnalysisDecisionV2? fromJson(Object? json) {
     if (json is! Map) return null;
     if (json['schemaVersion'] != 2) return null;
-    final messageDecision = json['messageDecision'];
-    if (messageDecision is! String ||
-        !messageDecisions.contains(messageDecision)) {
-      return null;
-    }
+    final messageDecision = AnalysisMessageDecision.fromWire(
+      json['messageDecision'],
+    );
+    if (messageDecision == null) return null;
     // replyMode 由 messageDecision 推導；後端送來的值只在 send 時採用，
     // 矛盾（例如 do_not_send＋variants）以決策為準。
     final impliedReplyMode = switch (messageDecision) {
-      'send' => 'variants',
-      'acknowledge_and_stop' => 'single',
+      AnalysisMessageDecision.send => 'variants',
+      AnalysisMessageDecision.acknowledgeAndStop => 'single',
       _ => 'none',
     };
     final rawReplyMode = json['replyMode'];
-    final replyMode = messageDecision == 'send' &&
+    final replyMode = messageDecision == AnalysisMessageDecision.send &&
             rawReplyMode is String &&
             replyModes.contains(rawReplyMode)
         ? rawReplyMode
@@ -923,9 +937,10 @@ class AnalysisDecisionV2 {
     String text(Object? value) => value is String ? value.trim() : '';
     // 收尾句只屬於 acknowledge_and_stop；do_not_send／need_context 是零回覆，
     // 後端夾帶的 closingMessage 一律丟棄。
-    final closingMessage = messageDecision == 'acknowledge_and_stop'
-        ? text(json['closingMessage'])
-        : '';
+    final closingMessage =
+        messageDecision == AnalysisMessageDecision.acknowledgeAndStop
+            ? text(json['closingMessage'])
+            : '';
     return AnalysisDecisionV2(
       messageDecision: messageDecision,
       replyMode: replyMode,
@@ -1027,7 +1042,7 @@ class AnalysisResult {
     // v1 結果的備援（規格 §16「移除雙重決策」）。
     final decision = AnalysisDecisionV2.fromJson(json['analysisDecisionV2']);
     final shouldGiveUp = decision != null
-        ? decision.messageDecision == 'do_not_send'
+        ? decision.messageDecision == AnalysisMessageDecision.doNotSend
         : enthusiasmLevel == 'cold' &&
             (warnings.any((w) => w.contains('建議放棄') || w.contains('開新對話')));
 

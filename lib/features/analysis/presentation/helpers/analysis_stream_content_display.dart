@@ -9,18 +9,14 @@ library;
 import 'dart:convert';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../domain/entities/analysis_models.dart'
+    show AnalysisMessageDecision;
 import '../../domain/entities/enthusiasm_level.dart';
 import '../../data/services/analyze_stream_client.dart'
     show
         AnalysisStreamContent,
         AnalysisStreamContentKind,
         AnalysisStreamDisplayMapper;
-
-const _noSendDecisions = <String>{
-  'do_not_send',
-  'acknowledge_and_stop',
-  'need_context',
-};
 
 class AnalysisStreamContentDisplayMapper
     implements AnalysisStreamDisplayMapper {
@@ -31,17 +27,19 @@ class AnalysisStreamContentDisplayMapper
     final type = _stringField(event['type']);
     switch (type) {
       case 'analysis.decision':
-        final messageDecision = _stringField(event['messageDecision']);
+        final messageDecision = AnalysisMessageDecision.fromWire(
+          event['messageDecision'],
+        );
         // 只認三個合法 no-send 值；未知／拼錯值走 v1 對映，與正式結果解析
         // （AnalysisDecisionV2.fromJson 拒絕未知值退回 v1）保持一致。
         if (messageDecision != null &&
-            _noSendDecisions.contains(messageDecision)) {
+            messageDecision != AnalysisMessageDecision.send) {
           // Phase 1c：不回決策沒有 nextStep 欄位，串流中先秀判斷與原因。
           return AnalysisStreamContent(
             kind: AnalysisStreamContentKind.decision,
             title: switch (messageDecision) {
-              'need_context' => '本輪判斷：資料不夠',
-              'acknowledge_and_stop' => '本輪判斷：先收尾',
+              AnalysisMessageDecision.needContext => '本輪判斷：資料不夠',
+              AnalysisMessageDecision.acknowledgeAndStop => '本輪判斷：先收尾',
               _ => '本輪判斷：先不要回',
             },
             body: _joinNonEmpty([

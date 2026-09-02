@@ -122,15 +122,16 @@ class AnalysisDecisionCard extends StatelessWidget {
 
   static String titleFor(AnalysisDecisionV2 decision) =>
       switch (decision.messageDecision) {
-        'need_context' => '資料不夠，先補截圖',
-        'acknowledge_and_stop' => '這輪先收尾',
+        AnalysisMessageDecision.needContext => '資料不夠，先補截圖',
+        AnalysisMessageDecision.acknowledgeAndStop => '這輪先收尾',
         _ => '這輪先不要回',
       };
 
   @override
   Widget build(BuildContext context) {
     final closingMessage = decision.sendableClosingMessage;
-    final isNeedContext = decision.messageDecision == 'need_context';
+    final isNeedContext =
+        decision.messageDecision == AnalysisMessageDecision.needContext;
     final accent = isNeedContext ? AppColors.textSecondary : AppColors.error;
     return Container(
       key: const ValueKey('analysis-decision-card'),

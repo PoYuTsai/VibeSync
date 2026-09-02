@@ -539,7 +539,8 @@ void main() {
       expect(updates[1].content?.title, '本輪判斷：先不要回');
       expect(updates[1].content?.body, contains('她只回哈哈'));
       final result = updates[2].result!;
-      expect(result.decision?.messageDecision, 'do_not_send');
+      expect(
+          result.decision?.messageDecision, AnalysisMessageDecision.doNotSend);
       expect(result.decision?.replyMode, 'none');
       expect(result.decision?.hidesReplyZone, isTrue);
       expect(result.shouldGiveUp, isTrue);

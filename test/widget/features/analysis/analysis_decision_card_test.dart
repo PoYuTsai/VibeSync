@@ -16,7 +16,7 @@ void main() {
       tester,
       const AnalysisDecisionCard(
         decision: AnalysisDecisionV2(
-          messageDecision: 'do_not_send',
+          messageDecision: AnalysisMessageDecision.doNotSend,
           replyMode: 'none',
           action: 'pause',
           reason: '她只回哈哈，沒有新內容',
@@ -38,7 +38,7 @@ void main() {
       tester,
       AnalysisDecisionCard(
         decision: const AnalysisDecisionV2(
-          messageDecision: 'do_not_send',
+          messageDecision: AnalysisMessageDecision.doNotSend,
           replyMode: 'none',
           reason: '她只回哈哈',
           stopCondition: '等她提新話題',
@@ -57,7 +57,7 @@ void main() {
       tester,
       const AnalysisDecisionCard(
         decision: AnalysisDecisionV2(
-          messageDecision: 'need_context',
+          messageDecision: AnalysisMessageDecision.needContext,
           replyMode: 'none',
           reason: '看不出哪句是誰說的',
           stopCondition: '補上完整對話截圖',
@@ -74,7 +74,7 @@ void main() {
       tester,
       AnalysisDecisionCard(
         decision: const AnalysisDecisionV2(
-          messageDecision: 'acknowledge_and_stop',
+          messageDecision: AnalysisMessageDecision.acknowledgeAndStop,
           replyMode: 'single',
           action: 'stop',
           reason: '她已經說改天',
