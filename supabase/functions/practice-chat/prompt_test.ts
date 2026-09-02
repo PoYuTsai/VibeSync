@@ -12,6 +12,7 @@ import {
   DEBRIEF_SYSTEM_PROMPT,
 } from "./prompt.ts";
 import { buildHintMessages, hintTrustedFactualEvidence } from "./hint.ts";
+import { STYLE_BY_PROFILE_ID } from "./reply_style.ts";
 import {
   ACQUAINTANCE_ORIGINS,
   buildAcquaintanceOrigin,
@@ -881,6 +882,47 @@ Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling"
   // 上限留約 160 code units 緩衝。
   // `.length` 量的是 UTF-16 code units，不宣稱是 bytes 或模型 tokens。
   assert(maxChat <= 80_150, `Chat max ${maxChat} at ${maxChatCase}`);
+
+  // reply-style-v1（旗標開、角色有 mapping）同樣守 80,150：說話習慣＋本輪回應方式
+  // 的淨增量要被拿掉的全域表面規則與【示範口吻】抵掉（規格 §5.4，上限不動）。
+  for (const profileId of Object.keys(STYLE_BY_PROFILE_ID)) {
+    const request = validateRequest({
+      mode: "chat",
+      practiceMode: "game",
+      sessionId: "prompt-budget-chat",
+      turns: maxChatTurns,
+      profileId,
+      difficulty: "challenge",
+      temperatureScore: 30,
+      familiarityScore: 20,
+      memorySummary: maxMemorySummary,
+      continuationPartnerState: {
+        mood: "neutral",
+        innerThought: "念".repeat(160),
+      },
+    });
+    const styled = buildChatMessages(request.turns, request.profile, {
+      practiceMode: request.practiceMode,
+      temperatureScore: request.temperatureScore,
+      familiarityScore: request.familiarityScore,
+      partnerState: request.continuationPartnerState,
+      sceneContext: promptBudgetScene,
+      acquaintanceOrigin: longestChatOrigin,
+      memorySummary: request.memorySummary,
+      herRecentMomentsBlock: maxHerRecentMomentsBlock,
+      gameState: maxParsedGameState,
+      timeContext: bugReportNow,
+      replyStyle: true,
+      visiblePracticeThreadId: "prompt-budget-chat",
+    });
+    const system = styled[0].content;
+    assert(system.includes("你平常的說話習慣"), profileId);
+    assert(system.includes("本輪回應方式（hidden guidance"), profileId);
+    assert(!system.includes("【示範口吻】"), profileId);
+    assert(!system.includes("每則 4～15 字"), profileId);
+    const length = styled.reduce((total, m) => total + m.content.length, 0);
+    assert(length <= 80_150, `Styled chat ${length} at ${profileId}`);
+  }
 });
 
 Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", () => {

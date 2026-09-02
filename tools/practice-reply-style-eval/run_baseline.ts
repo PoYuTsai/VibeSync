@@ -118,6 +118,7 @@ export async function runScenario(args: {
   scenario: Scenario;
   repeat: number;
   difficulty: PracticeDifficulty;
+  style?: boolean;
 }): Promise<SessionResult> {
   const profile = resolvePracticeProfile({
     difficulty: args.difficulty,
@@ -151,6 +152,8 @@ export async function runScenario(args: {
     // handler.ts:4223-4229 standard 分支：不帶 practiceMode／分數，partnerState null。
     const messages = buildChatMessages(turns, profile, {
       partnerState: null,
+      replyStyle: args.style ?? false,
+      visiblePracticeThreadId: BAKEOFF_THREAD_ID,
       ...chatContext,
     });
     const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
@@ -226,6 +229,8 @@ interface CliOptions {
   repeat: number;
   difficulty: PracticeDifficulty;
   concurrency: number;
+  /** reply-style-v1 對照組：傳 buildChatMessages 的 replyStyle 旗標。 */
+  style: boolean;
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -236,6 +241,7 @@ export function parseArgs(argv: string[]): CliOptions {
     repeat: 2,
     difficulty: "normal",
     concurrency: 4,
+    style: false,
   };
   for (const arg of argv) {
     if (!arg.startsWith("--")) {
@@ -280,6 +286,9 @@ export function parseArgs(argv: string[]): CliOptions {
         opts.concurrency = n;
         break;
       }
+      case "style":
+        opts.style = value === "1" || value === "true";
+        break;
       case "difficulty":
         if (!isPracticeDifficulty(value)) {
           throw new Error(`reply_style_invalid_difficulty: "${value}"`);
@@ -288,7 +297,7 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       default:
         throw new Error(
-          `reply_style_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--difficulty、--concurrency）`,
+          `reply_style_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--difficulty、--concurrency、--style）`,
         );
     }
   }
@@ -360,6 +369,7 @@ async function main(): Promise<void> {
         scenario: job.scenario,
         repeat: job.repeat,
         difficulty: opts.difficulty,
+        style: opts.style,
       });
       console.error(
         `[reply-style] ${
@@ -385,6 +395,7 @@ async function main(): Promise<void> {
         attempts: CHAT_GENERATION_ATTEMPTS,
       },
       practiceMode: "standard",
+      replyStyle: opts.style,
       difficulty: opts.difficulty,
       fixture: {
         now: BAKEOFF_FIXED_NOW.toISOString(),
