@@ -176,10 +176,14 @@ export function canonicalizeMedia(s: string): string {
   };
   const kinds = "sticker|photo|image|picture|video|gif|貼圖|照片|圖片|影片";
   // (?![a-z]) 取代 \b：CJK kind（貼圖/照片）後接 ] 時 ASCII \b 不成立，但仍要擋 photographic
-  const bracket = lower.match(new RegExp(`^\\[\\s*(${kinds})(?![a-z])[^\\]]*\\]?$`));
+  const bracket = lower.match(
+    new RegExp(`^\\[\\s*(${kinds})(?![a-z])[^\\]]*\\]?$`),
+  );
   if (bracket) return toToken(bracket[1]);
   const desc = lower.match(
-    new RegExp(`\\b(?:sent|shared|uploaded|attached)\\s+(?:an?\\s+)?(${kinds})\\b`),
+    new RegExp(
+      `\\b(?:sent|shared|uploaded|attached)\\s+(?:an?\\s+)?(${kinds})\\b`,
+    ),
   );
   if (desc) return toToken(desc[1]);
   const of = lower.match(/\b(photo|image|picture|video)\s+of\b/);
@@ -208,7 +212,9 @@ export function isActivityCardNoise(content: string): boolean {
   if (!t || t.length > 24) return false;
   if (/^(預約|報名|查看|加入|前往|reserve|book|join)$/i.test(t)) return true;
   // 純日期：06/10 (三) / 2026/06/10 / 6-10
-  if (/^\d{1,4}[/-]\d{1,2}(?:[/-]\d{1,2})?\s*(?:[（(][^）)]{1,3}[）)])?$/.test(t)) {
+  if (
+    /^\d{1,4}[/-]\d{1,2}(?:[/-]\d{1,2})?\s*(?:[（(][^）)]{1,3}[）)])?$/.test(t)
+  ) {
     return true;
   }
   // 純時段：19:00 ~ 20:00 / 19:00-20:00 / 19:00
@@ -378,7 +384,9 @@ export function scorePhase1(
     .filter((n): n is string => typeof n === "string" && n.trim().length > 0);
   let quotedNameRecalled = 0;
   for (const expName of expectedNames) {
-    if (visionNames.some((vn) => similarity(expName, vn) >= SIMILARITY_THRESHOLD)) {
+    if (
+      visionNames.some((vn) => similarity(expName, vn) >= SIMILARITY_THRESHOLD)
+    ) {
       quotedNameRecalled++;
     }
   }
@@ -421,7 +429,10 @@ async function callRecognizeOnly(
   token: string | undefined,
   anonKey: string | undefined,
   imagePaths: string[],
-): Promise<{ status: number; body: Record<string, unknown>; latencyMs: number }> {
+  forceModel?: string,
+): Promise<
+  { status: number; body: Record<string, unknown>; latencyMs: number }
+> {
   const images = [];
   for (let i = 0; i < imagePaths.length; i++) {
     images.push({
@@ -437,13 +448,19 @@ async function callRecognizeOnly(
   if (anonKey) headers["apikey"] = anonKey;
 
   const maxAttempts = 3;
-  for (let attempt = 1; ; attempt++) {
+  for (let attempt = 1;; attempt++) {
     const start = performance.now();
     try {
       const res = await fetch(endpoint, {
         method: "POST",
         headers,
-        body: JSON.stringify({ recognizeOnly: true, images, messages: [] }),
+        body: JSON.stringify({
+          recognizeOnly: true,
+          images,
+          messages: [],
+          // --force-model：只有測試帳號生效（server VALID_FORCE_MODELS），對照模型用。
+          ...(forceModel ? { forceModel } : {}),
+        }),
       });
       const latencyMs = Math.round(performance.now() - start);
       const text = await res.text();
@@ -544,7 +561,10 @@ export function scoreUnit(
       }
     }
     // 引用預覽文字：只在 label 有 quotedReplyPreview 時計分（抓 dim 灰小字讀錯，如 睏睏→眯眯）
-    if (typeof exp.quotedReplyPreview === "string" && exp.quotedReplyPreview.trim()) {
+    if (
+      typeof exp.quotedReplyPreview === "string" &&
+      exp.quotedReplyPreview.trim()
+    ) {
       quotePreviewTotal++;
       if (
         similarity(exp.quotedReplyPreview, act.quotedReplyPreview ?? "") >=
@@ -575,7 +595,9 @@ export function scoreUnit(
     if (alignedActual.has(i)) return;
     const content = m.content ?? "";
     const entry = { side: m.side ?? "?", text: content.slice(0, 40) };
-    if (previewTexts.some((p) => similarity(p, content) >= SIMILARITY_THRESHOLD)) {
+    if (
+      previewTexts.some((p) => similarity(p, content) >= SIMILARITY_THRESHOLD)
+    ) {
       quotedPreviewLeaks.push(entry);
     } else if (isActivityCardNoise(content)) {
       activityCardNoise.push(entry);
@@ -640,7 +662,8 @@ export function aggregate(results: UnitResult[]) {
       ? scored.filter((r) => r.classificationMatch).length / scored.length
       : null,
     quoteAuthorAccuracy: sum((r) => r.quoteAuthorTotal ?? 0) > 0
-      ? sum((r) => r.quoteAuthorCorrect ?? 0) / sum((r) => r.quoteAuthorTotal ?? 0)
+      ? sum((r) => r.quoteAuthorCorrect ?? 0) /
+        sum((r) => r.quoteAuthorTotal ?? 0)
       : null,
     quoteAuthorTotal: sum((r) => r.quoteAuthorTotal ?? 0),
     quotePreviewAccuracy: sum((r) => r.quotePreviewTotal ?? 0) > 0
@@ -721,7 +744,8 @@ async function main() {
   const imagesDir = Deno.env.get("OCR_GOLDEN_IMAGES_DIR") ?? DEFAULT_IMAGES_DIR;
   const token = Deno.env.get("OCR_GOLDEN_TOKEN");
   const anonKey = Deno.env.get("OCR_GOLDEN_ANON_KEY");
-  const isLocal = endpoint.includes("localhost") || endpoint.includes("127.0.0.1");
+  const isLocal = endpoint.includes("localhost") ||
+    endpoint.includes("127.0.0.1");
 
   if (!token && !isLocal) {
     console.error(
@@ -766,15 +790,20 @@ async function main() {
     try {
       await Promise.all(paths.map((p) => Deno.stat(p)));
     } catch {
-      console.log(`⏭  ${unit.id}: 圖檔缺席（真實圖需 OCR_GOLDEN_IMAGES_DIR），跳過`);
+      console.log(
+        `⏭  ${unit.id}: 圖檔缺席（真實圖需 OCR_GOLDEN_IMAGES_DIR），跳過`,
+      );
       continue;
     }
-    console.log(`▶ ${unit.id}（${unit.images.length} 張, ${unit.scenarios.join("/")}）…`);
+    console.log(
+      `▶ ${unit.id}（${unit.images.length} 張, ${unit.scenarios.join("/")}）…`,
+    );
     const { status, body, latencyMs } = await callRecognizeOnly(
       endpoint,
       token,
       anonKey,
       paths,
+      args["force-model"],
     );
     const r = scoreUnit(unit, label, status, body, latencyMs);
     results.push(r);
@@ -782,13 +811,19 @@ async function main() {
       // 逐訊息原始 vision/parser 輸出（含 outerColumn/side），坐實鎖死推論用。scoring-neutral。
       await Deno.writeTextFile(
         `${dumpRawDir}/${unit.id}.raw.json`,
-        JSON.stringify({ unit: unit.id, gitSha, httpStatus: status, latencyMs, body }, null, 2),
+        JSON.stringify(
+          { unit: unit.id, gitSha, httpStatus: status, latencyMs, body },
+          null,
+          2,
+        ),
       );
     }
     if (r.error) {
       console.log(`  ✗ ${r.error}`);
     } else if (r.rejected) {
-      console.log(`  ⛔ reject gate（${r.importPolicyMatch ? "符合預期" : "預期外！"}）`);
+      console.log(
+        `  ⛔ reject gate（${r.importPolicyMatch ? "符合預期" : "預期外！"}）`,
+      );
     } else {
       console.log(
         `  ✓ side ${r.sideCorrect}/${r.alignedCount} · 對齊 ${r.alignedCount}/${r.expectedCount} · unknown ${r.unknownSides} · ${latencyMs}ms`,
@@ -813,7 +848,19 @@ async function main() {
   const outPath = `${outDir}/${stamp}${isLocal ? "-local" : "-prod"}.json`;
   await Deno.writeTextFile(
     outPath,
-    JSON.stringify({ endpoint, gitSha, timestamp: stamp, overall, bySource, byScenario, results }, null, 2),
+    JSON.stringify(
+      {
+        endpoint,
+        gitSha,
+        timestamp: stamp,
+        overall,
+        bySource,
+        byScenario,
+        results,
+      },
+      null,
+      2,
+    ),
   );
 
   console.log(`\n## 彙總（主指標 = real）\n`);
@@ -823,7 +870,13 @@ async function main() {
   console.log(`|---|---|---|---|---|---|---|---|---|`);
   const row = (name: string, a: ReturnType<typeof aggregate>) =>
     console.log(
-      `| ${name} | ${pct(a.sideAccuracy)} | ${pct(a.messageRecall)} | ${pct(a.messagePrecision)} | ${pct(a.finalUnknownRate)} | ${pct(a.exactTextRate)} | ${pct(a.cer)} | ${pct(a.quoteAuthorAccuracy)}(${a.quoteAuthorTotal}) | ${pct(a.quotePreviewAccuracy)}(${a.quotePreviewTotal}) |`,
+      `| ${name} | ${pct(a.sideAccuracy)} | ${pct(a.messageRecall)} | ${
+        pct(a.messagePrecision)
+      } | ${pct(a.finalUnknownRate)} | ${pct(a.exactTextRate)} | ${
+        pct(a.cer)
+      } | ${pct(a.quoteAuthorAccuracy)}(${a.quoteAuthorTotal}) | ${
+        pct(a.quotePreviewAccuracy)
+      }(${a.quotePreviewTotal}) |`,
     );
   row("整體", overall);
   for (const [k, v] of Object.entries(bySource)) row(`source:${k}`, v);
@@ -846,16 +899,26 @@ async function main() {
     );
     console.log(`|---|---|---|`);
     console.log(
-      `| fill-only | ${pct(p1Dark.fillOnlyAccuracy)} | ${p1Dark.fillCorrect}/${p1Dark.fillKnown} |`,
+      `| fill-only | ${
+        pct(p1Dark.fillOnlyAccuracy)
+      } | ${p1Dark.fillCorrect}/${p1Dark.fillKnown} |`,
     );
     console.log(
-      `| position-only（模型自報 side） | ${pct(p1Dark.positionOnlyAccuracy)} | ${p1Dark.posCorrect}/${p1Dark.posKnown} |`,
+      `| position-only（模型自報 side） | ${
+        pct(p1Dark.positionOnlyAccuracy)
+      } | ${p1Dark.posCorrect}/${p1Dark.posKnown} |`,
     );
     console.log(
-      `\nΔ(fill − position) = ${p1Dark.deltaPp === null ? "—" : p1Dark.deltaPp.toFixed(1) + "pp"} · fill-only Wilson 95% LB = ${pct(p1Dark.fillWilsonLowerBound)}`,
+      `\nΔ(fill − position) = ${
+        p1Dark.deltaPp === null ? "—" : p1Dark.deltaPp.toFixed(1) + "pp"
+      } · fill-only Wilson 95% LB = ${pct(p1Dark.fillWilsonLowerBound)}`,
     );
     console.log(
-      `名字（quotedName）召回 = ${pct(p1Dark.quotedNameRecall)}（ground truth ${p1Dark.quotedNameExpected} 個）· evidence 分佈 = ${JSON.stringify(p1Dark.evidenceDist)}`,
+      `名字（quotedName）召回 = ${
+        pct(p1Dark.quotedNameRecall)
+      }（ground truth ${p1Dark.quotedNameExpected} 個）· evidence 分佈 = ${
+        JSON.stringify(p1Dark.evidenceDist)
+      }`,
     );
 
     // 三層 hard gate 自動判定（設計：fill≥95% 且 +10pp / Wilson LB≥90% / anchor 改善＋零回退）
@@ -866,10 +929,14 @@ async function main() {
       p1Dark.fillWilsonLowerBound >= 0.90;
     console.log(`\n### Phase 1 Hard Gate`);
     console.log(
-      `- Layer 1（fill-only ≥95% 且比 position +10pp）: ${layer1 ? "✅ PASS" : "❌ FAIL"}`,
+      `- Layer 1（fill-only ≥95% 且比 position +10pp）: ${
+        layer1 ? "✅ PASS" : "❌ FAIL"
+      }`,
     );
     console.log(
-      `- Layer 2（fill-only Wilson LB ≥90%）: ${layer2 ? "✅ PASS" : "❌ FAIL"}`,
+      `- Layer 2（fill-only Wilson LB ≥90%）: ${
+        layer2 ? "✅ PASS" : "❌ FAIL"
+      }`,
     );
     console.log(
       `- Layer 3（anchor 改善＋淺色/交友 app 零回退）: 需與 baseline run 比對，見下方 anchor/淺色 side acc 與 compare_runs.sh`,
@@ -885,17 +952,28 @@ async function main() {
     }
 
     // 逐列 audit dump（含 senderNameRaw / quotedName，供 Eric 目檢「不混欄」）
-    console.log(`\n### 暗色逐列 audit（gt|raw|fill ・色 ・senderName ・quotedName）`);
+    console.log(
+      `\n### 暗色逐列 audit（gt|raw|fill ・色 ・senderName ・quotedName）`,
+    );
     for (const r of darkResults) {
       if (!r.phase1) continue;
-      console.log(`▶ ${r.id}  myColor=${r.phase1.myBubbleColor}(${r.phase1.myBubbleColorEvidence})`);
+      console.log(
+        `▶ ${r.id}  myColor=${r.phase1.myBubbleColor}(${r.phase1.myBubbleColorEvidence})`,
+      );
       for (const row of r.phase1.rows) {
-        const flagFill = row.fillSide !== "unknown" && row.fillSide !== row.gtSide ? "✗fill" : "";
+        const flagFill =
+          row.fillSide !== "unknown" && row.fillSide !== row.gtSide
+            ? "✗fill"
+            : "";
         const flagPos = row.rawSide !== row.gtSide ? "✗pos" : "";
         console.log(
-          `   ${row.gtSide.padEnd(5)}|${(row.rawSide ?? "?").padEnd(5)}|${row.fillSide.padEnd(7)} ` +
-          `${(row.bubbleFillColor ?? "-").padEnd(10)} name=${row.senderNameRaw ?? "-"} quoted=${row.visionQuotedName ?? "-"} ` +
-          `${flagFill}${flagPos}  「${row.text}」`,
+          `   ${row.gtSide.padEnd(5)}|${(row.rawSide ?? "?").padEnd(5)}|${
+            row.fillSide.padEnd(7)
+          } ` +
+            `${(row.bubbleFillColor ?? "-").padEnd(10)} name=${
+              row.senderNameRaw ?? "-"
+            } quoted=${row.visionQuotedName ?? "-"} ` +
+            `${flagFill}${flagPos}  「${row.text}」`,
         );
       }
     }
