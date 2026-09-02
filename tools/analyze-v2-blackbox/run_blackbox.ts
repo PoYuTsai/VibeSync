@@ -41,6 +41,9 @@ const { STREAM_STYLES } = await import(`${ROOT}/stream_events.ts`);
 const { streamAnalyzeMaxTokensForStyleCount } = await import(
   `${ROOT}/stream_budget.ts`
 );
+const { callClaudeStreaming } = await import(`${ROOT}/streaming_fallback.ts`);
+// --raw=1：把模型原始 JSONL 存進結果（看 parser 為什麼丟掉某行）。
+const RAW = flag("raw") === "1";
 
 const apiKey =
   (await Deno.readTextFile(`${Deno.env.get("HOME")}/.config/anthropic/key`))
@@ -240,6 +243,7 @@ async function runCase(name: string, messages: Msg[]) {
   console.log = (...args: unknown[]) => logs.push(args);
   let markDoneFinal: Record<string, unknown> | undefined;
   let charged = false;
+  let rawText = "";
   const run = {
     id: `run-${name}`,
     status: "pending",
@@ -300,6 +304,21 @@ async function runCase(name: string, messages: Msg[]) {
     claudeApiKey: apiKey,
     supabaseUrl: "http://stub.invalid",
     supabaseServiceKey: "stub",
+    callModel: (async (
+      request: Parameters<typeof callClaudeStreaming>[0],
+      key: string,
+      options?: Parameters<typeof callClaudeStreaming>[2],
+    ) => {
+      const result = await callClaudeStreaming(request, key, options);
+      const source = result.textStream;
+      async function* tee(): AsyncGenerator<string> {
+        for await (const chunk of source) {
+          rawText += chunk;
+          yield chunk;
+        }
+      }
+      return { ...result, textStream: tee() };
+    }) as typeof callClaudeStreaming,
   };
   sideBodies = [];
   const started = Date.now();
@@ -351,8 +370,9 @@ async function runCase(name: string, messages: Msg[]) {
         e.type === "analysis.divergence_plan"
       ),
       divergenceInDone: !!done?.finalResult?.analysisDivergencePlan,
-      textMentionsPlan: text.includes("divergence") ||
-        text.includes("branchPool"),
+      // 計畫本文欄位名；linkage 的 divergencePlanRepairs 等 id／enum 不算外洩。
+      textMentionsPlan: text.includes("threadFrame") ||
+        text.includes("branchPool") || text.includes("associationPath"),
     },
     server: {
       markDoneHasPlan: !!markDoneFinal?.analysisDivergencePlan,
@@ -367,6 +387,22 @@ async function runCase(name: string, messages: Msg[]) {
       maxTokens,
     },
     logNames: [...new Set(logs.map((e) => String(e[0])))],
+    ...(RAW
+      ? {
+        rawLines: rawText.split("\n").filter((l) => l.trim()).map((l) => {
+          try {
+            const parsed = JSON.parse(l);
+            return parsed.type === "analysis.divergence_plan" ||
+                parsed.type === "analysis.reply_option" ||
+                parsed.type === "analysis.decision"
+              ? parsed
+              : { type: parsed.type };
+          } catch {
+            return { type: "UNPARSEABLE", raw: l };
+          }
+        }),
+      }
+      : {}),
   };
 }
 

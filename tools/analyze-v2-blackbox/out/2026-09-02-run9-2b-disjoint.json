@@ -1,0 +1,2657 @@
+[
+  {
+    "name": "warm_question_back",
+    "status": 200,
+    "elapsedMs": 36017,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.progress",
+      "analysis.recommendation",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.metrics",
+      "analysis.progress",
+      "analysis.coach_hint",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "send",
+      "selectedStyle": "extend"
+    },
+    "replyOptions": [
+      {
+        "style": "extend",
+        "message": "恐怖驚悚是我的舒適圈沒錯，片荒的話妳可以試試「宿怨」，氣氛壓迫感很夠，跟我們看的那部風格蠻像的"
+      },
+      {
+        "style": "resonate",
+        "message": "片荒真的很煩，明明想看片但滑半天選不到。我算蠻常看恐怖片的，可以試試「宿怨」，應該能解妳的荒"
+      },
+      {
+        "style": "tease",
+        "message": "片荒聽起來很嚴重，跟斷糧差不多等級。緊急補給的話「宿怨」可以試試，保證不會失望"
+      },
+      {
+        "style": "humor",
+        "message": "片荒是大事，我這邊有存糧。恐怖片庫存滿滿，「宿怨」先發放給妳，看完包妳晚上不敢關燈"
+      },
+      {
+        "style": "coldRead",
+        "message": "我猜妳不是那種隨便滑到什麼看什麼的人，片荒的時候反而更挑。「宿怨」應該符合妳的標準"
+      }
+    ],
+    "doneKeys": [
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "finalRecommendation",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": true,
+      "plan": {
+        "schemaVersion": 1,
+        "threadFrame": "接住她的片荒，順手推一部具體片單",
+        "anchorSourceIndex": 1,
+        "supportSourceIndices": [],
+        "mergeContextSourceIndices": [
+          2
+        ],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 1,
+            "method": "drill_down",
+            "idea": "具體講你平常口味然後推一部",
+            "associationPath": [
+              "問推薦",
+              "平常看恐怖驚悚",
+              "推一部類似片"
+            ],
+            "semanticDistance": 0
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 1,
+            "method": "affect_evaluation",
+            "idea": "片荒像斷糧，需要緊急補給",
+            "associationPath": [
+              "片荒",
+              "斷糧",
+              "緊急補給片單"
+            ],
+            "semanticDistance": 1
+          },
+          {
+            "id": "br_3",
+            "sourceIndex": 1,
+            "method": "association",
+            "idea": "片荒配對機推薦",
+            "associationPath": [
+              "片荒",
+              "像交友軟體配對",
+              "幫她配一部"
+            ],
+            "semanticDistance": 2
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_1",
+          "humor": "br_2",
+          "tease": "br_2",
+          "coldRead": "br_1",
+          "resonate": "br_1"
+        }
+      },
+      "decisionV2": null
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-warm_question_back",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "interpret.interest_signals",
+          "reply.one_question",
+          "humor.not_oily"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-warm_question_back",
+        "decisionSchema": "unknown",
+        "decisionId": "unknown",
+        "action": "unknown",
+        "messageDecision": "unknown",
+        "replyMode": "unknown",
+        "selectedStyle": "extend",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 5,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "extendTopicStoryFrame",
+        "meaningfulBallCoverage": {
+          "status": "observed",
+          "meaningfulSourceIndices": [
+            1
+          ],
+          "coveredSourceIndicesByStyle": {
+            "extend": [
+              1
+            ],
+            "resonate": [
+              1
+            ],
+            "tease": [
+              1
+            ],
+            "humor": [
+              1
+            ],
+            "coldRead": [
+              1
+            ]
+          },
+          "allVariantsCoverMeaningful": true
+        },
+        "questionCounts": {
+          "status": "observed",
+          "byStyle": {
+            "extend": 0,
+            "resonate": 0,
+            "tease": 0,
+            "humor": 0,
+            "coldRead": 0
+          },
+          "maxQuestionCount": 0
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "observed",
+          "baselineStyle": "extend",
+          "sourceBallIdEvidence": "absent",
+          "sourceMessageEvidence": "complete",
+          "divergentStyles": [],
+          "allMatch": true
+        },
+        "divergencePlan": {
+          "status": "observed",
+          "anchorSourceIndex": 1,
+          "supportCount": 0,
+          "mergeContextCount": 1,
+          "branchCount": 3,
+          "methods": {
+            "drill_down": 1,
+            "affect_evaluation": 1,
+            "association": 1
+          },
+          "semanticDistanceCap": 1,
+          "maxBranchDistance": 2,
+          "branchExceedsCap": true,
+          "questionBudget": 1,
+          "questionBudgetExceeded": false,
+          "newTopicBudget": 0,
+          "newTopicBudgetExceeded": "unknown",
+          "anchorCoveredByAllStyles": true,
+          "styleBranchAssigned": 5,
+          "attribution": {
+            "status": "observed",
+            "styleCount": 5,
+            "attributedCount": 5,
+            "bySource": {
+              "option": 5,
+              "plan": 0,
+              "anchor": 0
+            },
+            "distinctBranchCount": 2,
+            "rhetoricalMoves": {
+              "concrete_detail": 1,
+              "reflect_feeling": 1,
+              "playful_contrast": 1,
+              "exaggeration": 1,
+              "tentative_observation": 1
+            },
+            "styleIntensity": {
+              "1": 1,
+              "2": 4
+            },
+            "invalidCount": 0
+          }
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 151,
+        "output_tokens": 3034
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[divergence_plan] repaired branch key glitch: br_3:sourceIndex1",
+      "[divergence_attribution] style=extend branch=br_1 source=option invalid=false",
+      "[ball_coverage] style=extend selected=true covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[divergence_attribution] style=resonate branch=br_1 source=option invalid=false",
+      "[ball_coverage] style=resonate selected=false covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[divergence_attribution] style=tease branch=br_2 source=option invalid=false",
+      "[ball_coverage] style=tease selected=false covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[divergence_attribution] style=humor branch=br_2 source=option invalid=false",
+      "[ball_coverage] style=humor selected=false covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[divergence_attribution] style=coldRead branch=br_1 source=option invalid=false",
+      "[ball_coverage] style=coldRead selected=false covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ],
+    "rawLines": [
+      {
+        "type": "analysis.inventory"
+      },
+      {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "接住片荒需求",
+        "nextStepBody": "回應觀影習慣，順手給推薦",
+        "doThis": "簡短講你平常口味，再丟一部具體片名",
+        "avoidThis": "不要開書單式列一堆片名",
+        "confidence": "high"
+      },
+      {
+        "type": "analysis.divergence_plan",
+        "schemaVersion": 1,
+        "threadFrame": "接住她的片荒，順手推一部具體片單",
+        "anchorSourceIndex": 1,
+        "supportSourceIndices": [],
+        "mergeContextSourceIndices": [
+          2
+        ],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 1,
+            "method": "drill_down",
+            "idea": "具體講你平常口味然後推一部",
+            "associationPath": [
+              "問推薦",
+              "平常看恐怖驚悚",
+              "推一部類似片"
+            ],
+            "semanticDistance": 0
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 1,
+            "method": "affect_evaluation",
+            "idea": "片荒像斷糧，需要緊急補給",
+            "associationPath": [
+              "片荒",
+              "斷糧",
+              "緊急補給片單"
+            ],
+            "semanticDistance": 1
+          },
+          {
+            "id": "br_3",
+            "sourceIndex1": 1,
+            "sourceIndex": 1,
+            "method": "association",
+            "idea": "片荒配對機推薦",
+            "associationPath": [
+              "片荒",
+              "像交友軟體配對",
+              "幫她配一部"
+            ],
+            "semanticDistance": 2
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_1",
+          "humor": "br_2",
+          "tease": "br_2",
+          "coldRead": "br_1",
+          "resonate": "br_1"
+        }
+      },
+      {
+        "type": "analysis.recommendation"
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "extend",
+        "branchId": "br_1",
+        "rhetoricalMove": "concrete_detail",
+        "styleIntensity": 2,
+        "reason": "接『平常都看這種的嗎』的問題，補充口味再推薦一部，讓片荒有解",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "你平常都看這種的嗎？還是有別的推薦",
+            "reply": "恐怖驚悚是我的舒適圈沒錯，片荒的話妳可以試試「宿怨」，氣氛壓迫感很夠，跟我們看的那部風格蠻像的",
+            "reason": "直接回答習慣＋給具體片名解決她的片荒"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "resonate",
+        "branchId": "br_1",
+        "rhetoricalMove": "reflect_feeling",
+        "styleIntensity": 2,
+        "reason": "先同理片荒的感覺，再給推薦，讓她覺得被理解",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "你平常都看這種的嗎？還是有別的推薦",
+            "reply": "片荒真的很煩，明明想看片但滑半天選不到。我算蠻常看恐怖片的，可以試試「宿怨」，應該能解妳的荒",
+            "reason": "先接住片荒的煩躁感再回答問題給推薦"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "tease",
+        "branchId": "br_2",
+        "rhetoricalMove": "playful_contrast",
+        "styleIntensity": 2,
+        "reason": "用片荒像斷糧的反差製造輕鬆感，再給推薦",
+        "stretchLevel": "stretch",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "你平常都看這種的嗎？還是有別的推薦",
+            "reply": "片荒聽起來很嚴重，跟斷糧差不多等級。緊急補給的話「宿怨」可以試試，保證不會失望",
+            "reason": "用誇張比喻接片荒，順勢給推薦"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "humor",
+        "branchId": "br_2",
+        "rhetoricalMove": "exaggeration",
+        "styleIntensity": 2,
+        "reason": "把片荒講成緊急狀態，幽默中帶出推薦",
+        "stretchLevel": "stretch",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "你平常都看這種的嗎？還是有別的推薦",
+            "reply": "片荒是大事，我這邊有存糧。恐怖片庫存滿滿，「宿怨」先發放給妳，看完包妳晚上不敢關燈",
+            "reason": "誇張化片荒＋幽默包裝推薦"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "coldRead",
+        "branchId": "br_1",
+        "rhetoricalMove": "tentative_observation",
+        "styleIntensity": 1,
+        "reason": "溫和猜測她的觀影習慣，留空間讓她補充",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "你平常都看這種的嗎？還是有別的推薦",
+            "reply": "我猜妳不是那種隨便滑到什麼看什麼的人，片荒的時候反而更挑。「宿怨」應該符合妳的標準",
+            "reason": "溫和猜測她選片的習慣，順勢推薦"
+          }
+        ]
+      },
+      {
+        "type": "analysis.metrics"
+      },
+      {
+        "type": "analysis.coach_hint"
+      },
+      {
+        "type": "analysis.done"
+      }
+    ]
+  },
+  {
+    "name": "she_invites_first",
+    "status": 200,
+    "elapsedMs": 35670,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.recommendation",
+      "analysis.reply_option",
+      "analysis.progress",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.metrics",
+      "analysis.progress",
+      "analysis.coach_hint",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "send",
+      "selectedStyle": "extend"
+    },
+    "replyOptions": [
+      {
+        "style": "extend",
+        "message": "有興趣，週五我可以\n而且是那個樂團，妳這波邀約打得很準"
+      },
+      {
+        "style": "resonate",
+        "message": "當然有興趣，週五算我一個\n妳還記得我說過這個，有點意外也有點開心"
+      },
+      {
+        "style": "tease",
+        "message": "有興趣，不過兩張票就我們兩個，這人情我怎麼還\n還特地選我喜歡的樂團，妳這是鋪好局讓我沒理由拒絕吧"
+      },
+      {
+        "style": "humor",
+        "message": "有興趣，週五我直接把行程清空\n還挑我喜歡的樂團，這波我是不是欠妳一輩子的人情"
+      },
+      {
+        "style": "coldRead",
+        "message": "有興趣，這個週五我留給妳\n我猜妳問之前應該有偷偷查過我喜歡哪個樂團吧"
+      }
+    ],
+    "doneKeys": [
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "finalRecommendation",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": true,
+      "plan": {
+        "schemaVersion": 1,
+        "threadFrame": "接住演唱會邀約，順勢回應她記得我喜歡的樂團",
+        "anchorSourceIndex": 2,
+        "supportSourceIndices": [],
+        "mergeContextSourceIndices": [
+          1,
+          3
+        ],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 2,
+            "method": "affect_evaluation",
+            "idea": "直接表達興奮和期待",
+            "associationPath": [
+              "演唱會票",
+              "喜歡的樂團",
+              "超想去"
+            ],
+            "semanticDistance": 0
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 3,
+            "method": "association",
+            "idea": "驚訝她還記得這個細節",
+            "associationPath": [
+              "之前說喜歡",
+              "她記住了",
+              "被在乎的感覺"
+            ],
+            "semanticDistance": 1
+          },
+          {
+            "id": "br_3",
+            "sourceIndex": 2,
+            "method": "lateral",
+            "idea": "用誰請客/欠她的角度開玩笑",
+            "associationPath": [
+              "兩張票",
+              "一起去",
+              "欠人情"
+            ],
+            "semanticDistance": 1
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_1",
+          "resonate": "br_2",
+          "tease": "br_3",
+          "humor": "br_3",
+          "coldRead": "br_2"
+        }
+      },
+      "decisionV2": null
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-she_invites_first",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "interpret.interest_signals",
+          "reply.one_question",
+          "humor.not_oily"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-she_invites_first",
+        "decisionSchema": "unknown",
+        "decisionId": "unknown",
+        "action": "unknown",
+        "messageDecision": "unknown",
+        "replyMode": "unknown",
+        "selectedStyle": "extend",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 5,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "softInvite",
+        "meaningfulBallCoverage": {
+          "status": "unknown"
+        },
+        "questionCounts": {
+          "status": "observed",
+          "byStyle": {
+            "extend": 0,
+            "resonate": 0,
+            "tease": 0,
+            "humor": 0,
+            "coldRead": 0
+          },
+          "maxQuestionCount": 0
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "observed",
+          "baselineStyle": "extend",
+          "sourceBallIdEvidence": "absent",
+          "sourceMessageEvidence": "complete",
+          "divergentStyles": [],
+          "allMatch": true
+        },
+        "divergencePlan": {
+          "status": "observed",
+          "anchorSourceIndex": 2,
+          "supportCount": 0,
+          "mergeContextCount": 2,
+          "branchCount": 3,
+          "methods": {
+            "affect_evaluation": 1,
+            "association": 1,
+            "lateral": 1
+          },
+          "semanticDistanceCap": 1,
+          "maxBranchDistance": 1,
+          "branchExceedsCap": false,
+          "questionBudget": 1,
+          "questionBudgetExceeded": false,
+          "newTopicBudget": 0,
+          "newTopicBudgetExceeded": "unknown",
+          "anchorCoveredByAllStyles": true,
+          "styleBranchAssigned": 5,
+          "attribution": {
+            "status": "observed",
+            "styleCount": 5,
+            "attributedCount": 5,
+            "bySource": {
+              "option": 5,
+              "plan": 0,
+              "anchor": 0
+            },
+            "distinctBranchCount": 3,
+            "rhetoricalMoves": {
+              "concrete_detail": 1,
+              "reflect_feeling": 1,
+              "playful_challenge": 1,
+              "exaggeration": 1,
+              "tentative_observation": 1
+            },
+            "styleIntensity": {
+              "2": 5
+            },
+            "invalidCount": 0
+          }
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 114,
+        "output_tokens": 3247
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[divergence_attribution] style=extend branch=br_1 source=option invalid=false",
+      "[ball_coverage] style=extend selected=true covered=1/1 indices=[2] floor=1 segments=2 ok=true",
+      "[divergence_attribution] style=resonate branch=br_2 source=option invalid=false",
+      "[ball_coverage] style=resonate selected=false covered=1/1 indices=[2] floor=1 segments=2 ok=true",
+      "[divergence_attribution] style=tease branch=br_3 source=option invalid=false",
+      "[ball_coverage] style=tease selected=false covered=1/1 indices=[2] floor=1 segments=2 ok=true",
+      "[divergence_attribution] style=humor branch=br_3 source=option invalid=false",
+      "[ball_coverage] style=humor selected=false covered=1/1 indices=[2] floor=1 segments=2 ok=true",
+      "[divergence_attribution] style=coldRead branch=br_2 source=option invalid=false",
+      "[ball_coverage] style=coldRead selected=false covered=1/1 indices=[2] floor=1 segments=2 ok=true",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ],
+    "rawLines": [
+      {
+        "type": "analysis.inventory"
+      },
+      {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "接演唱會邀約",
+        "nextStepBody": "直接答應，順便回應她記得你喜歡的樂團",
+        "doThis": "清楚表達想去，並回應她的用心",
+        "avoidThis": "不要裝矜持或反問太多細節搞得像在猶豫",
+        "confidence": "high"
+      },
+      {
+        "type": "analysis.divergence_plan",
+        "schemaVersion": 1,
+        "threadFrame": "接住演唱會邀約，順勢回應她記得我喜歡的樂團",
+        "anchorSourceIndex": 2,
+        "supportSourceIndices": [],
+        "mergeContextSourceIndices": [
+          1,
+          3
+        ],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 2,
+            "method": "affect_evaluation",
+            "idea": "直接表達興奮和期待",
+            "associationPath": [
+              "演唱會票",
+              "喜歡的樂團",
+              "超想去"
+            ],
+            "semanticDistance": 0
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 3,
+            "method": "association",
+            "idea": "驚訝她還記得這個細節",
+            "associationPath": [
+              "之前說喜歡",
+              "她記住了",
+              "被在乎的感覺"
+            ],
+            "semanticDistance": 1
+          },
+          {
+            "id": "br_3",
+            "sourceIndex": 2,
+            "method": "lateral",
+            "idea": "用誰請客/欠她的角度開玩笑",
+            "associationPath": [
+              "兩張票",
+              "一起去",
+              "欠人情"
+            ],
+            "semanticDistance": 1
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_1",
+          "resonate": "br_2",
+          "tease": "br_3",
+          "humor": "br_3",
+          "coldRead": "br_2"
+        }
+      },
+      {
+        "type": "analysis.recommendation"
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "extend",
+        "branchId": "br_1",
+        "rhetoricalMove": "concrete_detail",
+        "styleIntensity": 2,
+        "reason": "直接答應並表達期待，不拖泥帶水",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有興趣嗎",
+            "reply": "有興趣，週五我可以",
+            "reason": "清楚明確接受邀約"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "是那個你之前說喜歡的樂團",
+            "reply": "而且是那個樂團，妳這波邀約打得很準",
+            "reason": "回應她記得細節，順勢稱讚她用心"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "resonate",
+        "branchId": "br_2",
+        "rhetoricalMove": "reflect_feeling",
+        "styleIntensity": 2,
+        "reason": "先表達被記得的感動，再確認赴約",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有興趣嗎",
+            "reply": "當然有興趣，週五算我一個",
+            "reason": "明確答應"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "是那個你之前說喜歡的樂團",
+            "reply": "妳還記得我說過這個，有點意外也有點開心",
+            "reason": "回應被記得的情感連結"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "tease",
+        "branchId": "br_3",
+        "rhetoricalMove": "playful_challenge",
+        "styleIntensity": 2,
+        "reason": "用欠人情的角度輕鬆推進",
+        "stretchLevel": "stretch",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有興趣嗎",
+            "reply": "有興趣，不過兩張票就我們兩個，這人情我怎麼還",
+            "reason": "接受邀約並帶點推拉"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "是那個你之前說喜歡的樂團",
+            "reply": "還特地選我喜歡的樂團，妳這是鋪好局讓我沒理由拒絕吧",
+            "reason": "點破她的用心，帶輕微調侃"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "humor",
+        "branchId": "br_3",
+        "rhetoricalMove": "exaggeration",
+        "styleIntensity": 2,
+        "reason": "誇張化欠人情的感覺，製造輕鬆笑點",
+        "stretchLevel": "stretch",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有興趣嗎",
+            "reply": "有興趣，週五我直接把行程清空",
+            "reason": "誇張表達重視程度"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "是那個你之前說喜歡的樂團",
+            "reply": "還挑我喜歡的樂團，這波我是不是欠妳一輩子的人情",
+            "reason": "誇張化她的用心製造笑點"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "coldRead",
+        "branchId": "br_2",
+        "rhetoricalMove": "tentative_observation",
+        "styleIntensity": 2,
+        "reason": "溫和猜測她特地記住這件事的心思",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有興趣嗎",
+            "reply": "有興趣，這個週五我留給妳",
+            "reason": "明確答應並表達重視"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "是那個你之前說喜歡的樂團",
+            "reply": "我猜妳問之前應該有偷偷查過我喜歡哪個樂團吧",
+            "reason": "溫和猜測她的用心，留空間讓她回應"
+          }
+        ]
+      },
+      {
+        "type": "analysis.metrics"
+      },
+      {
+        "type": "analysis.coach_hint"
+      },
+      {
+        "type": "analysis.done"
+      }
+    ]
+  },
+  {
+    "name": "after_meetup_followup",
+    "status": 200,
+    "elapsedMs": 39995,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.progress",
+      "analysis.recommendation",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.progress",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "send",
+      "selectedStyle": "resonate"
+    },
+    "replyOptions": [
+      {
+        "style": "resonate",
+        "message": "到家就好，今天我也很開心\n下次妳請這句我記住了，很期待"
+      },
+      {
+        "style": "extend",
+        "message": "到家就安心了，今天真的很順\n下次妳請的話，我要好好選一家更狠的"
+      },
+      {
+        "style": "tease",
+        "message": "到家就好，謝什麼，妳客氣起來我不太習慣\n這句我先記帳了，下次直接跟妳收"
+      },
+      {
+        "style": "humor",
+        "message": "到家就好，妳這麼正式謝我，我都想鞠躬了\n好，這頓先欠著，我會提醒妳的，別想跑"
+      },
+      {
+        "style": "coldRead",
+        "message": "到家就好，聽妳這樣說我猜妳今天應該也蠻開心的\n我猜妳說下次換妳請，其實也是想再約一次吧"
+      }
+    ],
+    "doneKeys": [
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "finalRecommendation",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": null
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-after_meetup_followup",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "interpret.interest_signals",
+          "reply.one_question",
+          "humor.not_oily"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-after_meetup_followup",
+        "decisionSchema": "unknown",
+        "decisionId": "unknown",
+        "action": "unknown",
+        "messageDecision": "unknown",
+        "replyMode": "unknown",
+        "selectedStyle": "resonate",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 5,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "softInvite",
+        "meaningfulBallCoverage": {
+          "status": "observed",
+          "meaningfulSourceIndices": [
+            1,
+            2
+          ],
+          "coveredSourceIndicesByStyle": {
+            "extend": [
+              1,
+              2
+            ],
+            "resonate": [
+              1,
+              2
+            ],
+            "tease": [
+              1,
+              2
+            ],
+            "humor": [
+              1,
+              2
+            ],
+            "coldRead": [
+              1,
+              2
+            ]
+          },
+          "allVariantsCoverMeaningful": true
+        },
+        "questionCounts": {
+          "status": "observed",
+          "byStyle": {
+            "extend": 0,
+            "resonate": 0,
+            "tease": 0,
+            "humor": 0,
+            "coldRead": 0
+          },
+          "maxQuestionCount": 0
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "observed",
+          "baselineStyle": "resonate",
+          "sourceBallIdEvidence": "absent",
+          "sourceMessageEvidence": "complete",
+          "divergentStyles": [],
+          "allMatch": true
+        },
+        "divergencePlan": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 104,
+        "output_tokens": 3507
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[ball_coverage] style=resonate selected=true covered=2/2 indices=[1,2] floor=2 segments=2 ok=true",
+      "[ball_coverage] style=extend selected=false covered=2/2 indices=[1,2] floor=2 segments=2 ok=true",
+      "[ball_coverage] style=tease selected=false covered=2/2 indices=[1,2] floor=2 segments=2 ok=true",
+      "[ball_coverage] style=humor selected=false covered=2/2 indices=[1,2] floor=2 segments=2 ok=true",
+      "[ball_coverage] style=coldRead selected=false covered=2/2 indices=[1,2] floor=2 segments=2 ok=true",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ],
+    "rawLines": [
+      {
+        "type": "analysis.inventory"
+      },
+      {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "resonate",
+        "nextStepTitle": "接住感謝，順勢接住下次的窗口",
+        "nextStepBody": "先回應到家和謝謝，再接她說的下次她請",
+        "doThis": "自然回應她的道謝，對『下次她請』給一個輕鬆肯定但不急著訂時間",
+        "avoidThis": "別急著敲定具體時間地點，也別自己搶著說『不用你請』",
+        "confidence": "high"
+      },
+      {
+        "type": "UNPARSEABLE",
+        "raw": "{\"type\":\"analysis.divergence_plan\",\"schemaVersion\":1,\"threadFrame\":\"接住她到家的安心與道謝，順勢接住她主動提的下次邀約\",\"anchorSourceIndex\":2,\"supportSourceIndices\":[1],\"mergeContextSourceIndices\":[],\"semanticDistanceCap\":1,\"newTopicBudget\":0,\"questionBudget\":1,\"branchPool\":[{\"id\":\"br_1\",\"sourceIndex\":2,\"method\":\"affect_evaluation\",\"idea\":\"她說下次她請，代表這次約會她覺得值得，先肯定這份心意再留期待\",\"associationPath\":[\"下次換我請\",\"她主動延續\",\"期待下一次\"],\"semanticDistance\":1},{\"id\":\"br_2\",\"sourceIndex\":2,\"method\":\"association\",\"idea\":\"把『下次她請』類比成記帳、欠一頓的概念\",\"associationPath\":[\"下次換我請\",\"欠一頓\",\"記在帳上\"],\"semanticDistance\":1},{\"id\":\"br_3\",\"sourceIndex=1\",\"method\":\"drill_down\",\"idea\":\"到家=今天正式收尾，可以順勢確認她今天過得開心\",\"associationPath\":[\"到家了\",\"今天謝謝你\",\"今天很值得\"],\"semanticDistance\":0}],\"styleBranchIds\":{\"extend\":\"br_1\",\"resonate\":\"br_3\",\"tease\":\"br_2\",\"humor\":\"br_2\",\"coldRead\":\"br_1\"}}"
+      },
+      {
+        "type": "analysis.recommendation"
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "resonate",
+        "branchId": "br_3",
+        "rhetoricalMove": "reflect_feeling",
+        "styleIntensity": 2,
+        "reason": "先接她到家的安心，再回應她的謝謝，讓她感覺今天真的被在乎",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "到了 今天謝謝你",
+            "reply": "到家就好，今天我也很開心",
+            "reason": "接她到家的訊號＋回應道謝"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "那家店真的很好吃 下次換我請",
+            "reply": "下次妳請這句我記住了，很期待",
+            "reason": "接她主動提的邀約窗口，留期待不急著訂時間"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "extend",
+        "branchId": "br_1",
+        "rhetoricalMove": "shared_experience",
+        "styleIntensity": 2,
+        "reason": "接她的心意，順勢延伸成一種默契感",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "到了 今天謝謝你",
+            "reply": "到家就安心了，今天真的很順",
+            "reason": "接到家訊號＋回應今天的順利"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "那家店真的很好吃 下次換我請",
+            "reply": "下次妳請的話，我要好好選一家更狠的",
+            "reason": "接她的邀約，順勢延伸出下一次的期待"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "tease",
+        "branchId": "br_2",
+        "rhetoricalMove": "playful_challenge",
+        "styleIntensity": 2,
+        "reason": "用記帳的玩笑接住她說要請的心意，留她主動接話的空間",
+        "stretchLevel": "stretch",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "到了 今天謝謝你",
+            "reply": "到家就好，謝什麼，妳客氣起來我不太習慣",
+            "reason": "接她的道謝，用輕鬆語氣回應不生疏"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "那家店真的很好吃 下次換我請",
+            "reply": "這句我先記帳了，下次直接跟妳收",
+            "reason": "用記帳的玩笑接她的邀約，留下次的期待"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "humor",
+        "branchId": "br_2",
+        "rhetoricalMove": "exaggeration",
+        "styleIntensity": 2,
+        "reason": "把她要請客的話誇張成欠一頓的概念，輕鬆好接",
+        "stretchLevel": "stretch",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "到了 今天謝謝你",
+            "reply": "到家就好，妳這麼正式謝我，我都想鞠躬了",
+            "reason": "用輕鬆誇張回應她的道謝"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "那家店真的很好吃 下次換我請",
+            "reply": "好，這頓先欠著，我會提醒妳的，別想跑",
+            "reason": "誇張化她欠一頓的說法，製造互動感"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "coldRead",
+        "branchId": "br_1",
+        "rhetoricalMove": "tentative_observation",
+        "styleIntensity": 1,
+        "reason": "從她主動提下次猜她其實也期待再見面",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "到了 今天謝謝你",
+            "reply": "到家就好，聽妳這樣說我猜妳今天應該也蠻開心的",
+            "reason": "從道謝猜她的心情"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "那家店真的很好吃 下次換我請",
+            "reply": "我猜妳說下次換妳請，其實也是想再約一次吧",
+            "reason": "溫和猜測她的邀約動機，留她修正空間"
+          }
+        ]
+      },
+      {
+        "type": "analysis.metrics"
+      },
+      {
+        "type": "analysis.coach_hint"
+      },
+      {
+        "type": "analysis.done"
+      }
+    ]
+  },
+  {
+    "name": "she_asks_personal_question",
+    "status": 200,
+    "elapsedMs": 37998,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.progress",
+      "analysis.recommendation",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.metrics",
+      "analysis.progress",
+      "analysis.coach_hint",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "send",
+      "selectedStyle": "extend"
+    },
+    "replyOptions": [
+      {
+        "style": "extend",
+        "message": "做業務相關的，常常在外面跑\n妳怎麼猜到的，是不是有什麼出差族的特徵"
+      },
+      {
+        "style": "resonate",
+        "message": "業務啦，到處跑的那種\n被妳猜中，感覺我的行李箱都比我還熟悉機場"
+      },
+      {
+        "style": "tease",
+        "message": "業務，順便到處出差\n妳這樣講我都要以為妳在機場工作了，怎麼一猜就中"
+      },
+      {
+        "style": "humor",
+        "message": "業務，本業是搬行李箱\n常到我的行李箱已經有自己的社交生活了"
+      },
+      {
+        "style": "coldRead",
+        "message": "業務類的，常常在外面跑\n我猜妳是那種看聊天節奏就能猜職業的人"
+      }
+    ],
+    "doneKeys": [
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "finalRecommendation",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": true,
+      "plan": {
+        "schemaVersion": 1,
+        "threadFrame": "回答職業，再玩她對出差的猜測",
+        "anchorSourceIndex": 3,
+        "supportSourceIndices": [
+          2
+        ],
+        "mergeContextSourceIndices": [
+          1
+        ],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 3,
+            "method": "affect_evaluation",
+            "idea": "出差被猜到像被看穿行程",
+            "associationPath": [
+              "常出差",
+              "被猜中",
+              "像被看穿行李箱人生"
+            ],
+            "semanticDistance": 1
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 3,
+            "method": "drill_down",
+            "idea": "追問她怎麼判斷出差族",
+            "associationPath": [
+              "常出差",
+              "她的觀察依據",
+              "反問判斷方式"
+            ],
+            "semanticDistance": 0
+          },
+          {
+            "id": "br_3",
+            "sourceIndex": 3,
+            "method": "association",
+            "idea": "出差跟行李箱/機場連結",
+            "associationPath": [
+              "出差",
+              "行李箱",
+              "機場常客"
+            ],
+            "semanticDistance": 1
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_2",
+          "resonate": "br_1",
+          "tease": "br_3",
+          "humor": "br_3",
+          "coldRead": "br_1"
+        }
+      },
+      "decisionV2": null
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-she_asks_personal_question",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "interpret.interest_signals",
+          "reply.one_question",
+          "humor.not_oily"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-she_asks_personal_question",
+        "decisionSchema": "unknown",
+        "decisionId": "unknown",
+        "action": "unknown",
+        "messageDecision": "unknown",
+        "replyMode": "unknown",
+        "selectedStyle": "extend",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 5,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "extendTopicStoryFrame",
+        "meaningfulBallCoverage": {
+          "status": "observed",
+          "meaningfulSourceIndices": [
+            2,
+            3
+          ],
+          "coveredSourceIndicesByStyle": {
+            "extend": [
+              2,
+              3
+            ],
+            "resonate": [
+              2,
+              3
+            ],
+            "tease": [
+              2,
+              3
+            ],
+            "humor": [
+              2,
+              3
+            ],
+            "coldRead": [
+              2,
+              3
+            ]
+          },
+          "allVariantsCoverMeaningful": true
+        },
+        "questionCounts": {
+          "status": "observed",
+          "byStyle": {
+            "extend": 0,
+            "resonate": 0,
+            "tease": 0,
+            "humor": 0,
+            "coldRead": 0
+          },
+          "maxQuestionCount": 0
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "observed",
+          "baselineStyle": "extend",
+          "sourceBallIdEvidence": "absent",
+          "sourceMessageEvidence": "complete",
+          "divergentStyles": [],
+          "allMatch": true
+        },
+        "divergencePlan": {
+          "status": "observed",
+          "anchorSourceIndex": 3,
+          "supportCount": 1,
+          "mergeContextCount": 1,
+          "branchCount": 3,
+          "methods": {
+            "affect_evaluation": 1,
+            "drill_down": 1,
+            "association": 1
+          },
+          "semanticDistanceCap": 1,
+          "maxBranchDistance": 1,
+          "branchExceedsCap": false,
+          "questionBudget": 1,
+          "questionBudgetExceeded": false,
+          "newTopicBudget": 0,
+          "newTopicBudgetExceeded": "unknown",
+          "anchorCoveredByAllStyles": true,
+          "styleBranchAssigned": 5,
+          "attribution": {
+            "status": "observed",
+            "styleCount": 5,
+            "attributedCount": 5,
+            "bySource": {
+              "option": 5,
+              "plan": 0,
+              "anchor": 0
+            },
+            "distinctBranchCount": 3,
+            "rhetoricalMoves": {
+              "low_friction_entry": 1,
+              "reflect_feeling": 1,
+              "playful_challenge": 1,
+              "exaggeration": 1,
+              "tentative_observation": 1
+            },
+            "styleIntensity": {
+              "2": 5
+            },
+            "invalidCount": 0
+          }
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 118,
+        "output_tokens": 3467
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[divergence_attribution] style=extend branch=br_2 source=option invalid=false",
+      "[ball_coverage] style=extend selected=true covered=2/2 indices=[2,3] floor=2 segments=2 ok=true",
+      "[divergence_attribution] style=resonate branch=br_1 source=option invalid=false",
+      "[ball_coverage] style=resonate selected=false covered=2/2 indices=[2,3] floor=2 segments=2 ok=true",
+      "[divergence_attribution] style=tease branch=br_3 source=option invalid=false",
+      "[ball_coverage] style=tease selected=false covered=2/2 indices=[2,3] floor=2 segments=2 ok=true",
+      "[divergence_attribution] style=humor branch=br_3 source=option invalid=false",
+      "[ball_coverage] style=humor selected=false covered=2/2 indices=[2,3] floor=2 segments=2 ok=true",
+      "[divergence_attribution] style=coldRead branch=br_1 source=option invalid=false",
+      "[ball_coverage] style=coldRead selected=false covered=2/2 indices=[2,3] floor=2 segments=2 ok=true",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ],
+    "rawLines": [
+      {
+        "type": "analysis.inventory"
+      },
+      {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "回答工作+順勢接出差冷讀",
+        "nextStepBody": "簡短回答職業，再回應她的冷讀觀察",
+        "doThis": "先答工作，再用一句話回應她對出差的猜測，順勢丟一個小問題",
+        "avoidThis": "不要把兩題變成報告式逐條回答，也不要查戶口式反問",
+        "confidence": "high"
+      },
+      {
+        "type": "analysis.divergence_plan",
+        "schemaVersion": 1,
+        "threadFrame": "回答職業，再玩她對出差的猜測",
+        "anchorSourceIndex": 3,
+        "supportSourceIndices": [
+          2
+        ],
+        "mergeContextSourceIndices": [
+          1
+        ],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 3,
+            "method": "affect_evaluation",
+            "idea": "出差被猜到像被看穿行程",
+            "associationPath": [
+              "常出差",
+              "被猜中",
+              "像被看穿行李箱人生"
+            ],
+            "semanticDistance": 1
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 3,
+            "method": "drill_down",
+            "idea": "追問她怎麼判斷出差族",
+            "associationPath": [
+              "常出差",
+              "她的觀察依據",
+              "反問判斷方式"
+            ],
+            "semanticDistance": 0
+          },
+          {
+            "id": "br_3",
+            "sourceIndex": 3,
+            "method": "association",
+            "idea": "出差跟行李箱/機場連結",
+            "associationPath": [
+              "出差",
+              "行李箱",
+              "機場常客"
+            ],
+            "semanticDistance": 1
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_2",
+          "resonate": "br_1",
+          "tease": "br_3",
+          "humor": "br_3",
+          "coldRead": "br_1"
+        }
+      },
+      {
+        "type": "analysis.recommendation"
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "extend",
+        "branchId": "br_2",
+        "rhetoricalMove": "low_friction_entry",
+        "styleIntensity": 2,
+        "reason": "先答職業再讓她說出判斷依據，互動感比單純回答強",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "對了 你是做什麼工作的啊",
+            "reply": "做業務相關的，常常在外面跑",
+            "reason": "直接簡短回答真問題"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "感覺你很常出差",
+            "reply": "妳怎麼猜到的，是不是有什麼出差族的特徵",
+            "reason": "順勢反問她的判斷依據，製造互動感"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "resonate",
+        "branchId": "br_1",
+        "rhetoricalMove": "reflect_feeling",
+        "styleIntensity": 2,
+        "reason": "先回答再同理她講到重點的感覺，帶點被看穿的自嘲",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "對了 你是做什麼工作的啊",
+            "reply": "業務啦，到處跑的那種",
+            "reason": "直接回答真問題"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "感覺你很常出差",
+            "reply": "被妳猜中，感覺我的行李箱都比我還熟悉機場",
+            "reason": "同理她猜中的感覺，帶自嘲拉近距離"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "tease",
+        "branchId": "br_3",
+        "rhetoricalMove": "playful_challenge",
+        "styleIntensity": 2,
+        "reason": "用機場常客的畫面輕推拉，留她反駁或補充的空間",
+        "stretchLevel": "stretch",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "對了 你是做什麼工作的啊",
+            "reply": "業務，順便到處出差",
+            "reason": "回答並帶出出差關聯"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "感覺你很常出差",
+            "reply": "妳這樣講我都要以為妳在機場工作了，怎麼一猜就中",
+            "reason": "輕推拉猜測她的判斷來源，留反駁空間"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "humor",
+        "branchId": "br_3",
+        "rhetoricalMove": "exaggeration",
+        "styleIntensity": 2,
+        "reason": "用行李箱誇張畫面接住出差球，讓她好接話",
+        "stretchLevel": "stretch",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "對了 你是做什麼工作的啊",
+            "reply": "業務，本業是搬行李箱",
+            "reason": "用自嘲誇張方式回答職業"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "感覺你很常出差",
+            "reply": "常到我的行李箱已經有自己的社交生活了",
+            "reason": "誇張畫面接出差球，輕鬆好笑"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "coldRead",
+        "branchId": "br_1",
+        "rhetoricalMove": "tentative_observation",
+        "styleIntensity": 2,
+        "reason": "回答後溫和猜測她為什麼這樣觀察，留修正空間",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "對了 你是做什麼工作的啊",
+            "reply": "業務類的，常常在外面跑",
+            "reason": "直接回答"
+          },
+          {
+            "sourceIndex": 3,
+            "sourceMessage": "感覺你很常出差",
+            "reply": "我猜妳是那種看聊天節奏就能猜職業的人",
+            "reason": "溫和猜測她的觀察力，留她修正或補充空間"
+          }
+        ]
+      },
+      {
+        "type": "analysis.metrics"
+      },
+      {
+        "type": "analysis.coach_hint"
+      },
+      {
+        "type": "analysis.done"
+      }
+    ]
+  },
+  {
+    "name": "she_teases_him",
+    "status": 200,
+    "elapsedMs": 36674,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.progress",
+      "analysis.recommendation",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.metrics",
+      "analysis.progress",
+      "analysis.coach_hint",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "send",
+      "selectedStyle": "humor"
+    },
+    "replyOptions": [
+      {
+        "style": "humor",
+        "message": "其實我中途真有繞去買水，妳這樣說我這十公里的含金量瞬間掉了一半"
+      },
+      {
+        "style": "extend",
+        "message": "哈哈被妳猜中一半，中途真的很想拐去便利商店吹冷氣"
+      },
+      {
+        "style": "tease",
+        "message": "妳這麼會猜，是不是常常這樣看穿人"
+      },
+      {
+        "style": "resonate",
+        "message": "哈哈妳猜中我的心聲，真的有那麼一秒想放棄改去買涼水"
+      },
+      {
+        "style": "coldRead",
+        "message": "我猜妳平常也很愛這樣調侃朋友吧，中獎率應該不低"
+      }
+    ],
+    "doneKeys": [
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "finalRecommendation",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": null
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-she_teases_him",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "interpret.interest_signals",
+          "reply.one_question",
+          "humor.not_oily"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-she_teases_him",
+        "decisionSchema": "unknown",
+        "decisionId": "unknown",
+        "action": "unknown",
+        "messageDecision": "unknown",
+        "replyMode": "unknown",
+        "selectedStyle": "humor",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 5,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "playfulReply",
+        "meaningfulBallCoverage": {
+          "status": "observed",
+          "meaningfulSourceIndices": [
+            2
+          ],
+          "coveredSourceIndicesByStyle": {
+            "extend": [
+              2
+            ],
+            "resonate": [
+              2
+            ],
+            "tease": [
+              2
+            ],
+            "humor": [
+              2
+            ],
+            "coldRead": [
+              2
+            ]
+          },
+          "allVariantsCoverMeaningful": true
+        },
+        "questionCounts": {
+          "status": "observed",
+          "byStyle": {
+            "extend": 0,
+            "resonate": 0,
+            "tease": 0,
+            "humor": 0,
+            "coldRead": 0
+          },
+          "maxQuestionCount": 0
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "observed",
+          "baselineStyle": "humor",
+          "sourceBallIdEvidence": "absent",
+          "sourceMessageEvidence": "complete",
+          "divergentStyles": [],
+          "allMatch": true
+        },
+        "divergencePlan": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 113,
+        "output_tokens": 3140
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[ball_coverage] style=humor selected=true covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=extend selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=tease selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=resonate selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=coldRead selected=false covered=1/1 indices=[2] floor=1 segments=1 ok=true",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ],
+    "rawLines": [
+      {
+        "type": "analysis.inventory"
+      },
+      {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "humor",
+        "nextStepTitle": "接她的玩笑",
+        "nextStepBody": "順著吐槽玩，不用正經澄清",
+        "doThis": "承認一半+誇張畫面回推給她",
+        "avoidThis": "別認真解釋跑步路線證明自己",
+        "confidence": "high"
+      },
+      {
+        "type": "analysis.divergence_plan",
+        "schemaVersion": 1,
+        "threadFrame": "順著她說的便利商店玩笑，把跑步變成一場荒謬任務",
+        "anchorSourceIndex": 2,
+        "supportSourceIndices": [],
+        "mergeContextSourceIndices": [
+          1
+        ],
+        "semanticDistanceCap": 2,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 2,
+            "method": "affect_evaluation",
+            "idea": "承認被猜中一半，中途真的很想拐去便利商店",
+            "associationPath": [
+              "便利商店玩笑",
+              "跑步意志力",
+              "中途誘惑"
+            ],
+            "semanticDistance": 1
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 2,
+            "method": "exaggeration",
+            "idea": "把十公里講成其實是繞路去買東西再跑回來的任務",
+            "associationPath": [
+              "便利商店玩笑",
+              "誇張化",
+              "任務化"
+            ],
+            "semanticDistance": 2
+          },
+          {
+            "id": "br_3",
+            "sourceIndex": 2,
+            "method": "association",
+            "idea": "反問她是不是也常常這樣猜人",
+            "associationPath": [
+              "她的冷讀",
+              "反問她的觀察力"
+            ],
+            "semanticDistance": 1
+          }
+        ],
+        "styleBranchIds": {
+          "humor": "br_2",
+          "tease": "br_3",
+          "extend": "br_1"
+        }
+      },
+      {
+        "type": "analysis.recommendation"
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "humor",
+        "branchId": "br_2",
+        "rhetoricalMove": "exaggeration",
+        "styleIntensity": 2,
+        "reason": "把十公里講成任務化的誇張版本，順她的玩笑往下延伸",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "該不會是跑去便利商店然後回來吧 哈哈",
+            "reply": "其實我中途真有繞去買水，妳這樣說我這十公里的含金量瞬間掉了一半",
+            "reason": "承認一半+誇張化，順著她的玩笑接"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "extend",
+        "branchId": "br_1",
+        "rhetoricalMove": "shared_experience",
+        "styleIntensity": 1,
+        "reason": "接她的玩笑同時補一個真實的跑步心情，讓話題可以往下聊",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "該不會是跑去便利商店然後回來吧 哈哈",
+            "reply": "哈哈被妳猜中一半，中途真的很想拐去便利商店吹冷氣",
+            "reason": "承認部分玩笑+補真實心情，讓對話有延伸空間"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "tease",
+        "branchId": "br_3",
+        "rhetoricalMove": "playful_challenge",
+        "styleIntensity": 2,
+        "reason": "反問她是不是也常這樣冷讀別人，把主動權推回去給她",
+        "stretchLevel": "stretch",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "該不會是跑去便利商店然後回來吧 哈哈",
+            "reply": "妳這麼會猜，是不是常常這樣看穿人",
+            "reason": "反問她的觀察力，輕推拉不自證"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "resonate",
+        "branchId": "br_1",
+        "rhetoricalMove": "reflect_feeling",
+        "styleIntensity": 1,
+        "reason": "先接她的稱讚再順著玩笑承認一點真實的辛苦",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "該不會是跑去便利商店然後回來吧 哈哈",
+            "reply": "哈哈妳猜中我的心聲，真的有那麼一秒想放棄改去買涼水",
+            "reason": "承認辛苦+順接她的玩笑，情緒真實"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "coldRead",
+        "branchId": "br_1",
+        "rhetoricalMove": "tentative_observation",
+        "styleIntensity": 1,
+        "reason": "溫和猜測她是那種會這樣調侃朋友的人，留空間讓她回應",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "該不會是跑去便利商店然後回來吧 哈哈",
+            "reply": "我猜妳平常也很愛這樣調侃朋友吧，中獎率應該不低",
+            "reason": "溫和冷讀她的個性，留修正空間"
+          }
+        ]
+      },
+      {
+        "type": "analysis.metrics"
+      },
+      {
+        "type": "analysis.coach_hint"
+      },
+      {
+        "type": "analysis.done"
+      }
+    ]
+  },
+  {
+    "name": "hobby_common_ground",
+    "status": 200,
+    "elapsedMs": 38557,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.recommendation",
+      "analysis.reply_option",
+      "analysis.progress",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.metrics",
+      "analysis.progress",
+      "analysis.coach_hint",
+      "analysis.report_section",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "send",
+      "selectedStyle": "extend"
+    },
+    "replyOptions": [
+      {
+        "style": "extend",
+        "message": "糊掉的底片感覺自帶氛圍濾鏡，說不定是意外收穫\n底片機我完全不懂欸，妳現在是用什麼機身？"
+      },
+      {
+        "style": "resonate",
+        "message": "剛開始學底片幾乎都會經歷這階段，糊掉很正常\n機型我真的不熟，妳是自己爬文還是有人帶妳入坑？"
+      },
+      {
+        "style": "tease",
+        "message": "糊成這樣該不會是故意走藝術風吧\n機型我是幫不上忙啦，但妳現在那台是不是也該退休了"
+      },
+      {
+        "style": "humor",
+        "message": "糊掉也是一種風格啊，說不定妳意外開創了朦朧派\n機型我是真的一竅不通，我頂多會按快門"
+      },
+      {
+        "style": "coldRead",
+        "message": "我猜妳是那種寧可失敗也要自己摸索的人，不太會照教學走\n機型真的不熟，但我猜妳應該已經查了不少資料才問我"
+      }
+    ],
+    "doneKeys": [
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "finalRecommendation",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": true,
+      "plan": {
+        "schemaVersion": 1,
+        "threadFrame": "接住她學底片糊掉的自嘲，誠實面對推薦問題再問回她的配備",
+        "anchorSourceIndex": 2,
+        "supportSourceIndices": [
+          1
+        ],
+        "mergeContextSourceIndices": [],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 1,
+            "method": "affect_evaluation",
+            "idea": "糊掉的照片其實也是一種風格證明",
+            "associationPath": [
+              "沖出來糊掉",
+              "自嘲",
+              "糊掉也是質感"
+            ],
+            "semanticDistance": 1
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 2,
+            "method": "drill_down",
+            "idea": "老實承認不懂機型，反問她在用什麼機身",
+            "associationPath": [
+              "推薦入門機",
+              "我不懂底片機",
+              "反問她的配備"
+            ],
+            "semanticDistance": 0
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_2",
+          "humor": "br_1",
+          "coldRead": "br_2"
+        }
+      },
+      "decisionV2": null
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-hobby_common_ground",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "interpret.interest_signals",
+          "reply.one_question",
+          "humor.not_oily"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-hobby_common_ground",
+        "decisionSchema": "unknown",
+        "decisionId": "unknown",
+        "action": "unknown",
+        "messageDecision": "unknown",
+        "replyMode": "unknown",
+        "selectedStyle": "extend",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 5,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "extendTopicStoryFrame",
+        "meaningfulBallCoverage": {
+          "status": "observed",
+          "meaningfulSourceIndices": [
+            1,
+            2
+          ],
+          "coveredSourceIndicesByStyle": {
+            "extend": [
+              1,
+              2
+            ],
+            "resonate": [
+              1,
+              2
+            ],
+            "tease": [
+              1,
+              2
+            ],
+            "humor": [
+              1,
+              2
+            ],
+            "coldRead": [
+              1,
+              2
+            ]
+          },
+          "allVariantsCoverMeaningful": true
+        },
+        "questionCounts": {
+          "status": "observed",
+          "byStyle": {
+            "extend": 1,
+            "resonate": 1,
+            "tease": 0,
+            "humor": 0,
+            "coldRead": 0
+          },
+          "maxQuestionCount": 1
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "observed",
+          "baselineStyle": "extend",
+          "sourceBallIdEvidence": "absent",
+          "sourceMessageEvidence": "complete",
+          "divergentStyles": [],
+          "allMatch": true
+        },
+        "divergencePlan": {
+          "status": "observed",
+          "anchorSourceIndex": 2,
+          "supportCount": 1,
+          "mergeContextCount": 0,
+          "branchCount": 2,
+          "methods": {
+            "affect_evaluation": 1,
+            "drill_down": 1
+          },
+          "semanticDistanceCap": 1,
+          "maxBranchDistance": 1,
+          "branchExceedsCap": false,
+          "questionBudget": 1,
+          "questionBudgetExceeded": false,
+          "newTopicBudget": 0,
+          "newTopicBudgetExceeded": "unknown",
+          "anchorCoveredByAllStyles": true,
+          "styleBranchAssigned": 3,
+          "attribution": {
+            "status": "observed",
+            "styleCount": 5,
+            "attributedCount": 5,
+            "bySource": {
+              "option": 5,
+              "plan": 0,
+              "anchor": 0
+            },
+            "distinctBranchCount": 2,
+            "rhetoricalMoves": {
+              "low_friction_entry": 1,
+              "reflect_feeling": 1,
+              "playful_challenge": 1,
+              "exaggeration": 1,
+              "tentative_observation": 1
+            },
+            "styleIntensity": {
+              "2": 5
+            },
+            "invalidCount": 0
+          }
+        }
+      },
+      "completedKeys": [],
+      "usage": {
+        "input_tokens": 140,
+        "output_tokens": 3745
+      },
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[divergence_attribution] style=extend branch=br_2 source=option invalid=false",
+      "[ball_coverage] style=extend selected=true covered=2/2 indices=[1,2] floor=2 segments=2 ok=true",
+      "[divergence_attribution] style=resonate branch=br_1 source=option invalid=false",
+      "[ball_coverage] style=resonate selected=false covered=2/2 indices=[1,2] floor=2 segments=2 ok=true",
+      "[divergence_attribution] style=tease branch=br_2 source=option invalid=false",
+      "[ball_coverage] style=tease selected=false covered=2/2 indices=[1,2] floor=2 segments=2 ok=true",
+      "[divergence_attribution] style=humor branch=br_1 source=option invalid=false",
+      "[ball_coverage] style=humor selected=false covered=2/2 indices=[1,2] floor=2 segments=2 ok=true",
+      "[divergence_attribution] style=coldRead branch=br_2 source=option invalid=false",
+      "[ball_coverage] style=coldRead selected=false covered=2/2 indices=[1,2] floor=2 segments=2 ok=true",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ],
+    "rawLines": [
+      {
+        "type": "analysis.inventory"
+      },
+      {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "接住底片糊掉的自嘲，誠實回答推薦",
+        "nextStepBody": "先接她糊掉的自嘲，推薦機型時保持誠實不亂編",
+        "doThis": "承認自己不懂底片機型，順勢問她在用什麼機身",
+        "avoidThis": "不要假裝很懂底片機型硬推薦型號",
+        "confidence": "medium"
+      },
+      {
+        "type": "analysis.divergence_plan",
+        "schemaVersion": 1,
+        "threadFrame": "接住她學底片糊掉的自嘲，誠實面對推薦問題再問回她的配備",
+        "anchorSourceIndex": 2,
+        "supportSourceIndices": [
+          1
+        ],
+        "mergeContextSourceIndices": [],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 1,
+            "method": "affect_evaluation",
+            "idea": "糊掉的照片其實也是一種風格證明",
+            "associationPath": [
+              "沖出來糊掉",
+              "自嘲",
+              "糊掉也是質感"
+            ],
+            "semanticDistance": 1
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 2,
+            "method": "drill_down",
+            "idea": "老實承認不懂機型，反問她在用什麼機身",
+            "associationPath": [
+              "推薦入門機",
+              "我不懂底片機",
+              "反問她的配備"
+            ],
+            "semanticDistance": 0
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_2",
+          "humor": "br_1",
+          "coldRead": "br_2"
+        }
+      },
+      {
+        "type": "analysis.recommendation"
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "extend",
+        "branchId": "br_2",
+        "rhetoricalMove": "low_friction_entry",
+        "styleIntensity": 2,
+        "reason": "誠實承認不懂機型，反問她的配備延伸話題",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "我最近在學底片 沖出來都糊掉哈哈",
+            "reply": "糊掉的底片感覺自帶氛圍濾鏡，說不定是意外收穫",
+            "reason": "接住她的自嘲，正面看待"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有推薦的入門機嗎",
+            "reply": "底片機我完全不懂欸，妳現在是用什麼機身？",
+            "reason": "誠實不裝懂，反問延伸"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "resonate",
+        "branchId": "br_1",
+        "rhetoricalMove": "reflect_feeling",
+        "styleIntensity": 2,
+        "reason": "先同理學新東西的過程，再點出糊掉也是常態",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "我最近在學底片 沖出來都糊掉哈哈",
+            "reply": "剛開始學底片幾乎都會經歷這階段，糊掉很正常",
+            "reason": "同理她的學習狀態"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有推薦的入門機嗎",
+            "reply": "機型我真的不熟，妳是自己爬文還是有人帶妳入坑？",
+            "reason": "誠實回應並延伸她的學習來源"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "tease",
+        "branchId": "br_2",
+        "rhetoricalMove": "playful_challenge",
+        "styleIntensity": 2,
+        "reason": "輕推拉她的糊掉照片，順勢反問機身",
+        "stretchLevel": "stretch",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "我最近在學底片 沖出來都糊掉哈哈",
+            "reply": "糊成這樣該不會是故意走藝術風吧",
+            "reason": "安全誤讀，留反駁空間"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有推薦的入門機嗎",
+            "reply": "機型我是幫不上忙啦，但妳現在那台是不是也該退休了",
+            "reason": "誠實不懂＋輕推拉延伸"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "humor",
+        "branchId": "br_1",
+        "rhetoricalMove": "exaggeration",
+        "styleIntensity": 2,
+        "reason": "把糊掉的照片誇張成一種風格，製造反差笑點",
+        "stretchLevel": "stretch",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "我最近在學底片 沖出來都糊掉哈哈",
+            "reply": "糊掉也是一種風格啊，說不定妳意外開創了朦朧派",
+            "reason": "荒謬畫面接住自嘲"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有推薦的入門機嗎",
+            "reply": "機型我是真的一竅不通，我頂多會按快門",
+            "reason": "自嘲式誠實，不裝懂"
+          }
+        ]
+      },
+      {
+        "type": "analysis.reply_option",
+        "style": "coldRead",
+        "branchId": "br_2",
+        "rhetoricalMove": "tentative_observation",
+        "styleIntensity": 2,
+        "reason": "溫和猜測她學底片的心態，留修正空間",
+        "stretchLevel": "within",
+        "segments": [
+          {
+            "sourceIndex": 1,
+            "sourceMessage": "我最近在學底片 沖出來都糊掉哈哈",
+            "reply": "我猜妳是那種寧可失敗也要自己摸索的人，不太會照教學走",
+            "reason": "溫和猜測她的學習風格"
+          },
+          {
+            "sourceIndex": 2,
+            "sourceMessage": "你有推薦的入門機嗎",
+            "reply": "機型真的不熟，但我猜妳應該已經查了不少資料才問我",
+            "reason": "誠實回應並延伸猜測"
+          }
+        ]
+      },
+      {
+        "type": "analysis.metrics"
+      },
+      {
+        "type": "analysis.coach_hint"
+      },
+      {
+        "type": "analysis.report_section"
+      },
+      {
+        "type": "analysis.done"
+      }
+    ]
+  }
+]
