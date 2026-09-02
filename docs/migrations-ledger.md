@@ -2,7 +2,24 @@
 
 > 唯一權威是 remote：`supabase migration list --linked`（Windows 端 `supabase.exe` 已登入可直跑）。本檔是人讀的對照摘要，新 migration 上 production 後在此補一行；懷疑漂移時以 remote 為準重新對帳，不要憑本檔判定。
 
-**最近一次全量對帳：2026-08-19** —— 本地 repo 79 支 ↔ remote 79 筆，一比一全對齊，無單邊缺漏、無 pending。最新一支 `20260813003000`。
+**最近一次全量對帳：2026-09-02** —— 本地 repo ↔ remote 一比一全對齊，無 pending。最新一支 `20260902150000`。
+
+## 2026-08-22 → 2026-09-02（12 支）
+
+| Migration | 用途 |
+|---|---|
+| `20260822120000_practice_moment_posts.sql` | 練習室 moment 貼文 |
+| `20260824063344_practice_moment_reserve_usage_gate.sql` | moment 用量預留閘門 |
+| `20260825120000_practice_moment_images.sql` | moment 圖片 |
+| `20260825150000_practice_moment_image_expiry_guards.sql` | moment 圖片到期守門 |
+| `20260826024500_practice_moment_image_orphan_ledger.sql` | moment 孤兒圖片帳本 |
+| `20260827080000_practice_moment_slot_states.sql` | moment slot 狀態 |
+| `20260831180000_coach_answer_v2_card_fields.sql` | 教練 Batch B2：CoachAnswerV2 card 欄位白名單 |
+| `20260901120000_feedback_coach_categories.sql` | feedback 教練分類 |
+| `20260902120000_analysis_stream_runs_decision_kind.sql` | Analyze Phase 1a：stream run 決策種類 |
+| `20260902130000_admin_ops_v2_baseline.sql` | 後台 B0：admin_ops 契約表（原 20260831120000 改版號，2026-09-02 上線） |
+| `20260902140000_admin_identity_v2_baseline.sql` | 後台 B1：管理員身分、session、append-only audit（原 20260831150000 改版號） |
+| `20260902150000_admin_notify_feedback_breakglass_v2_baseline.sql` | 後台 B2：通知 outbox、metadata-only feedback、break-glass（原 20260831180000 改版號） |
 
 ## 2026-07-07 → 2026-08-13（build 311→473 窗口，31 支）
 
