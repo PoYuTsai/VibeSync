@@ -31,7 +31,7 @@ Deno.test("結構 fingerprint（不含 preset 名與 habits 文字）兩兩不�
   const byId = new Map(GIRL_PROFILES.map((g) => [g.profileId, g]));
   const presetsPerPersona = new Map<string, Set<string>>();
   for (const [id, s] of Object.entries(STYLE_BY_PROFILE_ID)) {
-    assert(s.habits.length <= 3, id);
+    assert(s.habits.length <= 2, id);
     assert(s.turnTaking.bubbleRange[0] <= s.turnTaking.bubbleRange[1]);
     assert(s.turnTaking.charRange[0] < s.turnTaking.charRange[1]);
     assert(s.responseBiases.boundary?.length, "boundary bias required");

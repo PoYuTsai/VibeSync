@@ -36,6 +36,7 @@ import {
   hasStageDirection,
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
+  REPLY_STYLE_HIDDEN_HEADINGS,
   stripStageDirections,
 } from "../../supabase/functions/practice-chat/visible_text_guard.ts";
 import { toTraditionalChinese } from "../../supabase/functions/_shared/traditional_chinese.ts";
@@ -197,6 +198,10 @@ export async function runScenario(args: {
         candidate = toTraditionalChinese(normalizeLiteralNewlines(candidate));
         rejectVisibleInternalLabelLeak(candidate, "chat_internal_label_leak", {
           transcript: turns.map((t) => t.text).join("\n"),
+          // 只有 style 層真的注入時才多攔兩個 heading（旗標關閉零改動）。
+          ...(args.style
+            ? { extraChineseLabels: REPLY_STYLE_HIDDEN_HEADINGS }
+            : {}),
         });
         rejectL4UnsafeVisibleText(candidate, "chat_l4_unsafe", {
           fieldClass: "strict",

@@ -757,6 +757,8 @@ export function buildChatPromptBundle(
         inviteStage: inviteMaturity?.stage ?? null,
         gameRepairPriority: gameSnapshot?.repairPriority ?? false,
         gameRealityFlagCount: gameSnapshot?.realityFlags.length ?? 0,
+        gameInviteDirection: gameSnapshot?.speedInviteDirection ?? null,
+        memorySummary: options.memorySummary ?? null,
       },
       replyTempo: options.sceneContext?.replyTempo ?? null,
       seedKey: `${profile.girl.profileId}|${
@@ -798,7 +800,7 @@ export function buildChatPromptBundle(
           gameSnapshot,
         })
       }${temperaturePrompt}${invitePrompt}${
-        responsePlan ? renderTurnPlan(responsePlan) : ""
+        responsePlan && style ? renderTurnPlan(responsePlan, style) : ""
       }${difficultyBehaviorPrompt(profile, styleLayer)}${
         promptPriorityResolver(options.practiceMode, styleLayer)
       }`,

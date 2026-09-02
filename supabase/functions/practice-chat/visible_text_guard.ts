@@ -448,8 +448,12 @@ const INTERNAL_CHINESE_LABELS = [
   // 可能自然說出的場景句（誤殺面）→ 依審者建議拔除，只留指示標題。
   "系統指示保密",
   "系统指示保密",
-  // reply-style-v1 的兩個 hidden heading（Codex R1 P1）：只登記標題，不登記習慣
-  // 內容——把整張 style 卡加進禁詞會有粉紅大象效應（規格 §8）。
+];
+
+// reply-style-v1 的兩個 hidden heading：只登記標題，不登記習慣內容（粉紅大象）。
+// 不進全域表——旗標關閉的 production 後處理必須逐字不變（Codex R2 P1）；
+// 呼叫端只在 style 層真的注入時透過 extraChineseLabels 帶入。
+export const REPLY_STYLE_HIDDEN_HEADINGS: readonly string[] = [
   "你平常的說話習慣",
   "你平常的说话习惯",
   "本輪回應方式",
@@ -463,6 +467,8 @@ export interface InternalLabelGuardOptions {
    * 分數形不吃豁免（真隱藏值）。
    */
   transcript?: string;
+  /** 本次呼叫額外要攔的中文標題（例如 reply-style 注入時的 hidden heading）。 */
+  extraChineseLabels?: readonly string[];
 }
 
 export function hasVisibleInternalLabelLeak(
@@ -484,11 +490,13 @@ export function hasVisibleInternalLabelLeak(
     return true;
   }
   const unsafeNormalized = normalizeUnsafeText(value);
-  return INTERNAL_CHINESE_LABELS.some((label) => {
-    const normalizedLabel = normalizeUnsafeText(label);
-    return unsafeNormalized.includes(normalizedLabel) &&
-      !transcriptUnsafe.includes(normalizedLabel);
-  });
+  return [...INTERNAL_CHINESE_LABELS, ...(opts?.extraChineseLabels ?? [])].some(
+    (label) => {
+      const normalizedLabel = normalizeUnsafeText(label);
+      return unsafeNormalized.includes(normalizedLabel) &&
+        !transcriptUnsafe.includes(normalizedLabel);
+    },
+  );
 }
 
 export type VisibleFieldClass = "strict" | "analysis";

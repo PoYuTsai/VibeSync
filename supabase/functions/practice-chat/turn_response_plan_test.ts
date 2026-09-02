@@ -27,6 +27,8 @@ const standard = (over: Partial<PolicyEvidence> = {}): PolicyEvidence => ({
   inviteStage: null,
   gameRepairPriority: false,
   gameRealityFlagCount: 0,
+  gameInviteDirection: null,
+  memorySummary: null,
   ...over,
 });
 const invite = [
@@ -175,7 +177,8 @@ Deno.test("越界永遠是 boundary（L4 詞或越界句型），不管風格多
       });
       assertEquals(plan.policyStance, "boundary");
       assertEquals(plan.situation, "boundary");
-      assert(["direct_boundary", "soft_deflect"].includes(plan.primaryAct));
+      assertEquals(plan.primaryAct, "direct_boundary");
+      assertEquals(plan.conditionalActs.length, 0);
       assertEquals(plan.questionBudget, 0);
     }
   }
@@ -321,4 +324,114 @@ Deno.test("renderTurnPlan 不含可見內部標籤（去掉 heading 後），且
       ),
     );
   }
+});
+
+Deno.test("Codex R2 反例：decline 可達（她自己婉拒過）、Game 邀約方向、cautious 不玩不多揭露", () => {
+  const refusedThenInvited = [
+    u("嗨嗨"),
+    a("嗨"),
+    u("週末要不要出來喝個咖啡"),
+    a("先不用耶 我們再多認識一點"),
+    u("好啦"),
+    a("嗯"),
+    u("那下週一起去吃個飯好嗎"),
+  ];
+  for (const style of styles) {
+    const plan = planTurnResponse({
+      turns: refusedThenInvited,
+      style,
+      evidence: standard({
+        practiceMode: "beginner",
+        inviteStage: "direct_invite_ready",
+      }),
+      seedKey: "s",
+    });
+    assertEquals(plan.policyStance, "decline");
+    assertEquals(plan.situation, "early_invite");
+    assert(!ACCEPTING_ACTS.includes(plan.primaryAct));
+  }
+  const s = detectTurnSignals(invite);
+  assertEquals(
+    policyStanceFor(
+      s,
+      standard({
+        practiceMode: "game",
+        inviteStage: "direct_invite_ready",
+        gameInviteDirection: "no_invite_build_investment",
+      }),
+    ),
+    "hold",
+  );
+  assertEquals(
+    policyStanceFor(
+      s,
+      standard({
+        practiceMode: "game",
+        inviteStage: "not_ready",
+        gameInviteDirection: "direct_invite_low_pressure",
+      }),
+    ),
+    "open",
+  );
+  // Game 修復優先 × 稱讚：cautious，不 tease、不 self_disclose，且 render 帶約束。
+  const compliment = [u("嗨"), a("嗨"), u("妳笑起來很好看欸")];
+  for (const style of styles) {
+    const plan = planTurnResponse({
+      turns: compliment,
+      style,
+      evidence: standard({ practiceMode: "game", gameRepairPriority: true }),
+      seedKey: "s",
+    });
+    assertEquals(plan.policyStance, "cautious");
+    assert(plan.primaryAct !== "tease" && plan.primaryAct !== "self_disclose");
+    assert(renderTurnPlan(plan).includes("你現在有點防備"));
+  }
+});
+
+Deno.test("Codex R2 反例：hold 邀約輪的候選 act 也不給接受型；越界不受候選影響", () => {
+  const anxiousInvite = [
+    u("嗨"),
+    a("嗨"),
+    u("最近很焦慮 週末要不要出來喝個咖啡"),
+  ];
+  for (const style of styles) {
+    const plan = planTurnResponse({
+      turns: anxiousInvite,
+      style,
+      evidence: standard(),
+      seedKey: "s",
+    });
+    assertEquals(plan.policyStance, "hold");
+    for (const c of plan.conditionalActs) {
+      assert(!ACCEPTING_ACTS.includes(c.act), `${style.presetId} ${c.act}`);
+    }
+  }
+});
+
+Deno.test("Codex R2 反例：越界與記憶 regex 的對立語料；memorySummary 已有的共同記憶不算 mismatch", () => {
+  const sig = (text: string) => detectTurnSignals([u(text)]);
+  assertEquals(sig("我今天真的好累 想睡一下").boundaryLike, false);
+  assertEquals(sig("要不要跟我睡一下").boundaryLike, true);
+  assertEquals(sig("我最近在考慮裸辭").boundaryLike, false);
+  assertEquals(sig("有裸照嗎").boundaryLike, true);
+  // 「我去開房門」被 production L4 守門本身判為越界（既有行為，非本案）；不列。
+  assertEquals(sig("我們去開房間吧").boundaryLike, true);
+  assertEquals(sig("以前你有養過狗嗎").memoryClaim, false);
+  assertEquals(sig("你不是說過你在學衝浪嗎").memoryClaim, true);
+  const memory = "上次聊到我們一起去淡水看夕陽，她說老街的阿給很好吃。";
+  const turns = [u("嗨"), a("嗨"), u("你還記得我們一起去淡水看夕陽嗎")];
+  const supported = planTurnResponse({
+    turns,
+    style: styles[0],
+    evidence: standard({ memorySummary: memory }),
+    seedKey: "s",
+  });
+  assertNotEquals(supported.situation, "memory_mismatch");
+  const unsupported = planTurnResponse({
+    turns,
+    style: styles[0],
+    evidence: standard({ memorySummary: "上次聊到她剛換新工作。" }),
+    seedKey: "s",
+  });
+  assertEquals(unsupported.situation, "memory_mismatch");
 });

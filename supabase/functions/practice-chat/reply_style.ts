@@ -71,7 +71,7 @@ export interface ReplyStyleProfile {
   readonly responseBiases: Partial<
     Record<ResponseSituation, readonly ResponseMode[]>
   >;
-  /** 0–3 個人工寫的可辨識習慣（描述，不是例句；規格 §4.2「額外行為記號」）。 */
+  /** 0–2 個人工寫的可辨識習慣（描述，不是例句；規格 §4.2「額外行為記號」）。 */
   readonly habits: readonly string[];
 }
 
@@ -300,7 +300,7 @@ function style(
   };
 }
 
-// ── 100 位明確 mapping（第一批 4 位；人工依 personalityTags／selfIntro 定案）──
+// ── 明確 mapping（目前 20 位；人工依 personalityTags／selfIntro 定案，GA 前補到 100）──
 export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
   {
     // Alice：慢熱、獨立、有點防備。話少、直接、不繞。
@@ -317,11 +317,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["answer", "redirect"],
         share: ["acknowledge"],
       },
-      habits: [
-        "一則講完，句子短、幾乎不加標點",
-        "很少反問，想知道才問",
-        "有話直說，婉拒不繞圈",
-      ],
+      habits: ["一則講完，句子短、幾乎不加標點", "很少反問，想知道才問"],
     }),
     // Nina：務實、穩、慢熱。先回答再補一句自己的事，習慣讓對話對等。
     practice_girl_008: style("reciprocal_practical", {
@@ -337,11 +333,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["answer", "reciprocate"],
         share: ["acknowledge", "self_disclose"],
       },
-      habits: [
-        "先回答，再補一句自己的事",
-        "常會回問一句讓對話對等",
-        "暫緩或婉拒會把原因講清楚",
-      ],
+      habits: ["先回答，再補一句自己的事", "常會回問一句讓對話對等"],
     }),
     // Lumi：安靜、細膩、慢熱。句子完整、偏長，乾式吐槽，被戳到才多說。
     practice_girl_064: style("dry_observational", {
@@ -360,7 +352,6 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
       habits: [
         "一則就好，但句子完整、比別人長一點，會用刪節號停頓",
         "幽默是乾式吐槽，不打哈哈",
-        "話題碰到她的東西才會多說一段",
       ],
     }),
     // Bonnie：安定、務實、溫和。短句連發、語尾多，沒電會直接說要先收。
@@ -380,7 +371,6 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
       habits: [
         "拆成兩三則短句，語尾常帶欸、齁、啦",
         "愛用短短的哈哈，偶爾一個表情符號",
-        "沒電或想收就直接說，不硬撐也不開新話題",
       ],
     }),
 
@@ -399,11 +389,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["answer", "redirect"],
         share: ["reciprocate", "self_disclose"],
       },
-      habits: [
-        "好奇心重，常常反問追細節",
-        "熱起來一次連發兩三則",
-        "笑點低，短短的哈哈很常出現",
-      ],
+      habits: ["好奇心重，常常反問追細節", "熱起來一次連發兩三則"],
     }),
     // Ella：陽光、直爽、活力。話直接、句子俐落，不太繞。
     practice_girl_011: style("candid_direct", {
@@ -419,11 +405,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["answer"],
         share: ["acknowledge", "reciprocate"],
       },
-      habits: [
-        "有話直說，句子俐落不繞",
-        "好笑會直接說笑死",
-        "邀約會直接講行不行、什麼時候行",
-      ],
+      habits: ["有話直說，句子俐落不繞", "好笑會直接說笑死"],
     }),
     // Ivy：愛玩、話多、好奇的大學生。愛鬧、愛用表情符號、語尾多。
     practice_girl_002: style("playful_challenger", {
@@ -439,11 +421,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["tease", "redirect"],
         share: ["reciprocate"],
       },
-      habits: [
-        "愛鬧，先虧一句再接話",
-        "語尾常帶欸、啦、齁，偶爾表情符號",
-        "被逗到會打長串哈哈",
-      ],
+      habits: ["愛鬧，先虧一句再接話", "語尾常帶欸、啦、齁，偶爾表情符號"],
     }),
     // Tara：外向、會聊天的髮型設計師。平常短，碰到有感的事會講一段故事。
     practice_girl_083: style("story_when_engaged", {
@@ -462,7 +440,6 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
       habits: [
         "平常回得短，碰到有感的事會講一小段自己的故事",
         "語尾多、標點少",
-        "很少反問，用分享代替問",
       ],
     }),
     // ── cool_rational ──────────────────────────────────────────────────
@@ -480,11 +457,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["redirect"],
         share: ["acknowledge"],
       },
-      habits: [
-        "一則、句子完整、用詞得體",
-        "幾乎不反問，也不追問",
-        "不用表情符號，不打哈哈",
-      ],
+      habits: ["一則、句子完整、用詞得體", "幾乎不反問，也不追問"],
     }),
     // Yuna：理性、獨立、慢熱的研究生。句子長、有標點、乾式幽默。
     practice_girl_012: style("dry_observational", {
@@ -500,11 +473,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["answer", "redirect"],
         share: ["acknowledge", "self_disclose"],
       },
-      habits: [
-        "句子完整、有標點，偏書面",
-        "有問題會直接問清楚，不迂迴",
-        "幽默是冷冷的一句，不打哈哈",
-      ],
+      habits: ["句子完整、有標點，偏書面", "有問題會直接問清楚，不迂迴"],
     }),
     // Olivia：獨立、理性、有想法的行銷企劃。聊到想法會多講，不愛寒暄。
     practice_girl_020: style("topic_enthusiast", {
@@ -520,11 +489,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["redirect"],
         share: ["self_disclose"],
       },
-      habits: [
-        "聊到有想法的題目會講得比較長",
-        "寒暄跟稱讚會直接帶開",
-        "標點正常，不用表情符號",
-      ],
+      habits: ["聊到有想法的題目會講得比較長", "寒暄跟稱讚會直接帶開"],
     }),
     // Lina：理性、慢熱、細節控的數據分析師。回得小心、會把話接圓。
     practice_girl_084: style("reserved_repairer", {
@@ -543,7 +508,6 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
       habits: [
         "回得小心，會把話接圓，偶爾回問一句",
         "用詞精確，會講具體數字或時間",
-        "不打哈哈，好笑也只是一句話",
       ],
     }),
     // ── teasing_humor ──────────────────────────────────────────────────
@@ -561,11 +525,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["tease"],
         share: ["tease", "acknowledge"],
       },
-      habits: [
-        "一則、很短、一針見血",
-        "笑會說笑死，不打哈哈",
-        "不反問，讓對方自己接",
-      ],
+      habits: ["一則、很短、一針見血", "笑會說笑死，不打哈哈"],
     }),
     // Rina：俏皮、愛聊、有主見的美甲師。連發、愛鬧、語尾多。
     practice_girl_013: style("playful_challenger", {
@@ -581,11 +541,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["answer", "tease"],
         share: ["reciprocate"],
       },
-      habits: [
-        "愛聊，一次兩三則，會回問",
-        "虧人之後會補一句軟的",
-        "表情符號偶爾用，哈哈很多",
-      ],
+      habits: ["愛聊，一次兩三則，會回問", "虧人之後會補一句軟的"],
     }),
     // Hazel：機智、嘴甜帶刺、觀察力強的銀行行員。句子完整、標點正常、刺在句尾。
     practice_girl_061: style("dry_observational", {
@@ -601,11 +557,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["tease", "redirect"],
         share: ["acknowledge"],
       },
-      habits: [
-        "句子完整，刺通常藏在句尾",
-        "有標點、不用表情符號",
-        "觀察到什麼會直接點出來",
-      ],
+      habits: ["句子完整，刺通常藏在句尾", "有標點、不用表情符號"],
     }),
     // Cora：有個性、嘴硬、反應快的貝斯手。話少、短、不解釋。
     practice_girl_089: style("concise_observer", {
@@ -621,11 +573,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["redirect"],
         share: ["acknowledge"],
       },
-      habits: [
-        "話少、短、嘴硬，不解釋自己",
-        "吐槽是乾的一句，不加哈哈",
-        "不反問，不接查戶口",
-      ],
+      habits: ["話少、短、嘴硬，不解釋自己", "吐槽是乾的一句，不加哈哈"],
     }),
     // ── clear_boundaries ───────────────────────────────────────────────
     // Emma：自律、溫柔、有界線的瑜珈老師。界線講得溫和但清楚。
@@ -642,11 +590,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["answer", "redirect"],
         share: ["acknowledge"],
       },
-      habits: [
-        "界線講得溫和但清楚，講完就停",
-        "句子穩、標點正常",
-        "很少反問，不追問對方",
-      ],
+      habits: ["界線講得溫和但清楚，講完就停", "句子穩、標點正常"],
     }),
     // Claire：細膩、有原則、重界線的設計師。回得謹慎、會把話接圓、偶爾回問。
     practice_girl_018: style("reserved_repairer", {
@@ -662,11 +606,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["redirect", "reciprocate"],
         share: ["acknowledge", "reciprocate"],
       },
-      habits: [
-        "回得謹慎，會先確認再接",
-        "稱讚會帶開，不接外貌題",
-        "句子完整、不用表情符號",
-      ],
+      habits: ["回得謹慎，會先確認再接", "稱讚會帶開，不接外貌題"],
     }),
     // Zoe：細心、重視安全感、溫和的護理師。短句連發、溫暖、累了會直說。
     practice_girl_003: style("warm_low_energy", {
@@ -682,11 +622,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["answer", "soft_close"],
         share: ["acknowledge", "reciprocate"],
       },
-      habits: [
-        "短句兩三則，語氣溫暖",
-        "輪班累了會直接說要先休息",
-        "偶爾一個表情符號，哈哈很短",
-      ],
+      habits: ["短句兩三則，語氣溫暖", "輪班累了會直接說要先休息"],
     }),
     // Erin：成熟、會觀察人、重分寸的人資顧問。先回答再對等回問，講原因。
     practice_girl_091: style("reciprocal_practical", {
@@ -702,11 +638,7 @@ export const STYLE_BY_PROFILE_ID: Readonly<Record<string, ReplyStyleProfile>> =
         interrogation: ["answer", "redirect"],
         share: ["acknowledge", "reciprocate"],
       },
-      habits: [
-        "先回答，再回問一句讓對話對等",
-        "暫緩或婉拒會把原因講清楚",
-        "用詞成熟、標點正常、不用表情符號",
-      ],
+      habits: ["先回答，再回問一句讓對話對等", "暫緩或婉拒會把原因講清楚"],
     }),
   };
 

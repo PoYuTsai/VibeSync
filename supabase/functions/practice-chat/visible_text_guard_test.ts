@@ -9,6 +9,7 @@ import {
 } from "./visible_text_guard.ts";
 import {
   hasStageDirection,
+  REPLY_STYLE_HIDDEN_HEADINGS,
   stripStageDirections,
 } from "./visible_text_guard.ts";
 
@@ -717,7 +718,8 @@ Deno.test("括號旁白修補：剝掉開頭括號、空則丟掉、整段空才
   assertEquals(threw, true);
 });
 
-Deno.test("reply-style 兩個 hidden heading 被模型複誦時要被攔；只複誦習慣內容不攔", () => {
+Deno.test("reply-style hidden heading：只在帶 extraChineseLabels 時攔（旗標關閉零改動）", () => {
+  const extra = { extraChineseLabels: REPLY_STYLE_HIDDEN_HEADINGS };
   for (
     const text of [
       "你平常的說話習慣：一則講完",
@@ -726,10 +728,19 @@ Deno.test("reply-style 兩個 hidden heading 被模型複誦時要被攔；只�
       "本轮回应方式：先回答",
     ]
   ) {
-    assertEquals(hasVisibleInternalLabelLeak(text), true, text);
+    assertEquals(hasVisibleInternalLabelLeak(text, extra), true, text);
+    assertEquals(hasVisibleInternalLabelLeak(text), false, `global: ${text}`);
   }
   assertEquals(
-    hasVisibleInternalLabelLeak("我平常講話就比較短啦 沒什麼習慣"),
+    hasVisibleInternalLabelLeak("我覺得你平常的說話習慣蠻直接的", extra),
+    true,
+  );
+  assertEquals(
+    hasVisibleInternalLabelLeak("我覺得你平常的說話習慣蠻直接的"),
+    false,
+  );
+  assertEquals(
+    hasVisibleInternalLabelLeak("我平常講話就比較短啦 沒什麼習慣", extra),
     false,
   );
   assertEquals(hasStageDirection("【已讀】\n嗯"), true);

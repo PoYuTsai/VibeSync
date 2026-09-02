@@ -48,6 +48,10 @@ export interface PolicyEvidence {
   readonly gameRepairPriority: boolean;
   /** Game FSM：本輪 Reality Anchoring flag 數。 */
   readonly gameRealityFlagCount: number;
+  /** Game FSM 的 speedInviteDirection（repair_before_invite／no_invite_build_investment…）；非 game 為 null。 */
+  readonly gameInviteDirection: string | null;
+  /** 既有可信記憶摘要；玩家提的共同記憶若在裡面就不是 mismatch。 */
+  readonly memorySummary: string | null;
 }
 
 export interface TurnSignals {
@@ -59,6 +63,8 @@ export interface TurnSignals {
   /** L4 守門同一組詞（同意權／露骨）＋少量交友 App 常見越界句型。 */
   readonly boundaryLike: boolean;
   readonly memoryClaim: boolean;
+  /** 她之前已對邀約明確婉拒過（她自己的話＝逐字稿證據），這次又被約。 */
+  readonly priorRefusal: boolean;
   readonly compliment: boolean;
   readonly disagreement: boolean;
   /** 高語意提示，不當分類用：只讓 plan 多給候選 act。 */
@@ -77,9 +83,13 @@ const QUESTION_RE =
   /[?？]$|(嗎|呢|吧|有沒|了沒|飽沒|完沒|好沒|幹嘛|做什麼|做啥|在哪|住哪|幾歲|如何|怎樣|怎麼樣)(裡|啊|呀|喔|哦|啦)?[?？]?$/u;
 // 交友 App 常見越界句型；「去你家附近那間店」不算。
 const BOUNDARY_RE =
-  /(泳裝|內衣|(身材|胸|腿).{0,4}(照片|照)|有照片嗎|裸|上床|睡一下|去[你妳]家(?!附近|旁邊|那邊|樓下|巷)|來我家(?!附近|旁邊|那邊|樓下|巷)|開房|約砲|打炮)/u;
+  /(泳裝|內衣|(身材|胸|腿).{0,4}(照片|照)|有照片嗎|裸照|裸體|全裸|(跟|和|陪)[你妳我]?(一起)?睡|睡一下嗎|上床|去[你妳]家(?!附近|旁邊|那邊|樓下|巷)|來我家(?!附近|旁邊|那邊|樓下|巷)|開房間|去開房|約砲|打炮)/u;
+// 只抓「你（不是）說過／記得我們／我們上次」這種把對方拉進共同記憶的句型；
+// 「以前你有養過狗嗎」是問她的過去，不算。
 const MEMORY_CLAIM_RE =
-  /(上次|之前|那時候|以前|那天).{0,6}(妳|你).{0,4}(不是)?(說|講|提|有)|記得.{0,6}(我們|一起|上次)|我們(上次|之前|那次|那天)/u;
+  /(上次|之前|那時候|那天).{0,6}(妳|你).{0,4}(不是)?(說|講|提)|(妳|你)(不是)?(說|講|提)過|記得.{0,6}(我們|一起|上次)|我們(上次|之前|那次|那天)/u;
+const REFUSAL_RE =
+  /(先不用|先不要|不太方便|不太想|不想|不約|先不約|不用了|沒辦法|改天吧|下次再看|先再聊|再多認識|還不熟)/u;
 const COMPLIMENT_RE = /(漂亮|好看|很正|可愛|有氣質|很美|身材.{0,2}好|笑起來)/u;
 const VULNERABLE_HINT_RE =
   /(焦慮|睡不好|壓力(很|好)?大|好累|很累|難過|想哭|很煩|低潮|沒動力|不知道該怎麼辦)/u;
@@ -121,6 +131,16 @@ export function detectTurnSignals(
       else break;
     }
   }
+  let priorRefusal = false;
+  for (let i = 0; i + 1 < turns.length - 1; i++) {
+    if (
+      turns[i].role === "user" &&
+      practiceInviteLevelFor(turns[i].text) !== "none" &&
+      turns[i + 1].role === "ai" && REFUSAL_RE.test(turns[i + 1].text)
+    ) {
+      priorRefusal = true;
+    }
+  }
   const userIsQuestion = isQuestion(last);
   return {
     userTurnCount: practiceUserTurnCount(turns),
@@ -133,6 +153,7 @@ export function detectTurnSignals(
     }) ||
       BOUNDARY_RE.test(last),
     memoryClaim: MEMORY_CLAIM_RE.test(last),
+    priorRefusal,
     compliment: COMPLIMENT_RE.test(last),
     disagreement: DISAGREEMENT_RE.test(last),
     maybeVulnerable: VULNERABLE_HINT_RE.test(last),
@@ -171,21 +192,58 @@ export function fnv1a(text: string): number {
 }
 
 /** 把既有 policy 結果正規化成 stance；planner 不重算任何門檻。 */
+/** 玩家提的共同記憶是否已在可信 memorySummary 裡（字元 bigram 重疊 ≥3）。 */
+export function memoryClaimSupported(
+  claim: string,
+  memorySummary: string | null,
+): boolean {
+  if (!memorySummary) return false;
+  const text = claim.replace(/\s+/g, "");
+  const memory = memorySummary.replace(/\s+/g, "");
+  let hits = 0;
+  const seen = new Set<string>();
+  for (let i = 0; i + 1 < text.length; i++) {
+    const bigram = text.slice(i, i + 2);
+    if (
+      seen.has(bigram) ||
+      /^[你妳我們的了是嗎呢有說講提上次之前]{2}$/u.test(bigram)
+    ) continue;
+    seen.add(bigram);
+    if (memory.includes(bigram)) hits++;
+  }
+  return hits >= 3;
+}
+
 export function policyStanceFor(
   signals: TurnSignals,
   evidence: PolicyEvidence,
+  lastUserText = "",
 ): PolicyStance {
   if (signals.boundaryLike) return "boundary";
   const moodGuarded = evidence.partnerMood === "guarded" ||
     evidence.partnerMood === "annoyed";
-  if (signals.memoryClaim || evidence.gameRealityFlagCount > 0) {
+  const unverifiedMemory = signals.memoryClaim &&
+    !memoryClaimSupported(lastUserText, evidence.memorySummary);
+  if (unverifiedMemory || evidence.gameRealityFlagCount > 0) {
     return "cautious";
   }
   if (signals.inviteLevel === "none") {
     return moodGuarded || evidence.gameRepairPriority ? "cautious" : "open";
   }
-  // 邀約：結果由既有證據決定。
+  // 邀約：結果由既有證據決定。她自己已明確婉拒過＝decline。
+  if (signals.priorRefusal) return "decline";
   if (moodGuarded || evidence.gameRepairPriority) return "hold";
+  if (evidence.practiceMode === "game" && evidence.gameInviteDirection) {
+    switch (evidence.gameInviteDirection) {
+      case "direct_invite_low_pressure":
+      case "partner_window_close":
+        return "open";
+      case "soft_invite_probe":
+        return signals.inviteLevel === "soft" ? "open" : "hold";
+      default:
+        return "hold";
+    }
+  }
   if (evidence.practiceMode === "standard") {
     return standardInviteFloorReached(
         signals.userTurnCount,
@@ -219,7 +277,7 @@ export function classifySituation(
   stance: PolicyStance,
 ): TurnResponsePlan["situation"] {
   if (stance === "boundary") return "boundary";
-  if (s.memoryClaim) return "memory_mismatch";
+  if (s.memoryClaim && stance === "cautious") return "memory_mismatch";
   if (s.inviteLevel !== "none") {
     return stance === "open" ? "mature_invite" : "early_invite";
   }
@@ -240,7 +298,9 @@ export function planTurnResponse(args: {
   seedKey: string;
 }): TurnResponsePlan {
   const signals = detectTurnSignals(args.turns);
-  const policyStance = policyStanceFor(signals, args.evidence);
+  const lastUserText = [...args.turns].reverse().find((t) => t.role === "user")
+    ?.text ?? "";
+  const policyStance = policyStanceFor(signals, args.evidence, lastUserText);
   const situation = classifySituation(signals, policyStance);
   const seed = fnv1a(
     `${args.seedKey}|${signals.userTurnCount}|${REPLY_STYLE_VERSION}`,
@@ -253,29 +313,51 @@ export function planTurnResponse(args: {
     : situation === "neutral"
     ? ["acknowledge"]
     : style.responseBiases[situation] ?? ["acknowledge"];
-  if (situation === "early_invite" || situation === "boundary") {
-    // 結果已定（hold／boundary）：把接受型 act 濾掉；濾光了就照她的直接度給
+  if (situation === "boundary") {
+    // 越界：強制界線 act（規格 §4.5「強制 boundary，style 只能改表達方式」）；
+    // 直接度只影響 renderer 的措辭，不能降成一般帶開。
+    biases = ["direct_boundary"];
+  } else if (situation === "early_invite") {
+    // 結果已定（hold／decline）：把接受型 act 濾掉；濾光了就照她的直接度給
     // 一個非接受型的預設說法。
     const filtered = biases.filter((act) => !ACCEPTING_ACTS.includes(act));
     biases = filtered.length > 0 ? filtered : [
       style.behavior.directness[1] >= 3 ? "direct_boundary" : "soft_deflect",
     ];
+  } else if (policyStance === "cautious") {
+    // 她在防備（guarded／annoyed／Game 修復優先／未證實記憶）：不玩、不多揭露。
+    const filtered = biases.filter((act) =>
+      act !== "tease" && act !== "self_disclose"
+    );
+    biases = filtered.length > 0 ? filtered : ["acknowledge"];
   }
   const primaryAct = biases[0];
   let optionalAct: ReplyAct | null = biases[1] ?? null;
 
+  // 候選 act 同樣受 stance 約束：hold／decline／boundary 的邀約輪不給接受型。
+  const restricted = situation === "boundary" ||
+    situation === "early_invite" || policyStance === "cautious";
   const conditionalActs: { when: "vulnerable" | "joke"; act: ReplyAct }[] = [];
-  if (signals.maybeVulnerable && situation !== "boundary") {
-    conditionalActs.push({
-      when: "vulnerable",
-      act: style.responseBiases.vulnerability?.[0] ?? "acknowledge",
-    });
+  const pushConditional = (when: "vulnerable" | "joke", act: ReplyAct) => {
+    if (situation === "boundary") return;
+    if (restricted && ACCEPTING_ACTS.includes(act)) return;
+    if (
+      policyStance === "cautious" &&
+      (act === "tease" || act === "self_disclose")
+    ) return;
+    conditionalActs.push({ when, act });
+  };
+  if (signals.maybeVulnerable) {
+    pushConditional(
+      "vulnerable",
+      style.responseBiases.vulnerability?.[0] ?? "acknowledge",
+    );
   }
-  if (signals.maybeJoke && situation !== "boundary") {
-    conditionalActs.push({
-      when: "joke",
-      act: style.responseBiases.failed_joke?.[0] ?? "acknowledge",
-    });
+  if (signals.maybeJoke) {
+    pushConditional(
+      "joke",
+      style.responseBiases.failed_joke?.[0] ?? "acknowledge",
+    );
   }
 
   // 則數：在她的範圍內，由 tempo 推向上下限，seed 決定中間值；收尾／界線壓到最少。
@@ -377,7 +459,8 @@ const STANCE_LINE: Partial<Record<PolicyStance, string>> = {
   hold:
     "這輪不答應、不給時間；答不答應由上面的邀約判斷決定，這裡只決定你怎麼說。",
   decline: "這輪不答應；只決定你怎麼說。",
-  cautious: "對方講的事還沒被證實，不要順著補記憶或補細節。",
+  cautious:
+    "你現在有點防備：不玩、不多講自己的事；對方講的事還沒被證實就不要順著補記憶或補細節。",
 };
 
 const DISCLOSURE_LINE: Record<TurnResponsePlan["disclosureDepth"], string> = {
@@ -398,14 +481,20 @@ const CONDITIONAL_LINE: Record<"vulnerable" | "joke", string> = {
  * （4/420），run5 加「語氣」行反而把模型推進劇本模式（14/264）。交給
  * visible_text_guard 的 stripStageDirections 修補優先。
  */
-export function renderTurnPlan(plan: TurnResponsePlan): string {
+export function renderTurnPlan(
+  plan: TurnResponsePlan,
+  style?: Pick<ReplyStyleProfile, "behavior">,
+): string {
+  const soft = plan.situation === "boundary" &&
+    (style?.behavior.directness[1] ?? 4) <= 2;
   const acts = [
-    ACT_LINE[plan.primaryAct],
+    ACT_LINE[plan.primaryAct] +
+    (soft ? "（可以講得溫和，但要讓對方清楚知道這不行）" : ""),
     plan.optionalAct ? `再${ACT_LINE[plan.optionalAct]}` : "",
   ].filter(Boolean).join("，");
   const stance = plan.situation === "early_invite" ||
       plan.situation === "mature_invite" ||
-      plan.situation === "memory_mismatch"
+      plan.situation === "memory_mismatch" || plan.policyStance === "cautious"
     ? STANCE_LINE[plan.policyStance] ?? ""
     : "";
   const conditional = plan.conditionalActs.map((c) =>
