@@ -52,9 +52,16 @@ function makeDeps(options: {
   getRunResult?: any;
   modelChunks?: string[];
   modelError?: Error;
+  // Phase 3d critic shadow 注入（預設關閉）。
+  criticShadow?: AnalyzeStreamDeps["criticShadow"];
+  waitUntil?: AnalyzeStreamDeps["waitUntil"];
+  callCritic?: AnalyzeStreamDeps["callCritic"];
 }): AnalyzeStreamDeps {
   const { calls } = options;
   return {
+    ...(options.criticShadow ? { criticShadow: options.criticShadow } : {}),
+    ...(options.waitUntil ? { waitUntil: options.waitUntil } : {}),
+    ...(options.callCritic ? { callCritic: options.callCritic } : {}),
     store: {
       getRun: (_args) => {
         calls.push("getRun");
@@ -1034,4 +1041,135 @@ Deno.test("an injected analysisDivergencePlan never survives when the server cap
   assertFalse(text.includes("analysisDivergencePlan"));
   assert(persistedFinalResult, "expected a persisted final result");
   assertEquals("analysisDivergencePlan" in persistedFinalResult, false);
+});
+
+/// Phase 3d：v2 send 的六行（盤點、決策、瘦卡、兩張 option、done）。
+function v2SendChunks(): string[] {
+  return [
+    line({
+      type: "analysis.inventory",
+      balls: [{
+        id: "b_1",
+        sourceIndex: 1,
+        sourceMessage: "SOURCE_SECRET",
+        disposition: "接",
+      }],
+    }),
+    line({
+      type: "analysis.decision",
+      schemaVersion: 2,
+      selectedStyle: "extend",
+      action: "connect",
+      messageDecision: "send",
+      replyMode: "variants",
+      selectedBallIds: ["b_1"],
+      betaRiskFlags: ["question_only"],
+      nextStepBody: "維持自然互動。",
+      doThis: "先接住內容。",
+    }),
+    line({
+      type: "analysis.recommendation",
+      selectedStyle: "extend",
+      message: "REPLY_SECRET?",
+      reason: "REASON_SECRET",
+      quotedContext: "QUOTE_SECRET",
+    }),
+    line({
+      type: "analysis.reply_option",
+      style: "extend",
+      segments: [{
+        sourceIndex: 1,
+        sourceMessage: "SOURCE_SECRET",
+        reply: "REPLY_SECRET?",
+        reason: "REASON_SECRET",
+      }],
+    }),
+    line({
+      type: "analysis.reply_option",
+      style: "tease",
+      segments: [{
+        sourceIndex: 1,
+        sourceMessage: "SOURCE_SECRET",
+        reply: "不急著問，也先接住。",
+        reason: "REASON_SECRET",
+      }],
+    }),
+    line({ type: "analysis.done", finalResult: {} }),
+  ];
+}
+
+Deno.test("Phase 3d critic shadow：done 之後排進背景，只審選中卡，telemetry 不帶文字", async () => {
+  const scheduled: Promise<void>[] = [];
+  const criticCalls: { model: string; prompt: string }[] = [];
+  const logs = await withCapturedConsoleLog(async () => {
+    const { text } = await runWithStubbedFetch(makeDeps({
+      calls: [],
+      modelChunks: v2SendChunks(),
+      criticShadow: {
+        enabled: true,
+        model: "critic-model",
+        timeoutMs: 500,
+        trigger: "risk",
+      },
+      waitUntil: (task) => {
+        scheduled.push(task);
+      },
+      callCritic: (args) => {
+        criticCalls.push({ model: args.model, prompt: args.prompt });
+        return Promise.resolve({
+          content: [{
+            type: "text",
+            text: '{"verdict":"rewrite","violations":["question_density"]}',
+          }],
+          usage: { input_tokens: 700, output_tokens: 20 },
+        });
+      },
+    }));
+    // 背景 task 不擋回應：client 已拿到完整 done，task 交給 waitUntil。
+    assert(text.includes('"analysis.done"'));
+    assertEquals(scheduled.length, 1);
+    await Promise.all(scheduled);
+  });
+
+  assertEquals(criticCalls.length, 1);
+  assertEquals(criticCalls[0].model, "critic-model");
+  assert(criticCalls[0].prompt.includes("gender_heuristic"));
+  assert(criticCalls[0].prompt.includes("REPLY_SECRET?"));
+  assert(!criticCalls[0].prompt.includes("不急著問"), "只審選中卡");
+
+  const critic = logs.find((entry) =>
+    entry[0] === "[analyze-chat] stream_semantic_critic"
+  );
+  assert(critic, "expected critic shadow telemetry log");
+  const metadata = critic[1] as Record<string, unknown>;
+  assertEquals(metadata.status, "ok");
+  assertEquals(metadata.verdict, "rewrite");
+  assertEquals(metadata.violations, ["question_density"]);
+  assertEquals(metadata.model, "critic-model");
+  assert((metadata.trigger as string[]).includes("beta:question_only"));
+  assertEquals(metadata.inputTokens, 700);
+  assertEquals(typeof metadata.analysisRunId, "string");
+  assertEquals(typeof metadata.user, "string");
+  const serialized = JSON.stringify(metadata);
+  assert(!serialized.includes("SECRET"));
+});
+
+Deno.test("Phase 3d critic shadow：預設關閉時不排程也不呼叫", async () => {
+  const scheduled: Promise<void>[] = [];
+  let criticCalls = 0;
+  await withCapturedConsoleLog(async () => {
+    await runWithStubbedFetch(makeDeps({
+      calls: [],
+      modelChunks: v2SendChunks(),
+      waitUntil: (task) => {
+        scheduled.push(task);
+      },
+      callCritic: () => {
+        criticCalls += 1;
+        return Promise.resolve({});
+      },
+    }));
+  });
+  assertEquals(scheduled.length, 0);
+  assertEquals(criticCalls, 0);
 });

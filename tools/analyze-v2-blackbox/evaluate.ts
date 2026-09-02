@@ -77,15 +77,13 @@ function usedBranchExceedsCap(r: any): boolean {
   return [...used].some((id) => (distance.get(id) ?? 0) > cap);
 }
 
-/// 3c：candidate guard 清單。新 artifact 直接讀 telemetry；舊 artifact（run12／
-/// run13）從 rawLines 重建模型原始輸出再跑同一支 adapter——那是 guardrail 前的
-/// 版本，且舊 rawLines 沒留盤點球（只有 type），球面四道不會出現。
-// deno-lint-ignore no-explicit-any
-function candidateGuardOf(r: any): readonly string[] | null {
-  const fromTelemetry = r.telemetry?.phase0?.candidateGuard;
-  if (Array.isArray(fromTelemetry?.violations)) {
-    return fromTelemetry.violations.map((v: { code: string }) => v.code);
-  }
+/// 從 artifact 一案的 rawLines／server 快照重建「client 拿到的結果」形狀（guardrail
+/// 前的模型原始輸出；舊 rawLines 沒留盤點球時沒有 analysisInventory）。3c guard 與
+/// 3d critic 離線評測共用。回 null＝沒有可重建的東西。
+export function artifactCaseFinalResult(
+  // deno-lint-ignore no-explicit-any
+  r: any,
+): Record<string, unknown> | null {
   // deno-lint-ignore no-explicit-any
   const raw: any[] = Array.isArray(r.rawLines) ? r.rawLines : [];
   const options = raw.filter((l) =>
@@ -98,7 +96,7 @@ function candidateGuardOf(r: any): readonly string[] | null {
     l?.type === "analysis.inventory" && Array.isArray(l.balls)
   );
   const plan = parseDivergencePlanV1(r.server?.plan);
-  const finalResult = {
+  return {
     ...(decision
       ? { analysisDecisionV2: { ...decision, schemaVersion: 2 } }
       : {}),
@@ -124,6 +122,18 @@ function candidateGuardOf(r: any): readonly string[] | null {
       { messages: o.segments ?? o.messages ?? o.messageGroup ?? [] },
     ])),
   };
+}
+
+/// 3c：candidate guard 清單。新 artifact 直接讀 telemetry；舊 artifact（run12／
+/// run13）從 rawLines 重建再跑同一支 adapter，球面四道不會出現。
+// deno-lint-ignore no-explicit-any
+function candidateGuardOf(r: any): readonly string[] | null {
+  const fromTelemetry = r.telemetry?.phase0?.candidateGuard;
+  if (Array.isArray(fromTelemetry?.violations)) {
+    return fromTelemetry.violations.map((v: { code: string }) => v.code);
+  }
+  const finalResult = artifactCaseFinalResult(r);
+  if (!finalResult) return null;
   return candidateGuardFromFinalResult(finalResult).violations.map((v) =>
     v.code
   );

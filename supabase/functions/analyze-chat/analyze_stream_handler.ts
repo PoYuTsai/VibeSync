@@ -33,6 +33,15 @@ import {
   calibratePhase0EvidenceLinkage,
   emitPhase0Observability,
 } from "./phase0_observability.ts";
+import {
+  ANALYZE_CRITIC_SHADOW,
+  type AnalyzeCriticShadowConfig,
+  analyzeCriticTrigger,
+  callClaudeJson,
+  runAnalyzeCriticShadow,
+  scheduleAnalyzeCriticShadow,
+} from "./critic_shadow.ts";
+import type { SemanticCriticCallArgs } from "../_shared/social/semantic_critic.ts";
 import { callClaudeStreaming } from "./streaming_fallback.ts";
 import { hashConversation } from "./conversation_hash.ts";
 import {
@@ -148,6 +157,17 @@ export interface AnalyzeStreamDeps {
   supabaseServiceKey: string;
   /// 測試注入用；預設走 callClaudeStreaming（含 outage fallback 鏈）。
   callModel?: typeof callClaudeStreaming;
+  /// Phase 3d critic 影子：預設 ANALYZE_CRITIC_SHADOW（關閉）；測試注入。
+  criticShadow?: AnalyzeCriticShadowConfig;
+  callCritic?: (args: SemanticCriticCallArgs) => Promise<unknown>;
+  /// 背景排程；production 走 EdgeRuntime.waitUntil（critic_shadow 內退路）。
+  waitUntil?: (task: Promise<void>) => void;
+}
+
+function phase0Record(value: unknown): Record<string, unknown> | null {
+  return isPlainObject(value) && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function mapStreamChargeFailure(error: unknown): {
@@ -580,13 +600,51 @@ export async function handleAnalyzeStream(
         finalResult: finalPayload,
       });
 
-      emitPhase0Observability({
+      const phase0 = emitPhase0Observability({
         finalResult: finalPayload,
         user: summarizeUser(deps.userId),
         analysisRunId: streamRun.id,
         emit: logInfo,
         contractVersion2: deps.noSendDecisions === true,
       });
+
+      // Phase 3d：critic 影子跑在 done 之後的背景，永不改結果、永不 throw。
+      const criticConfig = deps.criticShadow ?? ANALYZE_CRITIC_SHADOW;
+      const criticTrigger = criticConfig.enabled
+        ? analyzeCriticTrigger(finalPayload, phase0, criticConfig.trigger)
+        : null;
+      if (criticTrigger) {
+        const guardViolations = phase0Record(phase0?.candidateGuard)
+          ?.violations;
+        scheduleAnalyzeCriticShadow(
+          deps.waitUntil,
+          runAnalyzeCriticShadow({
+            finalResult: finalPayload,
+            messages: deps.messages,
+            guardViolations: Array.isArray(guardViolations)
+              ? guardViolations.flatMap((violation) => {
+                const code = phase0Record(violation)?.code;
+                return typeof code === "string" ? [code] : [];
+              })
+              : [],
+            trigger: criticTrigger,
+            config: criticConfig,
+            apiKey: deps.claudeApiKey,
+            callCritic: deps.callCritic ?? callClaudeJson,
+            emit: (event, metadata) =>
+              logInfo(event, {
+                user: summarizeUser(deps.userId),
+                analysisRunId: streamRun.id,
+                ...metadata,
+              }),
+            recordAiCall: (entry) =>
+              logAiCall(deps.supabaseUrl, deps.supabaseServiceKey, {
+                userId: deps.userId,
+                ...entry,
+              }),
+          }),
+        );
+      }
 
       await logAiCall(deps.supabaseUrl, deps.supabaseServiceKey, {
         userId: deps.userId,

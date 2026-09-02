@@ -249,7 +249,7 @@ function replyTextFromSegments(
     .join("\n");
 }
 
-function replySegmentsForStyle(
+export function replySegmentsForStyle(
   finalResult: Record<string, unknown>,
   style: string,
   selectedStyle: string | null,
@@ -326,7 +326,7 @@ function sourceBallIdsFromDeliveredIndices(
     : null;
 }
 
-function deliveredReplyText(
+export function deliveredReplyText(
   finalResult: Record<string, unknown>,
   style: string,
   selectedStyle: string | null,
@@ -347,7 +347,7 @@ function deliveredReplyText(
   return nonEmptyString(replies?.[style]);
 }
 
-function selectedDeliveredStyle(
+export function selectedDeliveredStyle(
   finalResult: Record<string, unknown>,
   linkage: Record<string, unknown>,
 ): string | null {
@@ -1164,6 +1164,8 @@ function attributionTelemetry(
   };
 }
 
+/// 回傳送出的 telemetry（Phase 3d critic 觸發條件要讀 candidateGuard／
+/// sameOpeningCount）；失敗回 null。
 export function emitPhase0Observability({
   finalResult,
   user,
@@ -1176,18 +1178,18 @@ export function emitPhase0Observability({
   analysisRunId: string;
   emit: TelemetryEmitter;
   contractVersion2?: boolean;
-}): void {
+}): Record<string, unknown> | null {
   try {
-    emit(
-      "stream_phase0_observability",
-      buildPhase0ObservabilityTelemetry({
-        finalResult,
-        user,
-        analysisRunId,
-        contractVersion2,
-      }),
-    );
+    const telemetry = buildPhase0ObservabilityTelemetry({
+      finalResult,
+      user,
+      analysisRunId,
+      contractVersion2,
+    });
+    emit("stream_phase0_observability", telemetry);
+    return telemetry;
   } catch {
     // Observability must never block markDone, a stream response, or resume.
+    return null;
   }
 }

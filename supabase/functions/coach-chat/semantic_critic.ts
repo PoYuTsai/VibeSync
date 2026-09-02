@@ -1,31 +1,22 @@
 import type { CoachChatRequest, CoachChatResponseCard } from "./schemas.ts";
+import {
+  COACH_CRITIC_VIOLATIONS,
+  parseSemanticCriticVerdict as parseSharedVerdict,
+  runSemanticCritic as runSharedCritic,
+  type SemanticCriticCallArgs,
+  type SemanticCriticVerdict as SharedVerdict,
+} from "../_shared/social/semantic_critic.ts";
 
-export const SEMANTIC_CRITIC_VIOLATIONS = [
-  "goal_mismatch",
-  "unsupported_fact",
-  "generic_hook",
-  "style_mismatch",
-  "investment_mismatch",
-  "question_density",
-  "boundary_conflict",
-  "non_actionable",
-  "judgment_sprawl",
-] as const;
+// 引擎（parser／呼叫）搬到 _shared/social/semantic_critic.ts 與 Analyze 共用；
+// Coach 的九碼與 prompt 字面不變。
+
+export const SEMANTIC_CRITIC_VIOLATIONS = COACH_CRITIC_VIOLATIONS;
 
 export type SemanticCriticViolation = typeof SEMANTIC_CRITIC_VIOLATIONS[number];
 
-export interface SemanticCriticCallArgs {
-  model: string;
-  prompt: string;
-  maxTokens: number;
-  timeoutMs: number;
-  apiKey: string;
-}
+export type { SemanticCriticCallArgs };
 
-export interface SemanticCriticVerdict {
-  readonly verdict: "pass" | "rewrite";
-  readonly violations: readonly SemanticCriticViolation[];
-}
+export type SemanticCriticVerdict = SharedVerdict<SemanticCriticViolation>;
 
 export function buildSemanticCriticPrompt(
   request: CoachChatRequest,
@@ -64,7 +55,7 @@ export function buildSemanticCriticPrompt(
 <candidate>${JSON.stringify(card)}</candidate>`;
 }
 
-export async function runSemanticCritic(args: {
+export function runSemanticCritic(args: {
   request: CoachChatRequest;
   card: CoachChatResponseCard;
   model: string;
@@ -72,66 +63,18 @@ export async function runSemanticCritic(args: {
   timeoutMs: number;
   callCritic: (args: SemanticCriticCallArgs) => Promise<unknown>;
 }): Promise<SemanticCriticVerdict> {
-  const raw = await args.callCritic({
-    model: args.model,
+  return runSharedCritic({
     prompt: buildSemanticCriticPrompt(args.request, args.card),
-    maxTokens: 260,
-    timeoutMs: args.timeoutMs,
+    allowed: SEMANTIC_CRITIC_VIOLATIONS,
+    model: args.model,
     apiKey: args.apiKey,
+    timeoutMs: args.timeoutMs,
+    callCritic: args.callCritic,
   });
-  return parseSemanticCriticVerdict(raw);
 }
 
 export function parseSemanticCriticVerdict(
   raw: unknown,
 ): SemanticCriticVerdict {
-  if (!raw || typeof raw !== "object") {
-    throw new Error("semantic_critic_invalid");
-  }
-  const content = (raw as { content?: Array<{ type?: string; text?: string }> })
-    .content;
-  const text = (content ?? [])
-    .filter((block) => block.type == null || block.type === "text")
-    .map((block) => block.text ?? "")
-    .join("");
-  const match = text.match(/\{[\s\S]*\}/u);
-  if (!match) throw new Error("semantic_critic_invalid");
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[0]);
-  } catch {
-    throw new Error("semantic_critic_invalid");
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("semantic_critic_invalid");
-  }
-  const record = parsed as Record<string, unknown>;
-  const keys = Object.keys(record).sort();
-  if (keys.length !== 2 || keys[0] !== "verdict" || keys[1] !== "violations") {
-    throw new Error("semantic_critic_invalid");
-  }
-  if (record.verdict !== "pass" && record.verdict !== "rewrite") {
-    throw new Error("semantic_critic_invalid");
-  }
-  if (!Array.isArray(record.violations) || record.violations.length > 4) {
-    throw new Error("semantic_critic_invalid");
-  }
-  const allowed = new Set<string>(SEMANTIC_CRITIC_VIOLATIONS);
-  const violations = record.violations.filter((value): value is string =>
-    typeof value === "string"
-  );
-  if (
-    violations.length !== record.violations.length ||
-    violations.some((value) => !allowed.has(value)) ||
-    new Set(violations).size !== violations.length ||
-    (record.verdict === "pass" && violations.length !== 0) ||
-    (record.verdict === "rewrite" && violations.length === 0)
-  ) {
-    throw new Error("semantic_critic_invalid");
-  }
-  return {
-    verdict: record.verdict,
-    violations: violations as SemanticCriticViolation[],
-  };
+  return parseSharedVerdict(raw, SEMANTIC_CRITIC_VIOLATIONS);
 }

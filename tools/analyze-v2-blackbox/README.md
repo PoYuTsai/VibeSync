@@ -49,3 +49,18 @@ production 隨 `stream_phase0_observability.candidateGuard` 出（只記不擋�
 盤點球，球面四道出不來，之後的 run 會留）。run12：question_budget 1、semantic_distance_cap 1
 （與既有 gate 同案）；run13：card_source_mismatch 4（三案，與 phase0
 `fiveCardSourceDivergence` 同判）、semantic_distance_cap 2。
+
+## Phase 3d critic 離線評測（付費）
+
+```sh
+deno run --allow-env --allow-read --allow-write=tools/analyze-v2-blackbox/out \
+  --allow-net=api.anthropic.com tools/analyze-v2-blackbox/run_critic.ts \
+  <artifact.json> tools/analyze-v2-blackbox/out/<date>-critic-<label>.json \
+  [--model=claude-haiku-4-5-20251001] [--only=a,b]
+```
+
+對 artifact 的 send 案只審「選中卡」：證據＝語料訊息＋重建的盤點／決策／計畫（只帶
+用到的枝）＋3c guard 碼；rubric 在 `_shared/social/semantic_critic.ts`（Coach 九碼改成
+回覆卡語境＋Analyze 十三碼＋繁中句型＋Alpha Guard 判準）。輸出每案 verdict／violations／
+token／延遲與 tally；不重跑主分析、不動 runtime。每案一次真呼叫，跑前要 Eric 明確授權。
+production 影子（`analyze-chat/critic_shadow.ts`）預設關閉，觸發條件／模型待 Eric 定。

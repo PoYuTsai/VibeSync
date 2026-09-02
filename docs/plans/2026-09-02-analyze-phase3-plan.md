@@ -29,6 +29,22 @@ Phase 2b 已上 main（`03b8f585`，Eric 接受 APPROVED_WITH_RISK）。Codex �
   要進 repair（候選：skipped_ball_used／placeholder／no_send_with_cards）、bounded retry
   幾次、失敗降級 do_not_send／need_context 的條件；先看 dogfood 一週的 candidateGuard 分佈。
 
+## 3d 進度（2026-09-03）
+
+- 已交付（預設關閉）：`_shared/social/semantic_critic.ts` 共用引擎（嚴格 parser、usage
+  解析、詞彙參數化）＋ Analyze 22 碼 rubric（Coach 九碼改回覆卡語境＋§15.2 十三碼＋繁中
+  句型＋Alpha Guard 判準）；Coach `semantic_critic.ts` 改薄委派，prompt 字面與行為不變
+  （86 測試綠）。`analyze-chat/critic_shadow.ts`：只審選中卡、跑在 `analysis.done` 之後的
+  `EdgeRuntime.waitUntil` 背景，永不改結果、永不 throw；出 `stream_semantic_critic`
+  （verdict／violations／token／延遲／trigger）＋ `ai_logs` 成本列（requestType
+  `analyze_semantic_critic`）。離線評測 `tools/analyze-v2-blackbox/run_critic.ts`。
+- 待 Eric 決定（開關是一行 commit：`ANALYZE_CRITIC_SHADOW`）：
+  1. 模型：Haiku 4.5（約每次 0.3 美分）或 Sonnet 5（約 1 美分，主分析約 +10–15%）。
+  2. 觸發：`risk`（3c guard 違規、決策 beta flags、四張同開頭才審）或 `always`
+     （每個 send 的選中卡都審，先建影子基線）。
+  3. 先跑離線評測（run12／run13 共約 30 案，Haiku 幾分錢、Sonnet 約 0.3 美元）看
+     critic 判得準不準，再開 production 影子；critic 不擋人，擋的設計等 3c 後半一起定。
+
 ## 3a 細節
 
 - 語料：`corpus.ts` 每案 `{ id, family, messages, expect }`，`expect` 先只放能確定性判定的：可接受 `messageDecision` 集合、send 時是否預期計畫、`questionBudget` 上限。其餘（stage／action／balls／atoms）等 3c／3e 再加。
