@@ -64,7 +64,7 @@ class _HomeQuotaStripState extends ConsumerState<HomeQuotaStrip> {
               ),
               const SizedBox(height: 12),
               Text(
-                '免費方案每月共 $monthlyLimit 則 AI 額度，聊天分析、開場救援、'
+                '免費方案每月共 $monthlyLimit 則 AI 額度，對話分析、開場救星、'
                 '教練與練習共用，每月自動重置。升級後額度大幅提升。',
                 style: const TextStyle(
                   color: AppColors.onBackgroundSecondary,

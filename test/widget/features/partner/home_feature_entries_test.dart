@@ -1,7 +1,7 @@
 // test/widget/features/partner/home_feature_entries_test.dart
 //
 // 首頁功能入口列（onboarding 轉化 Tier 2 批 1；批 A 改導全域教練）：
-// - 開場救援 → /opener。
+// - 開場救星 → /opener。
 // - 問教練 → /coach 全域教練頁（不分有無對象；埋點字典零改動，
 //   coach_entry_tap 照舊帶 has_partner）。
 
@@ -85,10 +85,10 @@ Future<void> _pumpEntries(
 }
 
 void main() {
-  testWidgets('開場救援 → /opener', (tester) async {
+  testWidgets('開場救星 → /opener', (tester) async {
     await _pumpEntries(tester, partners: []);
 
-    await tester.tap(find.text('開場救援'));
+    await tester.tap(find.text('開場救星'));
     await tester.pumpAndSettle();
 
     expect(find.text('opener-screen'), findsOneWidget);
@@ -123,7 +123,7 @@ void main() {
       tracker: tracker,
     );
 
-    await tester.tap(find.text('開場救援'));
+    await tester.tap(find.text('開場救星'));
     await tester.pumpAndSettle();
 
     expect(tracker.events.map((e) => e.$1).toList(), ['opener_entry_tap']);

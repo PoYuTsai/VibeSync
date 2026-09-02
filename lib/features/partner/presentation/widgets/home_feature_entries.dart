@@ -12,7 +12,7 @@ import '../../../../shared/widgets/pressable_scale.dart';
 import '../providers/partner_providers.dart';
 
 /// 首頁功能入口列（onboarding 轉化 Tier 2 批 1；批 A 改導全域教練）：
-/// 開場救援＋問教練。
+/// 開場救星＋問教練。
 ///
 /// 問教練一律導 /coach 全域教練頁（不分有無對象）；埋點字典零改動，
 /// coach_entry_tap 照舊帶 has_partner。
@@ -47,7 +47,7 @@ class HomeFeatureEntries extends ConsumerWidget {
                     size: 32,
                     color: AppColors.ctaStart,
                   ),
-                  title: '開場救援',
+                  title: '開場救星',
                   subtitle: '第一句不知道說什麼',
                   onTap: () {
                     unawaited(
