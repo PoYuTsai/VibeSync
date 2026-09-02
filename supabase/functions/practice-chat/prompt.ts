@@ -679,17 +679,6 @@ export function buildChatPromptBundle(
   const style = options.replyStyle
     ? replyStyleFor(profile.girl.profileId)
     : null;
-  const responsePlan = style
-    ? planTurnResponse({
-      turns,
-      style,
-      difficulty: profile.difficulty,
-      replyTempo: options.sceneContext?.replyTempo ?? null,
-      seedKey: `${profile.girl.profileId}|${
-        options.visiblePracticeThreadId ?? ""
-      }`,
-    })
-    : null;
   const styleLayer = style !== null;
   const history: ChatMessage[] = turns.map((t) => ({
     role: t.role === "user" ? "user" : "assistant",
@@ -723,21 +712,24 @@ export function buildChatPromptBundle(
       )
     }`
     : "";
+  // assisted 模式的邀約成熟度只算一次：inviteMaturityPrompt 與 reply-style 的
+  // policyStance 共用同一份結果（規格 §4.4：stance 是既有 evidence 的正規化）。
+  const inviteMaturity = assistedMode
+    ? inviteMaturityFromLearningScores({
+      temperatureScore: effectiveTemperature,
+      familiarityScore: effectiveFamiliarity,
+      partnerMood,
+      stageFloor: beginnerMode
+        ? practiceInviteFloorFor(
+          userTurnCount,
+          partnerMood,
+          profile.difficulty,
+        )
+        : null,
+    })
+    : null;
   const invitePrompt = assistedMode
-    ? inviteMaturityPrompt(
-      inviteMaturityFromLearningScores({
-        temperatureScore: effectiveTemperature,
-        familiarityScore: effectiveFamiliarity,
-        partnerMood,
-        stageFloor: beginnerMode
-          ? practiceInviteFloorFor(
-            userTurnCount,
-            partnerMood,
-            profile.difficulty,
-          )
-          : null,
-      }),
-    )
+    ? inviteMaturityPrompt(inviteMaturity)
     : standardInviteMaturityPrompt({
       partnerState: options.partnerState,
       memorySummary: options.memorySummary,
@@ -752,6 +744,24 @@ export function buildChatPromptBundle(
       temperatureScore: effectiveTemperature,
       familiarityScore: effectiveFamiliarity,
       partnerMood: options.partnerState?.mood ?? null,
+    })
+    : null;
+  const responsePlan = style
+    ? planTurnResponse({
+      turns,
+      style,
+      evidence: {
+        practiceMode: options.practiceMode ?? "standard",
+        difficulty: profile.difficulty,
+        partnerMood,
+        inviteStage: inviteMaturity?.stage ?? null,
+        gameRepairPriority: gameSnapshot?.repairPriority ?? false,
+        gameRealityFlagCount: gameSnapshot?.realityFlags.length ?? 0,
+      },
+      replyTempo: options.sceneContext?.replyTempo ?? null,
+      seedKey: `${profile.girl.profileId}|${
+        options.visiblePracticeThreadId ?? ""
+      }`,
     })
     : null;
   // 組裝順序＝優先順序（規格 §5.1）：安全／身份／現實錨定 → 人設 → 說話習慣

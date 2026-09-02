@@ -15,6 +15,7 @@ import {
   callDeepSeek,
   DEEPSEEK_MODEL,
 } from "../../supabase/functions/practice-chat/deepseek.ts";
+import { GIRL_PROFILES } from "../../supabase/functions/practice-chat/practice_persona.ts";
 
 export const CALIBRATION_SCENARIOS = [
   "opening",
@@ -45,8 +46,45 @@ interface Session {
   readonly error?: string;
 }
 
-export function renderTranscript(turns: readonly Turn[]): string {
-  return turns.map((t) => `男：${t.userText}\n她：${t.bubbles.join(" ／ ")}`)
+/**
+ * 事實遮罩（Codex R1 P1）：把同組四位的名字、城市、職業、興趣、年齡數字換成 ＊，
+ * 評審只能靠說話方式。遮不掉的生活情境（剛飛完、剛收診）仍可能外洩，屬已知限制。
+ */
+export function factMasker(
+  profileIds: readonly string[],
+): (text: string) => string {
+  const words = new Set<string>();
+  for (
+    const g of GIRL_PROFILES.filter((g) => profileIds.includes(g.profileId))
+  ) {
+    for (
+      const w of [
+        g.displayName,
+        g.nameId,
+        g.city,
+        g.professionLabel,
+        ...g.interestTags,
+      ]
+    ) {
+      if (w.length >= 2) words.add(w);
+    }
+    words.add(String(g.age));
+  }
+  const sorted = [...words].sort((a, b) => b.length - a.length);
+  return (text) => {
+    let out = text;
+    for (const w of sorted) out = out.split(w).join("＊");
+    return out;
+  };
+}
+
+export function renderTranscript(
+  turns: readonly Turn[],
+  mask: (text: string) => string = (t) => t,
+): string {
+  return turns.map((t) =>
+    `男：${mask(t.userText)}\n她：${mask(t.bubbles.join(" ／ "))}`
+  )
     .join("\n");
 }
 
@@ -95,6 +133,7 @@ export function buildTrials(sessions: readonly Session[]): Trial[] {
       );
     }
     const inGroup = ok.filter((s) => profileIds.includes(s.profileId));
+    const mask = factMasker(profileIds);
     const calibration = (pid: string) =>
       CALIBRATION_SCENARIOS.map((sid) =>
         inGroup.find((s) =>
@@ -102,7 +141,7 @@ export function buildTrials(sessions: readonly Session[]): Trial[] {
         )
       )
         .filter((s): s is Session => s !== undefined)
-        .map((s) => renderTranscript(s.turns)).join("\n---\n");
+        .map((s) => renderTranscript(s.turns, mask)).join("\n---\n");
     const heldOut = inGroup.filter((s) =>
       (HELD_OUT_SCENARIOS as readonly string[]).includes(s.scenarioId)
     )
@@ -123,9 +162,9 @@ export function buildTrials(sessions: readonly Session[]): Trial[] {
         "====",
         "下面是一段新的對話，出自 A、B、C、D 其中一位：",
         "",
-        renderTranscript(s.turns),
+        renderTranscript(s.turns, mask),
         "",
-        "請只根據她的「說話方式」判斷是誰：句子長短、一次回幾則、語氣詞、標點習慣、笑法、會不會反問、直接還是委婉、怎麼接受或婉拒。不要依賴她提到的職業、地點、年齡、行程等事實。",
+        "＊ 是被遮掉的名字、地點、職業等事實。請只根據她的「說話方式」判斷是誰：句子長短、一次回幾則、語氣詞、標點習慣、笑法、會不會反問、直接還是委婉、怎麼接受或婉拒。不要依賴她提到的職業、地點、年齡、行程等事實。",
         '只回 JSON：{"answer":"A|B|C|D","confidence":0到1,"cue":"一句話說明你靠什麼線索"}',
       ].join("\n");
       trials.push({
@@ -176,10 +215,30 @@ export function summarize(results: readonly TrialResult[]) {
         (confusion[r.truthProfileId][r.answerProfileId] ?? 0) + 1;
     }
   }
+  // bootstrap 95%（1000 次、確定性 LCG）：n=60 一組時單點準確率雜訊約 ±12%。
+  let seed = 20260902;
+  const rand = () =>
+    (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const boots: number[] = [];
+  for (let i = 0; i < 1000 && valid.length > 0; i++) {
+    let hit = 0;
+    for (let k = 0; k < valid.length; k++) {
+      if (valid[Math.floor(rand() * valid.length)].correct) hit++;
+    }
+    boots.push(hit / valid.length);
+  }
+  boots.sort((a, b) => a - b);
+  const accuracyCi95 = boots.length
+    ? [
+      boots[Math.floor(boots.length * 0.025)],
+      boots[Math.floor(boots.length * 0.975)],
+    ]
+    : null;
   return {
     trials: results.length,
     valid: valid.length,
     accuracy: acc(valid),
+    accuracyCi95,
     chance: 0.25,
     byPersona,
     byProfile,

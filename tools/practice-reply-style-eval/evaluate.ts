@@ -11,6 +11,8 @@
 //
 //   deno run --allow-read tools/practice-reply-style-eval/evaluate.ts <artifact.json> [--json]
 
+import { hasStageDirection } from "../../supabase/functions/practice-chat/visible_text_guard.ts";
+
 export interface ReplyFeatures {
   readonly bubbleCount: number;
   readonly totalChars: number;
@@ -46,7 +48,6 @@ const EMOJI_RE = /\p{Extended_Pictographic}/u;
 const ZHUYIN_RE = /[ㄅ-ㄩ]/;
 const PARTICLE_RE = /(欸|誒|啦|耶|齁|喔|哦|嘛|捏|欸)(?=[\s。，,!！?？~～]|$)/g;
 const PUNCT_RE = /[。！!？?，,~～…]/g;
-const NARRATION_RE = /[（(][^）)]{2,14}[）)]/u;
 
 export function replyFeatures(bubbles: readonly string[]): ReplyFeatures {
   const text = bubbles.join("\n");
@@ -64,7 +65,7 @@ export function replyFeatures(bubbles: readonly string[]): ReplyFeatures {
     particlesPer10: (text.match(PARTICLE_RE)?.length ?? 0) / chars * 10,
     punctPer10: (text.match(PUNCT_RE)?.length ?? 0) / chars * 10,
     periodEnd: /。$/.test(last.trim()) ? 1 : 0,
-    narration: NARRATION_RE.test(text) ? 1 : 0,
+    narration: hasStageDirection(text) ? 1 : 0,
   };
 }
 
@@ -182,10 +183,15 @@ export interface EvalSummary {
     readonly ratio: number;
     /** 所有探針回覆兩兩比對：跨角色 vs 同角色的 bigram Jaccard。 */
     readonly probeJaccard: { cross: number; within: number };
+    /** 以場次為抽樣單位的 bootstrap 95% 區間（200 次）；只在頂層算，不遞迴。 */
+    readonly ratioCi95: readonly [number, number] | null;
   };
 }
 
-export function evaluate(artifact: Artifact): EvalSummary {
+export function evaluate(
+  artifact: Artifact,
+  opts: { bootstrap?: number } = {},
+): EvalSummary {
   const sessions = artifact.results;
   const ok = sessions.filter((s) => !s.error);
   const all: {
@@ -342,8 +348,34 @@ export function evaluate(artifact: Artifact): EvalSummary {
       withinProfile,
       ratio: withinProfile > 0 ? betweenProfiles / withinProfile : Infinity,
       probeJaccard: { cross: mean(crossAll), within: mean(withinAll) },
+      ratioCi95: (opts.bootstrap ?? 0) > 0
+        ? bootstrapRatioCi(sessions, opts.bootstrap!)
+        : null,
     },
   };
+}
+
+// 確定性 LCG，讓同一份 artifact 的區間可重現。
+function bootstrapRatioCi(
+  sessions: readonly ArtifactSession[],
+  n: number,
+): [number, number] {
+  let seed = 20260902;
+  const rand = () =>
+    (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const ratios: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const sample = Array.from(
+      { length: sessions.length },
+      () => sessions[Math.floor(rand() * sessions.length)],
+    );
+    ratios.push(evaluate({ results: sample }).separation.ratio);
+  }
+  ratios.sort((a, b) => a - b);
+  return [
+    ratios[Math.floor(n * 0.025)],
+    ratios[Math.min(n - 1, Math.floor(n * 0.975))],
+  ];
 }
 
 export function renderMarkdown(summary: EvalSummary): string {
@@ -421,7 +453,7 @@ if (import.meta.main) {
     Deno.exit(2);
   }
   const artifact = JSON.parse(await Deno.readTextFile(path)) as Artifact;
-  const summary = evaluate(artifact);
+  const summary = evaluate(artifact, { bootstrap: 200 });
   console.log(
     Deno.args.includes("--json")
       ? JSON.stringify(summary, null, 2)

@@ -5,8 +5,8 @@
 // 不放固定口頭禪；表面習慣都帶頻率。mapping 明確寫死在 STYLE_BY_PROFILE_ID，
 // 絕不在 runtime 用年齡、城市、職業、星座推導（規格 §1.3）。
 //
-// 第一批只有 4 位 slow_worker（規格 §16 小規模證明）；沒有 mapping 的角色走
-// 原本的全域規則，行為零改動。
+// 目前 20 位代表角色（五個 persona 各 4 位；規格 §4.3 第一批）；沒有 mapping 的
+// 角色走原本的全域規則，行為零改動。
 
 export const REPLY_STYLE_VERSION = "reply-style-v1";
 
@@ -41,13 +41,12 @@ export type ResponseMode =
 export interface ReplyStyleProfile {
   readonly styleVersion: typeof REPLY_STYLE_VERSION;
   readonly presetId: string;
+  /** 只放 planner 真的會用到的維度（Codex R1 P2：不留 dead data）。 */
   readonly behavior: {
-    readonly warmth: LevelRange;
-    readonly initiative: LevelRange;
-    readonly reciprocity: LevelRange;
+    /** 揭露深度上限：決定 self_disclose／reciprocate 時可以講到事實／偏好／情緒。 */
     readonly disclosure: LevelRange;
+    /** 直接度：邀約被 hold 又沒有非接受型偏好時，≥3 直接設界線，否則委婉帶開。 */
     readonly directness: LevelRange;
-    readonly playfulness: LevelRange;
   };
   readonly turnTaking: {
     readonly bubbleRange: readonly [1 | 2 | 3, 1 | 2 | 3];
@@ -72,23 +71,14 @@ export interface ReplyStyleProfile {
   readonly responseBiases: Partial<
     Record<ResponseSituation, readonly ResponseMode[]>
   >;
-  /** 隨熟悉度／對方風格調整語域的幅度。 */
-  readonly accommodation: "low" | "medium" | "high";
-  /** 2–3 個人工寫的可辨識習慣（描述，不是例句）。 */
+  /** 0–3 個人工寫的可辨識習慣（描述，不是例句；規格 §4.2「額外行為記號」）。 */
   readonly habits: readonly string[];
 }
 
 // ── presets：與 persona 正交，名稱中性、不可見 ─────────────────────────
 const PRESETS = {
   concise_observer: {
-    behavior: {
-      warmth: [1, 2],
-      initiative: [0, 1],
-      reciprocity: [0, 1],
-      disclosure: [0, 1],
-      directness: [3, 4],
-      playfulness: [0, 2],
-    },
+    behavior: { disclosure: [0, 1], directness: [3, 4] },
     turnTaking: {
       bubbleRange: [1, 2],
       charRange: [3, 14],
@@ -102,17 +92,9 @@ const PRESETS = {
       particles: "rare",
       typoRate: "none",
     },
-    accommodation: "low",
   },
   reciprocal_practical: {
-    behavior: {
-      warmth: [2, 3],
-      initiative: [1, 2],
-      reciprocity: [3, 4],
-      disclosure: [1, 2],
-      directness: [2, 3],
-      playfulness: [1, 2],
-    },
+    behavior: { disclosure: [1, 2], directness: [2, 3] },
     turnTaking: {
       bubbleRange: [1, 3],
       charRange: [4, 16],
@@ -126,17 +108,9 @@ const PRESETS = {
       particles: "sometimes",
       typoRate: "very_rare",
     },
-    accommodation: "medium",
   },
   dry_observational: {
-    behavior: {
-      warmth: [1, 3],
-      initiative: [0, 2],
-      reciprocity: [1, 2],
-      disclosure: [1, 3],
-      directness: [2, 3],
-      playfulness: [2, 3],
-    },
+    behavior: { disclosure: [1, 3], directness: [2, 3] },
     turnTaking: {
       bubbleRange: [1, 2],
       charRange: [8, 26],
@@ -150,17 +124,9 @@ const PRESETS = {
       particles: "rare",
       typoRate: "none",
     },
-    accommodation: "low",
   },
   warm_low_energy: {
-    behavior: {
-      warmth: [3, 4],
-      initiative: [0, 1],
-      reciprocity: [2, 3],
-      disclosure: [1, 2],
-      directness: [1, 2],
-      playfulness: [1, 2],
-    },
+    behavior: { disclosure: [1, 2], directness: [1, 2] },
     turnTaking: {
       bubbleRange: [2, 3],
       charRange: [3, 12],
@@ -174,17 +140,9 @@ const PRESETS = {
       particles: "often",
       typoRate: "very_rare",
     },
-    accommodation: "high",
   },
   playful_challenger: {
-    behavior: {
-      warmth: [2, 3],
-      initiative: [2, 3],
-      reciprocity: [2, 3],
-      disclosure: [1, 2],
-      directness: [2, 3],
-      playfulness: [3, 4],
-    },
+    behavior: { disclosure: [1, 2], directness: [2, 3] },
     turnTaking: {
       bubbleRange: [2, 3],
       charRange: [3, 12],
@@ -198,17 +156,9 @@ const PRESETS = {
       particles: "often",
       typoRate: "very_rare",
     },
-    accommodation: "high",
   },
   candid_direct: {
-    behavior: {
-      warmth: [1, 3],
-      initiative: [1, 2],
-      reciprocity: [1, 2],
-      disclosure: [1, 2],
-      directness: [4, 4],
-      playfulness: [1, 2],
-    },
+    behavior: { disclosure: [1, 2], directness: [4, 4] },
     turnTaking: {
       bubbleRange: [1, 2],
       charRange: [4, 18],
@@ -222,17 +172,9 @@ const PRESETS = {
       particles: "rare",
       typoRate: "none",
     },
-    accommodation: "low",
   },
   curious_explorer: {
-    behavior: {
-      warmth: [3, 4],
-      initiative: [2, 3],
-      reciprocity: [3, 4],
-      disclosure: [2, 3],
-      directness: [2, 3],
-      playfulness: [2, 3],
-    },
+    behavior: { disclosure: [2, 3], directness: [2, 3] },
     turnTaking: {
       bubbleRange: [2, 3],
       charRange: [4, 16],
@@ -246,17 +188,9 @@ const PRESETS = {
       particles: "sometimes",
       typoRate: "very_rare",
     },
-    accommodation: "medium",
   },
   topic_enthusiast: {
-    behavior: {
-      warmth: [2, 3],
-      initiative: [1, 3],
-      reciprocity: [2, 3],
-      disclosure: [3, 4],
-      directness: [2, 3],
-      playfulness: [1, 2],
-    },
+    behavior: { disclosure: [3, 4], directness: [2, 3] },
     turnTaking: {
       bubbleRange: [1, 3],
       charRange: [6, 24],
@@ -270,17 +204,9 @@ const PRESETS = {
       particles: "sometimes",
       typoRate: "none",
     },
-    accommodation: "medium",
   },
   soft_boundary: {
-    behavior: {
-      warmth: [2, 3],
-      initiative: [0, 1],
-      reciprocity: [1, 2],
-      disclosure: [1, 2],
-      directness: [3, 4],
-      playfulness: [0, 1],
-    },
+    behavior: { disclosure: [1, 2], directness: [3, 4] },
     turnTaking: {
       bubbleRange: [1, 2],
       charRange: [5, 18],
@@ -294,17 +220,9 @@ const PRESETS = {
       particles: "sometimes",
       typoRate: "none",
     },
-    accommodation: "low",
   },
   story_when_engaged: {
-    behavior: {
-      warmth: [2, 4],
-      initiative: [1, 2],
-      reciprocity: [2, 3],
-      disclosure: [2, 4],
-      directness: [2, 3],
-      playfulness: [2, 3],
-    },
+    behavior: { disclosure: [2, 4], directness: [2, 3] },
     turnTaking: {
       bubbleRange: [1, 3],
       charRange: [3, 22],
@@ -318,17 +236,9 @@ const PRESETS = {
       particles: "often",
       typoRate: "very_rare",
     },
-    accommodation: "high",
   },
   reserved_repairer: {
-    behavior: {
-      warmth: [2, 3],
-      initiative: [0, 1],
-      reciprocity: [2, 3],
-      disclosure: [1, 2],
-      directness: [1, 2],
-      playfulness: [0, 1],
-    },
+    behavior: { disclosure: [1, 2], directness: [1, 2] },
     turnTaking: {
       bubbleRange: [1, 2],
       charRange: [5, 20],
@@ -342,17 +252,9 @@ const PRESETS = {
       particles: "rare",
       typoRate: "none",
     },
-    accommodation: "medium",
   },
   quick_witted_brief: {
-    behavior: {
-      warmth: [1, 3],
-      initiative: [1, 2],
-      reciprocity: [1, 2],
-      disclosure: [0, 2],
-      directness: [3, 4],
-      playfulness: [3, 4],
-    },
+    behavior: { disclosure: [0, 2], directness: [3, 4] },
     turnTaking: {
       bubbleRange: [1, 1],
       charRange: [2, 12],
@@ -366,7 +268,6 @@ const PRESETS = {
       particles: "rare",
       typoRate: "none",
     },
-    accommodation: "low",
   },
 } as const satisfies Record<
   string,
@@ -395,7 +296,6 @@ function style(
     turnTaking: { ...preset.turnTaking, ...overrides.turnTaking },
     surface: { ...preset.surface, ...overrides.surface },
     responseBiases: overrides.responseBiases,
-    accommodation: preset.accommodation,
     habits: overrides.habits,
   };
 }
@@ -816,13 +716,12 @@ export function replyStyleFor(profileId: string): ReplyStyleProfile | null {
 
 /** 供工具檢查碰撞：同 fingerprint 的兩人等於複製人。 */
 export function styleFingerprint(s: ReplyStyleProfile): string {
+  // 只看結構欄位：preset 名與自由文字 habits 換個寫法就能讓複製品過關，不算。
   return JSON.stringify({
-    p: s.presetId,
     b: s.behavior,
     t: s.turnTaking,
     s: s.surface,
     r: s.responseBiases,
-    h: s.habits,
   });
 }
 
@@ -833,14 +732,21 @@ const FREQUENCY_LABEL: Record<Frequency, string> = {
   often: "常用",
 };
 
+const LAUGHTER_LINE: Record<
+  ReplyStyleProfile["surface"]["laughter"]["mode"],
+  (frequency: string) => string
+> = {
+  rare: () => "幾乎不打哈哈，好笑也多半用一句話回",
+  short: (f) => `覺得好笑才打短短的哈哈（${f}）`,
+  long: (f) => `被逗到會打長串哈哈（${f}）`,
+  word: (f) => `好笑會用「笑死」這類字，不打哈哈（${f}）`,
+};
+
 /** 每回合注入的精簡風格描述（hidden guidance；只描述習慣，不放例句）。 */
 export function renderReplyStyleGuidance(s: ReplyStyleProfile): string {
-  const laughter = s.surface.laughter.frequency === "never" ||
-      s.surface.laughter.mode === "rare"
-    ? "幾乎不打哈哈，好笑也多半用一句話回"
-    : `覺得好笑才${
-      s.surface.laughter.mode === "long" ? "打長串哈哈" : "打短短的哈哈"
-    }（${FREQUENCY_LABEL[s.surface.laughter.frequency]}）`;
+  const laughter = LAUGHTER_LINE[s.surface.laughter.mode](
+    FREQUENCY_LABEL[s.surface.laughter.frequency],
+  );
   const emoji = s.surface.emoji.frequency === "never"
     ? "不用表情符號"
     : `表情符號${FREQUENCY_LABEL[s.surface.emoji.frequency]}${
@@ -856,8 +762,9 @@ export function renderReplyStyleGuidance(s: ReplyStyleProfile): string {
   const typo = s.surface.typoRate === "none"
     ? "不打錯字、不用注音"
     : "極少打錯字";
+  const [minC, maxC] = s.turnTaking.charRange;
   return `\n\n你平常的說話習慣（hidden guidance，這是你本人的樣子，不要向對方描述它）：
-- ${s.habits.join("；")}。
-- 打字：${punctuation}；${laughter}；${emoji}；${typo}。
+- ${s.habits.length > 0 ? s.habits.join("；") + "。" : "沒有特別明顯的習慣。"}
+- 打字：一則大概 ${minC}～${maxC} 字；${punctuation}；${laughter}；${emoji}；${typo}。
 - 這些是你的自然狀態，不是要表演；沒必要時就平淡地講。`;
 }

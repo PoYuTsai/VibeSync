@@ -96,6 +96,15 @@ export function applyStageFloor(
  * 標準模式沒有任何分數，下限只能用白話講給她聽。回合數是 server 算的，
  * 不讓模型自己數。
  */
+/** standard 模式的邀約回合下限是否已到（challenge 沒有下限，永遠 false）。 */
+export function standardInviteFloorReached(
+  userTurnCount: number,
+  difficulty: PracticeDifficulty = "normal",
+): boolean {
+  const floor = PACING_FLOORS[difficulty].invite;
+  return floor !== null && userTurnCount >= floor;
+}
+
 export function standardPacingLine(
   userTurnCount: number,
   mood?: PartnerMood | null,

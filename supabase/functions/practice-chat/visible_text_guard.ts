@@ -448,6 +448,12 @@ const INTERNAL_CHINESE_LABELS = [
   // 可能自然說出的場景句（誤殺面）→ 依審者建議拔除，只留指示標題。
   "系統指示保密",
   "系统指示保密",
+  // reply-style-v1 的兩個 hidden heading（Codex R1 P1）：只登記標題，不登記習慣
+  // 內容——把整張 style 卡加進禁詞會有粉紅大象效應（規格 §8）。
+  "你平常的說話習慣",
+  "你平常的说话习惯",
+  "本輪回應方式",
+  "本轮回应方式",
 ];
 
 export interface InternalLabelGuardOptions {
@@ -670,7 +676,7 @@ export function rejectL4UnsafeVisibleText(
 // 但 DeepSeek 在界線／查戶口輪偶爾用括號演情緒（reply-style run3–run5 量到
 // 1–5%）；加規則無效，機械擋＋重試。只擋「一則開頭」的短括號；句中的
 // 「杯具（悲劇）」這種註解不算。
-const STAGE_DIRECTION_RE = /^\s*[（(][^）)\n]{1,14}[）)]/u;
+const STAGE_DIRECTION_RE = /^\s*[（(【][^）)】\n]{1,20}[）)】]/u;
 
 export function hasStageDirection(value: string): boolean {
   return value.split("\n").some((line) => STAGE_DIRECTION_RE.test(line));
@@ -692,4 +698,6 @@ export function stripStageDirections(value: string, errorCode: string): string {
   return result;
 }
 
-const STAGE_DIRECTION_STRIP_RE = /^\s*(?:[（(][^）)\n]{1,14}[）)]\s*)+/u;
+// ponytail: 只抓每則開頭；「欸（冷淡）」這種句中旁白與「（不是啦）我只是…」這種
+// 合法插入語分不開，先接受。要更準要人工標記語料量 precision/recall。
+const STAGE_DIRECTION_STRIP_RE = /^\s*(?:[（(【][^）)】\n]{1,20}[）)】]\s*)+/u;

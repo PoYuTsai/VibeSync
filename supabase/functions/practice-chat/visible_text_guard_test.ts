@@ -716,3 +716,21 @@ Deno.test("括號旁白修補：剝掉開頭括號、空則丟掉、整段空才
   }
   assertEquals(threw, true);
 });
+
+Deno.test("reply-style 兩個 hidden heading 被模型複誦時要被攔；只複誦習慣內容不攔", () => {
+  for (
+    const text of [
+      "你平常的說話習慣：一則講完",
+      "本輪回應方式（hidden guidance）：先回答",
+      "本輪回應方式\n- 回 2 則",
+      "本轮回应方式：先回答",
+    ]
+  ) {
+    assertEquals(hasVisibleInternalLabelLeak(text), true, text);
+  }
+  assertEquals(
+    hasVisibleInternalLabelLeak("我平常講話就比較短啦 沒什麼習慣"),
+    false,
+  );
+  assertEquals(hasStageDirection("【已讀】\n嗯"), true);
+});
