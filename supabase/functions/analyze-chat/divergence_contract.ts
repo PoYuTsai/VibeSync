@@ -62,7 +62,7 @@ export const DIVERGENCE_PLAN_EVENT_KEYS = [
   ...DIVERGENCE_PLAN_REQUIRED_EVENT_KEYS,
   ...DIVERGENCE_PLAN_OPTIONAL_EVENT_KEYS,
 ] as const;
-const PLAN_KEYS = new Set<string>(DIVERGENCE_PLAN_EVENT_KEYS);
+const SNAPSHOT_KEYS = new Set<string>(DIVERGENCE_PLAN_FIELDS);
 const BRANCH_KEYS = new Set<string>(DIVERGENCE_BRANCH_FIELDS);
 
 /// finalResult 裡持久化但絕不送 client 的 key：計畫含從她訊息推出的
@@ -109,15 +109,23 @@ export interface DivergencePlanV1 {
   readonly styleBranchIds?: Readonly<Partial<Record<StreamStyle, string>>>;
 }
 
-/// 回 null 就是整個計畫不採用；不做部分修補，shadow 資料寧缺勿錯。
+/// 兩份契約：wire event（模型吐的那行）必須帶 `type`；server 快照（持久化的
+/// analysisDivergencePlan）不得帶 `type`。兩者都回 null 就是整份不採用；不做
+/// 部分修補，shadow 資料寧缺勿錯。
+export function parseDivergencePlanEvent(
+  value: unknown,
+): DivergencePlanV1 | null {
+  if (!isRecord(value)) return null;
+  if (value.type !== DIVERGENCE_PLAN_EVENT_TYPE) return null;
+  const { type: _type, ...snapshot } = value;
+  return parseDivergencePlanV1(snapshot);
+}
+
 export function parseDivergencePlanV1(
   value: unknown,
 ): DivergencePlanV1 | null {
   if (!isRecord(value)) return null;
-  if (Object.keys(value).some((key) => !PLAN_KEYS.has(key))) return null;
-  if (value.type !== undefined && value.type !== DIVERGENCE_PLAN_EVENT_TYPE) {
-    return null;
-  }
+  if (Object.keys(value).some((key) => !SNAPSHOT_KEYS.has(key))) return null;
   if (value.schemaVersion !== 1) return null;
   const threadFrame = shortText(value.threadFrame);
   const anchorSourceIndex = positiveInt(value.anchorSourceIndex);

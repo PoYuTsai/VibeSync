@@ -3,6 +3,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  parseDivergencePlanEvent,
   parseDivergencePlanV1,
   stripClientHiddenFinalResult,
 } from "./divergence_contract.ts";
@@ -38,19 +39,28 @@ export const VALID_PLAN = {
   styleBranchIds: { extend: "br_1", humor: "br_2" },
 };
 
-Deno.test("divergence plan parser accepts the §5.12 shape and strips the event type", () => {
-  const plan = parseDivergencePlanV1(VALID_PLAN);
+const { type: _eventType, ...VALID_SNAPSHOT } = VALID_PLAN;
+
+Deno.test("event parser needs the exact type and yields a type-less snapshot; snapshot parser rejects type", () => {
+  const plan = parseDivergencePlanEvent(VALID_PLAN);
   assert(plan);
   assertEquals(plan.schemaVersion, 1);
   assertEquals(plan.anchorSourceIndex, 1);
   assertEquals(plan.branchPool.length, 2);
   assertEquals(plan.styleBranchIds, { extend: "br_1", humor: "br_2" });
   assertEquals("type" in plan, false);
+  // wire event：缺 type 或錯 type 都整份作廢。
+  assertEquals(parseDivergencePlanEvent(VALID_SNAPSHOT), null);
+  assertEquals(
+    parseDivergencePlanEvent({ ...VALID_PLAN, type: "analysis.done" }),
+    null,
+  );
+  // server 快照：沒有 type 才合法；帶 type 是別人塞進來的。
+  assert(parseDivergencePlanV1(VALID_SNAPSHOT));
+  assertEquals(parseDivergencePlanV1(VALID_PLAN), null);
   // 沒有 styleBranchIds 也合法。
   const { styleBranchIds: _ignored, ...withoutStyles } = VALID_PLAN;
-  assert(parseDivergencePlanV1(withoutStyles));
-  const { type: _type, ...withoutType } = VALID_PLAN;
-  assert(parseDivergencePlanV1(withoutType));
+  assert(parseDivergencePlanEvent(withoutStyles));
 });
 
 Deno.test("divergence plan parser rejects any malformed field instead of repairing it", () => {
@@ -89,8 +99,6 @@ Deno.test("divergence plan parser rejects any malformed field instead of repairi
     },
     // prompt 說 2-8 枝；parser 同源，1 枝也拒。
     { ...VALID_PLAN, branchPool: [VALID_PLAN.branchPool[0]] },
-    // type 出現時必須就是 divergence_plan；沒有 type 的 server 快照仍合法。
-    { ...VALID_PLAN, type: "analysis.done" },
     // 未知欄位不接受：模型多塞的欄位可能是內部推理或訊息原文。
     { ...VALID_PLAN, reasoning: "leak" },
     {
@@ -102,9 +110,11 @@ Deno.test("divergence plan parser rejects any malformed field instead of repairi
     },
   ];
   for (const [index, candidate] of cases.entries()) {
-    assertEquals(parseDivergencePlanV1(candidate), null, `case ${index}`);
+    assertEquals(parseDivergencePlanEvent(candidate), null, `case ${index}`);
+    const { type: _type, ...snapshot } = candidate;
+    assertEquals(parseDivergencePlanV1(snapshot), null, `snapshot ${index}`);
   }
-  assertEquals(parseDivergencePlanV1(null), null);
+  assertEquals(parseDivergencePlanEvent(null), null);
   assertEquals(parseDivergencePlanV1("plan"), null);
 });
 

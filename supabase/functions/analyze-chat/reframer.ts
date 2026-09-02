@@ -28,7 +28,7 @@ import {
 import { STRETCH_LEVELS, type StretchLevel } from "./opener_payload.ts";
 import {
   type DivergencePlanV1,
-  parseDivergencePlanV1,
+  parseDivergencePlanEvent,
 } from "./divergence_contract.ts";
 
 function normalizeStretchLevel(value: unknown): StretchLevel {
@@ -892,7 +892,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       // 或壞掉的計畫一律丟掉且不算 valid event，所以 no-send 扣費快照永遠
       // 不會帶到計畫，空串流的錯誤／重試判定也不受影響。
       if (chargeCompleted && !noSendDecision && !analysisDivergencePlan) {
-        const plan = parseDivergencePlanV1(event);
+        const plan = parseDivergencePlanEvent(event);
         if (plan) {
           analysisDivergencePlan = plan;
           sawValidEvent = true;

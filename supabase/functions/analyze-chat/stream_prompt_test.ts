@@ -14,7 +14,7 @@ import {
   MAX_SEMANTIC_DISTANCE,
   MAX_SEMANTIC_DISTANCE_CAP,
   MIN_DIVERGENCE_BRANCHES,
-  parseDivergencePlanV1,
+  parseDivergencePlanEvent,
 } from "./divergence_contract.ts";
 import {
   buildSituationKnowledgeSection,
@@ -511,7 +511,7 @@ Deno.test("divergence plan step is v2-only, sits between the decision gate and t
   );
   assert(exampleLine);
   const example = JSON.parse(exampleLine.slice(examplePrefix.length));
-  assert(parseDivergencePlanV1(example));
+  assert(parseDivergencePlanEvent(example));
   assertEquals(
     Object.keys(example).sort(),
     [...DIVERGENCE_PLAN_EVENT_KEYS].sort(),
@@ -522,11 +522,10 @@ Deno.test("divergence plan step is v2-only, sits between the decision gate and t
   );
   // optional key 可省；required key 缺一個就整份作廢。
   const { styleBranchIds: _optional, ...withoutOptional } = example;
-  assert(parseDivergencePlanV1(withoutOptional));
+  assert(parseDivergencePlanEvent(withoutOptional));
   for (const key of DIVERGENCE_PLAN_REQUIRED_EVENT_KEYS) {
-    if (key === "type") continue; // server 快照沒有 type，parser 允許缺
     const { [key]: _removed, ...missing } = example;
-    assertEquals(parseDivergencePlanV1(missing), null, `missing ${key}`);
+    assertEquals(parseDivergencePlanEvent(missing), null, `missing ${key}`);
   }
   const [first, ...rest] = example.branchPool;
   const rejected: Record<string, unknown>[] = [
@@ -546,7 +545,7 @@ Deno.test("divergence plan step is v2-only, sits between the decision gate and t
   ];
   for (const [index, candidate] of rejected.entries()) {
     assertEquals(
-      parseDivergencePlanV1(candidate),
+      parseDivergencePlanEvent(candidate),
       null,
       `rejected case ${index}`,
     );

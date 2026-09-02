@@ -747,6 +747,17 @@ Deno.test("Phase 2a observability: divergence plan telemetry is numbers and enum
   });
   assertEquals("divergencePlan" in v1, false);
   // v2 但 no-send（含 acknowledge_and_stop）：帶著合法計畫也不算。
+  // v2 但 replyMode none（typed no-send 快照）：帶著合法計畫也不算。
+  const replyModeNone = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-2a",
+    contractVersion2: true,
+    finalResult: {
+      analysisDecisionV2: { ...sendDecision, replyMode: "none" },
+      analysisDivergencePlan: plan,
+    },
+  });
+  assertEquals("divergencePlan" in replyModeNone, false);
   for (
     const messageDecision of [
       "do_not_send",
