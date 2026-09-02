@@ -25,3 +25,15 @@ SHA-256、模型與時間；每案另存完整 client NDJSON（`clientText`）�
 
 歷史結果（`out/`）：run2＝18 案 2a 影子基線；run3＝延後變體×3；run9＝2b 迭代中
 的失敗樣本（method 混用、sourceIndex 手誤）；run10＝2b 驗收。
+
+## Phase 3a 評測器
+
+```sh
+deno run --allow-read tools/analyze-v2-blackbox/evaluate.ts <artifact.json> [--json]
+```
+
+語料在 `corpus.ts`（每案帶可確定性判定的期望值）。評測器不打網路，對照 §19.3 可
+確定性判定的 gates 打分：決策在期望集合、no-send 零卡、send 五 key 唯一、同開頭、
+問句／新話題／距離預算、歸因 invalid／unresolved、client 無計畫本文、延遲 ≤60s、
+輸出 ≤6500 token；任一 gate 失敗 exit 1。run12 基線：15/21（同開頭 3、問句 1、
+距離 1、延遲 1）。
