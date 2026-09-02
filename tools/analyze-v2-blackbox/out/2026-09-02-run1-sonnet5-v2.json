@@ -1,0 +1,587 @@
+[
+  {
+    "name": "soft_reject_after_invite",
+    "status": 200,
+    "elapsedMs": 16660,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.progress",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "acknowledge_and_stop",
+      "replyMode": "single",
+      "reason": "她明確婉拒這週六的邀約，且用『下次再看看』這種模糊說法收尾，沒有給出替代時間或反邀，這是禮貌但清楚的暫緩訊號，不是釣魚或欲拒還迎"
+    },
+    "replyOptions": [],
+    "doneKeys": [
+      "analysisDecisionV2",
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "stop",
+        "reason": "她明確婉拒這週六的邀約，且用『下次再看看』這種模糊說法收尾，沒有給出替代時間或反邀，這是禮貌但清楚的暫緩訊號，不是釣魚或欲拒還迎",
+        "stopCondition": "等她主動提到有空、或主動重新提起這個邀約",
+        "closingMessage": "好啊不急，妳忙完再說"
+      }
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-soft_reject_after_invite",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "invite.window_first",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "invite.own_availability",
+          "interpret.interest_signals"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "invite",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-soft_reject_after_invite",
+        "decisionSchema": "v2",
+        "decisionId": "unknown",
+        "action": "stop",
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "selectedStyle": "unknown",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 0,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "pausePursuit",
+        "meaningfulBallCoverage": {
+          "status": "unknown"
+        },
+        "questionCounts": {
+          "status": "unknown"
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": null,
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "warm_question_back",
+    "status": 200,
+    "elapsedMs": 34645,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.recommendation",
+      "analysis.reply_option",
+      "analysis.progress",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.progress",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "send",
+      "selectedStyle": "extend"
+    },
+    "replyOptions": [
+      {
+        "style": "extend",
+        "message": "恐怖片是我的主場沒錯，但其實雜食，黑色幽默的也愛。片荒的話可以試試《宿怨》，氣氛壓得很扎實。"
+      },
+      {
+        "style": "resonate",
+        "message": "片荒真的是最痛苦的狀態，什麼都不想看又很想看點東西。我最近在重刷《宿怨》，可以試試。"
+      },
+      {
+        "style": "tease",
+        "message": "我怕妳問完又被我嚇一次，但《宿怨》真的推，看完不要怪我。"
+      },
+      {
+        "style": "humor",
+        "message": "片荒我懂，我的解法通常是把自己嚇醒。《宿怨》可以試試，看完保證不荒但可能會怕開衣櫃。"
+      },
+      {
+        "style": "coldRead",
+        "message": "我猜妳嘴巴說被嚇到，其實心裡在期待下一部更狠的。要不要試試《宿怨》？"
+      }
+    ],
+    "doneKeys": [
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "finalRecommendation",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": true,
+      "plan": {
+        "schemaVersion": 1,
+        "threadFrame": "接她問的觀影偏好，用片荒當理由帶出一個具體推薦",
+        "anchorSourceIndex": 1,
+        "supportSourceIndices": [],
+        "mergeContextSourceIndices": [
+          2
+        ],
+        "semanticDistanceCap": 1,
+        "newTopicBudget": 0,
+        "questionBudget": 1,
+        "branchPool": [
+          {
+            "id": "br_1",
+            "sourceIndex": 1,
+            "method": "drill_down",
+            "idea": "承認偏好恐怖片但也雜食，順勢丟一部片",
+            "associationPath": [
+              "問平常看什麼",
+              "恐怖片起家",
+              "雜食但偏黑色幽默"
+            ],
+            "semanticDistance": 1
+          },
+          {
+            "id": "br_2",
+            "sourceIndex": 2,
+            "method": "affect_evaluation",
+            "idea": "片荒是常態，可以互相推坑",
+            "associationPath": [
+              "片荒",
+              "需要新片",
+              "互相推坑"
+            ],
+            "semanticDistance": 1
+          }
+        ],
+        "styleBranchIds": {
+          "extend": "br_1",
+          "resonate": "br_2"
+        }
+      },
+      "decisionV2": null
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-warm_question_back",
+        "knowledgeAtomIds": [
+          "core.one_judgment",
+          "core.small_step",
+          "interpret.high_investment",
+          "core.mutuality",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.no_motive_invention",
+          "interpret.interest_signals",
+          "reply.one_question",
+          "humor.not_oily"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "high_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-warm_question_back",
+        "decisionSchema": "unknown",
+        "decisionId": "unknown",
+        "action": "unknown",
+        "messageDecision": "unknown",
+        "replyMode": "unknown",
+        "selectedStyle": "extend",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 5,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "extendTopicStoryFrame",
+        "meaningfulBallCoverage": {
+          "status": "observed",
+          "meaningfulSourceIndices": [
+            1
+          ],
+          "coveredSourceIndicesByStyle": {
+            "extend": [
+              1
+            ],
+            "resonate": [
+              2
+            ],
+            "tease": [
+              1
+            ],
+            "humor": [
+              2
+            ],
+            "coldRead": [
+              1
+            ]
+          },
+          "allVariantsCoverMeaningful": false
+        },
+        "questionCounts": {
+          "status": "observed",
+          "byStyle": {
+            "extend": 0,
+            "resonate": 0,
+            "tease": 0,
+            "humor": 0,
+            "coldRead": 1
+          },
+          "maxQuestionCount": 1
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "observed",
+          "baselineStyle": "extend",
+          "sourceBallIdEvidence": "absent",
+          "sourceMessageEvidence": "complete",
+          "divergentStyles": [
+            "resonate",
+            "humor"
+          ],
+          "allMatch": false
+        },
+        "divergencePlan": {
+          "status": "observed",
+          "anchorSourceIndex": 1,
+          "supportCount": 0,
+          "mergeContextCount": 1,
+          "branchCount": 2,
+          "methods": {
+            "drill_down": 1,
+            "affect_evaluation": 1
+          },
+          "semanticDistanceCap": 1,
+          "maxBranchDistance": 1,
+          "branchExceedsCap": false,
+          "questionBudget": 1,
+          "questionBudgetExceeded": false,
+          "newTopicBudget": 0,
+          "newTopicBudgetExceeded": "unknown",
+          "anchorCoveredByAllStyles": false,
+          "styleBranchAssigned": 2
+        }
+      },
+      "completedKeys": [],
+      "usage": null,
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[ball_coverage] style=extend selected=true covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=resonate selected=false covered=0/1 indices=[] floor=1 segments=1 ok=false",
+      "[ball_coverage] style=tease selected=false covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=humor selected=false covered=0/1 indices=[] floor=1 segments=1 ok=false",
+      "[ball_coverage] style=coldRead selected=false covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  },
+  {
+    "name": "thin_opening",
+    "status": 200,
+    "elapsedMs": 28415,
+    "charged": true,
+    "eventTypes": [
+      "analysis.started",
+      "analysis.progress",
+      "analysis.progress",
+      "analysis.inventory",
+      "analysis.decision",
+      "analysis.recommendation",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.progress",
+      "analysis.reply_option",
+      "analysis.reply_option",
+      "analysis.metrics",
+      "analysis.coach_hint",
+      "analysis.done"
+    ],
+    "decision": {
+      "messageDecision": "send",
+      "selectedStyle": "extend"
+    },
+    "replyOptions": [
+      {
+        "style": "extend",
+        "message": "哈囉～今天過得如何？"
+      },
+      {
+        "style": "resonate",
+        "message": "哈囉，終於等到你回覆了"
+      },
+      {
+        "style": "tease",
+        "message": "哈囉，只有這樣嗎？我還以為妳會更熱情一點"
+      },
+      {
+        "style": "humor",
+        "message": "哈囉，我已經想好三個備用開場白，結果妳一個哈囉就把我打亂了"
+      },
+      {
+        "style": "coldRead",
+        "message": "感覺妳是那種話不多但觀察力很強的人"
+      }
+    ],
+    "doneKeys": [
+      "analysisEvidenceLinkage",
+      "analysisInventory",
+      "coachActionHint",
+      "dimensions",
+      "enthusiasm",
+      "finalRecommendation",
+      "gameStage",
+      "psychology",
+      "reminder",
+      "replies",
+      "replyOptions",
+      "scenarioDetected",
+      "strategy",
+      "streamingDecision",
+      "stretchLevels",
+      "targetProfile",
+      "telemetry",
+      "topicDepth",
+      "usage",
+      "warnings"
+    ],
+    "clientLeak": {
+      "divergencePlanEvent": false,
+      "divergenceInDone": false,
+      "textMentionsPlan": false
+    },
+    "server": {
+      "markDoneHasPlan": false,
+      "plan": null,
+      "decisionV2": null
+    },
+    "telemetry": {
+      "knowledge": {
+        "user": "00000000...",
+        "analysisRunId": "run-thin_opening",
+        "knowledgeAtomIds": [
+          "evidence.no_motive_invention",
+          "interpret.low_investment",
+          "reply.balance",
+          "reply.hold_is_valid",
+          "core.one_judgment",
+          "core.mutuality",
+          "core.authenticity",
+          "reply.grounded_facts",
+          "reply.no_placeholder",
+          "evidence.pattern_over_single"
+        ],
+        "knowledgeSignals": [
+          "always",
+          "low_investment",
+          "reply"
+        ]
+      },
+      "phase0": {
+        "schemaVersion": 1,
+        "user": "00000000...",
+        "analysisRunId": "run-thin_opening",
+        "decisionSchema": "unknown",
+        "decisionId": "unknown",
+        "action": "unknown",
+        "messageDecision": "unknown",
+        "replyMode": "unknown",
+        "selectedStyle": "extend",
+        "selectedBallCount": "unknown",
+        "betaRiskFlags": "unknown",
+        "solutionModeAllowed": "unknown",
+        "actionMismatch": "unknown",
+        "ballMismatch": "unknown",
+        "noSendConflict": "unknown",
+        "candidateCount": 5,
+        "legacyGiveUpBanner": false,
+        "legacyGiveUpConflict": false,
+        "coachActionType": "lowerPressureReply",
+        "meaningfulBallCoverage": {
+          "status": "observed",
+          "meaningfulSourceIndices": [
+            1
+          ],
+          "coveredSourceIndicesByStyle": {
+            "extend": [
+              1
+            ],
+            "resonate": [
+              1
+            ],
+            "tease": [
+              1
+            ],
+            "humor": [
+              1
+            ],
+            "coldRead": [
+              1
+            ]
+          },
+          "allVariantsCoverMeaningful": true
+        },
+        "questionCounts": {
+          "status": "observed",
+          "byStyle": {
+            "extend": 1,
+            "resonate": 0,
+            "tease": 1,
+            "humor": 0,
+            "coldRead": 0
+          },
+          "maxQuestionCount": 1
+        },
+        "topicJump": {
+          "status": "unknown"
+        },
+        "semanticDistance": {
+          "status": "unknown"
+        },
+        "solutionMode": {
+          "status": "unknown"
+        },
+        "fiveCardSourceDivergence": {
+          "status": "observed",
+          "baselineStyle": "extend",
+          "sourceBallIdEvidence": "absent",
+          "sourceMessageEvidence": "complete",
+          "divergentStyles": [],
+          "allMatch": true
+        },
+        "divergencePlan": {
+          "status": "unknown"
+        }
+      },
+      "completedKeys": [],
+      "usage": null,
+      "maxTokens": 6500
+    },
+    "logNames": [
+      "[analyze-chat] stream_knowledge_selected",
+      "[analyze-chat] stream_request_started",
+      "[ball_coverage] style=extend selected=true covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=resonate selected=false covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=tease selected=false covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=humor selected=false covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[ball_coverage] style=coldRead selected=false covered=1/1 indices=[1] floor=1 segments=1 ok=true",
+      "[analyze-chat] stream_phase0_observability",
+      "[analyze-chat] stream_request_succeeded"
+    ]
+  }
+]
