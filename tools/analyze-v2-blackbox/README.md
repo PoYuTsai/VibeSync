@@ -39,3 +39,13 @@ client 無計畫本文、延遲 ≤60s、輸出 ≤6500 token；任一 gate 失�
 pool 裡未用到的超 cap 枝、缺欄 invalid 只是度量。基線：run12 17/21、run13 18/21
 （剩：用到超 cap 枝 1–2、四張同開頭 1、問句 1、延遲 1）。3b 實驗：加「開頭規則」對
 同開頭無效（4 vs 3 案）已撤。
+
+## Phase 3c candidate guard（只度量）
+
+`_shared/social/candidate_guard.ts` 把 §15.2 第一層硬 gates 統一成 violation 清單，
+production 隨 `stream_phase0_observability.candidateGuard` 出（只記不擋）。評測器每案印
+`guard=<codes>`、彙總 `guard {...}`，不影響 pass／exit code。新 artifact 直接讀 telemetry；
+舊 artifact 從 `rawLines` 重建（guardrail 前的模型原始輸出；run12／run13 的 rawLines 沒留
+盤點球，球面四道出不來，之後的 run 會留）。run12：question_budget 1、semantic_distance_cap 1
+（與既有 gate 同案）；run13：card_source_mismatch 4（三案，與 phase0
+`fiveCardSourceDivergence` 同判）、semantic_distance_cap 2。

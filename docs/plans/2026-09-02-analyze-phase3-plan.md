@@ -15,6 +15,20 @@ Phase 2b 已上 main（`03b8f585`，Eric 接受 APPROVED_WITH_RISK）。Codex �
 
 完成定義（規格 §21）：release gates 自動化；每次 prompt／model／selector 變更有 decision diff。
 
+## 3c 進度（2026-09-03）
+
+- 已交付（telemetry-only）：`_shared/social/candidate_guard.ts` 十五碼 violation 清單
+  （replyMode↔卡數、決策↔action、variants action／balls 漂移、來源球不在盤點／略球／併球
+  獨占／接球未覆蓋、五卡來源不一致、placeholder、問句／新話題／距離預算、聯想無路徑、
+  no-send 藏卡），每道證據不足就不算檢查過（`checked`）；phase0 adapter 從 client 真正
+  拿到的結果組輸入，隨 `stream_phase0_observability.candidateGuard` 出；evaluate.ts 每案
+  印 guard 碼、彙總計數，不是 gate。輸出只有 code／style／sourceIndex／branchId。
+- 現況限制：現行 v2 send 決策沒帶 action／selectedBallIds／newTopicCount／semanticDistance，
+  那幾道在 production 會是「未檢查」；等 decision contract 補欄位自然接上。
+- 待 Eric 決定（3c 後半）：§15.3 selected-candidate repair-first 的降級策略——哪些碼
+  要進 repair（候選：skipped_ball_used／placeholder／no_send_with_cards）、bounded retry
+  幾次、失敗降級 do_not_send／need_context 的條件；先看 dogfood 一週的 candidateGuard 分佈。
+
 ## 3a 細節
 
 - 語料：`corpus.ts` 每案 `{ id, family, messages, expect }`，`expect` 先只放能確定性判定的：可接受 `messageDecision` 集合、send 時是否預期計畫、`questionBudget` 上限。其餘（stage／action／balls／atoms）等 3c／3e 再加。

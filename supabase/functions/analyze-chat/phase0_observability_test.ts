@@ -947,3 +947,158 @@ Deno.test("Phase 2b observability: sameOpeningCount counts cards whose normalize
   // 三張正規化後都是「當然有興」。
   assertEquals(divergence.sameOpeningCount, 3);
 });
+
+Deno.test("Phase 3c candidate guard: violations are derived from the delivered result without chat content", () => {
+  const telemetry = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-3c",
+    contractVersion2: true,
+    finalResult: {
+      analysisDecisionV2: {
+        schemaVersion: 2,
+        messageDecision: "send",
+        replyMode: "variants",
+        selectedStyle: "extend",
+        action: "extend",
+        selectedBallIds: ["b_1"],
+      },
+      analysisInventory: {
+        balls: [
+          {
+            sourceIndex: 1,
+            id: "b_1",
+            disposition: "接",
+            sourceMessage: "INVENTORY_SECRET",
+          },
+          {
+            sourceIndex: 2,
+            id: "b_2",
+            disposition: "略",
+            sourceMessage: "SKIPPED_SECRET",
+          },
+        ],
+      },
+      analysisDivergencePlan: {
+        schemaVersion: 1,
+        threadFrame: "FRAME_SECRET",
+        anchorSourceIndex: 1,
+        supportSourceIndices: [],
+        mergeContextSourceIndices: [],
+        semanticDistanceCap: 1,
+        newTopicBudget: 0,
+        questionBudget: 0,
+        branchPool: [
+          {
+            id: "br_1",
+            sourceIndex: 1,
+            method: "drill_down",
+            idea: "IDEA_SECRET",
+            associationPath: ["PATH_SECRET"],
+            semanticDistance: 1,
+          },
+          {
+            id: "br_2",
+            sourceIndex: 1,
+            method: "association",
+            idea: "IDEA_SECRET_TWO",
+            associationPath: [],
+            semanticDistance: 2,
+          },
+        ],
+      },
+      analysisEvidenceLinkage: {
+        schemaVersion: 1,
+        selectedStyle: "extend",
+        variants: {
+          extend: {
+            action: "extend",
+            selectedBallIds: ["b_1"],
+            selectedBranchIds: ["br_1"],
+            branchSource: "option",
+          },
+          tease: {
+            action: "extend",
+            selectedBallIds: ["b_1"],
+            selectedBranchIds: ["br_2"],
+            branchSource: "option",
+          },
+        },
+      },
+      replyOptions: {
+        extend: {
+          messages: [{
+            sourceIndex: 1,
+            sourceMessage: "HER_SECRET",
+            reply: "REPLY_SECRET_ONE",
+          }],
+        },
+        tease: {
+          messages: [
+            {
+              sourceIndex: 1,
+              sourceMessage: "HER_SECRET",
+              reply: "REPLY_SECRET_TWO？",
+            },
+            {
+              sourceIndex: 2,
+              sourceMessage: "SKIPPED_SECRET",
+              reply: "REPLY_SECRET [地點]",
+            },
+          ],
+        },
+      },
+      replies: {
+        extend: "REPLY_SECRET_ONE",
+        tease: "REPLY_SECRET_TWO？\nREPLY_SECRET [地點]",
+      },
+    },
+  });
+
+  assertEquals(telemetry.candidateGuard, {
+    violations: [
+      { code: "skipped_ball_used", style: "tease", sourceIndex: 2 },
+      { code: "card_source_mismatch", style: "tease" },
+      { code: "placeholder", style: "tease" },
+      { code: "question_budget", style: "tease" },
+      { code: "semantic_distance_cap", style: "tease", branchId: "br_2" },
+      { code: "association_without_path", style: "tease", branchId: "br_2" },
+    ],
+    checked: [
+      "reply_mode_card_count",
+      "decision_action_conflict",
+      "variant_action_drift",
+      "variant_ball_drift",
+      "source_ball_unknown",
+      "skipped_ball_used",
+      "merge_ball_isolated",
+      "caught_ball_uncovered",
+      "card_source_mismatch",
+      "placeholder",
+      "question_budget",
+      "semantic_distance_cap",
+      "association_without_path",
+      "no_send_with_cards",
+    ],
+  });
+  // 既有的 Phase 0 欄位照舊，guard 清單只是併進同一份 telemetry。
+  assertEquals(telemetry.actionMismatch, false);
+  assertEquals(telemetry.noSendConflict, "unknown");
+  const serialized = JSON.stringify(telemetry);
+  for (const secret of ["SECRET", "地點", "FRAME", "IDEA", "PATH_"]) {
+    assertFalse(serialized.includes(secret), secret);
+  }
+});
+
+Deno.test("Phase 3c candidate guard: a v1 result without typed evidence checks only what it can see", () => {
+  const telemetry = buildPhase0ObservabilityTelemetry({
+    user: "user-summary",
+    analysisRunId: "run-v1",
+    finalResult: {
+      replies: { extend: "REPLY_SECRET", tease: "REPLY_SECRET XX" },
+    },
+  });
+  assertEquals(telemetry.candidateGuard, {
+    violations: [{ code: "placeholder", style: "tease" }],
+    checked: ["placeholder"],
+  });
+});

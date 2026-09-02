@@ -149,3 +149,83 @@ Deno.test("evaluate: each gate trips on its own signal", () => {
   });
   assertEquals(lenient.passed, 1);
 });
+
+const PLAN = {
+  schemaVersion: 1,
+  threadFrame: "f",
+  anchorSourceIndex: 1,
+  supportSourceIndices: [],
+  mergeContextSourceIndices: [],
+  semanticDistanceCap: 1,
+  newTopicBudget: 0,
+  questionBudget: 0,
+  branchPool: [
+    {
+      id: "br_1",
+      sourceIndex: 1,
+      method: "drill_down",
+      idea: "i",
+      associationPath: ["p"],
+      semanticDistance: 1,
+    },
+    {
+      id: "br_2",
+      sourceIndex: 1,
+      method: "lateral",
+      idea: "j",
+      associationPath: ["q"],
+      semanticDistance: 1,
+    },
+  ],
+};
+
+Deno.test("evaluate: candidate guard violations come from telemetry, or are rebuilt from raw lines for older artifacts", () => {
+  const fromTelemetry = evaluateArtifact({
+    results: [send("warm_question_back", {
+      telemetry: {
+        usage: {},
+        phase0: {
+          candidateGuard: {
+            violations: [{ code: "placeholder", style: "tease" }],
+            checked: ["placeholder"],
+          },
+        },
+      },
+    })],
+  });
+  assertEquals(fromTelemetry.candidateGuard, { placeholder: 1 });
+  assertEquals(fromTelemetry.results[0].guard, ["placeholder"]);
+
+  const rebuilt = evaluateArtifact({
+    results: [send("warm_question_back", {
+      server: { plan: PLAN },
+      rawLines: [
+        { type: "analysis.inventory" },
+        {
+          type: "analysis.decision",
+          messageDecision: "send",
+          selectedStyle: "extend",
+        },
+        { type: "analysis.divergence_plan" },
+        {
+          type: "analysis.reply_option",
+          style: "extend",
+          segments: [{ sourceIndex: 1, sourceMessage: "m", reply: "a" }],
+        },
+        {
+          type: "analysis.reply_option",
+          style: "tease",
+          segments: [{ sourceIndex: 1, sourceMessage: "m", reply: "b？？" }],
+        },
+      ],
+    })],
+  });
+  assertEquals(rebuilt.candidateGuard, { question_budget: 1 });
+  assertEquals(rebuilt.results[0].guard, ["question_budget"]);
+  // 沒 telemetry 也沒 rawLines → 無從判定。
+  assertEquals(
+    evaluateArtifact({ results: [send("warm_question_back")] }).results[0]
+      .guard,
+    null,
+  );
+});

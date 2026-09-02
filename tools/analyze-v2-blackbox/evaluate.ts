@@ -2,6 +2,11 @@
 // 不打網路、不動 runtime；任一硬 gate 失敗 exit 1，之後 CI 可對已存 artifact 跑。
 //   deno run --allow-read tools/analyze-v2-blackbox/evaluate.ts <artifact.json> [--json]
 import { CORPUS, type CorpusCase, type MessageDecision } from "./corpus.ts";
+import {
+  parseDivergencePlanV1,
+  resolveStyleBranch,
+} from "../../supabase/functions/analyze-chat/divergence_contract.ts";
+import { candidateGuardFromFinalResult } from "../../supabase/functions/analyze-chat/phase0_observability.ts";
 
 export const MAX_LATENCY_MS = 60_000;
 export const MAX_OUTPUT_TOKENS = 6_500;
@@ -21,6 +26,8 @@ export interface CaseGateResult {
   readonly decision: string | null;
   readonly failures: readonly string[];
   readonly planObserved: boolean | null;
+  /// 3c candidate guard 違規碼（只度量，不是 gate）；null＝無從判定。
+  readonly guard: readonly string[] | null;
 }
 
 export interface EvalSummary {
@@ -28,6 +35,7 @@ export interface EvalSummary {
   readonly passed: number;
   readonly failures: Record<string, number>;
   readonly planObservedRate: number | null;
+  readonly candidateGuard: Record<string, number>;
   readonly results: readonly CaseGateResult[];
 }
 
@@ -69,6 +77,58 @@ function usedBranchExceedsCap(r: any): boolean {
   return [...used].some((id) => (distance.get(id) ?? 0) > cap);
 }
 
+/// 3c：candidate guard 清單。新 artifact 直接讀 telemetry；舊 artifact（run12／
+/// run13）從 rawLines 重建模型原始輸出再跑同一支 adapter——那是 guardrail 前的
+/// 版本，且舊 rawLines 沒留盤點球（只有 type），球面四道不會出現。
+// deno-lint-ignore no-explicit-any
+function candidateGuardOf(r: any): readonly string[] | null {
+  const fromTelemetry = r.telemetry?.phase0?.candidateGuard;
+  if (Array.isArray(fromTelemetry?.violations)) {
+    return fromTelemetry.violations.map((v: { code: string }) => v.code);
+  }
+  // deno-lint-ignore no-explicit-any
+  const raw: any[] = Array.isArray(r.rawLines) ? r.rawLines : [];
+  const options = raw.filter((l) =>
+    l?.type === "analysis.reply_option" && typeof l.style === "string"
+  );
+  const decision = r.server?.decisionV2 ??
+    raw.find((l) => l?.type === "analysis.decision");
+  if (!decision && options.length === 0) return null;
+  const inventory = raw.find((l) =>
+    l?.type === "analysis.inventory" && Array.isArray(l.balls)
+  );
+  const plan = parseDivergencePlanV1(r.server?.plan);
+  const finalResult = {
+    ...(decision
+      ? { analysisDecisionV2: { ...decision, schemaVersion: 2 } }
+      : {}),
+    ...(inventory ? { analysisInventory: inventory } : {}),
+    ...(plan ? { analysisDivergencePlan: plan } : {}),
+    analysisEvidenceLinkage: {
+      schemaVersion: 1,
+      ...(decision?.selectedStyle
+        ? { selectedStyle: decision.selectedStyle }
+        : {}),
+      variants: Object.fromEntries(options.map((o) => [
+        o.style,
+        plan
+          ? {
+            selectedBranchIds:
+              resolveStyleBranch(plan, o.style, o).selectedBranchIds,
+          }
+          : {},
+      ])),
+    },
+    replyOptions: Object.fromEntries(options.map((o) => [
+      o.style,
+      { messages: o.segments ?? o.messages ?? o.messageGroup ?? [] },
+    ])),
+  };
+  return candidateGuardFromFinalResult(finalResult).violations.map((v) =>
+    v.code
+  );
+}
+
 export function evaluateArtifact(
   artifact: Artifact,
   corpus: readonly CorpusCase[] = CORPUS,
@@ -76,6 +136,7 @@ export function evaluateArtifact(
   const expectById = new Map(corpus.map((c) => [c.id, c]));
   const results: CaseGateResult[] = [];
   const failures: Record<string, number> = {};
+  const candidateGuard: Record<string, number> = {};
   let planSends = 0;
   let planObservedCount = 0;
   for (const r of artifact.results) {
@@ -136,12 +197,17 @@ export function evaluateArtifact(
     }
     if (r.elapsedMs > MAX_LATENCY_MS) fail("latency_under_60s");
     if ((usage.output_tokens ?? 0) > MAX_OUTPUT_TOKENS) fail("output_budget");
+    const guard = candidateGuardOf(r);
+    for (const code of guard ?? []) {
+      candidateGuard[code] = (candidateGuard[code] ?? 0) + 1;
+    }
     results.push({
       id,
       family: spec?.family ?? "?",
       decision,
       failures: fails,
       planObserved: decision === "send" ? plan?.status === "observed" : null,
+      guard,
     });
   }
   return {
@@ -149,6 +215,7 @@ export function evaluateArtifact(
     passed: results.filter((r) => r.failures.length === 0).length,
     failures,
     planObservedRate: planSends > 0 ? planObservedCount / planSends : null,
+    candidateGuard,
     results,
   };
 }
@@ -168,7 +235,9 @@ if (import.meta.main) {
       console.log(
         `${r.failures.length === 0 ? "PASS" : "FAIL"} ${r.id.padEnd(28)} ${
           String(r.decision).padEnd(20)
-        } plan=${r.planObserved ?? "-"} ${r.failures.join(",")}`,
+        } plan=${r.planObserved ?? "-"} ${r.failures.join(",")}${
+          r.guard?.length ? ` guard=${r.guard.join(",")}` : ""
+        }`,
       );
     }
     console.log(
@@ -176,7 +245,9 @@ if (import.meta.main) {
         summary.planObservedRate === null
           ? "-"
           : (summary.planObservedRate * 100).toFixed(0) + "%"
-      }; failures ${JSON.stringify(summary.failures)}`,
+      }; failures ${JSON.stringify(summary.failures)}; guard ${
+        JSON.stringify(summary.candidateGuard)
+      }`,
     );
   }
   Deno.exit(summary.passed === summary.cases ? 0 : 1);

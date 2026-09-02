@@ -2,6 +2,11 @@
 // metadata. This module never changes a generated result or stream contract.
 
 import { isPlainObject } from "../_shared/quota.ts";
+import {
+  type CandidateGuardResult,
+  runCandidateGuard,
+} from "../_shared/social/candidate_guard.ts";
+import { parseBallInventory } from "./ball_inventory.ts";
 import { isStreamStyle, type StreamStyle } from "./stream_events.ts";
 import { COACH_ACTION_HINT_ACTION_TYPES } from "./post_process.ts";
 import {
@@ -930,7 +935,82 @@ export function buildPhase0ObservabilityTelemetry({
       finalResult,
     ),
     ...(divergence ? { divergencePlan: divergence } : {}),
+    candidateGuard: candidateGuardFromFinalResult(finalResult),
   };
+}
+
+/// Phase 3c（§15.2 第一層）：把 client 真正拿到的結果組成 candidate guard 的
+/// 正規化輸入跑一遍，違規清單併進同一份 telemetry；只記不擋。讀的路徑跟
+/// sourceDivergence 一樣（finalRecommendation／replyOptions／replies）。
+export function candidateGuardFromFinalResult(
+  finalResult: Record<string, unknown>,
+): CandidateGuardResult {
+  const decisionRecord = record(finalResult.analysisDecisionV2);
+  const decision = decisionRecord?.schemaVersion === 2 ? decisionRecord : null;
+  const linkage = record(finalResult.analysisEvidenceLinkage);
+  const variants = variantsFrom(linkage) ?? {};
+  const selectedStyle = selectedDeliveredStyle(finalResult, linkage ?? {});
+  const inventory = record(finalResult.analysisInventory);
+  const plan = parseDivergencePlanV1(finalResult.analysisDivergencePlan);
+
+  const styles = new Set<string>();
+  for (
+    const style of [
+      ...Object.keys(record(finalResult.replies) ?? {}),
+      ...Object.keys(record(finalResult.replyOptions) ?? {}),
+    ]
+  ) {
+    if (isStreamStyle(style)) styles.add(style);
+  }
+  if (selectedStyle) styles.add(selectedStyle);
+  const candidates = [...styles].flatMap((style) => {
+    const segments = replySegmentsForStyle(finalResult, style, selectedStyle) ??
+      [];
+    const text = deliveredReplyText(
+      finalResult,
+      style,
+      selectedStyle,
+      segments,
+    );
+    if (!text) return [];
+    const variant = variants[style] ?? {};
+    return [{
+      style,
+      text,
+      segments: segments.map((segment) => ({
+        sourceIndex: positiveIndices([segment.sourceIndex])?.[0],
+        sourceMessage: nonEmptyString(segment.sourceMessage) ?? undefined,
+      })),
+      action: variant.action,
+      selectedBallIds: variant.selectedBallIds,
+      newTopicCount: variant.newTopicCount,
+      semanticDistance: variant.semanticDistance,
+      selectedBranchIds: variant.selectedBranchIds,
+    }];
+  });
+
+  return runCandidateGuard({
+    decision: decision
+      ? {
+        messageDecision:
+          enumValue(decision.messageDecision, MESSAGE_DECISIONS) ??
+            undefined,
+        replyMode: enumValue(decision.replyMode, REPLY_MODES) ?? undefined,
+        action: enumValue(decision.action, ACTIONS) ?? undefined,
+        selectedBallIds: stringArray(decision.selectedBallIds) ?? undefined,
+        selectedStyle: selectedStyle ?? undefined,
+        questionBudget: nonNegativeNumber(decision.questionBudget) ?? undefined,
+        newTopicBudget: nonNegativeNumber(decision.newTopicBudget) ?? undefined,
+      }
+      : null,
+    // 盤點解析沿用 reframer 的 fail-soft 規則：沒有可接球就不驗球面。
+    dispositions: inventory
+      ? parseBallInventory({ ...inventory, type: "analysis.inventory" })
+        ?.dispositions ?? null
+      : null,
+    plan,
+    candidates,
+  });
 }
 
 /// Phase 2a shadow：只出數字與 enum，threadFrame／idea／associationPath 這些

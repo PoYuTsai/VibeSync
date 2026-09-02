@@ -283,7 +283,9 @@ async function runCase(name: string, messages: Msg[]) {
             const parsed = JSON.parse(l);
             return parsed.type === "analysis.divergence_plan" ||
                 parsed.type === "analysis.reply_option" ||
-                parsed.type === "analysis.decision"
+                parsed.type === "analysis.decision" ||
+                // 3c：盤點球留全文，evaluate 才能離線重跑球面 gates。
+                parsed.type === "analysis.inventory"
               ? parsed
               : { type: parsed.type };
           } catch {
