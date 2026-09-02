@@ -134,3 +134,7 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   跨輪狀態）：2400 場零失敗、守門退回 3、p50 936ms、最長 prompt 8894。整體比值 **2.14**（PR-3 時的
   run13 2.19、對照組 run14 0.99），persona 內 1.44（playful_extrovert）～2.04（slow_worker）。
   artifact sha256 01361858…。
+- `2026-09-03-coach-smoke-9e053e94.json`（偵測加寬：中文數字、單值、「基準／設定／系統」等一般字眼，
+  並存 raw）：Hint 關 19/20、開 **20/20**；Debrief 20/20、20/20；Moments 20/20、20/20。設定字眼外洩
+  0/120；基準數字形狀各中 1 則（關／開各一），人工看 raw 都是既有 partnerBubbleRhythm 的
+  「你也回 2-3 則」教練措辭，不是她的基準範圍。
