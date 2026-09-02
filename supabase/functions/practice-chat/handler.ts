@@ -46,6 +46,7 @@ import {
   buildDebriefMessages,
   PRACTICE_PROMPT_POLICY_VERSION,
 } from "./prompt.ts";
+import type { TurnResponsePlan } from "./turn_response_plan.ts";
 import { difficultyTuningFor } from "./practice_persona.ts";
 import {
   decideChatGate,
@@ -4197,46 +4198,47 @@ export function createPracticeChatHandler(
     });
     const herRecentMomentsBlock = herRecentMomentsPrompt(herRecentMoments);
 
-    // reply-style-v1（PR-2）：server-only 旗標；關閉或角色沒有 mapping 時
-    // prompt／守門／回應逐字與舊版相同（index_test 有 flag-off 位元組比對）。
-    // bundle 只算一次：兩次 attempt 共用同一份 plan，不會第二發換形狀。
-    const replyStyleEnabled =
-      deps.getEnv("PRACTICE_REPLY_STYLE_ENABLED") === "true";
-    const chatPromptBundle = buildChatPromptBundle(
-      request.turns,
-      request.profile,
-      assistedMode
-        ? {
-          replyStyle: replyStyleEnabled,
-          visiblePracticeThreadId: visibleThreadId,
-          practiceMode: request.practiceMode,
-          temperatureScore: currentTemperature ??
-            difficultyStartTemperature,
-          familiarityScore: currentFamiliarity ?? 0,
-          partnerState: promptPartnerState,
-          sceneContext,
-          acquaintanceOrigin,
-          memorySummary: promptMemorySummary,
-          timeContext: nowContext,
-          herRecentMomentsBlock,
-          gameState: ledgerGameState,
-        }
-        : {
-          replyStyle: replyStyleEnabled,
-          visiblePracticeThreadId: visibleThreadId,
-          partnerState: promptPartnerState,
-          sceneContext,
-          acquaintanceOrigin,
-          memorySummary: promptMemorySummary,
-          timeContext: nowContext,
-          herRecentMomentsBlock,
-        },
-    );
-    const responsePlan = chatPromptBundle.responsePlan;
-    let stageDirectionRepairs = 0;
-
     let reply: string | null = null;
+    let responsePlan: TurnResponsePlan | null = null;
+    let stageDirectionRepairs = 0;
     try {
+      // reply-style-v1（PR-2）：server-only 旗標；關閉或角色沒有 mapping 時
+      // prompt／守門／回應逐字與舊版相同（index_test 對 fee76b87 golden bytes 比對）。
+      // bundle 只算一次：兩次 attempt 共用同一份 plan，不會第二發換形狀；
+      // 純函式建構若丟錯，走與舊版相同的 practice_generation_failed 邊界（不重試）。
+      const replyStyleEnabled =
+        deps.getEnv("PRACTICE_REPLY_STYLE_ENABLED") === "true";
+      const chatPromptBundle = buildChatPromptBundle(
+        request.turns,
+        request.profile,
+        assistedMode
+          ? {
+            replyStyle: replyStyleEnabled,
+            visiblePracticeThreadId: visibleThreadId,
+            practiceMode: request.practiceMode,
+            temperatureScore: currentTemperature ??
+              difficultyStartTemperature,
+            familiarityScore: currentFamiliarity ?? 0,
+            partnerState: promptPartnerState,
+            sceneContext,
+            acquaintanceOrigin,
+            memorySummary: promptMemorySummary,
+            timeContext: nowContext,
+            herRecentMomentsBlock,
+            gameState: ledgerGameState,
+          }
+          : {
+            replyStyle: replyStyleEnabled,
+            visiblePracticeThreadId: visibleThreadId,
+            partnerState: promptPartnerState,
+            sceneContext,
+            acquaintanceOrigin,
+            memorySummary: promptMemorySummary,
+            timeContext: nowContext,
+            herRecentMomentsBlock,
+          },
+      );
+      responsePlan = chatPromptBundle.responsePlan;
       let lastError: unknown;
       for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
         try {

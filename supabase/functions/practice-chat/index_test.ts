@@ -27,6 +27,8 @@ import {
 } from "./acquaintance_origin.ts";
 import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
 import { replyStyleFor } from "./reply_style.ts";
+import { PLAN_SITUATIONS, REPLY_ACTS } from "./turn_response_plan.ts";
+import { REPLY_STYLE_HIDDEN_HEADINGS } from "./visible_text_guard.ts";
 
 const NOW = new Date("2026-06-28T04:00:00.000Z");
 const RESET_AT = "2026-06-28T00:00:00.000Z";
@@ -8765,21 +8767,24 @@ Deno.test("reply-style 旗標開啟＋有 mapping：注入 style 段、旁白修
     `policyStance=${style.policyStance}`,
   );
   assert(
-    /^[a-z_]+$/.test(style.primaryAct as string),
+    REPLY_ACTS.includes(style.primaryAct as never),
     `primaryAct=${style.primaryAct}`,
   );
   assert(
-    /^[a-z_]+$/.test(style.situation as string),
+    PLAN_SITUATIONS.includes(style.situation as never),
     `situation=${style.situation}`,
   );
   assert([1, 2, 3].includes(style.bubbleCount as number));
   assert([0, 1].includes(style.questionBudget as number));
   // 不記 style prompt 全文、也不記使用者文字：整筆 event 序列化都不得含哨兵。
   const serialized = JSON.stringify(succeeded);
-  assert(!serialized.includes("本輪回應方式"));
-  assert(!serialized.includes("你平常的說話習慣"));
+  for (const heading of REPLY_STYLE_HIDDEN_HEADINGS) {
+    assert(!serialized.includes(heading), heading);
+  }
   assert(!serialized.includes(USER_TEXT_SENTINEL));
-  assert(!serialized.includes("好啊"));
+  for (const bubble of ["好啊", "你呢", "好啊\n你呢"]) {
+    assert(!serialized.includes(bubble), bubble);
+  }
 });
 
 Deno.test("reply-style 旗標開啟：hidden heading 外洩會重試，且兩發共用同一份 prompt／plan", async () => {
@@ -8966,7 +8971,11 @@ const FLAG_OFF_GOLDEN = new Map<
 Deno.test("reply-style 旗標關／無 mapping：DeepSeek messages 與 Response bytes 逐位元組等於 fee76b87 golden", async () => {
   assertEquals(replyStyleFor(GOLDEN_UNMAPPED_PROFILE_ID), null);
   const cases = goldenCases();
-  assertEquals(cases.length, FLAG_OFF_GOLDEN.size);
+  assertEquals(new Set(cases.map((c) => c.name)).size, cases.length);
+  assertEquals(
+    cases.map((c) => c.name).sort(),
+    [...FLAG_OFF_GOLDEN.keys()].sort(),
+  );
   for (const c of cases) {
     const expected = FLAG_OFF_GOLDEN.get(c.name);
     assert(expected, `golden 缺少案例：${c.name}`);

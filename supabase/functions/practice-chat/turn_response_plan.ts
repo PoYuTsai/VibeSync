@@ -420,6 +420,39 @@ export function planTurnResponse(args: {
   };
 }
 
+/** runtime 列舉（telemetry 測試做 membership 用）；Record 型別保證漏一個就編譯錯。 */
+export const REPLY_ACTS: readonly ReplyAct[] = Object.keys(
+  {
+    acknowledge: true,
+    answer: true,
+    reciprocate: true,
+    self_disclose: true,
+    clarify: true,
+    tease: true,
+    soft_deflect: true,
+    direct_boundary: true,
+    redirect: true,
+    soft_close: true,
+  } satisfies Record<ReplyAct, true>,
+) as ReplyAct[];
+export const PLAN_SITUATIONS: readonly TurnResponsePlan["situation"][] = Object
+  .keys(
+    {
+      compliment: true,
+      early_invite: true,
+      mature_invite: true,
+      vulnerability: true,
+      failed_joke: true,
+      disagreement: true,
+      boundary: true,
+      memory_mismatch: true,
+      interrogation: true,
+      share: true,
+      question: true,
+      neutral: true,
+    } satisfies Record<TurnResponsePlan["situation"], true>,
+  ) as TurnResponsePlan["situation"][];
+
 const ACT_LINE: Record<ReplyAct, string> = {
   acknowledge: "接住對方剛說的那件事，回應它本身",
   answer: "直接回答對方的問題，不迴避",
