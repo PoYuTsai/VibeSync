@@ -25,6 +25,7 @@ import {
   MOMENT_PROMPT_MAX_CHARS,
   MOMENT_PROMPT_MIN_CHARS,
 } from "./moments_constants.ts";
+import { renderMomentStyleAdapter } from "./moments_prompt.ts";
 import {
   AVAILABLE_MOMENT_IMAGE_IDS,
   SELF_PORTRAIT_IMAGE_ID,
@@ -666,5 +667,38 @@ Deno.test("非觀點題材的 catalog 與自拍指示一字未動", () => {
     const selfie = catalogSystem(contentKind, [SELF_PORTRAIT_IMAGE_ID]);
     assert(selfie.includes("講你此刻的狀態、心情或樣子"));
     assertEquals(selfie.includes("照片只是此刻的你"), false);
+  }
+});
+
+Deno.test("reply-style（PR-5）：省略或 null 的 replyStyle 讓 prompt 逐字不變；有 style 時只多打字習慣，不帶則數／反問／邀約", async () => {
+  const { STYLE_BY_PROFILE_ID } = await import("./reply_style.ts");
+  const opts = {
+    girl,
+    themeId: "coffee_break",
+    contentKind: "daily_life" as const,
+    brief: "在常去的咖啡店坐一下，看窗外發呆",
+    dayPart: "afternoon" as const,
+    isoDate: "2026-08-22",
+    isWeekend: true,
+    slot: 0,
+    imageCandidates: [] as readonly string[],
+  };
+  const omitted = buildMomentMessages(opts);
+  const nulled = buildMomentMessages({ ...opts, replyStyle: null });
+  assertEquals(JSON.stringify(nulled), JSON.stringify(omitted));
+  assert(!joined(omitted).includes("你個人的打字習慣"));
+  for (const [id, style] of Object.entries(STYLE_BY_PROFILE_ID)) {
+    const styled = buildMomentMessages({ ...opts, replyStyle: style });
+    const system = styled[0].content;
+    assert(system.includes("你個人的打字習慣"), id);
+    assertEquals(styled[1].content, omitted[1].content, id);
+    // chat 專屬的東西不准進貼文（規格 §7.4）：只檢查 adapter 那一段。
+    const adapter = renderMomentStyleAdapter(style);
+    assert(system.includes(adapter), id);
+    for (const banned of ["則", "反問", "邀約", "bubble", style.presetId]) {
+      assert(!adapter.includes(banned), `${id}: ${banned}`);
+    }
+    assert(!/「[^」]{6,}」/u.test(adapter), `${id} 疑似例句`);
+    assert(!hasVisibleInternalLabelLeak(adapter), id);
   }
 });

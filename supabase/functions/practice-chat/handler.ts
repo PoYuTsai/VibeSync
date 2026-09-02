@@ -2032,6 +2032,9 @@ export function createPracticeChatHandler(
           apiKey: momentsDeepSeekKey,
           callDeepSeek: deps.callDeepSeek,
           waitUntil: deps.waitUntil,
+          // 貼文全域可見：只有 "true" 才開 style 層（"test" 不影響貼文）。
+          replyStyleEnabled:
+            deps.getEnv("PRACTICE_REPLY_STYLE_ENABLED") === "true",
           storagePublicUrlBase: supabaseUrl.length > 0
             ? `${supabaseUrl}/storage/v1/object/public/${MOMENT_IMAGE_BUCKET}`
             : undefined,

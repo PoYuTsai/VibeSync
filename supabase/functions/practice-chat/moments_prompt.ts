@@ -16,6 +16,7 @@
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import type { ChatMessage } from "./prompt.ts";
 import type { PersonaId, PracticeGirlProfile } from "./practice_persona.ts";
+import type { ReplyStyleProfile } from "./reply_style.ts";
 import { fnv1a, type MomentContentKind } from "./moments_schedule.ts";
 import {
   TAIPEI_DAY_PART_LABEL as DAY_PART_LABEL,
@@ -250,6 +251,49 @@ function imageDirective(
 /**
  * 組出貼文生成的訊息。輸入全是 server 事實，沒有任何使用者資料。
  */
+// ── reply-style-v1 PR-5：Moments channel adapter（規格 §7.4）──────────────
+// 同一人在私訊與貼文要有可辨認的底色，但只帶「打字表面」與「聊自己的深度」：
+// 標點、笑法、表情符號、語氣詞、錯字。**不帶** chat 的 bubbleRange、反問習慣、
+// 邀約反應——那些是私訊的東西，貼文沒有對象。旗標關或角色沒有 mapping 時省略，
+// prompt 逐字不變。
+const FREQ_WORD = {
+  never: "不用",
+  rare: "很少用",
+  sometimes: "偶爾用",
+  often: "常用",
+} as const;
+
+export function renderMomentStyleAdapter(s: ReplyStyleProfile): string {
+  const punctuation = {
+    minimal: "幾乎不加標點，靠空格或換行斷",
+    normal: "標點正常",
+    expressive: "會用刪節號或問號停頓",
+  }[s.surface.punctuation];
+  const laughter = {
+    rare: "幾乎不打哈哈",
+    short: `好笑才打短短的哈哈（${FREQ_WORD[s.surface.laughter.frequency]}）`,
+    long: `被逗到會打長串哈哈（${FREQ_WORD[s.surface.laughter.frequency]}）`,
+    word: `好笑用「笑死」這類字不打哈哈（${
+      FREQ_WORD[s.surface.laughter.frequency]
+    }）`,
+  }[s.surface.laughter.mode];
+  const emoji = s.surface.emoji.frequency === "never"
+    ? "不用表情符號"
+    : `表情符號${FREQ_WORD[s.surface.emoji.frequency]}${
+      s.surface.emoji.palette.length > 0
+        ? `（只用 ${s.surface.emoji.palette.join("")}）`
+        : ""
+    }`;
+  const particles = `語尾助詞${FREQ_WORD[s.surface.particles]}`;
+  const typo = s.surface.typoRate === "none" ? "不打錯字" : "極少打錯字";
+  const disclosure = s.behavior.disclosure[1] <= 1
+    ? "貼文很少講到自己的感受，多半只講事實或看到的東西"
+    : s.behavior.disclosure[1] === 2
+    ? "貼文偶爾透露一點自己的偏好"
+    : "貼文可以坦白一點自己的心情";
+  return `\n   你個人的打字習慣（與上一條同時成立，衝突時以這條為準；貼文可以比私訊完整）：${punctuation}；${laughter}；${emoji}；${particles}；${typo}；${disclosure}。`;
+}
+
 export function buildMomentMessages(opts: {
   girl: PracticeGirlProfile;
   themeId: string;
@@ -262,6 +306,8 @@ export function buildMomentMessages(opts: {
   imageCandidates: readonly string[];
   /** 生成配圖模式：候選必為空、imageId 恆 null，圖由背景 job 以文生圖。 */
   generatedImage?: boolean;
+  /** reply-style-v1（PR-5）：她的打字習慣；省略或 null＝prompt 逐字不變。 */
+  replyStyle?: ReplyStyleProfile | null;
 }): ChatMessage[] {
   const {
     girl,
@@ -291,7 +337,9 @@ ${girl.professionPrompt}
 2. 絕對不可以出現「你」或「妳」。不可以寫成問句，不可以要求別人回覆、按讚或私訊。
 3. 不可以提到任何特定的人、任何對話內容、任何跟誰約好的事。這則貼文只講你自己。
 4. 不可以出現真實品牌、真實店名、真實地址、真實帳號或真實網址。
-5. 你打字的樣子（語感，比內容更重要）：${voice}
+5. 你打字的樣子（語感，比內容更重要）：${voice}${
+      opts.replyStyle ? renderMomentStyleAdapter(opts.replyStyle) : ""
+    }
 6. ${characterLens}你平常在意的是${girl.interestTags.join("、")}，生活習慣是${
       girl.lifestyleTags.join("、")
     }。這些是素材庫，不是每一則都要塞進去。

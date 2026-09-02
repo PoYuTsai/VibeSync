@@ -169,7 +169,11 @@ let modelIndex = 0;
 
 function run(
   harness: Harness,
-  overrides: { now?: Date; fillDeadlineMs?: number } = {},
+  overrides: {
+    now?: Date;
+    fillDeadlineMs?: number;
+    replyStyleEnabled?: boolean;
+  } = {},
 ) {
   modelIndex = 0;
   const model = harness.options.model;
@@ -180,6 +184,7 @@ function run(
     isTestAccount: false,
     deps: {
       apiKey: "test-key",
+      replyStyleEnabled: overrides.replyStyleEnabled,
       fillDeadlineMs: overrides.fillDeadlineMs ?? 400,
       planFor: harness.options.planFor,
       randomToken: () => `token-${Math.random().toString(36).slice(2, 10)}`,
@@ -1290,4 +1295,42 @@ Deno.test("配圖貼文：候選只可能是可用素材，且原樣回給 clien
   );
   const posts = body(result).posts as { imageId: string | null }[];
   assert(posts.some((post) => post.imageId === chosen));
+});
+
+Deno.test("reply-style（PR-5）：deps.replyStyleEnabled 才把她的打字習慣放進貼文 prompt；省略時 system 逐字不變", async () => {
+  const queenieId = "practice_girl_094";
+  const harnessFor = () =>
+    makeHarness({
+      unlocked: [{ profileId: queenieId }],
+      existing: [{
+        profile_id: queenieId,
+        post_date: "2026-08-20",
+        slot: 0,
+        day_part: "morning",
+        theme_id: "coffee_start",
+        body: VALID_BODY,
+        image_id: null,
+        created_at: "2026-08-19T23:05:00.000Z",
+      }],
+      planFor: ({ girl, time }) => ({
+        profileId: girl.profileId,
+        isoDate: time.isoDate,
+        slots: [],
+      }),
+      slotStates: [
+        { profile_id: queenieId, slot: 0, claimable: false },
+        { profile_id: queenieId, slot: 1, claimable: true },
+      ],
+    });
+  const off = harnessFor();
+  await run(off, { now: END_OF_DAY });
+  const on = harnessFor();
+  await run(on, { now: END_OF_DAY, replyStyleEnabled: true });
+  assertEquals(off.modelCalls.length, 1);
+  assertEquals(on.modelCalls.length, 1);
+  assert(!off.modelCalls[0].system.includes("你個人的打字習慣"));
+  assert(on.modelCalls[0].system.includes("你個人的打字習慣"));
+  assert(
+    on.modelCalls[0].system.startsWith(off.modelCalls[0].system.slice(0, 200)),
+  );
 });

@@ -52,6 +52,7 @@ import {
 import { shiftIsoDate } from "./moments_date.ts";
 import { momentPostedAtFor } from "./moments_time.ts";
 import { buildMomentMessages } from "./moments_prompt.ts";
+import { replyStyleFor } from "./reply_style.ts";
 import { validateMomentDraft } from "./moments_validate.ts";
 import {
   type TaipeiDayPart,
@@ -95,6 +96,11 @@ export interface MomentsSupabaseClient {
 export interface MomentsHandlerDeps {
   callDeepSeek: (args: DeepSeekArgs) => Promise<string>;
   apiKey: string;
+  /**
+   * reply-style-v1（PR-5）：貼文是全域的、所有人看得到，所以只有旗標 "true"
+   * 才開（"test" 只對測試帳號的私訊生效，不影響貼文）。省略＝關。
+   */
+  replyStyleEnabled?: boolean;
   /** 測試注入用；預設 crypto.randomUUID。 */
   randomToken?: () => string;
   /**
@@ -872,6 +878,9 @@ async function fillOneSlot(opts: {
           .isWeekend,
         imageCandidates,
         generatedImage,
+        replyStyle: deps.replyStyleEnabled
+          ? replyStyleFor(girl.profileId)
+          : null,
       }),
       maxTokens: MOMENT_MODEL_MAX_TOKENS,
       temperature: MOMENT_MODEL_TEMPERATURE,
