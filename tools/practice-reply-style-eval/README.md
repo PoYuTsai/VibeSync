@@ -138,3 +138,6 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   並存 raw）：Hint 關 19/20、開 **20/20**；Debrief 20/20、20/20；Moments 20/20、20/20。設定字眼外洩
   0/120；基準數字形狀各中 1 則（關／開各一），人工看 raw 都是既有 partnerBubbleRhythm 的
   「你也回 2-3 則」教練措辭，不是她的基準範圍。
+- `2026-09-03-run18-baseline100-x2.json`（9e053e94 同 HEAD、同時段的 100 位 `--style=0` 配對組）：
+  2400 場零失敗、守門退回 0、p50 848ms。整體比值 **0.90**，persona 內 0.75～0.87；對 run16 style 開
+  2.14／1.44～2.04——同一 HEAD 配對下差異仍來自 style 層。
