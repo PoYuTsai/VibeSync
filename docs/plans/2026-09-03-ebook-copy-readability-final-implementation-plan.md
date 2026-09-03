@@ -1029,7 +1029,7 @@ ebook_shelf_section.dart 的註解記錄 2026-08-09 已拍板：
 
 ### 19.8 工作包 3 紀錄（2026-09-03）
 
-- 分支 `claude/ebook-copy-wp3-density`，基底 `claude/ebook-copy-wp2-structure` @ `1a665d9`（PR #63 尚未合併；PR 先以它為 base，合併後改回 main）。`flutter-ci.yml` 只在 base 為 main 的 PR 上跑，所以堆疊中的 PR 要等 base 改回 main 才有 CI。
+- 分支 `claude/ebook-copy-wp3-density`，原本自工作包 2 的 head `1a665d9` 切出；做到一半 Eric 把 #62、#63 合併進 main（`9cdd6d0`）並刪掉兩條分支，於是 rebase 到 main、PR 直接以 main 為 base（`flutter-ci.yml` 只在 base 為 main 的 PR 上跑）。Eric 在 #63 後段補的工具修正（`V = 0` 這種帶空白的英數運算子也保留）rebase 後重跑門檻全過。
 - 第 8 節工作包 3 的異動全部落地：一欄多段的欄位全拆（R04 14 → 0）；超過 120 字的段落拆成兩三段（第 5–7 冊 50 → 5）；內嵌 ✕／✓ 的 9 段改 comparison；藏在句子裡的清單改 bulletList（5.4 四個跡象、6.6 兩種陷阱、7.1 三要素）；5.6 保留 chapter id、加「先辨認互動感受」「再選擇回應方式」兩個 heading；6.3 對照表拆兩張、label 寫回應方式；7.4 教練旁白移出對話。區塊 541 → 606；第 1–4 冊 0 變動；不升 `contentVersion`。
 - 與計劃字面不同：規格說「58 個一欄多段的欄位」，實際依 audit 口徑是 14 個含雙換行的 paragraph＋5 個單換行（後者全是 ✕／✓ 兩行）；其餘是超過 120 字的單段，這次一併拆。三段帶著工作包 4 禁用詞 key 且句子在段尾的（6.6 p1、7.6 p3、7.6 p6）刻意不拆，留給工作包 4 整段重寫。
 - 稽核 106 → 47：R04 歸零、R06 52 → 7（第 1–4 冊 2、章名 2、上面三段），R09／R10／R12／R13 不變；新發現 0；`--parent-baseline` 對 main 與工作包 2 都無放大。

@@ -1,6 +1,6 @@
 # 工作包 3：第 5–7 冊結構降密度 報告
 
-日期：2026-09-03　基底：`claude/ebook-copy-wp2-structure` @ `1a665d9`（PR #63，尚未合併）　分支：`claude/ebook-copy-wp3-density`
+日期：2026-09-03　基底：main `9cdd6d0`（PR #62、#63 合併後；分支原本自工作包 2 的 head 切出，兩個 PR 合併後 rebase 到 main）　分支：`claude/ebook-copy-wp3-density`
 規格：`docs/plans/2026-09-03-ebook-copy-readability-final-implementation-plan.md` 第 8 節「工作包 3」與第 9.5–9.7 節帳本裡的結構項；交接文件 `docs/plans/2026-09-03-ebook-copy-wp3-handoff.md`。
 
 ## 一句話
@@ -12,7 +12,7 @@
 - 依 block id 逐一改正式 JSON。拆段用「在指定句子開頭切開」，切完的片段串回去必須等於原文（腳本斷言），所以字沒有動；只有變成 label 或清單結構的記號（「✕」「✓」、「你說」、「第一種是」、「第一個是」、「硬框架：」、括號）從內文移走。
 - 新段落的 id 一律 `<原id>-p2`、`-p3`；改型別保留原 id；殘留問題留在原 id 上（`--baseline` 新發現 0）。
 - 改完跑 `normalize_ebook_copy.py --write`（0 欄位需要改）；不升 `contentVersion`。
-- 一次性腳本不進 repo；差異清單可用 `compare_ebook_import.py --official <工作包 2 的七冊> --candidate assets/learning/ebooks` 重算。
+- 一次性腳本不進 repo；差異清單可用 `compare_ebook_import.py --official <main 9cdd6d0 的七冊> --candidate assets/learning/ebooks` 重算（第 5–7 冊在 #63 之後沒有其他變動）。
 
 ## 規模
 

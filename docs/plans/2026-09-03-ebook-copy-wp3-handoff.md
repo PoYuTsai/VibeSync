@@ -4,7 +4,7 @@
 
 ## 0. 一句話
 
-工作包 0–2 已各自成 PR；工作包 3 的分支 `claude/ebook-copy-wp3-density` 已從工作包 2 的 head 切出並推上遠端，這份文件是它的第一個 commit。工作包 3 的範圍是「第 5–7 冊只降密度、不改立場」：一欄多段拆開、內嵌 ✕／✓ 改 comparison、長清單改 bulletList、第 5 冊第 6 章加兩個 heading、caption／annotation／summary 只留一句。P0 語意改寫（canonical rules）是工作包 4，口吻與比喻是工作包 6，不要順手做。
+工作包 0–2 已各自成 PR；工作包 3 的分支 `claude/ebook-copy-wp3-density` 已推上遠端（#62／#63 合併後已 rebase 到 main），這份文件是它的第一個 commit。工作包 3 的範圍是「第 5–7 冊只降密度、不改立場」：一欄多段拆開、內嵌 ✕／✓ 改 comparison、長清單改 bulletList、第 5 冊第 6 章加兩個 heading、caption／annotation／summary 只留一句。P0 語意改寫（canonical rules）是工作包 4，口吻與比喻是工作包 6，不要順手做。
 
 ## 1. 現況
 
@@ -12,9 +12,9 @@
 |---|---|
 | 規格 | `docs/plans/2026-09-03-ebook-copy-readability-final-implementation-plan.md`；工作包 3 讀 §8「工作包 3」、§9.5–9.7、§4.3–4.4、§12.3；已完成紀錄在 §19.1–19.7 |
 | PR #61 工作包 0 | 已 Squash Merge 進 main（`c323be2`）；ADR #45 生效，正式 JSON 是唯一真源 |
-| PR #62 工作包 1 | open，base `main`，head `claude/ebook-copy-wp1-punctuation` @ `8788bec`，標籤 `next:eric-ai`，CI 有跑 |
-| PR #63 工作包 2 | open，base `claude/ebook-copy-wp1-punctuation`，head `claude/ebook-copy-wp2-structure` @ `1a665d9`，標籤 `next:eric-ai`。**目前沒有 CI**：`flutter-ci.yml` 只在 `pull_request` 且 base 為 `main` 時跑；#62 合併後把 base 改回 main，再把 main merge 進分支一次（不要 empty commit）讓 CI 跑 |
-| 工作包 3 分支 | `claude/ebook-copy-wp3-density`，切自 `1a665d9`；PR 先以 `claude/ebook-copy-wp2-structure` 為 base（同樣沒有 CI），#63 合併後改回 main |
+| PR #62 工作包 1 | 已 Squash Merge 進 main（`7666010`），分支已刪 |
+| PR #63 工作包 2 | 已 Squash Merge 進 main（`9cdd6d0`），分支已刪；Eric 在合併前補了 4 個 commit（工具：`V = 0` 帶空白也保留），標籤改 `next:bruce`（Bruce 校對 1–4 冊） |
+| 工作包 3 分支 | `claude/ebook-copy-wp3-density`，原自 `1a665d9` 切出，#62／#63 合併後 rebase 到 main `9cdd6d0`；PR 直接以 main 為 base，CI 會跑 |
 | 分支授權 | Eric 在 PR #61 留言：工作包 1 起每包開新分支、一包一 PR。session 的預設分支 `claude/advanced-interaction-guide-optimization-d0c43k` 不再使用 |
 | 環境 | 容器沒有 Flutter：Dart 測試只在 PR CI 跑（且只有 base=main 的 PR）。本機門檻：工具單元測試、`normalize --check`、`audit --baseline`、`compare` |
 
