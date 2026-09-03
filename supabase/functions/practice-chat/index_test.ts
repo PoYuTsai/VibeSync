@@ -9438,11 +9438,15 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
   const upsert = state.rpcCalls.find((r) =>
     r.fn === "upsert_practice_relationship_thread"
   )!.params.p_recent_facts as Record<string, unknown>;
+  // Codex P1：priorChallengeIssued 只認實際發生的質疑（forcedAct 或 Phase 2
+  // 分類器 aiChallengedLastTurn），不再因為 bounded allowedActs 裡「允許過」
+  // challenge_relevance 就記成已質疑——這一輪是 bounded（forcedAct=null），
+  // 不是 forced，所以還沒真的發生。
   assertEquals(upsert.conversationAgency, {
     version: 1,
     lastCoherence: "disconnected",
     unresolvedCount: 1,
-    priorChallengeIssued: true,
+    priorChallengeIssued: false,
     lastAgencyAct: null,
   });
 });
@@ -9503,8 +9507,8 @@ Deno.test("agency 旗標關：telemetry conversationAgency 為 null，既有 con
   assertEquals(upsert.conversationAgency, existing);
 });
 
-Deno.test("agency 旗標開＋reply-style 關：system prompt 仍套用改寫（兩支旗標互相獨立）", async () => {
-  const { state } = await runCapturingLogs(
+Deno.test("agency 旗標開＋reply-style 關：system prompt 仍套用改寫，且獨立算出 agency guidance（Codex P1 解耦）", async () => {
+  const { state, succeeded } = await runCapturingLogs(
     {
       ledger: ledger({ practice_mode: "standard" }),
       env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
@@ -9514,5 +9518,13 @@ Deno.test("agency 旗標開＋reply-style 關：system prompt 仍套用改寫（
   );
   const system = state.deepSeekCalls[0].messages[0].content;
   assert(system.includes("你不負責救場"));
-  assert(!system.includes("本輪回應方式"), "style 關就不該有 turn plan");
+  // Codex P1：舊版 reply-style 關閉時 agency 完全不介入（bug）；現在 agency
+  // 的證據／決策與 turn guidance 獨立於 style，一樣會套用（不再要求兩支旗標
+  // 綁在一起才生效）。
+  assert(
+    system.includes("本輪回應方式（hidden guidance"),
+    "style 關閉也要有獨立的 agency guidance",
+  );
+  const agency = succeeded?.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.applied, true);
 });

@@ -28,9 +28,9 @@ import {
   type ResponseSituation,
 } from "./reply_style.ts";
 import {
-  type AgencyDecision,
-  type AgencyMode,
+  type AgencyApplication,
   agencyPolicyFor,
+  type AgencyMode,
   type ConversationAgencyState,
   detectAgencyEvidence,
   isClarifyingAct,
@@ -177,14 +177,6 @@ export interface TurnResponsePlan {
   readonly questionBudget: 0 | 1;
   readonly disclosureDepth: "none" | "fact" | "preference" | "emotion";
   readonly seed: number;
-  /**
-   * conversation-agency-v1（旗標 off＝null，逐字與接線前相同）。
-   * `applied=false` 是 shadow 模式或這一輪不介入：只記 telemetry，不改 prompt。
-   */
-  readonly agency: {
-    readonly decision: AgencyDecision;
-    readonly applied: boolean;
-  } | null;
 }
 
 // FNV-1a：穩定特徵與本回合變化各自的 seed（規格 §4.6）。
@@ -274,6 +266,40 @@ export function classifySituation(
   return "neutral";
 }
 
+/**
+ * conversation-agency-v1（Codex P1「與 reply-style 解耦」）：agency block 獨立
+ * 於 style／planTurnResponse 計算，`PRACTICE_REPLY_STYLE_ENABLED` 關閉時一樣
+ * 能算出結構證據與 bounded／forced act。呼叫端（`buildChatPromptBundle`）先用
+ * `classifySituation` 算出 `situation`（不論有沒有 style 都能算），再傳進來；
+ * agency 只接管既有 planner 判不出東西的 `neutral` 輪——安全、越界、邀約、記憶
+ * 衝突、查戶口、稱讚、不同意、問句、分享的既有優先權一律不動。
+ */
+export function computeAgencyDecision(args: {
+  turns: readonly PracticeTurn[];
+  situation: TurnResponsePlan["situation"];
+  /** 省略／off＝與接線前逐字相同（回傳 null，不算任何東西）。 */
+  agencyMode?: AgencyMode;
+  /** assisted 模式 thread 的 recent_facts.conversationAgency；standard 傳 null。 */
+  agencyState?: ConversationAgencyState | null;
+}): AgencyApplication | null {
+  const agencyMode = args.agencyMode ?? "off";
+  if (agencyMode === "off") return null;
+  const raw = agencyPolicyFor(
+    detectAgencyEvidence(args.turns, args.agencyState ?? null),
+  );
+  const decision = args.situation === "neutral" ? raw : {
+    ...raw,
+    situation: null,
+    forcedAct: null,
+    allowedActs: [] as readonly PlanAct[],
+    allowedActSetId: "none",
+  };
+  return {
+    decision,
+    applied: agencyMode === "on" && decision.situation !== null,
+  };
+}
+
 export function planTurnResponse(args: {
   turns: readonly PracticeTurn[];
   style: ReplyStyleProfile;
@@ -281,33 +307,17 @@ export function planTurnResponse(args: {
   replyTempo?: "short" | "normal" | "engaged" | null;
   /** 綁 thread／情境；同一 request 重試要拿到同一份 plan。 */
   seedKey: string;
-  /** conversation-agency-v1 旗標；省略＝off＝與接線前逐字相同。 */
-  agencyMode?: AgencyMode;
-  /** assisted 模式 thread 的 recent_facts.conversationAgency；standard 傳 null。 */
-  agencyState?: ConversationAgencyState | null;
+  /**
+   * 呼叫端（`buildChatPromptBundle`）已用 `computeAgencyDecision` 算好的結果；
+   * 只用來調整則數（hold／收尾壓到最少），不擁有計算邏輯——`TurnResponsePlan`
+   * 本身只管 style，agency 决策住在 bundle 的 `agencyDecision` 欄位。
+   */
+  agency?: AgencyApplication | null;
 }): TurnResponsePlan {
   const signals = detectTurnSignals(args.turns);
   const policyStance = policyStanceFor(signals, args.evidence);
   const situation = classifySituation(signals, policyStance);
-  // agency 只接管既有 planner 判不出東西的 `neutral` 輪；安全、越界、邀約、記憶
-  // 衝突、查戶口、稱讚、不同意、問句、分享的既有優先權一律不動。
-  const agencyMode = args.agencyMode ?? "off";
-  const agency = agencyMode === "off" ? null : (() => {
-    const raw = agencyPolicyFor(
-      detectAgencyEvidence(args.turns, args.agencyState ?? null),
-    );
-    const decision = situation === "neutral" ? raw : {
-      ...raw,
-      situation: null,
-      forcedAct: null,
-      allowedActs: [] as readonly PlanAct[],
-      allowedActSetId: "none",
-    };
-    return {
-      decision,
-      applied: agencyMode === "on" && decision.situation !== null,
-    };
-  })();
+  const agency = args.agency ?? null;
   const seed = fnv1a(
     `${args.seedKey}|${signals.userTurnCount}|${REPLY_STYLE_VERSION}`,
   );
@@ -473,7 +483,6 @@ export function planTurnResponse(args: {
     questionBudget,
     disclosureDepth,
     seed,
-    agency,
   };
 }
 
@@ -550,8 +559,8 @@ const AGENCY_ACT_LINE: Partial<Record<PlanAct, string>> = {
   end_low_value_loop: "這串聊不下去了，短短收掉，不要再接新的詞",
 };
 
-function agencyActsLine(plan: TurnResponsePlan): string {
-  const agency = plan.agency;
+/** 獨立於 TurnResponsePlan：style 開或關都能算，只吃 agencyDecision 本身。 */
+export function agencyActsLine(agency: AgencyApplication | null): string {
   if (!agency?.applied) return "";
   const line = (act: PlanAct) =>
     AGENCY_ACT_LINE[act] ?? ACT_LINE[act as ReplyAct];
@@ -577,6 +586,7 @@ const CONDITIONAL_LINE: Record<"vulnerable" | "joke", string> = {
 export function renderTurnPlan(
   plan: TurnResponsePlan,
   style?: Pick<ReplyStyleProfile, "behavior">,
+  agency?: AgencyApplication | null,
 ): string {
   const soft = plan.situation === "boundary" &&
     (style?.behavior.directness[1] ?? 4) <= 2;
@@ -594,16 +604,21 @@ export function renderTurnPlan(
     `${CONDITIONAL_LINE[c.when]}，就${ACT_LINE[c.act]}。`
   ).join("");
   // 澄清型 act 不吃問題預算（報告 §P0-2：「不查戶口」被誤寫成「不要好奇」）。
-  const agencyApplied = plan.agency?.applied ?? false;
-  const clarifyingAllowed = agencyApplied &&
-    (plan.agency?.decision.allowedActs.some(isClarifyingAct) ?? false);
+  // Codex P2：既有 planner 自己判成 clarify（primaryAct／optionalAct）時也要
+  // 豁免，不能只看 agency 已 applied 的 allowedActs——不然 primaryAct 是
+  // clarify、但問題預算被別的規則（例如首輪查戶口門檻）壓回 0 時，這裡會跟
+  // ACT_LINE 的「直接問清楚」自相矛盾地印出「這輪不反問」。
+  const agencyApplied = agency?.applied ?? false;
+  const clarifyingAllowed = plan.primaryAct === "clarify" ||
+    plan.optionalAct === "clarify" ||
+    (agencyApplied && (agency?.decision.allowedActs.some(isClarifyingAct) ?? false));
   const question = plan.questionBudget === 1
     ? "最多問一句。"
     : clarifyingAllowed
     ? "這輪不主動查他的基本資料；問清楚他這句的意思或拉回前一題不算。"
     : "這輪不反問。";
   const disclosure = DISCLOSURE_LINE[plan.disclosureDepth];
-  const agencyLine = agencyActsLine(plan);
+  const agencyLine = agencyActsLine(agency ?? null);
   const first = agencyLine ? agencyLine : `先${acts}`;
   const tail = agencyApplied
     ? "回應依整段脈絡，不必服從最新一個詞；「接住」也可以是說你聽不懂、不相關，或前一題還沒回答。問清楚或指出跳題的時候就只做那件事，不要同一則裡又把那個詞當成新話題聊起來"

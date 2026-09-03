@@ -961,7 +961,7 @@ Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling"
           agencyMode: "on",
         },
       );
-      assertEquals(agencyBundle.responsePlan?.agency?.applied, false);
+      assertEquals(agencyBundle.agencyDecision?.applied, false);
       const agencyLength = agencyBundle.messages.reduce(
         (total, m) => total + m.content.length,
         0,
@@ -999,7 +999,7 @@ Deno.test("conversation-agency-v1：agency 介入那一輪的 turn plan 增量�
     ...shared,
     agencyMode: "on",
   });
-  assertEquals(on.responsePlan?.agency?.applied, true);
+  assertEquals(on.agencyDecision?.applied, true);
   const delta = on.messages[0].content.length - off.messages[0].content.length;
   assert(delta > 0, "agency 介入時必須真的改寫 prompt");
   assert(delta <= 270, `agency 介入輪淨增 ${delta}`);
@@ -1011,7 +1011,7 @@ Deno.test("conversation-agency-v1：agency 介入那一輪的 turn plan 增量�
     profile,
     { ...shared, agencyMode: "on" },
   );
-  assertEquals(longTail.responsePlan?.agency?.applied, false);
+  assertEquals(longTail.agencyDecision?.applied, false);
 });
 
 Deno.test("conversation-agency-v1：旗標開時三段衝突規則被替換，關閉時逐字保留", () => {

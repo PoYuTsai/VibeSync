@@ -4276,7 +4276,9 @@ export function createPracticeChatHandler(
           },
       );
       responsePlan = chatPromptBundle.responsePlan;
-      agencyDecision = responsePlan?.agency ?? null;
+      // conversation-agency-v1（Codex P1）：獨立於 responsePlan，replyStyle 關閉
+      // 或角色沒有 mapping 時一樣有值。
+      agencyDecision = chatPromptBundle.agencyDecision;
       let lastError: unknown;
       for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
         try {
@@ -4293,8 +4295,9 @@ export function createPracticeChatHandler(
           rejectVisibleInternalLabelLeak(reply, "chat_internal_label_leak", {
             // 第二刀 A 組：NPC 引用對話裡出現過的詞不是機制外洩。
             transcript: request.turns.map((turn) => turn.text).join("\n"),
-            // 只有 style 層真的注入時才多攔兩個 hidden heading（旗標關閉零改動）。
-            ...(responsePlan
+            // style 層或 agency-only guidance 真的注入時才多攔 hidden heading
+            // （旗標全關時兩者皆無，零改動）。
+            ...(responsePlan || agencyDecision?.applied
               ? { extraChineseLabels: REPLY_STYLE_HIDDEN_HEADINGS }
               : {}),
           });

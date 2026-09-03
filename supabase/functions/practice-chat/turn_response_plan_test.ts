@@ -7,12 +7,14 @@ import {
 import {
   ACCEPTING_ACTS,
   classifySituation,
+  computeAgencyDecision,
   detectTurnSignals,
   planTurnResponse,
   type PolicyEvidence,
   policyStanceFor,
   renderTurnPlan,
 } from "./turn_response_plan.ts";
+import type { AgencyMode } from "./conversation_agency.ts";
 import { STYLE_BY_PROFILE_ID } from "./reply_style.ts";
 import type { PracticeTurn } from "./validate.ts";
 import type { PracticeDifficulty } from "./practice_persona.ts";
@@ -680,33 +682,56 @@ Deno.test("截圖重現：Joyce 的「紅豆泥」目前也是 neutral → ackno
 });
 
 // ── conversation-agency-v1（Phase 1）：agency 開啟後翻轉上面三條 ───────────
-// 同一份逐字稿、同一組純函式，只多帶 `agencyMode: "on"`。旗標關閉時上面兩個
-// 測試仍然逐字成立（renderTurnPlan 的 flag-off 逐字相同另有測試守）。
+// 同一份逐字稿、同一組純函式，只多帶 agency 決策。旗標關閉時上面兩個測試
+// 仍然逐字成立（renderTurnPlan 的 flag-off 逐字相同另有測試守）。
+//
+// Codex P1「與 reply-style 解耦」：`planTurnResponse` 不再自己算 agency，
+// 呼叫端（這裡與 `buildChatPromptBundle` 一樣）先用 `classifySituation` 算
+// situation，再交給 `computeAgencyDecision`，最後把結果傳進
+// `planTurnResponse`／`renderTurnPlan`。
+
+function agencyFor(
+  turns: PracticeTurn[],
+  evidence: PolicyEvidence,
+  agencyMode: AgencyMode,
+) {
+  const signals = detectTurnSignals(turns);
+  const situation = classifySituation(signals, policyStanceFor(signals, evidence));
+  return computeAgencyDecision({ turns, situation, agencyMode });
+}
 
 function agencyPlan(
   turns: PracticeTurn[],
   difficulty: PracticeDifficulty,
   profileId: string,
 ) {
-  return planTurnResponse({
+  const evidence = standard({ difficulty });
+  const agency = agencyFor(turns, evidence, "on");
+  const plan = planTurnResponse({
     turns,
     style: STYLE_BY_PROFILE_ID[profileId],
-    evidence: standard({ difficulty }),
+    evidence,
     seedKey: "screenshot",
-    agencyMode: "on",
+    agency,
   });
+  return { plan, agency };
 }
 
 Deno.test("截圖重現（agency 開）：Alice 的「好市多」改成維持立場，不再硬接", () => {
-  const plan = agencyPlan(ALICE_SCREENSHOT, "normal", "practice_girl_001");
+  const { plan, agency } = agencyPlan(
+    ALICE_SCREENSHOT,
+    "normal",
+    "practice_girl_001",
+  );
   assertEquals(plan.situation, "neutral");
-  assertEquals(plan.agency?.applied, true);
-  assertEquals(plan.agency?.decision.situation, "repeated_low_coherence");
-  assertEquals(plan.agency?.decision.policyMode, "forced");
-  assertEquals(plan.agency?.decision.forcedAct, "hold_position");
+  assertEquals(agency?.applied, true);
+  assertEquals(agency?.decision.situation, "repeated_low_coherence");
+  assertEquals(agency?.decision.policyMode, "forced");
+  assertEquals(agency?.decision.forcedAct, "hold_position");
   const rendered = renderTurnPlan(
     plan,
     STYLE_BY_PROFILE_ID["practice_girl_001"],
+    agency,
   );
   assert(!rendered.includes("先接住對方剛說的那件事"), rendered);
   assert(rendered.includes("維持你剛才的保留"), rendered);
@@ -714,72 +739,99 @@ Deno.test("截圖重現（agency 開）：Alice 的「好市多」改成維持�
 });
 
 Deno.test("截圖重現（agency 開）：Joyce 的「紅豆泥」同樣不再硬接", () => {
-  const plan = agencyPlan(JOYCE_SCREENSHOT, "challenge", "practice_girl_026");
-  assertEquals(plan.agency?.applied, true);
-  assertEquals(plan.agency?.decision.forcedAct, "hold_position");
-  assertEquals(plan.agency?.decision.evidence.unresolvedCount, 3);
+  const { agency } = agencyPlan(
+    JOYCE_SCREENSHOT,
+    "challenge",
+    "practice_girl_026",
+  );
+  assertEquals(agency?.applied, true);
+  assertEquals(agency?.decision.forcedAct, "hold_position");
+  assertEquals(agency?.decision.evidence.unresolvedCount, 3);
 });
 
 Deno.test("agency shadow：decision 有值但 applied=false，renderTurnPlan 逐字等於旗標關", () => {
+  const evidence = standard({ difficulty: "normal" });
+  const style = STYLE_BY_PROFILE_ID["practice_girl_001"];
   const off = planTurnResponse({
     turns: ALICE_SCREENSHOT,
-    style: STYLE_BY_PROFILE_ID["practice_girl_001"],
-    evidence: standard({ difficulty: "normal" }),
+    style,
+    evidence,
     seedKey: "screenshot",
   });
+  const shadowAgency = agencyFor(ALICE_SCREENSHOT, evidence, "shadow");
   const shadow = planTurnResponse({
     turns: ALICE_SCREENSHOT,
-    style: STYLE_BY_PROFILE_ID["practice_girl_001"],
-    evidence: standard({ difficulty: "normal" }),
+    style,
+    evidence,
     seedKey: "screenshot",
-    agencyMode: "shadow",
+    agency: shadowAgency,
   });
-  assertEquals(off.agency, null);
-  assertEquals(shadow.agency?.applied, false);
-  assertEquals(shadow.agency?.decision.situation, "repeated_low_coherence");
-  assertEquals({ ...shadow, agency: null }, off);
-  const style = STYLE_BY_PROFILE_ID["practice_girl_001"];
-  assertEquals(renderTurnPlan(shadow, style), renderTurnPlan(off, style));
+  assertEquals(agencyFor(ALICE_SCREENSHOT, evidence, "off"), null);
+  assertEquals(shadowAgency?.applied, false);
+  assertEquals(shadowAgency?.decision.situation, "repeated_low_coherence");
+  assertEquals(shadow, off);
+  assertEquals(
+    renderTurnPlan(shadow, style, shadowAgency),
+    renderTurnPlan(off, style, null),
+  );
 });
 
 Deno.test("agency 只接管 neutral：越界、邀約、記憶衝突的既有優先權不動", () => {
+  const evidence = standard({ difficulty: "normal" });
+  const style = STYLE_BY_PROFILE_ID["practice_girl_001"];
+  const boundaryTurns = [
+    u("韓國"),
+    a("？"),
+    u("東京"),
+    a("蛤"),
+    u("想看你的泳裝照"),
+  ];
+  const boundaryAgency = agencyFor(boundaryTurns, evidence, "on");
   const boundary = planTurnResponse({
-    turns: [u("韓國"), a("？"), u("東京"), a("蛤"), u("想看你的泳裝照")],
-    style: STYLE_BY_PROFILE_ID["practice_girl_001"],
-    evidence: standard({ difficulty: "normal" }),
+    turns: boundaryTurns,
+    style,
+    evidence,
     seedKey: "t",
-    agencyMode: "on",
+    agency: boundaryAgency,
   });
   assertEquals(boundary.situation, "boundary");
   assertEquals(boundary.primaryAct, "direct_boundary");
-  assertEquals(boundary.agency?.applied, false);
-  assertEquals(boundary.agency?.decision.situation, null);
+  assertEquals(boundaryAgency?.applied, false);
+  assertEquals(boundaryAgency?.decision.situation, null);
 
+  const inviteTurns = [
+    u("韓國"),
+    a("？"),
+    u("東京"),
+    a("蛤"),
+    u("週末要不要出來"),
+  ];
+  const inviteAgency = agencyFor(inviteTurns, evidence, "on");
   const invite = planTurnResponse({
-    turns: [u("韓國"), a("？"), u("東京"), a("蛤"), u("週末要不要出來")],
-    style: STYLE_BY_PROFILE_ID["practice_girl_001"],
-    evidence: standard({ difficulty: "normal" }),
+    turns: inviteTurns,
+    style,
+    evidence,
     seedKey: "t",
-    agencyMode: "on",
+    agency: inviteAgency,
   });
   assertEquals(invite.situation, "early_invite");
-  assertEquals(invite.agency?.applied, false);
+  assertEquals(inviteAgency?.applied, false);
 });
 
 Deno.test("問題預算豁免：澄清型 act 在預算 0 時仍可問，查戶口不行", () => {
+  const evidence = standard({ difficulty: "normal" });
+  const style = STYLE_BY_PROFILE_ID["practice_girl_001"];
   // 第一輪＋一般難度＝既有規則把問題預算歸零。
+  const agency = agencyFor([u("韓國")], evidence, "on");
   const plan = planTurnResponse({
     turns: [u("韓國")],
-    style: STYLE_BY_PROFILE_ID["practice_girl_001"],
-    evidence: standard({ difficulty: "normal" }),
+    style,
+    evidence,
     seedKey: "t",
-    agencyMode: "on",
+    agency,
   });
   assertEquals(plan.questionBudget, 0);
-  const rendered = renderTurnPlan(
-    plan,
-    STYLE_BY_PROFILE_ID["practice_girl_001"],
-  );
+  const rendered = renderTurnPlan(plan, style, agency);
   assert(!rendered.includes("這輪不反問。"), rendered);
   assert(rendered.includes("這輪不主動查他的基本資料"), rendered);
   assert(rendered.includes("問清楚他這句的意思或拉回前一題不算"), rendered);
@@ -787,9 +839,25 @@ Deno.test("問題預算豁免：澄清型 act 在預算 0 時仍可問，查戶�
   // 強制 hold／收尾沒有澄清型 act＝仍然是原本的「這輪不反問」。
   const held = agencyPlan(ALICE_SCREENSHOT, "normal", "practice_girl_001");
   assert(
-    renderTurnPlan(held, STYLE_BY_PROFILE_ID["practice_girl_001"]).includes(
-      "這輪不反問。",
-    ),
+    renderTurnPlan(held.plan, style, held.agency).includes("這輪不反問。"),
+  );
+
+  // Codex P2：既有 planner 判成 clarify（不經過 agency）時，問題預算就算被
+  // 別的規則壓回 0，也不能印出跟 primaryAct 自相矛盾的「這輪不反問」。
+  const memoryMismatchTurns = [
+    u("上次你不是說你在台北"),
+  ];
+  const clarifyPlan = planTurnResponse({
+    turns: memoryMismatchTurns,
+    style,
+    evidence: standard({ difficulty: "normal", hasMemorySummary: false }),
+    seedKey: "t",
+  });
+  assertEquals(clarifyPlan.primaryAct, "clarify");
+  const clarifyRendered = renderTurnPlan(clarifyPlan, style, null);
+  assert(
+    !clarifyRendered.includes("這輪不反問。"),
+    `primaryAct=clarify 不該印「這輪不反問」：${clarifyRendered}`,
   );
 });
 
@@ -810,9 +878,10 @@ Deno.test("renderTurnPlan：旗標關與 agency=null 的輸出逐字相同（gol
         evidence: standard({ difficulty: "normal" }),
         seedKey: "t",
       });
-      assertEquals(off.agency, null);
       assert(
-        renderTurnPlan(off, style).includes("內容要接到對方最新一句的具體內容"),
+        renderTurnPlan(off, style, null).includes(
+          "內容要接到對方最新一句的具體內容",
+        ),
         profileId,
       );
     }

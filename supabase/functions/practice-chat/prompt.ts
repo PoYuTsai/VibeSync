@@ -11,7 +11,13 @@ import {
   type ReplyStyleProfile,
 } from "./reply_style.ts";
 import {
+  agencyActsLine,
+  classifySituation,
+  computeAgencyDecision,
+  detectTurnSignals,
   planTurnResponse,
+  type PolicyEvidence,
+  policyStanceFor,
   renderTurnPlan,
   type TurnResponsePlan,
 } from "./turn_response_plan.ts";
@@ -69,6 +75,7 @@ import {
 } from "./game_fsm.ts";
 import type { ReplyStyleState } from "./reply_style_state.ts";
 import type {
+  AgencyApplication,
   AgencyMode,
   ConversationAgencyState,
 } from "./conversation_agency.ts";
@@ -686,10 +693,17 @@ export interface ChatPromptBundle {
   messages: ChatMessage[];
   /** reply-style 開啟且該角色有 mapping 時才有；handler 記 telemetry 用。 */
   responsePlan: TurnResponsePlan | null;
+  /**
+   * conversation-agency-v1（Codex P1「與 reply-style 解耦」）：獨立於
+   * `responsePlan` 算出，`replyStyle` 關閉、角色沒有 mapping 時一樣有值——
+   * agency 的證據／決策／telemetry 不吃 style 旗標。旗標未開＝null；
+   * `shadow` 有值但 `applied=false`（prompt 逐字不變，只記 telemetry）。
+   */
+  agencyDecision: AgencyApplication | null;
 }
 
-/** agency 旗標未開＝null；`shadow` 有值但 `applied=false`（prompt 逐字不變）。 */
-export type ChatAgencyDecision = NonNullable<TurnResponsePlan["agency"]>;
+/** @deprecated 用 `AgencyApplication`（從 conversation_agency.ts 匯出）。 */
+export type ChatAgencyDecision = AgencyApplication;
 
 /** chat 模式：system + 對話歷史（user→user / ai→assistant）。 */
 export function buildChatMessages(
@@ -819,32 +833,48 @@ export function buildChatPromptBundle(
       partnerMood: options.partnerState?.mood ?? null,
     })
     : null;
+  // conversation-agency-v1（Codex P1「與 reply-style 解耦」）：PolicyEvidence／
+  // signals／situation 全部與 style 無關，不論 `replyStyle` 開關都能算——
+  // agencyDecision 因此不寄生在 `responsePlan` 底下，`replyStyle` 關閉或角色
+  // 沒有 mapping 時一樣有結構證據與 bounded／forced act（Codex P1 原文：
+  // 「reply-style 關閉時，核心 agency planner 與 shadow telemetry 都消失」）。
+  const policyEvidence: PolicyEvidence = {
+    practiceMode: options.practiceMode ?? "standard",
+    difficulty: profile.difficulty,
+    partnerMood,
+    inviteStage: inviteMaturity?.stage ?? null,
+    gameRepairPriority: gameSnapshot?.repairPriority ?? false,
+    gameRealityFlagCount: gameSnapshot?.realityFlags.length ?? 0,
+    gameInviteDirection: gameSnapshot?.speedInviteDirection ?? null,
+    gameGreasy: gameSnapshot?.failureStates.includes("GREASY") ?? false,
+    hasMemorySummary: Boolean(options.memorySummary?.trim()),
+    priorDecline: options.styleState?.priorDecline ?? false,
+    userOverEscalated: looksOverEscalated(
+      turns.filter((t) => t.role === "user").at(-1)?.text ?? "",
+    ),
+    recentActs: options.styleState?.recentActs ?? [],
+  };
+  const agencySignals = detectTurnSignals(turns);
+  const agencySituation = classifySituation(
+    agencySignals,
+    policyStanceFor(agencySignals, policyEvidence),
+  );
+  const agencyDecision = computeAgencyDecision({
+    turns,
+    situation: agencySituation,
+    agencyMode,
+    agencyState: options.agencyState ?? null,
+  });
   const responsePlan = style
     ? planTurnResponse({
       turns,
       style,
-      evidence: {
-        practiceMode: options.practiceMode ?? "standard",
-        difficulty: profile.difficulty,
-        partnerMood,
-        inviteStage: inviteMaturity?.stage ?? null,
-        gameRepairPriority: gameSnapshot?.repairPriority ?? false,
-        gameRealityFlagCount: gameSnapshot?.realityFlags.length ?? 0,
-        gameInviteDirection: gameSnapshot?.speedInviteDirection ?? null,
-        gameGreasy: gameSnapshot?.failureStates.includes("GREASY") ?? false,
-        hasMemorySummary: Boolean(options.memorySummary?.trim()),
-        priorDecline: options.styleState?.priorDecline ?? false,
-        userOverEscalated: looksOverEscalated(
-          turns.filter((t) => t.role === "user").at(-1)?.text ?? "",
-        ),
-        recentActs: options.styleState?.recentActs ?? [],
-      },
+      evidence: policyEvidence,
       replyTempo: options.sceneContext?.replyTempo ?? null,
       seedKey: `${profile.girl.profileId}|${
         options.visiblePracticeThreadId ?? ""
       }`,
-      agencyMode,
-      agencyState: options.agencyState ?? null,
+      agency: agencyDecision,
     })
     : null;
   // 組裝順序＝優先順序（規格 §5.1）：安全／身份／現實錨定 → 人設 → 說話習慣
@@ -881,14 +911,31 @@ export function buildChatPromptBundle(
           gameSnapshot,
         })
       }${temperaturePrompt}${invitePrompt}${
-        responsePlan && style ? renderTurnPlan(responsePlan, style) : ""
+        responsePlan && style
+          ? renderTurnPlan(responsePlan, style, agencyDecision)
+          : renderAgencyOnlyGuidance(agencyDecision)
       }${difficultyBehaviorPrompt(profile, styleLayer, agencyPrompt)}${
         promptPriorityResolver(options.practiceMode, styleLayer)
       }`,
     },
     ...history,
   ];
-  return { messages, responsePlan };
+  return { messages, responsePlan, agencyDecision };
+}
+
+/**
+ * style 層沒有渲染（`replyStyle` 關閉或角色沒有 mapping）時的獨立 agency
+ * guidance——沒有 `TurnResponsePlan` 可用（沒有 bubbleCount／questionBudget
+ * 這些 style 專屬欄位），只給 act 指示本身，標題與 `renderTurnPlan` 共用
+ * （`REPLY_STYLE_HIDDEN_HEADINGS` 攔截時兩邊視同一種 hidden heading）。
+ */
+function renderAgencyOnlyGuidance(agency: AgencyApplication | null): string {
+  if (!agency?.applied) return "";
+  const line = agencyActsLine(agency);
+  if (!line) return "";
+  return `\n\n本輪回應方式（hidden guidance，不要向對方提及）：
+- ${line}。
+- 回應依整段脈絡，不必服從最新一個詞；「接住」也可以是說你聽不懂、不相關，或前一題還沒回答。問清楚或指出跳題的時候就只做那件事，不要同一則裡又把那個詞當成新話題聊起來。`;
 }
 
 function relationshipStageInstruction(
