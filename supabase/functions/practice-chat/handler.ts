@@ -50,7 +50,9 @@ import {
 import type { TurnResponsePlan } from "./turn_response_plan.ts";
 import { nextReplyStyleState } from "./reply_style_state.ts";
 import {
+  type AgencyClassifierSignal,
   agencyModeFor,
+  type AgencyMode,
   nextConversationAgencyState,
 } from "./conversation_agency.ts";
 import { replyStyleFor, type ReplyStyleProfile } from "./reply_style.ts";
@@ -126,6 +128,7 @@ import {
 } from "./relationship_thread.ts";
 import {
   applyChallengeRewardGate,
+  applyCoherenceDeltaCap,
   applyLearningClassification,
   applyPartnerStateUpdate,
   buildTurnClassifierMessages,
@@ -1335,6 +1338,10 @@ async function judgeLearningState(opts: {
   reply: string;
   /** reply-style-v1（PR-4）：她的個人基準給 partnerMood 分類器；null＝逐字不變。 */
   replyStyle?: ReplyStyleProfile | null;
+  /** conversation-agency-v1 Phase 2：off＝分類器 prompt／schema 與 delta 逐字不變。 */
+  agencyMode?: AgencyMode;
+  /** 這一輪 agency 證據算出的 unresolvedCount；旗標 off 時不使用。 */
+  agencyEvidenceUnresolvedCount?: number;
 }): Promise<LearningJudgement> {
   // 難度接線（槓桿 A）：正負 delta 倍率只在 beginner 溫度管線生效，作用域內解析一次。
   const tuning = difficultyTuningFor(opts.request.profile.difficulty);
@@ -1350,6 +1357,11 @@ async function judgeLearningState(opts: {
   // easy／normal 完全不經過閘門、行為與改前一致。
   const challengeGateActive = opts.request.practiceMode === "beginner" &&
     opts.request.profile.difficulty === "challenge";
+  // conversation-agency-v1 Phase 2：只有 `on` 才動分類器 prompt／schema／
+  // delta。`shadow`（跟 prompt.ts 的 agencyPrompt 同規則）與 `off` 一樣
+  // 逐字沿用舊行為——shadow 只能改 telemetry，不能改分類器實際送出的 prompt
+  // 或分數（golden 的「未設／off／shadow 逐位元組相同」涵蓋分類器 prompt）。
+  const agencyDeltaCapActive = opts.agencyMode === "on";
   const applyGameLearningIfNeeded = (
     judgement: LearningJudgement,
     currentTemperature: number,
@@ -1492,17 +1504,30 @@ async function judgeLearningState(opts: {
       protectedHintType,
       opts.request.practiceMode,
     );
-    // 閘門在 applied-hint 保護之後（豁免在閘門內判斷）、crude-offense 確定
+    // conversation-agency-v1 Phase 2（報告 §8.3）：coherence delta cap 放在
+    // applied-hint 保護之後、challenge 閘門與 crude-offense／cooldown 強制
+    // 扣分之前——後兩者是硬下限，會直接蓋過這裡的 clamp，precedence 不變。
+    // 旗標 off 時 agencyDeltaCapActive 一律 false，逐字沿用舊行為。
+    const { judgement: cappedJudgement, capApplied } = agencyDeltaCapActive
+      ? applyCoherenceDeltaCap(
+        protectedJudgement,
+        currentTemperature,
+        currentFamiliarity,
+        classification.coherence ?? "connected",
+        opts.agencyEvidenceUnresolvedCount ?? 0,
+      )
+      : { judgement: protectedJudgement, capApplied: "none" as const };
+    // 閘門在 delta cap 之後（豁免在閘門內判斷）、crude-offense 確定
     // 性扣滿之前——閘門只夾正向，扣滿與 cooldown 行為不受影響。
     const gatedJudgement = challengeGateActive
       ? applyChallengeRewardGate({
-        judgement: protectedJudgement,
+        judgement: cappedJudgement,
         currentHeat: currentTemperature,
         currentFamiliarity: currentFamiliarity,
         classification,
         protectedAppliedHint: protectedHintType !== undefined,
       })
-      : protectedJudgement;
+      : cappedJudgement;
     // 放在 applied-hint 保護之後：使用者把 hint 改寫成粗俗冒犯句時，保護
     // 不得替它擋下扣分。
     const enforcedJudgement = crudeOffense
@@ -1524,6 +1549,7 @@ async function judgeLearningState(opts: {
         currentPartnerState,
         classification,
       ),
+      deltaCapApplied: capApplied,
     };
     return applyGameLearningIfNeeded(
       withPartnerState,
@@ -1550,6 +1576,7 @@ async function judgeLearningState(opts: {
         appliedHintText: opts.request.appliedHintText,
         assistantReply: opts.reply,
         replyStyle: opts.replyStyle,
+        agencyEnabled: agencyDeltaCapActive,
       }),
       maxTokens: TEMPERATURE_JUDGE_MAX_TOKENS,
       temperature: TEMPERATURE_JUDGE_TEMPERATURE,
@@ -1561,6 +1588,7 @@ async function judgeLearningState(opts: {
       {
         requireImpact: opts.request.appliedHintText !== undefined,
         requireHintAlignment: opts.request.appliedHintText !== undefined,
+        requireCoherence: agencyDeltaCapActive,
       },
     );
     const protectedJudgement = protectedJudgementForSnapshot(
@@ -4391,6 +4419,12 @@ export function createPracticeChatHandler(
           request,
           reply,
           replyStyle: replyStyleProfile,
+          // conversation-agency-v1 Phase 2：coherence／delta cap 只在旗標
+          // ≠ off 時生效；unresolvedCount 用這一輪已經算好的 agency 證據
+          // （不重算，避免跟 prompt 用的證據分岔）。
+          agencyMode,
+          agencyEvidenceUnresolvedCount:
+            agencyDecision?.decision.evidence.unresolvedCount ?? 0,
         });
       } catch (e) {
         const mapped = mapLedgerError(getErrorMessage(e));
@@ -4458,10 +4492,21 @@ export function createPracticeChatHandler(
               : relationshipThreadState?.styleState ?? undefined,
             // conversation-agency-v1：同一條規則。旗標關或 shadow＝不算新狀態，
             // 既有狀態原樣帶回（RPC 整包覆寫 recent_facts，省略等於清空）。
+            // Phase 2：分類器讀了實際生成文字後回報的 coherence／
+            // aiChallengedLastTurn 一起餵進去（agencyDeltaCapActive 判斷同
+            // 一支旗標；旗標 off 時 temperature.classification 沒有這兩個
+            // 欄位，agencyClassifierSignal 為 null，退回純結構近似）。
             conversationAgencyState: agencyDecision?.applied
               ? nextConversationAgencyState(
                 relationshipThreadState?.agencyState ?? null,
                 agencyDecision.decision,
+                agencyMode === "on"
+                  ? ({
+                    coherence: temperature.classification.coherence,
+                    aiChallengedLastTurn:
+                      temperature.classification.aiChallengedLastTurn,
+                  } satisfies AgencyClassifierSignal)
+                  : null,
               )
               : relationshipThreadState?.agencyState ?? undefined,
           }),
@@ -4505,8 +4550,15 @@ export function createPracticeChatHandler(
           boundary: temperature.classification.boundary,
           hintAlignment: temperature.classification.hintAlignment,
           partnerMood: temperature.classification.partnerMood,
+          // conversation-agency-v1 Phase 2：旗標 off 時分類器不判 coherence／
+          // aiChallengedLastTurn，一律填預設值（"connected"／false）。
+          coherence: temperature.classification.coherence ?? "connected",
+          aiChallengedLastTurn:
+            temperature.classification.aiChallengedLastTurn ?? false,
         }
         : null,
+      // Phase 2：delta cap 是否真的壓過這一輪的 heat／familiarity delta。
+      deltaCapApplied: temperature?.deltaCapApplied ?? "none",
       // 與計分管線同一判準（challenge × beginner 才有獎勵閘門）。
       challengeGateActive: request.practiceMode === "beginner" &&
         request.profile.difficulty === "challenge",
@@ -4545,6 +4597,15 @@ export function createPracticeChatHandler(
           coherenceBefore:
             relationshipThreadState?.agencyState?.lastCoherence ??
               null,
+          // Phase 2：分類器讀了實際生成文字後的判斷（旗標 off 時分類器不判，
+          // 一律填預設值）。
+          coherence: agencyMode === "on"
+            ? temperature?.classification.coherence ?? null
+            : null,
+          aiChallengedLastTurn: agencyMode === "on"
+            ? temperature?.classification.aiChallengedLastTurn ?? null
+            : null,
+          deltaCapApplied: temperature?.deltaCapApplied ?? "none",
         }
         : null,
     });

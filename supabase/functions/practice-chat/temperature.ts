@@ -10,6 +10,14 @@ import {
   renderPersonalBaselinePrompt,
   type ReplyStyleProfile,
 } from "./reply_style.ts";
+import type { ConversationAgencyState } from "./conversation_agency.ts";
+
+/**
+ * conversation-agency-v1 Phase 2（報告 §8.1）：跟 `ConversationAgencyState.
+ * lastCoherence` 共用同一組列舉，不重複定義——分類器判的 coherence 直接餵回
+ * agency 跨回合狀態（`nextConversationAgencyState` 的 `AgencyClassifierSignal`）。
+ */
+export type TurnCoherence = ConversationAgencyState["lastCoherence"];
 
 export type TemperatureBand = "frozen" | "cold" | "neutral" | "warm" | "hot";
 export type RelationshipStage =
@@ -65,6 +73,20 @@ export interface TurnClassification {
   partnerMood: PartnerMood;
   moodConfidence: number;
   innerThought: string;
+  /**
+   * conversation-agency-v1 Phase 2（報告 §8.1）：只在 agency 旗標 ≠ off 時
+   * 出現在 prompt／schema。省略／旗標 off＝"connected"（no-op，不觸發 delta
+   * cap），schema 與 prompt 逐字與接線前相同。選填，讓既有直接建構
+   * `TurnClassification` 字面值（deterministic override、fallback、測試
+   * fixture）不必逐一補欄位；`applyCoherenceDeltaCap` 內部再補預設值。
+   */
+  coherence?: TurnCoherence;
+  /**
+   * 玩家這句回覆的上一則 AI 訊息，是不是真的在問清楚意思或指出跳題／不相關
+   * （Codex P1：state 的 priorChallengeIssued 不該只靠「允許過」，改吃這個
+   * 地面真相）。省略／旗標 off＝false。
+   */
+  aiChallengedLastTurn?: boolean;
 }
 
 export interface LearningJudgement extends TemperatureJudgement {
@@ -74,6 +96,12 @@ export interface LearningJudgement extends TemperatureJudgement {
   stageLabel: RelationshipStageInfo["label"];
   classification: TurnClassification;
   partnerState?: PartnerState;
+  /**
+   * conversation-agency-v1 Phase 2（報告 §8.3）：`applyCoherenceDeltaCap`
+   * 是否真的壓過這一輪的 delta；telemetry 用。省略／"none"＝沒套用
+   * （旗標 off、或 connected 不需要 cap）。
+   */
+  deltaCapApplied?: TurnCoherence | "none";
 }
 
 const MIN_TEMPERATURE = 0;
@@ -447,6 +475,68 @@ export function applyChallengeRewardGate(opts: {
   );
 }
 
+/**
+ * conversation-agency-v1 Phase 2（報告 §8.3）：coherence delta cap，只在
+ * agency 旗標 ≠ off 時由呼叫端套用。`connection`／`assistantReplyAfterUser`
+ * 已經決定了 delta；這裡只負責「壓」，不負責升級——disconnected／repetitive
+ * 永遠不能有正 heat，ambiguous 首次不獎不罰。
+ *
+ * 套用順序：放在既有 applied-hint 保護之後、challenge 閘門與
+ * crude-offense／cooldown 強制扣分之前——boundary／overstep 的確定性扣滿
+ * 是硬下限（`withMaxNegativeLearningDeltas`），會在這之後蓋過，precedence
+ * 不受影響。
+ */
+export function applyCoherenceDeltaCap(
+  judgement: LearningJudgement,
+  currentHeat: number,
+  currentFamiliarity: number,
+  coherence: TurnCoherence,
+  unresolvedCount: number,
+): { judgement: LearningJudgement; capApplied: TurnCoherence | "none" } {
+  let heatDelta = judgement.delta;
+  let familiarityDelta = judgement.familiarityDelta;
+  let capApplied: TurnCoherence | "none" = "none";
+  if (coherence === "repetitive" || unresolvedCount >= 2) {
+    heatDelta = Math.min(heatDelta, -2);
+    familiarityDelta = Math.min(familiarityDelta, -1);
+    capApplied = "repetitive";
+  } else if (coherence === "disconnected") {
+    // 報告 §8.3：「0/0 或最多輕微 -1/0」——familiarity 兩個選項都是 0，
+    // 不是「至多 0」；heat 夾在 [-1, 0]。
+    heatDelta = Math.min(Math.max(heatDelta, -1), 0);
+    familiarityDelta = 0;
+    capApplied = "disconnected";
+  } else if (coherence === "ambiguous") {
+    heatDelta = 0;
+    familiarityDelta = 0;
+    capApplied = "ambiguous";
+  } else {
+    // connected：玩家成功解釋／repair，正常給分，不套 cap。
+    return { judgement, capApplied };
+  }
+  if (heatDelta === judgement.delta && familiarityDelta === judgement.familiarityDelta) {
+    return { judgement, capApplied };
+  }
+  const score = clampTemperature(clampTemperature(currentHeat) + heatDelta);
+  const familiarityScore = clampTemperature(
+    clampTemperature(currentFamiliarity) + familiarityDelta,
+  );
+  const stage = relationshipStageFor(familiarityScore, score);
+  return {
+    judgement: {
+      ...judgement,
+      score,
+      delta: heatDelta,
+      band: temperatureBandFor(score),
+      familiarityScore,
+      familiarityDelta,
+      stage: stage.stage,
+      stageLabel: stage.label,
+    },
+    capApplied,
+  };
+}
+
 function lastUserTurn(turns: PracticeTurn[]): PracticeTurn | null {
   for (let index = turns.length - 1; index >= 0; index--) {
     if (turns[index].role === "user") return turns[index];
@@ -575,6 +665,25 @@ function parseMoodConfidence(value: unknown): number {
   return Math.max(0, Math.min(1, value));
 }
 
+// conversation-agency-v1 Phase 2：省略＝"connected"（no-op，不觸發 delta
+// cap）；旗標 off 時呼叫端不傳 requireCoherence，永遠走這條預設路徑。
+function parseCoherence(value: unknown): TurnCoherence {
+  if (value === undefined) return "connected";
+  if (
+    value === "connected" || value === "ambiguous" ||
+    value === "disconnected" || value === "repetitive"
+  ) {
+    return value;
+  }
+  throw new Error("turn classification missing coherence");
+}
+
+function parseAiChallengedLastTurn(value: unknown): boolean {
+  if (value === undefined) return false;
+  if (typeof value === "boolean") return value;
+  throw new Error("turn classification missing aiChallengedLastTurn");
+}
+
 export function applyPartnerStateUpdate(
   previous: PartnerState | null | undefined,
   classification: TurnClassification,
@@ -599,7 +708,12 @@ export function applyPartnerStateUpdate(
 
 export function parseTurnClassification(
   raw: string,
-  opts: { requireImpact?: boolean; requireHintAlignment?: boolean } = {},
+  opts: {
+    requireImpact?: boolean;
+    requireHintAlignment?: boolean;
+    /** conversation-agency-v1 Phase 2：只在 agency 旗標 ≠ off 時傳 true。 */
+    requireCoherence?: boolean;
+  } = {},
 ): TurnClassification {
   const parsed = JSON.parse(extractJsonObject(raw));
   if (!isRecord(parsed)) {
@@ -614,6 +728,8 @@ export function parseTurnClassification(
     "partnerMood",
     "moodConfidence",
     "innerThought",
+    "coherence",
+    "aiChallengedLastTurn",
   ]);
   for (const key of Object.keys(parsed)) {
     if (!allowedKeys.has(key)) {
@@ -626,6 +742,9 @@ export function parseTurnClassification(
   if (opts.requireHintAlignment && parsed.hintAlignment === undefined) {
     throw new Error("turn classification missing hintAlignment");
   }
+  if (opts.requireCoherence && parsed.coherence === undefined) {
+    throw new Error("turn classification missing coherence");
+  }
 
   return {
     connection: parseConnection(parsed.connection),
@@ -636,6 +755,8 @@ export function parseTurnClassification(
     partnerMood: parsePartnerMood(parsed.partnerMood),
     moodConfidence: parseMoodConfidence(parsed.moodConfidence),
     innerThought: sanitizeInnerThought(parsed.innerThought),
+    coherence: parseCoherence(parsed.coherence),
+    aiChallengedLastTurn: parseAiChallengedLastTurn(parsed.aiChallengedLastTurn),
   };
 }
 
@@ -649,6 +770,11 @@ export function buildTurnClassifierMessages(opts: {
   assistantReply?: string;
   /** reply-style-v1（PR-4）：她的個人基準，只修正 surface 解讀；省略＝prompt 逐字不變。 */
   replyStyle?: ReplyStyleProfile | null;
+  /**
+   * conversation-agency-v1 Phase 2（報告 §8.1）：只在 agency 旗標 ≠ off 時
+   * 傳 true。省略／false＝prompt 與 schema 逐字與接線前相同（golden）。
+   */
+  agencyEnabled?: boolean;
 }): ChatMessage[] {
   const latest = scrubRawImageFilenames(lastUserTurn(opts.turns)?.text ?? "");
   const baselineContext = opts.replyStyle
@@ -662,6 +788,15 @@ export function buildTurnClassifierMessages(opts: {
       scrubRawImageFilenames(opts.appliedHintText)
     }`
     : "\nappliedHintType: none";
+  // Phase 2：coherence／aiChallengedLastTurn 只在 agency 開時才進 prompt 與
+  // JSON stub；旗標關閉時下面兩段字串完全不套用，system prompt 逐字不變。
+  const coherenceRule = opts.agencyEnabled
+    ? "coherence 只評玩家這句相對於前一個未解問題／對話 thread 是否連得上，不看話題類別：connected=接得上；ambiguous=看不出是否相關；disconnected=明顯答非所問或跳題；repetitive=重複丟詞、跟前面已經模糊的東西是同一種模式。assistantReplyAfterUser 只能用來判斷 partnerMood 與她有沒有被接住（repair），不能因為她把亂詞圓成話題就把玩家 connection 判成 caught，coherence 也不能因此升級。\n" +
+      "aiChallengedLastTurn：recentContext 裡最後一句 assistant（玩家這句回覆的對象）是不是真的在問清楚意思或指出跳題／不相關，不是隨口帶過。\n"
+    : "";
+  const jsonStub = opts.agencyEnabled
+    ? '只輸出 JSON：{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"neutral","moodConfidence":0.7,"innerThought":"他還沒接到我的重點，我先觀察。","coherence":"connected","aiChallengedLastTurn":false}'
+    : '只輸出 JSON：{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"neutral","moodConfidence":0.7,"innerThought":"他還沒接到我的重點，我先觀察。"}';
   return [
     {
       role: "system",
@@ -677,7 +812,8 @@ export function buildTurnClassifierMessages(opts: {
         "user 只回「哈」「哈哈」這類單獨短笑、沒接任何話＝敷衍的微句點：connection 最多 neutral、impact 是 minor，partnerMood 不得因此判 amused（真的被逗到是「哈哈哈哈」以上或「笑死」還會補一句）。\n" +
         "hintAlignment 只在有 originalHint 時判斷；沿著原 Hint 大方向用 aligned，改到不同語意或越級用 diverged，沒 Hint 用 none。\n" +
         "partnerMood 是 assistantReplyAfterUser 發出後她的內在狀態：neutral/curious/amused/comfortable/guarded/annoyed。moodConfidence 是 0..1，低信心代表沿用前一輪 mood。innerThought 用繁中寫一句她心裡的短想法，80 字以內，不要寫教練話。\n" +
-        '只輸出 JSON：{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"neutral","moodConfidence":0.7,"innerThought":"他還沒接到我的重點，我先觀察。"}',
+        coherenceRule +
+        jsonStub,
     },
     {
       role: "user",

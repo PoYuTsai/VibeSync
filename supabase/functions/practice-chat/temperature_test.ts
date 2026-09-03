@@ -4,12 +4,15 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  applyCoherenceDeltaCap,
   applyLearningClassification,
   applyTemperatureDelta,
   buildTemperatureJudgeMessages,
   buildTurnClassifierMessages,
   clampTemperature,
+  type LearningJudgement,
   parseTemperatureJudgement,
+  parseTurnClassification,
   temperatureBandDebriefInstruction,
   temperatureBandFor,
 } from "./temperature.ts";
@@ -304,4 +307,165 @@ Deno.test("reply-style（PR-4）：省略或 null 的 replyStyle 讓分類器 pr
   assert(styled[1].content.startsWith(omitted[1].content));
   assert(styled[1].content.includes("她的平常基準"));
   assert(styled[1].content.includes("partnerMood 不得只因為她短句"));
+});
+
+// ── conversation-agency-v1 Phase 2（報告 §8）：coherence 分類與 delta cap ──
+
+Deno.test("buildTurnClassifierMessages：agencyEnabled 省略／false 時 prompt 逐字不變（golden）", () => {
+  const base = {
+    turns: [{ role: "user" as const, text: "好市多" }],
+    profile: resolvePracticeProfile({}),
+    heatScore: 40,
+    familiarityScore: 10,
+  };
+  const omitted = buildTurnClassifierMessages(base);
+  const explicitOff = buildTurnClassifierMessages({
+    ...base,
+    agencyEnabled: false,
+  });
+  assertEquals(JSON.stringify(explicitOff), JSON.stringify(omitted));
+  assert(!omitted[0].content.includes("coherence"));
+  assert(!omitted[0].content.includes("aiChallengedLastTurn"));
+});
+
+Deno.test("buildTurnClassifierMessages：agencyEnabled=true 才加 coherence／aiChallengedLastTurn 規則與 JSON stub", () => {
+  const base = {
+    turns: [{ role: "user" as const, text: "好市多" }],
+    profile: resolvePracticeProfile({}),
+    heatScore: 40,
+    familiarityScore: 10,
+  };
+  const on = buildTurnClassifierMessages({ ...base, agencyEnabled: true });
+  assert(on[0].content.includes("coherence 只評玩家這句相對於前一個未解問題"));
+  assert(on[0].content.includes("aiChallengedLastTurn"));
+  assert(on[0].content.includes('"coherence":"connected"'));
+  // 使用者訊息段（recentContext／latestUserText）不受影響。
+  const off = buildTurnClassifierMessages(base);
+  assertEquals(on[1].content, off[1].content);
+});
+
+Deno.test("parseTurnClassification：coherence／aiChallengedLastTurn 省略時預設 connected／false；requireCoherence 才強制", () => {
+  const withoutFields = parseTurnClassification(
+    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe"}',
+  );
+  assertEquals(withoutFields.coherence, "connected");
+  assertEquals(withoutFields.aiChallengedLastTurn, false);
+
+  assertThrows(
+    () =>
+      parseTurnClassification(
+        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe"}',
+        { requireCoherence: true },
+      ),
+    Error,
+    "coherence",
+  );
+
+  const withFields = parseTurnClassification(
+    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"disconnected","aiChallengedLastTurn":true}',
+    { requireCoherence: true },
+  );
+  assertEquals(withFields.coherence, "disconnected");
+  assertEquals(withFields.aiChallengedLastTurn, true);
+});
+
+Deno.test("parseTurnClassification：非法 coherence／aiChallengedLastTurn 值丟錯", () => {
+  assertThrows(
+    () =>
+      parseTurnClassification(
+        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"maybe"}',
+      ),
+    Error,
+    "coherence",
+  );
+  assertThrows(
+    () =>
+      parseTurnClassification(
+        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","aiChallengedLastTurn":"yes"}',
+      ),
+    Error,
+    "aiChallengedLastTurn",
+  );
+});
+
+function judgement(delta: number, familiarityDelta: number): LearningJudgement {
+  return {
+    score: 50 + delta,
+    delta,
+    band: temperatureBandFor(50 + delta),
+    reason: "",
+    familiarityScore: 30 + familiarityDelta,
+    familiarityDelta,
+    stage: "building_familiarity",
+    stageLabel: "建立熟悉中",
+    classification: {
+      connection: "neutral",
+      impact: "medium",
+      testHandling: "none",
+      boundary: "safe",
+      hintAlignment: "none",
+      partnerMood: "neutral",
+      moodConfidence: 0,
+      innerThought: "",
+    },
+  };
+}
+
+Deno.test("applyCoherenceDeltaCap：connected 不套 cap，正常給分（repair 後恢復）", () => {
+  const j = judgement(4, 5);
+  const { judgement: capped, capApplied } = applyCoherenceDeltaCap(
+    j,
+    50,
+    30,
+    "connected",
+    0,
+  );
+  assertEquals(capped, j);
+  assertEquals(capApplied, "none");
+});
+
+Deno.test("applyCoherenceDeltaCap：ambiguous 首次不獎不罰（正負都壓成 0/0）", () => {
+  const positive = applyCoherenceDeltaCap(judgement(3, 4), 50, 30, "ambiguous", 0);
+  assertEquals(positive.judgement.delta, 0);
+  assertEquals(positive.judgement.familiarityDelta, 0);
+  assertEquals(positive.capApplied, "ambiguous");
+
+  const negative = applyCoherenceDeltaCap(judgement(-3, -2), 50, 30, "ambiguous", 0);
+  assertEquals(negative.judgement.delta, 0);
+  assertEquals(negative.judgement.familiarityDelta, 0);
+});
+
+Deno.test("applyCoherenceDeltaCap：disconnected 首次是 0/0 或至多 -1/0，永不正 heat", () => {
+  const positive = applyCoherenceDeltaCap(judgement(5, 3), 50, 30, "disconnected", 0);
+  assertEquals(positive.judgement.delta, 0);
+  assertEquals(positive.judgement.familiarityDelta, 0);
+  assertEquals(positive.capApplied, "disconnected");
+
+  const negative = applyCoherenceDeltaCap(judgement(-5, -3), 50, 30, "disconnected", 0);
+  assertEquals(negative.judgement.delta, -1);
+  assertEquals(negative.judgement.familiarityDelta, 0);
+});
+
+Deno.test("applyCoherenceDeltaCap：repetitive／unresolvedCount≥2 至少 -2/-1，永不正 heat", () => {
+  const repetitive = applyCoherenceDeltaCap(judgement(3, 2), 50, 30, "repetitive", 0);
+  assertEquals(repetitive.judgement.delta, -2);
+  assertEquals(repetitive.judgement.familiarityDelta, -1);
+  assertEquals(repetitive.capApplied, "repetitive");
+
+  // coherence 判 connected 但 unresolvedCount 已經 ≥2（結構證據沒跟上）也要壓。
+  const structural = applyCoherenceDeltaCap(judgement(2, 1), 50, 30, "connected", 2);
+  assertEquals(structural.judgement.delta, -2);
+  assertEquals(structural.judgement.familiarityDelta, -1);
+  assertEquals(structural.capApplied, "repetitive");
+
+  // 已經比下限更負：cap 不把它拉回去。
+  const alreadyNegative = applyCoherenceDeltaCap(
+    judgement(-6, -4),
+    50,
+    30,
+    "repetitive",
+    3,
+  );
+  assertEquals(alreadyNegative.judgement.delta, -6);
+  assertEquals(alreadyNegative.judgement.familiarityDelta, -4);
 });

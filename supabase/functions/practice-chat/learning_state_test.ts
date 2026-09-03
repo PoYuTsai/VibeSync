@@ -309,6 +309,8 @@ Deno.test("parseTurnClassification accepts v2 classifier JSON and defaults optio
       partnerMood: "neutral",
       moodConfidence: 0,
       innerThought: "",
+      coherence: "connected",
+      aiChallengedLastTurn: false,
     },
   );
 });
@@ -329,6 +331,8 @@ Deno.test("parseTurnClassification accepts hint alignment when present", () => {
       partnerMood: "neutral",
       moodConfidence: 0,
       innerThought: "",
+      coherence: "connected",
+      aiChallengedLastTurn: false,
     },
   );
 });
@@ -349,6 +353,8 @@ Deno.test("parseTurnClassification accepts partner state tracker fields", () => 
       partnerMood: "amused",
       moodConfidence: 0.82,
       innerThought: "他有接住我的玩笑，可以多聊一點。",
+      coherence: "connected",
+      aiChallengedLastTurn: false,
     },
   );
 });
