@@ -844,3 +844,8 @@ LLM judge 可加速標註，但必須記錄模型版本、rubric、溫度與評�
 - **§4.5 越界權威證據**：planner 的 boundary 除了無語境句型，改同時消費既有 production 越界判定 `game_fsm.looksOverEscalated`（GREASY 同源），不再另寫一套。
 - **§4.4 不重複 act**：她最近 3 輪的 `primaryAct` 持久化在同一個 `recentActs`；同一 act 連兩輪就換偏好順序第二個，界線輪不換。
 - **驗收方式**：Eric 2026-09-03 決定跳過人工 dogfood，以黑箱（production 模型、100 位、對照組）與 telemetry 驗收；真機問題另開 session 處理。
+- **驗收與風險接受（2026-09-03 深夜，Eric「接受、推」）**：
+  - 驗收門檻＝黑箱（production 模型、100 位 style on／off 同 HEAD 配對 run16／run18、Hint／Debrief／Moments 真模型輸出煙霧、分類器回放）；**telemetry 是上線後的觀測，不是合併前門檻**。指標：`practice_chat_succeeded.replyStyle` 分佈、守門攔截數、Debrief 誤判回報；停止／回滾＝把 `PRACTICE_REPLY_STYLE_ENABLED` 刪掉或改值。
+  - `practice_relationship_threads.recent_facts.replyStyle` 沿用該表既有的後寫者贏語意（無 CAS／DB merge，不做 migration）。同 thread 並發請求可能遺失一次 `priorDecline` 或一筆 act 歷史；越界與安全每輪由逐字稿重算，不受影響。Eric 接受此 failure mode。
+  - `priorDecline` 目前是「這場對話她拒絕過邀約」的整場旗標，不分活動主題；「換活動重新判斷」列為後續產品決策。
+  - Codex 兩輪審查（legacy wrapper）皆 BLOCKED，阻擋點即上述兩項；其餘 P2／P3 已修或記錄於評測 README。
