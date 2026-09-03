@@ -4494,6 +4494,10 @@ export function createPracticeChatHandler(
             inviteStage: inviteMaturity.stage,
             memorySummary: null,
             aiTurnCount: newAiCount,
+            // Codex round-2 P1-4：RPC 整包覆寫 recent_facts，所以要以讀回來的
+            // 那一份為底，不能從零重建（不然別的功能／未來版本寫進去的 key
+            // 每一輪都會被靜默清掉）。
+            existingRecentFacts: relationshipThreadState?.recentFacts ?? null,
             // reply-style-v1：她這輪的 act 與「明確拒絕過」進 recent_facts。
             // 旗標關（或角色沒 mapping）＝不算新狀態，但既有狀態原樣帶回——
             // RPC 是整包覆寫 recent_facts，省略就等於「關旗標即清空」（Codex R2）。

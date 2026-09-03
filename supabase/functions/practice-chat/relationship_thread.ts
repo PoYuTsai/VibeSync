@@ -48,6 +48,13 @@ export interface PracticeRelationshipThreadState {
   styleState?: ReplyStyleState | null;
   /** conversation-agency-v1 跨回合狀態（recent_facts.conversationAgency）。 */
   agencyState?: ConversationAgencyState | null;
+  /**
+   * 讀回來的整份 `recent_facts`（Codex round-2 P1-4）。RPC 是整包覆寫，
+   * 舊版從零重建這個物件，任何本檔不認識的 key（別的功能寫的、未來版本寫的、
+   * 另一個 client 寫的）都會在下一次 upsert 靜默消失。這裡原樣留著，
+   * `buildRelationshipThreadRpcParams` 以它為底再覆寫自己負責的欄位。
+   */
+  recentFacts?: Record<string, unknown> | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -102,6 +109,7 @@ export function parseRelationshipThreadRow(
     inviteStage: inviteStage(row.invite_stage),
     styleState: parseReplyStyleState(row.recent_facts),
     agencyState: parseConversationAgencyState(row.recent_facts),
+    recentFacts: isRecord(row.recent_facts) ? row.recent_facts : null,
   };
 }
 
@@ -128,6 +136,12 @@ export function buildRelationshipThreadRpcParams(opts: {
   replyStyleState?: ReplyStyleState | null;
   /** conversation-agency-v1：同上；旗標 off／shadow 一律省略或原樣帶回既有值。 */
   conversationAgencyState?: ConversationAgencyState | null;
+  /**
+   * 這個 thread 上一次讀回來的整份 `recent_facts`（Codex round-2 P1-4）。
+   * 以它為底，只覆寫下面這幾個由本檔擁有的 key；不認識的 key 原樣留著。
+   * 省略／null＝新 thread，payload 與舊版逐字相同（golden）。
+   */
+  existingRecentFacts?: Record<string, unknown> | null;
 }) {
   const memorySummary = str(opts.memorySummary, 1000);
   return {
@@ -146,6 +160,7 @@ export function buildRelationshipThreadRpcParams(opts: {
     p_invite_stage: opts.inviteStage,
     p_memory_summary: memorySummary,
     p_recent_facts: {
+      ...(opts.existingRecentFacts ?? {}),
       source: "practice_chat",
       aiTurnCount: opts.aiTurnCount,
       inviteStage: opts.inviteStage,

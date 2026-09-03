@@ -9510,6 +9510,43 @@ Deno.test("agency 旗標關：telemetry conversationAgency 為 null，既有 con
   assertEquals(upsert.conversationAgency, existing);
 });
 
+Deno.test("thread recent_facts：本檔不認識的 key 在 upsert 後仍在（Codex round-2 P1-4）", async () => {
+  // RPC 是整包覆寫 recent_facts。舊版從零重建這個物件，任何別的功能／未來版本
+  // 寫進去的 key 每一輪都會被靜默清掉；現在以讀回來的那一份為底再覆寫。
+  const { state } = await runCapturingLogs(
+    {
+      ledger: null,
+      thread: {
+        profile_id: "practice_girl_001",
+        temperature_score: 40,
+        familiarity_score: 10,
+        recent_facts: {
+          source: "practice_chat",
+          aiTurnCount: 7,
+          futureFeature: { nested: ["keep", 1], flag: true },
+          unknownScalar: "keep-me",
+        },
+      },
+      deepSeekReplies: ["好啊", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      visiblePracticeThreadId: "thread-visible-1",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      turns: AGENCY_FRAGMENT_TURNS,
+    }),
+  );
+  const upsert = state.rpcCalls.find((r) =>
+    r.fn === "upsert_practice_relationship_thread"
+  )!.params.p_recent_facts as Record<string, unknown>;
+  assertEquals(upsert.futureFeature, { nested: ["keep", 1], flag: true });
+  assertEquals(upsert.unknownScalar, "keep-me");
+  // 本檔擁有的 key 仍然被這一輪的值覆寫，不是沿用舊值。
+  assertEquals(upsert.source, "practice_chat");
+  assertEquals(upsert.aiTurnCount, 1);
+});
+
 Deno.test("agency 旗標開＋reply-style 關：system prompt 仍套用改寫，且獨立算出 agency guidance（Codex P1 解耦）", async () => {
   const { state, succeeded } = await runCapturingLogs(
     {
