@@ -675,7 +675,18 @@ export function nextConversationAgencyState(
   //   (2) 她剛問完問題、玩家答了、而且前面沒有欠債（`answer_candidate` ＋
   //       `unresolvedCount === 0` → 本檔的「有效短答」免疫格，situation=null）。
   // 任何一個成立就把旗標歸零；這一輪自己真的又質疑了才會重新變 true。
-  const repaired = classifierSignal?.coherence === "connected" ||
+  //
+  // Codex R1（新項）P1-1：分類器訊號缺失（null／沒有 coherence 欄位）或
+  // parseCoherence() 把壞值修成 "ambiguous" 時，都不是「分類器判斷 connected」
+  // 也不是「分類器判斷 disconnected/repetitive」——是**沒有可信訊號**。
+  // `AgencyClassifierSignal` 自己就宣稱這種情況「一律退回純結構近似」，所以這裡
+  // 退回上面已經算好的 `structuralCoherence`，而不是讓缺失訊號直接判定不修復。
+  const classifierCoherence = classifierSignal?.coherence;
+  const coherenceForRepair =
+    classifierCoherence === undefined || classifierCoherence === "ambiguous"
+      ? structuralCoherence
+      : classifierCoherence;
+  const repaired = coherenceForRepair === "connected" ||
     (decision.evidence.utteranceShape === "answer_candidate" &&
       decision.evidence.unresolvedCount === 0 && decision.situation === null);
   const challengedThisTurn = forced === "challenge_relevance" ||

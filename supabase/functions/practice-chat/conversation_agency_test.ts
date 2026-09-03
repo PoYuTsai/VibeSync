@@ -389,6 +389,43 @@ Deno.test("nextConversationAgencyState：只存 enum／布林／小整數，修�
   assertEquals(challengedAgain.priorChallengeIssued, true);
 });
 
+Deno.test("nextConversationAgencyState：分類器缺失／ambiguous 時退回結構近似，不是永遠不修復（Codex R1 新項 P1-1）", () => {
+  const carried: ConversationAgencyState = {
+    version: 1,
+    lastCoherence: "repetitive",
+    unresolvedCount: 2,
+    priorChallengeIssued: true,
+    lastAgencyAct: "hold_position",
+  };
+  // 一般修復輪（自我分享／問句／明示換題，situation:null）＋分類器訊號缺失
+  // （null／{}／ambiguous）：舊版只認 classifierSignal.coherence==="connected"，
+  // 缺訊號時舊旗標永遠出不去；現在要退回本檔自己算好的 structuralCoherence
+  // （situation:null → "connected"）。
+  const repairTurnSets: readonly PracticeTurn[][] = [
+    [a("哈囉"), u("我最近開始練重訓")], // self_share
+    [a("哈囉"), u("你平常在幹嘛")], // question
+    [a("哈囉"), u("對了 講到韓國 我看到機票特價")], // explicit_pivot
+  ];
+  for (const signal of [null, {}, { coherence: "ambiguous" as const }]) {
+    for (const turns of repairTurnSets) {
+      const decision = policy(turns);
+      assertEquals(decision.situation, null, JSON.stringify(turns));
+      const next = nextConversationAgencyState(carried, decision, signal);
+      assertEquals(next.priorChallengeIssued, false, JSON.stringify({ signal, turns }));
+      assertEquals(next.unresolvedCount, 0, JSON.stringify({ signal, turns }));
+    }
+  }
+  // 對照組：同樣缺分類器訊號，但這一輪結構上是裸片段（situation 非
+  // null，structuralCoherence 是 "ambiguous" 不是 "connected"）——不應被
+  // 結構近似誤修復，舊旗標要留著。
+  const bareFragment = policy([a("嗯"), u("東京")]);
+  assertEquals(bareFragment.situation, "ambiguous_fragment");
+  for (const signal of [null, {}, { coherence: "ambiguous" as const }]) {
+    const next = nextConversationAgencyState(carried, bareFragment, signal);
+    assertEquals(next.priorChallengeIssued, true, JSON.stringify(signal));
+  }
+});
+
 Deno.test("agencyModeFor：只認 true／shadow／test，其餘一律 off", () => {
   assertEquals(agencyModeFor("true", false), "on");
   assertEquals(agencyModeFor("shadow", false), "shadow");
