@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-03T06:33:26Z",
+  "generatedAt": "2026-09-03T07:07:25Z",
   "source": "assets/learning/ebooks",
   "note": "棘輪基準：CI 只擋這份清單以外的新發現。每個工作包修掉一批問題後用 --write-baseline 縮小它，不得手動加項目。",
   "count": 106,
@@ -468,7 +468,7 @@
     {
       "rule": "R12",
       "id": "ebook-7-c6-dlg1-2",
-      "field": "lines[1].annotation#沒有否認見面"
+      "field": "lines[1].annotation#沒有否認「見面」"
     },
     {
       "rule": "R12",
