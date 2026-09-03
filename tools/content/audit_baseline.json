@@ -1,0 +1,3589 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-03T01:59:18Z",
+  "source": "assets/learning/ebooks",
+  "note": "棘輪基準：CI 只擋這份清單以外的新發現。每個工作包修掉一批問題後用 --write-baseline 縮小它，不得手動加項目。",
+  "count": 716,
+  "findings": [
+    {
+      "rule": "R01",
+      "id": "ebook-1-c1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c1-b2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c1-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c1-b5",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c1-b7",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c1-b7",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c1-b7",
+      "field": "items[3]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c1-b8",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c1-info4",
+      "field": "title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c1-tbl6",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c2-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c2-b3",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c2-b3",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c2-tbl2-e1",
+      "field": "entries[0].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c2-tbl2-e2-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c2-tbl2-e3",
+      "field": "entries[2].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c2-tbl2-e5-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c3-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c3-cmp2",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c3-cmp2-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c3-cmp2-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c3-grad4",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-b10",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-b12",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-b12",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-b12",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-b2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-b4",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-b6",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-cmp11",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-cmp11-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-cmp3-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-cmp3-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-cmp8-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-cmp8-w",
+      "field": "items[0].label"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-cmp8-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-cmp9",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-cmp9-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-cmp9-w",
+      "field": "items[0].label"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-cmp9-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-grad13",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-tbl5",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-tbl5",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c4-tbl5",
+      "field": "title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-b3",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-b3",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-b3",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-b4",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e1",
+      "field": "entries[0].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e1-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e1-cmp1-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e1-cmp1-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e2-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e2-cmp1-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e2-cmp1-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e3-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e3-cmp1-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e4",
+      "field": "entries[3].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e4-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e4-cmp1-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e4-cmp1-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e5",
+      "field": "entries[4].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e5-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e5-cmp1-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e5-cmp1-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e6-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e6-cmp1-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e7",
+      "field": "entries[6].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e7-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e7-cmp2",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e7-cmp2-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e7-cmp2-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e8",
+      "field": "entries[7].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e8-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e8-cmp2",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e8-cmp2-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-1-c5-lib-e8-cmp2-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c1-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c1-b4",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c1-b4",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c1-b4",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c1-dlg5-l1",
+      "field": "lines[0].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c1-dlg5-l1",
+      "field": "lines[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c1-dlg5-l2",
+      "field": "lines[1].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c1-note6",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c2-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c2-b2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c2-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c2-b4",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c2-b5",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c3-b2",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c3-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c3-b4",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c3-cmp5",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c3-cmp5-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c3-cmp5-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b11",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b15",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b3",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b3",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b4",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b5",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b6",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b6",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b6",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b7",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-b8",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-cmp2",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-cmp2-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-cmp2-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c4-grad16",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e1",
+      "field": "entries[0].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e1",
+      "field": "entries[0].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e1-dlg1-l1",
+      "field": "lines[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e1-fix3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e1-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10",
+      "field": "entries[9].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10",
+      "field": "entries[9].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l1",
+      "field": "lines[0].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l1",
+      "field": "lines[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l10",
+      "field": "lines[9].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l10",
+      "field": "lines[9].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l2",
+      "field": "lines[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l3",
+      "field": "lines[2].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l3",
+      "field": "lines[2].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l4",
+      "field": "lines[3].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l5",
+      "field": "lines[4].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l6",
+      "field": "lines[5].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l7",
+      "field": "lines[6].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l7",
+      "field": "lines[6].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l8",
+      "field": "lines[7].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l8",
+      "field": "lines[7].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-dlg1-l9",
+      "field": "lines[8].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e10-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11",
+      "field": "entries[10].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11",
+      "field": "entries[10].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l10",
+      "field": "lines[9].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l11",
+      "field": "lines[10].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l11",
+      "field": "lines[10].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l2",
+      "field": "lines[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l4",
+      "field": "lines[3].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l4",
+      "field": "lines[3].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l5",
+      "field": "lines[4].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l6",
+      "field": "lines[5].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l6",
+      "field": "lines[5].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l8",
+      "field": "lines[7].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l8",
+      "field": "lines[7].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-dlg1-l9",
+      "field": "lines[8].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e11-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12",
+      "field": "entries[11].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12",
+      "field": "entries[11].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12-dlg1-l1",
+      "field": "lines[0].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12-dlg1-l1",
+      "field": "lines[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12-dlg1-l10",
+      "field": "lines[9].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12-dlg1-l10",
+      "field": "lines[9].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12-dlg1-l2",
+      "field": "lines[1].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12-dlg1-l2",
+      "field": "lines[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12-dlg1-l6",
+      "field": "lines[5].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12-dlg1-l8",
+      "field": "lines[7].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12-dlg1-l9",
+      "field": "lines[8].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e12-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e13",
+      "field": "entries[12].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e13",
+      "field": "entries[12].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e13-dlg1-l1",
+      "field": "lines[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e13-dlg1-l2",
+      "field": "lines[1].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e13-dlg1-l2",
+      "field": "lines[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e13-dlg1-l3",
+      "field": "lines[2].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e13-dlg1-l3",
+      "field": "lines[2].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e13-dlg1-l4",
+      "field": "lines[3].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e13-dlg1-l5",
+      "field": "lines[4].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e13-dlg1-l7",
+      "field": "lines[6].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e13-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e14",
+      "field": "entries[13].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e14",
+      "field": "entries[13].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e14-dlg1-l1",
+      "field": "lines[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e14-dlg1-l10",
+      "field": "lines[9].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e14-dlg1-l11",
+      "field": "lines[10].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e14-dlg1-l12",
+      "field": "lines[11].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e14-dlg1-l13",
+      "field": "lines[12].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e14-dlg1-l4",
+      "field": "lines[3].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e14-dlg1-l7",
+      "field": "lines[6].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e14-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e2",
+      "field": "entries[1].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e2-dlg1-l6",
+      "field": "lines[5].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e2-fix3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e2-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e3",
+      "field": "entries[2].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e3-dlg1-l7",
+      "field": "lines[6].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e3-dlg1-l8",
+      "field": "lines[7].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e3-fix3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e3-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e4",
+      "field": "entries[3].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e4-dlg1-l1",
+      "field": "lines[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e4-dlg1-l2",
+      "field": "lines[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e4-dlg1-l3",
+      "field": "lines[2].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e4-dlg1-l4",
+      "field": "lines[3].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e4-dlg1-l5",
+      "field": "lines[4].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e4-fix3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e4-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e5",
+      "field": "entries[4].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e5",
+      "field": "entries[4].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e5-fix3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e5-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e6",
+      "field": "entries[5].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e6-dlg1-l1",
+      "field": "lines[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e6-dlg1-l9",
+      "field": "lines[8].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e6-fix3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e6-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e7",
+      "field": "entries[6].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e7-dlg1-l1",
+      "field": "lines[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e7-dlg1-l2",
+      "field": "lines[1].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e7-dlg1-l2",
+      "field": "lines[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e7-dlg1-l3",
+      "field": "lines[2].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e7-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e8",
+      "field": "entries[7].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e8-dlg1-l1",
+      "field": "lines[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e8-dlg1-l2",
+      "field": "lines[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e8-dlg1-l3",
+      "field": "lines[2].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e8-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e9",
+      "field": "entries[8].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e9-dlg1-l2",
+      "field": "lines[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e9-dlg1-l3",
+      "field": "lines[2].annotation"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e9-dlg1-l3",
+      "field": "lines[2].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-2-c5-lib-e9-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c1-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c1-b4",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c1-b5",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c1-b6",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c1-b7",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c1-warn2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c1-warn2",
+      "field": "title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e1",
+      "field": "entries[0].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e2",
+      "field": "entries[1].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e2",
+      "field": "entries[1].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e2-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e3",
+      "field": "entries[2].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e4",
+      "field": "entries[3].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e5",
+      "field": "entries[4].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e5-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e6",
+      "field": "entries[5].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c2-lib-e6-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e1",
+      "field": "entries[0].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e2",
+      "field": "entries[1].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e2-cmp1-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e2-cmp1-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e3",
+      "field": "entries[2].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e3-cmp2-s",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e4-xref1",
+      "field": "label"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e5",
+      "field": "entries[4].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e5-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e6",
+      "field": "entries[5].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e6-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e7",
+      "field": "entries[6].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e7-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e7-b2",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e7-b2",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e7-b2",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e7-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e8-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e8-cmp2",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c3-lib-e8-cmp2-s",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e1",
+      "field": "entries[0].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e10",
+      "field": "entries[9].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e10-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e10-xref1",
+      "field": "label"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e11",
+      "field": "entries[10].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e11",
+      "field": "entries[10].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e11-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e12",
+      "field": "entries[11].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e12",
+      "field": "entries[11].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e12-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e2",
+      "field": "entries[1].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e2",
+      "field": "entries[1].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e2-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e3",
+      "field": "entries[2].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e3",
+      "field": "entries[2].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e4",
+      "field": "entries[3].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e5",
+      "field": "entries[4].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e5",
+      "field": "entries[4].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e5-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e5-cmp2",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e5-cmp2-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e6",
+      "field": "entries[5].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e6",
+      "field": "entries[5].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e6-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e7",
+      "field": "entries[6].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e8",
+      "field": "entries[7].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e8-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e9",
+      "field": "entries[8].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e9",
+      "field": "entries[8].title"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e9-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e9-cmp2",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e9-cmp2-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c4-lib-e9-cmp2-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-b2",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-b2",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-b2",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-b2",
+      "field": "items[4]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-b4",
+      "field": "items[4]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-b5",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-tbl3-e1",
+      "field": "entries[0].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-tbl3-e1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-tbl3-e6-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-tbl3-e8",
+      "field": "entries[7].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-3-c5-tbl3-e8-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c1-b2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c1-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c1-b4",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c1-b5",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c1-b6",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-b4",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-b5",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-b5",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-b5",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-b9",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-cmp10",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-cmp10-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-cmp10-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-cmp6",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-cmp6-s",
+      "field": "items[1].label"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-cmp6-w",
+      "field": "items[0].label"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-cmp6-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-tbl2-e1",
+      "field": "entries[0].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-tbl7-e3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c2-warn8",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-b5",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-b7",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-b7",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-b7",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-b8",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-cmp2",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-cmp2-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-cmp2-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-cmp4",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-cmp4-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-cmp4-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-cmp6",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-cmp6-s",
+      "field": "items[1].label"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-cmp6-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-cmp6-w",
+      "field": "items[0].label"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c3-grad9",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-b2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e1-b10",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e1-b10",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e1-b11",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e1-b2",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e1-b2",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e1-b4",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e1-b6",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e1-b8",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e2-tbl1",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e2-tbl1",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e3",
+      "field": "entries[2].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e3-b2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e3-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e3-b4",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e3-b4",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e3-b4",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e4",
+      "field": "entries[3].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e4-b1",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e4-b1",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e4-b2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e5",
+      "field": "entries[4].summary"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e5-b1",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e5-b1",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e5-b1",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e5-b1",
+      "field": "items[3]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e5-b1",
+      "field": "items[4]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e5-b1",
+      "field": "items[5]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e5-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c4-lib-e5-warn2",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b10",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b11",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b11",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b11",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b12",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b12",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b13",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b13",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b14",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b14",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b15",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b16",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b16",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b16",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b2",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b2",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b2",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b21",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b23",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b4",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b5",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b7",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b7",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-b9",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-cmp6",
+      "field": "caption"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-cmp6-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-cmp6-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-grad8",
+      "field": "text"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-tbl18",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-tbl18",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-tbl19",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-tbl20",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R01",
+      "id": "ebook-4-c5-tbl20",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c1-b5",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c2-tbl2-e4",
+      "field": "entries[3].title"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c4-b4",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c4-b7",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c4-cmp11-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c4-cmp3-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c4-tbl5",
+      "field": "title"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c5-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c5-lib-e2-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c5-lib-e3",
+      "field": "entries[2].title"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c5-lib-e4",
+      "field": "entries[3].title"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c5-lib-e5",
+      "field": "entries[4].title"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c5-lib-e7-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-1-c5-lib-e7-cmp2-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e10-dlg1-l10",
+      "field": "lines[9].annotation"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e10-dlg1-l3",
+      "field": "lines[2].annotation"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e10-dlg1-l7",
+      "field": "lines[6].annotation"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e10-dlg1-l8",
+      "field": "lines[7].text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e11-dlg1-l11",
+      "field": "lines[10].annotation"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e11-dlg1-l4",
+      "field": "lines[3].annotation"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e11-dlg1-l6",
+      "field": "lines[5].annotation"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e11-dlg1-l8",
+      "field": "lines[7].annotation"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e12-dlg1-l6",
+      "field": "lines[5].annotation"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e13-dlg1-l5",
+      "field": "lines[4].annotation"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e3-fix3",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e3-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e4-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e7",
+      "field": "entries[6].summary"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e7-dlg1-l3",
+      "field": "lines[2].text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e7-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e8-dlg1-l2",
+      "field": "lines[1].text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e9",
+      "field": "entries[8].summary"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-2-c5-lib-e9-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-3-c3-lib-e1",
+      "field": "entries[0].title"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-3-c3-lib-e1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-3-c3-lib-e6",
+      "field": "entries[5].title"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-3-c4-lib-e2-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-3-c4-lib-e4",
+      "field": "entries[3].title"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-3-c4-lib-e8",
+      "field": "entries[7].title"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-3-c5-b4",
+      "field": "items[4]"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-3-c5-tbl3-e1",
+      "field": "entries[0].summary"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c2-cmp6-s",
+      "field": "items[1].text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c2-cmp6-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c2-tbl7-e3",
+      "field": "entries[2].title"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c3-cmp2-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c3-cmp4-w",
+      "field": "items[0].text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c4-lib-e1-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c4-lib-e1-b5",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c4-lib-e1-b9",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c4-lib-e2-tbl1",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c4-lib-e5-b1",
+      "field": "items[5]"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-4-c5-b2",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-7-c5-c2",
+      "field": "text"
+    },
+    {
+      "rule": "R02",
+      "id": "ebook-7-c5-cmp1-i2",
+      "field": "items[1].note"
+    },
+    {
+      "rule": "R03",
+      "id": "ebook-2-c5-lib-e3-fix3",
+      "field": "text"
+    },
+    {
+      "rule": "R03",
+      "id": "ebook-2-c5-lib-e5-fix3",
+      "field": "text"
+    },
+    {
+      "rule": "R03",
+      "id": "ebook-4-c2-warn8",
+      "field": "text"
+    },
+    {
+      "rule": "R03",
+      "id": "ebook-4-c3-grad9",
+      "field": "text"
+    },
+    {
+      "rule": "R03",
+      "id": "ebook-4-c4-lib-e5-warn2",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-4-c4-lib-e3-b2",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-5-c7-axis-1-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-5-c7-axis-1-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-5-c7-axis-2-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-5-c7-axis-2-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-6-c2-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-6-c2-p3",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-6-c2-p4",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-6-c2-p5",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-6-c5-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-6-c5-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-6-c5-p3",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-6-c5-p4",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-6-c5-p5",
+      "field": "text"
+    },
+    {
+      "rule": "R04",
+      "id": "ebook-6-c5-p6",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c1-tbl6",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c1-tbl6",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c1-tbl6",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c1-tbl6",
+      "field": "items[3]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c1-tbl6",
+      "field": "items[4]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c1-tbl6",
+      "field": "items[5]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c1-tbl6",
+      "field": "title"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c2-tbl2",
+      "field": "caption"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c4-tbl5",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c4-tbl5",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c4-tbl5",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-1-c4-tbl5",
+      "field": "title"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-2-c1-tbl2",
+      "field": "caption"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-2-c1-tbl2-e1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-2-c1-tbl2-e2-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-2-c1-tbl2-e3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-2-c1-tbl2-e4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-2-c1-tbl2-e5-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-3-c5-tbl3",
+      "field": "caption"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-3-c5-tbl3-e1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-3-c5-tbl3-e2-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-3-c5-tbl3-e3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-3-c5-tbl3-e4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-3-c5-tbl3-e5-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-3-c5-tbl3-e6-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-3-c5-tbl3-e7-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-3-c5-tbl3-e8-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c2-tbl2",
+      "field": "caption"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c2-tbl2-e1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c2-tbl2-e2-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c2-tbl7",
+      "field": "caption"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c4-lib-e2-tbl1",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c4-lib-e2-tbl1",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c4-lib-e2-tbl1",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c4-lib-e2-tbl1",
+      "field": "title"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl18",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl18",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl18",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl18",
+      "field": "items[3]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl18",
+      "field": "items[4]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl18",
+      "field": "title"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl19",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl19",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl19",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl19",
+      "field": "items[3]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl19",
+      "field": "items[4]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl19",
+      "field": "items[5]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl19",
+      "field": "title"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl20",
+      "field": "items[0]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl20",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl20",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl20",
+      "field": "items[3]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl20",
+      "field": "items[4]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl20",
+      "field": "items[5]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl20",
+      "field": "items[6]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl20",
+      "field": "items[7]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl20",
+      "field": "items[8]"
+    },
+    {
+      "rule": "R05",
+      "id": "ebook-4-c5-tbl20",
+      "field": "title"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-2-c5-lib-e14-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-2-c5-lib-e3",
+      "field": "entries[2].summary"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-2-c5-lib-e8",
+      "field": "entries[7].summary"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-3-c1-warn2",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-3-c2-lib-e1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-3-c2-lib-e3-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-3-c2-lib-e4",
+      "field": "entries[3].summary"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-3-c2-lib-e4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-3-c2-lib-e6-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-4-c2-warn8",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-4-c3-b8",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-4-c3-cmp2",
+      "field": "caption"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-4-c3-cmp6",
+      "field": "caption"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-4-c4-lib-e5",
+      "field": "entries[4].summary"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c1-p5",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c2-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c2-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c3-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c3-p5",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c3-p7",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c5-e2-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c5-e3-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c5-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c6-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c6-p3",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-chapter-6",
+      "field": "title"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c7-axis-1-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c7-axis-1-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-5-c7-axis-2-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c1-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c1-p3",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c1-p4",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c2-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c2-p3",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c2-p4",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c2-p5",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c3-p3",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c3-p5",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c3-p7",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c4-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c4-p6",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c5-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c5-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c5-p3",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c5-p4",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c5-p5",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c6-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c6-p4",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c6-p7",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-6-c6-p8",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c1-p4",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c1-p6",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c2-p5",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c4-dlg1-l4",
+      "field": "lines[3].text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c4-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c4-p5",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-chapter-4",
+      "field": "title"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c5-p2",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c5-p4",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c6-p1",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c6-p3",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c6-p4",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c6-p5",
+      "field": "text"
+    },
+    {
+      "rule": "R06",
+      "id": "ebook-7-c6-p6",
+      "field": "text"
+    },
+    {
+      "rule": "R07",
+      "id": "ebook-1-c5-lib-e8",
+      "field": "summary"
+    },
+    {
+      "rule": "R07",
+      "id": "ebook-3-c3-lib-e7",
+      "field": "summary"
+    },
+    {
+      "rule": "R07",
+      "id": "ebook-4-c4-lib-e1",
+      "field": "summary"
+    },
+    {
+      "rule": "R07",
+      "id": "ebook-4-c4-lib-e3",
+      "field": "summary"
+    },
+    {
+      "rule": "R08",
+      "id": "ebook-3-c3-lib-e1",
+      "field": "entries[0].title"
+    },
+    {
+      "rule": "R08",
+      "id": "ebook-3-c4-lib-e4",
+      "field": "entries[3].title"
+    },
+    {
+      "rule": "R08",
+      "id": "ebook-3-c4-lib-e4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R08",
+      "id": "ebook-7-c1-p4",
+      "field": "text"
+    },
+    {
+      "rule": "R08",
+      "id": "ebook-7-c2-d1-l2",
+      "field": "lines[1].annotation"
+    },
+    {
+      "rule": "R08",
+      "id": "ebook-7-c2-d1-l3",
+      "field": "lines[2].annotation"
+    },
+    {
+      "rule": "R08",
+      "id": "ebook-7-c6-dlg1-2",
+      "field": "lines[1].annotation"
+    },
+    {
+      "rule": "R09",
+      "id": "ebook-1-c5-lib-e1-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R09",
+      "id": "ebook-1-c5-lib-e2-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R09",
+      "id": "ebook-1-c5-lib-e3-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R09",
+      "id": "ebook-1-c5-lib-e4-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R09",
+      "id": "ebook-1-c5-lib-e5-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R09",
+      "id": "ebook-1-c5-lib-e6-cmp1",
+      "field": "caption"
+    },
+    {
+      "rule": "R09",
+      "id": "ebook-1-c5-lib-e7-cmp2",
+      "field": "caption"
+    },
+    {
+      "rule": "R09",
+      "id": "ebook-1-c5-lib-e8-cmp2",
+      "field": "caption"
+    },
+    {
+      "rule": "R10",
+      "id": "ebook-2-chapter-1",
+      "field": "glossary#她投入多少（I）"
+    },
+    {
+      "rule": "R10",
+      "id": "ebook-2-chapter-1",
+      "field": "glossary#聊天有沒有情緒（E）"
+    },
+    {
+      "rule": "R10",
+      "id": "ebook-2-chapter-1",
+      "field": "glossary#興趣回應（R）"
+    },
+    {
+      "rule": "R10",
+      "id": "ebook-2-chapter-1",
+      "field": "glossary#誰在帶方向（F）"
+    },
+    {
+      "rule": "R10",
+      "id": "ebook-2-chapter-1",
+      "field": "glossary#讓她認識你（V）"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-2-c4-b3",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-2-c5-lib-e10-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-2-c5-lib-e2-note2",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-2-c5-lib-e4-fix3",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-2-c5-lib-e4-xref1",
+      "field": "label"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c1-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c1-b5",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c1-warn2",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c2-lib-e1",
+      "field": "entries[0].title"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c2-lib-e2",
+      "field": "entries[1].title"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c2-lib-e3",
+      "field": "entries[2].title"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c2-lib-e4",
+      "field": "entries[3].title"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c2-lib-e5",
+      "field": "entries[4].title"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c2-lib-e6",
+      "field": "entries[5].title"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c2-lib-e6-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c3-lib-e4",
+      "field": "entries[3].summary"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c3-lib-e4-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c4-lib-e10-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c4-lib-e6",
+      "field": "entries[5].summary"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c4-lib-e6-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c4-lib-e7-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c4-lib-e7-xref2",
+      "field": "label"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c4-lib-e8",
+      "field": "entries[7].summary"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c4-lib-e8-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-3-c5-b2",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-4-c1-b1",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-4-c1-b2",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-4-c1-b3",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-4-c1-b6",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-4-c2-b5",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-4-c2-warn8",
+      "field": "text"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-4-c5-b11",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-4-c5-b13",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-4-c5-b14",
+      "field": "items[2]"
+    },
+    {
+      "rule": "R11",
+      "id": "ebook-4-c5-b16",
+      "field": "items[1]"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-2-c5-lib-e13-dlg1-l5",
+      "field": "lines[4].annotation#假定同意"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-4-c4-lib-e3-b2",
+      "field": "text#假定同意"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-5-c1-p2",
+      "field": "text#聊什麼占 7 分"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-5-c6-bl1",
+      "field": "items[2]#做流氓般的紳士"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-6-c4-co1",
+      "field": "text#代表她還在乎"
+    },
+    {
+      "rule": "R12",
+      "id": "d1-l6",
+      "field": "lines[5].text#跟你一樣短腿"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-6-c6-p1",
+      "field": "text#她冷的不是你"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-6-chapter-6",
+      "field": "title#她冷的不是你"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-7-c1-co1",
+      "field": "text#反應等級等於她目前認定你的價值"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-7-c5-c2",
+      "field": "text#行為 > 情緒 > 字面"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-7-c5-cmp1-i2",
+      "field": "items[1].note#行為 > 字面"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-7-c6-cmp1-b",
+      "field": "items[1].text#改天約妳喝杯咖啡"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-7-c6-dlg1",
+      "field": "title#假定式推進"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-7-c6-dlg1-2",
+      "field": "lines[1].annotation#沒有否認「見面」"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-7-c6-p3",
+      "field": "text#改天約妳喝杯咖啡"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-7-c6-p6",
+      "field": "text#下次奶茶妳請"
+    },
+    {
+      "rule": "R12",
+      "id": "ebook-7-c6-p6",
+      "field": "text#拒絕階梯"
+    },
+    {
+      "rule": "R13",
+      "id": "catalog",
+      "field": "canonical#一則訊息只能算線索"
+    },
+    {
+      "rule": "R13",
+      "id": "catalog",
+      "field": "canonical#吵架不等於關係結束"
+    },
+    {
+      "rule": "R13",
+      "id": "catalog",
+      "field": "canonical#問題不是穩定，而是整段互動只剩附和"
+    },
+    {
+      "rule": "R13",
+      "id": "catalog",
+      "field": "canonical#她明確答應後，再在一到兩輪內敲時間"
+    },
+    {
+      "rule": "R13",
+      "id": "catalog",
+      "field": "canonical#她沒接，就換方向"
+    },
+    {
+      "rule": "R13",
+      "id": "catalog",
+      "field": "canonical#她說不行，就先接受"
+    },
+    {
+      "rule": "R13",
+      "id": "catalog",
+      "field": "canonical#妳可以的話，我就訂位"
+    },
+    {
+      "rule": "R13",
+      "id": "catalog",
+      "field": "canonical#妳臨時有變再跟我說"
+    },
+    {
+      "rule": "R13",
+      "id": "catalog",
+      "field": "canonical#快回不是問題"
+    },
+    {
+      "rule": "R13",
+      "id": "catalog",
+      "field": "canonical#明確的拒絕或界線，永遠排在最前面"
+    }
+  ]
+}

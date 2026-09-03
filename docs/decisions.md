@@ -1075,3 +1075,28 @@
 **守門**: `test/widget/features/opener/opening_rescue_handoff_navigation_test.dart`（真 GoRouter＋真路由形狀＋真的 `navigateToHandoff`：上面列的五個入口與深連結**各一條**，逐條驗唯一一張對象卡、舊頁全清、返回回首頁）、`test/lint/opener_handoff_cta_wiring_guard_test.dart`（CTA 真的接到 `navigateToHandoff`；`navigateToHandoff` 內必須有 `go('/')`、不得出現 `canPop`；`handoffLocationFor` 只能由 `navigateToHandoff` 使用）、`test/unit/features/opener/presentation/opening_rescue_handoff_location_test.dart`（handoff 目的地網址）、`test/widget/screens/new_conversation_screen_test.dart`（「接續開場」頁已移除的防迴歸）。
 
 **測試邊界（誠實話）**: 返回堆疊測試的 `/opener` 掛的是 stub。真畫面要按到 CTA 得先種草稿、按「回看」，而 CTA 會觸發一筆 Hive 寫入；那筆真磁碟 I/O 在 testWidgets 的 fake-async zone 裡收不掉，實測會讓整支測試卡死到 10 分鐘 timeout（run 33027317044）。因此「按下去堆疊變成什麼」由 widget test 驗，「那顆按鈕真的接到 navigateToHandoff」由靜態守門驗，兩者合起來才涵蓋完整路徑。
+
+---
+
+## ADR #45 — [2026-09-03] 電子書內容優化：正式 JSON 成為文案真源、轉換器降為候選匯入、跨冊教學契約進稽核
+
+**狀態**: 🟡 Proposed — 隨工作包 0 的 PR 送審；Eric 核可並 merge 即生效
+
+**擴充**: ADR #32 決定 5「內容一個字不改」。那一條是 2026-07-31 排版調整那一刀的範圍限制，不是永久禁止內容改善；本 ADR 開啟新的內容優化專案。
+
+**背景**: 2026-09-02 的可讀性研究與 2026-09-03 整合後的最終實作計劃（`docs/plans/2026-09-03-ebook-copy-readability-final-implementation-plan.md`）指出七冊 39 章有四層債：終極指引四冊由夥伴 HTML 機械轉入，留下 1,169 個半形標點、70 個「｜」管線表格、遺失的小節標題與原課本指涉；成為獎賞三冊段落過長、一個欄位塞多段、對照沒用 comparison 區塊；四冊說明段用語偏學術；跨冊的邀約、拒絕、回覆速度、爭執與「測試」規則互相矛盾。同時 `tools/content/README.md` 寫著四冊 JSON 是產生出來的、builder 會直接覆寫正式資產——一旦開始手改內容就是雙真源，重跑一次全部消失。
+
+**決定**:
+
+1. **新的內容優化專案**，分八個工作包（0 真源與稽核骨架、1 標點、2 四冊結構、3 三冊降密度、4 P0 跨冊規則、5 四冊口語化、6 三冊口吻與比喻、7 入口與章名），一包一個 PR，先 0 再 1 → 7。
+2. **`assets/learning/ebooks/*.json` 是產品文案的唯一真源。** `tools/content` 的轉換器降為候選匯入工具：預設輸出 `build/ebook_import_candidate/`；輸出路徑落在正式資產目錄（含子目錄）一律失敗，沒有旗標可以繞過；候選檔用 `compare_ebook_import.py` 依穩定 id 比對後由人合併。夥伴來源只在 `partner_guide_source_manifest.json` 留 digest、版本標記與切換當下四份正式檔的 SHA-256。
+3. **Eric 擁有產品語氣與跨冊規則的最終決策。**
+4. **Bruce 校對第 1–4 冊**的改寫是否保留原教學意圖；校對的是意思，不是逐個標點。
+5. **第 5–7 冊**可依計劃直接做產品文案編輯。
+6. **計劃第 5 節的 11 條 P0 canonical rules 是跨冊契約**，日後新增教材也必須遵守；`audit_ebook_copy.py` 以 R12（禁用詞）與 R13（定稿句必須存在）守門，工作包 4 落地前這兩條的缺漏記在 baseline 裡。
+7. **`contentVersion`**：純排版／標點／結構重排不升；教學語意改變才升（第 2、4、5、6、7 冊預計各升一版）。`contentVersionSeen` 只記錄不清進度，進度由 stable id 與 `quizRevision` 保護；工作包 4–6 升版時要同步加「升版不清進度」測試。
+8. **CI 棘輪**：`audit_ebook_copy.py --baseline tools/content/audit_baseline.json` 只擋 baseline 以外的新發現；每個工作包修掉一批後用 `--write-baseline` 縮小 baseline，不得手動加項目。具名例外進 `audit_allowlist.json`，每筆附 `rule`、`id`、`reason`；不允許整本書或整條規則的例外。
+
+**不動**: 書、章、條目、crossRef 的穩定 id；免費／試讀／Premium／Essential 權限；framed／spine 排版與 warning／safety 整框；Edge、AI prompt、付費牆、發行流程；書架大標「高階互動指南」與副標「系統化實戰教材」（2026-08-09 拍板）。
+
+**驗證**: `python3 -m unittest discover -s tools/content/tests`；`python3 tools/content/audit_ebook_copy.py --baseline tools/content/audit_baseline.json`；工作包 0 不改任何使用者文案，Flutter 學習模組測試不受影響。基準數字見 `docs/reviews/2026-09-03-ebook-copy-audit-baseline.md`。
