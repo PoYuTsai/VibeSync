@@ -566,10 +566,13 @@ const DISCLOSURE_LINE: Record<TurnResponsePlan["disclosureDepth"], string> = {
 // 不然 100 位角色會共用同一句口頭禪（報告 §13 第 8 點）。
 const AGENCY_ACT_LINE: Partial<Record<PlanAct, string>> = {
   acknowledge: "他這句本來就講得通就自然接，但不要替他補他沒說的意圖或背景",
+  // Phase 2.5：`asked_with_guess` 與 `accommodating_invention` 兩種失敗都發生在
+  // 「有問，但同一則裡又補了東西」——補的可能是猜測（他的意圖），也可能是她
+  // 自己剛好相關的經歷（A12「清邁」→「之前休假有去過」）。兩種都明寫。
   ask_intent:
-    "不確定他在講什麼，就直接問他的意思或跟前面哪件事有關；不要在同一句裡又替他補上你猜的意思或話題",
+    "不確定他在講什麼，就直接問他的意思或跟前面哪件事有關；同一則裡不要替他補你猜的意思或話題，也不要順口講你自己跟這個詞有關的經歷",
   challenge_relevance:
-    "說這跟剛剛在聊的對不上，要他講清楚；不要在同一句裡又替他補上你猜的意思或話題",
+    "說這跟剛剛在聊的對不上，要他講清楚；同一則裡不要替他補你猜的意思或話題，也不要順口講你自己跟這個詞有關的經歷",
   return_to_topic: "拉回你剛才問的、或還沒聊完的那件事",
   hold_position:
     "維持你剛才的保留：他沒把話講清楚、沒回答你之前，這個問題就晾著，不要接著他丟的新詞往下聊",
@@ -587,6 +590,36 @@ export function agencyActsLine(agency: AgencyApplication | null): string {
   return `讀完整段對話，挑一個最合理的（只挑一個）：${
     agency.decision.allowedActs.map(line).join("；")
   }`;
+}
+
+/**
+ * 強制「只問意思」那一輪的回覆形狀：一則、只有問句、不接話題、不解讀。
+ *
+ * 這是 `asked_with_guess`（有問但同一則又夾帶猜測）唯一的結構化出口——文案層
+ * 已經寫過「不要在同一句裡又補猜測」而黑箱量不到效果（2026-09-04 README 待辦
+ * 第 2 條），所以這裡直接改回覆形狀：則數壓成 1、問題預算 1。
+ */
+export function isForcedAskIntent(agency: AgencyApplication | null): boolean {
+  return Boolean(
+    agency?.applied && agency.decision.policyMode === "forced" &&
+      agency.decision.forcedAct === "ask_intent",
+  );
+}
+
+const FORCED_ASK_INTENT_SHAPE = "只問，不猜、不接話題：回 1 則，就一個問句。";
+
+/**
+ * standard 模式的跨輪立場（Codex round-2 P1-2）：沒有持久化的 lastAgencyAct，
+ * 但「她上一則在問問題、玩家沒回答就丟別的」是逐字稿上看得見的結構事實，
+ * 用它取代原本那個 `unresolved >= 2` 的假旗標。
+ */
+function agencyStanceLine(agency: AgencyApplication | null): string {
+  if (!agency?.applied) return "";
+  const e = agency.decision.evidence;
+  return e.previousAiAskedQuestion && e.utteranceShape === "answer_candidate" &&
+      e.unresolvedCount > 0
+    ? "你上一句已經在問他了，他沒回答就別放過，不要自己把問題吞掉。"
+    : "";
 }
 
 const CONDITIONAL_LINE: Record<"vulnerable" | "joke", string> = {
@@ -630,7 +663,8 @@ export function renderTurnPlan(
     plan.optionalAct === "clarify" ||
     (agencyApplied &&
       (agency?.decision.allowedActs.some(isClarifyingAct) ?? false));
-  const question = plan.questionBudget === 1
+  const forcedAsk = isForcedAskIntent(agency ?? null);
+  const question = plan.questionBudget === 1 || forcedAsk
     ? "最多問一句。"
     : clarifyingAllowed
     ? "這輪不主動查他的基本資料；問清楚他這句的意思或拉回前一題不算。"
@@ -641,10 +675,15 @@ export function renderTurnPlan(
   const tail = agencyApplied
     ? "回應依整段脈絡，不必服從最新一個詞；「接住」也可以是說你聽不懂、不相關，或前一題還沒回答。問清楚或指出跳題的時候就只做那件事，不要同一則裡又把那個詞當成新話題聊起來"
     : "內容要接到對方最新一句的具體內容";
+  // forced ask_intent 那一輪，形狀由 agency 決定（1 則、只有問句），style 的
+  // bubbleCount／disclosure 讓路——這一輪本來就不該有自我揭露。
+  const shapeLine = forcedAsk
+    ? FORCED_ASK_INTENT_SHAPE
+    : `回 ${plan.bubbleCount} 則，一則講一件事。${question}${
+      disclosure ? disclosure + "。" : ""
+    }`;
   return `\n\n本輪回應方式（hidden guidance，不要向對方提及）：
-- ${first}。${stance}${conditional}
-- 回 ${plan.bubbleCount} 則，一則講一件事。${question}${
-    disclosure ? disclosure + "。" : ""
-  }
+- ${first}。${stance}${conditional}${agencyStanceLine(agency ?? null)}
+- ${shapeLine}
 - ${tail}；沒被逗到就不用笑，沒話就短。`;
 }

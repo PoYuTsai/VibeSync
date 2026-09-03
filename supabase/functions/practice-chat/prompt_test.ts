@@ -962,7 +962,11 @@ Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling"
           agencyMode: "on",
         },
       );
-      assertEquals(agencyBundle.agencyDecision?.applied, false);
+      // Codex round-2 P1-1 之後最長 payload 的最後一則（500 個「訊」，沒有
+      // 問句標記、沒有第一人稱、不是明示換題）也是結構線索全空集合＝裸片段，
+      // agency 會真的介入——所以這個上限測試現在同時涵蓋「最長 payload ＋
+      // agency 介入」的組合，不再靠「兩者互斥」的推論。
+      assertEquals(agencyBundle.agencyDecision?.applied, true);
       const agencyLength = agencyBundle.messages.reduce(
         (total, m) => total + m.content.length,
         0,
@@ -1105,14 +1109,22 @@ Deno.test("conversation-agency-v1：agency 介入那一輪的 turn plan 增量�
     planOf(off.messages[0].content).length;
   assert(planDelta <= 270, `agency 介入輪 turn plan 淨增 ${planDelta}`);
 
-  // 互斥性：最長 payload 的最後一則是 500 字，結構上不可能是裸片段，
-  // 所以「最長 prompt」與「agency turn plan 增量」不會同時發生。
+  // Codex round-2 P1-1：長度不再是判準，所以「最長 payload 不可能是裸片段」
+  // 這個互斥性推論已經不成立——500 字的無結構線索敘述照樣介入（上面的
+  // 上限測試已經直接量過那個組合的總長）。這裡改成守另一半：同樣 500 字，
+  // 只要帶第一人稱分享標記就是 self_share，agency 不介入。
   const longTail = buildChatPromptBundle(
     [{ role: "user", text: "訊".repeat(MAX_TEXT_LEN) }],
     profile,
     { ...shared, agencyMode: "on" },
   );
-  assertEquals(longTail.agencyDecision?.applied, false);
+  assertEquals(longTail.agencyDecision?.applied, true);
+  const longShare = buildChatPromptBundle(
+    [{ role: "user", text: "我" + "訊".repeat(MAX_TEXT_LEN - 1) }],
+    profile,
+    { ...shared, agencyMode: "on" },
+  );
+  assertEquals(longShare.agencyDecision?.applied, false);
 });
 
 Deno.test("conversation-agency-v1 Phase 2.5：旗標開換成瘦身稿（鎖意思不鎖逐字），關閉時逐字保留", () => {

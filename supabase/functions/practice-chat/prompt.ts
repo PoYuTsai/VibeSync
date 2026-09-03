@@ -15,6 +15,7 @@ import {
   classifySituation,
   computeAgencyDecision,
   detectTurnSignals,
+  isForcedAskIntent,
   planTurnResponse,
   type PolicyEvidence,
   policyStanceFor,
@@ -1002,8 +1003,13 @@ function renderAgencyOnlyGuidance(agency: AgencyApplication | null): string {
   if (!agency?.applied) return "";
   const line = agencyActsLine(agency);
   if (!line) return "";
+  // style 關閉時沒有 bubbleCount／questionBudget 可以借，forced ask_intent 的
+  // 形狀就在這裡直接寫死（與 renderTurnPlan 同一句）。
+  const shape = isForcedAskIntent(agency)
+    ? "\n- 只問，不猜、不接話題：回 1 則，就一個問句。"
+    : "";
   return `\n\n本輪回應方式（hidden guidance，不要向對方提及）：
-- ${line}。
+- ${line}。${shape}
 - 回應依整段脈絡，不必服從最新一個詞；「接住」也可以是說你聽不懂、不相關，或前一題還沒回答。問清楚或指出跳題的時候就只做那件事，不要同一則裡又把那個詞當成新話題聊起來。`;
 }
 

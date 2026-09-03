@@ -189,8 +189,6 @@ export function aiAskedQuestion(text: string): boolean {
   return AI_QUESTION_RE.test(text.trim());
 }
 
-/** 短片段長度上限（去空白後的 UTF-16 code units）。超過就不當「裸片段」。 */
-const BARE_FRAGMENT_MAX = 8;
 /** 只往回看這麼多則玩家訊息（短期工作記憶，不是長期記憶）。 */
 const RECENT_USER_WINDOW = 8;
 
@@ -201,6 +199,15 @@ function compact(text: string): string {
 /**
  * 單則玩家訊息的形狀（不看前後文，除了「上一則是不是 AI 問句」）。
  * 順序即優先權：明示換題 > 問句 > 招呼／反應 > 第一人稱分享 > 短答候選 > 裸片段。
+ *
+ * Codex round-2 P1-1：**這裡一個字數條件都沒有**。舊版用「去空白後 ≤8 code
+ * units」當裸片段的必要條件，等於用長度斷語意——四十個字的「路上那間店招牌
+ * 換了新的顏色看起來怪怪的」一樣沒有任何結構線索，卻只因為長就被放行；兩個字
+ * 的「韓國」在她剛問完問題時是有效短答，卻只因為短而被算進片段家族。
+ *
+ * 現在 `bare_fragment` 的定義是**每一個結構線索都不存在**：不是明示換題、
+ * 沒有問句標記、不是招呼／情緒反應、沒有第一人稱分享標記、而且她上一則沒有在
+ * 問問題。`answer_candidate` 的唯一判準是「她上一則在問問題」。長度不參與。
  */
 export function utteranceShapeOf(
   text: string,
@@ -212,10 +219,8 @@ export function utteranceShapeOf(
   if (isQuestionText(text)) return "question";
   if (REACTION_RE.test(compacted)) return "reaction";
   if (FIRST_PERSON_RE.test(text)) return "self_share";
-  const short = compacted.length <= BARE_FRAGMENT_MAX;
-  if (previousAiAskedQuestion && short) return "answer_candidate";
-  if (short) return "bare_fragment";
-  return "unknown";
+  if (previousAiAskedQuestion) return "answer_candidate";
+  return "bare_fragment";
 }
 
 /** 低資訊形狀＝會累積「未解片段」的形狀。 */
@@ -282,11 +287,13 @@ export function detectAgencyEvidence(
     explicitPivot: current?.shape === "explicit_pivot",
     repeatedExactToken,
     unresolvedCount: clamp3(unresolved),
-    // standard 沒有持久化狀態，用結構近似：連續兩則未解＝上一輪 planner 一定已經
-    // 給過質疑型 act。assisted 有持久化的實際 act 就以它為準。
-    // ponytail: 近似值，Phase 3 把 lastAgencyAct 持久化到 standard 就能改成實測。
-    priorChallengeIssued: (prev?.priorChallengeIssued ?? false) ||
-      unresolved >= 2,
+    // Codex round-2 P1-2：舊版在 standard 用「連續兩則未解＝一定質疑過」當近似
+    // 值，那是拿一個計數假裝成一件事實。standard 沒有持久化的 lastAgencyAct，
+    // 結構上就是**不知道**她上一輪有沒有真的質疑——所以這裡只認 assisted 模式
+    // 持久化下來的旗標，standard 一律 false。standard 的跨輪立場改由逐字稿裡
+    // **看得見**的東西撐：她上一則是不是在問問題（`previousAiAskedQuestion`），
+    // 那個訊號在 renderTurnPlan 會變成「你上一句已經在問他了，他沒回答就別放過」。
+    priorChallengeIssued: prev?.priorChallengeIssued ?? false,
     precedingUserContext: earlier.some((s) =>
       s.shape !== "reaction" && !isLowInformation(s.shape)
     ),
@@ -331,7 +338,11 @@ const NO_OVERRIDE: Omit<AgencyDecision, "version" | "evidence"> = {
  * 這裡刻意不 import 那個型別，維持本檔「依賴單向」——呼叫端自己轉換。
  */
 export interface AgencyThresholds {
-  /** 第一個沒有前文的模糊片段，允許的候選 act（難度愈高愈不給「接住」這個選項）。 */
+  /**
+   * 第一個沒有前文的模糊片段，允許的候選 act（難度愈高愈不給「接住」這個選項）。
+   * **只有一個元素時就是 forced**（Codex round-2 P1-1：單元素的「bounded」是在
+   * telemetry 上說謊，policyMode 要照實記 forced）。
+   */
   readonly firstFragmentActs: readonly PlanAct[];
   /** unresolvedCount 累積到這個數字才開始「指出跳題」（topic_shift_v1 bounded）。 */
   readonly topicShiftAt: number;
@@ -360,10 +371,11 @@ export const AGENCY_THRESHOLDS: Record<
     lowCoherenceAt: 2,
     forceEndLoopBeforeChallenge: false,
   },
-  // 挑戰：第一則就可能只回問句或直接質疑，不供應解讀；連續模糊到第 2 則就可以
-  // 直接收掉，不用先走一輪「再給一次機會」的 bounded 質疑。
+  // 挑戰：第一則就強制只問意思（跟 normal 同一條 forced，不供應解讀也不供應
+  // 「接住」）；連續模糊到第 2 則就可以直接收掉，不用先走一輪「再給一次機會」
+  // 的 bounded 質疑。質疑的火力差異放在後面的門檻，不放在第一則。
   challenge: {
-    firstFragmentActs: ["ask_intent", "challenge_relevance"],
+    firstFragmentActs: ["ask_intent"],
     topicShiftAt: 1,
     lowCoherenceAt: 2,
     forceEndLoopBeforeChallenge: true,
@@ -409,12 +421,10 @@ export function agencyPolicyFor(
     };
   }
   if (unresolvedCount >= thresholds.lowCoherenceAt) {
-    // 真的走 detectAgencyEvidence 時，累積到 lowCoherenceAt 前一定已經先經過
-    // topicShiftAt（每個難度 topicShiftAt < lowCoherenceAt），evidence 的
-    // priorChallengeIssued 近似值這時幾乎必定已經是 true——所以「還沒質疑過」
-    // 的 bounded 分支在 standard 模式結構上很少會走到，只有 assisted 模式
-    // 未來接上真實 lastAgencyAct 持久化、或直接手動組 evidence 時才會經過。
-    // forceEndLoopBeforeChallenge（挑戰／game）因此要獨立於 priorChallengeIssued
+    // Codex round-2 P1-2 之後 standard 的 priorChallengeIssued 一律 false，
+    // 所以 standard 走的是下面這個三選一的 bounded 分支（真的是三個選項，不是
+    // 假裝的）；assisted 帶著持久化旗標回來時才會落到 forced。
+    // forceEndLoopBeforeChallenge（挑戰／game）獨立於 priorChallengeIssued
     // 判斷，不然「2 則未解就收掉」在真實流量下永遠選不到。
     if (
       !evidence.priorChallengeIssued && !thresholds.forceEndLoopBeforeChallenge
@@ -465,16 +475,22 @@ export function agencyPolicyFor(
   if (evidence.precedingUserContext) {
     return { ...base, ...NO_OVERRIDE };
   }
-  // 完全沒有前文：語意仍模糊，但**不強制**——Codex P1：長度／無前文不是高
-  // 信心結構，不能直接決定 forced act（「今天好熱喔」這種看得懂的短句開場
-  // 也會落到這條，不該被逼問）。候選 act 依難度給（易：接住／問都給；一般：
-  // 只給問；挑戰：問或直接質疑），由看得到全文的生成模型自己判斷。
+  // 無前文片段（context-free fragment）：這裡是**結構線索的全空集合**——
+  //   不是明示換題、沒有問句標記、沒有第一人稱分享標記、她上一則沒在問問題、
+  //   不是同一個詞再丟一次、前面沒有任何她講清楚過的內容、未解計數是 0。
+  // 七個條件全部是「某個結構線索不存在」，沒有任何一個是字數（Codex round-2
+  // 對「這是換皮的長度啟發式」的回應：`utteranceShapeOf` 已經沒有字數條件，
+  // 四十個字的裸敘述照樣是 fragment，兩個字的「韓國」在她剛問完問題時不是）。
+  // 這個全空集合信心夠高，所以 normal／challenge／game 直接 forced「只問意思」；
+  // easy 仍給兩個選項（接住／問），維持難度差。
+  const acts = thresholds.firstFragmentActs;
+  const forced = acts.length === 1;
   return {
     ...base,
     situation: "ambiguous_fragment",
-    policyMode: "bounded",
-    forcedAct: null,
-    allowedActs: thresholds.firstFragmentActs,
+    policyMode: forced ? "forced" : "bounded",
+    forcedAct: forced ? acts[0] : null,
+    allowedActs: acts,
     allowedActSetId: "fragment_no_context_v1",
   };
 }

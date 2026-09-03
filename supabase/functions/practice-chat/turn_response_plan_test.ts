@@ -700,7 +700,14 @@ function agencyFor(
     signals,
     policyStanceFor(signals, evidence),
   );
-  return computeAgencyDecision({ turns, situation, agencyMode });
+  // 難度必須跟著傳：`computeAgencyDecision` 省略時會落回一般難度門檻，
+  // 挑戰／Game 的 forceEndLoopBeforeChallenge 就測不到。
+  return computeAgencyDecision({
+    turns,
+    situation,
+    agencyMode,
+    difficulty: evidence.difficulty,
+  });
 }
 
 function agencyPlan(
@@ -729,8 +736,10 @@ Deno.test("截圖重現（agency 開）：Alice 的「好市多」改成維持�
   assertEquals(plan.situation, "neutral");
   assertEquals(agency?.applied, true);
   assertEquals(agency?.decision.situation, "repeated_low_coherence");
-  assertEquals(agency?.decision.policyMode, "forced");
-  assertEquals(agency?.decision.forcedAct, "hold_position");
+  // Codex round-2 P1-2 之後 standard 不再假裝「已經質疑過」，這一格是三選一
+  // bounded（維持立場仍在候選裡），不是 forced hold_position。
+  assertEquals(agency?.decision.policyMode, "bounded");
+  assert(agency?.decision.allowedActs.includes("hold_position"));
   const rendered = renderTurnPlan(
     plan,
     STYLE_BY_PROFILE_ID["practice_girl_001"],
@@ -748,7 +757,8 @@ Deno.test("截圖重現（agency 開）：Joyce 的「紅豆泥」同樣不再�
     "practice_girl_026",
   );
   assertEquals(agency?.applied, true);
-  assertEquals(agency?.decision.forcedAct, "hold_position");
+  // 挑戰難度：達到低連貫門檻直接收掉（forceEndLoopBeforeChallenge）。
+  assertEquals(agency?.decision.forcedAct, "end_low_value_loop");
   assertEquals(agency?.decision.evidence.unresolvedCount, 3);
 });
 
@@ -836,11 +846,16 @@ Deno.test("問題預算豁免：澄清型 act 在預算 0 時仍可問，查戶�
   assertEquals(plan.questionBudget, 0);
   const rendered = renderTurnPlan(plan, style, agency);
   assert(!rendered.includes("這輪不反問。"), rendered);
-  assert(rendered.includes("這輪不主動查他的基本資料"), rendered);
-  assert(rendered.includes("問清楚他這句的意思或拉回前一題不算"), rendered);
+  // Phase 2.5：無前文裸片段在一般難度是 forced ask_intent，回覆形狀直接被
+  // 換成「只問，不猜、不接話題：回 1 則，就一個問句」（`asked_with_guess`
+  // 的結構化出口），所以這裡不再走「這輪不主動查基本資料」那一句。
+  assert(rendered.includes("只問，不猜、不接話題"), rendered);
+  assert(rendered.includes("回 1 則，就一個問句"), rendered);
+  // 形狀行本身就把則數與問題預算講完了，不再另外印 style 的則數／預算行。
+  assert(!rendered.includes("一則講一件事"), rendered);
 
-  // 強制 hold／收尾沒有澄清型 act＝仍然是原本的「這輪不反問」。
-  const held = agencyPlan(ALICE_SCREENSHOT, "normal", "practice_girl_001");
+  // 收尾（挑戰難度低連貫）沒有澄清型 act＝仍然是原本的「這輪不反問」。
+  const held = agencyPlan(JOYCE_SCREENSHOT, "challenge", "practice_girl_026");
   assert(
     renderTurnPlan(held.plan, style, held.agency).includes("這輪不反問。"),
   );
