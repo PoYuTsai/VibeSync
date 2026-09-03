@@ -308,7 +308,6 @@ export function computeAgencyDecision(args: {
   return {
     decision,
     applied: agencyMode === "on" && decision.situation !== null,
-    mode: agencyMode,
   };
 }
 
@@ -651,25 +650,6 @@ function agencyStanceLine(agency: AgencyApplication | null): string {
     : "";
 }
 
-/**
- * Phase 2.6：夥伴規則 3（冷場合法）與規則 5（不助理式軟化）從 system 鐵則
- * **搬**到每回合的 hidden guidance（不是新增——鐵則那兩段同時刪掉，淨長度減少）。
- *
- * 為什麼搬：2026-09-05 attempt 2 已經證明「在鐵則裡換順序」零效果（頭條
- * 11.8%→13.1%、助理式軟化 30.0%→36.7%、鋪台階 25.4%→20.3%，三個方向不一致且
- * 區間全部重疊）。踩坑「prompt 規則堆太多後面幾條會被模型直接忽略」的另一半
- * 是：**最後注入的區塊權重最高**。turn plan 是整份 prompt 的最後一段，而且
- * 每一輪重新出現，比躺在鐵則第 5–7 條有機會被讀到。
- *
- * 這兩條跟「這一輪 agency 有沒有指定 act」無關（A21／A22 兩個情境結構上都是
- * no_override），所以吃 `mode === "on"` 而不是 `applied`；shadow 與 off 仍然
- * 逐字等同接線前。
- */
-const AGENCY_STANCE_TURN_LINES = [
-  "他抱怨、不滿或質疑你時：照你的性格回，不道歉、不解釋、不安撫。",
-  "他丟空泛問題（在幹嘛／吃飽沒）時可以冷回或短回，不必幫他找話題。",
-];
-
 const CONDITIONAL_LINE: Record<"vulnerable" | "joke", string> = {
   vulnerable: "如果對方其實是在講自己的狀況或情緒",
   joke: "如果對方其實是在開玩笑",
@@ -733,11 +713,8 @@ export function renderTurnPlan(
     : `回 ${plan.bubbleCount} 則，一則講一件事。${question}${
       disclosure ? disclosure + "。" : ""
     }`;
-  const stanceRules = agency?.mode === "on"
-    ? AGENCY_STANCE_TURN_LINES.map((l) => `\n- ${l}`).join("")
-    : "";
   return `\n\n本輪回應方式（hidden guidance，不要向對方提及）：
 - ${first}。${stance}${conditional}${agencyStanceLine(agency ?? null)}
 - ${shapeLine}
-- ${tail}；沒被逗到就不用笑，沒話就短。${stanceRules}`;
+- ${tail}；沒被逗到就不用笑，沒話就短。`;
 }
