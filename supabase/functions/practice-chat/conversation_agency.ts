@@ -18,7 +18,25 @@
 import type { PracticeTurn } from "./validate.ts";
 import type { ResponseMode } from "./reply_style.ts";
 
-// 玩家問句判準。原本住在 turn_response_plan.ts；搬到這裡讓依賴單向（planner →
+// ── 本檔用到的 regex：只認「句法標記」，不認語意（Codex round-2 Important 6
+// 的明確界線）────────────────────────────────────────────────────────────
+// `QUESTION_RE`、`REACTION_RE`、`FIRST_PERSON_RE`、`AI_QUESTION_RE` 四支都會
+// 影響 `UtteranceShape`／`previousAiAskedQuestion`，因此也會影響 agency 是不是
+// 介入。它們**留著**，而且這就是本檔宣稱的界線：
+//
+//   - 它們比對的是標點與語尾助詞這類**句法標記**（問號、「嗎／呢／吧」、
+//     招呼詞、第一人稱代名詞、疑問詞），不是「這句話跟前一句有沒有關聯」。
+//   - 本檔沒有、也不會有 topic-relevance regex（「東京一定與韓國無關」）。
+//     語意關聯一律交給看得到完整逐字稿的生成模型，在 bounded 候選裡決定。
+//   - 已知的過寬處：`AI_QUESTION_RE` 沒有完整錨定，陳述句「我不知道為什麼會
+//     這樣」含「為什麼」會被判成她問過問題。這個方向是**安全**的——判成
+//     「她問過」只會讓玩家的短答被當成有效短答（不質疑）；判漏才會誤傷。
+//   - 字數不參與任何 agency 判斷：`utteranceShapeOf` 沒有長度條件；
+//     `detectTurnSignals` 那個 12 code unit 的 `userQuestionStreak` 是
+//     `7f1d6d6c` 就在的既有 interrogation 判準，而問句形狀本來就不是低資訊
+//     形狀，所以它證明性地影響不到 agency 的結果（有回歸測試釘住）。
+//
+// 玩家問句判準原本住在 turn_response_plan.ts；搬到這裡讓依賴單向（planner →
 // agency），避免兩個檔互相 import。判準與字面**一字未改**，旗標關閉行為零改動。
 // 問句：問號、句尾疑問助詞、或「有沒／了沒」這類台灣口語；「我還沒」不算。
 const QUESTION_RE =
@@ -191,6 +209,8 @@ export function aiAskedQuestion(text: string): boolean {
 
 /** 只往回看這麼多則玩家訊息（短期工作記憶，不是長期記憶）。 */
 const RECENT_USER_WINDOW = 8;
+/** 「同一個詞原樣再丟一次」最多往回看幾則玩家訊息（Codex round-2 P1-3）。 */
+const REPEAT_LOOKBACK = 3;
 
 function compact(text: string): string {
   return text.trim().replace(/\s+/g, "");
@@ -279,8 +299,23 @@ export function detectAgencyEvidence(
     else if (s.shape !== "reaction") unresolved = 0;
   }
   const compactedCurrent = current ? compact(current.text) : "";
+  // Codex round-2 P1-3：舊版拿整個八則 window 比對，等於「玩家較早講過『貓』、
+  // 中間完整聊完別的事、稍後她問『你最喜歡什麼動物』他再答『貓』」也會被
+  // forced `end_low_value_loop`。重複要成立必須是**同一段沒解決的迴圈裡**：
+  //   - 起點＝最後一次「玩家自己把話講清楚了」（非低資訊、非 reaction）之後，
+  //     也就是 unresolved 歸零的那個 repair／connected 點；
+  //   - 再往回最多 3 則（短期工作記憶，不是長期記憶）。
+  let repairedAt = 0;
+  earlier.forEach((s, i) => {
+    if (!isLowInformation(s.shape) && s.shape !== "reaction") {
+      repairedAt = i + 1;
+    }
+  });
+  const repeatWindow = earlier.slice(
+    Math.max(repairedAt, earlier.length - REPEAT_LOOKBACK),
+  );
   const repeatedExactToken = compactedCurrent.length > 0 &&
-    earlier.some((s) => compact(s.text) === compactedCurrent);
+    repeatWindow.some((s) => compact(s.text) === compactedCurrent);
   return {
     utteranceShape: current?.shape ?? "unknown",
     previousAiAskedQuestion: current?.previousAiAskedQuestion ?? false,
@@ -364,9 +399,16 @@ export const AGENCY_THRESHOLDS: Record<
     lowCoherenceAt: 3,
     forceEndLoopBeforeChallenge: false,
   },
+  // Codex round-2 P1-1：normal／challenge 的第一個無前文片段舊版是 forced
+  // `ask_intent`。`bare_fragment` 的結構定義是「每一個結構線索都不存在」，
+  // 而那個集合抓得到「路上那間店的招牌昨天換成新的顏色…」這種完整、可理解的
+  // 第三人稱陳述句——強制只問意思等於對正常敘述誤判。強制留給信心最高的兩格
+  // （同詞原樣再丟一次、欠債到門檻），第一個片段一律 bounded {接住, 問意思}，
+  // 由看得到全文的她挑。難度差異改由 topicShiftAt／lowCoherenceAt／
+  // forceEndLoopBeforeChallenge 這三個後段門檻承擔。
   // 一般：第一個沒前文的片段直接問，不供應「接住」當退路；第 2 則就指出跳題。
   normal: {
-    firstFragmentActs: ["ask_intent"],
+    firstFragmentActs: ["acknowledge", "ask_intent"],
     topicShiftAt: 1,
     lowCoherenceAt: 2,
     forceEndLoopBeforeChallenge: false,
@@ -375,7 +417,7 @@ export const AGENCY_THRESHOLDS: Record<
   // 「接住」）；連續模糊到第 2 則就可以直接收掉，不用先走一輪「再給一次機會」
   // 的 bounded 質疑。質疑的火力差異放在後面的門檻，不放在第一則。
   challenge: {
-    firstFragmentActs: ["ask_intent"],
+    firstFragmentActs: ["acknowledge", "ask_intent"],
     topicShiftAt: 1,
     lowCoherenceAt: 2,
     forceEndLoopBeforeChallenge: true,
@@ -498,6 +540,11 @@ export function agencyPolicyFor(
   if (evidence.precedingUserContext) {
     return { ...base, ...NO_OVERRIDE };
   }
+  // Codex round-2 P1-1：把「結構線索的全空集合」寫成可執行的條件，而不是只寫
+  // 在註解裡。`bare_fragment` 已經蘊含「不是明示換題、不是自我分享、她上一則
+  // 沒在問問題」，這裡再要求未解計數真的是 0（easy 的 topicShiftAt 是 2，
+  // 不加這條時 unresolvedCount=1 也會落到這裡）。
+  if (evidence.unresolvedCount !== 0) return { ...base, ...NO_OVERRIDE };
   // 無前文片段（context-free fragment）：這裡是**結構線索的全空集合**——
   //   不是明示換題、沒有問句標記、沒有第一人稱分享標記、她上一則沒在問問題、
   //   不是同一個詞再丟一次、前面沒有任何她講清楚過的內容、未解計數是 0。
@@ -607,14 +654,26 @@ export function nextConversationAgencyState(
   const structuralCoherence = decision.situation
     ? COHERENCE_BY_SITUATION[decision.situation]
     : "connected";
+  // Codex round-2 P1-5：舊版是永久 OR，一次質疑會污染同一個 thread 上之後
+  // 每一段不相干的 episode（新片段一出現就直接 forced hold_position）。
+  // 「這段已經修好了」有兩個結構化的地面真相：
+  //   (1) 分類器讀完她這一輪的回覆後判 `connected`＝玩家真的接上了；
+  //   (2) 她剛問完問題、玩家答了、而且前面沒有欠債（`answer_candidate` ＋
+  //       `unresolvedCount === 0` → 本檔的「有效短答」免疫格，situation=null）。
+  // 任何一個成立就把旗標歸零；這一輪自己真的又質疑了才會重新變 true。
+  const repaired = classifierSignal?.coherence === "connected" ||
+    (decision.evidence.utteranceShape === "answer_candidate" &&
+      decision.evidence.unresolvedCount === 0 && decision.situation === null);
+  const challengedThisTurn = forced === "challenge_relevance" ||
+    forced === "hold_position" ||
+    classifierSignal?.aiChallengedThisTurn === true;
   return {
     version: 1,
     lastCoherence: classifierSignal?.coherence ?? structuralCoherence,
     unresolvedCount: decision.evidence.unresolvedCount,
-    priorChallengeIssued: base.priorChallengeIssued ||
-      decision.evidence.priorChallengeIssued ||
-      forced === "challenge_relevance" || forced === "hold_position" ||
-      classifierSignal?.aiChallengedThisTurn === true,
+    priorChallengeIssued: (repaired ? false : base.priorChallengeIssued ||
+      decision.evidence.priorChallengeIssued) ||
+      challengedThisTurn,
     lastAgencyAct,
   };
 }

@@ -62,11 +62,15 @@ Deno.test("utteranceShape 沒有任何字數條件（Codex round-2 P1-1）：長
     ).situation,
     null,
   );
-  // 同一個長裸敘述當開場：normal 直接 forced 只問意思。
+  // Codex round-2 P1-1：同一個長裸敘述當開場，**不再** forced 只問意思。
+  // 「路上那間店的招牌換了顏色」是完整、可理解的第三人稱陳述句，強制澄清
+  // 就是誤判；結構層分不出它跟真正的亂丟詞，所以兩個選項都給、由看得到全文
+  // 的她挑。強制只留給信心最高的兩格（同詞原樣再丟一次、欠債到門檻）。
   const longDecision = agencyPolicyFor(detectAgencyEvidence([u(longBare)]));
   assertEquals(longDecision.situation, "ambiguous_fragment");
-  assertEquals(longDecision.policyMode, "forced");
-  assertEquals(longDecision.forcedAct, "ask_intent");
+  assertEquals(longDecision.policyMode, "bounded");
+  assertEquals(longDecision.forcedAct, null);
+  assertEquals(longDecision.allowedActs, ["acknowledge", "ask_intent"]);
 });
 
 Deno.test("明示換題詞：否定、引用、慣用語不算宣告轉場（Codex P1）", () => {
@@ -232,15 +236,15 @@ Deno.test("有效短答與明示換題永遠不介入（A01／A03／A07／A09 �
   );
 });
 
-Deno.test("forced 只給結構線索的全空集合；其餘 bounded 真的有兩個以上選項", () => {
-  // 無前文裸片段（A02／A08）：七個結構條件全部是「線索不存在」（見
-  // agencyPolicyFor 的註解），信心夠高 → 一般難度 forced「只問意思」。
-  // 這裡沒有任何字數條件，上面「長裸敘述」那條測試證明了同一件事。
+Deno.test("forced 只留給同詞重複與欠債到門檻；第一個片段一律 bounded（Codex R2 P1-1）", () => {
+  // 無前文裸片段（A02／A08）：結構條件全部是「線索不存在」，但那個集合也抓得到
+  // 完整的第三人稱陳述句，所以**不再** forced，改成兩選一 bounded。
   const a02 = policy([u("韓國")]);
   assertEquals(a02.situation, "ambiguous_fragment");
   assertEquals(a02.allowedActSetId, "fragment_no_context_v1");
-  assertEquals(a02.policyMode, "forced");
-  assertEquals(a02.forcedAct, "ask_intent");
+  assertEquals(a02.policyMode, "bounded");
+  assertEquals(a02.forcedAct, null);
+  assertEquals(a02.allowedActs, ["acknowledge", "ask_intent"]);
 
   // A04：她問了問題、玩家丟別的詞 → 結構上這仍是 answer_candidate（她剛問完），
   // 所以走 P1-c 那條 bounded：永遠有「接住」，也永遠有「拉回你剛才問的」。
@@ -331,7 +335,7 @@ Deno.test("parseConversationAgencyState：缺 key 回 null；任何欄位壞掉�
   }
 });
 
-Deno.test("nextConversationAgencyState：只存 enum／布林／小整數，質疑過就不會退回", () => {
+Deno.test("nextConversationAgencyState：只存 enum／布林／小整數，修好之後質疑旗標會歸零（Codex R2 P1-5）", () => {
   const held = nextConversationAgencyState(
     null,
     policy([u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")]),
@@ -345,15 +349,37 @@ Deno.test("nextConversationAgencyState：只存 enum／布林／小整數，質�
     priorChallengeIssued: false,
     lastAgencyAct: null,
   });
-  // 玩家講清楚了：coherence 回 connected、未解歸零；質疑歷史沿用前一份狀態。
+  // 玩家講清楚了（她剛問完、他答了、前面沒欠債＝有效短答免疫格）：
+  // Codex round-2 P1-5——舊版永久 OR 會讓上一段 episode 的質疑污染這一段，
+  // 下一則新片段一出現就直接 forced hold_position。修好就歸零。
+  const carried = {
+    ...held,
+    priorChallengeIssued: true,
+    lastAgencyAct: "hold_position" as const,
+  };
   const recovered = nextConversationAgencyState(
-    { ...held, priorChallengeIssued: true, lastAgencyAct: "hold_position" },
+    carried,
     policy([a("那你最想去哪個國家玩"), u("韓國")]),
   );
   assertEquals(recovered.lastCoherence, "connected");
   assertEquals(recovered.unresolvedCount, 0);
-  assertEquals(recovered.priorChallengeIssued, true);
+  assertEquals(recovered.priorChallengeIssued, false);
   assertEquals(recovered.lastAgencyAct, "hold_position");
+  // 分類器讀完她這一輪的回覆判 connected（A15／A19 的 repair）也一樣歸零，
+  // 就算這一輪結構上還是個片段。
+  const classifierRepair = nextConversationAgencyState(
+    carried,
+    policy([u("韓國"), a("怎麼了"), u("東京")]),
+    { coherence: "connected", aiChallengedThisTurn: false },
+  );
+  assertEquals(classifierRepair.priorChallengeIssued, false);
+  // 但這一輪自己真的又質疑了（分類器回報）就重新變 true。
+  const challengedAgain = nextConversationAgencyState(
+    carried,
+    policy([u("韓國"), a("怎麼了"), u("東京")]),
+    { coherence: "connected", aiChallengedThisTurn: true },
+  );
+  assertEquals(challengedAgain.priorChallengeIssued, true);
 });
 
 Deno.test("agencyModeFor：只認 true／shadow／test，其餘一律 off", () => {
@@ -386,23 +412,20 @@ Deno.test("持久化的 priorChallengeIssued 會被吃進證據（assisted 跨�
 // ── 難度門檻（報告 §7.4）：只調門檻與第一個片段的候選 act，不關掉 agency，
 // 不動有效短答的免疫。────────────────────────────────────────────────────
 
-Deno.test("難度門檻：第一個無前文片段——易仍是兩選一 bounded，一般／挑戰／Game 強制只問意思", () => {
+Deno.test("難度門檻：第一個無前文片段在每一種難度都是兩選一 bounded（Codex R2 P1-1）", () => {
+  // 難度差異改由 topicShiftAt／lowCoherenceAt／forceEndLoopBeforeChallenge
+  // 三個後段門檻承擔（下面兩條測試），不再放在第一則的強制與否。
   const fragment = [u("韓國")];
-  const easy = policyAt(fragment, "easy");
-  assertEquals(easy.policyMode, "bounded");
-  assertEquals(easy.forcedAct, null);
-  assertEquals(easy.allowedActs, ["acknowledge", "ask_intent"]);
-
-  for (const d of ["normal", "challenge"] as const) {
+  for (const d of ["easy", "normal", "challenge"] as const) {
     const decision = policyAt(fragment, d);
-    assertEquals(decision.policyMode, "forced", d);
-    assertEquals(decision.forcedAct, "ask_intent", d);
+    assertEquals(decision.policyMode, "bounded", d);
+    assertEquals(decision.forcedAct, null, d);
+    assertEquals(decision.allowedActs, ["acknowledge", "ask_intent"], d);
   }
-
-  // Game 套挑戰門檻。
+  // Game 套挑戰門檻，第一則同樣是 bounded。
   const game = policyAt(fragment, "normal", true);
-  assertEquals(game.policyMode, "forced");
-  assertEquals(game.forcedAct, "ask_intent");
+  assertEquals(game.policyMode, "bounded");
+  assertEquals(game.allowedActs, ["acknowledge", "ask_intent"]);
 });
 
 Deno.test("難度門檻：易難度指出跳題延後到第 2–3 則未解，一般／挑戰第 2 則就進入", () => {
@@ -414,8 +437,12 @@ Deno.test("難度門檻：易難度指出跳題延後到第 2–3 則未解，�
   assertEquals(normalSecond.allowedActSetId, "topic_shift_v1");
   const challengeSecond = policyAt(twoFragments, "challenge");
   assertEquals(challengeSecond.allowedActSetId, "topic_shift_v1");
+  // 易難度：第二則（unresolvedCount=1）既沒到 topicShiftAt，也不再落到
+  // fragment_no_context_v1——Codex round-2 P1-1 把那條收緊成「未解計數真的
+  // 是 0」的全空集合，所以這一格改成完全不介入。
   const easySecond = policyAt(twoFragments, "easy");
-  assertEquals(easySecond.allowedActSetId, "fragment_no_context_v1");
+  assertEquals(easySecond.situation, null);
+  assertEquals(easySecond.allowedActSetId, "none");
 
   // 第三個裸片段（unresolvedCount＝2）：一般／挑戰已經進入
   // repeated_low_coherence；易難度這時才第一次進 topic_shift_v1。
@@ -553,6 +580,37 @@ Deno.test("Codex round-2 P0-3：只有旗標 on 保留未知 key，off／shadow 
     ...mainPayload,
     someOtherFeature: { keep: true },
   });
+});
+
+Deno.test("Codex round-2 P1-3：重複只算在同一段未解迴圈裡，中間修好過就不算重複", () => {
+  // 早期講過「貓」→ 中間完整聊完別的事（self_share 把未解歸零）→ 她問
+  // 「你最喜歡什麼動物」→ 再答一次「貓」。這不是低價值迴圈，是有效短答。
+  const repaired = detectAgencyEvidence([
+    u("貓"),
+    a("蛤"),
+    u("我昨天去朋友家看到一隻超肥的橘貓"),
+    a("你最喜歡什麼動物"),
+    u("貓"),
+  ]);
+  assertEquals(repaired.repeatedExactToken, false);
+  assertEquals(repaired.utteranceShape, "answer_candidate");
+  assertEquals(repaired.unresolvedCount, 0);
+  assertEquals(agencyPolicyFor(repaired).situation, null);
+
+  // 同一段迴圈裡原樣再丟一次，照舊是最高信心的結構事實。
+  const looping = detectAgencyEvidence([u("好市多"), a("？"), u("好市多")]);
+  assertEquals(looping.repeatedExactToken, true);
+  assertEquals(agencyPolicyFor(looping).forcedAct, "end_low_value_loop");
+
+  // 距離超過 3 則玩家訊息（短期工作記憶窗口外）也不算重複。
+  const faraway = detectAgencyEvidence([
+    u("好市多"),
+    u("東京"),
+    u("清邁"),
+    u("曼谷"),
+    u("好市多"),
+  ]);
+  assertEquals(faraway.repeatedExactToken, false);
 });
 
 Deno.test("Codex round-1 P1-c：有欠債的有效短答仍然一定有「接住」這個選項，永不 forced 質疑", () => {

@@ -637,15 +637,22 @@ const AGENCY_CLARIFY_ONLY_SHAPE =
   "回 1 則，就做這一件事：不替他補你猜的意思，也不要順著他丟的詞講你自己的事。";
 
 /**
- * standard 模式的跨輪立場（Codex round-2 P1-2）：沒有持久化的 lastAgencyAct，
- * 但「她上一則在問問題、玩家沒回答就丟別的」是逐字稿上看得見的結構事實，
- * 用它取代原本那個 `unresolved >= 2` 的假旗標。
+ * 跨輪立場行。**只有 planner 已經 forced 質疑／維持立場的那一輪才印**。
+ *
+ * Codex round-2 P1-2：舊版掛在
+ * `previousAiAskedQuestion && answer_candidate && unresolvedCount > 0`，
+ * 那正好是 `answer_candidate_with_debt_v1`（bounded {acknowledge,
+ * return_to_topic}）的條件——結構層根本分不出「貓」有沒有回答「你最喜歡哪種
+ * 動物」，這句話卻先替模型斷言「他沒回答」，把 bounded 的兩個選項偏壓成
+ * `return_to_topic`，等於 P1-c 修掉的誤質疑又從文案繞回來。
+ *
+ * 現在只認 forced：`hold_position`／`challenge_relevance` 是結構層真的下了
+ * 「不退讓」決定的兩個 act，那時候這句話才與候選清單一致。
  */
 function agencyStanceLine(agency: AgencyApplication | null): string {
   if (!agency?.applied) return "";
-  const e = agency.decision.evidence;
-  return e.previousAiAskedQuestion && e.utteranceShape === "answer_candidate" &&
-      e.unresolvedCount > 0
+  const forced = agency.decision.forcedAct;
+  return forced === "hold_position" || forced === "challenge_relevance"
     ? "你上一句已經在問他了，他沒回答就別放過，不要自己把問題吞掉。"
     : "";
 }

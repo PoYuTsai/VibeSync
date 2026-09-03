@@ -846,13 +846,12 @@ Deno.test("問題預算豁免：澄清型 act 在預算 0 時仍可問，查戶�
   assertEquals(plan.questionBudget, 0);
   const rendered = renderTurnPlan(plan, style, agency);
   assert(!rendered.includes("這輪不反問。"), rendered);
-  // Phase 2.5：無前文裸片段在一般難度是 forced ask_intent，回覆形狀直接被
-  // 換成「只問，不猜、不接話題：回 1 則，就一個問句」（`asked_with_guess`
-  // 的結構化出口），所以這裡不再走「這輪不主動查基本資料」那一句。
-  assert(rendered.includes("只問，不猜、不接話題"), rendered);
-  assert(rendered.includes("回 1 則，就一個問句"), rendered);
-  // 形狀行本身就把則數與問題預算講完了，不再另外印 style 的則數／預算行。
-  assert(!rendered.includes("一則講一件事"), rendered);
+  // Codex round-2 P1-1 之後無前文裸片段在每個難度都是 bounded
+  // {acknowledge, ask_intent}——候選裡有「接住」，所以形狀不動，走的是
+  // 「這輪不主動查他的基本資料；問清楚…不算」這條豁免。
+  assert(rendered.includes("這輪不主動查他的基本資料"), rendered);
+  assert(!rendered.includes("只問，不猜、不接話題"), rendered);
+  assert(rendered.includes("一則講一件事"), rendered);
 
   // Phase 2.6：候選清單裡沒有「接住」的每一輪（收尾／維持立場／指出跳題）
   // 也吃同一把結構刀——回 1 則、不猜、不接他丟的詞；形狀行取代則數／預算行。
@@ -949,4 +948,99 @@ Deno.test("Phase 2.6：候選清單有「接住」時形狀不動，全是 agenc
   );
   assert(lowRendered.includes("回 1 則，就做這一件事"), lowRendered);
   assert(!lowRendered.includes("一則講一件事"), lowRendered);
+});
+
+// ── conversation-agency-v1 Phase 2.7（Codex round-2）─────────────────────
+
+Deno.test("Codex round-2 P1-2：跨輪立場行只在 forced 質疑／維持立場那一輪印，bounded 短答輪不得偏壓", () => {
+  const style = STYLE_BY_PROFILE_ID["practice_girl_001"];
+  const evidence = standard({ difficulty: "normal" });
+  const STANCE = "他沒回答就別放過";
+
+  // packet 的案例：前面有欠債 → 她問「你最喜歡什麼動物」→ 玩家答「貓」。
+  // 這是 answer_candidate_with_debt_v1（bounded {acknowledge, return_to_topic}），
+  // 結構層根本分不出「貓」算不算回答，文案不得先替模型斷言「他沒回答」。
+  const debtAnswer = [
+    u("好市多"),
+    a("你在說什麼"),
+    u("你喜歡什麼動物"),
+    a("你喜歡什麼動物？我喜歡貓欸"),
+    u("貓"),
+  ];
+  const debtAgency = agencyFor(debtAnswer, evidence, "on");
+  assertEquals(
+    debtAgency?.decision.allowedActSetId,
+    "answer_candidate_with_debt_v1",
+  );
+  const debtRendered = renderTurnPlan(
+    planTurnResponse({
+      turns: debtAnswer,
+      style,
+      evidence,
+      seedKey: "t",
+      agency: debtAgency,
+    }),
+    style,
+    debtAgency,
+  );
+  assert(!debtRendered.includes(STANCE), debtRendered);
+
+  // 反向：assisted 帶著「已經質疑過」回來、又連續未解到門檻＝forced
+  // hold_position，這時候這句話才與候選清單一致。
+  const holdTurns = [u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")];
+  const signals = detectTurnSignals(holdTurns);
+  const holdAgency = computeAgencyDecision({
+    turns: holdTurns,
+    situation: classifySituation(signals, policyStanceFor(signals, evidence)),
+    agencyMode: "on",
+    difficulty: "normal",
+    agencyState: {
+      version: 1,
+      lastCoherence: "repetitive",
+      unresolvedCount: 2,
+      priorChallengeIssued: true,
+      lastAgencyAct: "challenge_relevance",
+    },
+  });
+  assertEquals(holdAgency?.decision.forcedAct, "hold_position");
+  const holdRendered = renderTurnPlan(
+    planTurnResponse({
+      turns: holdTurns,
+      style,
+      evidence,
+      seedKey: "t",
+      agency: holdAgency,
+    }),
+    style,
+    holdAgency,
+  );
+  assert(holdRendered.includes(STANCE), holdRendered);
+});
+
+Deno.test("Codex round-2 Important 6：12 code unit 的 userQuestionStreak 門檻影響不到 agency 決策", () => {
+  // `detectTurnSignals` 的 `users[i].length <= 12` 是 7f1d6d6c 就在的既有
+  // interrogation 判準（本輪不動它）。這條測試釘住「它證明性地影響不到
+  // agency」：問句形狀本來就不是低資訊形狀，所以不論 streak 有沒有成立，
+  // agency 的 decision 都一樣。
+  const evidence = standard({ difficulty: "normal" });
+  const shortQ = "你平常都在幹嘛"; // 7 字，命中 <=12 門檻
+  const longQ = "你平常放假的時候都在做些什麼事情呢"; // 17 字，跨過門檻
+  const decisionFor = (q: string) => {
+    const turns = [u(q), a("嗯"), u(q)];
+    const signals = detectTurnSignals(turns);
+    return {
+      situation: classifySituation(signals, policyStanceFor(signals, evidence)),
+      agency: agencyFor(turns, evidence, "on"),
+    };
+  };
+  const short = decisionFor(shortQ);
+  const long = decisionFor(longQ);
+  // 門檻確實把兩者分到不同的既有 situation……
+  assertEquals(short.situation, "interrogation");
+  assertEquals(long.situation, "question");
+  // ……但 agency 的決策完全一樣：兩邊都不介入。
+  assertEquals(short.agency?.decision.situation, null);
+  assertEquals(long.agency?.decision.situation, null);
+  assertEquals(short.agency?.applied, false);
+  assertEquals(long.agency?.applied, false);
 });
