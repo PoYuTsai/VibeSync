@@ -704,9 +704,7 @@ def build(out_dir):
         name = {1: 'book_1_bottleneck', 2: 'book_2_conversation',
                 3: 'book_3_rescue', 4: 'book_4_meeting'}[doc['number']]
         path = os.path.join(out_dir, f'{name}.json')
-        with open(path, 'w', encoding='utf-8', newline='\n') as fh:
-            json.dump(doc, fh, ensure_ascii=False, indent=2)
-            fh.write('\n')
+        write_json(path, doc)
         counts = collections.Counter()
 
         def walk(bs):
@@ -722,6 +720,18 @@ def build(out_dir):
     missing = sorted(set(range(len(NODES))) - used)
     print('未使用的節點:', missing if missing else '無')
     return docs
+
+
+def write_json(path, payload):
+    """候選檔一律寫暫存檔再 os.replace：目標若是 symlink（例如指向正式檔）不跟隨、直接拒絕，
+    replace 也只換掉目錄項不會寫進連結目標——目錄守門之外的第二道鎖。"""
+    if os.path.islink(path):
+        raise SystemExit(f'拒絕寫入 symlink：{path}（候選目錄裡不得放連結，避免繞過正式資產守門）')
+    tmp = f'{path}.tmp'
+    with open(tmp, 'w', encoding='utf-8', newline='\n') as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+        fh.write('\n')
+    os.replace(tmp, path)
 
 
 def assert_not_official_dir(out_dir, official_dir=OFFICIAL_DIR):
@@ -749,9 +759,7 @@ def write_candidate_summary(out_dir, docs, nodes_path):
         diff = compare_dirs(OFFICIAL_DIR, out_dir)
         summary['diffAgainstOfficial'] = diff
         print(format_summary(diff))
-    with open(os.path.join(out_dir, 'candidate_summary.json'), 'w', encoding='utf-8', newline='\n') as fh:
-        json.dump(summary, fh, ensure_ascii=False, indent=2)
-        fh.write('\n')
+    write_json(os.path.join(out_dir, 'candidate_summary.json'), summary)
 
 
 def main(argv=None):

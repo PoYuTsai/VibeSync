@@ -196,3 +196,15 @@ jobs:
 
       - name: Audit ebook copy against baseline
         run: python3 tools/content/audit_ebook_copy.py assets/learning/ebooks --baseline tools/content/audit_baseline.json
+
+      # 棘輪只准縮小：PR 的 baseline 不得比 main 多出既有規則的項目（新規則可以第一次登錄）。
+      # main 還沒有 baseline 時略過。
+      - name: Baseline may only shrink
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --depth=1 origin main
+          if git show origin/main:tools/content/audit_baseline.json > /tmp/main_baseline.json 2>/dev/null; then
+            python3 tools/content/audit_ebook_copy.py assets/learning/ebooks --baseline tools/content/audit_baseline.json --parent-baseline /tmp/main_baseline.json --quiet
+          else
+            echo "main 尚無 audit_baseline.json，略過縮小檢查"
+          fi

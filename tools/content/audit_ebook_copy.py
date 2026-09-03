@@ -72,6 +72,7 @@ SYMBOL_PATTERNS = [
     ('>', re.compile(r'(?<![A-Za-z0-9])\s*>\s*(?![A-Za-z0-9])')),
     ('<', re.compile(r'(?<![A-Za-z0-9])\s*<\s*(?![A-Za-z0-9])')),
     ('[', re.compile(r'\[')),
+    (']', re.compile(r'\]')),
     ('"', re.compile(r'"')),
 ]
 
@@ -473,6 +474,14 @@ def compare_with_baseline(findings: list, baseline: dict) -> tuple:
     return new, resolved
 
 
+def baseline_growth(current: dict, parent: dict) -> list:
+    """棘輪只准縮小：回傳 current 有、parent 沒有的鍵。
+    parent 完全沒有的規則（新加的規則）准許第一次登錄它的既有發現，其餘一律是放大。"""
+    parent_keys = baseline_keys(parent)
+    parent_rules = {key[0] for key in parent_keys}
+    return sorted(key for key in baseline_keys(current) - parent_keys if key[0] in parent_rules)
+
+
 def make_baseline(findings: list, source: str) -> dict:
     return {
         'schemaVersion': 1,
@@ -575,6 +584,8 @@ def main(argv=None) -> int:
     parser.add_argument('--check', action='store_true', help='有任何發現就 exit 1')
     parser.add_argument('--baseline', help='棘輪：只有 baseline 以外的新發現才 exit 1')
     parser.add_argument('--write-baseline', dest='write_baseline', help='把目前的發現寫成 baseline JSON')
+    parser.add_argument('--parent-baseline', dest='parent_baseline',
+                        help='棘輪只准縮小：--baseline 相對這份（通常是 main 的）不得多出既有規則的項目')
     parser.add_argument('--json', dest='json_path', help='完整結果寫成 JSON')
     parser.add_argument('--markdown', dest='markdown_path', help='人類可讀摘要寫成 Markdown')
     parser.add_argument('--verbose', action='store_true', help='列出全部發現')
@@ -615,6 +626,18 @@ def main(argv=None) -> int:
         except (OSError, ValueError) as error:
             print(f'讀不到 baseline：{error}', file=sys.stderr)
             return 2
+        if args.parent_baseline:
+            try:
+                parent = load_json(args.parent_baseline)
+            except (OSError, ValueError) as error:
+                print(f'讀不到 parent baseline：{error}', file=sys.stderr)
+                return 2
+            grown = baseline_growth(baseline, parent)
+            if grown:
+                print(f'baseline 放大了 {len(grown)} 筆（棘輪只准縮小；新規則除外）：')
+                for rule, item_id, field in grown:
+                    print(f'  {rule} {item_id}.{field}')
+                return 1
         new, resolved = compare_with_baseline(result['findings'], baseline)
         print(f"baseline 比對：新發現 {len(new)} 筆；已解決 {len(resolved)} 筆（baseline 共 {baseline.get('count', len(baseline.get('findings', [])))} 筆）")
         for item in new:

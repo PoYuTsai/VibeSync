@@ -175,6 +175,8 @@ class AuditRuleTests(unittest.TestCase):
         self.assertIn('/', finding.message)
         self.assertIn('>', finding.message)
         self.assertNotIn('=', finding.message)  # V=0 是英數之間，允許
+        lone_bracket = make_book(blocks=[{'type': 'paragraph', 'id': 'p1', 'text': '中文只有右括號]'}])
+        self.assertEqual([f.rule for f in audit_findings(lone_bracket) if f.rule == 'R02'], ['R02'])
 
     def test_r03_r04_r05_whitespace_paragraphs_pipes(self):
         book = make_book(blocks=[
@@ -290,6 +292,30 @@ class AuditRuleTests(unittest.TestCase):
         self.assertEqual(new, [])
         self.assertEqual(resolved, [('R01', 'p1', 'text')])
 
+    def test_parent_baseline_only_allows_shrink_or_new_rule(self):
+        parent = {'findings': [{'rule': 'R01', 'id': 'p1', 'field': 'text'}]}
+        shrunk = {'findings': []}
+        self.assertEqual(audit.baseline_growth(shrunk, parent), [])
+        grown = {'findings': [{'rule': 'R01', 'id': 'p1', 'field': 'text'}, {'rule': 'R01', 'id': 'p2', 'field': 'text'}]}
+        self.assertEqual(audit.baseline_growth(grown, parent), [('R01', 'p2', 'text')])
+        new_rule = {'findings': [{'rule': 'R99', 'id': 'p1', 'field': 'text'}]}
+        self.assertEqual(audit.baseline_growth(new_rule, parent), [])  # 新規則可第一次登錄
+        book = make_book(blocks=[{'type': 'paragraph', 'id': 'p1', 'text': '一段,半形逗號'}])
+        with tempfile.TemporaryDirectory() as tmp:
+            src = os.path.join(tmp, 'src')
+            os.makedirs(src)
+            write_books(src, [('book_9_fixture.json', book)])
+            current_path = os.path.join(tmp, 'current.json')
+            parent_path = os.path.join(tmp, 'parent.json')
+            with redirect_stdout(io.StringIO()):
+                audit.main([src, '--write-baseline', current_path, '--quiet'])
+            other_id = {'findings': [{'rule': 'R01', 'id': 'p0', 'field': 'text'}]}  # 同規則、不同 id：放大
+            for parent_doc, expected in ((other_id, 1), ({'findings': [{'rule': 'R01', 'id': 'p1', 'field': 'text'}]}, 0)):
+                with open(parent_path, 'w', encoding='utf-8') as fh:
+                    json.dump(parent_doc, fh)
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(audit.main([src, '--baseline', current_path, '--parent-baseline', parent_path, '--quiet']), expected)
+
     def test_cli_exit_codes(self):
         book = make_book(blocks=[{'type': 'paragraph', 'id': 'p1', 'text': '一段,半形逗號'}])
         with tempfile.TemporaryDirectory() as tmp:
@@ -356,6 +382,23 @@ class BuilderGuardTests(unittest.TestCase):
                 builder.assert_not_official_dir(target)
         with tempfile.TemporaryDirectory() as tmp:
             builder.assert_not_official_dir(tmp)  # 其他目錄可以
+
+    def test_write_json_refuses_symlink_and_replaces_atomically(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            protected = os.path.join(tmp, 'official.json')
+            with open(protected, 'w', encoding='utf-8') as fh:
+                fh.write('{"keep": true}\n')
+            link = os.path.join(tmp, 'candidate.json')
+            os.symlink(protected, link)
+            with self.assertRaises(SystemExit):
+                builder.write_json(link, {'overwritten': True})
+            with open(protected, encoding='utf-8') as fh:
+                self.assertEqual(fh.read(), '{"keep": true}\n')
+            plain = os.path.join(tmp, 'plain.json')
+            builder.write_json(plain, {'ok': 1})
+            with open(plain, encoding='utf-8') as fh:
+                self.assertEqual(json.load(fh), {'ok': 1})
+            self.assertFalse(os.path.exists(plain + '.tmp'))
 
     def test_cli_refuses_env_override_into_assets(self):
         argv = ['--out', builder.OFFICIAL_DIR, '--nodes', os.path.join(TOOLS_DIR, 'funnel_block.json')]

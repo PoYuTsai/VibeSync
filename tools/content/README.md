@@ -78,7 +78,8 @@ python3 -m unittest discover -s tools/content/tests -v
 
 - `audit_baseline.json` 是目前正式內容「已知問題」的清單。CI 跑
   `--baseline`：只有清單以外的**新發現**才會失敗。每個工作包修掉一批後，用
-  `--write-baseline` 重新產生（它只會變小），**不得手動加項目**。
+  `--write-baseline` 重新產生（它只會變小），**不得手動加項目**。PR CI 另外用
+  `--parent-baseline`（main 的 baseline）檢查它真的只變小：既有規則多出項目就失敗，只有新加的規則可以第一次登錄既有發現。
 - `audit_allowlist.json` 是具名例外：每一筆都要有 `rule`、`id`、可選的 `field` 與
   `reason`。不允許整本書或整條規則的例外；要放寬門檻請改 `audit_rules.json` 並在 PR 說明。
 - `--check` 是嚴格模式（任何發現都失敗），給內容全部清乾淨之後用。
