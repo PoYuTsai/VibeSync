@@ -616,7 +616,7 @@ Deno.test("逾時上界就是 1.5 秒，別偷偷放寬", () => {
   assertEquals(MOMENT_MEMORY_TIMEOUT_MS, 1_500);
 });
 
-Deno.test("Codex round-2 Important 7：貼文與最新逐字稿衝突時以逐字稿為準——agency 開／關逐字都有這一句", () => {
+Deno.test("Codex round-2 Important 7：貼文與最新逐字稿衝突時以逐字稿為準——agency 關維持舊句", () => {
   const posts = [
     {
       postDate: "2026-06-27",
@@ -624,9 +624,29 @@ Deno.test("Codex round-2 Important 7：貼文與最新逐字稿衝突時以逐�
       body: "還在公司加班，今天大概走不掉了",
     },
   ];
-  const SENTENCE = "若貼文內容與最新逐字稿衝突，以最新逐字稿為準。";
-  for (const agency of [false, true]) {
-    const block = herRecentMomentsPrompt(posts, agency);
-    assert(block.includes(SENTENCE), `agency=${agency}：${block}`);
-  }
+  const OFF_SENTENCE = "若貼文內容與最新逐字稿衝突，以最新逐字稿為準。";
+  const off = herRecentMomentsPrompt(posts, false);
+  assert(off.includes(OFF_SENTENCE), off);
+});
+
+Deno.test("Codex round-1（新項）P1-4 round 2：agency 開時貼文衝突規則要限定主詞，不能是「以最新逐字稿為準」", () => {
+  const posts = [
+    {
+      postDate: "2026-06-27",
+      dayPart: "evening" as const,
+      body: "還在公司加班，今天大概走不掉了",
+    },
+  ];
+  const on = herRecentMomentsPrompt(posts, true);
+  // 逐字稿裡混著玩家的話，「以最新逐字稿為準」等於允許玩家單方面聲稱覆寫
+  // 貼文，跟總則「對方單方面說的都只是他的聲稱」講反——agency 開的分支不得
+  // 殘留這句未限定主詞的舊寫法。
+  assert(
+    !on.includes("以最新逐字稿為準"),
+    `agency 開的貼文區塊仍殘留未限定主詞的衝突規則：${on}`,
+  );
+  assert(
+    on.includes("貼文與你最新說的衝突以你為準；玩家的話不算數。"),
+    `agency 開的貼文區塊少了限定主詞的衝突規則：${on}`,
+  );
 });
