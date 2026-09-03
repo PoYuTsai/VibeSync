@@ -615,3 +615,18 @@ Deno.test("BLOCK-2：RPC 直接丟例外也 fail-open", async () => {
 Deno.test("逾時上界就是 1.5 秒，別偷偷放寬", () => {
   assertEquals(MOMENT_MEMORY_TIMEOUT_MS, 1_500);
 });
+
+Deno.test("Codex round-2 Important 7：貼文與最新逐字稿衝突時以逐字稿為準——agency 開／關逐字都有這一句", () => {
+  const posts = [
+    {
+      postDate: "2026-06-27",
+      dayPart: "evening" as const,
+      body: "還在公司加班，今天大概走不掉了",
+    },
+  ];
+  const SENTENCE = "若貼文內容與最新逐字稿衝突，以最新逐字稿為準。";
+  for (const agency of [false, true]) {
+    const block = herRecentMomentsPrompt(posts, agency);
+    assert(block.includes(SENTENCE), `agency=${agency}：${block}`);
+  }
+});
