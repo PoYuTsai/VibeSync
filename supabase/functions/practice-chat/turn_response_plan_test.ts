@@ -612,3 +612,68 @@ Deno.test("act 輪替：同一個 primaryAct 連兩輪（持久化 recentActs）
   });
   assertEquals(boundary.primaryAct, "direct_boundary");
 });
+
+// ── 真機截圖重現（conversation-agency-v1 Phase 0）─────────────────────────
+// 夥伴報告 `docs/plans/2026-09-03-practice-conversation-agency-partner-report.md`
+// §2.3：把 Alice（`practice_girl_001`、一般難度）與 Joyce（`practice_girl_026`、
+// 挑戰難度）的截圖逐字稿餵進純函式，不用呼叫模型就能重現「任何無法辨識的輸入都
+// 落到 neutral，而 neutral 又被硬排成 acknowledge、問題預算 0」。
+//
+// 這裡鎖的是**現況**，不是期望行為。Phase 1（AGENCY-02＋03）會新增
+// `ambiguous_fragment`／`repeated_low_coherence` 等 situation 與 `ask_intent`／
+// `challenge_relevance` 等 act，屆時要把下面三條斷言翻轉過來（同一份逐字稿）。
+// 逐字稿另有一份機器可讀版本在 `tools/practice-agency-eval/scenarios.ts`。
+const ALICE_SCREENSHOT: PracticeTurn[] = [
+  u("東東"),
+  a("東東是誰"),
+  u("阿布打比"),
+  a("阿布達比？你有去那邊玩喔？"),
+  u("清邁"),
+  a("清邁很讚欸 我上個月才去過"),
+  u("好市多"),
+];
+const JOYCE_SCREENSHOT: PracticeTurn[] = [
+  u("韓國"),
+  a("嗯 看韓劇"),
+  u("東京"),
+  a("喔 我看不懂日文"),
+  u("壽司郎"),
+  a("我下午吃過東西了"),
+  u("紅豆泥"),
+];
+
+Deno.test("截圖重現：Alice 的「好市多」目前是 neutral → acknowledge → 問題預算 0", () => {
+  const style = STYLE_BY_PROFILE_ID["practice_girl_001"];
+  const signals = detectTurnSignals(ALICE_SCREENSHOT);
+  const evidence = standard({ difficulty: "normal" });
+  const stance = policyStanceFor(signals, evidence);
+  assertEquals(classifySituation(signals, stance), "neutral");
+  const plan = planTurnResponse({
+    turns: ALICE_SCREENSHOT,
+    style,
+    evidence,
+    seedKey: "screenshot-alice",
+  });
+  // Phase 1 要翻轉這三條：situation 應變成片段／低連貫類，act 應可選澄清或質疑。
+  assertEquals(plan.situation, "neutral");
+  assertEquals(plan.primaryAct, "acknowledge");
+  assertEquals(plan.questionBudget, 0);
+});
+
+Deno.test("截圖重現：Joyce 的「紅豆泥」目前也是 neutral → acknowledge → 問題預算 0", () => {
+  const style = STYLE_BY_PROFILE_ID["practice_girl_026"];
+  const signals = detectTurnSignals(JOYCE_SCREENSHOT);
+  const evidence = standard({ difficulty: "challenge" });
+  const stance = policyStanceFor(signals, evidence);
+  assertEquals(classifySituation(signals, stance), "neutral");
+  const plan = planTurnResponse({
+    turns: JOYCE_SCREENSHOT,
+    style,
+    evidence,
+    seedKey: "screenshot-joyce",
+  });
+  // Phase 1 要翻轉這三條。
+  assertEquals(plan.situation, "neutral");
+  assertEquals(plan.primaryAct, "acknowledge");
+  assertEquals(plan.questionBudget, 0);
+});
