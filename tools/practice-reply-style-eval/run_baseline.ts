@@ -17,6 +17,7 @@
 //     tools/practice-reply-style-eval/out/<date>-<label>.json \
 //     [--profiles=a,b] [--scenarios=a,b] [--repeat=2] [--difficulty=normal] [--concurrency=4]
 
+import type { AgencyMode } from "../../supabase/functions/practice-chat/conversation_agency.ts";
 import {
   isPracticeDifficulty,
   type PracticeDifficulty,
@@ -149,6 +150,7 @@ export async function runScenario(args: {
   difficulty: PracticeDifficulty;
   style?: boolean;
   state?: boolean;
+  agency?: AgencyMode;
 }): Promise<SessionResult> {
   const profile = resolvePracticeProfile({
     difficulty: args.difficulty,
@@ -187,6 +189,9 @@ export async function runScenario(args: {
     const bundle = buildChatPromptBundle(turns, profile, {
       partnerState: null,
       replyStyle: args.style ?? false,
+      // conversation-agency-v1：與 style 獨立的旗標，走 production 同一條路徑。
+      agencyMode: args.agency ?? "off",
+      agencyState: null,
       styleState: args.state ? styleState : null,
       visiblePracticeThreadId: BAKEOFF_THREAD_ID,
       ...chatContext,
@@ -284,6 +289,8 @@ interface CliOptions {
   style: boolean;
   /** 同情境多輪之間帶 styleState（模擬 assisted 持久化；預設關＝真 standard）。 */
   state: boolean;
+  /** conversation-agency-v1 旗標；預設 off＝與接線前逐字相同。 */
+  agency: AgencyMode;
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -296,6 +303,7 @@ export function parseArgs(argv: string[]): CliOptions {
     concurrency: 4,
     style: false,
     state: false,
+    agency: "off",
   };
   for (const arg of argv) {
     if (!arg.startsWith("--")) {
@@ -346,6 +354,17 @@ export function parseArgs(argv: string[]): CliOptions {
       case "state":
         opts.state = value === "1" || value === "true";
         break;
+      case "agency":
+        if (value === "on" || value === "1" || value === "true") {
+          opts.agency = "on";
+        } else if (value === "shadow") {
+          opts.agency = "shadow";
+        } else if (value === "off" || value === "0") {
+          opts.agency = "off";
+        } else {
+          throw new Error(`reply_style_invalid_agency_flag: "${value}"`);
+        }
+        break;
       case "difficulty":
         if (!isPracticeDifficulty(value)) {
           throw new Error(`reply_style_invalid_difficulty: "${value}"`);
@@ -354,7 +373,7 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       default:
         throw new Error(
-          `reply_style_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--difficulty、--concurrency、--style、--state）`,
+          `reply_style_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--difficulty、--concurrency、--style、--state、--agency）`,
         );
     }
   }
@@ -428,6 +447,7 @@ async function main(): Promise<void> {
         difficulty: opts.difficulty,
         style: opts.style,
         state: opts.state,
+        agency: opts.agency,
       });
       console.error(
         `[reply-style] ${
@@ -454,6 +474,7 @@ async function main(): Promise<void> {
       },
       practiceMode: "standard",
       replyStyle: opts.style,
+      conversationAgency: opts.agency,
       /** 同情境多輪帶 styleState 的模擬（非 production 路徑）；false＝真 standard。 */
       crossRoundStyleState: opts.state,
       difficulty: opts.difficulty,

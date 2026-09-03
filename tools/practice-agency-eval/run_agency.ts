@@ -19,7 +19,7 @@
 //     --allow-net=api.deepseek.com tools/practice-agency-eval/run_agency.ts \
 //     tools/practice-agency-eval/out/<date>-<label>.json \
 //     [--profiles=a,b] [--scenarios=A01,A02] [--mode=standard|beginner] \
-//     [--style=1] [--repeat=3] [--difficulty=normal] [--concurrency=6]
+//     [--style=1] [--agency=on] [--repeat=3] [--difficulty=normal] [--concurrency=6]
 
 import {
   isPracticeDifficulty,
@@ -50,6 +50,7 @@ import {
   buildBakeoffContextFixture,
 } from "../practice-difficulty-bakeoff/bakeoff.ts";
 import { DEFAULT_PROFILE_IDS } from "../practice-reply-style-eval/run_baseline.ts";
+import type { AgencyMode } from "../../supabase/functions/practice-chat/conversation_agency.ts";
 import {
   AGENCY_SCENARIOS,
   type AgencyScenario,
@@ -174,6 +175,8 @@ export async function runAgencyScenario(args: {
   difficulty: PracticeDifficulty;
   mode: PracticeRunMode;
   style: boolean;
+  /** conversation-agency-v1 旗標（handler 用同一個值餵 buildChatPromptBundle）。 */
+  agency: AgencyMode;
 }): Promise<AgencySessionResult> {
   const difficulty = args.scenario.difficulty ?? args.difficulty;
   const profile = resolvePracticeProfile({
@@ -256,9 +259,12 @@ export async function runAgencyScenario(args: {
     // 完全不帶 practiceMode key 與分數，partnerState 維持 null。
     const bundle = buildChatPromptBundle(turns, profile, {
       replyStyle: args.style,
+      agencyMode: args.agency,
       visiblePracticeThreadId: BAKEOFF_THREAD_ID,
       partnerState: null,
       styleState: null,
+      // 短期 agency 狀態：standard 一律從逐字稿現推（與 production standard 同）。
+      agencyState: null,
       ...(args.mode === "beginner"
         ? {
           practiceMode: "beginner" as const,
@@ -348,6 +354,7 @@ interface CliOptions {
   difficulty: PracticeDifficulty;
   mode: PracticeRunMode;
   style: boolean;
+  agency: AgencyMode;
   concurrency: number;
 }
 
@@ -360,6 +367,7 @@ export function parseArgs(argv: string[]): CliOptions {
     difficulty: "normal",
     mode: "standard",
     style: true,
+    agency: "off",
     concurrency: 6,
   };
   for (const arg of argv) {
@@ -412,6 +420,18 @@ export function parseArgs(argv: string[]): CliOptions {
       case "style":
         opts.style = value === "1" || value === "true";
         break;
+      case "agency":
+        // production 旗標的三個有效值＋常用簡寫；其餘一律報錯（不靜默當 off）。
+        if (value === "on" || value === "1" || value === "true") {
+          opts.agency = "on";
+        } else if (value === "shadow") {
+          opts.agency = "shadow";
+        } else if (value === "off" || value === "0") {
+          opts.agency = "off";
+        } else {
+          throw new Error(`agency_invalid_agency_flag: "${value}"`);
+        }
+        break;
       case "difficulty":
         if (!isPracticeDifficulty(value)) {
           throw new Error(`agency_invalid_difficulty: "${value}"`);
@@ -420,7 +440,7 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       default:
         throw new Error(
-          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--difficulty、--concurrency）`,
+          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--difficulty、--concurrency）`,
         );
     }
   }
@@ -508,6 +528,7 @@ async function main(): Promise<void> {
         difficulty: opts.difficulty,
         mode: opts.mode,
         style: opts.style,
+        agency: opts.agency,
       });
       console.error(
         `[agency] ${
@@ -546,6 +567,7 @@ async function main(): Promise<void> {
       },
       practiceMode: opts.mode,
       replyStyle: opts.style,
+      conversationAgency: opts.agency,
       difficulty: opts.difficulty,
       fixture: {
         now: BAKEOFF_FIXED_NOW.toISOString(),
