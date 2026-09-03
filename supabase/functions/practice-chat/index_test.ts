@@ -9445,7 +9445,7 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
     r.fn === "upsert_practice_relationship_thread"
   )!.params.p_recent_facts as Record<string, unknown>;
   // Codex P1：priorChallengeIssued 只認實際發生的質疑（forcedAct 或 Phase 2
-  // 分類器 aiChallengedLastTurn），不再因為 bounded allowedActs 裡「允許過」
+  // 分類器 aiChallengedThisTurn），不再因為 bounded allowedActs 裡「允許過」
   // challenge_relevance 就記成已質疑——這一輪是 bounded（forcedAct=null），
   // 不是 forced，所以還沒真的發生。
   assertEquals(upsert.conversationAgency, {

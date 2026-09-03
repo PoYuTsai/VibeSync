@@ -55,7 +55,7 @@ interface ReplayRow {
   probeId: string;
   profileId: string;
   coherence: string;
-  aiChallengedLastTurn: boolean;
+  aiChallengedThisTurn: boolean;
   connection: string;
   heatDelta: number;
   cappedHeatDelta: number;
@@ -176,7 +176,7 @@ async function main() {
           probeId: job.probeId,
           profileId: job.profileId,
           coherence: classification.coherence ?? "connected",
-          aiChallengedLastTurn: classification.aiChallengedLastTurn ?? false,
+          aiChallengedThisTurn: classification.aiChallengedThisTurn ?? false,
           connection: classification.connection,
           heatDelta: judgement.delta,
           cappedHeatDelta: capped.delta,
@@ -189,7 +189,7 @@ async function main() {
           probeId: job.probeId,
           profileId: job.profileId,
           coherence: "error",
-          aiChallengedLastTurn: false,
+          aiChallengedThisTurn: false,
           connection: "error",
           heatDelta: 0,
           cappedHeatDelta: 0,

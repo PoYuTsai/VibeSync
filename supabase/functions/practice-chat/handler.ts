@@ -4522,8 +4522,8 @@ export function createPracticeChatHandler(
               : relationshipThreadState?.styleState ?? undefined,
             // conversation-agency-v1：同一條規則。旗標關或 shadow＝不算新狀態，
             // 既有狀態原樣帶回（RPC 整包覆寫 recent_facts，省略等於清空）。
-            // Phase 2：分類器讀了實際生成文字後回報的 coherence／
-            // aiChallengedLastTurn 一起餵進去（agencyDeltaCapActive 判斷同
+            // Phase 2：分類器讀了她這一輪實際生成文字後回報的 coherence／
+            // aiChallengedThisTurn 一起餵進去（agencyDeltaCapActive 判斷同
             // 一支旗標；旗標 off 時 temperature.classification 沒有這兩個
             // 欄位，agencyClassifierSignal 為 null，退回純結構近似）。
             conversationAgencyState: agencyDecision?.applied
@@ -4533,8 +4533,8 @@ export function createPracticeChatHandler(
                 agencyMode === "on"
                   ? ({
                     coherence: temperature.classification.coherence,
-                    aiChallengedLastTurn:
-                      temperature.classification.aiChallengedLastTurn,
+                    aiChallengedThisTurn:
+                      temperature.classification.aiChallengedThisTurn,
                   } satisfies AgencyClassifierSignal)
                   : null,
               )
@@ -4586,8 +4586,8 @@ export function createPracticeChatHandler(
           ...(temperature.classification.coherence !== undefined
             ? {
               coherence: temperature.classification.coherence,
-              aiChallengedLastTurn:
-                temperature.classification.aiChallengedLastTurn ?? false,
+              aiChallengedThisTurn:
+                temperature.classification.aiChallengedThisTurn ?? false,
             }
             : {}),
         }
@@ -4637,8 +4637,8 @@ export function createPracticeChatHandler(
           coherence: agencyMode === "on"
             ? temperature?.classification.coherence ?? null
             : null,
-          aiChallengedLastTurn: agencyMode === "on"
-            ? temperature?.classification.aiChallengedLastTurn ?? null
+          aiChallengedThisTurn: agencyMode === "on"
+            ? temperature?.classification.aiChallengedThisTurn ?? null
             : null,
           deltaCapApplied: temperature?.deltaCapApplied ?? "none",
         }

@@ -82,11 +82,17 @@ export interface TurnClassification {
    */
   coherence?: TurnCoherence;
   /**
-   * 玩家這句回覆的上一則 AI 訊息，是不是真的在問清楚意思或指出跳題／不相關
-   * （Codex P1：state 的 priorChallengeIssued 不該只靠「允許過」，改吃這個
-   * 地面真相）。省略／旗標 off＝false。
+   * **她這一輪剛生成的回覆**（`assistantReplyAfterUser`）是不是真的在問清楚
+   * 意思或指出跳題／不相關（Codex P1：state 的 priorChallengeIssued 不該只靠
+   * 「允許過」，改吃這個地面真相）。省略／旗標 off＝欄位不存在。
+   *
+   * Codex round-1 P1-d：舊名 `aiChallengedLastTurn` 判的是**玩家這句之前**那
+   * 一則 AI 訊息，卻在生成完這一輪之後被寫進 state 當「下一輪的
+   * priorChallengeIssued」——差了一輪。分類器本來就收得到這一輪的回覆
+   * （`assistantReplyAfterUser`），所以改成判那一則，名字也照實叫
+   * `aiChallengedThisTurn`。
    */
-  aiChallengedLastTurn?: boolean;
+  aiChallengedThisTurn?: boolean;
   /**
    * conversation-agency-v1 Phase 2.6：這一筆用到的 repair-first 欄位名
    * （見 `parseTurnClassification`）。空陣列／省略＝模型輸出本來就合法。
@@ -742,13 +748,13 @@ function parseCoherence(
 
 // Phase 2.6：非布林值不再整筆作廢，改判 false（＝「上一輪沒質疑過」，
 // priorChallengeIssued 不會被一個壞值拉成 true）並記一筆 repair。
-function parseAiChallengedLastTurn(
+function parseAiChallengedThisTurn(
   value: unknown,
   repaired: string[],
 ): boolean {
   if (value === undefined) return false;
   if (typeof value === "boolean") return value;
-  repaired.push("aiChallengedLastTurn");
+  repaired.push("aiChallengedThisTurn");
   return false;
 }
 
@@ -799,7 +805,7 @@ export function parseTurnClassification(
     "partnerMood",
     "moodConfidence",
     "innerThought",
-    ...(opts.requireCoherence ? ["coherence", "aiChallengedLastTurn"] : []),
+    ...(opts.requireCoherence ? ["coherence", "aiChallengedThisTurn"] : []),
   ]);
   for (const key of Object.keys(parsed)) {
     if (!allowedKeys.has(key)) {
@@ -833,8 +839,8 @@ export function parseTurnClassification(
     ...(opts.requireCoherence
       ? {
         coherence: parseCoherence(parsed.coherence, repairedFields),
-        aiChallengedLastTurn: parseAiChallengedLastTurn(
-          parsed.aiChallengedLastTurn,
+        aiChallengedThisTurn: parseAiChallengedThisTurn(
+          parsed.aiChallengedThisTurn,
           repairedFields,
         ),
       }
@@ -872,14 +878,14 @@ export function buildTurnClassifierMessages(opts: {
       scrubRawImageFilenames(opts.appliedHintText)
     }`
     : "\nappliedHintType: none";
-  // Phase 2：coherence／aiChallengedLastTurn 只在 agency 開時才進 prompt 與
+  // Phase 2：coherence／aiChallengedThisTurn 只在 agency 開時才進 prompt 與
   // JSON stub；旗標關閉時下面兩段字串完全不套用，system prompt 逐字不變。
   const coherenceRule = opts.agencyEnabled
     ? "coherence 只評玩家這句相對於前一個未解問題／對話 thread 是否連得上，不看話題類別：connected=接得上，含同主題的圈內名詞、下位詞、具體例子這種常識關聯（不必明講關係、不必是完整句，例：前面在聊重訓，他只丟一個健身圈的比賽名詞）；ambiguous=看不出是否相關；disconnected=跟前面那條 thread 完全沾不上邊（例：前面在聊她的工作，他丟一個無關地名）；repetitive=重複丟詞、跟前面已經模糊的東西是同一種模式。assistantReplyAfterUser 只能用來判斷 partnerMood 與她有沒有被接住（repair），不能因為她把亂詞圓成話題就把玩家 connection 判成 caught，coherence 也不能因此升級。\n" +
-      "aiChallengedLastTurn：recentContext 裡最後一句 assistant（玩家這句回覆的對象）是不是真的在問清楚意思或指出跳題／不相關，不是隨口帶過。\n"
+      "aiChallengedThisTurn：assistantReplyAfterUser（她剛剛送出的那一則）是不是真的在問清楚意思或指出跳題／不相關，不是隨口帶過。\n"
     : "";
   const jsonStub = opts.agencyEnabled
-    ? '只輸出 JSON：{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"neutral","moodConfidence":0.7,"innerThought":"他還沒接到我的重點，我先觀察。","coherence":"connected","aiChallengedLastTurn":false}'
+    ? '只輸出 JSON：{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"neutral","moodConfidence":0.7,"innerThought":"他還沒接到我的重點，我先觀察。","coherence":"connected","aiChallengedThisTurn":false}'
     : '只輸出 JSON：{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"neutral","moodConfidence":0.7,"innerThought":"他還沒接到我的重點，我先觀察。"}';
   return [
     {

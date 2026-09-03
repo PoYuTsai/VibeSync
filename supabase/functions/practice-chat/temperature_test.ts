@@ -325,10 +325,10 @@ Deno.test("buildTurnClassifierMessages：agencyEnabled 省略／false 時 prompt
   });
   assertEquals(JSON.stringify(explicitOff), JSON.stringify(omitted));
   assert(!omitted[0].content.includes("coherence"));
-  assert(!omitted[0].content.includes("aiChallengedLastTurn"));
+  assert(!omitted[0].content.includes("aiChallengedThisTurn"));
 });
 
-Deno.test("buildTurnClassifierMessages：agencyEnabled=true 才加 coherence／aiChallengedLastTurn 規則與 JSON stub", () => {
+Deno.test("buildTurnClassifierMessages：agencyEnabled=true 才加 coherence／aiChallengedThisTurn 規則與 JSON stub", () => {
   const base = {
     turns: [{ role: "user" as const, text: "好市多" }],
     profile: resolvePracticeProfile({}),
@@ -337,14 +337,27 @@ Deno.test("buildTurnClassifierMessages：agencyEnabled=true 才加 coherence／a
   };
   const on = buildTurnClassifierMessages({ ...base, agencyEnabled: true });
   assert(on[0].content.includes("coherence 只評玩家這句相對於前一個未解問題"));
-  assert(on[0].content.includes("aiChallengedLastTurn"));
+  assert(on[0].content.includes("aiChallengedThisTurn"));
+  // Codex round-1 P1-d：這個欄位判的是**她這一輪剛送出的那一則**
+  // （assistantReplyAfterUser），不是玩家這句之前那一則——因為它會被存成
+  // 下一輪的 priorChallengeIssued，判上一則就差了一輪。
+  assert(
+    on[0].content.includes(
+      "aiChallengedThisTurn：assistantReplyAfterUser（她剛剛送出的那一則）",
+    ),
+    "aiChallengedThisTurn 必須綁 assistantReplyAfterUser",
+  );
+  assert(
+    !on[0].content.includes("recentContext 裡最後一句 assistant"),
+    "舊的「判上一則」判準必須被換掉",
+  );
   assert(on[0].content.includes('"coherence":"connected"'));
   // 使用者訊息段（recentContext／latestUserText）不受影響。
   const off = buildTurnClassifierMessages(base);
   assertEquals(on[1].content, off[1].content);
 });
 
-Deno.test("parseTurnClassification：旗標 off 時 coherence／aiChallengedLastTurn 兩個 key 根本不存在；requireCoherence 才強制", () => {
+Deno.test("parseTurnClassification：旗標 off 時 coherence／aiChallengedThisTurn 兩個 key 根本不存在；requireCoherence 才強制", () => {
   // Codex round-1 P1-b：舊版無條件補 "connected"／false，等於旗標關著時
   // classification 的形狀也多兩個欄位，下游（telemetry、agencyClassifierSignal）
   // 拿它跟 main 對拍會逐字不同。prompt 沒問的東西，parser 不該替它回答。
@@ -352,9 +365,9 @@ Deno.test("parseTurnClassification：旗標 off 時 coherence／aiChallengedLast
     '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe"}',
   );
   assertEquals(withoutFields.coherence, undefined);
-  assertEquals(withoutFields.aiChallengedLastTurn, undefined);
+  assertEquals(withoutFields.aiChallengedThisTurn, undefined);
   assert(!("coherence" in withoutFields));
-  assert(!("aiChallengedLastTurn" in withoutFields));
+  assert(!("aiChallengedThisTurn" in withoutFields));
 
   assertThrows(
     () =>
@@ -367,18 +380,18 @@ Deno.test("parseTurnClassification：旗標 off 時 coherence／aiChallengedLast
   );
 
   const withFields = parseTurnClassification(
-    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"disconnected","aiChallengedLastTurn":true}',
+    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"disconnected","aiChallengedThisTurn":true}',
     { requireCoherence: true },
   );
   assertEquals(withFields.coherence, "disconnected");
-  assertEquals(withFields.aiChallengedLastTurn, true);
+  assertEquals(withFields.aiChallengedThisTurn, true);
 
   // Codex round-2 P2(a)：旗標關閉時 schema 必須跟接線前逐字一樣嚴——模型自己
-  // 多吐 coherence／aiChallengedLastTurn 要照舊丟 extra fields，不能悄悄放寬。
+  // 多吐 coherence／aiChallengedThisTurn 要照舊丟 extra fields，不能悄悄放寬。
   for (
     const extra of [
       '"coherence":"disconnected"',
-      '"aiChallengedLastTurn":true',
+      '"aiChallengedThisTurn":true',
     ]
   ) {
     assertThrows(
@@ -392,7 +405,7 @@ Deno.test("parseTurnClassification：旗標 off 時 coherence／aiChallengedLast
   }
 });
 
-Deno.test("parseTurnClassification：非法 coherence／aiChallengedLastTurn 值 repair-first，不整筆作廢", () => {
+Deno.test("parseTurnClassification：非法 coherence／aiChallengedThisTurn 值 repair-first，不整筆作廢", () => {
   // Phase 2.6：舊行為是整筆丟錯 → handler 走 fallback，連判對的
   // connection／boundary 一起丟掉。改成退到最保守的一格並記 repair。
   const badCoherence = parseTurnClassification(
@@ -404,18 +417,18 @@ Deno.test("parseTurnClassification：非法 coherence／aiChallengedLastTurn 值
   assertEquals(badCoherence.repairedFields, ["coherence"]);
 
   const badChallenged = parseTurnClassification(
-    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedLastTurn":"yes"}',
+    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedThisTurn":"yes"}',
     { requireCoherence: true },
   );
-  assertEquals(badChallenged.aiChallengedLastTurn, false);
-  assertEquals(badChallenged.repairedFields, ["aiChallengedLastTurn"]);
+  assertEquals(badChallenged.aiChallengedThisTurn, false);
+  assertEquals(badChallenged.repairedFields, ["aiChallengedThisTurn"]);
 });
 
 Deno.test('parseTurnClassification：partnerMood "confused" repair 成 neutral，其餘欄位保留', () => {
   // 2026-09-06 抽樣回放 377 筆，15 筆解析失敗**全部**是這個形態
   // （partnerMood 列舉沒有「困惑」這個桶子，agency 開了之後她常常就是困惑）。
   const repaired = parseTurnClassification(
-    '{"connection":"missed","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"confused","moodConfidence":0.6,"innerThought":"他怎麼突然跳到別的","coherence":"disconnected","aiChallengedLastTurn":false}',
+    '{"connection":"missed","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"confused","moodConfidence":0.6,"innerThought":"他怎麼突然跳到別的","coherence":"disconnected","aiChallengedThisTurn":false}',
     { requireCoherence: true },
   );
   assertEquals(repaired.partnerMood, "neutral");

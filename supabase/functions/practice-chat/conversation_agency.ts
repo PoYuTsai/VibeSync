@@ -571,13 +571,17 @@ const COHERENCE_BY_SITUATION: Record<
 
 /**
  * Phase 2：本輪回合分類器讀完整逐字稿後給的地面真相訊號（temperature.ts
- * `TurnClassification.coherence`／`aiChallengedLastTurn`）。省略＝旗標關閉、
+ * `TurnClassification.coherence`／`aiChallengedThisTurn`）。省略＝旗標關閉、
  * classifier 失敗 fallback，或 Phase 1 呼叫端還沒接——一律退回純結構近似。
  */
 export interface AgencyClassifierSignal {
   readonly coherence?: ConversationAgencyState["lastCoherence"];
-  /** 玩家剛回覆的這則 AI 上一輪，是否真的問了澄清或指出跳題。 */
-  readonly aiChallengedLastTurn?: boolean;
+  /**
+   * **她這一輪剛送出的回覆**是否真的問了澄清或指出跳題（Codex round-1 P1-d：
+   * 舊版判的是玩家這句之前那一則，卻被存成「下一輪的 priorChallengeIssued」，
+   * 差了一輪）。
+   */
+  readonly aiChallengedThisTurn?: boolean;
 }
 
 /**
@@ -587,7 +591,7 @@ export interface AgencyClassifierSignal {
  * 記成「已質疑」——bounded choice 是給模型的候選清單，不代表模型真的選了它，
  * 「允許過」不等於「做過」。現在只認兩種地面真相：(1) planner **強制**
  * 質疑／維持立場（`forcedAct`，不是 allowed）；(2)（Phase 2）分類器讀了
- * 實際生成文字後回報 `aiChallengedLastTurn`。
+ * 她這一輪實際生成的文字後回報 `aiChallengedThisTurn`。
  */
 export function nextConversationAgencyState(
   prev: ConversationAgencyState | null,
@@ -610,7 +614,7 @@ export function nextConversationAgencyState(
     priorChallengeIssued: base.priorChallengeIssued ||
       decision.evidence.priorChallengeIssued ||
       forced === "challenge_relevance" || forced === "hold_position" ||
-      classifierSignal?.aiChallengedLastTurn === true,
+      classifierSignal?.aiChallengedThisTurn === true,
     lastAgencyAct,
   };
 }
