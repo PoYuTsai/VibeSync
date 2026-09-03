@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """把 Bruce 的 index.html 解析成有結構的節點清單（不改任何一個字）。
 
+2026-09-03 起這是「匯入候選」流程的第一步，產出的節點只給 build_ebooks_from_guide.py
+產生候選檔；正式 assets 不再由工具覆寫（ADR #45）。`--write-manifest` 只把來源檔的
+SHA-256 記進 partner_guide_source_manifest.json，不解析。
+
 輸出節點：{'h2': idx, 'h2title': str, 'sub': str|None, 'items': [...]}
 item 種類：para / bullets / compare / case / table / warn / grad / details
 """
@@ -167,7 +171,36 @@ def parse_table(block):
     return {'kind': 'table', 'rows': rows}
 
 
+MANIFEST = os.path.join(BASE, 'partner_guide_source_manifest.json')
+PARSER_VERSION = '1.1.0'
+
+
+def write_source_manifest(src=SRC, manifest_path=MANIFEST):
+    """把來源 HTML 的 SHA-256、大小與時間寫進 manifest；原檔不進 repo，只留 digest。"""
+    import datetime
+    import hashlib
+    digest = hashlib.sha256()
+    with open(src, 'rb') as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b''):
+            digest.update(chunk)
+    manifest = json.load(open(manifest_path, encoding='utf-8')) if os.path.exists(manifest_path) else {'schemaVersion': 1}
+    source = manifest.setdefault('source', {})
+    source['sha256'] = digest.hexdigest()
+    source['bytes'] = os.path.getsize(src)
+    source['fileName'] = os.path.basename(src)
+    source['hashedAt'] = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    manifest.setdefault('generator', {})['parse_partner_guide'] = PARSER_VERSION
+    with open(manifest_path, 'w', encoding='utf-8') as fh:
+        json.dump(manifest, fh, ensure_ascii=False, indent=2)
+        fh.write('\n')
+    print(f'manifest 已更新：{manifest_path}（sha256 {source["sha256"][:12]}…）')
+
+
 if __name__ == '__main__':
+    import sys
+    if '--write-manifest' in sys.argv:
+        write_source_manifest()
+        sys.exit(0)
     nodes = parse()
     out = os.environ.get('PARTNER_NODES_JSON', f'{BASE}/bruce_nodes.json')
     json.dump(nodes, open(out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)

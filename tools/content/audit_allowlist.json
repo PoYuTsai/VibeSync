@@ -1,0 +1,5 @@
+{
+  "_comment": "具名例外。每一筆都要有 rule、id（區塊／條目／章節 id）、可選的 field，以及理由。不允許整本書或整條規則的例外；要放寬門檻請改 audit_rules.json 並在 PR 說明。",
+  "version": 1,
+  "entries": []
+}

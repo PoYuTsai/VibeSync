@@ -1,0 +1,94 @@
+{
+  "_comment": "audit_ebook_copy.py 的規則設定。改門檻、禁用詞、定稿句都在這裡，不改程式。字串規則一律以正式內容裡的實際字面為準。",
+  "version": 1,
+  "punctuation": {
+    "halfWidth": ",:;!?()",
+    "allowDigitColon": true,
+    "allowDigitComma": true
+  },
+  "lengthLimits": {
+    "chapterTitle": 22,
+    "entrySummary": 40,
+    "dialogueLine": 80,
+    "annotation": 80,
+    "caption": 100,
+    "bulletItem": 100,
+    "paragraph": 120,
+    "calloutText": 160
+  },
+  "longStringThresholds": [80, 100, 120],
+  "simplifiedChars": "温为么说这会与体们过还个来对时样发经现实见员开关问题长张点应该让给认识业务动亲爱声",
+  "termPairs": [
+    {"pattern": "信號", "preferred": "訊號"},
+    {"pattern": "勾子", "preferred": "鉤子"},
+    {"pattern": "升温", "preferred": "升溫"},
+    {"pattern": "(?<![A-Za-z])Line(?![A-Za-z])", "preferred": "LINE"}
+  ],
+  "undefinedCodes": {
+    "bookId": "ebook-1-bottleneck",
+    "pattern": "[VFEIR][↑↓]|[VFEIR](?:／|/)[VFEIR]",
+    "reason": "V／F／E／I／R 在第 2 冊 2.1 才定義，第 1 冊不得提前使用代碼"
+  },
+  "glossary": {
+    "bookId": "ebook-2-conversation",
+    "chapterId": "ebook-2-chapter-1",
+    "required": [
+      "讓她認識你（V）",
+      "誰在帶方向（F）",
+      "聊天有沒有情緒（E）",
+      "她投入多少（I）",
+      "興趣回應（R）"
+    ]
+  },
+  "textbookRefs": [
+    "課本\\s*\\d+\\.\\d+",
+    "見第[一二三四五六七八九十]+節",
+    "階段\\s*\\d+\\.\\d+",
+    "類型\\s*[AB](?![A-Za-z])",
+    "見案例\\s*[A-Z]",
+    "回到第[一二三四五六七八九十]+節",
+    "⚠\\s*6\\.\\d",
+    "DHV"
+  ],
+  "bannedPhrases": [
+    "行為＞情緒＞字面",
+    "行為 > 情緒 > 字面",
+    "行為＞字面",
+    "行為 > 字面",
+    "拒絕階梯",
+    "拒絕要有成本",
+    "她冷的不是你",
+    "做流氓般的紳士",
+    "沒有否認「見面」",
+    "代表她還在乎",
+    "跟你一樣短腿",
+    "跟妳一樣短腿",
+    "反應等級等於她目前認定你的價值",
+    "聊什麼占 7 分",
+    "假定同意",
+    "假定式推進",
+    "週四晚上七點，我訂位",
+    "改天約妳喝杯咖啡",
+    "下次奶茶妳請"
+  ],
+  "canonicalRequired": [
+    "明確的拒絕或界線，永遠排在最前面",
+    "一則訊息只能算線索",
+    "不是每個問題都是測試",
+    "她明確答應後，再在一到兩輪內敲時間",
+    "妳可以的話，我就訂位",
+    "妳臨時有變再跟我說",
+    "她說不行，就先接受",
+    "快回不是問題",
+    "吵架不等於關係結束",
+    "問題不是穩定，而是整段互動只剩附和",
+    "她沒接，就換方向"
+  ],
+  "libraryChapters": {
+    "ebook-1-chapter-5": 8,
+    "ebook-2-chapter-5": 13,
+    "ebook-3-chapter-2": 6,
+    "ebook-3-chapter-3": 8,
+    "ebook-3-chapter-4": 12
+  }
+}

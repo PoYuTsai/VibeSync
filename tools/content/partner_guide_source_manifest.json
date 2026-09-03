@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "_comment": "夥伴來源 HTML 的追溯資訊。原檔不在 repo（在有原檔的機器上跑 parse_partner_guide.py --write-manifest 補 sha256）。cutoverSha256 是 2026-09-03 真源切換當下四份正式 JSON 的 digest，之後正式檔由人編輯、不再等於轉換器輸出。",
+  "source": {
+    "description": "夥伴（Bruce）單檔 HTML 指引《交友軟體實戰 · 終極指引》",
+    "versionLabel": "2026-07-26",
+    "fileName": "bruce5stepsdatingtips.html",
+    "sha256": null,
+    "bytes": null,
+    "hashedAt": null
+  },
+  "generator": {
+    "parse_partner_guide": "1.1.0",
+    "build_ebooks_from_guide": "2.0.0"
+  },
+  "lastDirectImport": {
+    "date": "2026-07-27",
+    "note": "最後一次由轉換器直接產生正式 JSON。自 ADR #45（2026-09-03）起，assets/learning/ebooks 是唯一產品真源，轉換器只產候選檔。",
+    "books": [
+      "ebook-1-bottleneck",
+      "ebook-2-conversation",
+      "ebook-3-rescue",
+      "ebook-4-meeting"
+    ]
+  },
+  "cutover": {
+    "date": "2026-09-03",
+    "mainSha": "ff17e04f9d26bf34564696bed575fa1d129611ab",
+    "officialSha256": {
+      "book_1_bottleneck.json": "dc30e98d52278c702d9aa1d623c2b0454f756ea4bf863bd9ec3d53f67a9d77af",
+      "book_2_conversation.json": "28f482bb9949d14eeb4aa6f2f92ce28841cad5310e576d1ce3b0400a76ba1af0",
+      "book_3_rescue.json": "a28436693d84da8056df5df2fbfb35ecc2d992a16cba81d7cb0f37111ac11fd3",
+      "book_4_meeting.json": "ec85f187b4355d2a5c466dd62fd3c44cebdde43ff6d02bbfff106670fcf3216b"
+    }
+  }
+}

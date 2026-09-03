@@ -1,19 +1,39 @@
 #!/usr/bin/env python3
-"""把 bruce_nodes.json 機械轉成四本電子書 JSON。
+"""把 bruce_nodes.json 機械轉成四本電子書「匯入候選檔」。
 
 原則：他的文字一個字都不改，只做結構映射。
   para→paragraph / bullets→bulletList / compare(+wswhy)→comparison
   case→dialogue+callout / warn→callout(warning) / grad→callout(principle)
   table→entryList（3 欄以上，章層級）或 bulletList（2 欄、或在條目內）
+
+2026-09-03 真源切換（ADR #45）：assets/learning/ebooks/*.json 是產品文案的唯一真源，
+這支工具只產生候選檔到 build/ebook_import_candidate/，再用 compare_ebook_import.py 依
+穩定 id 比對、人工合併。輸出路徑落在正式資產目錄（含子目錄）一律直接失敗，沒有任何
+旗標可以繞過——正式檔只能由人改。
+
+    python3 tools/content/build_ebooks_from_guide.py                  # 寫到 build/ebook_import_candidate/
+    python3 tools/content/build_ebooks_from_guide.py --out /tmp/cand  # 指定其他目錄
+    python3 tools/content/build_ebooks_from_guide.py --nodes path/to/bruce_nodes.json
 """
-import json, re, collections, os
+import argparse
+import collections
+import datetime
+import json
+import os
+import re
+import sys
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(BASE))
-NODES = json.load(open(
-    os.environ.get('PARTNER_NODES_JSON', f'{BASE}/bruce_nodes.json'), encoding='utf-8'))
-# 寫進 repo 的 assets；要試跑不覆蓋正式檔就設 EBOOK_OUT_DIR。
-OUT = os.environ.get('EBOOK_OUT_DIR', f'{REPO}/assets/learning/ebooks')
+sys.path.insert(0, BASE)
+
+GENERATOR_VERSION = '2.0.0'
+OFFICIAL_DIR = os.path.join(REPO, 'assets', 'learning', 'ebooks')
+DEFAULT_OUT = os.path.join(REPO, 'build', 'ebook_import_candidate')
+DEFAULT_NODES = f'{BASE}/bruce_nodes.json'
+
+# 節點資料由 main() 依參數載入；模組層級不讀檔，測試才 import 得進來。
+NODES = None
 
 SPEAKER = {'男:': 'you', '女:': 'other'}
 
@@ -580,7 +600,7 @@ def link_cross_refs(docs):
     print(f'交叉指涉按鈕: {count} 顆')
 
 
-def build():
+def build(out_dir):
     used = set()
     docs = []
     for book in BOOKS:
@@ -683,7 +703,7 @@ def build():
     for doc in docs:
         name = {1: 'book_1_bottleneck', 2: 'book_2_conversation',
                 3: 'book_3_rescue', 4: 'book_4_meeting'}[doc['number']]
-        path = f'{OUT}/{name}.json'
+        path = os.path.join(out_dir, f'{name}.json')
         with open(path, 'w', encoding='utf-8', newline='\n') as fh:
             json.dump(doc, fh, ensure_ascii=False, indent=2)
             fh.write('\n')
@@ -701,7 +721,56 @@ def build():
 
     missing = sorted(set(range(len(NODES))) - used)
     print('未使用的節點:', missing if missing else '無')
+    return docs
+
+
+def assert_not_official_dir(out_dir, official_dir=OFFICIAL_DIR):
+    """輸出路徑落在正式資產目錄（含子目錄）就直接失敗；沒有旗標可以繞過。"""
+    out = os.path.realpath(out_dir)
+    official = os.path.realpath(official_dir)
+    if out == official or out.startswith(official + os.sep):
+        raise SystemExit(
+            f'拒絕寫入正式資產目錄：{out}\n'
+            '正式 JSON 是產品真源（ADR #45），只能由人合併。請用 --out 指到 build/ebook_import_candidate '
+            '或其他目錄，再用 compare_ebook_import.py 比對。')
+
+
+def write_candidate_summary(out_dir, docs, nodes_path):
+    """在候選目錄留下產生資訊與相對正式檔的差異摘要，讓 reviewer 不用自己算。"""
+    from compare_ebook_import import compare_dirs, format_summary
+    summary = {
+        'generator': 'build_ebooks_from_guide.py',
+        'generatorVersion': GENERATOR_VERSION,
+        'generatedAt': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'nodes': os.path.relpath(nodes_path, REPO) if nodes_path.startswith(REPO) else nodes_path,
+        'books': [doc['id'] for doc in docs],
+    }
+    if os.path.isdir(OFFICIAL_DIR):
+        diff = compare_dirs(OFFICIAL_DIR, out_dir)
+        summary['diffAgainstOfficial'] = diff
+        print(format_summary(diff))
+    with open(os.path.join(out_dir, 'candidate_summary.json'), 'w', encoding='utf-8', newline='\n') as fh:
+        json.dump(summary, fh, ensure_ascii=False, indent=2)
+        fh.write('\n')
+
+
+def main(argv=None):
+    global NODES
+    parser = argparse.ArgumentParser(description='把夥伴指引節點轉成電子書匯入候選檔（不覆寫正式資產）。')
+    parser.add_argument('--nodes', default=os.environ.get('PARTNER_NODES_JSON', DEFAULT_NODES),
+                        help='parse_partner_guide.py 產出的節點 JSON')
+    parser.add_argument('--out', default=os.environ.get('EBOOK_OUT_DIR', DEFAULT_OUT),
+                        help='候選檔輸出目錄（預設 build/ebook_import_candidate；不得是正式資產目錄）')
+    args = parser.parse_args(argv)
+    assert_not_official_dir(args.out)
+    if not os.path.exists(args.nodes):
+        raise SystemExit(f'找不到節點檔：{args.nodes}（先跑 parse_partner_guide.py）')
+    NODES = json.load(open(args.nodes, encoding='utf-8'))
+    os.makedirs(args.out, exist_ok=True)
+    docs = build(args.out)
+    write_candidate_summary(args.out, docs, args.nodes)
+    print(f'候選檔已寫到 {args.out}；正式檔未動。下一步：compare_ebook_import.py → 人工合併 → audit_ebook_copy.py。')
 
 
 if __name__ == '__main__':
-    build()
+    main()
