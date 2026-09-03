@@ -420,6 +420,30 @@ export function agencyPolicyFor(
       allowedActSetId: "repeated_token_v1",
     };
   }
+  // Codex round-1 P1-c：她上一則在問問題，這一句就**有可能是答案**——不管前面
+  // 累積了多少未解片段。舊版把「有欠債的 answer_candidate」丟進 topic_shift_v1
+  // （ask_intent／challenge_relevance／return_to_topic，一個「接住」都沒有），
+  // 等於她問完「你喜歡什麼動物」、他答「貓」，只因為前面有一則亂丟就被結構
+  // 保證質疑——那正是 false_challenge 的定義。
+  //
+  // 這裡不判「貓算不算動物」（語意交模型），只保證候選清單裡永遠有「接住」，
+  // 同時保留「拉回你剛才問的那件事」給他其實沒回答的情況（A04 的
+  // 「東東是誰」→「阿布達比」）。結構層分不出這兩者，所以兩個都放進候選、
+  // 由看得到全文的她挑；不進 forced，也不會落到下面的 lowCoherence 分支。
+  //
+  // **唯一的例外在上面那條 `repeatedExactToken`**（刻意排在這條之前）：
+  // 同一個字串原樣再丟一次是這一層信心最高的結構事實，而且它的 forced act 是
+  // 「短短收掉」不是質疑。她問「？」他又貼一次「好市多」時仍然收掉迴圈。
+  if (shape === "answer_candidate") {
+    return {
+      ...base,
+      situation: "ambiguous_fragment",
+      policyMode: "bounded",
+      forcedAct: null,
+      allowedActs: ["acknowledge", "return_to_topic"],
+      allowedActSetId: "answer_candidate_with_debt_v1",
+    };
+  }
   if (unresolvedCount >= thresholds.lowCoherenceAt) {
     // Codex round-2 P1-2 之後 standard 的 priorChallengeIssued 一律 false，
     // 所以 standard 走的是下面這個三選一的 bounded 分支（真的是三個選項，不是
@@ -456,10 +480,9 @@ export function agencyPolicyFor(
         : "repeated_token_v1",
     };
   }
-  if (
-    unresolvedCount >= thresholds.topicShiftAt || shape === "answer_candidate"
-  ) {
-    // 前一題還沒解決，或她剛問的問題沒被回答：不供應新解讀，但也不強制質疑。
+  if (unresolvedCount >= thresholds.topicShiftAt) {
+    // 前一題還沒解決：不供應新解讀，但也不強制質疑。
+    // （`answer_candidate` 在上面就被接走了，不會落到這裡——Codex R1 P1-c。）
     return {
       ...base,
       situation: "abrupt_topic_shift",

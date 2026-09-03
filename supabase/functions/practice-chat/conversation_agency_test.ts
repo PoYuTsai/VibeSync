@@ -242,13 +242,23 @@ Deno.test("forced 只給結構線索的全空集合；其餘 bounded 真的有�
   assertEquals(a02.policyMode, "forced");
   assertEquals(a02.forcedAct, "ask_intent");
 
-  // A04：她問了問題、玩家丟別的詞（前面還有未解片段）→ 真 bounded（3 選 1）。
+  // A04：她問了問題、玩家丟別的詞 → 結構上這仍是 answer_candidate（她剛問完），
+  // 所以走 P1-c 那條 bounded：永遠有「接住」，也永遠有「拉回你剛才問的」。
+  // 結構層分不出「阿布達比」跟「貓」哪個算答案（那是語意），只保證兩邊都在
+  // 候選清單裡，由看得到全文的她挑（Codex round-1 P1-c）。
   const a04 = policy([u("東東"), a("東東是誰"), u("阿布達比")]);
-  assertEquals(a04.situation, "abrupt_topic_shift");
-  assertEquals(a04.allowedActSetId, "topic_shift_v1");
+  assertEquals(a04.situation, "ambiguous_fragment");
+  assertEquals(a04.allowedActSetId, "answer_candidate_with_debt_v1");
   assertEquals(a04.policyMode, "bounded");
-  assert(a04.allowedActs.length >= 2, "bounded 至少要有兩個選項才叫 bounded");
-  assert(!a04.allowedActs.includes("acknowledge"), "沒回答就不供應新解讀");
+  assertEquals(a04.forcedAct, null);
+  assertEquals(a04.allowedActs, ["acknowledge", "return_to_topic"]);
+
+  // 她**沒有**問問題、玩家連丟詞 → 才是 topic_shift_v1（不供應「接住」）。
+  const shift = policy([u("好市多"), a("喔"), u("曼谷")]);
+  assertEquals(shift.situation, "abrupt_topic_shift");
+  assertEquals(shift.allowedActSetId, "topic_shift_v1");
+  assertEquals(shift.policyMode, "bounded");
+  assert(!shift.allowedActs.includes("acknowledge"), "沒回答就不供應新解讀");
 
   // 連續兩則未解、standard 沒有持久化的「已質疑過」→ 三選一 bounded
   // （Codex round-2 P1-2：不再用假旗標把它推成 forced hold_position）。
@@ -541,4 +551,42 @@ Deno.test("Codex round-1 P1-a：旗標 off 的 recent_facts 從零重建（未�
       someOtherFeature: { keep: true },
     });
   }
+});
+
+Deno.test("Codex round-1 P1-c：有欠債的有效短答仍然一定有「接住」這個選項，永不 forced 質疑", () => {
+  // 她上一則在問問題 → 這一句就有可能是答案，不管前面累積了多少未解片段。
+  // 舊版丟進 topic_shift_v1（三個 act 全是質疑／拉回），等於結構保證誤質疑。
+  const turns: PracticeTurn[] = [
+    u("好市多"), // 前面先欠一則低資訊。
+    a("你在說什麼"),
+    u("你喜歡什麼動物"),
+    a("你喜歡什麼動物？我喜歡貓欸"),
+    u("貓"), // 她剛問完 → answer_candidate，但 unresolvedCount > 0。
+  ];
+  const evidence = detectAgencyEvidence(turns);
+  assertEquals(evidence.utteranceShape, "answer_candidate");
+  assert(evidence.unresolvedCount > 0, "這一案要有欠債才測得到");
+  for (
+    const thresholds of [
+      AGENCY_THRESHOLDS.easy,
+      AGENCY_THRESHOLDS.normal,
+      AGENCY_THRESHOLDS.challenge,
+    ]
+  ) {
+    const decision = agencyPolicyFor(evidence, thresholds);
+    assertEquals(decision.policyMode, "bounded");
+    assertEquals(decision.forcedAct, null);
+    assertEquals(decision.allowedActs, ["acknowledge", "return_to_topic"]);
+    assertEquals(decision.allowedActSetId, "answer_candidate_with_debt_v1");
+  }
+
+  // 唯一例外（刻意保留）：同一個字串原樣再丟一次。這是這一層信心最高的結構
+  // 事實，forced act 也是「短短收掉」而不是質疑，所以仍然照舊收掉迴圈。
+  const repeated = detectAgencyEvidence([...turns, a("蛤 是哪一種"), u("貓")]);
+  assertEquals(repeated.utteranceShape, "answer_candidate");
+  assert(repeated.repeatedExactToken);
+  assertEquals(
+    agencyPolicyFor(repeated, AGENCY_THRESHOLDS.challenge).forcedAct,
+    "end_low_value_loop",
+  );
 });

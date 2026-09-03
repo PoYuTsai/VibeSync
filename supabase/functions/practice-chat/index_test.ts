@@ -9434,7 +9434,10 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
   assertEquals(agency.applied, true);
   assertEquals(agency.utteranceShape, "answer_candidate");
   assertEquals(agency.policyMode, "bounded");
-  assertEquals(agency.allowedActSetId, "topic_shift_v1");
+  // Codex round-1 P1-c：她剛問完「東東是誰」，所以這一句結構上是
+  // answer_candidate → bounded {acknowledge, return_to_topic}，不再是
+  // 一個「接住」都沒有的 topic_shift_v1。
+  assertEquals(agency.allowedActSetId, "answer_candidate_with_debt_v1");
   assertEquals(agency.unresolvedCount, 1);
   assertEquals(agency.forcedAct, null);
   assertEquals(agency.coherenceBefore, null);
@@ -9447,7 +9450,9 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
   // 不是 forced，所以還沒真的發生。
   assertEquals(upsert.conversationAgency, {
     version: 1,
-    lastCoherence: "disconnected",
+    // P1-c：situation 從 abrupt_topic_shift 變成 ambiguous_fragment，
+    // 結構近似的 coherence 跟著從 disconnected 變 ambiguous。
+    lastCoherence: "ambiguous",
     unresolvedCount: 1,
     priorChallengeIssued: false,
     lastAgencyAct: null,
@@ -9469,7 +9474,10 @@ Deno.test("agency shadow：telemetry 有值但 applied=false，且不寫 thread 
   const agency = succeeded?.conversationAgency as Record<string, unknown>;
   assertEquals(agency.applied, false);
   assertEquals(agency.utteranceShape, "answer_candidate");
-  assertEquals(agency.allowedActSetId, "topic_shift_v1");
+  // Codex round-1 P1-c：她剛問完「東東是誰」，所以這一句結構上是
+  // answer_candidate → bounded {acknowledge, return_to_topic}，不再是
+  // 一個「接住」都沒有的 topic_shift_v1。
+  assertEquals(agency.allowedActSetId, "answer_candidate_with_debt_v1");
   const upsert = state.rpcCalls.find((r) =>
     r.fn === "upsert_practice_relationship_thread"
   )!.params.p_recent_facts as Record<string, unknown>;
