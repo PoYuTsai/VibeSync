@@ -1342,6 +1342,12 @@ async function judgeLearningState(opts: {
   agencyMode?: AgencyMode;
   /** 這一輪 agency 證據算出的 unresolvedCount；旗標 off 時不使用。 */
   agencyEvidenceUnresolvedCount?: number;
+  /**
+   * 同一個詞原樣再丟一次（Codex round-2 P1-3）：這一格原本只走 planner 的
+   * forced `end_low_value_loop`，永遠碰不到 delta cap，所以「連貫 ＋ 一直重複
+   * 同一個詞」還是拿得到正分。現在餵進 cap，重複永遠壓成 repetitive。
+   */
+  agencyEvidenceRepeatedExactToken?: boolean;
 }): Promise<LearningJudgement> {
   // 難度接線（槓桿 A）：正負 delta 倍率只在 beginner 溫度管線生效，作用域內解析一次。
   const tuning = difficultyTuningFor(opts.request.profile.difficulty);
@@ -1513,8 +1519,11 @@ async function judgeLearningState(opts: {
         protectedJudgement,
         currentTemperature,
         currentFamiliarity,
-        classification.coherence ?? "connected",
-        opts.agencyEvidenceUnresolvedCount ?? 0,
+        classification.coherence ?? null,
+        {
+          repeatedExactToken: opts.agencyEvidenceRepeatedExactToken ?? false,
+          unresolvedCount: opts.agencyEvidenceUnresolvedCount ?? 0,
+        },
       )
       : { judgement: protectedJudgement, capApplied: "none" as const };
     // 閘門在 delta cap 之後（豁免在閘門內判斷）、crude-offense 確定
@@ -4428,6 +4437,8 @@ export function createPracticeChatHandler(
           agencyMode,
           agencyEvidenceUnresolvedCount:
             agencyDecision?.decision.evidence.unresolvedCount ?? 0,
+          agencyEvidenceRepeatedExactToken:
+            agencyDecision?.decision.evidence.repeatedExactToken ?? false,
         });
       } catch (e) {
         const mapped = mapLedgerError(getErrorMessage(e));

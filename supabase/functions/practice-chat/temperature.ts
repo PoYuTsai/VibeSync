@@ -486,27 +486,47 @@ export function applyChallengeRewardGate(opts: {
  * 是硬下限（`withMaxNegativeLearningDeltas`），會在這之後蓋過，precedence
  * 不受影響。
  */
+export interface CoherenceCapStructuralEvidence {
+  /** 同一個詞原樣再丟一次（`AgencyEvidence.repeatedExactToken`）。 */
+  readonly repeatedExactToken: boolean;
+  /** 結構近似的未解片段計數；只在分類器**沒有**給 coherence 時當退路。 */
+  readonly unresolvedCount: number;
+}
+
 export function applyCoherenceDeltaCap(
   judgement: LearningJudgement,
   currentHeat: number,
   currentFamiliarity: number,
-  coherence: TurnCoherence,
-  unresolvedCount: number,
+  /** 分類器讀完整逐字稿後給的 coherence；null＝分類器沒給（旗標剛開、解析失敗）。 */
+  coherence: TurnCoherence | null,
+  structural: CoherenceCapStructuralEvidence,
 ): { judgement: LearningJudgement; capApplied: TurnCoherence | "none" } {
   let heatDelta = judgement.delta;
   let familiarityDelta = judgement.familiarityDelta;
   let capApplied: TurnCoherence | "none" = "none";
-  if (coherence === "repetitive" || unresolvedCount >= 2) {
+  // Codex round-2 P1-1／P1-3 的優先順序：
+  // 1. 同一個詞原樣再丟一次＝結構地面真相，就算分類器判 connected 也照壓
+  //    （不然「連貫」這個標籤就變成無限重複的免罰卡）。
+  // 2. 其餘一律以分類器的 coherence 為準——`connected` 代表玩家真的接上了，
+  //    **不論 unresolvedCount 累積到幾**都不套 cap。舊版用
+  //    `coherence === "repetitive" || unresolvedCount >= 2` 做 OR，等於讓一個
+  //    來自字數形狀的計數蓋過分類器的判斷。
+  // 3. 分類器沒給 coherence 時才退回結構近似（未解 ≥2＝repetitive）。
+  const effective: TurnCoherence = structural.repeatedExactToken
+    ? "repetitive"
+    : coherence ??
+      (structural.unresolvedCount >= 2 ? "repetitive" : "connected");
+  if (effective === "repetitive") {
     heatDelta = Math.min(heatDelta, -2);
     familiarityDelta = Math.min(familiarityDelta, -1);
     capApplied = "repetitive";
-  } else if (coherence === "disconnected") {
+  } else if (effective === "disconnected") {
     // 報告 §8.3：「0/0 或最多輕微 -1/0」——familiarity 兩個選項都是 0，
     // 不是「至多 0」；heat 夾在 [-1, 0]。
     heatDelta = Math.min(Math.max(heatDelta, -1), 0);
     familiarityDelta = 0;
     capApplied = "disconnected";
-  } else if (coherence === "ambiguous") {
+  } else if (effective === "ambiguous") {
     heatDelta = 0;
     familiarityDelta = 0;
     capApplied = "ambiguous";
