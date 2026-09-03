@@ -18,6 +18,7 @@ const plan = (over: Partial<TurnResponsePlan> = {}): TurnResponsePlan => ({
   questionBudget: 0,
   disclosureDepth: "none",
   seed: 1,
+  agency: null,
   ...over,
 });
 

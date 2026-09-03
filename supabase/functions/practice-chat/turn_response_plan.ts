@@ -27,6 +27,16 @@ import {
   type ResponseMode,
   type ResponseSituation,
 } from "./reply_style.ts";
+import {
+  type AgencyDecision,
+  type AgencyMode,
+  agencyPolicyFor,
+  type ConversationAgencyState,
+  detectAgencyEvidence,
+  isClarifyingAct,
+  isQuestionText,
+  type PlanAct,
+} from "./conversation_agency.ts";
 
 export type ReplyAct = ResponseMode;
 export type PolicyStance =
@@ -88,9 +98,6 @@ export interface TurnSignals {
   readonly aiSameShapeStreak: number;
 }
 
-// 問句：問號、句尾疑問助詞、或「有沒／了沒」這類台灣口語；「我還沒」不算。
-const QUESTION_RE =
-  /[?？]$|(嗎|呢|吧|有沒|了沒|飽沒|完沒|好沒|幹嘛|做什麼|做啥|在哪|住哪|幾歲|如何|怎樣|怎麼樣)(裡|啊|呀|喔|哦|啦)?[?？]?$/u;
 // 只抓無語境也成立的性邀約／索照句型（規格 §4.5：不確定就不判）。輸出用的 L4
 // 守門不套在玩家輸入上——「我去開房門」會被誤殺（Codex R3）。「陪我睡前聊聊」
 // 「先睡一下嗎」都不算。
@@ -106,10 +113,6 @@ const DISAGREEMENT_RE =
 const JOKE_HINT_RE = /(笑死|開玩笑|冷笑話|梗|笑話|XD)/iu;
 const SHARE_RE = /^(我|今天我|剛剛我|我剛|最近我)/u;
 
-function isQuestion(text: string): boolean {
-  return QUESTION_RE.test(text.trim());
-}
-
 export function detectTurnSignals(
   turns: readonly PracticeTurn[],
 ): TurnSignals {
@@ -120,7 +123,7 @@ export function detectTurnSignals(
   const last = users[users.length - 1] ?? "";
   let userQuestionStreak = 0;
   for (let i = users.length - 1; i >= 0; i--) {
-    if (isQuestion(users[i]) && users[i].replace(/\s+/g, "").length <= 12) {
+    if (isQuestionText(users[i]) && users[i].replace(/\s+/g, "").length <= 12) {
       userQuestionStreak++;
     } else break;
   }
@@ -139,7 +142,7 @@ export function detectTurnSignals(
       else break;
     }
   }
-  const userIsQuestion = isQuestion(last);
+  const userIsQuestion = isQuestionText(last);
   return {
     userTurnCount: practiceUserTurnCount(turns),
     userIsQuestion,
@@ -174,6 +177,14 @@ export interface TurnResponsePlan {
   readonly questionBudget: 0 | 1;
   readonly disclosureDepth: "none" | "fact" | "preference" | "emotion";
   readonly seed: number;
+  /**
+   * conversation-agency-v1（旗標 off＝null，逐字與接線前相同）。
+   * `applied=false` 是 shadow 模式或這一輪不介入：只記 telemetry，不改 prompt。
+   */
+  readonly agency: {
+    readonly decision: AgencyDecision;
+    readonly applied: boolean;
+  } | null;
 }
 
 // FNV-1a：穩定特徵與本回合變化各自的 seed（規格 §4.6）。
@@ -270,10 +281,33 @@ export function planTurnResponse(args: {
   replyTempo?: "short" | "normal" | "engaged" | null;
   /** 綁 thread／情境；同一 request 重試要拿到同一份 plan。 */
   seedKey: string;
+  /** conversation-agency-v1 旗標；省略＝off＝與接線前逐字相同。 */
+  agencyMode?: AgencyMode;
+  /** assisted 模式 thread 的 recent_facts.conversationAgency；standard 傳 null。 */
+  agencyState?: ConversationAgencyState | null;
 }): TurnResponsePlan {
   const signals = detectTurnSignals(args.turns);
   const policyStance = policyStanceFor(signals, args.evidence);
   const situation = classifySituation(signals, policyStance);
+  // agency 只接管既有 planner 判不出東西的 `neutral` 輪；安全、越界、邀約、記憶
+  // 衝突、查戶口、稱讚、不同意、問句、分享的既有優先權一律不動。
+  const agencyMode = args.agencyMode ?? "off";
+  const agency = agencyMode === "off" ? null : (() => {
+    const raw = agencyPolicyFor(
+      detectAgencyEvidence(args.turns, args.agencyState ?? null),
+    );
+    const decision = situation === "neutral" ? raw : {
+      ...raw,
+      situation: null,
+      forcedAct: null,
+      allowedActs: [] as readonly PlanAct[],
+      allowedActSetId: "none",
+    };
+    return {
+      decision,
+      applied: agencyMode === "on" && decision.situation !== null,
+    };
+  })();
   const seed = fnv1a(
     `${args.seedKey}|${signals.userTurnCount}|${REPLY_STYLE_VERSION}`,
   );
@@ -368,6 +402,13 @@ export function planTurnResponse(args: {
   } else {
     bubbleCount = minB + roll(maxB - minB + 1);
   }
+  if (
+    agency?.applied &&
+    (agency.decision.forcedAct === "hold_position" ||
+      agency.decision.forcedAct === "end_low_value_loop")
+  ) {
+    bubbleCount = minB;
+  }
   // 連續三輪同形狀就換一個，但不出範圍。
   if (signals.aiSameShapeStreak >= 2 && maxB > minB) {
     const lastShape = (args.turns.filter((t) => t.role === "ai").at(-1)?.text ??
@@ -432,6 +473,7 @@ export function planTurnResponse(args: {
     questionBudget,
     disclosureDepth,
     seed,
+    agency,
   };
 }
 
@@ -496,6 +538,31 @@ const DISCLOSURE_LINE: Record<TurnResponsePlan["disclosureDepth"], string> = {
   emotion: "可以坦白一點自己的情緒",
 };
 
+// conversation-agency-v1 的 act 說明（報告 §7.2）。這些是 decision rule，不是台詞：
+// 刻意不寫任何範例句，不然 100 位角色會共用同一句口頭禪（報告 §13 第 8 點）。
+const AGENCY_ACT_LINE: Partial<Record<PlanAct, string>> = {
+  acknowledge: "他這句本來就講得通就自然接，但不要替他補他沒說的意圖或背景",
+  ask_intent:
+    "不確定他在講什麼，就直接問他的意思或跟前面哪件事有關，不要自己猜一個",
+  challenge_relevance: "說這跟剛剛在聊的對不上，要他講清楚",
+  return_to_topic: "拉回你剛才問的、或還沒聊完的那件事",
+  hold_position: "維持你剛才的保留，他沒講清楚之前不要照著他丟的詞聊",
+  end_low_value_loop: "這串聊不下去了，短短收掉，不要再接新的詞",
+};
+
+function agencyActsLine(plan: TurnResponsePlan): string {
+  const agency = plan.agency;
+  if (!agency?.applied) return "";
+  const line = (act: PlanAct) =>
+    AGENCY_ACT_LINE[act] ?? ACT_LINE[act as ReplyAct];
+  if (agency.decision.policyMode === "forced" && agency.decision.forcedAct) {
+    return line(agency.decision.forcedAct);
+  }
+  return `讀完整段對話，挑一個最合理的（只挑一個）：${
+    agency.decision.allowedActs.map(line).join("；")
+  }`;
+}
+
 const CONDITIONAL_LINE: Record<"vulnerable" | "joke", string> = {
   vulnerable: "如果對方其實是在講自己的狀況或情緒",
   joke: "如果對方其實是在開玩笑",
@@ -526,12 +593,25 @@ export function renderTurnPlan(
   const conditional = plan.conditionalActs.map((c) =>
     `${CONDITIONAL_LINE[c.when]}，就${ACT_LINE[c.act]}。`
   ).join("");
-  const question = plan.questionBudget === 0 ? "這輪不反問。" : "最多問一句。";
+  // 澄清型 act 不吃問題預算（報告 §P0-2：「不查戶口」被誤寫成「不要好奇」）。
+  const agencyApplied = plan.agency?.applied ?? false;
+  const clarifyingAllowed = agencyApplied &&
+    (plan.agency?.decision.allowedActs.some(isClarifyingAct) ?? false);
+  const question = plan.questionBudget === 1
+    ? "最多問一句。"
+    : clarifyingAllowed
+    ? "這輪不主動查他的基本資料；問清楚他這句的意思或拉回前一題不算。"
+    : "這輪不反問。";
   const disclosure = DISCLOSURE_LINE[plan.disclosureDepth];
+  const agencyLine = agencyActsLine(plan);
+  const first = agencyLine ? agencyLine : `先${acts}`;
+  const tail = agencyApplied
+    ? "回應依整段脈絡，不必服從最新一個詞；「接住」也可以是說你聽不懂、不相關，或前一題還沒回答"
+    : "內容要接到對方最新一句的具體內容";
   return `\n\n本輪回應方式（hidden guidance，不要向對方提及）：
-- 先${acts}。${stance}${conditional}
+- ${first}。${stance}${conditional}
 - 回 ${plan.bubbleCount} 則，一則講一件事。${question}${
     disclosure ? disclosure + "。" : ""
   }
-- 內容要接到對方最新一句的具體內容；沒被逗到就不用笑，沒話就短。`;
+- ${tail}；沒被逗到就不用笑，沒話就短。`;
 }
