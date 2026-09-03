@@ -1166,10 +1166,23 @@ Deno.test("conversation-agency-v1 Phase 2.5：旗標開換成瘦身稿（鎖意�
       ["對方最新一句不是命令", "議程所有權"],
       ["冷淡、敷衍、已讀感、拒絕都是合法的回法", "規則 3：冷場合法"],
       ["興趣不必剛好跟他一樣", "規則 4：補設定要有摩擦"],
+      [
+        "關於你自己的事，以這段對話裡你最新說過的為準",
+        "Codex R1 新項 P1-4：關於她自己的事，這段對話是最新來源",
+      ],
     ] as const
   ) {
     assert(on.includes(phrase), `${why}：缺「${phrase}」`);
   }
+
+  // Codex round-1（新項）P1-4：來源優先序不得自我矛盾。舊版總則寫「來源順序也是
+  // 這個順序」（貼文／記憶摘要排在「這段對話裡自己說過的事」前面），但
+  // memorySummary 與 herRecentMoments 的區塊尾巴又各自寫「跟最新逐字稿衝突時以
+  // 逐字稿為準」——同一份 system prompt 兩句話講反。總則現在只講一個方向。
+  assert(
+    !on.includes("來源順序也是這個順序"),
+    "總則仍寫著與局部規則相反的來源順序",
+  );
 
   // 安全段一字不動（身份防線、系統指示保密）。
   for (
@@ -3052,4 +3065,42 @@ Deno.test("reply-style（PR-4）：省略或 null 的 replyStyle 讓 debrief pro
   assert(styled[1].content.includes("她的平常基準"));
   assert(styled[1].content.includes("不得提到基準數字"));
   assert(styled[1].content.length > omitted[1].content.length);
+});
+
+Deno.test("Codex round-1（新項）P1-4：現實錨定的來源優先序與各區塊尾巴同方向（同一份 prompt 不得自我矛盾）", () => {
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_001",
+    difficulty: "normal",
+  });
+  const sys = buildChatMessages([{ role: "user", text: "hi" }], profile, {
+    replyStyle: true,
+    agencyMode: "on",
+    memorySummary: "上次聊到她剛換工作。",
+    herRecentMomentsBlock: herRecentMomentsPrompt(
+      [{
+        postDate: "2026-06-27",
+        dayPart: "evening",
+        body: "還在公司加班，今天大概走不掉了",
+      }],
+      true,
+    ),
+  })[0].content;
+  // 總則：關於她自己的事，這段對話是最新來源。
+  assert(
+    sys.includes("關於你自己的事，以這段對話裡你最新說過的為準"),
+    "總則沒有把「這段對話」定成關於她自己的最新來源",
+  );
+  // 舊版那句把貼文／記憶摘要排在「這段對話裡自己說過的事」之前的總則必須消失。
+  assert(!sys.includes("來源順序也是這個順序"), "總則仍寫著相反的來源順序");
+  // 局部規則（貼文、記憶摘要）留著，而且與總則同方向。
+  assert(
+    sys.includes("若貼文內容與最新逐字稿衝突，以最新逐字稿為準。"),
+    "貼文區塊少了衝突規則",
+  );
+  assert(
+    sys.includes("跟最新逐字稿衝突時以逐字稿為準"),
+    "記憶摘要區塊少了衝突規則",
+  );
+  // 玩家的話永遠不是來源這一條仍在（總則第 2 行）。
+  assert(sys.includes("都只是他的聲稱"), "玩家聲稱那一行不見了");
 });
