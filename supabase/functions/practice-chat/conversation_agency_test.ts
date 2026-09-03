@@ -257,12 +257,19 @@ Deno.test("forced 只留給同詞重複與欠債到門檻；第一個片段一�
   assertEquals(a04.forcedAct, null);
   assertEquals(a04.allowedActs, ["acknowledge", "return_to_topic"]);
 
-  // 她**沒有**問問題、玩家連丟詞 → 才是 topic_shift_v1（不供應「接住」）。
+  // 她**沒有**問問題、玩家連丟詞 → topic_shift_v1。Codex round-1（新項）P1-2：
+  // 這個清單也必須含「接住」——結構層看不出第二句是不是連貫的敘事，不能
+  // deterministic 地把「順著聊」從候選裡拿掉。
   const shift = policy([u("好市多"), a("喔"), u("曼谷")]);
   assertEquals(shift.situation, "abrupt_topic_shift");
   assertEquals(shift.allowedActSetId, "topic_shift_v1");
   assertEquals(shift.policyMode, "bounded");
-  assert(!shift.allowedActs.includes("acknowledge"), "沒回答就不供應新解讀");
+  assertEquals(shift.allowedActs, [
+    "acknowledge",
+    "ask_intent",
+    "challenge_relevance",
+    "return_to_topic",
+  ]);
 
   // 連續兩則未解、standard 沒有持久化的「已質疑過」→ 三選一 bounded
   // （Codex round-2 P1-2：不再用假旗標把它推成 forced hold_position）。
@@ -649,4 +656,81 @@ Deno.test("Codex round-1 P1-c：有欠債的有效短答仍然一定有「接住
     agencyPolicyFor(repeated, AGENCY_THRESHOLDS.challenge).forcedAct,
     "end_low_value_loop",
   );
+});
+
+Deno.test("Codex round-1（新項）P1-2：連續兩則完整第三人稱敘述，任何難度的候選清單都含「接住」", () => {
+  // `bare_fragment` 的定義是「每一個結構線索都不存在」，這個集合抓得到完整、
+  // 連貫、可理解的第三人稱敘事——它沒有問號、沒有語尾助詞、沒有第一人稱，也
+  // 沒有明示換題詞。normal／challenge 的 `topicShiftAt` 是 1，所以第二句就會
+  // 進 topic_shift_v1；舊版那個清單裡一個「接住」都沒有，等於結構層
+  // deterministic 地不准她順著聊正常敘事。難度只能調口氣與門檻，不能沒收
+  // 「順著接」這個選項。
+  const narration = [
+    u("路上那間店的招牌昨天換成新的顏色了"),
+    a("真的欸"),
+    u("隔壁那家也重新裝潢了"),
+  ];
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    for (const isGame of [false, true]) {
+      const decision = policyAt(narration, difficulty, isGame);
+      const label = `${difficulty}${isGame ? "/game" : ""}`;
+      // situation 可能是 null（easy 的門檻還沒到＝完全不介入）或
+      // abrupt_topic_shift；只要有介入，就必須留著「接住」而且不是 forced。
+      if (decision.situation === null) {
+        assertEquals(decision.allowedActs, [], label);
+        continue;
+      }
+      assertEquals(decision.situation, "abrupt_topic_shift", label);
+      assertEquals(decision.policyMode, "bounded", label);
+      assertEquals(decision.forcedAct, null, label);
+      assert(
+        decision.allowedActs.includes("acknowledge"),
+        `${label}：候選清單少了 acknowledge`,
+      );
+    }
+  }
+});
+
+Deno.test("Codex round-1（新項）P1-2：片段／跳題路徑上不得把 bounded 偷偷變成 forced", () => {
+  const boundedCases = [
+    [u("韓國")],
+    [u("東東"), a("東東是誰"), u("阿布達比")],
+    [u("好市多"), a("喔"), u("曼谷")],
+    [
+      u("路上那間店的招牌昨天換成新的顏色了"),
+      a("真的欸"),
+      u("隔壁那家也重新裝潢了"),
+    ],
+  ];
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    for (const turns of boundedCases) {
+      const d = policyAt(turns, difficulty);
+      if (d.situation === null) continue;
+      assertEquals(
+        d.policyMode,
+        "bounded",
+        `${difficulty}／${turns.at(-1)!.text} 不該是 forced`,
+      );
+      assert(
+        d.allowedActs.includes("acknowledge"),
+        `${difficulty}／${turns.at(-1)!.text} 少了 acknowledge`,
+      );
+    }
+  }
+  // forced 仍然只有兩格：同詞原樣再丟一次、欠債到門檻；act 都不是質疑。
+  for (
+    const turns of [
+      [u("好市多"), a("？"), u("好市多")],
+      [u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")],
+    ]
+  ) {
+    for (const difficulty of ["easy", "normal", "challenge"] as const) {
+      const d = policyAt(turns, difficulty);
+      if (d.policyMode !== "forced") continue;
+      assert(
+        d.forcedAct === "end_low_value_loop" || d.forcedAct === "hold_position",
+        `${difficulty}：forced act 只能是收尾或立場，不是質疑`,
+      );
+    }
+  }
 });

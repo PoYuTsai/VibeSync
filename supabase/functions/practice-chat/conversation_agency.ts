@@ -406,16 +406,17 @@ export const AGENCY_THRESHOLDS: Record<
   // （同詞原樣再丟一次、欠債到門檻），第一個片段一律 bounded {接住, 問意思}，
   // 由看得到全文的她挑。難度差異改由 topicShiftAt／lowCoherenceAt／
   // forceEndLoopBeforeChallenge 這三個後段門檻承擔。
-  // 一般：第一個沒前文的片段直接問，不供應「接住」當退路；第 2 則就指出跳題。
+  // 一般：第一個沒前文的片段是 bounded {接住, 問意思}（與 easy 同一組候選）；
+  // 難度差在後段門檻——第 2 則就指出跳題。
   normal: {
     firstFragmentActs: ["acknowledge", "ask_intent"],
     topicShiftAt: 1,
     lowCoherenceAt: 2,
     forceEndLoopBeforeChallenge: false,
   },
-  // 挑戰：第一則就強制只問意思（跟 normal 同一條 forced，不供應解讀也不供應
-  // 「接住」）；連續模糊到第 2 則就可以直接收掉，不用先走一輪「再給一次機會」
-  // 的 bounded 質疑。質疑的火力差異放在後面的門檻，不放在第一則。
+  // 挑戰：第一則同樣是 bounded {接住, 問意思}；差別在連續模糊到第 2 則就可以
+  // 直接收掉，不用先走一輪「再給一次機會」的 bounded 質疑。質疑的火力差異全部
+  // 放在後面的門檻，不放在第一則。
   challenge: {
     firstFragmentActs: ["acknowledge", "ask_intent"],
     topicShiftAt: 1,
@@ -525,12 +526,25 @@ export function agencyPolicyFor(
   if (unresolvedCount >= thresholds.topicShiftAt) {
     // 前一題還沒解決：不供應新解讀，但也不強制質疑。
     // （`answer_candidate` 在上面就被接走了，不會落到這裡——Codex R1 P1-c。）
+    //
+    // Codex round-1（新項）P1-2：舊版這個清單裡**一個「接住」都沒有**，而
+    // normal／challenge 的 `topicShiftAt` 是 1——也就是第二句沒有句法 marker
+    // 的話就一定被問意思／質疑／拉回。「路上那間店的招牌換顏色了」→「隔壁那家
+    // 也重新裝潢了」是完整、連貫的第三人稱敘事，結構層看不出它有沒有關聯，卻
+    // deterministic 地不准她順著接。片段／跳題這兩條路徑上的 bounded 清單一律
+    // 要含 `acknowledge`，讓看得到全文的她自己判；強制只留給信心最高的兩格
+    // （同詞原樣再丟一次、欠債到門檻且已質疑過／挑戰難度收尾）。
     return {
       ...base,
       situation: "abrupt_topic_shift",
       policyMode: "bounded",
       forcedAct: null,
-      allowedActs: ["ask_intent", "challenge_relevance", "return_to_topic"],
+      allowedActs: [
+        "acknowledge",
+        "ask_intent",
+        "challenge_relevance",
+        "return_to_topic",
+      ],
       allowedActSetId: "topic_shift_v1",
     };
   }
@@ -551,8 +565,8 @@ export function agencyPolicyFor(
   // 七個條件全部是「某個結構線索不存在」，沒有任何一個是字數（Codex round-2
   // 對「這是換皮的長度啟發式」的回應：`utteranceShapeOf` 已經沒有字數條件，
   // 四十個字的裸敘述照樣是 fragment，兩個字的「韓國」在她剛問完問題時不是）。
-  // 這個全空集合信心夠高，所以 normal／challenge／game 直接 forced「只問意思」；
-  // easy 仍給兩個選項（接住／問），維持難度差。
+  // 三種難度目前都給兩個選項（接住／問）；`firstFragmentActs` 留成表格欄位是
+  // 為了讓「哪個難度收窄第一則」是一行資料改動，不是散在條件式裡。
   const acts = thresholds.firstFragmentActs;
   const forced = acts.length === 1;
   return {
