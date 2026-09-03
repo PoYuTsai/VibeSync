@@ -4580,11 +4580,16 @@ export function createPracticeChatHandler(
           boundary: temperature.classification.boundary,
           hintAlignment: temperature.classification.hintAlignment,
           partnerMood: temperature.classification.partnerMood,
-          // conversation-agency-v1 Phase 2：旗標 off 時分類器不判 coherence／
-          // aiChallengedLastTurn，一律填預設值（"connected"／false）。
-          coherence: temperature.classification.coherence ?? "connected",
-          aiChallengedLastTurn:
-            temperature.classification.aiChallengedLastTurn ?? false,
+          // Codex round-1 P1-b：旗標 off 時分類器根本沒判這兩個欄位，
+          // telemetry 就不該有這兩個 key（舊版填 "connected"／false，等於
+          // 旗標關著的 log 也多出兩個欄位，跟 main 對拍不一樣）。
+          ...(temperature.classification.coherence !== undefined
+            ? {
+              coherence: temperature.classification.coherence,
+              aiChallengedLastTurn:
+                temperature.classification.aiChallengedLastTurn ?? false,
+            }
+            : {}),
         }
         : null,
       // Phase 2：delta cap 是否真的壓過這一輪的 heat／familiarity delta。

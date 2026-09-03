@@ -344,12 +344,17 @@ Deno.test("buildTurnClassifierMessages：agencyEnabled=true 才加 coherence／a
   assertEquals(on[1].content, off[1].content);
 });
 
-Deno.test("parseTurnClassification：coherence／aiChallengedLastTurn 省略時預設 connected／false；requireCoherence 才強制", () => {
+Deno.test("parseTurnClassification：旗標 off 時 coherence／aiChallengedLastTurn 兩個 key 根本不存在；requireCoherence 才強制", () => {
+  // Codex round-1 P1-b：舊版無條件補 "connected"／false，等於旗標關著時
+  // classification 的形狀也多兩個欄位，下游（telemetry、agencyClassifierSignal）
+  // 拿它跟 main 對拍會逐字不同。prompt 沒問的東西，parser 不該替它回答。
   const withoutFields = parseTurnClassification(
     '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe"}',
   );
-  assertEquals(withoutFields.coherence, "connected");
-  assertEquals(withoutFields.aiChallengedLastTurn, false);
+  assertEquals(withoutFields.coherence, undefined);
+  assertEquals(withoutFields.aiChallengedLastTurn, undefined);
+  assert(!("coherence" in withoutFields));
+  assert(!("aiChallengedLastTurn" in withoutFields));
 
   assertThrows(
     () =>
@@ -428,13 +433,12 @@ Deno.test('parseTurnClassification：partnerMood "confused" repair 成 neutral�
     "partnerMood",
   );
 
-  // 合法輸出不會留下 repair 紀錄。
-  assertEquals(
-    parseTurnClassification(
-      '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","partnerMood":"curious"}',
-    ).repairedFields,
-    [],
+  // 合法輸出完全不帶 repairedFields（形狀跟 main 逐字相同）。
+  const clean = parseTurnClassification(
+    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","partnerMood":"curious"}',
   );
+  assertEquals(clean.repairedFields, undefined);
+  assert(!("repairedFields" in clean));
 });
 
 function judgement(delta: number, familiarityDelta: number): LearningJudgement {

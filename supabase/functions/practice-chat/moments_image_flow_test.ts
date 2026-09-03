@@ -25,8 +25,7 @@ const PROFILE_ID = "practice_girl_001";
 const LATE_NIGHT = new Date("2026-08-25T15:00:00.000Z");
 const ISO_DATE = taipeiTimeContextFor(LATE_NIGHT).isoDate;
 const VALID_BODY = "下班路上的天色好到讓人想多走一站再慢慢回家";
-const FAL_URL =
-  "https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image";
+const FAL_URL = "https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image";
 
 interface FlowHarness {
   supabase: MomentsSupabaseClient;
@@ -156,7 +155,9 @@ function makeFlowHarness(options: {
       textModelPrompts.push(
         args.messages.map((m) => m.content).join("\n---\n"),
       );
-      return Promise.resolve(JSON.stringify({ text: VALID_BODY, imageId: null }));
+      return Promise.resolve(
+        JSON.stringify({ text: VALID_BODY, imageId: null }),
+      );
     },
     planFor: () => ({
       profileId: PROFILE_ID,

@@ -30,14 +30,14 @@ import { MODEL_RATE_LIMITS } from "../_shared/model_rate_limit.ts";
 import {
   MAX_MOMENT_IMAGE_ATTEMPTS,
   MOMENT_IMAGE_ACCEPTED_FORMATS,
-  MOMENT_IMAGE_EXTENSION,
-  MOMENT_IMAGE_SIZE_PRESET,
   MOMENT_IMAGE_DOWNLOAD_TIMEOUT_MS,
+  MOMENT_IMAGE_EXTENSION,
   MOMENT_IMAGE_MAX_BYTES,
   MOMENT_IMAGE_MIN_BYTES,
   MOMENT_IMAGE_MODEL_TIMEOUT_MS,
   MOMENT_IMAGE_RESERVE_LEASE_MS,
   MOMENT_IMAGE_SCENE_TIMEOUT_MS,
+  MOMENT_IMAGE_SIZE_PRESET,
   MOMENT_IMAGE_UPLOAD_TIMEOUT_MS,
 } from "./moments_constants.ts";
 
@@ -350,7 +350,9 @@ export function validateSceneLine(raw: unknown): string {
     throw new Error("moment_scene_length");
   }
   if (!ASCII_PRINTABLE.test(scene)) throw new Error("moment_scene_non_ascii");
-  if (SCENE_FORBIDDEN.test(scene)) throw new Error("moment_scene_forbidden_word");
+  if (SCENE_FORBIDDEN.test(scene)) {
+    throw new Error("moment_scene_forbidden_word");
+  }
   return scene;
 }
 
@@ -586,7 +588,9 @@ async function downloadImage(
     // 大小硬上限做兩層：Content-Length 預檢（省流量），再流式累計硬擋
     // （header 可缺可謊，不能只信 header）。異常大回應不落入記憶體。
     const declaredLength = Number(response.headers.get("content-length") ?? "");
-    if (Number.isFinite(declaredLength) && declaredLength > MOMENT_IMAGE_MAX_BYTES) {
+    if (
+      Number.isFinite(declaredLength) && declaredLength > MOMENT_IMAGE_MAX_BYTES
+    ) {
       await response.body?.cancel().catch(() => {});
       throw new Error("fal_image_too_large");
     }
@@ -737,7 +741,9 @@ export async function generateMomentImage(opts: {
     if (!row || row.claimed !== true) return;
     claimedBody = typeof row.body === "string" ? row.body : "";
     claimedThemeId = typeof row.theme_id === "string" ? row.theme_id : "";
-    claimedAttempt = typeof row.attempt_count === "number" ? row.attempt_count : 1;
+    claimedAttempt = typeof row.attempt_count === "number"
+      ? row.attempt_count
+      : 1;
     if (claimedBody.length === 0) {
       // 理論上不可達（claim 只放行 status='ready'，ready 必有 body）。
       // 連上傳都沒開始，帳本那一筆確定沒有物件，一併抹掉。
@@ -768,7 +774,12 @@ export async function generateMomentImage(opts: {
     const imageUrl = await callFalImageModel({
       deps,
       prompt: buildImagePrompt(scene),
-      seed: momentImageSeed(job.profileId, job.isoDate, job.slot, claimedAttempt),
+      seed: momentImageSeed(
+        job.profileId,
+        job.isoDate,
+        job.slot,
+        claimedAttempt,
+      ),
     });
     const { bytes, contentType } = await downloadImage(deps, imageUrl);
     try {
@@ -776,7 +787,9 @@ export async function generateMomentImage(opts: {
       await uploadWithTimeout(deps, path, bytes, contentType);
       uploadedPath = path;
     } catch (e) {
-      if (e instanceof Error && e.message === "fal_image_upload_timeout") throw e;
+      if (e instanceof Error && e.message === "fal_image_upload_timeout") {
+        throw e;
+      }
       throw new Error("fal_image_upload_failed");
     }
 

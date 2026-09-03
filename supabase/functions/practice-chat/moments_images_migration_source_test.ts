@@ -119,13 +119,18 @@ Deno.test("schema cache 重載通知存在", () => {
 // ---------------------------------------------------------------------------
 
 Deno.test("絕無列刪除與整表破壞", () => {
-  assert(!executable.includes("DELETE FROM"), "本 migration 不得刪任何列（D6）");
+  assert(
+    !executable.includes("DELETE FROM"),
+    "本 migration 不得刪任何列（D6）",
+  );
   assert(!executable.includes("DROP TABLE"));
   assert(!executable.includes("TRUNCATE"));
 });
 
 Deno.test("改簽名的兩支 RPC 都有 fail-closed overload 稽核", () => {
-  for (const name of ["commit_practice_moment_post", "list_practice_moment_posts"]) {
+  for (
+    const name of ["commit_practice_moment_post", "list_practice_moment_posts"]
+  ) {
     assert(
       migration.includes(`'${name}: unexpected overload(s): %'`) ||
         migration.includes(`'${name}: unexpected overload(s): %',`),
@@ -165,7 +170,9 @@ Deno.test("狀態機的關鍵寫入都在", () => {
   );
   // ready 一定有 path 的資料層守門。
   assert(
-    executable.includes("CHECK (image_status <> 'ready' OR image_path IS NOT NULL)"),
+    executable.includes(
+      "CHECK (image_status <> 'ready' OR image_path IS NOT NULL)",
+    ),
   );
   // claim 的同交易 per-user 計數走獨立 scope。
   assert(
@@ -255,7 +262,10 @@ Deno.test("清掃上限：Edge 常數 ≤ SQL 硬上界", () => {
     `Edge 掃描批量 ${MOMENT_IMAGE_SWEEP_LIMIT} 不得超過 SQL 上界 ${sqlCap}`,
   );
   assertEquals(
-    soleNumberFromSql(/array_length\(p_paths, 1\) > (\d+) THEN/g, "p_paths 上限"),
+    soleNumberFromSql(
+      /array_length\(p_paths, 1\) > (\d+) THEN/g,
+      "p_paths 上限",
+    ),
     sqlCap,
     "list 與 mark 的批量上界必須一致",
   );
@@ -270,7 +280,9 @@ Deno.test("每個有 SQL 對應物的 TS 常數都能在 migration 內找到", (
       ],
       [
         "image lease default",
-        `p_lease_seconds    INTEGER DEFAULT ${MOMENT_IMAGE_RESERVE_LEASE_MS / 1000}`,
+        `p_lease_seconds    INTEGER DEFAULT ${
+          MOMENT_IMAGE_RESERVE_LEASE_MS / 1000
+        }`,
       ],
       [
         "image path CHECK",
@@ -316,7 +328,8 @@ Deno.test("guard migration：權限樣板、overload 稽核與 NOTIFY 齊全", (
       `${name} 缺 fail-closed overload 稽核`,
     );
   }
-  const definerAtCreate = [...executableGuard.matchAll(/SECURITY DEFINER/g)].length;
+  const definerAtCreate =
+    [...executableGuard.matchAll(/SECURITY DEFINER/g)].length;
   const alterCount =
     [...executableGuard.matchAll(/ALTER FUNCTION public\.\w+\(/g)].length;
   assertEquals(definerAtCreate, alterCount, "CREATE 一律 INVOKER 起手");
@@ -328,7 +341,11 @@ Deno.test("guard migration：DB 端 cutoff 的關鍵寫入都在（第三輪修�
   const cutoffDecls = [...executableGuard.matchAll(
     /AT TIME ZONE INTERVAL '8 hours'\)::date - (\d+)\)/g,
   )];
-  assertEquals(cutoffDecls.length, 3, "claim／commit／release 都必須自算 cutoff");
+  assertEquals(
+    cutoffDecls.length,
+    3,
+    "claim／commit／release 都必須自算 cutoff",
+  );
   for (const match of cutoffDecls) {
     assertEquals(Number(match[1]), FEED_WINDOW_DAYS - 1);
   }
@@ -372,12 +389,14 @@ const LEDGER_RPC_SIGNATURES = [
 Deno.test("ledger migration：權限樣板、overload 稽核與 NOTIFY 齊全", () => {
   for (const [name, args] of LEDGER_RPC_SIGNATURES) {
     const normalized = executableLedger.replace(/\s+/g, " ");
-    for (const template of [
-      `REVOKE ALL ON FUNCTION public.${name}( ${args} ) FROM PUBLIC;`,
-      `REVOKE ALL ON FUNCTION public.${name}( ${args} ) FROM anon, authenticated;`,
-      `GRANT EXECUTE ON FUNCTION public.${name}( ${args} ) TO service_role;`,
-      `ALTER FUNCTION public.${name}( ${args} ) SECURITY DEFINER;`,
-    ]) {
+    for (
+      const template of [
+        `REVOKE ALL ON FUNCTION public.${name}( ${args} ) FROM PUBLIC;`,
+        `REVOKE ALL ON FUNCTION public.${name}( ${args} ) FROM anon, authenticated;`,
+        `GRANT EXECUTE ON FUNCTION public.${name}( ${args} ) TO service_role;`,
+        `ALTER FUNCTION public.${name}( ${args} ) SECURITY DEFINER;`,
+      ]
+    ) {
       const compact = template.replace(/\( /g, "(").replace(/ \)/g, ")");
       assert(
         normalized.includes(template) || normalized.includes(compact),

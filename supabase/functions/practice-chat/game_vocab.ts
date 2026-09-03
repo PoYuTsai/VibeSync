@@ -50,19 +50,20 @@ export const GAME_SPICY_LEVEL_LABELS = {
  * 「資格篩選」在「篩選」之前）。可安全轉譯就不 reject：reject 會觸發
  * 重試/fallback，懲罰過重。
  */
-export const GAME_JARGON_TRANSLATIONS: ReadonlyArray<readonly [RegExp, string]> =
-  [
-    [/資格篩選/g, GAME_PHASE_LABELS.P3_TEST],
-    [/賦格/g, GAME_PHASE_LABELS.P3_TEST],
-    // 退場詞（2026-08-08 拍板）：prompt 已不教，但模型仍可能直接生成
-    //（Codex 首審 P2），hint 側修復、debrief 側 reject（visible_text_guard）。
-    [/品味門檻/g, GAME_PHASE_LABELS.P3_TEST],
-    [/篩選/g, GAME_CONCEPT_LABELS.篩選],
-    [/推拉/g, GAME_CONCEPT_LABELS.推拉],
-    [/可得性/g, GAME_CONCEPT_LABELS.可得性],
-    [/框架/g, GAME_VARIABLE_LABELS.Frame],
-    [/\bDHV\b/gi, GAME_CONCEPT_LABELS.DHV],
-  ];
+export const GAME_JARGON_TRANSLATIONS: ReadonlyArray<
+  readonly [RegExp, string]
+> = [
+  [/資格篩選/g, GAME_PHASE_LABELS.P3_TEST],
+  [/賦格/g, GAME_PHASE_LABELS.P3_TEST],
+  // 退場詞（2026-08-08 拍板）：prompt 已不教，但模型仍可能直接生成
+  //（Codex 首審 P2），hint 側修復、debrief 側 reject（visible_text_guard）。
+  [/品味門檻/g, GAME_PHASE_LABELS.P3_TEST],
+  [/篩選/g, GAME_CONCEPT_LABELS.篩選],
+  [/推拉/g, GAME_CONCEPT_LABELS.推拉],
+  [/可得性/g, GAME_CONCEPT_LABELS.可得性],
+  [/框架/g, GAME_VARIABLE_LABELS.Frame],
+  [/\bDHV\b/gi, GAME_CONCEPT_LABELS.DHV],
+];
 
 /**
  * 自揭語開頭詞：questionPressureScore（查戶口壓力折抵）與 pv 加分共用。

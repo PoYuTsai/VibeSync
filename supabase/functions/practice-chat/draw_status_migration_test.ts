@@ -2,7 +2,10 @@
 // 必須同語意（Codex 雙審 non-blocking：防未來 claim 改動時額度列漂移）。
 // 跑法：deno test --allow-read supabase/functions/practice-chat/draw_status_migration_test.ts
 
-import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 const statusMigration = await Deno.readTextFile(
   new URL(
@@ -49,13 +52,24 @@ Deno.test("status RPC 唯讀鐵則：無 INSERT/UPDATE/DELETE/FOR UPDATE，且 s
     .split("\n")
     .map((line) => line.replace(/--.*$/, ""))
     .join("\n");
-  for (const banned of ["INSERT INTO", "UPDATE public.", "DELETE FROM", "FOR UPDATE"]) {
+  for (
+    const banned of [
+      "INSERT INTO",
+      "UPDATE public.",
+      "DELETE FROM",
+      "FOR UPDATE",
+    ]
+  ) {
     assert(
       !effectiveSql.includes(banned),
       `唯讀 status migration 不得出現 ${banned}`,
     );
   }
-  assert(statusMigration.includes("REVOKE ALL ON FUNCTION public.get_practice_draw_status"));
+  assert(
+    statusMigration.includes(
+      "REVOKE ALL ON FUNCTION public.get_practice_draw_status",
+    ),
+  );
   assert(
     statusMigration.includes(
       "GRANT EXECUTE ON FUNCTION public.get_practice_draw_status(UUID, TIMESTAMPTZ, INTEGER) TO service_role",

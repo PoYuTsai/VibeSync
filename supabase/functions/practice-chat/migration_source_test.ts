@@ -985,8 +985,7 @@ Deno.test("claim RPC：贈抽列 FOR UPDATE＋懶消耗同交易＋replay 不消
   );
   // 語句形式計數（排除註解裡的字樣）：subscriptions 一次＋bonuses 一次
   //（replay 路徑只讀不鎖）。
-  const lockCount =
-    bonusAtomicMigration.split("\n  FOR UPDATE;").length - 1;
+  const lockCount = bonusAtomicMigration.split("\n  FOR UPDATE;").length - 1;
   assert(lockCount === 2, `expected 2 FOR UPDATE statements, got ${lockCount}`);
   // 消耗條件：cost=0 且寫入前免費數已達 tier 額度。
   assert(
@@ -1008,7 +1007,11 @@ Deno.test("claim RPC：贈抽列 FOR UPDATE＋懶消耗同交易＋replay 不消
   assert(replay1Idx > -1 && replay2Idx > replay1Idx);
   assert(consumeIdx > replay2Idx, "consume block must come after both replays");
   // 簽名零改動。
-  assert(bonusAtomicMigration.includes("p_charge_quota           BOOLEAN DEFAULT TRUE"));
+  assert(
+    bonusAtomicMigration.includes(
+      "p_charge_quota           BOOLEAN DEFAULT TRUE",
+    ),
+  );
 });
 
 // ── 訂閱送 SR 限定翻牌（2026-08-08）：券表＋事件標記＋計數排除＋消耗 RPC ────
@@ -1091,8 +1094,8 @@ Deno.test("主 claim RPC：4 個 free_used 計數位點全部排除券抽，其�
     );
   }
   // 20260802120000 的加固語意原樣保留（鎖數、懶消耗條件、簽名）。
-  const lockCount =
-    srTicketExcludeMigration.split("\n  FOR UPDATE;").length - 1;
+  const lockCount = srTicketExcludeMigration.split("\n  FOR UPDATE;").length -
+    1;
   assert(lockCount === 2, `expected 2 FOR UPDATE statements, got ${lockCount}`);
   assert(
     srTicketExcludeMigration.includes(

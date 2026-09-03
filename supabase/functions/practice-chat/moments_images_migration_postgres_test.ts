@@ -327,7 +327,15 @@ Deno.test("PostgreSQL commit keeps working with the legacy 7-argument call shape
       `SELECT committed FROM public.commit_practice_moment_post(
          $1, $2::DATE, $3, $4, $5, $6, $7
        )`,
-      [PROFILE_ID, POST_DATE, SLOT, "t-legacy", BODY, null, "deepseek-v4-flash"],
+      [
+        PROFILE_ID,
+        POST_DATE,
+        SLOT,
+        "t-legacy",
+        BODY,
+        null,
+        "deepseek-v4-flash",
+      ],
     );
     assertEquals(committed.rows[0].committed, true);
     assertEquals((await readRow(db)).image_status, "none");
@@ -343,7 +351,11 @@ Deno.test("PostgreSQL commit with wants_image marks the row pending", async () =
     const row = await readRow(db);
     assertEquals(row.status, "ready");
     assertEquals(row.image_status, "pending");
-    assertEquals(row.image_attempts, 0, "pending 由 commit 建立，attempts 從 0 起算");
+    assertEquals(
+      row.image_attempts,
+      0,
+      "pending 由 commit 建立，attempts 從 0 起算",
+    );
   } finally {
     await db.close();
   }
@@ -364,7 +376,15 @@ Deno.test("PostgreSQL commit rejects wants_image together with an image_id", asy
         `SELECT committed FROM public.commit_practice_moment_post(
            $1, $2::DATE, $3, $4, $5, $6, $7, TRUE
          )`,
-        [PROFILE_ID, POST_DATE, SLOT, "t-both", BODY, "moment_coffee_cup", null],
+        [
+          PROFILE_ID,
+          POST_DATE,
+          SLOT,
+          "t-both",
+          BODY,
+          "moment_coffee_cup",
+          null,
+        ],
       );
     } catch (error) {
       denied = String(error);
@@ -468,7 +488,11 @@ Deno.test("PostgreSQL image release hands the lease back immediately", async () 
     assertEquals(await releaseImage(db, "t-fail"), true);
 
     const row = await readRow(db);
-    assertEquals(row.image_status, "pending", "attempts 未燒完前 release 留在 pending");
+    assertEquals(
+      row.image_status,
+      "pending",
+      "attempts 未燒完前 release 留在 pending",
+    );
     assertEquals(row.image_token, null);
 
     const retry = await claimImage(db, "t-retry");
@@ -568,8 +592,16 @@ Deno.test("PostgreSQL image commit is token fenced and idempotent", async () => 
     assertEquals(row.image_path, IMAGE_PATH);
     assertEquals(row.image_token, null);
 
-    assertEquals(await commitImage(db, "t-mine"), false, "重複回應回 FALSE 不覆寫");
-    assertEquals((await claimImage(db, "t-again")).claimed, false, "ready 不再認領");
+    assertEquals(
+      await commitImage(db, "t-mine"),
+      false,
+      "重複回應回 FALSE 不覆寫",
+    );
+    assertEquals(
+      (await claimImage(db, "t-again")).claimed,
+      false,
+      "ready 不再認領",
+    );
   } finally {
     await db.close();
   }
@@ -598,7 +630,11 @@ Deno.test("PostgreSQL image rate-limit rejection rolls back the whole claim", as
       `應由同一筆 transaction 擋下限流，實際：${denied}`,
     );
     const row = await readRow(db);
-    assertEquals(row.image_attempts, 0, "限流 RAISE 必須連 attempts 一起 rollback");
+    assertEquals(
+      row.image_attempts,
+      0,
+      "限流 RAISE 必須連 attempts 一起 rollback",
+    );
     assertEquals(row.image_token, null);
     assertEquals(row.image_status, "pending");
   } finally {
@@ -692,7 +728,11 @@ Deno.test("PostgreSQL expiry sweep lists, marks, and never deletes", async () =>
 
     const row = await readRow(db);
     assertEquals(row.image_status, "expired");
-    assertEquals(row.image_path, IMAGE_PATH, "expired 保留 path 作審計與冪等重刪");
+    assertEquals(
+      row.image_path,
+      IMAGE_PATH,
+      "expired 保留 path 作審計與冪等重刪",
+    );
     assertEquals(row.status, "ready", "清掃絕不動文字面");
     assertEquals(row.body, BODY);
 
@@ -913,7 +953,11 @@ Deno.test("PostgreSQL full interleaving: claimed pending crosses Taipei midnight
       "晚到 commit 必須被出窗守衛擋下",
     );
     const afterLate = await readRowAt(db, expiredDate);
-    assertEquals(afterLate.image_status, "failed", "晚到 commit 被拒時列一併收屍");
+    assertEquals(
+      afterLate.image_status,
+      "failed",
+      "晚到 commit 被拒時列一併收屍",
+    );
     assertEquals(afterLate.image_path, null);
     assertEquals(afterLate.image_token, null, "token 必須清空");
     assertEquals(afterLate.status, "ready", "文字面不受影響");

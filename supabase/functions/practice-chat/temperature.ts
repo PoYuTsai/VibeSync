@@ -720,11 +720,11 @@ const KNOWN_PARTNER_MOOD_REPAIRS: Readonly<Record<string, PartnerMood>> = {
   confused: "neutral",
 };
 
-// conversation-agency-v1 Phase 2：省略＝"connected"（no-op，不觸發 delta
-// cap）；旗標 off 時呼叫端不傳 requireCoherence，永遠走這條預設路徑。
+// conversation-agency-v1 Phase 2：只在 `requireCoherence`（旗標 ≠ off）時
+// 呼叫；旗標 off 時整個欄位不存在（Codex round-1 P1-b），不是填預設值。
 //
 // Phase 2.6：值不在列舉裡時不再整筆作廢，改判 `ambiguous`（同樣不觸發 cap，
-// 是最保守的一格）並記一筆 repair。缺值仍是 "connected"（旗標 off 的預設）。
+// 是最保守的一格）並記一筆 repair。
 function parseCoherence(
   value: unknown,
   repaired: string[],
@@ -826,12 +826,21 @@ export function parseTurnClassification(
     partnerMood: parsePartnerMood(parsed.partnerMood, repairedFields),
     moodConfidence: parseMoodConfidence(parsed.moodConfidence),
     innerThought: sanitizeInnerThought(parsed.innerThought),
-    coherence: parseCoherence(parsed.coherence, repairedFields),
-    aiChallengedLastTurn: parseAiChallengedLastTurn(
-      parsed.aiChallengedLastTurn,
-      repairedFields,
-    ),
-    repairedFields,
+    // Codex round-1 P1-b：旗標 off 時這兩個欄位**根本不存在**，不是填預設值。
+    // 舊版無條件補 "connected"／false，等於旗標關著也多出兩個欄位——下游
+    // （telemetry、agencyClassifierSignal）看到的是一個 agency 才有的形狀，
+    // 拿它跟 main 對拍會逐字不同。prompt 沒問的東西，parser 不該替它回答。
+    ...(opts.requireCoherence
+      ? {
+        coherence: parseCoherence(parsed.coherence, repairedFields),
+        aiChallengedLastTurn: parseAiChallengedLastTurn(
+          parsed.aiChallengedLastTurn,
+          repairedFields,
+        ),
+      }
+      : {}),
+    // 只在真的修過時才出現：合法輸出的 classification 形狀跟 main 逐字相同。
+    ...(repairedFields.length ? { repairedFields } : {}),
   };
 }
 

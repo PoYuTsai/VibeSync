@@ -102,7 +102,7 @@ export interface PracticeChatRequest {
   prefetch?: boolean;
   /**
    * client 能力宣告：這個 build 認得「本輪沒有可貼句」的回應形狀
-   *（空 replies ＋ noPasteableReason）。缺席／非法一律靜默視為 false，
+   * （空 replies ＋ noPasteableReason）。缺席／非法一律靜默視為 false，
    * 走舊契約——絕不 throw 400，那會鎖死已裝機的舊 client（比照 catalogSize）。
    */
   acceptsNoPasteableHint?: boolean;

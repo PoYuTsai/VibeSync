@@ -28,7 +28,10 @@ import {
 } from "./moments_handler.ts";
 
 const ISO_DATE = "2026-08-25";
-const PATHS = ["2026-08-01/practice_girl_001_0.jpeg", "2026-08-02/practice_girl_002_1.jpeg"];
+const PATHS = [
+  "2026-08-01/practice_girl_001_0.jpeg",
+  "2026-08-02/practice_girl_002_1.jpeg",
+];
 
 interface SweepHarness {
   supabase: MomentsImageRpcClient;
@@ -72,7 +75,10 @@ function makeSweepHarness(options: {
       events.push(`rpc:${fn}`);
       if (fn === "list_expired_practice_moment_images") {
         if (options.listError) {
-          return Promise.resolve({ data: null, error: { message: options.listError } });
+          return Promise.resolve({
+            data: null,
+            error: { message: options.listError },
+          });
         }
         return Promise.resolve({
           data: (options.expired ?? PATHS).map((path) => ({
@@ -86,10 +92,16 @@ function makeSweepHarness(options: {
       }
       if (fn === "mark_practice_moment_images_expired") {
         if (options.markError) {
-          return Promise.resolve({ data: null, error: { message: options.markError } });
+          return Promise.resolve({
+            data: null,
+            error: { message: options.markError },
+          });
         }
         const count = (params.p_paths as string[]).length;
-        return Promise.resolve({ data: [{ marked_count: count }], error: null });
+        return Promise.resolve({
+          data: [{ marked_count: count }],
+          error: null,
+        });
       }
       if (fn === "list_practice_moment_image_orphans") {
         if (options.ledgerListError) {
@@ -391,8 +403,12 @@ Deno.test("prefix 對帳：單一 prefix 超過一頁時分頁排空", async () 
 });
 
 Deno.test("prefix 對帳：超過單次頁數上限就留給下一次請求（不遺漏）", async () => {
-  const total = MOMENT_IMAGE_LIST_PAGE_SIZE * (MOMENT_IMAGE_ORPHAN_MAX_PAGES + 1);
-  const many = Array.from({ length: total }, (_, i) => `2026-07-30/obj_${i}.jpeg`);
+  const total = MOMENT_IMAGE_LIST_PAGE_SIZE *
+    (MOMENT_IMAGE_ORPHAN_MAX_PAGES + 1);
+  const many = Array.from(
+    { length: total },
+    (_, i) => `2026-07-30/obj_${i}.jpeg`,
+  );
   const harness = makeSweepHarness({ objects: { "2026-07-30": many } });
   const first = await sweepOrphanMomentImages({
     deps: harness.deps,

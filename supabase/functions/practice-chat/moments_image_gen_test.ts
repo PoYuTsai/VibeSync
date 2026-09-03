@@ -8,12 +8,12 @@ import {
   buildImagePrompt,
   coveredThemeIds,
   generateMomentImage,
-  MOMENT_IMAGE_STYLE_PREFIX,
   isLegalSeedreamImageSize,
+  MOMENT_IMAGE_STYLE_PREFIX,
   momentImagePath,
   momentImageSeed,
-  sniffImageContentType,
   type MomentsImageRpcClient,
+  sniffImageContentType,
   themeSceneLine,
   validateSceneLine,
 } from "./moments_image_gen.ts";
@@ -27,8 +27,7 @@ import {
 
 const JOB = { profileId: "practice_girl_007", isoDate: "2026-08-25", slot: 0 };
 const USER_ID = "11111111-2222-3333-4444-555555555555";
-const FAL_URL =
-  "https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image";
+const FAL_URL = "https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image";
 const CDN_URL = "https://v3b.fal.media/files/b/0aa80780/result.jpg";
 const BODY = "下班隨便弄了碗麵 吃完才發現醬料包過期一個月";
 const TOKEN = "img-token-1";
@@ -571,9 +570,18 @@ Deno.test("image_size 必須是官方合法值（自訂數字要滿足 schema �
     "1920×1440 不合法——這正是複審抓到的那組數字",
   );
   // 規則的兩條各驗一組合法與一組不合法。
-  assert(isLegalSeedreamImageSize({ width: 2560, height: 1920 }), "兩軸皆在範圍內");
-  assert(isLegalSeedreamImageSize({ width: 2218, height: 1663 }), "總像素達下限");
-  assert(!isLegalSeedreamImageSize({ width: 1024, height: 768 }), "兩條都不滿足");
+  assert(
+    isLegalSeedreamImageSize({ width: 2560, height: 1920 }),
+    "兩軸皆在範圍內",
+  );
+  assert(
+    isLegalSeedreamImageSize({ width: 2218, height: 1663 }),
+    "總像素達下限",
+  );
+  assert(
+    !isLegalSeedreamImageSize({ width: 1024, height: 768 }),
+    "兩條都不滿足",
+  );
   assert(!isLegalSeedreamImageSize({ width: 5000, height: 5000 }), "超過上限");
   assert(!isLegalSeedreamImageSize({ width: 2560.5, height: 1920 }), "非整數");
 
@@ -939,7 +947,9 @@ Deno.test("commit 明確回 true／false 才是確定態", async () => {
   ], "明確 true：成功收場，不 release");
   assertEquals(ok.removals, []);
 
-  const rejected = makeJobHarness({ commitRaw: { data: [{ committed: false }] } });
+  const rejected = makeJobHarness({
+    commitRaw: { data: [{ committed: false }] },
+  });
   await runJob(rejected);
   assertEquals(rpcNames(rejected), [
     "claim_practice_moment_image",
