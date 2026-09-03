@@ -553,8 +553,10 @@ void main() {
   test('第 1 冊不得提前使用第 2 冊才定義的變數代碼', () {
     // V↑／E↑／F↑／I↑／R↑ 這套標記在第 2 冊 2.1 才教；免費讀者先讀第 1 冊，
     // 看到代碼等於沒看懂。工作包 5（2026-09-03）把 1.5 的 caption 改成中文判讀。
-    final code = RegExp(r'[VFEIR][↑↓]');
-    final book = catalog.findBook('ebook-1-bottleneck')!;
+    // 單一來源：audit_rules.json 的 undefinedCodes（R09）。
+    final rule = _readAuditRules()['undefinedCodes'] as Map<String, dynamic>;
+    final code = RegExp(rule['pattern'] as String);
+    final book = catalog.findBook(rule['bookId'] as String)!;
     final hits = <String>[];
     for (final chapter in book.chapters) {
       for (final block in _flatten(chapter.blocks)) {
