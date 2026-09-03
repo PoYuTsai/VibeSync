@@ -121,7 +121,59 @@ const COHERENCES: readonly ConversationAgencyState["lastCoherence"][] = [
 // ── 結構訊號 ──────────────────────────────────────────────────────────────
 // 明示換題詞：小型 allowlist，只收台灣人真的會用來宣告轉場的固定詞。多一個詞就多
 // 一次誤判，寧可漏（漏了只是走 bounded choice，模型仍看得到全文）。
-const EXPLICIT_PIVOT_RE = /(對了|講到|說到|換個話題|欸我想到|突然想到|話說)/u;
+// Codex P1：純 regex 會把「先不要換個話題」（否定）、「你每次都說到一半」
+// （「說到一半」是抱怨被打斷，不是宣告轉場）跟引號內引用他人的話也判成轉場。
+// 用小函式逐一檢查每個詞前面有沒有否定詞、詞後面是不是「一半」、詞是不是被
+// 引號包住，寧可漏（漏了只是不觸發 explicit_pivot，仍走其餘 shape 判斷）。
+const PIVOT_MARKERS: readonly string[] = [
+  "對了",
+  "講到",
+  "說到",
+  "換個話題",
+  "欸我想到",
+  "突然想到",
+  "話說",
+];
+const PIVOT_NEGATION_RE = /(不要|不想|不用|先不|別|别|沒有要|哪有)$/u;
+const QUOTE_PAIRS: readonly (readonly [string, string])[] = [
+  ["「", "」"],
+  ["『", "』"],
+  ['"', '"'],
+];
+
+function isQuotedAt(text: string, idx: number): boolean {
+  for (const [open, close] of QUOTE_PAIRS) {
+    let from = 0;
+    while (true) {
+      const start = text.indexOf(open, from);
+      if (start === -1 || start >= idx) break;
+      const end = text.indexOf(close, start + 1);
+      if (end === -1) break;
+      if (idx > start && idx < end) return true;
+      from = end + 1;
+    }
+  }
+  return false;
+}
+
+function hasExplicitPivot(text: string): boolean {
+  for (const marker of PIVOT_MARKERS) {
+    let from = 0;
+    while (true) {
+      const idx = text.indexOf(marker, from);
+      if (idx === -1) break;
+      from = idx + marker.length;
+      const before = text.slice(Math.max(0, idx - 6), idx);
+      if (PIVOT_NEGATION_RE.test(before)) continue;
+      if (marker === "說到" && text.slice(idx, idx + 4).includes("一半")) {
+        continue;
+      }
+      if (isQuotedAt(text, idx)) continue;
+      return true;
+    }
+  }
+  return false;
+}
 // 招呼／情緒反應：短且只由這些構成時算 reaction，不當成需要澄清的片段。
 const REACTION_RE =
   /^(嗨+|哈囉|哈啦|安安|你好|妳好|hi|hello|yo|嗯+|喔+|噢+|哦+|好+(的|喔|啊)?|ok|okay|哈+|呵+|笑死|欸+|蛤+|齁+|唉+|哇+|真的假的|了解|收到|感謝|謝謝|晚安|早安|午安|掰掰|bye|[\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+)$/iu;
@@ -156,7 +208,7 @@ export function utteranceShapeOf(
 ): UtteranceShape {
   const compacted = compact(text);
   if (compacted.length === 0) return "unknown";
-  if (EXPLICIT_PIVOT_RE.test(text)) return "explicit_pivot";
+  if (hasExplicitPivot(text)) return "explicit_pivot";
   if (isQuestionText(text)) return "question";
   if (REACTION_RE.test(compacted)) return "reaction";
   if (FIRST_PERSON_RE.test(text)) return "self_share";
@@ -183,14 +235,18 @@ export function detectAgencyEvidence(
   turns: readonly PracticeTurn[],
   prev: ConversationAgencyState | null = null,
 ): AgencyEvidence {
-  const recent = turns.slice(-(RECENT_USER_WINDOW * 2));
+  // Codex P1：舊版先用「則數 × 2」window 再過濾角色，隱含嚴格交替假設；連續
+  // 同角色（例如同一輪送出多則玩家訊息、或 ai/user 比例不對稱的長逐字稿）會
+  // 讓實際取到的玩家則數偏多或偏少。改成先掃全部 turns 取出每則玩家訊息的
+  // shape，最後再取最後 RECENT_USER_WINDOW 則——不管中間角色怎麼交錯，
+  // 永遠是「最後 N 則玩家訊息」。
   const shapes: {
     text: string;
     shape: UtteranceShape;
     previousAiAskedQuestion: boolean;
   }[] = [];
   let lastAiText: string | null = null;
-  for (const turn of recent) {
+  for (const turn of turns) {
     if (turn.role === "ai") {
       lastAiText = turn.text;
       continue;
@@ -204,8 +260,9 @@ export function detectAgencyEvidence(
     });
     lastAiText = null;
   }
-  const current = shapes.at(-1);
-  const earlier = shapes.slice(0, -1);
+  const windowed = shapes.slice(-RECENT_USER_WINDOW);
+  const current = windowed.at(-1);
+  const earlier = windowed.slice(0, -1);
 
   // 未解片段計數：低資訊形狀累加，任何「講得完整」的一則（分享、問句、明示換題、
   // 長句）就是玩家自己把話講清楚了，歸零（報告 §7.5「玩家成功解釋就清零」）。
@@ -246,6 +303,17 @@ export interface AgencyDecision {
   readonly forcedAct: PlanAct | null;
   readonly allowedActs: readonly PlanAct[];
   readonly allowedActSetId: string;
+}
+
+/**
+ * 一輪的 agency 決策＋是否真的套用（`applied=false`＝shadow 或這一輪不介入，
+ * 只記 telemetry）。這是 `ChatPromptBundle.agencyDecision` 與（旗標開時）
+ * `TurnResponsePlan` 的 caller 之間共用的形狀——`TurnResponsePlan` 本身只管
+ * style，不擁有這個型別（報告 §7.1；Codex P1「與 reply-style 解耦」）。
+ */
+export interface AgencyApplication {
+  readonly decision: AgencyDecision;
+  readonly applied: boolean;
 }
 
 const NO_OVERRIDE: Omit<AgencyDecision, "version" | "evidence"> = {
@@ -315,31 +383,27 @@ export function agencyPolicyFor(evidence: AgencyEvidence): AgencyDecision {
       allowedActSetId: "topic_shift_v1",
     };
   }
-  // 第一個模糊片段：有前文可對照時「接住」是合理選項（A07／A09 這類有效短答靠這條
-  // 不被質疑）；這一場完全沒有前文時，報告 §6 的期望就是「第一次可問意圖／關聯，
-  // 不先假定韓劇或旅行」，所以指定 ask_intent。
-  //
-  // ask_intent 的字面本身帶條件（「不確定他在講什麼，就…」），她真的看得懂時仍可
-  // 自然接——這是本檔既有的「若是…就…」寫法，不是硬判語意。
-  // ponytail: 代價是「今天好熱喔」這種看得懂的短句開場也會走到這條；結構上分不出
-  // 來，只能靠字面的條件句。Phase 2 的 coherence 分類器可以把它判掉。
-  return evidence.precedingUserContext
-    ? {
-      ...base,
-      situation: "ambiguous_fragment",
-      policyMode: "bounded",
-      forcedAct: null,
-      allowedActs: ["acknowledge", "ask_intent"],
-      allowedActSetId: "fragment_with_context_v1",
-    }
-    : {
-      ...base,
-      situation: "ambiguous_fragment",
-      policyMode: "forced",
-      forcedAct: "ask_intent",
-      allowedActs: ["ask_intent"],
-      allowedActSetId: "fragment_no_context_v1",
-    };
+  // 第一個低資訊片段（unresolvedCount＝0）：前面已經有真實內容可對照時，給一次
+  // 善意的合理懷疑，當成有效短答，不介入——跟「AI 剛問完問題」的 answer_candidate
+  // 同等級寬容（Codex P1：A07／A09 這類前文豐富的第一個片段，結構上就不該進入
+  // 質疑型 act 的候選清單；第二個片段仍模糊才會落到上面 unresolvedCount===1 的
+  // topic_shift_v1）。
+  if (evidence.precedingUserContext) {
+    return { ...base, ...NO_OVERRIDE };
+  }
+  // 完全沒有前文（這一場第一句就是短片段）：語意仍模糊，但**不強制**——
+  // Codex P1：長度／無前文不是高信心結構，只能當 evidence，不能直接決定
+  // forced act（「今天好熱喔」這種看得懂的短句開場也會落到這條，不該被逼問）。
+  // 改成 bounded，acknowledge／ask_intent 兩個候選都給，由看得到全文的生成
+  // 模型自己判斷這句到底看不看得懂。
+  return {
+    ...base,
+    situation: "ambiguous_fragment",
+    policyMode: "bounded",
+    forcedAct: null,
+    allowedActs: ["acknowledge", "ask_intent"],
+    allowedActSetId: "fragment_no_context_v1",
+  };
 }
 
 // ── 跨回合狀態（assisted 模式：recent_facts.conversationAgency）──────────
@@ -393,10 +457,30 @@ const COHERENCE_BY_SITUATION: Record<
   repeated_low_coherence: "repetitive",
 };
 
-/** 這一輪的決策決定下一個狀態；只存 enum／布林／小整數，不存玩家原句。 */
+/**
+ * Phase 2：本輪回合分類器讀完整逐字稿後給的地面真相訊號（temperature.ts
+ * `TurnClassification.coherence`／`aiChallengedLastTurn`）。省略＝旗標關閉、
+ * classifier 失敗 fallback，或 Phase 1 呼叫端還沒接——一律退回純結構近似。
+ */
+export interface AgencyClassifierSignal {
+  readonly coherence?: ConversationAgencyState["lastCoherence"];
+  /** 玩家剛回覆的這則 AI 上一輪，是否真的問了澄清或指出跳題。 */
+  readonly aiChallengedLastTurn?: boolean;
+}
+
+/**
+ * 這一輪的決策決定下一個狀態；只存 enum／布林／小整數，不存玩家原句。
+ *
+ * Codex P1：`priorChallengeIssued` 舊版只要 `allowedActs` 包含質疑型 act 就
+ * 記成「已質疑」——bounded choice 是給模型的候選清單，不代表模型真的選了它，
+ * 「允許過」不等於「做過」。現在只認兩種地面真相：(1) planner **強制**
+ * 質疑／維持立場（`forcedAct`，不是 allowed）；(2)（Phase 2）分類器讀了
+ * 實際生成文字後回報 `aiChallengedLastTurn`。
+ */
 export function nextConversationAgencyState(
   prev: ConversationAgencyState | null,
   decision: AgencyDecision,
+  classifierSignal: AgencyClassifierSignal | null = null,
 ): ConversationAgencyState {
   const base = prev ?? INITIAL_CONVERSATION_AGENCY_STATE;
   const forced = decision.forcedAct;
@@ -404,17 +488,17 @@ export function nextConversationAgencyState(
       (AGENCY_ACTS as readonly PlanAct[]).includes(forced)
     ? forced as AgencyAct
     : base.lastAgencyAct;
+  const structuralCoherence = decision.situation
+    ? COHERENCE_BY_SITUATION[decision.situation]
+    : "connected";
   return {
     version: 1,
-    lastCoherence: decision.situation
-      ? COHERENCE_BY_SITUATION[decision.situation]
-      : "connected",
+    lastCoherence: classifierSignal?.coherence ?? structuralCoherence,
     unresolvedCount: decision.evidence.unresolvedCount,
     priorChallengeIssued: base.priorChallengeIssued ||
       decision.evidence.priorChallengeIssued ||
-      decision.allowedActs.some((a) =>
-        a === "challenge_relevance" || a === "hold_position"
-      ),
+      forced === "challenge_relevance" || forced === "hold_position" ||
+      classifierSignal?.aiChallengedLastTurn === true,
     lastAgencyAct,
   };
 }

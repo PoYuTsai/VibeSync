@@ -39,6 +39,66 @@ Deno.test("utteranceShape：明示換題 > 問句 > 招呼 > 第一人稱 > 短�
   assertEquals(utteranceShapeOf("   ", false), "unknown");
 });
 
+Deno.test("明示換題詞：否定、引用、慣用語不算宣告轉場（Codex P1）", () => {
+  // 否定：「先不要換個話題」不是宣告轉場（不是 explicit_pivot；落到其他 shape
+  // 是合理的，「我還沒講完」本身是第一人稱分享）。
+  assertEquals(
+    utteranceShapeOf("先不要換個話題 我還沒講完", false),
+    "self_share",
+  );
+  // 不再判成 explicit_pivot 之後落到 bare_fragment（短句、非第一人稱、非問句）
+  // 是合理的下一層——重點只是「不再被當成明示換題」。
+  assertEquals(utteranceShapeOf("不要換個話題啦", false), "bare_fragment");
+  // 「說到一半」是抱怨被打斷，不是宣告轉場。
+  assertEquals(
+    utteranceShapeOf("你每次都說到一半就不講了", false),
+    "unknown",
+  );
+  // 引號內引用別人講過的詞，不是自己在宣告轉場。
+  assertEquals(
+    utteranceShapeOf("他那時候就說「對了」然後就不說了", false),
+    "unknown",
+  );
+  // 正常宣告轉場照樣要判到。
+  assertEquals(utteranceShapeOf("對了 你看新聞了嗎", false), "explicit_pivot");
+  assertEquals(utteranceShapeOf("話說 你今天吃了嗎", false), "explicit_pivot");
+});
+
+Deno.test("結構證據：連續同角色 turn 也只取最後 8 則玩家訊息（Codex P1）", () => {
+  // 連續 10 則玩家訊息、中間沒有 AI 插話：window 必須是最後 8 則，不是
+  // 「最後 16 則 turns 裡湊出來的」。前兩則（會被 window 排除）如果是低資訊
+  // 片段，不該影響第 9、10 則的 unresolvedCount。
+  const manyUserTurns: PracticeTurn[] = [
+    u("A"), // 會被排除在 window 外
+    u("B"), // 會被排除在 window 外
+    u("我最近在忙一個新專案 進度有點卡"), // self_share，重置未解計數
+    u("韓國"),
+    u("東京"),
+    u("清邁"),
+    u("曼谷"),
+    u("巴黎"),
+    u("倫敦"),
+    u("柏林"),
+  ];
+  const e = detectAgencyEvidence(manyUserTurns);
+  // window 只看最後 8 則：self_share 之後累積 6 個低資訊片段，clamp 在 3。
+  assertEquals(e.unresolvedCount, 3);
+
+  // 連續 AI 訊息也一樣：只看最後 8 則玩家訊息，不受中間插的 AI 則數影響。
+  const manyAiTurns: PracticeTurn[] = [
+    u("嗨嗨 剛看到你的自介"),
+    a("哈囉"),
+    a("在幹嘛"),
+    a("怎麼不說話"),
+    u("我最近開始練重訓 一週去三次"),
+    a("哇 好厲害"),
+    u("hyrox"),
+  ];
+  const e2 = detectAgencyEvidence(manyAiTurns);
+  assertEquals(e2.unresolvedCount, 0);
+  assertEquals(e2.precedingUserContext, true);
+});
+
 Deno.test("結構證據：未解片段累加、被完整訊息清零、同詞重複、前文有無", () => {
   const alice = [
     u("東東"),
@@ -93,8 +153,11 @@ Deno.test("有效短答與明示換題永遠不介入（A01／A03／A07／A09 �
   assertEquals(a03.evidence.utteranceShape, "explicit_pivot");
   assertEquals(a03.situation, null);
 
-  // A07／A09：玩家先給了前文，片段仍可被接住 → 允許清單含 acknowledge，
-  // 且**不含**任何質疑型 act（有效短答不得被質疑）。
+  // A07／A09：玩家先給了前文，片段緊接著出現（unresolvedCount＝0、有前文）→
+  // 結構上跟 A01／A03 同一等級：完全不介入，allowedActs 必須是空集合
+  // （Codex P1：舊版仍把 ask_intent 放進候選清單，測試只斷言排除
+  // challenge_relevance，不足以證明「結構上永遠不會質疑」——現在四個質疑／
+  // 收尾型 act 逐一斷言排除，不再只挑一個）。
   for (
     const turns of [
       [u("我最近在學日文 發音真的有夠難"), a("真的 我也覺得"), u("紅豆泥")],
@@ -102,14 +165,19 @@ Deno.test("有效短答與明示換題永遠不介入（A01／A03／A07／A09 �
     ]
   ) {
     const d = policy(turns);
-    assertEquals(d.allowedActSetId, "fragment_with_context_v1");
-    assertEquals(d.policyMode, "bounded");
-    assert(d.allowedActs.includes("acknowledge"), "必須允許接住");
-    assert(
-      !d.allowedActs.includes("challenge_relevance"),
-      "第一個有前文的片段不得質疑",
-    );
+    assertEquals(d.situation, null);
+    assertEquals(d.allowedActs, []);
     assertEquals(d.forcedAct, null);
+    for (
+      const act of [
+        "ask_intent",
+        "challenge_relevance",
+        "hold_position",
+        "end_low_value_loop",
+      ] as const
+    ) {
+      assert(!d.allowedActs.includes(act), `A07/A09 不得包含 ${act}`);
+    }
   }
 
   // 她剛問完問題，玩家用第一人稱回答＝分享，一樣不介入。
@@ -132,13 +200,17 @@ Deno.test("有效短答與明示換題永遠不介入（A01／A03／A07／A09 �
 });
 
 Deno.test("forced 只給高信心結構；其餘一律 bounded", () => {
-  // 這一場完全沒有前文的裸片段（A02／A08）：指定 ask_intent，不供應「接住」。
-  // ask_intent 的字面本身帶條件，她真的看得懂時仍可自然接。
+  // 這一場完全沒有前文的裸片段（A02／A08）：Codex P1——長度／無前文不是高信心
+  // 結構，不能強制她一定要問；改成 bounded，acknowledge／ask_intent 都給，
+  // 由看得到全文的生成模型自己判斷（「今天好熱喔」這種看得懂的開場也是這個
+  // 分支，不該被逼問）。
   const a02 = policy([u("韓國")]);
   assertEquals(a02.situation, "ambiguous_fragment");
   assertEquals(a02.allowedActSetId, "fragment_no_context_v1");
-  assertEquals(a02.policyMode, "forced");
-  assertEquals(a02.forcedAct, "ask_intent");
+  assertEquals(a02.policyMode, "bounded");
+  assertEquals(a02.forcedAct, null);
+  assert(a02.allowedActs.includes("ask_intent"), "必須提供可以問清楚的選項");
+  assert(a02.allowedActs.includes("acknowledge"), "必須允許她看得懂就接住");
 
   // A04：她問了問題、玩家丟別的詞（前面還有未解片段）。
   const a04 = policy([u("東東"), a("東東是誰"), u("阿布達比")]);
