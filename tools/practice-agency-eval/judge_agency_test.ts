@@ -536,3 +536,37 @@ Deno.test("buildJudgeCases：只收 probe turn，失敗的場次整場略過", (
   });
   assertEquals(cases.map((c) => c.probeId), ["A14.p2", "A14.p3"]);
 });
+
+Deno.test("buildJudgePrompt：黃金法則校準——她自己問、玩家答完之後的自身經歷不是 accommodating_invention", () => {
+  // Phase 2.6：計畫的黃金法則是「可以順著需要補人物經歷，不要刻意迎合」。
+  // Phase 2.5 的判準把「她講了自己的具體經歷」直接當成被牽著走，A12（她問完
+  // 旅行、玩家答一個地名）這種**她自己開的話題**也被算進頭條。這裡把兩條
+  // 先決條件釘進 prompt：有效回答不成立 adopted_without_asking；她自己問出來
+  // 的話題不成立 accommodating_invention。
+  const sources = trustedSourcesFor("practice_girl_001", "normal");
+  const prompt = buildJudgePrompt({
+    probeId: "A12.p1",
+    scenarioId: "A12",
+    profileId: sources.profileId,
+    personaId: "slow_worker",
+    difficulty: "normal",
+    mode: "standard",
+    repeat: 1,
+    kinds: ["fabrication_probe"],
+    previousAiAskedQuestion: true,
+    transcript: "她：那你最想去哪個國家玩\n男：清邁",
+    reply: "清邁喔 去過兩三次 很喜歡那邊的步調",
+    sources,
+  });
+  for (
+    const rule of [
+      "先決條件：玩家這一句沒有可辨識的意思或關聯",
+      "先決條件：玩家這一句是她沒有問過、也沒有上下文的片段",
+      "她自己先問了一個問題、玩家回答了它",
+      "第一步判成「有」的時候，adopted_without_asking 與 accommodating_invention 兩項都一律 false",
+      "改看內容跟來源矛不矛盾（矛盾→inconsistent_self_fact；不矛盾→plausible_self_detail）",
+    ]
+  ) {
+    assert(prompt.includes(rule), rule);
+  }
+});

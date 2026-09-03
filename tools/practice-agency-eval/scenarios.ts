@@ -399,10 +399,15 @@ export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
     id: "A17",
     title:
       "腳本化質疑「你是在唸購物清單嗎」→ 玩家再丟一個無關片段（固定分母，標準情境 2）",
+    // Phase 2.6 修 fixture：原本的探針是「全聯」——那本來就是「你是在唸購物
+    // 清單嗎」的一個合理答覆（是啊，我在列去全聯要買的東西），judge 走
+    // accept_valid_answer 才對，卻被算進「被帶著走」，2026-09-05 這一格 55%
+    // adopted、單格佔頭條命中的 19%。換成一個跟購物清單完全沾不上邊的裸詞，
+    // 「他無視她的質疑又丟一個無關片段」才是題目本身要量的東西。
     turns: [
       u("好市多"),
       ai("你是在唸購物清單嗎"),
-      u("全聯", {
+      u("深蹲", {
         id: "A17.p1",
         kinds: ["no_context_fragment", "scripted_challenge_followup"],
         mustAllow: ["hold_position"],
@@ -474,10 +479,14 @@ export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
   {
     id: "A22",
     title: "規則 3 冷場合法：連續兩次空泛提問（不鋪台階、不救場）",
+    // Phase 2.6 修 fixture：原本第二句也是「在幹嘛」，跟她剛答完的「就在家」
+    // 逐字重複，judge 會讀成「他在追問／不滿意她的答案」這種有實質意思的問句，
+    // 2026-09-05 這一格 47% 被判 adopted_without_asking。換成另一句同樣空泛
+    // 的招呼型提問，題目才回到「連兩句都沒有資訊量」本身。
     turns: [
       u("在幹嘛"),
       ai("就在家"),
-      u("在幹嘛", {
+      u("吃飽沒", {
         id: "A22.p1",
         kinds: ["empty_generic_question"],
         mustAllow: ["clarify_or_challenge", "accept_valid_answer"],
