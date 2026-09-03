@@ -1448,15 +1448,35 @@ async function judgeLearningState(opts: {
       protectedHintType,
       opts.request.practiceMode,
     );
+    // Codex round-1 P1-e：分類器解析失敗會走這條 fallback，而 delta cap 只掛在
+    // 成功那條——等於「分類器壞掉」變成 agency 的免罰卡：applied-hint 保護可以
+    // 在這裡把 delta 撐成正的，而沒有任何 coherence 判斷把它壓回去。
+    // 沒有分類器結果時我們**不知道**玩家接上了沒有，`ambiguous`（不獎不罰）
+    // 就是那個「不知道」的誠實表示；結構訊號（同詞重複／未解計數）仍照舊在
+    // `applyCoherenceDeltaCap` 內部優先。旗標 off 時整段不套用，逐字沿用舊行為。
+    // 順序跟成功那條一致：applied-hint 保護之後、challenge 閘門之前。
+    const { judgement: cappedFallback, capApplied: fallbackCapApplied } =
+      agencyDeltaCapActive
+        ? applyCoherenceDeltaCap(
+          protectedFallback,
+          currentTemperature,
+          currentFamiliarity,
+          "ambiguous",
+          {
+            repeatedExactToken: opts.agencyEvidenceRepeatedExactToken ?? false,
+            unresolvedCount: opts.agencyEvidenceUnresolvedCount ?? 0,
+          },
+        )
+        : { judgement: protectedFallback, capApplied: "none" as const };
     const gatedFallback = challengeGateActive
       ? applyChallengeRewardGate({
-        judgement: protectedFallback,
+        judgement: cappedFallback,
         currentHeat: currentTemperature,
         currentFamiliarity: currentFamiliarity,
-        classification: protectedFallback.classification,
+        classification: cappedFallback.classification,
         protectedAppliedHint: protectedHintType !== undefined,
       })
-      : protectedFallback;
+      : cappedFallback;
     const cooledFallback = offenseCooldown
       ? withNonPositiveLearningDeltas(
         gatedFallback,
@@ -1465,7 +1485,7 @@ async function judgeLearningState(opts: {
       )
       : gatedFallback;
     return applyGameLearningIfNeeded(
-      cooledFallback,
+      { ...cooledFallback, deltaCapApplied: fallbackCapApplied },
       currentTemperature,
       currentFamiliarity,
       currentPartnerState,

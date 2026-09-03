@@ -9459,6 +9459,53 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
   });
 });
 
+Deno.test("Codex round-1 P1-e：分類器解析失敗時 delta cap 仍要套（旗標 on），不是 agency 的免罰卡", async () => {
+  // delta cap 舊版只掛在「分類器成功」那條；解析失敗走 fallback 直接
+  // updateLearningState，等於分類器一壞掉，agency 對這一輪就完全沒有意見。
+  // 沒有分類器結果時我們不知道玩家接上了沒有 → 以 ambiguous（不獎不罰）進 cap，
+  // 結構訊號（同一個詞原樣再丟一次）仍照舊在 cap 內部優先。
+  const REPEATED_TOKEN_TURNS = [
+    { role: "user", text: "好市多" },
+    { role: "ai", text: "？" },
+    { role: "user", text: "好市多" },
+  ];
+  const run = async (env?: Record<string, string>) => {
+    const { succeeded } = await runCapturingLogs(
+      {
+        ledger: null,
+        thread: {
+          profile_id: "practice_girl_001",
+          temperature_score: 40,
+          familiarity_score: 10,
+        },
+        ...(env ? { env } : {}),
+        // 第二筆是分類器回覆：故意不是合法 JSON → 走 fallback。
+        deepSeekReplies: ["好啊", "抱歉我不太確定"],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        visiblePracticeThreadId: "thread-visible-1",
+        temperatureScore: 40,
+        familiarityScore: 10,
+        turns: REPEATED_TOKEN_TURNS,
+      }),
+    );
+    return succeeded as Record<string, unknown>;
+  };
+
+  // 旗標 off：逐字沿用舊行為（fallback 0/0、沒有 cap）。
+  const off = await run();
+  assertEquals(off.temperatureDelta, 0);
+  assertEquals(off.familiarityDelta, 0);
+  assertEquals(off.deltaCapApplied, "none");
+
+  // 旗標 on：同一個詞原樣再丟一次＝結構地面真相，fallback 也要吃到 cap。
+  const on = await run({ PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" });
+  assertEquals(on.deltaCapApplied, "repetitive");
+  assertEquals(on.temperatureDelta, -2);
+  assertEquals(on.familiarityDelta, -1);
+});
+
 Deno.test("agency shadow：telemetry 有值但 applied=false，且不寫 thread 狀態", async () => {
   const c = agencyGoldenCases()[3];
   const { state, succeeded } = await runCapturingLogs(
