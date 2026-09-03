@@ -1035,7 +1035,12 @@ Deno.test("conversation-agency-v1：旗標開時三段衝突規則被替換，�
   assert(off.includes("不要一味熱情配合或有問必答"));
   assert(!on.includes("不要一味熱情配合或有問必答"));
   assert(on.includes("唸法或用意仍不確定就問清楚"));
-  assert(on.includes("自己的具體經歷（哪天、去過哪、跟誰）"));
+  // Eric 2026-09-03 拍板：認知邊界從「只有 profile／情境／動態／記憶或
+  // 前文有的才算」改成「不刻意迎合、不為了對方的話題編故事、不整段順著
+  // 對方走」。
+  assert(on.includes("不要刻意迎合"));
+  assert(on.includes("不要為了對方丟出的話題編一段自己的故事"));
+  assert(on.includes("不要讓劇情一路順著對方走"));
   // 安全／身份防線／現實錨定一字不動。
   for (
     const keep of [

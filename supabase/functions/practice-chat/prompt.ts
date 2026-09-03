@@ -338,8 +338,12 @@ const HOMOPHONE_TAIL_ON =
   "聽懂了就自然接，也可以用台語回一句。唸法或用意仍不確定就問清楚，不要硬湊成一個故事。";
 const REACTIVE_RULE_OFF = "依對方說的話自然反應，不要一味熱情配合或有問必答。";
 const REACTIVE_RULE_ON = "依對方說的話自然反應。";
+// Eric 2026-09-03 拍板（取代原本「只有 profile／情境／動態／記憶或前文有的
+// 才算」的硬規則）：她可以有 profile 沒寫的小生活細節，但不能跟已知設定
+// 矛盾，也不能為了附和對方丟出的話題現編一段自己的故事、或整段劇情都順著
+// 對方走。
 const EPISTEMIC_SELF_FACT_RULE =
-  "\n- 自己的具體經歷（哪天、去過哪、跟誰）只有 profile、情境、動態、記憶或前文有的才算，沒有就說不清楚或問。";
+  "\n- 可以順著需要補自己的經歷和個性，但不要刻意迎合；不要為了對方丟出的話題編一段自己的故事，也不要讓劇情一路順著對方走。";
 
 export function chatSystemPromptFor(
   styleLayer: boolean,

@@ -9424,7 +9424,7 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
   assert(system.includes("你不負責救場"), "缺 agency decision rule");
   assert(!system.includes("不主導節奏"), "舊的「不主導節奏」必須被換掉");
   assert(!system.includes("絕對不要回「你是不是打錯字」"), "台語規則未替換");
-  assert(system.includes("自己的具體經歷"), "缺認知邊界那一行");
+  assert(system.includes("不要為了對方丟出的話題編一段自己的故事"), "缺認知邊界那一行");
   assert(system.includes("挑一個最合理的"), "缺 bounded choice 清單");
   const agency = succeeded?.conversationAgency as Record<string, unknown>;
   assertEquals(agency.agencyVersion, 1);

@@ -559,13 +559,20 @@ const DISCLOSURE_LINE: Record<TurnResponsePlan["disclosureDepth"], string> = {
 
 // conversation-agency-v1 的 act 說明（報告 §7.2）。這些是 decision rule，不是台詞：
 // 刻意不寫任何範例句，不然 100 位角色會共用同一句口頭禪（報告 §13 第 8 點）。
+// Codex 補（item C）：ask_intent／challenge_relevance 改成「只問，不替他補
+// 意思」——舊版 ask_intent 已經有「不要自己猜一個」，這裡統一成同一句收尾
+// 「不要在同一句替他補上你猜的意思或話題」，三個 act 一致；hold_position
+// 明講「他沒回答之前話題就晾著」（不是接著新詞聊）。刻意不寫任何範例句，
+// 不然 100 位角色會共用同一句口頭禪（報告 §13 第 8 點）。
 const AGENCY_ACT_LINE: Partial<Record<PlanAct, string>> = {
   acknowledge: "他這句本來就講得通就自然接，但不要替他補他沒說的意圖或背景",
   ask_intent:
-    "不確定他在講什麼，就直接問他的意思或跟前面哪件事有關，不要自己猜一個",
-  challenge_relevance: "說這跟剛剛在聊的對不上，要他講清楚",
+    "不確定他在講什麼，就直接問他的意思或跟前面哪件事有關；不要在同一句裡又替他補上你猜的意思或話題",
+  challenge_relevance:
+    "說這跟剛剛在聊的對不上，要他講清楚；不要在同一句裡又替他補上你猜的意思或話題",
   return_to_topic: "拉回你剛才問的、或還沒聊完的那件事",
-  hold_position: "維持你剛才的保留，他沒講清楚之前不要照著他丟的詞聊",
+  hold_position:
+    "維持你剛才的保留：他沒把話講清楚、沒回答你之前，這個問題就晾著，不要接著他丟的新詞往下聊",
   end_low_value_loop: "這串聊不下去了，短短收掉，不要再接新的詞",
 };
 
