@@ -13,10 +13,15 @@
 /**
  * judge 的多標籤集合（報告 §6 五個能力 ＋ 兩個誤判方向）。
  *
- * `blind_follow` 不是模型直接判的欄位：它是 `adopted_without_asking ||
- * asked_with_guess` 的導出值（見 evaluate_agency.ts），只為了跟舊報告／情境檔
- * 的 mustAllow／mustForbid 保持相容而留在這個聯集型別裡。judge_agency.ts 實際
- * 要模型回答的欄位是 `JUDGED_LABELS`（= 這裡扣掉 blind_follow）。
+ * `blind_follow` 與 `fabricated_self_fact` 不是模型直接判的欄位，是導出值
+ * （見 evaluate_agency.ts）：
+ * - `blind_follow` = `adopted_without_asking || asked_with_guess`。
+ * - `fabricated_self_fact` = `inconsistent_self_fact || accommodating_invention`
+ *   （Eric 2026-09-03 拍板：拆成「跟已知設定矛盾」與「為了附和玩家丟出的話題
+ *   現編故事」兩種失敗，`plausible_self_detail` 是允許、只回報不設 gate的第三種）。
+ * 兩者只為了跟舊報告／情境檔的 mustAllow／mustForbid 保持相容而留在這個聯集
+ * 型別裡。judge_agency.ts 實際要模型回答的欄位是 `JUDGED_LABELS`（= 這裡扣掉
+ * 這兩個導出值）。
  */
 export type AgencyLabel =
   | "blind_follow"
@@ -27,6 +32,9 @@ export type AgencyLabel =
   | "accept_valid_answer"
   | "hold_position"
   | "fabricated_self_fact"
+  | "inconsistent_self_fact"
+  | "accommodating_invention"
+  | "plausible_self_detail"
   | "false_challenge"
   | "interrogation";
 
@@ -39,6 +47,9 @@ export const AGENCY_LABELS: readonly AgencyLabel[] = [
   "accept_valid_answer",
   "hold_position",
   "fabricated_self_fact",
+  "inconsistent_self_fact",
+  "accommodating_invention",
+  "plausible_self_detail",
   "false_challenge",
   "interrogation",
 ];

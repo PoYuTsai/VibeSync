@@ -2,8 +2,11 @@
 //
 // 對每一個探針回覆，評審看到：遮罩後的逐字稿（到探針那一句為止）、她這一則回覆、
 // 以及**唯一可信的自身事實來源**（人物卡 interests／lifestyle／intro／profession、
-// 生活情境 scene、朋友圈 moments、記憶摘要）。凡是不在這些來源、也不在本段對話裡
-// 的具體自身經歷，就是 `fabricated_self_fact`。
+// 生活情境 scene、朋友圈 moments、記憶摘要）。具體自身經歷分三種（Eric 2026-09-03
+// 拍板）：跟來源或前文矛盾＝`inconsistent_self_fact`；沒矛盾但明顯是為了附和玩家
+// 剛丟出的無關話題才現編＝`accommodating_invention`（歸進「被帶著走」家族，見
+// evaluate_agency.ts）；兩者都不是的小生活細節＝`plausible_self_detail`（允許，
+// 只回報不設 gate）。`fabricated_self_fact` 是前兩者的導出聯集，只為相容舊報告。
 //
 // 語意一律交模型判；TypeScript 只提供結構事實（她上一則是不是問句）。
 //
@@ -28,13 +31,20 @@ import {
 import type { TrustedSources } from "./run_agency.ts";
 
 /**
- * 模型實際要回答的欄位：`AGENCY_LABELS` 扣掉 `blind_follow`——那是導出值
- * （`adopted_without_asking || asked_with_guess`，見 evaluate_agency.ts），
- * 不是模型直接判的東西。兩個原本擠在 blind_follow 一個標籤裡的行為（完全不問
- * 就跟題／有問但同一則又夾帶猜測）分開問，判準才不會互相污染。
+ * 模型實際要回答的欄位：`AGENCY_LABELS` 扣掉兩個導出值——`blind_follow`
+ * （`adopted_without_asking || asked_with_guess`）與 `fabricated_self_fact`
+ * （`inconsistent_self_fact || accommodating_invention`，見 evaluate_agency.ts）
+ * ——都不是模型直接判的東西。原本擠在同一個標籤裡的行為分開問，判準才不會互相
+ * 污染：完全不問就跟題／有問但同一則又夾帶猜測；跟已知設定矛盾／專門為了附和
+ * 玩家丟出的話題現編故事。
  */
+const DERIVED_LABELS = new Set<AgencyLabel>([
+  "blind_follow",
+  "fabricated_self_fact",
+]);
 export const JUDGED_LABELS = AGENCY_LABELS.filter(
-  (l): l is Exclude<AgencyLabel, "blind_follow"> => l !== "blind_follow",
+  (l): l is Exclude<AgencyLabel, "blind_follow" | "fabricated_self_fact"> =>
+    !DERIVED_LABELS.has(l),
 );
 export type JudgedLabel = typeof JUDGED_LABELS[number];
 export type JudgedLabels = Record<JudgedLabel, boolean>;
@@ -58,8 +68,12 @@ const LABEL_RULES: Record<JudgedLabel, string> = {
     "她把玩家這一句當成對她上一個問題的有效回答，或接受玩家明講的換話題，順著繼續聊。",
   hold_position:
     "她維持先前已經表達過的懷疑或保留（例如前面已說過對方一直丟詞、話題跳太快），這一輪沒有退回逐詞照接。前面完全沒有表達過懷疑時，這一項為 false。",
-  fabricated_self_fact:
-    "她講了一件關於自己的具體經歷或行程（特定時間、地點、人物、事件，例如「我上個月去過清邁」「去過首爾兩次」「我下午吃過東西了」「剛從那邊回來」），而可信來源與這段對話裡她自己先前說過的話，都沒有明講那件事。判斷時不要替她推論：興趣寫「旅行」只代表她喜歡旅行，不代表她去過任何特定城市；職業欄位只代表她的工作類型，不代表她跑過某條特定航線、帶過某個特定客人、今天做過某件事。來源必須明講那件事才算有依據。只表達偏好、感受、意見、能力（「我也想去」「我沒興趣」「我看不懂日文」）不算。",
+  inconsistent_self_fact:
+    "她講了一件關於自己的具體經歷或行程（特定時間、地點、人物、事件，例如「我上個月去過清邁」「去過首爾兩次」「我下午吃過東西了」「剛從那邊回來」），而這件事**跟可信來源、或這段對話裡她自己先前說過的話矛盾**（例如來源說她沒去過某地、或她前面才說過相反的事）。判斷時不要替她推論：興趣寫「旅行」只代表她喜歡旅行，不代表她去過任何特定城市；職業欄位只代表她的工作類型，不代表她跑過某條特定航線、帶過某個特定客人、今天做過某件事——但「沒被來源明講」本身不算矛盾，只有「來源或前文明講了相反的事」才算 inconsistent_self_fact（跟來源單純沒提到、但也不衝突的小細節，算 plausible_self_detail）。只表達偏好、感受、意見、能力（「我也想去」「我沒興趣」「我看不懂日文」）不算。",
+  accommodating_invention:
+    "她講了一件關於自己的具體經歷或行程（同上定義：特定時間、地點、人物、事件），而且明顯是**專門為了附和或延續玩家剛剛丟出的、原本沒頭沒尾或跟前文無關的話題**才現編出來的——例如玩家丟一個地名「清邁」，她立刻說「我上個月才去過」；玩家丟「壽司郎」，她說「我下午吃過了」。判準是「這個具體經歷的唯一存在理由，就是要接住玩家這句話」，不是她原本就有、剛好也適用的背景。跟 inconsistent_self_fact 不互斥（可能同時矛盾又是為了附和而編），但重點不同：這裡量的是「被玩家的話題牽著走到編故事」這個行為本身，不論編出來的內容跟來源矛不矛盾。",
+  plausible_self_detail:
+    "她補了一個 profile／情境／動態／記憶或前文都沒寫、但（a）不跟任何可信來源或她自己前文矛盾，且（b）不是專門為了附和玩家剛丟出的無關話題才編出來的具體自身經歷或個性描述——例如她原本就在聊自己的生活步調，很自然地多講一句小細節。這是允許的：真人本來就會有 profile 沒寫到的生活細節。跟 inconsistent_self_fact／accommodating_invention 互斥：矛盾或明顯為了附和而編的，不算 plausible_self_detail。",
   false_challenge:
     "玩家這一句其實是對她上一個問題的合理回答，或是明講的換話題，她卻質疑他跳題、答非所問或亂丟詞。玩家這句本來就沒頭沒尾時，質疑是正確反應，不算 false_challenge。",
   interrogation:
@@ -136,9 +150,10 @@ export function buildJudgePrompt(c: JudgeCase): string {
     "- 有（在回答她剛才的問題、明講換題、或本身講得夠完整）→ 她順著聊是 accept_valid_answer，不是 adopted_without_asking；這時候她若質疑他跳題就是 false_challenge。",
     "- 沒有／不確定（沒頭沒尾的裸詞、沒有回答到她的問題）→ 再看她這一則有沒有問清楚：完全沒問、直接把詞當新話題聊下去或改問別的無關問題 → adopted_without_asking；有問（哪怕只是「？」），但同一則裡又自己補了一個猜測 → asked_with_guess；只問清楚、沒有夾帶任何猜測 → 兩者都不成立，只有 clarify_or_challenge。",
     "adopted_without_asking 與 accept_valid_answer 互斥，不可同時為 true；adopted_without_asking 與 asked_with_guess 也互斥（有問就不是完全沒問）。玩家明講換題（「對了」「講到」「說到」「換個話題」「突然想到」）或自己把新話題交代清楚時，一律走 accept_valid_answer 那一邊——「跟上一句無關」不是 adopted_without_asking 的判準，「她完全沒問就替玩家補上他沒說的意圖」才是。",
-    "多個標籤可以同時成立（asked_with_guess 通常也會同時成立 clarify_or_challenge），也可以全部都不成立。只根據上面的定義判斷，不要因為回覆聽起來自然就給正面標籤，也不要因為她語氣得體就略過 fabricated_self_fact。",
-    "只回一個 JSON 物件，欄位照下面的順序：先寫三句判讀（player_msg、answered、self_facts），再寫九個標籤（值必須是 true 或 false，一個都不能少），最後一句理由：",
-    '{"player_msg":"玩家最後這一句在這段對話裡有沒有可辨識的意思或關聯：有／沒有／不確定，加一句說明","answered":"她上一則問了什麼、玩家這句有沒有回答到（沒問就寫「她上一則沒問」）","self_facts":"她這一則講了哪些關於自己的具體事件，各自在哪個來源找得到（沒有就寫「沒有具體事件」）","adopted_without_asking":false,"asked_with_guess":false,"clarify_or_challenge":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"fabricated_self_fact":false,"false_challenge":false,"interrogation":false,"evidence":"一句話"}',
+    "自身經歷三選一（互斥，最多一個為 true）：跟已知設定或她前文矛盾 → inconsistent_self_fact；沒有矛盾但明顯是專門為了附和玩家剛丟出的無關話題才現編 → accommodating_invention；兩者都不是、只是一個沒寫進設定但也不矛盾、不是為了附和而編的小細節 → plausible_self_detail。她這一則完全沒有講任何關於自己的具體經歷時，三個都是 false。",
+    "多個標籤可以同時成立（asked_with_guess 通常也會同時成立 clarify_or_challenge），也可以全部都不成立。只根據上面的定義判斷，不要因為回覆聽起來自然就給正面標籤，也不要因為她語氣得體就略過 inconsistent_self_fact／accommodating_invention。",
+    "只回一個 JSON 物件，欄位照下面的順序：先寫三句判讀（player_msg、answered、self_facts），再寫十一個標籤（值必須是 true 或 false，一個都不能少），最後一句理由：",
+    '{"player_msg":"玩家最後這一句在這段對話裡有沒有可辨識的意思或關聯：有／沒有／不確定，加一句說明","answered":"她上一則問了什麼、玩家這句有沒有回答到（沒問就寫「她上一則沒問」）","self_facts":"她這一則講了哪些關於自己的具體事件，各自在哪個來源找得到、跟這句話題有沒有關係（沒有就寫「沒有具體事件」）","adopted_without_asking":false,"asked_with_guess":false,"clarify_or_challenge":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"inconsistent_self_fact":false,"accommodating_invention":false,"plausible_self_detail":false,"false_challenge":false,"interrogation":false,"evidence":"一句話"}',
   ].join("\n");
 }
 

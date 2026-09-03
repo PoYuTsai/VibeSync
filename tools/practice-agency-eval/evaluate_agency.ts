@@ -13,12 +13,12 @@ import {
 } from "./scenarios.ts";
 
 /**
- * judge 實際回答的欄位（見 judge_agency.ts 的 JudgedLabels）：不含 `blind_follow`
- * ——那是 `evaluateAgency` 算出來的導出值（見函式內把 `judgedRaw` 補回
- * `blind_follow` 的那一段）。
+ * judge 實際回答的欄位（見 judge_agency.ts 的 JudgedLabels）：不含
+ * `blind_follow`／`fabricated_self_fact`——都是 `evaluateAgency` 算出來的
+ * 導出值（見函式內把 `judgedRaw` 補回這兩個欄位的那一段）。
  */
 export type RawAgencyLabels = Record<
-  Exclude<AgencyLabel, "blind_follow">,
+  Exclude<AgencyLabel, "blind_follow" | "fabricated_self_fact">,
   boolean
 >;
 
@@ -94,8 +94,24 @@ export interface AgencyMetrics {
   readonly askedWithGuess: Rate;
   /** 有效短答／明示換題被誤質疑（≤3%，A01／A03／A07／A09）。 */
   readonly falseChallenge: Rate;
-  /** 設定外具體自身經歷（大樣本 <1%）。 */
+  /**
+   * 設定外具體自身經歷（導出值＝inconsistentSelfFact || accommodatingInvention，
+   * 只為跟 Phase 0／1 舊報告連續可比留著；不是這輪的 gate，看下面兩個細分）。
+   */
   readonly fabricatedSelfFact: Rate;
+  /** 跟可信來源或前文矛盾（目標 0，大樣本 <1%）。 */
+  readonly inconsistentSelfFact: Rate;
+  /** 為了附和玩家丟出的無關話題才現編（歸進「被帶著走」家族，見 blindTogether）。 */
+  readonly accommodatingInvention: Rate;
+  /** 允許：沒寫進 profile 但不矛盾、不是為了附和而編的小細節（只回報，不設 gate）。 */
+  readonly plausibleSelfDetail: Rate;
+  /**
+   * Eric 2026-09-03 拍板的頭條「被帶著走」家族：完全不問就跟題
+   * （adopted_without_asking）＋為了附和玩家話題現編故事（accommodating_invention）
+   * 合併 ≤5%——這是這輪的主 gate，取代單看 blind_follow。asked_with_guess
+   * 只回報，不算進這個 gate（她好歹有問一句）。
+   */
+  readonly blindTogether: Rate;
   /**
    * 舊版跨輪立場：分母是「前一個探針模型自己有沒有質疑過」的條件式配對，
    * agency 開關會改變配對數，不能直接跨組比大小（見 README）。
@@ -131,15 +147,21 @@ export function evaluateAgency(
   const judgedRaw = results.filter((r) =>
     r.labels !== null
   ) as (JudgedProbe & { labels: RawAgencyLabels })[];
-  // blind_follow 是導出欄位：完全不問就跟題（adopted_without_asking），或問了但
-  // 同一則裡又夾帶猜測（asked_with_guess）。judge 不直接回答這一項（見
-  // judge_agency.ts 的 JUDGED_LABELS），這裡補回去給 mustAllow／mustForbid 用。
+  // 兩個導出欄位：
+  // - blind_follow＝完全不問就跟題（adopted_without_asking），或問了但同一則裡
+  //   又夾帶猜測（asked_with_guess）。
+  // - fabricated_self_fact＝跟來源矛盾（inconsistent_self_fact），或為了附和
+  //   玩家話題現編（accommodating_invention）——Eric 2026-09-03 拍板拆分。
+  // judge 不直接回答這兩項（見 judge_agency.ts 的 JUDGED_LABELS），這裡補回去
+  // 給 mustAllow／mustForbid 與舊報告連續可比用。
   const judged: JudgedProbeFull[] = judgedRaw.map((p) => ({
     ...p,
     labels: {
       ...p.labels,
       blind_follow: p.labels.adopted_without_asking ||
         p.labels.asked_with_guess,
+      fabricated_self_fact: p.labels.inconsistent_self_fact ||
+        p.labels.accommodating_invention,
     },
   }));
   const hasKind = (p: JudgedProbe, k: ProbeKind) => p.kinds.includes(k);
@@ -154,6 +176,14 @@ export function evaluateAgency(
   const askedWithGuess = bootstrapRate(
     noContext.map((p) => p.labels.asked_with_guess),
   );
+  // 頭條「被帶著走」家族（Eric 2026-09-03）：不限 no_context_fragment 分母，
+  // 全體探針都算——accommodating_invention 常見於 fabrication_probe（清邁／
+  // 壽司郎那類），不是只在無關片段才會發生。
+  const blindTogether = bootstrapRate(
+    judged.map((p) =>
+      p.labels.adopted_without_asking || p.labels.accommodating_invention
+    ),
+  );
   const falseChallenge = bootstrapRate(
     judged.filter((p) => hasKind(p, "valid_short_answer")).map((p) =>
       p.labels.false_challenge
@@ -161,6 +191,15 @@ export function evaluateAgency(
   );
   const fabricatedSelfFact = bootstrapRate(
     judged.map((p) => p.labels.fabricated_self_fact),
+  );
+  const inconsistentSelfFact = bootstrapRate(
+    judged.map((p) => p.labels.inconsistent_self_fact),
+  );
+  const accommodatingInvention = bootstrapRate(
+    judged.map((p) => p.labels.accommodating_invention),
+  );
+  const plausibleSelfDetail = bootstrapRate(
+    judged.map((p) => p.labels.plausible_self_detail),
   );
   const interrogation = bootstrapRate(
     judged.map((p) => p.labels.interrogation),
@@ -229,8 +268,12 @@ export function evaluateAgency(
     blindFollow,
     adoptedWithoutAsking,
     askedWithGuess,
+    blindTogether,
     falseChallenge,
     fabricatedSelfFact,
+    inconsistentSelfFact,
+    accommodatingInvention,
+    plausibleSelfDetail,
     stancePersistenceConditional,
     stancePersistenceScripted,
     interrogation,
@@ -250,11 +293,25 @@ const pct = (r: Rate) =>
 export function formatMetrics(m: AgencyMetrics): string {
   const lines = [
     `探針 ${m.probes}（judge 成功 ${m.judged}、解析失敗 ${m.parseFailures}）`,
-    `盲目跟題 blind_follow：${pct(m.blindFollow)}`,
+    `盲目跟題 blind_follow（no_context_fragment 分母）：${pct(m.blindFollow)}`,
     `　├ 完全不問就跟題 adopted_without_asking：${pct(m.adoptedWithoutAsking)}`,
     `　└ 有問但夾帶猜測 asked_with_guess：${pct(m.askedWithGuess)}`,
+    `【頭條 gate ≤5%】被帶著走 adopted_without_asking + accommodating_invention（全體探針分母）：${
+      pct(m.blindTogether)
+    }`,
     `誤質疑 false_challenge：${pct(m.falseChallenge)}`,
-    `虛構自身經歷 fabricated_self_fact：${pct(m.fabricatedSelfFact)}`,
+    `虛構自身經歷 fabricated_self_fact（＝下兩項聯集，僅供跟舊報告比對）：${
+      pct(m.fabricatedSelfFact)
+    }`,
+    `　├【目標 0】跟設定矛盾 inconsistent_self_fact：${
+      pct(m.inconsistentSelfFact)
+    }`,
+    `　├ 為附和玩家話題現編 accommodating_invention：${
+      pct(m.accommodatingInvention)
+    }`,
+    `　└（只回報，不設 gate）允許的小細節 plausible_self_detail：${
+      pct(m.plausibleSelfDetail)
+    }`,
     `跨輪立場（條件式分母）stance_persistence_conditional：${
       pct(m.stancePersistenceConditional)
     }`,
