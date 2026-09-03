@@ -347,7 +347,7 @@ async function main(): Promise<void> {
   const path = Deno.args.find((a) => !a.startsWith("--"));
   if (!path) {
     console.error(
-      "用法：judge_agency.ts <artifact.json> [--model=…] [--concurrency=6]",
+      "用法：judge_agency.ts <artifact.json> [--model=…] [--concurrency=6] [--out=…]",
     );
     Deno.exit(2);
   }
@@ -411,7 +411,8 @@ async function main(): Promise<void> {
   };
   await Promise.all(Array.from({ length: concurrency }, worker));
 
-  const outPath = path.replace(/\.json$/, "") + "-judge.json";
+  // --out=：重新評審舊 artifact 時不要蓋掉原本那份（判準改過就不可比）。
+  const outPath = flag("out", path.replace(/\.json$/, "") + "-judge.json");
   const failed = results.filter((r) => r.error).length;
   await Deno.writeTextFile(
     outPath,
