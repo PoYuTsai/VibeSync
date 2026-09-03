@@ -950,3 +950,26 @@ Deno.test("Phase 2.6：候選清單有「接住」時形狀不動，全是 agenc
   assert(lowRendered.includes("回 1 則，就做這一件事"), lowRendered);
   assert(!lowRendered.includes("一則講一件事"), lowRendered);
 });
+
+Deno.test("Phase 2.6：兩條立場規則搬進每回合 hidden guidance，只在旗標 on 出現（shadow／off 逐字不變）", () => {
+  const style = STYLE_BY_PROFILE_ID["practice_girl_001"];
+  const evidence = standard({ difficulty: "normal" });
+  // A21／A22 那類情境結構上是 no_override（applied=false），所以這兩條吃的是
+  // 旗標本身（mode==="on"），不是「這一輪有沒有指定 act」。
+  const turns = [u("你這樣很沒禮貌欸 我又沒做錯什麼 你是不是看不起我")];
+  const rendered = (mode: "off" | "shadow" | "on") => {
+    const agency = agencyFor(turns, evidence, mode);
+    return renderTurnPlan(
+      planTurnResponse({ turns, style, evidence, seedKey: "t", agency }),
+      style,
+      agency,
+    );
+  };
+  const on = rendered("on");
+  assert(on.includes("他抱怨、不滿或質疑你時"), on);
+  assert(on.includes("不道歉、不解釋、不安撫"), on);
+  assert(on.includes("他丟空泛問題（在幹嘛／吃飽沒）時可以冷回或短回"), on);
+  // shadow 與 off 逐字相同（既有 golden 的第二道）。
+  assertEquals(rendered("shadow"), rendered("off"));
+  assert(!rendered("off").includes("他抱怨、不滿或質疑你時"));
+});

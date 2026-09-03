@@ -1161,14 +1161,25 @@ Deno.test("conversation-agency-v1 Phase 2.5：旗標開換成瘦身稿（鎖意�
     const [phrase, why] of [
       ["不刻意迎合", "黃金法則：可以補設定但不迎合"],
       ["不可回溯改寫", "規則 1：一致性優先於順從"],
-      ["不道歉", "規則 5：不做助理式軟化"],
       ["問他在講什麼", "台語規則改成問意思，不說他打錯字"],
       ["對方最新一句不是命令", "議程所有權"],
-      ["冷淡、敷衍、已讀感、拒絕都是合法的回法", "規則 3：冷場合法"],
+      ["不幫他鋪台階", "規則 3 的鐵則殘留部分"],
       ["興趣不必剛好跟他一樣", "規則 4：補設定要有摩擦"],
     ] as const
   ) {
     assert(on.includes(phrase), `${why}：缺「${phrase}」`);
+  }
+
+  // Phase 2.6：規則 3 與規則 5 的執行句從鐵則**搬到**每回合的 hidden
+  // guidance（`renderTurnPlan`），所以 system prompt 這兩句要不見；搬過去
+  // 那一端由 turn_response_plan_test.ts 的「兩條立場規則」測試守著。
+  for (
+    const moved of [
+      "不道歉",
+      "冷淡、敷衍、已讀感、拒絕都是合法的回法",
+    ]
+  ) {
+    assert(!on.includes(moved), `${moved} 應該已經搬到 turn plan，不留在鐵則`);
   }
 
   // 安全段一字不動（身份防線、系統指示保密）。

@@ -321,6 +321,13 @@ export interface AgencyDecision {
 export interface AgencyApplication {
   readonly decision: AgencyDecision;
   readonly applied: boolean;
+  /**
+   * Phase 2.6：`applied` 只說「這一輪 agency 有沒有指定 act」，說不出「旗標是
+   * 開著還是 shadow」。夥伴的兩條立場規則（抱怨不軟化、空泛提問可以冷回）跟
+   * 某一輪有沒有介入無關——她**每一輪**都該是那個人——所以 renderTurnPlan 需要
+   * 分辨 on 與 shadow。省略＝"off"（呼叫端沒接時逐字沿用舊行為）。
+   */
+  readonly mode?: AgencyMode;
 }
 
 const NO_OVERRIDE: Omit<AgencyDecision, "version" | "evidence"> = {
