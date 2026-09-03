@@ -369,15 +369,18 @@ Deno.test("parseTurnClassification：旗標 off 時 coherence／aiChallengedThis
   assert(!("coherence" in withoutFields));
   assert(!("aiChallengedThisTurn" in withoutFields));
 
-  assertThrows(
-    () =>
-      parseTurnClassification(
-        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe"}',
-        { requireCoherence: true },
-      ),
-    Error,
-    "coherence",
+  // Codex round-1 P2：旗標開時兩個欄位 schema 對稱——prompt 兩個都問，模型
+  // 漏答任何一個都記 repair 並退到最保守的一格，不再一個丟錯一個靜默補值。
+  const missingBoth = parseTurnClassification(
+    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe"}',
+    { requireCoherence: true },
   );
+  assertEquals(missingBoth.coherence, "ambiguous");
+  assertEquals(missingBoth.aiChallengedThisTurn, false);
+  assertEquals(missingBoth.repairedFields, [
+    "coherence",
+    "aiChallengedThisTurn",
+  ]);
 
   const withFields = parseTurnClassification(
     '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"disconnected","aiChallengedThisTurn":true}',
@@ -414,7 +417,11 @@ Deno.test("parseTurnClassification：非法 coherence／aiChallengedThisTurn 值
   );
   assertEquals(badCoherence.coherence, "ambiguous");
   assertEquals(badCoherence.connection, "neutral");
-  assertEquals(badCoherence.repairedFields, ["coherence"]);
+  // 這個 fixture 連 aiChallengedThisTurn 都沒給，所以兩個欄位都記 repair。
+  assertEquals(badCoherence.repairedFields, [
+    "coherence",
+    "aiChallengedThisTurn",
+  ]);
 
   const badChallenged = parseTurnClassification(
     '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedThisTurn":"yes"}',
@@ -422,6 +429,32 @@ Deno.test("parseTurnClassification：非法 coherence／aiChallengedThisTurn 值
   );
   assertEquals(badChallenged.aiChallengedThisTurn, false);
   assertEquals(badChallenged.repairedFields, ["aiChallengedThisTurn"]);
+});
+
+Deno.test("applyCoherenceDeltaCap：算出來跟原本一樣時 capApplied 回 none（Codex R1 P2）", () => {
+  // `deltaCapApplied` 是拿來看「cap 真的改變了幾成回合」的；把「算過但沒動到」
+  // 也記成套用，那個比例會永遠偏高。
+  const zero = judgement(0, 0);
+  const { judgement: same, capApplied } = applyCoherenceDeltaCap(
+    zero,
+    40,
+    10,
+    "ambiguous",
+    { repeatedExactToken: false, unresolvedCount: 0 },
+  );
+  assertEquals(capApplied, "none");
+  assertEquals(same.delta, 0);
+  assertEquals(same.familiarityDelta, 0);
+
+  // 真的壓下去時照實回報。
+  const { capApplied: applied } = applyCoherenceDeltaCap(
+    judgement(3, 2),
+    40,
+    10,
+    "ambiguous",
+    { repeatedExactToken: false, unresolvedCount: 0 },
+  );
+  assertEquals(applied, "ambiguous");
 });
 
 Deno.test('parseTurnClassification：partnerMood "confused" repair 成 neutral，其餘欄位保留', () => {

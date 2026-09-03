@@ -546,11 +546,14 @@ export function applyCoherenceDeltaCap(
     // connected：玩家成功解釋／repair，正常給分，不套 cap。
     return { judgement, capApplied };
   }
+  // Codex round-1 P2：cap 算出來跟原本一模一樣時，telemetry 不該說「套過了」
+  // ——`deltaCapApplied` 是拿來看「cap 真的改變了幾成回合」的，把「算過但沒
+  // 動到」也記成套用會讓那個比例永遠偏高。
   if (
     heatDelta === judgement.delta &&
     familiarityDelta === judgement.familiarityDelta
   ) {
-    return { judgement, capApplied };
+    return { judgement, capApplied: "none" };
   }
   const score = clampTemperature(clampTemperature(currentHeat) + heatDelta);
   const familiarityScore = clampTemperature(
@@ -734,8 +737,14 @@ const KNOWN_PARTNER_MOOD_REPAIRS: Readonly<Record<string, PartnerMood>> = {
 function parseCoherence(
   value: unknown,
   repaired: string[],
+  required: boolean,
 ): TurnCoherence {
-  if (value === undefined) return "connected";
+  if (value === undefined) {
+    // 旗標開時 prompt 一定有問這個欄位，缺就是模型漏答 → 記 repair 並退到
+    // 最保守的一格；旗標關時這個 parser 根本不會被呼叫（見呼叫端）。
+    if (required) repaired.push("coherence");
+    return required ? "ambiguous" : "connected";
+  }
   if (
     value === "connected" || value === "ambiguous" ||
     value === "disconnected" || value === "repetitive"
@@ -751,8 +760,14 @@ function parseCoherence(
 function parseAiChallengedThisTurn(
   value: unknown,
   repaired: string[],
+  required: boolean,
 ): boolean {
-  if (value === undefined) return false;
+  // Codex round-1 P2：schema 跟 coherence 對稱——旗標開時 prompt 兩個都問，
+  // 缺任何一個都是模型漏答，都記 repair（而不是一個丟錯、一個靜默補預設）。
+  if (value === undefined) {
+    if (required) repaired.push("aiChallengedThisTurn");
+    return false;
+  }
   if (typeof value === "boolean") return value;
   repaired.push("aiChallengedThisTurn");
   return false;
@@ -818,10 +833,6 @@ export function parseTurnClassification(
   if (opts.requireHintAlignment && parsed.hintAlignment === undefined) {
     throw new Error("turn classification missing hintAlignment");
   }
-  if (opts.requireCoherence && parsed.coherence === undefined) {
-    throw new Error("turn classification missing coherence");
-  }
-
   const repairedFields: string[] = [];
   return {
     connection: parseConnection(parsed.connection),
@@ -838,10 +849,11 @@ export function parseTurnClassification(
     // 拿它跟 main 對拍會逐字不同。prompt 沒問的東西，parser 不該替它回答。
     ...(opts.requireCoherence
       ? {
-        coherence: parseCoherence(parsed.coherence, repairedFields),
+        coherence: parseCoherence(parsed.coherence, repairedFields, true),
         aiChallengedThisTurn: parseAiChallengedThisTurn(
           parsed.aiChallengedThisTurn,
           repairedFields,
+          true,
         ),
       }
       : {}),
