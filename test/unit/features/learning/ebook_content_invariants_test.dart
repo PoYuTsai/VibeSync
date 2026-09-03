@@ -112,13 +112,25 @@ String _chapterText(EbookChapter chapter) => [
 final _textbookRefPatterns = _loadTextbookRefPatterns();
 
 List<RegExp> _loadTextbookRefPatterns() {
-  final rules = jsonDecode(
-    File('tools/content/audit_rules.json').readAsStringSync(),
-  ) as Map<String, dynamic>;
-  final patterns =
-      (rules['textbookRefs'] as List<dynamic>).cast<String>().map(RegExp.new);
+  final patterns = _ruleStrings('textbookRefs').map(RegExp.new);
   return List.unmodifiable(patterns);
 }
+
+/// tools/content/audit_rules.json 是內容規則的單一來源（R10–R13 也讀它）。
+Map<String, dynamic> _readAuditRules() => jsonDecode(
+      File('tools/content/audit_rules.json').readAsStringSync(),
+    ) as Map<String, dynamic>;
+
+List<String> _ruleStrings(String key) =>
+    (_readAuditRules()[key] as List<dynamic>).cast<String>();
+
+/// 定稿句與禁用詞比對時忽略空白，跟 audit 的 key 折疊一致。
+String _squash(String text) => text.replaceAll(RegExp(r'\s+'), '');
+
+String _catalogText(EbookCatalog catalog) => catalog.books
+    .expand((book) => book.chapters)
+    .map(_chapterText)
+    .join('\n');
 
 /// 出現這些反效果技巧名稱的章節，必須同時有 warning callout，
 /// 確保它們只出現在「為何不要這樣做」的框架裡。
@@ -486,16 +498,68 @@ void main() {
     }
   });
 
-  test('來源校正：六個功能位與五個變數標記', () {
+  test('來源校正：六個功能位與五個變數的 glossary 名稱', () {
     final bottleneck = catalog.findBook('ebook-1-bottleneck')!;
     expect(
       bottleneck.chapters.map(_chapterText).join('\n').contains('六個功能位'),
       isTrue,
     );
-    final conversation = catalog.findBook('ebook-2-conversation')!;
-    final markerText = conversation.chapters.map(_chapterText).join('\n');
-    for (final marker in const ['價值', '框架', '情緒', '投資', '互惠']) {
-      expect(markerText.contains(marker), isTrue, reason: '缺少變數：$marker');
+    // 第 2 冊 2.1 五個變數的名稱以 audit_rules.json 的 glossary.required 為準
+    // （R10；工作包 4 起「R」是「興趣回應」，不再是「互惠」）。
+    final glossary = _readAuditRules()['glossary'] as Map<String, dynamic>;
+    final chapter = catalog.findChapter(
+      glossary['bookId'] as String,
+      glossary['chapterId'] as String,
+    )!;
+    final text = _chapterText(chapter);
+    for (final name in (glossary['required'] as List<dynamic>).cast<String>()) {
+      expect(text.contains(name), isTrue, reason: '缺少變數名稱：$name');
+    }
+  });
+
+  // 規格 §5 的十一條定稿句是整套教材的 canonical rule（工作包 4，2026-09-03）。
+  // 單一來源：audit_rules.json 的 canonicalRequired（R13）；這裡守「還在」。
+  test('P0 定稿句每一句都還在教材裡', () {
+    final text = _squash(_catalogText(catalog));
+    for (final sentence in _ruleStrings('canonicalRequired')) {
+      expect(text.contains(_squash(sentence)), isTrue,
+          reason: '找不到定稿句：$sentence');
+    }
+  });
+
+  // 舊的矛盾句（行為＞情緒＞字面、拒絕階梯、假定同意、她冷的不是你……）
+  // 由 audit_rules.json 的 bannedPhrases（R12）列出；一句都不能再長回來。
+  test('禁用詞一句都不能再出現', () {
+    final phrases = _ruleStrings('bannedPhrases').map(_squash).toList();
+    final hits = <String>[];
+    for (final book in catalog.books) {
+      for (final chapter in book.chapters) {
+        final texts = [
+          chapter.title,
+          chapter.learningGoal,
+          for (final block in _flatten(chapter.blocks)) ..._blockTexts(block),
+        ];
+        for (final text in texts) {
+          final squashed = _squash(text);
+          for (final phrase in phrases) {
+            if (squashed.contains(phrase)) hits.add('${chapter.id}：$phrase');
+          }
+        }
+      }
+    }
+    expect(hits, isEmpty, reason: '這些禁用詞還在：$hits');
+  });
+
+  test('第 4、7 冊用同一句定義種子', () {
+    // 規格 §5.4／§12.3 第 10 條：兩冊的邀約流程要能用同一條說明。
+    const seed = '種子是先提一個具體活動，暫時不定時間，看看她想不想接';
+    for (final bookId in const ['ebook-4-meeting', 'ebook-7-chat']) {
+      final book = catalog.findBook(bookId)!;
+      expect(
+        book.chapters.map(_chapterText).join('\n').contains(seed),
+        isTrue,
+        reason: '$bookId 沒有種子定稿句',
+      );
     }
   });
 
