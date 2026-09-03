@@ -9,6 +9,9 @@
 //     entryList（列表→點開），不能攤成長捲。
 //   - 安全／同意 callout 與禁語表：舊內容是我們自己寫的，新內容照夥伴原文，
 //     Eric 2026-07-27 拍板不另外加判斷，所以那兩條移除。
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/learning/domain/models/ebook.dart';
 import 'package:vibesync/features/learning/domain/models/ebook_block.dart';
@@ -101,18 +104,21 @@ String _chapterText(EbookChapter chapter) => [
 
 /// 原課本的指涉寫法：頁碼、節號、階段編號、類型 A／B、⚠ 6.x、DHV。
 /// App 裡沒有這些座標，讀者看到等於死巷；工作包 2（2026-09-03）起一律改成
-/// 冊章（「第 2 冊 2.4」）或前往按鈕。與 tools/content/audit_rules.json 的
-/// textbookRefs 對齊。
-final _textbookRefPatterns = <RegExp>[
-  RegExp(r'課本\s*\d+\.\d+'),
-  RegExp(r'見第[一二三四五六七八九十]+節'),
-  RegExp(r'階段\s*\d+\.\d+'),
-  RegExp(r'類型\s*[AB](?![A-Za-z])'),
-  RegExp(r'見案例\s*[A-Z]'),
-  RegExp(r'回到第[一二三四五六七八九十]+節'),
-  RegExp(r'⚠\s*6\.\d'),
-  RegExp('DHV'),
-];
+/// 冊章（「第 2 冊 2.4」）或前往按鈕。
+///
+/// 單一來源：直接讀 tools/content/audit_rules.json 的 textbookRefs（R11），
+/// 不在這裡手抄一份，兩邊才不會漂移。這幾條用到的 \s、\d、lookahead 在
+/// Python 與 Dart 的 regex 語法相同。
+final _textbookRefPatterns = _loadTextbookRefPatterns();
+
+List<RegExp> _loadTextbookRefPatterns() {
+  final rules = jsonDecode(
+    File('tools/content/audit_rules.json').readAsStringSync(),
+  ) as Map<String, dynamic>;
+  final patterns =
+      (rules['textbookRefs'] as List<dynamic>).cast<String>().map(RegExp.new);
+  return List.unmodifiable(patterns);
+}
 
 /// 出現這些反效果技巧名稱的章節，必須同時有 warning callout，
 /// 確保它們只出現在「為何不要這樣做」的框架裡。
@@ -149,7 +155,8 @@ void main() {
         expect(chapter.blocks, isNotEmpty, reason: '$where 沒有區塊');
         expect(chapter.sourceRefs, isNotEmpty, reason: '$where 缺 sourceRefs');
         expect(chapter.learningGoal.trim(), isNotEmpty, reason: '$where 缺學習目標');
-        expect(chapter.estimatedMinutes, greaterThan(0), reason: '$where 缺閱讀時間');
+        expect(chapter.estimatedMinutes, greaterThan(0),
+            reason: '$where 缺閱讀時間');
       }
     }
   });
@@ -252,8 +259,7 @@ void main() {
       for (final chapter in book.chapters) {
         for (final block in _flatten(chapter.blocks)) {
           for (final text in _blockTexts(block)) {
-            expect(text.trim(), isNotEmpty,
-                reason: '${block.id} 有空字串');
+            expect(text.trim(), isNotEmpty, reason: '${block.id} 有空字串');
           }
         }
       }
@@ -306,6 +312,8 @@ void main() {
   // 死巷。工作包 2 把它們全部改成冊章或前往按鈕，這裡守住不再長回來；
   // 按鈕的目標是否存在由下一條測試守。
   test('內文不得再有 App 內無法理解的原課本指涉', () {
+    // 規則檔讀不到或清單空掉時要紅，不能空轉變綠。
+    expect(_textbookRefPatterns.length, greaterThanOrEqualTo(8));
     final hits = <String>[];
     for (final book in catalog.books) {
       for (final chapter in book.chapters) {
@@ -364,13 +372,11 @@ void main() {
   });
 
   test('第 3 冊 3.1 診斷樹五層一眼可見：第一層是警告，其餘四層緊接成編號清單', () {
-    final chapter =
-        catalog.findChapter('ebook-3-rescue', 'ebook-3-chapter-1')!;
+    final chapter = catalog.findChapter('ebook-3-rescue', 'ebook-3-chapter-1')!;
     final blocks = chapter.blocks;
     final firstIndex = blocks.indexWhere(
       (block) =>
-          block is EbookCalloutBlock &&
-          (block.title ?? '').startsWith('第一層'),
+          block is EbookCalloutBlock && (block.title ?? '').startsWith('第一層'),
     );
     expect(firstIndex, greaterThanOrEqualTo(0), reason: '找不到第一層');
     expect(
