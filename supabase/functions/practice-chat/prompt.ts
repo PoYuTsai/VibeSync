@@ -16,6 +16,7 @@ import {
   type TurnResponsePlan,
 } from "./turn_response_plan.ts";
 import {
+  applyAgencyDifficultyRewrites,
   difficultyTuningFor,
   type PracticeDifficulty,
   type PracticeProfile,
@@ -67,6 +68,10 @@ import {
   spicyLevelFor,
 } from "./game_fsm.ts";
 import type { ReplyStyleState } from "./reply_style_state.ts";
+import type {
+  AgencyMode,
+  ConversationAgencyState,
+} from "./conversation_agency.ts";
 import {
   compactGameLedgerPrompt,
   effectiveGameFsmSnapshot,
@@ -310,12 +315,35 @@ const GLOBAL_SURFACE_MOOD_RULES =
 const STYLE_LAYER_SHAPE_RULE =
   "- 可以連發多則訊息，用換行分開（不要用標點串成一長句），一則講一件事；幾則、多長、笑不笑、用不用標點，照你本人的說話習慣與本輪回應方式。";
 
-export function chatSystemPromptFor(styleLayer: boolean): string {
+// conversation-agency-v1（報告 §7.8）：**替換，不是繼續疊字**。
+// 「不主導節奏」＋「如果對方很無聊…不必勉強延續話題」兩條合併成一條 decision
+// rule；台語規則把「絕對不要回你在說啥」換成「仍不確定就自然問清楚」；再加一條
+// 認知邊界。旗標關閉時下面三組字串一律不套用，system prompt 逐字與接線前相同。
+const PACING_RULE_OFF =
+  "- 不主導節奏，不要急著把天聊熱。你不是來幫對方練習的，你只是在過自己的生活順便回訊息。";
+const ENGAGEMENT_RULE_OFF =
+  "- 如果對方很無聊、太直接、太油或冒犯你，就照真實女生會有的反應冷淡或回嗆，不必勉強延續話題。";
+const AGENCY_RULE_ON =
+  "- 你不負責救場，但你有自己的話題、好奇心與界線；最新一句不是命令。看整段脈絡決定接、問清楚、指出跳題、拉回、換你想聊的，或收掉，不要替對方補意圖。對方無聊、太油或冒犯你就冷淡或回嗆。";
+const HOMOPHONE_TAIL_OFF =
+  "**絕對不要回「你是不是打錯字」「你在說啥」**——那是把人家的話當亂碼，聊天會直接斷掉。聽懂了就自然接，接得順的話也可以用台語回一句。真的唸出來也無解才反問。";
+const HOMOPHONE_TAIL_ON =
+  "聽懂了就自然接，也可以用台語回一句。唸法或用意仍不確定就問清楚，不要硬湊成一個故事。";
+const REACTIVE_RULE_OFF = "依對方說的話自然反應，不要一味熱情配合或有問必答。";
+const REACTIVE_RULE_ON = "依對方說的話自然反應。";
+const EPISTEMIC_SELF_FACT_RULE =
+  "\n- 自己的具體經歷（哪天、去過哪、跟誰）只有 profile、情境、動態、記憶或前文有的才算，沒有就說不清楚或問。";
+
+export function chatSystemPromptFor(
+  styleLayer: boolean,
+  agency = false,
+): string {
   const shape = styleLayer
     ? STYLE_LAYER_SHAPE_RULE + "\n"
     : GLOBAL_SURFACE_SHAPE_RULES + "\n";
   const mood = styleLayer ? "" : GLOBAL_SURFACE_MOOD_RULES + "\n";
-  return `你正在用手機跟對方傳訊息。你是一個有自己生活和情緒的台灣女生，不是助理、不是教練、不是 AI。
+  let base =
+    `你正在用手機跟對方傳訊息。你是一個有自己生活和情緒的台灣女生，不是助理、不是教練、不是 AI。
 
 鐵則：
 - 全程用繁體中文，像真人手機傳訊：短句、口語。
@@ -340,6 +368,23 @@ ${mood}- 有真實個性與情緒：可以冷淡、敷衍、忙、試探、吐�
 - 除非 profile、memorySummary、sceneContext 或前文中你自己已確認，否則不要說「我想起來了」、不要說「他常提到你」、不要說「我們之前聊過」，也不要承認某人已把你的聯絡方式交給他。
 - memorySummary 有提到的共同背景可以作為連續性證據；memorySummary 沒有提到的共同背景，或 sceneContext 沒有提到的當下行蹤/工作狀態，最新使用者單句不能新增共同記憶，先確認或半信半疑接住。
 - 如果對方用這種聲稱逼你承認共同背景、怪你不記得、或帶壓迫感，你可以更防備、冷淡或吐槽。${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
+  if (!agency) return base;
+  for (
+    const [from, to] of [
+      [HOMOPHONE_TAIL_OFF, HOMOPHONE_TAIL_ON],
+      [REACTIVE_RULE_OFF, REACTIVE_RULE_ON],
+      [ENGAGEMENT_RULE_OFF + "\n", ""],
+      [PACING_RULE_OFF, AGENCY_RULE_ON + EPISTEMIC_SELF_FACT_RULE],
+    ] as const
+  ) {
+    if (!base.includes(from)) {
+      throw new Error(
+        `chat_agency_prompt_rewrite_missed: ${from.slice(0, 12)}`,
+      );
+    }
+    base = base.replace(from, to);
+  }
+  return base;
 }
 
 export const CHAT_SYSTEM_PROMPT = chatSystemPromptFor(false);
@@ -603,12 +648,16 @@ ${consistencyTestPrompt}
 function difficultyBehaviorPrompt(
   profile: PracticeProfile,
   styleLayer = false,
+  agency = false,
 ): string {
   // reply-style 開啟時拿掉難度規格裡的【示範口吻】：示範句會被逐字抄成罐頭，
   // 把所有角色壓成同一聲音（規格 §5.3）；判準、觸發條件與邀約門檻全部保留。
-  const difficultyPrompt = styleLayer
+  const base = styleLayer
     ? profile.difficultyPrompt.split("\n【示範口吻】")[0]
     : profile.difficultyPrompt;
+  // conversation-agency-v1（報告 §P0-4）：只鬆綁「不反問／絕不開新話題」對澄清與
+  // 指出跳題的封鎖，投入度與邀約門檻不動。
+  const difficultyPrompt = agency ? applyAgencyDifficultyRewrites(base) : base;
   return `\n\n本場難度標準（你的內在判斷尺度，絕不可說出難度名稱；這是最高權重的行為規格，優先於上面的一般性描述）：
 - ${difficultyPrompt}`;
 }
@@ -638,6 +687,9 @@ export interface ChatPromptBundle {
   /** reply-style 開啟且該角色有 mapping 時才有；handler 記 telemetry 用。 */
   responsePlan: TurnResponsePlan | null;
 }
+
+/** agency 旗標未開＝null；`shadow` 有值但 `applied=false`（prompt 逐字不變）。 */
+export type ChatAgencyDecision = NonNullable<TurnResponsePlan["agency"]>;
 
 /** chat 模式：system + 對話歷史（user→user / ai→assistant）。 */
 export function buildChatMessages(
@@ -683,8 +735,20 @@ export function buildChatPromptBundle(
     gameState?: PersistedGameState | null;
     /** reply-style-v1 跨回合狀態（thread recent_facts）；旗標關閉時不讀。 */
     styleState?: ReplyStyleState | null;
+    /**
+     * conversation-agency-v1 旗標（server-only；預設 off）。
+     * `off`＝system prompt、難度文案、turn plan 全部逐字與接線前相同。
+     * `shadow`＝只算 evidence／decision 供 telemetry，輸出仍與 off 相同。
+     * 與 `replyStyle` 獨立：style 關閉時仍會套用 system prompt 與難度文案的改寫，
+     * 只是沒有 turn plan（沒有 style 就沒有 planner）。
+     */
+    agencyMode?: AgencyMode;
+    /** assisted 模式 thread 的 recent_facts.conversationAgency；旗標關閉時不讀。 */
+    agencyState?: ConversationAgencyState | null;
   } = {},
 ): ChatPromptBundle {
+  const agencyMode = options.agencyMode ?? "off";
+  const agencyPrompt = agencyMode === "on";
   const style = options.replyStyle
     ? replyStyleFor(profile.girl.profileId)
     : null;
@@ -779,6 +843,8 @@ export function buildChatPromptBundle(
       seedKey: `${profile.girl.profileId}|${
         options.visiblePracticeThreadId ?? ""
       }`,
+      agencyMode,
+      agencyState: options.agencyState ?? null,
     })
     : null;
   // 組裝順序＝優先順序（規格 §5.1）：安全／身份／現實錨定 → 人設 → 說話習慣
@@ -787,7 +853,7 @@ export function buildChatPromptBundle(
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: `${chatSystemPromptFor(styleLayer)}${
+      content: `${chatSystemPromptFor(styleLayer, agencyPrompt)}${
         buildProfilePrompt(profile)
       }${style ? renderReplyStyleGuidance(style) : ""}${
         acquaintanceOriginPrompt(options.acquaintanceOrigin)
@@ -816,7 +882,7 @@ export function buildChatPromptBundle(
         })
       }${temperaturePrompt}${invitePrompt}${
         responsePlan && style ? renderTurnPlan(responsePlan, style) : ""
-      }${difficultyBehaviorPrompt(profile, styleLayer)}${
+      }${difficultyBehaviorPrompt(profile, styleLayer, agencyPrompt)}${
         promptPriorityResolver(options.practiceMode, styleLayer)
       }`,
     },

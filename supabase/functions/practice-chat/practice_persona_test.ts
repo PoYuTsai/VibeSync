@@ -6,6 +6,8 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  AGENCY_DIFFICULTY_REWRITES,
+  applyAgencyDifficultyRewrites,
   DIFFICULTIES,
   DIFFICULTY_TUNING,
   difficultyTuningFor,
@@ -545,11 +547,41 @@ Deno.test("永久去重：eligible 判斷與 catalogSize 切池取交集（排�
   const legacyAll = new Set(
     GIRL_PROFILES.slice(0, LEGACY_CATALOG_SIZE).map((g) => g.profileId),
   );
-  assertEquals(hasEligibleDrawCandidate({ excludedProfileIds: legacyAll }), false);
+  assertEquals(
+    hasEligibleDrawCandidate({ excludedProfileIds: legacyAll }),
+    false,
+  );
   assert(
     hasEligibleDrawCandidate({
       excludedProfileIds: legacyAll,
       catalogSize: GIRL_PROFILES.length,
     }),
   );
+});
+
+// ── conversation-agency-v1：難度文案的 agency 修正（報告 §P0-4）────────────
+Deno.test("AGENCY_DIFFICULTY_REWRITES：每一條都在難度文案裡剛好命中一次，判準與門檻不變", () => {
+  const prompts = DIFFICULTIES.map((d) => d.prompt);
+  const all = prompts.join("\n");
+  for (const [from, to] of AGENCY_DIFFICULTY_REWRITES) {
+    assertEquals(all.split(from).length - 1, 1, `命中次數不是 1：${from}`);
+    assertEquals(all.includes(to), false, `改寫後字串不該已存在：${to}`);
+  }
+  // easy 難度本來就允許反問，沒有要鬆綁的東西＝套用後逐字不變。
+  const easy = DIFFICULTIES.find((d) => d.id === "easy")!.prompt;
+  assertEquals(applyAgencyDifficultyRewrites(easy), easy);
+
+  for (const d of DIFFICULTIES) {
+    const rewritten = applyAgencyDifficultyRewrites(d.prompt);
+    // 判準、觸發條件、邀約門檻、示範口吻整段不動。
+    for (const line of d.prompt.split("\n")) {
+      const untouched = !AGENCY_DIFFICULTY_REWRITES.some(([from]) =>
+        line.includes(from)
+      );
+      if (untouched) assertEquals(rewritten.includes(line), true, line);
+    }
+    assertEquals(rewritten.includes("絕不主動開新話題"), false);
+    assertEquals(rewritten.includes("、不反問、"), false);
+    assertEquals(rewritten.includes("不主動反問"), false);
+  }
 });

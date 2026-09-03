@@ -341,6 +341,43 @@ export const DIFFICULTIES: readonly DifficultyConfig[] = [
   },
 ] as const;
 
+/**
+ * conversation-agency-v1（報告 §P0-4）：難度文案的 agency 修正。
+ *
+ * 「不反問」原意是避免採訪感，實際卻把「必要的澄清」「確認陌生人目的」「維護界線」
+ * 一起封鎖；挑戰難度的「絕不主動開新話題」也被模型讀成「不准指出他在跳題」。
+ * 這裡只換下面這幾段字串，判準、觸發條件、邀約門檻一字不動；旗標關閉時完全不套用
+ * （`difficultyBehaviorPrompt` 只在 agency 開啟時呼叫）。
+ *
+ * 每一條都必須在難度文案裡剛好命中一次——practice_persona_test 逐條守著，改上面的
+ * 文案而忘了同步這張表時會直接紅燈，不會靜默 no-op。
+ */
+export const AGENCY_DIFFICULTY_REWRITES: readonly (readonly [
+  string,
+  string,
+])[] = [
+  [
+    "第一輪回覆不超過 2 句、不主動反問；",
+    "第一輪回覆不超過 2 句、不做採訪式反問；",
+  ],
+  [
+    "第一輪 10 個字以內、不反問、不加 emoji。",
+    "第一輪 10 個字以內、不做採訪式反問、不加 emoji。",
+  ],
+  [
+    "絕不主動開新話題、不替對方補話題、不救場。",
+    "不替對方補話題、不救場；問清楚不算開新話題。",
+  ],
+];
+
+export function applyAgencyDifficultyRewrites(prompt: string): string {
+  let out = prompt;
+  for (const [from, to] of AGENCY_DIFFICULTY_REWRITES) {
+    out = out.replace(from, to);
+  }
+  return out;
+}
+
 // ── 難度調參表（槓桿 A：僅 beginner 溫度管線生效；standard 無數值系統）──
 export interface DifficultyTuning {
   startTemperature: number;

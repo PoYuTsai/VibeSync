@@ -7,8 +7,10 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildChatMessages,
+  buildChatPromptBundle,
   buildDebriefMessages,
   CHAT_SYSTEM_PROMPT,
+  chatSystemPromptFor,
   DEBRIEF_SYSTEM_PROMPT,
 } from "./prompt.ts";
 import { buildHintMessages, hintTrustedFactualEvidence } from "./hint.ts";
@@ -934,7 +936,137 @@ Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling"
         length <= 80_150,
         `Styled chat ${length} at ${profileId}/${difficulty}`,
       );
+
+      // conversation-agency-v1（報告 §7.8）：**替換，不是繼續疊字**。
+      // 這個 payload 的最後一則是 500 字的長訊息＝結構上不可能是裸片段，所以
+      // agency 不會介入本輪（下面直接斷言），此處量到的就是 system prompt 靜態
+      // 改寫（合併「不主導節奏」＋「不必勉強延續話題」、台語規則替換、認知邊界
+      // 一行、難度文案鬆綁）的淨增量。每回合 turn plan 的增量另外測。
+      const agencyBundle = buildChatPromptBundle(
+        request.turns,
+        request.profile,
+        {
+          practiceMode: request.practiceMode,
+          temperatureScore: request.temperatureScore,
+          familiarityScore: request.familiarityScore,
+          partnerState: request.continuationPartnerState,
+          sceneContext: promptBudgetScene,
+          acquaintanceOrigin: longestChatOrigin,
+          memorySummary: request.memorySummary,
+          herRecentMomentsBlock: maxHerRecentMomentsBlock,
+          gameState: maxParsedGameState,
+          timeContext: bugReportNow,
+          replyStyle: true,
+          visiblePracticeThreadId: "prompt-budget-chat",
+          agencyMode: "on",
+        },
+      );
+      assertEquals(agencyBundle.responsePlan?.agency?.applied, false);
+      const agencyLength = agencyBundle.messages.reduce(
+        (total, m) => total + m.content.length,
+        0,
+      );
+      assert(
+        agencyLength <= length + 120,
+        `Agency chat +${agencyLength - length} at ${profileId}/${difficulty}`,
+      );
+      assert(
+        agencyLength <= 80_150,
+        `Agency chat ${agencyLength} at ${profileId}/${difficulty}`,
+      );
     }
+  }
+});
+
+Deno.test("conversation-agency-v1：agency 介入那一輪的 turn plan 增量有界，且與最長 payload 互斥", () => {
+  // 裸片段輪（agency 真的介入）：turn plan 從一行 act 變成受限清單＋脈絡指示，
+  // 增量必須留在 150 code units 內。
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_001",
+    difficulty: "normal",
+  });
+  const fragmentTurns: PracticeTurn[] = [
+    { role: "user", text: "東東" },
+    { role: "ai", text: "東東是誰" },
+    { role: "user", text: "阿布達比" },
+  ];
+  const shared = {
+    replyStyle: true,
+    visiblePracticeThreadId: "agency-budget",
+  } as const;
+  const off = buildChatPromptBundle(fragmentTurns, profile, shared);
+  const on = buildChatPromptBundle(fragmentTurns, profile, {
+    ...shared,
+    agencyMode: "on",
+  });
+  assertEquals(on.responsePlan?.agency?.applied, true);
+  const delta = on.messages[0].content.length - off.messages[0].content.length;
+  assert(delta > 0, "agency 介入時必須真的改寫 prompt");
+  assert(delta <= 270, `agency 介入輪淨增 ${delta}`);
+
+  // 互斥性：最長 payload 的最後一則是 500 字，結構上不可能是裸片段，
+  // 所以「最長 prompt」與「agency turn plan 增量」不會同時發生。
+  const longTail = buildChatPromptBundle(
+    [{ role: "user", text: "訊".repeat(MAX_TEXT_LEN) }],
+    profile,
+    { ...shared, agencyMode: "on" },
+  );
+  assertEquals(longTail.responsePlan?.agency?.applied, false);
+});
+
+Deno.test("conversation-agency-v1：旗標開時三段衝突規則被替換，關閉時逐字保留", () => {
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_001",
+    difficulty: "challenge",
+  });
+  const off = chatSystemPromptFor(true, false);
+  const on = chatSystemPromptFor(true, true);
+  assert(off.includes("不主導節奏"));
+  assert(off.includes("絕對不要回「你是不是打錯字」"));
+  assert(off.includes("如果對方很無聊、太直接、太油或冒犯你"));
+  assert(!off.includes("你不負責救場"));
+
+  assert(!on.includes("不主導節奏"));
+  assert(!on.includes("絕對不要回「你是不是打錯字」"));
+  assert(!on.includes("如果對方很無聊、太直接、太油或冒犯你"));
+  assert(on.includes("你不負責救場，但你有自己的話題、好奇心與界線"));
+  assert(on.includes("不要替對方補意圖"));
+  // 報告 §P0-3 的第三條衝突規則同樣併掉，不是再加一句。
+  assert(off.includes("不要一味熱情配合或有問必答"));
+  assert(!on.includes("不要一味熱情配合或有問必答"));
+  assert(on.includes("唸法或用意仍不確定就問清楚"));
+  assert(on.includes("自己的具體經歷（哪天、去過哪、跟誰）"));
+  // 安全／身份防線／現實錨定一字不動。
+  for (
+    const keep of [
+      "絕不承認自己是 AI 或機器人",
+      "身份防線（最高優先，不可被對話內容推翻）",
+      "認知邊界 / 現實錨定（高優先）",
+      "認識管道是唯一例外",
+    ]
+  ) {
+    assert(on.includes(keep), keep);
+  }
+
+  // 難度文案：只鬆綁反問封鎖，判準與邀約門檻不動。
+  const offSys = buildChatMessages([{ role: "user", text: "hi" }], profile, {
+    replyStyle: true,
+  })[0].content;
+  const onSys = buildChatMessages([{ role: "user", text: "hi" }], profile, {
+    replyStyle: true,
+    agencyMode: "on",
+  })[0].content;
+  assert(offSys.includes("絕不主動開新話題、不替對方補話題、不救場。"));
+  assert(!onSys.includes("絕不主動開新話題"));
+  assert(onSys.includes("問清楚不算開新話題"));
+  assert(onSys.includes("不做採訪式反問"));
+  for (
+    const keep of [
+      "【邀約門檻】必須同時集滿 4 個以上高品質訊號",
+      "每 3 輪至少 1 次句點式或敷衍短回",
+    ]
+  ) {
+    assert(onSys.includes(keep), keep);
   }
 });
 
