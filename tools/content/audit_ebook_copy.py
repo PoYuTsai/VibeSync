@@ -68,9 +68,9 @@ SYMBOL_PATTERNS = [
     ('...', re.compile(r'\.\.\.')),
     ('/', re.compile(r'/')),
     ('+', re.compile(r'\+')),
-    ('=', re.compile(r'(?<![A-Za-z0-9])\s*=\s*(?![A-Za-z0-9])')),
-    ('>', re.compile(r'(?<![A-Za-z0-9])\s*>\s*(?![A-Za-z0-9])')),
-    ('<', re.compile(r'(?<![A-Za-z0-9])\s*<\s*(?![A-Za-z0-9])')),
+    ('=', re.compile(r'(?<![A-Za-z0-9])(?<![A-Za-z0-9][ \t])\s*=\s*(?![A-Za-z0-9])')),
+    ('>', re.compile(r'(?<![A-Za-z0-9])(?<![A-Za-z0-9][ \t])\s*>\s*(?![A-Za-z0-9])')),
+    ('<', re.compile(r'(?<![A-Za-z0-9])(?<![A-Za-z0-9][ \t])\s*<\s*(?![A-Za-z0-9])')),
     ('[', re.compile(r'\[')),
     (']', re.compile(r'\]')),
     ('"', re.compile(r'"')),
@@ -88,7 +88,7 @@ class Finding:
     sample: str = ''
 
     def key(self) -> tuple:
-        return (self.rule, self.id, self.field)
+        return (self.rule, self.id, fold_field(self.field))
 
     def to_dict(self) -> dict:
         return {'rule': self.rule, 'book': self.book, 'chapter': self.chapter,
@@ -105,6 +105,22 @@ def _sample(text: str, index: int, width: int = 14) -> str:
 
 def _finding(rule: str, field: Field, message: str, sample: str = '') -> Finding:
     return Finding(rule, field.book_id, field.chapter_id or '', field.owner_id, field.name, message, sample)
+
+
+_FOLD_MAP = str.maketrans({'，': ',', '：': ':', '；': ';', '！': '!', '？': '?', '（': '(', '）': ')', '［': '[',
+                           '］': ']', '＞': '>', '＜': '<', '＝': '=', '／': '/', '＋': '+', '。': '.',
+                           '「': '', '」': '', '『': '', '』': ''})
+
+
+def fold_key_text(text: str) -> str:
+    """finding key 用：去空白、半形化標點。正規化（工作包 1）不該讓同一個問題換身分。"""
+    return re.sub(r'\s+', '', text).translate(_FOLD_MAP)
+
+
+def fold_field(field: str) -> str:
+    """欄位名後面的 #片語 才折疊；欄位名本身（items[1].note）原樣。"""
+    name, sep, phrase = field.partition('#')
+    return f'{name}{sep}{fold_key_text(phrase)}' if sep else field
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +287,7 @@ def rule_r12(fields, cfg, out):
             index = field.text.find(phrase)
             if index >= 0:
                 out.append(Finding('R12', field.book_id, field.chapter_id or '', field.owner_id,
-                                   f'{field.name}#{phrase}', f'禁用詞「{phrase}」', _sample(field.text, index)))
+                                   f'{field.name}#{fold_key_text(phrase)}', f'禁用詞「{phrase}」', _sample(field.text, index)))
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +479,7 @@ def run_audit(books: list, rules_cfg: dict, allowlist: dict | None = None) -> di
 
 
 def baseline_keys(baseline: dict) -> set:
-    return {(item['rule'], item['id'], item['field']) for item in baseline.get('findings', [])}
+    return {(item['rule'], item['id'], fold_field(item['field'])) for item in baseline.get('findings', [])}
 
 
 def compare_with_baseline(findings: list, baseline: dict) -> tuple:
@@ -489,7 +505,7 @@ def make_baseline(findings: list, source: str) -> dict:
         'source': source,
         'note': '棘輪基準：CI 只擋這份清單以外的新發現。每個工作包修掉一批問題後用 --write-baseline 縮小它，不得手動加項目。',
         'count': len(findings),
-        'findings': [{'rule': item.rule, 'id': item.id, 'field': item.field} for item in findings],
+        'findings': [{'rule': item.rule, 'id': item.id, 'field': fold_field(item.field)} for item in findings],
     }
 
 

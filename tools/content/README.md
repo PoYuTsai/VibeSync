@@ -2,8 +2,9 @@
 
 `assets/learning/ebooks/book_1_bottleneck.json` … `book_7_chat.json` 是 App 使用的
 **唯一正式文案真源**（ADR #45，2026-09-03）。這個目錄的工具只做三件事：把夥伴來源轉成
-候選檔、比對候選檔與正式檔、稽核正式檔。**沒有任何工具會寫正式檔**——正式檔只能由人
-編輯，再由 PR 審查。
+候選檔、比對候選檔與正式檔、稽核正式檔。**轉換器永遠不會寫正式檔**——正式檔只能由人
+編輯，再由 PR 審查。唯一的例外是 `normalize_ebook_copy.py --write`：它只做排版正規化
+（標點寬度、空白、用字，一個字的意思都不改），只接受明確指定的檔案，結果同樣要走 PR 審查。
 
 2026-07-27 之前，第 1–4 冊是由夥伴的單檔 HTML 指引產生、直接覆寫正式 JSON 的；那條路
 已經關掉：`build_ebooks_from_guide.py` 的輸出路徑落在 `assets/learning/ebooks`（含子目錄）
@@ -20,6 +21,7 @@
 | 1 候選匯入 | `parse_partner_guide.py`（HTML → `bruce_nodes.json`，一字不改）→ `build_ebooks_from_guide.py`（節點 → 四份候選 JSON） | `build/ebook_import_candidate/*.json`＋`candidate_summary.json`（含相對正式檔的差異摘要） |
 | 2 比對 | `compare_ebook_import.py` | 依 book／chapter／block／entry 穩定 id 列出新增、刪除、文字變動、區塊型別變動、sourceRefs 變動 |
 | 3 人工合併 | 編輯 `assets/learning/ebooks/*.json` | 由人決定要併哪些差異；不整份覆寫 |
+| 3½ 正規化 | `normalize_ebook_copy.py` | 人工編輯後跑一次，讓標點、符號、空白與用字一致；正式內容必須維持 0 diff（測試會擋） |
 | 4 audit | `audit_ebook_copy.py` | 標點、符號、空白、長度、重複、術語、原課本指涉、禁用詞、定稿句、結構契約 |
 | 5 Flutter tests | `flutter test test/unit/features/learning/ test/widget/features/learning/` | 內容不變量、catalog、widget 與 visual proof |
 
@@ -48,9 +50,34 @@ python3 tools/content/audit_ebook_copy.py --baseline tools/content/audit_baselin
 python3 tools/content/audit_ebook_copy.py --write-baseline tools/content/audit_baseline.json
 python3 tools/content/audit_ebook_copy.py --json out.json --markdown out.md
 
+# 排版正規化（工作包 1 起，正式內容必須維持 0 diff）
+python3 tools/content/normalize_ebook_copy.py --check                            # 列會改的欄位；有待正規化 exit 1
+python3 tools/content/normalize_ebook_copy.py --diff                             # 每個欄位改前／改後
+python3 tools/content/normalize_ebook_copy.py --write assets/learning/ebooks/book_1_bottleneck.json   # 只接受明確檔案，不接受目錄
+
 # 工具本身的測試（標準函式庫，不裝套件）
 python3 -m unittest discover -s tools/content/tests -v
 ```
+
+## 排版正規化規則（`normalize_ebook_copy.py`）
+
+只碰 `ebook_schema.py` 列出的使用者可見欄位；含 URL 的欄位整欄跳過；永遠不會把欄位清空。
+每條規則都有 fixture 測試（`tests/test_normalize_ebook_copy.py`），第二次執行必須 0 diff。
+
+| 規則 | 內容 | 例外 |
+|---|---|---|
+| N01 | `,` → `，` | 數字之間（1,000） |
+| N02 | `:` → `：` | 數字之間（10:00、2:1） |
+| N03 | `;` `?` `!` → `；` `？` `！` | — |
+| N04 | `( )` `[ ]` → `（ ）` `［ ］` | — |
+| N05 | `...` → `……` | — |
+| N06 | `/` → `／`，並去掉兩側空白 | — |
+| N07 | `+` → `＋`；`=` `>` `<` → `＝` `＞` `＜` | 英數之間（V=0） |
+| N08 | 全形標點與括號旁的半形空白移除 | 全形空白 U+3000、英數之間的空白不動 |
+| N09 | 每行去頭尾空白；三個以上換行壓成兩個；整段去頭尾空白 | — |
+| N10 | 簡體字（`audit_rules.json` 的 `simplifiedMap`）與用字（`termPairs`） | — |
+
+比例「2:1」這類寫法不在腳本裡：計劃要求改成文字（「種子最多是具體提案的兩倍」），那是人改。
 
 ## 稽核規則
 
