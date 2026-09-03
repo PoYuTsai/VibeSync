@@ -56,6 +56,7 @@ class NormalizeTextTests(unittest.TestCase):
         self.assertEqual(n('紅燈之後繼續加壓 = 死亡'), '紅燈之後繼續加壓＝死亡')
         self.assertEqual(n('行為 > 情緒 > 字面'), '行為＞情緒＞字面')
         self.assertEqual(n('整段只有 I,V=0、E=0、R=0'), '整段只有 I，V=0、E=0、R=0')
+        self.assertEqual(n('中文 V = 0 也是英數比較'), '中文 V = 0 也是英數比較')  # 有空白的英數運算子一樣保留
 
     def test_n08_spaces_next_to_full_width_punctuation(self):
         self.assertEqual(n('❌ 錯誤: 在嗎? / 是不是討厭我了'), '❌ 錯誤：在嗎？／是不是討厭我了')
