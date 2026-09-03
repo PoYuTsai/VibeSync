@@ -21,7 +21,10 @@
 //     × 聊天回覆（一般／原樣重複的 token／括號旁白）
 //   ＝ 3 × 2 × 3 × 3 × 3 ＝ 162 案。
 // hint／debrief：模式（3）× reply-style（2）× 兩種 mode ＝ 12 案。
-// 合計 174 案 × 5 個環境值（未設／off／shadow／true／test）＝ 870 次 handler 呼叫。
+// Phase 2.8 補的形態案（`extraCases()`，不再乘一輪組合，每個走不同分支）：
+//   非空 herRecentMoments（standard／beginner）、hint prefetch、draw_status
+//   request handler、配額 RPC 失敗 → 4xx 的錯誤路徑 ＝ 5 案。
+// 合計 179 案 × 5 個環境值（未設／off／shadow／true／test）＝ 895 次 handler 呼叫。
 //
 // ── golden 出處與重新產生的程序 ─────────────────────────────────────────
 // `AGENCY_FLAG_OFF_GOLDEN` 的每一筆都是在 `7f1d6d6c`（agency 接線前的最後一個
@@ -42,6 +45,10 @@
 //
 // **harness 抓到差異時要改的是程式，不是 golden。** 只有在 `7f1d6d6c` 之外的
 // 正當 production 行為改動（旗標無關）落地時，才照上面的程序重跑 printer。
+//
+// Phase 2.8 新增的 5 個形態案就是照這個程序在 `7f1d6d6c` 上重跑 printer 產生
+// 的；既有 174 案的 digest **一個位元都沒有變**（`statusText` 進 digest 時刻意
+// 讓空字串不寫進 head，所以現況零位元差）。
 
 import {
   assert,
@@ -125,6 +132,19 @@ const THREAD_RECENT_FACTS: Readonly<
 };
 
 const MODES = ["standard", "beginner", "game"] as const;
+
+// 非空 `herRecentMoments`：`list_practice_moment_posts` 回的一列。fake 的時鐘
+// 釘在 `handler_test_fake.ts` 的 `NOW`（2026-06-28T04:00Z＝台北 12:00），所以
+// 這個 post_date 永遠落在 7 天窗內、發文時刻也永遠已經過去，digest 可重現。
+// 沒有這一列的話 fake 對未設定的 RPC 一律回 `{data:true}`，而
+// `fetchHerRecentMoments()` 只吃陣列——舊矩陣其實只涵蓋「空貼文」那條路徑。
+const MOMENT_ROWS: ReadonlyArray<Record<string, unknown>> = [{
+  profile_id: "practice_girl_001",
+  post_date: "2026-06-27",
+  slot: 1,
+  day_part: "evening",
+  body: "剛加完班，只想吃碗麵",
+}];
 
 function threadRowFor(
   mode: typeof MODES[number],
@@ -239,6 +259,109 @@ function sideCaseFor(
   };
 }
 
+// ── Phase 2.8：Codex round-1（新項）U 的 coverage 缺口 ────────────────────
+// 舊矩陣的 174 案全部落在同一組成功路徑上，Codex 逐條列出的缺口是：空貼文以外
+// 沒有 moments、hint 沒有 prefetch、沒有 draw request handler、沒有錯誤路徑。
+// 這裡補五個**形態不同**的案例（不是再乘一輪組合）——每一個都走到別的分支，
+// 也各自產生不同的 Response／RPC／telemetry 形狀。
+function extraCases(): EquivalenceCase[] {
+  const momentsRpc = {
+    list_practice_moment_posts: [{ data: MOMENT_ROWS }],
+  };
+  return [
+    // 1–2：非空貼文（standard 走 ledger、beginner 走 thread，兩條讀取路徑都覆蓋）。
+    {
+      name: "chat／standard／貼文非空",
+      options: {
+        ledger: ledger({ practice_mode: "standard" }),
+        thread: null,
+        env: {},
+        rpc: momentsRpc,
+        deepSeekReplies: [CHAT_REPLIES["一般"], CLASSIFIER_VALID],
+      },
+      body: chatBody({ practiceMode: "standard", turns: FRAGMENT_TURNS }),
+    },
+    {
+      name: "chat／beginner／貼文非空",
+      options: {
+        ledger: null,
+        thread: threadRowFor("beginner", THREAD_RECENT_FACTS["有style狀態"]),
+        env: {},
+        rpc: momentsRpc,
+        deepSeekReplies: [CHAT_REPLIES["一般"], CLASSIFIER_VALID],
+      },
+      body: chatBody({
+        practiceMode: "beginner",
+        turns: FRAGMENT_TURNS,
+        visiblePracticeThreadId: "thread-visible-1",
+        temperatureScore: 40,
+        familiarityScore: 10,
+      }),
+    },
+    // 3：hint prefetch（`prefetch:true` ＋ 旗標開）——claim／settle 的 RPC 形狀
+    // 與一般 hint 不同，而且不扣配額。
+    {
+      name: "hint／beginner／prefetch",
+      options: {
+        ledger: ledger({
+          practice_mode: "beginner",
+          ai_count: 1,
+          charged: true,
+          temperature_score: 30,
+          familiarity_score: 0,
+        }),
+        env: { PRACTICE_HINT_PREFETCH_ENABLED: "true" },
+        claudeReplies: [validHint()],
+      },
+      body: hintBody({
+        practiceMode: "beginner",
+        requestId: "equiv-prefetch-1",
+        prefetch: true,
+        turns: SIDE_TURNS,
+      }),
+    },
+    // 4：draw request handler（`mode:"draw_status"`）——完全不碰 chat／agency，
+    // 但它跟 chat 共用同一個 handler 進入點與 telemetry 管線。
+    {
+      name: "draw_status",
+      options: {
+        ledger: null,
+        env: {},
+        // fake 對未設定的 RPC 一律回 `{data:true}`，那只會走到
+        // `practice_draw_status_malformed` 的 500；給一列真的資料才會走成功路徑。
+        rpc: {
+          get_practice_draw_status: [{
+            data: [{ free_allowance: 3, free_used: 1, free_remaining: 2 }],
+          }],
+        },
+      },
+      body: { mode: "draw_status" },
+    },
+    // 5：錯誤路徑——配額 ledger RPC 直接回錯，handler 必須映射成 4xx，
+    // 一個 provider 呼叫都不能發生。
+    {
+      name: "錯誤路徑／配額 RPC 失敗→4xx",
+      options: {
+        ledger: null,
+        env: {},
+        rpc: {
+          prepare_practice_subscription_usage: [{
+            error: "PRACTICE_SUBSCRIPTION_NOT_FOUND",
+          }],
+        },
+        deepSeekReplies: [CHAT_REPLIES["一般"], CLASSIFIER_VALID],
+      },
+      body: chatBody({
+        practiceMode: "beginner",
+        turns: FRAGMENT_TURNS,
+        visiblePracticeThreadId: "thread-visible-1",
+        temperatureScore: 40,
+        familiarityScore: 10,
+      }),
+    },
+  ];
+}
+
 function equivalenceCases(): EquivalenceCase[] {
   const cases: EquivalenceCase[] = [];
   for (const mode of MODES) {
@@ -257,6 +380,7 @@ function equivalenceCases(): EquivalenceCase[] {
       }
     }
   }
+  cases.push(...extraCases());
   return cases;
 }
 
@@ -282,10 +406,23 @@ function parseGolden(name: string): ObservableDigest {
  * 寫入等）補印，所以攔截視窗要一路撐到 `waitUntil` 的 promise 全部落地，
  * 不然下一個 case 會撿到上一個 case 的尾巴。
  */
+/**
+ * 側通道：`observableDigest` 把這一輪 telemetry 出現過的牆鐘欄位名收進來。
+ * digest 只比欄位**形狀**（值被 scrub 成 0），所以「這些 key 真的存在」必須
+ * 另外斷言，不然「一個 duration 欄位都沒印」跟「印了但值不同」在 golden 上
+ * 長得一模一樣（Codex round-1 新項 U）。
+ */
+interface RunProbe {
+  durationKeys: string[];
+}
+
+const DURATION_KEY_RE = /"(\w*(?:Duration|Latency|Elapsed|Wait))Ms":/g;
+
 async function observableDigest(
   c: EquivalenceCase,
   agencyEnv: string | undefined,
   user?: { id: string; email?: string | null },
+  probe?: RunProbe,
 ): Promise<ObservableDigest> {
   const fake = makeFake({
     ...c.options,
@@ -321,10 +458,25 @@ async function observableDigest(
     `${k}:${v}`
   ).join("\n");
   const bodyBytes = new Uint8Array(await response.arrayBuffer());
-  const head = new TextEncoder().encode(`${response.status}\n${headers}\n\n`);
+  // Codex round-1（新項）U：`statusText` 也進 digest。handler 一路都用
+  // `new Response(body, { status })`，Deno 不會自動補預設字串，所以現況每一個
+  // 案例的 statusText 都是空字串——空字串一律不寫進 head，既有 golden 因此
+  // **逐位元組不變**，而任何一天有人開始送自訂 statusText 就會被抓到。
+  const statusText = response.statusText === ""
+    ? ""
+    : ` ${response.statusText}`;
+  const head = new TextEncoder().encode(
+    `${response.status}${statusText}\n${headers}\n\n`,
+  );
   const raw = new Uint8Array(head.length + bodyBytes.length);
   raw.set(head, 0);
   raw.set(bodyBytes, head.length);
+  const text = lines.join("\n");
+  if (probe) {
+    probe.durationKeys = [
+      ...new Set([...text.matchAll(DURATION_KEY_RE)].map((m) => m[1])),
+    ].sort();
+  }
   return {
     messages: await digest(
       JSON.stringify([
@@ -341,7 +493,7 @@ async function observableDigest(
         })),
       ),
     ),
-    telemetry: await digest(scrubWallClock(lines.join("\n"))),
+    telemetry: await digest(scrubWallClock(text)),
   };
 }
 
@@ -1059,6 +1211,26 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<string, string>([
     "debrief／game／style開",
     "2d2aeebde778e3eb|2f97a095d1d75e7a|b7fe848d8efa0772|30caeb474cf26d9e",
   ],
+  [
+    "chat／standard／貼文非空",
+    "9a922e2a8babda2d|444e4e27dafce2e0|942147acce9b12da|d60d39d9f4d069b7",
+  ],
+  [
+    "chat／beginner／貼文非空",
+    "dd12e21e32e08445|40607d6481b9863d|dcbcb65fd81efe3e|ed466986989d2834",
+  ],
+  [
+    "hint／beginner／prefetch",
+    "8098d9e5e50d12f1|464c81fdd6e63728|977cd06362f719d8|782965b055b18e01",
+  ],
+  [
+    "draw_status",
+    "643d5437104296e2|c0a5588abf29c85c|2789d496c3a61e53|e3b0c44298fc1c14",
+  ],
+  [
+    "錯誤路徑／配額 RPC 失敗→4xx",
+    "643d5437104296e2|bb8e10a14b94897f|ca158647bff92ea8|0fd66168cb4c5218",
+  ],
 ]);
 
 // ── printer：`AGENCY_EQUIV_PRINT_GOLDEN=1` 時印出可貼回的 TS 常數 ─────────
@@ -1183,5 +1355,41 @@ Deno.test({
         `${c.name}：test＋測試帳號應與 true 同路徑`,
       );
     }
+  },
+});
+
+Deno.test({
+  name:
+    "牆鐘欄位只 scrub 值不 scrub key：duration 欄位真的存在，而且旗標不改變它們（Codex R1 新項 U）",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    // `scrubWallClock()` 把值歸零、key 留著，所以 golden 驗的是**欄位形狀**。
+    // 「key 一個都沒印」跟「印了但值不同」在 digest 上長得一樣，因此「這些 key
+    // 真的存在」必須另外斷言。實測只有真的走到 Claude 的 hint／debrief 會印
+    // `attemptDurationMs`／`totalDurationMs`；chat 與被配額擋掉的案例一個都不印
+    // （那也被 golden 釘住——哪天開始印，scrub 後的文字就會多出 key，digest 立刻變）。
+    const union = new Set<string>();
+    for (const c of equivalenceCases()) {
+      let baseline: string | null = null;
+      for (const env of [undefined, "off", "shadow", "true"]) {
+        const probe: RunProbe = { durationKeys: [] };
+        await observableDigest(c, env, undefined, probe);
+        for (const key of probe.durationKeys) union.add(key);
+        const joined = probe.durationKeys.join(",");
+        if (baseline === null) baseline = joined;
+        assertEquals(joined, baseline, `${c.name} / env=${env}`);
+      }
+    }
+    // 至少有案例真的印出這兩個欄位，scrub 才不是在保護空集合。
+    for (const key of ["attemptDuration", "totalDuration"]) {
+      assert(union.has(key), `整個矩陣都沒有印出 "${key}Ms"，scrub 是死碼`);
+    }
+    // 新增的 prefetch 案例走 Claude，必須兩個都有。
+    const prefetch = equivalenceCases().find((c) =>
+      c.name === "hint／beginner／prefetch"
+    )!;
+    const probe: RunProbe = { durationKeys: [] };
+    await observableDigest(prefetch, undefined, undefined, probe);
+    assertEquals(probe.durationKeys, ["attemptDuration", "totalDuration"]);
   },
 });
