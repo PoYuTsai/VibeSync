@@ -99,9 +99,20 @@ String _chapterText(EbookChapter chapter) => [
       for (final block in _flatten(chapter.blocks)) ..._blockTexts(block),
     ].join('\n');
 
-/// 原文的交叉指涉寫法。與轉換器（tools/content）的偵測規則對齊。
-final _crossRefPhrase =
-    RegExp(r'見案例\s*[A-Z]|課本\s*\d+\.\d+|見第[一二三四五六七八九十]+節');
+/// 原課本的指涉寫法：頁碼、節號、階段編號、類型 A／B、⚠ 6.x、DHV。
+/// App 裡沒有這些座標，讀者看到等於死巷；工作包 2（2026-09-03）起一律改成
+/// 冊章（「第 2 冊 2.4」）或前往按鈕。與 tools/content/audit_rules.json 的
+/// textbookRefs 對齊。
+final _textbookRefPatterns = <RegExp>[
+  RegExp(r'課本\s*\d+\.\d+'),
+  RegExp(r'見第[一二三四五六七八九十]+節'),
+  RegExp(r'階段\s*\d+\.\d+'),
+  RegExp(r'類型\s*[AB](?![A-Za-z])'),
+  RegExp(r'見案例\s*[A-Z]'),
+  RegExp(r'回到第[一二三四五六七八九十]+節'),
+  RegExp(r'⚠\s*6\.\d'),
+  RegExp('DHV'),
+];
 
 /// 出現這些反效果技巧名稱的章節，必須同時有 warning callout，
 /// 確保它們只出現在「為何不要這樣做」的框架裡。
@@ -290,45 +301,102 @@ void main() {
     }
   });
 
-  // 原文到處寫「見案例 K」「課本 6.1」，但案例庫在第 2 本、警告區在第 3 本。
-  // 沒有按鈕時那行字等於死巷：讀者得退出閱讀器、回書架、開另一本、翻章、再從
-  // 十幾條裡找字母。
-  test('原文寫「見案例 X／課本 6.x／見第 N 節」的地方都有前往按鈕', () {
-    final missing = <String>[];
+  // 原文到處寫「見案例 K」「課本 6.1」「階段 2.6」「類型 A」，但案例庫在第 2 本、
+  // 警告區在第 3 本，App 裡也沒有「階段 2.6」這種座標；沒有按鈕時那行字等於
+  // 死巷。工作包 2 把它們全部改成冊章或前往按鈕，這裡守住不再長回來；
+  // 按鈕的目標是否存在由下一條測試守。
+  test('內文不得再有 App 內無法理解的原課本指涉', () {
+    final hits = <String>[];
     for (final book in catalog.books) {
       for (final chapter in book.chapters) {
-        void check(String where, List<EbookBlock> container) {
-          final texts = container.expand(_blockTexts).join('\n');
-          if (!_crossRefPhrase.hasMatch(texts)) return;
-          if (container.whereType<EbookCrossRefBlock>().isNotEmpty) return;
-          missing.add('$where：${_crossRefPhrase.firstMatch(texts)![0]}');
-        }
-
-        // 章層級：條目庫另外逐條檢查（它的按鈕在條目裡，不在章層級），
-        // 否則條目摘要裡的指涉會在這裡誤報。
-        check(
-          '${book.id}/${chapter.id}',
-          chapter.blocks
-              .where((block) => block is! EbookEntryListBlock)
-              .toList(),
-        );
-        for (final list in chapter.entryLists) {
-          for (final entry in list.entries) {
-            check(
-              '${book.id}/${chapter.id}/${entry.id}',
-              [
-                EbookParagraphBlock(id: '${entry.id}-title', text: entry.title),
-                if (entry.summary != null)
-                  EbookParagraphBlock(
-                      id: '${entry.id}-summary', text: entry.summary!),
-                ...entry.blocks,
-              ],
-            );
+        for (final block in _flatten(chapter.blocks)) {
+          for (final text in _blockTexts(block)) {
+            for (final pattern in _textbookRefPatterns) {
+              final match = pattern.firstMatch(text);
+              if (match != null) {
+                hits.add('${book.id}/${chapter.id}/${block.id}：${match[0]}');
+              }
+            }
           }
         }
       }
     }
-    expect(missing, isEmpty, reason: '這些交叉指涉沒有前往按鈕：$missing');
+    expect(hits, isEmpty, reason: '這些原課本指涉在 App 裡無法理解：$hits');
+  });
+
+  test('清單與條目不再用「｜」模擬表格欄位', () {
+    // 原課本的表格轉成手機內容時，欄位分隔符「｜」被原樣留在字串裡；
+    // 工作包 2 把它們改成 bulletList、comparison 或 checklist。
+    final hits = <String>[];
+    for (final book in catalog.books) {
+      for (final chapter in book.chapters) {
+        for (final block in _flatten(chapter.blocks)) {
+          for (final text in _blockTexts(block)) {
+            if (text.contains('｜')) hits.add('${block.id}：$text');
+          }
+        }
+      }
+    }
+    expect(hits, isEmpty, reason: '這些欄位還在用「｜」分隔：$hits');
+  });
+
+  test('畢業標準一律是 goal callout，標題就叫「畢業標準」', () {
+    var count = 0;
+    for (final book in catalog.books) {
+      for (final chapter in book.chapters) {
+        for (final block in _flatten(chapter.blocks)) {
+          if (block is! EbookCalloutBlock) continue;
+          final isGraduation = RegExp(r'-grad\d+$').hasMatch(block.id) ||
+              (block.title ?? '').contains('畢業標準') ||
+              block.text.startsWith('畢業標準');
+          if (!isGraduation) continue;
+          count++;
+          expect(block.tone, EbookCalloutTone.goal,
+              reason: '${block.id} 不是 goal');
+          expect(block.title, '畢業標準', reason: '${block.id} 標題不對');
+          expect(block.text.startsWith('畢業標準'), isFalse,
+              reason: '${block.id} 內文重複了「畢業標準：」前綴');
+        }
+      }
+    }
+    // 第 1 冊 1.3、1.4，第 2 冊 2.4，第 4 冊 4.3、4.5（2026-09-03 工作包 2）。
+    expect(count, 5);
+  });
+
+  test('第 3 冊 3.1 診斷樹五層一眼可見：第一層是警告，其餘四層緊接成編號清單', () {
+    final chapter =
+        catalog.findChapter('ebook-3-rescue', 'ebook-3-chapter-1')!;
+    final blocks = chapter.blocks;
+    final firstIndex = blocks.indexWhere(
+      (block) =>
+          block is EbookCalloutBlock &&
+          (block.title ?? '').startsWith('第一層'),
+    );
+    expect(firstIndex, greaterThanOrEqualTo(0), reason: '找不到第一層');
+    expect(
+      (blocks[firstIndex] as EbookCalloutBlock).tone,
+      EbookCalloutTone.warning,
+    );
+    final next = blocks[firstIndex + 1];
+    expect(next, isA<EbookBulletListBlock>(), reason: '四層清單要緊接在第一層之後');
+    final layers = next as EbookBulletListBlock;
+    expect(layers.ordered, isTrue);
+    expect(
+      layers.items.map((item) => item.substring(0, 3)).toList(),
+      ['第二層', '第三層', '第四層', '第五層'],
+    );
+  });
+
+  test('第 4 冊 4.5 十二週計畫有四段週次標題與三張可勾自評', () {
+    final chapter =
+        catalog.findChapter('ebook-4-meeting', 'ebook-4-chapter-5')!;
+    final weekHeadings = chapter.blocks
+        .whereType<EbookHeadingBlock>()
+        .map((heading) => heading.text)
+        .where((text) => text.startsWith('第') && text.contains('週'))
+        .toList();
+    expect(weekHeadings, hasLength(4), reason: '週次標題：$weekHeadings');
+    expect(chapter.blocks.whereType<EbookChecklistBlock>(), hasLength(3));
   });
 
   test('每個前往按鈕的目標章與目標條目都真的存在', () {
@@ -354,8 +422,8 @@ void main() {
       }
     }
     // 內容若被改到一顆按鈕都不剩，上一條測試會空轉而不報錯，所以這裡要求
-    // 這批指涉至少全部在（2026-07-27 是 8 顆）。
-    expect(count, greaterThanOrEqualTo(8));
+    // 這批按鈕至少全部在（2026-07-27 是 8 顆；2026-09-03 工作包 2 後是 21 顆）。
+    expect(count, greaterThanOrEqualTo(21));
   });
 
   test('對話拆解庫涵蓋案例 A–N（案例 N 曾經被轉換器整條吃掉）', () {
