@@ -3,9 +3,11 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  AGENCY_THRESHOLDS,
   type AgencyEvidence,
   agencyModeFor,
   agencyPolicyFor,
+  agencyThresholdsFor,
   type ConversationAgencyState,
   detectAgencyEvidence,
   isClarifyingAct,
@@ -19,6 +21,15 @@ const u = (text: string): PracticeTurn => ({ role: "user", text });
 const a = (text: string): PracticeTurn => ({ role: "ai", text });
 const policy = (turns: PracticeTurn[]) =>
   agencyPolicyFor(detectAgencyEvidence(turns));
+const policyAt = (
+  turns: PracticeTurn[],
+  difficulty: "easy" | "normal" | "challenge",
+  isGame = false,
+) =>
+  agencyPolicyFor(
+    detectAgencyEvidence(turns),
+    agencyThresholdsFor(difficulty, isGame),
+  );
 
 Deno.test("utteranceShape：明示換題 > 問句 > 招呼 > 第一人稱 > 短答候選 > 裸片段", () => {
   assertEquals(
@@ -201,16 +212,16 @@ Deno.test("有效短答與明示換題永遠不介入（A01／A03／A07／A09 �
 
 Deno.test("forced 只給高信心結構；其餘一律 bounded", () => {
   // 這一場完全沒有前文的裸片段（A02／A08）：Codex P1——長度／無前文不是高信心
-  // 結構，不能強制她一定要問；改成 bounded，acknowledge／ask_intent 都給，
-  // 由看得到全文的生成模型自己判斷（「今天好熱喔」這種看得懂的開場也是這個
-  // 分支，不該被逼問）。
+  // 結構，不能強制她一定要問；改成 bounded，由看得到全文的生成模型自己判斷
+  // （「今天好熱喔」這種看得懂的開場也是這個分支，不該被逼問）。一般難度的
+  // 預設候選只給 ask_intent（報告 §7.4「一般：第一個沒前文的片段直接問」；
+  // 易／挑戰難度另有門檻測試）。
   const a02 = policy([u("韓國")]);
   assertEquals(a02.situation, "ambiguous_fragment");
   assertEquals(a02.allowedActSetId, "fragment_no_context_v1");
   assertEquals(a02.policyMode, "bounded");
   assertEquals(a02.forcedAct, null);
   assert(a02.allowedActs.includes("ask_intent"), "必須提供可以問清楚的選項");
-  assert(a02.allowedActs.includes("acknowledge"), "必須允許她看得懂就接住");
 
   // A04：她問了問題、玩家丟別的詞（前面還有未解片段）。
   const a04 = policy([u("東東"), a("東東是誰"), u("阿布達比")]);
@@ -334,4 +345,132 @@ Deno.test("持久化的 priorChallengeIssued 會被吃進證據（assisted 跨�
   assertEquals(carried.priorChallengeIssued, true);
   // 但未解計數一律從逐字稿重算，不會被上一輪的狀態灌大。
   assertEquals(carried.unresolvedCount, 0);
+});
+
+// ── 難度門檻（報告 §7.4）：只調門檻與第一個片段的候選 act，不關掉 agency，
+// 不動有效短答的免疫。────────────────────────────────────────────────────
+
+Deno.test("難度門檻：第一個無前文片段的候選 act 依難度給——易可接住、一般只問、挑戰問或質疑", () => {
+  const fragment = [u("韓國")];
+  const easy = policyAt(fragment, "easy");
+  assertEquals(easy.policyMode, "bounded");
+  assertEquals(easy.forcedAct, null);
+  assertEquals(easy.allowedActs, ["acknowledge", "ask_intent"]);
+
+  const normal = policyAt(fragment, "normal");
+  assertEquals(normal.policyMode, "bounded");
+  assertEquals(normal.allowedActs, ["ask_intent"]);
+
+  const challenge = policyAt(fragment, "challenge");
+  assertEquals(challenge.policyMode, "bounded");
+  assertEquals(challenge.allowedActs, ["ask_intent", "challenge_relevance"]);
+
+  // Game 套挑戰門檻。
+  const game = policyAt(fragment, "normal", true);
+  assertEquals(game.allowedActs, ["ask_intent", "challenge_relevance"]);
+});
+
+Deno.test("難度門檻：易難度指出跳題延後到第 2–3 則未解，一般／挑戰第 2 則就進入", () => {
+  // 兩個裸片段連續（第二則 unresolvedCount＝1）：一般／挑戰已經進
+  // topic_shift_v1（指出跳題）；易難度還在「跟第一則一樣寬容」的窗口內，
+  // 沒有前文時仍是 fragment_no_context_v1 bounded，不是 topic_shift_v1。
+  const twoFragments = [u("韓國"), u("東京")];
+  const normalSecond = policyAt(twoFragments, "normal");
+  assertEquals(normalSecond.allowedActSetId, "topic_shift_v1");
+  const challengeSecond = policyAt(twoFragments, "challenge");
+  assertEquals(challengeSecond.allowedActSetId, "topic_shift_v1");
+  const easySecond = policyAt(twoFragments, "easy");
+  assertEquals(easySecond.allowedActSetId, "fragment_no_context_v1");
+
+  // 第三個裸片段（unresolvedCount＝2）：一般／挑戰已經進入
+  // repeated_low_coherence；易難度這時才第一次進 topic_shift_v1。
+  const threeFragments = [u("韓國"), u("東京"), u("清邁")];
+  const normalThird = policyAt(threeFragments, "normal");
+  assertEquals(normalThird.situation, "repeated_low_coherence");
+  const easyThird = policyAt(threeFragments, "easy");
+  assertEquals(easyThird.allowedActSetId, "topic_shift_v1");
+
+  // 第四個裸片段（unresolvedCount＝3）：易難度這時才第一次進
+  // repeated_low_coherence——比一般／挑戰晚兩則，符合「2–3 則才指出模式」。
+  const fourFragments = [u("韓國"), u("東京"), u("清邁"), u("曼谷")];
+  const easyFourth = policyAt(fourFragments, "easy");
+  assertEquals(easyFourth.situation, "repeated_low_coherence");
+});
+
+Deno.test("難度門檻：挑戰／game 在達到低連貫門檻時直接收掉（不是維持立場），一般／易仍是維持立場", () => {
+  // 真的走 detectAgencyEvidence：三個地名連丟，第三則（unresolvedCount=2）
+  // 一般難度已達 lowCoherenceAt。forceEndLoopBeforeChallenge 獨立於
+  // priorChallengeIssued 判斷，挑戰／game 在真實流量下也一定選到
+  // end_low_value_loop，不會被「已質疑過」蓋成 hold_position。
+  const threeFragments = [u("韓國"), u("東京"), u("清邁")];
+  const normal = policyAt(threeFragments, "normal");
+  assertEquals(normal.policyMode, "forced");
+  assertEquals(normal.forcedAct, "hold_position");
+
+  const challenge = policyAt(threeFragments, "challenge");
+  assertEquals(challenge.policyMode, "forced");
+  assertEquals(challenge.forcedAct, "end_low_value_loop");
+
+  const game = policyAt(threeFragments, "normal", true);
+  assertEquals(game.policyMode, "forced");
+  assertEquals(game.forcedAct, "end_low_value_loop");
+
+  // 還沒質疑過（手動組 evidence；detectAgencyEvidence 在 standard 模式結構上
+  // 幾乎不會產生這個組合，見 agencyPolicyFor 內註解）：一般難度先給一輪
+  // bounded 機會，挑戰／game 仍然直接收掉。
+  const notYetChallenged: AgencyEvidence = {
+    utteranceShape: "bare_fragment",
+    previousAiAskedQuestion: false,
+    explicitPivot: false,
+    repeatedExactToken: false,
+    unresolvedCount: 2,
+    priorChallengeIssued: false,
+    precedingUserContext: false,
+  };
+  const normalFirstTime = agencyPolicyFor(
+    notYetChallenged,
+    AGENCY_THRESHOLDS.normal,
+  );
+  assertEquals(normalFirstTime.policyMode, "bounded");
+  assertEquals(normalFirstTime.allowedActSetId, "low_coherence_v1");
+  const challengeFirstTime = agencyPolicyFor(
+    notYetChallenged,
+    AGENCY_THRESHOLDS.challenge,
+  );
+  assertEquals(challengeFirstTime.policyMode, "forced");
+  assertEquals(challengeFirstTime.forcedAct, "end_low_value_loop");
+});
+
+Deno.test("難度門檻：有效短答免疫在每個難度都成立（A01／A03／A07／A09）", () => {
+  const cases: PracticeTurn[][] = [
+    [a("那你最想去哪個國家玩"), u("韓國")], // A01
+    [
+      u("嗨嗨 今天過得還好嗎"),
+      a("還可以啊 你呢"),
+      u("對了 講到韓國 我最近一直看到韓國機票在特價"),
+    ], // A03
+    [u("我最近在學日文 發音真的有夠難"), a("真的 我也覺得"), u("紅豆泥")], // A07
+    [u("我最近開始練重訓 一週去三次"), a("哇 好厲害"), u("hyrox")], // A09
+  ];
+  for (const turns of cases) {
+    for (const difficulty of ["easy", "normal", "challenge"] as const) {
+      for (const isGame of [false, true]) {
+        const d = policyAt(turns, difficulty, isGame);
+        assertEquals(
+          d.situation,
+          null,
+          `${difficulty}/game=${isGame} 不得介入`,
+        );
+        assertEquals(d.allowedActs, []);
+      }
+    }
+  }
+});
+
+Deno.test("AGENCY_THRESHOLDS：三個難度都定義齊全，game 沿用 challenge", () => {
+  for (const key of ["easy", "normal", "challenge"] as const) {
+    assert(AGENCY_THRESHOLDS[key].firstFragmentActs.length > 0);
+  }
+  assertEquals(agencyThresholdsFor("easy", true), AGENCY_THRESHOLDS.challenge);
+  assertEquals(agencyThresholdsFor("normal", false), AGENCY_THRESHOLDS.normal);
 });

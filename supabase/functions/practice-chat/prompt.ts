@@ -864,6 +864,8 @@ export function buildChatPromptBundle(
     situation: agencySituation,
     agencyMode,
     agencyState: options.agencyState ?? null,
+    difficulty: profile.difficulty,
+    isGame: options.practiceMode === "game",
   });
   const responsePlan = style
     ? planTurnResponse({

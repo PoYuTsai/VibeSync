@@ -31,6 +31,7 @@ import {
   type AgencyApplication,
   agencyPolicyFor,
   type AgencyMode,
+  agencyThresholdsFor,
   type ConversationAgencyState,
   detectAgencyEvidence,
   isClarifyingAct,
@@ -281,11 +282,20 @@ export function computeAgencyDecision(args: {
   agencyMode?: AgencyMode;
   /** assisted 模式 thread 的 recent_facts.conversationAgency；standard 傳 null。 */
   agencyState?: ConversationAgencyState | null;
+  /** 難度只調門檻與口氣，不關掉 agency（報告 §7.4）；省略＝一般難度。 */
+  difficulty?: "easy" | "normal" | "challenge";
+  /** Game 模式套挑戰難度門檻＋既有 Game FSM 優先權（由呼叫端保留）。 */
+  isGame?: boolean;
 }): AgencyApplication | null {
   const agencyMode = args.agencyMode ?? "off";
   if (agencyMode === "off") return null;
+  const thresholds = agencyThresholdsFor(
+    args.difficulty ?? "normal",
+    args.isGame ?? false,
+  );
   const raw = agencyPolicyFor(
     detectAgencyEvidence(args.turns, args.agencyState ?? null),
+    thresholds,
   );
   const decision = args.situation === "neutral" ? raw : {
     ...raw,

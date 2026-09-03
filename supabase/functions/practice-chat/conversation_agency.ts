@@ -325,16 +325,75 @@ const NO_OVERRIDE: Omit<AgencyDecision, "version" | "evidence"> = {
 };
 
 /**
+ * 難度只調門檻與第一個片段的候選 act，不關掉 agency、不動有效短答的免疫
+ * （報告 §7.4：「難度只調門檻與口氣，不關掉 agency」）。字面值對應
+ * `PracticeDifficulty`（"easy"|"normal"|"challenge"，practice_persona.ts）；
+ * 這裡刻意不 import 那個型別，維持本檔「依賴單向」——呼叫端自己轉換。
+ */
+export interface AgencyThresholds {
+  /** 第一個沒有前文的模糊片段，允許的候選 act（難度愈高愈不給「接住」這個選項）。 */
+  readonly firstFragmentActs: readonly PlanAct[];
+  /** unresolvedCount 累積到這個數字才開始「指出跳題」（topic_shift_v1 bounded）。 */
+  readonly topicShiftAt: number;
+  /** unresolvedCount 累積到這個數字才進入「repeated_low_coherence」。 */
+  readonly lowCoherenceAt: number;
+  /** 到了 lowCoherenceAt 又還沒質疑過時，challenge／game 直接強制收尾，不用先走一輪 bounded 質疑。 */
+  readonly forceEndLoopBeforeChallenge: boolean;
+}
+
+export const AGENCY_THRESHOLDS: Record<
+  "easy" | "normal" | "challenge",
+  AgencyThresholds
+> = {
+  // 輕鬆：第一次模糊給「接住」或「問清楚」兩個選項；連續模糊要到第 2–3 則
+  // 才開始指出跳題，門檻整體晚一步。
+  easy: {
+    firstFragmentActs: ["acknowledge", "ask_intent"],
+    topicShiftAt: 2,
+    lowCoherenceAt: 3,
+    forceEndLoopBeforeChallenge: false,
+  },
+  // 一般：第一個沒前文的片段直接問，不供應「接住」當退路；第 2 則就指出跳題。
+  normal: {
+    firstFragmentActs: ["ask_intent"],
+    topicShiftAt: 1,
+    lowCoherenceAt: 2,
+    forceEndLoopBeforeChallenge: false,
+  },
+  // 挑戰：第一則就可能只回問句或直接質疑，不供應解讀；連續模糊到第 2 則就可以
+  // 直接收掉，不用先走一輪「再給一次機會」的 bounded 質疑。
+  challenge: {
+    firstFragmentActs: ["ask_intent", "challenge_relevance"],
+    topicShiftAt: 1,
+    lowCoherenceAt: 2,
+    forceEndLoopBeforeChallenge: true,
+  },
+};
+
+/** Game 模式套挑戰難度門檻（既有 Game FSM 的修復優先／越界／邀約方向不受影響，由呼叫端保留原優先權）。 */
+export function agencyThresholdsFor(
+  difficulty: "easy" | "normal" | "challenge",
+  isGame: boolean,
+): AgencyThresholds {
+  return isGame ? AGENCY_THRESHOLDS.challenge : AGENCY_THRESHOLDS[difficulty];
+}
+
+/**
  * 證據 → 這一輪的 act 政策。
  *
- * 強制（forced）只給高信心結構：同一個詞原樣再丟一次、或已經質疑過又連續兩則未解。
- * 其餘全部是 bounded choice——她看得到完整逐字稿，「這句到底有沒有關聯」由她判。
+ * 強制（forced）只給高信心結構：同一個詞原樣再丟一次、或已經質疑過又連續未解
+ * 到門檻。其餘全部是 bounded choice——她看得到完整逐字稿，「這句到底有沒有
+ * 關聯」由她判。省略 `thresholds`＝一般難度（呼叫端不接難度時逐字沿用舊行為）。
  */
-export function agencyPolicyFor(evidence: AgencyEvidence): AgencyDecision {
+export function agencyPolicyFor(
+  evidence: AgencyEvidence,
+  thresholds: AgencyThresholds = AGENCY_THRESHOLDS.normal,
+): AgencyDecision {
   const base = { version: CONVERSATION_AGENCY_VERSION, evidence } as const;
   const { utteranceShape: shape, unresolvedCount } = evidence;
   // 只介入「低資訊形狀」。問句、第一人稱分享、明示換題、招呼、長句一律不動；
-  // 她剛問完問題而且前面沒有未解片段的短答＝有效短答，永遠不得被質疑（報告 §6）。
+  // 她剛問完問題而且前面沒有未解片段的短答＝有效短答，永遠不得被質疑（報告 §6）
+  // ——這條與難度無關，任何難度都不會翻轉。
   if (!isLowInformation(shape)) return { ...base, ...NO_OVERRIDE };
   if (shape === "answer_candidate" && unresolvedCount === 0) {
     return { ...base, ...NO_OVERRIDE };
@@ -349,30 +408,39 @@ export function agencyPolicyFor(evidence: AgencyEvidence): AgencyDecision {
       allowedActSetId: "repeated_token_v1",
     };
   }
-  if (unresolvedCount >= 2) {
-    return evidence.priorChallengeIssued
-      ? {
-        ...base,
-        situation: "repeated_low_coherence",
-        policyMode: "forced",
-        forcedAct: "hold_position",
-        allowedActs: ["hold_position"],
-        allowedActSetId: "hold_after_challenge_v1",
-      }
-      : {
+  if (unresolvedCount >= thresholds.lowCoherenceAt) {
+    // 真的走 detectAgencyEvidence 時，累積到 lowCoherenceAt 前一定已經先經過
+    // topicShiftAt（每個難度 topicShiftAt < lowCoherenceAt），evidence 的
+    // priorChallengeIssued 近似值這時幾乎必定已經是 true——所以「還沒質疑過」
+    // 的 bounded 分支在 standard 模式結構上很少會走到，只有 assisted 模式
+    // 未來接上真實 lastAgencyAct 持久化、或直接手動組 evidence 時才會經過。
+    // forceEndLoopBeforeChallenge（挑戰／game）因此要獨立於 priorChallengeIssued
+    // 判斷，不然「2 則未解就收掉」在真實流量下永遠選不到。
+    if (!evidence.priorChallengeIssued && !thresholds.forceEndLoopBeforeChallenge) {
+      return {
         ...base,
         situation: "repeated_low_coherence",
         policyMode: "bounded",
         forcedAct: null,
-        allowedActs: [
-          "challenge_relevance",
-          "return_to_topic",
-          "hold_position",
-        ],
+        allowedActs: ["challenge_relevance", "return_to_topic", "hold_position"],
         allowedActSetId: "low_coherence_v1",
       };
+    }
+    const forcedAct: AgencyAct = thresholds.forceEndLoopBeforeChallenge
+      ? "end_low_value_loop"
+      : "hold_position";
+    return {
+      ...base,
+      situation: "repeated_low_coherence",
+      policyMode: "forced",
+      forcedAct,
+      allowedActs: [forcedAct],
+      allowedActSetId: forcedAct === "hold_position"
+        ? "hold_after_challenge_v1"
+        : "repeated_token_v1",
+    };
   }
-  if (unresolvedCount === 1 || shape === "answer_candidate") {
+  if (unresolvedCount >= thresholds.topicShiftAt || shape === "answer_candidate") {
     // 前一題還沒解決，或她剛問的問題沒被回答：不供應新解讀，但也不強制質疑。
     return {
       ...base,
@@ -383,25 +451,22 @@ export function agencyPolicyFor(evidence: AgencyEvidence): AgencyDecision {
       allowedActSetId: "topic_shift_v1",
     };
   }
-  // 第一個低資訊片段（unresolvedCount＝0）：前面已經有真實內容可對照時，給一次
-  // 善意的合理懷疑，當成有效短答，不介入——跟「AI 剛問完問題」的 answer_candidate
-  // 同等級寬容（Codex P1：A07／A09 這類前文豐富的第一個片段，結構上就不該進入
-  // 質疑型 act 的候選清單；第二個片段仍模糊才會落到上面 unresolvedCount===1 的
-  // topic_shift_v1）。
+  // 還沒到「指出跳題」的門檻（依難度）：跟第一個片段一樣寬容——前面已經有真實
+  // 內容可對照時，給一次善意的合理懷疑，當成有效短答，不介入（Codex P1：A07／
+  // A09 這類前文豐富的片段，結構上就不該進入質疑型 act 的候選清單）。
   if (evidence.precedingUserContext) {
     return { ...base, ...NO_OVERRIDE };
   }
-  // 完全沒有前文（這一場第一句就是短片段）：語意仍模糊，但**不強制**——
-  // Codex P1：長度／無前文不是高信心結構，只能當 evidence，不能直接決定
-  // forced act（「今天好熱喔」這種看得懂的短句開場也會落到這條，不該被逼問）。
-  // 改成 bounded，acknowledge／ask_intent 兩個候選都給，由看得到全文的生成
-  // 模型自己判斷這句到底看不看得懂。
+  // 完全沒有前文：語意仍模糊，但**不強制**——Codex P1：長度／無前文不是高
+  // 信心結構，不能直接決定 forced act（「今天好熱喔」這種看得懂的短句開場
+  // 也會落到這條，不該被逼問）。候選 act 依難度給（易：接住／問都給；一般：
+  // 只給問；挑戰：問或直接質疑），由看得到全文的生成模型自己判斷。
   return {
     ...base,
     situation: "ambiguous_fragment",
     policyMode: "bounded",
     forcedAct: null,
-    allowedActs: ["acknowledge", "ask_intent"],
+    allowedActs: thresholds.firstFragmentActs,
     allowedActSetId: "fragment_no_context_v1",
   };
 }
