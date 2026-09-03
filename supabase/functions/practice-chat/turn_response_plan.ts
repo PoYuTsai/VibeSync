@@ -28,6 +28,7 @@ import {
   type ResponseSituation,
 } from "./reply_style.ts";
 import {
+  AGENCY_ACTS,
   type AgencyApplication,
   type AgencyMode,
   agencyPolicyFor,
@@ -609,6 +610,33 @@ export function isForcedAskIntent(agency: AgencyApplication | null): boolean {
 const FORCED_ASK_INTENT_SHAPE = "只問，不猜、不接話題：回 1 則，就一個問句。";
 
 /**
+ * Phase 2.6：`asked_with_guess` 的第二刀。
+ *
+ * Phase 2.5 只有 forced `ask_intent` 那一輪換了回覆形狀（1 則、只有問句），
+ * 而 2026-09-06 的 policy 路徑拆解（`tools/practice-agency-eval/policy_breakdown.ts`）
+ * 顯示夾帶猜測的**主要來源根本不是那條**：bounded 18.1%（98/541，其中
+ * `low_coherence_v1` 21.9%、`topic_shift_v1` 16.2%）＞ forced ask_intent
+ * 15.0%（18/120）＞ no_override 1.3%（11/830）。bounded 那幾條的文案層早就
+ * 寫了「同一則裡不要替他補猜測」，黑箱量不到效果——壓得住的是形狀，不是字。
+ *
+ * 所以把同一把結構刀延伸到「這一輪的候選清單裡沒有『接住』」的每一種情形：
+ * 候選 act 全部是 agency act（ask_intent／challenge_relevance／
+ * return_to_topic／hold_position／end_low_value_loop）就算。反過來說，只要
+ * 清單裡有 `acknowledge`（easy 的第一個片段、P1-c 的
+ * `answer_candidate_with_debt_v1`），順著聊本來就是合法選項，形狀不動。
+ */
+export function isAgencyClarifyOnlyTurn(
+  agency: AgencyApplication | null,
+): boolean {
+  const acts = agency?.applied ? agency.decision.allowedActs : [];
+  return acts.length > 0 &&
+    acts.every((a) => (AGENCY_ACTS as readonly PlanAct[]).includes(a));
+}
+
+const AGENCY_CLARIFY_ONLY_SHAPE =
+  "回 1 則，就做這一件事：不替他補你猜的意思，也不要順著他丟的詞講你自己的事。";
+
+/**
  * standard 模式的跨輪立場（Codex round-2 P1-2）：沒有持久化的 lastAgencyAct，
  * 但「她上一則在問問題、玩家沒回答就丟別的」是逐字稿上看得見的結構事實，
  * 用它取代原本那個 `unresolved >= 2` 的假旗標。
@@ -664,6 +692,7 @@ export function renderTurnPlan(
     (agencyApplied &&
       (agency?.decision.allowedActs.some(isClarifyingAct) ?? false));
   const forcedAsk = isForcedAskIntent(agency ?? null);
+  const clarifyOnly = isAgencyClarifyOnlyTurn(agency ?? null);
   const question = plan.questionBudget === 1 || forcedAsk
     ? "最多問一句。"
     : clarifyingAllowed
@@ -679,6 +708,8 @@ export function renderTurnPlan(
   // bubbleCount／disclosure 讓路——這一輪本來就不該有自我揭露。
   const shapeLine = forcedAsk
     ? FORCED_ASK_INTENT_SHAPE
+    : clarifyOnly
+    ? AGENCY_CLARIFY_ONLY_SHAPE
     : `回 ${plan.bubbleCount} 則，一則講一件事。${question}${
       disclosure ? disclosure + "。" : ""
     }`;

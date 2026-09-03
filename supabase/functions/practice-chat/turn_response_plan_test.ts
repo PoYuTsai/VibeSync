@@ -854,11 +854,13 @@ Deno.test("問題預算豁免：澄清型 act 在預算 0 時仍可問，查戶�
   // 形狀行本身就把則數與問題預算講完了，不再另外印 style 的則數／預算行。
   assert(!rendered.includes("一則講一件事"), rendered);
 
-  // 收尾（挑戰難度低連貫）沒有澄清型 act＝仍然是原本的「這輪不反問」。
+  // Phase 2.6：候選清單裡沒有「接住」的每一輪（收尾／維持立場／指出跳題）
+  // 也吃同一把結構刀——回 1 則、不猜、不接他丟的詞；形狀行取代則數／預算行。
   const held = agencyPlan(JOYCE_SCREENSHOT, "challenge", "practice_girl_026");
-  assert(
-    renderTurnPlan(held.plan, style, held.agency).includes("這輪不反問。"),
-  );
+  const heldRendered = renderTurnPlan(held.plan, style, held.agency);
+  assert(heldRendered.includes("回 1 則，就做這一件事"), heldRendered);
+  assert(!heldRendered.includes("一則講一件事"), heldRendered);
+  assert(!heldRendered.includes("這輪不反問。"), heldRendered);
 
   // Codex P2：既有 planner 判成 clarify（不經過 agency）時，問題預算就算被
   // 別的規則壓回 0，也不能印出跟 primaryAct 自相矛盾的「這輪不反問」。
@@ -904,4 +906,47 @@ Deno.test("renderTurnPlan：旗標關與 agency=null 的輸出逐字相同（gol
       );
     }
   }
+});
+
+Deno.test("Phase 2.6：候選清單有「接住」時形狀不動，全是 agency act 才套 clarify-only 形狀", () => {
+  const style = STYLE_BY_PROFILE_ID["practice_girl_001"];
+  // easy 的第一個無前文片段＝{acknowledge, ask_intent}，順著聊是合法選項，
+  // 所以形狀維持 style 的則數／問題預算行。
+  const easyEvidence = standard({ difficulty: "easy" });
+  const easyAgency = agencyFor([u("韓國")], easyEvidence, "on");
+  assert(easyAgency?.decision.allowedActs.includes("acknowledge"));
+  const easyRendered = renderTurnPlan(
+    planTurnResponse({
+      turns: [u("韓國")],
+      style,
+      evidence: easyEvidence,
+      seedKey: "t",
+      agency: easyAgency,
+    }),
+    style,
+    easyAgency,
+  );
+  assert(easyRendered.includes("一則講一件事"), easyRendered);
+  assert(!easyRendered.includes("回 1 則，就做這一件事"), easyRendered);
+
+  // 連續未解（low_coherence_v1＝challenge/return/hold，一個接住都沒有）
+  // → 套 clarify-only 形狀。這是 2026-09-06 policy 拆解裡 asked_with_guess
+  // 最高的一格（21.9%）。
+  const lowTurns = [u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")];
+  const lowEvidence = standard({ difficulty: "normal" });
+  const lowAgency = agencyFor(lowTurns, lowEvidence, "on");
+  assertEquals(lowAgency?.decision.allowedActSetId, "low_coherence_v1");
+  const lowRendered = renderTurnPlan(
+    planTurnResponse({
+      turns: lowTurns,
+      style,
+      evidence: lowEvidence,
+      seedKey: "t",
+      agency: lowAgency,
+    }),
+    style,
+    lowAgency,
+  );
+  assert(lowRendered.includes("回 1 則，就做這一件事"), lowRendered);
+  assert(!lowRendered.includes("一則講一件事"), lowRendered);
 });
