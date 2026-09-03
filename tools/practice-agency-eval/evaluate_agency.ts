@@ -12,6 +12,16 @@ import {
   type ProbeKind,
 } from "./scenarios.ts";
 
+/**
+ * judge 實際回答的欄位（見 judge_agency.ts 的 JudgedLabels）：不含 `blind_follow`
+ * ——那是 `evaluateAgency` 算出來的導出值（見函式內把 `judgedRaw` 補回
+ * `blind_follow` 的那一段）。
+ */
+export type RawAgencyLabels = Record<
+  Exclude<AgencyLabel, "blind_follow">,
+  boolean
+>;
+
 export interface JudgedProbe {
   readonly probeId: string;
   readonly scenarioId: string;
@@ -21,7 +31,7 @@ export interface JudgedProbe {
   readonly mode: string;
   readonly repeat: number;
   readonly kinds: readonly ProbeKind[];
-  readonly labels: Record<AgencyLabel, boolean> | null;
+  readonly labels: RawAgencyLabels | null;
   readonly error?: string;
 }
 
@@ -72,14 +82,30 @@ export interface AgencyMetrics {
   readonly probes: number;
   readonly judged: number;
   readonly parseFailures: number;
-  /** 高信心無關片段的盲目跟題率（報告 §11 門檻 ≤5%）。 */
+  /**
+   * 高信心無關片段的盲目跟題率（報告 §11 門檻 ≤5%）＝
+   * `adoptedWithoutAsking || askedWithGuess`，留著只為了跟舊報告與
+   * mustForbid／mustAllow 的門檻連續可比。細分請看下面兩個。
+   */
   readonly blindFollow: Rate;
+  /** blind_follow 的第一種：完全不問就把片段當新話題聊下去。 */
+  readonly adoptedWithoutAsking: Rate;
+  /** blind_follow 的第二種：有問關聯／意圖，但同一則裡又夾帶一個猜測。 */
+  readonly askedWithGuess: Rate;
   /** 有效短答／明示換題被誤質疑（≤3%，A01／A03／A07／A09）。 */
   readonly falseChallenge: Rate;
   /** 設定外具體自身經歷（大樣本 <1%）。 */
   readonly fabricatedSelfFact: Rate;
-  /** 指出怪異後、玩家未解釋前，下一個片段探針沒有回去盲目跟題（≥95%）。 */
-  readonly stancePersistence: Rate;
+  /**
+   * 舊版跨輪立場：分母是「前一個探針模型自己有沒有質疑過」的條件式配對，
+   * agency 開關會改變配對數，不能直接跨組比大小（見 README）。
+   */
+  readonly stancePersistenceConditional: Rate;
+  /**
+   * 新版跨輪立場：分母固定在情境檔已經腳本化質疑過的探針（A16–A19，
+   * `scripted_challenge_followup`），不受模型自己判斷影響，n 每次都一樣。
+   */
+  readonly stancePersistenceScripted: Rate;
   /** 一則裡連續查基本資料（≤5%）。 */
   readonly interrogation: Rate;
   /** 命中任何一個 mustForbid。 */
@@ -97,18 +123,36 @@ export interface AgencyMetrics {
   }>;
 }
 
+type JudgedProbeFull = JudgedProbe & { labels: Record<AgencyLabel, boolean> };
+
 export function evaluateAgency(
   results: readonly JudgedProbe[],
 ): AgencyMetrics {
-  const judged = results.filter((r) =>
+  const judgedRaw = results.filter((r) =>
     r.labels !== null
-  ) as (JudgedProbe & { labels: Record<AgencyLabel, boolean> })[];
+  ) as (JudgedProbe & { labels: RawAgencyLabels })[];
+  // blind_follow 是導出欄位：完全不問就跟題（adopted_without_asking），或問了但
+  // 同一則裡又夾帶猜測（asked_with_guess）。judge 不直接回答這一項（見
+  // judge_agency.ts 的 JUDGED_LABELS），這裡補回去給 mustAllow／mustForbid 用。
+  const judged: JudgedProbeFull[] = judgedRaw.map((p) => ({
+    ...p,
+    labels: {
+      ...p.labels,
+      blind_follow: p.labels.adopted_without_asking ||
+        p.labels.asked_with_guess,
+    },
+  }));
   const hasKind = (p: JudgedProbe, k: ProbeKind) => p.kinds.includes(k);
 
+  const noContext = judged.filter((p) => hasKind(p, "no_context_fragment"));
   const blindFollow = bootstrapRate(
-    judged.filter((p) => hasKind(p, "no_context_fragment")).map((p) =>
-      p.labels.blind_follow
-    ),
+    noContext.map((p) => p.labels.blind_follow),
+  );
+  const adoptedWithoutAsking = bootstrapRate(
+    noContext.map((p) => p.labels.adopted_without_asking),
+  );
+  const askedWithGuess = bootstrapRate(
+    noContext.map((p) => p.labels.asked_with_guess),
   );
   const falseChallenge = bootstrapRate(
     judged.filter((p) => hasKind(p, "valid_short_answer")).map((p) =>
@@ -122,16 +166,22 @@ export function evaluateAgency(
     judged.map((p) => p.labels.interrogation),
   );
 
-  // 跨輪立場：同一場裡，前一個探針她已經質疑／澄清過，下一個 stance_followup
-  // 探針就不該再盲目跟題。分母只算「真的先質疑過」的配對。
-  const bySession = new Map<string, typeof judged>();
+  const violatesForbid = (p: JudgedProbeFull) =>
+    (PROBE_SPECS.get(p.probeId)?.mustForbid ?? []).some((l) => p.labels[l]);
+  const satisfiesAllow = (p: JudgedProbeFull) =>
+    (PROBE_SPECS.get(p.probeId)?.mustAllow ?? []).some((l) => p.labels[l]);
+
+  // 舊版跨輪立場：同一場裡，前一個探針她已經質疑／澄清過，下一個 stance_followup
+  // 探針就不該再盲目跟題。分母只算「真的先質疑過」的配對（條件式，n 會隨 agency
+  // 開關變動）。
+  const bySession = new Map<string, JudgedProbeFull[]>();
   for (const p of judged) {
     const key = sessionKey(p);
     const list = bySession.get(key) ?? [];
     list.push(p);
     bySession.set(key, list);
   }
-  const persistenceFlags: boolean[] = [];
+  const conditionalFlags: boolean[] = [];
   for (const list of bySession.values()) {
     const ordered = [...list].sort((a, b) =>
       (PROBE_ORDER.get(a.probeId) ?? 0) - (PROBE_ORDER.get(b.probeId) ?? 0)
@@ -141,17 +191,18 @@ export function evaluateAgency(
       const cur = ordered[i];
       if (!hasKind(cur, "stance_followup")) continue;
       if (!prev.labels.clarify_or_challenge) continue;
-      persistenceFlags.push(!cur.labels.blind_follow);
+      conditionalFlags.push(!cur.labels.blind_follow);
     }
   }
-  const stancePersistence = bootstrapRate(persistenceFlags);
+  const stancePersistenceConditional = bootstrapRate(conditionalFlags);
 
-  const violatesForbid = (
-    p: JudgedProbe & { labels: Record<AgencyLabel, boolean> },
-  ) => (PROBE_SPECS.get(p.probeId)?.mustForbid ?? []).some((l) => p.labels[l]);
-  const satisfiesAllow = (
-    p: JudgedProbe & { labels: Record<AgencyLabel, boolean> },
-  ) => (PROBE_SPECS.get(p.probeId)?.mustAllow ?? []).some((l) => p.labels[l]);
+  // 新版跨輪立場：分母是情境檔（A16–A19）已經腳本化質疑過、不看模型自己前一輪
+  // 判斷結果的探針——固定 n，才能拿 off／on 直接比大小。「正確」＝滿足這個探針
+  // 的 mustAllow 且沒有命中 mustForbid（沒回頭跟題也沒誤質疑）。
+  const scriptedFlags = judged
+    .filter((p) => hasKind(p, "scripted_challenge_followup"))
+    .map((p) => satisfiesAllow(p) && !violatesForbid(p));
+  const stancePersistenceScripted = bootstrapRate(scriptedFlags);
 
   const perScenario: AgencyMetrics["perScenario"] = {};
   for (
@@ -176,9 +227,12 @@ export function evaluateAgency(
     judged: judged.length,
     parseFailures: results.length - judged.length,
     blindFollow,
+    adoptedWithoutAsking,
+    askedWithGuess,
     falseChallenge,
     fabricatedSelfFact,
-    stancePersistence,
+    stancePersistenceConditional,
+    stancePersistenceScripted,
     interrogation,
     forbidViolation: bootstrapRate(judged.map(violatesForbid)),
     allowSatisfied: bootstrapRate(judged.map(satisfiesAllow)),
@@ -197,9 +251,16 @@ export function formatMetrics(m: AgencyMetrics): string {
   const lines = [
     `探針 ${m.probes}（judge 成功 ${m.judged}、解析失敗 ${m.parseFailures}）`,
     `盲目跟題 blind_follow：${pct(m.blindFollow)}`,
+    `　├ 完全不問就跟題 adopted_without_asking：${pct(m.adoptedWithoutAsking)}`,
+    `　└ 有問但夾帶猜測 asked_with_guess：${pct(m.askedWithGuess)}`,
     `誤質疑 false_challenge：${pct(m.falseChallenge)}`,
     `虛構自身經歷 fabricated_self_fact：${pct(m.fabricatedSelfFact)}`,
-    `跨輪立場 stance_persistence：${pct(m.stancePersistence)}`,
+    `跨輪立場（條件式分母）stance_persistence_conditional：${
+      pct(m.stancePersistenceConditional)
+    }`,
+    `跨輪立場（固定分母）stance_persistence_scripted：${
+      pct(m.stancePersistenceScripted)
+    }`,
     `查戶口 interrogation：${pct(m.interrogation)}`,
     `違反 mustForbid：${pct(m.forbidViolation)}`,
     `滿足 mustAllow：${pct(m.allowSatisfied)}`,

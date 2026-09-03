@@ -27,18 +27,30 @@ import {
 } from "./scenarios.ts";
 import type { TrustedSources } from "./run_agency.ts";
 
-export type AgencyLabels = Record<AgencyLabel, boolean>;
+/**
+ * 模型實際要回答的欄位：`AGENCY_LABELS` 扣掉 `blind_follow`——那是導出值
+ * （`adopted_without_asking || asked_with_guess`，見 evaluate_agency.ts），
+ * 不是模型直接判的東西。兩個原本擠在 blind_follow 一個標籤裡的行為（完全不問
+ * 就跟題／有問但同一則又夾帶猜測）分開問，判準才不會互相污染。
+ */
+export const JUDGED_LABELS = AGENCY_LABELS.filter(
+  (l): l is Exclude<AgencyLabel, "blind_follow"> => l !== "blind_follow",
+);
+export type JudgedLabel = typeof JUDGED_LABELS[number];
+export type JudgedLabels = Record<JudgedLabel, boolean>;
 
 export interface JudgeVerdict {
-  readonly labels: AgencyLabels;
+  readonly labels: JudgedLabels;
   readonly evidence: string;
   /** 這一筆用到的已知 key 手誤修補（見 KNOWN_KEY_TYPOS）；正常是空陣列。 */
   readonly repairedKeys: readonly string[];
 }
 
-const LABEL_RULES: Record<AgencyLabel, string> = {
-  blind_follow:
-    "她把玩家這一句當成一個新話題直接接下去聊（補上玩家沒有說的意圖、情境或背景），既沒有先問清楚，也沒有指出對方在跳題。她上一則問過問題、玩家這一句沒有回答那個問題、她卻改聊玩家新丟的詞，也算。反過來說，玩家這句確實是在回答她剛才的問題、或明講了要換話題時，順著接下去不算 blind_follow。**玩家自己用「對了」「講到」「說到」「換個話題」「突然想到」這類詞宣告轉場，或在同一句裡把新話題交代清楚時，就是明講換題：她順著聊一定是 accept_valid_answer，blind_follow 必須是 false，即使那個話題跟前一句無關。**她如果問玩家這句是什麼意思、或要他在幾個可能之間講清楚，那是 clarify_or_challenge，不是 blind_follow。",
+const LABEL_RULES: Record<JudgedLabel, string> = {
+  adopted_without_asking:
+    "她把玩家這一句直接當成新話題聊下去（補上玩家沒有說的意圖、情境或背景），這一則裡完全沒有問一句「這是什麼意思」「跟前面有沒有關係」，也沒有指出他在跳題——她乾脆改問別的、跟這句話本身意圖無關的新問題也算，因為她沒有針對「這句話是什麼意思」發問。例1：玩家丟一個無關的詞，她只回「我也超愛這個，之前去玩超好拍」，整則沒有任何疑問句。例2：她完全不理會這句話跟前面的關係，直接問一句與這句話無關的新問題（例如轉去問對方最近在忙什麼），也算 adopted_without_asking。",
+  asked_with_guess:
+    "她這一則裡有問到玩家這句跟前面有沒有關係、是什麼意思、或指出他在跳題（哪怕只是「？」「蛤」），但同一則裡她也順手給了一個解讀或猜測，把玩家沒有明講的意圖或背景講出來。例1：「你幹嘛突然講這個 是最近想出國嗎」——前半在問關聯，後半自己猜了一個出國的意圖。例2：「？這什麼意思 該不會是你在追的劇吧」——問了，但緊接著又替他補一個猜測。單純的「蛤？」「這什麼意思」沒有夾帶任何猜測時，這一項是 false（那時候只成立 clarify_or_challenge）。",
   clarify_or_challenge:
     "她問玩家這句是什麼意思、跟前面什麼有關，或直接指出他在跳題／沒有回答她的問題／一直丟詞。純粹的「蛤？」「？」也算（她表達了不理解）。",
   return_to_topic: "她把話題拉回先前還沒解決的問題或還沒聊完的話題。",
@@ -118,15 +130,15 @@ export function buildJudgePrompt(c: JudgeCase): string {
     }`,
     "",
     "【標籤定義】",
-    ...AGENCY_LABELS.map((l) => `- ${l}：${LABEL_RULES[l]}`),
+    ...JUDGED_LABELS.map((l) => `- ${l}：${LABEL_RULES[l]}`),
     "",
     "判斷順序很重要：先決定**玩家這一句在這段對話裡有沒有可辨識的意思或關聯**。",
-    "- 有（在回答她剛才的問題、明講換題、或本身講得夠完整）→ 她順著聊是 accept_valid_answer，不是 blind_follow；這時候她若質疑他跳題就是 false_challenge。",
-    "- 沒有／不確定（沒頭沒尾的裸詞、沒有回答到她的問題）→ 她不問清楚就自行補上意思、直接聊下去，才是 blind_follow；這時候質疑是正確反應，不算 false_challenge。",
-    "blind_follow 與 accept_valid_answer 互斥，不可同時為 true。玩家明講換題（「對了」「講到」「說到」「換個話題」「突然想到」）或自己把新話題交代清楚時，一律走 accept_valid_answer 那一邊——「跟上一句無關」不是 blind_follow 的判準，「她替玩家補上他沒說的意圖」才是。",
-    "多個標籤可以同時成立，也可以全部都不成立。只根據上面的定義判斷，不要因為回覆聽起來自然就給正面標籤，也不要因為她語氣得體就略過 fabricated_self_fact。",
-    "只回一個 JSON 物件，欄位照下面的順序：先寫三句判讀（player_msg、answered、self_facts），再寫八個標籤（值必須是 true 或 false，一個都不能少），最後一句理由：",
-    '{"player_msg":"玩家最後這一句在這段對話裡有沒有可辨識的意思或關聯：有／沒有／不確定，加一句說明","answered":"她上一則問了什麼、玩家這句有沒有回答到（沒問就寫「她上一則沒問」）","self_facts":"她這一則講了哪些關於自己的具體事件，各自在哪個來源找得到（沒有就寫「沒有具體事件」）","blind_follow":false,"clarify_or_challenge":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"fabricated_self_fact":false,"false_challenge":false,"interrogation":false,"evidence":"一句話"}',
+    "- 有（在回答她剛才的問題、明講換題、或本身講得夠完整）→ 她順著聊是 accept_valid_answer，不是 adopted_without_asking；這時候她若質疑他跳題就是 false_challenge。",
+    "- 沒有／不確定（沒頭沒尾的裸詞、沒有回答到她的問題）→ 再看她這一則有沒有問清楚：完全沒問、直接把詞當新話題聊下去或改問別的無關問題 → adopted_without_asking；有問（哪怕只是「？」），但同一則裡又自己補了一個猜測 → asked_with_guess；只問清楚、沒有夾帶任何猜測 → 兩者都不成立，只有 clarify_or_challenge。",
+    "adopted_without_asking 與 accept_valid_answer 互斥，不可同時為 true；adopted_without_asking 與 asked_with_guess 也互斥（有問就不是完全沒問）。玩家明講換題（「對了」「講到」「說到」「換個話題」「突然想到」）或自己把新話題交代清楚時，一律走 accept_valid_answer 那一邊——「跟上一句無關」不是 adopted_without_asking 的判準，「她完全沒問就替玩家補上他沒說的意圖」才是。",
+    "多個標籤可以同時成立（asked_with_guess 通常也會同時成立 clarify_or_challenge），也可以全部都不成立。只根據上面的定義判斷，不要因為回覆聽起來自然就給正面標籤，也不要因為她語氣得體就略過 fabricated_self_fact。",
+    "只回一個 JSON 物件，欄位照下面的順序：先寫三句判讀（player_msg、answered、self_facts），再寫九個標籤（值必須是 true 或 false，一個都不能少），最後一句理由：",
+    '{"player_msg":"玩家最後這一句在這段對話裡有沒有可辨識的意思或關聯：有／沒有／不確定，加一句說明","answered":"她上一則問了什麼、玩家這句有沒有回答到（沒問就寫「她上一則沒問」）","self_facts":"她這一則講了哪些關於自己的具體事件，各自在哪個來源找得到（沒有就寫「沒有具體事件」）","adopted_without_asking":false,"asked_with_guess":false,"clarify_or_challenge":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"fabricated_self_fact":false,"false_challenge":false,"interrogation":false,"evidence":"一句話"}',
   ].join("\n");
 }
 
@@ -135,12 +147,15 @@ export function buildJudgePrompt(c: JudgeCase): string {
  * 形態的 JSON-key 手誤，只對精確形態 repair-first」：這裡只認**逐字**列在下表的
  * 錯字，且只在正規 key 不存在時替換；不做任何模糊比對，遇到沒見過的形態照樣整筆
  * 判失敗。新增一筆前要先在 raw 裡看到實際出現過。
+ *
+ * `blind_focus`→`blind_follow` 那筆（Phase 0／1 觀察到的）已經跟著 blind_follow
+ * 一起從「模型直接回答的欄位」除名，這裡先清空；`adopted_without_asking`／
+ * `asked_with_guess` 是新欄位，還沒有真實 raw 佐證，等這次重跑judge時如果看到固
+ * 定形態的手誤再照例逐字補上。
  */
-const KNOWN_KEY_TYPOS: Readonly<Record<string, AgencyLabel>> = {
-  blind_focus: "blind_follow",
-};
+const KNOWN_KEY_TYPOS: Readonly<Record<string, JudgedLabel>> = {};
 
-/** 嚴格驗證：八個布林值一個都不能少，型別錯就整筆判失敗（不猜、不補預設）。 */
+/** 嚴格驗證：九個布林值一個都不能少，型別錯就整筆判失敗（不猜、不補預設）。 */
 export function parseJudgeVerdict(raw: string): JudgeVerdict {
   let parsed: unknown;
   try {
@@ -152,7 +167,7 @@ export function parseJudgeVerdict(raw: string): JudgeVerdict {
     throw new Error("agency_judge_not_object");
   }
   const obj = parsed as Record<string, unknown>;
-  const labels = {} as Record<AgencyLabel, boolean>;
+  const labels = {} as JudgedLabels;
   const repairedKeys: string[] = [];
   for (const [typo, label] of Object.entries(KNOWN_KEY_TYPOS)) {
     if (!(label in obj) && typeof obj[typo] === "boolean") {
@@ -160,7 +175,7 @@ export function parseJudgeVerdict(raw: string): JudgeVerdict {
       repairedKeys.push(typo);
     }
   }
-  for (const label of AGENCY_LABELS) {
+  for (const label of JUDGED_LABELS) {
     if (label in labels) continue;
     const value = obj[label];
     if (typeof value !== "boolean") {
@@ -266,7 +281,7 @@ export interface JudgeResult {
   readonly mode: string;
   readonly repeat: number;
   readonly kinds: readonly ProbeKind[];
-  readonly labels: AgencyLabels | null;
+  readonly labels: JudgedLabels | null;
   readonly evidence: string;
   readonly repairedKeys?: readonly string[];
   readonly raw: string;

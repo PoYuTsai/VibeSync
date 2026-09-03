@@ -8,17 +8,18 @@ import {
   bootstrapRate,
   evaluateAgency,
   type JudgedProbe,
+  type RawAgencyLabels,
 } from "./evaluate_agency.ts";
 import {
-  AGENCY_LABELS,
   AGENCY_PROBES,
   AGENCY_SCENARIOS,
   type AgencyLabel,
 } from "./scenarios.ts";
+import { JUDGED_LABELS } from "./judge_agency.ts";
 
 const NONE = Object.fromEntries(
-  AGENCY_LABELS.map((l) => [l, false]),
-) as Record<AgencyLabel, boolean>;
+  JUDGED_LABELS.map((l) => [l, false]),
+) as RawAgencyLabels;
 
 const probe = (
   over: Partial<JudgedProbe> & { probeId: string },
@@ -68,13 +69,14 @@ Deno.test("情境檔自洽：探針 id 唯一、mustAllow／mustForbid 不重疊
 
 Deno.test("分母只吃該分類的探針：blind_follow 不算有效短答，false_challenge 不算裸片段", () => {
   const m = evaluateAgency([
-    // 裸片段 4 筆，2 筆盲目跟題。
-    withLabels("A02.p1", "blind_follow"),
-    withLabels("A08.p1", "blind_follow"),
+    // 裸片段 4 筆，2 筆盲目跟題（都走 adopted_without_asking 這條）。
+    withLabels("A02.p1", "adopted_without_asking"),
+    withLabels("A08.p1", "adopted_without_asking"),
     withLabels("A04.p1", "clarify_or_challenge"),
     withLabels("A06.p2", "clarify_or_challenge"),
-    // 有效短答 4 筆，1 筆誤質疑；就算它同時被標 blind_follow 也不進裸片段分母。
-    withLabels("A01.p1", "false_challenge", "blind_follow"),
+    // 有效短答 4 筆，1 筆誤質疑；就算它同時被標 adopted_without_asking（→衍生
+    // blind_follow）也不進裸片段分母。
+    withLabels("A01.p1", "false_challenge", "adopted_without_asking"),
     withLabels("A03.p1", "accept_valid_answer"),
     withLabels("A07.p1", "accept_valid_answer"),
     withLabels("A09.p1", "accept_valid_answer"),
@@ -82,6 +84,10 @@ Deno.test("分母只吃該分類的探針：blind_follow 不算有效短答，fa
   assertEquals(m.blindFollow.n, 4);
   assertEquals(m.blindFollow.hits, 2);
   assertAlmostEquals(m.blindFollow.rate, 0.5);
+  assertEquals(m.adoptedWithoutAsking.n, 4);
+  assertEquals(m.adoptedWithoutAsking.hits, 2);
+  assertEquals(m.askedWithGuess.n, 4);
+  assertEquals(m.askedWithGuess.hits, 0);
   assertEquals(m.falseChallenge.n, 4);
   assertEquals(m.falseChallenge.hits, 1);
   assertAlmostEquals(m.falseChallenge.rate, 0.25);
@@ -90,7 +96,19 @@ Deno.test("分母只吃該分類的探針：blind_follow 不算有效短答，fa
   assertEquals(m.interrogation.n, 8);
 });
 
-Deno.test("跨輪立場：只算「前一個探針真的質疑過」的配對，且要同一場", () => {
+Deno.test("blind_follow 是導出值：adopted_without_asking 與 asked_with_guess 任一個成立就算", () => {
+  const m = evaluateAgency([
+    withLabels("A02.p1", "adopted_without_asking"),
+    withLabels("A08.p1", "asked_with_guess"),
+    withLabels("A04.p1"), // 兩者都沒有 → blind_follow 也是 false。
+  ]);
+  assertEquals(m.blindFollow.n, 3);
+  assertEquals(m.blindFollow.hits, 2);
+  assertEquals(m.adoptedWithoutAsking.hits, 1);
+  assertEquals(m.askedWithGuess.hits, 1);
+});
+
+Deno.test("跨輪立場（條件式）：只算「前一個探針真的質疑過」的配對，且要同一場", () => {
   const session = (repeat: number, prev: AgencyLabel, next: AgencyLabel) => [
     { ...withLabels("A14.p2", prev), repeat },
     { ...withLabels("A14.p3", next), repeat },
@@ -99,20 +117,36 @@ Deno.test("跨輪立場：只算「前一個探針真的質疑過」的配對，
     // 質疑過 → 下一輪仍不盲從：成功。
     ...session(1, "clarify_or_challenge", "hold_position"),
     // 質疑過 → 下一輪又跟題：失敗。
-    ...session(2, "clarify_or_challenge", "blind_follow"),
+    ...session(2, "clarify_or_challenge", "adopted_without_asking"),
     // 沒質疑過：整組不進分母。
-    ...session(3, "blind_follow", "blind_follow"),
+    ...session(3, "adopted_without_asking", "adopted_without_asking"),
   ]);
-  assertEquals(m.stancePersistence.n, 2);
-  assertEquals(m.stancePersistence.hits, 1);
+  assertEquals(m.stancePersistenceConditional.n, 2);
+  assertEquals(m.stancePersistenceConditional.hits, 1);
 
   // 不同場次（repeat 不同）不會互相配對。
   const crossed = evaluateAgency([
     { ...withLabels("A14.p2", "clarify_or_challenge"), repeat: 1 },
-    { ...withLabels("A14.p3", "blind_follow"), repeat: 2 },
+    { ...withLabels("A14.p3", "adopted_without_asking"), repeat: 2 },
   ]);
-  assertEquals(crossed.stancePersistence.n, 0);
-  assertEquals(crossed.stancePersistence.ci95, null);
+  assertEquals(crossed.stancePersistenceConditional.n, 0);
+  assertEquals(crossed.stancePersistenceConditional.ci95, null);
+});
+
+Deno.test("跨輪立場（腳本化）：分母固定在 A16–A19，不看前一輪模型自己判過什麼", () => {
+  // A16／A17：正確答案是 hold_position（且不能 blind_follow）。
+  // A18／A19：正確答案是 accept_valid_answer（且不能 false_challenge）。
+  const m = evaluateAgency([
+    withLabels("A16.p1", "hold_position"), // 對：滿足 mustAllow，沒中 mustForbid。
+    withLabels("A17.p1", "adopted_without_asking"), // 錯：回頭盲從。
+    withLabels("A18.p1", "accept_valid_answer"), // 對。
+    withLabels("A19.p1", "clarify_or_challenge", "false_challenge"), // 錯：誤質疑。
+    // 一般探針不進這個分母，就算標籤剛好也符合 mustAllow。
+    withLabels("A01.p1", "accept_valid_answer"),
+  ]);
+  assertEquals(m.stancePersistenceScripted.n, 4);
+  assertEquals(m.stancePersistenceScripted.hits, 2);
+  assertAlmostEquals(m.stancePersistenceScripted.rate, 0.5);
 });
 
 Deno.test("mustForbid／mustAllow 對回情境檔；解析失敗不進任何分母", () => {
