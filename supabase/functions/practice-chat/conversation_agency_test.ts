@@ -15,6 +15,7 @@ import {
   parseConversationAgencyState,
   utteranceShapeOf,
 } from "./conversation_agency.ts";
+import { buildRelationshipThreadRpcParams } from "./relationship_thread.ts";
 import type { PracticeTurn } from "./validate.ts";
 
 const u = (text: string): PracticeTurn => ({ role: "user", text });
@@ -500,4 +501,44 @@ Deno.test("AGENCY_THRESHOLDS：三個難度都定義齊全，game 沿用 challen
   }
   assertEquals(agencyThresholdsFor("easy", true), AGENCY_THRESHOLDS.challenge);
   assertEquals(agencyThresholdsFor("normal", false), AGENCY_THRESHOLDS.normal);
+});
+
+Deno.test("Codex round-1 P1-a：旗標 off 的 recent_facts 從零重建（未知 key 掉），≠off 才保留", () => {
+  // 保留未知 key 是 agency 分支帶進來的行為改動。旗標關著時 payload 必須跟
+  // main 逐字相同——main 從零重建 recent_facts，別人寫的 key 本來就會掉。
+  const base = {
+    userId: "u",
+    visibleThreadId: "t",
+    practiceMode: "beginner" as const,
+    relationshipScore: 40,
+    inviteStage: "not_ready" as const,
+    aiTurnCount: 2,
+    existingRecentFacts: {
+      someOtherFeature: { keep: true },
+      source: "practice_chat",
+      aiTurnCount: 1,
+      inviteStage: "not_ready",
+    },
+  };
+  const facts = (
+    over: Parameters<typeof buildRelationshipThreadRpcParams>[0],
+  ): Record<string, unknown> =>
+    buildRelationshipThreadRpcParams(over).p_recent_facts as Record<
+      string,
+      unknown
+    >;
+  const mainPayload: Record<string, unknown> = {
+    source: "practice_chat",
+    aiTurnCount: 2,
+    inviteStage: "not_ready",
+  };
+  // 省略 agencyMode＝其餘呼叫端，逐字跟 main 相同。
+  assertEquals(facts(base), mainPayload);
+  assertEquals(facts({ ...base, agencyMode: "off" }), mainPayload);
+  for (const agencyMode of ["shadow", "on"] as const) {
+    assertEquals(facts({ ...base, agencyMode }), {
+      ...mainPayload,
+      someOtherFeature: { keep: true },
+    });
+  }
 });

@@ -8,6 +8,7 @@ import {
   type ReplyStyleState,
 } from "./reply_style_state.ts";
 import {
+  type AgencyMode,
   CONVERSATION_AGENCY_STATE_KEY,
   type ConversationAgencyState,
   parseConversationAgencyState,
@@ -140,10 +141,25 @@ export function buildRelationshipThreadRpcParams(opts: {
    * 這個 thread 上一次讀回來的整份 `recent_facts`（Codex round-2 P1-4）。
    * 以它為底，只覆寫下面這幾個由本檔擁有的 key；不認識的 key 原樣留著。
    * 省略／null＝新 thread，payload 與舊版逐字相同（golden）。
+   *
+   * **只有 `agencyMode !== "off"` 時才會被採用**——見下面那個欄位。
    */
   existingRecentFacts?: Record<string, unknown> | null;
+  /**
+   * conversation-agency-v1 Phase 2.6（Codex round-1 P1-a）：保留未知 key 是
+   * agency 分支帶進來的行為改動，不是既有行為。旗標 off 的 thread 必須跟
+   * main 逐字相同——main 是**從零重建** `recent_facts`，未知 key 會被丟掉。
+   * 舊版無條件 spread `existingRecentFacts`，等於旗標關著也偷偷改了 payload。
+   * 省略＝off＝從零重建（其餘呼叫端逐字不變）。
+   */
+  agencyMode?: AgencyMode;
 }) {
   const memorySummary = str(opts.memorySummary, 1000);
+  // 旗標 off（或省略）：從零重建，跟 main 逐字相同。
+  const preservedRecentFacts: Record<string, unknown> =
+    opts.agencyMode && opts.agencyMode !== "off"
+      ? opts.existingRecentFacts ?? {}
+      : {};
   return {
     p_user_id: opts.userId,
     p_visible_thread_id: opts.visibleThreadId,
@@ -160,7 +176,7 @@ export function buildRelationshipThreadRpcParams(opts: {
     p_invite_stage: opts.inviteStage,
     p_memory_summary: memorySummary,
     p_recent_facts: {
-      ...(opts.existingRecentFacts ?? {}),
+      ...preservedRecentFacts,
       source: "practice_chat",
       aiTurnCount: opts.aiTurnCount,
       inviteStage: opts.inviteStage,

@@ -4507,6 +4507,9 @@ export function createPracticeChatHandler(
             // 那一份為底，不能從零重建（不然別的功能／未來版本寫進去的 key
             // 每一輪都會被靜默清掉）。
             existingRecentFacts: relationshipThreadState?.recentFacts ?? null,
+            // Codex round-1 P1-a：保留未知 key 只在 agency 旗標 ≠ off 時生效，
+            // 旗標關著的 thread payload 必須跟 main 逐字相同（從零重建）。
+            agencyMode,
             // reply-style-v1：她這輪的 act 與「明確拒絕過」進 recent_facts。
             // 旗標關（或角色沒 mapping）＝不算新狀態，但既有狀態原樣帶回——
             // RPC 是整包覆寫 recent_facts，省略就等於「關旗標即清空」（Codex R2）。
