@@ -18,6 +18,7 @@
   },
   "longStringThresholds": [80, 100, 120],
   "simplifiedChars": "温为么说这会与体们过还个来对时样发经现实见员开关问题长张点应该让给认识业务动亲爱声",
+  "simplifiedMap": {"温": "溫"},
   "termPairs": [
     {"pattern": "信號", "preferred": "訊號"},
     {"pattern": "勾子", "preferred": "鉤子"},

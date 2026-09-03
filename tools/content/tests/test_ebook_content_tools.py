@@ -235,7 +235,7 @@ class AuditRuleTests(unittest.TestCase):
         for expected in ('見案例 D', '課本 6.1', '類型 A', '見第六節'):
             self.assertIn(expected, r11.message)
         r12 = sorted(f.field for f in findings if f.rule == 'R12')
-        self.assertEqual(r12, ['text#拒絕階梯', 'text#行為＞情緒＞字面'])
+        self.assertEqual(r12, ['text#拒絕階梯', 'text#行為>情緒>字面'])  # key 折疊：標點半形化、去空白
 
     def test_r10_r13_catalog_level_requirements(self):
         book = make_book(book_id='ebook-2-conversation', number=2, blocks=[
@@ -264,6 +264,18 @@ class AuditRuleTests(unittest.TestCase):
         self.assertIn('id 重複', messages)
         self.assertIn('交叉指涉目標章不存在', messages)
         self.assertIn('條目庫少於兩條', messages)
+
+    def test_finding_keys_survive_punctuation_normalization(self):
+        before = make_book(blocks=[{'type': 'paragraph', 'id': 'p1', 'text': '判讀順位:行為 > 情緒 > 字面。'}])
+        after = make_book(blocks=[{'type': 'paragraph', 'id': 'p1', 'text': '判讀順位：行為＞情緒＞字面。'}])
+        key_before = [f.key() for f in audit_findings(before) if f.rule == 'R12']
+        key_after = [f.key() for f in audit_findings(after) if f.rule == 'R12']
+        self.assertEqual(key_before, key_after)
+        # 舊格式（未折疊）的 baseline 讀進來也要對得上
+        legacy = {'findings': [{'rule': 'R12', 'id': 'p1', 'field': 'text#行為 > 情緒 > 字面'}]}
+        new, resolved = audit.compare_with_baseline([f for f in audit_findings(after) if f.rule == 'R12'], legacy)
+        self.assertEqual((new, resolved), ([], []))
+        self.assertEqual(audit.baseline_growth(audit.make_baseline(audit_findings(after), 'x'), legacy), [])
 
     def test_allowlist_suppresses_only_named_entries(self):
         book = make_book(blocks=[{'type': 'paragraph', 'id': 'p1', 'text': '一段,半形逗號'}])
