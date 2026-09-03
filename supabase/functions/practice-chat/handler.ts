@@ -1461,7 +1461,9 @@ async function judgeLearningState(opts: {
           protectedFallback,
           currentTemperature,
           currentFamiliarity,
-          "ambiguous",
+          // Codex round-2 P1-4：分類器沒給判斷就傳 null（不是字面
+          // "ambiguous"）——傳字面會讓 cap 內部的結構退路永遠選不到。
+          null,
           {
             repeatedExactToken: opts.agencyEvidenceRepeatedExactToken ?? false,
             unresolvedCount: opts.agencyEvidenceUnresolvedCount ?? 0,

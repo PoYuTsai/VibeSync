@@ -8903,6 +8903,54 @@ Deno.test("Codex round-1 P1-e：分類器解析失敗時 delta cap 仍要套（�
   assertEquals(on.familiarityDelta, -1);
 });
 
+Deno.test("Codex round-2 P1-4：分類器解析失敗時，結構未解計數 ≥2 要蓋過 fallback 的 ambiguous", async () => {
+  // 舊版 handler 在 fallback 傳字面 "ambiguous"，而 cap 內部只有 coherence
+  // 為 null 時才看 unresolvedCount——所以「三個不同片段連丟＋分類器壞掉」
+  // 宣稱會 override，實際上永遠是 0/0。現在 fallback 傳 null。
+  const THREE_FRAGMENT_TURNS = [
+    { role: "user", text: "韓國" },
+    { role: "ai", text: "怎麼了" },
+    { role: "user", text: "東京" },
+    { role: "ai", text: "蛤" },
+    { role: "user", text: "淺草" },
+  ];
+  const run = async (env?: Record<string, string>) => {
+    const { succeeded } = await runCapturingLogs(
+      {
+        ledger: null,
+        thread: {
+          profile_id: "practice_girl_001",
+          temperature_score: 40,
+          familiarity_score: 10,
+        },
+        ...(env ? { env } : {}),
+        deepSeekReplies: ["好啊", "抱歉我不太確定"],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        visiblePracticeThreadId: "thread-visible-1",
+        temperatureScore: 40,
+        familiarityScore: 10,
+        turns: THREE_FRAGMENT_TURNS,
+      }),
+    );
+    return succeeded as Record<string, unknown>;
+  };
+
+  // 旗標 off：逐字沿用舊行為（fallback 0/0、連 key 都沒有）。
+  const off = await run();
+  assertEquals(off.temperatureDelta, 0);
+  assertEquals(off.familiarityDelta, 0);
+  assert(!("deltaCapApplied" in off));
+
+  // 旗標 on：三則未解（unresolvedCount ≥ 2）＝結構地面真相，分類器壞掉時
+  // 這條退路要真的接得上，不是被字面 "ambiguous" 蓋掉。
+  const on = await run({ PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" });
+  assertEquals(on.deltaCapApplied, "repetitive");
+  assertEquals(on.temperatureDelta, -2);
+  assertEquals(on.familiarityDelta, -1);
+});
+
 Deno.test("agency shadow：telemetry 有值但 applied=false，且不寫 thread 狀態", async () => {
   const c = agencyGoldenCases()[3];
   const { state, succeeded } = await runCapturingLogs(

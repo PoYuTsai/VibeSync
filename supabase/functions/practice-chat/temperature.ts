@@ -524,10 +524,15 @@ export function applyCoherenceDeltaCap(
   //    `coherence === "repetitive" || unresolvedCount >= 2` 做 OR，等於讓一個
   //    來自字數形狀的計數蓋過分類器的判斷。
   // 3. 分類器沒給 coherence 時才退回結構近似（未解 ≥2＝repetitive）。
+  // Codex round-2 P1-4：呼叫端在分類器解析失敗時**必須傳 null**，不能傳字面
+  // `"ambiguous"`——傳字面等於「有 coherence」，`unresolvedCount` 這條退路就
+  // 永遠選不到（舊 handler 正是這樣，宣稱的 override 從來沒發生過）。
+  // null＝沒有分類器判斷：先看結構（未解 ≥2＝repetitive），都沒有才落到
+  // `ambiguous`（不獎不罰）——那是「不知道」最保守的一格，不是 `connected`。
   const effective: TurnCoherence = structural.repeatedExactToken
     ? "repetitive"
     : coherence ??
-      (structural.unresolvedCount >= 2 ? "repetitive" : "connected");
+      (structural.unresolvedCount >= 2 ? "repetitive" : "ambiguous");
   if (effective === "repetitive") {
     heatDelta = Math.min(heatDelta, -2);
     familiarityDelta = Math.min(familiarityDelta, -1);
