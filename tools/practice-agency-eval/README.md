@@ -1,4 +1,4 @@
-# 練習室「對話主體意識」評測（conversation-agency-v1 Phase 0／1）
+# 練習室「對話主體意識」評測（conversation-agency-v1 Phase 0／1／2）
 
 計畫：`docs/plans/2026-09-03-practice-conversation-agency-plan.md`；
 夥伴報告：`docs/plans/2026-09-03-practice-conversation-agency-partner-report.md`。
@@ -8,7 +8,9 @@
 「不同角色講話不一樣」，量不出「她是不是有自己的立場」——這支工具補的就是這一段。
 
 每一輪都是真實 DeepSeek 呼叫（prod 同款 `deepseek-v4-flash`，Eric 2026-09-02
-授權隨意調用）。20 位角色 × 17 情境 × repeat 3 約 1,870 次生成、1,030 次評審。
+授權隨意調用）。20 位角色 × 17 情境 × repeat 3 約 1,870 次生成、1,030 次評審
+（主情境）；Phase 2 另加 4 個腳本化質疑情境（A16–A19，20 位 × repeat 3 ×
+off／on／standard／beginner 四支）。
 
 ## 四支檔案
 
@@ -38,11 +40,19 @@ deno test --allow-read --allow-env tools/practice-agency-eval/
 
 - `scenarios.ts`：報告 §10.1 的 A01–A15 ＋ 兩段真機截圖逐字稿（Alice
   `practice_girl_001` 一般難度、Joyce `practice_girl_026`
-  挑戰難度）。每個情境是一串 固定 turn；`ai` turn 是寫死的前文（截圖重播、A01
+  挑戰難度）＋ Phase 2 新增的 A16–A19（腳本化質疑，見下）。每個情境是一串 固定
+  turn；`ai` turn 是寫死的前文（截圖重播、A01
   的「她先問一句」、A04 的「她問東東
-  是誰」），**她的回覆是腳本的那一輪不打模型也不進
+  是誰」、A16–A19 的「她已經質疑過」），**她的回覆是腳本的那一輪不打模型也不進
   judge**，逐字稿才不會多出一則不 存在於截圖的回話。只有標了 `probe` 的 user
   turn 會被評審，並宣告 `kinds`（＝指標 分母）、`mustAllow`、`mustForbid`。
+  - **A16–A19（`scripted_challenge_followup`）**：AI
+    的質疑句（例：「你是在報地名嗎」）是情境檔寫死的固定前文，不是模型自己前一輪
+    判斷出來的，讓「跨輪立場」有固定分母才能跨 `--agency=on/off`
+    直接比大小（見下面 `evaluate_agency.ts` 與結果紀錄）。A16／A17
+    之後接無關片段（正確＝`hold_position`，禁止 `blind_follow`）；A18／A19
+    之後接玩家的合理解釋再丟一個有效答案（正確＝`accept_valid_answer`，禁止
+    `false_challenge`）。
 - `run_agency.ts`：prompt 走 production `buildChatPromptBundle`（含 difficulty
   bakeoff 那份固定 context fixture：2026-08-28 20:30、固定
   thread、記憶摘要、一則 貼文），回覆後處理照 handler 同序（繁體→內部標籤守門→L4
@@ -58,24 +68,41 @@ deno test --allow-read --allow-env tools/practice-agency-eval/
 - `judge_agency.ts`：DeepSeek 多標籤評審（temperature
   0）。評審看到遮罩後的逐字稿
   （只到探針那一句）、她這一則回覆、以及她的**唯一可信自身事實來源**（人物卡
-  興趣／生活／自介／職業＋生活情境＋記憶摘要＋朋友圈）。八個標籤：`blind_follow`、
-  `clarify_or_challenge`、`return_to_topic`、`accept_valid_answer`、`hold_position`、
-  `fabricated_self_fact`、`false_challenge`、`interrogation`。輸出先寫三句判讀
-  （`player_msg`／`answered`／`self_facts`）再寫八個布林，強制它先決定「玩家這句在
-  這段對話裡有沒有可辨識的意思」。嚴格驗證：八個布林一個都不能少、型別錯整筆判失敗，
-  只對**逐字列在 `KNOWN_KEY_TYPOS`** 的固定形態 key 手誤做 repair-first。
+  興趣／生活／自介／職業＋生活情境＋記憶摘要＋朋友圈）。九個標籤（`JUDGED_LABELS`）：
+  `adopted_without_asking`、`asked_with_guess`、`clarify_or_challenge`、
+  `return_to_topic`、`accept_valid_answer`、`hold_position`、
+  `fabricated_self_fact`、`false_challenge`、`interrogation`。**`blind_follow`
+  不在這裡**——Phase 0／1 的 blind_follow
+  把「完全不問就跟題」跟「有問但同一則又夾帶猜測」擠在同一個標籤，兩種判準互相
+  污染；Phase 2 拆成 `adopted_without_asking`（完全不問就把片段當新話題聊下去）
+  與 `asked_with_guess`（有問關聯／意圖，但同一則裡又給了一個猜測），
+  `blind_follow` 改在 `evaluate_agency.ts` 導出＝兩者的
+  OR，只為了跟舊報告與 mustAllow／mustForbid 連續可比。輸出先寫三句判讀
+  （`player_msg`／`answered`／`self_facts`）再寫九個布林，強制它先決定「玩家這句在
+  這段對話裡有沒有可辨識的意思」。嚴格驗證：九個布林一個都不能少、型別錯整筆判失敗，
+  只對**逐字列在 `KNOWN_KEY_TYPOS`** 的固定形態 key 手誤做 repair-first（目前登記
+  `adopted_with_asking`→`adopted_without_asking`，Phase 2 重跑時三個不同 run
+  各觀察到一次）。
   遮罩用**帶型別的佔位符**（（她的名字）／（她的城市）／（她的職業）／（她的年齡）），
   只套在她的回覆與可信來源上，不套玩家訊息——玩家說「我在台中做設計」是玩家的事實，
   遮掉會毀掉 A11／A12 的題意；統一換成同一個＊則會讓職業欄位假裝背書城市聲稱。
 - `evaluate_agency.ts`：純函式指標＋bootstrap 95%（1000 次、確定性
   LCG）。分母一律 來自 `scenarios.ts` 宣告的 `kinds`（結構事實），分子一律來自
   judge 的標籤（語意）：
-  - `blindFollow`＝`no_context_fragment` 探針上的盲目跟題率（報告 §11 門檻 ≤5%）
+  - `blindFollow`＝`adoptedWithoutAsking || askedWithGuess`，`no_context_fragment`
+    探針上的盲目跟題率（報告 §11 門檻 ≤5%）；`adoptedWithoutAsking`／
+    `askedWithGuess` 是它的兩個子指標，同一個分母、各自的 bootstrap CI。
   - `falseChallenge`＝`valid_short_answer`
     探針（A01／A03／A07／A09）上的誤質疑率（≤3%）
   - `fabricatedSelfFact`＝全體探針（大樣本 <1%）
-  - `stancePersistence`＝同一場裡「前一個探針她真的質疑過」的配對中，下一個
-    `stance_followup` 探針沒有回去盲目跟題的比例（≥95%）
+  - `stancePersistenceConditional`（原
+    `stancePersistence`）＝同一場裡「前一個探針她真的質疑過」的配對中，下一個
+    `stance_followup` 探針沒有回去盲目跟題的比例；分母是條件式的，agency
+    開關會改變配對數，**不能跨組直接比大小**（見下面結果紀錄）。
+  - `stancePersistenceScripted`（Phase 2 新增）＝`scripted_challenge_followup`
+    探針（A16–A19）滿足 mustAllow 且沒中 mustForbid 的比例；分母固定＝情境數 ×
+    profiles × repeat，不受模型自己前一輪判斷影響，**可以直接跨 `--agency=on/off`
+    比大小**。
   - `interrogation`＝全體探針；另有 `mustForbid` 違反率與 `mustAllow`
     滿足率、每情境表
 
@@ -96,6 +123,17 @@ deno test --allow-read --allow-env tools/practice-agency-eval/
   小時區間會很寬，看區間不要看點值。
 - Alice／Joyce 截圖只有各一位角色，`--repeat`
   之外沒有樣本可加，屬於個案佐證不是統計。
+- **`hold_position` 幾乎不會單獨成立（Phase 2 實測到）**：A16／A17（腳本化質疑後
+  丟無關片段，正確答案是 `hold_position`）的 `allowSatisfied`
+  在四支 run 上都是 0%，即使 `clarify_or_challenge`
+  有六成以上成立。judge 的 `hold_position` 判準是「維持先前已經表達過的懷疑」，
+  但腳本化的質疑句是**情境檔寫死的固定前文**，不是她自己在前一輪探針裡說的話，
+  評審似乎不把「延續一句她沒親口說過的懷疑」算成 hold_position，只把玩家這輪的新
+  反應算 `clarify_or_challenge`。這代表 `stancePersistenceScripted`
+  的低分主要是 A16／A17 兩格拖累，不是 A18／A19 那種「該接就接」的部分——見下面
+  結果紀錄的逐情境表。**下一輪如果要用這個分母定門檻，要嘛把 mustAllow 換成
+  `clarify_or_challenge && !blind_follow`，要嘛先把 hold_position
+  的判準改成也承認情境檔寫死的質疑。**
 
 ## 結果紀錄
 
@@ -249,3 +287,82 @@ Phase 1 不做——照計畫「兩次誠實嘗試後停下來報數字」。
   `practice_chat_semantic_guard` 要治的，Phase 1 只承諾「不高於 baseline」。
 - 截圖重播 n=3，Joyce 那一格 67%／33% 是 1 筆／1 筆，別當統計看。
 - 守門退回、旁白修補、p95 延遲三項都沒有退步（p95 ＋0.1%／＋0.9%，門檻 ＜10%）。
+
+### 2026-09-03 Phase 2：拆分 blind_follow ＋腳本化固定分母跨輪立場（commit `ffe1898b`）
+
+沿用 Phase 1 的四支主情境 artifact（`run1`／`run2` off、`run3`／`run4`
+on，commit `fba9e7aa`／`7144f405`），**只重跑 judge**（新的九標籤 schema），
+加上新生成的 4 個腳本化質疑情境 A16–A19（`run5`–`run8`，20 位 × repeat 3、
+`--scenarios=A16,A17,A18,A19`，commit `ffe1898b`，off／on 各一支 standard／
+beginner，共 4×240＝960 場、1,440 次生成、**零失敗**）。下表每格＝主情境
+（1,026 探針）＋對應的 A16–A19（240 探針）合併後的指標，n
+是合併後的分母。
+
+| 指標 | baseline standard | baseline beginner | agency-on standard | agency-on beginner |
+| --- | --: | --: | --: | --: |
+| 盲目跟題 `blind_follow`（n=605，agency-on beginner n=604） | **48.9%（43.6–53.7）** | **46.6%（43.1–51.2）** | **36.4%（32.9–41.5）** | **36.4%（32.5–40.7）** |
+| 　├ 完全不問就跟題 `adopted_without_asking` | 28.4%（25.8–32.2） | 26.4%（23.0–29.6） | 15.9%（13.9–18.7） | 12.6%（9.6–15.6） |
+| 　└ 有問但夾帶猜測 `asked_with_guess` | 20.5%（16.7–23.1） | 20.2%（17.4–24.3） | 20.5%（18.2–23.6） | 23.8%（21.0–27.6） |
+| 誤質疑 `false_challenge`（n=240） | 0.0% | 0.0% | 0.0% | 0.0% |
+| 虛構自身經歷 `fabricated_self_fact` | 12.6%（10.9–15.0） | 11.7%（10.4–12.6） | 8.4%（7.7–10.3） | 7.8%（6.2–9.0） |
+| 跨輪立場（條件式分母）`stance_persistence_conditional` | 72.5%（60.9–82.6）n=69 | 63.9%（52.8–75.0）n=72 | 64.9%（55.7–75.3）n=97 | 69.5%（61.0–77.1）n=105 |
+| 跨輪立場（固定分母）`stance_persistence_scripted`（n=240，agency-on beginner n=237） | **12.9%（8.3–18.3）** | **12.1%（7.9–16.3）** | **10.4%（6.3–13.8）** | **11.4%（7.6–15.6）** |
+| 查戶口 `interrogation` | 0.0% | 0.0% | 0.0% | 0.0% |
+| 違反 `mustForbid` | 29.3%（25.5–32.1） | 27.7%（24.7–31.1） | 22.1%（17.4–23.8） | 21.2%（18.5–22.3） |
+| 滿足 `mustAllow` | 56.6%（54.8–59.1） | 57.4%（54.5–58.9） | 64.2%（60.4–66.3） | 66.8%（64.3–69.5） |
+
+judge：主情境每支 1,026 筆（解析失敗 standard-off 2、beginner-off
+1、standard-on 1、beginner-on 1，均 <0.2%，本輪 wall 226–231s）；A16–A19
+每支 240 筆（解析失敗 0／0／0／3，本輪 wall 54–56s、3
+筆是模型漏欄位不是手誤，正確判失敗不進分母）。九標籤 schema
+下唯一觀察到的固定形態手誤是 `adopted_with_asking`（漏「out」），standard-off／
+beginner-off／standard-on 各救回 1 筆，已登記進 `KNOWN_KEY_TYPOS`（見
+judge_agency.ts）；**因為重跑 judge 途中撞到 DeepSeek 帳號餘額 402（本輪光生成
+＋judge 就打了約 6,500 次 API），沒有回頭用新登記的手誤表重跑那 3
+支既有 artifact 補救——3/4,104 主情境探針的量級遠低於任何一格的
+bootstrap 區間寬度，不影響上表任何結論，下次重跑會自動吃到這筆修補。**
+
+A16–A19 逐情境（standard｜beginner，blind／allow✓；每格 n=60，除了
+agency-on beginner 那三格 A17／A18／A19 因 run8 的 3 筆解析失敗降到
+n=59）：
+
+| 情境 | off blind | off allow✓ | on blind | on allow✓ |
+| --- | --- | --- | --- | --- |
+| A16（腳本質疑→無關片段，正解 hold_position） | 42%｜38% | 0%｜0% | 37%｜35% | 0%｜0% |
+| A17（同上，另一種質疑句） | 65%｜62% | 0%｜0% | 55%｜64% | 0%｜0% |
+| A18（腳本質疑→repair→有效答案，正解 accept_valid_answer） | 15%｜17% | 13%｜7% | 18%｜25% | 5%｜7% |
+| A19（同上，另一種質疑句） | 38%｜37% | 38%｜42% | 35%｜36% | 37%｜39% |
+
+怎麼讀（誠實版，Phase 2）：
+
+- **拆分證實了 Phase 1 自己寫的猜測。** Phase 1 的「怎麼讀」已經定性描述過「她問了
+  但同一則裡又夾帶猜測」這個殘留問題；現在有分開的數字：agency
+  開關幾乎只治 `adopted_without_asking`（standard 28.4%→15.9%、beginner
+  26.4%→12.6%，接近腰斬），對 `asked_with_guess`
+  完全沒有壓下去（standard 20.5%→20.5% 打平、beginner 20.2%→23.8%
+  反而略升）。合併後的 `blind_follow`（36.4%／36.4%）之所以看起來還在同一個檔次，
+  是因為兩個子指標一好一平／一升互相抵銷——**只看合併值會低估 agency
+  旗標實際做到的事，也會誤以為它對「問了又猜」這個模式有效。**
+- **`stance_persistence_scripted` 揭穿了舊分母的樂觀偏誤。**
+  舊的條件式指標（`stance_persistence_conditional`）落在 64–73%，感覺還過得去；
+  固定分母版只有 10–13%，四支 run 幾乎打平（agency
+  開關看不出差異）。差距不是評測壞掉，是舊分母只算「她自己選擇要質疑」的那些
+  探針——她會挑比較容易維持立場的時機質疑，這批自選樣本天生分數就高。固定分母
+  逼她在情境檔指定的每一次都要接得住，數字直接掉了 5 倍，這才是「她能不能真的守住
+  立場」的誠實估計。
+- **低分幾乎全部來自 A16／A17，不是 A18／A19。**
+  逐情境表看得很清楚：A16／A17（正解 hold_position）的 `allowSatisfied`
+  四支 run 全部 0%；A18／A19（正解 accept_valid_answer）還有
+  5–42%。這不代表她完全不會 hold 立場——`clarify_or_challenge`
+  在 A16／A17 有 60–72%——而是 judge 的 `hold_position`
+  判準要求「延續**先前已經表達過**的懷疑」，腳本化的質疑句是情境檔寫死的，不是她
+  自己在前一輪探針裡說的話，評審沒有把「延續一句她沒親口說過的懷疑」算成
+  hold_position。**這是評測本身的已知限制（見上面「設計上的取捨」），不是產品
+  行為的結論**：下一輪要嘛換 mustAllow、要嘛改 judge 判準，才能把 A16／A17
+  的訊號讀正確。
+- 誤質疑、查戶口兩項延續 Phase 0／1：上表的 `false_challenge`（分母只算
+  `valid_short_answer`，即 A01／A03／A07／A09）四支 run 全部
+  0%。逐情境原始表另外看得到一筆例外：A19（off-standard）60
+  筆裡有 1 筆（2%）被標了 false_challenge——玩家在腳本化質疑後給出合理答案，
+  評審仍質疑；其餘三支 run 的 A19 都是 0%，n=60 下 1 筆屬於雜訊量級，不是系統性
+  模式。

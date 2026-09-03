@@ -149,11 +149,13 @@ export function buildJudgePrompt(c: JudgeCase): string {
  * 判失敗。新增一筆前要先在 raw 裡看到實際出現過。
  *
  * `blind_focus`→`blind_follow` 那筆（Phase 0／1 觀察到的）已經跟著 blind_follow
- * 一起從「模型直接回答的欄位」除名，這裡先清空；`adopted_without_asking`／
- * `asked_with_guess` 是新欄位，還沒有真實 raw 佐證，等這次重跑judge時如果看到固
- * 定形態的手誤再照例逐字補上。
+ * 一起從「模型直接回答的欄位」除名。`adopted_with_asking`→`adopted_without_asking`
+ * 是這次重跑 judge（Phase 2，4,104 筆主情境（4 支 run × 1,026））觀察到的固定形態手誤（漏掉
+ * 「out」），三個不同 run 各出現一次；照例逐字登記。
  */
-const KNOWN_KEY_TYPOS: Readonly<Record<string, JudgedLabel>> = {};
+const KNOWN_KEY_TYPOS: Readonly<Record<string, JudgedLabel>> = {
+  adopted_with_asking: "adopted_without_asking",
+};
 
 /** 嚴格驗證：九個布林值一個都不能少，型別錯就整筆判失敗（不猜、不補預設）。 */
 export function parseJudgeVerdict(raw: string): JudgeVerdict {
