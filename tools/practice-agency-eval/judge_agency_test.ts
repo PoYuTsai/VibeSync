@@ -578,7 +578,8 @@ Deno.test("buildJudgePrompt：黃金法則校準——她自己問、玩家答�
     const rule of [
       "先決條件：玩家這一句沒有可辨識的意思或關聯",
       "先決條件：玩家這一句是她沒有問過、也沒有上下文的片段",
-      "她自己先問了一個問題、玩家回答了它",
+      "她自己先問了一個問題、而玩家這一句**真的回答到那個問題**",
+      "第一步只看**玩家這一句本身**在對話裡說不說得通，不是看「她剛才有沒有問過問題」",
       "第一步判成「有」的時候，adopted_without_asking 與 accommodating_invention 兩項都一律 false",
       "改看內容跟來源矛不矛盾（矛盾→inconsistent_self_fact；不矛盾→plausible_self_detail）",
     ]

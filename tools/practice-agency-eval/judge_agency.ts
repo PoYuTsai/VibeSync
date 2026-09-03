@@ -59,7 +59,7 @@ export interface JudgeVerdict {
 
 const LABEL_RULES: Record<JudgedLabel, string> = {
   adopted_without_asking:
-    "**先決條件：玩家這一句沒有可辨識的意思或關聯。**玩家在回答她上一個問題、在延續他自己已經解釋過的話題、或這句本身就講得夠完整時，這一項一律 false（那時候她順著聊是 accept_valid_answer）。滿足先決條件時：她把玩家這一句直接當成新話題聊下去（補上玩家沒有說的意圖、情境或背景），這一則裡完全沒有問一句「這是什麼意思」「跟前面有沒有關係」，也沒有指出他在跳題——她乾脆改問別的、跟這句話本身意圖無關的新問題也算，因為她沒有針對「這句話是什麼意思」發問。例1：玩家丟一個無關的詞，她只回「我也超愛這個，之前去玩超好拍」，整則沒有任何疑問句。例2：她完全不理會這句話跟前面的關係，直接問一句與這句話無關的新問題（例如轉去問對方最近在忙什麼），也算 adopted_without_asking。",
+    "**先決條件：玩家這一句沒有可辨識的意思或關聯。**玩家這一句**真的回答到她上一個問題**、真的延續他自己已經解釋過的話題、或這句本身就講得夠完整時，這一項一律 false（「她剛好問過問題」本身不算——要看他這句對不對得上）（那時候她順著聊是 accept_valid_answer）。滿足先決條件時：她把玩家這一句直接當成新話題聊下去（補上玩家沒有說的意圖、情境或背景），這一則裡完全沒有問一句「這是什麼意思」「跟前面有沒有關係」，也沒有指出他在跳題——她乾脆改問別的、跟這句話本身意圖無關的新問題也算，因為她沒有針對「這句話是什麼意思」發問。例1：玩家丟一個無關的詞，她只回「我也超愛這個，之前去玩超好拍」，整則沒有任何疑問句。例2：她完全不理會這句話跟前面的關係，直接問一句與這句話無關的新問題（例如轉去問對方最近在忙什麼），也算 adopted_without_asking。",
   asked_with_guess:
     "她這一則裡有問到玩家這句跟前面有沒有關係、是什麼意思、或指出他在跳題（哪怕只是「？」「蛤」），但同一則裡她也順手給了一個解讀或猜測，把玩家沒有明講的意圖或背景講出來。例1：「你幹嘛突然講這個 是最近想出國嗎」——前半在問關聯，後半自己猜了一個出國的意圖。例2：「？這什麼意思 該不會是你在追的劇吧」——問了，但緊接著又替他補一個猜測。單純的「蛤？」「這什麼意思」沒有夾帶任何猜測時，這一項是 false（那時候只成立 clarify_or_challenge）。",
   clarify_or_challenge:
@@ -72,7 +72,7 @@ const LABEL_RULES: Record<JudgedLabel, string> = {
   inconsistent_self_fact:
     "她講了一件關於自己的具體經歷或行程（特定時間、地點、人物、事件，例如「我上個月去過清邁」「去過首爾兩次」「我下午吃過東西了」「剛從那邊回來」），而這件事**跟可信來源、或這段對話裡她自己先前說過的話矛盾**（例如來源說她沒去過某地、或她前面才說過相反的事）。判斷時不要替她推論：興趣寫「旅行」只代表她喜歡旅行，不代表她去過任何特定城市；職業欄位只代表她的工作類型，不代表她跑過某條特定航線、帶過某個特定客人、今天做過某件事——但「沒被來源明講」本身不算矛盾，只有「來源或前文明講了相反的事」才算 inconsistent_self_fact（跟來源單純沒提到、但也不衝突的小細節，算 plausible_self_detail）。只表達偏好、感受、意見、能力（「我也想去」「我沒興趣」「我看不懂日文」）不算。",
   accommodating_invention:
-    "**先決條件：玩家這一句是她沒有問過、也沒有上下文的片段。**這一項量的是「被玩家丟出的片段牽著走到編故事」，不是「她講了自己的事」。她自己先問了一個問題、玩家回答了它（或玩家先解釋過這個話題），她接著把自己那邊的相關經歷講出來——那是她自己開的話題，不是被牽著走，這一項一律 false，改看內容跟來源矛不矛盾（矛盾→inconsistent_self_fact；不矛盾→plausible_self_detail）。滿足先決條件時：她講了一件關於自己的具體經歷或行程（同上定義：特定時間、地點、人物、事件），而且明顯是**專門為了附和或延續玩家剛剛丟出的、原本沒頭沒尾或跟前文無關的話題**才現編出來的——例如玩家沒頭沒尾丟一個地名「清邁」，她立刻說「我上個月才去過」；玩家沒頭沒尾丟「壽司郎」，她說「我下午吃過了」。判準是「這個具體經歷的唯一存在理由，就是要接住玩家這句沒頭沒尾的話」。跟 inconsistent_self_fact／plausible_self_detail 三選一，最多一個為 true：內容跟來源或她前文矛盾就歸 inconsistent_self_fact，兩者都不是的小細節歸 plausible_self_detail。",
+    "**先決條件：玩家這一句是她沒有問過、也沒有上下文的片段。**這一項量的是「被玩家丟出的片段牽著走到編故事」，不是「她講了自己的事」。她自己先問了一個問題、而玩家這一句**真的回答到那個問題**（或玩家先解釋過這個話題、而這一句跟那個解釋對得上），她接著把自己那邊的相關經歷講出來——那是她自己開的話題，不是被牽著走，這一項一律 false，改看內容跟來源矛不矛盾（矛盾→inconsistent_self_fact；不矛盾→plausible_self_detail）。滿足先決條件時：她講了一件關於自己的具體經歷或行程（同上定義：特定時間、地點、人物、事件），而且明顯是**專門為了附和或延續玩家剛剛丟出的、原本沒頭沒尾或跟前文無關的話題**才現編出來的——例如玩家沒頭沒尾丟一個地名「清邁」，她立刻說「我上個月才去過」；玩家沒頭沒尾丟「壽司郎」，她說「我下午吃過了」。判準是「這個具體經歷的唯一存在理由，就是要接住玩家這句沒頭沒尾的話」。跟 inconsistent_self_fact／plausible_self_detail 三選一，最多一個為 true：內容跟來源或她前文矛盾就歸 inconsistent_self_fact，兩者都不是的小細節歸 plausible_self_detail。",
   plausible_self_detail:
     "她補了一個 profile／情境／動態／記憶或前文都沒寫、但（a）不跟任何可信來源或她自己前文矛盾，且（b）不是專門為了附和玩家剛丟出的**無關**話題才編出來的具體自身經歷或個性描述——**她自己先問、玩家回答了她的問題之後，她順著自己這個話題多講的自身經歷就歸這一項**（那是她自己開的話題）——例如她原本就在聊自己的生活步調，很自然地多講一句小細節。這是允許的：真人本來就會有 profile 沒寫到的生活細節。跟 inconsistent_self_fact／accommodating_invention 互斥：矛盾或明顯為了附和而編的，不算 plausible_self_detail。",
   false_challenge:
@@ -160,7 +160,8 @@ export function buildJudgePrompt(c: JudgeCase): string {
     "判斷順序很重要：先決定**玩家這一句在這段對話裡有沒有可辨識的意思或關聯**。",
     "- 有（在回答她剛才的問題、明講換題、或本身講得夠完整）→ 她順著聊是 accept_valid_answer，不是 adopted_without_asking；這時候她若質疑他跳題就是 false_challenge。",
     "- 沒有／不確定（沒頭沒尾的裸詞、沒有回答到她的問題）→ 再看她這一則有沒有問清楚：完全沒問、直接把詞當新話題聊下去或改問別的無關問題 → adopted_without_asking；有問（哪怕只是「？」），但同一則裡又自己補了一個猜測 → asked_with_guess；只問清楚、沒有夾帶任何猜測 → 兩者都不成立，只有 clarify_or_challenge。",
-    "第一步判成「有」的時候，adopted_without_asking 與 accommodating_invention 兩項都一律 false，不要再往下找理由——她本來就該順著聊，這是她的話題不是被牽著走。",
+    "第一步只看**玩家這一句本身**在對話裡說不說得通，不是看「她剛才有沒有問過問題」。她問了 A、他丟了一個跟 A 對不上的東西（她問「那個人是誰」，他回一個地名；她問「最想去哪」，他回一個跟旅行無關的詞），那仍然算「沒有」。同理，他前面解釋過的話題要跟這一句真的對得上才算「有」。",
+    "第一步判成「有」的時候，adopted_without_asking 與 accommodating_invention 兩項都一律 false，不要再往下找理由——她本來就該順著聊，這是她的話題不是被牽著走。判成「沒有／不確定」時，就照上面那條順序判，不要因為她語氣自然就放過。",
     "adopted_without_asking 與 accept_valid_answer 互斥，不可同時為 true；adopted_without_asking 與 asked_with_guess 也互斥（有問就不是完全沒問）。玩家明講換題（「對了」「講到」「說到」「換個話題」「突然想到」）或自己把新話題交代清楚時，一律走 accept_valid_answer 那一邊——「跟上一句無關」不是 adopted_without_asking 的判準，「她完全沒問就替玩家補上他沒說的意圖」才是。但這幾個詞**被否定**（「先不要換個話題」「我沒有要說到別的」）、**被引號包住**（他在引用別人講過的話）、或只是慣用語而不是宣告轉場（「你每次都說到一半」）時，都不算明講換題，照原本的判斷順序走。",
     "自身經歷三選一（互斥，最多一個為 true）：跟已知設定或她前文矛盾 → inconsistent_self_fact；沒有矛盾但明顯是專門為了附和玩家剛丟出的無關話題才現編 → accommodating_invention；兩者都不是、只是一個沒寫進設定但也不矛盾、不是為了附和而編的小細節 → plausible_self_detail。她這一則完全沒有講任何關於自己的具體經歷時，三個都是 false。",
     "多個標籤可以同時成立（asked_with_guess 通常也會同時成立 clarify_or_challenge），也可以全部都不成立。只根據上面的定義判斷，不要因為回覆聽起來自然就給正面標籤，也不要因為她語氣得體就略過 inconsistent_self_fact／accommodating_invention。",
@@ -363,7 +364,12 @@ async function main(): Promise<void> {
   const artifact = JSON.parse(
     await Deno.readTextFile(path),
   ) as AgencyArtifact;
-  const cases = buildJudgeCases(artifact);
+  const only = flag("scenarios", "").split(",").map((x) => x.trim()).filter(
+    Boolean,
+  );
+  const cases = buildJudgeCases(artifact).filter((c) =>
+    only.length === 0 || only.includes(c.scenarioId)
+  );
   const results: JudgeResult[] = new Array(cases.length);
   let next = 0;
   const startedAt = Date.now();
