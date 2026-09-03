@@ -4553,9 +4553,16 @@ export function createPracticeChatHandler(
             // 再原樣寫回去，等於「這個 row 一旦有過 agency 狀態，旗標關了也
             // 會被重新寫進 payload」——`main` 不認識這個 key，從零重建時會丟掉
             // 它，所以有殘留狀態的 row 不可能 byte-identical。
+            // Codex round-1（新項）P1-1：舊版的閘門是 `agencyDecision?.applied`，
+            // 而 `applied` 只在「這一輪真的有介入」時為 true。修復路徑（有效短答、
+            // 分類器判 connected、一般分享／問句）**恰好都是 applied=false**，
+            // 所以 `nextConversationAgencyState()` 裡寫好的 `priorChallengeIssued`
+            // 歸零在正式 handler 永遠跑不到，舊 episode 的質疑旗標會一路污染下去。
+            // 改成「旗標 on 就一定推進狀態」：`applied` 從此純粹是 telemetry 上
+            // 「有沒有注入 guidance」的意思，不再兼任狀態機的閘門。
             conversationAgencyState: agencyMode !== "on"
               ? undefined
-              : agencyDecision?.applied
+              : agencyDecision
               ? nextConversationAgencyState(
                 relationshipThreadState?.agencyState ?? null,
                 agencyDecision.decision,

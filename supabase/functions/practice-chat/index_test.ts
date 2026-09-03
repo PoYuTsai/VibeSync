@@ -9185,3 +9185,97 @@ Deno.test("golden 擴大範圍：chat 完整 RPC params（不只 p_recent_facts�
     }
   }
 });
+
+// ── Codex round-1（新項）P1-1：質疑旗標的歸零必須在**正式 handler 路徑**發生 ──
+// `nextConversationAgencyState()` 裡的 repair 早就寫好了，但 handler 的閘門是
+// `agencyDecision?.applied`，而 `applied` 只在「這一輪真的介入」時為 true。
+// 有效短答、完整分享、一般問句、分類器判 connected 的修復輪**恰好都是
+// applied=false**，所以歸零永遠跑不到，舊 episode 的旗標會一路污染下去。
+const AGENCY_PRIOR_CHALLENGE_STATE = {
+  version: 1,
+  lastCoherence: "disconnected",
+  unresolvedCount: 3,
+  priorChallengeIssued: true,
+  lastAgencyAct: "hold_position",
+};
+
+function agencyRepairRun(classifierReply: string) {
+  return runCapturingLogs(
+    {
+      ledger: null,
+      thread: {
+        profile_id: "practice_girl_001",
+        temperature_score: 40,
+        familiarity_score: 10,
+        recent_facts: {
+          source: "practice_chat",
+          aiTurnCount: 3,
+          conversationAgency: AGENCY_PRIOR_CHALLENGE_STATE,
+        },
+      },
+      env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+      deepSeekReplies: ["貓也不錯欸", classifierReply],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      visiblePracticeThreadId: "thread-visible-1",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      // 她問了問題、玩家給了合理短答＝本檔的「有效短答」免疫格：
+      // situation 是 null，所以 applied 必然是 false。
+      turns: [
+        { role: "user", text: "在幹嘛" },
+        { role: "ai", text: "你最喜歡什麼動物" },
+        { role: "user", text: "貓" },
+      ],
+    }),
+  );
+}
+
+function persistedAgencyState(
+  state: { rpcCalls: Array<{ fn: string; params: Record<string, unknown> }> },
+) {
+  const upsert = state.rpcCalls.find((r) =>
+    r.fn === "upsert_practice_relationship_thread"
+  );
+  assert(upsert, "沒有寫回 thread");
+  return (upsert.params.p_recent_facts as Record<string, unknown>)
+    .conversationAgency as Record<string, unknown> | undefined;
+}
+
+Deno.test("Codex round-1（新項）P1-1：修復輪（applied=false）也要推進狀態，priorChallengeIssued 真的歸零", async () => {
+  const { state, succeeded } = await agencyRepairRun(
+    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false}`,
+  );
+  // 前提：這一輪確實是「沒有注入 guidance」的修復輪，不然這個測試是空的。
+  const agency = succeeded?.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.applied, false);
+  assertEquals(agency.utteranceShape, "answer_candidate");
+  assertEquals(agency.unresolvedCount, 0);
+
+  assertEquals(persistedAgencyState(state), {
+    version: 1,
+    lastCoherence: "connected",
+    unresolvedCount: 0,
+    priorChallengeIssued: false,
+    lastAgencyAct: "hold_position",
+  });
+});
+
+Deno.test("Codex round-1（新項）P1-1：非 agency planner 這一輪真的質疑了，applied=false 也要寫進狀態", async () => {
+  // 反向那一半：舊閘門讓「她其實質疑了、但 agency 沒介入」的輪次同樣寫不進去。
+  const { state, succeeded } = await agencyRepairRun(
+    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"ambiguous","aiChallengedThisTurn":true}`,
+  );
+  assertEquals(
+    (succeeded?.conversationAgency as Record<string, unknown>).applied,
+    false,
+  );
+  assertEquals(persistedAgencyState(state), {
+    version: 1,
+    lastCoherence: "ambiguous",
+    unresolvedCount: 0,
+    priorChallengeIssued: true,
+    lastAgencyAct: "hold_position",
+  });
+});
