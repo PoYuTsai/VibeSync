@@ -9,8 +9,16 @@
 // 200 tokens、0.9），回覆後處理照 handler.ts 同序（繁體→內部標籤守門→L4 守門→
 // style 開時剝括號旁白）。不自造 prompt。
 //
-// `--mode=beginner` 走 handler.ts 的 assisted 分支（帶 practiceMode＋分數），
-// standard 走另一支（不帶 practiceMode key、partnerState null），與 production 一致。
+// `--mode=beginner|game` 走 handler.ts 的 assisted 分支（帶 practiceMode＋
+// 分數），standard 走另一支（不帶 practiceMode key、partnerState null），與
+// production 一致。`--mode=game` 需要 SR 角色（--profiles 指定 rarity==="sr"
+// 的 profileId，例如 practice_girl_004；見 practice_persona.ts）。
+//
+// `--state=1`：assisted 模式跨輪真的帶 agency state（像 handler 一樣用
+// nextConversationAgencyState 推下一輪的 agencyState），而不是每輪都傳
+// null；這是結構層模擬，不是真的每輪多打一次 classifier 拿 coherence（見
+// runAgencyScenario 的 stateSimulation 註解與 README）。artifact meta 記
+// `stateSimulation: true`。
 //
 // 每一輪都是一次真實 DeepSeek 呼叫（Eric 2026-09-02：DeepSeek 隨意調用）。
 //
@@ -18,8 +26,9 @@
 //   deno run --allow-env --allow-read --allow-write --allow-run=git \
 //     --allow-net=api.deepseek.com tools/practice-agency-eval/run_agency.ts \
 //     tools/practice-agency-eval/out/<date>-<label>.json \
-//     [--profiles=a,b] [--scenarios=A01,A02] [--mode=standard|beginner] \
-//     [--style=1] [--agency=on] [--repeat=3] [--difficulty=normal] [--concurrency=6]
+//     [--profiles=a,b] [--scenarios=A01,A02] [--mode=standard|beginner|game] \
+//     [--style=1] [--agency=on] [--repeat=3] [--difficulty=normal] \
+//     [--state=1] [--concurrency=6]
 
 import {
   isPracticeDifficulty,
@@ -50,7 +59,11 @@ import {
   buildBakeoffContextFixture,
 } from "../practice-difficulty-bakeoff/bakeoff.ts";
 import { DEFAULT_PROFILE_IDS } from "../practice-reply-style-eval/run_baseline.ts";
-import type { AgencyMode } from "../../supabase/functions/practice-chat/conversation_agency.ts";
+import {
+  type AgencyMode,
+  type ConversationAgencyState,
+  nextConversationAgencyState,
+} from "../../supabase/functions/practice-chat/conversation_agency.ts";
 import {
   AGENCY_SCENARIOS,
   type AgencyScenario,
@@ -67,7 +80,7 @@ const MODEL_TIMEOUT_MS = 30000;
 const BEGINNER_TEMPERATURE_SCORE = 40;
 const BEGINNER_FAMILIARITY_SCORE = 10;
 
-export type PracticeRunMode = "standard" | "beginner";
+export type PracticeRunMode = "standard" | "beginner" | "game";
 
 /** judge 的唯一可信自身事實來源（每個 profile×難度一份，artifact 裡去重存）。 */
 export interface TrustedSources {
@@ -177,6 +190,16 @@ export async function runAgencyScenario(args: {
   style: boolean;
   /** conversation-agency-v1 旗標（handler 用同一個值餵 buildChatPromptBundle）。 */
   agency: AgencyMode;
+  /**
+   * 模擬 assisted 模式跨回合真的帶 agency state（像 handler 一樣，決策→
+   * nextConversationAgencyState→下一輪 agencyState），而不是每輪都傳 null。
+   * 只在 mode !== "standard" 時有意義（standard 本來就不持久化狀態）。
+   * 這是**結構層**模擬——用 bundle.agencyDecision（Phase 1 的證據／政策）
+   * 推下一個狀態，不是真的再打一次 classifier 拿 coherence／
+   * aiChallengedLastTurn（那需要每輪多一次 DeepSeek 呼叫，成本加倍）；
+   * artifact meta 標 `stateSimulation: true` 並在 README 註明這個簡化。
+   */
+  stateSimulation?: boolean;
 }): Promise<AgencySessionResult> {
   const difficulty = args.scenario.difficulty ?? args.difficulty;
   const profile = resolvePracticeProfile({
@@ -193,6 +216,9 @@ export async function runAgencyScenario(args: {
   };
   const turns: PracticeTurn[] = [];
   const results: AgencyTurnResult[] = [];
+  // stateSimulation：跨輪真的帶狀態（結構層近似，見上面欄位註解）；否則維持
+  // 舊行為，每輪都傳 null（standard 與 production 一致）。
+  let agencyState: ConversationAgencyState | null = null;
   const base = {
     profileId: args.profileId,
     personaId: profile.personaId,
@@ -255,19 +281,20 @@ export async function runAgencyScenario(args: {
       });
       continue;
     }
-    // handler.ts:4230-4260：assisted（beginner）帶 practiceMode＋分數；standard
-    // 完全不帶 practiceMode key 與分數，partnerState 維持 null。
+    // handler.ts:4230-4260：assisted（beginner／game）帶 practiceMode＋分數；
+    // standard 完全不帶 practiceMode key 與分數，partnerState 維持 null。
     const bundle = buildChatPromptBundle(turns, profile, {
       replyStyle: args.style,
       agencyMode: args.agency,
       visiblePracticeThreadId: BAKEOFF_THREAD_ID,
       partnerState: null,
       styleState: null,
-      // 短期 agency 狀態：standard 一律從逐字稿現推（與 production standard 同）。
-      agencyState: null,
-      ...(args.mode === "beginner"
+      // 短期 agency 狀態：standard 或未開 --state 一律從逐字稿現推（與
+      // production standard 同）；stateSimulation 才跨輪真的帶狀態。
+      agencyState: args.stateSimulation ? agencyState : null,
+      ...(args.mode === "beginner" || args.mode === "game"
         ? {
-          practiceMode: "beginner" as const,
+          practiceMode: args.mode,
           temperatureScore: BEGINNER_TEMPERATURE_SCORE,
           familiarityScore: BEGINNER_FAMILIARITY_SCORE,
         }
@@ -341,6 +368,15 @@ export async function runAgencyScenario(args: {
       stageDirectionRepairs,
     });
     turns.push({ role: "ai", text: reply });
+    // 這一輪的決策決定下一輪帶進去的狀態（結構層近似，見 stateSimulation
+    // 欄位註解）；agency 關閉或 shadow 時 bundle.agencyDecision 是 null／
+    // applied=false，state 停在原地不動。
+    if (args.stateSimulation && bundle.agencyDecision?.applied) {
+      agencyState = nextConversationAgencyState(
+        agencyState,
+        bundle.agencyDecision.decision,
+      );
+    }
   }
   return { ...base, turns: results };
 }
@@ -356,6 +392,8 @@ interface CliOptions {
   style: boolean;
   agency: AgencyMode;
   concurrency: number;
+  /** --state=1：跨輪真的帶 agency state（結構層模擬，見 runAgencyScenario）。 */
+  stateSimulation: boolean;
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -369,6 +407,7 @@ export function parseArgs(argv: string[]): CliOptions {
     style: true,
     agency: "off",
     concurrency: 6,
+    stateSimulation: false,
   };
   for (const arg of argv) {
     if (!arg.startsWith("--")) {
@@ -412,13 +451,16 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       }
       case "mode":
-        if (value !== "standard" && value !== "beginner") {
+        if (value !== "standard" && value !== "beginner" && value !== "game") {
           throw new Error(`agency_invalid_mode: "${value}"`);
         }
         opts.mode = value;
         break;
       case "style":
         opts.style = value === "1" || value === "true";
+        break;
+      case "state":
+        opts.stateSimulation = value === "1" || value === "true";
         break;
       case "agency":
         // production 旗標的三個有效值＋常用簡寫；其餘一律報錯（不靜默當 off）。
@@ -440,7 +482,7 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       default:
         throw new Error(
-          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--difficulty、--concurrency）`,
+          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--difficulty、--concurrency、--state）`,
         );
     }
   }
@@ -529,6 +571,7 @@ async function main(): Promise<void> {
         mode: opts.mode,
         style: opts.style,
         agency: opts.agency,
+        stateSimulation: opts.stateSimulation,
       });
       console.error(
         `[agency] ${
@@ -568,6 +611,9 @@ async function main(): Promise<void> {
       practiceMode: opts.mode,
       replyStyle: opts.style,
       conversationAgency: opts.agency,
+      // 這個 artifact 是不是用了跨輪 agency state 結構層模擬（不是真的每輪
+      // 都多打一次 classifier）；README／報告引用數字時要標明。
+      stateSimulation: opts.stateSimulation,
       difficulty: opts.difficulty,
       fixture: {
         now: BAKEOFF_FIXED_NOW.toISOString(),
