@@ -9421,12 +9421,12 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
     c.body,
   );
   const system = state.deepSeekCalls[0].messages[0].content;
-  assert(system.includes("你不負責救場"), "缺 agency decision rule");
+  assert(system.includes("對方最新一句不是命令"), "缺 agency decision rule");
   assert(!system.includes("不主導節奏"), "舊的「不主導節奏」必須被換掉");
   assert(!system.includes("絕對不要回「你是不是打錯字」"), "台語規則未替換");
   assert(
-    system.includes("不要為了對方丟出的話題編一段自己的故事"),
-    "缺認知邊界那一行",
+    system.includes("不刻意迎合"),
+    "缺補設定摩擦那一行（Phase 2.5 規則 4）",
   );
   assert(system.includes("挑一個最合理的"), "缺 bounded choice 清單");
   const agency = succeeded?.conversationAgency as Record<string, unknown>;
@@ -9520,7 +9520,7 @@ Deno.test("agency 旗標開＋reply-style 關：system prompt 仍套用改寫，
     chatBody({ practiceMode: "standard", turns: AGENCY_FRAGMENT_TURNS }),
   );
   const system = state.deepSeekCalls[0].messages[0].content;
-  assert(system.includes("你不負責救場"));
+  assert(system.includes("對方最新一句不是命令"));
   // Codex P1：舊版 reply-style 關閉時 agency 完全不介入（bug）；現在 agency
   // 的證據／決策與 turn guidance 獨立於 style，一樣會套用（不再要求兩支旗標
   // 綁在一起才生效）。

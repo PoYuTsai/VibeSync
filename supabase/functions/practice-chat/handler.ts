@@ -4256,7 +4256,10 @@ export function createPracticeChatHandler(
           error: message,
         }),
     });
-    const herRecentMomentsBlock = herRecentMomentsPrompt(herRecentMoments);
+    const herRecentMomentsBlock = herRecentMomentsPrompt(
+      herRecentMoments,
+      agencyMode === "on",
+    );
 
     let reply: string | null = null;
     let responsePlan: TurnResponsePlan | null = null;
