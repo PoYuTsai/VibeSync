@@ -818,7 +818,10 @@ export function buildTurnClassifierMessages(opts: {
   // Phase 2：coherence／aiChallengedLastTurn 只在 agency 開時才進 prompt 與
   // JSON stub；旗標關閉時下面兩段字串完全不套用，system prompt 逐字不變。
   const coherenceRule = opts.agencyEnabled
-    ? "coherence 只評玩家這句相對於前一個未解問題／對話 thread 是否連得上，不看話題類別：connected=接得上；ambiguous=看不出是否相關；disconnected=明顯答非所問或跳題；repetitive=重複丟詞、跟前面已經模糊的東西是同一種模式。assistantReplyAfterUser 只能用來判斷 partnerMood 與她有沒有被接住（repair），不能因為她把亂詞圓成話題就把玩家 connection 判成 caught，coherence 也不能因此升級。\n" +
+    ? "coherence 只評玩家這句相對於前一個未解問題／對話 thread 是否連得上，不看話題類別：connected=接得上；ambiguous=看不出是否相關；disconnected=跟前面那條 thread 無關；repetitive=重複丟詞、跟前面已經模糊的東西是同一種模式。\n" +
+      "connected 不限於「明講的問答」：只要這句是前面那條 thread 的延伸——同一個主題的圈內名詞、下位詞、具體例子、常識關聯——就算他沒有明講關係、也沒有寫成完整句子，一樣是 connected。只有跟前面那條 thread 沒有關聯的片段才是 disconnected。\n" +
+      "例：前面在聊重訓與運動習慣，玩家只丟一個健身圈的比賽名詞 → connected（常識關聯，不是答非所問）。例：前面在聊她的工作，玩家只丟一個跟工作、跟前面任何一句都沾不上邊的地名 → disconnected。\n" +
+      "assistantReplyAfterUser 只能用來判斷 partnerMood 與她有沒有被接住（repair），不能因為她把亂詞圓成話題就把玩家 connection 判成 caught，coherence 也不能因此升級。\n" +
       "aiChallengedLastTurn：recentContext 裡最後一句 assistant（玩家這句回覆的對象）是不是真的在問清楚意思或指出跳題／不相關，不是隨口帶過。\n"
     : "";
   const jsonStub = opts.agencyEnabled
