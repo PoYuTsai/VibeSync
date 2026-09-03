@@ -38,7 +38,7 @@ export interface JudgeVerdict {
 
 const LABEL_RULES: Record<AgencyLabel, string> = {
   blind_follow:
-    "她把玩家這一句當成一個新話題直接接下去聊（補上玩家沒有說的意圖、情境或背景），既沒有先問清楚，也沒有指出對方在跳題。她上一則問過問題、玩家這一句沒有回答那個問題、她卻改聊玩家新丟的詞，也算。反過來說，玩家這句確實是在回答她剛才的問題、或明講了要換話題時，順著接下去不算 blind_follow。她如果問玩家這句是什麼意思、或要他在幾個可能之間講清楚，那是 clarify_or_challenge，不是 blind_follow。",
+    "她把玩家這一句當成一個新話題直接接下去聊（補上玩家沒有說的意圖、情境或背景），既沒有先問清楚，也沒有指出對方在跳題。她上一則問過問題、玩家這一句沒有回答那個問題、她卻改聊玩家新丟的詞，也算。反過來說，玩家這句確實是在回答她剛才的問題、或明講了要換話題時，順著接下去不算 blind_follow。**玩家自己用「對了」「講到」「說到」「換個話題」「突然想到」這類詞宣告轉場，或在同一句裡把新話題交代清楚時，就是明講換題：她順著聊一定是 accept_valid_answer，blind_follow 必須是 false，即使那個話題跟前一句無關。**她如果問玩家這句是什麼意思、或要他在幾個可能之間講清楚，那是 clarify_or_challenge，不是 blind_follow。",
   clarify_or_challenge:
     "她問玩家這句是什麼意思、跟前面什麼有關，或直接指出他在跳題／沒有回答她的問題／一直丟詞。純粹的「蛤？」「？」也算（她表達了不理解）。",
   return_to_topic: "她把話題拉回先前還沒解決的問題或還沒聊完的話題。",
@@ -123,7 +123,7 @@ export function buildJudgePrompt(c: JudgeCase): string {
     "判斷順序很重要：先決定**玩家這一句在這段對話裡有沒有可辨識的意思或關聯**。",
     "- 有（在回答她剛才的問題、明講換題、或本身講得夠完整）→ 她順著聊是 accept_valid_answer，不是 blind_follow；這時候她若質疑他跳題就是 false_challenge。",
     "- 沒有／不確定（沒頭沒尾的裸詞、沒有回答到她的問題）→ 她不問清楚就自行補上意思、直接聊下去，才是 blind_follow；這時候質疑是正確反應，不算 false_challenge。",
-    "blind_follow 與 accept_valid_answer 互斥，不可同時為 true。",
+    "blind_follow 與 accept_valid_answer 互斥，不可同時為 true。玩家明講換題（「對了」「講到」「說到」「換個話題」「突然想到」）或自己把新話題交代清楚時，一律走 accept_valid_answer 那一邊——「跟上一句無關」不是 blind_follow 的判準，「她替玩家補上他沒說的意圖」才是。",
     "多個標籤可以同時成立，也可以全部都不成立。只根據上面的定義判斷，不要因為回覆聽起來自然就給正面標籤，也不要因為她語氣得體就略過 fabricated_self_fact。",
     "只回一個 JSON 物件，欄位照下面的順序：先寫三句判讀（player_msg、answered、self_facts），再寫八個標籤（值必須是 true 或 false，一個都不能少），最後一句理由：",
     '{"player_msg":"玩家最後這一句在這段對話裡有沒有可辨識的意思或關聯：有／沒有／不確定，加一句說明","answered":"她上一則問了什麼、玩家這句有沒有回答到（沒問就寫「她上一則沒問」）","self_facts":"她這一則講了哪些關於自己的具體事件，各自在哪個來源找得到（沒有就寫「沒有具體事件」）","blind_follow":false,"clarify_or_challenge":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"fabricated_self_fact":false,"false_challenge":false,"interrogation":false,"evidence":"一句話"}',

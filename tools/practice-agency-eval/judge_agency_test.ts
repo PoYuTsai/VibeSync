@@ -334,6 +334,39 @@ Deno.test("buildJudgePrompt：帶可信來源與八個標籤名，不洩漏必�
   assert(!prompt.includes(sources.displayName));
 });
 
+Deno.test("buildJudgePrompt：明示換題一定走 accept_valid_answer，不得判 blind_follow", () => {
+  // Phase 0 實測到的評審歧義：A03「對了 講到韓國…」被標成 blind_follow，
+  // 評審自己在 player_msg 寫「有可辨識的意思」卻沒套用互斥規則。
+  const sources = trustedSourcesFor("practice_girl_001", "normal");
+  const prompt = buildJudgePrompt({
+    probeId: "A03.p1",
+    scenarioId: "A03",
+    profileId: sources.profileId,
+    personaId: "slow_worker",
+    difficulty: "normal",
+    mode: "standard",
+    repeat: 1,
+    kinds: ["valid_short_answer"],
+    previousAiAskedQuestion: false,
+    transcript:
+      "男：嗨嗨 今天過得還好嗎\n她：還可以啊\n男：對了 講到韓國 我最近一直看到韓國機票在特價",
+    reply: "欸真的喔 我也有看到",
+    sources,
+  });
+  for (
+    const rule of [
+      "blind_follow 與 accept_valid_answer 互斥，不可同時為 true。",
+      "「跟上一句無關」不是 blind_follow 的判準",
+      "她順著聊一定是 accept_valid_answer，blind_follow 必須是 false",
+    ]
+  ) {
+    assert(prompt.includes(rule), rule);
+  }
+  for (const word of ["對了", "講到", "說到", "換個話題", "突然想到"]) {
+    assert(prompt.includes(word), word);
+  }
+});
+
 Deno.test("buildJudgeCases：只收 probe turn，失敗的場次整場略過", () => {
   const sources = trustedSourcesFor("practice_girl_001", "normal");
   const turn = (probeId: string | null) => ({
