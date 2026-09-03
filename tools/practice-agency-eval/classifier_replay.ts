@@ -117,11 +117,14 @@ async function main() {
 
   // --limit=N：等間隔抽樣（不是取前 N 筆），小規模診斷才涵蓋得到所有情境。
   const limit = Number.parseInt(flag("limit", "0"), 10);
+  // `[...jobs]` 不能省：不抽樣時 sampled 若直接指向 jobs，下面清空 jobs 會把
+  // 它一起清掉（實際踩過，整支 replay 回 total 0）。
   const sampled = limit > 0 && limit < jobs.length
     ? jobs.filter((_, i) => i % Math.ceil(jobs.length / limit) === 0)
-    : jobs;
+    : [...jobs];
   jobs.length = 0;
   jobs.push(...sampled);
+  if (jobs.length === 0) throw new Error("classifier_replay_no_jobs");
 
   const rows: ReplayRow[] = [];
   let next = 0;
