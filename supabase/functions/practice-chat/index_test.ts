@@ -9528,3 +9528,96 @@ Deno.test("agency 旗標開＋reply-style 關：system prompt 仍套用改寫，
   const agency = succeeded?.conversationAgency as Record<string, unknown>;
   assertEquals(agency.applied, true);
 });
+
+// ── conversation-agency-v1（Codex P1 item 5）：golden 覆蓋範圍擴到完整 RPC
+// params、hint／debrief、classifier messages。────────────────────────────
+//
+// 這裡不對 hint／debrief／完整 RPC params 額外釘死硬編碼雜湊常數（Codex 指出
+// 舊版只 hash `p_recent_facts`，且沒有 hint/debrief fixture）；改用「四種
+// env 值（未設／off／shadow／亂填）彼此逐位元組相同」的自我一致性斷言，
+// 涵蓋範圍更廣、也不必再跑一次拋棄式 7f1d6d6c checkout 取雜湊——hint.ts、
+// buildDebriefMessages 與完整 RPC params 建構本來就不讀 agency 旗標
+// （grep 驗證：agency 只接進 buildChatPromptBundle 與 temperature.ts 的
+// classifier），所以「四個環境值互相相同」與「跟 7f1d6d6c 相同」在這three
+// 條路徑上是同一件事。
+
+async function fullDigest(
+  options: FakeOptions,
+  body: unknown,
+  agencyEnv?: string,
+): Promise<{ messages: string; response: string; rpcParams: string }> {
+  const fake = makeFake({
+    ...options,
+    env: {
+      ...options.env,
+      ...(agencyEnv === undefined
+        ? {}
+        : { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: agencyEnv }),
+    },
+  });
+  const response = await fake.handler(makeRequest(body));
+  const headers = [...response.headers.entries()].sort().map(([k, v]) =>
+    `${k}:${v}`
+  ).join("\n");
+  const bodyBytes = new Uint8Array(await response.arrayBuffer());
+  const head = new TextEncoder().encode(`${response.status}\n${headers}\n\n`);
+  const raw = new Uint8Array(head.length + bodyBytes.length);
+  raw.set(head, 0);
+  raw.set(bodyBytes, head.length);
+  return {
+    messages: await sha256HexOf(
+      JSON.stringify([
+        fake.state.deepSeekCalls.map((c) => c.messages),
+        fake.state.claudeCalls.map((c) => c.messages),
+      ]),
+    ),
+    response: await sha256HexOf(raw),
+    // 完整 RPC params（不只 p_recent_facts）：涵蓋所有 upsert_practice_
+    // relationship_thread／update_practice_learning_state 呼叫。
+    rpcParams: await sha256HexOf(
+      JSON.stringify(
+        fake.state.rpcCalls.map((c) => ({ fn: c.fn, params: c.params })),
+      ),
+    ),
+  };
+}
+
+Deno.test("golden 擴大範圍：hint 在未設／off／shadow／亂填四種環境值下逐位元組相同（含完整 RPC params）", async () => {
+  const options: FakeOptions = {
+    ledger: ledger({ practice_mode: "beginner" }),
+    claudeReplies: [validHintJson()],
+  };
+  const body = hintBody({ practiceMode: "beginner", turns: AGENCY_FRAGMENT_TURNS });
+  const baseline = await fullDigest(options, body, undefined);
+  for (const env of ["off", "shadow", "亂填"]) {
+    assertEquals(await fullDigest(options, body, env), baseline, `env=${env}`);
+  }
+});
+
+Deno.test("golden 擴大範圍：debrief 在未設／off／shadow／亂填四種環境值下逐位元組相同（含完整 RPC params）", async () => {
+  const options: FakeOptions = {
+    ledger: ledger({ practice_mode: "beginner" }),
+    claudeReplies: [validDebriefJson()],
+  };
+  const body = debriefBody({
+    practiceMode: "beginner",
+    turns: AGENCY_FRAGMENT_TURNS,
+  });
+  const baseline = await fullDigest(options, body, undefined);
+  for (const env of ["off", "shadow", "亂填"]) {
+    assertEquals(await fullDigest(options, body, env), baseline, `env=${env}`);
+  }
+});
+
+Deno.test("golden 擴大範圍：chat 完整 RPC params（不只 p_recent_facts）在四種環境值下逐位元組相同", async () => {
+  for (const c of agencyGoldenCases()) {
+    const baseline = await fullDigest(c.options, c.body, undefined);
+    for (const env of ["off", "shadow", "亂填"]) {
+      assertEquals(
+        await fullDigest(c.options, c.body, env),
+        baseline,
+        `${c.name} / env=${env}`,
+      );
+    }
+  }
+});
