@@ -518,9 +518,13 @@ export function agencyPolicyFor(
       policyMode: "forced",
       forcedAct,
       allowedActs: [forcedAct],
+      // Codex R1（新項）P2：這支分支的 forced end_low_value_loop 是欠債到
+      // 低連貫門檻（forceEndLoopBeforeChallenge），不是 `repeatedExactToken`
+      // 那支「同一個詞原樣再丟一次」——telemetry 上借用 `repeated_token_v1`
+      // 會把兩種不同的觸發原因記成同一個 id，汙染 policy breakdown。
       allowedActSetId: forcedAct === "hold_position"
         ? "hold_after_challenge_v1"
-        : "repeated_token_v1",
+        : "low_value_loop_v1",
     };
   }
   if (unresolvedCount >= thresholds.topicShiftAt) {

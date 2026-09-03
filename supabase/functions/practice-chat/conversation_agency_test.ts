@@ -519,10 +519,18 @@ Deno.test("難度門檻：挑戰／game 在達到低連貫門檻時直接收掉�
   const challenge = policyAt(threeFragments, "challenge");
   assertEquals(challenge.policyMode, "forced");
   assertEquals(challenge.forcedAct, "end_low_value_loop");
+  // Codex R1（新項）P2：這支收尾是欠債到門檻（forceEndLoopBeforeChallenge），
+  // 不是「同一個詞原樣再丟一次」（repeatedExactToken）——三則不同片段觸發，
+  // set id 要是獨立的 low_value_loop_v1，不能被記成 repeated_token_v1
+  // （那個 id 專屬 repeatedExactToken 分支，見上面 A05／A06 測試）。
+  assertEquals(challenge.allowedActSetId, "low_value_loop_v1");
+  assert(!challenge.evidence.repeatedExactToken);
 
   const game = policyAt(threeFragments, "normal", true);
   assertEquals(game.policyMode, "forced");
   assertEquals(game.forcedAct, "end_low_value_loop");
+  assertEquals(game.allowedActSetId, "low_value_loop_v1");
+  assert(!game.evidence.repeatedExactToken);
 
   // 還沒質疑過（手動組 evidence；detectAgencyEvidence 在 standard 模式結構上
   // 幾乎不會產生這個組合，見 agencyPolicyFor 內註解）：一般難度先給一輪
