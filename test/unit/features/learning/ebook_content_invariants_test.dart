@@ -393,6 +393,42 @@ void main() {
     );
   });
 
+  test('paragraph、caption、annotation 不再一個欄位塞好幾段', () {
+    // 原文一段落裡用空行隔出兩三段，手機上讀起來是一面牆；工作包 3
+    // （2026-09-03）把它們拆成獨立區塊，這裡守住不再長回來。
+    final hits = <String>[];
+    for (final book in catalog.books) {
+      for (final chapter in book.chapters) {
+        for (final block in _flatten(chapter.blocks)) {
+          final List<String?> texts = switch (block) {
+            EbookParagraphBlock(:final text) => [text],
+            EbookComparisonBlock(:final caption) => [caption],
+            EbookDialogueBlock(:final caption, :final lines) => [
+                caption,
+                for (final line in lines) line.annotation,
+              ],
+            EbookEntryListBlock(:final caption) => [caption],
+            EbookChecklistBlock(:final caption) => [caption],
+            _ => const <String?>[],
+          };
+          for (final text in texts.whereType<String>()) {
+            if (text.contains('\n\n')) hits.add(block.id);
+          }
+        }
+      }
+    }
+    expect(hits, isEmpty, reason: '這些欄位還塞著多段：$hits');
+  });
+
+  test('第 5 冊 5.6 切成「先辨認互動感受」「再選擇回應方式」兩段', () {
+    final chapter = catalog.findChapter('ebook-5-core', 'ebook-5-chapter-6')!;
+    final headings = chapter.blocks
+        .whereType<EbookHeadingBlock>()
+        .map((heading) => heading.text)
+        .toList();
+    expect(headings, ['先辨認互動感受', '再選擇回應方式']);
+  });
+
   test('第 4 冊 4.5 十二週計畫有四段週次標題與三張可勾自評', () {
     final chapter =
         catalog.findChapter('ebook-4-meeting', 'ebook-4-chapter-5')!;
