@@ -20,8 +20,26 @@ Deno.test("parseArgs：--mode 接受 standard／beginner／game，其餘拒絕",
 Deno.test("parseArgs：--state 省略或非 1/true 一律 false，1/true 才開", () => {
   assertEquals(parseArgs([]).stateSimulation, false);
   assertEquals(parseArgs(["--state=0"]).stateSimulation, false);
-  assertEquals(parseArgs(["--state=1"]).stateSimulation, true);
-  assertEquals(parseArgs(["--state=true"]).stateSimulation, true);
+  assertEquals(
+    parseArgs(["--mode=beginner", "--state=1"]).stateSimulation,
+    true,
+  );
+  assertEquals(
+    parseArgs(["--mode=game", "--state=true"]).stateSimulation,
+    true,
+  );
+});
+
+Deno.test("parseArgs：--state=1 搭 standard 直接報錯（Codex round-2 P2-d）", () => {
+  // standard 不持久化跨回合狀態，靜默忽略會讓 artifact meta 的
+  // stateSimulation:true 說謊。
+  for (const args of [["--state=1"], ["--mode=standard", "--state=true"]]) {
+    assertThrows(
+      () => parseArgs(args),
+      Error,
+      "agency_state_requires_assisted_mode",
+    );
+  }
 });
 
 Deno.test("parseArgs：未知旗標仍拒絕（新旗標沒有意外放寬白名單）", () => {

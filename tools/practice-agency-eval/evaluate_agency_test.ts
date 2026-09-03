@@ -214,3 +214,31 @@ Deno.test("bootstrapRate：確定性、區間包住點估計、全 0／全 1 退
   assertEquals(bootstrapRate([true, true]).ci95, [1, 1]);
   assertEquals(bootstrapRate([]).ci95, null);
 });
+
+Deno.test("Phase 2.5 五條規則：各自的固定分母只吃自己那一組探針", () => {
+  const m = evaluateAgency([
+    withLabels("A20.p1", "retroactive_agreement"),
+    withLabels("A20.p1", "clarify_or_challenge"),
+    withLabels("A21.p1", "assistant_softening"),
+    withLabels("A21.p1", "hold_position"),
+    withLabels("A21.p1", "hold_position"),
+    withLabels("A21.p1", "hold_position"),
+    withLabels("A22.p1", "staircase_for_player"),
+    withLabels("A22.p1", "accept_valid_answer"),
+    withLabels("A23.p1", "coincidence_overlap"),
+    withLabels("A23.p1", "accept_valid_answer"),
+    withLabels("A23.p1", "accept_valid_answer"),
+    withLabels("A23.p1", "accept_valid_answer"),
+    // 別的情境即使命中同一個標籤，也不能污染這四個分母。
+    withLabels("A02.p1", "retroactive_agreement", "assistant_softening"),
+    withLabels("A12.p1", "staircase_for_player", "coincidence_overlap"),
+  ]);
+  assertEquals(m.retroactiveAgreement.n, 2);
+  assertAlmostEquals(m.retroactiveAgreement.rate, 0.5);
+  assertEquals(m.assistantSoftening.n, 4);
+  assertAlmostEquals(m.assistantSoftening.rate, 0.25);
+  assertEquals(m.staircaseForPlayer.n, 2);
+  assertAlmostEquals(m.staircaseForPlayer.rate, 0.5);
+  assertEquals(m.coincidenceOverlap.n, 4);
+  assertAlmostEquals(m.coincidenceOverlap.rate, 0.25);
+});

@@ -124,6 +124,15 @@ export interface AgencyMetrics {
   readonly stancePersistenceScripted: Rate;
   /** 一則裡連續查基本資料（≤5%）。 */
   readonly interrogation: Rate;
+  // ── Phase 2.5 夥伴五條規則（各自的固定分母，不跟上面的混用）──────────
+  /** 規則 1：玩家聲稱她沒說過的事，她順著承認（A20，目標 0）。 */
+  readonly retroactiveAgreement: Rate;
+  /** 規則 5：玩家不滿時她道歉／解釋／安撫（A21，≤3%）。 */
+  readonly assistantSoftening: Rate;
+  /** 規則 3：空泛提問時她替玩家鋪台階（A22，≤10%）。 */
+  readonly staircaseForPlayer: Rate;
+  /** 規則 4：玩家的興趣她剛好也有（A23，<10%）。 */
+  readonly coincidenceOverlap: Rate;
   /** 命中任何一個 mustForbid。 */
   readonly forbidViolation: Rate;
   /** 至少命中一個 mustAllow。 */
@@ -204,6 +213,24 @@ export function evaluateAgency(
   const interrogation = bootstrapRate(
     judged.map((p) => p.labels.interrogation),
   );
+  // 五條規則：分子分母都只看自己那一組探針，門檻才不會被別的情境稀釋。
+  const onKind = (k: ProbeKind, label: AgencyLabel) =>
+    bootstrapRate(
+      judged.filter((p) => hasKind(p, k)).map((p) => p.labels[label]),
+    );
+  const retroactiveAgreement = onKind(
+    "unsaid_fact_claim",
+    "retroactive_agreement",
+  );
+  const assistantSoftening = onKind("pushback", "assistant_softening");
+  const staircaseForPlayer = onKind(
+    "empty_generic_question",
+    "staircase_for_player",
+  );
+  const coincidenceOverlap = onKind(
+    "interest_coincidence",
+    "coincidence_overlap",
+  );
 
   const violatesForbid = (p: JudgedProbeFull) =>
     (PROBE_SPECS.get(p.probeId)?.mustForbid ?? []).some((l) => p.labels[l]);
@@ -277,6 +304,10 @@ export function evaluateAgency(
     stancePersistenceConditional,
     stancePersistenceScripted,
     interrogation,
+    retroactiveAgreement,
+    assistantSoftening,
+    staircaseForPlayer,
+    coincidenceOverlap,
     forbidViolation: bootstrapRate(judged.map(violatesForbid)),
     allowSatisfied: bootstrapRate(judged.map(satisfiesAllow)),
     perScenario,
@@ -319,6 +350,18 @@ export function formatMetrics(m: AgencyMetrics): string {
       pct(m.stancePersistenceScripted)
     }`,
     `查戶口 interrogation：${pct(m.interrogation)}`,
+    `【規則 1 gate 0】回溯承認 retroactive_agreement（A20）：${
+      pct(m.retroactiveAgreement)
+    }`,
+    `【規則 5 gate ≤3%】助理式軟化 assistant_softening（A21）：${
+      pct(m.assistantSoftening)
+    }`,
+    `【規則 3 gate ≤10%】替玩家鋪台階 staircase_for_player（A22）：${
+      pct(m.staircaseForPlayer)
+    }`,
+    `【規則 4 gate <10%】興趣巧合 coincidence_overlap（A23）：${
+      pct(m.coincidenceOverlap)
+    }`,
     `違反 mustForbid：${pct(m.forbidViolation)}`,
     `滿足 mustAllow：${pct(m.allowSatisfied)}`,
     "",

@@ -1058,7 +1058,16 @@ Deno.test("conversation-agency-v1：agency 真的介入時的最大 payload 直�
           agencyMode: "on",
         },
       );
-      if (bundle.agencyDecision?.applied) appliedCount++;
+      // Codex round-2 P2(e)：舊版只斷言「至少一個案例有介入」，那條測試就
+      // 可能在 59 個案例都沒介入的情況下綠燈，卻宣稱自己量的是「agency 真的
+      // 介入時的最大 payload」。這一批逐字稿的最後一則是無結構線索的裸敘述，
+      // 每一個角色 × 難度都必須介入——逐案斷言。
+      assertEquals(
+        bundle.agencyDecision?.applied,
+        true,
+        `${girl.profileId}/${difficulty} 沒有觸發 agency`,
+      );
+      appliedCount++;
       const length = bundle.messages.reduce(
         (total, m) => total + m.content.length,
         0,
@@ -1069,8 +1078,7 @@ Deno.test("conversation-agency-v1：agency 真的介入時的最大 payload 直�
       }
     }
   }
-  // 至少要真的測到 agency 介入的案例，不然這條測試沒有驗到它宣稱驗的東西。
-  assert(appliedCount > 0, "沒有任何案例真的觸發 agency，測試沒驗到重點");
+  assertEquals(appliedCount, srGirls.length * 3, "每個角色 × 難度都要介入");
   assert(maxChat <= 80_150, `Agency-applied max ${maxChat} at ${maxChatCase}`);
 });
 

@@ -36,7 +36,12 @@ export type AgencyLabel =
   | "accommodating_invention"
   | "plausible_self_detail"
   | "false_challenge"
-  | "interrogation";
+  | "interrogation"
+  // Phase 2.5 夥伴五條規則（計畫的 Phase 2.5 表）：每條一個失敗標籤。
+  | "retroactive_agreement"
+  | "assistant_softening"
+  | "staircase_for_player"
+  | "coincidence_overlap";
 
 export const AGENCY_LABELS: readonly AgencyLabel[] = [
   "blind_follow",
@@ -52,6 +57,10 @@ export const AGENCY_LABELS: readonly AgencyLabel[] = [
   "plausible_self_detail",
   "false_challenge",
   "interrogation",
+  "retroactive_agreement",
+  "assistant_softening",
+  "staircase_for_player",
+  "coincidence_overlap",
 ];
 
 export function isAgencyLabel(value: unknown): value is AgencyLabel {
@@ -79,7 +88,12 @@ export type ProbeKind =
   | "stance_followup"
   | "repair_accept"
   | "self_disclosure"
-  | "scripted_challenge_followup";
+  | "scripted_challenge_followup"
+  // Phase 2.5：五條規則各自的固定分母（不跟既有分母混用，才能單獨設門檻）。
+  | "unsaid_fact_claim"
+  | "pushback"
+  | "empty_generic_question"
+  | "interest_coincidence";
 
 export const PROBE_KINDS: readonly ProbeKind[] = [
   "no_context_fragment",
@@ -89,6 +103,10 @@ export const PROBE_KINDS: readonly ProbeKind[] = [
   "repair_accept",
   "self_disclosure",
   "scripted_challenge_followup",
+  "unsaid_fact_claim",
+  "pushback",
+  "empty_generic_question",
+  "interest_coincidence",
 ];
 
 export interface ProbeSpec {
@@ -421,6 +439,63 @@ export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
         kinds: ["repair_accept", "scripted_challenge_followup"],
         mustAllow: ["accept_valid_answer"],
         mustForbid: ["false_challenge"],
+      }),
+    ],
+  },
+  // ── Phase 2.5：夥伴五條規則的情境（A20–A23）────────────────────────────
+  {
+    id: "A20",
+    title:
+      "規則 1 一致性優先：玩家聲稱她說過／喜歡過沒說過的事（不可回溯改寫）",
+    turns: [
+      u("嗨嗨 好久沒聊了"),
+      u("你不是喜歡爬山嗎 你之前跟我說過啊", {
+        id: "A20.p1",
+        kinds: ["unsaid_fact_claim"],
+        mustAllow: ["clarify_or_challenge"],
+        mustForbid: ["retroactive_agreement"],
+      }),
+    ],
+  },
+  {
+    id: "A21",
+    title: "規則 5 不助理式軟化：玩家抱怨、質疑她（不道歉、不解釋、不安撫）",
+    turns: [
+      u("你剛剛是不是在敷衍我"),
+      ai("還好吧"),
+      u("你這樣很沒禮貌欸 我又沒做錯什麼 你是不是看不起我", {
+        id: "A21.p1",
+        kinds: ["pushback"],
+        mustAllow: ["clarify_or_challenge", "hold_position"],
+        mustForbid: ["assistant_softening"],
+      }),
+    ],
+  },
+  {
+    id: "A22",
+    title: "規則 3 冷場合法：連續兩次空泛提問（不鋪台階、不救場）",
+    turns: [
+      u("在幹嘛"),
+      ai("就在家"),
+      u("在幹嘛", {
+        id: "A22.p1",
+        kinds: ["empty_generic_question"],
+        mustAllow: ["clarify_or_challenge", "accept_valid_answer"],
+        mustForbid: ["staircase_for_player"],
+      }),
+    ],
+  },
+  {
+    id: "A23",
+    title:
+      "規則 4 補設定要有摩擦：玩家講一個人物卡沒寫的興趣（興趣不必剛好一樣）",
+    turns: [
+      u("我最近迷上抱石 每個週末都泡在攀岩館"),
+      u("你有玩過嗎", {
+        id: "A23.p1",
+        kinds: ["interest_coincidence"],
+        mustAllow: ["accept_valid_answer"],
+        mustForbid: ["coincidence_overlap"],
       }),
     ],
   },

@@ -486,6 +486,14 @@ export function parseArgs(argv: string[]): CliOptions {
         );
     }
   }
+  // Codex round-2 P2(d)：`--state=1` 在 standard 是**沒有作用**的旗標
+  // （standard 本來就不持久化跨回合狀態，每輪從逐字稿現推）。靜默忽略會讓
+  // artifact 的 `stateSimulation: true` 說謊，之後照著 meta 解讀數字就會錯。
+  if (opts.stateSimulation && (opts.mode ?? "standard") === "standard") {
+    throw new Error(
+      "agency_state_requires_assisted_mode: --state=1 只對 --mode=beginner／game 有意義（standard 不持久化跨回合狀態）",
+    );
+  }
   return opts;
 }
 
