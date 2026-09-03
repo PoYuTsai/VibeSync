@@ -978,6 +978,93 @@ Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling"
   }
 });
 
+Deno.test("conversation-agency-v1：agency 真的介入時的最大 payload 直接量總長 ≤80,150（不是靠 delta 上限推論，Codex P1）", () => {
+  // Codex P1：舊測試只證明「agency 沒介入時」的最大 payload 在上限內，沒有
+  // 直接對「agency 真的介入、其他欄位全部塞到最大」的組合斷言總長。這裡把
+  // memorySummary／sceneContext／herRecentMomentsBlock／gameState／SR 角色
+  // 全部拉到跟前面測試相同的最大值，但把逐字稿最後兩則玩家訊息換成會觸發
+  // agency 的裸片段（連續兩個地名，第二則進 topic_shift_v1 bounded），
+  // 對 20 位 SR 角色 × 3 個難度直接斷言完整 messages 總長。
+  const srGirls = GIRL_PROFILES.filter((girl) => girl.rarity === "sr");
+  const maxMemorySummary = "記".repeat(MAX_MEMORY_SUMMARY_LEN);
+  const agencyMaxChatTurns: PracticeTurn[] = Array.from(
+    { length: MAX_TURNS },
+    (_, index): PracticeTurn => {
+      if (index === MAX_TURNS - 1) return { role: "user", text: "東京" };
+      if (index === MAX_TURNS - 2) return { role: "user", text: "韓國" };
+      return {
+        role: index < MAX_AI_REPLIES - 1 ? "ai" : "user",
+        text: "訊".repeat(MAX_TEXT_LEN),
+      };
+    },
+  );
+  const maxParsedGameState = parsePersistedGameState({
+    phase: "P4_TENSION",
+    pv: 100,
+    fp: 100,
+    inv: 100,
+    safety: 100,
+    turnCount: 999,
+    failureCounts: {
+      BORING: 999,
+      TOOL_GUY: 999,
+      GREASY: 999,
+      FRAME_COLLAPSE: 999,
+      ENGINE_STALL: 999,
+      GHOST_RISK: 999,
+      FRAME_OVERREACH: 999,
+    },
+    realityFlagCounts: {
+      social_proof_attempt: 999,
+      fake_familiarity: 999,
+      OBVIOUS_TRAP: 999,
+      FRAME_OVERREACH: 999,
+    },
+    lastTargetVariable: "目".repeat(80),
+    lastSpeedInviteDirection: "邀".repeat(80),
+    lastSpicyLevel: "L3",
+  });
+  assert(maxParsedGameState);
+  let maxChat = 0;
+  let maxChatCase = "";
+  let appliedCount = 0;
+  for (const girl of srGirls) {
+    for (const difficulty of ["easy", "normal", "challenge"] as const) {
+      const bundle = buildChatPromptBundle(
+        agencyMaxChatTurns,
+        resolvePracticeProfile({ profileId: girl.profileId, difficulty }),
+        {
+          replyStyle: true,
+          visiblePracticeThreadId: "prompt-budget-agency",
+          practiceMode: "game",
+          temperatureScore: 30,
+          familiarityScore: 20,
+          partnerState: { mood: "neutral", innerThought: "念".repeat(80) },
+          sceneContext: promptBudgetScene,
+          acquaintanceOrigin: longestChatOrigin,
+          memorySummary: maxMemorySummary,
+          herRecentMomentsBlock: maxHerRecentMomentsBlock,
+          gameState: maxParsedGameState,
+          timeContext: bugReportNow,
+          agencyMode: "on",
+        },
+      );
+      if (bundle.agencyDecision?.applied) appliedCount++;
+      const length = bundle.messages.reduce(
+        (total, m) => total + m.content.length,
+        0,
+      );
+      if (length > maxChat) {
+        maxChat = length;
+        maxChatCase = `${girl.profileId}/${difficulty}`;
+      }
+    }
+  }
+  // 至少要真的測到 agency 介入的案例，不然這條測試沒有驗到它宣稱驗的東西。
+  assert(appliedCount > 0, "沒有任何案例真的觸發 agency，測試沒驗到重點");
+  assert(maxChat <= 80_150, `Agency-applied max ${maxChat} at ${maxChatCase}`);
+});
+
 Deno.test("conversation-agency-v1：agency 介入那一輪的 turn plan 增量有界，且與最長 payload 互斥", () => {
   // 裸片段輪（agency 真的介入）：turn plan 從一行 act 變成受限清單＋脈絡指示，
   // 增量必須留在 150 code units 內。
