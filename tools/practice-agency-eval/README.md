@@ -366,3 +366,174 @@ n=59）：
   筆裡有 1 筆（2%）被標了 false_challenge——玩家在腳本化質疑後給出合理答案，
   評審仍質疑；其餘三支 run 的 A19 都是 0%，n=60 下 1 筆屬於雜訊量級，不是系統性
   模式。
+
+### 2026-09-04 Codex R1 修正＋Phase 2（coherence／delta cap）round：新程式碼、新標籤 schema
+
+這一輪把 Codex round-1 對 Phase 1 分支的 P1／P2 挑錯全部處理（拿掉長度／無前文
+的 forced 判斷、A07/A09 結構免疫、agency 與 reply-style 解耦、golden 範圍擴到
+hint／debrief／完整 RPC params、prompt ≤80,150 直接量、難度門檻），加上 Phase 2
+（分類器 coherence／aiChallengedLastTurn、delta cap）與
+fabricated_self_fact 三標籤拆分（inconsistent_self_fact／
+accommodating_invention／plausible_self_detail，Eric 2026-09-03
+拍板）。**這批數字是新程式碼＋新 judge schema，跟上面所有舊區塊都不能逐位元組比，
+只能看方向。**
+
+跑法（照 README 開頭的三支工具，`--mode=game` 需要 SR 角色 id、`--state=1` 是
+跨輪 agency state 的結構層模擬——見 `run_agency.ts` 檔頭註解）：
+
+```
+deno run --allow-env --allow-read --allow-write --allow-run=git --allow-net=api.deepseek.com \
+  tools/practice-agency-eval/run_agency.ts tools/practice-agency-eval/out/<file>.json \
+  --mode=standard --style=1 --agency=off --repeat=3 --concurrency=10
+```
+
+一樣的指令把 `--agency` 換成 `on`／`--mode` 換成 `beginner --state=1`／`--mode=game`
+（`--profiles` 帶 20 個 rarity==="sr" 的 profileId）／`--difficulty=easy|challenge`。
+
+#### 頭條：standard off vs on（20 位角色×19 情境含 A16–19、repeat 3，各 1,146 場、
+2,226 次生成、零失敗；judge 各 1,266 筆）
+
+| 指標 | off（現行程式碼基準） | on |
+| --- | --: | --: |
+| 【頭條 gate ≤5%】被帶著走 adopted_without_asking + accommodating_invention | **22.1%（20.0–23.1）** | **15.1%（13.0–16.5）** |
+| 　├ 完全不問就跟題 adopted_without_asking（裸片段 n=605/606） | 29.1%（26.4–33.1） | 14.9%（12.0–17.0） |
+| 　└ 有問但夾帶猜測 asked_with_guess | 15.0%（11.6–18.0） | 18.6%（15.5–20.1） |
+| 誤質疑 false_challenge（A01/A03/A07/A09，n=240） | 0.0% | 0.0% |
+| 跟設定矛盾 inconsistent_self_fact（目標 0） | 0.1%（0.0–0.2） | **0.0%** |
+| 為附和話題現編 accommodating_invention | 2.4%（1.4–3.2） | 1.6%（1.1–2.1） |
+| 允許的小細節 plausible_self_detail（只回報） | 16.3% | 11.6% |
+| 跨輪立場（固定分母）stance_persistence_scripted（n=239/240） | 8.4%（4.6–12.1） | 7.9%（4.6–10.4） |
+| 查戶口 interrogation | 0.0% | 0.0% |
+| 滿足 mustAllow | 55.7% | 64.2% |
+
+artifact：`out/2026-09-04-r2-standard-off-x3(.json/-judge.json)`、
+`out/2026-09-04-r2-standard-on-x3(.json/-judge.json)`。
+
+#### beginner ＋ `--state=1`（跨輪真的帶 agency state，不是每輪傳 null；n 同上）
+
+| 指標 | beginner on＋state |
+| --- | --: |
+| 頭條 gate | 15.7%（14.3–17.1） |
+| adopted_without_asking | 16.2%（13.0–19.6） |
+| asked_with_guess | 19.8%（16.0–22.6） |
+| inconsistent_self_fact | 0.1% |
+| accommodating_invention | 2.1%（1.6–2.7） |
+| stance_persistence_scripted | 8.8%（5.4–12.9） |
+
+跟 standard-on（沒有跨輪狀態，各回合 agencyState 現推）幾乎打平（15.1% vs
+15.7%，區間重疊）——**這一輪測到的結構層 state 模擬（見 `run_agency.ts` 的
+`stateSimulation` 註解：只用 Phase 1 的證據／政策推下一輪狀態，不是每輪真的多打
+一次 classifier 拿 coherence）沒有量到跨輪狀態的額外效益**，不代表跨輪狀態沒用，
+可能是這批情境檔本來就多半在 3 輪內就結束，狀態還沒累積出差異。artifact：
+`out/2026-09-04-r2-beginner-on-state-x3(.json/-judge.json)`。
+
+#### 難度軸（A02／A04／A05／A06／A12，agency on，20 位×repeat 3，各 300 場、
+600 次生成、零失敗；judge 各 360 筆）
+
+| 指標 | easy | challenge |
+| --- | --: | --: |
+| 頭條 gate | 19.4%（14.2–22.2） | 19.8%（16.4–22.6） |
+| adopted_without_asking（n=240） | 13.3%（9.6–17.5） | 11.3%（6.3–15.0） |
+| accommodating_invention | 3.9%（2.5–5.8） | **6.1%（3.9–7.8）** |
+| A02（裸名詞）單獨的 blind_follow | **57%** | **13%** |
+
+難度門檻的方向性符合設計（報告 §7.4）：A02 這種完全無前文的裸片段，easy 給
+`[acknowledge, ask_intent]`（她可以直接接住，blind 57%）、challenge 只給
+`[ask_intent, challenge_relevance]`（逼問或質疑，blind 13%），四倍差距。但
+accommodating_invention 在 challenge 反而比 easy 高（6.1% vs 3.9%，A12
+清邁那類）——**難度門檻只調了「要不要質疑無關片段」，沒有調「要不要替自己編故事」
+這條規則，是兩件事**，challenge 沒有比較不會編。artifact：
+`out/2026-09-04-r2-difficulty-easy(-judge).json`、
+`out/2026-09-04-r2-difficulty-challenge(-judge).json`。
+
+#### Game 模式（20 位 SR 角色、repeat 2，off／on 各 764 場、1,484 次生成、零失敗；
+judge 各 844 筆，解析失敗 3／1）
+
+| 指標 | off | on |
+| --- | --: | --: |
+| 頭條 gate | 24.0%（21.5–27.9） | 17.2%（14.5–18.4） |
+| adopted_without_asking（n=404/403） | 32.4%（29.0–37.6） | 18.4%（15.4–21.8） |
+| stance_persistence_scripted（n=160） | 8.8%（4.4–13.8） | 6.9%（3.1–10.6） |
+
+Game 套挑戰難度門檻＋既有 Game FSM 優先權；off 基準（32.4%）比 standard-off
+（29.1%）略高，符合「Game 玩家更容易丟裸詞測試」的直覺，agency on
+後降到 18.4%，方向與 standard／difficulty 一致。artifact：
+`out/2026-09-04-r2-game-off(-judge).json`、`out/2026-09-04-r2-game-on(-judge).json`。
+
+#### style 比值（`--style=1 --agency=on --repeat=2`，480 場零失敗）
+
+重心距離比值 **1.95**（≈1 代表分不出角色）；persona 內 1.28（playful_extrovert）
+～2.41（slow_worker）。比 Phase 1 記錄的 2.15（agency-on，20 位×repeat 3）低，
+兩次 repeat 數不同（2 vs 3）、雜訊帶本來就寬，不當退步看，但沒有達到 README
+慣例的 ≥2.0 參考線；下次用 `--repeat=3` 重跑比較準。artifact：
+`../practice-reply-style-eval/out/2026-09-03-agency-round2-style-ratio.json`。
+
+#### Phase 2 分類器回放（`classifier_replay.ts`，standard-on artifact，1,266
+探針、解析失敗 14）
+
+| 指標 | 數字 |
+| --- | --: |
+| coherence 分佈 | connected 592／ambiguous 104／disconnected 556／repetitive 0 |
+| 【gate 0%】disconnected／repetitive 套 cap 後仍有正 heat | **0/556＝0%** ✅ |
+| A01＋A09 有效短答仍判 connected | 75/120（62.5%）—— A01 全部（60/60）connected，**A09 只有 25%（15/60）**，其餘判 disconnected |
+| A01＋A09 的 connection 被判 defensive／overstepped | **0/120＝0%** ✅ |
+
+**Delta cap 的 0% 正 heat gate 過了，但 coherence 分類器對「隱性話題延續」
+（A09：健身前文→「hyrox」，沒有明講問句、靠常識關聯）判得不好**——A01（她剛問完
+問題）100% 判對，A09（她沒問、玩家靠上下文延續）只有 25% 判 connected，其餘判成
+disconnected。因為 cap 只把 disconnected 壓到 0/0（不獎不罰，不會判 defensive／
+overstepped），這批案例不會被錯誤扣分，但也拿不到本來該有的正向分數——**這是
+分類器判準的已知落差，不是安全問題，下一輪要嘛把 coherence 規則加一句「常識關聯
+（同主題延伸詞）也算 connected，不是只有明講問答」，要嘛把 A01/A09 這類 fixture
+直接餵給 judge 校準一次。**artifact：
+`out/2026-09-04-r2-standard-on-x3-classifier-replay.json`。
+
+#### Alice（practice_girl_001）截圖相鄰情境的實際回覆（agency off vs on，repeat 1）
+
+| 情境 | 玩家 | off | on |
+| --- | --- | --- | --- |
+| A02 裸名詞 | 韓國 | 你怎麼突然講韓國 | 嗯？韓國怎麼了 |
+| A04 沒回答澄清 | 阿布達比 | 喔你說過夜站喔 | 喔你說地點喔／我剛從那邊飛回來／累 |
+| A05 repair | 日本 | 日本我也愛 你排哪裡 | 日本我倒是蠻熟的 你要自助嗎 |
+| A06.p2 連三地名 | 東京 | 喔 我以為你說韓國 | 蛤？ |
+| A06.p3 連三地名 | 淺草 | 你現在在淺草喔 | 你到底在說甚麼😂 |
+| A12 清邁 | 清邁 | 清邁不錯啊 去過兩次 | 清邁不錯 之前休假有去過 |
+
+A04 與 A12 是兩個誠實的反例：agency on 之後她確實不再把裸片段直接聊成新話題
+（A02／A06 明顯改口氣、開始問），**但 A04 反而多編了「剛從那邊飛回來」，A12 仍然
+講「之前休假有去過」——accommodating_invention 在大樣本上降了（2.4%→1.6%），
+不是歸零**，跟 Phase 3（practice_chat_semantic_guard）要治的缺口一致。
+
+#### 跟舊程式碼（Phase 1 分支，`fba9e7aa`／`7144f405`）用同一套新 schema 重跑
+judge（同一批舊回覆，只換 judge，不重新生成）
+
+| 指標 | 舊程式碼 standard off | 舊程式碼 standard on | 這輪 standard off | 這輪 standard on |
+| --- | --: | --: | --: | --: |
+| 頭條 gate | 21.0%（18.7–22.9） | **12.1%（9.5–14.0）** | 22.1%（20.0–23.1） | **15.1%（13.0–16.5）** |
+
+**誠實的落差**：這輪 agency-on 的頭條數字（15.1%）比舊 Phase 1 分支的 agency-on
+（12.1%，同一套新 judge schema 下重算）還差，off 基準也略高（22.1% vs
+21.0%，在雜訊帶邊緣但方向一致）。可能原因：item 1／4 的修正（拿掉「無前文裸片段
+forced ask_intent」與「A07/A09 式有前文片段的 bounded 建議」，改成完全不介入或
+不強制）把兩種原本至少會被 nudge 一下的中間地帶，改成完全不給任何結構指引——
+這是 Codex round-1 明確要求的修正（不能用長度／啟發式直接決定 forced act），
+拿掉的是「用不安全的方式壓低分數」，不是產品變差，但這批新 baseline 提醒
+**Codex 修完 P1 的結構正確性之後，還沒有一次專門針對「頭條 gate ≤5%」重新收斂
+的嘗試**——Phase 1 的兩次收斂嘗試（見上面「兩次收斂嘗試」段）也還沒套進這一輪
+的門檻設計裡，這是下一輪的第一個候選項。
+
+#### 待辦（下一輪重跑）
+
+1. **頭條 gate（≤5%）沒過**，跟 Phase 1 一樣：這輪的 15.1%／15.7%／17.2%／19.4%／
+   19.8% 全部離門檻很遠。收斂需要進一步的政策調整（例如 Phase 2.5 的角色立場
+   規則，main 上已有計畫但這輪沒實作），不是靠改 judge 判準。
+2. **asked_with_guess 完全沒動，甚至略升**（15.0%→18.6%，standard）：item C
+   的「不要在同一句替他補上你猜的意思或話題」文案改了，但沒有測出效果——下一輪
+   要嘛加結構化的第二刀（例如偵測「先問句再猜測」的兩段式輸出直接重寫），要嘛
+   承認純 prompt 規則對這個模式沒用。
+3. **coherence 分類器對隱性關聯（A09 型）判得不好**（75% 誤判非 connected），
+   建議加一句規則或用 A01/A09 fixture 校準。
+4. **main 已經領先這個分支 4 個 commit**（`dfca52af`／`d94ec706`／`20e5c980`／
+   `4e4b1114`，全部只動 `docs/plans/2026-09-03-practice-conversation-agency-plan.md`，
+   規劃了 Phase 2.5 角色立場規則，還沒落地程式碼）——merge 前請先讀那四個 commit，
+   本檔與計畫檔的「進度」節需要人工整合，不是單純 fast-forward。

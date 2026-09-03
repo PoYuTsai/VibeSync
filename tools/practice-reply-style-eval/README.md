@@ -176,3 +176,10 @@ deno test --allow-read --allow-env tools/practice-reply-style-eval/evaluate_test
   `--style=0` 配對組）： 2400 場零失敗、守門退回 0、p50 848ms。整體比值
   **0.90**，persona 內 0.75～0.87；對 run16 style 開 2.14／1.44～2.04——同一 HEAD
   配對下差異仍來自 style 層。
+- `2026-09-03-agency-round2-style-ratio.json`（agency-phase12 分支，`--style=1
+  --agency=on --repeat=2`，20 位預設角色）：conversation-agency-v1 Codex R1
+  修正＋Phase 2 round 的 style 差異守門，480 場零失敗。整體比值 **1.95**，
+  persona 內 1.28（playful_extrovert）～2.41（slow_worker）。比 run16／
+  agency Phase 1 記錄的 2.14／2.15 略低，但 `--repeat` 只有 2（雜訊帶更寬），
+  不當退步看；下次用 `--repeat=3` 重跑比較準。細節見
+  `../practice-agency-eval/README.md` 2026-09-04 那節。
