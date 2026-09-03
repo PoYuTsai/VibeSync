@@ -239,6 +239,28 @@ export function parseJudgeVerdict(raw: string): JudgeVerdict {
       `agency_judge_self_fact_not_exclusive: ${selfFactHits.join(",")}`,
     );
   }
+  // Codex round-2 Important 9：判準第 165 行的兩條互斥規則舊版只寫在 prompt 裡
+  // ——「規則只寫給模型看、parser 不驗」等於沒有規則。`adopted_without_asking`
+  // 的定義本身就以「玩家這句沒有可辨識的意思」為先決條件，所以它跟
+  // `accept_valid_answer`（他確實回答到了）在邏輯上不可能同時成立；跟
+  // `asked_with_guess`（她有問）也一樣（有問就不是「完全沒問」）。同時吐兩個
+  // 代表這一筆評審沒有套用判準，整筆不可信，跟 self-fact 三選一同一條線。
+  for (const other of ["asked_with_guess", "accept_valid_answer"] as const) {
+    if (labels.adopted_without_asking && labels[other]) {
+      throw new Error(
+        `agency_judge_adopted_not_exclusive: adopted_without_asking,${other}`,
+      );
+    }
+  }
+  // 判準第 161 行：他這句「有可辨識的意思」時她順著聊是 accept_valid_answer，
+  // 而且那時候 accommodating_invention（替他補一個他沒說的自身經歷）在定義上
+  // 不成立（第 164 行明講「兩項都一律 false」）。手寫 positive case 之前同時
+  // 設過這兩個，正是這條沒被驗證的證據。
+  if (labels.accept_valid_answer && labels.accommodating_invention) {
+    throw new Error(
+      "agency_judge_accept_not_exclusive: accept_valid_answer,accommodating_invention",
+    );
+  }
   const evidence = obj.evidence;
   if (typeof evidence !== "string") {
     throw new Error("agency_judge_bad_evidence");

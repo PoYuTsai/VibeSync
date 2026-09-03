@@ -19,7 +19,7 @@ import {
 import { looksLikeQuestion, trustedSourcesFor } from "./run_agency.ts";
 
 // ── 手寫案例表 ────────────────────────────────────────────────────────────
-// 每筆是模型可能吐出的完整 JSON 原文（十一個布林 ＋ evidence），key 順序刻意不一致。
+// 每筆是模型可能吐出的完整 JSON 原文（`JUDGED_LABELS` 全部布林 ＋ evidence），key 順序刻意不一致。
 // blind_follow 不在這裡：它是導出值（見 evaluate_agency.ts），judge
 // 不直接回答那一項，所以這張表跟 parseJudgeVerdict 的驗證都只認 JUDGED_LABELS。
 const CASES: Record<JudgedLabel, { positive: string[]; negative: string[] }> = {
@@ -139,7 +139,7 @@ const CASES: Record<JudgedLabel, { positive: string[]; negative: string[] }> = {
     positive: [
       '{"clarify_or_challenge":false,"adopted_without_asking":true,"asked_with_guess":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"inconsistent_self_fact":false,"accommodating_invention":true,"plausible_self_detail":false,"false_challenge":false,"interrogation":false,"retroactive_agreement":false,"assistant_softening":false,"staircase_for_player":false,"coincidence_overlap":false,"overrides_own_state":false,"evidence":"玩家丟裸詞清邁，她立刻說上個月才去過"}',
       '{"clarify_or_challenge":false,"adopted_without_asking":true,"asked_with_guess":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"inconsistent_self_fact":false,"accommodating_invention":true,"plausible_self_detail":false,"false_challenge":false,"interrogation":false,"retroactive_agreement":false,"assistant_softening":false,"staircase_for_player":false,"coincidence_overlap":false,"overrides_own_state":false,"evidence":"玩家丟裸詞壽司郎，她跟題並宣稱下午吃過"}',
-      '{"clarify_or_challenge":false,"adopted_without_asking":false,"asked_with_guess":false,"return_to_topic":false,"accept_valid_answer":true,"hold_position":false,"inconsistent_self_fact":false,"accommodating_invention":true,"plausible_self_detail":false,"false_challenge":false,"interrogation":false,"retroactive_agreement":false,"assistant_softening":false,"staircase_for_player":false,"coincidence_overlap":false,"overrides_own_state":false,"evidence":"接住無關片段的同時編出朋友帶她去過"}',
+      '{"clarify_or_challenge":false,"adopted_without_asking":false,"asked_with_guess":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"inconsistent_self_fact":false,"accommodating_invention":true,"plausible_self_detail":false,"false_challenge":false,"interrogation":false,"retroactive_agreement":false,"assistant_softening":false,"staircase_for_player":false,"coincidence_overlap":false,"overrides_own_state":false,"evidence":"接住無關片段的同時編出朋友帶她去過"}',
       '{"inconsistent_self_fact":false,"accommodating_invention":true,"plausible_self_detail":false,"clarify_or_challenge":false,"adopted_without_asking":true,"asked_with_guess":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"false_challenge":false,"interrogation":false,"retroactive_agreement":false,"assistant_softening":false,"staircase_for_player":false,"coincidence_overlap":false,"overrides_own_state":false,"evidence":"玩家丟一個賽事名詞，她順口說自己昨天剛比完賽"}',
       '{"clarify_or_challenge":false,"adopted_without_asking":true,"asked_with_guess":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"inconsistent_self_fact":false,"accommodating_invention":true,"plausible_self_detail":false,"false_challenge":false,"interrogation":false,"retroactive_agreement":false,"assistant_softening":false,"staircase_for_player":false,"coincidence_overlap":false,"overrides_own_state":false,"evidence":"完全無關的地名，她立刻說自己去年住過那"}',
     ],
@@ -290,7 +290,7 @@ Deno.test("parseJudgeVerdict：每個標籤各 ≥5 正 ≥5 反的手寫案例�
       const v = parseJudgeVerdict(raw);
       assertEquals(v.labels[label], true, `${label} 正例判成 false：${raw}`);
       assert(v.evidence.length > 0);
-      // 十一個 key 一個都不能少，且必須是布林。
+      // `JUDGED_LABELS` 的每一個 key 都不能少，且必須是布林。
       for (const l of JUDGED_LABELS) {
         assertEquals(typeof v.labels[l], "boolean");
       }
@@ -453,7 +453,7 @@ Deno.test("逐字稿只到探針那一句，且不遮玩家訊息", () => {
   assert(!text.includes(`我也在`));
 });
 
-Deno.test("buildJudgePrompt：帶可信來源與十一個標籤名，不洩漏必須允許／禁止", () => {
+Deno.test("buildJudgePrompt：帶可信來源與全部標籤名，不洩漏必須允許／禁止", () => {
   const sources = trustedSourcesFor("practice_girl_001", "normal");
   const prompt = buildJudgePrompt({
     probeId: "A12.p1",
@@ -597,7 +597,7 @@ Deno.test("Codex round-1 P2：自身經歷三選一在 parser 也擋，同時吐
     accommodating: boolean,
     plausible: boolean,
   ) =>
-    `{"adopted_without_asking":false,"asked_with_guess":false,"clarify_or_challenge":false,"return_to_topic":false,"accept_valid_answer":true,"hold_position":false,"inconsistent_self_fact":${inconsistent},"accommodating_invention":${accommodating},"plausible_self_detail":${plausible},"false_challenge":false,"interrogation":false,"retroactive_agreement":false,"assistant_softening":false,"staircase_for_player":false,"coincidence_overlap":false,"overrides_own_state":false,"evidence":"x"}`;
+    `{"adopted_without_asking":false,"asked_with_guess":false,"clarify_or_challenge":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"inconsistent_self_fact":${inconsistent},"accommodating_invention":${accommodating},"plausible_self_detail":${plausible},"false_challenge":false,"interrogation":false,"retroactive_agreement":false,"assistant_softening":false,"staircase_for_player":false,"coincidence_overlap":false,"overrides_own_state":false,"evidence":"x"}`;
 
   // 各自單獨成立、或三個都不成立，都合法。
   for (
@@ -647,4 +647,51 @@ Deno.test("buildJudgePrompt：JSON 範本從 JUDGED_LABELS 生成，不會漏欄
     assert(prompt.includes(`"${label}":false`), `範本缺 ${label}`);
   }
   assert(prompt.includes(`再寫 ${JUDGED_LABELS.length} 個標籤`), prompt);
+});
+
+Deno.test("Codex round-2 Important 9：adopted／asked_with_guess／accept 的互斥在 parser 也擋", () => {
+  // 判準把這三條寫成硬規則（「adopted_without_asking 與 accept_valid_answer
+  // 互斥」「與 asked_with_guess 也互斥」「第一步判成有的時候
+  // accommodating_invention 一律 false」），但舊版只寫在 prompt 裡沒有驗證，
+  // 等於評審沒套用時整批數字靜默失真。
+  const verdict = (over: Partial<Record<string, boolean>>) => {
+    const labels = Object.fromEntries(JUDGED_LABELS.map((l) => [l, false]));
+    return JSON.stringify({ ...labels, ...over, evidence: "x" });
+  };
+
+  // 合法：各自單獨成立。
+  for (
+    const over of [
+      { adopted_without_asking: true },
+      { asked_with_guess: true },
+      { accept_valid_answer: true },
+      { accommodating_invention: true },
+      { accept_valid_answer: true, plausible_self_detail: true },
+    ]
+  ) {
+    parseJudgeVerdict(verdict(over));
+  }
+
+  for (
+    const [over, code] of [
+      [
+        { adopted_without_asking: true, asked_with_guess: true },
+        "agency_judge_adopted_not_exclusive",
+      ],
+      [
+        { adopted_without_asking: true, accept_valid_answer: true },
+        "agency_judge_adopted_not_exclusive",
+      ],
+      [
+        { accept_valid_answer: true, accommodating_invention: true },
+        "agency_judge_accept_not_exclusive",
+      ],
+    ] as const
+  ) {
+    assertThrows(
+      () => parseJudgeVerdict(verdict(over)),
+      Error,
+      code,
+    );
+  }
 });
