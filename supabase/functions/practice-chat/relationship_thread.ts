@@ -7,6 +7,11 @@ import {
   REPLY_STYLE_STATE_KEY,
   type ReplyStyleState,
 } from "./reply_style_state.ts";
+import {
+  CONVERSATION_AGENCY_STATE_KEY,
+  type ConversationAgencyState,
+  parseConversationAgencyState,
+} from "./conversation_agency.ts";
 
 const PARTNER_MOODS: readonly PartnerMood[] = [
   "neutral",
@@ -41,6 +46,8 @@ export interface PracticeRelationshipThreadState {
   inviteStage?: InviteStage | null;
   /** reply-style-v1 跨回合狀態（recent_facts.replyStyle）；沒有＝null。 */
   styleState?: ReplyStyleState | null;
+  /** conversation-agency-v1 跨回合狀態（recent_facts.conversationAgency）。 */
+  agencyState?: ConversationAgencyState | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,6 +101,7 @@ export function parseRelationshipThreadRow(
     practiceMode: mode(row.practice_mode),
     inviteStage: inviteStage(row.invite_stage),
     styleState: parseReplyStyleState(row.recent_facts),
+    agencyState: parseConversationAgencyState(row.recent_facts),
   };
 }
 
@@ -118,6 +126,8 @@ export function buildRelationshipThreadRpcParams(opts: {
   aiTurnCount: number;
   /** reply-style-v1：只有 style 層真的跑了才帶；省略＝recent_facts 與舊版逐字相同。 */
   replyStyleState?: ReplyStyleState | null;
+  /** conversation-agency-v1：同上；旗標 off／shadow 一律省略或原樣帶回既有值。 */
+  conversationAgencyState?: ConversationAgencyState | null;
 }) {
   const memorySummary = str(opts.memorySummary, 1000);
   return {
@@ -141,6 +151,9 @@ export function buildRelationshipThreadRpcParams(opts: {
       inviteStage: opts.inviteStage,
       ...(opts.replyStyleState
         ? { [REPLY_STYLE_STATE_KEY]: opts.replyStyleState }
+        : {}),
+      ...(opts.conversationAgencyState
+        ? { [CONVERSATION_AGENCY_STATE_KEY]: opts.conversationAgencyState }
         : {}),
     },
   };

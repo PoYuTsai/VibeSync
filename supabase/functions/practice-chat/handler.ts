@@ -44,10 +44,15 @@ import {
 import {
   buildChatPromptBundle,
   buildDebriefMessages,
+  type ChatAgencyDecision,
   PRACTICE_PROMPT_POLICY_VERSION,
 } from "./prompt.ts";
 import type { TurnResponsePlan } from "./turn_response_plan.ts";
 import { nextReplyStyleState } from "./reply_style_state.ts";
+import {
+  agencyModeFor,
+  nextConversationAgencyState,
+} from "./conversation_agency.ts";
 import { replyStyleFor, type ReplyStyleProfile } from "./reply_style.ts";
 import { difficultyTuningFor } from "./practice_persona.ts";
 import {
@@ -2175,6 +2180,13 @@ export function createPracticeChatHandler(
     const replyStyleProfile = replyStyleEnabled
       ? replyStyleFor(request.profile.girl.profileId)
       : null;
+    // conversation-agency-v1：server-only 旗標，與 reply-style 獨立。
+    // "true"＝全部；"test"＝只有 TEST_EMAILS；"shadow"＝只算 evidence 與 telemetry，
+    // prompt／守門／回應／thread payload 都與旗標關閉逐字相同；其他＝關。
+    const agencyMode = agencyModeFor(
+      deps.getEnv("PRACTICE_CONVERSATIONAL_AGENCY_ENABLED"),
+      accountIsTest,
+    );
     const limits = resolveLimits(sub.tier);
     const responsePayloadWithCurrentUsage = (
       snapshot: Record<string, unknown>,
@@ -4220,6 +4232,7 @@ export function createPracticeChatHandler(
 
     let reply: string | null = null;
     let responsePlan: TurnResponsePlan | null = null;
+    let agencyDecision: ChatAgencyDecision | null = null;
     let stageDirectionRepairs = 0;
     try {
       // reply-style-v1（PR-2）：server-only 旗標；關閉或角色沒有 mapping 時
@@ -4245,6 +4258,8 @@ export function createPracticeChatHandler(
             herRecentMomentsBlock,
             gameState: ledgerGameState,
             styleState: relationshipThreadState?.styleState ?? null,
+            agencyMode,
+            agencyState: relationshipThreadState?.agencyState ?? null,
           }
           : {
             replyStyle: replyStyleEnabled,
@@ -4255,11 +4270,13 @@ export function createPracticeChatHandler(
             memorySummary: promptMemorySummary,
             timeContext: nowContext,
             herRecentMomentsBlock,
+            agencyMode,
             // standard 沒有 thread 寫入，也不讀 assisted 留下的狀態（規格附錄：
-            // standard 的 priorDecline 一律 false）。
+            // standard 的 priorDecline 一律 false）；agency 短期狀態改從逐字稿現推。
           },
       );
       responsePlan = chatPromptBundle.responsePlan;
+      agencyDecision = responsePlan?.agency ?? null;
       let lastError: unknown;
       for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
         try {
@@ -4436,6 +4453,14 @@ export function createPracticeChatHandler(
                 responsePlan,
               )
               : relationshipThreadState?.styleState ?? undefined,
+            // conversation-agency-v1：同一條規則。旗標關或 shadow＝不算新狀態，
+            // 既有狀態原樣帶回（RPC 整包覆寫 recent_facts，省略等於清空）。
+            conversationAgencyState: agencyDecision?.applied
+              ? nextConversationAgencyState(
+                relationshipThreadState?.agencyState ?? null,
+                agencyDecision.decision,
+              )
+              : relationshipThreadState?.agencyState ?? undefined,
           }),
         });
       }
@@ -4499,6 +4524,24 @@ export function createPracticeChatHandler(
           bubbleCount: responsePlan.bubbleCount,
           questionBudget: responsePlan.questionBudget,
           stageDirectionRepairs,
+        }
+        : null,
+      // conversation-agency-v1（計畫「發布與回滾」）：只有 enum／數字／布林。
+      // 旗標關＝null；shadow 有值但 applied=false（輸出與關閉時相同）。
+      conversationAgency: agencyDecision
+        ? {
+          agencyVersion: agencyDecision.decision.version,
+          applied: agencyDecision.applied,
+          utteranceShape: agencyDecision.decision.evidence.utteranceShape,
+          policyMode: agencyDecision.decision.policyMode,
+          forcedAct: agencyDecision.decision.forcedAct,
+          allowedActSetId: agencyDecision.decision.allowedActSetId,
+          unresolvedCount: agencyDecision.decision.evidence.unresolvedCount,
+          priorChallengeIssued:
+            agencyDecision.decision.evidence.priorChallengeIssued,
+          coherenceBefore:
+            relationshipThreadState?.agencyState?.lastCoherence ??
+              null,
         }
         : null,
     });

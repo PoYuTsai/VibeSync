@@ -9170,3 +9170,349 @@ Deno.test("reply-style 跨回合狀態：standard 模式不讀 assisted 留下�
   assert(system.includes("本輪回應方式"));
   assert(!system.includes("這輪不答應；只決定你怎麼說"));
 });
+
+// ── conversation-agency-v1（Phase 1）：flag-off golden bytes ───────────────
+// 固定 request 在 `7f1d6d6c`（agency 接線前）產生的 DeepSeek messages、原始
+// Response bytes 與 thread upsert 的 `p_recent_facts`。`PRACTICE_CONVERSATIONAL_
+// AGENCY_ENABLED` 未設、`off`、`shadow` 三種值都必須逐位元組等於這份 golden；
+// reply-style 開與關兩條路徑各有案例（agency 與 style 旗標互相獨立）。
+// golden 在拋棄式 worktree（checkout `7f1d6d6c`）跑同一組 case 印出。
+
+const AGENCY_FRAGMENT_TURNS = [
+  { role: "user", text: "東東" },
+  { role: "ai", text: "東東是誰" },
+  { role: "user", text: "阿布達比" },
+];
+
+async function agencyGoldenDigest(
+  options: FakeOptions,
+  body: unknown,
+  agencyEnv?: string,
+): Promise<
+  { messages: string; response: string; recentFacts: string; calls: number }
+> {
+  const fake = makeFake({
+    ...options,
+    env: {
+      ...options.env,
+      ...(agencyEnv === undefined
+        ? {}
+        : { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: agencyEnv }),
+    },
+  });
+  const response = await fake.handler(makeRequest(body));
+  const headers = [...response.headers.entries()].sort().map(([k, v]) =>
+    `${k}:${v}`
+  ).join("\n");
+  const bodyBytes = new Uint8Array(await response.arrayBuffer());
+  const head = new TextEncoder().encode(`${response.status}\n${headers}\n\n`);
+  const raw = new Uint8Array(head.length + bodyBytes.length);
+  raw.set(head, 0);
+  raw.set(bodyBytes, head.length);
+  const upsert = fake.state.rpcCalls.find((c) =>
+    c.fn === "upsert_practice_relationship_thread"
+  )?.params as Record<string, unknown> | undefined;
+  return {
+    messages: await sha256HexOf(
+      JSON.stringify(fake.state.deepSeekCalls.map((c) => c.messages)),
+    ),
+    response: await sha256HexOf(raw),
+    recentFacts: upsert
+      ? await sha256HexOf(JSON.stringify(upsert.p_recent_facts))
+      : "none",
+    calls: fake.state.deepSeekCalls.length,
+  };
+}
+
+function agencyGoldenCases(): {
+  name: string;
+  options: FakeOptions;
+  body: unknown;
+}[] {
+  return [
+    {
+      name: "standard／片段／style 關",
+      options: {
+        ledger: ledger({ practice_mode: "standard" }),
+        deepSeekReplies: ["好啊"],
+      },
+      body: chatBody({
+        practiceMode: "standard",
+        turns: AGENCY_FRAGMENT_TURNS,
+      }),
+    },
+    {
+      name: "beginner／片段／style 關／thread",
+      options: {
+        ledger: null,
+        deepSeekReplies: ["好啊\n你呢", CLASSIFIER_CAUGHT_MEDIUM],
+      },
+      body: chatBody({
+        practiceMode: "beginner",
+        visiblePracticeThreadId: "thread-visible-1",
+        temperatureScore: 40,
+        familiarityScore: 10,
+        turns: AGENCY_FRAGMENT_TURNS,
+      }),
+    },
+    {
+      name: "game／片段／style 關／thread",
+      options: {
+        ledger: null,
+        drawEvents: [{ profile_id: "practice_girl_004" }],
+        deepSeekReplies: ["好啊", CLASSIFIER_CAUGHT_MEDIUM],
+      },
+      body: chatBody({
+        practiceMode: "game",
+        profileId: "practice_girl_004",
+        visiblePracticeThreadId: "thread-visible-1",
+        turns: AGENCY_FRAGMENT_TURNS,
+      }),
+    },
+    {
+      name: "beginner／片段／style 開／thread",
+      options: {
+        ledger: null,
+        env: REPLY_STYLE_ON,
+        deepSeekReplies: ["好啊\n你呢", CLASSIFIER_CAUGHT_MEDIUM],
+      },
+      body: chatBody({
+        practiceMode: "beginner",
+        visiblePracticeThreadId: "thread-visible-1",
+        temperatureScore: 40,
+        familiarityScore: 10,
+        turns: AGENCY_FRAGMENT_TURNS,
+      }),
+    },
+    {
+      name: "standard／片段／style 開",
+      options: {
+        ledger: ledger({ practice_mode: "standard" }),
+        env: REPLY_STYLE_ON,
+        deepSeekReplies: ["好啊"],
+      },
+      body: chatBody({
+        practiceMode: "standard",
+        turns: AGENCY_FRAGMENT_TURNS,
+      }),
+    },
+    {
+      name: "game／片段／style 開／thread",
+      options: {
+        ledger: null,
+        env: REPLY_STYLE_ON,
+        drawEvents: [{ profile_id: "practice_girl_004" }],
+        deepSeekReplies: ["好啊", CLASSIFIER_CAUGHT_MEDIUM],
+      },
+      body: chatBody({
+        practiceMode: "game",
+        profileId: "practice_girl_004",
+        visiblePracticeThreadId: "thread-visible-1",
+        turns: AGENCY_FRAGMENT_TURNS,
+      }),
+    },
+  ];
+}
+
+// 由 7f1d6d6c 的同一組 agencyGoldenCases 產生（拋棄式 checkout 跑 printer 印出）。
+const AGENCY_FLAG_OFF_GOLDEN = new Map<
+  string,
+  { messages: string; response: string; recentFacts: string; calls: number }
+>([
+  ["standard／片段／style 關", {
+    messages:
+      "0e20a871bb82e1b77553290b4dbee898e4f898aae53b2b05124e350bea8e4c56",
+    response:
+      "444e4e27dafce2e0ec8c13b924c4b46dd05d51f72ef1d863c13a22a5ce6f318b",
+    recentFacts: "none",
+    calls: 1,
+  }],
+  ["beginner／片段／style 關／thread", {
+    messages:
+      "3c91b751932175777ce61d43f84b2721f057697d3f3fac7224e2dd747811bd15",
+    response:
+      "409f1af7e9d5f2f155f664cefacea35fe93780eab5c259be2394b648d4ac8364",
+    recentFacts:
+      "ea6f74df9947014bd44be1db970be81e2998bbfe18b2b50ca79ed8d9541ee937",
+    calls: 2,
+  }],
+  ["game／片段／style 關／thread", {
+    messages:
+      "3b7abfc9b9f469c0548ff7f62dd26b82f07161d466a2f39aab8ce29a1bae1a8c",
+    response:
+      "b9e6a7ae6855f33005e763c8490e86ac3aa859e81aee7b78a2437044d328834c",
+    recentFacts:
+      "ea6f74df9947014bd44be1db970be81e2998bbfe18b2b50ca79ed8d9541ee937",
+    calls: 2,
+  }],
+  ["beginner／片段／style 開／thread", {
+    messages:
+      "0aaac4696ad6c55b9bf05405b2876101676679c6f4402d52637b207bf6888c69",
+    response:
+      "409f1af7e9d5f2f155f664cefacea35fe93780eab5c259be2394b648d4ac8364",
+    recentFacts:
+      "b8f51e72dce140057caf90950ff939b7bee92044180b26546a49a81d44cc126b",
+    calls: 2,
+  }],
+  ["standard／片段／style 開", {
+    messages:
+      "cc946fd42a890cb993808a2b5fb2f183fe57065d9621318c0f2037d966b70bca",
+    response:
+      "444e4e27dafce2e0ec8c13b924c4b46dd05d51f72ef1d863c13a22a5ce6f318b",
+    recentFacts: "none",
+    calls: 1,
+  }],
+  ["game／片段／style 開／thread", {
+    messages:
+      "e6d2689a7650d8c675296c079eb307745a00b4f3f0b7f875808b334d2226a202",
+    response:
+      "b9e6a7ae6855f33005e763c8490e86ac3aa859e81aee7b78a2437044d328834c",
+    recentFacts:
+      "b8f51e72dce140057caf90950ff939b7bee92044180b26546a49a81d44cc126b",
+    calls: 2,
+  }],
+]);
+
+Deno.test("agency 旗標未設／off／shadow：messages、Response bytes 與 thread recent_facts 逐位元組等於 7f1d6d6c golden", async () => {
+  const cases = agencyGoldenCases();
+  assertEquals(new Set(cases.map((c) => c.name)).size, cases.length);
+  assertEquals(
+    cases.map((c) => c.name).sort(),
+    [...AGENCY_FLAG_OFF_GOLDEN.keys()].sort(),
+  );
+  for (const c of cases) {
+    const expected = AGENCY_FLAG_OFF_GOLDEN.get(c.name);
+    assert(expected, `golden 缺少案例：${c.name}`);
+    for (const env of [undefined, "off", "shadow", "亂填"]) {
+      assertEquals(
+        await agencyGoldenDigest(c.options, c.body, env),
+        expected,
+        `${c.name} / env=${env}`,
+      );
+    }
+  }
+});
+
+Deno.test("agency 旗標 test：只有測試帳號啟用，一般帳號與旗標關閉逐位元組相同", async () => {
+  const c = agencyGoldenCases()[3];
+  const expected = AGENCY_FLAG_OFF_GOLDEN.get(c.name)!;
+  assertEquals(await agencyGoldenDigest(c.options, c.body, "test"), expected);
+  const onTestAccount = await agencyGoldenDigest(
+    { ...c.options, user: { id: "user-1", email: "vibesync.test@gmail.com" } },
+    c.body,
+    "test",
+  );
+  assert(
+    onTestAccount.messages !== expected.messages,
+    "測試帳號＋旗標 test 必須真的改變 prompt",
+  );
+});
+
+Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結構化欄位、thread 多 conversationAgency", async () => {
+  const c = agencyGoldenCases()[3];
+  const { state, succeeded } = await runCapturingLogs(
+    {
+      ...c.options,
+      env: {
+        ...c.options.env,
+        PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+      },
+    },
+    c.body,
+  );
+  const system = state.deepSeekCalls[0].messages[0].content;
+  assert(system.includes("你不負責救場"), "缺 agency decision rule");
+  assert(!system.includes("不主導節奏"), "舊的「不主導節奏」必須被換掉");
+  assert(!system.includes("絕對不要回「你是不是打錯字」"), "台語規則未替換");
+  assert(system.includes("自己的具體經歷"), "缺認知邊界那一行");
+  assert(system.includes("挑一個最合理的"), "缺 bounded choice 清單");
+  const agency = succeeded?.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.agencyVersion, 1);
+  assertEquals(agency.applied, true);
+  assertEquals(agency.utteranceShape, "answer_candidate");
+  assertEquals(agency.policyMode, "bounded");
+  assertEquals(agency.allowedActSetId, "topic_shift_v1");
+  assertEquals(agency.unresolvedCount, 1);
+  assertEquals(agency.forcedAct, null);
+  assertEquals(agency.coherenceBefore, null);
+  const upsert = state.rpcCalls.find((r) =>
+    r.fn === "upsert_practice_relationship_thread"
+  )!.params.p_recent_facts as Record<string, unknown>;
+  assertEquals(upsert.conversationAgency, {
+    version: 1,
+    lastCoherence: "disconnected",
+    unresolvedCount: 1,
+    priorChallengeIssued: true,
+    lastAgencyAct: null,
+  });
+});
+
+Deno.test("agency shadow：telemetry 有值但 applied=false，且不寫 thread 狀態", async () => {
+  const c = agencyGoldenCases()[3];
+  const { state, succeeded } = await runCapturingLogs(
+    {
+      ...c.options,
+      env: {
+        ...c.options.env,
+        PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "shadow",
+      },
+    },
+    c.body,
+  );
+  const agency = succeeded?.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.applied, false);
+  assertEquals(agency.utteranceShape, "answer_candidate");
+  assertEquals(agency.allowedActSetId, "topic_shift_v1");
+  const upsert = state.rpcCalls.find((r) =>
+    r.fn === "upsert_practice_relationship_thread"
+  )!.params.p_recent_facts as Record<string, unknown>;
+  assertEquals(upsert.conversationAgency, undefined);
+});
+
+Deno.test("agency 旗標關：telemetry conversationAgency 為 null，既有 conversationAgency 狀態原樣帶回", async () => {
+  const existing = {
+    version: 1,
+    lastCoherence: "repetitive",
+    unresolvedCount: 3,
+    priorChallengeIssued: true,
+    lastAgencyAct: "hold_position",
+  };
+  const { state, succeeded } = await runCapturingLogs(
+    {
+      ledger: null,
+      thread: {
+        profile_id: "practice_girl_001",
+        temperature_score: 40,
+        familiarity_score: 10,
+        recent_facts: { source: "practice_chat", conversationAgency: existing },
+      },
+      deepSeekReplies: ["好啊", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      visiblePracticeThreadId: "thread-visible-1",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      turns: AGENCY_FRAGMENT_TURNS,
+    }),
+  );
+  assertEquals(succeeded?.conversationAgency, null);
+  const upsert = state.rpcCalls.find((r) =>
+    r.fn === "upsert_practice_relationship_thread"
+  )!.params.p_recent_facts as Record<string, unknown>;
+  assertEquals(upsert.conversationAgency, existing);
+});
+
+Deno.test("agency 旗標開＋reply-style 關：system prompt 仍套用改寫（兩支旗標互相獨立）", async () => {
+  const { state } = await runCapturingLogs(
+    {
+      ledger: ledger({ practice_mode: "standard" }),
+      env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+      deepSeekReplies: ["好啊"],
+    },
+    chatBody({ practiceMode: "standard", turns: AGENCY_FRAGMENT_TURNS }),
+  );
+  const system = state.deepSeekCalls[0].messages[0].content;
+  assert(system.includes("你不負責救場"));
+  assert(!system.includes("本輪回應方式"), "style 關就不該有 turn plan");
+});
