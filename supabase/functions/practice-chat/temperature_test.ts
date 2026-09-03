@@ -425,35 +425,71 @@ Deno.test("applyCoherenceDeltaCap：connected 不套 cap，正常給分（repair
 });
 
 Deno.test("applyCoherenceDeltaCap：ambiguous 首次不獎不罰（正負都壓成 0/0）", () => {
-  const positive = applyCoherenceDeltaCap(judgement(3, 4), 50, 30, "ambiguous", 0);
+  const positive = applyCoherenceDeltaCap(
+    judgement(3, 4),
+    50,
+    30,
+    "ambiguous",
+    0,
+  );
   assertEquals(positive.judgement.delta, 0);
   assertEquals(positive.judgement.familiarityDelta, 0);
   assertEquals(positive.capApplied, "ambiguous");
 
-  const negative = applyCoherenceDeltaCap(judgement(-3, -2), 50, 30, "ambiguous", 0);
+  const negative = applyCoherenceDeltaCap(
+    judgement(-3, -2),
+    50,
+    30,
+    "ambiguous",
+    0,
+  );
   assertEquals(negative.judgement.delta, 0);
   assertEquals(negative.judgement.familiarityDelta, 0);
 });
 
 Deno.test("applyCoherenceDeltaCap：disconnected 首次是 0/0 或至多 -1/0，永不正 heat", () => {
-  const positive = applyCoherenceDeltaCap(judgement(5, 3), 50, 30, "disconnected", 0);
+  const positive = applyCoherenceDeltaCap(
+    judgement(5, 3),
+    50,
+    30,
+    "disconnected",
+    0,
+  );
   assertEquals(positive.judgement.delta, 0);
   assertEquals(positive.judgement.familiarityDelta, 0);
   assertEquals(positive.capApplied, "disconnected");
 
-  const negative = applyCoherenceDeltaCap(judgement(-5, -3), 50, 30, "disconnected", 0);
+  const negative = applyCoherenceDeltaCap(
+    judgement(-5, -3),
+    50,
+    30,
+    "disconnected",
+    0,
+  );
   assertEquals(negative.judgement.delta, -1);
   assertEquals(negative.judgement.familiarityDelta, 0);
 });
 
 Deno.test("applyCoherenceDeltaCap：repetitive／unresolvedCount≥2 至少 -2/-1，永不正 heat", () => {
-  const repetitive = applyCoherenceDeltaCap(judgement(3, 2), 50, 30, "repetitive", 0);
+  const repetitive = applyCoherenceDeltaCap(
+    judgement(3, 2),
+    50,
+    30,
+    "repetitive",
+    0,
+  );
   assertEquals(repetitive.judgement.delta, -2);
   assertEquals(repetitive.judgement.familiarityDelta, -1);
   assertEquals(repetitive.capApplied, "repetitive");
 
   // coherence 判 connected 但 unresolvedCount 已經 ≥2（結構證據沒跟上）也要壓。
-  const structural = applyCoherenceDeltaCap(judgement(2, 1), 50, 30, "connected", 2);
+  const structural = applyCoherenceDeltaCap(
+    judgement(2, 1),
+    50,
+    30,
+    "connected",
+    2,
+  );
   assertEquals(structural.judgement.delta, -2);
   assertEquals(structural.judgement.familiarityDelta, -1);
   assertEquals(structural.capApplied, "repetitive");

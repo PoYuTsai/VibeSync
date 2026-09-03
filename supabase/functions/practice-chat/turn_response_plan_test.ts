@@ -696,7 +696,10 @@ function agencyFor(
   agencyMode: AgencyMode,
 ) {
   const signals = detectTurnSignals(turns);
-  const situation = classifySituation(signals, policyStanceFor(signals, evidence));
+  const situation = classifySituation(
+    signals,
+    policyStanceFor(signals, evidence),
+  );
   return computeAgencyDecision({ turns, situation, agencyMode });
 }
 

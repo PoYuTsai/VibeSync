@@ -514,7 +514,10 @@ export function applyCoherenceDeltaCap(
     // connected：玩家成功解釋／repair，正常給分，不套 cap。
     return { judgement, capApplied };
   }
-  if (heatDelta === judgement.delta && familiarityDelta === judgement.familiarityDelta) {
+  if (
+    heatDelta === judgement.delta &&
+    familiarityDelta === judgement.familiarityDelta
+  ) {
     return { judgement, capApplied };
   }
   const score = clampTemperature(clampTemperature(currentHeat) + heatDelta);
@@ -756,7 +759,9 @@ export function parseTurnClassification(
     moodConfidence: parseMoodConfidence(parsed.moodConfidence),
     innerThought: sanitizeInnerThought(parsed.innerThought),
     coherence: parseCoherence(parsed.coherence),
-    aiChallengedLastTurn: parseAiChallengedLastTurn(parsed.aiChallengedLastTurn),
+    aiChallengedLastTurn: parseAiChallengedLastTurn(
+      parsed.aiChallengedLastTurn,
+    ),
   };
 }
 

@@ -29,8 +29,8 @@ import {
 } from "./reply_style.ts";
 import {
   type AgencyApplication,
-  agencyPolicyFor,
   type AgencyMode,
+  agencyPolicyFor,
   agencyThresholdsFor,
   type ConversationAgencyState,
   detectAgencyEvidence,
@@ -628,7 +628,8 @@ export function renderTurnPlan(
   const agencyApplied = agency?.applied ?? false;
   const clarifyingAllowed = plan.primaryAct === "clarify" ||
     plan.optionalAct === "clarify" ||
-    (agencyApplied && (agency?.decision.allowedActs.some(isClarifyingAct) ?? false));
+    (agencyApplied &&
+      (agency?.decision.allowedActs.some(isClarifyingAct) ?? false));
   const question = plan.questionBudget === 1
     ? "最多問一句。"
     : clarifyingAllowed

@@ -416,13 +416,19 @@ export function agencyPolicyFor(
     // 未來接上真實 lastAgencyAct 持久化、或直接手動組 evidence 時才會經過。
     // forceEndLoopBeforeChallenge（挑戰／game）因此要獨立於 priorChallengeIssued
     // 判斷，不然「2 則未解就收掉」在真實流量下永遠選不到。
-    if (!evidence.priorChallengeIssued && !thresholds.forceEndLoopBeforeChallenge) {
+    if (
+      !evidence.priorChallengeIssued && !thresholds.forceEndLoopBeforeChallenge
+    ) {
       return {
         ...base,
         situation: "repeated_low_coherence",
         policyMode: "bounded",
         forcedAct: null,
-        allowedActs: ["challenge_relevance", "return_to_topic", "hold_position"],
+        allowedActs: [
+          "challenge_relevance",
+          "return_to_topic",
+          "hold_position",
+        ],
         allowedActSetId: "low_coherence_v1",
       };
     }
@@ -440,7 +446,9 @@ export function agencyPolicyFor(
         : "repeated_token_v1",
     };
   }
-  if (unresolvedCount >= thresholds.topicShiftAt || shape === "answer_candidate") {
+  if (
+    unresolvedCount >= thresholds.topicShiftAt || shape === "answer_candidate"
+  ) {
     // 前一題還沒解決，或她剛問的問題沒被回答：不供應新解讀，但也不強制質疑。
     return {
       ...base,

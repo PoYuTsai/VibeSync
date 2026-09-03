@@ -25,7 +25,7 @@ import {
   buildAcquaintanceOrigin,
   eligibleAcquaintanceOrigins,
 } from "./acquaintance_origin.ts";
-import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
+import { resolvePracticeProfile } from "./practice_persona.ts";
 import { replyStyleFor } from "./reply_style.ts";
 import { PLAN_SITUATIONS, REPLY_ACTS } from "./turn_response_plan.ts";
 import { REPLY_STYLE_HIDDEN_HEADINGS } from "./visible_text_guard.ts";
@@ -9424,7 +9424,10 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
   assert(system.includes("你不負責救場"), "缺 agency decision rule");
   assert(!system.includes("不主導節奏"), "舊的「不主導節奏」必須被換掉");
   assert(!system.includes("絕對不要回「你是不是打錯字」"), "台語規則未替換");
-  assert(system.includes("不要為了對方丟出的話題編一段自己的故事"), "缺認知邊界那一行");
+  assert(
+    system.includes("不要為了對方丟出的話題編一段自己的故事"),
+    "缺認知邊界那一行",
+  );
   assert(system.includes("挑一個最合理的"), "缺 bounded choice 清單");
   const agency = succeeded?.conversationAgency as Record<string, unknown>;
   assertEquals(agency.agencyVersion, 1);
@@ -9587,7 +9590,10 @@ Deno.test("golden 擴大範圍：hint 在未設／off／shadow／亂填四種環
     ledger: ledger({ practice_mode: "beginner" }),
     claudeReplies: [validHintJson()],
   };
-  const body = hintBody({ practiceMode: "beginner", turns: AGENCY_FRAGMENT_TURNS });
+  const body = hintBody({
+    practiceMode: "beginner",
+    turns: AGENCY_FRAGMENT_TURNS,
+  });
   const baseline = await fullDigest(options, body, undefined);
   for (const env of ["off", "shadow", "亂填"]) {
     assertEquals(await fullDigest(options, body, env), baseline, `env=${env}`);

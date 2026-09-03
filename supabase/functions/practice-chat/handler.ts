@@ -51,8 +51,8 @@ import type { TurnResponsePlan } from "./turn_response_plan.ts";
 import { nextReplyStyleState } from "./reply_style_state.ts";
 import {
   type AgencyClassifierSignal,
-  agencyModeFor,
   type AgencyMode,
+  agencyModeFor,
   nextConversationAgencyState,
 } from "./conversation_agency.ts";
 import { replyStyleFor, type ReplyStyleProfile } from "./reply_style.ts";
