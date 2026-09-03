@@ -107,9 +107,10 @@ def _finding(rule: str, field: Field, message: str, sample: str = '') -> Finding
     return Finding(rule, field.book_id, field.chapter_id or '', field.owner_id, field.name, message, sample)
 
 
+# 只折疊「半形／全形同一個符號」的寬度差；引號沒有半形對應，保留——去掉引號會讓
+# 「不要『逼問』」與「不要逼問」撞成同一個 key，新問題被舊 baseline 蓋住。
 _FOLD_MAP = str.maketrans({'，': ',', '：': ':', '；': ';', '！': '!', '？': '?', '（': '(', '）': ')', '［': '[',
-                           '］': ']', '＞': '>', '＜': '<', '＝': '=', '／': '/', '＋': '+', '。': '.',
-                           '「': '', '」': '', '『': '', '』': ''})
+                           '］': ']', '＞': '>', '＜': '<', '＝': '=', '／': '/', '＋': '+', '。': '.'})
 
 
 def fold_key_text(text: str) -> str:

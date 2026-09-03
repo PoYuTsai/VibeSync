@@ -278,6 +278,8 @@ class AuditRuleTests(unittest.TestCase):
         new, resolved = audit.compare_with_baseline([f for f in audit_findings(after) if f.rule == 'R12'], legacy)
         self.assertEqual((new, resolved), ([], []))
         self.assertEqual(audit.baseline_growth(audit.make_baseline(audit_findings(after), 'x'), legacy), [])
+        # 引號不折疊：只差引號的兩個片語必須是不同 key，否則新問題會被舊 baseline 蓋住
+        self.assertNotEqual(audit.fold_key_text('不要「逼問」'), audit.fold_key_text('不要逼問'))
 
     def test_allowlist_suppresses_only_named_entries(self):
         book = make_book(blocks=[{'type': 'paragraph', 'id': 'p1', 'text': '一段,半形逗號'}])
