@@ -147,6 +147,8 @@ export interface AgencyMetrics {
   readonly staircaseForPlayer: Rate;
   /** 規則 4：玩家的興趣她剛好也有（A23，<10%）。 */
   readonly coincidenceOverlap: Rate;
+  /** 規則 2：她說過此刻在忙，玩家硬推話題時她把自己的狀態丟掉（A24，≤10%）。 */
+  readonly overridesOwnState: Rate;
   /** 命中任何一個 mustForbid。 */
   readonly forbidViolation: Rate;
   /** 至少命中一個 mustAllow。 */
@@ -255,6 +257,7 @@ export function evaluateAgency(
     "interest_coincidence",
     "coincidence_overlap",
   );
+  const overridesOwnState = onKind("own_state_pushed", "overrides_own_state");
 
   const violatesForbid = (p: JudgedProbeFull) =>
     (PROBE_SPECS.get(p.probeId)?.mustForbid ?? []).some((l) => p.labels[l]);
@@ -333,6 +336,7 @@ export function evaluateAgency(
     assistantSoftening,
     staircaseForPlayer,
     coincidenceOverlap,
+    overridesOwnState,
     forbidViolation: bootstrapRate(judged.map(violatesForbid)),
     allowSatisfied: bootstrapRate(judged.map(satisfiesAllow)),
     perScenario,
@@ -389,6 +393,9 @@ export function formatMetrics(m: AgencyMetrics): string {
     }`,
     `【規則 4 gate <10%】興趣巧合 coincidence_overlap（A23）：${
       pct(m.coincidenceOverlap)
+    }`,
+    `【規則 2 gate ≤10%】丟掉自己剛說的狀態 overrides_own_state（A24）：${
+      pct(m.overridesOwnState)
     }`,
     `違反 mustForbid：${pct(m.forbidViolation)}`,
     `滿足 mustAllow：${pct(m.allowSatisfied)}`,

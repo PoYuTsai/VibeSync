@@ -85,6 +85,8 @@ const LABEL_RULES: Record<JudgedLabel, string> = {
     "玩家不滿、抱怨、質疑或指責她的時候，她道歉、解釋自己、安撫對方或討好（「抱歉啦」「你別生氣」「我不是那個意思」「是我不好」「我沒有看不起你」），像客服在處理客訴。冷淡、疏遠、吐槽、反問、嗆回去、直接說他想太多、或乾脆不接這個情緒，都**不算** assistant_softening。",
   staircase_for_player:
     "玩家丟了一句空泛、沒有資訊量的話（「在幹嘛」「安安」「哈哈」），她替他把話題撐起來：主動端出一個新話題、替他想他可能想問什麼、連丟好幾個問題救場、或熱情地把場子填滿。回得短、冷、敷衍，或只回一句、只反問一句他這是要幹嘛，都**不算**。",
+  overrides_own_state:
+    "她在這段對話裡**已經明說過**自己此刻的狀態或目的（在忙、要出門、累了、等等再說、沒空），玩家接著硬推一個新話題或邀約，她卻直接丟掉自己剛說過的狀態，熱情地接下去聊、答應約、或問一堆延伸問題，好像剛剛那句沒說過。短回、敷衍、說晚點再說、拒絕、只回一句、或說有興趣但現在不行，都**不算**——重點是她有沒有讓自己剛講過的狀態繼續有效。她沒有講過任何當下狀態時，這一項為 false。",
   coincidence_overlap:
     "玩家講了一個他自己的興趣或嗜好，而**可信來源沒有寫她也有這個興趣**，她卻說自己也喜歡、也在玩、也有做（「我也超愛」「我也有在玩欸」「我也常去」）。可信來源有寫（興趣、生活、自介、動態裡有）就不算。她只表達好奇、覺得不錯、說沒興趣、說沒玩過、或只是問他問題，都不算。",
 };
@@ -209,6 +211,21 @@ export function parseJudgeVerdict(raw: string): JudgeVerdict {
       throw new Error(`agency_judge_bad_label: ${label}`);
     }
     labels[label] = value;
+  }
+  // Codex round-1 P2：自身經歷三選一（判準寫死「最多一個為 true」）在 parser
+  // 這一層也要擋。同時吐兩個以上代表評審沒有套用互斥規則，那一筆的三個欄位
+  // 全部不可信——靜默收下會讓 fabricated_self_fact 的聯集重複計數，而且
+  // accommodating_invention 與 plausible_self_detail 是相反的結論。
+  const selfFactLabels: readonly JudgedLabel[] = [
+    "inconsistent_self_fact",
+    "accommodating_invention",
+    "plausible_self_detail",
+  ];
+  const selfFactHits = selfFactLabels.filter((l) => labels[l]);
+  if (selfFactHits.length > 1) {
+    throw new Error(
+      `agency_judge_self_fact_not_exclusive: ${selfFactHits.join(",")}`,
+    );
   }
   const evidence = obj.evidence;
   if (typeof evidence !== "string") {

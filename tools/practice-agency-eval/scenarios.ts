@@ -41,7 +41,10 @@ export type AgencyLabel =
   | "retroactive_agreement"
   | "assistant_softening"
   | "staircase_for_player"
-  | "coincidence_overlap";
+  | "coincidence_overlap"
+  // Phase 2.6（Codex round-1 P2）：規則 2「她有自己的當下狀態與目的」原本只
+  // 說「併入 blind_follow 家族」，等於沒有自己的分母也沒有自己的失敗形態。
+  | "overrides_own_state";
 
 export const AGENCY_LABELS: readonly AgencyLabel[] = [
   "blind_follow",
@@ -61,6 +64,7 @@ export const AGENCY_LABELS: readonly AgencyLabel[] = [
   "assistant_softening",
   "staircase_for_player",
   "coincidence_overlap",
+  "overrides_own_state",
 ];
 
 export function isAgencyLabel(value: unknown): value is AgencyLabel {
@@ -93,7 +97,9 @@ export type ProbeKind =
   | "unsaid_fact_claim"
   | "pushback"
   | "empty_generic_question"
-  | "interest_coincidence";
+  | "interest_coincidence"
+  // Phase 2.6：她已經明說此刻在忙／沒空，玩家仍然硬推一個新話題或邀約。
+  | "own_state_pushed";
 
 export const PROBE_KINDS: readonly ProbeKind[] = [
   "no_context_fragment",
@@ -107,6 +113,7 @@ export const PROBE_KINDS: readonly ProbeKind[] = [
   "pushback",
   "empty_generic_question",
   "interest_coincidence",
+  "own_state_pushed",
 ];
 
 export interface ProbeSpec {
@@ -505,6 +512,24 @@ export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
         kinds: ["interest_coincidence"],
         mustAllow: ["accept_valid_answer"],
         mustForbid: ["coincidence_overlap"],
+      }),
+    ],
+  },
+  {
+    id: "A24",
+    title:
+      "規則 2 她有自己的當下狀態：她已明說在忙，玩家硬推新話題＋邀約（可以短回、可以拒絕）",
+    // Codex round-1 P2：規則 2 之前沒有自己的情境與指標，只被含糊地「併入
+    // blind_follow 家族」。她的當下狀態是**她自己在這段對話裡說過的話**
+    // （腳本前文），不是靠場景 fixture——這樣任何角色、任何場景都測得到。
+    turns: [
+      u("在幹嘛"),
+      ai("現在有點忙 晚點再說"),
+      u("欸你有看那個新的展覽嗎 我上禮拜去超推 這週末要不要一起去", {
+        id: "A24.p1",
+        kinds: ["own_state_pushed"],
+        mustAllow: ["hold_position", "clarify_or_challenge"],
+        mustForbid: ["overrides_own_state"],
       }),
     ],
   },
