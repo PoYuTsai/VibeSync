@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-03T07:15:33Z",
+  "generatedAt": "2026-09-03T12:08:18Z",
   "source": "assets/learning/ebooks",
   "note": "棘輪基準：CI 只擋這份清單以外的新發現。每個工作包修掉一批問題後用 --write-baseline 縮小它，不得手動加項目。",
-  "count": 47,
+  "count": 12,
   "findings": [
     {
       "rule": "R06",
@@ -22,23 +22,8 @@
     },
     {
       "rule": "R06",
-      "id": "ebook-6-c6-p1",
-      "field": "text"
-    },
-    {
-      "rule": "R06",
       "id": "ebook-7-chapter-4",
       "field": "title"
-    },
-    {
-      "rule": "R06",
-      "id": "ebook-7-c6-p3",
-      "field": "text"
-    },
-    {
-      "rule": "R06",
-      "id": "ebook-7-c6-p6",
-      "field": "text"
     },
     {
       "rule": "R09",
@@ -79,166 +64,6 @@
       "rule": "R09",
       "id": "ebook-1-c5-lib-e8-cmp2",
       "field": "caption"
-    },
-    {
-      "rule": "R10",
-      "id": "ebook-2-chapter-1",
-      "field": "glossary#她投入多少(I)"
-    },
-    {
-      "rule": "R10",
-      "id": "ebook-2-chapter-1",
-      "field": "glossary#聊天有沒有情緒(E)"
-    },
-    {
-      "rule": "R10",
-      "id": "ebook-2-chapter-1",
-      "field": "glossary#興趣回應(R)"
-    },
-    {
-      "rule": "R10",
-      "id": "ebook-2-chapter-1",
-      "field": "glossary#誰在帶方向(F)"
-    },
-    {
-      "rule": "R10",
-      "id": "ebook-2-chapter-1",
-      "field": "glossary#讓她認識你(V)"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-2-c5-lib-e13-dlg1-l5",
-      "field": "lines[4].annotation#假定同意"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-4-c4-lib-e3-b2",
-      "field": "text#假定同意"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-5-c1-p2",
-      "field": "text#聊什麼占7分"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-5-c6-bl1",
-      "field": "items[2]#做流氓般的紳士"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-6-c4-co1",
-      "field": "text#代表她還在乎"
-    },
-    {
-      "rule": "R12",
-      "id": "d1-l6",
-      "field": "lines[5].text#跟你一樣短腿"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-6-c6-p1",
-      "field": "text#她冷的不是你"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-6-chapter-6",
-      "field": "title#她冷的不是你"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-7-c1-co1",
-      "field": "text#反應等級等於她目前認定你的價值"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-7-c5-c2",
-      "field": "text#行為>情緒>字面"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-7-c5-cmp1-i2",
-      "field": "items[1].note#行為>字面"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-7-c6-cmp1-b",
-      "field": "items[1].text#改天約妳喝杯咖啡"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-7-c6-dlg1",
-      "field": "title#假定式推進"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-7-c6-dlg1-2",
-      "field": "lines[1].annotation#沒有否認「見面」"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-7-c6-p3",
-      "field": "text#改天約妳喝杯咖啡"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-7-c6-p6",
-      "field": "text#下次奶茶妳請"
-    },
-    {
-      "rule": "R12",
-      "id": "ebook-7-c6-p6",
-      "field": "text#拒絕階梯"
-    },
-    {
-      "rule": "R13",
-      "id": "catalog",
-      "field": "canonical#一則訊息只能算線索"
-    },
-    {
-      "rule": "R13",
-      "id": "catalog",
-      "field": "canonical#吵架不等於關係結束"
-    },
-    {
-      "rule": "R13",
-      "id": "catalog",
-      "field": "canonical#問題不是穩定,而是整段互動只剩附和"
-    },
-    {
-      "rule": "R13",
-      "id": "catalog",
-      "field": "canonical#她明確答應後,再在一到兩輪內敲時間"
-    },
-    {
-      "rule": "R13",
-      "id": "catalog",
-      "field": "canonical#她沒接,就換方向"
-    },
-    {
-      "rule": "R13",
-      "id": "catalog",
-      "field": "canonical#她說不行,就先接受"
-    },
-    {
-      "rule": "R13",
-      "id": "catalog",
-      "field": "canonical#妳可以的話,我就訂位"
-    },
-    {
-      "rule": "R13",
-      "id": "catalog",
-      "field": "canonical#妳臨時有變再跟我說"
-    },
-    {
-      "rule": "R13",
-      "id": "catalog",
-      "field": "canonical#快回不是問題"
-    },
-    {
-      "rule": "R13",
-      "id": "catalog",
-      "field": "canonical#明確的拒絕或界線,永遠排在最前面"
     }
   ]
 }
