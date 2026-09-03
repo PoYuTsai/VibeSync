@@ -606,7 +606,7 @@ export function renderTurnPlan(
   const agencyLine = agencyActsLine(plan);
   const first = agencyLine ? agencyLine : `先${acts}`;
   const tail = agencyApplied
-    ? "回應依整段脈絡，不必服從最新一個詞；「接住」也可以是說你聽不懂、不相關，或前一題還沒回答"
+    ? "回應依整段脈絡，不必服從最新一個詞；「接住」也可以是說你聽不懂、不相關，或前一題還沒回答。問清楚或指出跳題的時候就只做那件事，不要同一則裡又把那個詞當成新話題聊起來"
     : "內容要接到對方最新一句的具體內容";
   return `\n\n本輪回應方式（hidden guidance，不要向對方提及）：
 - ${first}。${stance}${conditional}

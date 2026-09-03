@@ -315,8 +315,14 @@ export function agencyPolicyFor(evidence: AgencyEvidence): AgencyDecision {
       allowedActSetId: "topic_shift_v1",
     };
   }
-  // 第一個模糊片段：有前文可對照時「接住」是合理選項，完全沒有前文時把問清楚排前面
-  // （報告 §6：沒有前文突然說「韓國」→ 第一次可問意圖／關聯，不先假定）。
+  // 第一個模糊片段：有前文可對照時「接住」是合理選項（A07／A09 這類有效短答靠這條
+  // 不被質疑）；這一場完全沒有前文時，報告 §6 的期望就是「第一次可問意圖／關聯，
+  // 不先假定韓劇或旅行」，所以指定 ask_intent。
+  //
+  // ask_intent 的字面本身帶條件（「不確定他在講什麼，就…」），她真的看得懂時仍可
+  // 自然接——這是本檔既有的「若是…就…」寫法，不是硬判語意。
+  // ponytail: 代價是「今天好熱喔」這種看得懂的短句開場也會走到這條；結構上分不出
+  // 來，只能靠字面的條件句。Phase 2 的 coherence 分類器可以把它判掉。
   return evidence.precedingUserContext
     ? {
       ...base,
@@ -329,9 +335,9 @@ export function agencyPolicyFor(evidence: AgencyEvidence): AgencyDecision {
     : {
       ...base,
       situation: "ambiguous_fragment",
-      policyMode: "bounded",
-      forcedAct: null,
-      allowedActs: ["ask_intent", "acknowledge"],
+      policyMode: "forced",
+      forcedAct: "ask_intent",
+      allowedActs: ["ask_intent"],
       allowedActSetId: "fragment_no_context_v1",
     };
 }

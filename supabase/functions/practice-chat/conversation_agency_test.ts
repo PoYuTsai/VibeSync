@@ -132,12 +132,13 @@ Deno.test("有效短答與明示換題永遠不介入（A01／A03／A07／A09 �
 });
 
 Deno.test("forced 只給高信心結構；其餘一律 bounded", () => {
-  // 完全沒有前文的裸片段（A02／A08）：問清楚排第一，但仍可接住。
+  // 這一場完全沒有前文的裸片段（A02／A08）：指定 ask_intent，不供應「接住」。
+  // ask_intent 的字面本身帶條件，她真的看得懂時仍可自然接。
   const a02 = policy([u("韓國")]);
   assertEquals(a02.situation, "ambiguous_fragment");
   assertEquals(a02.allowedActSetId, "fragment_no_context_v1");
-  assertEquals(a02.allowedActs[0], "ask_intent");
-  assertEquals(a02.policyMode, "bounded");
+  assertEquals(a02.policyMode, "forced");
+  assertEquals(a02.forcedAct, "ask_intent");
 
   // A04：她問了問題、玩家丟別的詞（前面還有未解片段）。
   const a04 = policy([u("東東"), a("東東是誰"), u("阿布達比")]);
