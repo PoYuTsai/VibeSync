@@ -367,6 +367,24 @@ Deno.test("parseTurnClassification：coherence／aiChallengedLastTurn 省略時�
   );
   assertEquals(withFields.coherence, "disconnected");
   assertEquals(withFields.aiChallengedLastTurn, true);
+
+  // Codex round-2 P2(a)：旗標關閉時 schema 必須跟接線前逐字一樣嚴——模型自己
+  // 多吐 coherence／aiChallengedLastTurn 要照舊丟 extra fields，不能悄悄放寬。
+  for (
+    const extra of [
+      '"coherence":"disconnected"',
+      '"aiChallengedLastTurn":true',
+    ]
+  ) {
+    assertThrows(
+      () =>
+        parseTurnClassification(
+          `{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe",${extra}}`,
+        ),
+      Error,
+      "extra fields",
+    );
+  }
 });
 
 Deno.test("parseTurnClassification：非法 coherence／aiChallengedLastTurn 值丟錯", () => {
@@ -374,6 +392,7 @@ Deno.test("parseTurnClassification：非法 coherence／aiChallengedLastTurn 值
     () =>
       parseTurnClassification(
         '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"maybe"}',
+        { requireCoherence: true },
       ),
     Error,
     "coherence",
@@ -381,7 +400,8 @@ Deno.test("parseTurnClassification：非法 coherence／aiChallengedLastTurn 值
   assertThrows(
     () =>
       parseTurnClassification(
-        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","aiChallengedLastTurn":"yes"}',
+        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedLastTurn":"yes"}',
+        { requireCoherence: true },
       ),
     Error,
     "aiChallengedLastTurn",

@@ -742,6 +742,9 @@ export function parseTurnClassification(
   if (!isRecord(parsed)) {
     throw new Error("turn classification must be an object");
   }
+  // Codex round-2 P2(a)：這兩個 key 只有在 agency 旗標開、prompt 真的要求它們
+  // 的時候才是合法欄位。舊版無條件放行，等於旗標關閉時 schema 悄悄變寬——模型
+  // 自己多吐一個 `coherence` 會被接受，而接線前是丟 `extra fields`。
   const allowedKeys = new Set([
     "connection",
     "impact",
@@ -751,8 +754,7 @@ export function parseTurnClassification(
     "partnerMood",
     "moodConfidence",
     "innerThought",
-    "coherence",
-    "aiChallengedLastTurn",
+    ...(opts.requireCoherence ? ["coherence", "aiChallengedLastTurn"] : []),
   ]);
   for (const key of Object.keys(parsed)) {
     if (!allowedKeys.has(key)) {
