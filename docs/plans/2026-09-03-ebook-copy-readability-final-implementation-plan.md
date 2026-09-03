@@ -1026,3 +1026,12 @@ ebook_shelf_section.dart 的註解記錄 2026-08-09 已拍板：
 - 稽核 216 → 106：R05 58→0、R07 4→0、R11 35→0、R06 64→52、R04 15→14，其餘不變；新發現 0；`--parent-baseline` 對 main 與工作包 1 都無放大。第 1–4 冊剩兩筆 R06（3.2 e4 summary 41 字、4.3 cmp6 caption 114 字）留給工作包 5。
 - Dart 契約：第 12.2 節的替換落地（「見案例要有按鈕」→「內文不得有原課本指涉」＋「按鈕目標存在」，下限 8 → 21）；第 12.3 節第 4、13 條與 grad／3.1 契約新增，共五條。
 - 未跑 Flutter（容器沒有 Flutter），由 PR CI 提供；Python 鏡射的既有與新增契約 PASS。報告：`docs/reviews/2026-09-03-ebook-copy-wp2-structure-report.md`。
+
+### 19.8 工作包 3 紀錄（2026-09-03）
+
+- 分支 `claude/ebook-copy-wp3-density`，基底 `claude/ebook-copy-wp2-structure` @ `1a665d9`（PR #63 尚未合併；PR 先以它為 base，合併後改回 main）。`flutter-ci.yml` 只在 base 為 main 的 PR 上跑，所以堆疊中的 PR 要等 base 改回 main 才有 CI。
+- 第 8 節工作包 3 的異動全部落地：一欄多段的欄位全拆（R04 14 → 0）；超過 120 字的段落拆成兩三段（第 5–7 冊 50 → 5）；內嵌 ✕／✓ 的 9 段改 comparison；藏在句子裡的清單改 bulletList（5.4 四個跡象、6.6 兩種陷阱、7.1 三要素）；5.6 保留 chapter id、加「先辨認互動感受」「再選擇回應方式」兩個 heading；6.3 對照表拆兩張、label 寫回應方式；7.4 教練旁白移出對話。區塊 541 → 606；第 1–4 冊 0 變動；不升 `contentVersion`。
+- 與計劃字面不同：規格說「58 個一欄多段的欄位」，實際依 audit 口徑是 14 個含雙換行的 paragraph＋5 個單換行（後者全是 ✕／✓ 兩行）；其餘是超過 120 字的單段，這次一併拆。三段帶著工作包 4 禁用詞 key 且句子在段尾的（6.6 p1、7.6 p3、7.6 p6）刻意不拆，留給工作包 4 整段重寫。
+- 稽核 106 → 47：R04 歸零、R06 52 → 7（第 1–4 冊 2、章名 2、上面三段），R09／R10／R12／R13 不變；新發現 0；`--parent-baseline` 對 main 與工作包 2 都無放大。
+- Dart 契約：新增 §12.3 第 2 條（paragraph／caption／annotation 無雙換行）與「5.6 兩個 heading」。
+- 未跑 Flutter（容器沒有 Flutter），由 PR CI 提供。報告：`docs/reviews/2026-09-03-ebook-copy-wp3-density-report.md`。
