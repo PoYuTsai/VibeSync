@@ -1013,3 +1013,16 @@ ebook_shelf_section.dart 的註解記錄 2026-08-09 已拍板：
 - 順帶修一個工具問題：R12／R10／R13 的 finding key 含片語字面，正規化會讓同一個問題「換身分」而被當成 baseline 放大；改成 key 對標點寬度與空白不敏感（新舊格式 baseline 都對得上）。
 - 取捨：全形「＋」「／」與括號旁的半形空白一律拿掉（含第 1 冊漏斗 verdictText 這段我們自己寫的字），對照書 5–7 既有寫法一致。
 - 未跑 Flutter 測試（容器沒有 Flutter），由 PR CI 提供；Python 鏡射的內容契約與結構比對（無新增／刪除／型別／位置變動）都通過。
+
+### 19.7 工作包 2 紀錄（2026-09-03）
+
+- 分支 `claude/ebook-copy-wp2-structure`，基底 `claude/ebook-copy-wp1-punctuation` @ `8788bec`（PR #62 尚未合併，PR 先以它為 base，合併後改回 main）。
+- 第 8 節工作包 2 的六類異動全部落地：58 個含「｜」的欄位改成 bulletList／comparison／checklist（R05 歸零）；補回第 3 冊 3.1 五層與第 4 冊 4.5 四個週次 heading；35 處原課本指涉改成冊章或前往按鈕（R11 歸零）；5 個 grad callout 改 goal＋「畢業標準」；刪 3 個重複／錯位段（R07 歸零）；5 個查閱型章節的 entryList 不動。區塊 558 → 541、條目 130 → 112、前往按鈕 17 → 21；第 5–7 冊 0 變動；不升 `contentVersion`。
+- 與計劃字面不同的實作決定：
+  1. 3.2 六條的「流行說法」不另放內文段落——條目展開後 summary 仍顯示在標題下，再放一段就是同一句出現兩次；內文固定「為什麼是壞的／為什麼會失效」warning callout＋「正確規則／替代方案／正確用法」fix callout。
+  2. 3.1 的「第一層為什麼要放第一個」三段移到五層之後，讓五層連在一起（驗收「一眼看得到五層」）。
+  3. 4.5 週次分段（第 1 週／第 2 週／第 3–4 週／第 5 週起）依各段內容推定，標題文字待 Bruce 對照原稿。
+  4. 一次性改寫腳本不進 repo：正式 JSON 是真源，diff 是紀錄，`compare_ebook_import.py` 可重算差異清單。
+- 稽核 216 → 106：R05 58→0、R07 4→0、R11 35→0、R06 64→52、R04 15→14，其餘不變；新發現 0；`--parent-baseline` 對 main 與工作包 1 都無放大。第 1–4 冊剩兩筆 R06（3.2 e4 summary 41 字、4.3 cmp6 caption 114 字）留給工作包 5。
+- Dart 契約：第 12.2 節的替換落地（「見案例要有按鈕」→「內文不得有原課本指涉」＋「按鈕目標存在」，下限 8 → 21）；第 12.3 節第 4、13 條與 grad／3.1 契約新增，共五條。
+- 未跑 Flutter（容器沒有 Flutter），由 PR CI 提供；Python 鏡射的既有與新增契約 PASS。報告：`docs/reviews/2026-09-03-ebook-copy-wp2-structure-report.md`。
