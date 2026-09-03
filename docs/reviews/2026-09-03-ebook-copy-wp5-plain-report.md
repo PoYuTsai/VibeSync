@@ -89,3 +89,14 @@ python3 tools/content/audit_ebook_copy.py --baseline tools/content/audit_baselin
 python3 tools/content/compare_ebook_import.py --official <#65 的七冊目錄> --candidate assets/learning/ebooks
 flutter test test/unit/features/learning/ test/widget/features/learning/ test/visual_proof/
 ```
+
+## 補修（Eric 在 #65 留給工作包 5 的三條）
+
+| 位置 | 原句 | 新句 | 依據 |
+|---|---|---|---|
+| 2.5 案例 I `ebook-2-c5-lib-e9`（摘要與 note） | 一週後她沒動靜 → 你可以輕度重啟一次 | 過一陣子她還是沒動靜 → 你可以輕度重啟一次 | §5.7 不給固定等待時間 |
+| 3.4 `ebook-3-c4-lib-e12`（摘要與內文） | 一週後換提案試一次。兩次之後結束。 | 之後互動仍然雙向，才隔一段時間換個方向再約一次。第二次還是不行，就先接受，結束。 | §5.7 |
+| 2.5 案例 N `ebook-2-c5-lib-e14-rule` | 累計兩個種子沒收，下一輪直接提案 | 已經拿到兩次綠燈卻都沒收，下一輪就直接提具體提案，不要再種 | §5.4：「沒收」指她接了你沒具體化，寫清楚不是叫人在沒綠燈時硬提 |
+| 4.2 `ebook-4-c2-warn8-rules` 第 2 條 | 累計兩個種子沒有具體化 → 你在逃避，下一輪直接具體提案 | 兩個種子她都接了、你卻都沒具體化 → 你在逃避，下一輪直接提具體提案 | 同上 |
+
+留給工作包 6（第 5–7 冊）：§5.8 定稿句在 6.5 拆成兩段、7.3 後段「過測試／加分題」口吻。
