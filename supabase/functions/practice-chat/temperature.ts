@@ -680,7 +680,17 @@ function sanitizeInnerThought(value: unknown): string {
     .slice(0, MAX_INNER_THOUGHT_LENGTH);
 }
 
-function parsePartnerMood(value: unknown, repaired: string[]): PartnerMood {
+/**
+ * Codex round-2 P0-1：`repairEnabled` 綁 `requireCoherence`（＝agency 旗標開）。
+ * 舊版無條件 repair，等於旗標關著時 parser 也變寬了——`partnerMood:"confused"`
+ * 在 `main` 是整筆作廢走 fallback，在這裡卻會保留其餘 classification 繼續計分、
+ * 更新 partner state，還多吐一個 `repairedFields`。旗標關時逐字沿用 main：throw。
+ */
+function parsePartnerMood(
+  value: unknown,
+  repaired: string[],
+  repairEnabled: boolean,
+): PartnerMood {
   if (
     value === "neutral" ||
     value === "curious" ||
@@ -692,7 +702,10 @@ function parsePartnerMood(value: unknown, repaired: string[]): PartnerMood {
     return value;
   }
   if (value === undefined) return "neutral";
-  if (typeof value === "string" && value in KNOWN_PARTNER_MOOD_REPAIRS) {
+  if (
+    repairEnabled && typeof value === "string" &&
+    value in KNOWN_PARTNER_MOOD_REPAIRS
+  ) {
     repaired.push("partnerMood");
     return KNOWN_PARTNER_MOOD_REPAIRS[value];
   }
@@ -840,7 +853,11 @@ export function parseTurnClassification(
     testHandling: parseTestHandling(parsed.testHandling),
     boundary: parseBoundary(parsed.boundary),
     hintAlignment: parseHintAlignment(parsed.hintAlignment),
-    partnerMood: parsePartnerMood(parsed.partnerMood, repairedFields),
+    partnerMood: parsePartnerMood(
+      parsed.partnerMood,
+      repairedFields,
+      opts.requireCoherence === true,
+    ),
     moodConfidence: parseMoodConfidence(parsed.moodConfidence),
     innerThought: sanitizeInnerThought(parsed.innerThought),
     // Codex round-1 P1-b：旗標 off 時這兩個欄位**根本不存在**，不是填預設值。

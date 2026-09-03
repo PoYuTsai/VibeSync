@@ -8890,11 +8890,11 @@ Deno.test("Codex round-1 P1-e：分類器解析失敗時 delta cap 仍要套（�
     return succeeded as Record<string, unknown>;
   };
 
-  // 旗標 off：逐字沿用舊行為（fallback 0/0、沒有 cap）。
+  // 旗標 off：逐字沿用舊行為（fallback 0/0、連 deltaCapApplied 這個 key 都沒有）。
   const off = await run();
   assertEquals(off.temperatureDelta, 0);
   assertEquals(off.familiarityDelta, 0);
-  assertEquals(off.deltaCapApplied, "none");
+  assert(!("deltaCapApplied" in off));
 
   // 旗標 on：同一個詞原樣再丟一次＝結構地面真相，fallback 也要吃到 cap。
   const on = await run({ PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" });
@@ -8928,7 +8928,7 @@ Deno.test("agency shadow：telemetry 有值但 applied=false，且不寫 thread 
   assertEquals(upsert.conversationAgency, undefined);
 });
 
-Deno.test("agency 旗標關：telemetry conversationAgency 為 null，既有 conversationAgency 狀態原樣帶回", async () => {
+Deno.test("agency 旗標關：telemetry 沒有 conversationAgency／deltaCapApplied 這兩個 key，thread 也不寫 agency 狀態（Codex R2 P0-2／P0-3）", async () => {
   const existing = {
     version: 1,
     lastCoherence: "repetitive",
@@ -8955,11 +8955,17 @@ Deno.test("agency 旗標關：telemetry conversationAgency 為 null，既有 con
       turns: AGENCY_FRAGMENT_TURNS,
     }),
   );
-  assertEquals(succeeded?.conversationAgency, null);
+  // Codex round-2 P0-2：`main` 的 telemetry 沒有這兩個 key，旗標關著時填
+  // null／"none" 一樣是多出欄位——要的是 key 根本不存在。
+  assert(!("conversationAgency" in (succeeded ?? {})));
+  assert(!("deltaCapApplied" in (succeeded ?? {})));
   const upsert = state.rpcCalls.find((r) =>
     r.fn === "upsert_practice_relationship_thread"
   )!.params.p_recent_facts as Record<string, unknown>;
-  assertEquals(upsert.conversationAgency, existing);
+  // Codex round-2 P0-3：旗標關著時**不寫**這個 key（舊版把讀回來的既有狀態
+  // 原樣寫回去，等於有殘留狀態的 row 永遠跟 main 不一樣）。
+  assertEquals(upsert.conversationAgency, undefined);
+  assertEquals(existing.version, 1);
 });
 
 Deno.test("thread recent_facts：旗標 off 從零重建（未知 key 掉，跟 main 相同），旗標 on 才保留（Codex R1 P1-a）", async () => {

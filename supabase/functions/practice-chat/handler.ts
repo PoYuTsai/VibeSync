@@ -4546,17 +4546,22 @@ export function createPracticeChatHandler(
             // aiChallengedThisTurn 一起餵進去（agencyDeltaCapActive 判斷同
             // 一支旗標；旗標 off 時 temperature.classification 沒有這兩個
             // 欄位，agencyClassifierSignal 為 null，退回純結構近似）。
-            conversationAgencyState: agencyDecision?.applied
+            // Codex round-2 P0-3：旗標 off／shadow 時**一個 agency key 都不寫**。
+            // 舊版在這兩種模式下會退回 `relationshipThreadState?.agencyState`
+            // 再原樣寫回去，等於「這個 row 一旦有過 agency 狀態，旗標關了也
+            // 會被重新寫進 payload」——`main` 不認識這個 key，從零重建時會丟掉
+            // 它，所以有殘留狀態的 row 不可能 byte-identical。
+            conversationAgencyState: agencyMode !== "on"
+              ? undefined
+              : agencyDecision?.applied
               ? nextConversationAgencyState(
                 relationshipThreadState?.agencyState ?? null,
                 agencyDecision.decision,
-                agencyMode === "on"
-                  ? ({
-                    coherence: temperature.classification.coherence,
-                    aiChallengedThisTurn:
-                      temperature.classification.aiChallengedThisTurn,
-                  } satisfies AgencyClassifierSignal)
-                  : null,
+                {
+                  coherence: temperature.classification.coherence,
+                  aiChallengedThisTurn:
+                    temperature.classification.aiChallengedThisTurn,
+                } satisfies AgencyClassifierSignal,
               )
               : relationshipThreadState?.agencyState ?? undefined,
           }),
@@ -4613,7 +4618,11 @@ export function createPracticeChatHandler(
         }
         : null,
       // Phase 2：delta cap 是否真的壓過這一輪的 heat／familiarity delta。
-      deltaCapApplied: temperature?.deltaCapApplied ?? "none",
+      // Codex round-2 P0-2：旗標 off 時這個 key **根本不存在**（不是 "none"）
+      // ——`main` 的 telemetry 沒有它，填預設值等於旗標關著的 log 也多一個欄位。
+      ...(agencyMode !== "off"
+        ? { deltaCapApplied: temperature?.deltaCapApplied ?? "none" }
+        : {}),
       // 與計分管線同一判準（challenge × beginner 才有獎勵閘門）。
       challengeGateActive: request.practiceMode === "beginner" &&
         request.profile.difficulty === "challenge",
@@ -4637,32 +4646,36 @@ export function createPracticeChatHandler(
         }
         : null,
       // conversation-agency-v1（計畫「發布與回滾」）：只有 enum／數字／布林。
-      // 旗標關＝null；shadow 有值但 applied=false（輸出與關閉時相同）。
-      conversationAgency: agencyDecision
-        ? {
-          agencyVersion: agencyDecision.decision.version,
-          applied: agencyDecision.applied,
-          utteranceShape: agencyDecision.decision.evidence.utteranceShape,
-          policyMode: agencyDecision.decision.policyMode,
-          forcedAct: agencyDecision.decision.forcedAct,
-          allowedActSetId: agencyDecision.decision.allowedActSetId,
-          unresolvedCount: agencyDecision.decision.evidence.unresolvedCount,
-          priorChallengeIssued:
-            agencyDecision.decision.evidence.priorChallengeIssued,
-          coherenceBefore:
-            relationshipThreadState?.agencyState?.lastCoherence ??
-              null,
-          // Phase 2：分類器讀了實際生成文字後的判斷（旗標 off 時分類器不判，
-          // 一律填預設值）。
-          coherence: agencyMode === "on"
-            ? temperature?.classification.coherence ?? null
-            : null,
-          aiChallengedThisTurn: agencyMode === "on"
-            ? temperature?.classification.aiChallengedThisTurn ?? null
-            : null,
-          deltaCapApplied: temperature?.deltaCapApplied ?? "none",
-        }
-        : null,
+      // Codex round-2 P0-2：旗標 off 時整個 key 不存在（舊版是
+      // `conversationAgency: null`，那仍然是一個 `main` 沒有的欄位）；
+      // shadow 才有值，且 applied=false。
+      ...(agencyMode === "off" ? {} : {
+        conversationAgency: agencyDecision
+          ? {
+            agencyVersion: agencyDecision.decision.version,
+            applied: agencyDecision.applied,
+            utteranceShape: agencyDecision.decision.evidence.utteranceShape,
+            policyMode: agencyDecision.decision.policyMode,
+            forcedAct: agencyDecision.decision.forcedAct,
+            allowedActSetId: agencyDecision.decision.allowedActSetId,
+            unresolvedCount: agencyDecision.decision.evidence.unresolvedCount,
+            priorChallengeIssued:
+              agencyDecision.decision.evidence.priorChallengeIssued,
+            coherenceBefore:
+              relationshipThreadState?.agencyState?.lastCoherence ??
+                null,
+            // Phase 2：分類器讀了實際生成文字後的判斷（旗標 off 時分類器不判，
+            // 一律填預設值）。
+            coherence: agencyMode === "on"
+              ? temperature?.classification.coherence ?? null
+              : null,
+            aiChallengedThisTurn: agencyMode === "on"
+              ? temperature?.classification.aiChallengedThisTurn ?? null
+              : null,
+            deltaCapApplied: temperature?.deltaCapApplied ?? "none",
+          }
+          : null,
+      }),
     });
 
     const body: Record<string, unknown> = {

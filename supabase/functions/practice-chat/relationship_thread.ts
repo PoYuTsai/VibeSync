@@ -142,7 +142,7 @@ export function buildRelationshipThreadRpcParams(opts: {
    * 以它為底，只覆寫下面這幾個由本檔擁有的 key；不認識的 key 原樣留著。
    * 省略／null＝新 thread，payload 與舊版逐字相同（golden）。
    *
-   * **只有 `agencyMode !== "off"` 時才會被採用**——見下面那個欄位。
+   * **只有 `agencyMode === "on"` 時才會被採用**——見下面那個欄位。
    */
   existingRecentFacts?: Record<string, unknown> | null;
   /**
@@ -151,15 +151,18 @@ export function buildRelationshipThreadRpcParams(opts: {
    * main 逐字相同——main 是**從零重建** `recent_facts`，未知 key 會被丟掉。
    * 舊版無條件 spread `existingRecentFacts`，等於旗標關著也偷偷改了 payload。
    * 省略＝off＝從零重建（其餘呼叫端逐字不變）。
+   *
+   * Codex round-2 P0-3：`shadow` 也算「不改 payload」——shadow 的契約是
+   * 只算證據與 telemetry，thread payload 必須與 off 逐位元組相同，所以這裡
+   * 認的是 `=== "on"`，不是 `!== "off"`。
    */
   agencyMode?: AgencyMode;
 }) {
   const memorySummary = str(opts.memorySummary, 1000);
   // 旗標 off（或省略）：從零重建，跟 main 逐字相同。
-  const preservedRecentFacts: Record<string, unknown> =
-    opts.agencyMode && opts.agencyMode !== "off"
-      ? opts.existingRecentFacts ?? {}
-      : {};
+  const preservedRecentFacts: Record<string, unknown> = opts.agencyMode === "on"
+    ? opts.existingRecentFacts ?? {}
+    : {};
   return {
     p_user_id: opts.userId,
     p_visible_thread_id: opts.visibleThreadId,

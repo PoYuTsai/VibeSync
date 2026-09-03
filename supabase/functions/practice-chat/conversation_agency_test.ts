@@ -513,9 +513,11 @@ Deno.test("AGENCY_THRESHOLDS：三個難度都定義齊全，game 沿用 challen
   assertEquals(agencyThresholdsFor("normal", false), AGENCY_THRESHOLDS.normal);
 });
 
-Deno.test("Codex round-1 P1-a：旗標 off 的 recent_facts 從零重建（未知 key 掉），≠off 才保留", () => {
+Deno.test("Codex round-2 P0-3：只有旗標 on 保留未知 key，off／shadow 都從零重建", () => {
   // 保留未知 key 是 agency 分支帶進來的行為改動。旗標關著時 payload 必須跟
   // main 逐字相同——main 從零重建 recent_facts，別人寫的 key 本來就會掉。
+  // shadow 也算「關著」：它的契約是只算證據與 telemetry，thread payload 必須
+  // 與 off 逐位元組相同（Codex round-2 P0-3）。
   const base = {
     userId: "u",
     visibleThreadId: "t",
@@ -544,13 +546,13 @@ Deno.test("Codex round-1 P1-a：旗標 off 的 recent_facts 從零重建（未�
   };
   // 省略 agencyMode＝其餘呼叫端，逐字跟 main 相同。
   assertEquals(facts(base), mainPayload);
-  assertEquals(facts({ ...base, agencyMode: "off" }), mainPayload);
-  for (const agencyMode of ["shadow", "on"] as const) {
-    assertEquals(facts({ ...base, agencyMode }), {
-      ...mainPayload,
-      someOtherFeature: { keep: true },
-    });
+  for (const agencyMode of ["off", "shadow"] as const) {
+    assertEquals(facts({ ...base, agencyMode }), mainPayload, agencyMode);
   }
+  assertEquals(facts({ ...base, agencyMode: "on" }), {
+    ...mainPayload,
+    someOtherFeature: { keep: true },
+  });
 });
 
 Deno.test("Codex round-1 P1-c：有欠債的有效短答仍然一定有「接住」這個選項，永不 forced 質疑", () => {
