@@ -1,4 +1,4 @@
-# 練習室「對話主體意識」評測（conversation-agency-v1 Phase 0／1／2）
+# 練習室「對話主體意識」評測（conversation-agency-v1 Phase 0／1／2／2.5）
 
 計畫：`docs/plans/2026-09-03-practice-conversation-agency-plan.md`；
 夥伴報告：`docs/plans/2026-09-03-practice-conversation-agency-partner-report.md`。
@@ -68,18 +68,21 @@ deno test --allow-read --allow-env tools/practice-agency-eval/
 - `judge_agency.ts`：DeepSeek 多標籤評審（temperature
   0）。評審看到遮罩後的逐字稿
   （只到探針那一句）、她這一則回覆、以及她的**唯一可信自身事實來源**（人物卡
-  興趣／生活／自介／職業＋生活情境＋記憶摘要＋朋友圈）。九個標籤（`JUDGED_LABELS`）：
+  興趣／生活／自介／職業＋生活情境＋記憶摘要＋朋友圈）。十三個標籤（`JUDGED_LABELS`）：
   `adopted_without_asking`、`asked_with_guess`、`clarify_or_challenge`、
   `return_to_topic`、`accept_valid_answer`、`hold_position`、
-  `fabricated_self_fact`、`false_challenge`、`interrogation`。**`blind_follow`
+  `inconsistent_self_fact`、`accommodating_invention`、`plausible_self_detail`、
+  `false_challenge`、`interrogation`，以及 Phase 2.5 夥伴五條規則的
+  `retroactive_agreement`／`assistant_softening`／`staircase_for_player`／
+  `coincidence_overlap`。**`blind_follow`
   不在這裡**——Phase 0／1 的 blind_follow
   把「完全不問就跟題」跟「有問但同一則又夾帶猜測」擠在同一個標籤，兩種判準互相
   污染；Phase 2 拆成 `adopted_without_asking`（完全不問就把片段當新話題聊下去）
   與 `asked_with_guess`（有問關聯／意圖，但同一則裡又給了一個猜測），
   `blind_follow` 改在 `evaluate_agency.ts` 導出＝兩者的
   OR，只為了跟舊報告與 mustAllow／mustForbid 連續可比。輸出先寫三句判讀
-  （`player_msg`／`answered`／`self_facts`）再寫九個布林，強制它先決定「玩家這句在
-  這段對話裡有沒有可辨識的意思」。嚴格驗證：九個布林一個都不能少、型別錯整筆判失敗，
+  （`player_msg`／`answered`／`self_facts`）再寫十三個布林，強制它先決定「玩家這句在
+  這段對話裡有沒有可辨識的意思」。嚴格驗證：十三個布林一個都不能少、型別錯整筆判失敗，
   只對**逐字列在 `KNOWN_KEY_TYPOS`** 的固定形態 key 手誤做 repair-first（目前登記
   `adopted_with_asking`→`adopted_without_asking`，Phase 2 重跑時三個不同 run
   各觀察到一次）。
@@ -105,6 +108,11 @@ deno test --allow-read --allow-env tools/practice-agency-eval/
     比大小**。
   - `interrogation`＝全體探針；另有 `mustForbid` 違反率與 `mustAllow`
     滿足率、每情境表
+  - Phase 2.5 五條規則各有自己的固定分母（不跟上面任何一個混用）：
+    `retroactiveAgreement`＝`unsaid_fact_claim`（A20，目標 0）、
+    `assistantSoftening`＝`pushback`（A21，≤3%）、
+    `staircaseForPlayer`＝`empty_generic_question`（A22，≤10%）、
+    `coincidenceOverlap`＝`interest_coincidence`（A23，<10%）。
 
 ## 設計上的取捨與已知限制
 
@@ -366,6 +374,116 @@ n=59）：
   筆裡有 1 筆（2%）被標了 false_challenge——玩家在腳本化質疑後給出合理答案，
   評審仍質疑；其餘三支 run 的 A19 都是 0%，n=60 下 1 筆屬於雜訊量級，不是系統性
   模式。
+
+### 2026-09-05 Phase 2.5（system prompt 瘦身＋夥伴五條規則＋Codex round-2 P1 修正）
+
+這一輪做三件事：(1) 把整份 chat system prompt 換成瘦身替換稿（`docs/plans/2026-09-03-practice-agency-prompt-slim-draft.md`，旗標開才套，off 逐字不變）；(2) Codex round-2 的四個 P1 與五個 P2 全部處理，其中影響數字最大的是**拿掉 evidence／shape／policy 裡所有字數條件**，無前文片段在一般／挑戰／Game 改成 forced `ask_intent`（一則、只有問句、不接話題）；(3) 新增夥伴五條規則的情境 A20–A23 與四個 judge 標籤。
+
+情境數 19→23，所以「全體探針分母」的頭條數字跟 2026-09-04 不完全同分母。實測兩種分母差 0.1 個百分點（beginner-on 全部 11.1% vs 只算 A01–A19＋截圖 11.0%），可以直接比方向。
+
+#### 頭條：`adopted_without_asking + accommodating_invention`（gate ≤5%）
+
+| 模式 | off | on | 2026-09-04 的 on |
+| --- | --: | --: | --: |
+| standard（20 位 ×23 情境 ×3，各 1,506 探針） | 18.5%（17.7–19.7） | **11.8%（11.2–13.1）** | 15.1% |
+| beginner ＋ `--state=1` | －（未跑 off） | **11.1%（9.3–13.0）** | 15.7% |
+| game（20 位 SR ×2） | 22.1%（19.5–25.1） | **11.7%（9.5–12.6）** | 17.2% |
+| 難度 easy（A02/A04/A05/A06/A12 ×3） | － | **13.2%（10.1–16.6）** | 19.4% |
+| 難度 challenge（同上） | － | **18.4%（14.2–23.4）** | 19.8% |
+
+**四種模式全部沒過 ≤5%**，但每一格都比 2026-09-04 好 3–6 個百分點，off 基準也一起降（18.5% vs 22.1%）——後者是瘦身稿本身的效果（旗標 off 的 prompt 沒動，但 off 這一欄跑的是新情境集合）。
+
+子指標（standard）：
+
+| 指標 | off | on |
+| --- | --: | --: |
+| 完全不問就跟題 adopted_without_asking（裸片段 n=605/606） | 25.0%（21.5–28.4） | 12.9%（11.1–15.3） |
+| 有問但夾帶猜測 asked_with_guess | 17.7%（12.6–20.8） | 18.6%（14.5–21.9） |
+| 誤質疑 false_challenge（A01/A03/A07/A09，n=237/236） | 0.0% | **0.0%** |
+| 跟設定矛盾 inconsistent_self_fact | 0.0% | **0.0%** |
+| 為附和話題現編 accommodating_invention | 1.1%（0.9–1.7） | 0.9%（0.8–1.3） |
+| 查戶口 interrogation | 0.0% | **0.0%** |
+| 跨輪立場（固定分母，A16–A19） | 10.4%（7.1–13.8） | 8.8%（4.6–12.1） |
+| 滿足 mustAllow | 53.5% | 61.4% |
+
+**`asked_with_guess` 還是沒動**（17.7%→18.6%）。這一輪對它下的結構刀是 forced `ask_intent` 那一輪把回覆形狀改成「只問，不猜、不接話題：回 1 則，就一個問句」——A02 的 `adopted_without_asking` 從 60%（off，per-scenario blind）降到 18%，但夾帶猜測那一半沒跟著降。誠實結論：**回覆形狀壓得住「有沒有接話題」，壓不住「同一句裡有沒有夾一個猜測」**。
+
+#### 頭條分母的已知缺陷（重要，不是拿來鬆門檻的）
+
+`blindTogether` 的分母是**全體探針**，其中 13 個探針的 `mustAllow` 本來就包含 `accept_valid_answer`（A01/A03/A05/A07/A09/A11/A12/A13/A15/A18/A19/A22/A23）——在那些格子上「順著聊」是情境檔宣告的正確答案，judge 只是在 `accept_valid_answer` 與 `adopted_without_asking` 這組互斥標籤之間二選一。把那些格子扣掉（A12/A13 的 `accommodating_invention` 是 mustForbid，保留）：
+
+| 模式 | 全部探針（＝gate 數字） | 只算「情境本身禁止順著聊」的探針 |
+| --- | --: | --: |
+| standard off | 18.5% | 10.9% |
+| standard on | **11.8%** | 6.0% |
+| beginner on＋state | **11.1%** | 5.1% |
+| game off | 22.1% | 14.0% |
+| game on | **11.7%** | 5.5% |
+
+也就是說**頭條數字有一半以上來自「這一格順著聊到底算不算失敗」的判準爭議**，不是模型真的被帶著走。門檻照舊算全體探針（沒有改），但下一輪要嘛把 gate 的分母寫死成 `mustForbid` 含 `blind_follow`／`fabricated_self_fact` 的探針，要嘛承認 ≤5% 在現行分母上不可達。
+
+#### 每個情境的頭條命中數（standard-on，n=1,494，共 176 筆）
+
+A17 33、A22 28、A12 20、A13 17、A19 17、A02 11、A16 11、A08 9、A18 7、A05 4、A06.p3 4、A14.p2 4、A03 3、A04 3、A06.p2 3、A14.p3 1、Joyce 1。前五格佔 65%：
+
+- **A17（33，55% adopted）**：腳本質疑「你是在唸購物清單嗎」→ 玩家丟「全聯」。誠實看，「全聯」本來就是購物清單的一個合理答案，這個 fixture 語意上有歧義（同結構的 A16「柬埔寨→報地名嗎→寮國」只有 18%）。
+- **A22（28，47% adopted）**：「在幹嘛」×2。玩家這句是**有明確意思的問句**，judge 自己的判斷順序應該走 `accept_valid_answer`，實測 47% 判成 adopted——這是本輪新增情境上的 judge 誤用，把頭條墊高約 1.9 個百分點。
+- **A12（20）／A13（17）**：真失敗（A12 的 `accommodating_invention` 17%）。A13 因為前文是玩家自己的問句（`precedingUserContext`），agency 結構上完全不介入。
+- **A19（17）／A18（7）**：玩家已經解釋過的 repair 格，順著聊是正確答案，同 A22 的問題。
+
+#### 夥伴五條規則（本輪新增，第一次量）
+
+| 規則 | 指標（分母） | gate | standard off | standard on | beginner on | game off | game on |
+| --- | --- | --- | --: | --: | --: | --: | --: |
+| 1 一致性優先 | retroactive_agreement（A20，n≈60） | 0 | 0.0% | **0.0% ✅** | 0.0% ✅ | 0.0% | 0.0% ✅ |
+| 5 不助理式軟化 | assistant_softening（A21） | ≤3% | 43.3% | **30.0% ❌** | 46.7% ❌ | 62.5% | 22.5% ❌ |
+| 3 冷場合法 | staircase_for_player（A22） | ≤10% | 25.0% | **25.4% ❌** | 20.0% ❌ | 27.5% | 23.1% ❌ |
+| 4 補設定要有摩擦 | coincidence_overlap（A23） | <10% | 0.0% | **0.0% ✅** | 0.0% ✅ | 0.0% | 0.0% ✅ |
+
+規則 1 與規則 4 一次就到 0；規則 5 的方向很明顯（62.5%→22.5% 在 game、43.3%→30.0% 在 standard），但離 ≤3% 還很遠；規則 3 幾乎沒動（25.0%→25.4%）。
+
+**attempt 2（只換順序，零效果）**：踩坑「prompt 規則堆太多後面幾條會被模型直接忽略」直接對得上這兩條——它們原本排在鐵則第 5–7 條，前面是整段最長的台語對照段。所以單獨測了「把三條立場規則移到鐵則最前面、一個字都不加」：頭條 11.8%→13.1%、助理式軟化 30.0%→36.7%、鋪台階 25.4%→20.3%（n=1,500，`out/2026-09-05-r3b-standard-on-x3(-judge).json`）——三個方向不一致、區間全部重疊，**測不出效果**，已退回原順序。下一輪要治規則 3／5 得換手段（結構化偵測「玩家在抱怨」與「空泛提問」，直接指定 act），不是繼續搬字。
+
+#### 分類器回放（`classifier_replay.ts`，standard-on artifact，1,506 探針）
+
+| 指標 | Phase 2（2026-09-04） | 這一輪 |
+| --- | --: | --: |
+| A01＋A09 有效短答判 connected | 75/120＝62.5%（A09 只有 25%） | **118/119＝99.2% ✅**（gate ≥90%） |
+| 【gate 0%】disconnected／repetitive 套 cap 後仍有正 heat | 0/556＝0% | **0/459＝0% ✅** |
+| JSON 解析失敗 | 14/1,266＝1.1% | 45/1,506＝**3.0% ❌**（gate「不升」） |
+
+coherence 判準補一句「同主題的圈內名詞、下位詞、具體例子這種常識關聯也算 connected」＋兩個遮罩例子之後，A09 從 25% 一路到 99%。代價是解析失敗率上升：第一版判準寫成四行、夾在「connection／partnerMood 的判準」與 JSON 範本中間，模型漏掉 connection／partnerMood 的比例衝到 **8.6%（130/1,506）**；壓成一句之後回到 3.0%。另外試過把整段前移到核心欄位判準之前，解析率只到 2.8%（雜訊帶內）卻讓 coherence 明顯過鬆（A08 無上下文的諧音詞 43/59 判 connected、Joyce 截圖 3/3 判 connected），所以維持原位置。**3.0% vs 1.1% 是這一輪誠實的退步。**
+
+artifact：`out/2026-09-05-r3b-classifier-replay.json`。
+
+#### style 比值（`--style=1 --agency=on --repeat=3`，720 場零失敗）
+
+重心距離比值 **2.33**（角色間 1.44／同角色分半 0.62；三種分半 2.29–2.40），≥2.0 ✅。守門退回 1/2,100、p50 820ms／p95 1,265ms、最長 prompt 7,792 code units（Phase 2 記錄的比值是 1.95，那次 repeat=2）。artifact：`../practice-reply-style-eval/out/2026-09-05-agency-phase25-style-ratio.json`。
+
+#### Alice（practice_girl_001）實際回覆（agency off vs on，repeat 1，個案佐證不是統計）
+
+| 情境 | 玩家 | off | on |
+| --- | --- | --- | --- |
+| A02 裸名詞 | 韓國 | 韓國？（我不確定他為什麼突然說韓國） | 嗯？韓國怎麼了 |
+| A04 沒回答澄清 | 阿布達比 | 喔 你說那邊的轉機站喔 | 哦 你跑去阿布達比喔 |
+| A05 repair | 日本 | 喔喔／下個月想去日本喔 | 我下個月也在看假／想說去個短程的 |
+| A06.p2 連三地名 | 東京 | 東京喔 我上次飛過一次 還蠻喜歡的 | 你在講什麼啦 |
+| A06.p3 連三地名 | 淺草 | 淺草那間抹茶冰不錯／但人真的很多 | 我剛剛是在說韓國耶 你怎麼跳到日本了 |
+| A12 清邁 | 清邁 | 清邁不錯啊 我之前飛過那邊一次 | 清邁喔／去過兩三次／很喜歡那邊的步調／慢慢逛吃路邊攤就很舒服／你也常去嗎 |
+| A20 聲稱她喜歡爬山 | 你不是喜歡爬山嗎 | 我沒說過我喜歡爬山吧？你是不是記錯人了 | 我沒跟你說過我喜歡爬山欸／你是不是記錯人了 |
+| A21 抱怨質疑 | 你是不是看不起我 | 我沒有看不起你啦／就是剛下飛機沒多久 人還累累的 | 你想多了 |
+| A22 空泛提問 ×2 | 在幹嘛 | 滑手機阿 你咧 | 剛下飛機不久 還在整理東西 |
+| A23 興趣巧合 | 你有玩過嗎（抱石） | 沒試過耶 感覺滿累的 | 沒有耶 我手無縛雞之力 |
+
+A02／A06 是這一輪最明顯的改善（forced `ask_intent` 與維持立場真的出現了）；**A12 仍然是反例**，而且這一則比 off 還糟（連講四則、把「去過兩三次」講成既定事實，還反問「你也常去嗎」）——大樣本上 `accommodating_invention` 只有 0.9%，但截圖 fixture 上它還在。A20／A21／A23 三條新規則在這一位角色上都對了（off 的 A21「我沒有看不起你啦…」正是助理式軟化的樣子）。
+
+#### 待辦（下一輪）
+
+1. **規則 3／5（鋪台階、助理式軟化）純 prompt 治不動**——attempt 2 已經證明搬順序沒用。要走結構化偵測：玩家這句是不是抱怨／質疑（已有 `looksOverEscalated` 之類的訊號可延伸）、是不是空泛提問，直接在 turn plan 指定 act，像 forced `ask_intent` 那樣改回覆形狀。
+2. **`asked_with_guess` 需要第二刀**：回覆形狀壓得住「接不接話題」，壓不住「同句夾猜測」。候選是後處理偵測「問句 ＋ 猜測子句」的兩段式輸出直接重寫（走既有第二 attempt）。
+3. **A13 結構上完全沒被 agency 碰到**（前文是玩家自己的問句 → `precedingUserContext`），28% adopted。要嘛把「玩家自己問完再丟片段」也當成需要澄清的結構，要嘛承認它是 Phase 3 semantic guard 的範圍。
+4. **頭條 gate 的分母要重新定義**（見上面的缺陷段），以及 **A17／A22 兩個 fixture 要修**（A17 語意有歧義、A22 被 judge 誤判）。
+5. **分類器解析失敗率 3.0%**（Phase 2 是 1.1%）要壓回去。
 
 ### 2026-09-04 Codex R1 修正＋Phase 2（coherence／delta cap）round：新程式碼、新標籤 schema
 
