@@ -387,24 +387,53 @@ Deno.test("parseTurnClassification：coherence／aiChallengedLastTurn 省略時�
   }
 });
 
-Deno.test("parseTurnClassification：非法 coherence／aiChallengedLastTurn 值丟錯", () => {
-  assertThrows(
-    () =>
-      parseTurnClassification(
-        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"maybe"}',
-        { requireCoherence: true },
-      ),
-    Error,
-    "coherence",
+Deno.test("parseTurnClassification：非法 coherence／aiChallengedLastTurn 值 repair-first，不整筆作廢", () => {
+  // Phase 2.6：舊行為是整筆丟錯 → handler 走 fallback，連判對的
+  // connection／boundary 一起丟掉。改成退到最保守的一格並記 repair。
+  const badCoherence = parseTurnClassification(
+    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"maybe"}',
+    { requireCoherence: true },
   );
+  assertEquals(badCoherence.coherence, "ambiguous");
+  assertEquals(badCoherence.connection, "neutral");
+  assertEquals(badCoherence.repairedFields, ["coherence"]);
+
+  const badChallenged = parseTurnClassification(
+    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedLastTurn":"yes"}',
+    { requireCoherence: true },
+  );
+  assertEquals(badChallenged.aiChallengedLastTurn, false);
+  assertEquals(badChallenged.repairedFields, ["aiChallengedLastTurn"]);
+});
+
+Deno.test('parseTurnClassification：partnerMood "confused" repair 成 neutral，其餘欄位保留', () => {
+  // 2026-09-06 抽樣回放 377 筆，15 筆解析失敗**全部**是這個形態
+  // （partnerMood 列舉沒有「困惑」這個桶子，agency 開了之後她常常就是困惑）。
+  const repaired = parseTurnClassification(
+    '{"connection":"missed","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"confused","moodConfidence":0.6,"innerThought":"他怎麼突然跳到別的","coherence":"disconnected","aiChallengedLastTurn":false}',
+    { requireCoherence: true },
+  );
+  assertEquals(repaired.partnerMood, "neutral");
+  assertEquals(repaired.connection, "missed");
+  assertEquals(repaired.coherence, "disconnected");
+  assertEquals(repaired.repairedFields, ["partnerMood"]);
+
+  // 沒登記過的形態照舊整筆丟錯（只對精確形態 repair-first，不做模糊比對）。
   assertThrows(
     () =>
       parseTurnClassification(
-        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedLastTurn":"yes"}',
-        { requireCoherence: true },
+        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","partnerMood":"excited"}',
       ),
     Error,
-    "aiChallengedLastTurn",
+    "partnerMood",
+  );
+
+  // 合法輸出不會留下 repair 紀錄。
+  assertEquals(
+    parseTurnClassification(
+      '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","partnerMood":"curious"}',
+    ).repairedFields,
+    [],
   );
 });
 

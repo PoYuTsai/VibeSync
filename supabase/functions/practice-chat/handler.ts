@@ -1600,6 +1600,15 @@ async function judgeLearningState(opts: {
         requireCoherence: agencyDeltaCapActive,
       },
     );
+    // Phase 2.6：repair-first 用掉的欄位進 telemetry（只有欄位名，沒有內容）。
+    // 這是「解析失敗率」的替代觀測——舊行為是整筆作廢走 fallback，看得到失敗
+    // 卻看不到是哪個欄位；現在失敗率降下來了，改用這一筆看修了什麼。
+    if (parsedClassification.repairedFields?.length) {
+      logWarn("practice_chat_learning_classifier_repaired", {
+        user: summarizeUser(opts.userId),
+        fields: parsedClassification.repairedFields,
+      });
+    }
     const protectedJudgement = protectedJudgementForSnapshot(
       opts.currentTemperature,
       opts.currentFamiliarity,

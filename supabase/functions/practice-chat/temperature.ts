@@ -87,6 +87,12 @@ export interface TurnClassification {
    * 地面真相）。省略／旗標 off＝false。
    */
   aiChallengedLastTurn?: boolean;
+  /**
+   * conversation-agency-v1 Phase 2.6：這一筆用到的 repair-first 欄位名
+   * （見 `parseTurnClassification`）。空陣列／省略＝模型輸出本來就合法。
+   * 只有欄位名，沒有玩家或她的任何原文，telemetry 直接可記。
+   */
+  repairedFields?: readonly string[];
 }
 
 export interface LearningJudgement extends TemperatureJudgement {
@@ -665,7 +671,7 @@ function sanitizeInnerThought(value: unknown): string {
     .slice(0, MAX_INNER_THOUGHT_LENGTH);
 }
 
-function parsePartnerMood(value: unknown): PartnerMood {
+function parsePartnerMood(value: unknown, repaired: string[]): PartnerMood {
   if (
     value === "neutral" ||
     value === "curious" ||
@@ -677,6 +683,10 @@ function parsePartnerMood(value: unknown): PartnerMood {
     return value;
   }
   if (value === undefined) return "neutral";
+  if (typeof value === "string" && value in KNOWN_PARTNER_MOOD_REPAIRS) {
+    repaired.push("partnerMood");
+    return KNOWN_PARTNER_MOOD_REPAIRS[value];
+  }
   throw new Error("turn classification missing partnerMood");
 }
 
@@ -688,9 +698,37 @@ function parseMoodConfidence(value: unknown): number {
   return Math.max(0, Math.min(1, value));
 }
 
+/**
+ * conversation-agency-v1 Phase 2.6：**已知的固定形態列舉手誤 → 正規值**
+ * （repair-first，只認逐字列在這裡的形態，不做模糊比對）。
+ *
+ * 為什麼只有 `confused`：2026-09-06 對 agency-on 的 artifact 抽樣回放 377 筆，
+ * 15 筆解析失敗**全部**是 `partnerMood:"confused"`——不是 coherence、也不是
+ * key 手誤。原因很直白：agency 開了之後她真的常常在「困惑」，而 partnerMood
+ * 的列舉（neutral／curious／amused／comfortable／guarded／annoyed）沒有這個
+ * 桶子，模型只好自己造一個字。舊行為是**整筆分類作廢**走 fallback，連
+ * connection／boundary／coherence 這些判對了的欄位一起丟掉，delta cap 也跟著
+ * 失效——為了一個沒有桶子的心情欄位，賠掉整輪的地面真相。
+ *
+ * 映射到 `neutral` 而不是 guarded／annoyed：困惑本身不是防備也不是不爽，
+ * 沒有桶子時「不移動心情」才是誠實的預設；其餘八個欄位照模型判的用。
+ *
+ * 新增一筆之前要先在真實 raw 裡看到那個逐字形態（踩坑「模型在重複結構的第三筆
+ * 會出固定形態的 JSON-key 手誤，只對精確形態 repair-first」）。
+ */
+const KNOWN_PARTNER_MOOD_REPAIRS: Readonly<Record<string, PartnerMood>> = {
+  confused: "neutral",
+};
+
 // conversation-agency-v1 Phase 2：省略＝"connected"（no-op，不觸發 delta
 // cap）；旗標 off 時呼叫端不傳 requireCoherence，永遠走這條預設路徑。
-function parseCoherence(value: unknown): TurnCoherence {
+//
+// Phase 2.6：值不在列舉裡時不再整筆作廢，改判 `ambiguous`（同樣不觸發 cap，
+// 是最保守的一格）並記一筆 repair。缺值仍是 "connected"（旗標 off 的預設）。
+function parseCoherence(
+  value: unknown,
+  repaired: string[],
+): TurnCoherence {
   if (value === undefined) return "connected";
   if (
     value === "connected" || value === "ambiguous" ||
@@ -698,13 +736,20 @@ function parseCoherence(value: unknown): TurnCoherence {
   ) {
     return value;
   }
-  throw new Error("turn classification missing coherence");
+  repaired.push("coherence");
+  return "ambiguous";
 }
 
-function parseAiChallengedLastTurn(value: unknown): boolean {
+// Phase 2.6：非布林值不再整筆作廢，改判 false（＝「上一輪沒質疑過」，
+// priorChallengeIssued 不會被一個壞值拉成 true）並記一筆 repair。
+function parseAiChallengedLastTurn(
+  value: unknown,
+  repaired: string[],
+): boolean {
   if (value === undefined) return false;
   if (typeof value === "boolean") return value;
-  throw new Error("turn classification missing aiChallengedLastTurn");
+  repaired.push("aiChallengedLastTurn");
+  return false;
 }
 
 export function applyPartnerStateUpdate(
@@ -771,19 +816,22 @@ export function parseTurnClassification(
     throw new Error("turn classification missing coherence");
   }
 
+  const repairedFields: string[] = [];
   return {
     connection: parseConnection(parsed.connection),
     impact: parseImpact(parsed.impact),
     testHandling: parseTestHandling(parsed.testHandling),
     boundary: parseBoundary(parsed.boundary),
     hintAlignment: parseHintAlignment(parsed.hintAlignment),
-    partnerMood: parsePartnerMood(parsed.partnerMood),
+    partnerMood: parsePartnerMood(parsed.partnerMood, repairedFields),
     moodConfidence: parseMoodConfidence(parsed.moodConfidence),
     innerThought: sanitizeInnerThought(parsed.innerThought),
-    coherence: parseCoherence(parsed.coherence),
+    coherence: parseCoherence(parsed.coherence, repairedFields),
     aiChallengedLastTurn: parseAiChallengedLastTurn(
       parsed.aiChallengedLastTurn,
+      repairedFields,
     ),
+    repairedFields,
   };
 }
 

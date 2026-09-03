@@ -61,6 +61,8 @@ interface ReplayRow {
   cappedHeatDelta: number;
   capApplied: string;
   error: string | null;
+  /** 只有解析失敗時才存：模型原始輸出，用來看失敗形態（Phase 2.6 診斷用）。 */
+  raw?: string;
 }
 
 async function main() {
@@ -113,6 +115,14 @@ async function main() {
     }
   }
 
+  // --limit=N：等間隔抽樣（不是取前 N 筆），小規模診斷才涵蓋得到所有情境。
+  const limit = Number.parseInt(flag("limit", "0"), 10);
+  const sampled = limit > 0 && limit < jobs.length
+    ? jobs.filter((_, i) => i % Math.ceil(jobs.length / limit) === 0)
+    : jobs;
+  jobs.length = 0;
+  jobs.push(...sampled);
+
   const rows: ReplayRow[] = [];
   let next = 0;
   let done = 0;
@@ -123,6 +133,7 @@ async function main() {
         profileId: job.profileId,
         difficulty: job.difficulty as "easy" | "normal" | "challenge",
       });
+      let raw = "";
       try {
         const messages = buildTurnClassifierMessages({
           turns: job.turns,
@@ -132,7 +143,7 @@ async function main() {
           assistantReply: job.reply,
           agencyEnabled: true,
         });
-        const raw = await callDeepSeek({
+        raw = await callDeepSeek({
           apiKey,
           messages,
           maxTokens: 400,
@@ -184,6 +195,7 @@ async function main() {
           cappedHeatDelta: 0,
           capApplied: "none",
           error: e instanceof Error ? e.message : String(e),
+          raw,
         });
       }
       done++;
