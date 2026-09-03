@@ -151,11 +151,14 @@ async function main() {
           judgement,
           40,
           10,
-          classification.coherence ?? "connected",
-          // 沒有真的跨輪 agency state，unresolvedCount 用 coherence 本身
-          // 近似（repetitive 一定 >=2，其餘 0）——只為了驗證 cap 本身邏輯，
-          // 不代表真實 unresolvedCount。
-          classification.coherence === "repetitive" ? 2 : 0,
+          classification.coherence ?? null,
+          {
+            // 回放沒有真的跨輪 agency state，這兩個結構欄位只是佔位——
+            // cap 現在以分類器的 coherence 為準（Codex round-2 P1-1），
+            // 結構近似只在分類器沒給 coherence 時才會被用到。
+            repeatedExactToken: false,
+            unresolvedCount: 0,
+          },
         );
         rows.push({
           scenarioId: job.scenarioId,
