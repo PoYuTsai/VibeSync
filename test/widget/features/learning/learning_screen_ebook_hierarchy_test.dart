@@ -242,8 +242,8 @@ void main() {
     // 無進度：沒有繼續閱讀卡；第一單元的書直接可見，第二單元收合。
     expect(find.byKey(ebookResumeCardKey), findsNothing);
     expect(find.text('診斷 · 配對開場'), findsOneWidget);
-    expect(find.text('0/4 本已開始'), findsOneWidget);
-    expect(find.text('0/3 本已開始'), findsOneWidget);
+    expect(find.text('已開始 0／4 本'), findsOneWidget);
+    expect(find.text('已開始 0／3 本'), findsOneWidget);
     expect(find.text('內核 · 吸引怎麼發生'), findsNothing);
 
     await tester.tap(find.byKey(ebookUnitGroupKey(EbookUnit.becomeThePrize)));
@@ -276,7 +276,7 @@ void main() {
     expect(find.text('繼續閱讀'), findsOneWidget);
     // 捷徑卡指向開始過且未讀完的那本；書卡本身收合不出現。
     expect(find.text('續航 · 讓對話活下去'), findsOneWidget);
-    expect(find.text('1/4 本已開始'), findsOneWidget);
+    expect(find.text('已開始 1／4 本'), findsOneWidget);
     expect(find.text('診斷 · 配對開場'), findsNothing);
     expect(find.text('內核 · 吸引怎麼發生'), findsNothing);
   });

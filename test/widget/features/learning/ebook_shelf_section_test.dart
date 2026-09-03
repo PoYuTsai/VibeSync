@@ -129,10 +129,10 @@ void main() {
     expect(find.textContaining('成為獎賞'), findsOneWidget);
     expect(find.text('互動電子書'), findsNothing);
 
-    // 無進度：沒有繼續閱讀卡；群組摘要都是 0 本已開始。
+    // 無進度：沒有繼續閱讀卡；群組摘要都是「已開始 0 本」。
     expect(find.byKey(ebookResumeCardKey), findsNothing);
-    expect(find.text('0/4 本已開始'), findsOneWidget);
-    expect(find.text('0/3 本已開始'), findsOneWidget);
+    expect(find.text('已開始 0／4 本'), findsOneWidget);
+    expect(find.text('已開始 0／3 本'), findsOneWidget);
 
     // 第一單元展開：四本書卡與 Free 視角的 badge 直接可見。
     expect(find.text('診斷 · 配對開場'), findsOneWidget);
@@ -284,7 +284,7 @@ void main() {
     expect(find.byKey(ebookResumeCardKey), findsOneWidget);
     expect(find.text('繼續閱讀'), findsOneWidget);
     expect(find.text('續航 · 讓對話活下去'), findsOneWidget);
-    expect(find.text('1/4 本已開始'), findsOneWidget);
+    expect(find.text('已開始 1／4 本'), findsOneWidget);
     expect(find.text('診斷 · 配對開場'), findsNothing);
 
     // 展開第一單元後，鎖定書卡照舊顯示完成度（降級後不假裝沒讀過）。
@@ -351,7 +351,7 @@ void main() {
     // 繼續閱讀卡即時出現；已決定過的展開狀態不因進度更新被重置收合。
     // 書名出現兩次＝繼續閱讀卡＋仍展開的書卡；同單元另一本也還看得到。
     expect(find.byKey(ebookResumeCardKey), findsOneWidget);
-    expect(find.text('1/4 本已開始'), findsOneWidget);
+    expect(find.text('已開始 1／4 本'), findsOneWidget);
     expect(find.text('診斷 · 配對開場'), findsNWidgets(2));
     expect(find.text('續航 · 讓對話活下去'), findsOneWidget);
   });

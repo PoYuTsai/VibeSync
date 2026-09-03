@@ -292,7 +292,7 @@ class _UnitGroupHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '$startedCount/$totalCount 本已開始',
+                  '已開始 $startedCount／$totalCount 本',
                   style: AppTypography.caption.copyWith(
                     color:
                         AppColors.onBackgroundSecondary.withValues(alpha: 0.8),

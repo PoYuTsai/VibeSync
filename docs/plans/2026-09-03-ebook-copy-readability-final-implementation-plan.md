@@ -1003,3 +1003,13 @@ ebook_shelf_section.dart 的註解記錄 2026-08-09 已拍板：
 - ADR #45 隨這個 PR 核可；merge 即生效。
 - CI 棘輪的做法（只擋新發現）是否接受；不接受就改成只跑工具單元測試，稽核留給本機。
 - 工作包 1 起每包一個 PR；本次 session 只被授權推 `claude/advanced-interaction-guide-optimization-d0c43k` 這一條分支，後續工作包需要 Eric 給新的分支名或授權沿用同一分支堆疊。
+
+### 19.6 工作包 1 紀錄（2026-09-03）
+
+- 分支 `claude/ebook-copy-wp1-punctuation`，基底 main `c323be2`（PR #61 合併後）。
+- 正式版工具 `tools/content/normalize_ebook_copy.py`（規則 N01–N10，依 `ebook_schema.py` 取欄位，`--check`／`--diff`／`--write`，寫入只接受明確檔案）；對 HEAD 七冊單次執行改 454 個欄位、1,294 處，第二次 0 diff。第 8.1 節提到的「449 個舊 dry-run 欄位」重新計數為 454：多出的 5 個是第 7 冊的用字修正（訊號、鉤子、升溫）與第 3 冊「Line→LINE」。
+- 計劃 8.1 的規則全部落地；「2:1」四處依計劃改成文字（不進腳本，人改）；UI 群組卡改「已開始 n／m 本」（連同 7 處 widget test 斷言）。
+- 稽核 716 → 216：R01／R02／R03／R08 歸零，其餘規則不變；baseline 縮小，`--parent-baseline` 檢查相對 main 無放大。一筆具名 allowlist：`ebook-4-c3-cmp4-s` 的「週四晚上七點，我訂位」在正規化前是半形逗號、禁用詞比對不到，正規化後才被抓到，不是新內容；工作包 4 依 §5.5 改寫後移除。
+- 順帶修一個工具問題：R12／R10／R13 的 finding key 含片語字面，正規化會讓同一個問題「換身分」而被當成 baseline 放大；改成 key 對標點寬度與空白不敏感（新舊格式 baseline 都對得上）。
+- 取捨：全形「＋」「／」與括號旁的半形空白一律拿掉（含第 1 冊漏斗 verdictText 這段我們自己寫的字），對照書 5–7 既有寫法一致。
+- 未跑 Flutter 測試（容器沒有 Flutter），由 PR CI 提供；Python 鏡射的內容契約與結構比對（無新增／刪除／型別／位置變動）都通過。
