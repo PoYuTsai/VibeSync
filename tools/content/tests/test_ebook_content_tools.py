@@ -175,6 +175,8 @@ class AuditRuleTests(unittest.TestCase):
         self.assertIn('/', finding.message)
         self.assertIn('>', finding.message)
         self.assertNotIn('=', finding.message)  # V=0 是英數之間，允許
+        spaced = make_book(blocks=[{'type': 'paragraph', 'id': 'p1', 'text': '中文 V = 0 也不算'}])
+        self.assertEqual([f for f in audit_findings(spaced) if f.rule == 'R02'], [])
         lone_bracket = make_book(blocks=[{'type': 'paragraph', 'id': 'p1', 'text': '中文只有右括號]'}])
         self.assertEqual([f.rule for f in audit_findings(lone_bracket) if f.rule == 'R02'], ['R02'])
 

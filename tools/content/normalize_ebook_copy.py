@@ -52,7 +52,8 @@ _SPACE_BEFORE_FW = re.compile(r' +(?=[' + re.escape(FW_NO_SPACE_BEFORE) + '])')
 _SPACE_AFTER_FW = re.compile(r'(?<=[' + re.escape(FW_NO_SPACE_AFTER) + ']) +')
 _SLASH = re.compile(r'[ \t]*/[ \t]*')
 _PLUS = re.compile(r'[ \t]*\+[ \t]*')
-_GUARDED = {half: re.compile(r'(?<![A-Za-z0-9])[ \t]*' + re.escape(half) + r'[ \t]*(?![A-Za-z0-9])')
+# 兩個 lookbehind：緊鄰的前一字、以及「英數＋一個空白」都不算 CJK 語境（V = 0 也要保留，不只 V=0）
+_GUARDED = {half: re.compile(r'(?<![A-Za-z0-9])(?<![A-Za-z0-9][ \t])[ \t]*' + re.escape(half) + r'[ \t]*(?![A-Za-z0-9])')
             for half in ALNUM_GUARDED}
 
 
