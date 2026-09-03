@@ -87,3 +87,11 @@ python3 tools/content/audit_ebook_copy.py --baseline tools/content/audit_baselin
 python3 tools/content/compare_ebook_import.py --official <main 10ccb12 的七冊目錄> --candidate assets/learning/ebooks
 flutter test test/unit/features/learning/ test/widget/features/learning/ test/visual_proof/
 ```
+
+## 審查補修（2026-09-03，Claude 主審＋Codex 跨審）
+
+- 7.5 `ebook-7-c5-p5` 末句「三個打架的時候，相信行為，其次相信情緒，最後才看字面」是舊順位的白話版，就在定稿 callout 前一段，改成「字面清楚的時候，先照字面；只有字面真的模糊，才看一段時間的行為，再判斷情緒」；`c5-p1`「字面是最會騙人的一層」改成「沒把語氣和後續的行為一起看」。
+- 7.5 `ebook-7-c5-el1-e2-d1-l2`「這是測試，不是拒絕」改成「這可能是試探」（§5.3）。
+- 4.2 `ebook-4-c2-tbl2`「種子（模糊試探）」改成「種子（具體活動、先不定時間）」（§5.4）；4.3 `ebook-4-c3-b7`「試一次，不試第三次」改成「先接受；之後互動仍然雙向，才隔一段時間再看」（§5.7，與同清單第 2 條一致）。
+- 6.5 `d1-l6` 註解「只有你們懂的玩笑」改成「一個玩笑」（新例句不是既有梗）。
+- 稽核 baseline 不變（12 筆）、normalize 0 diff、內容契約 Dart 測試通過。留給後包：第 3 冊 3.4 e12「一週後換提案試一次」與第 2 冊 e9-note2「一週後輕度重啟」的固定時間規則（§5.7）、7.3 後段「測試／加分題」口吻（§5.3）。
