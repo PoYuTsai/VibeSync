@@ -523,7 +523,7 @@ Deno.test("applyCoherenceDeltaCap：connected 不套 cap，正常給分（repair
   assertEquals(capApplied, "none");
 });
 
-Deno.test("applyCoherenceDeltaCap：ambiguous 首次不獎不罰（正負都壓成 0/0）", () => {
+Deno.test("applyCoherenceDeltaCap：ambiguous 只壓正分，既有負分原封不動（Codex R1 新項 P1-3）", () => {
   const positive = applyCoherenceDeltaCap(
     judgement(3, 4),
     50,
@@ -535,6 +535,9 @@ Deno.test("applyCoherenceDeltaCap：ambiguous 首次不獎不罰（正負都壓�
   assertEquals(positive.judgement.familiarityDelta, 0);
   assertEquals(positive.capApplied, "ambiguous");
 
+  // 舊版把 -3/-2 抹成 0/0，等於同一輪玩家壓迫／防禦算出來的處罰被 agency 層
+  // 撤銷。cap 是上界不是夾制區間：負分一律原封不動，而且既然什麼都沒動，
+  // telemetry 也不該說「套過了」。
   const negative = applyCoherenceDeltaCap(
     judgement(-3, -2),
     50,
@@ -542,11 +545,12 @@ Deno.test("applyCoherenceDeltaCap：ambiguous 首次不獎不罰（正負都壓�
     "ambiguous",
     { repeatedExactToken: false, unresolvedCount: 0 },
   );
-  assertEquals(negative.judgement.delta, 0);
-  assertEquals(negative.judgement.familiarityDelta, 0);
+  assertEquals(negative.judgement.delta, -3);
+  assertEquals(negative.judgement.familiarityDelta, -2);
+  assertEquals(negative.capApplied, "none");
 });
 
-Deno.test("applyCoherenceDeltaCap：disconnected 首次是 0/0 或至多 -1/0，永不正 heat", () => {
+Deno.test("applyCoherenceDeltaCap：disconnected 上界 -1/0，永不把既有負分往上拉（Codex R1 新項 P1-3）", () => {
   const positive = applyCoherenceDeltaCap(
     judgement(5, 3),
     50,
@@ -554,10 +558,11 @@ Deno.test("applyCoherenceDeltaCap：disconnected 首次是 0/0 或至多 -1/0，
     "disconnected",
     { repeatedExactToken: false, unresolvedCount: 0 },
   );
-  assertEquals(positive.judgement.delta, 0);
+  assertEquals(positive.judgement.delta, -1);
   assertEquals(positive.judgement.familiarityDelta, 0);
   assertEquals(positive.capApplied, "disconnected");
 
+  // 報告 §8.3 的 -1/0 是**至多**：-5/-3 已經比上界低，照原樣留著。
   const negative = applyCoherenceDeltaCap(
     judgement(-5, -3),
     50,
@@ -565,8 +570,46 @@ Deno.test("applyCoherenceDeltaCap：disconnected 首次是 0/0 或至多 -1/0，
     "disconnected",
     { repeatedExactToken: false, unresolvedCount: 0 },
   );
-  assertEquals(negative.judgement.delta, -1);
-  assertEquals(negative.judgement.familiarityDelta, 0);
+  assertEquals(negative.judgement.delta, -5);
+  assertEquals(negative.judgement.familiarityDelta, -3);
+  assertEquals(negative.capApplied, "none");
+});
+
+Deno.test("applyCoherenceDeltaCap：一般 pushy／defensive 的負分不會被 coherence cap 撤銷（越界優先權不變）", () => {
+  // Codex round-1（新項）P1-3 的實際傷害面：`boundary:"pushy"` 這類**非
+  // crudeOffense** 的判定後面沒有 `withMaxNegativeLearningDeltas` 補救，
+  // 舊版的 ambiguous cap 一撤銷就永久消失。
+  const base = judgement(-3, -2);
+  const pushy: LearningJudgement = {
+    ...base,
+    classification: {
+      ...base.classification,
+      connection: "defensive",
+      boundary: "pushy",
+    },
+  };
+  for (const coherence of ["ambiguous", "disconnected"] as const) {
+    const { judgement: capped, capApplied } = applyCoherenceDeltaCap(
+      pushy,
+      50,
+      30,
+      coherence,
+      { repeatedExactToken: false, unresolvedCount: 0 },
+    );
+    assertEquals(capped.delta, -3, coherence);
+    assertEquals(capped.familiarityDelta, -2, coherence);
+    assertEquals(capApplied, "none", coherence);
+  }
+  // repetitive 的 -2/-1 是**下限**（原本就比它低就不動），同樣不上拉。
+  const { judgement: repetitive } = applyCoherenceDeltaCap(
+    pushy,
+    50,
+    30,
+    "repetitive",
+    { repeatedExactToken: false, unresolvedCount: 0 },
+  );
+  assertEquals(repetitive.delta, -3);
+  assertEquals(repetitive.familiarityDelta, -2);
 });
 
 Deno.test("applyCoherenceDeltaCap：repetitive／重複同詞至少 -2/-1；connected 不被結構計數蓋過", () => {

@@ -533,23 +533,32 @@ export function applyCoherenceDeltaCap(
     ? "repetitive"
     : coherence ??
       (structural.unresolvedCount >= 2 ? "repetitive" : "ambiguous");
-  if (effective === "repetitive") {
-    heatDelta = Math.min(heatDelta, -2);
-    familiarityDelta = Math.min(familiarityDelta, -1);
-    capApplied = "repetitive";
-  } else if (effective === "disconnected") {
-    // 報告 §8.3：「0/0 或最多輕微 -1/0」——familiarity 兩個選項都是 0，
-    // 不是「至多 0」；heat 夾在 [-1, 0]。
-    heatDelta = Math.min(Math.max(heatDelta, -1), 0);
-    familiarityDelta = 0;
-    capApplied = "disconnected";
-  } else if (effective === "ambiguous") {
-    heatDelta = 0;
-    familiarityDelta = 0;
-    capApplied = "ambiguous";
-  } else {
+  // Codex round-1（新項）P1-3：這是**上界**，不是夾制區間。舊版的
+  // `ambiguous → 0/0`、`disconnected → clamp(heat, -1, 0)` 會把既有的負分
+  // **往上拉**：同一輪玩家 `boundary:"pushy"`／`connection:"defensive"` 已經
+  // 算出 -3/-2，只要 coherence 是 ambiguous 就被抹成 0/0，等於 agency 層發了
+  // 一張安全處罰的免罰卡（只有 crudeOffense 後面還有 `withMaxNegativeLearning
+  // Deltas` 補回來，一般 pushy／defensive 沒有）。
+  // 現在一律 `Math.min(既有 delta, capMax)`：只壓正分、絕不抬負分。
+  // capMax 就是報告 §8.3 那張表——repetitive 的 -2/-1、disconnected 的 -1/0
+  // 原本就是「至多」而不是「等於」。
+  const CAP_MAX: Record<"repetitive" | "disconnected" | "ambiguous", {
+    heat: number;
+    familiarity: number;
+  }> = {
+    repetitive: { heat: -2, familiarity: -1 },
+    disconnected: { heat: -1, familiarity: 0 },
+    ambiguous: { heat: 0, familiarity: 0 },
+  };
+  if (effective === "connected") {
     // connected：玩家成功解釋／repair，正常給分，不套 cap。
     return { judgement, capApplied };
+  }
+  {
+    const max = CAP_MAX[effective];
+    heatDelta = Math.min(heatDelta, max.heat);
+    familiarityDelta = Math.min(familiarityDelta, max.familiarity);
+    capApplied = effective;
   }
   // Codex round-1 P2：cap 算出來跟原本一模一樣時，telemetry 不該說「套過了」
   // ——`deltaCapApplied` 是拿來看「cap 真的改變了幾成回合」的，把「算過但沒
