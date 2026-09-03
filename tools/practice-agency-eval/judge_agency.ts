@@ -164,8 +164,19 @@ export function buildJudgePrompt(c: JudgeCase): string {
     "adopted_without_asking 與 accept_valid_answer 互斥，不可同時為 true；adopted_without_asking 與 asked_with_guess 也互斥（有問就不是完全沒問）。玩家明講換題（「對了」「講到」「說到」「換個話題」「突然想到」）或自己把新話題交代清楚時，一律走 accept_valid_answer 那一邊——「跟上一句無關」不是 adopted_without_asking 的判準，「她完全沒問就替玩家補上他沒說的意圖」才是。但這幾個詞**被否定**（「先不要換個話題」「我沒有要說到別的」）、**被引號包住**（他在引用別人講過的話）、或只是慣用語而不是宣告轉場（「你每次都說到一半」）時，都不算明講換題，照原本的判斷順序走。",
     "自身經歷三選一（互斥，最多一個為 true）：跟已知設定或她前文矛盾 → inconsistent_self_fact；沒有矛盾但明顯是專門為了附和玩家剛丟出的無關話題才現編 → accommodating_invention；兩者都不是、只是一個沒寫進設定但也不矛盾、不是為了附和而編的小細節 → plausible_self_detail。她這一則完全沒有講任何關於自己的具體經歷時，三個都是 false。",
     "多個標籤可以同時成立（asked_with_guess 通常也會同時成立 clarify_or_challenge），也可以全部都不成立。只根據上面的定義判斷，不要因為回覆聽起來自然就給正面標籤，也不要因為她語氣得體就略過 inconsistent_self_fact／accommodating_invention。",
-    "只回一個 JSON 物件，欄位照下面的順序：先寫三句判讀（player_msg、answered、self_facts），再寫十五個標籤（值必須是 true 或 false，一個都不能少），最後一句理由：",
-    '{"player_msg":"玩家最後這一句在這段對話裡有沒有可辨識的意思或關聯：有／沒有／不確定，加一句說明","answered":"她上一則問了什麼、玩家這句有沒有回答到（沒問就寫「她上一則沒問」）","self_facts":"她這一則講了哪些關於自己的具體事件，各自在哪個來源找得到、跟這句話題有沒有關係（沒有就寫「沒有具體事件」）","adopted_without_asking":false,"asked_with_guess":false,"clarify_or_challenge":false,"return_to_topic":false,"accept_valid_answer":false,"hold_position":false,"inconsistent_self_fact":false,"accommodating_invention":false,"plausible_self_detail":false,"false_challenge":false,"interrogation":false,"retroactive_agreement":false,"assistant_softening":false,"staircase_for_player":false,"coincidence_overlap":false,"evidence":"一句話"}',
+    `只回一個 JSON 物件，欄位照下面的順序：先寫三句判讀（player_msg、answered、self_facts），再寫 ${JUDGED_LABELS.length} 個標籤（值必須是 true 或 false，一個都不能少），最後一句理由：`,
+    JSON.stringify({
+      player_msg:
+        "玩家最後這一句在這段對話裡有沒有可辨識的意思或關聯：有／沒有／不確定，加一句說明",
+      answered:
+        "她上一則問了什麼、玩家這句有沒有回答到（沒問就寫「她上一則沒問」）",
+      self_facts:
+        "她這一則講了哪些關於自己的具體事件，各自在哪個來源找得到、跟這句話題有沒有關係（沒有就寫「沒有具體事件」）",
+      // 從 JUDGED_LABELS 生成：新增標籤時範本不會再漏掉一個欄位（2026-09-06
+      // 加 overrides_own_state 時就是漏在這裡，整批 180 筆 judge 全滅）。
+      ...Object.fromEntries(JUDGED_LABELS.map((l) => [l, false])),
+      evidence: "一句話",
+    }),
   ].join("\n");
 }
 

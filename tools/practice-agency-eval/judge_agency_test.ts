@@ -623,3 +623,27 @@ Deno.test("Codex round-1 P2：自身經歷三選一在 parser 也擋，同時吐
     );
   }
 });
+
+Deno.test("buildJudgePrompt：JSON 範本從 JUDGED_LABELS 生成，不會漏欄位", () => {
+  // 2026-09-06 實際踩到：新增 overrides_own_state 時 prompt 裡的硬編碼範本沒跟著
+  // 改，模型照範本吐，parser 要求所有標籤 → 整批 180 筆 judge 全滅。
+  const sources = trustedSourcesFor("practice_girl_001", "normal");
+  const prompt = buildJudgePrompt({
+    probeId: "A24.p1",
+    scenarioId: "A24",
+    profileId: sources.profileId,
+    personaId: "slow_worker",
+    difficulty: "normal",
+    mode: "standard",
+    repeat: 1,
+    kinds: ["own_state_pushed"],
+    previousAiAskedQuestion: false,
+    transcript: "男：在幹嘛\n她：現在有點忙 晚點再說\n男：這週末要不要一起去",
+    reply: "好啊 你想去哪",
+    sources,
+  });
+  for (const label of JUDGED_LABELS) {
+    assert(prompt.includes(`"${label}":false`), `範本缺 ${label}`);
+  }
+  assert(prompt.includes(`再寫 ${JUDGED_LABELS.length} 個標籤`), prompt);
+});
