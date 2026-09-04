@@ -29,9 +29,11 @@ import {
 } from "./reply_style.ts";
 import {
   AGENCY_ACTS,
+  AGENCY_SHAPE_EXPERIMENT_SET_IDS,
   type AgencyApplication,
   type AgencyMode,
   agencyPolicyFor,
+  type AgencyShapeExperiment,
   agencyThresholdsFor,
   type ConversationAgencyState,
   detectAgencyEvidence,
@@ -660,6 +662,21 @@ const AGENCY_CLARIFY_ONLY_SHAPE =
   "回 1 則，就做這一件事：不替他補你猜的意思，也不要順著他丟的詞講你自己的事。";
 
 /**
+ * Phase 3.3 `prompt` 臂（Eric 2026-09-04 的結構解法之一）：接受仍然合法的三個
+ * 候選組，`isAgencyClarifyOnlyTurn` 壓不到形狀，於是她「有問，但同一則又補了
+ * 自己的經歷」——文案層的 act 說明已經寫過同一件事而黑箱量不到效果。
+ *
+ * 所以把形狀行本身變成**一句條件式**，理由與 `AGENCY_SET_LINE` 同：兩個分支
+ * 不是平行選項，是同一個判斷（她這一則到底是接受還是在問）的兩邊；寫成清單
+ * 模型會挑順的，寫成 if/else 才逼它先做那個判斷。
+ */
+function agencySplitShapeLine(bubbleCount: number, disclosure: string): string {
+  return `如果你接住他這句，就回 ${bubbleCount} 則、一則講一件事${
+    disclosure ? `，${disclosure}` : ""
+  }；如果你是問他意思、或說他跟前面對不上，就只回 1 則、就那一句，不要在同一則裡講你自己跟這個詞有關的事。`;
+}
+
+/**
  * 跨輪立場行。**只有 planner 已經 forced 質疑／維持立場的那一輪才印**。
  *
  * Codex round-2 P1-2：舊版掛在
@@ -725,6 +742,8 @@ export function renderTurnPlan(
   plan: TurnResponsePlan,
   style?: Pick<ReplyStyleProfile, "behavior">,
   agency?: AgencyApplication | null,
+  /** Phase 3.3 形狀實驗臂；預設 `off`＝與實驗接線前逐字相同。 */
+  shapeExperiment: AgencyShapeExperiment = "off",
 ): string {
   const soft = plan.situation === "boundary" &&
     (style?.behavior.directness[1] ?? 4) <= 2;
@@ -770,10 +789,18 @@ export function renderTurnPlan(
     : "內容要接到對方最新一句的具體內容";
   // forced ask_intent 那一輪，形狀由 agency 決定（1 則、只有問句），style 的
   // bubbleCount／disclosure 讓路——這一輪本來就不該有自我揭露。
+  // Phase 3.3 `prompt` 臂：只在旋鈕開著、agency 真的介入、而且落在三個
+  // 「接受仍合法」的候選組時換形狀行；其餘（含旋鈕 off）逐字不變。
+  const splitShape = shapeExperiment === "prompt" && agencyApplied &&
+    AGENCY_SHAPE_EXPERIMENT_SET_IDS.includes(
+      agency?.decision.allowedActSetId ?? "",
+    );
   const shapeLine = forcedAsk
     ? FORCED_ASK_INTENT_SHAPE
     : clarifyOnly
     ? AGENCY_CLARIFY_ONLY_SHAPE
+    : splitShape
+    ? `${agencySplitShapeLine(plan.bubbleCount, disclosure)}${question}`
     : `回 ${plan.bubbleCount} 則，一則講一件事。${question}${
       disclosure ? disclosure + "。" : ""
     }`;

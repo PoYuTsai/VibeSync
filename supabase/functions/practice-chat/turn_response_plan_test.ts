@@ -1222,3 +1222,86 @@ Deno.test("Phase 3.0 工作項 B：同一段序列在 easy 晚一步、challenge
   // challenge：同一格改成直接收掉這串，不是維持立場。
   assertEquals(challenge[3].agency?.decision.forcedAct, "end_low_value_loop");
 });
+
+// ── Phase 3.3 `prompt` 臂：條件式形狀行 ────────────────────────────────────
+const SPLIT_SHAPE_HEAD = "如果你接住他這句";
+const SPLIT_SHAPE_TAIL = "就只回 1 則、就那一句";
+
+/** 同一份 turns 同時取 off／prompt 兩臂的 turn plan 文字。 */
+function shapeArms(turns: PracticeTurn[], profileId: string) {
+  const { plan, agency } = agencyPlan(turns, "normal", profileId);
+  const style = STYLE_BY_PROFILE_ID[profileId];
+  return {
+    agency,
+    off: renderTurnPlan(plan, style, agency),
+    prompt: renderTurnPlan(plan, style, agency, "prompt"),
+    truncate: renderTurnPlan(plan, style, agency, "truncate"),
+  };
+}
+
+Deno.test("Phase 3.3 prompt 臂：三個「接受仍合法」的候選組才換成條件式形狀行", () => {
+  // 欠債輪（answer_or_challenge_v1）：Eric 回報的那一格。
+  const debt = shapeArms(
+    [u("東東"), a("東東是誰"), u("阿布達比")],
+    "practice_girl_001",
+  );
+  assertEquals(debt.agency?.decision.allowedActSetId, "answer_or_challenge_v1");
+  assert(debt.prompt.includes(SPLIT_SHAPE_HEAD), debt.prompt);
+  assert(debt.prompt.includes(SPLIT_SHAPE_TAIL), debt.prompt);
+  // 接受那一分支仍然是 style 的原形狀（則數沒有被壓掉）。
+  assert(debt.prompt.includes("一則講一件事"), debt.prompt);
+
+  // 無前文片段（fragment_no_context_v1）：同樣換。
+  const fragment = shapeArms([u("阿布達比")], "practice_girl_001");
+  assertEquals(
+    fragment.agency?.decision.allowedActSetId,
+    "fragment_no_context_v1",
+  );
+  assert(fragment.prompt.includes(SPLIT_SHAPE_HEAD), fragment.prompt);
+
+  // easy 的條件式（answer_or_challenge_easy_v1）：同樣換。
+  const easy = agencyPlan(
+    [u("東東"), a("東東是誰"), u("阿布達比")],
+    "easy",
+    "practice_girl_001",
+  );
+  assertEquals(
+    easy.agency?.decision.allowedActSetId,
+    "answer_or_challenge_easy_v1",
+  );
+  assert(
+    renderTurnPlan(
+      easy.plan,
+      STYLE_BY_PROFILE_ID["practice_girl_001"],
+      easy.agency,
+      "prompt",
+    ).includes(SPLIT_SHAPE_HEAD),
+  );
+});
+
+Deno.test("Phase 3.3 prompt 臂：旋鈕 off／truncate、以及 agency 沒介入時，turn plan 逐字不變", () => {
+  // 旋鈕 off 與 truncate 都不碰 prompt（truncate 是生成後處理）。
+  const debt = shapeArms(
+    [u("東東"), a("東東是誰"), u("阿布達比")],
+    "practice_girl_001",
+  );
+  assert(!debt.off.includes(SPLIT_SHAPE_HEAD), debt.off);
+  assertEquals(debt.truncate, debt.off);
+
+  // agency 沒介入（一般問句輪）：三個值都逐字相同。
+  const normal = shapeArms(
+    [a("你今天在忙什麼"), u("剛忙完專案 你呢")],
+    "practice_girl_001",
+  );
+  assertEquals(normal.agency?.applied, false);
+  assertEquals(normal.prompt, normal.off);
+  assertEquals(normal.truncate, normal.off);
+
+  // 已經被壓成一則的 clarify-only／forced 輪：形狀行仍然由既有的刀決定。
+  const hold = shapeArms(
+    [u("韓國"), a("怎麼了？"), u("東京"), a("蛤"), u("淺草")],
+    "practice_girl_001",
+  );
+  assert(!hold.prompt.includes(SPLIT_SHAPE_HEAD), hold.prompt);
+  assertEquals(hold.prompt, hold.off);
+});

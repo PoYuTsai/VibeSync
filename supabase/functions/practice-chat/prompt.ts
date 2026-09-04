@@ -78,6 +78,7 @@ import type { ReplyStyleState } from "./reply_style_state.ts";
 import type {
   AgencyApplication,
   AgencyMode,
+  AgencyShapeExperiment,
   ConversationAgencyState,
 } from "./conversation_agency.ts";
 import {
@@ -843,6 +844,12 @@ export function buildChatPromptBundle(
     agencyMode?: AgencyMode;
     /** assisted 模式 thread 的 recent_facts.conversationAgency；旗標關閉時不讀。 */
     agencyState?: ConversationAgencyState | null;
+    /**
+     * Phase 3.3 形狀實驗旋鈕（`PRACTICE_AGENCY_SHAPE_EXPERIMENT`）；預設 `off`
+     * ＝prompt 逐字與實驗接線前相同。只有 `prompt` 臂會改 prompt，`truncate`
+     * 臂是生成後處理（呼叫端用 `truncateAgencyShape`），這裡不吃。
+     */
+    shapeExperiment?: AgencyShapeExperiment;
   } = {},
 ): ChatPromptBundle {
   const agencyMode = options.agencyMode ?? "off";
@@ -998,7 +1005,12 @@ export function buildChatPromptBundle(
         })
       }${temperaturePrompt}${invitePrompt}${
         responsePlan && style
-          ? renderTurnPlan(responsePlan, style, agencyDecision)
+          ? renderTurnPlan(
+            responsePlan,
+            style,
+            agencyDecision,
+            options.shapeExperiment ?? "off",
+          )
           : renderAgencyOnlyGuidance(agencyDecision)
       }${difficultyBehaviorPrompt(profile, styleLayer, agencyPrompt)}${
         promptPriorityResolver(options.practiceMode, styleLayer)
