@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-04T01:15:52Z",
+  "generatedAt": "2026-09-04T01:26:09Z",
   "source": "assets/learning/ebooks",
   "note": "棘輪基準：CI 只擋這份清單以外的新發現。每個工作包修掉一批問題後用 --write-baseline 縮小它，不得手動加項目。",
   "count": 0,
