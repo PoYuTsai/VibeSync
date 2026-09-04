@@ -33,6 +33,7 @@ import {
   type AgencyMode,
   agencyPolicyFor,
   agencyThresholdsFor,
+  type ConversationAgencyProfile,
   type ConversationAgencyState,
   detectAgencyEvidence,
   isAcceptingPlanAct,
@@ -304,12 +305,18 @@ export function computeAgencyDecision(args: {
   difficulty?: "easy" | "normal" | "challenge";
   /** Game 模式套挑戰難度門檻＋既有 Game FSM 優先權（由呼叫端保留）。 */
   isGame?: boolean;
+  /**
+   * Phase 4.0：角色的對話主體強弱（`agencyProfileFor`）。難度表是 base，
+   * profile 只做位移；省略／null＝逐字沿用難度表。
+   */
+  agencyProfile?: ConversationAgencyProfile | null;
 }): AgencyApplication | null {
   const agencyMode = args.agencyMode ?? "off";
   if (agencyMode === "off") return null;
   const thresholds = agencyThresholdsFor(
     args.difficulty ?? "normal",
     args.isGame ?? false,
+    args.agencyProfile ?? null,
   );
   const raw = agencyPolicyFor(
     detectAgencyEvidence(args.turns, args.agencyState ?? null),
@@ -326,6 +333,7 @@ export function computeAgencyDecision(args: {
     decision,
     applied: agencyMode === "on" && decision.situation !== null,
     enabled: agencyMode === "on",
+    profile: args.agencyProfile ?? null,
   };
 }
 
@@ -349,6 +357,11 @@ export function planTurnResponse(args: {
   askUserFocus?: string | null;
   /** Phase 3.8：這一場已經強制問過一次（thread state）。 */
   askedAboutUser?: boolean;
+  /**
+   * Phase 4.0：角色的對話主體強弱；只在 agency 旗標 on 時由 bundle 傳入，
+   * off／shadow 傳 null＝`initiative` 這一段完全不套用（plan 逐字不變）。
+   */
+  agencyProfile?: ConversationAgencyProfile | null;
 }): TurnResponsePlan {
   const signals = detectTurnSignals(args.turns);
   const policyStance = policyStanceFor(signals, args.evidence);
@@ -470,6 +483,32 @@ export function planTurnResponse(args: {
     situation !== "boundary" && situation !== "memory_mismatch"
   ) {
     optionalAct = "soft_close";
+  }
+
+  // Phase 4.0 `initiative`（報告 §7.3「只在有自身興趣或對話停滯時允許開自己的
+  // 題，不等於替玩家救場」）：`!agency.applied` ＋ `situation === "neutral"`
+  // 就是「結構上連貫、但這一輪沒有東西可接」的停滯輪——她沒有在澄清、沒有在
+  // 質疑、玩家也沒有分享或提問。這時候高主動的人有機率開一個自己的題
+  // （`self_disclose`），機率由 seed 決定（同一 request 重試拿到同一份 plan）：
+  // initiative 3＝1/5 輪、4＝2/5 輪，≤2 不觸發。
+  //
+  // 刻意不搶的幾種輪次：`optionalAct !== null`（她已經有第二個動作）、
+  // `policyStance === "cautious"`（她在防備，上面才剛把 self_disclose 濾掉）、
+  // 玩家在問她（含「我剛下班，妳今天呢？」這種分享＋問句，Codex R1 P2-1 的
+  // 同一條界線）、第一個 user 回合（首輪不主動開題）。
+  // 與 Phase 3.8 的 `forceAskUser` 可共存：那一把刀只動 `questionBudget`，
+  // 這一把只動 `optionalAct`，兩者的條件也一致（都要求 `!agency.applied`、
+  // 非問句、userTurnCount ≥ 2）。
+  const initiative = args.agencyProfile?.initiative ?? 0;
+  if (
+    agency?.enabled === true && !agency.applied &&
+    situation === "neutral" && optionalAct === null &&
+    policyStance !== "cautious" && !signals.userIsQuestion &&
+    signals.userTurnCount >= 2 && initiative >= 3 &&
+    roll(5) < initiative - 2
+  ) {
+    // `disclosureDepth` 下面會因為 optionalAct 自然變成非 none（既有邏輯）。
+    optionalAct = "self_disclose";
   }
 
   // 問題預算：習慣決定基準，連續反問就歸零；normal／challenge 第一輪不反問
@@ -644,6 +683,12 @@ const AGENCY_SET_LINE: Record<string, string> = {
     "先判斷他這句接不接得上：真的回答了你上一句、或本來就跟前面在聊的事對得上，就接受、順著講下去；對不上就直接說他沒回答你、又跳到別的，不要順著新名詞聊",
   answer_or_challenge_easy_v1:
     "先判斷他這句接不接得上：真的回答了你上一句、或跟前面在聊的事對得上，就接受、順著講下去；拿不準就先接住；真的完全對不上才說他沒回答你、又跳到別的",
+  // Phase 4.0：高 topicPersistence 的人多一個出口——不一定要質疑，也可以直接
+  // 把話拉回自己上一題。句尾加一個分句，前半段與上面兩條逐字相同。
+  answer_or_challenge_persist_v1:
+    "先判斷他這句接不接得上：真的回答了你上一句、或本來就跟前面在聊的事對得上，就接受、順著講下去；對不上就直接說他沒回答你、又跳到別的，不要順著新名詞聊；或直接把話拉回你上一題",
+  answer_or_challenge_persist_easy_v1:
+    "先判斷他這句接不接得上：真的回答了你上一句、或跟前面在聊的事對得上，就接受、順著講下去；拿不準就先接住；真的完全對不上才說他沒回答你、又跳到別的；或直接把話拉回你上一題",
 };
 
 /** 獨立於 TurnResponsePlan：style 開或關都能算，只吃 agencyDecision 本身。 */

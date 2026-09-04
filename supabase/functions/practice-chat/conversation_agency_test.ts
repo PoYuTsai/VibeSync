@@ -1310,6 +1310,7 @@ const appliedAgency = (turns: PracticeTurn[]): AgencyApplication => ({
   decision: policy(turns),
   applied: true,
   enabled: true,
+  profile: null,
 });
 // Eric 2026-09-04 回報的那一格：她問過一次，他又丟一個不相干的地名。
 const FRAGMENT_DEBT_TURNS = [u("東東"), a("東東是誰"), u("阿布達比")];

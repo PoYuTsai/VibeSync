@@ -594,6 +594,11 @@ export interface AgencyApplication {
    * （`agency_flag_off_equivalence_test.ts` 守門）。
    */
   readonly enabled: boolean;
+  /**
+   * Phase 4.0：這一輪套用的分人強弱（`agencyProfileFor`），只給 telemetry 與
+   * planner 讀；null＝呼叫端沒給（門檻逐字沿用難度表）。
+   */
+  readonly profile: ConversationAgencyProfile | null;
 }
 
 const NO_OVERRIDE: Omit<AgencyDecision, "version" | "evidence"> = {
