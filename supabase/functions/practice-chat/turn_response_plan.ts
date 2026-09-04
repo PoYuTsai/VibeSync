@@ -486,26 +486,40 @@ export function planTurnResponse(args: {
   }
 
   // Phase 4.0 `initiative`（報告 §7.3「只在有自身興趣或對話停滯時允許開自己的
-  // 題，不等於替玩家救場」）：`!agency.applied` ＋ `situation === "neutral"`
-  // 就是「結構上連貫、但這一輪沒有東西可接」的停滯輪——她沒有在澄清、沒有在
-  // 質疑、玩家也沒有分享或提問。這時候高主動的人有機率開一個自己的題
-  // （`self_disclose`），機率由 seed 決定（同一 request 重試拿到同一份 plan）：
-  // initiative 3＝1/5 輪、4＝2/5 輪，≤2 不觸發。
+  // 題，不等於替玩家救場」）：高主動的人在**對話停滯**的輪次有機率開一個自己的
+  // 題（`self_disclose`）。
   //
-  // 刻意不搶的幾種輪次：`optionalAct !== null`（她已經有第二個動作）、
+  // Codex R1 P1：`situation === "neutral"` 本身不是停滯——「今天超熱的 我剛下班」
+  // 是 `self_share`，有兩件可回應的內容，卻也會落到 neutral。所以停滯要一個
+  // **結構**訊號：`utteranceShape === "reaction"`（玩家這句只由招呼／情緒反應詞
+  // 構成，`REACTION_RE`，不含第一人稱、不是問句、不是明示換題）。這一句本身
+  // 沒有可接的內容，她要嘛收尾要嘛自己開題，正是報告說的「對話停滯」。
+  // 報告的另一半「有自身興趣」**沒有結構訊號可用**（那要判語意，本檔的界線是
+  // 只認句法標記），所以不做——這一刀只做停滯那一半。
+  //
+  // 刻意不搶的幾種輪次：`agency.applied`（她正在澄清／質疑）、
+  // `optionalAct !== null`（她已經有第二個動作，例如低能量收尾）、
   // `policyStance === "cautious"`（她在防備，上面才剛把 self_disclose 濾掉）、
   // 玩家在問她（含「我剛下班，妳今天呢？」這種分享＋問句，Codex R1 P2-1 的
   // 同一條界線）、第一個 user 回合（首輪不主動開題）。
+  //
+  // 機率：initiative 3＝1/5 輪、4＝2/5 輪，≤2 不觸發。Codex R1 P2：用自己的
+  // hash 域（seedKey|回合|initiative），不共用 `roll`——否則 initiative 與
+  // `bubbleCount` 會是同一個 seed 的確定函數，兩個決定綁在同一個骰面上。
+  // 仍然是 seed 決定的（同一 request 重試拿到同一份 plan）。
+  //
   // 與 Phase 3.8 的 `forceAskUser` 可共存：那一把刀只動 `questionBudget`，
   // 這一把只動 `optionalAct`，兩者的條件也一致（都要求 `!agency.applied`、
   // 非問句、userTurnCount ≥ 2）。
   const initiative = args.agencyProfile?.initiative ?? 0;
   if (
     agency?.enabled === true && !agency.applied &&
+    agency.decision.evidence.utteranceShape === "reaction" &&
     situation === "neutral" && optionalAct === null &&
     policyStance !== "cautious" && !signals.userIsQuestion &&
     signals.userTurnCount >= 2 && initiative >= 3 &&
-    roll(5) < initiative - 2
+    fnv1a(`${args.seedKey}|${signals.userTurnCount}|initiative`) % 5 <
+      initiative - 2
   ) {
     // `disclosureDepth` 下面會因為 optionalAct 自然變成非 none（既有邏輯）。
     optionalAct = "self_disclose";

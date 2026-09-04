@@ -107,7 +107,7 @@ export const AGENCY_BY_PRESET: Readonly<
     ambiguityTolerance: 3,
     skepticism: 1,
   },
-  // 回得小心、會把話接圓：最不主動開題，最容忍模糊，但會記得回頭。
+  // 回得小心、會把話接圓：很少主動開題，最容忍模糊，但會記得回頭。
   reserved_repairer: {
     initiative: 1,
     topicPersistence: 3,
