@@ -942,3 +942,87 @@ export function agencyModeFor(
   if (flag === "test") return accountIsTest ? "on" : "off";
   return "off";
 }
+
+// ── Phase 3.3：形狀實驗旋鈕（PRACTICE_AGENCY_SHAPE_EXPERIMENT）──────────────
+/**
+ * 兩個實驗臂，預設 `off`（與今日逐字相同）：
+ *   `prompt`＝把回覆形狀那一行換成條件式（接受→照常；問／質疑→只回 1 則），
+ *     在 `renderTurnPlan` 生效；
+ *   `truncate`＝生成後結構性截斷（第一則是問句就只留第一則），在 handler 的
+ *     生成迴圈與黑箱 runner 的同序後處理生效。
+ *
+ * 只在 agency 旗標解析成 `on` **且**這一輪真的介入（`applied`）時有效果；
+ * off／shadow／未介入的輪次一律零改動（`agency_flag_off_equivalence_test.ts`）。
+ */
+export type AgencyShapeExperiment = "off" | "prompt" | "truncate";
+
+/** 旗標字串 → 實驗臂。認不得的值一律 `off`（與 `agencyModeFor` 同樣 fail-closed）。 */
+export function agencyShapeExperimentFor(
+  flag: string | undefined,
+): AgencyShapeExperiment {
+  return flag === "prompt" || flag === "truncate" ? flag : "off";
+}
+
+/**
+ * 這一輪「接受仍然合法」的三個候選組——`isAgencyClarifyOnlyTurn` 壓不到它們
+ * （清單裡有 `acknowledge`／`accept_if_answered`），而 Eric 2026-09-04 回報的
+ * `accommodating_invention`／`asked_with_guess` 正好都落在這裡。
+ */
+export const AGENCY_SHAPE_EXPERIMENT_SET_IDS: readonly string[] = [
+  "answer_or_challenge_v1",
+  "answer_or_challenge_easy_v1",
+  "fragment_no_context_v1",
+];
+
+/**
+ * truncate 臂的適用格：三個實驗候選組，或這一輪的 act（forced 或 bounded）
+ * 全部是 agency act（＝`isAgencyClarifyOnlyTurn` 那一類，形狀本來就該壓成一則，
+ * 這裡多一道生成後的保險）。
+ */
+export function isAgencyShapeExperimentTurn(
+  agency: AgencyApplication | null,
+): boolean {
+  if (!agency?.applied) return false;
+  const decision = agency.decision;
+  if (AGENCY_SHAPE_EXPERIMENT_SET_IDS.includes(decision.allowedActSetId)) {
+    return true;
+  }
+  const acts = decision.forcedAct ? [decision.forcedAct] : decision.allowedActs;
+  return acts.length > 0 &&
+    acts.every((a) => (AGENCY_ACTS as readonly PlanAct[]).includes(a));
+}
+
+/**
+ * 泡泡切法與 client（`practice_chat_screen.dart` 的 `_splitBubbles`，上限 4）
+ * 及黑箱 runner（`tools/practice-agency-eval/run_agency.ts`）同一套：換行切、
+ * 去空白、超過上限就不拆（使用者眼裡那是一顆泡，沒有「後面幾則」可以丟）。
+ */
+const MAX_BUBBLE_SPLIT = 4;
+
+function agencyBubbles(text: string): string[] {
+  const parts = text.split("\n").map((p) => p.trim()).filter((p) =>
+    p.length > 0
+  );
+  return parts.length <= 1 || parts.length > MAX_BUBBLE_SPLIT
+    ? [text.trim()]
+    : parts;
+}
+
+/**
+ * truncate 臂：她第一則就是問句時，只留第一則、丟掉後面全部。
+ *
+ * 純結構——判準只有 `isQuestionText`（既有問句形狀）與換行，不看字數、不看
+ * 語意。不重試、不再打模型：後面那幾則正是「同一則裡順口講自己跟這個詞有關
+ * 的經歷」的落點，丟掉就沒了。
+ */
+export function truncateAgencyShape(
+  reply: string,
+  agency: AgencyApplication | null,
+): { text: string; dropped: number } {
+  if (!isAgencyShapeExperimentTurn(agency)) return { text: reply, dropped: 0 };
+  const bubbles = agencyBubbles(reply);
+  if (bubbles.length <= 1 || !isQuestionText(bubbles[0])) {
+    return { text: reply, dropped: 0 };
+  }
+  return { text: bubbles[0], dropped: bubbles.length - 1 };
+}

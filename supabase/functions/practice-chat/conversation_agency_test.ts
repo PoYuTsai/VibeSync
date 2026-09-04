@@ -4,9 +4,11 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   AGENCY_THRESHOLDS,
+  type AgencyApplication,
   type AgencyEvidence,
   agencyModeFor,
   agencyPolicyFor,
+  agencyShapeExperimentFor,
   agencyThresholdsFor,
   aiAskedQuestion,
   aiAskedQuestionStrict,
@@ -16,6 +18,7 @@ import {
   isClarifyingAct,
   nextConversationAgencyState,
   parseConversationAgencyState,
+  truncateAgencyShape,
   utteranceShapeOf,
 } from "./conversation_agency.ts";
 import { buildRelationshipThreadRpcParams } from "./relationship_thread.ts";
@@ -1299,4 +1302,63 @@ Deno.test("Phase 3.2 R2 P2：舊 row 的 connected 退路只對沒有修復點�
     }).unresolvedCount,
     0,
   );
+});
+
+// ── Phase 3.3：形狀實驗旋鈕與 truncate 臂 ─────────────────────────────────
+const appliedAgency = (turns: PracticeTurn[]): AgencyApplication => ({
+  decision: policy(turns),
+  applied: true,
+  enabled: true,
+});
+// Eric 2026-09-04 回報的那一格：她問過一次，他又丟一個不相干的地名。
+const FRAGMENT_DEBT_TURNS = [u("東東"), a("東東是誰"), u("阿布達比")];
+
+Deno.test("Phase 3.3 旋鈕：只認 prompt／truncate，其餘（含未設、亂填）一律 off", () => {
+  assertEquals(agencyShapeExperimentFor(undefined), "off");
+  assertEquals(agencyShapeExperimentFor("off"), "off");
+  assertEquals(agencyShapeExperimentFor("true"), "off");
+  assertEquals(agencyShapeExperimentFor("prompt"), "prompt");
+  assertEquals(agencyShapeExperimentFor("truncate"), "truncate");
+});
+
+Deno.test("Phase 3.3 truncate：第一則是問句時只留第一則，順口自曝的後續整段丟掉", () => {
+  const agency = appliedAgency(FRAGMENT_DEBT_TURNS);
+  // 這一格正是「接受仍合法」的候選組（clarify-only 壓不到形狀）。
+  assertEquals(agency.decision.allowedActSetId, "answer_or_challenge_v1");
+  const result = truncateAgencyShape(
+    "你是說阿布達比嗎\n我剛從那邊飛回來耶",
+    agency,
+  );
+  assertEquals(result.text, "你是說阿布達比嗎");
+  assertEquals(result.dropped, 1);
+});
+
+Deno.test("Phase 3.3 truncate：第一則不是問句（她接住了）就一個字都不動", () => {
+  const reply = "阿布達比喔\n我飛香港的時候會順便去逛街";
+  const result = truncateAgencyShape(reply, appliedAgency(FRAGMENT_DEBT_TURNS));
+  assertEquals(result.text, reply);
+  assertEquals(result.dropped, 0);
+});
+
+Deno.test("Phase 3.3 truncate：agency 沒介入（applied=false／situation=null）一律不動", () => {
+  const reply = "你是說阿布達比嗎\n我剛從那邊飛回來耶";
+  const shadow: AgencyApplication = {
+    ...appliedAgency(FRAGMENT_DEBT_TURNS),
+    applied: false,
+    enabled: false,
+  };
+  assertEquals(truncateAgencyShape(reply, shadow).text, reply);
+  assertEquals(truncateAgencyShape(reply, null).dropped, 0);
+  // 有效短答（她剛問完、他答了、沒有欠債）＝situation null，決策不介入。
+  const validShortAnswer = appliedAgency([a("你喜歡哪種動物"), u("貓")]);
+  assertEquals(validShortAnswer.decision.situation, null);
+  assertEquals(truncateAgencyShape(reply, validShortAnswer).text, reply);
+});
+
+Deno.test("Phase 3.3 truncate：泡泡切法跟 client 同一套（單則不動、超過 4 則不拆也不截）", () => {
+  const agency = appliedAgency(FRAGMENT_DEBT_TURNS);
+  assertEquals(truncateAgencyShape("你是說阿布達比嗎", agency).dropped, 0);
+  const fiveBubbles = ["你是說阿布達比嗎", "甲", "乙", "丙", "丁"].join("\n");
+  assertEquals(truncateAgencyShape(fiveBubbles, agency).text, fiveBubbles);
+  assertEquals(truncateAgencyShape(fiveBubbles, agency).dropped, 0);
 });
