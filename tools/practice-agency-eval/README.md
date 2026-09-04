@@ -1465,3 +1465,136 @@ DeepSeek：$19.22 → $18.44（可見掉 $0.78；balance API
 遠低於估算上限，在 Eric 核准的 $3.50 內還留有約 $2.7
 餘裕，但本輪沒有用這筆餘裕加碼（三臂已經跑完既定範圍，加碼留給下一輪針對
 `sequenceHoldBlindFollow` 的驗證性重跑）。
+
+### 2026-09-04 Phase 3.3 確認跑（off／truncate 兩臂放大到 repeat 3，A27 量測缺口已修）
+
+上面「同輪修正」把 A27.p1/p2 與 p4 之間插了腳本化填充輪（`49e41518`）之後，這一輪
+在同一個 `agency-phase33` 分支（未動程式碼，只重跑黑箱）驗證兩件事：`prompt` 臂
+既然頭條與 `accommodating_invention`／`asked_with_guess` 上都沒有跟 `off` 分開，
+只留 `off`／`truncate` 兩臂放大到 repeat 3，看 `sequenceHoldBlindFollow` 的方向
+一致下降在信賴區間分開；以及套用 A27 量測修正後，`accommodating_invention` 與
+`clarify_or_challenge` 逐探針（p1/p2/p4）到底長什麼樣子。
+
+**規模**：`--scenarios=A25,A26,A27 --mode=standard --difficulty=normal --style=1
+--agency=on --style=1`，20 位 × repeat 3，`--shape=off` 與 `--shape=truncate`
+兩臂各 180 場、1,260 次生成、**零場次失敗**；judge 各 900 筆（off 解析失敗 3／
+0.33%，truncate 0／0%）。artifact：
+`out/2026-09-04-p33-confirm-{off,truncate}.json`（judge
+`out/2026-09-04-p33-confirm-{off,truncate}-judge.json`）。
+
+#### 頭條與序列指標：off / truncate（repeat 3，n≈3 倍於上一輪）
+
+| 指標 | gate | off | truncate | CI 是否分開 |
+| --- | --- | ---: | ---: | --- |
+| 第 2 則就指出他沒回答 `sequenceChallenge`（n=120） | ≥80% | 91.7%（86.7–95.8） | 85.8%（79.2–90.8） | 重疊 |
+| 第 3 則起仍盲目跟題 `sequenceHoldBlindFollow`（n=359/360） | ≤5% | 20.6%（17.8–24.5） | **12.5%（9.7–16.1）** | **分開**（17.8 > 16.1） |
+| 玩家解釋後接受 `sequenceRepairAccepted`（n=120） | ≥90% | 97.5%（95.0–100.0） | 95.0%（91.7–98.3） | 重疊 |
+| 完全不問就跟題 `adopted_without_asking`（no_context_fragment，n=298/300） | — | 16.8%（12.4–20.5） | 18.0%（14.0–21.7） | 重疊 |
+| 有問但夾帶猜測 `asked_with_guess`（n=298/300） | — | 2.7%（1.3–5.4） | 0.0%（0.0–0.0） | 重疊（truncate 下緣是 0） |
+| 為附和話題現編 `accommodating_invention`（全體，n=897/900） | — | 0.6%（0.2–0.8） | 0.4%（0.2–1.0） | 重疊 |
+| 違反 `mustForbid` | — | 17.1%（15.5–19.7） | 12.9%（11.0–15.0） | 分開 |
+| 滿足 `mustAllow` | — | 68.9%（66.7–72.6） | 65.7%（62.6–68.3） | 重疊 |
+| forced-stop 佔探針比例（`policy_breakdown --label=hold_position`） | 回報 | 2.8%（25/897） | 5.1%（46/900） | — |
+| 　├ 其中 `hold_position` 命中率 | 回報 | 24.0%（6/25） | 13.0%（6/46） | — |
+| truncate 臂截斷（`shapeDropped`，逐輪 telemetry） | 回報 | 0 則（旋鈕 off 不截，設計如此） | **144/1,380 輪被截（10.4%）、共丟 186 則泡泡** | — |
+| judge 解析失敗 | — | 3/900（0.33%） | 0/900（0.0%） | — |
+
+**`sequenceHoldBlindFollow` 的 truncate 信號在 3 倍樣本下站住了**：上一輪
+repeat=1（n=120）只在邊緣重疊（16.7–18.3），這一輪 repeat=3（n=359/360）
+off（17.8–24.5）與 truncate（9.7–16.1）的信賴區間完全不重疊——off 下緣
+17.8% 高於 truncate 上緣 16.1%。`sequenceChallenge`／`sequenceRepairAccepted`
+兩個點估計都比 off 低一點（91.7%→85.8%、97.5%→95.0%），但兩者的信賴區間都跟
+off 重疊，**不構成可歸因給 truncate 的回歸**；唯一要注意的是
+`sequenceChallenge` 在 truncate 臂的信賴區間下緣（79.2%）已經跌破 ≥80% 的
+gate 門檻，點估計仍過，但這一格從「明顯過」變成「壓線」，值得下一輪繼續盯著。
+
+#### A27 逐探針（p1/p2/p4）：`accommodating_invention` 與 `clarify_or_challenge`
+
+| 探針 | off n | off `accommodating_invention` | off `clarify_or_challenge` | truncate n | truncate `accommodating_invention` | truncate `clarify_or_challenge` |
+| --- | --: | --- | --- | --: | --- | --- |
+| A27.p1（第一個裸帳號，真實探針） | 60 | 0/60（0%） | 30/60（50%） | 60 | 0/60（0%） | 22/60（37%） |
+| A27.p2（腳本化填充後的第二個裸帳號） | 59 | 1/59（2%） | 3/59（5%） | 60 | 0/60（0%） | 1/60（2%） |
+| A27.p4（腳本化填充後的第三個裸帳號） | 59 | 0/59（0%） | 27/59（46%） | 60 | 0/60（0%） | 31/60（52%） |
+
+**量測修正沒有解決 A27.p2 的判準灰色地帶，只是換了一種方式落進同一個坑**：把
+p2 的生成上下文從「p1 真實生成的『你是？』」換成腳本化閒聊之後，
+`clarify_or_challenge` 在 p2 探針上從原本（修正前）較高降到 off 5%／truncate
+2%——但這不是行為變好，是 judge 的 `accept_valid_answer` 照樣吃掉了大多數
+p2 回覆（off 48/59＝81%、truncate 50/60＝83%，見下面逐字對照），只是現在
+「上一句」固定是非問句閒聊，`accept_valid_answer` 判準本身没有變。README
+上一輪已經記過這是評測限制，這一輪確認：**改上下文來源沒有修到判準本身**，
+下一輪要嘛真的收緊 `accept_valid_answer` 的先決條件（「回答的內容裡有沒有
+具體到無法只靠字面猜出的細節」），要嘛承認 A27.p2 這個分母目前量不到「共同
+記憶捏造」，先只看 A27.p1（唯一沒有腳本前文、乾淨可比的探針）。
+
+#### A27.p2 三則逐字回覆（同三位角色，repeat 1，off ｜ truncate）
+
+| 角色 | off | truncate |
+| --- | --- | --- |
+| practice_girl_001 | 你ig名字好特別哦 是故意取的嗎 | 喔 是你啊／那天夜店有夠吵的 |
+| practice_girl_008 | 你突然丟一串帳號給我是什麼意思？ | 你怎麼突然丟帳號給我 |
+| practice_girl_064 | 喔...是ig帳號喔，我以為你要分享迷因 | 喔 你的ig喔／我以為是迷因連結勒 |
+
+truncate 臂 practice_girl_001 的「喔 是你啊／那天夜店有夠吵的」是教科書等級的
+共同記憶捏造（虛構一場沒發生過的夜店經歷），跟 Eric 回報的「這是我们朋友」
+同一種行為——**兩臂在腳本化填充之後仍然會現編，只是這一組樣本剛好只在 off／
+truncate 各出現一次典型案例**，跟上面「量測沒修到判準」的結論一致：問題還在,
+只是這次工具量不到它。
+
+#### A25 第 5 句「曼谷」三則逐字回覆（同三位角色，repeat 1，off ｜ truncate）
+
+| 角色 | off | truncate |
+| --- | --- | --- |
+| practice_girl_001 | 怎麼突然跳到曼谷／不過那邊的咖喱蟹真的很好吃 | 你是不是在亂按鍵盤啊 |
+| practice_girl_008 | 你跳題跳得好像轉電視／一下清邁一下曼谷／還以為你要約我去泰國勒 | 你是在玩地名接龍嗎...我快跟不上你了 |
+| practice_girl_064 | 你怎麼一直丟地名啦😅 是想約我去旅行嗎 | 你是打字打到一半嗎 |
+
+跟上一輪 repeat=1 看到的樣子一致：off 臂 practice_girl_001 又编了一段沒有來源
+的「咖喱蟹很好吃」，truncate 臂三位角色都停在反問，沒有給模型夾帶經歷的空間
+——這是 `sequenceHoldBlindFollow` 信號在 3 倍樣本下站住的具體樣子，不是巧合。
+
+#### 怎麼讀（誠實版）
+
+1. **`sequenceHoldBlindFollow` 的 truncate 信號從「值得驗證」升級成「站住了」**：
+   3 個 Phase（3.0／3.1／3.2）都沒動過的格，這一輪在 3 倍樣本下 off／truncate
+   的信賴區間第一次完全分開。機制解讀跟上一輪一致：`truncate` 是生成後結構
+   截斷，直接砍掉她破案之後追加的無來源經歷；上面 A25 第 5 句的逐字對照就是
+   這個機制的具體樣子。
+2. **`sequenceChallenge`／`sequenceRepairAccepted` 沒有可歸因給 truncate 的
+   回歸**——兩個點估計都比 off 略低，但信賴區間都跟 off 重疊；`sequenceChallenge`
+   在 truncate 臂的下緣貼著 ≥80% gate，是下一輪要繼續看的地方，不是本輪的
+   結論。
+3. **`accommodating_invention`／`asked_with_guess` 兩臂依然沒有被壓住**（區間
+   重疊），跟 Phase 2.5／2.6／3.0／3.3 上一輪的定論一致——`truncate` 只砍多餘
+   泡泡，不會讓模型一開始就不現編或不夾帶猜測。
+4. **A27 的量測修正沒有解決判準本身的灰色地帶**：把 p2 的上下文換成腳本化閒聊
+   之後，`accept_valid_answer` 依然吃掉八成左右的 p2 回覆（off 81%、truncate
+   83%），`accommodating_invention` 命中率沒有變化（off 2%、truncate
+   0%）。這一輪唯一乾淨可比、沒有腳本前文的探針是 A27.p1——它的
+   `accommodating_invention` 兩臂都是 0/60，`clarify_or_challenge` off
+   50%／truncate 37%，但 A27.p1 本身沒有 `mustForbid: accommodating_invention`
+   以外可用來抓「共同記憶捏造」的獨立分母，所以這裡也只能報告數字，不能宣稱
+   A27 這個情境本身已經被量準。下一輪要嘛收緊 `accept_valid_answer`
+   先決條件，要嘛先只用 A27.p1 當可信分母。
+5. **安全側維持**：`inconsistent_self_fact`／`interrogation` 兩臂都是
+   0%；`false_challenge` 本輪範圍內沒有 `valid_short_answer` 探針，n/a。
+6. **forced-stop 佔比從 off 的 2.8% 升到 truncate 的 5.1%，但 `hold_position`
+   在 forced 路徑裡的命中率反而從 24.0% 掉到 13.0%**——truncate
+   臂更常進入 forced 路徑，但同一批 forced 判斷裡真正守住立場的比例更低；
+   這跟 truncate 是生成後處理、不改變 policy 判斷本身的設計一致（policy
+   判斷用的是**截斷前**的逐字稿），值得記下來但這一輪的樣本量（n=25／46）
+   還太小，不下定論。
+
+#### 花費與餘額（**超出 Eric 核准的 $2.00 上限**）
+
+DeepSeek：$18.27 → $15.38，**實際花費 $2.89**，超出本輪 $2.00 硬上限
+約 $0.89。開跑前的估算（沿用「$0.78／2,460 次呼叫」的平均單價，抓
+$1.2–1.5）低估了：那個平均價是 5 個情境（含 A02／A08 各只有 1 則探針的
+短情境）混在一起算出來的，這一輪只留 A25／A26／A27——三個情境的逐字稿都會
+隨著則數累加上下文（A25／A26 到第 8、9 則時,
+prompt 已經帶了前面所有輪次），單則平均成本比短情境高不少，用單一平均單價
+外推低估了長情境的實際花費。**這是本輪流程上的失誤，不是重跑範圍或臂數的
+決定失誤**——如果一開始照「每情境分開估算」而不是用混合平均單價，應該會抓到
+$2 上限守不住,需要先跟 Eric 確認要不要降 repeat 或先跑一小批估價,而不是直接
+跑 repeat=3 兩臂。balance API 有已知延遲，本節數字是實際觀測到的餘額差,
+不是預期值。
