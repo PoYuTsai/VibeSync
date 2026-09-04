@@ -54,3 +54,19 @@ Deno.test("parseArgs：--mode=game 可以搭配 --state=1 與 --agency=on 一起
   const opts = parseArgs(["--mode=game", "--state=1", "--agency=on"]);
   assert(opts.mode === "game" && opts.stateSimulation && opts.agency === "on");
 });
+
+Deno.test("parseArgs：--shape 省略＝off，只認 prompt／truncate，亂填直接報錯", () => {
+  // 靜默當 off 會讓 artifact meta 的 shapeExperiment 說謊（跟 --state 同理）。
+  assertEquals(parseArgs([]).shape, "off");
+  assertEquals(parseArgs(["--shape=off"]).shape, "off");
+  assertEquals(parseArgs(["--shape=prompt"]).shape, "prompt");
+  assertEquals(
+    parseArgs(["--agency=on", "--shape=truncate"]).shape,
+    "truncate",
+  );
+  assertThrows(
+    () => parseArgs(["--shape=1"]),
+    Error,
+    "agency_invalid_shape_experiment",
+  );
+});

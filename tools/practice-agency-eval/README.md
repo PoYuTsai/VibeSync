@@ -76,10 +76,17 @@ deno test --allow-read --allow-env tools/practice-agency-eval/
   meta 綁 commit／tree／dirty／prompt policy version／模型／常數，並存一份去重的
   `trustedSources`（judge 的唯一可信來源）。
   flags：`--profiles`、`--scenarios`、`--repeat`、`--mode`、`--style`、`--agency`、
-  `--difficulty`、`--concurrency`。`--agency=on|shadow|off`（預設 off）就是
-  production 的 `PRACTICE_CONVERSATIONAL_AGENCY_ENABLED`，走 handler
+  `--shape`、`--difficulty`、`--concurrency`。`--agency=on|shadow|off`（預設 off）
+  就是 production 的 `PRACTICE_CONVERSATIONAL_AGENCY_ENABLED`，走 handler
   同一條路徑餵 `buildChatPromptBundle`；standard
   的短期狀態從逐字稿現推（不帶持久化）。
+  `--shape=off|prompt|truncate`（預設 off）＝Phase 3.3 形狀實驗臂，對應
+  production 的 `PRACTICE_AGENCY_SHAPE_EXPERIMENT`（handler 從 env 讀；runner
+  直接呼叫 `buildChatPromptBundle`／同序後處理，所以像 `--agency` 一樣用旗標值
+  直接餵，解析共用 `agencyShapeExperimentFor`）。`prompt` 臂改欠債輪／無前文
+  片段輪的形狀行（接受→照常；問／質疑→只回 1 則），`truncate` 臂在所有守門
+  之後做結構截斷（第一則是問句就只留第一則）。兩臂都只在 `--agency=on` 且該輪
+  真的介入時有效果；artifact meta 記 `shapeExperiment`。
 - `judge_agency.ts`：DeepSeek 多標籤評審（temperature
   0）。評審看到遮罩後的逐字稿
   （只到探針那一句）、她這一則回覆、以及她的**唯一可信自身事實來源**（人物卡

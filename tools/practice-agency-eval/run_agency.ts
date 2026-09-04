@@ -28,7 +28,13 @@
 //     tools/practice-agency-eval/out/<date>-<label>.json \
 //     [--profiles=a,b] [--scenarios=A01,A02] [--mode=standard|beginner|game] \
 //     [--style=1] [--agency=on] [--repeat=3] [--difficulty=normal] \
-//     [--state=1] [--concurrency=6]
+//     [--state=1] [--concurrency=6] [--shape=prompt|truncate]
+//
+// `--shape=off|prompt|truncate`＝Phase 3.3 形狀實驗臂，對應 production 的
+// `PRACTICE_AGENCY_SHAPE_EXPERIMENT`（handler 從 env 讀，這支 runner 直接呼叫
+// buildChatPromptBundle／同序後處理，所以像 `--agency` 一樣用旗標值直接餵，
+// 解析用 handler 同一支 `agencyShapeExperimentFor`）。artifact meta 記
+// `shapeExperiment`。只在 `--agency=on` 且該輪真的介入時有效果。
 
 import {
   isPracticeDifficulty,
@@ -61,8 +67,11 @@ import {
 import { DEFAULT_PROFILE_IDS } from "../practice-reply-style-eval/run_baseline.ts";
 import {
   type AgencyMode,
+  type AgencyShapeExperiment,
+  agencyShapeExperimentFor,
   type ConversationAgencyState,
   nextConversationAgencyState,
+  truncateAgencyShape,
 } from "../../supabase/functions/practice-chat/conversation_agency.ts";
 import {
   AGENCY_SCENARIOS,
@@ -191,6 +200,12 @@ export async function runAgencyScenario(args: {
   /** conversation-agency-v1 旗標（handler 用同一個值餵 buildChatPromptBundle）。 */
   agency: AgencyMode;
   /**
+   * Phase 3.3 形狀實驗臂（production 走 `PRACTICE_AGENCY_SHAPE_EXPERIMENT`）：
+   * `prompt` 進 prompt bundle，`truncate` 走生成後截斷（與 handler 同序、同一支
+   * `truncateAgencyShape`）。省略＝`off`，逐字與實驗接線前相同。
+   */
+  shape?: AgencyShapeExperiment;
+  /**
    * 模擬 assisted 模式跨回合真的帶 agency state（像 handler 一樣，決策→
    * nextConversationAgencyState→下一輪 agencyState），而不是每輪都傳 null。
    * 只在 mode !== "standard" 時有意義（standard 本來就不持久化狀態）。
@@ -286,6 +301,7 @@ export async function runAgencyScenario(args: {
     const bundle = buildChatPromptBundle(turns, profile, {
       replyStyle: args.style,
       agencyMode: args.agency,
+      shapeExperiment: args.shape ?? "off",
       visiblePracticeThreadId: BAKEOFF_THREAD_ID,
       partnerState: null,
       styleState: null,
@@ -329,6 +345,12 @@ export async function runAgencyScenario(args: {
         if (args.style && hasStageDirection(candidate)) {
           stageDirectionRepairs++;
           candidate = stripStageDirections(candidate, "chat_stage_direction");
+        }
+        // Phase 3.3 `truncate` 臂：與 handler 同一支函式、同一個位置（所有
+        // 守門與修補之後、落成 reply 之前），所以 judge 讀到的就是截斷後的文字。
+        if (args.shape === "truncate") {
+          candidate =
+            truncateAgencyShape(candidate, bundle.agencyDecision).text;
         }
         reply = candidate;
         break;
@@ -391,6 +413,8 @@ interface CliOptions {
   mode: PracticeRunMode;
   style: boolean;
   agency: AgencyMode;
+  /** Phase 3.3 形狀實驗臂（--shape）；`off`＝與實驗接線前逐字相同。 */
+  shape: AgencyShapeExperiment;
   concurrency: number;
   /** --state=1：跨輪真的帶 agency state（結構層模擬，見 runAgencyScenario）。 */
   stateSimulation: boolean;
@@ -406,6 +430,7 @@ export function parseArgs(argv: string[]): CliOptions {
     mode: "standard",
     style: true,
     agency: "off",
+    shape: "off",
     concurrency: 6,
     stateSimulation: false,
   };
@@ -474,6 +499,14 @@ export function parseArgs(argv: string[]): CliOptions {
           throw new Error(`agency_invalid_agency_flag: "${value}"`);
         }
         break;
+      case "shape":
+        // 用 production 同一支解析（`agencyShapeExperimentFor`），但認不得的值
+        // 在 runner 一律報錯——靜默當 off 會讓 artifact meta 說謊。
+        if (value !== "off" && agencyShapeExperimentFor(value) === "off") {
+          throw new Error(`agency_invalid_shape_experiment: "${value}"`);
+        }
+        opts.shape = agencyShapeExperimentFor(value);
+        break;
       case "difficulty":
         if (!isPracticeDifficulty(value)) {
           throw new Error(`agency_invalid_difficulty: "${value}"`);
@@ -482,7 +515,7 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       default:
         throw new Error(
-          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--difficulty、--concurrency、--state）`,
+          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--shape、--difficulty、--concurrency、--state）`,
         );
     }
   }
@@ -579,6 +612,7 @@ async function main(): Promise<void> {
         mode: opts.mode,
         style: opts.style,
         agency: opts.agency,
+        shape: opts.shape,
         stateSimulation: opts.stateSimulation,
       });
       console.error(
@@ -619,6 +653,9 @@ async function main(): Promise<void> {
       practiceMode: opts.mode,
       replyStyle: opts.style,
       conversationAgency: opts.agency,
+      // Phase 3.3 形狀實驗臂（`off`／`prompt`／`truncate`）；解讀數字時要跟
+      // conversationAgency 一起看——旗標不是 on 時這個臂沒有任何效果。
+      shapeExperiment: opts.shape,
       // 這個 artifact 是不是用了跨輪 agency state 結構層模擬（不是真的每輪
       // 都多打一次 classifier）；README／報告引用數字時要標明。
       stateSimulation: opts.stateSimulation,
