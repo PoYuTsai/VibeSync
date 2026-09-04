@@ -796,9 +796,10 @@ export function renderTurnPlan(
   const clarifyOnly = isAgencyClarifyOnlyTurn(agency ?? null);
   // Phase 3.8：強制問他一件事的輪次，把泛用的「最多問一句」換成具體的好奇點。
   const question = plan.askUserFocus !== undefined && !forcedAsk
-    // 3.8 v1 黑箱：「這輪問他一件事：X，一句就好」有一半機率被拿去問眼前話題
-    // （晚餐吃什麼）而不是 X；改成明講「就問這個、別問其他問題」。
-    ? `這輪要問他的只有這件事：${plan.askUserFocus}（用你的話問，別問其他問題）。`
+    // 3.8 黑箱：v1「這輪問他一件事：X，一句就好」管道好奇點 10/40 場；v2 改成
+    // 「只有這件事…別問其他問題」反而掉到 2/40（模型被綁緊就整句不問或照問晚餐）。
+    // 留 v1 措辭。
+    ? `這輪問他一件事：${plan.askUserFocus}，一句就好。`
     : plan.questionBudget === 1 || forcedAsk
     ? "最多問一句。"
     : clarifyingAllowed
