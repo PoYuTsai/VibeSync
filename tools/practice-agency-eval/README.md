@@ -1929,3 +1929,26 @@ $0.60 硬上限，照協定用 repeat=2（未降到 repeat=1）。DeepSeek 帳�
 疑慮），**實際花費 $0.14**，比事前估算低約 4 倍——跟 Phase 3.3
 「A27 重跑」那次的觀察一致（估算沒算進 DeepSeek prompt 快取，短情境＋分類器
 `maxTokens=400` 遠比 13 標籤 judge 便宜），遠低於 $0.60 上限，沒有觸到停損線。
+
+### Phase 3.5 分類器回放：餵人設／貼文／記憶＋整段窗口（2026-09-04，`agency-phase35` 3e28829a）
+
+同一份 artifact `out/2026-09-04-p34-beginner-truncate.json`（360 探針），只換分類器
+prompt（Phase 3.5：agency on 時 recentContext 放寬到整段、附 `<her_self_sources>`
+人設精簡＋貼文＋memorySummary、判準改寫），輸出
+`out/2026-09-04-p35-classifier-replay.json`。0 解析失敗、0 repair。
+
+| 指標 | 3.4（6 則、無來源） | 3.5（整段＋來源） |
+| --- | --: | --: |
+| coherence connected／ambiguous／disconnected | 131／30／199 | 121／19／220 |
+| A25.p9（有效補救，必須 connected） | 40/40 | 40/40 |
+| A25.p1（無上下文亂詞）connected／ambiguous | 0／19 | 1／11 |
+| A27.p4 connected | 13/40 | 6/40 |
+| `sharedPastClaimN` | 4/360 | 4/360（同四筆：A25.p3 girl_012／girl_091、A27.p2 girl_007 ×2） |
+| `sharedPastPositiveDeltaN`（gate＝0） | 0 | 0 |
+| disconnected／repetitive 套 cap 後仍正 heat（gate＝0） | 0 | 0 |
+| connection missed／neutral／caught | 165／159／36 | 206／112／42 |
+
+**讀法**：
+- 盛行率沒變，四筆真陽性一筆不漏、沒有新增——餵來源沒讓分類器把「查無來源的共同際遇」放過，也沒把她講自己的事誤判成共同過去。
+- coherence 整體變嚴（ambiguous 少 11、disconnected 多 21），變嚴的位置全在亂詞探針（A25.p1–p8、A27.p1–p4）；有效補救 A25.p9 仍 40/40。這是 cap 想要的方向，但差距只有 3–6%，沒有跑雜訊帶，不能說「顯著」。
+- 這批 artifact 每場最多 20 則、fixture 的貼文／記憶跟玩家亂丟的地名無關，所以測到的是「加了來源與整段窗口沒有把判準弄壞」，**沒有測到**長對話（>6 則前的確認）與「她自己貼文的話題被玩家接上」這兩條新路徑——要另設情境。
