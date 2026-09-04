@@ -604,6 +604,31 @@ const NO_OVERRIDE: Omit<AgencyDecision, "version" | "evidence"> = {
   allowedActSetId: "none",
 };
 
+/** 分人強弱的量尺（Phase 4.0，報告 §7.3）；0＝最低、4＝最高。 */
+export type AgencyLevel = 0 | 1 | 2 | 3 | 4;
+
+/**
+ * conversation-agency-v1 Phase 4.0：角色的對話主體強弱（報告 §7.3）。
+ *
+ * 純資料型別，刻意住在本檔而不是 `agency_profile.ts`：門檻函式要吃它，本檔
+ * 又不能 import `reply_style.ts`（依賴單向）。實際的 mapping 表與
+ * `agencyProfileFor()` 在 `agency_profile.ts`。
+ *
+ * 報告 §7.3 列的第五個欄位 `strangerCuriosity` 不在這裡——它就是既有的
+ * `ReplyStyleProfile.turnTaking.questionHabit`（值域相同，Phase 3.8 已經在
+ * 消費），理由寫在 `agency_profile.ts` 檔頭。
+ */
+export interface ConversationAgencyProfile {
+  /** 主動開自己的題（不是替玩家救場）：`planTurnResponse` 的 optionalAct。 */
+  readonly initiative: AgencyLevel;
+  /** 把話拉回未聊完的那件事：欠債輪候選 act 多一個 `return_to_topic`。 */
+  readonly topicPersistence: AgencyLevel;
+  /** 第一次模糊時澄清還是先短接一次：`firstFragmentActs`。 */
+  readonly ambiguityTolerance: AgencyLevel;
+  /** 多早停止供應解讀：`holdAt`。 */
+  readonly skepticism: AgencyLevel;
+}
+
 /**
  * 難度只調門檻與第一個片段的候選 act，不關掉 agency、不動有效短答的免疫
  * （報告 §7.4：「難度只調門檻與口氣，不關掉 agency」）。字面值對應
@@ -667,12 +692,48 @@ export const AGENCY_THRESHOLDS: Record<
   },
 };
 
-/** Game 模式套挑戰難度門檻（既有 Game FSM 的修復優先／越界／邀約方向不受影響，由呼叫端保留原優先權）。 */
+/**
+ * Game 模式套挑戰難度門檻（既有 Game FSM 的修復優先／越界／邀約方向不受影響，
+ * 由呼叫端保留原優先權）。
+ *
+ * Phase 4.0：難度表是 base，`profile` 只做三個位移（報告 §7.3 每個欄位都要有
+ * consumer）。省略 `profile`＝逐字沿用難度表（off 路徑與接線前相同）。
+ */
 export function agencyThresholdsFor(
   difficulty: "easy" | "normal" | "challenge",
   isGame: boolean,
+  profile?: ConversationAgencyProfile | null,
 ): AgencyThresholds {
-  return isGame ? AGENCY_THRESHOLDS.challenge : AGENCY_THRESHOLDS[difficulty];
+  const base = isGame
+    ? AGENCY_THRESHOLDS.challenge
+    : AGENCY_THRESHOLDS[difficulty];
+  if (!profile) return base;
+  // ambiguityTolerance：第一個無前文裸片段要澄清還是先短接一次。
+  // Phase 2.7 把三個難度的第一個片段全部降成 bounded {acknowledge, ask_intent}
+  // （forced 只留同詞重複與欠債到門檻）；這裡**只有低容忍的人**把 forced 收回來，
+  // 而且範圍不變——仍然只有「沒有前文、沒有欠債」的裸片段那一輪，有效短答的
+  // 免疫（`answer_candidate` + unresolvedCount 0）在 `agencyPolicyFor` 上游就
+  // 已經 NO_OVERRIDE 接走，不受影響。
+  const firstFragmentActs: readonly PlanAct[] = profile.ambiguityTolerance <= 1
+    ? ["ask_intent"]
+    : base.firstFragmentActs;
+  // skepticism：多早停止供應解讀。高懷疑早一步、低懷疑晚一步；上下界維持 1–3，
+  // `forceEndLoopBeforeChallenge`（維持立場還是直接收掉）仍然只由難度決定。
+  const holdAt = profile.skepticism >= 3
+    ? Math.max(1, base.holdAt - 1)
+    : profile.skepticism <= 1
+    ? Math.min(3, base.holdAt + 1)
+    : base.holdAt;
+  // topicPersistence：高持續度的人在欠債輪多一個「直接把話拉回上一題」的選項。
+  const debtAnswerActs: readonly PlanAct[] = profile.topicPersistence >= 3
+    ? [...base.debtAnswerActs, "return_to_topic"]
+    : base.debtAnswerActs;
+  return {
+    ...base,
+    firstFragmentActs,
+    holdAt,
+    debtAnswerActs,
+  };
 }
 
 /**
@@ -758,9 +819,15 @@ export function agencyPolicyFor(
       policyMode: "bounded",
       forcedAct: null,
       allowedActs: acts,
-      allowedActSetId: acts.includes("acknowledge")
-        ? "answer_or_challenge_easy_v1"
-        : "answer_or_challenge_v1",
+      // Phase 4.0：高 topicPersistence 多一個 `return_to_topic`，telemetry 上
+      // 要看得出來是哪一組候選（`persist` 變體），不能借用原本的 id。
+      allowedActSetId: acts.includes("return_to_topic")
+        ? (acts.includes("acknowledge")
+          ? "answer_or_challenge_persist_easy_v1"
+          : "answer_or_challenge_persist_v1")
+        : (acts.includes("acknowledge")
+          ? "answer_or_challenge_easy_v1"
+          : "answer_or_challenge_v1"),
     };
   }
   // 走到這裡＝`unresolvedCount === 0` 的裸片段（沒有欠債，她也沒問過）。
