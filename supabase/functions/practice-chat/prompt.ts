@@ -3,6 +3,7 @@
 // debrief 模式：練習結束後切換成教練口吻，產一張拆解卡（JSON）。
 
 import type { AppliedHintTurn, PracticeTurn } from "./validate.ts";
+import type { DebriefAgencyLedger } from "./agency_coaching.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import {
   renderPersonalBaselinePrompt,
@@ -1291,6 +1292,22 @@ function debriefHintAccountabilityPrompt(
   return `\n\nhintAssistedTurns(hidden evidence)\n${rows}\ndecision＝server權威；各筆 decision.move 串起本場已落帳的戰術軌跡；末筆：build不升約、soft不升direct、repair不邊修邊約。不要把照貼 Hint 的句子當成使用者自己亂打；使用者照 Hint 做的部分不得寫成他的缺口。只有 Hint 送出後「她」的新回覆出現明確反證時才可批評 Hint；符合這個前提時，批評的主詞一律是「這輪教練路線」，不是「你」——寫「教練這輪保守了／推太快了，下次…」，禁止寫成「你太快」「你急著」「你不該」這種把 Hint 的決定算到使用者頭上的句子（watchouts 與 gameBreakdown.failureState 同樣適用）；否則不評 Hint。exact: true 時 summary/strengths 必含「你有照提示做」。拆成：使用者執行 / Hint 品質 / 對方反應。讀完整末筆她回覆；有新素材／反問就不是禮貌收尾。watchouts／卡點只寫「下一步…」，或明寫「她／提示前／後來」。`;
 }
 
+/**
+ * conversation-agency-v1 Phase 4.1：她的補救不算玩家得分。
+ *
+ * 仿 `debriefHintAccountabilityPrompt` 的寫法（「照 Hint 做的部分不得寫成他的
+ * 缺口」是同一種「這幾輪不是你的功勞／不是你的鍋」規則）。全 0 時回空字串＝
+ * prompt 逐字不變。
+ */
+function debriefAgencyLedgerPrompt(
+  ledger: DebriefAgencyLedger | null | undefined,
+): string {
+  if (!ledger || ledger.repairTurns.length === 0) return "";
+  return `\n\nagencyStructuralLedger(hidden evidence)\n第 ${
+    ledger.repairTurns.join("、")
+  } 則使用者訊息是沒頭沒尾的詞或跳題，她得反過來問他意思、或把話拉回上一題。這些輪次她的補救不算他的分：dateChance 與 highlights 不得把「她接住了」寫成他的表現；改進建議至少一條要具體引用其中一則。`;
+}
+
 /** debrief 模式：system + 一則含 profile/訊號脈絡與逐字稿的 user 指令。 */
 export function buildDebriefMessages(
   turns: PracticeTurn[],
@@ -1309,6 +1326,12 @@ export function buildDebriefMessages(
     appliedHintTurns?: AppliedHintTurn[];
     /** reply-style-v1（PR-4）：她的個人基準；省略＝prompt 逐字不變。 */
     replyStyle?: ReplyStyleProfile | null;
+    /**
+     * conversation-agency-v1 Phase 4.1：結構回放出來的「她在補救」輪次
+     * （`debriefAgencyLedgerFor`）。只有 agency 旗標 `on` 時 handler 才會傳；
+     * 省略或全 0＝prompt 逐字不變（等價 harness 守門）。
+     */
+    agencyLedger?: DebriefAgencyLedger | null;
   } = {},
 ): ChatMessage[] {
   const transcript = debriefTurnsToPromptTranscript(
@@ -1358,7 +1381,7 @@ export function buildDebriefMessages(
   });
   const hintAccountabilityPrompt = debriefHintAccountabilityPrompt(
     options.appliedHintTurns,
-  );
+  ) + debriefAgencyLedgerPrompt(options.agencyLedger);
   // 最終 dateChance 判準（PR 6）：放在所有狀態證據（band／stage／invite／
   // game）之後——先前難度標準在開頭，模型讀到後面的高溫 band 或 invite
   // ready 常直接蓋成 high。順位＝越後越終局。

@@ -362,6 +362,24 @@ function extraCases(): EquivalenceCase[] {
   ];
 }
 
+/**
+ * Phase 4.1：旗標 `true` 時可觀測面會改變的 hint／debrief 案例。清單是白名單
+ * ——名單外的 side case（例如 hint／standard 的 403）必須逐位元組不變。
+ */
+const PHASE41_CHANGED_SIDE_CASES: readonly string[] = [
+  "hint／beginner／style關",
+  "hint／beginner／style開",
+  "hint／game／style關",
+  "hint／game／style開",
+  "hint／beginner／prefetch",
+  "debrief／standard／style關",
+  "debrief／standard／style開",
+  "debrief／beginner／style關",
+  "debrief／beginner／style開",
+  "debrief／game／style關",
+  "debrief／game／style開",
+];
+
 function equivalenceCases(): EquivalenceCase[] {
   const cases: EquivalenceCase[] = [];
   for (const mode of MODES) {
@@ -1337,7 +1355,10 @@ Deno.test({
     "非空洞檢查：旗標 true／test＋測試帳號時，chat 案例的可觀測面必須與 golden 不同",
   ignore: PRINT_GOLDEN,
   fn: async () => {
-    // hint／debrief 不讀 agency 旗標，本來就該相同；只有 chat 案例會變。
+    // Phase 4.1 之前 hint／debrief 不讀 agency 旗標，本來就該相同；4.1 之後
+    // 兩者都吃結構化教練證據，所以它們的「必須不同」另外一支測試釘住（下面
+    // 那支列出確切會變的案例名單，因為有些 hint／debrief 案例根本走不到
+    // Claude——hint 是 beginner 專用，standard 會在 403 就返回）。
     const chatCases = equivalenceCases().filter((c) =>
       c.name.startsWith("chat／")
     );
@@ -1391,5 +1412,26 @@ Deno.test({
     const probe: RunProbe = { durationKeys: [] };
     await observableDigest(prefetch, undefined, undefined, probe);
     assertEquals(probe.durationKeys, ["attemptDuration", "totalDuration"]);
+  },
+});
+
+Deno.test({
+  name:
+    "Phase 4.1 非空洞檢查：旗標 true 時，真的走到 Claude 的 hint／debrief 案例必須與 golden 不同",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    // hint 是 beginner／game 專用（standard 直接 403），debrief 三個模式都走
+    // 得到；`hint／beginner／prefetch` 也走 Claude。走不到 Claude 的案例
+    // （403 錯誤回應）旗標開關本來就不該有差別，這裡把兩邊都釘住：名單以外
+    // 的 hint／debrief 案例必須**逐位元組相同**。
+    const changed: string[] = [];
+    const sideCases = equivalenceCases().filter((c) =>
+      !c.name.startsWith("chat／")
+    );
+    for (const c of sideCases) {
+      const on = digestLine(await observableDigest(c, "true"));
+      if (on !== digestLine(parseGolden(c.name))) changed.push(c.name);
+    }
+    assertEquals(changed.sort(), PHASE41_CHANGED_SIDE_CASES.slice().sort());
   },
 });

@@ -136,3 +136,86 @@ Deno.test("debrief ledger：序號清單最多 10 個，計數不設上限", () 
     12,
   );
 });
+
+// ── 渲染層：有／無教練證據時，prompt 只差那一行／那一段 ──────────────────
+import { buildHintMessages } from "./hint.ts";
+import { buildDebriefMessages } from "./prompt.ts";
+import { resolvePracticeProfile } from "./practice_persona.ts";
+import type { DebriefAgencyLedger } from "./agency_coaching.ts";
+
+const testProfile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+const HINT_TURNS = [
+  t("user", "東東"),
+  t("ai", "東東是誰"),
+  t("user", "阿布達比"),
+  t("ai", "阿布達比？那是哪裡"),
+];
+
+const joined = (messages: { role: string; content: string }[]) =>
+  messages.map((m) => `${m.role}\n${m.content}`).join("\n\n");
+
+function hintPrompt(
+  coaching?: Parameters<typeof buildHintMessages>[0]["agencyCoaching"],
+) {
+  return joined(buildHintMessages({
+    turns: HINT_TURNS,
+    profile: testProfile,
+    practiceMode: "beginner",
+    temperatureScore: 40,
+    agencyCoaching: coaching,
+  }));
+}
+
+Deno.test("buildHintMessages：不傳 agencyCoaching 與傳 none 時 prompt 逐字相同", () => {
+  const base = hintPrompt();
+  assertEquals(hintPrompt(null), base);
+  assertEquals(hintPrompt({ kind: "none", unresolvedCount: 0 }), base);
+});
+
+Deno.test("buildHintMessages：兩個 kind 各自只多一行，其餘逐字不變", () => {
+  const base = hintPrompt();
+  for (const kind of ["answer_her_question", "stop_dropping_words"] as const) {
+    const withLine = hintPrompt({ kind, unresolvedCount: 2 });
+    const diff = withLine.split("\n").filter((line) =>
+      !base.split("\n").includes(line)
+    );
+    assertEquals(diff.length, 1, `${kind} 應該只多一行，實際 ${diff.length}`);
+    assertEquals(diff[0].startsWith("這輪先處理沒接上："), true);
+    // 移掉那一行之後必須跟 base 逐字相同。
+    assertEquals(withLine.replace(`${diff[0]}\n`, ""), base);
+    assertEquals(withLine.length - base.length < 300, true);
+  }
+});
+
+function debriefPrompt(
+  ledger?: DebriefAgencyLedger | null,
+) {
+  return joined(buildDebriefMessages(HINT_TURNS, testProfile, {
+    practiceMode: "beginner",
+    agencyLedger: ledger,
+  }));
+}
+
+Deno.test("buildDebriefMessages：不傳 ledger 與全 0 ledger 時 prompt 逐字相同", () => {
+  const base = debriefPrompt();
+  assertEquals(debriefPrompt(null), base);
+  assertEquals(
+    debriefPrompt({
+      fragmentTurns: 0,
+      topicShiftTurns: 0,
+      loopTurns: 0,
+      repairTurns: [],
+    }),
+    base,
+  );
+});
+
+Deno.test("buildDebriefMessages：有介入輪時只多一段，含序號與『不算他的分』", () => {
+  const base = debriefPrompt();
+  const withLedger = debriefPrompt(debriefAgencyLedgerFor(HINT_TURNS));
+  assertEquals(withLedger === base, false);
+  assertEquals(withLedger.includes("agencyStructuralLedger"), true);
+  assertEquals(withLedger.includes("第 1、2 則"), true);
+  assertEquals(withLedger.includes("不算他的分"), true);
+  assertEquals(withLedger.length - base.length < 300, true);
+});

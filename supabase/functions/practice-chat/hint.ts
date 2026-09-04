@@ -37,6 +37,7 @@ import {
 } from "./temperature.ts";
 import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
+import type { HintAgencyCoaching } from "./agency_coaching.ts";
 import {
   applyStageFloor,
   practiceInviteFloorFor,
@@ -1636,6 +1637,12 @@ export function buildHintMessages(opts: {
   hintsRemaining?: number;
   /** reply-style-v1（PR-4）：她的個人基準；旗標關或無 mapping 時省略＝prompt 逐字不變。 */
   replyStyle?: ReplyStyleProfile | null;
+  /**
+   * conversation-agency-v1 Phase 4.1：這一輪教練要不要點出「你還沒回答她／
+   * 連續丟詞」（`hintAgencyCoachingFor`）。只有 agency 旗標 `on` 時 handler 才
+   * 會傳；省略／`kind === "none"`＝prompt 逐字不變（等價 harness 守門）。
+   */
+  agencyCoaching?: HintAgencyCoaching | null;
 }): ChatMessage[] {
   const score = clampTemperature(opts.temperatureScore);
   // 回合下限只給新手：game 有自己更快的 FSM 下限，傳 0 顆球等於不套。
@@ -1756,7 +1763,9 @@ export function buildHintMessages(opts: {
         (opts.practiceMode === "game"
           ? `升溫回覆要照本輪方向走，不是永遠更曖昧、也不是永遠更安全。\n`
           : `升溫回覆不是永遠更曖昧；請選目前階段最容易加分的方向。\n`) +
-        `目前最容易加分：${stageGuidance}\n\n` +
+        `目前最容易加分：${stageGuidance}\n` +
+        hintAgencyCoachingLine(opts.agencyCoaching) +
+        `\n` +
         originEvidence +
         nowEvidence +
         sceneEvidence +
@@ -1786,6 +1795,20 @@ export function buildHintMessages(opts: {
         "請產生兩個可貼回覆與一段心法。warmUp、steady、coaching 各自重用 assistant 最新一句的具體詞、狀態或梗；不能只有 coaching 具體、回覆卻萬用。目標是接她最新一句，不是分析 user 前一句。只回繁中 JSON。",
     },
   ];
+}
+
+/**
+ * Phase 4.1：一行教練指引。刻意壓到最短——規則堆太多後面幾條會被模型忽略
+ * （踩坑紀錄），所以不重寫既有段落，只在 stageGuidance 後面補這一行。
+ */
+function hintAgencyCoachingLine(
+  coaching: HintAgencyCoaching | null | undefined,
+): string {
+  if (!coaching || coaching.kind === "none") return "";
+  if (coaching.kind === "stop_dropping_words") {
+    return "這輪先處理沒接上：使用者連續丟了幾個沒頭沒尾的詞，她已經問過意思。兩顆球要把那個詞講清楚或接回她的問題；coaching 要直說「連續丟詞她接不住」。\n";
+  }
+  return "這輪先處理沒接上：她剛在問使用者、或指出他沒接上。兩顆球都要先回答她那一題、不要再丟新話題；coaching 要點出「你還沒回答她」。\n";
 }
 
 function hintStageGuidance(

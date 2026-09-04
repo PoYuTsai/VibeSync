@@ -57,6 +57,10 @@ import {
   nextConversationAgencyState,
   truncateAgencyShape,
 } from "./conversation_agency.ts";
+import {
+  debriefAgencyLedgerFor,
+  hintAgencyCoachingFor,
+} from "./agency_coaching.ts";
 import { replyStyleFor, type ReplyStyleProfile } from "./reply_style.ts";
 import { difficultyTuningFor } from "./practice_persona.ts";
 import {
@@ -3066,6 +3070,15 @@ export function createPracticeChatHandler(
           }),
         });
       };
+      // Phase 4.1：教練要不要點出「你還沒回答她／連續丟詞」。旗標 off 時整個
+      // 不算（純函式無副作用，但 off 路徑連 telemetry key 都不該多一個）。
+      // hint 是 assisted 專用，thread state 讀不到時退回純結構近似（state=null）。
+      const hintAgencyCoaching = agencyMode === "off"
+        ? null
+        : hintAgencyCoachingFor(
+          request.turns,
+          relationshipThreadState?.agencyState ?? null,
+        );
       try {
         const baseHintMessages = buildHintMessages({
           allowNoPasteableReply: request.acceptsNoPasteableHint === true,
@@ -3087,6 +3100,9 @@ export function createPracticeChatHandler(
           timeContext: nowContext,
           gameState: ledgerGameState,
           replyStyle: replyStyleProfile,
+          // Phase 4.1：只有旗標 `on` 才進 prompt。shadow 仍會算（下面的
+          // telemetry），但 prompt 逐字與 off 相同——shadow 的契約。
+          agencyCoaching: agencyMode === "on" ? hintAgencyCoaching : null,
         });
         const hintFactualEvidence = hintTrustedFactualEvidence({
           profile: request.profile,
@@ -3326,6 +3342,15 @@ export function createPracticeChatHandler(
           salvageUsed: hintDegradeUsed,
           totalDurationMs: hintTotalDurationMs,
           promptChars: hintPromptChars,
+        }),
+        // Phase 4.1：只有 enum 與小整數。旗標 off 時整個 key 不存在（與 chat
+        // 路徑的 `conversationAgency` 同一個慣例，所以 flag-off golden 不變）。
+        ...(hintAgencyCoaching === null ? {} : {
+          conversationAgency: {
+            applied: agencyMode === "on",
+            coachingKind: hintAgencyCoaching.kind,
+            unresolvedCount: hintAgencyCoaching.unresolvedCount,
+          },
         }),
       });
       if (hintQualityFindingCodes.length > 0) {
@@ -3856,6 +3881,12 @@ export function createPracticeChatHandler(
           }),
         });
       };
+      // Phase 4.1：結構回放出「她在補救」的輪次。旗標 off 時整個不算（連
+      // telemetry key 都不該多一個）；shadow 算但不進 prompt。standard 沒有
+      // 持久化狀態，本來就是純結構近似（見 `debriefAgencyLedgerFor` 註解）。
+      const debriefAgencyLedger = agencyMode === "off"
+        ? null
+        : debriefAgencyLedgerFor(request.turns);
       try {
         const baseDebriefMessages = buildDebriefMessages(
           request.turns,
@@ -3875,6 +3906,7 @@ export function createPracticeChatHandler(
               gameState: ledgerGameState,
               appliedHintTurns: ledgerAppliedHintTurns,
               replyStyle: replyStyleProfile,
+              agencyLedger: agencyMode === "on" ? debriefAgencyLedger : null,
             }
             : {
               partnerState: partnerStateFromLedger(ledger) ??
@@ -3884,6 +3916,7 @@ export function createPracticeChatHandler(
               memorySummary: promptMemorySummary,
               timeContext: nowContext,
               replyStyle: replyStyleProfile,
+              agencyLedger: agencyMode === "on" ? debriefAgencyLedger : null,
             },
         );
         const debriefFactualEvidence = hintTrustedFactualEvidence({
@@ -4083,6 +4116,16 @@ export function createPracticeChatHandler(
           salvageUsed: debriefSalvageUsed,
           totalDurationMs: debriefTotalDurationMs,
           promptChars: debriefPromptChars,
+        }),
+        // Phase 4.1：只有計數，不記逐字稿內容。旗標 off 時整個 key 不存在。
+        ...(debriefAgencyLedger === null ? {} : {
+          conversationAgency: {
+            applied: agencyMode === "on",
+            fragmentTurns: debriefAgencyLedger.fragmentTurns,
+            topicShiftTurns: debriefAgencyLedger.topicShiftTurns,
+            loopTurns: debriefAgencyLedger.loopTurns,
+            repairTurnCount: debriefAgencyLedger.repairTurns.length,
+          },
         }),
       });
       if (debriefQualityFindingCodes.length > 0) {
