@@ -384,7 +384,7 @@ export function detectAgencyEvidence(
   // ——工作項 B），只認一件結構事實：**上一則玩家訊息是不是一個她得自己想辦法
   // 處理的低資訊片段**。只有一個例外——「她剛問完問題、他答了、而且前面沒有
   // 欠債」是正常一問一答（有效短答免疫格），那一輪她沒有被迫做任何事，所以不
-  // 算欠債的起點。其餘每一個低資訊片段（含「前面有真實內容所以放行一次」的
+  // 算欠債的起點（Phase 3.2 給這個例外再加一個條件，見下面那段）。其餘每一個低資訊片段（含「前面有真實內容所以放行一次」的
   // 那格）都算她已經給過一次通融，下一則再來就是欠債。
   // 這一句自己也走同一個迴圈，所以「第二個裸片段」算出來就是 1。
   //
@@ -392,18 +392,35 @@ export function detectAgencyEvidence(
   // 反應不動（「嗯」「喔」不是修復，也不是新的欠債）。
   // 一律從逐字稿重算，不把 `prev.unresolvedCount` 當起點——同一批 turn 會被重走，
   // 兩者相加會重複計數；逐字稿本來就帶著這一場的全部片段。
+  //
+  // Phase 3.2（Eric 2026-09-04 拍板的放寬）：免疫只給**這一段迴圈裡的第一組**
+  // 一問一答。她問過一次之後，他再丟一個沒有結構線索的片段，就算她上一則又是
+  // 問句也算欠債——否則她只要一直問，他就可以一直丟無標記句而永遠不進欠債格
+  // （Phase 3.1 的負面結果指出這才是下一個槓桿，不是磨強制停的後檢查）。
+  // 「她問過」用的是強制格那支**嚴格**判準（`previousAiAskedQuestionStrict`），
+  // 而且是**逐則遞增**的：處理到某一則時只看它自己與它之前，所以第一組
+  // 一問一答（A01／A03／A07／A09）在自己那一輪仍然是 `unresolvedCount === 0`
+  // 的免疫格。這裡不能改用下面算好的 `aiQuestionedInLoop`（那是整段的終值，
+  // 會回頭把第一組的免疫也拿掉）。
   let unresolved = 0;
   let told = false;
+  let askedInLoop = false;
   for (const s of windowed) {
     if (!isLowInformation(s.shape)) {
       if (s.shape !== "reaction") {
         unresolved = 0;
         told = false;
+        askedInLoop = false;
+        continue;
       }
+      // 招呼／情緒反應不是修復也不是新的欠債，但「她問過」要留著（同 P1-2）。
+      if (s.previousAiAskedQuestionStrict) askedInLoop = true;
       continue;
     }
+    if (s.previousAiAskedQuestionStrict) askedInLoop = true;
     if (told) unresolved = clamp3(unresolved + 1);
-    told = !(s.shape === "answer_candidate" && unresolved === 0);
+    told = !(s.shape === "answer_candidate" && unresolved === 0 &&
+      !askedInLoop);
   }
   // 「她這段迴圈裡問過沒有」不吃 RECENT_USER_WINDOW：迴圈本身已經是邊界
   // （任何結構修復都會把它清掉），再套 8 則的窗口只會讓「連丟第 11 個片段」

@@ -942,3 +942,53 @@ Deno.test("Phase 3.2 P1-2：真問句後面接一則「嗯」，她問過這件�
   ]);
   assertEquals(repaired.aiQuestionedInLoop, false);
 });
+
+Deno.test("Phase 3.2 放寬：免疫只給這一段迴圈裡的第一組一問一答，之後同樣算欠債", () => {
+  // 第一組：她問（嚴格判準認得的「東東是誰」）→ 他丟無標記句 → 免疫，不介入。
+  const first = policy([a("東東是誰"), u("阿布達比")]);
+  assertEquals(first.evidence.utteranceShape, "answer_candidate");
+  assertEquals(first.evidence.unresolvedCount, 0);
+  assertEquals(first.situation, null);
+  assertEquals(first.allowedActs, []);
+
+  // 第二組：她又問了一次，他又丟一個無標記句 → 這次算欠債 1（舊版是 0，因為
+  // 「她上一句是問句」就直接放行）。仍然是 bounded 的二選一，不是 forced。
+  const second = policy([
+    a("東東是誰"),
+    u("阿布達比"),
+    a("所以你是說韓國嗎"),
+    u("東京"),
+  ]);
+  assertEquals(second.evidence.utteranceShape, "answer_candidate");
+  assertEquals(second.evidence.unresolvedCount, 1);
+  assertEquals(second.policyMode, "bounded");
+  assertEquals(second.allowedActSetId, "answer_or_challenge_v1");
+
+  // 第三則片段（她這一則不是問句）→ 欠債 2 ＝ 一般難度的 holdAt，而且她這段
+  // 迴圈裡真的問過 → forced hold_position。
+  const third = policy([
+    a("東東是誰"),
+    u("阿布達比"),
+    a("所以你是說韓國嗎"),
+    u("東京"),
+    a("蛤"),
+    u("清邁"),
+  ]);
+  assertEquals(third.evidence.utteranceShape, "bare_fragment");
+  assertEquals(third.evidence.unresolvedCount, 2);
+  assertEquals(third.evidence.aiQuestionedInLoop, true);
+  assertEquals(third.policyMode, "forced");
+  assertEquals(third.forcedAct, "hold_position");
+
+  // 界線：中間他真的把話講清楚（結構修復）就重新開始算，下一組一問一答又免疫。
+  const afterRepair = policy([
+    a("東東是誰"),
+    u("阿布達比"),
+    a("所以你是說韓國嗎"),
+    u("我剛剛在列想去的地方 想到什麼打什麼"),
+    a("那你最想去哪"),
+    u("日本"),
+  ]);
+  assertEquals(afterRepair.evidence.unresolvedCount, 0);
+  assertEquals(afterRepair.situation, null);
+});
