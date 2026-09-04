@@ -15,7 +15,7 @@ import {
   threadSaltOfArtifactMeta,
   ZERO_HAIKU_USAGE_TOTALS,
 } from "./run_agency.ts";
-import { AGENCY_SCENARIOS } from "./scenarios.ts";
+import { AGENCY_SCENARIOS, type AgencyScenario } from "./scenarios.ts";
 import { buildChatPromptBundle } from "../../supabase/functions/practice-chat/prompt.ts";
 import { resolvePracticeProfile } from "../../supabase/functions/practice-chat/practice_persona.ts";
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
@@ -350,4 +350,230 @@ Deno.test("addHaikuUsage／estimateHaikuCostUsd：純函式累加與估價（不
   });
   assertEquals(afterTwo.calls, 2);
   assert(estimateHaikuCostUsd(afterTwo) > estimateHaikuCostUsd(afterOne));
+});
+
+// ── Phase 4.3 步驟 0：分類器訊號真的餵進 nextConversationAgencyState ──────────
+
+/** 假 DeepSeek `/chat/completions` 回應：只有 `runAgencyScenario` 內建的分類器
+ * 呼叫端會打 fetch（`callChat` 在下面兩支測試都是純 stub，不經過網路），所以
+ * 這支不必分辨請求種類。 */
+function fakeClassifierResponse(
+  aiChallengedThisTurn: boolean,
+  coherence = "disconnected",
+): Response {
+  return new Response(
+    JSON.stringify({
+      choices: [{
+        finish_reason: "stop",
+        message: {
+          content: JSON.stringify({
+            connection: "neutral",
+            impact: "minor",
+            testHandling: "none",
+            boundary: "safe",
+            hintAlignment: "none",
+            partnerMood: "neutral",
+            moodConfidence: 0.7,
+            innerThought: "他又丟一個地名。",
+            coherence,
+            aiChallengedThisTurn,
+            sharedPastClaim: false,
+            accommodatingSelfFact: false,
+          }),
+        },
+      }],
+    }),
+    { status: 200 },
+  );
+}
+
+/** 兩則連續裸地名：第一則她的回覆是明確問句（滿足 aiQuestionedInLoop），第二則
+ * 再丟一個地名（answer_candidate，unresolvedCount>=1）——這是計畫檔 Phase 4.3
+ * R2 規則最終形唯一的判別器：`aiClarifiedLastTurn===true` 才 forced
+ * `challenge_relevance`／`clarify_ignored_*`，`null`（缺席）一律 bounded。 */
+const CLASSIFIER_WIRING_SCENARIO: AgencyScenario = {
+  id: "TEST-p43-classifier-wiring",
+  title: "測試用：兩則裸地名，只驗證分類器訊號有沒有接進 state",
+  turns: [
+    { role: "user", text: "韓國" },
+    { role: "user", text: "日本" },
+  ],
+};
+
+Deno.test("Phase 4.3 步驟 0：--state=1 的 assisted 模式生成後真的打分類器，結果餵進 nextConversationAgencyState（不再是硬編碼 null），不打真網路", async () => {
+  const original = globalThis.fetch;
+  let classifierCalls = 0;
+  globalThis.fetch = () => {
+    classifierCalls++;
+    return Promise.resolve(fakeClassifierResponse(true));
+  };
+  let chatCalls = 0;
+  const replies = ["你在說什麼？", "喔 好"];
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => Promise.resolve(replies[chatCalls++]),
+      profileId: "practice_girl_001",
+      scenario: CLASSIFIER_WIRING_SCENARIO,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "beginner",
+      style: false,
+      agency: "on",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+    });
+    assertEquals(result.error, undefined);
+    assertEquals(chatCalls, 2);
+    assertEquals(
+      classifierCalls,
+      2,
+      "assisted＋--state=1 時每一輪生成後都該打一次分類器（handler.ts 同序）",
+    );
+
+    const round1 = result.turns[0];
+    assertEquals(round1.classifierSignal, {
+      coherence: "disconnected",
+      aiChallengedThisTurn: true,
+    });
+    assertEquals(
+      round1.agencyStateAfter?.aiClarifiedLastTurn,
+      true,
+      "修正前這裡永遠是 undefined（runner 把第三個參數硬編碼傳 null）",
+    );
+
+    // 核心斷言：round2 只有在拿到 round1 的分類器訊號後才會被 4.3 的規則
+    // 強制成 challenge_relevance／clarify_ignored_*（見下面的反例測試）。
+    const round2 = result.turns[1];
+    assertEquals(round2.policyMode, "forced");
+    assertEquals(round2.forcedAct, "challenge_relevance");
+    assert(
+      round2.allowedActSetId?.startsWith("clarify_ignored"),
+      `預期 clarify_ignored_*，拿到 ${round2.allowedActSetId}`,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("Phase 4.3 步驟 0（反例）：沒有 classifierApiKey 時退回舊行為（signal 缺席＝null），round2 不會被 4.3 強制——證明上面那支測試真的鎖住了修正前後的差異", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = () => {
+    throw new Error("不該打到 fetch：沒有 classifierApiKey 就不該呼叫分類器");
+  };
+  let chatCalls = 0;
+  const replies = ["你在說什麼？", "喔 好"];
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => Promise.resolve(replies[chatCalls++]),
+      profileId: "practice_girl_001",
+      scenario: CLASSIFIER_WIRING_SCENARIO,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "beginner",
+      style: false,
+      agency: "on",
+      stateSimulation: true,
+      // classifierApiKey 省略：這是修正前 run_agency.ts 的舊行為（第三個
+      // 參數永遠傳 null）。
+    });
+    assertEquals(result.error, undefined);
+    const round1 = result.turns[0];
+    assertEquals(round1.classifierSignal, undefined);
+    assertEquals(round1.agencyStateAfter?.aiClarifiedLastTurn, undefined);
+    const round2 = result.turns[1];
+    assertEquals(
+      round2.policyMode,
+      "bounded",
+      "沒有分類器訊號時 4.3 的 forced 分支不成立，維持既有 bounded 二選一",
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+// ── Phase 4.3 步驟 1：`--chat-model=mixed` ────────────────────────────────
+
+Deno.test("parseArgs：--chat-model 接受 mixed，其餘沿用既有拒絕清單", () => {
+  assertEquals(parseArgs(["--chat-model=mixed"]).chatModel, "mixed");
+  assertThrows(
+    () => parseArgs(["--chat-model=gpt"]),
+    Error,
+    "agency_invalid_chat_model",
+  );
+});
+
+Deno.test("runAgencyScenario：--chat-model=mixed 只在 bundle.agencyDecision.applied===true 那一輪換 callChatHaiku，其餘用 callChat（DeepSeek），不打真網路", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(fakeClassifierResponse(true));
+  let deepseekCalls = 0;
+  let haikuCalls = 0;
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => {
+        deepseekCalls++;
+        return Promise.resolve("嗯嗯 好喔");
+      },
+      callChatHaiku: () => {
+        haikuCalls++;
+        return Promise.resolve("你在說什麼啦");
+      },
+      profileId: "practice_girl_001",
+      scenario: CLASSIFIER_WIRING_SCENARIO,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "beginner",
+      style: false,
+      agency: "on",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+      chatModel: "mixed",
+    });
+    assertEquals(result.error, undefined);
+    // 逐輪 chatModelUsed 都要是合法值；實際「哪一輪換了 Haiku」由下面用
+    // callChat／callChatHaiku 各自的呼叫次數交叉驗證，不在這裡假設固定值。
+    for (const t of result.turns) {
+      assert(
+        t.chatModelUsed === "deepseek" || t.chatModelUsed === "haiku",
+        `chatModelUsed 應為 deepseek／haiku，拿到 ${t.chatModelUsed}`,
+      );
+    }
+    assertEquals(
+      deepseekCalls + haikuCalls,
+      result.turns.length,
+      "兩支 caller 合計次數要等於總輪數，沒有漏呼叫也沒有兩邊都打",
+    );
+    assertEquals(
+      result.turns.filter((t) => t.chatModelUsed === "haiku").length,
+      haikuCalls,
+    );
+    assertEquals(
+      result.turns.filter((t) => t.chatModelUsed === "deepseek").length,
+      deepseekCalls,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("runAgencyScenario：--chat-model=haiku（非 mixed）逐字沿用舊行為，全程只用 callChat，不讀 callChatHaiku", async () => {
+  let calls = 0;
+  const result = await runAgencyScenario({
+    callChat: () => {
+      calls++;
+      return Promise.resolve("嗯嗯 好喔");
+    },
+    // 不提供 callChatHaiku：non-mixed 分支若誤讀它就會在這裡炸掉（undefined
+    // 不是函式）。
+    profileId: "practice_girl_001",
+    scenario: CLASSIFIER_WIRING_SCENARIO,
+    repeat: 1,
+    difficulty: "normal",
+    mode: "beginner",
+    style: false,
+    agency: "on",
+    chatModel: "haiku",
+  });
+  assertEquals(result.error, undefined);
+  assertEquals(calls, 2);
+  assertEquals(result.turns.map((t) => t.chatModelUsed), ["haiku", "haiku"]);
 });

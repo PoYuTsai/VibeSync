@@ -83,6 +83,7 @@ import {
 } from "../practice-difficulty-bakeoff/bakeoff.ts";
 import { DEFAULT_PROFILE_IDS } from "../practice-reply-style-eval/run_baseline.ts";
 import {
+  type AgencyClassifierSignal,
   type AgencyMode,
   type AgencyShapeExperiment,
   agencyShapeExperimentFor,
@@ -90,6 +91,10 @@ import {
   nextConversationAgencyState,
   truncateAgencyShape,
 } from "../../supabase/functions/practice-chat/conversation_agency.ts";
+import {
+  buildTurnClassifierMessages,
+  parseTurnClassification,
+} from "../../supabase/functions/practice-chat/temperature.ts";
 import {
   AGENCY_SCENARIOS,
   type AgencyScenario,
@@ -105,6 +110,10 @@ const MODEL_TIMEOUT_MS = 30000;
 // handler.ts assisted 分支在還沒有分類器結果時的注入值（beginner 起始溫度／熟悉度）。
 const BEGINNER_TEMPERATURE_SCORE = 40;
 const BEGINNER_FAMILIARITY_SCORE = 10;
+// 照 handler.ts `TEMPERATURE_JUDGE_MAX_TOKENS`／`TEMPERATURE_JUDGE_TEMPERATURE`
+// 現用值抄錄（未 export；Phase 4.3 步驟 0 的分類器呼叫端，改動記得同步）。
+const CLASSIFIER_MAX_TOKENS = 450;
+const CLASSIFIER_TEMPERATURE = 0.2;
 
 export type PracticeRunMode = "standard" | "beginner" | "game";
 
@@ -168,6 +177,22 @@ export interface AgencyTurnResult {
   readonly shapeDropped: number;
   /** 只在 `shapeDropped > 0` 時記錄：截斷前的完整泡泡（診斷用，逐字對照）。 */
   readonly preTruncationBubbles?: readonly string[];
+  /** 這一輪 `agencyPolicyFor` 的決策（agency 關閉／shadow 時省略）。 */
+  readonly policyMode?: "forced" | "bounded";
+  readonly forcedAct?: string | null;
+  readonly allowedActSetId?: string;
+  /**
+   * Phase 4.3 步驟 0：這一輪生成後打分類器拿到的地面真相（`assisted`＋
+   * `--state=1` 才有；`null`＝分類器判不出（`requireCoherence` 失敗，見
+   * `classifierError`）或這輪本來就不打分類器）。
+   */
+  readonly classifierSignal?: AgencyClassifierSignal | null;
+  /** 分類器呼叫或解析失敗時的錯誤訊息（供步驟 3 抽查失敗率）。 */
+  readonly classifierError?: string;
+  /** 這一輪結束、狀態推進後的 `ConversationAgencyState`（`--state=1` 才有）。 */
+  readonly agencyStateAfter?: ConversationAgencyState | null;
+  /** Phase 4.3 步驟 1（`--chat-model=mixed`）：這一輪實際用的女生回覆模型。 */
+  readonly chatModelUsed?: "deepseek" | "haiku";
 }
 
 export interface AgencySessionResult {
@@ -264,6 +289,20 @@ export async function runAgencyScenario(args: {
   stateSimulation?: boolean;
   /** Phase 4.2 `--thread-salt`：見 `saltedThreadId`；省略／空字串＝舊行為。 */
   threadSalt?: string;
+  /**
+   * Phase 4.3 步驟 0：assisted＋stateSimulation 時，生成後立刻打一次跟 handler
+   * 相同的分類器（見上面 classifierSignal 那段的呼叫端註解）。省略＝維持舊行為
+   * （不打分類器、state 永遠退回結構近似），standard 或未開 --state 一律忽略。
+   */
+  classifierApiKey?: string;
+  /**
+   * Phase 4.3 步驟 1：`"mixed"`＝她要介入那一輪（`bundle.agencyDecision?.
+   * applied === true`）換 `callChatHaiku`，其餘用 `callChat`（DeepSeek）。
+   * `"deepseek"`／`"haiku"`／省略＝逐字舊行為（`callChat` 從頭到尾同一支）。
+   */
+  chatModel?: "deepseek" | "haiku" | "mixed";
+  /** `chatModel==="mixed"` 時必填：她要介入那一輪換用的 Haiku 呼叫端。 */
+  callChatHaiku?: ChatCaller;
 }): Promise<AgencySessionResult> {
   const difficulty = args.scenario.difficulty ?? args.difficulty;
   const profile = resolvePracticeProfile({
@@ -372,6 +411,18 @@ export async function runAgencyScenario(args: {
     });
     const messages = bundle.messages;
     const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
+    // Phase 4.3 步驟 1（`--chat-model=mixed`）：她要介入的那一輪（bundle.
+    // agencyDecision?.applied === true——planner 真的注入了 guidance，不是
+    // 只是「允許」）換 Haiku，其餘用 DeepSeek。`applied` 是既有欄位，跟
+    // nextConversationAgencyState 用來判斷要不要推進狀態的是同一個布林。
+    const chatModelUsed: "deepseek" | "haiku" = args.chatModel === "haiku"
+      ? "haiku"
+      : args.chatModel === "mixed" && bundle.agencyDecision?.applied === true
+      ? "haiku"
+      : "deepseek";
+    const activeCallChat = args.chatModel === "mixed"
+      ? (chatModelUsed === "haiku" ? args.callChatHaiku! : args.callChat)
+      : args.callChat;
 
     const startedAt = Date.now();
     let reply: string | null = null;
@@ -384,7 +435,7 @@ export async function runAgencyScenario(args: {
     for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
       attempts = attempt;
       try {
-        let candidate = await args.callChat(messages);
+        let candidate = await activeCallChat(messages);
         // handler.ts 同序後處理。
         candidate = toTraditionalChinese(normalizeLiteralNewlines(candidate));
         rejectVisibleInternalLabelLeak(candidate, "chat_internal_label_leak", {
@@ -436,6 +487,74 @@ export async function runAgencyScenario(args: {
           : String(lastError),
       };
     }
+    // Phase 4.3 步驟 0（Codex 歷史備註「classifier signal 傳 null」的修正）：
+    // handler.ts 在生成之後立刻打一次分類器，把 coherence／aiChallengedThisTurn
+    // 餵進 nextConversationAgencyState（見 handler.ts judgeLearningState／
+    // conversationAgencyState 那段）。這支 runner 之前**只做結構層模擬**——
+    // stateSimulation 一直把第三個參數傳 null，Phase 4.3 的 `aiClarifiedLastTurn
+    // === true` 閘門在這支 runner 上因此永遠不可能是 true，clarify_ignored 強
+    // 制格結構上點不了火。這裡補上同一支分類器呼叫（`turns` 此刻正好是「到玩家
+    // 這句為止」，跟 handler 的呼叫慣例一致），只在 assisted＋stateSimulation
+    // 時才打（standard／未開 --state 維持舊行為，成本不變）。
+    let classifierSignal: AgencyClassifierSignal | null = null;
+    let classifierError: string | null = null;
+    if (
+      args.stateSimulation && args.classifierApiKey &&
+      (args.mode === "beginner" || args.mode === "game")
+    ) {
+      try {
+        const raw = await callDeepSeek({
+          apiKey: args.classifierApiKey,
+          messages: buildTurnClassifierMessages({
+            turns,
+            profile,
+            heatScore: BEGINNER_TEMPERATURE_SCORE,
+            familiarityScore: BEGINNER_FAMILIARITY_SCORE,
+            assistantReply: reply,
+            agencyEnabled: args.agency === "on",
+            memorySummary: fixture.memorySummary,
+            herRecentMoments: fixture.herRecentMoments,
+          }),
+          maxTokens: CLASSIFIER_MAX_TOKENS,
+          temperature: CLASSIFIER_TEMPERATURE,
+          jsonMode: true,
+          timeoutMs: MODEL_TIMEOUT_MS,
+        });
+        const classification = parseTurnClassification(raw, {
+          requireCoherence: args.agency === "on",
+        });
+        classifierSignal = {
+          coherence: classification.coherence,
+          aiChallengedThisTurn: classification.aiChallengedThisTurn,
+        };
+      } catch (e) {
+        // 與 handler 不同：production 分類器失敗會讓整個請求 500（見
+        // judgeLearningState 呼叫端）；這支 runner 退回結構近似（null 訊號），
+        // 不中止整場黑箱。失敗率記進 artifact（classifierError）供步驟 3 抽查。
+        classifierError = e instanceof Error ? e.message : String(e);
+      }
+    }
+    // 這一輪的決策決定下一輪帶進去的狀態（agency 關閉或 shadow 時
+    // bundle.agencyDecision 是 null／applied=false，state 停在原地不動）。
+    // Phase 3.8：強制問他一件事的那一輪也要推進狀態，askedAboutUser 才黏得住
+    // （不然每一輪都會再強制一次＝查戶口）。
+    // 已知殘留近似（未在本輪修正，範圍見 README）：這個 if 只在
+    // applied||askedUser 時推進，production（handler.ts）是「旗標 on 就一定
+    // 推進」——兩者在「forced／applied 那一輪」行為一致（aiClarifiedLastTurn
+    // 賴以點火的正是這一輪），分岔只發生在「classifier 判斷但這一輪沒有
+    // forced／askedUser」的非關鍵路徑。
+    const askedUser = bundle.responsePlan?.askUserFocus !== undefined;
+    if (
+      args.stateSimulation && bundle.agencyDecision &&
+      (bundle.agencyDecision.applied || askedUser)
+    ) {
+      agencyState = nextConversationAgencyState(
+        agencyState,
+        bundle.agencyDecision.decision,
+        classifierSignal,
+        askedUser,
+      );
+    }
     results.push({
       roundIndex: i + 1,
       role: "user",
@@ -452,25 +571,19 @@ export async function runAgencyScenario(args: {
       stageDirectionRepairs,
       shapeDropped,
       ...(preTruncationBubbles ? { preTruncationBubbles } : {}),
+      ...(bundle.agencyDecision
+        ? {
+          policyMode: bundle.agencyDecision.decision.policyMode,
+          forcedAct: bundle.agencyDecision.decision.forcedAct,
+          allowedActSetId: bundle.agencyDecision.decision.allowedActSetId,
+        }
+        : {}),
+      ...(classifierSignal ? { classifierSignal } : {}),
+      ...(classifierError ? { classifierError } : {}),
+      ...(args.stateSimulation ? { agencyStateAfter: agencyState } : {}),
+      ...(args.chatModel ? { chatModelUsed } : {}),
     });
     turns.push({ role: "ai", text: reply });
-    // 這一輪的決策決定下一輪帶進去的狀態（結構層近似，見 stateSimulation
-    // 欄位註解）；agency 關閉或 shadow 時 bundle.agencyDecision 是 null／
-    // applied=false，state 停在原地不動。
-    // Phase 3.8：強制問他一件事的那一輪也要推進狀態，askedAboutUser 才黏得住
-    // （不然每一輪都會再強制一次＝查戶口）。
-    const askedUser = bundle.responsePlan?.askUserFocus !== undefined;
-    if (
-      args.stateSimulation && bundle.agencyDecision &&
-      (bundle.agencyDecision.applied || askedUser)
-    ) {
-      agencyState = nextConversationAgencyState(
-        agencyState,
-        bundle.agencyDecision.decision,
-        null,
-        askedUser,
-      );
-    }
   }
   return { ...base, turns: results };
 }
@@ -496,8 +609,12 @@ interface CliOptions {
    * `meta.fixture` 一律多一個 `threadSalt` 欄位（Codex R1 P3）。
    */
   threadSalt: string;
-  /** --chat-model=deepseek|haiku：女生回覆模型 A/B。預設 deepseek＝逐字舊行為。 */
-  chatModel: "deepseek" | "haiku";
+  /**
+   * --chat-model=deepseek|haiku|mixed：女生回覆模型 A/B。預設 deepseek＝逐字
+   * 舊行為。Phase 4.3 步驟 1 新增 `mixed`——她要介入那一輪
+   * （`bundle.agencyDecision?.applied === true`）換 Haiku，其餘 DeepSeek。
+   */
+  chatModel: "deepseek" | "haiku" | "mixed";
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -570,7 +687,7 @@ export function parseArgs(argv: string[]): CliOptions {
         opts.threadSalt = value.trim();
         break;
       case "chat-model":
-        if (value !== "deepseek" && value !== "haiku") {
+        if (value !== "deepseek" && value !== "haiku" && value !== "mixed") {
           throw new Error(`agency_invalid_chat_model: "${value}"`);
         }
         opts.chatModel = value;
@@ -848,36 +965,52 @@ export function buildJobs(
 
 async function main(): Promise<void> {
   const opts = parseArgs(Deno.args);
-  // haiku 臂的 usage 累加（deepseek 臂沒有這個帳，維持 undefined，逐字舊行為）。
+  // haiku 臂／mixed 臂的 usage 累加（純 deepseek 臂沒有這個帳，維持 undefined，
+  // 逐字舊行為）。
   let haikuUsageTotals: HaikuUsageTotals | undefined;
+  const makeHaikuCaller = (apiKey: string): ChatCaller => async (messages) => {
+    const { text, usage } = await callHaikuChat({
+      apiKey,
+      messages: messages as ChatMessage[],
+      maxTokens: CHAT_MAX_TOKENS,
+      temperature: CHAT_TEMPERATURE,
+      timeoutMs: MODEL_TIMEOUT_MS,
+    });
+    haikuUsageTotals = addHaikuUsage(haikuUsageTotals!, usage);
+    return text;
+  };
+  const makeDeepSeekCaller = (apiKey: string): ChatCaller => (messages) =>
+    callDeepSeek({
+      apiKey,
+      messages: messages as {
+        role: "system" | "user" | "assistant";
+        content: string;
+      }[],
+      maxTokens: CHAT_MAX_TOKENS,
+      temperature: CHAT_TEMPERATURE,
+      timeoutMs: MODEL_TIMEOUT_MS,
+    });
+
   let callChat: ChatCaller;
+  let callChatHaiku: ChatCaller | undefined;
+  // Phase 4.3 步驟 0：分類器一律走 DeepSeek（跟 production 的
+  // judgeLearningState 同款，不受 --chat-model 影響），只在 assisted＋
+  // stateSimulation 時才需要，其餘模式不多讀一把 key。
+  let classifierApiKey: string | undefined;
   if (opts.chatModel === "haiku") {
-    const apiKey = readAnthropicKey();
     haikuUsageTotals = ZERO_HAIKU_USAGE_TOTALS;
-    callChat = async (messages) => {
-      const { text, usage } = await callHaikuChat({
-        apiKey,
-        messages: messages as ChatMessage[],
-        maxTokens: CHAT_MAX_TOKENS,
-        temperature: CHAT_TEMPERATURE,
-        timeoutMs: MODEL_TIMEOUT_MS,
-      });
-      haikuUsageTotals = addHaikuUsage(haikuUsageTotals!, usage);
-      return text;
-    };
+    callChat = makeHaikuCaller(readAnthropicKey());
+    if (opts.stateSimulation) classifierApiKey = await readDeepSeekKey();
+  } else if (opts.chatModel === "mixed") {
+    haikuUsageTotals = ZERO_HAIKU_USAGE_TOTALS;
+    const deepSeekKey = await readDeepSeekKey();
+    callChat = makeDeepSeekCaller(deepSeekKey);
+    callChatHaiku = makeHaikuCaller(readAnthropicKey());
+    classifierApiKey = deepSeekKey;
   } else {
-    const apiKey = await readDeepSeekKey();
-    callChat = (messages) =>
-      callDeepSeek({
-        apiKey,
-        messages: messages as {
-          role: "system" | "user" | "assistant";
-          content: string;
-        }[],
-        maxTokens: CHAT_MAX_TOKENS,
-        temperature: CHAT_TEMPERATURE,
-        timeoutMs: MODEL_TIMEOUT_MS,
-      });
+    const deepSeekKey = await readDeepSeekKey();
+    callChat = makeDeepSeekCaller(deepSeekKey);
+    classifierApiKey = deepSeekKey;
   }
 
   const jobs = buildJobs(opts.profileIds, opts.scenarios, opts.repeat);
@@ -890,6 +1023,7 @@ async function main(): Promise<void> {
       const job = jobs[index];
       results[index] = await runAgencyScenario({
         callChat,
+        callChatHaiku,
         profileId: job.profileId,
         scenario: job.scenario,
         repeat: job.repeat,
@@ -900,6 +1034,8 @@ async function main(): Promise<void> {
         shape: opts.shape,
         stateSimulation: opts.stateSimulation,
         threadSalt: opts.threadSalt,
+        classifierApiKey,
+        chatModel: opts.chatModel,
       });
       console.error(
         `[agency] ${
@@ -930,9 +1066,14 @@ async function main(): Promise<void> {
       tree: await git(["rev-parse", "HEAD^{tree}"]),
       worktreeDirty: (await git(["status", "--porcelain"])) !== "",
       promptPolicyVersion: PRACTICE_PROMPT_POLICY_VERSION,
-      model: opts.chatModel === "haiku" ? CLAUDE_HAIKU_MODEL : DEEPSEEK_MODEL,
+      model: opts.chatModel === "haiku"
+        ? CLAUDE_HAIKU_MODEL
+        : opts.chatModel === "mixed"
+        ? `mixed:${DEEPSEEK_MODEL}+${CLAUDE_HAIKU_MODEL}`
+        : DEEPSEEK_MODEL,
       // Phase 4 之後模型 A/B：女生回覆模型（`deepseek`＝production 舊行為、
-      // `haiku`＝評測臂）。judge 模型不受這個旗標影響，仍是 DeepSeek。
+      // `haiku`＝評測臂、`mixed`＝Phase 4.3 步驟 1，介入輪換 Haiku）。judge
+      // 模型不受這個旗標影響，仍是 DeepSeek。
       chatModel: opts.chatModel,
       chat: {
         maxTokens: CHAT_MAX_TOKENS,
