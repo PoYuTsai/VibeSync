@@ -9175,8 +9175,36 @@ Deno.test("Phase 3.3 R1：truncate 之後，下游（commit／thread RPC、分�
   // 也就是上面斷言過的 `json.reply`。
 });
 
+Deno.test("Phase 3.3 R2：hint 的逐字稿帶截斷後的回覆時，prompt 只看得到留下的那一則", async () => {
+  // 沿用既有的 hintBody fixture（hint 是獨立 request，逐字稿由 client 帶上來）：
+  // 上一輪被截斷之後 client 存下來的就是第一則，這裡守住 hint 不會從別的地方
+  // 把被丟掉的那一則湊回來。
+  const { response, state } = await run(
+    {
+      ledger: beginnerStartedLedger(),
+      claudeReplies: [validHintJson()],
+      rpc: {
+        record_practice_hint: [{
+          data: [{ new_hint_count: 1, did_charge: true }],
+        }],
+      },
+    },
+    hintBody({
+      practiceMode: "beginner",
+      turns: [
+        { role: "user", text: "阿布達比" },
+        { role: "ai", text: "你是說阿布達比嗎" },
+      ],
+    }),
+  );
+  assertEquals(response.status, 200);
+  const messages = JSON.stringify(state.claudeCalls[0].messages);
+  assert(messages.includes("你是說阿布達比嗎"), messages);
+  assert(!messages.includes("我剛從那邊飛回來耶"), messages);
+});
+
 Deno.test("Phase 3.3 R1：Game FSM 修復優先那一輪不截斷（既有優先權高於實驗臂）", async () => {
-  const { json } = await runCapturingLogs(
+  const { json, succeeded } = await runCapturingLogs(
     {
       ledger: gameStartedLedger(),
       thread: {
@@ -9201,6 +9229,11 @@ Deno.test("Phase 3.3 R1：Game FSM 修復優先那一輪不截斷（既有優先
     }),
   );
   assertEquals(json.reply, SHAPE_ACCOMMODATING_REPLY);
+  // R2（Codex）非空轉證明：這一輪 agency 真的介入、旋鈕也真的開在 truncate
+  // （telemetry 欄位因此存在），沒被截斷純粹是 gameFsmPriority 這道閘門擋的。
+  const agency = succeeded?.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.applied, true);
+  assertEquals(agency.shapeTruncatedBubbles, 0);
 });
 
 Deno.test("Phase 3.3 旋鈕 off／agency off：回覆逐字不動，telemetry 連欄位都不多一個", async () => {

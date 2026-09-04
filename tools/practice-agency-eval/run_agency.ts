@@ -40,8 +40,13 @@
 // 的守門順序——`spicyAllowed` 永遠是 false（handler 會按 Game FSM 本輪熱度
 // 給 L3），旁白剝除掛在 `args.style` 而 handler 掛在 `responsePlan` 是否存在
 // （角色沒有 style mapping 時兩邊會分岔），Game 的修復優先／現實旗標也沒有
-// 關掉 truncate 臂（handler 有，見 handler.ts 截斷處的註解）。跨臂比大小不受
-// 影響（兩臂用同一份近似），但這裡的絕對數字不等於 production 行為。
+// 關掉 truncate 臂（handler 有，見 handler.ts 截斷處的註解）。
+//
+// R2（Codex）修正上一版這裡寫過的「跨臂比大小不受影響」：**只有非 Game 模式
+// 成立**。Game 模式的修復優先輪 production 不截斷、runner 會截斷，這個差異只
+// 污染 truncate 臂（off 臂本來就不截斷），所以 `--mode=game` 的跨臂數字在
+// runner 補上同一道閘門之前都不是 production 行為的忠實比較。任何模式下的
+// 絕對數字都不等於 production。
 
 import {
   isPracticeDifficulty,

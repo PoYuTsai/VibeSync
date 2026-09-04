@@ -3125,3 +3125,60 @@ Deno.test("Codex round-1（新項）P1-4：現實錨定的來源優先序與各�
   // 玩家的話永遠不是來源這一條仍在（總則第 2 行）。
   assert(sys.includes("都只是他的聲稱"), "玩家聲稱那一行不見了");
 });
+
+// ── Phase 3.3 R2：bundle 的 `gameFsmPriority`（handler 用它關掉 truncate 臂）──
+Deno.test("Phase 3.3 R2：gameFsmPriority 只在 Game 的修復優先／現實旗標輪為 true", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+  const fragmentTurns: PracticeTurn[] = [
+    { role: "user", text: "東東" },
+    { role: "ai", text: "東東是誰" },
+    { role: "user", text: "阿布達比" },
+  ];
+  const shared = {
+    replyStyle: true,
+    visiblePracticeThreadId: "game-fsm-priority",
+    agencyMode: "on",
+    practiceMode: "game",
+    temperatureScore: 44,
+    familiarityScore: 22,
+  } as const;
+
+  // 一般 Game 輪（mood neutral、沒有現實聲稱）：閘門關著，agency 照常介入。
+  const plain = buildChatPromptBundle(fragmentTurns, profile, {
+    ...shared,
+    partnerState: { mood: "neutral", innerThought: "" },
+  });
+  assertEquals(plain.gameFsmPriority, false);
+  assertEquals(plain.agencyDecision?.applied, true);
+
+  // 修復優先（guarded／annoyed＝game_fsm.ts 的 hasRepairPriority）：閘門打開，
+  // 而且 agency 仍然是 applied——這正是「既有優先權要壓過實驗臂」的那一格。
+  const guarded = buildChatPromptBundle(fragmentTurns, profile, {
+    ...shared,
+    partnerState: { mood: "guarded", innerThought: "" },
+  });
+  assertEquals(guarded.gameFsmPriority, true);
+  assertEquals(guarded.agencyDecision?.applied, true);
+
+  // 現實旗標輪（玩家宣稱有人介紹）：閘門一樣打開。註記：現實旗標必然帶
+  // FRAME_OVERREACH 進 failureStates，所以 repairPriority 也會是 true——
+  // 「只有現實旗標、沒有修復優先」在現行 FSM 下取不到，`gameFsmPriority` 的
+  // 第二個 or 是 FSM 之後改失敗態表時的保險。這一輪 agency 本來就不介入
+  // （現實聲稱不是低資訊形狀），閘門是第二道保險。
+  const realityClaim = buildChatPromptBundle(
+    [{ role: "user", text: "老師介紹我來認識妳。" }],
+    profile,
+    { ...shared, partnerState: { mood: "neutral", innerThought: "" } },
+  );
+  assertEquals(realityClaim.gameFsmPriority, true);
+
+  // 非 Game 模式恆為 false（連 FSM 都不算）。
+  assertEquals(
+    buildChatPromptBundle(fragmentTurns, profile, {
+      replyStyle: true,
+      agencyMode: "on",
+      partnerState: { mood: "guarded", innerThought: "" },
+    }).gameFsmPriority,
+    false,
+  );
+});

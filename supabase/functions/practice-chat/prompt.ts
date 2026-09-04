@@ -796,6 +796,10 @@ export interface ChatPromptBundle {
    * 生成後截斷（她那一輪的優先任務是修復，不是被砍成一句問句），而且不必在
    * handler 再算一次 FSM（prompt.ts 的既有註解：FSM 一輪只算一次）。
    * 非 Game 模式恆為 false。
+   *
+   * R2 註記：現行 FSM 下 `realityFlags` 一出現就會把 `FRAME_OVERREACH` 放進
+   * `failureStates`，`repairPriority` 因此必然同時為 true——第二個 or 取不到
+   * 獨立的案例，留著是 FSM 之後改失敗態表時的保險（prompt_test 有釘住）。
    */
   gameFsmPriority: boolean;
 }
