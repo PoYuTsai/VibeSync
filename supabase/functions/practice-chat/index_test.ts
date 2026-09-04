@@ -9460,3 +9460,107 @@ Deno.test("Phase 3.2 P1-3：shadow 模式即使分類器判 connected 也不寫 
   );
   assertEquals(persistedAgencyState(state), undefined);
 });
+
+// conversation-agency-v1 Phase 3.4：真機案例（Eric 2026-09-04）——玩家只丟一個
+// IG handle，她回「這是我們朋友」「喔是你喔／那天在酒吧真的很吵」，宣稱一段
+// 逐字稿與人設裡都不存在的共同過去。黃金法則明文禁止共同回憶／共同熟人，
+// 但 prompt 攔不住、結構層看不到（純語意），只有 assisted 的分類器讀得出來。
+const SHARED_PAST_TURNS = [
+  { role: "user", text: "在幹嘛" },
+  { role: "ai", text: "剛下班而已" },
+  { role: "user", text: "debby1993wu" },
+];
+const CLASSIFIER_SHARED_PAST_CLAIM =
+  `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"amused","moodConfidence":0.7,"innerThought":"我想起來了","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":true}`;
+
+Deno.test("Phase 3.4：分類器判 sharedPastClaim 時正分被壓成 0，telemetry 有這個 key；旗標關時整條路不存在", async () => {
+  const run = async (
+    classifierReply: string,
+    env?: Record<string, string>,
+  ) => {
+    const { succeeded } = await runCapturingLogs(
+      {
+        ledger: null,
+        thread: {
+          profile_id: "practice_girl_001",
+          temperature_score: 40,
+          familiarity_score: 10,
+        },
+        ...(env ? { env } : {}),
+        deepSeekReplies: [
+          "喔是你喔 我想起來了\n那天在酒吧真的很吵",
+          classifierReply,
+        ],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        visiblePracticeThreadId: "thread-visible-1",
+        temperatureScore: 40,
+        familiarityScore: 10,
+        turns: SHARED_PAST_TURNS,
+      }),
+    );
+    return succeeded as Record<string, unknown>;
+  };
+
+  // 旗標關：prompt 沒問這個欄位，模型也不會吐（吐了會被 schema 擋成 extra
+  // fields）——同一個 fixture 的 caught/medium 照舊拿到正分，telemetry 連
+  // conversationAgency／deltaCapApplied 這兩個 key 都沒有。
+  const off = await run(CLASSIFIER_CAUGHT_MEDIUM);
+  assert((off.temperatureDelta as number) > 0);
+  assert(!("conversationAgency" in off));
+  assert(!("deltaCapApplied" in off));
+
+  // 旗標開：同一句 caught/medium，只因為她捏造了共同過去就拿不到正分。
+  const on = await run(CLASSIFIER_SHARED_PAST_CLAIM, {
+    PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+  });
+  assertEquals(on.deltaCapApplied, "shared_past_claim");
+  assertEquals(on.temperatureDelta, 0);
+  assertEquals(on.familiarityDelta, 0);
+  const agency = on.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.sharedPastClaim, true);
+  assertEquals(agency.coherence, "connected");
+
+  // 沒捏造時同一組 fixture 照舊拿得到正分（cap 不是無條件夾 0）。
+  const honest = await run(
+    CLASSIFIER_SHARED_PAST_CLAIM.replace(
+      '"sharedPastClaim":true',
+      '"sharedPastClaim":false',
+    ),
+    { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+  );
+  assert((honest.temperatureDelta as number) > 0);
+  assertEquals(honest.deltaCapApplied, "none");
+  assertEquals(
+    (honest.conversationAgency as Record<string, unknown>).sharedPastClaim,
+    false,
+  );
+});
+
+Deno.test("Phase 3.4：shadow 不判也不記 sharedPastClaim（分類器 prompt／schema 與旗標關逐字相同）", async () => {
+  const { succeeded } = await runCapturingLogs(
+    {
+      ledger: null,
+      thread: {
+        profile_id: "practice_girl_001",
+        temperature_score: 40,
+        familiarity_score: 10,
+      },
+      env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "shadow" },
+      // shadow 的分類器 prompt 沒問 agency 欄位，所以這裡只能給舊形狀。
+      deepSeekReplies: ["喔是你喔", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      visiblePracticeThreadId: "thread-visible-1",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      turns: SHARED_PAST_TURNS,
+    }),
+  );
+  const agency = (succeeded as Record<string, unknown>)
+    .conversationAgency as Record<string, unknown>;
+  assert(!("sharedPastClaim" in agency));
+  assert((succeeded!.temperatureDelta as number) > 0);
+});

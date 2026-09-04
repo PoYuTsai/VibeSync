@@ -1548,6 +1548,9 @@ async function judgeLearningState(opts: {
           repeatedExactToken: opts.agencyEvidenceRepeatedExactToken ?? false,
           unresolvedCount: opts.agencyEvidenceUnresolvedCount ?? 0,
         },
+        // Phase 3.4：她捏造跟玩家的共同過去（認識／共同朋友／一起經歷過）時，
+        // 這一輪不得換到正分。只有 assisted 有分類器，standard 走不到這裡。
+        classification.sharedPastClaim,
       )
       : { judgement: protectedJudgement, capApplied: "none" as const };
     // 閘門在 delta cap 之後（豁免在閘門內判斷）、crude-offense 確定
@@ -4714,6 +4717,12 @@ export function createPracticeChatHandler(
             aiChallengedThisTurn: agencyMode === "on"
               ? temperature?.classification.aiChallengedThisTurn ?? null
               : null,
+            // Phase 3.4：只有旗標 on 且分類器真的判了才有這個 key（shadow／off
+            // 連欄位都不多一個）。standard 沒有分類器，恆為缺席。
+            ...(agencyMode === "on" &&
+                temperature?.classification.sharedPastClaim !== undefined
+              ? { sharedPastClaim: temperature.classification.sharedPastClaim }
+              : {}),
             deltaCapApplied: temperature?.deltaCapApplied ?? "none",
             // Phase 3.3 `truncate` 臂：只有旋鈕開在 truncate 且這一輪 agency
             // 真的介入時這個 key 才存在（其他情形連欄位都不多一個）。
