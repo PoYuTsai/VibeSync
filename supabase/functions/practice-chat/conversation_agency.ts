@@ -945,22 +945,23 @@ export function agencyModeFor(
 
 // ── Phase 3.3：形狀實驗旋鈕（PRACTICE_AGENCY_SHAPE_EXPERIMENT）──────────────
 /**
- * 兩個實驗臂，預設 `off`（與今日逐字相同）：
- *   `prompt`＝把回覆形狀那一行換成條件式（接受→照常；問／質疑→只回 1 則），
- *     在 `renderTurnPlan` 生效；
- *   `truncate`＝生成後結構性截斷（第一則是問句就只留第一則），在 handler 的
- *     生成迴圈與黑箱 runner 的同序後處理生效。
+ * `truncate`＝生成後結構性截斷（第一則是問句就只留第一則），在 handler 的
+ * 生成迴圈與黑箱 runner 的同序後處理生效；預設 `off`＝與今日逐字相同。
  *
  * 只在 agency 旗標解析成 `on` **且**這一輪真的介入（`applied`）時有效果；
  * off／shadow／未介入的輪次一律零改動（`agency_flag_off_equivalence_test.ts`）。
+ *
+ * 2026-09-04（Eric 拍板）：另一個 `prompt` 臂（把形狀行換成條件式）黑箱量到
+ * 零效果，已整條刪除；`truncate` 臂把 `sequenceHoldBlindFollow` 從 20.6%
+ * 壓到 12.5%（20 位 × repeat 3，信賴區間分開），所以留在旋鈕後面。
  */
-export type AgencyShapeExperiment = "off" | "prompt" | "truncate";
+export type AgencyShapeExperiment = "off" | "truncate";
 
 /** 旗標字串 → 實驗臂。認不得的值一律 `off`（與 `agencyModeFor` 同樣 fail-closed）。 */
 export function agencyShapeExperimentFor(
   flag: string | undefined,
 ): AgencyShapeExperiment {
-  return flag === "prompt" || flag === "truncate" ? flag : "off";
+  return flag === "truncate" ? flag : "off";
 }
 
 /**

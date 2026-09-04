@@ -1313,11 +1313,11 @@ const appliedAgency = (turns: PracticeTurn[]): AgencyApplication => ({
 // Eric 2026-09-04 回報的那一格：她問過一次，他又丟一個不相干的地名。
 const FRAGMENT_DEBT_TURNS = [u("東東"), a("東東是誰"), u("阿布達比")];
 
-Deno.test("Phase 3.3 旋鈕：只認 prompt／truncate，其餘（含未設、亂填）一律 off", () => {
+Deno.test("Phase 3.3 旋鈕：只認 truncate，其餘（含未設、亂填、已刪的 prompt 臂）一律 off", () => {
   assertEquals(agencyShapeExperimentFor(undefined), "off");
   assertEquals(agencyShapeExperimentFor("off"), "off");
   assertEquals(agencyShapeExperimentFor("true"), "off");
-  assertEquals(agencyShapeExperimentFor("prompt"), "prompt");
+  assertEquals(agencyShapeExperimentFor("prompt"), "off");
   assertEquals(agencyShapeExperimentFor("truncate"), "truncate");
 });
 

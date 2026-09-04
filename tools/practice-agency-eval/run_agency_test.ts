@@ -57,20 +57,21 @@ Deno.test("parseArgs：--mode=game 可以搭配 --state=1 與 --agency=on 一起
   assert(opts.mode === "game" && opts.stateSimulation && opts.agency === "on");
 });
 
-Deno.test("parseArgs：--shape 省略＝off，只認 prompt／truncate，亂填直接報錯", () => {
+Deno.test("parseArgs：--shape 省略＝off，只認 truncate，亂填（含已刪的 prompt 臂）直接報錯", () => {
   // 靜默當 off 會讓 artifact meta 的 shapeExperiment 說謊（跟 --state 同理）。
   assertEquals(parseArgs([]).shape, "off");
   assertEquals(parseArgs(["--shape=off"]).shape, "off");
-  assertEquals(parseArgs(["--shape=prompt"]).shape, "prompt");
   assertEquals(
     parseArgs(["--agency=on", "--shape=truncate"]).shape,
     "truncate",
   );
-  assertThrows(
-    () => parseArgs(["--shape=1"]),
-    Error,
-    "agency_invalid_shape_experiment",
-  );
+  for (const bad of ["--shape=1", "--shape=prompt"]) {
+    assertThrows(
+      () => parseArgs([bad]),
+      Error,
+      "agency_invalid_shape_experiment",
+    );
+  }
 });
 
 Deno.test("runAgencyScenario：A27.p2／p4 的 previousAiAskedQuestion 吃到腳本非問句，不是 p1 真實生成的問句（Phase 3.3 修正）", async () => {
@@ -93,8 +94,7 @@ Deno.test("runAgencyScenario：A27.p2／p4 的 previousAiAskedQuestion 吃到腳
   assertEquals(result.error, undefined);
   assertEquals(calls, 3, "只有 p1／p2／p4 三個真探針該打模型，填充行要走腳本");
 
-  const byProbe = (id: string) =>
-    result.turns.find((t) => t.probe?.id === id)!;
+  const byProbe = (id: string) => result.turns.find((t) => t.probe?.id === id)!;
   assertEquals(byProbe("A27.p1").previousAiAskedQuestion, false);
   assertEquals(byProbe("A27.p1").reply, replies[0]);
   // 核心斷言：p2 前面最後一則不是 p1 那句真實生成的問句，是腳本化非問句。

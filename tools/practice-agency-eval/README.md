@@ -80,13 +80,13 @@ deno test --allow-read --allow-env tools/practice-agency-eval/
   就是 production 的 `PRACTICE_CONVERSATIONAL_AGENCY_ENABLED`，走 handler
   同一條路徑餵 `buildChatPromptBundle`；standard
   的短期狀態從逐字稿現推（不帶持久化）。
-  `--shape=off|prompt|truncate`（預設 off）＝Phase 3.3 形狀實驗臂，對應
-  production 的 `PRACTICE_AGENCY_SHAPE_EXPERIMENT`（handler 從 env 讀；runner
-  直接呼叫 `buildChatPromptBundle`／同序後處理，所以像 `--agency` 一樣用旗標值
-  直接餵，解析共用 `agencyShapeExperimentFor`）。`prompt` 臂改欠債輪／無前文
-  片段輪的形狀行（接受→照常；問／質疑→只回 1 則），`truncate` 臂在所有守門
-  之後做結構截斷（第一則是問句就只留第一則）。兩臂都只在 `--agency=on` 且該輪
-  真的介入時有效果；artifact meta 記 `shapeExperiment`。
+  `--shape=off|truncate`（預設 off）＝Phase 3.3 形狀實驗臂，對應 production 的
+  `PRACTICE_AGENCY_SHAPE_EXPERIMENT`（handler 從 env 讀；runner 直接呼叫
+  同序後處理，所以像 `--agency` 一樣用旗標值直接餵，解析共用
+  `agencyShapeExperimentFor`）。`truncate` 臂在所有守門之後做結構截斷（第一則
+  是問句就只留第一則），只在 `--agency=on` 且該輪真的介入時有效果；artifact
+  meta 記 `shapeExperiment`。（`prompt` 臂已於 2026-09-04 刪除，見下面的
+  Phase 3.3 節。）
 - `judge_agency.ts`：DeepSeek 多標籤評審（temperature
   0）。評審看到遮罩後的逐字稿
   （只到探針那一句）、她這一則回覆、以及她的**唯一可信自身事實來源**（人物卡
@@ -1598,3 +1598,11 @@ prompt 已經帶了前面所有輪次），單則平均成本比短情境高不�
 $2 上限守不住,需要先跟 Eric 確認要不要降 repeat 或先跑一小批估價,而不是直接
 跑 repeat=3 兩臂。balance API 有已知延遲，本節數字是實際觀測到的餘額差,
 不是預期值。
+
+#### 之後的處置（2026-09-04，Eric 拍板）
+
+`prompt` 臂（把回覆形狀那一行換成條件式）黑箱量到零效果，已於本輪之後整條
+刪除（`AgencyShapeExperiment` 收成 `off | truncate`，`--shape` 只接
+`off|truncate`，認不得的值仍 fail-closed 成 `off`）；`truncate` 臂保留在旋鈕
+後面，預設關。本節以上的數字是當時三臂／兩臂的歷史紀錄，其中提到 `prompt`
+臂的段落照原樣保留。

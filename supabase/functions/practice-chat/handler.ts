@@ -2257,9 +2257,9 @@ export function createPracticeChatHandler(
       deps.getEnv("PRACTICE_CONVERSATIONAL_AGENCY_ENABLED"),
       accountIsTest,
     );
-    // Phase 3.3 形狀實驗旋鈕：`off`（預設，與接線前逐字相同）／`prompt`／
-    // `truncate`。只有 agency 解析成 `on` 且這一輪真的介入時才會有效果，
-    // 所以旗標 off／shadow 的行為與 telemetry 完全不受影響。
+    // Phase 3.3 形狀實驗旋鈕：`off`（預設，與接線前逐字相同）／`truncate`。
+    // 只有 agency 解析成 `on` 且這一輪真的介入時才會有效果，所以旗標
+    // off／shadow 的行為與 telemetry 完全不受影響。
     const agencyShapeExperiment = agencyMode === "on"
       ? agencyShapeExperimentFor(
         deps.getEnv("PRACTICE_AGENCY_SHAPE_EXPERIMENT"),
@@ -4342,7 +4342,6 @@ export function createPracticeChatHandler(
             gameState: ledgerGameState,
             styleState: relationshipThreadState?.styleState ?? null,
             agencyMode,
-            shapeExperiment: agencyShapeExperiment,
             agencyState: relationshipThreadState?.agencyState ?? null,
           }
           : {
@@ -4355,7 +4354,6 @@ export function createPracticeChatHandler(
             timeContext: nowContext,
             herRecentMomentsBlock,
             agencyMode,
-            shapeExperiment: agencyShapeExperiment,
             // standard 沒有 thread 寫入，也不讀 assisted 留下的狀態（規格附錄：
             // standard 的 priorDecline 一律 false）；agency 短期狀態改從逐字稿現推。
           },

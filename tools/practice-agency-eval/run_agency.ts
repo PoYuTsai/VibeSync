@@ -28,9 +28,9 @@
 //     tools/practice-agency-eval/out/<date>-<label>.json \
 //     [--profiles=a,b] [--scenarios=A01,A02] [--mode=standard|beginner|game] \
 //     [--style=1] [--agency=on] [--repeat=3] [--difficulty=normal] \
-//     [--state=1] [--concurrency=6] [--shape=prompt|truncate]
+//     [--state=1] [--concurrency=6] [--shape=truncate]
 //
-// `--shape=off|prompt|truncate`＝Phase 3.3 形狀實驗臂，對應 production 的
+// `--shape=off|truncate`＝Phase 3.3 形狀實驗臂，對應 production 的
 // `PRACTICE_AGENCY_SHAPE_EXPERIMENT`（handler 從 env 讀，這支 runner 直接呼叫
 // buildChatPromptBundle／同序後處理，所以像 `--agency` 一樣用旗標值直接餵，
 // 解析用 handler 同一支 `agencyShapeExperimentFor`）。artifact meta 記
@@ -147,7 +147,7 @@ export interface AgencyTurnResult {
   readonly attempts: number;
   readonly guardRejections: readonly string[];
   readonly stageDirectionRepairs: number;
-  /** Phase 3.3 `--shape=truncate` 丟掉幾則泡泡（`off`／`prompt` 臂恆為 0）。 */
+  /** Phase 3.3 `--shape=truncate` 丟掉幾則泡泡（`off` 恆為 0）。 */
   readonly shapeDropped: number;
 }
 
@@ -203,8 +203,8 @@ export async function runAgencyScenario(args: {
   agency: AgencyMode;
   /**
    * Phase 3.3 形狀實驗臂（production 走 `PRACTICE_AGENCY_SHAPE_EXPERIMENT`）：
-   * `prompt` 進 prompt bundle，`truncate` 走生成後截斷（與 handler 同序、同一支
-   * `truncateAgencyShape`）。省略＝`off`，逐字與實驗接線前相同。
+   * `truncate` 走生成後截斷（與 handler 同序、同一支 `truncateAgencyShape`）。
+   * 省略＝`off`，逐字與實驗接線前相同。
    */
   shape?: AgencyShapeExperiment;
   /**
@@ -305,7 +305,6 @@ export async function runAgencyScenario(args: {
     const bundle = buildChatPromptBundle(turns, profile, {
       replyStyle: args.style,
       agencyMode: args.agency,
-      shapeExperiment: args.shape ?? "off",
       visiblePracticeThreadId: BAKEOFF_THREAD_ID,
       partnerState: null,
       styleState: null,

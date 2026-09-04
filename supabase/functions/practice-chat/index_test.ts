@@ -9100,7 +9100,7 @@ Deno.test("agency 旗標開＋reply-style 關：system prompt 仍套用改寫，
 const SHAPE_ACCOMMODATING_REPLY = "你是說阿布達比嗎\n我剛從那邊飛回來耶";
 
 async function shapeExperimentRun(env: Record<string, string>, reply: string) {
-  const { json, state, succeeded } = await runCapturingLogs(
+  const { json, succeeded } = await runCapturingLogs(
     {
       ledger: ledger({ practice_mode: "standard" }),
       env,
@@ -9110,7 +9110,6 @@ async function shapeExperimentRun(env: Record<string, string>, reply: string) {
   );
   return {
     json,
-    system: state.deepSeekCalls[0].messages[0].content,
     agency: succeeded?.conversationAgency as Record<string, unknown>,
   };
 }
@@ -9143,33 +9142,19 @@ Deno.test("Phase 3.3 旋鈕 off／agency off：回覆逐字不動，telemetry �
   }, SHAPE_ACCOMMODATING_REPLY);
   assertEquals(noKnob.json.reply, SHAPE_ACCOMMODATING_REPLY);
   assert(!("shapeTruncatedBubbles" in noKnob.agency));
-  // 旋鈕開在 prompt 臂：不做生成後截斷，也沒有這個欄位。
-  const promptArm = await shapeExperimentRun({
+  // 認不得的值 fail-closed 成 off（2026-09-04 刪掉的 `prompt` 臂也走這條）。
+  const unknownArm = await shapeExperimentRun({
     PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
     PRACTICE_AGENCY_SHAPE_EXPERIMENT: "prompt",
   }, SHAPE_ACCOMMODATING_REPLY);
-  assertEquals(promptArm.json.reply, SHAPE_ACCOMMODATING_REPLY);
-  assert(!("shapeTruncatedBubbles" in promptArm.agency));
+  assertEquals(unknownArm.json.reply, SHAPE_ACCOMMODATING_REPLY);
+  assert(!("shapeTruncatedBubbles" in unknownArm.agency));
   // agency 旗標關：旋鈕怎麼設都不得有效果（telemetry 整個 key 不存在）。
   const flagOff = await shapeExperimentRun({
     PRACTICE_AGENCY_SHAPE_EXPERIMENT: "truncate",
   }, SHAPE_ACCOMMODATING_REPLY);
   assertEquals(flagOff.json.reply, SHAPE_ACCOMMODATING_REPLY);
   assertEquals(flagOff.agency, undefined);
-});
-
-Deno.test("Phase 3.3 prompt 臂：條件式形狀行真的進到 system prompt（style 開）", async () => {
-  const on = await shapeExperimentRun({
-    ...REPLY_STYLE_ON,
-    PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
-    PRACTICE_AGENCY_SHAPE_EXPERIMENT: "prompt",
-  }, "好啊");
-  assert(on.system.includes("如果你接住他這句"), on.system);
-  const off = await shapeExperimentRun({
-    ...REPLY_STYLE_ON,
-    PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
-  }, "好啊");
-  assert(!off.system.includes("如果你接住他這句"), off.system);
 });
 
 // ── conversation-agency-v1（Codex P1 item 5）：golden 覆蓋範圍擴到完整 RPC
