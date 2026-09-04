@@ -8071,24 +8071,30 @@ async function runCapturingLogs(
   body: Parameters<typeof run>[1],
 ) {
   const logs: Record<string, unknown>[] = [];
-  const originalLog = console.log;
-  console.log = (...args: unknown[]) => {
+  const warns: Record<string, unknown>[] = [];
+  const collect = (into: Record<string, unknown>[]) => (...args: unknown[]) => {
     if (typeof args[0] === "string" && args[0].startsWith("{")) {
       try {
-        logs.push(JSON.parse(args[0]));
+        into.push(JSON.parse(args[0]));
       } catch {
         // 非 JSON 行照舊忽略。
       }
     }
   };
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  console.log = collect(logs);
+  // logWarn 走 console.warn（logger.ts）——repair 這類觀測只在這條線上。
+  console.warn = collect(warns);
   try {
     const result = await run(options, body);
     const succeeded = logs.find((line) =>
       line.event === "practice_chat_succeeded" && line.mode === "chat"
     );
-    return { ...result, succeeded };
+    return { ...result, succeeded, warns };
   } finally {
     console.log = originalLog;
+    console.warn = originalWarn;
   }
 }
 
@@ -9567,7 +9573,7 @@ Deno.test("Phase 3.4：shadow 不判也不記 sharedPastClaim（分類器 prompt
 
 Deno.test("Phase 3.4 R1：repair 出來的 false 跟模型判的 false 在 telemetry 分得開（Codex R1 P1）", async () => {
   const run = async (classifierReply: string) => {
-    const { succeeded } = await runCapturingLogs(
+    const { succeeded, warns } = await runCapturingLogs(
       {
         ledger: null,
         thread: {
@@ -9586,8 +9592,16 @@ Deno.test("Phase 3.4 R1：repair 出來的 false 跟模型判的 false 在 telem
         turns: SHARED_PAST_TURNS,
       }),
     );
-    return (succeeded as Record<string, unknown>)
-      .conversationAgency as Record<string, unknown>;
+    // Codex R2 P3：repair 的可觀測性不能只靠註解宣稱——把
+    // `practice_chat_learning_classifier_repaired` 這筆 warn 一起帶回來斷言。
+    const repairedFields = warns
+      .filter((w) => w.event === "practice_chat_learning_classifier_repaired")
+      .flatMap((w) => w.fields as string[]);
+    return {
+      agency: (succeeded as Record<string, unknown>)
+        .conversationAgency as Record<string, unknown>,
+      repairedFields,
+    };
   };
 
   // 模型真的判「沒捏造」：只有 sharedPastClaim，沒有 repaired 這個 key。
@@ -9597,8 +9611,9 @@ Deno.test("Phase 3.4 R1：repair 出來的 false 跟模型判的 false 在 telem
       '"sharedPastClaim":false',
     ),
   );
-  assertEquals(explicit.sharedPastClaim, false);
-  assert(!("sharedPastClaimRepaired" in explicit));
+  assertEquals(explicit.agency.sharedPastClaim, false);
+  assert(!("sharedPastClaimRepaired" in explicit.agency));
+  assert(!explicit.repairedFields.includes("sharedPastClaim"));
 
   // 模型吐非布林 → repair 成 false（不觸發 cap 的中性值），但 telemetry 多一個
   // key 標出來，ops 算盛行率時分母才扣得掉這一筆。
@@ -9608,15 +9623,17 @@ Deno.test("Phase 3.4 R1：repair 出來的 false 跟模型判的 false 在 telem
       '"sharedPastClaim":"yes"',
     ),
   );
-  assertEquals(repairedValue.sharedPastClaim, false);
-  assertEquals(repairedValue.sharedPastClaimRepaired, true);
+  assertEquals(repairedValue.agency.sharedPastClaim, false);
+  assertEquals(repairedValue.agency.sharedPastClaimRepaired, true);
+  assertEquals(repairedValue.repairedFields, ["sharedPastClaim"]);
 
   // 模型整個漏答也一樣（缺值走同一條 repair）。
   const missing = await run(
     CLASSIFIER_SHARED_PAST_CLAIM.replace(',"sharedPastClaim":true', ""),
   );
-  assertEquals(missing.sharedPastClaim, false);
-  assertEquals(missing.sharedPastClaimRepaired, true);
+  assertEquals(missing.agency.sharedPastClaim, false);
+  assertEquals(missing.agency.sharedPastClaimRepaired, true);
+  assertEquals(missing.repairedFields, ["sharedPastClaim"]);
 });
 
 Deno.test("Phase 3.4 R1：確定性越界覆寫會丟掉 sharedPastClaim（與 coherence 同一路徑，pin 現況）", async () => {
@@ -9657,6 +9674,65 @@ Deno.test("Phase 3.4 R1：確定性越界覆寫會丟掉 sharedPastClaim（與 c
   // sharedPastClaim 的慣例是「拿不到就連 key 都沒有」——兩者都表示「這一輪
   // 沒有分類器判斷」，形狀不同是既有慣例差異，不是漏接。
   assertEquals(agency.coherence, null);
+  assert(!("sharedPastClaim" in agency));
+  assert(!("sharedPastClaimRepaired" in agency));
+});
+
+Deno.test("Phase 3.4 R2：game 也吃同一條 cap（0/0）且 telemetry 有 key（Codex R2 P3 覆蓋）", async () => {
+  // beginner 之外的另一條 assisted 路徑：game 在 cap 之後還會再過
+  // applyGameLearningIfNeeded，這個測試確認那一段不會把壓下去的正分再抬回來。
+  const { succeeded } = await runCapturingLogs(
+    {
+      ledger: null,
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      thread: {
+        profile_id: "practice_girl_004",
+        temperature_score: 40,
+        familiarity_score: 10,
+      },
+      env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+      deepSeekReplies: ["喔是你喔 我想起來了", CLASSIFIER_SHARED_PAST_CLAIM],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      visiblePracticeThreadId: "thread-visible-1",
+      turns: SHARED_PAST_TURNS,
+    }),
+  );
+  const log = succeeded as Record<string, unknown>;
+  assertEquals(log.deltaCapApplied, "shared_past_claim");
+  assertEquals(log.temperatureDelta, 0);
+  assertEquals(log.familiarityDelta, 0);
+  assertEquals(
+    (log.conversationAgency as Record<string, unknown>).sharedPastClaim,
+    true,
+  );
+});
+
+Deno.test("Phase 3.4 R2：standard 旗標開也不問這個欄位（沒有分類器，範圍外）", async () => {
+  // standard 不是 assisted：整輪只有一次 DeepSeek 呼叫（生成），沒有分類器，
+  // 所以 prompt 不會出現這個欄位、telemetry 沒有這個 key、分數也不動。
+  const { state, succeeded } = await runCapturingLogs(
+    {
+      ledger: ledger({ practice_mode: "standard" }),
+      env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+      deepSeekReplies: ["喔是你喔 我想起來了"],
+    },
+    chatBody({ practiceMode: "standard", turns: SHARED_PAST_TURNS }),
+  );
+  assertEquals(state.deepSeekCalls.length, 1);
+  assert(
+    !JSON.stringify(state.deepSeekCalls[0].messages).includes(
+      "sharedPastClaim",
+    ),
+    "standard 的生成 prompt 不該出現分類器欄位",
+  );
+  const log = succeeded as Record<string, unknown>;
+  assertEquals(log.temperatureDelta, null);
+  assertEquals(log.familiarityDelta, null);
+  assertEquals(log.classification, null);
+  const agency = log.conversationAgency as Record<string, unknown>;
   assert(!("sharedPastClaim" in agency));
   assert(!("sharedPastClaimRepaired" in agency));
 });
