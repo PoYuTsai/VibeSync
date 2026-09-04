@@ -300,15 +300,24 @@ function hasExplicitPivot(text: string): boolean {
 }
 // 招呼／情緒反應：短且只由這些構成時算 reaction，不當成需要澄清的片段。
 //
-// Phase 4.3（Eric 2026-09-05）：肯定／否定的**純短詞**（「對」「是」「不是」
-// 「沒有」）也放進來。它們原本落在 `bare_fragment`／`answer_candidate`，會累積
-// 欠債、也會被 Phase 4.3 的 `clarify_ignored` 強制格當成「又丟一個裸詞」——但
-// 她問「什麼意思」他回「不是」是**回答**，不是又丟一個詞。只認整則就是那個詞
-// （`^…$` 錨定 compact 過的字串），不做任何語意判斷：「對了我今天…」不算。
+// Phase 4.3 R2（Codex P1-1）：4.3 一度把肯定／否定的純短詞（對／是／不是／
+// 沒有）加進來，**已整批撤回**。理由：`utteranceShapeOf` 在看 `previousAiAskedQuestion`
+// **之前**就把它們歸成 reaction，等於不管她上一句是「你是說韓國嗎？」還是
+// 「你在說什麼？」都一律免疫——但「不是」回得了前者、回不了後者。要分辨那個
+// 差別就是語意，本檔不做。撤回後它們回到 `bare_fragment`／`answer_candidate`：
+// 她問內容是非題、沒有欠債時走既有的有效短答免疫；她澄清之後再回一個「不是」
+// 就是沒回答，照 `clarify_ignored` 強制格處理。契約表見計畫檔 Phase 4.2／4.3。
 const REACTION_RE =
-  /^(嗨+|哈囉|哈啦|安安|你好|妳好|hi|hello|yo|嗯+|喔+|噢+|哦+|好+(的|喔|啊)?|ok|okay|哈+|呵+|笑死|欸+|蛤+|齁+|唉+|哇+|真的假的|了解|收到|感謝|謝謝|晚安|早安|午安|掰掰|bye|對+(啊|阿|呀|喔|哦|啦)?|不對|是+(啊|阿|喔|哦)?|不是|沒有|沒錯|[\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+)$/iu;
+  /^(嗨+|哈囉|哈啦|安安|你好|妳好|hi|hello|yo|嗯+|喔+|噢+|哦+|好+(的|喔|啊)?|ok|okay|哈+|呵+|笑死|欸+|蛤+|齁+|唉+|哇+|真的假的|了解|收到|感謝|謝謝|晚安|早安|午安|掰掰|bye|[\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+)$/iu;
 // 第一人稱標記：只看有沒有「我」這個結構標記，不判斷他在分享什麼。
 const FIRST_PERSON_RE = /(我|咱|俺)/u;
+// Phase 4.3 R2（Codex P1-3）：**解釋標記**。她澄清之後他給的完整解釋（「因為
+// 下個月要去首爾出差」「我是說剛剛那個」）在句法上沒有第一人稱、也沒有問句
+// 標記，舊版會落進 `answer_candidate`，然後被 `clarify_ignored` 強制格當成
+// 「又丟一個裸詞」。這幾個是純字面連接詞／後設標記，跟 `FIRST_PERSON_RE` 同
+// 一個層級——只看標記在不在，不判斷他解釋得對不對（那是模型的事）。
+// 「我是說」含「是說」、「我的意思是」含「意思是」，所以不必逐一列。
+const EXPLANATION_RE = /(因為|意思是|就是說|是說)/u;
 // 她自己這一則是不是在問問題。中文問句常常不帶問號（「東東是誰」「你最想去哪」），
 // 只看標點會 systematically 判漏。這裡刻意寬鬆：判成「她問過」只會讓玩家的短答被
 // 當成有效短答（不質疑），是安全的方向；判漏才會誤傷有效短答。
@@ -433,7 +442,9 @@ export function utteranceShapeOf(
   // keycap 的字元類小，而且對 `👨‍👩‍👧‍👦` 這種多 code point 序列一次到位（U-9）。
   if (reactionCore.length === 0) return "reaction";
   if (REACTION_RE.test(reactionCore)) return "reaction";
-  if (FIRST_PERSON_RE.test(text)) return "self_share";
+  if (FIRST_PERSON_RE.test(text) || EXPLANATION_RE.test(text)) {
+    return "self_share";
+  }
   if (previousAiAskedQuestion) return "answer_candidate";
   return "bare_fragment";
 }
@@ -932,14 +943,14 @@ export function agencyPolicyFor(
       // 已經接走了），留著是為了讓「connected 不強制」寫在條件式裡而不是靠
       // 另一個檔案的副作用；有測試證明它今天是冗餘的。
       evidence.priorCoherence !== "connected" &&
-      (evidence.aiClarifiedLastTurn === null
-        // 沒有可信訊號（standard 沒有分類器、分類器失敗）→ 退回保守的結構
-        // 近似：只有「他在最近 8 則裡一次都沒給過真內容」才強制。這是近似，
-        // 不是等價（見計畫檔）。
-        ? !evidence.precedingUserContext
-        // 有訊號：只認「她上一則真的在澄清／指出跳題」。她問的是內容問題
-        // （false）就留在 bounded 條件式，由看得到全文的她判。
-        : evidence.aiClarifiedLastTurn)
+      // R2（Codex P1-2）：**只認分類器明確說「她上一則真的在澄清」**。
+      // `null`（standard 沒有分類器、分類器呼叫或解析失敗）一律**不強制**，
+      // 維持 4.3 之前的 bounded 二選一——4.3 一度用 `!precedingUserContext`
+      // 當退路，但那讓同一份逐字稿只因為 mode 或分類器可用性就改變安全邊界，
+      // 兩個方向的誤判（R1 的 P1-1 與 P1-2）都會從那條退路漏回來。
+      // 代價：**死守邊界只在 assisted（beginner／game）成立**；standard 沒有
+      // 分類器，維持既有的「接得上就接受、接不上就直說」二選一。
+      evidence.aiClarifiedLastTurn === true
     ) {
       return {
         ...base,
@@ -1042,8 +1053,11 @@ export function parseConversationAgencyState(
   if (
     r.askedAboutUser !== undefined && typeof r.askedAboutUser !== "boolean"
   ) return null;
+  // R2 U-8：`null` 字面值視同缺席。JSONB round-trip、RPC 或 client 都可能把
+  // 省略的欄位補成 JSON null，那不該讓**整份** state 解析失敗（欠債、修復點、
+  // askedAboutUser 會一起丟掉）。只有真的型別不對才整份作廢。
   if (
-    r.aiClarifiedLastTurn !== undefined &&
+    r.aiClarifiedLastTurn !== undefined && r.aiClarifiedLastTurn !== null &&
     typeof r.aiClarifiedLastTurn !== "boolean"
   ) return null;
   return {
