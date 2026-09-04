@@ -64,6 +64,9 @@ interface ReplayRow {
    * 真的判「沒捏造」——盛行率的分母要扣掉這些筆。
    */
   sharedPastClaimRepaired: boolean;
+  /** Phase 3.6：她這一輪有沒有編造自己查無來源／跟人設矛盾的具體經歷。 */
+  fabricatedSelfFact: boolean;
+  fabricatedSelfFactRepaired: boolean;
   connection: string;
   heatDelta: number;
   cappedHeatDelta: number;
@@ -188,6 +191,7 @@ async function main() {
             unresolvedCount: 0,
           },
           classification.sharedPastClaim,
+          classification.fabricatedSelfFact,
         );
         rows.push({
           scenarioId: job.scenarioId,
@@ -198,6 +202,10 @@ async function main() {
           sharedPastClaim: classification.sharedPastClaim ?? false,
           sharedPastClaimRepaired:
             classification.repairedFields?.includes("sharedPastClaim") ?? false,
+          fabricatedSelfFact: classification.fabricatedSelfFact ?? false,
+          fabricatedSelfFactRepaired:
+            classification.repairedFields?.includes("fabricatedSelfFact") ??
+              false,
           connection: classification.connection,
           heatDelta: judgement.delta,
           cappedHeatDelta: capped.delta,
@@ -215,6 +223,8 @@ async function main() {
           aiChallengedThisTurn: false,
           sharedPastClaim: false,
           sharedPastClaimRepaired: false,
+          fabricatedSelfFact: false,
+          fabricatedSelfFactRepaired: false,
           connection: "error",
           heatDelta: 0,
           cappedHeatDelta: 0,
@@ -255,6 +265,13 @@ async function main() {
   // 吐了布林值的那些筆（explicit）。
   const sharedPastRepaired = ok.filter((r) => r.sharedPastClaimRepaired);
   const sharedPastExplicitN = ok.length - sharedPastRepaired.length;
+  // Phase 3.6：自編經歷同一套算法（explicit 分母、任一 delta 為正＝沒壓住）。
+  const fabricated = ok.filter((r) => r.fabricatedSelfFact);
+  const fabricatedPositiveDelta = fabricated.filter((r) =>
+    r.cappedHeatDelta > 0 || r.cappedFamiliarityDelta > 0
+  );
+  const fabricatedRepaired = ok.filter((r) => r.fabricatedSelfFactRepaired);
+  const fabricatedExplicitN = ok.length - fabricatedRepaired.length;
   const a01a09 = ok.filter((r) =>
     r.probeId.startsWith("A01") || r.probeId.startsWith("A09")
   );
@@ -297,6 +314,13 @@ async function main() {
       ? Math.round((sharedPast.length / sharedPastExplicitN) * 1000) / 10
       : null,
     sharedPastPositiveDeltaN: sharedPastPositiveDelta.length,
+    fabricatedSelfFactN: fabricated.length,
+    fabricatedSelfFactExplicitN: fabricatedExplicitN,
+    fabricatedSelfFactRepairedN: fabricatedRepaired.length,
+    fabricatedSelfFactRate: fabricatedExplicitN
+      ? Math.round((fabricated.length / fabricatedExplicitN) * 1000) / 10
+      : null,
+    fabricatedPositiveDeltaN: fabricatedPositiveDelta.length,
     // gate：A01／A09 有效短答仍應維持 connected，且不能被判 defensive／overstepped。
     a01a09N: a01a09.length,
     a01a09NotConnectedN: a01a09NotConnected.length,

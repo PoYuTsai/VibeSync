@@ -544,6 +544,7 @@ Deno.test("parseTurnClassification：旗標 off 時 coherence／aiChallengedThis
     "coherence",
     "aiChallengedThisTurn",
     "sharedPastClaim",
+    "fabricatedSelfFact",
   ]);
 
   const withFields = parseTurnClassification(
@@ -586,6 +587,7 @@ Deno.test("parseTurnClassification：非法 coherence／aiChallengedThisTurn 值
     "coherence",
     "aiChallengedThisTurn",
     "sharedPastClaim",
+    "fabricatedSelfFact",
   ]);
 
   const badChallenged = parseTurnClassification(
@@ -596,6 +598,7 @@ Deno.test("parseTurnClassification：非法 coherence／aiChallengedThisTurn 值
   assertEquals(badChallenged.repairedFields, [
     "aiChallengedThisTurn",
     "sharedPastClaim",
+    "fabricatedSelfFact",
   ]);
 });
 
@@ -629,7 +632,7 @@ Deno.test('parseTurnClassification：partnerMood "confused" repair 成 neutral�
   // 2026-09-06 抽樣回放 377 筆，15 筆解析失敗**全部**是這個形態
   // （partnerMood 列舉沒有「困惑」這個桶子，agency 開了之後她常常就是困惑）。
   const repaired = parseTurnClassification(
-    '{"connection":"missed","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"confused","moodConfidence":0.6,"innerThought":"他怎麼突然跳到別的","coherence":"disconnected","aiChallengedThisTurn":false,"sharedPastClaim":false}',
+    '{"connection":"missed","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"confused","moodConfidence":0.6,"innerThought":"他怎麼突然跳到別的","coherence":"disconnected","aiChallengedThisTurn":false,"sharedPastClaim":false,"fabricatedSelfFact":false}',
     { requireCoherence: true },
   );
   assertEquals(repaired.partnerMood, "neutral");
@@ -863,7 +866,11 @@ Deno.test("buildTurnClassifierMessages：sharedPastClaim 只在 agencyEnabled=tr
   // 不然連問句一起被判 true，反而多罰。
   assert(on[0].content.includes("我們見過嗎"));
   assert(on[0].content.includes("我不認識你"));
-  assert(on[0].content.includes('"sharedPastClaim":false}'));
+  assert(
+    on[0].content.includes(
+      '"sharedPastClaim":false,"fabricatedSelfFact":false}',
+    ),
+  );
   // Phase 3.5：on 的使用者訊息多一段 herSelfSources，前綴仍逐字同 off。
   assert(on[1].content.startsWith(off[1].content));
 });
@@ -873,7 +880,7 @@ Deno.test("parseTurnClassification：sharedPastClaim 只在 requireCoherence 時
   assertThrows(
     () =>
       parseTurnClassification(
-        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","sharedPastClaim":true}',
+        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","sharedPastClaim":true,"fabricatedSelfFact":false}',
       ),
     Error,
     "extra fields",
@@ -884,7 +891,7 @@ Deno.test("parseTurnClassification：sharedPastClaim 只在 requireCoherence 時
   assert(!("sharedPastClaim" in off));
 
   const on = parseTurnClassification(
-    '{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":true}',
+    '{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":true,"fabricatedSelfFact":false}',
     { requireCoherence: true },
   );
   assertEquals(on.sharedPastClaim, true);
@@ -892,7 +899,7 @@ Deno.test("parseTurnClassification：sharedPastClaim 只在 requireCoherence 時
 
   // 非布林值 repair 成 false（最保守的一格：一個壞值不該替她扣分）。
   const bad = parseTurnClassification(
-    '{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":"yes"}',
+    '{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":"yes","fabricatedSelfFact":false}',
     { requireCoherence: true },
   );
   assertEquals(bad.sharedPastClaim, false);
@@ -952,5 +959,108 @@ Deno.test("applyCoherenceDeltaCap：sharedPastClaim 讓捏造的共同過去拿�
     );
     assertEquals(same.delta, 4, String(claim));
     assertEquals(none, "none", String(claim));
+  }
+});
+
+Deno.test("Phase 3.6 fabricatedSelfFact：只在 agencyEnabled 時進 prompt／stub／schema，parser 與 repair 規則同 sharedPastClaim", () => {
+  const base = {
+    turns: [{ role: "user" as const, text: "阿布達比" }],
+    profile: resolvePracticeProfile({}),
+    heatScore: 40,
+    familiarityScore: 10,
+  };
+  const off = buildTurnClassifierMessages(base);
+  assert(!off[0].content.includes("fabricatedSelfFact"));
+  const on = buildTurnClassifierMessages({ ...base, agencyEnabled: true });
+  assert(
+    on[0].content.includes(
+      "fabricatedSelfFact：assistantReplyAfterUser 有沒有講她自己的具體經歷或事實",
+    ),
+  );
+  assert(on[0].content.includes("符合人設的日常細節"));
+  assert(on[0].content.includes('"fabricatedSelfFact":false}'));
+
+  // 旗標關：模型自己多吐這個 key 照舊丟 extra fields。
+  assertThrows(
+    () =>
+      parseTurnClassification(
+        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","fabricatedSelfFact":true}',
+      ),
+    Error,
+    "extra fields",
+  );
+  const parsedOff = parseTurnClassification(
+    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe"}',
+  );
+  assert(!("fabricatedSelfFact" in parsedOff));
+
+  const full =
+    '{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"fabricatedSelfFact":true}';
+  const parsedOn = parseTurnClassification(full, { requireCoherence: true });
+  assertEquals(parsedOn.fabricatedSelfFact, true);
+  assertEquals(parsedOn.repairedFields, undefined);
+  const bad = parseTurnClassification(
+    full.replace('"fabricatedSelfFact":true', '"fabricatedSelfFact":"yes"'),
+    { requireCoherence: true },
+  );
+  assertEquals(bad.fabricatedSelfFact, false);
+  assertEquals(bad.repairedFields, ["fabricatedSelfFact"]);
+  const missing = parseTurnClassification(
+    full.replace(',"fabricatedSelfFact":true', ""),
+    { requireCoherence: true },
+  );
+  assertEquals(missing.fabricatedSelfFact, false);
+  assertEquals(missing.repairedFields, ["fabricatedSelfFact"]);
+});
+
+Deno.test("applyCoherenceDeltaCap Phase 3.6：fabricatedSelfFact 壓成 0/0 只壓正分；與 sharedPastClaim 同時為真記先壓到的那條", () => {
+  const args = (coh: "connected" | "repetitive") =>
+    [50, 30, coh, { repeatedExactToken: false, unresolvedCount: 0 }] as const;
+  const capped = applyCoherenceDeltaCap(
+    judgement(4, 2),
+    ...args("connected"),
+    false,
+    true,
+  );
+  assertEquals(capped.judgement.delta, 0);
+  assertEquals(capped.judgement.familiarityDelta, 0);
+  assertEquals(capped.capApplied, "fabricated_self_fact");
+
+  const negative = applyCoherenceDeltaCap(
+    judgement(-5, -3),
+    ...args("connected"),
+    false,
+    true,
+  );
+  assertEquals(negative.judgement.delta, -5);
+  assertEquals(negative.capApplied, "none");
+
+  const both = applyCoherenceDeltaCap(
+    judgement(4, 2),
+    ...args("connected"),
+    true,
+    true,
+  );
+  assertEquals(both.judgement.delta, 0);
+  assertEquals(both.capApplied, "shared_past_claim");
+
+  const repetitive = applyCoherenceDeltaCap(
+    judgement(4, 2),
+    ...args("repetitive"),
+    false,
+    true,
+  );
+  assertEquals(repetitive.judgement.delta, -2);
+  assertEquals(repetitive.capApplied, "repetitive");
+
+  for (const flag of [undefined, false]) {
+    const same = applyCoherenceDeltaCap(
+      judgement(4, 2),
+      ...args("connected"),
+      undefined,
+      flag,
+    );
+    assertEquals(same.judgement.delta, 4, String(flag));
+    assertEquals(same.capApplied, "none", String(flag));
   }
 });

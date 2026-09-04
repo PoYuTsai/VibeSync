@@ -9477,7 +9477,7 @@ const SHARED_PAST_TURNS = [
   { role: "user", text: "debby1993wu" },
 ];
 const CLASSIFIER_SHARED_PAST_CLAIM =
-  `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"amused","moodConfidence":0.7,"innerThought":"我想起來了","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":true}`;
+  `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"amused","moodConfidence":0.7,"innerThought":"我想起來了","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":true,"fabricatedSelfFact":false}`;
 
 Deno.test("Phase 3.4：分類器判 sharedPastClaim 時正分被壓成 0，telemetry 有這個 key；旗標關時整條路不存在", async () => {
   const run = async (
@@ -9634,6 +9634,87 @@ Deno.test("Phase 3.4 R1：repair 出來的 false 跟模型判的 false 在 telem
   assertEquals(missing.agency.sharedPastClaim, false);
   assertEquals(missing.agency.sharedPastClaimRepaired, true);
   assertEquals(missing.repairedFields, ["sharedPastClaim"]);
+});
+
+// conversation-agency-v1 Phase 3.6：3.2 殘留病——點破同一則夾帶自編經歷
+// （「你是說阿布達比嗎／我剛從那邊飛回來耶」）。人設裡沒有、她先前也沒說過。
+const CLASSIFIER_FABRICATED_SELF_FACT = CLASSIFIER_SHARED_PAST_CLAIM
+  .replace('"sharedPastClaim":true', '"sharedPastClaim":false')
+  .replace('"fabricatedSelfFact":false', '"fabricatedSelfFact":true');
+
+Deno.test("Phase 3.6：分類器判 fabricatedSelfFact 時正分被壓成 0，telemetry 有這個 key 與 repaired；旗標關時不存在", async () => {
+  const run = async (
+    classifierReply: string,
+    env?: Record<string, string>,
+  ) => {
+    const { succeeded, warns } = await runCapturingLogs(
+      {
+        ledger: null,
+        thread: {
+          profile_id: "practice_girl_001",
+          temperature_score: 40,
+          familiarity_score: 10,
+        },
+        ...(env ? { env } : {}),
+        deepSeekReplies: [
+          "你是說阿布達比嗎\n我剛從那邊飛回來耶",
+          classifierReply,
+        ],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        visiblePracticeThreadId: "thread-visible-1",
+        temperatureScore: 40,
+        familiarityScore: 10,
+        turns: SHARED_PAST_TURNS,
+      }),
+    );
+    return {
+      succeeded: succeeded as Record<string, unknown>,
+      repairedFields: warns
+        .filter((w) => w.event === "practice_chat_learning_classifier_repaired")
+        .flatMap((w) => w.fields as string[]),
+    };
+  };
+
+  const off = await run(CLASSIFIER_CAUGHT_MEDIUM);
+  assert((off.succeeded.temperatureDelta as number) > 0);
+  assert(!("conversationAgency" in off.succeeded));
+
+  const on = await run(CLASSIFIER_FABRICATED_SELF_FACT, {
+    PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+  });
+  assertEquals(on.succeeded.deltaCapApplied, "fabricated_self_fact");
+  assertEquals(on.succeeded.temperatureDelta, 0);
+  assertEquals(on.succeeded.familiarityDelta, 0);
+  const agency = on.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.fabricatedSelfFact, true);
+  assertEquals(agency.sharedPastClaim, false);
+  assert(!("fabricatedSelfFactRepaired" in agency));
+
+  const shadow = await run(CLASSIFIER_CAUGHT_MEDIUM, {
+    PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "shadow",
+  });
+  assert(
+    !("fabricatedSelfFact" in
+      (shadow.succeeded.conversationAgency as Record<string, unknown>)),
+  );
+
+  const repaired = await run(
+    CLASSIFIER_FABRICATED_SELF_FACT.replace(
+      '"fabricatedSelfFact":true',
+      '"fabricatedSelfFact":"yes"',
+    ),
+    { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+  );
+  const repairedAgency = repaired.succeeded.conversationAgency as Record<
+    string,
+    unknown
+  >;
+  assertEquals(repairedAgency.fabricatedSelfFact, false);
+  assertEquals(repairedAgency.fabricatedSelfFactRepaired, true);
+  assertEquals(repaired.repairedFields, ["fabricatedSelfFact"]);
+  assert((repaired.succeeded.temperatureDelta as number) > 0);
 });
 
 Deno.test("Phase 3.4 R1：確定性越界覆寫會丟掉 sharedPastClaim（與 coherence 同一路徑，pin 現況）", async () => {
