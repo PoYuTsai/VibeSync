@@ -706,7 +706,13 @@ function claudeRequestMessages(messages: ChatMessage[]): {
  * 區塊註解）。錯誤語意、逾時、system cache_control 與 `claude.ts` 的
  * `callClaude` 一致，只是多回傳一格 usage。 */
 export async function callHaikuChat(
-  args: { apiKey: string; messages: ChatMessage[]; maxTokens: number; temperature: number; timeoutMs: number },
+  args: {
+    apiKey: string;
+    messages: ChatMessage[];
+    maxTokens: number;
+    temperature: number;
+    timeoutMs: number;
+  },
 ): Promise<{ text: string; usage: HaikuUsage }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), args.timeoutMs);
@@ -995,7 +1001,9 @@ async function main(): Promise<void> {
     console.error(
       `[agency] haiku usage：${haikuUsageTotals.calls} 次呼叫、input ${haikuUsageTotals.inputTokens}、` +
         `cache_read ${haikuUsageTotals.cacheReadInputTokens}、cache_write ${haikuUsageTotals.cacheCreationInputTokens}、` +
-        `output ${haikuUsageTotals.outputTokens} tokens，估算 $${cost.toFixed(4)}`,
+        `output ${haikuUsageTotals.outputTokens} tokens，估算 $${
+          cost.toFixed(4)
+        }`,
     );
   }
 }
