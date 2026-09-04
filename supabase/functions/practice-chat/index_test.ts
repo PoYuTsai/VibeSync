@@ -9205,7 +9205,7 @@ const AGENCY_PRIOR_CHALLENGE_STATE = {
   lastAgencyAct: "hold_position",
 };
 
-function agencyRepairRun(classifierReply: string) {
+function agencyRepairRun(classifierReply: string, flag = "true") {
   return runCapturingLogs(
     {
       ledger: null,
@@ -9219,7 +9219,7 @@ function agencyRepairRun(classifierReply: string) {
           conversationAgency: AGENCY_PRIOR_CHALLENGE_STATE,
         },
       },
-      env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+      env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: flag },
       deepSeekReplies: ["貓也不錯欸", classifierReply],
     },
     chatBody({
@@ -9287,4 +9287,14 @@ Deno.test("Codex round-1（新項）P1-1：非 agency planner 這一輪真的質
     priorChallengeIssued: true,
     lastAgencyAct: "hold_position",
   });
+});
+
+Deno.test("Phase 3.2 P1-3：shadow 模式即使分類器判 connected 也不寫 repairedAtUserTurns", async () => {
+  // 修復點是 agency 狀態的一部分，shadow 的契約是「只算 telemetry，不寫狀態」
+  // ——所以整個 conversationAgency key 都不該出現，更不會有新欄位。
+  const { state } = await agencyRepairRun(
+    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false}`,
+    "shadow",
+  );
+  assertEquals(persistedAgencyState(state), undefined);
 });

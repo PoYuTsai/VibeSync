@@ -278,9 +278,11 @@ Deno.test("forced 只留給同詞重複與欠債到門檻；第一個片段一�
     "challenge_relevance",
   ]);
 
-  // 連續三則未解、而且她中間真的問過（「怎麼了」）→ 一般難度 forced
+  // 連續三則未解、而且她中間真的問過（「怎麼了？」）→ 一般難度 forced
   // hold_position（Phase 3.0：第三個未解片段就停止供應解讀）。
-  const a06 = policy([u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")]);
+  // R1 P1-1：強制格的問句判準收成「寬鬆判準 ＋ 句尾問句標記」，所以這裡的
+  // 問句必須帶標記（問號或嗎／呢／吧）；無標記的「怎麼了」從此只走 bounded。
+  const a06 = policy([u("韓國"), a("怎麼了？"), u("東京"), a("蛤"), u("淺草")]);
   assertEquals(a06.situation, "repeated_low_coherence");
   assertEquals(a06.policyMode, "forced");
   assertEquals(a06.forcedAct, "hold_position");
@@ -368,7 +370,7 @@ Deno.test("nextConversationAgencyState：只存 enum／布林／小整數，修�
   // 沒有改：bounded 輪仍然不得灌 priorChallengeIssued，見下面 bounded 那格）。
   const held = nextConversationAgencyState(
     null,
-    policy([u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")]),
+    policy([u("韓國"), a("怎麼了？"), u("東京"), a("蛤"), u("淺草")]),
   );
   assertEquals(held, {
     version: 1,
@@ -515,7 +517,7 @@ Deno.test("難度門檻（Phase 3.0）：一般第 2 個未解片段要指出他
   );
 
   // 第 2 個未解片段（unresolvedCount=1）：二選一的條件式，沒有無條件的「接住」。
-  const second = [u("韓國"), a("怎麼突然講韓國"), u("東京")];
+  const second = [u("韓國"), a("怎麼突然講韓國？"), u("東京")];
   const normalSecond = policyAt(second, "normal");
   assertEquals(normalSecond.evidence.unresolvedCount, 1);
   assertEquals(normalSecond.allowedActSetId, "answer_or_challenge_v1");
@@ -552,7 +554,7 @@ Deno.test("難度門檻（Phase 3.0）：一般第 2 個未解片段要指出他
 Deno.test("難度門檻：挑戰／game 在停止解讀那一格直接收掉（不是維持立場），一般／易仍是維持立場", () => {
   const threeFragments = [
     u("韓國"),
-    a("怎麼突然講韓國"),
+    a("怎麼突然講韓國？"),
     u("東京"),
     a("你沒回答我欸"),
     u("清邁"),
@@ -843,7 +845,7 @@ Deno.test("Codex round-1（新項）P1-2：片段／跳題路徑上不得把 bou
   for (
     const turns of [
       [u("好市多"), a("？"), u("好市多")],
-      [u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")],
+      [u("韓國"), a("怎麼了？"), u("東京"), a("蛤"), u("淺草")],
     ]
   ) {
     for (const difficulty of ["easy", "normal", "challenge"] as const) {
@@ -857,41 +859,65 @@ Deno.test("Codex round-1（新項）P1-2：片段／跳題路徑上不得把 bou
   }
 });
 
-Deno.test("Phase 3.2 P1-1：強制格的問句閘門改用嚴格判準，陳述句不再算「她問過」", () => {
-  // 寬鬆判準（有效短答免疫用的那一支）照舊把這句判成「她問過」——那是安全
-  // 方向，判多只會讓玩家的短答被當成有效短答，一字不動。
-  assert(aiAskedQuestion("我不知道為什麼會這樣"));
-  // 但強制格的閘門必須是 false：疑問詞埋在句中，最後一個子句頭尾都不是疑問。
-  assert(!aiAskedQuestionStrict("我不知道為什麼會這樣"));
-
-  for (
-    const asked of [
-      "東東是誰",
-      "你最想去哪",
-      "所以你是說韓國嗎",
-      "怎麼突然講韓國",
-      "怎麼了",
-      "你有去那邊玩喔？",
-      "阿布達比？你有去過嗎",
-    ]
-  ) {
-    assert(aiAskedQuestionStrict(asked), `應判成問過：${asked}`);
+Deno.test("Phase 3.2 P1-1：強制格的問句閘門是寬鬆判準的真子集＋句尾問句標記", () => {
+  // R1 P1-1（Codex）：嚴格判準**必須是寬鬆判準的子集**。舊版自己列疑問詞的
+  // 頭尾條件，結果「誰都可以」「如何都行」寬鬆 false／嚴格 true，等於自己造出
+  // 一組新的假強制停。現在一律 `aiAskedQuestion() && 句尾標記`。
+  const strictTrue = [
+    "你是說阿布達比嗎",
+    "東東？你朋友嗎",
+    "你在講什麼？",
+    "所以呢",
+  ];
+  const strictFalse = [
+    "誰都可以",
+    "如何都行",
+    "我知道他是誰",
+    "我不知道為什麼會這樣",
+    // 中文最常見的無標記問句：接受它們拿不到強制格（安全方向，判漏只會退回
+    // bounded 條件式，由看得到全文的她判）。
+    "東東是誰",
+    "你最想去哪",
+    "怎麼突然講韓國",
+    "怎麼了",
+    "真的欸",
+    "喔",
+    "你沒回答我欸",
+    "",
+  ];
+  for (const text of strictTrue) {
+    assert(aiAskedQuestionStrict(text), `應判成問過：${text}`);
   }
-  for (
-    const notAsked of [
-      "真的欸",
-      "喔",
-      "清邁很讚欸 我上個月才去過",
-      "我不知道你在說什麼意思啦",
-      "你沒回答我欸",
-      "",
-    ]
-  ) {
-    assert(!aiAskedQuestionStrict(notAsked), `不該判成問過：${notAsked}`);
+  for (const text of strictFalse) {
+    assert(!aiAskedQuestionStrict(text), `不該判成問過：${text}`);
+  }
+  // 子集性質本身也釘住：嚴格為真的一定寬鬆也為真。
+  for (const text of [...strictTrue, ...strictFalse]) {
+    assert(
+      !aiAskedQuestionStrict(text) || aiAskedQuestion(text),
+      `嚴格判準不得比寬鬆寬：${text}`,
+    );
+  }
+  // 反向確認這幾個案子確實是「寬鬆 false」，不是靠嚴格自己擋掉的。
+  for (const text of ["誰都可以", "如何都行"]) {
+    assert(!aiAskedQuestion(text), `這一案的寬鬆判準本來就該是 false：${text}`);
   }
 
-  // 端到端：她一路只是陳述（其中一句含「為什麼」），欠債累到一般難度的門檻
-  // 也不得強制停止解讀——舊版會因為寬鬆 regex 誤判成 forced hold_position。
+  // 端到端（Codex 的完整序列）：她一句都沒問，欠債累到一般難度的門檻也不得
+  // 強制停止解讀。
+  const neverAsked = policy([
+    u("韓國"),
+    a("誰都可以"),
+    u("東京"),
+    a("嗯"),
+    u("淺草"),
+  ]);
+  assertEquals(neverAsked.evidence.unresolvedCount, 2);
+  assertEquals(neverAsked.evidence.aiQuestionedInLoop, false);
+  assertEquals(neverAsked.policyMode, "bounded");
+  assertEquals(neverAsked.forcedAct, null);
+
+  // 陳述句含「為什麼」的那一組同樣不得強制（寬鬆 true、嚴格 false）。
   const statementOnly = policy([
     u("韓國"),
     a("我不知道為什麼會這樣"),
@@ -899,7 +925,7 @@ Deno.test("Phase 3.2 P1-1：強制格的問句閘門改用嚴格判準，陳述�
     a("嗯"),
     u("淺草"),
   ]);
-  assertEquals(statementOnly.evidence.unresolvedCount, 2);
+  assert(aiAskedQuestion("我不知道為什麼會這樣"));
   assertEquals(statementOnly.evidence.aiQuestionedInLoop, false);
   assertEquals(statementOnly.policyMode, "bounded");
   assertEquals(statementOnly.forcedAct, null);
@@ -909,7 +935,7 @@ Deno.test("Phase 3.2 P1-2：真問句後面接一則「嗯」，她問過這件�
   // 「她問 → 他回嗯 → 她講了句不是問句的話 → 他丟片段」：舊版在 reaction 那一
   // 則先 continue 才讀 `previousAiAskedQuestion`，整段迴圈都不算她問過。
   const shortForm = detectAgencyEvidence([
-    a("東東是誰"),
+    a("東東是誰啊？"),
     u("嗯"),
     a("喔喔"),
     u("阿布達比"),
@@ -918,7 +944,7 @@ Deno.test("Phase 3.2 P1-2：真問句後面接一則「嗯」，她問過這件�
 
   // 同一個形態累到一般難度的門檻：她問過 ＋ 這一則是 bare_fragment → forced。
   const held = policy([
-    a("東東是誰"),
+    a("東東是誰啊？"),
     u("嗯"),
     a("喔喔"),
     u("阿布達比"),
@@ -934,7 +960,7 @@ Deno.test("Phase 3.2 P1-2：真問句後面接一則「嗯」，她問過這件�
 
   // 反向：中間玩家真的把話講清楚了（結構修復）就要清掉，不是永久旗標。
   const repaired = detectAgencyEvidence([
-    a("東東是誰"),
+    a("東東是誰啊？"),
     u("嗯"),
     a("喔喔"),
     u("我剛剛在想別的事 抱歉"),
@@ -1022,7 +1048,9 @@ Deno.test("Phase 3.2 P1-3：分類器判 connected 的位置會持久化，下�
     ...disconnected,
     repairedAtUserTurns: 2,
   });
-  assertEquals(repaired.unresolvedCount, 0);
+  // 修復點之後只剩「日本」（她問過 → 免疫）與「清邁」（再一個無標記片段 →
+  // 欠債 1）。重點是它從修復點重新起算，不是把修復點之前的片段算回來（3）。
+  assertEquals(repaired.unresolvedCount, 1);
   assertEquals(repaired.aiQuestionedInLoop, false);
   // 位置定位不到（逐字稿被截短）就當成沒有修復點，寧可少修不要指錯地方。
   assertEquals(
@@ -1103,4 +1131,93 @@ Deno.test("Phase 3.2 P1-3：修復點只由分類器 connected 寫入，並且�
       JSON.stringify(bad),
     );
   }
+});
+
+Deno.test("Phase 3.2 R1 P1-2：放寬用的「她問過」是寬鬆判準，無標記問句也算", () => {
+  // 中文最常見的無標記問句（「那你最想去哪個國家玩」）拿不到強制格是刻意的，
+  // 但**放寬**這一格只會走 bounded 的二選一條件式（真的回答了就接受），
+  // 過度偵測是安全方向，所以這裡用寬鬆判準。
+  const secondAnswer = policy([
+    a("那你最想去哪個國家玩"),
+    u("日本"),
+    a("那第二想去哪個國家玩"),
+    u("韓國"),
+  ]);
+  assertEquals(secondAnswer.evidence.utteranceShape, "answer_candidate");
+  assertEquals(secondAnswer.evidence.unresolvedCount, 1);
+  assertEquals(secondAnswer.allowedActSetId, "answer_or_challenge_v1");
+  // 但它仍然不是強制格：兩則 AI 訊息都沒有句尾問句標記。
+  assertEquals(secondAnswer.evidence.aiQuestionedInLoop, false);
+  assertEquals(secondAnswer.policyMode, "bounded");
+});
+
+Deno.test("Phase 3.2 R1 P1-3：前置裸片段是那唯一一次通融，A04 型序列本來就該落在條件式", () => {
+  // Codex 質疑「韓國 → 她問 → 阿布達比」為什麼不是免疫格。這是 Phase 3.0 的
+  // 設計，不是 3.2 的放寬造成的：`told` 的語意是「上一則玩家訊息是不是一個她
+  // 得自己想辦法處理的低資訊片段」，開頭那個沒有前文的「韓國」就是那一次通融，
+  // 所以下一則不管她有沒有問，都已經在欠債格裡。A04（東東 → 她問東東是誰 →
+  // 阿布達比）正是**必須**走到二選一條件式的案例，不是有效短答免疫。
+  const leadingFragment = policy([u("韓國"), a("東東是誰"), u("阿布達比")]);
+  assertEquals(leadingFragment.evidence.utteranceShape, "answer_candidate");
+  assertEquals(leadingFragment.evidence.unresolvedCount, 1);
+  assertEquals(leadingFragment.policyMode, "bounded");
+  assertEquals(leadingFragment.allowedActSetId, "answer_or_challenge_v1");
+  assert(leadingFragment.allowedActs.some(isAcceptingPlanAct));
+
+  // 對照：沒有那個前置裸片段時，第一組一問一答仍然完全免疫。
+  const noLeading = policy([a("東東是誰"), u("阿布達比")]);
+  assertEquals(noLeading.evidence.unresolvedCount, 0);
+  assertEquals(noLeading.situation, null);
+});
+
+Deno.test("Phase 3.2 R1 P1-3：中間夾一則「嗯」不算他答過，下一則才是第一組一問一答", () => {
+  // 她問 → 他只回「嗯」（reaction，不是答案，也不是欠債）→ 她再問 → 他答。
+  // 這一則「日本」是這段迴圈裡第一組真正的一問一答，所以免疫。
+  const firstRealAnswer = policy([
+    a("你想去哪"),
+    u("嗯"),
+    a("那你最想去哪"),
+    u("日本"),
+  ]);
+  assertEquals(firstRealAnswer.evidence.utteranceShape, "answer_candidate");
+  assertEquals(firstRealAnswer.evidence.unresolvedCount, 0);
+  assertEquals(firstRealAnswer.situation, null);
+
+  // 再下一則無標記片段就是欠債 1（Phase 3.2 的放寬：她已經問過了）。
+  const nextFragment = policy([
+    a("你想去哪"),
+    u("嗯"),
+    a("那你最想去哪"),
+    u("日本"),
+    a("嗯"),
+    u("清邁"),
+  ]);
+  assertEquals(nextFragment.evidence.unresolvedCount, 1);
+  assertEquals(nextFragment.allowedActSetId, "answer_or_challenge_v1");
+});
+
+Deno.test("Phase 3.2 R1 P1-4a：定位不到的修復點不得被繼續往下傳", () => {
+  // 逐字稿比記錄當時短（client 截窗／換 thread）：這一輪已經不採用它，
+  // 下一輪的狀態也不能再把這個指不到任何位置的數字傳下去。
+  const decision = policy([u("韓國"), a("怎麼突然講韓國？"), u("東京")]);
+  assertEquals(decision.evidence.userTurnCount, 2);
+  const stale: ConversationAgencyState = {
+    version: 1,
+    lastCoherence: "disconnected",
+    unresolvedCount: 2,
+    priorChallengeIssued: false,
+    lastAgencyAct: null,
+    repairedAtUserTurns: 5,
+  };
+  const next = nextConversationAgencyState(stale, decision, null);
+  assert(!("repairedAtUserTurns" in next), JSON.stringify(next));
+  // 定位得到的就照舊沿用。
+  assertEquals(
+    nextConversationAgencyState(
+      { ...stale, repairedAtUserTurns: 2 },
+      decision,
+      null,
+    ).repairedAtUserTurns,
+    2,
+  );
 });

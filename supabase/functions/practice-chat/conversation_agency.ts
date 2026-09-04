@@ -145,10 +145,12 @@ export interface AgencyEvidence {
    */
   readonly aiQuestionedInLoop: boolean;
   /**
-   * 這次逐字稿裡的玩家訊息則數。只有一個用途：assisted 模式把「分類器判
-   * connected」的那一輪位置存進 `ConversationAgencyState.repairedAtUserTurns`
-   * （Phase 3.2 P1-3），下一輪才知道欠債要從哪裡開始重算。不進 telemetry、
-   * 不參與任何 policy 判斷。
+   * 這次逐字稿裡的玩家訊息則數。它**不影響這一輪的 policy**（`agencyPolicyFor`
+   * 一個字都沒讀它），但它會被寫進下一輪的狀態：assisted 模式在分類器判
+   * `connected` 時把這個數字存成 `ConversationAgencyState.repairedAtUserTurns`
+   * ＝修復點（Phase 3.2 P1-3），而修復點會直接改變**下一輪**算出來的欠債、
+   * 「她問過」與重複視窗。所以它不是純觀測值，是狀態機的輸入之一
+   * （R1 P1-4c：舊註解寫「不參與任何 policy 判斷」是錯的）。不進 telemetry。
    */
   readonly userTurnCount: number;
 }
@@ -174,6 +176,20 @@ export interface ConversationAgencyState {
    *
    * 缺欄位＝沒有修復點（舊 row、standard 模式的 `prev=null`）；壞值一律讓
    * `parseConversationAgencyState()` 整份回 null，跟其餘欄位同一個規則。
+   *
+   * **前提（2026-09-04 實查，R1 P1-4b）**：這個數字是「第 N 則玩家訊息」的
+   * 絕對序號，只有在同一場的逐字稿起點不變時才指得到同一個位置。實際情況：
+   *   - thread row 以 session 為 key（見 `parseConversationAgencyState` 上面
+   *     那段註解），所以跨場不會沿用；
+   *   - client 會截窗：`_turnDtosForPrompt()`／`kPracticePromptRecentTurns = 80`
+   *     （`lib/features/practice_chat/data/providers/practice_chat_providers.dart`）
+   *     只送最後 80 則訊息，更早的靠 `memorySummary` 承接；server 另有
+   *     `MAX_TURNS = 130`。一場練習約 20 回合（≈40 則）遠低於 80，所以現行
+   *     產品路徑上這個截窗**不會發生**，但它不是結構保證。
+   *   - 萬一真的截掉了 D 則玩家訊息：舊 marker 會比真實位置**偏右** D 則，
+   *     也就是把更多輪當成已修復＝少算欠債（安全方向，不會製造假強制停）；
+   *     偏到超出這次逐字稿的則數時，`detectAgencyEvidence` 不採用它，
+   *     `nextConversationAgencyState` 也不再把它往下傳（R1 P1-4a）。
    */
   readonly repairedAtUserTurns?: number;
 }
@@ -270,26 +286,32 @@ export function aiAskedQuestion(text: string): boolean {
 // 也餵進 `aiQuestionedInLoop`，而那裡它反過來是**強制停止解讀**的閘門：陳述句
 // 「我不知道為什麼會這樣」含「為什麼」就算她問過 → 假強制停（Codex 3.0 P1-1）。
 //
-// 迴圈閘門改用這一支。它只看**最後一個子句**的頭尾兩個位置：
-//   - 整句（剝掉句尾裝飾後）以 `?`／`？` 結尾；或
-//   - 最後一個子句以句尾疑問助詞或疑問詞**結尾**（「東東是誰」「你最想去哪」
-//     「所以你是說韓國嗎」）；或
-//   - 最後一個子句以疑問詞**開頭**（「怎麼突然講韓國」「怎麼了」）。
-// 「我不知道為什麼會這樣」的疑問詞埋在句中，頭尾都不是 → 不算問過。
+// 迴圈閘門改用這一支。它是寬鬆判準的**真子集**：
 //
-// 一樣只認句法標記（標點、語尾助詞、疑問詞的位置），不判語意。方向刻意保守：
-// 判漏（「那你最想去哪個國家玩」尾巴是「玩」）只會退回 bounded 條件式，由看得到
-// 全文的她判；判多才會誤傷。`previousAiAskedQuestion` 與 `utteranceShapeOf`
-// 仍然用寬鬆那一支，有效短答免疫一字不動。
+//   `aiAskedQuestionStrict(t) === aiAskedQuestion(t) && 句尾有問句標記`
+//
+// R1 P1-1（Codex）：先前的版本自己列了一組疑問詞頭尾條件，結果不是子集——
+// 「誰都可以」「如何都行」寬鬆判 false、嚴格反而 true，等於自己造出一組新的
+// 假強制停。現在一律先過寬鬆那一支，再加句尾標記，永遠不可能比它寬。
+//
+// 句尾標記只有兩種，都是純標點／語尾助詞：
+//   - 整句（剝掉句尾裝飾後）以 `?`／`？` 結尾；或
+//   - 最後一個子句以「嗎／呢／吧」結尾。
+// 「疑問詞在子句開頭／結尾」那兩條規則整組拿掉：「我知道他是誰」「誰都可以」
+// 這種形態沒有任何句法出路，硬判只會製造誤判。
+//
+// **接受的代價**：中文很常見的無標記問句（「東東是誰」「你最想去哪」
+// 「怎麼突然講韓國」）從此拿不到強制格。這是安全方向——判漏只會退回 bounded
+// 條件式，由看得到全文的她自己判「他這句到底有沒有回答我」；判多才會在她根本
+// 沒問的時候強制停止解讀。`previousAiAskedQuestion`（有效短答免疫）與
+// Phase 3.2 放寬用的「她問過」都還是寬鬆那一支，一字不動。
 const CLAUSE_SPLIT_RE = /[。！!？?；;…\n]+/u;
 const TAIL_DECORATION_RE =
   /[\s~～!！,，.。、…\p{Emoji_Presentation}\p{Extended_Pictographic}]+$/u;
-const STRICT_QUESTION_TAIL_RE =
-  /(嗎|呢|吧|誰|哪|哪裡|哪邊|什麼|甚麼|怎樣|怎麼樣|為什麼|為何|幾點|幾歲|多少|多久|如何)(裡|邊|啊|呀|喔|哦|啦|耶|欸)?$/u;
-const STRICT_QUESTION_HEAD_RE =
-  /^(誰|哪|什麼|甚麼|怎樣|怎麼|為什麼|為何|幾點|幾歲|多少|多久|如何|要不要|有沒有|好不好|可不可以|是不是)/u;
+const SENTENCE_FINAL_PARTICLE_RE = /(嗎|呢|吧)$/u;
 
 export function aiAskedQuestionStrict(text: string): boolean {
+  if (!aiAskedQuestion(text)) return false;
   const stripped = text.trim().replace(TAIL_DECORATION_RE, "");
   if (stripped.length === 0) return false;
   if (/[?？]$/u.test(stripped)) return true;
@@ -298,9 +320,7 @@ export function aiAskedQuestionStrict(text: string): boolean {
     .map((clause) => clause.trim().replace(TAIL_DECORATION_RE, ""))
     .filter((clause) => clause.length > 0)
     .at(-1);
-  if (last === undefined) return false;
-  return STRICT_QUESTION_TAIL_RE.test(last) ||
-    STRICT_QUESTION_HEAD_RE.test(last);
+  return last !== undefined && SENTENCE_FINAL_PARTICLE_RE.test(last);
 }
 
 /** 只往回看這麼多則玩家訊息（短期工作記憶，不是長期記憶）。 */
@@ -429,8 +449,13 @@ export function detectAgencyEvidence(
   // 一問一答。她問過一次之後，他再丟一個沒有結構線索的片段，就算她上一則又是
   // 問句也算欠債——否則她只要一直問，他就可以一直丟無標記句而永遠不進欠債格
   // （Phase 3.1 的負面結果指出這才是下一個槓桿，不是磨強制停的後檢查）。
-  // 「她問過」用的是強制格那支**嚴格**判準（`previousAiAskedQuestionStrict`），
-  // 而且是**逐則遞增**的：處理到某一則時只看它自己與它之前，所以第一組
+  // R1 P1-2（Codex）：這裡的「她問過」用**寬鬆**判準（`previousAiAskedQuestion`，
+  // 跟 shape／免疫同一支），不是強制格那支嚴格的。這一格的結果只是 bounded 的
+  // 二選一條件式（真的回答了就接受），過度偵測只會多送一次「他有沒有回答你」
+  // 給看得到全文的她判，是安全方向；用嚴格判準反而會讓中文最常見的無標記問句
+  // 整組拿不到放寬。嚴格判準只留給真正 deterministic 的強制格
+  // （`aiQuestionedInLoop`）。
+  // 這個旗標是**逐則遞增**的：處理到某一則時只看它自己與它之前，所以第一組
   // 一問一答（A01／A03／A07／A09）在自己那一輪仍然是 `unresolvedCount === 0`
   // 的免疫格。這裡不能改用下面算好的 `aiQuestionedInLoop`（那是整段的終值，
   // 會回頭把第一組的免疫也拿掉）。
@@ -446,10 +471,10 @@ export function detectAgencyEvidence(
         continue;
       }
       // 招呼／情緒反應不是修復也不是新的欠債，但「她問過」要留著（同 P1-2）。
-      if (s.previousAiAskedQuestionStrict) askedInLoop = true;
+      if (s.previousAiAskedQuestion) askedInLoop = true;
       continue;
     }
-    if (s.previousAiAskedQuestionStrict) askedInLoop = true;
+    if (s.previousAiAskedQuestion) askedInLoop = true;
     if (told) unresolved = clamp3(unresolved + 1);
     told = !(s.shape === "answer_candidate" && unresolved === 0 &&
       !askedInLoop);
@@ -876,9 +901,15 @@ export function nextConversationAgencyState(
   // 裡把欠債清乾淨，不需要持久化；有效短答免疫格更不能算修復點，否則
   // 「她問 → 他丟片段」每一輪都會自己把位置往前推，等於抵銷 Phase 3.2 的放寬。
   // 沒有新的修復點就沿用上一個（那一段還沒被修好，欠債要繼續從它之後算）。
+  // R1 P1-4a：沿用舊修復點之前先確認它在這次逐字稿裡定位得到——定位不到
+  // （逐字稿比記錄當時短）就直接丟掉，不要把一個指不到任何位置的數字一路傳下去。
+  const locatable = base.repairedAtUserTurns !== undefined &&
+      base.repairedAtUserTurns <= decision.evidence.userTurnCount
+    ? base.repairedAtUserTurns
+    : undefined;
   const repairedAtUserTurns = classifierSignal?.coherence === "connected"
     ? decision.evidence.userTurnCount
-    : base.repairedAtUserTurns;
+    : locatable;
   return {
     version: 1,
     lastCoherence: classifierSignal?.coherence ?? structuralCoherence,

@@ -941,9 +941,11 @@ Deno.test("Phase 2.6：候選清單有「接住」時形狀不動，全是 agenc
   // 停止解讀那一格（forced hold_position，一個接受出口都沒有）→ 套
   // clarify-only 形狀。Phase 3.0：欠債的 bounded 條件式清單裡有
   // `accept_if_answered`，所以那一格**不**套（順著聊在那裡是合法選項）。
+  // R1 P1-1：強制格的問句判準收成「寬鬆判準 ＋ 句尾問句標記」，所以她那一則
+  // 要帶標記（問號或嗎／呢／吧）才算問過；測試意圖不變。
   const lowTurns = [
     u("韓國"),
-    a("怎麼突然講韓國"),
+    a("怎麼突然講韓國？"),
     u("東京"),
     a("你沒回答我欸"),
     u("淺草"),
@@ -1003,7 +1005,7 @@ Deno.test("Codex round-2 P1-2：跨輪立場行只在 forced 質疑／維持立�
 
   // 反向：assisted 帶著「已經質疑過」回來、又連續未解到門檻＝forced
   // hold_position，這時候這句話才與候選清單一致。
-  const holdTurns = [u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")];
+  const holdTurns = [u("韓國"), a("怎麼了？"), u("東京"), a("蛤"), u("淺草")];
   const signals = detectTurnSignals(holdTurns);
   const holdAgency = computeAgencyDecision({
     turns: holdTurns,
