@@ -85,6 +85,9 @@ for (const s of art.results) {
         ? "streak"
         : sig.userIsQuestion
         ? "userQ"
+        // Phase 4.2：停滯輪（純反應詞）不強制問他。
+        : ag?.decision.evidence.utteranceShape === "reaction"
+        ? "reaction"
         : agencyState?.askedAboutUser
         ? "asked"
         : (plan.situation !== "neutral" && plan.situation !== "share")

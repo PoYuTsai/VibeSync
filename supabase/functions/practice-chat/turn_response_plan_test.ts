@@ -1296,3 +1296,49 @@ Deno.test("Phase 3.8 結構刀：agency on、第 2～6 回合、連貫且非問�
     assertEquals(plan.askUserFocus, undefined, t.map((x) => x.text).join("|"));
   }
 });
+
+Deno.test("Phase 4.2：停滯輪（玩家這句只有反應詞）不強制問他認識管道；同位置換成有內容的分享句照樣強制", () => {
+  // Phase 4 完整黑箱：A29（「哈哈」「嗯嗯」）on 臂 forced ask 38/40，同一個探針
+  // 位置兩輪累積 accommodating_invention 4/80（她把好奇點問成一句既定的共同
+  // 經歷宣稱）。他這句沒給任何內容時就不問，下一輪他真的講了東西再問。
+  const rare = styles.find((s) => s.turnTaking.questionHabit === "rare")!;
+  const evidence = standard();
+  const plan = (turns: PracticeTurn[]) =>
+    planTurnResponse({
+      turns,
+      style: rare,
+      evidence,
+      seedKey: "p42",
+      agency: agencyFor(turns, evidence, "on"),
+      askUserFocus: "他是從哪裡看到你的",
+    });
+
+  const stalled = [
+    a("我今天差點睡過頭 昨晚追劇追到三點才睡"),
+    u("哈哈"),
+    a("對啊 現在整個很累"),
+    u("嗯嗯"),
+  ];
+  const stalledPlan = plan(stalled);
+  assertEquals(
+    agencyFor(stalled, evidence, "on")?.decision.evidence.utteranceShape,
+    "reaction",
+  );
+  assertEquals(stalledPlan.askUserFocus, undefined);
+  assertEquals(stalledPlan.questionBudget, 0);
+
+  // 對照組：同一個回合位置，玩家這句有內容（A28.p3 的形狀）→ 仍然強制。
+  const shared = [
+    a("我今天差點睡過頭 昨晚追劇追到三點才睡"),
+    u("哈哈"),
+    a("對啊 現在整個很累"),
+    u("我剛下班 在想晚餐要吃什麼"),
+  ];
+  const sharedPlan = plan(shared);
+  assert(
+    agencyFor(shared, evidence, "on")?.decision.evidence.utteranceShape !==
+      "reaction",
+  );
+  assertEquals(sharedPlan.askUserFocus, "他是從哪裡看到你的");
+  assertEquals(sharedPlan.questionBudget, 1);
+});

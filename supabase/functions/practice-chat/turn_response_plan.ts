@@ -562,6 +562,12 @@ export function planTurnResponse(args: {
     // situation neutral／share 已經排除問句，這裡再明寫一次：玩家在問她（含
     // 「我剛下班，妳今天呢？」這種分享＋問句）就不搶著問他（Codex R1 P2-1）。
     !signals.userIsQuestion &&
+    // Phase 4.2：停滯輪（玩家這句只有招呼／情緒反應詞，`utteranceShape ===
+    // "reaction"`）不強制問他認識管道。Phase 4 完整黑箱在 A29（「哈哈」「嗯嗯」）
+    // 量到 forced ask 38/40，同一個探針位置兩輪累積 `accommodating_invention`
+    // 4/80——他這句沒給任何內容，被逼著問「你那天怎麼會出現在我工作的那邊」時，
+    // 模型只能自己補一個共同場景出來。等下一輪他真的講了東西再問。
+    agency.decision.evidence.utteranceShape !== "reaction" &&
     signals.userTurnCount >= ASK_USER_WINDOW_USER_TURNS[0] &&
     signals.userTurnCount <= ASK_USER_WINDOW_USER_TURNS[1] &&
     signals.aiQuestionStreak === 0 &&
