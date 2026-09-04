@@ -821,10 +821,17 @@ export function renderTurnPlan(
     : "內容要接到對方最新一句的具體內容";
   // forced ask_intent 那一輪，形狀由 agency 決定（1 則、只有問句），style 的
   // bubbleCount／disclosure 讓路——這一輪本來就不該有自我揭露。
+  // Phase 3.8 v3 形狀刀：強制問他的那一輪，形狀跟 forced ask_intent 一樣鎖成
+  // 「1 則、就一個問句」——v1 只換問題行時，另一半強制輪她把那一問花在眼前話題
+  // （晚餐）；v2 把措辭綁緊反而整句不問。形狀由 renderer 定，不靠她自律。
+  const askUserOnly = plan.askUserFocus !== undefined && !forcedAsk &&
+    !clarifyOnly;
   const shapeLine = forcedAsk
     ? FORCED_ASK_INTENT_SHAPE
     : clarifyOnly
     ? AGENCY_CLARIFY_ONLY_SHAPE
+    : askUserOnly
+    ? `回 1 則，就一個問句：問他${plan.askUserFocus}（用你的話問）。這則不講你自己的事、不接他的話題、不問別的。`
     : `回 ${plan.bubbleCount} 則，一則講一件事。${question}${
       disclosure ? disclosure + "。" : ""
     }`;
