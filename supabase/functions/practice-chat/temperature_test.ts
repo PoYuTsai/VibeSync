@@ -983,6 +983,12 @@ Deno.test("Phase 3.6 accommodatingSelfFact：只在 agencyEnabled 時進 prompt�
     ),
   );
   assert(
+    on[0].content.includes("自由補的、跟玩家丟的詞無關、也不衝突的細節"),
+  );
+  // Codex R2 P2：中性直接問答不算迎合；明講改口也算矛盾。
+  assert(on[0].content.includes("玩家中性地直接問她（「你去過清邁嗎」）"));
+  assert(on[0].content.includes("把先前說過的事實改口"));
+  assert(
     on[1].content.includes(`職業生活：${base.profile.girl.professionPrompt}`),
   );
   assert(on[0].content.includes('"accommodatingSelfFact":false}'));

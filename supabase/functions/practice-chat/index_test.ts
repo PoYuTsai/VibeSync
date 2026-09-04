@@ -9637,7 +9637,9 @@ Deno.test("Phase 3.4 R1：repair 出來的 false 跟模型判的 false 在 telem
 });
 
 // conversation-agency-v1 Phase 3.6：3.2 殘留病——點破同一則夾帶自編經歷
-// （「你是說阿布達比嗎／我剛從那邊飛回來耶」）。人設裡沒有、她先前也沒說過。
+// （「你是說阿布達比嗎／我剛從那邊飛回來耶」）。判 true 的理由是**迎合**：玩家
+// 沒頭沒尾丟一個地名，她順著補一段跟那個詞掛鉤的經歷；不是「來源沒寫」
+// （即興補充本來就允許）。
 const CLASSIFIER_ACCOMMODATING_SELF_FACT = CLASSIFIER_SHARED_PAST_CLAIM
   .replace('"sharedPastClaim":true', '"sharedPastClaim":false')
   .replace('"accommodatingSelfFact":false', '"accommodatingSelfFact":true');
