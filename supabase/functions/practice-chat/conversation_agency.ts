@@ -272,8 +272,14 @@ function hasExplicitPivot(text: string): boolean {
   return false;
 }
 // 招呼／情緒反應：短且只由這些構成時算 reaction，不當成需要澄清的片段。
+//
+// Phase 4.3（Eric 2026-09-05）：肯定／否定的**純短詞**（「對」「是」「不是」
+// 「沒有」）也放進來。它們原本落在 `bare_fragment`／`answer_candidate`，會累積
+// 欠債、也會被 Phase 4.3 的 `clarify_ignored` 強制格當成「又丟一個裸詞」——但
+// 她問「什麼意思」他回「不是」是**回答**，不是又丟一個詞。只認整則就是那個詞
+// （`^…$` 錨定 compact 過的字串），不做任何語意判斷：「對了我今天…」不算。
 const REACTION_RE =
-  /^(嗨+|哈囉|哈啦|安安|你好|妳好|hi|hello|yo|嗯+|喔+|噢+|哦+|好+(的|喔|啊)?|ok|okay|哈+|呵+|笑死|欸+|蛤+|齁+|唉+|哇+|真的假的|了解|收到|感謝|謝謝|晚安|早安|午安|掰掰|bye|[\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+)$/iu;
+  /^(嗨+|哈囉|哈啦|安安|你好|妳好|hi|hello|yo|嗯+|喔+|噢+|哦+|好+(的|喔|啊)?|ok|okay|哈+|呵+|笑死|欸+|蛤+|齁+|唉+|哇+|真的假的|了解|收到|感謝|謝謝|晚安|早安|午安|掰掰|bye|對+(啊|阿|呀|喔|哦|啦)?|不對|是+(啊|阿|喔|哦)?|不是|沒有|沒錯|[\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+)$/iu;
 // 第一人稱標記：只看有沒有「我」這個結構標記，不判斷他在分享什麼。
 const FIRST_PERSON_RE = /(我|咱|俺)/u;
 // 她自己這一則是不是在問問題。中文問句常常不帶問號（「東東是誰」「你最想去哪」），
@@ -815,6 +821,72 @@ export function agencyPolicyFor(
         allowedActSetId: forcedAct === "hold_position"
           ? "hold_after_challenge_v1"
           : "low_value_loop_v1",
+      };
+    }
+    // ── Phase 4.3（Eric 2026-09-05 定調）：她剛問，他又丟一個沒有結構線索的詞 ──
+    //
+    // Eric 的原話界線：「第二、三輪對方打很奇怪無關的東西，正常女生會回『？』
+    // 『你在講什麼』或直接冷淡，不可能尬聊。這條邊界要死守。」
+    //
+    // 上面的強制格有一道 `bare_fragment` 閘門（Codex round-1 P1-c）：她剛問完、
+    // 他回一句沒有結構線索的話時，結構層分不出那是不是答案（「你喜歡什麼動物」
+    // →「貓」），所以永遠不 forced。Phase 4.2 的 15 筆跨輪立場失敗**全部**落在
+    // 這個洞裡（A06.p3／A14.p3，`policyMode` 全是 bounded、`situation` 全是
+    // `abrupt_topic_shift`、`unresolvedCount` 全是 2）。
+    //
+    // 補這個洞需要一個能分辨「她那句是不是澄清型問句」的結構訊號。可用的只有
+    // 兩個，兩個都有效但涵蓋面不同：
+    //   - `ConversationAgencyState.lastAgencyAct`：**黏住的**（只有 forced 那輪
+    //     覆寫，bounded 輪沿用舊值），而且 bounded 候選組沒有一組是全澄清型，
+    //     所以第一次澄清根本記不進去——Eric 那條序列的第 2 輪就已經拿不到訊號。
+    //   - `aiQuestionedInLoop`：逐字稿的地面真相（她在**這段未解迴圈裡**真的送出
+    //     過帶句尾標記的問句，嚴格判準），不吃 thread state，standard 也算得出來。
+    // 所以用後者。
+    //
+    // 條件（全部是既有欄位，沒有新偵測器、沒有語意判斷）：
+    //   `unresolvedCount >= 1`（外層）＝他上一則玩家訊息就已經是沒解決的片段；
+    //   `answer_candidate`＝她上一則在問問題（`bare_fragment` 已由上面的強制格
+    //     接走，不重疊）；
+    //   `aiQuestionedInLoop`＝這段迴圈裡她真的問過（嚴格判準，避免假強制）；
+    //   `!precedingUserContext`＝最近八則玩家訊息裡他**一次都沒**給過真內容
+    //     （非片段、非反應詞）。這一條是實測加上去的：離線重建（Phase 4.3 節
+    //     兩張表）顯示，沒有它時 A28（配合型玩家六個普通來回，`mustForbid`
+    //     含 `false_challenge`）的 p5／p6 各有 2/40 會被強制質疑——他前面明明
+    //     講過內容，只是最後兩則剛好沒有第一人稱標記。加上之後那 4 筆歸零，
+    //     而全矩陣的真陽性（A06／A10／A12／A14／A25／A26 與無探針輪）**一筆
+    //     都沒少**。既有程式已經有同一個「給過前文就給一次善意懷疑」的先例
+    //     （下面 `unresolvedCount === 0` 那格）。
+    // 肯定／否定的純短詞（「對」「不是」「沒有」）已經在 `REACTION_RE` 變成
+    // `reaction`，走不到這裡（`isLowInformation` 上游就 NO_OVERRIDE）。
+    //
+    // **已知天花板**：`precedingUserContext` 的窗口是最近 8 則玩家訊息，所以
+    // 「先正常聊很久、後來才開始丟詞」的場次要等前面的內容滑出窗口才會強制。
+    // 要放寬就是把這一條拿掉（真陽性不變，代價是 A28 型的 4/80）。
+    //
+    // **有效短答免疫一字未動**：`answer_candidate` ＋ `unresolvedCount === 0`
+    // 在本函式最上面就 NO_OVERRIDE；A01／A03／A07／A09 全部走那條，這裡碰不到。
+    //
+    // 已知代價（Eric 接受）：她在迴圈中途問的是**內容問題**、他真的答了一個
+    // 沒有第一人稱標記的短句（「想去」），結構上與「又丟一個詞」完全同形，
+    // 會被一起強制質疑。結構層沒有任何句法出路可以分開這兩者。
+    if (
+      shape === "answer_candidate" && evidence.aiQuestionedInLoop &&
+      !evidence.precedingUserContext
+    ) {
+      return {
+        ...base,
+        situation: "abrupt_topic_shift",
+        policyMode: "forced",
+        forcedAct: "challenge_relevance",
+        allowedActs: ["challenge_relevance"],
+        // 難度口氣分三檔（報告 §7.4「難度只調門檻與口氣」）。從 thresholds 推，
+        // 不新增參數：easy 的 `debtAnswerActs` 是唯一含無條件 `acknowledge` 的，
+        // challenge／Game 是唯一 `forceEndLoopBeforeChallenge` 的。
+        allowedActSetId: thresholds.forceEndLoopBeforeChallenge
+          ? "clarify_ignored_cold_v1"
+          : thresholds.debtAnswerActs.includes("acknowledge")
+          ? "clarify_ignored_easy_v1"
+          : "clarify_ignored_v1",
       };
     }
     const acts = thresholds.debtAnswerActs;

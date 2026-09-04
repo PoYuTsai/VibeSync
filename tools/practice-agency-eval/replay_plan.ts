@@ -61,6 +61,14 @@ for (const s of art.results) {
     // Phase 4.0 consumer 觸發計數（分母＝這個探針位置的全部輪次）。
     const setId = bundle.agencyDecision?.decision.allowedActSetId;
     if (bundle.agencyDecision?.applied) {
+      // Phase 4.3：policy 層的強制／候選組分佈（差集用），與 3.8 的
+      // `forced`（＝強制問他一件事 askUserFocus）是兩件事，前綴分開。
+      const dec = bundle.agencyDecision.decision;
+      bump(pid, `p43:${dec.policyMode}`);
+      if (dec.forcedAct) bump(pid, `p43:act:${dec.forcedAct}`);
+      bump(pid, `p43:set:${dec.allowedActSetId}`);
+    }
+    if (bundle.agencyDecision?.applied) {
       if (bundle.agencyDecision.decision.forcedAct === "ask_intent") {
         bump(pid, "p4:forcedAskIntent");
       }

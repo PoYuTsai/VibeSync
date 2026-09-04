@@ -6,6 +6,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   ACCEPTING_ACTS,
+  agencyActsLine,
   ASK_USER_WINDOW_MAX_USER_TURNS,
   classifySituation,
   computeAgencyDecision,
@@ -1214,9 +1215,11 @@ Deno.test("Phase 3.0 工作項 B：同一段序列在 easy 晚一步、challenge
     "answer_or_challenge_easy_v1",
   );
   assert(easy[1].agency?.decision.allowedActs.includes("acknowledge"));
+  // 第 3 則（「清邁」）她上一則是「阿布達比？你有去那邊玩喔？」＝帶句尾標記的
+  // 問句 → Phase 4.3 的 `clarify_ignored` 強制格接手，難度只差在口氣。
   assertEquals(
     easy[2].agency?.decision.allowedActSetId,
-    "answer_or_challenge_easy_v1",
+    "clarify_ignored_easy_v1",
   );
   // 這一段逐字稿的欠債是 1→2→3 連跳，所以第 4 則在 easy／normal 都到門檻；
   // 「easy 晚一步」的單獨證明在 conversation_agency_test.ts 的難度門檻測試
@@ -1526,9 +1529,12 @@ Deno.test("Phase 4.2（Codex R2 P3）窗口兩組上界的邊界：原始第 10 
   assertEquals(seventh.forced[6], false, "第 7 個內容輪已出窗口");
 });
 
-Deno.test("Phase 4.2（Codex R2 U）契約釘樁：「對」「是啊」目前**不是** reaction，會消耗內容窗口；4.3 才把肯定短詞納入", () => {
-  // Codex R2 Uncertain：REACTION_RE 有 `嗯+`／`喔+`／`好+`，但沒有「對」「是啊」。
-  // 這支測試只釘現況（不改 REACTION_RE），讓 4.3 改動時一定會撞到它。
+Deno.test("Phase 4.3 契約更新：「對」「是啊」改判 reaction，不介入也不消耗內容窗口", () => {
+  // Phase 4.2（Codex R2 U）釘的現況是「對」「是啊」＝`bare_fragment`、她會問
+  // 意思、而且消耗內容窗口。Phase 4.3 刀 1 把肯定／否定的**純短詞**補進
+  // `REACTION_RE`——她問「什麼意思」他回「不是」是回答，不是又丟一個詞，
+  // 不該被 `clarify_ignored` 強制格當成裸詞。連帶兩個效果都在下面釘住：
+  // 不再累積欠債／不介入，也不再消耗 Phase 4.2 的「六個內容輪」窗口。
   const th = agencyThresholdsFor("normal", false);
   const probeShape = (aiText: string, userText: string) => {
     const turns: PracticeTurn[] = [a(aiText), u(userText)];
@@ -1543,20 +1549,19 @@ Deno.test("Phase 4.2（Codex R2 U）契約釘樁：「對」「是啊」目前**
   const statement = "我今天差點睡過頭 昨晚追劇追到三點才睡";
   const yesNo = "你今天也很累嗎？";
 
-  for (const text of ["對", "是啊"]) {
-    // 前一句是陳述：裸片段 → 她會問意思（agency 介入）。
-    assertEquals(probeShape(statement, text), {
-      shape: "bare_fragment",
-      situation: "ambiguous_fragment",
-      consumesWindow: true,
-    }, text);
-    // 前一句是是非問句：有效短答 → 不介入。但**仍然消耗內容窗口**。
-    assertEquals(probeShape(yesNo, text), {
-      shape: "answer_candidate",
-      situation: null,
-      consumesWindow: true,
-    }, text);
+  for (const text of ["對", "對啊", "是", "是啊", "不是", "沒有"]) {
+    // 前一句是陳述、或前一句是是非問句，兩種都一樣：reaction、不介入、
+    // 不消耗內容窗口。
+    for (const ai of [statement, yesNo]) {
+      assertEquals(probeShape(ai, text), {
+        shape: "reaction",
+        situation: null,
+        consumesWindow: false,
+      }, `${ai}｜${text}`);
+    }
   }
+  // 只認**整則就是那個詞**：後面接了別的內容就不是純短詞。
+  assertEquals(probeShape(statement, "對 阿布達比").shape, "bare_fragment");
   // 帶內容的版本兩種前文都是 self_share、不介入、消耗窗口。
   for (const ai of [statement, yesNo]) {
     assertEquals(probeShape(ai, "對，我剛下班"), {
@@ -1571,4 +1576,46 @@ Deno.test("Phase 4.2（Codex R2 U）契約釘樁：「對」「是啊」目前**
     situation: null,
     consumesWindow: false,
   });
+});
+
+Deno.test("Phase 4.3：clarify_ignored 的難度口氣接在 act 說明後面；其餘 forced 輪逐字不變", () => {
+  const fires = [u("韓國"), a("你在說什麼？"), u("日本")];
+  const lineFor = (difficulty: PracticeDifficulty, isGame = false) =>
+    agencyActsLine(
+      computeAgencyDecision({
+        turns: fires,
+        situation: "neutral",
+        agencyMode: "on",
+        difficulty,
+        isGame,
+      }),
+    );
+  const act = "說這跟剛剛在聊的對不上，要他講清楚";
+  assert(lineFor("normal").startsWith(act));
+  assert(lineFor("normal").endsWith("；直接問他到底在講什麼，不接他的詞"));
+  assert(lineFor("easy").endsWith("；語氣可以溫和一點，但還是不要接他丟的詞"));
+  assert(
+    lineFor("challenge").endsWith(
+      "；可以只回一個「？」或一句冷的，不解釋、不接",
+    ),
+  );
+  assertEquals(lineFor("normal", true), lineFor("challenge"));
+
+  // 既有的 forced 輪（欠債到門檻的 hold_position）沒有 set 級補充句 → 逐字不變。
+  const hold = agencyActsLine(
+    computeAgencyDecision({
+      turns: [
+        u("韓國"),
+        a("怎麼突然講韓國？"),
+        u("東京"),
+        a("你沒回答我欸"),
+        u("清邁"),
+      ],
+      situation: "neutral",
+      agencyMode: "on",
+      difficulty: "normal",
+    }),
+  );
+  assert(hold.startsWith("維持你剛才的保留"));
+  assert(!hold.includes("；直接問他到底在講什麼"));
 });

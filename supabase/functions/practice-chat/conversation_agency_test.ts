@@ -520,19 +520,40 @@ Deno.test("難度門檻（Phase 3.0）：一般第 2 個未解片段要指出他
     "fragment_no_context_v1",
   );
 
-  // 第 2 個未解片段（unresolvedCount=1）：二選一的條件式，沒有無條件的「接住」。
+  // 第 2 個未解片段（unresolvedCount=1）。**Phase 4.3 起**：她上一則帶句尾標記
+  // 問過（「怎麼突然講韓國？」）、他又丟一個沒有結構線索的詞 → 這一格從 bounded
+  // 二選一升級成 forced `challenge_relevance`（Eric 2026-09-05：「第二、三輪對方
+  // 打很奇怪無關的東西，正常女生會回『？』」）。難度只差在口氣（set id 三檔）。
   const second = [u("韓國"), a("怎麼突然講韓國？"), u("東京")];
   const normalSecond = policyAt(second, "normal");
   assertEquals(normalSecond.evidence.unresolvedCount, 1);
-  assertEquals(normalSecond.allowedActSetId, "answer_or_challenge_v1");
-  assertEquals(normalSecond.allowedActs, [
-    "accept_if_answered",
-    "challenge_relevance",
-  ]);
-  // 易晚一步：同一格多一個無條件的「接住」。
+  assertEquals(normalSecond.evidence.utteranceShape, "answer_candidate");
+  assertEquals(normalSecond.policyMode, "forced");
+  assertEquals(normalSecond.forcedAct, "challenge_relevance");
+  assertEquals(normalSecond.allowedActSetId, "clarify_ignored_v1");
+  // 難度口氣：easy 溫和、challenge／Game 可以只回一個「？」。
   const easySecond = policyAt(second, "easy");
-  assertEquals(easySecond.allowedActSetId, "answer_or_challenge_easy_v1");
-  assert(easySecond.allowedActs.includes("acknowledge"));
+  assertEquals(easySecond.forcedAct, "challenge_relevance");
+  assertEquals(easySecond.allowedActSetId, "clarify_ignored_easy_v1");
+  assertEquals(
+    policyAt(second, "challenge").allowedActSetId,
+    "clarify_ignored_cold_v1",
+  );
+  assertEquals(
+    policyAt(second, "normal", true).allowedActSetId,
+    "clarify_ignored_cold_v1",
+  );
+  // 她那一則**沒有**句尾問句標記（中文最常見的無標記問句）時，強制格的
+  // `aiQuestionedInLoop` 閘門不成立 → 維持 Phase 3.0 的 bounded 二選一，
+  // easy 仍多一個無條件的「接住」。
+  const unmarked = [u("韓國"), a("怎麼突然講韓國"), u("東京")];
+  assertEquals(
+    policyAt(unmarked, "normal").allowedActSetId,
+    "answer_or_challenge_v1",
+  );
+  assert(
+    policyAt(unmarked, "easy").allowedActs.includes("acknowledge"),
+  );
 
   // 第 3 個未解片段（unresolvedCount=2）：一般停止供應解讀（forced）；
   // 挑戰／Game 同一格改成直接收掉；易仍在條件式窗口。
@@ -616,8 +637,12 @@ Deno.test("難度門檻：挑戰／game 在停止解讀那一格直接收掉（�
     agencyPolicyFor(asked, AGENCY_THRESHOLDS.challenge).forcedAct,
     "end_low_value_loop",
   );
-  // 她剛問完、他回了一句沒有結構線索的話（answer_candidate）：永遠不得 forced
-  // ——結構層分不出那是不是答案（Codex round-1 P1-c）。
+  // 她剛問完、他回了一句沒有結構線索的話（answer_candidate）：
+  //   - Codex round-1 P1-c 的原始界線是「永遠不得 forced」，因為結構層分不出
+  //     那是不是答案；
+  //   - Phase 4.3（Eric 2026-09-05 定調）把界線改成「**她這段迴圈裡真的問過**
+  //     ＋已經有欠債」時就強制質疑（`clarify_ignored_*`），不再是 hold／收尾格
+  //     那一路。她一次都沒問過（`aiQuestionedInLoop=false`）時仍然 bounded。
   const maybeAnswer: AgencyEvidence = {
     ...asked,
     utteranceShape: "answer_candidate",
@@ -627,6 +652,18 @@ Deno.test("難度門檻：挑戰／game 在停止解讀那一格直接收掉（�
     const thresholds of [AGENCY_THRESHOLDS.normal, AGENCY_THRESHOLDS.challenge]
   ) {
     const d = agencyPolicyFor(maybeAnswer, thresholds);
+    assertEquals(d.policyMode, "forced");
+    assertEquals(d.forcedAct, "challenge_relevance");
+    assert(!d.allowedActs.some(isAcceptingPlanAct));
+  }
+  const maybeAnswerNeverAsked: AgencyEvidence = {
+    ...maybeAnswer,
+    aiQuestionedInLoop: false,
+  };
+  for (
+    const thresholds of [AGENCY_THRESHOLDS.normal, AGENCY_THRESHOLDS.challenge]
+  ) {
+    const d = agencyPolicyFor(maybeAnswerNeverAsked, thresholds);
     assertEquals(d.policyMode, "bounded");
     assert(d.allowedActs.some(isAcceptingPlanAct));
   }
@@ -994,8 +1031,11 @@ Deno.test("Phase 3.2 放寬：免疫只給這一段迴圈裡的第一組一問�
   ]);
   assertEquals(second.evidence.utteranceShape, "answer_candidate");
   assertEquals(second.evidence.unresolvedCount, 1);
-  assertEquals(second.policyMode, "bounded");
-  assertEquals(second.allowedActSetId, "answer_or_challenge_v1");
+  // Phase 4.3：她這一則帶句尾標記（「嗎」）＝`aiQuestionedInLoop` 成立，
+  // 加上已經有欠債 → 從 bounded 二選一升級成 forced `challenge_relevance`。
+  assertEquals(second.policyMode, "forced");
+  assertEquals(second.forcedAct, "challenge_relevance");
+  assertEquals(second.allowedActSetId, "clarify_ignored_v1");
 
   // 第三則片段（她這一則不是問句）→ 欠債 2 ＝ 一般難度的 holdAt，而且她這段
   // 迴圈裡真的問過 → forced hold_position。
@@ -1422,4 +1462,111 @@ Deno.test("Phase 3.8 askedAboutUser：parse 只認布林、false 不落欄位；
   assertEquals(later.askedAboutUser, true);
   const never = nextConversationAgencyState(null, decision, null, false);
   assert(!("askedAboutUser" in never));
+});
+
+// ── Phase 4.3（Eric 2026-09-05 定調）────────────────────────────────────────
+Deno.test("Phase 4.3 刀 1：她問過＋已有欠債＋他又丟一個沒線索的詞 → forced challenge_relevance（難度只差口氣）", () => {
+  const fires = [u("韓國"), a("你在說什麼？"), u("日本")];
+  const d = policyAt(fires, "normal");
+  assertEquals(d.evidence.utteranceShape, "answer_candidate");
+  assertEquals(d.evidence.unresolvedCount, 1);
+  assertEquals(d.evidence.aiQuestionedInLoop, true);
+  assertEquals(d.evidence.precedingUserContext, false);
+  assertEquals(d.situation, "abrupt_topic_shift");
+  assertEquals(d.policyMode, "forced");
+  assertEquals(d.forcedAct, "challenge_relevance");
+  assertEquals(d.allowedActs, ["challenge_relevance"]);
+  assertEquals(d.allowedActSetId, "clarify_ignored_v1");
+  assertEquals(
+    policyAt(fires, "easy").allowedActSetId,
+    "clarify_ignored_easy_v1",
+  );
+  assertEquals(
+    policyAt(fires, "challenge").allowedActSetId,
+    "clarify_ignored_cold_v1",
+  );
+  assertEquals(
+    policyAt(fires, "normal", true).allowedActSetId,
+    "clarify_ignored_cold_v1",
+  );
+
+  // 閘門 1：她那一則沒有句尾問句標記（中文無標記問句）→ 嚴格判準不成立，
+  // 維持 Phase 3.0 的 bounded 二選一。
+  const unmarked = policyAt([u("韓國"), a("你在說什麼"), u("日本")], "normal");
+  assertEquals(unmarked.evidence.aiQuestionedInLoop, false);
+  assertEquals(unmarked.policyMode, "bounded");
+
+  // 閘門 2：他在最近八則裡給過真內容 → 給一次善意懷疑，留在 bounded。
+  const withContext = policyAt(
+    [u("我今天上班超累的"), u("韓國"), a("你在說什麼？"), u("日本")],
+    "normal",
+  );
+  assertEquals(withContext.evidence.precedingUserContext, true);
+  assertEquals(withContext.evidence.aiQuestionedInLoop, true);
+  assertEquals(withContext.policyMode, "bounded");
+
+  // 閘門 3：肯定／否定的純短詞是回答，不是「又丟一個詞」——`REACTION_RE` 接走，
+  // 上游就 NO_OVERRIDE。
+  for (const yes of ["對", "對啊", "是", "不是", "沒有", "嗯", "好"]) {
+    const r = policyAt([u("韓國"), a("你在說什麼？"), u(yes)], "normal");
+    assertEquals(r.evidence.utteranceShape, "reaction", yes);
+    assertEquals(r.situation, null, yes);
+    assertEquals(r.allowedActs, [], yes);
+  }
+  // 但「對啊」後面接了別的內容就不是純短詞，仍照原本的形狀判。
+  assertEquals(
+    policyAt([u("韓國"), a("你在說什麼？"), u("對啊 阿布達比")], "normal")
+      .evidence.utteranceShape,
+    "answer_candidate",
+  );
+
+  // 有效短答免疫一字未動：她剛問、他答、沒有欠債 → 任何難度都不介入。
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    const immune = policyAt(
+      [a("那你最想去哪個國家玩？"), u("韓國")],
+      difficulty,
+    );
+    assertEquals(immune.evidence.unresolvedCount, 0, difficulty);
+    assertEquals(immune.situation, null, difficulty);
+  }
+});
+
+Deno.test("Phase 4.3 刀 1：Eric 真機序列（挑戰 Game）逐輪", () => {
+  // Eric 2026-09-05 的原話：「第二、三輪對方打很奇怪無關的東西，正常女生會回
+  // 『？』『你在講什麼』或直接冷淡，不可能尬聊。」這一支把那條序列釘成回歸鎖。
+  const turns: PracticeTurn[] = [];
+  const step = (t: PracticeTurn[]) => {
+    turns.push(...t);
+    return policyAt([...turns], "normal", true);
+  };
+  // 第 1 輪「韓國」：無前文片段，bounded（維持 Phase 2.7，不因本刀變嚴）。
+  const s1 = step([u("韓國")]);
+  assertEquals(s1.allowedActSetId, "fragment_no_context_v1");
+  assertEquals(s1.policyMode, "bounded");
+
+  // 第 2 輪「日本」（她剛問完意圖）：這就是 Eric 要守的那一格 → forced。
+  const s2 = step([a("你在說什麼？"), u("日本")]);
+  assertEquals(s2.policyMode, "forced");
+  assertEquals(s2.forcedAct, "challenge_relevance");
+  assertEquals(s2.allowedActSetId, "clarify_ignored_cold_v1");
+
+  // 第 3 輪「清邁」（她上一則問的是**內容**問題）：結構層看不出她那句是澄清
+  // 還是內容問題（兩者都是「她問了、他又丟一個沒線索的詞」），所以同樣 forced。
+  // 這是本刀刻意接受的代價，寫在計畫檔 Phase 4.3；有效短答免疫只保護
+  // `unresolvedCount === 0` 那一格，這裡已經欠債 2。
+  const s3 = step([a("日本還是韓國？"), u("清邁")]);
+  assertEquals(s3.policyMode, "forced");
+  assertEquals(s3.forcedAct, "challenge_relevance");
+
+  // 第 4 輪「哈哈」：純反應詞，結構層不介入（Phase 4.2 的停滯輪界線）。
+  const s4 = step([a("你到底想說什麼"), u("哈哈")]);
+  assertEquals(s4.evidence.utteranceShape, "reaction");
+  assertEquals(s4.situation, null);
+
+  // 第 5 輪「阿布達比」：反應詞不修復也不清掉「她問過」，欠債續算 → 挑戰／Game
+  // 在 holdAt=1 直接收掉這串（既有 Phase 3.0 行為，本刀沒有蓋掉它）。
+  const s5 = step([a("嗯"), u("阿布達比")]);
+  assertEquals(s5.evidence.utteranceShape, "bare_fragment");
+  assertEquals(s5.policyMode, "forced");
+  assertEquals(s5.forcedAct, "end_low_value_loop");
 });

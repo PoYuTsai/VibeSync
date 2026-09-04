@@ -734,6 +734,13 @@ const AGENCY_SET_LINE: Record<string, string> = {
     "先判斷他這句接不接得上：真的回答了你上一句、或本來就跟前面在聊的事對得上，就接受、順著講下去；對不上就直接說他沒回答你、又跳到別的，不要順著新名詞聊；或直接把話拉回你上一題",
   answer_or_challenge_persist_easy_v1:
     "先判斷他這句接不接得上：真的回答了你上一句、或跟前面在聊的事對得上，就接受、順著講下去；拿不準就先接住；真的完全對不上才說他沒回答你、又跳到別的；或直接把話拉回你上一題",
+  // Phase 4.3：`clarify_ignored_*` 是 forced（`challenge_relevance`），所以這三條
+  // 不是候選組說明，而是接在 act 說明後面的**難度口氣**（報告 §7.4「難度只調門檻
+  // 與口氣」）。easy 那條刻意不寫範例句（報告 §13 第 8 點：寫了 100 位角色會共用
+  // 同一句口頭禪）；cold 那條的「？」是 Eric 2026-09-05 指名的產品行為本身。
+  clarify_ignored_easy_v1: "語氣可以溫和一點，但還是不要接他丟的詞",
+  clarify_ignored_v1: "直接問他到底在講什麼，不接他的詞",
+  clarify_ignored_cold_v1: "可以只回一個「？」或一句冷的，不解釋、不接",
 };
 
 /** 獨立於 TurnResponsePlan：style 開或關都能算，只吃 agencyDecision 本身。 */
@@ -742,7 +749,14 @@ export function agencyActsLine(agency: AgencyApplication | null): string {
   const line = (act: PlanAct) =>
     AGENCY_ACT_LINE[act] ?? ACT_LINE[act as ReplyAct];
   if (agency.decision.policyMode === "forced" && agency.decision.forcedAct) {
-    return line(agency.decision.forcedAct);
+    // Phase 4.3：forced 也可以帶一條 set 級的補充句（目前只有 `clarify_ignored_*`
+    // 的難度口氣）。既有的 forced set id（`repeated_token_v1`／`low_value_loop_v1`
+    // ／`hold_after_challenge_v1`／`fragment_no_context_v1`）都不在 `AGENCY_SET_LINE`
+    // 裡，所以這三條之外的 forced 輪逐字不變。
+    const forcedSetLine = AGENCY_SET_LINE[agency.decision.allowedActSetId];
+    return forcedSetLine
+      ? `${line(agency.decision.forcedAct)}；${forcedSetLine}`
+      : line(agency.decision.forcedAct);
   }
   const setLine = AGENCY_SET_LINE[agency.decision.allowedActSetId];
   if (setLine) return setLine;
