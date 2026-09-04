@@ -19,6 +19,13 @@ import type { ConversationAgencyState } from "./conversation_agency.ts";
  */
 export type TurnCoherence = ConversationAgencyState["lastCoherence"];
 
+/**
+ * conversation-agency-v1 Phase 3.4：`applyCoherenceDeltaCap` 這一輪實際壓過
+ * delta 的那一條上界。`"none"`＝沒壓到；coherence 那四格照 Phase 2；
+ * `"shared_past_claim"`＝捏造的「我們認識／共同朋友／那天一起…」壓的。
+ */
+export type DeltaCapApplied = TurnCoherence | "shared_past_claim" | "none";
+
 export type TemperatureBand = "frozen" | "cold" | "neutral" | "warm" | "hot";
 export type RelationshipStage =
   | "building_familiarity"
@@ -94,6 +101,18 @@ export interface TurnClassification {
    */
   aiChallengedThisTurn?: boolean;
   /**
+   * conversation-agency-v1 Phase 3.4：**她這一輪的回覆**有沒有宣稱她認識玩家
+   * 本人、跟他見過面／有共同朋友熟人、一起經歷過某件事，而逐字稿與她可信的
+   * 自我來源（人設、貼文、記憶）都找不到根據。黃金法則明文禁止共同回憶／共同
+   * 熟人／承諾，但那是語意問題：prompt 攔不住、結構層（utteranceShape／
+   * unresolvedCount）也看不到，只有讀完整逐字稿的分類器判得出來。
+   *
+   * 只在 assisted（beginner／game）有分類器的路徑上存在；standard 沒有分類器，
+   * 這個欄位在那條路上恆為 undefined（Phase 3.4 範圍外）。
+   * 省略／旗標 off＝欄位不存在（跟 coherence／aiChallengedThisTurn 同一規則）。
+   */
+  sharedPastClaim?: boolean;
+  /**
    * conversation-agency-v1 Phase 2.6：這一筆用到的 repair-first 欄位名
    * （見 `parseTurnClassification`）。空陣列／省略＝模型輸出本來就合法。
    * 只有欄位名，沒有玩家或她的任何原文，telemetry 直接可記。
@@ -113,7 +132,7 @@ export interface LearningJudgement extends TemperatureJudgement {
    * 是否真的壓過這一輪的 delta；telemetry 用。省略／"none"＝沒套用
    * （旗標 off、或 connected 不需要 cap）。
    */
-  deltaCapApplied?: TurnCoherence | "none";
+  deltaCapApplied?: DeltaCapApplied;
 }
 
 const MIN_TEMPERATURE = 0;
@@ -512,10 +531,15 @@ export function applyCoherenceDeltaCap(
   /** 分類器讀完整逐字稿後給的 coherence；null＝分類器沒給（旗標剛開、解析失敗）。 */
   coherence: TurnCoherence | null,
   structural: CoherenceCapStructuralEvidence,
-): { judgement: LearningJudgement; capApplied: TurnCoherence | "none" } {
+  /**
+   * conversation-agency-v1 Phase 3.4：分類器判「她捏造了跟玩家的共同過去」；
+   * 省略／false＝這一段完全不套用，逐字沿用 Phase 2 行為。
+   */
+  sharedPastClaim?: boolean,
+): { judgement: LearningJudgement; capApplied: DeltaCapApplied } {
   let heatDelta = judgement.delta;
   let familiarityDelta = judgement.familiarityDelta;
-  let capApplied: TurnCoherence | "none" = "none";
+  let capApplied: DeltaCapApplied = "none";
   // Codex round-2 P1-1／P1-3 的優先順序：
   // 1. 同一個詞原樣再丟一次＝結構地面真相，就算分類器判 connected 也照壓
   //    （不然「連貫」這個標籤就變成無限重複的免罰卡）。
@@ -550,15 +574,28 @@ export function applyCoherenceDeltaCap(
     disconnected: { heat: -1, familiarity: 0 },
     ambiguous: { heat: 0, familiarity: 0 },
   };
-  if (effective === "connected") {
-    // connected：玩家成功解釋／repair，正常給分，不套 cap。
-    return { judgement, capApplied };
-  }
-  {
+  // connected：玩家成功解釋／repair，正常給分，不套 coherence cap。
+  // （不在這裡提早 return：下面的 shared-past cap 還要看一次。connected 且沒有
+  //  sharedPastClaim 時 delta 不會被動到，最後那道相等檢查一樣回 "none"。）
+  if (effective !== "connected") {
     const max = CAP_MAX[effective];
     heatDelta = Math.min(heatDelta, max.heat);
     familiarityDelta = Math.min(familiarityDelta, max.familiarity);
     capApplied = effective;
+  }
+  // Phase 3.4：她捏造「我們認識／共同朋友／那天一起…」時，這一輪永遠不能換到
+  // 正分。跟 coherence cap 同一個機制（`Math.min` 上界，只壓正分、絕不抬負分），
+  // 所以 boundary／overstep 的確定性扣滿仍然蓋得過去，precedence 不變。
+  // capApplied 記「真的壓下去的那一條」：repetitive（-2/-1）比這裡的 0/0 更嚴，
+  // 已經壓過就不會再被改寫。
+  if (sharedPastClaim === true) {
+    const cappedHeat = Math.min(heatDelta, 0);
+    const cappedFamiliarity = Math.min(familiarityDelta, 0);
+    if (cappedHeat !== heatDelta || cappedFamiliarity !== familiarityDelta) {
+      heatDelta = cappedHeat;
+      familiarityDelta = cappedFamiliarity;
+      capApplied = "shared_past_claim";
+    }
   }
   // Codex round-1 P2：cap 算出來跟原本一模一樣時，telemetry 不該說「套過了」
   // ——`deltaCapApplied` 是拿來看「cap 真的改變了幾成回合」的，把「算過但沒
@@ -800,6 +837,25 @@ function parseAiChallengedThisTurn(
   return false;
 }
 
+/**
+ * Phase 3.4：跟 `parseAiChallengedThisTurn` 同一形狀——旗標開時 prompt 一定有
+ * 問，缺／非布林都記一筆 repair 並退到 false（＝沒有捏造，不觸發 cap，最保守
+ * 的一格；一個壞值不該替她扣分）。
+ */
+function parseSharedPastClaim(
+  value: unknown,
+  repaired: string[],
+  required: boolean,
+): boolean {
+  if (value === undefined) {
+    if (required) repaired.push("sharedPastClaim");
+    return false;
+  }
+  if (typeof value === "boolean") return value;
+  repaired.push("sharedPastClaim");
+  return false;
+}
+
 export function applyPartnerStateUpdate(
   previous: PartnerState | null | undefined,
   classification: TurnClassification,
@@ -847,7 +903,9 @@ export function parseTurnClassification(
     "partnerMood",
     "moodConfidence",
     "innerThought",
-    ...(opts.requireCoherence ? ["coherence", "aiChallengedThisTurn"] : []),
+    ...(opts.requireCoherence
+      ? ["coherence", "aiChallengedThisTurn", "sharedPastClaim"]
+      : []),
   ]);
   for (const key of Object.keys(parsed)) {
     if (!allowedKeys.has(key)) {
@@ -883,6 +941,11 @@ export function parseTurnClassification(
         coherence: parseCoherence(parsed.coherence, repairedFields, true),
         aiChallengedThisTurn: parseAiChallengedThisTurn(
           parsed.aiChallengedThisTurn,
+          repairedFields,
+          true,
+        ),
+        sharedPastClaim: parseSharedPastClaim(
+          parsed.sharedPastClaim,
           repairedFields,
           true,
         ),
@@ -925,10 +988,11 @@ export function buildTurnClassifierMessages(opts: {
   // JSON stub；旗標關閉時下面兩段字串完全不套用，system prompt 逐字不變。
   const coherenceRule = opts.agencyEnabled
     ? "coherence 只評玩家這句相對於前一個未解問題／對話 thread 是否連得上，不看話題類別：connected=接得上，含同主題的圈內名詞、下位詞、具體例子這種常識關聯（不必明講關係、不必是完整句，例：前面在聊重訓，他只丟一個健身圈的比賽名詞）；ambiguous=看不出是否相關；disconnected=跟前面那條 thread 完全沾不上邊（例：前面在聊她的工作，他丟一個無關地名）；repetitive=重複丟詞、跟前面已經模糊的東西是同一種模式。assistantReplyAfterUser 只能用來判斷 partnerMood 與她有沒有被接住（repair），不能因為她把亂詞圓成話題就把玩家 connection 判成 caught，coherence 也不能因此升級。\n" +
-      "aiChallengedThisTurn：assistantReplyAfterUser（她剛剛送出的那一則）是不是真的在問清楚意思或指出跳題／不相關，不是隨口帶過。\n"
+      "aiChallengedThisTurn：assistantReplyAfterUser（她剛剛送出的那一則）是不是真的在問清楚意思或指出跳題／不相關，不是隨口帶過。\n" +
+      "sharedPastClaim：assistantReplyAfterUser 有沒有宣稱她本人認識這個 user、跟他見過面、跟他有共同的朋友或熟人、一起經歷過某件事，或想起一段共同往事，而 recentContext 與她自己的角色設定裡都找不到根據＝true。只講自己的喜好、意見、猜測不算；說「我不認識你」「你是誰」不算；用問句問「這是誰」「我們見過嗎」「看起來很眼熟嗎」也不算（那是在問，不是在宣稱）。判不出來時給 false。\n"
     : "";
   const jsonStub = opts.agencyEnabled
-    ? '只輸出 JSON：{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"neutral","moodConfidence":0.7,"innerThought":"他還沒接到我的重點，我先觀察。","coherence":"connected","aiChallengedThisTurn":false}'
+    ? '只輸出 JSON：{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"neutral","moodConfidence":0.7,"innerThought":"他還沒接到我的重點，我先觀察。","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false}'
     : '只輸出 JSON：{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"neutral","moodConfidence":0.7,"innerThought":"他還沒接到我的重點，我先觀察。"}';
   return [
     {

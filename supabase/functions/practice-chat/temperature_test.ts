@@ -377,9 +377,13 @@ Deno.test("parseTurnClassification：旗標 off 時 coherence／aiChallengedThis
   );
   assertEquals(missingBoth.coherence, "ambiguous");
   assertEquals(missingBoth.aiChallengedThisTurn, false);
+  // Phase 3.4：sharedPastClaim 走同一條對稱規則（prompt 問了、模型漏答＝repair
+  // 並退到最保守的 false）。
+  assertEquals(missingBoth.sharedPastClaim, false);
   assertEquals(missingBoth.repairedFields, [
     "coherence",
     "aiChallengedThisTurn",
+    "sharedPastClaim",
   ]);
 
   const withFields = parseTurnClassification(
@@ -417,10 +421,11 @@ Deno.test("parseTurnClassification：非法 coherence／aiChallengedThisTurn 值
   );
   assertEquals(badCoherence.coherence, "ambiguous");
   assertEquals(badCoherence.connection, "neutral");
-  // 這個 fixture 連 aiChallengedThisTurn 都沒給，所以兩個欄位都記 repair。
+  // 這個 fixture 連 aiChallengedThisTurn／sharedPastClaim 都沒給，三個都記 repair。
   assertEquals(badCoherence.repairedFields, [
     "coherence",
     "aiChallengedThisTurn",
+    "sharedPastClaim",
   ]);
 
   const badChallenged = parseTurnClassification(
@@ -428,7 +433,10 @@ Deno.test("parseTurnClassification：非法 coherence／aiChallengedThisTurn 值
     { requireCoherence: true },
   );
   assertEquals(badChallenged.aiChallengedThisTurn, false);
-  assertEquals(badChallenged.repairedFields, ["aiChallengedThisTurn"]);
+  assertEquals(badChallenged.repairedFields, [
+    "aiChallengedThisTurn",
+    "sharedPastClaim",
+  ]);
 });
 
 Deno.test("applyCoherenceDeltaCap：算出來跟原本一樣時 capApplied 回 none（Codex R1 P2）", () => {
@@ -461,7 +469,7 @@ Deno.test('parseTurnClassification：partnerMood "confused" repair 成 neutral�
   // 2026-09-06 抽樣回放 377 筆，15 筆解析失敗**全部**是這個形態
   // （partnerMood 列舉沒有「困惑」這個桶子，agency 開了之後她常常就是困惑）。
   const repaired = parseTurnClassification(
-    '{"connection":"missed","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"confused","moodConfidence":0.6,"innerThought":"他怎麼突然跳到別的","coherence":"disconnected","aiChallengedThisTurn":false}',
+    '{"connection":"missed","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"confused","moodConfidence":0.6,"innerThought":"他怎麼突然跳到別的","coherence":"disconnected","aiChallengedThisTurn":false,"sharedPastClaim":false}',
     { requireCoherence: true },
   );
   assertEquals(repaired.partnerMood, "neutral");
@@ -670,4 +678,118 @@ Deno.test("applyCoherenceDeltaCap：repetitive／重複同詞至少 -2/-1；conn
   );
   assertEquals(alreadyNegative.judgement.delta, -6);
   assertEquals(alreadyNegative.judgement.familiarityDelta, -4);
+});
+
+// ── conversation-agency-v1 Phase 3.4：捏造的共同過去（黃金法則明文禁止）──
+
+Deno.test("buildTurnClassifierMessages：sharedPastClaim 只在 agencyEnabled=true 時進 prompt 與 JSON stub", () => {
+  const base = {
+    turns: [{ role: "user" as const, text: "debby1993wu" }],
+    profile: resolvePracticeProfile({}),
+    heatScore: 40,
+    familiarityScore: 10,
+  };
+  const off = buildTurnClassifierMessages(base);
+  assert(!off[0].content.includes("sharedPastClaim"));
+
+  const on = buildTurnClassifierMessages({ ...base, agencyEnabled: true });
+  assert(
+    on[0].content.includes(
+      "sharedPastClaim：assistantReplyAfterUser 有沒有宣稱她本人認識這個 user",
+    ),
+    "缺 sharedPastClaim 的判準",
+  );
+  // 問句形式（「我們見過嗎」）與「我不認識你」都不是宣稱，判準必須寫進去，
+  // 不然連問句一起被判 true，反而多罰。
+  assert(on[0].content.includes("我們見過嗎"));
+  assert(on[0].content.includes("我不認識你"));
+  assert(on[0].content.includes('"sharedPastClaim":false}'));
+  assertEquals(on[1].content, off[1].content);
+});
+
+Deno.test("parseTurnClassification：sharedPastClaim 只在 requireCoherence 時是合法欄位", () => {
+  // 旗標關＝schema 逐字與接線前一樣嚴：模型自己多吐這個 key 要照舊丟 extra fields。
+  assertThrows(
+    () =>
+      parseTurnClassification(
+        '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","sharedPastClaim":true}',
+      ),
+    Error,
+    "extra fields",
+  );
+  const off = parseTurnClassification(
+    '{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe"}',
+  );
+  assert(!("sharedPastClaim" in off));
+
+  const on = parseTurnClassification(
+    '{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":true}',
+    { requireCoherence: true },
+  );
+  assertEquals(on.sharedPastClaim, true);
+  assertEquals(on.repairedFields, undefined);
+
+  // 非布林值 repair 成 false（最保守的一格：一個壞值不該替她扣分）。
+  const bad = parseTurnClassification(
+    '{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":"yes"}',
+    { requireCoherence: true },
+  );
+  assertEquals(bad.sharedPastClaim, false);
+  assertEquals(bad.repairedFields, ["sharedPastClaim"]);
+});
+
+Deno.test("applyCoherenceDeltaCap：sharedPastClaim 讓捏造的共同過去拿不到正分，且不抬既有負分", () => {
+  // 她「認出」了一個逐字稿裡不存在的共同朋友／共同往事——coherence 完全可能
+  // 是 connected（玩家丟的 handle 她確實接上了），所以只有這個欄位擋得住。
+  const { judgement: capped, capApplied } = applyCoherenceDeltaCap(
+    judgement(4, 2),
+    50,
+    30,
+    "connected",
+    { repeatedExactToken: false, unresolvedCount: 0 },
+    true,
+  );
+  assertEquals(capped.delta, 0);
+  assertEquals(capped.familiarityDelta, 0);
+  assertEquals(capApplied, "shared_past_claim");
+
+  // 只壓正分：既有負分原樣留著（跟 coherence cap 同一個 Math.min 上界機制）。
+  const negative = applyCoherenceDeltaCap(
+    judgement(-5, -3),
+    50,
+    30,
+    "connected",
+    { repeatedExactToken: false, unresolvedCount: 0 },
+    true,
+  );
+  assertEquals(negative.judgement.delta, -5);
+  assertEquals(negative.judgement.familiarityDelta, -3);
+  assertEquals(negative.capApplied, "none");
+
+  // 更嚴的 coherence cap 已經壓過時，capApplied 記那一條（-2/-1 比 0/0 更低）。
+  const repetitive = applyCoherenceDeltaCap(
+    judgement(4, 2),
+    50,
+    30,
+    "repetitive",
+    { repeatedExactToken: false, unresolvedCount: 0 },
+    true,
+  );
+  assertEquals(repetitive.judgement.delta, -2);
+  assertEquals(repetitive.judgement.familiarityDelta, -1);
+  assertEquals(repetitive.capApplied, "repetitive");
+
+  // 省略／false＝這一段完全不套用（Phase 2 行為逐字不變）。
+  for (const claim of [undefined, false]) {
+    const { judgement: same, capApplied: none } = applyCoherenceDeltaCap(
+      judgement(4, 2),
+      50,
+      30,
+      "connected",
+      { repeatedExactToken: false, unresolvedCount: 0 },
+      claim,
+    );
+    assertEquals(same.delta, 4, String(claim));
+    assertEquals(none, "none", String(claim));
+  }
 });
