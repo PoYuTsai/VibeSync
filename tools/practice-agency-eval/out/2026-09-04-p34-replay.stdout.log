@@ -1,0 +1,35 @@
+{
+  "source": "tools/practice-agency-eval/out/2026-09-04-p34-beginner-truncate.json",
+  "total": 360,
+  "errors": 0,
+  "coherenceDist": {
+    "connected": 131,
+    "disconnected": 199,
+    "ambiguous": 30
+  },
+  "disconnectedOrRepetitiveN": 199,
+  "positiveHeatAfterCapN": 0,
+  "positiveHeatAfterCapRate": 0,
+  "sharedPastClaimN": 4,
+  "sharedPastClaimExplicitN": 360,
+  "sharedPastClaimRepairedN": 0,
+  "sharedPastClaimRate": 1.1,
+  "sharedPastPositiveDeltaN": 0,
+  "a01a09N": 0,
+  "a01a09NotConnectedN": 0,
+  "a01a09BadConnectionN": 0,
+  "byScenario": {
+    "A25": {
+      "n": 240,
+      "connected": 106,
+      "disconnected": 109,
+      "ambiguous": 25
+    },
+    "A27": {
+      "n": 120,
+      "disconnected": 90,
+      "connected": 25,
+      "ambiguous": 5
+    }
+  }
+}
