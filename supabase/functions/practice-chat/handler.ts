@@ -3073,11 +3073,17 @@ export function createPracticeChatHandler(
       // Phase 4.1：教練要不要點出「你還沒回答她／連續丟詞」。旗標 off 時整個
       // 不算（純函式無副作用，但 off 路徑連 telemetry key 都不該多一個）。
       // hint 是 assisted 專用，thread state 讀不到時退回純結構近似（state=null）。
+      // 門檻與 chat 路徑同源（難度／isGame／角色的 agency profile）。
       const hintAgencyCoaching = agencyMode === "off"
         ? null
         : hintAgencyCoachingFor(
           request.turns,
           relationshipThreadState?.agencyState ?? null,
+          {
+            difficulty: request.profile.difficulty,
+            isGame: request.practiceMode === "game",
+            profileId: request.profile.girl.profileId,
+          },
         );
       try {
         const baseHintMessages = buildHintMessages({
@@ -3884,9 +3890,14 @@ export function createPracticeChatHandler(
       // Phase 4.1：結構回放出「她在補救」的輪次。旗標 off 時整個不算（連
       // telemetry key 都不該多一個）；shadow 算但不進 prompt。standard 沒有
       // 持久化狀態，本來就是純結構近似（見 `debriefAgencyLedgerFor` 註解）。
+      // 門檻與 chat 路徑同源（難度／isGame／角色的 agency profile）。
       const debriefAgencyLedger = agencyMode === "off"
         ? null
-        : debriefAgencyLedgerFor(request.turns);
+        : debriefAgencyLedgerFor(request.turns, {
+          difficulty: request.profile.difficulty,
+          isGame: debriefPracticeMode === "game",
+          profileId: request.profile.girl.profileId,
+        });
       try {
         const baseDebriefMessages = buildDebriefMessages(
           request.turns,

@@ -6,6 +6,15 @@ import {
 } from "./agency_coaching.ts";
 import { INITIAL_CONVERSATION_AGENCY_STATE } from "./conversation_agency.ts";
 import type { PracticeTurn } from "./validate.ts";
+import type { AgencyCoachingContext } from "./agency_coaching.ts";
+
+// 中性基準：practice_girl_008 的 agency profile（skepticism 2）不位移 holdAt，
+// 所以這一組 ctx 算出來的門檻就是一般難度表本身。
+const CTX: AgencyCoachingContext = {
+  difficulty: "normal",
+  isGame: false,
+  profileId: "practice_girl_008",
+};
 
 const t = (role: "user" | "ai", text: string): PracticeTurn =>
   ({ role, text }) as PracticeTurn;
@@ -17,7 +26,7 @@ Deno.test("hint coaching：她剛問完＋玩家丟片段 → answer_her_questio
     t("user", "阿布達比"),
     t("ai", "阿布達比？那是哪裡"),
   ];
-  assertEquals(hintAgencyCoachingFor(turns, null), {
+  assertEquals(hintAgencyCoachingFor(turns, null, CTX), {
     kind: "answer_her_question",
     unresolvedCount: 1,
   });
@@ -30,7 +39,7 @@ Deno.test("hint coaching：有效短答（她問→他答、零欠債）→ none
     t("user", "沙丘"),
     t("ai", "好看嗎"),
   ];
-  assertEquals(hintAgencyCoachingFor(turns, null), {
+  assertEquals(hintAgencyCoachingFor(turns, null, CTX), {
     kind: "none",
     unresolvedCount: 0,
   });
@@ -38,7 +47,7 @@ Deno.test("hint coaching：有效短答（她問→他答、零欠債）→ none
 
 Deno.test("hint coaching：她沒問過、玩家丟無前文片段 → none（不亂點火）", () => {
   const turns = [t("user", "台北"), t("ai", "哈哈")];
-  const got = hintAgencyCoachingFor(turns, null);
+  const got = hintAgencyCoachingFor(turns, null, CTX);
   assertEquals(got.kind, "none");
   assertEquals(got.unresolvedCount, 0);
 });
@@ -52,7 +61,7 @@ Deno.test("hint coaching：欠債 ≥2 → stop_dropping_words（比 answer 優�
     t("user", "韓國"),
     t("ai", "怎麼突然講韓國"),
   ];
-  const got = hintAgencyCoachingFor(turns, null);
+  const got = hintAgencyCoachingFor(turns, null, CTX);
   assertEquals(got.kind, "stop_dropping_words");
   assertEquals(got.unresolvedCount >= 2, true);
 });
@@ -65,7 +74,7 @@ Deno.test("hint coaching：同一個詞原樣再丟一次 → stop_dropping_word
     t("ai", "你在說什麼"),
   ];
   assertEquals(
-    hintAgencyCoachingFor(turns, null).kind,
+    hintAgencyCoachingFor(turns, null, CTX).kind,
     "stop_dropping_words",
   );
 });
@@ -81,11 +90,11 @@ Deno.test("hint coaching：她上一則沒有問句標記，但狀態記得她�
     hintAgencyCoachingFor(turns, {
       ...INITIAL_CONVERSATION_AGENCY_STATE,
       lastAgencyAct: "ask_intent",
-    }).kind,
+    }, CTX).kind,
     "answer_her_question",
   );
   // 同一份逐字稿、沒有狀態＝她沒問過 → 不點火。
-  assertEquals(hintAgencyCoachingFor(turns, null).kind, "none");
+  assertEquals(hintAgencyCoachingFor(turns, null, CTX).kind, "none");
 });
 
 Deno.test("debrief ledger：連環丟詞的場記到序號與分類", () => {
@@ -97,7 +106,7 @@ Deno.test("debrief ledger：連環丟詞的場記到序號與分類", () => {
     t("user", "韓國"),
     t("ai", "怎麼突然講韓國"),
   ];
-  const ledger = debriefAgencyLedgerFor(turns);
+  const ledger = debriefAgencyLedgerFor(turns, CTX);
   assertEquals(ledger.repairTurns, [1, 2, 3]);
   assertEquals(
     ledger.fragmentTurns + ledger.topicShiftTurns + ledger.loopTurns,
@@ -115,7 +124,7 @@ Deno.test("debrief ledger：正常對話全 0", () => {
     t("user", "妳今天呢"),
     t("ai", "還好啦"),
   ];
-  assertEquals(debriefAgencyLedgerFor(turns), {
+  assertEquals(debriefAgencyLedgerFor(turns, CTX), {
     fragmentTurns: 0,
     topicShiftTurns: 0,
     loopTurns: 0,
@@ -129,7 +138,7 @@ Deno.test("debrief ledger：序號清單最多 10 個，計數不設上限", () 
     turns.push(t("user", `城市${i}`));
     turns.push(t("ai", "那是哪裡"));
   }
-  const ledger = debriefAgencyLedgerFor(turns);
+  const ledger = debriefAgencyLedgerFor(turns, CTX);
   assertEquals(ledger.repairTurns.length, 10);
   assertEquals(
     ledger.fragmentTurns + ledger.topicShiftTurns + ledger.loopTurns,
@@ -212,10 +221,92 @@ Deno.test("buildDebriefMessages：不傳 ledger 與全 0 ledger 時 prompt 逐�
 
 Deno.test("buildDebriefMessages：有介入輪時只多一段，含序號與『不算他的分』", () => {
   const base = debriefPrompt();
-  const withLedger = debriefPrompt(debriefAgencyLedgerFor(HINT_TURNS));
+  const withLedger = debriefPrompt(debriefAgencyLedgerFor(HINT_TURNS, CTX));
   assertEquals(withLedger === base, false);
   assertEquals(withLedger.includes("agencyStructuralLedger"), true);
   assertEquals(withLedger.includes("第 1、2 則"), true);
   assertEquals(withLedger.includes("不算他的分"), true);
   assertEquals(withLedger.length - base.length < 300, true);
+});
+
+// ── 門檻同源：難度／角色 profile 真的會改變這份帳（派 Codex 前先修的 P1）──
+// 逐字稿取自 `tools/practice-agency-eval/out/2026-09-05-p40-beginner-on.json`
+// 的 A25（連環丟地名），只保留文字。
+const A25_TURNS: PracticeTurn[] = [
+  t("user", "東東"),
+  t("ai", "東東？誰啊"),
+  t("user", "阿布打比"),
+  t("ai", "蛤 你打什麼 看不懂"),
+  t("user", "清邁"),
+  t("ai", "喔 清邁\n我還沒去過那邊\n聽說食物很讚"),
+  t("user", "好市多"),
+  t(
+    "ai",
+    "你怎麼突然跳這麼多地方\n一下東東一下阿布達比\n現在又好市多\n到底在講哪個",
+  ),
+  t("user", "曼谷"),
+  t("ai", "你是在背地名嗎\n我快跟不上你了啦"),
+  t("user", "馬尼拉"),
+  t("ai", "好 你慢慢背\n我累了先這樣"),
+];
+
+Deno.test("debrief ledger：真實 A25 逐字稿上門檻不改變分帳（誠實的天花板，不是沒接線）", () => {
+  // `holdAt` 只在 `aiQuestionedInLoop`（**嚴格**問句判準）＋`bare_fragment`
+  // 同時成立時才打得開，而這一段 A25 裡她的每一句反問都是中文無標記問句
+  // （「東東？誰啊」「到底在講哪個」），`aiAskedQuestionStrict` 全判 false。
+  // 所以難度／profile 在這一段上真的算不出差別——這是判準的既有天花板
+  // （`conversation_agency.ts` 檔頭寫明的「接受的代價」），不是門檻沒接進來。
+  const neutral = debriefAgencyLedgerFor(A25_TURNS, CTX);
+  for (
+    const ctx of [
+      { ...CTX, difficulty: "easy" as const },
+      { ...CTX, difficulty: "challenge" as const },
+      { ...CTX, profileId: "practice_girl_001" },
+      { ...CTX, profileId: "practice_girl_003" },
+    ]
+  ) {
+    assertEquals(debriefAgencyLedgerFor(A25_TURNS, ctx), neutral);
+  }
+  assertEquals(neutral.repairTurns, [1, 2, 3, 4, 5, 6]);
+  assertEquals(neutral.loopTurns, 0);
+});
+
+// 同樣的形態，但她的反問帶句尾標記（「呢」），強制格的閘門才打得開。
+const MARKED_QUESTION_TURNS: PracticeTurn[] = [
+  t("ai", "你最想去哪裡呢"),
+  t("user", "韓國"),
+  t("ai", "喔 我也想去"),
+  t("user", "好市多"),
+  t("ai", "嗯"),
+  t("user", "曼谷"),
+];
+
+Deno.test("debrief ledger：閘門打得開時，難度與角色 skepticism 真的改變 loop／shift 分帳", () => {
+  const neutral = debriefAgencyLedgerFor(MARKED_QUESTION_TURNS, CTX);
+  // 一般難度（holdAt 2）：第 3 則玩家訊息落進低連貫迴圈。
+  assertEquals(neutral.repairTurns, [2, 3]);
+  assertEquals(neutral.loopTurns, 1);
+  assertEquals(neutral.topicShiftTurns, 0);
+  for (
+    const ctx of [
+      // 輕鬆難度 holdAt 3：同一則變成「跳題」而不是「收掉迴圈」。
+      { ...CTX, difficulty: "easy" as const },
+      // practice_girl_003：skepticism 1 → 一般難度的 holdAt 被位移成 3。
+      { ...CTX, profileId: "practice_girl_003" },
+    ]
+  ) {
+    const shifted = debriefAgencyLedgerFor(MARKED_QUESTION_TURNS, ctx);
+    assertEquals(shifted.repairTurns, neutral.repairTurns);
+    assertEquals(shifted.loopTurns, 0);
+    assertEquals(shifted.topicShiftTurns, 1);
+  }
+  // Game 模式套挑戰門檻（`agencyThresholdsFor` 的既有規則），與一般難度在這一段
+  // 同分帳（holdAt 1 與 2 都在第 3 則觸發）。
+  assertEquals(
+    debriefAgencyLedgerFor(MARKED_QUESTION_TURNS, { ...CTX, isGame: true }),
+    debriefAgencyLedgerFor(MARKED_QUESTION_TURNS, {
+      ...CTX,
+      difficulty: "challenge",
+    }),
+  );
 });

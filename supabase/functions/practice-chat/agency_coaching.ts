@@ -15,11 +15,35 @@
 import type { PracticeTurn } from "./validate.ts";
 import {
   agencyPolicyFor,
+  type AgencyThresholds,
+  agencyThresholdsFor,
   aiAskedQuestion,
   type ConversationAgencyState,
   detectAgencyEvidence,
   nextConversationAgencyState,
 } from "./conversation_agency.ts";
+import { agencyProfileFor } from "./agency_profile.ts";
+
+/**
+ * 門檻的來源必須與 chat 路徑**同源**（`prompt.ts` 的
+ * `agencyThresholdsFor(profile.difficulty, practiceMode === "game",
+ * agencyProfileFor(profile.girl.profileId))`）。用預設的一般難度會讓同一場
+ * 對話在 chat 與 hint／debrief 兩層算出不同的介入輪。刻意**沒有預設值**：
+ * 呼叫端一定要交出這一場的難度、是不是 Game、以及角色 id。
+ */
+export interface AgencyCoachingContext {
+  readonly difficulty: "easy" | "normal" | "challenge";
+  readonly isGame: boolean;
+  readonly profileId: string;
+}
+
+function thresholdsFor(ctx: AgencyCoachingContext): AgencyThresholds {
+  return agencyThresholdsFor(
+    ctx.difficulty,
+    ctx.isGame,
+    agencyProfileFor(ctx.profileId),
+  );
+}
 
 // ── A. Hint：這一輪教練要不要點出「你還沒回答她」──────────────────────────
 export type HintAgencyCoachingKind =
@@ -51,9 +75,15 @@ function lastAiText(turns: readonly PracticeTurn[]): string | null {
 export function hintAgencyCoachingFor(
   turns: readonly PracticeTurn[],
   agencyState: ConversationAgencyState | null,
+  ctx: AgencyCoachingContext,
 ): HintAgencyCoaching {
   const evidence = detectAgencyEvidence(turns, agencyState);
-  const decision = agencyPolicyFor(evidence);
+  // 門檻走 `ctx`（與 chat 同源）。今天 `situation !== null` 這道閘門其實**證明性地
+  // 不吃門檻**——`agencyPolicyFor` 的三個 NO_OVERRIDE 出口（非低資訊形狀、有效
+  // 短答、有前文的零欠債片段）與其餘全部非 null 的分支都與 thresholds 無關，
+  // 所以今天換難度不會改變 kind。仍然照傳，是為了讓這兩層永遠不可能各自帶一
+  // 份預設值漂掉（踩坑：同一道守門在兩端各自帶預設值會漂成確定性全滅）。
+  const decision = agencyPolicyFor(evidence, thresholdsFor(ctx));
   const unresolvedCount = evidence.unresolvedCount;
   if (decision.situation === null) return { kind: "none", unresolvedCount };
   if (unresolvedCount >= 2 || evidence.repeatedExactToken) {
@@ -94,11 +124,14 @@ const MAX_REPAIR_TURNS = 10;
  * 分類器輸出；所以「分類器判 connected 的修復點」在這裡不存在，只有逐字稿看得
  * 到的結構修復（問句／第一人稱分享／明示換題）會歸零。方向是**偏保守**——
  * 少掉一種修復來源只會讓欠債留得比正式路徑久，不會憑空多出介入輪。
- * 難度門檻一律用預設的一般難度：這份帳只是給教練當觀察素材，不是守門。
+ * 難度門檻與 chat 路徑同源（`ctx` → `agencyThresholdsFor` ＋ `agencyProfileFor`），
+ * 所以高懷疑角色／挑戰難度的 `holdAt` 位移會如實反映在 loop 與 shift 的分帳上。
  */
 export function debriefAgencyLedgerFor(
   turns: readonly PracticeTurn[],
+  ctx: AgencyCoachingContext,
 ): DebriefAgencyLedger {
+  const thresholds = thresholdsFor(ctx);
   let state: ConversationAgencyState | null = null;
   let fragmentTurns = 0;
   let topicShiftTurns = 0;
@@ -110,6 +143,7 @@ export function debriefAgencyLedgerFor(
     userTurnOrdinal += 1;
     const decision = agencyPolicyFor(
       detectAgencyEvidence(turns.slice(0, i + 1), state),
+      thresholds,
     );
     state = nextConversationAgencyState(state, decision, null);
     if (decision.situation === null) continue;
