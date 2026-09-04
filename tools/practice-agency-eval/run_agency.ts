@@ -61,6 +61,11 @@ import {
   callDeepSeek,
   DEEPSEEK_MODEL,
 } from "../../supabase/functions/practice-chat/deepseek.ts";
+import {
+  CLAUDE_ENDPOINT,
+  CLAUDE_HAIKU_MODEL,
+} from "../../supabase/functions/practice-chat/claude.ts";
+import type { ChatMessage } from "../../supabase/functions/practice-chat/prompt.ts";
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
 import { normalizeLiteralNewlines } from "../../supabase/functions/practice-chat/prompt_sanitizer.ts";
 import {
@@ -491,6 +496,8 @@ interface CliOptions {
    * `meta.fixture` 一律多一個 `threadSalt` 欄位（Codex R1 P3）。
    */
   threadSalt: string;
+  /** --chat-model=deepseek|haiku：女生回覆模型 A/B。預設 deepseek＝逐字舊行為。 */
+  chatModel: "deepseek" | "haiku";
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -507,6 +514,7 @@ export function parseArgs(argv: string[]): CliOptions {
     concurrency: 6,
     stateSimulation: false,
     threadSalt: "",
+    chatModel: "deepseek",
   };
   for (const arg of argv) {
     if (!arg.startsWith("--")) {
@@ -561,6 +569,12 @@ export function parseArgs(argv: string[]): CliOptions {
       case "thread-salt":
         opts.threadSalt = value.trim();
         break;
+      case "chat-model":
+        if (value !== "deepseek" && value !== "haiku") {
+          throw new Error(`agency_invalid_chat_model: "${value}"`);
+        }
+        opts.chatModel = value;
+        break;
       case "state":
         opts.stateSimulation = value === "1" || value === "true";
         break;
@@ -592,7 +606,7 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       default:
         throw new Error(
-          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--shape、--difficulty、--concurrency、--state、--thread-salt）`,
+          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--shape、--difficulty、--concurrency、--state、--thread-salt、--chat-model）`,
         );
     }
   }
@@ -605,6 +619,175 @@ export function parseArgs(argv: string[]): CliOptions {
     );
   }
   return opts;
+}
+
+// ── 模型 A/B（Phase 4 之後）：Haiku 4.5 臂 ──────────────────────────────────
+//
+// `callClaude`（claude.ts）是 production 唯一的 Anthropic 呼叫端，但不回傳
+// usage（README「Phase 4 完整黑箱矩陣」已記過這個限制，Sonnet 5 抽查只能用
+// 輸出字數估算）。這支評測工具要真的算單場成本，所以在這裡另外接一支只給
+// 這支 runner 用的呼叫端——system／cache_control／訊息角色對映抄
+// `claude.ts` 的 `claudeRequestMessages`（未 export），多讀一格 `json.usage`；
+// production 一個字都不動。
+
+/** Haiku pricing 抄錄自 `supabase/functions/analyze-chat/logger.ts`
+ * `TOKEN_COSTS["claude-haiku-4-5-20251001"]`（USD／1K token，未 export，改動
+ * 記得同步）。cache read／write 乘數是 Anthropic 官方文件的標準比例（read
+ * 0.1x、5 分鐘 ephemeral write 1.25x base input），logger.ts 沒有算這兩格。 */
+const HAIKU_INPUT_USD_PER_1K = 0.0008;
+const HAIKU_OUTPUT_USD_PER_1K = 0.004;
+const HAIKU_CACHE_READ_USD_PER_1K = HAIKU_INPUT_USD_PER_1K * 0.1;
+const HAIKU_CACHE_WRITE_USD_PER_1K = HAIKU_INPUT_USD_PER_1K * 1.25;
+
+export interface HaikuUsage {
+  readonly inputTokens: number;
+  readonly cacheReadInputTokens: number;
+  readonly cacheCreationInputTokens: number;
+  readonly outputTokens: number;
+}
+
+export interface HaikuUsageTotals extends HaikuUsage {
+  readonly calls: number;
+}
+
+export function estimateHaikuCostUsd(usage: HaikuUsage): number {
+  return (
+    (usage.inputTokens / 1000) * HAIKU_INPUT_USD_PER_1K +
+    (usage.cacheReadInputTokens / 1000) * HAIKU_CACHE_READ_USD_PER_1K +
+    (usage.cacheCreationInputTokens / 1000) * HAIKU_CACHE_WRITE_USD_PER_1K +
+    (usage.outputTokens / 1000) * HAIKU_OUTPUT_USD_PER_1K
+  );
+}
+
+export function addHaikuUsage(
+  totals: HaikuUsageTotals,
+  usage: HaikuUsage,
+): HaikuUsageTotals {
+  return {
+    calls: totals.calls + 1,
+    inputTokens: totals.inputTokens + usage.inputTokens,
+    cacheReadInputTokens: totals.cacheReadInputTokens +
+      usage.cacheReadInputTokens,
+    cacheCreationInputTokens: totals.cacheCreationInputTokens +
+      usage.cacheCreationInputTokens,
+    outputTokens: totals.outputTokens + usage.outputTokens,
+  };
+}
+
+export const ZERO_HAIKU_USAGE_TOTALS: HaikuUsageTotals = {
+  calls: 0,
+  inputTokens: 0,
+  cacheReadInputTokens: 0,
+  cacheCreationInputTokens: 0,
+  outputTokens: 0,
+};
+
+/** `ChatMessage[]`（含 system）→ Claude 的 system／messages 形狀，逐段抄
+ * `claude.ts` 的 `claudeRequestMessages`（未 export）。 */
+function claudeRequestMessages(messages: ChatMessage[]): {
+  system: string;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+} {
+  const system = messages
+    .filter((m) => m.role === "system")
+    .map((m) => m.content)
+    .join("\n\n")
+    .trim();
+  const conversation = messages
+    .filter((m) => m.role !== "system")
+    .map((m) => ({
+      role: m.role === "assistant" ? "assistant" as const : "user" as const,
+      content: m.content,
+    }));
+  return { system, messages: conversation };
+}
+
+/** 呼叫 Haiku 4.5，回傳文字＋這一次的 usage（`callClaude` 不回傳 usage，見上方
+ * 區塊註解）。錯誤語意、逾時、system cache_control 與 `claude.ts` 的
+ * `callClaude` 一致，只是多回傳一格 usage。 */
+export async function callHaikuChat(
+  args: { apiKey: string; messages: ChatMessage[]; maxTokens: number; temperature: number; timeoutMs: number },
+): Promise<{ text: string; usage: HaikuUsage }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), args.timeoutMs);
+  try {
+    const prompt = claudeRequestMessages(args.messages);
+    const res = await fetch(CLAUDE_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": args.apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: CLAUDE_HAIKU_MODEL,
+        max_tokens: args.maxTokens,
+        temperature: args.temperature,
+        system: prompt.system
+          ? [{
+            type: "text",
+            text: prompt.system,
+            cache_control: { type: "ephemeral" },
+          }]
+          : prompt.system,
+        messages: prompt.messages,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      await res.text().catch(() => "");
+      throw new Error(`claude_http_${res.status}`);
+    }
+    const json = await res.json();
+    if (json?.stop_reason === "refusal") throw new Error("claude_refusal");
+    if (json?.stop_reason === "max_tokens") {
+      throw new Error("claude_max_tokens");
+    }
+    const blocks = Array.isArray(json?.content) ? json.content : [];
+    const text = blocks
+      .filter((b: unknown) =>
+        typeof b === "object" && b !== null &&
+        (b as { type?: unknown }).type === "text" &&
+        typeof (b as { text?: unknown }).text === "string"
+      )
+      .map((b: { text: string }) => b.text)
+      .join("")
+      .trim();
+    if (!text) throw new Error("claude_empty_content");
+    const u = json?.usage ?? {};
+    return {
+      text,
+      usage: {
+        inputTokens: Number(u.input_tokens) || 0,
+        cacheReadInputTokens: Number(u.cache_read_input_tokens) || 0,
+        cacheCreationInputTokens: Number(u.cache_creation_input_tokens) || 0,
+        outputTokens: Number(u.output_tokens) || 0,
+      },
+    };
+  } catch (e) {
+    if (
+      (e instanceof DOMException && e.name === "AbortError") ||
+      (e instanceof Error && e.name === "AbortError")
+    ) {
+      throw new Error("claude_timeout");
+    }
+    throw e instanceof Error ? e : new Error(String(e));
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** 跟 `readDeepSeekKey` 同一種取法：先看 env，跟 `hint_debrief_spotcheck.ts`
+ * 同一個環境變數名（`CLAUDE_API_KEY`），呼叫前自己
+ * `export CLAUDE_API_KEY=$(cat ~/.config/anthropic/key)`。 */
+export function readAnthropicKey(): string {
+  const key = Deno.env.get("CLAUDE_API_KEY");
+  if (!key) {
+    throw new Error(
+      "agency_missing_anthropic_key: 未設定 CLAUDE_API_KEY（export CLAUDE_API_KEY=$(cat ~/.config/anthropic/key)）",
+    );
+  }
+  return key;
 }
 
 export async function readDeepSeekKey(): Promise<string> {
@@ -659,18 +842,37 @@ export function buildJobs(
 
 async function main(): Promise<void> {
   const opts = parseArgs(Deno.args);
-  const apiKey = await readDeepSeekKey();
-  const callChat: ChatCaller = (messages) =>
-    callDeepSeek({
-      apiKey,
-      messages: messages as {
-        role: "system" | "user" | "assistant";
-        content: string;
-      }[],
-      maxTokens: CHAT_MAX_TOKENS,
-      temperature: CHAT_TEMPERATURE,
-      timeoutMs: MODEL_TIMEOUT_MS,
-    });
+  // haiku 臂的 usage 累加（deepseek 臂沒有這個帳，維持 undefined，逐字舊行為）。
+  let haikuUsageTotals: HaikuUsageTotals | undefined;
+  let callChat: ChatCaller;
+  if (opts.chatModel === "haiku") {
+    const apiKey = readAnthropicKey();
+    haikuUsageTotals = ZERO_HAIKU_USAGE_TOTALS;
+    callChat = async (messages) => {
+      const { text, usage } = await callHaikuChat({
+        apiKey,
+        messages: messages as ChatMessage[],
+        maxTokens: CHAT_MAX_TOKENS,
+        temperature: CHAT_TEMPERATURE,
+        timeoutMs: MODEL_TIMEOUT_MS,
+      });
+      haikuUsageTotals = addHaikuUsage(haikuUsageTotals!, usage);
+      return text;
+    };
+  } else {
+    const apiKey = await readDeepSeekKey();
+    callChat = (messages) =>
+      callDeepSeek({
+        apiKey,
+        messages: messages as {
+          role: "system" | "user" | "assistant";
+          content: string;
+        }[],
+        maxTokens: CHAT_MAX_TOKENS,
+        temperature: CHAT_TEMPERATURE,
+        timeoutMs: MODEL_TIMEOUT_MS,
+      });
+  }
 
   const jobs = buildJobs(opts.profileIds, opts.scenarios, opts.repeat);
   const results: AgencySessionResult[] = new Array(jobs.length);
@@ -722,12 +924,26 @@ async function main(): Promise<void> {
       tree: await git(["rev-parse", "HEAD^{tree}"]),
       worktreeDirty: (await git(["status", "--porcelain"])) !== "",
       promptPolicyVersion: PRACTICE_PROMPT_POLICY_VERSION,
-      model: DEEPSEEK_MODEL,
+      model: opts.chatModel === "haiku" ? CLAUDE_HAIKU_MODEL : DEEPSEEK_MODEL,
+      // Phase 4 之後模型 A/B：女生回覆模型（`deepseek`＝production 舊行為、
+      // `haiku`＝評測臂）。judge 模型不受這個旗標影響，仍是 DeepSeek。
+      chatModel: opts.chatModel,
       chat: {
         maxTokens: CHAT_MAX_TOKENS,
         temperature: CHAT_TEMPERATURE,
         attempts: CHAT_GENERATION_ATTEMPTS,
       },
+      // haiku 臂才有值：這次跑完累加的 usage 與用 `estimateHaikuCostUsd` 估的
+      // 金額（`callClaude` 不回傳 usage，這支 runner 自己接的呼叫端才讀得到，
+      // 見上面「模型 A/B」區塊註解）。deepseek 臂維持 undefined，不動舊 schema。
+      ...(haikuUsageTotals
+        ? {
+          haikuUsage: {
+            ...haikuUsageTotals,
+            estimatedCostUsd: estimateHaikuCostUsd(haikuUsageTotals),
+          },
+        }
+        : {}),
       practiceMode: opts.mode,
       replyStyle: opts.style,
       conversationAgency: opts.agency,
@@ -774,6 +990,14 @@ async function main(): Promise<void> {
   console.error(
     `[agency] 完成 ${results.length} 場（失敗 ${failed}）、${calls} 次生成，寫入 ${opts.outPath}`,
   );
+  if (haikuUsageTotals) {
+    const cost = estimateHaikuCostUsd(haikuUsageTotals);
+    console.error(
+      `[agency] haiku usage：${haikuUsageTotals.calls} 次呼叫、input ${haikuUsageTotals.inputTokens}、` +
+        `cache_read ${haikuUsageTotals.cacheReadInputTokens}、cache_write ${haikuUsageTotals.cacheCreationInputTokens}、` +
+        `output ${haikuUsageTotals.outputTokens} tokens，估算 $${cost.toFixed(4)}`,
+    );
+  }
 }
 
 if (import.meta.main) {

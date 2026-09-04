@@ -6,10 +6,14 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  addHaikuUsage,
+  callHaikuChat,
+  estimateHaikuCostUsd,
   parseArgs,
   runAgencyScenario,
   saltedThreadId,
   threadSaltOfArtifactMeta,
+  ZERO_HAIKU_USAGE_TOTALS,
 } from "./run_agency.ts";
 import { AGENCY_SCENARIOS } from "./scenarios.ts";
 import { buildChatPromptBundle } from "../../supabase/functions/practice-chat/prompt.ts";
@@ -213,4 +217,137 @@ Deno.test("Phase 4.2（Codex R1 P3）：Phase 4.2 之前的舊 artifact 沒有 m
     threadSaltOfArtifactMeta({ fixture: { threadSalt: "r1" } }),
     "r1",
   );
+});
+
+// ── 模型 A/B：`--chat-model=deepseek|haiku`（deepseek＝逐字舊行為）────────────
+
+Deno.test("parseArgs：--chat-model 省略＝deepseek（逐字舊行為），只認 deepseek／haiku", () => {
+  assertEquals(parseArgs([]).chatModel, "deepseek");
+  assertEquals(parseArgs(["--chat-model=deepseek"]).chatModel, "deepseek");
+  assertEquals(parseArgs(["--chat-model=haiku"]).chatModel, "haiku");
+  assertThrows(
+    () => parseArgs(["--chat-model=gpt"]),
+    Error,
+    "agency_invalid_chat_model",
+  );
+});
+
+Deno.test("parseArgs：--chat-model 不影響其餘旗標的預設值（等價於沒加這個旗標）", () => {
+  const withoutFlag = parseArgs([]);
+  const withDefault = parseArgs(["--chat-model=deepseek"]);
+  assertEquals(
+    { ...withoutFlag, chatModel: undefined },
+    { ...withDefault, chatModel: undefined },
+  );
+});
+
+Deno.test("callHaikuChat：system 併成一段並掛 ephemeral cache_control，訊息角色對映 user/assistant，不打真網路", async () => {
+  const original = globalThis.fetch;
+  const bodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = (_input, init) => {
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          content: [{ type: "text", text: "喔 好啊" }],
+          usage: {
+            input_tokens: 120,
+            cache_read_input_tokens: 80,
+            cache_creation_input_tokens: 0,
+            output_tokens: 15,
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+  };
+  try {
+    const result = await callHaikuChat({
+      apiKey: "k",
+      messages: [
+        { role: "system", content: "你是 Alice。" },
+        { role: "system", content: "情境：咖啡廳。" },
+        { role: "user", content: "嗨" },
+        { role: "assistant", content: "嗨嗨" },
+        { role: "user", content: "在幹嘛" },
+      ],
+      maxTokens: 200,
+      temperature: 0.9,
+      timeoutMs: 1000,
+    });
+    assertEquals(result.text, "喔 好啊");
+    assertEquals(result.usage, {
+      inputTokens: 120,
+      cacheReadInputTokens: 80,
+      cacheCreationInputTokens: 0,
+      outputTokens: 15,
+    });
+    assertEquals(bodies.length, 1);
+    const body = bodies[0];
+    assertEquals(body.model, "claude-haiku-4-5-20251001");
+    assertEquals(body.max_tokens, 200);
+    assertEquals(body.temperature, 0.9);
+    assertEquals(body.system, [{
+      type: "text",
+      text: "你是 Alice。\n\n情境：咖啡廳。",
+      cache_control: { type: "ephemeral" },
+    }]);
+    assertEquals(body.messages, [
+      { role: "user", content: "嗨" },
+      { role: "assistant", content: "嗨嗨" },
+      { role: "user", content: "在幹嘛" },
+    ]);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("callHaikuChat：max_tokens／refusal／空字串走跟 callClaude 一致的錯誤語意", async () => {
+  const original = globalThis.fetch;
+  const cases: Array<[unknown, string]> = [
+    [{ stop_reason: "max_tokens", content: [] }, "claude_max_tokens"],
+    [{ stop_reason: "refusal", content: [] }, "claude_refusal"],
+    [{ content: [] }, "claude_empty_content"],
+  ];
+  try {
+    for (const [payload, expected] of cases) {
+      globalThis.fetch = () =>
+        Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }));
+      let message = "";
+      try {
+        await callHaikuChat({
+          apiKey: "k",
+          messages: [{ role: "user", content: "hi" }],
+          maxTokens: 10,
+          temperature: 0.5,
+          timeoutMs: 1000,
+        });
+      } catch (e) {
+        message = e instanceof Error ? e.message : String(e);
+      }
+      assertEquals(message, expected);
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("addHaikuUsage／estimateHaikuCostUsd：純函式累加與估價（不打網路）", () => {
+  const afterOne = addHaikuUsage(ZERO_HAIKU_USAGE_TOTALS, {
+    inputTokens: 1000,
+    cacheReadInputTokens: 0,
+    cacheCreationInputTokens: 0,
+    outputTokens: 1000,
+  });
+  assertEquals(afterOne.calls, 1);
+  // input 1K@$0.0008 + output 1K@$0.004 = $0.0048。
+  assert(Math.abs(estimateHaikuCostUsd(afterOne) - 0.0048) < 1e-9);
+  const afterTwo = addHaikuUsage(afterOne, {
+    inputTokens: 0,
+    cacheReadInputTokens: 1000,
+    cacheCreationInputTokens: 0,
+    outputTokens: 0,
+  });
+  assertEquals(afterTwo.calls, 2);
+  assert(estimateHaikuCostUsd(afterTwo) > estimateHaikuCostUsd(afterOne));
 });
