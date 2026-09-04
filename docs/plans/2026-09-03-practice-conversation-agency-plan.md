@@ -102,7 +102,7 @@
 - 2026-09-04（Phase 3.3）：`agency-phase33` 分支（HEAD `ef635c20`，接手 Phase 3.3 的 `--shape=off|prompt|truncate` 三臂旋鈕接線）新增情境 A27（`f0701067`：裸社群帳號／ID，玩家丟 `debby1993wu`／`ig: chen.yun_`／`@kevin_lin88`，正解是不能宣稱認識這人或有共同朋友——Eric 手機真機回報的「這是我们朋友」共同記憶捏造，沿用既有 `accommodating_invention`／`accommodating_self_fact` 標籤，不需要新標籤），並加一個 runner 級 `shapeDropped` 逐輪 telemetry（`bd888002`，供 truncate 臂事後統計丟了幾則泡泡）；34 支測試綠。三臂黑箱（Eric 核准 $3.50 上限）：`A25,A26,A27,A02,A08`、standard、`--agency=on --style=1`、20 位 × repeat 1（估算若用 repeat=2 會落在 $5–6 超過上限，照指示降 repeat 不砍情境）；三臂各 100 場、480 次生成、零失敗，judge 各 340 筆（解析失敗 0／1／0，皆 <0.5%）。**真正的信號**：`sequenceHoldBlindFollow`（第 3 則以後仍盲目跟題，Phase 3.0／3.1／3.2 三輪唯一沒動過的格）在 truncate 臂第一次出現方向一致的下降——25.8%（off）→19.3%（prompt）→13.3%（truncate），off／truncate 的信賴區間只在邊緣重疊（16.7–18.3），機制上說得通（truncate 是生成後結構截斷，直接砍掉她破案後追加的無來源經歷），但 n=120、repeat=1 還不足以下定論，下一輪建議只對 truncate 單臂加碼 repeat=3 驗證。頭條與 `accommodating_invention`／`asked_with_guess` 三臂互相落在信賴區間內，分不出差異。**A27 誠實結論**：三臂逐字稿都重現了 Eric 回報的行為（「我想起來了」「你是咖啡店那個客人吧」），但 judge 的 `accept_valid_answer` 先決條件（她問過、玩家這句回答到那個問題）把 A27.p2 大多數回覆（off 18/20、prompt 17/20、truncate 15/20）判離 `accommodating_invention` 的審查範圍之外，這是評測本身的已知限制，不是產品行為結論——下一輪要嘛改 A27.p1 的腳本前文、要嘛收緊判準先決條件。安全側維持（`inconsistent_self_fact`／`interrogation` 三臂皆 0%）。花費：$19.22→$18.44（估算落在 $0.78，遠低於 $3.50 上限）。數字、逐句對照與誠實解讀在 `tools/practice-agency-eval/README.md`「Phase 3.3」節。 **確認跑（同分支，未改程式碼）**：只留 off／truncate 兩臂放大到 20 位 × repeat 3（`A25,A26,A27`），180 場 × 2 臂、1,260 次生成 × 2、零失敗，judge 各 900 筆（解析失敗 3／0）。`sequenceHoldBlindFollow` 的 truncate 信號在 3 倍樣本下**站住**——off（20.6%、17.8–24.5）與 truncate（12.5%、9.7–16.1）信賴區間完全分開；`sequenceChallenge`／`sequenceRepairAccepted` 點估計略降但區間跟 off 重疊，沒有可歸因給 truncate 的回歸（`sequenceChallenge` 的 truncate 下緣貼著 80% gate，值得下一輪繼續盯）。同輪先修了 A27.p2 的量測缺口（p1/p2/p4 間插腳本化填充輪，讓 p2 上下文不再吃到 p1 真實生成的『你是？』），但確認跑顯示**判準本身還是沒修到**——`accept_valid_answer` 依然吃掉八成左右的 A27.p2 回覆（off 81%、truncate 83%），`accommodating_invention` 命中率沒有變化（2%／0%）；唯一乾淨可比的是沒有腳本前文的A27.p1。**本輪花費 $2.89，超出 Eric 核准的 $2.00 上限約 $0.89**——估算沿用了混合5 情境的平均單價，低估了 A25／A26／A27 這種隨則數累加上下文的長情境成本，是流程上的估算失誤，已在 README 誠實記錄。數字與逐字對照在 README「Phase 3.3 確認跑」節。**2026-09-04 A27 重跑（封閉語境，$0.70 硬上限）**：Codex R1 修完兩個 A27 量測缺口（`95cc242e` 填充對話改真封閉、`04cee378` Game 修復優先輪截斷免疫）之後，只重跑 A27（off／truncate 各 20 位 × repeat 3，60 場、180 生成、零失敗，judge 各 180 筆，解析失敗 0／1）驗證修正效果；stop-loss 依協定算出的兩個估算法（call-count $0.40、token 估價 $0.84）都被同一時間點的實測餘額差（臂 1 實測僅 $0.22）證偽為過度保守（估算未計入 DeepSeek prompt 快取），改用實測數字判斷後繼續跑完臂 2，兩臂合計實際花費 **$0.31**，遠低於上限，估算方法的落差已在 README 記錄供下一輪校準。**診斷結果**：A27.p2 的 `accept_valid_answer` 灰色地帶從修正前 81%／83%（off／truncate）降到修正後 **43%／33%**，方向正確且降幅顯著，但沒有掉到低——判準本身仍會把「回答了問題」與「回答的內容裡塞了一段查無來源的具體情節」混在一起（`accommodating_invention` 全體仍是 0/180、0/179，逐字覆核 practice_girl_018「那天在酒吧真的很吵」仍被判成 `accept_valid_answer`＋`plausible_self_detail`）；關鍵字粗篩（我想起來／認識／朋友／客人／那天）人工複核後，off 5 則、truncate 3 則是明確的「無中生有共同際遇」捏造，兩臂都還在，封閉語境修正沒有讓行為消失，只是讓 judge 更少誤判。下一輪要收緊的仍是 `accept_valid_answer`／`plausible_self_detail` 判準本身。數字、逐探針表與逐字對照在 README「2026-09-04 A27 重跑（封閉語境）」節。
 - 2026-09-04（Phase 3.4 評測）：`agency-phase34-eval` 分支（branch 自 main `bafd61f8`）分兩部分，只動評測工具，不動 production 程式碼。**Part 1（judge 判準 v3）**：`accommodating_invention` 加黃金法則例外——她的回覆宣稱認出玩家本人、共同過去相遇、共同朋友，即使玩家那句話字面上「回答到了問題」也算，不再被 `accept_valid_answer` 的先決條件免責；`plausible_self_detail` 明文排除涉及玩家本人或共同過去的內容；parser 移除 `accept_valid_answer` 與 `accommodating_invention` 的互斥檢查（`adopted_without_asking` 那兩條互斥不變）。`evaluate_agency.ts` 未改動——headline 本來就是 `adopted_without_asking || accommodating_invention`，A27 的 `mustAllow` 從未含 `accept_valid_answer`。新增 judge 測試釘住新 prompt 文字與 parser 接受新組合，`deno test` 35 passed（原 34 + 1）。**Part 2（A27 v3 重評，零新生成，只重判既有 artifact）**：對「A27 重跑（封閉語境）」的 off／truncate artifact 各 180 探針用 v3 judge 重評（`--out` 另存 `-judge-v3.json`，不覆蓋 v2），DeepSeek $14.20→$14.16，兩臂合計花費 $0.04，遠低於 $0.40 stop-loss。頭條隨之如實升高（off 11.1%→15.0%、truncate 13.4%→17.4%），`accommodating_invention` 從全 0 變成 off 3/180、truncate 1/178——**不是行為變差，是量測缺口變窄**。上一節人工複核找到的 5＋3 則共同記憶捏造，v3 抓到 4/8（含一則親眼驗證 `accommodating_invention` 與 `accept_valid_answer` 同時成立），剩下 4 則是兩類誠實殘留缺陷：p1 位置（沒有腳本前文）模型完全沒往下檢查內容；truncate 臂用「…對吧」這種問句形式提出捏造前提時，模型讀成單純確認／質疑而不是宣稱。下一輪具體目標：prompt 補一句「問句形式提出的捏造共同熟人前提，一樣算」。數字與逐則對照在 README「A27 v3 重評」節。分支未推、未合併 main。
 - 2026-09-05（Phase 4.0）：`agency-phase40` 分支（branch 自 main `e54885ce`）落地 `ConversationAgencyProfile` 四欄位與四個 planner／threshold consumer，`strangerCuriosity` 併入既有 `questionHabit`、80 位走 preset 預設；1,826 支測試綠（＋18）、等價 harness golden 未重印、離線回放證明三個 consumer 在 A28 真實逐字稿上點火且未擾動 Phase 3.8。本輪零模型呼叫，沒有新的黑箱數字。詳見本檔「Phase 4.0」節。
-- 2026-09-05（Phase 4.2）：`agency-phase42` 分支三件事，**零模型呼叫**。(A) 跨輪立場 85.0% 的 15 個失敗探針**逐泡泡**診斷（denominator=100、successes=85、failures：adopted_only 1／asked_with_guess_only 14／both 0）：15/15 的候選組都沒有無條件 `acknowledge`，但**第一顆就給猜測有 6 筆、整則零質疑有 2 筆**，所以只能說「候選選擇層沒有授權無條件接住」；照 production 的 `truncateAgencyShape` 離線重放＝**改善 1／不變 12／惡化 2**，前一版「truncate 是唯一結構出口」已撤回。**不動程式**。(B) `forceAskUser` 排除純反應詞輪，且窗口語意改成「玩家**給了內容**的回合數在 [2,6] 內」＋第 10 個 user 回合硬上限（Eric 2026-09-05 拍板「規則綁對方給了什麼，不綁第幾回合」）；三支狀態軌跡測試釘住「反應詞輪不消耗窗口、下一輪他講了東西就補問」，離線重建 A29.p2 forced **38/40 → 0/40**、A28.p3 仍 36/40、主矩陣 forced 315 → 315 逐格不變。(C) `run_agency.ts` 新增 `--thread-salt`（預設空＝thread id／prompt／生成行為不變，artifact meta 多 `fixture.threadSalt`），`replay_plan.ts` 同源重建並測真實舊 artifact 退路。評測指標：`stance_persistence_conditional` 改名 `_strict_conditional`（公式不動、數字可比）並新增 `stance_persistence_adopted_only`（on 99.0%／off 91.7%），另加 `curiosity_within_six_content_turns`。1,852 支測試綠（＋4）、eval 工具 40 支綠（＋4）、等價 harness 6 綠且 off golden 未重印。Codex R1 BLOCKED 的兩個 P1／一個 P2／三個 P3 全數處置，詳見本檔「Phase 4.2」節。
+- 2026-09-05（Phase 4.2）：`agency-phase42` 分支三件事，**零模型呼叫**。(A) 跨輪立場 85.0% 的 15 個失敗探針**逐泡泡**診斷（denominator=100、successes=85、failures：adopted_only 1／asked_with_guess_only 14／both 0）：15/15 的候選組都沒有無條件 `acknowledge`，但第一顆就給猜測有 6 筆、整則零質疑有 2 筆，所以只能說「候選選擇層沒有授權無條件接住」；照 production 的 `truncateAgencyShape` 離線重放＝**改善 1／不變 12／惡化 2**（機器輸出 `out/2026-09-05-p42-stance-bubbles.json`），撤回「truncate 是唯一結構出口」。**不動程式**。(B) `forceAskUser` 排除純反應詞輪，窗口語意改成「玩家**給了內容**的回合數在 [2,6] 內」＋第 10 個 user 回合硬上限（Eric 2026-09-05 拍板「規則綁對方給了什麼，不綁第幾回合」）；七支狀態軌跡／邊界／classifier 差分測試釘住，離線重建 A29.p2 forced **38/40 → 0/40**、A28.p3 仍 36/40、主矩陣 forced 315 → 315 逐格不變。(C) `run_agency.ts` 新增 `--thread-salt`（預設空＝thread id／prompt／生成行為不變，artifact meta 多 `fixture.threadSalt`）。評測指標：`stance_persistence_conditional` 改名 `_strict_conditional`（改回直接讀導出的 `blind_follow`，與舊實作逐字相同）並新增 `stance_persistence_adopted_only`（on 99.0%／off 91.7%）；`curiosity_within_six_content_turns` 真的逐場數前六個內容輪（on 50.0%／off 7.5%）。1,855 支測試綠（＋7）、eval 工具 44 支綠（＋8）、等價 harness 6 綠且 off golden 未重印。Codex R1／R2 兩輪 BLOCKED 的全部 P1／P2／P3 與 Uncertain 已處置（含「對」「是啊」的反應詞邊界契約、truncate 營運風險留給 Eric），詳見本檔「Phase 4.2」節。
 - 2026-09-05（Phase 4.1）：`agency-phase41` 分支（branch 自 main `21b43a5c`）落地 Hint／Debrief P2——教練指得出「沒有回答她、連續丟詞」，且她的補救不算玩家得分。新檔 `agency_coaching.ts` 兩支純函式＋21 支測試，hint／prompt 各一個選填參數，門檻與 chat 路徑同源（難度／isGame／角色 agency profile），旗標 `on` 才進 prompt；1,848 支測試綠（＋22）、等價 harness off／shadow golden 未重印且新增白名單釘住「旗標 on 時 11 個 hint／debrief 案例必須不同」。本輪零模型呼叫，沒有新的黑箱數字。Codex R1 BLOCKED（三個 P2＋四個 U）已全數處置，R2 **APPROVED_WITH_RISK**（撤銷 R1 的 P1、無 P0/P1/P2）的一個 P3 與三個 U 也已修完，HEAD `977ec7e8`。詳見本檔「Phase 4.1」節。
 
 ## Phase 4.2 — 立場持久診斷、停滯輪不強制問、評測 salt（2026-09-05）
@@ -119,7 +119,9 @@
 
 #### 逐泡泡 ordered acts ＋ truncate 離線重放
 
-泡泡標籤是**人工閱讀**（challenge＝點破他沒回答／在跳題；guess＝替他補一個意圖；accept＝順著接；other＝自述或語氣詞），不是 judge 輸出。truncate 欄位是照 production 的 `truncateAgencyShape` 真的跑一次（條件：`isAgencyShapeExperimentTurn` ∧ 泡泡數 > 1 ∧ `isQuestionText(第一顆)`，而 `QUESTION_RE` **錨在句尾**——句尾接 emoji 或「喔」都不算問句）。
+**機器可重現輸出**：`tools/practice-agency-eval/out/2026-09-05-p42-stance-bubbles.json`（由 `stance_bubbles.ts` 產生，零模型呼叫），每筆含 `{beforeBubbles, firstBubbleQuestion, afterBubbles, dropped, orderedActs, classification}`＋`allowedActSetId`／`policyMode`／`utteranceShape`／`unresolvedCount`，檔頭有 `truncateTally`。
+
+泡泡標籤是**人工閱讀**（challenge＝點破他沒回答／在跳題；guess＝替他補一個意圖；accept＝順著接；other＝自述或語氣詞），不是 judge 輸出——artifact 的 `note` 欄位明寫哪些欄位是機器算的、哪些是人工標的。truncate 欄位是照 production 的 `truncateAgencyShape` 真的跑一次（條件：`isAgencyShapeExperimentTurn` ∧ 泡泡數 > 1 ∧ `isQuestionText(第一顆)`，而 `QUESTION_RE` **錨在句尾**——句尾接 emoji 或「喔」都不算問句）。
 
 | # | 情境／角色／rep | 逐泡泡 ordered acts | truncate 後 | 分類 |
 | --: | --- | --- | --- | --- |
@@ -201,7 +203,18 @@ Phase 4 完整黑箱：A29（玩家只回「哈哈」「嗯嗯」）on 臂 `A29.
 
 **主矩陣（A01–A15、20 位 × repeat 3）forced 總數 base 315 ＝ HEAD 315，逐探針差集為空**——這兩處改動只碰得到含純反應詞輪的場次。
 
-`evaluate_agency.ts` 同步加一條 **`curiosity_within_six_content_turns`**（分母只算玩家給了內容的 `cooperative_turn` 探針，用 production 同一支 `utteranceShapeOf` 判），舊的 `curiosityWithinSix` 保留可比。專屬矩陣實測兩條**相等**（on 50.0%、off 7.5%，n=40）——唯一的純反應詞探針 A29.p1／p2 的 kind 是 `stalled_reaction` 不是 `cooperative_turn`，本來就不在這個分母裡；接線是為了讓契約在情境檔擴充時自動成立。
+`evaluate_agency.ts` 同步加一條 **`curiosity_within_six_content_turns`**：逐場依 `PROBE_ORDER` 排序 `cooperative_turn` 探針、丟掉純反應詞輪（用 production 同一支 `utteranceShapeOf` 判），**只取前六個**（上界直接吃 planner 的 `ASK_USER_WINDOW_USER_TURNS`，不另寫一份會漂掉的 6）；第七個內容輪才問到＝失敗。舊的 `curiosityWithinSix`（整場 OR）保留可比。
+
+> **Codex R2 P1 修正**：前一版只排除 reaction 就把整場 OR 起來，第 7 個內容輪才問也會判成功——名稱與公式不符。已補反例測試（同場七個內容輪、只有第七個 `asked_about_user` → 新指標失敗、舊指標成功；另一支證明插在前面的反應詞輪不佔窗口格）。
+
+專屬矩陣重算（A25/A26/A28/A29，20 位 × repeat 2）：
+
+| 指標 | on | off |
+| --- | --- | --- |
+| `curiosityWithinSix`（整場 OR） | **50.0%**（35.0–65.0，n=40） | **7.5%**（0.0–17.5，n=40） |
+| `curiosity_within_six_content_turns` | **50.0%**（35.0–65.0，n=40） | **7.5%**（0.0–17.5，n=40） |
+
+現行情境檔裡兩條相等：A28 只有 5 個 `cooperative_turn` 探針（都是內容輪），唯一的純反應詞探針 A29.p1／p2 的 kind 是 `stalled_reaction`，本來就不在這個分母裡。差別要在情境檔擴充到七個以上內容輪、或 `cooperative_turn` 出現反應詞時才會顯現——那正是上面兩支反例測試鎖住的格。
 
 ### (C) 評測工具：`--thread-salt`，讓 `initiative` 量得到
 
@@ -213,6 +226,50 @@ Phase 4 完整黑箱：A29（玩家只回「哈哈」「嗯嗯」）on 臂 `A29.
 - initiative 測試改成 **5 個不同的 salt**（不是同一個 salt 配 repeat 1–5），斷言寫成 deterministic fixture：無鹽那一面是 `false`（＝兩輪黑箱 0/40 的來源），5 個鹽裡**已知有命中也有不命中**（證明換鹽真的換骰面）。不再寫任何機率保證。
 
 **沒做**：沒有用新旗標跑黑箱，所以 `initiative` 仍然**沒有任何語意輸出證據**，只是從「量不到」變成「量得到」。而且 salt 會改變整個 `seedKey`，之後若要宣稱語意差異來自 initiative，必須按 `optionalAct` 分層，不能只比 salted／unsalted 總體（Codex R1 Uncertain）。
+
+### 反應詞邊界契約：「對」「是啊」目前**不是** reaction（Codex R2 Uncertain）
+
+`REACTION_RE` 有 `嗯+`／`喔+`／`好+(的|喔|啊)?`／`哈+`／`了解` 等，但**沒有「對」「是啊」**。實測（`agencyThresholdsFor("normal", false)`，單一來回 fixture，零模型呼叫）：
+
+| 玩家這句 | 前一句＝陳述（「我今天差點睡過頭…」） | 前一句＝是非問句（「你今天也很累嗎？」） | 消耗內容窗口 |
+| --- | --- | --- | --- |
+| **對** | `bare_fragment` → `ambiguous_fragment`／`fragment_no_context_v1`（**她會問意思**） | `answer_candidate` → `situation=null`（有效短答免疫，不介入） | **會** |
+| **是啊** | 同上 | 同上 | **會** |
+| **對，我剛下班** | `self_share` → `situation=null` | `self_share` → `situation=null` | **會** |
+| 嗯嗯（對照） | `reaction` → `situation=null` | `reaction` → `situation=null` | **不會** |
+
+`utteranceShapeOf(text, false)`（歷史計數與內容窗口用的那一支）對「對」「是啊」都回 `bare_fragment`，所以**三者都消耗內容窗口**；`decision.evidence.utteranceShape`（planner 當輪用的那一支）只有在前一句是是非問句時才把它們升成 `answer_candidate`。
+
+**契約（本輪只釘現況，不改 `REACTION_RE`）**：
+
+1. 純肯定短詞（「對」「是啊」）目前**算內容**，會消耗「六個內容輪」窗口。
+2. 前一句是**陳述**時，單獨一個「對」會被判成裸片段，她**會問意思**——這是目前的行為，不是本輪引入的。
+3. **4.3 正在把肯定／否定短詞納入 `reaction`**；上面兩條屆時會一起翻面，由 4.3 接手並重新量。
+4. 已加測試（`turn_response_plan_test.ts`「契約釘樁」）鎖住現況，4.3 改動時一定會撞到它。
+
+### Codex R2（BLOCKED，評測指標）逐項處置
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| **P1** | `curiosity_within_six_content_turns` 沒有限制六個內容輪 | **已修**：逐場依 `PROBE_ORDER` 排序、丟掉 reaction、`slice(0, ASK_USER_WINDOW_USER_TURNS[1])`；兩支反例測試（第 7 個內容輪才問＝失敗；反應詞不佔格）。數字重算見上表 |
+| **P2**（等價） | 「舊嚴格公式一字不動」與 diff 不符 | **已修**：改回直接讀導出的 `cur.labels.blind_follow`（就在同一支函式上面由 OR 算出），與 Phase 1 舊實作逐字相同。實測 `out/` 底下 **55 份 judge artifact、41,350 筆有標籤探針、0 筆帶 `blind_follow` key**（它是 `evaluateAgency` 的導出值，`RawAgencyLabels` 型別本身就排除它）；不變量鎖進 `judge_agency_test.ts`（`JUDGED_LABELS` 不含導出欄位、prompt 不出現、parser 就算收到也不吐回） |
+| **P2**（truncate 營運風險） | 已開啟的 truncate 與診斷結論的落差 | **不改程式**，見下面「truncate 營運風險」段 |
+| **P3**（軌跡） | 不是完整 handler 等價 | **已修**：`walkAskUserTrajectory` 收 classifier signal 參數，描述改成「照 handler 的**結構狀態順序**、classifier 固定值」；新增 `connected`／`disconnected`／`connected+aiChallengedThisTurn` 三個差分，斷言第 7 回合的 forced 與 `askedAboutUser` 逐格相同 |
+| **P3**（邊界） | 缺四個邊界 | **已修**：原始第 10 回合可問／第 11 不可（`ASK_USER_WINDOW_MAX_USER_TURNS`）、第 6 個內容輪可問／第 7 個不可（`ASK_USER_WINDOW_USER_TURNS[1]`）。中間輪用「分享＋問句」當內容輪——它消耗窗口但玩家在問她所以不強制，正好把強制推到指定那一格 |
+| **P3**（salt） | 沒覆蓋 CLI 典型形態 | **已修**：補「固定 salt `p42`、repeat 1～5」的 deterministic bucket，斷言同時含命中與不命中 |
+| **U**（「對」「是啊」） | 契約未定 | **已量、已釘樁**，見上面的表；4.3 接手 |
+| **U**（逐泡泡缺可重現輸出） | 只有人工表 | **已修**：`stance_bubbles.ts` ＋ `out/2026-09-05-p42-stance-bubbles.json`（15 筆、`truncateTally` 改善 1／不變 12／惡化 2，與人工表逐筆相符） |
+| **U**（自報數字） | 禁工具呼叫無法獨立確認 | 本輪數字仍是自報；命令與 artifact 路徑都寫在本節，可在最終 SHA 上重跑 |
+
+### truncate 營運風險（Codex R2 P2，**留給 Eric 決定**）
+
+**現況**：production `PRACTICE_AGENCY_SHAPE_EXPERIMENT=truncate` **已開**，依據是 Phase 4 的獨立黑箱——A25／A26 上 `sequenceHoldBlindFollow` **22.5% → 14.2%**（見 main `f5368f74` 的重驗）。
+
+**本輪的診斷不推翻那個依據**：4.2 (A) 的 15 筆是**跨輪立場失敗**這個特定切片（A06.p3／A14.p3），在這 15 筆上 truncate 是改善 1／不變 12／惡化 2，淨效果為負。**不得把這 15 筆外推成整體效果**——兩者量的是不同情境、不同指標。
+
+**負淨效果的根因**：`QUESTION_RE` **錨在句尾**，所以「你在報地名嗎😂」「…到底想表達什麼啦😆」「你是在測試我有沒有在看喔」都判不出問句 → 12 筆根本沒被截斷；而真的被截斷的 3 筆裡有 2 筆第一顆就是帶問號的猜測 → 留猜測、砍質疑。
+
+**處置**：`QUESTION_RE` 的句尾錨定由 **4.3 刀 2** 修；**production truncate 維持開**，是否維持由 Eric 決定（本輪不動旗標、不動 `QUESTION_RE`）。
 
 ### Codex R1（BLOCKED）逐項處置
 
@@ -232,15 +289,15 @@ Phase 4 完整黑箱：A29（玩家只回「哈哈」「嗯嗯」）on 臂 `A29.
 
 ### Gate（實測數字）
 
-- practice-chat 全套：**1,852 passed / 0 failed / 1 ignored**（base 1,848／0／1；＋4 支 `turn_response_plan_test.ts`）。
+- practice-chat 全套：**1,855 passed / 0 failed / 1 ignored**（base 1,848／0／1；＋7 支 `turn_response_plan_test.ts`）。
 - 等價 harness：**6 passed / 1 ignored**，**off golden 未重印**。
-- `tools/practice-agency-eval/`：**40 passed / 0 failed**（base 36；＋4 支）。
+- `tools/practice-agency-eval/`：**44 passed / 0 failed**（base 36；＋8 支）。
 - `deno fmt --check`（本輪觸碰的 `.ts`）過；`deno check` 全過；`deno lint` **與 base 逐檔逐行相同**。
 - prompt 瘦身 gate 仍過（本刀只會讓 on 更短）。
 
 ### 風險與未做
 
-- (A) 沒有動程式；`stance_persistence_strict_conditional` 下輪重跑仍會是 85% 上下。`truncate` 在這 15 筆上淨效果為負，**不建議**現在開。
+- (A) 沒有動程式；`stance_persistence_strict_conditional` 下輪重跑仍會是 85% 上下。`truncate` 在這 15 筆上淨效果為負，但**那不足以推翻它在 A25／A26 上的正效果**——處置見上面「truncate 營運風險」段（production 維持開，根因由 4.3 修，由 Eric 決定）。
 - (B) 只有離線 planner 證據與軌跡測試，**沒有生成證據**證明 `accommodating_invention` 4/80 真的下降。反方向：純反應詞多的場次她會**更晚**問到他的事（窗口改成內容輪計數已經把「永遠不問」堵掉，但第 10 個 user 回合的硬上限仍可能讓極端場次整場不問）。
 - (C) `--thread-salt` 未在任何真跑用過。
 - production agency 旗標是 `true`（全開），(B) 兩處改動會直接影響 Eric 真機。
