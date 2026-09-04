@@ -1084,3 +1084,63 @@ Deno.test("applyCoherenceDeltaCap Phase 3.6：accommodatingSelfFact 壓成 0/0 �
     assertEquals(same.capApplied, "none", String(flag));
   }
 });
+
+Deno.test("Phase 4.3 R2 P2-4：aiChallengedThisTurn 的 judge 規則有反例定義，且只在 agency 開時進 prompt", () => {
+  const build = (agencyEnabled: boolean) =>
+    buildTurnClassifierMessages({
+      turns: [
+        { role: "user", text: "韓國" },
+        { role: "ai", text: "你在說什麼？" },
+        { role: "user", text: "日本" },
+      ],
+      profile: resolvePracticeProfile({
+        profileId: "practice_girl_001",
+        difficulty: "normal",
+      }),
+      heatScore: 40,
+      familiarityScore: 10,
+      assistantReply: "日本還是韓國？",
+      agencyEnabled,
+    })[0].content;
+  const on = build(true);
+  // 正向定義（問對方那句是什麼意思／指出接不上）與反例定義（一般內容追問、
+  // 給選項）都要在，而且明寫兩類互斥、判不出來給 false。
+  assert(on.includes("問對方剛剛那句話是什麼意思"));
+  assert(on.includes("日本還是韓國？"));
+  assert(on.includes("兩類互斥"));
+  assert(on.includes("判不出來給 false"));
+  // 旗標關閉時整段不進 prompt（off 路徑逐字不變，等價 harness 另有守門）。
+  assert(!build(false).includes("aiChallengedThisTurn"));
+});
+
+Deno.test("Phase 4.3 R2 P2-4：parser 把 aiChallengedThisTurn 穩定映射成布林", () => {
+  for (const raw of [true, false]) {
+    const parsed = parseTurnClassification(
+      JSON.stringify({
+        connection: "neutral",
+        impact: "minor",
+        testHandling: "none",
+        boundary: "safe",
+        hintAlignment: "none",
+        coherence: "disconnected",
+        aiChallengedThisTurn: raw,
+      }),
+      { requireCoherence: true },
+    );
+    assertEquals(parsed.aiChallengedThisTurn, raw);
+    assertEquals(
+      parsed.repairedFields?.includes("aiChallengedThisTurn"),
+      false,
+    );
+  }
+  // 非布林／缺欄位 → repair 成 false（安全方向：false 只會退回 bounded），
+  // 並在 repairedFields 留痕，讓 ops 算盛行率時扣得掉分母。
+  for (const raw of ['"yes"', "1", "null"]) {
+    const parsed = parseTurnClassification(
+      `{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"disconnected","aiChallengedThisTurn":${raw}}`,
+      { requireCoherence: true },
+    );
+    assertEquals(parsed.aiChallengedThisTurn, false, raw);
+    assert(parsed.repairedFields?.includes("aiChallengedThisTurn"), raw);
+  }
+});
