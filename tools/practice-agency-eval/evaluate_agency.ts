@@ -160,6 +160,11 @@ export interface AgencyMetrics {
   readonly sequenceHoldBlindFollow: Rate;
   /** 序列尾端玩家解釋後：她接受的比例（gate ≥90%）。 */
   readonly sequenceRepairAccepted: Rate;
+  /**
+   * Phase 3.7（AGENCY-05）：配合的玩家六個來回（A28），**每場**她至少問到他一件事
+   * 的比例（分母＝場，不是探針；gate ≥80%）。
+   */
+  readonly curiosityWithinSix: Rate;
   /** 命中任何一個 mustForbid。 */
   readonly forbidViolation: Rate;
   /** 至少命中一個 mustAllow。 */
@@ -279,6 +284,20 @@ export function evaluateAgency(
     "accept_valid_answer",
   );
 
+  // Phase 3.7：以場為單位——同一場（scenario×profile×repeat×difficulty×mode）
+  // 的 cooperative_turn 探針只要有一則 asked_about_user 就算這場有問到。
+  const cooperativeSessions = new Map<string, boolean>();
+  for (const p of judged) {
+    if (!p.kinds.includes("cooperative_turn")) continue;
+    const key = [p.scenarioId, p.profileId, p.repeat, p.difficulty, p.mode]
+      .join("|");
+    cooperativeSessions.set(
+      key,
+      (cooperativeSessions.get(key) ?? false) || p.labels.asked_about_user,
+    );
+  }
+  const curiosityWithinSix = bootstrapRate([...cooperativeSessions.values()]);
+
   const violatesForbid = (p: JudgedProbeFull) =>
     (PROBE_SPECS.get(p.probeId)?.mustForbid ?? []).some((l) => p.labels[l]);
   const satisfiesAllow = (p: JudgedProbeFull) =>
@@ -360,6 +379,7 @@ export function evaluateAgency(
     sequenceChallenge,
     sequenceHoldBlindFollow,
     sequenceRepairAccepted,
+    curiosityWithinSix,
     forbidViolation: bootstrapRate(judged.map(violatesForbid)),
     allowSatisfied: bootstrapRate(judged.map(satisfiesAllow)),
     perScenario,

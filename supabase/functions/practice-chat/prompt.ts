@@ -269,12 +269,14 @@ function acquaintanceOriginPrompt(
   // 這裡只留場合描述、立場、未驗證細節與「他講錯就糾正」；邀約門檻／語氣戒心／
   // 不複述三行併成一句。
   if (agency) {
-    return `\n\n你們是怎麼認識的（hidden guidance，不要照背這段，也不要說出「設定」兩個字）：
+    // Phase 3.7：加「想先知道他的一件事」；為守住 agency prompt 淨少 ≥1,000 的
+    // 餘量，標題與後兩行併短（語意不變：講錯就點出、只決定起點不改邀約門檻）。
+    return `\n\n你們是怎麼認識的（hidden guidance，不照背、不說「設定」）：
 - ${origin.sharedFact}
 - ${origin.stancePrompt}
 - ${origin.unverifiedGuard}
-- 他把認識經過講成別的場合、或說你們早就很熟、見過幾次，就以這裡為準點出來，不用兇。
-- 這只決定起點與戒心，不改邀約門檻；自然碰到才提，不一次複述。`;
+- 想先知道：${origin.curiosityFocus}。自然碰到才問、一輪一句；問過或他講過就別問。
+- 他把認識經過講錯或說早就很熟，照這裡點出來，不用兇；只決定起點與戒心，不改邀約門檻。`;
   }
   return `\n\n你們是怎麼認識的（hidden guidance，不要照背這段，也不要說出「設定」兩個字）：
 - ${origin.sharedFact}

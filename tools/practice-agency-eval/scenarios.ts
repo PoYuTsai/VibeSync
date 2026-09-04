@@ -44,7 +44,9 @@ export type AgencyLabel =
   | "coincidence_overlap"
   // Phase 2.6（Codex round-1 P2）：規則 2「她有自己的當下狀態與目的」原本只
   // 說「併入 blind_follow 家族」，等於沒有自己的分母也沒有自己的失敗形態。
-  | "overrides_own_state";
+  | "overrides_own_state"
+  // Phase 3.7（AGENCY-05）：正向標籤——她這一則有沒有問玩家一件關於他本人的事。
+  | "asked_about_user";
 
 export const AGENCY_LABELS: readonly AgencyLabel[] = [
   "blind_follow",
@@ -65,6 +67,7 @@ export const AGENCY_LABELS: readonly AgencyLabel[] = [
   "staircase_for_player",
   "coincidence_overlap",
   "overrides_own_state",
+  "asked_about_user",
 ];
 
 export function isAgencyLabel(value: unknown): value is AgencyLabel {
@@ -100,6 +103,8 @@ export type ProbeKind =
   | "interest_coincidence"
   // Phase 2.6：她已經明說此刻在忙／沒空，玩家仍然硬推一個新話題或邀約。
   | "own_state_pushed"
+  // Phase 3.7：配合的玩家、普通來回，量她前六回合有沒有問到他一件事。
+  | "cooperative_turn"
   // ── Phase 3.0（A25／A26）：一段長序列裡的四個位置，各自一個固定分母 ──
   // 分成四格才能回答 Eric 真正在問的問題：她**第幾則**開始質疑、之後**有沒有
   // 退回去**、玩家解釋之後**有沒有恢復正常**。
@@ -716,6 +721,44 @@ export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
         kinds: ["no_context_fragment", "stance_followup"],
         mustAllow: ["clarify_or_challenge", "hold_position"],
         mustForbid: ["accommodating_invention", "adopted_without_asking"],
+      }),
+    ],
+  },
+  {
+    id: "A28",
+    title:
+      "Phase 3.7 主動好奇：配合的玩家六個普通來回，都沒自我介紹——她前六回合有沒有問到他一件事（gate ≥80%）",
+    turns: [
+      u("嗨嗨 終於有空跟妳聊"),
+      u("今天超熱的 妳那邊也是嗎", {
+        id: "A28.p2",
+        kinds: ["cooperative_turn"],
+        mustAllow: ["asked_about_user", "accept_valid_answer"],
+        mustForbid: ["interrogation", "false_challenge"],
+      }),
+      u("哈哈 我剛下班 在想晚餐要吃什麼", {
+        id: "A28.p3",
+        kinds: ["cooperative_turn"],
+        mustAllow: ["asked_about_user", "accept_valid_answer"],
+        mustForbid: ["interrogation", "false_challenge"],
+      }),
+      u("妳那張照片是在哪拍的 看起來很舒服", {
+        id: "A28.p4",
+        kinds: ["cooperative_turn"],
+        mustAllow: ["asked_about_user", "accept_valid_answer"],
+        mustForbid: ["interrogation", "false_challenge"],
+      }),
+      u("感覺是妳會喜歡的那種地方", {
+        id: "A28.p5",
+        kinds: ["cooperative_turn"],
+        mustAllow: ["asked_about_user", "accept_valid_answer"],
+        mustForbid: ["interrogation", "false_challenge"],
+      }),
+      u("對啊 有機會再多聊", {
+        id: "A28.p6",
+        kinds: ["cooperative_turn"],
+        mustAllow: ["asked_about_user", "accept_valid_answer"],
+        mustForbid: ["interrogation", "false_challenge"],
       }),
     ],
   },

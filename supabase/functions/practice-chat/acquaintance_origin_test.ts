@@ -23,6 +23,11 @@ Deno.test("每個認識管道都填滿 prompt 需要的欄位，且標籤唯一"
   const ids = new Set<string>();
   const labels = new Set<string>();
   for (const origin of ACQUAINTANCE_ORIGINS) {
+    assert(
+      origin.curiosityFocus.trim().length > 0 &&
+        origin.curiosityFocus.length <= 60,
+      `${origin.id} curiosityFocus`,
+    );
     assert(!ids.has(origin.id), `duplicate id: ${origin.id}`);
     assert(!labels.has(origin.label), `duplicate label: ${origin.label}`);
     ids.add(origin.id);

@@ -45,6 +45,12 @@ export interface AcquaintanceOrigin {
   stancePrompt: string;
   /** 這個管道「仍然不能」自動成立的事（堵她替對方補共同記憶）。 */
   unverifiedGuard: string;
+  /**
+   * conversation-agency-v1 Phase 3.7（AGENCY-05）：這個管道下她最自然會先想知道
+   * 他的一件事。只在 agency 開時進 prompt（夥伴報告 §7.6：交友軟體問自介哪一點、
+   * 陌生接觸問為什麼找她、朋友介紹問跟介紹人的關係）。不是台詞，她自己決定怎麼問。
+   */
+  curiosityFocus: string;
   /** Hint 教練用：這個管道下一句該做什麼。 */
   hintFocus: string;
   /** Debrief 教練用：評分時要納入的起點差異（不重述管道名，由呼叫端加標籤）。 */
@@ -75,6 +81,7 @@ export const ACQUAINTANCE_ORIGINS: readonly OriginConfig[] = [
       "有朋友這層背書，你會比對陌生訊息客氣一點、願意多回幾句，但那只是禮貌，不代表你已經對他有興趣；他要是拿朋友當理由施壓或裝很熟，你會不舒服。",
     unverifiedGuard:
       "介紹人是誰、他們有多熟、你們之間有沒有共同回憶，這些細節都還沒被驗證——你不會自己補出朋友的名字或往事，對方沒講清楚時可以自然問是誰介紹的，或說你對他還沒什麼印象。",
+    curiosityFocus: "他跟介紹人怎麼認識、多熟（名字他自己講，你不猜）",
     hintFocus:
       "有共同朋友當背景，開場可以自然一點，但不要靠關係裝熟；重點是讓她覺得你這個人本身有趣。",
     debriefStandard:
@@ -90,6 +97,7 @@ export const ACQUAINTANCE_ORIGINS: readonly OriginConfig[] = [
       "這種管道你同時會有幾個人在聊，投入度本來就低；他要聊出跟其他人不一樣的東西你才會多花心思，罐頭開場、連續查戶口或急著要聯絡方式和見面，你的興趣會直接掉下來。絕不提到任何真實交友軟體的名字。",
     unverifiedGuard:
       "他自介和照片上的東西你只當參考，還沒被驗證；你不會憑一句話就相信他的職業、生活或他說你們有多合。",
+    curiosityFocus: "你自介哪一點吸引他配對、他平常是什麼樣的人",
     hintFocus:
       "她同時在跟別人聊，開場要有記憶點：接住她自介或前一句裡的具體東西，不要罐頭問候，也不要急著要見面。",
     debriefStandard:
@@ -105,6 +113,7 @@ export const ACQUAINTANCE_ORIGINS: readonly OriginConfig[] = [
       "你其實有點懷疑自己當下為什麼會答應，開頭會保守、會先確認他是不是那個人；他要能講出當時的畫面或那句讓你答應的理由，你才會慢慢放鬆。太快熱絡、太油或直接約，你會退一步。",
     unverifiedGuard:
       "除了那短短幾分鐘，你對他一無所知，也沒有共同朋友可以確認；他講的任何背景都還沒被驗證。",
+    curiosityFocus: "他那天為什麼直接上來搭話、是不是常這樣",
     hintFocus:
       "她戒心高又對你幾乎沒有資訊：先讓她想起當下、把陌生感降下來，再談其他，不要一開始就推進。",
     debriefStandard:
@@ -120,6 +129,7 @@ export const ACQUAINTANCE_ORIGINS: readonly OriginConfig[] = [
       "這種私訊你每週都收到幾則，多半已讀不回；他要有讓你想回的理由才會有下一句。一上來就稱讚外貌、要聯絡方式或問「可以認識一下嗎」，你只會覺得又一個。",
     unverifiedGuard:
       "你沒看過他本人，也不確定他版面上的東西是不是他的日常；你不會替他補他沒說過的生活細節。",
+    curiosityFocus: "他從哪裡看到你、為什麼私訊你",
     hintFocus:
       "她預設這是又一則陌生私訊：第一句要做出區隔，具體、有觀察、不稱讚外貌，也不要求她給更多聯絡方式。",
     debriefStandard:
@@ -135,6 +145,7 @@ export const ACQUAINTANCE_ORIGINS: readonly OriginConfig[] = [
       "你對那晚的印象是片段的，隔天清醒之後其實有點半信半疑；他要能對得上當天的畫面，你才會接得比較自然。如果你本來就不常跑夜店，就用那天是被朋友拉去的角度自然帶過。你不會把喝酒當成推進關係的理由，對方拿酒精、續攤或當晚的曖昧當籌碼，你會冷掉。",
     unverifiedGuard:
       "那晚聊過什麼你只記得大概；他說的「你那天說過⋯」在你自己想不起來之前都不算數。",
+    curiosityFocus: "他那天跟誰去、常去那種地方嗎",
     hintFocus:
       "那晚的印象很模糊：先幫她把當天的畫面接回來，把熱鬧場合的曖昧換成清醒時也成立的對話，不要延續灌酒或續攤的節奏。",
     debriefStandard:
@@ -150,6 +161,7 @@ export const ACQUAINTANCE_ORIGINS: readonly OriginConfig[] = [
       "有共同的場合、也有幾個共同認識的人，你不會太防備，但你對他的印象還很淺；他能接上那天的場合，你會比較有畫面。",
     unverifiedGuard:
       "那天你同時跟很多人講話，細節記得不完整；你不會硬掰你們聊過什麼，記不得就自然說記不太清楚。",
+    curiosityFocus: "他跟主揪什麼關係、那天怎麼會在場",
     hintFocus:
       "有共同場合可以借力：把那天的畫面接回來，再從群體場合的熟悉感轉成一對一的節奏。",
     debriefStandard:
@@ -165,6 +177,7 @@ export const ACQUAINTANCE_ORIGINS: readonly OriginConfig[] = [
       "之後還會碰到面，所以你不會太隨便回、也不會太快把話講死；但正因為會遇到，你更在意分寸，太快曖昧或太黏你會不自在。",
     unverifiedGuard:
       "他修哪些課、跟誰同組、你們有沒有一起做過報告，這些他沒說之前你不會自己補。",
+    curiosityFocus: "他哪個系、哪一屆，那堂課怎麼會來",
     hintFocus:
       "之後還會碰面，她比較不怕已讀你，但也更保守：步調自然、留分寸，比急著推進更容易加分。",
     debriefStandard:
@@ -181,6 +194,7 @@ export const ACQUAINTANCE_ORIGINS: readonly OriginConfig[] = [
       "你們本來就有共同的事情可以聊，開場不尷尬；但那也是你放鬆的地方，他要是把它變成搭訕現場，你會覺得有壓力。",
     unverifiedGuard:
       "除了那個場合，你對他的生活所知有限；他說的其他背景還沒被驗證。",
+    curiosityFocus: "他玩這個多久了、最喜歡哪一塊",
     hintFocus:
       "天然有共同話題，但只聊興趣會停在同好：從共同的場合自然帶出個人感受或生活，再談後面的事。",
     debriefStandard:
@@ -196,6 +210,7 @@ export const ACQUAINTANCE_ORIGINS: readonly OriginConfig[] = [
       "那是你的工作場合，你會特別在意分寸和自己的專業形象；他把公事上的熟悉度當成私下的親近，或在工作場合追得太明顯，你會退一步。私下訊息你願意聊，但一開始還是保留。",
     unverifiedGuard:
       "你們的交集主要在工作，你不會把公事上的往來說成私下的交情。",
+    curiosityFocus: "他做什麼的、那天怎麼會出現在你工作的地方",
     hintFocus:
       "她在意分寸和工作形象：把公事關係自然轉成私下聊天，語氣輕鬆但不要調侃她的工作或讓她覺得被冒犯。",
     debriefStandard:
@@ -210,6 +225,7 @@ export const ACQUAINTANCE_ORIGINS: readonly OriginConfig[] = [
     stancePrompt:
       "旅行的濾鏡讓那時候聊得比平常開，但回到日常之後你會回到原本的節奏；他要能把旅途的感覺接回現在的生活，不然話題很快就會斷。",
     unverifiedGuard: "你們只共度了那段行程，回來之後彼此的生活都不熟。",
+    curiosityFocus: "他那趟一個人還是跟誰、平常旅行喜歡怎麼玩",
     hintFocus:
       "旅行濾鏡會退：把當時的共同記憶接回她現在的日常，別停在「那時候好好玩」的回憶重播。",
     debriefStandard:
