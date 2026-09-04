@@ -29,8 +29,10 @@ import type { ResponseMode } from "./reply_style.ts";
 //   - 本檔沒有、也不會有 topic-relevance regex（「東京一定與韓國無關」）。
 //     語意關聯一律交給看得到完整逐字稿的生成模型，在 bounded 候選裡決定。
 //   - 已知的過寬處：`AI_QUESTION_RE` 沒有完整錨定，陳述句「我不知道為什麼會
-//     這樣」含「為什麼」會被判成她問過問題。這個方向是**安全**的——判成
-//     「她問過」只會讓玩家的短答被當成有效短答（不質疑）；判漏才會誤傷。
+//     這樣」含「為什麼」會被判成她問過問題。這個方向對 `previousAiAskedQuestion`
+//     是**安全**的——判成「她問過」只會讓玩家的短答被當成有效短答（不質疑）；
+//     判漏才會誤傷。但同一支訊號餵進**強制停止解讀**的閘門時方向剛好相反，
+//     所以那裡改用 `aiAskedQuestionStrict`（Phase 3.2 P1-1，見下面的判準）。
 //   - 字數不參與任何 agency 判斷：`utteranceShapeOf` 沒有長度條件；
 //     `detectTurnSignals` 那個 12 code unit 的 `userQuestionStreak` 是
 //     `7f1d6d6c` 就在的既有 interrogation 判準，而問句形狀本來就不是低資訊
@@ -242,6 +244,45 @@ export function aiAskedQuestion(text: string): boolean {
   return AI_QUESTION_RE.test(text.trim());
 }
 
+// ── 強制格專用的**嚴格**問句判準（Phase 3.2 P1-1）────────────────────────
+// `AI_QUESTION_RE` 刻意過寬，那對 `previousAiAskedQuestion` 是安全方向——判成
+// 「她問過」只會讓玩家的短答被當成有效短答（免疫）。但 Phase 3.0 把同一支訊號
+// 也餵進 `aiQuestionedInLoop`，而那裡它反過來是**強制停止解讀**的閘門：陳述句
+// 「我不知道為什麼會這樣」含「為什麼」就算她問過 → 假強制停（Codex 3.0 P1-1）。
+//
+// 迴圈閘門改用這一支。它只看**最後一個子句**的頭尾兩個位置：
+//   - 整句（剝掉句尾裝飾後）以 `?`／`？` 結尾；或
+//   - 最後一個子句以句尾疑問助詞或疑問詞**結尾**（「東東是誰」「你最想去哪」
+//     「所以你是說韓國嗎」）；或
+//   - 最後一個子句以疑問詞**開頭**（「怎麼突然講韓國」「怎麼了」）。
+// 「我不知道為什麼會這樣」的疑問詞埋在句中，頭尾都不是 → 不算問過。
+//
+// 一樣只認句法標記（標點、語尾助詞、疑問詞的位置），不判語意。方向刻意保守：
+// 判漏（「那你最想去哪個國家玩」尾巴是「玩」）只會退回 bounded 條件式，由看得到
+// 全文的她判；判多才會誤傷。`previousAiAskedQuestion` 與 `utteranceShapeOf`
+// 仍然用寬鬆那一支，有效短答免疫一字不動。
+const CLAUSE_SPLIT_RE = /[。！!？?；;…\n]+/u;
+const TAIL_DECORATION_RE =
+  /[\s~～!！,，.。、…\p{Emoji_Presentation}\p{Extended_Pictographic}]+$/u;
+const STRICT_QUESTION_TAIL_RE =
+  /(嗎|呢|吧|誰|哪|哪裡|哪邊|什麼|甚麼|怎樣|怎麼樣|為什麼|為何|幾點|幾歲|多少|多久|如何)(裡|邊|啊|呀|喔|哦|啦|耶|欸)?$/u;
+const STRICT_QUESTION_HEAD_RE =
+  /^(誰|哪|什麼|甚麼|怎樣|怎麼|為什麼|為何|幾點|幾歲|多少|多久|如何|要不要|有沒有|好不好|可不可以|是不是)/u;
+
+export function aiAskedQuestionStrict(text: string): boolean {
+  const stripped = text.trim().replace(TAIL_DECORATION_RE, "");
+  if (stripped.length === 0) return false;
+  if (/[?？]$/u.test(stripped)) return true;
+  const last = stripped
+    .split(CLAUSE_SPLIT_RE)
+    .map((clause) => clause.trim().replace(TAIL_DECORATION_RE, ""))
+    .filter((clause) => clause.length > 0)
+    .at(-1);
+  if (last === undefined) return false;
+  return STRICT_QUESTION_TAIL_RE.test(last) ||
+    STRICT_QUESTION_HEAD_RE.test(last);
+}
+
 /** 只往回看這麼多則玩家訊息（短期工作記憶，不是長期記憶）。 */
 const RECENT_USER_WINDOW = 8;
 /** 「同一個詞原樣再丟一次」最多往回看幾則玩家訊息（Codex round-2 P1-3）。 */
@@ -304,6 +345,8 @@ export function detectAgencyEvidence(
     text: string;
     shape: UtteranceShape;
     previousAiAskedQuestion: boolean;
+    /** 同一則 AI 訊息的**嚴格**問句判準，只給強制格的迴圈閘門用（P1-1）。 */
+    previousAiAskedQuestionStrict: boolean;
   }[] = [];
   let lastAiText: string | null = null;
   for (const turn of turns) {
@@ -317,6 +360,8 @@ export function detectAgencyEvidence(
       text: turn.text,
       shape: utteranceShapeOf(turn.text, previousAiAskedQuestion),
       previousAiAskedQuestion,
+      previousAiAskedQuestionStrict: lastAiText !== null &&
+        aiAskedQuestionStrict(lastAiText),
     });
     lastAiText = null;
   }
@@ -364,13 +409,16 @@ export function detectAgencyEvidence(
   // （任何結構修復都會把它清掉），再套 8 則的窗口只會讓「連丟第 11 個片段」
   // 因為最早那兩句問話滑出窗口而退回 bounded——欠債沒解決，她的立場卻自己
   // 消失了。計數仍然照舊只看最後 8 則（短期工作記憶，clamp 在 3）。
+  // Phase 3.2 P1-1：這裡用 `previousAiAskedQuestionStrict`（見上面的判準），
+  // 不是餵給 shape／免疫的那支寬鬆 regex——這個旗標是**強制停止解讀**的閘門，
+  // 過寬會變成假強制停。
   let aiQuestionedInLoop = false;
   for (const s of shapes) {
     if (!isLowInformation(s.shape)) {
       if (s.shape !== "reaction") aiQuestionedInLoop = false;
       continue;
     }
-    if (s.previousAiAskedQuestion) aiQuestionedInLoop = true;
+    if (s.previousAiAskedQuestionStrict) aiQuestionedInLoop = true;
   }
   // assisted：分類器讀完她這一輪的回覆後判 `connected`＝玩家上一輪真的接上了。
   // 那是結構層看不到的修復（他這句話對不對得上是語意問題），所以拿它把逐字稿

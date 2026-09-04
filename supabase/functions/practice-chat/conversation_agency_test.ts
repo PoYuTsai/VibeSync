@@ -4,6 +4,8 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   AGENCY_THRESHOLDS,
+  aiAskedQuestion,
+  aiAskedQuestionStrict,
   type AgencyEvidence,
   agencyModeFor,
   agencyPolicyFor,
@@ -852,4 +854,52 @@ Deno.test("Codex round-1（新項）P1-2：片段／跳題路徑上不得把 bou
       );
     }
   }
+});
+
+Deno.test("Phase 3.2 P1-1：強制格的問句閘門改用嚴格判準，陳述句不再算「她問過」", () => {
+  // 寬鬆判準（有效短答免疫用的那一支）照舊把這句判成「她問過」——那是安全
+  // 方向，判多只會讓玩家的短答被當成有效短答，一字不動。
+  assert(aiAskedQuestion("我不知道為什麼會這樣"));
+  // 但強制格的閘門必須是 false：疑問詞埋在句中，最後一個子句頭尾都不是疑問。
+  assert(!aiAskedQuestionStrict("我不知道為什麼會這樣"));
+
+  for (
+    const asked of [
+      "東東是誰",
+      "你最想去哪",
+      "所以你是說韓國嗎",
+      "怎麼突然講韓國",
+      "怎麼了",
+      "你有去那邊玩喔？",
+      "阿布達比？你有去過嗎",
+    ]
+  ) {
+    assert(aiAskedQuestionStrict(asked), `應判成問過：${asked}`);
+  }
+  for (
+    const notAsked of [
+      "真的欸",
+      "喔",
+      "清邁很讚欸 我上個月才去過",
+      "我不知道你在說什麼意思啦",
+      "你沒回答我欸",
+      "",
+    ]
+  ) {
+    assert(!aiAskedQuestionStrict(notAsked), `不該判成問過：${notAsked}`);
+  }
+
+  // 端到端：她一路只是陳述（其中一句含「為什麼」），欠債累到一般難度的門檻
+  // 也不得強制停止解讀——舊版會因為寬鬆 regex 誤判成 forced hold_position。
+  const statementOnly = policy([
+    u("韓國"),
+    a("我不知道為什麼會這樣"),
+    u("東京"),
+    a("嗯"),
+    u("淺草"),
+  ]);
+  assertEquals(statementOnly.evidence.unresolvedCount, 2);
+  assertEquals(statementOnly.evidence.aiQuestionedInLoop, false);
+  assertEquals(statementOnly.policyMode, "bounded");
+  assertEquals(statementOnly.forcedAct, null);
 });
