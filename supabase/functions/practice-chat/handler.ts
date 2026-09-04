@@ -53,7 +53,9 @@ import {
   type AgencyClassifierSignal,
   type AgencyMode,
   agencyModeFor,
+  agencyShapeExperimentFor,
   nextConversationAgencyState,
+  truncateAgencyShape,
 } from "./conversation_agency.ts";
 import { replyStyleFor, type ReplyStyleProfile } from "./reply_style.ts";
 import { difficultyTuningFor } from "./practice_persona.ts";
@@ -2255,6 +2257,14 @@ export function createPracticeChatHandler(
       deps.getEnv("PRACTICE_CONVERSATIONAL_AGENCY_ENABLED"),
       accountIsTest,
     );
+    // Phase 3.3 形狀實驗旋鈕：`off`（預設，與接線前逐字相同）／`prompt`／
+    // `truncate`。只有 agency 解析成 `on` 且這一輪真的介入時才會有效果，
+    // 所以旗標 off／shadow 的行為與 telemetry 完全不受影響。
+    const agencyShapeExperiment = agencyMode === "on"
+      ? agencyShapeExperimentFor(
+        deps.getEnv("PRACTICE_AGENCY_SHAPE_EXPERIMENT"),
+      )
+      : "off";
     const limits = resolveLimits(sub.tier);
     const responsePayloadWithCurrentUsage = (
       snapshot: Record<string, unknown>,
@@ -4305,6 +4315,8 @@ export function createPracticeChatHandler(
     let responsePlan: TurnResponsePlan | null = null;
     let agencyDecision: ChatAgencyDecision | null = null;
     let stageDirectionRepairs = 0;
+    /** Phase 3.3 `truncate` 臂丟掉幾則（旋鈕 off 時永遠 0，也不進 telemetry）。 */
+    let shapeTruncatedBubbles = 0;
     try {
       // reply-style-v1（PR-2）：server-only 旗標；關閉或角色沒有 mapping 時
       // prompt／守門／回應逐字與舊版相同（index_test 對 fee76b87 golden bytes 比對）。
@@ -4330,6 +4342,7 @@ export function createPracticeChatHandler(
             gameState: ledgerGameState,
             styleState: relationshipThreadState?.styleState ?? null,
             agencyMode,
+            shapeExperiment: agencyShapeExperiment,
             agencyState: relationshipThreadState?.agencyState ?? null,
           }
           : {
@@ -4342,6 +4355,7 @@ export function createPracticeChatHandler(
             timeContext: nowContext,
             herRecentMomentsBlock,
             agencyMode,
+            shapeExperiment: agencyShapeExperiment,
             // standard 沒有 thread 寫入，也不讀 assisted 留下的狀態（規格附錄：
             // standard 的 priorDecline 一律 false）；agency 短期狀態改從逐字稿現推。
           },
@@ -4390,6 +4404,15 @@ export function createPracticeChatHandler(
           if (responsePlan && hasStageDirection(reply)) {
             stageDirectionRepairs++;
             reply = stripStageDirections(reply, "chat_stage_direction");
+          }
+          // Phase 3.3 `truncate` 臂：她第一則就是問句時只留第一則（結構判斷，
+          // 見 truncateAgencyShape）。放在最後一道後處理，`reply` 就地覆寫，
+          // 所以 commit、classifier、hint／debrief 與回應 body 拿到的都是
+          // 截斷後的文字。不重試、不再打模型。
+          if (agencyShapeExperiment === "truncate") {
+            const truncated = truncateAgencyShape(reply, agencyDecision);
+            reply = truncated.text;
+            shapeTruncatedBubbles = truncated.dropped;
           }
           break;
         } catch (e) {
@@ -4682,6 +4705,11 @@ export function createPracticeChatHandler(
               ? temperature?.classification.aiChallengedThisTurn ?? null
               : null,
             deltaCapApplied: temperature?.deltaCapApplied ?? "none",
+            // Phase 3.3 `truncate` 臂：只有旋鈕開在 truncate 且這一輪 agency
+            // 真的介入時這個 key 才存在（其他情形連欄位都不多一個）。
+            ...(agencyShapeExperiment === "truncate" && agencyDecision.applied
+              ? { shapeTruncatedBubbles }
+              : {}),
           }
           : null,
       }),
