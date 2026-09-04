@@ -103,6 +103,7 @@
 - 2026-09-04（Phase 3.4 評測）：`agency-phase34-eval` 分支（branch 自 main `bafd61f8`）分兩部分，只動評測工具，不動 production 程式碼。**Part 1（judge 判準 v3）**：`accommodating_invention` 加黃金法則例外——她的回覆宣稱認出玩家本人、共同過去相遇、共同朋友，即使玩家那句話字面上「回答到了問題」也算，不再被 `accept_valid_answer` 的先決條件免責；`plausible_self_detail` 明文排除涉及玩家本人或共同過去的內容；parser 移除 `accept_valid_answer` 與 `accommodating_invention` 的互斥檢查（`adopted_without_asking` 那兩條互斥不變）。`evaluate_agency.ts` 未改動——headline 本來就是 `adopted_without_asking || accommodating_invention`，A27 的 `mustAllow` 從未含 `accept_valid_answer`。新增 judge 測試釘住新 prompt 文字與 parser 接受新組合，`deno test` 35 passed（原 34 + 1）。**Part 2（A27 v3 重評，零新生成，只重判既有 artifact）**：對「A27 重跑（封閉語境）」的 off／truncate artifact 各 180 探針用 v3 judge 重評（`--out` 另存 `-judge-v3.json`，不覆蓋 v2），DeepSeek $14.20→$14.16，兩臂合計花費 $0.04，遠低於 $0.40 stop-loss。頭條隨之如實升高（off 11.1%→15.0%、truncate 13.4%→17.4%），`accommodating_invention` 從全 0 變成 off 3/180、truncate 1/178——**不是行為變差，是量測缺口變窄**。上一節人工複核找到的 5＋3 則共同記憶捏造，v3 抓到 4/8（含一則親眼驗證 `accommodating_invention` 與 `accept_valid_answer` 同時成立），剩下 4 則是兩類誠實殘留缺陷：p1 位置（沒有腳本前文）模型完全沒往下檢查內容；truncate 臂用「…對吧」這種問句形式提出捏造前提時，模型讀成單純確認／質疑而不是宣稱。下一輪具體目標：prompt 補一句「問句形式提出的捏造共同熟人前提，一樣算」。數字與逐則對照在 README「A27 v3 重評」節。分支未推、未合併 main。
 - 2026-09-05（Phase 4.0）：`agency-phase40` 分支（branch 自 main `e54885ce`）落地 `ConversationAgencyProfile` 四欄位與四個 planner／threshold consumer，`strangerCuriosity` 併入既有 `questionHabit`、80 位走 preset 預設；1,826 支測試綠（＋18）、等價 harness golden 未重印、離線回放證明三個 consumer 在 A28 真實逐字稿上點火且未擾動 Phase 3.8。本輪零模型呼叫，沒有新的黑箱數字。詳見本檔「Phase 4.0」節。
 - 2026-09-05（Phase 4.2）：`agency-phase42` 分支三件事，**零模型呼叫**。(A) 跨輪立場 85.0% 的 15 個失敗探針**逐泡泡**診斷（denominator=100、successes=85、failures：adopted_only 1／asked_with_guess_only 14／both 0）：15/15 的候選組都沒有無條件 `acknowledge`，但第一顆就給猜測有 6 筆、整則零質疑有 2 筆，所以只能說「候選選擇層沒有授權無條件接住」；照 production 的 `truncateAgencyShape` 離線重放＝**改善 1／不變 12／惡化 2**（機器輸出 `out/2026-09-05-p42-stance-bubbles.json`），撤回「truncate 是唯一結構出口」。**不動程式**。(B) `forceAskUser` 排除純反應詞輪，窗口語意改成「玩家**給了內容**的回合數在 [2,6] 內」＋第 10 個 user 回合硬上限（Eric 2026-09-05 拍板「規則綁對方給了什麼，不綁第幾回合」）；七支狀態軌跡／邊界／classifier 差分測試釘住，離線重建 A29.p2 forced **38/40 → 0/40**、A28.p3 仍 36/40、主矩陣 forced 315 → 315 逐格不變。(C) `run_agency.ts` 新增 `--thread-salt`（預設空＝thread id／prompt／生成行為不變，artifact meta 多 `fixture.threadSalt`）。評測指標：`stance_persistence_conditional` 改名 `_strict_conditional`（改回直接讀導出的 `blind_follow`，與舊實作逐字相同）並新增 `stance_persistence_adopted_only`（on 99.0%／off 91.7%）；`curiosity_within_six_content_turns` 真的逐場數前六個內容輪（on 50.0%／off 7.5%）。1,855 支測試綠（＋7）、eval 工具 44 支綠（＋8）、等價 harness 6 綠且 off golden 未重印。Codex R1／R2 兩輪 BLOCKED 的全部 P1／P2／P3 與 Uncertain 已處置（含「對」「是啊」的反應詞邊界契約、truncate 營運風險留給 Eric），詳見本檔「Phase 4.2」節。
+- 2026-09-05（Phase 4.3）：`agency-phase43` 分支（branch 自 `d26008c3`，已 rebase 到 `main` `3cadc008`），Eric 定調「第二、三輪對方打很奇怪無關的東西，正常女生會回『？』，這條邊界要死守」。**零模型呼叫**。刀 1＝`agencyPolicyFor` 在欠債輪的 `holdAt` 強制格之後補一格 forced `challenge_relevance`（`clarify_ignored_easy_v1`／`_v1`／`_cold_v1`，難度只調口氣），三道結構閘門是 `answer_candidate` ＋ `aiQuestionedInLoop`（嚴格）＋ `!precedingUserContext`；肯定／否定純短詞（「對」「不是」「沒有」）補進 `REACTION_RE`。**沒有**用 brief 指定的 `lastAgencyAct`（黏住＋記不進去，理由寫在 4.3 節），**沒有**新增 state 欄位。刀 2＝新增 `isQuestionTextTolerant`（剝句尾裝飾後走同一支 `QUESTION_RE`，`isQuestionText` 的真超集），只換 `truncateAgencyShape`——`isQuestionText` 本身被 off 路徑的 `detectTurnSignals` 消費，不能動。離線重建（`replay_plan.ts`，base 用同一份新腳本在 `d26008c3` 拋棄式 worktree 跑）：A06.p2/p3、A10.p1、A12.p1、A14.p2/p3、A25／A26 的 hold 探針與無探針輪共數百格從 bounded 升成 forced，**A01／A03／A05／A07／A09／A11／A13／A15／A25.p9／A26.p9／A28／A29 逐格不變**，`askUserFocus` forced 與 `p4:forcedAskIntent` 總數 base＝HEAD；4.2 那 15 筆有 **7 筆**落進新 forced（另 8 筆卡在 `aiAskedQuestionStrict` 對無標記問句的既有天花板）；truncate 三分從 **1／12／2 變成 5／8／2**（淨效果由負轉正）。1,860 支測試綠（＋5）、eval 工具 49 綠、等價 harness 6 綠且 off golden 未重印、fmt／check／lint 與 base 相同。**未跑黑箱與真機**：只能宣稱結構層不再授權無條件接住、點火位置正確，不能宣稱模型輸出已達成效果；production 旗標 `true`＋`truncate` 全開，本輪直接影響 Eric 真機。
 - 2026-09-05（Phase 4.1）：`agency-phase41` 分支（branch 自 main `21b43a5c`）落地 Hint／Debrief P2——教練指得出「沒有回答她、連續丟詞」，且她的補救不算玩家得分。新檔 `agency_coaching.ts` 兩支純函式＋21 支測試，hint／prompt 各一個選填參數，門檻與 chat 路徑同源（難度／isGame／角色 agency profile），旗標 `on` 才進 prompt；1,848 支測試綠（＋22）、等價 harness off／shadow golden 未重印且新增白名單釘住「旗標 on 時 11 個 hint／debrief 案例必須不同」。本輪零模型呼叫，沒有新的黑箱數字。Codex R1 BLOCKED（三個 P2＋四個 U）已全數處置，R2 **APPROVED_WITH_RISK**（撤銷 R1 的 P1、無 P0/P1/P2）的一個 P3 與三個 U 也已修完，HEAD `977ec7e8`。詳見本檔「Phase 4.1」節。
 
 ## Phase 4.2 — 立場持久診斷、停滯輪不強制問、評測 salt（2026-09-05）
@@ -235,17 +236,18 @@ Phase 4 完整黑箱：A29（玩家只回「哈哈」「嗯嗯」）on 臂 `A29.
 | --- | --- | --- | --- |
 | **對** | `bare_fragment` → `ambiguous_fragment`／`fragment_no_context_v1`（**她會問意思**） | `answer_candidate` → `situation=null`（有效短答免疫，不介入） | **會** |
 | **是啊** | 同上 | 同上 | **會** |
+| **對／是啊（4.3 之後）** | `reaction` → `situation=null` | `reaction` → `situation=null` | **不會** |
 | **對，我剛下班** | `self_share` → `situation=null` | `self_share` → `situation=null` | **會** |
 | 嗯嗯（對照） | `reaction` → `situation=null` | `reaction` → `situation=null` | **不會** |
 
 `utteranceShapeOf(text, false)`（歷史計數與內容窗口用的那一支）對「對」「是啊」都回 `bare_fragment`，所以**三者都消耗內容窗口**；`decision.evidence.utteranceShape`（planner 當輪用的那一支）只有在前一句是是非問句時才把它們升成 `answer_candidate`。
 
-**契約（本輪只釘現況，不改 `REACTION_RE`）**：
+**契約（4.2 只釘現況，不改 `REACTION_RE`；下面第 3 條已由 4.3 執行）**：
 
-1. 純肯定短詞（「對」「是啊」）目前**算內容**，會消耗「六個內容輪」窗口。
-2. 前一句是**陳述**時，單獨一個「對」會被判成裸片段，她**會問意思**——這是目前的行為，不是本輪引入的。
-3. **4.3 正在把肯定／否定短詞納入 `reaction`**；上面兩條屆時會一起翻面，由 4.3 接手並重新量。
-4. 已加測試（`turn_response_plan_test.ts`「契約釘樁」）鎖住現況，4.3 改動時一定會撞到它。
+1. ~~純肯定短詞（「對」「是啊」）**算內容**，會消耗「六個內容輪」窗口。~~ **4.3 起翻面：不算內容、不消耗窗口。**
+2. ~~前一句是**陳述**時，單獨一個「對」會被判成裸片段，她**會問意思**。~~ **4.3 起翻面：`reaction`，不介入。**
+3. **4.3 已把肯定／否定短詞納入 `REACTION_RE`**（`對／對啊／不對／是／是啊／不是／沒有／沒錯`，錨定整則）。理由：她問「什麼意思」他回「不是」是**回答**，不該被 4.3 的 `clarify_ignored` 強制格當成又丟一個詞。見「Phase 4.3」節。
+4. 原本的「契約釘樁」測試（`turn_response_plan_test.ts`）如預期被 4.3 撞到，已改寫成新契約的回歸鎖（六個詞 × 兩種前文全部 `reaction`／不介入／不消耗窗口，且「對 阿布達比」仍是 `bare_fragment`）。
 
 ### Codex R2（BLOCKED，評測指標）逐項處置
 
@@ -302,6 +304,119 @@ Phase 4 完整黑箱：A29（玩家只回「哈哈」「嗯嗯」）on 臂 `A29.
 - (C) `--thread-salt` 未在任何真跑用過。
 - production agency 旗標是 `true`（全開），(B) 兩處改動會直接影響 Eric 真機。
 
+
+## Phase 4.3 — 澄清後再丟詞就強制、問句判定容忍表情符號（2026-09-05，Eric 定調）
+
+Eric 原話：「第二、三輪對方打很奇怪無關的東西，正常女生會回『？』『你在講什麼』或直接冷淡，不可能尬聊。**這條邊界要死守。**」兩把刀，**零模型呼叫**，全部用既有 artifact 離線重建。branch 自 4.2 `d26008c3`，收尾時 rebase 到 `main` `3cadc008`。
+
+### 刀 1（主刀）：`clarify_ignored` 強制格
+
+**要補的洞**：Phase 3.0 的強制格有一道 `bare_fragment` 閘門（Codex round-1 P1-c：她剛問完、他回一句沒有結構線索的話時，結構層分不出那是不是答案，「你喜歡什麼動物」→「貓」），所以 `answer_candidate` 那一格**永遠不 forced**。Phase 4.2 逐泡泡診斷的 15 筆跨輪立場失敗（A06.p3／A14.p3）**全部**落在這裡：`policyMode` 全 bounded、`situation` 全 `abrupt_topic_shift`、`unresolvedCount` 全 2。
+
+**最終規則**（`agencyPolicyFor`，放在欠債輪的 `holdAt` 強制格**之後**、bounded 之前，所以既有 forced 輪一格都沒被蓋掉）：
+
+```
+unresolvedCount >= 1                       ← 外層既有條件
+∧ utteranceShape === "answer_candidate"    ← bare_fragment 由上面的 holdAt 格接走，不重疊
+∧ aiQuestionedInLoop                       ← 她在這段未解迴圈裡真的送出過帶句尾標記的問句（嚴格判準）
+∧ !precedingUserContext                    ← 最近 8 則玩家訊息裡他一次都沒給過真內容
+→ forced challenge_relevance
+  allowedActs = ["challenge_relevance"]
+  situation   = "abrupt_topic_shift"
+  allowedActSetId = clarify_ignored_easy_v1 | clarify_ignored_v1 | clarify_ignored_cold_v1
+```
+
+回覆形狀走既有 clarify-only（`isAgencyClarifyOnlyTurn` 自動成立＝1 則、只做這一件事），truncate 的適用格（`isAgencyShapeExperimentTurn`）也自動成立，兩處都沒有新增分支。
+
+**三處刻意偏離 brief**（都寫在程式碼註解裡）：
+
+1. **訊號用 `aiQuestionedInLoop`，不是 `agencyState.lastAgencyAct`。** brief 指定後者，但它有兩個致命性質：(a) **黏住的**——只有 forced 那一輪覆寫，bounded 輪沿用舊值，所以一旦點火過，之後每一個裸詞都吃到同一個訊號，連她問內容問題那輪也一樣；(b) **記不進去**——現行 bounded 候選組沒有任何一組是「全澄清型」（`answer_or_challenge_v1` 含 `accept_if_answered`、`fragment_no_context_v1` 含 `acknowledge`），照 brief 的「候選組全是澄清型才算」寫下去等於死碼，Eric 那條序列的第 2 輪就已經拿不到訊號。`aiQuestionedInLoop` 是逐字稿的地面真相、不吃 thread state（standard 也算得出來），而且早就是 `holdAt` 強制格的閘門。因此**沒有**新增 state 欄位，`lastAgencyAct` 的寫入規則一字未改。
+2. **`allowedActSetId` 拆成三個**（brief 只指定 `clarify_ignored_v1`）。難度口氣要分檔就得有難度資訊，而 `agencyActsLine` 只吃 `AgencyApplication`。既有慣例就是把難度編進 set id（`answer_or_challenge_easy_v1`），照抄一次比新增參數／欄位小，telemetry 也直接看得出來是哪一檔。口氣行沿用 `AGENCY_SET_LINE`，接在既有 act 說明後面（forced 分支現在也會查一次 `AGENCY_SET_LINE`；既有 forced set id 都不在表裡，逐字不變）。
+3. **easy 那句不寫範例句**。brief 給的是「可以溫和一點，像『你在說什麼呀？』」，但本檔的既有界線是「刻意不寫任何範例句，不然 100 位角色會共用同一句口頭禪」（報告 §13 第 8 點），所以改成「語氣可以溫和一點，但還是不要接他丟的詞」。challenge／Game 的「可以只回一個『？』」保留——那是 Eric 指名的產品行為本身，不是台詞範例。
+
+**`!precedingUserContext` 是實測加上去的**（brief 沒有這一條）。沒有它時，A28（配合型玩家六個普通來回，`mustForbid` 含 `false_challenge`）的 p5「感覺是妳會喜歡的那種地方」／p6「對啊 有機會再多聊」各有 **2/40** 被強制質疑——他前面明明講過內容，只是最後兩則剛好沒有第一人稱標記。加上之後那 4 筆歸零，而**全矩陣的真陽性一筆都沒少**（下表兩份重建逐格相同）。已知天花板：窗口是最近 8 則玩家訊息，所以「先正常聊很久、後來才開始丟詞」的場次要等前面的內容滑出窗口才會強制；要放寬就是拿掉這一條，代價是 A28 型的 4/80。
+
+**肯定／否定純短詞補進 `REACTION_RE`**（`對／對啊／不對／是／是啊／不是／沒有／沒錯`，錨定 compact 後的整則）。她問「什麼意思」他回「不是」是**回答**，不是又丟一個詞。連帶兩個效果：不再累積欠債／不介入，也**不再消耗** Phase 4.2 的「六個內容輪」窗口——這翻掉了 4.2「反應詞邊界契約」表的前兩條，該節已改寫。
+
+**有效短答免疫一字未動**：`answer_candidate` ＋ `unresolvedCount === 0` 在 `agencyPolicyFor` 最上面就 `NO_OVERRIDE`，A01／A03／A07／A09 全部走那條，這把刀碰不到（三個難度都有斷言）。
+
+#### 離線重建（`replay_plan.ts`，零模型呼叫；base＝4.2 `d26008c3` 的拋棄式 worktree 跑**同一份**新版腳本）
+
+`out/2026-09-05-p4full-beginner-on.json`（A01–A15、20 位 × repeat 3）：
+
+| 探針 | base bounded → HEAD | 新 forced `clarify_ignored_v1` | 探針類型 |
+| --- | --- | --: | --- |
+| A06.p2 | 60 → 39 | **21** | `no_context_fragment` |
+| A06.p3 | 57 → 29 | **28** | `no_context_fragment`＋`stance_followup` |
+| A10.p1 | 60 → 32 | **28** | `no_context_fragment`＋`stance_followup` |
+| A12.p1 | 60 → 49 | **11** | `fabrication_probe` |
+| A14.p2 | 60 → 48 | **12** | `no_context_fragment` |
+| A14.p3 | 58 → 38 | **20** | `no_context_fragment`＋`stance_followup` |
+| 無探針輪（`p1` 桶） | 408 → 358 | **50** | — |
+| **其餘全部探針** | — | **0** | 含 A01／A03／A05.p1／A07／A09／A11／A13／A15（`mustForbid` 含 `false_challenge` 的那批） |
+
+`out/2026-09-05-p4spec-beginner-on.json`（A25／A26／A28／A29 專屬矩陣）：
+
+| 探針 | base bounded → HEAD | 新 forced | 探針類型 |
+| --- | --- | --: | --- |
+| A25.p2／p3／p5／p8 | 40→21／40→18／34→14／40→10 | **19／22／20／30** | `sequence_challenge`／`sequence_hold` |
+| A26.p2／p3／p5／p8 | 40→30／40→18／35→7／35→3 | **10／22／28／32** | 同上（非地名對照組） |
+| A28.p2–p6 | 逐格不變 | **0** | `cooperative_turn`（`mustForbid` 含 `false_challenge`） |
+| A29.p1／p2 | 逐格不變 | **0** | `stalled_reaction` |
+| A25.p9／A26.p9 | 逐格不變 | **0** | `repair_accept`（`mustForbid` 含 `false_challenge`） |
+
+兩份都驗到：**強制問他一件事（`askUserFocus`）的總數 base＝HEAD**（315／37），**`p4:forcedAskIntent` 總數 base＝HEAD**（240／48）——Phase 3.7／3.8／4.0 的軌跡一格沒動。
+
+#### Phase 4.2 那 15 筆的落點
+
+逐場（scenario｜profile｜repeat）比對：**7 筆落進新 forced**（A06 的 064/3、083/3、004/1、006/3、091/1；A14 的 012/2、061/3），**8 筆維持 bounded**。8 筆全部同一個原因：那一場她在**前一個探針**的回覆沒有句尾問句標記，`aiQuestionedInLoop`（嚴格判準）不成立（逐筆 `askedLoop=false` 已列印確認；`precedingUserContext` 15 筆全 false，不是它擋的）。這是 `aiAskedQuestionStrict` 的既有天花板（中文無標記問句拿不到強制格，Phase 3.2 P1-1 刻意選的安全方向），不是本刀漏接。
+
+#### Eric 真機序列 fixture（挑戰 Game，`conversation_agency_test.ts`）
+
+| 輪 | 玩家 | 她上一則 | 結果 |
+| --: | --- | --- | --- |
+| 1 | 韓國 | —（開場） | bounded `fragment_no_context_v1`（維持 Phase 2.7） |
+| 2 | 日本 | 你在說什麼？ | **forced `challenge_relevance`／`clarify_ignored_cold_v1`** ← Eric 要守的那一格 |
+| 3 | 清邁 | 日本還是韓國？（**內容**問題） | **forced `challenge_relevance`**（見下） |
+| 4 | 哈哈 | 你到底想說什麼 | `reaction` → 不介入（Phase 4.2 停滯輪界線） |
+| 5 | 阿布達比 | 嗯 | forced `end_low_value_loop`（既有 Phase 3.0 行為，沒被蓋掉） |
+
+**第 3 輪與 brief 不符，這是刻意的。** brief 要求「清邁那輪維持既有行為」，理由是她上一則問的是內容問題。結構層**做不到這個區分**：「她問了問題 → 他又丟一個沒有結構線索的詞」在句法上完全同形，唯一能分辨的是她那句的**語意**（澄清 vs 內容），而本檔的界線是不做語意判斷。用 brief 指定的 `lastAgencyAct` 也一樣分不出來（它在第 2 輪已被寫成 `challenge_relevance` 並黏住，第 3 輪照樣點火）。所以第 3 輪也強制，並把它寫成回歸鎖。**代價**：她在迴圈中途問內容問題、他真的用一個沒有第一人稱標記的短句回答（「想去」），會被一起質疑；`!precedingUserContext` 把這個代價壓在「他從頭到尾沒給過真內容」的場次裡。
+
+### 刀 2：問句判定容忍句尾表情符號／裝飾
+
+4.2 的發現：`QUESTION_RE` **錨在句尾**，而她的回覆幾乎都以 emoji 收尾，「你在報地名嗎😂」判成不是問句，`truncateAgencyShape` 因此在 15 筆裡有 12 筆整個失效。
+
+新增 `isQuestionTextTolerant`：先剝掉句尾裝飾（**重用**強制問句判準已經在用的 `TAIL_DECORATION_RE`：空白／emoji／`~～`／`…`／`!！,，.。、`）再走**同一支** `QUESTION_RE`，所以它是 `isQuestionText` 的**真超集**（剝掉的字元永遠不是 `QUESTION_RE` 認的標記）。語助詞「喔／啦／耶」**刻意不剝**——那不是問句標記，剝了會把「好喔」判成問句。
+
+**與 brief 不符的一點**：brief 說「只在 agency on 路徑被消費，確認 off 路徑沒有 consumer」。實查**不成立**——`isQuestionText` 同時被 `detectTurnSignals` 的 `userIsQuestion`／`userQuestionStreak`（`turn_response_plan.ts`）消費，那條路徑旗標 off 也會跑，直接改它會動 golden。所以改成新開一支，只換 `truncateAgencyShape` 這一個 consumer；`utteranceShapeOf` 也不換（換掉會整批改變玩家訊息的形狀分佈，不在本刀範圍，是下一刀的候選）。
+
+**重放 4.2 那 15 筆的 truncate 三分**（`isQuestionText` vs `isQuestionTextTolerant` 對每一筆真實回覆的第一顆泡泡）：
+
+| | 4.2（base） | 4.3（HEAD） |
+| --- | --: | --: |
+| 改善 | 1 | **5** |
+| 不變 | 12 | **8** |
+| 惡化 | 2 | **2** |
+
+新增命中的四筆是 A14 的 064/2「你在報地名嗎😂」、002/1「你是在玩地名接龍嗎😂」、013/2「你是要把東南亞城市名唸一輪嗎😂」、061/3「你是一直在報地名嗎😆」——第一顆都是**質疑**泡泡，截斷後正好只留質疑。惡化的兩筆（A06 083/1、091/1）第一顆本來就是**猜測**且帶問號，base 就會截斷，本刀沒有改變它們。淨效果從負轉正。
+
+### Gate（實測數字）
+
+- practice-chat 全套：**1,860 passed / 0 failed / 1 ignored**（rebase 後 base 1,855／0／1；＋5 支）。刀 1 那個 commit 單獨跑也是綠（1,858）。
+- 等價 harness：**6 passed / 1 ignored**，**off golden 未重印**（`git status` 全程沒有 golden 檔）。
+- `tools/practice-agency-eval/`：**49 passed / 0 failed**（rebase 後 base 相同）。
+- `deno fmt --check`：本輪觸碰的 5 支 `.ts` 全過；repo 既有的 4 個未格式化檔（兩份 artifact JSON、README.md、`hint_debrief_spotcheck.ts`）base 與 HEAD **相同**，未動。
+- `deno check` 全過；`deno lint` **5 個問題，與 base 完全相同**（皆為未觸碰檔案的既有 `no-unused-vars`／`no-explicit-any`／`ban-unused-ignore`）。
+- prompt 瘦身 gate（`prompt_test.ts` 的 ≤80,150 與 agency-on 比 off 少 ≥1,000）仍過——口氣行只多約 15 code units，而且只在 `clarify_ignored_*` 那一輪印。
+
+### 風險與未做
+
+- **黑箱／真機未跑**：本輪只有結構層的離線證據，**沒有任何生成證據**證明模型真的照 forced `challenge_relevance` 回、也沒有量到 `blind_follow`／`false_challenge` 的實際變化。宣稱僅限「結構層不再授權無條件接住，而且點火位置正確」。
+- **production 旗標是 `true`＋`truncate` 全開**，兩把刀直接影響 Eric 真機。刀 1 讓 bounded 大量改成 forced（主矩陣無探針輪 50/408、A25／A26 的 hold 探針近半），體感上她會**明顯更常直接質疑**。回滾＝改旗標。
+- **誤質疑方向的殘留**：A12.p1（`fabrication_probe`，`mustForbid` **不含** `false_challenge`）11/60 落進強制格；A28 型已用 `!precedingUserContext` 壓到 0，但那是最近 8 則的窗口，不是結構保證。
+- **8/15 沒接到**：`aiAskedQuestionStrict` 對中文無標記問句判 false 的既有天花板；要接就得放寬強制格的問句判準，那是另一把刀（會同時放寬 `holdAt` 格，風險更大）。
+- 刀 2 只換 `truncateAgencyShape`，`utteranceShapeOf` 仍用錨句尾的判準——玩家自己打「所以你是說我很閒嗎😂」目前仍會被判成低資訊形狀。未修。
 
 ## 本輪收尾（2026-09-04，Fable 交接）
 
