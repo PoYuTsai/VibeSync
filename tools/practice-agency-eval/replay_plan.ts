@@ -67,7 +67,15 @@ for (const s of art.results) {
         bump(pid, "p4:persistSet");
       }
     }
-    if (plan.optionalAct === "self_disclose") bump(pid, "p4:selfDisclose");
+    // Codex R2 P1：只數 Phase 4.0 initiative 分支的自曝（agency on、玩家這句是純
+    // 反應詞、profile initiative ≥3）；A25.p9／A26.p9 那種 self_share 輪的
+    // self_disclose 是既有 reply-style bias，不算。
+    if (
+      plan.optionalAct === "self_disclose" &&
+      bundle.agencyDecision?.enabled === true &&
+      bundle.agencyDecision.decision.evidence.utteranceShape === "reaction" &&
+      (bundle.agencyDecision.profile?.initiative ?? 0) >= 3
+    ) bump(pid, "p4:selfDisclose");
     if (!forced) {
       const sig = detectTurnSignals(turns);
       const ag = bundle.agencyDecision;
