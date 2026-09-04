@@ -265,6 +265,8 @@ export interface BakeoffContextFixture {
   acquaintanceOrigin: AcquaintanceOrigin;
   memorySummary: string;
   herRecentMomentsBlock: string;
+  /** Phase 3.5：分類器要吃原始貼文，不是渲染後的 prompt 段。 */
+  herRecentMoments: MomentMemoryPost[];
 }
 
 export function buildBakeoffContextFixture(
@@ -291,6 +293,7 @@ export function buildBakeoffContextFixture(
     }),
     memorySummary: BAKEOFF_MEMORY_SUMMARY,
     herRecentMomentsBlock: herRecentMomentsPrompt(posts),
+    herRecentMoments: posts,
   };
 }
 

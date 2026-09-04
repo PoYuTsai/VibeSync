@@ -352,9 +352,75 @@ Deno.test("buildTurnClassifierMessages：agencyEnabled=true 才加 coherence／a
     "舊的「判上一則」判準必須被換掉",
   );
   assert(on[0].content.includes('"coherence":"connected"'));
-  // 使用者訊息段（recentContext／latestUserText）不受影響。
+  // Phase 3.5：使用者訊息段在 on 時多一段 herTrustedSelfSources；off 沒有。
   const off = buildTurnClassifierMessages(base);
-  assertEquals(on[1].content, off[1].content);
+  assert(!off[1].content.includes("herTrustedSelfSources"));
+  assert(on[1].content.includes("herTrustedSelfSources"));
+  assert(on[1].content.startsWith(off[1].content));
+});
+
+Deno.test("buildTurnClassifierMessages Phase 3.5：agency 開時 recentContext 放寬到整段、附人設／貼文／記憶；off 仍是最後 6 則且沒有來源段", () => {
+  const turns = [
+    { role: "user" as const, text: "第一句：我朋友 Joyce 說妳很會拍照" },
+    ...Array.from({ length: 7 }, (_, i) => ({
+      role: (i % 2 ? "user" : "ai") as "user" | "ai",
+      text: `填充 ${i}`,
+    })),
+    { role: "user" as const, text: "最後一句" },
+  ];
+  const base = {
+    turns,
+    profile: resolvePracticeProfile({}),
+    heatScore: 40,
+    familiarityScore: 10,
+    memorySummary: "之前聊過她週末去爬山 S__42795075.jpg",
+    herRecentMoments: [
+      {
+        postDate: "2026-09-01",
+        dayPart: "evening" as const,
+        body: "今天<b>咖啡</b>好喝＜3",
+      },
+    ],
+  };
+  const off = buildTurnClassifierMessages(base);
+  assert(!off[1].content.includes("Joyce"), "off 只看最後 6 則");
+  assert(!off[1].content.includes("herTrustedSelfSources"));
+  assert(!off[1].content.includes("爬山"));
+  assert(!off[1].content.includes("咖啡"));
+  // off 的 bytes 跟沒帶記憶／貼文時逐字相同。
+  const offBare = buildTurnClassifierMessages({
+    turns,
+    profile: base.profile,
+    heatScore: 40,
+    familiarityScore: 10,
+  });
+  assertEquals(JSON.stringify(off), JSON.stringify(offBare));
+
+  const on = buildTurnClassifierMessages({ ...base, agencyEnabled: true });
+  assert(on[1].content.includes("Joyce"), "on 要看到第一句");
+  assert(
+    !on[1].content.includes("最後一句\nlatest"),
+    "玩家這句不進 recentContext",
+  );
+  assert(on[1].content.includes("herTrustedSelfSources"));
+  assert(on[1].content.includes(`她的人設：${base.profile.girl.displayName}`));
+  assert(
+    on[1].content.includes("- 2026-09-01：今天b咖啡/b好喝3"),
+    "貼文角括號要拔掉",
+  );
+  assert(on[1].content.includes("更早對話的摘要"));
+  assert(!on[1].content.includes("S__42795075.jpg"), "記憶摘要也要洗圖檔名");
+  assert(on[0].content.includes("herTrustedSelfSources（她的人設"));
+  // 記憶／貼文省略時：on 只有人設一行，沒有另外兩段。
+  const onBare = buildTurnClassifierMessages({
+    turns,
+    profile: base.profile,
+    heatScore: 40,
+    familiarityScore: 10,
+    agencyEnabled: true,
+  });
+  assert(!onBare[1].content.includes("她自己最近的貼文"));
+  assert(!onBare[1].content.includes("更早對話的摘要"));
 });
 
 Deno.test("parseTurnClassification：旗標 off 時 coherence／aiChallengedThisTurn 兩個 key 根本不存在；requireCoherence 才強制", () => {
@@ -704,7 +770,8 @@ Deno.test("buildTurnClassifierMessages：sharedPastClaim 只在 agencyEnabled=tr
   assert(on[0].content.includes("我們見過嗎"));
   assert(on[0].content.includes("我不認識你"));
   assert(on[0].content.includes('"sharedPastClaim":false}'));
-  assertEquals(on[1].content, off[1].content);
+  // Phase 3.5：on 的使用者訊息多一段 herTrustedSelfSources，前綴仍逐字同 off。
+  assert(on[1].content.startsWith(off[1].content));
 });
 
 Deno.test("parseTurnClassification：sharedPastClaim 只在 requireCoherence 時是合法欄位", () => {

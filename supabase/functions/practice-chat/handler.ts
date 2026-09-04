@@ -149,6 +149,7 @@ import { taipeiTimeContextFor } from "./time_context.ts";
 import {
   fetchHerRecentMoments,
   herRecentMomentsPrompt,
+  type MomentMemoryPost,
 } from "./moments_memory.ts";
 import { normalizeLiteralNewlines } from "./prompt_sanitizer.ts";
 import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
@@ -1350,6 +1351,9 @@ async function judgeLearningState(opts: {
    * 同一個詞」還是拿得到正分。現在餵進 cap，重複永遠壓成 repetitive。
    */
   agencyEvidenceRepeatedExactToken?: boolean;
+  /** Phase 3.5：分類器的可信自我來源；旗標 off 時 buildTurnClassifierMessages 不用。 */
+  memorySummary?: string | null;
+  herRecentMoments?: readonly MomentMemoryPost[];
 }): Promise<LearningJudgement> {
   // 難度接線（槓桿 A）：正負 delta 倍率只在 beginner 溫度管線生效，作用域內解析一次。
   const tuning = difficultyTuningFor(opts.request.profile.difficulty);
@@ -1613,6 +1617,8 @@ async function judgeLearningState(opts: {
         assistantReply: opts.reply,
         replyStyle: opts.replyStyle,
         agencyEnabled: agencyDeltaCapActive,
+        memorySummary: opts.memorySummary,
+        herRecentMoments: opts.herRecentMoments,
       }),
       maxTokens: TEMPERATURE_JUDGE_MAX_TOKENS,
       temperature: TEMPERATURE_JUDGE_TEMPERATURE,
@@ -4506,6 +4512,9 @@ export function createPracticeChatHandler(
             agencyDecision?.decision.evidence.unresolvedCount ?? 0,
           agencyEvidenceRepeatedExactToken:
             agencyDecision?.decision.evidence.repeatedExactToken ?? false,
+          // Phase 3.5：跟 chat prompt 同一份記憶／貼文餵分類器（旗標 off 不用）。
+          memorySummary: promptMemorySummary,
+          herRecentMoments,
         });
       } catch (e) {
         const mapped = mapLedgerError(getErrorMessage(e));

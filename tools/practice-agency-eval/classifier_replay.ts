@@ -26,6 +26,7 @@ import {
   parseTurnClassification,
 } from "../../supabase/functions/practice-chat/temperature.ts";
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
+import { buildBakeoffContextFixture } from "../practice-difficulty-bakeoff/bakeoff.ts";
 import { readDeepSeekKey } from "./run_agency.ts";
 
 interface ArtifactTurn {
@@ -147,6 +148,8 @@ async function main() {
       });
       let raw = "";
       try {
+        // Phase 3.5：跟 run_agency 生成時同一份 fixture 的記憶／貼文餵分類器。
+        const fixture = buildBakeoffContextFixture(profile);
         const messages = buildTurnClassifierMessages({
           turns: job.turns,
           profile,
@@ -154,6 +157,8 @@ async function main() {
           familiarityScore: 10,
           assistantReply: job.reply,
           agencyEnabled: true,
+          memorySummary: fixture.memorySummary,
+          herRecentMoments: fixture.herRecentMoments,
         });
         raw = await callDeepSeek({
           apiKey,
