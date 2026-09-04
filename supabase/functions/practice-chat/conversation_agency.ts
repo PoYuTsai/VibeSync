@@ -504,7 +504,14 @@ export function detectAgencyEvidence(
   // Phase 3.2 P1-3：這一行留著當**舊 row 的相容退路**（`repairedAtUserTurns`
   // 還沒被寫進去的 thread）。真正跨輪有效的是上面的 `repairStart`——它讓修復點
   // 之前的片段不再被重算回來，而不是只清掉當輪的值。
-  if (prev?.lastCoherence === "connected") unresolved = 0;
+  // R2 P2（Codex）：所以它必須**只**對沒有 marker 的 row 生效。有 marker 時
+  // `unresolved` 已經是「修復點之後」的新欠債，再無條件歸零等於把它擦掉。
+  if (
+    prev?.lastCoherence === "connected" &&
+    prev.repairedAtUserTurns === undefined
+  ) {
+    unresolved = 0;
+  }
   const compactedCurrent = current ? compact(current.text) : "";
   // Codex round-2 P1-3：舊版拿整個八則 window 比對，等於「玩家較早講過『貓』、
   // 中間完整聊完別的事、稍後她問『你最喜歡什麼動物』他再答『貓』」也會被
@@ -513,10 +520,13 @@ export function detectAgencyEvidence(
   //     也就是 unresolved 歸零的那個 repair／connected 點；
   //   - 再往回最多 3 則（短期工作記憶，不是長期記憶）。
   // Phase 3.2 P1-3：重複視窗同樣不得越過持久化的修復點。
+  // R2 P1（Codex）：只給初始值不夠——修復點**之前**的一則結構訊息會把
+  // `repairedAt` 覆寫成更小的 index，視窗又跨回修復點之前。取最大值即可
+  // （`forEach` 的 i 遞增，所以最大值仍然是最後一次結構修復的位置）。
   let repairedAt = windowRepairStart;
   earlier.forEach((s, i) => {
     if (!isLowInformation(s.shape) && s.shape !== "reaction") {
-      repairedAt = i + 1;
+      repairedAt = Math.max(repairedAt, i + 1);
     }
   });
   const repeatWindow = earlier.slice(

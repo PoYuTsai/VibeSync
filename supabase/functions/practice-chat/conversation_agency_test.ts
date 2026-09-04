@@ -971,7 +971,9 @@ Deno.test("Phase 3.2 P1-2：真問句後面接一則「嗯」，她問過這件�
 });
 
 Deno.test("Phase 3.2 放寬：免疫只給這一段迴圈裡的第一組一問一答，之後同樣算欠債", () => {
-  // 第一組：她問（嚴格判準認得的「東東是誰」）→ 他丟無標記句 → 免疫，不介入。
+  // 第一組：她問（無標記問句「東東是誰」——放寬用的是**寬鬆**判準，嚴格判準
+  // 不認它，所以這一串不會走到強制格，只證明放寬本身）→ 他丟無標記句 →
+  // 免疫，不介入。
   const first = policy([a("東東是誰"), u("阿布達比")]);
   assertEquals(first.evidence.utteranceShape, "answer_candidate");
   assertEquals(first.evidence.unresolvedCount, 0);
@@ -1219,5 +1221,82 @@ Deno.test("Phase 3.2 R1 P1-4a：定位不到的修復點不得被繼續往下傳
       null,
     ).repairedAtUserTurns,
     2,
+  );
+});
+
+Deno.test("Phase 3.2 R2 P1：同詞重複視窗不得被修復點之前的結構訊息拉回去", () => {
+  // Codex R2 的序列：修復點（第 3 則玩家訊息）**之前**有一則完整敘述
+  // （「我昨天去逛街」），舊版 `repairedAt = i + 1` 會被它覆寫成 1，
+  // 重複視窗又跨回修復點之前，把修復點之前講過的「好市多」算成原樣重複，
+  // 於是 forced `end_low_value_loop`。
+  const turns: PracticeTurn[] = [
+    u("我昨天去逛街"),
+    a("喔"),
+    u("好市多"),
+    a("你在說什麼"),
+    u("東京"), // ← 分類器判 connected（第 3 則玩家訊息）
+    a("嗯"),
+    u("嗯"),
+    a("蛤"),
+    u("好市多"),
+  ];
+  const prev: ConversationAgencyState = {
+    version: 1,
+    lastCoherence: "connected",
+    unresolvedCount: 0,
+    priorChallengeIssued: false,
+    lastAgencyAct: null,
+    repairedAtUserTurns: 3,
+  };
+  const decision = agencyPolicyFor(detectAgencyEvidence(turns, prev));
+  assertEquals(decision.evidence.repeatedExactToken, false);
+  assertEquals(decision.forcedAct, null);
+  // 這一輪的結論是「完全不介入」（前面有真實前文的無欠債片段）：NO_OVERRIDE
+  // 的 policyMode 欄位本來就是 "forced"＋空清單，判斷「有沒有被強制」要看
+  // `forcedAct`／`situation`，不是 policyMode。
+  assertEquals(decision.situation, null);
+  assertEquals(decision.allowedActs, []);
+
+  // 對照：沒有修復點時，同一段逐字稿確實是同詞重複（證明這個測試測得到東西）。
+  assertEquals(
+    detectAgencyEvidence(turns, { ...prev, repairedAtUserTurns: undefined })
+      .repeatedExactToken,
+    true,
+  );
+});
+
+Deno.test("Phase 3.2 R2 P2：舊 row 的 connected 退路只對沒有修復點的 row 生效", () => {
+  // 有修復點時 `unresolved` 已經是「修復點之後」重新算出來的新欠債，
+  // 舊那條無條件歸零會把它整個擦掉。
+  const turns: PracticeTurn[] = [
+    u("我昨天去逛街"),
+    a("喔"),
+    u("好市多"), // ← 修復點（第 2 則玩家訊息）之前
+    a("你要去哪？"),
+    u("甲"),
+    a("蛤"),
+    u("乙"),
+    a("蛤"),
+    u("丙"),
+  ];
+  const connectedWithMarker: ConversationAgencyState = {
+    version: 1,
+    lastCoherence: "connected",
+    unresolvedCount: 0,
+    priorChallengeIssued: false,
+    lastAgencyAct: null,
+    repairedAtUserTurns: 2,
+  };
+  assertEquals(
+    detectAgencyEvidence(turns, connectedWithMarker).unresolvedCount,
+    2,
+  );
+  // 沒有 marker 的舊 row 照舊走那條退路（行為不變）。
+  assertEquals(
+    detectAgencyEvidence(turns, {
+      ...connectedWithMarker,
+      repairedAtUserTurns: undefined,
+    }).unresolvedCount,
+    0,
   );
 });
