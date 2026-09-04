@@ -35,11 +35,29 @@ const policyAt = (
   turns: PracticeTurn[],
   difficulty: "easy" | "normal" | "challenge",
   isGame = false,
+  prev: ConversationAgencyState | null = null,
 ) =>
   agencyPolicyFor(
-    detectAgencyEvidence(turns),
+    detectAgencyEvidence(turns, prev),
     agencyThresholdsFor(difficulty, isGame),
   );
+
+/**
+ * Phase 4.3：assisted 模式走過一輪之後的狀態。`aiClarified` 就是分類器對
+ * **她上一則實際生成文字**回報的 `aiChallengedThisTurn`；`coherence` 是同一輪
+ * 分類器的連貫度判斷。這兩個是 `clarify_ignored` 強制格唯一吃的跨輪訊號。
+ */
+const stateWith = (
+  aiClarified: boolean | null,
+  coherence: ConversationAgencyState["lastCoherence"] = "disconnected",
+): ConversationAgencyState => ({
+  version: 1,
+  lastCoherence: coherence,
+  unresolvedCount: 1,
+  priorChallengeIssued: false,
+  lastAgencyAct: null,
+  ...(aiClarified === null ? {} : { aiClarifiedLastTurn: aiClarified }),
+});
 
 Deno.test("utteranceShape：明示換題 > 問句 > 招呼 > 第一人稱 > 短答候選 > 裸片段", () => {
   assertEquals(
@@ -545,6 +563,18 @@ Deno.test("難度門檻（Phase 3.0）：一般第 2 個未解片段要指出他
     policyAt(second, "normal", true).allowedActSetId,
     "clarify_ignored_cold_v1",
   );
+  // P2-3 對照（Codex R1）：同一份逐字稿，只要分類器說她上一則**不是**在澄清
+  // （＝她問的是內容問題），就仍然是 Phase 3.0 的 bounded 二選一——證明改的是
+  // 判準來源，不是把尺放寬。
+  const secondContentQ = policyAt(second, "normal", false, stateWith(false));
+  assertEquals(secondContentQ.policyMode, "bounded");
+  assertEquals(secondContentQ.allowedActSetId, "answer_or_challenge_v1");
+  assert(
+    policyAt(second, "easy", false, stateWith(false)).allowedActs.includes(
+      "acknowledge",
+    ),
+  );
+
   // 她那一則**沒有**句尾問句標記（中文最常見的無標記問句）時，強制格的
   // `aiQuestionedInLoop` 閘門不成立 → 維持 Phase 3.0 的 bounded 二選一，
   // easy 仍多一個無條件的「接住」。
@@ -616,6 +646,8 @@ Deno.test("難度門檻：挑戰／game 在停止解讀那一格直接收掉（�
     precedingUserContext: false,
     aiQuestionedInLoop: false,
     userTurnCount: 3,
+    aiClarifiedLastTurn: null,
+    priorCoherence: null,
   };
   for (
     const thresholds of [
@@ -658,16 +690,26 @@ Deno.test("難度門檻：挑戰／game 在停止解讀那一格直接收掉（�
     assertEquals(d.forcedAct, "challenge_relevance");
     assert(!d.allowedActs.some(isAcceptingPlanAct));
   }
-  const maybeAnswerNeverAsked: AgencyEvidence = {
-    ...maybeAnswer,
-    aiQuestionedInLoop: false,
-  };
   for (
-    const thresholds of [AGENCY_THRESHOLDS.normal, AGENCY_THRESHOLDS.challenge]
+    const bounded of [
+      // 她一次都沒問過。
+      { ...maybeAnswer, aiQuestionedInLoop: false },
+      // P2-3 對照：她問過，但分類器說那一則**不是**澄清（內容問題）。
+      { ...maybeAnswer, aiClarifiedLastTurn: false },
+      // 協調者指定的顯式閘門：上一輪分類器判 connected。
+      { ...maybeAnswer, priorCoherence: "connected" as const },
+    ] satisfies AgencyEvidence[]
   ) {
-    const d = agencyPolicyFor(maybeAnswerNeverAsked, thresholds);
-    assertEquals(d.policyMode, "bounded");
-    assert(d.allowedActs.some(isAcceptingPlanAct));
+    for (
+      const thresholds of [
+        AGENCY_THRESHOLDS.normal,
+        AGENCY_THRESHOLDS.challenge,
+      ]
+    ) {
+      const d = agencyPolicyFor(bounded, thresholds);
+      assertEquals(d.policyMode, "bounded");
+      assert(d.allowedActs.some(isAcceptingPlanAct));
+    }
   }
 });
 
@@ -1038,6 +1080,18 @@ Deno.test("Phase 3.2 放寬：免疫只給這一段迴圈裡的第一組一問�
   assertEquals(second.policyMode, "forced");
   assertEquals(second.forcedAct, "challenge_relevance");
   assertEquals(second.allowedActSetId, "clarify_ignored_v1");
+  // P2-3 對照：分類器說她上一則是內容問題（沒在澄清）→ 仍是 Phase 3.2 的
+  // bounded 二選一，接受回答那條路留著。
+  const secondContentQ = agencyPolicyFor(
+    detectAgencyEvidence([
+      a("東東是誰"),
+      u("阿布達比"),
+      a("所以你是說韓國嗎"),
+      u("東京"),
+    ], stateWith(false)),
+  );
+  assertEquals(secondContentQ.policyMode, "bounded");
+  assert(secondContentQ.allowedActs.some(isAcceptingPlanAct));
 
   // 第三則片段（她這一則不是問句）→ 欠債 2 ＝ 一般難度的 holdAt，而且她這段
   // 迴圈裡真的問過 → forced hold_position。
@@ -1555,44 +1609,131 @@ Deno.test("Phase 4.3 刀 1：她問過＋已有欠債＋他又丟一個沒線索
   }
 });
 
-Deno.test("Phase 4.3 刀 1：Eric 真機序列（挑戰 Game）逐輪", () => {
+Deno.test("Phase 4.3 刀 1：Eric 真機序列（挑戰 Game）逐輪，帶分類器訊號", () => {
   // Eric 2026-09-05 的原話：「第二、三輪對方打很奇怪無關的東西，正常女生會回
   // 『？』『你在講什麼』或直接冷淡，不可能尬聊。」這一支把那條序列釘成回歸鎖。
+  // `signal` ＝分類器讀完**她上一則實際生成文字**後的 `aiChallengedThisTurn`。
   const turns: PracticeTurn[] = [];
-  const step = (t: PracticeTurn[]) => {
+  const step = (t: PracticeTurn[], aiClarified: boolean | null) => {
     turns.push(...t);
-    return policyAt([...turns], "normal", true);
+    return policyAt(
+      [...turns],
+      "normal",
+      true,
+      aiClarified === null ? null : stateWith(aiClarified),
+    );
   };
   // 第 1 輪「韓國」：無前文片段，bounded（維持 Phase 2.7，不因本刀變嚴）。
-  const s1 = step([u("韓國")]);
+  const s1 = step([u("韓國")], null);
   assertEquals(s1.allowedActSetId, "fragment_no_context_v1");
   assertEquals(s1.policyMode, "bounded");
 
-  // 第 2 輪「日本」（她剛問完意圖）：這就是 Eric 要守的那一格 → forced。
-  const s2 = step([a("你在說什麼？"), u("日本")]);
+  // 第 2 輪「日本」：她上一則「你在說什麼？」＝分類器判她真的在澄清 → forced。
+  // 這就是 Eric 要守的那一格。
+  const s2 = step([a("你在說什麼？"), u("日本")], true);
   assertEquals(s2.policyMode, "forced");
   assertEquals(s2.forcedAct, "challenge_relevance");
   assertEquals(s2.allowedActSetId, "clarify_ignored_cold_v1");
 
-  // 第 3 輪「清邁」（她上一則問的是**內容**問題）：結構層看不出她那句是澄清
-  // 還是內容問題（兩者都是「她問了、他又丟一個沒線索的詞」），所以同樣 forced。
-  // 這是本刀刻意接受的代價，寫在計畫檔 Phase 4.3；有效短答免疫只保護
-  // `unresolvedCount === 0` 那一格，這裡已經欠債 2。
-  const s3 = step([a("日本還是韓國？"), u("清邁")]);
-  assertEquals(s3.policyMode, "forced");
-  assertEquals(s3.forcedAct, "challenge_relevance");
+  // 第 3 輪「清邁」：她上一則問的是**內容**問題（「日本還是韓國？」）。
+  // 分類器判 `aiChallengedThisTurn=false` → **不強制**，留在 bounded 由她判
+  // （Codex R1 P1-1：結構層分不出「清邁」與「想去日本」，不硬判）。
+  const s3ContentQ = step([a("日本還是韓國？"), u("清邁")], false);
+  assertEquals(s3ContentQ.policyMode, "bounded");
+  assert(s3ContentQ.allowedActs.some(isAcceptingPlanAct));
+  // 同一格，只把「她上一則真的在澄清」打開 → forced。
+  assertEquals(
+    policyAt([...turns], "normal", true, stateWith(true)).forcedAct,
+    "challenge_relevance",
+  );
 
   // 第 4 輪「哈哈」：純反應詞，結構層不介入（Phase 4.2 的停滯輪界線）。
-  const s4 = step([a("你到底想說什麼"), u("哈哈")]);
+  const s4 = step([a("你到底想說什麼"), u("哈哈")], true);
   assertEquals(s4.evidence.utteranceShape, "reaction");
   assertEquals(s4.situation, null);
 
   // 第 5 輪「阿布達比」：反應詞不修復也不清掉「她問過」，欠債續算 → 挑戰／Game
   // 在 holdAt=1 直接收掉這串（既有 Phase 3.0 行為，本刀沒有蓋掉它）。
-  const s5 = step([a("嗯"), u("阿布達比")]);
+  const s5 = step([a("嗯"), u("阿布達比")], true);
   assertEquals(s5.evidence.utteranceShape, "bare_fragment");
   assertEquals(s5.policyMode, "forced");
   assertEquals(s5.forcedAct, "end_low_value_loop");
+});
+
+// ── Phase 4.3 Codex R1 P2-4：REACTION_RE 是全域語意變更，序列副作用要封住 ──
+Deno.test("Phase 4.3 P2-4：新增 reaction token 連續 1～4 次 × 三種前文的序列副作用", () => {
+  const tokens = ["對", "對啊", "是啊", "不是", "沒有"];
+  const leads: [string, string][] = [
+    ["陳述", "我今天差點睡過頭"],
+    ["是非問句", "你今天也很累嗎？"],
+    ["開放問句", "那你比較想去哪裡？"],
+  ];
+  for (const token of tokens) {
+    for (const [leadName, leadText] of leads) {
+      for (let n = 1; n <= 4; n++) {
+        const turns: PracticeTurn[] = [];
+        for (let k = 0; k < n; k++) {
+          turns.push(a(leadText), u(token));
+        }
+        const label = `${token}×${n}｜${leadName}`;
+        const d = policyAt([...turns], "normal", false, stateWith(true));
+        // (a) 形狀恆為 reaction、不介入。
+        assertEquals(d.evidence.utteranceShape, "reaction", label);
+        assertEquals(d.situation, null, label);
+        assertEquals(d.allowedActs, [], label);
+        // (b) 不累積欠債。
+        assertEquals(d.evidence.unresolvedCount, 0, label);
+        // (c) 同詞連續出現也不會被判成「同一個詞原樣再丟一次」——它在
+        //     reaction 分支就被 NO_OVERRIDE 接走，`repeatedExactToken` 即使
+        //     為真也不會產生介入（U-10）。
+        assertEquals(d.forcedAct, null, label);
+        // (d) 不消耗 Phase 4.2 的內容輪窗口。
+        assertEquals(utteranceShapeOf(token, false), "reaction", label);
+        // (e) 下一輪狀態：不會把欠債或「她問過」帶壞。
+        const next = nextConversationAgencyState(stateWith(true), d, null);
+        assertEquals(next.unresolvedCount, 0, label);
+      }
+    }
+  }
+  // 對照：reaction 不是修復——夾在片段中間時，後面的片段仍然接得上欠債。
+  const sandwich = policyAt(
+    [
+      u("韓國"),
+      a("你在說什麼？"),
+      u("對"),
+      a("嗯"),
+      u("東京"),
+    ],
+    "normal",
+    false,
+    stateWith(true),
+  );
+  assertEquals(sandwich.evidence.aiQuestionedInLoop, true);
+  assertEquals(sandwich.evidence.unresolvedCount, 1);
+});
+
+Deno.test("Phase 4.3 U-10：連續同一個新 reaction 詞不會被 repeatedExactToken 拉去強制收尾", () => {
+  for (const token of ["不是", "沒有", "對啊"]) {
+    for (let n = 2; n <= 3; n++) {
+      const turns: PracticeTurn[] = [u("韓國"), a("你在說什麼？")];
+      for (let k = 0; k < n; k++) {
+        turns.push(u(token), a("嗯"));
+      }
+      turns.pop();
+      const d = policyAt([...turns], "normal", false, stateWith(true));
+      assertEquals(d.situation, null, `${token}×${n}`);
+      assertEquals(d.forcedAct, null, `${token}×${n}`);
+    }
+  }
+  // 對照：真正的裸詞原樣再丟一次仍然強制收尾（既有行為未被削弱）。
+  const repeated = policyAt(
+    [u("韓國"), a("你在說什麼？"), u("東京"), a("嗯"), u("東京")],
+    "normal",
+    false,
+    stateWith(true),
+  );
+  assertEquals(repeated.evidence.repeatedExactToken, true);
+  assertEquals(repeated.forcedAct, "end_low_value_loop");
 });
 
 Deno.test("Phase 4.3 刀 2：問句判定容忍句尾 emoji／裝飾，但不放寬語助詞", () => {
@@ -1629,4 +1770,126 @@ Deno.test("Phase 4.3 刀 2：問句判定容忍句尾 emoji／裝飾，但不放
     assertEquals(isQuestionTextTolerant(t), false, t);
     assertEquals(isQuestionText(t), false, t);
   }
+});
+
+// ── Phase 4.3 Codex R1 P1-1／P1-2：產品不變量（獨立於內部欄位）─────────────
+//
+// 契約：**只要當輪文字確實回答她上一個內容問題，就不得 forced challenge。**
+// 結構層分不出「想去日本」與「清邁」，所以判斷交給模型——這裡消費的是分類器
+// 讀完**她上一則實際生成文字**後的 `aiChallengedThisTurn`（＝她那句到底是在
+// 澄清，還是在問一個內容問題）。
+Deno.test("Phase 4.3 P1-1：她上一則是內容問題（分類器 aiChallenged=false）→ 正當短答不得 forced challenge", () => {
+  // Codex 的五輪反例逐字稿。
+  const codexCase: PracticeTurn[] = [
+    u("韓國"),
+    a("你在說什麼？"),
+    u("東京"),
+    a("那你比較想去哪裡？"),
+    u("想去日本"),
+  ];
+  for (const answer of ["想去日本", "日本", "比較喜歡韓國"]) {
+    const turns = [...codexCase.slice(0, 4), u(answer)];
+    // 她上一則是內容問題 → 不強制，且候選裡仍留著「接受回答」這條路。
+    const contentQ = policyAt(turns, "normal", false, stateWith(false));
+    assertEquals(contentQ.policyMode, "bounded", answer);
+    assertEquals(contentQ.forcedAct, null, answer);
+    assert(contentQ.allowedActs.some(isAcceptingPlanAct), answer);
+    // 同一句話、同一份逐字稿，只把「她上一則真的在澄清」打開 → 才強制。
+    const clarified = policyAt(turns, "normal", false, stateWith(true));
+    assertEquals(clarified.policyMode, "forced", answer);
+    assertEquals(clarified.forcedAct, "challenge_relevance", answer);
+  }
+});
+
+Deno.test("Phase 4.3 P1-1：涵蓋欠債 0／1／2 × 有無前文——分類器說她沒澄清就一律不得 forced challenge", () => {
+  // 欠債 0（有效短答免疫格）、1、2 各一組，前文有／無各一種。
+  const withoutContext: PracticeTurn[][] = [
+    [a("那你最想去哪個國家玩？"), u("日本")], // 欠債 0
+    [u("韓國"), a("那你比較想去哪裡？"), u("日本")], // 欠債 1
+    [u("韓國"), a("是喔"), u("東京"), a("那你比較想去哪裡？"), u("日本")], // 欠債 2
+  ];
+  const withContext = withoutContext.map((
+    t,
+  ) => [u("我今天上班超累的 剛到家"), ...t]);
+  for (const [i, turns] of [...withoutContext, ...withContext].entries()) {
+    const label = `case${i}`;
+    const d = policyAt(turns, "normal", false, stateWith(false));
+    assert(
+      d.forcedAct !== "challenge_relevance",
+      `${label} 不得 forced challenge`,
+    );
+    // 沒被強制時，接受回答一定還在路徑上（NO_OVERRIDE 或含 accept 的候選組）。
+    assert(
+      d.situation === null || d.allowedActs.some(isAcceptingPlanAct),
+      `${label} 必須保留接受回答的路徑`,
+    );
+  }
+});
+
+Deno.test("Phase 4.3 P1-2：她澄清過就強制，不管他前面聊得多好（拿掉 precedingUserContext 豁免）", () => {
+  // Codex R1 P1-2：舊版只要最近八則有真內容就整批豁免，等於「先正常聊一輪，
+  // 之後連丟兩個無關詞」永遠不強制。把那句真內容放在最近第 1～8 個玩家位置，
+  // 第二個無關詞都要被攔下來。
+  for (let gap = 0; gap < 8; gap++) {
+    const filler: PracticeTurn[] = [];
+    for (let k = 0; k < gap; k++) {
+      filler.push(a("嗯嗯"), u("嗯"));
+    }
+    const turns: PracticeTurn[] = [
+      u("我今天上班超累的 剛到家"),
+      ...filler,
+      u("韓國"),
+      a("你在說什麼？"),
+      u("日本"),
+    ];
+    const d = policyAt(turns, "normal", false, stateWith(true));
+    assertEquals(d.policyMode, "forced", `gap=${gap}`);
+    assertEquals(d.forcedAct, "challenge_relevance", `gap=${gap}`);
+    // gap ≤ 5 時那句真內容還在 RECENT_USER_WINDOW（8 則）裡，`precedingUserContext`
+    // 仍是 true——證明強制**不是**靠它滑出窗口才成立的。
+    if (gap <= 5) {
+      assertEquals(d.evidence.precedingUserContext, true, `gap=${gap}`);
+    }
+  }
+});
+
+Deno.test("Phase 4.3：沒有分類器訊號（standard／分類器失敗）退回保守的結構近似", () => {
+  const turns = [u("韓國"), a("你在說什麼？"), u("日本")];
+  // 沒有前文＝仍然強制（Eric 序列的形態）。
+  assertEquals(policyAt(turns, "normal").forcedAct, "challenge_relevance");
+  // 有前文＝保守不強制。這是**近似**，不是等價：assisted 有分類器時同一句會強制。
+  const withContext = [u("我今天上班超累的 剛到家"), ...turns];
+  assertEquals(policyAt(withContext, "normal").policyMode, "bounded");
+  assertEquals(
+    policyAt(withContext, "normal", false, stateWith(true)).policyMode,
+    "forced",
+  );
+});
+
+Deno.test("Phase 4.3：priorCoherence === connected 的閘門今天是冗餘的（欠債已被歸零）", () => {
+  // 協調者指定「classifier connected → 不強制」。實際上分類器判 connected 會
+  // 寫下 repairedAtUserTurns（或走舊 row 的歸零退路），欠債因此是 0，上游的
+  // 有效短答免疫格就已經接走。這一支證明它今天恆真，留在條件式裡只是把契約
+  // 寫明白，不是靠另一個檔案的副作用。
+  const turns = [u("韓國"), a("你在說什麼？"), u("日本")];
+  const connectedLegacy: ConversationAgencyState = {
+    version: 1,
+    lastCoherence: "connected",
+    unresolvedCount: 2,
+    priorChallengeIssued: true,
+    lastAgencyAct: "challenge_relevance",
+    aiClarifiedLastTurn: true,
+  };
+  const d = policyAt(turns, "normal", false, connectedLegacy);
+  assertEquals(d.evidence.unresolvedCount, 0);
+  assertEquals(d.situation, null);
+  // 有修復點的那條路徑同樣把欠債清到 0。
+  const connectedMarker: ConversationAgencyState = {
+    ...connectedLegacy,
+    repairedAtUserTurns: 1,
+  };
+  assertEquals(
+    policyAt(turns, "normal", false, connectedMarker).evidence.unresolvedCount,
+    0,
+  );
 });

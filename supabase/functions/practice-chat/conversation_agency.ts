@@ -153,6 +153,17 @@ export interface AgencyEvidence {
    * （R1 P1-4c：舊註解寫「不參與任何 policy 判斷」是錯的）。不進 telemetry。
    */
   readonly userTurnCount: number;
+  /**
+   * Phase 4.3：上一輪分類器對**她實際生成的那一則**的判斷——她是不是真的在
+   * 澄清／指出跳題（`ConversationAgencyState.aiClarifiedLastTurn`）。
+   * `null`＝沒有可信訊號（standard 沒有分類器、分類器失敗、旗標 off）。
+   */
+  readonly aiClarifiedLastTurn: boolean | null;
+  /**
+   * Phase 4.3（Codex R1 建議的顯式閘門）：上一輪分類器判的連貫度。
+   * `null`＝沒有持久化狀態（standard／第一輪）。
+   */
+  readonly priorCoherence: ConversationAgencyState["lastCoherence"] | null;
 }
 
 export interface ConversationAgencyState {
@@ -198,6 +209,22 @@ export interface ConversationAgencyState {
    * 之後多常問回到 persona 的 questionHabit。省略＝還沒問過。
    */
   readonly askedAboutUser?: boolean;
+  /**
+   * Phase 4.3（Codex R1 P1-1）：**她上一則回覆是不是真的在澄清／指出跳題**，
+   * 來源是分類器讀完她實際生成文字後的 `aiChallengedThisTurn`（judge prompt：
+   * 「assistantReplyAfterUser 是不是真的在問清楚意思或指出跳題／不相關，不是
+   * 隨口帶過」）。
+   *
+   * 為什麼不共用 `priorChallengeIssued`：那個欄位是
+   * `forcedAct ∈ {challenge_relevance, hold_position} || 分類器` 的 OR，也就是
+   * **planner 強制過**就算數——但「強制過」不等於「她真的照做」，而且它是跨輪
+   * 黏住的旗標。`clarify_ignored` 強制格要判的是一件很窄的事實：她**上一則**
+   * 到底是在澄清，還是在問一個內容問題。只有分類器讀她實際文字的那個布林算數。
+   *
+   * **缺席＝沒有可信訊號**（standard 沒有分類器、分類器呼叫失敗、旗標 off），
+   * 不是 `false`；`agencyPolicyFor` 對缺席退回保守的 standard 規則。
+   */
+  readonly aiClarifiedLastTurn?: boolean;
 }
 
 export const INITIAL_CONVERSATION_AGENCY_STATE: ConversationAgencyState = {
@@ -580,6 +607,11 @@ export function detectAgencyEvidence(
     // **看得見**的東西撐：她上一則是不是在問問題（`previousAiAskedQuestion`），
     // 那個訊號在 renderTurnPlan 會變成「你上一句已經在問他了，他沒回答就別放過」。
     priorChallengeIssued: prev?.priorChallengeIssued ?? false,
+    // Phase 4.3：兩個「上一輪的地面真相」原樣帶進 policy（純轉送，不做判斷）。
+    aiClarifiedLastTurn: typeof prev?.aiClarifiedLastTurn === "boolean"
+      ? prev.aiClarifiedLastTurn
+      : null,
+    priorCoherence: prev?.lastCoherence ?? null,
     // Phase 3.2 P1-3：`precedingUserContext` 刻意**不**受修復點限制——修復點
     // 之前玩家講清楚過的內容仍然是他給過的前文，砍掉會讓 A07／A09 那種
     // 「先鋪前文再丟短詞」在 assisted 模式反而被判成無前文片段（更嚴，不是更鬆）。
@@ -844,55 +876,51 @@ export function agencyPolicyFor(
           : "low_value_loop_v1",
       };
     }
-    // ── Phase 4.3（Eric 2026-09-05 定調）：她剛問，他又丟一個沒有結構線索的詞 ──
+    // ── Phase 4.3（Eric 2026-09-05 定調；Codex R1 P1-1／P1-2 後重寫）────────
     //
     // Eric 的原話界線：「第二、三輪對方打很奇怪無關的東西，正常女生會回『？』
     // 『你在講什麼』或直接冷淡，不可能尬聊。這條邊界要死守。」
     //
-    // 上面的強制格有一道 `bare_fragment` 閘門（Codex round-1 P1-c）：她剛問完、
-    // 他回一句沒有結構線索的話時，結構層分不出那是不是答案（「你喜歡什麼動物」
-    // →「貓」），所以永遠不 forced。Phase 4.2 的 15 筆跨輪立場失敗**全部**落在
-    // 這個洞裡（A06.p3／A14.p3，`policyMode` 全是 bounded、`situation` 全是
-    // `abrupt_topic_shift`、`unresolvedCount` 全是 2）。
+    // **要補的洞**：上面的強制格有一道 `bare_fragment` 閘門（Codex round-1
+    // P1-c）——她剛問完、他回一句沒有結構線索的話時結構層分不出那是不是答案，
+    // 所以永遠不 forced。Phase 4.2 的 15 筆跨輪立場失敗全部落在這裡。
     //
-    // 補這個洞需要一個能分辨「她那句是不是澄清型問句」的結構訊號。可用的只有
-    // 兩個，兩個都有效但涵蓋面不同：
-    //   - `ConversationAgencyState.lastAgencyAct`：**黏住的**（只有 forced 那輪
-    //     覆寫，bounded 輪沿用舊值），而且 bounded 候選組沒有一組是全澄清型，
-    //     所以第一次澄清根本記不進去——Eric 那條序列的第 2 輪就已經拿不到訊號。
-    //   - `aiQuestionedInLoop`：逐字稿的地面真相（她在**這段未解迴圈裡**真的送出
-    //     過帶句尾標記的問句，嚴格判準），不吃 thread state，standard 也算得出來。
-    // 所以用後者。
+    // **不能只看結構**（Codex R1 P1-1）：同樣是「她問了 → 他回一句沒有第一
+    // 人稱標記的短句」，「想去日本」是對內容問題的正當回答、「清邁」是又跳題，
+    // 兩者在句法上**完全同形**。硬判就是拿純函式判語意（踩坑「純函式訊號層硬
+    // 判高語意會被獨立審查逐條打」），所以判斷交給讀得到全文的模型，結構層只
+    // 消費它已經吐出來的結構化欄位。
     //
-    // 條件（全部是既有欄位，沒有新偵測器、沒有語意判斷）：
-    //   `unresolvedCount >= 1`（外層）＝他上一則玩家訊息就已經是沒解決的片段；
-    //   `answer_candidate`＝她上一則在問問題（`bare_fragment` 已由上面的強制格
-    //     接走，不重疊）；
-    //   `aiQuestionedInLoop`＝這段迴圈裡她真的問過（嚴格判準，避免假強制）；
-    //   `!precedingUserContext`＝最近八則玩家訊息裡他**一次都沒**給過真內容
-    //     （非片段、非反應詞）。這一條是實測加上去的：離線重建（Phase 4.3 節
-    //     兩張表）顯示，沒有它時 A28（配合型玩家六個普通來回，`mustForbid`
-    //     含 `false_challenge`）的 p5／p6 各有 2/40 會被強制質疑——他前面明明
-    //     講過內容，只是最後兩則剛好沒有第一人稱標記。加上之後那 4 筆歸零，
-    //     而全矩陣的真陽性（A06／A10／A12／A14／A25／A26 與無探針輪）**一筆
-    //     都沒少**。既有程式已經有同一個「給過前文就給一次善意懷疑」的先例
-    //     （下面 `unresolvedCount === 0` 那格）。
-    // 肯定／否定的純短詞（「對」「不是」「沒有」）已經在 `REACTION_RE` 變成
-    // `reaction`，走不到這裡（`isLowInformation` 上游就 NO_OVERRIDE）。
+    // **可用的地面真相**：`aiClarifiedLastTurn` ＝分類器讀完**她實際生成的那
+    // 一則**之後回報的 `aiChallengedThisTurn`（「是不是真的在問清楚意思或指出
+    // 跳題／不相關」）。她上一則是澄清 → 再丟一個沒線索的詞就不是答案；她上
+    // 一則是內容問題 → 短句很可能就是答案，交給 bounded 的條件式。
     //
-    // **已知天花板**：`precedingUserContext` 的窗口是最近 8 則玩家訊息，所以
-    // 「先正常聊很久、後來才開始丟詞」的場次要等前面的內容滑出窗口才會強制。
-    // 要放寬就是把這一條拿掉（真陽性不變，代價是 A28 型的 4/80）。
+    // **已查證的時序限制（Codex R1 追問）**：production 的分類器
+    // （`buildTurnClassifierMessages`）吃 `assistantReply`，在 `handler.ts` 裡
+    // 於 chat 生成**之後**才呼叫（`buildChatPromptBundle` 早於
+    // `judgeLearningState`），所以**當輪**的 coherence 在 `agencyPolicyFor`
+    // 時拿不到。這裡用的是**上一輪**已經持久化的判斷，這是可得的最近似訊號。
+    // 差距：他這一輪的正當回答要到**下一輪**才會被分類器判成 connected 並
+    // 歸零欠債，所以第一次仍可能被質疑一次（見計畫檔 Phase 4.3「殘留成本」）。
     //
-    // **有效短答免疫一字未動**：`answer_candidate` ＋ `unresolvedCount === 0`
-    // 在本函式最上面就 NO_OVERRIDE；A01／A03／A07／A09 全部走那條，這裡碰不到。
-    //
-    // 已知代價（Eric 接受）：她在迴圈中途問的是**內容問題**、他真的答了一個
-    // 沒有第一人稱標記的短句（「想去」），結構上與「又丟一個詞」完全同形，
-    // 會被一起強制質疑。結構層沒有任何句法出路可以分開這兩者。
+    // 條件（全部是既有／持久化欄位，沒有新偵測器、沒有語意判斷）：
     if (
       shape === "answer_candidate" && evidence.aiQuestionedInLoop &&
-      !evidence.precedingUserContext
+      // Codex R1 建議的顯式閘門：上一輪分類器判 connected 就不強制。
+      // **實測今天恆真**（分類器判 connected 會寫下 `repairedAtUserTurns`／
+      // 走舊 row 退路把欠債歸零，`unresolvedCount` 因此是 0，上面的免疫格就
+      // 已經接走了），留著是為了讓「connected 不強制」寫在條件式裡而不是靠
+      // 另一個檔案的副作用；有測試證明它今天是冗餘的。
+      evidence.priorCoherence !== "connected" &&
+      (evidence.aiClarifiedLastTurn === null
+        // 沒有可信訊號（standard 沒有分類器、分類器失敗）→ 退回保守的結構
+        // 近似：只有「他在最近 8 則裡一次都沒給過真內容」才強制。這是近似，
+        // 不是等價（見計畫檔）。
+        ? !evidence.precedingUserContext
+        // 有訊號：只認「她上一則真的在澄清／指出跳題」。她問的是內容問題
+        // （false）就留在 bounded 條件式，由看得到全文的她判。
+        : evidence.aiClarifiedLastTurn)
     ) {
       return {
         ...base,
@@ -995,6 +1023,10 @@ export function parseConversationAgencyState(
   if (
     r.askedAboutUser !== undefined && typeof r.askedAboutUser !== "boolean"
   ) return null;
+  if (
+    r.aiClarifiedLastTurn !== undefined &&
+    typeof r.aiClarifiedLastTurn !== "boolean"
+  ) return null;
   return {
     version: 1,
     lastCoherence: r.lastCoherence as ConversationAgencyState["lastCoherence"],
@@ -1007,6 +1039,11 @@ export function parseConversationAgencyState(
       ? {}
       : { repairedAtUserTurns: r.repairedAtUserTurns as number }),
     ...(r.askedAboutUser === true ? { askedAboutUser: true } : {}),
+    // Phase 4.3：`false` 與缺席**意思不同**（見型別註解），所以兩種布林都要
+    // 原樣帶回，只有真的缺席才不放這個 key。
+    ...(typeof r.aiClarifiedLastTurn === "boolean"
+      ? { aiClarifiedLastTurn: r.aiClarifiedLastTurn }
+      : {}),
   };
 }
 
@@ -1108,6 +1145,12 @@ export function nextConversationAgencyState(
     ...(repairedAtUserTurns === undefined ? {} : { repairedAtUserTurns }),
     ...(base.askedAboutUser === true || askedAboutUserThisTurn
       ? { askedAboutUser: true }
+      : {}),
+    // Phase 4.3：**不黏住**——這是「她上一則」的事實，每一輪重寫。只有分類器
+    // 真的給了布林才落欄位；缺席（standard、分類器失敗）就不留，下一輪的
+    // `agencyPolicyFor` 會退回保守的 standard 規則。
+    ...(typeof classifierSignal?.aiChallengedThisTurn === "boolean"
+      ? { aiClarifiedLastTurn: classifierSignal.aiChallengedThisTurn }
       : {}),
   };
 }

@@ -8870,6 +8870,11 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
     unresolvedCount: 1,
     priorChallengeIssued: false,
     lastAgencyAct: null,
+    // Phase 4.3：分類器讀完她實際生成的那一則後回報的
+    // `aiChallengedThisTurn`（這裡是 false＝她沒在澄清）原樣持久化。
+    // 它與 `priorChallengeIssued` 是**兩個不同的事實**（後者含 planner
+    // 強制過的 OR，且跨輪黏住），所以不能共用一個欄位。
+    aiClarifiedLastTurn: false,
   });
 });
 
@@ -9438,6 +9443,8 @@ Deno.test("Codex round-1（新項）P1-1：修復輪（applied=false）也要推
     // Phase 3.2 P1-3：分類器判 connected 的那一輪要把位置存下來（這段逐字稿
     // 有 2 則玩家訊息），下一輪欠債才從這裡之後重算，不會整批復活。
     repairedAtUserTurns: 2,
+    // Phase 4.3：分類器判 connected 的同一輪，她沒有質疑 → false。
+    aiClarifiedLastTurn: false,
   });
 });
 
@@ -9456,6 +9463,9 @@ Deno.test("Codex round-1（新項）P1-1：非 agency planner 這一輪真的質
     unresolvedCount: 0,
     priorChallengeIssued: true,
     lastAgencyAct: "hold_position",
+    // Phase 4.3：這一輪 planner 沒有 forced，`priorChallengeIssued` 為 true
+    // 完全來自分類器；同一個布林也獨立落進 `aiClarifiedLastTurn`。
+    aiClarifiedLastTurn: true,
   });
 });
 
