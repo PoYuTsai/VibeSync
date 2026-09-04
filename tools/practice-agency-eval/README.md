@@ -2209,3 +2209,58 @@ artifact：`out/2026-09-05-p4full-beginner-{on,off}.json`＋`-judge.json`、`out
 5. Hint／Debrief 輸出層在這一批小樣本（20＋15 次）裡對結構證據**忠實**（20/20、10/10），off 對照組偶爾漏掉重點或用player-blaming框架——方向支持「這一層有在做事」，但 n 太小、情境太窄，不能當成正式驗收證據。
 
 **一句話**：Phase 4（4.0 分人強弱＋4.1 Hint／Debrief）在**安全側乾淨**（golden 0 退步、interrogation／inconsistent_self_fact／false_challenge 全部 0%）且**新結構刀有部分證實有效**（`sequenceChallenge` on 臂乾淨過關、低容忍組 forced ask_intent 幾乎顯著），但**還不能宣稱「全面達標」**——頭條、跨輪立場、`sequenceHoldBlindFollow` 三個 gate 仍未過，且 Q2／initiative 兩題目前的黑箱樣本量回答不了。可以宣稱「有方向性效果、安全side乾淨」，不能宣稱「Gate 全過」。
+
+### 2026-09-05 Phase 4 truncate 重驗：要不要把 production `PRACTICE_AGENCY_SHAPE_EXPERIMENT` 設成 `truncate`
+
+Phase 3.3 的 truncate 形狀刀（20.6%→12.5%，standard 模式）是在 Phase 4 之前的程式碼上量出來的；Phase 4（commit `a473322f`）動過主體意識的結構層，`sequenceHoldBlindFollow` 本身的 baseline 也從 20.6% 變成 22.5%（見上面「Phase 4 完整黑箱矩陣」的 on/off gate 表）。這一輪在 Phase 4 程式碼上、agency 開著（production 現況）的前提下，只換 `--shape` 重驗一次，回答「現在開 truncate 值不值得」。Eric 核准 **DeepSeek 硬上限 $2.50**。
+
+**矩陣與省下的重跑**：只新跑 `--shape=truncate` 一臂——`--scenarios=A25,A26 --mode=beginner --state=1 --style=1 --agency=on --shape=truncate --concurrency=8`，20 位代表角色（`run_agency.ts` 的 `DEFAULT_PROFILE_IDS`）× repeat=3，120 場、1,080 次生成、**零失敗**；judge 720 筆、**解析失敗 0**。artifact：`out/2026-09-05-p4trunc-truncate.json`（judge `out/2026-09-05-p4trunc-truncate-judge.json`）。`--shape=off` 這一臂**沒有重跑**：Phase 4 專屬矩陣的 `out/2026-09-05-p4spec-beginner-on-judge.json` 本來就是 `--agency=on`、`--shape` 未指定（預設 `off`）、A25/A26/A28/A29 混跑的 artifact，`evaluate_agency.ts` 對它算出來的 `sequenceChallenge`／`sequenceHoldBlindFollow`／`sequenceRepairAccepted` 三格分母只吃 A25/A26 的 `kinds`，跟上面「Phase 4 完整黑箱矩陣」Gate 表逐字對得上（88.8%／22.5%／96.3%）——**這就是可比的 off 臂，不必再花錢重打**，只是這一臂是 repeat=2（n=80/240/80），truncate 臂是 repeat=3（n=120/360/120），n 不同不影響各自的 Wilson 區間。
+
+**小改動**：`run_agency.ts` 加了一個純診斷欄位 `preTruncationBubbles`（只在 `shapeDropped>0` 時記截斷前的完整泡泡），沒有動任何既有邏輯，`deno test` 36/36 全過。
+
+**花費（三次餘額，`curl https://api.deepseek.com/user/balance`）**：開跑前 **$27.33** → 生成＋judge 跑完立刻讀 **$27.21**（表面只花 $0.12）→ 等約 4 分鐘結算延遲後再讀 **$26.60**。**實測花費 $0.73**（用結算後的數字，立刻讀會低估近 6 倍，是踩坑索引記過的老坑），遠低於 $2.50 上限。
+
+#### 三個序列 gate：on+shape=off vs on+shape=truncate
+
+| 指標 | gate | off（n） | truncate（n） | CI 是否分開 |
+| --- | --- | ---: | ---: | --- |
+| 第 2 則就指出他沒回答 `sequenceChallenge` | ≥80% | 71/80＝88.8%（81.3–95.0%） | 103/120＝85.8%（79.2–90.8%） | 重疊 |
+| 第 3 則以後仍盲目跟題 `sequenceHoldBlindFollow` | ≤5% | 54/240＝22.5%（18.3–28.7%） | 51/360＝**14.2%（10.0–17.5%）** | **分開**（18.3 > 17.5） |
+| 玩家解釋後接受 `sequenceRepairAccepted` | ≥90% | 77/80＝96.3%（91.3–100%） | 116/120＝96.7%（93.3–100%） | 重疊（雙臂天花板） |
+
+- **方向跟 Phase 3.3 確認跑一致**：那一輪 standard 模式是 20.6%→12.5%（區間分開），這一輪 beginner 模式是 22.5%→14.2%（區間也分開，off 下緣 18.3% 高於 truncate 上緣 17.5%）——**兩次獨立黑箱、兩種模式、Phase 4 改過結構層之後，`sequenceHoldBlindFollow` 的 truncate 效果都站得住**，不是 Phase 3.3 那一版程式碼的巧合。
+- `sequenceChallenge` 的 truncate 臂信賴區間下緣是 **79.2%**，跟 Phase 3.3 確認跑（79.2% 那一輪也是同一個數字）一樣**貼在 ≥80% gate 下面一點點**——點估計 85.8% 過了門檻，但下緣沒有，這是開 truncate 唯一要繼續盯的副作用，不是新缺口。
+- `sequenceRepairAccepted` 兩臂都在 96–97% 天花板，truncate 沒有讓「解釋後接受」變差。
+
+#### 截掉的則數比例與逐字對照
+
+154/1,080 個玩家輪被截斷（**14.3%**，A25 66/540＝12.2%、A26 88/540＝16.3%），總共丟掉 206 則泡泡（平均每次截斷丟 1.3 則）——跟 Phase 3.3 確認跑觀察到的 10.4%／144 場 same 量級一致。5 則被截的逐字（`preTruncationBubbles` 截前 → `bubbles` 截後）：
+
+| 角色 | 情境 | 玩家 | 截前 | 截後 |
+| --- | --- | --- | --- | --- |
+| practice_girl_001 | A25 #6 馬尼拉 | 馬尼拉 | 「是在考我地理嗎」／「我剛飛完回來有點累 不太想玩這個」 | 「是在考我地理嗎」 |
+| practice_girl_001 | A25 #4 好市多 | 好市多 | 「？？？」／「你一下阿布達比一下清邁」／「現在又變好市多」／「到底想講什麼啦」 | 「？？？」 |
+| practice_girl_008 | A25 #4 好市多 | 好市多 | 「好市多？」／「幹嘛突然跳去好市多啦」／「你是在列願望清單喔」 | 「好市多？」 |
+| practice_girl_001 | A26 #7 碳循環 | 碳循環 | 「你話題跳得也太快了吧」／「滷肉飯都還沒聊完 就跑到碳循環去了」 | 「你話題跳得也太快了吧」 |
+| practice_girl_008 | A26 #3 紅豆泥 | 紅豆泥 | 「紅豆泥？」／「你是說紅豆做的泥嗎」／「還是在講什麼梗」／「我沒聽懂」 | 「紅豆泥？」 |
+
+第一則是最典型的樣子：她已經破案（「是在考我地理嗎」）之後，下一句本來會補一句沒有來源的經歷（「我剛飛完回來」）——truncate 直接把那句砍掉，其餘四則是「破案後又猜一次意圖」（願望清單／地理測驗／梗）被砍掉，不是砍掉正確的質疑本身。
+
+#### 安全側
+
+| 指標 | off | truncate |
+| --- | --- | --- |
+| `false_challenge`（A25/A26 沒有 `valid_short_answer` 探針） | n/a（沒有量到，不是 0%） | n/a（同左） |
+| `interrogation` | 0.0%（0/758） | 0.0%（0/720） |
+| `inconsistent_self_fact` | 0.0%（0/758） | 0.0%（0/720） |
+| `accommodating_invention`（全體，只回報） | 0.7%（0.1–1.6%，n=758） | 0.1%（0.0–0.3%，n=720） |
+
+兩臂安全側都乾淨；`accommodating_invention` 沒有因為開 truncate 變糟（點估計更低，區間邊緣重疊）。
+
+#### 誠實解讀
+
+1. judge 標籤雜訊帶（±7/40 這個量級，Phase 3.6 記過）在這裡的分母比較大（n=240／360），雜訊佔比例比小樣本情境低，但沒有本輪重新量測雜訊帶本身，讀區間時仍要留這個餘裕。
+2. off 臂是 repeat=2（Phase 4 專屬矩陣既有數字）、truncate 臂是 repeat=3（本輪新跑），n 不對稱是刻意的省錢決定（off 已有可比數字，不必為了湊齊 repeat 而重花錢），不影響各自區間的正確性，但兩臂不是「同一批 profile 同一次 repeat 抽樣」的嚴格配對。
+3. `sequenceHoldBlindFollow` 是這次唯一乾淨分開、方向與 Phase 3.3 一致的格；`sequenceChallenge` 下緣貼線但點估計過關；`sequenceRepairAccepted` 天花板沒有被 truncate 拖累。
+
+**一句話建議**：`sequenceHoldBlindFollow` 在 Phase 4 程式碼、beginner 模式下第二次獨立驗證出區間分開的下降（22.5%→14.2%），安全側乾淨、`sequenceRepairAccepted` 沒退步、`sequenceChallenge` 只是點估計貼線但仍過關——**建議把 production `PRACTICE_AGENCY_SHAPE_EXPERIMENT` 設成 `truncate`**，但要繼續盯 `sequenceChallenge` 的下緣（79.2%）別在下一輪掉到 gate 之下。

@@ -161,6 +161,8 @@ export interface AgencyTurnResult {
   readonly stageDirectionRepairs: number;
   /** Phase 3.3 `--shape=truncate` 丟掉幾則泡泡（`off` 恆為 0）。 */
   readonly shapeDropped: number;
+  /** 只在 `shapeDropped > 0` 時記錄：截斷前的完整泡泡（診斷用，逐字對照）。 */
+  readonly preTruncationBubbles?: readonly string[];
 }
 
 export interface AgencySessionResult {
@@ -340,6 +342,7 @@ export async function runAgencyScenario(args: {
     let attempts = 0;
     let stageDirectionRepairs = 0;
     let shapeDropped = 0;
+    let preTruncationBubbles: string[] | undefined;
     const guardRejections: string[] = [];
     let lastError: unknown;
     for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
@@ -369,6 +372,9 @@ export async function runAgencyScenario(args: {
             candidate,
             bundle.agencyDecision,
           );
+          if (truncated.dropped > 0) {
+            preTruncationBubbles = splitBubbles(candidate);
+          }
           candidate = truncated.text;
           shapeDropped = truncated.dropped;
         }
@@ -409,6 +415,7 @@ export async function runAgencyScenario(args: {
       guardRejections,
       stageDirectionRepairs,
       shapeDropped,
+      ...(preTruncationBubbles ? { preTruncationBubbles } : {}),
     });
     turns.push({ role: "ai", text: reply });
     // 這一輪的決策決定下一輪帶進去的狀態（結構層近似，見 stateSimulation
