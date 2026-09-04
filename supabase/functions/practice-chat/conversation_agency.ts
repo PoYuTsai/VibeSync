@@ -349,18 +349,27 @@ export function detectAgencyEvidence(
   // 兩者相加會重複計數；逐字稿本來就帶著這一場的全部片段。
   let unresolved = 0;
   let told = false;
-  let aiQuestionedInLoop = false;
   for (const s of windowed) {
     if (!isLowInformation(s.shape)) {
       if (s.shape !== "reaction") {
         unresolved = 0;
         told = false;
-        aiQuestionedInLoop = false;
       }
       continue;
     }
     if (told) unresolved = clamp3(unresolved + 1);
     told = !(s.shape === "answer_candidate" && unresolved === 0);
+  }
+  // 「她這段迴圈裡問過沒有」不吃 RECENT_USER_WINDOW：迴圈本身已經是邊界
+  // （任何結構修復都會把它清掉），再套 8 則的窗口只會讓「連丟第 11 個片段」
+  // 因為最早那兩句問話滑出窗口而退回 bounded——欠債沒解決，她的立場卻自己
+  // 消失了。計數仍然照舊只看最後 8 則（短期工作記憶，clamp 在 3）。
+  let aiQuestionedInLoop = false;
+  for (const s of shapes) {
+    if (!isLowInformation(s.shape)) {
+      if (s.shape !== "reaction") aiQuestionedInLoop = false;
+      continue;
+    }
     if (s.previousAiAskedQuestion) aiQuestionedInLoop = true;
   }
   // assisted：分類器讀完她這一輪的回覆後判 `connected`＝玩家上一輪真的接上了。
