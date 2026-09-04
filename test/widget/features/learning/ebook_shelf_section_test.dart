@@ -5,6 +5,9 @@
 //
 // 預設展開規則：無進度＝展開第一單元（終極指引）、第二單元收合；
 // 有進度＝兩單元全收合＋繼續閱讀卡。
+//
+// 2026-09-04 文案優化工作包 7：標題卡說明句改定稿句、繼續閱讀卡章名最多兩行；
+// 大標「高階互動指南」與副標「系統化實戰教材」是已拍板字串（規格 §12.3 第 14 條）。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -124,6 +127,13 @@ void main() {
     // 2026-08-09 拍板二輪：hero 副標改「系統化實戰教材」，THE FIELD GUIDE
     // 只留在第一單元群組卡（kicker 移到中文標題下方），不再重複兩次。
     expect(find.text('系統化實戰教材'), findsOneWidget);
+    // 工作包 7：大標不得被順手改掉；說明句是規格 §8 的定稿句，不再用「報酬率」。
+    expect(find.text('高階互動指南'), findsOneWidget);
+    expect(
+      find.text('先看你卡在配對、聊天，還是邀約。找到卡點後，只練現在最需要的那一步。'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('報酬率'), findsNothing);
     expect(find.text('THE FIELD GUIDE'), findsOneWidget);
     expect(find.text('THE PRIZE'), findsOneWidget);
     expect(find.textContaining('成為獎賞'), findsOneWidget);
@@ -432,6 +442,90 @@ void main() {
     await tester.pump();
 
     expect(find.text('正在載入電子書…'), findsOneWidget);
+  });
+
+  // 2026-09-04 工作包 7：繼續閱讀卡的章名最多兩行、章名縮到 14 字內（規格 §8、
+  // §13.1）。用全套教材裡最長的章名壓測（動態挑，章名再改也不用改測試）。
+  //
+  // 測試字型每個字形（含數字與空白）都是 1em 寬，比真字型寬得多，所以「兩行內
+  // 顯示完整」只在測試字型也放得下的格子斷言；320 pt × 1.3 與兩個 2.0 格子只
+  // 斷言不 overflow（超過兩行以省略號收尾），真字型下的版面由
+  // test/visual_proof/ebook_copy_matrix_proof_test.dart 出圖。
+  testWidgets('繼續閱讀卡：最長章名兩行內顯示完整，極端字級不 overflow', (tester) async {
+    final catalog = _realCatalog!;
+    var longestBook = catalog.books.first;
+    var longestChapter = longestBook.chapters.first;
+    for (final book in catalog.books) {
+      for (final chapter in book.chapters) {
+        if (chapter.title.length > longestChapter.title.length) {
+          longestBook = book;
+          longestChapter = chapter;
+        }
+      }
+    }
+    final expectedLine =
+        '上次讀到 ${longestChapter.number} ${longestChapter.title}';
+
+    Future<RichText> pumpResume(double width, double scale) async {
+      final box = InMemoryHiveBox();
+      await EbookProgressRepository(box: box).setLastChapter(
+        ownerUserId: 'shelf-owner',
+        bookId: longestBook.id,
+        chapterId: longestChapter.id,
+      );
+      await pumpShelf(
+        tester,
+        catalog: catalog,
+        progressBox: box,
+        textScale: scale,
+        size: Size(width, 2400),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull,
+          reason: '$width pt × $scale overflow');
+
+      final line = find.text(expectedLine);
+      expect(line, findsOneWidget, reason: '$width pt × $scale 沒有章名那一行');
+      final richText = tester.widget<RichText>(
+        find.descendant(of: line, matching: find.byType(RichText)),
+      );
+      expect(richText.maxLines, 2, reason: '章名那一行必須是最多兩行');
+      return richText;
+    }
+
+    // 用同一份 TextSpan 與字級在實際拿到的寬度重排一次：超過兩行代表被省略。
+    bool exceedsTwoLines(RichText richText) {
+      final width = tester.getSize(find.byWidget(richText)).width;
+      final painter = TextPainter(
+        text: richText.text,
+        textDirection: TextDirection.ltr,
+        maxLines: richText.maxLines,
+        textScaler: richText.textScaler,
+      )..layout(maxWidth: width);
+      final exceeded = painter.didExceedMaxLines;
+      painter.dispose();
+      return exceeded;
+    }
+
+    for (final (width, scale) in const [
+      (390.0, 1.0),
+      (390.0, 1.3),
+      (320.0, 1.0),
+    ]) {
+      final richText = await pumpResume(width, scale);
+      expect(
+        exceedsTwoLines(richText),
+        isFalse,
+        reason: '$width pt × $scale：「$expectedLine」被截斷',
+      );
+    }
+    for (final (width, scale) in const [
+      (320.0, 1.3),
+      (390.0, 2.0),
+      (320.0, 2.0),
+    ]) {
+      await pumpResume(width, scale);
+    }
   });
 
   testWidgets('320px 寬 + 2.0 text scale 不 overflow（含展開第二單元）', (tester) async {

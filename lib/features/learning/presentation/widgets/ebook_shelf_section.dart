@@ -15,6 +15,9 @@
 //   - 有任何一本開始過 → 兩單元都收合，改在群組上方放一張「繼續閱讀」捷徑
 //     卡，直接進最適合接續的那本書的目錄頁。
 //
+// 2026-09-04 文案優化工作包 7：標題卡說明句改成定稿句（規格 §8）、繼續閱讀卡
+// 的章名最多兩行（不靠極端縮名解決截斷）；大標與副標維持 2026-08-09 拍板。
+//
 // 內容載入失敗時只讓這個區塊降級成錯誤卡，不影響同頁的 24 篇文章。
 library;
 
@@ -212,11 +215,13 @@ class _ResumeCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
+                // 章名最多兩行（工作包 7）：章名已縮到 14 字內，兩行在 320 pt
+                // 也放得下；書名那行維持一行。
                 Text(
                   chapter == null
                       ? '接續上次的進度'
                       : '上次讀到 ${chapter.number} ${chapter.title}',
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.caption.copyWith(
                     color:
@@ -331,6 +336,9 @@ class _ShelfHero extends StatelessWidget {
     // 上、橘色副標在下。副標不再用 THE FIELD GUIDE（那是下方終極指引單元卡
     // 的 kicker，同字面會像重複列兩次），改為定位句「系統化實戰教材」，
     // 與新手村的「判讀訓練場」同句式。大標維持與單元卡標題脫鉤的總稱。
+    //
+    // 說明句是 2026-09-03 文案規格 §8 的定稿句：先讓人自己對號（配對／聊天／
+    // 邀約），再講「只練最需要的那一步」；不用「報酬率」這類財務用語。
     return BrandSurfaceCard(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
       child: Column(
@@ -372,8 +380,7 @@ class _ShelfHero extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '從配對到把她約出來。先診斷你卡在哪一階，只練那一階'
-            '——這是報酬率最高的事。',
+            '先看你卡在配對、聊天，還是邀約。找到卡點後，只練現在最需要的那一步。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.85),
               height: 1.5,
