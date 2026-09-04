@@ -106,5 +106,8 @@ Deno.test("runAgencyScenario：A27.p2／p4 的 previousAiAskedQuestion 吃到腳
   // 兩則填充行本身要是腳本（不打模型、不進 judge），內容釘死成 scenarios.ts
   // 裡寫的那兩句非問句閒聊。
   const scripted = result.turns.filter((t) => t.scripted && t.probe === null);
-  assertEquals(scripted.map((t) => t.reply), ["哈哈哈 傳來看", "喔 辛苦你了"]);
+  assertEquals(scripted.map((t) => t.reply), [
+    "我也在耍廢 等等要洗澡了",
+    "對啊 我也是 電費要爆了",
+  ]);
 });

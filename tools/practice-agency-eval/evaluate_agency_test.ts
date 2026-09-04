@@ -319,6 +319,23 @@ Deno.test("Phase 3.0：三個序列指標各自綁自己的分母，不被別的
 
 // ── Phase 3.3 修正：A27.p2／p4 的上下文不能再吃到 p1 的真實生成回覆 ──────
 
+/**
+ * R1 P1（Codex）：A27 填充對話的封閉語境禁字表。小而封閉，逐字比對，不做
+ * 語意判斷——`傳`／`看`／`給我`＝邀請對方傳東西過來，`誰`／`哪`＝留下疑問，
+ * `主管`／`同事`／`朋友`＝留下人物空位。任何一個出現，接下來的裸帳號在字面上
+ * 就成了那句話的合理回答。
+ */
+const CLOSED_CONTEXT_FORBIDDEN = [
+  "傳",
+  "看",
+  "給我",
+  "誰",
+  "哪",
+  "主管",
+  "同事",
+  "朋友",
+] as const;
+
 Deno.test("Phase 3.3 修正：A27.p2／p4 前面各有一則腳本化非問句，p1 前面沒有任何腳本", () => {
   const a27 = AGENCY_SCENARIOS.find((s) => s.id === "A27")!;
   const idxOf = (probeId: string) =>
@@ -338,7 +355,11 @@ Deno.test("Phase 3.3 修正：A27.p2／p4 前面各有一則腳本化非問句�
   // 上面的 Phase 3.3 修正註解）。
   for (const p of [p2, p4]) {
     const scripted = a27.turns[p - 1];
-    assertEquals(scripted.role, "ai", `A27 第 ${p} 個 turn 前面必須是腳本化 ai()`);
+    assertEquals(
+      scripted.role,
+      "ai",
+      `A27 第 ${p} 個 turn 前面必須是腳本化 ai()`,
+    );
     assert(
       !looksLikeQuestion(scripted.text),
       `A27 探針前的腳本行不能是問句：「${scripted.text}」`,
@@ -346,8 +367,25 @@ Deno.test("Phase 3.3 修正：A27.p2／p4 前面各有一則腳本化非問句�
     // 腳本 ai() 前面必須是一則不設探針的填充 u()，這樣它才會被
     // run_agency.ts 的 scriptedReply 機制消耗掉，而不是變成一個新的獨立探針。
     const filler = a27.turns[p - 2];
-    assertEquals(filler.role, "user", `A27 第 ${p} 個 turn 前面的填充行角色不對`);
+    assertEquals(
+      filler.role,
+      "user",
+      `A27 第 ${p} 個 turn 前面的填充行角色不對`,
+    );
     assertEquals(filler.probe, undefined, "填充行不該帶探針");
+
+    // R1 P1（Codex）：**封閉語境**規則——填充對話（雙方兩句）不得出現這張
+    // 小型封閉禁字表裡的任何一個字。三類各自對應一種把裸帳號變成「合理回答」
+    // 的破口：邀請傳東西（傳／看／給我）、留下疑問（誰／哪）、留下人物空位
+    // （主管／同事／朋友）。字表刻意小而封閉，不是語意判斷。
+    for (const line of [filler, scripted]) {
+      for (const word of CLOSED_CONTEXT_FORBIDDEN) {
+        assert(
+          !line.text.includes(word),
+          `A27 填充對話不是封閉語境（含「${word}」）：「${line.text}」`,
+        );
+      }
+    }
   }
 
   // mustForbid 收緊成 accommodating_invention／adopted_without_asking 這兩個
