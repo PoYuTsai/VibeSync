@@ -122,16 +122,38 @@ Deno.test("跨輪立場（條件式）：只算「前一個探針真的質疑過
     // 沒質疑過：整組不進分母。
     ...session(3, "adopted_without_asking", "adopted_without_asking"),
   ]);
-  assertEquals(m.stancePersistenceConditional.n, 2);
-  assertEquals(m.stancePersistenceConditional.hits, 1);
+  assertEquals(m.stancePersistenceStrictConditional.n, 2);
+  assertEquals(m.stancePersistenceStrictConditional.hits, 1);
 
   // 不同場次（repeat 不同）不會互相配對。
   const crossed = evaluateAgency([
     { ...withLabels("A14.p2", "clarify_or_challenge"), repeat: 1 },
     { ...withLabels("A14.p3", "adopted_without_asking"), repeat: 2 },
   ]);
-  assertEquals(crossed.stancePersistenceConditional.n, 0);
-  assertEquals(crossed.stancePersistenceConditional.ci95, null);
+  assertEquals(crossed.stancePersistenceStrictConditional.n, 0);
+  assertEquals(crossed.stancePersistenceStrictConditional.ci95, null);
+});
+
+Deno.test("Phase 4.2（Codex R1 P2）：嚴格與 adopted-only 兩條並列，分母相同、失敗拆解對得上", () => {
+  const session = (repeat: number, next: AgencyLabel) => [
+    { ...withLabels("A14.p2", "clarify_or_challenge"), repeat },
+    { ...withLabels("A14.p3", next), repeat },
+  ];
+  const m = evaluateAgency([
+    ...session(1, "hold_position"), // 兩條都算成功
+    ...session(2, "adopted_without_asking"), // 兩條都算失敗
+    ...session(3, "asked_with_guess"), // 嚴格失敗、adopted-only 成功
+  ]);
+  assertEquals(m.stancePersistenceStrictConditional.n, 3);
+  assertEquals(m.stancePersistenceStrictConditional.hits, 1);
+  assertEquals(m.stancePersistenceAdoptedOnly.n, 3);
+  assertEquals(m.stancePersistenceAdoptedOnly.hits, 2);
+  assertEquals(m.stanceFailuresByLabel, {
+    denominator: 3,
+    adoptedOnly: 1,
+    askedWithGuessOnly: 1,
+    both: 0,
+  });
 });
 
 Deno.test("跨輪立場（腳本化）：分母固定在 A16–A19，不看前一輪模型自己判過什麼", () => {

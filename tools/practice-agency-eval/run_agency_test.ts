@@ -5,7 +5,12 @@ import {
   assertEquals,
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { parseArgs, runAgencyScenario, saltedThreadId } from "./run_agency.ts";
+import {
+  parseArgs,
+  runAgencyScenario,
+  saltedThreadId,
+  threadSaltOfArtifactMeta,
+} from "./run_agency.ts";
 import { AGENCY_SCENARIOS } from "./scenarios.ts";
 import { buildChatPromptBundle } from "../../supabase/functions/practice-chat/prompt.ts";
 import { resolvePracticeProfile } from "../../supabase/functions/practice-chat/practice_persona.ts";
@@ -130,10 +135,11 @@ Deno.test("parseArgs：--thread-salt 省略＝空字串（thread id 逐字沿用
   assert(saltedThreadId("r1", 1) !== saltedThreadId("r1", 2));
 });
 
-Deno.test("thread-salt 讓 initiative 分支量得到：initiative=4 的角色，5 個 salt 至少 1 個命中 self_disclose", () => {
+Deno.test("thread-salt 讓 initiative 分支量得到：5 個**不同**的 salt 打同一位角色，已知有 salt 命中 self_disclose、有 salt 不命中", () => {
   // 兩輪黑箱（Phase 4.0／Phase 4 完整矩陣）在 A29 都是 0/40——固定 thread id 讓
   // `fnv1a(seedKey|回合|initiative) % 5` 在這個探針位置恆為同一個值。這支測試
-  // 不打模型，只證明加鹽之後同一位角色的骰面真的會變。
+  // 不打模型，也**不宣稱機率**：下面是這一版 FNV-1a、這位角色、這段逐字稿的
+  // deterministic fixture，鎖的是「換 salt 會換骰面」這件事本身（Codex R1 P3）。
   const profile = resolvePracticeProfile({
     profileId: "practice_girl_007", // Ava：initiative 4（agency_profile.ts）
     difficulty: "normal",
@@ -146,7 +152,7 @@ Deno.test("thread-salt 讓 initiative 分支量得到：initiative=4 的角色�
     { role: "ai", text: "對啊 現在整個很累" },
     { role: "user", text: "嗯嗯" },
   ];
-  const planFor = (threadId: string) =>
+  const disclosesFor = (threadId: string) =>
     buildChatPromptBundle(turns, profile, {
       replyStyle: true,
       agencyMode: "on",
@@ -162,13 +168,38 @@ Deno.test("thread-salt 讓 initiative 分支量得到：initiative=4 的角色�
       memorySummary: fx.memorySummary,
       timeContext: fx.timeContext,
       herRecentMomentsBlock: fx.herRecentMomentsBlock,
-    }).responsePlan!;
+    }).responsePlan!.optionalAct === "self_disclose";
 
-  const hits = [1, 2, 3, 4, 5]
-    .map((repeat) => planFor(saltedThreadId("p42", repeat)))
-    .filter((plan) => plan.optionalAct === "self_disclose").length;
-  assert(
-    hits >= 1,
-    `initiative=4 是 2/5 的機率，5 個 salt 至少要有 1 個命中（實際 ${hits}）`,
+  const salts = ["s1", "s2", "s3", "s4", "s5"];
+  const hits = salts.map((salt) => disclosesFor(saltedThreadId(salt, 1)));
+  // 沒有鹽的那一面（兩輪黑箱實際打到的那一格）是 false——這就是 0/40 的來源。
+  assertEquals(disclosesFor(saltedThreadId("", 1)), false);
+  // 5 個不同的鹽裡，已知至少一個命中、至少一個不命中：證明 salt 真的換骰面，
+  // 而不是把整組推成同一個結果。
+  assert(hits.some(Boolean), `五個 salt 應有命中：${JSON.stringify(hits)}`);
+  assert(hits.some((h) => !h), `五個 salt 應有不命中：${JSON.stringify(hits)}`);
+});
+
+Deno.test("Phase 4.2（Codex R1 P3）：Phase 4.2 之前的舊 artifact 沒有 meta.fixture.threadSalt，回放要退回 BAKEOFF_THREAD_ID", async () => {
+  const oldArtifact = JSON.parse(
+    await Deno.readTextFile(
+      new URL("./out/2026-09-04-p36-mini-artifact.json", import.meta.url),
+    ),
+  );
+  // 真的是舊格式：fixture 只有 now／threadId。
+  assertEquals(oldArtifact.meta.fixture.threadSalt, undefined);
+  const salt = threadSaltOfArtifactMeta(oldArtifact.meta);
+  assertEquals(salt, "");
+  assertEquals(
+    saltedThreadId(salt, oldArtifact.results[0].repeat),
+    BAKEOFF_THREAD_ID,
+  );
+  // 壞形狀（meta 缺 fixture、threadSalt 不是字串）也一律退回空字串。
+  assertEquals(threadSaltOfArtifactMeta(undefined), "");
+  assertEquals(threadSaltOfArtifactMeta({}), "");
+  assertEquals(threadSaltOfArtifactMeta({ fixture: { threadSalt: 7 } }), "");
+  assertEquals(
+    threadSaltOfArtifactMeta({ fixture: { threadSalt: "r1" } }),
+    "r1",
   );
 });

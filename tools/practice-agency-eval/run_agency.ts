@@ -220,6 +220,17 @@ export function saltedThreadId(salt: string, repeat: number): string {
   return salt ? `${BAKEOFF_THREAD_ID}|${salt}|${repeat}` : BAKEOFF_THREAD_ID;
 }
 
+/**
+ * 從 artifact 的 `meta` 讀回這次跑用的鹽。**Phase 4.2 之前的 artifact 沒有這個
+ * 欄位**（`meta.fixture` 只有 `now`／`threadId`），一律退回空字串＝
+ * `BAKEOFF_THREAD_ID`，離線回放才會拿到跟當初生成時同一個 seed。
+ */
+export function threadSaltOfArtifactMeta(meta: unknown): string {
+  const fixture = (meta as { fixture?: { threadSalt?: unknown } } | null)
+    ?.fixture;
+  return typeof fixture?.threadSalt === "string" ? fixture.threadSalt : "";
+}
+
 export async function runAgencyScenario(args: {
   callChat: ChatCaller;
   profileId: string;
@@ -474,7 +485,11 @@ interface CliOptions {
   concurrency: number;
   /** --state=1：跨輪真的帶 agency state（結構層模擬，見 runAgencyScenario）。 */
   stateSimulation: boolean;
-  /** --thread-salt=<字串>：見 `saltedThreadId`；預設空字串＝與加旗標前逐字相同。 */
+  /**
+   * --thread-salt=<字串>：見 `saltedThreadId`。預設空字串＝thread id、prompt
+   * 與生成行為都與加旗標前相同；**artifact JSON 本身不是逐位元組相同**——
+   * `meta.fixture` 一律多一個 `threadSalt` 欄位（Codex R1 P3）。
+   */
   threadSalt: string;
 }
 
@@ -728,6 +743,8 @@ async function main(): Promise<void> {
         threadId: BAKEOFF_THREAD_ID,
         // Phase 4.2：空字串＝每場都用 threadId 本身（舊行為）；有值時每場的
         // thread id 是 `saltedThreadId(threadSalt, repeat)`，離線回放要照算。
+        // 這個 key **無條件寫出**，所以新 artifact 與舊 artifact 的 JSON 差異
+        // 就是這一格（Codex R1 P3：不能宣稱 artifact bytes 相同）。
         threadSalt: opts.threadSalt,
       },
       profileIds: opts.profileIds,

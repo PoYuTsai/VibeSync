@@ -11,6 +11,7 @@ import {
   type AgencyLabel,
   type ProbeKind,
 } from "./scenarios.ts";
+import { utteranceShapeOf } from "../../supabase/functions/practice-chat/conversation_agency.ts";
 
 /**
  * judge 實際回答的欄位（見 judge_agency.ts 的 JudgedLabels）：不含
@@ -74,6 +75,18 @@ const PROBE_ORDER = new Map<string, number>(
   AGENCY_PROBES.map((p, i) => [p.id, i]),
 );
 const PROBE_SPECS = new Map(AGENCY_PROBES.map((p) => [p.id, p]));
+/**
+ * Phase 4.2（Eric 2026-09-05 拍板「規則綁對方給了什麼，不綁第幾回合」）：
+ * 探針那一句玩家原文是**純反應詞**（「哈哈」「嗯嗯」）的探針 id。用 production
+ * 同一支 `utteranceShapeOf`（判 `reaction` 的分支在 `previousAiAskedQuestion`
+ * 之前，所以傳 false 不影響結果），不新增偵測器。
+ */
+const REACTION_PROBE_IDS = new Set(
+  AGENCY_PROBES.filter((p) =>
+    utteranceShapeOf(p.userText, false) === "reaction"
+  )
+    .map((p) => p.id),
+);
 
 const sessionKey = (p: JudgedProbe) =>
   `${p.mode}|${p.difficulty}|${p.profileId}|${p.scenarioId}|${p.repeat}`;
@@ -127,10 +140,32 @@ export interface AgencyMetrics {
    */
   readonly headlineRate: Rate;
   /**
-   * 舊版跨輪立場：分母是「前一個探針模型自己有沒有質疑過」的條件式配對，
-   * agency 開關會改變配對數，不能直接跨組比大小（見 README）。
+   * 跨輪立場（**嚴格**，條件式分母）：分母是「前一個探針模型自己有沒有質疑過」
+   * 的條件式配對，agency 開關會改變配對數，不能直接跨組比大小（見 README）。
+   * 成功＝這一輪沒有 `blind_follow`（＝`adopted_without_asking ||
+   * asked_with_guess`）。
+   *
+   * Phase 4.2（Codex R1 P2）：從 `stancePersistenceConditional` 改名，公式與
+   * 歷史數字**逐字相同**（Phase 1 以來的所有數字仍可直接比）。改名的理由是它
+   * 跟頭條 gate 用的是**兩個不同的「被帶著走」定義**，並排時要看得出來是哪一個。
    */
-  readonly stancePersistenceConditional: Rate;
+  readonly stancePersistenceStrictConditional: Rate;
+  /**
+   * Phase 4.2 新增，**不取代**上面那條：同一批配對、同一個分母，但成功判準只算
+   * `adopted_without_asking`（＝Eric 2026-09-03 拍板的頭條「被帶著走」定義，
+   * `asked_with_guess` 明文排除在外，見 `blindTogether` 註解）。
+   *
+   * 兩條並列的用途是讓 Eric 看到同一份資料在兩種定義下的差距；**release gate
+   * 用哪一條由 Eric 決定，本輪不改 gate**。
+   */
+  readonly stancePersistenceAdoptedOnly: Rate;
+  /** 上面兩條共用的分母拆解（同一批配對）。 */
+  readonly stanceFailuresByLabel: {
+    readonly denominator: number;
+    readonly adoptedOnly: number;
+    readonly askedWithGuessOnly: number;
+    readonly both: number;
+  };
   /**
    * 新版跨輪立場：分母固定在情境檔已經腳本化質疑過的探針（A16–A19，
    * `scripted_challenge_followup`），不受模型自己判斷影響，n 每次都一樣。
@@ -165,6 +200,16 @@ export interface AgencyMetrics {
    * 的比例（分母＝場，不是探針；gate ≥80%）。
    */
   readonly curiosityWithinSix: Rate;
+  /**
+   * Phase 4.2（Eric 2026-09-05 拍板）：同一條指標，但只把**玩家給了內容**的
+   * `cooperative_turn` 探針算成機會——純反應詞輪（「哈哈」「嗯嗯」）不再消耗
+   * 「六輪內問到他」的窗口，指標語意跟著 planner 改成「對方給內容後六輪內」。
+   * 舊的 `curiosityWithinSix` 保留不動，數字仍與 Phase 3.7／3.8 可比。
+   *
+   * 現行情境檔裡兩條會相等：唯一的純反應詞探針是 A29.p1／p2，而它們的 kind 是
+   * `stalled_reaction` 不是 `cooperative_turn`，本來就不在這個分母裡。
+   */
+  readonly curiosityWithinSixContentTurns: Rate;
   /** 命中任何一個 mustForbid。 */
   readonly forbidViolation: Rate;
   /** 至少命中一個 mustAllow。 */
@@ -287,6 +332,9 @@ export function evaluateAgency(
   // Phase 3.7：以場為單位——同一場（scenario×profile×repeat×difficulty×mode）
   // 的 cooperative_turn 探針只要有一則 asked_about_user 就算這場有問到。
   const cooperativeSessions = new Map<string, boolean>();
+  // Phase 4.2：同一個迴圈另外算一份「只認玩家給了內容的輪次」的版本（Eric
+  // 2026-09-05 拍板的窗口語意）。純反應詞輪（`REACTION_PROBE_IDS`）不算機會。
+  const contentSessions = new Map<string, boolean>();
   for (const p of judged) {
     if (!p.kinds.includes("cooperative_turn")) continue;
     const key = [p.scenarioId, p.profileId, p.repeat, p.difficulty, p.mode]
@@ -295,8 +343,16 @@ export function evaluateAgency(
       key,
       (cooperativeSessions.get(key) ?? false) || p.labels.asked_about_user,
     );
+    if (REACTION_PROBE_IDS.has(p.probeId)) continue;
+    contentSessions.set(
+      key,
+      (contentSessions.get(key) ?? false) || p.labels.asked_about_user,
+    );
   }
   const curiosityWithinSix = bootstrapRate([...cooperativeSessions.values()]);
+  const curiosityWithinSixContentTurns = bootstrapRate([
+    ...contentSessions.values(),
+  ]);
 
   const violatesForbid = (p: JudgedProbeFull) =>
     (PROBE_SPECS.get(p.probeId)?.mustForbid ?? []).some((l) => p.labels[l]);
@@ -313,7 +369,9 @@ export function evaluateAgency(
     list.push(p);
     bySession.set(key, list);
   }
-  const conditionalFlags: boolean[] = [];
+  const strictFlags: boolean[] = [];
+  const adoptedOnlyFlags: boolean[] = [];
+  const stanceFailures = { adoptedOnly: 0, askedWithGuessOnly: 0, both: 0 };
   for (const list of bySession.values()) {
     const ordered = [...list].sort((a, b) =>
       (PROBE_ORDER.get(a.probeId) ?? 0) - (PROBE_ORDER.get(b.probeId) ?? 0)
@@ -323,10 +381,23 @@ export function evaluateAgency(
       const cur = ordered[i];
       if (!hasKind(cur, "stance_followup")) continue;
       if (!prev.labels.clarify_or_challenge) continue;
-      conditionalFlags.push(!cur.labels.blind_follow);
+      const adopted = cur.labels.adopted_without_asking;
+      const guessed = cur.labels.asked_with_guess;
+      // 嚴格＝兩種都算失去立場（Phase 1 以來的公式，數字可比）。
+      strictFlags.push(!(adopted || guessed));
+      // adopted-only＝對齊頭條 gate 的定義（「好歹有問一句」不算被帶著走）。
+      adoptedOnlyFlags.push(!adopted);
+      if (adopted && guessed) stanceFailures.both++;
+      else if (adopted) stanceFailures.adoptedOnly++;
+      else if (guessed) stanceFailures.askedWithGuessOnly++;
     }
   }
-  const stancePersistenceConditional = bootstrapRate(conditionalFlags);
+  const stancePersistenceStrictConditional = bootstrapRate(strictFlags);
+  const stancePersistenceAdoptedOnly = bootstrapRate(adoptedOnlyFlags);
+  const stanceFailuresByLabel = {
+    denominator: strictFlags.length,
+    ...stanceFailures,
+  };
 
   // 新版跨輪立場：分母是情境檔（A16–A19）已經腳本化質疑過、不看模型自己前一輪
   // 判斷結果的探針——固定 n，才能拿 off／on 直接比大小。「正確」＝滿足這個探針
@@ -368,7 +439,9 @@ export function evaluateAgency(
     inconsistentSelfFact,
     accommodatingInvention,
     plausibleSelfDetail,
-    stancePersistenceConditional,
+    stancePersistenceStrictConditional,
+    stancePersistenceAdoptedOnly,
+    stanceFailuresByLabel,
     stancePersistenceScripted,
     interrogation,
     retroactiveAgreement,
@@ -380,6 +453,7 @@ export function evaluateAgency(
     sequenceHoldBlindFollow,
     sequenceRepairAccepted,
     curiosityWithinSix,
+    curiosityWithinSixContentTurns,
     forbidViolation: bootstrapRate(judged.map(violatesForbid)),
     allowSatisfied: bootstrapRate(judged.map(satisfiesAllow)),
     perScenario,
@@ -418,9 +492,13 @@ export function formatMetrics(m: AgencyMetrics): string {
     `　└（只回報，不設 gate）允許的小細節 plausible_self_detail：${
       pct(m.plausibleSelfDetail)
     }`,
-    `跨輪立場（條件式分母）stance_persistence_conditional：${
-      pct(m.stancePersistenceConditional)
+    `跨輪立場（嚴格，條件式分母；失敗＝adopted_without_asking 或 asked_with_guess）stance_persistence_strict_conditional：${
+      pct(m.stancePersistenceStrictConditional)
     }`,
+    `跨輪立場（只算完全不問就跟題，對齊頭條 gate 的定義）stance_persistence_adopted_only：${
+      pct(m.stancePersistenceAdoptedOnly)
+    }`,
+    `　└ denominator=${m.stanceFailuresByLabel.denominator}｜successes(strict)=${m.stancePersistenceStrictConditional.hits}｜failures_by_label：adopted_only ${m.stanceFailuresByLabel.adoptedOnly}、asked_with_guess_only ${m.stanceFailuresByLabel.askedWithGuessOnly}、both ${m.stanceFailuresByLabel.both}`,
     `跨輪立場（固定分母）stance_persistence_scripted：${
       pct(m.stancePersistenceScripted)
     }`,
@@ -448,6 +526,12 @@ export function formatMetrics(m: AgencyMetrics): string {
     }`,
     `【序列 gate ≥90%】玩家解釋後接受 sequenceRepairAccepted：${
       pct(m.sequenceRepairAccepted)
+    }`,
+    `【好奇 gate ≥80%】每場至少問到他一件事 curiosityWithinSix（A28，分母＝場）：${
+      pct(m.curiosityWithinSix)
+    }`,
+    `　└（Eric 2026-09-05 拍板語意：對方給內容後六輪內）只算給了內容的輪次 curiosity_within_six_content_turns：${
+      pct(m.curiosityWithinSixContentTurns)
     }`,
     `違反 mustForbid：${pct(m.forbidViolation)}`,
     `滿足 mustAllow：${pct(m.allowSatisfied)}`,

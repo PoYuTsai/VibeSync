@@ -831,6 +831,12 @@ export function isAgencyScenarioId(value: unknown): boolean {
 /** 全部探針規格（judge／evaluate 用 id 對回分母與必須允許／禁止）。 */
 export const AGENCY_PROBES: readonly (ProbeSpec & {
   readonly scenarioId: string;
+  /** Phase 4.2：探針那一句玩家原文——`evaluate_agency.ts` 用它判純反應詞輪。 */
+  readonly userText: string;
 })[] = AGENCY_SCENARIOS.flatMap((s) =>
-  s.turns.filter((t) => t.probe).map((t) => ({ ...t.probe!, scenarioId: s.id }))
+  s.turns.filter((t) => t.probe).map((t) => ({
+    ...t.probe!,
+    scenarioId: s.id,
+    userText: t.text,
+  }))
 );
