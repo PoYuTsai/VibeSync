@@ -1967,3 +1967,17 @@ prompt（Phase 3.5：agency on 時 recentContext 放寬到整段、附 `<her_sel
 | repair／解析失敗 | 0／0 |
 
 **讀法**：判準要寫成模型能逐項核對的結構（經歷是否掛鉤玩家的詞 × 來源有沒有），不是「明顯迎合」這種要模型自己下定義的詞；同一批回覆，改寫前 0/5、改寫後 5/5，對照 7/7。**未做**：改寫後的判準沒有跑完整 360（看整體盛行率、確認對非關鍵字回覆零誤判）；需要另一次約 $0.3。
+
+**第二版判準完整 360（Eric 第二次「跑」，同 p34 artifact）**：`out/2026-09-04-p36-classifier-replay-v2.json`，0 解析失敗、0 repair。
+
+| 指標 | 值 |
+| --- | --: |
+| `accommodatingSelfFactN` | **5/360＝1.4%** |
+| 逐筆人工看 | 5/5 真陽性：「阿布達比？我才剛飛回來耶」「我剛從曼谷回來沒多久耶」「哦你說泰國喔／我去過一次 很喜歡那邊的咖啡店」「曼谷我熟啊／上次去做指甲的素材都是從那邊扛回來的」「清邁喔，去過一次，感覺還不錯」（最後一筆是人工底稿沒挑到的） |
+| 對人工 5 筆底稿的召回 | 4/5：「好啦那我有去過曼谷一次 但覺得太塞車了」這次判 false（mini 重測時判 true）——temperature 0 仍有跨次抖動 |
+| 非關鍵字回覆誤判 | 0（360 筆裡 true 的全在關鍵字命中集合內） |
+| `accommodatingPositiveDeltaN`（gate＝0） | 0；3 筆 cap 真的把 +1 壓到 0（`capApplied="accommodating_self_fact"`），2 筆已先被 disconnected 壓到 -1 |
+| `sharedPastClaimN` | 4/360，同四筆 |
+| coherence connected／ambiguous／disconnected | 138／10／212 |
+
+**coherence 的雜訊帶（重要）**：第一版與第二版分類器只差 accommodatingSelfFact 那一段判準文字，coherence 判準逐字相同，但逐探針分佈跨次差到 ±7/40（A27.p2 connected 8→15、A25.p3 3→10、A27.p4 6→10）。3.5 那輪「coherence 變嚴 3–6%」落在這個雜訊帶內，不能當成 3.5 的效果；要比 coherence 得同一 prompt 跑 ≥3 次取區間。有效補救 A25.p9 三次都 40/40，這格穩。
