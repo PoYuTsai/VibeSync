@@ -9135,6 +9135,74 @@ Deno.test("Phase 3.3 truncate 臂：她接住那一則（第一則不是問句�
   assertEquals(agency.shapeTruncatedBubbles, 0);
 });
 
+Deno.test("Phase 3.3 R1：truncate 之後，下游（commit／thread RPC、分類器）只看得到截斷後的文字", async () => {
+  const dropped = "我剛從那邊飛回來耶";
+  const { json, state } = await runCapturingLogs(
+    {
+      ledger: null,
+      thread: {
+        profile_id: "practice_girl_001",
+        temperature_score: 40,
+        familiarity_score: 10,
+      },
+      env: {
+        PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+        PRACTICE_AGENCY_SHAPE_EXPERIMENT: "truncate",
+      },
+      deepSeekReplies: [SHAPE_ACCOMMODATING_REPLY, CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      visiblePracticeThreadId: "thread-visible-1",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      turns: AGENCY_FRAGMENT_TURNS,
+    }),
+  );
+  assertEquals(json.reply, "你是說阿布達比嗎");
+  // 分類器（judgeLearningState）是這一輪唯一另外吃她回覆的模型呼叫：要看到
+  // 截斷後的文字，不得看到被丟掉的那一則。
+  const classifier = state.deepSeekCalls.slice(1);
+  assert(classifier.length > 0, "beginner 這一輪應該有分類器呼叫");
+  const classifierText = JSON.stringify(classifier);
+  assert(classifierText.includes("你是說阿布達比嗎"), classifierText);
+  assert(!classifierText.includes(dropped), classifierText);
+  // commit_practice_chat_turn 與 thread upsert 的 params 完全不該出現被丟掉
+  // 的那一則（commit RPC 本來就不帶回覆文字，這裡連帶守住這件事）。
+  assert(!JSON.stringify(state.rpcCalls).includes(dropped));
+  // hint／debrief 是各自獨立的 request（讀 client 帶上來的逐字稿），不在這一次
+  // chat 呼叫裡，fake 觀察不到——它們拿到的是 client 存下來的這一則回覆，
+  // 也就是上面斷言過的 `json.reply`。
+});
+
+Deno.test("Phase 3.3 R1：Game FSM 修復優先那一輪不截斷（既有優先權高於實驗臂）", async () => {
+  const { json } = await runCapturingLogs(
+    {
+      ledger: gameStartedLedger(),
+      thread: {
+        profile_id: "practice_girl_004",
+        temperature_score: 44,
+        familiarity_score: 22,
+        // guarded＝Game FSM 的 repairPriority（game_fsm.ts hasRepairPriority）。
+        partner_mood: "guarded",
+      },
+      drawEvents: [{ profile_id: "practice_girl_004" }],
+      env: {
+        PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+        PRACTICE_AGENCY_SHAPE_EXPERIMENT: "truncate",
+      },
+      deepSeekReplies: [SHAPE_ACCOMMODATING_REPLY, CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      visiblePracticeThreadId: "thread-visible-1",
+      turns: AGENCY_FRAGMENT_TURNS,
+    }),
+  );
+  assertEquals(json.reply, SHAPE_ACCOMMODATING_REPLY);
+});
+
 Deno.test("Phase 3.3 旋鈕 off／agency off：回覆逐字不動，telemetry 連欄位都不多一個", async () => {
   // 旋鈕未設（agency 開）。
   const noKnob = await shapeExperimentRun({

@@ -784,6 +784,20 @@ export interface ChatPromptBundle {
    * `shadow` 有值但 `applied=false`（prompt 逐字不變，只記 telemetry）。
    */
   agencyDecision: AgencyApplication | null;
+  /**
+   * Game FSM 這一輪有沒有既有的優先權在身上（修復優先／現實旗標）。
+   *
+   * Phase 3.3 R1（Codex 精確性項目 3）：越界與邀約輪本來就進不了 agency
+   * （`computeAgencyDecision` 只在 `situation === "neutral"` 時保留決策，
+   * boundary／early_invite／mature_invite／memory_mismatch 一律被清成
+   * `situation: null` → `applied=false`），但 Game 的 `repairPriority`／
+   * `realityFlags` 只把 stance 拉到 `cautious`，situation 仍然是 neutral，
+   * agency 因此**會**介入。這個布林讓 handler 在那種輪次關掉 truncate 臂的
+   * 生成後截斷（她那一輪的優先任務是修復，不是被砍成一句問句），而且不必在
+   * handler 再算一次 FSM（prompt.ts 的既有註解：FSM 一輪只算一次）。
+   * 非 Game 模式恆為 false。
+   */
+  gameFsmPriority: boolean;
 }
 
 /** @deprecated 用 `AgencyApplication`（從 conversation_agency.ts 匯出）。 */
@@ -1006,7 +1020,13 @@ export function buildChatPromptBundle(
     },
     ...history,
   ];
-  return { messages, responsePlan, agencyDecision };
+  return {
+    messages,
+    responsePlan,
+    agencyDecision,
+    gameFsmPriority: policyEvidence.gameRepairPriority ||
+      policyEvidence.gameRealityFlagCount > 0,
+  };
 }
 
 /**

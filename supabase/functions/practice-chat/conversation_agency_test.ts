@@ -1355,6 +1355,23 @@ Deno.test("Phase 3.3 truncate：agency 沒介入（applied=false／situation=nul
   assertEquals(truncateAgencyShape(reply, validShortAnswer).text, reply);
 });
 
+Deno.test("Phase 3.3 R1：situation=null 就算被硬標成 applied、候選組也符合，一樣不截斷", () => {
+  // 呼叫端自己組出來的矛盾狀態（applied=true 但 situation=null）。免疫要靠
+  // situation 明寫，不能只靠 applied 的定義隱含。
+  const base = appliedAgency(FRAGMENT_DEBT_TURNS);
+  const contradictory: AgencyApplication = {
+    ...base,
+    decision: { ...base.decision, situation: null },
+  };
+  assertEquals(
+    contradictory.decision.allowedActSetId,
+    "answer_or_challenge_v1",
+  );
+  const reply = "你是說阿布達比嗎\n我剛從那邊飛回來耶";
+  assertEquals(truncateAgencyShape(reply, contradictory).text, reply);
+  assertEquals(truncateAgencyShape(reply, contradictory).dropped, 0);
+});
+
 Deno.test("Phase 3.3 truncate：泡泡切法跟 client 同一套（單則不動、超過 4 則不拆也不截）", () => {
   const agency = appliedAgency(FRAGMENT_DEBT_TURNS);
   assertEquals(truncateAgencyShape("你是說阿布達比嗎", agency).dropped, 0);

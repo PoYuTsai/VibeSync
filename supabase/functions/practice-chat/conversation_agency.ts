@@ -983,7 +983,11 @@ export const AGENCY_SHAPE_EXPERIMENT_SET_IDS: readonly string[] = [
 export function isAgencyShapeExperimentTurn(
   agency: AgencyApplication | null,
 ): boolean {
-  if (!agency?.applied) return false;
+  // R1（Codex）：`situation !== null` 明寫出來，不靠 `applied` 的定義隱含。
+  // 有效短答免疫、明示換題、問句、分享那些輪次的 situation 就是 null，
+  // 呼叫端若自己組了一個 `applied: true` 的 application（測試、未來的呼叫端）
+  // 也不得因此被截斷。
+  if (!agency?.applied || agency.decision.situation === null) return false;
   const decision = agency.decision;
   if (AGENCY_SHAPE_EXPERIMENT_SET_IDS.includes(decision.allowedActSetId)) {
     return true;

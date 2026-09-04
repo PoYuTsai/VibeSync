@@ -4407,7 +4407,19 @@ export function createPracticeChatHandler(
           // 見 truncateAgencyShape）。放在最後一道後處理，`reply` 就地覆寫，
           // 所以 commit、classifier、hint／debrief 與回應 body 拿到的都是
           // 截斷後的文字。不重試、不再打模型。
-          if (agencyShapeExperiment === "truncate") {
+          //
+          // R1（Codex 精確性項目 3）既有優先權的界線：
+          //   越界（boundary）、早／成熟邀約、記憶衝突那些輪次**進不來**——
+          //   `computeAgencyDecision`（turn_response_plan.ts）只在 planner 判
+          //   `situation === "neutral"` 時保留決策，其餘一律清成
+          //   `situation: null` → `applied=false` → `truncateAgencyShape` 直接
+          //   放行。唯一會落在 neutral 卻仍有既有優先權的是 Game FSM 的修復
+          //   優先／現實旗標（`policyStanceFor` 只把 stance 拉到 cautious），
+          //   所以那一輪用 bundle already 算好的 `gameFsmPriority` 關掉截斷。
+          if (
+            agencyShapeExperiment === "truncate" &&
+            !chatPromptBundle.gameFsmPriority
+          ) {
             const truncated = truncateAgencyShape(reply, agencyDecision);
             reply = truncated.text;
             shapeTruncatedBubbles = truncated.dropped;

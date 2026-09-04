@@ -35,6 +35,13 @@
 // buildChatPromptBundle／同序後處理，所以像 `--agency` 一樣用旗標值直接餵，
 // 解析用 handler 同一支 `agencyShapeExperimentFor`）。artifact meta 記
 // `shapeExperiment`。只在 `--agency=on` 且該輪真的介入時有效果。
+//
+// 已知的非等價（R1 Codex P2，記錄不修）：這支 runner 只是**近似**重現 handler
+// 的守門順序——`spicyAllowed` 永遠是 false（handler 會按 Game FSM 本輪熱度
+// 給 L3），旁白剝除掛在 `args.style` 而 handler 掛在 `responsePlan` 是否存在
+// （角色沒有 style mapping 時兩邊會分岔），Game 的修復優先／現實旗標也沒有
+// 關掉 truncate 臂（handler 有，見 handler.ts 截斷處的註解）。跨臂比大小不受
+// 影響（兩臂用同一份近似），但這裡的絕對數字不等於 production 行為。
 
 import {
   isPracticeDifficulty,
@@ -662,7 +669,7 @@ async function main(): Promise<void> {
       practiceMode: opts.mode,
       replyStyle: opts.style,
       conversationAgency: opts.agency,
-      // Phase 3.3 形狀實驗臂（`off`／`prompt`／`truncate`）；解讀數字時要跟
+      // Phase 3.3 形狀實驗臂（`off`／`truncate`）；解讀數字時要跟
       // conversationAgency 一起看——旗標不是 on 時這個臂沒有任何效果。
       shapeExperiment: opts.shape,
       // 這個 artifact 是不是用了跨輪 agency state 結構層模擬（不是真的每輪
