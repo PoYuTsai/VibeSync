@@ -8,6 +8,9 @@
 //      build/visual_proof/ebook_wp7_dense_{390,320}_{100,130,200}_p{n}.png
 //        6.3 整章（第 5–7 冊頂層 callout＋comparison 最多的那型：2＋2，另有
 //        條目庫與前往按鈕），spine 排版，每 2400 pt 一頁
+//      build/visual_proof/ebook_scenario_order_{390,320}_{100,130,200}.png
+//        第 2 冊 2.1 的 F／E／I／R 四張比較卡：題目（scenario）必須排在答案卡
+//        之上（2026-09-04），四格都用畫面座標驗證過才截圖
 //
 // 每一格都先把整段內容 layout 完再截圖：RenderFlex overflow 會以 exception
 // 冒出來，所以 takeException() 為 null 才是「不 overflow」的證據；截圖是給
@@ -30,6 +33,7 @@ import 'package:vibesync/features/learning/data/providers/ebook_providers.dart';
 import 'package:vibesync/features/learning/data/repositories/ebook_catalog_repository.dart';
 import 'package:vibesync/features/learning/data/repositories/ebook_progress_repository.dart';
 import 'package:vibesync/features/learning/domain/models/ebook.dart';
+import 'package:vibesync/features/learning/domain/models/ebook_block.dart';
 import 'package:vibesync/features/learning/domain/models/ebook_progress.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
 import 'package:vibesync/features/learning/presentation/widgets/ebook_block_renderer.dart';
@@ -49,6 +53,9 @@ const String _beforeTitle = '聊了三個月還是「網友」？因為你的訊
 
 String _cell(String subject, double width, double scale) =>
     'ebook_wp7_${subject}_${width.toInt()}_${(scale * 100).round()}';
+
+String _cellName(double width, double scale) =>
+    'ebook_scenario_order_${width.toInt()}_${(scale * 100).round()}';
 
 Future<void> _loadFonts() async {
   // 與其他 proof 一致：本機命中可變字型會變豆腐，有單檔就先覆蓋同名家族。
@@ -356,6 +363,108 @@ void main() {
       );
     }
   }
+
+  /// 攤平章節區塊，含條目庫裡的巢狀區塊（2.1 的四張比較卡都在條目裡）。
+  Iterable<EbookBlock> flatten(Iterable<EbookBlock> blocks) sync* {
+    for (final block in blocks) {
+      yield block;
+      if (block is EbookEntryListBlock) {
+        for (final entry in block.entries) {
+          yield* flatten(entry.blocks);
+        }
+      }
+    }
+  }
+
+  // 2026-09-04：題目原本存在 caption，被渲染在答案之後。這一格把四張卡並排
+  // 拍下來，並用畫面座標證明每一張的 scenario 都在第一個答案之上。
+  testWidgets('2.1 四張比較卡：題目在答案之上（390／320 × 1.0／1.3／2.0）',
+      (tester) async {
+    final book = catalog.findBook('ebook-2-conversation')!;
+    final chapter = book.findChapter('ebook-2-chapter-1')!;
+    final cards = <EbookComparisonBlock>[
+      for (final id in const [
+        'ebook-2-c1-cmp29',
+        'ebook-2-c1-cmp35',
+        'ebook-2-c1-cmp42',
+        'ebook-2-c1-cmp49',
+      ])
+        flatten(chapter.blocks)
+            .whereType<EbookComparisonBlock>()
+            .firstWhere((block) => block.id == id),
+    ];
+    for (final card in cards) {
+      expect(card.scenario, isNotNull, reason: '${card.id} 少了題目');
+    }
+
+    final rootKey = GlobalKey();
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    for (final width in _widths) {
+      for (final scale in _scales) {
+        await tester.binding.setSurfaceSize(Size(width, 4000));
+        await tester.pumpWidget(
+          MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(fontFamily: 'AppTC', useMaterial3: true),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!,
+            ),
+            home: DefaultTextStyle.merge(
+              style: const TextStyle(fontFamily: 'AppTC'),
+              child: Material(
+                color: AppColors.brandInk,
+                child: RepaintBoundary(
+                  key: rootKey,
+                  child: Container(
+                    color: AppColors.brandInk,
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final card in cards)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 18),
+                                child: EbookBlockRenderer(
+                                  block: card,
+                                  layout: book.readingLayout,
+                                  progress: EbookBookProgress.empty,
+                                  onQuizSubmitted: (_, __, ___) {},
+                                  onChecklistItemChanged: (_, __, ___) {},
+                                  onFunnelTargetTap: (_, __) {},
+                                  onCrossRefTap: (_) {},
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final cell = _cellName(width, scale);
+        expect(tester.takeException(), isNull, reason: '$cell overflow');
+
+        for (final card in cards) {
+          final scenarioY = tester.getTopLeft(find.text(card.scenario!)).dy;
+          final firstAnswerY =
+              tester.getTopLeft(find.text(card.items.first.text)).dy;
+          expect(scenarioY, lessThan(firstAnswerY),
+              reason: '$cell：${card.id} 的題目掉到答案下面了');
+        }
+
+        await _capture(tester, rootKey, outPath('$cell.png'), pixelRatio: 2.0);
+      }
+    }
+  });
 
   testWidgets('最密 callout／comparison 章（6.3）：390／320 × 1.0／1.3／2.0',
       (tester) async {

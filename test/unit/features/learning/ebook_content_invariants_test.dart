@@ -47,7 +47,7 @@ List<String> _blockTexts(EbookBlock block) {
     case EbookCalloutBlock():
       texts.addAll([block.title, block.text]);
     case EbookComparisonBlock():
-      texts.addAll([block.title, block.caption]);
+      texts.addAll([block.title, block.scenario, block.caption]);
       for (final item in block.items) {
         texts.addAll([item.label, item.text, item.note]);
       }
@@ -629,6 +629,91 @@ void main() {
       expect(book.freePreviewChapterCount, 0, reason: '${book.id} 不該有試讀章');
       expect(book.previewChapterId, isNull, reason: '${book.id} 不該有試讀章');
     }
+  });
+
+  // 2026-09-04：2.1 的四張比較卡原本把題目藏在 caption（答案之後），示範又用
+  // 加班情境、而且拿單一句話直接判 I。這一組守住新的契約：題目在 scenario、
+  // 情境改成養貓、I 一律看多輪證據。
+  group('第 2 冊 2.1：題目前置與多輪 I 判讀', () {
+    EbookChapter chapterOf() =>
+        catalog.findChapter('ebook-2-conversation', 'ebook-2-chapter-1')!;
+
+    EbookComparisonBlock comparison(String id) =>
+        _flatten(chapterOf().blocks).whereType<EbookComparisonBlock>().firstWhere(
+              (block) => block.id == id,
+              orElse: () => throw StateError('找不到比較區塊 $id'),
+            );
+
+    EbookDialogueBlock dialogue(String id) =>
+        _flatten(chapterOf().blocks).whereType<EbookDialogueBlock>().firstWhere(
+              (block) => block.id == id,
+              orElse: () => throw StateError('找不到對話區塊 $id'),
+            );
+
+    test('F／E／I／R 四張卡的題目都在 scenario，不留在 caption', () {
+      const prompts = {
+        'ebook-2-c1-cmp29': '她問：「你很常爬山喔？」',
+        'ebook-2-c1-cmp35': '她說：「我家貓又打破杯子了。」',
+        'ebook-2-c1-cmp42': '你問：「妳住哪裡？」',
+        'ebook-2-c1-cmp49': '她提到，自己把一隻受傷的浪浪送去醫院，後來還幫牠找領養家庭。',
+      };
+      prompts.forEach((id, prompt) {
+        final block = comparison(id);
+        expect(block.scenario, prompt, reason: '$id 的題目不在 scenario');
+        // 同一段前提不得上下各出現一次。
+        expect(block.caption, isNot(prompt), reason: '$id 的 caption 重複了題目');
+      });
+    });
+
+    test('E 與完整示範不再使用加班情境', () {
+      final text = _chapterText(chapterOf());
+      for (final banned in ['今天上班累死', '工作群組', '主管', '報表']) {
+        expect(text.contains(banned), isFalse, reason: '2.1 仍有加班情境：$banned');
+      }
+    });
+
+    test('第一輪只有一句話時標成 I 不明，不貼燈號', () {
+      final line = dialogue('ebook-2-c1-dlg64').lines.single;
+      expect(line.text, '我家貓又打破杯子了。');
+      expect(line.annotation, contains('I 先標成不明'));
+      expect(line.signal, isNull, reason: '一句話不足以貼燈號');
+    });
+
+    test('第二輪只算一筆正向證據，不把單輪判成綠燈', () {
+      final lines = dialogue('ebook-2-c1-dlg66').lines;
+      expect(lines.first.signal, isNull, reason: '單輪不得直接判綠燈');
+      expect(lines.first.annotation, contains('正向證據'));
+    });
+
+    test('I 的判讀寫明看最近 3–5 個完整互動輪次', () {
+      expect(_chapterText(chapterOf()).contains('3–5 個完整互動輪次'), isTrue);
+    });
+
+    test('加碼的標籤是證據，不是既定結論', () {
+      final strong = comparison('ebook-2-c1-cmp42')
+          .items
+          .firstWhere((item) => item.stance == EbookComparisonStance.strong);
+      expect(strong.label, '出現加碼證據');
+      expect(strong.label, isNot(contains('I 上升')));
+    });
+
+    test('前兩輪男方的示範回覆都是短句，一次只接一顆主球', () {
+      final first = comparison('ebook-2-c1-cmp65')
+          .items
+          .firstWhere((item) => item.stance == EbookComparisonStance.strong);
+      expect(first.text, '牠今天也完成破壞任務了 😂');
+      final second = dialogue('ebook-2-c1-dlg66')
+          .lines
+          .firstWhere((line) => line.speaker == EbookSpeaker.you);
+      expect(second.text, '先看妳一眼再推，這明顯是有預謀的 😂');
+      for (final reply in [first.text, second.text]) {
+        expect(reply.length, lessThanOrEqualTo(30), reason: '示範回覆不該比對方重');
+      }
+    });
+
+    test('第 2 冊 contentVersion 跟著這次改寫升到 6', () {
+      expect(catalog.findBook('ebook-2-conversation')!.contentVersion, 6);
+    });
   });
 
   test('每一章的閱讀量都在可讀範圍內（不出現數千字的牆）', () {
