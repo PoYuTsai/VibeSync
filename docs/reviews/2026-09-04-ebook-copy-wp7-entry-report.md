@@ -67,6 +67,7 @@ visual proof 輸出（`flutter test test/visual_proof/ebook_copy_matrix_proof_te
 - `audit --baseline`：新發現 0、已解決 2（`ebook-5-chapter-6.title`、`ebook-7-chapter-4.title`）；`--write-baseline` 12 → 10；`--parent-baseline`（main 的 12 筆）通過；`normalize --check` 0 diff；工具測試 46 條通過；`compare` 對 `53bd993` 只有 8 個 `title` 變動。
 - 內容規模不變：書 7｜章 39｜區塊 610｜條目 112｜前往按鈕 21；可見字串 ≥80 字元 127、≥100 49、≥120 2。
 - 棘輪注意：#66 合併後 main 的 baseline 會變成 2 筆（5.6、7.4 章名），這包 rebase 到 main 後要重跑 `--write-baseline`，預期 0 筆；不重跑會被「baseline 只准縮小」擋下。
+- 2026-09-04 同步：#67 head 更新為 `28b0077`（Eric 審查補修「妳」＋main 的 #66）後併進本分支（`d218946`）。`audit_baseline.json` 是唯一衝突：先取 #67 那版（2 筆），再用 `--write-baseline` 重新生成，得 0 筆，沒有手動改項目；`--parent-baseline`（#67 的 2 筆）通過；`compare` 對 `28b0077` 仍只有 8 個 `title`；`normalize --check` 0 diff；工具測試 46 條通過。#67 合併後只需把 base 改成 main、再併一次 main（不 rebase），重跑 `audit --baseline` 與 `compare`，預期 baseline 仍 0 筆；之後 PR CI 才會跑 Flutter。
 - 沒有新增 Dart 內容契約：章名長度已由 R06（22 字）守；書架大標／副標由 widget test 守（§12.3 第 14 條補上大標）。
 
 ## §17 完成定義逐項
