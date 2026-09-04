@@ -2405,3 +2405,177 @@ A29 兩則都是 deepseek 判 `adopted_without_asking`／`accommodating_inventio
 同一份 prompt 換成 Haiku 4.5 之後，Phase 1 到 4.2 六輪黑箱都卡住沒過的頭條盲目跟題 gate（13.5%→3.4%）與 `sequenceHoldBlindFollow`（21.8%→5.0%）第一次被拉到接近或壓過門檻，代表這批 gate 至少有一部分是 **deepseek-v4-flash 這個模型本身的服從率天花板**，不是 prompt 措辭調不出來——但每次生成貴 106 倍、p95 延遲多 57%，且 prompt 完全沒為 Haiku 調過（可能還有沒被用到的改善空間），只跑了 repeat=1 的小樣本，這個結論值得認真看待但不足以直接拍板全面換模型。
 
 **若真的換 production**：以本輪矩陣的混合場次長度（平均每場 4.25 回合，含快取重用）外推每次生成 $0.003117，練習室一場對話抓 20 回合估算，Haiku 單場約 **$0.062**，對照 deepseek 目前單場約 **$0.0006**（餘額讀數只有兩位小數，精度有限但量級明確）——約 100 倍的單場成本增幅；這個外推可能偏高（真實 20 回合連續對話的快取命中率通常比本輪混雜多種場次長度的樣本更高，首輪 cache_write 佔比更低），但方向不會反轉。是否值得用這個成本換這批服從率改善，是 Eric 的產品判斷，不是這輪評測能回答的問題。
+
+## Phase 4.3 三臂模型黑箱：DeepSeek flash／Haiku 4.5／mixed（`agency-phase43` 分支，起點 `89abc9eb`，2026-09-05）
+
+**目的**：Phase 4.3 R2 兩輪 Codex 修正後拍板「先在分支上跑黑箱」——量三件事：(1) 死守邊界（`clarify_ignored` 強制格）在真實生成上有沒有點火，(2) 唯一判別器 `aiClarifiedLastTurn` 賴以運作的分類器（`aiChallengedThisTurn`）語意準確率，(3) 三種模型配置（純 DeepSeek／純 Haiku／她要介入才換 Haiku 的 `mixed`）的品質與成本，給 Eric 一張決策表。Eric 核准 DeepSeek 硬上限 $3.00、Anthropic 硬上限 $8.00。
+
+### 步驟 0：查證「classifier signal 傳 null」與修正
+
+查證屬實。`run_agency.ts` 的 `--state=1`（`stateSimulation`）一直只做**結構層模擬**——`nextConversationAgencyState` 的第三個參數（`AgencyClassifierSignal`）硬編碼傳 `null`，跟 handler.ts 生成後立刻打一次分類器、把 `coherence`／`aiChallengedThisTurn` 餵回狀態的做法不同。Phase 4.3 R2 規則最終形唯一的判別器是 `aiClarifiedLastTurn === true`，而這個欄位只能來自持久化的分類器訊號（`conversation_agency.ts` `detectAgencyEvidence` 的 `evidence.aiClarifiedLastTurn: prev?.aiClarifiedLastTurn`）——signal 恆為 `null` 時這個欄位恆為 `null`，`=== true` 恆假，`clarify_ignored` 強制格在這支 runner 上結構上永遠點不了火。**這代表 Phase 4.0 之後所有帶 `--state=1` 的黑箱（模型 A/B、Phase 4 完整矩陣）量到的 agency 狀態推進都只是結構近似，沒有一次真的用過分類器地面真相。**
+
+修正：生成後（`turns` 此刻正好是「到玩家這句為止」）立刻打一次跟 handler 同款的 `buildTurnClassifierMessages`／`parseTurnClassification`（DeepSeek、450 tokens、temperature 0.2、`requireCoherence` 隨 `--agency` 走），只在 `--mode=beginner|game` 且 `--state=1` 時才打；不受 `--chat-model` 影響（production 的分類器本來就不受 chat 模型 A/B 影響）。零網路測試兩支（`run_agency_test.ts`）用 fetch 假回應＋`callChat` stub 鎖住修正前後的差異：兩則連續裸地名，round1 她的回覆帶問句（滿足 `aiQuestionedInLoop`）；有 `classifierApiKey` 時 round2 被強制成 `challenge_relevance`／`clarify_ignored_v1`，省略時（舊行為）round2 維持 `bounded`——這一組反例測試就是這次「查證屬實」的可執行證據，不是宣稱。artifact 每一輪額外記 `policyMode`／`forcedAct`／`allowedActSetId`／`classifierSignal`／`classifierError`／`agencyStateAfter`，供離線抽查，不必再另外重放。
+
+Commit：`e205321c`（同一 commit 也含步驟 1，兩者改同一段迴圈、耦合緊密，見 commit message 說明）。Gate：`tools/practice-agency-eval/` 54 passed｜0 failed（+5）；`supabase/functions/practice-chat/` 1872 passed｜0 failed｜1 ignored（跟 base 相同，production 一個字沒動）。
+
+### 步驟 1：`--chat-model=mixed`
+
+每一輪先算 `bundle`；`bundle.agencyDecision?.applied === true`（她這一輪真的被注入 guidance——問意思／點破／維持立場／收尾，不是「允許」）→ 換 Haiku；其餘 DeepSeek。judge 模型不受這個旗標影響，仍是 DeepSeek。每輪記 `chatModelUsed`。零網路測試鎖住「只有 applied 那一輪換 caller」與「非 mixed 模式逐字沿用舊行為、不誤讀 `callChatHaiku`」。
+
+### 矩陣
+
+20 位代表角色（`practice-reply-style-eval` 的 `DEFAULT_PROFILE_IDS`）× `--scenarios=A01,A02,A06,A08,A09,A14,A25,A26,A28,A29` × repeat 1 × `--mode=beginner --state=1 --style=1 --agency=on --shape=truncate --thread-salt=p43`（旗標對齊 production 現況：agency `true`＋`truncate`）。三臂：`--chat-model=deepseek|mixed|haiku`，順序照計畫跑。
+
+| 矩陣 | 場次 | 生成 | judge（成功/解析失敗） |
+| --- | --: | --: | --- |
+| deepseek 臂 | 200（0 失敗） | 740 | 539/540（1 失敗） |
+| mixed 臂 | 200（0 失敗） | 740 | 539/540（1 失敗） |
+| haiku 臂 | 200（0 失敗） | 740 | 540/540（0 失敗） |
+
+守門退回率：deepseek 0/740、mixed 1/740、haiku 0/740；重試（`attempts>1`）：0／1／1。artifact：`out/2026-09-05-p43-{deepseek,mixed,haiku}.json`＋`-judge.json`。
+
+#### 成本試跑與實際花費
+
+先用 1 位角色 × A02 × repeat 1 三臂各跑一次：haiku 單輪 cache-write 價 $0.0064、cache-read 重用價 $0.0005，量級跟模型 A/B 那輪一致，直接進全矩陣。
+
+| 項目 | 讀法 | 結果 |
+| --- | --- | --- |
+| Anthropic（Haiku，usage 累加，真實不是估算） | mixed 臂 507 次呼叫（$1.4572）＋haiku 臂 740 次呼叫（$1.7173） | **$3.1745**，低於 $8.00 上限 |
+| DeepSeek（餘額四次，`/user/balance`） | $25.63 → deepseek 臂生成+分類器完成 $25.55 → mixed 臂完成 $25.38 → haiku 臂完成 $25.23 → 三臂 judge（1,620 探針）完成 $24.27 | **實測總花費 $1.36**，低於 $3.00 上限 |
+
+**這次比模型 A/B 那輪多一筆成本**：`--state=1` 現在真的會每輪多打一次 DeepSeek 分類器（步驟 0 的修正），三臂合計 2,220 次分類器呼叫；即使如此 DeepSeek 總花費仍只有 $1.36，遠低於上限。餘額讀數只有兩位小數精度有限，deepseek 臂單獨的「生成 vs 分類器」拆分無法從餘額差可靠反推（見下面成本表註記），只用 haiku 臂（純分類器、零 deepseek 聊天呼叫）反推分類器單價 ≈$0.0002027／次。
+
+### 3.1　4.3 有沒有點火
+
+用 artifact 新記的 `allowedActSetId` 直接數 `clarify_ignored_*`（分探針，非 scripted 的玩家輪）：
+
+| 探針 | deepseek | mixed | haiku |
+| --- | --: | --: | --: |
+| A06 | 12 | 30 | 24 |
+| A14 | 10 | 36 | 27 |
+| A25 | 26 | 58 | 65 |
+| A26 | 20 | 59 | 62 |
+| A28 | 1 | 3 | 11 |
+| A01／A09／A29 | 0 | 0 | 0 |
+| **總計／740 輪** | **69（9.3%）** | **186（25.1%）** | **189（25.5%）** |
+
+**點火了，而且不是靠 `null` 近似**：三臂的 `clarify_ignored_*` 全部來自分類器判 `aiClarifiedLastTurn===true`（`classifierApiKey` 缺席時整條規則零改動，步驟 0 已用單元測試釘死）。A01／A09／A29 差集乾淨＝0，符合「有效短答免疫」與「停滯輪不強制」兩道既有結構閘門完全沒被 4.3 蓋掉。
+
+**A28 不是乾淨的 0**（1／3／11 筆），這是本輪唯一的意外發現，機制追到底：A28 round 5 她確實問過「你說的照片是哪一張」（內容消歧問句），分類器把這句判成 `aiChallengedThisTurn=true`（跟下面 3.2 找到的同一類邊界模糊——「問哪一個」被判成「在澄清」），round 6 玩家的合理收尾句「對啊 有機會再多聊」因此被 4.3 的規則強制成 `clarify_ignored`。**但這不等於誤傷**：judge 對這 20＋20＋20 筆 A28.p6 逐筆重判，`false_challenge=true` 全部是 **0**——模型被強制之後生成的內容仍是「你還沒說是哪張照片」這類合法的內容澄清，不是無厘頭質疑；代價落在 `allowSatisfied`（A28 的 mustAllow 期待她順順收尾），haiku 臂因為命中最多次（11/20）allowSatisfied 掉到 40%（deepseek 68%、mixed 71.7%）。
+
+### 3.2　閘門準確率（人工逐字，deepseek 臂）
+
+**分類器 `aiChallengedThisTurn` 精確率／召回率**（等間隔抽 30 個判 `true`、30 個判 `false`，逐字判「她是不是真的在問對方剛那句什麼意思／指出接不上」）：
+
+- **精確率 29/30 ≈ 96.7%**：30 個判 `true` 裡只有 1 個誤判——A28 round 6（`practice_girl_061`，她上一則回「你說哪張啊？」，這句結構上是內容消歧問句（「哪一個」），跟 judge prompt 自己列的 false 例子「日本還是韓國？」同型，卻被判 `true`。
+- **召回率抓到系統性缺口，粗估落在 55–65% 區間（樣本小、判準主觀，只當方向性訊號）**：30 個判 `false` 裡有 **8 個**（27%）我逐字讀起來其實是她在指出「你一直丟不相關的詞」，只是包成一句玩笑式反問而不是直白陳述——例如「你是在玩地名接龍喔😅」「你地名也跳太快了吧😂」「你是在考我地名嗎😂」「你今天是地名連發是不是」「你怎麼突然跳到這個 哈哈哈」「你今天是喝醉了嗎😅 訊息有點跳針」。這些跟 judge prompt 明文列的 true 例子（「你突然丟一個地名是什麼意思」）語意上是同一件事，只是換了個更口語、帶猜測外殼的說法，分類器系統性地把「猜測式吐槽」判成內容追問而不是指出跳題。
+
+**誤殺率（15 個被 4.3 forced 的玩家回覆）：0/15**。等間隔抽樣的 15 筆全部是裸地名／名詞（東京、淺草、曼谷、馬尼拉、清邁、阿布打比、滷肉飯、深蹲……），沒有第一人稱標記、沒有解釋，逐字讀起來全部是「裸詞跳題」，沒有一筆是被誤傷的正當回答。
+
+**讀法**：死守邊界的安全性完全繫在分類器判「她上一則是不是在澄清」的準確率上（計畫檔 Phase 4.3 R2 原話）。精確率高、誤殺率 0，代表**已經點火的那些格子幾乎都點對了**；召回率的缺口代表**還有一批她其實已經在質疑、只是講得比較口語／帶猜測外殼的回合，沒有被記成「她澄清過」，所以下一輪玩家再丟裸詞時，死守邊界不會被觸發**——這是一個保守方向的缺口（漏接，不是誤傷），跟計畫檔「判不出來給 false，安全方向」的設計初衷一致，但代表死守邊界目前只覆蓋一部分該覆蓋的情境。
+
+### 3.3　三臂指標（Wilson 95%，n 見括號）
+
+| 指標（gate） | deepseek | mixed | haiku |
+| --- | --: | --: | --: |
+| 【頭條 gate ≤5%】adopted_without_asking + accommodating_invention | 11.3%（8.8–15.0，n=319）✗ | **3.4%（1.9–5.3，n=320）✓** | 5.0%（3.1–8.1，n=320）△（點估計壓線，CI 上界 8.1% 超標） |
+| 誤質疑 false_challenge（A01/A03/A07/A09） | 0.0%（n=40）✓ | 0.0%（n=40）✓ | 0.0%（n=40）✓ |
+| 【跨輪立場 gate ≥95%】stance_persistence_strict_conditional | 75.8%（60.6–90.9，n=33）✗ | 92.3%（84.6–100.0，n=39）✗（近門檻） | 83.8%（70.3–94.6，n=37）✗ |
+| 【序列 gate ≥80%】sequenceChallenge | 87.5%（75.0–97.5，n=40）✓ | **100.0%（100.0–100.0，n=40）✓** | 95.0%（87.5–100.0，n=40）✓ |
+| 【序列 gate ≤5%】sequenceHoldBlindFollow | 15.1%（9.2–21.8，n=119）✗ | **1.7%（0.0–4.2，n=120）✓** | 4.2%（0.8–7.5，n=120）△（CI 上界 7.5% 超標） |
+| 【序列 gate ≥90%】sequenceRepairAccepted | 100.0%（n=40）✓ | 92.5%（85.0–100.0，n=40）✓ | 90.0%（80.0–97.5，n=40）✓（壓線） |
+| 【好奇 gate ≥80%】curiosityWithinSix（A28） | 45.0%（25.0–65.0，n=20）✗ | 45.0%（25.0–70.0，n=20）✗ | 20.0%（5.0–40.0，n=20）✗（三臂最差） |
+| fabricated_self_fact（accommodating+inconsistent，<1% 大樣本） | 0.37%（n=539）✓ | 0.0%（n=539）✓ | 0.0%（n=540）✓ |
+| interrogation | 0.0%（n=539）✓ | 0.0%（n=539）✓ | 0.0%（n=540）✓ |
+| 違反 mustForbid | 10.2%（8.2–12.6，n=539） | **2.8%（1.5–4.6，n=539）** | 4.1%（2.8–5.4，n=540） |
+| 滿足 mustAllow | 71.1%（66.2–73.8，n=539） | **84.0%（81.6–86.3，n=539）** | 72.2%（68.7–75.6，n=540） |
+| 守門退回率 | 0/740 | 1/740 | 0/740 |
+| 生成延遲 p50／p95（chat-gen only，不含分類器） | 1,612ms／2,109ms | 1,810ms／2,832ms | 1,906ms／3,022ms |
+| 每場練習（20 回合）成本（外推，見下段方法） | ≈$0.0046 | ≈$0.0436 | ≈$0.0505 |
+
+**清一色 gate**：三臂在 `stance_persistence_strict_conditional`（跨輪立場）、`curiosityWithinSix`（A28 好奇）都沒有任何一臂過門檻，跟 Phase 1–4.2 的既有結論一致（這兩個 gate 目前對三個模型配置都是天花板，不是本輪能解的問題）。
+
+**mixed 是三臂裡唯一同時壓過頭條 gate 與 `sequenceHoldBlindFollow` 兩個序列 gate 的**（deepseek 兩個都沒過；haiku 兩個都是點估計壓線但 CI 上界超標）。haiku 的 `curiosityWithinSix`（20%）明顯比 deepseek／mixed（都是 45%）差——這是模型 A/B 那輪已經記過的 haiku 弱項在本輪重現。
+
+**成本外推方法（誠實揭露精度限制）**：分類器單價（$0.0002027／次）用 haiku 臂的 DeepSeek 餘額差反推（該臂零 deepseek 聊天呼叫，是唯一乾淨的分類器單獨樣本）；deepseek 聊天單價沿用模型 A/B 那輪的乾淨量測（$0.0000294／次，那輪還沒有分類器呼叫混進同一筆餘額差，本輪 deepseek 臂自己的餘額差因為兩位小數精度不足，無法可靠拆出聊天與分類器各自的份額）；mixed 的聊天單價＝本輪矩陣實測的 haiku 佔比（507/740＝68.5%）加權平均 mixed 臂實測 haiku 單價（$0.002874／次）與 deepseek 單價。**這個佔比是本輪矩陣（偏重 A25／A26 序列情境）量到的，不是任意 20 回合對話的通用比例**——真實產品對話的 applied 比例可能更低（沒那麼多連續裸詞觸發介入），mixed 的實際單場成本可能比下面外推更低。
+
+### 3.4　決策表
+
+品質分數＝上表 9 個 gate 裡幾個通過（△算半分，未過算 0 分）：
+
+| | deepseek | mixed | haiku |
+| --- | --: | --: | --: |
+| 品質分數（/9，△算 0.5） | 4.0 | 6.5 | 5.5 |
+| 每場成本（20 回合外推） | $0.0046 | $0.0436 | $0.0505 |
+| p95 延遲（chat-gen，不含分類器） | 2,109ms | 2,832ms | 3,022ms |
+| 月成本＠1,000 場 | $4.64 | $43.62 | $50.47 |
+| 月成本＠5,000 場 | $23.21 | $218.11 | $252.34 |
+| 月成本＠20,000 場 | $92.84 | $872.46 | $1,009.35 |
+
+**讀法**：mixed 用 mixed 臂約 86%（$872 vs $1,009／20,000 場）的成本拿到比純 haiku 更高的品質分數（6.5 vs 5.5，尤其 `curiosityWithinSix` haiku 明顯更差），因為它只在她真的要介入的那一輪換模型，其餘輪次仍是便宜的 DeepSeek——這正是 mixed 這個配置設計的初衷（貴模型只用在真正需要服從率的那一格）。deepseek 便宜約 10–20 倍，但頭條 gate 與序列 gate 都沒過，體感上會明顯更常盲目跟題。
+
+### 3.5　逐字：兩情境×三臂並排
+
+**A06.p3／`practice_girl_007`（連丟地名，立場失敗型探針）**
+
+| 回合 | deepseek | mixed | haiku |
+| --- | --- | --- | --- |
+| 玩家 | 韓國 | 韓國 | 韓國 |
+| 她 | 你怎麼突然講韓國😂／是看到什麼還是想聊什麼（bounded） | 咦，韓國？（bounded） | 咦？就講一個國家喔？（bounded） |
+| 玩家 | 東京 | 東京 | 東京 |
+| 她 | 蛤 你跳太快了吧😂（bounded） | 嗯？你在講什麼啦😂（bounded） | 嗯？你在列舉城市嗎 😅（**forced clarify_ignored_v1**） |
+| 玩家 | 淺草 | 淺草 | 淺草 |
+| 她 | 你是在報地名還是在約我啊（bounded） | 哈哈你是在列地名嗎（**forced clarify_ignored_v1**） | 哈哈你就直接報地名，在幹嘛啦（forced／`none`——3.0 既有格） |
+
+deepseek 三輪都停在 bounded（模型自己選擇質疑，沒被結構強制），mixed／haiku 各在不同一輪被 4.3 強制點火——同一份逐字稿，三臂的分類器讀到「上一則是不是在澄清」的判斷不同，落點也跟著不同，跟計畫檔「安全性繫在分類器準確率」的說法一致。
+
+**A06.p3／`practice_girl_083`（連丟地名，立場失敗型探針）**
+
+| 回合 | deepseek | mixed | haiku |
+| --- | --- | --- | --- |
+| 玩家 | 韓國 | 韓國 | 韓國 |
+| 她 | 蛤 韓國？（bounded） | 嗯？（bounded） | 嗯？你想講韓國什麼事嗎（bounded） |
+| 玩家 | 東京 | 東京 | 東京 |
+| 她 | 你是在問我要不要去東京玩嗎（**forced clarify_ignored_v1**） | 蛤？你在講什麼啦（**forced clarify_ignored_v1**） | 欸不是，你前面說韓國，現在又講東京／在幹嘛啦（bounded） |
+| 玩家 | 淺草 | 淺草 | 淺草 |
+| 她 | 你是想約我去淺草喔？（bounded——這裡是誤讀：她把地名當成邀約，`accommodating_invention` 型的接話） | 你這樣連著講地名是怎樣（**forced clarify_ignored_v1**） | 你是要講日本嗎？還是？（bounded） |
+
+deepseek round2 被結構強制質疑，round3 卻自己把「淺草」誤讀成邀約而不是繼續質疑——4.3 只鎖了「上一輪有分類器訊號」那一格，不保證後續每一輪都不會被模型自己的服從率天花板吃掉（跟 3.3 的 `stance_persistence_strict_conditional` 三臂皆未過一致）。mixed 這一場連兩輪都被結構強制，序列上最穩。
+
+**A14.p3／`practice_girl_012`（連丟地名，deepseek 現編「地名連連看」測試話術）**
+
+| 回合 | deepseek | mixed | haiku |
+| --- | --- | --- | --- |
+| 玩家 | 好市多 | 好市多 | 好市多 |
+| 她 | 你怎麼突然講這個，是要揪團嗎？（forced／`ask_intent`，3.0 既有格） | 嗯？（forced／`ask_intent`） | 你在說什麼？（forced／`ask_intent`） |
+| 玩家 | 曼谷 | 曼谷 | 曼谷 |
+| 她 | 你跳題跳得有點快耶。／一下好市多一下曼谷，你到底想講什麼？（bounded） | 什麼意思？（**forced clarify_ignored_v1**） | 嗯？（**forced clarify_ignored_v1**） |
+| 玩家 | 馬尼拉 | 馬尼拉 | 馬尼拉 |
+| 她 | 你是在測試地名連連看嗎？（**forced clarify_ignored_v1**） | 你在列地名嗎？（**forced clarify_ignored_v1**） | 你這是在列城市嗎？（bounded） |
+
+**A14.p3／`practice_girl_007`**
+
+| 回合 | deepseek | mixed | haiku |
+| --- | --- | --- | --- |
+| 玩家 | 好市多 | 好市多 | 好市多 |
+| 她 | 哦 你是在説好市多喔？（bounded） | 嗯？好市多怎樣？（bounded） | 嗯？突然講好市多是什麼意思（bounded） |
+| 玩家 | 曼谷 | 曼谷 | 曼谷 |
+| 她 | 蛤？剛剛不是才在講好市多嗎（**forced clarify_ignored_v1**） | 蛤？你在講什麼啦（**forced clarify_ignored_v1**） | 你在說什麼啦 哈哈（bounded） |
+| 玩家 | 馬尼拉 | 馬尼拉 | 馬尼拉 |
+| 她 | 你一下好市多一下曼谷一下馬尼拉／到底是想聊去哪玩／還是單純亂喊地名啊😂（**forced clarify_ignored_v1**） | 你有病喔哈哈／你到底想說什麼啦（**forced clarify_ignored_v1**） | 不是，你真的要講清楚，現在是在玩接龍嗎（bounded——但語意上跟 forced 輸出幾乎等價，模型自己就會質疑） |
+
+**A29.p2／`practice_girl_064`（停滯型，她先講自己的事，玩家兩則純反應詞）**
+
+| 回合 | deepseek | mixed | haiku |
+| --- | --- | --- | --- |
+| 她（開場） | 我今天差點睡過頭 昨晚追劇追到三點才睡 | 同左（腳本） | 同左（腳本） |
+| 玩家 | 哈哈 | 哈哈 | 哈哈 |
+| 她 | 你這樣回我我也不知道要接什麼哈哈／我今天真的快累死（forced／`none`，3.0 既有格） | 喔 那你笑點還滿低的（forced／`none`） | 什麼劇這麼精彩（forced／`none`） |
+| 玩家 | 嗯嗯 | 嗯嗯 | 嗯嗯 |
+| 她 | 那你今天有去你常說的那間老咖啡店嗎（forced／`none`） | 嗯 你這樣嗯嗯我反而不知道要接什麼了（forced／`none`） | 你這樣我也不知道說什麼欸...（forced／`none`） |
+
+A29 三臂都沒有 `clarify_ignored_*`（A29 差集乾淨＝0，見 3.1），落點差異是既有 Phase 3.0／3.8 結構格（`policyMode=forced`／`forcedAct=null`／`allowedActSetId=none` 是既有「這輪不供應解讀」的收尾格，不是本刀新增）；三臂唯一的差別是模型自己選字，deepseek 主動追問她提過的咖啡店（`plausible_self_detail`），mixed／haiku 直接點出「嗯嗯」讓她不知道怎麼接。
+
+### 一句話結論
+
+**4.3 該併**：`aiClarifiedLastTurn===true` 這個唯一判別器在真實生成上真的能點火（69–189/740，A01/A09/A29 差集乾淨），誤殺率 0/15，分類器精確率 96.7%——已經點火的格子幾乎都點對了；召回率的缺口（約 27% 的口語化質疑被漏記）是保守方向的殘留成本，不是新增風險，跟計畫檔既定的安全方向一致。A28 的非零點火（1–11/20）不產生 `false_challenge`，只把 `allowSatisfied` 往下壓，是可接受但值得記錄的殘留。**模型配置建議 `mixed`**：三臂裡唯一同時壓過頭條 gate（3.4%）與 `sequenceHoldBlindFollow`（1.7%）兩個序列 gate，品質分數最高（6.5/9），成本只有純 haiku 的 86%——`stance_persistence_strict_conditional` 與 `curiosityWithinSix` 三臂皆未過，不是本輪能解的天花板，留給下一輪。純 deepseek 便宜 10 倍但頭條與序列 gate 都沒過；純 haiku 比 mixed 貴且 `curiosityWithinSix` 明顯更差，沒有理由選純 haiku 而不選 mixed。是否要把 production 從純 DeepSeek 換成 `mixed`，以及要不要先解掉召回率缺口再上線，是 Eric 的產品與成本判斷。
