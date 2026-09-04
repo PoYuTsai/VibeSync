@@ -4719,9 +4719,20 @@ export function createPracticeChatHandler(
               : null,
             // Phase 3.4：只有旗標 on 且分類器真的判了才有這個 key（shadow／off
             // 連欄位都不多一個）。standard 沒有分類器，恆為缺席。
+            // Codex R1 P1：repair 出來的 false（模型漏答／吐非布林）跟模型
+            // 真的判「沒捏造」在值上長得一樣，但意思完全不同——多一個
+            // `sharedPastClaimRepaired` key（只在真的修過時存在），ops 算
+            // 盛行率時才知道分母該不該扣掉這一筆。
             ...(agencyMode === "on" &&
                 temperature?.classification.sharedPastClaim !== undefined
-              ? { sharedPastClaim: temperature.classification.sharedPastClaim }
+              ? {
+                sharedPastClaim: temperature.classification.sharedPastClaim,
+                ...(temperature.classification.repairedFields?.includes(
+                    "sharedPastClaim",
+                  )
+                  ? { sharedPastClaimRepaired: true }
+                  : {}),
+              }
               : {}),
             deltaCapApplied: temperature?.deltaCapApplied ?? "none",
             // Phase 3.3 `truncate` 臂：只有旋鈕開在 truncate 且這一輪 agency

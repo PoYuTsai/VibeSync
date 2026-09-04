@@ -58,9 +58,16 @@ interface ReplayRow {
   aiChallengedThisTurn: boolean;
   /** Phase 3.4：她這一輪有沒有捏造跟玩家的共同過去（認識／共同朋友／一起經歷）。 */
   sharedPastClaim: boolean;
+  /**
+   * Codex R1 P2：這個 false 是 repair 出來的（模型漏答／吐非布林），不是模型
+   * 真的判「沒捏造」——盛行率的分母要扣掉這些筆。
+   */
+  sharedPastClaimRepaired: boolean;
   connection: string;
   heatDelta: number;
   cappedHeatDelta: number;
+  familiarityDelta: number;
+  cappedFamiliarityDelta: number;
   capApplied: string;
   error: string | null;
   /** 只有解析失敗時才存：模型原始輸出，用來看失敗形態（Phase 2.6 診斷用）。 */
@@ -184,9 +191,13 @@ async function main() {
           coherence: classification.coherence ?? "connected",
           aiChallengedThisTurn: classification.aiChallengedThisTurn ?? false,
           sharedPastClaim: classification.sharedPastClaim ?? false,
+          sharedPastClaimRepaired:
+            classification.repairedFields?.includes("sharedPastClaim") ?? false,
           connection: classification.connection,
           heatDelta: judgement.delta,
           cappedHeatDelta: capped.delta,
+          familiarityDelta: judgement.familiarityDelta,
+          cappedFamiliarityDelta: capped.familiarityDelta,
           capApplied,
           error: null,
         });
@@ -198,9 +209,12 @@ async function main() {
           coherence: "error",
           aiChallengedThisTurn: false,
           sharedPastClaim: false,
+          sharedPastClaimRepaired: false,
           connection: "error",
           heatDelta: 0,
           cappedHeatDelta: 0,
+          familiarityDelta: 0,
+          cappedFamiliarityDelta: 0,
           capApplied: "none",
           error: e instanceof Error ? e.message : String(e),
           raw,
@@ -225,11 +239,17 @@ async function main() {
   const positiveHeatAfterCap = disconnectedOrRepetitive.filter((r) =>
     r.cappedHeatDelta > 0
   );
-  // Phase 3.4：捏造共同過去的盛行率＋套 cap 之後還拿到正 heat 的筆數（gate）。
+  // Phase 3.4：捏造共同過去的盛行率＋套 cap 之後還拿到正分的筆數（gate）。
+  // Codex R1 P2：cap 壓的是 heat **與** familiarity 兩條，gate 只看 heat 會
+  // 漏掉「heat 壓到 0、familiarity 還加分」那一半。任一為正就算沒壓住。
   const sharedPast = ok.filter((r) => r.sharedPastClaim);
-  const sharedPastPositiveHeat = sharedPast.filter((r) =>
-    r.cappedHeatDelta > 0
+  const sharedPastPositiveDelta = sharedPast.filter((r) =>
+    r.cappedHeatDelta > 0 || r.cappedFamiliarityDelta > 0
   );
+  // Codex R1 P2：repair 出來的 false 不是模型的判斷，盛行率分母只算模型真的
+  // 吐了布林值的那些筆（explicit）。
+  const sharedPastRepaired = ok.filter((r) => r.sharedPastClaimRepaired);
+  const sharedPastExplicitN = ok.length - sharedPastRepaired.length;
   const a01a09 = ok.filter((r) =>
     r.probeId.startsWith("A01") || r.probeId.startsWith("A09")
   );
@@ -261,12 +281,17 @@ async function main() {
       ) / 10
       : null,
     // Phase 3.4：捏造共同過去（黃金法則明文禁止）的盛行率；套 cap 之後
-    // 必須 0 筆還拿得到正 heat。
+    // 必須 0 筆還拿得到正 heat 或正 familiarity。
+    // `sharedPastClaimRate` 的分母是 **explicit**（模型真的吐了布林值）那些筆，
+    // 不是全部成功筆數——repair 出來的 false 是「協定壞掉」，不是「判斷沒捏造」，
+    // 混進分母會讓盛行率被系統性稀釋。
     sharedPastClaimN: sharedPast.length,
-    sharedPastClaimRate: ok.length
-      ? Math.round((sharedPast.length / ok.length) * 1000) / 10
+    sharedPastClaimExplicitN: sharedPastExplicitN,
+    sharedPastClaimRepairedN: sharedPastRepaired.length,
+    sharedPastClaimRate: sharedPastExplicitN
+      ? Math.round((sharedPast.length / sharedPastExplicitN) * 1000) / 10
       : null,
-    sharedPastPositiveHeatN: sharedPastPositiveHeat.length,
+    sharedPastPositiveDeltaN: sharedPastPositiveDelta.length,
     // gate：A01／A09 有效短答仍應維持 connected，且不能被判 defensive／overstepped。
     a01a09N: a01a09.length,
     a01a09NotConnectedN: a01a09NotConnected.length,

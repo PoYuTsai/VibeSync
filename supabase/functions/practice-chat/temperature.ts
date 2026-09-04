@@ -110,6 +110,22 @@ export interface TurnClassification {
    * 只在 assisted（beginner／game）有分類器的路徑上存在；standard 沒有分類器，
    * 這個欄位在那條路上恆為 undefined（Phase 3.4 範圍外）。
    * 省略／旗標 off＝欄位不存在（跟 coherence／aiChallengedThisTurn 同一規則）。
+   *
+   * **判準的盲區**（Codex R1 追問，2026-09-04 逐字核對 `buildTurnClassifier
+   * Messages`，本輪不改行為，只寫清楚）：
+   * - 分類器看得到：`recentContext`＝**最後 6 則、且不含玩家這一句**
+   *   （`turnsToClassifierContext` 是 `turns.slice(0, -1).slice(-6)`）、
+   *   `latestUserText`、`assistantReplyAfterUser`、appliedHint，以及
+   *   reply-style 開啟時她的個人語感基準（只有語氣統計，沒有事實）。
+   * - 分類器**看不到**：人設卡（`opts.profile` 只出現在型別上，函式本體從頭到尾
+   *   沒用到它）、Moments 貼文、memorySummary／relationship thread 的
+   *   `recent_facts`。
+   * 所以判準裡「她可信的自我來源」實際上退化成「最近 6 則逐字稿」。方向性後果：
+   * 人設／貼文裡的事實不會被誤判成「認識玩家」（判準綁的是「認識這個 user、
+   * 跟他一起經歷過」，而人設裡沒有玩家），所以主要風險不是漏判，而是**長對話
+   * 的誤判**——7 則以前真的一起建立過的共同熟人／共同際遇，這一輪看不到，
+   * 可能被判成捏造。cap 只壓正分不抬負分，誤判的代價是「這一輪不加分」，
+   * 不是扣分；要根治得把可信來源真的餵進分類器 prompt（下一輪再談）。
    */
   sharedPastClaim?: boolean;
   /**
@@ -838,9 +854,18 @@ function parseAiChallengedThisTurn(
 }
 
 /**
- * Phase 3.4：跟 `parseAiChallengedThisTurn` 同一形狀——旗標開時 prompt 一定有
- * 問，缺／非布林都記一筆 repair 並退到 false（＝沒有捏造，不觸發 cap，最保守
- * 的一格；一個壞值不該替她扣分）。
+ * Phase 3.4：跟 `coherence`／`aiChallengedThisTurn` 同一套 repair-first 契約
+ * （Phase 2.6）——旗標開時 prompt 一定有問，缺值或非布林都**不整筆作廢**，記一筆
+ * repair 並退到中性值。
+ *
+ * Codex R1 P1：這裡的中性值是 `false`，而 `false` 就是「不觸發 cap」那一格
+ * ——跟 `coherence` 壞值退到 `ambiguous`（同樣不觸發 cap）是同一個選擇：
+ * 分類器協定壞掉時，寧可漏罰也不要拿一個壞值替她扣分。代價是「模型沒好好
+ * 回答」跟「模型判她沒捏造」在 `sharedPastClaim` 這個值上長得一樣，所以
+ * **協定漂移只能從別的地方看**：每一次 repair 都會進
+ * `practice_chat_learning_classifier_repaired`（欄位名，無內容），
+ * telemetry 另有 `sharedPastClaimRepaired`（見 handler）把這兩種 false
+ * 分開，ops 查詢不必猜。
  */
 function parseSharedPastClaim(
   value: unknown,

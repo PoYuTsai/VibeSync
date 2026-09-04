@@ -9564,3 +9564,99 @@ Deno.test("Phase 3.4：shadow 不判也不記 sharedPastClaim（分類器 prompt
   assert(!("sharedPastClaim" in agency));
   assert((succeeded!.temperatureDelta as number) > 0);
 });
+
+Deno.test("Phase 3.4 R1：repair 出來的 false 跟模型判的 false 在 telemetry 分得開（Codex R1 P1）", async () => {
+  const run = async (classifierReply: string) => {
+    const { succeeded } = await runCapturingLogs(
+      {
+        ledger: null,
+        thread: {
+          profile_id: "practice_girl_001",
+          temperature_score: 40,
+          familiarity_score: 10,
+        },
+        env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+        deepSeekReplies: ["喔是你喔", classifierReply],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        visiblePracticeThreadId: "thread-visible-1",
+        temperatureScore: 40,
+        familiarityScore: 10,
+        turns: SHARED_PAST_TURNS,
+      }),
+    );
+    return (succeeded as Record<string, unknown>)
+      .conversationAgency as Record<string, unknown>;
+  };
+
+  // 模型真的判「沒捏造」：只有 sharedPastClaim，沒有 repaired 這個 key。
+  const explicit = await run(
+    CLASSIFIER_SHARED_PAST_CLAIM.replace(
+      '"sharedPastClaim":true',
+      '"sharedPastClaim":false',
+    ),
+  );
+  assertEquals(explicit.sharedPastClaim, false);
+  assert(!("sharedPastClaimRepaired" in explicit));
+
+  // 模型吐非布林 → repair 成 false（不觸發 cap 的中性值），但 telemetry 多一個
+  // key 標出來，ops 算盛行率時分母才扣得掉這一筆。
+  const repairedValue = await run(
+    CLASSIFIER_SHARED_PAST_CLAIM.replace(
+      '"sharedPastClaim":true',
+      '"sharedPastClaim":"yes"',
+    ),
+  );
+  assertEquals(repairedValue.sharedPastClaim, false);
+  assertEquals(repairedValue.sharedPastClaimRepaired, true);
+
+  // 模型整個漏答也一樣（缺值走同一條 repair）。
+  const missing = await run(
+    CLASSIFIER_SHARED_PAST_CLAIM.replace(',"sharedPastClaim":true', ""),
+  );
+  assertEquals(missing.sharedPastClaim, false);
+  assertEquals(missing.sharedPastClaimRepaired, true);
+});
+
+Deno.test("Phase 3.4 R1：確定性越界覆寫會丟掉 sharedPastClaim（與 coherence 同一路徑，pin 現況）", async () => {
+  // 粗俗性冒犯走 deterministicOverstepClassificationForSnapshot——它是**白名單
+  // 重建**，只填 8 個核心欄位，coherence／aiChallengedThisTurn／sharedPastClaim
+  // 一律不帶。這條路本來就強制扣滿（beginner -12），cap 不影響結果；這個測試
+  // 只把「telemetry 不會出現一個其實被丟掉的判斷」釘住。
+  const { succeeded } = await runCapturingLogs(
+    {
+      ledger: null,
+      thread: {
+        profile_id: "practice_girl_001",
+        temperature_score: 40,
+        familiarity_score: 10,
+      },
+      env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+      deepSeekReplies: [
+        "你這句話讓我很不舒服。",
+        CLASSIFIER_SHARED_PAST_CLAIM,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      visiblePracticeThreadId: "thread-visible-1",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      turns: [{ role: "user", text: "想幹妳屁眼" }],
+    }),
+  );
+  const log = succeeded as Record<string, unknown>;
+  assertEquals(log.temperatureDelta, -12);
+  const classification = log.classification as Record<string, unknown>;
+  assertEquals(classification.boundary, "overstep");
+  assert(!("coherence" in classification));
+  assert(!("sharedPastClaim" in classification));
+  const agency = log.conversationAgency as Record<string, unknown>;
+  // coherence 那兩個 key 的慣例是「旗標 on 就存在、拿不到就 null」，
+  // sharedPastClaim 的慣例是「拿不到就連 key 都沒有」——兩者都表示「這一輪
+  // 沒有分類器判斷」，形狀不同是既有慣例差異，不是漏接。
+  assertEquals(agency.coherence, null);
+  assert(!("sharedPastClaim" in agency));
+  assert(!("sharedPastClaimRepaired" in agency));
+});
