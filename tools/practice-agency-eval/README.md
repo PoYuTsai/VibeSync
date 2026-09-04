@@ -51,7 +51,23 @@ deno test --allow-read --allow-env tools/practice-agency-eval/
     直接比大小（見下面 `evaluate_agency.ts` 與結果紀錄）。A16／A17
     之後接無關片段（正確＝`hold_position`，禁止 `blind_follow`）；A18／A19
     之後接玩家的合理解釋再丟一個有效答案（正確＝`accept_valid_answer`，禁止
-    `false_challenge`）。
+    `false_challenge`）。**Phase 3.0 修 A16／A17 的 mustAllow**：補上
+    `clarify_or_challenge`——judge 的 `hold_position` 判準要求「延續**先前已經
+    表達過**的懷疑」，而那裡的質疑句是情境檔寫死的前文、不是她自己講過的話，
+    四支 run 的 `allowSatisfied` 一直是 0%（Phase 2／2.5 兩次記過的評測缺陷），
+    照 README 自己開的處方改成「質疑或維持立場」都算對。
+  - **A25／A26（Phase 3.0，`sequence_*`）**：Eric 2026-09-04 的真機回報是
+    「我一直傳不連貫的地名，她只是一直回應，邏輯說不通但沒質疑」——**前面所有
+    情境最多只有 3 則玩家訊息**，量得到「第二則要不要質疑」，量不到「連丟五、
+    六個之後她有沒有停下來」。這兩個情境把逐字稿拉長到 8 則片段＋1 則真正的
+    解釋，並在第 1／2／3／5／8 則與解釋那則各放一個探針。A25 用 Eric 截圖的
+    原始地名序列；**A26 是同一個形態換成人名／術語／品牌／食物**（王力宏／
+    hyrox／紅豆泥／全聯／深蹲／滷肉飯／碳循環／舒華），證明這個行為不是綁在
+    「地名」上。兩個都不釘角色、不釘難度，跟 CLI 指定的全部 profile 跑 （含
+    Alice `practice_girl_001`）。四個分母對應 Eric 的三句驗收：
+    `sequence_first`（第 1 則，問一次是對的）、`sequence_challenge`（第 2 則，
+    必須指出他沒回答）、`sequence_hold`（第 3 則以後，不得再供應解讀）、
+    `sequence_repair`（他真的解釋了，必須恢復正常）。
 - `run_agency.ts`：prompt 走 production `buildChatPromptBundle`（含 difficulty
   bakeoff 那份固定 context fixture：2026-08-28 20:30、固定
   thread、記憶摘要、一則 貼文），回覆後處理照 handler 同序（繁體→內部標籤守門→L4
@@ -111,6 +127,11 @@ deno test --allow-read --allow-env tools/practice-agency-eval/
     `assistantSoftening`＝`pushback`（A21，≤3%）、
     `staircaseForPlayer`＝`empty_generic_question`（A22，≤10%）、
     `coincidenceOverlap`＝`interest_coincidence`（A23，<10%）。
+  - Phase 3.0 的三個序列指標（A25／A26，各自的固定分母）：
+    `sequenceChallenge`＝`sequence_challenge` 上的 `clarify_or_challenge` （gate
+    ≥80%）、`sequenceHoldBlindFollow`＝`sequence_hold` 上的 `blind_follow`（gate
+    ≤5%）、`sequenceRepairAccepted`＝`sequence_repair` 上的
+    `accept_valid_answer`（gate ≥90%）。
 
 ## 設計上的取捨與已知限制
 
