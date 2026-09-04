@@ -1,0 +1,221 @@
+探針 180（judge 成功 178、解析失敗 2）
+盲目跟題 blind_follow（no_context_fragment 分母）：18.0% (12.9–24.2%) n=178
+　├ 完全不問就跟題 adopted_without_asking：16.9% (12.4–23.6%) n=178
+　└ 有問但夾帶猜測 asked_with_guess：1.1% (0.0–2.8%) n=178
+【頭條 gate ≤5%】被帶著走 adopted_without_asking + accommodating_invention（分母＝mustAllow 不含 accept_valid_answer 的探針）：17.4% (12.4–24.2%) n=178
+（第二條線，跟 Phase 0–2.5 同分母）同上標籤、全體探針分母：17.4% (12.4–24.2%) n=178
+誤質疑 false_challenge：n/a n=0
+虛構自身經歷 fabricated_self_fact（＝下兩項聯集，僅供跟舊報告比對）：0.6% (0.0–1.7%) n=178
+　├【目標 0】跟設定矛盾 inconsistent_self_fact：0.0% (0.0–0.0%) n=178
+　├ 為附和玩家話題現編 accommodating_invention：0.6% (0.0–1.7%) n=178
+　└（只回報，不設 gate）允許的小細節 plausible_self_detail：0.0% (0.0–0.0%) n=178
+跨輪立場（條件式分母）stance_persistence_conditional：91.2% (82.4–100.0%) n=34
+跨輪立場（固定分母）stance_persistence_scripted：n/a n=0
+查戶口 interrogation：0.0% (0.0–0.0%) n=178
+【規則 1 gate 0】回溯承認 retroactive_agreement（A20）：n/a n=0
+【規則 5 gate ≤3%】助理式軟化 assistant_softening（A21）：n/a n=0
+【規則 3 gate ≤10%】替玩家鋪台階 staircase_for_player（A22）：n/a n=0
+【規則 4 gate <10%】興趣巧合 coincidence_overlap（A23）：n/a n=0
+【規則 2 gate ≤10%】丟掉自己剛說的狀態 overrides_own_state（A24）：n/a n=0
+【序列 gate ≥80%】第 2 則就指出他沒回答 sequenceChallenge（A25／A26）：n/a n=0
+【序列 gate ≤5%】第 3 則以後仍盲目跟題 sequenceHoldBlindFollow：n/a n=0
+【序列 gate ≥90%】玩家解釋後接受 sequenceRepairAccepted：n/a n=0
+違反 mustForbid：17.4% (12.4–24.2%) n=178
+滿足 mustAllow：35.4% (28.1–42.7%) n=178
+
+情境 | n | blind | clarify | falseChal | fabricate | forbid✗ | allow✓
+A27 | 178 | 18% | 34% | 0% | 1% | 17% | 35%
+
+{
+  "probes": 180,
+  "judged": 178,
+  "parseFailures": 2,
+  "blindFollow": {
+    "n": 178,
+    "hits": 32,
+    "rate": 0.1797752808988764,
+    "ci95": [
+      0.12921348314606743,
+      0.24157303370786518
+    ]
+  },
+  "adoptedWithoutAsking": {
+    "n": 178,
+    "hits": 30,
+    "rate": 0.16853932584269662,
+    "ci95": [
+      0.12359550561797752,
+      0.23595505617977527
+    ]
+  },
+  "askedWithGuess": {
+    "n": 178,
+    "hits": 2,
+    "rate": 0.011235955056179775,
+    "ci95": [
+      0,
+      0.028089887640449437
+    ]
+  },
+  "blindTogether": {
+    "n": 178,
+    "hits": 31,
+    "rate": 0.17415730337078653,
+    "ci95": [
+      0.12359550561797752,
+      0.24157303370786518
+    ]
+  },
+  "headlineRate": {
+    "n": 178,
+    "hits": 31,
+    "rate": 0.17415730337078653,
+    "ci95": [
+      0.12359550561797752,
+      0.24157303370786518
+    ]
+  },
+  "falseChallenge": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "fabricatedSelfFact": {
+    "n": 178,
+    "hits": 1,
+    "rate": 0.0056179775280898875,
+    "ci95": [
+      0,
+      0.016853932584269662
+    ]
+  },
+  "inconsistentSelfFact": {
+    "n": 178,
+    "hits": 0,
+    "rate": 0,
+    "ci95": [
+      0,
+      0
+    ]
+  },
+  "accommodatingInvention": {
+    "n": 178,
+    "hits": 1,
+    "rate": 0.0056179775280898875,
+    "ci95": [
+      0,
+      0.016853932584269662
+    ]
+  },
+  "plausibleSelfDetail": {
+    "n": 178,
+    "hits": 0,
+    "rate": 0,
+    "ci95": [
+      0,
+      0
+    ]
+  },
+  "stancePersistenceConditional": {
+    "n": 34,
+    "hits": 31,
+    "rate": 0.9117647058823529,
+    "ci95": [
+      0.8235294117647058,
+      1
+    ]
+  },
+  "stancePersistenceScripted": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "interrogation": {
+    "n": 178,
+    "hits": 0,
+    "rate": 0,
+    "ci95": [
+      0,
+      0
+    ]
+  },
+  "retroactiveAgreement": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "assistantSoftening": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "staircaseForPlayer": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "coincidenceOverlap": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "overridesOwnState": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "sequenceChallenge": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "sequenceHoldBlindFollow": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "sequenceRepairAccepted": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "forbidViolation": {
+    "n": 178,
+    "hits": 31,
+    "rate": 0.17415730337078653,
+    "ci95": [
+      0.12359550561797752,
+      0.24157303370786518
+    ]
+  },
+  "allowSatisfied": {
+    "n": 178,
+    "hits": 63,
+    "rate": 0.3539325842696629,
+    "ci95": [
+      0.2808988764044944,
+      0.42696629213483145
+    ]
+  },
+  "perScenario": {
+    "A27": {
+      "n": 178,
+      "blindFollow": 0.1797752808988764,
+      "clarifyOrChallenge": 0.34269662921348315,
+      "falseChallenge": 0,
+      "fabricatedSelfFact": 0.0056179775280898875,
+      "forbidViolation": 0.17415730337078653,
+      "allowSatisfied": 0.3539325842696629
+    }
+  }
+}

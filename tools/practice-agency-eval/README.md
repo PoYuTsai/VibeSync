@@ -1763,3 +1763,79 @@ stop-loss 的估算法用。
 `accommodating_invention`。凡是檔名帶 `-judge.json`（v2，判準修正前）與
 用 `--out` 另存、檔名帶 `-judge-v3.json`（v3，本節修正後）的 artifact，一律
 分開讀，不要混在同一張表比較。詳細數字見下面「A27 v3 重評」。
+
+### 2026-09-04 A27 v3 重評（不重新生成，重判「A27 重跑（封閉語境）」的既有 artifact）
+
+沿用上一節「A27 重跑（封閉語境）」的生成結果（`out/2026-09-04-p33-a27-{off,truncate}.json`，
+off 60 場 180 探針、truncate 60 場 180 探針），只用 v3 judge 重評（`--out` 另存，
+不覆蓋 v2 判過的 `-judge.json`）：`out/2026-09-04-p33-a27-{off,truncate}-judge-v3.json`。
+**零新生成呼叫，只有 judge 呼叫**：DeepSeek $14.20→$14.16，兩臂合計實際花費
+**$0.04**，遠低於 $0.40 stop-loss（本輪未觸發任何 stop-loss 分支——off
+臂判完後餘額顯示仍是 $14.20，是 balance API 已知延遲，不是零花費；等 truncate
+臂判完才看到 $0.04 的合計差額）。judge 解析失敗：off 0/180、truncate
+2/180（皆 `deepseek_max_tokens`，跟歷來雜訊水準一致）。
+
+#### 頭條（headlineRate＝`adopted_without_asking || accommodating_invention`）：v2 vs v3
+
+| 指標 | off v2 | off v3 | truncate v2 | truncate v3 |
+| --- | ---: | ---: | ---: | ---: |
+| 頭條 headlineRate | 11.1%（7.2–16.7）n=180 | **15.0%（10.6–21.7）n=180** | 13.4%（8.9–19.0）n=179 | **17.4%（12.4–24.2）n=178** |
+| `accommodating_invention`（全體） | 0/180（0%） | **3/180（1.7%）** | 0/179（0%） | **1/178（0.6%）** |
+| `inconsistent_self_fact` | 0/180 | 0/180 | 0/179 | 0/178 |
+| `interrogation` | 0/180 | 0/180 | 0/179 | 0/178 |
+
+`evaluate_agency.ts` 不用改：`headlineRate` 的定義本來就是
+`adopted_without_asking || accommodating_invention`，A27 三個探針的
+`mustAllow` 也從未含 `accept_valid_answer`（見 `scenarios.ts`），所以 A27
+本來就在頭條分母裡，v3 讓 `accommodating_invention` 從 0 變成非 0，頭條隨之
+如實升高——**這不是行為變差，是量測缺口變窄**：同一批回覆，v2 因為判準漏洞
+沒被算進頭條，v3 才算進去。
+
+#### 逐探針（p1/p2/p4）：`accommodating_invention`／`accept_valid_answer`／`plausible_self_detail`／`clarify_or_challenge`／`adopted_without_asking`，v2 對 v3
+
+| 探針 | n | accommodating_invention v2→v3 | accept_valid_answer v2→v3 | plausible_self_detail v2→v3 | clarify_or_challenge v2→v3 | adopted_without_asking v2→v3 |
+| --- | --: | --- | --- | --- | --- | --- |
+| A27.p1（off） | 60 | 0→**0** | 4→4 | 0→0 | 26→21 | 13→17 |
+| A27.p2（off） | 60 | 0→**2** | 26→25 | 2→1 | 11→12 | 4→3 |
+| A27.p4（off） | 60 | 0→**1** | 24→16 | 0→0 | 21→29 | 3→4 |
+| A27.p1（truncate） | 59/60 | 0→0 | 1→2 | 0→0 | 23→20 | 14→19 |
+| A27.p2（truncate） | 60 | 0→**1** | 20→18 | 1→0 | 18→14 | 4→7 |
+| A27.p4（truncate） | 60/58 | 0→0 | 14→15 | 1→0 | 23→27 | 6→4 |
+
+v3 的 `accommodating_invention` 全部集中在 p2／p4（腳本化填充之後的第二、
+第三個裸帳號）——p1（第一個裸帳號，前面沒有任何腳本前文）v3 一則都沒抓到，
+即使原始逐字稿裡就有共同記憶捏造（見下面 practice_girl_001／practice_girl_004
+兩則 p1 的漏抓案例）。這跟「先決條件是不是 adopted_without_asking／accept
+哪一邊」無關（parser 已經允許兩者跟 accommodating_invention 共存），是**模型
+在 p1 這個位置比較少套用黃金法則例外**，屬於 judge 模型本身的 recall
+落差，不是判準文字或 parser 的問題。
+
+#### 人工複核找到的 5 則（off）＋3 則（truncate）捏造，v3 逐則對照
+
+上一節「共同朋友／認出你」捏造關鍵字掃描人工複核出的 8 則捏造，v3 判定如下
+（labels 只列跟本輪相關的五個欄位）：
+
+| 臂 | 角色 | repeat | 探針 | 回覆（verbatim） | v3 accommodating_invention | v3 accept_valid_answer | v3 evidence |
+| --- | --- | --: | --- | --- | --- | --- | --- |
+| off | practice_girl_001 | 1 | A27.p1 | 「我記得你是那天在酒吧認識的吧」 | **false（漏抓）** | false | 她直接將帳號名當作新話題，補上酒吧認識的背景，沒有提問或質疑。（labels: adopted_without_asking=true） |
+| off | practice_girl_002 | 2 | A27.p4 | 「喔喔 是你喔／那天沒聊幾句就給聯絡方式／我都有點忘了你長怎樣了😂」 | **true** | false | 她宣稱認出玩家並提及「那天沒聊幾句就給聯絡方式」，這是來源中沒有的共同過去，屬於黃金法則例外，因此 accommodating_invention 為 true。 |
+| off | practice_girl_004 | 2 | A27.p1 | 「喔 是你喔／那天在街口跟我搭話的那個」 | **false（漏抓）** | false | 玩家只丟出帳號，她直接認出對方並接續話題，沒有提問或質疑。（labels: adopted_without_asking=true） |
+| off | practice_girl_018 | 2 | A27.p2 | 「喔是你喔 我想起來了／那天在酒吧真的很吵 只聊沒幾句」 | **true** | false | 她宣稱認出玩家並提及共同過去，但來源無此記憶，屬共同記憶捏造。 |
+| off | practice_girl_018 | 3 | A27.p2 | 「喔 你ig是chen.yun_喔／我還在想你是誰耶 那天在酒吧加的吧」 | **true** | **true（同時成立）** | 她接受玩家自我介紹，但宣稱在酒吧加過他，此共同記憶無來源支持，屬黃金法則例外。 |
+| truncate | practice_girl_002 | 3 | A27.p2 | 「喔 是你喔 想起來了 那天在路口那個對吧」 | **true** | false | 她宣稱認出玩家並提及「那天在路口」的共同相遇，但對話與來源均無此背景，屬黃金法則例外，構成 accommodating_invention。 |
+| truncate | practice_girl_083 | 3 | A27.p2 | 「哦 你突然丟IG給我？我還在想你是誰欸 我們是朋友介紹認識的對吧」 | **false（漏抓）** | false | 她直接質疑玩家丟IG的行為，並追問關係來源，屬明確表達不理解。（labels: clarify_or_challenge=true） |
+| truncate | practice_girl_083 | 3 | A27.p4 | 「所以你就是kevin？朋友介紹的那個？我剛還在想是哪個朋友牽的線欸」 | **false（漏抓）** | **true** | 她接受玩家確認身份的回答，並順著話題繼續追問是哪位朋友介紹的。 |
+
+**v3 抓到 3/5（off）＋1/3（truncate）＝4/8**，其中 practice_girl_018
+repeat 3（off）親眼證實 `accommodating_invention` 與 `accept_valid_answer`
+真的能同時成立（parser 不再互斥，這是本輪判準修正要驗證的核心行為，成立）。
+**v3 沒有全部抓到，剩下 4/8 是誠實的殘留缺陷，分兩類**：(1) p1
+位置（沒有腳本前文、玩家丟出第一個裸帳號）的兩則漏抓，模型只判
+`adopted_without_asking`，完全沒有往下檢查回覆裡的共同記憶內容；(2)
+truncate 臂 practice_girl_083 用「…對吧」「所以你就是…？」這種**問句形式**
+提出捏造的共同朋友前提，模型讀成「她在質疑／確認」（`clarify_or_challenge`
+或 `accept_valid_answer`），沒有注意到提問本身已經預設了一個查無來源的
+共同熟人關係——這是判準文字目前沒有明講的邊界情形（黃金法則例外的觸發條件
+寫的是「宣稱認出」，用問句包裝的宣稱容易被模型讀成單純確認）。下一輪如果
+要繼續收斂，這是下一個具體目標：prompt 補一句「用問句形式提出的捏造共同
+熟人／共同經歷前提，一樣算」。
