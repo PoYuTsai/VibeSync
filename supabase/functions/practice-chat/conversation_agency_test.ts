@@ -21,6 +21,7 @@ import {
   truncateAgencyShape,
   utteranceShapeOf,
 } from "./conversation_agency.ts";
+import { computeAgencyDecision } from "./turn_response_plan.ts";
 import { buildRelationshipThreadRpcParams } from "./relationship_thread.ts";
 import type { PracticeTurn } from "./validate.ts";
 
@@ -1378,4 +1379,46 @@ Deno.test("Phase 3.3 truncate：泡泡切法跟 client 同一套（單則不動�
   const fiveBubbles = ["你是說阿布達比嗎", "甲", "乙", "丙", "丁"].join("\n");
   assertEquals(truncateAgencyShape(fiveBubbles, agency).text, fiveBubbles);
   assertEquals(truncateAgencyShape(fiveBubbles, agency).dropped, 0);
+});
+
+Deno.test("Phase 3.8 askedAboutUser：parse 只認布林、false 不落欄位；nextConversationAgencyState 黏住不歸零", () => {
+  const ok: ConversationAgencyState = {
+    version: 1,
+    lastCoherence: "connected",
+    unresolvedCount: 0,
+    priorChallengeIssued: false,
+    lastAgencyAct: null,
+  };
+  assertEquals(
+    parseConversationAgencyState({
+      conversationAgency: { ...ok, askedAboutUser: true },
+    }),
+    { ...ok, askedAboutUser: true },
+  );
+  assertEquals(
+    parseConversationAgencyState({
+      conversationAgency: { ...ok, askedAboutUser: false },
+    }),
+    ok,
+  );
+  assertEquals(
+    parseConversationAgencyState({
+      conversationAgency: { ...ok, askedAboutUser: "yes" },
+    }),
+    null,
+  );
+  const decision = computeAgencyDecision({
+    turns: [{ role: "user", text: "嗨嗨" }, { role: "ai", text: "嗨" }, {
+      role: "user",
+      text: "今天超熱的",
+    }],
+    situation: "neutral",
+    agencyMode: "on",
+  })!.decision;
+  const first = nextConversationAgencyState(null, decision, null, true);
+  assertEquals(first.askedAboutUser, true);
+  const later = nextConversationAgencyState(first, decision, null, false);
+  assertEquals(later.askedAboutUser, true);
+  const never = nextConversationAgencyState(null, decision, null, false);
+  assert(!("askedAboutUser" in never));
 });

@@ -180,7 +180,23 @@ export interface TurnResponsePlan {
   readonly questionBudget: 0 | 1;
   readonly disclosureDepth: "none" | "fact" | "preference" | "emotion";
   readonly seed: number;
+  /**
+   * conversation-agency-v1 Phase 3.8（AGENCY-05 結構刀）：這一輪 planner 強制她
+   * 問他一件事時才存在＝認識管道的 `curiosityFocus`；renderer 印成
+   * 「這輪問他一件事：X」取代泛用的「最多問一句」。只在 agency 旗標 on 出現。
+   */
+  readonly askUserFocus?: string;
 }
+
+/**
+ * Phase 3.8：強制「這場問他一次」的視窗（第 2～6 個 user 回合）與排除的 persona
+ * questionHabit。預設不排除任何型（Eric 2026-09-04：做成開關不寫死）——要讓最冷的
+ * 角色一場都不問，把 "rare" 放進集合即可。
+ */
+export const ASK_USER_WINDOW_USER_TURNS: readonly [number, number] = [2, 6];
+export const ASK_USER_EXCLUDED_HABITS: ReadonlySet<
+  ReplyStyleProfile["turnTaking"]["questionHabit"]
+> = new Set();
 
 // FNV-1a：穩定特徵與本回合變化各自的 seed（規格 §4.6）。
 export function fnv1a(text: string): number {
@@ -326,6 +342,13 @@ export function planTurnResponse(args: {
    * 本身只管 style，agency 决策住在 bundle 的 `agencyDecision` 欄位。
    */
   agency?: AgencyApplication | null;
+  /**
+   * Phase 3.8：認識管道的首要好奇點；只在 agency 旗標 on 時由 bundle 傳入，
+   * off／shadow 傳 null＝這一段完全不套用（plan 逐字與接線前相同）。
+   */
+  askUserFocus?: string | null;
+  /** Phase 3.8：這一場已經強制問過一次（thread state）。 */
+  askedAboutUser?: boolean;
 }): TurnResponsePlan {
   const signals = detectTurnSignals(args.turns);
   const policyStance = policyStanceFor(signals, args.evidence);
@@ -472,6 +495,23 @@ export function planTurnResponse(args: {
   if (primaryAct === "direct_boundary" || primaryAct === "soft_close") {
     questionBudget = 0;
   }
+  // Phase 3.8 結構刀（AGENCY-05）：3.7 黑箱證明在 prompt 加一行「想先知道 X」
+  // 零效果——34/40 場的 habit 是 rare／selective／reciprocal，上面算出來的預算
+  // 多半是 0，計畫行印「這輪不反問」就把那一行壓掉了。改在這裡動形狀：agency on、
+  // 前六個 user 回合、玩家這句連貫（agency 沒介入）且不是在問她、她上一則沒在問、
+  // 這場還沒問過 → 預算強制 1，renderer 印「這輪問他一件事：X」。一場只強制一次
+  // （thread state `askedAboutUser` 黏住），之後多常問回到 persona 的習慣。
+  const forceAskUser = agency?.enabled === true &&
+    typeof args.askUserFocus === "string" && args.askUserFocus.length > 0 &&
+    args.askedAboutUser !== true &&
+    !agency.applied &&
+    signals.userTurnCount >= ASK_USER_WINDOW_USER_TURNS[0] &&
+    signals.userTurnCount <= ASK_USER_WINDOW_USER_TURNS[1] &&
+    signals.aiQuestionStreak === 0 &&
+    (situation === "neutral" || situation === "share") &&
+    primaryAct !== "direct_boundary" && primaryAct !== "soft_close" &&
+    !ASK_USER_EXCLUDED_HABITS.has(habit);
+  if (forceAskUser) questionBudget = 1;
 
   const disclosureMax = style.behavior.disclosure[1];
   const wantsDisclosure = primaryAct === "self_disclose" ||
@@ -496,6 +536,7 @@ export function planTurnResponse(args: {
     questionBudget,
     disclosureDepth,
     seed,
+    ...(forceAskUser ? { askUserFocus: args.askUserFocus as string } : {}),
   };
 }
 
@@ -753,7 +794,10 @@ export function renderTurnPlan(
       (agency?.decision.allowedActs.some(isClarifyingAct) ?? false));
   const forcedAsk = isForcedAskIntent(agency ?? null);
   const clarifyOnly = isAgencyClarifyOnlyTurn(agency ?? null);
-  const question = plan.questionBudget === 1 || forcedAsk
+  // Phase 3.8：強制問他一件事的輪次，把泛用的「最多問一句」換成具體的好奇點。
+  const question = plan.askUserFocus !== undefined && !forcedAsk
+    ? `這輪問他一件事：${plan.askUserFocus}，一句就好。`
+    : plan.questionBudget === 1 || forcedAsk
     ? "最多問一句。"
     : clarifyingAllowed
     ? "這輪不主動查他的基本資料；問清楚他這句的意思或拉回前一題不算。"

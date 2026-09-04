@@ -1222,3 +1222,69 @@ Deno.test("Phase 3.0 工作項 B：同一段序列在 easy 晚一步、challenge
   // challenge：同一格改成直接收掉這串，不是維持立場。
   assertEquals(challenge[3].agency?.decision.forcedAct, "end_low_value_loop");
 });
+
+Deno.test("Phase 3.8 結構刀：agency on、第 2～6 回合、連貫且非問句、她上一則沒問、這場沒問過 → 強制一次問題預算並帶 askUserFocus；其餘情形一律不動", () => {
+  const rare = styles.find((s) => s.turnTaking.questionHabit === "rare")!;
+  const turns = [
+    u("嗨嗨 終於有空跟妳聊"),
+    a("嗨 我也剛忙完"),
+    u("今天超熱的 我剛下班"),
+  ];
+  const evidence = standard();
+  const base = { turns, style: rare, evidence, seedKey: "p38" } as const;
+  const on = planTurnResponse({
+    ...base,
+    agency: agencyFor(turns, evidence, "on"),
+    askUserFocus: "他是從哪裡看到你的",
+  });
+  assertEquals(on.questionBudget, 1);
+  assertEquals(on.askUserFocus, "他是從哪裡看到你的");
+  assert(
+    renderTurnPlan(on, rare, agencyFor(turns, evidence, "on")).includes(
+      "這輪問他一件事：他是從哪裡看到你的，一句就好。",
+    ),
+  );
+  // 沒帶好奇點／旗標 off／shadow：plan 逐字同接線前（rare 的預算本來就是 0）。
+  for (
+    const variant of [
+      planTurnResponse({ ...base, agency: agencyFor(turns, evidence, "on") }),
+      planTurnResponse({
+        ...base,
+        agency: agencyFor(turns, evidence, "shadow"),
+        askUserFocus: "他是從哪裡看到你的",
+      }),
+      planTurnResponse({ ...base, askUserFocus: "他是從哪裡看到你的" }),
+    ]
+  ) {
+    assertEquals(variant.questionBudget, 0);
+    assertEquals(variant.askUserFocus, undefined);
+  }
+  // 這場已經問過 → 不再強制。
+  const asked = planTurnResponse({
+    ...base,
+    agency: agencyFor(turns, evidence, "on"),
+    askUserFocus: "他是從哪裡看到你的",
+    askedAboutUser: true,
+  });
+  assertEquals(asked.questionBudget, 0);
+  assertEquals(asked.askUserFocus, undefined);
+  // 第 1 回合、她上一則在問、玩家在問她、第 7 回合：都不強制。
+  const firstTurn = [u("嗨嗨")];
+  const sheAsked = [u("嗨嗨"), a("你哪位？"), u("我是配對到的那個")];
+  const heAsks = [u("嗨嗨"), a("嗨"), u("妳那張照片是在哪拍的？")];
+  const seventh = [
+    ...Array.from({ length: 6 }, (_, i) => [u(`第${i + 1}句`), a("嗯")]).flat(),
+    u("第七句"),
+  ];
+  for (const t of [firstTurn, sheAsked, heAsks, seventh]) {
+    const plan = planTurnResponse({
+      turns: t,
+      style: rare,
+      evidence,
+      seedKey: "p38",
+      agency: agencyFor(t, evidence, "on"),
+      askUserFocus: "他是從哪裡看到你的",
+    });
+    assertEquals(plan.askUserFocus, undefined, t.map((x) => x.text).join("|"));
+  }
+});

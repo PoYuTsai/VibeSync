@@ -192,6 +192,12 @@ export interface ConversationAgencyState {
    *     `nextConversationAgencyState` 也不再把它往下傳（R1 P1-4a）。
    */
   readonly repairedAtUserTurns?: number;
+  /**
+   * conversation-agency-v1 Phase 3.8（AGENCY-05 結構刀）：這一場她已經問過他
+   * 一件事（planner 強制過一次 `askUserFocus`）。黏住不歸零：一場只強制一次，
+   * 之後多常問回到 persona 的 questionHabit。省略＝還沒問過。
+   */
+  readonly askedAboutUser?: boolean;
 }
 
 export const INITIAL_CONVERSATION_AGENCY_STATE: ConversationAgencyState = {
@@ -821,6 +827,9 @@ export function parseConversationAgencyState(
     !(typeof r.lastAgencyAct === "string" &&
       (AGENCY_ACTS as readonly string[]).includes(r.lastAgencyAct))
   ) return null;
+  if (
+    r.askedAboutUser !== undefined && typeof r.askedAboutUser !== "boolean"
+  ) return null;
   return {
     version: 1,
     lastCoherence: r.lastCoherence as ConversationAgencyState["lastCoherence"],
@@ -832,6 +841,7 @@ export function parseConversationAgencyState(
     ...(r.repairedAtUserTurns === undefined
       ? {}
       : { repairedAtUserTurns: r.repairedAtUserTurns as number }),
+    ...(r.askedAboutUser === true ? { askedAboutUser: true } : {}),
   };
 }
 
@@ -872,6 +882,8 @@ export function nextConversationAgencyState(
   prev: ConversationAgencyState | null,
   decision: AgencyDecision,
   classifierSignal: AgencyClassifierSignal | null = null,
+  /** Phase 3.8：這一輪 planner 有沒有強制她問他一件事（`plan.askUserFocus`）。 */
+  askedAboutUserThisTurn = false,
 ): ConversationAgencyState {
   const base = prev ?? INITIAL_CONVERSATION_AGENCY_STATE;
   const forced = decision.forcedAct;
@@ -929,6 +941,9 @@ export function nextConversationAgencyState(
       challengedThisTurn,
     lastAgencyAct,
     ...(repairedAtUserTurns === undefined ? {} : { repairedAtUserTurns }),
+    ...(base.askedAboutUser === true || askedAboutUserThisTurn
+      ? { askedAboutUser: true }
+      : {}),
   };
 }
 

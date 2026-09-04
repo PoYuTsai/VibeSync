@@ -414,10 +414,18 @@ export async function runAgencyScenario(args: {
     // 這一輪的決策決定下一輪帶進去的狀態（結構層近似，見 stateSimulation
     // 欄位註解）；agency 關閉或 shadow 時 bundle.agencyDecision 是 null／
     // applied=false，state 停在原地不動。
-    if (args.stateSimulation && bundle.agencyDecision?.applied) {
+    // Phase 3.8：強制問他一件事的那一輪也要推進狀態，askedAboutUser 才黏得住
+    // （不然每一輪都會再強制一次＝查戶口）。
+    const askedUser = bundle.responsePlan?.askUserFocus !== undefined;
+    if (
+      args.stateSimulation && bundle.agencyDecision &&
+      (bundle.agencyDecision.applied || askedUser)
+    ) {
       agencyState = nextConversationAgencyState(
         agencyState,
         bundle.agencyDecision.decision,
+        null,
+        askedUser,
       );
     }
   }

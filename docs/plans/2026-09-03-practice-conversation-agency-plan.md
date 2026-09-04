@@ -156,3 +156,10 @@
 - **黑箱（A28 on／off，20 位 × 2，$≈0.5）＝負面結果**：`curiosityWithinSix` off 25%（10/40）→ on 30%（12/40），gate 80，區間重疊。根因是結構：34/40 場的 questionHabit 是 rare／selective／reciprocal，planner `questionBudget` 多半 0、每輪計畫印「這輪不反問」，一行好奇點壓不過；curious 型也只 3/6 場問到他。prompt 臂再次零效果（同 3.3）。**建議下一刀＝結構刀**：agency on、前六回合、連貫且非問她、她上一則沒問、本場未問過（state 加布林）→ 強制 `questionBudget=1` 且計畫行印「這輪問他一件事：X」。數字在 `tools/practice-agency-eval/README.md`「Phase 3.7 黑箱」節。
 - **Codex R1（legacy wrapper，gpt-5.6-sol）BLOCKED → 處置**：P1 黑箱 gate 未過＝成立（30% vs 80）；P1 每個 curiosityFocus 是兩三題、一句問完就是查戶口＝成立 → 全部改成單一問題；P1 `curiosityWithinSix` 可跨 mode 混算＝理論成立、實務上 on／off 是分開的 artifact（key 裡的 `mode` 是 practiceMode），加 evaluator 測試鎖「以場為分母、同場多探針 OR」並在 README 分臂報；P2 泛用「你呢」也算＝接受（廣義 gate，管道命中另做人工抽查）；P2 併短丟了「不一次複述」＝prompt 臂整段刪除後不存在；P2 `asked_about_user` 與 `interrogation` 手寫案例暗示互斥 → 改成可同時成立並加案例；U 管道是 session 維度＝是（`buildAcquaintanceOrigin` 由 profile×threadId 決定，fixture 固定 thread）。**決定（Fable）**：prompt 臂零效果，照 3.3 先例刪掉、`acquaintanceOriginPrompt` 恢復與 main 逐字相同；`curiosityFocus`（單題）、judge 標籤、A28、指標保留給結構刀。
 
+
+## Phase 3.8 — 「這場問他一次」結構刀（AGENCY-05，2026-09-04，Eric「好」）
+
+- **做法**：3.7 的好奇點資料不進 prompt，改由 planner 消費。`planTurnResponse` 在 agency 旗標 on、第 2～6 個 user 回合、玩家這句連貫（agency 沒介入）且不是在問她（situation neutral／share）、她上一則沒在問（aiQuestionStreak 0）、這場還沒問過（thread state `askedAboutUser`）、act 不是界線／收尾時，把 `questionBudget` 強制 1 並在 plan 帶 `askUserFocus`；`renderTurnPlan` 把「最多問一句」換成「這輪問他一件事：X，一句就好」。`nextConversationAgencyState` 多一個參數把 `askedAboutUser` 黏住（一場只強制一次；之後多常問回到 persona 習慣）。handler 傳 `responsePlan.askUserFocus !== undefined`；telemetry `conversationAgency.askUserForced`（布林）。runner 在強制那一輪也推進狀態。
+- **開關**：`ASK_USER_EXCLUDED_HABITS`（預設空；要讓最冷的角色一場都不問，放 "rare"）、`ASK_USER_WINDOW_USER_TURNS=[2,6]`。
+- **off 等價**：bundle 只在 `agencyPrompt`（on）時傳 `askUserFocus`，planner 的 `forceAskUser` 另外還要 `agency.enabled`；off／shadow plan 逐字不變（harness 全過）。
+- **黑箱**：A28 on（state=1）對 3.7 的 off 臂（off bytes 未變，直接沿用），看 `curiosityWithinSix`（gate ≥80）與 `interrogation`。

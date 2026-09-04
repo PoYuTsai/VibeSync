@@ -982,6 +982,11 @@ export function buildChatPromptBundle(
         options.visiblePracticeThreadId ?? ""
       }`,
       agency: agencyDecision,
+      // Phase 3.8：只在旗標 on 傳好奇點；off／shadow 傳 null，plan 逐字不變。
+      askUserFocus: agencyPrompt
+        ? options.acquaintanceOrigin?.curiosityFocus ?? null
+        : null,
+      askedAboutUser: options.agencyState?.askedAboutUser ?? false,
     })
     : null;
   // 組裝順序＝優先順序（規格 §5.1）：安全／身份／現實錨定 → 人設 → 說話習慣

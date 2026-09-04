@@ -4618,6 +4618,8 @@ export function createPracticeChatHandler(
                   aiChallengedThisTurn:
                     temperature.classification.aiChallengedThisTurn,
                 } satisfies AgencyClassifierSignal,
+                // Phase 3.8：這一輪 planner 強制她問他一件事 → 這場黏住不再強制。
+                responsePlan?.askUserFocus !== undefined,
               )
               : relationshipThreadState?.agencyState ?? undefined,
           }),
@@ -4717,6 +4719,8 @@ export function createPracticeChatHandler(
             unresolvedCount: agencyDecision.decision.evidence.unresolvedCount,
             priorChallengeIssued:
               agencyDecision.decision.evidence.priorChallengeIssued,
+            // Phase 3.8：這一輪有沒有強制她問他一件事（只記布林，不記好奇點文字）。
+            askUserForced: responsePlan?.askUserFocus !== undefined,
             coherenceBefore:
               relationshipThreadState?.agencyState?.lastCoherence ??
                 null,
