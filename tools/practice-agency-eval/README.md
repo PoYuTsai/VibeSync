@@ -2024,3 +2024,77 @@ prompt（Phase 3.5：agency on 時 recentContext 放寬到整段、附 `<her_sel
 **v3（形狀刀：強制輪鎖成「回 1 則，就一個問句：問他 X」，仿 forced ask_intent）→ 沒有更好，已退回 v1**：`out/2026-09-04-p38v3-a28-on.json`＋`-judge.json`（0 解析失敗）。結構規則「問到管道好奇點」**6/40**（v1 10、v2 2、off 1）；p3 她問他 17/40；judge 場級 30%；interrogation 0。
 
 **離線重跑 planner（免費，`scratchpad/replay_plan.ts`，同一份逐字稿逐輪重建 bundle）證明強制真的觸發了**：v1 與 v3 都是 p3 **36/40 場**強制（p1 首輪不算、p2 29 場是玩家在問她＋11 場她上一則有問、p4 起 30 場已問過），也就是形狀行確實進了 prompt。對照 p3 原文：v3 有一半仍是兩三則講自己晚餐、只有 2 則問到 X。**結論：瓶頸不是觸發、也不是措辭，是生成模型對「問這個指定問題」的服從率（約一半會問他、一到兩成問到指定的事）**；3.0 的 forced ask_intent 也只量到 78% 服從。形狀行再綁只會讓它整句不問（v2）。要再往上只剩兩條路：生成後檢查（強制輪回覆沒有問他 → 第二發重試，3.1 量過重試 86% 仍犯）或 planner 直接給台詞（違反「不加台詞」）。**3.8 停在 v1**。
+
+### Phase 4.0 黑箱：`ConversationAgencyProfile` 分人強弱（A01/A02/A08/A09/A25/A26/A28/A29，2026-09-05，`agency-phase40` 06f22540）
+
+Phase 4.0（`ConversationAgencyProfile` 四欄位＋四個 consumer）落地時是零模型呼叫的離線回放（見上面「進度」表 2026-09-05 那行），Codex R1 把「黑箱 Gate 完全未跑」列為 P0。這一輪是 Eric 核准 **$3.00 硬上限** 的第一次真的付費黑箱。
+
+**規模**：`AGENCY_BY_PROFILE_ID` 前 20 位代表角色 × `A01,A02,A08,A09,A25,A26,A28,A29` × `--mode=beginner --state=1 --style=1 --repeat=1 --concurrency=8`，`--agency=on` 與 `--agency=off` 各一臂。新增 A29（見上面同日 commit）讓 initiative 有 `utteranceShape==="reaction"` 的探針可測。每臂 160 場、620 次生成、460 個探針；judge 各解析失敗 1／460（`deepseek_max_tokens`，跟歷來雜訊水準一致）。artifact：`out/2026-09-05-p40-beginner-{on,off}.json`＋`-judge.json`。
+
+**花費（三次實測餘額，DeepSeek `/user/balance`）**：開跑前 **$12.02**；on 臂生成＋judge 跑完 **$11.97**；off 臂生成＋judge 跑完 **$11.48**；等餘額 API 已知延遲穩定後再查一次 **$11.06**（後兩次之間沒有新呼叫，純粹是結算延遲，不是新花費）。**實際總花費 $0.96**，遠低於 $3.00 上限，兩臂都跑滿全部 8 個情境，沒有觸發「on 臂 >$1.60 就砍 off 臂的 A25/A26」那條停損。
+
+#### 結構觸發驗證（免費，`replay_plan.ts` 對 on 臂逐輪重建 bundle）
+
+在讀語意數字之前，先確認四個 consumer 真的照 profile 分佈觸發（這是「有沒有分人」最乾淨的證據，不受 judge 雜訊影響）：
+
+| 探針 | 計數 | 期望人數 | 說明 |
+| --- | --- | --: | --- |
+| A02.p1／A08.p1／A25.p1／A26.p1 | `p4:forcedAskIntent` 8/20（四個探針數字完全一致） | 8 | `ambiguityTolerance≤1` 的 8 位（Alice／Ella／Bella／Yuna／Olivia／Mia／Hazel／Cora）——逐位核對，一位不差 |
+| A25.p2／p3／p8、A26.p2／p3 | `p4:persistSet` 11/20 | 11 | `topicPersistence≥3` 的 11 位（Alice／Nina／Lumi／Ella／Bella／Yuna／Olivia／Lina／Hazel／Claire／Erin） |
+| A25.p5、A26.p5／p8 | `p4:persistSet` 10/20 | 11 | 少 1，該輪某一位的 debt 狀態被同輪其他結構條件擠掉（未逐位追查，數字記在案） |
+| A29.p1／p2 | `p4:selfDisclose` 0/20（見下） | — | 見「Q3」 |
+
+四個門檻／集合 consumer 的觸發人數精準對上 `AGENCY_BY_PROFILE_ID` 的分組，**這一段是確定性的、不受黑箱樣本量限制**：Phase 4.0 的門檻位移機制本身沒有分人錯誤。剩下要看的是「觸發之後，語意輸出有沒有真的不一樣」。
+
+#### 五題（on vs off，Wilson 95% 區間；區間重疊記「分不出」）
+
+**1. 低容忍角色（`ambiguityTolerance≤1`：Alice／Ella／Bella／Yuna／Olivia／Mia／Hazel／Cora，n=8）第一個裸片段（A02.p1＋A08.p1）：`asked_with_guess`／`false_challenge` 有沒有比 off 差？**
+
+| 組別 | on `asked_with_guess` | off `asked_with_guess` | on `adopted_without_asking` | off `adopted_without_asking` | `false_challenge`（兩臂兩組皆） |
+| --- | --: | --: | --: | --: | --: |
+| 低容忍（n=16＝8 位×2 情境） | 6.2%（1/16，CI 1.1–28.3） | 18.8%（3/16，CI 6.6–43.0） | 18.8%（3/16） | 18.8%（3/16） | 0/16 |
+| 高容忍（`≥3`：Nina／Bonnie／Ava／Ivy／Tara／Lina／Claire／Zoe，n=16） | 6.2%（1/16，CI 1.1–28.3） | 12.5%（2/16，CI 3.5–36.0） | 31.2%（5/16） | 68.8%（11/16，CI 44.4–85.8） | 0/16 |
+| 全體 A02+A08（n=40，跟 Phase 2.6 同分母比對） | 7.5%（3/40） | **15.0%（6/40，跟 Phase 2.6 記過的數字完全對上）** | — | — | — |
+
+**讀法**：`false_challenge` 兩臂兩組全部 0/16——低容忍角色被強制問意圖沒有把她變成誤質疑有效短答。`asked_with_guess`（有問但夾帶猜測）低容忍組 on 比 off 低（6.2% vs 18.8%），方向符合「forced `["ask_intent"]` 讓她只問不猜」的設計，但 n=16 區間 1.1–28.3% 對 6.6–43.0% 重疊，**分不出**。全體 40 筆的 on/off（7.5% vs 15.0%）樣本較大、off 剛好對上 Phase 2.6 舊數字，但兩者 CI（用 40 筆算）仍會重疊，**只能說方向一致，不能說顯著**。低容忍組 `adopted_without_asking` on/off 完全打平（18.8%/18.8%）——forced ask_intent 對這組本來就沒有「完全不問」的空間可以再壓（off 臂本來就不高）；真正被 on 臂壓下來的是**高容忍組**（68.8%→31.2%），但那是 Phase 0/1 既有的「agency on 全面降低 no_context_fragment 盲目跟題」基線效果，不是 Phase 4.0 這一刀專屬（高容忍組不吃 forced ask_intent）。
+
+**2. 高懷疑（`skepticism≥3`，n=13：Alice／Lumi／Ella／Bella／Yuna／Olivia／Mia／Rina／Hazel／Cora／Emma／Claire／Erin） vs 低懷疑（`≤1`，n=4：Bonnie／Ava／Tara／Zoe）在 A25／A26 的 `sequenceChallenge`／`sequenceHoldBlindFollow`／`sequenceRepairAccepted`**
+
+| 指標 | on 低懷疑 | on 高懷疑 | off 低懷疑 | off 高懷疑 |
+| --- | --: | --: | --: | --: |
+| `sequenceChallenge`（p2，第 2 則就指出他沒回答） | 87.5%（7/8，CI 52.9–97.8） | 88.5%（23/26，CI 71.0–96.0） | 75.0%（6/8） | 65.4%（17/26，CI 46.2–80.6） |
+| `sequenceHoldBlindFollow`（p3/p5/p8，仍盲目跟題） | 12.5%（3/24，CI 4.3–31.0） | 23.1%（18/78，CI 15.1–33.6） | 33.3%（8/24，CI 18.0–53.3） | 21.8%（17/78，CI 14.1–32.2） |
+| `sequenceRepairAccepted`（p9，解釋後恢復正常） | 100%（8/8） | 84.6%（22/26，CI 66.5–93.9） | 87.5%（7/8） | 100%（26/26） |
+
+**讀法（誠實：不符合「懷疑越高越早質疑」的樸素預期）**：`skepticism` consumer 動的是 `holdAt`（門檻），`holdAt` 越低＝越早強制收掉解讀迴圈，樸素預期高懷疑組的 `sequenceHoldBlindFollow` 應該**比低懷疑組低**。on 臂實測方向相反（低懷疑 12.5% < 高懷疑 23.1%），但兩組區間大幅重疊（4.3–31.0% 對 15.1–33.6%）、低懷疑組只有 4 位角色（n=24 來自同 4 位×3 個位置×2 情境，本質上是 4 個獨立樣本點，不是 24 個獨立觀察），**這裡分不出，也不能倒過來說 consumer 方向錯**——`unresolvedCount` 的視窗與 repair 重置規則比「序列位置第幾則」複雜得多（見 `conversation_agency.ts` 的 `repeatWindow`／`repairedAt`），p3/p5/p8 這幾個絕對位置不必然對應同一個 `unresolvedCount` 值，n=4 個角色也撐不起這個問題。`sequenceChallenge`／`sequenceRepairAccepted` 兩組在 on 臂都被拉到 85–100% 天花板附近，是 Phase 3.0 既有結構刀的基線效果（p2 強制質疑、p9 強制恢復），把懷疑度的組間差壓縮到看不出來（off 臂天花板效應較弱，`sequenceChallenge` 低懷疑 75% vs 高懷疑 65.4%，區間也重疊）。**這一題目前的黑箱樣本量（尤其低懷疑只有 4 位）回答不了。**
+
+**3. A29：on 臂 plan 有 `self_disclose` 的輪次數，人工看 5 則逐字**
+
+`p4:selfDisclose`＝**0/40**（p1、p2 皆 0）。**這不是 consumer 失效，是這批 20 個角色＋固定 thread id 在這一個探針位置的單次確定性擲骰全部沒中**——offline 直接算 `fnv1a(seedKey|2|initiative) % 5`（`seedKey=profileId|bakeoff-fixed-thread`，`run_agency.ts` 的 thread id 不隨 `--repeat`變動，同一位角色不管 repeat 幾次在這個 hash 域都拿到同一個值）：6 位 `initiative≥3` 的角色（Ava／Ivy／Rina＝4，Ella／Tara／Olivia＝3）算出的 roll 分別是 3／2／4／2／3／3，全部落在各自門檻（4 需要 <2、3 需要 <1）之外——**6 次獨立擲骰全部不中**，機率上並非離奇（`(4/5)^3×(3/5)^3≈11%`），且已用同一支 `fnv1a` 逐位驗證過不是計算錯誤或情境設計錯誤（`utteranceShape` 確認是 `"reaction"`，`agency.applied=false`，`optionalAct` 觸發前確實是 `null`，`situation`／`userTurnCount` 等其餘閘門也都滿足，唯獨機率骰沒中）。**因為 0 命中，沒有逐字稿可看，無法完成「人工看 5 則」這一步**。
+
+附帶發現（不算 Q3 的答案，只是釐清 metric 本身的陷阱）：`replay_plan.ts` 的 `p4:selfDisclose` 計數器不分辨來源——A25.p9／A26.p9 各有 4/20 命中，但那兩個探針的 `utteranceShape` 是 `"self_share"`（玩家在解釋，不是反應詞），不滿足 initiative consumer 的 `utteranceShape==="reaction"` 閘門，這 4+4 筆是既有 reply-style 規劃器本來就會選的 `self_disclose`（`biases[1]`），跟 Phase 4.0 的 initiative 無關——與計畫文件記過的「A28 舊 artifact base 12→HEAD 0」是同一種混淆（收緊 `reaction` 閘門前的舊邏輯連 `self_share` 都算）。**這批黑箱唯一能乾淨測到 initiative 的位置只有 A29（因為只有它是真正的 reaction 探針），而它剛好摃龜；下一輪如果要驗到，得換一組 profile id 或不用固定 thread id（讓 `--repeat` 真的產生不同 seed），不是加大這 20 位的 repeat 數（repeat 對這個 hash 域無效）。**
+
+**4. 安全側：A01／A09 `false_challenge`、全體 `interrogation`、`inconsistent_self_fact`**
+
+| 指標 | on | off |
+| --- | --: | --: |
+| A01+A09 `false_challenge`（n=40） | 0.0%（0/40） | 0.0%（0/40） |
+| `interrogation`（n=459） | 0.0% | 0.0% |
+| `inconsistent_self_fact`（n=459） | 0.0% | 0.0% |
+| `accommodating_invention`（僅回報） | 0.2%（1/459） | 0.4%（2/459） |
+
+安全側全部過關，兩臂皆 0，`inconsistent_self_fact` 沒有因為分人強弱而升高。
+
+**5. 分人差異存不存在（Q1／Q2 依 profile 分組，只看 on 臂）**
+
+- Q1 的方向性存在（低容忍組 `asked_with_guess` 6.2% 低於高容忍組同期望方向一致、`adopted_without_asking` 低容忍 18.8% vs 高容忍 31.2%），但 n=16/組的區間全部重疊，**統計上分不出**。
+- Q2 的三個序列指標在 on 臂被結構刀拉到天花板／地板附近，懷疑度分組看不出方向一致的差異，n=4（低懷疑）也撐不住這個問題。
+- 唯一**確定性、不受樣本量影響**的分人證據是上面「結構觸發驗證」那張表：`p4:forcedAskIntent`／`p4:persistSet` 的觸發人數精準對上 `AGENCY_BY_PROFILE_ID` 的分組邊界（8 位、11 位一位不差）——**分人強弱在「誰被門檻挑中」這一層是紮實的；在「挑中之後語意輸出有沒有跟著變」這一層，這一輪 n=16–24/組的黑箱樣本量不夠回答，跟 Phase 3.8 README 一貫的「小樣本不下定論」是同一個誠實邊界。**
+
+#### 誠實讀法與已知限制
+
+1. **樣本量**：本輪 `repeat=1`，Q1／Q2 的分組人數（8/16/13/4 位角色）遠小於單情境 n=40 的常規規模，Wilson 區間普遍寬到 20–40 個百分點，多數組間比較「分不出」不是本輪程式或情境設計的問題，是黑箱預算（$3 上限、20 位代表角色）的天花板。
+2. **judge 標籤雜訊帶**：README 已記過同一份 coherence 判準跨次抖動 ±7/40（Phase 3.6），本輪沒有重跑驗證雜訊帶，上面所有「方向一致但分不出」的敘述本來就把這個雜訊算在區間裡，沒有另外扣除。
+3. **A29 是合成情境**（腳本前文＋兩則反應詞，不是真機截圖），且卡在本輪唯一一次確定性擲骰摃龜——這一題目前**完全沒有黑箱證據**，既不能說 initiative 有效也不能說無效，是純粹的「沒測到」。
+4. **`--state=1` 的短期狀態模擬**（`run_agency.ts` 的 `stateSimulation` 近似）跟 production 的真持久化狀態不是同一機制，序列情境（A25／A26）與 A28／A29 的跨輪 `agencyState` 是本工具的結構層近似，不是逐位元組重播 production。
+5. 本輪沒有跑 `evaluate_agency.ts` 以外的分類器層（`accommodatingSelfFact`／`sharedPastClaim`）。**更正**：A29 的 `accommodating_invention` 不是 0/40——`practice_girl_064`（Lumi）A29.p2 判 true（40 筆裡唯一一筆，2.5%）：她回「嗯嗯是句點王耶　你那天怎麼會出現在我工作的那邊啊」，judge 判讀為「宣稱玩家出現在她工作地點，這是查無來源的共同過去」。**這一筆跟 initiative／self_disclose 無關**（該輪 `optionalAct` 不是 `self_disclose`，是 Phase 3.8 的 `askUserFocus` 強制問法——A29.p2 有 17/20 觸發，見上面「A29.p2 {'forced': 17...}」），是**另一個既有 consumer（forced 問管道好奇點）在停滯輪上把好奇點問成既定事實**，不是本輪新增的 initiative 分支造成。跟原本擔心的「停滯輪她會不會編共同經歷來救場」這個問題方向相關但機制不同：**Q3 的 self_disclose 分支確實 0/40 沒有樣本可看，但同一批 A29 資料另外意外量到一筆 forced-ask 相關的 `accommodating_invention`，值得記一筆但樣本量 1/40 不能下任何結論，且是 Phase 3.8 既有機制、不是 Phase 4.0 的新行為。**
