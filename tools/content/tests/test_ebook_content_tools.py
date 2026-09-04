@@ -241,7 +241,7 @@ class AuditRuleTests(unittest.TestCase):
 
     def test_r10_r13_catalog_level_requirements(self):
         book = make_book(book_id='ebook-2-conversation', number=2, blocks=[
-            {'type': 'paragraph', 'id': 'p1', 'text': '讓她認識你（V）、誰在帶方向（F）'},
+            {'type': 'paragraph', 'id': 'p1', 'text': '價值呈現／讓她認識你（V）、對話框架／方向（F）'},
         ])
         book['chapters'][0]['id'] = 'ebook-2-chapter-1'
         findings = audit_findings(book)
