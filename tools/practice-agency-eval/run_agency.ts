@@ -147,6 +147,8 @@ export interface AgencyTurnResult {
   readonly attempts: number;
   readonly guardRejections: readonly string[];
   readonly stageDirectionRepairs: number;
+  /** Phase 3.3 `--shape=truncate` 丟掉幾則泡泡（`off`／`prompt` 臂恆為 0）。 */
+  readonly shapeDropped: number;
 }
 
 export interface AgencySessionResult {
@@ -268,6 +270,7 @@ export async function runAgencyScenario(args: {
         attempts: 0,
         guardRejections: [],
         stageDirectionRepairs: 0,
+        shapeDropped: 0,
       });
       continue;
     }
@@ -293,6 +296,7 @@ export async function runAgencyScenario(args: {
         attempts: 0,
         guardRejections: [],
         stageDirectionRepairs: 0,
+        shapeDropped: 0,
       });
       continue;
     }
@@ -324,6 +328,7 @@ export async function runAgencyScenario(args: {
     let reply: string | null = null;
     let attempts = 0;
     let stageDirectionRepairs = 0;
+    let shapeDropped = 0;
     const guardRejections: string[] = [];
     let lastError: unknown;
     for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
@@ -349,8 +354,12 @@ export async function runAgencyScenario(args: {
         // Phase 3.3 `truncate` 臂：與 handler 同一支函式、同一個位置（所有
         // 守門與修補之後、落成 reply 之前），所以 judge 讀到的就是截斷後的文字。
         if (args.shape === "truncate") {
-          candidate =
-            truncateAgencyShape(candidate, bundle.agencyDecision).text;
+          const truncated = truncateAgencyShape(
+            candidate,
+            bundle.agencyDecision,
+          );
+          candidate = truncated.text;
+          shapeDropped = truncated.dropped;
         }
         reply = candidate;
         break;
@@ -388,6 +397,7 @@ export async function runAgencyScenario(args: {
       attempts,
       guardRejections,
       stageDirectionRepairs,
+      shapeDropped,
     });
     turns.push({ role: "ai", text: reply });
     // 這一輪的決策決定下一輪帶進去的狀態（結構層近似，見 stateSimulation
