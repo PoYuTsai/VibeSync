@@ -1,17 +1,24 @@
 // visible_text_guard 直測：內部分數形「投入度 X/100」洩漏守門。
 // 跑法：deno test supabase/functions/practice-chat/visible_text_guard_test.ts
 
-import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assertEquals,
+  assertThrows,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   hasL4UnsafeVisibleText,
   hasVisibleInternalLabelLeak,
   hasVisibleTemperatureMechanismLeak,
+  rejectL4UnsafeVisibleText,
+  rejectVisibleInternalLabelLeak,
 } from "./visible_text_guard.ts";
 import {
   hasStageDirection,
   REPLY_STYLE_HIDDEN_HEADINGS,
   stripStageDirections,
 } from "./visible_text_guard.ts";
+import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
+import { normalizeLiteralNewlines } from "./prompt_sanitizer.ts";
 
 // 9fd3b8a5 去列字後，temperature.ts 隱藏層標頭改為「投入度 X/100」——全中文、
 // 無英文 band 字，原本兩張表（Latin 標籤＋中文機制詞）都攔不到。模型照抄
@@ -744,4 +751,71 @@ Deno.test("reply-style hidden heading：只在帶 extraChineseLabels 時攔（�
     false,
   );
   assertEquals(hasStageDirection("【已讀】\n嗯"), true);
+});
+
+// ── Phase 3.0（Eric 2026-09-04 銳化要求 2）：極短的反問必須是合法輸出 ──
+//
+// 主體意識開啟後，正確答案常常就是一個「？」或一句「你到底在講什麼」。
+// 如果任何一道輸出守門把它擋掉，agency 的政策層做對了也送不出去，而且失敗
+// 形態會是「重試兩次都被擋 → 整場 500」，比原本的問題更糟。
+//
+// 這支測試把 handler chat 分支實際會跑的三道守門（依 handler.ts 同序：
+// 內部標籤外洩 → L4 → 括號旁白修補）逐字重跑一遍。**目前三道都放行，
+// 所以本輪沒有放寬任何守門**（放寬會動到旗標關的行為，等價 harness 會抓）。
+const TERSE_PUSHBACKS = [
+  "？",
+  "?",
+  "蛤？",
+  "蛤",
+  "嗯？",
+  "你到底在講什麼",
+  "你在講什麼啦",
+  "我剛剛是在問你欸",
+  "你沒回答我",
+  "...",
+  "喔。",
+];
+
+Deno.test("Phase 3.0：極短的反問（「？」「蛤？」「你到底在講什麼」）通過 chat 分支的每一道輸出守門", () => {
+  for (const reply of TERSE_PUSHBACKS) {
+    // handler 的第一步：簡體 → 繁體＋字面 \n 正規化，不得把內容吃掉。
+    const normalized = toTraditionalChinese(normalizeLiteralNewlines(reply));
+    assertEquals(normalized.trim().length > 0, true, reply);
+
+    // 1) 內部標籤外洩（agency／style 注入時多攔 hidden heading）。
+    rejectVisibleInternalLabelLeak(normalized, "chat_internal_label_leak", {
+      transcript: "東東\n阿布打比\n清邁\n好市多",
+      extraChineseLabels: REPLY_STYLE_HIDDEN_HEADINGS,
+    });
+    // 2) L4 安全守門（strict 欄位、不開 spicy）。
+    rejectL4UnsafeVisibleText(normalized, "chat_l4_unsafe", {
+      fieldClass: "strict",
+      spicyAllowed: false,
+    });
+    // 3) 括號旁白修補：這些句子本來就沒有旁白，不該被判成有。
+    assertEquals(hasStageDirection(normalized), false, reply);
+    assertEquals(
+      stripStageDirections(normalized, "chat_stage_direction"),
+      normalized.trim(),
+      reply,
+    );
+  }
+});
+
+Deno.test("Phase 3.0：極短反問不會被誤判成內部標籤外洩，即使 agency guidance 有注入", () => {
+  // hidden heading 的攔截字串本身（「本輪回應方式」）仍然要被擋——放行極短
+  // 反問不等於放行系統指示外洩。
+  assertThrows(
+    () =>
+      rejectVisibleInternalLabelLeak(
+        "本輪回應方式：？",
+        "chat_internal_label_leak",
+        {
+          transcript: "",
+          extraChineseLabels: REPLY_STYLE_HIDDEN_HEADINGS,
+        },
+      ),
+    Error,
+    "chat_internal_label_leak",
+  );
 });

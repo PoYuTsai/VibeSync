@@ -736,10 +736,11 @@ Deno.test("截圖重現（agency 開）：Alice 的「好市多」改成維持�
   assertEquals(plan.situation, "neutral");
   assertEquals(agency?.applied, true);
   assertEquals(agency?.decision.situation, "repeated_low_coherence");
-  // Codex round-2 P1-2 之後 standard 不再假裝「已經質疑過」，這一格是三選一
-  // bounded（維持立場仍在候選裡），不是 forced hold_position。
-  assertEquals(agency?.decision.policyMode, "bounded");
-  assert(agency?.decision.allowedActs.includes("hold_position"));
+  // Phase 3.0：她在這段逐字稿裡真的問過（「東東是誰」「阿布達比？你有去那邊
+  // 玩喔？」），而「好市多」前面那一則不是問句——兩道閘門都成立，所以這一格
+  // 從 bounded 升成 forced hold_position。這就是 Eric 回報的那一格。
+  assertEquals(agency?.decision.policyMode, "forced");
+  assertEquals(agency?.decision.forcedAct, "hold_position");
   const rendered = renderTurnPlan(
     plan,
     STYLE_BY_PROFILE_ID["practice_girl_001"],
@@ -757,9 +758,17 @@ Deno.test("截圖重現（agency 開）：Joyce 的「紅豆泥」同樣不再�
     "practice_girl_026",
   );
   assertEquals(agency?.applied, true);
-  // 挑戰難度：達到低連貫門檻直接收掉（forceEndLoopBeforeChallenge）。
-  assertEquals(agency?.decision.forcedAct, "end_low_value_loop");
   assertEquals(agency?.decision.evidence.unresolvedCount, 3);
+  // Phase 3.0 的誠實限制：Joyce 這段截圖裡她**一次都沒問過**（「嗯 看韓劇」
+  // 「喔 我看不懂日文」「我下午吃過東西了」），所以強制格的 aiQuestionedInLoop
+  // 閘門不成立——`hold_position`（「維持你剛才的保留」）會是一句她沒有立場可
+  // 維持的指示。這一格改成 bounded 的條件式：接得上就接受，接不上就直接說他
+  // 沒回答又跳到別的。旗標開之後她在第 2 則就會被要求做這個判斷，所以這種
+  // 「從頭到尾沒問過還累到 3」的逐字稿本身就是 off-policy 的重播。
+  assertEquals(agency?.decision.evidence.aiQuestionedInLoop, false);
+  assertEquals(agency?.decision.policyMode, "bounded");
+  assertEquals(agency?.decision.allowedActSetId, "answer_or_challenge_v1");
+  assert(agency?.decision.allowedActs.includes("challenge_relevance"));
 });
 
 Deno.test("agency shadow：decision 有值但 applied=false，renderTurnPlan 逐字等於旗標關", () => {
@@ -855,7 +864,8 @@ Deno.test("問題預算豁免：澄清型 act 在預算 0 時仍可問，查戶�
 
   // Phase 2.6：候選清單裡沒有「接住」的每一輪（收尾／維持立場／指出跳題）
   // 也吃同一把結構刀——回 1 則、不猜、不接他丟的詞；形狀行取代則數／預算行。
-  const held = agencyPlan(JOYCE_SCREENSHOT, "challenge", "practice_girl_026");
+  const held = agencyPlan(ALICE_SCREENSHOT, "normal", "practice_girl_001");
+  assertEquals(held.agency?.decision.forcedAct, "hold_position");
   const heldRendered = renderTurnPlan(held.plan, style, held.agency);
   assert(heldRendered.includes("回 1 則，就做這一件事"), heldRendered);
   assert(!heldRendered.includes("一則講一件事"), heldRendered);
@@ -928,13 +938,19 @@ Deno.test("Phase 2.6：候選清單有「接住」時形狀不動，全是 agenc
   assert(easyRendered.includes("一則講一件事"), easyRendered);
   assert(!easyRendered.includes("回 1 則，就做這一件事"), easyRendered);
 
-  // 連續未解（low_coherence_v1＝challenge/return/hold，一個接住都沒有）
-  // → 套 clarify-only 形狀。這是 2026-09-06 policy 拆解裡 asked_with_guess
-  // 最高的一格（21.9%）。
-  const lowTurns = [u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")];
+  // 停止解讀那一格（forced hold_position，一個接受出口都沒有）→ 套
+  // clarify-only 形狀。Phase 3.0：欠債的 bounded 條件式清單裡有
+  // `accept_if_answered`，所以那一格**不**套（順著聊在那裡是合法選項）。
+  const lowTurns = [
+    u("韓國"),
+    a("怎麼突然講韓國"),
+    u("東京"),
+    a("你沒回答我欸"),
+    u("淺草"),
+  ];
   const lowEvidence = standard({ difficulty: "normal" });
   const lowAgency = agencyFor(lowTurns, lowEvidence, "on");
-  assertEquals(lowAgency?.decision.allowedActSetId, "low_coherence_v1");
+  assertEquals(lowAgency?.decision.allowedActSetId, "hold_after_challenge_v1");
   const lowRendered = renderTurnPlan(
     planTurnResponse({
       turns: lowTurns,
@@ -958,7 +974,7 @@ Deno.test("Codex round-2 P1-2：跨輪立場行只在 forced 質疑／維持立�
   const STANCE = "他沒回答就別放過";
 
   // packet 的案例：前面有欠債 → 她問「你最喜歡什麼動物」→ 玩家答「貓」。
-  // 這是 answer_candidate_with_debt_v1（bounded {acknowledge, return_to_topic}），
+  // Phase 3.0 這一格是 `answer_or_challenge_v1`（bounded，含條件式接受），
   // 結構層根本分不出「貓」算不算回答，文案不得先替模型斷言「他沒回答」。
   const debtAnswer = [
     u("好市多"),
@@ -970,7 +986,7 @@ Deno.test("Codex round-2 P1-2：跨輪立場行只在 forced 質疑／維持立�
   const debtAgency = agencyFor(debtAnswer, evidence, "on");
   assertEquals(
     debtAgency?.decision.allowedActSetId,
-    "answer_candidate_with_debt_v1",
+    "answer_or_challenge_v1",
   );
   const debtRendered = renderTurnPlan(
     planTurnResponse({
@@ -1043,4 +1059,164 @@ Deno.test("Codex round-2 Important 6：12 code unit 的 userQuestionStreak 門�
   assertEquals(long.agency?.decision.situation, null);
   assertEquals(short.agency?.applied, false);
   assertEquals(long.agency?.applied, false);
+});
+
+// ── Phase 3.0 工作項 B：standard 沒有分類器，序列意識必須只靠逐字稿結構成立 ──
+
+/**
+ * Eric 2026-09-04 回報的完整真機逐字稿（12 則玩家訊息，全部是不連貫的裸詞）。
+ * AI 那一側前三則用截圖裡她真的講過的話；之後刻意用**最不利**的形態
+ * （沒有問句標記的敷衍回覆），證明序列意識不是靠「她剛好問過問題」撐起來的。
+ */
+const ERIC_SEQUENCE: readonly string[] = [
+  "東東",
+  "阿布打比",
+  "清邁",
+  "好市多",
+  "曼谷",
+  "馬尼拉",
+  "漢漢",
+  "好市多",
+  "護駕",
+  "全球經濟增長放緩",
+  "漢漢",
+  "銅鑼灣",
+];
+const ERIC_AI_REPLIES: readonly string[] = [
+  "東東是誰",
+  "阿布達比？你有去那邊玩喔？",
+  "清邁很讚欸 我上個月才去過",
+  "喔",
+  "嗯嗯",
+  "喔喔",
+  "嗯",
+  "喔",
+  "嗯嗯",
+  "喔",
+  "嗯",
+];
+
+/** 逐輪重播：回傳每一則玩家訊息當下的 plan／agency。 */
+function replaySequence(
+  userTexts: readonly string[],
+  aiReplies: readonly string[],
+  difficulty: PracticeDifficulty,
+  profileId: string,
+) {
+  const turns: PracticeTurn[] = [];
+  return userTexts.map((text, i) => {
+    if (i > 0) turns.push(a(aiReplies[i - 1] ?? "嗯"));
+    turns.push(u(text));
+    const { plan, agency } = agencyPlan([...turns], difficulty, profileId);
+    return {
+      text,
+      plan,
+      agency,
+      rendered: renderTurnPlan(plan, STYLE_BY_PROFILE_ID[profileId], agency),
+    };
+  });
+}
+
+Deno.test("Phase 3.0 工作項 B：Eric 截圖的 12 則逐字稿，第 3 則起一定質疑／維持立場，不回到無條件接住", () => {
+  const steps = replaySequence(
+    ERIC_SEQUENCE,
+    ERIC_AI_REPLIES,
+    "normal",
+    "practice_girl_001",
+  );
+  assertEquals(steps.length, 12);
+
+  // 第 1 則：問一次就好（bounded {acknowledge, ask_intent}）。
+  assertEquals(
+    steps[0].agency?.decision.allowedActSetId,
+    "fragment_no_context_v1",
+  );
+  assert(steps[0].agency?.decision.allowedActs.includes("ask_intent"));
+
+  // 第 2 則：二選一——真的接得上就接受，接不上就直說他沒回答又跳題。
+  // 這一格**不得**有無條件的 acknowledge（Eric 回報的核心失敗就在這裡）。
+  assertEquals(
+    steps[1].agency?.decision.allowedActSetId,
+    "answer_or_challenge_v1",
+  );
+  assert(!steps[1].agency?.decision.allowedActs.includes("acknowledge"));
+  assert(
+    steps[1].rendered.includes("先判斷他這句接不接得上"),
+    steps[1].rendered,
+  );
+
+  // 第 3 則起：一路質疑或維持立場，而且永遠不會回到「先接住對方剛說的那件事」。
+  for (const step of steps.slice(2)) {
+    const acts = step.agency?.decision.allowedActs ?? [];
+    assertEquals(step.agency?.applied, true, step.text);
+    assert(!acts.includes("acknowledge"), `${step.text} 又回到無條件接住`);
+    assert(
+      acts.includes("challenge_relevance") ||
+        acts.includes("hold_position") ||
+        acts.includes("end_low_value_loop"),
+      `${step.text} 既沒質疑也沒維持立場：${acts.join(",")}`,
+    );
+    assert(
+      !step.rendered.includes("先接住對方剛說的那件事"),
+      `${step.text}：${step.rendered}`,
+    );
+    // 常設的整段檢查每一輪都要在（Eric 2026-09-04 銳化要求 1）。
+    assert(step.rendered.includes("回之前先看整段"), step.text);
+  }
+
+  // 第 4 則「好市多」＝截圖裡 Eric 指的那一格：她已經問過兩次、前一則不是問句
+  // → forced hold_position（停止供應解讀）。
+  assertEquals(steps[3].agency?.decision.forcedAct, "hold_position");
+  // 之後每一則都維持在停止解讀（欠債已經 clamp 在 3）。
+  for (const step of steps.slice(3)) {
+    assertEquals(step.agency?.decision.forcedAct, "hold_position", step.text);
+  }
+
+  // 真正的解釋（第一人稱分享）＝結構修復：欠債歸零、完全不介入。
+  const repaired = replaySequence(
+    [...ERIC_SEQUENCE, "我在列下個月可能去的地方啦", "曼谷"],
+    [...ERIC_AI_REPLIES, "喔", "喔喔"],
+    "normal",
+    "practice_girl_001",
+  );
+  const repairTurn = repaired[12];
+  assertEquals(repairTurn.agency?.decision.situation, null);
+  assertEquals(repairTurn.agency?.applied, false);
+  assertEquals(repairTurn.agency?.decision.evidence.unresolvedCount, 0);
+  // 修復之後的下一個片段回到最寬容那一格（前面已經有真實內容可對照＝
+  // precedingUserContext，給一次善意的合理懷疑），不是繼續維持立場。
+  assertEquals(repaired[13].agency?.decision.situation, null);
+  assertEquals(repaired[13].agency?.decision.evidence.unresolvedCount, 0);
+});
+
+Deno.test("Phase 3.0 工作項 B：同一段序列在 easy 晚一步、challenge 早一步收掉", () => {
+  const easy = replaySequence(
+    ERIC_SEQUENCE,
+    ERIC_AI_REPLIES,
+    "easy",
+    "practice_girl_001",
+  );
+  // easy 在條件式那幾格多一個無條件的「接住」（一般難度沒有）。
+  assertEquals(
+    easy[1].agency?.decision.allowedActSetId,
+    "answer_or_challenge_easy_v1",
+  );
+  assert(easy[1].agency?.decision.allowedActs.includes("acknowledge"));
+  assertEquals(
+    easy[2].agency?.decision.allowedActSetId,
+    "answer_or_challenge_easy_v1",
+  );
+  // 這一段逐字稿的欠債是 1→2→3 連跳，所以第 4 則在 easy／normal 都到門檻；
+  // 「easy 晚一步」的單獨證明在 conversation_agency_test.ts 的難度門檻測試
+  // （那裡的逐字稿讓欠債停在 2）。
+  assertEquals(easy[3].agency?.decision.forcedAct, "hold_position");
+
+  const challenge = replaySequence(
+    ERIC_SEQUENCE,
+    ERIC_AI_REPLIES,
+    "challenge",
+    "practice_girl_026",
+  );
+  // challenge：同一格改成直接收掉這串，不是維持立場。
+  assertEquals(challenge[3].agency?.decision.forcedAct, "end_low_value_loop");
 });

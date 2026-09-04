@@ -8825,16 +8825,26 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
     system.includes("不刻意迎合"),
     "缺補設定摩擦那一行（Phase 2.5 規則 4）",
   );
-  assert(system.includes("挑一個最合理的"), "缺 bounded choice 清單");
+  // Phase 3.0：欠債輪的兩個候選（條件式接受／指出跳題）渲染成同一句二選一，
+  // 不是「挑一個最合理的：A；B」清單——它們是同一個判斷的兩個分支。
+  assert(system.includes("先判斷他這句接不接得上"), "缺欠債輪的二選一指示");
+  assert(
+    system.includes("回之前先看整段"),
+    "缺 Phase 3.0 的常設整段檢查（Eric 2026-09-04）",
+  );
+  assert(
+    system.includes("不道歉、不解釋、不安撫"),
+    "缺 Phase 3.0 規則 5 的每輪條件式",
+  );
   const agency = succeeded?.conversationAgency as Record<string, unknown>;
   assertEquals(agency.agencyVersion, 1);
   assertEquals(agency.applied, true);
   assertEquals(agency.utteranceShape, "answer_candidate");
   assertEquals(agency.policyMode, "bounded");
-  // Codex round-1 P1-c：她剛問完「東東是誰」，所以這一句結構上是
-  // answer_candidate → bounded {acknowledge, return_to_topic}，不再是
-  // 一個「接住」都沒有的 topic_shift_v1。
-  assertEquals(agency.allowedActSetId, "answer_candidate_with_debt_v1");
+  // Codex round-1 P1-c ＋ Phase 3.0：她剛問完「東東是誰」，所以這一句結構上是
+  // answer_candidate → bounded；候選裡的「接受」現在是條件式的
+  // （accept_if_answered），不是無條件的 acknowledge。
+  assertEquals(agency.allowedActSetId, "answer_or_challenge_v1");
   assertEquals(agency.unresolvedCount, 1);
   assertEquals(agency.forcedAct, null);
   assertEquals(agency.coherenceBefore, null);
@@ -8847,8 +8857,7 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
   // 不是 forced，所以還沒真的發生。
   assertEquals(upsert.conversationAgency, {
     version: 1,
-    // P1-c：situation 從 abrupt_topic_shift 變成 ambiguous_fragment，
-    // 結構近似的 coherence 跟著從 disconnected 變 ambiguous。
+    // 分類器這一輪回報的 coherence 優先於結構近似。
     lastCoherence: "ambiguous",
     unresolvedCount: 1,
     priorChallengeIssued: false,
@@ -8966,10 +8975,7 @@ Deno.test("agency shadow：telemetry 有值但 applied=false，且不寫 thread 
   const agency = succeeded?.conversationAgency as Record<string, unknown>;
   assertEquals(agency.applied, false);
   assertEquals(agency.utteranceShape, "answer_candidate");
-  // Codex round-1 P1-c：她剛問完「東東是誰」，所以這一句結構上是
-  // answer_candidate → bounded {acknowledge, return_to_topic}，不再是
-  // 一個「接住」都沒有的 topic_shift_v1。
-  assertEquals(agency.allowedActSetId, "answer_candidate_with_debt_v1");
+  assertEquals(agency.allowedActSetId, "answer_or_challenge_v1");
   const upsert = state.rpcCalls.find((r) =>
     r.fn === "upsert_practice_relationship_thread"
   )!.params.p_recent_facts as Record<string, unknown>;

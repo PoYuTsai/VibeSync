@@ -149,6 +149,17 @@ export interface AgencyMetrics {
   readonly coincidenceOverlap: Rate;
   /** 規則 2：她說過此刻在忙，玩家硬推話題時她把自己的狀態丟掉（A24，≤10%）。 */
   readonly overridesOwnState: Rate;
+  // ── Phase 3.0（A25／A26 的長序列，Eric 2026-09-04）────────────────────
+  // 三個各自獨立的固定分母，直接對應 Eric 的三句驗收：
+  //   「她問過一次之後，第二個不相干的詞要指出他沒回答」
+  //   「第三個以後不要再給解讀」
+  //   「他真的解釋了就要恢復正常」
+  /** 序列第 2 則：她真的指出他沒回答／在跳題的比例（gate ≥80%）。 */
+  readonly sequenceChallenge: Rate;
+  /** 序列第 3 則以後：仍然盲目跟題的比例（gate ≤5%）。 */
+  readonly sequenceHoldBlindFollow: Rate;
+  /** 序列尾端玩家解釋後：她接受的比例（gate ≥90%）。 */
+  readonly sequenceRepairAccepted: Rate;
   /** 命中任何一個 mustForbid。 */
   readonly forbidViolation: Rate;
   /** 至少命中一個 mustAllow。 */
@@ -258,6 +269,15 @@ export function evaluateAgency(
     "coincidence_overlap",
   );
   const overridesOwnState = onKind("own_state_pushed", "overrides_own_state");
+  const sequenceChallenge = onKind(
+    "sequence_challenge",
+    "clarify_or_challenge",
+  );
+  const sequenceHoldBlindFollow = onKind("sequence_hold", "blind_follow");
+  const sequenceRepairAccepted = onKind(
+    "sequence_repair",
+    "accept_valid_answer",
+  );
 
   const violatesForbid = (p: JudgedProbeFull) =>
     (PROBE_SPECS.get(p.probeId)?.mustForbid ?? []).some((l) => p.labels[l]);
@@ -337,6 +357,9 @@ export function evaluateAgency(
     staircaseForPlayer,
     coincidenceOverlap,
     overridesOwnState,
+    sequenceChallenge,
+    sequenceHoldBlindFollow,
+    sequenceRepairAccepted,
     forbidViolation: bootstrapRate(judged.map(violatesForbid)),
     allowSatisfied: bootstrapRate(judged.map(satisfiesAllow)),
     perScenario,
@@ -396,6 +419,15 @@ export function formatMetrics(m: AgencyMetrics): string {
     }`,
     `【規則 2 gate ≤10%】丟掉自己剛說的狀態 overrides_own_state（A24）：${
       pct(m.overridesOwnState)
+    }`,
+    `【序列 gate ≥80%】第 2 則就指出他沒回答 sequenceChallenge（A25／A26）：${
+      pct(m.sequenceChallenge)
+    }`,
+    `【序列 gate ≤5%】第 3 則以後仍盲目跟題 sequenceHoldBlindFollow：${
+      pct(m.sequenceHoldBlindFollow)
+    }`,
+    `【序列 gate ≥90%】玩家解釋後接受 sequenceRepairAccepted：${
+      pct(m.sequenceRepairAccepted)
     }`,
     `違反 mustForbid：${pct(m.forbidViolation)}`,
     `滿足 mustAllow：${pct(m.allowSatisfied)}`,
