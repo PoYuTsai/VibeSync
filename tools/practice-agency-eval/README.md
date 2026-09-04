@@ -557,6 +557,76 @@ on 第 1–4 則做對了（問、蛤、指出他在講人名還是地名）。*
    off 基準也一起跳到 47.9%——**agency 開關在這個指標上分不出差別**，不要把它讀成
    產品改善。
 
+#### beginner ＋ `--state=1`（assisted 分支，跨輪真的帶 agency state）
+
+同樣 1,566 場、3,726 次生成、零失敗；judge 2,282 筆（解析失敗 4）。
+
+| 指標                          | gate |      beginner on＋state | 對照 standard on |
+| ----------------------------- | ---- | ----------------------: | ---------------: |
+| 【頭條】被帶著走              | ≤5%  |         6.6%（6.2–7.4） |  5.9%（5.3–7.1） |
+| 全體探針分母                  | ≤5%  |         4.9%（4.2–6.0） |  4.4%（4.2–5.0） |
+| `adopted_without_asking`      | —    |                   10.1% |             9.8% |
+| `asked_with_guess`            | —    |                   12.5% |            10.7% |
+| `false_challenge`             | ≤3%  |                **0.0%** |             0.0% |
+| `inconsistent_self_fact`      | 0    |                **0.0%** |             0.0% |
+| `interrogation`               | ≤5%  |                **0.0%** |             0.0% |
+| 序列：第 2 則質疑             | ≥80% |  **83.3%（75.8–88.3）** |            89.2% |
+| 序列：第 3 則以後盲目跟題     | ≤5%  |      26.2%（22.0–31.2） |            21.4% |
+| 序列：解釋後接受              | ≥90% | **97.5%（95.0–100.0）** |            95.8% |
+| 規則 5 助理式軟化             | ≤10% |      26.7%（15.0–40.0） |            20.0% |
+| `stance_persistence_scripted` | ≥70% |                   47.1% |            50.0% |
+
+跟 standard-on 幾乎打平（頭條 6.6% vs 5.9%，區間重疊）——**跨輪持久化狀態在這批
+情境上仍然量不到額外效益**，跟 2026-09-04／2026-09-05 兩輪同一個結論。artifact
+`out/2026-09-04-p30-beginner-on-state-x3(-judge).json`。
+
+#### 分類器回放（`classifier_replay.ts`，standard-on artifact，2,286 探針）
+
+| 指標                                               | gate |                這一輪 | 上一輪（Phase 2.6） |
+| -------------------------------------------------- | ---- | --------------------: | ------------------: |
+| JSON 解析失敗                                      | 不升 |  **0/2,286＝0.0% ✅** |                0.0% |
+| disconnected／repetitive 套 cap 後仍有正 heat      | 0%   |      **0/959＝0% ✅** |                  0% |
+| A01＋A09 有效短答判 connected                      | ≥90% | **114/120＝95.0% ✅** |               95.0% |
+| A01＋A09 的 connection 被判 defensive／overstepped | 0    |      **0/120＝0% ✅** |                  0% |
+
+coherence 分佈：connected 1,182／disconnected 958／ambiguous 145／repetitive 1。
+artifact `out/2026-09-04-p30-classifier-replay.json`。
+
+#### style 比值（`--style=1 --agency=on --repeat=3`，720 場零失敗）
+
+重心距離比值 **2.35**（角色間 1.43／同角色分半 0.61；三種分半 2.18–2.46），≥2.0
+✅ ——比 Phase 2.5 的 2.33 略高，區間內。守門退回 2/2,100、p50 838ms／p95
+1,257ms、 最長 prompt 7,840 code units。artifact
+`../practice-reply-style-eval/out/2026-09-04-p30-style-ratio.json`。
+
+#### 花費與沒有跑的東西
+
+DeepSeek：**$19.51 → $4.47（花 $15.04）**。跑了 standard
+off／on、beginner＋state、 分類器回放、style 比值，各自 judge
+完成。**沒有跑**：game 模式 off／on、難度軸 （easy／challenge）、以及用 v2
+判準重評 Phase 2.5 的 artifact——三者都會把餘額壓到 指示的 $4
+停損線以下，照指示停下來報數字。
+
+跑動途中的一個工具面發現（會影響下一輪的 wall clock）：**把 `run_agency.ts`／
+`judge_agency.ts` 的 stderr 用管線接 `tail` 會讓整支跑動慢大約 30 倍**（2,286
+筆的 judge 直跑約 3 分鐘，接 `| tail -1` 要 90 分鐘以上）。踩坑「shell 管線接
+tail 未開 pipefail
+會把測試失敗偽裝成成功」的鄰居案例——這次不是假綠，是把並行度吃光。 下一輪的
+driver script 一律把 stderr 直接導進檔案，不要接管線。
+
+#### 待辦（下一輪）
+
+1. **`sequence_hold` 是唯一沒有動的核心格**（19.3→21.4%）。結構層已經 forced
+   hold／end，模型不照做——這一格要嘛走後處理（偵測「回覆裡出現了玩家丟的新詞
+   ＋自身經歷」直接走第二 attempt 重寫），要嘛承認 prompt 對它無效。
+2. **`asked_with_guess` 三個 phase 都沒動**（Phase 2.5／2.6／3.0），建議寫成定論
+   停止嘗試純 prompt／候選清單路線。
+3. 規則 5 從 40%→20% 證明「給替代動作」有效；同一招可以試 A02／A08 那格
+   （一開場就丟裸詞，頭條剩餘命中的最大來源）。
+4. game 模式與難度軸這一輪沒有數字。
+5. `stance_persistence_scripted` 的 47.9%／50.0% 是 fixture
+   修好之後的**新基準**， 跟 Phase 2／2.5 的 8–13% 不可比。
+
 ### 2026-09-06 Phase 2.6（評測效度優先＋Codex round-1 五個 P1）
 
 **這一輪最重要的結論是「Phase 2.5
