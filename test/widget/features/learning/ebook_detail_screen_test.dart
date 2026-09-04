@@ -138,9 +138,10 @@ void main() {
     expect(find.text('免費試讀第一章'), findsNothing);
     expect(find.text('免費試讀'), findsNothing);
     expect(find.byIcon(Icons.lock_outline), findsNWidgets(3));
-    // premium 鎖卡要把 Essential 的多 3 冊賣出來（稽核 P3 補）。
+    // premium 鎖卡要把 Essential 的多 3 冊賣出來（稽核 P3 補）；
+    // 2026-09-04 工作包 7 拆短後的說法。
     expect(
-      find.textContaining('升級 Essential 再加開'),
+      find.textContaining('Essential 再多開《成為獎賞》三冊'),
       findsOneWidget,
     );
 
@@ -175,8 +176,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Essential 方案專屬'), findsOneWidget);
-    expect(find.textContaining('升級 Essential 再加開'), findsNothing);
+    expect(find.textContaining('Essential 專屬'), findsOneWidget);
+    expect(find.textContaining('Starter 可以讀第 2–4 冊'), findsOneWidget);
+    expect(find.textContaining('再多開《成為獎賞》'), findsNothing);
   });
 
   testWidgets('有試讀章的付費書仍然走試讀分支', (tester) async {
@@ -194,6 +196,12 @@ void main() {
       find.widgetWithText(BrandPrimaryButton, '訂閱後解鎖'),
       findsNothing,
     );
+    // 試讀卡（工作包 7 拆短）：先講這本的免費範圍與不用照順序讀，再一句講方案。
+    expect(
+      find.textContaining('其餘 1 章要訂閱；不用照順序讀'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Essential 再多開《成為獎賞》三冊'), findsOneWidget);
   });
 
   testWidgets('直接 deep link 進來時返回鍵回學習頁而不是退出 App', (tester) async {
