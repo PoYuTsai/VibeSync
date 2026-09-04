@@ -9419,7 +9419,7 @@ function persistedAgencyState(
 
 Deno.test("Codex round-1（新項）P1-1：修復輪（applied=false）也要推進狀態，priorChallengeIssued 真的歸零", async () => {
   const { state, succeeded } = await agencyRepairRun(
-    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false}`,
+    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"fabricatedSelfFact":false}`,
   );
   // 前提：這一輪確實是「沒有注入 guidance」的修復輪，不然這個測試是空的。
   const agency = succeeded?.conversationAgency as Record<string, unknown>;
@@ -9442,7 +9442,7 @@ Deno.test("Codex round-1（新項）P1-1：修復輪（applied=false）也要推
 Deno.test("Codex round-1（新項）P1-1：非 agency planner 這一輪真的質疑了，applied=false 也要寫進狀態", async () => {
   // 反向那一半：舊閘門讓「她其實質疑了、但 agency 沒介入」的輪次同樣寫不進去。
   const { state, succeeded } = await agencyRepairRun(
-    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"ambiguous","aiChallengedThisTurn":true}`,
+    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"ambiguous","aiChallengedThisTurn":true,"sharedPastClaim":false,"fabricatedSelfFact":false}`,
   );
   assertEquals(
     (succeeded?.conversationAgency as Record<string, unknown>).applied,
@@ -9461,7 +9461,7 @@ Deno.test("Phase 3.2 P1-3：shadow 模式即使分類器判 connected 也不寫 
   // 修復點是 agency 狀態的一部分，shadow 的契約是「只算 telemetry，不寫狀態」
   // ——所以整個 conversationAgency key 都不該出現，更不會有新欄位。
   const { state } = await agencyRepairRun(
-    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false}`,
+    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"fabricatedSelfFact":false}`,
     "shadow",
   );
   assertEquals(persistedAgencyState(state), undefined);

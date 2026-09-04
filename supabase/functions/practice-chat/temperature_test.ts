@@ -977,7 +977,14 @@ Deno.test("Phase 3.6 fabricatedSelfFact：只在 agencyEnabled 時進 prompt／s
       "fabricatedSelfFact：assistantReplyAfterUser 有沒有講她自己的具體經歷或事實",
     ),
   );
-  assert(on[0].content.includes("符合人設的日常細節"));
+  assert(
+    on[0].content.includes(
+      "符合她人設或職業生活（herSelfSources 有寫）的日常細節",
+    ),
+  );
+  assert(
+    on[1].content.includes(`職業生活：${base.profile.girl.professionPrompt}`),
+  );
   assert(on[0].content.includes('"fabricatedSelfFact":false}'));
 
   // 旗標關：模型自己多吐這個 key 照舊丟 extra fields。
