@@ -102,99 +102,149 @@
 - 2026-09-04（Phase 3.3）：`agency-phase33` 分支（HEAD `ef635c20`，接手 Phase 3.3 的 `--shape=off|prompt|truncate` 三臂旋鈕接線）新增情境 A27（`f0701067`：裸社群帳號／ID，玩家丟 `debby1993wu`／`ig: chen.yun_`／`@kevin_lin88`，正解是不能宣稱認識這人或有共同朋友——Eric 手機真機回報的「這是我们朋友」共同記憶捏造，沿用既有 `accommodating_invention`／`accommodating_self_fact` 標籤，不需要新標籤），並加一個 runner 級 `shapeDropped` 逐輪 telemetry（`bd888002`，供 truncate 臂事後統計丟了幾則泡泡）；34 支測試綠。三臂黑箱（Eric 核准 $3.50 上限）：`A25,A26,A27,A02,A08`、standard、`--agency=on --style=1`、20 位 × repeat 1（估算若用 repeat=2 會落在 $5–6 超過上限，照指示降 repeat 不砍情境）；三臂各 100 場、480 次生成、零失敗，judge 各 340 筆（解析失敗 0／1／0，皆 <0.5%）。**真正的信號**：`sequenceHoldBlindFollow`（第 3 則以後仍盲目跟題，Phase 3.0／3.1／3.2 三輪唯一沒動過的格）在 truncate 臂第一次出現方向一致的下降——25.8%（off）→19.3%（prompt）→13.3%（truncate），off／truncate 的信賴區間只在邊緣重疊（16.7–18.3），機制上說得通（truncate 是生成後結構截斷，直接砍掉她破案後追加的無來源經歷），但 n=120、repeat=1 還不足以下定論，下一輪建議只對 truncate 單臂加碼 repeat=3 驗證。頭條與 `accommodating_invention`／`asked_with_guess` 三臂互相落在信賴區間內，分不出差異。**A27 誠實結論**：三臂逐字稿都重現了 Eric 回報的行為（「我想起來了」「你是咖啡店那個客人吧」），但 judge 的 `accept_valid_answer` 先決條件（她問過、玩家這句回答到那個問題）把 A27.p2 大多數回覆（off 18/20、prompt 17/20、truncate 15/20）判離 `accommodating_invention` 的審查範圍之外，這是評測本身的已知限制，不是產品行為結論——下一輪要嘛改 A27.p1 的腳本前文、要嘛收緊判準先決條件。安全側維持（`inconsistent_self_fact`／`interrogation` 三臂皆 0%）。花費：$19.22→$18.44（估算落在 $0.78，遠低於 $3.50 上限）。數字、逐句對照與誠實解讀在 `tools/practice-agency-eval/README.md`「Phase 3.3」節。 **確認跑（同分支，未改程式碼）**：只留 off／truncate 兩臂放大到 20 位 × repeat 3（`A25,A26,A27`），180 場 × 2 臂、1,260 次生成 × 2、零失敗，judge 各 900 筆（解析失敗 3／0）。`sequenceHoldBlindFollow` 的 truncate 信號在 3 倍樣本下**站住**——off（20.6%、17.8–24.5）與 truncate（12.5%、9.7–16.1）信賴區間完全分開；`sequenceChallenge`／`sequenceRepairAccepted` 點估計略降但區間跟 off 重疊，沒有可歸因給 truncate 的回歸（`sequenceChallenge` 的 truncate 下緣貼著 80% gate，值得下一輪繼續盯）。同輪先修了 A27.p2 的量測缺口（p1/p2/p4 間插腳本化填充輪，讓 p2 上下文不再吃到 p1 真實生成的『你是？』），但確認跑顯示**判準本身還是沒修到**——`accept_valid_answer` 依然吃掉八成左右的 A27.p2 回覆（off 81%、truncate 83%），`accommodating_invention` 命中率沒有變化（2%／0%）；唯一乾淨可比的是沒有腳本前文的A27.p1。**本輪花費 $2.89，超出 Eric 核准的 $2.00 上限約 $0.89**——估算沿用了混合5 情境的平均單價，低估了 A25／A26／A27 這種隨則數累加上下文的長情境成本，是流程上的估算失誤，已在 README 誠實記錄。數字與逐字對照在 README「Phase 3.3 確認跑」節。**2026-09-04 A27 重跑（封閉語境，$0.70 硬上限）**：Codex R1 修完兩個 A27 量測缺口（`95cc242e` 填充對話改真封閉、`04cee378` Game 修復優先輪截斷免疫）之後，只重跑 A27（off／truncate 各 20 位 × repeat 3，60 場、180 生成、零失敗，judge 各 180 筆，解析失敗 0／1）驗證修正效果；stop-loss 依協定算出的兩個估算法（call-count $0.40、token 估價 $0.84）都被同一時間點的實測餘額差（臂 1 實測僅 $0.22）證偽為過度保守（估算未計入 DeepSeek prompt 快取），改用實測數字判斷後繼續跑完臂 2，兩臂合計實際花費 **$0.31**，遠低於上限，估算方法的落差已在 README 記錄供下一輪校準。**診斷結果**：A27.p2 的 `accept_valid_answer` 灰色地帶從修正前 81%／83%（off／truncate）降到修正後 **43%／33%**，方向正確且降幅顯著，但沒有掉到低——判準本身仍會把「回答了問題」與「回答的內容裡塞了一段查無來源的具體情節」混在一起（`accommodating_invention` 全體仍是 0/180、0/179，逐字覆核 practice_girl_018「那天在酒吧真的很吵」仍被判成 `accept_valid_answer`＋`plausible_self_detail`）；關鍵字粗篩（我想起來／認識／朋友／客人／那天）人工複核後，off 5 則、truncate 3 則是明確的「無中生有共同際遇」捏造，兩臂都還在，封閉語境修正沒有讓行為消失，只是讓 judge 更少誤判。下一輪要收緊的仍是 `accept_valid_answer`／`plausible_self_detail` 判準本身。數字、逐探針表與逐字對照在 README「2026-09-04 A27 重跑（封閉語境）」節。
 - 2026-09-04（Phase 3.4 評測）：`agency-phase34-eval` 分支（branch 自 main `bafd61f8`）分兩部分，只動評測工具，不動 production 程式碼。**Part 1（judge 判準 v3）**：`accommodating_invention` 加黃金法則例外——她的回覆宣稱認出玩家本人、共同過去相遇、共同朋友，即使玩家那句話字面上「回答到了問題」也算，不再被 `accept_valid_answer` 的先決條件免責；`plausible_self_detail` 明文排除涉及玩家本人或共同過去的內容；parser 移除 `accept_valid_answer` 與 `accommodating_invention` 的互斥檢查（`adopted_without_asking` 那兩條互斥不變）。`evaluate_agency.ts` 未改動——headline 本來就是 `adopted_without_asking || accommodating_invention`，A27 的 `mustAllow` 從未含 `accept_valid_answer`。新增 judge 測試釘住新 prompt 文字與 parser 接受新組合，`deno test` 35 passed（原 34 + 1）。**Part 2（A27 v3 重評，零新生成，只重判既有 artifact）**：對「A27 重跑（封閉語境）」的 off／truncate artifact 各 180 探針用 v3 judge 重評（`--out` 另存 `-judge-v3.json`，不覆蓋 v2），DeepSeek $14.20→$14.16，兩臂合計花費 $0.04，遠低於 $0.40 stop-loss。頭條隨之如實升高（off 11.1%→15.0%、truncate 13.4%→17.4%），`accommodating_invention` 從全 0 變成 off 3/180、truncate 1/178——**不是行為變差，是量測缺口變窄**。上一節人工複核找到的 5＋3 則共同記憶捏造，v3 抓到 4/8（含一則親眼驗證 `accommodating_invention` 與 `accept_valid_answer` 同時成立），剩下 4 則是兩類誠實殘留缺陷：p1 位置（沒有腳本前文）模型完全沒往下檢查內容；truncate 臂用「…對吧」這種問句形式提出捏造前提時，模型讀成單純確認／質疑而不是宣稱。下一輪具體目標：prompt 補一句「問句形式提出的捏造共同熟人前提，一樣算」。數字與逐則對照在 README「A27 v3 重評」節。分支未推、未合併 main。
 - 2026-09-05（Phase 4.0）：`agency-phase40` 分支（branch 自 main `e54885ce`）落地 `ConversationAgencyProfile` 四欄位與四個 planner／threshold consumer，`strangerCuriosity` 併入既有 `questionHabit`、80 位走 preset 預設；1,826 支測試綠（＋18）、等價 harness golden 未重印、離線回放證明三個 consumer 在 A28 真實逐字稿上點火且未擾動 Phase 3.8。本輪零模型呼叫，沒有新的黑箱數字。詳見本檔「Phase 4.0」節。
-- 2026-09-05（Phase 4.2）：`agency-phase42` 分支（branch 自 main `a473322f`）三件事，**零模型呼叫**。(A) 跨輪立場 85% 的 15 個失敗探針逐筆診斷：結構層給「接住」候選＝**0 筆**（15 筆全是 `abrupt_topic_shift` 的 `answer_or_challenge{,_persist}_v1` 二選一，沒有無條件 `acknowledge`），14 筆是模型服從率（她真的質疑了，只是同一則又夾一個猜測）、1 筆 judge 誤判，另記一筆指標定義帳（`stance_persistence_conditional` 把頭條 gate 明文排除的 `asked_with_guess` 算進分子）——**依診斷結論不動程式**。(B) `forceAskUser` 排除 `utteranceShape === "reaction"` 的停滯輪（一行條件），離線重建 A29.p2 forced **38/40 → 0/40**、A28.p3 仍 36/40、主矩陣 forced 總數 315 → 315 不變。(C) `run_agency.ts` 新增 `--thread-salt`（預設空＝逐字舊行為），artifact meta 記 `fixture.threadSalt`，`replay_plan.ts` 同源重建，讓兩輪黑箱累積 0/80 的 `initiative` 分支量得到。1,849 支測試綠（＋1）、eval 工具 38 支綠（＋2）、等價 harness 6 綠且 off golden 未重印。詳見本檔「Phase 4.2」節。
+- 2026-09-05（Phase 4.2）：`agency-phase42` 分支三件事，**零模型呼叫**。(A) 跨輪立場 85.0% 的 15 個失敗探針**逐泡泡**診斷（denominator=100、successes=85、failures：adopted_only 1／asked_with_guess_only 14／both 0）：15/15 的候選組都沒有無條件 `acknowledge`，但**第一顆就給猜測有 6 筆、整則零質疑有 2 筆**，所以只能說「候選選擇層沒有授權無條件接住」；照 production 的 `truncateAgencyShape` 離線重放＝**改善 1／不變 12／惡化 2**，前一版「truncate 是唯一結構出口」已撤回。**不動程式**。(B) `forceAskUser` 排除純反應詞輪，且窗口語意改成「玩家**給了內容**的回合數在 [2,6] 內」＋第 10 個 user 回合硬上限（Eric 2026-09-05 拍板「規則綁對方給了什麼，不綁第幾回合」）；三支狀態軌跡測試釘住「反應詞輪不消耗窗口、下一輪他講了東西就補問」，離線重建 A29.p2 forced **38/40 → 0/40**、A28.p3 仍 36/40、主矩陣 forced 315 → 315 逐格不變。(C) `run_agency.ts` 新增 `--thread-salt`（預設空＝thread id／prompt／生成行為不變，artifact meta 多 `fixture.threadSalt`），`replay_plan.ts` 同源重建並測真實舊 artifact 退路。評測指標：`stance_persistence_conditional` 改名 `_strict_conditional`（公式不動、數字可比）並新增 `stance_persistence_adopted_only`（on 99.0%／off 91.7%），另加 `curiosity_within_six_content_turns`。1,852 支測試綠（＋4）、eval 工具 40 支綠（＋4）、等價 harness 6 綠且 off golden 未重印。Codex R1 BLOCKED 的兩個 P1／一個 P2／三個 P3 全數處置，詳見本檔「Phase 4.2」節。
 - 2026-09-05（Phase 4.1）：`agency-phase41` 分支（branch 自 main `21b43a5c`）落地 Hint／Debrief P2——教練指得出「沒有回答她、連續丟詞」，且她的補救不算玩家得分。新檔 `agency_coaching.ts` 兩支純函式＋21 支測試，hint／prompt 各一個選填參數，門檻與 chat 路徑同源（難度／isGame／角色 agency profile），旗標 `on` 才進 prompt；1,848 支測試綠（＋22）、等價 harness off／shadow golden 未重印且新增白名單釘住「旗標 on 時 11 個 hint／debrief 案例必須不同」。本輪零模型呼叫，沒有新的黑箱數字。Codex R1 BLOCKED（三個 P2＋四個 U）已全數處置，R2 **APPROVED_WITH_RISK**（撤銷 R1 的 P1、無 P0/P1/P2）的一個 P3 與三個 U 也已修完，HEAD `977ec7e8`。詳見本檔「Phase 4.1」節。
 
 ## Phase 4.2 — 立場持久診斷、停滯輪不強制問、評測 salt（2026-09-05）
 
-三個關切：(A) 跨輪立場 `stance_persistence_conditional` 85.0% → 95%、(B) 停滯輪的強制問法捏造共同經歷、(C) `initiative` 分支量不到。**零模型呼叫**，全部用既有 artifact 離線重建。
+三個關切：(A) 跨輪立場 85.0% → 95%、(B) 停滯輪的強制問法捏造共同經歷、(C) `initiative` 分支量不到。**零模型呼叫**，全部用既有 artifact 離線重建。Codex R1 判 **BLOCKED**（兩個 P1、一個 P2、三個 P3），逐項處置寫在本節末。
 
-### (A) 跨輪立場：15 個失敗探針逐筆診斷 → **(i)＝0，不動程式**
+### (A) 跨輪立場：15 個失敗探針逐**泡泡**診斷 → 不動程式
 
-分母出處：`tools/practice-agency-eval/out/2026-09-05-p4full-beginner-on-judge.json`（A01–A15、20 位、repeat 3）。`evaluate_agency.ts` 的條件式分母＝同一場裡「前一個探針她真的 `clarify_or_challenge` 過」的相鄰配對，分子＝下一個 `stance_followup` 探針**沒有** `blind_follow`（`blind_follow` ＝ `adopted_without_asking || asked_with_guess`）。n=100、失敗 15。
+分母出處：`out/2026-09-05-p4full-beginner-on-judge.json`（A01–A15、20 位、repeat 3）。指標＝同一場裡「前一個探針她真的 `clarify_or_challenge` 過」的相鄰配對，成功＝這一輪沒有 `blind_follow`。
 
-**15 筆全部落在同兩個探針位置**：`A06.p3`（第三個地名「淺草」）7 筆、`A14.p3`（「馬尼拉」）8 筆。她上一輪（p2）在這 15 筆裡**每一筆都真的質疑過**（分母的定義如此，逐則覆核也成立，見表格第 4 欄）。
+**denominator = 100｜successes(strict) = 85｜failures = 15**，拆解：`adopted_without_asking` 只有 1、`asked_with_guess` 只有 14、兩個同時成立 0。15 筆全部落在 `A06.p3`（第三個地名「淺草」）7 筆＋`A14.p3`（「馬尼拉」）8 筆。
 
-結構層在這 15 輪給的候選清單只有兩種，**沒有一筆含無條件 `acknowledge`**：
+結構層在這 15 輪給的候選清單只有兩種，**沒有一筆含無條件 `acknowledge`**：`answer_or_challenge_v1`（10 筆，`["accept_if_answered","challenge_relevance"]`）與 `answer_or_challenge_persist_v1`（5 筆，多一個 `return_to_topic`）。15 筆的 `policyMode` 全是 `bounded`、`situation` 全是 `abrupt_topic_shift`、`unresolvedCount` 全是 2。`accept_if_answered` 是**條件式**接受，不是無條件的 `acknowledge`。
 
-- `answer_or_challenge_v1`（10 筆）＝`["accept_if_answered", "challenge_relevance"]`，計畫行「先判斷他這句接不接得上：真的回答了你上一句…就接受…；對不上就直接說他沒回答你、又跳到別的，不要順著新名詞聊」。
-- `answer_or_challenge_persist_v1`（5 筆，`topicPersistence ≥3` 的角色）＝再多一個 `return_to_topic`，計畫行句尾多「或直接把話拉回你上一題」。
+#### 逐泡泡 ordered acts ＋ truncate 離線重放
 
-15 筆的 `policyMode` 全部是 `bounded`、`situation` 全部是 `abrupt_topic_shift`、`unresolvedCount` 全部是 2、`applied` 全部 true。`accept_if_answered` 是**條件式**接受（「真的回答了才接受」），不是無條件的 `acknowledge`。
+泡泡標籤是**人工閱讀**（challenge＝點破他沒回答／在跳題；guess＝替他補一個意圖；accept＝順著接；other＝自述或語氣詞），不是 judge 輸出。truncate 欄位是照 production 的 `truncateAgencyShape` 真的跑一次（條件：`isAgencyShapeExperimentTurn` ∧ 泡泡數 > 1 ∧ `isQuestionText(第一顆)`，而 `QUESTION_RE` **錨在句尾**——句尾接 emoji 或「喔」都不算問句）。
 
-| 情境 | 角色 | repeat | 她上一輪（p2）回了什麼 | 玩家這句形狀 | allowedActSetId | 她這一輪回了什麼（前 60 字） | judge 判到的失敗標籤 |
-| --- | --- | --: | --- | --- | --- | --- | --- |
-| A06 | 064 | 3 | 蛤？／你到底想講什麼啦 | answer_candidate | `answer_or_challenge_persist_v1` | 你一直丟地名給我…是玩猜謎嗎 哈哈 | `asked_with_guess` |
-| A06 | 083 | 1 | 蛤 你跳題跳太快了吧／一下韓國一下東京 你… | answer_candidate | `answer_or_challenge_v1` | 所以你是要約我去淺草？？／還是你只是無聊在報地名啊大哥 | `asked_with_guess` |
-| A06 | 083 | 3 | 蛤 你跳太快了吧／一下韓國一下東京／你到底想… | answer_candidate | `answer_or_challenge_v1` | 阿你是在測試我懂不懂地名喔／還是要我排行程／說清楚一點我比較好接 | `asked_with_guess` |
-| A06 | 004 | 1 | 蛤 你跳太快了吧 | answer_candidate | `answer_or_challenge_v1` | 你是想問我有沒有去過淺草嗎 | `asked_with_guess` |
-| A06 | 089 | 3 | 所以你是要猜我想去哪裡玩是不是 | answer_candidate | `answer_or_challenge_v1` | 你該不會是在玩地名接龍吧 | `asked_with_guess` |
-| A06 | 006 | 3 | 蛤 怎麼又跳東京了／你前面不是才說韓國… | answer_candidate | `answer_or_challenge_v1` | 你話題跳太快了啦 😅／我剛上完課有點累耶／你是想約我去玩還是怎樣 | `asked_with_guess` |
-| A06 | 091 | 1 | 蛤？你怎麼突然跳到東京去了哈哈／我剛剛不是在… | answer_candidate | `answer_or_challenge_persist_v1` | 你是要約我去淺草玩哦？／突然說地名我有點跟不上啦 | `asked_with_guess` |
-| A14 | 064 | 2 | 你怎麼突然跳去曼谷了／是在問我旅遊經驗嗎？我… | answer_candidate | `answer_or_challenge_persist_v1` | 你在報地名嗎😂／我沒去過馬尼拉啦／是要聊旅遊還是單純亂講的 | `asked_with_guess` |
-| A14 | 007 | 3 | 曼谷？你是要揪我去泰國喔／還是剛看完什麼旅遊… | answer_candidate | `answer_or_challenge_v1` | 馬尼拉勒／你是要把我當導航是不是／一路報城市名喔😂 | `adopted_without_asking` |
-| A14 | 002 | 1 | 你跳題也跳太快了吧🤣／一下好市多一下曼谷 | bare_fragment | `answer_or_challenge_v1` | 你是在玩地名接龍嗎😂／一下好市多一下曼谷現在又馬尼拉／好啦我猜你想自助旅行？ | `asked_with_guess` |
-| A14 | 002 | 2 | 你跳題也跳太快了吧／一下好市多一下曼谷 到底… | answer_candidate | `answer_or_challenge_v1` | 你是在測試我有沒有在看喔／連三個地名是勒創啥／還是你想約我去哪一個 我先說我沒錢啦 | `asked_with_guess` |
-| A14 | 083 | 2 | 曼谷？／你跳題跳太快了吧 | answer_candidate | `answer_or_challenge_v1` | 你是在考我地名嗎／還是想約我出國 | `asked_with_guess` |
-| A14 | 012 | 2 | 喔…你是說好市多有賣曼谷的什麼東西嗎？還是你想去… | answer_candidate | `answer_or_challenge_persist_v1` | 你一下好市多一下曼谷現在又馬尼拉，到底想表達什麼啦😆／是最近有在規劃旅行嗎？ | `asked_with_guess` |
-| A14 | 013 | 2 | 你跳題跳超快的耶／剛還在好市多現在又曼谷 | bare_fragment | `answer_or_challenge_v1` | 你是要把東南亞城市名唸一輪嗎😂／還是其實想約我去旅行／不過我明天還要上班勒 | `asked_with_guess` |
-| A14 | 061 | 3 | 曼谷？你跳題也跳太快了吧😆／你是想問我最近有… | answer_candidate | `answer_or_challenge_persist_v1` | 你是一直在報地名嗎😆／我沒去過馬尼拉耶，你這是想找我聊旅遊，還是純粹報站名 | `asked_with_guess` |
+| # | 情境／角色／rep | 逐泡泡 ordered acts | truncate 後 | 分類 |
+| --: | --- | --- | --- | --- |
+| 1 | A06／064／3 | b1 **challenge＋guess 同一顆**「你一直丟地名給我…是玩猜謎嗎 哈哈」 | 單顆，不截斷 | 不變 |
+| 2 | A06／**083／1** | b1 **guess**「所以你是要約我去淺草？？」／b2 challenge「還是你只是無聊在報地名啊大哥」 | 只留 b1 | **惡化**（砍掉質疑、留下猜測） |
+| 3 | A06／083／3 | b1 guess「阿你是在測試我懂不懂地名喔」／b2 guess「還是要我排行程」／b3 challenge「說清楚一點我比較好接」 | b1 句尾「喔」不算問句 → 不截斷 | 不變 |
+| 4 | A06／**004／1** | b1 **guess**「你是想問我有沒有去過淺草嗎」（**整則零 challenge**） | 單顆，不截斷 | 不變 |
+| 5 | A06／089／3 | b1 guess「你該不會是在玩地名接龍吧」（**整則零 challenge**） | 單顆，不截斷 | 不變 |
+| 6 | A06／006／3 | b1 challenge「你話題跳太快了啦 😅」／b2 other「我剛上完課有點累耶」／b3 guess「你是想約我去玩還是怎樣」 | b1 非問句形狀 → 不截斷 | 不變 |
+| 7 | A06／**091／1** | b1 **guess**「你是要約我去淺草玩哦？」／b2 challenge「突然說地名我有點跟不上啦」 | 只留 b1 | **惡化**（砍掉質疑、留下猜測） |
+| 8 | A14／064／2 | b1 challenge「你在報地名嗎😂」／b2 other「我沒去過馬尼拉啦」／b3 guess「是要聊旅遊還是單純亂講的」 | 「嗎」後接 emoji → 不截斷 | 不變 |
+| 9 | A14／007／3 | b1 other「馬尼拉勒」／b2 challenge「你是要把我當導航是不是」／b3 challenge「一路報城市名喔😂」 | 不截斷 | 不變（judge 判 `adopted_without_asking`＝誤判） |
+| 10 | A14／002／1 | b1 challenge「你是在玩地名接龍嗎😂」／b2 challenge「一下好市多一下曼谷現在又馬尼拉」／b3 guess「好啦我猜你想自助旅行？」 | emoji 結尾 → 不截斷 | 不變 |
+| 11 | A14／002／2 | b1 guess「你是在測試我有沒有在看喔」／b2 challenge「連三個地名是勒創啥」／b3 guess「還是你想約我去哪一個 我先說我沒錢啦」 | b1 句尾不符 → 不截斷 | 不變 |
+| 12 | A14／083／2 | b1 challenge「你是在考我地名嗎」／b2 guess「還是想約我出國」 | 只留 b1 | **改善** |
+| 13 | A14／012／2 | b1 challenge「…到底想表達什麼啦😆」／b2 guess「是最近有在規劃旅行嗎？」 | emoji 結尾 → 不截斷 | 不變 |
+| 14 | A14／013／2 | b1 challenge「你是要把東南亞城市名唸一輪嗎😂」／b2 guess「還是其實想約我去旅行」／b3 other「不過我明天還要上班勒」 | 不截斷 | 不變 |
+| 15 | A14／061／3 | b1 challenge「你是一直在報地名嗎😆」／b2 other＋guess「我沒去過馬尼拉耶，你這是想找我聊旅遊，還是純粹報站名」 | 不截斷 | 不變 |
 
-**分類**：
+**ordered acts 統計**：第一顆是 challenge **7 筆**、第一顆是 guess **6 筆**、第一顆是 other **1 筆**、challenge 與 guess 擠在同一顆 **1 筆**。**整則完全沒有 challenge 泡泡：2 筆**（A06／004／1、A06／089／3）。
 
-- **(i) 結構層給了「接住」候選＝0 筆。** 15 筆的候選清單裡沒有一個無條件 `acknowledge`；`priorChallengeIssued` 那把刀已經在 Phase 2.7／3.0 落地（`abrupt_topic_shift` 的候選組本來就不含 `acknowledge`，只有 easy 難度的 `answer_or_challenge_easy_v1` 才有）。**因此本輪不對立場持久動任何結構刀。**
-- **(ii) 結構已是二選一但模型仍夾猜測＝14 筆。** 每一筆她**都指出了跳題**（「你跳題跳太快了吧」「到底想表達什麼啦」「你是在考我地名嗎」），只是在同一則的第 2／3 顆泡泡又補一個猜測（「還是想約我出國」「好啦我猜你想自助旅行？」）。這是模型服從率，不是候選清單。3.7／3.8 的教訓（綁字無效、v2 綁緊反而更差）在這裡直接適用，所以**不動措辭**。唯一還沒試過的結構出口是 Phase 3.3 就存在的 `--shape=truncate` 生成後截斷（`AGENCY_SHAPE_EXPERIMENT_SET_IDS` 正好就是 `answer_or_challenge_v1` 這一家），production `PRACTICE_AGENCY_SHAPE_EXPERIMENT` 目前是 `off`；要不要開是**產品決定**（截斷會砍掉她第二、三顆泡泡的內容），不在本輪範圍。
-- **(iii) 判準問題＝1 筆明確＋整個指標定義一筆帳。** `practice_girl_007`／A14 repeat 3 被判 `adopted_without_asking`，但她的回覆是「你是要把我當導航是不是／一路報城市名喔」——這是質疑不是跟題，judge 誤判。更大的一筆是**指標定義本身**：`stance_persistence_conditional` 用 `blind_follow ＝ adopted_without_asking || asked_with_guess`，而 Eric 2026-09-03 拍板的頭條 gate 明文把 `asked_with_guess` 排除在外（「她好歹有問一句」，見 `AgencyMetrics.blindTogether` 註解）。同一份 artifact 若照頭條的家族定義算，這條的分子只剩 1 筆（那筆還是誤判），rate ＝ 99–100%。**兩條線用互相矛盾的「被帶著走」定義，是這個 gate 一直過不了的主因之一**；要不要把 `stance_persistence_conditional` 的分子改成只認 `adopted_without_asking`，是判準決定，本輪只記錄不擅自改（改了會讓 Phase 1 以來的所有歷史數字不可比）。
+**truncate 三分統計**：**改善 1 筆**（A14／083／2）、**不變 12 筆**、**惡化 2 筆**（A06／083／1、A06／091／1——第一顆就是猜測且帶問號，截斷正好留下猜測、砍掉後面的質疑）。
 
-**一句話**：立場持久不是結構層漏給候選，是**模型服從率（14/15）＋判準定義（15/15 都受影響）**的問題。
+#### 能成立的結論（Codex R1 P1，前一版寫過頭）
 
-### (B) 停滯輪不強制問他認識管道（結構修，`turn_response_plan.ts`）
+1. **候選選擇層沒有授權無條件接住**：15/15 的 allowed-act set 都沒有無條件 `acknowledge`。這**不等於**結構層已經充分約束混合輸出——第一顆就給猜測、或整則只有猜測，候選清單擋不到。
+2. **`truncate` 不是「唯一結構出口」**：在這 15 筆上 1 改善／12 不變／2 惡化，淨效果為負，且 `QUESTION_RE` 錨句尾讓它在中文語氣詞／emoji 結尾的泡泡上大量失效。前一版「唯一結構出口是 truncate」是錯的推論，已撤回。
+3. 剩下的失敗**不是候選清單問題**，但也**不是單一原因**：有服從率（先質疑再補猜測）、有形狀（猜測排在第一顆）、有判準（見下）。本輪不下第二刀。
 
-Phase 4 完整黑箱：A29（玩家只回「哈哈」「嗯嗯」）on 臂 `A29.p2` forced ask **38/40**，同一個探針位置兩輪獨立黑箱累積 `accommodating_invention` **4/80**（Alice「那天在酒吧」、Lina「我們店裡」、Mia「宣稱玩家曾在路上搭話」、Lumi「你那天怎麼會出現在我工作的那邊」）。玩家這句沒給任何內容，卻被 planner 逼著問「他是從哪裡看到你的」，模型只能自己補一個共同場景出來。
+#### 判準：兩條指標並列，不改舊指標（Codex R1 P2）
 
-**改動一行條件**：`forceAskUser` 多一個 `agency.decision.evidence.utteranceShape !== "reaction"`。跟 Phase 4.0 的 `initiative` 分支用**同一個**結構訊號（`REACTION_RE`：只有招呼／情緒反應詞、不含第一人稱、非問句、非明示換題），不新增偵測器、不判語意。下一輪他真的講了東西再問。`askedAboutUser` 不會因此黏住——跳過的輪次 `askUserFocus` 是 `undefined`，handler／runner 的狀態推進就不會把這場標成「問過了」。
+Codex 的反駁成立：「好歹有問一句」通過廣義盲從指標，不代表通過「上一輪已質疑、這一輪是否守住」的嚴格指標；直接改分子＝改尺過 gate。所以**舊公式一字不動**，只做兩件事：
 
-選結構修不選措辭修的理由：3.7（prompt 加一行）零效果、3.8 v2（綁緊措辭）10/40→2/40、v3（形狀刀）10/40→6/40，三次都證明在這條路徑上綁字無效；而且捏造的根因是**「沒有內容還被要求問」這個局面**本身，措辭改不掉局面。
+- 改名 `stance_persistence_conditional` → **`stance_persistence_strict_conditional`**（公式與 Phase 1 以來的歷史數字逐字相同、可直接比大小）。
+- 新增 **`stance_persistence_adopted_only`**（同一批配對、同一分母，失敗只算 `adopted_without_asking`＝Eric 2026-09-03 拍板的頭條定義）。
 
-**離線重建（`replay_plan.ts`，零呼叫，artifact `out/2026-09-05-p4spec-beginner-on.json`，A25/A26/A28/A29 × 20 位 × repeat 2）**：
+Phase 4 主矩陣重算（`evaluate_agency.ts`，零呼叫）：
 
-| 探針 | base forced | HEAD forced | 說明 |
-| --- | --: | --: | --- |
-| A29.p1 | 0/40 | 0/40 | 第 1 個 user 回合，本來就在視窗外（base 記 `why:other`，HEAD 記 `why:reaction`） |
-| **A29.p2** | **38/40** | **0/40** | 本刀的目標格；剩 2 場本來就因 `aiQuestionStreak` 不強制 |
-| A28.p3 | 36/40 | **36/40** | 有內容的分享輪（「哈哈 我剛下班 在想晚餐要吃什麼」）不受影響 |
-| A28.p4 | 1/40 | 1/40 | 不變 |
-| A28.p2／p5／p6 | 0 | 0 | 不變 |
+| 指標 | on（n=100） | off（n=48） |
+| --- | --- | --- |
+| `stance_persistence_strict_conditional` | **85.0%**（78.0–93.0） | **77.1%**（66.7–87.5） |
+| `stance_persistence_adopted_only` | **99.0%**（97.0–100） | **91.7%**（83.3–97.9） |
+| failures_by_label | adopted_only 1、asked_with_guess_only 14、both 0 | adopted_only 4、asked_with_guess_only 7、both 0 |
 
-**主矩陣（A01–A15、20 位 × repeat 3，`out/2026-09-05-p4full-beginner-on.json`）逐格對照：forced 總數 base 315 ＝ HEAD 315，沒有任何一個探針位置的計數改變**——這一刀只碰得到純反應詞那一種輪次。
+兩條線的 on 都優於 off。**release gate 用哪一條由 Eric 決定，本輪不改 gate**（計畫 Phase 4 節的 ≥95% 仍掛在嚴格那條）。
 
-`replay_plan.ts` 的 `why:` 診斷同步加一格 `reaction`（否則跳過的輪次會落進沒有資訊的 `other`）。
+### (B) 停滯輪不強制問他認識管道（結構修）
+
+Phase 4 完整黑箱：A29（玩家只回「哈哈」「嗯嗯」）on 臂 `A29.p2` forced ask **38/40**，同一探針位置兩輪獨立黑箱累積 `accommodating_invention` **4/80**。玩家這句沒給任何內容，卻被 planner 逼著問「他是從哪裡看到你的」，模型只能自己補一個共同場景出來。
+
+**兩處改動**（`turn_response_plan.ts`）：
+
+1. `forceAskUser` 多一個 `agency.decision.evidence.utteranceShape !== "reaction"`——純反應詞輪不強制問。用的是 Phase 4.0 `initiative` 分支同一個結構訊號（`REACTION_RE`），不新增偵測器、不判語意。
+2. **窗口語意改成「玩家給了內容的回合數在 [2,6] 內」**（`ASK_USER_WINDOW_USER_TURNS` 現在數的是內容輪，不是原始回合序號），原始 user 回合數只留一條硬上限 `ASK_USER_WINDOW_MAX_USER_TURNS = 10` 防呆。
+
+第 2 點是 **Codex R1 P1**：只做第 1 點的話，第 2～6 回合全是「哈哈」「嗯嗯」時，第 7 回合他終於講了東西也會因為 `userTurnCount > 6` 而**永遠不再強制**，Phase 3.8 的保證在純反應場次整場失效。
+
+> **契約修訂（Eric 2026-09-05 拍板）**：「規則綁對方給了什麼，不綁第幾回合；回合數只當上限防呆。」Phase 3.7／3.8 文案裡的「**六回合內問到他**」自本節起改讀成「**對方給內容後六輪內問到他**」；純反應詞輪不消耗窗口，第 10 個 user 回合是硬上限。
+
+`askedAboutUser` 不會因跳過而黏住——跳過的輪次 `askUserFocus` 是 `undefined`，狀態推進不會標成「問過了」。
+
+**軌跡測試（照 handler 逐輪推進 state，`walkAskUserTrajectory`）**：
+
+| 軌跡 | 腳本 | forced 逐輪 | `askedAboutUser` 逐輪 |
+| --- | --- | --- | --- |
+| **a** | 第 1 回合分享、第 2～6 回合全反應詞、第 7 回合分享 | `F,F,F,F,F,F,`**`T`** | `F,F,F,F,F,F,`**`T`** |
+| **b** | 第 1 回合分享、第 2 回合反應詞、第 3 回合有內容 | `F,F,`**`T`** | `F,F,`**`T`** |
+| 硬上限 | 第 1 回合分享、之後 11 個反應詞、第 13 回合才有內容 | 全 `F`（超過第 10 個 user 回合） | 全 `F` |
+
+**離線重建（`replay_plan.ts`，零呼叫）**：
+
+| 探針 | base forced | HEAD forced |
+| --- | --: | --: |
+| **A29.p2** | **38/40** | **0/40** |
+| A29.p1 | 0/40 | 0/40（`why:reaction`） |
+| A28.p3（有內容的分享輪） | 36/40 | **36/40** |
+| A28.p4 | 1/40 | 1/40 |
+| A28.p2／p5／p6 | 0 | 0 |
+
+**主矩陣（A01–A15、20 位 × repeat 3）forced 總數 base 315 ＝ HEAD 315，逐探針差集為空**——這兩處改動只碰得到含純反應詞輪的場次。
+
+`evaluate_agency.ts` 同步加一條 **`curiosity_within_six_content_turns`**（分母只算玩家給了內容的 `cooperative_turn` 探針，用 production 同一支 `utteranceShapeOf` 判），舊的 `curiosityWithinSix` 保留可比。專屬矩陣實測兩條**相等**（on 50.0%、off 7.5%，n=40）——唯一的純反應詞探針 A29.p1／p2 的 kind 是 `stalled_reaction` 不是 `cooperative_turn`，本來就不在這個分母裡；接線是為了讓契約在情境檔擴充時自動成立。
 
 ### (C) 評測工具：`--thread-salt`，讓 `initiative` 量得到
 
-`seedKey ＝ profileId|visiblePracticeThreadId`（`prompt.ts`），而 `run_agency.ts` 一直傳固定的 `BAKEOFF_THREAD_ID`，所以 `fnv1a(seedKey|回合|initiative) % 5` 在同一位角色的同一個探針位置**永遠是同一個值**——Phase 4.0 首跑（repeat 1）與 Phase 4 完整矩陣（repeat 2）都量到 `p4:selfDisclose` 0/40，加大 repeat 沒用。
+`seedKey ＝ profileId|visiblePracticeThreadId`（`prompt.ts`），而 `run_agency.ts` 一直傳固定的 `BAKEOFF_THREAD_ID`，所以 `fnv1a(seedKey|回合|initiative) % 5` 在同一位角色的同一個探針位置**永遠是同一個值**——Phase 4.0（repeat 1）與 Phase 4 完整矩陣（repeat 2）都量到 `p4:selfDisclose` 0/40，加大 repeat 沒用。
 
-- 新旗標 `--thread-salt=<字串>`（預設空＝**與加旗標前逐字相同**，`saltedThreadId("", n) === BAKEOFF_THREAD_ID`）。有值時每場的 thread id 是 `bakeoff-fixed-thread|<salt>|<repeat>`，不同 repeat 骰不同面。
-- artifact meta 記 `fixture.threadSalt`；`replay_plan.ts` 讀 meta 走**同一支** `saltedThreadId` 重建（舊 artifact 沒有這個 key＝空字串＝舊行為，實測既有 artifact 的重放數字逐格不變）。
-- **不改 production 的 seedKey 算法**：`prompt.ts`／`handler.ts` 零改動，鹽只存在於 runner 傳進去的 `visiblePracticeThreadId`。
-- 測試（純函式、零呼叫）：`--thread-salt` 省略＝空字串且 `saltedThreadId("", 3)` 逐字等於 `BAKEOFF_THREAD_ID`、同 salt 不同 repeat 必須不同；`practice_girl_007`（`initiative` 4＝2/5 機率）用 5 個 salt 建 A29 形狀的 bundle，至少 1 個 `optionalAct === "self_disclose"`。
+- 新旗標 `--thread-salt=<字串>`。預設空＝`saltedThreadId("", n) === BAKEOFF_THREAD_ID`，**thread id、prompt 與生成行為都與加旗標前相同**；但 **artifact JSON 不是逐位元組相同**——`meta.fixture` 無條件多一個 `threadSalt` 欄位（Codex R1 P3）。
+- `replay_plan.ts` 用 `threadSaltOfArtifactMeta(art.meta)` 讀回（缺欄位／型別不對一律退回空字串），走**同一支** `saltedThreadId` 重建。有一支測試直接讀真的舊 artifact（`out/2026-09-04-p36-mini-artifact.json`，`meta.fixture` 只有 `now`／`threadId`）驗這條退路。
+- **不改 production 的 seedKey 算法**：`prompt.ts`／`handler.ts` 零改動。
+- initiative 測試改成 **5 個不同的 salt**（不是同一個 salt 配 repeat 1–5），斷言寫成 deterministic fixture：無鹽那一面是 `false`（＝兩輪黑箱 0/40 的來源），5 個鹽裡**已知有命中也有不命中**（證明換鹽真的換骰面）。不再寫任何機率保證。
 
-**沒做**：沒有用新旗標跑黑箱（本輪零模型呼叫），所以 `initiative` 仍然**沒有任何語意輸出證據**，只是從「量不到」變成「量得到」。
+**沒做**：沒有用新旗標跑黑箱，所以 `initiative` 仍然**沒有任何語意輸出證據**，只是從「量不到」變成「量得到」。而且 salt 會改變整個 `seedKey`，之後若要宣稱語意差異來自 initiative，必須按 `optionalAct` 分層，不能只比 salted／unsalted 總體（Codex R1 Uncertain）。
+
+### Codex R1（BLOCKED）逐項處置
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| **P1-1** | 連續反應詞會把強制提問延到窗口外且不補問 | **已修**：窗口改成內容輪計數＋硬上限 10；三支軌跡測試（見上表）。契約修訂已由 Eric 2026-09-05 拍板 |
+| **P1-2** | (A) 的「14 筆都先點破跳題再補猜測」與表格不符；truncate 主張錯 | **已修**：改成逐泡泡 ordered acts ＋ 真的跑 `truncateAgencyShape`；統計改善 1／不變 12／惡化 2；結論收窄成「候選選擇層沒有授權無條件接住」，撤回「唯一結構出口」 |
+| **P2** | 不能藉「定義矛盾」把 85% 改算成 99% | **已修**：舊公式不動，改名 `stance_persistence_strict_conditional`；另立 `stance_persistence_adopted_only` 並列；gate 用哪條由 Eric 決定 |
+| **P3-1** | 預設空 salt 不是「artifact 逐位元組舊行為」 | **已修**：程式註解、README、本節都改成「thread id／prompt／生成行為相同，`meta.fixture` 多一個 `threadSalt`」 |
+| **P3-2** | initiative 測試的「5 個 salt」描述不實且帶機率誤導 | **已修**：真的用 5 個不同 salt，斷言改成 deterministic fixture（有命中也有不命中），拿掉機率語 |
+| **P3-3** | 「分子只剩 1 筆」與前文公式相反 | **已修**：改成 `denominator=100｜successes=85｜failures_by_label`（指標輸出本身也多印這一行） |
+| **U** | A14／007／3 疑似 judge 誤判 | 逐泡泡表已列出 b2／b3 都是質疑；**未取得 judge rationale 重判**，仍標為疑似誤判 |
+| **U** | `agency.enabled=true、applied=false` 時 `decision.evidence` 是否所有入口都可得 | `computeAgencyDecision` 一律回傳完整 `decision`（含 `evidence`），與 `applied` 無關；Phase 4.0 的 initiative 分支已在同一條路徑消費 |
+| **U** | `base|salt|repeat` 的 `|` 分隔碰撞 | 只進 `fnv1a`，沒有任何 consumer 對 `seedKey` 做 `split("|")`；salt 只存在於評測 runner |
+| **U** | salt 改變整個 seedKey，不只 initiative | 已寫進上面「沒做」段 |
+| **U** | 舊 artifact 相容沒有直接測試 | **已修**：新增讀真實舊 artifact 的測試 |
 
 ### Gate（實測數字）
 
-- practice-chat 全套：**1,849 passed / 0 failed / 1 ignored**（base 1,848 / 0 / 1；＋1 支 `turn_response_plan_test.ts`。ignored 是既有的 `moments_image_gate_test.ts` 素材缺失）。
-- 等價 harness：**6 passed / 0 failed / 1 ignored**，**off golden 未重印**。
-- `tools/practice-agency-eval/`：**38 passed / 0 failed**（base 36；＋2 支 `run_agency_test.ts`）。
-- `deno fmt --check`（本輪觸碰的 5 個 `.ts`）過；`deno check` 全過；`deno lint` **5 個問題，與 base 逐檔逐行相同**（`replay_plan.ts` 既有的 `as any`＋四個未觸碰檔案的既有 `no-unused-vars`／`no-explicit-any`）。
-- prompt 瘦身 gate（agency-on 比 off 少 ≥1,000 code units）仍過（本刀只會讓 on 更短：跳過的輪次把「這輪問他一件事：X，一句就好。」換回「這輪不反問。」）。
+- practice-chat 全套：**1,852 passed / 0 failed / 1 ignored**（base 1,848／0／1；＋4 支 `turn_response_plan_test.ts`）。
+- 等價 harness：**6 passed / 1 ignored**，**off golden 未重印**。
+- `tools/practice-agency-eval/`：**40 passed / 0 failed**（base 36；＋4 支）。
+- `deno fmt --check`（本輪觸碰的 `.ts`）過；`deno check` 全過；`deno lint` **與 base 逐檔逐行相同**。
+- prompt 瘦身 gate 仍過（本刀只會讓 on 更短）。
 
 ### 風險與未做
 
-- (A) 沒有動程式，`stance_persistence_conditional` 下一輪重跑仍然會是 85% 上下。真正的兩條路（開 `truncate` 臂／改指標分子）都需要 Eric 決定。
-- (B) 只有離線 planner 證據，**沒有生成證據**證明 `accommodating_invention` 4/80 真的歸零——那要重跑 A29 黑箱。反方向的風險：停滯輪不再強制問他，`curiosityWithinSix`（A28 gate ≥80%）不受影響（A28 沒有 reaction 輪，重建已證），但真機上連續好幾輪都是純反應詞的場次，她會更晚才問到他的事。
-- (C) `--thread-salt` 未在任何真跑用過，meta 新欄位對既有 artifact 的相容性只用「讀不到＝空字串」測過。
-- production 的 agency 旗標目前是 `true`（全開），(B) 這一刀會直接影響 Eric 真機：純反應詞那一輪她不再硬問他認識管道。
+- (A) 沒有動程式；`stance_persistence_strict_conditional` 下輪重跑仍會是 85% 上下。`truncate` 在這 15 筆上淨效果為負，**不建議**現在開。
+- (B) 只有離線 planner 證據與軌跡測試，**沒有生成證據**證明 `accommodating_invention` 4/80 真的下降。反方向：純反應詞多的場次她會**更晚**問到他的事（窗口改成內容輪計數已經把「永遠不問」堵掉，但第 10 個 user 回合的硬上限仍可能讓極端場次整場不問）。
+- (C) `--thread-salt` 未在任何真跑用過。
+- production agency 旗標是 `true`（全開），(B) 兩處改動會直接影響 Eric 真機。
+
 
 ## 本輪收尾（2026-09-04，Fable 交接）
 
