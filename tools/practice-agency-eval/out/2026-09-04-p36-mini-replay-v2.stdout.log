@@ -1,0 +1,37 @@
+{
+  "source": "tools/practice-agency-eval/out/2026-09-04-p36-mini-artifact.json",
+  "total": 45,
+  "errors": 0,
+  "coherenceDist": {
+    "disconnected": 20,
+    "connected": 25
+  },
+  "disconnectedOrRepetitiveN": 20,
+  "positiveHeatAfterCapN": 0,
+  "positiveHeatAfterCapRate": 0,
+  "sharedPastClaimN": 0,
+  "sharedPastClaimExplicitN": 45,
+  "sharedPastClaimRepairedN": 0,
+  "sharedPastClaimRate": 0,
+  "sharedPastPositiveDeltaN": 0,
+  "accommodatingSelfFactN": 5,
+  "accommodatingSelfFactExplicitN": 45,
+  "accommodatingSelfFactRepairedN": 0,
+  "accommodatingSelfFactRate": 11.1,
+  "accommodatingPositiveDeltaN": 0,
+  "a01a09N": 0,
+  "a01a09NotConnectedN": 0,
+  "a01a09BadConnectionN": 0,
+  "byScenario": {
+    "A25": {
+      "n": 42,
+      "disconnected": 18,
+      "connected": 24
+    },
+    "A27": {
+      "n": 3,
+      "connected": 1,
+      "disconnected": 2
+    }
+  }
+}

@@ -974,19 +974,23 @@ Deno.test("Phase 3.6 accommodatingSelfFact：只在 agencyEnabled 時進 prompt�
   const on = buildTurnClassifierMessages({ ...base, agencyEnabled: true });
   assert(
     on[0].content.includes(
-      "accommodatingSelfFact：她這一輪替自己補的設定或經歷，是不是 (1) 跟 herSelfSources",
+      "accommodatingSelfFact：看 assistantReplyAfterUser 裡她講自己的具體經歷",
     ),
   );
   assert(
     on[0].content.includes(
-      "明顯是為了迎合玩家剛丟出的詞",
+      "跟 latestUserText 裡玩家剛丟的詞／地名／人名直接掛鉤",
     ),
   );
   assert(
-    on[0].content.includes("自由補的、跟玩家丟的詞無關、也不衝突的細節"),
+    on[0].content.includes("跟玩家的詞無關的日常（我剛下班、今天門診很累）"),
   );
   // Codex R2 P2：中性直接問答不算迎合；明講改口也算矛盾。
-  assert(on[0].content.includes("玩家中性地直接問她（「你去過清邁嗎」）"));
+  assert(
+    on[0].content.includes(
+      "玩家問「你去過清邁嗎」→「有，去年去過一次」＝false",
+    ),
+  );
   assert(on[0].content.includes("把先前說過的事實改口"));
   assert(
     on[1].content.includes(`職業生活：${base.profile.girl.professionPrompt}`),
