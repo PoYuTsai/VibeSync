@@ -200,6 +200,7 @@
   - `hintAgencyCoachingFor(turns, agencyState)` → `{ kind: "answer_her_question" | "stop_dropping_words" | "none", unresolvedCount }`。第一道閘門是 `agencyPolicyFor(detectAgencyEvidence(...)).situation !== null`——結構層自己認定玩家上一則沒接上才點火，所以有效短答（她剛問完、他答了、零欠債）在上游就被 `NO_OVERRIDE` 接走，永遠回 `none`。接著「欠債 ≥2 或同詞重複」→ `stop_dropping_words`，否則「她剛問了／狀態 `lastAgencyAct ∈ {ask_intent, challenge_relevance, return_to_topic}`」→ `answer_her_question`。
   - `debriefAgencyLedgerFor(turns)` → `{ fragmentTurns, topicShiftTurns, loopTurns, repairTurns }`；逐則玩家訊息重走 `detectAgencyEvidence → agencyPolicyFor`，狀態用 `nextConversationAgencyState` 推進。
 - **渲染**：`hint.ts` 在既有 stageGuidance 後面補**一行**（不重寫既有段落）；`prompt.ts` 仿 `appliedHintTurns` 的 `hintAssistedTurns` 寫法，接在 hintAccountability 後面渲染一段 `agencyStructuralLedger(hidden evidence)`，明寫「這些輪次她的補救不算他的分：dateChance 與 highlights 不得把『她接住了』寫成他的表現；改進建議至少一條要具體引用其中一則」。兩者在省略／`none`／全 0 時都不渲染，prompt 逐字不變。debrief tool schema 未改。
+- **`shadow` 的契約是「只多記 telemetry」，不是「console JSON 也逐位元組相同」**（Codex R1 P1 是 packet 把契約寫錯，程式未改）。以 `agency_flag_off_equivalence_test.ts` 為準：只有**未設／`off`／亂填**是四面全等（該檔第 1293–1299 行的 `for (const env of [undefined, "off", "亂填"])` 對 `observableDigest` 整份比對），`shadow` 走的是同檔第 1300–1316 行——註解明寫「shadow 的契約是『只多記 telemetry，不動任何對外行為』」，只斷言 `messages`／`response`／`rpc` 三面等於 golden，`telemetry` 刻意不比；同檔第 1337 行另有一支反向測試要求 shadow 的 telemetry **必須**與 golden 不同。所以 hint／debrief 在 `shadow` 多一個 `conversationAgency` key 是契約允許的，與 chat 路徑（Phase 2.7 起）同一個慣例。
 - **門檻與 chat 路徑同源**（派 Codex 前補修的 P1）：兩支函式都吃一個必填的 `AgencyCoachingContext`（`difficulty`／`isGame`／`profileId`），內部走 `agencyThresholdsFor(difficulty, isGame, agencyProfileFor(profileId))`——與 `prompt.ts` 的 chat 路徑逐字同一組輸入。**刻意沒有預設值**：用預設的一般難度會讓同一場對話在 chat 與 debrief 兩層算出不同的介入輪（踩坑：同一道守門在兩端各自帶預設值會漂）。`hintAgencyCoachingFor` 今天其實**證明性地不吃門檻**（`situation !== null` 這道閘門的每一個出口都與 thresholds 無關），仍然照傳，只為了讓兩層永遠不可能各自帶一份預設值。
 - **接線**：`handler.ts` hint 路徑算 `hintAgencyCoachingFor`（thread `agencyState`，讀不到＝純結構近似）、debrief 路徑算 `debriefAgencyLedgerFor`（assisted／standard 兩個 options 分支都傳），兩者都只在 `agencyMode === "on"` 時進 builder；`shadow` 算但只進 telemetry；`off` 連算都不算。兩條 `practice_chat_generation_outcome` 各多一個 `conversationAgency` telemetry（hint 記 `coachingKind`／`unresolvedCount`，debrief 記三個計數與 `repairTurnCount`；旗標 off 時整個 key 不存在，與 Phase 2.7 的 chat 慣例相同，所以沒有重印 golden）。
 
@@ -213,14 +214,16 @@
 - `debriefAgencyLedgerFor` 的 `classifierSignal` 一律傳 `null`（debrief 手上沒有每一輪當時的分類器輸出），與 `tools/practice-agency-eval/replay_plan.ts --state=1` 是同一種近似。少掉「分類器判 connected」這個修復來源，方向是**偏保守**：欠債留得比正式路徑久不會憑空多出介入輪，但沒有 `repairedAtUserTurns` 時 `detectAgencyEvidence` 的舊 row 相容退路（上一輪 coherence 是 `connected` 就把欠債歸零）會生效，所以連續片段之間夾一則結構修復就會斷開帳。實測 A28 型逐字稿因此只記到 1 輪，而 hint 的逐點判斷記到 2 次點火——兩者不保證一致，這是刻意的。
 - **門檻位移在真實 A25 逐字稿上算不出差別**，這是判準的既有天花板不是沒接線：`holdAt` 只在 `aiQuestionedInLoop`（**嚴格**問句判準）＋`bare_fragment` 同時成立時才打得開，而 A25 裡她的每一句反問都是中文無標記問句（「東東？誰啊」「到底在講哪個」），`aiAskedQuestionStrict` 全判 false。測試因此鎖兩件事：真實 A25 上 easy／challenge／`practice_girl_001`（skepticism 4）／`practice_girl_003`（skepticism 1）四種 ctx 的帳**完全相同**；換成她的反問帶句尾標記「呢」的同形態 fixture，一般難度第 3 則落 `loopTurns`、easy 與 skepticism 1 的角色落 `topicShiftTurns`，`repairTurns` 不變（`situation !== null` 不吃門檻，變的是 loop／shift 分帳）。
 - hint 是 assisted 專用，standard 走不到；debrief 的 standard 模式沒有持久化狀態，本來就是純結構近似。
+- **null-classifier 近似的風險方向（誠實修正，Codex R1 U）**：先前寫「方向偏保守、不會憑空多出介入輪」是**沒有差分證據的宣稱**。實際方向是雙向的——少掉一次 live classifier 的 `connected` 修復，欠債會留得比正式路徑久，**後續輪次因此可能被判成介入輪**（`unresolvedCount` 跨過 `holdAt`／落進 `abrupt_topic_shift`），也就是有機會**多扣分**而不是少扣分；另一方面，沒有 `repairedAtUserTurns` 時 `detectAgencyEvidence` 的舊 row 相容退路（上一輪結構 coherence 是 `connected` 就把欠債歸零）又會把帳斷開，方向相反。兩股力道誰大沒有量過。要證明得跑「中途 classifier=connected 的正式狀態回放」對「全 null 回放」的 repair-turn 差集，本輪未做（需要每一輪當時的分類器輸出，既有 artifact 沒有記）。
+- **`repairTurns` 的序號基準（Codex R1 U）**：序號是「這次 `request.turns` 裡的第 N 則玩家訊息」。`debriefAgencyLedgerFor` 與 `debriefTurnsToPromptTranscript` 吃的是**同一份** `request.turns`，所以模型看到的逐字稿與序號在 server 端一致。但 client 只送最後 80 則（`kPracticePromptRecentTurns`），若 UI 同時展示完整未截斷紀錄，使用者可能把「第 1 則」理解成整場第一則。**client 端未驗**（本輪沒有超過 80 則的端到端 fixture，也沒有改 client）；真要根治是標「最近 N 則」或改用穩定 turn id／內容引用。
 
 ### Gate（實測數字）
 
-- practice-chat 全套（worktree root 為 cwd）：**1,842 passed / 0 failed / 1 ignored**（base 1,826 / 0 / 1；＋15 支 `agency_coaching_test.ts` ＋1 支等價 harness 新測試）。
-- 等價 harness：**6 passed / 1 ignored**，`未設／off／shadow` 對 `7f1d6d6c` golden 逐位元組相同（**off golden 未重印**）。舊的「非空洞檢查」只涵蓋 chat，註解寫「hint／debrief 不讀 agency 旗標」——4.1 之後不成立，所以新增一支白名單測試：旗標 `true` 時 11 個真的走到 Claude 的 hint／debrief 案例必須與 golden 不同，名單外（`hint／standard` 的 403）必須逐位元組相同。
+- practice-chat 全套（worktree root 為 cwd）：**1,846 passed / 0 failed / 1 ignored**（base 1,826 / 0 / 1；＋19 支 `agency_coaching_test.ts` ＋1 支等價 harness 新測試）。
+- 等價 harness：**6 passed / 1 ignored**，`未設／off／shadow` 對 `7f1d6d6c` golden 逐位元組相同（**off golden 未重印**）。舊的「非空洞檢查」只涵蓋 chat，註解寫「hint／debrief 不讀 agency 旗標」——4.1 之後不成立，所以新增一支白名單測試：旗標 `true` 時 11 個真的走到 Claude 的 hint／debrief 案例的 **`messages` 欄**必須與 golden 不同（Codex R1 P2：舊版比合成 digest，而 on 一律多一行 telemetry，歸因不到 prompt），名單外（`hint／standard` 的 403）必須相同；同一支測試順帶斷言所有 side case 的 `response` 與 `rpc` 兩欄在 on 時都不變。
 - `tools/practice-agency-eval/`：**36 passed / 0 failed**。
 - `deno fmt --check`（124 檔）過；`deno check` 全過；`deno lint` **4 個問題，與 base 完全相同**（皆為未觸碰檔案的既有 `no-unused-vars`／`no-explicit-any`）。
-- **prompt 長度（on − off，code units）**：hint `answer_her_question` **+68**、`stop_dropping_words` **+76**；debrief 三輪介入 **+158**（序號清單最多 10 個，上限約 +180）。目標 <300，過。
+- **prompt 長度（on − off，code units，含 R1 補的兩句）**：hint `answer_her_question` **+86**、`stop_dropping_words` **+95**；debrief 三輪介入 **+243**、序號滿 10 個（12 輪場）**+258**。目標 <300，過。
 
 ### 點火證據（零模型呼叫，逐字稿取自 `tools/practice-agency-eval/out/2026-09-05-p40-beginner-on.json`）
 
@@ -228,17 +231,38 @@
 
 | 情境 | 角色 | hint kind 分佈 | ledger（frag／shift／loop／介入輪） |
 |---|---|---|---|
-| A25 | 001／008 | answer 2、stop 6、none 1 | 1／7／0／`[1..8]` |
-| A25 | 064 | answer 2、stop 6、none 1 | 1／5／2／`[1..8]` |
-| A26 | 001 | answer 2、stop 6、none 1 | 1／4／3／`[1..8]` |
-| A26 | 008／064 | answer 1、stop 6、none 2 | 1／6／1／`[1..8]` |
-| A28 | 001／008／064 | answer 1、stop 1、none 4 | 1／0／0／`[1]` |
-| **A01**（有效短答） | 001／008／064 | **none 2** | **0／0／0／`[]`** |
-| **A09**（有效短答） | 001／008／064 | **none 2** | **0／0／0／`[]`** |
+| A25 | 001 | answer 2、stop 6、none 1 | 1／7／0／`[1..8]` |
+| A25 | 008 | answer 2、stop 6、none 1 | 1／7／0／`[1..8]` |
+| A25 | 064 | answer 2、stop 6、none 1 | 1／**5**／**2**／`[1..8]` |
+| A26 | 001 | answer 2、stop 6、none 1 | 1／**4**／**3**／`[1..8]` |
+| A26 | 008 | answer 1、stop 6、none 2 | 1／6／1／`[1..8]` |
+| A26 | 064 | answer 1、stop 6、none 2 | 1／6／1／`[1..8]` |
+| A28 | 001 | answer 1、stop 1、none 4 | 1／0／0／`[1]` |
+| A28 | 008 | answer 1、stop 1、none 4 | 1／0／0／`[1]` |
+| A28 | 064 | answer 1、stop 1、none 4 | 1／0／0／`[1]` |
+| **A01**（有效短答） | 001 | **none 2** | **0／0／0／`[]`** |
+| **A01** | 008 | **none 2** | **0／0／0／`[]`** |
+| **A01** | 064 | **none 2** | **0／0／0／`[]`** |
+| **A09**（有效短答） | 001 | **none 2** | **0／0／0／`[]`** |
+| **A09** | 008 | **none 2** | **0／0／0／`[]`** |
+| **A09** | 064 | **none 2** | **0／0／0／`[]`** |
+
+**同一情境的角色之間會不一樣**（Codex R1 P3）：A25 的 064 是 `1／5／2`、001／008 是 `1／7／0`；A26 的 001 是 `1／4／3`、008／064 是 `1／6／1`。差異來自她實際生成的回覆不同（逐字稿不同），不是 profile 門檻位移——門檻在這批逐字稿上算不出差別，理由見上面那條天花板。
 
 （門檻改成與 chat 同源之後重跑，整張表逐格不變——原因就是上面那條天花板：這批逐字稿裡她的反問都拿不到嚴格問句判準。）
 
 A01／A09 全 `none`／全 0 是設計上的硬條件（有效短答永遠不得被質疑，報告 §6），這裡拿真實逐字稿驗到。
+
+### Codex R1（legacy wrapper）BLOCKED 的處置
+
+- **P1「shadow 的 console JSON 多了 `conversationAgency`」**：packet 把契約寫錯，**程式未改**，依據見上面那條「`shadow` 的契約是只多記 telemetry」。
+- **P2「on 非空洞測試只比合成 digest」**：已修，改比 `messages` 欄並加 `response`／`rpc` 不變的斷言。
+- **P2「`repairTurnCount` 被 10 的上限截掉」**：已修，總數改由 `DebriefAgencyLedger.repairTurnCount`（三個分類計數之和）出，handler 直接讀；prompt 序號仍最多 10 個，12 輪 fixture 兩件事都斷言。
+- **P2「`appliedHintTurns` 與 `repairTurns` 重疊」**：已修，ledger 段補「其中若有 hintAssistedTurns 也列到的輪次，照 Hint 歸責規則歸給『這輪教練路線』，不算他的缺口」，加兩集合重疊的 prompt fixture 測試。
+- **U「最終 dateChance 判準會覆蓋」**：實查——`finalDateChancePrompt` 在 `hintAccountabilityPrompt`（含 ledger 段）**之前**，依 prompt 自己的「順位＝越後越終局」註解，ledger 是後者，不會被覆蓋。仍在 ledger 段補一句「上面的最終 dateChance 判準也適用這一條」並加順序斷言測試。
+- **U「hint 行對上 `allowNoPasteableReply`」**：已修，措辭改成「建議句（若有）要…」（不再寫「兩顆球都要」），並補「這一行不改本輪方向與邀約判斷」；新增 `acceptsNoPasteableHint=true` × 兩種 kind 與 Game 模式交叉的 snapshot 測試。
+- **U「null-classifier 風險方向」／U「client 顯示序號」**：不改程式，改成誠實描述，見上面「近似的界線」兩條。
+- **P3「點火摘要省略角色差異」**：下表改成逐角色列。
 
 ### 未跑
 
