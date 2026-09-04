@@ -1259,6 +1259,13 @@ Deno.test("Phase 3.8 結構刀：agency on、第 2～6 回合、連貫且非問�
     assertEquals(variant.questionBudget, 0);
     assertEquals(variant.askUserFocus, undefined);
   }
+  // 好奇點是空白 → 不強制（Codex R1 P3）。
+  const blank = planTurnResponse({
+    ...base,
+    agency: agencyFor(turns, evidence, "on"),
+    askUserFocus: "   ",
+  });
+  assertEquals(blank.askUserFocus, undefined);
   // 這場已經問過 → 不再強制。
   const asked = planTurnResponse({
     ...base,
@@ -1272,11 +1279,12 @@ Deno.test("Phase 3.8 結構刀：agency on、第 2～6 回合、連貫且非問�
   const firstTurn = [u("嗨嗨")];
   const sheAsked = [u("嗨嗨"), a("你哪位？"), u("我是配對到的那個")];
   const heAsks = [u("嗨嗨"), a("嗨"), u("妳那張照片是在哪拍的？")];
+  const mixed = [u("嗨嗨"), a("嗨"), u("我剛下班 妳今天呢？")];
   const seventh = [
     ...Array.from({ length: 6 }, (_, i) => [u(`第${i + 1}句`), a("嗯")]).flat(),
     u("第七句"),
   ];
-  for (const t of [firstTurn, sheAsked, heAsks, seventh]) {
+  for (const t of [firstTurn, sheAsked, heAsks, mixed, seventh]) {
     const plan = planTurnResponse({
       turns: t,
       style: rare,

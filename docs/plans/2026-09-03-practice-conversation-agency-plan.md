@@ -163,3 +163,6 @@
 - **開關**：`ASK_USER_EXCLUDED_HABITS`（預設空；要讓最冷的角色一場都不問，放 "rare"）、`ASK_USER_WINDOW_USER_TURNS=[2,6]`。
 - **off 等價**：bundle 只在 `agencyPrompt`（on）時傳 `askUserFocus`，planner 的 `forceAskUser` 另外還要 `agency.enabled`；off／shadow plan 逐字不變（harness 全過）。
 - **黑箱**：A28 on（state=1）對 3.7 的 off 臂（off bytes 未變，直接沿用），看 `curiosityWithinSix`（gate ≥80）與 `interrogation`。
+- **黑箱（A28 on＋state=1，20 位 × 2；off 沿用 3.7 臂）**：v1 計畫行「這輪問他一件事：X，一句就好」→ judge 場級 35%（off 25，gate 80）；結構規則「問到管道好奇點」**0/40 → 10/40**、p3（強制點）她問他 5→18/40、interrogation 0。另一半強制輪她把那一問花在眼前話題（晚餐）。v2 綁緊措辭「只有這件事…別問其他問題」→ 好奇點 **2/40** 更差，已退回 v1。judge 標籤 `asked_about_user` 雜訊大（同句有時 true 有時 false），場級 35% 不可信；v1 vs v2 的 10 vs 2 未量雜訊帶。**gate 未過。**
+- **Codex R1（legacy wrapper，gpt-5.6-sol）BLOCKED**：P1 gate 未過＝成立（產品結果，非程式）；P2-1 混合句「我剛下班，妳今天呢？」→ situation 已是 question 但再明寫 `!signals.userIsQuestion`＋測試；P2-2 runner 與 handler 狀態軌跡不等價（runner 只在介入／強制輪推進、classifier signal 傳 null）＝既有 3.0 以來的近似，寫明為 runner 已知限制；P3 好奇點空白 → trim；U2 shadow telemetry 多 `askUserForced:false`＝shadow 契約允許只多 telemetry（harness「shadow 唯一可不同的是 telemetry」）；U3／U5 未處理（forcedAsk 互斥靠 `!agency.applied`；口語問句 streak 偵測）。
+

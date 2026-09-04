@@ -502,9 +502,13 @@ export function planTurnResponse(args: {
   // 這場還沒問過 → 預算強制 1，renderer 印「這輪問他一件事：X」。一場只強制一次
   // （thread state `askedAboutUser` 黏住），之後多常問回到 persona 的習慣。
   const forceAskUser = agency?.enabled === true &&
-    typeof args.askUserFocus === "string" && args.askUserFocus.length > 0 &&
+    typeof args.askUserFocus === "string" &&
+    args.askUserFocus.trim().length > 0 &&
     args.askedAboutUser !== true &&
     !agency.applied &&
+    // situation neutral／share 已經排除問句，這裡再明寫一次：玩家在問她（含
+    // 「我剛下班，妳今天呢？」這種分享＋問句）就不搶著問他（Codex R1 P2-1）。
+    !signals.userIsQuestion &&
     signals.userTurnCount >= ASK_USER_WINDOW_USER_TURNS[0] &&
     signals.userTurnCount <= ASK_USER_WINDOW_USER_TURNS[1] &&
     signals.aiQuestionStreak === 0 &&
