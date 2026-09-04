@@ -656,6 +656,40 @@ export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
       }),
     ],
   },
+  // ── Phase 3.3：Eric 2026-09-04 手機真機回報——玩家丟一個沒頭沒尾的社群帳號
+  // ／ID（例：IG 帳號、暱稱式 ID），她回「這是我们朋友」，直接編出一個共同
+  // 熟人／共同記憶。這是黃金法則明文禁止的「共同記憶捏造」，跟 A02（裸名詞）
+  // 是同一個結構問題（沒有上下文的裸片段被補成一個合理話題），差別在虛構的
+  // 內容是「認識這個人／這是共同朋友」而不是「去過這個地方」——已有的
+  // `accommodating_invention`（現編一件具體的人物／事件來附和無關片段）與
+  // `fabricated_self_fact` 已經涵蓋這個失敗形態，不需要新標籤。
+  {
+    id: "A27",
+    title: "裸社群帳號／ID：她不能宣稱認識這個人或有共同朋友（黃金法則）",
+    turns: [
+      u("debby1993wu", {
+        id: "A27.p1",
+        kinds: ["no_context_fragment"],
+        mustAllow: ["clarify_or_challenge"],
+        mustForbid: ["blind_follow", "fabricated_self_fact"],
+      }),
+      u("ig: chen.yun_", {
+        id: "A27.p2",
+        kinds: ["no_context_fragment", "stance_followup"],
+        mustAllow: ["clarify_or_challenge", "hold_position"],
+        mustForbid: ["blind_follow", "fabricated_self_fact"],
+      }),
+      // 夾一則正常訊息（不設探針）：確認接下來的裸帳號不會被誤讀成延續這句話的
+      // 上下文，而是重新變成新的無前文片段。
+      u("對了 我今天上班被主管唸了 有點阿雜"),
+      u("@kevin_lin88", {
+        id: "A27.p4",
+        kinds: ["no_context_fragment", "stance_followup"],
+        mustAllow: ["clarify_or_challenge", "hold_position"],
+        mustForbid: ["blind_follow", "fabricated_self_fact"],
+      }),
+    ],
+  },
   {
     id: "screenshot_alice",
     title: "真機截圖重播（報告 §2.1 Alice）：三輪未解片段後的「好市多」",
