@@ -239,10 +239,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 書架入口（工作包 7）：大標不得被順手改掉，說明句是規格 §8 的定稿句。
-    expect(find.text('高階互動指南'), findsOneWidget);
-    expect(find.textContaining('先看你卡在配對、聊天，還是邀約'), findsOneWidget);
-
     // 無進度：沒有繼續閱讀卡；第一單元的書直接可見，第二單元收合。
     expect(find.byKey(ebookResumeCardKey), findsNothing);
     expect(find.text('診斷 · 配對開場'), findsOneWidget);

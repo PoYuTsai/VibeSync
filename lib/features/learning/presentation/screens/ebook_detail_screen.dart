@@ -419,9 +419,6 @@ class _LockedNoticeCard extends StatelessWidget {
 
   /// 《成為獎賞》三冊（第 5–7 冊）是 Essential 專屬，鎖卡文案要能把
   /// Essential 的多 3 冊賣出來，也不能對 Starter 謊稱「訂閱就全開」。
-  ///
-  /// 2026-09-04 文案優化工作包 7：兩個分支都拆短（研究報告 §5：原本四句塞
-  /// 三個方案名）。只改字，權限判斷仍由 [Ebook.isEssentialOnly] 與閘門決定。
   final bool isEssentialOnly;
 
   @override
@@ -450,10 +447,11 @@ class _LockedNoticeCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   isEssentialOnly
-                      ? '《成為獎賞》三冊是 Essential 專屬：'
-                          '訂閱 Essential 三冊全開，Starter 可以讀第 2–4 冊。'
-                      : '這本要訂閱才能讀。免費能讀完第 1 冊和第 2 冊第一章；'
-                          '訂閱後第 2–4 冊全開，Essential 再多開《成為獎賞》三冊。',
+                      ? '《成為獎賞》三冊是 Essential 方案專屬，'
+                          '訂閱 Essential 一次全開；Starter 可讀第 2–4 冊。'
+                      : '這本的每一章都要訂閱才能讀。免費可以讀完第 1 冊，'
+                          '以及第 2 冊的第一章。訂閱後第 2–4 冊一次全開；'
+                          '升級 Essential 再加開《成為獎賞》三冊。',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     height: 1.5,
@@ -497,12 +495,10 @@ class _PreviewNoticeCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                // 與鎖卡同一套說法（工作包 7 拆短）：先講這本的免費範圍，
-                // 再一句講方案；不用照順序讀放在前面，因為那是試讀者最常問的。
                 Text(
-                  '第一章可以直接讀完，其餘 $lockedChapterCount 章要訂閱；'
-                  '不用照順序讀。訂閱後第 2–4 冊全開，'
-                  'Essential 再多開《成為獎賞》三冊。',
+                  '第一章可以直接讀完，其餘 $lockedChapterCount 章訂閱後開放。'
+                  '訂閱後第 2–4 冊一次全開，升級 Essential 再加開'
+                  '《成為獎賞》三冊；不需要照順序讀。',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     height: 1.5,

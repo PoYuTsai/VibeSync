@@ -10,7 +10,6 @@ import {
   agencyThresholdsFor,
   type ConversationAgencyState,
   detectAgencyEvidence,
-  isAcceptingPlanAct,
   isClarifyingAct,
   nextConversationAgencyState,
   parseConversationAgencyState,
@@ -252,49 +251,33 @@ Deno.test("forced 只留給同詞重複與欠債到門檻；第一個片段一�
   // 結構層分不出「阿布達比」跟「貓」哪個算答案（那是語意），只保證兩邊都在
   // 候選清單裡，由看得到全文的她挑（Codex round-1 P1-c）。
   const a04 = policy([u("東東"), a("東東是誰"), u("阿布達比")]);
-  assertEquals(a04.situation, "abrupt_topic_shift");
-  assertEquals(a04.allowedActSetId, "answer_or_challenge_v1");
+  assertEquals(a04.situation, "ambiguous_fragment");
+  assertEquals(a04.allowedActSetId, "answer_candidate_with_debt_v1");
   assertEquals(a04.policyMode, "bounded");
   assertEquals(a04.forcedAct, null);
-  // Phase 3.0：接受仍在候選裡，但是**有條件的**——「他這句真的接得上就接受」，
-  // 不是無條件的 acknowledge（那正是 Eric 回報的「她把新詞當成答案順著聊」）。
-  assertEquals(a04.allowedActs, [
-    "accept_if_answered",
-    "challenge_relevance",
-  ]);
-  assert(a04.allowedActs.some(isAcceptingPlanAct));
+  assertEquals(a04.allowedActs, ["acknowledge", "return_to_topic"]);
 
   // 她**沒有**問問題、玩家連丟詞 → topic_shift_v1。Codex round-1（新項）P1-2：
   // 這個清單也必須含「接住」——結構層看不出第二句是不是連貫的敘事，不能
   // deterministic 地把「順著聊」從候選裡拿掉。
   const shift = policy([u("好市多"), a("喔"), u("曼谷")]);
   assertEquals(shift.situation, "abrupt_topic_shift");
-  assertEquals(shift.allowedActSetId, "answer_or_challenge_v1");
+  assertEquals(shift.allowedActSetId, "topic_shift_v1");
   assertEquals(shift.policyMode, "bounded");
   assertEquals(shift.allowedActs, [
-    "accept_if_answered",
+    "acknowledge",
+    "ask_intent",
     "challenge_relevance",
+    "return_to_topic",
   ]);
 
-  // 連續三則未解、而且她中間真的問過（「怎麼了」）→ 一般難度 forced
-  // hold_position（Phase 3.0：第三個未解片段就停止供應解讀）。
+  // 連續兩則未解、standard 沒有持久化的「已質疑過」→ 三選一 bounded
+  // （Codex round-2 P1-2：不再用假旗標把它推成 forced hold_position）。
   const a06 = policy([u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")]);
   assertEquals(a06.situation, "repeated_low_coherence");
-  assertEquals(a06.policyMode, "forced");
-  assertEquals(a06.forcedAct, "hold_position");
-  assertEquals(a06.allowedActSetId, "hold_after_challenge_v1");
-
-  // 同樣三則未解，但她一次都沒問過（「真的欸」「喔」）→ 不強制，留在
-  // bounded 的條件式（Phase 3.0 的 aiQuestionedInLoop 閘門）。
-  const neverAsked = policy([
-    u("韓國"),
-    a("真的欸"),
-    u("東京"),
-    a("喔"),
-    u("淺草"),
-  ]);
-  assertEquals(neverAsked.policyMode, "bounded");
-  assertEquals(neverAsked.allowedActSetId, "answer_or_challenge_v1");
+  assertEquals(a06.policyMode, "bounded");
+  assertEquals(a06.allowedActSetId, "low_coherence_v1");
+  assert(a06.allowedActs.length >= 2);
 
   // 同一個詞原樣再丟一次＝高信心低價值迴圈。
   const repeated = policy([u("好市多"), a("？"), u("好市多")]);
@@ -360,29 +343,19 @@ Deno.test("parseConversationAgencyState：缺 key 回 null；任何欄位壞掉�
 });
 
 Deno.test("nextConversationAgencyState：只存 enum／布林／小整數，修好之後質疑旗標會歸零（Codex R2 P1-5）", () => {
-  // Phase 3.0：第三個未解片段（unresolvedCount=2）在一般難度是 forced
-  // hold_position，所以這一輪 lastAgencyAct／priorChallengeIssued 都會推進
-  // ——那是 planner **強制**下的決定，不是「允許過」（Codex round-1 P1 的界線
-  // 沒有改：bounded 輪仍然不得灌 priorChallengeIssued，見下面 bounded 那格）。
   const held = nextConversationAgencyState(
     null,
     policy([u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")]),
   );
+  // standard 這一輪是 bounded（沒有 forcedAct），所以 lastAgencyAct 不變、
+  // priorChallengeIssued 也不會被「允許過」灌成 true（Codex round-1 P1）。
   assertEquals(held, {
     version: 1,
     lastCoherence: "repetitive",
     unresolvedCount: 2,
-    priorChallengeIssued: true,
-    lastAgencyAct: "hold_position",
+    priorChallengeIssued: false,
+    lastAgencyAct: null,
   });
-  // bounded 輪（第二個未解片段，允許清單裡有質疑但沒有強制）：旗標不得被
-  // 「允許過」灌成 true。
-  const boundedTurn = nextConversationAgencyState(
-    null,
-    policy([u("韓國"), a("怎麼了"), u("東京")]),
-  );
-  assertEquals(boundedTurn.priorChallengeIssued, false);
-  assertEquals(boundedTurn.lastAgencyAct, null);
   // 玩家講清楚了（她剛問完、他答了、前面沒欠債＝有效短答免疫格）：
   // Codex round-2 P1-5——舊版永久 OR 會讓上一段 episode 的質疑污染這一段，
   // 下一則新片段一出現就直接 forced hold_position。修好就歸零。
@@ -438,11 +411,7 @@ Deno.test("nextConversationAgencyState：分類器缺失／ambiguous 時退回�
       const decision = policy(turns);
       assertEquals(decision.situation, null, JSON.stringify(turns));
       const next = nextConversationAgencyState(carried, decision, signal);
-      assertEquals(
-        next.priorChallengeIssued,
-        false,
-        JSON.stringify({ signal, turns }),
-      );
+      assertEquals(next.priorChallengeIssued, false, JSON.stringify({ signal, turns }));
       assertEquals(next.unresolvedCount, 0, JSON.stringify({ signal, turns }));
     }
   }
@@ -503,68 +472,57 @@ Deno.test("難度門檻：第一個無前文片段在每一種難度都是兩選
   assertEquals(game.allowedActs, ["acknowledge", "ask_intent"]);
 });
 
-Deno.test("難度門檻（Phase 3.0）：一般第 2 個未解片段要指出他沒回答，第 3 個停止解讀；易晚一步", () => {
-  // Eric 2026-09-04 的真機體感定義寫成可執行斷言。逐字稿刻意用她**真的問過**
-  // 的形態（強制格的 aiQuestionedInLoop 閘門），並讓最後一則的前一句不是問句
-  // （強制格的 bare_fragment 閘門，Codex P1-c）。
-  assertEquals(
-    policyAt([u("韓國")], "normal").allowedActSetId,
-    "fragment_no_context_v1",
-  );
+Deno.test("難度門檻：易難度指出跳題延後到第 2–3 則未解，一般／挑戰第 2 則就進入", () => {
+  // 兩個裸片段連續（第二則 unresolvedCount＝1）：一般／挑戰已經進
+  // topic_shift_v1（指出跳題）；易難度還在「跟第一則一樣寬容」的窗口內，
+  // 沒有前文時仍是 fragment_no_context_v1 bounded，不是 topic_shift_v1。
+  const twoFragments = [u("韓國"), u("東京")];
+  const normalSecond = policyAt(twoFragments, "normal");
+  assertEquals(normalSecond.allowedActSetId, "topic_shift_v1");
+  const challengeSecond = policyAt(twoFragments, "challenge");
+  assertEquals(challengeSecond.allowedActSetId, "topic_shift_v1");
+  // 易難度：第二則（unresolvedCount=1）既沒到 topicShiftAt，也不再落到
+  // fragment_no_context_v1——Codex round-2 P1-1 把那條收緊成「未解計數真的
+  // 是 0」的全空集合，所以這一格改成完全不介入。
+  const easySecond = policyAt(twoFragments, "easy");
+  assertEquals(easySecond.situation, null);
+  assertEquals(easySecond.allowedActSetId, "none");
 
-  // 第 2 個未解片段（unresolvedCount=1）：二選一的條件式，沒有無條件的「接住」。
-  const second = [u("韓國"), a("怎麼突然講韓國"), u("東京")];
-  const normalSecond = policyAt(second, "normal");
-  assertEquals(normalSecond.evidence.unresolvedCount, 1);
-  assertEquals(normalSecond.allowedActSetId, "answer_or_challenge_v1");
-  assertEquals(normalSecond.allowedActs, [
-    "accept_if_answered",
-    "challenge_relevance",
-  ]);
-  // 易晚一步：同一格多一個無條件的「接住」。
-  const easySecond = policyAt(second, "easy");
-  assertEquals(easySecond.allowedActSetId, "answer_or_challenge_easy_v1");
-  assert(easySecond.allowedActs.includes("acknowledge"));
+  // 第三個裸片段（unresolvedCount＝2）：一般／挑戰已經進入
+  // repeated_low_coherence；易難度這時才第一次進 topic_shift_v1。
+  const threeFragments = [u("韓國"), u("東京"), u("清邁")];
+  const normalThird = policyAt(threeFragments, "normal");
+  assertEquals(normalThird.situation, "repeated_low_coherence");
+  const easyThird = policyAt(threeFragments, "easy");
+  assertEquals(easyThird.allowedActSetId, "topic_shift_v1");
 
-  // 第 3 個未解片段（unresolvedCount=2）：一般停止供應解讀（forced）；
-  // 挑戰／Game 同一格改成直接收掉；易仍在條件式窗口。
-  const third = [...second, a("你沒回答我欸"), u("清邁")];
-  const normalThird = policyAt(third, "normal");
-  assertEquals(normalThird.evidence.unresolvedCount, 2);
-  assertEquals(normalThird.policyMode, "forced");
-  assertEquals(normalThird.forcedAct, "hold_position");
-  assertEquals(policyAt(third, "challenge").forcedAct, "end_low_value_loop");
-  assertEquals(policyAt(third, "normal", true).forcedAct, "end_low_value_loop");
-  assertEquals(
-    policyAt(third, "easy").allowedActSetId,
-    "answer_or_challenge_easy_v1",
-  );
-
-  // 第 4 個（unresolvedCount=3）：易難度這時才停止供應解讀，比一般晚一步。
-  const fourth = [...third, a("嗯"), u("曼谷")];
-  const easyFourth = policyAt(fourth, "easy");
-  assertEquals(easyFourth.policyMode, "forced");
-  assertEquals(easyFourth.forcedAct, "hold_position");
+  // 第四個裸片段（unresolvedCount＝3）：易難度這時才第一次進
+  // repeated_low_coherence——比一般／挑戰晚兩則，符合「2–3 則才指出模式」。
+  const fourFragments = [u("韓國"), u("東京"), u("清邁"), u("曼谷")];
+  const easyFourth = policyAt(fourFragments, "easy");
+  assertEquals(easyFourth.situation, "repeated_low_coherence");
 });
 
-Deno.test("難度門檻：挑戰／game 在停止解讀那一格直接收掉（不是維持立場），一般／易仍是維持立場", () => {
-  const threeFragments = [
-    u("韓國"),
-    a("怎麼突然講韓國"),
-    u("東京"),
-    a("你沒回答我欸"),
-    u("清邁"),
-  ];
+Deno.test("難度門檻：挑戰／game 在達到低連貫門檻時直接收掉（不是維持立場），一般／易仍是維持立場", () => {
+  // 真的走 detectAgencyEvidence：三個地名連丟，第三則（unresolvedCount=2）
+  // 一般難度已達 lowCoherenceAt。forceEndLoopBeforeChallenge 獨立於
+  // priorChallengeIssued 判斷，挑戰／game 在真實流量下也一定選到
+  // end_low_value_loop，不會被「已質疑過」蓋成 hold_position。
+  const threeFragments = [u("韓國"), u("東京"), u("清邁")];
+  // Codex round-2 P1-2：standard 不再假裝「已經質疑過」，一般難度落在三選一
+  // bounded（維持立場仍在選項裡）；挑戰／game 的 forceEndLoopBeforeChallenge
+  // 獨立於那個旗標，照樣直接收掉。
   const normal = policyAt(threeFragments, "normal");
-  assertEquals(normal.policyMode, "forced");
-  assertEquals(normal.forcedAct, "hold_position");
-  assertEquals(normal.allowedActSetId, "hold_after_challenge_v1");
+  assertEquals(normal.policyMode, "bounded");
+  assert(normal.allowedActs.includes("hold_position"));
 
   const challenge = policyAt(threeFragments, "challenge");
   assertEquals(challenge.policyMode, "forced");
   assertEquals(challenge.forcedAct, "end_low_value_loop");
-  // Codex R1（新項）P2：這支收尾是欠債到門檻，不是「同一個詞原樣再丟一次」
-  // （repeatedExactToken）——set id 要是獨立的 low_value_loop_v1。
+  // Codex R1（新項）P2：這支收尾是欠債到門檻（forceEndLoopBeforeChallenge），
+  // 不是「同一個詞原樣再丟一次」（repeatedExactToken）——三則不同片段觸發，
+  // set id 要是獨立的 low_value_loop_v1，不能被記成 repeated_token_v1
+  // （那個 id 專屬 repeatedExactToken 分支，見上面 A05／A06 測試）。
   assertEquals(challenge.allowedActSetId, "low_value_loop_v1");
   assert(!challenge.evidence.repeatedExactToken);
 
@@ -572,10 +530,12 @@ Deno.test("難度門檻：挑戰／game 在停止解讀那一格直接收掉（�
   assertEquals(game.policyMode, "forced");
   assertEquals(game.forcedAct, "end_low_value_loop");
   assertEquals(game.allowedActSetId, "low_value_loop_v1");
+  assert(!game.evidence.repeatedExactToken);
 
-  // Phase 3.0 的強制閘門：欠債到門檻但她這段迴圈裡**一次都沒問過**
-  // （aiQuestionedInLoop=false）→ 任何難度都不強制，留在 bounded 條件式。
-  const neverAsked: AgencyEvidence = {
+  // 還沒質疑過（手動組 evidence；detectAgencyEvidence 在 standard 模式結構上
+  // 幾乎不會產生這個組合，見 agencyPolicyFor 內註解）：一般難度先給一輪
+  // bounded 機會，挑戰／game 仍然直接收掉。
+  const notYetChallenged: AgencyEvidence = {
     utteranceShape: "bare_fragment",
     previousAiAskedQuestion: false,
     explicitPivot: false,
@@ -583,44 +543,19 @@ Deno.test("難度門檻：挑戰／game 在停止解讀那一格直接收掉（�
     unresolvedCount: 2,
     priorChallengeIssued: false,
     precedingUserContext: false,
-    aiQuestionedInLoop: false,
   };
-  for (
-    const thresholds of [
-      AGENCY_THRESHOLDS.easy,
-      AGENCY_THRESHOLDS.normal,
-      AGENCY_THRESHOLDS.challenge,
-    ]
-  ) {
-    const d = agencyPolicyFor(neverAsked, thresholds);
-    assertEquals(d.policyMode, "bounded");
-    assertEquals(d.forcedAct, null);
-    assert(d.allowedActs.some(isAcceptingPlanAct));
-  }
-  // 同一份證據，只把「她問過」打開 → 強制格才成立。
-  const asked: AgencyEvidence = { ...neverAsked, aiQuestionedInLoop: true };
-  assertEquals(
-    agencyPolicyFor(asked, AGENCY_THRESHOLDS.normal).forcedAct,
-    "hold_position",
+  const normalFirstTime = agencyPolicyFor(
+    notYetChallenged,
+    AGENCY_THRESHOLDS.normal,
   );
-  assertEquals(
-    agencyPolicyFor(asked, AGENCY_THRESHOLDS.challenge).forcedAct,
-    "end_low_value_loop",
+  assertEquals(normalFirstTime.policyMode, "bounded");
+  assertEquals(normalFirstTime.allowedActSetId, "low_coherence_v1");
+  const challengeFirstTime = agencyPolicyFor(
+    notYetChallenged,
+    AGENCY_THRESHOLDS.challenge,
   );
-  // 她剛問完、他回了一句沒有結構線索的話（answer_candidate）：永遠不得 forced
-  // ——結構層分不出那是不是答案（Codex round-1 P1-c）。
-  const maybeAnswer: AgencyEvidence = {
-    ...asked,
-    utteranceShape: "answer_candidate",
-    previousAiAskedQuestion: true,
-  };
-  for (
-    const thresholds of [AGENCY_THRESHOLDS.normal, AGENCY_THRESHOLDS.challenge]
-  ) {
-    const d = agencyPolicyFor(maybeAnswer, thresholds);
-    assertEquals(d.policyMode, "bounded");
-    assert(d.allowedActs.some(isAcceptingPlanAct));
-  }
+  assertEquals(challengeFirstTime.policyMode, "forced");
+  assertEquals(challengeFirstTime.forcedAct, "end_low_value_loop");
 });
 
 Deno.test("難度門檻：有效短答免疫在每個難度都成立（A01／A03／A07／A09）", () => {
@@ -751,15 +686,10 @@ Deno.test("Codex round-1 P1-c：有欠債的有效短答仍然一定有「接住
     ]
   ) {
     const decision = agencyPolicyFor(evidence, thresholds);
-    // Phase 3.0：候選裡永遠有一個「接受」的出口——差別是它現在是**條件式**的
-    // （`accept_if_answered`：真的接得上才接受），不是無條件的 acknowledge。
-    // 「貓」如果真的回答了「你喜歡什麼動物」，這個清單允許她直接接受。
-    assert(
-      decision.allowedActs.some(isAcceptingPlanAct),
-      `${decision.allowedActSetId} 少了「接受」出口`,
-    );
-    assertEquals(decision.forcedAct, null, decision.allowedActSetId);
     assertEquals(decision.policyMode, "bounded");
+    assertEquals(decision.forcedAct, null);
+    assertEquals(decision.allowedActs, ["acknowledge", "return_to_topic"]);
+    assertEquals(decision.allowedActSetId, "answer_candidate_with_debt_v1");
   }
 
   // 唯一例外（刻意保留）：同一個字串原樣再丟一次。這是這一層信心最高的結構
@@ -798,13 +728,9 @@ Deno.test("Codex round-1（新項）P1-2：連續兩則完整第三人稱敘述�
       assertEquals(decision.situation, "abrupt_topic_shift", label);
       assertEquals(decision.policyMode, "bounded", label);
       assertEquals(decision.forcedAct, null, label);
-      // Phase 3.0：她一路「真的欸」沒問過任何東西，所以 aiQuestionedInLoop
-      // 是 false——強制格不會觸發（連挑戰難度也不會），清單裡也一定有一個
-      // 「接受」的出口。
-      assertEquals(decision.evidence.aiQuestionedInLoop, false, label);
       assert(
-        decision.allowedActs.some(isAcceptingPlanAct),
-        `${label}：候選清單少了「接受」出口`,
+        decision.allowedActs.includes("acknowledge"),
+        `${label}：候選清單少了 acknowledge`,
       );
     }
   }
@@ -831,8 +757,8 @@ Deno.test("Codex round-1（新項）P1-2：片段／跳題路徑上不得把 bou
         `${difficulty}／${turns.at(-1)!.text} 不該是 forced`,
       );
       assert(
-        d.allowedActs.some(isAcceptingPlanAct),
-        `${difficulty}／${turns.at(-1)!.text} 少了「接受」出口`,
+        d.allowedActs.includes("acknowledge"),
+        `${difficulty}／${turns.at(-1)!.text} 少了 acknowledge`,
       );
     }
   }

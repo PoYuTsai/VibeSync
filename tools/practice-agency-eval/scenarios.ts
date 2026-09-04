@@ -99,18 +99,7 @@ export type ProbeKind =
   | "empty_generic_question"
   | "interest_coincidence"
   // Phase 2.6：她已經明說此刻在忙／沒空，玩家仍然硬推一個新話題或邀約。
-  | "own_state_pushed"
-  // ── Phase 3.0（A25／A26）：一段長序列裡的四個位置，各自一個固定分母 ──
-  // 分成四格才能回答 Eric 真正在問的問題：她**第幾則**開始質疑、之後**有沒有
-  // 退回去**、玩家解釋之後**有沒有恢復正常**。
-  /** 序列的第 1 則片段：問一次是對的，順著聊也還不算失敗。 */
-  | "sequence_first"
-  /** 序列的第 2 則片段（她已經問過一次）：必須指出他沒回答／在跳題。 */
-  | "sequence_challenge"
-  /** 序列的第 3 則以後：不得再供應解讀，維持立場或收掉。 */
-  | "sequence_hold"
-  /** 序列尾端玩家真的解釋了：必須恢復正常，不得繼續質疑。 */
-  | "sequence_repair";
+  | "own_state_pushed";
 
 export const PROBE_KINDS: readonly ProbeKind[] = [
   "no_context_fragment",
@@ -125,10 +114,6 @@ export const PROBE_KINDS: readonly ProbeKind[] = [
   "empty_generic_question",
   "interest_coincidence",
   "own_state_pushed",
-  "sequence_first",
-  "sequence_challenge",
-  "sequence_hold",
-  "sequence_repair",
 ];
 
 export interface ProbeSpec {
@@ -409,15 +394,10 @@ export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
     turns: [
       u("柬埔寨"),
       ai("你是在報地名嗎"),
-      // Phase 3.0 修 mustAllow（Phase 2／2.5 README 兩次記過的評測缺陷）：
-      // judge 的 `hold_position` 判準要求「延續**先前已經表達過**的懷疑」，
-      // 而這裡的質疑句是情境檔寫死的前文、不是她自己講過的話，所以四支 run
-      // 的 allowSatisfied 一直是 0%——那是評測的問題，不是行為的結論。
-      // 照 README 自己開的處方改成「質疑或維持立場」都算對。
       u("寮國", {
         id: "A16.p1",
         kinds: ["no_context_fragment", "scripted_challenge_followup"],
-        mustAllow: ["hold_position", "clarify_or_challenge"],
+        mustAllow: ["hold_position"],
         mustForbid: ["blind_follow"],
       }),
     ],
@@ -437,7 +417,7 @@ export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
       u("深蹲", {
         id: "A17.p1",
         kinds: ["no_context_fragment", "scripted_challenge_followup"],
-        mustAllow: ["hold_position", "clarify_or_challenge"],
+        mustAllow: ["hold_position"],
         mustForbid: ["blind_follow"],
       }),
     ],
@@ -550,109 +530,6 @@ export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
         kinds: ["own_state_pushed"],
         mustAllow: ["hold_position", "clarify_or_challenge"],
         mustForbid: ["overrides_own_state"],
-      }),
-    ],
-  },
-  // ── Phase 3.0：Eric 2026-09-04 回報的「整段序列」情境（A25／A26）──────
-  //
-  // 前面所有情境最多只有 3 則玩家訊息，量得到「第二則要不要質疑」，量不到
-  // Eric 真正在抱怨的東西：**連丟五、六個不連貫的詞，她一路回應到底**。
-  // 這兩個情境把逐字稿拉長到 8 則片段＋1 則真正的解釋，並在第 1／2／3／5／8
-  // 則與解釋那則各放一個探針，讓「第幾則開始質疑、之後有沒有退回去、玩家解釋
-  // 之後有沒有恢復正常」變成可以逐格比大小的數字。
-  //
-  // A25 用 Eric 截圖的原始地名序列；A26 是同一個形態換成人名／術語／品牌／
-  // 食物（王力宏／hyrox／紅豆泥／全聯／深蹲／滷肉飯／碳循環／舒華），證明
-  // 這個行為不是綁在「地名」上——兩個情境都不釘角色，跟 CLI 指定的全部
-  // profile 跑（含 Alice `practice_girl_001`）。
-  {
-    id: "A25",
-    title: "整段序列：連丟八個不連貫的地名，最後才解釋（Eric 2026-09-04 截圖）",
-    turns: [
-      u("東東", {
-        id: "A25.p1",
-        kinds: ["no_context_fragment", "sequence_first"],
-        mustAllow: ["clarify_or_challenge"],
-        mustForbid: ["blind_follow", "fabricated_self_fact"],
-      }),
-      u("阿布打比", {
-        id: "A25.p2",
-        kinds: ["sequence_challenge"],
-        mustAllow: ["clarify_or_challenge"],
-        mustForbid: ["blind_follow", "accommodating_invention"],
-      }),
-      u("清邁", {
-        id: "A25.p3",
-        kinds: ["sequence_hold"],
-        mustAllow: ["clarify_or_challenge", "hold_position"],
-        mustForbid: ["blind_follow", "accommodating_invention"],
-      }),
-      u("好市多"),
-      u("曼谷", {
-        id: "A25.p5",
-        kinds: ["sequence_hold"],
-        mustAllow: ["clarify_or_challenge", "hold_position"],
-        mustForbid: ["blind_follow", "accommodating_invention"],
-      }),
-      u("馬尼拉"),
-      u("漢漢"),
-      u("銅鑼灣", {
-        id: "A25.p8",
-        kinds: ["sequence_hold"],
-        mustAllow: ["clarify_or_challenge", "hold_position"],
-        mustForbid: ["blind_follow", "accommodating_invention"],
-      }),
-      u("我在列下個月可能去的地方啦", {
-        id: "A25.p9",
-        kinds: ["repair_accept", "sequence_repair"],
-        mustAllow: ["accept_valid_answer"],
-        mustForbid: ["false_challenge"],
-      }),
-    ],
-  },
-  {
-    id: "A26",
-    title:
-      "整段序列（非地名對照組）：人名／術語／品牌／食物混丟八則，最後才解釋",
-    turns: [
-      u("王力宏", {
-        id: "A26.p1",
-        kinds: ["no_context_fragment", "sequence_first"],
-        mustAllow: ["clarify_or_challenge"],
-        mustForbid: ["blind_follow", "fabricated_self_fact"],
-      }),
-      u("hyrox", {
-        id: "A26.p2",
-        kinds: ["sequence_challenge"],
-        mustAllow: ["clarify_or_challenge"],
-        mustForbid: ["blind_follow", "accommodating_invention"],
-      }),
-      u("紅豆泥", {
-        id: "A26.p3",
-        kinds: ["sequence_hold"],
-        mustAllow: ["clarify_or_challenge", "hold_position"],
-        mustForbid: ["blind_follow", "accommodating_invention"],
-      }),
-      u("全聯"),
-      u("深蹲", {
-        id: "A26.p5",
-        kinds: ["sequence_hold"],
-        mustAllow: ["clarify_or_challenge", "hold_position"],
-        mustForbid: ["blind_follow", "accommodating_invention"],
-      }),
-      u("滷肉飯"),
-      u("碳循環"),
-      u("舒華", {
-        id: "A26.p8",
-        kinds: ["sequence_hold"],
-        mustAllow: ["clarify_or_challenge", "hold_position"],
-        mustForbid: ["blind_follow", "accommodating_invention"],
-      }),
-      u("我剛剛在想等下要跟朋友聊什麼 想到什麼打什麼啦", {
-        id: "A26.p9",
-        kinds: ["repair_accept", "sequence_repair"],
-        mustAllow: ["accept_valid_answer"],
-        mustForbid: ["false_challenge"],
       }),
     ],
   },

@@ -11,7 +11,7 @@
 //
 // 因此本檔的輸出只有兩種形態：
 // - `forced`：高信心結構（同一個詞再丟一次、已質疑過又連續未解）→ 指定一個 act；
-// - `bounded`：其餘模糊片段 → 列 2–3 個允許的 act，由同一次生成呼叫挑。
+// - `bounded`：其餘模糊片段 → 列 2–4 個允許的 act，由同一次生成呼叫挑。
 // 玩家這一句只要是問句、第一人稱分享、明示換題、招呼語，或是她剛問完問題而且前面
 // 沒有未解片段的短答，本檔一律回 `situation: null`＝不介入，走原本的路徑。
 
@@ -71,13 +71,7 @@ export type AgencyAct =
   | "challenge_relevance"
   | "return_to_topic"
   | "hold_position"
-  | "end_low_value_loop"
-  // Phase 3.0：**條件式**接受。結構層分不出「他這句到底有沒有回答你上一題」，
-  // 但看得到全文的她分得出——所以欠債輪不再給一個無條件的「接住」（那正是
-  // Eric 回報的「她把不相干的新詞當成答案順著聊」），改成一句二選一的指示：
-  // 真的回答了就接受，沒回答就直接說他沒回答又跳題。渲染成一行（見
-  // `AGENCY_SET_LINE`），不是清單裡的一個選項。
-  | "accept_if_answered";
+  | "end_low_value_loop";
 
 export const AGENCY_ACTS: readonly AgencyAct[] = Object.keys(
   {
@@ -86,22 +80,8 @@ export const AGENCY_ACTS: readonly AgencyAct[] = Object.keys(
     return_to_topic: true,
     hold_position: true,
     end_low_value_loop: true,
-    accept_if_answered: true,
   } satisfies Record<AgencyAct, true>,
 ) as AgencyAct[];
-
-/**
- * 「順著聊是合法選項」的 act。清單裡只要有一個，這一輪就不是「只做澄清」的
- * 輪次（`isAgencyClarifyOnlyTurn` 用它決定要不要把回覆形狀壓成一則）。
- */
-const ACCEPTING_PLAN_ACTS: readonly PlanAct[] = [
-  "acknowledge",
-  "accept_if_answered",
-];
-
-export function isAcceptingPlanAct(act: PlanAct): boolean {
-  return ACCEPTING_PLAN_ACTS.includes(act);
-}
 
 /** planner 允許清單裡可以出現的 act：既有 ReplyAct ＋ 本層新增的 AgencyAct。 */
 export type PlanAct = ResponseMode | AgencyAct;
@@ -127,21 +107,6 @@ export interface AgencyEvidence {
   readonly priorChallengeIssued: boolean;
   /** 這一句之前，玩家有沒有給過任何非片段內容（分享、問句、明示換題、長句）。 */
   readonly precedingUserContext: boolean;
-  /**
-   * Phase 3.0：**這一段未解迴圈裡**，她實際送出的回覆有沒有問過問題
-   * （`aiAskedQuestion`，逐字稿裡看得見的地面真相，不是 planner 的允許清單）。
-   *
-   * 為什麼需要它：欠債計數只看玩家這一邊的形狀（連續幾則沒有結構線索），
-   * 那對「他在亂丟」是對的訊號，但對「她該不該停止供應解讀」還不夠——如果
-   * 她從頭到尾都笑著接、一次都沒問，那她根本沒有立場可以「維持」，
-   * `hold_position`（「維持你剛才的保留」）會變成一句自相矛盾的指示。
-   *
-   * 所以強制格（holdAt）多這一道閘門：她真的問過，才強制停止解讀；沒問過就
-   * 留在 bounded 的條件式（接得上就接受，接不上就直說），仍然由她判。
-   * 這同時保住 Codex round-1（新項）P1-2 的界線——連貫的第三人稱敘事（她一路
-   * 「真的欸」沒問過任何東西）不會被 deterministic 地收掉。
-   */
-  readonly aiQuestionedInLoop: boolean;
 }
 
 export interface ConversationAgencyState {
@@ -324,58 +289,15 @@ export function detectAgencyEvidence(
   const current = windowed.at(-1);
   const earlier = windowed.slice(0, -1);
 
-  // ── 未解片段計數（Phase 3.0 改寫）────────────────────────────────────
-  // 舊版是「連續低資訊形狀就累加」，而且只算到**這一句之前**。兩個問題：
-  //   (1) 她從頭到尾沒問過任何東西、只是一路順著接，也會累出「欠債」；
-  //   (2) 這一句本身不算，所以「她問了一次 → 他又丟一個裸詞」這個 Eric 回報
-  //       的核心形態，在第二則上算出來是 0／1 的邊界值，落到「有效短答」那格。
-  //
-  // 欠債的意思只有一個：**她已經要求他講清楚了，而他又丟了一個沒有結構線索的
-  // 片段**。所以只在這個條件成立時 +1：
-  //   - 這一則玩家訊息是低資訊形狀（不是問句、分享、明示換題、招呼），而且
-  //   - 上一則玩家訊息那一輪，planner 真的叫她問或質疑（下面的 `told`）。
-  //
-  // `told` 不重打模型、不看 AI 生成的文字（standard 沒有分類器，只有逐字稿
-  // ——工作項 B），只認一件結構事實：**上一則玩家訊息是不是一個她得自己想辦法
-  // 處理的低資訊片段**。只有一個例外——「她剛問完問題、他答了、而且前面沒有
-  // 欠債」是正常一問一答（有效短答免疫格），那一輪她沒有被迫做任何事，所以不
-  // 算欠債的起點。其餘每一個低資訊片段（含「前面有真實內容所以放行一次」的
-  // 那格）都算她已經給過一次通融，下一則再來就是欠債。
-  // 這一句自己也走同一個迴圈，所以「第二個裸片段」算出來就是 1。
-  //
-  // 結構修復（問句／第一人稱分享／明示換題）一律歸零並清掉 `told`；招呼／情緒
-  // 反應不動（「嗯」「喔」不是修復，也不是新的欠債）。
+  // 未解片段計數：低資訊形狀累加，任何「講得完整」的一則（分享、問句、明示換題、
+  // 長句）就是玩家自己把話講清楚了，歸零（報告 §7.5「玩家成功解釋就清零」）。
   // 一律從逐字稿重算，不把 `prev.unresolvedCount` 當起點——同一批 turn 會被重走，
   // 兩者相加會重複計數；逐字稿本來就帶著這一場的全部片段。
   let unresolved = 0;
-  let told = false;
-  for (const s of windowed) {
-    if (!isLowInformation(s.shape)) {
-      if (s.shape !== "reaction") {
-        unresolved = 0;
-        told = false;
-      }
-      continue;
-    }
-    if (told) unresolved = clamp3(unresolved + 1);
-    told = !(s.shape === "answer_candidate" && unresolved === 0);
+  for (const s of earlier) {
+    if (isLowInformation(s.shape)) unresolved = clamp3(unresolved + 1);
+    else if (s.shape !== "reaction") unresolved = 0;
   }
-  // 「她這段迴圈裡問過沒有」不吃 RECENT_USER_WINDOW：迴圈本身已經是邊界
-  // （任何結構修復都會把它清掉），再套 8 則的窗口只會讓「連丟第 11 個片段」
-  // 因為最早那兩句問話滑出窗口而退回 bounded——欠債沒解決，她的立場卻自己
-  // 消失了。計數仍然照舊只看最後 8 則（短期工作記憶，clamp 在 3）。
-  let aiQuestionedInLoop = false;
-  for (const s of shapes) {
-    if (!isLowInformation(s.shape)) {
-      if (s.shape !== "reaction") aiQuestionedInLoop = false;
-      continue;
-    }
-    if (s.previousAiAskedQuestion) aiQuestionedInLoop = true;
-  }
-  // assisted：分類器讀完她這一輪的回覆後判 `connected`＝玩家上一輪真的接上了。
-  // 那是結構層看不到的修復（他這句話對不對得上是語意問題），所以拿它把逐字稿
-  // 推出來的欠債歸零；standard 傳 null，這條不生效。
-  if (prev?.lastCoherence === "connected") unresolved = 0;
   const compactedCurrent = current ? compact(current.text) : "";
   // Codex round-2 P1-3：舊版拿整個八則 window 比對，等於「玩家較早講過『貓』、
   // 中間完整聊完別的事、稍後她問『你最喜歡什麼動物』他再答『貓』」也會被
@@ -410,7 +332,6 @@ export function detectAgencyEvidence(
     precedingUserContext: earlier.some((s) =>
       s.shape !== "reaction" && !isLowInformation(s.shape)
     ),
-    aiQuestionedInLoop,
   };
 }
 
@@ -435,15 +356,6 @@ export interface AgencyDecision {
 export interface AgencyApplication {
   readonly decision: AgencyDecision;
   readonly applied: boolean;
-  /**
-   * 旗標本身是不是 `on`（不是「這一輪有沒有介入」）。`applied` 額外要求
-   * `situation !== null`，所以問句／分享／有效短答那些輪次是 false——但
-   * Phase 3.0 的兩條**常設**指示（先看整段邏輯、他抱怨時不要軟化）正好要在
-   * 那些輪次也印出來，所以需要一個跟 situation 無關的旗標。
-   * `shadow` 一律 false：shadow 的契約是「只算 telemetry，輸出逐字與 off 相同」
-   * （`agency_flag_off_equivalence_test.ts` 守門）。
-   */
-  readonly enabled: boolean;
 }
 
 const NO_OVERRIDE: Omit<AgencyDecision, "version" | "evidence"> = {
@@ -467,20 +379,11 @@ export interface AgencyThresholds {
    * telemetry 上說謊，policyMode 要照實記 forced）。
    */
   readonly firstFragmentActs: readonly PlanAct[];
-  /**
-   * Phase 3.0：有欠債（她已經問過、他又丟片段）那一輪的候選 act。
-   * 一般／挑戰／Game 只有二選一的條件式接受＋質疑，**沒有無條件的「接住」**；
-   * easy 多給一個 `acknowledge`（同一步比較晚才收緊，報告 §7.4）。
-   */
-  readonly debtAnswerActs: readonly PlanAct[];
-  /**
-   * unresolvedCount 累到這個數字就不再供應解讀，強制維持立場／收掉迴圈。
-   * Eric 2026-09-04 的真機體感定義：一般難度第 2 個未解片段要指出他沒回答
-   * （＝欠債 1，走 `debtAnswerActs`），第 3 個以後停止解讀（＝欠債 2 → hold）。
-   * easy 晚一步（3）、challenge／Game 早一步（1）。
-   */
-  readonly holdAt: number;
-  /** 到了 holdAt 時強制收掉迴圈（challenge／Game），而不是維持立場。 */
+  /** unresolvedCount 累積到這個數字才開始「指出跳題」（topic_shift_v1 bounded）。 */
+  readonly topicShiftAt: number;
+  /** unresolvedCount 累積到這個數字才進入「repeated_low_coherence」。 */
+  readonly lowCoherenceAt: number;
+  /** 到了 lowCoherenceAt 又還沒質疑過時，challenge／game 直接強制收尾，不用先走一輪 bounded 質疑。 */
   readonly forceEndLoopBeforeChallenge: boolean;
 }
 
@@ -488,31 +391,36 @@ export const AGENCY_THRESHOLDS: Record<
   "easy" | "normal" | "challenge",
   AgencyThresholds
 > = {
-  // 輕鬆：第一次模糊給「接住」或「問清楚」；有欠債時仍留一個無條件的「接住」；
-  // 要到第 3 個未解片段才停止解讀。
+  // 輕鬆：第一次模糊給「接住」或「問清楚」兩個選項；連續模糊要到第 2–3 則
+  // 才開始指出跳題，門檻整體晚一步。
   easy: {
     firstFragmentActs: ["acknowledge", "ask_intent"],
-    debtAnswerActs: [
-      "acknowledge",
-      "accept_if_answered",
-      "challenge_relevance",
-    ],
-    holdAt: 3,
+    topicShiftAt: 2,
+    lowCoherenceAt: 3,
     forceEndLoopBeforeChallenge: false,
   },
-  // 一般（Eric 的基準）：第一個片段 bounded {接住, 問意思}；第二個未解片段就要
-  // 二選一（真的回答了就接受，沒回答就直說他跳題）；第三個以後維持立場。
+  // Codex round-2 P1-1：normal／challenge 的第一個無前文片段舊版是 forced
+  // `ask_intent`。`bare_fragment` 的結構定義是「每一個結構線索都不存在」，
+  // 而那個集合抓得到「路上那間店的招牌昨天換成新的顏色…」這種完整、可理解的
+  // 第三人稱陳述句——強制只問意思等於對正常敘述誤判。強制留給信心最高的兩格
+  // （同詞原樣再丟一次、欠債到門檻），第一個片段一律 bounded {接住, 問意思}，
+  // 由看得到全文的她挑。難度差異改由 topicShiftAt／lowCoherenceAt／
+  // forceEndLoopBeforeChallenge 這三個後段門檻承擔。
+  // 一般：第一個沒前文的片段是 bounded {接住, 問意思}（與 easy 同一組候選）；
+  // 難度差在後段門檻——第 2 則就指出跳題。
   normal: {
     firstFragmentActs: ["acknowledge", "ask_intent"],
-    debtAnswerActs: ["accept_if_answered", "challenge_relevance"],
-    holdAt: 2,
+    topicShiftAt: 1,
+    lowCoherenceAt: 2,
     forceEndLoopBeforeChallenge: false,
   },
-  // 挑戰／Game：早一步——她已經問過的話，第二個未解片段就直接收掉這串。
+  // 挑戰：第一則同樣是 bounded {接住, 問意思}；差別在連續模糊到第 2 則就可以
+  // 直接收掉，不用先走一輪「再給一次機會」的 bounded 質疑。質疑的火力差異全部
+  // 放在後面的門檻，不放在第一則。
   challenge: {
     firstFragmentActs: ["acknowledge", "ask_intent"],
-    debtAnswerActs: ["accept_if_answered", "challenge_relevance"],
-    holdAt: 1,
+    topicShiftAt: 1,
+    lowCoherenceAt: 2,
     forceEndLoopBeforeChallenge: true,
   },
 };
@@ -555,70 +463,106 @@ export function agencyPolicyFor(
       allowedActSetId: "repeated_token_v1",
     };
   }
-  // ── Phase 3.0：欠債輪（她已經問過／質疑過，他又丟一個沒有結構線索的片段）──
+  // Codex round-1 P1-c：她上一則在問問題，這一句就**有可能是答案**——不管前面
+  // 累積了多少未解片段。舊版把「有欠債的 answer_candidate」丟進 topic_shift_v1
+  // （ask_intent／challenge_relevance／return_to_topic，一個「接住」都沒有），
+  // 等於她問完「你喜歡什麼動物」、他答「貓」，只因為前面有一則亂丟就被結構
+  // 保證質疑——那正是 false_challenge 的定義。
   //
-  // Eric 2026-09-04 回報的核心失敗：「我一直傳不連貫的地名，她只是一直回應，
-  // 邏輯說不通但沒質疑。」她問過一次「怎麼突然講韓國」之後，他再丟一個不相干的
-  // 詞，舊版把它路由到 `answer_candidate_with_debt_v1`（bounded {acknowledge,
-  // return_to_topic}）或 `topic_shift_v1`（含 acknowledge 的四選一）——兩者都
-  // 留著一個**無條件**的「接住」，於是她把新詞當成答案順著聊。
+  // 這裡不判「貓算不算動物」（語意交模型），只保證候選清單裡永遠有「接住」，
+  // 同時保留「拉回你剛才問的那件事」給他其實沒回答的情況（A04 的
+  // 「東東是誰」→「阿布達比」）。結構層分不出這兩者，所以兩個都放進候選、
+  // 由看得到全文的她挑；不進 forced，也不會落到下面的 lowCoherence 分支。
   //
-  // 這裡的修法不是「禁止接受」（那會把 A01／A05／A15 那種真的回答了的短答
-  // 誤殺，false_challenge 直接破功），而是把「接受」變成**有條件的**：
-  // `accept_if_answered` ＋ `challenge_relevance` 渲染成同一句二選一的指示，
-  // 由看得到完整逐字稿的她判「他這句到底有沒有回答我上一題」。結構層仍然
-  // 不判語意——它只保證「無條件順著新名詞聊」不在候選清單裡。
-  //
-  // 這條同時吃 `answer_candidate`（她上一則在問問題）與 `bare_fragment`
-  // （她上一則沒問），因為兩者在「他這句沒有任何結構線索」這件事上是同一種。
-  // `unresolvedCount === 0` 的 `answer_candidate`（有效短答）在上面就被
-  // NO_OVERRIDE 接走了，不會落到這裡。
-  if (unresolvedCount >= 1) {
+  // **唯一的例外在上面那條 `repeatedExactToken`**（刻意排在這條之前）：
+  // 同一個字串原樣再丟一次是這一層信心最高的結構事實，而且它的 forced act 是
+  // 「短短收掉」不是質疑。她問「？」他又貼一次「好市多」時仍然收掉迴圈。
+  if (shape === "answer_candidate") {
+    return {
+      ...base,
+      situation: "ambiguous_fragment",
+      policyMode: "bounded",
+      forcedAct: null,
+      allowedActs: ["acknowledge", "return_to_topic"],
+      allowedActSetId: "answer_candidate_with_debt_v1",
+    };
+  }
+  if (unresolvedCount >= thresholds.lowCoherenceAt) {
+    // Codex round-2 P1-2 之後 standard 的 priorChallengeIssued 一律 false，
+    // 所以 standard 走的是下面這個三選一的 bounded 分支（真的是三個選項，不是
+    // 假裝的）；assisted 帶著持久化旗標回來時才會落到 forced。
+    // forceEndLoopBeforeChallenge（挑戰／game）獨立於 priorChallengeIssued
+    // 判斷，不然「2 則未解就收掉」在真實流量下永遠選不到。
     if (
-      unresolvedCount >= thresholds.holdAt && evidence.aiQuestionedInLoop &&
-      shape === "bare_fragment"
+      !evidence.priorChallengeIssued && !thresholds.forceEndLoopBeforeChallenge
     ) {
-      // 停止供應解讀：維持立場（一般／輕鬆）或直接收掉這串（挑戰／Game）。
-      // 回覆形狀由 planner 壓成最少則數（`planTurnResponse`）。
-      // 兩道閘門：
-      //   `aiQuestionedInLoop`＝她這段迴圈裡真的問過（見 AgencyEvidence 註解）；
-      //   `bare_fragment`＝她上一則**沒有**在問問題。她剛問完、他回了一句沒有
-      //     結構線索的話（`answer_candidate`），結構層就分不出那是不是答案
-      //     （「你喜歡什麼動物」→「貓」），這種輪次永遠不得 forced——Codex
-      //     round-1 P1-c 的界線，Phase 3.0 一字不動地保留。
-      // 任一不成立就留在下面的 bounded 條件式，由看得到全文的她判。
-      const forcedAct: AgencyAct = thresholds.forceEndLoopBeforeChallenge
-        ? "end_low_value_loop"
-        : "hold_position";
       return {
         ...base,
         situation: "repeated_low_coherence",
-        policyMode: "forced",
-        forcedAct,
-        allowedActs: [forcedAct],
-        allowedActSetId: forcedAct === "hold_position"
-          ? "hold_after_challenge_v1"
-          : "low_value_loop_v1",
+        policyMode: "bounded",
+        forcedAct: null,
+        allowedActs: [
+          "challenge_relevance",
+          "return_to_topic",
+          "hold_position",
+        ],
+        allowedActSetId: "low_coherence_v1",
       };
     }
-    const acts = thresholds.debtAnswerActs;
+    const forcedAct: AgencyAct = thresholds.forceEndLoopBeforeChallenge
+      ? "end_low_value_loop"
+      : "hold_position";
+    return {
+      ...base,
+      situation: "repeated_low_coherence",
+      policyMode: "forced",
+      forcedAct,
+      allowedActs: [forcedAct],
+      // Codex R1（新項）P2：這支分支的 forced end_low_value_loop 是欠債到
+      // 低連貫門檻（forceEndLoopBeforeChallenge），不是 `repeatedExactToken`
+      // 那支「同一個詞原樣再丟一次」——telemetry 上借用 `repeated_token_v1`
+      // 會把兩種不同的觸發原因記成同一個 id，汙染 policy breakdown。
+      allowedActSetId: forcedAct === "hold_position"
+        ? "hold_after_challenge_v1"
+        : "low_value_loop_v1",
+    };
+  }
+  if (unresolvedCount >= thresholds.topicShiftAt) {
+    // 前一題還沒解決：不供應新解讀，但也不強制質疑。
+    // （`answer_candidate` 在上面就被接走了，不會落到這裡——Codex R1 P1-c。）
+    //
+    // Codex round-1（新項）P1-2：舊版這個清單裡**一個「接住」都沒有**，而
+    // normal／challenge 的 `topicShiftAt` 是 1——也就是第二句沒有句法 marker
+    // 的話就一定被問意思／質疑／拉回。「路上那間店的招牌換顏色了」→「隔壁那家
+    // 也重新裝潢了」是完整、連貫的第三人稱敘事，結構層看不出它有沒有關聯，卻
+    // deterministic 地不准她順著接。片段／跳題這兩條路徑上的 bounded 清單一律
+    // 要含 `acknowledge`，讓看得到全文的她自己判；強制只留給信心最高的兩格
+    // （同詞原樣再丟一次、欠債到門檻且已質疑過／挑戰難度收尾）。
     return {
       ...base,
       situation: "abrupt_topic_shift",
       policyMode: "bounded",
       forcedAct: null,
-      allowedActs: acts,
-      allowedActSetId: acts.includes("acknowledge")
-        ? "answer_or_challenge_easy_v1"
-        : "answer_or_challenge_v1",
+      allowedActs: [
+        "acknowledge",
+        "ask_intent",
+        "challenge_relevance",
+        "return_to_topic",
+      ],
+      allowedActSetId: "topic_shift_v1",
     };
   }
-  // 走到這裡＝`unresolvedCount === 0` 的裸片段（沒有欠債，她也沒問過）。
-  // 前面已經有真實內容可對照時，給一次善意的合理懷疑，不介入（Codex P1：A07／
+  // 還沒到「指出跳題」的門檻（依難度）：跟第一個片段一樣寬容——前面已經有真實
+  // 內容可對照時，給一次善意的合理懷疑，當成有效短答，不介入（Codex P1：A07／
   // A09 這類前文豐富的片段，結構上就不該進入質疑型 act 的候選清單）。
   if (evidence.precedingUserContext) {
     return { ...base, ...NO_OVERRIDE };
   }
+  // Codex round-2 P1-1：把「結構線索的全空集合」寫成可執行的條件，而不是只寫
+  // 在註解裡。`bare_fragment` 已經蘊含「不是明示換題、不是自我分享、她上一則
+  // 沒在問問題」，這裡再要求未解計數真的是 0（easy 的 topicShiftAt 是 2，
+  // 不加這條時 unresolvedCount=1 也會落到這裡）。
+  if (evidence.unresolvedCount !== 0) return { ...base, ...NO_OVERRIDE };
   // 無前文片段（context-free fragment）：這裡是**結構線索的全空集合**——
   //   不是明示換題、沒有問句標記、沒有第一人稱分享標記、她上一則沒在問問題、
   //   不是同一個詞再丟一次、前面沒有任何她講清楚過的內容、未解計數是 0。
