@@ -2098,3 +2098,114 @@ Phase 4.0（`ConversationAgencyProfile` 四欄位＋四個 consumer）落地時�
 3. **A29 是合成情境**（腳本前文＋兩則反應詞，不是真機截圖），且卡在本輪唯一一次確定性擲骰摃龜——這一題目前**完全沒有黑箱證據**，既不能說 initiative 有效也不能說無效，是純粹的「沒測到」。
 4. **`--state=1` 的短期狀態模擬**（`run_agency.ts` 的 `stateSimulation` 近似）跟 production 的真持久化狀態不是同一機制，序列情境（A25／A26）與 A28／A29 的跨輪 `agencyState` 是本工具的結構層近似，不是逐位元組重播 production。
 5. 本輪沒有跑 `evaluate_agency.ts` 以外的分類器層（`accommodatingSelfFact`／`sharedPastClaim`）。**更正**：A29 的 `accommodating_invention` 不是 0/40——`practice_girl_064`（Lumi）A29.p2 判 true（40 筆裡唯一一筆，2.5%）：她回「嗯嗯是句點王耶　你那天怎麼會出現在我工作的那邊啊」，judge 判讀為「宣稱玩家出現在她工作地點，這是查無來源的共同過去」。**這一筆跟 initiative／self_disclose 無關**（該輪 `optionalAct` 不是 `self_disclose`，是 Phase 3.8 的 `askUserFocus` 強制問法——A29.p2 有 17/20 觸發，見上面「A29.p2 {'forced': 17...}」），是**另一個既有 consumer（forced 問管道好奇點）在停滯輪上把好奇點問成既定事實**，不是本輪新增的 initiative 分支造成。跟原本擔心的「停滯輪她會不會編共同經歷來救場」這個問題方向相關但機制不同：**Q3 的 self_disclose 分支確實 0/40 沒有樣本可看，但同一批 A29 資料另外意外量到一筆 forced-ask 相關的 `accommodating_invention`，值得記一筆但樣本量 1/40 不能下任何結論，且是 Phase 3.8 既有機制、不是 Phase 4.0 的新行為。**
+
+### Phase 4 完整黑箱矩陣：主情境 A01–A15＋Phase 4 專屬情境 A25/A26/A28/A29（2026-09-05，`agency-phase4-eval` 分支，commit `f29a3ea3` 起點）
+
+計畫 Gate 原文見 `docs/plans/2026-09-03-practice-conversation-agency-plan.md` Phase 4 節。Phase 4.0 首跑（見上一節，20 位×8 情境×repeat1、$0.96）樣本量太小，多數分人比較「分不出」；這一輪把 A01–A15 全部主情境拉到 `repeat=3`（跟 Phase 1 的計畫 Gate 矩陣同規模），Phase 4 專屬情境拉到 `repeat=2`，Eric 核准 **DeepSeek $8.00、Anthropic $1.00** 雙硬上限。
+
+**矩陣**：
+
+| 矩陣 | 情境 | profiles | repeat | 場次 | 生成 | judge（成功/解析失敗） |
+| --- | --- | --- | --: | --: | --: | --- |
+| 主矩陣 on | A01–A15 | 20 位代表角色 | 3 | 900（0 失敗） | 1,860 | 1019/1020（1 失敗） |
+| 主矩陣 off | A01–A15 | 同上 | 3 | 900（0 失敗） | 1,860 | 1017/1020（3 失敗） |
+| 專屬矩陣 on | A25/A26/A28/A29 | 同上 | 2 | 160（0 失敗） | 1,040 | 758/760（2 失敗） |
+| 專屬矩陣 off | A25/A26/A28/A29 | 同上 | 2 | 160（0 失敗） | 1,040 | 759/760（1 失敗） |
+
+artifact：`out/2026-09-05-p4full-beginner-{on,off}.json`＋`-judge.json`、`out/2026-09-05-p4spec-beginner-{on,off}.json`＋`-judge.json`。
+
+**花費（實測餘額，DeepSeek `/user/balance`）**：開跑前 **$31.06** →主矩陣 on 完成 **$30.48**（花 $0.58）→主矩陣 off 完成 **$29.39**（花 $1.09）→專屬矩陣 on 完成 **$28.55**（花 $0.84）→專屬矩陣 off 完成 **$27.83**（花 $0.72）→等結算延遲後最後一次讀 **$27.34**。**實測總花費 $3.72**（$31.06→$27.34），遠低於 $8.00 上限；沒有觸發「on 臂 >$3.00 就把 off 臂 repeat 降到 2」那條停損，四支矩陣都跑滿計畫規模。Anthropic：40 次 Sonnet 5 呼叫、0 個 API 失敗，`callClaude` 不回傳 usage、無法讀官方餘額對帳，用輸出字數估算（40 次呼叫合計輸出約 1.07 萬字元／估 5,900 output tokens，加上每次呼叫的 system＋逐字稿 input），**估算遠低於 $1.00 上限**，這是估算不是實測（跟 DeepSeek 的實測餘額差不同級別的證據）。
+
+#### Gate 逐條（計畫 Phase 4 節；on/off 都是本輪主矩陣或專屬矩陣，Wilson 95%）
+
+| Gate | 門檻 | on | off | 過／未過 |
+| --- | --- | --: | --: | --- |
+| 頭條盲目跟題（`adopted_without_asking + accommodating_invention`） | ≤5% | 6.0%（4.2–7.9，n=480） | 15.9%（13.4–19.0，n=478） | **未過**（on 顯著優於 off，CI 不重疊，但點估計仍超過門檻） |
+| 誤質疑 `false_challenge`（A01/A03/A07/A09） | ＝0% | 0.0%（n=239） | 0.0%（n=239） | **過** |
+| 跨輪立場 `stance_persistence_conditional` | ≥95% | 85.0%（78.0–93.0，n=100） | 77.1%（66.7–87.5，n=48） | **未過**（on 方向較好，但 CI 上界 93.0% 仍低於 95%） |
+| style 比值 | ≥2.0 | 2.15（2.12–2.17） | 1.80（off 對照，非 gate 對象） | **過** |
+| p95 延遲增幅 | <10% | 1093ms | 1024ms（+6.7%） | **過** |
+| 安全／邀約 golden | 0 退步 | 見下 | 見下 | **過** |
+| 【Phase 4 專屬】`sequenceChallenge`（A25/A26.p2） | ≥80% | 88.8%（81.3–95.0，n=80） | 68.8%（58.8–78.8，n=80） | on **過**、off 未過（CI 不重疊，on 臂效果紮實） |
+| 【Phase 4 專屬】`sequenceHoldBlindFollow` | ≤5% | 22.5%（18.3–28.7，n=240） | 24.3%（18.0–28.9，n=239） | **兩臂皆未過**，且重疊、分不出 on 是否改善這條 |
+| 【Phase 4 專屬】`sequenceRepairAccepted` | ≥90% | 96.3%（91.3–100，n=80） | 96.3%（91.3–100，n=80） | **兩臂皆過**（天花板效應，agency 未改變這格） |
+
+安全側全表（deno test＋judge 兩臂）：`deno test --allow-read --allow-env supabase/functions/practice-chat/` **1848 passed｜0 failed｜1 ignored**（golden 0 退步）。`interrogation`：主矩陣 on 0/1019、off 0/1017，專屬矩陣 on 0/758、off 0/759，全部 0.0%。`inconsistent_self_fact`：同上四支全部 0.0%。四項指標**沒有一項因為 Phase 4 分人強弱而升高**。
+
+**讀法**：頭條 gate 跟跨輪立場延續 Phase 1／2.6 一貫沒過的老問題（判準本身沒放寬，見上面「兩次收斂嘗試」），Phase 4.0/4.1 沒有針對這兩條做結構修正，這一輪的未過不是 Phase 4 的迴歸，是既有天花板。新加的三個序列 gate 裡，`sequenceChallenge`（第 2 則就指出他沒回答）on 臂第一次乾淨過關且跟 off 臂拉出不重疊區間——這是 Phase 3.0 強制質疑結構刀的效果，樣本量夠大（n=80）已經能拍板。`sequenceHoldBlindFollow`（連丟第 3 則以後仍盲目跟題）是本輪最大的缺口：22–24%，離 ≤5% 很遠，且 on/off 幾乎打平，代表「連續丟詞之後她會不會真的停止解讀」目前的結構層機制沒有把這條真的壓下來——這是下一輪如果要再往前推最值得動的地方，不是本輪能回答的。
+
+#### Phase 4.0 分人：低容忍 vs 高容忍、高懷疑 vs 低懷疑（用本輪更大樣本重驗）
+
+**Q1（A02.p1+A08.p1，n=48/組，Phase 4.0 首跑是 n=16/組）**：
+
+| 組別 | on `asked_with_guess` | off `asked_with_guess` | on `adopted_without_asking` | off `adopted_without_asking` |
+| --- | --: | --: | --: | --: |
+| 低容忍（n=48，8 位×2 情境×3 repeat） | 8.3%（3.3–19.6） | 4.2%（1.2–14.0） | 10.4%（4.5–22.2） | 33.3%（21.7–47.5） |
+| 高容忍（n=48） | 14.6%（7.2–27.2） | 14.6%（7.2–27.2） | 25.0%（14.9–38.8） | 31.2%（19.9–45.3） |
+
+`false_challenge` 四格全部 0/48。**讀法**：低容忍組 `adopted_without_asking` 的 on/off 區間（4.5–22.2 對 21.7–47.5）只差 0.5 個百分點就不重疊——比 Phase 4.0 首跑（同一格兩臂完全打平 18.8%/18.8%，n=16）更清楚地看到 forced `ask_intent` 真的把「完全不問就跟題」壓下來；高容忍組 on/off（14.9–38.8 對 19.9–45.3）持續重疊，跟 Phase 4.0 一致——**這一刀對低容忍組有效、對高容忍組沒有結構理由生效（他們不吃 forced ask_intent），這一輪用更大樣本量把 Phase 4.0 分不出的訊號往前推了一步，但嚴格說仍未跨過不重疊門檻，只能講「幾乎顯著」**。`asked_with_guess` 四格全部重疊，分不出，且低容忍組 on（8.3%）比 off（4.2%）還高——方向跟 Phase 4.0（on 更低）不一致，樣本雜訊主導，不能倒推 forced ask_intent 讓夾帶猜測變多。
+
+**Q2（A25/A26 序列探針，用專屬矩陣 repeat=2，n=48/152，Phase 4.0 首跑 n=24/78）**：
+
+| 指標 | on 低懷疑（n=4 位） | on 高懷疑（n=13 位） | off 低懷疑 | off 高懷疑 |
+| --- | --: | --: | --: | --: |
+| `sequenceChallenge`（n=16/52） | 87.5%（64.0–96.5） | 90.4%（79.4–95.8） | 68.8%（44.4–85.8） | 73.1%（59.7–83.2） |
+| `sequenceHoldBlindFollow`（n=48/156） | 27.1%（16.6–41.0） | 22.4%（16.6–29.6） | 14.9%（7.4–27.7） | 24.4%（18.3–31.7） |
+| `sequenceRepairAccepted`（n=16/52） | 100%（80.6–100） | 94.2%（84.4–98.0） | 100%（80.6–100） | 96.2%（87.0–98.9） |
+
+**讀法（比 Phase 4.0 更確定的一件事：這題真的分不出，不是樣本不夠）**：`sequenceHoldBlindFollow` 的低懷疑／高懷疑相對大小這一輪是 27.1% > 22.4%（低懷疑更高），Phase 4.0 首跑是 12.5% < 23.1%（低懷疑更低）——**兩輪獨立黑箱的方向直接翻面**，不是同一個雜訊帶內的抖動而已，是**方向本身不穩定**，坐實 README 早先的猜測「這裡分不出，也不能倒過來說 consumer 方向錯」——`skepticism` 對 `sequenceHoldBlindFollow` 目前沒有可觀測的分人效果，n=4 位的低懷疑組本質上永遠只有 4 個獨立樣本點，不管 repeat 開多大都撐不住這個問題（跟 Phase 4.0 記過的 A29 selfDisclose「repeat 對這個域無效」是同一種樣本量天花板，只是這裡是角色數天花板）。`sequenceChallenge`／`sequenceRepairAccepted` 兩輪都在 on 臂被拉到 85–100% 天花板附近，跟 Phase 4.0 一致。
+
+#### Q3 initiative（A29 `p4:selfDisclose`）：這一輪仍然 0 命中，兩輪黑箱累積 0/80
+
+`replay_plan.ts` 對專屬矩陣 on 臂重放：`p4:selfDisclose` **0/40**（A29.p1、p2 皆 0），跟 Phase 4.0 首跑的 0/40 完全一樣。這次 `--repeat=2`（Phase 4.0 是 `--repeat=1`），仍然 0 命中——**確認 README 已經記過的結論**：`run_agency.ts` 的 thread id 不隨 `--repeat` 變動，同一 profile 在這個探針位置的 `fnv1a` 擲骰是同一個值，兩輪用不同 repeat 打同一批 profile 本來就會拿到同一個結果，不是巧合摃龜兩次。**兩輪黑箱累積 0/80，initiative 分支在 A29 上完全沒有語意輸出證據，既不能說有效也不能說無效**；要拿到樣本，下一輪必須換一批 profile id 或讓 `run_agency.ts` 的 thread id 隨 repeat 變動，不是加大這 20 位的 repeat。
+
+**附帶發現（跟 Q3 無關，但兩輪都量到、值得升級成正式待辦）**：`A29.p2`（Phase 3.8 的 `askUserFocus` 強制問法，本輪 38/40 觸發）的 `accommodating_invention` 這一輪是 **3/40（7.5%，CI 2.6–19.9）**——`practice_girl_001`（Alice，「她虛構了『那天在酒吧』的共同經歷」）、`practice_girl_084`（Lina，「編出『我們店裡』的具體場景」）、`practice_girl_004`（Mia，「宣稱玩家曾在路上搭話」）——加上 Phase 4.0 首跑同一探針的 1/40，**兩輪獨立黑箱在同一個探針位置累積 4/80（5%）**，不再是「n=1 不能下結論」的孤例：**forced 問管道好奇點在停滯輪上，大約每 13–15 次會把好奇點問成一句既定的共同經歷宣稱，而不是中性提問**。這是 Phase 3.8 既有機制的既有行為，不是 Phase 4.0 新增的分支造成，但兩輪都踩到同一個坑，值得排進下一輪的待辦而不是繼續當成雜訊。
+
+#### Hint／Debrief 輸出層抽查（Anthropic Sonnet 5，40 次真呼叫，0 個 API 失敗）
+
+用 production 同款 `buildHintMessages`／`buildDebriefMessages`，從主矩陣 on 臂重放 `hintAgencyCoachingFor`／`debriefAgencyLedgerFor`（新增 `tools/practice-agency-eval/hint_debrief_spotcheck.ts`，可重跑：`export CLAUDE_API_KEY=$(cat ~/.config/anthropic/key); deno run --allow-env --allow-read --allow-write --allow-net=api.anthropic.com tools/practice-agency-eval/hint_debrief_spotcheck.ts <on-arm-artifact.json> <out.json> [--hint-answer=10] [--hint-stop=10] [--hint-off=5] [--debrief=10] [--debrief-off=5]`）。**已知限制**：候選發現迴圈依 artifact 內順序（每位角色 A01→A15），一達到全部配額就提前跳出，這一輪的 10+10 個 hint 時點全部落在 **A02（裸詞開場）與 A06（連丟三地名）**，10 個 debrief 場全部落在 **A02**——沒有涵蓋 A08、A25/A26、A28/A29 的 hint／debrief 抽查，下一輪要拿到情境多樣性得先把配額拆開跑或打散候選順序。artifact：`out/2026-09-05-hint-debrief-spotcheck.json`。
+
+**Hint on 臂（10 answer_her_question ＋ 10 stop_dropping_words，逐則）**：
+
+| 角色 | 情境 | kind | coaching 前 40 字 |
+| --- | --- | --- | --- |
+| Alice(001) | A02 | answer | 她在問你為什麼突然講韓國，你還沒回答就等於沒接住她的疑問。先老實說明「韓國」這兩個字的由 |
+| Alice(001) | A02 | answer | 她只回「喔 韓國喔」語氣淡淡的，像在等你多講一點，而不是丟新話題給她接。你剛才只說了地名沒 |
+| Alice(001) | A02 | answer | 她在指出你上一句「韓國」丟得太突兀，沒說明脈絡，這輪要先承認沒頭沒尾、把話說清楚，不要急著 |
+| Nina(008) | A02 | answer | 她直接問你幹嘛突然講韓國，還說自己在看韓劇，這球是丟給你解釋＋接話。你上一句還沒回應到，先 |
+| Nina(008) | A02 | answer | 她直接說「接不上」，這是在跟你反映沒接好，要先承認自己丟得太突兀、把話補完整，再順她拋出的 |
+| Nina(008) | A02 | answer | 她直接問你「講韓國是什麼意思」，這是在跟丟、要你補上下文，不是在跟你聊韓國本身。這時候不能 |
+| Lumi(064) | A02 | answer | 她被你丟的「韓國」搞愣住，直接問你是不是在韓國——這題要先回答，不能又丟新話題。先講清楚不 |
+| Lumi(064) | A02 | answer | 她點出你沒頭沒尾丟了韓國兩個字，這輪要先坦承跳太快、補上完整脈絡，讓她知道你在想什麼，不要 |
+| Lumi(064) | A02 | answer | 她以為你在講韓劇，其實你沒回答清楚，她才會反問「哪一部」。這輪要先澄清：你說的韓國是旅遊不 |
+| Bonnie(077) | A02 | answer | 她說沒跟上，是在指出你沒接住、丟了個沒頭沒尾的詞。先別急著解釋道理，直接承認跳太快，再補上 |
+| Alice(001) | A06 | stop | 你連續丟了韓國、東京、淺草三個詞沒解釋，她已經吐槽你分不清還提到剛下飛機在調時差，這兩件事 |
+| Alice(001) | A06 | stop | 你連續丟三個地名她已經問到不耐煩，再不講清楚會被當在耍她。這輪先把話說白：這些是你去過的地 |
+| Alice(001) | A06 | stop | 她已經自己接上淺草，還說飛過覺得不錯，這是她給的球。這輪要先承認自己連續丟詞讓她困惑，把話 |
+| Nina(008) | A06 | stop | 你連丟韓國、東京、淺草三個詞，沒有前後文，她已經問到第三次還是接不住，等於一直在問你到底想 |
+| Nina(008) | A06 | stop | 你連續丟「韓國」「東京」「淺草」三個詞，完全沒有句子，她已經兩次問你在幹嘛，這輪她又說跟不 |
+| Nina(008) | A06 | stop | 你連續丟了韓國、東京、淺草幾個詞，沒頭沒尾，她已經兩次問你到底想幹嘛。這輪要先承認自己講話 |
+| Lumi(064) | A06 | stop | 她已經兩次問你是不是在測試她，這代表連續丟詞讓她接不住、有點被搞混。這輪先不要再丟新地名， |
+| Lumi(064) | A06 | stop | 你連續丟了韓國、東京、淺草三個詞，她已經追問兩次「你在幹嘛」，這輪必須先把話講清楚，不能再 |
+| Lumi(064) | A06 | stop | 她已經明講看不懂你在丟什麼，這輪不能再丟新詞。兩句都先承認自己講話沒頭沒尾，再把「淺草、東 |
+| Bonnie(077) | A06 | stop | 你連丟韓國、東京、淺草三個詞，她已經兩次問你到底想說什麼，這輪先把話說清楚：淺草是你去過的 |
+
+**判定：20/20 全部命中**——`answer_her_question` 的 10 則全部明確講出「你還沒回答她／沒接住她的疑問」，`stop_dropping_words` 的 10 則全部明確講出「連續丟了…詞／連丟…幾個詞」，跟 `hintAgencyCoachingFor` 的結構判定逐字對上，輸出層沒有把證據丟掉或稀釋。
+
+**Hint off 臂對照（同 5 個時點，不傳證據）**：Alice/A02×3、Alice/A06×2。A02 的三則 off 仍然自己從逐字稿看出「一頭霧水／反問你幹嘛突然講這個」，但沒有 on 臂那種「你還沒回答」的直接歸責語氣；A06 的兩則裡**一則完全沒提連續丟詞**（把「剛下飛機在調時差」讀成自我揭露機會，教她「順著接才會加分」，完全略過三個地名的問題），另一則有提到「她覺得你在亂丟地名」。**小樣本（n=5）不能當統計，但這是本輪唯一一次抓到「沒有結構證據時模型可能完全漏掉該講的重點」的具體例子**。
+
+**Debrief on 臂（10 場，全部落在 A02，repairTurns=[1]）**：10/10 則 `watchouts` 全部明確把責任歸給「她得反問／她反過來問意思／她的疑問被晾在原地」，沒有一則寫成玩家的缺口本身；10/10 `dateChance` 皆 `low`（單輪片段本來就撐不起更高評級，安全）。逐字舉 3 則：Alice(001)「開場丟出「韓國」沒頭沒尾，讓她反過來問意思，變成她補救」；Nina(008)「開場丟『韓國』無脈絡，她得反問『是什麼意思』來補救」；Lumi(064)「丟出「韓國」沒頭沒尾，她得反問「哪一部」才能接住」。
+
+**Debrief off 臂對照（同 5 場，不傳證據）**：5/5 仍然抓到片段問題，但用詞更常見**苛責玩家**的框架而非「她在補救」——Alice(001) 一則寫「顯得像測試而非分享」、Nina(008) 一則寫「丟出「韓國」兩字無上下文，形同查戶口式起頭」。`agencyLedger` 明文禁止的正是這種「不算他缺口」以外的歸責寫法；小樣本下能看到方向差異，但 n=5 不能當統計顯著。
+
+**誠實解讀**：40 次呼叫全部成功、field 抽取用 regex 而非嚴格 JSON.parse（模型偶爾在 JSON 之外多印一段「格式錯了，重新輸出」的自我修正文字，`hint_debrief_spotcheck.ts` 的簡化 `extractField` 在這種情況下抓不到欄位，人工複核時改用最後一個 `"coaching":"..."` 比對才補齊，production 的 `parseObject`／`extractJsonObject` 有處理這類情況，這裡的抽查腳本沒有照搬完整解析器，屬本輪工具的已知簡化）。情境多樣性不足（全部落在 A02／A06）、debrief 全部落在 A02（見上面已知限制）。
+
+#### 誠實總結
+
+1. **樣本量比 Phase 4.0 首跑大 3 倍（主矩陣）／2 倍（專屬矩陣）**，多數「分不出」的結論這次更確定是真的分不出（尤其 Q2 兩輪方向直接翻面），而不是本輪或上輪的樣本不夠。
+2. **judge 標籤雜訊帶**（±7/40，Phase 3.6 記過）仍然沒有本輪重新量測，上面所有區間本來就把這個雜訊算進去。
+3. Gate 逐條：**過 6／9**（`false_challenge`、`style`、`p95`、`golden`、`sequenceChallenge`、`sequenceRepairAccepted`；`headline`、`stance_persistence`、`sequenceHoldBlindFollow` 未過）。頭條與跨輪立場是 Phase 1 就記過的老天花板；`sequenceHoldBlindFollow` 是本輪唯一「新發現、明確沒過、on 臂沒有改善」的缺口。
+4. initiative（Q3）兩輪黑箱 0/80，完全沒有語意證據；`accommodating_invention` 在同一個探針上兩輪累積 4/80，從雜訊升級成值得排隊的已知模式。
+5. Hint／Debrief 輸出層在這一批小樣本（20＋15 次）裡對結構證據**忠實**（20/20、10/10），off 對照組偶爾漏掉重點或用player-blaming框架——方向支持「這一層有在做事」，但 n 太小、情境太窄，不能當成正式驗收證據。
+
+**一句話**：Phase 4（4.0 分人強弱＋4.1 Hint／Debrief）在**安全側乾淨**（golden 0 退步、interrogation／inconsistent_self_fact／false_challenge 全部 0%）且**新結構刀有部分證實有效**（`sequenceChallenge` on 臂乾淨過關、低容忍組 forced ask_intent 幾乎顯著），但**還不能宣稱「全面達標」**——頭條、跨輪立場、`sequenceHoldBlindFollow` 三個 gate 仍未過，且 Q2／initiative 兩題目前的黑箱樣本量回答不了。可以宣稱「有方向性效果、安全side乾淨」，不能宣稱「Gate 全過」。
