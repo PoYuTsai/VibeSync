@@ -1712,6 +1712,43 @@ Deno.test("Phase 4.3 P2-4：新增 reaction token 連續 1～4 次 × 三種前�
   assertEquals(sandwich.evidence.unresolvedCount, 1);
 });
 
+Deno.test("Phase 4.3 P2-4／U-9：reaction 與問句判定都容忍句尾標點／emoji（含 ZWJ、膚色、keycap、variation selector）", () => {
+  // 真人輸入的裝飾版本仍然是「回答」，不是又丟一個詞。
+  for (
+    const t of [
+      "對！",
+      "不是😂",
+      "沒有。",
+      "對啊～",
+      "是啊…",
+      "嗯嗯!!",
+      "好喔😅😅",
+      "不是👨‍👩‍👧‍👦", // ZWJ 家庭（U+200D 不在 Emoji_Presentation 裡，要單獨放進字元類）
+      "沒有👍🏽", // 膚色修飾
+      "是啊❤️", // variation selector（U+FE0F）
+      "對☺️👌🏻", // 多個 emoji ＋ VS ＋ 膚色
+      "不是😂。", // emoji 後面還接標點
+    ]
+  ) {
+    assertEquals(utteranceShapeOf(t, false), "reaction", t);
+  }
+  // keycap（U+FE0F U+20E3）只剝掉組合字元，**數字本身是內容**——「對1️⃣」不是
+  // 純短詞，維持既有形狀判定，不因為容忍裝飾就被當成回答。
+  assert(utteranceShapeOf("對1️⃣", false) !== "reaction");
+  // 整則就是 emoji 時仍走既有的純 emoji 分支（剝到空字串要退回原字串）。
+  for (const t of ["😂", "😂😂😂", "👍🏽", "👨‍👩‍👧‍👦"]) {
+    assertEquals(utteranceShapeOf(t, false), "reaction", t);
+  }
+  // 界線：帶內容的版本不是純短詞。
+  for (const t of ["對，我剛下班", "不是啦 我是說東京", "沒有去過淺草"]) {
+    assert(utteranceShapeOf(t, false) !== "reaction", t);
+  }
+  // 玩家自己的問句帶 emoji 也要判成問句（P2-5：`utteranceShapeOf` 換成容忍版）。
+  for (const t of ["所以你是說我很閒嗎😂", "你到底想幹嘛？？", "吃飽沒～"]) {
+    assertEquals(utteranceShapeOf(t, false), "question", t);
+  }
+});
+
 Deno.test("Phase 4.3 U-10：連續同一個新 reaction 詞不會被 repeatedExactToken 拉去強制收尾", () => {
   for (const token of ["不是", "沒有", "對啊"]) {
     for (let n = 2; n <= 3; n++) {

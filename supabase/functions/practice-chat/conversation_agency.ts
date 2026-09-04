@@ -345,8 +345,12 @@ export function aiAskedQuestion(text: string): boolean {
 // 沒問的時候強制停止解讀。`previousAiAskedQuestion`（有效短答免疫）與
 // Phase 3.2 放寬用的「她問過」都還是寬鬆那一支，一字不動。
 const CLAUSE_SPLIT_RE = /[。！!？?；;…\n]+/u;
+// Phase 4.3（Codex R1 U-9）：`\p{Emoji_Presentation}`／`\p{Extended_Pictographic}`
+// **不含** ZWJ（U+200D）、variation selector（U+FE0E／U+FE0F）與 keycap 的
+// combining enclosing（U+20E3），所以「👨‍👩‍👧‍👦」「❤️」「1️⃣」這類序列剝不乾淨，
+// 只會剝掉最後一個 code point。把這三種零寬／組合字元一起放進字元類即可。
 const TAIL_DECORATION_RE =
-  /[\s~～!！,，.。、…\p{Emoji_Presentation}\p{Extended_Pictographic}]+$/u;
+  /[\s~～!！,，.。、…\u200d\ufe0e\ufe0f\u20e3\p{Emoji_Presentation}\p{Extended_Pictographic}]+$/u;
 const SENTENCE_FINAL_PARTICLE_RE = /(嗎|呢|吧)$/u;
 
 export function aiAskedQuestionStrict(text: string): boolean {
@@ -412,8 +416,23 @@ export function utteranceShapeOf(
   const compacted = compact(text);
   if (compacted.length === 0) return "unknown";
   if (hasExplicitPivot(text)) return "explicit_pivot";
-  if (isQuestionText(text)) return "question";
-  if (REACTION_RE.test(compacted)) return "reaction";
+  // Phase 4.3（Codex R1 P2-5）：問句判定改用容忍句尾裝飾的那一支。玩家自己打
+  // 「所以你是說我很閒嗎😂」以前會判成低資訊形狀（進欠債、可能被質疑），現在
+  // 判成問句、直接 NO_OVERRIDE。`utteranceShapeOf` 的每一個 caller 都在
+  // agency ≠ off 之後（`computeAgencyDecision` 對 off 提早回 null；
+  // `planTurnResponse` 的 `contentUserTurnCount` 雖然無條件計算，但唯一的
+  // consumer `forceAskUser` 要求 `agency.enabled === true`），所以 off 路徑
+  // 的四面輸出不變——等價 harness 守門。
+  if (isQuestionTextTolerant(text)) return "question";
+  // Phase 4.3（Codex R1 P2-4）：反應詞同樣容忍句尾裝飾——「對！」「不是😂」
+  // 「沒有。」在真人輸入裡比裸詞常見得多。剝到空字串（整則就是 emoji）時退回
+  // 原字串，讓 `REACTION_RE` 既有的純 emoji 分支照樣接得到。
+  const reactionCore = compacted.replace(TAIL_DECORATION_RE, "");
+  // 整則剝完只剩空字串＝這一則除了裝飾什麼都沒有（純 emoji、純標點），本來就是
+  // 反應。這比在 `REACTION_RE` 的 emoji 分支再抄一次 ZWJ／variation selector／
+  // keycap 的字元類小，而且對 `👨‍👩‍👧‍👦` 這種多 code point 序列一次到位（U-9）。
+  if (reactionCore.length === 0) return "reaction";
+  if (REACTION_RE.test(reactionCore)) return "reaction";
   if (FIRST_PERSON_RE.test(text)) return "self_share";
   if (previousAiAskedQuestion) return "answer_candidate";
   return "bare_fragment";
