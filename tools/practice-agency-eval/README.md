@@ -1411,6 +1411,14 @@ mustAllow**，A27.p2 的 `allow✓`（90%／85%／75%，見上面逐情境表）
 `accommodating_invention` 的先決條件收緊成「回答的內容裡有沒有具體到無法只靠
 字面猜出的細節」（跟 Phase 2.6 修 v1 過鬆是同一個方向）。
 
+**同輪修正**：已改走第一個方案——p1／p2 與 p4 之間各插一則不設探針的填充訊息＋
+腳本化 `ai()` 非問句回覆（跟 A16／A17 的 `scripted_challenge_followup` 同一招），
+讓 p2／p4 生成與 judge 讀到的「上一句」固定是閒聊，不再是 p1 真實生成的「你
+是？」；mustForbid 同時收緊成 `accommodating_invention`／`adopted_without_asking`
+兩個原子標籤。改動只在 `scenarios.ts`（`AGENCY_PROBES` 自動跟著重算），沒有動
+`judge_agency.ts`。**本節上面 A27 那一列與這段逐字對照全部是修正前跑的，跟修正
+後重新黑箱的數字不可比**——下一輪要重新跑 A27 才能拿到乾淨的 `allow✓`。
+
 #### 怎麼讀（誠實版）
 
 1. **三臂在頭條與大部分子指標上互相落在對方的信賴區間內**，n=340／n=140
