@@ -405,3 +405,30 @@ Deno.test("Phase 3.3 修正：A27.p2／p4 前面各有一則腳本化非問句�
     );
   }
 });
+
+Deno.test("Phase 3.7 curiosityWithinSix：以場為分母，同場多探針 OR，不同 profile／repeat 是不同場；沒有 cooperative_turn 時 n=0", () => {
+  // 場 A（p1,repeat 1）：p2 沒問、p3 問到 → 這場算有。
+  // 場 B（p1,repeat 2）：五個探針都沒問 → 這場算沒有。
+  // 場 C（p2,repeat 1）：p6 問到 → 有。
+  const rows = [
+    probe({ probeId: "A28.p2", profileId: "p1", repeat: 1 }),
+    withLabels("A28.p3", "asked_about_user"),
+    probe({ probeId: "A28.p2", profileId: "p1", repeat: 2 }),
+    probe({ probeId: "A28.p3", profileId: "p1", repeat: 2 }),
+    probe({ probeId: "A28.p4", profileId: "p1", repeat: 2 }),
+    probe({ probeId: "A28.p5", profileId: "p1", repeat: 2 }),
+    probe({ probeId: "A28.p6", profileId: "p1", repeat: 2 }),
+    probe({
+      probeId: "A28.p6",
+      profileId: "p2",
+      repeat: 1,
+      labels: { ...NONE, asked_about_user: true },
+    }),
+  ];
+  const m = evaluateAgency(rows);
+  assertEquals(m.curiosityWithinSix.n, 3);
+  assertEquals(m.curiosityWithinSix.hits, 2);
+  // 非 cooperative_turn 的探針不進分母。
+  const none = evaluateAgency([withLabels("A01.p1", "asked_about_user")]);
+  assertEquals(none.curiosityWithinSix.n, 0);
+});
