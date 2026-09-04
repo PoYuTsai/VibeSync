@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-03T12:08:18Z",
+  "generatedAt": "2026-09-04T00:43:52Z",
   "source": "assets/learning/ebooks",
   "note": "棘輪基準：CI 只擋這份清單以外的新發現。每個工作包修掉一批問題後用 --write-baseline 縮小它，不得手動加項目。",
-  "count": 12,
+  "count": 10,
   "findings": [
     {
       "rule": "R06",
@@ -14,16 +14,6 @@
       "rule": "R06",
       "id": "ebook-4-c3-cmp6",
       "field": "caption"
-    },
-    {
-      "rule": "R06",
-      "id": "ebook-5-chapter-6",
-      "field": "title"
-    },
-    {
-      "rule": "R06",
-      "id": "ebook-7-chapter-4",
-      "field": "title"
     },
     {
       "rule": "R09",
