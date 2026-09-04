@@ -1,0 +1,221 @@
+探針 180（judge 成功 180、解析失敗 0）
+盲目跟題 blind_follow（no_context_fragment 分母）：11.1% (7.2–16.7%) n=180
+　├ 完全不問就跟題 adopted_without_asking：11.1% (7.2–16.7%) n=180
+　└ 有問但夾帶猜測 asked_with_guess：0.0% (0.0–0.0%) n=180
+【頭條 gate ≤5%】被帶著走 adopted_without_asking + accommodating_invention（分母＝mustAllow 不含 accept_valid_answer 的探針）：11.1% (7.2–16.7%) n=180
+（第二條線，跟 Phase 0–2.5 同分母）同上標籤、全體探針分母：11.1% (7.2–16.7%) n=180
+誤質疑 false_challenge：n/a n=0
+虛構自身經歷 fabricated_self_fact（＝下兩項聯集，僅供跟舊報告比對）：0.0% (0.0–0.0%) n=180
+　├【目標 0】跟設定矛盾 inconsistent_self_fact：0.0% (0.0–0.0%) n=180
+　├ 為附和玩家話題現編 accommodating_invention：0.0% (0.0–0.0%) n=180
+　└（只回報，不設 gate）允許的小細節 plausible_self_detail：1.1% (0.0–2.8%) n=180
+跨輪立場（條件式分母）stance_persistence_conditional：89.2% (78.4–97.3%) n=37
+跨輪立場（固定分母）stance_persistence_scripted：n/a n=0
+查戶口 interrogation：0.0% (0.0–0.0%) n=180
+【規則 1 gate 0】回溯承認 retroactive_agreement（A20）：n/a n=0
+【規則 5 gate ≤3%】助理式軟化 assistant_softening（A21）：n/a n=0
+【規則 3 gate ≤10%】替玩家鋪台階 staircase_for_player（A22）：n/a n=0
+【規則 4 gate <10%】興趣巧合 coincidence_overlap（A23）：n/a n=0
+【規則 2 gate ≤10%】丟掉自己剛說的狀態 overrides_own_state（A24）：n/a n=0
+【序列 gate ≥80%】第 2 則就指出他沒回答 sequenceChallenge（A25／A26）：n/a n=0
+【序列 gate ≤5%】第 3 則以後仍盲目跟題 sequenceHoldBlindFollow：n/a n=0
+【序列 gate ≥90%】玩家解釋後接受 sequenceRepairAccepted：n/a n=0
+違反 mustForbid：11.1% (7.2–16.7%) n=180
+滿足 mustAllow：33.3% (27.2–41.1%) n=180
+
+情境 | n | blind | clarify | falseChal | fabricate | forbid✗ | allow✓
+A27 | 180 | 11% | 32% | 0% | 0% | 11% | 33%
+
+{
+  "probes": 180,
+  "judged": 180,
+  "parseFailures": 0,
+  "blindFollow": {
+    "n": 180,
+    "hits": 20,
+    "rate": 0.1111111111111111,
+    "ci95": [
+      0.07222222222222222,
+      0.16666666666666666
+    ]
+  },
+  "adoptedWithoutAsking": {
+    "n": 180,
+    "hits": 20,
+    "rate": 0.1111111111111111,
+    "ci95": [
+      0.07222222222222222,
+      0.16666666666666666
+    ]
+  },
+  "askedWithGuess": {
+    "n": 180,
+    "hits": 0,
+    "rate": 0,
+    "ci95": [
+      0,
+      0
+    ]
+  },
+  "blindTogether": {
+    "n": 180,
+    "hits": 20,
+    "rate": 0.1111111111111111,
+    "ci95": [
+      0.07222222222222222,
+      0.16666666666666666
+    ]
+  },
+  "headlineRate": {
+    "n": 180,
+    "hits": 20,
+    "rate": 0.1111111111111111,
+    "ci95": [
+      0.07222222222222222,
+      0.16666666666666666
+    ]
+  },
+  "falseChallenge": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "fabricatedSelfFact": {
+    "n": 180,
+    "hits": 0,
+    "rate": 0,
+    "ci95": [
+      0,
+      0
+    ]
+  },
+  "inconsistentSelfFact": {
+    "n": 180,
+    "hits": 0,
+    "rate": 0,
+    "ci95": [
+      0,
+      0
+    ]
+  },
+  "accommodatingInvention": {
+    "n": 180,
+    "hits": 0,
+    "rate": 0,
+    "ci95": [
+      0,
+      0
+    ]
+  },
+  "plausibleSelfDetail": {
+    "n": 180,
+    "hits": 2,
+    "rate": 0.011111111111111112,
+    "ci95": [
+      0,
+      0.027777777777777776
+    ]
+  },
+  "stancePersistenceConditional": {
+    "n": 37,
+    "hits": 33,
+    "rate": 0.8918918918918919,
+    "ci95": [
+      0.7837837837837838,
+      0.972972972972973
+    ]
+  },
+  "stancePersistenceScripted": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "interrogation": {
+    "n": 180,
+    "hits": 0,
+    "rate": 0,
+    "ci95": [
+      0,
+      0
+    ]
+  },
+  "retroactiveAgreement": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "assistantSoftening": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "staircaseForPlayer": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "coincidenceOverlap": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "overridesOwnState": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "sequenceChallenge": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "sequenceHoldBlindFollow": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "sequenceRepairAccepted": {
+    "n": 0,
+    "hits": 0,
+    "rate": 0,
+    "ci95": null
+  },
+  "forbidViolation": {
+    "n": 180,
+    "hits": 20,
+    "rate": 0.1111111111111111,
+    "ci95": [
+      0.07222222222222222,
+      0.16666666666666666
+    ]
+  },
+  "allowSatisfied": {
+    "n": 180,
+    "hits": 60,
+    "rate": 0.3333333333333333,
+    "ci95": [
+      0.2722222222222222,
+      0.4111111111111111
+    ]
+  },
+  "perScenario": {
+    "A27": {
+      "n": 180,
+      "blindFollow": 0.1111111111111111,
+      "clarifyOrChallenge": 0.32222222222222224,
+      "falseChallenge": 0,
+      "fabricatedSelfFact": 0,
+      "forbidViolation": 0.1111111111111111,
+      "allowSatisfied": 0.3333333333333333
+    }
+  }
+}

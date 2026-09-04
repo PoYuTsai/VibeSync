@@ -1,0 +1,14 @@
+標籤：hold_position｜配對成功 180 筆
+
+policy 路徑 | n | 命中 | 比例
+forced | 82 | 5 | 6.1%
+bounded | 98 | 0 | 0.0%
+
+act set（forced act） | n | 命中 | 比例
+hold_after_challenge_v1（hold_position） | 82 | 5 | 6.1%
+answer_or_challenge_v1（-） | 38 | 0 | 0.0%
+fragment_no_context_v1（-） | 60 | 0 | 0.0%
+
+情境 × policy 路徑 | n | 命中 | 比例
+A27 × forced | 82 | 5 | 6.1%
+A27 × bounded | 98 | 0 | 0.0%

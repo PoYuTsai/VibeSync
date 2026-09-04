@@ -1,0 +1,14 @@
+標籤：asked_with_guess｜配對成功 179 筆
+
+policy 路徑 | n | 命中 | 比例
+bounded | 106 | 0 | 0.0%
+forced | 73 | 0 | 0.0%
+
+act set（forced act） | n | 命中 | 比例
+answer_or_challenge_v1（-） | 47 | 0 | 0.0%
+fragment_no_context_v1（-） | 59 | 0 | 0.0%
+hold_after_challenge_v1（hold_position） | 73 | 0 | 0.0%
+
+情境 × policy 路徑 | n | 命中 | 比例
+A27 × bounded | 106 | 0 | 0.0%
+A27 × forced | 73 | 0 | 0.0%
