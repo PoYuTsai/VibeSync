@@ -4135,7 +4135,8 @@ export function createPracticeChatHandler(
             fragmentTurns: debriefAgencyLedger.fragmentTurns,
             topicShiftTurns: debriefAgencyLedger.topicShiftTurns,
             loopTurns: debriefAgencyLedger.loopTurns,
-            repairTurnCount: debriefAgencyLedger.repairTurns.length,
+            // Codex R1 P2：真實總數，不是被 10 截過的 `repairTurns.length`。
+            repairTurnCount: debriefAgencyLedger.repairTurnCount,
           },
         }),
       });

@@ -111,6 +111,12 @@ export interface DebriefAgencyLedger {
   readonly loopTurns: number;
   /** 她介入的玩家輪序號（第 N 則玩家訊息，1-based），最多列 10 個。 */
   readonly repairTurns: readonly number[];
+  /**
+   * 介入輪的**真實總數**（＝三個計數之和）。刻意不讓呼叫端用
+   * `repairTurns.length` 代替：那一欄被 `MAX_REPAIR_TURNS` 截過，超過 10 輪的
+   * 場會把 12 記成 10（Codex R1 P2）。prompt 只列前 10 個序號，telemetry 記總數。
+   */
+  readonly repairTurnCount: number;
 }
 
 const MAX_REPAIR_TURNS = 10;
@@ -154,5 +160,11 @@ export function debriefAgencyLedgerFor(
       repairTurns.push(userTurnOrdinal);
     }
   }
-  return { fragmentTurns, topicShiftTurns, loopTurns, repairTurns };
+  return {
+    fragmentTurns,
+    topicShiftTurns,
+    loopTurns,
+    repairTurns,
+    repairTurnCount: fragmentTurns + topicShiftTurns + loopTurns,
+  };
 }

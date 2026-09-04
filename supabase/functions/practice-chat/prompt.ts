@@ -1305,7 +1305,7 @@ function debriefAgencyLedgerPrompt(
   if (!ledger || ledger.repairTurns.length === 0) return "";
   return `\n\nagencyStructuralLedger(hidden evidence)\n第 ${
     ledger.repairTurns.join("、")
-  } 則使用者訊息是沒頭沒尾的詞或跳題，她得反過來問他意思、或把話拉回上一題。這些輪次她的補救不算他的分：dateChance 與 highlights 不得把「她接住了」寫成他的表現；改進建議至少一條要具體引用其中一則。`;
+  } 則使用者訊息是沒頭沒尾的詞或跳題，她得反過來問他意思、或把話拉回上一題。這些輪次她的補救不算他的分：dateChance 與 highlights 不得把「她接住了」寫成他的表現；改進建議至少一條要具體引用其中一則。其中若有 hintAssistedTurns 也列到的輪次，照 Hint 歸責規則歸給「這輪教練路線」，不算他的缺口。上面的最終 dateChance 判準也適用這一條。`;
 }
 
 /** debrief 模式：system + 一則含 profile/訊號脈絡與逐字稿的 user 指令。 */

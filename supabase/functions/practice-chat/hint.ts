@@ -1800,15 +1800,21 @@ export function buildHintMessages(opts: {
 /**
  * Phase 4.1：一行教練指引。刻意壓到最短——規則堆太多後面幾條會被模型忽略
  * （踩坑紀錄），所以不重寫既有段落，只在 stageGuidance 後面補這一行。
+ *
+ * Codex R1 U：措辭刻意不寫「兩顆球都要…」。`allowNoPasteableReply` 允許模型
+ * 在她已封鎖／要求停止聯絡時只輸出 `noPasteableReason` ＋ `coaching`，沒有任何
+ * 可貼句；寫死「兩顆球」等於跟那條出口打架。改成「建議句（若有）」。
+ * 末句同樣是防覆蓋：Game 的本輪方向與 inviteMaturity 判斷仍由既有段落決定，
+ * 這一行只補「先把沒接上的處理掉」。
  */
 function hintAgencyCoachingLine(
   coaching: HintAgencyCoaching | null | undefined,
 ): string {
   if (!coaching || coaching.kind === "none") return "";
   if (coaching.kind === "stop_dropping_words") {
-    return "這輪先處理沒接上：使用者連續丟了幾個沒頭沒尾的詞，她已經問過意思。兩顆球要把那個詞講清楚或接回她的問題；coaching 要直說「連續丟詞她接不住」。\n";
+    return "這輪先處理沒接上：使用者連續丟了幾個沒頭沒尾的詞，她已經問過意思。建議句（若有）要把那個詞講清楚或接回她的問題；coaching 要直說「連續丟詞她接不住」。這一行不改本輪方向與邀約判斷。\n";
   }
-  return "這輪先處理沒接上：她剛在問使用者、或指出他沒接上。兩顆球都要先回答她那一題、不要再丟新話題；coaching 要點出「你還沒回答她」。\n";
+  return "這輪先處理沒接上：她剛在問使用者、或指出他沒接上。建議句（若有）要先回答她那一題、不要再丟新話題；coaching 要點出「你還沒回答她」。這一行不改本輪方向與邀約判斷。\n";
 }
 
 function hintStageGuidance(

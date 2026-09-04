@@ -8,6 +8,9 @@ import { INITIAL_CONVERSATION_AGENCY_STATE } from "./conversation_agency.ts";
 import type { PracticeTurn } from "./validate.ts";
 import type { AgencyCoachingContext } from "./agency_coaching.ts";
 
+const t = (role: "user" | "ai", text: string): PracticeTurn =>
+  ({ role, text }) as PracticeTurn;
+
 // 中性基準：practice_girl_008 的 agency profile（skepticism 2）不位移 holdAt，
 // 所以這一組 ctx 算出來的門檻就是一般難度表本身。
 const CTX: AgencyCoachingContext = {
@@ -16,8 +19,34 @@ const CTX: AgencyCoachingContext = {
   profileId: "practice_girl_008",
 };
 
-const t = (role: "user" | "ai", text: string): PracticeTurn =>
-  ({ role, text }) as PracticeTurn;
+// ── 渲染層：有／無教練證據時，prompt 只差那一行／那一段 ──────────────────
+import { buildHintMessages } from "./hint.ts";
+import { buildDebriefMessages } from "./prompt.ts";
+import { resolvePracticeProfile } from "./practice_persona.ts";
+import type { DebriefAgencyLedger } from "./agency_coaching.ts";
+
+const testProfile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+const HINT_TURNS = [
+  t("user", "東東"),
+  t("ai", "東東是誰"),
+  t("user", "阿布達比"),
+  t("ai", "阿布達比？那是哪裡"),
+];
+
+const joined = (messages: { role: string; content: string }[]) =>
+  messages.map((m) => `${m.role}\n${m.content}`).join("\n\n");
+
+function hintPrompt(
+  coaching?: Parameters<typeof buildHintMessages>[0]["agencyCoaching"],
+) {
+  return joined(buildHintMessages({
+    turns: HINT_TURNS,
+    profile: testProfile,
+    practiceMode: "beginner",
+    temperatureScore: 40,
+    agencyCoaching: coaching,
+  }));
+}
 
 Deno.test("hint coaching：她剛問完＋玩家丟片段 → answer_her_question", () => {
   const turns = [
@@ -129,6 +158,7 @@ Deno.test("debrief ledger：正常對話全 0", () => {
     topicShiftTurns: 0,
     loopTurns: 0,
     repairTurns: [],
+    repairTurnCount: 0,
   });
 });
 
@@ -144,36 +174,18 @@ Deno.test("debrief ledger：序號清單最多 10 個，計數不設上限", () 
     ledger.fragmentTurns + ledger.topicShiftTurns + ledger.loopTurns,
     12,
   );
+  // Codex R1 P2：telemetry 記的是真實總數，不是被 10 截過的清單長度。
+  assertEquals(ledger.repairTurnCount, 12);
+  // prompt 那一段仍然只列 10 個序號。
+  const rendered = joined(
+    buildDebriefMessages(turns, testProfile, {
+      practiceMode: "beginner",
+      agencyLedger: ledger,
+    }),
+  );
+  assertEquals(rendered.includes("第 1、2、3、4、5、6、7、8、9、10 則"), true);
+  assertEquals(rendered.includes("、11、"), false);
 });
-
-// ── 渲染層：有／無教練證據時，prompt 只差那一行／那一段 ──────────────────
-import { buildHintMessages } from "./hint.ts";
-import { buildDebriefMessages } from "./prompt.ts";
-import { resolvePracticeProfile } from "./practice_persona.ts";
-import type { DebriefAgencyLedger } from "./agency_coaching.ts";
-
-const testProfile = resolvePracticeProfile({ profileId: "practice_girl_004" });
-const HINT_TURNS = [
-  t("user", "東東"),
-  t("ai", "東東是誰"),
-  t("user", "阿布達比"),
-  t("ai", "阿布達比？那是哪裡"),
-];
-
-const joined = (messages: { role: string; content: string }[]) =>
-  messages.map((m) => `${m.role}\n${m.content}`).join("\n\n");
-
-function hintPrompt(
-  coaching?: Parameters<typeof buildHintMessages>[0]["agencyCoaching"],
-) {
-  return joined(buildHintMessages({
-    turns: HINT_TURNS,
-    profile: testProfile,
-    practiceMode: "beginner",
-    temperatureScore: 40,
-    agencyCoaching: coaching,
-  }));
-}
 
 Deno.test("buildHintMessages：不傳 agencyCoaching 與傳 none 時 prompt 逐字相同", () => {
   const base = hintPrompt();
@@ -214,6 +226,7 @@ Deno.test("buildDebriefMessages：不傳 ledger 與全 0 ledger 時 prompt 逐�
       topicShiftTurns: 0,
       loopTurns: 0,
       repairTurns: [],
+      repairTurnCount: 0,
     }),
     base,
   );
@@ -309,4 +322,99 @@ Deno.test("debrief ledger：閘門打得開時，難度與角色 skepticism 真�
       difficulty: "challenge",
     }),
   );
+});
+
+// ── Codex R1 P2／U 的三個補測 ─────────────────────────────────────────────
+
+Deno.test("debrief ledger prompt：與 appliedHintTurns 重疊的輪次要歸給教練路線", () => {
+  // 第 2 則使用者訊息（`turnIndex` 是逐字稿 index，這裡取 A25 的第二則玩家訊息）
+  // 同時是 applied Hint 與 repair turn。
+  const applied = [{
+    turnIndex: 2,
+    type: "steady" as const,
+    originalHintText: "阿布打比",
+    sentText: "阿布打比",
+    exact: true,
+  }];
+  const text = joined(
+    buildDebriefMessages(A25_TURNS, testProfile, {
+      practiceMode: "beginner",
+      appliedHintTurns: applied,
+      agencyLedger: debriefAgencyLedgerFor(A25_TURNS, CTX),
+    }),
+  );
+  // 兩段都在，而且 agency 段自己指回 Hint 歸責規則。
+  assertEquals(text.includes("hintAssistedTurns"), true);
+  assertEquals(text.includes("agencyStructuralLedger"), true);
+  assertEquals(
+    text.includes(
+      "其中若有 hintAssistedTurns 也列到的輪次，照 Hint 歸責規則歸給「這輪教練路線」，不算他的缺口。",
+    ),
+    true,
+  );
+  // 也明寫最終 dateChance 判準（在這一段之前）同樣適用。
+  assertEquals(text.includes("上面的最終 dateChance 判準也適用這一條。"), true);
+  // 加了兩句之後整段仍在預算內。
+  const withoutLedger = joined(
+    buildDebriefMessages(A25_TURNS, testProfile, {
+      practiceMode: "beginner",
+      appliedHintTurns: applied,
+    }),
+  );
+  assertEquals(text.length - withoutLedger.length < 300, true);
+});
+
+Deno.test("debrief prompt 順序：最終 dateChance 判準在 agencyStructuralLedger 之前（越後越終局）", () => {
+  const text = joined(
+    buildDebriefMessages(A25_TURNS, testProfile, {
+      practiceMode: "beginner",
+      agencyLedger: debriefAgencyLedgerFor(A25_TURNS, CTX),
+    }),
+  );
+  assertEquals(
+    text.indexOf("最終 dateChance 判準") <
+      text.indexOf("agencyStructuralLedger"),
+    true,
+  );
+});
+
+Deno.test("hint 教練行：不預設一定有建議句（allowNoPasteableReply），也不改本輪方向", () => {
+  for (const kind of ["answer_her_question", "stop_dropping_words"] as const) {
+    const text = joined(buildHintMessages({
+      allowNoPasteableReply: true,
+      turns: HINT_TURNS,
+      profile: testProfile,
+      practiceMode: "beginner",
+      temperatureScore: 40,
+      agencyCoaching: { kind, unresolvedCount: 2 },
+    }));
+    // no-pasteable 的既有出口還在，agency 行不得寫死「兩顆球都要」。
+    assertEquals(text.includes("noPasteableReason"), true);
+    assertEquals(text.includes("建議句（若有）"), true);
+    assertEquals(text.includes("兩顆球都要"), false);
+    assertEquals(text.includes("這一行不改本輪方向與邀約判斷。"), true);
+  }
+});
+
+Deno.test("hint 教練行：Game 模式的本輪方向與邀約段不被覆蓋", () => {
+  const gameOpts = {
+    turns: HINT_TURNS,
+    profile: testProfile,
+    practiceMode: "game" as const,
+    temperatureScore: 40,
+    hintsRemaining: 3,
+  };
+  const base = joined(buildHintMessages(gameOpts));
+  const withLine = joined(buildHintMessages({
+    ...gameOpts,
+    agencyCoaching: { kind: "answer_her_question", unresolvedCount: 1 },
+  }));
+  assertEquals(base.includes("本輪方向："), true);
+  // 既有段落逐字保留，只多那一行。
+  const added = withLine.split("\n").filter((line) =>
+    !base.split("\n").includes(line)
+  );
+  assertEquals(added.length, 1);
+  assertEquals(added[0].startsWith("這輪先處理沒接上："), true);
+  assertEquals(withLine.replace(`${added[0]}\n`, ""), base);
 });

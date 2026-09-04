@@ -1417,20 +1417,30 @@ Deno.test({
 
 Deno.test({
   name:
-    "Phase 4.1 非空洞檢查：旗標 true 時，真的走到 Claude 的 hint／debrief 案例必須與 golden 不同",
+    "Phase 4.1 非空洞檢查：旗標 true 時，真的走到 Claude 的 hint／debrief 案例 messages 必須與 golden 不同",
   ignore: PRINT_GOLDEN,
   fn: async () => {
     // hint 是 beginner／game 專用（standard 直接 403），debrief 三個模式都走
     // 得到；`hint／beginner／prefetch` 也走 Claude。走不到 Claude 的案例
     // （403 錯誤回應）旗標開關本來就不該有差別，這裡把兩邊都釘住：名單以外
     // 的 hint／debrief 案例必須**逐位元組相同**。
+    // Codex R1 P2：舊版比的是**合成 digest**，而 on 一律會多一行
+    // `conversationAgency` telemetry，所以就算 `agencyCoaching`／`agencyLedger`
+    // 根本沒接進 builder，整體 digest 照樣會不同——測試名稱宣稱的事歸因不到
+    // prompt。改成分欄比 `messages`（送進 Claude 的每一則訊息），telemetry 不
+    // 參與判定。
     const changed: string[] = [];
     const sideCases = equivalenceCases().filter((c) =>
       !c.name.startsWith("chat／")
     );
     for (const c of sideCases) {
-      const on = digestLine(await observableDigest(c, "true"));
-      if (on !== digestLine(parseGolden(c.name))) changed.push(c.name);
+      const on = await observableDigest(c, "true");
+      const golden = parseGolden(c.name);
+      if (on.messages !== golden.messages) changed.push(c.name);
+      // 名單外的案例（走不到 Claude 的 403）四面都必須不變；名單內的案例
+      // Response 與 RPC 也不該因為 agency 而改變（只有 prompt 與 telemetry 會）。
+      assertEquals(on.response, golden.response, `${c.name} / Response`);
+      assertEquals(on.rpc, golden.rpc, `${c.name} / RPC`);
     }
     assertEquals(changed.sort(), PHASE41_CHANGED_SIDE_CASES.slice().sort());
   },
