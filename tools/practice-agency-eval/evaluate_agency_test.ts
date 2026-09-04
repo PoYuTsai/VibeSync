@@ -260,3 +260,58 @@ Deno.test("Phase 2.6 頭條分母：mustAllow 含 accept_valid_answer 的探針�
   assertEquals(m.blindTogether.n, 4);
   assertEquals(m.blindTogether.hits, 3);
 });
+
+// ── Phase 3.0：A25／A26 長序列的三個固定分母 ──────────────────────────
+
+Deno.test("Phase 3.0：序列情境 A25／A26 的四個位置各有自己的分母，且是同一個形態", () => {
+  for (const id of ["A25", "A26"]) {
+    const scenario = AGENCY_SCENARIOS.find((s) => s.id === id)!;
+    assert(scenario, `${id} 不存在`);
+    // 不釘角色、不釘難度：跟 CLI 指定的全部 profile 跑（含 Alice）。
+    assertEquals(scenario.profileIds, undefined, id);
+    assertEquals(scenario.difficulty, undefined, id);
+    const users = scenario.turns.filter((t) => t.role === "user");
+    // 八則不連貫的片段＋一則真正的解釋（Eric 2026-09-04 的形態）。
+    assertEquals(users.length, 9, id);
+    const kindsOf = (k: string) =>
+      scenario.turns.filter((t) => t.probe?.kinds.includes(k as never)).length;
+    assertEquals(kindsOf("sequence_first"), 1, id);
+    assertEquals(kindsOf("sequence_challenge"), 1, id);
+    assertEquals(kindsOf("sequence_hold"), 3, id);
+    assertEquals(kindsOf("sequence_repair"), 1, id);
+  }
+  // A26 刻意一個地名都沒有——證明行為不是綁在「地名」上（Eric 銳化要求 3）。
+  const a26 = AGENCY_SCENARIOS.find((s) => s.id === "A26")!;
+  const a25Words = new Set(
+    AGENCY_SCENARIOS.find((s) => s.id === "A25")!.turns.map((t) => t.text),
+  );
+  for (const turn of a26.turns) {
+    assert(!a25Words.has(turn.text), `A26 不該重用 A25 的詞：${turn.text}`);
+  }
+});
+
+Deno.test("Phase 3.0：三個序列指標各自綁自己的分母，不被別的情境稀釋", () => {
+  const rows: JudgedProbe[] = [
+    // 第 2 則：一筆質疑到、一筆沒有 → 50%。
+    withLabels("A25.p2", "clarify_or_challenge"),
+    withLabels("A26.p2"),
+    // 第 3 則以後：四筆，一筆仍盲目跟題 → 25%。
+    withLabels("A25.p3", "adopted_without_asking"),
+    withLabels("A25.p5", "hold_position"),
+    withLabels("A25.p8", "hold_position"),
+    withLabels("A26.p3", "clarify_or_challenge"),
+    // 解釋那一則：兩筆都接受 → 100%。
+    withLabels("A25.p9", "accept_valid_answer"),
+    withLabels("A26.p9", "accept_valid_answer"),
+    // 別的情境不得混進上面三個分母。
+    withLabels("A02.p1", "adopted_without_asking"),
+    withLabels("A01.p1", "accept_valid_answer"),
+  ];
+  const m = evaluateAgency(rows);
+  assertEquals(m.sequenceChallenge.n, 2);
+  assertAlmostEquals(m.sequenceChallenge.rate, 0.5, 1e-9);
+  assertEquals(m.sequenceHoldBlindFollow.n, 4);
+  assertAlmostEquals(m.sequenceHoldBlindFollow.rate, 0.25, 1e-9);
+  assertEquals(m.sequenceRepairAccepted.n, 2);
+  assertAlmostEquals(m.sequenceRepairAccepted.rate, 1, 1e-9);
+});
