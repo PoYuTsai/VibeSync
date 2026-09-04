@@ -412,10 +412,14 @@ export function detectAgencyEvidence(
   // Phase 3.2 P1-1：這裡用 `previousAiAskedQuestionStrict`（見上面的判準），
   // 不是餵給 shape／免疫的那支寬鬆 regex——這個旗標是**強制停止解讀**的閘門，
   // 過寬會變成假強制停。
+  // Phase 3.2 P1-2：每一則玩家訊息都要先讀「她上一則有沒有問」，再看形狀。
+  // 舊版對 `reaction`（「嗯」「喔」）先 `continue` 才讀，所以「她問 → 他回嗯 →
+  // 她講了句不是問句的話 → 他丟片段」這個形態整段都不算她問過，該停不停。
+  // 只有結構修復（非低資訊、非 reaction）才把旗標清掉。
   let aiQuestionedInLoop = false;
   for (const s of shapes) {
-    if (!isLowInformation(s.shape)) {
-      if (s.shape !== "reaction") aiQuestionedInLoop = false;
+    if (!isLowInformation(s.shape) && s.shape !== "reaction") {
+      aiQuestionedInLoop = false;
       continue;
     }
     if (s.previousAiAskedQuestionStrict) aiQuestionedInLoop = true;

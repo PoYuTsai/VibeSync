@@ -903,3 +903,42 @@ Deno.test("Phase 3.2 P1-1：強制格的問句閘門改用嚴格判準，陳述�
   assertEquals(statementOnly.policyMode, "bounded");
   assertEquals(statementOnly.forcedAct, null);
 });
+
+Deno.test("Phase 3.2 P1-2：真問句後面接一則「嗯」，她問過這件事不得被吃掉", () => {
+  // 「她問 → 他回嗯 → 她講了句不是問句的話 → 他丟片段」：舊版在 reaction 那一
+  // 則先 continue 才讀 `previousAiAskedQuestion`，整段迴圈都不算她問過。
+  const shortForm = detectAgencyEvidence([
+    a("東東是誰"),
+    u("嗯"),
+    a("喔喔"),
+    u("阿布達比"),
+  ]);
+  assertEquals(shortForm.aiQuestionedInLoop, true);
+
+  // 同一個形態累到一般難度的門檻：她問過 ＋ 這一則是 bare_fragment → forced。
+  const held = policy([
+    a("東東是誰"),
+    u("嗯"),
+    a("喔喔"),
+    u("阿布達比"),
+    a("蛤"),
+    u("清邁"),
+    a("嗯"),
+    u("曼谷"),
+  ]);
+  assertEquals(held.evidence.aiQuestionedInLoop, true);
+  assertEquals(held.evidence.unresolvedCount, 2);
+  assertEquals(held.policyMode, "forced");
+  assertEquals(held.forcedAct, "hold_position");
+
+  // 反向：中間玩家真的把話講清楚了（結構修復）就要清掉，不是永久旗標。
+  const repaired = detectAgencyEvidence([
+    a("東東是誰"),
+    u("嗯"),
+    a("喔喔"),
+    u("我剛剛在想別的事 抱歉"),
+    a("沒事啦"),
+    u("清邁"),
+  ]);
+  assertEquals(repaired.aiQuestionedInLoop, false);
+});
