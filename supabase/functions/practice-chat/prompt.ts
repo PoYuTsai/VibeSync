@@ -968,6 +968,15 @@ export function buildChatPromptBundle(
   // Phase 4.0：分人強弱只看 profileId（`STYLE_BY_PROFILE_ID` 是純資料表，
   // 與 `PRACTICE_REPLY_STYLE_ENABLED` 無關），所以 style 旗標關掉時 agency
   // 仍然拿得到門檻位移；shadow 也算（telemetry 用），planner 只在 on 時吃。
+  //
+  // Codex R1 P1 的界線，明寫在這裡：下面 `const responsePlan = style ? ... : null`
+  // 代表**planner 消費**（Phase 3.8 的 forced ask、Phase 4.0 的 initiative）
+  // 以 reply-style 旗標開為前提；reply-style 關掉時 `responsePlan` 是 null，
+  // 這兩把刀都不會跑。**門檻的三個 consumer 不受此限**——ambiguityTolerance／
+  // skepticism／topicPersistence 走 `computeAgencyDecision`，與 style 無關，
+  // 旗標關掉照樣位移難度表（`agency_profile_test.ts` 的 style-off bundle 測試
+  // 釘住）。這是 3.8 以來的既有結構，production 實測 `PRACTICE_REPLY_STYLE_ENABLED=true`，
+  // 本輪不重構。
   const agencyProfile = agencyProfileFor(profile.girl.profileId);
   const agencyDecision = computeAgencyDecision({
     turns,
