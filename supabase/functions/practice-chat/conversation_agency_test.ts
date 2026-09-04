@@ -16,6 +16,8 @@ import {
   detectAgencyEvidence,
   isAcceptingPlanAct,
   isClarifyingAct,
+  isQuestionText,
+  isQuestionTextTolerant,
   nextConversationAgencyState,
   parseConversationAgencyState,
   truncateAgencyShape,
@@ -1375,6 +1377,28 @@ Deno.test("Phase 3.3 truncate：第一則是問句時只留第一則，順口自
   assertEquals(result.dropped, 1);
 });
 
+Deno.test("Phase 4.3 刀 2：第一顆問句帶句尾 emoji／裝飾時也要截斷（4.2 量到的失效點）", () => {
+  const agency = appliedAgency(FRAGMENT_DEBT_TURNS);
+  for (
+    const first of [
+      "你是說阿布達比嗎😂",
+      "你在報地名嗎 😆",
+      "是玩猜謎嗎～",
+      "你到底想說什麼？？",
+    ]
+  ) {
+    const result = truncateAgencyShape(
+      `${first}\n我剛從那邊飛回來耶`,
+      agency,
+    );
+    assertEquals(result.text, first, first);
+    assertEquals(result.dropped, 1, first);
+  }
+  // 語助詞結尾仍然不算問句（她是接住了，不是在問）→ 一個字都不動。
+  const kept = "阿布達比喔😂\n我飛香港的時候會順便去逛街";
+  assertEquals(truncateAgencyShape(kept, agency).dropped, 0);
+});
+
 Deno.test("Phase 3.3 truncate：第一則不是問句（她接住了）就一個字都不動", () => {
   const reply = "阿布達比喔\n我飛香港的時候會順便去逛街";
   const result = truncateAgencyShape(reply, appliedAgency(FRAGMENT_DEBT_TURNS));
@@ -1569,4 +1593,40 @@ Deno.test("Phase 4.3 刀 1：Eric 真機序列（挑戰 Game）逐輪", () => {
   assertEquals(s5.evidence.utteranceShape, "bare_fragment");
   assertEquals(s5.policyMode, "forced");
   assertEquals(s5.forcedAct, "end_low_value_loop");
+});
+
+Deno.test("Phase 4.3 刀 2：問句判定容忍句尾 emoji／裝飾，但不放寬語助詞", () => {
+  // 真超集：`isQuestionText` 判 true 的，容忍版一定也 true。
+  for (
+    const t of [
+      "你在報地名嗎",
+      "所以你是說韓國嗎",
+      "你到底想幹嘛?",
+      "吃飽沒",
+      "你住哪啊",
+    ]
+  ) {
+    assertEquals(isQuestionText(t), true, t);
+    assertEquals(isQuestionTextTolerant(t), true, t);
+  }
+  // 句尾裝飾（emoji／`～`／`…`／標點）只有容忍版認得——Phase 4.2 逐泡泡診斷
+  // 量到 truncate 因此大量失效的那一組。
+  for (
+    const t of [
+      "你在報地名嗎😂",
+      "你是在玩地名接龍嗎😂",
+      "是玩猜謎嗎～",
+      "你是一直在報地名嗎😆",
+      "你到底想說什麼？？",
+    ]
+  ) {
+    assertEquals(isQuestionTextTolerant(t), true, t);
+  }
+  // 語助詞不是問句標記：不得因為容忍裝飾就把「好喔」「地名喔」判成問句。
+  for (
+    const t of ["好喔", "阿你是在測試我懂不懂地名喔", "我剛下班耶", "笑死啦"]
+  ) {
+    assertEquals(isQuestionTextTolerant(t), false, t);
+    assertEquals(isQuestionText(t), false, t);
+  }
 });

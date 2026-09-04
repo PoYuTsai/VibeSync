@@ -335,6 +335,27 @@ export function aiAskedQuestionStrict(text: string): boolean {
   return last !== undefined && SENTENCE_FINAL_PARTICLE_RE.test(last);
 }
 
+/**
+ * Phase 4.3：容忍句尾裝飾的問句判準。`QUESTION_RE` **錨在句尾**，所以「你在報
+ * 地名嗎😂」「是玩猜謎嗎～」在 `isQuestionText` 都判 false——Phase 4.2 的逐泡泡
+ * 診斷量到 truncate 因此在 15 筆裡有 12 筆整個失效（README／計畫檔 Phase 4.2）。
+ *
+ * 這裡重用強制問句判準已經在用的 `TAIL_DECORATION_RE`（空白／emoji／`~～`／
+ * `…`／`!！,，.。、`），剝掉之後再走**同一支** `QUESTION_RE`，所以它是
+ * `isQuestionText` 的**真超集**（剝掉的字元永遠不是 `QUESTION_RE` 認的標記）。
+ *
+ * 語助詞「喔／啦／耶」刻意**不**剝：那不是問句標記，剝了會把「好喔」判成問句。
+ *
+ * **為什麼不直接改 `isQuestionText`**：它同時被 `detectTurnSignals`
+ * （`userIsQuestion`／`userQuestionStreak`，`turn_response_plan.ts`）消費，那條
+ * 路徑在旗標 off 時也會跑，改了會動 golden。所以新開一支，只給 agency on 才
+ * 走得到的 consumer 用（目前是 `truncateAgencyShape`）。`utteranceShapeOf`
+ * 也刻意不換——換掉會整批改變玩家訊息的形狀分佈，不在本刀範圍。
+ */
+export function isQuestionTextTolerant(text: string): boolean {
+  return QUESTION_RE.test(text.trim().replace(TAIL_DECORATION_RE, ""));
+}
+
 /** 只往回看這麼多則玩家訊息（短期工作記憶，不是長期記憶）。 */
 const RECENT_USER_WINDOW = 8;
 /** 「同一個詞原樣再丟一次」最多往回看幾則玩家訊息（Codex round-2 P1-3）。 */
@@ -1185,7 +1206,10 @@ export function truncateAgencyShape(
 ): { text: string; dropped: number } {
   if (!isAgencyShapeExperimentTurn(agency)) return { text: reply, dropped: 0 };
   const bubbles = agencyBubbles(reply);
-  if (bubbles.length <= 1 || !isQuestionText(bubbles[0])) {
+  // Phase 4.3：句尾 emoji／語尾裝飾不影響「第一顆是不是問句」（見
+  // `isQuestionTextTolerant`）。她的回覆幾乎都帶 emoji，用錨句尾的判準等於
+  // 讓這把刀在中文口語上大量失效。
+  if (bubbles.length <= 1 || !isQuestionTextTolerant(bubbles[0])) {
     return { text: reply, dropped: 0 };
   }
   return { text: bubbles[0], dropped: bubbles.length - 1 };
