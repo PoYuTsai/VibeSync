@@ -115,7 +115,12 @@ export type ProbeKind =
   /** 序列的第 3 則以後：不得再供應解讀，維持立場或收掉。 */
   | "sequence_hold"
   /** 序列尾端玩家真的解釋了：必須恢復正常，不得繼續質疑。 */
-  | "sequence_repair";
+  | "sequence_repair"
+  // Phase 4.0：`initiative` consumer 只在玩家這句是純反應詞（`utteranceShape
+  // === "reaction"`）時才有機會開自己的題——既有情境沒有這種探針，量不到。
+  // 獨立分母，不跟 `no_context_fragment` 等既有家族混用（那些是裸片段／短答，
+  // 不是反應詞）。
+  | "stalled_reaction";
 
 export const PROBE_KINDS: readonly ProbeKind[] = [
   "no_context_fragment",
@@ -134,6 +139,7 @@ export const PROBE_KINDS: readonly ProbeKind[] = [
   "sequence_challenge",
   "sequence_hold",
   "sequence_repair",
+  "stalled_reaction",
 ];
 
 export interface ProbeSpec {
@@ -759,6 +765,26 @@ export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
         kinds: ["cooperative_turn"],
         mustAllow: ["asked_about_user", "accept_valid_answer"],
         mustForbid: ["interrogation", "false_challenge"],
+      }),
+    ],
+  },
+  {
+    id: "A29",
+    title:
+      "Phase 4.0 停滯輪：她先聊自己的事，玩家連續兩則純反應詞——initiative 只在第 2 個 user 回合起才有機會自己開題（p1 是第 1 回合，結構上不會觸發；p2 才是量測點）",
+    turns: [
+      ai("我今天差點睡過頭 昨晚追劇追到三點才睡"),
+      u("哈哈", {
+        id: "A29.p1",
+        kinds: ["stalled_reaction"],
+        mustAllow: ["accept_valid_answer", "plausible_self_detail"],
+        mustForbid: ["interrogation", "accommodating_invention"],
+      }),
+      u("嗯嗯", {
+        id: "A29.p2",
+        kinds: ["stalled_reaction"],
+        mustAllow: ["accept_valid_answer", "plausible_self_detail"],
+        mustForbid: ["interrogation", "accommodating_invention"],
       }),
     ],
   },
