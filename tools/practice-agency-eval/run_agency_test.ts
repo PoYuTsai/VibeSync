@@ -5,8 +5,15 @@ import {
   assertEquals,
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { parseArgs, runAgencyScenario } from "./run_agency.ts";
+import { parseArgs, runAgencyScenario, saltedThreadId } from "./run_agency.ts";
 import { AGENCY_SCENARIOS } from "./scenarios.ts";
+import { buildChatPromptBundle } from "../../supabase/functions/practice-chat/prompt.ts";
+import { resolvePracticeProfile } from "../../supabase/functions/practice-chat/practice_persona.ts";
+import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
+import {
+  BAKEOFF_THREAD_ID,
+  buildBakeoffContextFixture,
+} from "../practice-difficulty-bakeoff/bakeoff.ts";
 
 Deno.test("parseArgs：--mode 接受 standard／beginner／game，其餘拒絕", () => {
   assertEquals(parseArgs([]).mode, "standard");
@@ -110,4 +117,58 @@ Deno.test("runAgencyScenario：A27.p2／p4 的 previousAiAskedQuestion 吃到腳
     "我也在耍廢 等等要洗澡了",
     "對啊 我也是 電費要爆了",
   ]);
+});
+
+// ── Phase 4.2 `--thread-salt`（見 `saltedThreadId` 的註解）────────────────────
+
+Deno.test("parseArgs：--thread-salt 省略＝空字串（thread id 逐字沿用舊行為）", () => {
+  assertEquals(parseArgs([]).threadSalt, "");
+  assertEquals(saltedThreadId("", 3), BAKEOFF_THREAD_ID);
+  assertEquals(parseArgs(["--thread-salt=r1"]).threadSalt, "r1");
+  assertEquals(saltedThreadId("r1", 2), `${BAKEOFF_THREAD_ID}|r1|2`);
+  // 同一個 salt 的不同 repeat 要拿到不同 thread id，否則骰子還是同一面。
+  assert(saltedThreadId("r1", 1) !== saltedThreadId("r1", 2));
+});
+
+Deno.test("thread-salt 讓 initiative 分支量得到：initiative=4 的角色，5 個 salt 至少 1 個命中 self_disclose", () => {
+  // 兩輪黑箱（Phase 4.0／Phase 4 完整矩陣）在 A29 都是 0/40——固定 thread id 讓
+  // `fnv1a(seedKey|回合|initiative) % 5` 在這個探針位置恆為同一個值。這支測試
+  // 不打模型，只證明加鹽之後同一位角色的骰面真的會變。
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_007", // Ava：initiative 4（agency_profile.ts）
+    difficulty: "normal",
+  });
+  const fx = buildBakeoffContextFixture(profile);
+  // A29 的形狀：她先講自己的事，玩家連兩則純反應詞（第 2 個 user 回合才是量測點）。
+  const turns: PracticeTurn[] = [
+    { role: "ai", text: "我今天差點睡過頭 昨晚追劇追到三點才睡" },
+    { role: "user", text: "哈哈" },
+    { role: "ai", text: "對啊 現在整個很累" },
+    { role: "user", text: "嗯嗯" },
+  ];
+  const planFor = (threadId: string) =>
+    buildChatPromptBundle(turns, profile, {
+      replyStyle: true,
+      agencyMode: "on",
+      visiblePracticeThreadId: threadId,
+      partnerState: null,
+      styleState: null,
+      agencyState: null,
+      practiceMode: "beginner",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      sceneContext: fx.sceneContext,
+      acquaintanceOrigin: fx.acquaintanceOrigin,
+      memorySummary: fx.memorySummary,
+      timeContext: fx.timeContext,
+      herRecentMomentsBlock: fx.herRecentMomentsBlock,
+    }).responsePlan!;
+
+  const hits = [1, 2, 3, 4, 5]
+    .map((repeat) => planFor(saltedThreadId("p42", repeat)))
+    .filter((plan) => plan.optionalAct === "self_disclose").length;
+  assert(
+    hits >= 1,
+    `initiative=4 是 2/5 的機率，5 個 salt 至少要有 1 個命中（實際 ${hits}）`,
+  );
 });

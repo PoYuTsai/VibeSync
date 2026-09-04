@@ -8,13 +8,14 @@ import {
   nextConversationAgencyState,
 } from "../../supabase/functions/practice-chat/conversation_agency.ts";
 import { detectTurnSignals } from "../../supabase/functions/practice-chat/turn_response_plan.ts";
-import {
-  BAKEOFF_THREAD_ID,
-  buildBakeoffContextFixture,
-} from "../practice-difficulty-bakeoff/bakeoff.ts";
+import { buildBakeoffContextFixture } from "../practice-difficulty-bakeoff/bakeoff.ts";
+import { saltedThreadId } from "./run_agency.ts";
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
 const file = Deno.args[0];
 const art = JSON.parse(await Deno.readTextFile(file));
+// Phase 4.2：artifact 用 `--thread-salt` 跑的話，thread id 每個 repeat 都不同，
+// 回放要照同一支 `saltedThreadId` 算，否則 seed 對不上（骰子面會不一樣）。
+const threadSalt: string = art.meta?.fixture?.threadSalt ?? "";
 const counts: Record<string, Record<string, number>> = {};
 const bump = (p: string, k: string) => {
   counts[p] ??= {};
@@ -44,7 +45,7 @@ for (const s of art.results) {
     const bundle = buildChatPromptBundle(turns, profile, {
       replyStyle: true,
       agencyMode: "on",
-      visiblePracticeThreadId: BAKEOFF_THREAD_ID,
+      visiblePracticeThreadId: saltedThreadId(threadSalt, s.repeat),
       partnerState: null,
       styleState: null,
       agencyState,

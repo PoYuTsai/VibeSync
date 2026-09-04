@@ -205,6 +205,21 @@ export type ChatCaller = (
   messages: { role: string; content: string }[],
 ) => Promise<string>;
 
+/**
+ * Phase 4.2（評測工具，不動 production）：thread id 的鹽。
+ *
+ * `seedKey` 是 `profileId|visiblePracticeThreadId`（`prompt.ts`），而 runner
+ * 一直傳固定的 `BAKEOFF_THREAD_ID`，所以 `fnv1a(seedKey|回合|initiative) % 5`
+ * 在同一位角色的同一個探針位置**永遠是同一個值**——Phase 4.0／4 完整黑箱兩輪
+ * 都量到 A29 的 `p4:selfDisclose` 0/40，加大 `--repeat` 也沒用（README「Q3
+ * initiative」節）。加鹽之後不同 repeat 骰不同面，才量得到這個分支。
+ *
+ * 空字串（預設）＝回傳 `BAKEOFF_THREAD_ID` 本身，與加旗標前逐字相同。
+ */
+export function saltedThreadId(salt: string, repeat: number): string {
+  return salt ? `${BAKEOFF_THREAD_ID}|${salt}|${repeat}` : BAKEOFF_THREAD_ID;
+}
+
 export async function runAgencyScenario(args: {
   callChat: ChatCaller;
   profileId: string;
@@ -231,6 +246,8 @@ export async function runAgencyScenario(args: {
    * artifact meta 標 `stateSimulation: true` 並在 README 註明這個簡化。
    */
   stateSimulation?: boolean;
+  /** Phase 4.2 `--thread-salt`：見 `saltedThreadId`；省略／空字串＝舊行為。 */
+  threadSalt?: string;
 }): Promise<AgencySessionResult> {
   const difficulty = args.scenario.difficulty ?? args.difficulty;
   const profile = resolvePracticeProfile({
@@ -319,7 +336,10 @@ export async function runAgencyScenario(args: {
     const bundle = buildChatPromptBundle(turns, profile, {
       replyStyle: args.style,
       agencyMode: args.agency,
-      visiblePracticeThreadId: BAKEOFF_THREAD_ID,
+      visiblePracticeThreadId: saltedThreadId(
+        args.threadSalt ?? "",
+        args.repeat,
+      ),
       partnerState: null,
       styleState: null,
       // 短期 agency 狀態：standard 或未開 --state 一律從逐字稿現推（與
@@ -454,6 +474,8 @@ interface CliOptions {
   concurrency: number;
   /** --state=1：跨輪真的帶 agency state（結構層模擬，見 runAgencyScenario）。 */
   stateSimulation: boolean;
+  /** --thread-salt=<字串>：見 `saltedThreadId`；預設空字串＝與加旗標前逐字相同。 */
+  threadSalt: string;
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -469,6 +491,7 @@ export function parseArgs(argv: string[]): CliOptions {
     shape: "off",
     concurrency: 6,
     stateSimulation: false,
+    threadSalt: "",
   };
   for (const arg of argv) {
     if (!arg.startsWith("--")) {
@@ -520,6 +543,9 @@ export function parseArgs(argv: string[]): CliOptions {
       case "style":
         opts.style = value === "1" || value === "true";
         break;
+      case "thread-salt":
+        opts.threadSalt = value.trim();
+        break;
       case "state":
         opts.stateSimulation = value === "1" || value === "true";
         break;
@@ -551,7 +577,7 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       default:
         throw new Error(
-          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--shape、--difficulty、--concurrency、--state）`,
+          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--shape、--difficulty、--concurrency、--state、--thread-salt）`,
         );
     }
   }
@@ -650,6 +676,7 @@ async function main(): Promise<void> {
         agency: opts.agency,
         shape: opts.shape,
         stateSimulation: opts.stateSimulation,
+        threadSalt: opts.threadSalt,
       });
       console.error(
         `[agency] ${
@@ -699,6 +726,9 @@ async function main(): Promise<void> {
       fixture: {
         now: BAKEOFF_FIXED_NOW.toISOString(),
         threadId: BAKEOFF_THREAD_ID,
+        // Phase 4.2：空字串＝每場都用 threadId 本身（舊行為）；有值時每場的
+        // thread id 是 `saltedThreadId(threadSalt, repeat)`，離線回放要照算。
+        threadSalt: opts.threadSalt,
       },
       profileIds: opts.profileIds,
       scenarioIds: opts.scenarios.map((s) => s.id),

@@ -76,7 +76,12 @@ deno test --allow-read --allow-env tools/practice-agency-eval/
   meta 綁 commit／tree／dirty／prompt policy version／模型／常數，並存一份去重的
   `trustedSources`（judge 的唯一可信來源）。
   flags：`--profiles`、`--scenarios`、`--repeat`、`--mode`、`--style`、`--agency`、
-  `--shape`、`--difficulty`、`--concurrency`。`--agency=on|shadow|off`（預設 off）
+  `--shape`、`--difficulty`、`--concurrency`、`--thread-salt`。
+  `--thread-salt=<字串>`（預設空＝與加旗標前逐字相同）把每一場的 thread id 換成
+  `bakeoff-fixed-thread|<salt>|<repeat>`，讓 `seedKey` 依賴的骰子（例如 Phase 4.0
+  的 `initiative` 自曝分支）在不同 `--repeat` 骰到不同面——固定 thread id 是
+  「Q3 initiative 兩輪黑箱累積 0/80」的成因（見該節）。artifact meta 記
+  `fixture.threadSalt`，`replay_plan.ts` 會照同一支 `saltedThreadId` 重建。`--agency=on|shadow|off`（預設 off）
   就是 production 的 `PRACTICE_CONVERSATIONAL_AGENCY_ENABLED`，走 handler
   同一條路徑餵 `buildChatPromptBundle`；standard
   的短期狀態從逐字稿現推（不帶持久化）。
