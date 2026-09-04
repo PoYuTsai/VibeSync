@@ -9265,6 +9265,9 @@ Deno.test("Codex round-1（新項）P1-1：修復輪（applied=false）也要推
     unresolvedCount: 0,
     priorChallengeIssued: false,
     lastAgencyAct: "hold_position",
+    // Phase 3.2 P1-3：分類器判 connected 的那一輪要把位置存下來（這段逐字稿
+    // 有 2 則玩家訊息），下一輪欠債才從這裡之後重算，不會整批復活。
+    repairedAtUserTurns: 2,
   });
 });
 

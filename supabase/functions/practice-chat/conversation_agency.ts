@@ -144,6 +144,13 @@ export interface AgencyEvidence {
    * 「真的欸」沒問過任何東西）不會被 deterministic 地收掉。
    */
   readonly aiQuestionedInLoop: boolean;
+  /**
+   * 這次逐字稿裡的玩家訊息則數。只有一個用途：assisted 模式把「分類器判
+   * connected」的那一輪位置存進 `ConversationAgencyState.repairedAtUserTurns`
+   * （Phase 3.2 P1-3），下一輪才知道欠債要從哪裡開始重算。不進 telemetry、
+   * 不參與任何 policy 判斷。
+   */
+  readonly userTurnCount: number;
 }
 
 export interface ConversationAgencyState {
@@ -156,6 +163,19 @@ export interface ConversationAgencyState {
   readonly unresolvedCount: 0 | 1 | 2 | 3;
   readonly priorChallengeIssued: boolean;
   readonly lastAgencyAct: AgencyAct | null;
+  /**
+   * Phase 3.2 P1-3（assisted 專用）：分類器判 `connected` 的那一輪，逐字稿裡
+   * 有幾則玩家訊息。`detectAgencyEvidence` 把這個位置當成結構修復點——欠債
+   * 計數、「她問過」旗標、同詞重複視窗都從它之後才開始算。
+   *
+   * 為什麼需要持久化：舊版只有 `if (prev?.lastCoherence === "connected")
+   * unresolved = 0;`，那只清掉**當輪**算出來的值；下一輪同一批逐字稿被重走，
+   * 除非分類器又說 connected，舊片段就整批復活。
+   *
+   * 缺欄位＝沒有修復點（舊 row、standard 模式的 `prev=null`）；壞值一律讓
+   * `parseConversationAgencyState()` 整份回 null，跟其餘欄位同一個規則。
+   */
+  readonly repairedAtUserTurns?: number;
 }
 
 export const INITIAL_CONVERSATION_AGENCY_STATE: ConversationAgencyState = {
@@ -365,9 +385,21 @@ export function detectAgencyEvidence(
     });
     lastAiText = null;
   }
+  // Phase 3.2 P1-3：assisted 持久化下來的修復點（分類器判 connected 的那一輪
+  // 有幾則玩家訊息）。位置超出這次逐字稿的則數（逐字稿被截短）就當成沒有——
+  // 定位不到的修復點寧可不用，也不要指到錯的地方。standard 傳 null＝一律 0。
+  const repairStart = prev?.repairedAtUserTurns !== undefined &&
+      prev.repairedAtUserTurns <= shapes.length
+    ? prev.repairedAtUserTurns
+    : 0;
   const windowed = shapes.slice(-RECENT_USER_WINDOW);
   const current = windowed.at(-1);
   const earlier = windowed.slice(0, -1);
+  // 修復點在 `windowed`／`earlier` 座標系裡的位置（已經滑出窗口就是 0）。
+  const windowRepairStart = Math.max(
+    0,
+    repairStart - (shapes.length - windowed.length),
+  );
 
   // ── 未解片段計數（Phase 3.0 改寫）────────────────────────────────────
   // 舊版是「連續低資訊形狀就累加」，而且只算到**這一句之前**。兩個問題：
@@ -405,7 +437,7 @@ export function detectAgencyEvidence(
   let unresolved = 0;
   let told = false;
   let askedInLoop = false;
-  for (const s of windowed) {
+  for (const s of windowed.slice(windowRepairStart)) {
     if (!isLowInformation(s.shape)) {
       if (s.shape !== "reaction") {
         unresolved = 0;
@@ -434,7 +466,7 @@ export function detectAgencyEvidence(
   // 她講了句不是問句的話 → 他丟片段」這個形態整段都不算她問過，該停不停。
   // 只有結構修復（非低資訊、非 reaction）才把旗標清掉。
   let aiQuestionedInLoop = false;
-  for (const s of shapes) {
+  for (const s of shapes.slice(repairStart)) {
     if (!isLowInformation(s.shape) && s.shape !== "reaction") {
       aiQuestionedInLoop = false;
       continue;
@@ -444,6 +476,9 @@ export function detectAgencyEvidence(
   // assisted：分類器讀完她這一輪的回覆後判 `connected`＝玩家上一輪真的接上了。
   // 那是結構層看不到的修復（他這句話對不對得上是語意問題），所以拿它把逐字稿
   // 推出來的欠債歸零；standard 傳 null，這條不生效。
+  // Phase 3.2 P1-3：這一行留著當**舊 row 的相容退路**（`repairedAtUserTurns`
+  // 還沒被寫進去的 thread）。真正跨輪有效的是上面的 `repairStart`——它讓修復點
+  // 之前的片段不再被重算回來，而不是只清掉當輪的值。
   if (prev?.lastCoherence === "connected") unresolved = 0;
   const compactedCurrent = current ? compact(current.text) : "";
   // Codex round-2 P1-3：舊版拿整個八則 window 比對，等於「玩家較早講過『貓』、
@@ -452,7 +487,8 @@ export function detectAgencyEvidence(
   //   - 起點＝最後一次「玩家自己把話講清楚了」（非低資訊、非 reaction）之後，
   //     也就是 unresolved 歸零的那個 repair／connected 點；
   //   - 再往回最多 3 則（短期工作記憶，不是長期記憶）。
-  let repairedAt = 0;
+  // Phase 3.2 P1-3：重複視窗同樣不得越過持久化的修復點。
+  let repairedAt = windowRepairStart;
   earlier.forEach((s, i) => {
     if (!isLowInformation(s.shape) && s.shape !== "reaction") {
       repairedAt = i + 1;
@@ -476,10 +512,14 @@ export function detectAgencyEvidence(
     // **看得見**的東西撐：她上一則是不是在問問題（`previousAiAskedQuestion`），
     // 那個訊號在 renderTurnPlan 會變成「你上一句已經在問他了，他沒回答就別放過」。
     priorChallengeIssued: prev?.priorChallengeIssued ?? false,
+    // Phase 3.2 P1-3：`precedingUserContext` 刻意**不**受修復點限制——修復點
+    // 之前玩家講清楚過的內容仍然是他給過的前文，砍掉會讓 A07／A09 那種
+    // 「先鋪前文再丟短詞」在 assisted 模式反而被判成無前文片段（更嚴，不是更鬆）。
     precedingUserContext: earlier.some((s) =>
       s.shape !== "reaction" && !isLowInformation(s.shape)
     ),
     aiQuestionedInLoop,
+    userTurnCount: shapes.length,
   };
 }
 
@@ -737,6 +777,11 @@ export function parseConversationAgencyState(
   ) return null;
   if (typeof r.priorChallengeIssued !== "boolean") return null;
   if (
+    r.repairedAtUserTurns !== undefined &&
+    !(typeof r.repairedAtUserTurns === "number" &&
+      Number.isInteger(r.repairedAtUserTurns) && r.repairedAtUserTurns >= 0)
+  ) return null;
+  if (
     r.lastAgencyAct !== null &&
     !(typeof r.lastAgencyAct === "string" &&
       (AGENCY_ACTS as readonly string[]).includes(r.lastAgencyAct))
@@ -747,6 +792,11 @@ export function parseConversationAgencyState(
     unresolvedCount: r.unresolvedCount as 0 | 1 | 2 | 3,
     priorChallengeIssued: r.priorChallengeIssued,
     lastAgencyAct: r.lastAgencyAct as AgencyAct | null,
+    // 缺欄位就**不要**放這個 key（省略 ≠ undefined：整包覆寫 recent_facts 時
+    // 兩者等價，但物件相等比對會不同，等價 harness 與既有測試都在對拍形狀）。
+    ...(r.repairedAtUserTurns === undefined
+      ? {}
+      : { repairedAtUserTurns: r.repairedAtUserTurns as number }),
   };
 }
 
@@ -821,6 +871,14 @@ export function nextConversationAgencyState(
   const challengedThisTurn = forced === "challenge_relevance" ||
     forced === "hold_position" ||
     classifierSignal?.aiChallengedThisTurn === true;
+  // Phase 3.2 P1-3：只有**分類器明確判 connected**才落新的修復點。結構修復
+  // （問句／第一人稱分享／明示換題）本來就會在 `detectAgencyEvidence` 的迴圈
+  // 裡把欠債清乾淨，不需要持久化；有效短答免疫格更不能算修復點，否則
+  // 「她問 → 他丟片段」每一輪都會自己把位置往前推，等於抵銷 Phase 3.2 的放寬。
+  // 沒有新的修復點就沿用上一個（那一段還沒被修好，欠債要繼續從它之後算）。
+  const repairedAtUserTurns = classifierSignal?.coherence === "connected"
+    ? decision.evidence.userTurnCount
+    : base.repairedAtUserTurns;
   return {
     version: 1,
     lastCoherence: classifierSignal?.coherence ?? structuralCoherence,
@@ -829,6 +887,7 @@ export function nextConversationAgencyState(
       decision.evidence.priorChallengeIssued) ||
       challengedThisTurn,
     lastAgencyAct,
+    ...(repairedAtUserTurns === undefined ? {} : { repairedAtUserTurns }),
   };
 }
 

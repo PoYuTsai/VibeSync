@@ -4,12 +4,12 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   AGENCY_THRESHOLDS,
-  aiAskedQuestion,
-  aiAskedQuestionStrict,
   type AgencyEvidence,
   agencyModeFor,
   agencyPolicyFor,
   agencyThresholdsFor,
+  aiAskedQuestion,
+  aiAskedQuestionStrict,
   type ConversationAgencyState,
   detectAgencyEvidence,
   isAcceptingPlanAct,
@@ -586,6 +586,7 @@ Deno.test("難度門檻：挑戰／game 在停止解讀那一格直接收掉（�
     priorChallengeIssued: false,
     precedingUserContext: false,
     aiQuestionedInLoop: false,
+    userTurnCount: 3,
   };
   for (
     const thresholds of [
@@ -991,4 +992,115 @@ Deno.test("Phase 3.2 放寬：免疫只給這一段迴圈裡的第一組一問�
   ]);
   assertEquals(afterRepair.evidence.unresolvedCount, 0);
   assertEquals(afterRepair.situation, null);
+});
+
+Deno.test("Phase 3.2 P1-3：分類器判 connected 的位置會持久化，下一輪不得讓舊欠債復活", () => {
+  // assisted 的修復是語意的（他這句到底有沒有接上），結構層看不到，所以分類器
+  // 判 connected 那一輪要把位置記下來。舊版只有「prev.lastCoherence ===
+  // connected → 當輪 unresolved 歸零」，下一輪分類器改口（disconnected）時
+  // 同一批逐字稿被重算，修復點之前的片段整批復活。
+  const turns: PracticeTurn[] = [
+    u("好市多"),
+    a("你在說什麼"),
+    u("東京"), // ← 分類器在這一輪判 connected（第 2 則玩家訊息）
+    a("那你最喜歡哪個國家"),
+    u("日本"),
+    a("蛤"),
+    u("清邁"),
+  ];
+  const disconnected: ConversationAgencyState = {
+    version: 1,
+    lastCoherence: "disconnected",
+    unresolvedCount: 2,
+    priorChallengeIssued: false,
+    lastAgencyAct: null,
+  };
+  // 沒有修復點（舊 row）：整段重算 → 舊片段全部復活。
+  assertEquals(detectAgencyEvidence(turns, disconnected).unresolvedCount, 3);
+  // 有修復點：只從第 2 則玩家訊息之後開始算。
+  const repaired = detectAgencyEvidence(turns, {
+    ...disconnected,
+    repairedAtUserTurns: 2,
+  });
+  assertEquals(repaired.unresolvedCount, 0);
+  assertEquals(repaired.aiQuestionedInLoop, false);
+  // 位置定位不到（逐字稿被截短）就當成沒有修復點，寧可少修不要指錯地方。
+  assertEquals(
+    detectAgencyEvidence(turns, { ...disconnected, repairedAtUserTurns: 99 })
+      .unresolvedCount,
+    3,
+  );
+  // standard 一律 prev=null，這條完全不生效。
+  assertEquals(detectAgencyEvidence(turns, null).unresolvedCount, 3);
+
+  // 同詞重複的視窗也不得越過修復點：修復點之前講過的「好市多」不算重複。
+  const repeatAcrossRepair: PracticeTurn[] = [
+    u("好市多"),
+    a("你在說什麼"),
+    u("東京"),
+    a("蛤"),
+    u("好市多"),
+  ];
+  assert(
+    detectAgencyEvidence(repeatAcrossRepair, disconnected).repeatedExactToken,
+  );
+  assertEquals(
+    detectAgencyEvidence(repeatAcrossRepair, {
+      ...disconnected,
+      repairedAtUserTurns: 2,
+    }).repeatedExactToken,
+    false,
+  );
+});
+
+Deno.test("Phase 3.2 P1-3：修復點只由分類器 connected 寫入，並且會被沿用與容錯解析", () => {
+  const decision = policy([u("韓國"), a("怎麼突然講韓國"), u("東京")]);
+  assertEquals(decision.evidence.userTurnCount, 2);
+
+  // 分類器判 connected → 記下當時的玩家訊息則數。
+  const connected = nextConversationAgencyState(null, decision, {
+    coherence: "connected",
+  });
+  assertEquals(connected.repairedAtUserTurns, 2);
+  // 分類器改口／缺訊號 → 沿用上一個修復點（那一段還沒修好）。
+  for (const signal of [null, {}, { coherence: "disconnected" as const }]) {
+    assertEquals(
+      nextConversationAgencyState(connected, decision, signal)
+        .repairedAtUserTurns,
+      2,
+      JSON.stringify(signal),
+    );
+  }
+  // 從來沒有 connected 過 → 完全不寫這個 key（不是 undefined 值）。
+  const never = nextConversationAgencyState(null, decision, null);
+  assert(!("repairedAtUserTurns" in never), JSON.stringify(never));
+
+  // 解析：缺 key＝沒有修復點；壞值一律整份 null（跟其餘欄位同一個規則）。
+  const ok = {
+    version: 1,
+    lastCoherence: "ambiguous",
+    unresolvedCount: 2,
+    priorChallengeIssued: false,
+    lastAgencyAct: null,
+  };
+  const parsedWithout = parseConversationAgencyState({
+    conversationAgency: ok,
+  });
+  assert(parsedWithout !== null);
+  assert(!("repairedAtUserTurns" in parsedWithout));
+  assertEquals(
+    parseConversationAgencyState({
+      conversationAgency: { ...ok, repairedAtUserTurns: 4 },
+    })?.repairedAtUserTurns,
+    4,
+  );
+  for (const bad of [-1, 1.5, "2", null, {}]) {
+    assertEquals(
+      parseConversationAgencyState({
+        conversationAgency: { ...ok, repairedAtUserTurns: bad },
+      }),
+      null,
+      JSON.stringify(bad),
+    );
+  }
 });
