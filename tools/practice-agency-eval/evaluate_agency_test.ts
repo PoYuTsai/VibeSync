@@ -17,6 +17,7 @@ import {
 } from "./scenarios.ts";
 import { JUDGED_LABELS } from "./judge_agency.ts";
 import { looksLikeQuestion } from "./run_agency.ts";
+import { classifyTruncateEffect } from "./stance_bubbles.ts";
 
 const NONE = Object.fromEntries(
   JUDGED_LABELS.map((l) => [l, false]),
@@ -453,4 +454,67 @@ Deno.test("Phase 3.7 curiosityWithinSix：以場為分母，同場多探針 OR�
   // 非 cooperative_turn 的探針不進分母。
   const none = evaluateAgency([withLabels("A01.p1", "asked_about_user")]);
   assertEquals(none.curiosityWithinSix.n, 0);
+});
+
+// 借七個 PROBE_ORDER 不同的真探針 id 當同一場的連續機會（`scenarioId` 覆寫成同一
+// 場、`kinds` 覆寫成 cooperative_turn）——現行情境檔沒有七個內容輪的場，但指標的
+// 上界必須先鎖住，不能等情境檔擴充才發現它沒實作。
+const SEVEN_ORDERED = [
+  "A01.p1",
+  "A02.p1",
+  "A03.p1",
+  "A04.p1",
+  "A05.p1",
+  "A06.p2",
+  "A07.p1",
+] as const;
+const asOpportunity = (probeId: string, asked: boolean): JudgedProbe => ({
+  ...probe({ probeId }),
+  scenarioId: "A28",
+  kinds: ["cooperative_turn"],
+  labels: { ...NONE, asked_about_user: asked },
+});
+
+Deno.test("Phase 4.2（Codex R2 P1）curiosity_within_six_content_turns：第 7 個內容輪才問到＝失敗（舊指標仍算成功）", () => {
+  const rows = SEVEN_ORDERED.map((id, i) =>
+    asOpportunity(id, i === SEVEN_ORDERED.length - 1)
+  );
+  const m = evaluateAgency(rows);
+  // 舊指標整場 OR：第 7 個問到也算成功（保留可比，不動）。
+  assertEquals(m.curiosityWithinSix.n, 1);
+  assertEquals(m.curiosityWithinSix.hits, 1);
+  // 新指標只看前六個內容機會：第 7 個才問＝失敗。
+  assertEquals(m.curiosityWithinSixContentTurns.n, 1);
+  assertEquals(m.curiosityWithinSixContentTurns.hits, 0);
+
+  // 對照：同一場改成第 6 個內容輪問到 → 兩條都成功。
+  const sixth = evaluateAgency(
+    SEVEN_ORDERED.map((id, i) => asOpportunity(id, i === 5)),
+  );
+  assertEquals(sixth.curiosityWithinSixContentTurns.hits, 1);
+});
+
+Deno.test("Phase 4.2（Codex R2 P1）純反應詞輪不佔內容機會：A29.p1 插在前面，第 6 個**內容**輪問到仍算成功", () => {
+  // A29.p1（「哈哈」）在 REACTION_PROBE_IDS 裡；把它當成同一場的一個
+  // cooperative_turn 機會插進來，內容窗口不該因此少一格。
+  const rows = [
+    asOpportunity("A29.p1", false), // reaction：不佔格
+    ...SEVEN_ORDERED.map((id, i) => asOpportunity(id, i === 5)), // 第 6 個內容輪問到
+  ];
+  const m = evaluateAgency(rows);
+  assertEquals(m.curiosityWithinSixContentTurns.n, 1);
+  assertEquals(m.curiosityWithinSixContentTurns.hits, 1);
+  // 若反應詞輪佔了一格，第 6 個內容輪就會被擠到窗口外變成失敗——這條斷言就是在
+  // 鎖那個差別。
+});
+
+Deno.test("Phase 4.2（Codex R2 U）truncate 三分：留猜測砍質疑＝惡化、留質疑砍猜測＝改善、沒砍＝不變", () => {
+  // `stance_bubbles.ts` 產 out/2026-09-05-p42-stance-bubbles.json 用的分類函式。
+  assertEquals(classifyTruncateEffect(["guess", "challenge"], 1), "worsened");
+  assertEquals(classifyTruncateEffect(["challenge", "guess"], 1), "improved");
+  assertEquals(classifyTruncateEffect(["challenge", "guess"], 0), "unchanged");
+  // 只有一顆泡泡（dropped=0）永遠是不變，即使那一顆就是猜測。
+  assertEquals(classifyTruncateEffect(["guess"], 0), "unchanged");
+  // 砍掉的裡面既沒質疑也沒猜測＝不變（沒有可歸因的得失）。
+  assertEquals(classifyTruncateEffect(["challenge", "other"], 1), "unchanged");
 });

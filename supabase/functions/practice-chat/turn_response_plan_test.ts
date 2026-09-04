@@ -16,9 +16,14 @@ import {
   renderTurnPlan,
 } from "./turn_response_plan.ts";
 import {
+  type AgencyClassifierSignal,
   type AgencyMode,
+  agencyPolicyFor,
+  agencyThresholdsFor,
   type ConversationAgencyState,
+  detectAgencyEvidence,
   nextConversationAgencyState,
+  utteranceShapeOf,
 } from "./conversation_agency.ts";
 import { STYLE_BY_PROFILE_ID } from "./reply_style.ts";
 import type { PracticeTurn } from "./validate.ts";
@@ -1351,12 +1356,18 @@ Deno.test("Phase 4.2：停滯輪（玩家這句只有反應詞）不強制問他
 });
 
 /**
- * Phase 4.2（Codex R1 P1）：照 handler 的順序逐輪走一條完整軌跡——每個 user
- * turn 用當下的 `agencyState` 算 plan，再用 `nextConversationAgencyState`
- * 推進（`askedAboutUserThisTurn` ＝ 這一輪有沒有真的強制問他）。
+ * Phase 4.2（Codex R1 P1／R2 P3）：照 **handler 的結構狀態順序**逐輪走一條完整
+ * 軌跡——每個 user turn 用當下的 `agencyState` 算 plan，再用
+ * `nextConversationAgencyState` 推進（`askedAboutUserThisTurn` ＝ 這一輪有沒有
+ * 真的強制問他）。
+ *
+ * **classifier signal 是固定值**（預設 `null`，可傳 `connected`／`disconnected`
+ * 做差分），不是 production assisted handler 那條真的再打一次分類器的路徑——
+ * 這是本 helper 明講的近似邊界，跟 `replay_plan.ts --state=1` 同一種。
  */
 function walkAskUserTrajectory(
   script: readonly { user: string; ai: string }[],
+  classifierSignal: AgencyClassifierSignal | null = null,
 ): { forced: boolean[]; askedAboutUser: boolean[] } {
   const rare = styles.find((s) => s.turnTaking.questionHabit === "rare")!;
   const evidence = standard();
@@ -1391,7 +1402,7 @@ function walkAskUserTrajectory(
     state = nextConversationAgencyState(
       state,
       agency!.decision,
-      null,
+      classifierSignal,
       askedThisTurn,
     );
     askedAboutUser.push(state.askedAboutUser === true);
@@ -1438,4 +1449,126 @@ Deno.test("Phase 4.2（Codex R1 P1）窗口有硬上限：反應詞再多也不�
   ]);
   assertEquals(forced.filter(Boolean).length, 0);
   assertEquals(ASK_USER_WINDOW_MAX_USER_TURNS, 10);
+});
+
+Deno.test("Phase 4.2（Codex R2 P3）軌跡對 classifier signal 不敏感：connected／disconnected 的第 7 回合 forced 與 askedAboutUser 完全相同", () => {
+  const script = [
+    { user: "嗨嗨 終於有空跟妳聊", ai: "嗨 我也剛忙完" },
+    ...["哈哈", "嗯嗯", "喔喔", "哈哈哈", "了解"].map((user) => ({
+      user,
+      ai: "對啊 今天有夠累",
+    })),
+    { user: "我剛下班 在想晚餐要吃什麼", ai: "晚餐真的很難決定" },
+  ];
+  const base = walkAskUserTrajectory(script, null);
+  for (
+    const signal of [
+      { coherence: "connected" } as const,
+      { coherence: "disconnected" } as const,
+      { coherence: "connected", aiChallengedThisTurn: true } as const,
+    ]
+  ) {
+    const run = walkAskUserTrajectory(script, signal);
+    assertEquals(run.forced, base.forced, JSON.stringify(signal));
+    assertEquals(
+      run.askedAboutUser,
+      base.askedAboutUser,
+      JSON.stringify(signal),
+    );
+  }
+  // 而且基準本身就是「第 7 回合才強制」，不是全 false 的空斷言。
+  assertEquals(base.forced[6], true);
+});
+
+Deno.test("Phase 4.2（Codex R2 P3）窗口兩組上界的邊界：原始第 10 回合可問、第 11 不可；第 6 個內容輪可問、第 7 個不可", () => {
+  const react = { user: "嗯嗯", ai: "對啊" };
+  const content = (n: number) => ({
+    user: `我剛下班 在想晚餐要吃什麼 ${n}`,
+    ai: "晚餐真的很難決定",
+  });
+  // (1) 原始第 10 個 user 回合＝內容輪 2（前面 8 個反應詞）→ 兩組上界都沒破，可問。
+  const at10 = walkAskUserTrajectory([
+    content(1),
+    ...Array.from({ length: 8 }, () => react),
+    content(2),
+  ]);
+  assertEquals(at10.forced.length, 10);
+  assertEquals(at10.forced[9], true, "原始第 10 個 user 回合仍可問");
+  // (2) 原始第 11 個 user 回合（前面 9 個反應詞）→ 破 ASK_USER_WINDOW_MAX_USER_TURNS。
+  const at11 = walkAskUserTrajectory([
+    content(1),
+    ...Array.from({ length: 9 }, () => react),
+    content(2),
+  ]);
+  assertEquals(at11.forced.length, 11);
+  assertEquals(at11.forced[10], false, "原始第 11 個 user 回合不可問");
+  // (3)(4) 用「分享＋問句」當中間的內容輪：它是內容（`utteranceShape==="question"`，
+  //        不是 reaction，**會**消耗窗口），但玩家在問她，所以那幾輪不強制——正好
+  //        把強制推到指定的那一個內容輪上。
+  const asks = (i: number) => ({
+    user: `我剛下班 在想晚餐要吃什麼 ${i} 妳今天呢？`,
+    ai: "我也剛結束 整個人攤掉",
+  });
+  // (3) 第 6 個內容輪可問。
+  const sixth = walkAskUserTrajectory([
+    content(1),
+    ...Array.from({ length: 4 }, (_, i) => asks(i)),
+    content(6),
+  ]);
+  assertEquals(sixth.forced, [false, false, false, false, false, true]);
+  // (4) 第 7 個內容輪不可問（同一腳本多插一個內容輪，把它擠出 [2,6]）。
+  const seventh = walkAskUserTrajectory([
+    content(1),
+    ...Array.from({ length: 5 }, (_, i) => asks(i)),
+    content(7),
+  ]);
+  assertEquals(seventh.forced.filter(Boolean).length, 0);
+  assertEquals(seventh.forced[6], false, "第 7 個內容輪已出窗口");
+});
+
+Deno.test("Phase 4.2（Codex R2 U）契約釘樁：「對」「是啊」目前**不是** reaction，會消耗內容窗口；4.3 才把肯定短詞納入", () => {
+  // Codex R2 Uncertain：REACTION_RE 有 `嗯+`／`喔+`／`好+`，但沒有「對」「是啊」。
+  // 這支測試只釘現況（不改 REACTION_RE），讓 4.3 改動時一定會撞到它。
+  const th = agencyThresholdsFor("normal", false);
+  const probeShape = (aiText: string, userText: string) => {
+    const turns: PracticeTurn[] = [a(aiText), u(userText)];
+    const evidence = detectAgencyEvidence(turns, null);
+    return {
+      shape: evidence.utteranceShape,
+      situation: agencyPolicyFor(evidence, th).situation,
+      // 內容窗口用的是同一支 `utteranceShapeOf(text, false)`。
+      consumesWindow: utteranceShapeOf(userText, false) !== "reaction",
+    };
+  };
+  const statement = "我今天差點睡過頭 昨晚追劇追到三點才睡";
+  const yesNo = "你今天也很累嗎？";
+
+  for (const text of ["對", "是啊"]) {
+    // 前一句是陳述：裸片段 → 她會問意思（agency 介入）。
+    assertEquals(probeShape(statement, text), {
+      shape: "bare_fragment",
+      situation: "ambiguous_fragment",
+      consumesWindow: true,
+    }, text);
+    // 前一句是是非問句：有效短答 → 不介入。但**仍然消耗內容窗口**。
+    assertEquals(probeShape(yesNo, text), {
+      shape: "answer_candidate",
+      situation: null,
+      consumesWindow: true,
+    }, text);
+  }
+  // 帶內容的版本兩種前文都是 self_share、不介入、消耗窗口。
+  for (const ai of [statement, yesNo]) {
+    assertEquals(probeShape(ai, "對，我剛下班"), {
+      shape: "self_share",
+      situation: null,
+      consumesWindow: true,
+    }, ai);
+  }
+  // 對照組：目前真的是 reaction 的詞不消耗窗口。
+  assertEquals(probeShape(statement, "嗯嗯"), {
+    shape: "reaction",
+    situation: null,
+    consumesWindow: false,
+  });
 });

@@ -747,3 +747,44 @@ Deno.test("Codex round-2 Important 9：adopted／asked_with_guess／accept 的�
     );
   }
 });
+
+Deno.test("Phase 4.2（Codex R2 P2）不變量：blind_follow／fabricated_self_fact 是導出值，judge 從不回答，artifact 也不帶這兩個 key", () => {
+  // `evaluate_agency.ts` 在 `evaluateAgency` 裡把 `blind_follow` 補成
+  // `adopted_without_asking || asked_with_guess`；只要 judge 端永遠不供應這個
+  // 欄位，「讀 blind_follow」與「讀那兩個欄位的 OR」就恆等（不是巧合）。
+  // 實測：`out/` 底下 55 份 judge artifact、41,350 筆有標籤的探針，
+  // **沒有任何一筆帶 blind_follow 或 fabricated_self_fact key**。
+  const sources = trustedSourcesFor("practice_girl_001", "normal");
+  const prompt = buildJudgePrompt({
+    probeId: "A12.p1",
+    scenarioId: "A12",
+    profileId: sources.profileId,
+    personaId: "slow_worker",
+    difficulty: "normal",
+    mode: "standard",
+    repeat: 1,
+    kinds: ["fabrication_probe"],
+    previousAiAskedQuestion: false,
+    transcript: "男：清邁",
+    reply: "清邁很讚欸 我上個月才去過",
+    sources,
+  });
+  for (const derived of ["blind_follow", "fabricated_self_fact"] as const) {
+    assert(
+      !(JUDGED_LABELS as readonly string[]).includes(derived),
+      `${derived} 不得進入 judge 的問卷`,
+    );
+    assert(!prompt.includes(derived), `${derived} 不得出現在 judge prompt`);
+  }
+  // parser：模型就算硬吐這兩個 key，正規化後的 labels 也不得帶上它們。
+  const verdict = parseJudgeVerdict(JSON.stringify({
+    ...Object.fromEntries(JUDGED_LABELS.map((l) => [l, false])),
+    blind_follow: true,
+    fabricated_self_fact: true,
+    evidence: "x",
+  }));
+  assertEquals(
+    Object.keys(verdict.labels).sort(),
+    [...JUDGED_LABELS].sort(),
+  );
+});

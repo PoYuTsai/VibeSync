@@ -172,6 +172,17 @@ Deno.test("thread-salt 讓 initiative 分支量得到：5 個**不同**的 salt 
 
   const salts = ["s1", "s2", "s3", "s4", "s5"];
   const hits = salts.map((salt) => disclosesFor(saltedThreadId(salt, 1)));
+  // Codex R2 P3：CLI 的典型形態是**一個 salt 配多個 repeat**，所以也要證明那一組
+  // fixture 同時含命中與不命中，不能只證「五個不同 salt 會分岔」。
+  const oneSaltRepeats = [1, 2, 3, 4, 5].map((repeat) =>
+    disclosesFor(saltedThreadId("p42", repeat))
+  );
+  assert(
+    oneSaltRepeats.some(Boolean) && oneSaltRepeats.some((h) => !h),
+    `固定 salt、repeat 1～5 應同時含命中與不命中：${
+      JSON.stringify(oneSaltRepeats)
+    }`,
+  );
   // 沒有鹽的那一面（兩輪黑箱實際打到的那一格）是 false——這就是 0/40 的來源。
   assertEquals(disclosesFor(saltedThreadId("", 1)), false);
   // 5 個不同的鹽裡，已知至少一個命中、至少一個不命中：證明 salt 真的換骰面，
