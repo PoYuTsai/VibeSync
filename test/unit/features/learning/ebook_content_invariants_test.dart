@@ -550,6 +550,24 @@ void main() {
     expect(hits, isEmpty, reason: '這些禁用詞還在：$hits');
   });
 
+  test('第 1 冊不得提前使用第 2 冊才定義的變數代碼', () {
+    // V↑／E↑／F↑／I↑／R↑ 這套標記在第 2 冊 2.1 才教；免費讀者先讀第 1 冊，
+    // 看到代碼等於沒看懂。工作包 5（2026-09-03）把 1.5 的 caption 改成中文判讀。
+    // 單一來源：audit_rules.json 的 undefinedCodes（R09）。
+    final rule = _readAuditRules()['undefinedCodes'] as Map<String, dynamic>;
+    final code = RegExp(rule['pattern'] as String);
+    final book = catalog.findBook(rule['bookId'] as String)!;
+    final hits = <String>[];
+    for (final chapter in book.chapters) {
+      for (final block in _flatten(chapter.blocks)) {
+        for (final text in _blockTexts(block)) {
+          if (code.hasMatch(text)) hits.add('${block.id}：${code.firstMatch(text)![0]}');
+        }
+      }
+    }
+    expect(hits, isEmpty, reason: '第 1 冊還有未定義的代碼：$hits');
+  });
+
   test('第 4、7 冊用同一句定義種子', () {
     // 規格 §5.4／§12.3 第 10 條：兩冊的邀約流程要能用同一條說明。
     const seed = '種子是先提一個具體活動，暫時不定時間，看看她想不想接';
