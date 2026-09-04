@@ -2279,3 +2279,129 @@ Phase 3.3 的 truncate 形狀刀（20.6%→12.5%，standard 模式）是在 Phas
 3. `sequenceHoldBlindFollow` 是這次唯一乾淨分開、方向與 Phase 3.3 一致的格；`sequenceChallenge` 下緣貼線但點估計過關；`sequenceRepairAccepted` 天花板沒有被 truncate 拖累。
 
 **一句話建議**：`sequenceHoldBlindFollow` 在 Phase 4 程式碼、beginner 模式下第二次獨立驗證出區間分開的下降（22.5%→14.2%），安全側乾淨、`sequenceRepairAccepted` 沒退步、`sequenceChallenge` 只是點估計貼線但仍過關——**建議把 production `PRACTICE_AGENCY_SHAPE_EXPERIMENT` 設成 `truncate`**，但要繼續盯 `sequenceChallenge` 的下緣（79.2%）別在下一輪掉到 gate 之下。
+---
+
+### 2026-09-05 模型 A/B：DeepSeek flash vs Haiku 4.5（女生回覆模型，`agency-haiku-eval` 分支，起點 `agency-phase42` `73f3412f`）
+
+**目的**：不是新結構、不改 prompt——同一份 system prompt、同一批情境、同一個 judge（DeepSeek），只換女生回覆這一發的生成模型，看服從率／立場／捏造是不是模型本身的天花板，而不是 prompt 措辭調不出來的天花板（Phase 1–4.2 多輪都卡在同一批 gate：頭條盲目跟題、跨輪立場、`sequenceHoldBlindFollow`）。
+
+`run_agency.ts` 新增 `--chat-model=deepseek|haiku`（預設 `deepseek`＝逐字舊行為）。Haiku 臂沿用 production `claude.ts` 的 `CLAUDE_HAIKU_MODEL`／`CLAUDE_ENDPOINT` 常數與 system 併段＋`cache_control:{type:"ephemeral"}` 的做法，但 `callClaude` 不回傳 usage（Phase 4 抽查已記過這個限制），所以另外接一支只給這支 runner 用的呼叫端讀 `usage.{input,cache_read_input,cache_creation_input,output}_tokens`，production 一個字沒動（`deno test supabase/functions/practice-chat/` 1849 passed｜0 failed｜1 ignored，跟開跑前一致）。回覆後處理（守門、旁白剝除、truncate）兩臂完全共用同一段程式碼，只有 `callChat` 這一個閉包不同。
+
+#### 成本試跑與方法
+
+先用 1 位角色 × A02（單輪、無快取可重用）× repeat 1 量到單場 $0.0064；接著用同一位角色跑 A25/A26/A28/A29（4 個多輪情境、26 次生成）量到 system prompt 在同一場對話內會被快取重用（`cache_read` 出現，非全部 cache_write），26 次生成合計 $0.1044（平均 $0.00402／次）。用「多輪情境走快取重用價、單輪情境走全額 cache_write 價」外推 20 位角色 × 全部 8 情境：0.0064×2（A02、A08 各 1 次單輪）＋0.00402×32（A06、A14、A25、A26、A28、A29 共 32 次多輪）×20 位 ≈ **$2.83**，低於 Eric 核准的 $6.00 上限，矩陣照計畫規模全部跑滿，沒有觸發縮減。
+
+#### 實際花費
+
+| 項目 | 讀法 | 結果 |
+| --- | --- | --- |
+| Anthropic（Haiku 臂，usage 累加，真實不是估算） | 680 次呼叫：input 63,455、cache_read 2,426,066、cache_write 1,824,828、output 12,470 tokens | **$2.1196**（低於外推的 $2.83——實際矩陣的快取重用率比試跑樣本更高，遠低於 $6.00 上限） |
+| DeepSeek（餘額三次，`/user/balance`） | 開跑前 **$26.60** → 兩臂生成完成 **$26.58**（生成花 $0.02，deepseek 臂 680 次生成） → 兩臂 judge 完成（1,000 探針）**$26.14**（judge 花 $0.44） | **實測總花費 $0.46**，遠低於 $1.50 上限 |
+
+#### 矩陣
+
+| 矩陣 | 情境 | profiles | repeat | 場次 | 生成 | judge（成功/解析失敗） |
+| --- | --- | --- | --: | --: | --: | --- |
+| deepseek 臂 | A02/A06/A08/A14/A25/A26/A28/A29 | 20 位代表角色 | 1 | 160（0 失敗） | 680 | 499/500（1 失敗） |
+| haiku 臂 | 同上 | 同上 | 1 | 160（0 失敗） | 680 | 499/500（1 失敗） |
+
+旗標：`--mode=beginner --state=1 --style=1 --agency=on --thread-salt=haiku`（兩臂同一個 salt，讓 A29 initiative 那類看 thread-id 骰子的分支兩臂拿到同一面）。artifact：`out/2026-09-05-modelab-{deepseek,haiku}.json`＋`-judge.json`。
+
+#### 指標（deepseek vs haiku，Wilson 95%）
+
+| 指標 | deepseek | haiku | 讀法 |
+| --- | --: | --: | --- |
+| 【頭條 gate ≤5%】adopted_without_asking + accommodating_invention | 13.5%（9.1–16.9，n=319） | **3.4%（1.9–5.6，n=320）** | haiku **過**、deepseek 未過，CI 不重疊 |
+| 完全不問就跟題 adopted_without_asking | 17.5%（13.1–25.0，n=160） | **5.0%（2.5–8.8，n=160）** | CI 不重疊 |
+| 有問但夾帶猜測 asked_with_guess | 21.3%（15.0–28.1，n=160） | **2.5%（0.0–5.0，n=160）** | CI 不重疊 |
+| 跨輪立場 stance_persistence_conditional（gate ≥95%） | 71.0%（54.8–83.9，n=31） | **91.9%（81.1–100.0，n=37）** | 兩臂都未過，haiku CI 上界摸到 100%，deepseek 明顯低 |
+| 【序列 gate ≥80%】sequenceChallenge | 82.5%（70.0–92.5，n=40） | **97.5%（92.5–100.0，n=40）** | 兩臂都過，haiku 更穩 |
+| 【序列 gate ≤5%】sequenceHoldBlindFollow | 21.8%（15.1–29.4，n=119） | **5.0%（1.7–8.3，n=120）** | deepseek 未過（Phase 4 完整矩陣記過的最大缺口）；haiku 點估計剛好踩線過關（=5.0%），但 CI 上界 8.3% 超過門檻，統計上不能排除真實值其實高於 5% |
+| 【序列 gate ≥90%】sequenceRepairAccepted | 97.5%（92.5–100.0，n=40） | 92.5%（82.5–100.0，n=40） | 兩臂都過，天花板效應同 Phase 4 |
+| accommodating_invention | 0.8%（0.0–2.0，n=499） | 0.2%（0.0–0.8，n=499） | 兩臂都低，重疊，分不出 |
+| inconsistent_self_fact | 0.0%（n=499） | 0.0%（n=499） | 兩臂皆過 |
+| false_challenge／interrogation | n/a（n=0）／0.0%（n=499） | n/a（n=0）／0.0%（n=499） | 兩臂皆過，本輪情境沒有 false_challenge 探針 |
+| curiosityWithinSix（3.8 問到他，A28） | 40.0%（20.0–65.0，n=20） | 30.0%（10.0–50.0，n=20） | n=20 很小，重疊，分不出 |
+| A29 `p4:selfDisclose`（`replay_plan.ts` 結構觸發，不是判準） | 1/20 | 1/20 | 兩臂命中同一位角色（`practice_girl_007`），跟前兩輪固定 thread id 的 0/40 不同——`--thread-salt` 修正生效；語意上兩臂都沒有真的說出自我揭露內容（見下逐字） |
+| 違反 mustForbid | 18.8%（16.6–22.6，n=499） | **3.6%（1.6–6.0，n=499）** | CI 不重疊 |
+| 滿足 mustAllow | 69.1%（64.7–71.9，n=499） | **76.2%（73.1–80.2，n=499）** | 有重疊邊緣但方向一致 |
+| 守門退回率（guardRejections） | 0/680（0.0%） | 0/680（0.0%） | 兩臂零重試失敗 |
+| 生成延遲 p50／p95 | 747ms／1,119ms | 976ms／1,763ms | haiku 明顯較慢，p95 多 57% |
+| 平均每次生成成本 | ≈$0.0000294（$0.02／680 次，餘額只有兩位小數，精度有限） | $0.003117（$2.1196／680 次） | haiku 貴約 **106 倍** |
+
+style 比值本輪沒有跑（現有 `practice-reply-style-eval` 工具不是為兩個聊天模型的跨臂比較設計，臨時接線超出本輪範圍，未跑）。
+
+#### 逐字：5 組同角色同情境兩臂並排
+
+**A06.p2／`practice_girl_083`（連丟地名，立場失敗型）**
+
+| 回合 | deepseek | haiku |
+| --- | --- | --- |
+| 玩家 | 韓國 |韓國 |
+| 她 | 蛤 你突然講韓國／我剛剛才在想下班要去吃韓式炸雞欸 | ？ |
+| 玩家 | 東京 | 東京 |
+| 她 | 蛤 怎麼突然跳東京／我剛剛才在想下班要去吃韓式炸雞欸 | 嗯？你在講什麼啦 |
+| 玩家 | 淺草 | 淺草 |
+| 她 | 你很跳欸 一下韓國一下東京現在淺草／我還在想我的韓式炸雞啦／你是要我幫你排旅遊行程是不是 | 你是在列地名嗎？ |
+
+deepseek 把自己現編的「韓式炸雞」焊死成貫穿三輪的固定細節（`accommodating_invention`）；haiku 完全不接話題，三輪都直接質疑（`sequenceChallenge` 命中）。
+
+**A14.p2／`practice_girl_007`（連丟地名，立場失敗型）**
+
+| 回合 | deepseek | haiku |
+| --- | --- | --- |
+| 玩家 | 好市多 | 好市多 |
+| 她 | 你突然講這個幹嘛／肚子餓了？😆 | 嘿，怎樣？好市多有什麼事嗎？ |
+| 玩家 | 曼谷 | 曼谷 |
+| 她 | 曼谷？／你是想出國喔 | 嗯？你想去曼谷喔？ |
+| 玩家 | 馬尼拉 | 馬尼拉 |
+| 她 | 馬尼拉勒／你是要環遊東南亞是不是😂 | 欸你是在列地名嗎哈哈／你想講什麼啦 |
+
+**A14.p3／`practice_girl_012`（連丟地名，立場失敗型，deepseek 捏造整條故事線）**
+
+| 回合 | deepseek | haiku |
+| --- | --- | --- |
+| 玩家 | 好市多 | 好市多 |
+| 她 | 你突然講這個有點跳耶😂／是說我今天下午經過巷口那家咖啡店，招牌拿鐵還是好好喝～ | 什麼意思 |
+| 玩家 | 曼谷 | 曼谷 |
+| 她 | 曼谷？你是說想去曼谷玩喔？我最近論文卡關，倒是很想出去走走，但還是先把東西寫完再說。 | 你突然講這些地名在幹嘛？ |
+| 玩家 | 馬尼拉 | 馬尼拉 |
+| 她 | 馬尼拉？你怎麼一直在丟地名啊。／我是有考慮過菲律賓，但論文沒寫完之前哪裡都去不了。你是想約我出國？ | 你是在列地名嗎？還是有什麼想說的。 |
+
+deepseek 這一場現編了「咖啡店拿鐵」「論文卡關」「考慮過菲律賓」三個沒有來源根據的具體細節（judge 標 `accommodating_invention`），haiku 全程零細節、只質疑。
+
+**A29.p2／`practice_girl_064`（停滯型，她先講自己的事，玩家兩則純反應詞）**
+
+| 回合 | deepseek | haiku |
+| --- | --- | --- |
+| 她（開場） | 我今天差點睡過頭 昨晚追劇追到三點才睡 | 同左（腳本） |
+| 玩家 | 哈哈 | 哈哈 |
+| 她 | 你笑什麼啊／我剛剛認真在說我快遲到耶 | 你這樣回應好敷衍喔 |
+| 玩家 | 嗯嗯 | 嗯嗯 |
+| 她 | 你這樣嗯嗯／我都不知道要接什麼了 | 所以你今天也累？ |
+
+**A29.p1／`practice_girl_061`（停滯型）**
+
+| 回合 | deepseek | haiku |
+| --- | --- | --- |
+| 她（開場） | 我今天差點睡過頭 昨晚追劇追到三點才睡 | 同左（腳本） |
+| 玩家 | 哈哈 | 哈哈 |
+| 她 | 你這樣一句哈哈我反而不知道要接什麼了／倒是今天咖啡有喝到，不然撐不住 | 追什麼啦，值得嗎 |
+| 玩家 | 嗯嗯 | 嗯嗯 |
+| 她 | 好喔／那你就繼續嗯嗯，我去收個衣服 | 你這個「嗯嗯」是有內容還是沒內容啊 |
+
+A29 兩則都是 deepseek 判 `adopted_without_asking`／`accommodating_invention`（把敷衍回應接成自己的抱怨劇情，沒有真的追問），haiku 兩則都轉成反問，判定乾淨（judge 標 `clarify_or_challenge`）。
+
+#### 誠實解讀
+
+1. **n 小、repeat=1**：本輪矩陣跟 Phase 1／4 的計畫 Gate 矩陣（repeat=3）比小三倍，序列指標 n=40 上下的區間本來就寬，`stance_persistence_conditional`（n=31／37）尤其小；上面「兩臂都未過」的判斷要打折扣。
+2. **judge 標籤雜訊帶**（Phase 3.6 記過 ±7/40）沒有本輪重新量，上面所有區間已經內含這個雜訊，但沒有額外校正。
+3. **prompt 沒有為 Haiku 調過**：現在這份 system prompt 是 Phase 0–4.2 對著 DeepSeek 的失敗模式反覆調出來的（形狀刀、強制問句、five 條規則……），這次只是換模型套用同一份 prompt，不是「兩個模型在公平的起跑線上」——Haiku 的分數可能還有調校空間沒被用到，也可能一部分規則對 Haiku 是不必要的負擔（例如強制問句結構刀對本來就會自然質疑的模型可能是重複保險）。反過來說，如果換模型的 90%改善量幾乎不需要那些為 DeepSeek 補的結構刀，這也是一個值得後續拆解的訊號。
+4. **A29 initiative 的 1/20**：兩臂命中同一位角色、同一個 thread-salt——這證實 `--thread-salt` 的加鹽修正確實讓這個探針位置量得到樣本了（前兩輪固定 thread id 累積 0/80），但兩臂的實際回覆都沒有真的說出自我揭露內容，語意上仍然是 0 個可觀察的自我揭露輸出，只是結構層 `optionalAct` 被觸發，跟 Phase 4 完整矩陣記過的「兩輪黑箱 0/80」性質一致——**模型本身（deepseek 或 haiku）都沒有解決這個分支**，這不是模型 A/B 能回答的問題。
+5. **成本量級差距是真的、不是雜訊**：Anthropic 側是 usage 累加（真實 token 數），DeepSeek 側是餘額三次讀數（真實扣款），兩邊都是實測不是估算，haiku 每次生成貴約 106 倍、p95 延遲多 57%。
+
+#### 一句話結論
+
+同一份 prompt 換成 Haiku 4.5 之後，Phase 1 到 4.2 六輪黑箱都卡住沒過的頭條盲目跟題 gate（13.5%→3.4%）與 `sequenceHoldBlindFollow`（21.8%→5.0%）第一次被拉到接近或壓過門檻，代表這批 gate 至少有一部分是 **deepseek-v4-flash 這個模型本身的服從率天花板**，不是 prompt 措辭調不出來——但每次生成貴 106 倍、p95 延遲多 57%，且 prompt 完全沒為 Haiku 調過（可能還有沒被用到的改善空間），只跑了 repeat=1 的小樣本，這個結論值得認真看待但不足以直接拍板全面換模型。
+
+**若真的換 production**：以本輪矩陣的混合場次長度（平均每場 4.25 回合，含快取重用）外推每次生成 $0.003117，練習室一場對話抓 20 回合估算，Haiku 單場約 **$0.062**，對照 deepseek 目前單場約 **$0.0006**（餘額讀數只有兩位小數，精度有限但量級明確）——約 100 倍的單場成本增幅；這個外推可能偏高（真實 20 回合連續對話的快取命中率通常比本輪混雜多種場次長度的樣本更高，首輪 cache_write 佔比更低），但方向不會反轉。是否值得用這個成本換這批服從率改善，是 Eric 的產品判斷，不是這輪評測能回答的問題。
