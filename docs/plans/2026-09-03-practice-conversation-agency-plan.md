@@ -118,3 +118,10 @@
 **下輪順序**：(a) 修上面三個 P1＋放寬強制停 → 小規模 A25/A26 驗證；(b) 補跑 game／難度軸／replay（約 $8）；(c) Phase 3（她講過的細節進 memorySummary、origin 好奇點、自傳守門）；(d) Phase 4（agency profile 20→100、Hint/Debrief）；(e) shadow → test → true。
 
 **流程教訓**：旗標零改動要 handler 級四面 harness；子代理黑箱 stderr 不要經 `tail`；DeepSeek balance API 有延遲不能當停損；子代理 rebase 別在審查跑一半時動同一分支。
+
+## Phase 3.4 — 捏造的共同過去（`sharedPastClaim`，2026-09-04）
+
+- **問題**（Eric 真機）：玩家只丟一個 IG handle（`debby1993wu`），她回「這是我們朋友」「喔是你喔 我想起來了／那天在酒吧真的很吵」——宣稱逐字稿與可信自我來源裡都不存在的共同熟人／共同際遇。黃金法則明文禁止，但 prompt 攔不住、結構層（`utteranceShape`／`unresolvedCount`）看不到（純語意）。A27 重跑的逐字覆核也證實兩臂都還在。
+- **做法**：沿用 assisted（beginner／game）既有的每輪分類器（它本來就讀完整逐字稿），只加一個欄位 `sharedPastClaim`，走跟 `coherence`／`aiChallengedThisTurn` 完全相同的旗標閘門——旗標 `on` 才進 prompt／schema／parser／telemetry，`off`／`shadow` 逐字不變。消費端只有兩個：delta cap（`Math.min` 上界壓成 0/0，只壓正分不抬負分，`deltaCapApplied` 記 `"shared_past_claim"`）與 telemetry。**不**餵進 `nextConversationAgencyState`／結構層，**不**改生成模型的 prompt，**不**重寫重試。
+- **範圍外**：standard 沒有分類器，這條路上這個欄位恆為缺席；要涵蓋 standard 得另外想機制（不加第二次 LLM call 的前提下）。
+- **未量**：盛行率與 cap 觸及率要等下一次付費回放（`classifier_replay.ts` 已把欄位與 `sharedPastClaimN`／`sharedPastClaimRate`／`sharedPastPositiveHeatN` 帶進 summary）。

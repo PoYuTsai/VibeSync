@@ -56,6 +56,8 @@ interface ReplayRow {
   profileId: string;
   coherence: string;
   aiChallengedThisTurn: boolean;
+  /** Phase 3.4：她這一輪有沒有捏造跟玩家的共同過去（認識／共同朋友／一起經歷）。 */
+  sharedPastClaim: boolean;
   connection: string;
   heatDelta: number;
   cappedHeatDelta: number;
@@ -173,6 +175,7 @@ async function main() {
             repeatedExactToken: false,
             unresolvedCount: 0,
           },
+          classification.sharedPastClaim,
         );
         rows.push({
           scenarioId: job.scenarioId,
@@ -180,6 +183,7 @@ async function main() {
           profileId: job.profileId,
           coherence: classification.coherence ?? "connected",
           aiChallengedThisTurn: classification.aiChallengedThisTurn ?? false,
+          sharedPastClaim: classification.sharedPastClaim ?? false,
           connection: classification.connection,
           heatDelta: judgement.delta,
           cappedHeatDelta: capped.delta,
@@ -193,6 +197,7 @@ async function main() {
           profileId: job.profileId,
           coherence: "error",
           aiChallengedThisTurn: false,
+          sharedPastClaim: false,
           connection: "error",
           heatDelta: 0,
           cappedHeatDelta: 0,
@@ -218,6 +223,11 @@ async function main() {
     r.coherence === "disconnected" || r.coherence === "repetitive"
   );
   const positiveHeatAfterCap = disconnectedOrRepetitive.filter((r) =>
+    r.cappedHeatDelta > 0
+  );
+  // Phase 3.4：捏造共同過去的盛行率＋套 cap 之後還拿到正 heat 的筆數（gate）。
+  const sharedPast = ok.filter((r) => r.sharedPastClaim);
+  const sharedPastPositiveHeat = sharedPast.filter((r) =>
     r.cappedHeatDelta > 0
   );
   const a01a09 = ok.filter((r) =>
@@ -250,6 +260,13 @@ async function main() {
           1000,
       ) / 10
       : null,
+    // Phase 3.4：捏造共同過去（黃金法則明文禁止）的盛行率；套 cap 之後
+    // 必須 0 筆還拿得到正 heat。
+    sharedPastClaimN: sharedPast.length,
+    sharedPastClaimRate: ok.length
+      ? Math.round((sharedPast.length / ok.length) * 1000) / 10
+      : null,
+    sharedPastPositiveHeatN: sharedPastPositiveHeat.length,
     // gate：A01／A09 有效短答仍應維持 connected，且不能被判 defensive／overstepped。
     a01a09N: a01a09.length,
     a01a09NotConnectedN: a01a09NotConnected.length,
