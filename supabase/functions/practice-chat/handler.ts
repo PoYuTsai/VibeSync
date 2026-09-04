@@ -1555,8 +1555,8 @@ async function judgeLearningState(opts: {
         // Phase 3.4：她捏造跟玩家的共同過去（認識／共同朋友／一起經歷過）時，
         // 這一輪不得換到正分。只有 assisted 有分類器，standard 走不到這裡。
         classification.sharedPastClaim,
-        // Phase 3.6：她編造自己查無來源／跟人設矛盾的經歷時同樣不得換到正分。
-        classification.fabricatedSelfFact,
+        // Phase 3.6：她替自己補的設定跟來源矛盾、或明顯迎合玩家丟的詞時同樣不得換到正分。
+        classification.accommodatingSelfFact,
       )
       : { judgement: protectedJudgement, capApplied: "none" as const };
     // 閘門在 delta cap 之後（豁免在閘門內判斷）、crude-offense 確定
@@ -4745,16 +4745,16 @@ export function createPracticeChatHandler(
                   : {}),
               }
               : {}),
-            // Phase 3.6：fabricatedSelfFact 同一套規則（on 且分類器判了才有 key）。
+            // Phase 3.6：accommodatingSelfFact 同一套規則（on 且分類器判了才有 key）。
             ...(agencyMode === "on" &&
-                temperature?.classification.fabricatedSelfFact !== undefined
+                temperature?.classification.accommodatingSelfFact !== undefined
               ? {
-                fabricatedSelfFact:
-                  temperature.classification.fabricatedSelfFact,
+                accommodatingSelfFact:
+                  temperature.classification.accommodatingSelfFact,
                 ...(temperature.classification.repairedFields?.includes(
-                    "fabricatedSelfFact",
+                    "accommodatingSelfFact",
                   )
-                  ? { fabricatedSelfFactRepaired: true }
+                  ? { accommodatingSelfFactRepaired: true }
                   : {}),
               }
               : {}),

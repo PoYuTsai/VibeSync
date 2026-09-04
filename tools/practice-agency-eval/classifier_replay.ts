@@ -64,9 +64,9 @@ interface ReplayRow {
    * 真的判「沒捏造」——盛行率的分母要扣掉這些筆。
    */
   sharedPastClaimRepaired: boolean;
-  /** Phase 3.6：她這一輪有沒有編造自己查無來源／跟人設矛盾的具體經歷。 */
-  fabricatedSelfFact: boolean;
-  fabricatedSelfFactRepaired: boolean;
+  /** Phase 3.6：她這一輪替自己補的設定有沒有跟來源矛盾、或明顯迎合玩家丟的詞。 */
+  accommodatingSelfFact: boolean;
+  accommodatingSelfFactRepaired: boolean;
   connection: string;
   heatDelta: number;
   cappedHeatDelta: number;
@@ -191,7 +191,7 @@ async function main() {
             unresolvedCount: 0,
           },
           classification.sharedPastClaim,
-          classification.fabricatedSelfFact,
+          classification.accommodatingSelfFact,
         );
         rows.push({
           scenarioId: job.scenarioId,
@@ -202,9 +202,9 @@ async function main() {
           sharedPastClaim: classification.sharedPastClaim ?? false,
           sharedPastClaimRepaired:
             classification.repairedFields?.includes("sharedPastClaim") ?? false,
-          fabricatedSelfFact: classification.fabricatedSelfFact ?? false,
-          fabricatedSelfFactRepaired:
-            classification.repairedFields?.includes("fabricatedSelfFact") ??
+          accommodatingSelfFact: classification.accommodatingSelfFact ?? false,
+          accommodatingSelfFactRepaired:
+            classification.repairedFields?.includes("accommodatingSelfFact") ??
               false,
           connection: classification.connection,
           heatDelta: judgement.delta,
@@ -223,8 +223,8 @@ async function main() {
           aiChallengedThisTurn: false,
           sharedPastClaim: false,
           sharedPastClaimRepaired: false,
-          fabricatedSelfFact: false,
-          fabricatedSelfFactRepaired: false,
+          accommodatingSelfFact: false,
+          accommodatingSelfFactRepaired: false,
           connection: "error",
           heatDelta: 0,
           cappedHeatDelta: 0,
@@ -265,13 +265,15 @@ async function main() {
   // 吐了布林值的那些筆（explicit）。
   const sharedPastRepaired = ok.filter((r) => r.sharedPastClaimRepaired);
   const sharedPastExplicitN = ok.length - sharedPastRepaired.length;
-  // Phase 3.6：自編經歷同一套算法（explicit 分母、任一 delta 為正＝沒壓住）。
-  const fabricated = ok.filter((r) => r.fabricatedSelfFact);
-  const fabricatedPositiveDelta = fabricated.filter((r) =>
+  // Phase 3.6：迎合式補設定同一套算法（explicit 分母、任一 delta 為正＝沒壓住）。
+  const accommodating = ok.filter((r) => r.accommodatingSelfFact);
+  const accommodatingPositiveDelta = accommodating.filter((r) =>
     r.cappedHeatDelta > 0 || r.cappedFamiliarityDelta > 0
   );
-  const fabricatedRepaired = ok.filter((r) => r.fabricatedSelfFactRepaired);
-  const fabricatedExplicitN = ok.length - fabricatedRepaired.length;
+  const accommodatingRepaired = ok.filter((r) =>
+    r.accommodatingSelfFactRepaired
+  );
+  const accommodatingExplicitN = ok.length - accommodatingRepaired.length;
   const a01a09 = ok.filter((r) =>
     r.probeId.startsWith("A01") || r.probeId.startsWith("A09")
   );
@@ -314,13 +316,13 @@ async function main() {
       ? Math.round((sharedPast.length / sharedPastExplicitN) * 1000) / 10
       : null,
     sharedPastPositiveDeltaN: sharedPastPositiveDelta.length,
-    fabricatedSelfFactN: fabricated.length,
-    fabricatedSelfFactExplicitN: fabricatedExplicitN,
-    fabricatedSelfFactRepairedN: fabricatedRepaired.length,
-    fabricatedSelfFactRate: fabricatedExplicitN
-      ? Math.round((fabricated.length / fabricatedExplicitN) * 1000) / 10
+    accommodatingSelfFactN: accommodating.length,
+    accommodatingSelfFactExplicitN: accommodatingExplicitN,
+    accommodatingSelfFactRepairedN: accommodatingRepaired.length,
+    accommodatingSelfFactRate: accommodatingExplicitN
+      ? Math.round((accommodating.length / accommodatingExplicitN) * 1000) / 10
       : null,
-    fabricatedPositiveDeltaN: fabricatedPositiveDelta.length,
+    accommodatingPositiveDeltaN: accommodatingPositiveDelta.length,
     // gate：A01／A09 有效短答仍應維持 connected，且不能被判 defensive／overstepped。
     a01a09N: a01a09.length,
     a01a09NotConnectedN: a01a09NotConnected.length,

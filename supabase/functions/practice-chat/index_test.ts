@@ -9419,7 +9419,7 @@ function persistedAgencyState(
 
 Deno.test("Codex round-1（新項）P1-1：修復輪（applied=false）也要推進狀態，priorChallengeIssued 真的歸零", async () => {
   const { state, succeeded } = await agencyRepairRun(
-    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"fabricatedSelfFact":false}`,
+    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false}`,
   );
   // 前提：這一輪確實是「沒有注入 guidance」的修復輪，不然這個測試是空的。
   const agency = succeeded?.conversationAgency as Record<string, unknown>;
@@ -9442,7 +9442,7 @@ Deno.test("Codex round-1（新項）P1-1：修復輪（applied=false）也要推
 Deno.test("Codex round-1（新項）P1-1：非 agency planner 這一輪真的質疑了，applied=false 也要寫進狀態", async () => {
   // 反向那一半：舊閘門讓「她其實質疑了、但 agency 沒介入」的輪次同樣寫不進去。
   const { state, succeeded } = await agencyRepairRun(
-    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"ambiguous","aiChallengedThisTurn":true,"sharedPastClaim":false,"fabricatedSelfFact":false}`,
+    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"ambiguous","aiChallengedThisTurn":true,"sharedPastClaim":false,"accommodatingSelfFact":false}`,
   );
   assertEquals(
     (succeeded?.conversationAgency as Record<string, unknown>).applied,
@@ -9461,7 +9461,7 @@ Deno.test("Phase 3.2 P1-3：shadow 模式即使分類器判 connected 也不寫 
   // 修復點是 agency 狀態的一部分，shadow 的契約是「只算 telemetry，不寫狀態」
   // ——所以整個 conversationAgency key 都不該出現，更不會有新欄位。
   const { state } = await agencyRepairRun(
-    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"fabricatedSelfFact":false}`,
+    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false}`,
     "shadow",
   );
   assertEquals(persistedAgencyState(state), undefined);
@@ -9477,7 +9477,7 @@ const SHARED_PAST_TURNS = [
   { role: "user", text: "debby1993wu" },
 ];
 const CLASSIFIER_SHARED_PAST_CLAIM =
-  `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"amused","moodConfidence":0.7,"innerThought":"我想起來了","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":true,"fabricatedSelfFact":false}`;
+  `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","partnerMood":"amused","moodConfidence":0.7,"innerThought":"我想起來了","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":true,"accommodatingSelfFact":false}`;
 
 Deno.test("Phase 3.4：分類器判 sharedPastClaim 時正分被壓成 0，telemetry 有這個 key；旗標關時整條路不存在", async () => {
   const run = async (
@@ -9638,11 +9638,11 @@ Deno.test("Phase 3.4 R1：repair 出來的 false 跟模型判的 false 在 telem
 
 // conversation-agency-v1 Phase 3.6：3.2 殘留病——點破同一則夾帶自編經歷
 // （「你是說阿布達比嗎／我剛從那邊飛回來耶」）。人設裡沒有、她先前也沒說過。
-const CLASSIFIER_FABRICATED_SELF_FACT = CLASSIFIER_SHARED_PAST_CLAIM
+const CLASSIFIER_ACCOMMODATING_SELF_FACT = CLASSIFIER_SHARED_PAST_CLAIM
   .replace('"sharedPastClaim":true', '"sharedPastClaim":false')
-  .replace('"fabricatedSelfFact":false', '"fabricatedSelfFact":true');
+  .replace('"accommodatingSelfFact":false', '"accommodatingSelfFact":true');
 
-Deno.test("Phase 3.6：分類器判 fabricatedSelfFact 時正分被壓成 0，telemetry 有這個 key 與 repaired；旗標關時不存在", async () => {
+Deno.test("Phase 3.6：分類器判 accommodatingSelfFact 時正分被壓成 0，telemetry 有這個 key 與 repaired；旗標關時不存在", async () => {
   const run = async (
     classifierReply: string,
     env?: Record<string, string>,
@@ -9681,29 +9681,29 @@ Deno.test("Phase 3.6：分類器判 fabricatedSelfFact 時正分被壓成 0，te
   assert((off.succeeded.temperatureDelta as number) > 0);
   assert(!("conversationAgency" in off.succeeded));
 
-  const on = await run(CLASSIFIER_FABRICATED_SELF_FACT, {
+  const on = await run(CLASSIFIER_ACCOMMODATING_SELF_FACT, {
     PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
   });
-  assertEquals(on.succeeded.deltaCapApplied, "fabricated_self_fact");
+  assertEquals(on.succeeded.deltaCapApplied, "accommodating_self_fact");
   assertEquals(on.succeeded.temperatureDelta, 0);
   assertEquals(on.succeeded.familiarityDelta, 0);
   const agency = on.succeeded.conversationAgency as Record<string, unknown>;
-  assertEquals(agency.fabricatedSelfFact, true);
+  assertEquals(agency.accommodatingSelfFact, true);
   assertEquals(agency.sharedPastClaim, false);
-  assert(!("fabricatedSelfFactRepaired" in agency));
+  assert(!("accommodatingSelfFactRepaired" in agency));
 
   const shadow = await run(CLASSIFIER_CAUGHT_MEDIUM, {
     PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "shadow",
   });
   assert(
-    !("fabricatedSelfFact" in
+    !("accommodatingSelfFact" in
       (shadow.succeeded.conversationAgency as Record<string, unknown>)),
   );
 
   const repaired = await run(
-    CLASSIFIER_FABRICATED_SELF_FACT.replace(
-      '"fabricatedSelfFact":true',
-      '"fabricatedSelfFact":"yes"',
+    CLASSIFIER_ACCOMMODATING_SELF_FACT.replace(
+      '"accommodatingSelfFact":true',
+      '"accommodatingSelfFact":"yes"',
     ),
     { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
   );
@@ -9711,9 +9711,9 @@ Deno.test("Phase 3.6：分類器判 fabricatedSelfFact 時正分被壓成 0，te
     string,
     unknown
   >;
-  assertEquals(repairedAgency.fabricatedSelfFact, false);
-  assertEquals(repairedAgency.fabricatedSelfFactRepaired, true);
-  assertEquals(repaired.repairedFields, ["fabricatedSelfFact"]);
+  assertEquals(repairedAgency.accommodatingSelfFact, false);
+  assertEquals(repairedAgency.accommodatingSelfFactRepaired, true);
+  assertEquals(repaired.repairedFields, ["accommodatingSelfFact"]);
   assert((repaired.succeeded.temperatureDelta as number) > 0);
 });
 
