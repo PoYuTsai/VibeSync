@@ -727,6 +727,58 @@ DeepSeek：$20.25 → $19.72（可見掉 $0.53；balance API
 生成＋960 judge），按 Phase 2.6 判準重評量到的單價（約 $0.00066／筆）估算落在
 $1.5–2 這個量級，遠低於 Eric 核准的 $3 上限，沒有觸到停損線。
 
+#### 2026-09-04 追加：immunity-final（Codex round-1／round-2 之後的有效短答免疫覆核）
+
+上面「本輪」四支 commit 落地後，Codex 又對這條分支做了兩輪審查：round-1（commit
+`ca345bda`）收四個 P1——`aiAskedQuestionStrict`（強制格
+`aiQuestionedInLoop` 專用的嚴格問句判準）先前自己列的疑問詞頭尾條件不是寬鬆
+`aiAskedQuestion` 的真子集（「誰都可以」寬鬆 false、嚴格 true，等於新造一組假
+強制停），改成`aiAskedQuestion(t) && 句尾問句標記`——句尾標記只認「整句以
+`?`／`？`結尾」或「最後一個子句以嗎／呢／吧結尾」兩種，疑問詞頭尾規則整組拿掉；
+Phase 3.2 放寬用的「她問過」改回鍵在**寬鬆**訊號
+`previousAiAskedQuestion`（那一格只是 bounded 二選一條件式，過偵測是安全方向，
+嚴格判準只留給 deterministic 的強制格）；`repairedAtUserTurns`
+修復點若定位不到（超出這次逐字稿則數＝逐字稿被截短）就不再往下傳。round-2
+（commit `69ddc4fd`，即本次 HEAD）收三個 P1／P2／P3——`repeatedExactToken`
+的重複視窗起點會被修復點**之前**的一則結構訊息覆寫成更小的
+index，改成取 `Math.max`（永遠不小於最後一次結構修復的位置），不然視窗會跨回
+修復點之前，把修復點之前講過的同一個詞誤判成原樣重複；舊 row 的相容退路
+`prev?.lastCoherence === "connected" → unresolved = 0` 补上
+`prev.repairedAtUserTurns === undefined` 條件，改成**只**對沒有 marker 的 row
+生效（有 marker 時 unresolved 已經是修復點之後的新欠債，無條件歸零會把它擦掉）；
+測試註解一處手誤（把「東東是誰」誤記成嚴格判準認得，其實是寬鬆那支）。round-2
+的幾項在同一輪修完，**沒有再開第三輪覆核**——review 政策把覆核輪數上限訂在兩輪。
+
+在 HEAD `69ddc4fd`（分支 `agency-phase32`）追加一次小額黑箱，只驗這幾支 P1
+有沒有動到有效短答免疫的安全側：`--scenarios=A01,A03,A07,A09 --mode=standard
+--agency=on --repeat=2`，20 位、n=160（280 次生成＋160 judge，零失敗、judge
+解析失敗 0）。誤質疑 `false_challenge` 四情境合計仍是
+**0.0%（0/160）**，A01／A03／A07／A09 各 n=40 全 0；`policy_breakdown.ts`
+顯示這 160 筆全部落在 `no_override`（forced-stop 命中 0），四支 P1
+沒有把任何一則有效短答推進強制停止解讀。allowSatisfied：A01
+100%、A03 92.5%（3/40 是`clarify_or_challenge`，例如「你怎麼突然講韓國」——
+她指出跳題但沒有誤判成沒回答，不算 false_challenge）、A07
+97.5%、A09 只有 60%（12/40 clarify_or_challenge，例如「Hyrox？那是什麼新的
+訓練方式嗎」——對一般玩家確實陌生的健身術語提出澄清問題，judge
+判定是合理澄清而非誤判）。花費：DeepSeek 帳戶餘額查詢因 API 已知延遲兩次都顯示
+$19.37（無法用 delta 量），按 Phase 2.6 判準重評量到的單價（約 $0.00066／筆）
+估算 440 次呼叫落在 **約 $0.29**，在 Eric 核准的 $0.50 上限內。artifact：
+`out/2026-09-04-p32-immunity-final.json`（judge
+`-judge.json`，另有 `-evaluate.out`／`-policy.out`）。
+
+兩個記錄在案、目前不影響現行產品路徑的休眠風險：（1）`repairedAtUserTurns`
+是「第 N 則玩家訊息」的**絕對序號**，只有在同一場逐字稿起點不變時才指得到同一個
+位置——client 端 `_turnDtosForPrompt()` 只送最後 80
+則（`kPracticePromptRecentTurns`，見
+`lib/features/practice_chat/data/providers/practice_chat_providers.dart:43`），
+一場練習約 20 回合（≈40 則玩家訊息）遠低於 80，所以**現行產品路徑上這個截窗
+不會發生**；但它不是結構保證——萬一真的截掉了訊息，過期的 marker
+會被判定「位置超出這次逐字稿的則數」而整個丟棄不採用，`detectAgencyEvidence`
+改從逐字稿的可見起點重算，不會指到錯的位置，也不會製造假強制停。（2）Codex
+round-2 對其中幾項先判 BLOCK，本輪在同一個 round 內修完並收斂成
+`69ddc4fd`，**沒有再開第三輪覆核**——這是 review 政策本身「覆核最多兩輪」的
+上限，不是這輪刻意省略。
+
 ### 2026-09-06 Phase 2.6（評測效度優先＋Codex round-1 五個 P1）
 
 **這一輪最重要的結論是「Phase 2.5
