@@ -6,6 +6,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   ACCEPTING_ACTS,
+  ASK_USER_WINDOW_MAX_USER_TURNS,
   classifySituation,
   computeAgencyDecision,
   detectTurnSignals,
@@ -14,7 +15,11 @@ import {
   policyStanceFor,
   renderTurnPlan,
 } from "./turn_response_plan.ts";
-import type { AgencyMode } from "./conversation_agency.ts";
+import {
+  type AgencyMode,
+  type ConversationAgencyState,
+  nextConversationAgencyState,
+} from "./conversation_agency.ts";
 import { STYLE_BY_PROFILE_ID } from "./reply_style.ts";
 import type { PracticeTurn } from "./validate.ts";
 import type { PracticeDifficulty } from "./practice_persona.ts";
@@ -1313,9 +1318,11 @@ Deno.test("Phase 4.2：停滯輪（玩家這句只有反應詞）不強制問他
       askUserFocus: "他是從哪裡看到你的",
     });
 
+  // 玩家先給過一次內容（窗口下界數的是「給了內容的回合」，Eric 2026-09-05 拍板），
+  // 所以下面兩個變體的差別只剩「這一句是不是純反應詞」。
   const stalled = [
     a("我今天差點睡過頭 昨晚追劇追到三點才睡"),
-    u("哈哈"),
+    u("哈哈 終於有空跟妳聊"),
     a("對啊 現在整個很累"),
     u("嗯嗯"),
   ];
@@ -1330,7 +1337,7 @@ Deno.test("Phase 4.2：停滯輪（玩家這句只有反應詞）不強制問他
   // 對照組：同一個回合位置，玩家這句有內容（A28.p3 的形狀）→ 仍然強制。
   const shared = [
     a("我今天差點睡過頭 昨晚追劇追到三點才睡"),
-    u("哈哈"),
+    u("哈哈 終於有空跟妳聊"),
     a("對啊 現在整個很累"),
     u("我剛下班 在想晚餐要吃什麼"),
   ];
@@ -1341,4 +1348,94 @@ Deno.test("Phase 4.2：停滯輪（玩家這句只有反應詞）不強制問他
   );
   assertEquals(sharedPlan.askUserFocus, "他是從哪裡看到你的");
   assertEquals(sharedPlan.questionBudget, 1);
+});
+
+/**
+ * Phase 4.2（Codex R1 P1）：照 handler 的順序逐輪走一條完整軌跡——每個 user
+ * turn 用當下的 `agencyState` 算 plan，再用 `nextConversationAgencyState`
+ * 推進（`askedAboutUserThisTurn` ＝ 這一輪有沒有真的強制問他）。
+ */
+function walkAskUserTrajectory(
+  script: readonly { user: string; ai: string }[],
+): { forced: boolean[]; askedAboutUser: boolean[] } {
+  const rare = styles.find((s) => s.turnTaking.questionHabit === "rare")!;
+  const evidence = standard();
+  const turns: PracticeTurn[] = [];
+  let state: ConversationAgencyState | null = null;
+  const forced: boolean[] = [];
+  const askedAboutUser: boolean[] = [];
+  for (const step of script) {
+    turns.push(u(step.user));
+    const agency = computeAgencyDecision({
+      turns,
+      situation: classifySituation(
+        detectTurnSignals(turns),
+        policyStanceFor(detectTurnSignals(turns), evidence),
+      ),
+      agencyMode: "on",
+      agencyState: state,
+      difficulty: "normal",
+    });
+    const plan = planTurnResponse({
+      turns,
+      style: rare,
+      evidence,
+      seedKey: "p42-traj",
+      agency,
+      askUserFocus: "他是從哪裡看到你的",
+      askedAboutUser: state?.askedAboutUser ?? false,
+    });
+    const askedThisTurn = plan.askUserFocus !== undefined;
+    forced.push(askedThisTurn);
+    // handler（Phase 2.8 P1-1）：旗標 on 就一定推進狀態。
+    state = nextConversationAgencyState(
+      state,
+      agency!.decision,
+      null,
+      askedThisTurn,
+    );
+    askedAboutUser.push(state.askedAboutUser === true);
+    turns.push(a(step.ai));
+  }
+  return { forced, askedAboutUser };
+}
+
+Deno.test("Phase 4.2（Codex R1 P1）軌跡 a：第 2～6 回合全是反應詞 → 窗口不被消耗，第 7 回合他講了東西才強制問他一次", () => {
+  const react = ["哈哈", "嗯嗯", "喔喔", "哈哈哈", "了解"];
+  const { forced, askedAboutUser } = walkAskUserTrajectory([
+    { user: "嗨嗨 終於有空跟妳聊", ai: "嗨 我也剛忙完" },
+    ...react.map((user) => ({ user, ai: "對啊 今天有夠累" })),
+    { user: "我剛下班 在想晚餐要吃什麼", ai: "晚餐真的很難決定" },
+  ]);
+  // 第 1～6 個 user 回合（index 0–5）一律不強制：第 1 個在窗口下界外，
+  // 第 2～6 個是反應詞。
+  assertEquals(forced.slice(0, 6), [false, false, false, false, false, false]);
+  // 第 7 個 user 回合：base 窗口上界是 6，5 個反應詞把上界推到 min(6+5, 10)=10。
+  assertEquals(forced[6], true, "第 7 回合他終於講了東西，要補問");
+  // 強制之前狀態不得標成問過；強制那一輪之後才黏住。
+  assertEquals(askedAboutUser.slice(0, 6).some(Boolean), false);
+  assertEquals(askedAboutUser[6], true);
+});
+
+Deno.test("Phase 4.2（Codex R1 P1）軌跡 b：第 2 回合反應詞、第 3 回合有內容 → 第 3 回合就補問，askedAboutUser 沒有誤黏", () => {
+  const { forced, askedAboutUser } = walkAskUserTrajectory([
+    { user: "嗨嗨 終於有空跟妳聊", ai: "嗨 我也剛忙完" },
+    { user: "哈哈", ai: "對啊 今天有夠累" },
+    { user: "我剛下班 在想晚餐要吃什麼", ai: "晚餐真的很難決定" },
+  ]);
+  assertEquals(forced, [false, false, true]);
+  // 被跳過的那一輪不得把 askedAboutUser 標成 true（否則第 3 回合就永遠問不到）。
+  assertEquals(askedAboutUser, [false, false, true]);
+});
+
+Deno.test("Phase 4.2（Codex R1 P1）窗口有硬上限：反應詞再多也不會無限往後推", () => {
+  // 12 個反應詞輪之後才講內容＝第 13 個 user 回合，超過
+  // ASK_USER_WINDOW_MAX_USER_TURNS（10），不再強制。
+  const { forced } = walkAskUserTrajectory([
+    { user: "嗨嗨 終於有空跟妳聊", ai: "嗨 我也剛忙完" },
+    ...Array.from({ length: 11 }, () => ({ user: "嗯嗯", ai: "對啊" })),
+    { user: "我剛下班 在想晚餐要吃什麼", ai: "晚餐真的很難決定" },
+  ]);
+  assertEquals(forced.filter(Boolean).length, 0);
+  assertEquals(ASK_USER_WINDOW_MAX_USER_TURNS, 10);
 });

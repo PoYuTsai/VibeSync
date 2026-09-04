@@ -40,6 +40,7 @@ import {
   isClarifyingAct,
   isQuestionText,
   type PlanAct,
+  utteranceShapeOf,
 } from "./conversation_agency.ts";
 
 export type ReplyAct = ResponseMode;
@@ -194,7 +195,16 @@ export interface TurnResponsePlan {
  * questionHabit。預設不排除任何型（Eric 2026-09-04：做成開關不寫死）——要讓最冷的
  * 角色一場都不問，把 "rare" 放進集合即可。
  */
+/**
+ * Phase 4.2（Eric 2026-09-05 拍板：「規則綁對方給了什麼，不綁第幾回合；回合數
+ * 只當上限防呆」）：這兩個數字現在數的是**玩家給了內容的回合**，不是原始回合序號。
+ */
 export const ASK_USER_WINDOW_USER_TURNS: readonly [number, number] = [2, 6];
+/**
+ * Phase 4.2：原始 user 回合數的硬上限（防呆）。沒有這條，一場全是「哈哈」
+ * 「嗯嗯」的對話會把窗口無限往後推。
+ */
+export const ASK_USER_WINDOW_MAX_USER_TURNS = 10;
 export const ASK_USER_EXCLUDED_HABITS: ReadonlySet<
   ReplyStyleProfile["turnTaking"]["questionHabit"]
 > = new Set();
@@ -554,6 +564,20 @@ export function planTurnResponse(args: {
   // 前六個 user 回合、玩家這句連貫（agency 沒介入）且不是在問她、她上一則沒在問、
   // 這場還沒問過 → 預算強制 1，renderer 印「這輪問他一件事：X」。一場只強制一次
   // （thread state `askedAboutUser` 黏住），之後多常問回到 persona 的習慣。
+  // Phase 4.2（Codex R1 P1 → Eric 2026-09-05 拍板）：窗口從「第 2～6 個 user
+  // 回合」改成「玩家**給了內容**的回合數在 [2,6] 內」。原本第 2～6 回合全是
+  // 「哈哈」「嗯嗯」時，第 7 回合他終於講了東西也會因為 `userTurnCount > 6`
+  // 而永遠不再強制，Phase 3.8 的保證在純反應場次整場失效。Eric 的原則是「規則
+  // 綁對方給了什麼，不綁第幾回合；回合數只當上限防呆」，所以純反應詞輪不計入
+  // 計數，原始回合數只留一條硬上限（`ASK_USER_WINDOW_MAX_USER_TURNS`）。
+  //
+  // `utteranceShapeOf` 判 `reaction` 的分支在 `previousAiAskedQuestion` 之前
+  // （`REACTION_RE` 先判），所以這裡傳 false 不影響結果，也不必重建每一輪的
+  // 「她上一則有沒有在問」——不新增偵測器，用的是同一支純函式。
+  const contentUserTurnCount =
+    args.turns.filter((t) =>
+      t.role === "user" && utteranceShapeOf(t.text, false) !== "reaction"
+    ).length;
   const forceAskUser = agency?.enabled === true &&
     typeof args.askUserFocus === "string" &&
     args.askUserFocus.trim().length > 0 &&
@@ -568,8 +592,9 @@ export function planTurnResponse(args: {
     // 4/80——他這句沒給任何內容，被逼著問「你那天怎麼會出現在我工作的那邊」時，
     // 模型只能自己補一個共同場景出來。等下一輪他真的講了東西再問。
     agency.decision.evidence.utteranceShape !== "reaction" &&
-    signals.userTurnCount >= ASK_USER_WINDOW_USER_TURNS[0] &&
-    signals.userTurnCount <= ASK_USER_WINDOW_USER_TURNS[1] &&
+    contentUserTurnCount >= ASK_USER_WINDOW_USER_TURNS[0] &&
+    contentUserTurnCount <= ASK_USER_WINDOW_USER_TURNS[1] &&
+    signals.userTurnCount <= ASK_USER_WINDOW_MAX_USER_TURNS &&
     signals.aiQuestionStreak === 0 &&
     (situation === "neutral" || situation === "share") &&
     primaryAct !== "direct_boundary" && primaryAct !== "soft_close" &&
