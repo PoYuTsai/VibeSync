@@ -35,6 +35,7 @@ import {
   agencyThresholdsFor,
   type ConversationAgencyState,
   detectAgencyEvidence,
+  isAcceptingPlanAct,
   isClarifyingAct,
   isQuestionText,
   type PlanAct,
@@ -308,6 +309,7 @@ export function computeAgencyDecision(args: {
   return {
     decision,
     applied: agencyMode === "on" && decision.situation !== null,
+    enabled: agencyMode === "on",
   };
 }
 
@@ -571,13 +573,32 @@ const AGENCY_ACT_LINE: Partial<Record<PlanAct, string>> = {
   // 「有問，但同一則裡又補了東西」——補的可能是猜測（他的意圖），也可能是她
   // 自己剛好相關的經歷（A12「清邁」→「之前休假有去過」）。兩種都明寫。
   ask_intent:
-    "不確定他在講什麼，就直接問他的意思或跟前面哪件事有關；同一則裡不要替他補你猜的意思或話題，也不要順口講你自己跟這個詞有關的經歷",
+    "不確定他在講什麼，就直接問他的意思或跟前面哪件事有關；同一則裡不要補猜測，也不要順口講你自己跟這個詞有關的經歷",
   challenge_relevance:
-    "說這跟剛剛在聊的對不上，要他講清楚；同一則裡不要替他補你猜的意思或話題，也不要順口講你自己跟這個詞有關的經歷",
+    "說這跟剛剛在聊的對不上，要他講清楚；同一則裡不要補猜測，也不要順口講你自己跟這個詞有關的經歷",
   return_to_topic: "拉回你剛才問的、或還沒聊完的那件事",
   hold_position:
     "維持你剛才的保留：他沒把話講清楚、沒回答你之前，這個問題就晾著，不要接著他丟的新詞往下聊",
   end_low_value_loop: "這串聊不下去了，短短收掉，不要再接新的詞",
+  // 單獨列出來只為了型別完整；欠債輪實際渲染的是下面 `AGENCY_SET_LINE`
+  // 那一句二選一，不會逐一列出候選。
+  accept_if_answered: "他這句真的接得上前面就接受，接不上就說他沒回答你",
+};
+
+/**
+ * Phase 3.0：整組候選一起渲染成**一句條件式**，而不是「挑一個最合理的：A；B」
+ * 清單。
+ *
+ * 為什麼：欠債輪的兩個候選（`accept_if_answered`／`challenge_relevance`）不是
+ * 兩個平行選項，而是同一個判斷的兩個分支——「他到底有沒有回答」。列成清單時
+ * 模型會把它讀成「兩個都可以，挑順的」，實測就是挑「接受」；寫成 if/else 才
+ * 逼它先做那個判斷。清單語法留給真正平行的候選（`fragment_no_context_v1`）。
+ */
+const AGENCY_SET_LINE: Record<string, string> = {
+  answer_or_challenge_v1:
+    "先判斷他這句接不接得上：真的回答了你上一句、或本來就跟前面在聊的事對得上，就接受、順著講下去；對不上就直接說他沒回答你、又跳到別的，不要順著新名詞聊",
+  answer_or_challenge_easy_v1:
+    "先判斷他這句接不接得上：真的回答了你上一句、或跟前面在聊的事對得上，就接受、順著講下去；拿不準就先接住；真的完全對不上才說他沒回答你、又跳到別的",
 };
 
 /** 獨立於 TurnResponsePlan：style 開或關都能算，只吃 agencyDecision 本身。 */
@@ -588,6 +609,8 @@ export function agencyActsLine(agency: AgencyApplication | null): string {
   if (agency.decision.policyMode === "forced" && agency.decision.forcedAct) {
     return line(agency.decision.forcedAct);
   }
+  const setLine = AGENCY_SET_LINE[agency.decision.allowedActSetId];
+  if (setLine) return setLine;
   return `讀完整段對話，挑一個最合理的（只挑一個）：${
     agency.decision.allowedActs.map(line).join("；")
   }`;
@@ -629,7 +652,7 @@ export function isAgencyClarifyOnlyTurn(
   agency: AgencyApplication | null,
 ): boolean {
   const acts = agency?.applied ? agency.decision.allowedActs : [];
-  return acts.length > 0 &&
+  return acts.length > 0 && !acts.some(isAcceptingPlanAct) &&
     acts.every((a) => (AGENCY_ACTS as readonly PlanAct[]).includes(a));
 }
 
@@ -661,6 +684,36 @@ const CONDITIONAL_LINE: Record<"vulnerable" | "joke", string> = {
   vulnerable: "如果對方其實是在講自己的狀況或情緒",
   joke: "如果對方其實是在開玩笑",
 };
+
+/**
+ * Phase 3.0（Eric 2026-09-04 銳化）：**每一輪都印**的第一步——先讀整段的
+ * 邏輯，不是只讀最新一句。
+ *
+ * 為什麼是常設而不是條件式：結構層（`conversation_agency.ts`）只認得出
+ * 「沒有句法標記的片段」這一種不連貫；「他這幾句合起來說不通」是語意判斷，
+ * 只有看得到完整逐字稿的模型做得到，而模型預設會逐句反應。這一行是**唯一**
+ * 把「整段」變成明確第一步的地方，所以不能綁在任何偵測器上（綁了就等於用
+ * regex 判語意——踩坑「純函式訊號層硬判高語意」）。
+ *
+ * 刻意寫成通用句、不出現任何情境詞（地名、清單、亂碼），Eric 的回報是地名，
+ * 但同一個形態換成人名／品牌／術語一樣要成立（A26 就是為了證明這件事）。
+ */
+const AGENCY_WHOLE_THREAD_STEP =
+  "回之前先看整段：他最近幾句合起來合不合邏輯、有沒有接你上一句。不合，就先講這件事再說別的——一個「？」或一句「你打這麼多東西是什麼意思」都可以，不必幫他把話接圓。";
+
+/**
+ * Phase 3.0 規則 5（不助理式軟化）的**條件式**版本，走既有 conditionalActs
+ * 的語法（「如果…，就…」）但不綁 regex 偵測器。
+ *
+ * 2026-09-06 已經測過「把規則 5 從鐵則搬進 turn plan」＝零效果（README
+ * item 4）。這一輪的差別是它**不搬**：鐵則那條留著，這裡多一條每輪都在的
+ * 條件式——診斷指出失敗形態是「否認＋解釋」，而同一份 turn plan 的第一行
+ * 是「先接住對方剛說的那件事」，模型照做就把「接住」做成了解釋自己。這行
+ * 直接把那個情境下的合法輸出列出來（不爽／疏遠／嘲／沉默），讓「接住」在
+ * 這一格有別的落點。
+ */
+const AGENCY_NO_SOFTENING_CONDITIONAL =
+  "如果他是在抱怨、不滿或質疑你：照你的性格回（不爽、疏遠、嘲、沉默都可以），不道歉、不解釋、不安撫。";
 
 /**
  * 每回合注入的精簡計畫（hidden guidance）。
@@ -708,8 +761,12 @@ export function renderTurnPlan(
   const disclosure = DISCLOSURE_LINE[plan.disclosureDepth];
   const agencyLine = agencyActsLine(agency ?? null);
   const first = agencyLine ? agencyLine : `先${acts}`;
+  // Phase 3.0：這一行原本的前半（「回應依整段脈絡，不必服從最新一個詞」）與
+  // 後半（「問清楚或指出跳題時就只做那件事」）已經分別由常設的整段檢查行與
+  // `AGENCY_CLARIFY_ONLY_SHAPE`／act 說明講過，重複三次只會排擠後面的規則
+  // （踩坑「prompt 規則堆太多後面幾條會被模型直接忽略」）。只留這裡獨有的那半句。
   const tail = agencyApplied
-    ? "回應依整段脈絡，不必服從最新一個詞；「接住」也可以是說你聽不懂、不相關，或前一題還沒回答。問清楚或指出跳題的時候就只做那件事，不要同一則裡又把那個詞當成新話題聊起來"
+    ? "「接住」也可以是說你聽不懂、不相關，或前一題還沒回答"
     : "內容要接到對方最新一句的具體內容";
   // forced ask_intent 那一輪，形狀由 agency 決定（1 則、只有問句），style 的
   // bubbleCount／disclosure 讓路——這一輪本來就不該有自我揭露。
@@ -720,8 +777,16 @@ export function renderTurnPlan(
     : `回 ${plan.bubbleCount} 則，一則講一件事。${question}${
       disclosure ? disclosure + "。" : ""
     }`;
+  // 旗標 on 的常設兩行：`enabled` 而不是 `applied`——A21 那種「玩家在抱怨」的
+  // 輪次結構上是 question／neutral，agency 根本不介入，但規則 5 正是要在那裡
+  // 生效。shadow 的 `enabled` 是 false，輸出因此與 off 逐字相同。
+  const enabled = agency?.enabled ?? false;
+  const wholeThread = enabled ? `- ${AGENCY_WHOLE_THREAD_STEP}\n` : "";
+  const noSoftening = enabled ? AGENCY_NO_SOFTENING_CONDITIONAL : "";
   return `\n\n本輪回應方式（hidden guidance，不要向對方提及）：
-- ${first}。${stance}${conditional}${agencyStanceLine(agency ?? null)}
+${wholeThread}- ${first}。${stance}${conditional}${noSoftening}${
+    agencyStanceLine(agency ?? null)
+  }
 - ${shapeLine}
 - ${tail}；沒被逗到就不用笑，沒話就短。`;
 }

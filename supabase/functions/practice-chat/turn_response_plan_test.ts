@@ -736,10 +736,11 @@ Deno.test("截圖重現（agency 開）：Alice 的「好市多」改成維持�
   assertEquals(plan.situation, "neutral");
   assertEquals(agency?.applied, true);
   assertEquals(agency?.decision.situation, "repeated_low_coherence");
-  // Codex round-2 P1-2 之後 standard 不再假裝「已經質疑過」，這一格是三選一
-  // bounded（維持立場仍在候選裡），不是 forced hold_position。
-  assertEquals(agency?.decision.policyMode, "bounded");
-  assert(agency?.decision.allowedActs.includes("hold_position"));
+  // Phase 3.0：她在這段逐字稿裡真的問過（「東東是誰」「阿布達比？你有去那邊
+  // 玩喔？」），而「好市多」前面那一則不是問句——兩道閘門都成立，所以這一格
+  // 從 bounded 升成 forced hold_position。這就是 Eric 回報的那一格。
+  assertEquals(agency?.decision.policyMode, "forced");
+  assertEquals(agency?.decision.forcedAct, "hold_position");
   const rendered = renderTurnPlan(
     plan,
     STYLE_BY_PROFILE_ID["practice_girl_001"],
@@ -757,9 +758,17 @@ Deno.test("截圖重現（agency 開）：Joyce 的「紅豆泥」同樣不再�
     "practice_girl_026",
   );
   assertEquals(agency?.applied, true);
-  // 挑戰難度：達到低連貫門檻直接收掉（forceEndLoopBeforeChallenge）。
-  assertEquals(agency?.decision.forcedAct, "end_low_value_loop");
   assertEquals(agency?.decision.evidence.unresolvedCount, 3);
+  // Phase 3.0 的誠實限制：Joyce 這段截圖裡她**一次都沒問過**（「嗯 看韓劇」
+  // 「喔 我看不懂日文」「我下午吃過東西了」），所以強制格的 aiQuestionedInLoop
+  // 閘門不成立——`hold_position`（「維持你剛才的保留」）會是一句她沒有立場可
+  // 維持的指示。這一格改成 bounded 的條件式：接得上就接受，接不上就直接說他
+  // 沒回答又跳到別的。旗標開之後她在第 2 則就會被要求做這個判斷，所以這種
+  // 「從頭到尾沒問過還累到 3」的逐字稿本身就是 off-policy 的重播。
+  assertEquals(agency?.decision.evidence.aiQuestionedInLoop, false);
+  assertEquals(agency?.decision.policyMode, "bounded");
+  assertEquals(agency?.decision.allowedActSetId, "answer_or_challenge_v1");
+  assert(agency?.decision.allowedActs.includes("challenge_relevance"));
 });
 
 Deno.test("agency shadow：decision 有值但 applied=false，renderTurnPlan 逐字等於旗標關", () => {
@@ -855,7 +864,8 @@ Deno.test("問題預算豁免：澄清型 act 在預算 0 時仍可問，查戶�
 
   // Phase 2.6：候選清單裡沒有「接住」的每一輪（收尾／維持立場／指出跳題）
   // 也吃同一把結構刀——回 1 則、不猜、不接他丟的詞；形狀行取代則數／預算行。
-  const held = agencyPlan(JOYCE_SCREENSHOT, "challenge", "practice_girl_026");
+  const held = agencyPlan(ALICE_SCREENSHOT, "normal", "practice_girl_001");
+  assertEquals(held.agency?.decision.forcedAct, "hold_position");
   const heldRendered = renderTurnPlan(held.plan, style, held.agency);
   assert(heldRendered.includes("回 1 則，就做這一件事"), heldRendered);
   assert(!heldRendered.includes("一則講一件事"), heldRendered);
@@ -928,13 +938,19 @@ Deno.test("Phase 2.6：候選清單有「接住」時形狀不動，全是 agenc
   assert(easyRendered.includes("一則講一件事"), easyRendered);
   assert(!easyRendered.includes("回 1 則，就做這一件事"), easyRendered);
 
-  // 連續未解（low_coherence_v1＝challenge/return/hold，一個接住都沒有）
-  // → 套 clarify-only 形狀。這是 2026-09-06 policy 拆解裡 asked_with_guess
-  // 最高的一格（21.9%）。
-  const lowTurns = [u("韓國"), a("怎麼了"), u("東京"), a("蛤"), u("淺草")];
+  // 停止解讀那一格（forced hold_position，一個接受出口都沒有）→ 套
+  // clarify-only 形狀。Phase 3.0：欠債的 bounded 條件式清單裡有
+  // `accept_if_answered`，所以那一格**不**套（順著聊在那裡是合法選項）。
+  const lowTurns = [
+    u("韓國"),
+    a("怎麼突然講韓國"),
+    u("東京"),
+    a("你沒回答我欸"),
+    u("淺草"),
+  ];
   const lowEvidence = standard({ difficulty: "normal" });
   const lowAgency = agencyFor(lowTurns, lowEvidence, "on");
-  assertEquals(lowAgency?.decision.allowedActSetId, "low_coherence_v1");
+  assertEquals(lowAgency?.decision.allowedActSetId, "hold_after_challenge_v1");
   const lowRendered = renderTurnPlan(
     planTurnResponse({
       turns: lowTurns,
@@ -958,7 +974,7 @@ Deno.test("Codex round-2 P1-2：跨輪立場行只在 forced 質疑／維持立�
   const STANCE = "他沒回答就別放過";
 
   // packet 的案例：前面有欠債 → 她問「你最喜歡什麼動物」→ 玩家答「貓」。
-  // 這是 answer_candidate_with_debt_v1（bounded {acknowledge, return_to_topic}），
+  // Phase 3.0 這一格是 `answer_or_challenge_v1`（bounded，含條件式接受），
   // 結構層根本分不出「貓」算不算回答，文案不得先替模型斷言「他沒回答」。
   const debtAnswer = [
     u("好市多"),
@@ -970,7 +986,7 @@ Deno.test("Codex round-2 P1-2：跨輪立場行只在 forced 質疑／維持立�
   const debtAgency = agencyFor(debtAnswer, evidence, "on");
   assertEquals(
     debtAgency?.decision.allowedActSetId,
-    "answer_candidate_with_debt_v1",
+    "answer_or_challenge_v1",
   );
   const debtRendered = renderTurnPlan(
     planTurnResponse({
