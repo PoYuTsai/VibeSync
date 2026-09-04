@@ -182,3 +182,12 @@
   - **停滯輪 fixture（100 位 × 3 探針，合成逐字稿，非模型輸出）**：A28 的腳本裡**沒有任何一則玩家回覆是 `reaction` 形狀**（掃過 `out/` 全部 artifact，零命中），所以收緊後的 initiative 在既有 artifact 上一次都不觸發（`p4:selfDisclose` 12 → 0），改用合成 fixture 量：停滯輪（「哈哈」）`p4:selfDisclose` **base 0 → HEAD 7/100**；對照的有內容分享句（「今天超熱的 我剛下班」）兩邊都是 **0/100**；第 1 個 user 回合那一列兩邊都是 **23/100**（那是既有 style `responseBiases` 的自曝，回合數 1 進不了 initiative 分支，正好證明計數器沒有把舊行為算進來）。
 - **未跑**：黑箱（DeepSeek／Claude 一律零呼叫，本輪無新產品指標）；Hint／Debrief 是 Phase 4.1，不在本輪。
 - **Codex R1（legacy wrapper）BLOCKED**：**P0＝Phase 4 明列的黑箱 Gate 完全未跑**（20 位 × 15 情境 × 3 的 on/off、style 差異、安全／邀約 golden、p95 <10%、A02／A04–A06／A12 逐案覆核），等 Eric 核准後才跑，本輪不處理。已修：**P1-1**（`situation==="neutral"` 不等於停滯）→ initiative 加結構條件 `utteranceShape==="reaction"`，並補「有內容的分享句任何 seed 都不觸發」的反例測試；報告的另一半「有自身興趣」沒有結構訊號可用（本檔界線只認句法標記），不做並在註解寫明。**P1-2**（style 旗標關時 initiative 死路）→ 不重構 `responsePlan = style ? … : null`，改成把界線明寫進 `prompt.ts` 註解與本節，並補 style-off 的 bundle 級測試證明門檻 consumer 活著。**P2**（共用骰子）→ initiative 改用獨立 hash 域，加測試斷言命中場的 `bubbleCount` 不是常數。**P3-1**（`reserved_repairer` 註解「最不主動」與 `initiative:1` 矛盾）→ 改「很少主動開題」。**P3-2**（p1 沒有 base 對照）→ 用同一份新版 `replay_plan.ts` 在 base 重跑，數字見上。未處理的 Uncertain 三項（forceAskUser＋self_disclose 同輪的生成證據、persist 句尾的服從率、`strangerCuriosity` 替代設計的聯合測試）都要黑箱或生成輸出才能判，隨 P0 一起等。
+
+**Codex R2（2026-09-05，第二輪＝最後一輪）：BLOCKED。** 處置：
+- P0「整個 Phase 4 的 gate（20 位 × 15 情境 × 3、style 比值、邀約 golden、p95）未跑滿」：本刀是 AGENCY-07 的第一片（資料＋consumer），只跑 8 情境 × repeat 1（$0.96）；是否以 dormant（production 維持 shadow）併入、把完整矩陣留到 Phase 4.1 之後一次跑，由 Eric 決定。Codex 自己也寫「若限定為 shadow-only dormant merge，可由 Eric 明確接受風險」。
+- P0「黑箱跑在 `06f22540`、受審 HEAD 是 `6ed608bf`」：`git diff 06f22540..6ed608bf` 只有 README 與四個 artifact JSON，`supabase/` 與 `tools/practice-agency-eval/*.ts` 逐位元組相同（已驗）。
+- P1「五欄位只做四欄、planner 依賴 reply-style 旗標」：設計決定（`strangerCuriosity`＝`questionHabit`；planner 在 style 層是 3.8 以來的前提，production `PRACTICE_REPLY_STYLE_ENABLED=true`），記為 Eric 接受的契約修訂，不另做 consumer。
+- P1「四個 consumer 沒有都拿到輸出層證據」（skepticism 分組 n=4、initiative 0/40 固定 thread id 擲骰沒中、persist 只證 set id）：記風險，留給 Phase 4.1 之後的完整矩陣；initiative 要用不同 thread id 才量得到。
+- P1「A29 Lumi 一則 `accommodating_invention`（你那天怎麼會出現在我工作的那邊）」：來自 3.8 forced ask 的既有行為（on 臂 A29.p2 forced 17/20），非本刀引入；n=1，記入已知殘留病。
+- P1「replay `p4:selfDisclose` 計數混入 style 層自曝」：已修 `45ca48c6`（只認 agency on＋reaction 形狀＋initiative≥3）；重跑 on artifact：A25.p9／A26.p9 從 4/20 歸 0，A29 仍 0。
+- P2 統計措辭（Wilson 不含 judge 誤判與角色群聚）、P2 獨立 hash 只證非完全綁定、production thread id 分布未證、forceAskUser＋self_disclose 共存無生成證據：全部記風險，未三審（兩輪上限）。
