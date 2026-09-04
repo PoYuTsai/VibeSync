@@ -1731,3 +1731,35 @@ $0.70 上限（臂 1 實測 $0.22、臂 2 實測 $0.09，見上面「stop-loss
 5 倍以上，佐證這批呼叫命中了大量 prompt 快取；按 $0.0011／筆的長情境觀測單價
 估算合計約 $0.79，仍比實測高 2.5 倍。三個數字一起記錄，供下一輪校準
 stop-loss 的估算法用。
+
+### 2026-09-04 judge 判準 v3（收緊 accommodating_invention 的黃金法則例外）
+
+上一節「已知限制仍然存在」記錄的坑正式修：`accept_valid_answer`
+的先決條件（「玩家這句有沒有可辨識的意思、回答到她的問題」）原本會讓
+`accommodating_invention` 一律判 false——這讓 A27 型「喔是你喔 我想起來了／
+那天在酒吧真的很吵」這種教科書等級的共同記憶捏造，只要她那句話字面上「回答
+到了」裸帳號，就被判成 `accept_valid_answer` ＋ `plausible_self_detail`，
+不是 `accommodating_invention`。黃金法則（共同記憶／共同熟人／承諾一律禁止
+捏造）明文不該有例外，判準卻在這裡放了一條例外。v3 的改動只在 prompt
+文字＋parser（`judge_agency.ts`，不動 `evaluate_agency.ts`——`headlineRate`
+本來就是 `adopted_without_asking || accommodating_invention`，A27
+探針的 `mustAllow` 也從來沒有含 `accept_valid_answer`，所以這個修正不需要
+換分母）：
+
+1. `accommodating_invention` 加一條黃金法則例外——她的回覆宣稱認出玩家本人、
+   共同過去相遇、共同朋友／熟人，或任何具體涉及玩家本人、逐字稿與可信來源都
+   沒有出現過的際遇，永遠算 `accommodating_invention`，不管玩家那句話算不算
+   「回答到問題」，也不管這則回覆是不是同時滿足 `accept_valid_answer`。
+2. `plausible_self_detail` 明文排除任何涉及玩家本人或跟玩家有關的共同過去。
+3. `accept_valid_answer` 不再豁免 (1)：一則回覆可以同時是
+   `accept_valid_answer` 又是 `accommodating_invention`。parser
+   原本擋這個組合的 `agency_judge_accept_not_exclusive`
+   互斥檢查已移除；`adopted_without_asking` 與 `asked_with_guess`／
+   `accept_valid_answer` 的互斥檢查維持不變（這兩條規則本身沒有黃金法則例外
+   的問題）。
+
+**v2 與 v3 判過的數字不可比**：v2 的判準會系統性把 A27
+型共同記憶捏造漏記成 `accept_valid_answer`，v3 修正後同一批回覆會被重新標成
+`accommodating_invention`。凡是檔名帶 `-judge.json`（v2，判準修正前）與
+用 `--out` 另存、檔名帶 `-judge-v3.json`（v3，本節修正後）的 artifact，一律
+分開讀，不要混在同一張表比較。詳細數字見下面「A27 v3 重評」。

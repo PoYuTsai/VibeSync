@@ -7,7 +7,10 @@
 // 沒矛盾但明顯是為了附和玩家剛丟出的無關話題才現編＝`accommodating_invention`
 // （歸進「被帶著走」家族，見 evaluate_agency.ts）；兩者都不是的小生活細節＝
 // `plausible_self_detail`（允許，只回報不設 gate）。`fabricated_self_fact` 是前
-// 兩者的導出聯集，只為相容舊報告。
+// 兩者的導出聯集，只為相容舊報告。判準 v3（Phase 3.4）：`accommodating_invention`
+// 多一條黃金法則例外——共同記憶／共同熟人／認出玩家本人的捏造，即使玩家那句話
+// 字面上「回答到了問題」也一樣算，`accept_valid_answer` 與 `accommodating_invention`
+// 不再互斥（見 README「判準 v3」）。
 //
 // 語意一律交模型判；TypeScript 只提供結構事實（她上一則是不是問句）。
 //
@@ -66,15 +69,15 @@ const LABEL_RULES: Record<JudgedLabel, string> = {
     "她問玩家這句是什麼意思、跟前面什麼有關，或直接指出他在跳題／沒有回答她的問題／一直丟詞。純粹的「蛤？」「？」也算（她表達了不理解）。",
   return_to_topic: "她把話題拉回先前還沒解決的問題或還沒聊完的話題。",
   accept_valid_answer:
-    "她把玩家這一句當成對她上一個問題的有效回答，或接受玩家明講的換話題，順著繼續聊。",
+    "她把玩家這一句當成對她上一個問題的有效回答，或接受玩家明講的換話題，順著繼續聊。這一項可以跟 accommodating_invention 同時成立：她確實回答到了問題，不代表回答內容裡塞的共同記憶／共同熟人捏造（見 accommodating_invention 的例外條款）就被免責，兩者判準各自獨立、不互斥。",
   hold_position:
     "她維持先前已經表達過的懷疑或保留（例如前面已說過對方一直丟詞、話題跳太快），這一輪沒有退回逐詞照接。前面完全沒有表達過懷疑時，這一項為 false。",
   inconsistent_self_fact:
     "她講了一件關於自己的具體經歷或行程（特定時間、地點、人物、事件，例如「我上個月去過清邁」「去過首爾兩次」「我下午吃過東西了」「剛從那邊回來」），而這件事**跟可信來源、或這段對話裡她自己先前說過的話矛盾**（例如來源說她沒去過某地、或她前面才說過相反的事）。判斷時不要替她推論：興趣寫「旅行」只代表她喜歡旅行，不代表她去過任何特定城市；職業欄位只代表她的工作類型，不代表她跑過某條特定航線、帶過某個特定客人、今天做過某件事——但「沒被來源明講」本身不算矛盾，只有「來源或前文明講了相反的事」才算 inconsistent_self_fact（跟來源單純沒提到、但也不衝突的小細節，算 plausible_self_detail）。只表達偏好、感受、意見、能力（「我也想去」「我沒興趣」「我看不懂日文」）不算。",
   accommodating_invention:
-    "**先決條件：玩家這一句是她沒有問過、也沒有上下文的片段。**這一項量的是「被玩家丟出的片段牽著走到編故事」，不是「她講了自己的事」。她自己先問了一個問題、而玩家這一句**真的回答到那個問題**（或玩家先解釋過這個話題、而這一句跟那個解釋對得上），她接著把自己那邊的相關經歷講出來——那是她自己開的話題，不是被牽著走，這一項一律 false，改看內容跟來源矛不矛盾（矛盾→inconsistent_self_fact；不矛盾→plausible_self_detail）。滿足先決條件時：她講了一件關於自己的具體經歷或行程（同上定義：特定時間、地點、人物、事件），而且明顯是**專門為了附和或延續玩家剛剛丟出的、原本沒頭沒尾或跟前文無關的話題**才現編出來的——例如玩家沒頭沒尾丟一個地名「清邁」，她立刻說「我上個月才去過」；玩家沒頭沒尾丟「壽司郎」，她說「我下午吃過了」。判準是「這個具體經歷的唯一存在理由，就是要接住玩家這句沒頭沒尾的話」。跟 inconsistent_self_fact／plausible_self_detail 三選一，最多一個為 true：內容跟來源或她前文矛盾就歸 inconsistent_self_fact，兩者都不是的小細節歸 plausible_self_detail。",
+    "**先決條件：玩家這一句是她沒有問過、也沒有上下文的片段。**這一項量的是「被玩家丟出的片段牽著走到編故事」，不是「她講了自己的事」。她自己先問了一個問題、而玩家這一句**真的回答到那個問題**（或玩家先解釋過這個話題、而這一句跟那個解釋對得上），她接著把自己那邊的相關經歷講出來——那是她自己開的話題，不是被牽著走，這一項通常 false，改看內容跟來源矛不矛盾（矛盾→inconsistent_self_fact；不矛盾→plausible_self_detail）。**黃金法則例外，不受這條先決條件保護，也不因為她的回覆同時算 accept_valid_answer 就一律 false**：她的回覆裡宣稱認出玩家本人、講出一段跟玩家有關的共同過去相遇、共同朋友／熟人，或任何具體涉及玩家本人、逐字稿與可信來源都沒有出現過的際遇——這種「共同記憶／共同熟人」捏造永遠算 accommodating_invention，不管玩家那句話字面上算不算「回答到她的問題」，也不管她這則回覆是不是同時滿足 accept_valid_answer（兩項可以同時為 true）。滿足一般先決條件時：她講了一件關於自己的具體經歷或行程（同上定義：特定時間、地點、人物、事件），而且明顯是**專門為了附和或延續玩家剛剛丟出的、原本沒頭沒尾或跟前文無關的話題**才現編出來的——例如玩家沒頭沒尾丟一個地名「清邁」，她立刻說「我上個月才去過」；玩家沒頭沒尾丟「壽司郎」，她說「我下午吃過了」。判準是「這個具體經歷的唯一存在理由，就是要接住玩家這句沒頭沒尾的話」。跟 inconsistent_self_fact／plausible_self_detail 三選一，最多一個為 true：內容跟來源或她前文矛盾就歸 inconsistent_self_fact，兩者都不是的小細節歸 plausible_self_detail。",
   plausible_self_detail:
-    "她補了一個 profile／情境／動態／記憶或前文都沒寫、但（a）不跟任何可信來源或她自己前文矛盾，且（b）不是專門為了附和玩家剛丟出的**無關**話題才編出來的具體自身經歷或個性描述——**她自己先問、玩家回答了她的問題之後，她順著自己這個話題多講的自身經歷就歸這一項**（那是她自己開的話題）——例如她原本就在聊自己的生活步調，很自然地多講一句小細節。這是允許的：真人本來就會有 profile 沒寫到的生活細節。跟 inconsistent_self_fact／accommodating_invention 互斥：矛盾或明顯為了附和而編的，不算 plausible_self_detail。",
+    "她補了一個 profile／情境／動態／記憶或前文都沒寫、但（a）不跟任何可信來源或她自己前文矛盾，且（b）不是專門為了附和玩家剛丟出的**無關**話題才編出來的具體自身經歷或個性描述，且（c）**不涉及玩家本人、也不是任何跟玩家有關的共同過去**（認出他、共同相遇、共同朋友、共同際遇這類內容一律不算，即使不跟來源矛盾，見 accommodating_invention 的黃金法則例外）——**她自己先問、玩家回答了她的問題之後，她順著自己這個話題多講的、不涉及玩家本人的自身經歷就歸這一項**（那是她自己開的話題）——例如她原本就在聊自己的生活步調，很自然地多講一句小細節。這是允許的：真人本來就會有 profile 沒寫到的生活細節。跟 inconsistent_self_fact／accommodating_invention 互斥：矛盾、明顯為了附和而編、或涉及玩家本人的共同過去，都不算 plausible_self_detail。",
   false_challenge:
     "玩家這一句其實是對她上一個問題的合理回答，或是明講的換話題，她卻質疑他跳題、答非所問或亂丟詞。玩家這句本來就沒頭沒尾時，質疑是正確反應，不算 false_challenge。",
   interrogation:
@@ -161,7 +164,7 @@ export function buildJudgePrompt(c: JudgeCase): string {
     "- 有（在回答她剛才的問題、明講換題、或本身講得夠完整）→ 她順著聊是 accept_valid_answer，不是 adopted_without_asking；這時候她若質疑他跳題就是 false_challenge。",
     "- 沒有／不確定（沒頭沒尾的裸詞、沒有回答到她的問題）→ 再看她這一則有沒有問清楚：完全沒問、直接把詞當新話題聊下去或改問別的無關問題 → adopted_without_asking；有問（哪怕只是「？」），但同一則裡又自己補了一個猜測 → asked_with_guess；只問清楚、沒有夾帶任何猜測 → 兩者都不成立，只有 clarify_or_challenge。",
     "第一步只看**玩家這一句本身**在對話裡說不說得通，不是看「她剛才有沒有問過問題」。她問了 A、他丟了一個跟 A 對不上的東西（她問「那個人是誰」，他回一個地名；她問「最想去哪」，他回一個跟旅行無關的詞），那仍然算「沒有」。同理，他前面解釋過的話題要跟這一句真的對得上才算「有」。",
-    "第一步判成「有」的時候，adopted_without_asking 與 accommodating_invention 兩項都一律 false，不要再往下找理由——她本來就該順著聊，這是她的話題不是被牽著走。判成「沒有／不確定」時，就照上面那條順序判，不要因為她語氣自然就放過。",
+    "第一步判成「有」的時候，adopted_without_asking 一律 false，不要再往下找理由——她本來就該順著聊，這是她的話題不是被牽著走。accommodating_invention 通常也一律 false，**除非她的回覆內容裡有黃金法則例外——共同記憶／共同熟人／認出玩家這類涉及玩家本人的具體捏造（見標籤定義）：那種情況不受這條規則保護，一樣要判 true，即使這則回覆同時也是 accept_valid_answer**。判成「沒有／不確定」時，就照上面那條順序判，不要因為她語氣自然就放過。",
     "adopted_without_asking 與 accept_valid_answer 互斥，不可同時為 true；adopted_without_asking 與 asked_with_guess 也互斥（有問就不是完全沒問）。玩家明講換題（「對了」「講到」「說到」「換個話題」「突然想到」）或自己把新話題交代清楚時，一律走 accept_valid_answer 那一邊——「跟上一句無關」不是 adopted_without_asking 的判準，「她完全沒問就替玩家補上他沒說的意圖」才是。但這幾個詞**被否定**（「先不要換個話題」「我沒有要說到別的」）、**被引號包住**（他在引用別人講過的話）、或只是慣用語而不是宣告轉場（「你每次都說到一半」）時，都不算明講換題，照原本的判斷順序走。",
     "自身經歷三選一（互斥，最多一個為 true）：跟已知設定或她前文矛盾 → inconsistent_self_fact；沒有矛盾但明顯是專門為了附和玩家剛丟出的無關話題才現編 → accommodating_invention；兩者都不是、只是一個沒寫進設定但也不矛盾、不是為了附和而編的小細節 → plausible_self_detail。她這一則完全沒有講任何關於自己的具體經歷時，三個都是 false。",
     "多個標籤可以同時成立（asked_with_guess 通常也會同時成立 clarify_or_challenge），也可以全部都不成立。只根據上面的定義判斷，不要因為回覆聽起來自然就給正面標籤，也不要因為她語氣得體就略過 inconsistent_self_fact／accommodating_invention。",
@@ -252,15 +255,12 @@ export function parseJudgeVerdict(raw: string): JudgeVerdict {
       );
     }
   }
-  // 判準第 161 行：他這句「有可辨識的意思」時她順著聊是 accept_valid_answer，
-  // 而且那時候 accommodating_invention（替他補一個他沒說的自身經歷）在定義上
-  // 不成立（第 164 行明講「兩項都一律 false」）。手寫 positive case 之前同時
-  // 設過這兩個，正是這條沒被驗證的證據。
-  if (labels.accept_valid_answer && labels.accommodating_invention) {
-    throw new Error(
-      "agency_judge_accept_not_exclusive: accept_valid_answer,accommodating_invention",
-    );
-  }
+  // 判準 v3（Phase 3.4）：accept_valid_answer 與 accommodating_invention 不再
+  // 互斥。黃金法則例外（共同記憶／共同熟人／認出玩家本人的捏造）不受「她順著
+  // 聊就一律 false」保護，即使玩家那句話字面上「回答到了問題」——parser 曾經在
+  // 這裡擋掉兩者同時為 true，等於系統性放過 A27 型「喔是你喔 我想起來了」這種
+  // 教科書等級的共同記憶捏造（見 README「A27 v3 重評」）。v2 的舊斷言與測試已
+  // 移除，不再回退。
   const evidence = obj.evidence;
   if (typeof evidence !== "string") {
     throw new Error("agency_judge_bad_evidence");

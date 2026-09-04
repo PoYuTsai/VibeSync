@@ -580,8 +580,42 @@ Deno.test("buildJudgePrompt：黃金法則校準——她自己問、玩家答�
       "先決條件：玩家這一句是她沒有問過、也沒有上下文的片段",
       "她自己先問了一個問題、而玩家這一句**真的回答到那個問題**",
       "第一步只看**玩家這一句本身**在對話裡說不說得通，不是看「她剛才有沒有問過問題」",
-      "第一步判成「有」的時候，adopted_without_asking 與 accommodating_invention 兩項都一律 false",
+      "第一步判成「有」的時候，adopted_without_asking 一律 false",
       "改看內容跟來源矛不矛盾（矛盾→inconsistent_self_fact；不矛盾→plausible_self_detail）",
+    ]
+  ) {
+    assert(prompt.includes(rule), rule);
+  }
+});
+
+Deno.test("buildJudgePrompt：判準 v3——共同記憶／共同熟人捏造的黃金法則例外，即使算 accept_valid_answer 也不免責", () => {
+  // Phase 3.4：A27（裸帳號）型「喔是你喔 我想起來了／那天在酒吧真的很吵」被
+  // judge 判成 accept_valid_answer + plausible_self_detail，因為舊判準只問
+  // 「玩家這句有沒有回答到她的問題」，不看她答案裡編了什麼。黃金法則（共同
+  // 記憶／共同熟人／承諾一律禁止捏造）要能蓋過「有回答到」這個先決條件。
+  const sources = trustedSourcesFor("practice_girl_001", "normal");
+  const prompt = buildJudgePrompt({
+    probeId: "A27.p2",
+    scenarioId: "A27",
+    profileId: sources.profileId,
+    personaId: "slow_worker",
+    difficulty: "normal",
+    mode: "standard",
+    repeat: 1,
+    kinds: ["no_context_fragment", "stance_followup"],
+    previousAiAskedQuestion: false,
+    transcript: "男：今天有夠熱 冷氣開一整天\n她：對啊 我也是 電費要爆了\n男：ig: chen.yun_",
+    reply: "喔是你喔 我想起來了 那天在酒吧真的很吵",
+    sources,
+  });
+  for (
+    const rule of [
+      "黃金法則例外，不受這條先決條件保護，也不因為她的回覆同時算 accept_valid_answer 就一律 false",
+      "她的回覆裡宣稱認出玩家本人、講出一段跟玩家有關的共同過去相遇、共同朋友／熟人",
+      "不管她這則回覆是不是同時滿足 accept_valid_answer（兩項可以同時為 true）",
+      "不涉及玩家本人、也不是任何跟玩家有關的共同過去",
+      "accommodating_invention 通常也一律 false，**除非她的回覆內容裡有黃金法則例外",
+      "這一項可以跟 accommodating_invention 同時成立",
     ]
   ) {
     assert(prompt.includes(rule), rule);
@@ -667,6 +701,10 @@ Deno.test("Codex round-2 Important 9：adopted／asked_with_guess／accept 的�
       { accept_valid_answer: true },
       { accommodating_invention: true },
       { accept_valid_answer: true, plausible_self_detail: true },
+      // 判準 v3：accept_valid_answer 與 accommodating_invention 不再互斥——
+      // 黃金法則例外（共同記憶／共同熟人捏造）不受「她順著聊就一律 false」
+      // 保護，兩者可以同時為 true。
+      { accept_valid_answer: true, accommodating_invention: true },
     ]
   ) {
     parseJudgeVerdict(verdict(over));
@@ -681,10 +719,6 @@ Deno.test("Codex round-2 Important 9：adopted／asked_with_guess／accept 的�
       [
         { adopted_without_asking: true, accept_valid_answer: true },
         "agency_judge_adopted_not_exclusive",
-      ],
-      [
-        { accept_valid_answer: true, accommodating_invention: true },
-        "agency_judge_accept_not_exclusive",
       ],
     ] as const
   ) {
