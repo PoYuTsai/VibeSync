@@ -288,6 +288,112 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 2026-09-04：F／E／I／R 的比較卡原本把「她問什麼」放在 caption，讀者（與
+  // VoiceOver）會先聽到答案才知道題目。scenario 是題目前提、caption 是比較後
+  // 的結論，順序由欄位決定，不靠文字內容做 heuristic。
+  group('comparison 的題目前提排在答案卡之前', () {
+    const withScenario = EbookComparisonBlock(
+      id: 'cmp-order',
+      title: '比較標題',
+      scenario: '她問：「你週末會去哪？」',
+      caption: '兩個答案的差別，在於有沒有提供自己的角度。',
+      items: [
+        EbookComparisonItem(
+          id: 'cmp-order-w',
+          stance: EbookComparisonStance.weak,
+          label: '只回答',
+          text: '還不知道。',
+        ),
+        EbookComparisonItem(
+          id: 'cmp-order-s',
+          stance: EbookComparisonStance.strong,
+          label: '給一個角度',
+          text: '想找間安靜的咖啡店。',
+        ),
+      ],
+    );
+
+    // 與上面同結構，只差沒有 scenario：用來量「沒有題目時不得多出間距」。
+    const withoutScenario = EbookComparisonBlock(
+      id: 'cmp-plain',
+      title: '對照標題',
+      items: [
+        EbookComparisonItem(
+          id: 'cmp-plain-w',
+          stance: EbookComparisonStance.weak,
+          label: '只回答',
+          text: '沒有題目的弱句。',
+        ),
+        EbookComparisonItem(
+          id: 'cmp-plain-s',
+          stance: EbookComparisonStance.strong,
+          label: '給一個角度',
+          text: '沒有題目的強句。',
+        ),
+      ],
+    );
+
+    for (final layout in EbookReadingLayout.values) {
+      testWidgets('$layout：題目 → 弱 → 強 → 補充，各只出現一次', (tester) async {
+        await pumpBlocks(tester, const [withScenario], layout: layout);
+
+        for (final text in [
+          '她問：「你週末會去哪？」',
+          '兩個答案的差別，在於有沒有提供自己的角度。',
+        ]) {
+          expect(find.text(text), findsOneWidget, reason: '$text 應只渲染一次');
+        }
+
+        final scenarioY = tester.getTopLeft(find.text('她問：「你週末會去哪？」')).dy;
+        final weakY = tester.getTopLeft(find.text('還不知道。')).dy;
+        final strongY = tester.getTopLeft(find.text('想找間安靜的咖啡店。')).dy;
+        final captionY = tester
+            .getTopLeft(find.text('兩個答案的差別，在於有沒有提供自己的角度。'))
+            .dy;
+
+        expect(scenarioY, lessThan(weakY), reason: '題目必須在弱版答案之前');
+        expect(weakY, lessThan(strongY));
+        expect(strongY, lessThan(captionY), reason: '結論仍留在答案之後');
+      });
+
+      testWidgets('$layout：沒有 scenario 時不多出間距', (tester) async {
+        await pumpBlocks(
+          tester,
+          const [withScenario, withoutScenario],
+          layout: layout,
+        );
+
+        final scenarioFinder = find.text('她問：「你週末會去哪？」');
+        final scenarioHeight = tester.getBottomLeft(scenarioFinder).dy -
+            tester.getTopLeft(scenarioFinder).dy;
+        final withGap = tester.getTopLeft(find.text('還不知道。')).dy -
+            tester.getBottomLeft(find.text('比較標題')).dy;
+        final withoutGap = tester.getTopLeft(find.text('沒有題目的弱句。')).dy -
+            tester.getBottomLeft(find.text('對照標題')).dy;
+
+        // 有題目時多出的，剛好只有題目本身的高度＋一段固定間距。
+        final spacing = layout == EbookReadingLayout.spine ? 12.0 : 10.0;
+        expect(
+          withGap - withoutGap,
+          closeTo(scenarioHeight + spacing, 0.01),
+          reason: '沒有 scenario 的比較卡不得被墊高',
+        );
+      });
+    }
+
+    testWidgets('scenario + caption 在 320px、2.0 字級下不 overflow',
+        (tester) async {
+      await pumpBlocks(
+        tester,
+        const [withScenario],
+        layout: EbookReadingLayout.spine,
+        textScale: 2.0,
+        size: const Size(320, 4000),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   // 2026-07-31 夥伴回饋《成為獎賞》不易閱讀。成因是有框線元件密度：三冊每章
   // 4.5–4.7 個，終極指引四冊只有 1.0–3.6。spine 排版把 callout 與 comparison
   // 從整框降成左側色條，只有 warning／safety 例外。

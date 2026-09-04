@@ -480,6 +480,18 @@ class _Comparison extends StatelessWidget {
           ),
           const SizedBox(height: 8),
         ],
+        // 題目前提排在答案卡之前，讀者（與 VoiceOver）才不會先聽到答案再回頭
+        // 找題目；比較後的結論仍留在 caption，排在 items 之後。
+        if (block.scenario != null) ...[
+          Text(
+            block.scenario!,
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.72),
+              height: 1.4,
+            ),
+          ),
+          SizedBox(height: layout == EbookReadingLayout.spine ? 12 : 10),
+        ],
         for (final item in block.items)
           Padding(
             padding: EdgeInsets.only(
