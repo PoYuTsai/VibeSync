@@ -1298,14 +1298,56 @@ function debriefHintAccountabilityPrompt(
  * 仿 `debriefHintAccountabilityPrompt` 的寫法（「照 Hint 做的部分不得寫成他的
  * 缺口」是同一種「這幾輪不是你的功勞／不是你的鍋」規則）。全 0 時回空字串＝
  * prompt 逐字不變。
+ *
+ * Codex R2 U：`AppliedHintTurn.turnIndex` 是**逐字稿 index**（`validate.ts` 用
+ * `turns[turnIndex]?.role !== "user"` 驗），`repairTurns` 是**第 N 則玩家訊息**
+ * ——兩個座標系。只留一句「若有 hintAssistedTurns 也列到的輪次」等於要模型自己
+ * 換算，所以這裡在 server 端就把 hint 輪換算成玩家序號、算好交集並明列；沒有
+ * 交集就不印那一句（規則不落空，prompt 也短一點）。
+ *
+ * Codex R2 U：措辭是「需要她補救的輪次」不是「她的補救」——ledger 只證明結構層
+ * 判定這一輪需要介入，沒有檢查下一則 AI 回覆是不是真的拉回來了。
  */
 function debriefAgencyLedgerPrompt(
   ledger: DebriefAgencyLedger | null | undefined,
+  turns: readonly PracticeTurn[],
+  appliedHintTurns?: AppliedHintTurn[],
 ): string {
   if (!ledger || ledger.repairTurns.length === 0) return "";
+  const overlap = ledger.repairTurns.filter((ordinal) =>
+    (appliedHintTurns ?? []).some((hint) =>
+      userTurnOrdinalOf(turns, hint.turnIndex) === ordinal
+    )
+  );
+  const overlapLine = overlap.length === 0
+    ? ""
+    : `其中第 ${
+      overlap.join("、")
+    } 則是他照 Hint 送出的，照 hintAssistedTurns 的歸責規則歸給「這輪教練路線」，不算他的缺口。`;
   return `\n\nagencyStructuralLedger(hidden evidence)\n第 ${
     ledger.repairTurns.join("、")
-  } 則使用者訊息是沒頭沒尾的詞或跳題，她得反過來問他意思、或把話拉回上一題。這些輪次她的補救不算他的分：dateChance 與 highlights 不得把「她接住了」寫成他的表現；改進建議至少一條要具體引用其中一則。其中若有 hintAssistedTurns 也列到的輪次，照 Hint 歸責規則歸給「這輪教練路線」，不算他的缺口。上面的最終 dateChance 判準也適用這一條。`;
+  } 則使用者訊息是沒頭沒尾的詞或跳題，她得反過來問他意思、或把話拉回上一題。這些需要她補救的輪次不算他的分：dateChance 與 highlights 不得把「她接住了」寫成他的表現；改進建議至少一條要具體引用其中一則。${overlapLine}上面的最終 dateChance 判準也適用這一條。`;
+}
+
+/**
+ * 逐字稿 index → 第幾則玩家訊息（1-based）。非玩家訊息或越界回 null。
+ * 兩個座標系的唯一換算點（Codex R2 U）。
+ */
+function userTurnOrdinalOf(
+  turns: readonly PracticeTurn[],
+  transcriptIndex: number,
+): number | null {
+  if (
+    !Number.isInteger(transcriptIndex) || transcriptIndex < 0 ||
+    transcriptIndex >= turns.length || turns[transcriptIndex].role !== "user"
+  ) {
+    return null;
+  }
+  let ordinal = 0;
+  for (let i = 0; i <= transcriptIndex; i++) {
+    if (turns[i].role === "user") ordinal += 1;
+  }
+  return ordinal;
 }
 
 /** debrief 模式：system + 一則含 profile/訊號脈絡與逐字稿的 user 指令。 */
@@ -1381,7 +1423,12 @@ export function buildDebriefMessages(
   });
   const hintAccountabilityPrompt = debriefHintAccountabilityPrompt(
     options.appliedHintTurns,
-  ) + debriefAgencyLedgerPrompt(options.agencyLedger);
+  ) +
+    debriefAgencyLedgerPrompt(
+      options.agencyLedger,
+      turns,
+      options.appliedHintTurns,
+    );
   // 最終 dateChance 判準（PR 6）：放在所有狀態證據（band／stage／invite／
   // game）之後——先前難度標準在開頭，模型讀到後面的高溫 band 或 invite
   // ready 常直接蓋成 high。順位＝越後越終局。

@@ -128,8 +128,19 @@ const MAX_REPAIR_TURNS = 10;
  * **近似的界線**（跟 `tools/practice-agency-eval/replay_plan.ts --state=1`
  * 同一種）：`classifierSignal` 一律傳 null，因為 debrief 手上沒有每一輪當時的
  * 分類器輸出；所以「分類器判 connected 的修復點」在這裡不存在，只有逐字稿看得
- * 到的結構修復（問句／第一人稱分享／明示換題）會歸零。方向是**偏保守**——
- * 少掉一種修復來源只會讓欠債留得比正式路徑久，不會憑空多出介入輪。
+ * 到的結構修復（問句／第一人稱分享／明示換題）會歸零。
+ *
+ * **風險方向是雙向的，不是偏保守**（Codex R2 P3；舊註解的「不會憑空多出介入輪」
+ * 是沒有差分證據的宣稱，已撤回）：少掉一次 live classifier 的 `connected` 修復，
+ * 欠債會留得比正式路徑久，**後續輪次因此可能被判成介入輪**（`unresolvedCount`
+ * 跨過 `holdAt`／落進 `abrupt_topic_shift`），也就是有機會**多扣分**；另一方面
+ * 沒有 `repairedAtUserTurns` 時，`detectAgencyEvidence` 的舊 row 相容退路
+ * （上一輪結構 coherence 是 `connected` 就把欠債歸零）又會把帳斷開，方向相反。
+ * 兩股力道誰大沒有量過——要證明得跑「中途 classifier=connected 的正式狀態回放」
+ * 對「全 null 回放」的 repair-turn 差集，既有 artifact 沒記逐輪分類器輸出。
+ *
+ * 另外，這份帳記的是「結構層判定**需要**她介入」，**不保證她真的補救了**
+ * （沒有檢查下一則 AI 回覆），渲染文字因此寫「需要她補救的輪次」。
  * 難度門檻與 chat 路徑同源（`ctx` → `agencyThresholdsFor` ＋ `agencyProfileFor`），
  * 所以高懷疑角色／挑戰難度的 `holdAt` 位移會如實反映在 loop 與 shift 的分帳上。
  */

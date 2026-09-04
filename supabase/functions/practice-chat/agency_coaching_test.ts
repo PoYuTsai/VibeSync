@@ -4,7 +4,14 @@ import {
   debriefAgencyLedgerFor,
   hintAgencyCoachingFor,
 } from "./agency_coaching.ts";
-import { INITIAL_CONVERSATION_AGENCY_STATE } from "./conversation_agency.ts";
+import {
+  agencyPolicyFor,
+  agencyThresholdsFor,
+  detectAgencyEvidence,
+  INITIAL_CONVERSATION_AGENCY_STATE,
+  nextConversationAgencyState,
+} from "./conversation_agency.ts";
+import { agencyProfileFor } from "./agency_profile.ts";
 import type { PracticeTurn } from "./validate.ts";
 import type { AgencyCoachingContext } from "./agency_coaching.ts";
 
@@ -238,7 +245,7 @@ Deno.test("buildDebriefMessages：有介入輪時只多一段，含序號與『�
   assertEquals(withLedger === base, false);
   assertEquals(withLedger.includes("agencyStructuralLedger"), true);
   assertEquals(withLedger.includes("第 1、2 則"), true);
-  assertEquals(withLedger.includes("不算他的分"), true);
+  assertEquals(withLedger.includes("這些需要她補救的輪次不算他的分"), true);
   assertEquals(withLedger.length - base.length < 300, true);
 });
 
@@ -326,42 +333,81 @@ Deno.test("debrief ledger：閘門打得開時，難度與角色 skepticism 真�
 
 // ── Codex R1 P2／U 的三個補測 ─────────────────────────────────────────────
 
-Deno.test("debrief ledger prompt：與 appliedHintTurns 重疊的輪次要歸給教練路線", () => {
-  // 第 2 則使用者訊息（`turnIndex` 是逐字稿 index，這裡取 A25 的第二則玩家訊息）
-  // 同時是 applied Hint 與 repair turn。
+// 兩個座標系必須看得出不同：連續兩則 AI 訊息讓「逐字稿 index」與「第 N 則玩家
+// 訊息」錯開（第 3 則玩家訊息的 index 是 5）。
+const OVERLAP_TURNS: PracticeTurn[] = [
+  t("user", "東東"),
+  t("ai", "東東是誰"),
+  t("ai", "還是你打錯字"),
+  t("user", "阿布達比"),
+  t("ai", "那是哪裡"),
+  t("user", "清邁"),
+  t("ai", "喔"),
+];
+
+Deno.test("debrief ledger prompt：重疊輪次換算成同一個座標（玩家序號）後明列", () => {
+  // `AppliedHintTurn.turnIndex` 是**逐字稿 index**（`validate.ts` 以
+  // `turns[turnIndex]?.role !== "user"` 驗），`repairTurns` 是第 N 則玩家訊息。
+  // index 5 ＝ 第 3 則玩家訊息，兩個數字刻意不同（Codex R2 U）。
+  assertEquals(OVERLAP_TURNS[5].role, "user");
   const applied = [{
-    turnIndex: 2,
+    turnIndex: 5,
     type: "steady" as const,
-    originalHintText: "阿布打比",
-    sentText: "阿布打比",
+    originalHintText: "清邁",
+    sentText: "清邁",
     exact: true,
   }];
+  const ledger = debriefAgencyLedgerFor(OVERLAP_TURNS, CTX);
+  assertEquals(ledger.repairTurns.includes(3), true);
   const text = joined(
-    buildDebriefMessages(A25_TURNS, testProfile, {
+    buildDebriefMessages(OVERLAP_TURNS, testProfile, {
       practiceMode: "beginner",
       appliedHintTurns: applied,
-      agencyLedger: debriefAgencyLedgerFor(A25_TURNS, CTX),
+      agencyLedger: ledger,
     }),
   );
-  // 兩段都在，而且 agency 段自己指回 Hint 歸責規則。
   assertEquals(text.includes("hintAssistedTurns"), true);
   assertEquals(text.includes("agencyStructuralLedger"), true);
+  // 明列的是換算後的玩家序號 3，不是 hint 自己的 turnIndex 5。
   assertEquals(
     text.includes(
-      "其中若有 hintAssistedTurns 也列到的輪次，照 Hint 歸責規則歸給「這輪教練路線」，不算他的缺口。",
+      "其中第 3 則是他照 Hint 送出的，照 hintAssistedTurns 的歸責規則歸給「這輪教練路線」，不算他的缺口。",
     ),
     true,
   );
-  // 也明寫最終 dateChance 判準（在這一段之前）同樣適用。
+  assertEquals(text.includes("其中第 5 則是他照 Hint"), false);
   assertEquals(text.includes("上面的最終 dateChance 判準也適用這一條。"), true);
-  // 加了兩句之後整段仍在預算內。
   const withoutLedger = joined(
-    buildDebriefMessages(A25_TURNS, testProfile, {
+    buildDebriefMessages(OVERLAP_TURNS, testProfile, {
       practiceMode: "beginner",
       appliedHintTurns: applied,
     }),
   );
   assertEquals(text.length - withoutLedger.length < 300, true);
+});
+
+Deno.test("debrief ledger prompt：沒有交集時不印那一句（規則不落空）", () => {
+  const applied = [{
+    turnIndex: 0,
+    type: "warm_up" as const,
+    originalHintText: "東東",
+    sentText: "東東",
+    exact: true,
+  }];
+  const ledger = debriefAgencyLedgerFor(OVERLAP_TURNS, CTX);
+  const text = joined(
+    buildDebriefMessages(OVERLAP_TURNS, testProfile, {
+      practiceMode: "beginner",
+      // 第 1 則玩家訊息若不在 repairTurns 裡就沒有交集；在的話這個案例改用
+      // 一個不存在的 index。
+      appliedHintTurns: ledger.repairTurns.includes(1)
+        ? [{ ...applied[0], turnIndex: 999 }]
+        : applied,
+      agencyLedger: ledger,
+    }),
+  );
+  assertEquals(text.includes("照 Hint 送出的"), false);
+  assertEquals(text.includes("agencyStructuralLedger"), true);
 });
 
 Deno.test("debrief prompt 順序：最終 dateChance 判準在 agencyStructuralLedger 之前（越後越終局）", () => {
@@ -417,4 +463,43 @@ Deno.test("hint 教練行：Game 模式的本輪方向與邀約段不被覆蓋",
   assertEquals(added.length, 1);
   assertEquals(added[0].startsWith("這輪先處理沒接上："), true);
   assertEquals(withLine.replace(`${added[0]}\n`, ""), base);
+});
+
+Deno.test("hint 用真正持久化的 state 不會把同一輪的欠債再算一次（Codex R2 U）", () => {
+  // 1) chat 那一輪：逐字稿以玩家訊息結尾，結構層算出欠債 1。
+  const chatTurns: PracticeTurn[] = [
+    t("ai", "你最想去哪裡呢"),
+    t("user", "韓國"),
+    t("ai", "喔 我也想去"),
+    t("user", "好市多"),
+  ];
+  const thresholds = agencyThresholdsFor(
+    CTX.difficulty,
+    CTX.isGame,
+    agencyProfileFor(CTX.profileId),
+  );
+  const chatEvidence = detectAgencyEvidence(chatTurns, null);
+  const chatDecision = agencyPolicyFor(chatEvidence, thresholds);
+  assertEquals(chatEvidence.unresolvedCount, 1);
+  assertEquals(chatDecision.situation, "abrupt_topic_shift");
+
+  // 2) handler 把這一輪的決策推進成持久化狀態（`classifierSignal` 用 chat 路徑
+  //    真的會帶的形狀之一：分類器判 disconnected）。
+  const persisted = nextConversationAgencyState(null, chatDecision, {
+    coherence: "disconnected",
+  });
+  assertEquals(persisted.unresolvedCount, 1);
+
+  // 3) 同一場的 hint：逐字稿多了她的回覆，state 是上面那一份。
+  const hintTurns: PracticeTurn[] = [...chatTurns, t("ai", "好市多？")];
+  const coaching = hintAgencyCoachingFor(hintTurns, persisted, CTX);
+  // `detectAgencyEvidence` 一律從逐字稿重算，不把 `prev.unresolvedCount` 當
+  // 起點，所以不會變成 2；欠債 1 ＋ 她剛問了 → 先回答她。
+  assertEquals(coaching.unresolvedCount, chatEvidence.unresolvedCount);
+  assertEquals(coaching.kind, "answer_her_question");
+  // 反證：真的多算一次的話會跨過門檻升成 stop_dropping_words。
+  assertEquals(
+    hintAgencyCoachingFor(hintTurns, null, CTX).unresolvedCount,
+    coaching.unresolvedCount,
+  );
 });
