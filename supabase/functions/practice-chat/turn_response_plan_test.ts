@@ -1241,7 +1241,7 @@ Deno.test("Phase 3.8 結構刀：agency on、第 2～6 回合、連貫且非問�
   assertEquals(on.askUserFocus, "他是從哪裡看到你的");
   assert(
     renderTurnPlan(on, rare, agencyFor(turns, evidence, "on")).includes(
-      "回 1 則，就一個問句：問他他是從哪裡看到你的（用你的話問）。這則不講你自己的事、不接他的話題、不問別的。",
+      "這輪問他一件事：他是從哪裡看到你的，一句就好。",
     ),
   );
   // 沒帶好奇點／旗標 off／shadow：plan 逐字同接線前（rare 的預算本來就是 0）。

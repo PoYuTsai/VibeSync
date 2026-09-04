@@ -165,4 +165,5 @@
 - **黑箱**：A28 on（state=1）對 3.7 的 off 臂（off bytes 未變，直接沿用），看 `curiosityWithinSix`（gate ≥80）與 `interrogation`。
 - **黑箱（A28 on＋state=1，20 位 × 2；off 沿用 3.7 臂）**：v1 計畫行「這輪問他一件事：X，一句就好」→ judge 場級 35%（off 25，gate 80）；結構規則「問到管道好奇點」**0/40 → 10/40**、p3（強制點）她問他 5→18/40、interrogation 0。另一半強制輪她把那一問花在眼前話題（晚餐）。v2 綁緊措辭「只有這件事…別問其他問題」→ 好奇點 **2/40** 更差，已退回 v1。judge 標籤 `asked_about_user` 雜訊大（同句有時 true 有時 false），場級 35% 不可信；v1 vs v2 的 10 vs 2 未量雜訊帶。**gate 未過。**
 - **Codex R1（legacy wrapper，gpt-5.6-sol）BLOCKED**：P1 gate 未過＝成立（產品結果，非程式）；P2-1 混合句「我剛下班，妳今天呢？」→ situation 已是 question 但再明寫 `!signals.userIsQuestion`＋測試；P2-2 runner 與 handler 狀態軌跡不等價（runner 只在介入／強制輪推進、classifier signal 傳 null）＝既有 3.0 以來的近似，寫明為 runner 已知限制；P3 好奇點空白 → trim；U2 shadow telemetry 多 `askUserForced:false`＝shadow 契約允許只多 telemetry（harness「shadow 唯一可不同的是 telemetry」）；U3／U5 未處理（forcedAsk 互斥靠 `!agency.applied`；口語問句 streak 偵測）。
+- **v3 形狀刀（Eric「A」）＝沒有更好，退回 v1**：管道好奇點 6/40（v1 10）。離線重跑 planner 證明 v1／v3 的強制都在 p3 觸發 36/40 場，形狀行有進 prompt；瓶頸是生成模型對「問指定問題」的服從率（一半會問他、一到兩成問到指定的事）。**3.8 停在 v1**：對使用者是正向（管道問題 0→10/40、零查戶口）但 gate 80 未過；判準與雜訊帶都還沒量。剩下的路：生成後檢查＋重試（3.1 先例 86% 仍犯）、或 planner 給台詞（違反「不加台詞」）——都不建議現在做。
 
