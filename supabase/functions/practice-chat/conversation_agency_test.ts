@@ -23,7 +23,10 @@ import {
   truncateAgencyShape,
   utteranceShapeOf,
 } from "./conversation_agency.ts";
-import { computeAgencyDecision } from "./turn_response_plan.ts";
+import {
+  AGENCY_SET_LINE,
+  computeAgencyDecision,
+} from "./turn_response_plan.ts";
 import { buildRelationshipThreadRpcParams } from "./relationship_thread.ts";
 import type { PracticeTurn } from "./validate.ts";
 
@@ -1800,6 +1803,20 @@ Deno.test("Phase 4.3 刀 2：問句判定容忍句尾 emoji／裝飾，但不放
   ) {
     assertEquals(isQuestionTextTolerant(t), true, t);
   }
+  // P3-8（Codex R1）：同一組裝飾 fixture 同時斷言**舊判準 false、新判準 true**
+  // ——證明差異真的來自剝裝飾，不是 fixture 本來就兩邊都過。
+  for (
+    const t of [
+      "你在報地名嗎😂",
+      "你是在玩地名接龍嗎😂",
+      "是玩猜謎嗎～",
+      "你是一直在報地名嗎😆",
+      "你吃飽沒❤️",
+    ]
+  ) {
+    assertEquals(isQuestionText(t), false, `舊判準應為 false：${t}`);
+    assertEquals(isQuestionTextTolerant(t), true, `新判準應為 true：${t}`);
+  }
   // 語助詞不是問句標記：不得因為容忍裝飾就把「好喔」「地名喔」判成問句。
   for (
     const t of ["好喔", "阿你是在測試我懂不懂地名喔", "我剛下班耶", "笑死啦"]
@@ -1928,5 +1945,39 @@ Deno.test("Phase 4.3：priorCoherence === connected 的閘門今天是冗餘的�
   assertEquals(
     policyAt(turns, "normal", false, connectedMarker).evidence.unresolvedCount,
     0,
+  );
+});
+
+Deno.test("Phase 4.3 P3-7：只有三個 clarify_ignored_* 會在 forced act 說明後面附加 set 級文字", () => {
+  // 快照：把每一種會走到 forced 的 set id 都列出來，斷言 `AGENCY_SET_LINE`
+  // 只認得 clarify_ignored 那三個。多一個 forced set id 想附文字就會撞到這裡。
+  const forcedSetIds = [
+    "repeated_token_v1",
+    "hold_after_challenge_v1",
+    "low_value_loop_v1",
+    "fragment_no_context_v1",
+    "clarify_ignored_easy_v1",
+    "clarify_ignored_v1",
+    "clarify_ignored_cold_v1",
+  ];
+  const withSetLine = forcedSetIds.filter((id) =>
+    AGENCY_SET_LINE[id] !== undefined
+  );
+  assertEquals(withSetLine, [
+    "clarify_ignored_easy_v1",
+    "clarify_ignored_v1",
+    "clarify_ignored_cold_v1",
+  ]);
+  // bounded 的候選組說明維持原樣（四個），沒有被本刀動到。
+  assertEquals(
+    Object.keys(AGENCY_SET_LINE).filter((k) =>
+      !k.startsWith("clarify_ignored")
+    ),
+    [
+      "answer_or_challenge_v1",
+      "answer_or_challenge_easy_v1",
+      "answer_or_challenge_persist_v1",
+      "answer_or_challenge_persist_easy_v1",
+    ],
   );
 });

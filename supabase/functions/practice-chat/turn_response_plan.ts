@@ -723,7 +723,7 @@ const AGENCY_ACT_LINE: Partial<Record<PlanAct, string>> = {
  * 模型會把它讀成「兩個都可以，挑順的」，實測就是挑「接受」；寫成 if/else 才
  * 逼它先做那個判斷。清單語法留給真正平行的候選（`fragment_no_context_v1`）。
  */
-const AGENCY_SET_LINE: Record<string, string> = {
+export const AGENCY_SET_LINE: Record<string, string> = {
   answer_or_challenge_v1:
     "先判斷他這句接不接得上：真的回答了你上一句、或本來就跟前面在聊的事對得上，就接受、順著講下去；對不上就直接說他沒回答你、又跳到別的，不要順著新名詞聊",
   answer_or_challenge_easy_v1:

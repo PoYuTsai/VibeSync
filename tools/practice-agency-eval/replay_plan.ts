@@ -12,6 +12,14 @@ import { buildBakeoffContextFixture } from "../practice-difficulty-bakeoff/bakeo
 import { saltedThreadId, threadSaltOfArtifactMeta } from "./run_agency.ts";
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
 const file = Deno.args[0];
+// Phase 4.3：production 的分類器在 chat 生成**之後**才跑，所以 artifact 裡沒有
+// 每一輪當時的 `aiChallengedThisTurn`。回放預設把它當成缺席（＝assisted 退回
+// standard 的保守近似）；`--ai-clarified=1|0` 可以模擬「她每一輪都真的在澄清」
+// ／「每一輪都只是問內容問題」兩個上下界，把 production 行為夾在中間。
+const aiClarifiedArg = Deno.args.find((x) => x.startsWith("--ai-clarified="));
+const aiClarified = aiClarifiedArg === undefined
+  ? null
+  : aiClarifiedArg.slice("--ai-clarified=".length) === "1";
 const art = JSON.parse(await Deno.readTextFile(file));
 // Phase 4.2：artifact 用 `--thread-salt` 跑的話，thread id 每個 repeat 都不同，
 // 回放要照同一支 `saltedThreadId` 算，否則 seed 對不上（骰子面會不一樣）。
@@ -108,11 +116,15 @@ for (const s of art.results) {
       bump(pid, "why:" + why);
     }
     const askedUser = forced;
-    if (bundle.agencyDecision && (bundle.agencyDecision.applied || askedUser)) {
+    // Phase 4.3：與 production 對齊——`handler.ts` 是「旗標 on 就一定推進狀態」
+    // （Codex round-1 新項 P1-1：`applied` 只是「有沒有注入 guidance」，不是狀態
+    // 機的閘門）。舊版回放多一個 `applied || askedUser` 條件，修復輪不推進，
+    // 會讓 `aiClarifiedLastTurn`／`repairedAtUserTurns` 的軌跡跟正式路徑不同。
+    if (bundle.agencyDecision) {
       agencyState = nextConversationAgencyState(
         agencyState,
         bundle.agencyDecision.decision,
-        null,
+        aiClarified === null ? null : { aiChallengedThisTurn: aiClarified },
         askedUser,
       );
     }
