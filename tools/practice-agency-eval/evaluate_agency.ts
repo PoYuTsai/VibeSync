@@ -12,6 +12,7 @@ import {
   type ProbeKind,
 } from "./scenarios.ts";
 import { utteranceShapeOf } from "../../supabase/functions/practice-chat/conversation_agency.ts";
+import { ASK_USER_WINDOW_USER_TURNS } from "../../supabase/functions/practice-chat/turn_response_plan.ts";
 
 /**
  * judge 實際回答的欄位（見 judge_agency.ts 的 JudgedLabels）：不含
@@ -206,8 +207,13 @@ export interface AgencyMetrics {
    * 「六輪內問到他」的窗口，指標語意跟著 planner 改成「對方給內容後六輪內」。
    * 舊的 `curiosityWithinSix` 保留不動，數字仍與 Phase 3.7／3.8 可比。
    *
-   * 現行情境檔裡兩條會相等：唯一的純反應詞探針是 A29.p1／p2，而它們的 kind 是
-   * `stalled_reaction` 不是 `cooperative_turn`，本來就不在這個分母裡。
+   * 分母＝每一場的前六個**非 reaction** 的 `cooperative_turn` 探針（依
+   * `PROBE_ORDER` 排序後取前六個，上界吃 planner 的 `ASK_USER_WINDOW_USER_TURNS`）；
+   * 第七個內容輪才問到＝失敗。
+   *
+   * 現行情境檔（A28 只有 5 個 `cooperative_turn` 探針、唯一的純反應詞探針
+   * A29.p1／p2 的 kind 是 `stalled_reaction`）裡兩條會相等；差別要在情境檔擴充到
+   * 七個以上內容輪、或 `cooperative_turn` 出現反應詞時才會顯現。
    */
   readonly curiosityWithinSixContentTurns: Rate;
   /** 命中任何一個 mustForbid。 */
@@ -331,28 +337,36 @@ export function evaluateAgency(
 
   // Phase 3.7：以場為單位——同一場（scenario×profile×repeat×difficulty×mode）
   // 的 cooperative_turn 探針只要有一則 asked_about_user 就算這場有問到。
-  const cooperativeSessions = new Map<string, boolean>();
-  // Phase 4.2：同一個迴圈另外算一份「只認玩家給了內容的輪次」的版本（Eric
-  // 2026-09-05 拍板的窗口語意）。純反應詞輪（`REACTION_PROBE_IDS`）不算機會。
-  const contentSessions = new Map<string, boolean>();
+  const cooperativeProbes = new Map<string, JudgedProbeFull[]>();
   for (const p of judged) {
     if (!p.kinds.includes("cooperative_turn")) continue;
     const key = [p.scenarioId, p.profileId, p.repeat, p.difficulty, p.mode]
       .join("|");
-    cooperativeSessions.set(
-      key,
-      (cooperativeSessions.get(key) ?? false) || p.labels.asked_about_user,
-    );
-    if (REACTION_PROBE_IDS.has(p.probeId)) continue;
-    contentSessions.set(
-      key,
-      (contentSessions.get(key) ?? false) || p.labels.asked_about_user,
-    );
+    const list = cooperativeProbes.get(key) ?? [];
+    list.push(p);
+    cooperativeProbes.set(key, list);
   }
-  const curiosityWithinSix = bootstrapRate([...cooperativeSessions.values()]);
-  const curiosityWithinSixContentTurns = bootstrapRate([
-    ...contentSessions.values(),
-  ]);
+  const curiosityFlags: boolean[] = [];
+  // Phase 4.2（Codex R2 P1）：「六個**內容**機會內問到他」——逐場依
+  // `PROBE_ORDER` 排序、丟掉純反應詞輪（`REACTION_PROBE_IDS`），**只取前六個**。
+  // 前一版只排除 reaction 就把整場 OR 起來，第 7 個內容輪才問也會判成功，跟名稱、
+  // 註解與 planner 的 `[2,6]` 上界都不一致。上界直接吃 production 的常數，不另寫
+  // 一份會漂掉的 6。
+  const contentFlags: boolean[] = [];
+  for (const list of cooperativeProbes.values()) {
+    const ordered = [...list].sort((a, b) =>
+      (PROBE_ORDER.get(a.probeId) ?? 0) - (PROBE_ORDER.get(b.probeId) ?? 0)
+    );
+    curiosityFlags.push(ordered.some((p) => p.labels.asked_about_user));
+    const contentWindow = ordered
+      .filter((p) => !REACTION_PROBE_IDS.has(p.probeId))
+      .slice(0, ASK_USER_WINDOW_USER_TURNS[1]);
+    if (contentWindow.length > 0) {
+      contentFlags.push(contentWindow.some((p) => p.labels.asked_about_user));
+    }
+  }
+  const curiosityWithinSix = bootstrapRate(curiosityFlags);
+  const curiosityWithinSixContentTurns = bootstrapRate(contentFlags);
 
   const violatesForbid = (p: JudgedProbeFull) =>
     (PROBE_SPECS.get(p.probeId)?.mustForbid ?? []).some((l) => p.labels[l]);
@@ -383,8 +397,10 @@ export function evaluateAgency(
       if (!prev.labels.clarify_or_challenge) continue;
       const adopted = cur.labels.adopted_without_asking;
       const guessed = cur.labels.asked_with_guess;
-      // 嚴格＝兩種都算失去立場（Phase 1 以來的公式，數字可比）。
-      strictFlags.push(!(adopted || guessed));
+      // 嚴格＝兩種都算失去立場。**直接讀導出的 `blind_follow`**（Codex R2 P2）：
+      // 它就在本函式上面由 `adopted_without_asking || asked_with_guess` 算出來，
+      // 這一行因此與 Phase 1 以來的舊實作逐字相同，不是「另一條等價公式」。
+      strictFlags.push(!cur.labels.blind_follow);
       // adopted-only＝對齊頭條 gate 的定義（「好歹有問一句」不算被帶著走）。
       adoptedOnlyFlags.push(!adopted);
       if (adopted && guessed) stanceFailures.both++;

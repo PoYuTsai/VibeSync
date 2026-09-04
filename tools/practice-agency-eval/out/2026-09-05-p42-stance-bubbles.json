@@ -1,0 +1,413 @@
+{
+  "tool": "practice-agency-eval/stance_bubbles",
+  "sourceRun": "tools/practice-agency-eval/out/2026-09-05-p4full-beginner-on.json",
+  "sourceJudge": "tools/practice-agency-eval/out/2026-09-05-p4full-beginner-on-judge.json",
+  "note": "orderedActs 是人工標註（計畫檔 Phase 4.2 節的逐泡泡表），其餘欄位為機器輸出",
+  "failures": 15,
+  "truncateTally": {
+    "improved": 1,
+    "unchanged": 12,
+    "worsened": 2
+  },
+  "rows": [
+    {
+      "sessionKey": "practice_girl_002|A14|1",
+      "probeId": "A14.p3",
+      "profileId": "practice_girl_002",
+      "scenarioId": "A14",
+      "repeat": 1,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "bare_fragment",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你是在玩地名接龍嗎😂",
+        "一下好市多一下曼谷現在又馬尼拉",
+        "好啦我猜你想自助旅行？"
+      ],
+      "firstBubbleQuestion": false,
+      "afterBubbles": [
+        "你是在玩地名接龍嗎😂",
+        "一下好市多一下曼谷現在又馬尼拉",
+        "好啦我猜你想自助旅行？"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "challenge",
+        "challenge",
+        "guess"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_002|A14|2",
+      "probeId": "A14.p3",
+      "profileId": "practice_girl_002",
+      "scenarioId": "A14",
+      "repeat": 2,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你是在測試我有沒有在看喔",
+        "連三個地名是勒創啥",
+        "還是你想約我去哪一個 我先說我沒錢啦"
+      ],
+      "firstBubbleQuestion": false,
+      "afterBubbles": [
+        "你是在測試我有沒有在看喔",
+        "連三個地名是勒創啥",
+        "還是你想約我去哪一個 我先說我沒錢啦"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "guess",
+        "challenge",
+        "guess"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_004|A06|1",
+      "probeId": "A06.p3",
+      "profileId": "practice_girl_004",
+      "scenarioId": "A06",
+      "repeat": 1,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你是想問我有沒有去過淺草嗎"
+      ],
+      "firstBubbleQuestion": true,
+      "afterBubbles": [
+        "你是想問我有沒有去過淺草嗎"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "guess"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_006|A06|3",
+      "probeId": "A06.p3",
+      "profileId": "practice_girl_006",
+      "scenarioId": "A06",
+      "repeat": 3,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你話題跳太快了啦 😅",
+        "我剛上完課有點累耶",
+        "你是想約我去玩還是怎樣"
+      ],
+      "firstBubbleQuestion": false,
+      "afterBubbles": [
+        "你話題跳太快了啦 😅",
+        "我剛上完課有點累耶",
+        "你是想約我去玩還是怎樣"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "challenge",
+        "other",
+        "guess"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_007|A14|3",
+      "probeId": "A14.p3",
+      "profileId": "practice_girl_007",
+      "scenarioId": "A14",
+      "repeat": 3,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "馬尼拉勒",
+        "你是要把我當導航是不是",
+        "一路報城市名喔😂"
+      ],
+      "firstBubbleQuestion": false,
+      "afterBubbles": [
+        "馬尼拉勒",
+        "你是要把我當導航是不是",
+        "一路報城市名喔😂"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "other",
+        "challenge",
+        "challenge"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_012|A14|2",
+      "probeId": "A14.p3",
+      "profileId": "practice_girl_012",
+      "scenarioId": "A14",
+      "repeat": 2,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你一下好市多一下曼谷現在又馬尼拉，到底想表達什麼啦😆",
+        "是最近有在規劃旅行嗎？"
+      ],
+      "firstBubbleQuestion": false,
+      "afterBubbles": [
+        "你一下好市多一下曼谷現在又馬尼拉，到底想表達什麼啦😆",
+        "是最近有在規劃旅行嗎？"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "challenge",
+        "guess"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_013|A14|2",
+      "probeId": "A14.p3",
+      "profileId": "practice_girl_013",
+      "scenarioId": "A14",
+      "repeat": 2,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "bare_fragment",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你是要把東南亞城市名唸一輪嗎😂",
+        "還是其實想約我去旅行",
+        "不過我明天還要上班勒"
+      ],
+      "firstBubbleQuestion": false,
+      "afterBubbles": [
+        "你是要把東南亞城市名唸一輪嗎😂",
+        "還是其實想約我去旅行",
+        "不過我明天還要上班勒"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "challenge",
+        "guess",
+        "other"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_061|A14|3",
+      "probeId": "A14.p3",
+      "profileId": "practice_girl_061",
+      "scenarioId": "A14",
+      "repeat": 3,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你是一直在報地名嗎😆",
+        "我沒去過馬尼拉耶，你這是想找我聊旅遊，還是純粹報站名"
+      ],
+      "firstBubbleQuestion": false,
+      "afterBubbles": [
+        "你是一直在報地名嗎😆",
+        "我沒去過馬尼拉耶，你這是想找我聊旅遊，還是純粹報站名"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "challenge",
+        "other+guess"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_064|A06|3",
+      "probeId": "A06.p3",
+      "profileId": "practice_girl_064",
+      "scenarioId": "A06",
+      "repeat": 3,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你一直丟地名給我…是玩猜謎嗎 哈哈"
+      ],
+      "firstBubbleQuestion": false,
+      "afterBubbles": [
+        "你一直丟地名給我…是玩猜謎嗎 哈哈"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "challenge+guess"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_064|A14|2",
+      "probeId": "A14.p3",
+      "profileId": "practice_girl_064",
+      "scenarioId": "A14",
+      "repeat": 2,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你在報地名嗎😂",
+        "我沒去過馬尼拉啦",
+        "是要聊旅遊還是單純亂講的"
+      ],
+      "firstBubbleQuestion": false,
+      "afterBubbles": [
+        "你在報地名嗎😂",
+        "我沒去過馬尼拉啦",
+        "是要聊旅遊還是單純亂講的"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "challenge",
+        "other",
+        "guess"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_083|A06|1",
+      "probeId": "A06.p3",
+      "profileId": "practice_girl_083",
+      "scenarioId": "A06",
+      "repeat": 1,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "所以你是要約我去淺草？？",
+        "還是你只是無聊在報地名啊大哥"
+      ],
+      "firstBubbleQuestion": true,
+      "afterBubbles": [
+        "所以你是要約我去淺草？？"
+      ],
+      "dropped": 1,
+      "orderedActs": [
+        "guess",
+        "challenge"
+      ],
+      "classification": "worsened"
+    },
+    {
+      "sessionKey": "practice_girl_083|A06|3",
+      "probeId": "A06.p3",
+      "profileId": "practice_girl_083",
+      "scenarioId": "A06",
+      "repeat": 3,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "阿你是在測試我懂不懂地名喔",
+        "還是要我排行程",
+        "說清楚一點我比較好接"
+      ],
+      "firstBubbleQuestion": false,
+      "afterBubbles": [
+        "阿你是在測試我懂不懂地名喔",
+        "還是要我排行程",
+        "說清楚一點我比較好接"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "guess",
+        "guess",
+        "challenge"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_083|A14|2",
+      "probeId": "A14.p3",
+      "profileId": "practice_girl_083",
+      "scenarioId": "A14",
+      "repeat": 2,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你是在考我地名嗎",
+        "還是想約我出國"
+      ],
+      "firstBubbleQuestion": true,
+      "afterBubbles": [
+        "你是在考我地名嗎"
+      ],
+      "dropped": 1,
+      "orderedActs": [
+        "challenge",
+        "guess"
+      ],
+      "classification": "improved"
+    },
+    {
+      "sessionKey": "practice_girl_089|A06|3",
+      "probeId": "A06.p3",
+      "profileId": "practice_girl_089",
+      "scenarioId": "A06",
+      "repeat": 3,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你該不會是在玩地名接龍吧"
+      ],
+      "firstBubbleQuestion": true,
+      "afterBubbles": [
+        "你該不會是在玩地名接龍吧"
+      ],
+      "dropped": 0,
+      "orderedActs": [
+        "guess"
+      ],
+      "classification": "unchanged"
+    },
+    {
+      "sessionKey": "practice_girl_091|A06|1",
+      "probeId": "A06.p3",
+      "profileId": "practice_girl_091",
+      "scenarioId": "A06",
+      "repeat": 1,
+      "allowedActSetId": "answer_or_challenge_v1",
+      "policyMode": "bounded",
+      "utteranceShape": "answer_candidate",
+      "unresolvedCount": 2,
+      "beforeBubbles": [
+        "你是要約我去淺草玩哦？",
+        "突然說地名我有點跟不上啦"
+      ],
+      "firstBubbleQuestion": true,
+      "afterBubbles": [
+        "你是要約我去淺草玩哦？"
+      ],
+      "dropped": 1,
+      "orderedActs": [
+        "guess",
+        "challenge"
+      ],
+      "classification": "worsened"
+    }
+  ]
+}

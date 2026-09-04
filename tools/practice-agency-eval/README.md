@@ -96,6 +96,12 @@ deno test --allow-read --allow-env tools/practice-agency-eval/
   是問句就只留第一則），只在 `--agency=on` 且該輪真的介入時有效果；artifact
   meta 記 `shapeExperiment`。（`prompt` 臂已於 2026-09-04 刪除，見下面的
   Phase 3.3 節。）
+- `stance_bubbles.ts`（Phase 4.2）：把跨輪立場的失敗探針逐筆輸出
+  `{beforeBubbles, firstBubbleQuestion, afterBubbles, dropped, orderedActs,
+  classification}`，並跑 production 的 `truncateAgencyShape` 統計改善／不變／惡化。
+  零模型呼叫：`deno run --allow-read --allow-write --allow-env
+  tools/practice-agency-eval/stance_bubbles.ts <run.json> <judge.json> <out.json>`
+  （已產出 `out/2026-09-05-p42-stance-bubbles.json`）。
 - `judge_agency.ts`：DeepSeek 多標籤評審（temperature
   0）。評審看到遮罩後的逐字稿
   （只到探針那一句）、她這一則回覆、以及她的**唯一可信自身事實來源**（人物卡
