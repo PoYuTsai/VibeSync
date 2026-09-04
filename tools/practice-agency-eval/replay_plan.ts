@@ -1,4 +1,5 @@
 // Phase 3.8 診斷工具：把 artifact 的逐字稿逐輪重建 bundle，數強制問他（askUserFocus）真的觸發幾場、沒觸發卡在哪個條件。
+// Phase 4.0 另外數三個分人強弱 consumer 的實際觸發：低容忍的 forced ask_intent、高 initiative 的 self_disclose、高 persistence 的 persist 候選組。
 // 用法：deno run --allow-read --allow-env tools/practice-agency-eval/replay_plan.ts <artifact.json>
 import { buildChatPromptBundle } from "../../supabase/functions/practice-chat/prompt.ts";
 import { resolvePracticeProfile } from "../../supabase/functions/practice-chat/practice_persona.ts";
@@ -56,6 +57,17 @@ for (const s of art.results) {
     const plan = bundle.responsePlan!;
     const forced = plan.askUserFocus !== undefined;
     bump(pid, forced ? "forced" : "not");
+    // Phase 4.0 consumer 觸發計數（分母＝這個探針位置的全部輪次）。
+    const setId = bundle.agencyDecision?.decision.allowedActSetId;
+    if (bundle.agencyDecision?.applied) {
+      if (bundle.agencyDecision.decision.forcedAct === "ask_intent") {
+        bump(pid, "p4:forcedAskIntent");
+      }
+      if (setId?.startsWith("answer_or_challenge_persist")) {
+        bump(pid, "p4:persistSet");
+      }
+    }
+    if (plan.optionalAct === "self_disclose") bump(pid, "p4:selfDisclose");
     if (!forced) {
       const sig = detectTurnSignals(turns);
       const ag = bundle.agencyDecision;

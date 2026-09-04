@@ -74,6 +74,7 @@ import {
   looksOverEscalated,
   spicyLevelFor,
 } from "./game_fsm.ts";
+import { agencyProfileFor } from "./agency_profile.ts";
 import type { ReplyStyleState } from "./reply_style_state.ts";
 import type {
   AgencyApplication,
@@ -964,6 +965,10 @@ export function buildChatPromptBundle(
     agencySignals,
     policyStanceFor(agencySignals, policyEvidence),
   );
+  // Phase 4.0：分人強弱只看 profileId（`STYLE_BY_PROFILE_ID` 是純資料表，
+  // 與 `PRACTICE_REPLY_STYLE_ENABLED` 無關），所以 style 旗標關掉時 agency
+  // 仍然拿得到門檻位移；shadow 也算（telemetry 用），planner 只在 on 時吃。
+  const agencyProfile = agencyProfileFor(profile.girl.profileId);
   const agencyDecision = computeAgencyDecision({
     turns,
     situation: agencySituation,
@@ -971,6 +976,7 @@ export function buildChatPromptBundle(
     agencyState: options.agencyState ?? null,
     difficulty: profile.difficulty,
     isGame: options.practiceMode === "game",
+    agencyProfile,
   });
   const responsePlan = style
     ? planTurnResponse({
@@ -987,6 +993,8 @@ export function buildChatPromptBundle(
         ? options.acquaintanceOrigin?.curiosityFocus ?? null
         : null,
       askedAboutUser: options.agencyState?.askedAboutUser ?? false,
+      // Phase 4.0：只在旗標 on 傳；off／shadow 傳 null，plan 逐字不變。
+      agencyProfile: agencyPrompt ? agencyProfile : null,
     })
     : null;
   // 組裝順序＝優先順序（規格 §5.1）：安全／身份／現實錨定 → 人設 → 說話習慣

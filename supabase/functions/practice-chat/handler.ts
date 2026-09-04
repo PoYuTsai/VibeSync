@@ -4716,6 +4716,10 @@ export function createPracticeChatHandler(
             policyMode: agencyDecision.decision.policyMode,
             forcedAct: agencyDecision.decision.forcedAct,
             allowedActSetId: agencyDecision.decision.allowedActSetId,
+            // Phase 4.0：這一輪套用的分人強弱（四個 0–4 的數字，沒有文字）。
+            // 旗標 off 時整個 `conversationAgency` key 都不存在，所以這裡多一個
+            // 欄位不會動到 flag-off golden；shadow 的契約允許只多 telemetry。
+            profile: agencyDecision.profile,
             unresolvedCount: agencyDecision.decision.evidence.unresolvedCount,
             priorChallengeIssued:
               agencyDecision.decision.evidence.priorChallengeIssued,

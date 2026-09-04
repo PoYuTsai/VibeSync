@@ -8850,7 +8850,9 @@ Deno.test("agency 旗標開：prompt 換成主體意識規則、telemetry 記結
   // Codex round-1 P1-c ＋ Phase 3.0：她剛問完「東東是誰」，所以這一句結構上是
   // answer_candidate → bounded；候選裡的「接受」現在是條件式的
   // （accept_if_answered），不是無條件的 acknowledge。
-  assertEquals(agency.allowedActSetId, "answer_or_challenge_v1");
+  // Phase 4.0：這個 fixture 的預設角色 topicPersistence ≥3，欠債輪因此多一個
+  // 「把話拉回上一題」的候選，set id 換成 persist 變體（旗標 off 不受影響）。
+  assertEquals(agency.allowedActSetId, "answer_or_challenge_persist_v1");
   assertEquals(agency.unresolvedCount, 1);
   assertEquals(agency.forcedAct, null);
   assertEquals(agency.coherenceBefore, null);
@@ -8981,7 +8983,7 @@ Deno.test("agency shadow：telemetry 有值但 applied=false，且不寫 thread 
   const agency = succeeded?.conversationAgency as Record<string, unknown>;
   assertEquals(agency.applied, false);
   assertEquals(agency.utteranceShape, "answer_candidate");
-  assertEquals(agency.allowedActSetId, "answer_or_challenge_v1");
+  assertEquals(agency.allowedActSetId, "answer_or_challenge_persist_v1");
   const upsert = state.rpcCalls.find((r) =>
     r.fn === "upsert_practice_relationship_thread"
   )!.params.p_recent_facts as Record<string, unknown>;
