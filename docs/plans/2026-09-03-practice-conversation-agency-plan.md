@@ -147,3 +147,11 @@
 - **黑箱（2026-09-04，Eric「跑」）**：第一版判準 360 探針 **0 true**——人工確認的 5 筆迎合案例全放過（判準寫「明顯迎合」讓模型自己下定義＋不算清單太長）。判準改寫成可核對的兩點（經歷掛鉤玩家剛丟的詞 × 來源與她先前的話都沒有；正反例各一句；不算清單縮短），關鍵字命中的 8 場 45 探針小規模重測：**5/5 迎合案例判 true、7/7 對照判 false**、gate 0、repair 0（約 $0.04）。改寫後的判準未跑完整 360（約 $0.3，待 Eric）；判準改寫在 Codex 兩輪之後，未三審。數字與逐字在 `tools/practice-agency-eval/README.md`「Phase 3.6 分類器回放」節。
 - **完整 360（第二版判準，Eric 第二次「跑」）**：**5/360＝1.4%，5/5 真陽性、非關鍵字回覆 0 誤判**；對人工 5 筆底稿召回 4/5（「好啦那我有去過曼谷一次」這次 false，mini 時 true＝temperature 0 仍抖動）；gate 0，3 筆 cap 真的把 +1 壓到 0（3.4 的 sharedPast 從沒真的壓到過，這是 cap 第一次出手）。**發現**：coherence 判準逐字相同的兩次跑，逐探針分佈差到 ±7/40——3.5 宣稱的「coherence 變嚴 3–6%」在雜訊帶內，不算效果；之後比 coherence 要同 prompt ≥3 次。
 
+
+## Phase 3.7 — 認識管道的首要好奇點（AGENCY-05 第一刀，2026-09-04，Eric「好 繼續」）
+
+- **範圍**：Phase 3「她會主動好奇」那一半的最小一刀。「每輪最多一問、不連續兩輪查基本資料」reply-style 的 `questionBudget` 已經在管（連續反問歸零、normal／challenge 首輪不反問、澄清型不吃預算），本輪不重做；`UserFactSlot` 覆蓋度狀態不做（YAGNI：生成模型看得到整段逐字稿，「問過或他講過就別問」由它自己核對）。
+- **做法**：`acquaintance_origin.ts` 十種管道各加 `curiosityFocus`（≤60 字，不是台詞：交友軟體問自介哪一點吸引他、IG 陌生私訊問從哪看到你、朋友介紹問跟介紹人怎麼認識但不猜名字…）；`prompt.ts` `acquaintanceOriginPrompt` 只在 agency 分支加一行「想先知道：…。自然碰到才問、一輪一句；問過或他講過就別問」，標題與後兩行併短以守住 agency prompt 淨少 ≥1,000 的既有 gate（餘量 1,012 → 加行後只剩 944，併短後回到 ≥1,000）；off 分支逐字不變（harness 全過）。
+- **量尺**：judge 加正向標籤 `asked_about_user`（她這則有沒有問他一件關於他本人的事；問意思／指出跳題／拉回前一題不算；查戶口仍由 `interrogation` 抓）；`ProbeKind` 加 `cooperative_turn`；新情境 **A28**＝配合的玩家六個普通來回、從不自我介紹；`evaluate_agency` 新指標 `curiosityWithinSix`＝**以場為分母**，前六回合至少一則 asked_about_user 的比例（gate ≥80%）。
+- **黑箱（A28 on／off，20 位 × 2，$≈0.5）＝負面結果**：`curiosityWithinSix` off 25%（10/40）→ on 30%（12/40），gate 80，區間重疊。根因是結構：34/40 場的 questionHabit 是 rare／selective／reciprocal，planner `questionBudget` 多半 0、每輪計畫印「這輪不反問」，一行好奇點壓不過；curious 型也只 3/6 場問到他。prompt 臂再次零效果（同 3.3）。**建議下一刀＝結構刀**：agency on、前六回合、連貫且非問她、她上一則沒問、本場未問過（state 加布林）→ 強制 `questionBudget=1` 且計畫行印「這輪問他一件事：X」。數字在 `tools/practice-agency-eval/README.md`「Phase 3.7 黑箱」節。
+

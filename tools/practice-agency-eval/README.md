@@ -1981,3 +1981,22 @@ prompt（Phase 3.5：agency on 時 recentContext 放寬到整段、附 `<her_sel
 | coherence connected／ambiguous／disconnected | 138／10／212 |
 
 **coherence 的雜訊帶（重要）**：第一版與第二版分類器只差 accommodatingSelfFact 那一段判準文字，coherence 判準逐字相同，但逐探針分佈跨次差到 ±7/40（A27.p2 connected 8→15、A25.p3 3→10、A27.p4 6→10）。3.5 那輪「coherence 變嚴 3–6%」落在這個雜訊帶內，不能當成 3.5 的效果；要比 coherence 得同一 prompt 跑 ≥3 次取區間。有效補救 A25.p9 三次都 40/40，這格穩。
+
+### Phase 3.7 黑箱：認識管道首要好奇點（A28，2026-09-04，`agency-phase37` 4f9fde2b）
+
+**規模**：A28（配合的玩家六個普通來回、從不自我介紹）× 20 位 × repeat 2，beginner＋style＋state=1，agency on／off 各一臂；judge 新標籤 `asked_about_user`；`out/2026-09-04-p37-a28-{on,off}.json`＋`-judge.json`。生成 480、judge 400，0 解析失敗。
+
+| 指標（分母＝場，n=40） | off | on |
+| --- | --: | --: |
+| `curiosityWithinSix`（前六回合至少問到他一件事，gate ≥80%） | 25%（10/40，CI 12.5–40） | **30%（12/40，CI 15–45）** |
+| 回覆含問句（探針層，n=200） | 18% | 30% |
+| `asked_about_user` 逐探針 p2／p3／p4／p5／p6 | 1／5／1／4／0 | 4／3／2／3／4 |
+| `interrogation`／`false_challenge`／forbid | 0 | 0 |
+| 依角色 questionHabit（有問到的場／該型場數） | rare 1/10、selective 2/16、reciprocal 2/8、curious 5/6 | rare 3/10、selective 5/16、reciprocal 1/8、curious 3/6 |
+
+**讀法（負面結果）**：
+- 一行「想先知道：X」在 prompt 裡幾乎沒有效果——+5 個百分點，區間完全重疊。她多問的問題是「哪張啊」「你怎麼知道」這類澄清，不是問他。
+- 根因是結構：34/40 場的角色 habit 是 rare／selective／reciprocal，reply-style planner 的 `questionBudget` 多半給 0，每輪計畫印「這輪不反問」，一行好奇點壓不過同一份 prompt 裡的形狀指令（跟 Phase 3.3「prompt 臂零效果、結構刀才動」同一件事）。連 curious 型（budget 幾乎每輪 1）也只有 3/6 場真的問到他，代表 budget 有了模型也傾向拿去澄清或反問。
+- 情境本身有兩格會把她拉去澄清（p4「妳那張照片在哪拍」、p5「感覺是妳會喜歡的那種地方」）、p6 是收尾句；但 p2／p3 是乾淨的開放回合，數字一樣低，情境不是主因。
+
+**下一刀（待 Eric）**：結構刀——agency on、前六個 user 回合、玩家這句連貫且不是在問她、她上一則沒問問題、本場還沒問過他（agency state 加一個布林）→ planner 把 `questionBudget` 強制 1，計畫行改印「這輪問他一件事：X」而不是泛用的「最多問一句」；persona habit 只決定之後的頻率，不決定「這場有沒有一次」。
