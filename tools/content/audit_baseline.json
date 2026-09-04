@@ -1,59 +1,8 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-04T00:43:52Z",
+  "generatedAt": "2026-09-04T01:15:52Z",
   "source": "assets/learning/ebooks",
   "note": "棘輪基準：CI 只擋這份清單以外的新發現。每個工作包修掉一批問題後用 --write-baseline 縮小它，不得手動加項目。",
-  "count": 10,
-  "findings": [
-    {
-      "rule": "R06",
-      "id": "ebook-3-c2-lib-e4",
-      "field": "entries[3].summary"
-    },
-    {
-      "rule": "R06",
-      "id": "ebook-4-c3-cmp6",
-      "field": "caption"
-    },
-    {
-      "rule": "R09",
-      "id": "ebook-1-c5-lib-e1-cmp1",
-      "field": "caption"
-    },
-    {
-      "rule": "R09",
-      "id": "ebook-1-c5-lib-e2-cmp1",
-      "field": "caption"
-    },
-    {
-      "rule": "R09",
-      "id": "ebook-1-c5-lib-e3-cmp1",
-      "field": "caption"
-    },
-    {
-      "rule": "R09",
-      "id": "ebook-1-c5-lib-e4-cmp1",
-      "field": "caption"
-    },
-    {
-      "rule": "R09",
-      "id": "ebook-1-c5-lib-e5-cmp1",
-      "field": "caption"
-    },
-    {
-      "rule": "R09",
-      "id": "ebook-1-c5-lib-e6-cmp1",
-      "field": "caption"
-    },
-    {
-      "rule": "R09",
-      "id": "ebook-1-c5-lib-e7-cmp2",
-      "field": "caption"
-    },
-    {
-      "rule": "R09",
-      "id": "ebook-1-c5-lib-e8-cmp2",
-      "field": "caption"
-    }
-  ]
+  "count": 0,
+  "findings": []
 }

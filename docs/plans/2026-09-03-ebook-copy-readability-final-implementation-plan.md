@@ -1046,6 +1046,13 @@ ebook_shelf_section.dart 的註解記錄 2026-08-09 已拍板：
 - 與計劃字面不同：§9.4「第 3 章邀約句」的定稿例句同時放進 4.3 的公式 callout 與 comparison 強例；§9.7「先當朋友」案例改成「用猜的推翻她的話 vs 先尊重她說的」兩欄，因為原本的兩欄本身就是 5.1 要取代的教法。
 - 未跑 Flutter（容器沒有 Flutter），由 PR CI 提供。報告：`docs/reviews/2026-09-03-ebook-copy-wp4-canonical-report.md`。
 
+### 19.10 工作包 5 紀錄（2026-09-03）
+
+- 分支 `claude/ebook-copy-wp5-plain`，基底 `claude/ebook-copy-wp4-canonical` @ `a0c51ee`（PR #65 尚未合併；PR 先以它為 base，合併後 rebase 到 main 才有 CI）。
+- 第 1–4 冊 79 個欄位改成教練口吻（第 1 冊 22 區塊、第 2 冊 16 區塊＋章名＋摘要、第 3 冊 27 區塊＋2 摘要、第 4 冊 10 區塊）；§10.1 術語在第 1–4 冊歸零；1.5 八個代碼式 caption 改中文判讀（R09 歸零）；2.3 章名依 §9.2 改「先接住她，再自然讓她認識你」；案例 C 與 3.2 第 6 條標題把「棘輪」改成白話、原詞括號保留。稽核 12 → 2。
+- 不新增外部事實、不動已拍板數字、不動 id 與結構、不升 `contentVersion`（§14）。
+- 與計劃字面不同：§9.1 的「三種一定會死的開場」沿用工作包 2 的「三種很難接的開場」（§4.1 不用絕對用語）；1.3 comparison 的 caption 搬進強例 note 而不是留在 caption（renderer 支援，說明貼在它解釋的那句下面）。
+- Dart 契約新增「第 1 冊不得出現變數代碼」（§12.3 第 6 條）。未跑 Flutter，由 PR CI 提供。報告：`docs/reviews/2026-09-03-ebook-copy-wp5-plain-report.md`。
 ### 19.11 工作包 6 紀錄（2026-09-04）
 
 - 分支 `claude/ebook-copy-wp6-voice`，基底 main `a20e14f`（#65 合併後），PR 以 main 為 base。
