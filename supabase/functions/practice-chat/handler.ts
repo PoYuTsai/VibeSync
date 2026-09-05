@@ -4255,6 +4255,10 @@ export function createPracticeChatHandler(
       // telemetry key 都不該多一個）；shadow 算但不進 prompt。standard 沒有
       // 持久化狀態，本來就是純結構近似（見 `debriefAgencyLedgerFor` 註解）。
       // 門檻與 chat 路徑同源（難度／isGame／角色的 agency profile）。
+      // Phase 5 WP6：她已經封鎖他（性冒犯階梯第三格）。旗標未設時恆 false，
+      // debrief prompt 逐位元組不變。
+      const debriefPartnerBlocked = sessionEndSignalOn && agencyMode === "on" &&
+        relationshipThreadState?.agencyState?.blocked === true;
       const debriefAgencyLedger = agencyMode === "off"
         ? null
         : debriefAgencyLedgerFor(request.turns, {
@@ -4283,6 +4287,7 @@ export function createPracticeChatHandler(
               replyStyle: replyStyleProfile,
               agencyLedger: agencyMode === "on" ? debriefAgencyLedger : null,
               memorySummaryWrite: memorySummaryWriteOn,
+              ...(debriefPartnerBlocked ? { partnerBlocked: true } : {}),
             }
             : {
               partnerState: partnerStateFromLedger(ledger) ??
@@ -4294,6 +4299,7 @@ export function createPracticeChatHandler(
               replyStyle: replyStyleProfile,
               agencyLedger: agencyMode === "on" ? debriefAgencyLedger : null,
               memorySummaryWrite: memorySummaryWriteOn,
+              ...(debriefPartnerBlocked ? { partnerBlocked: true } : {}),
             },
         );
         const debriefFactualEvidence = hintTrustedFactualEvidence({

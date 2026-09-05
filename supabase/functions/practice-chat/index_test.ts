@@ -10390,3 +10390,45 @@ Deno.test("WP6（反例）：旗標未設／off／亂填時階梯整組不存在
     assertEquals("offenseStrikes" in (r.lastFacts ?? {}), false, label);
   }
 });
+
+Deno.test("WP6：thread 已封鎖時 debrief prompt 帶「這場的結局」，旗標未設時不帶", async () => {
+  const blockedThread = {
+    profile_id: "practice_girl_001",
+    practice_mode: "beginner",
+    temperature_score: 40,
+    familiarity_score: 10,
+    recent_facts: {
+      source: "practice_chat",
+      conversationAgency: { ...LADDER_STATE, offenseStrikes: 3, blocked: true },
+    },
+  };
+  const debriefRun = (env: Record<string, string>) =>
+    run(
+      {
+        ledger: ledger({
+          ai_count: 1,
+          charged: true,
+          practice_mode: "beginner",
+        }),
+        thread: blockedThread,
+        env,
+        claudeReplies: [validDebriefJson()],
+      },
+      debriefBody({
+        practiceMode: "beginner",
+        requestId: "debrief-wp6-blocked",
+        visiblePracticeThreadId: "thread-visible-1",
+      }),
+    );
+  const joined = (calls: { messages: { content: string }[] }[]) =>
+    calls[0].messages.map((m) => m.content).join("\n");
+  const on = await debriefRun(END_SIGNAL_ON);
+  assert(joined(on.state.claudeCalls).includes("這場的結局（hidden guidance"));
+
+  const off = await debriefRun({
+    PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+  });
+  assert(
+    !joined(off.state.claudeCalls).includes("這場的結局（hidden guidance"),
+  );
+});
