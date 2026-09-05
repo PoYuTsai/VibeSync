@@ -1158,6 +1158,17 @@ Codex R1 P1-2 的難度門檻讓 `check_out`／`read_only` **在這兩份逐字�
 - **`true`** → 只有 `chat／standard` 的案例允許 `messages`／`rpc`／`telemetry`
   不同（白名單比對，名單外必須逐位元組相同）；`response` 一律不變。另有一支
   測試斷言那三面**真的**都不同（不是只有 telemetry 多一個 key）。
+- **正向精確差（Codex R2 P3）**：`true` 那一格不是只證明「有不同」——
+  照 Phase 4.4 `mixed` 的做法把 on／off 正規化後比精確差：`messages` 是 off 的
+  每一筆 ＋ **恰好一次**精簡分類器呼叫（常數 450／0.2／jsonMode／30s 與
+  `judgeLearningState` 同組）；`rpc` 是 off 的每一筆 ＋ 恰好一次
+  `upsert_practice_relationship_thread`；`telemetry` 事件名列表與明確預期陣列
+  比對，每一行刪掉允許的 key、把被覆寫的 `coherence`／`aiChallengedThisTurn`
+  還原成 `null` 之後**逐位元組相同**。thread 上真的存過 agency 狀態的那三個
+  案例另外放行 `priorChallengeIssued`（實測**只有這一格**會變，其餘決策欄位
+  逐格相同），並正向斷言它確實 `false → true`。分類器 messages 與 RPC params
+  的**內容**另有一支測試與 `buildStandardAgencyClassifierMessages` 的輸出、
+  以及一個寫死的預期 params 物件逐位元組比對。
 - **交叉格（Codex R1 P2-1）**：另一支測試掃兩組交叉——routing `mixed` ×
   新旗標 `off`／亂填（agency `off` 與 `on` 兩種都掃，基準是「routing=mixed ＋
   新旗標未設」），以及 agency `off`／亂填／`shadow` × 新旗標 `true`／`off`
@@ -1203,14 +1214,18 @@ standard 這條新路徑不帶回就等於把 beginner 累積的東西清掉—�
 `replyStyle` 裡本檔不認識的巢狀 key 靜默清掉。省略參數時
 `existingRecentFacts` 的原始 `replyStyle` 物件會原封不動穿過去。
 
-**profile 不符時完全不寫（Codex R1 P1-1）**：handler 讀到的 row 若是**另一個
+**無法確認可安全覆寫時完全不寫（Codex R1 P1-1 ＋ R2 P1）**：handler 讀到的 row 若是**另一個
 角色**的，舊版只把 `relationshipThreadState` 設成 `null`，於是 standard 的寫入
 路徑會把它當成「沒有列」——拿新角色的 `profileId` 去 upsert 同一個
 `(user, visible_thread_id)`，四個 `= EXCLUDED` 欄位被寫成 `null`（舊角色的分數
 與模式沒了），而 `partner_*`／`invite_stage`／`memory_summary` 走 COALESCE 留著
-舊角色的值＝兩個角色的狀態攪在一起。現在 fetch 之後多記一個
-`threadProfileMismatch`，**profile 不符時 standard 完全跳過 thread 寫入**
-（分類器照跑、telemetry 照記，`conversationAgency.statePersisted: false`）。
+舊角色的值＝兩個角色的狀態攪在一起。**讀取失敗**（`fetchRelationshipThreadState` 丟錯）在
+`relationshipThreadState` 上跟「確定沒有列」長得一模一樣（都是 `null`），
+所以是同一條污染路徑的第二個入口。現在 fetch 之後同時記
+`threadFetchFailed` 與 `threadProfileMismatch`，合成一個
+`threadStateSkipReason`；**任一成立就 standard 完全跳過 thread 寫入**
+（分類器照跑、telemetry 記 `statePersisted:false` ＋
+`stateSkipReason: "fetch_failed" | "profile_mismatch"`）。
 beginner／game 的寫入路徑本輪一字未改（那條有自己算得出來的分數與階梯，
 `p_profile_id` 的 COALESCE 語意是既有行為，不在本刀範圍）。
 
@@ -1259,19 +1274,29 @@ deepseek（Phase 4.4 的既有測試一個字都沒改）。黑箱 runner 的
   **零新事件**。
 - **(b) 旗標開**：`practice_chat_succeeded.conversationAgency` 一律多三個管理
   欄位——`standardClassifier: "ok" | "failed"`、`standardClassifierDurationMs`、
-  `statePersisted`（Codex R1 P1-1：這一輪有沒有送出 thread 寫入）。
+  `statePersisted`（Codex R2 P2：**RPC 真的回成功**才是 `true`；跳過寫入或
+  fail-open 的寫入失敗都是 `false`）。跳過寫入時**額外**多一個
+  `stateSkipReason: "fetch_failed" | "profile_mismatch"`（沒跳過時不存在）。
   - **分類器成功**：再多 `coherence`／`aiChallengedThisTurn`／`sharedPastClaim`／
     `accommodatingSelfFact`（key 名與 beginner 相同；前兩個是覆寫既有那兩格的
     `null`，所以 key set 只多後兩個）。修過的欄位另有
     `sharedPastClaimRepaired`／`accommodatingSelfFactRepaired`——**與 beginner
     完全相同的規則**：`coherence`／`aiChallengedThisTurn` 修過時**不多 key**，
     只進 `practice_chat_learning_classifier_repaired` 事件。
-  - **分類器失敗**：四個判斷欄位**全部缺席**（與 beginner 分類器失敗時相同），
-    只留三個管理欄位。
+  - **分類器失敗**（Codex R2 P2 校正——舊稿寫「四個都缺席」是錯的）：
+    **逐字鏡射 beginner 分類器失敗時的形狀**——`coherence` 與
+    `aiChallengedThisTurn` **存在且為 `null`**（那兩格由 generic block 寫，
+    `agencyMode === "on"` 時就是 `temperature?.classification.… ?? null`，
+    standard 沒有 `temperature` 所以恆為 `null`）；只有 `sharedPastClaim`／
+    `accommodatingSelfFact` **缺席**。測試用 `Object.hasOwn` 逐欄位釘住。
 - **(c) 允許多出的事件只有兩個**：`practice_chat_learning_classifier_repaired`
   （與 beginner 同名同 payload 形狀）與
   `practice_chat_standard_agency_classifier_failed`（fail-open，payload 只有
-  `level`／`event`／匿名 `user`／`error`，沒有逐字稿）。測試對三種情形的事件名
+  `level`／`event`／匿名 `user`／**`errorClass`**，沒有逐字稿）。
+  **`errorClass` 是固定代碼**（`"timeout" | "http" | "parse" | "unknown"`），
+  不是 `getErrorMessage(e)` 全文（Codex R2 U：`JSON.parse` 的錯誤訊息會把模型
+  吐出來的原文片段帶進來，而這一行是無逐字稿觀測）。測試讓分類器回一個含唯一
+  marker 的壞 JSON，斷言整輪 telemetry 都不含那個 marker。測試對三種情形的事件名
   union 做精確比對，任何第三個新事件都會炸。
 
 **黑箱 runner**：`--mode=standard --state=1` 不再被 CLI 擋掉（Codex round-2
@@ -1303,8 +1328,8 @@ system 包成一個 block 掛 ephemeral cache，而 system 每一輪都夾著當
 
 ### Gate（實測數字）
 
-- practice-chat 全套：**1,937 passed / 0 failed / 1 ignored**（base `9e64a41c`
-  1,913／0／1；＋24。ignored 是既有的 `moments_image_gate_test.ts` 素材缺失）。
+- practice-chat 全套：**1,941 passed / 0 failed / 1 ignored**（base `9e64a41c`
+  1,913／0／1；＋28。ignored 是既有的 `moments_image_gate_test.ts` 素材缺失）。
 - 等價 harness：**12 passed / 1 ignored**（base 9／1；＋3），**off golden 未重印**。
 - `tools/`：**116 passed / 0 failed**（base 111；＋5，含 cache probe 的 2 支
   dry-run）。
@@ -1315,7 +1340,9 @@ system 包成一個 block 掛 ephemeral cache，而 system 每一輪都夾著當
   相同**（全部在未觸碰的檔案）。
 - `deno check`（`practice-chat/index.ts`＋`run_agency.ts`＋`cache_probe.ts`）：0 error。
 - `flutter-ci.yml` 的 Edge contract tests 名單加入
-  `standard_agency_classifier_test.ts`（不然這道 gate 在 PR CI 是死的）。
+  `standard_agency_classifier_test.ts` 與
+  `tools/practice-agency-eval/cache_probe_test.ts`（Codex R2 U：整個 `tools/`
+  本來都不在 CI，不然這兩道 gate 在 PR CI 是死的）。
 
 ### 已知限制與風險
 
@@ -1369,3 +1396,19 @@ system 包成一個 block 掛 ephemeral cache，而 system 每一輪都夾著當
 | **U1** | 沒證明 `practiceMode` 缺席時的正規化 | **已查證＋釘住**。`validateRequest` 的 `practiceMode` 預設就是 `"standard"`（缺席時不可能是 `undefined`），新增一支不帶 `practiceMode` key 的 handler 測試 |
 | **U2** | `parseReplyStyleState` 會丟掉未知巢狀欄位 | **已修**。standard 路徑改成**不傳** `replyStyleState`，讓 `existingRecentFacts` 的原始 `replyStyle` 物件原樣穿過；P2-2 那支測試直接斷言未知巢狀 key 還在 |
 | **U3** | thread 先讀後寫的 stale-read 窗口 | **不修，記進「已知限制」**（beginner 既有型態，standard 多一段同步分類器時間；覆寫的後果是少記一輪，不是資料損毀） |
+
+### Codex R2：BLOCK（逐項處置，**全修、未三審**）
+
+R2 是最後一輪審查，修完不再送審——所以下面每一項都有測試釘住，但**沒有第三輪
+獨立審查**確認這些修法本身正確。
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| **P1** | `fetchRelationshipThreadState` 丟錯時 state 是 null、`threadProfileMismatch` 是 false，standard 當成「確定沒有列」照寫＝R1 P1-1 的污染路徑從另一個入口漏回來 | **已修**。新增 `threadFetchFailed`，與 profile 不符合成 `threadStateSkipReason`；任一成立 standard 完全跳過寫入，telemetry 記 `statePersisted:false` ＋ `stateSkipReason` 區分原因。測試：`.maybeSingle()` 回 error → 零 upsert RPC。beginner／game 路徑一字未動 |
+| **P2** | `statePersisted` 在 RPC 失敗時錯報 `true` | **已修**。`upsertRelationshipThreadFailOpen` 改回傳布林（既有呼叫端忽略回傳值＝行為不變），standard 用真實結果。測試：RPC 回 error → `statePersisted:false`、無 `stateSkipReason`、仍印 `practice_relationship_thread_upsert_failed` |
+| **P2** | 分類器失敗時的欄位契約自相矛盾 | **已修（文件＋測試）**。契約改成**逐字鏡射 beginner**：`coherence`／`aiChallengedThisTurn` 存在且為 `null`，只有 `sharedPastClaim`／`accommodatingSelfFact` 缺席。三種情形用 `Object.hasOwn` 逐欄位釘住 |
+| **P3** | 正向 harness 只證明「有不同」；`eventNames(repaired)` 跟自己比是恆真 | **已修**。恆真斷言整段刪掉，改成事件名列表與明確預期陣列比對；新增「精確差」測試（messages／rpc／telemetry 三面，見上面「正向精確差」）。分類器 messages 與 RPC params 的內容另有一支測試與純函式輸出、寫死的預期物件逐位元組比對 |
+| **U** | 失敗 warn 可能洩漏模型原文 | **已修**。改記固定代碼 `errorClass: "timeout" \| "http" \| "parse" \| "unknown"`，不再記 `getErrorMessage(e)`。測試用含唯一 marker 的壞 JSON，斷言整輪 telemetry 都不含那個 marker |
+| **U** | 既有 row `practice_mode` 為 null 時被改成 standard | **已查證：不可能**。migration 是 `practice_mode TEXT NOT NULL DEFAULT 'standard'`，唯一 writer（那支 RPC）只收三個合法值。`migration_source_test.ts` 原本只釘 `NOT NULL`，本輪補上 `DEFAULT 'standard'`；handler 那一行加註解說明 `?? "standard"` 只服務「還沒有列」那條路 |
+| **U** | `cache_probe_test.ts` 有沒有進 CI | **查證：整個 `tools/` 都不在 CI**（`flutter-ci.yml` 只有 Edge contract 與 Postgres 兩份白名單）。已把 `tools/practice-agency-eval/cache_probe_test.ts` 加進 Edge contract 名單（實測只需 `--allow-env --allow-read`，與該步權限相同）。其餘 `tools/` 測試維持本機跑，不在本刀範圍 |
+| **TOCTOU** | thread 先讀後寫的窗口 | **不修**，已在「已知限制」記為 R1 U3 |

@@ -849,7 +849,7 @@ Deno.test("relationship thread migration creates scoped long-term practice threa
   );
   requiredGameStateThreadIndex("visible_thread_id TEXT NOT NULL");
   requiredGameStateThreadIndex("profile_id TEXT");
-  requiredGameStateThreadIndex("practice_mode TEXT NOT NULL");
+  // Phase 4.5b（Codex R2 U）：`NOT NULL` ＋ 預設值一起釘住——standard 的 thread\n  // 寫入路徑靠這一條保證讀回來的 `practice_mode` 不可能是 null。\n  requiredGameStateThreadIndex("practice_mode TEXT NOT NULL DEFAULT 'standard'");
   requiredGameStateThreadIndex("relationship_score INTEGER");
   requiredGameStateThreadIndex("temperature_score INTEGER");
   requiredGameStateThreadIndex("familiarity_score INTEGER");

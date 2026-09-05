@@ -1325,10 +1325,15 @@ async function persistGameStateFailOpen(opts: {
   }
 }
 
+/**
+ * Codex R2 P2：回傳「這一次寫入有沒有成功」。既有呼叫端（beginner／game）
+ * 忽略回傳值＝行為一字不變；standard 的 `statePersisted` telemetry 需要真實
+ * 結果，不能假設 fail-open 的呼叫一定寫進去了。
+ */
 async function upsertRelationshipThreadFailOpen(opts: {
   supabase: PracticeSupabaseClient;
   params: ReturnType<typeof buildRelationshipThreadRpcParams>;
-}): Promise<void> {
+}): Promise<boolean> {
   const { error } = await opts.supabase.rpc(
     "upsert_practice_relationship_thread",
     opts.params,
@@ -1338,7 +1343,9 @@ async function upsertRelationshipThreadFailOpen(opts: {
       user: summarizeUser(String(opts.params.p_user_id)),
       error: error.message,
     });
+    return false;
   }
+  return true;
 }
 
 async function judgeLearningState(opts: {
@@ -1833,12 +1840,36 @@ async function judgeStandardAgencyFailOpen(opts: {
     }
     return { classification, durationMs: elapsedMilliseconds(startedAt) };
   } catch (e) {
+    // Codex R2 U：**不記 `getErrorMessage(e)` 全文**。JSON 解析失敗時
+    // `JSON.parse` 的訊息會把模型吐出來的原文片段帶進來（那是對話衍生內容），
+    // 而這一行是無逐字稿觀測。只記固定的錯誤類別。
     logWarn("practice_chat_standard_agency_classifier_failed", {
       user: summarizeUser(opts.userId),
-      error: getErrorMessage(e),
+      errorClass: classifierErrorClass(e),
     });
     return { classification: null, durationMs: elapsedMilliseconds(startedAt) };
   }
+}
+
+/**
+ * Codex R2 U：分類器失敗的**固定代碼**，永遠不含模型原文。
+ * 只認 `deepseek.ts` 會丟的那幾個字面（自己的常數，不是使用者內容）；
+ * 其餘一律 `"unknown"`。
+ */
+function classifierErrorClass(
+  e: unknown,
+): "timeout" | "http" | "parse" | "unknown" {
+  if (e instanceof SyntaxError) return "parse";
+  const message = getErrorMessage(e);
+  if (message === "deepseek_timeout") return "timeout";
+  if (message.startsWith("deepseek_http_")) return "http";
+  if (
+    message === "deepseek_max_tokens" || message === "deepseek_empty_content" ||
+    message.startsWith("standard agency classification")
+  ) {
+    return "parse";
+  }
+  return "unknown";
 }
 
 async function releaseHintGeneration(opts: {
@@ -2458,6 +2489,7 @@ export function createPracticeChatHandler(
       visiblePracticeThreadId: request.visiblePracticeThreadId,
     });
     let relationshipThreadState: PracticeRelationshipThreadState | null = null;
+    let threadFetchFailed = false;
     try {
       relationshipThreadState = await fetchRelationshipThreadState({
         supabase,
@@ -2465,6 +2497,10 @@ export function createPracticeChatHandler(
         visibleThreadId,
       });
     } catch (e) {
+      // Codex R2 P1：讀取失敗與「確定沒有列」在 `relationshipThreadState` 上
+      // 長得一模一樣（都是 null）。standard 的寫入路徑不能把前者當後者——
+      // 那一列可能正躺著另一個角色的關係狀態。
+      threadFetchFailed = true;
       logWarn("practice_relationship_thread_fetch_failed", {
         user: summarizeUser(user.id),
         error: getErrorMessage(e),
@@ -2491,6 +2527,19 @@ export function createPracticeChatHandler(
       relationshipThreadState = null;
       threadProfileMismatch = true;
     }
+    /**
+     * Phase 4.5b（Codex R1 P1-1 ＋ R2 P1）：standard 的 thread 寫入前提是
+     * **確定這一列可以安全覆寫**。兩種情形都不成立：讀取失敗（不知道列上有
+     * 什麼）、profile 不符（列上是別的角色）。任一成立就整個跳過寫入，
+     * telemetry 記 `statePersisted:false` ＋ `stateSkipReason`。
+     * beginner／game 的寫入路徑不看這一格（既有行為一字未改）。
+     */
+    const threadStateSkipReason: "fetch_failed" | "profile_mismatch" | null =
+      threadFetchFailed
+        ? "fetch_failed"
+        : threadProfileMismatch
+        ? "profile_mismatch"
+        : null;
     const promptMemorySummary = relationshipThreadState?.memorySummary ?? null;
 
     if (request.mode === "hint") {
@@ -4925,6 +4974,8 @@ export function createPracticeChatHandler(
     // 丟進既有的 `waitUntil` 背景慣例就趕不上這一行（那條慣例只服務「回應之後
     // 才寫」的 ai_logs 持久化）。耗時記進 `standardClassifierDurationMs`。
     let standardAgency: StandardAgencyJudgement | null = null;
+    /** Codex R2 P2：RPC 真的回成功才是 true（fail-open 的呼叫可能寫失敗）。 */
+    let standardStatePersisted = false;
     if (standardAgencyClassifierOn) {
       standardAgency = await judgeStandardAgencyFailOpen({
         deps,
@@ -4935,11 +4986,11 @@ export function createPracticeChatHandler(
         memorySummary: promptMemorySummary,
         herRecentMoments,
       });
-      // Codex R1 P1-1：profile 不符時**完全跳過** thread 寫入——那一列是別的
-      // 角色的，這條路徑沒有任何一個欄位算得出正確的值。分類器照跑、telemetry
-      // 照記（`statePersisted:false`），只是這一輪的狀態不落地。
-      if (agencyDecision && !threadProfileMismatch) {
-        await upsertRelationshipThreadFailOpen({
+      // Codex R1 P1-1 ＋ R2 P1：讀取失敗或 profile 不符時**完全跳過** thread
+      // 寫入——那一列可能是別的角色的，這條路徑沒有任何一個欄位算得出正確的
+      // 值。分類器照跑、telemetry 照記，只是這一輪的狀態不落地。
+      if (agencyDecision && threadStateSkipReason === null) {
+        standardStatePersisted = await upsertRelationshipThreadFailOpen({
           supabase,
           params: buildRelationshipThreadRpcParams({
             userId: user.id,
@@ -4954,6 +5005,10 @@ export function createPracticeChatHandler(
             // 逐欄位的例外表。沒有既有 row 時建立一列 mode `standard`、分數留空
             // 的 thread——後續 beginner 的 `resolveLearningSeed` 對 null 分數有
             // 既有退路（ledger 未建檔 → client seed → 難度起始值）。
+            // Codex R2 U：`practice_mode` 在 migration 是 `NOT NULL DEFAULT
+            // 'standard'`（`migration_source_test.ts` 釘住），而唯一的 writer
+            // （這支 RPC）只收三個合法值——所以讀回來的 `practiceMode` 不可能是
+            // null。`?? "standard"` 只是「這個 thread 還沒有列」的那條路。
             practiceMode: relationshipThreadState?.practiceMode ?? "standard",
             relationshipScore: relationshipThreadState?.relationshipScore ??
               null,
@@ -5151,10 +5206,13 @@ export function createPracticeChatHandler(
                   ? "ok"
                   : "failed",
                 standardClassifierDurationMs: standardAgency.durationMs,
-                // Codex R1 P1-1：這一輪有沒有**送出** thread 寫入（profile 不符
-                // 時刻意不碰別的角色那一列）。RPC 本身 fail-open，真的寫失敗會
-                // 另外印 `practice_relationship_thread_upsert_failed`。
-                statePersisted: !threadProfileMismatch,
+                // Codex R1 P1-1 ＋ R2 P2：這一輪的狀態有沒有**真的**落地——
+                // RPC 回成功才是 true（跳過寫入、或 fail-open 的寫入失敗都是
+                // false）。跳過時另外記原因，兩種跳過分得開。
+                statePersisted: standardStatePersisted,
+                ...(threadStateSkipReason
+                  ? { stateSkipReason: threadStateSkipReason }
+                  : {}),
                 ...(standardAgency.classification
                   ? {
                     coherence: standardAgency.classification.coherence,

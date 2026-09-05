@@ -20,7 +20,12 @@ import {
   makeFake,
   makeRequest,
 } from "./handler_test_fake.ts";
-import { AGENCY_CLASSIFIER_RULES } from "./temperature.ts";
+import {
+  AGENCY_CLASSIFIER_RULES,
+  buildStandardAgencyClassifierMessages,
+} from "./temperature.ts";
+import { resolvePracticeProfile } from "./practice_persona.ts";
+import type { PracticeTurn } from "./validate.ts";
 
 const AGENCY_ENV = "PRACTICE_CONVERSATIONAL_AGENCY_ENABLED";
 const STANDARD_CLASSIFIER_ENV = "PRACTICE_STANDARD_AGENCY_CLASSIFIER";
@@ -257,6 +262,7 @@ Deno.test("Phase 4.5b（Codex R1 P1-1）：thread 上是**別的角色**的列�
   const agency = agencyTelemetry(r);
   assertEquals(agency.standardClassifier, "ok");
   assertEquals(agency.statePersisted, false);
+  assertEquals(agency.stateSkipReason, "profile_mismatch");
   assert(
     r.telemetry.some((t) =>
       t.event === "practice_relationship_thread_profile_mismatch"
@@ -392,11 +398,86 @@ Deno.test("Phase 4.5b：分類器壞掉＝fail-open（照樣 200、照樣寫狀�
   assert(warn, "缺少 fail-open 的 warn");
   assertEquals(
     Object.keys(warn).sort(),
-    ["error", "event", "level", "user"],
+    ["errorClass", "event", "level", "user"],
   );
+  assertEquals(warn.errorClass, "parse");
   for (const secret of ["阿布達比", "東東", "deepseek-key"]) {
     assert(!JSON.stringify(warn).includes(secret));
   }
+});
+
+Deno.test("Phase 4.5b（Codex R2 U）：分類器失敗的 warn 只記固定錯誤類別，不得帶出模型原文", async () => {
+  // 壞 JSON 裡塞一個唯一 marker：`JSON.parse` 的錯誤訊息會把原文片段帶進來，
+  // 舊版直接記 `getErrorMessage(e)` 就會把它印進 log。
+  const marker = "ZZ_LEAK_MARKER_9137";
+  const r = await runStandardTurn({
+    ledger: ledger({ practice_mode: "standard" }),
+    thread: null,
+    env: STANDARD_ENV,
+    deepSeekReplies: ["好啊", `{"coherence": ${marker} }`],
+  }, chatBody({ practiceMode: "standard", turns: FRAGMENT_TURNS }));
+
+  assertEquals(r.status, 200);
+  assertEquals(agencyTelemetry(r).standardClassifier, "failed");
+  const warn = r.telemetry.find((t) =>
+    t.event === "practice_chat_standard_agency_classifier_failed"
+  )!;
+  assert(warn, "缺少 fail-open 的 warn");
+  assert(
+    !JSON.stringify(warn).includes(marker),
+    `warn 洩漏了模型原文：${JSON.stringify(warn)}`,
+  );
+  assertEquals(warn.errorClass, "parse");
+  // 整輪的 telemetry 都不得出現那個 marker（不只那一行）。
+  assert(!JSON.stringify(r.telemetry).includes(marker));
+});
+
+Deno.test("Phase 4.5b（Codex R2 P1）：thread 讀取失敗時 standard 完全不寫（不能把「不知道」當成「確定沒有列」）", async () => {
+  const r = await runStandardTurn({
+    ledger: ledger({ practice_mode: "standard" }),
+    threadError: "connection reset",
+    env: STANDARD_ENV,
+    deepSeekReplies: ["好啊", slimClassifier()],
+  }, chatBody({ practiceMode: "standard", turns: FRAGMENT_TURNS }));
+
+  assertEquals(r.status, 200);
+  assertEquals(
+    r.state.rpcCalls.filter((c) =>
+      c.fn === "upsert_practice_relationship_thread"
+    ).length,
+    0,
+    "讀不到那一列時不得覆寫它",
+  );
+  // 分類器照跑，telemetry 誠實區分原因。
+  assertEquals(r.state.deepSeekCalls.length, 2);
+  const agency = agencyTelemetry(r);
+  assertEquals(agency.standardClassifier, "ok");
+  assertEquals(agency.statePersisted, false);
+  assertEquals(agency.stateSkipReason, "fetch_failed");
+});
+
+Deno.test("Phase 4.5b（Codex R2 P2）：thread upsert RPC 失敗時 statePersisted 必須是 false（不得因為 fail-open 就報成功）", async () => {
+  const r = await runStandardTurn({
+    ledger: ledger({ practice_mode: "standard" }),
+    thread: null,
+    env: STANDARD_ENV,
+    rpc: {
+      upsert_practice_relationship_thread: [{ error: "deadlock detected" }],
+    },
+    deepSeekReplies: ["好啊", slimClassifier()],
+  }, chatBody({ practiceMode: "standard", turns: FRAGMENT_TURNS }));
+
+  assertEquals(r.status, 200, "寫入失敗仍然 fail-open，不擋聊天");
+  assertEquals(threadUpsert(r).p_practice_mode, "standard", "RPC 有真的送出");
+  const agency = agencyTelemetry(r);
+  assertEquals(agency.statePersisted, false);
+  // 這一格不是「跳過」，所以不該有 stateSkipReason。
+  assert(!("stateSkipReason" in agency));
+  assert(
+    r.telemetry.some((t) =>
+      t.event === "practice_relationship_thread_upsert_failed"
+    ),
+  );
 });
 
 Deno.test("Phase 4.5b：repair-first 走既有事件與既有 telemetry key（模型漏答四個欄位）", async () => {
@@ -457,7 +538,7 @@ const BASE_AGENCY_KEYS = [
   "utteranceShape",
 ];
 
-Deno.test("Phase 4.5b（Codex R1 P1-3）：telemetry 契約——旗標關＝零新 key 零新事件；旗標開的三種分類器結果各自的 key set 與事件名釘死", async () => {
+Deno.test("Phase 4.5b（Codex R1 P1-3 ＋ R2 P2）：telemetry 契約——旗標關＝零新 key 零新事件；三種分類器結果的欄位存在性與事件名列表逐項釘死", async () => {
   const body = chatBody({ practiceMode: "standard", turns: FRAGMENT_TURNS });
   const base: FakeOptions = {
     ledger: ledger({ practice_mode: "standard" }),
@@ -472,100 +553,115 @@ Deno.test("Phase 4.5b（Codex R1 P1-3）：telemetry 契約——旗標關＝零
   }, body);
   assertEquals(agencyKeys(off), BASE_AGENCY_KEYS.slice().sort());
   const offEvents = eventNames(off);
-  for (
-    const forbidden of [
-      "practice_chat_standard_agency_classifier_failed",
-      "practice_chat_learning_classifier_repaired",
-    ]
-  ) {
-    assert(!offEvents.includes(forbidden), forbidden);
+  // 事件名列表直接與明確預期陣列比對（Codex R2 P3：不要跟自己比）。
+  assertEquals(offEvents, ["practice_chat_succeeded"]);
+
+  // 三種分類器結果的**欄位存在性**逐項比對（Codex R2 P2：`coherence`／
+  // `aiChallengedThisTurn` 由 generic block 寫，失敗時存在且為 null——與
+  // beginner 分類器失敗時逐字相同；只有另外兩欄缺席）。
+  const cases: Array<{
+    label: string;
+    classifierReply: string;
+    expectKeys: string[];
+    expectEvents: string[];
+    expect: Record<string, unknown>;
+    absent: string[];
+  }> = [
+    {
+      label: "合法 JSON",
+      classifierReply: slimClassifier(),
+      expectKeys: [
+        ...BASE_AGENCY_KEYS,
+        "accommodatingSelfFact",
+        "sharedPastClaim",
+        "standardClassifier",
+        "standardClassifierDurationMs",
+        "statePersisted",
+      ],
+      expectEvents: offEvents,
+      expect: {
+        standardClassifier: "ok",
+        statePersisted: true,
+        coherence: "disconnected",
+        aiChallengedThisTurn: false,
+        sharedPastClaim: false,
+        accommodatingSelfFact: false,
+      },
+      absent: [
+        "sharedPastClaimRepaired",
+        "accommodatingSelfFactRepaired",
+        "stateSkipReason",
+      ],
+    },
+    {
+      label: "{}（四欄全 repair）",
+      classifierReply: "{}",
+      expectKeys: [
+        ...BASE_AGENCY_KEYS,
+        "accommodatingSelfFact",
+        "accommodatingSelfFactRepaired",
+        "sharedPastClaim",
+        "sharedPastClaimRepaired",
+        "standardClassifier",
+        "standardClassifierDurationMs",
+        "statePersisted",
+      ],
+      // 允許多出的事件只有 repaired 那一個（與 beginner 同名）。
+      expectEvents: [
+        "practice_chat_learning_classifier_repaired",
+        ...offEvents,
+      ],
+      expect: {
+        standardClassifier: "ok",
+        // 修過的 coherence 退到最保守的一格；`*Repaired` 只有另外兩欄有
+        // （coherence／aiChallengedThisTurn 修過只進 repaired 事件）。
+        coherence: "ambiguous",
+        aiChallengedThisTurn: false,
+        sharedPastClaimRepaired: true,
+        accommodatingSelfFactRepaired: true,
+      },
+      absent: ["coherenceRepaired", "aiChallengedThisTurnRepaired"],
+    },
+    {
+      label: "非法 JSON（分類器整個失敗）",
+      classifierReply: "抱歉我不太確定",
+      expectKeys: [
+        ...BASE_AGENCY_KEYS,
+        "standardClassifier",
+        "standardClassifierDurationMs",
+        "statePersisted",
+      ],
+      expectEvents: [
+        "practice_chat_standard_agency_classifier_failed",
+        ...offEvents,
+      ],
+      expect: {
+        standardClassifier: "failed",
+        // 逐字鏡射 beginner 分類器失敗：這兩格**存在且為 null**。
+        coherence: null,
+        aiChallengedThisTurn: null,
+      },
+      absent: ["sharedPastClaim", "accommodatingSelfFact"],
+    },
+  ];
+
+  for (const c of cases) {
+    const r = await runStandardTurn({
+      ...base,
+      env: STANDARD_ENV,
+      deepSeekReplies: ["好啊", c.classifierReply],
+    }, body);
+    const agency = agencyTelemetry(r);
+    assertEquals(agencyKeys(r), c.expectKeys.slice().sort(), c.label);
+    assertEquals(eventNames(r), c.expectEvents, `${c.label}：事件名列表`);
+    for (const [key, value] of Object.entries(c.expect)) {
+      assert(Object.hasOwn(agency, key), `${c.label}：缺少 ${key}`);
+      assertEquals(agency[key], value, `${c.label}／${key}`);
+    }
+    for (const key of c.absent) {
+      assert(!Object.hasOwn(agency, key), `${c.label}：不該有 ${key}`);
+    }
   }
-
-  // (b1) 旗標開＋分類器成功、零 repair：多兩個管理欄位 ＋ 四個判斷欄位，
-  //      `*Repaired` 都不存在；事件名與旗標關那一輪完全相同。
-  const ok = await runStandardTurn({
-    ...base,
-    env: STANDARD_ENV,
-    deepSeekReplies: ["好啊", slimClassifier()],
-  }, body);
-  assertEquals(
-    agencyKeys(ok),
-    [
-      ...BASE_AGENCY_KEYS,
-      "accommodatingSelfFact",
-      "sharedPastClaim",
-      "standardClassifier",
-      "standardClassifierDurationMs",
-      "statePersisted",
-    ].sort(),
-  );
-  assertEquals(eventNames(ok), offEvents);
-
-  // (b2) 分類器回 `{}`：四個欄位全部 repair。**只有** sharedPastClaim／
-  //      accommodatingSelfFact 有 `*Repaired` key（與 beginner 相同——
-  //      coherence／aiChallengedThisTurn 修過只進 repaired 事件）。
-  const repaired = await runStandardTurn({
-    ...base,
-    env: STANDARD_ENV,
-    deepSeekReplies: ["好啊", "{}"],
-  }, body);
-  assertEquals(
-    agencyKeys(repaired),
-    [
-      ...BASE_AGENCY_KEYS,
-      "accommodatingSelfFact",
-      "accommodatingSelfFactRepaired",
-      "sharedPastClaim",
-      "sharedPastClaimRepaired",
-      "standardClassifier",
-      "standardClassifierDurationMs",
-      "statePersisted",
-    ].sort(),
-  );
-  assertEquals(
-    eventNames(repaired),
-    // (c) 允許多出的事件只有這一個（與 beginner 同名）。
-    [...offEvents.slice(0, -1), "practice_chat_learning_classifier_repaired"]
-        .concat(offEvents.slice(-1)).length === eventNames(repaired).length
-      ? eventNames(repaired)
-      : [],
-  );
-  assertEquals(
-    eventNames(repaired).filter((e) => !offEvents.includes(e)),
-    ["practice_chat_learning_classifier_repaired"],
-  );
-
-  // (b3) 分類器整個失敗：四個判斷欄位**缺席**（與 beginner 分類器失敗時相同），
-  //      只留兩個管理欄位；允許多出的事件只有 fail-open 那一個。
-  const failed = await runStandardTurn({
-    ...base,
-    env: STANDARD_ENV,
-    deepSeekReplies: ["好啊", "抱歉我不太確定"],
-  }, body);
-  assertEquals(
-    agencyKeys(failed),
-    [
-      ...BASE_AGENCY_KEYS,
-      "standardClassifier",
-      "standardClassifierDurationMs",
-      "statePersisted",
-    ].sort(),
-  );
-  assertEquals(
-    eventNames(failed).filter((e) => !offEvents.includes(e)),
-    ["practice_chat_standard_agency_classifier_failed"],
-  );
-
-  // 三種情形都不得出現任何其他新事件（把 union 也釘住）。
-  const allNew = new Set(
-    [...eventNames(ok), ...eventNames(repaired), ...eventNames(failed)].filter(
-      (e) => !offEvents.includes(e),
-    ),
-  );
-  assertEquals([...allNew].sort(), [
-    "practice_chat_learning_classifier_repaired",
-    "practice_chat_standard_agency_classifier_failed",
-  ]);
 });
 
 Deno.test("Phase 4.5b（Codex R1 U1）：request 完全不帶 practiceMode 時（validateRequest 正規化成 standard）分類器一樣開、狀態一樣寫", async () => {
@@ -668,4 +764,61 @@ Deno.test("Phase 4.5b（Codex R1 P2-3 反例）：同一段序列在 easy／norm
       );
     }
   }
+});
+
+Deno.test("Phase 4.5b（Codex R2 P3）：多出來的那一次分類器呼叫，messages 逐位元組等於 buildStandardAgencyClassifierMessages 對同一輸入的輸出；thread upsert 的 params 等於預期物件", async () => {
+  const reply = "好啊";
+  const r = await runStandardTurn({
+    ledger: ledger({ practice_mode: "standard" }),
+    thread: null,
+    env: STANDARD_ENV,
+    deepSeekReplies: [reply, slimClassifier()],
+  }, chatBody({ practiceMode: "standard", turns: FRAGMENT_TURNS }));
+
+  assertEquals(r.status, 200);
+  assertEquals(r.state.deepSeekCalls.length, 2);
+  // messages：不是「包含某個字串」，而是與純函式對同一輸入的輸出逐位元組相同。
+  assertEquals(
+    r.state.deepSeekCalls[1].messages,
+    buildStandardAgencyClassifierMessages({
+      turns: FRAGMENT_TURNS as PracticeTurn[],
+      profile: resolvePracticeProfile({}),
+      assistantReply: reply,
+      memorySummary: null,
+      herRecentMoments: [],
+    }),
+  );
+
+  // rpc params：整份等於預期物件（沒有既有 row，所以四個 `= EXCLUDED` 欄位都是
+  // null；`recent_facts` 只有 source／aiTurnCount／conversationAgency）。
+  const params = threadUpsert(r);
+  const agencyState = (params.p_recent_facts as Record<string, unknown>)
+    .conversationAgency;
+  assertEquals(params, {
+    p_user_id: "user-1",
+    p_visible_thread_id: "session-1",
+    p_profile_id: "practice_girl_001",
+    p_practice_mode: "standard",
+    p_relationship_score: null,
+    p_temperature_score: null,
+    p_familiarity_score: null,
+    p_partner_mood: null,
+    p_partner_inner_thought: null,
+    p_invite_stage: null,
+    p_memory_summary: null,
+    p_recent_facts: {
+      source: "practice_chat",
+      aiTurnCount: 1,
+      conversationAgency: agencyState,
+    },
+  });
+  // 那一格自己也要是預期的狀態機輸出（不是隨便一個物件）。
+  assertEquals(agencyState, {
+    version: 1,
+    lastCoherence: "disconnected",
+    unresolvedCount: 1,
+    priorChallengeIssued: false,
+    lastAgencyAct: null,
+    aiClarifiedLastTurn: false,
+  });
 });
