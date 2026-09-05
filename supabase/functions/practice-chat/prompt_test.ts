@@ -740,6 +740,37 @@ Deno.test("game debrief includes拆盤 guidance and mode-specific object schema"
   assertEquals(system.includes('"phase"'), false);
 });
 
+Deno.test("Phase 4.6 刀 1：game debrief 的 fresh snapshot 帶 inviteStage——順風局推得出 partner_window_close／direct_invite_low_pressure", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+  const turns = [
+    { role: "user" as const, text: "你講話很有畫面欸" },
+    { role: "ai" as const, text: "那你倒是說說看看到什麼" },
+    { role: "user" as const, text: "看到你在測我穩不穩，我先不照劇本走" },
+  ];
+  const debriefFor = (temperatureScore: number, familiarityScore: number) =>
+    buildDebriefMessages(turns, profile, {
+      practiceMode: "game",
+      temperatureScore,
+      familiarityScore,
+      partnerState: { mood: "comfortable", innerThought: "他接得穩。" },
+      // 沒有 ledger：debrief 只能靠 fresh snapshot，漏帶 inviteStage 就整條
+      // 邀約路線走不到（2026-08-11 handler 端同型迴歸）。
+      gameState: null,
+    })[1].content;
+  // 成熟度 85×0.6＋75×0.4＝81 ≥ 80 → partner_window → 接住她給的窗口。
+  assert(
+    debriefFor(85, 75).includes("speedInviteDirection: partner_window_close"),
+    debriefFor(85, 75),
+  );
+  // 成熟度 70×0.6＋60×0.4＝66 ≥ 65 → direct_invite_ready → 低壓明確邀約。
+  assert(
+    debriefFor(70, 60).includes(
+      "speedInviteDirection: direct_invite_low_pressure",
+    ),
+    debriefFor(70, 60),
+  );
+});
+
 Deno.test("beginner debrief keeps the null gameBreakdown schema", () => {
   const messages = buildDebriefMessages(
     [{ role: "user", text: "嗨" }],

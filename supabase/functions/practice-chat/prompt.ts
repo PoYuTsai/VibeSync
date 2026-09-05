@@ -68,6 +68,7 @@ import {
   compactGameFsmEvidencePrompt,
   compactGameStrategyPrompt,
   evaluateGameFsm,
+  evaluateGameFsmForLedger,
   gameFsmEvidencePrompt,
   type GameFsmSnapshot,
   gameStrategyPrompt,
@@ -1172,7 +1173,11 @@ function gameDebriefPrompt(opts: {
   gameState?: PersistedGameState | null;
 }): string {
   if (opts.practiceMode !== "game") return "";
-  const freshSnapshot = evaluateGameFsm({
+  // Phase 4.6 刀 1：必須走 ForLedger 版（inviteStage 從分數推導）。舊版漏帶
+  // inviteStage，沒有 ledger 時 fresh 的 speedInviteDirection 永遠推不出
+  // partner_window_close／direct_invite_low_pressure——與 handler 落帳端
+  // 2026-08-11 的同型迴歸。
+  const freshSnapshot = evaluateGameFsmForLedger({
     turns: opts.turns,
     temperatureScore: opts.temperatureScore,
     familiarityScore: opts.familiarityScore,
