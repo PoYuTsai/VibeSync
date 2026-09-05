@@ -496,11 +496,13 @@ void main() {
     PracticeTemperature? temperature,
     PracticePartnerState? partnerState,
     int? hintUsedCount,
+    String? partnerStatus,
   }) =>
       PracticeChatReply(
         reply: text,
         aiTurnCount: aiTurnCount,
         sessionComplete: complete,
+        partnerStatus: partnerStatus,
         costDeducted: cost,
         monthlyRemaining: monthly,
         dailyRemaining: daily,
@@ -1246,6 +1248,38 @@ void main() {
 
       expect(c.currentState.difficulty, 'normal');
       expect(c.currentState.temperatureScore, 38);
+    });
+  });
+
+  // ── Phase 4.5c 刀 3：她先去忙了的提示 ───────────────────────────────────
+  group('partnerStatus', () {
+    test('checked_out／read_only → 顯示提示，但不自動結束也不鎖輸入', () async {
+      final c = await makeRevealed();
+      for (final status in ['checked_out', 'read_only']) {
+        api.sendHandler =
+            (_, {profile}) async => reply(cost: 0, partnerStatus: status);
+        await c.sendMessage('東東');
+        final s = c.currentState;
+        expect(s.partnerStatus, status);
+        expect(s.partnerCheckedOut, isTrue, reason: status);
+        // 產品決定：只提示。結束與輸入鎖定都不動。
+        expect(s.sessionComplete, isFalse, reason: status);
+        expect(s.ended, isFalse, reason: status);
+        expect(s.canSend, isTrue, reason: status);
+      }
+    });
+
+    test('她被接回來的那一輪 server 不給欄位 → 提示消失（不黏住）', () async {
+      final c = await makeRevealed();
+      api.sendHandler =
+          (_, {profile}) async => reply(cost: 0, partnerStatus: 'checked_out');
+      await c.sendMessage('東東');
+      expect(c.currentState.partnerCheckedOut, isTrue);
+
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+      await c.sendMessage('我昨天去看了那部電影，還蠻好看的');
+      expect(c.currentState.partnerStatus, isNull);
+      expect(c.currentState.partnerCheckedOut, isFalse);
     });
   });
 

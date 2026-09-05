@@ -4585,4 +4585,79 @@ void main() {
 
     expect(controller.startSessionCalls, ['practice_girl_004']);
   });
+
+  // ── Phase 4.5c 刀 3：她先去忙了的提示 ────────────────────────────────────
+  PracticeChatState checkedOutSeed({String? partnerStatus}) =>
+      PracticeChatState(
+        sessionId: 'checked-out-sess',
+        createdAt: DateTime(2026, 9, 5, 21),
+        drawStatus: PracticeDrawStatus.revealed,
+        girl: practiceGirlProfiles.first,
+        personaId: 'slow_worker',
+        personaLabel: '慢熱上班族',
+        difficulty: 'normal',
+        difficultyLabel: '一般',
+        visiblePracticeThreadId: 'checked-out-sess',
+        aiReplyCount: 3,
+        partnerStatus: partnerStatus,
+        messages: const [
+          PracticeMessage(role: 'user', text: '東東'),
+          PracticeMessage(role: 'ai', text: '我先去忙一下'),
+        ],
+      );
+
+  Future<void> pumpCheckedOut(
+    WidgetTester tester, {
+    String? partnerStatus,
+  }) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith(
+            (ref) => _SeededPracticeChatController(
+              seed: checkedOutSeed(partnerStatus: partnerStatus),
+              repository: repo,
+            ),
+          ),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+    await tester.pump();
+  }
+
+  testWidgets('Phase 4.5c：她先去忙了時輸入列上方多一行提示，輸入框仍可用',
+      (tester) async {
+    await pumpCheckedOut(tester, partnerStatus: 'checked_out');
+
+    expect(
+      find.byKey(const ValueKey('practice-partner-checked-out')),
+      findsOneWidget,
+    );
+    expect(find.text('她先去忙了，這場可以結束練習看拆解'), findsOneWidget);
+    // 只提示：輸入框沒有被換成「看教練拆解」那一格，也沒有被鎖。
+    expect(find.text('這場練習已達 20 則回覆'), findsNothing);
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.enabled, isNot(false));
+  });
+
+  testWidgets('Phase 4.5c（反例）：一般輪次不顯示那一行', (tester) async {
+    await pumpCheckedOut(tester);
+
+    expect(
+      find.byKey(const ValueKey('practice-partner-checked-out')),
+      findsNothing,
+    );
+  });
 }

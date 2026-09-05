@@ -5269,10 +5269,27 @@ export function createPracticeChatHandler(
       }),
     });
 
+    // Phase 4.5c 刀 3：Game 的「她先去忙了」要能進檢討。4.5a 查證過
+    // `sessionComplete` 就是 `isSessionComplete(aiTurnCount)`（已達 20 則），
+    // 借用它會讓 UI 說一句不成立的話，所以多一個**選填**欄位。
+    // 只在 agency `on` ∧ Game ∧ 這一輪 forced `check_out`／`read_only` 時存在；
+    // 其餘情形連 key 都沒有（那兩格只在 agency `on` 時才可能是 `forcedAct`，
+    // 所以旗標 off／shadow 的 response 逐位元組不變）。
+    // App 只拿它多顯示一行提示——**不**自動結束、**不**鎖輸入（要不要強制
+    // 結束 Eric 還沒拍板）。
+    const partnerStatus = agencyMode === "on" &&
+        request.practiceMode === "game" && agencyDecision?.applied === true
+      ? agencyDecision.decision.forcedAct === "check_out"
+        ? "checked_out"
+        : agencyDecision.decision.forcedAct === "read_only"
+        ? "read_only"
+        : null
+      : null;
     const body: Record<string, unknown> = {
       reply,
       aiTurnCount: newAiCount,
       sessionComplete: isSessionComplete(newAiCount),
+      ...(partnerStatus === null ? {} : { partnerStatus }),
       costDeducted: deducted,
       // Phase 4.4：路由旗標關著時永遠是 deepseek／DEEPSEEK_MODEL（逐字舊行為）；
       // 真的走 Haiku 那一輪就照實回報，payload 不說謊（client 目前不讀這兩格）。

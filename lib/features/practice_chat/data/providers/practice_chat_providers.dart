@@ -175,6 +175,12 @@ class PracticeChatState {
   final bool isDebriefing;
   final int aiReplyCount;
   final bool sessionComplete; // 已達 20 則
+
+  /// 練習室對話主體意識 Phase 4.5c：Game 模式她這一輪「先去忙了」
+  /// （`checked_out`）或之後只回已讀（`read_only`）；其他情形為 null。
+  /// **只用來多顯示一行提示**——不自動結束、不鎖輸入（`canSend` 不看它）。
+  /// 她被接回來的那一輪 server 不再給這個欄位，提示就跟著消失。
+  final String? partnerStatus;
   final bool ended; // 使用者已結束練習，輸入鎖定
   final PracticeDebrief? debrief;
   final bool hasRetiredDebrief; // 舊版已完成卡：鎖定但不顯示、不重請
@@ -261,6 +267,7 @@ class PracticeChatState {
     this.isDebriefing = false,
     this.aiReplyCount = 0,
     this.sessionComplete = false,
+    this.partnerStatus,
     this.ended = false,
     this.debrief,
     this.hasRetiredDebrief = false,
@@ -308,6 +315,10 @@ class PracticeChatState {
       !ended &&
       !sessionComplete;
 
+  /// Phase 4.5c 刀 3：她已經先去忙了（含之後只回已讀）。純顯示用。
+  bool get partnerCheckedOut =>
+      partnerStatus == 'checked_out' || partnerStatus == 'read_only';
+
   bool get isBeginnerMode => learningMode == PracticeLearningMode.beginner;
   bool get isAssistedLearningMode => learningMode.usesAssistedLearning;
   bool get canUseGameMode =>
@@ -353,6 +364,7 @@ class PracticeChatState {
     bool? isDebriefing,
     int? aiReplyCount,
     bool? sessionComplete,
+    Object? partnerStatus = _sentinel,
     bool? ended,
     bool? hasRetiredDebrief,
     bool? debriefFailed,
@@ -413,6 +425,9 @@ class PracticeChatState {
       isDebriefing: isDebriefing ?? this.isDebriefing,
       aiReplyCount: aiReplyCount ?? this.aiReplyCount,
       sessionComplete: sessionComplete ?? this.sessionComplete,
+      partnerStatus: identical(partnerStatus, _sentinel)
+          ? this.partnerStatus
+          : partnerStatus as String?,
       ended: ended ?? this.ended,
       hasRetiredDebrief: hasRetiredDebrief ?? this.hasRetiredDebrief,
       debriefFailed: debriefFailed ?? this.debriefFailed,
@@ -1945,6 +1960,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         isPersistingTurn: true,
         aiReplyCount: reply.aiTurnCount,
         sessionComplete: reply.sessionComplete,
+        // Phase 4.5c 刀 3：每一輪照 server 覆寫（null＝她被接回來了，提示消失）。
+        partnerStatus: reply.partnerStatus,
         temperatureScore:
             assisted ? temperature?.score ?? temperatureScore : null,
         // band 真相源在 server：本回合沒回 temperature 就保留前值（與 score 同步）。

@@ -9890,3 +9890,134 @@ Deno.test("守門在最後一次 attempt 擋下時，被拒絕的文字不得送
     }
   }
 });
+
+// ── Phase 4.5c 刀 3：Game 的「她先去忙了」要能傳到 App ─────────────────────
+/** Game 的 SR 角色 thread row；`recent_facts.conversationAgency` 由呼叫端種。 */
+const gameThread = (agencyState: Record<string, unknown>) => ({
+  profile_id: "practice_girl_004",
+  practice_mode: "game",
+  temperature_score: 40,
+  familiarity_score: 10,
+  recent_facts: { source: "practice_chat", conversationAgency: agencyState },
+});
+
+const LADDER_STATE = {
+  version: 1,
+  lastCoherence: "disconnected",
+  unresolvedCount: 0,
+  priorChallengeIssued: false,
+  lastAgencyAct: null,
+};
+
+/**
+ * 直接把階梯狀態種進 thread row（4.5a 已明寫這是合法的測試面：難度門檻是
+ * 防禦性的，就算 row 被種成 `lowValueStreak: 3`／`checkedOut: true`，
+ * easy／normal 也不得強制結束）。
+ */
+async function gamePartnerStatusRun(
+  agencyState: Record<string, unknown>,
+  env: Record<string, string> = {
+    PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+  },
+  overrides: Record<string, unknown> = {},
+) {
+  const { json, succeeded } = await runCapturingLogs(
+    {
+      ledger: null,
+      drawEvents: [],
+      thread: gameThread(agencyState),
+      env,
+      // `read_only` 那一輪 handler 完全跳過生成模型，所以多留一發沒關係
+      // （fake 依呼叫順序取）。
+      deepSeekReplies: ["先這樣囉", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "game",
+      profileId: "practice_girl_004",
+      visiblePracticeThreadId: "thread-visible-game",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      turns: AGENCY_FRAGMENT_TURNS,
+      ...overrides,
+    }),
+  );
+  return {
+    json,
+    forcedAct: (succeeded?.conversationAgency as Record<string, unknown>)
+      ?.forcedAct,
+  };
+}
+
+Deno.test("Phase 4.5c 刀 3：Game 的 check_out／read_only 會在 chat 回應多一個 partnerStatus", async () => {
+  // 階梯滿三輪、還沒 checked out → 這一輪 forced `check_out`（她說先忙了）。
+  const checkOut = await gamePartnerStatusRun({
+    ...LADDER_STATE,
+    lowValueStreak: 3,
+  });
+  assertEquals(checkOut.forcedAct, "check_out");
+  assertEquals(checkOut.json.partnerStatus, "checked_out");
+
+  // 已經 checked out 之後他又丟一個沒內容的東西 → forced `read_only`。
+  const readOnly = await gamePartnerStatusRun({
+    ...LADDER_STATE,
+    checkedOut: true,
+  });
+  assertEquals(readOnly.forcedAct, "read_only");
+  assertEquals(readOnly.json.partnerStatus, "read_only");
+  // 不自動結束、不鎖輸入：`sessionComplete` 仍然只看 20 則那條既有規則。
+  assertEquals(readOnly.json.sessionComplete, false);
+});
+
+Deno.test("Phase 4.5c 刀 3（反例）：沒走到那兩格、非 Game、旗標非 on 時連 key 都沒有", async () => {
+  // (1) Game ＋ agency on，但階梯沒滿 → 沒有 key。
+  const plain = await gamePartnerStatusRun(LADDER_STATE);
+  assert(
+    plain.forcedAct !== "check_out" && plain.forcedAct !== "read_only",
+    `不該走到收尾格：${plain.forcedAct}`,
+  );
+  assertEquals("partnerStatus" in plain.json, false);
+
+  // (2) 挑戰難度的 beginner 也走得到 `check_out`（`allowsCheckOut` 對
+  // challenge 為真），但本刀刻意只給 Game——beginner 沒有「這場收了」的產品
+  // 語意，她冷但會回。
+  const { json, succeeded } = await runCapturingLogs(
+    {
+      ledger: null,
+      thread: {
+        profile_id: "practice_girl_001",
+        practice_mode: "beginner",
+        temperature_score: 40,
+        familiarity_score: 10,
+        recent_facts: {
+          source: "practice_chat",
+          conversationAgency: { ...LADDER_STATE, checkedOut: true },
+        },
+      },
+      env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+      deepSeekReplies: ["先這樣囉", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      visiblePracticeThreadId: "thread-visible-1",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      turns: AGENCY_FRAGMENT_TURNS,
+    }),
+  );
+  assertEquals(
+    (succeeded?.conversationAgency as Record<string, unknown>)?.forcedAct,
+    "read_only",
+    "beginner／challenge 這一輪本來就該走到 read_only（反例才有意義）",
+  );
+  assertEquals("partnerStatus" in json, false);
+
+  // (3) 同一份種下去的狀態，旗標 off／shadow／亂填一律沒有 key。
+  for (const flag of ["off", "shadow", "亂填"]) {
+    const r = await gamePartnerStatusRun(
+      { ...LADDER_STATE, checkedOut: true },
+      { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: flag },
+    );
+    assertEquals("partnerStatus" in r.json, false, flag);
+  }
+});
