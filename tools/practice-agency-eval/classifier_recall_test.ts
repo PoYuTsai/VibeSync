@@ -9,6 +9,7 @@ import {
   buildRecallJobs,
   candidateHitsFor,
   CHALLENGE_CANDIDATES,
+  complementHitsFor,
   estimateRecallRunUsd,
   type RecallRow,
   summarizeRecall,
@@ -155,4 +156,37 @@ Deno.test("summarizeRecall：repair 與失敗都扣出分母，分母 0 時是 n
   // 逐條正則的命中數含被扣掉的那些（那是候選集大小，不是判定分母）。
   assertEquals(s.byCandidate.short_interjection, { n: 5, challenged: 2 });
   assertEquals(summarizeRecall([]).recallProxy, null);
+});
+
+Deno.test("Phase 4.5f complementHitsFor：挑非候選的問句，候選與非問句都排除", () => {
+  // 非候選的問句＝誤判率代理集。
+  for (const reply of ["清邁喔 我還沒去過欸 你去過嗎", "那你下班後有空嗎？"]) {
+    assertEquals(complementHitsFor(reply), ["complement"], reply);
+  }
+  // 已經在候選集裡的（會被 --complement 之外的那一路算），不重複收。
+  for (const reply of ["蛤？", "你是在亂說還是怎樣", "？"]) {
+    assertEquals(complementHitsFor(reply), [], reply);
+  }
+  // 沒有問號也沒有問句語尾的陳述句不收。
+  for (const reply of ["我最近在調作息", "哈哈哈笑死", "", "   "]) {
+    assertEquals(complementHitsFor(reply), [], reply);
+  }
+});
+
+Deno.test("Phase 4.5f buildRecallJobs 吃得下 complement 取樣器（同一條展開路徑）", () => {
+  const sessions = [{
+    profileId: "p",
+    difficulty: "normal",
+    scenarioId: "s",
+    repeat: 1,
+    turns: [
+      { role: "user" as const, userText: "清邁", reply: "蛤？" },
+      { role: "user" as const, userText: "泰國那個", reply: "你去過嗎？" },
+    ],
+  }];
+  assertEquals(
+    buildRecallJobs("a", sessions, complementHitsFor).map((j) => j.reply),
+    ["你去過嗎？"],
+  );
+  assertEquals(buildRecallJobs("a", sessions).map((j) => j.reply), ["蛤？"]);
 });

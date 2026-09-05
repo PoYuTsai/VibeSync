@@ -18,7 +18,7 @@
 // 估價在最開頭印出來（`pricing.ts` 的觀測單價），跑之前就看得到會花多少。
 //
 // 用法：
-//   # 只列候選、不打模型、不需要 API key
+//   # 只列候選、不打模型、不需要 API key（加 --complement 改列非候選問句＝誤判代理集）
 //   deno run --allow-read tools/practice-agency-eval/classifier_recall.ts \
 //     tools/practice-agency-eval/out/2026-09-05-p45b-standard{A,B}-*.json --dry-run
 //
@@ -140,6 +140,24 @@ export function candidateHitsFor(reply: string): string[] {
   );
 }
 
+/**
+ * Phase 4.5f：**誤判率代理**的取樣器（`--complement`）。挑「不在候選正則裡、
+ * 但含問號或問句語尾」的她的回覆＝一般內容追問的代理集。分類器對這一集判
+ * `aiChallengedThisTurn=true` 的比例應該接近 0；放寬判準時它要是沒上升，才
+ * 表示召回提升不是靠亂判換來的。
+ *
+ * 跟候選集一樣是**代理不是真值**：這一集裡混著真的質疑（正則抓不到的形態），
+ * 所以絕對值沒有意義，只有「改判準前後的差」可以看。
+ */
+export function complementHitsFor(reply: string): string[] {
+  const text = reply.trim();
+  if (!text) return [];
+  if (candidateHitsFor(text).length > 0) return [];
+  const isQuestion = /[？?]/u.test(text) ||
+    /(嗎|呢)[\s。!！~～…]*$/u.test(text);
+  return isQuestion ? ["complement"] : [];
+}
+
 // ── artifact → 候選 job ───────────────────────────────────────────────────
 interface ArtifactTurn {
   readonly role: "user" | "ai";
@@ -179,6 +197,7 @@ export interface RecallJob {
 export function buildRecallJobs(
   artifactName: string,
   sessions: readonly ArtifactSession[],
+  hitsFor: (reply: string) => string[] = candidateHitsFor,
 ): RecallJob[] {
   const jobs: RecallJob[] = [];
   for (const s of sessions) {
@@ -189,7 +208,7 @@ export function buildRecallJobs(
         turns.push({ role: "ai", text: t.reply });
         continue;
       }
-      const hits = t.scripted ? [] : candidateHitsFor(t.reply);
+      const hits = t.scripted ? [] : hitsFor(t.reply);
       if (hits.length > 0) {
         jobs.push({
           artifact: artifactName,
@@ -281,11 +300,14 @@ async function main(): Promise<void> {
   const paths = Deno.args.filter((a) => !a.startsWith("--"));
   if (paths.length === 0) {
     console.error(
-      "用法：classifier_recall.ts <artifact.json...> [--dry-run] [--mode=standard|assisted] [--concurrency=8] [--out=…]",
+      "用法：classifier_recall.ts <artifact.json...> [--dry-run] [--complement] [--mode=standard|assisted] [--concurrency=8] [--out=…]",
     );
     Deno.exit(2);
   }
   const dryRun = Deno.args.includes("--dry-run");
+  // Phase 4.5f：改挑非候選的問句＝誤判率代理集（見 complementHitsFor）。
+  const complement = Deno.args.includes("--complement");
+  const hitsFor = complement ? complementHitsFor : candidateHitsFor;
   const mode = flag("mode", "standard");
   if (mode !== "standard" && mode !== "assisted") {
     throw new Error(`classifier_recall_invalid_mode: ${mode}`);
@@ -303,20 +325,24 @@ async function main(): Promise<void> {
         t.role === "user" && !t.scripted
       ).length;
     }
-    jobs.push(...buildRecallJobs(path, sessions));
+    jobs.push(...buildRecallJobs(path, sessions, hitsFor));
   }
 
   // 估價一定印在最開頭：跑之前就看得到會花多少。
   const usd = estimateRecallRunUsd(jobs.length);
   console.log(
-    `# 候選 ${jobs.length} 則／生成輪 ${totalGenerated} 則（${
+    `# ${
+      complement ? "誤判代理集" : "候選"
+    } ${jobs.length} 則／生成輪 ${totalGenerated} 則（${
       (jobs.length / Math.max(totalGenerated, 1) * 100).toFixed(1)
     }%）｜mode=${mode}｜重放估價 $${
       usd.toFixed(4)
     }（$${DEEPSEEK_CLASSIFIER_USD_PER_CALL}／次觀測單價，見 pricing.ts）`,
   );
   console.log(
-    "# 下面這組正則是**候選集，不是真值**：命中不代表她真的在質疑，沒命中也不代表沒質疑。要人工複核。",
+    complement
+      ? "# --complement：這一集是**非候選的問句**（誤判率代理），裡面混著正則抓不到的真質疑，只有改判準前後的**差**可以看。"
+      : "# 下面這組正則是**候選集，不是真值**：命中不代表她真的在質疑，沒命中也不代表沒質疑。要人工複核。",
   );
   console.log("\n候選正則 | 命中則數 | 說明");
   const hitCount = new Map<string, number>();
@@ -406,7 +432,9 @@ async function main(): Promise<void> {
   const summary = summarizeRecall(rows);
   console.log(
     `\n候選 ${summary.candidates}｜有效判定 ${summary.explicit}（repair ${summary.repaired}、失敗 ${summary.errors} 已扣除）｜` +
-      `aiChallengedThisTurn=true ${summary.challenged}｜**召回率代理** ${
+      `aiChallengedThisTurn=true ${summary.challenged}｜**${
+        complement ? "誤判率代理" : "召回率代理"
+      }** ${
         summary.recallProxy === null
           ? "n/a"
           : `${(summary.recallProxy * 100).toFixed(1)}%`
@@ -436,7 +464,7 @@ async function main(): Promise<void> {
   if (outPath) {
     await Deno.writeTextFile(
       outPath,
-      JSON.stringify({ mode, summary, rows }, null, 2) + "\n",
+      JSON.stringify({ mode, complement, summary, rows }, null, 2) + "\n",
     );
     console.error(`[classifier-recall] 寫入 ${outPath}`);
   }
