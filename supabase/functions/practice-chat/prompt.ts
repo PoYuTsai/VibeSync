@@ -510,6 +510,20 @@ export const GAME_DEBRIEF_SYSTEM_PROMPT = DEBRIEF_SYSTEM_PROMPT.replace(
   `\n失敗局（被打槍/冷場）gameBreakdown 五欄一樣必填，絕不整包省略。` +
   `\n所有欄位一律白話：絕不出現英文內部標籤（frozen/cold/neutral/warm/hot、band、score），也絕不用教練行話或抽象機制詞，改用具體生活化說法（如「聊天的節奏/氣氛/默契」）。`;
 
+/**
+ * Phase 5 WP3 續聊敘事記憶：只有 `PRACTICE_MEMORY_SUMMARY_WRITE=true` 時才接在
+ * debrief system prompt 尾巴。措辭沿用 chat 側既有的 Reality Anchoring
+ * （`MEMORY_SUMMARY_TAIL_ON` 那份未驗證清單），因為這段字寫出來的東西下一場
+ * 會原封不動被當成 `memorySummary` 餵回去——來源端就捏造的話，下一場的守門
+ * 只會把它當「已驗證的更早對話」。
+ */
+export const DEBRIEF_MEMORY_SUMMARY_DIRECTIVE =
+  `另外輸出 memorySummary（選填，≤1000 字，繁體中文）：以第三人稱寫「她記得的事」，供下一場續聊當更早對話的摘要。
+- 寫這場聊過的話題、他透露的事、她對他的印象、還沒完成的約定。
+- 現實錨定（Reality Anchoring）：不得捏造沒發生的事。這場逐字稿沒有的共同朋友、介紹人、同事同學、醫師診所、住址、工作地點、目前行蹤或上次見面，一個字都不能寫進去；不確定就不寫。
+- 它不是教學卡的一部分：不評分、不建議、不對使用者說話、不寫教練用語。
+- 沒有值得記的事就整個欄位省略，不要硬編。`;
+
 const DEBRIEF_PROMPT_FIRST_TURN_COUNT = 2;
 const DEBRIEF_PROMPT_RECENT_TURN_COUNT = 12;
 const DEBRIEF_PROMPT_TURN_CHAR_LIMIT = 16;
@@ -1419,6 +1433,11 @@ export function buildDebriefMessages(
      * 省略或全 0＝prompt 逐字不變（等價 harness 守門）。
      */
     agencyLedger?: DebriefAgencyLedger | null;
+    /**
+     * Phase 5 WP3：`PRACTICE_MEMORY_SUMMARY_WRITE=true` 才由 handler 傳。
+     * 省略／false＝system prompt 逐位元組不變（旗標 off 的契約）。
+     */
+    memorySummaryWrite?: boolean;
   } = {},
 ): ChatMessage[] {
   const transcript = debriefTurnsToPromptTranscript(
@@ -1499,7 +1518,10 @@ export function buildDebriefMessages(
         (options.practiceMode === "game"
           ? GAME_DEBRIEF_SYSTEM_PROMPT
           : DEBRIEF_SYSTEM_PROMPT) +
-        (assistedMode ? `\n\n${PRACTICE_COACHING_RUBRIC}` : ""),
+        (assistedMode ? `\n\n${PRACTICE_COACHING_RUBRIC}` : "") +
+        (options.memorySummaryWrite
+          ? `\n\n${DEBRIEF_MEMORY_SUMMARY_DIRECTIVE}`
+          : ""),
     },
     {
       role: "user",

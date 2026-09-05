@@ -21,6 +21,7 @@ import {
   practiceInviteLevelFor,
 } from "./practice_invite.ts";
 import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
+import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import {
   assertHintFactClaimsSupported,
   buildHintFactContext,
@@ -162,18 +163,89 @@ export const DEBRIEF_TOOL_SCHEMA_GAME: Readonly<Record<string, unknown>> = {
   ],
 };
 
+/** WP3 續聊敘事記憶：`memory_summary` 欄位的資料庫上限（migration 的 CHECK）。 */
+export const DEBRIEF_MEMORY_SUMMARY_MAX_CHARS = 1000;
+
+/**
+ * WP3：旗標 on 時才掛上去的選填欄位。schema 是 `additionalProperties: false`，
+ * 所以旗標關著時模型連這個欄位都看不到（多吐就是違規），開著時它是選填——
+ * 缺欄不得讓檢討失敗（parser 端的契約見 `parseDebriefMemorySummary`）。
+ */
+const MEMORY_SUMMARY_SCHEMA_PROPERTY: Readonly<Record<string, unknown>> = {
+  type: "string",
+  description:
+    "（選填）以第三人稱寫「她記得的事」，供下一場續聊：聊過的話題、他透露的事、她對他的印象、未完的約定。只寫這場真的發生過的事，不得捏造。",
+  maxLength: DEBRIEF_MEMORY_SUMMARY_MAX_CHARS,
+};
+
 /**
  * hintAssessment 已退役（2026-08-06）：不再必填、server 忽略。schema 保留
  * optional 欄位定義純粹是相容性——舊習慣的模型照填也不會撞
  * additionalProperties: false。
  */
 export function debriefToolSchemaFor(
-  opts: { game: boolean },
+  opts: { game: boolean; memorySummary?: boolean },
 ): Record<string, unknown> {
-  return (opts.game ? DEBRIEF_TOOL_SCHEMA_GAME : DEBRIEF_TOOL_SCHEMA) as Record<
-    string,
-    unknown
-  >;
+  const base =
+    (opts.game ? DEBRIEF_TOOL_SCHEMA_GAME : DEBRIEF_TOOL_SCHEMA) as Record<
+      string,
+      unknown
+    >;
+  // 旗標 off（省略／false）＝逐位元組回傳既有常數。
+  if (opts.memorySummary !== true) return base;
+  return {
+    ...base,
+    properties: {
+      ...(base.properties as Record<string, unknown>),
+      memorySummary: MEMORY_SUMMARY_SCHEMA_PROPERTY,
+    },
+  };
+}
+
+export type DebriefMemorySummarySkipReason =
+  | "missing"
+  | "not_string"
+  | "too_long";
+
+/**
+ * WP3：從檢討的原始輸出撈出選填的 `memorySummary`。
+ *
+ * **這支永遠不丟例外**——它跑在 `parseDebriefCard` 成功之後，任何形態問題都只
+ * 能是「跳過寫入」，不能把一張已經合格的教學卡打回。超長刻意不截斷：截半句的
+ * 記憶餵回下一場比沒有記憶更糟，寧可這一場不留。
+ */
+export function parseDebriefMemorySummary(
+  raw: string,
+): { summary: string; skipped: null } | {
+  summary: null;
+  skipped: DebriefMemorySummarySkipReason;
+} {
+  let value: unknown;
+  try {
+    const parsed = JSON.parse(extractJsonObject(raw));
+    if (typeof parsed !== "object" || parsed === null) {
+      return { summary: null, skipped: "missing" };
+    }
+    value = (parsed as Record<string, unknown>).memorySummary;
+  } catch {
+    return { summary: null, skipped: "missing" };
+  }
+  if (value === undefined || value === null) {
+    return { summary: null, skipped: "missing" };
+  }
+  if (typeof value !== "string") {
+    return { summary: null, skipped: "not_string" };
+  }
+  // 與 `relationship_thread.ts` 的 `str()` 同一套正規化：檔名不得外洩進下一場
+  // 的 prompt，空白壓成單一空格。
+  const normalized = toTraditionalChinese(
+    scrubRawImageFilenames(value).trim().replace(/\s+/gu, " "),
+  );
+  if (normalized.length === 0) return { summary: null, skipped: "missing" };
+  if (normalized.length > DEBRIEF_MEMORY_SUMMARY_MAX_CHARS) {
+    return { summary: null, skipped: "too_long" };
+  }
+  return { summary: normalized, skipped: null };
 }
 
 export interface DebriefCard {
