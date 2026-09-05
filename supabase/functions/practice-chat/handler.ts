@@ -4042,45 +4042,16 @@ export function createPracticeChatHandler(
         });
       };
       // Phase 4.1：結構回放出「她在補救」的輪次。旗標 off 時整個不算（連
-      // telemetry key 都不該多一個）；shadow 算但不進 prompt。
+      // telemetry key 都不該多一個）；shadow 算但不進 prompt。standard 沒有
+      // 持久化狀態，本來就是純結構近似（見 `debriefAgencyLedgerFor` 註解）。
       // 門檻與 chat 路徑同源（難度／isGame／角色的 agency profile）。
-      //
-      // Phase 4.5c 刀 2：回放吃 thread 上的持久化 agency 狀態
-      // （只用得到 `repairedAtUserTurns`，見 `debriefAgencyLedgerFor`）。
-      //
-      // **只有 standard**（R1 P1-1）：閘門是 4.5b 的
-      // `standardAgencyClassifierEnabled`（agency `on` ∧ 旗標 `true` ∧
-      // `practiceMode === "standard"`），所以 beginner／game 的 debrief 一律
-      // 傳 null＝逐位元組維持 4.1 行為。assisted 該不該也吃狀態是另一刀的
-      // 提案（見計畫檔 4.5c「未做／提案」），本刀不動。
-      // 刻意不重用 `standardAgencyClassifierOn`：那支綁 `request.practiceMode`，
-      // debrief 的模式來自 ledger。
-      //
-      // **逐字稿必須是完整的**（R1 U1）：debrief 的 `request.turns` 走 client
-      // 的 `_turnDtosForPrompt()`（`kPracticePromptRecentTurns = 80`），超過
-      // 就是 suffix；而 marker 是**整場**的絕對序號，套在 suffix 上會偏右
-      // ＝把更多輪當成已修復（少算介入輪）。這裡不猜 client 的窗口大小
-      // （兩端各自帶常數會漂），改用 server 自己的帳：這次帶上來的 ai 則數
-      // 等於 ledger 累計的 `aiCount` 才算完整，否則不注入（fail-safe）。
-      const debriefTranscriptComplete = request.turns.filter((turn) =>
-        turn.role === "ai"
-      ).length ===
-        ledger.aiCount;
-      const debriefAgencyState = debriefTranscriptComplete &&
-          standardAgencyClassifierEnabled(
-            deps.getEnv("PRACTICE_STANDARD_AGENCY_CLASSIFIER"),
-            agencyMode,
-            debriefPracticeMode,
-          )
-        ? relationshipThreadState?.agencyState ?? null
-        : null;
       const debriefAgencyLedger = agencyMode === "off"
         ? null
         : debriefAgencyLedgerFor(request.turns, {
           difficulty: request.profile.difficulty,
           isGame: debriefPracticeMode === "game",
           profileId: request.profile.girl.profileId,
-        }, debriefAgencyState);
+        });
       try {
         const baseDebriefMessages = buildDebriefMessages(
           request.turns,

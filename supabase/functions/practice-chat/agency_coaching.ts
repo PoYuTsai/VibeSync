@@ -20,7 +20,6 @@ import {
   aiAskedQuestion,
   type ConversationAgencyState,
   detectAgencyEvidence,
-  INITIAL_CONVERSATION_AGENCY_STATE,
   nextConversationAgencyState,
 } from "./conversation_agency.ts";
 import { agencyProfileFor } from "./agency_profile.ts";
@@ -126,14 +125,6 @@ const MAX_REPAIR_TURNS = 10;
  * 結構回放：逐則玩家訊息重走 `detectAgencyEvidence → agencyPolicyFor`，
  * 狀態用 `nextConversationAgencyState` 推進。
  *
- * **Phase 4.5c 刀 2**：第三個參數是這一場 thread 上的持久化 agency 狀態。
- * 給了就把它的 `repairedAtUserTurns`（分類器判 `connected` 的最後一個修復點）
- * 注回回放，讓那個位置之前的片段不再被重算成介入輪——這是回放與正式 chat
- * 路徑之間唯一補得回來的分類器事實。4.5b 之後 standard 也會寫這一格
- * （`PRACTICE_STANDARD_AGENCY_CLASSIFIER=true`），所以 standard 與 beginner
- * 從此**同源**：同一份 `turns`＋`ctx`＋`agencyState` 一定算出同一份帳，
- * 本函式沒有任何 practiceMode 分支。省略／`null`＝維持 4.1 的純結構近似。
- *
  * **近似的界線**（跟 `tools/practice-agency-eval/replay_plan.ts --state=1`
  * 同一種）：`classifierSignal` 一律傳 null，因為 debrief 手上沒有每一輪當時的
  * 分類器輸出；所以「分類器判 connected 的修復點」在這裡不存在，只有逐字稿看得
@@ -156,24 +147,9 @@ const MAX_REPAIR_TURNS = 10;
 export function debriefAgencyLedgerFor(
   turns: readonly PracticeTurn[],
   ctx: AgencyCoachingContext,
-  agencyState: ConversationAgencyState | null = null,
 ): DebriefAgencyLedger {
   const thresholds = thresholdsFor(ctx);
-  // Phase 4.5c 刀 2：持久化狀態裡唯一能用在「從第 1 則重走」的欄位是
-  // `repairedAtUserTurns`——它是**絕對序號**（第 N 則玩家訊息），不是累積量。
-  // 其餘欄位（`unresolvedCount`／`lastCoherence`／`lastAgencyAct`…）是這一場
-  // **結尾**的值，拿去當第 1 則的 prev 會整份算錯，所以刻意只取這一格。
-  //
-  // 為什麼不能直接把它塞進初始 state：`detectAgencyEvidence`／
-  // `nextConversationAgencyState` 都會把「定位不到（marker > 這次的玩家則數）」
-  // 的 marker 丟掉（R1 P1-4a），在第 1 則就會被丟掉且不再傳下去。所以改成
-  // 走到那個序號時才注入，之後由 `locatable` 自然沿用。
-  const persistedRepairAt = agencyState?.repairedAtUserTurns;
   let state: ConversationAgencyState | null = null;
-  // R1 P1-2：注入判斷**不能**要求 `state !== null`——第 1 則玩家訊息時 state
-  // 一定是 null，`repairedAtUserTurns: 1` 會永遠被跳過。改用
-  // `INITIAL_CONVERSATION_AGENCY_STATE` 當底（`nextConversationAgencyState`
-  // 對 `prev = null` 用的就是它，所以注入與否的 base 完全同一份）。
   let fragmentTurns = 0;
   let topicShiftTurns = 0;
   let loopTurns = 0;
@@ -182,19 +158,11 @@ export function debriefAgencyLedgerFor(
   for (let i = 0; i < turns.length; i++) {
     if (turns[i].role !== "user") continue;
     userTurnOrdinal += 1;
-    const base = state ?? INITIAL_CONVERSATION_AGENCY_STATE;
-    // 沒有注入時**原樣**傳 `state`（含 null），讓「不注入」這條路逐位元組
-    // 等於 4.1 的回放。
-    const prev = persistedRepairAt !== undefined &&
-        persistedRepairAt <= userTurnOrdinal &&
-        (base.repairedAtUserTurns ?? 0) < persistedRepairAt
-      ? { ...base, repairedAtUserTurns: persistedRepairAt }
-      : state;
     const decision = agencyPolicyFor(
-      detectAgencyEvidence(turns.slice(0, i + 1), prev),
+      detectAgencyEvidence(turns.slice(0, i + 1), state),
       thresholds,
     );
-    state = nextConversationAgencyState(prev, decision, null);
+    state = nextConversationAgencyState(state, decision, null);
     if (decision.situation === null) continue;
     // Phase 4.5a 刀 3：`cold_return` 是「他終於給了內容、她冷冷接一句」，不是
     // 又一輪沒接上——不進修復輪的帳（否則 Hint／Debrief 會多算一輪）。
