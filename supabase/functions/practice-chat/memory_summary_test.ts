@@ -152,6 +152,9 @@ Deno.test("WP3 旗標 on：debrief system prompt 有欄位說明與不捏造規�
   assert(system.includes("她記得的事"));
   assert(system.includes("Reality Anchoring"));
   assert(system.includes("不得捏造"));
+  // 專有名詞（名字／寵物／職業）要優先照原字記（9/6 實測摘要漏掉「豆豆」）。
+  assert(system.includes("寵物"));
+  assert(system.includes("職業"));
   // 檢討本文的欄位一個都沒少。
   assert(system.includes('"suggestedLine"'));
 
