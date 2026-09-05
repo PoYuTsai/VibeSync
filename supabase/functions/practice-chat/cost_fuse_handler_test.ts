@@ -14,10 +14,12 @@ import {
 import {
   chatBody,
   type FakeOptions,
+  hintBody,
   ledger,
   makeFake,
   makeRequest,
 } from "./handler_test_fake.ts";
+import { CLAUDE_SONNET_MODEL } from "./claude.ts";
 import { COST_FUSE_RPC, COST_FUSE_TABLE } from "./cost_fuse.ts";
 
 const FUSE_ENV = "PRACTICE_COST_FUSE_DAILY_USD";
@@ -293,4 +295,134 @@ Deno.test("降級後 DeepSeek 也失敗：失敗事件同樣帶 costFuseDegraded
   assertEquals(failed.costFuseDegraded, true);
   // 真的被降級了：Claude 一次都沒打。
   assertEquals(fake.state.claudeCalls.length, 0);
+});
+
+// ── Codex R1 P1：提示／檢討的 Anthropic 花費也要進當日累計 ────────────────
+/** hint／debrief 走 SIDE_TURNS（最後一則必須是她）。 */
+const SIDE_TURNS = [
+  ...FRAGMENT_TURNS,
+  { role: "ai", text: "阿布達比？那是哪裡" },
+];
+
+function validHint(): string {
+  return JSON.stringify({
+    warmUp: "阿布達比是突然想去，還是最近在看機票？",
+    steady: "阿布達比收到，我先猜妳最近在看機票，猜錯妳糾正我。",
+    coaching: "她問了阿布達比是什麼；先二選一接住她的疑問，再沿她的答案分享。",
+  });
+}
+
+/**
+ * fake 的 Claude 每次固定回報 input 120／cacheRead 80／output 15。
+ * Sonnet 5 官方牌價（$2／$10／$0.2 每 M）＝ $0.000406／發，是 Haiku 那一發的
+ * 兩倍——所以一次提示就足以把 $0.0001 的預算燒穿。
+ */
+const SONNET_USD_PER_CALL = (120 * 2 + 15 * 10 + 80 * 0.2) / 1_000_000;
+
+Deno.test("提示的 Sonnet 花費進當日累計：一次 hint 就燒穿預算，下一輪 chat 直接 deepseek", async () => {
+  const fake = makeFake({
+    // 這一場必須已經開始，否則 hint 會停在配額層的 403。
+    ledger: ledger({
+      practice_mode: "beginner",
+      ai_count: 1,
+      charged: true,
+      temperature_score: 30,
+      familiarity_score: 0,
+    }),
+    deepSeekReplies: ["好啊", CLASSIFIER_JSON],
+    claudeReplies: [validHint(), "嗯？你先講東東"],
+    env: {
+      [ROUTING_ENV]: "mixed",
+      [AGENCY_ENV]: "true",
+      [FUSE_ENV]: BUDGET,
+    },
+  });
+
+  const runOne = async (body: unknown) => {
+    const lines: string[] = [];
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const capture = (...args: unknown[]) =>
+      lines.push(args.map((a) => String(a)).join(" "));
+    let response: Response;
+    try {
+      console.log = capture;
+      console.warn = capture;
+      response = await fake.handler(makeRequest(body));
+      await Promise.allSettled(fake.state.backgroundTasks);
+    } finally {
+      console.log = originalLog;
+      console.warn = originalWarn;
+    }
+    return { response, lines };
+  };
+
+  // 1) 提示：照常走 Sonnet（保險絲不降級提示），花費被記進當日累計。
+  const hint = await runOne(
+    hintBody({ practiceMode: "beginner", turns: SIDE_TURNS }),
+  );
+  assertEquals(hint.response.status, 200);
+  assertEquals(fake.state.claudeCalls.length, 1);
+  assertEquals(fake.state.claudeCalls[0].model, CLAUDE_SONNET_MODEL);
+  const increments = fake.state.rpcCalls.filter((r) => r.fn === COST_FUSE_RPC);
+  assertEquals(increments.length, 1);
+  assertEquals(increments[0].params.p_usd, SONNET_USD_PER_CALL);
+  // 跨過門檻的那一次寫一筆 blown。
+  assertEquals(blownLines(hint.lines).length, 1);
+  assertEquals(
+    (JSON.parse(blownLines(hint.lines)[0]) as Record<string, unknown>).spentUsd,
+    SONNET_USD_PER_CALL,
+  );
+
+  // 2) 下一輪 chat：被提示燒掉的錢壓進降級 → 直接 deepseek，Claude 不再被打。
+  const chat = await runOne(
+    chatBody({ practiceMode: "beginner", turns: FRAGMENT_TURNS }),
+  );
+  const succeededLine = chat.lines.find((l) =>
+    l.includes('"event":"practice_chat_succeeded"')
+  );
+  assert(succeededLine);
+  const succeeded = JSON.parse(succeededLine) as Record<string, unknown>;
+  assertEquals(succeeded.chatModel, "deepseek");
+  assertEquals(succeeded.costFuseDegraded, true);
+  assertEquals(fake.state.claudeCalls.length, 1, "chat 那輪不得再打 Claude");
+  // blown 一天一筆：第二輪不再寫。
+  assertEquals(blownLines(chat.lines).length, 0);
+});
+
+Deno.test("旗標未設：hint 路徑的 callClaude 參數一個 onUsage key 都沒有（single_shot 零改動）", async () => {
+  const withoutFuse = makeFake({
+    ledger: ledger({
+      practice_mode: "beginner",
+      ai_count: 1,
+      charged: true,
+      temperature_score: 30,
+      familiarity_score: 0,
+    }),
+    claudeReplies: [validHint()],
+    env: { [ROUTING_ENV]: "mixed", [AGENCY_ENV]: "true" },
+  });
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  try {
+    console.log = () => {};
+    console.warn = () => {};
+    await withoutFuse.handler(
+      makeRequest(hintBody({ practiceMode: "beginner", turns: SIDE_TURNS })),
+    );
+    await Promise.allSettled(withoutFuse.state.backgroundTasks);
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
+  assertEquals(withoutFuse.state.claudeCalls.length, 1);
+  assertEquals(
+    Object.hasOwn(withoutFuse.state.claudeCalls[0], "onUsage"),
+    false,
+    "旗標未設時 single_shot 不得把 onUsage 傳給 callClaude",
+  );
+  assertEquals(
+    withoutFuse.state.rpcCalls.filter((r) => r.fn === COST_FUSE_RPC),
+    [],
+  );
 });

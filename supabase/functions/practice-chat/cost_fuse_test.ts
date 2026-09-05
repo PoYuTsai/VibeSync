@@ -4,15 +4,17 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  anthropicCostUsd,
   COST_FUSE_RPC,
   COST_FUSE_TABLE,
   type CostFuseSupabaseClient,
   parseCostFuseBudget,
   readSpentUsdToday,
-  recordChatCost,
+  recordAnthropicCost,
   shouldDegrade,
   utcDay,
 } from "./cost_fuse.ts";
+import { CLAUDE_HAIKU_MODEL, CLAUDE_SONNET_MODEL } from "./claude.ts";
 
 // ── parseCostFuseBudget ───────────────────────────────────────────────────
 Deno.test("parseCostFuseBudget：未設／空白／非正數／非數字一律 null（＝保險絲關）", () => {
@@ -166,7 +168,7 @@ Deno.test("readSpentUsdToday：DB 錯誤／丟例外／髒值一律 null（fail-
   }
 });
 
-// ── recordChatCost ────────────────────────────────────────────────────────
+// ── anthropicCostUsd ──────────────────────────────────────────────────────
 const USAGE = {
   inputTokens: 1_000_000,
   outputTokens: 0,
@@ -174,10 +176,18 @@ const USAGE = {
   cacheCreationInputTokens: 0,
 };
 
-Deno.test("recordChatCost：用 Haiku 4.5 官方牌價估價，累加後回傳前後值", async () => {
-  // 1M input token × $1／M ＝ $1。
+Deno.test("anthropicCostUsd：Sonnet 5 吃 Sonnet 單價，其餘吃 Haiku 4.5 單價", () => {
+  // 1M input token：Haiku $1／M、Sonnet $2／M。
+  assertEquals(anthropicCostUsd(USAGE, CLAUDE_HAIKU_MODEL), 1);
+  assertEquals(anthropicCostUsd(USAGE, CLAUDE_SONNET_MODEL), 2);
+  // 沒見過的 model 名走 Haiku（practice-chat 只有這兩支）。
+  assertEquals(anthropicCostUsd(USAGE, "whatever"), 1);
+});
+
+// ── recordAnthropicCost ───────────────────────────────────────────────────
+Deno.test("recordAnthropicCost：累加後回傳前後值", async () => {
   const { client, calls } = fakeClient({ rpcData: 3 });
-  assertEquals(await recordChatCost(client, "2026-09-05", USAGE), {
+  assertEquals(await recordAnthropicCost(client, "2026-09-05", 1), {
     usd: 1,
     before: 2,
     after: 3,
@@ -188,21 +198,15 @@ Deno.test("recordChatCost：用 Haiku 4.5 官方牌價估價，累加後回傳�
   }]);
 });
 
-Deno.test("recordChatCost：估算金額為 0 時完全不打 RPC", async () => {
+Deno.test("recordAnthropicCost：金額 0 或負數時完全不打 RPC", async () => {
   const { client, calls } = fakeClient({ rpcData: 1 });
-  assertEquals(
-    await recordChatCost(client, "2026-09-05", {
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadInputTokens: 0,
-      cacheCreationInputTokens: 0,
-    }),
-    null,
-  );
+  for (const usd of [0, -1, Number.NaN]) {
+    assertEquals(await recordAnthropicCost(client, "2026-09-05", usd), null);
+  }
   assertEquals(calls.rpcs, []);
 });
 
-Deno.test("recordChatCost：DB 錯誤／丟例外／髒回傳一律 null ＋ 一行 warn", async () => {
+Deno.test("recordAnthropicCost：DB 錯誤／丟例外／髒回傳一律 null ＋ 一行 warn", async () => {
   for (
     const opts of [
       { rpcError: "boom" },
@@ -214,7 +218,7 @@ Deno.test("recordChatCost：DB 錯誤／丟例外／髒回傳一律 null ＋ 一
     const { client } = fakeClient(opts);
     const warns = await warnsOf(async () => {
       assertEquals(
-        await recordChatCost(client, "2026-09-05", USAGE),
+        await recordAnthropicCost(client, "2026-09-05", 1),
         null,
         JSON.stringify(opts),
       );
@@ -224,11 +228,11 @@ Deno.test("recordChatCost：DB 錯誤／丟例外／髒回傳一律 null ＋ 一
   }
 });
 
-Deno.test("recordChatCost：RPC 回傳陣列或單欄物件（PostgREST 兩種形狀）都吃得下", async () => {
+Deno.test("recordAnthropicCost：RPC 回傳陣列或單欄物件（PostgREST 兩種形狀）都吃得下", async () => {
   for (const data of [[3], [{ increment_practice_chat_daily_cost: 3 }], 3]) {
     const { client } = fakeClient({ rpcData: data });
     assertEquals(
-      await recordChatCost(client, "2026-09-05", USAGE),
+      await recordAnthropicCost(client, "2026-09-05", 1),
       { usd: 1, before: 2, after: 3 },
       JSON.stringify(data),
     );

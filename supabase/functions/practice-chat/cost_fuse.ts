@@ -11,19 +11,20 @@
 //    select 都不發，四面（messages／response／rpc／telemetry）逐位元組等於
 //    接線前（`agency_flag_off_equivalence_test.ts` 釘住）。
 //
-// ── 涵蓋範圍（已知天花板）────────────────────────────────────────────────
-// 只算 **chat 生成路徑的 Claude（Haiku 4.5）** 花費：那是唯一有 `onUsage`
-// 回呼、拿得到四格 token 數的路徑。hint／debrief 走 `single_shot.ts`
-// （Sonnet 5 → Haiku failover）目前**完全沒有 usage 回呼**，所以它們的花費
-// 進不了這個累計；計畫本來就寫「提示與檢討不受保險絲影響」（它們沒有
-// DeepSeek 退路），但也因此當日總額是**低估**的。要把那兩條也記進來得先把
-// `onUsage` 穿到 `single_shot.ts`，那是另一包的事。
-// DeepSeek 一律不算（保險絲保的是 Anthropic 帳單）。
+// ── 涵蓋範圍 ──────────────────────────────────────────────────────────────
+// 算 **整個 practice-chat 的 Anthropic 花費**：chat 生成路徑的 Haiku 4.5，
+// 加上 hint／debrief 走 `single_shot.ts` 的 Sonnet 5 → Haiku 4.5（Codex R1
+// P1：需求是「Anthropic 當日花費」，不是只有 chat）。DeepSeek 一律不算。
+//
+// **降級只發生在 chat 輪**：hint／debrief 沒有 DeepSeek 退路，燒斷後仍照舊打
+// Sonnet，只是它們的花費會被記進當日累計，把 chat 更快壓進降級。
 import {
   estimateCostUsd,
   HAIKU_4_5_PRICING,
+  SONNET_5_PRICING,
   type TokenUsage,
 } from "../_shared/model_pricing.ts";
+import { CLAUDE_SONNET_MODEL } from "./claude.ts";
 import { logWarn } from "./logger.ts";
 
 /** 旗標名：數值（USD／日）；空／未設／非正數＝關。 */
@@ -132,21 +133,32 @@ function scalarFromRpc(data: unknown): number | null {
 }
 
 /**
- * 把本輪 Claude 花費累加進今天，回傳 `{ usd, before, after }`。
+ * 一次 Anthropic 呼叫的估算花費（USD）。`model` 決定吃哪一組單價：
+ * Sonnet 5 走 `SONNET_5_PRICING`，其餘（practice-chat 只會是 Haiku 4.5）走
+ * `HAIKU_4_5_PRICING`。單價本體在 `_shared/model_pricing.ts`。
+ */
+export function anthropicCostUsd(usage: TokenUsage, model: string): number {
+  return estimateCostUsd(
+    usage,
+    model === CLAUDE_SONNET_MODEL ? SONNET_5_PRICING : HAIKU_4_5_PRICING,
+  );
+}
+
+/**
+ * 把本請求付掉的 Anthropic 花費累加進今天，回傳 `{ usd, before, after }`。
  * `before` 是**累加前**的總額（`after - usd`），呼叫端用
  * `before < budget <= after` 判斷「這一次剛好跨過門檻」→
  * `practice_chat_cost_fuse_blown` 一天恰好一筆。那個減法之所以可信，是因為
  * `after` 來自單一 statement 的 `ON CONFLICT DO UPDATE ... RETURNING`
  * （併發下不會兩個請求都看到同一個 before）。
  *
- * 估算金額為 0（這一輪沒打 Claude）＝完全不打 RPC；失敗一律回 null ＋ 一行 warn。
+ * `usd <= 0`（這一輪沒打 Anthropic）＝完全不打 RPC；失敗一律回 null ＋ 一行 warn。
  */
-export async function recordChatCost(
+export async function recordAnthropicCost(
   supabase: CostFuseSupabaseClient,
   day: string,
-  usage: TokenUsage,
+  usd: number,
 ): Promise<{ usd: number; before: number; after: number } | null> {
-  const usd = estimateCostUsd(usage, HAIKU_4_5_PRICING);
   if (!(usd > 0)) return null;
   try {
     const { data, error } = await supabase.rpc(COST_FUSE_RPC, {

@@ -132,10 +132,11 @@ import {
   type ClaudeUsage,
 } from "./claude.ts";
 import {
+  anthropicCostUsd,
   COST_FUSE_ENV,
   parseCostFuseBudget,
   readSpentUsdToday,
-  recordChatCost,
+  recordAnthropicCost,
   shouldDegrade,
   utcDay,
 } from "./cost_fuse.ts";
@@ -2495,6 +2496,38 @@ export function createPracticeChatHandler(
       ? parseCostFuseBudget(deps.getEnv(COST_FUSE_ENV))
       : null;
     const costFuseDay = utcDay(requestNow);
+    /**
+     * 本請求到目前為止付掉的 Anthropic 花費（USD）。chat 的 Haiku 與
+     * hint／debrief 的 Sonnet／Haiku 都加進這一格（Codex R1 P1：需求是
+     * 「Anthropic 當日花費」，不是只有 chat）。保險絲關著時永遠是 0，
+     * 而且沒有任何一條路徑會呼叫它。
+     */
+    let anthropicSpendUsd = 0;
+    const addAnthropicSpend = (usage: ClaudeUsage, model: string) => {
+      anthropicSpendUsd += anthropicCostUsd(usage, model);
+    };
+    /**
+     * 把累積的花費寫進當日總額。跨過門檻的那一次寫一筆
+     * `practice_chat_cost_fuse_blown`（`logWarn` 本身就是一行 `console.warn`，
+     * 告警不另外再印）。寫完歸零，所以重複呼叫不會重複記帳。
+     * 失敗一律 fail-open（`recordAnthropicCost` 內部只 warn）。
+     */
+    const flushAnthropicSpend = async () => {
+      if (costFuseBudgetUsd === null || anthropicSpendUsd <= 0) return;
+      const usd = anthropicSpendUsd;
+      anthropicSpendUsd = 0;
+      const recorded = await recordAnthropicCost(supabase, costFuseDay, usd);
+      if (
+        recorded !== null && recorded.before < costFuseBudgetUsd &&
+        recorded.after >= costFuseBudgetUsd
+      ) {
+        logWarn("practice_chat_cost_fuse_blown", {
+          day: costFuseDay,
+          spentUsd: recorded.after,
+          budgetUsd: costFuseBudgetUsd,
+        });
+      }
+    };
     // Phase 4.5b：standard 模式的每輪 agency 分類器。`true` 才開；未設／`off`／
     // 亂填一律關（`standardAgencyClassifierEnabled` fail-closed），而且只在
     // agency 旗標 `on` ∧ `practiceMode === "standard"` 時成立。旗標關著時
@@ -3466,6 +3499,13 @@ export function createPracticeChatHandler(
             deadlineAtMs: hintAbsoluteDeadlineAtMs,
             now: monotonicNow,
             models: [CLAUDE_SONNET_MODEL, CLAUDE_HAIKU_MODEL],
+            // Phase 5 WP2（Codex R1 P1）：提示的 Anthropic 花費也要進當日累計。
+            // 提示**不受降級影響**（沒有 DeepSeek 退路），只是把錢記進去。
+            // 旗標未設時整個 `onUsage` key 不存在 → `single_shot` 也不會把它
+            // 傳給 `callClaude`，這條路徑逐位元組與接線前相同。
+            ...(costFuseBudgetUsd !== null
+              ? { onUsage: addAnthropicSpend }
+              : {}),
             // 機械守門全套照舊：parseHintResult（結構/長度/守門詞表/接地/事實
             // ledger/白話 repair）＋server-authored decision 可建構性。丟錯＝該發
             // 判敗立即進補發，絕不 repair 復活、絕不保留候選原文。
@@ -3601,6 +3641,10 @@ export function createPracticeChatHandler(
             503,
           );
         }
+      } finally {
+        // Phase 5 WP2（Codex R1 P1）：本請求付掉的 Anthropic 錢累加進今日。
+        // `finally` 才蓋得到 503 那條 return（那一輪一樣付了錢）。
+        await flushAnthropicSpend();
       }
 
       const hintTotalDurationMs = elapsedMilliseconds(
@@ -4268,6 +4312,9 @@ export function createPracticeChatHandler(
           deadlineAtMs: debriefAbsoluteDeadlineAtMs,
           now: monotonicNow,
           models: [CLAUDE_SONNET_MODEL, CLAUDE_HAIKU_MODEL],
+          // Phase 5 WP2（Codex R1 P1）：檢討的 Anthropic 花費也要進當日累計；
+          // 與提示同樣不受降級影響。旗標未設時整個 key 不存在。
+          ...(costFuseBudgetUsd !== null ? { onUsage: addAnthropicSpend } : {}),
           // 否決權只剩紅線（罐頭/洩漏/L4）與結構性失敗（缺欄/壞 JSON/拆盤
           // 殘缺）；偏好門降級為 finding 隨成功卡回報（守門嚴重度分級，
           // 2026-08-06）。findings 逐發收集，只保留「被端出去那張卡」的。
@@ -4397,6 +4444,10 @@ export function createPracticeChatHandler(
             503,
           );
         }
+      } finally {
+        // Phase 5 WP2（Codex R1 P1）：本請求付掉的 Anthropic 錢累加進今日。
+        // `finally` 才蓋得到 503 那條 return（那一輪一樣付了錢）。
+        await flushAnthropicSpend();
       }
 
       const debriefTotalDurationMs = elapsedMilliseconds(
@@ -4739,6 +4790,9 @@ export function createPracticeChatHandler(
     let chatModelUsage: ClaudeUsage | undefined;
     const chatModelCalls = { haiku: 0, deepseek: 0 };
     const addChatModelUsage = (usage: ClaudeUsage) => {
+      // 成本保險絲的累計（旗標關著時 `addAnthropicSpend` 加完也沒人讀，
+      // 而且 flush 根本不會發 RPC）。chat 路徑只會打 Haiku 4.5。
+      addAnthropicSpend(usage, CLAUDE_HAIKU_MODEL);
       chatModelUsage = {
         inputTokens: (chatModelUsage?.inputTokens ?? 0) + usage.inputTokens,
         cacheReadInputTokens: (chatModelUsage?.cacheReadInputTokens ?? 0) +
@@ -5039,31 +5093,10 @@ export function createPracticeChatHandler(
       });
       return jsonResponse({ error: "practice_generation_failed" }, 500);
     } finally {
-      // Phase 5 WP2：本輪付掉的 Claude 錢累加進今日。放在 `finally` 是因為
+      // Phase 5 WP2：本輪付掉的 Anthropic 錢累加進今日。放在 `finally` 是因為
       // 整輪失敗（500）那條路一樣付了錢——Codex R2 P2 當初把 `chatModelUsage`
       // 補進失敗事件是同一個理由。
-      //
-      // `practice_chat_cost_fuse_blown` 一天恰好一筆：只有「累加前 < 預算 ≤
-      // 累加後」的那一次會寫。`before` 是 RPC 的原子回傳值減掉本輪金額，所以
-      // 併發下不會有兩個請求都看到同一個 before（見 migration 註解）。
-      // `logWarn` 本身就是一行 `console.warn`，告警不另外再印一次。
-      if (costFuseBudgetUsd !== null && chatModelUsage) {
-        const recorded = await recordChatCost(
-          supabase,
-          costFuseDay,
-          chatModelUsage,
-        );
-        if (
-          recorded !== null && recorded.before < costFuseBudgetUsd &&
-          recorded.after >= costFuseBudgetUsd
-        ) {
-          logWarn("practice_chat_cost_fuse_blown", {
-            day: costFuseDay,
-            spentUsd: recorded.after,
-            budgetUsd: costFuseBudgetUsd,
-          });
-        }
-      }
+      await flushAnthropicSpend();
     }
 
     const { data: commitData, error: commitError } = await supabase.rpc(

@@ -1,7 +1,7 @@
 // 單發生成引擎：Sonnet 5 一發 → 敗了立即補發 Haiku 4.5，不 repair 不重試同模型。
 // 只負責 failover 與死線夾擠；產品守門全在呼叫端注入的 validate 裡。
 import type { ChatMessage } from "./prompt.ts";
-import type { ClaudeArgs } from "./claude.ts";
+import type { ClaudeArgs, ClaudeUsage } from "./claude.ts";
 
 export type SingleShotClaudeCaller = (args: ClaudeArgs) => Promise<string>;
 
@@ -40,6 +40,15 @@ export interface SingleShotArgs<T> {
   models: [string, string];
   /** 丟 Error = gate 不過（含 parser／守門）。錯誤 message 只能是代碼，不得含候選原文。 */
   validate: (raw: string, model: string) => T;
+  /**
+   * Phase 5 WP2 成本保險絲：每一次 provider 真的回報 usage 時響一次（含
+   * 之後被 gate 打回的那一發——那些 token 也真的付了）。`model` 帶回去讓
+   * 呼叫端挑對單價（Sonnet 5 ／ Haiku 4.5）。
+   *
+   * **省略時完全不掛**：`callClaude` 收到的參數物件連 `onUsage` 這個 key 都
+   * 不會有，所以保險絲旗標未設時這條路徑逐位元組與接線前相同。
+   */
+  onUsage?: (usage: ClaudeUsage, model: string) => void;
 }
 
 export interface SingleShotOutcome<T> {
@@ -91,6 +100,9 @@ export async function runSingleShot<T>(
         temperature: args.temperature,
         timeoutMs,
         forcedTool: args.forcedTool,
+        ...(args.onUsage
+          ? { onUsage: (usage: ClaudeUsage) => args.onUsage!(usage, model) }
+          : {}),
       });
       let result: T;
       try {
