@@ -136,10 +136,13 @@ async function runChat(opts: {
   claudeUsageBeforeError?: boolean;
   /** 整輪預期失敗（沒有 practice_chat_succeeded）。 */
   expectFailure?: boolean;
+  /** assisted 的 thread seed（Phase 4.5a 的階梯狀態要從這裡進來）。 */
+  thread?: Record<string, unknown> | null;
 }): Promise<RunResult> {
   const practiceMode = opts.practiceMode ?? "beginner";
   const fake = makeFake({
     ledger: ledger({ practice_mode: practiceMode }),
+    ...(opts.thread === undefined ? {} : { thread: opts.thread }),
     // 最後一則永遠留給生成後的分類器（assisted 模式才會打）。
     deepSeekReplies: [...(opts.deepSeekReplies ?? ["好啊"]), CLASSIFIER_JSON],
     // claudeReplies 有值時 fake 的 getEnv 才會給 CLAUDE_API_KEY（與 production
@@ -548,4 +551,55 @@ Deno.test("Response schema：deepseek／haiku／fallback 三種輪次的 key 集
     assertEquals(typeof r.body.aiTurnCount, "number");
     assertEquals(typeof r.body.generatedAt, "string");
   }
+});
+
+// ── Phase 4.5a 刀 3：forced `read_only` 那一輪一支模型都不打 ────────────────
+Deno.test("Phase 4.5a 刀 3：checkedOut 之後的低價值輪直接回一則「（已讀）」，不打生成模型", async () => {
+  const checkedOutThread = {
+    profile_id: "practice_girl_001",
+    temperature_score: 40,
+    familiarity_score: 10,
+    recent_facts: {
+      conversationAgency: {
+        version: 1,
+        lastCoherence: "repetitive",
+        unresolvedCount: 0,
+        priorChallengeIssued: true,
+        lastAgencyAct: "check_out",
+        checkedOut: true,
+      },
+    },
+  };
+  const r = await runChat({
+    routing: "mixed",
+    agency: "true",
+    thread: checkedOutThread,
+    claudeReplies: ["不該被呼叫"],
+  });
+  assertEquals(r.status, 200);
+  // 生成路徑一發都沒打（分類器那一發 maxTokens 不是 200，已被 filter 掉）。
+  assertEquals(r.chatDeepSeekCalls.length, 0);
+  assertEquals(r.claudeCalls.length, 0);
+  assertEquals(r.body.reply, "（已讀）");
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct, "read_only");
+  assertEquals(agency.allowedActSetId, "read_only_v1");
+  assertEquals(agency.readOnlyReply, true);
+  assertEquals(r.succeeded.chatModel, "none");
+  assertEquals(r.succeeded.chatModelCalls, { haiku: 0, deepseek: 0 });
+  assertWrittenExactlyOnce(r);
+
+  // 成對反例：同一批逐字稿、沒有 checkedOut 狀態 → 照常打模型，沒有 readOnlyReply。
+  const normal = await runChat({ routing: "mixed", agency: "true" });
+  assertEquals(normal.claudeCalls.length, 1);
+  assertEquals(
+    (normal.succeeded.conversationAgency as Record<string, unknown>)
+      .readOnlyReply,
+    undefined,
+  );
+  // 旗標 off：同一份 thread 狀態根本不解析，逐字沿用舊行為。
+  const off = await runChat({ thread: checkedOutThread });
+  assertEquals(off.chatDeepSeekCalls.length, 1);
+  assertEquals(off.body.reply, "好啊");
+  assertEquals(off.succeeded.conversationAgency, undefined);
 });

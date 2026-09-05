@@ -1698,3 +1698,50 @@ Deno.test("Phase 4.5a 刀 2：只有挑戰／Game 的收尾格與連續越界才
   assertEquals(boundaryPlan(twice).plan.situation, "boundary");
   assertEquals(boundaryPlan(twice).plan.readOnlyAllowed, true);
 });
+
+Deno.test("Phase 4.5a 刀 3：階梯三格的計畫行——冷回、先忙、已讀不打模型", () => {
+  const style = styles[0];
+  const turns = [u("韓國"), a("嗯"), u("東京")];
+  const render = (forcedAct: "cold_return" | "check_out", setId: string) => {
+    const agency = {
+      decision: {
+        ...agencyPolicyFor(
+          detectAgencyEvidence(turns),
+          agencyThresholdsFor(
+            "normal",
+            false,
+          ),
+        ),
+        situation: "ambiguous_fragment" as const,
+        policyMode: "forced" as const,
+        forcedAct,
+        allowedActs: [forcedAct],
+        allowedActSetId: setId,
+      },
+      applied: true,
+      enabled: true,
+      profile: null,
+    };
+    const plan = planTurnResponse({
+      turns,
+      style,
+      evidence: standard(),
+      seedKey: "s",
+      agency,
+    });
+    return { text: renderTurnPlan(plan, style, agency), plan };
+  };
+  const cold = render("cold_return", "cold_return_v1");
+  assert(cold.text.includes("你已經冷掉了"));
+  assert(cold.text.includes("回 1 則，短，不主動問他問題。"));
+  // 階梯形狀行取代 clarify-only 形狀行（那條是「只問清楚」，不是「冷冷接一句」）。
+  assert(!cold.text.includes("不替他補你猜的意思"));
+  const out = render("check_out", "check_out_cold_v1");
+  assert(out.text.includes("先去忙"));
+  assert(out.text.includes("語氣冷，不解釋原因"));
+  assert(
+    render("check_out", "check_out_v1").text.includes("語氣可以自然，不用生氣"),
+  );
+  // 三個 act 說明都不含範例台詞（報告 §13 第 8 點）。
+  for (const t of [cold.text, out.text]) assert(!t.includes("我先忙了"));
+});

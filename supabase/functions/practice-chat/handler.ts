@@ -57,6 +57,7 @@ import {
   chatModelFor,
   nextConversationAgencyState,
   type PracticeChatModel,
+  READ_ONLY_REPLY_TEXT,
   truncateAgencyShape,
 } from "./conversation_agency.ts";
 import {
@@ -1359,6 +1360,11 @@ async function judgeLearningState(opts: {
    * 同一個詞」還是拿得到正分。現在餵進 cap，重複永遠壓成 repetitive。
    */
   agencyEvidenceRepeatedExactToken?: boolean;
+  /**
+   * Phase 4.5a 刀 3：這一輪 planner forced `cold_return`（不收斂階梯的「回來
+   * 但冷」）。旗標 off 時永遠 false。
+   */
+  agencyColdReturn?: boolean;
   /** Phase 3.5：分類器的可信自我來源；旗標 off 時 buildTurnClassifierMessages 不用。 */
   memorySummary?: string | null;
   herRecentMoments?: readonly MomentMemoryPost[];
@@ -1482,6 +1488,10 @@ async function judgeLearningState(opts: {
             repeatedExactToken: opts.agencyEvidenceRepeatedExactToken ?? false,
             unresolvedCount: opts.agencyEvidenceUnresolvedCount ?? 0,
           },
+          undefined,
+          undefined,
+          // Phase 4.5a 刀 3：分類器壞掉的 fallback 也要壓（同 Codex P1-e 的理由）。
+          opts.agencyColdReturn,
         )
         : { judgement: protectedFallback, capApplied: "none" as const };
     const gatedFallback = challengeGateActive
@@ -1565,6 +1575,8 @@ async function judgeLearningState(opts: {
         classification.sharedPastClaim,
         // Phase 3.6：她替自己補的設定跟來源矛盾、或明顯迎合玩家丟的詞時同樣不得換到正分。
         classification.accommodatingSelfFact,
+        // Phase 4.5a 刀 3：「回來但冷」那一輪不補回溫度（就算分類器判 connected）。
+        opts.agencyColdReturn,
       )
       : { judgement: protectedJudgement, capApplied: "none" as const };
     // 閘門在 delta cap 之後（豁免在閘門內判斷）、crude-offense 確定
@@ -4460,6 +4472,12 @@ export function createPracticeChatHandler(
       // Phase 4.4 混合模型路由：條件與黑箱 runner 的 `--chat-model=mixed` 臂
       // 逐字相同（`chatModelFor`）。沒有 Anthropic key／沒有注入 callClaude
       // 就當作沒開（chat 本來就要求 DeepSeek key 才進得來，退路一定在）。
+      // ── Phase 4.5a 刀 3：forced `read_only`＝她已經先去忙了、他又丟一個
+      // 沒內容的東西。這一格**不打生成模型**：直接送一則「（已讀）」，
+      // 守門鏈照走（白名單放行）。旗標 off／shadow 走不到（`applied` 恆 false）。
+      const readOnlyTurn = agencyMode === "on" &&
+        agencyDecision?.applied === true &&
+        agencyDecision.decision.forcedAct === "read_only";
       const useHaiku = chatModelFor(
             chatModelRoutingFlag,
             agencyMode,
@@ -4490,7 +4508,9 @@ export function createPracticeChatHandler(
           // `practice_generation_failed`（500），使用者重送即可。
           // 這是與旗標無關的安全修補，四個旗標面都生效。
           let candidate: string;
-          if (useHaiku && !chatModelFallback) {
+          if (readOnlyTurn) {
+            candidate = READ_ONLY_REPLY_TEXT;
+          } else if (useHaiku && !chatModelFallback) {
             try {
               // max_tokens／temperature 與 DeepSeek 路徑同值（成本護欄：Claude
               // 這一輪不會比 DeepSeek 那一輪更長），system 走 `callClaude` 內建
@@ -4675,6 +4695,8 @@ export function createPracticeChatHandler(
             agencyDecision?.decision.evidence.unresolvedCount ?? 0,
           agencyEvidenceRepeatedExactToken:
             agencyDecision?.decision.evidence.repeatedExactToken ?? false,
+          agencyColdReturn:
+            agencyDecision?.decision.forcedAct === "cold_return",
           // Phase 3.5：跟 chat prompt 同一份記憶／貼文餵分類器（旗標 off 不用）。
           memorySummary: promptMemorySummary,
           herRecentMoments,
@@ -4843,7 +4865,10 @@ export function createPracticeChatHandler(
       // 成本看 Anthropic console。
       ...(chatModelRoutingOn
         ? {
-          chatModel: chatModelUsed,
+          // Phase 4.5a 刀 3：forced `read_only` 那一輪一支模型都沒打。
+          chatModel: chatModelCalls.haiku + chatModelCalls.deepseek === 0
+            ? "none"
+            : chatModelUsed,
           chatModelCalls,
           ...(chatModelFallback ? { chatModelFallback: true } : {}),
           ...(chatModelUsage ? { chatModelUsage } : {}),

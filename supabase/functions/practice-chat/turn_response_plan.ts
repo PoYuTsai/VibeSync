@@ -481,7 +481,11 @@ export function planTurnResponse(args: {
   if (
     agency?.applied &&
     (agency.decision.forcedAct === "hold_position" ||
-      agency.decision.forcedAct === "end_low_value_loop")
+      agency.decision.forcedAct === "end_low_value_loop" ||
+      // Phase 4.5a 刀 3：階梯三格同樣壓到最少則數。
+      agency.decision.forcedAct === "cold_return" ||
+      agency.decision.forcedAct === "check_out" ||
+      agency.decision.forcedAct === "read_only")
   ) {
     bubbleCount = minB;
   }
@@ -745,6 +749,14 @@ const AGENCY_ACT_LINE: Partial<Record<PlanAct, string>> = {
   // 單獨列出來只為了型別完整；欠債輪實際渲染的是下面 `AGENCY_SET_LINE`
   // 那一句二選一，不會逐一列出候選。
   accept_if_answered: "他這句真的接得上前面就接受，接不上就說他沒回答你",
+  // Phase 4.5a 刀 3（不收斂階梯）。一樣不寫範例句（報告 §13 第 8 點）。
+  cold_return:
+    "他這句接得上就接住，但你已經冷掉了：不熱絡、不主動開新話題，也不要把剛才沒接上的那幾句當沒發生",
+  check_out:
+    "你不想再耗下去了：說你要先去忙，簡短收掉，不解釋、不問他問題、不約下次",
+  // 走 forced `read_only` 的輪次根本不打模型（handler 直接回一則已讀），
+  // 這一行只為型別／診斷完整。
+  read_only: "不回內容，只讓他看到已讀",
 };
 
 /**
@@ -774,6 +786,9 @@ export const AGENCY_SET_LINE: Record<string, string> = {
   clarify_ignored_easy_v1: "語氣可以溫和一點，但還是不要接他丟的詞",
   clarify_ignored_v1: "直接問他到底在講什麼，不接他的詞",
   clarify_ignored_cold_v1: "可以只回一個「？」或一句冷的，不解釋、不接",
+  // Phase 4.5a 刀 3：`check_out` 是 forced，這兩條只調口氣（報告 §7.4）。
+  check_out_v1: "語氣可以自然，不用生氣",
+  check_out_cold_v1: "語氣冷，不解釋原因",
 };
 
 /** 獨立於 TurnResponsePlan：style 開或關都能算，只吃 agencyDecision 本身。 */
@@ -837,6 +852,14 @@ export function isAgencyClarifyOnlyTurn(
   return acts.length > 0 && !acts.some(isAcceptingPlanAct) &&
     acts.every((a) => (AGENCY_ACTS as readonly PlanAct[]).includes(a));
 }
+
+/**
+ * Phase 4.5a 刀 3：階梯兩格的回覆形狀。`read_only` 不在這裡——那一格不打模型。
+ */
+const AGENCY_LADDER_SHAPE: Partial<Record<PlanAct, string>> = {
+  cold_return: "回 1 則，短，不主動問他問題。",
+  check_out: "回 1 則，短，說完就收，不問問題、不開新話題。",
+};
 
 /**
  * Phase 4.5a 刀 2（Eric 2026-09-05）：最冷的兩格（挑戰／Game 的收尾格、連續
@@ -942,6 +965,11 @@ export function renderTurnPlan(
       (agency?.decision.allowedActs.some(isClarifyingAct) ?? false));
   const forcedAsk = isForcedAskIntent(agency ?? null);
   const clarifyOnly = isAgencyClarifyOnlyTurn(agency ?? null);
+  // Phase 4.5a 刀 3：階梯的形狀優先於 clarify-only（那條是「只問清楚」的形狀，
+  // 跟「冷冷接一句」「先去忙」不是同一件事）。
+  const ladderShape = agency?.applied && agency.decision.forcedAct
+    ? AGENCY_LADDER_SHAPE[agency.decision.forcedAct]
+    : undefined;
   // Phase 3.8：強制問他一件事的輪次，把泛用的「最多問一句」換成具體的好奇點。
   const question = plan.askUserFocus !== undefined && !forcedAsk
     // 3.8 黑箱：v1「這輪問他一件事：X，一句就好」管道好奇點 10/40 場；v2 改成
@@ -973,6 +1001,8 @@ export function renderTurnPlan(
     // Phase 4.5a 刀 2：**取代**形狀行，不是多加一行——「只回一則已讀」本來
     // 就是形狀指示，而且比它取代掉的 `AGENCY_CLARIFY_ONLY_SHAPE` 短。
     ? AGENCY_READ_ONLY_SHAPE
+    : ladderShape
+    ? ladderShape
     : forcedAsk
     ? FORCED_ASK_INTENT_SHAPE
     : clarifyOnly

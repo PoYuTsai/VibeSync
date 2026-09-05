@@ -79,7 +79,13 @@ export type AgencyAct =
   // Eric 回報的「她把不相干的新詞當成答案順著聊」），改成一句二選一的指示：
   // 真的回答了就接受，沒回答就直接說他沒回答又跳題。渲染成一行（見
   // `AGENCY_SET_LINE`），不是清單裡的一個選項。
-  | "accept_if_answered";
+  | "accept_if_answered"
+  // ── Phase 4.5a 刀 3：不收斂階梯（Eric 2026-09-05「真人不會一直陪你耗」）──
+  // 收尾格（`hold_position`／`end_low_value_loop`）連續發生時，舊版每一輪都
+  // 重新生一則「維持立場」——她永遠站在同一格陪他耗。這三個 act 是那條階梯：
+  | "cold_return"
+  | "check_out"
+  | "read_only";
 
 export const AGENCY_ACTS: readonly AgencyAct[] = Object.keys(
   {
@@ -89,8 +95,31 @@ export const AGENCY_ACTS: readonly AgencyAct[] = Object.keys(
     hold_position: true,
     end_low_value_loop: true,
     accept_if_answered: true,
+    cold_return: true,
+    check_out: true,
+    read_only: true,
   } satisfies Record<AgencyAct, true>,
 ) as AgencyAct[];
+
+/**
+ * forced `read_only` 那一格她送出的整則回覆。**不打生成模型**：省一次呼叫，
+ * 而且真人在這一格本來就不會打字。守門鏈的白名單認同一個字面
+ * （`visible_text_guard.ts` 的 `READ_ONLY_REPLY_RE`）。
+ */
+export const READ_ONLY_REPLY_TEXT = "（已讀）";
+
+/** 階梯的門檻：收尾格連續這麼多輪還沒解決，她就先去忙了。 */
+export const LOW_VALUE_STREAK_CHECK_OUT = 3;
+
+/**
+ * 「結構上有內容」＝階梯的重置條件：問句、第一人稱／解釋標記的分享、明示換題，
+ * 或她的是非問句真的被回答（刀 1）。招呼／情緒反應詞**不算**內容——她已經
+ * 說要先忙了，他回一句「哈哈」不是把話接回來。
+ */
+export function isAgencyContentShape(shape: UtteranceShape): boolean {
+  return shape === "question" || shape === "self_share" ||
+    shape === "explicit_pivot";
+}
 
 /**
  * 「順著聊是合法選項」的 act。清單裡只要有一個，這一輪就不是「只做澄清」的
@@ -169,6 +198,14 @@ export interface AgencyEvidence {
    * `null`＝沒有持久化狀態（standard／第一輪）。
    */
   readonly priorCoherence: ConversationAgencyState["lastCoherence"] | null;
+  /**
+   * Phase 4.5a 刀 3：**上一輪為止**收尾格（`hold_position`／
+   * `end_low_value_loop`）連續發生了幾輪。只有 assisted 有持久化狀態，
+   * standard 一律 0＝階梯整段不生效。
+   */
+  readonly lowValueStreak: number;
+  /** Phase 4.5a 刀 3：她已經說過「先忙了」（`check_out`）。standard 一律 false。 */
+  readonly checkedOut: boolean;
 }
 
 export interface ConversationAgencyState {
@@ -230,6 +267,14 @@ export interface ConversationAgencyState {
    * 不是 `false`；`agencyPolicyFor` 對缺席退回保守的 standard 規則。
    */
   readonly aiClarifiedLastTurn?: boolean;
+  /**
+   * Phase 4.5a 刀 3：收尾格連續幾輪（clamp 在 `LOW_VALUE_STREAK_CHECK_OUT`）。
+   * 缺欄位／0 都是「沒有連續」，所以 0 時**不寫這個 key**（舊 row 相容，
+   * 也讓等價 harness 的物件形狀不變）。
+   */
+  readonly lowValueStreak?: number;
+  /** Phase 4.5a 刀 3：她已經先去忙了。缺欄位＝false。 */
+  readonly checkedOut?: boolean;
 }
 
 export const INITIAL_CONVERSATION_AGENCY_STATE: ConversationAgencyState = {
@@ -713,6 +758,9 @@ export function detectAgencyEvidence(
     ),
     aiQuestionedInLoop,
     userTurnCount: shapes.length,
+    // Phase 4.5a 刀 3：純轉送持久化狀態（standard 的 `prev` 是 null＝0／false）。
+    lowValueStreak: prev?.lowValueStreak ?? 0,
+    checkedOut: prev?.checkedOut === true,
   };
 }
 
@@ -909,6 +957,46 @@ export function agencyPolicyFor(
   // 只介入「低資訊形狀」。問句、第一人稱分享、明示換題、招呼、長句一律不動；
   // 她剛問完問題而且前面沒有未解片段的短答＝有效短答，永遠不得被質疑（報告 §6）
   // ——這條與難度無關，任何難度都不會翻轉。
+  // ── Phase 4.5a 刀 3：不收斂階梯 ──────────────────────────────────────
+  // 三格都**只吃持久化狀態**（`lowValueStreak`／`checkedOut`），所以 standard
+  // （`prev === null`）永遠是 0／false＝這一段整個走不到，逐字沿用 4.4 行為。
+  // 放在最前面：一旦她已經先去忙了，任何形狀判斷都不該再把她拉回原本的格子。
+  if (isAgencyContentShape(shape) || evidence.answeredYesNo) {
+    // 他終於給了內容：階梯歸零，但這一輪她是「回來但冷」，不補回剛才的落差。
+    if (evidence.checkedOut || evidence.lowValueStreak > 0) {
+      return {
+        ...base,
+        // `ambiguous_fragment` → 結構 coherence `ambiguous`（不獎不罰）。
+        // 他確實給了內容，不該記成 disconnected／repetitive；但也不是連上了。
+        situation: "ambiguous_fragment",
+        policyMode: "forced",
+        forcedAct: "cold_return",
+        allowedActs: ["cold_return"],
+        allowedActSetId: "cold_return_v1",
+      };
+    }
+  } else if (evidence.checkedOut) {
+    // 她說過先忙了，他又丟一個沒內容的東西 → 直接一則「（已讀）」，不打模型。
+    return {
+      ...base,
+      situation: "repeated_low_coherence",
+      policyMode: "forced",
+      forcedAct: "read_only",
+      allowedActs: ["read_only"],
+      allowedActSetId: "read_only_v1",
+    };
+  } else if (evidence.lowValueStreak >= LOW_VALUE_STREAK_CHECK_OUT) {
+    return {
+      ...base,
+      situation: "repeated_low_coherence",
+      policyMode: "forced",
+      forcedAct: "check_out",
+      allowedActs: ["check_out"],
+      allowedActSetId: thresholds.forceEndLoopBeforeChallenge
+        ? "check_out_cold_v1"
+        : "check_out_v1",
+    };
+  }
   if (!isLowInformation(shape)) return { ...base, ...NO_OVERRIDE };
   // Phase 4.5a 刀 1：她問是非題、他整則回「對／不是」＝回答了，任何欠債都
   // 不得把它翻成質疑（同詞重複也不行——連兩題是非題答「對」是正常對話）。
@@ -1126,6 +1214,17 @@ export function parseConversationAgencyState(
     r.aiClarifiedLastTurn !== undefined && r.aiClarifiedLastTurn !== null &&
     typeof r.aiClarifiedLastTurn !== "boolean"
   ) return null;
+  // Phase 4.5a 刀 3：舊 row 缺這兩個欄位＝0／false（不是解析失敗）；
+  // `null` 字面值同 U-8 規則視同缺席。型別真的不對才整份作廢。
+  if (
+    r.lowValueStreak !== undefined && r.lowValueStreak !== null &&
+    !(typeof r.lowValueStreak === "number" &&
+      Number.isInteger(r.lowValueStreak) && r.lowValueStreak >= 0)
+  ) return null;
+  if (
+    r.checkedOut !== undefined && r.checkedOut !== null &&
+    typeof r.checkedOut !== "boolean"
+  ) return null;
   return {
     version: 1,
     lastCoherence: r.lastCoherence as ConversationAgencyState["lastCoherence"],
@@ -1143,6 +1242,11 @@ export function parseConversationAgencyState(
     ...(typeof r.aiClarifiedLastTurn === "boolean"
       ? { aiClarifiedLastTurn: r.aiClarifiedLastTurn }
       : {}),
+    // 0／false 是預設值，不寫 key（同 `repairedAtUserTurns`／`askedAboutUser`）。
+    ...(typeof r.lowValueStreak === "number" && r.lowValueStreak > 0
+      ? { lowValueStreak: r.lowValueStreak }
+      : {}),
+    ...(r.checkedOut === true ? { checkedOut: true } : {}),
   };
 }
 
@@ -1233,6 +1337,20 @@ export function nextConversationAgencyState(
   const repairedAtUserTurns = classifierSignal?.coherence === "connected"
     ? decision.evidence.userTurnCount
     : locatable;
+  // ── Phase 4.5a 刀 3：階梯的狀態推進 ───────────────────────────────────
+  // 只認**這一輪 planner 真的下的 forced act**（跟 `priorChallengeIssued` 同一
+  // 個規則：允許過 ≠ 做過）。玩家給了結構內容就整條歸零並解除 checkedOut。
+  const ladderContent =
+    isAgencyContentShape(decision.evidence.utteranceShape) ||
+    decision.evidence.answeredYesNo;
+  const lowValueStreak = ladderContent
+    ? 0
+    : forced === "hold_position" || forced === "end_low_value_loop"
+    ? Math.min(LOW_VALUE_STREAK_CHECK_OUT, (base.lowValueStreak ?? 0) + 1)
+    : base.lowValueStreak ?? 0;
+  const checkedOut = ladderContent
+    ? false
+    : base.checkedOut === true || forced === "check_out";
   return {
     version: 1,
     lastCoherence: classifierSignal?.coherence ?? structuralCoherence,
@@ -1251,6 +1369,8 @@ export function nextConversationAgencyState(
     ...(typeof classifierSignal?.aiChallengedThisTurn === "boolean"
       ? { aiClarifiedLastTurn: classifierSignal.aiChallengedThisTurn }
       : {}),
+    ...(lowValueStreak > 0 ? { lowValueStreak } : {}),
+    ...(checkedOut ? { checkedOut: true } : {}),
   };
 }
 

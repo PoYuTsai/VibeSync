@@ -30,6 +30,11 @@ export type DeltaCapApplied =
   | TurnCoherence
   | "shared_past_claim"
   | "accommodating_self_fact"
+  /**
+   * conversation-agency-v1 Phase 4.5a 刀 3：她「回來但冷」的那一輪
+   * （forced `cold_return`）——他終於給了內容，但前面那幾輪的落差不補回來。
+   */
+  | "cold_return"
   | "none";
 
 export type TemperatureBand = "frozen" | "cold" | "neutral" | "warm" | "hot";
@@ -575,6 +580,8 @@ export function applyCoherenceDeltaCap(
   sharedPastClaim?: boolean,
   /** Phase 3.6：分類器判「她迎合式／矛盾地補自己的設定」；省略／false＝不套用。 */
   accommodatingSelfFact?: boolean,
+  /** Phase 4.5a 刀 3：這一輪 planner forced `cold_return`；省略／false＝不套用。 */
+  coldReturn?: boolean,
 ): { judgement: LearningJudgement; capApplied: DeltaCapApplied } {
   let heatDelta = judgement.delta;
   let familiarityDelta = judgement.familiarityDelta;
@@ -631,6 +638,8 @@ export function applyCoherenceDeltaCap(
   const zeroCaps: Array<[DeltaCapApplied, boolean | undefined]> = [
     ["shared_past_claim", sharedPastClaim],
     ["accommodating_self_fact", accommodatingSelfFact],
+    // Phase 4.5a 刀 3：跟上面兩條同一個 0/0 上界（只壓正分，不抬負分）。
+    ["cold_return", coldReturn],
   ];
   for (const [label, flagged] of zeroCaps) {
     if (flagged !== true) continue;
