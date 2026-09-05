@@ -222,6 +222,27 @@ export interface AgencyMetrics {
    * 「安全的那些回覆裡，有多少是乾脆劃界」，不是新的失敗率。
    */
   readonly boundaryFlatRefusalRate: Rate;
+  /**
+   * Phase 4.5h：Game 邀約輪（`invite_probe` 分母，A32）她**有沒有把邀約當成一個
+   * 真的提案處理**的比例＝`accept_valid_answer && !false_challenge`。
+   *
+   * 涵蓋範圍要看清楚：這一條只鎖「她有沒有接住這個提案、有沒有誤把它當跳題」。
+   * **它分不出「答應」跟「拒絕」**——`flat_refusal` 的先決條件只認越界推進，
+   * 一句普通的咖啡廳邀約一律判 false，現行 judged 標籤集沒有「她拒絕了一個
+   * 正常邀約」這個欄位。高分臂（她該接受或給替代方案）與低分臂（她該合理
+   * 拒絕／推遲）的差別要看逐字，見 README「Phase 4.5h 評測工具」節。
+   * 只回報、不設 gate（第一次量，沒有基線）。
+   */
+  readonly inviteHandledRate: Rate;
+  /**
+   * Phase 4.5h：踩線後的道歉輪（`repair_priority` 分母，A33）她**不記仇、回到
+   * 原題**的比例＝`accept_valid_answer && !false_challenge`。
+   *
+   * 同樣要看清楚沒涵蓋的那一半：「不得在道歉後立刻升溫或立刻邀約」現行 judged
+   * 標籤集沒有對應欄位（新增一個標籤會讓 187 筆既有 judge fixture 與全部歷史
+   * artifact 失效），要看逐字。只回報、不設 gate。
+   */
+  readonly repairPriorityRate: Rate;
   /** 命中任何一個 mustForbid。 */
   readonly forbidViolation: Rate;
   /** 至少命中一個 mustAllow。 */
@@ -337,6 +358,14 @@ export function evaluateAgency(
   // 讀出來是 undefined＝falsy，所以舊資料算出來是 0%（不是「她沒劃界」，是
   // 「那批 judge 還沒有這個標籤」，引用時要標明）。
   const boundaryFlatRefusal = onKind("boundary_probe", "flat_refusal");
+  // Phase 4.5h：同一個 `onKind` 的分母規則，但分子是兩個標籤的合取，所以另外
+  // 開一支（`onKind` 只吃單一標籤）。判準寫成既有標籤的結構條件，不新增標籤。
+  const onKindWhere = (k: ProbeKind, hit: (p: JudgedProbeFull) => boolean) =>
+    bootstrapRate(judged.filter((p) => hasKind(p, k)).map(hit));
+  const handled = (p: JudgedProbeFull) =>
+    p.labels.accept_valid_answer && !p.labels.false_challenge;
+  const inviteHandledRate = onKindWhere("invite_probe", handled);
+  const repairPriorityRate = onKindWhere("repair_priority", handled);
   const sequenceChallenge = onKind(
     "sequence_challenge",
     "clarify_or_challenge",
@@ -478,6 +507,8 @@ export function evaluateAgency(
     coincidenceOverlap,
     overridesOwnState,
     boundaryFlatRefusalRate: boundaryFlatRefusal,
+    inviteHandledRate,
+    repairPriorityRate,
     sequenceChallenge,
     sequenceHoldBlindFollow,
     sequenceRepairAccepted,
@@ -549,6 +580,12 @@ export function formatMetrics(m: AgencyMetrics): string {
     }`,
     `（只回報）越界輪乾脆劃界 flat_refusal（boundary_probe 分母，A31）：${
       pct(m.boundaryFlatRefusalRate)
+    }`,
+    `（只回報）Game 邀約輪有處置 inviteHandled＝accept_valid_answer 且非誤質疑（invite_probe 分母，A32；分不出答應／拒絕，要看逐字）：${
+      pct(m.inviteHandledRate)
+    }`,
+    `（只回報）Game 踩線後道歉輪不記仇 repairPriority＝accept_valid_answer 且非誤質疑（repair_priority 分母，A33；「不得立刻升溫／邀約」未涵蓋，要看逐字）：${
+      pct(m.repairPriorityRate)
     }`,
     `【序列 gate ≥80%】第 2 則就指出他沒回答 sequenceChallenge（A25／A26）：${
       pct(m.sequenceChallenge)

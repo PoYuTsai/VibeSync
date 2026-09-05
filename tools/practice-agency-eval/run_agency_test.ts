@@ -989,3 +989,88 @@ Deno.test("Phase 4.5e：forced read_only 那一輪不打生成模型，回覆逐
     globalThis.fetch = original;
   }
 });
+
+// ── Phase 4.5h：`--temperature`／`--familiarity` ──────────────────────────
+
+Deno.test("parseArgs：--temperature／--familiarity 省略＝handler 的 beginner 起始值 40／10", () => {
+  assertEquals(parseArgs([]).temperatureScore, 40);
+  assertEquals(parseArgs([]).familiarityScore, 10);
+  assertEquals(parseArgs(["--temperature=80"]).temperatureScore, 80);
+  assertEquals(parseArgs(["--familiarity=70"]).familiarityScore, 70);
+  assertEquals(
+    parseArgs(["--temperature=0", "--familiarity=100"]).temperatureScore,
+    0,
+  );
+});
+
+Deno.test("parseArgs：分數超出 0–100、非整數、帶雜訊一律報錯（不靜默 clamp，meta 才不會說謊）", () => {
+  for (
+    const bad of [
+      "--temperature=101",
+      "--temperature=-1",
+      "--temperature=abc",
+      "--temperature=80.5",
+      "--temperature=80x",
+    ]
+  ) {
+    assertThrows(() => parseArgs([bad]), Error, "agency_invalid_temperature");
+  }
+  for (
+    const bad of ["--familiarity=101", "--familiarity=-1", "--familiarity="]
+  ) {
+    assertThrows(() => parseArgs([bad]), Error, "agency_invalid_familiarity");
+  }
+});
+
+Deno.test("runAgencyScenario：game 臂的起始分數真的進 prompt——省略＝not_ready，給高分＝direct_invite_ready", async () => {
+  const scenario = AGENCY_SCENARIOS.find((s) => s.id === "A32")!;
+  const promptOf = async (
+    scores?: { temperatureScore: number; familiarityScore: number },
+  ) => {
+    const seen: string[] = [];
+    const result = await runAgencyScenario({
+      callChat: (messages) => {
+        seen.push(messages.map((m) => m.content).join("\n"));
+        return Promise.resolve("嗯嗯");
+      },
+      profileId: "practice_girl_001",
+      scenario,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "game",
+      style: false,
+      agency: "off",
+      ...(scores ?? {}),
+    });
+    assertEquals(result.error, undefined);
+    return seen;
+  };
+  // 省略旗標＝逐位元組舊行為：溫度 40／熟悉 10 → 成熟度 28 → not_ready。
+  for (const prompt of await promptOf()) {
+    assert(
+      prompt.includes("inviteStage: not_ready"),
+      "省略旗標時不該離開 not_ready",
+    );
+  }
+  // 高分開場（80／70 → 成熟度 76）：整場都在可直接邀約那一階，spicy 上限也跟著開。
+  const high = await promptOf({ temperatureScore: 80, familiarityScore: 70 });
+  for (const prompt of high) {
+    assert(
+      prompt.includes("inviteStage: direct_invite_ready"),
+      "高分開場沒有進到 direct_invite_ready",
+    );
+  }
+  // 邀約那一輪（第 4 句）才會走到 direct_invite_low_pressure——那是玩家自己的
+  // 邀約句觸發的（`looksLikeGameSoftInvite`），不是分數。分數在聊天 prompt 這條
+  // 路上進的是 inviteMaturity／allowSpicyLevel／phase 三個區塊，見 README。
+  assert(high[3].includes("speedInviteDirection: direct_invite_low_pressure"));
+  assert(
+    high[0].includes("allowSpicyLevel: L3"),
+    "高分開場沒有把 spicy 上限開到 L3",
+  );
+  const low = await promptOf();
+  assert(
+    low[0].includes("allowSpicyLevel: L1"),
+    "省略旗標時 spicy 上限不該是 L3",
+  );
+});

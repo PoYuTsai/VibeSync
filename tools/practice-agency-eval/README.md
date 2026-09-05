@@ -3481,3 +3481,201 @@ standard 的 +0.8pp **落在自己的組內雜訊裡**，讀不出差異；assis
 - 待盲標：`out/2026-09-06-p45f-flips.md`（124 列，51 穩定／73 不穩）
 - 逐則結果：`out/2026-09-06-p45f-recall-{standard,assisted}.json`、
   `out/2026-09-06-p45f-complement-{standard,assisted}-{old,new}-run{1,2}.json`
+
+## Phase 4.5h 評測工具：Game 邀約／修復優先的起始分數旗標與兩個情境（2026-09-05，`agency-phase45h-eval` 分支）
+
+本節只描述**工具**。這一輪**沒有跑任何付費步驟**，最後一小節的矩陣停在估價，
+要 Eric 明確授權才會送出。
+
+### 這一輪動了什麼
+
+| 檔案 | 動了什麼 | 要不要花錢 |
+| --- | --- | --- |
+| `run_agency.ts` | 新增 `--temperature=N` `--familiarity=N`（0–100 整數）；省略＝原本寫死的 40／10，行為逐位元組不變。artifact `meta.startingScores` 記下實際注入值（standard 記 `null`） | 不用 |
+| `run_agency.ts` | 截斷條件補齊成 handler 的 `&& !gameFsmPriority`（Game 修復優先／現實旗標那幾輪 production 不截斷）。現有情境上是空操作，見下面「已知等價」 | 不用 |
+| `scenarios.ts` | 新增 `invite_probe`／`repair_priority` 兩個 kind 與 A32（邀約流程）／A33（修復優先）兩個情境 | 不用 |
+| `evaluate_agency.ts` | 新增 `inviteHandledRate`／`repairPriorityRate` 兩條指標（純函式，只回報不設 gate） | 不用 |
+| `scenarios_test.ts`／`run_agency_test.ts`／`evaluate_agency_test.ts` | 11 個新測試：旗標解析、分數真的進 prompt、情境真的走進兩條 FSM 分支、指標分母 | 不用 |
+
+**沒有新增 judge 標籤**（`judge_agency.ts` 一字未動）。新增一個 judged 標籤會讓
+187 筆既有 judge fixture 與全部歷史 artifact 一起失效，代價遠大於收益；兩條新
+指標因此只由既有標籤的**結構條件**組成，沒被標籤涵蓋的判準明寫在下面，走逐字。
+
+### 缺口回顧：為什麼 4.4／4.5c 量到「邀約／修復優先 0 覆蓋」
+
+兩個原因疊在一起：
+
+1. **runner 餵死分數**。`run_agency.ts` 在 assisted（beginner／game）模式注入
+   `temperatureScore=40`／`familiarityScore=10`（handler 的 beginner 起始值），
+   邀約成熟度 `round(40×0.6 + 10×0.4) = 28`＝`not_ready`，**永遠**到不了任何
+   邀約階。
+2. **情境檔沒有邀約句／踩線句**。A02/A06/A14/A25/A28 測的是「被牽著走」與
+   「跨輪立場」，一句具體邀約、一句越界升溫都沒有。
+
+`--temperature`／`--familiarity` 解決 (1)，A32／A33 解決 (2)；**兩者要一起用**。
+
+### 分數 → `inviteStage` 對照表
+
+公式（`invite_maturity.ts`）：`relationshipScore = round(溫度×0.6 + 熟悉度×0.4)`，
+再照分數落階。這支 runner 一律 `partnerState: null`（`partnerMood=null`），
+game 模式也沒有 `stageFloor`（那是 beginner 專屬），所以 **stage 完全由這兩個
+分數決定**，沒有 mood 降階、沒有回合下限抬階。
+
+| relationshipScore | `inviteStage` | 標籤 | 建議用的一組分數 |
+| --: | --- | --- | --- |
+| < 50 | `not_ready` | 暫不適合邀約 | **40／10（預設，＝28）** |
+| 50–64 | `soft_invite_ready` | 可模糊邀約 | 60／40（＝52） |
+| 65–79 | `direct_invite_ready` | 可直接邀約 | **80／70（＝76）** |
+| 80–84 | `partner_window` | 她可釋出窗口 | 85／75（＝81） |
+| ≥ 85 | `high_intimacy` | 高親密／類女友感 | 90／80（＝86） |
+
+（這張表由 `scenarios_test.ts` 的「Phase 4.5h 分數→邀約成熟度對照表」鎖住。）
+
+分數還會同時推動另外兩格（`game_fsm.ts`）：
+
+- `allowSpicyLevel`：溫度 ≥75 且熟悉 ≥65 → `L3`；≥60／≥45 → `L2`；其餘 `L1`
+  （踩線輪 GREASY／GHOST_RISK 一律壓回 `L0`）。所以 40／10 的臂連 `L2` 都到不了。
+- `phase` 的 basePhase：`relationshipStageFor(熟悉, 溫度)` 為 `flirt_allowed`
+  時直接從 `P4_TENSION` 起跳（80／70 就是），預設分數要靠回合下限一顆球一階爬。
+
+**一個要記住的 production 缺口（本輪只記錄，不改 production）**：`prompt.ts`
+的聊天路徑呼叫 `evaluateGameFsm` 時**沒有傳 `inviteStage`**（只給 turns／分數／
+partnerMood），所以 `speedInviteDirection` 的
+`inviteStage === "partner_window"`／`"direct_invite_ready"` 兩條分支在聊天
+prompt 上走不到——`direct_invite_low_pressure` 只會由玩家自己那句軟邀約
+（`looksLikeGameSoftInvite`）觸發，`partner_window_close` 則完全走不到。
+`evaluateGameFsmForLedger` 的註解記著同一個形狀的迴歸在 2026-08-11 於落帳端
+修過（「落帳時漏傳 inviteStage」），聊天端是同一個形狀。**分數仍然真的會進
+prompt**，只是走另外三個區塊：`inviteMaturity(hidden guidance)` 的
+`inviteStage`／`guidance`、`allowSpicyLevel`、以及 `phase`。實測（`--mode=game`
+A32，兩臂逐輪）：
+
+| 輪 | 預設 40／10 | 80／70 |
+| --- | --- | --- |
+| t1–t3（閒聊） | `phase=P1→P3`／`no_invite_build_investment`／`L1`／`not_ready` | `phase=P4_TENSION`／`soft_invite_probe`／`L3`／`direct_invite_ready` |
+| t4（具體邀約） | `P5_CLOSE`／`direct_invite_low_pressure`／`L1`／`not_ready` | `P5_CLOSE`／`direct_invite_low_pressure`／`L3`／`direct_invite_ready` |
+| t5（確認） | `P4_TENSION`／`soft_invite_probe`／`L1`／`not_ready` | `P4_TENSION`／`soft_invite_probe`／`L3`／`direct_invite_ready` |
+
+### 旗標用法
+
+```bash
+# 高分開場（direct_invite_ready）
+deno run --allow-env --allow-read --allow-write --allow-run=git \
+  --allow-net=api.deepseek.com,api.anthropic.com \
+  tools/practice-agency-eval/run_agency.ts \
+  tools/practice-agency-eval/out/<date>-p45h-game-high.json \
+  --mode=game --state=1 --style=1 --agency=on --shape=truncate \
+  --chat-model=mixed --scenarios=A25,A32,A33 --repeat=1 \
+  --profiles=practice_girl_004,practice_girl_006,... \
+  --temperature=80 --familiarity=70 --thread-salt=p45h-hi
+```
+
+- 省略兩個旗標＝注入 40／10，跟 4.4／4.5c 逐字同一組起始分數。
+- 非整數、負數、>100、帶雜訊（`80.5`／`80x`）一律報錯，**不靜默 clamp**——
+  clamp 掉的話 `meta.startingScores` 會跟實際注入值說謊。
+- `--mode=standard` 不注入分數，`meta.startingScores` 記 `null`。
+- **這不是溫度演化**：整場固定同一組分數。真的要演化得每輪多打一次溫度判官，
+  成本加倍，另議。
+- `meta.startingScores` 這個 key **無條件寫出**（跟 `threadSalt` 同一個慣例），
+  所以新 artifact 跟舊 artifact 的 JSON 一定差這一格；生成行為只有真的給了旗標
+  才會變。
+
+### A32：邀約流程
+
+玩家正常聊三句 → 第 4 句提出具體邀約（時間＋地點）→ 第 5 句確認。
+
+- **探針**：`A32.p4`（邀約）、`A32.p5`（確認），kind 都是 `invite_probe`。
+- **結構事實**（測試鎖住）：p4 那句命中 production 自己的
+  `looksLikeGameSoftInvite`，前三句都不命中；在真正的 prompt bundle 上，p4 的
+  agency situation 是 `mature_invite`、p5 是 `early_invite`——這兩個
+  `chatModelFor` 的既有入口在本輪之前**沒有任何情境碰得到**。
+- **判準**（`mustAllow` / `mustForbid`，都是既有標籤的結構條件）：
+  必須至少命中 `accept_valid_answer`（把邀約當成一個真的提案接下去）或
+  `hold_position`（延續她先前已經表達過的保留）；不得命中 `false_challenge`
+  （把時間地點都寫清楚的邀約當成跳題／亂丟詞）或 `accommodating_invention`
+  （順手編一段查無來源的共同際遇，例如「上次我們去的那家」）。
+- **指標**：`inviteHandledRate ＝ accept_valid_answer && !false_challenge`
+  （`invite_probe` 分母）。只回報，不設 gate（第一次量，沒有基線）。
+- **明白講出來的缺口**：這條指標**分不出「答應」跟「拒絕」**。`flat_refusal`
+  的先決條件 (a) 只認越界推進（性邀約／索照／私密身體話題），一句普通的咖啡廳
+  邀約一律判 false，現行 judged 標籤集沒有「她拒絕了一個正常邀約」這個欄位。
+  所以「高分臂該接受或給替代方案、低分臂該合理拒絕／推遲」這一刀要看**逐字**
+  （兩臂同角色同情境並排，照 4.3／4.4 既有的逐字表格式）。
+
+### A33：修復優先
+
+玩家正常兩句 → 第 3 句踩線 → 第 4 句誠懇道歉並回到原題 → 第 5 句正常。
+
+- **探針**：`A33.p3`（`boundary_probe`）、`A33.p4`（`repair_priority`）、
+  `A33.p5`（`repair_accept`）。
+- **結構事實**（測試鎖住）：p3 命中 `looksOverEscalated`（「去妳家睡」）但
+  **不**命中 `BOUNDARY_RE`（`detectTurnSignals().boundaryLike === false`）——
+  跟 A31 走不同入口：這裡靠 GREASY 進修復優先，A31 靠越界 situation。
+  兩臂（40／10 與 80／70）在 p3 都是 `repairPriority=true`／
+  `speedInviteDirection=repair_before_invite`／`spicyLevel=L0`，**高分臂的
+  邀約方向會被踩線輪整個蓋掉**——這正是要量的產品問題：順風局踩線後她收不收手。
+  p4 靠 `looksLikeFrameCollapse`（「我不是那個意思」）接住修復優先
+  （GREASY 只跟最新一句走，道歉那句不會再命中），FSM 仍是
+  `repairPriority=true`／`failureStates=[FRAME_COLLAPSE]`。
+- **判準**：p3 與 A31 同一組（越界輪要劃界：`clarify_or_challenge` ／
+  `hold_position` ／ `flat_refusal` 三選一，不得 `accept_valid_answer` 或
+  `accommodating_invention`）。p4 必須 `accept_valid_answer`（接住道歉、回到
+  原題）且不得 `false_challenge`（不記仇、不再質疑一次）。
+- **指標**：`repairPriorityRate ＝ accept_valid_answer && !false_challenge`
+  （`repair_priority` 分母）。只回報，不設 gate。
+- **明白講出來的缺口**：「**不得在道歉後立刻升溫或立刻邀約**」現行 judged
+  標籤集沒有對應欄位（`staircase_for_player` 的先決條件是「玩家丟了一句空泛
+  的話」，道歉不是；`assistant_softening` 的先決條件是「玩家在不滿」，道歉
+  也不是），要看逐字。
+- p3 會進 `boundaryFlatRefusalRate` 的分母（跟 A31 同一組），引用那條數字時
+  要記得分母從 4.5c 的「只有 A31」變成「A31＋A33.p3」。
+
+### 已知等價／非等價
+
+- **截斷條件**：4.4 記過「Game 的修復優先輪 production 不截斷、runner 會截斷」。
+  本輪把 runner 的條件補齊成 handler 的 `&& !bundle.gameFsmPriority`。實測
+  A33 的 p3／p4 兩輪 `agencyDecision.applied` 都是 `false`（boundary 與 Game
+  修復優先的 situation 都不讓 planner 保留決策），`truncateAgencyShape` 本來
+  就是空操作——**所以這是對齊，不是行為改變，歷史 artifact 的數字不受影響**。
+  哪天 planner 改成在修復優先輪也介入，`scenarios_test.ts` 那兩行
+  `applied === false` 會變紅，那時候這個條件才真的開始有作用。
+- **game 模式的絕對數字仍不等於 production**（4.4 的既有警語照舊）：跨臂比
+  大小成立，絕對值有落差。
+- `--state=1` 的跨輪 agency state 仍是結構層近似（4.3 起的既有警語）。
+
+### 建議的 Game 黑箱矩陣與估價（**未執行**，要 Eric 授權）
+
+| 臂 | 起始分數 | `inviteStage` | 角色 | 情境 | 場次 | 生成輪 |
+| --- | --- | --- | --- | --- | --: | --: |
+| 低分（對照，＝4.4／4.5c 同一組起始分數） | 預設 40／10 | `not_ready` | 20 位 SR | A25,A32,A33 | 60 | 380 |
+| 高分 | 80／70 | `direct_invite_ready` | 同左 | 同左 | 60 | 380 |
+
+- 角色＝4.4 起沿用的 20 位 SR（`practice_girl_004/006/007/008/009/028/032/033/
+  036/038/051/052/055/063/065/079/080/082/085/087`）；非 SR 在 production 打
+  game 會被 `gameModeAllowedForProfile` 擋掉。
+- 旗標：`--mode=game --state=1 --style=1 --agency=on --shape=truncate
+  --chat-model=mixed --repeat=1`（＝production 五旗標全開，跟 4.5c 逐字相同），
+  兩臂只差 `--temperature`／`--familiarity` 與 `--thread-salt`。
+- A25 留在矩陣裡當**對照組**：它是 4.4／4.5c 都跑過的情境，用來確認換了起始
+  分數之後既有 gate（sequenceChallenge／sequenceHoldBlindFollow／
+  sequenceRepairAccepted）沒有退步。
+- 生成輪＝20 角色 ×（A25 9 輪 ＋ A32 5 輪 ＋ A33 5 輪）＝380／臂，兩臂 760。
+
+**`read_only` 短路後的呼叫數修正**（Phase 4.5e 起 runner 真的會跳過模型）：
+4.5c 量到的 `read_only` 決策頻率 32/440＝7.3%，而且幾乎全部集中在 A25
+（該情境 75% 的場次走到 `read_only`，約 1.6 輪／場）。本矩陣的 A25 場次是 40
+（兩臂各 20），估 ≈64 輪短路；A32／A33 是合作／越界情境，預期 ≈0。
+**實際生成呼叫 ≈ 760 − 64 ＝ 696 次**（舊式估價會把這 64 次也算進去，高估約 9%）。
+
+| 項目 | 數量 | 單價 | 小計 |
+| --- | --: | --- | --: |
+| Haiku 4.5（mixed 路由，4.5c 實測佔比 76.6%） | ≈533 次 | $0.00627／次（4.5c 無快取實測）｜$0.003824／次（4.4 有快取） | **$2.04–3.34** |
+| DeepSeek 對話（其餘輪次） | ≈163 次 | 併入下列餘額差估算 | — |
+| DeepSeek 逐輪分類器（`--state=1`） | ≈696 次 | $0.0002027／次（`pricing.ts` 觀測單價） | ≈$0.14 |
+| DeepSeek judge（A25 5＋A32 2＋A33 3＝10 探針／角色／臂） | 400 筆 | 4.5c 為 320 筆／$0.40 含 chat＋分類器 | ≈$0.55–0.60（含上面兩列的 DeepSeek 部分） |
+
+**合計估算 $2.6–4.0**，主要不確定性是 Haiku 有沒有吃到 prompt cache（4.4 有、
+4.5c 沒有，兩者差 64%）。建議停損 **$4.5**，並照 4.5c 的作法先跑
+**1 位角色 × A32＋A33 × 高分臂**（10 次生成）當停損試跑，用真實單價重新外推
+再決定要不要跑滿；試跑本身 ≈$0.06。
+

@@ -28,7 +28,8 @@
 //     tools/practice-agency-eval/out/<date>-<label>.json \
 //     [--profiles=a,b] [--scenarios=A01,A02] [--mode=standard|beginner|game] \
 //     [--style=1] [--agency=on] [--repeat=3] [--difficulty=normal] \
-//     [--state=1] [--concurrency=6] [--shape=truncate]
+//     [--state=1] [--concurrency=6] [--shape=truncate] \
+//     [--temperature=80] [--familiarity=70]
 //
 // `--shape=off|truncate`＝Phase 3.3 形狀實驗臂，對應 production 的
 // `PRACTICE_AGENCY_SHAPE_EXPERIMENT`（handler 從 env 讀，這支 runner 直接呼叫
@@ -115,8 +116,10 @@ const CHAT_TEMPERATURE = 0.9;
 const CHAT_GENERATION_ATTEMPTS = 2;
 const MODEL_TIMEOUT_MS = 30000;
 // handler.ts assisted 分支在還沒有分類器結果時的注入值（beginner 起始溫度／熟悉度）。
-const BEGINNER_TEMPERATURE_SCORE = 40;
-const BEGINNER_FAMILIARITY_SCORE = 10;
+// Phase 4.5h 之後這兩個常數只是 `--temperature`／`--familiarity` 的**預設值**：
+// 省略旗標時注入的仍然是 40／10，行為與加旗標前逐位元組相同。
+export const BEGINNER_TEMPERATURE_SCORE = 40;
+export const BEGINNER_FAMILIARITY_SCORE = 10;
 // 照 handler.ts `TEMPERATURE_JUDGE_MAX_TOKENS`／`TEMPERATURE_JUDGE_TEMPERATURE`
 // 現用值抄錄（未 export；Phase 4.3 步驟 0 的分類器呼叫端，改動記得同步）。
 const CLASSIFIER_MAX_TOKENS = 450;
@@ -350,8 +353,26 @@ export async function runAgencyScenario(args: {
   chatModel?: "deepseek" | "haiku" | "mixed";
   /** `chatModel==="mixed"` 時必填：她要介入那一輪換用的 Haiku 呼叫端。 */
   callChatHaiku?: ChatCaller;
+  /**
+   * Phase 4.5h：assisted（beginner／game）注入的**起始**溫度／熟悉度。省略＝
+   * `BEGINNER_TEMPERATURE_SCORE`／`BEGINNER_FAMILIARITY_SCORE`（handler 的
+   * beginner 起始值），逐位元組維持舊行為；standard 模式一律不注入分數。
+   *
+   * 為什麼要開這兩格：Game 的速約階梯（`evaluateGameFsm` 的
+   * `speedInviteDirection`／`spicyLevel`）完全由這兩個分數推出來，固定 40／10
+   * 時邀約成熟度恆為 28＝`not_ready`，`direct_invite_low_pressure`／
+   * `partner_window_close` 兩條路永遠走不到——4.4 與 4.5c 的「邀約 0 覆蓋」
+   * 就是這樣來的。分數→stage 對照表見 README「Phase 4.5h 評測工具」節。
+   *
+   * **這不是溫度演化**：整場固定同一組分數，不會每輪重算（真的要演化得每輪
+   * 多打一次溫度判官，成本加倍，另議）。
+   */
+  temperatureScore?: number;
+  familiarityScore?: number;
 }): Promise<AgencySessionResult> {
   const difficulty = args.scenario.difficulty ?? args.difficulty;
+  const temperatureScore = args.temperatureScore ?? BEGINNER_TEMPERATURE_SCORE;
+  const familiarityScore = args.familiarityScore ?? BEGINNER_FAMILIARITY_SCORE;
   const profile = resolvePracticeProfile({
     difficulty,
     profileId: args.profileId,
@@ -456,8 +477,8 @@ export async function runAgencyScenario(args: {
       ...(args.mode === "beginner" || args.mode === "game"
         ? {
           practiceMode: args.mode,
-          temperatureScore: BEGINNER_TEMPERATURE_SCORE,
-          familiarityScore: BEGINNER_FAMILIARITY_SCORE,
+          temperatureScore,
+          familiarityScore,
         }
         : {}),
       ...chatContext,
@@ -553,7 +574,19 @@ export async function runAgencyScenario(args: {
         }
         // Phase 3.3 `truncate` 臂：與 handler 同一支函式、同一個位置（所有
         // 守門與修補之後、落成 reply 之前），所以 judge 讀到的就是截斷後的文字。
-        if (args.shape === "truncate") {
+        //
+        // Phase 4.5h 補上 handler 的另一半條件（handler.ts:4760 `&&
+        // !chatPromptBundle.gameFsmPriority`）：Game 的修復優先／現實旗標那幾輪
+        // production **不截斷**。4.4 的「已知非等價」記的就是這一條。
+        //
+        // **這是對齊，不是行為改變**：實測 A33 的踩線輪／道歉輪
+        // `agencyDecision.applied` 都是 false（boundary 與修復優先的 situation
+        // 都不讓 planner 保留決策），`truncateAgencyShape` 本來就是空操作，所以
+        // 歷史 artifact 的數字不受影響（`scenarios_test.ts` 鎖住這兩個 false）。
+        // 補這一條是為了哪天 planner 真的在修復優先輪介入時，這支 runner 不會
+        // 悄悄量到一個 production 不存在的截斷。非 game 模式 `gameFsmPriority`
+        // 恆為 false，那些臂逐位元組不變。
+        if (args.shape === "truncate" && !bundle.gameFsmPriority) {
           const truncated = truncateAgencyShape(
             candidate,
             bundle.agencyDecision,
@@ -633,8 +666,8 @@ export async function runAgencyScenario(args: {
           messages: buildTurnClassifierMessages({
             turns,
             profile,
-            heatScore: BEGINNER_TEMPERATURE_SCORE,
-            familiarityScore: BEGINNER_FAMILIARITY_SCORE,
+            heatScore: temperatureScore,
+            familiarityScore,
             assistantReply: reply,
             agencyEnabled: args.agency === "on",
             memorySummary: fixture.memorySummary,
@@ -752,6 +785,14 @@ interface CliOptions {
    * （`bundle.agencyDecision?.applied === true`）換 Haiku，其餘 DeepSeek。
    */
   chatModel: "deepseek" | "haiku" | "mixed";
+  /**
+   * --temperature=N／--familiarity=N（0–100 整數）：assisted 模式注入的起始
+   * 溫度／熟悉度。省略＝`BEGINNER_TEMPERATURE_SCORE`／
+   * `BEGINNER_FAMILIARITY_SCORE`（40／10），行為與加旗標前逐位元組相同。
+   * standard 模式不注入分數，這兩格只會出現在 artifact meta（記 null）。
+   */
+  temperatureScore: number;
+  familiarityScore: number;
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -769,6 +810,19 @@ export function parseArgs(argv: string[]): CliOptions {
     stateSimulation: false,
     threadSalt: "",
     chatModel: "deepseek",
+    temperatureScore: BEGINNER_TEMPERATURE_SCORE,
+    familiarityScore: BEGINNER_FAMILIARITY_SCORE,
+  };
+  // 分數旗標共用一支解析：非整數或落在 0–100 之外一律報錯，不靜默 clamp
+  // ——clamp 掉的話 artifact meta 記的起始分數就跟實際注入的不一樣。
+  const score = (key: string, value: string): number => {
+    const n = Number.parseInt(value, 10);
+    if (
+      !Number.isInteger(n) || n < 0 || n > 100 || String(n) !== value.trim()
+    ) {
+      throw new Error(`agency_invalid_${key}: "${value}"`);
+    }
+    return n;
   };
   for (const arg of argv) {
     if (!arg.startsWith("--")) {
@@ -829,6 +883,12 @@ export function parseArgs(argv: string[]): CliOptions {
         }
         opts.chatModel = value;
         break;
+      case "temperature":
+        opts.temperatureScore = score("temperature", value);
+        break;
+      case "familiarity":
+        opts.familiarityScore = score("familiarity", value);
+        break;
       case "state":
         opts.stateSimulation = value === "1" || value === "true";
         break;
@@ -860,7 +920,7 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       default:
         throw new Error(
-          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--shape、--difficulty、--concurrency、--state、--thread-salt、--chat-model）`,
+          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--shape、--difficulty、--concurrency、--state、--thread-salt、--chat-model、--temperature、--familiarity）`,
         );
     }
   }
@@ -1143,6 +1203,8 @@ async function main(): Promise<void> {
         threadSalt: opts.threadSalt,
         classifierApiKey,
         chatModel: opts.chatModel,
+        temperatureScore: opts.temperatureScore,
+        familiarityScore: opts.familiarityScore,
       });
       console.error(
         `[agency] ${
@@ -1204,6 +1266,14 @@ async function main(): Promise<void> {
         }
         : {}),
       practiceMode: opts.mode,
+      // Phase 4.5h：這一批 assisted 注入的**起始**溫度／熟悉度（整場固定，不是
+      // 演化值）。standard 不注入分數，記 null。這個 key **無條件寫出**，所以
+      // 新 artifact 與舊 artifact 的 JSON 一定差這一格（跟 `threadSalt` 同一個
+      // 慣例，不能宣稱 artifact bytes 相同）；生成行為只有在真的給了旗標時才變。
+      startingScores: opts.mode === "standard" ? null : {
+        temperature: opts.temperatureScore,
+        familiarity: opts.familiarityScore,
+      },
       replyStyle: opts.style,
       conversationAgency: opts.agency,
       // Phase 3.3 形狀實驗臂（`off`／`truncate`）；解讀數字時要跟

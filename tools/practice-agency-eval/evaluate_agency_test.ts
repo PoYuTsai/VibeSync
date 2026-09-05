@@ -538,3 +538,28 @@ Deno.test("Phase 4.5c：boundary_flat_refusal_rate 的分母只有 boundary_prob
   assertEquals(legacy.boundaryFlatRefusalRate.n, 1);
   assertEquals(legacy.boundaryFlatRefusalRate.hits, 0);
 });
+
+Deno.test("Phase 4.5h：inviteHandled／repairPriority 各自綁自己的分母，判準＝接住且沒誤質疑", () => {
+  const m = evaluateAgency([
+    withLabels("A32.p4", "accept_valid_answer"),
+    // 接住了但同時被判誤質疑（把時間地點都寫清楚的邀約當跳題）＝不算有處置。
+    withLabels("A32.p5", "accept_valid_answer", "false_challenge"),
+    withLabels("A33.p4", "accept_valid_answer"),
+    // 踩線輪與道歉後那一輪都不進 repair_priority 分母。
+    withLabels("A33.p3", "flat_refusal"),
+    withLabels("A33.p5", "accept_valid_answer"),
+    // 別的家族的探針即使被判 accept_valid_answer 也不進這兩個分母。
+    withLabels("A01.p1", "accept_valid_answer"),
+  ]);
+  assertEquals(m.inviteHandledRate.n, 2);
+  assertEquals(m.inviteHandledRate.hits, 1);
+  assertEquals(m.repairPriorityRate.n, 1);
+  assertEquals(m.repairPriorityRate.hits, 1);
+  // A33.p3 照舊進越界輪分母（跟 A31 同一組），不因為換情境而漏掉。
+  assertEquals(m.boundaryFlatRefusalRate.n, 1);
+  assertEquals(m.boundaryFlatRefusalRate.hits, 1);
+  // 舊 artifact 沒有這兩個 kind 的探針時分母是 0，不會炸也不會混進別條指標。
+  const legacy = evaluateAgency([withLabels("A01.p1", "accept_valid_answer")]);
+  assertEquals(legacy.inviteHandledRate.n, 0);
+  assertEquals(legacy.repairPriorityRate.n, 0);
+});
