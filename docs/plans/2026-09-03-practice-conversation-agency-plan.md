@@ -1685,7 +1685,9 @@ $0.412，Phase 4.5f 合計估價 $0.888。餘額起 $21.29（06:39:40Z，開跑�
 
 ## Phase 4.5g — forced `check_out` 的結構後檢查（2026-09-05）
 
-**分支** `agency-phase45g`（自 main `b34210f1`），HEAD `11f6b6e8`。
+**分支** `agency-phase45g`。原本自 main `b34210f1` 開出，Codex R1 之後 rebase
+到 main `cd63d41f`（Phase 4.5h）；實作 commit `30e8f979`、文件 `478c7135`、
+R1 測試 `7136e95c`。
 
 ### 問題
 
@@ -1738,6 +1740,17 @@ truncate 全部之後，`reply = candidate` 之前），所以檢查的就是真
 走不到（`allowsCheckOut` 只給挑戰／Game），所以等價 harness 的四面輸出一個
 key 都不多，golden `7f1d6d6c` 未動。runner 的逐輪紀錄用同名的兩個選填欄位。
 
+**監看時 `chat_agency_check_out_shape` 與 Phase 3.1 的 shape 錯誤一樣視為
+policy rejection，不算生成故障**（Codex R1 P3）。它走的是既有的
+`practice_chat_chat_generation_attempt_failed` warn——**事件名不改**，因為
+旁白／L4／內部標籤那幾道守門全部共用這一條，為這一刀另開一個事件反而讓
+「被守門擋下」這件事分散在兩個名字底下。實查 `scripts/practice_agency_telemetry.py`
+（2026-09-05）：它只讀 `practice_chat_succeeded`／`practice_chat_model_fallback`／
+`practice_chat_standard_agency_classifier_failed` 三個事件，**根本沒碰**
+`practice_chat_chat_generation_attempt_failed`，所以既有的成功率／fallback
+數字不受污染，那支 python 不需要改。人工翻 log 或之後新增儀表時，要把
+`error` 欄位是 `chat_agency_check_out_shape` 的那幾筆歸到 policy rejection。
+
 ### Gate（實測）
 
 - `deno test -A supabase/functions/practice-chat`：**1,949 綠**／1 ignored
@@ -1749,7 +1762,8 @@ key 都不多，golden `7f1d6d6c` 未動。runner 的逐輪紀錄用同名的兩
 
 ### 回退
 
-**單一 revert**：`git revert 11f6b6e8`。沒有 migration、沒有 schema、沒有新旗標
+**單一 revert**：`git revert 30e8f979`（R1 那支只有測試，可一併 revert）。
+沒有 migration、沒有 schema、沒有新旗標
 ——這一刀掛在既有的 forced `check_out` 路徑上，revert 之後那一輪就退回「模型
 說什麼就送什麼」。不需要動 production 環境變數。
 
@@ -1766,3 +1780,41 @@ key 都不多，golden `7f1d6d6c` 未動。runner 的逐輪紀錄用同名的兩
 - **`aiAskedQuestion` 過寬的代價**：「不知道怎麼說，先忙了」含「怎麼」會被判
   成問句 → 多重試一發 → 第二發若合格就採用，若不合格就 fail-open 原樣送出。
   方向安全（不會擋掉輸出），但會讓 `checkOutRetry` 的分母比真實問句多。
+
+### Codex R1：APPROVE_WITH_RISK（逐項處置）
+
+無 P0／P1。三項處置如下（commit `7136e95c`）。
+
+| 項目 | 判定 | 處置 |
+| --- | --- | --- |
+| **P2-1** forced `check_out` 與 `gameFsmPriority` 的互斥性／runner 截斷條件 | **不互斥**，且 runner 條件已由 main 的 4.5h 補齊 | 查證＋兩支對拍測試（見下） |
+| **P2-2** 後檢查與既有守門的交互 | 兩條路徑都沒被測到 | 補 (a)／(b) 兩支 handler 級測試 |
+| **P3** `chat_agency_check_out_shape` 污染失敗率 | 事實成立，但影響面小於改事件名 | 不改事件名／不改 python，改在上面的 telemetry 契約節寫清楚監看規則 |
+
+**P2-1 查證**：`computeAgencyDecision` 只要求 `situation === "neutral"` 才保留
+決策，而 `gameFsmPriority ＝ policyEvidence.gameRepairPriority ||
+policyEvidence.gameRealityFlagCount > 0` 是**另一條**證據線——handler 4763 行
+的既有註解本來就寫明「唯一會落在 neutral 卻仍有既有優先權的是 Game FSM 的
+修復優先／現實旗標」。所以兩者**可以同時為真**，不能寫互斥測試。
+`check_out` 又是持久化階梯格（`lowValueStreak >= 3`），跟 Game 修復優先各自
+獨立累積，更沒有理由互斥。
+
+runner 那半：本輪 rebase 到 `cd63d41f` 之後確認 **Phase 4.5h 已經把
+`run_agency.ts` 的截斷條件補成 `args.shape === "truncate" &&
+!bundle.gameFsmPriority`**（與 handler 同序），本輪不重複改。新增的對拍測試
+把兩邊釘在同一個字面上：同一則 `"你在忙嗎？\n先忙了"` 連丟兩發，truncate 先
+砍成第一則、後檢查仍命中（第一顆是問句）→ handler 與 runner 的 fail-open
+輸出都是 `"你在忙嗎？"`，`shapeDropped: 1`／`checkOutRetry`／
+`checkOutStructuralFail` 三格也對齊。
+
+**P2-2 的兩條路徑**（都在 `chat_model_routing_test.ts`）：
+
+- (a) 第一發被 check_out 後檢查丟掉、第二發被既有守門（括號旁白剝到空）擋
+  → **整輪 500**。這條守住「絕不把被守門擋下的內容送出去」——fail-open 只
+  對這一道結構後檢查生效，不會順手放行別道守門。
+- (b) 第一發被既有守門擋、第二發只有 check_out 結構違規 → **200 fail-open**、
+  `checkOutStructuralFail: true`，而 `checkOutRetry` **連 key 都沒有**。
+  這是刻意的語意：那一次重試不是這道後檢查造成的，telemetry 不冒領。
+
+**R1 之後的 Gate**：practice-chat **1,952 綠**／1 ignored、tools **150 綠**、
+等價 harness golden 未動、fmt／lint 乾淨、`deno check index.ts` 過。
