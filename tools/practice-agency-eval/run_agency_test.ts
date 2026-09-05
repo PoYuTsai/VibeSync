@@ -1167,3 +1167,65 @@ Deno.test("Phase 4.5g（P2-1 對拍）：shape=truncate 的 check_out 輪兩發�
     globalThis.fetch = original;
   }
 });
+
+Deno.test("Phase 4.7：runner 與 production 同源——空白回覆當守門失敗重試，第二發合格就採用；兩發都空整輪失敗（不打真網路）", async () => {
+  const scenario = AGENCY_SCENARIOS.find((s) => s.id === "A25")!;
+  const original = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(fakeClassifierResponse(true));
+  try {
+    const run = (replies: (calls: number) => string) => {
+      let calls = 0;
+      return runAgencyScenario({
+        callChat: () => Promise.resolve(replies(++calls)),
+        profileId: "practice_girl_004",
+        scenario,
+        repeat: 1,
+        difficulty: "normal",
+        mode: "game",
+        style: true,
+        agency: "off",
+        shape: "off",
+        stateSimulation: true,
+        classifierApiKey: "test-key",
+        chatModel: "deepseek",
+      });
+    };
+    // 每一輪第一發空白（含純空白）、第二發合格：每輪恰好 2 次、沒有空回覆送出。
+    const recovered = await run((
+      calls,
+    ) => (calls % 2 === 1 ? "  \n " : "嗯嗯好"));
+    assertEquals(recovered.error, undefined);
+    assert(recovered.turns.length > 0);
+    for (const t of recovered.turns) {
+      assertEquals(t.attempts, 2, t.reply);
+      assertEquals(t.reply, "嗯嗯好");
+    }
+    // 兩發都空：整輪失敗、恰好 2 次呼叫，沒有第三發。
+    let count = 0;
+    const failed = await runAgencyScenario({
+      callChat: () => {
+        count++;
+        return Promise.resolve("");
+      },
+      profileId: "practice_girl_004",
+      scenario,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "game",
+      style: true,
+      agency: "off",
+      shape: "off",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+      chatModel: "deepseek",
+    });
+    assert(failed.error !== undefined);
+    assert(
+      String(failed.error).includes("chat_empty_reply"),
+      String(failed.error),
+    );
+    assertEquals(count, 2);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
