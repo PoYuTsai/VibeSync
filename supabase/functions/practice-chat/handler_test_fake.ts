@@ -66,6 +66,16 @@ export interface FakeOptions {
    */
   claudeUsageBeforeError?: boolean;
   monotonicNowValues?: ReadonlyArray<number>;
+  /**
+   * Phase 5 WP2 成本保險絲：`practice_chat_daily_cost` 的當日起始累計（USD）。
+   * fake 內部**有狀態**——`increment_practice_chat_daily_cost` 會就地累加，
+   * 同一個 fake 連打兩輪就能重現「第一輪燒斷、第二輪被降級」。
+   */
+  dailyCostUsd?: number;
+  /** 讀今日累計時 DB 回錯（fail-open 路徑）。 */
+  dailyCostReadError?: string;
+  /** 累加 RPC 回錯（fail-open 路徑）。 */
+  dailyCostWriteError?: string;
   env?: Record<string, string | undefined>;
   randomUUID?: string;
 }
@@ -231,6 +241,8 @@ export function makeFake(options: FakeOptions = {}) {
       : 0,
   };
   const rpcByName = new Map<string, number>();
+  /** Phase 5 WP2：保險絲的當日累計（跨同一個 fake 的多次 handler 呼叫）。 */
+  let dailyCostUsd = options.dailyCostUsd ?? 0;
   let deepSeekIndex = 0;
   let claudeIndex = 0;
   let monotonicNowIndex = 0;
@@ -355,6 +367,22 @@ export function makeFake(options: FakeOptions = {}) {
                       data: options.srTicketRow === undefined
                         ? { consumed_at: null }
                         : options.srTicketRow,
+                      error: null,
+                    },
+                );
+              }
+              if (table === "practice_chat_daily_cost") {
+                return Promise.resolve(
+                  options.dailyCostReadError
+                    ? {
+                      data: null,
+                      error: { message: options.dailyCostReadError },
+                    }
+                    // 沒有列＝今天還沒花錢（保險絲讀到 null 會當成 0）。
+                    : {
+                      data: dailyCostUsd === 0
+                        ? null
+                        : { spent_usd: dailyCostUsd },
                       error: null,
                     },
                 );
@@ -576,6 +604,14 @@ export function makeFake(options: FakeOptions = {}) {
               stored_charged: false,
             },
           };
+        }
+        if (fn === "increment_practice_chat_daily_cost") {
+          if (options.dailyCostWriteError) {
+            return { error: options.dailyCostWriteError };
+          }
+          // 鏡射正式 SQL 的 upsert 累加＋回傳累加後的值。
+          dailyCostUsd += params.p_usd as number;
+          return { data: dailyCostUsd };
         }
         if (fn === "release_practice_hint_generation") {
           return { data: { released: true } };

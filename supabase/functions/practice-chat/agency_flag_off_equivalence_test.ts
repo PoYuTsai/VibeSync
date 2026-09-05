@@ -2039,3 +2039,56 @@ Deno.test({
     }
   },
 });
+
+/** Phase 5 WP2 成本保險絲旗標（harness 多枚舉的一維環境值）。 */
+const COST_FUSE_ENV_NAME = "PRACTICE_COST_FUSE_DAILY_USD";
+
+Deno.test({
+  name:
+    "Phase 5 WP2：PRACTICE_COST_FUSE_DAILY_USD 未設／空白／非正數／亂填時四面等價（含 agency on ＋ routing mixed）",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    // 保險絲的 off 契約比 4.4／4.5b 更強一格：不只「四面等價」，而且**零 DB
+    // 讀寫**（連 select 都不發）。可數的那一半在 `cost_fuse_handler_test.ts`
+    // 的「零 DB 讀寫」測試；這裡守的是逐位元組那一半。
+    const OFF_VALUES = ["", "   ", "0", "0.0", "-1", "abc", "NaN"];
+    for (const c of equivalenceCases()) {
+      const expected = parseGolden(c.name);
+      const agencyOnMixed = await observableDigest(
+        c,
+        "true",
+        undefined,
+        undefined,
+        "mixed",
+      );
+      for (const value of OFF_VALUES) {
+        const withFuse: EquivalenceCase = {
+          ...c,
+          options: {
+            ...c.options,
+            env: { ...c.options.env, [COST_FUSE_ENV_NAME]: value },
+          },
+        };
+        assertEquals(
+          await observableDigest(withFuse, undefined),
+          expected,
+          `${c.name} / costFuse=${JSON.stringify(value)}`,
+        );
+        // 保險絲唯一會生效的組合（agency on ＋ routing mixed）也必須沒動靜。
+        assertEquals(
+          await observableDigest(
+            withFuse,
+            "true",
+            undefined,
+            undefined,
+            "mixed",
+          ),
+          agencyOnMixed,
+          `${c.name} / agency=true ＋ routing=mixed ＋ costFuse=${
+            JSON.stringify(value)
+          }`,
+        );
+      }
+    }
+  },
+});

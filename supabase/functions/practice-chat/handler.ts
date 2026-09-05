@@ -1,3 +1,23 @@
+// practice-chat handler。
+//
+// ── server-only 旗標一覽（都在 Supabase 的 Edge Function secrets 設）────────
+//   PRACTICE_REPLY_STYLE_ENABLED         true／test／其他＝關
+//   PRACTICE_CONVERSATIONAL_AGENCY_ENABLED  true／test／shadow／其他＝關
+//   PRACTICE_AGENCY_SHAPE_EXPERIMENT     truncate／其他＝關
+//   PRACTICE_CHAT_MODEL_ROUTING          mixed／其他＝關
+//   PRACTICE_STANDARD_AGENCY_CLASSIFIER  true／其他＝關
+//   PRACTICE_COST_FUSE_DAILY_USD         正數＝每日 Anthropic 預算（USD）；
+//                                        空／未設／非正數＝關
+//   PRACTICE_HINT_PREFETCH_ENABLED       true／其他＝關
+//
+// **PRACTICE_COST_FUSE_DAILY_USD（Phase 5 WP2 成本保險絲）**：當日 chat 路徑的
+// Anthropic 估算花費到達預算時，之後每一輪強制走 DeepSeek（降級，不是報錯），
+// 並在跨過門檻的那一次寫一筆 `practice_chat_cost_fuse_blown`（一天一筆）。
+// 它只在 `PRACTICE_CHAT_MODEL_ROUTING=mixed` 時有意義（那是 chat 唯一會打
+// Claude 的路徑），提示與檢討不受影響。手動覆蓋＝把值調很大或清空。
+// 機制、資料表、fail-open 規則與已知天花板見 `cost_fuse.ts` 檔頭。
+// 旗標留空時**零 DB 讀寫**，四面逐位元組等於接線前
+// （`agency_flag_off_equivalence_test.ts`／`cost_fuse_handler_test.ts`）。
 import {
   buildQuotaExceededPayload,
   checkQuota,
@@ -111,6 +131,14 @@ import {
   type ClaudeArgs,
   type ClaudeUsage,
 } from "./claude.ts";
+import {
+  COST_FUSE_ENV,
+  parseCostFuseBudget,
+  readSpentUsdToday,
+  recordChatCost,
+  shouldDegrade,
+  utcDay,
+} from "./cost_fuse.ts";
 import { buildPracticeSceneContext } from "./life_schedule.ts";
 import { buildAcquaintanceOrigin } from "./acquaintance_origin.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
@@ -2453,6 +2481,20 @@ export function createPracticeChatHandler(
     // 這一輪真的介入時才有效果（`chatModelFor`）。
     const chatModelRoutingFlag = deps.getEnv("PRACTICE_CHAT_MODEL_ROUTING");
     const chatModelRoutingOn = chatModelRoutingFlag === "mixed";
+    // Phase 5 WP2 成本保險絲：`PRACTICE_COST_FUSE_DAILY_USD`（USD／日）。
+    // 空／未設／非正數／非數字＝關，而且**關的時候零 DB 讀寫**（四面等價由
+    // `agency_flag_off_equivalence_test.ts` 釘住）。
+    //
+    // 刻意綁在 `chatModelRoutingOn` 上：保險絲唯一的手段是把這一輪從 Haiku
+    // 扳回 DeepSeek，而唯一的花費來源也是那次 Haiku 呼叫——路由沒開 mixed 時
+    // chat 根本不打 Claude，讀寫這張表只是白花一次 DB round-trip。
+    // 提示與檢討走 `single_shot.ts`（Sonnet 5 → Haiku），沒有 DeepSeek 退路，
+    // 因此**不受保險絲影響**，也（目前）沒有 usage 回呼可以記帳，見
+    // `cost_fuse.ts` 檔頭的「已知天花板」。
+    const costFuseBudgetUsd = chatModelRoutingOn
+      ? parseCostFuseBudget(deps.getEnv(COST_FUSE_ENV))
+      : null;
+    const costFuseDay = utcDay(requestNow);
     // Phase 4.5b：standard 模式的每輪 agency 分類器。`true` 才開；未設／`off`／
     // 亂填一律關（`standardAgencyClassifierEnabled` fail-closed），而且只在
     // agency 旗標 `on` ∧ `practiceMode === "standard"` 時成立。旗標關著時
@@ -4687,6 +4729,11 @@ export function createPracticeChatHandler(
     let chatModelUsed: PracticeChatModel = "deepseek";
     /** 這一輪有任何一次 Claude 呼叫失敗過（守門重試也算）。 */
     let chatModelFallback = false;
+    /**
+     * Phase 5 WP2：這一輪進來時當日累計就已經到／超過預算，所以被強制扳回
+     * DeepSeek。保險絲關著、讀不到 DB（fail-open）、或還沒燒斷時都是 false。
+     */
+    let costFuseDegraded = false;
     /** Codex R1 P1：整輪**累加**，不是最後一次覆寫——守門退回後重打 Claude
      * 是真的付兩次錢，telemetry 不能只記後面那次。 */
     let chatModelUsage: ClaudeUsage | undefined;
@@ -4765,14 +4812,25 @@ export function createPracticeChatHandler(
       const readOnlyTurn = agencyMode === "on" &&
         agencyDecision?.applied === true &&
         agencyDecision.decision.forcedAct === "read_only";
-      const useHaiku = chatModelFor(
+      // Phase 5 WP2 成本保險絲：`chatModelFor` **之前**先問今天燒掉多少
+      // （一次 select）。燒斷＝這一輪強制走 DeepSeek，不是報錯（計畫 §7
+      // 風險 1）；讀不到（`null`）一律當成沒燒斷，只有 `cost_fuse.ts` 記的
+      // 那一行 warn。旗標關著時 `costFuseBudgetUsd` 是 null → 連 select 都不發。
+      if (costFuseBudgetUsd !== null) {
+        const spentUsdToday = await readSpentUsdToday(supabase, costFuseDay);
+        costFuseDegraded = spentUsdToday !== null &&
+          shouldDegrade(spentUsdToday, costFuseBudgetUsd);
+      }
+      const useHaiku = !costFuseDegraded &&
+        chatModelFor(
             chatModelRoutingFlag,
             agencyMode,
             agencyDecision,
             request.practiceMode,
             chatPromptBundle.situation,
             standardAgencyClassifierOn,
-          ) === "haiku" && !!claudeApiKey && !!deps.callClaude;
+          ) === "haiku" &&
+        !!claudeApiKey && !!deps.callClaude;
       // Phase 4.6 刀 2：重試那一發把改寫指令接在 bundle 後面當一則 user 訊息
       // （DeepSeek／Claude 兩條路徑同一份）；沒注入時就是 bundle 本身。
       const messagesForAttempt = () =>
@@ -4976,6 +5034,32 @@ export function createPracticeChatHandler(
           : {}),
       });
       return jsonResponse({ error: "practice_generation_failed" }, 500);
+    } finally {
+      // Phase 5 WP2：本輪付掉的 Claude 錢累加進今日。放在 `finally` 是因為
+      // 整輪失敗（500）那條路一樣付了錢——Codex R2 P2 當初把 `chatModelUsage`
+      // 補進失敗事件是同一個理由。
+      //
+      // `practice_chat_cost_fuse_blown` 一天恰好一筆：只有「累加前 < 預算 ≤
+      // 累加後」的那一次會寫。`before` 是 RPC 的原子回傳值減掉本輪金額，所以
+      // 併發下不會有兩個請求都看到同一個 before（見 migration 註解）。
+      // `logWarn` 本身就是一行 `console.warn`，告警不另外再印一次。
+      if (costFuseBudgetUsd !== null && chatModelUsage) {
+        const recorded = await recordChatCost(
+          supabase,
+          costFuseDay,
+          chatModelUsage,
+        );
+        if (
+          recorded !== null && recorded.before < costFuseBudgetUsd &&
+          recorded.after >= costFuseBudgetUsd
+        ) {
+          logWarn("practice_chat_cost_fuse_blown", {
+            day: costFuseDay,
+            spentUsd: recorded.after,
+            budgetUsd: costFuseBudgetUsd,
+          });
+        }
+      }
     }
 
     const { data: commitData, error: commitError } = await supabase.rpc(
@@ -5281,6 +5365,9 @@ export function createPracticeChatHandler(
           chatModel: noModelCalled() ? "none" : chatModelUsed,
           chatModelCalls,
           ...(chatModelFallback ? { chatModelFallback: true } : {}),
+          // Phase 5 WP2：保險絲把這一輪強制扳回 DeepSeek 時才有這個 key
+          // （保險絲關著／還沒燒斷時整個 key 不存在，routing golden 不動）。
+          ...(costFuseDegraded ? { costFuseDegraded: true } : {}),
           ...(chatModelUsage ? { chatModelUsage } : {}),
         }
         : {}),

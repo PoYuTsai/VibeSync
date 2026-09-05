@@ -296,6 +296,11 @@ export function threadSaltOfArtifactMeta(meta: unknown): string {
  * 三個臂的選模入口。`haiku` 臂＝從頭到尾 Haiku（純模型 A/B），`mixed` 臂**直接
  * 呼叫 production 的 `chatModelFor`**（Codex R1 U2：要證明的是「何時選 Haiku」
  * 相同，不只是「選了之後 body 相同」），其餘一律 DeepSeek＝逐字舊行為。
+ *
+ * **Phase 5 WP2 的成本保險絲刻意不接在這裡**：`PRACTICE_COST_FUSE_DAILY_USD`
+ * 只在 production handler 生效（它要讀寫 `practice_chat_daily_cost`，而 runner
+ * 不打 DB）。所以黑箱跑幾輪、花多少錢完全不受保險絲影響——評測本來就是要
+ * 跑完整臂，成本上限由跑之前的估價與 `--limit` 控制，不是由保險絲。
  */
 export function runnerChatModelFor(args: {
   chatModel?: "deepseek" | "haiku" | "mixed";
