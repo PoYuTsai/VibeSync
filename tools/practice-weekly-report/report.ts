@@ -39,6 +39,7 @@ export interface CliOptions {
   range: DateRange;
   out: string;
   dryRun: boolean;
+  allowOutAnywhere: boolean;
   payers?: { starter: number; essential: number };
   /** function logs 一次最多抓幾列（撞到就代表被截斷，報告會印出來）。 */
   logsLimit: number;
@@ -58,7 +59,7 @@ const VALUE_FLAGS = [
   "payers-essential",
   "logs-limit",
 ] as const;
-const BOOL_FLAGS = ["dry-run"] as const;
+const BOOL_FLAGS = ["dry-run", "allow-out-anywhere"] as const;
 
 function readFlags(argv: string[]): Map<string, string> {
   const values = new Map<string, string>();
@@ -101,6 +102,30 @@ function count(values: Map<string, string>, name: string): number | undefined {
   return value;
 }
 
+/** 報告的預設家：repo 的 `docs/reports/`。 */
+export const REPORTS_DIR = "docs/reports/";
+
+/**
+ * `--out` 預設只准寫進 `docs/reports/`。報告含 production 使用量，一個手滑的
+ * 路徑就可能把它寫進會被 commit 的地方；限制目的地比事後補 .gitignore 穩。
+ *
+ * 逃生口 `--allow-out-anywhere`：實跑時常寫進 scratchpad，那是刻意的。
+ * `..` 一律擋（含逃生口也擋不掉的路徑穿越）。
+ */
+export function assertOutPath(out: string, allowAnywhere: boolean): string {
+  if (out.split(/[\\/]/).includes("..")) {
+    throw new Error(`invalid --out: 不接受 .. 路徑穿越（${out}）`);
+  }
+  if (allowAnywhere) return out;
+  const normalized = out.replaceAll("\\", "/");
+  if (!normalized.startsWith(REPORTS_DIR)) {
+    throw new Error(
+      `invalid --out: 預設只能寫進 ${REPORTS_DIR}（要寫別處請加 --allow-out-anywhere）`,
+    );
+  }
+  return out;
+}
+
 export function parseArgs(argv: string[], now: Date = new Date()): CliOptions {
   const values = readFlags(argv);
   const fallback = defaultRange(now);
@@ -111,12 +136,18 @@ export function parseArgs(argv: string[], now: Date = new Date()): CliOptions {
   assertRange(range);
   const starter = count(values, "payers-starter");
   const essential = count(values, "payers-essential");
+  const allowOutAnywhere = values.get("allow-out-anywhere") === "true";
+  const out = assertOutPath(
+    values.get("out") ?? `${REPORTS_DIR}${range.to}-practice-weekly.md`,
+    allowOutAnywhere,
+  );
   return {
     projectRef: values.get("project-ref") ??
       Deno.env.get("SUPABASE_PROJECT_REF"),
     range,
-    out: values.get("out") ?? `docs/reports/${range.to}-practice-weekly.md`,
+    out,
     dryRun: values.get("dry-run") === "true",
+    allowOutAnywhere,
     logsLimit: count(values, "logs-limit") ?? DEFAULT_LOGS_LIMIT,
     payers: starter === undefined && essential === undefined
       ? undefined

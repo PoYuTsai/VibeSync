@@ -185,6 +185,12 @@ Supabase function logs **通常只保留 7 天**，而且時間窗超出保留�
 - **週報要每 7 天內跑一次**，否則聊天那一段是空的，而且空得無聲無息。
 - 回傳列數撞到 `--logs-limit` 時 stderr 會印警告（可能被截斷）。
 
+## `--out` 的去處
+
+報告含 production 使用量，一個手滑的路徑就可能把它寫進會被 commit 的地方。 所以
+`--out` 預設只准寫進 `docs/reports/`；要寫別處（例如 scratchpad）加
+`--allow-out-anywhere`。路徑含 `..` 一律擋，逃生口也擋不掉。
+
 ## 不 commit 報告
 
 `docs/reports/` 只放 `.gitkeep`。真實報告含 production 使用量，跑出來自己

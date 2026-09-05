@@ -239,3 +239,37 @@ Deno.test("parseArgs 擋掉不存在的日子與顛倒的區間", () => {
     "invalid_range",
   );
 });
+
+Deno.test("--out 預設只能寫進 docs/reports/", () => {
+  assertEquals(
+    parseArgs(["--out", "docs/reports/manual.md"]).out,
+    "docs/reports/manual.md",
+  );
+  assertThrows(
+    () => parseArgs(["--out=/tmp/report.md"]),
+    Error,
+    "--allow-out-anywhere",
+  );
+  assertThrows(
+    () => parseArgs(["--out=lib/report.md"]),
+    Error,
+    "invalid --out",
+  );
+});
+
+Deno.test("--allow-out-anywhere 是逃生口，但 .. 永遠擋", () => {
+  assertEquals(
+    parseArgs(["--out=/tmp/scratch/report.md", "--allow-out-anywhere"]).out,
+    "/tmp/scratch/report.md",
+  );
+  assertThrows(
+    () => parseArgs(["--out=docs/reports/../../etc/x.md"]),
+    Error,
+    "路徑穿越",
+  );
+  assertThrows(
+    () => parseArgs(["--out=../escape.md", "--allow-out-anywhere"]),
+    Error,
+    "路徑穿越",
+  );
+});
