@@ -23,7 +23,7 @@ import {
   makeFake,
   makeRequest,
 } from "./handler_test_fake.ts";
-import { chatModelFor } from "./conversation_agency.ts";
+import { chatModelFor, CHECK_OUT_MAX_CHARS } from "./conversation_agency.ts";
 import { CLAUDE_HAIKU_MODEL } from "./claude.ts";
 import { DEEPSEEK_MODEL } from "./deepseek.ts";
 
@@ -964,6 +964,91 @@ Deno.test("Phase 4.5g：不是 check_out 的輪次含問句照樣一次就過（
   assertEquals(agency.forcedAct !== "check_out", true);
   assertEquals(agency.checkOutRetry, undefined);
   assertEquals(agency.checkOutStructuralFail, undefined);
+});
+
+// ── Phase 4.6 刀 2：check_out 重試那一發注入針對性改寫指令 ────────────────
+/**
+ * 4.5i 實測：同一份 prompt 原樣重送，第一發違規約 70%、重試後仍 50–62%
+ * 失敗——同 prompt 重試無效（已入腦的坑）。第二發必須多帶一則 user 訊息，
+ * 把第一發的具體違規項目與改法講白。
+ */
+Deno.test("Phase 4.6 刀 2：check_out 第一發含問句 → 第二發 messages 多一則改寫指令，帶具體違規項目與第一發原文", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["你在忙嗎", "先忙了"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "先忙了");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  const first = r.chatDeepSeekCalls[0].messages;
+  const second = r.chatDeepSeekCalls[1].messages;
+  // 第一發原樣：bundle 的 messages 一則都不多。
+  assertEquals(second.length, first.length + 1);
+  assertEquals(second.slice(0, first.length), first);
+  const injected = second.at(-1)!;
+  assertEquals(injected.role, "user");
+  assert(injected.content.includes("你在忙嗎"), injected.content);
+  assert(injected.content.includes("問句"), injected.content);
+  assert(injected.content.includes("重寫"), injected.content);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.checkOutRetry, true);
+  assertEquals(agency.checkOutRewriteInjected, true);
+  assertEquals(agency.checkOutStructuralFail, undefined);
+});
+
+Deno.test("Phase 4.6 刀 2：多則＋超長各自對到自己的改寫指令；沒重試的輪次 messages 與 telemetry 一個 key 都不多", async () => {
+  const twoBubbles = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["先忙了\n晚點聊", "先忙了"],
+  });
+  const twoInjected = twoBubbles.chatDeepSeekCalls[1].messages.at(-1)!;
+  assert(twoInjected.content.includes("只能回 1 則"), twoInjected.content);
+  // 沒命中的項目不列進原因（結尾的通用規則另計）。
+  assert(!twoInjected.content.includes("含問句"), twoInjected.content);
+
+  const overLength = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["我這邊突然有點事情要先處理一下就先這樣了掰", "先忙了"],
+  });
+  const overInjected = overLength.chatDeepSeekCalls[1].messages.at(-1)!;
+  assert(
+    overInjected.content.includes(`${CHECK_OUT_MAX_CHARS} 字`),
+    overInjected.content,
+  );
+
+  const clean = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["先忙了"],
+  });
+  assertEquals(clean.chatDeepSeekCalls.length, 1);
+  const agency = clean.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.checkOutRewriteInjected, undefined);
+  // 既有守門造成的重試（不是這道後檢查）也不注入：第二發與第一發逐則相同。
+  const guardRetry = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    style: true,
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["（她轉身離開）", "先忙了"],
+  });
+  assertEquals(guardRetry.chatDeepSeekCalls.length, 2);
+  assertEquals(
+    guardRetry.chatDeepSeekCalls[1].messages,
+    guardRetry.chatDeepSeekCalls[0].messages,
+  );
+  assertEquals(
+    (guardRetry.succeeded.conversationAgency as Record<string, unknown>)
+      .checkOutRewriteInjected,
+    undefined,
+  );
 });
 
 // ── Phase 4.5g Codex R1 P2-1／P2-2 ────────────────────────────────────────

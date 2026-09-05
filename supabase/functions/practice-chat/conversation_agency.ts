@@ -1690,12 +1690,52 @@ export function checkOutStructuralViolation(
   agency: AgencyApplication | null,
   reply: string,
 ): boolean {
+  return checkOutStructuralViolations(agency, reply).length > 0;
+}
+
+/** Phase 4.6 刀 2：後檢查命中的具體項目，供改寫指令對應。 */
+export type CheckOutViolation = "multi_bubble" | "too_long" | "question";
+
+/**
+ * Phase 4.6 刀 2：`checkOutStructuralViolation` 的原因清單版。判準與上面
+ * 那支完全同源（那支只是 `.length > 0`）；空陣列＝沒命中。
+ */
+export function checkOutStructuralViolations(
+  agency: AgencyApplication | null,
+  reply: string,
+): CheckOutViolation[] {
   if (!agency?.applied || agency.decision.forcedAct !== "check_out") {
-    return false;
+    return [];
   }
   const trimmed = reply.trim();
-  if (trimmed.length === 0) return false;
-  return agencyBubbles(trimmed).length > 1 ||
-    trimmed.length > CHECK_OUT_MAX_CHARS ||
-    aiAskedQuestion(trimmed);
+  if (trimmed.length === 0) return [];
+  const violations: CheckOutViolation[] = [];
+  if (agencyBubbles(trimmed).length > 1) violations.push("multi_bubble");
+  if (trimmed.length > CHECK_OUT_MAX_CHARS) violations.push("too_long");
+  if (aiAskedQuestion(trimmed)) violations.push("question");
+  return violations;
+}
+
+const CHECK_OUT_REWRITE_LINES: Record<CheckOutViolation, string> = {
+  multi_bubble: "分成了好幾則——只能回 1 則，不換行",
+  too_long:
+    `超過 ${CHECK_OUT_MAX_CHARS} 字——縮到 ${CHECK_OUT_MAX_CHARS} 字以內`,
+  question: "含問句——不問任何問題、不開新話題，說完就收",
+};
+
+/**
+ * Phase 4.6 刀 2：重試那一發要多帶的針對性改寫指令（user 訊息）。
+ *
+ * 4.5i 實測同一份 prompt 原樣重送，第一發違規約 70%、第二發仍 50–62% 失敗
+ * ——同 prompt 重試無效（已入腦的坑）。第二發要把第一發**哪裡不合格**與
+ * **要改成怎樣**講白，而不是原樣重送。呼叫端只在 `violations` 非空時注入。
+ */
+export function checkOutRewriteInstruction(
+  violations: readonly CheckOutViolation[],
+  rejected: string,
+): string {
+  const reasons = violations
+    .map((violation) => `- ${CHECK_OUT_REWRITE_LINES[violation]}`)
+    .join("\n");
+  return `你剛才這句不合格：「${rejected.trim()}」\n${reasons}\n請重寫：只回 1 則、${CHECK_OUT_MAX_CHARS} 字以內、沒有問句，一句話交代先去忙就收。`;
 }

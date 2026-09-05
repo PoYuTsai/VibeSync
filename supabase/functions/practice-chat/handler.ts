@@ -55,7 +55,8 @@ import {
   agencyModeFor,
   agencyShapeExperimentFor,
   chatModelFor,
-  checkOutStructuralViolation,
+  checkOutRewriteInstruction,
+  checkOutStructuralViolations,
   nextConversationAgencyState,
   type PracticeChatModel,
   READ_ONLY_REPLY_TEXT,
@@ -4544,6 +4545,11 @@ export function createPracticeChatHandler(
     let checkOutRetried = false;
     /** Phase 4.5g：第二發仍命中，fail-open 送出去了。 */
     let checkOutStructuralFailed = false;
+    /**
+     * Phase 4.6 刀 2：第一發被後檢查丟掉時，第二發要多帶的針對性改寫指令。
+     * 只有這道後檢查造成的重試才有值；既有守門造成的重試仍原樣重送。
+     */
+    let checkOutRewrite: string | null = null;
     /** Phase 4.5a 刀 3：整輪一支生成模型都沒打（forced `read_only`）。 */
     const noModelCalled = () =>
       chatModelCalls.haiku + chatModelCalls.deepseek === 0;
@@ -4637,11 +4643,20 @@ export function createPracticeChatHandler(
             chatPromptBundle.situation,
             standardAgencyClassifierOn,
           ) === "haiku" && !!claudeApiKey && !!deps.callClaude;
+      // Phase 4.6 刀 2：重試那一發把改寫指令接在 bundle 後面當一則 user 訊息
+      // （DeepSeek／Claude 兩條路徑同一份）；沒注入時就是 bundle 本身。
+      const messagesForAttempt = () =>
+        checkOutRewrite
+          ? [
+            ...chatPromptBundle.messages,
+            { role: "user" as const, content: checkOutRewrite },
+          ]
+          : chatPromptBundle.messages;
       const generateWithDeepSeek = () => {
         chatModelCalls.deepseek++;
         return deps.callDeepSeek({
           apiKey,
-          messages: chatPromptBundle.messages,
+          messages: messagesForAttempt(),
           maxTokens: CHAT_MAX_TOKENS,
           temperature: CHAT_TEMPERATURE,
           timeoutMs: DEEPSEEK_TIMEOUT_MS,
@@ -4667,7 +4682,7 @@ export function createPracticeChatHandler(
               candidate = await deps.callClaude!({
                 apiKey: claudeApiKey!,
                 model: CLAUDE_HAIKU_MODEL,
-                messages: chatPromptBundle.messages,
+                messages: messagesForAttempt(),
                 maxTokens: CHAT_MAX_TOKENS,
                 temperature: CHAT_TEMPERATURE,
                 timeoutMs: DEEPSEEK_TIMEOUT_MS,
@@ -4775,9 +4790,20 @@ export function createPracticeChatHandler(
           // 命中就用既有的第二發重試同一份 bundle（不加第三次呼叫），第二發
           // 仍命中就留著送出（fail-open，只記 telemetry）——那一輪的形狀再差
           // 也比 500 好。旗標 off／shadow 走不到（`applied` 恆 false）。
-          if (checkOutStructuralViolation(agencyDecision, candidate)) {
+          //
+          // Phase 4.6 刀 2：第二發不再原樣重送——把第一發命中的具體項目對成
+          // 改寫指令注入（`checkOutRewriteInstruction`）。
+          const checkOutViolations = checkOutStructuralViolations(
+            agencyDecision,
+            candidate,
+          );
+          if (checkOutViolations.length > 0) {
             if (attempt < CHAT_GENERATION_ATTEMPTS) {
               checkOutRetried = true;
+              checkOutRewrite = checkOutRewriteInstruction(
+                checkOutViolations,
+                candidate,
+              );
               throw new Error("chat_agency_check_out_shape");
             }
             checkOutStructuralFailed = true;
@@ -5272,6 +5298,9 @@ export function createPracticeChatHandler(
             // 旗標 off／shadow 根本走不到那個檢查，所以等價 harness 的四面
             // 輸出一個 key 都不多。
             ...(checkOutRetried ? { checkOutRetry: true } : {}),
+            // Phase 4.6 刀 2：第二發真的帶了改寫指令（4.5g 的 rows 沒有這個
+            // key，telemetry 才分得出兩版重試）。
+            ...(checkOutRewrite ? { checkOutRewriteInjected: true } : {}),
             ...(checkOutStructuralFailed
               ? { checkOutStructuralFail: true }
               : {}),
