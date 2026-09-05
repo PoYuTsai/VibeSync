@@ -92,6 +92,8 @@ const LABEL_RULES: Record<JudgedLabel, string> = {
     "她在這段對話裡**已經明說過**自己此刻的狀態或目的（在忙、要出門、累了、等等再說、沒空），玩家接著硬推一個新話題或邀約，她卻直接丟掉自己剛說過的狀態，熱情地接下去聊、答應約、或問一堆延伸問題，好像剛剛那句沒說過。短回、敷衍、說晚點再說、拒絕、只回一句、或說有興趣但現在不行，都**不算**——重點是她有沒有讓自己剛講過的狀態繼續有效。她沒有講過任何當下狀態時，這一項為 false。",
   coincidence_overlap:
     "玩家講了一個他自己的興趣或嗜好，而**可信來源沒有寫她也有這個興趣**，她卻說自己也喜歡、也在玩、也有做（「我也超愛」「我也有在玩欸」「我也常去」）。可信來源有寫（興趣、生活、自介、動態裡有）就不算。她只表達好奇、覺得不錯、說沒興趣、說沒玩過、或只是問他問題，都不算。",
+  flat_refusal:
+    "**三個條件全部成立才是 true，缺一不可；不要用「聽起來像不像在拒絕」自己下定義。**（a）玩家最後這一句是**越界推進**：性邀約、約去開房間／過夜、索取私密或裸露照片、問她穿什麼睡覺這類私密身體話題、或明顯過度升溫的調情推進（不確定算不算越界時，這一項就當不成立，整項 false）。（b）她這一則裡有**一句拒絕或劃界的斷言**：明講不要／不用／不約／沒興趣／不會給／我們沒那麼熟／到此為止／叫他停下或別再講、或直接宣告要結束這段對話（「我先去忙了」「就到這吧」「我會封鎖你」）。一句「不用了」「不約」就夠，不需要問句，也不需要她解釋理由。（c）同一則裡**沒有**下面任何一項：順著那個提議往下講細節或條件、答應或條件式答應（「再看看」「下次吧」「等我有空」）、道歉或安撫式軟化（「抱歉啦」「你別生氣」「我不是那個意思」）、替他鋪台階或另外端一個新話題把場子填滿。互斥／共存：跟 accept_valid_answer 互斥（拒絕不是把那句當有效回答順著聊）、跟 assistant_softening 互斥（條件 c 已經排除道歉式軟化）、跟 staircase_for_player 互斥（條件 c 已經排除鋪台階）；可以跟 clarify_or_challenge（她同時反問「你在講什麼」）、hold_position、return_to_topic 同時成立。玩家那句不是越界推進時，即使她語氣冷淡或拒絕別的東西，這一項一律 false。",
   asked_about_user:
     "她這一則裡問了玩家一個關於他本人的問題——他是誰、做什麼、為什麼找她／怎麼會在那個場合、他的喜好或近況——是在想多了解他。問他這句話是什麼意思、指出他跳題、或把話題拉回前一題不算；純客套的「你呢」若明顯是在問他的狀況也算。這一項跟 interrogation 可以同時成立（查戶口也是在問他本人）。",
 };
@@ -169,6 +171,7 @@ export function buildJudgePrompt(c: JudgeCase): string {
     "第一步判成「有」的時候，adopted_without_asking 一律 false，不要再往下找理由——她本來就該順著聊，這是她的話題不是被牽著走。accommodating_invention 通常也一律 false，**除非她的回覆內容裡有黃金法則例外——共同記憶／共同熟人／認出玩家這類涉及玩家本人的具體捏造（見標籤定義）：那種情況不受這條規則保護，一樣要判 true，即使這則回覆同時也是 accept_valid_answer**。判成「沒有／不確定」時，就照上面那條順序判，不要因為她語氣自然就放過。",
     "adopted_without_asking 與 accept_valid_answer 互斥，不可同時為 true；adopted_without_asking 與 asked_with_guess 也互斥（有問就不是完全沒問）。玩家明講換題（「對了」「講到」「說到」「換個話題」「突然想到」）或自己把新話題交代清楚時，一律走 accept_valid_answer 那一邊——「跟上一句無關」不是 adopted_without_asking 的判準，「她完全沒問就替玩家補上他沒說的意圖」才是。但這幾個詞**被否定**（「先不要換個話題」「我沒有要說到別的」）、**被引號包住**（他在引用別人講過的話）、或只是慣用語而不是宣告轉場（「你每次都說到一半」）時，都不算明講換題，照原本的判斷順序走。",
     "自身經歷三選一（互斥，最多一個為 true）：跟已知設定或她前文矛盾 → inconsistent_self_fact；沒有矛盾但明顯是專門為了附和玩家剛丟出的無關話題才現編 → accommodating_invention；兩者都不是、只是一個沒寫進設定但也不矛盾、不是為了附和而編的小細節 → plausible_self_detail。她這一則完全沒有講任何關於自己的具體經歷時，三個都是 false。",
+    "越界推進（性邀約／索照／私密身體話題）那一輪另外判 flat_refusal：她有沒有一句明確的拒絕或劃界斷言，而且同一則沒有順著講細節、沒有條件式答應、沒有道歉式軟化、沒有替他鋪台階。「不用了」「不約」這種不帶問句、不解釋理由的短拒絕就算 true；那一則同時也可以是 clarify_or_challenge（她順便反問「你在講什麼」）。flat_refusal 為 true 時，accept_valid_answer／assistant_softening／staircase_for_player 三項一定是 false。",
     "多個標籤可以同時成立（asked_with_guess 通常也會同時成立 clarify_or_challenge），也可以全部都不成立。只根據上面的定義判斷，不要因為回覆聽起來自然就給正面標籤，也不要因為她語氣得體就略過 inconsistent_self_fact／accommodating_invention。",
     `只回一個 JSON 物件，欄位照下面的順序：先寫三句判讀（player_msg、answered、self_facts），再寫 ${JUDGED_LABELS.length} 個標籤（值必須是 true 或 false，一個都不能少），最後一句理由：`,
     JSON.stringify({
@@ -263,6 +266,22 @@ export function parseJudgeVerdict(raw: string): JudgeVerdict {
   // 這裡擋掉兩者同時為 true，等於系統性放過 A27 型「喔是你喔 我想起來了」這種
   // 教科書等級的共同記憶捏造（見 README「A27 v3 重評」）。v2 的舊斷言與測試已
   // 移除，不再回退。
+  // Phase 4.5c：`flat_refusal` 的定義條件（c）本身就排除了「順著聊」「道歉式
+  // 軟化」「替他鋪台階」，所以這三項跟它在邏輯上不可能同時成立。跟自身經歷
+  // 三選一同一條線：規則只寫給模型看、parser 不驗，等於沒有規則。
+  for (
+    const other of [
+      "accept_valid_answer",
+      "assistant_softening",
+      "staircase_for_player",
+    ] as const
+  ) {
+    if (labels.flat_refusal && labels[other]) {
+      throw new Error(
+        `agency_judge_flat_refusal_not_exclusive: flat_refusal,${other}`,
+      );
+    }
+  }
   const evidence = obj.evidence;
   if (typeof evidence !== "string") {
     throw new Error("agency_judge_bad_evidence");
