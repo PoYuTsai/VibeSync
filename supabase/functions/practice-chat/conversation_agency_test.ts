@@ -13,6 +13,7 @@ import {
   aiAskedQuestion,
   aiAskedQuestionStrict,
   aiAskedYesNoQuestion,
+  allowsCheckOut,
   type ConversationAgencyState,
   detectAgencyEvidence,
   isAcceptingPlanAct,
@@ -30,6 +31,8 @@ import {
   computeAgencyDecision,
 } from "./turn_response_plan.ts";
 import { buildRelationshipThreadRpcParams } from "./relationship_thread.ts";
+import { agencyProfileFor } from "./agency_profile.ts";
+import { GIRL_PROFILES } from "./practice_persona.ts";
 import type { PracticeTurn } from "./validate.ts";
 
 const u = (text: string): PracticeTurn => ({ role: "user", text });
@@ -2194,9 +2197,13 @@ Deno.test("Phase 4.5a 刀 1：是非問句判準只認句尾「嗎／吧／嘛�
       "你是說韓國嗎？",
       "是玩猜謎嗎～",
       "你在報地名嗎😂",
-      "所以你剛剛在忙喔？現在有空了嘛",
+      // Codex R2 P1-2 指定：「要不要」在 `aiAskedQuestion` 的句法標記表裡，
+      // 最後子句同時有第二人稱 → 是可以回答的是非問句。
+      "你要不要先想清楚再說嘛",
     ]
   ) assertEquals(aiAskedYesNoQuestion(yes), true, yes);
+  // 「要不要」確實是既有問句判定認得的標記（不必補表）。
+  assertEquals(aiAskedQuestion("你要不要先想清楚再說嘛"), true);
   for (
     const no of [
       "你在說什麼？",
@@ -2212,6 +2219,11 @@ Deno.test("Phase 4.5a 刀 1：是非問句判準只認句尾「嗎／吧／嘛�
       "這本來就是韓國嘛",
       "那我先睡了吧",
       "反正就是這樣嘛",
+      // Codex R2 P1-2：第二人稱只看**最後子句**——看整則的話這一句會因為
+      // 前半段有「你」而過關，她的收尾就被一句「好」解開了。
+      "你一直丟地名，那我先去忙吧",
+      "那先這樣吧",
+      "你講的那些地名我看不懂，先這樣吧",
     ]
   ) assertEquals(aiAskedYesNoQuestion(no), false, no);
   // 短答判準：整則錨定，只容忍句尾裝飾。
@@ -2440,18 +2452,23 @@ Deno.test("Phase 4.5a 刀 3：階梯只吃持久化狀態——standard（prev=n
     );
   }
 
-  // Codex R1 P1-3：她收尾說「我先去忙吧」，玩家回一句「好」**不得**解除
-  // checked-out（那不是內容，她也不是在問是非題）。
-  const notUnlocked = agencyPolicyFor(
-    detectAgencyEvidence([a("我先去忙吧"), u("好")], checkedOut),
-    agencyThresholdsFor("challenge", false),
-  );
-  assertEquals(notUnlocked.evidence.answeredYesNo, false);
-  assertEquals(notUnlocked.forcedAct, "read_only");
-  assertEquals(
-    nextConversationAgencyState(checkedOut, notUnlocked, null).checkedOut,
-    true,
-  );
+  // Codex R1 P1-3／R2 P1-2：她收尾說「（你…）我先去忙吧」，玩家回一句「好」
+  // **不得**解除 checked-out（那不是內容，她也不是在問是非題）。
+  for (
+    const lead of ["我先去忙吧", "你一直丟地名，那我先去忙吧", "那先這樣吧"]
+  ) {
+    const notUnlocked = agencyPolicyFor(
+      detectAgencyEvidence([a(lead), u("好")], checkedOut),
+      agencyThresholdsFor("challenge", false),
+    );
+    assertEquals(notUnlocked.evidence.answeredYesNo, false, lead);
+    assertEquals(notUnlocked.forcedAct, "read_only", lead);
+    assertEquals(
+      nextConversationAgencyState(checkedOut, notUnlocked, null).checkedOut,
+      true,
+      lead,
+    );
+  }
   // 成對：真的是非問句仍然算回答了。
   assertEquals(
     detectAgencyEvidence([a("你是說韓國嗎？"), u("不是")], null).answeredYesNo,
@@ -2596,5 +2613,56 @@ Deno.test("Phase 4.5a 刀 3：state round-trip——舊 row 缺欄位＝0／fals
       null,
       JSON.stringify(bad),
     );
+  }
+});
+
+Deno.test("Phase 4.5a（Codex R2 P3-1）：`allowsCheckOut` 與難度表的 threshold 在整個矩陣上恆等", () => {
+  const difficulties = ["easy", "normal", "challenge"] as const;
+  const profiles = GIRL_PROFILES.filter((g) => g.rarity === "sr");
+  assertEquals(profiles.length, 20);
+  for (const difficulty of difficulties) {
+    for (const isGame of [false, true]) {
+      const expected = difficulty === "challenge" || isGame;
+      assertEquals(allowsCheckOut(difficulty, isGame), expected);
+      for (const girl of profiles) {
+        const profile = agencyProfileFor(girl.profileId);
+        for (const p of [null, profile]) {
+          const t = agencyThresholdsFor(difficulty, isGame, p);
+          const label = `${difficulty}/${isGame}/${girl.profileId}/${
+            p ? "profile" : "null"
+          }`;
+          assertEquals(t.allowsCheckOut, expected, label);
+          // 兩個欄位語意不同但值恆等（漂移就會炸在這裡）。
+          assertEquals(t.forceEndLoopBeforeChallenge, expected, label);
+          // 種好 streak 3／checkedOut 的完整矩陣：只有 expected 才強制結束。
+          const seeded: ConversationAgencyState = {
+            version: 1,
+            lastCoherence: "repetitive",
+            unresolvedCount: 3,
+            priorChallengeIssued: true,
+            lastAgencyAct: "end_low_value_loop",
+            lowValueStreak: 3,
+            checkedOut: true,
+          };
+          const d = agencyPolicyFor(
+            detectAgencyEvidence([u("韓國"), a("嗯"), u("東京")], seeded),
+            t,
+          );
+          assertEquals(d.forcedAct === "read_only", expected, label);
+          const notCheckedOut = agencyPolicyFor(
+            detectAgencyEvidence(
+              [u("韓國"), a("嗯"), u("東京")],
+              { ...seeded, checkedOut: false },
+            ),
+            t,
+          );
+          assertEquals(
+            notCheckedOut.forcedAct === "check_out",
+            expected,
+            label,
+          );
+        }
+      }
+    }
   }
 });

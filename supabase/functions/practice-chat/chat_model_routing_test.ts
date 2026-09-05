@@ -114,12 +114,19 @@ Deno.test("chatModelFor：越界輪是獨立的第二個入口（applied=false �
   );
 });
 
+/** 這一輪所有 DeepSeek 呼叫（chat ＋ 分類器）。 */
+function fakeStateDeepSeek(r: RunResult) {
+  return r.allDeepSeekCalls;
+}
+
 interface RunResult {
   status: number;
   body: Record<string, unknown>;
   claudeCalls: ReturnType<typeof makeFake>["state"]["claudeCalls"];
   /** 只算 chat 生成那幾發（分類器也走 DeepSeek，用 maxTokens 分辨）。 */
   chatDeepSeekCalls: ReturnType<typeof makeFake>["state"]["deepSeekCalls"];
+  /** 這一輪全部 DeepSeek 呼叫（含分類器）。 */
+  allDeepSeekCalls: ReturnType<typeof makeFake>["state"]["deepSeekCalls"];
   rpcCalls: ReturnType<typeof makeFake>["state"]["rpcCalls"];
   succeeded: Record<string, unknown>;
   lines: string[];
@@ -199,6 +206,7 @@ async function runChat(opts: {
     chatDeepSeekCalls: fake.state.deepSeekCalls.filter((c) =>
       c.maxTokens === 200
     ),
+    allDeepSeekCalls: fake.state.deepSeekCalls,
     rpcCalls: fake.state.rpcCalls,
     succeeded: succeededLine
       ? JSON.parse(succeededLine) as Record<string, unknown>
@@ -607,6 +615,20 @@ Deno.test("Phase 4.5a 刀 3：checkedOut 之後的低價值輪直接回一則「
   assertEquals(commits[0].params.p_charge_quota, true);
   assertEquals(r.body.aiTurnCount, 1);
   assert(r.body.costDeducted);
+  // Codex R2 P3-3：`commit_practice_chat_turn` 的 params **不含 AI 文字**
+  // （2026-09-05 實查：只有 user/session/quota/mode/溫度/心情六類欄位，AI 回覆
+  // 由 client 自己存），所以「內容恰為（已讀）」要從下游證明——生成後的分類器
+  // 吃的就是同一個字面。
+  assertEquals(
+    Object.keys(commits[0].params).some((k) => /reply|text|content/i.test(k)),
+    false,
+  );
+  const classifierCall = fakeStateDeepSeek(r).find((c) => c.maxTokens !== 200);
+  assert(classifierCall, "分類器沒有被呼叫");
+  assert(
+    JSON.stringify(classifierCall.messages).includes("（已讀）"),
+    "分類器沒有看到那一則已讀",
+  );
   const threadWrites = r.rpcCalls.filter((c) =>
     c.fn === "upsert_practice_relationship_thread"
   );
@@ -720,4 +742,49 @@ Deno.test("Phase 4.5a（Codex R1 P3-4）：shadow 算得出 cold_return 也不�
   // shadow 的契約：telemetry 可以多，輸出不可以。
   assertEquals(shadow.succeeded.conversationAgency !== undefined, true);
   assertEquals(off.succeeded.conversationAgency, undefined);
+});
+
+Deno.test("Phase 4.5a 刀 2（Codex R2 P1-3）：reply-style 關著時，已讀守門一樣要跑", async () => {
+  // agency on ＋ reply-style **未設** ＋ easy 難度：模型自己吐「（已讀）」
+  // 不得直接送出（舊版旁白守門綁 `responsePlan`，這一格整段漏過去）。
+  const r = await runChat({
+    agency: "true",
+    difficulty: "easy",
+    deepSeekReplies: ["（已讀）", "好啊"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "好啊");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  assertEquals(
+    (r.succeeded.conversationAgency as Record<string, unknown>).readOnlyReply,
+    undefined,
+  );
+  const both = await runChat({
+    agency: "true",
+    difficulty: "easy",
+    deepSeekReplies: ["（已讀）", "（已讀）"],
+    expectFailure: true,
+  });
+  assertEquals(both.status, 500);
+  assertEquals(both.body.error, "practice_generation_failed");
+  // 成對通過：challenge ＋ forced `read_only`，即使沒有 responsePlan，
+  // 固定字面仍然送得出去。
+  const allowed = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECKED_OUT_THREAD,
+  });
+  assertEquals(allowed.body.reply, "（已讀）");
+  assertEquals(
+    (allowed.succeeded.conversationAgency as Record<string, unknown>)
+      .readOnlyReply,
+    true,
+  );
+  // 旗標 off：守門仍然只在有 plan 時跑（逐位元組沿用舊行為）。
+  const off = await runChat({
+    difficulty: "easy",
+    deepSeekReplies: ["（已讀）", "好啊"],
+  });
+  assertEquals(off.body.reply, "（已讀）");
+  assertEquals(off.chatDeepSeekCalls.length, 1);
 });
