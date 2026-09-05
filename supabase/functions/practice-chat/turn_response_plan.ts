@@ -109,7 +109,7 @@ export interface TurnSignals {
 // 守門不套在玩家輸入上——「我去開房門」會被誤殺（Codex R3）。「陪我睡前聊聊」
 // 「先睡一下嗎」都不算。
 const BOUNDARY_RE =
-  /(泳裝|內衣|裸照|裸體|全裸|(身材|胸|腿).{0,4}(照片|照)|上床|約砲|打炮|開房間|去開房(?!門)|(跟|和)[你妳我](一起)?睡(?!前|眠|覺|著|飽|過頭))/u;
+  /(泳裝|內衣|裸照|裸體|全裸|(身材|胸|腿).{0,4}(照片|照)|上床|約砲|打炮|打砲|開房間|去開房(?!門)|(跟|和)[你妳我](一起)?睡(?!前|眠|覺|著|飽|過頭))/u;
 const MEMORY_CLAIM_RE =
   /(上次|之前|那時候|那天).{0,6}(妳|你).{0,4}(不是)?(說|講|提)|(妳|你)(不是)?(說|講|提)過|記得.{0,6}(我們|一起|上次)|我們(上次|之前|那次|那天)/u;
 const COMPLIMENT_RE = /(漂亮|好看|很正|可愛|有氣質|很美|身材.{0,2}好|笑起來)/u;
@@ -696,10 +696,16 @@ function trailingColdRejectTurns(
   return streak;
 }
 
-/** 逐則可回溯的越界文字判準（`boundaryLike` ＋ `userOverEscalated` 的定義）。 */
-function coldRejectText(text: string): boolean {
+/**
+ * 逐則可回溯的越界文字判準（`boundaryLike` ＋ `userOverEscalated` 的定義）。
+ *
+ * Phase 5 WP6：性冒犯階梯的「一般越界＝+1」用的是**同一個**判準，所以直接
+ * 導出（新增第二份詞表只會讓兩邊漂移）。
+ */
+export function looksBoundaryCrossing(text: string): boolean {
   return BOUNDARY_RE.test(text) || looksOverEscalated(text);
 }
+const coldRejectText = looksBoundaryCrossing;
 
 /** runtime 列舉（telemetry 測試做 membership 用）；Record 型別保證漏一個就編譯錯。 */
 export const REPLY_ACTS: readonly ReplyAct[] = Object.keys(

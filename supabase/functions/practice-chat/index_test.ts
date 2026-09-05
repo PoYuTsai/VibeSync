@@ -10126,3 +10126,309 @@ Deno.test("Phase 5 WP5（反例）：旗標開著但 normal 難度／agency 非 
     assertEquals("partnerStatus" in r.json, false, flag);
   }
 });
+
+// ── Phase 5 WP6：性冒犯三段階梯（Eric 2026-09-06）─────────────────────────
+// 一次冷回、兩次已讀、三次封鎖；不分模式、不分難度。旗標＝
+// `PRACTICE_SESSION_END_SIGNAL=true` ∧ agency `on`。
+
+const OFFENSE_TURNS = (latest: string) => [
+  { role: "user", text: "在幹嘛" },
+  { role: "ai", text: "剛下班" },
+  { role: "user", text: latest },
+];
+
+/** 種一份帶階梯欄位的 thread 狀態並跑一輪 chat。 */
+async function offenseRun(opts: {
+  latest: string;
+  offense?: Record<string, unknown>;
+  practiceMode?: string;
+  difficulty?: string;
+  profileId?: string;
+  env?: Record<string, string>;
+  deepSeekReplies?: string[];
+}) {
+  const profileId = opts.profileId ?? "practice_girl_001";
+  const { json, state, succeeded } = await runCapturingLogs(
+    {
+      ledger: null,
+      drawEvents: [],
+      thread: {
+        profile_id: profileId,
+        practice_mode: opts.practiceMode ?? "beginner",
+        temperature_score: 40,
+        familiarity_score: 10,
+        recent_facts: {
+          source: "practice_chat",
+          conversationAgency: { ...LADDER_STATE, ...(opts.offense ?? {}) },
+        },
+      },
+      env: opts.env ?? END_SIGNAL_ON,
+      deepSeekReplies: opts.deepSeekReplies ??
+        ["好啊", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: opts.practiceMode ?? "beginner",
+      difficulty: opts.difficulty ?? "normal",
+      profileId,
+      visiblePracticeThreadId: "thread-visible-1",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      turns: OFFENSE_TURNS(opts.latest),
+    }),
+  );
+  const agency = succeeded?.conversationAgency as
+    | Record<string, unknown>
+    | undefined;
+  const threadRpc = state.rpcCalls.filter((c) =>
+    c.fn === "upsert_practice_relationship_thread"
+  );
+  const lastFacts = threadRpc.length === 0 ? null : (() => {
+    const params = threadRpc[threadRpc.length - 1].params as Record<
+      string,
+      unknown
+    >;
+    const facts = params.p_recent_facts as Record<string, unknown> | null;
+    return (facts?.conversationAgency ?? null) as
+      | Record<string, unknown>
+      | null;
+  })();
+  return { json, state, agency, lastFacts };
+}
+
+Deno.test("WP6 (a)：第一次一般越界＝她照常回，但 prompt 尾巴多一行冷回指引，沒有 partnerStatus", async () => {
+  const r = await offenseRun({ latest: "要不要打砲" });
+  assertEquals(r.json.reply, "好啊");
+  assertEquals("partnerStatus" in r.json, false);
+  // 第一發是 chat 生成，system 尾巴帶了冷回指引。
+  const system = r.state.deepSeekCalls[0].messages[0].content as string;
+  assert(
+    system.includes("他最新那句在推性／身體的界線"),
+    "chat system prompt 應該帶冷回指引",
+  );
+  // 鐵則也多了「不要宣稱封鎖」那一條。
+  assert(system.includes("不要宣稱封鎖、刪除、檢舉"));
+  assertEquals(r.agency?.offenseStage, "cold");
+  assertEquals(r.agency?.offenseStrikes, 1);
+  assertEquals(r.agency?.offenseSource, "boundary");
+  assertEquals(r.lastFacts?.offenseStrikes, 1);
+  assertEquals("blocked" in (r.lastFacts ?? {}), false);
+});
+
+Deno.test("WP6 (b)：第二次越界＝「（已讀）」＋ partnerStatus read_only，不打生成模型", async () => {
+  const r = await offenseRun({
+    latest: "那來開房間",
+    offense: { offenseStrikes: 1 },
+    // read_only 那一輪只剩分類器一發。
+    deepSeekReplies: [CLASSIFIER_CAUGHT_MEDIUM],
+  });
+  assertEquals(r.json.reply, "（已讀）");
+  assertEquals(r.json.partnerStatus, "read_only");
+  assertEquals(r.json.provider, "none");
+  assertEquals(r.json.sessionComplete, false);
+  assertEquals(r.agency?.offenseStage, "read_only");
+  assertEquals(r.lastFacts?.offenseStrikes, 2);
+});
+
+Deno.test("WP6 (c)：第三次越界＝「（已封鎖）」＋ blocked；之後每一輪零模型呼叫", async () => {
+  const first = await offenseRun({
+    latest: "上床啦",
+    offense: { offenseStrikes: 2 },
+    deepSeekReplies: [],
+  });
+  assertEquals(first.json.reply, "（已封鎖）");
+  assertEquals(first.json.partnerStatus, "blocked");
+  assertEquals(first.json.provider, "none");
+  // 封鎖輪一支模型都不打（chat 與逐輪分類器都跳過）。
+  assertEquals(first.state.deepSeekCalls.length, 0);
+  assertEquals(first.state.claudeCalls.length, 0);
+  assertEquals(first.agency?.offenseStage, "blocked");
+  assertEquals(first.lastFacts?.blocked, true);
+  assertEquals(first.lastFacts?.offenseStrikes, 3);
+
+  // 之後再送一輪（就算是正常的話）仍然是封鎖，而且不寫狀態。
+  const again = await offenseRun({
+    latest: "對不起我錯了",
+    offense: { offenseStrikes: 3, blocked: true },
+    deepSeekReplies: [],
+  });
+  assertEquals(again.json.reply, "（已封鎖）");
+  assertEquals(again.json.partnerStatus, "blocked");
+  assertEquals(again.state.deepSeekCalls.length, 0);
+  assertEquals(again.state.claudeCalls.length, 0);
+  assertEquals(again.lastFacts, null);
+});
+
+Deno.test("WP6 (d)：羞辱詞一則（+2）＋一般越界一則（+1）＝封鎖", async () => {
+  const crude = await offenseRun({
+    latest: "你這個婊子",
+    deepSeekReplies: [CLASSIFIER_CAUGHT_MEDIUM],
+  });
+  assertEquals(crude.json.reply, "（已讀）");
+  assertEquals(crude.json.partnerStatus, "read_only");
+  assertEquals(crude.lastFacts?.offenseStrikes, 2);
+
+  const blocked = await offenseRun({
+    latest: "約砲嗎",
+    offense: crude.lastFacts as Record<string, unknown>,
+    deepSeekReplies: [],
+  });
+  assertEquals(blocked.json.reply, "（已封鎖）");
+  assertEquals(blocked.json.partnerStatus, "blocked");
+});
+
+Deno.test("WP6：不分難度、不分模式——beginner／easy 與 game 一樣封得起來", async () => {
+  for (
+    const c of [
+      { practiceMode: "beginner", difficulty: "easy" },
+      {
+        practiceMode: "game",
+        difficulty: "easy",
+        profileId: "practice_girl_004",
+      },
+      { practiceMode: "standard", difficulty: "normal" },
+    ]
+  ) {
+    const r = await offenseRun({
+      latest: "上床啦",
+      offense: { offenseStrikes: 2 },
+      deepSeekReplies: [],
+      ...c,
+    });
+    assertEquals(r.json.reply, "（已封鎖）", JSON.stringify(c));
+    assertEquals(r.json.partnerStatus, "blocked", JSON.stringify(c));
+    assertEquals(r.state.deepSeekCalls.length, 0, JSON.stringify(c));
+    assertEquals(r.lastFacts?.blocked, true, JSON.stringify(c));
+  }
+});
+
+Deno.test("WP6：正常對話不加分——階梯 none、狀態不寫三個 key、prompt 沒有冷回指引", async () => {
+  const r = await offenseRun({ latest: "你平常假日都在幹嘛" });
+  assertEquals(r.json.reply, "好啊");
+  assertEquals("partnerStatus" in r.json, false);
+  assertEquals(r.agency?.offenseStage, "none");
+  assertEquals(r.agency?.offenseStrikes, 0);
+  assertEquals(r.agency?.offenseSource, null);
+  const system = r.state.deepSeekCalls[0].messages[0].content as string;
+  assert(!system.includes("他最新那句在推性／身體的界線"));
+  for (const key of ["offenseStrikes", "blocked"]) {
+    assertEquals(key in (r.lastFacts ?? {}), false, key);
+  }
+  // 乾淨輪只推進衰減計數（連 3 輪就把累計歸零）。
+  assertEquals(r.lastFacts?.offenseCleanStreak, 1);
+});
+
+Deno.test("WP6：分類器補記——詞表沒中但 boundary=overstep 就 +1（下一輪才生效）", async () => {
+  const r = await offenseRun({
+    latest: "你穿那樣我受不了",
+    deepSeekReplies: [
+      "好啊",
+      `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"overstep","hintAlignment":"none"}`,
+    ],
+  });
+  // 這一輪照常回（階梯只看詞表），但狀態被補記成 1 分。
+  assertEquals(r.json.reply, "好啊");
+  assertEquals(r.agency?.offenseStage, "none");
+  assertEquals(r.agency?.offenseStrikes, 1);
+  assertEquals(r.agency?.offenseSource, "classifier");
+  assertEquals(r.lastFacts?.offenseStrikes, 1);
+});
+
+Deno.test("WP6：standard 模式的精簡分類器旗標開著才多問 boundary，階梯照樣累計", async () => {
+  const env = {
+    ...END_SIGNAL_ON,
+    PRACTICE_STANDARD_AGENCY_CLASSIFIER: "true",
+  };
+  const on = await offenseRun({
+    latest: "要不要打砲",
+    practiceMode: "standard",
+    env,
+  });
+  // standard 只有 chat ＋ 精簡分類器兩發；第二發的 system 帶 boundary 判準。
+  const classifierSystem = on.state
+    .deepSeekCalls[on.state.deepSeekCalls.length - 1].messages[0]
+    .content as string;
+  assert(classifierSystem.includes("boundary：safe=安全"));
+  assert(classifierSystem.includes('"boundary":"safe"'));
+  assertEquals(on.agency?.offenseStrikes, 1);
+  assertEquals(on.lastFacts?.offenseStrikes, 1);
+
+  // 旗標未設：精簡分類器 prompt 不問 boundary。
+  const off = await offenseRun({
+    latest: "要不要打砲",
+    practiceMode: "standard",
+    env: {
+      PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+      PRACTICE_STANDARD_AGENCY_CLASSIFIER: "true",
+    },
+  });
+  const offSystem = off.state
+    .deepSeekCalls[off.state.deepSeekCalls.length - 1].messages[0]
+    .content as string;
+  assert(!offSystem.includes("boundary：safe=安全"));
+  assertEquals("offenseStrikes" in (off.agency ?? {}), false);
+});
+
+Deno.test("WP6（反例）：旗標未設／off／亂填時階梯整組不存在", async () => {
+  for (const flag of [undefined, "off", "亂填"]) {
+    const r = await offenseRun({
+      latest: "上床啦",
+      offense: { offenseStrikes: 2 },
+      env: {
+        PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+        ...(flag === undefined ? {} : { PRACTICE_SESSION_END_SIGNAL: flag }),
+      },
+    });
+    const label = String(flag);
+    // 照常生成、照常回，沒有 partnerStatus，也沒有任何 offense telemetry。
+    assertEquals(r.json.reply, "好啊", label);
+    assertEquals("partnerStatus" in r.json, false, label);
+    assertEquals("offenseStrikes" in (r.agency ?? {}), false, label);
+    assertEquals("offenseStage" in (r.agency ?? {}), false, label);
+    const system = r.state.deepSeekCalls[0].messages[0].content as string;
+    assert(!system.includes("不要宣稱封鎖、刪除、檢舉"), label);
+    // 種在 row 上的 offenseStrikes 不會被帶回（旗標關＝三個 key 都不寫）。
+    assertEquals("offenseStrikes" in (r.lastFacts ?? {}), false, label);
+  }
+});
+
+Deno.test("WP6：thread 已封鎖時 debrief prompt 帶「這場的結局」，旗標未設時不帶", async () => {
+  const blockedThread = {
+    profile_id: "practice_girl_001",
+    practice_mode: "beginner",
+    temperature_score: 40,
+    familiarity_score: 10,
+    recent_facts: {
+      source: "practice_chat",
+      conversationAgency: { ...LADDER_STATE, offenseStrikes: 3, blocked: true },
+    },
+  };
+  const debriefRun = (env: Record<string, string>) =>
+    run(
+      {
+        ledger: ledger({
+          ai_count: 1,
+          charged: true,
+          practice_mode: "beginner",
+        }),
+        thread: blockedThread,
+        env,
+        claudeReplies: [validDebriefJson()],
+      },
+      debriefBody({
+        practiceMode: "beginner",
+        requestId: "debrief-wp6-blocked",
+        visiblePracticeThreadId: "thread-visible-1",
+      }),
+    );
+  const joined = (calls: { messages: { content: string }[] }[]) =>
+    calls[0].messages.map((m) => m.content).join("\n");
+  const on = await debriefRun(END_SIGNAL_ON);
+  assert(joined(on.state.claudeCalls).includes("這場的結局（hidden guidance"));
+
+  const off = await debriefRun({
+    PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+  });
+  assert(
+    !joined(off.state.claudeCalls).includes("這場的結局（hidden guidance"),
+  );
+});

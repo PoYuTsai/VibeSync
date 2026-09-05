@@ -84,6 +84,8 @@ const AGENCY_ENV = "PRACTICE_CONVERSATIONAL_AGENCY_ENABLED";
 const ROUTING_ENV = "PRACTICE_CHAT_MODEL_ROUTING";
 /** Phase 4.5b standard 每輪 agency 分類器旗標（harness 多枚舉的一維環境值）。 */
 const STANDARD_CLASSIFIER_ENV = "PRACTICE_STANDARD_AGENCY_CLASSIFIER";
+/** Phase 5 WP5／WP6 收尾訊號＋性冒犯階梯旗標（harness 多枚舉的一維環境值）。 */
+const SESSION_END_ENV = "PRACTICE_SESSION_END_SIGNAL";
 const STYLE_ENV = "PRACTICE_REPLY_STYLE_ENABLED";
 const TEST_ACCOUNT = { id: "user-1", email: "vibesync.test@gmail.com" };
 
@@ -463,6 +465,7 @@ async function observableDigest(
   probe?: RunProbe,
   routingEnv?: string,
   standardClassifierEnv?: string,
+  sessionEndEnv?: string,
 ): Promise<ObservableDigest> {
   const fake = makeFake({
     ...c.options,
@@ -478,6 +481,9 @@ async function observableDigest(
       ...(standardClassifierEnv === undefined
         ? {}
         : { [STANDARD_CLASSIFIER_ENV]: standardClassifierEnv }),
+      ...(sessionEndEnv === undefined
+        ? {}
+        : { [SESSION_END_ENV]: sessionEndEnv }),
     },
   });
   const lines: string[] = [];
@@ -2090,5 +2096,77 @@ Deno.test({
         );
       }
     }
+  },
+});
+
+Deno.test({
+  name:
+    "Phase 5 WP6：PRACTICE_SESSION_END_SIGNAL 未設／off／亂填時四面等價（含 agency on）；agency 未設時 true 也不得生效",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    // 分面寫法沿用 Phase 4.5b：
+    //   未設／`off`／亂填 → 四面全等 flag-off golden，**而且**在 agency `true`
+    //     的那條臂上也逐位元組等於「agency on ＋ 這維未設」。
+    //   agency 未設 ＋ 這維 `true` → 這支旗標的兩個功能（WP5 收尾訊號、
+    //     WP6 性冒犯階梯）都要求 agency `on`，所以必須仍然全等 golden。
+    //   兩支都 `true` → 允許不同（鐵則多一條、階梯狀態多一個 key），但**必須
+    //     真的有差**，不然這道 harness 是空的。
+    let anyChanged = false;
+    for (const c of equivalenceCases()) {
+      const expected = parseGolden(c.name);
+      const agencyOn = await observableDigest(c, "true");
+      for (const env of ["off", "亂填"]) {
+        assertEquals(
+          await observableDigest(
+            c,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            env,
+          ),
+          expected,
+          `${c.name} / sessionEnd=${env}`,
+        );
+        assertEquals(
+          await observableDigest(
+            c,
+            "true",
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            env,
+          ),
+          agencyOn,
+          `${c.name} / agency=true ＋ sessionEnd=${env}`,
+        );
+      }
+      assertEquals(
+        await observableDigest(
+          c,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          "true",
+        ),
+        expected,
+        `${c.name} / agency 未設 ＋ sessionEnd=true`,
+      );
+      const on = await observableDigest(
+        c,
+        "true",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "true",
+      );
+      if (digestLine(on) !== digestLine(agencyOn)) anyChanged = true;
+    }
+    assert(anyChanged, "兩支旗標都開時至少要有一個案例的可觀測面不同");
   },
 });
