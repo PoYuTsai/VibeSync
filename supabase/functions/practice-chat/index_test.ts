@@ -10098,6 +10098,8 @@ Deno.test("Phase 5 WP5（反例）：旗標開著但 normal 難度／agency 非 
     END_SIGNAL_ON,
     { difficulty: "normal" },
   );
+  // 這一輪確實成功回了（不然下面的「沒有 key」是空洞的）。
+  assertEquals(typeof normal.json.reply, "string");
   assert(
     normal.forcedAct !== "check_out" && normal.forcedAct !== "read_only",
     `normal 不該走到收尾格：${normal.forcedAct}`,

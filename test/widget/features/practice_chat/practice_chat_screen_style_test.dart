@@ -4657,7 +4657,17 @@ void main() {
       const ValueKey('practice-partner-checked-out-debrief'),
     );
     expect(debriefBtn, findsOneWidget);
-    expect(tester.widget<BrandPrimaryButton>(debriefBtn).onPressed, isNotNull);
+    final debriefOnPressed =
+        tester.widget<BrandPrimaryButton>(debriefBtn).onPressed;
+    expect(debriefOnPressed, isNotNull);
+    // 導向檢討＝走既有「結束練習」同一條路（同一個回呼），不是另一個入口。
+    final endPractice = tester.widget<TextButton>(
+      find.ancestor(
+        of: find.text('結束練習'),
+        matching: find.byType(TextButton),
+      ),
+    );
+    expect(identical(debriefOnPressed, endPractice.onPressed), isTrue);
     // 不鎖：輸入框沒有被換成「20 則上限」那一格，也沒有被禁用。
     expect(find.text('這場練習已達 20 則回覆'), findsNothing);
     final field = tester.widget<TextField>(find.byType(TextField));

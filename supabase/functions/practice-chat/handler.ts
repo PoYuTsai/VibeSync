@@ -5610,8 +5610,8 @@ export function createPracticeChatHandler(
     // 其餘情形連 key 都沒有（那兩格只在 agency `on` 時才可能是 `forcedAct`，
     // 所以旗標 off／shadow 的 response 逐位元組不變）。
     // Phase 5 WP5：`PRACTICE_SESSION_END_SIGNAL=true` 時放掉 Game-only 條件——
-    // 挑戰難度也走得到那兩格（`allowsCheckOut` 只對 challenge／Game 為真，
-    // beginner／standard 永遠沒有這個 key）；旗標未設＝4.5c 的 Game-only。
+    // 挑戰難度也走得到那兩格（`allowsCheckOut` 只對 challenge 難度／Game 為真，
+    // 非 Game 且非 challenge 的場永遠沒有這個 key）；旗標未設＝4.5c 的 Game-only。
     // App 拿它顯示收尾提示並導向檢討——**不**自動結束、**不**鎖輸入。
     const partnerStatus = agencyMode === "on" &&
         (sessionEndSignalOn || request.practiceMode === "game") &&
