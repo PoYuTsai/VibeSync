@@ -33,6 +33,7 @@ import {
   type AgencyMode,
   agencyPolicyFor,
   agencyThresholdsFor,
+  allowsCheckOut,
   type ConversationAgencyProfile,
   type ConversationAgencyState,
   detectAgencyEvidence,
@@ -628,8 +629,10 @@ export function planTurnResponse(args: {
   // （forced `end_low_value_loop`），要嘛是**連續**越界（第 2 次以上）。
   // 越界輪的 agency decision 會被 `computeAgencyDecision` 清成 situation:null，
   // 所以那一半只能從 planner 自己的 stance 與逐字稿數，不能靠 agency 決策。
-  const coldPersona = args.evidence.difficulty === "challenge" ||
-    args.evidence.practiceMode === "game";
+  const coldPersona = allowsCheckOut(
+    args.evidence.difficulty,
+    args.evidence.practiceMode === "game",
+  );
   const readOnlyAllowed = agency?.enabled === true && coldPersona &&
     (
       (agency.applied &&

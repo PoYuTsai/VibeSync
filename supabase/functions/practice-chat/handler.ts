@@ -4580,7 +4580,14 @@ export function createPracticeChatHandler(
           const allowReadOnly = agencyMode === "on" &&
             (responsePlan?.readOnlyAllowed === true || readOnlyTurn);
           readOnlyAllowedThisTurn = allowReadOnly;
-          if (responsePlan && hasStageDirection(candidate, allowReadOnly)) {
+          // Codex R2 P1-3：agency on 時**不論有沒有 `responsePlan`** 都要跑這道
+          // 守門——旗標分臂（agency on ＋ reply-style off）時模型自己吐一句
+          // 「（已讀）」原本會整段漏過去。off 路徑維持「只在有 plan 時跑」，
+          // 逐位元組不變。
+          if (
+            (responsePlan || agencyMode === "on") &&
+            hasStageDirection(candidate, allowReadOnly)
+          ) {
             stageDirectionRepairs++;
             candidate = stripStageDirections(
               candidate,

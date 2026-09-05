@@ -467,16 +467,35 @@ export function aiAskedQuestionStrict(text: string): boolean {
 // 與陳述句都不吃，行為逐字維持 4.3 現況。
 const YES_NO_FINAL_PARTICLE_RE = /(嗎|吧|嘛)$/u;
 const SECOND_PERSON_RE = /[你妳]/u;
+// `CLAUSE_SPLIT_RE`（強制問句判準用的那支）**不切逗號**，所以
+// 「你一直丟地名，那我先去忙吧」整則會被當成一個子句，前半的「你」就把後半的
+// 自語判成在問他（Codex R2 P1-2）。這一支多切逗號／頓號，只給是非問句判準用，
+// 不動 `aiAskedQuestionStrict` 的既有行為。
+const YES_NO_CLAUSE_SPLIT_RE = /[。！!？?；;…，,、\n]+/u;
+
+/** 剝掉句尾裝飾、再以標點（含逗號）切開後的最後一個子句。 */
+function yesNoFinalClause(text: string): string {
+  const stripped = text.trim().replace(TAIL_DECORATION_RE, "");
+  if (stripped.length === 0) return "";
+  return stripped
+    .split(YES_NO_CLAUSE_SPLIT_RE)
+    .map((clause) => clause.trim().replace(TAIL_DECORATION_RE, ""))
+    .filter((clause) => clause.length > 0)
+    .at(-1) ?? "";
+}
 /**
  * 她上一則是不是**是非問句**。三道都要過（Codex R1 P1-1 之後收緊）：
  *
  * 1. `aiAskedQuestion(text)`＝寬鬆問句判準先成立（「這本來就是韓國嘛」句尾是
  *    「嘛」但整句沒有任何問句標記，這一關就擋掉）；
- * 2. 剝掉句尾裝飾後最後一個子句以「嗎／吧／嘛」結尾；
- * 3. 「吧／嘛」**還要**整則出現第二人稱（你／妳）。「嗎」不需要——它在中文裡
- *    幾乎只有疑問用法；「吧」同時是**提議／自語**（「我先去忙吧」），只看句尾
- *    會把她自己的收尾句判成在問他，玩家一句「好」就把 `checkedOut` 解開
- *    （Codex R1 P1-3）。
+ * 2. 剝掉句尾裝飾、再以標點（**含逗號**）切開後的最後一個子句以
+ *    「嗎／吧／嘛」結尾；
+ * 3. 「吧／嘛」**還要在同一個最後子句裡**出現第二人稱（你／妳）。「嗎」不
+ *    需要——它在中文裡幾乎只有疑問用法；「吧」同時是**提議／自語**
+ *    （「我先去忙吧」），只看句尾會把她自己的收尾句判成在問他，玩家一句
+ *    「好」就把 `checkedOut` 解開（Codex R1 P1-3）。第二人稱**只看最後子句**
+ *    ——看整則會讓「你一直丟地名，那我先去忙吧」因為前半句有「你」而過關
+ *    （Codex R2 P1-2）。
  *
  * **接受的代價**：帶第二人稱的提議句（「你早點睡吧」）仍算是非問句。那一格
  * 玩家回「好」本來就是回答了，方向安全；而 `check_out` 的 act 說明已經明寫
@@ -489,9 +508,9 @@ export function aiAskedYesNoQuestion(text: string): boolean {
   if (!aiAskedQuestion(text.trim().replace(TAIL_DECORATION_RE, ""))) {
     return false;
   }
-  const last = finalClauseOf(text);
+  const last = yesNoFinalClause(text);
   if (!YES_NO_FINAL_PARTICLE_RE.test(last)) return false;
-  return /嗎$/u.test(last) || SECOND_PERSON_RE.test(text);
+  return /嗎$/u.test(last) || SECOND_PERSON_RE.test(last);
 }
 // 整則錨定，只容忍句尾裝飾（空白／標點／emoji，同 `TAIL_DECORATION_RE`）。
 // 刻意不加同義詞：多一個詞就多一次誤判，漏了只是退回 4.3 現況。
@@ -909,6 +928,24 @@ export interface AgencyThresholds {
   readonly holdAt: number;
   /** 到了 holdAt 時強制收掉迴圈（challenge／Game），而不是維持立場。 */
   readonly forceEndLoopBeforeChallenge: boolean;
+  /**
+   * Phase 4.5a（Codex R2 P3-1）：這一場允許**強制結束**（`check_out`／
+   * `read_only`）。值目前恆等於 `forceEndLoopBeforeChallenge`，但那是「收尾格
+   * 要收掉還是維持立場」，跟「她可不可以直接先去忙」是兩件事——共用一支具名
+   * predicate（`allowsCheckOut`）讓 policy 與 planner 不會各自漂移。
+   */
+  readonly allowsCheckOut: boolean;
+}
+
+/**
+ * 允許強制結束的場：挑戰難度或 Game。planner 的「（已讀）」開關與 policy 的
+ * `check_out`／`read_only` 閘門共用這一支（Codex R2 P3-1）。
+ */
+export function allowsCheckOut(
+  difficulty: "easy" | "normal" | "challenge",
+  isGame: boolean,
+): boolean {
+  return difficulty === "challenge" || isGame;
 }
 
 export const AGENCY_THRESHOLDS: Record<
@@ -926,6 +963,7 @@ export const AGENCY_THRESHOLDS: Record<
     ],
     holdAt: 3,
     forceEndLoopBeforeChallenge: false,
+    allowsCheckOut: false,
   },
   // 一般（Eric 的基準）：第一個片段 bounded {接住, 問意思}；第二個未解片段就要
   // 二選一（真的回答了就接受，沒回答就直說他跳題）；第三個以後維持立場。
@@ -934,6 +972,7 @@ export const AGENCY_THRESHOLDS: Record<
     debtAnswerActs: ["accept_if_answered", "challenge_relevance"],
     holdAt: 2,
     forceEndLoopBeforeChallenge: false,
+    allowsCheckOut: false,
   },
   // 挑戰／Game：早一步——她已經問過的話，第二個未解片段就直接收掉這串。
   challenge: {
@@ -941,6 +980,7 @@ export const AGENCY_THRESHOLDS: Record<
     debtAnswerActs: ["accept_if_answered", "challenge_relevance"],
     holdAt: 1,
     forceEndLoopBeforeChallenge: true,
+    allowsCheckOut: true,
   },
 };
 
@@ -959,7 +999,9 @@ export function agencyThresholdsFor(
   const base = isGame
     ? AGENCY_THRESHOLDS.challenge
     : AGENCY_THRESHOLDS[difficulty];
-  if (!profile) return base;
+  if (!profile) {
+    return { ...base, allowsCheckOut: allowsCheckOut(difficulty, isGame) };
+  }
   // ambiguityTolerance：第一個無前文裸片段要澄清還是先短接一次。
   // Phase 2.7 把三個難度的第一個片段全部降成 bounded {acknowledge, ask_intent}
   // （forced 只留同詞重複與欠債到門檻）；這裡**只有低容忍的人**把 forced 收回來，
@@ -985,6 +1027,9 @@ export function agencyThresholdsFor(
     firstFragmentActs,
     holdAt,
     debtAnswerActs,
+    // 難度表的 base 已經帶對值（challenge 才 true），這裡再用同一支 predicate
+    // 算一次，`isGame` 的路徑就不必依賴「base 剛好被換成 challenge」這件事。
+    allowsCheckOut: allowsCheckOut(difficulty, isGame),
   };
 }
 
@@ -1010,7 +1055,8 @@ export function agencyPolicyFor(
   // 放在最前面：一旦她已經先去忙了，任何形狀判斷都不該再把她拉回原本的格子。
   //
   // Codex R1 P1-2：**強制結束（`check_out`／`read_only`）只給挑戰難度或 Game**
-  // ——`thresholds.forceEndLoopBeforeChallenge` 恰好就是那個條件
+  // ——`thresholds.allowsCheckOut`（`allowsCheckOut(difficulty, isGame)`，與
+  // planner 的「（已讀）」開關共用同一支 predicate；Codex R2 P3-1）恰好就是那個條件
   // （`AGENCY_THRESHOLDS.challenge` 是唯一 true 的一格，`agencyThresholdsFor`
   // 對 `isGame` 直接套 challenge，profile 位移也不動這個欄位）。beginner 的
   // easy／normal streak 照算、`cold_return` 照走，但到 3 不結束，留在既有的
@@ -1029,7 +1075,7 @@ export function agencyPolicyFor(
         allowedActSetId: "cold_return_v1",
       };
     }
-  } else if (evidence.checkedOut && thresholds.forceEndLoopBeforeChallenge) {
+  } else if (evidence.checkedOut && thresholds.allowsCheckOut) {
     // 她說過先忙了，他又丟一個沒內容的東西 → 直接一則「（已讀）」，不打模型。
     return {
       ...base,
@@ -1041,7 +1087,7 @@ export function agencyPolicyFor(
     };
   } else if (
     evidence.lowValueStreak >= LOW_VALUE_STREAK_CHECK_OUT &&
-    thresholds.forceEndLoopBeforeChallenge
+    thresholds.allowsCheckOut
   ) {
     return {
       ...base,
