@@ -2151,7 +2151,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Game Hint 1/5'), findsOneWidget);
+    expect(find.text('Game Hint 還剩 4 顆'), findsOneWidget);
     expect(find.text('攻略 1 則'), findsOneWidget);
     expect(find.text('看完整攻略'), findsOneWidget);
 
@@ -2851,7 +2851,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Hint 5/5'), findsOneWidget);
+    expect(find.text('Hint 還剩 0 顆'), findsOneWidget);
     expect(find.text('本輪已用完'), findsOneWidget);
     expect(find.textContaining('本輪提示已用完'), findsOneWidget);
 

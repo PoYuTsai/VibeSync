@@ -2214,7 +2214,8 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
             children: [
               Expanded(
                 child: Text(
-                  '$hintTitle $hintUsedCount/$kMaxPracticeHintsPerRound',
+                  // WP4：顯示剩餘顆數，不是已用幾顆（剩餘＝上限－已用，零 server 改動）。
+                  '$hintTitle 還剩 ${kMaxPracticeHintsPerRound - hintUsedCount} 顆',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.caption.copyWith(
