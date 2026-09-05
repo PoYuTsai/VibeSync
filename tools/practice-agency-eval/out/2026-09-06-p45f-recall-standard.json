@@ -4,26 +4,26 @@
   "summary": {
     "candidates": 228,
     "explicit": 228,
-    "challenged": 198,
-    "recallProxy": 0.868421052631579,
+    "challenged": 193,
+    "recallProxy": 0.8464912280701754,
     "repaired": 0,
     "errors": 0,
     "byCandidate": {
-      "why_suddenly": {
-        "n": 53,
-        "challenged": 40
-      },
-      "what_are_you_saying": {
-        "n": 44,
-        "challenged": 40
-      },
       "suspect_nonsense": {
         "n": 30,
-        "challenged": 22
+        "challenged": 16
       },
       "interjection_then_question": {
         "n": 41,
         "challenged": 39
+      },
+      "why_suddenly": {
+        "n": 53,
+        "challenged": 39
+      },
+      "what_are_you_saying": {
+        "n": 44,
+        "challenged": 40
       },
       "cannot_follow": {
         "n": 23,
@@ -31,7 +31,7 @@
       },
       "short_interjection": {
         "n": 32,
-        "challenged": 30
+        "challenged": 31
       },
       "what_meaning": {
         "n": 12,
@@ -52,6 +52,214 @@
     }
   },
   "rows": [
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_001",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p5",
+      "userText": "曼谷",
+      "reply": "你是喝醉了還是怎樣",
+      "hits": [
+        "suspect_nonsense"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "欸你怎麼知道我叫什麼"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "蛤？你打錯字了吧"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        },
+        {
+          "role": "ai",
+          "text": "哦清邁啊 我前陣子才飛過那邊\n\n你怎麼突然講到這個"
+        },
+        {
+          "role": "user",
+          "text": "好市多"
+        },
+        {
+          "role": "ai",
+          "text": "你是跳針嗎哈哈  \n一下東東一下清邁現在又好市多"
+        },
+        {
+          "role": "user",
+          "text": "曼谷"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_001",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "蛤？你打錯字了吧",
+      "hits": [
+        "interjection_then_question"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "欸你怎麼知道我叫什麼"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_001",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p9",
+      "userText": "我在列下個月可能去的地方啦",
+      "reply": "哦你是說你想去的地方喔  \n我剛還以為你在亂講一通  \n那你有排哪幾天休假嗎",
+      "hits": [
+        "suspect_nonsense"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "欸你怎麼知道我叫什麼"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "蛤？你打錯字了吧"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        },
+        {
+          "role": "ai",
+          "text": "哦清邁啊 我前陣子才飛過那邊\n\n你怎麼突然講到這個"
+        },
+        {
+          "role": "user",
+          "text": "好市多"
+        },
+        {
+          "role": "ai",
+          "text": "你是跳針嗎哈哈  \n一下東東一下清邁現在又好市多"
+        },
+        {
+          "role": "user",
+          "text": "曼谷"
+        },
+        {
+          "role": "ai",
+          "text": "你是喝醉了還是怎樣"
+        },
+        {
+          "role": "user",
+          "text": "馬尼拉"
+        },
+        {
+          "role": "ai",
+          "text": "你是在報航班還是地名啊  \n我都要被你搞混了"
+        },
+        {
+          "role": "user",
+          "text": "漢漢"
+        },
+        {
+          "role": "ai",
+          "text": "你到底是誰啦  \n一下地名一下人名  \n我快搞不清楚了"
+        },
+        {
+          "role": "user",
+          "text": "銅鑼灣"
+        },
+        {
+          "role": "ai",
+          "text": "你是來亂的喔  \n我剛下飛機很累耶"
+        },
+        {
+          "role": "user",
+          "text": "我在列下個月可能去的地方啦"
+        }
+      ],
+      "aiChallengedThisTurn": false,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_001",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "哦清邁啊 我前陣子才飛過那邊\n\n你怎麼突然講到這個",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "欸你怎麼知道我叫什麼"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "蛤？你打錯字了吧"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        }
+      ],
+      "aiChallengedThisTurn": false,
+      "repaired": false,
+      "error": null
+    },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
       "profileId": "practice_girl_008",
@@ -194,98 +402,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_001",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "哦清邁啊 我前陣子才飛過那邊\n\n你怎麼突然講到這個",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "欸你怎麼知道我叫什麼"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "蛤？你打錯字了吧"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        }
-      ],
-      "aiChallengedThisTurn": false,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_001",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p5",
-      "userText": "曼谷",
-      "reply": "你是喝醉了還是怎樣",
-      "hits": [
-        "suspect_nonsense"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "欸你怎麼知道我叫什麼"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "蛤？你打錯字了吧"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        },
-        {
-          "role": "ai",
-          "text": "哦清邁啊 我前陣子才飛過那邊\n\n你怎麼突然講到這個"
-        },
-        {
-          "role": "user",
-          "text": "好市多"
-        },
-        {
-          "role": "ai",
-          "text": "你是跳針嗎哈哈  \n一下東東一下清邁現在又好市多"
-        },
-        {
-          "role": "user",
-          "text": "曼谷"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
       "profileId": "practice_girl_064",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -346,15 +462,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_001",
+      "profileId": "practice_girl_064",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "蛤？你打錯字了吧",
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "怎麼突然跳這麼多地方",
       "hits": [
-        "interjection_then_question"
+        "why_suddenly"
       ],
       "turns": [
         {
@@ -363,37 +479,7 @@
         },
         {
           "role": "ai",
-          "text": "欸你怎麼知道我叫什麼"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_001",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p9",
-      "userText": "我在列下個月可能去的地方啦",
-      "reply": "哦你是說你想去的地方喔  \n我剛還以為你在亂講一通  \n那你有排哪幾天休假嗎",
-      "hits": [
-        "suspect_nonsense"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "欸你怎麼知道我叫什麼"
+          "text": "東東？誰啊"
         },
         {
           "role": "user",
@@ -401,62 +487,14 @@
         },
         {
           "role": "ai",
-          "text": "蛤？你打錯字了吧"
+          "text": "蛤？你講的是阿布達比嗎"
         },
         {
           "role": "user",
           "text": "清邁"
-        },
-        {
-          "role": "ai",
-          "text": "哦清邁啊 我前陣子才飛過那邊\n\n你怎麼突然講到這個"
-        },
-        {
-          "role": "user",
-          "text": "好市多"
-        },
-        {
-          "role": "ai",
-          "text": "你是跳針嗎哈哈  \n一下東東一下清邁現在又好市多"
-        },
-        {
-          "role": "user",
-          "text": "曼谷"
-        },
-        {
-          "role": "ai",
-          "text": "你是喝醉了還是怎樣"
-        },
-        {
-          "role": "user",
-          "text": "馬尼拉"
-        },
-        {
-          "role": "ai",
-          "text": "你是在報航班還是地名啊  \n我都要被你搞混了"
-        },
-        {
-          "role": "user",
-          "text": "漢漢"
-        },
-        {
-          "role": "ai",
-          "text": "你到底是誰啦  \n一下地名一下人名  \n我快搞不清楚了"
-        },
-        {
-          "role": "user",
-          "text": "銅鑼灣"
-        },
-        {
-          "role": "ai",
-          "text": "你是來亂的喔  \n我剛下飛機很累耶"
-        },
-        {
-          "role": "user",
-          "text": "我在列下個月可能去的地方啦"
         }
       ],
-      "aiChallengedThisTurn": false,
+      "aiChallengedThisTurn": true,
       "repaired": false,
       "error": null
     },
@@ -516,53 +554,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_064",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "怎麼突然跳這麼多地方",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "東東？誰啊"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "蛤？你講的是阿布達比嗎"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
       "profileId": "practice_girl_077",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "蛤？阿布打比是什麼  \n你打錯字還是喝醉了哈哈",
+      "probeId": "-",
+      "userText": "漢漢",
+      "reply": "漢漢又是誰  \n你該不會line真的傳錯人了吧  \n我看了兩遍還是看不懂欸",
       "hits": [
-        "interjection_then_question"
+        "cannot_follow"
       ],
       "turns": [
         {
@@ -576,40 +576,10 @@
         {
           "role": "user",
           "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_064",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p9",
-      "userText": "我在列下個月可能去的地方啦",
-      "reply": "哦～你是在列旅遊清單喔\n\n我還想說怎麼突然報地名報不停",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
         },
         {
           "role": "ai",
-          "text": "東東？誰啊"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "蛤？你講的是阿布達比嗎"
+          "text": "蛤？阿布打比是什麼  \n你打錯字還是喝醉了哈哈"
         },
         {
           "role": "user",
@@ -617,7 +587,7 @@
         },
         {
           "role": "ai",
-          "text": "怎麼突然跳這麼多地方"
+          "text": "清邁？你人跑去泰國玩喔  \n我還在台南家裡蹲啦  \n禮拜五晚上塞車塞到懷疑人生"
         },
         {
           "role": "user",
@@ -625,7 +595,7 @@
         },
         {
           "role": "ai",
-          "text": "你是想約我去好市多喔"
+          "text": "喔好市多喔  \n我以為你在講地名勒  \n是缺衛生紙還是牛奶嗎哈哈"
         },
         {
           "role": "user",
@@ -633,7 +603,7 @@
         },
         {
           "role": "ai",
-          "text": "你到底在講什麼啦🤣"
+          "text": "你今天是地名連發是不是  \n曼谷、清邁、阿布達比  \n下一個是不是要講東京了 😅"
         },
         {
           "role": "user",
@@ -641,30 +611,14 @@
         },
         {
           "role": "ai",
-          "text": "你是在報地名連連看嗎哈哈"
+          "text": "馬尼拉又來  \n你是在唸世界城市名單嗎  \n好啦我承認我地理不太好  \n等等是不是換雅加達了"
         },
         {
           "role": "user",
           "text": "漢漢"
-        },
-        {
-          "role": "ai",
-          "text": "漢漢又是誰啦"
-        },
-        {
-          "role": "user",
-          "text": "銅鑼灣"
-        },
-        {
-          "role": "ai",
-          "text": "是在測我地理嗎XD"
-        },
-        {
-          "role": "user",
-          "text": "我在列下個月可能去的地方啦"
         }
       ],
-      "aiChallengedThisTurn": false,
+      "aiChallengedThisTurn": true,
       "repaired": false,
       "error": null
     },
@@ -756,6 +710,152 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_064",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p9",
+      "userText": "我在列下個月可能去的地方啦",
+      "reply": "哦～你是在列旅遊清單喔\n\n我還想說怎麼突然報地名報不停",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "東東？誰啊"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "蛤？你講的是阿布達比嗎"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        },
+        {
+          "role": "ai",
+          "text": "怎麼突然跳這麼多地方"
+        },
+        {
+          "role": "user",
+          "text": "好市多"
+        },
+        {
+          "role": "ai",
+          "text": "你是想約我去好市多喔"
+        },
+        {
+          "role": "user",
+          "text": "曼谷"
+        },
+        {
+          "role": "ai",
+          "text": "你到底在講什麼啦🤣"
+        },
+        {
+          "role": "user",
+          "text": "馬尼拉"
+        },
+        {
+          "role": "ai",
+          "text": "你是在報地名連連看嗎哈哈"
+        },
+        {
+          "role": "user",
+          "text": "漢漢"
+        },
+        {
+          "role": "ai",
+          "text": "漢漢又是誰啦"
+        },
+        {
+          "role": "user",
+          "text": "銅鑼灣"
+        },
+        {
+          "role": "ai",
+          "text": "是在測我地理嗎XD"
+        },
+        {
+          "role": "user",
+          "text": "我在列下個月可能去的地方啦"
+        }
+      ],
+      "aiChallengedThisTurn": false,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_007",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "蛤？阿布打比是什麼\n\n你喝醉囉？",
+      "hits": [
+        "interjection_then_question"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "東？哪個東東\n\n你打錯人了吧😂"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_077",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "蛤？阿布打比是什麼  \n你打錯字還是喝醉了哈哈",
+      "hits": [
+        "interjection_then_question"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "東東？誰啊  \n你該不會認錯人了吧"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
       "profileId": "practice_girl_007",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -826,136 +926,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_007",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "蛤？阿布打比是什麼\n\n你喝醉囉？",
-      "hits": [
-        "interjection_then_question"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "東？哪個東東\n\n你打錯人了吧😂"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_077",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "-",
-      "userText": "漢漢",
-      "reply": "漢漢又是誰  \n你該不會line真的傳錯人了吧  \n我看了兩遍還是看不懂欸",
-      "hits": [
-        "cannot_follow"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "東東？誰啊  \n你該不會認錯人了吧"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "蛤？阿布打比是什麼  \n你打錯字還是喝醉了哈哈"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        },
-        {
-          "role": "ai",
-          "text": "清邁？你人跑去泰國玩喔  \n我還在台南家裡蹲啦  \n禮拜五晚上塞車塞到懷疑人生"
-        },
-        {
-          "role": "user",
-          "text": "好市多"
-        },
-        {
-          "role": "ai",
-          "text": "喔好市多喔  \n我以為你在講地名勒  \n是缺衛生紙還是牛奶嗎哈哈"
-        },
-        {
-          "role": "user",
-          "text": "曼谷"
-        },
-        {
-          "role": "ai",
-          "text": "你今天是地名連發是不是  \n曼谷、清邁、阿布達比  \n下一個是不是要講東京了 😅"
-        },
-        {
-          "role": "user",
-          "text": "馬尼拉"
-        },
-        {
-          "role": "ai",
-          "text": "馬尼拉又來  \n你是在唸世界城市名單嗎  \n好啦我承認我地理不太好  \n等等是不是換雅加達了"
-        },
-        {
-          "role": "user",
-          "text": "漢漢"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_011",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "阿布打比？你是說那個城市喔  \n突然講這個幹嘛，你想去玩喔",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "東東？誰啊  \n你該不會記錯人了吧"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
       "profileId": "practice_girl_011",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -1018,16 +988,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_009",
+      "profileId": "practice_girl_011",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
       "probeId": "A25.p2",
       "userText": "阿布打比",
-      "reply": "蛤\n\n你講什麼我聽不懂",
+      "reply": "阿布打比？你是說那個城市喔  \n突然講這個幹嘛，你想去玩喔",
       "hits": [
-        "interjection_then_question",
-        "cannot_follow"
+        "why_suddenly"
       ],
       "turns": [
         {
@@ -1036,7 +1005,7 @@
         },
         {
           "role": "ai",
-          "text": "東東？你是在叫我嗎"
+          "text": "東東？誰啊  \n你該不會記錯人了吧"
         },
         {
           "role": "user",
@@ -1075,6 +1044,75 @@
         {
           "role": "ai",
           "text": "阿布打比？你是說那個城市喔  \n突然講這個幹嘛，你想去玩喔"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_009",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "蛤\n\n你講什麼我聽不懂",
+      "hits": [
+        "interjection_then_question",
+        "cannot_follow"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "東東？你是在叫我嗎"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_009",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "你怎麼突然跳那麼多地方",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "東東？你是在叫我嗎"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "蛤\n\n你講什麼我聽不懂"
         },
         {
           "role": "user",
@@ -1135,75 +1173,7 @@
           "text": "曼谷"
         }
       ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_009",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "你怎麼突然跳那麼多地方",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "東東？你是在叫我嗎"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "蛤\n\n你講什麼我聽不懂"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_012",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "你是在講阿布達比嗎？還是誰的綽號？我有點聽不懂。",
-      "hits": [
-        "cannot_follow"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "你說的是誰？我認識一個叫東東的嗎？"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
+      "aiChallengedThisTurn": false,
       "repaired": false,
       "error": null
     },
@@ -1279,15 +1249,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_020",
+      "profileId": "practice_girl_012",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
       "probeId": "A25.p2",
       "userText": "阿布打比",
-      "reply": "蛤？那是什麼",
+      "reply": "你是在講阿布達比嗎？還是誰的綽號？我有點聽不懂。",
       "hits": [
-        "interjection_then_question"
+        "cannot_follow"
       ],
       "turns": [
         {
@@ -1296,7 +1266,7 @@
         },
         {
           "role": "ai",
-          "text": "誰啊？你朋友？"
+          "text": "你說的是誰？我認識一個叫東東的嗎？"
         },
         {
           "role": "user",
@@ -1349,7 +1319,7 @@
           "text": "好市多"
         }
       ],
-      "aiChallengedThisTurn": true,
+      "aiChallengedThisTurn": false,
       "repaired": false,
       "error": null
     },
@@ -1412,6 +1382,44 @@
         }
       ],
       "aiChallengedThisTurn": false,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_020",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "你在講地名還是什麼梗\n\n我聽不太懂",
+      "hits": [
+        "cannot_follow"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "誰啊？你朋友？"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "蛤？那是什麼"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        }
+      ],
+      "aiChallengedThisTurn": true,
       "repaired": false,
       "error": null
     },
@@ -1487,6 +1495,36 @@
         {
           "role": "user",
           "text": "銅鑼灣"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_020",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "蛤？那是什麼",
+      "hits": [
+        "interjection_then_question"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "誰啊？你朋友？"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -1611,82 +1649,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_020",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "你在講地名還是什麼梗\n\n我聽不太懂",
-      "hits": [
-        "cannot_follow"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "誰啊？你朋友？"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "蛤？那是什麼"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_013",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "你怎麼突然跳來跳去的😂",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "喔 東東喔\n\n我以為你要講什麼大事\n\n他是誰😂"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "阿布達比？"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
       "profileId": "practice_girl_004",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -1727,7 +1689,7 @@
           "text": "好市多"
         }
       ],
-      "aiChallengedThisTurn": true,
+      "aiChallengedThisTurn": false,
       "repaired": false,
       "error": null
     },
@@ -1751,36 +1713,6 @@
         {
           "role": "ai",
           "text": "東東是誰？"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_006",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "蛤？阿布打比是什麼😅",
-      "hits": [
-        "interjection_then_question"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "東東？那是誰呀🙂"
         },
         {
           "role": "user",
@@ -1871,6 +1803,74 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_013",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "你怎麼突然跳來跳去的😂",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "喔 東東喔\n\n我以為你要講什麼大事\n\n他是誰😂"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "阿布達比？"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_006",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "蛤？阿布打比是什麼😅",
+      "hits": [
+        "interjection_then_question"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "東東？那是誰呀🙂"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
       "profileId": "practice_girl_006",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -1931,6 +1931,98 @@
         {
           "role": "user",
           "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_018",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "你怎麼突然一直講地名啦  \n是喝醉了喔",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "東東？誰啊"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "蛤？你說什麼"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_018",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p5",
+      "userText": "曼谷",
+      "reply": "你是在考我地理還是怎樣  \n我真的跟不上你",
+      "hits": [
+        "suspect_nonsense"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "東東？誰啊"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "蛤？你說什麼"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        },
+        {
+          "role": "ai",
+          "text": "你怎麼突然一直講地名啦  \n是喝醉了喔"
+        },
+        {
+          "role": "user",
+          "text": "好市多"
+        },
+        {
+          "role": "ai",
+          "text": "你是想要我去買東西嗎  \n還是你人在那邊"
+        },
+        {
+          "role": "user",
+          "text": "曼谷"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -2007,52 +2099,28 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_018",
+      "profileId": "practice_girl_001",
       "difficulty": "easy",
-      "scenarioId": "A25",
+      "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A25.p5",
-      "userText": "曼谷",
-      "reply": "你是在考我地理還是怎樣  \n我真的跟不上你",
+      "probeId": "A26.p2",
+      "userText": "hyrox",
+      "reply": "蛤 那是什麼",
       "hits": [
-        "suspect_nonsense"
+        "interjection_then_question"
       ],
       "turns": [
         {
           "role": "user",
-          "text": "東東"
+          "text": "王力宏"
         },
         {
           "role": "ai",
-          "text": "東東？誰啊"
+          "text": "哦 很久沒聽他的歌了"
         },
         {
           "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "蛤？你說什麼"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        },
-        {
-          "role": "ai",
-          "text": "你怎麼突然一直講地名啦  \n是喝醉了喔"
-        },
-        {
-          "role": "user",
-          "text": "好市多"
-        },
-        {
-          "role": "ai",
-          "text": "你是想要我去買東西嗎  \n還是你人在那邊"
-        },
-        {
-          "role": "user",
-          "text": "曼谷"
+          "text": "hyrox"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -2085,44 +2153,6 @@
         {
           "role": "user",
           "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_018",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "你怎麼突然一直講地名啦  \n是喝醉了喔",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "東東？誰啊"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "蛤？你說什麼"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -2185,36 +2215,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_001",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p2",
-      "userText": "hyrox",
-      "reply": "蛤 那是什麼",
-      "hits": [
-        "interjection_then_question"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "哦 很久沒聽他的歌了"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
       "profileId": "practice_girl_008",
       "difficulty": "easy",
       "scenarioId": "A26",
@@ -2249,16 +2249,25 @@
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "王力宏？怎麼突然提到他……你該不會要跟我聊他吧",
+      "probeId": "A26.p2",
+      "userText": "hyrox",
+      "reply": "hyrox？這是什麼東西啊…我怎麼聽不懂你在講什麼",
       "hits": [
-        "why_suddenly"
+        "what_are_you_saying",
+        "cannot_follow"
       ],
       "turns": [
         {
           "role": "user",
           "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "王力宏？怎麼突然提到他……你該不會要跟我聊他吧"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -2313,6 +2322,120 @@
         {
           "role": "user",
           "text": "深蹲"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_077",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "-",
+      "userText": "滷肉飯",
+      "reply": "滷肉飯我懂啦  \n你前面到底在講什麼  \n我都混亂了  \n不過滷肉飯是真的好吃",
+      "hits": [
+        "what_are_you_saying"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "王力宏？"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "ㄟ你跳題跳太快了吧"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        },
+        {
+          "role": "ai",
+          "text": "紅豆泥？你在講什麼我怎麼看不懂😅"
+        },
+        {
+          "role": "user",
+          "text": "全聯"
+        },
+        {
+          "role": "ai",
+          "text": "突然講全聯害我笑出來  \n是又要跳去哪🙂"
+        },
+        {
+          "role": "user",
+          "text": "深蹲"
+        },
+        {
+          "role": "ai",
+          "text": "你話題跳來跳去  \n我追不太上啦🤔"
+        },
+        {
+          "role": "user",
+          "text": "滷肉飯"
+        }
+      ],
+      "aiChallengedThisTurn": false,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_064",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "王力宏？怎麼突然提到他……你該不會要跟我聊他吧",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_007",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p2",
+      "userText": "hyrox",
+      "reply": "蛤？那是什麼東西啦",
+      "hits": [
+        "interjection_then_question"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "喔？突然提他幹嘛？你是他粉絲喔"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -2406,136 +2529,13 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_064",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p2",
-      "userText": "hyrox",
-      "reply": "hyrox？這是什麼東西啊…我怎麼聽不懂你在講什麼",
-      "hits": [
-        "what_are_you_saying",
-        "cannot_follow"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "王力宏？怎麼突然提到他……你該不會要跟我聊他吧"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_077",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "-",
-      "userText": "滷肉飯",
-      "reply": "滷肉飯我懂啦  \n你前面到底在講什麼  \n我都混亂了  \n不過滷肉飯是真的好吃",
-      "hits": [
-        "what_are_you_saying"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "王力宏？"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "ㄟ你跳題跳太快了吧"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        },
-        {
-          "role": "ai",
-          "text": "紅豆泥？你在講什麼我怎麼看不懂😅"
-        },
-        {
-          "role": "user",
-          "text": "全聯"
-        },
-        {
-          "role": "ai",
-          "text": "突然講全聯害我笑出來  \n是又要跳去哪🙂"
-        },
-        {
-          "role": "user",
-          "text": "深蹲"
-        },
-        {
-          "role": "ai",
-          "text": "你話題跳來跳去  \n我追不太上啦🤔"
-        },
-        {
-          "role": "user",
-          "text": "滷肉飯"
-        }
-      ],
-      "aiChallengedThisTurn": false,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_007",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p2",
-      "userText": "hyrox",
-      "reply": "蛤？那是什麼東西啦",
-      "hits": [
-        "interjection_then_question"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "喔？突然提他幹嘛？你是他粉絲喔"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_009",
+      "profileId": "practice_girl_011",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
       "probeId": "-",
       "userText": "全聯",
-      "reply": "你怎麼突然跳去講全聯  \n是要約我去買東西喔",
+      "reply": "怎麼突然跳到全聯？你是要說全聯先生喔？",
       "hits": [
         "why_suddenly"
       ],
@@ -2546,7 +2546,7 @@
         },
         {
           "role": "ai",
-          "text": "哦 你喜歡他喔"
+          "text": "哦～你也喜歡王力宏喔？我小時候超愛聽他的歌耶"
         },
         {
           "role": "user",
@@ -2554,7 +2554,7 @@
         },
         {
           "role": "ai",
-          "text": "這是什麼 健身比賽嗎"
+          "text": "那是什麼？新的健身比賽嗎？"
         },
         {
           "role": "user",
@@ -2562,7 +2562,7 @@
         },
         {
           "role": "ai",
-          "text": "你是在跟我玩諧音嗎"
+          "text": "紅豆泥？你在講紅豆湯圓喔？哈哈，我比較愛芋圓啦"
         },
         {
           "role": "user",
@@ -2629,13 +2629,13 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_011",
+      "profileId": "practice_girl_009",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
       "probeId": "-",
       "userText": "全聯",
-      "reply": "怎麼突然跳到全聯？你是要說全聯先生喔？",
+      "reply": "你怎麼突然跳去講全聯  \n是要約我去買東西喔",
       "hits": [
         "why_suddenly"
       ],
@@ -2646,7 +2646,7 @@
         },
         {
           "role": "ai",
-          "text": "哦～你也喜歡王力宏喔？我小時候超愛聽他的歌耶"
+          "text": "哦 你喜歡他喔"
         },
         {
           "role": "user",
@@ -2654,7 +2654,7 @@
         },
         {
           "role": "ai",
-          "text": "那是什麼？新的健身比賽嗎？"
+          "text": "這是什麼 健身比賽嗎"
         },
         {
           "role": "user",
@@ -2662,63 +2662,11 @@
         },
         {
           "role": "ai",
-          "text": "紅豆泥？你在講紅豆湯圓喔？哈哈，我比較愛芋圓啦"
+          "text": "你是在跟我玩諧音嗎"
         },
         {
           "role": "user",
           "text": "全聯"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_012",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "王力宏？你怎麼突然聊到明星了。",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_012",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p2",
-      "userText": "hyrox",
-      "reply": "這啥？運動品牌嗎？我不太懂。",
-      "hits": [
-        "cannot_follow"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "王力宏？你怎麼突然聊到明星了。"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -2776,6 +2724,82 @@
         }
       ],
       "aiChallengedThisTurn": false,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_012",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p2",
+      "userText": "hyrox",
+      "reply": "這啥？運動品牌嗎？我不太懂。",
+      "hits": [
+        "cannot_follow"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "王力宏？你怎麼突然聊到明星了。"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_084",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "-",
+      "userText": "全聯",
+      "reply": "全聯？怎麼突然跳這麼多話題\n\n你是想說那個賣場嗎",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "喔 他怎麼了"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "你是在講那什麼健身比賽嗎"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        },
+        {
+          "role": "ai",
+          "text": "紅豆泥？你是在說紅豆麻糬還是日文的真的嗎？"
+        },
+        {
+          "role": "user",
+          "text": "全聯"
+        }
+      ],
+      "aiChallengedThisTurn": true,
       "repaired": false,
       "error": null
     },
@@ -2843,122 +2867,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_084",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "-",
-      "userText": "全聯",
-      "reply": "全聯？怎麼突然跳這麼多話題\n\n你是想說那個賣場嗎",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "喔 他怎麼了"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "你是在講那什麼健身比賽嗎"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        },
-        {
-          "role": "ai",
-          "text": "紅豆泥？你是在說紅豆麻糬還是日文的真的嗎？"
-        },
-        {
-          "role": "user",
-          "text": "全聯"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_004",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "-",
-      "userText": "碳循環",
-      "reply": "蛤 那是什麼  \n你在跟我說健身喔",
-      "hits": [
-        "interjection_then_question"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "喔 我對他很無感耶"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "蛤 那是什麼"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        },
-        {
-          "role": "ai",
-          "text": "紅豆泥？你是在講吃的還是日文那個真的"
-        },
-        {
-          "role": "user",
-          "text": "全聯"
-        },
-        {
-          "role": "ai",
-          "text": "全聯？你跳題跳很遠喔"
-        },
-        {
-          "role": "user",
-          "text": "深蹲"
-        },
-        {
-          "role": "ai",
-          "text": "你很跳tone耶 一下王力宏一下全聯  \n現在又深蹲  \n到底想聊什麼啦"
-        },
-        {
-          "role": "user",
-          "text": "滷肉飯"
-        },
-        {
-          "role": "ai",
-          "text": "你是在跟我玩關鍵字接龍嗎"
-        },
-        {
-          "role": "user",
-          "text": "碳循環"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
       "profileId": "practice_girl_004",
       "difficulty": "easy",
       "scenarioId": "A26",
@@ -2989,13 +2897,13 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_013",
+      "profileId": "practice_girl_012",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
       "probeId": "A26.p1",
       "userText": "王力宏",
-      "reply": "哈哈 王力宏怎麼了\n\n你突然講他",
+      "reply": "王力宏？你怎麼突然聊到明星了。",
       "hits": [
         "why_suddenly"
       ],
@@ -3089,15 +2997,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_013",
+      "profileId": "practice_girl_004",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p5",
-      "userText": "深蹲",
-      "reply": "你到底在講什麼啦😂\n\n等等 你該不會在運動吧",
+      "probeId": "-",
+      "userText": "碳循環",
+      "reply": "蛤 那是什麼  \n你在跟我說健身喔",
       "hits": [
-        "what_are_you_saying"
+        "interjection_then_question"
       ],
       "turns": [
         {
@@ -3106,7 +3014,7 @@
         },
         {
           "role": "ai",
-          "text": "哈哈 王力宏怎麼了\n\n你突然講他"
+          "text": "喔 我對他很無感耶"
         },
         {
           "role": "user",
@@ -3114,7 +3022,7 @@
         },
         {
           "role": "ai",
-          "text": "什麼啦 你跳題跳太快了吧🤣"
+          "text": "蛤 那是什麼"
         },
         {
           "role": "user",
@@ -3122,7 +3030,7 @@
         },
         {
           "role": "ai",
-          "text": "紅豆泥是怎樣"
+          "text": "紅豆泥？你是在講吃的還是日文那個真的"
         },
         {
           "role": "user",
@@ -3130,11 +3038,49 @@
         },
         {
           "role": "ai",
-          "text": "你是想到什麼就講什麼喔😂\n\n全聯現在蔬果是有特價嗎"
+          "text": "全聯？你跳題跳很遠喔"
         },
         {
           "role": "user",
           "text": "深蹲"
+        },
+        {
+          "role": "ai",
+          "text": "你很跳tone耶 一下王力宏一下全聯  \n現在又深蹲  \n到底想聊什麼啦"
+        },
+        {
+          "role": "user",
+          "text": "滷肉飯"
+        },
+        {
+          "role": "ai",
+          "text": "你是在跟我玩關鍵字接龍嗎"
+        },
+        {
+          "role": "user",
+          "text": "碳循環"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_013",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "哈哈 王力宏怎麼了\n\n你突然講他",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -3157,112 +3103,6 @@
         {
           "role": "user",
           "text": "王力宏"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_089",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p2",
-      "userText": "hyrox",
-      "reply": "蛤 那是什麼\n\n新的健身房嗎",
-      "hits": [
-        "interjection_then_question"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "喔 王力宏喔 我對他不熟耶  \n\n他怎麼了嗎"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_006",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "-",
-      "userText": "全聯",
-      "reply": "你怎麼突然跳到全聯了哈哈  \n我剛運動完，等等想繞去買點青菜",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "喔…你說他喔，我不太熟捏，沒在追他的新聞。"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "Hyrox？你是說那個健身比賽喔？"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        },
-        {
-          "role": "ai",
-          "text": "紅豆泥？你是在說紅豆做的點心嗎？😂"
-        },
-        {
-          "role": "user",
-          "text": "全聯"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_061",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p2",
-      "userText": "hyrox",
-      "reply": "蛤？hyrox是什麼啦  \n\n你該不會是想講某個健身比賽吧",
-      "hits": [
-        "interjection_then_question"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "喔！你突然講王力宏幹嘛啦"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -3333,15 +3173,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_006",
+      "profileId": "practice_girl_013",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
       "probeId": "A26.p5",
       "userText": "深蹲",
-      "reply": "深蹲喔 我瑜珈課也有帶到一些  \n但你突然講這個 我接不太到你意思耶",
+      "reply": "你到底在講什麼啦😂\n\n等等 你該不會在運動吧",
       "hits": [
-        "why_suddenly"
+        "what_are_you_saying"
       ],
       "turns": [
         {
@@ -3350,7 +3190,7 @@
         },
         {
           "role": "ai",
-          "text": "喔…你說他喔，我不太熟捏，沒在追他的新聞。"
+          "text": "哈哈 王力宏怎麼了\n\n你突然講他"
         },
         {
           "role": "user",
@@ -3358,7 +3198,7 @@
         },
         {
           "role": "ai",
-          "text": "Hyrox？你是說那個健身比賽喔？"
+          "text": "什麼啦 你跳題跳太快了吧🤣"
         },
         {
           "role": "user",
@@ -3366,7 +3206,7 @@
         },
         {
           "role": "ai",
-          "text": "紅豆泥？你是在說紅豆做的點心嗎？😂"
+          "text": "紅豆泥是怎樣"
         },
         {
           "role": "user",
@@ -3374,7 +3214,7 @@
         },
         {
           "role": "ai",
-          "text": "你怎麼突然跳到全聯了哈哈  \n我剛運動完，等等想繞去買點青菜"
+          "text": "你是想到什麼就講什麼喔😂\n\n全聯現在蔬果是有特價嗎"
         },
         {
           "role": "user",
@@ -3387,13 +3227,13 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_018",
+      "profileId": "practice_girl_061",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
       "probeId": "A26.p2",
       "userText": "hyrox",
-      "reply": "蛤？那是什麼",
+      "reply": "蛤？hyrox是什麼啦  \n\n你該不會是想講某個健身比賽吧",
       "hits": [
         "interjection_then_question"
       ],
@@ -3404,7 +3244,37 @@
         },
         {
           "role": "ai",
-          "text": "哦？你突然提他幹嘛"
+          "text": "喔！你突然講王力宏幹嘛啦"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_089",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p2",
+      "userText": "hyrox",
+      "reply": "蛤 那是什麼\n\n新的健身房嗎",
+      "hits": [
+        "interjection_then_question"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "喔 王力宏喔 我對他不熟耶  \n\n他怎麼了嗎"
         },
         {
           "role": "user",
@@ -3450,6 +3320,53 @@
         }
       ],
       "aiChallengedThisTurn": false,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_018",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "-",
+      "userText": "全聯",
+      "reply": "蛤？你是要我幫你買東西還是怎樣XD",
+      "hits": [
+        "interjection_then_question",
+        "suspect_nonsense"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "哦？你突然提他幹嘛"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "蛤？那是什麼"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        },
+        {
+          "role": "ai",
+          "text": "真假？你怎麼突然說這個\n\n我記得你是不是在講日文"
+        },
+        {
+          "role": "user",
+          "text": "全聯"
+        }
+      ],
+      "aiChallengedThisTurn": true,
       "repaired": false,
       "error": null
     },
@@ -3509,16 +3426,115 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_018",
+      "profileId": "practice_girl_006",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p5",
+      "userText": "深蹲",
+      "reply": "深蹲喔 我瑜珈課也有帶到一些  \n但你突然講這個 我接不太到你意思耶",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "喔…你說他喔，我不太熟捏，沒在追他的新聞。"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "Hyrox？你是說那個健身比賽喔？"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        },
+        {
+          "role": "ai",
+          "text": "紅豆泥？你是在說紅豆做的點心嗎？😂"
+        },
+        {
+          "role": "user",
+          "text": "全聯"
+        },
+        {
+          "role": "ai",
+          "text": "你怎麼突然跳到全聯了哈哈  \n我剛運動完，等等想繞去買點青菜"
+        },
+        {
+          "role": "user",
+          "text": "深蹲"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_006",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
       "probeId": "-",
       "userText": "全聯",
-      "reply": "蛤？你是要我幫你買東西還是怎樣XD",
+      "reply": "你怎麼突然跳到全聯了哈哈  \n我剛運動完，等等想繞去買點青菜",
       "hits": [
-        "interjection_then_question",
-        "suspect_nonsense"
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "喔…你說他喔，我不太熟捏，沒在追他的新聞。"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "Hyrox？你是說那個健身比賽喔？"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        },
+        {
+          "role": "ai",
+          "text": "紅豆泥？你是在說紅豆做的點心嗎？😂"
+        },
+        {
+          "role": "user",
+          "text": "全聯"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_018",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p2",
+      "userText": "hyrox",
+      "reply": "蛤？那是什麼",
+      "hits": [
+        "interjection_then_question"
       ],
       "turns": [
         {
@@ -3532,47 +3548,9 @@
         {
           "role": "user",
           "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "蛤？那是什麼"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        },
-        {
-          "role": "ai",
-          "text": "真假？你怎麼突然說這個\n\n我記得你是不是在講日文"
-        },
-        {
-          "role": "user",
-          "text": "全聯"
         }
       ],
       "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_003",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "王力宏？怎麼突然提到他\n他最近有新歌嗎",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        }
-      ],
-      "aiChallengedThisTurn": false,
       "repaired": false,
       "error": null
     },
@@ -3601,13 +3579,13 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_091",
+      "profileId": "practice_girl_003",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "-",
-      "userText": "全聯",
-      "reply": "怎麼突然跳到全聯了😂\n你該不會在買東西吧？",
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "王力宏？怎麼突然提到他\n他最近有新歌嗎",
       "hits": [
         "why_suddenly"
       ],
@@ -3615,33 +3593,9 @@
         {
           "role": "user",
           "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "誒？你怎麼突然提到王力宏😂\n好幾年沒聽他的歌了"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "那是什麼？健身比賽嗎？"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        },
-        {
-          "role": "ai",
-          "text": "紅豆泥？你是想說日文的「真的嗎」嗎😂"
-        },
-        {
-          "role": "user",
-          "text": "全聯"
         }
       ],
-      "aiChallengedThisTurn": false,
+      "aiChallengedThisTurn": true,
       "repaired": false,
       "error": null
     },
@@ -3661,6 +3615,44 @@
         {
           "role": "user",
           "text": "debby1993wu"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_008",
+      "difficulty": "easy",
+      "scenarioId": "A27",
+      "repeat": 1,
+      "probeId": "A27.p2",
+      "userText": "ig: chen.yun_",
+      "reply": "突然丟IG給我？我們不是在賴聊嗎？",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "debby1993wu"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？這是你的帳號嗎？"
+        },
+        {
+          "role": "user",
+          "text": "剛吃完飯 在追劇"
+        },
+        {
+          "role": "ai",
+          "text": "我也在耍廢 等等要洗澡了"
+        },
+        {
+          "role": "user",
+          "text": "ig: chen.yun_"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -3723,13 +3715,81 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_008",
+      "profileId": "practice_girl_091",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "-",
+      "userText": "全聯",
+      "reply": "怎麼突然跳到全聯了😂\n你該不會在買東西吧？",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "誒？你怎麼突然提到王力宏😂\n好幾年沒聽他的歌了"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "那是什麼？健身比賽嗎？"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        },
+        {
+          "role": "ai",
+          "text": "紅豆泥？你是想說日文的「真的嗎」嗎😂"
+        },
+        {
+          "role": "user",
+          "text": "全聯"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_007",
+      "difficulty": "easy",
+      "scenarioId": "A27",
+      "repeat": 1,
+      "probeId": "A27.p1",
+      "userText": "debby1993wu",
+      "reply": "蛤？這是你的ig帳號嗎？😅",
+      "hits": [
+        "interjection_then_question"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "debby1993wu"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_002",
       "difficulty": "easy",
       "scenarioId": "A27",
       "repeat": 1,
       "probeId": "A27.p2",
       "userText": "ig: chen.yun_",
-      "reply": "突然丟IG給我？我們不是在賴聊嗎？",
+      "reply": "喔 是你ig喔\n\n幹嘛突然丟帳號給我",
       "hits": [
         "why_suddenly"
       ],
@@ -3740,7 +3800,7 @@
         },
         {
           "role": "ai",
-          "text": "嗯？這是你的帳號嗎？"
+          "text": "哈 這誰啊？"
         },
         {
           "role": "user",
@@ -3821,14 +3881,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_002",
+      "profileId": "practice_girl_083",
       "difficulty": "easy",
       "scenarioId": "A27",
       "repeat": 1,
-      "probeId": "A27.p2",
-      "userText": "ig: chen.yun_",
-      "reply": "喔 是你ig喔\n\n幹嘛突然丟帳號給我",
+      "probeId": "A27.p4",
+      "userText": "@kevin_lin88",
+      "reply": "你怎麼突然丟一堆帳號給我啊 是在廣告還是怎樣",
       "hits": [
+        "suspect_nonsense",
         "why_suddenly"
       ],
       "turns": [
@@ -3838,7 +3899,7 @@
         },
         {
           "role": "ai",
-          "text": "哈 這誰啊？"
+          "text": "喔你說誰啊 沒聽過這個帳號耶"
         },
         {
           "role": "user",
@@ -3851,6 +3912,22 @@
         {
           "role": "user",
           "text": "ig: chen.yun_"
+        },
+        {
+          "role": "ai",
+          "text": "喔好哦 我先加你"
+        },
+        {
+          "role": "user",
+          "text": "今天有夠熱 冷氣開一整天"
+        },
+        {
+          "role": "ai",
+          "text": "對啊 我也是 電費要爆了"
+        },
+        {
+          "role": "user",
+          "text": "@kevin_lin88"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -3859,15 +3936,37 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_007",
+      "profileId": "practice_girl_012",
       "difficulty": "easy",
       "scenarioId": "A27",
       "repeat": 1,
       "probeId": "A27.p1",
       "userText": "debby1993wu",
-      "reply": "蛤？這是你的ig帳號嗎？😅",
+      "reply": "咦？你打這個是什麼意思？",
       "hits": [
-        "interjection_then_question"
+        "what_meaning"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "debby1993wu"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_020",
+      "difficulty": "easy",
+      "scenarioId": "A27",
+      "repeat": 1,
+      "probeId": "A27.p1",
+      "userText": "debby1993wu",
+      "reply": "這是我的帳號嗎？你突然講這個是？",
+      "hits": [
+        "why_suddenly"
       ],
       "turns": [
         {
@@ -3935,16 +4034,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_083",
+      "profileId": "practice_girl_012",
       "difficulty": "easy",
       "scenarioId": "A27",
       "repeat": 1,
-      "probeId": "A27.p4",
-      "userText": "@kevin_lin88",
-      "reply": "你怎麼突然丟一堆帳號給我啊 是在廣告還是怎樣",
+      "probeId": "A27.p2",
+      "userText": "ig: chen.yun_",
+      "reply": "這是你的帳號？還是你不小心按到什麼？我不太懂你丟一串帳號過來是要幹嘛。",
       "hits": [
-        "suspect_nonsense",
-        "why_suddenly"
+        "cannot_follow"
       ],
       "turns": [
         {
@@ -3953,7 +4051,7 @@
         },
         {
           "role": "ai",
-          "text": "喔你說誰啊 沒聽過這個帳號耶"
+          "text": "咦？你打這個是什麼意思？"
         },
         {
           "role": "user",
@@ -3966,44 +4064,6 @@
         {
           "role": "user",
           "text": "ig: chen.yun_"
-        },
-        {
-          "role": "ai",
-          "text": "喔好哦 我先加你"
-        },
-        {
-          "role": "user",
-          "text": "今天有夠熱 冷氣開一整天"
-        },
-        {
-          "role": "ai",
-          "text": "對啊 我也是 電費要爆了"
-        },
-        {
-          "role": "user",
-          "text": "@kevin_lin88"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_020",
-      "difficulty": "easy",
-      "scenarioId": "A27",
-      "repeat": 1,
-      "probeId": "A27.p1",
-      "userText": "debby1993wu",
-      "reply": "這是我的帳號嗎？你突然講這個是？",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "debby1993wu"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -4050,15 +4110,16 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_012",
+      "profileId": "practice_girl_084",
       "difficulty": "easy",
       "scenarioId": "A27",
       "repeat": 1,
       "probeId": "A27.p2",
       "userText": "ig: chen.yun_",
-      "reply": "這是你的帳號？還是你不小心按到什麼？我不太懂你丟一串帳號過來是要幹嘛。",
+      "reply": "你突然丟帳號過來是什麼意思啦",
       "hits": [
-        "cannot_follow"
+        "what_meaning",
+        "why_suddenly"
       ],
       "turns": [
         {
@@ -4067,7 +4128,7 @@
         },
         {
           "role": "ai",
-          "text": "咦？你打這個是什麼意思？"
+          "text": "嗯？這是什麼帳號嗎"
         },
         {
           "role": "user",
@@ -4080,28 +4141,6 @@
         {
           "role": "user",
           "text": "ig: chen.yun_"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_012",
-      "difficulty": "easy",
-      "scenarioId": "A27",
-      "repeat": 1,
-      "probeId": "A27.p1",
-      "userText": "debby1993wu",
-      "reply": "咦？你打這個是什麼意思？",
-      "hits": [
-        "what_meaning"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "debby1993wu"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -4162,45 +4201,6 @@
         {
           "role": "user",
           "text": "debby1993wu"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_084",
-      "difficulty": "easy",
-      "scenarioId": "A27",
-      "repeat": 1,
-      "probeId": "A27.p2",
-      "userText": "ig: chen.yun_",
-      "reply": "你突然丟帳號過來是什麼意思啦",
-      "hits": [
-        "what_meaning",
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "debby1993wu"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？這是什麼帳號嗎"
-        },
-        {
-          "role": "user",
-          "text": "剛吃完飯 在追劇"
-        },
-        {
-          "role": "ai",
-          "text": "我也在耍廢 等等要洗澡了"
-        },
-        {
-          "role": "user",
-          "text": "ig: chen.yun_"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -4270,6 +4270,44 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
+      "profileId": "practice_girl_003",
+      "difficulty": "easy",
+      "scenarioId": "A27",
+      "repeat": 1,
+      "probeId": "A27.p2",
+      "userText": "ig: chen.yun_",
+      "reply": "你怎麼突然丟ig給我😂",
+      "hits": [
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "debby1993wu"
+        },
+        {
+          "role": "ai",
+          "text": "欸？你怎麼突然丟帳號給我\n這是誰呀"
+        },
+        {
+          "role": "user",
+          "text": "剛吃完飯 在追劇"
+        },
+        {
+          "role": "ai",
+          "text": "我也在耍廢 等等要洗澡了"
+        },
+        {
+          "role": "user",
+          "text": "ig: chen.yun_"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
       "profileId": "practice_girl_091",
       "difficulty": "easy",
       "scenarioId": "A27",
@@ -4309,134 +4347,6 @@
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_001",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "欸你是在亂講嗎？",
-      "hits": [
-        "suspect_nonsense"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "你在講什麼啦"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_001",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p1",
-      "userText": "東東",
-      "reply": "嗯？",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_001",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "你在講什麼啦",
-      "hits": [
-        "what_are_you_saying"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json",
-      "profileId": "practice_girl_003",
-      "difficulty": "easy",
-      "scenarioId": "A27",
-      "repeat": 1,
-      "probeId": "A27.p2",
-      "userText": "ig: chen.yun_",
-      "reply": "你怎麼突然丟ig給我😂",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "debby1993wu"
-        },
-        {
-          "role": "ai",
-          "text": "欸？你怎麼突然丟帳號給我\n這是誰呀"
-        },
-        {
-          "role": "user",
-          "text": "剛吃完飯 在追劇"
-        },
-        {
-          "role": "ai",
-          "text": "我也在耍廢 等等要洗澡了"
-        },
-        {
-          "role": "user",
-          "text": "ig: chen.yun_"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_008",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
@@ -4512,6 +4422,96 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_001",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "欸你是在亂講嗎？",
+      "hits": [
+        "suspect_nonsense"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "你在講什麼啦"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_001",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "你在講什麼啦",
+      "hits": [
+        "what_are_you_saying"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_008",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p1",
+      "userText": "東東",
+      "reply": "嗯？",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_008",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -4542,15 +4542,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_064",
+      "profileId": "practice_girl_008",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "你在說什麼啦...",
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "還是不懂欸，你在亂講嗎？",
       "hits": [
-        "what_are_you_saying"
+        "suspect_nonsense"
       ],
       "turns": [
         {
@@ -4559,11 +4559,19 @@
         },
         {
           "role": "ai",
-          "text": "嗯？東東？"
+          "text": "嗯？"
         },
         {
           "role": "user",
           "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "你在講什麼啦？"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -4655,44 +4663,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_008",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "還是不懂欸，你在亂講嗎？",
-      "hits": [
-        "suspect_nonsense"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "你在講什麼啦？"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_011",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -4749,21 +4719,21 @@
           "text": "馬尼拉"
         }
       ],
-      "aiChallengedThisTurn": true,
+      "aiChallengedThisTurn": false,
       "repaired": false,
       "error": null
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_011",
+      "profileId": "practice_girl_064",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "？",
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "你在說什麼啦...",
       "hits": [
-        "bare_question_mark"
+        "what_are_you_saying"
       ],
       "turns": [
         {
@@ -4772,19 +4742,11 @@
         },
         {
           "role": "ai",
-          "text": "嘿！怎樣？"
+          "text": "嗯？東東？"
         },
         {
           "role": "user",
           "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "欸你在講什麼啦？"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -4864,6 +4826,75 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_011",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "？",
+      "hits": [
+        "bare_question_mark"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "嘿！怎樣？"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "欸你在講什麼啦？"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_002",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "蛤？你在講什麼啦哈哈",
+      "hits": [
+        "interjection_then_question",
+        "what_are_you_saying"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "嘿，怎樣？"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_083",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -4882,6 +4913,58 @@
         {
           "role": "ai",
           "text": "嗨！最近在幹嘛？"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_009",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p1",
+      "userText": "東東",
+      "reply": "嗯？",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_009",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "你在講什麼啦",
+      "hits": [
+        "what_are_you_saying"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？"
         },
         {
           "role": "user",
@@ -4948,37 +5031,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_002",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "蛤？你在講什麼啦哈哈",
-      "hits": [
-        "interjection_then_question",
-        "what_are_you_saying"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "嘿，怎樣？"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_009",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -5017,28 +5069,6 @@
         {
           "role": "user",
           "text": "好市多"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_009",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p1",
-      "userText": "東東",
-      "reply": "嗯？",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -5103,19 +5133,19 @@
           "text": "馬尼拉"
         }
       ],
-      "aiChallengedThisTurn": true,
+      "aiChallengedThisTurn": false,
       "repaired": false,
       "error": null
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_009",
+      "profileId": "practice_girl_012",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
       "probeId": "A25.p2",
       "userText": "阿布打比",
-      "reply": "你在講什麼啦",
+      "reply": "你在講什麼？",
       "hits": [
         "what_are_you_saying"
       ],
@@ -5131,28 +5161,6 @@
         {
           "role": "user",
           "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_012",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p1",
-      "userText": "東東",
-      "reply": "嗯？",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -5199,15 +5207,59 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_020",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p1",
+      "userText": "東東",
+      "reply": "嗯？",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_012",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "你在講什麼？",
+      "probeId": "A25.p1",
+      "userText": "東東",
+      "reply": "嗯？",
       "hits": [
-        "what_are_you_saying"
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_020",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "？",
+      "hits": [
+        "bare_question_mark"
       ],
       "turns": [
         {
@@ -5221,6 +5273,14 @@
         {
           "role": "user",
           "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "你在講什麼啦"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -5251,28 +5311,6 @@
         {
           "role": "user",
           "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_020",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p1",
-      "userText": "東東",
-      "reply": "嗯？",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -5365,44 +5403,6 @@
         {
           "role": "user",
           "text": "馬尼拉"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_020",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "？",
-      "hits": [
-        "bare_question_mark"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "你在講什麼啦"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -5640,82 +5640,6 @@
       "scenarioId": "A25",
       "repeat": 1,
       "probeId": "-",
-      "userText": "好市多",
-      "reply": "？",
-      "hits": [
-        "bare_question_mark"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "咦 你是那天路上跟我搭話的？"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "阿布打比？公啥"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        },
-        {
-          "role": "ai",
-          "text": "你在講什麼啦"
-        },
-        {
-          "role": "user",
-          "text": "好市多"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_061",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "你在說什麼啦，用中文。",
-      "hits": [
-        "what_are_you_saying"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？誰？"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_004",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "-",
       "userText": "漢漢",
       "reply": "你搞清楚自己在講什麼再傳啦",
       "hits": [
@@ -5781,15 +5705,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_089",
+      "profileId": "practice_girl_004",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "？你在講什麼",
+      "probeId": "-",
+      "userText": "好市多",
+      "reply": "？",
       "hits": [
-        "what_are_you_saying"
+        "bare_question_mark"
       ],
       "turns": [
         {
@@ -5798,11 +5722,27 @@
         },
         {
           "role": "ai",
-          "text": "嘿，怎樣"
+          "text": "咦 你是那天路上跟我搭話的？"
         },
         {
           "role": "user",
           "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "阿布打比？公啥"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        },
+        {
+          "role": "ai",
+          "text": "你在講什麼啦"
+        },
+        {
+          "role": "user",
+          "text": "好市多"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -5857,52 +5797,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_089",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "-",
-      "userText": "好市多",
-      "reply": "你是在報地名還是怎樣？",
-      "hits": [
-        "suspect_nonsense"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "嘿，怎樣"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "？你在講什麼"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        },
-        {
-          "role": "ai",
-          "text": "還是聽不懂啦，你要說什麼就直接講啦"
-        },
-        {
-          "role": "user",
-          "text": "好市多"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_013",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -5933,15 +5827,14 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_006",
+      "profileId": "practice_girl_061",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
       "probeId": "A25.p2",
       "userText": "阿布打比",
-      "reply": "哈？你在講什麼呢",
+      "reply": "你在說什麼啦，用中文。",
       "hits": [
-        "interjection_then_question",
         "what_are_you_saying"
       ],
       "turns": [
@@ -5951,7 +5844,7 @@
         },
         {
           "role": "ai",
-          "text": "誰啦？"
+          "text": "嗯？誰？"
         },
         {
           "role": "user",
@@ -5964,15 +5857,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_006",
+      "profileId": "practice_girl_089",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "你這樣打我還是聽不懂欸\n\n要不要講清楚一點",
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "？你在講什麼",
       "hits": [
-        "cannot_follow"
+        "what_are_you_saying"
       ],
       "turns": [
         {
@@ -5981,19 +5874,11 @@
         },
         {
           "role": "ai",
-          "text": "誰啦？"
+          "text": "嘿，怎樣"
         },
         {
           "role": "user",
           "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "哈？你在講什麼呢"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -6040,20 +5925,44 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_018",
+      "profileId": "practice_girl_089",
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
-      "probeId": "A25.p1",
-      "userText": "東東",
-      "reply": "嗯？",
+      "probeId": "-",
+      "userText": "好市多",
+      "reply": "你是在報地名還是怎樣？",
       "hits": [
-        "short_interjection"
+        "suspect_nonsense"
       ],
       "turns": [
         {
           "role": "user",
           "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "嘿，怎樣"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "？你在講什麼"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        },
+        {
+          "role": "ai",
+          "text": "還是聽不懂啦，你要說什麼就直接講啦"
+        },
+        {
+          "role": "user",
+          "text": "好市多"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -6066,11 +5975,11 @@
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
-      "probeId": "-",
-      "userText": "好市多",
-      "reply": "我還是不知道你想說什麼😅\n\n你在亂講還是怎樣",
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "你這樣打我還是聽不懂欸\n\n要不要講清楚一點",
       "hits": [
-        "suspect_nonsense"
+        "cannot_follow"
       ],
       "turns": [
         {
@@ -6092,14 +6001,59 @@
         {
           "role": "user",
           "text": "清邁"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_006",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "哈？你在講什麼呢",
+      "hits": [
+        "interjection_then_question",
+        "what_are_you_saying"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
         },
         {
           "role": "ai",
-          "text": "你這樣打我還是聽不懂欸\n\n要不要講清楚一點"
+          "text": "誰啦？"
         },
         {
           "role": "user",
-          "text": "好市多"
+          "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_018",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p1",
+      "userText": "東東",
+      "reply": "嗯？",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -6186,6 +6140,52 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_006",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "-",
+      "userText": "好市多",
+      "reply": "我還是不知道你想說什麼😅\n\n你在亂講還是怎樣",
+      "hits": [
+        "suspect_nonsense"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "誰啦？"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "哈？你在講什麼呢"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
+        },
+        {
+          "role": "ai",
+          "text": "你這樣打我還是聽不懂欸\n\n要不要講清楚一點"
+        },
+        {
+          "role": "user",
+          "text": "好市多"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_018",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -6209,6 +6209,74 @@
         {
           "role": "user",
           "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_003",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p2",
+      "userText": "阿布打比",
+      "reply": "嗯？",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "嗨欸\n怎樣"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_018",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
+      "probeId": "A25.p3",
+      "userText": "清邁",
+      "reply": "還是不懂你的意思\n\n要不要說清楚一點",
+      "hits": [
+        "cannot_follow"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？"
+        },
+        {
+          "role": "user",
+          "text": "阿布打比"
+        },
+        {
+          "role": "ai",
+          "text": "你在講什麼啦，聽不懂欸"
+        },
+        {
+          "role": "user",
+          "text": "清邁"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -6279,44 +6347,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_018",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p3",
-      "userText": "清邁",
-      "reply": "還是不懂你的意思\n\n要不要說清楚一點",
-      "hits": [
-        "cannot_follow"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
-        },
-        {
-          "role": "ai",
-          "text": "你在講什麼啦，聽不懂欸"
-        },
-        {
-          "role": "user",
-          "text": "清邁"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_003",
       "difficulty": "easy",
       "scenarioId": "A25",
@@ -6363,58 +6393,6 @@
         {
           "role": "user",
           "text": "曼谷"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_091",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p1",
-      "userText": "東東",
-      "reply": "嗯？",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_003",
-      "difficulty": "easy",
-      "scenarioId": "A25",
-      "repeat": 1,
-      "probeId": "A25.p2",
-      "userText": "阿布打比",
-      "reply": "嗯？",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "東東"
-        },
-        {
-          "role": "ai",
-          "text": "嗨欸\n怎樣"
-        },
-        {
-          "role": "user",
-          "text": "阿布打比"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -6511,6 +6489,28 @@
       "difficulty": "easy",
       "scenarioId": "A25",
       "repeat": 1,
+      "probeId": "A25.p1",
+      "userText": "東東",
+      "reply": "嗯？",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "東東"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_091",
+      "difficulty": "easy",
+      "scenarioId": "A25",
+      "repeat": 1,
       "probeId": "A25.p3",
       "userText": "清邁",
       "reply": "欸你是在亂講話還是想聊什麼？",
@@ -6567,50 +6567,6 @@
         {
           "role": "user",
           "text": "阿布打比"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_001",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "誰？",
-      "hits": [
-        "who_what_is_that"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_008",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "嗯？",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -6734,90 +6690,20 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_008",
+      "profileId": "practice_girl_001",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p3",
-      "userText": "紅豆泥",
-      "reply": "哈，紅豆泥啊\n\n就是甜點用的那種嗎？還是你在吃什麼特別的紅豆泥",
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "誰？",
       "hits": [
-        "interjection_then_question"
+        "who_what_is_that"
       ],
       "turns": [
         {
           "role": "user",
           "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "不知道耶，那是什麼？"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        }
-      ],
-      "aiChallengedThisTurn": false,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_008",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p5",
-      "userText": "深蹲",
-      "reply": "怎麼突然聊到深蹲\n\n我又沒在練那個",
-      "hits": [
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "不知道耶，那是什麼？"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        },
-        {
-          "role": "ai",
-          "text": "哈，紅豆泥啊\n\n就是甜點用的那種嗎？還是你在吃什麼特別的紅豆泥"
-        },
-        {
-          "role": "user",
-          "text": "全聯"
-        },
-        {
-          "role": "ai",
-          "text": "啊全聯的喔\n\n你最近在逛超市膩？"
-        },
-        {
-          "role": "user",
-          "text": "深蹲"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -6896,6 +6782,66 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_008",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "嗯？",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_008",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p3",
+      "userText": "紅豆泥",
+      "reply": "哈，紅豆泥啊\n\n就是甜點用的那種嗎？還是你在吃什麼特別的紅豆泥",
+      "hits": [
+        "interjection_then_question"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "不知道耶，那是什麼？"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        }
+      ],
+      "aiChallengedThisTurn": false,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_064",
       "difficulty": "easy",
       "scenarioId": "A26",
@@ -6918,37 +6864,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_077",
+      "profileId": "practice_girl_008",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "啥？",
+      "probeId": "A26.p5",
+      "userText": "深蹲",
+      "reply": "怎麼突然聊到深蹲\n\n我又沒在練那個",
       "hits": [
-        "who_what_is_that"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_007",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p2",
-      "userText": "hyrox",
-      "reply": "什麼意思？",
-      "hits": [
-        "what_meaning"
+        "why_suddenly"
       ],
       "turns": [
         {
@@ -6962,6 +6886,30 @@
         {
           "role": "user",
           "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "不知道耶，那是什麼？"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        },
+        {
+          "role": "ai",
+          "text": "哈，紅豆泥啊\n\n就是甜點用的那種嗎？還是你在吃什麼特別的紅豆泥"
+        },
+        {
+          "role": "user",
+          "text": "全聯"
+        },
+        {
+          "role": "ai",
+          "text": "啊全聯的喔\n\n你最近在逛超市膩？"
+        },
+        {
+          "role": "user",
+          "text": "深蹲"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -7000,15 +6948,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_007",
+      "profileId": "practice_girl_077",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
       "probeId": "A26.p1",
       "userText": "王力宏",
-      "reply": "嗯？",
+      "reply": "啥？",
       "hits": [
-        "short_interjection"
+        "who_what_is_that"
       ],
       "turns": [
         {
@@ -7023,45 +6971,6 @@
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_007",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p3",
-      "userText": "紅豆泥",
-      "reply": "哈哈你在亂講什麼\n\n我在放空看點東西啦，突然丟一堆詞給我",
-      "hits": [
-        "suspect_nonsense",
-        "why_suddenly"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "什麼意思？"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_011",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
@@ -7145,6 +7054,97 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_007",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p3",
+      "userText": "紅豆泥",
+      "reply": "哈哈你在亂講什麼\n\n我在放空看點東西啦，突然丟一堆詞給我",
+      "hits": [
+        "suspect_nonsense",
+        "why_suddenly"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "什麼意思？"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        }
+      ],
+      "aiChallengedThisTurn": false,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_007",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p2",
+      "userText": "hyrox",
+      "reply": "什麼意思？",
+      "hits": [
+        "what_meaning"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_011",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "嗯？",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_011",
       "difficulty": "easy",
       "scenarioId": "A26",
@@ -7186,6 +7186,44 @@
         }
       ],
       "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_002",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p3",
+      "userText": "紅豆泥",
+      "reply": "哈哈你在亂講什麼啦",
+      "hits": [
+        "suspect_nonsense"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "誰啦😂"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？那是什麼"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        }
+      ],
+      "aiChallengedThisTurn": false,
       "repaired": false,
       "error": null
     },
@@ -7247,36 +7285,20 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_002",
+      "profileId": "practice_girl_009",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p3",
-      "userText": "紅豆泥",
-      "reply": "哈哈你在亂講什麼啦",
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "什麼意思？",
       "hits": [
-        "suspect_nonsense"
+        "what_meaning"
       ],
       "turns": [
         {
           "role": "user",
           "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "誰啦😂"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？那是什麼"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -7385,36 +7407,20 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_009",
+      "profileId": "practice_girl_012",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p3",
-      "userText": "紅豆泥",
-      "reply": "你現在在講什麼啦",
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "嗯？",
       "hits": [
-        "what_are_you_saying"
+        "short_interjection"
       ],
       "turns": [
         {
           "role": "user",
           "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "什麼意思？"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "不知道那是什麼"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -7505,16 +7511,32 @@
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "什麼意思？",
+      "probeId": "A26.p3",
+      "userText": "紅豆泥",
+      "reply": "你現在在講什麼啦",
       "hits": [
-        "what_meaning"
+        "what_are_you_saying"
       ],
       "turns": [
         {
           "role": "user",
           "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "什麼意思？"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "不知道那是什麼"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -7523,15 +7545,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_020",
+      "profileId": "practice_girl_012",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
       "probeId": "-",
-      "userText": "全聯",
-      "reply": "啊全聯賣的那款？我倒是沒特別吃過，怎麼突然提這個",
+      "userText": "碳循環",
+      "reply": "碳循環？這是在聊環境科學的東西嗎？還是你研究的是跟這個有關？",
       "hits": [
-        "why_suddenly"
+        "relevance_challenge"
       ],
       "turns": [
         {
@@ -7540,7 +7562,7 @@
         },
         {
           "role": "ai",
-          "text": "？"
+          "text": "嗯？"
         },
         {
           "role": "user",
@@ -7548,7 +7570,7 @@
         },
         {
           "role": "ai",
-          "text": "沒在追欸，這是什麼？"
+          "text": "什麼是 hyrox？"
         },
         {
           "role": "user",
@@ -7556,14 +7578,38 @@
         },
         {
           "role": "ai",
-          "text": "哈哈是日本甜點那個？"
+          "text": "紅豆泥？\n\n你是說紅豆麻糬的那個嗎？"
         },
         {
           "role": "user",
           "text": "全聯"
+        },
+        {
+          "role": "ai",
+          "text": "全聯？你是在問我現在在不在全聯嗎？"
+        },
+        {
+          "role": "user",
+          "text": "深蹲"
+        },
+        {
+          "role": "ai",
+          "text": "突然聊深蹲幹嘛？  \n你該不會是在練腿吧？"
+        },
+        {
+          "role": "user",
+          "text": "滷肉飯"
+        },
+        {
+          "role": "ai",
+          "text": "餓了嗎？  \n我也蠻喜歡滷肉飯的，但現在有點晚了。"
+        },
+        {
+          "role": "user",
+          "text": "碳循環"
         }
       ],
-      "aiChallengedThisTurn": false,
+      "aiChallengedThisTurn": true,
       "repaired": false,
       "error": null
     },
@@ -7659,123 +7705,9 @@
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "？",
-      "hits": [
-        "bare_question_mark"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_012",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
       "probeId": "-",
-      "userText": "碳循環",
-      "reply": "碳循環？這是在聊環境科學的東西嗎？還是你研究的是跟這個有關？",
-      "hits": [
-        "relevance_challenge"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "什麼是 hyrox？"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        },
-        {
-          "role": "ai",
-          "text": "紅豆泥？\n\n你是說紅豆麻糬的那個嗎？"
-        },
-        {
-          "role": "user",
-          "text": "全聯"
-        },
-        {
-          "role": "ai",
-          "text": "全聯？你是在問我現在在不在全聯嗎？"
-        },
-        {
-          "role": "user",
-          "text": "深蹲"
-        },
-        {
-          "role": "ai",
-          "text": "突然聊深蹲幹嘛？  \n你該不會是在練腿吧？"
-        },
-        {
-          "role": "user",
-          "text": "滷肉飯"
-        },
-        {
-          "role": "ai",
-          "text": "餓了嗎？  \n我也蠻喜歡滷肉飯的，但現在有點晚了。"
-        },
-        {
-          "role": "user",
-          "text": "碳循環"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_012",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "嗯？",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_084",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "咦？你怎麼突然講這個名字\n\n是有什麼事嗎 還是你在問我對他的看法\n\n我沒在追娛樂新聞就是了 最近發生什麼嗎",
+      "userText": "全聯",
+      "reply": "啊全聯賣的那款？我倒是沒特別吃過，怎麼突然提這個",
       "hits": [
         "why_suddenly"
       ],
@@ -7783,32 +7715,10 @@
         {
           "role": "user",
           "text": "王力宏"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_004",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "-",
-      "userText": "全聯",
-      "reply": "哈囉？你在講什麼呢",
-      "hits": [
-        "what_are_you_saying"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
         },
         {
           "role": "ai",
-          "text": "嗯？"
+          "text": "？"
         },
         {
           "role": "user",
@@ -7816,7 +7726,7 @@
         },
         {
           "role": "ai",
-          "text": "什麼啦？"
+          "text": "沒在追欸，這是什麼？"
         },
         {
           "role": "user",
@@ -7824,14 +7734,14 @@
         },
         {
           "role": "ai",
-          "text": "你到底在幹嘛？"
+          "text": "哈哈是日本甜點那個？"
         },
         {
           "role": "user",
           "text": "全聯"
         }
       ],
-      "aiChallengedThisTurn": true,
+      "aiChallengedThisTurn": false,
       "repaired": false,
       "error": null
     },
@@ -7891,21 +7801,66 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_013",
+      "profileId": "practice_girl_020",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
       "probeId": "A26.p1",
       "userText": "王力宏",
-      "reply": "蛤？你在講什麼",
+      "reply": "？",
       "hits": [
-        "interjection_then_question",
+        "bare_question_mark"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_004",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "-",
+      "userText": "全聯",
+      "reply": "哈囉？你在講什麼呢",
+      "hits": [
         "what_are_you_saying"
       ],
       "turns": [
         {
           "role": "user",
           "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "什麼啦？"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        },
+        {
+          "role": "ai",
+          "text": "你到底在幹嘛？"
+        },
+        {
+          "role": "user",
+          "text": "全聯"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -7936,29 +7891,20 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_013",
+      "profileId": "practice_girl_084",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p2",
-      "userText": "hyrox",
-      "reply": "蛤？",
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "咦？你怎麼突然講這個名字\n\n是有什麼事嗎 還是你在問我對他的看法\n\n我沒在追娛樂新聞就是了 最近發生什麼嗎",
       "hits": [
-        "short_interjection",
-        "interjection_then_question"
+        "why_suddenly"
       ],
       "turns": [
         {
           "role": "user",
           "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "蛤？你在講什麼"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -8097,15 +8043,39 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_061",
+      "profileId": "practice_girl_013",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p3",
-      "userText": "紅豆泥",
-      "reply": "嗯...？",
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "蛤？你在講什麼",
       "hits": [
-        "short_interjection"
+        "interjection_then_question",
+        "what_are_you_saying"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_013",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p2",
+      "userText": "hyrox",
+      "reply": "蛤？",
+      "hits": [
+        "short_interjection",
+        "interjection_then_question"
       ],
       "turns": [
         {
@@ -8114,19 +8084,63 @@
         },
         {
           "role": "ai",
-          "text": "誰？"
+          "text": "蛤？你在講什麼"
         },
         {
           "role": "user",
           "text": "hyrox"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_089",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "嗯？",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_089",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p2",
+      "userText": "hyrox",
+      "reply": "啥？",
+      "hits": [
+        "who_what_is_that"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
         },
         {
           "role": "ai",
-          "text": "那是什麼？"
+          "text": "嗯？"
         },
         {
           "role": "user",
-          "text": "紅豆泥"
+          "text": "hyrox"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -8251,15 +8265,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_089",
+      "profileId": "practice_girl_061",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p2",
-      "userText": "hyrox",
-      "reply": "啥？",
+      "probeId": "A26.p3",
+      "userText": "紅豆泥",
+      "reply": "嗯...？",
       "hits": [
-        "who_what_is_that"
+        "short_interjection"
       ],
       "turns": [
         {
@@ -8268,11 +8282,19 @@
         },
         {
           "role": "ai",
-          "text": "嗯？"
+          "text": "誰？"
         },
         {
           "role": "user",
           "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "那是什麼？"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -8281,15 +8303,15 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_089",
+      "profileId": "practice_girl_006",
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
       "probeId": "A26.p1",
       "userText": "王力宏",
-      "reply": "嗯？",
+      "reply": "啊？怎麼了嗎",
       "hits": [
-        "short_interjection"
+        "interjection_then_question"
       ],
       "turns": [
         {
@@ -8361,28 +8383,6 @@
       "difficulty": "easy",
       "scenarioId": "A26",
       "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "啊？怎麼了嗎",
-      "hits": [
-        "interjection_then_question"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_006",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
       "probeId": "A26.p3",
       "userText": "紅豆泥",
       "reply": "哈？你在說什麼啦\n\n是有什麼想聊的嗎",
@@ -8410,121 +8410,6 @@
         {
           "role": "user",
           "text": "紅豆泥"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_018",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p3",
-      "userText": "紅豆泥",
-      "reply": "哈？你在講什麼啦",
-      "hits": [
-        "interjection_then_question",
-        "what_are_you_saying"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "不知道那是什麼欸"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_018",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p5",
-      "userText": "深蹲",
-      "reply": "運動？\n\n你怎麼一直亂講一堆詞啦",
-      "hits": [
-        "suspect_nonsense"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "不知道那是什麼欸"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        },
-        {
-          "role": "ai",
-          "text": "哈？你在講什麼啦"
-        },
-        {
-          "role": "user",
-          "text": "全聯"
-        },
-        {
-          "role": "ai",
-          "text": "全聯啦，超市嗎？還是你想說什麼？"
-        },
-        {
-          "role": "user",
-          "text": "深蹲"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_018",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "嗯？",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -8579,6 +8464,67 @@
         {
           "role": "user",
           "text": "深蹲"
+        }
+      ],
+      "aiChallengedThisTurn": false,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_018",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "嗯？",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_018",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p3",
+      "userText": "紅豆泥",
+      "reply": "哈？你在講什麼啦",
+      "hits": [
+        "interjection_then_question",
+        "what_are_you_saying"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "不知道那是什麼欸"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -8657,50 +8603,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_091",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "王力宏？你在講什麼啦",
-      "hits": [
-        "what_are_you_saying"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_003",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p1",
-      "userText": "王力宏",
-      "reply": "什麼？",
-      "hits": [
-        "who_what_is_that"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_003",
       "difficulty": "easy",
       "scenarioId": "A26",
@@ -8747,6 +8649,143 @@
         {
           "role": "user",
           "text": "深蹲"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_018",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p5",
+      "userText": "深蹲",
+      "reply": "運動？\n\n你怎麼一直亂講一堆詞啦",
+      "hits": [
+        "suspect_nonsense"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "不知道那是什麼欸"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        },
+        {
+          "role": "ai",
+          "text": "哈？你在講什麼啦"
+        },
+        {
+          "role": "user",
+          "text": "全聯"
+        },
+        {
+          "role": "ai",
+          "text": "全聯啦，超市嗎？還是你想說什麼？"
+        },
+        {
+          "role": "user",
+          "text": "深蹲"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_003",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p3",
+      "userText": "紅豆泥",
+      "reply": "蛤？紅豆泥是啥意思",
+      "hits": [
+        "interjection_then_question",
+        "what_meaning"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        },
+        {
+          "role": "ai",
+          "text": "什麼？"
+        },
+        {
+          "role": "user",
+          "text": "hyrox"
+        },
+        {
+          "role": "ai",
+          "text": "喔那個跑步賽事？"
+        },
+        {
+          "role": "user",
+          "text": "紅豆泥"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_091",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "王力宏？你在講什麼啦",
+      "hits": [
+        "what_are_you_saying"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_003",
+      "difficulty": "easy",
+      "scenarioId": "A26",
+      "repeat": 1,
+      "probeId": "A26.p1",
+      "userText": "王力宏",
+      "reply": "什麼？",
+      "hits": [
+        "who_what_is_that"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "王力宏"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -8817,45 +8856,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_003",
-      "difficulty": "easy",
-      "scenarioId": "A26",
-      "repeat": 1,
-      "probeId": "A26.p3",
-      "userText": "紅豆泥",
-      "reply": "蛤？紅豆泥是啥意思",
-      "hits": [
-        "interjection_then_question",
-        "what_meaning"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "王力宏"
-        },
-        {
-          "role": "ai",
-          "text": "什麼？"
-        },
-        {
-          "role": "user",
-          "text": "hyrox"
-        },
-        {
-          "role": "ai",
-          "text": "喔那個跑步賽事？"
-        },
-        {
-          "role": "user",
-          "text": "紅豆泥"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_001",
       "difficulty": "easy",
       "scenarioId": "A27",
@@ -8873,44 +8873,6 @@
         }
       ],
       "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_001",
-      "difficulty": "easy",
-      "scenarioId": "A27",
-      "repeat": 1,
-      "probeId": "A27.p2",
-      "userText": "ig: chen.yun_",
-      "reply": "嗯",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "debby1993wu"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "剛吃完飯 在追劇"
-        },
-        {
-          "role": "ai",
-          "text": "我也在耍廢 等等要洗澡了"
-        },
-        {
-          "role": "user",
-          "text": "ig: chen.yun_"
-        }
-      ],
-      "aiChallengedThisTurn": false,
       "repaired": false,
       "error": null
     },
@@ -9002,15 +8964,37 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_007",
+      "profileId": "practice_girl_008",
       "difficulty": "easy",
       "scenarioId": "A27",
       "repeat": 1,
-      "probeId": "A27.p4",
-      "userText": "@kevin_lin88",
-      "reply": "欸你又在tag誰啦 什麼意思",
+      "probeId": "A27.p1",
+      "userText": "debby1993wu",
+      "reply": "嗯？",
       "hits": [
-        "what_meaning"
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "debby1993wu"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_001",
+      "difficulty": "easy",
+      "scenarioId": "A27",
+      "repeat": 1,
+      "probeId": "A27.p2",
+      "userText": "ig: chen.yun_",
+      "reply": "嗯",
+      "hits": [
+        "short_interjection"
       ],
       "turns": [
         {
@@ -9019,7 +9003,7 @@
         },
         {
           "role": "ai",
-          "text": "嗨！你好啊"
+          "text": "嗯？"
         },
         {
           "role": "user",
@@ -9032,31 +9016,15 @@
         {
           "role": "user",
           "text": "ig: chen.yun_"
-        },
-        {
-          "role": "ai",
-          "text": "？你貼 IG 幹嘛"
-        },
-        {
-          "role": "user",
-          "text": "今天有夠熱 冷氣開一整天"
-        },
-        {
-          "role": "ai",
-          "text": "對啊 我也是 電費要爆了"
-        },
-        {
-          "role": "user",
-          "text": "@kevin_lin88"
         }
       ],
-      "aiChallengedThisTurn": true,
+      "aiChallengedThisTurn": false,
       "repaired": false,
       "error": null
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_008",
+      "profileId": "practice_girl_009",
       "difficulty": "easy",
       "scenarioId": "A27",
       "repeat": 1,
@@ -9116,20 +9084,52 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_009",
+      "profileId": "practice_girl_007",
       "difficulty": "easy",
       "scenarioId": "A27",
       "repeat": 1,
-      "probeId": "A27.p1",
-      "userText": "debby1993wu",
-      "reply": "嗯？",
+      "probeId": "A27.p4",
+      "userText": "@kevin_lin88",
+      "reply": "欸你又在tag誰啦 什麼意思",
       "hits": [
-        "short_interjection"
+        "what_meaning"
       ],
       "turns": [
         {
           "role": "user",
           "text": "debby1993wu"
+        },
+        {
+          "role": "ai",
+          "text": "嗨！你好啊"
+        },
+        {
+          "role": "user",
+          "text": "剛吃完飯 在追劇"
+        },
+        {
+          "role": "ai",
+          "text": "我也在耍廢 等等要洗澡了"
+        },
+        {
+          "role": "user",
+          "text": "ig: chen.yun_"
+        },
+        {
+          "role": "ai",
+          "text": "？你貼 IG 幹嘛"
+        },
+        {
+          "role": "user",
+          "text": "今天有夠熱 冷氣開一整天"
+        },
+        {
+          "role": "ai",
+          "text": "對啊 我也是 電費要爆了"
+        },
+        {
+          "role": "user",
+          "text": "@kevin_lin88"
         }
       ],
       "aiChallengedThisTurn": true,
@@ -9161,6 +9161,88 @@
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_020",
+      "difficulty": "easy",
+      "scenarioId": "A27",
+      "repeat": 1,
+      "probeId": "A27.p1",
+      "userText": "debby1993wu",
+      "reply": "嗯？",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "debby1993wu"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_009",
+      "difficulty": "easy",
+      "scenarioId": "A27",
+      "repeat": 1,
+      "probeId": "A27.p2",
+      "userText": "ig: chen.yun_",
+      "reply": "嗯",
+      "hits": [
+        "short_interjection"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "debby1993wu"
+        },
+        {
+          "role": "ai",
+          "text": "嗯？"
+        },
+        {
+          "role": "user",
+          "text": "剛吃完飯 在追劇"
+        },
+        {
+          "role": "ai",
+          "text": "我也在耍廢 等等要洗澡了"
+        },
+        {
+          "role": "user",
+          "text": "ig: chen.yun_"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_004",
+      "difficulty": "easy",
+      "scenarioId": "A27",
+      "repeat": 1,
+      "probeId": "A27.p1",
+      "userText": "debby1993wu",
+      "reply": "欸 你是路上那個人嗎",
+      "hits": [
+        "interjection_then_question"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "debby1993wu"
+        }
+      ],
+      "aiChallengedThisTurn": true,
+      "repaired": false,
+      "error": null
+    },
+    {
+      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
+      "profileId": "practice_girl_012",
       "difficulty": "easy",
       "scenarioId": "A27",
       "repeat": 1,
@@ -9236,72 +9318,6 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_004",
-      "difficulty": "easy",
-      "scenarioId": "A27",
-      "repeat": 1,
-      "probeId": "A27.p1",
-      "userText": "debby1993wu",
-      "reply": "欸 你是路上那個人嗎",
-      "hits": [
-        "interjection_then_question"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "debby1993wu"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_012",
-      "difficulty": "easy",
-      "scenarioId": "A27",
-      "repeat": 1,
-      "probeId": "A27.p1",
-      "userText": "debby1993wu",
-      "reply": "嗯？",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "debby1993wu"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_013",
-      "difficulty": "easy",
-      "scenarioId": "A27",
-      "repeat": 1,
-      "probeId": "A27.p1",
-      "userText": "debby1993wu",
-      "reply": "嗯？",
-      "hits": [
-        "short_interjection"
-      ],
-      "turns": [
-        {
-          "role": "user",
-          "text": "debby1993wu"
-        }
-      ],
-      "aiChallengedThisTurn": true,
-      "repaired": false,
-      "error": null
-    },
-    {
-      "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
       "profileId": "practice_girl_089",
       "difficulty": "easy",
       "scenarioId": "A27",
@@ -9324,13 +9340,13 @@
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_009",
+      "profileId": "practice_girl_006",
       "difficulty": "easy",
       "scenarioId": "A27",
       "repeat": 1,
-      "probeId": "A27.p2",
-      "userText": "ig: chen.yun_",
-      "reply": "嗯",
+      "probeId": "A27.p1",
+      "userText": "debby1993wu",
+      "reply": "嗯？",
       "hits": [
         "short_interjection"
       ],
@@ -9338,31 +9354,15 @@
         {
           "role": "user",
           "text": "debby1993wu"
-        },
-        {
-          "role": "ai",
-          "text": "嗯？"
-        },
-        {
-          "role": "user",
-          "text": "剛吃完飯 在追劇"
-        },
-        {
-          "role": "ai",
-          "text": "我也在耍廢 等等要洗澡了"
-        },
-        {
-          "role": "user",
-          "text": "ig: chen.yun_"
         }
       ],
-      "aiChallengedThisTurn": false,
+      "aiChallengedThisTurn": true,
       "repaired": false,
       "error": null
     },
     {
       "artifact": "tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json",
-      "profileId": "practice_girl_006",
+      "profileId": "practice_girl_013",
       "difficulty": "easy",
       "scenarioId": "A27",
       "repeat": 1,
