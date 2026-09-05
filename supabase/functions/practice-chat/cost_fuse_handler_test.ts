@@ -243,3 +243,54 @@ Deno.test("起始累計就已超標：第一輪就被降級（重啟／跨實例
   // 已經燒斷過的那一天不會再寫第二筆 blown。
   assertEquals(blownLines(turns[0].lines).length, 0);
 });
+
+Deno.test("降級後 DeepSeek 也失敗：失敗事件同樣帶 costFuseDegraded（Codex R1 P2）", async () => {
+  // 起始累計就超標 → 這一輪一定被扳回 DeepSeek；兩發 DeepSeek 都丟錯 →
+  // 整輪失敗走 practice_chat_generation_failed，沒有 practice_chat_succeeded。
+  const fake = makeFake({
+    ledger: ledger({ practice_mode: "beginner" }),
+    dailyCostUsd: 5,
+    deepSeekReplies: [
+      new Error("deepseek_timeout"),
+      new Error("deepseek_timeout"),
+    ],
+    claudeReplies: ["不該被用到"],
+    env: {
+      [ROUTING_ENV]: "mixed",
+      [AGENCY_ENV]: "true",
+      [FUSE_ENV]: BUDGET,
+    },
+  });
+  const lines: string[] = [];
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const capture = (...args: unknown[]) =>
+    lines.push(args.map((a) => String(a)).join(" "));
+  let response: Response;
+  try {
+    console.log = capture;
+    console.warn = capture;
+    response = await fake.handler(
+      makeRequest(
+        chatBody({ practiceMode: "beginner", turns: FRAGMENT_TURNS }),
+      ),
+    );
+    await Promise.allSettled(fake.state.backgroundTasks);
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
+  assertEquals(response.status, 500);
+  assertEquals(
+    lines.filter((l) => l.includes('"event":"practice_chat_succeeded"')),
+    [],
+  );
+  const failedLine = lines.find((l) =>
+    l.includes('"event":"practice_chat_generation_failed"')
+  );
+  assert(failedLine, "沒有印出 practice_chat_generation_failed");
+  const failed = JSON.parse(failedLine) as Record<string, unknown>;
+  assertEquals(failed.costFuseDegraded, true);
+  // 真的被降級了：Claude 一次都沒打。
+  assertEquals(fake.state.claudeCalls.length, 0);
+});

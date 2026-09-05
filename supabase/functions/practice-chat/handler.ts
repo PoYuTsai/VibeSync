@@ -5029,6 +5029,10 @@ export function createPracticeChatHandler(
         ...(chatModelRoutingOn
           ? {
             chatModelCalls,
+            // Codex R1 P2：降級之後 DeepSeek 又失敗時，`practice_chat_succeeded`
+            // 不會印，`costFuseDegraded` 就從這一輪的觀測消失了——「保險絲燒斷
+            // 之後失敗率有沒有變」會被低估。成功事件有的 key 這裡也要有。
+            ...(costFuseDegraded ? { costFuseDegraded: true } : {}),
             ...(chatModelUsage ? { chatModelUsage } : {}),
           }
           : {}),
