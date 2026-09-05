@@ -303,6 +303,13 @@ interface ArtifactTurn {
   readonly previousAiAskedQuestion: boolean;
   /** 她這一則是腳本寫死的（截圖重播的前文）；腳本回覆不進 judge。 */
   readonly scripted?: boolean;
+  /**
+   * Phase 4.5e：這一輪走 production 的 forced `read_only` 短路，整則回覆就是
+   * 「（已讀）」——**沒有任何可判的內容**（沒打模型，也不是模型的選擇），
+   * 所以跟腳本輪一樣不進 judge。留在 artifact 裡供 `policy_breakdown.ts`
+   * 算真實已讀率。
+   */
+  readonly readOnlyReply?: true;
   readonly probe: {
     readonly id: string;
     readonly kinds: readonly ProbeKind[];
@@ -357,7 +364,7 @@ export function buildJudgeCases(artifact: AgencyArtifact): JudgeCase[] {
     const mask = maskerFor(sources);
     for (let i = 0; i < session.turns.length; i++) {
       const turn = session.turns[i];
-      if (!turn.probe || turn.scripted) continue;
+      if (!turn.probe || turn.scripted || turn.readOnlyReply) continue;
       cases.push({
         probeId: turn.probe.id,
         scenarioId: session.scenarioId,

@@ -951,3 +951,36 @@ Deno.test("Phase 4.5c 判準 v4：accept_valid_answer 只描述有沒有回答�
     "agency_judge_self_fact_not_exclusive",
   );
 });
+
+Deno.test("Phase 4.5e：forced read_only 那一輪不進 judge 配對（沒有可判的內容）", () => {
+  const sources = trustedSourcesFor("practice_girl_001", "normal");
+  const turn = (probeId: string, over: Record<string, unknown> = {}) => ({
+    role: "user" as const,
+    userText: "曼谷",
+    reply: "你怎麼一直丟地名",
+    previousAiAskedQuestion: false,
+    probe: { id: probeId, kinds: ["no_context_fragment" as const] },
+    ...over,
+  });
+  const cases = buildJudgeCases({
+    trustedSources: { "practice_girl_001|normal": sources },
+    results: [{
+      profileId: "practice_girl_001",
+      personaId: "slow_worker",
+      scenarioId: "A25",
+      repeat: 1,
+      difficulty: "normal",
+      mode: "game",
+      turns: [
+        turn("A25.p1"),
+        // 短路輪：那一句「（已讀）」不是模型的選擇，也沒有可判的內容——
+        // 跟腳本輪一樣整輪略過，不然 judge 會把它當成她的回覆去標「盲目跟題」。
+        turn("A25.p2", { reply: "（已讀）", readOnlyReply: true }),
+        turn("A25.p3"),
+      ],
+    }],
+  });
+  assertEquals(cases.map((c) => c.probeId), ["A25.p1", "A25.p3"]);
+  // 但那一輪仍然留在逐字稿裡（她真的送出過一則已讀，後面幾輪讀得到）。
+  assert(cases[1].transcript.includes("（已讀）"));
+});

@@ -18,7 +18,10 @@ import {
   ZERO_HAIKU_USAGE_TOTALS,
 } from "./run_agency.ts";
 import { AGENCY_SCENARIOS, type AgencyScenario } from "./scenarios.ts";
-import { chatModelFor } from "../../supabase/functions/practice-chat/conversation_agency.ts";
+import {
+  chatModelFor,
+  READ_ONLY_REPLY_TEXT,
+} from "../../supabase/functions/practice-chat/conversation_agency.ts";
 import { AGENCY_CLASSIFIER_RULES } from "../../supabase/functions/practice-chat/temperature.ts";
 import { callClaude } from "../../supabase/functions/practice-chat/claude.ts";
 import {
@@ -913,4 +916,76 @@ Deno.test("Phase 4.5c：整批都是 none 時 haikuShare 是 null，不是 0，�
   assertEquals(t.modelRounds, 0);
   assertEquals(t.haikuShare, null);
   assertEquals(tallyChatModelRounds([]).haikuShare, null);
+});
+
+Deno.test("Phase 4.5e：forced read_only 那一輪不打生成模型，回覆逐字是「（已讀）」、chatModel=none（不打真網路）", async () => {
+  // A25（連續裸地名）× game × `--state=1`：階梯走
+  // ask_intent → challenge_relevance ×3 → check_out → read_only ×3，
+  // 跟 production Game 黑箱 artifact（out/2026-09-05-p45c-game-mixed.json 的
+  // A25/practice_girl_004#1）同一條軌跡。
+  const scenario = AGENCY_SCENARIOS.find((s) => s.id === "A25")!;
+  const original = globalThis.fetch;
+  // 分類器每輪都回 disconnected＋已質疑，階梯才推得動（真實那場也是這樣）。
+  globalThis.fetch = () => Promise.resolve(fakeClassifierResponse(true));
+  // 這一場只有 6 輪該打模型（9 個 user turn 扣掉 3 輪 read_only）。第 7 次呼叫
+  // ＝短路失效、read_only 輪照打模型，直接 throw 讓整場失敗。
+  const MODEL_ROUNDS = 6;
+  let chatCalls = 0;
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => {
+        chatCalls++;
+        if (chatCalls > MODEL_ROUNDS) {
+          throw new Error("model_called_on_read_only_turn");
+        }
+        // 問句形狀：她真的問了才會進 `aiQuestionedInLoop`／推進階梯。
+        return Promise.resolve(`你在講什麼啊${chatCalls}？`);
+      },
+      profileId: "practice_girl_004",
+      scenario,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "game",
+      style: true,
+      agency: "on",
+      shape: "truncate",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+      chatModel: "deepseek",
+    });
+    assertEquals(result.error, undefined);
+    const generated = result.turns.filter((t) =>
+      t.role === "user" && !t.scripted
+    );
+    const readOnly = generated.filter((t) => t.forcedAct === "read_only");
+    assert(readOnly.length > 0, "這一場沒有跑到 read_only，測試沒有守到東西");
+    // 短路成立：生成呼叫數＝總輪數扣掉 read_only 輪。
+    assertEquals(chatCalls, generated.length - readOnly.length);
+    assertEquals(chatCalls, MODEL_ROUNDS);
+    for (const t of readOnly) {
+      // 逐字＝production 的 READ_ONLY_REPLY_TEXT（style 臂的括號旁白守門不得
+      // 把它剝掉——`hasStageDirection`／`stripStageDirections` 要吃到白名單）。
+      assertEquals(t.reply, READ_ONLY_REPLY_TEXT);
+      assertEquals(t.reply, "（已讀）");
+      assertEquals(t.chatModelUsed, "none");
+      assertEquals(t.readOnlyReply, true);
+      assertEquals(t.attempts, 0);
+      assertEquals(t.promptChars, 0);
+      assertEquals(t.guardRejections, []);
+    }
+    // 其餘輪次照舊打模型、照舊記 deepseek。
+    for (const t of generated.filter((x) => x.forcedAct !== "read_only")) {
+      assertEquals(t.chatModelUsed, "deepseek");
+      assertEquals(t.readOnlyReply, undefined);
+      assert(t.promptChars > 0);
+    }
+    // `tallyChatModelRounds` 接得上：read_only 進 none，不進 modelRounds 分母。
+    const tally = tallyChatModelRounds([result]);
+    assertEquals(tally.none, readOnly.length);
+    assertEquals(tally.deepseek, MODEL_ROUNDS);
+    assertEquals(tally.modelRounds, MODEL_ROUNDS);
+    assertEquals(tally.haikuShare, 0);
+  } finally {
+    globalThis.fetch = original;
+  }
 });

@@ -70,6 +70,7 @@ import type { ChatMessage } from "../../supabase/functions/practice-chat/prompt.
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
 import { normalizeLiteralNewlines } from "../../supabase/functions/practice-chat/prompt_sanitizer.ts";
 import {
+  hasReadOnlyReply,
   hasStageDirection,
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
@@ -92,6 +93,7 @@ import {
   chatModelFor,
   type ConversationAgencyState,
   nextConversationAgencyState,
+  READ_ONLY_REPLY_TEXT,
   truncateAgencyShape,
 } from "../../supabase/functions/practice-chat/conversation_agency.ts";
 import {
@@ -198,13 +200,17 @@ export interface AgencyTurnResult {
   readonly agencyStateAfter?: ConversationAgencyState | null;
   /**
    * Phase 4.3 步驟 1（`--chat-model=mixed`）：這一輪實際用的女生回覆模型。
-   * `"none"`＝這一輪**一支生成模型都沒打**（Phase 4.5a 之後 production 對
-   * forced `read_only` 那一格就是這個值：handler 直接回一則已讀，不打模型）。
-   * 這支 runner 目前不模擬 read_only，所以自己不會寫出 `"none"`；型別留著是
-   * 為了讓 `tallyChatModelRounds` 這類消費端跟 production telemetry 同一個
-   * 值域，不會把 `none` 當成 deepseek。
+   * `"none"`＝這一輪**一支生成模型都沒打**（forced `read_only`，見
+   * `readOnlyReply`）。Phase 4.5e 之前這支 runner 沒有 production 的短路，
+   * read_only 那一輪照樣打模型，所以 `"none"` 永遠不會出現。
    */
   readonly chatModelUsed?: "deepseek" | "haiku" | "none";
+  /**
+   * Phase 4.5e：這一輪真的只送出一則「（已讀）」（forced `read_only` 短路）。
+   * 與 handler.ts 的 `readOnlyReply` telemetry 同判準（`hasReadOnlyReply`），
+   * 為真才寫；judge 不評這一輪（沒有可判的內容，見 `buildJudgeCases`）。
+   */
+  readonly readOnlyReply?: true;
 }
 
 export interface AgencySessionResult {
@@ -473,6 +479,43 @@ export async function runAgencyScenario(args: {
     const activeCallChat = args.chatModel === "mixed"
       ? (chatModelUsed === "haiku" ? args.callChatHaiku! : args.callChat)
       : args.callChat;
+    // ── Phase 4.5e：forced `read_only` 短路，**與 handler.ts 同源** ──────────
+    //
+    // 缺口（2026-09-05 Game 黑箱抓到）：production `handler.ts` 4621–4655 一帶
+    // 的 forced `read_only` 那一輪**一支生成模型都不打**，直接送出
+    // `READ_ONLY_REPLY_TEXT`；這支 runner 沒有這個短路，440 輪裡 32 筆 read_only
+    // 全部真的打了 Haiku、沒有一則回覆是「（已讀）」。歷來 runner 的 read_only
+    // 數字因此只是**決策頻率**，量不到 production 真正的省呼叫與逐字回覆，
+    // 成本外推也多算了那些呼叫。
+    //
+    // 與 handler.ts 逐行對照（左＝handler，右＝這裡）：
+    //   1. `readOnlyTurn` 三個條件（`agencyMode === "on"`、
+    //      `agencyDecision?.applied === true`、`forcedAct === "read_only"`）
+    //      → 下面 `readOnlyTurn`，逐條相同。
+    //   2. `if (readOnlyTurn) candidate = READ_ONLY_REPLY_TEXT;`（在 attempt
+    //      迴圈內、所有守門之前）→ 下面 attempt 迴圈裡同一個位置；字串**從
+    //      production import**，不抄字面。
+    //   3. `const allowReadOnly = agencyMode === "on" && (readOnlyAllowed ||
+    //      readOnlyTurn)`，再傳進 `hasStageDirection`／`stripStageDirections`
+    //      → 下面把 `readOnlyTurn` 當第二／第三個參數傳進同兩支函式（不傳的話
+    //      style 臂會把「（已讀）」當括號旁白剝掉，整段剝空還會丟
+    //      `chat_stage_direction`）。這支 runner 沒有 planner 的
+    //      `readOnlyAllowed` 分支（那是「模型自己選擇回已讀」，不是短路），
+    //      所以只對得上 `readOnlyTurn` 那一半，差異記在 README。
+    //   4. `chatModel: noModelCalled() ? "none" : chatModelUsed`
+    //      → 下面 `effectiveChatModel`。
+    //   5. `readOnlyReply: true` 只在 `readOnlyAllowedThisTurn &&
+    //      hasReadOnlyReply(reply)` 時才寫 → 下面同一組判準（同一支
+    //      `hasReadOnlyReply`）。
+    //   6. handler **沒有** chat 的 `promptChars` telemetry；那一輪 prompt
+    //      bundle 照樣建起來（`chatPromptBundle` 在 `readOnlyTurn` 之上），
+    //      但一個 byte 都沒送出去。這支 runner 的 `promptChars` 是拿來估
+    //      token 成本的，所以 read_only 輪記 0——記成「建好的 bundle 長度」
+    //      會把這次修掉的多算成本原封不動加回去。同理 `attempts` 記 0
+    //      （沒有任何一次生成呼叫）。
+    const readOnlyTurn = args.agency === "on" &&
+      bundle.agencyDecision?.applied === true &&
+      bundle.agencyDecision.decision.forcedAct === "read_only";
 
     const startedAt = Date.now();
     let reply: string | null = null;
@@ -485,7 +528,9 @@ export async function runAgencyScenario(args: {
     for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
       attempts = attempt;
       try {
-        let candidate = await activeCallChat(messages, bundle.systemStable);
+        let candidate = readOnlyTurn
+          ? READ_ONLY_REPLY_TEXT
+          : await activeCallChat(messages, bundle.systemStable);
         // handler.ts 同序後處理。
         candidate = toTraditionalChinese(normalizeLiteralNewlines(candidate));
         rejectVisibleInternalLabelLeak(candidate, "chat_internal_label_leak", {
@@ -498,9 +543,13 @@ export async function runAgencyScenario(args: {
           fieldClass: "strict",
           spicyAllowed: false,
         });
-        if (args.style && hasStageDirection(candidate)) {
+        if (args.style && hasStageDirection(candidate, readOnlyTurn)) {
           stageDirectionRepairs++;
-          candidate = stripStageDirections(candidate, "chat_stage_direction");
+          candidate = stripStageDirections(
+            candidate,
+            "chat_stage_direction",
+            readOnlyTurn,
+          );
         }
         // Phase 3.3 `truncate` 臂：與 handler 同一支函式、同一個位置（所有
         // 守門與修補之後、落成 reply 之前），所以 judge 讀到的就是截斷後的文字。
@@ -643,9 +692,11 @@ export async function runAgencyScenario(args: {
       previousAiAskedQuestion,
       scripted: false,
       probe: step.probe ?? null,
-      promptChars,
+      // handler 對照 6：read_only 那一輪 bundle 照建但一個 byte 都沒送出去，
+      // 這兩格記 0，成本外推才不會把剛修掉的多算成本加回來。
+      promptChars: readOnlyTurn ? 0 : promptChars,
       elapsedMs: Date.now() - startedAt,
-      attempts,
+      attempts: readOnlyTurn ? 0 : attempts,
       guardRejections,
       stageDirectionRepairs,
       shapeDropped,
@@ -660,7 +711,14 @@ export async function runAgencyScenario(args: {
       ...(classifierSignal ? { classifierSignal } : {}),
       ...(classifierError ? { classifierError } : {}),
       ...(args.stateSimulation ? { agencyStateAfter: agencyState } : {}),
-      ...(args.chatModel ? { chatModelUsed } : {}),
+      // handler 對照 4：`noModelCalled() ? "none" : chatModelUsed`。
+      ...(args.chatModel
+        ? { chatModelUsed: readOnlyTurn ? "none" as const : chatModelUsed }
+        : {}),
+      // handler 對照 5：同一組判準（授權 ＋ 回覆整則真的是「（已讀）」）。
+      ...(readOnlyTurn && hasReadOnlyReply(reply)
+        ? { readOnlyReply: true }
+        : {}),
     });
     turns.push({ role: "ai", text: reply });
   }
