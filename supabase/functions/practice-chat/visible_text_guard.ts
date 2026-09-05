@@ -553,6 +553,49 @@ function condemnationExemptsAfter(clause: string, index: number): boolean {
   return !ANALYSIS_CONDEMNATION_REVERSAL_PATTERN.test(afterCondemnation);
 }
 
+/**
+ * 2026-09-06（Codex R1 P1-1）：debrief 點評欄「引用玩家原話就代稱」的閘門。
+ *
+ * 代稱會把詞從可見文字裡抹掉，守門之後就再也看不到它——所以代稱**不能是無條件
+ * 放行**：「『強迫』也是方法，下次照做就好」代稱完變成一句乾淨的教唆。這裡先問
+ * 一個窄問題：引用的那一句是在**批評／解釋**，還是在叫他照做？
+ *
+ * 判準沿用分析欄既有的三個（`ANALYSIS_PUSH_MARKER_PATTERN`／
+ * `ANALYSIS_SPICY_ADVOCACY_PATTERN`／`condemnationExemptsAfter` 的譴責豁免），
+ * 另加一條「引用後面接建議」的窄形：`ANALYSIS_USER_DIRECTED_PATTERN` 直接拿來用
+ * 會把「你直接說打炮，她整個冷掉」這種**描述他做過什麼**的合法批評也判成教唆
+ * （`你直接` 命中），所以只收未來式指示與直白的建議詞。時間詞同理只收「下次／
+ * 接下來／以後／再來」——「之後」是敘事詞（「你打出那句之後她直接不想聊了」）。
+ *
+ * ponytail: 開放詞彙的教唆封不死，這裡只封窄形；主力仍是 prompt 與
+ * `hasL4UnsafeVisibleText` 本身——沒被代稱的詞照舊走既有守門。
+ */
+const QUOTE_ADVICE_PATTERN =
+  /照做|也是(?:一種|一种)?(?:方法|辦法|办法|選擇|选择|招)|值得(?:一)?(?:試|试)|可以(?:試試|试试)|(?:下次|接下來|接下来|以後|以后|再來|再来)[^。]{0,8}(?:可以|就|直接|再|試試|试试|照做)|建(?:議|议)(?:你|妳)|(?:你|妳)(?:應該|应该|該|该|可以|不妨|得|試著|试着)/u;
+
+/**
+ * 這一則可見文字裡的 `term` 是不是被用在教唆句裡（用於代稱前的閘門）。
+ * 找不到這個詞＝不是（呼叫端只在詞真的出現時才問）。
+ */
+export function quotedTermIsIncitement(value: string, term: string): boolean {
+  const clauses = value
+    .normalize("NFKC")
+    .split(/[，,。.!！?？；;\n]+/u)
+    .map(normalizeUnsafeText)
+    .filter((clause) => clause.length > 0);
+  const needle = normalizeUnsafeText(term);
+  const start = clauses.findIndex((clause) => clause.includes(needle));
+  if (start < 0) return false;
+  // 教唆通常接在引用**後面**（「…也是方法，下次照做就好」），所以看的是
+  // 含該詞那一句到句尾的整段。
+  const tail = clauses.slice(start).join("");
+  const incites = QUOTE_ADVICE_PATTERN.test(tail) ||
+    ANALYSIS_PUSH_MARKER_PATTERN.test(tail) ||
+    ANALYSIS_SPICY_ADVOCACY_PATTERN.test(tail);
+  if (!incites) return false;
+  return !condemnationExemptsAfter(tail, tail.indexOf(needle));
+}
+
 export function hasL4UnsafeVisibleText(
   value: string,
   opts?: L4GuardOptions,

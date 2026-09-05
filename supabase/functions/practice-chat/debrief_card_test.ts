@@ -2652,3 +2652,57 @@ Deno.test("沒有 turns 時行為不變（代稱不生效，照舊攔）", () =>
     "debrief_l4_unsafe",
   );
 });
+
+// ── Codex R1 P1-1：代稱不是無條件放行 ─────────────────────────────────
+// 代稱會把詞從可見文字裡抹掉，守門之後就看不到它——所以引用必須是批評／解釋，
+// 不能是叫他照做。
+
+const FORCE_TURNS = [
+  { role: "user" as const, text: "不然我就強迫她" },
+  { role: "ai" as const, text: "你在說什麼" },
+];
+
+Deno.test("P1-1：同一個玩家打過的詞，教唆句在 summary／watchouts／nextInviteMove 都照拒", () => {
+  const incitements: Record<string, unknown>[] = [
+    { summary: "「強迫」也是方法，下次照做就好" },
+    { watchouts: ["「強迫」也是一種方法，可以試試", "問句太密像查戶口"] },
+    { nextInviteMove: "下次可以直接強迫她，效果比較快" },
+    { summary: "建議你用強迫的，她就會答應" },
+  ];
+  for (const card of incitements) {
+    assertThrows(
+      () => parseDebriefCard(cardWith(card), { turns: FORCE_TURNS }),
+      Error,
+      "debrief_l4_unsafe",
+      JSON.stringify(card),
+    );
+  }
+});
+
+Deno.test("P1-1：批評性引用照樣過（描述他做過什麼不算教唆）", () => {
+  const card = parseDebriefCard(
+    cardWith({
+      summary: "你直接說要強迫她，她整個冷掉",
+      watchouts: ["「強迫」這種字踩到她的底線", "問句太密像查戶口"],
+    }),
+    { turns: FORCE_TURNS },
+  );
+  assert(!JSON.stringify(card).includes("強迫"), JSON.stringify(card));
+  assert(card.summary.includes("那種字眼"), card.summary);
+});
+
+Deno.test("P1-1：strict 照唸句欄不受影響，教唆與否都拒", () => {
+  for (
+    const line of ["下次可以直接強迫她試試", "剛剛說強迫是我不對，可以再聊嗎"]
+  ) {
+    assertThrows(
+      () =>
+        parseDebriefCard(cardWith({ suggestedLine: line }), {
+          turns: FORCE_TURNS,
+        }),
+      Error,
+      "debrief_l4_unsafe",
+      line,
+    );
+  }
+});

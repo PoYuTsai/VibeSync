@@ -4,6 +4,7 @@
 import {
   CONSENT_UNSAFE_PATTERNS,
   normalizeUnsafeText,
+  quotedTermIsIncitement,
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
   rejectVisibleTemperatureMechanismLeak,
@@ -399,11 +400,16 @@ export function maskQuotedUnsafeTerms(
   ) {
     if (!masked.includes(term)) continue;
     if (
-      normalized.includes(normalizeUnsafeText(term)) ||
-      crudeNormalized.includes(normalizeCrudeText(term))
-    ) {
-      masked = masked.split(term).join(QUOTED_UNSAFE_TERM_MASK);
+      !normalized.includes(normalizeUnsafeText(term)) &&
+      !crudeNormalized.includes(normalizeCrudeText(term))
+    ) continue;
+    // Codex R1 P1-1：玩家打過這個詞**不等於**教練可以拿它教他照做。代稱前
+    // 先問這一句是批評還是教唆；教唆就照舊 reject（代稱一旦做下去，守門就
+    // 再也看不到那個詞了）。
+    if (quotedTermIsIncitement(masked, term)) {
+      throw new Error("debrief_l4_unsafe");
     }
+    masked = masked.split(term).join(QUOTED_UNSAFE_TERM_MASK);
   }
   return masked;
 }
