@@ -1742,3 +1742,72 @@ Deno.test("Phase 4.5a 刀 3：階梯三格的計畫行——冷回、先忙、�
   // 三個 act 說明都不含範例台詞（報告 §13 第 8 點）。
   for (const t of [cold.text, out.text]) assert(!t.includes("我先忙了"));
 });
+
+// ── Phase 4.5c 刀 1：已讀授權的第二個入口與 stance 同源 ────────────────────
+Deno.test("Phase 4.5c 刀 1：gameGreasy／userOverEscalated 連續兩則也給「（已讀）」", () => {
+  const style = styles[0];
+  const planFor = (
+    turns: PracticeTurn[],
+    evidence: PolicyEvidence,
+    mode: AgencyMode = "on",
+  ) => {
+    const signals = detectTurnSignals(turns);
+    const agency = computeAgencyDecision({
+      turns,
+      agencyMode: mode,
+      situation: classifySituation(signals, policyStanceFor(signals, evidence)),
+      difficulty: evidence.difficulty,
+      isGame: evidence.practiceMode === "game",
+    });
+    return planTurnResponse({ turns, style, evidence, seedKey: "s", agency });
+  };
+  // 兩則都命中 `looksOverEscalated`，但**都不**命中 `BOUNDARY_RE`——4.5a 的
+  // `trailingBoundaryTurns` 在這裡恆為 0。
+  const once = [u("我好想親妳")];
+  const twice = [...once, a("不要這樣"), u("那今晚去我家好不好")];
+  for (const text of ["我好想親妳", "那今晚去我家好不好"]) {
+    assertEquals(detectTurnSignals([u(text)]).boundaryLike, false, text);
+  }
+
+  // (1) userOverEscalated：連續兩則 → 授權；單一則 → 沒有。
+  const overEscalated = standard({
+    difficulty: "challenge",
+    userOverEscalated: true,
+  });
+  assertEquals(planFor(once, overEscalated).situation, "boundary");
+  assertEquals(planFor(once, overEscalated).readOnlyAllowed, undefined);
+  assertEquals(planFor(twice, overEscalated).situation, "boundary");
+  assertEquals(planFor(twice, overEscalated).readOnlyAllowed, true);
+
+  // (2) gameGreasy（Game 走挑戰門檻）：同樣連續兩則才給。
+  const greasy = standard({ practiceMode: "game", gameGreasy: true });
+  assertEquals(planFor(once, greasy).readOnlyAllowed, undefined);
+  assertEquals(planFor(twice, greasy).readOnlyAllowed, true);
+
+  // (3) boundaryLike（4.5a 既有入口）不變。
+  const boundary = standard({ difficulty: "challenge" });
+  const boundaryTwice = [
+    u("傳一張泳裝照來看看"),
+    a("不要這樣講"),
+    u("那內衣照也可以啊"),
+  ];
+  assertEquals(planFor(boundaryTwice, boundary).readOnlyAllowed, true);
+
+  // easy／normal（非 Game）一律不給——難度門檻不因訊號變寬而鬆掉。
+  for (const difficulty of ["easy", "normal"] as const) {
+    assertEquals(
+      planFor(twice, standard({ difficulty, userOverEscalated: true }))
+        .readOnlyAllowed,
+      undefined,
+      difficulty,
+    );
+  }
+  // 旗標 off／shadow：整個欄位不存在。
+  for (const mode of ["off", "shadow"] as const) {
+    assertEquals(
+      planFor(twice, overEscalated, mode).readOnlyAllowed,
+      undefined,
+      mode,
+    );
+  }
+});

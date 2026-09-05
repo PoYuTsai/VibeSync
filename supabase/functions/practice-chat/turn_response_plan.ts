@@ -14,6 +14,7 @@
 
 import type { PracticeTurn } from "./validate.ts";
 import type { PracticeDifficulty } from "./practice_persona.ts";
+import { looksOverEscalated } from "./game_fsm.ts";
 import type { InviteStage } from "./invite_maturity.ts";
 import type { PartnerMood } from "./temperature.ts";
 import { practiceInviteLevelFor } from "./practice_invite.ts";
@@ -627,6 +628,9 @@ export function planTurnResponse(args: {
   // ── Phase 4.5a 刀 2：「（已讀）」冷回應的開關 ─────────────────────────
   // 只給最冷的兩格：挑戰難度／Game，而且這一輪要嘛是結構層下的收尾格
   // （forced `end_low_value_loop`），要嘛是**連續**越界（第 2 次以上）。
+  // Phase 4.5c 刀 1：第二個入口的「越界」擴成與 stance 同源的三個訊號
+  // （`boundaryLike`／`gameGreasy`／`userOverEscalated`），見
+  // `trailingColdRejectTurns`。
   // 越界輪的 agency decision 會被 `computeAgencyDecision` 清成 situation:null，
   // 所以那一半只能從 planner 自己的 stance 與逐字稿數，不能靠 agency 決策。
   const coldPersona = allowsCheckOut(
@@ -637,7 +641,8 @@ export function planTurnResponse(args: {
     (
       (agency.applied &&
         agency.decision.forcedAct === "end_low_value_loop") ||
-      (situation === "boundary" && trailingBoundaryTurns(args.turns) >= 2)
+      (situation === "boundary" &&
+        trailingColdRejectTurns(args.turns, args.evidence) >= 2)
     );
 
   return {
@@ -657,15 +662,43 @@ export function planTurnResponse(args: {
   };
 }
 
-/** 逐字稿尾端連續幾則玩家訊息踩到界線（`BOUNDARY_RE`，與 `boundaryLike` 同源）。 */
-function trailingBoundaryTurns(turns: readonly PracticeTurn[]): number {
+/**
+ * 逐字稿尾端連續幾則玩家訊息踩到「她不想理」的界線。
+ *
+ * Phase 4.5c 刀 1（補 4.5a Codex R1 P3-3 留給 Eric 的缺口）：判準與
+ * `policyStanceFor` 的 boundary 分支**同源**——那裡是
+ * `boundaryLike || gameGreasy || userOverEscalated` 三者 OR，這裡原本只數
+ * `BOUNDARY_RE`，於是 Game 的油膩／過度升溫連兩則永遠拿不到 `readOnlyAllowed`
+ * （`situation` 是 boundary，但 streak 恆為 0）。
+ *
+ * 三個訊號的可回溯性不一樣，所以分兩段：
+ * - **逐則**（含最後一則）套文字偵測函式：`BOUNDARY_RE`（`boundaryLike` 同源）
+ *   ＋ `looksOverEscalated`（`userOverEscalated` 的定義本身，也是 Game FSM
+ *   `GREASY` 的文字來源）。更早的訊息拿不到當時的 evidence，只有文字回溯得到。
+ * - **最後一則**另外認 `evidence` 的兩個布林：它們是這一輪的權威判定。
+ *   `gameGreasy` 還可能來自 Game FSM 的 `classification`（今天 `prompt.ts`
+ *   呼叫 `evaluateGameFsm` 沒有傳 classification，所以恆等於
+ *   `looksOverEscalated(latest)`；留這一段是為了它哪天被傳進來時，stance 與
+ *   這裡不會各自漂掉——同一道守門在兩端各自帶判準會漂）。
+ */
+function trailingColdRejectTurns(
+  turns: readonly PracticeTurn[],
+  evidence: PolicyEvidence,
+): number {
   const userTexts = turns.filter((t) => t.role === "user").map((t) => t.text);
   let streak = 0;
   for (let i = userTexts.length - 1; i >= 0; i--) {
-    if (!BOUNDARY_RE.test(userTexts[i])) break;
+    const authoritativeThisTurn = i === userTexts.length - 1 &&
+      (evidence.gameGreasy || evidence.userOverEscalated);
+    if (!authoritativeThisTurn && !coldRejectText(userTexts[i])) break;
     streak++;
   }
   return streak;
+}
+
+/** 逐則可回溯的越界文字判準（`boundaryLike` ＋ `userOverEscalated` 的定義）。 */
+function coldRejectText(text: string): boolean {
+  return BOUNDARY_RE.test(text) || looksOverEscalated(text);
 }
 
 /** runtime 列舉（telemetry 測試做 membership 用）；Record 型別保證漏一個就編譯錯。 */
