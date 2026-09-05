@@ -213,6 +213,15 @@ export type DebriefMemorySummarySkipReason =
  * **這支永遠不丟例外**——它跑在 `parseDebriefCard` 成功之後，任何形態問題都只
  * 能是「跳過寫入」，不能把一張已經合格的教學卡打回。超長刻意不截斷：截半句的
  * 記憶餵回下一場比沒有記憶更糟，寧可這一場不留。
+ *
+ * **已知風險（Eric 2026-09-05 判定接受，不做事實核對）**：這裡只驗形態，不驗
+ * 內容——模型若在 memorySummary 裡捏造這場沒發生的事，會被持久化並在下一場當
+ * 成「更早的對話」餵回去。沒有便宜的決定論核對法（人名／事件比對會誤殺真的
+ * 講過的內容），所以防線放在**讀取端**：`prompt.ts:133` 的
+ * `memorySummaryPrompt` 把它包成 `<older_memory_untrusted>` 並附上 Reality
+ * Anchoring 未驗證清單（`prompt.ts:121` 的 `MEMORY_SUMMARY_TAIL_OFF` 與
+ * `prompt.ts:130` 的 `MEMORY_SUMMARY_TAIL_ON`），生成端的不捏造規則則在
+ * `prompt.ts` 的 `DEBRIEF_MEMORY_SUMMARY_DIRECTIVE`。
  */
 export function parseDebriefMemorySummary(
   raw: string,
@@ -242,7 +251,9 @@ export function parseDebriefMemorySummary(
     scrubRawImageFilenames(value).trim().replace(/\s+/gu, " "),
   );
   if (normalized.length === 0) return { summary: null, skipped: "missing" };
-  if (normalized.length > DEBRIEF_MEMORY_SUMMARY_MAX_CHARS) {
+  // 碼點數，不是 UTF-16 code unit：schema 的 `maxLength` 與 Postgres 的
+  // `char_length` 都按碼點算，用 `.length` 會把 501 個 emoji 誤判成超長。
+  if ([...normalized].length > DEBRIEF_MEMORY_SUMMARY_MAX_CHARS) {
     return { summary: null, skipped: "too_long" };
   }
   return { summary: normalized, skipped: null };
