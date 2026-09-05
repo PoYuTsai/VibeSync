@@ -1354,45 +1354,51 @@ async function upsertRelationshipThreadFailOpen(opts: {
 /**
  * Phase 5 WP3：檢討成功後把「她記得的事」寫回 thread。
  *
- * 刻意**不走** `buildRelationshipThreadRpcParams`——那支的 `recent_facts` 是
- * 「從零重建 ＋ agency 旗標決定要不要保留未知 key」，在檢討這條全新的寫入路徑
- * 上會把 `replyStyle`／`conversationAgency` 這些 key 清掉。這裡只改
- * `memory_summary` 一欄：`= EXCLUDED` 的四欄與整包覆寫的 `recent_facts` 一律把
- * 讀回來的值原樣帶回，COALESCE 的欄位帶 null 即可（不覆寫）。
+ * **只 UPDATE `memory_summary` 一欄，不走 `upsert_practice_relationship_thread`**
+ * （Codex R1 P1）：那支 RPC 的 `practice_mode`／三個分數／`recent_facts` 是整包
+ * 覆寫，而檢討是一支長跑的請求——它在請求開頭讀到的 thread 快照，寫回時可能
+ * 已經被同一個 thread 的聊天輪次更新過，帶回舊值就是把別人的寫入蓋掉。
  *
- * fail-open：寫失敗只 warn，檢討照樣回 200。
+ * WHERE 同時綁 `user_id`／`visible_thread_id`／`profile_id` 三欄：跨使用者隔離、
+ * 換角色（同一個 visible thread 換人）都靠這三個條件擋掉，命中 0 列＝跳過。
+ *
+ * `updated_at`／`last_interaction_at` 刻意不帶：表上沒有觸發器，這一欄是檢討
+ * 的副產品而不是新的互動，聊天輪次已經把互動時間推進過了。
+ *
+ * fail-open：任何錯誤（回 error 或整個 reject）都只 warn，檢討照樣回 200。
  */
 async function persistDebriefMemorySummaryFailOpen(opts: {
   supabase: PracticeSupabaseClient;
   userId: string;
   visibleThreadId: string;
-  profileId?: string | null;
-  practiceMode: PracticeLearningMode;
-  thread: PracticeRelationshipThreadState | null;
+  profileId: string;
   memorySummary: string;
-}): Promise<void> {
-  const { error } = await opts.supabase.rpc(
-    "upsert_practice_relationship_thread",
-    {
-      p_user_id: opts.userId,
-      p_visible_thread_id: opts.visibleThreadId,
-      p_profile_id: opts.profileId ?? null,
-      p_practice_mode: opts.thread?.practiceMode ?? opts.practiceMode,
-      p_relationship_score: opts.thread?.relationshipScore ?? null,
-      p_temperature_score: opts.thread?.temperatureScore ?? null,
-      p_familiarity_score: opts.thread?.familiarityScore ?? null,
-      p_partner_mood: opts.thread?.partnerState?.mood ?? null,
-      p_partner_inner_thought: opts.thread?.partnerState?.innerThought || null,
-      p_invite_stage: opts.thread?.inviteStage ?? null,
-      p_memory_summary: opts.memorySummary,
-      p_recent_facts: opts.thread?.recentFacts ?? {},
-    },
-  );
-  if (error) {
-    logWarn("practice_relationship_thread_upsert_failed", {
+}): Promise<"thread_missing" | "write_failed" | null> {
+  try {
+    const { data, error } = await opts.supabase
+      .from("practice_relationship_threads")
+      .update({ memory_summary: opts.memorySummary })
+      .eq("user_id", opts.userId)
+      .eq("visible_thread_id", opts.visibleThreadId)
+      .eq("profile_id", opts.profileId)
+      .select("visible_thread_id");
+    if (error) {
+      logWarn("practice_relationship_thread_memory_write_failed", {
+        user: summarizeUser(opts.userId),
+        error: error.message,
+      });
+      return "write_failed";
+    }
+    // 命中 0 列＝這個 thread 還沒有列（檢討前一輪聊天都沒寫過），或這一列
+    // 已經是別的角色的。兩種都只跳過，不建列。
+    if (!Array.isArray(data) || data.length === 0) return "thread_missing";
+    return null;
+  } catch (e) {
+    logWarn("practice_relationship_thread_memory_write_failed", {
       user: summarizeUser(opts.userId),
-      error: error.message,
+      error: getErrorMessage(e),
     });
+    return "write_failed";
   }
 }
 
@@ -4446,20 +4452,24 @@ export function createPracticeChatHandler(
         pipeline: "single_shot_v2",
       });
 
-      // WP3：寫回失敗只 warn；`threadStateSkipReason` 不為 null（讀取失敗／
-      // 這一列是別的角色）時完全不寫——理由與 standard 那條寫入路徑同一條。
+      // WP3：寫回只動 `memory_summary` 一欄，WHERE 綁死 user／thread／角色，
+      // 所以不需要 `threadStateSkipReason` 那道前置閘門（讀取失敗也寫得安全，
+      // 角色不符會命中 0 列）。失敗一律只 warn，檢討照樣 200。
       const debriefMemorySummary = debriefMemorySummaries[0] ?? null;
-      if (debriefMemorySummary?.summary && threadStateSkipReason === null) {
-        await persistDebriefMemorySummaryFailOpen({
+      const debriefMemoryWriteSkipped = debriefMemorySummary?.summary
+        ? await persistDebriefMemorySummaryFailOpen({
           supabase,
           userId: user.id,
           visibleThreadId,
           profileId: request.profile.girl.profileId,
-          practiceMode: debriefPracticeMode,
-          thread: relationshipThreadState,
           memorySummary: debriefMemorySummary.summary,
-        });
-      }
+        })
+        : null;
+      // 解析階段的跳過原因優先（缺欄／型別／超長），其次才是寫入階段的。
+      // `debriefMemorySummary === null`＝validate 沒跑成功（salvage 路徑）。
+      const memorySummarySkipped = debriefMemorySummary === null
+        ? "missing"
+        : debriefMemorySummary.skipped ?? debriefMemoryWriteSkipped;
 
       logInfo("practice_chat_succeeded", {
         user: summarizeUser(user.id),
@@ -4470,12 +4480,11 @@ export function createPracticeChatHandler(
         // 旗標 off 時一個 key 都不多。
         ...(memorySummaryWriteOn
           ? {
-            memorySummaryChars: debriefMemorySummary?.summary?.length ?? 0,
-            ...(debriefMemorySummary?.skipped
-              ? { memorySummarySkipped: debriefMemorySummary.skipped }
-              : debriefMemorySummary === null
-              ? { memorySummarySkipped: "missing" }
-              : {}),
+            // 碼點數，與 schema 的 `maxLength` 和 Postgres `char_length` 同尺。
+            memorySummaryChars: debriefMemorySummary?.summary
+              ? [...debriefMemorySummary.summary].length
+              : 0,
+            ...(memorySummarySkipped ? { memorySummarySkipped } : {}),
           }
           : {}),
       });

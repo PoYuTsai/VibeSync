@@ -8,6 +8,21 @@
 // on ＝檢討那支 Sonnet 多吐一段「她記得的事」寫回
 // `practice_relationship_threads.memory_summary`；**它永遠不能讓檢討失敗**，
 // 缺欄／型別不對／超長只跳過寫入並記 telemetry。
+//
+// ── 已知風險：捏造會被持久化（Eric 2026-09-05 判定接受）─────────────────
+// 本檔**沒有**、也刻意不加事實核對測試：server 只驗形態，不驗內容。模型若在
+// memorySummary 裡捏造這場沒發生的事，會被寫進 thread 並在下一場當成「更早的
+// 對話」餵回去。沒有便宜的決定論核對法（人名／事件比對會誤殺真的講過的內容），
+// 所以防線在**讀取端**：`prompt.ts:133` 的 `memorySummaryPrompt` 把它包成
+// `<older_memory_untrusted>` 並附 Reality Anchoring 未驗證清單
+// （`prompt.ts:121` / `prompt.ts:130` 兩份 tail），生成端規則在
+// `DEBRIEF_MEMORY_SUMMARY_DIRECTIVE`。最後一支測試守讀取端那個信封格式。
+//
+// ── 寫回為什麼是單欄 UPDATE 不是 upsert RPC（Codex R1 P1）───────────────
+// 檢討是長跑請求：它在請求開頭讀到的 thread 快照，寫回時可能已被同一個 thread
+// 的聊天輪次更新過。走 `upsert_practice_relationship_thread` 會把讀取時的
+// mode／分數／心情／整包 recent_facts 一起帶回去覆寫。改成只 UPDATE
+// `memory_summary` 一欄、WHERE 綁 user_id ＋ visible_thread_id ＋ profile_id。
 
 import {
   assert,
@@ -43,6 +58,12 @@ const turns = [
 function threadUpsertCalls(state: FakeState) {
   return state.rpcCalls.filter((call) =>
     call.fn === "upsert_practice_relationship_thread"
+  );
+}
+
+function threadMemoryUpdates(state: FakeState) {
+  return state.updates.filter((update) =>
+    update.table === "practice_relationship_threads"
   );
 }
 
@@ -172,7 +193,25 @@ Deno.test("WP3 parseDebriefMemorySummary：缺欄／型別／超長都只跳過�
   });
 });
 
-Deno.test("WP3 旗標 on：模型吐 memorySummary → 帶 p_memory_summary 寫回、Response 帶、telemetry 記字數", async () => {
+Deno.test("WP3 長度用碼點算（Codex R1 P2）：501 個 emoji 過，1001 個不過", () => {
+  const under = "🙂".repeat(501);
+  // `.length` 是 UTF-16 code unit：這一串是 1002，碼點只有 501。
+  assertEquals(under.length, 1002);
+  assertEquals(
+    parseDebriefMemorySummary(validDebriefJson({ memorySummary: under })),
+    { summary: under, skipped: null },
+  );
+  assertEquals(
+    parseDebriefMemorySummary(
+      validDebriefJson({
+        memorySummary: "🙂".repeat(DEBRIEF_MEMORY_SUMMARY_MAX_CHARS + 1),
+      }),
+    ),
+    { summary: null, skipped: "too_long" },
+  );
+});
+
+Deno.test("WP3 旗標 on：模型吐 memorySummary → 只 UPDATE 一欄、WHERE 綁三欄、Response 帶、telemetry 記碼點數", async () => {
   const { response, json, state, succeeded } = await runDebrief(
     debriefOptions({
       env: { PRACTICE_MEMORY_SUMMARY_WRITE: "true" },
@@ -182,24 +221,72 @@ Deno.test("WP3 旗標 on：模型吐 memorySummary → 帶 p_memory_summary 寫�
   );
 
   assertEquals(response.status, 200);
-  const upserts = threadUpsertCalls(state);
-  assertEquals(upserts.length, 1);
-  assertEquals(upserts[0].params.p_memory_summary, HER_MEMORY);
-  // `= EXCLUDED` 的四欄與整包覆寫的 recent_facts 必須原樣帶回，
-  // 不然這一發會把 thread 上別的狀態清掉。
-  assertEquals(upserts[0].params.p_practice_mode, "standard");
-  assertEquals(upserts[0].params.p_relationship_score, 51);
-  assertEquals(upserts[0].params.p_temperature_score, 42);
-  assertEquals(upserts[0].params.p_familiarity_score, 33);
-  assertEquals(upserts[0].params.p_recent_facts, {
-    source: "practice_chat",
-    aiTurnCount: 4,
-    keepMe: 1,
-  });
+  // 並發覆蓋（Codex R1 P1）：不得走整列覆寫的 upsert RPC。
+  assertEquals(threadUpsertCalls(state).length, 0);
+  const updates = threadMemoryUpdates(state);
+  assertEquals(updates.length, 1);
+  // payload 只有一個 key：讀取時的 mode／分數／心情／recent_facts 一個都不帶回，
+  // 所以檢討跑的期間聊天輪次寫進去的新值不會被蓋掉。
+  assertEquals(Object.keys(updates[0].values), ["memory_summary"]);
+  assertEquals(updates[0].values.memory_summary, HER_MEMORY);
+  assertEquals(updates[0].where, [
+    ["user_id", "user-1"],
+    ["visible_thread_id", "session-1"],
+    ["profile_id", PROFILE_ID],
+  ]);
 
   assertEquals(json.memorySummary, HER_MEMORY);
-  assertEquals(succeeded?.memorySummaryChars, HER_MEMORY.length);
+  assertEquals(succeeded?.memorySummaryChars, [...HER_MEMORY].length);
   assertEquals("memorySummarySkipped" in (succeeded ?? {}), false);
+});
+
+Deno.test("WP3 並發（Codex R1 P1）：檢討讀到 A，寫回不得把 A 的任何欄位帶回去蓋掉聊天寫的 B", async () => {
+  // 檢討在請求開頭讀到的是 A（下面 thread 的分數／心情／recent_facts）。
+  // 它跑 Sonnet 的期間，同一個 thread 的聊天輪次可能已經把那些欄位寫成 B。
+  // 只要寫回的 payload 不含這些欄位，B 就活得下來——所以這裡直接斷言
+  // 「A 的每一個欄位名都不在 payload 裡」。
+  const { response, state } = await runDebrief(
+    debriefOptions({
+      env: { PRACTICE_MEMORY_SUMMARY_WRITE: "true" },
+      claudeReplies: [validDebriefJson({ memorySummary: HER_MEMORY })],
+    }),
+    debriefBody({ requestId: "wp3-race", profileId: PROFILE_ID }),
+  );
+
+  assertEquals(response.status, 200);
+  const payload = threadMemoryUpdates(state)[0].values;
+  assertEquals(Object.keys(payload), ["memory_summary"]);
+  for (
+    const column of [
+      "practice_mode",
+      "relationship_score",
+      "temperature_score",
+      "familiarity_score",
+      "partner_mood",
+      "partner_inner_thought",
+      "invite_stage",
+      "recent_facts",
+      "profile_id",
+    ]
+  ) {
+    assertEquals(column in payload, false, `${column} 不得被寫回覆蓋`);
+  }
+  // 整列覆寫的 RPC 一次都不能被呼叫。
+  assertEquals(threadUpsertCalls(state).length, 0);
+});
+
+Deno.test("WP3 旗標 on：UPDATE 命中 0 列（thread 不存在／角色已換）→ telemetry thread_missing，檢討 200", async () => {
+  const { response, succeeded } = await runDebrief(
+    debriefOptions({
+      env: { PRACTICE_MEMORY_SUMMARY_WRITE: "true" },
+      claudeReplies: [validDebriefJson({ memorySummary: HER_MEMORY })],
+      threadUpdate: { rows: 0 },
+    }),
+    debriefBody({ requestId: "wp3-missing-row", profileId: PROFILE_ID }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(succeeded?.memorySummarySkipped, "thread_missing");
 });
 
 Deno.test("WP3 旗標 on：模型沒吐欄位 → 不寫入、telemetry 記 missing、檢討照樣 200", async () => {
@@ -209,7 +296,7 @@ Deno.test("WP3 旗標 on：模型沒吐欄位 → 不寫入、telemetry 記 miss
   );
 
   assertEquals(response.status, 200);
-  assertEquals(threadUpsertCalls(state).length, 0);
+  assertEquals(threadMemoryUpdates(state).length, 0);
   assertEquals("memorySummary" in json, false);
   assertEquals(succeeded?.memorySummaryChars, 0);
   assertEquals(succeeded?.memorySummarySkipped, "missing");
@@ -233,27 +320,46 @@ Deno.test("WP3 旗標 on：超長 → 不截斷不寫入，telemetry 記 too_lon
   );
 
   assertEquals(response.status, 200);
-  assertEquals(threadUpsertCalls(state).length, 0);
+  assertEquals(threadMemoryUpdates(state).length, 0);
   assertEquals(succeeded?.memorySummarySkipped, "too_long");
 });
 
-Deno.test("WP3 旗標 on：寫回 RPC 失敗只 warn，檢討照樣 200", async () => {
-  const { response, json, warns } = await runDebrief(
+Deno.test("WP3 旗標 on：寫回回 error 只 warn，telemetry write_failed，檢討照樣 200", async () => {
+  const { response, json, succeeded, warns } = await runDebrief(
     debriefOptions({
       env: { PRACTICE_MEMORY_SUMMARY_WRITE: "true" },
       claudeReplies: [validDebriefJson({ memorySummary: HER_MEMORY })],
-      rpc: {
-        upsert_practice_relationship_thread: [{ error: "thread write boom" }],
-      },
+      threadUpdate: { error: "thread write boom" },
     }),
-    debriefBody({ requestId: "wp3-rpc-fail", profileId: PROFILE_ID }),
+    debriefBody({ requestId: "wp3-write-error", profileId: PROFILE_ID }),
   );
 
   assertEquals(response.status, 200);
   assertEquals(json.memorySummary, HER_MEMORY);
+  assertEquals(succeeded?.memorySummarySkipped, "write_failed");
   assert(
     warns.some((line) =>
-      line.event === "practice_relationship_thread_upsert_failed"
+      line.event === "practice_relationship_thread_memory_write_failed"
+    ),
+  );
+});
+
+Deno.test("WP3 旗標 on：寫回整個 reject（不是回 error）也不能炸掉檢討", async () => {
+  const { response, json, succeeded, warns } = await runDebrief(
+    debriefOptions({
+      env: { PRACTICE_MEMORY_SUMMARY_WRITE: "true" },
+      claudeReplies: [validDebriefJson({ memorySummary: HER_MEMORY })],
+      threadUpdate: { rejects: true },
+    }),
+    debriefBody({ requestId: "wp3-write-reject", profileId: PROFILE_ID }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.memorySummary, HER_MEMORY);
+  assertEquals(succeeded?.memorySummarySkipped, "write_failed");
+  assert(
+    warns.some((line) =>
+      line.event === "practice_relationship_thread_memory_write_failed"
     ),
   );
 });
@@ -268,6 +374,7 @@ Deno.test("WP3 旗標 off：模型就算吐了欄位也不寫、不回、不記"
 
   assertEquals(response.status, 200);
   assertEquals(threadUpsertCalls(state).length, 0);
+  assertEquals(threadMemoryUpdates(state).length, 0);
   assertEquals("memorySummary" in json, false);
   assertEquals("memorySummaryChars" in (succeeded ?? {}), false);
   assertEquals("memorySummarySkipped" in (succeeded ?? {}), false);

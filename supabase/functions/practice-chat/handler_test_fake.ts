@@ -49,6 +49,11 @@ export interface FakeOptions {
   srTicketRow?: Record<string, unknown> | null;
   srTicketReadError?: string;
   srTicketUpsertError?: string;
+  /**
+   * WP3：`practice_relationship_threads` 單欄 UPDATE 的結果。
+   * `rows` 預設 1（有這一列）；0＝thread 不存在或角色已換。
+   */
+  threadUpdate?: { error?: string; rejects?: boolean; rows?: number };
   aiLogsError?: string;
   aiLogsNeverCompletes?: boolean;
   rpc?: Record<string, RpcResult[]>;
@@ -68,7 +73,14 @@ export interface FakeOptions {
 export interface FakeState {
   selects: Array<{ table: string; columns: string }>;
   inserts: Array<{ table: string; values: Record<string, unknown> }>;
-  updates: Array<{ table: string; values: Record<string, unknown> }>;
+  updates: Array<
+    {
+      table: string;
+      values: Record<string, unknown>;
+      /** WP3：單欄 UPDATE 的 WHERE 綁了哪幾欄（順序即呼叫順序）。 */
+      where: Array<[string, unknown]>;
+    }
+  >;
   upserts: Array<{ table: string; values: Record<string, unknown> }>;
   rpcCalls: Array<{ fn: string; params: Record<string, unknown> }>;
   deepSeekCalls: DeepSeekArgs[];
@@ -371,13 +383,48 @@ export function makeFake(options: FakeOptions = {}) {
           return builder;
         },
         update(values: Record<string, unknown>) {
-          state.updates.push({ table, values });
+          const where: Array<[string, unknown]> = [];
+          state.updates.push({ table, values, where });
           state.events.push(`update:${table}`);
-          return {
-            eq(_column: string, _value: unknown) {
+          const result = () => {
+            if (table !== "practice_relationship_threads") {
               return Promise.resolve({ data: null, error: null });
+            }
+            const spec = options.threadUpdate ?? {};
+            if (spec.rejects) {
+              return Promise.reject(new Error("thread update rejected"));
+            }
+            if (spec.error) {
+              return Promise.resolve({
+                data: null,
+                error: { message: spec.error },
+              });
+            }
+            const rows = spec.rows ?? 1;
+            return Promise.resolve({
+              data: Array.from({ length: rows }, () => ({
+                visible_thread_id: "thread",
+              })),
+              error: null,
+            });
+          };
+          // deno-lint-ignore no-explicit-any
+          const builder: any = {
+            eq(column: string, value: unknown) {
+              where.push([column, value]);
+              return builder;
+            },
+            select(_columns: string) {
+              return result();
+            },
+            then(
+              onfulfilled?: (value: unknown) => unknown,
+              onrejected?: (reason: unknown) => unknown,
+            ) {
+              return result().then(onfulfilled, onrejected);
             },
           };
+          return builder;
         },
       };
     },
