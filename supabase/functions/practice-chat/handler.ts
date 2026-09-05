@@ -4479,13 +4479,23 @@ export function createPracticeChatHandler(
       let lastError: unknown;
       for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
         try {
+          // 既有漏洞（2026-09-05 發現）：生成結果原本直接寫進外層的 `reply`，
+          // 而三道可見文字守門（內部標籤外洩、L4 不安全、括號旁白）都在賦值
+          // **之後**才丟錯。最後一次 attempt 被擋下來時，`reply` 仍留著那段被
+          // 拒絕的文字，於是 `if (reply === null)` 不成立——守門擋下的內容照樣
+          // 送進 commit、classifier 與 Response。
+          // 改成先收在 attempt 內的 `candidate`，每一道守門都過了才寫回 `reply`；
+          // 全部 attempt 都被擋就維持 `reply === null`，走既有的
+          // `practice_generation_failed`（500），使用者重送即可。
+          // 這是與旗標無關的安全修補，四個旗標面都生效。
+          let candidate: string;
           if (useHaiku && !chatModelFallback) {
             try {
               // max_tokens／temperature 與 DeepSeek 路徑同值（成本護欄：Claude
               // 這一輪不會比 DeepSeek 那一輪更長），system 走 `callClaude` 內建
               // 的 ephemeral cache_control。
               chatModelCalls.haiku++;
-              reply = await deps.callClaude!({
+              candidate = await deps.callClaude!({
                 apiKey: claudeApiKey!,
                 model: CLAUDE_HAIKU_MODEL,
                 messages: chatPromptBundle.messages,
@@ -4506,26 +4516,30 @@ export function createPracticeChatHandler(
                 attempt,
                 error: getErrorMessage(e),
               });
-              reply = await generateWithDeepSeek();
+              candidate = await generateWithDeepSeek();
             }
           } else {
-            reply = await generateWithDeepSeek();
+            candidate = await generateWithDeepSeek();
           }
           // DeepSeek 偶爾在短/冒犯輸入下退回訓練分佈的簡體字，繁體鐵則守不住；
           // 其他 AI 輸出欄位（hint/debrief/temperature）都已過這道轉換，這裡補齊。
-          reply = toTraditionalChinese(normalizeLiteralNewlines(reply));
-          rejectVisibleInternalLabelLeak(reply, "chat_internal_label_leak", {
-            // 第二刀 A 組：NPC 引用對話裡出現過的詞不是機制外洩。
-            transcript: request.turns.map((turn) => turn.text).join("\n"),
-            // style 層或 agency-only guidance 真的注入時才多攔 hidden heading
-            // （旗標全關時兩者皆無，零改動）。
-            ...(responsePlan || agencyDecision?.applied
-              ? { extraChineseLabels: REPLY_STYLE_HIDDEN_HEADINGS }
-              : {}),
-          });
+          candidate = toTraditionalChinese(normalizeLiteralNewlines(candidate));
+          rejectVisibleInternalLabelLeak(
+            candidate,
+            "chat_internal_label_leak",
+            {
+              // 第二刀 A 組：NPC 引用對話裡出現過的詞不是機制外洩。
+              transcript: request.turns.map((turn) => turn.text).join("\n"),
+              // style 層或 agency-only guidance 真的注入時才多攔 hidden heading
+              // （旗標全關時兩者皆無，零改動）。
+              ...(responsePlan || agencyDecision?.applied
+                ? { extraChineseLabels: REPLY_STYLE_HIDDEN_HEADINGS }
+                : {}),
+            },
+          );
           // 第二刀（Eric 2026-08-24 拍板）：NPC 可以反撩——尺度類按本輪熱度
           // （與 prompt 的 allowSpicyLevel 同源），同意權類永遠攔。
-          rejectL4UnsafeVisibleText(reply, "chat_l4_unsafe", {
+          rejectL4UnsafeVisibleText(candidate, "chat_l4_unsafe", {
             fieldClass: "strict",
             spicyAllowed: assistedMode && request.practiceMode === "game" &&
               evaluateGameFsm({
@@ -4538,9 +4552,9 @@ export function createPracticeChatHandler(
           });
           // 括號旁白：style 層才會出現（run3–run5 量到 1–5%）；修補優先，
           // 整段剝到空才丟 chat_stage_direction 重試。
-          if (responsePlan && hasStageDirection(reply)) {
+          if (responsePlan && hasStageDirection(candidate)) {
             stageDirectionRepairs++;
-            reply = stripStageDirections(reply, "chat_stage_direction");
+            candidate = stripStageDirections(candidate, "chat_stage_direction");
           }
           // Phase 3.3 `truncate` 臂：她第一則就是問句時只留第一則（結構判斷，
           // 見 truncateAgencyShape）。放在最後一道後處理，`reply` 就地覆寫，
@@ -4559,10 +4573,11 @@ export function createPracticeChatHandler(
             agencyShapeExperiment === "truncate" &&
             !chatPromptBundle.gameFsmPriority
           ) {
-            const truncated = truncateAgencyShape(reply, agencyDecision);
-            reply = truncated.text;
+            const truncated = truncateAgencyShape(candidate, agencyDecision);
+            candidate = truncated.text;
             shapeTruncatedBubbles = truncated.dropped;
           }
+          reply = candidate;
           break;
         } catch (e) {
           lastError = e;

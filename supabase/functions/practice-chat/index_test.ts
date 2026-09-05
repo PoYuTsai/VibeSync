@@ -9831,3 +9831,62 @@ Deno.test("Phase 3.4 R2：standard 旗標開也不問這個欄位（沒有分類
   assert(!("sharedPastClaim" in agency));
   assert(!("sharedPastClaimRepaired" in agency));
 });
+
+// ── 生成守門：最後一次重試被擋的文字不得送出（既有漏洞，2026-09-05 修）──────
+//
+// **base 行為（修補前）**：生成結果直接寫進外層的 `reply`，三道可見文字守門
+// （內部標籤外洩、L4 不安全、括號旁白）都在賦值**之後**才丟錯。最後一次
+// attempt 被擋下來時 `reply` 仍留著那段被拒絕的文字，`if (reply === null)`
+// 因此不成立——守門擋下的內容照樣寫進 ledger 並回給 App（HTTP 200）。
+// **修補後**：每次生成先收在 attempt 內的 `candidate`，全部守門都過了才寫回
+// `reply`；全被擋就維持 null，走既有的 `practice_generation_failed`（500），
+// 不扣額、不寫 thread，使用者重送即可。這是與旗標無關的安全修補，
+// agency 未設／off／亂填三面都生效。
+Deno.test("守門在最後一次 attempt 擋下時，被拒絕的文字不得送出（agency 三個 off 面）", async () => {
+  const cases: { name: string; text: string; style?: boolean }[] = [
+    // 括號旁白只在 reply-style 有 plan 時才跑，所以這一格要把 style 打開；
+    // agency 仍然是 off 面（兩支旗標互相獨立）。
+    { name: "括號旁白", text: "（冷淡）", style: true },
+    { name: "L4 同意權", text: "她說不要也要硬上" },
+    { name: "內部標籤外洩", text: "她的投入度 72/100，繼續保持" },
+  ];
+  for (const agency of [undefined, "off", "亂填"]) {
+    for (const c of cases) {
+      const label = `${agency ?? "未設"}／${c.name}`;
+      const { response, json, state } = await run({
+        ledger: ledger({ practice_mode: "beginner" }),
+        // 兩次 attempt 都被同一道守門擋下（第三則留給生成後的分類器）。
+        deepSeekReplies: [c.text, c.text, validHintJson()],
+        env: {
+          ...(agency === undefined
+            ? {}
+            : { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: agency }),
+          ...(c.style ? { PRACTICE_REPLY_STYLE_ENABLED: "true" } : {}),
+        },
+      }, chatBody({ practiceMode: "beginner" }));
+      assertEquals(response.status, 500, label);
+      assertEquals(json.error, "practice_generation_failed", label);
+      assertEquals(json.reply, undefined, label);
+      // 帳一筆都不能寫：沒有 commit、沒有扣額、沒有 thread。
+      assertEquals(
+        state.rpcCalls.filter((c) => c.fn === "commit_practice_chat_turn")
+          .length,
+        0,
+        label,
+      );
+      assertEquals(
+        state.rpcCalls.filter((c) =>
+          c.fn === "upsert_practice_relationship_thread"
+        ).length,
+        0,
+        label,
+      );
+      assertEquals(
+        state.rpcCalls.filter((c) => c.fn === "apply_practice_learning_update")
+          .length,
+        0,
+        label,
+      );
+    }
+  }
+});

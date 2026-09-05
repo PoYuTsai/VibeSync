@@ -14,6 +14,20 @@
 //   4. `telemetry` ── 這一輪印出的每一行 `console.log`／`console.warn` JSON
 //                     （完整形狀：多一個 key、少一個 key、key 順序不同都會炸）。
 //
+// ── 唯一的例外（2026-09-05 baseline 安全修補）──────────────────────────
+// 三道可見文字守門（內部標籤外洩、L4 不安全、括號旁白）在**最後一次**生成
+// attempt 擋下時，base（`7f1d6d6c` 起）會把那段被拒絕的文字照樣送出（HTTP
+// 200 ＋ 寫帳）；修補後改成 `reply` 維持 null → `practice_generation_failed`
+// （500）、不扣額、不寫 thread。**這是與旗標無關的安全修補，四個旗標面都改變**，
+// 所以本檔的契約精確寫法是：
+//
+//   旗標未設／`off`／`shadow` 時四個面逐位元組等於 golden；**例外**是
+//   「守門在最後一次 attempt 被擋」這個形態——它是 baseline 安全修補，golden
+//   本來就不含這種輸入，不需要重印 golden。
+//
+// 那個形態由 `index_test.ts` 的「守門在最後一次 attempt 擋下時，被拒絕的文字
+// 不得送出（agency 三個 off 面）」直接守，含 base 行為的說明。
+//
 // ── 矩陣 ────────────────────────────────────────────────────────────────
 // chat：模式（standard／beginner／game）× reply-style（關／開）
 //     × thread 狀態（沒有 thread／有 replyStyle 狀態／有 agency key ＋未知 key）
