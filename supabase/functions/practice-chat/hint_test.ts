@@ -7315,3 +7315,53 @@ Deno.test("reply-style（PR-4）：省略或 null 的 replyStyle 讓 hint prompt
   );
   assertEquals(styled[0].content, omitted[0].content);
 });
+
+// ── 2026-09-06（production 2026-09-05 17:25 UTC 事故）───────────────────
+// WP6 之後她最新一則可能是 server 自己送的固定標記，不是模型寫的自然語；
+// `latestAssistantShowsHostility` 的句型判斷認不出它們，於是「本輪沒有可貼句」
+// 被判成無根據，兩發都被 `hint_no_pasteable_unsupported_state` 擋掉。
+
+Deno.test("無可貼句：她最新一則是「（已讀）」／「（已封鎖）」＝有根據，不再被判無根據", () => {
+  for (const marker of ["（已讀）", "（已封鎖）", "  （已封鎖）  "]) {
+    const result = parseHintResult(
+      JSON.stringify({
+        noPasteableReason: "她已經不想再收到訊息了。",
+        coaching: "她已經把界線畫死，這裡要學的是收手。",
+      }),
+      {
+        mode: "beginner",
+        enforceGeneratedQuality: true,
+        allowNoPasteableReply: true,
+        turns: [
+          { role: "user" as const, text: "要不要打砲" },
+          { role: "ai" as const, text: marker },
+        ],
+      },
+    );
+    assertEquals(result.replies.length, 0, marker);
+    assertEquals(result.noPasteableReason, SERVER_NO_PASTEABLE_REASON, marker);
+  }
+});
+
+Deno.test("無可貼句（反例）：她正常回覆時宣告沒有可貼句照舊打回", () => {
+  assertThrows(
+    () =>
+      parseHintResult(
+        JSON.stringify({
+          noPasteableReason: "這輪沒東西可貼。",
+          coaching: "她還在聊，這裡要學的是接住她。",
+        }),
+        {
+          mode: "beginner",
+          enforceGeneratedQuality: true,
+          allowNoPasteableReply: true,
+          turns: [
+            { role: "user" as const, text: "妳今天忙嗎" },
+            { role: "ai" as const, text: "還好啊，剛吃完飯（已讀）" },
+          ],
+        },
+      ),
+    Error,
+    "hint_no_pasteable_unsupported_state",
+  );
+});

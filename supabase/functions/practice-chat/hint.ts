@@ -69,6 +69,10 @@ import {
 } from "./visible_text_guard.ts";
 import { latestAssistantShowsHostility } from "./conversation_signals.ts";
 import {
+  BLOCKED_REPLY_TEXT,
+  READ_ONLY_REPLY_TEXT,
+} from "./conversation_agency.ts";
+import {
   effectiveGameFsmSnapshot,
   type PersistedGameState,
 } from "./game_state.ts";
@@ -2828,6 +2832,15 @@ function resolveNoPasteableReason(options: HintParseOptions): string {
       latestAssistant = turns[index].text;
       break;
     }
+  }
+  // 2026-09-06（production 2026-09-05 17:25 UTC 事故）：階梯的兩個固定標記是
+  // **server 自己送出去的**，不是模型寫的自然語——`latestAssistantShowsHostility`
+  // 那套句型判斷本來就認不出它們，於是「本輪沒有可貼句」被判成無根據、兩發都被
+  // `hint_no_pasteable_unsupported_state` 擋掉。這是結構條件（整則恰好等於常數），
+  // 不是語意判斷。
+  const marker = latestAssistant.trim();
+  if (marker === READ_ONLY_REPLY_TEXT || marker === BLOCKED_REPLY_TEXT) {
+    return SERVER_NO_PASTEABLE_REASON;
   }
   if (latestAssistantShowsHostility(latestAssistant)) {
     return SERVER_NO_PASTEABLE_REASON;
