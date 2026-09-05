@@ -273,6 +273,8 @@ export function runnerChatModelFor(args: {
   agency: AgencyMode;
   mode: PracticeRunMode;
   applied: boolean | undefined;
+  /** 這一輪的既有 planner 情境（`bundle.situation`）：越界輪也走 Haiku。 */
+  situation?: string | null;
 }): "deepseek" | "haiku" {
   if (args.chatModel === "haiku") return "haiku";
   if (args.chatModel !== "mixed") return "deepseek";
@@ -281,6 +283,7 @@ export function runnerChatModelFor(args: {
     args.agency,
     args.applied === undefined ? null : { applied: args.applied },
     args.mode,
+    args.situation,
   );
 }
 
@@ -441,6 +444,7 @@ export async function runAgencyScenario(args: {
       agency: args.agency,
       mode: args.mode,
       applied: bundle.agencyDecision?.applied,
+      situation: bundle.situation,
     });
     const activeCallChat = args.chatModel === "mixed"
       ? (chatModelUsed === "haiku" ? args.callChatHaiku! : args.callChat)

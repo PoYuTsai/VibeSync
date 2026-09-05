@@ -1234,6 +1234,11 @@ export function agencyShapeExperimentFor(
  * `beginner ＋ --state=1`，而 standard 連分類器都沒有（4.3 的死守邊界在
  * standard 本來就不成立），介入輪的分佈與品質都沒量過——證據涵蓋不到的模式
  * 不進路由。game 併入前要先跑小黑箱。
+ *
+ * 2026-09-05（Eric 拍板）：除了介入輪，**越界輪**（`situation === "boundary"`
+ * ——既有 planner 的最高優先權，強制 `direct_boundary`）也走 Haiku：劃界線是
+ * 最不能出錯的一輪。越界輪的 `applied` 恆為 false（`computeAgencyDecision` 只
+ * 在 `neutral` 保留決策），所以這是**獨立**的第二個入口，不是 applied 的子集。
  */
 export type PracticeChatModel = "deepseek" | "haiku";
 
@@ -1242,10 +1247,12 @@ export function chatModelFor(
   agencyMode: AgencyMode,
   agencyDecision: { readonly applied: boolean } | null | undefined,
   practiceMode: string | null | undefined,
+  situation?: string | null,
 ): PracticeChatModel {
   if (routingFlag !== "mixed") return "deepseek";
   if (agencyMode !== "on") return "deepseek";
   if (practiceMode !== "beginner" && practiceMode !== "game") return "deepseek";
+  if (situation === "boundary") return "haiku";
   return agencyDecision?.applied === true ? "haiku" : "deepseek";
 }
 

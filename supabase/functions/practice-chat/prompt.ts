@@ -790,6 +790,13 @@ export interface ChatPromptBundle {
    */
   agencyDecision: AgencyApplication | null;
   /**
+   * 這一輪的既有 planner 情境（`classifySituation`：boundary／early_invite／
+   * question／neutral…）。與 `PRACTICE_REPLY_STYLE_ENABLED` 無關——`responsePlan`
+   * 在 style 關掉時是 null，這一格永遠有值。Phase 4.4 的混合模型路由用它認出
+   * 越界輪（那一輪 `agencyDecision.applied` 恆為 false）。
+   */
+  situation: TurnResponsePlan["situation"];
+  /**
    * Game FSM 這一輪有沒有既有的優先權在身上（修復優先／現實旗標）。
    *
    * Phase 3.3 R1（Codex 精確性項目 3）：越界與邀約輪本來就進不了 agency
@@ -1054,6 +1061,10 @@ export function buildChatPromptBundle(
     messages,
     responsePlan,
     agencyDecision,
+    // Phase 4.4：這一輪的既有 planner 情境（`classifySituation`，與 reply-style
+    // 旗標無關）。混合模型路由要靠它認出越界輪；`responsePlan` 在 style 關掉時
+    // 是 null，所以不能從那裡拿。
+    situation: agencySituation,
     gameFsmPriority: policyEvidence.gameRepairPriority ||
       policyEvidence.gameRealityFlagCount > 0,
   };

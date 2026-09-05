@@ -4464,6 +4464,7 @@ export function createPracticeChatHandler(
             agencyMode,
             agencyDecision,
             request.practiceMode,
+            chatPromptBundle.situation,
           ) === "haiku" && !!claudeApiKey && !!deps.callClaude;
       const generateWithDeepSeek = () => {
         chatModelCalls.deepseek++;
