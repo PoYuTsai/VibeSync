@@ -606,25 +606,25 @@ Deno.test("applyCoherenceDeltaCap：算出來跟原本一樣時 capApplied 回 n
   // `deltaCapApplied` 是拿來看「cap 真的改變了幾成回合」的；把「算過但沒動到」
   // 也記成套用，那個比例會永遠偏高。
   const zero = judgement(0, 0);
-  const { judgement: same, capApplied } = applyCoherenceDeltaCap(
-    zero,
-    40,
-    10,
-    "ambiguous",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-  );
+  const { judgement: same, capApplied } = applyCoherenceDeltaCap({
+    judgement: zero,
+    currentHeat: 40,
+    currentFamiliarity: 10,
+    coherence: "ambiguous",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+  });
   assertEquals(capApplied, "none");
   assertEquals(same.delta, 0);
   assertEquals(same.familiarityDelta, 0);
 
   // 真的壓下去時照實回報。
-  const { capApplied: applied } = applyCoherenceDeltaCap(
-    judgement(3, 2),
-    40,
-    10,
-    "ambiguous",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-  );
+  const { capApplied: applied } = applyCoherenceDeltaCap({
+    judgement: judgement(3, 2),
+    currentHeat: 40,
+    currentFamiliarity: 10,
+    coherence: "ambiguous",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+  });
   assertEquals(applied, "ambiguous");
 });
 
@@ -683,25 +683,25 @@ function judgement(delta: number, familiarityDelta: number): LearningJudgement {
 
 Deno.test("applyCoherenceDeltaCap：connected 不套 cap，正常給分（repair 後恢復）", () => {
   const j = judgement(4, 5);
-  const { judgement: capped, capApplied } = applyCoherenceDeltaCap(
-    j,
-    50,
-    30,
-    "connected",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-  );
+  const { judgement: capped, capApplied } = applyCoherenceDeltaCap({
+    judgement: j,
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "connected",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+  });
   assertEquals(capped, j);
   assertEquals(capApplied, "none");
 });
 
 Deno.test("applyCoherenceDeltaCap：ambiguous 只壓正分，既有負分原封不動（Codex R1 新項 P1-3）", () => {
-  const positive = applyCoherenceDeltaCap(
-    judgement(3, 4),
-    50,
-    30,
-    "ambiguous",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-  );
+  const positive = applyCoherenceDeltaCap({
+    judgement: judgement(3, 4),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "ambiguous",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+  });
   assertEquals(positive.judgement.delta, 0);
   assertEquals(positive.judgement.familiarityDelta, 0);
   assertEquals(positive.capApplied, "ambiguous");
@@ -709,38 +709,38 @@ Deno.test("applyCoherenceDeltaCap：ambiguous 只壓正分，既有負分原封�
   // 舊版把 -3/-2 抹成 0/0，等於同一輪玩家壓迫／防禦算出來的處罰被 agency 層
   // 撤銷。cap 是上界不是夾制區間：負分一律原封不動，而且既然什麼都沒動，
   // telemetry 也不該說「套過了」。
-  const negative = applyCoherenceDeltaCap(
-    judgement(-3, -2),
-    50,
-    30,
-    "ambiguous",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-  );
+  const negative = applyCoherenceDeltaCap({
+    judgement: judgement(-3, -2),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "ambiguous",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+  });
   assertEquals(negative.judgement.delta, -3);
   assertEquals(negative.judgement.familiarityDelta, -2);
   assertEquals(negative.capApplied, "none");
 });
 
 Deno.test("applyCoherenceDeltaCap：disconnected 上界 -1/0，永不把既有負分往上拉（Codex R1 新項 P1-3）", () => {
-  const positive = applyCoherenceDeltaCap(
-    judgement(5, 3),
-    50,
-    30,
-    "disconnected",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-  );
+  const positive = applyCoherenceDeltaCap({
+    judgement: judgement(5, 3),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "disconnected",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+  });
   assertEquals(positive.judgement.delta, -1);
   assertEquals(positive.judgement.familiarityDelta, 0);
   assertEquals(positive.capApplied, "disconnected");
 
   // 報告 §8.3 的 -1/0 是**至多**：-5/-3 已經比上界低，照原樣留著。
-  const negative = applyCoherenceDeltaCap(
-    judgement(-5, -3),
-    50,
-    30,
-    "disconnected",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-  );
+  const negative = applyCoherenceDeltaCap({
+    judgement: judgement(-5, -3),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "disconnected",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+  });
   assertEquals(negative.judgement.delta, -5);
   assertEquals(negative.judgement.familiarityDelta, -3);
   assertEquals(negative.capApplied, "none");
@@ -760,85 +760,85 @@ Deno.test("applyCoherenceDeltaCap：一般 pushy／defensive 的負分不會被 
     },
   };
   for (const coherence of ["ambiguous", "disconnected"] as const) {
-    const { judgement: capped, capApplied } = applyCoherenceDeltaCap(
-      pushy,
-      50,
-      30,
-      coherence,
-      { repeatedExactToken: false, unresolvedCount: 0 },
-    );
+    const { judgement: capped, capApplied } = applyCoherenceDeltaCap({
+      judgement: pushy,
+      currentHeat: 50,
+      currentFamiliarity: 30,
+      coherence: coherence,
+      structural: { repeatedExactToken: false, unresolvedCount: 0 },
+    });
     assertEquals(capped.delta, -3, coherence);
     assertEquals(capped.familiarityDelta, -2, coherence);
     assertEquals(capApplied, "none", coherence);
   }
   // repetitive 的 -2/-1 是**下限**（原本就比它低就不動），同樣不上拉。
-  const { judgement: repetitive } = applyCoherenceDeltaCap(
-    pushy,
-    50,
-    30,
-    "repetitive",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-  );
+  const { judgement: repetitive } = applyCoherenceDeltaCap({
+    judgement: pushy,
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "repetitive",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+  });
   assertEquals(repetitive.delta, -3);
   assertEquals(repetitive.familiarityDelta, -2);
 });
 
 Deno.test("applyCoherenceDeltaCap：repetitive／重複同詞至少 -2/-1；connected 不被結構計數蓋過", () => {
-  const repetitive = applyCoherenceDeltaCap(
-    judgement(3, 2),
-    50,
-    30,
-    "repetitive",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-  );
+  const repetitive = applyCoherenceDeltaCap({
+    judgement: judgement(3, 2),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "repetitive",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+  });
   assertEquals(repetitive.judgement.delta, -2);
   assertEquals(repetitive.judgement.familiarityDelta, -1);
   assertEquals(repetitive.capApplied, "repetitive");
 
   // Codex round-2 P1-1：分類器判 connected 時，**不論** unresolvedCount 累到
   // 幾都不套 cap——那個計數只是結構近似，不能蓋過讀完整逐字稿的分類器。
-  const connectedDespiteCount = applyCoherenceDeltaCap(
-    judgement(2, 1),
-    50,
-    30,
-    "connected",
-    { repeatedExactToken: false, unresolvedCount: 3 },
-  );
+  const connectedDespiteCount = applyCoherenceDeltaCap({
+    judgement: judgement(2, 1),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "connected",
+    structural: { repeatedExactToken: false, unresolvedCount: 3 },
+  });
   assertEquals(connectedDespiteCount.judgement.delta, 2);
   assertEquals(connectedDespiteCount.capApplied, "none");
 
   // 分類器沒給 coherence（旗標剛開／解析失敗）才退回結構近似。
-  const structuralFallback = applyCoherenceDeltaCap(
-    judgement(2, 1),
-    50,
-    30,
-    null,
-    { repeatedExactToken: false, unresolvedCount: 2 },
-  );
+  const structuralFallback = applyCoherenceDeltaCap({
+    judgement: judgement(2, 1),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: null,
+    structural: { repeatedExactToken: false, unresolvedCount: 2 },
+  });
   assertEquals(structuralFallback.judgement.delta, -2);
   assertEquals(structuralFallback.capApplied, "repetitive");
 
   // Codex round-2 P1-3：同一個詞原樣再丟一次是結構地面真相，就算分類器判
   // connected 也照壓——不然「連貫」會變成無限重複的免罰卡。
-  const repeatedToken = applyCoherenceDeltaCap(
-    judgement(4, 3),
-    50,
-    30,
-    "connected",
-    { repeatedExactToken: true, unresolvedCount: 0 },
-  );
+  const repeatedToken = applyCoherenceDeltaCap({
+    judgement: judgement(4, 3),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "connected",
+    structural: { repeatedExactToken: true, unresolvedCount: 0 },
+  });
   assertEquals(repeatedToken.judgement.delta, -2);
   assertEquals(repeatedToken.judgement.familiarityDelta, -1);
   assertEquals(repeatedToken.capApplied, "repetitive");
 
   // 已經比下限更負：cap 不把它拉回去。
-  const alreadyNegative = applyCoherenceDeltaCap(
-    judgement(-6, -4),
-    50,
-    30,
-    "repetitive",
-    { repeatedExactToken: false, unresolvedCount: 3 },
-  );
+  const alreadyNegative = applyCoherenceDeltaCap({
+    judgement: judgement(-6, -4),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "repetitive",
+    structural: { repeatedExactToken: false, unresolvedCount: 3 },
+  });
   assertEquals(alreadyNegative.judgement.delta, -6);
   assertEquals(alreadyNegative.judgement.familiarityDelta, -4);
 });
@@ -909,54 +909,54 @@ Deno.test("parseTurnClassification：sharedPastClaim 只在 requireCoherence 時
 Deno.test("applyCoherenceDeltaCap：sharedPastClaim 讓捏造的共同過去拿不到正分，且不抬既有負分", () => {
   // 她「認出」了一個逐字稿裡不存在的共同朋友／共同往事——coherence 完全可能
   // 是 connected（玩家丟的 handle 她確實接上了），所以只有這個欄位擋得住。
-  const { judgement: capped, capApplied } = applyCoherenceDeltaCap(
-    judgement(4, 2),
-    50,
-    30,
-    "connected",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-    true,
-  );
+  const { judgement: capped, capApplied } = applyCoherenceDeltaCap({
+    judgement: judgement(4, 2),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "connected",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+    sharedPastClaim: true,
+  });
   assertEquals(capped.delta, 0);
   assertEquals(capped.familiarityDelta, 0);
   assertEquals(capApplied, "shared_past_claim");
 
   // 只壓正分：既有負分原樣留著（跟 coherence cap 同一個 Math.min 上界機制）。
-  const negative = applyCoherenceDeltaCap(
-    judgement(-5, -3),
-    50,
-    30,
-    "connected",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-    true,
-  );
+  const negative = applyCoherenceDeltaCap({
+    judgement: judgement(-5, -3),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "connected",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+    sharedPastClaim: true,
+  });
   assertEquals(negative.judgement.delta, -5);
   assertEquals(negative.judgement.familiarityDelta, -3);
   assertEquals(negative.capApplied, "none");
 
   // 更嚴的 coherence cap 已經壓過時，capApplied 記那一條（-2/-1 比 0/0 更低）。
-  const repetitive = applyCoherenceDeltaCap(
-    judgement(4, 2),
-    50,
-    30,
-    "repetitive",
-    { repeatedExactToken: false, unresolvedCount: 0 },
-    true,
-  );
+  const repetitive = applyCoherenceDeltaCap({
+    judgement: judgement(4, 2),
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "repetitive",
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+    sharedPastClaim: true,
+  });
   assertEquals(repetitive.judgement.delta, -2);
   assertEquals(repetitive.judgement.familiarityDelta, -1);
   assertEquals(repetitive.capApplied, "repetitive");
 
   // 省略／false＝這一段完全不套用（Phase 2 行為逐字不變）。
   for (const claim of [undefined, false]) {
-    const { judgement: same, capApplied: none } = applyCoherenceDeltaCap(
-      judgement(4, 2),
-      50,
-      30,
-      "connected",
-      { repeatedExactToken: false, unresolvedCount: 0 },
-      claim,
-    );
+    const { judgement: same, capApplied: none } = applyCoherenceDeltaCap({
+      judgement: judgement(4, 2),
+      currentHeat: 50,
+      currentFamiliarity: 30,
+      coherence: "connected",
+      structural: { repeatedExactToken: false, unresolvedCount: 0 },
+      sharedPastClaim: claim,
+    });
     assertEquals(same.delta, 4, String(claim));
     assertEquals(none, "none", String(claim));
   }
@@ -1035,54 +1035,76 @@ Deno.test("Phase 3.6 accommodatingSelfFact：只在 agencyEnabled 時進 prompt�
 
 Deno.test("applyCoherenceDeltaCap Phase 3.6：accommodatingSelfFact 壓成 0/0 只壓正分；與 sharedPastClaim 同時為真記先壓到的那條", () => {
   const args = (coh: "connected" | "repetitive") =>
-    [50, 30, coh, { repeatedExactToken: false, unresolvedCount: 0 }] as const;
-  const capped = applyCoherenceDeltaCap(
-    judgement(4, 2),
+    ({
+      currentHeat: 50,
+      currentFamiliarity: 30,
+      coherence: coh,
+      structural: { repeatedExactToken: false, unresolvedCount: 0 },
+    }) as const;
+  const capped = applyCoherenceDeltaCap({
+    judgement: judgement(4, 2),
     ...args("connected"),
-    false,
-    true,
-  );
+    sharedPastClaim: false,
+    accommodatingSelfFact: true,
+  });
   assertEquals(capped.judgement.delta, 0);
   assertEquals(capped.judgement.familiarityDelta, 0);
   assertEquals(capped.capApplied, "accommodating_self_fact");
 
-  const negative = applyCoherenceDeltaCap(
-    judgement(-5, -3),
+  const negative = applyCoherenceDeltaCap({
+    judgement: judgement(-5, -3),
     ...args("connected"),
-    false,
-    true,
-  );
+    sharedPastClaim: false,
+    accommodatingSelfFact: true,
+  });
   assertEquals(negative.judgement.delta, -5);
   assertEquals(negative.capApplied, "none");
 
-  const both = applyCoherenceDeltaCap(
-    judgement(4, 2),
+  const both = applyCoherenceDeltaCap({
+    judgement: judgement(4, 2),
     ...args("connected"),
-    true,
-    true,
-  );
+    sharedPastClaim: true,
+    accommodatingSelfFact: true,
+  });
   assertEquals(both.judgement.delta, 0);
   assertEquals(both.capApplied, "shared_past_claim");
 
-  const repetitive = applyCoherenceDeltaCap(
-    judgement(4, 2),
+  const repetitive = applyCoherenceDeltaCap({
+    judgement: judgement(4, 2),
     ...args("repetitive"),
-    false,
-    true,
-  );
+    sharedPastClaim: false,
+    accommodatingSelfFact: true,
+  });
   assertEquals(repetitive.judgement.delta, -2);
   assertEquals(repetitive.capApplied, "repetitive");
 
   for (const flag of [undefined, false]) {
-    const same = applyCoherenceDeltaCap(
-      judgement(4, 2),
+    const same = applyCoherenceDeltaCap({
+      judgement: judgement(4, 2),
       ...args("connected"),
-      undefined,
-      flag,
-    );
+      accommodatingSelfFact: flag,
+    });
     assertEquals(same.judgement.delta, 4, String(flag));
     assertEquals(same.capApplied, "none", String(flag));
   }
+
+  // Phase 4.5a 刀 3：`cold_return` 走同一個 0/0 上界——就算分類器判 connected
+  // 也不補回正分，但負分不得被抬高。
+  const cold = applyCoherenceDeltaCap({
+    judgement: judgement(4, 2),
+    ...args("connected"),
+    coldReturn: true,
+  });
+  assertEquals(cold.judgement.delta, 0);
+  assertEquals(cold.judgement.familiarityDelta, 0);
+  assertEquals(cold.capApplied, "cold_return");
+  const coldNegative = applyCoherenceDeltaCap({
+    judgement: judgement(-5, -3),
+    ...args("connected"),
+    coldReturn: true,
+  });
+  assertEquals(coldNegative.judgement.delta, -5);
+  assertEquals(coldNegative.capApplied, "none");
 });
 
 Deno.test("Phase 4.3 R2 P2-4：aiChallengedThisTurn 的 judge 規則有反例定義，且只在 agency 開時進 prompt", () => {

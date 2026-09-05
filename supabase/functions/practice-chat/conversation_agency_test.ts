@@ -2300,42 +2300,79 @@ Deno.test("Phase 4.5a 刀 3：收尾格連三輪 → check_out → 已讀；他�
     return decision;
   };
   // Eric 真機序列：韓國 → 日本 → 清邁 → 哈哈 → 阿布達比 → …
-  assertEquals(step([u("韓國")]).allowedActSetId, "fragment_no_context_v1");
-  assertEquals(
-    step([a("你在說什麼？"), u("日本")]).forcedAct,
-    "challenge_relevance",
-  );
-  assertEquals(
-    step([a("你到底在講什麼"), u("清邁")]).forcedAct,
-    "challenge_relevance",
-  );
-  assertEquals(step([a("？"), u("哈哈")]).situation, null);
-  // 第 5～7 個 user 回合＝收尾格連三輪，streak 0→1→2。
-  for (const [i, token] of ["阿布達比", "曼谷", "馬尼拉"].entries()) {
-    const d = step([a("嗯"), u(token)]);
-    assertEquals(d.forcedAct, "end_low_value_loop", token);
+  // 第 1 輪：無前文裸詞 → bounded；`ask_intent` 都還沒強制，streak 不動。
+  const s1 = step([u("韓國")]);
+  assertEquals(s1.allowedActSetId, "fragment_no_context_v1");
+  assertEquals(state!.lowValueStreak, undefined);
+  // 第 2／3 輪：forced `challenge_relevance` 也算不收斂（CTO 2026-09-05 擴大
+  // 入口），streak 0→1→2。
+  for (
+    const [i, [lead, token]] of ([
+      ["你在說什麼？", "日本"],
+      ["你到底在講什麼", "清邁"],
+    ] as const).entries()
+  ) {
+    const d = step([a(lead), u(token)]);
+    assertEquals(d.forcedAct, "challenge_relevance", token);
     assertEquals(d.evidence.lowValueStreak, i, token);
   }
-  // 第 8 個 user 回合：streak 已達 3 → 她先去忙了。
-  const checkOut = step([a("嗯"), u("銅鑼灣")]);
+  // 第 4 輪「哈哈」：純反應詞不介入，streak **保持**（不歸零也不加）。
+  assertEquals(step([a("？"), u("哈哈")]).situation, null);
+  assertEquals(state!.lowValueStreak, 2);
+  // 第 5 輪：收尾格 → streak 到 3。
+  const loop = step([a("嗯"), u("阿布達比")]);
+  assertEquals(loop.forcedAct, "end_low_value_loop");
+  assertEquals(loop.evidence.lowValueStreak, 2);
+  // 第 6 輪：streak 已達 3 → 她先去忙了。
+  const checkOut = step([a("嗯"), u("曼谷")]);
   assertEquals(checkOut.evidence.lowValueStreak, 3);
   assertEquals(checkOut.forcedAct, "check_out");
   assertEquals(checkOut.allowedActSetId, "check_out_cold_v1");
   assertEquals(state!.checkedOut, true);
-  // 第 9／10 輪：他又丟沒內容的東西 → 直接一則「（已讀）」，不打模型。
-  for (const token of ["東東", "漢漢"]) {
+  // 第 7～9 輪：他又丟沒內容的東西 → 直接一則「（已讀）」，不打模型。
+  for (const token of ["馬尼拉", "銅鑼灣", "東東"]) {
     const d = step([a("嗯"), u(token)]);
     assertEquals(d.forcedAct, "read_only", token);
     assertEquals(d.allowedActSetId, "read_only_v1");
   }
-  // 第 11 輪：他終於解釋 → 回來但冷，階梯整條歸零。
+  // 第 10 輪：他終於解釋 → 回來但冷，階梯整條歸零。
   const back = step([a("嗯"), u("我在列下個月可能去的地方啦")]);
   assertEquals(back.evidence.utteranceShape, "self_share");
   assertEquals(back.forcedAct, "cold_return");
   assertEquals(back.allowedActSetId, "cold_return_v1");
-  assertEquals(back.situation, "ambiguous_fragment");
+  assertEquals(back.situation, "cold_return");
+  assertEquals(state!.lastCoherence, "disconnected");
   assertEquals(state!.checkedOut, undefined);
   assertEquals(state!.lowValueStreak, undefined);
+});
+
+Deno.test("Phase 4.5a 刀 3：forced `ask_intent` 不算不收斂（第一個裸詞不記帳）", () => {
+  // 低容忍分人（`ambiguityTolerance <= 1`）的第一個無前文裸詞是 forced
+  // `ask_intent`——她才剛問第一次，不該被記成「又耗了一輪」。
+  const thresholds = agencyThresholdsFor("normal", false, {
+    initiative: 2,
+    topicPersistence: 2,
+    ambiguityTolerance: 1,
+    skepticism: 2,
+  });
+  const turns = [u("韓國")];
+  const d = agencyPolicyFor(detectAgencyEvidence(turns, null), thresholds);
+  assertEquals(d.forcedAct, "ask_intent");
+  const next = nextConversationAgencyState(null, d, null);
+  assertEquals(next.lowValueStreak, undefined);
+  // 成對反例：同一個位置換成 forced `challenge_relevance` 就記帳。
+  const challenged = agencyPolicyFor(
+    detectAgencyEvidence(
+      [u("韓國"), a("你在說什麼？"), u("日本")],
+      stateWith(true),
+    ),
+    agencyThresholdsFor("normal", false),
+  );
+  assertEquals(challenged.forcedAct, "challenge_relevance");
+  assertEquals(
+    nextConversationAgencyState(null, challenged, null).lowValueStreak,
+    1,
+  );
 });
 
 Deno.test("Phase 4.5a 刀 3：階梯只吃持久化狀態——standard（prev=null）永遠走不到", () => {

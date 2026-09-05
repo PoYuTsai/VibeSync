@@ -567,22 +567,34 @@ export interface CoherenceCapStructuralEvidence {
 }
 
 export function applyCoherenceDeltaCap(
-  judgement: LearningJudgement,
-  currentHeat: number,
-  currentFamiliarity: number,
-  /** 分類器讀完整逐字稿後給的 coherence；null＝分類器沒給（旗標剛開、解析失敗）。 */
-  coherence: TurnCoherence | null,
-  structural: CoherenceCapStructuralEvidence,
-  /**
-   * conversation-agency-v1 Phase 3.4：分類器判「她捏造了跟玩家的共同過去」；
-   * 省略／false＝這一段完全不套用，逐字沿用 Phase 2 行為。
-   */
-  sharedPastClaim?: boolean,
-  /** Phase 3.6：分類器判「她迎合式／矛盾地補自己的設定」；省略／false＝不套用。 */
-  accommodatingSelfFact?: boolean,
-  /** Phase 4.5a 刀 3：這一輪 planner forced `cold_return`；省略／false＝不套用。 */
-  coldReturn?: boolean,
+  opts: {
+    readonly judgement: LearningJudgement;
+    readonly currentHeat: number;
+    readonly currentFamiliarity: number;
+    /** 分類器讀完整逐字稿後給的 coherence；null＝分類器沒給（旗標剛開、解析失敗）。 */
+    readonly coherence: TurnCoherence | null;
+    readonly structural: CoherenceCapStructuralEvidence;
+    /**
+     * conversation-agency-v1 Phase 3.4：分類器判「她捏造了跟玩家的共同過去」；
+     * 省略／false＝這一段完全不套用，逐字沿用 Phase 2 行為。
+     */
+    readonly sharedPastClaim?: boolean;
+    /** Phase 3.6：分類器判「她迎合式／矛盾地補自己的設定」；省略／false＝不套用。 */
+    readonly accommodatingSelfFact?: boolean;
+    /** Phase 4.5a 刀 3：這一輪 planner forced `cold_return`；省略／false＝不套用。 */
+    readonly coldReturn?: boolean;
+  },
 ): { judgement: LearningJudgement; capApplied: DeltaCapApplied } {
+  const {
+    judgement,
+    currentHeat,
+    currentFamiliarity,
+    coherence,
+    structural,
+    sharedPastClaim,
+    accommodatingSelfFact,
+    coldReturn,
+  } = opts;
   let heatDelta = judgement.delta;
   let familiarityDelta = judgement.familiarityDelta;
   let capApplied: DeltaCapApplied = "none";

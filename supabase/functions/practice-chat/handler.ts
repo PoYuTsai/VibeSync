@@ -1477,22 +1477,20 @@ async function judgeLearningState(opts: {
     // 順序跟成功那條一致：applied-hint 保護之後、challenge 閘門之前。
     const { judgement: cappedFallback, capApplied: fallbackCapApplied } =
       agencyDeltaCapActive
-        ? applyCoherenceDeltaCap(
-          protectedFallback,
-          currentTemperature,
-          currentFamiliarity,
+        ? applyCoherenceDeltaCap({
+          judgement: protectedFallback,
+          currentHeat: currentTemperature,
+          currentFamiliarity: currentFamiliarity,
           // Codex round-2 P1-4：分類器沒給判斷就傳 null（不是字面
           // "ambiguous"）——傳字面會讓 cap 內部的結構退路永遠選不到。
-          null,
-          {
+          coherence: null,
+          structural: {
             repeatedExactToken: opts.agencyEvidenceRepeatedExactToken ?? false,
             unresolvedCount: opts.agencyEvidenceUnresolvedCount ?? 0,
           },
-          undefined,
-          undefined,
           // Phase 4.5a 刀 3：分類器壞掉的 fallback 也要壓（同 Codex P1-e 的理由）。
-          opts.agencyColdReturn,
-        )
+          coldReturn: opts.agencyColdReturn,
+        })
         : { judgement: protectedFallback, capApplied: "none" as const };
     const gatedFallback = challengeGateActive
       ? applyChallengeRewardGate({
@@ -1561,23 +1559,23 @@ async function judgeLearningState(opts: {
     // 扣分之前——後兩者是硬下限，會直接蓋過這裡的 clamp，precedence 不變。
     // 旗標 off 時 agencyDeltaCapActive 一律 false，逐字沿用舊行為。
     const { judgement: cappedJudgement, capApplied } = agencyDeltaCapActive
-      ? applyCoherenceDeltaCap(
-        protectedJudgement,
-        currentTemperature,
-        currentFamiliarity,
-        classification.coherence ?? null,
-        {
+      ? applyCoherenceDeltaCap({
+        judgement: protectedJudgement,
+        currentHeat: currentTemperature,
+        currentFamiliarity: currentFamiliarity,
+        coherence: classification.coherence ?? null,
+        structural: {
           repeatedExactToken: opts.agencyEvidenceRepeatedExactToken ?? false,
           unresolvedCount: opts.agencyEvidenceUnresolvedCount ?? 0,
         },
         // Phase 3.4：她捏造跟玩家的共同過去（認識／共同朋友／一起經歷過）時，
         // 這一輪不得換到正分。只有 assisted 有分類器，standard 走不到這裡。
-        classification.sharedPastClaim,
+        sharedPastClaim: classification.sharedPastClaim,
         // Phase 3.6：她替自己補的設定跟來源矛盾、或明顯迎合玩家丟的詞時同樣不得換到正分。
-        classification.accommodatingSelfFact,
+        accommodatingSelfFact: classification.accommodatingSelfFact,
         // Phase 4.5a 刀 3：「回來但冷」那一輪不補回溫度（就算分類器判 connected）。
-        opts.agencyColdReturn,
-      )
+        coldReturn: opts.agencyColdReturn,
+      })
       : { judgement: protectedJudgement, capApplied: "none" as const };
     // 閘門在 delta cap 之後（豁免在閘門內判斷）、crude-offense 確定
     // 性扣滿之前——閘門只夾正向，扣滿與 cooldown 行為不受影響。

@@ -66,7 +66,13 @@ export type UtteranceShape =
 export type AgencySituation =
   | "ambiguous_fragment"
   | "abrupt_topic_shift"
-  | "repeated_low_coherence";
+  | "repeated_low_coherence"
+  /**
+   * Phase 4.5a 刀 3：她「回來但冷」的那一輪——玩家終於給了結構內容，所以既不是
+   * 片段、也不是跳題、更不是重複迴圈。獨立一格，`agency_coaching.ts` 的修復輪
+   * 帳才不會把它算成又一輪「沒接上」。
+   */
+  | "cold_return";
 
 export type AgencyAct =
   | "ask_intent"
@@ -107,6 +113,24 @@ export const AGENCY_ACTS: readonly AgencyAct[] = Object.keys(
  * （`visible_text_guard.ts` 的 `READ_ONLY_REPLY_RE`）。
  */
 export const READ_ONLY_REPLY_TEXT = "（已讀）";
+
+/**
+ * Phase 4.5a 刀 3（CTO 2026-09-05 依 Eric「持續不收斂」原意擴大入口）：
+ * 哪些 forced act 算「她又被迫處理了一輪沒收斂的對話」。
+ *
+ * 原本只認兩個收尾格（`hold_position`／`end_low_value_loop`），離線重建量到
+ * 740 輪只觸發 1 次——因為她多半在問問題，玩家那一則就變成 `answer_candidate`，
+ * 走的是 4.3 的 `challenge_relevance`（`clarify_ignored_*`），根本進不了收尾格。
+ * 現在改成「這一輪 planner **真的強制**了任何一個 agency act」都算，只有
+ * `ask_intent` 除外——那是**第一個**沒有前文的裸詞，她還沒被耗到，第一次問清楚
+ * 不該被記成不收斂。`accept_if_answered`／`return_to_topic` 只出現在 bounded
+ * 清單裡，永遠不會是 `forcedAct`；階梯自己的三格（`cold_return` 走內容輪歸零、
+ * `check_out`／`read_only` 已經在門檻上）clamp 之後也不影響結果。
+ */
+function isLowValueStreakAct(act: PlanAct | null): boolean {
+  return act !== null && act !== "ask_intent" &&
+    (AGENCY_ACTS as readonly PlanAct[]).includes(act);
+}
 
 /** 階梯的門檻：收尾格連續這麼多輪還沒解決，她就先去忙了。 */
 export const LOW_VALUE_STREAK_CHECK_OUT = 3;
@@ -966,9 +990,7 @@ export function agencyPolicyFor(
     if (evidence.checkedOut || evidence.lowValueStreak > 0) {
       return {
         ...base,
-        // `ambiguous_fragment` → 結構 coherence `ambiguous`（不獎不罰）。
-        // 他確實給了內容，不該記成 disconnected／repetitive；但也不是連上了。
-        situation: "ambiguous_fragment",
+        situation: "cold_return",
         policyMode: "forced",
         forcedAct: "cold_return",
         allowedActs: ["cold_return"],
@@ -1255,6 +1277,9 @@ const COHERENCE_BY_SITUATION: Record<
   ConversationAgencyState["lastCoherence"]
 > = {
   ambiguous_fragment: "ambiguous",
+  // Phase 4.5a 刀 3：他確實給了內容，不該記成 disconnected／repetitive；
+  // 但這一輪她仍然是冷的，也不是「連上了」——`ambiguous`＝不獎不罰。
+  cold_return: "ambiguous",
   abrupt_topic_shift: "disconnected",
   repeated_low_coherence: "repetitive",
 };
@@ -1345,7 +1370,7 @@ export function nextConversationAgencyState(
     decision.evidence.answeredYesNo;
   const lowValueStreak = ladderContent
     ? 0
-    : forced === "hold_position" || forced === "end_low_value_loop"
+    : isLowValueStreakAct(forced)
     ? Math.min(LOW_VALUE_STREAK_CHECK_OUT, (base.lowValueStreak ?? 0) + 1)
     : base.lowValueStreak ?? 0;
   const checkedOut = ladderContent
