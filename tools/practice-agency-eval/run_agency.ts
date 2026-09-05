@@ -62,8 +62,9 @@ import {
   DEEPSEEK_MODEL,
 } from "../../supabase/functions/practice-chat/deepseek.ts";
 import {
-  CLAUDE_ENDPOINT,
+  callClaude,
   CLAUDE_HAIKU_MODEL,
+  type ClaudeUsage,
 } from "../../supabase/functions/practice-chat/claude.ts";
 import type { ChatMessage } from "../../supabase/functions/practice-chat/prompt.ts";
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
@@ -740,12 +741,10 @@ export function parseArgs(argv: string[]): CliOptions {
 
 // ── 模型 A/B（Phase 4 之後）：Haiku 4.5 臂 ──────────────────────────────────
 //
-// `callClaude`（claude.ts）是 production 唯一的 Anthropic 呼叫端，但不回傳
-// usage（README「Phase 4 完整黑箱矩陣」已記過這個限制，Sonnet 5 抽查只能用
-// 輸出字數估算）。這支評測工具要真的算單場成本，所以在這裡另外接一支只給
-// 這支 runner 用的呼叫端——system／cache_control／訊息角色對映抄
-// `claude.ts` 的 `claudeRequestMessages`（未 export），多讀一格 `json.usage`；
-// production 一個字都不動。
+// `callClaude`（claude.ts）是 production 唯一的 Anthropic 呼叫端。Phase 4.4
+// 把 usage 以 `onUsage` 回呼補進去之後，這支 runner 直接呼叫它——system／
+// cache_control／訊息角色對映與 production 走**同一份程式**，黑箱結論才搬得回
+// production（Phase 4.3 時這裡是抄一份，兩邊會漂）。
 
 /** Haiku pricing 抄錄自 `supabase/functions/analyze-chat/logger.ts`
  * `TOKEN_COSTS["claude-haiku-4-5-20251001"]`（USD／1K token，未 export，改動
@@ -756,12 +755,7 @@ const HAIKU_OUTPUT_USD_PER_1K = 0.004;
 const HAIKU_CACHE_READ_USD_PER_1K = HAIKU_INPUT_USD_PER_1K * 0.1;
 const HAIKU_CACHE_WRITE_USD_PER_1K = HAIKU_INPUT_USD_PER_1K * 1.25;
 
-export interface HaikuUsage {
-  readonly inputTokens: number;
-  readonly cacheReadInputTokens: number;
-  readonly cacheCreationInputTokens: number;
-  readonly outputTokens: number;
-}
+export type HaikuUsage = ClaudeUsage;
 
 export interface HaikuUsageTotals extends HaikuUsage {
   readonly calls: number;
@@ -799,29 +793,9 @@ export const ZERO_HAIKU_USAGE_TOTALS: HaikuUsageTotals = {
   outputTokens: 0,
 };
 
-/** `ChatMessage[]`（含 system）→ Claude 的 system／messages 形狀，逐段抄
- * `claude.ts` 的 `claudeRequestMessages`（未 export）。 */
-function claudeRequestMessages(messages: ChatMessage[]): {
-  system: string;
-  messages: Array<{ role: "user" | "assistant"; content: string }>;
-} {
-  const system = messages
-    .filter((m) => m.role === "system")
-    .map((m) => m.content)
-    .join("\n\n")
-    .trim();
-  const conversation = messages
-    .filter((m) => m.role !== "system")
-    .map((m) => ({
-      role: m.role === "assistant" ? "assistant" as const : "user" as const,
-      content: m.content,
-    }));
-  return { system, messages: conversation };
-}
-
-/** 呼叫 Haiku 4.5，回傳文字＋這一次的 usage（`callClaude` 不回傳 usage，見上方
- * 區塊註解）。錯誤語意、逾時、system cache_control 與 `claude.ts` 的
- * `callClaude` 一致，只是多回傳一格 usage。 */
+/** 呼叫 Haiku 4.5，回傳文字＋這一次的 usage。呼叫端是 production 的
+ * `callClaude`（claude.ts）本人，只是多掛一個 `onUsage` 回呼——請求 body、
+ * 錯誤語意、逾時與 production 逐位元組同一條路。 */
 export async function callHaikuChat(
   args: {
     apiKey: string;
@@ -831,73 +805,19 @@ export async function callHaikuChat(
     timeoutMs: number;
   },
 ): Promise<{ text: string; usage: HaikuUsage }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), args.timeoutMs);
-  try {
-    const prompt = claudeRequestMessages(args.messages);
-    const res = await fetch(CLAUDE_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": args.apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: CLAUDE_HAIKU_MODEL,
-        max_tokens: args.maxTokens,
-        temperature: args.temperature,
-        system: prompt.system
-          ? [{
-            type: "text",
-            text: prompt.system,
-            cache_control: { type: "ephemeral" },
-          }]
-          : prompt.system,
-        messages: prompt.messages,
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      await res.text().catch(() => "");
-      throw new Error(`claude_http_${res.status}`);
-    }
-    const json = await res.json();
-    if (json?.stop_reason === "refusal") throw new Error("claude_refusal");
-    if (json?.stop_reason === "max_tokens") {
-      throw new Error("claude_max_tokens");
-    }
-    const blocks = Array.isArray(json?.content) ? json.content : [];
-    const text = blocks
-      .filter((b: unknown) =>
-        typeof b === "object" && b !== null &&
-        (b as { type?: unknown }).type === "text" &&
-        typeof (b as { text?: unknown }).text === "string"
-      )
-      .map((b: { text: string }) => b.text)
-      .join("")
-      .trim();
-    if (!text) throw new Error("claude_empty_content");
-    const u = json?.usage ?? {};
-    return {
-      text,
-      usage: {
-        inputTokens: Number(u.input_tokens) || 0,
-        cacheReadInputTokens: Number(u.cache_read_input_tokens) || 0,
-        cacheCreationInputTokens: Number(u.cache_creation_input_tokens) || 0,
-        outputTokens: Number(u.output_tokens) || 0,
-      },
-    };
-  } catch (e) {
-    if (
-      (e instanceof DOMException && e.name === "AbortError") ||
-      (e instanceof Error && e.name === "AbortError")
-    ) {
-      throw new Error("claude_timeout");
-    }
-    throw e instanceof Error ? e : new Error(String(e));
-  } finally {
-    clearTimeout(timeout);
-  }
+  let usage: HaikuUsage = ZERO_HAIKU_USAGE_TOTALS;
+  const text = await callClaude({
+    apiKey: args.apiKey,
+    model: CLAUDE_HAIKU_MODEL,
+    messages: args.messages,
+    maxTokens: args.maxTokens,
+    temperature: args.temperature,
+    timeoutMs: args.timeoutMs,
+    onUsage: (u) => {
+      usage = u;
+    },
+  });
+  return { text, usage };
 }
 
 /** 跟 `readDeepSeekKey` 同一種取法：先看 env，跟 `hint_debrief_spotcheck.ts`

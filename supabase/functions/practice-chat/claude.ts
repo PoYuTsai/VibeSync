@@ -25,9 +25,27 @@ export interface ClaudeArgs {
   };
   endpoint?: string;
   model: string;
+  /**
+   * 這一次呼叫的 token 帳（provider 回的 `usage`）。只在**成功**取到內容時
+   * 呼叫一次；不傳就完全不影響行為（hint／debrief 都不傳）。
+   */
+  onUsage?: (usage: ClaudeUsage) => void;
 }
 
-function claudeRequestMessages(messages: ChatMessage[]): {
+/** Anthropic `usage` 的四格（cache read／write 分開，才算得出真實成本）。 */
+export interface ClaudeUsage {
+  readonly inputTokens: number;
+  readonly cacheReadInputTokens: number;
+  readonly cacheCreationInputTokens: number;
+  readonly outputTokens: number;
+}
+
+/**
+ * `ChatMessage[]`（含 system）→ Claude 的 system／messages 形狀。
+ * export 是為了讓黑箱 runner 與 production 共用同一份對映（Phase 4.4：
+ * runner 原本自己抄了一份，兩邊會漂）。
+ */
+export function claudeRequestMessages(messages: ChatMessage[]): {
   system: string;
   messages: Array<{ role: "user" | "assistant"; content: string }>;
 } {
@@ -115,6 +133,15 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
     }
     if (json?.stop_reason === "max_tokens") {
       throw new Error("claude_max_tokens");
+    }
+    if (args.onUsage) {
+      const u = json?.usage ?? {};
+      args.onUsage({
+        inputTokens: Number(u.input_tokens) || 0,
+        cacheReadInputTokens: Number(u.cache_read_input_tokens) || 0,
+        cacheCreationInputTokens: Number(u.cache_creation_input_tokens) || 0,
+        outputTokens: Number(u.output_tokens) || 0,
+      });
     }
     const blocks = Array.isArray(json?.content) ? json.content : [];
     if (args.forcedTool) {

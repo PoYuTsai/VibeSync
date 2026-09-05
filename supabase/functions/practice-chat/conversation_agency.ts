@@ -1220,6 +1220,28 @@ export function agencyShapeExperimentFor(
   return flag === "truncate" ? flag : "off";
 }
 
+// ── Phase 4.4：混合模型路由（PRACTICE_CHAT_MODEL_ROUTING）──────────────────
+/**
+ * 女生回覆這一輪要打哪一支模型。`"mixed"`＝她要介入的輪次換 Claude Haiku 4.5、
+ * 其餘維持 DeepSeek（Phase 4.3 三臂黑箱：頭條 3.4%、陪玩 1.7%，且比全 Haiku 便宜）。
+ *
+ * 條件與黑箱 runner 的 `--chat-model=mixed` 臂**逐字相同**：agency 解析成 `on`
+ * 且這一輪 `agencyDecision.applied === true`（planner 真的注入了 guidance）。
+ * 旗標不是 `"mixed"`（未設／`off`／亂填）、agency `off`／`shadow`、或這一輪
+ * 沒介入，一律 `"deepseek"`＝與接線前逐字相同。
+ */
+export type PracticeChatModel = "deepseek" | "haiku";
+
+export function chatModelFor(
+  routingFlag: string | undefined,
+  agencyMode: AgencyMode,
+  agencyDecision: { readonly applied: boolean } | null | undefined,
+): PracticeChatModel {
+  if (routingFlag !== "mixed") return "deepseek";
+  if (agencyMode !== "on") return "deepseek";
+  return agencyDecision?.applied === true ? "haiku" : "deepseek";
+}
+
 /**
  * 這一輪「接受仍然合法」的三個候選組——`isAgencyClarifyOnlyTurn` 壓不到它們
  * （清單裡有 `acknowledge`／`accept_if_answered`），而 Eric 2026-09-04 回報的
