@@ -1613,3 +1613,58 @@ turn id**（不依賴序號）。在那之前 debrief 維持 4.1 的純結構近
   分佈，Game 另外排一次黑箱。
 - **刀 3 的 `partnerStatus` 只是提示**：不自動結束、不鎖輸入、不改扣額。要不要
   強制結束、要不要在那一格改扣額，留給 Eric。
+
+### Phase 4.5f：分類器判準補口語質疑正例（2026-09-06，分支 `agency-phase45f`，起點 `b34210f1`）
+
+**問題**：4.5c 的 228 則口語質疑重放量到 `aiChallengedThisTurn` 的召回率代理
+只有 standard 78.1%／assisted 70.6%，漏的集中在三格：單獨一則「嗯？」「蛤？」
+（standard 50%）、「怎麼突然講這個」（assisted 49%）、「你是在亂說還是怎樣」
+（47–67%）。standard 的死守邊界與階梯**完全**靠這個布林（4.3 節），漏一則
+＝那一輪不記帳。
+
+**改了什麼**：只動 `AGENCY_CLASSIFIER_RULES` 裡 `aiChallengedThisTurn` 那一段，
+在既有正例後面加三條口語正例——(a) 整則只有疑問語助詞而玩家上一句是**沒有前文
+可接的裸詞／名詞／帳號**（並明寫「同一句『嗯？』接在他正常回答後面＝false」的
+對比），(b)「怎麼突然講這個」這種**指出跳題**的講法，(c)「你是在亂講還是怎樣」
+這種**帶懷疑的二選一反問**。反例、「兩類互斥」、「判不出來給 false」逐字保留；
+`coherence`／`sharedPastClaim`／`accommodatingSelfFact` 三段一字未動。不動生成
+prompt、不動 App、不動結構層。
+
+**為什麼不用 regex**：評測用的 `CHALLENGE_CANDIDATES` 是取樣器不是判別器，抓不到
+回聲式質疑（「東東？」），又會誤中「什麼意思都可以」。把雙向都會錯的字串比對放進
+強制格的唯一判別器，還要在 Edge 端維護中文詞表，比改判準文字貴且更脆。判準是
+單一來源常數，一改同時吃兩支分類器；旗標 off 時整段不進 prompt，off 四面不變。
+
+**驗收數字**（逐格表與誠實限制在 `tools/practice-agency-eval/README.md`
+「Phase 4.5f」節）：
+
+| 指標 | 舊 | 新 | 驗收 |
+| --- | --- | --- | --- |
+| 召回代理 standard | 78.1% | **86.8%** | 過 |
+| 召回代理 assisted | 70.6% | **76.3%** | 過 |
+| 漏格 1 裸語助詞（standard／assisted） | 50%／78% | **94%／97%** | **過（目標 ≥80%）** |
+| 漏格 2 suspect_nonsense（standard／assisted） | 67%／47% | 73%／57% | **未達 80%** |
+| 漏格 3 why_suddenly assisted | 49% | 49% | **完全沒動** |
+| 誤判代理 standard | 52.7% | 51.1% | 過（−1.6pp） |
+| 誤判代理 assisted | 30.2% | 35.9% | **超出 +2pp 門檻** |
+
+兩個未達標**照約定不硬調文字**，留給 Eric 決定：
+
+- `why_suddenly` 在 assisted 沒動，逐則看那批多半是「原來是在列旅遊清單，我還想說
+  你怎麼突然報地名」這種**他解釋完之後的回顧**——她已經接住了，判 false 合理。
+- assisted 誤判代理 +5.7pp 的那 31 則 false→true，逐則翻幾乎全是**回聲式質疑**
+  （「東東？」「碳循環？」「這誰？我認識嗎」），是正則抓不到的真陽性，不是誤判。
+  而且同設定重跑兩次的雜訊帶就有 1.6pp（逐則翻面 7.3%），**±2pp 門檻本身落在
+  雜訊裡**——這個門檻下一輪要重訂。
+
+**Gate**：`deno test -A supabase/functions/practice-chat` 1,944 passed／1 ignored
+（與 base 同數，只在既有判準文字測試裡加 assert）、`deno test -A tools` 137
+（base 135，+2 為 `complementHitsFor` 與 complement 展開路徑）、
+`agency_flag_off_equivalence_test.ts` 12 passed／1 ignored、golden 未重印
+（旗標 off 時 `agencyEnabled=false`，判準整段不進 prompt）、改動檔 fmt／lint 乾淨。
+
+**花費**：2,031 次 DeepSeek 分類器呼叫，估價 $0.412（授權上限 $0.50）。
+未取得餘額差——第一次付費呼叫前沒先記起始餘額，下一輪要先讀一次再開跑。
+
+**回退**：revert 判準那個 commit 即可。判準是純 prompt 文字，沒有 schema、沒有
+消費端、沒有資料遷移；旗標 off 的四面本來就不含這段。
