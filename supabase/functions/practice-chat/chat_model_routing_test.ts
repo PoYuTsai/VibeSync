@@ -1094,21 +1094,44 @@ Deno.test("Phase 4.6 Codex R1 P2：第一發 check_out 違規、第二發被別�
   );
 });
 
-Deno.test("Phase 4.6 Codex R1 P2：第一發空字串不算 check_out 結構違規，由既有守門處理", async () => {
+Deno.test("Phase 4.7：第一發空字串當守門失敗重試，不算 check_out 結構違規、不注入改寫指令", async () => {
   const r = await runChat({
     agency: "true",
     difficulty: "challenge",
     thread: CHECK_OUT_THREAD,
     deepSeekReplies: ["", "先忙了"],
   });
-  // 既有行為（4.6 之前亦然）：空字串沒有任何守門會擋，一發就送出。這道後檢查
-  // 對空字串刻意回空陣列，所以不會重試、不會注入改寫指令。空回覆本身要不要
-  // 擋是另一把刀，不在 4.6 範圍。
+  // 4.6 之前空字串沒有任何守門會擋，一發就 200 送出空訊息（Codex R1 抓到）。
+  // 4.7 起當守門失敗重試；check_out 後檢查對空字串仍回空陣列，所以第二發
+  // 與第一發逐則相同、沒有改寫指令。
   assertEquals(r.status, 200);
-  assertEquals(r.chatDeepSeekCalls.length, 1);
+  assertEquals(r.body.reply, "先忙了");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  assertEquals(
+    r.chatDeepSeekCalls[1].messages,
+    r.chatDeepSeekCalls[0].messages,
+  );
   const agency = r.succeeded.conversationAgency as Record<string, unknown>;
   assertEquals(agency.checkOutRetry, undefined);
   assertEquals(agency.checkOutRewriteInjected, undefined);
+});
+
+Deno.test("Phase 4.7：兩發都是空白 → 既有整輪失敗路徑（500），不送空訊息、沒有第三發", async () => {
+  for (
+    const [agency, difficulty] of [["true", "challenge"], [
+      "off",
+      "normal",
+    ]] as const
+  ) {
+    const r = await runChat({
+      agency,
+      difficulty,
+      deepSeekReplies: ["", "  \n "],
+      expectFailure: true,
+    });
+    assertEquals(r.status, 500, agency);
+    assertEquals(r.chatDeepSeekCalls.length, 2, agency);
+  }
 });
 
 // ── Phase 4.5g Codex R1 P2-1／P2-2 ────────────────────────────────────────

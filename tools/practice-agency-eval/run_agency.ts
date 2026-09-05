@@ -577,6 +577,10 @@ export async function runAgencyScenario(args: {
           );
         // handler.ts 同序後處理。
         candidate = toTraditionalChinese(normalizeLiteralNewlines(candidate));
+        // Phase 4.7（handler.ts 同源）：空白回覆當守門失敗重試。
+        if (candidate.trim().length === 0) {
+          throw new Error("chat_empty_reply");
+        }
         rejectVisibleInternalLabelLeak(candidate, "chat_internal_label_leak", {
           transcript: turns.map((t) => t.text).join("\n"),
           ...(args.style
