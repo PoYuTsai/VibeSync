@@ -702,6 +702,17 @@ export function hasReadOnlyReply(value: string): boolean {
   return READ_ONLY_REPLY_LITERALS.includes(value.trim());
 }
 
+/**
+ * Phase 5 WP6：性冒犯階梯最後一格的固定字串，規則與「（已讀）」逐條相同
+ * （整則恰好等於、括號成對、只在**被授權**的那一輪放行）。
+ */
+const BLOCKED_REPLY_LITERALS: readonly string[] = ["（已封鎖）", "(已封鎖)"];
+
+/** 這一則回覆整則就是「（已封鎖）」。 */
+export function hasBlockedReply(value: string): boolean {
+  return BLOCKED_REPLY_LITERALS.includes(value.trim());
+}
+
 export function hasStageDirection(
   value: string,
   /**
@@ -709,8 +720,11 @@ export function hasStageDirection(
    * `readOnlyAllowed`／forced `read_only`）；其餘一律 false＝逐字沿用舊行為。
    */
   allowReadOnly = false,
+  /** Phase 5 WP6：這一輪是封鎖輪（server 自己送的固定字串）才傳 true。 */
+  allowBlocked = false,
 ): boolean {
   if (allowReadOnly && hasReadOnlyReply(value)) return false;
+  if (allowBlocked && hasBlockedReply(value)) return false;
   return value.split("\n").some((line) => STAGE_DIRECTION_RE.test(line));
 }
 
@@ -722,8 +736,11 @@ export function stripStageDirections(
   value: string,
   errorCode: string,
   allowReadOnly = false,
+  /** Phase 5 WP6：同 `hasStageDirection`。 */
+  allowBlocked = false,
 ): string {
   if (allowReadOnly && hasReadOnlyReply(value)) return value.trim();
+  if (allowBlocked && hasBlockedReply(value)) return value.trim();
   const lines = value.split("\n").map((line) =>
     line.replace(STAGE_DIRECTION_STRIP_RE, "").trimEnd()
   );

@@ -115,6 +115,13 @@ export const AGENCY_ACTS: readonly AgencyAct[] = Object.keys(
 export const READ_ONLY_REPLY_TEXT = "（已讀）";
 
 /**
+ * Phase 5 WP6 性冒犯階梯最後一格：她封鎖了。**不打生成模型**（這一輪與之後
+ * 每一輪都不打），守門鏈的白名單認同一個字面（`visible_text_guard.ts` 的
+ * `hasBlockedReply`）。
+ */
+export const BLOCKED_REPLY_TEXT = "（已封鎖）";
+
+/**
  * Phase 4.5a 刀 3（CTO 2026-09-05 依 Eric「持續不收斂」原意擴大入口）：
  * 哪些 forced act 算「她又被迫處理了一輪沒收斂的對話」。
  *
@@ -299,6 +306,16 @@ export interface ConversationAgencyState {
   readonly lowValueStreak?: number;
   /** Phase 4.5a 刀 3：她已經先去忙了。缺欄位＝false。 */
   readonly checkedOut?: boolean;
+  /**
+   * Phase 5 WP6 性冒犯階梯：這一場累計的冒犯分（`offense_ladder.ts`）。
+   * 0 時**不寫這個 key**（同 `lowValueStreak`／`checkedOut` 的規則：舊 row
+   * 相容，等價 harness 的物件形狀也不多欄位）。
+   */
+  readonly offenseStrikes?: number;
+  /** Phase 5 WP6：連續幾輪完全沒加分（滿 3 輪就把 `offenseStrikes` 歸零）。 */
+  readonly offenseCleanStreak?: number;
+  /** Phase 5 WP6：她已經封鎖他。缺欄位＝false；一旦為真就不再變。 */
+  readonly blocked?: boolean;
 }
 
 export const INITIAL_CONVERSATION_AGENCY_STATE: ConversationAgencyState = {
@@ -1326,6 +1343,18 @@ export function parseConversationAgencyState(
     r.checkedOut !== undefined && r.checkedOut !== null &&
     typeof r.checkedOut !== "boolean"
   ) return null;
+  // Phase 5 WP6：同一組規則（缺欄位／`null`＝預設值；型別真的不對才整份作廢）。
+  for (const key of ["offenseStrikes", "offenseCleanStreak"] as const) {
+    const v = r[key];
+    if (
+      v !== undefined && v !== null &&
+      !(typeof v === "number" && Number.isInteger(v) && v >= 0)
+    ) return null;
+  }
+  if (
+    r.blocked !== undefined && r.blocked !== null &&
+    typeof r.blocked !== "boolean"
+  ) return null;
   return {
     version: 1,
     lastCoherence: r.lastCoherence as ConversationAgencyState["lastCoherence"],
@@ -1353,6 +1382,13 @@ export function parseConversationAgencyState(
       }
       : {}),
     ...(r.checkedOut === true ? { checkedOut: true } : {}),
+    ...(typeof r.offenseStrikes === "number" && r.offenseStrikes > 0
+      ? { offenseStrikes: r.offenseStrikes }
+      : {}),
+    ...(typeof r.offenseCleanStreak === "number" && r.offenseCleanStreak > 0
+      ? { offenseCleanStreak: r.offenseCleanStreak }
+      : {}),
+    ...(r.blocked === true ? { blocked: true } : {}),
   };
 }
 
@@ -1398,6 +1434,11 @@ export function nextConversationAgencyState(
   classifierSignal: AgencyClassifierSignal | null = null,
   /** Phase 3.8：這一輪 planner 有沒有強制她問他一件事（`plan.askUserFocus`）。 */
   askedAboutUserThisTurn = false,
+  /**
+   * Phase 5 WP6：這一輪算好的性冒犯階梯狀態。旗標未設／off 時呼叫端傳
+   * `null`＝**三個 key 一個都不寫**（不是帶回舊值），與接線前逐位元組相同。
+   */
+  offense: OffenseStatePatch | null = null,
 ): ConversationAgencyState {
   const base = prev ?? INITIAL_CONVERSATION_AGENCY_STATE;
   const forced = decision.forcedAct;
@@ -1480,7 +1521,21 @@ export function nextConversationAgencyState(
       : {}),
     ...(lowValueStreak > 0 ? { lowValueStreak } : {}),
     ...(checkedOut ? { checkedOut: true } : {}),
+    ...(offense && offense.strikes > 0
+      ? { offenseStrikes: offense.strikes }
+      : {}),
+    ...(offense && offense.cleanStreak > 0
+      ? { offenseCleanStreak: offense.cleanStreak }
+      : {}),
+    ...(offense?.blocked ? { blocked: true } : {}),
   };
+}
+
+/** Phase 5 WP6：`offense_ladder.ts` 的 `OffenseState`（避免這裡反向依賴它）。 */
+export interface OffenseStatePatch {
+  readonly strikes: number;
+  readonly cleanStreak: number;
+  readonly blocked: boolean;
 }
 
 /** 旗標字串 → 模式。`test` 只對 TEST_EMAILS 帳號生效。 */
