@@ -92,6 +92,7 @@ import {
   type AgencyShapeExperiment,
   agencyShapeExperimentFor,
   chatModelFor,
+  checkOutStructuralViolation,
   type ConversationAgencyState,
   nextConversationAgencyState,
   READ_ONLY_REPLY_TEXT,
@@ -187,6 +188,10 @@ export interface AgencyTurnResult {
   readonly shapeDropped: number;
   /** 只在 `shapeDropped > 0` 時記錄：截斷前的完整泡泡（診斷用，逐字對照）。 */
   readonly preTruncationBubbles?: readonly string[];
+  /** Phase 4.5g：forced `check_out` 的結構後檢查真的丟掉第一發（為真才記）。 */
+  readonly checkOutRetry?: true;
+  /** Phase 4.5g：第二發仍命中，fail-open 送出（為真才記）。 */
+  readonly checkOutStructuralFail?: true;
   /** 這一輪 `agencyPolicyFor` 的決策（agency 關閉／shadow 時省略）。 */
   readonly policyMode?: "forced" | "bounded";
   readonly forcedAct?: string | null;
@@ -544,6 +549,10 @@ export async function runAgencyScenario(args: {
     let stageDirectionRepairs = 0;
     let shapeDropped = 0;
     let preTruncationBubbles: string[] | undefined;
+    // Phase 4.5g：與 handler.ts 同源的 forced `check_out` 結構後檢查（同一支
+    // `checkOutStructuralViolation`、同一個位置＝所有守門與截斷之後）。
+    let checkOutRetried = false;
+    let checkOutStructuralFailed = false;
     const guardRejections: string[] = [];
     let lastError: unknown;
     for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
@@ -596,6 +605,15 @@ export async function runAgencyScenario(args: {
           }
           candidate = truncated.text;
           shapeDropped = truncated.dropped;
+        }
+        // Phase 4.5g：handler.ts 同序、同一支函式。第一發命中就用既有的第二發
+        // 重試（不加第三次呼叫），第二發仍命中就 fail-open 送出。
+        if (checkOutStructuralViolation(bundle.agencyDecision, candidate)) {
+          if (attempt < CHAT_GENERATION_ATTEMPTS) {
+            checkOutRetried = true;
+            throw new Error("chat_agency_check_out_shape");
+          }
+          checkOutStructuralFailed = true;
         }
         reply = candidate;
         break;
@@ -734,6 +752,10 @@ export async function runAgencyScenario(args: {
       stageDirectionRepairs,
       shapeDropped,
       ...(preTruncationBubbles ? { preTruncationBubbles } : {}),
+      ...(checkOutRetried ? { checkOutRetry: true as const } : {}),
+      ...(checkOutStructuralFailed
+        ? { checkOutStructuralFail: true as const }
+        : {}),
       ...(bundle.agencyDecision
         ? {
           policyMode: bundle.agencyDecision.decision.policyMode,

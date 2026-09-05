@@ -1648,3 +1648,54 @@ export function truncateAgencyShape(
   }
   return { text: bubbles[0], dropped: bubbles.length - 1 };
 }
+
+// ── Phase 4.5g：forced `check_out` 的結構後檢查 ──────────────────────────
+/**
+ * `check_out` 那一輪的長度上限（code units）。Phase 3.1 的難度表把同一個概念
+ * 寫成 `forcedStopMaxChars`（easy 32／normal 24／challenge・game 20）；
+ * `check_out` 只在挑戰／Game 才可能是 forced（`allowsCheckOut`），所以這裡
+ * 只有那一格的值，不多開一張表。
+ */
+export const CHECK_OUT_MAX_CHARS = 20;
+
+/**
+ * Phase 4.5g：forced `check_out` 那一輪的結構後檢查。
+ *
+ * act 說明（`turn_response_plan.ts`）已經明寫「回 1 則，短，說完就收，不問
+ * 問題、不開新話題」，但 2026-09-05 的 Game 單臂黑箱在這一格 16 筆裡量到
+ * 4 筆含問句——跟 Phase 3.1 同一個坑：服從率問題加字無效，要結構後檢查。
+ *
+ * 判準只有結構，不判語意：
+ *
+ *   (a) 她這一則在問問題——用既有的 `aiAskedQuestion`（**她那一側**的問句
+ *       判準，刻意寬鬆、不錨句尾，所以「你之後要去哪」這種不帶問號的中文
+ *       問句也認）。過寬在這裡是安全方向：多判一次只是多重試一發，第二發
+ *       仍命中就 fail-open 送出。玩家那一側的 `isQuestionText`／
+ *       `isQuestionTextTolerant` 錨在句尾，會漏掉「先忙了」前面那半句問句。
+ *   (b) 邀約／開新話題：**留白**。repo 既有的 `practiceInviteLevelFor`／
+ *       `looksLikeGameSoftInvite` 判的是**玩家**貼給她的邀約句（判準通篇是
+ *       「約妳」的語法），套到她自己的回覆是誤用；不自己發明邀約正則。
+ *       已知限制，記在計畫檔。
+ *   (c) 形狀：超過 1 則泡泡（`agencyBubbles`，與 client／黑箱 runner 同一套
+ *       切法）或整則超過 `CHECK_OUT_MAX_CHARS`。
+ *
+ * 回 true＝命中。呼叫端（handler／評測 runner）用**既有的第二發**重試同一份
+ * bundle（不加第三次呼叫）；第二發仍命中就送出去（fail-open，只記 telemetry）
+ * ——這一輪的形狀再差也比 500 好。
+ *
+ * 旗標 off／shadow 走不到：`applied` 那時恆為 false。beginner／easy 也走不到
+ * （`allowsCheckOut` 只給挑戰／Game）。
+ */
+export function checkOutStructuralViolation(
+  agency: AgencyApplication | null,
+  reply: string,
+): boolean {
+  if (!agency?.applied || agency.decision.forcedAct !== "check_out") {
+    return false;
+  }
+  const trimmed = reply.trim();
+  if (trimmed.length === 0) return false;
+  return agencyBubbles(trimmed).length > 1 ||
+    trimmed.length > CHECK_OUT_MAX_CHARS ||
+    aiAskedQuestion(trimmed);
+}

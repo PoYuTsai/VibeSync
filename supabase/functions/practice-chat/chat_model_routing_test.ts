@@ -849,3 +849,114 @@ Deno.test("Phase 4.5b：mixed ＋ agency on ＋ standard 分類器旗標開的�
   assertEquals(r.succeeded.chatModel, "haiku");
   assertEquals(r.body.provider, "anthropic");
 });
+
+// ── Phase 4.5g：forced `check_out` 的結構後檢查 ──────────────────────────
+/**
+ * 階梯的**前一格**：`checkedOut` 還是 false、`lowValueStreak` 已經到門檻，
+ * 這一輪他又丟一個沒內容的東西 → forced `check_out`（她說「先忙了」）。
+ * （`checkedOut: true` 是再下一格的 `read_only`，那一格不打模型。）
+ */
+const CHECK_OUT_THREAD = {
+  profile_id: "practice_girl_001",
+  temperature_score: 40,
+  familiarity_score: 10,
+  recent_facts: {
+    conversationAgency: {
+      version: 1,
+      lastCoherence: "repetitive",
+      unresolvedCount: 0,
+      priorChallengeIssued: true,
+      lastAgencyAct: "end_low_value_loop",
+      lowValueStreak: 3,
+      checkedOut: false,
+    },
+  },
+};
+
+Deno.test("Phase 4.5g：forced check_out 第一發含問句 → 丟掉、採用第二發，telemetry 記 checkOutRetry", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["你在忙嗎", "先忙了"],
+  });
+  assertEquals(r.status, 200);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct, "check_out");
+  // 既有的第二發，不是第三次呼叫。
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  assertEquals(r.body.reply, "先忙了");
+  assertEquals(agency.checkOutRetry, true);
+  assertEquals(agency.checkOutStructuralFail, undefined);
+  assertWrittenExactlyOnce(r);
+});
+
+Deno.test("Phase 4.5g：forced check_out 兩發都含問句 → fail-open 送出第二發，記 checkOutStructuralFail", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["你在忙嗎", "你在忙嗎"],
+  });
+  // 絕不是 500：這一輪的形狀再差也比整輪失敗好。
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "你在忙嗎");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.checkOutRetry, true);
+  assertEquals(agency.checkOutStructuralFail, true);
+  assertWrittenExactlyOnce(r);
+});
+
+Deno.test("Phase 4.5g：形狀（多則／超長）同樣重試，`先忙了` 這種合格輸出一次就過", async () => {
+  const twoBubbles = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["先忙了\n晚點聊", "先忙了"],
+  });
+  assertEquals(twoBubbles.body.reply, "先忙了");
+  assertEquals(twoBubbles.chatDeepSeekCalls.length, 2);
+  assertEquals(
+    (twoBubbles.succeeded.conversationAgency as Record<string, unknown>)
+      .checkOutRetry,
+    true,
+  );
+
+  const overLength = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    // 21 code units（上限 20），沒有任何問句標記。
+    deepSeekReplies: ["我這邊突然有點事情要先處理一下就先這樣了掰", "先忙了"],
+  });
+  assertEquals(overLength.body.reply, "先忙了");
+  assertEquals(overLength.chatDeepSeekCalls.length, 2);
+
+  const clean = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["先忙了"],
+  });
+  assertEquals(clean.body.reply, "先忙了");
+  assertEquals(clean.chatDeepSeekCalls.length, 1);
+  const agency = clean.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct, "check_out");
+  assertEquals(agency.checkOutRetry, undefined);
+  assertEquals(agency.checkOutStructuralFail, undefined);
+});
+
+Deno.test("Phase 4.5g：不是 check_out 的輪次含問句照樣一次就過（既有行為不動）", async () => {
+  const r = await runChat({
+    agency: "true",
+    deepSeekReplies: ["你是說阿布達比嗎"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "你是說阿布達比嗎");
+  assertEquals(r.chatDeepSeekCalls.length, 1);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct !== "check_out", true);
+  assertEquals(agency.checkOutRetry, undefined);
+  assertEquals(agency.checkOutStructuralFail, undefined);
+});

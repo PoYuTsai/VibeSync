@@ -927,15 +927,17 @@ Deno.test("Phase 4.5e：forced read_only 那一輪不打生成模型，回覆逐
   const original = globalThis.fetch;
   // 分類器每輪都回 disconnected＋已質疑，階梯才推得動（真實那場也是這樣）。
   globalThis.fetch = () => Promise.resolve(fakeClassifierResponse(true));
-  // 這一場只有 6 輪該打模型（9 個 user turn 扣掉 3 輪 read_only）。第 7 次呼叫
-  // ＝短路失效、read_only 輪照打模型，直接 throw 讓整場失敗。
+  // 這一場只有 6 輪該打模型（9 個 user turn 扣掉 3 輪 read_only）。上限抓
+  // `MODEL_ROUNDS × CHAT_GENERATION_ATTEMPTS`：Phase 4.5g 的 check_out 結構
+  // 後檢查會讓那一輪用掉既有的第二發（下面這支 fake 每輪都回問句），所以
+  // 呼叫數不再等於輪數；「read_only 輪沒打模型」改由 `attempts === 0` 直接證明。
   const MODEL_ROUNDS = 6;
   let chatCalls = 0;
   try {
     const result = await runAgencyScenario({
       callChat: () => {
         chatCalls++;
-        if (chatCalls > MODEL_ROUNDS) {
+        if (chatCalls > MODEL_ROUNDS * 2) {
           throw new Error("model_called_on_read_only_turn");
         }
         // 問句形狀：她真的問了才會進 `aiQuestionedInLoop`／推進階梯。
@@ -959,9 +961,13 @@ Deno.test("Phase 4.5e：forced read_only 那一輪不打生成模型，回覆逐
     );
     const readOnly = generated.filter((t) => t.forcedAct === "read_only");
     assert(readOnly.length > 0, "這一場沒有跑到 read_only，測試沒有守到東西");
-    // 短路成立：生成呼叫數＝總輪數扣掉 read_only 輪。
-    assertEquals(chatCalls, generated.length - readOnly.length);
-    assertEquals(chatCalls, MODEL_ROUNDS);
+    // 短路成立：打過模型的**輪數**＝總輪數扣掉 read_only 輪，而生成呼叫數
+    // 恰好是各輪 `attempts` 的總和（read_only 輪的 attempts 是 0）。
+    assertEquals(generated.length - readOnly.length, MODEL_ROUNDS);
+    assertEquals(
+      chatCalls,
+      generated.reduce((sum, t) => sum + t.attempts, 0),
+    );
     for (const t of readOnly) {
       // 逐字＝production 的 READ_ONLY_REPLY_TEXT（style 臂的括號旁白守門不得
       // 把它剝掉——`hasStageDirection`／`stripStageDirections` 要吃到白名單）。
@@ -1073,4 +1079,53 @@ Deno.test("runAgencyScenario：game 臂的起始分數真的進 prompt——省�
     low[0].includes("allowSpicyLevel: L1"),
     "省略旗標時 spicy 上限不該是 L3",
   );
+});
+
+Deno.test("Phase 4.5g：runner 與 production 同源——forced check_out 那一輪第一發含問句就重試，第二發合格就採用（不打真網路）", async () => {
+  // 與上面 4.5e 同一條 A25 × game 軌跡：階梯的 check_out 落在 round5。
+  const scenario = AGENCY_SCENARIOS.find((s) => s.id === "A25")!;
+  const original = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(fakeClassifierResponse(true));
+  let chatCalls = 0;
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => {
+        chatCalls++;
+        // 每一發都先回問句；只有被 check_out 後檢查丟掉、重試的那一發回
+        // 合格的收尾句，證明「真的丟掉第一發、真的採用第二發」。
+        return Promise.resolve(
+          chatCalls === 6 ? "先忙了" : `你在講什麼啊${chatCalls}？`,
+        );
+      },
+      profileId: "practice_girl_004",
+      scenario,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "game",
+      style: true,
+      agency: "on",
+      shape: "truncate",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+      chatModel: "deepseek",
+    });
+    assertEquals(result.error, undefined);
+    const checkOut = result.turns.filter((t) => t.forcedAct === "check_out");
+    assertEquals(checkOut.length, 1);
+    const t = checkOut[0];
+    assertEquals(t.reply, "先忙了");
+    assertEquals(t.attempts, 2);
+    assertEquals(t.checkOutRetry, true);
+    assertEquals(t.checkOutStructuralFail, undefined);
+    assertEquals(t.guardRejections, ["chat_agency_check_out_shape"]);
+    // 其餘輪次一發就過，兩個欄位連 key 都沒有。
+    for (
+      const other of result.turns.filter((x) => x.forcedAct !== "check_out")
+    ) {
+      assertEquals(other.checkOutRetry, undefined, other.reply);
+      assertEquals(other.checkOutStructuralFail, undefined, other.reply);
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
 });

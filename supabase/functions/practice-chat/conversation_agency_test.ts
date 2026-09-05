@@ -14,6 +14,8 @@ import {
   aiAskedQuestionStrict,
   aiAskedYesNoQuestion,
   allowsCheckOut,
+  CHECK_OUT_MAX_CHARS,
+  checkOutStructuralViolation,
   type ConversationAgencyState,
   detectAgencyEvidence,
   isAcceptingPlanAct,
@@ -2734,4 +2736,45 @@ Deno.test("Phase 4.5b：階梯的難度門檻不看 practiceMode——standard �
       .forcedAct,
     "read_only",
   );
+});
+
+Deno.test("Phase 4.5g：check_out 的結構後檢查——問句／多則／超長命中，合格的收尾句放行", () => {
+  const checkOut = appliedAgency(
+    [u("東東"), a("東東是誰"), u("阿布達比")],
+  ) as AgencyApplication;
+  // 這支測試不依賴 policy 真的算出 check_out（那是 4.5a 階梯的測試），
+  // 直接把 forcedAct 換成 check_out，只驗這一支後檢查的判準。
+  const agency: AgencyApplication = {
+    ...checkOut,
+    decision: { ...checkOut.decision, forcedAct: "check_out" },
+  };
+  // 合格：一則、短、沒有問句標記。
+  for (const ok of ["先忙了", "我先去忙囉", "嗯，先這樣"]) {
+    assertEquals(checkOutStructuralViolation(agency, ok), false, ok);
+  }
+  // (a) 問句：帶問號、句尾助詞、不帶問號的中文問句都算。
+  for (
+    const bad of ["你在忙嗎", "那你呢", "先忙了，你之後要去哪", "先忙了?"]
+  ) {
+    assertEquals(checkOutStructuralViolation(agency, bad), true, bad);
+  }
+  // (c) 形狀：多於一則、或超過上限。
+  assertEquals(checkOutStructuralViolation(agency, "先忙了\n晚點聊"), true);
+  assertEquals(
+    checkOutStructuralViolation(agency, "先".repeat(CHECK_OUT_MAX_CHARS)),
+    false,
+  );
+  assertEquals(
+    checkOutStructuralViolation(agency, "先".repeat(CHECK_OUT_MAX_CHARS + 1)),
+    true,
+  );
+  // 空白／空字串不檢查（沒有東西可判）。
+  assertEquals(checkOutStructuralViolation(agency, "   "), false);
+  // 閘門：不是 forced check_out 的輪次一律 false，`applied=false` 也是。
+  assertEquals(checkOutStructuralViolation(checkOut, "你在忙嗎"), false);
+  assertEquals(
+    checkOutStructuralViolation({ ...agency, applied: false }, "你在忙嗎"),
+    false,
+  );
+  assertEquals(checkOutStructuralViolation(null, "你在忙嗎"), false);
 });

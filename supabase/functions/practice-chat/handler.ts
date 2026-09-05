@@ -55,6 +55,7 @@ import {
   agencyModeFor,
   agencyShapeExperimentFor,
   chatModelFor,
+  checkOutStructuralViolation,
   nextConversationAgencyState,
   type PracticeChatModel,
   READ_ONLY_REPLY_TEXT,
@@ -4539,6 +4540,10 @@ export function createPracticeChatHandler(
     let shapeTruncatedBubbles = 0;
     /** Phase 4.5a 刀 2：這一輪真的被授權回已讀（守門白名單與 telemetry 同源）。 */
     let readOnlyAllowedThisTurn = false;
+    /** Phase 4.5g：forced `check_out` 的結構後檢查真的丟掉第一發、重試過。 */
+    let checkOutRetried = false;
+    /** Phase 4.5g：第二發仍命中，fail-open 送出去了。 */
+    let checkOutStructuralFailed = false;
     /** Phase 4.5a 刀 3：整輪一支生成模型都沒打（forced `read_only`）。 */
     const noModelCalled = () =>
       chatModelCalls.haiku + chatModelCalls.deepseek === 0;
@@ -4763,6 +4768,19 @@ export function createPracticeChatHandler(
             const truncated = truncateAgencyShape(candidate, agencyDecision);
             candidate = truncated.text;
             shapeTruncatedBubbles = truncated.dropped;
+          }
+          // Phase 4.5g：forced `check_out` 的結構後檢查（見
+          // `checkOutStructuralViolation`）。放在**所有**守門與後處理之後，
+          // 檢查的就是真的要送出去的那串字。機制與 Phase 3.1 同一套：第一發
+          // 命中就用既有的第二發重試同一份 bundle（不加第三次呼叫），第二發
+          // 仍命中就留著送出（fail-open，只記 telemetry）——那一輪的形狀再差
+          // 也比 500 好。旗標 off／shadow 走不到（`applied` 恆 false）。
+          if (checkOutStructuralViolation(agencyDecision, candidate)) {
+            if (attempt < CHAT_GENERATION_ATTEMPTS) {
+              checkOutRetried = true;
+              throw new Error("chat_agency_check_out_shape");
+            }
+            checkOutStructuralFailed = true;
           }
           reply = candidate;
           break;
@@ -5248,6 +5266,14 @@ export function createPracticeChatHandler(
             // 是 false，那種輸出早就被守門剝掉了）。
             ...(readOnlyAllowedThisTurn && hasReadOnlyReply(reply)
               ? { readOnlyReply: true }
+              : {}),
+            // Phase 4.5g：forced `check_out` 的結構後檢查。兩個 key 都**只在
+            // 為真時**存在（沒重試過／沒 fail-open 就連欄位都不多一個）；
+            // 旗標 off／shadow 根本走不到那個檢查，所以等價 harness 的四面
+            // 輸出一個 key 都不多。
+            ...(checkOutRetried ? { checkOutRetry: true } : {}),
+            ...(checkOutStructuralFailed
+              ? { checkOutStructuralFail: true }
               : {}),
           }
           : null,
