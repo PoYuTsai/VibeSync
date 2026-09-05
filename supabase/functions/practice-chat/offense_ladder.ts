@@ -14,6 +14,12 @@
 //   2 → 這一輪 forced `read_only`（不打模型，回「（已讀）」）
 //   ≥3 → 封鎖（這一輪與之後每一輪都不打任何模型，回「（已封鎖）」）
 //
+// 分類器補記的**前提**（Codex R1 P1-4）：beginner／game 讀逐輪分類器
+// （`judgeLearningState`），standard 讀 4.5b 的精簡分類器——後者只有
+// `PRACTICE_STANDARD_AGENCY_CLASSIFIER=true` 時才跑。所以 standard 在那支旗標
+// 關著時**階梯只有詞表**，沒有分類器補記（明確降級，不是 bug；production 兩支
+// 都開）。`index_test.ts` 有一條測試釘住這個行為。
+//
 // 衰減（2026-09-06 黑箱實測依據）：逐輪分類器對正常調情的
 // `boundary === "overstep"` 誤殺率約 11%，累計不歸零時正常玩家一場 20 輪會被
 // 記到約 2 次，有機會無辜被封。所以**連續 3 輪完全沒加分就把累計歸零**；

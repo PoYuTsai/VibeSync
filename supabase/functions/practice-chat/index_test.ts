@@ -10432,3 +10432,40 @@ Deno.test("WP6：thread 已封鎖時 debrief prompt 帶「這場的結局」，�
     !joined(off.state.claudeCalls).includes("這場的結局（hidden guidance"),
   );
 });
+
+Deno.test("P1-4（契約）：standard 的分類器補記需要 PRACTICE_STANDARD_AGENCY_CLASSIFIER；關著時階梯只有詞表", async () => {
+  // 玩家這則詞表沒中，但分類器判 overstep。
+  const clean = "你穿那樣我受不了";
+  const oversteppedClassifier =
+    `{"coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false,"boundary":"overstep"}`;
+
+  // (1) 兩支旗標都開：精簡分類器有跑，補記 +1。
+  const on = await offenseRun({
+    latest: clean,
+    practiceMode: "standard",
+    env: { ...END_SIGNAL_ON, PRACTICE_STANDARD_AGENCY_CLASSIFIER: "true" },
+    deepSeekReplies: ["好啊", oversteppedClassifier],
+  });
+  assertEquals(on.agency?.offenseStrikes, 1);
+  assertEquals(on.agency?.offenseSource, "classifier");
+  assertEquals(on.lastFacts?.offenseStrikes, 1);
+
+  // (2) 只開 SESSION_END_SIGNAL：分類器根本不跑，階梯只有詞表 → 0 分。
+  const off = await offenseRun({
+    latest: clean,
+    practiceMode: "standard",
+    env: END_SIGNAL_ON,
+    deepSeekReplies: ["好啊", oversteppedClassifier],
+  });
+  assertEquals(off.agency?.offenseStrikes, 0);
+  assertEquals(off.agency?.offenseSource, null);
+  assertEquals("offenseStrikes" in (off.lastFacts ?? {}), false);
+  // 詞表本身在 standard 照樣生效（降級只影響分類器補記那一條）。
+  const term = await offenseRun({
+    latest: "要不要打砲",
+    practiceMode: "standard",
+    env: END_SIGNAL_ON,
+  });
+  assertEquals(term.agency?.offenseStrikes, 1);
+  assertEquals(term.agency?.offenseSource, "boundary");
+});
