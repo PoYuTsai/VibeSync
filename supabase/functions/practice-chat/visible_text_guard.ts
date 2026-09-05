@@ -692,22 +692,26 @@ const STAGE_DIRECTION_RE = /^\s*[（(【][^）)】\n]{1,20}[）)】]/u;
  * 只放行**整則恰好等於**「（已讀）」／「(已讀)」的泡泡；「（我笑了）」
  * 「（已讀）不好意思」都照舊剝掉。
  */
-const READ_ONLY_REPLY_RE = /^\s*[（(]已讀[）)]\s*$/u;
+// Codex R1 P2-1：契約是「**整則**恰好等於」，所以判斷對整段（去頭尾空白）做，
+// 不是逐行——「（已讀）\n哈哈」「哈哈\n（已讀）」都不豁免。左右括號也必須成對，
+// 兩個完整字面分支，不用會接受「（已讀)」的字元類。
+const READ_ONLY_REPLY_LITERALS: readonly string[] = ["（已讀）", "(已讀)"];
 
-/** 這一則回覆裡有沒有一顆泡泡就是「（已讀）」。telemetry 用。 */
+/** 這一則回覆整則就是「（已讀）」。守門白名單與 telemetry 共用同一個判準。 */
 export function hasReadOnlyReply(value: string): boolean {
-  return value.split("\n").some((line) => READ_ONLY_REPLY_RE.test(line));
+  return READ_ONLY_REPLY_LITERALS.includes(value.trim());
 }
 
 export function hasStageDirection(
   value: string,
-  /** agency 旗標 `on` 才傳 true；off／shadow 逐字沿用舊行為。 */
+  /**
+   * 這一輪**被授權**回已讀才傳 true（agency on ＋ planner 的
+   * `readOnlyAllowed`／forced `read_only`）；其餘一律 false＝逐字沿用舊行為。
+   */
   allowReadOnly = false,
 ): boolean {
-  return value.split("\n").some((line) =>
-    STAGE_DIRECTION_RE.test(line) &&
-    !(allowReadOnly && READ_ONLY_REPLY_RE.test(line))
-  );
+  if (allowReadOnly && hasReadOnlyReply(value)) return false;
+  return value.split("\n").some((line) => STAGE_DIRECTION_RE.test(line));
 }
 
 /**
@@ -719,10 +723,9 @@ export function stripStageDirections(
   errorCode: string,
   allowReadOnly = false,
 ): string {
+  if (allowReadOnly && hasReadOnlyReply(value)) return value.trim();
   const lines = value.split("\n").map((line) =>
-    allowReadOnly && READ_ONLY_REPLY_RE.test(line)
-      ? line.trim()
-      : line.replace(STAGE_DIRECTION_STRIP_RE, "").trimEnd()
+    line.replace(STAGE_DIRECTION_STRIP_RE, "").trimEnd()
   );
   const kept = lines.filter((line, index) =>
     line.trim().length > 0 || (index > 0 && index < lines.length - 1)

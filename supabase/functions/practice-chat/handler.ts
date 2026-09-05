@@ -4403,6 +4403,11 @@ export function createPracticeChatHandler(
     let stageDirectionRepairs = 0;
     /** Phase 3.3 `truncate` 臂丟掉幾則（旋鈕 off 時永遠 0，也不進 telemetry）。 */
     let shapeTruncatedBubbles = 0;
+    /** Phase 4.5a 刀 2：這一輪真的被授權回已讀（守門白名單與 telemetry 同源）。 */
+    let readOnlyAllowedThisTurn = false;
+    /** Phase 4.5a 刀 3：整輪一支生成模型都沒打（forced `read_only`）。 */
+    const noModelCalled = () =>
+      chatModelCalls.haiku + chatModelCalls.deepseek === 0;
     /** Phase 4.4：這一輪**最終採用**的回覆是哪支模型（旗標 off 時永遠 deepseek）。 */
     let chatModelUsed: PracticeChatModel = "deepseek";
     /** 這一輪有任何一次 Claude 呼叫失敗過（守門重試也算）。 */
@@ -4496,15 +4501,11 @@ export function createPracticeChatHandler(
       let lastError: unknown;
       for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
         try {
-          // 既有漏洞（2026-09-05 發現）：生成結果原本直接寫進外層的 `reply`，
-          // 而三道可見文字守門（內部標籤外洩、L4 不安全、括號旁白）都在賦值
-          // **之後**才丟錯。最後一次 attempt 被擋下來時，`reply` 仍留著那段被
-          // 拒絕的文字，於是 `if (reply === null)` 不成立——守門擋下的內容照樣
-          // 送進 commit、classifier 與 Response。
-          // 改成先收在 attempt 內的 `candidate`，每一道守門都過了才寫回 `reply`；
-          // 全部 attempt 都被擋就維持 `reply === null`，走既有的
-          // `practice_generation_failed`（500），使用者重送即可。
-          // 這是與旗標無關的安全修補，四個旗標面都生效。
+          // Codex R1 P1-1 連帶修掉的既有漏洞：舊版把每一次生成直接寫進外層的
+          // `reply`，守門（旁白／L4／內部標籤）在**最後一次** attempt 丟錯時，
+          // `reply` 仍留著那段被拒絕的文字，`if (reply === null)` 因此不成立
+          // ——被守門擋下來的內容照樣送出去。改成先收在 attempt 內的 `candidate`，
+          // 每一道守門都過了才寫回 `reply`。
           let candidate: string;
           if (readOnlyTurn) {
             candidate = READ_ONLY_REPLY_TEXT;
@@ -4571,10 +4572,14 @@ export function createPracticeChatHandler(
           });
           // 括號旁白：style 層才會出現（run3–run5 量到 1–5%）；修補優先，
           // 整段剝到空才丟 chat_stage_direction 重試。
-          // Phase 4.5a 刀 2：agency on 時，整則就是「（已讀）」的泡泡是產品
-          // 行為，不是旁白（`hasStageDirection` 的白名單）。off／shadow 傳
-          // false＝逐字沿用舊行為。
-          const allowReadOnly = agencyMode === "on";
+          // Phase 4.5a 刀 2（Codex R1 P1-1 收緊）：白名單只給**這一輪真的被
+          // 授權**回已讀的格——planner 的 `readOnlyAllowed`（挑戰／Game 的收尾
+          // 格或連續越界）或 forced `read_only`。舊版只看 `agencyMode === "on"`，
+          // 等於 beginner／easy 的模型自己吐一句「（已讀）」也照樣放行。
+          // 其餘一律 false ＝走既有旁白修補／重試，也不會記 readOnlyReply。
+          const allowReadOnly = agencyMode === "on" &&
+            (responsePlan?.readOnlyAllowed === true || readOnlyTurn);
+          readOnlyAllowedThisTurn = allowReadOnly;
           if (responsePlan && hasStageDirection(candidate, allowReadOnly)) {
             stageDirectionRepairs++;
             candidate = stripStageDirections(
@@ -4864,9 +4869,7 @@ export function createPracticeChatHandler(
       ...(chatModelRoutingOn
         ? {
           // Phase 4.5a 刀 3：forced `read_only` 那一輪一支模型都沒打。
-          chatModel: chatModelCalls.haiku + chatModelCalls.deepseek === 0
-            ? "none"
-            : chatModelUsed,
+          chatModel: noModelCalled() ? "none" : chatModelUsed,
           chatModelCalls,
           ...(chatModelFallback ? { chatModelFallback: true } : {}),
           ...(chatModelUsage ? { chatModelUsage } : {}),
@@ -4973,7 +4976,7 @@ export function createPracticeChatHandler(
             // （forced `read_only` 或最冷那一格模型自己選的）。為真才寫，
             // shadow／off 走不到（`agencyMode !== "on"` 時 `allowReadOnly`
             // 是 false，那種輸出早就被守門剝掉了）。
-            ...(agencyMode === "on" && hasReadOnlyReply(reply)
+            ...(readOnlyAllowedThisTurn && hasReadOnlyReply(reply)
               ? { readOnlyReply: true }
               : {}),
           }
@@ -4988,8 +4991,20 @@ export function createPracticeChatHandler(
       costDeducted: deducted,
       // Phase 4.4：路由旗標關著時永遠是 deepseek／DEEPSEEK_MODEL（逐字舊行為）；
       // 真的走 Haiku 那一輪就照實回報，payload 不說謊（client 目前不讀這兩格）。
-      provider: chatModelUsed === "haiku" ? "anthropic" : "deepseek",
-      model: chatModelUsed === "haiku" ? CLAUDE_HAIKU_MODEL : DEEPSEEK_MODEL,
+      // Phase 4.5a 刀 3（Codex R1 P3-1）：forced `read_only` 那一輪一支模型都沒
+      // 打，照實回報 `"none"`。key 集合不變；client
+      // （`practice_chat_api_service.dart`）從來沒有讀過這兩格（2026-09-05 實查，
+      // 只有 coach-chat 的 service 會讀它自己那條路徑的同名欄位），所以不會炸。
+      provider: noModelCalled()
+        ? "none"
+        : chatModelUsed === "haiku"
+        ? "anthropic"
+        : "deepseek",
+      model: noModelCalled()
+        ? "none"
+        : chatModelUsed === "haiku"
+        ? CLAUDE_HAIKU_MODEL
+        : DEEPSEEK_MODEL,
       generatedAt: (deps.now?.() ?? new Date()).toISOString(),
       ...remainingFrom(sub, limits, deducted),
     };

@@ -466,9 +466,32 @@ export function aiAskedQuestionStrict(text: string): boolean {
 // 免疫；這一刀多綁一個**她那一則的句法形狀**，開放問句（「你在說什麼？」）
 // 與陳述句都不吃，行為逐字維持 4.3 現況。
 const YES_NO_FINAL_PARTICLE_RE = /(嗎|吧|嘛)$/u;
-/** 她上一則是不是**是非問句**（句尾助詞只認「嗎／吧／嘛」，不含開放問句的「呢」）。 */
+const SECOND_PERSON_RE = /[你妳]/u;
+/**
+ * 她上一則是不是**是非問句**。三道都要過（Codex R1 P1-1 之後收緊）：
+ *
+ * 1. `aiAskedQuestion(text)`＝寬鬆問句判準先成立（「這本來就是韓國嘛」句尾是
+ *    「嘛」但整句沒有任何問句標記，這一關就擋掉）；
+ * 2. 剝掉句尾裝飾後最後一個子句以「嗎／吧／嘛」結尾；
+ * 3. 「吧／嘛」**還要**整則出現第二人稱（你／妳）。「嗎」不需要——它在中文裡
+ *    幾乎只有疑問用法；「吧」同時是**提議／自語**（「我先去忙吧」），只看句尾
+ *    會把她自己的收尾句判成在問他，玩家一句「好」就把 `checkedOut` 解開
+ *    （Codex R1 P1-3）。
+ *
+ * **接受的代價**：帶第二人稱的提議句（「你早點睡吧」）仍算是非問句。那一格
+ * 玩家回「好」本來就是回答了，方向安全；而 `check_out` 的 act 說明已經明寫
+ * 「不問他問題」，她在那一輪本來就不該冒出這種句子。
+ */
 export function aiAskedYesNoQuestion(text: string): boolean {
-  return YES_NO_FINAL_PARTICLE_RE.test(finalClauseOf(text));
+  // 第 1 關要對**剝掉句尾裝飾後**的字串做：`AI_QUESTION_RE` 的
+  // `(嗎|呢|吧)\s*$` 錨在原字串結尾，「你在報地名嗎😂」「是玩猜謎嗎～」
+  // 這種真人寫法會整批判漏（Phase 4.3 `isQuestionTextTolerant` 同一個坑）。
+  if (!aiAskedQuestion(text.trim().replace(TAIL_DECORATION_RE, ""))) {
+    return false;
+  }
+  const last = finalClauseOf(text);
+  if (!YES_NO_FINAL_PARTICLE_RE.test(last)) return false;
+  return /嗎$/u.test(last) || SECOND_PERSON_RE.test(text);
 }
 // 整則錨定，只容忍句尾裝飾（空白／標點／emoji，同 `TAIL_DECORATION_RE`）。
 // 刻意不加同義詞：多一個詞就多一次誤判，漏了只是退回 4.3 現況。
@@ -985,6 +1008,15 @@ export function agencyPolicyFor(
   // 三格都**只吃持久化狀態**（`lowValueStreak`／`checkedOut`），所以 standard
   // （`prev === null`）永遠是 0／false＝這一段整個走不到，逐字沿用 4.4 行為。
   // 放在最前面：一旦她已經先去忙了，任何形狀判斷都不該再把她拉回原本的格子。
+  //
+  // Codex R1 P1-2：**強制結束（`check_out`／`read_only`）只給挑戰難度或 Game**
+  // ——`thresholds.forceEndLoopBeforeChallenge` 恰好就是那個條件
+  // （`AGENCY_THRESHOLDS.challenge` 是唯一 true 的一格，`agencyThresholdsFor`
+  // 對 `isGame` 直接套 challenge，profile 位移也不動這個欄位）。beginner 的
+  // easy／normal streak 照算、`cold_return` 照走，但到 3 不結束，留在既有的
+  // `hold_position`／`end_low_value_loop`（她冷但會回）。這一道是**防禦性**
+  // 的：就算 thread row 被直接種成 `lowValueStreak: 3`／`checkedOut: true`，
+  // 輕鬆難度也不得強制結束。
   if (isAgencyContentShape(shape) || evidence.answeredYesNo) {
     // 他終於給了內容：階梯歸零，但這一輪她是「回來但冷」，不補回剛才的落差。
     if (evidence.checkedOut || evidence.lowValueStreak > 0) {
@@ -997,7 +1029,7 @@ export function agencyPolicyFor(
         allowedActSetId: "cold_return_v1",
       };
     }
-  } else if (evidence.checkedOut) {
+  } else if (evidence.checkedOut && thresholds.forceEndLoopBeforeChallenge) {
     // 她說過先忙了，他又丟一個沒內容的東西 → 直接一則「（已讀）」，不打模型。
     return {
       ...base,
@@ -1007,16 +1039,17 @@ export function agencyPolicyFor(
       allowedActs: ["read_only"],
       allowedActSetId: "read_only_v1",
     };
-  } else if (evidence.lowValueStreak >= LOW_VALUE_STREAK_CHECK_OUT) {
+  } else if (
+    evidence.lowValueStreak >= LOW_VALUE_STREAK_CHECK_OUT &&
+    thresholds.forceEndLoopBeforeChallenge
+  ) {
     return {
       ...base,
       situation: "repeated_low_coherence",
       policyMode: "forced",
       forcedAct: "check_out",
       allowedActs: ["check_out"],
-      allowedActSetId: thresholds.forceEndLoopBeforeChallenge
-        ? "check_out_cold_v1"
-        : "check_out_v1",
+      allowedActSetId: "check_out_v1",
     };
   }
   if (!isLowInformation(shape)) return { ...base, ...NO_OVERRIDE };
@@ -1265,8 +1298,13 @@ export function parseConversationAgencyState(
       ? { aiClarifiedLastTurn: r.aiClarifiedLastTurn }
       : {}),
     // 0／false 是預設值，不寫 key（同 `repairedAtUserTurns`／`askedAboutUser`）。
+    // Codex R1 P2-2：state 宣稱 clamp 在 `LOW_VALUE_STREAK_CHECK_OUT`，讀回來
+    // 也要照做（舊 row／外部寫入的 4、999 一律當 3），不然「clamp 3」只在
+    // 寫入端成立。
     ...(typeof r.lowValueStreak === "number" && r.lowValueStreak > 0
-      ? { lowValueStreak: r.lowValueStreak }
+      ? {
+        lowValueStreak: Math.min(LOW_VALUE_STREAK_CHECK_OUT, r.lowValueStreak),
+      }
       : {}),
     ...(r.checkedOut === true ? { checkedOut: true } : {}),
   };

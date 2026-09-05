@@ -786,9 +786,9 @@ export const AGENCY_SET_LINE: Record<string, string> = {
   clarify_ignored_easy_v1: "語氣可以溫和一點，但還是不要接他丟的詞",
   clarify_ignored_v1: "直接問他到底在講什麼，不接他的詞",
   clarify_ignored_cold_v1: "可以只回一個「？」或一句冷的，不解釋、不接",
-  // Phase 4.5a 刀 3：`check_out` 是 forced，這兩條只調口氣（報告 §7.4）。
-  check_out_v1: "語氣可以自然，不用生氣",
-  check_out_cold_v1: "語氣冷，不解釋原因",
+  // Phase 4.5a 刀 3：`check_out` 是 forced，這條只補口氣。Codex R1 P1-2 之後
+  // 強制結束**只給挑戰／Game**，所以難度分支沒有第二個值可以走，收成一條。
+  check_out_v1: "語氣冷，不解釋原因",
 };
 
 /** 獨立於 TurnResponsePlan：style 開或關都能算，只吃 agencyDecision 本身。 */
