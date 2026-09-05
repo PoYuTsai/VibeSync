@@ -10202,7 +10202,7 @@ Deno.test("WP6 (a)：第一次一般越界＝她照常回，但 prompt 尾巴多
   // 第一發是 chat 生成，system 尾巴帶了冷回指引。
   const system = r.state.deepSeekCalls[0].messages[0].content as string;
   assert(
-    system.includes("他最新那句在推性／身體的界線"),
+    system.includes("在推性／身體的界線"),
     "chat system prompt 應該帶冷回指引",
   );
   // 鐵則也多了「不要宣稱封鎖」那一條。
@@ -10309,7 +10309,7 @@ Deno.test("WP6：正常對話不加分——階梯 none、狀態不寫三個 key
   assertEquals(r.agency?.offenseStrikes, 0);
   assertEquals(r.agency?.offenseSource, null);
   const system = r.state.deepSeekCalls[0].messages[0].content as string;
-  assert(!system.includes("他最新那句在推性／身體的界線"));
+  assert(!system.includes("在推性／身體的界線"));
   for (const key of ["offenseStrikes", "blocked"]) {
     assertEquals(key in (r.lastFacts ?? {}), false, key);
   }
@@ -10468,4 +10468,19 @@ Deno.test("P1-4（契約）：standard 的分類器補記需要 PRACTICE_STANDAR
   });
   assertEquals(term.agency?.offenseStrikes, 1);
   assertEquals(term.agency?.offenseSource, "boundary");
+});
+
+Deno.test("P2-C：延後補做的冷回指引不指定是哪一句（他這輪可能正在道歉）", async () => {
+  // 分類器上一輪補了 1 分但還沒執行過任何一階（servedStage 0）；他這輪道歉。
+  const r = await offenseRun({
+    latest: "抱歉，剛剛那句不合適",
+    offense: { offenseStrikes: 1, offenseServedStage: 0 },
+  });
+  assertEquals(r.agency?.offenseStage, "cold");
+  const system = r.state.deepSeekCalls[0].messages[0].content as string;
+  assert(system.includes("在推性／身體的界線"), "應該仍注入冷回指引");
+  assert(
+    !system.includes("最新那句"),
+    "不得指定是最新那句（他這輪在道歉）",
+  );
 });

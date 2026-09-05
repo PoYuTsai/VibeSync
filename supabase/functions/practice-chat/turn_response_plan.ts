@@ -699,8 +699,11 @@ function trailingColdRejectTurns(
 /**
  * 逐則可回溯的越界文字判準（`boundaryLike` ＋ `userOverEscalated` 的定義）。
  *
- * Phase 5 WP6：性冒犯階梯的「一般越界＝+1」用的是**同一個**判準，所以直接
- * 導出（新增第二份詞表只會讓兩邊漂移）。
+ * **這是 planner 的判準，含話題詞**（`BOUNDARY_RE` 的泳裝／內衣／身材照）：
+ * planner 只是換一種回法，誤判的代價很小。性冒犯階梯的計分**刻意不共用它**
+ * （Codex R2 P1-2）——階梯的代價是封鎖，所以 `offense_ladder.ts` 有自己一份
+ * 只收明確性邀約的清單（`OFFENSE_ADVANCE_TERMS`／`OFFENSE_ADVANCE_PATTERNS`）。
+ * 兩邊分開是刻意的，不要為了「統一」把其中一份改成引用另一份。
  */
 export function looksBoundaryCrossing(text: string): boolean {
   return BOUNDARY_RE.test(text) || looksOverEscalated(text);
