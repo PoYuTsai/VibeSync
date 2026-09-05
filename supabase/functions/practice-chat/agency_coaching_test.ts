@@ -566,14 +566,52 @@ Deno.test("Phase 4.5c 刀 2：定位不到的修復點（比這次逐字稿的�
   );
 });
 
-Deno.test("Phase 4.5c 刀 2：standard 與 beginner 同源——同一份 turns／ctx／state 一定同一份帳（函式沒有 practiceMode 分支）", () => {
-  // 4.5b 之後 standard 也會寫 `repairedAtUserTurns`，所以兩種模式的差別只剩
-  // handler 要不要把 state 傳進來（旗標閘門），不是這支函式自己有近似分支。
+Deno.test("Phase 4.5c 刀 2：函式本身沒有 practiceMode 分支——同一份 turns／ctx／state 一定同一份帳", () => {
+  // 近似與否的差別全部收在 handler 的閘門（R1 P1-1 之後**只有 standard**
+  // 會拿到 state；beginner／game 一律傳 null），這支函式自己不認模式。
   for (const n of [null, 1, 2, 4, 6]) {
     const state = n === null ? null : stateWithRepairAt(n);
     assertEquals(
       debriefAgencyLedgerFor(A25_TURNS, CTX, state),
       debriefAgencyLedgerFor(A25_TURNS, { ...CTX }, state),
+      `marker=${n}`,
+    );
+  }
+});
+
+Deno.test("Phase 4.5c 刀 2（R1 P1-2）：marker=1 從第 1 則就注入，不因為 state 還是 null 被跳過", () => {
+  // 兩則玩家訊息：第 1 則是無前文裸片段，第 2 則在無 marker 時也會被判成介入輪。
+  const turns = [
+    t("user", "東東"),
+    t("ai", "東東？誰啊"),
+    t("user", "阿布打比"),
+  ];
+  assertEquals(debriefAgencyLedgerFor(turns, CTX), {
+    fragmentTurns: 1,
+    topicShiftTurns: 1,
+    loopTurns: 0,
+    repairTurns: [1, 2],
+    repairTurnCount: 2,
+  });
+  // marker=1 必須改變帳（舊寫法要求 `state !== null`，marker 落在第 1 則時
+  // 那一輪永遠進不去；這裡鎖住 marker=1 與其他 marker 走同一條路）。
+  assertEquals(debriefAgencyLedgerFor(turns, CTX, stateWithRepairAt(1)), {
+    fragmentTurns: 1,
+    topicShiftTurns: 0,
+    loopTurns: 0,
+    repairTurns: [1],
+    repairTurnCount: 1,
+  });
+
+  // **第 1 則本身留在帳上，是結構上的必然，不是 marker 沒生效**：
+  // `agencyPolicyFor` 唯一能放過裸片段的出口是 `evidence.precedingUserContext`
+  // （前面有玩家講清楚過的內容），而第 1 則玩家訊息依定義沒有前一則玩家訊息，
+  // 所以任何 marker 都改不了它。marker 只改「修復點之後」的欠債。
+  // 這一條斷言是回歸鎖：哪天第 1 則被靜默排除，代表判準改了。
+  for (const n of [1, 2]) {
+    assertEquals(
+      debriefAgencyLedgerFor(turns, CTX, stateWithRepairAt(n)).repairTurns[0],
+      1,
       `marker=${n}`,
     );
   }

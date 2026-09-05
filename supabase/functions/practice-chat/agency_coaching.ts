@@ -20,6 +20,7 @@ import {
   aiAskedQuestion,
   type ConversationAgencyState,
   detectAgencyEvidence,
+  INITIAL_CONVERSATION_AGENCY_STATE,
   nextConversationAgencyState,
 } from "./conversation_agency.ts";
 import { agencyProfileFor } from "./agency_profile.ts";
@@ -169,6 +170,10 @@ export function debriefAgencyLedgerFor(
   // 走到那個序號時才注入，之後由 `locatable` 自然沿用。
   const persistedRepairAt = agencyState?.repairedAtUserTurns;
   let state: ConversationAgencyState | null = null;
+  // R1 P1-2：注入判斷**不能**要求 `state !== null`——第 1 則玩家訊息時 state
+  // 一定是 null，`repairedAtUserTurns: 1` 會永遠被跳過。改用
+  // `INITIAL_CONVERSATION_AGENCY_STATE` 當底（`nextConversationAgencyState`
+  // 對 `prev = null` 用的就是它，所以注入與否的 base 完全同一份）。
   let fragmentTurns = 0;
   let topicShiftTurns = 0;
   let loopTurns = 0;
@@ -177,10 +182,13 @@ export function debriefAgencyLedgerFor(
   for (let i = 0; i < turns.length; i++) {
     if (turns[i].role !== "user") continue;
     userTurnOrdinal += 1;
-    const prev = state !== null && persistedRepairAt !== undefined &&
+    const base = state ?? INITIAL_CONVERSATION_AGENCY_STATE;
+    // 沒有注入時**原樣**傳 `state`（含 null），讓「不注入」這條路逐位元組
+    // 等於 4.1 的回放。
+    const prev = persistedRepairAt !== undefined &&
         persistedRepairAt <= userTurnOrdinal &&
-        (state.repairedAtUserTurns ?? 0) < persistedRepairAt
-      ? { ...state, repairedAtUserTurns: persistedRepairAt }
+        (base.repairedAtUserTurns ?? 0) < persistedRepairAt
+      ? { ...base, repairedAtUserTurns: persistedRepairAt }
       : state;
     const decision = agencyPolicyFor(
       detectAgencyEvidence(turns.slice(0, i + 1), prev),
