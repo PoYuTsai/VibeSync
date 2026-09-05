@@ -2523,3 +2523,132 @@ Deno.test("第二刀：debrief 代號表吃本局原話豁免", () => {
     "debrief_internal_label_leak",
   );
 });
+
+// ── 2026-09-06：點評欄可以引用玩家自己打過的冒犯字眼（代稱後再過守門）─────
+// production 事故：玩家打了「輪姦」「打砲」，教練在 summary 裡引用來解釋她為
+// 什麼封鎖，整張卡被 CONSENT_UNSAFE_PATTERNS 攔下＝點檢討兩發都失敗。
+
+const OFFENSE_TURNS_FOR_DEBRIEF = [
+  { role: "user" as const, text: "在幹嘛" },
+  { role: "ai" as const, text: "剛下班" },
+  { role: "user" as const, text: "輪姦" },
+  { role: "ai" as const, text: "（已封鎖）" },
+];
+
+function cardWith(overrides: Record<string, unknown>) {
+  return JSON.stringify({
+    summary: "整體有來有往，後段她有點冷掉",
+    strengths: ["開場自然不油", "有接住她的話題"],
+    watchouts: ["問句太密像查戶口", "可以多分享自己"],
+    suggestedLine: "那家店我也想去，週末有空一起？",
+    vibe: "中性",
+    ...overrides,
+  });
+}
+
+Deno.test("(a) 玩家打過的冒犯詞：點評欄引用會被代稱掉，卡照樣過", () => {
+  const card = parseDebriefCard(
+    cardWith({
+      summary: "你打出「輪姦」之後她直接不想聊了，這在任何階段都越界",
+    }),
+    { turns: OFFENSE_TURNS_FOR_DEBRIEF },
+  );
+  assert(!card.summary.includes("輪姦"), card.summary);
+  assert(card.summary.includes("那種字眼"), card.summary);
+});
+
+Deno.test("(a2) strengths／watchouts／dateChanceReason 同一條規則", () => {
+  const card = parseDebriefCard(
+    cardWith({
+      watchouts: ["「輪姦」這種字踩到她的底線", "問句太密像查戶口"],
+      dateChance: "low",
+      dateChanceReason: "你說要輪姦，她已經封鎖你了",
+      nextInviteMove: "先別再提輪姦這件事，這場已經沒有下一句",
+    }),
+    { turns: OFFENSE_TURNS_FOR_DEBRIEF },
+  );
+  assert(!JSON.stringify(card).includes("輪姦"), JSON.stringify(card));
+  assert(card.watchouts[0].includes("那種字眼"));
+  assert(card.dateChanceReason.includes("那種字眼"));
+  assert(card.nextInviteMove.includes("那種字眼"));
+});
+
+Deno.test("(b) 玩家沒打過的詞照舊攔：教練自己冒出「灌醉她」仍拒", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        cardWith({ summary: "下次可以灌醉她再約，成功率比較高" }),
+        { turns: OFFENSE_TURNS_FOR_DEBRIEF },
+      ),
+    Error,
+    "debrief_l4_unsafe",
+  );
+  // 玩家打過「輪姦」也不會讓別的詞跟著豁免。
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        cardWith({ summary: "你應該強迫她留下來聽你講完" }),
+        { turns: OFFENSE_TURNS_FOR_DEBRIEF },
+      ),
+    Error,
+    "debrief_l4_unsafe",
+  );
+});
+
+Deno.test("(c) strict 照唸句欄不放行：suggestedLine 出現玩家打過的詞照拒", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        cardWith({ suggestedLine: "剛剛說輪姦是我不對，可以再聊嗎" }),
+        { turns: OFFENSE_TURNS_FOR_DEBRIEF },
+      ),
+    Error,
+    "debrief_l4_unsafe",
+  );
+});
+
+Deno.test("(d) 兩套 normalize 都抓得到：玩家打的字有空白／標點或用簡體照樣算數", () => {
+  // 標點／空白：visible_text_guard 的 normalize（去空白＋去標點）。
+  const spaced = parseDebriefCard(
+    cardWith({ summary: "你打出「輪姦」那句之後她就封鎖了" }),
+    {
+      turns: [
+        { role: "user" as const, text: "輪 姦，妳" },
+        { role: "ai" as const, text: "（已封鎖）" },
+      ],
+    },
+  );
+  assert(spaced.summary.includes("那種字眼"), spaced.summary);
+
+  // 簡體：詞表本來就收兩形，玩家打簡體、教練引用簡體同樣代稱。
+  const simplified = parseDebriefCard(
+    cardWith({ summary: "你打出「轮奸」那句之後她就封鎖了" }),
+    {
+      turns: [
+        { role: "user" as const, text: "轮奸" },
+        { role: "ai" as const, text: "（已封鎖）" },
+      ],
+    },
+  );
+  assert(simplified.summary.includes("那種字眼"), simplified.summary);
+
+  // game_fsm 詞表那一套 normalize（只去空白）：玩家打「打 砲」也算數。
+  const crude = parseDebriefCard(
+    cardWith({ summary: "你直接說打炮，她整個冷掉" }),
+    {
+      turns: [
+        { role: "user" as const, text: "打 炮" },
+        { role: "ai" as const, text: "（已讀）" },
+      ],
+    },
+  );
+  assert(crude.summary.includes("那種字眼"), crude.summary);
+});
+
+Deno.test("沒有 turns 時行為不變（代稱不生效，照舊攔）", () => {
+  assertThrows(
+    () => parseDebriefCard(cardWith({ summary: "你說要輪姦，這是越界" })),
+    Error,
+    "debrief_l4_unsafe",
+  );
+});

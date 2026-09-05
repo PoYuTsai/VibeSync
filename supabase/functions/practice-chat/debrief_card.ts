@@ -2,10 +2,14 @@
 // 防御性：去 markdown 圍欄、缺核心欄位丟出、vibe 非法則回退「中性」、長度 clamp。
 
 import {
+  CONSENT_UNSAFE_PATTERNS,
+  normalizeUnsafeText,
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
   rejectVisibleTemperatureMechanismLeak,
+  SPICY_VISIBLE_PATTERNS,
 } from "./visible_text_guard.ts";
+import { CRUDE_SEXUAL_OFFENSE_TERMS } from "./game_fsm.ts";
 import type { AppliedHintTurn, PracticeTurn } from "./validate.ts";
 import {
   assertPracticeTextGroundedInTurns,
@@ -345,11 +349,63 @@ function generatedVisibleList(
  */
 let guardSpicyAllowed = false;
 let guardTranscript = "";
+/** 只有玩家那幾則（代稱判定的結構來源，不含她的回覆）。 */
+let guardUserTranscript = "";
 
 function rejectInternalLabelLeak(value: string) {
   rejectVisibleInternalLabelLeak(value, "debrief_internal_label_leak", {
     transcript: guardTranscript,
   });
+}
+
+/** 代稱：點評欄引用玩家原話時實際端給使用者看的字。 */
+export const QUOTED_UNSAFE_TERM_MASK = "那種字眼";
+
+/**
+ * `game_fsm.ts` 的粗俗詞表用的是**另一套** normalize（NFKC＋lowercase＋去空白，
+ * 不去標點）。兩套都比一次，玩家用哪一種形態打的都算數。
+ */
+function normalizeCrudeText(value: string): string {
+  return value.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+}
+
+/**
+ * 2026-09-05 production 事故：Eric 那場玩家打了「輪姦」「打砲」，教練在
+ * summary 裡**引用玩家自己打的字**解釋為什麼她會封鎖，整張卡被
+ * `CONSENT_UNSAFE_PATTERNS` 攔下，Sonnet／Haiku 兩發都拒＝點檢討直接失敗。
+ * Eric 定案：已讀／封鎖之後一定要生得出檢討，而且要能解釋為什麼。
+ *
+ * 修法是**結構條件**、不是語意判斷：這個詞逐字出現在玩家自己的 user turns
+ * 裡，就在可見文字裡換成代稱再過守門。玩家沒打過的詞照舊攔（教練自己冒出
+ * 「灌醉她」仍然拒）。照唸句欄（suggestedLine／nextFirstLine）不套用。
+ */
+export function maskQuotedUnsafeTerms(
+  value: string,
+  userTranscript: string,
+): string {
+  if (userTranscript.length === 0) return value;
+  // 可見文字在進守門前已經過 `toTraditionalChinese`，玩家原話沒有——玩家打
+  // 簡體、教練引用時被轉成繁體，逐字比對就會落空。兩形都放進比對來源。
+  const both = `${userTranscript}\n${toTraditionalChinese(userTranscript)}`;
+  const normalized = normalizeUnsafeText(both);
+  const crudeNormalized = normalizeCrudeText(both);
+  let masked = value;
+  for (
+    const term of [
+      ...CONSENT_UNSAFE_PATTERNS,
+      ...SPICY_VISIBLE_PATTERNS,
+      ...CRUDE_SEXUAL_OFFENSE_TERMS,
+    ]
+  ) {
+    if (!masked.includes(term)) continue;
+    if (
+      normalized.includes(normalizeUnsafeText(term)) ||
+      crudeNormalized.includes(normalizeCrudeText(term))
+    ) {
+      masked = masked.split(term).join(QUOTED_UNSAFE_TERM_MASK);
+    }
+  }
+  return masked;
 }
 
 /**
@@ -359,7 +415,13 @@ function rejectInternalLabelLeak(value: string) {
 function guardVisibleText(
   value: string,
   fieldClass: "strict" | "analysis" = "strict",
+  /**
+   * 引用玩家原話時先代稱再過守門。預設＝點評欄才套用；`nextInviteMove`
+   * 是散文建議（不是照唸句），所以 fieldClass 維持 strict 但明確打開代稱。
+   */
+  maskQuotes = fieldClass === "analysis",
 ): string {
+  if (maskQuotes) value = maskQuotedUnsafeTerms(value, guardUserTranscript);
   rejectInternalLabelLeak(value);
   // 批3 P1：debrief prompt 注入 band 詞後，模型可能把溫度內部詞或 1.2 原詞
   // 抄進可見欄位；被拒→handler 重試→band-aware fallback 卡兜底。
@@ -1140,12 +1202,18 @@ export function parseDebriefCard(
   guardSpicyAllowed = opts.spicyAllowed === true;
   // 第二刀 A 組原話豁免：代號詞出現在本局對話原文就可引用。
   guardTranscript = (opts.turns ?? []).map((turn) => turn.text).join("\n");
+  // 2026-09-06：點評欄可以引用**玩家自己打過的**冒犯字眼（代稱後再過守門）。
+  // 只取 user 那幾則——她的回覆不是玩家打的字。
+  guardUserTranscript = (opts.turns ?? []).filter((turn) =>
+    turn.role === "user"
+  ).map((turn) => turn.text).join("\n");
   try {
     return parseDebriefCardInner(raw, opts);
   } finally {
     degradeOverlongDuringParse = false;
     guardSpicyAllowed = false;
     guardTranscript = "";
+    guardUserTranscript = "";
   }
 }
 
@@ -1227,6 +1295,8 @@ function parseDebriefCardInner(
       GENERATED_DEBRIEF_PROSE_MAX_LENGTH,
       enforceGeneratedQuality,
     ),
+    "strict",
+    true,
   );
   const dateChance = DATE_CHANCES.includes(dateChanceRaw)
     ? dateChanceRaw

@@ -106,7 +106,12 @@ const INTERNAL_VISIBLE_LABELS = [
 // 同意權類＝同意權硬底線，任何欄位任何階段 fail-closed；
 // 尺度類＝18 禁話題本身無罪，是時機問題——分析欄不查、照唸句欄按熱度。
 // 案例表：docs/plans/2026-08-24-practice-guard-second-cut-case-table.md
-const CONSENT_UNSAFE_PATTERNS = [
+/**
+ * 2026-09-06（Eric 定案）：debrief 的**點評欄**引用玩家自己打過的字時，要能
+ * 先把那個詞代稱掉再過守門（見 `debrief_card.ts` 的 `maskQuotedUnsafeTerms`）。
+ * 所以兩張表與 normalize 導出；判定與放行語意一個字都沒改。
+ */
+export const CONSENT_UNSAFE_PATTERNS = [
   "硬上",
   "強迫",
   "强迫",
@@ -147,7 +152,7 @@ const CONSENT_UNSAFE_PATTERNS = [
   "喂妳吃药",
 ];
 
-const SPICY_VISIBLE_PATTERNS = [
+export const SPICY_VISIBLE_PATTERNS = [
   "做愛",
   "做爱",
   "上床",
@@ -298,7 +303,7 @@ function normalizeVisibleText(value: string): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-function normalizeUnsafeText(value: string): string {
+export function normalizeUnsafeText(value: string): string {
   return value
     .normalize("NFKC")
     .toLowerCase()

@@ -63,6 +63,15 @@
 // Phase 2.8 新增的 5 個形態案就是照這個程序在 `7f1d6d6c` 上重跑 printer 產生
 // 的；既有 174 案的 digest **一個位元都沒有變**（`statusText` 進 digest 時刻意
 // 讓空字串不寫進 head，所以現況零位元差）。
+//
+// 2026-09-06（旗標無關的 production 修正）：debrief system prompt 多一行
+// 「引用使用者的粗俗或性冒犯字眼時不要逐字複述」——那是 9/5 production 事故
+// （教練引用玩家原話解釋封鎖，整張卡被 L4 守門拒兩發）的修法之一，與任何旗標
+// 無關。照檔頭程序在 `7f1d6d6c` 的樹上**額外套這一行**後重跑 printer，只有
+// 6 個 debrief 案的 `messages` digest 改變（3 模式 × style 開關），其餘 173 案
+// 一個位元都沒動。當時的 handler 型別比 `handler_test_fake.ts` 舊（缺
+// `ClaudeArgs.onUsage`），printer 要加 `--no-check` 才跑得起來；那個欄位是
+// 選填 callback，舊 handler 從不呼叫，runtime 語意不受影響。
 
 import {
   assert,
@@ -680,7 +689,7 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<string, string>([
   ],
   [
     "debrief／standard／style關",
-    "d4701d05fa547f11|4d813cf67931a647|e4208f69770442ed|095d922cbcfcb8a0",
+    "e2647b3527bc1562|4d813cf67931a647|e4208f69770442ed|ddeba7a0708d41cf",
   ],
   [
     "chat／standard／style開／無thread／分類器合法／回覆一般",
@@ -796,7 +805,7 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<string, string>([
   ],
   [
     "debrief／standard／style開",
-    "5e090d4d530ba291|4d813cf67931a647|e4208f69770442ed|6eb96f9a61ff2471",
+    "9bdaf0bb78c3404f|4d813cf67931a647|e4208f69770442ed|bee829c8e71a2c47",
   ],
   [
     "chat／beginner／style關／無thread／分類器合法／回覆一般",
@@ -912,7 +921,7 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<string, string>([
   ],
   [
     "debrief／beginner／style關",
-    "b0931594d7294bf7|4d813cf67931a647|d4c5e22bdcc3d87f|5347e22f68380f8f",
+    "5a34f5d28f981114|4d813cf67931a647|d4c5e22bdcc3d87f|e09566a927c6dce4",
   ],
   [
     "chat／beginner／style開／無thread／分類器合法／回覆一般",
@@ -1028,7 +1037,7 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<string, string>([
   ],
   [
     "debrief／beginner／style開",
-    "dbd7713e6e5cb241|4d813cf67931a647|d4c5e22bdcc3d87f|d7a47ab509c13b12",
+    "f24f3574551cc586|4d813cf67931a647|d4c5e22bdcc3d87f|8fb080da8b972751",
   ],
   [
     "chat／game／style關／無thread／分類器合法／回覆一般",
@@ -1144,7 +1153,7 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<string, string>([
   ],
   [
     "debrief／game／style關",
-    "4e362d22b99f650e|2f97a095d1d75e7a|b7fe848d8efa0772|6eeab4f5c503597d",
+    "ac726a2d849e4f1b|2f97a095d1d75e7a|b7fe848d8efa0772|17099d71dca8f63f",
   ],
   [
     "chat／game／style開／無thread／分類器合法／回覆一般",
@@ -1260,7 +1269,7 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<string, string>([
   ],
   [
     "debrief／game／style開",
-    "2d2aeebde778e3eb|2f97a095d1d75e7a|b7fe848d8efa0772|30caeb474cf26d9e",
+    "3a21ee7bbda8c99e|2f97a095d1d75e7a|b7fe848d8efa0772|113f54c3dff63b92",
   ],
   [
     "chat／standard／貼文非空",

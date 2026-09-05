@@ -1462,7 +1462,9 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   }
   // 2026-08-28 時間錨點：Debrief 多一行「本場練習時間」（固定 85 bytes），
   // 上限 4570→4655。
-  if (maxDebrief > 4655) {
+  // 2026-09-06 引用代稱：debrief 多一行「引用粗俗字眼不要逐字複述」（固定
+  // bytes），實測 4699，上限 4655→4720。
+  if (maxDebrief > 4720) {
     failures.push(`Debrief max ${maxDebrief} at ${maxDebriefCase}`);
   }
   // Applied-Hint Debrief intentionally carries the exact Hint plus its
@@ -1489,7 +1491,8 @@ Deno.test("all 20 SR Hint and Debrief prompts stay bounded at 2/20/40 turns", ()
   // 上限 6750→6835。
   // 2026-08-29 PR 6：最終 dateChance 判準段（含 challenge／game 附加行，
   // 固定 bytes），實測 6965，上限 6835→7000。
-  if (maxDebriefWithHint > 7000) {
+  // 2026-09-06 引用代稱：同上一行（固定 bytes），實測 7032，上限 7000→7060。
+  if (maxDebriefWithHint > 7060) {
     failures.push(
       `Debrief+Hint max ${maxDebriefWithHint} at ${maxDebriefWithHintCase}`,
     );

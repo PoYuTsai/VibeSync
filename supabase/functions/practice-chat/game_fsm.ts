@@ -315,7 +315,8 @@ function questionPressureScore(texts: string[]): number {
 // Codex 首審修表（2026-08-08）：拔掉有自然語用法的低精度詞（露點=天氣、
 // 胸部/精液/性交/自慰=健身醫療衛教、脫光=洗澡、舔你=寵物），補上同級粗俗
 // 但漏收的高精度詞（幹死妳/插妳/內射/中出/含屌/強姦妳…）。
-const CRUDE_SEXUAL_OFFENSE_TERMS = [
+/** 導出供 debrief 點評欄的「玩家自己打過的字」代稱用（`debrief_card.ts`）。 */
+export const CRUDE_SEXUAL_OFFENSE_TERMS = [
   "屁眼",
   "肛交",
   "口交",
