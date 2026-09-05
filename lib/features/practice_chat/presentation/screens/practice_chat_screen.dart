@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1579,14 +1580,75 @@ class _ThinkingBubble extends StatelessWidget {
             color: AppColors.primaryLight.withValues(alpha: 0.52),
           ),
         ),
-        child: const SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: AppColors.primaryDark,
-          ),
-        ),
+        child: const _TypingDots(),
+      ),
+    );
+  }
+}
+
+/// WP4：她「輸入中」的三點動畫（LINE 的視覺語言），取代轉圈。
+/// 三顆點輪流上下 4px，一輪 900ms；reduce-motion 時靜止顯示三顆點。
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (!WidgetsBinding
+        .instance.platformDispatcher.accessibilityFeatures.disableAnimations) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < 3; i++) ...[
+            if (i > 0) const SizedBox(width: 4),
+            Transform.translate(
+              // 每顆點相位差 1/3，正弦波只取上半（0～4px）。
+              offset: Offset(
+                0,
+                -4 *
+                    math.max(
+                      0.0,
+                      math.sin(
+                        (_controller.value - i / 3) * 2 * math.pi,
+                      ),
+                    ),
+              ),
+              child: Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: AppColors.primaryDark,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
