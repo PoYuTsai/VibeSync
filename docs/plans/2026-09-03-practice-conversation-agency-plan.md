@@ -1818,3 +1818,11 @@ runner 那半：本輪 rebase 到 `cd63d41f` 之後確認 **Phase 4.5h 已經把
 
 **R1 之後的 Gate**：practice-chat **1,952 綠**／1 ignored、tools **150 綠**、
 等價 harness golden 未動、fmt／lint 乾淨、`deno check index.ts` 過。
+
+#### Phase 4.5g 後記（2026-09-05 晚，4.5i Game 黑箱實測）：結構後檢查**沒有量到服從率改善**
+
+- 4.5i 兩臂各 16 個 forced `check_out`：第一發違規 68.8%／75.0%，第二發仍違規並 fail-open 送出 62.5%／50.0%；最終文字含問句率 56%／50%，**高於** 4.5c 單發基線 4/16（25%）。兩個基線都只有 16 筆、且 4.5g 的問句判準（`aiAskedQuestion`，過寬）與 4.5c 人工標記不同源，所以不能說「變差」，只能說**看不到改善**。
+- 讀法與 Phase 3.1 相同：同一份 prompt 再打一次，模型多半重犯。這一刀留著的理由只剩 telemetry（`checkOutRetry`／`checkOutStructuralFail` 讓 production 量得到這格）與 fail-open 無害；成本是每個 check_out 輪約七成多一發 Haiku（量級可忽略）。
+- **若要真的修**：第二發不該是同一份 prompt——把「上一發含問句，改寫成一句陳述、不問、不邀」當修補指令注入第二發（有針對性的重寫，而非重試），或直接把 check_out 那一則改成模板化短句候選（結構層選、不生成）。兩者都是下一刀，要各自量。
+- 4.5i 另記：A32 邀約兩臂多數「打太極」（明確答應 L 1/20、H 4–5/20），judge 分不出中間態；A33 修復優先 100%、0 次 cold_return、道歉後無升溫；`forbidViolation` 臂 H 4.9% 主因是 A32.p5 兩則 false_challenge 誤判（判準缺口）。花費 $4.13（Anthropic $3.44＋DeepSeek 餘額差 $0.69）。數字在 `tools/practice-agency-eval/README.md`「Phase 4.5i」節。
+
