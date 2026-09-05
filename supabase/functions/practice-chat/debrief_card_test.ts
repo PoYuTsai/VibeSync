@@ -6,6 +6,7 @@ import {
   assertEquals,
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { quotedTermIsIncitement } from "./visible_text_guard.ts";
 import {
   DEBRIEF_TOOL_SCHEMA,
   DEBRIEF_TOOL_SCHEMA_GAME,
@@ -2716,4 +2717,32 @@ Deno.test("P2-6：輸出端夾了空白或標點也代稱得掉（守門本來�
     assert(card.summary.includes("那種字眼"), `${quoted}: ${card.summary}`);
     assert(!card.summary.includes("姦"), `${quoted}: ${card.summary}`);
   }
+});
+
+Deno.test("P1-A：在詞裡插標點也繞不過教唆檢查（先收斂成原詞再判）", () => {
+  for (
+    const card of [
+      { summary: "「強，迫」也是方法，下次照做就好" },
+      { watchouts: ["「強 迫」也是一種方法，可以試試", "問句太密像查戶口"] },
+      { nextInviteMove: "下次可以直接強，迫她，效果比較快" },
+    ]
+  ) {
+    assertThrows(
+      () => parseDebriefCard(cardWith(card), { turns: FORCE_TURNS }),
+      Error,
+      "debrief_l4_unsafe",
+      JSON.stringify(card),
+    );
+  }
+  // 收斂後教唆檢查真的看得到（不是靠別的守門攔下來的）。
+  assert(quotedTermIsIncitement("強迫也是方法，下次照做就好", "強迫"));
+});
+
+Deno.test("P1-A：插了標點的**批評性**引用照樣代稱通過", () => {
+  const card = parseDebriefCard(
+    cardWith({ summary: "你打了「輪，姦」之後她走了" }),
+    { turns: OFFENSE_TURNS_FOR_DEBRIEF },
+  );
+  assert(card.summary.includes("那種字眼"), card.summary);
+  assert(!card.summary.includes("姦"), card.summary);
 });

@@ -417,13 +417,17 @@ export function maskQuotedUnsafeTerms(
       !normalized.includes(normalizeUnsafeText(term)) &&
       !crudeNormalized.includes(normalizeCrudeText(term))
     ) continue;
+    // Codex R2 P1-A：教唆檢查是**先用標點切句再找完整詞**，所以「強，迫」在它
+    // 眼裡不存在（回 false）而代稱照做——插一個逗號就繞過整道閘門。先把容忍
+    // 形態收斂回原詞，教唆檢查才看得到它。
+    masked = masked.replace(termRe, term);
     // Codex R1 P1-1：玩家打過這個詞**不等於**教練可以拿它教他照做。代稱前
     // 先問這一句是批評還是教唆；教唆就照舊 reject（代稱一旦做下去，守門就
     // 再也看不到那個詞了）。
     if (quotedTermIsIncitement(masked, term)) {
       throw new Error("debrief_l4_unsafe");
     }
-    masked = masked.replace(termRe, QUOTED_UNSAFE_TERM_MASK);
+    masked = masked.split(term).join(QUOTED_UNSAFE_TERM_MASK);
   }
   return masked;
 }
