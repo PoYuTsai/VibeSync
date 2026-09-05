@@ -195,8 +195,15 @@ export interface AgencyTurnResult {
   readonly classifierError?: string;
   /** 這一輪結束、狀態推進後的 `ConversationAgencyState`（`--state=1` 才有）。 */
   readonly agencyStateAfter?: ConversationAgencyState | null;
-  /** Phase 4.3 步驟 1（`--chat-model=mixed`）：這一輪實際用的女生回覆模型。 */
-  readonly chatModelUsed?: "deepseek" | "haiku";
+  /**
+   * Phase 4.3 步驟 1（`--chat-model=mixed`）：這一輪實際用的女生回覆模型。
+   * `"none"`＝這一輪**一支生成模型都沒打**（Phase 4.5a 之後 production 對
+   * forced `read_only` 那一格就是這個值：handler 直接回一則已讀，不打模型）。
+   * 這支 runner 目前不模擬 read_only，所以自己不會寫出 `"none"`；型別留著是
+   * 為了讓 `tallyChatModelRounds` 這類消費端跟 production telemetry 同一個
+   * 值域，不會把 `none` 當成 deepseek。
+   */
+  readonly chatModelUsed?: "deepseek" | "haiku" | "none";
 }
 
 export interface AgencySessionResult {
@@ -821,6 +828,67 @@ const HAIKU_OUTPUT_USD_PER_1K = 0.004;
 const HAIKU_CACHE_READ_USD_PER_1K = HAIKU_INPUT_USD_PER_1K * 0.1;
 const HAIKU_CACHE_WRITE_USD_PER_1K = HAIKU_INPUT_USD_PER_1K * 1.25;
 
+/**
+ * Phase 4.5c：一批場次裡「這一輪用了哪支女生回覆模型」的分佈。
+ *
+ * 為什麼要有這支：README 每一輪都要報一次「`chatModelUsed` Haiku 佔比
+ * 301/420」，之前是手算；而 Phase 4.5a 之後 production telemetry 的
+ * `chatModel`／`provider`／`model` 對 forced `read_only` 那一輪是 `"none"`
+ * ——**那一輪一支模型都沒打**，所以它：
+ *   1. 不算進任何一支模型（不是 deepseek）；
+ *   2. **不進 Haiku 佔比的分母**（沒有生成機會的輪次，不是「本來可以走 Haiku
+ *      卻走了 DeepSeek」）；
+ *   3. 也不進「每輪成本」的分母（那一輪成本為 0，除進去會低估單價）。
+ * `unknown`＝Phase 4.3 之前的舊 artifact 沒有這個欄位，單獨一格回報，不併進
+ * 任何一支模型。
+ */
+export interface ChatModelTally {
+  readonly deepseek: number;
+  readonly haiku: number;
+  readonly none: number;
+  readonly unknown: number;
+  /** 真的打了生成模型的輪數＝`deepseek + haiku`。 */
+  readonly modelRounds: number;
+  /** `haiku / modelRounds`；`modelRounds === 0` 時是 `null`，不除以零。 */
+  readonly haikuShare: number | null;
+}
+
+interface TallyableTurn {
+  readonly role: "user" | "ai";
+  readonly scripted?: boolean;
+  readonly chatModelUsed?: string;
+}
+interface TallyableSession {
+  readonly turns: readonly TallyableTurn[];
+  readonly error?: string;
+}
+
+/** 純函式（零 IO）：失敗的場次與腳本前文不算，只數真的推進過一輪的 user turn。 */
+export function tallyChatModelRounds(
+  results: readonly TallyableSession[],
+): ChatModelTally {
+  let deepseek = 0, haiku = 0, none = 0, unknown = 0;
+  for (const session of results) {
+    if (session.error) continue;
+    for (const turn of session.turns) {
+      if (turn.role !== "user" || turn.scripted) continue;
+      if (turn.chatModelUsed === "haiku") haiku++;
+      else if (turn.chatModelUsed === "deepseek") deepseek++;
+      else if (turn.chatModelUsed === "none") none++;
+      else unknown++;
+    }
+  }
+  const modelRounds = deepseek + haiku;
+  return {
+    deepseek,
+    haiku,
+    none,
+    unknown,
+    modelRounds,
+    haikuShare: modelRounds === 0 ? null : haiku / modelRounds,
+  };
+}
+
 export type HaikuUsage = ClaudeUsage;
 
 export interface HaikuUsageTotals extends HaikuUsage {
@@ -1052,6 +1120,7 @@ async function main(): Promise<void> {
     }
   }
 
+  const modelTally = tallyChatModelRounds(results);
   const artifact = {
     meta: {
       tool: "practice-agency-eval/run_agency",
@@ -1068,6 +1137,10 @@ async function main(): Promise<void> {
       // `haiku`＝評測臂、`mixed`＝Phase 4.3 步驟 1，介入輪換 Haiku）。judge
       // 模型不受這個旗標影響，仍是 DeepSeek。
       chatModel: opts.chatModel,
+      // Phase 4.5c：逐輪 `chatModelUsed` 的分佈（README 每一輪都要引用的
+      // 「Haiku 佔比」）。`none`＝那一輪沒打模型（production 的 forced
+      // `read_only`），不進 `modelRounds` 分母，見 `tallyChatModelRounds`。
+      chatModelRounds: modelTally,
       chat: {
         maxTokens: CHAT_MAX_TOKENS,
         temperature: CHAT_TEMPERATURE,
@@ -1129,6 +1202,17 @@ async function main(): Promise<void> {
   );
   console.error(
     `[agency] 完成 ${results.length} 場（失敗 ${failed}）、${calls} 次生成，寫入 ${opts.outPath}`,
+  );
+  console.error(
+    `[agency] chatModelUsed：haiku ${modelTally.haiku}、deepseek ${modelTally.deepseek}、` +
+      `none ${modelTally.none}（沒打模型的輪次，不進分母）、unknown ${modelTally.unknown}｜` +
+      `Haiku 佔比 ${
+        modelTally.haikuShare === null
+          ? "n/a（沒有任何生成輪）"
+          : `${modelTally.haiku}/${modelTally.modelRounds}（${
+            (modelTally.haikuShare * 100).toFixed(1)
+          }%）`
+      }`,
   );
   if (haikuUsageTotals) {
     const cost = estimateHaikuCostUsd(haikuUsageTotals);

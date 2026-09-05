@@ -2951,3 +2951,32 @@ repeat 或情境數才能補；輕鬆難度的 `check_out`／`read_only` 確認�
 既有判準缺口沒有惡化。**Haiku 系統前綴快取（刀 B）12/12 次呼叫證實是死碼**
 ——前綴長度沒到 2,048 token 門檻，要嘛加長前綴要嘛整個拆法退掉，是下一輪
 要決定的技術債，不是本輪能修的範圍。花費 $2.37，遠低於 $5.00 停損。
+
+## Phase 4.5c：`chatModel="none"` 的消費端與成本外推修正（2026-09-05）
+
+Phase 4.5a 之後，production telemetry 對 forced `read_only` 那一輪的
+`chatModel`／`provider`／`model` 是 **`"none"`**——那一輪 handler 直接回一則
+已讀，**一支生成模型都沒打**。逐支檢查既有消費端的結論：
+
+| 消費端 | 有沒有依 `chatModel` 分組／算成本 | 處置 |
+| --- | --- | --- |
+| `evaluate_agency.ts` | 沒有（吃的是 judge 標籤，`read_only` 輪沒有回覆、不會進 judge） | 不動 |
+| `policy_breakdown.ts` | 沒有（依 `forcedAct`／policy 路徑分組）。`read_only` 是 `forcedAct` 的一個值，但那一輪沒有回覆→沒有 judge 標籤→本來就不會配對成 row | 不動，僅記錄 |
+| `replay_plan.ts` | 沒有（純結構回放，零模型呼叫） | 不動 |
+| `classifier_replay.ts` | 沒有（每個 probe 一次分類器，跟女生回覆模型無關） | 不動 |
+| `run_agency.ts` | **有**：artifact 的逐輪 `chatModelUsed`，README 每一輪引用的「Haiku 佔比」之前都是手算 | 新增 `tallyChatModelRounds`，寫進 `meta.chatModelRounds` 並印在收尾訊息 |
+| `scripts/practice_agency_telemetry.py` | **有**（`models.get('none', 0)` 已經單獨一欄，per-round 成本也已經有 `if haiku_rounds else 0` 的除零保護） | 不動 |
+
+**成本外推公式的口徑（取代先前章節裡「每場 20 回合 ＝ 20 次生成」的寫法）**：
+
+- Haiku 佔比的分母是 `modelRounds = deepseek + haiku`，**`none` 不進分母**——
+  一輪沒有生成機會的輪次，不是「本來可以走 Haiku 卻走了 DeepSeek」。
+- 每輪成本的分母同樣是 `modelRounds`。把 `none` 除進去會低估單價（那一輪成本
+  是 0），把它當成 deepseek 則會高估 DeepSeek 的呼叫數。
+- 一場 20 回合的總成本因此是
+  `modelRounds × 加權單價 ＋ 分類器輪數 × 分類器單價`，不是 `20 × 單價`；
+  `read_only` 佔比越高，實際總成本越低於舊公式。
+- `modelRounds === 0`（整批都是 `read_only`）時 `haikuShare` 是 `null` 而不是
+  `0`，呼叫端要顯示 `n/a`，不要印 0% 也不要除以零。
+- `unknown`＝Phase 4.3 之前的舊 artifact 沒有 `chatModelUsed`，單獨一格回報，
+  不併進任何一支模型。

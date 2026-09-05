@@ -13,6 +13,7 @@ import {
   runAgencyScenario,
   runnerChatModelFor,
   saltedThreadId,
+  tallyChatModelRounds,
   threadSaltOfArtifactMeta,
   ZERO_HAIKU_USAGE_TOTALS,
 } from "./run_agency.ts";
@@ -868,4 +869,47 @@ Deno.test("Phase 4.4：runner 的選模入口與 production chatModelFor 在整�
   // ＝ 2 模式 × 2 個非 true 的 applied ＝ 4 格。
   assertEquals(mixedHaiku, 12);
   assertEquals(boundaryHaiku, 4);
+});
+
+Deno.test("Phase 4.5c：tallyChatModelRounds 正確吃 chatModelUsed=none（不算模型、不進分母、不除以零）", () => {
+  const t = tallyChatModelRounds([
+    {
+      turns: [
+        // 腳本前文與 ai turn 都不是生成輪。
+        { role: "ai", chatModelUsed: "haiku" },
+        { role: "user", scripted: true, chatModelUsed: "haiku" },
+        { role: "user", chatModelUsed: "haiku" },
+        { role: "user", chatModelUsed: "deepseek" },
+        // Phase 4.5a 之後 production 對 forced read_only 那一輪的值。
+        { role: "user", chatModelUsed: "none" },
+        { role: "user", chatModelUsed: "none" },
+        // Phase 4.3 之前的舊 artifact 沒有這個欄位。
+        { role: "user" },
+      ],
+    },
+    // 失敗的場次整場不算。
+    { error: "boom", turns: [{ role: "user", chatModelUsed: "haiku" }] },
+  ]);
+  assertEquals(t.haiku, 1);
+  assertEquals(t.deepseek, 1);
+  assertEquals(t.none, 2);
+  assertEquals(t.unknown, 1);
+  // none／unknown 都不進「真的打了生成模型」的分母。
+  assertEquals(t.modelRounds, 2);
+  assertEquals(t.haikuShare, 0.5);
+});
+
+Deno.test("Phase 4.5c：整批都是 none 時 haikuShare 是 null，不是 0，也不會除以零", () => {
+  const t = tallyChatModelRounds([
+    {
+      turns: [
+        { role: "user", chatModelUsed: "none" },
+        { role: "user", chatModelUsed: "none" },
+      ],
+    },
+  ]);
+  assertEquals(t.none, 2);
+  assertEquals(t.modelRounds, 0);
+  assertEquals(t.haikuShare, null);
+  assertEquals(tallyChatModelRounds([]).haikuShare, null);
 });
