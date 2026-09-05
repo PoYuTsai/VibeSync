@@ -1158,6 +1158,10 @@ Codex R1 P1-2 的難度門檻讓 `check_out`／`read_only` **在這兩份逐字�
 - **`true`** → 只有 `chat／standard` 的案例允許 `messages`／`rpc`／`telemetry`
   不同（白名單比對，名單外必須逐位元組相同）；`response` 一律不變。另有一支
   測試斷言那三面**真的**都不同（不是只有 telemetry 多一個 key）。
+- **交叉格（Codex R1 P2-1）**：另一支測試掃兩組交叉——routing `mixed` ×
+  新旗標 `off`／亂填（agency `off` 與 `on` 兩種都掃，基準是「routing=mixed ＋
+  新旗標未設」），以及 agency `off`／亂填／`shadow` × 新旗標 `true`／`off`
+  （前兩者四面全等 golden，`shadow` 沿用既有「只 telemetry 可以不同」契約）。
 - **golden 未重印**（`git status` 全程沒有 golden 檔）。
 
 **精簡分類器**：standard 生成成功後多打一次 DeepSeek（模型／`maxTokens`／
@@ -1192,11 +1196,31 @@ standard 這條新路徑不帶回就等於把 beginner 累積的東西清掉—�
 | `invite_stage` | COALESCE | 既有值／`null`（`null` 時連 `recent_facts.inviteStage` 都不覆寫） |
 | `memory_summary` | COALESCE | 既有值／`null` |
 | `profile_id` | COALESCE | request 的 profileId |
-| `recent_facts` | `= EXCLUDED` | 既有整份為底（Phase 2.6 規則）＋`conversationAgency`；`replyStyle` 原樣帶回（standard 不推進 style 狀態） |
+| `recent_facts` | `= EXCLUDED` | 既有整份為底（Phase 2.6 規則）＋`conversationAgency`；`replyStyle` **原始物件原樣穿過**（見下） |
+
+`replyStyle` 刻意**不傳** `replyStyleState` 參數（Codex R1 U2）：
+`parseReplyStyleState` 是「驗過再重建」而不是原樣回傳，parse 後寫回去會把
+`replyStyle` 裡本檔不認識的巢狀 key 靜默清掉。省略參數時
+`existingRecentFacts` 的原始 `replyStyle` 物件會原封不動穿過去。
+
+**profile 不符時完全不寫（Codex R1 P1-1）**：handler 讀到的 row 若是**另一個
+角色**的，舊版只把 `relationshipThreadState` 設成 `null`，於是 standard 的寫入
+路徑會把它當成「沒有列」——拿新角色的 `profileId` 去 upsert 同一個
+`(user, visible_thread_id)`，四個 `= EXCLUDED` 欄位被寫成 `null`（舊角色的分數
+與模式沒了），而 `partner_*`／`invite_stage`／`memory_summary` 走 COALESCE 留著
+舊角色的值＝兩個角色的狀態攪在一起。現在 fetch 之後多記一個
+`threadProfileMismatch`，**profile 不符時 standard 完全跳過 thread 寫入**
+（分類器照跑、telemetry 照記，`conversationAgency.statePersisted: false`）。
+beginner／game 的寫入路徑本輪一字未改（那條有自己算得出來的分數與階梯，
+`p_profile_id` 的 COALESCE 語意是既有行為，不在本刀範圍）。
 
 測試釘住：既有 beginner row 下，standard 一輪的 RPC params 除了
-`recent_facts.conversationAgency`（與每輪本來就會推進的 `aiTurnCount`）以外
-**逐欄位相同**。沒有既有 row 時建立一列 mode `standard`、分數留空的 thread——
+`recent_facts.conversationAgency`（與每輪本來就會推進的 `source`／`aiTurnCount`）
+以外**逐欄位相同**——`p_recent_facts` 做**整份精確比對**，fixture 的每一格都
+刻意不是本檔會寫出來的預設值（`source` 是別的 writer、`aiTurnCount` 是 42、
+`replyStyle` 裡有一個未知巢狀 key、頂層兩個未知 key），所以「原樣帶回」不是
+恆真斷言。另有一支測試 seed 一列**別的角色**（同 visible thread）跑 standard，
+斷言 upsert RPC **一次都沒發**。沒有既有 row 時建立一列 mode `standard`、分數留空的 thread——
 後續 beginner 的 `resolveLearningSeed` 對 `null` 分數有既有退路（ledger 未建檔
 → client seed → 難度起始值），該退路本輪未改。`threadState.practiceMode` 全域
 查證**沒有任何 consumer**（`parseRelationshipThreadRow` 產出後沒有人讀），所以
@@ -1207,6 +1231,12 @@ standard 這條新路徑不帶回就等於把 beginner 累積的東西清掉—�
 `aiClarifiedLastTurn`／`lowValueStreak`／`checkedOut`。handler 級測試：
 standard ＋旗標 on ＋分類器回 `aiChallengedThisTurn: true` → 下一輪裸詞
 forced `challenge_relevance`／`clarify_ignored_*`；反例（旗標關）維持 bounded。
+
+**多輪端到端（Codex R1 P2-3）**：一支測試把每一輪 RPC 寫出去的 `recent_facts`
+餵回下一輪的 thread row（＝production 的先讀後寫），玩家連丟七個不相干的地名、
+她每輪都問「你在說什麼？」、分類器據實回報 `aiChallengedThisTurn: true`——
+**挑戰難度**會走到 `check_out` 再一路 `read_only`；**同一段序列在 easy／normal
+兩種難度下都不得出現這兩格**。
 
 **standard／challenge 會進階梯**：`allowsCheckOut(difficulty, isGame)` ＝
 **難度 challenge 或 practiceMode game**，這支 predicate **不看 practiceMode 是不是
@@ -1221,12 +1251,28 @@ standard**。standard 之前走不到階梯的原因是「沒有持久化狀態�
 deepseek（Phase 4.4 的既有測試一個字都沒改）。黑箱 runner 的
 `runnerChatModelFor` 直接呼叫同一支，全矩陣逐項比對。
 
-**Telemetry**：`practice_chat_succeeded.conversationAgency` 在旗標開時補
-`coherence`／`aiChallengedThisTurn`／`sharedPastClaim`／`accommodatingSelfFact`
-（key 名與 beginner 相同，含 `sharedPastClaimRepaired`／
-`accommodatingSelfFactRepaired`）＋ `standardClassifier: "ok" | "failed"` ＋
-`standardClassifierDurationMs`。旗標關時整組 key 不存在。事件數與事件名不變
-（只多一個 fail-open 的 warn 事件）。
+**Telemetry 契約（分面寫法，Codex R1 P1-3）**——由
+`standard_agency_classifier_test.ts` 的「telemetry 契約」那一支把三種分類器
+結果的 **key set 與事件名列表**整組釘死（不是挑幾個欄位看）：
+
+- **(a) 旗標關**（含 agency `on`）：`conversationAgency` **零新 key**，
+  **零新事件**。
+- **(b) 旗標開**：`practice_chat_succeeded.conversationAgency` 一律多三個管理
+  欄位——`standardClassifier: "ok" | "failed"`、`standardClassifierDurationMs`、
+  `statePersisted`（Codex R1 P1-1：這一輪有沒有送出 thread 寫入）。
+  - **分類器成功**：再多 `coherence`／`aiChallengedThisTurn`／`sharedPastClaim`／
+    `accommodatingSelfFact`（key 名與 beginner 相同；前兩個是覆寫既有那兩格的
+    `null`，所以 key set 只多後兩個）。修過的欄位另有
+    `sharedPastClaimRepaired`／`accommodatingSelfFactRepaired`——**與 beginner
+    完全相同的規則**：`coherence`／`aiChallengedThisTurn` 修過時**不多 key**，
+    只進 `practice_chat_learning_classifier_repaired` 事件。
+  - **分類器失敗**：四個判斷欄位**全部缺席**（與 beginner 分類器失敗時相同），
+    只留三個管理欄位。
+- **(c) 允許多出的事件只有兩個**：`practice_chat_learning_classifier_repaired`
+  （與 beginner 同名同 payload 形狀）與
+  `practice_chat_standard_agency_classifier_failed`（fail-open，payload 只有
+  `level`／`event`／匿名 `user`／`error`，沒有逐字稿）。測試對三種情形的事件名
+  union 做精確比對，任何第三個新事件都會炸。
 
 **黑箱 runner**：`--mode=standard --state=1` 不再被 CLI 擋掉（Codex round-2
 P2-d 的原始理由「standard 不持久化跨回合狀態」在本刀之後不成立），並且真的用
@@ -1257,15 +1303,17 @@ system 包成一個 block 掛 ephemeral cache，而 system 每一輪都夾著當
 
 ### Gate（實測數字）
 
-- practice-chat 全套：**1,931 passed / 0 failed / 1 ignored**（base `9e64a41c`
-  1,913／0／1；＋18。ignored 是既有的 `moments_image_gate_test.ts` 素材缺失）。
-- 等價 harness：**11 passed / 1 ignored**（base 9／1；＋2），**off golden 未重印**。
-- `tools/`：**114 passed / 0 failed**（base 111；＋3）。
+- practice-chat 全套：**1,937 passed / 0 failed / 1 ignored**（base `9e64a41c`
+  1,913／0／1；＋24。ignored 是既有的 `moments_image_gate_test.ts` 素材缺失）。
+- 等價 harness：**12 passed / 1 ignored**（base 9／1；＋3），**off golden 未重印**。
+- `tools/`：**116 passed / 0 failed**（base 111；＋5，含 cache probe 的 2 支
+  dry-run）。
 - `deno fmt --check supabase/functions/practice-chat tools`：**64 個未格式化檔，
-  與 base 完全相同**（全部是未觸碰的既有檔）。
+  與 base 完全相同**（全部是未觸碰的既有檔；掃描檔數 478 → 481，多的是本輪新增
+  的三個檔且都已格式化）。
 - `deno lint supabase/functions/practice-chat tools`：**9 個問題，與 base 完全
   相同**（全部在未觸碰的檔案）。
-- `deno check supabase/functions/practice-chat/index.ts tools/practice-agency-eval/run_agency.ts`：0 error。
+- `deno check`（`practice-chat/index.ts`＋`run_agency.ts`＋`cache_probe.ts`）：0 error。
 - `flutter-ci.yml` 的 Edge contract tests 名單加入
   `standard_agency_classifier_test.ts`（不然這道 gate 在 PR CI 是死的）。
 
@@ -1292,6 +1340,32 @@ system 包成一個 block 掛 ephemeral cache，而 system 每一輪都夾著當
   但這條路徑**沒有真機驗過**。
 - **未做**：不改 beginner／game 行為、不改 DeepSeek prompt 內容、不加 migration、
   不動 hint、不重印 golden、未 push。
+- **thread 先讀後寫的 stale-read 窗口（Codex R1 U3，不修）**：handler 在請求
+  開頭讀 thread、在生成與分類器之後才寫，中間沒有樂觀鎖（`update_practice_
+  learning_state` 那條有 expected-score CAS，thread 這條沒有）。這是 beginner
+  的**既有型態**，standard 只是把窗口拉長了一段同步分類器的時間（實測
+  `standardClassifierDurationMs`）。同一個 visible thread 上兩個併發請求時，
+  後寫的會蓋掉先寫的 `conversationAgency`。本輪不修：agency 狀態是「最近一輪
+  的結構事實」，覆寫的後果是少記一輪，不是資料損毀。
+- **cache 是否真的命中還沒量**：`tools/practice-agency-eval/cache_probe.ts`
+  已經寫好（standard／beginner／game × style on／off，每格對同一場連續打兩次
+  Haiku，印出 `cacheCreationInputTokens`／`cacheReadInputTokens`），
+  **本輪刻意沒有執行**——付費呼叫要等 Eric 授權。`cache_probe_test.ts` 只跑
+  dry-run（矩陣形狀 ＋ 同格兩輪的穩定前綴逐位元組相同），零 Anthropic 呼叫。
 - **回退**：把 `PRACTICE_STANDARD_AGENCY_CLASSIFIER` 拿掉即回到逐位元組舊行為
   （刀 A）；刀 B 沒有旗標，回退＝revert `270972de`（它自己不改 DeepSeek 路徑，
   只影響 Claude 的 request body 形狀）。
+
+### Codex R1：BLOCK（逐項處置）
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| **P1-1** | profile 不符時 standard 的寫入會清掉別的角色的分數並混入舊角色記憶 | **已修**。fetch 之後多記 `threadProfileMismatch`，profile 不符時 standard **完全跳過** thread 寫入；telemetry 記 `statePersisted:false`。兩支測試：別的角色的列 → 零 upsert RPC；沒有 row → 照樣建列且 `statePersisted:true` |
+| **P1-2** | cache 是否真的命中沒有證據 | **已加腳本，未執行**（付費呼叫等 Eric 授權）。`tools/practice-agency-eval/cache_probe.ts`：standard／beginner／game × style on／off 共 6 格，每格對同一場連續打兩次 Haiku，印 create／read／input tokens ＋ 前綴長度。`cache_probe_test.ts` 只跑 dry-run（零 Anthropic 呼叫） |
+| **P1-3** | telemetry 契約沒寫成分面、沒有 key set 級測試 | **已修（文件＋測試）**。契約見本節「Telemetry 契約（分面寫法）」；新增一支測試把三種分類器結果（合法 JSON／`{}`／非法 JSON）的 `conversationAgency` key set 與事件名 union 整組釘死 |
+| **P2-1** | 等價 harness 沒掃交叉格 | **已修**。新增 routing `mixed` × 新旗標 `off`／亂填（agency off／on 兩種），與 agency `off`／亂填／`shadow` × 新旗標 `true`／`off` |
+| **P2-2** | matching-row 測試有恆真斷言（`aiTurnCount: rest.aiTurnCount`） | **已修**。fixture 每一格都改成非預設值（`source` 是別的 writer、`aiTurnCount` 42、`replyStyle` 含未知巢狀 key、頂層兩個未知 key），對整份 `p_recent_facts` 精確比對，白名單只有 `source`／`aiTurnCount`／`conversationAgency` |
+| **P2-3** | 沒有多輪端到端證明階梯真的走得完 | **已修**。新增 7 輪端到端（每輪把上一輪 RPC 的 `recent_facts` 餵回去）：challenge 走到 `check_out` → `read_only`，easy／normal 兩格都不得出現 |
+| **U1** | 沒證明 `practiceMode` 缺席時的正規化 | **已查證＋釘住**。`validateRequest` 的 `practiceMode` 預設就是 `"standard"`（缺席時不可能是 `undefined`），新增一支不帶 `practiceMode` key 的 handler 測試 |
+| **U2** | `parseReplyStyleState` 會丟掉未知巢狀欄位 | **已修**。standard 路徑改成**不傳** `replyStyleState`，讓 `existingRecentFacts` 的原始 `replyStyle` 物件原樣穿過；P2-2 那支測試直接斷言未知巢狀 key 還在 |
+| **U3** | thread 先讀後寫的 stale-read 窗口 | **不修，記進「已知限制」**（beginner 既有型態，standard 多一段同步分類器時間；覆寫的後果是少記一輪，不是資料損毀） |
