@@ -378,6 +378,32 @@ Deno.test("standard/beginner buildChatMessages never carry the Game-only acquain
   }
 });
 
+Deno.test("Phase 4.6 刀 3：game chat 的 gameSnapshot 帶 inviteStage——順風局 system 推得出 partner_window_close／direct_invite_low_pressure", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+  const turns: PracticeTurn[] = [
+    { role: "user", text: "你講話很有畫面欸" },
+    { role: "ai", text: "那你倒是說說看看到什麼" },
+    { role: "user", text: "看到你在測我穩不穩，我先不照劇本走" },
+  ];
+  const sysFor = (temperatureScore: number, familiarityScore: number) =>
+    buildChatMessages(turns, profile, {
+      practiceMode: "game",
+      temperatureScore,
+      familiarityScore,
+      partnerState: { mood: "comfortable", innerThought: "他接得穩。" },
+    })[0].content;
+  // 成熟度 85×0.6＋75×0.4＝81 ≥ 80 → partner_window → 接住她給的窗口。
+  assert(
+    sysFor(85, 75).includes("speedInviteDirection: partner_window_close"),
+    sysFor(85, 75),
+  );
+  // 成熟度 70×0.6＋60×0.4＝66 ≥ 65 → direct_invite_ready → 低壓明確邀約。
+  assert(
+    sysFor(70, 60).includes("speedInviteDirection: direct_invite_low_pressure"),
+    sysFor(70, 60),
+  );
+});
+
 Deno.test("game buildChatMessages includes social-game FSM and persona strategy for every rarity", () => {
   const srProfile = resolvePracticeProfile({ profileId: "practice_girl_004" });
   const nonSrProfile = resolvePracticeProfile({

@@ -947,12 +947,18 @@ export function buildChatPromptBundle(
     });
   // Game 的 FSM 判定整包只算一次，gameMode 與 tensionLadder 共用同一份
   // snapshot——兩處各算會在越界輪端出兩個矛盾的 allowSpicyLevel。
+  // Phase 4.6 刀 3：帶上同一輪算好的 inviteStage（與下方 policyEvidence 同源）。
+  // 舊版漏帶，fresh snapshot 的 speedInviteDirection 永遠推不出
+  // partner_window_close／direct_invite_low_pressure——與 handler 落帳端
+  // 2026-08-11、gameDebrief（刀 1）的同型迴歸；有落帳時 gameState 證據區塊帶著
+  // 正確方向，遮住了這裡的錯，第一場沒落帳時才裸露。
   const gameSnapshot = options.practiceMode === "game"
     ? evaluateGameFsm({
       turns,
       temperatureScore: effectiveTemperature,
       familiarityScore: effectiveFamiliarity,
       partnerMood: options.partnerState?.mood ?? null,
+      inviteStage: inviteMaturity?.stage ?? null,
     })
     : null;
   // conversation-agency-v1（Codex P1「與 reply-style 解耦」）：PolicyEvidence／
