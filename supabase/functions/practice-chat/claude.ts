@@ -134,15 +134,17 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
     if (json?.stop_reason === "max_tokens") {
       throw new Error("claude_max_tokens");
     }
-    if (args.onUsage) {
+    // Codex R1 P2：契約是「只在成功取到內容時呼叫一次」，所以必須放在 content
+    // 解析與驗證**之後**——HTTP 200 但內容空／格式錯時 callback 一次都不能響。
+    const emitUsage = () => {
       const u = json?.usage ?? {};
-      args.onUsage({
+      args.onUsage?.({
         inputTokens: Number(u.input_tokens) || 0,
         cacheReadInputTokens: Number(u.cache_read_input_tokens) || 0,
         cacheCreationInputTokens: Number(u.cache_creation_input_tokens) || 0,
         outputTokens: Number(u.output_tokens) || 0,
       });
-    }
+    };
     const blocks = Array.isArray(json?.content) ? json.content : [];
     if (args.forcedTool) {
       const toolBlock = blocks.find((block: unknown) =>
@@ -152,6 +154,7 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
         (block as { input?: unknown }).input !== null
       );
       if (!toolBlock) throw new Error("claude_no_tool_use");
+      emitUsage();
       return JSON.stringify((toolBlock as { input: unknown }).input);
     }
     const content = blocks
@@ -164,6 +167,7 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
       .join("")
       .trim();
     if (!content) throw new Error("claude_empty_content");
+    emitUsage();
     return content;
   } catch (error) {
     if (

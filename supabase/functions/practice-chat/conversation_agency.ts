@@ -1225,10 +1225,15 @@ export function agencyShapeExperimentFor(
  * 女生回覆這一輪要打哪一支模型。`"mixed"`＝她要介入的輪次換 Claude Haiku 4.5、
  * 其餘維持 DeepSeek（Phase 4.3 三臂黑箱：頭條 3.4%、陪玩 1.7%，且比全 Haiku 便宜）。
  *
- * 條件與黑箱 runner 的 `--chat-model=mixed` 臂**逐字相同**：agency 解析成 `on`
- * 且這一輪 `agencyDecision.applied === true`（planner 真的注入了 guidance）。
- * 旗標不是 `"mixed"`（未設／`off`／亂填）、agency `off`／`shadow`、或這一輪
- * 沒介入，一律 `"deepseek"`＝與接線前逐字相同。
+ * 條件與黑箱 runner 的 `--chat-model=mixed` 臂**逐字相同**（runner 的選模入口
+ * 直接呼叫本函式）：agency 解析成 `on` 且這一輪 `agencyDecision.applied === true`
+ * （planner 真的注入了 guidance）。旗標不是 `"mixed"`（未設／`off`／亂填）、
+ * agency `off`／`shadow`、或這一輪沒介入，一律 `"deepseek"`＝與接線前逐字相同。
+ *
+ * Codex R1 P1（範圍）：**`standard` 一律 deepseek**。Phase 4.3 三臂黑箱只量過
+ * `beginner ＋ --state=1`，而 standard 連分類器都沒有（4.3 的死守邊界在
+ * standard 本來就不成立），介入輪的分佈與品質都沒量過——證據涵蓋不到的模式
+ * 不進路由。game 併入前要先跑小黑箱。
  */
 export type PracticeChatModel = "deepseek" | "haiku";
 
@@ -1236,9 +1241,11 @@ export function chatModelFor(
   routingFlag: string | undefined,
   agencyMode: AgencyMode,
   agencyDecision: { readonly applied: boolean } | null | undefined,
+  practiceMode: string | null | undefined,
 ): PracticeChatModel {
   if (routingFlag !== "mixed") return "deepseek";
   if (agencyMode !== "on") return "deepseek";
+  if (practiceMode !== "beginner" && practiceMode !== "game") return "deepseek";
   return agencyDecision?.applied === true ? "haiku" : "deepseek";
 }
 

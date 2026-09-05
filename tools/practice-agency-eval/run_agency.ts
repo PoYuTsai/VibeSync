@@ -88,6 +88,7 @@ import {
   type AgencyMode,
   type AgencyShapeExperiment,
   agencyShapeExperimentFor,
+  chatModelFor,
   type ConversationAgencyState,
   nextConversationAgencyState,
   truncateAgencyShape,
@@ -262,6 +263,27 @@ export function threadSaltOfArtifactMeta(meta: unknown): string {
   return typeof fixture?.threadSalt === "string" ? fixture.threadSalt : "";
 }
 
+/**
+ * 三個臂的選模入口。`haiku` 臂＝從頭到尾 Haiku（純模型 A/B），`mixed` 臂**直接
+ * 呼叫 production 的 `chatModelFor`**（Codex R1 U2：要證明的是「何時選 Haiku」
+ * 相同，不只是「選了之後 body 相同」），其餘一律 DeepSeek＝逐字舊行為。
+ */
+export function runnerChatModelFor(args: {
+  chatModel?: "deepseek" | "haiku" | "mixed";
+  agency: AgencyMode;
+  mode: PracticeRunMode;
+  applied: boolean | undefined;
+}): "deepseek" | "haiku" {
+  if (args.chatModel === "haiku") return "haiku";
+  if (args.chatModel !== "mixed") return "deepseek";
+  return chatModelFor(
+    "mixed",
+    args.agency,
+    args.applied === undefined ? null : { applied: args.applied },
+    args.mode,
+  );
+}
+
 export async function runAgencyScenario(args: {
   callChat: ChatCaller;
   profileId: string;
@@ -412,15 +434,14 @@ export async function runAgencyScenario(args: {
     });
     const messages = bundle.messages;
     const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
-    // Phase 4.3 步驟 1（`--chat-model=mixed`）：她要介入的那一輪（bundle.
-    // agencyDecision?.applied === true——planner 真的注入了 guidance，不是
-    // 只是「允許」）換 Haiku，其餘用 DeepSeek。`applied` 是既有欄位，跟
-    // nextConversationAgencyState 用來判斷要不要推進狀態的是同一個布林。
-    const chatModelUsed: "deepseek" | "haiku" = args.chatModel === "haiku"
-      ? "haiku"
-      : args.chatModel === "mixed" && bundle.agencyDecision?.applied === true
-      ? "haiku"
-      : "deepseek";
+    // Phase 4.3 步驟 1（`--chat-model=mixed`）：選模入口見 `runnerChatModelFor`
+    // ——mixed 臂直接呼叫 production 的 `chatModelFor`，兩邊不可能再漂。
+    const chatModelUsed = runnerChatModelFor({
+      chatModel: args.chatModel,
+      agency: args.agency,
+      mode: args.mode,
+      applied: bundle.agencyDecision?.applied,
+    });
     const activeCallChat = args.chatModel === "mixed"
       ? (chatModelUsed === "haiku" ? args.callChatHaiku! : args.callChat)
       : args.callChat;
