@@ -108,10 +108,17 @@ class EbookComparisonBlock extends EbookBlock {
     required super.id,
     required this.items,
     this.title,
+    this.scenario,
     this.caption,
   });
 
   final String? title;
+
+  /// 讀答案前必須先知道的共同題目或情境（她的原話、你問的那句）。
+  /// renderer 一律排在 items 之前，caption 則留在 items 之後當結論。
+  final String? scenario;
+
+  /// 看完比較之後的補充結論；不放題目前提。
   final String? caption;
   final List<EbookComparisonItem> items;
 }

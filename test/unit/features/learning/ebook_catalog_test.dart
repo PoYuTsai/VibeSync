@@ -122,9 +122,19 @@ void main() {
             {
               'type': 'comparison',
               'id': 'cm1',
+              'scenario': '她問：「你週末會去哪？」',
+              'caption': '差別在有沒有給出自己的角度。',
               'items': [
                 {'id': 'cm1-a', 'stance': 'weak', 'label': '弱', 'text': '弱句'},
                 {'id': 'cm1-b', 'stance': 'strong', 'label': '強', 'text': '強句'},
+              ],
+            },
+            {
+              'type': 'comparison',
+              'id': 'cm2',
+              'items': [
+                {'id': 'cm2-a', 'stance': 'weak', 'label': '弱', 'text': '弱句'},
+                {'id': 'cm2-b', 'stance': 'strong', 'label': '強', 'text': '強句'},
               ],
             },
             {
@@ -174,7 +184,15 @@ void main() {
         blocks.whereType<EbookCalloutBlock>().single.tone,
         EbookCalloutTone.safety,
       );
-      expect(blocks.whereType<EbookComparisonBlock>().single.items, hasLength(2));
+      final comparisons = blocks.whereType<EbookComparisonBlock>().toList();
+      expect(comparisons, hasLength(2));
+      // scenario（題目前提）與 caption（比較後結論）各自獨立解析。
+      expect(comparisons.first.items, hasLength(2));
+      expect(comparisons.first.scenario, '她問：「你週末會去哪？」');
+      expect(comparisons.first.caption, '差別在有沒有給出自己的角度。');
+      // 舊 JSON 沒有 scenario 也能解析，值維持 null（向後相容）。
+      expect(comparisons.last.scenario, isNull);
+      expect(comparisons.last.caption, isNull);
 
       final dialogue = blocks.whereType<EbookDialogueBlock>().single;
       expect(dialogue.lines.first.speaker, EbookSpeaker.you);

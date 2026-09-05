@@ -89,9 +89,9 @@ python3 -m unittest discover -s tools/content/tests -v
 | R01 | CJK 語境的半形 `, : ; ! ? ( )` | 「數字:數字」（10:00、2:1）與「數字,數字」例外 |
 | R02 | CJK 語境的半形符號 `... / + = > < [ "` | `V=0` 這種英數之間的不算 |
 | R03 | 行首／行尾空白、三個以上連續換行 | 原 HTML `<br>` 縮排的殘留 |
-| R04 | paragraph／caption／annotation 內的雙換行 | 一個欄位塞多段 |
+| R04 | paragraph／caption／scenario／annotation 內的雙換行 | 一個欄位塞多段 |
 | R05 | 「｜」 | 表格攤平的殘留 |
-| R06 | 欄位長度 | 章名 22、summary 40、對話句 80、註解 80、caption 100、bullet 100、paragraph 120、callout 160；長度＝不含空白的字元數 |
+| R06 | 欄位長度 | 章名 22、summary 40、對話句 80、註解 80、caption／scenario 100、bullet 100、paragraph 120、callout 160；長度＝不含空白的字元數 |
 | R07 | 條目 summary 與內文第一段相同 | 展開後看到同一句兩次 |
 | R08 | 簡體字、用字一致 | 信號→訊號、勾子→鉤子、升温→升溫、Line→LINE |
 | R09 | 第 1 冊提前使用 V／F／E／I／R 代碼 | 圖例在第 2 冊 2.1 |
