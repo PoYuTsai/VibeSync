@@ -350,8 +350,9 @@ Deno.test("addHaikuUsage／estimateHaikuCostUsd：純函式累加與估價（不
     outputTokens: 1000,
   });
   assertEquals(afterOne.calls, 1);
-  // input 1K@$0.0008 + output 1K@$0.004 = $0.0048。
-  assert(Math.abs(estimateHaikuCostUsd(afterOne) - 0.0048) < 1e-9);
+  // Phase 4.5c：單價改吃 pricing.ts 的官方牌價（$1／$5 每 M token，之前抄的是
+  // logger.ts 那組過期的 $0.80／$4）。input 1K@$1/M + output 1K@$5/M = $0.006。
+  assert(Math.abs(estimateHaikuCostUsd(afterOne) - 0.006) < 1e-9);
   const afterTwo = addHaikuUsage(afterOne, {
     inputTokens: 0,
     cacheReadInputTokens: 1000,

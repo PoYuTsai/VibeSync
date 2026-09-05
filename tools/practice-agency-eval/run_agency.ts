@@ -83,6 +83,7 @@ import {
   buildBakeoffContextFixture,
 } from "../practice-difficulty-bakeoff/bakeoff.ts";
 import { DEFAULT_PROFILE_IDS } from "../practice-reply-style-eval/run_baseline.ts";
+import { estimateCostUsd, HAIKU_4_5_PRICING } from "./pricing.ts";
 import {
   type AgencyClassifierSignal,
   type AgencyMode,
@@ -819,15 +820,6 @@ export function parseArgs(argv: string[]): CliOptions {
 // cache_control／訊息角色對映與 production 走**同一份程式**，黑箱結論才搬得回
 // production（Phase 4.3 時這裡是抄一份，兩邊會漂）。
 
-/** Haiku pricing 抄錄自 `supabase/functions/analyze-chat/logger.ts`
- * `TOKEN_COSTS["claude-haiku-4-5-20251001"]`（USD／1K token，未 export，改動
- * 記得同步）。cache read／write 乘數是 Anthropic 官方文件的標準比例（read
- * 0.1x、5 分鐘 ephemeral write 1.25x base input），logger.ts 沒有算這兩格。 */
-const HAIKU_INPUT_USD_PER_1K = 0.0008;
-const HAIKU_OUTPUT_USD_PER_1K = 0.004;
-const HAIKU_CACHE_READ_USD_PER_1K = HAIKU_INPUT_USD_PER_1K * 0.1;
-const HAIKU_CACHE_WRITE_USD_PER_1K = HAIKU_INPUT_USD_PER_1K * 1.25;
-
 /**
  * Phase 4.5c：一批場次裡「這一輪用了哪支女生回覆模型」的分佈。
  *
@@ -895,13 +887,9 @@ export interface HaikuUsageTotals extends HaikuUsage {
   readonly calls: number;
 }
 
+/** Phase 4.5c：單價唯一來源是 `pricing.ts`（這裡以前自己抄了一份 USD／1K）。 */
 export function estimateHaikuCostUsd(usage: HaikuUsage): number {
-  return (
-    (usage.inputTokens / 1000) * HAIKU_INPUT_USD_PER_1K +
-    (usage.cacheReadInputTokens / 1000) * HAIKU_CACHE_READ_USD_PER_1K +
-    (usage.cacheCreationInputTokens / 1000) * HAIKU_CACHE_WRITE_USD_PER_1K +
-    (usage.outputTokens / 1000) * HAIKU_OUTPUT_USD_PER_1K
-  );
+  return estimateCostUsd(usage, HAIKU_4_5_PRICING);
 }
 
 export function addHaikuUsage(

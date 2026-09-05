@@ -30,6 +30,7 @@ import {
 import { resolvePracticeProfile } from "../../supabase/functions/practice-chat/practice_persona.ts";
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
 import { readAnthropicKey } from "./run_agency.ts";
+import { estimateCostUsd, HAIKU_4_5_PRICING } from "./pricing.ts";
 
 const CHAT_MAX_TOKENS = 200;
 const CHAT_TEMPERATURE = 0.9;
@@ -85,13 +86,16 @@ export function probePlanFor(cell: ProbeCell) {
 
 async function main(): Promise<void> {
   const apiKey = readAnthropicKey();
-  console.log("cell\tround\tcreate\tread\tinput\tprefixChars");
+  // Phase 4.5c：單價唯一來源是 pricing.ts（這支之前只印 token 數，金額要另外
+  // 手算，跟 README 的外推容易對不起來）。
+  let totalUsd = 0;
+  console.log("cell\tround\tcreate\tread\tinput\tprefixChars\tusd");
   for (const cell of PROBE_CELLS) {
     const plan = probePlanFor(cell);
     for (
       const [round, bundle] of [[1, plan.round1], [2, plan.round2]] as const
     ) {
-      let usage = { create: 0, read: 0, input: 0 };
+      let usage = { create: 0, read: 0, input: 0, output: 0 };
       try {
         await callClaude({
           apiKey,
@@ -106,6 +110,7 @@ async function main(): Promise<void> {
               create: u.cacheCreationInputTokens,
               read: u.cacheReadInputTokens,
               input: u.inputTokens,
+              output: u.outputTokens,
             };
           },
         });
@@ -113,6 +118,13 @@ async function main(): Promise<void> {
         // 生成失敗不影響量測目的：`onUsage` 在 provider 回了 usage 時就已經響過。
         console.error(`[cache-probe] ${cell.label} r${round} 失敗：${e}`);
       }
+      const usd = estimateCostUsd({
+        inputTokens: usage.input,
+        outputTokens: usage.output,
+        cacheReadInputTokens: usage.read,
+        cacheCreationInputTokens: usage.create,
+      }, HAIKU_4_5_PRICING);
+      totalUsd += usd;
       console.log(
         [
           cell.label,
@@ -121,10 +133,14 @@ async function main(): Promise<void> {
           usage.read,
           usage.input,
           bundle.systemStable.length,
+          usd.toFixed(6),
         ].join("\t"),
       );
     }
   }
+  console.log(
+    `total\t${PROBE_CELLS.length * 2}\t\t\t\t\t${totalUsd.toFixed(6)}`,
+  );
 }
 
 if (import.meta.main) await main();
