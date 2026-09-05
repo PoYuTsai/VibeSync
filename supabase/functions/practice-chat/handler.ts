@@ -4047,12 +4047,26 @@ export function createPracticeChatHandler(
       //
       // Phase 4.5c 刀 2：回放吃 thread 上的持久化 agency 狀態
       // （只用得到 `repairedAtUserTurns`，見 `debriefAgencyLedgerFor`）。
-      // assisted 一直都有；standard 是 4.5b 之後才會寫，所以那一格用**同一支**
-      // `standardAgencyClassifierEnabled` 判——旗標關著時 standard 的 thread 上
-      // 沒有這一輪寫進去的 agency 狀態，讀它等於吃到別條路徑留下的殘值。
-      // 這裡刻意不重用 `standardAgencyClassifierOn`（那支綁 `request.practiceMode`，
-      // debrief 的模式來自 ledger）。
-      const debriefAgencyState = debriefAssistedMode ||
+      //
+      // **只有 standard**（R1 P1-1）：閘門是 4.5b 的
+      // `standardAgencyClassifierEnabled`（agency `on` ∧ 旗標 `true` ∧
+      // `practiceMode === "standard"`），所以 beginner／game 的 debrief 一律
+      // 傳 null＝逐位元組維持 4.1 行為。assisted 該不該也吃狀態是另一刀的
+      // 提案（見計畫檔 4.5c「未做／提案」），本刀不動。
+      // 刻意不重用 `standardAgencyClassifierOn`：那支綁 `request.practiceMode`，
+      // debrief 的模式來自 ledger。
+      //
+      // **逐字稿必須是完整的**（R1 U1）：debrief 的 `request.turns` 走 client
+      // 的 `_turnDtosForPrompt()`（`kPracticePromptRecentTurns = 80`），超過
+      // 就是 suffix；而 marker 是**整場**的絕對序號，套在 suffix 上會偏右
+      // ＝把更多輪當成已修復（少算介入輪）。這裡不猜 client 的窗口大小
+      // （兩端各自帶常數會漂），改用 server 自己的帳：這次帶上來的 ai 則數
+      // 等於 ledger 累計的 `aiCount` 才算完整，否則不注入（fail-safe）。
+      const debriefTranscriptComplete = request.turns.filter((turn) =>
+        turn.role === "ai"
+      ).length ===
+        ledger.aiCount;
+      const debriefAgencyState = debriefTranscriptComplete &&
           standardAgencyClassifierEnabled(
             deps.getEnv("PRACTICE_STANDARD_AGENCY_CLASSIFIER"),
             agencyMode,

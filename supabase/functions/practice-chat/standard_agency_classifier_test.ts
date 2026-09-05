@@ -846,10 +846,18 @@ const A25_DEBRIEF_TURNS = [
   { role: "ai", text: "好 你慢慢背\n我累了先這樣" },
 ];
 
-/** standard thread row，第 2 則玩家訊息上有分類器落下的修復點。 */
-const STANDARD_ROW_WITH_REPAIR = {
-  profile_id: "practice_girl_001",
-  practice_mode: "standard",
+/** A25 逐字稿裡她講了幾則（＝逐字稿完整時 ledger 的 `ai_count`）。 */
+const A25_AI_TURNS =
+  A25_DEBRIEF_TURNS.filter((turn) => turn.role === "ai").length;
+
+/** thread row；`repairedAtUserTurns` 給 null＝有 agency 狀態但沒有修復點。 */
+const rowWithRepair = (options: {
+  profileId?: string;
+  practiceMode?: string;
+  repairedAtUserTurns?: number | null;
+} = {}) => ({
+  profile_id: options.profileId ?? "practice_girl_001",
+  practice_mode: options.practiceMode ?? "standard",
   recent_facts: {
     source: "practice_chat",
     conversationAgency: {
@@ -858,10 +866,12 @@ const STANDARD_ROW_WITH_REPAIR = {
       unresolvedCount: 0,
       priorChallengeIssued: false,
       lastAgencyAct: null,
-      repairedAtUserTurns: 2,
+      ...(options.repairedAtUserTurns === null
+        ? {}
+        : { repairedAtUserTurns: options.repairedAtUserTurns ?? 2 }),
     },
   },
-};
+});
 
 /** debrief 走 `practice_chat_generation_outcome`（不是 chat 的 succeeded）。 */
 function debriefAgencyTelemetry(r: RunResult): Record<string, unknown> {
@@ -874,13 +884,35 @@ function debriefAgencyTelemetry(r: RunResult): Record<string, unknown> {
   return agency;
 }
 
+async function runDebriefWithThread(options: {
+  env: Record<string, string | undefined>;
+  practiceMode?: string;
+  profileId?: string;
+  repairedAtUserTurns?: number | null;
+  /** ledger 的 `ai_count`；與逐字稿的 ai 則數不同＝server 眼中逐字稿被截過。 */
+  aiCount?: number;
+}) {
+  return await runStandardTurn(
+    {
+      ledger: ledger({
+        practice_mode: options.practiceMode ?? "standard",
+        ai_count: options.aiCount ?? A25_AI_TURNS,
+        charged: true,
+      }),
+      drawEvents: [],
+      thread: rowWithRepair(options),
+      env: options.env,
+      claudeReplies: [validDebriefJson()],
+    },
+    debriefBody({
+      turns: A25_DEBRIEF_TURNS,
+      ...(options.profileId ? { profileId: options.profileId } : {}),
+    }),
+  );
+}
+
 async function runStandardDebrief(env: Record<string, string | undefined>) {
-  return await runStandardTurn({
-    ledger: ledger({ practice_mode: "standard", ai_count: 1, charged: true }),
-    thread: STANDARD_ROW_WITH_REPAIR,
-    env,
-    claudeReplies: [validDebriefJson()],
-  }, debriefBody({ turns: A25_DEBRIEF_TURNS }));
+  return await runDebriefWithThread({ env });
 }
 
 Deno.test("Phase 4.5c 刀 2：standard debrief 在分類器旗標開著時吃 thread 上的修復點（第 2 則之後才重算欠債）", async () => {
@@ -914,4 +946,63 @@ Deno.test("Phase 4.5c 刀 2（反例）：分類器旗標關著時 standard debr
       repairTurnCount: 6,
     }, String(flag));
   }
+});
+
+Deno.test("Phase 4.5c 刀 2（R1 P1-1 反例）：beginner／game 的 debrief 一律不吃 thread 的修復點——有／無 marker 逐欄位相同", async () => {
+  // 差分比對，不是拿手算數字對拍：同一段逐字稿、同一份 thread，只差 thread 上
+  // 有沒有 `repairedAtUserTurns`。assisted 兩種模式都必須完全看不出差別
+  // （`agency_coaching_test.ts` 已證明這個 marker 會把帳從 6 輪變 4 輪，所以
+  // 「相同」是有內容的斷言）。
+  const cases = [
+    { practiceMode: "beginner", profileId: "practice_girl_001" },
+    { practiceMode: "game", profileId: "practice_girl_004" },
+  ];
+  for (const c of cases) {
+    const withMarker = await runDebriefWithThread({
+      ...c,
+      env: STANDARD_ENV,
+      repairedAtUserTurns: 2,
+    });
+    const without = await runDebriefWithThread({
+      ...c,
+      env: STANDARD_ENV,
+      repairedAtUserTurns: null,
+    });
+    assertEquals(withMarker.status, 200, c.practiceMode);
+    assertEquals(without.status, 200, c.practiceMode);
+    assertEquals(
+      debriefAgencyTelemetry(withMarker),
+      debriefAgencyTelemetry(without),
+      c.practiceMode,
+    );
+    // prompt 也要一模一樣（telemetry 只是計數，messages 才是模型真的看到的）。
+    assertEquals(
+      withMarker.state.claudeCalls[0].messages,
+      without.state.claudeCalls[0].messages,
+      c.practiceMode,
+    );
+    // 而且維持 4.1 的六輪基準（＝沒有從別的入口偷偷吃到狀態）。
+    assertEquals(
+      debriefAgencyTelemetry(withMarker).repairTurnCount,
+      6,
+      c.practiceMode,
+    );
+  }
+});
+
+Deno.test("Phase 4.5c 刀 2（R1 U1）：逐字稿不完整（ai 則數 ≠ ledger.aiCount）時不注入 marker", async () => {
+  // client 的 `_turnDtosForPrompt()` 只送最後 80 則，超過就是 suffix；marker 是
+  // 整場的絕對序號，套在 suffix 上會偏右＝少算介入輪。server 用自己的帳
+  // （ledger 累計的 ai 則數）判完整性，對不上就 fail-safe 不注入。
+  const truncated = await runDebriefWithThread({
+    env: STANDARD_ENV,
+    aiCount: A25_AI_TURNS + 3, // 這次只帶上來 6 則，ledger 記 9 則＝被截過
+  });
+  assertEquals(truncated.status, 200);
+  assertEquals(debriefAgencyTelemetry(truncated).repairTurnCount, 6);
+
+  // 反向：ledger 對得上就照常注入（上面那支已經證明 4；這裡確認閘門是
+  // 「完整性」而不是把整條路關掉）。
+  const complete = await runDebriefWithThread({ env: STANDARD_ENV });
+  assertEquals(debriefAgencyTelemetry(complete).repairTurnCount, 4);
 });
